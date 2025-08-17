@@ -240,15 +240,15 @@ type container_query = {
 type starting_style = { starting_rules : rule list }
 
 type supports_content =
-  | SupportRules of rule list
-  | SupportNested of rule list * supports_query list
+  | Support_rules of rule list
+  | Support_nested of rule list * supports_query list
 
 and supports_query = {
   supports_condition : string;
   supports_content : supports_content;
 }
 
-type rule_or_nested = Rule of rule | NestedSupports of supports_query
+type rule_or_nested = Rule of rule | Nested_supports of supports_query
 
 type at_property = {
   name : string;
@@ -400,12 +400,12 @@ let media ~condition rules =
   { media_condition = condition; media_rules = rules }
 
 let supports ~condition rules =
-  { supports_condition = condition; supports_content = SupportRules rules }
+  { supports_condition = condition; supports_content = Support_rules rules }
 
 let supports_nested ~condition rules nested_queries =
   {
     supports_condition = condition;
-    supports_content = SupportNested (rules, nested_queries);
+    supports_content = Support_nested (rules, nested_queries);
   }
 
 let container ?(name = None) ~condition rules =
@@ -419,7 +419,7 @@ let at_property ~name ~syntax ~initial_value ?(inherits = false) () =
   { name; syntax; inherits; initial_value }
 
 let rule_to_nested rule = Rule rule
-let supports_to_nested supports = NestedSupports supports
+let supports_to_nested supports = Nested_supports supports
 
 let layered_rules ~layer ?(media_queries = []) ?(container_queries = [])
     ?(supports_queries = []) rules =
@@ -663,13 +663,13 @@ let layer_to_string = function
 
 let rec render_supports_content ~minify content =
   match content with
-  | SupportRules rules ->
+  | Support_rules rules ->
       if minify then
         rules |> merge_rules |> merge_by_properties
         |> List.map render_minified_rule
         |> String.concat ""
       else rules |> List.map render_formatted_media_rule |> String.concat "\n"
-  | SupportNested (rules, nested_queries) ->
+  | Support_nested (rules, nested_queries) ->
       let rules_str =
         if minify then
           rules |> merge_rules |> merge_by_properties
@@ -692,7 +692,17 @@ let rec render_supports_content ~minify content =
       in
       if minify then rules_str ^ nested_str else rules_str ^ "\n" ^ nested_str
 
-and to_string ?(minify = false) ?(preserve_order = false) stylesheet =
+(* Version information *)
+let version =
+  match Build_info.V1.version () with
+  | None -> "dev"
+  | Some v -> Build_info.V1.Version.to_string v
+
+let header =
+  String.concat ""
+    [ "/*! tw v"; version; " | MIT License | https://github.com/samoht/tw */" ]
+
+let to_string ?(minify = false) ?(preserve_order = false) stylesheet =
   let render_layer layer_rules =
     let layer_name = layer_to_string layer_rules.layer in
     let rules = layer_rules.rules in
@@ -704,7 +714,7 @@ and to_string ?(minify = false) ?(preserve_order = false) stylesheet =
       (* Render rule_or_nested items *)
       let render_rule_or_nested = function
         | Rule r -> render_minified_rule r
-        | NestedSupports sq ->
+        | Nested_supports sq ->
             let sq_content =
               render_supports_content ~minify:true sq.supports_content
             in
@@ -722,7 +732,8 @@ and to_string ?(minify = false) ?(preserve_order = false) stylesheet =
           let regular_rules, nested_supports =
             List.partition_map
               (function
-                | Rule r -> Either.Left r | NestedSupports sq -> Either.Right sq)
+                | Rule r -> Either.Left r
+                | Nested_supports sq -> Either.Right sq)
               rules
           in
           let merged_rules = merge_rules regular_rules |> merge_by_properties in
@@ -792,7 +803,7 @@ and to_string ?(minify = false) ?(preserve_order = false) stylesheet =
       (* Render rule_or_nested items for non-minified output *)
       let render_rule_or_nested_formatted = function
         | Rule r -> render_formatted_rule r
-        | NestedSupports sq ->
+        | Nested_supports sq ->
             let sq_content =
               render_supports_content ~minify:false sq.supports_content
             in
@@ -853,8 +864,8 @@ and to_string ?(minify = false) ?(preserve_order = false) stylesheet =
   in
 
   (* Add tw library header *)
-  let header =
-    if List.length stylesheet.layers > 0 then Version.header ^ "\n" else ""
+  let header_str =
+    if List.length stylesheet.layers > 0 then header ^ "\n" else ""
   in
 
   (* No layer declarations - Tailwind v4 doesn't use them *)
@@ -1038,7 +1049,7 @@ and to_string ?(minify = false) ?(preserve_order = false) stylesheet =
 
   (* Combine all parts *)
   let all_parts =
-    [ header; layer_declarations ]
+    [ header_str; layer_declarations ]
     @ layer_strings @ empty_layers_decl @ rule_strings @ starting_style_strings
     @ container_strings @ supports_strings @ media_strings @ at_property_strings
   in
@@ -1047,6 +1058,3 @@ and to_string ?(minify = false) ?(preserve_order = false) stylesheet =
   else String.concat "\n" (List.filter (fun s -> s <> "") all_parts)
 
 let pp stylesheet = to_string ~minify:false ~preserve_order:false stylesheet
-
-(* Expose Version module *)
-module Version = Version

@@ -65,9 +65,10 @@ val color : string -> property
 (** [color value] sets the CSS color property to value. *)
 
 val border_color : string -> property
+(** [border_color value] sets the CSS border-color property to value. *)
 
 val border_style : string -> property
-(** [border_color value] sets the CSS border-color property to value. *)
+(** [border_style value] sets the CSS border-style property to value. *)
 
 val padding : string -> property
 (** [padding value] sets the CSS padding property to value. *)
@@ -482,10 +483,8 @@ val properties_to_inline_style : property list -> string
 
 (** {1 Version Information} *)
 
-module Version : sig
-  val version : string
-  (** The version string of the library *)
+val version : string
+(** The version string of the library. *)
 
-  val header : string
-  (** CSS comment header with version information *)
-end
+val header : string
+(** CSS comment header with version information. *)

@@ -2,11 +2,11 @@ open Alcotest
 open Css
 
 let test_version () =
-  let v = Version.version in
+  let v = version in
   check bool "version not empty" true (String.length v > 0)
 
 let test_header () =
-  let h = Version.header in
+  let h = header in
   check bool "header contains tw" true (Astring.String.is_infix ~affix:"tw" h);
   check bool "header contains MIT" true (Astring.String.is_infix ~affix:"MIT" h);
   check bool "header is CSS comment" true
