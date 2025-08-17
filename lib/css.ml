@@ -14,7 +14,7 @@ type var =
   | Transition (* transition timing *)
   | Custom of string * string (* custom variable name and value *)
 
-type property_name =
+type property =
   | Background_color
   | Color
   | Border_color
@@ -119,7 +119,7 @@ type property_name =
   | Scroll_behavior
   | Custom of string  (** CSS property names as a variant type *)
 
-type property = property_name * string
+type declaration = property * string
 (** A CSS property as (name, value) pair *)
 
 (* Property constructor functions *)
@@ -225,9 +225,9 @@ let scroll_snap_type value = (Scroll_snap_type, value)
 let scroll_snap_align value = (Scroll_snap_align, value)
 let scroll_snap_stop value = (Scroll_snap_stop, value)
 let scroll_behavior value = (Scroll_behavior, value)
-let property name value = (Custom name, value)
+let declaration name value = (Custom name, value)
 
-type rule = { selector : string; properties : property list }
+type rule = { selector : string; declarations : declaration list }
 type media_query = { media_condition : string; media_rules : rule list }
 
 type container_query = {
@@ -247,7 +247,7 @@ and supports_query = {
   supports_content : supports_content;
 }
 
-type rule_or_nested = Rule of rule | Nested_supports of supports_query
+type nested_rule = Rule of rule | Supports of supports_query
 
 type at_property = {
   name : string;
@@ -260,7 +260,7 @@ type layer = Properties | Theme | Base | Components | Utilities
 
 type layered_rules = {
   layer : layer;
-  rules : rule_or_nested list;
+  rules : nested_rule list;
   media_queries : media_query list;
   container_queries : container_query list;
   supports_queries : supports_query list;
@@ -276,17 +276,26 @@ type t = {
   at_properties : at_property list;
 }
 
+type sheet_item =
+  | Rule of rule
+  | Media of media_query
+  | Container of container_query
+  | Starting_style of starting_style
+  | Supports of supports_query
+  | At_property of at_property
+  | Layer of layered_rules
+
 (** {1 Creation} *)
 
-let property_value (_, value) = value
-let property_name (prop_name, _) = prop_name
+let declaration_value (_, value) = value
+let declaration_property (prop_name, _) = prop_name
 
 let is_custom_property (prop_name, _) =
   match prop_name with
   | Custom name -> String.starts_with ~prefix:"--" name
   | _ -> false
 
-let property_name_to_string = function
+let string_of_property = function
   | Background_color -> "background-color"
   | Color -> "color"
   | Border_color -> "border-color"
@@ -391,9 +400,9 @@ let property_name_to_string = function
   | Scroll_behavior -> "scroll-behavior"
   | Custom s -> s
 
-let rule ~selector properties = { selector; properties }
+let rule ~selector declarations = { selector; declarations }
 let selector rule = rule.selector
-let properties rule = rule.properties
+let declarations rule = rule.declarations
 
 let media ~condition rules =
   { media_condition = condition; media_rules = rules }
@@ -417,25 +426,53 @@ let container ?(name = None) ~condition rules =
 let at_property ~name ~syntax ~initial_value ?(inherits = false) () =
   { name; syntax; inherits; initial_value }
 
-let rule_to_nested rule = Rule rule
-let supports_to_nested supports = Nested_supports supports
+let rule_to_nested rule : nested_rule = Rule rule
+let supports_to_nested supports : nested_rule = Supports supports
 
 let layered_rules ~layer ?(media_queries = []) ?(container_queries = [])
     ?(supports_queries = []) rules =
   { layer; rules; media_queries; container_queries; supports_queries }
 
-let stylesheet ?(layers = []) ?(media_queries = []) ?(container_queries = [])
-    ?(starting_styles = []) ?(supports_queries = []) ?(at_properties = []) rules
-    =
+let empty =
   {
-    layers;
-    rules;
-    media_queries;
-    container_queries;
-    starting_styles;
-    supports_queries;
-    at_properties;
+    layers = [];
+    rules = [];
+    media_queries = [];
+    container_queries = [];
+    starting_styles = [];
+    supports_queries = [];
+    at_properties = [];
   }
+
+let concat stylesheets =
+  List.fold_left
+    (fun acc sheet ->
+      {
+        layers = acc.layers @ sheet.layers;
+        rules = acc.rules @ sheet.rules;
+        media_queries = acc.media_queries @ sheet.media_queries;
+        container_queries = acc.container_queries @ sheet.container_queries;
+        starting_styles = acc.starting_styles @ sheet.starting_styles;
+        supports_queries = acc.supports_queries @ sheet.supports_queries;
+        at_properties = acc.at_properties @ sheet.at_properties;
+      })
+    empty stylesheets
+
+let stylesheet items =
+  List.fold_left
+    (fun acc item ->
+      match item with
+      | Rule r -> { acc with rules = acc.rules @ [ r ] }
+      | Media m -> { acc with media_queries = acc.media_queries @ [ m ] }
+      | Container c ->
+          { acc with container_queries = acc.container_queries @ [ c ] }
+      | Starting_style s ->
+          { acc with starting_styles = acc.starting_styles @ [ s ] }
+      | Supports s ->
+          { acc with supports_queries = acc.supports_queries @ [ s ] }
+      | At_property a -> { acc with at_properties = acc.at_properties @ [ a ] }
+      | Layer l -> { acc with layers = acc.layers @ [ l ] })
+    empty items
 
 (** {1 Utilities} *)
 
@@ -483,7 +520,7 @@ let all_vars properties =
     properties
   |> List.sort_uniq String.compare
 
-let deduplicate_properties props =
+let deduplicate_declarations props =
   (* Keep last occurrence of each property while preserving order *)
   let seen = Hashtbl.create 16 in
   List.fold_right
@@ -494,10 +531,10 @@ let deduplicate_properties props =
         (prop_name, value) :: acc))
     props []
 
-let properties_to_inline_style props =
+let inline_style_of_declarations props =
   props
   |> List.map (fun (prop_name, value) ->
-         str [ property_name_to_string prop_name; ": "; value ])
+         str [ string_of_property prop_name; ": "; value ])
   |> String.concat "; "
 
 let merge_rules rules =
@@ -511,7 +548,7 @@ let merge_rules rules =
             List.map
               (fun r ->
                 if r.selector = rule.selector then
-                  { r with properties = r.properties @ rule.properties }
+                  { r with declarations = r.declarations @ rule.declarations }
                 else r)
               acc
           in
@@ -519,13 +556,16 @@ let merge_rules rules =
         else
           (* New selector, add to acc and mark as seen *)
           merge_helper
-            ({ rule with properties = deduplicate_properties rule.properties }
+            ({
+               rule with
+               declarations = deduplicate_declarations rule.declarations;
+             }
             :: acc)
             (rule.selector :: seen) rest
   in
   merge_helper [] [] rules
   |> List.map (fun r ->
-         { r with properties = deduplicate_properties r.properties })
+         { r with declarations = deduplicate_declarations r.declarations })
 
 (* Merge rules with identical properties into combined selectors *)
 let merge_by_properties rules =
@@ -533,7 +573,7 @@ let merge_by_properties rules =
   let properties_hash props =
     props
     |> List.map (fun (name, value) ->
-           str [ property_name_to_string name; ":"; value ])
+           str [ string_of_property name; ":"; value ])
     |> List.sort String.compare |> String.concat ";"
   in
 
@@ -541,7 +581,7 @@ let merge_by_properties rules =
   let groups = Hashtbl.create 16 in
   List.iter
     (fun rule ->
-      let hash = properties_hash rule.properties in
+      let hash = properties_hash rule.declarations in
       let existing = try Hashtbl.find groups hash with Not_found -> [] in
       Hashtbl.replace groups hash (rule :: existing))
     rules;
@@ -558,8 +598,8 @@ let merge_by_properties rules =
             |> List.map (fun r -> r.selector)
             |> List.sort String.compare |> String.concat ","
           in
-          let properties = (List.hd multiple).properties in
-          { selector = selectors; properties } :: acc)
+          let declarations = (List.hd multiple).declarations in
+          { selector = selectors; declarations } :: acc)
     groups []
   |> List.sort (fun a b -> String.compare a.selector b.selector)
 
@@ -636,25 +676,25 @@ let minify_value v =
 let render_minified_rule rule =
   let selector = minify_selector rule.selector in
   let props =
-    rule.properties
+    rule.declarations
     |> List.map (fun (prop_name, value) ->
-           str [ property_name_to_string prop_name; ":"; minify_value value ])
+           str [ string_of_property prop_name; ":"; minify_value value ])
   in
   str [ selector; "{"; str ~sep:";" props; "}" ]
 
 let render_formatted_rule rule =
   let props =
-    rule.properties
+    rule.declarations
     |> List.map (fun (prop_name, value) ->
-           str [ "  "; property_name_to_string prop_name; ": "; value; ";" ])
+           str [ "  "; string_of_property prop_name; ": "; value; ";" ])
   in
   lines [ str [ rule.selector; " {" ]; lines props; "}" ]
 
 let render_formatted_media_rule rule =
   let props =
-    rule.properties
+    rule.declarations
     |> List.map (fun (prop_name, value) ->
-           str [ "    "; property_name_to_string prop_name; ": "; value; ";" ])
+           str [ "    "; string_of_property prop_name; ": "; value; ";" ])
   in
   str [ "  "; rule.selector; " {\n"; lines props; "\n  }" ]
 
@@ -721,7 +761,7 @@ type config = { minify : bool }
 
 (* TODO: Complete migration to structured CSS representation Intermediate
    representation for CSS output type css_block = | RuleBlock of { selector:
-   string; properties: (property_name * string) list } | MediaBlock of {
+   string; properties: (declaration_property * string) list } | MediaBlock of {
    condition: string; blocks: css_block list } | ContainerBlock of { name:
    string option; condition: string; blocks: css_block list } | SupportsBlock of
    { condition: string; blocks: css_block list } | LayerBlock of { name: string;
@@ -730,13 +770,13 @@ type config = { minify : bool }
    initial_value: string } | Raw of string
 
    let rules_to_blocks rules = List.map (fun r -> RuleBlock { selector =
-   r.selector; properties = r.properties }) rules
+   r.selector; properties = r.declarations }) rules
 
    let rec format_block ~config block = match block with | RuleBlock { selector;
    properties } -> let sel = if config.minify then minify_selector selector else
    selector in let props = properties |> List.map (fun (name, value) -> let
-   prop_name = property_name_to_string name in let val_str = if config.minify
-   then minify_value value else value in str [prop_name; ":"; val_str]) in if
+   prop_name = string_of_property name in let val_str = if config.minify then
+   minify_value value else value in str [prop_name; ":"; val_str]) in if
    config.minify then str [sel; "{"; str ~sep:";" props; "}"] else let
    prop_lines = props |> List.map (fun p -> " " ^ p ^ ";") |> String.concat "\n"
    in str [sel; " {\n"; prop_lines; "\n}"]
@@ -790,11 +830,11 @@ type config = { minify : bool }
 
 (* Helper: Render rules string for a layer *)
 let render_layer_rules ~config rules =
-  let render_rule_or_nested = function
+  let render_nested_rule : nested_rule -> string = function
     | Rule r ->
         if config.minify then render_minified_rule r
         else render_formatted_rule r
-    | Nested_supports sq ->
+    | Supports sq ->
         let sq_content =
           render_supports_content ~minify:config.minify sq.supports_content
         in
@@ -806,7 +846,7 @@ let render_layer_rules ~config rules =
 
   (* Render rules in order without merging *)
   rules
-  |> List.map render_rule_or_nested
+  |> List.map render_nested_rule
   |> String.concat (if config.minify then "" else "\n")
 
 (* Helper: Render media queries *)
@@ -1117,4 +1157,4 @@ let to_string ?(minify = false) stylesheet =
   if config.minify then String.concat "" all_parts
   else String.concat "\n" (List.filter (fun s -> s <> "") all_parts)
 
-let pp stylesheet = to_string ~minify:false stylesheet
+let pp = to_string

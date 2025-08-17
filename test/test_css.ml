@@ -20,14 +20,14 @@ let test_property_deduplication () =
     ]
   in
 
-  let deduped = deduplicate_properties props in
+  let deduped = deduplicate_declarations props in
 
   (* Should have 3 properties after deduplication *)
   Alcotest.(check int)
     "deduplication removes duplicates" 3 (List.length deduped);
 
   (* Create a stylesheet to check the output *)
-  let sheet = stylesheet [ rule ~selector:".test" deduped ] in
+  let sheet = stylesheet [ Rule (rule ~selector:".test" deduped) ] in
   let css = to_string sheet in
 
   (* Should have blue, not red *)
@@ -43,7 +43,7 @@ let test_minification () =
     rule ~selector:".test" [ padding "0"; margin "0"; color "rgb(255, 0, 0)" ]
   in
 
-  let sheet = stylesheet [ test_rule ] in
+  let sheet = stylesheet [ Rule test_rule ] in
   let normal = to_string ~minify:false sheet in
   let minified = to_string ~minify:true sheet in
 
@@ -68,7 +68,7 @@ let test_minification () =
 let test_media_query () =
   let rules = [ rule ~selector:".responsive" [ padding "20px" ] ] in
   let mq = media ~condition:"(min-width: 768px)" rules in
-  let sheet = stylesheet ~media_queries:[ mq ] [] in
+  let sheet = stylesheet [ Media mq ] in
   let output = to_string sheet in
 
   (* Should contain media query *)
@@ -84,7 +84,7 @@ let test_media_query () =
 let test_inline_style () =
   let props = [ color "red"; padding "10px"; margin "5px" ] in
 
-  let inline = properties_to_inline_style props in
+  let inline = inline_style_of_declarations props in
 
   (* Should be semicolon-separated without trailing semicolon *)
   Alcotest.(check bool)
@@ -110,7 +110,7 @@ let test_property_names () =
 
   List.iter
     (fun (expected_name, prop) ->
-      let sheet = stylesheet [ rule ~selector:".x" [ prop ] ] in
+      let sheet = stylesheet [ Rule (rule ~selector:".x" [ prop ]) ] in
       let css = to_string sheet in
       Alcotest.(check bool)
         (Fmt.str "CSS contains %s" expected_name)
