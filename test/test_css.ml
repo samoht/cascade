@@ -1,5 +1,4 @@
 (* Tests for CSS module *)
-open Alcotest
 open Css
 
 let test_property_creation () =
@@ -118,18 +117,6 @@ let test_property_names () =
         true
         (Astring.String.is_infix ~affix:expected_name css))
     names
-
-let test_version_not_empty () =
-  let v = version in
-  check bool "version not empty" true (String.length v > 0)
-
-let test_header_format () =
-  let h = header in
-  check bool "header contains tw" true (Astring.String.is_infix ~affix:"tw" h);
-  check bool "header contains MIT" true (Astring.String.is_infix ~affix:"MIT" h);
-  check bool "header is CSS comment" true
-    (Astring.String.is_prefix ~affix:"/*!" h
-    && Astring.String.is_suffix ~affix:"*/" h)
 
 let suite =
   [

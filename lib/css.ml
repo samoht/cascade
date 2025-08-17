@@ -441,36 +441,41 @@ let stylesheet ?(layers = []) ?(media_queries = []) ?(container_queries = [])
 
 (** Extract all CSS variables referenced in properties (for theme layer) *)
 let all_vars properties =
+  let extract_var_name var_content =
+    match String.index var_content ',' with
+    | exception Not_found -> String.trim var_content
+    | comma -> String.trim (String.sub var_content 0 comma)
+  in
+
+  let process_var_at_position value var_pos acc =
+    if var_pos + 4 > String.length value || String.sub value var_pos 4 <> "var("
+    then None
+    else
+      let var_start = var_pos + 4 in
+      match String.index_from value var_start ')' with
+      | exception Not_found -> None
+      | end_paren ->
+          let var_content =
+            String.sub value var_start (end_paren - var_start)
+          in
+          let var_name = extract_var_name var_content in
+          let new_acc =
+            if String.length var_name > 2 && String.sub var_name 0 2 = "--" then
+              var_name :: acc
+            else acc
+          in
+          Some (new_acc, end_paren + 1)
+  in
+
   let rec extract_vars_from_value value acc pos =
     if pos >= String.length value then acc
     else
       try
         let var_pos = String.index_from value pos 'v' in
-        if
-          var_pos + 4 <= String.length value
-          && String.sub value var_pos 4 = "var("
-        then
-          (* Found var( *)
-          let var_start = var_pos + 4 in
-          match String.index_from value var_start ')' with
-          | exception Not_found -> acc
-          | end_paren ->
-              let var_content =
-                String.sub value var_start (end_paren - var_start)
-              in
-              (* Extract just the variable name *)
-              let var_name =
-                match String.index var_content ',' with
-                | exception Not_found -> String.trim var_content
-                | comma -> String.trim (String.sub var_content 0 comma)
-              in
-              let acc' =
-                if String.length var_name > 2 && String.sub var_name 0 2 = "--"
-                then var_name :: acc
-                else acc
-              in
-              extract_vars_from_value value acc' (end_paren + 1)
-        else extract_vars_from_value value acc (var_pos + 1)
+        match process_var_at_position value var_pos acc with
+        | Some (new_acc, next_pos) ->
+            extract_vars_from_value value new_acc next_pos
+        | None -> extract_vars_from_value value acc (var_pos + 1)
       with Not_found -> acc
   in
   List.concat_map
@@ -977,6 +982,10 @@ let render_at_properties ~config at_properties =
   at_properties
   |> List.map (fun at ->
          if config.minify then
+           let initial_value_part =
+             if at.initial_value = "" then ""
+             else str [ ";initial-value:"; at.initial_value ]
+           in
            str
              [
                "@property ";
@@ -985,11 +994,14 @@ let render_at_properties ~config at_properties =
                at.syntax;
                "\";inherits:";
                (if at.inherits then "true" else "false");
-               ";initial-value:";
-               at.initial_value;
+               initial_value_part;
                "}";
              ]
          else
+           let initial_value_part =
+             if at.initial_value = "" then ""
+             else str [ ";\n  initial-value: "; at.initial_value ]
+           in
            str
              [
                "@property ";
@@ -998,55 +1010,32 @@ let render_at_properties ~config at_properties =
                at.syntax;
                "\";\n  inherits: ";
                (if at.inherits then "true" else "false");
-               ";\n  initial-value: ";
-               at.initial_value;
+               initial_value_part;
                ";\n}";
              ])
   |> String.concat (if config.minify then "" else "\n")
 
-let default_config = { minify = false }
-
-let to_string_with_config config stylesheet =
-  let render_layer layer_rules =
-    let layer_name = layer_to_string layer_rules.layer in
-
-    (* Render all parts of the layer *)
-    let rules_str = render_layer_rules ~config layer_rules.rules in
-    let media_str = render_layer_media ~config layer_rules.media_queries in
-    let container_str =
-      render_layer_containers ~config layer_rules.container_queries
-    in
-    let supports_str =
-      render_layer_supports ~config layer_rules.supports_queries
-    in
-
-    (* Combine all parts *)
-    let all_parts =
-      [ rules_str; media_str; container_str; supports_str ]
-      |> List.filter (fun s -> s <> "")
-    in
-
-    if all_parts = [] then
-      (* Empty layer - just declaration *)
-      str [ "@layer "; layer_name; ";" ]
-    else
-      let content =
-        String.concat (if config.minify then "" else "\n") all_parts
-      in
-      if config.minify then str [ "@layer "; layer_name; "{"; content; "}" ]
-      else str [ "@layer "; layer_name; " {\n"; content; "\n}" ]
+(* Helper functions for to_string *)
+let render_layer ~config layer_rules =
+  let layer_name = layer_to_string layer_rules.layer in
+  let all_parts =
+    [
+      render_layer_rules ~config layer_rules.rules;
+      render_layer_media ~config layer_rules.media_queries;
+      render_layer_containers ~config layer_rules.container_queries;
+      render_layer_supports ~config layer_rules.supports_queries;
+    ]
+    |> List.filter (fun s -> s <> "")
   in
+  if all_parts = [] then str [ "@layer "; layer_name; ";" ]
+  else
+    let content =
+      String.concat (if config.minify then "" else "\n") all_parts
+    in
+    if config.minify then str [ "@layer "; layer_name; "{"; content; "}" ]
+    else str [ "@layer "; layer_name; " {\n"; content; "\n}" ]
 
-  (* Add tw library header *)
-  let header_str =
-    if List.length stylesheet.layers > 0 then str [ header; "\n" ] else ""
-  in
-
-  (* No layer declarations - Tailwind v4 doesn't use them *)
-  let layer_declarations = "" in
-
-  (* Render layered rules *)
-  (* Special handling for empty components and utilities layers *)
+let prepare_layer_strings ~config stylesheet =
   let has_empty_components_and_utilities =
     List.exists
       (fun lr -> lr.layer = Components && is_layer_empty lr)
@@ -1055,80 +1044,77 @@ let to_string_with_config config stylesheet =
          (fun lr -> lr.layer = Utilities && is_layer_empty lr)
          stylesheet.layers
   in
-
   let layer_strings =
     if has_empty_components_and_utilities && config.minify then
-      (* Filter out empty components and utilities, will add combined
-         declaration later *)
       stylesheet.layers
       |> List.filter (fun lr ->
              not
                ((lr.layer = Components || lr.layer = Utilities)
                && is_layer_empty lr))
-      |> List.map render_layer
-    else stylesheet.layers |> List.map render_layer
+      |> List.map (render_layer ~config)
+    else stylesheet.layers |> List.map (render_layer ~config)
   in
-
-  (* Add combined empty layer declaration if needed *)
   let empty_layers_decl =
     if has_empty_components_and_utilities && config.minify then
       [ "@layer components,utilities;" ]
     else []
   in
+  (layer_strings, empty_layers_decl)
 
-  (* Render non-layered rules *)
+let render_optional_section render_fn items =
+  let rendered = render_fn items in
+  if rendered = "" then [] else [ rendered ]
+
+let to_string ?(minify = false) stylesheet =
+  let config = { minify } in
+  (* Add tw library header *)
+  let header_str =
+    if List.length stylesheet.layers > 0 then str [ header; "\n" ] else ""
+  in
+
+  (* Prepare layer strings *)
+  let layer_strings, empty_layers_decl =
+    prepare_layer_strings ~config stylesheet
+  in
+
+  (* Render all optional sections *)
   let rule_strings =
-    let rules_str = render_stylesheet_rules ~config stylesheet.rules in
-    if rules_str = "" then [] else [ rules_str ]
+    render_optional_section (render_stylesheet_rules ~config) stylesheet.rules
   in
-
-  (* Render @property rules *)
   let at_property_strings =
-    let props_str = render_at_properties ~config stylesheet.at_properties in
-    if props_str = "" then [] else [ props_str ]
+    render_optional_section
+      (render_at_properties ~config)
+      stylesheet.at_properties
   in
-
-  (* Render @starting-style rules *)
   let starting_style_strings =
-    let styles_str =
-      render_starting_styles ~config stylesheet.starting_styles
-    in
-    if styles_str = "" then [] else [ styles_str ]
+    render_optional_section
+      (render_starting_styles ~config)
+      stylesheet.starting_styles
   in
-
-  (* Render @container queries *)
   let container_strings =
-    let containers_str =
-      render_stylesheet_containers ~config stylesheet.container_queries
-    in
-    if containers_str = "" then [] else [ containers_str ]
+    render_optional_section
+      (render_stylesheet_containers ~config)
+      stylesheet.container_queries
   in
-
-  (* Render @supports queries *)
   let supports_strings =
-    let supports_str =
-      render_stylesheet_supports ~config stylesheet.supports_queries
-    in
-    if supports_str = "" then [] else [ supports_str ]
+    render_optional_section
+      (render_stylesheet_supports ~config)
+      stylesheet.supports_queries
   in
-
-  (* Render media queries *)
   let media_strings =
-    let media_str = render_stylesheet_media ~config stylesheet.media_queries in
-    if media_str = "" then [] else [ media_str ]
+    render_optional_section
+      (render_stylesheet_media ~config)
+      stylesheet.media_queries
   in
 
   (* Combine all parts *)
   let all_parts =
-    [ header_str; layer_declarations ]
+    [ header_str; "" ] (* layer_declarations is always empty for Tailwind v4 *)
     @ layer_strings @ empty_layers_decl @ rule_strings @ starting_style_strings
     @ container_strings @ supports_strings @ media_strings @ at_property_strings
   in
 
   if config.minify then String.concat "" all_parts
   else String.concat "\n" (List.filter (fun s -> s <> "") all_parts)
-
-let to_string ?(minify = false) stylesheet =
-  to_string_with_config { minify } stylesheet
 
 let pp stylesheet = to_string ~minify:false stylesheet
