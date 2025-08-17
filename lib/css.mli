@@ -448,10 +448,19 @@ val stylesheet :
 
 (** {1 Rendering} *)
 
-val to_string : ?minify:bool -> ?preserve_order:bool -> t -> string
-(** [to_string ?minify ?preserve_order stylesheet] renders a complete stylesheet
-    to CSS. If [preserve_order] is true, rules are kept in their original order
-    without merging. *)
+type config = { minify : bool }
+(** Configuration for stylesheet rendering *)
+
+val default_config : config
+(** Default rendering configuration: not minified *)
+
+val to_string_with_config : config -> t -> string
+(** [to_string_with_config config stylesheet] renders a complete stylesheet to
+    CSS using the given configuration. *)
+
+val to_string : ?minify:bool -> t -> string
+(** [to_string ?minify stylesheet] renders a complete stylesheet to CSS. This is
+    a convenience function that creates a config internally. *)
 
 val property_name_to_string : property_name -> string
 (** [property_name_to_string prop] converts a property name to its CSS string
