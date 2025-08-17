@@ -452,7 +452,7 @@ type config = { minify : bool }
 (** Configuration for stylesheet rendering *)
 
 val default_config : config
-(** Default rendering configuration: not minified *)
+(** Default rendering configuration: not minified. *)
 
 val to_string_with_config : config -> t -> string
 (** [to_string_with_config config stylesheet] renders a complete stylesheet to
