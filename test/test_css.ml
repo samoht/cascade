@@ -2,8 +2,8 @@
 open Css
 
 let test_property_creation () =
-  let _color_prop = color "red" in
-  let _padding_prop = padding "10px" in
+  let _color_prop = color (Hex "ff0000") in
+  let _padding_prop = padding (Px 10) in
 
   (* Properties should be created - just verify no exceptions *)
   Alcotest.(check pass) "color property created" () ();
@@ -12,11 +12,11 @@ let test_property_creation () =
 let test_property_deduplication () =
   let props =
     [
-      color "red";
-      padding "10px";
-      color "blue";
+      color (Hex "ff0000");
+      padding (Px 10);
+      color (Hex "0000ff");
       (* Should override first color *)
-      margin "5px";
+      margin (Px 5);
     ]
   in
 
@@ -33,14 +33,15 @@ let test_property_deduplication () =
   (* Should have blue, not red *)
   Alcotest.(check bool)
     "last property wins" true
-    (Astring.String.is_infix ~affix:"blue" css);
+    (Astring.String.is_infix ~affix:"#0000ff" css);
   Alcotest.(check bool)
     "red was overridden" false
-    (Astring.String.is_infix ~affix:"red" css)
+    (Astring.String.is_infix ~affix:"#ff0000" css)
 
 let test_minification () =
   let test_rule =
-    rule ~selector:".test" [ padding "0"; margin "0"; color "rgb(255, 0, 0)" ]
+    rule ~selector:".test"
+      [ padding Zero; margin Zero; color (Rgb { r = 255; g = 0; b = 0 }) ]
   in
 
   let sheet = stylesheet [ Rule test_rule ] in
@@ -66,7 +67,7 @@ let test_minification () =
     (Astring.String.is_infix ~affix:"color:" minified)
 
 let test_media_query () =
-  let rules = [ rule ~selector:".responsive" [ padding "20px" ] ] in
+  let rules = [ rule ~selector:".responsive" [ padding (Px 20) ] ] in
   let mq = media ~condition:"(min-width: 768px)" rules in
   let sheet = stylesheet [ Media mq ] in
   let output = to_string sheet in
@@ -82,14 +83,14 @@ let test_media_query () =
     (Astring.String.is_infix ~affix:".responsive" output)
 
 let test_inline_style () =
-  let props = [ color "red"; padding "10px"; margin "5px" ] in
+  let props = [ color (Hex "ff0000"); padding (Px 10); margin (Px 5) ] in
 
   let inline = inline_style_of_declarations props in
 
   (* Should be semicolon-separated without trailing semicolon *)
   Alcotest.(check bool)
     "contains color" true
-    (Astring.String.is_infix ~affix:"color: red" inline);
+    (Astring.String.is_infix ~affix:"color: #ff0000" inline);
   Alcotest.(check bool)
     "contains padding" true
     (Astring.String.is_infix ~affix:"padding: 10px" inline);
@@ -101,10 +102,10 @@ let test_property_names () =
   (* Test that property names are converted correctly *)
   let names =
     [
-      ("background-color", background_color "blue");
-      ("padding-left", padding_left "5px");
-      ("margin-top", margin_top "10px");
-      ("border-radius", border_radius "4px");
+      ("background-color", background_color (Hex "0000ff"));
+      ("padding-left", padding_left (Px 5));
+      ("margin-top", margin_top (Px 10));
+      ("border-radius", border_radius (Px 4));
     ]
   in
 
