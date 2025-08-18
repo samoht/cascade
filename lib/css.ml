@@ -236,6 +236,75 @@ type pointer_events_value =
   | All
   | Inherit
 
+(** CSS text-decoration-style values *)
+type text_decoration_style_value =
+  | Solid
+  | Double
+  | Dotted
+  | Dashed
+  | Wavy
+  | Inherit
+
+(** CSS webkit-font-smoothing values *)
+type webkit_font_smoothing_value =
+  | Auto
+  | None
+  | Antialiased
+  | Subpixel_antialiased
+  | Inherit
+
+(** CSS -moz-osx-font-smoothing values *)
+type moz_osx_font_smoothing_value = Auto | Grayscale | Inherit
+
+(** CSS transform-style values *)
+type transform_style_value = Flat | Preserve_3d | Inherit
+
+(** CSS backface-visibility values *)
+type backface_visibility_value = Visible | Hidden | Inherit
+
+(** CSS scroll-behavior values *)
+type scroll_behavior_value = Auto | Smooth | Inherit
+
+(** CSS scroll-snap-type values *)
+type scroll_snap_type_value =
+  | None
+  | X_mandatory
+  | Y_mandatory
+  | Block_mandatory
+  | Inline_mandatory
+  | Both_mandatory
+  | X_proximity
+  | Y_proximity
+  | Block_proximity
+  | Inline_proximity
+  | Both_proximity
+  | X_var of string
+  | Y_var of string
+  | Both_var of string
+  | Inherit
+
+(** CSS scroll-snap-align values *)
+type scroll_snap_align_value = None | Start | End | Center | Inherit
+
+(** CSS scroll-snap-stop values *)
+type scroll_snap_stop_value = Normal | Always | Inherit
+
+(** CSS isolation values *)
+type isolation_value = Auto | Isolate | Inherit
+
+(** CSS background-repeat values *)
+type background_repeat_value =
+  | Repeat
+  | Repeat_x
+  | Repeat_y
+  | No_repeat
+  | Space
+  | Round
+  | Inherit
+
+(** CSS container-type values *)
+type container_type_value = Normal | Size | Inline_size | Inherit
+
 (** CSS flex shorthand values *)
 type flex_value =
   | Initial (* 0 1 auto *)
@@ -588,6 +657,94 @@ let string_of_pointer_events : pointer_events_value -> string = function
   | Stroke -> "stroke"
   | All -> "all"
   | (Inherit : pointer_events_value) -> "inherit"
+
+let string_of_text_decoration_style : text_decoration_style_value -> string =
+  function
+  | Solid -> "solid"
+  | Double -> "double"
+  | Dotted -> "dotted"
+  | Dashed -> "dashed"
+  | Wavy -> "wavy"
+  | (Inherit : text_decoration_style_value) -> "inherit"
+
+let string_of_webkit_font_smoothing : webkit_font_smoothing_value -> string =
+  function
+  | (Auto : webkit_font_smoothing_value) -> "auto"
+  | (None : webkit_font_smoothing_value) -> "none"
+  | Antialiased -> "antialiased"
+  | Subpixel_antialiased -> "subpixel-antialiased"
+  | (Inherit : webkit_font_smoothing_value) -> "inherit"
+
+let string_of_moz_osx_font_smoothing : moz_osx_font_smoothing_value -> string =
+  function
+  | (Auto : moz_osx_font_smoothing_value) -> "auto"
+  | Grayscale -> "grayscale"
+  | (Inherit : moz_osx_font_smoothing_value) -> "inherit"
+
+let string_of_transform_style : transform_style_value -> string = function
+  | Flat -> "flat"
+  | Preserve_3d -> "preserve-3d"
+  | (Inherit : transform_style_value) -> "inherit"
+
+let string_of_backface_visibility : backface_visibility_value -> string =
+  function
+  | (Visible : backface_visibility_value) -> "visible"
+  | Hidden -> "hidden"
+  | (Inherit : backface_visibility_value) -> "inherit"
+
+let string_of_scroll_behavior : scroll_behavior_value -> string = function
+  | (Auto : scroll_behavior_value) -> "auto"
+  | Smooth -> "smooth"
+  | (Inherit : scroll_behavior_value) -> "inherit"
+
+let string_of_scroll_snap_type : scroll_snap_type_value -> string = function
+  | (None : scroll_snap_type_value) -> "none"
+  | X_mandatory -> "x mandatory"
+  | Y_mandatory -> "y mandatory"
+  | Block_mandatory -> "block mandatory"
+  | Inline_mandatory -> "inline mandatory"
+  | Both_mandatory -> "both mandatory"
+  | X_proximity -> "x proximity"
+  | Y_proximity -> "y proximity"
+  | Block_proximity -> "block proximity"
+  | Inline_proximity -> "inline proximity"
+  | Both_proximity -> "both proximity"
+  | X_var var -> str [ "x "; var ]
+  | Y_var var -> str [ "y "; var ]
+  | Both_var var -> str [ "both "; var ]
+  | (Inherit : scroll_snap_type_value) -> "inherit"
+
+let string_of_scroll_snap_align : scroll_snap_align_value -> string = function
+  | (None : scroll_snap_align_value) -> "none"
+  | Start -> "start"
+  | End -> "end"
+  | (Center : scroll_snap_align_value) -> "center"
+  | (Inherit : scroll_snap_align_value) -> "inherit"
+
+let string_of_scroll_snap_stop : scroll_snap_stop_value -> string = function
+  | Normal -> "normal"
+  | Always -> "always"
+  | (Inherit : scroll_snap_stop_value) -> "inherit"
+
+let string_of_isolation : isolation_value -> string = function
+  | (Auto : isolation_value) -> "auto"
+  | Isolate -> "isolate"
+  | (Inherit : isolation_value) -> "inherit"
+
+let string_of_background_repeat : background_repeat_value -> string = function
+  | Repeat -> "repeat"
+  | Repeat_x -> "repeat-x"
+  | Repeat_y -> "repeat-y"
+  | No_repeat -> "no-repeat"
+  | Space -> "space"
+  | Round -> "round"
+  | (Inherit : background_repeat_value) -> "inherit"
+
+let string_of_container_type : container_type_value -> string = function
+  | Normal -> "normal"
+  | Size -> "size"
+  | Inline_size -> "inline-size"
+  | (Inherit : container_type_value) -> "inherit"
 
 let string_of_flex_value = function
   | Initial -> "0 1 auto"
@@ -1089,7 +1246,10 @@ let font_size len = (Font_size, string_of_length len)
 let line_height len = (Line_height, string_of_length len)
 let font_weight w = (Font_weight, string_of_font_weight w)
 let text_align a = (Text_align, string_of_text_align a)
-let text_decoration_style value = (Text_decoration_style, value)
+
+let text_decoration_style value =
+  (Text_decoration_style, string_of_text_decoration_style value)
+
 let text_underline_offset value = (Text_underline_offset, value)
 let text_transform value = (Text_transform, string_of_text_transform value)
 let letter_spacing value = (Letter_spacing, value)
@@ -1342,11 +1502,16 @@ let rec string_of_font_family_value = function
 let font_family fonts =
   (Font_family, String.concat ", " (List.map string_of_font_family_value fonts))
 
-let moz_osx_font_smoothing value = (Moz_osx_font_smoothing, value)
+let moz_osx_font_smoothing value =
+  (Moz_osx_font_smoothing, string_of_moz_osx_font_smoothing value)
+
 let webkit_line_clamp value = (Webkit_line_clamp, value)
 let backdrop_filter value = (Backdrop_filter, value)
 let background_position value = (Background_position, value)
-let background_repeat value = (Background_repeat, value)
+
+let background_repeat value =
+  (Background_repeat, string_of_background_repeat value)
+
 let background_size value = (Background_size, value)
 let unsafe_declaration name value = ((Custom name : property), value)
 
@@ -1384,15 +1549,21 @@ let border_collapse value = (Border_collapse, string_of_border_collapse value)
 let list_style value = (List_style, value)
 let font value = (Font, value)
 let webkit_appearance value = (Webkit_appearance, value)
-let webkit_font_smoothing value = (Webkit_font_smoothing, value)
+
+let webkit_font_smoothing value =
+  (Webkit_font_smoothing, string_of_webkit_font_smoothing value)
+
 let cursor c = (Cursor, string_of_cursor c)
 let user_select u = (User_select, string_of_user_select u)
-let container_type value = (Container_type, value)
+let container_type value = (Container_type, string_of_container_type value)
 let container_name value = (Container_name, value)
 let perspective value = (Perspective, value)
 let perspective_origin value = (Perspective_origin, value)
-let transform_style value = (Transform_style, value)
-let backface_visibility value = (Backface_visibility, value)
+let transform_style value = (Transform_style, string_of_transform_style value)
+
+let backface_visibility value =
+  (Backface_visibility, string_of_backface_visibility value)
+
 let object_position value = (Object_position, value)
 let rotate value = (Rotate, value)
 
@@ -1407,7 +1578,7 @@ let transition_timing_function value =
 
 let will_change value = (Will_change, value)
 let contain value = (Contain, value)
-let isolation value = (Isolation, value)
+let isolation value = (Isolation, string_of_isolation value)
 let padding_inline len = (Padding_inline, string_of_length len)
 let padding_inline_start len = (Padding_inline_start, string_of_length len)
 let padding_block len = (Padding_block, string_of_length len)
@@ -1416,10 +1587,13 @@ let margin_block len = (Margin_block, string_of_length len)
 let margin_inline_end value = (Margin_inline_end, value)
 let outline value = (Outline, value)
 let outline_offset value = (Outline_offset, value)
-let scroll_snap_type value = (Scroll_snap_type, value)
-let scroll_snap_align value = (Scroll_snap_align, value)
-let scroll_snap_stop value = (Scroll_snap_stop, value)
-let scroll_behavior value = (Scroll_behavior, value)
+let scroll_snap_type value = (Scroll_snap_type, string_of_scroll_snap_type value)
+
+let scroll_snap_align value =
+  (Scroll_snap_align, string_of_scroll_snap_align value)
+
+let scroll_snap_stop value = (Scroll_snap_stop, string_of_scroll_snap_stop value)
+let scroll_behavior value = (Scroll_behavior, string_of_scroll_behavior value)
 
 (** Flex module *)
 module Flex = struct

@@ -522,6 +522,75 @@ val pp : ?minify:bool -> t -> string
 type at_property
 (** Abstract type for [@property] rules *)
 
+(** CSS text-decoration-style values. *)
+type text_decoration_style_value =
+  | Solid
+  | Double
+  | Dotted
+  | Dashed
+  | Wavy
+  | Inherit
+
+(** CSS webkit-font-smoothing values. *)
+type webkit_font_smoothing_value =
+  | Auto
+  | None
+  | Antialiased
+  | Subpixel_antialiased
+  | Inherit
+
+(** CSS -moz-osx-font-smoothing values. *)
+type moz_osx_font_smoothing_value = Auto | Grayscale | Inherit
+
+(** CSS transform-style values. *)
+type transform_style_value = Flat | Preserve_3d | Inherit
+
+(** CSS backface-visibility values. *)
+type backface_visibility_value = Visible | Hidden | Inherit
+
+(** CSS scroll-behavior values. *)
+type scroll_behavior_value = Auto | Smooth | Inherit
+
+(** CSS scroll-snap-type values. *)
+type scroll_snap_type_value =
+  | None
+  | X_mandatory
+  | Y_mandatory
+  | Block_mandatory
+  | Inline_mandatory
+  | Both_mandatory
+  | X_proximity
+  | Y_proximity
+  | Block_proximity
+  | Inline_proximity
+  | Both_proximity
+  | X_var of string (* For "x var(--tw-scroll-snap-strictness)" *)
+  | Y_var of string (* For "y var(--tw-scroll-snap-strictness)" *)
+  | Both_var of string (* For "both var(--tw-scroll-snap-strictness)" *)
+  | Inherit
+
+(** CSS scroll-snap-align values. *)
+type scroll_snap_align_value = None | Start | End | Center | Inherit
+
+(** CSS scroll-snap-stop values. *)
+type scroll_snap_stop_value = Normal | Always | Inherit
+
+(** CSS isolation values. *)
+type isolation_value = Auto | Isolate | Inherit
+
+(** CSS background-repeat values. *)
+type background_repeat_value =
+  | Repeat
+  | Repeat_x
+  | Repeat_y
+  | No_repeat
+  | Space
+  | Round
+  | Inherit
+
+(** CSS container-type values. *)
+type container_type_value = Normal | Size | Inline_size | Inherit
+
 (** {1 Declaration Constructors} *)
 
 (** {2 Modular Property Groups} *)
@@ -875,7 +944,7 @@ val text_transform : text_transform -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/text-transform>
       MDN: text-transform. *)
 
-val text_decoration_style : string -> declaration
+val text_decoration_style : text_decoration_style_value -> declaration
 (** [text_decoration_style value] sets the CSS text-decoration-style property.
 
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration-style>
@@ -1110,10 +1179,10 @@ val webkit_appearance : string -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/appearance>
       MDN: appearance. *)
 
-val webkit_font_smoothing : string -> declaration
+val webkit_font_smoothing : webkit_font_smoothing_value -> declaration
 (** [webkit_font_smoothing value] sets the -webkit-font-smoothing property. *)
 
-val moz_osx_font_smoothing : string -> declaration
+val moz_osx_font_smoothing : moz_osx_font_smoothing_value -> declaration
 (** [moz_osx_font_smoothing value] sets the -moz-osx-font-smoothing property. *)
 
 val webkit_line_clamp : string -> declaration
@@ -1129,7 +1198,7 @@ val user_select : user_select -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/user-select>
       MDN: user-select. *)
 
-val container_type : string -> declaration
+val container_type : container_type_value -> declaration
 (** [container_type value] sets the CSS container-type property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/container-type>
       MDN: container-type. *)
@@ -1149,12 +1218,12 @@ val perspective_origin : string -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/perspective-origin>
       MDN: perspective-origin. *)
 
-val transform_style : string -> declaration
+val transform_style : transform_style_value -> declaration
 (** [transform_style value] sets the CSS transform-style property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/transform-style>
       MDN: transform-style. *)
 
-val backface_visibility : string -> declaration
+val backface_visibility : backface_visibility_value -> declaration
 (** [backface_visibility value] sets the CSS backface-visibility property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/backface-visibility>
       MDN: backface-visibility. *)
@@ -1201,7 +1270,7 @@ val contain : string -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/contain>
       MDN: contain. *)
 
-val isolation : string -> declaration
+val isolation : isolation_value -> declaration
 (** [isolation value] sets the CSS isolation property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/isolation>
       MDN: isolation. *)
@@ -1255,22 +1324,22 @@ val clip : string -> declaration
 (** [clip value] sets the CSS clip property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/clip> MDN: clip. *)
 
-val scroll_snap_type : string -> declaration
+val scroll_snap_type : scroll_snap_type_value -> declaration
 (** [scroll_snap_type value] sets the CSS scroll-snap-type property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-snap-type>
       MDN: scroll-snap-type. *)
 
-val scroll_snap_align : string -> declaration
+val scroll_snap_align : scroll_snap_align_value -> declaration
 (** [scroll_snap_align value] sets the CSS scroll-snap-align property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-snap-align>
       MDN: scroll-snap-align. *)
 
-val scroll_snap_stop : string -> declaration
+val scroll_snap_stop : scroll_snap_stop_value -> declaration
 (** [scroll_snap_stop value] sets the CSS scroll-snap-stop property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-snap-stop>
       MDN: scroll-snap-stop. *)
 
-val scroll_behavior : string -> declaration
+val scroll_behavior : scroll_behavior_value -> declaration
 (** [scroll_behavior value] sets the CSS scroll-behavior property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-behavior>
       MDN: scroll-behavior. *)
@@ -1290,7 +1359,7 @@ val background_position : string -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/background-position>
       MDN: background-position. *)
 
-val background_repeat : string -> declaration
+val background_repeat : background_repeat_value -> declaration
 (** [background_repeat value] sets the CSS background-repeat property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/background-repeat>
       MDN: background-repeat. *)
