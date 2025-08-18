@@ -64,48 +64,6 @@
 (** {1 Types} *)
 
 (** CSS variable requirements. *)
-type var =
-  | Color of { name : string; shade : int option }
-  | Spacing of int
-  | Font of string
-  | Text_size of string
-  | Font_weight of string
-  | Radius of string
-  | Transition
-  | Custom of { name : string; value : string }
-
-(** Smart constructors for CSS variables. *)
-
-val color_var : ?shade:int -> string -> var
-(** [color_var ?shade name] creates a color variable reference. Example:
-    [color_var ~shade:500 "blue"]. *)
-
-val spacing_var : int -> var
-(** [spacing_var n] creates a spacing variable reference. Example:
-    [spacing_var 4]. *)
-
-val font_var : string -> var
-(** [font_var family] creates a font family variable reference. Example:
-    [font_var "sans"]. *)
-
-val text_size_var : string -> var
-(** [text_size_var size] creates a text size variable reference. Example:
-    [text_size_var "lg"]. *)
-
-val font_weight_var : string -> var
-(** [font_weight_var weight] creates a font weight variable reference. Example:
-    [font_weight_var "bold"]. *)
-
-val radius_var : string -> var
-(** [radius_var r] creates a border radius variable reference. Example:
-    [radius_var "md"]. *)
-
-val transition_var : var
-(** [transition_var] creates a transition variable reference. *)
-
-val custom_var : string -> string -> var
-(** [custom_var name value] creates a custom variable reference. Example:
-    [custom_var "tw-rotate" "45deg"]. *)
 
 (** CSS calc operations. *)
 type calc_op = Add | Sub | Mult | Div

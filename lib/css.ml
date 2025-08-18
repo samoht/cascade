@@ -4,17 +4,6 @@
 let str ?(sep = "") segments = String.concat sep segments
 let lines segments = str ~sep:"\n" segments
 
-(** CSS variable types *)
-type var =
-  | Color of { name : string; shade : int option }
-  | Spacing of int
-  | Font of string
-  | Text_size of string
-  | Font_weight of string
-  | Radius of string
-  | Transition
-  | Custom of { name : string; value : string }
-
 (** CSS length values *)
 type calc_op = Add | Sub | Mult | Div
 
@@ -466,16 +455,6 @@ and string_of_calc_value = function
         | Div -> " / "
       in
       str [ string_of_calc_value left; op_str; string_of_calc_value right ]
-
-(* Smart constructors for CSS variables *)
-let color_var ?shade name = Color { name; shade }
-let spacing_var n = Spacing n
-let font_var family = Font family
-let text_size_var size = Text_size size
-let font_weight_var weight = Font_weight weight
-let radius_var r = Radius r
-let transition_var = Transition
-let custom_var name value = Custom { name; value }
 
 (* Calc module for building calc() expressions *)
 module Calc = struct
