@@ -327,6 +327,37 @@ type object_fit = Fill | Contain | Cover | None | Scale_down | Inherit
 (** CSS appearance values. *)
 type appearance_value = None | Auto | Button | Textfield | Menulist | Inherit
 
+(** CSS vertical-align values. *)
+type vertical_align_value =
+  | Baseline
+  | Top
+  | Middle
+  | Bottom
+  | Text_top
+  | Text_bottom
+  | Sub
+  | Super
+  | Length of length
+  | Percentage of float
+  | Inherit
+
+(** CSS border-collapse values. *)
+type border_collapse_value = Collapse | Separate | Inherit
+
+(** CSS pointer-events values. *)
+type pointer_events_value =
+  | Auto
+  | None
+  | Visible_painted
+  | Visible_fill
+  | Visible_stroke
+  | Visible
+  | Painted
+  | Fill
+  | Stroke
+  | All
+  | Inherit
+
 (** CSS flex shorthand values. *)
 type flex_value =
   | Initial (* 0 1 auto *)
@@ -934,7 +965,7 @@ val font_family : font_family_value list -> declaration
 val table_layout : table_layout -> declaration
 (** [table_layout value] sets the CSS table-layout property. *)
 
-val vertical_align : string -> declaration
+val vertical_align : vertical_align_value -> declaration
 (** [vertical_align value] sets the CSS vertical-align property. *)
 
 val box_sizing : box_sizing -> declaration
@@ -988,7 +1019,7 @@ val text_indent : string -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/text-indent>
       MDN: text-indent. *)
 
-val border_collapse : string -> declaration
+val border_collapse : border_collapse_value -> declaration
 (** [border_collapse value] sets the CSS border-collapse property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-collapse>
       MDN: border-collapse. *)
@@ -1212,7 +1243,7 @@ val animation : string -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/animation>
       MDN: animation. *)
 
-val pointer_events : string -> declaration
+val pointer_events : pointer_events_value -> declaration
 (** [pointer_events value] sets the CSS pointer-events property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/pointer-events>
       MDN: pointer-events. *)

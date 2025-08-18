@@ -208,6 +208,34 @@ type object_fit = Fill | Contain | Cover | None | Scale_down | Inherit
 (** CSS appearance values *)
 type appearance_value = None | Auto | Button | Textfield | Menulist | Inherit
 
+type vertical_align_value =
+  | Baseline
+  | Top
+  | Middle
+  | Bottom
+  | Text_top
+  | Text_bottom
+  | Sub
+  | Super
+  | Length of length
+  | Percentage of float
+  | Inherit
+
+type border_collapse_value = Collapse | Separate | Inherit
+
+type pointer_events_value =
+  | Auto
+  | None
+  | Visible_painted
+  | Visible_fill
+  | Visible_stroke
+  | Visible
+  | Painted
+  | Fill
+  | Stroke
+  | All
+  | Inherit
+
 (** CSS flex shorthand values *)
 type flex_value =
   | Initial (* 0 1 auto *)
@@ -386,7 +414,7 @@ module Calc = struct
   let sub left right = Expr (left, Sub, right)
   let mul left right = Expr (left, Mult, right)
   let div left right = Expr (left, Div, right)
-  let from_length len = Length len
+  let from_length len = (Length len : calc_value)
   let from_var name = Calc_var name
   let from_float f = Calc_num f
 end
@@ -459,11 +487,11 @@ let string_of_text_align = function
   | End -> "end"
   | Inherit -> "inherit"
 
-let string_of_overflow = function
+let string_of_overflow : overflow -> string = function
   | Visible -> "visible"
   | Hidden -> "hidden"
   | Scroll -> "scroll"
-  | Auto -> "auto"
+  | (Auto : overflow) -> "auto"
   | Clip -> "clip"
 
 let string_of_flex_direction = function
@@ -523,12 +551,43 @@ let string_of_object_fit : object_fit -> string = function
   | Inherit -> "inherit"
 
 let string_of_appearance : appearance_value -> string = function
-  | None -> "none"
-  | Auto -> "auto"
+  | (None : appearance_value) -> "none"
+  | (Auto : appearance_value) -> "auto"
   | Button -> "button"
   | Textfield -> "textfield"
   | Menulist -> "menulist"
-  | Inherit -> "inherit"
+  | (Inherit : appearance_value) -> "inherit"
+
+let string_of_vertical_align : vertical_align_value -> string = function
+  | Baseline -> "baseline"
+  | Top -> "top"
+  | Middle -> "middle"
+  | Bottom -> "bottom"
+  | Text_top -> "text-top"
+  | Text_bottom -> "text-bottom"
+  | Sub -> "sub"
+  | Super -> "super"
+  | Length l -> string_of_length l
+  | Percentage p -> Printf.sprintf "%.2g%%" p
+  | (Inherit : vertical_align_value) -> "inherit"
+
+let string_of_border_collapse : border_collapse_value -> string = function
+  | Collapse -> "collapse"
+  | Separate -> "separate"
+  | (Inherit : border_collapse_value) -> "inherit"
+
+let string_of_pointer_events : pointer_events_value -> string = function
+  | (Auto : pointer_events_value) -> "auto"
+  | (None : pointer_events_value) -> "none"
+  | Visible_painted -> "visiblePainted"
+  | Visible_fill -> "visibleFill"
+  | Visible_stroke -> "visibleStroke"
+  | Visible -> "visible"
+  | Painted -> "painted"
+  | Fill -> "fill"
+  | Stroke -> "stroke"
+  | All -> "all"
+  | (Inherit : pointer_events_value) -> "inherit"
 
 let string_of_flex_value = function
   | Initial -> "0 1 auto"
@@ -1095,13 +1154,13 @@ let grid_template_columns value =
 let grid_template_rows value =
   (Grid_template_rows, string_of_grid_template value)
 
-let pointer_events value = (Pointer_events, value)
+let pointer_events value = (Pointer_events, string_of_pointer_events value)
 let z_index value = (Z_index, string_of_int value)
 let appearance value = (Appearance, string_of_appearance value)
 let overflow_x o = (Overflow_x, string_of_overflow o)
 let overflow_y o = (Overflow_y, string_of_overflow o)
 let resize value = (Resize, string_of_resize value)
-let vertical_align value = (Vertical_align, value)
+let vertical_align value = (Vertical_align, string_of_vertical_align value)
 let box_sizing value = (Box_sizing, string_of_box_sizing value)
 
 type font_family_value =
@@ -1216,7 +1275,7 @@ let font_variation_settings value = (Font_variation_settings, value)
 let webkit_tap_highlight_color value = (Webkit_tap_highlight_color, value)
 let webkit_text_decoration value = (Webkit_text_decoration, value)
 let text_indent value = (Text_indent, value)
-let border_collapse value = (Border_collapse, value)
+let border_collapse value = (Border_collapse, string_of_border_collapse value)
 let list_style value = (List_style, value)
 let font value = (Font, value)
 let webkit_appearance value = (Webkit_appearance, value)
