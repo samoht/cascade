@@ -295,7 +295,10 @@ and string_of_var = function
   | Font_weight weight -> "font-weight-" ^ weight
   | Radius r -> "radius-" ^ r
   | Transition -> "transition"
-  | Custom { name; _ } -> name
+  | Custom { name; _ } ->
+      if String.starts_with ~prefix:"--" name then
+        String.sub name 2 (String.length name - 2)
+      else name
 
 (* Smart constructors for CSS variables *)
 let color_var ?shade name = Color { name; shade }
