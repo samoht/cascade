@@ -1145,8 +1145,8 @@ val webkit_tap_highlight_color : string -> declaration
 val webkit_text_decoration : string -> declaration
 (** [webkit_text_decoration value] sets the -webkit-text-decoration property. *)
 
-val text_indent : string -> declaration
-(** [text_indent value] sets the CSS text-indent property.
+val text_indent : length -> declaration
+(** [text_indent len] sets the CSS text-indent property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/text-indent>
       MDN: text-indent. *)
 
@@ -1155,8 +1155,8 @@ val border_collapse : border_collapse_value -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-collapse>
       MDN: border-collapse. *)
 
-val border_spacing : string -> declaration
-(** [border_spacing value] sets the CSS border-spacing property.
+val border_spacing : length -> declaration
+(** [border_spacing len] sets the CSS border-spacing property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-spacing>
       MDN: border-spacing. *)
 
@@ -1169,8 +1169,8 @@ val font : string -> declaration
 (** [font value] sets the CSS font shorthand property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/font> MDN: font. *)
 
-val letter_spacing : string -> declaration
-(** [letter_spacing value] sets the CSS letter-spacing property.
+val letter_spacing : length -> declaration
+(** [letter_spacing len] sets the CSS letter-spacing property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/letter-spacing>
       MDN: letter-spacing. *)
 
@@ -1208,8 +1208,8 @@ val container_name : string -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/container-name>
       MDN: container-name. *)
 
-val perspective : string -> declaration
-(** [perspective value] sets the CSS perspective property.
+val perspective : length -> declaration
+(** [perspective len] sets the CSS perspective property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/perspective>
       MDN: perspective. *)
 
@@ -1238,8 +1238,8 @@ val object_fit : object_fit -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/object-fit>
       MDN: object-fit. *)
 
-val rotate : string -> declaration
-(** [rotate value] sets the CSS rotate property.
+val rotate : angle -> declaration
+(** [rotate a] sets the CSS rotate property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/rotate> MDN: rotate.
 *)
 
@@ -1300,8 +1300,8 @@ val margin_block : length -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/margin-block>
       MDN: margin-block. *)
 
-val margin_inline_end : string -> declaration
-(** [margin_inline_end value] sets the CSS margin-inline-end property.
+val margin_inline_end : length -> declaration
+(** [margin_inline_end len] sets the CSS margin-inline-end property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/margin-inline-end>
       MDN: margin-inline-end. *)
 
@@ -1310,8 +1310,8 @@ val outline : string -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/outline>
       MDN: outline. *)
 
-val outline_offset : string -> declaration
-(** [outline_offset value] sets the CSS outline-offset property.
+val outline_offset : length -> declaration
+(** [outline_offset len] sets the CSS outline-offset property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/outline-offset>
       MDN: outline-offset. *)
 
