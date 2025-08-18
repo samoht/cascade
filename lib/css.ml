@@ -675,7 +675,7 @@ let string_of_webkit_font_smoothing : webkit_font_smoothing_value -> string =
   | Subpixel_antialiased -> "subpixel-antialiased"
   | (Inherit : webkit_font_smoothing_value) -> "inherit"
 
-let string_of_moz_osx_font_smoothing : moz_osx_font_smoothing_value -> string =
+let string_of_moz_font_smoothing : moz_osx_font_smoothing_value -> string =
   function
   | (Auto : moz_osx_font_smoothing_value) -> "auto"
   | Grayscale -> "grayscale"
@@ -1503,7 +1503,7 @@ let font_family fonts =
   (Font_family, String.concat ", " (List.map string_of_font_family_value fonts))
 
 let moz_osx_font_smoothing value =
-  (Moz_osx_font_smoothing, string_of_moz_osx_font_smoothing value)
+  (Moz_osx_font_smoothing, string_of_moz_font_smoothing value)
 
 let webkit_line_clamp value = (Webkit_line_clamp, value)
 let backdrop_filter value = (Backdrop_filter, value)
