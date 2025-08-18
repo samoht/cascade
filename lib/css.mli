@@ -900,10 +900,18 @@ val margin_inline : string -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/margin-inline>
       MDN: margin-inline. *)
 
+val margin_inline_length : length -> declaration
+(** [margin_inline_length len] sets the CSS margin-inline property with a length
+    value. *)
+
 val margin_block : string -> declaration
 (** [margin_block value] sets the CSS margin-block shorthand property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/margin-block>
       MDN: margin-block. *)
+
+val margin_block_length : length -> declaration
+(** [margin_block_length len] sets the CSS margin-block property with a length
+    value. *)
 
 val margin_inline_end : string -> declaration
 (** [margin_inline_end value] sets the CSS margin-inline-end property.
