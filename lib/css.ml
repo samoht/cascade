@@ -568,7 +568,7 @@ let string_of_vertical_align : vertical_align_value -> string = function
   | Sub -> "sub"
   | Super -> "super"
   | Length l -> string_of_length l
-  | Percentage p -> Printf.sprintf "%.2g%%" p
+  | Percentage p -> pp_float p ^ "%"
   | (Inherit : vertical_align_value) -> "inherit"
 
 let string_of_border_collapse : border_collapse_value -> string = function
@@ -804,41 +804,39 @@ let string_of_scale_value = function
       | Some f -> str [ "var(--"; var_name; ", "; pp_float f; ")" ])
 
 (* Helper functions for transform values *)
+(* Helper functions for transform string generation *)
+let transform_func name args = str ((name :: "(" :: args) @ [ ")" ])
+
+let transform_var_func name var_name (fallback : string option) =
+  match fallback with
+  | None -> str [ name; "(var(--"; var_name; "))" ]
+  | Some fb -> str [ name; "(var(--"; var_name; ", "; fb; "))" ]
+
 let string_of_transform_value = function
   (* Translate transforms *)
-  | Translate_x l -> str [ "translateX("; string_of_length l; ")" ]
-  | Translate_y l -> str [ "translateY("; string_of_length l; ")" ]
-  | Translate_z l -> str [ "translateZ("; string_of_length l; ")" ]
+  | Translate_x l -> transform_func "translateX" [ string_of_length l ]
+  | Translate_y l -> transform_func "translateY" [ string_of_length l ]
+  | Translate_z l -> transform_func "translateZ" [ string_of_length l ]
   | Translate (x, y) ->
-      str [ "translate("; string_of_length x; ", "; string_of_length y; ")" ]
-  | Translate_var { var_name; fallback } -> (
-      match fallback with
-      | None -> str [ "translate(var(--"; var_name; "))" ]
-      | Some fb -> str [ "translate(var(--"; var_name; ", "; fb; "))" ])
+      transform_func "translate"
+        [ string_of_length x; ", "; string_of_length y ]
+  | Translate_var { var_name; fallback } ->
+      transform_var_func "translate" var_name fallback
   | Translate3d (x, y, z) ->
-      str
+      transform_func "translate3d"
         [
-          "translate3d(";
-          string_of_length x;
-          ", ";
-          string_of_length y;
-          ", ";
-          string_of_length z;
-          ")";
+          string_of_length x; ", "; string_of_length y; ", "; string_of_length z;
         ]
   (* Rotate transforms *)
-  | Rotate_x a -> str [ "rotateX("; string_of_angle a; ")" ]
-  | Rotate_y a -> str [ "rotateY("; string_of_angle a; ")" ]
-  | Rotate_z a -> str [ "rotateZ("; string_of_angle a; ")" ]
-  | Rotate a -> str [ "rotate("; string_of_angle a; ")" ]
-  | Rotate_var { var_name; fallback } -> (
-      match fallback with
-      | None -> str [ "rotate(var(--"; var_name; "))" ]
-      | Some fb -> str [ "rotate(var(--"; var_name; ", "; fb; "))" ])
+  | Rotate_x a -> transform_func "rotateX" [ string_of_angle a ]
+  | Rotate_y a -> transform_func "rotateY" [ string_of_angle a ]
+  | Rotate_z a -> transform_func "rotateZ" [ string_of_angle a ]
+  | Rotate a -> transform_func "rotate" [ string_of_angle a ]
+  | Rotate_var { var_name; fallback } ->
+      transform_var_func "rotate" var_name fallback
   | Rotate3d (x, y, z, angle) ->
-      str
+      transform_func "rotate3d"
         [
-          "rotate3d(";
           pp_float x;
           ", ";
           pp_float y;
@@ -846,80 +844,62 @@ let string_of_transform_value = function
           pp_float z;
           ", ";
           string_of_angle angle;
-          ")";
         ]
   (* Scale transforms *)
-  | Scale_x s -> str [ "scaleX("; string_of_scale_value s; ")" ]
-  | Scale_y s -> str [ "scaleY("; string_of_scale_value s; ")" ]
-  | Scale_z s -> str [ "scaleZ("; string_of_scale_value s; ")" ]
-  | Scale s -> str [ "scale("; string_of_scale_value s; ")" ]
+  | Scale_x s -> transform_func "scaleX" [ string_of_scale_value s ]
+  | Scale_y s -> transform_func "scaleY" [ string_of_scale_value s ]
+  | Scale_z s -> transform_func "scaleZ" [ string_of_scale_value s ]
+  | Scale s -> transform_func "scale" [ string_of_scale_value s ]
   | Scale2 (x, y) ->
-      str
-        [
-          "scale("; string_of_scale_value x; ", "; string_of_scale_value y; ")";
-        ]
+      transform_func "scale"
+        [ string_of_scale_value x; ", "; string_of_scale_value y ]
   | Scale3d (x, y, z) ->
-      str
+      transform_func "scale3d"
         [
-          "scale3d(";
           string_of_scale_value x;
           ", ";
           string_of_scale_value y;
           ", ";
           string_of_scale_value z;
-          ")";
         ]
   (* Skew transforms *)
-  | Skew_x a -> str [ "skewX("; string_of_angle a; ")" ]
-  | Skew_y a -> str [ "skewY("; string_of_angle a; ")" ]
-  | Skew_var { var_name; fallback } -> (
-      match fallback with
-      | None -> str [ "skew(var(--"; var_name; "))" ]
-      | Some fb -> str [ "skew(var(--"; var_name; ", "; fb; "))" ])
+  | Skew_x a -> transform_func "skewX" [ string_of_angle a ]
+  | Skew_y a -> transform_func "skewY" [ string_of_angle a ]
+  | Skew_var { var_name; fallback } ->
+      transform_var_func "skew" var_name fallback
   | Skew (x, y) ->
-      str [ "skew("; string_of_angle x; ", "; string_of_angle y; ")" ]
+      transform_func "skew" [ string_of_angle x; ", "; string_of_angle y ]
   (* Matrix transforms *)
   | Matrix (a, b, c, d, e, f) ->
-      str
+      let values =
         [
-          "matrix(";
-          String.concat ", "
-            [
-              pp_float a;
-              pp_float b;
-              pp_float c;
-              pp_float d;
-              pp_float e;
-              pp_float f;
-            ];
-          ")";
+          pp_float a; pp_float b; pp_float c; pp_float d; pp_float e; pp_float f;
         ]
+      in
+      str [ "matrix("; String.concat ", " values; ")" ]
   | Matrix3d
       (m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11, m12, m13, m14, m15, m16) ->
-      str
+      let values =
         [
-          "matrix3d(";
-          String.concat ", "
-            [
-              pp_float m1;
-              pp_float m2;
-              pp_float m3;
-              pp_float m4;
-              pp_float m5;
-              pp_float m6;
-              pp_float m7;
-              pp_float m8;
-              pp_float m9;
-              pp_float m10;
-              pp_float m11;
-              pp_float m12;
-              pp_float m13;
-              pp_float m14;
-              pp_float m15;
-              pp_float m16;
-            ];
-          ")";
+          pp_float m1;
+          pp_float m2;
+          pp_float m3;
+          pp_float m4;
+          pp_float m5;
+          pp_float m6;
+          pp_float m7;
+          pp_float m8;
+          pp_float m9;
+          pp_float m10;
+          pp_float m11;
+          pp_float m12;
+          pp_float m13;
+          pp_float m14;
+          pp_float m15;
+          pp_float m16;
         ]
+      in
+      str [ "matrix3d("; String.concat ", " values; ")" ]
   (* Other transforms *)
   | Perspective l -> str [ "perspective("; string_of_length l; ")" ]
   | Transform_none -> "none"
