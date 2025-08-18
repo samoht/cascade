@@ -1164,60 +1164,185 @@ let vertical_align value = (Vertical_align, string_of_vertical_align value)
 let box_sizing value = (Box_sizing, string_of_box_sizing value)
 
 type font_family_value =
-  | System_ui
-  | Ui_sans_serif
-  | Ui_serif
-  | Ui_monospace
-  | Ui_rounded
+  (* Generic CSS font families *)
   | Sans_serif
   | Serif
   | Monospace
   | Cursive
   | Fantasy
+  | System_ui
+  | Ui_sans_serif
+  | Ui_serif
+  | Ui_monospace
+  | Ui_rounded
   | Emoji
   | Math
   | Fangsong
-  | Apple_color_emoji
+  (* Popular web fonts *)
+  | Inter
+  | Roboto
+  | Open_sans
+  | Lato
+  | Montserrat
+  | Poppins
+  | Source_sans_pro
+  | Raleway
+  | Oswald
+  | Noto_sans
+  | Ubuntu
+  | Playfair_display
+  | Merriweather
+  | Lora
+  | PT_sans
+  | PT_serif
+  | Nunito
+  | Nunito_sans
+  | Work_sans
+  | Rubik
+  | Fira_sans
+  | Fira_code
+  | JetBrains_mono
+  | IBM_plex_sans
+  | IBM_plex_serif
+  | IBM_plex_mono
+  | Source_code_pro
+  | Space_mono
+  | DM_sans
+  | DM_serif_display
+  | Bebas_neue
+  | Barlow
+  | Mulish
+  | Josefin_sans
+  (* Platform-specific fonts *)
+  | Helvetica
+  | Helvetica_neue
+  | Arial
+  | Verdana
+  | Tahoma
+  | Trebuchet_ms
+  | Times_new_roman
+  | Georgia
+  | Garamond
+  | Courier_new
+  | Courier
+  | Lucida_console
+  | SF_pro
+  | SF_pro_display
+  | SF_pro_text
+  | SF_mono
+  | NY
+  | Segoe_ui
   | Segoe_ui_emoji
   | Segoe_ui_symbol
+  | Apple_color_emoji
   | Noto_color_emoji
-  | SFMono_regular
+  | Android_emoji
+  | Twemoji_mozilla
+  (* Developer fonts *)
   | Menlo
   | Monaco
   | Consolas
   | Liberation_mono
-  | Courier_new
-  | Courier
+  | SFMono_regular
+  | Cascadia_code
+  | Cascadia_mono
+  | Victor_mono
+  | Inconsolata
+  | Hack
+  (* CSS keywords *)
   | Inherit
   | Initial
   | Unset
+  (* CSS variables *)
   | Var of { name : string; fallback : font_family_value list option }
 
 let rec string_of_font_family_value = function
-  | System_ui -> "system-ui"
-  | Ui_sans_serif -> "ui-sans-serif"
-  | Ui_serif -> "ui-serif"
-  | Ui_monospace -> "ui-monospace"
-  | Ui_rounded -> "ui-rounded"
+  (* Generic CSS font families *)
   | Sans_serif -> "sans-serif"
   | Serif -> "serif"
   | Monospace -> "monospace"
   | Cursive -> "cursive"
   | Fantasy -> "fantasy"
+  | System_ui -> "system-ui"
+  | Ui_sans_serif -> "ui-sans-serif"
+  | Ui_serif -> "ui-serif"
+  | Ui_monospace -> "ui-monospace"
+  | Ui_rounded -> "ui-rounded"
   | Emoji -> "emoji"
   | Math -> "math"
   | Fangsong -> "fangsong"
-  | Apple_color_emoji -> "\"Apple Color Emoji\""
+  (* Popular web fonts *)
+  | Inter -> "Inter"
+  | Roboto -> "Roboto"
+  | Open_sans -> "\"Open Sans\""
+  | Lato -> "Lato"
+  | Montserrat -> "Montserrat"
+  | Poppins -> "Poppins"
+  | Source_sans_pro -> "\"Source Sans Pro\""
+  | Raleway -> "Raleway"
+  | Oswald -> "Oswald"
+  | Noto_sans -> "\"Noto Sans\""
+  | Ubuntu -> "Ubuntu"
+  | Playfair_display -> "\"Playfair Display\""
+  | Merriweather -> "Merriweather"
+  | Lora -> "Lora"
+  | PT_sans -> "\"PT Sans\""
+  | PT_serif -> "\"PT Serif\""
+  | Nunito -> "Nunito"
+  | Nunito_sans -> "\"Nunito Sans\""
+  | Work_sans -> "\"Work Sans\""
+  | Rubik -> "Rubik"
+  | Fira_sans -> "\"Fira Sans\""
+  | Fira_code -> "\"Fira Code\""
+  | JetBrains_mono -> "\"JetBrains Mono\""
+  | IBM_plex_sans -> "\"IBM Plex Sans\""
+  | IBM_plex_serif -> "\"IBM Plex Serif\""
+  | IBM_plex_mono -> "\"IBM Plex Mono\""
+  | Source_code_pro -> "\"Source Code Pro\""
+  | Space_mono -> "\"Space Mono\""
+  | DM_sans -> "\"DM Sans\""
+  | DM_serif_display -> "\"DM Serif Display\""
+  | Bebas_neue -> "\"Bebas Neue\""
+  | Barlow -> "Barlow"
+  | Mulish -> "Mulish"
+  | Josefin_sans -> "\"Josefin Sans\""
+  (* Platform-specific fonts *)
+  | Helvetica -> "Helvetica"
+  | Helvetica_neue -> "\"Helvetica Neue\""
+  | Arial -> "Arial"
+  | Verdana -> "Verdana"
+  | Tahoma -> "Tahoma"
+  | Trebuchet_ms -> "\"Trebuchet MS\""
+  | Times_new_roman -> "\"Times New Roman\""
+  | Georgia -> "Georgia"
+  | Garamond -> "Garamond"
+  | Courier_new -> "\"Courier New\""
+  | Courier -> "Courier"
+  | Lucida_console -> "\"Lucida Console\""
+  | SF_pro -> "\"SF Pro\""
+  | SF_pro_display -> "\"SF Pro Display\""
+  | SF_pro_text -> "\"SF Pro Text\""
+  | SF_mono -> "\"SF Mono\""
+  | NY -> "\"New York\""
+  | Segoe_ui -> "\"Segoe UI\""
   | Segoe_ui_emoji -> "\"Segoe UI Emoji\""
   | Segoe_ui_symbol -> "\"Segoe UI Symbol\""
+  | Apple_color_emoji -> "\"Apple Color Emoji\""
   | Noto_color_emoji -> "\"Noto Color Emoji\""
-  | SFMono_regular -> "SFMono-Regular"
+  | Android_emoji -> "\"Android Emoji\""
+  | Twemoji_mozilla -> "\"Twemoji Mozilla\""
+  (* Developer fonts *)
   | Menlo -> "Menlo"
   | Monaco -> "Monaco"
   | Consolas -> "Consolas"
   | Liberation_mono -> "\"Liberation Mono\""
-  | Courier_new -> "\"Courier New\""
-  | Courier -> "Courier"
+  | SFMono_regular -> "SFMono-Regular"
+  | Cascadia_code -> "\"Cascadia Code\""
+  | Cascadia_mono -> "\"Cascadia Mono\""
+  | Victor_mono -> "\"Victor Mono\""
+  | Inconsolata -> "Inconsolata"
+  | Hack -> "Hack"
+  (* CSS keywords *)
   | Inherit -> "inherit"
   | Initial -> "initial"
   | Unset -> "unset"

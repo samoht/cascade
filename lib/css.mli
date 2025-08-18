@@ -929,34 +929,96 @@ val quotes : string -> declaration
 (** [quotes value] sets the CSS quotes property. *)
 
 type font_family_value =
-  | System_ui
-  | Ui_sans_serif
-  | Ui_serif
-  | Ui_monospace
-  | Ui_rounded
+  (* Generic CSS font families *)
   | Sans_serif
   | Serif
   | Monospace
   | Cursive
   | Fantasy
+  | System_ui
+  | Ui_sans_serif
+  | Ui_serif
+  | Ui_monospace
+  | Ui_rounded
   | Emoji
   | Math
   | Fangsong
-  (* Common system fonts *)
-  | Apple_color_emoji
+  (* Popular web fonts *)
+  | Inter
+  | Roboto
+  | Open_sans
+  | Lato
+  | Montserrat
+  | Poppins
+  | Source_sans_pro
+  | Raleway
+  | Oswald
+  | Noto_sans
+  | Ubuntu
+  | Playfair_display
+  | Merriweather
+  | Lora
+  | PT_sans
+  | PT_serif
+  | Nunito
+  | Nunito_sans
+  | Work_sans
+  | Rubik
+  | Fira_sans
+  | Fira_code
+  | JetBrains_mono
+  | IBM_plex_sans
+  | IBM_plex_serif
+  | IBM_plex_mono
+  | Source_code_pro
+  | Space_mono
+  | DM_sans
+  | DM_serif_display
+  | Bebas_neue
+  | Barlow
+  | Mulish
+  | Josefin_sans
+  (* Platform-specific fonts *)
+  | Helvetica
+  | Helvetica_neue
+  | Arial
+  | Verdana
+  | Tahoma
+  | Trebuchet_ms
+  | Times_new_roman
+  | Georgia
+  | Garamond
+  | Courier_new
+  | Courier
+  | Lucida_console
+  | SF_pro
+  | SF_pro_display
+  | SF_pro_text
+  | SF_mono
+  | NY
+  | Segoe_ui
   | Segoe_ui_emoji
   | Segoe_ui_symbol
+  | Apple_color_emoji
   | Noto_color_emoji
-  | SFMono_regular
+  | Android_emoji
+  | Twemoji_mozilla
+  (* Developer fonts *)
   | Menlo
   | Monaco
   | Consolas
   | Liberation_mono
-  | Courier_new
-  | Courier
+  | SFMono_regular
+  | Cascadia_code
+  | Cascadia_mono
+  | Victor_mono
+  | Inconsolata
+  | Hack
+  (* CSS keywords *)
   | Inherit
   | Initial
   | Unset
+  (* CSS variables *)
   | Var of { name : string; fallback : font_family_value list option }
 
 val font_family : font_family_value list -> declaration
