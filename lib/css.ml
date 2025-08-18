@@ -58,7 +58,7 @@ type display =
   | Inline_flex
   | Grid
   | Inline_grid
-  | Display_none
+  | None
   | Table
   | Table_row
   | Table_cell
@@ -70,14 +70,7 @@ type position = Static | Relative | Absolute | Fixed | Sticky
 type font_weight = Weight of int | Normal | Bold | Bolder | Lighter | Inherit
 
 (** CSS text align values *)
-type text_align =
-  | Left
-  | Right
-  | Center
-  | Justify
-  | Start
-  | End
-  | Text_align_inherit
+type text_align = Left | Right | Center | Justify | Start | End | Inherit
 
 (** CSS overflow values *)
 type overflow = Visible | Hidden | Scroll | Auto | Clip
@@ -99,19 +92,14 @@ type align =
   | Baseline
 
 (** CSS text decoration values *)
-type text_decoration =
-  | Text_decoration_none
-  | Underline
-  | Overline
-  | Line_through
-  | Text_decoration_inherit
+type text_decoration = None | Underline | Overline | Line_through | Inherit
 
 (** CSS font style values *)
 type font_style = Font_normal | Italic | Oblique | Font_inherit
 
 (** CSS list style type values *)
 type list_style_type =
-  | List_none
+  | None
   | Disc
   | Circle
   | Square
@@ -123,7 +111,7 @@ type list_style_type =
 
 (** CSS border style values *)
 type border_style =
-  | Border_none
+  | None
   | Solid
   | Dashed
   | Dotted
@@ -174,6 +162,89 @@ type cursor =
 
 (** CSS user-select values *)
 type user_select = None | Auto | Text | All | Contain
+
+(** CSS flex wrap values *)
+type flex_wrap = Nowrap | Wrap | Wrap_reverse
+
+(** CSS text transform values *)
+type text_transform =
+  | None
+  | Uppercase
+  | Lowercase
+  | Capitalize
+  | Full_width
+  | Full_size_kana
+  | Inherit
+
+(** CSS box sizing values *)
+type box_sizing = Border_box | Content_box | Inherit
+
+(** CSS white space values *)
+type white_space =
+  | Normal
+  | Nowrap
+  | Pre
+  | Pre_wrap
+  | Pre_line
+  | Break_spaces
+  | Inherit
+
+(** CSS table layout values *)
+type table_layout = Auto | Fixed | Inherit
+
+(** CSS resize values *)
+type resize_value =
+  | None
+  | Both
+  | Horizontal
+  | Vertical
+  | Block
+  | Inline
+  | Inherit
+
+(** CSS object fit values *)
+type object_fit = Fill | Contain | Cover | None | Scale_down | Inherit
+
+(** CSS appearance values *)
+type appearance_value = None | Auto | Button | Textfield | Menulist | Inherit
+
+(** CSS flex shorthand values *)
+type flex_value =
+  | Initial (* 0 1 auto *)
+  | Auto (* 1 1 auto *)
+  | None (* 0 0 auto *)
+  | Grow of float (* grow 1 0% *)
+  | Basis of length (* 1 1 basis *)
+  | Grow_shrink of float * float (* grow shrink 0% *)
+  | Full of float * float * length (* grow shrink basis *)
+
+(** CSS duration values *)
+type duration =
+  | Ms of int
+  (* milliseconds *)
+  | S of float (* seconds *)
+
+(** CSS timing function values *)
+type timing_function =
+  | Ease
+  | Linear
+  | Ease_in
+  | Ease_out
+  | Ease_in_out
+  | Step_start
+  | Step_end
+  | Steps of int * [ `Start | `End ]
+  | Cubic_bezier of float * float * float * float
+
+(** CSS transition property values *)
+type transition_property = All | None | Property of string
+
+(** CSS transition values *)
+type transition_value =
+  | Simple of transition_property * duration
+  | With_timing of transition_property * duration * timing_function
+  | With_delay of transition_property * duration * timing_function * duration
+  | Multiple of transition_value list
 
 (** CSS grid track sizing *)
 type grid_track_size =
@@ -253,9 +324,21 @@ type transform_value =
   | Transform_none
 
 let pp_float f =
-  let s = string_of_float f in
-  if String.ends_with ~suffix:"." s then String.sub s 0 (String.length s - 1)
-  else s
+  (* For whole numbers, use integer formatting *)
+  if f = floor f then string_of_int (int_of_float f)
+  else
+    let s = string_of_float f in
+    (* Remove trailing dot if present *)
+    let s =
+      if String.ends_with ~suffix:"." s then String.sub s 0 (String.length s - 1)
+      else s
+    in
+    (* Remove leading zero for decimals between -1 and 1 *)
+    if String.starts_with ~prefix:"-0." s then
+      "-" ^ String.sub s 2 (String.length s - 2)
+    else if String.starts_with ~prefix:"0." s then
+      String.sub s 1 (String.length s - 1)
+    else s
 
 (* Convert typed values to strings *)
 let rec string_of_length = function
@@ -339,7 +422,7 @@ let string_of_color = function
   | Transparent -> "transparent"
   | Inherit -> "inherit"
 
-let string_of_display = function
+let string_of_display : display -> string = function
   | Block -> "block"
   | Inline -> "inline"
   | Inline_block -> "inline-block"
@@ -347,7 +430,7 @@ let string_of_display = function
   | Inline_flex -> "inline-flex"
   | Grid -> "grid"
   | Inline_grid -> "inline-grid"
-  | Display_none -> "none"
+  | None -> "none"
   | Table -> "table"
   | Table_row -> "table-row"
   | Table_cell -> "table-cell"
@@ -374,7 +457,7 @@ let string_of_text_align = function
   | Justify -> "justify"
   | Start -> "start"
   | End -> "end"
-  | Text_align_inherit -> "inherit"
+  | Inherit -> "inherit"
 
 let string_of_overflow = function
   | Visible -> "visible"
@@ -389,6 +472,134 @@ let string_of_flex_direction = function
   | Column -> "column"
   | Column_reverse -> "column-reverse"
 
+let string_of_flex_wrap : flex_wrap -> string = function
+  | Nowrap -> "nowrap"
+  | Wrap -> "wrap"
+  | Wrap_reverse -> "wrap-reverse"
+
+let string_of_text_transform : text_transform -> string = function
+  | None -> "none"
+  | Uppercase -> "uppercase"
+  | Lowercase -> "lowercase"
+  | Capitalize -> "capitalize"
+  | Full_width -> "full-width"
+  | Full_size_kana -> "full-size-kana"
+  | Inherit -> "inherit"
+
+let string_of_box_sizing : box_sizing -> string = function
+  | Border_box -> "border-box"
+  | Content_box -> "content-box"
+  | Inherit -> "inherit"
+
+let string_of_white_space : white_space -> string = function
+  | Normal -> "normal"
+  | Nowrap -> "nowrap"
+  | Pre -> "pre"
+  | Pre_wrap -> "pre-wrap"
+  | Pre_line -> "pre-line"
+  | Break_spaces -> "break-spaces"
+  | Inherit -> "inherit"
+
+let string_of_table_layout : table_layout -> string = function
+  | Auto -> "auto"
+  | Fixed -> "fixed"
+  | Inherit -> "inherit"
+
+let string_of_resize : resize_value -> string = function
+  | None -> "none"
+  | Both -> "both"
+  | Horizontal -> "horizontal"
+  | Vertical -> "vertical"
+  | Block -> "block"
+  | Inline -> "inline"
+  | Inherit -> "inherit"
+
+let string_of_object_fit : object_fit -> string = function
+  | Fill -> "fill"
+  | Contain -> "contain"
+  | Cover -> "cover"
+  | None -> "none"
+  | Scale_down -> "scale-down"
+  | Inherit -> "inherit"
+
+let string_of_appearance : appearance_value -> string = function
+  | None -> "none"
+  | Auto -> "auto"
+  | Button -> "button"
+  | Textfield -> "textfield"
+  | Menulist -> "menulist"
+  | Inherit -> "inherit"
+
+let string_of_flex_value = function
+  | Initial -> "0 1 auto"
+  | Auto -> "1 1 auto"
+  | None -> "0 0 auto"
+  | Grow f -> str [ pp_float f; " 1 0%" ]
+  | Basis len -> str [ "1 1 "; string_of_length len ]
+  | Grow_shrink (g, s) -> str [ pp_float g; " "; pp_float s; " 0%" ]
+  | Full (g, s, b) ->
+      str [ pp_float g; " "; pp_float s; " "; string_of_length b ]
+
+let string_of_duration = function
+  | Ms n -> str [ string_of_int n; "ms" ]
+  | S f -> str [ pp_float f; "s" ]
+
+let string_of_timing_function = function
+  | Ease -> "ease"
+  | Linear -> "linear"
+  | Ease_in -> "ease-in"
+  | Ease_out -> "ease-out"
+  | Ease_in_out -> "ease-in-out"
+  | Step_start -> "step-start"
+  | Step_end -> "step-end"
+  | Steps (n, dir) ->
+      let dir_str = match dir with `Start -> "start" | `End -> "end" in
+      str [ "steps("; string_of_int n; ", "; dir_str; ")" ]
+  | Cubic_bezier (a, b, c, d) ->
+      str
+        [
+          "cubic-bezier(";
+          pp_float a;
+          ", ";
+          pp_float b;
+          ", ";
+          pp_float c;
+          ", ";
+          pp_float d;
+          ")";
+        ]
+
+let string_of_transition_property : transition_property -> string = function
+  | All -> "all"
+  | None -> "none"
+  | Property p -> p
+
+let rec string_of_transition_value = function
+  | Simple (prop, dur) ->
+      str [ string_of_transition_property prop; " "; string_of_duration dur ]
+  | With_timing (prop, dur, timing) ->
+      str
+        [
+          string_of_transition_property prop;
+          " ";
+          string_of_duration dur;
+          " ";
+          string_of_timing_function timing;
+        ]
+  | With_delay (prop, dur, timing, delay) ->
+      str
+        [
+          string_of_transition_property prop;
+          " ";
+          string_of_duration dur;
+          " ";
+          string_of_timing_function timing;
+          " ";
+          string_of_duration delay;
+        ]
+  | Multiple transitions ->
+      String.concat ", " (List.map string_of_transition_value transitions)
+
 let string_of_align = function
   | Flex_start -> "flex-start"
   | Flex_end -> "flex-end"
@@ -401,12 +612,12 @@ let string_of_align = function
   | End -> "end"
   | Baseline -> "baseline"
 
-let string_of_text_decoration = function
-  | Text_decoration_none -> "none"
+let string_of_text_decoration : text_decoration -> string = function
+  | None -> "none"
   | Underline -> "underline"
   | Overline -> "overline"
   | Line_through -> "line-through"
-  | Text_decoration_inherit -> "inherit"
+  | Inherit -> "inherit"
 
 let string_of_font_style = function
   | Font_normal -> "normal"
@@ -414,8 +625,8 @@ let string_of_font_style = function
   | Oblique -> "oblique"
   | Font_inherit -> "inherit"
 
-let string_of_list_style_type = function
-  | List_none -> "none"
+let string_of_list_style_type : list_style_type -> string = function
+  | None -> "none"
   | Disc -> "disc"
   | Circle -> "circle"
   | Square -> "square"
@@ -425,8 +636,8 @@ let string_of_list_style_type = function
   | Lower_roman -> "lower-roman"
   | Upper_roman -> "upper-roman"
 
-let string_of_border_style = function
-  | Border_none -> "none"
+let string_of_border_style : border_style -> string = function
+  | None -> "none"
   | Solid -> "solid"
   | Dashed -> "dashed"
   | Dotted -> "dotted"
@@ -534,7 +745,8 @@ let string_of_scale_value = function
       | Some f -> str [ "var(--"; var_name; ", "; pp_float f; ")" ])
 
 (* Helper functions for transform values *)
-let string_of_translate = function
+let string_of_transform_value = function
+  (* Translate transforms *)
   | Translate_x l -> str [ "translateX("; string_of_length l; ")" ]
   | Translate_y l -> str [ "translateY("; string_of_length l; ")" ]
   | Translate_z l -> str [ "translateZ("; string_of_length l; ")" ]
@@ -555,9 +767,7 @@ let string_of_translate = function
           string_of_length z;
           ")";
         ]
-  | _ -> invalid_arg "string_of_translate"
-
-let string_of_rotate = function
+  (* Rotate transforms *)
   | Rotate_x a -> str [ "rotateX("; string_of_angle a; ")" ]
   | Rotate_y a -> str [ "rotateY("; string_of_angle a; ")" ]
   | Rotate_z a -> str [ "rotateZ("; string_of_angle a; ")" ]
@@ -579,9 +789,7 @@ let string_of_rotate = function
           string_of_angle angle;
           ")";
         ]
-  | _ -> invalid_arg "string_of_rotate"
-
-let string_of_scale = function
+  (* Scale transforms *)
   | Scale_x s -> str [ "scaleX("; string_of_scale_value s; ")" ]
   | Scale_y s -> str [ "scaleY("; string_of_scale_value s; ")" ]
   | Scale_z s -> str [ "scaleZ("; string_of_scale_value s; ")" ]
@@ -602,9 +810,7 @@ let string_of_scale = function
           string_of_scale_value z;
           ")";
         ]
-  | _ -> invalid_arg "string_of_scale"
-
-let string_of_skew = function
+  (* Skew transforms *)
   | Skew_x a -> str [ "skewX("; string_of_angle a; ")" ]
   | Skew_y a -> str [ "skewY("; string_of_angle a; ")" ]
   | Skew_var { var_name; fallback } -> (
@@ -613,9 +819,7 @@ let string_of_skew = function
       | Some fb -> str [ "skew(var(--"; var_name; ", "; fb; "))" ])
   | Skew (x, y) ->
       str [ "skew("; string_of_angle x; ", "; string_of_angle y; ")" ]
-  | _ -> invalid_arg "string_of_skew"
-
-let string_of_matrix = function
+  (* Matrix transforms *)
   | Matrix (a, b, c, d, e, f) ->
       str
         [
@@ -657,19 +861,7 @@ let string_of_matrix = function
             ];
           ")";
         ]
-  | _ -> invalid_arg "string_of_matrix"
-
-let string_of_transform_value = function
-  | ( Translate_x _ | Translate_y _ | Translate_z _ | Translate _
-    | Translate_var _ | Translate3d _ ) as t ->
-      string_of_translate t
-  | (Rotate_x _ | Rotate_y _ | Rotate_z _ | Rotate _ | Rotate_var _ | Rotate3d _)
-    as t ->
-      string_of_rotate t
-  | (Scale_x _ | Scale_y _ | Scale_z _ | Scale _ | Scale2 _ | Scale3d _) as t ->
-      string_of_scale t
-  | (Skew_x _ | Skew_y _ | Skew_var _ | Skew _) as t -> string_of_skew t
-  | (Matrix _ | Matrix3d _) as t -> string_of_matrix t
+  (* Other transforms *)
   | Perspective l -> str [ "perspective("; string_of_length l; ")" ]
   | Transform_none -> "none"
 
@@ -721,6 +913,8 @@ type property =
   | Flex
   | Flex_grow
   | Flex_shrink
+  | Flex_basis
+  | Order
   | Align_items
   | Justify_content
   | Align_content
@@ -731,8 +925,21 @@ type property =
   | Place_self
   | Grid_template_columns
   | Grid_template_rows
+  | Grid_auto_flow
+  | Grid_auto_columns
+  | Grid_auto_rows
+  | Grid_column
+  | Grid_row
   | Border_width
+  | Border_top_width
+  | Border_right_width
+  | Border_bottom_width
+  | Border_left_width
   | Border_radius
+  | Border_top_color
+  | Border_right_color
+  | Border_bottom_color
+  | Border_left_color
   | Box_shadow
   | Opacity
   | Transition
@@ -749,10 +956,6 @@ type property =
   | Bottom
   | Left
   | Z_index
-  | Border_top_width
-  | Border_right_width
-  | Border_bottom_width
-  | Border_left_width
   | Outline
   | Outline_offset
   | Scroll_snap_type
@@ -776,7 +979,6 @@ type property =
   | Transform_style
   | Backface_visibility
   | Object_position
-  | Object_fit
   | Rotate
   | Transition_duration
   | Transition_timing_function
@@ -786,12 +988,9 @@ type property =
   | Filter
   | Background_image
   | Animation
-  | Appearance
   | Overflow_x
   | Overflow_y
-  | Resize
   | Vertical_align
-  | Box_sizing
   | Font_family
   | Background_position
   | Background_repeat
@@ -803,7 +1002,13 @@ type property =
   | Scroll_snap_align
   | Scroll_snap_stop
   | Scroll_behavior
-  | Custom of string  (** CSS property names as a variant type *)
+  | Box_sizing
+  | Resize
+  | Object_fit
+  | Appearance
+  | Content
+  | Quotes
+  | Custom of string (* For arbitrary CSS properties - use sparingly! *)
 
 type declaration = property * string
 (** A CSS property as (name, value) pair *)
@@ -847,23 +1052,23 @@ let font_weight w = (Font_weight, string_of_font_weight w)
 let text_align a = (Text_align, string_of_text_align a)
 let text_decoration_style value = (Text_decoration_style, value)
 let text_underline_offset value = (Text_underline_offset, value)
-let text_transform value = (Text_transform, value)
+let text_transform value = (Text_transform, string_of_text_transform value)
 let letter_spacing value = (Letter_spacing, value)
-let white_space value = (White_space, value)
+let white_space value = (White_space, string_of_white_space value)
 let display d = (Display, string_of_display d)
 let position p = (Position, string_of_position p)
-let top value = (Top, value)
-let right value = (Right, value)
-let bottom value = (Bottom, value)
-let left value = (Left, value)
-let opacity value = (Opacity, value)
+let top len = (Top, string_of_length len)
+let right len = (Right, string_of_length len)
+let bottom len = (Bottom, string_of_length len)
+let left len = (Left, string_of_length len)
+let opacity value = (Opacity, pp_float value)
 
 (* Remove deprecated string-based versions *)
 let flex_direction d = (Flex_direction, string_of_flex_direction d)
-let flex value = (Flex, value)
-let flex_grow value = (Flex_grow, value)
-let flex_shrink value = (Flex_shrink, value)
-let flex_wrap value = (Flex_wrap, value)
+let flex value = (Flex, string_of_flex_value value)
+let flex_grow value = (Flex_grow, pp_float value)
+let flex_shrink value = (Flex_shrink, pp_float value)
+let flex_wrap value = (Flex_wrap, string_of_flex_wrap value)
 let align_items a = (Align_items, string_of_align a)
 let align_content a = (Align_content, string_of_align a)
 let align_self a = (Align_self, string_of_align a)
@@ -875,10 +1080,10 @@ let place_self value = (Place_self, value)
 let border_width len = (Border_width, string_of_length len)
 let border_radius len = (Border_radius, string_of_length len)
 let box_shadow value = (Box_shadow, value)
-let table_layout value = (Table_layout, value)
+let table_layout value = (Table_layout, string_of_table_layout value)
 let border_spacing value = (Border_spacing, value)
 let overflow o = (Overflow, string_of_overflow o)
-let object_fit value = (Object_fit, value)
+let object_fit value = (Object_fit, string_of_object_fit value)
 let clip value = (Clip, value)
 let filter value = (Filter, value)
 let background_image value = (Background_image, value)
@@ -891,39 +1096,113 @@ let grid_template_rows value =
   (Grid_template_rows, string_of_grid_template value)
 
 let pointer_events value = (Pointer_events, value)
-let z_index value = (Z_index, value)
-let appearance value = (Appearance, value)
+let z_index value = (Z_index, string_of_int value)
+let appearance value = (Appearance, string_of_appearance value)
 let overflow_x o = (Overflow_x, string_of_overflow o)
 let overflow_y o = (Overflow_y, string_of_overflow o)
-let resize value = (Resize, value)
+let resize value = (Resize, string_of_resize value)
 let vertical_align value = (Vertical_align, value)
-let box_sizing value = (Box_sizing, value)
-let font_family value = (Font_family, value)
+let box_sizing value = (Box_sizing, string_of_box_sizing value)
+
+type font_family_value =
+  | System_ui
+  | Ui_sans_serif
+  | Ui_serif
+  | Ui_monospace
+  | Ui_rounded
+  | Sans_serif
+  | Serif
+  | Monospace
+  | Cursive
+  | Fantasy
+  | Emoji
+  | Math
+  | Fangsong
+  | Apple_color_emoji
+  | Segoe_ui_emoji
+  | Segoe_ui_symbol
+  | Noto_color_emoji
+  | SFMono_regular
+  | Menlo
+  | Monaco
+  | Consolas
+  | Liberation_mono
+  | Courier_new
+  | Courier
+  | Inherit
+  | Initial
+  | Unset
+  | Var of { name : string; fallback : font_family_value list option }
+
+let rec string_of_font_family_value = function
+  | System_ui -> "system-ui"
+  | Ui_sans_serif -> "ui-sans-serif"
+  | Ui_serif -> "ui-serif"
+  | Ui_monospace -> "ui-monospace"
+  | Ui_rounded -> "ui-rounded"
+  | Sans_serif -> "sans-serif"
+  | Serif -> "serif"
+  | Monospace -> "monospace"
+  | Cursive -> "cursive"
+  | Fantasy -> "fantasy"
+  | Emoji -> "emoji"
+  | Math -> "math"
+  | Fangsong -> "fangsong"
+  | Apple_color_emoji -> "\"Apple Color Emoji\""
+  | Segoe_ui_emoji -> "\"Segoe UI Emoji\""
+  | Segoe_ui_symbol -> "\"Segoe UI Symbol\""
+  | Noto_color_emoji -> "\"Noto Color Emoji\""
+  | SFMono_regular -> "SFMono-Regular"
+  | Menlo -> "Menlo"
+  | Monaco -> "Monaco"
+  | Consolas -> "Consolas"
+  | Liberation_mono -> "\"Liberation Mono\""
+  | Courier_new -> "\"Courier New\""
+  | Courier -> "Courier"
+  | Inherit -> "inherit"
+  | Initial -> "initial"
+  | Unset -> "unset"
+  | Var { name; fallback } -> (
+      match fallback with
+      | None -> str [ "var(--"; name; ")" ]
+      | Some fonts ->
+          str
+            [
+              "var(--";
+              name;
+              ",";
+              String.concat "," (List.map string_of_font_family_value fonts);
+              ")";
+            ])
+
+let font_family fonts =
+  (Font_family, String.concat ", " (List.map string_of_font_family_value fonts))
+
 let moz_osx_font_smoothing value = (Moz_osx_font_smoothing, value)
 let webkit_line_clamp value = (Webkit_line_clamp, value)
 let backdrop_filter value = (Backdrop_filter, value)
 let background_position value = (Background_position, value)
 let background_repeat value = (Background_repeat, value)
 let background_size value = (Background_size, value)
-let unsafe_declaration name value = (Custom name, value)
+let unsafe_declaration name value = ((Custom name : property), value)
 
 (* CSS Custom Properties *)
-let custom_property name value =
+let custom_property name value : declaration =
   if not (String.starts_with ~prefix:"--" name) then
     invalid_arg
       (str [ "custom_property: name must start with '--', got: "; name ])
-  else (Custom name, value)
+  else ((Custom name : property), value)
 
 (* Additional property constructors *)
-let content value = (Custom "content", value)
+let content value = (Content, value)
 let border_left_width len = (Border_left_width, string_of_length len)
 let border_bottom_width len = (Border_bottom_width, string_of_length len)
 let border_top_width len = (Border_top_width, string_of_length len)
 let border_right_width len = (Border_right_width, string_of_length len)
-let border_left_color c = (Custom "border-left-color", string_of_color c)
-let border_bottom_color c = (Custom "border-bottom-color", string_of_color c)
-let transition value = (Transition, value)
-let quotes value = (Custom "quotes", value)
+let border_left_color c = (Border_left_color, string_of_color c)
+let border_bottom_color c = (Border_bottom_color, string_of_color c)
+let transition value = (Transition, string_of_transition_value value)
+let quotes value = (Quotes, value)
 
 (* Internal declaration function for tw.ml *)
 let declaration = unsafe_declaration
@@ -957,18 +1236,19 @@ let transform values =
   let str = String.concat " " (List.map string_of_transform_value values) in
   (Transform, str)
 
-let transition_duration value = (Transition_duration, value)
-let transition_timing_function value = (Transition_timing_function, value)
+let transition_duration value = (Transition_duration, string_of_duration value)
+
+let transition_timing_function value =
+  (Transition_timing_function, string_of_timing_function value)
+
 let will_change value = (Will_change, value)
 let contain value = (Contain, value)
 let isolation value = (Isolation, value)
-let padding_inline value = (Padding_inline, value)
-let padding_inline_start value = (Padding_inline_start, value)
-let padding_block value = (Padding_block, value)
-let margin_inline value = (Margin_inline, value)
-let margin_inline_length len = (Margin_inline, string_of_length len)
-let margin_block value = (Margin_block, value)
-let margin_block_length len = (Margin_block, string_of_length len)
+let padding_inline len = (Padding_inline, string_of_length len)
+let padding_inline_start len = (Padding_inline_start, string_of_length len)
+let padding_block len = (Padding_block, string_of_length len)
+let margin_inline len = (Margin_inline, string_of_length len)
+let margin_block len = (Margin_block, string_of_length len)
 let margin_inline_end value = (Margin_inline_end, value)
 let outline value = (Outline, value)
 let outline_offset value = (Outline_offset, value)
@@ -976,6 +1256,94 @@ let scroll_snap_type value = (Scroll_snap_type, value)
 let scroll_snap_align value = (Scroll_snap_align, value)
 let scroll_snap_stop value = (Scroll_snap_stop, value)
 let scroll_behavior value = (Scroll_behavior, value)
+
+(** Flex module *)
+module Flex = struct
+  let direction dir = flex_direction dir
+  let wrap w = flex_wrap w
+  let flex v = flex v
+  let grow n = flex_grow n
+  let shrink n = flex_shrink n
+  let basis len = (Flex_basis, string_of_length len)
+  let order n = (Order, string_of_int n)
+
+  let align_items v =
+    let str =
+      match v with
+      | `Flex_start -> "flex-start"
+      | `Flex_end -> "flex-end"
+      | `Center -> "center"
+      | `Baseline -> "baseline"
+      | `Stretch -> "stretch"
+    in
+    (Align_items, str)
+
+  let align_self v =
+    let str =
+      match v with
+      | `Auto -> "auto"
+      | `Flex_start -> "flex-start"
+      | `Flex_end -> "flex-end"
+      | `Center -> "center"
+      | `Baseline -> "baseline"
+      | `Stretch -> "stretch"
+    in
+    (Align_self, str)
+
+  let justify_content v =
+    let str =
+      match v with
+      | `Flex_start -> "flex-start"
+      | `Flex_end -> "flex-end"
+      | `Center -> "center"
+      | `Space_between -> "space-between"
+      | `Space_around -> "space-around"
+      | `Space_evenly -> "space-evenly"
+    in
+    (Justify_content, str)
+
+  let gap len = (Gap, string_of_length len)
+end
+
+(** Grid module *)
+module Grid = struct
+  let template_columns template = grid_template_columns template
+  let template_rows template = grid_template_rows template
+  let column_gap len = (Column_gap, string_of_length len)
+  let row_gap len = (Row_gap, string_of_length len)
+  let gap len = (Gap, string_of_length len)
+
+  let auto_flow flow =
+    let str =
+      match flow with
+      | `Row -> "row"
+      | `Column -> "column"
+      | `Row_dense -> "row dense"
+      | `Column_dense -> "column dense"
+    in
+    (Grid_auto_flow, str)
+
+  let auto_columns size = (Grid_auto_columns, string_of_grid_track_size size)
+  let auto_rows size = (Grid_auto_rows, string_of_grid_track_size size)
+  let column value = (Grid_column, value)
+  let row value = (Grid_row, value)
+end
+
+(** Border module *)
+module Border = struct
+  let width len = border_width len
+  let style s = border_style s
+  let color c = border_color c
+  let radius len = border_radius len
+  let top_width len = (Border_top_width, string_of_length len)
+  let right_width len = (Border_right_width, string_of_length len)
+  let bottom_width len = (Border_bottom_width, string_of_length len)
+  let left_width len = (Border_left_width, string_of_length len)
+  let top_color c = (Border_top_color, string_of_color c)
+  let right_color c = (Border_right_color, string_of_color c)
+  let bottom_color c = (Border_bottom_color, string_of_color c)
+  let left_color c = (Border_left_color, string_of_color c)
+end
 
 type rule = { selector : string; declarations : declaration list }
 type media_query = { media_condition : string; media_rules : rule list }
@@ -1040,7 +1408,7 @@ type sheet_item =
 let declaration_value (_, value) = value
 let declaration_property (prop_name, _) = prop_name
 
-let is_custom_property (prop_name, _) =
+let is_custom_property ((prop_name, _) : declaration) =
   match prop_name with
   | Custom name -> String.starts_with ~prefix:"--" name
   | _ -> false
@@ -1093,6 +1461,8 @@ let string_of_property = function
   | Flex -> "flex"
   | Flex_grow -> "flex-grow"
   | Flex_shrink -> "flex-shrink"
+  | Flex_basis -> "flex-basis"
+  | Order -> "order"
   | Align_items -> "align-items"
   | Justify_content -> "justify-content"
   | Align_content -> "align-content"
@@ -1103,8 +1473,21 @@ let string_of_property = function
   | Place_self -> "place-self"
   | Grid_template_columns -> "grid-template-columns"
   | Grid_template_rows -> "grid-template-rows"
+  | Grid_auto_flow -> "grid-auto-flow"
+  | Grid_auto_columns -> "grid-auto-columns"
+  | Grid_auto_rows -> "grid-auto-rows"
+  | Grid_column -> "grid-column"
+  | Grid_row -> "grid-row"
   | Border_width -> "border-width"
+  | Border_top_width -> "border-top-width"
+  | Border_right_width -> "border-right-width"
+  | Border_bottom_width -> "border-bottom-width"
+  | Border_left_width -> "border-left-width"
   | Border_radius -> "border-radius"
+  | Border_top_color -> "border-top-color"
+  | Border_right_color -> "border-right-color"
+  | Border_bottom_color -> "border-bottom-color"
+  | Border_left_color -> "border-left-color"
   | Box_shadow -> "box-shadow"
   | Opacity -> "opacity"
   | Transition -> "transition"
@@ -1121,10 +1504,6 @@ let string_of_property = function
   | Bottom -> "bottom"
   | Left -> "left"
   | Z_index -> "z-index"
-  | Border_top_width -> "border-top-width"
-  | Border_right_width -> "border-right-width"
-  | Border_bottom_width -> "border-bottom-width"
-  | Border_left_width -> "border-left-width"
   | Outline -> "outline"
   | Outline_offset -> "outline-offset"
   | Scroll_snap_type -> "scroll-snap-type"
@@ -1148,7 +1527,6 @@ let string_of_property = function
   | Transform_style -> "transform-style"
   | Backface_visibility -> "backface-visibility"
   | Object_position -> "object-position"
-  | Object_fit -> "object-fit"
   | Rotate -> "rotate"
   | Transition_duration -> "transition-duration"
   | Transition_timing_function -> "transition-timing-function"
@@ -1158,12 +1536,9 @@ let string_of_property = function
   | Filter -> "filter"
   | Background_image -> "background-image"
   | Animation -> "animation"
-  | Appearance -> "appearance"
   | Overflow_x -> "overflow-x"
   | Overflow_y -> "overflow-y"
-  | Resize -> "resize"
   | Vertical_align -> "vertical-align"
-  | Box_sizing -> "box-sizing"
   | Font_family -> "font-family"
   | Background_position -> "background-position"
   | Background_repeat -> "background-repeat"
@@ -1175,6 +1550,12 @@ let string_of_property = function
   | Scroll_snap_align -> "scroll-snap-align"
   | Scroll_snap_stop -> "scroll-snap-stop"
   | Scroll_behavior -> "scroll-behavior"
+  | Box_sizing -> "box-sizing"
+  | Resize -> "resize"
+  | Object_fit -> "object-fit"
+  | Appearance -> "appearance"
+  | Content -> "content"
+  | Quotes -> "quotes"
   | Custom s -> s
 
 let rule ~selector declarations = { selector; declarations }

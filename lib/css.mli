@@ -177,7 +177,7 @@ type display =
   | Inline_flex
   | Grid
   | Inline_grid
-  | Display_none
+  | None
   | Table
   | Table_row
   | Table_cell
@@ -189,14 +189,7 @@ type position = Static | Relative | Absolute | Fixed | Sticky
 type font_weight = Weight of int | Normal | Bold | Bolder | Lighter | Inherit
 
 (** CSS text align values. *)
-type text_align =
-  | Left
-  | Right
-  | Center
-  | Justify
-  | Start
-  | End
-  | Text_align_inherit
+type text_align = Left | Right | Center | Justify | Start | End | Inherit
 
 (** CSS overflow values. *)
 type overflow = Visible | Hidden | Scroll | Auto | Clip
@@ -218,19 +211,14 @@ type align =
   | Baseline
 
 (** CSS text decoration values. *)
-type text_decoration =
-  | Text_decoration_none
-  | Underline
-  | Overline
-  | Line_through
-  | Text_decoration_inherit
+type text_decoration = None | Underline | Overline | Line_through | Inherit
 
 (** CSS font style values. *)
 type font_style = Font_normal | Italic | Oblique | Font_inherit
 
 (** CSS list style type values. *)
 type list_style_type =
-  | List_none
+  | None
   | Disc
   | Circle
   | Square
@@ -242,7 +230,7 @@ type list_style_type =
 
 (** CSS border style values. *)
 type border_style =
-  | Border_none
+  | None
   | Solid
   | Dashed
   | Dotted
@@ -293,6 +281,89 @@ type cursor =
 
 (** CSS user-select values. *)
 type user_select = None | Auto | Text | All | Contain
+
+(** CSS flex wrap values. *)
+type flex_wrap = Nowrap | Wrap | Wrap_reverse
+
+(** CSS text transform values. *)
+type text_transform =
+  | None
+  | Uppercase
+  | Lowercase
+  | Capitalize
+  | Full_width
+  | Full_size_kana
+  | Inherit
+
+(** CSS box sizing values. *)
+type box_sizing = Border_box | Content_box | Inherit
+
+(** CSS white space values. *)
+type white_space =
+  | Normal
+  | Nowrap
+  | Pre
+  | Pre_wrap
+  | Pre_line
+  | Break_spaces
+  | Inherit
+
+(** CSS table layout values. *)
+type table_layout = Auto | Fixed | Inherit
+
+(** CSS resize values. *)
+type resize_value =
+  | None
+  | Both
+  | Horizontal
+  | Vertical
+  | Block
+  | Inline
+  | Inherit
+
+(** CSS object fit values. *)
+type object_fit = Fill | Contain | Cover | None | Scale_down | Inherit
+
+(** CSS appearance values. *)
+type appearance_value = None | Auto | Button | Textfield | Menulist | Inherit
+
+(** CSS flex shorthand values. *)
+type flex_value =
+  | Initial (* 0 1 auto *)
+  | Auto (* 1 1 auto *)
+  | None (* 0 0 auto *)
+  | Grow of float (* grow 1 0% *)
+  | Basis of length (* 1 1 basis *)
+  | Grow_shrink of float * float (* grow shrink 0% *)
+  | Full of float * float * length (* grow shrink basis *)
+
+(** CSS duration values. *)
+type duration =
+  | Ms of int
+  (* milliseconds *)
+  | S of float (* seconds *)
+
+(** CSS timing function values. *)
+type timing_function =
+  | Ease
+  | Linear
+  | Ease_in
+  | Ease_out
+  | Ease_in_out
+  | Step_start
+  | Step_end
+  | Steps of int * [ `Start | `End ]
+  | Cubic_bezier of float * float * float * float
+
+(** CSS transition property values. *)
+type transition_property = All | None | Property of string
+
+(** CSS transition values. *)
+type transition_value =
+  | Simple of transition_property * duration
+  | With_timing of transition_property * duration * timing_function
+  | With_delay of transition_property * duration * timing_function * duration
+  | Multiple of transition_value list
 
 (** CSS grid track sizing. *)
 type grid_track_size =
@@ -422,6 +493,126 @@ type at_property
 
 (** {1 Declaration Constructors} *)
 
+(** {2 Modular Property Groups} *)
+
+(** Flex layout properties. *)
+module Flex : sig
+  val direction : flex_direction -> declaration
+  (** [direction dir] sets the flex-direction property. *)
+
+  val wrap : flex_wrap -> declaration
+  (** [wrap w] sets the flex-wrap property. *)
+
+  val flex : flex_value -> declaration
+  (** [flex value] sets the flex shorthand property. *)
+
+  val grow : float -> declaration
+  (** [grow n] sets the flex-grow property. *)
+
+  val shrink : float -> declaration
+  (** [shrink n] sets the flex-shrink property. *)
+
+  val basis : length -> declaration
+  (** [basis len] sets the flex-basis property. *)
+
+  val order : int -> declaration
+  (** [order n] sets the order property. *)
+
+  val align_items :
+    [ `Flex_start | `Flex_end | `Center | `Baseline | `Stretch ] -> declaration
+  (** [align_items value] sets the align-items property. *)
+
+  val align_self :
+    [ `Auto | `Flex_start | `Flex_end | `Center | `Baseline | `Stretch ] ->
+    declaration
+  (** [align_self value] sets the align-self property. *)
+
+  val justify_content :
+    [ `Flex_start
+    | `Flex_end
+    | `Center
+    | `Space_between
+    | `Space_around
+    | `Space_evenly ] ->
+    declaration
+  (** [justify_content value] sets the justify-content property. *)
+
+  val gap : length -> declaration
+  (** [gap len] sets the gap property for flex containers. *)
+end
+
+(** Grid layout properties. *)
+module Grid : sig
+  val template_columns : grid_template -> declaration
+  (** [template_columns template] sets the grid-template-columns property. *)
+
+  val template_rows : grid_template -> declaration
+  (** [template_rows template] sets the grid-template-rows property. *)
+
+  val column_gap : length -> declaration
+  (** [column_gap len] sets the column-gap property. *)
+
+  val row_gap : length -> declaration
+  (** [row_gap len] sets the row-gap property. *)
+
+  val gap : length -> declaration
+  (** [gap len] sets the gap property for grid containers. *)
+
+  val auto_flow : [ `Row | `Column | `Row_dense | `Column_dense ] -> declaration
+  (** [auto_flow flow] sets the grid-auto-flow property. *)
+
+  val auto_columns : grid_track_size -> declaration
+  (** [auto_columns size] sets the grid-auto-columns property. *)
+
+  val auto_rows : grid_track_size -> declaration
+  (** [auto_rows size] sets the grid-auto-rows property. *)
+
+  val column : string -> declaration
+  (** [column value] sets the grid-column shorthand property. *)
+
+  val row : string -> declaration
+  (** [row value] sets the grid-row shorthand property. *)
+end
+
+(** Border properties. *)
+module Border : sig
+  val width : length -> declaration
+  (** [width len] sets the border-width property. *)
+
+  val style : border_style -> declaration
+  (** [style s] sets the border-style property. *)
+
+  val color : color -> declaration
+  (** [color c] sets the border-color property. *)
+
+  val radius : length -> declaration
+  (** [radius len] sets the border-radius property. *)
+
+  val top_width : length -> declaration
+  (** [top_width len] sets the border-top-width property. *)
+
+  val right_width : length -> declaration
+  (** [right_width len] sets the border-right-width property. *)
+
+  val bottom_width : length -> declaration
+  (** [bottom_width len] sets the border-bottom-width property. *)
+
+  val left_width : length -> declaration
+  (** [left_width len] sets the border-left-width property. *)
+
+  val top_color : color -> declaration
+  (** [top_color c] sets the border-top-color property. *)
+
+  val right_color : color -> declaration
+  (** [right_color c] sets the border-right-color property. *)
+
+  val bottom_color : color -> declaration
+  (** [bottom_color c] sets the border-bottom-color property. *)
+
+  val left_color : color -> declaration
+  (** [left_color c] sets the border-left-color property. *)
+end
+
 (** {2 CSS Custom Properties (Variables)} *)
 
 val custom_property : string -> string -> declaration
@@ -507,16 +698,16 @@ val position : position -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/position>
       MDN: position. *)
 
-val top : string -> declaration
+val top : length -> declaration
 (** [top value] sets the CSS top property. *)
 
-val right : string -> declaration
+val right : length -> declaration
 (** [right value] sets the CSS right property. *)
 
-val bottom : string -> declaration
+val bottom : length -> declaration
 (** [bottom value] sets the CSS bottom property. *)
 
-val left : string -> declaration
+val left : length -> declaration
 (** [left value] sets the CSS left property. *)
 
 val font_weight : font_weight -> declaration
@@ -534,26 +725,11 @@ val overflow_x : overflow -> declaration
 val overflow_y : overflow -> declaration
 (** [overflow_y o] sets the CSS overflow-y property. *)
 
-val opacity : string -> declaration
+val opacity : float -> declaration
 (** [opacity value] sets the CSS opacity property. *)
 
-val resize : string -> declaration
+val resize : resize_value -> declaration
 (** [resize value] sets the CSS resize property. *)
-
-val flex_direction : flex_direction -> declaration
-(** [flex_direction d] sets the CSS flex-direction property. *)
-
-val flex : string -> declaration
-(** [flex value] sets the CSS flex property. *)
-
-val flex_grow : string -> declaration
-(** [flex_grow value] sets the CSS flex-grow property. *)
-
-val flex_shrink : string -> declaration
-(** [flex_shrink value] sets the CSS flex-shrink property. *)
-
-val flex_wrap : string -> declaration
-(** [flex_wrap value] sets the CSS flex-wrap property. *)
 
 val align_items : align -> declaration
 (** [align_items a] sets the CSS align-items property. *)
@@ -662,7 +838,7 @@ val text_decoration : text_decoration -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration>
       MDN: text-decoration. *)
 
-val text_transform : string -> declaration
+val text_transform : text_transform -> declaration
 (** [text_transform value] sets the CSS text-transform property.
 
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/text-transform>
@@ -715,28 +891,59 @@ val border_left_color : color -> declaration
 val border_bottom_color : color -> declaration
 (** [border_bottom_color c] sets the CSS border-bottom-color property. *)
 
-val transition : string -> declaration
+val transition : transition_value -> declaration
 (** [transition value] sets the CSS transition property. *)
 
 val quotes : string -> declaration
 (** [quotes value] sets the CSS quotes property. *)
 
-val font_family : string -> declaration
+type font_family_value =
+  | System_ui
+  | Ui_sans_serif
+  | Ui_serif
+  | Ui_monospace
+  | Ui_rounded
+  | Sans_serif
+  | Serif
+  | Monospace
+  | Cursive
+  | Fantasy
+  | Emoji
+  | Math
+  | Fangsong
+  (* Common system fonts *)
+  | Apple_color_emoji
+  | Segoe_ui_emoji
+  | Segoe_ui_symbol
+  | Noto_color_emoji
+  | SFMono_regular
+  | Menlo
+  | Monaco
+  | Consolas
+  | Liberation_mono
+  | Courier_new
+  | Courier
+  | Inherit
+  | Initial
+  | Unset
+  | Var of { name : string; fallback : font_family_value list option }
+
+val font_family : font_family_value list -> declaration
 (** [font_family value] sets the CSS font-family property. *)
 
-val table_layout : string -> declaration
+val table_layout : table_layout -> declaration
 (** [table_layout value] sets the CSS table-layout property. *)
 
 val vertical_align : string -> declaration
 (** [vertical_align value] sets the CSS vertical-align property. *)
 
-val box_sizing : string -> declaration
+val box_sizing : box_sizing -> declaration
 (** [box_sizing value] sets the CSS box-sizing property. *)
 
 val box_shadow : string -> declaration
 (** [box_shadow value] sets the CSS box-shadow property. *)
 
-val appearance : string -> declaration
+val appearance : appearance_value -> declaration
 (** [appearance value] sets the CSS appearance property. *)
 
 (** {2 Additional CSS Properties} *)
@@ -864,7 +1071,7 @@ val object_position : string -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/object-position>
       MDN: object-position. *)
 
-val object_fit : string -> declaration
+val object_fit : object_fit -> declaration
 (** [object_fit value] sets the CSS object-fit property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/object-fit>
       MDN: object-fit. *)
@@ -880,12 +1087,12 @@ val transform : transform_value list -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/transform>
       MDN: transform. *)
 
-val transition_duration : string -> declaration
+val transition_duration : duration -> declaration
 (** [transition_duration value] sets the CSS transition-duration property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/transition-duration>
       MDN: transition-duration. *)
 
-val transition_timing_function : string -> declaration
+val transition_timing_function : timing_function -> declaration
 (** [transition_timing_function value] sets the CSS transition-timing-function
     property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/transition-timing-function>
@@ -906,38 +1113,30 @@ val isolation : string -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/isolation>
       MDN: isolation. *)
 
-val padding_inline_start : string -> declaration
+val padding_inline_start : length -> declaration
 (** [padding_inline_start value] sets the CSS padding-inline-start property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/padding-inline-start>
       MDN: padding-inline-start. *)
 
-val padding_inline : string -> declaration
+val padding_inline : length -> declaration
 (** [padding_inline value] sets the CSS padding-inline shorthand property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/padding-inline>
       MDN: padding-inline. *)
 
-val padding_block : string -> declaration
+val padding_block : length -> declaration
 (** [padding_block value] sets the CSS padding-block shorthand property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/padding-block>
       MDN: padding-block. *)
 
-val margin_inline : string -> declaration
-(** [margin_inline value] sets the CSS margin-inline shorthand property.
+val margin_inline : length -> declaration
+(** [margin_inline len] sets the CSS margin-inline property with a length value.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/margin-inline>
       MDN: margin-inline. *)
 
-val margin_inline_length : length -> declaration
-(** [margin_inline_length len] sets the CSS margin-inline property with a length
-    value. *)
-
-val margin_block : string -> declaration
-(** [margin_block value] sets the CSS margin-block shorthand property.
+val margin_block : length -> declaration
+(** [margin_block len] sets the CSS margin-block property with a length value.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/margin-block>
       MDN: margin-block. *)
-
-val margin_block_length : length -> declaration
-(** [margin_block_length len] sets the CSS margin-block property with a length
-    value. *)
 
 val margin_inline_end : string -> declaration
 (** [margin_inline_end value] sets the CSS margin-inline-end property.
@@ -954,7 +1153,7 @@ val outline_offset : string -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/outline-offset>
       MDN: outline-offset. *)
 
-val white_space : string -> declaration
+val white_space : white_space -> declaration
 (** [white_space value] sets the CSS white-space property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/white-space>
       MDN: white-space. *)
@@ -1013,44 +1212,34 @@ val animation : string -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/animation>
       MDN: animation. *)
 
-val grid_template_columns : grid_template -> declaration
-(** [grid_template_columns template] sets the CSS grid-template-columns
-    property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/grid-template-columns>
-      MDN: grid-template-columns. *)
-
-val grid_template_rows : grid_template -> declaration
-(** [grid_template_rows template] sets the CSS grid-template-rows property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/grid-template-rows>
-      MDN: grid-template-rows. *)
-
 val pointer_events : string -> declaration
 (** [pointer_events value] sets the CSS pointer-events property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/pointer-events>
       MDN: pointer-events. *)
 
-val z_index : string -> declaration
+val z_index : int -> declaration
 (** [z_index value] sets the CSS z-index property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/z-index>
       MDN: z-index. *)
 
-(** {3 Internal functions - DO NOT USE in client code} *)
-
 val declaration : string -> string -> declaration
-(** Internal function for tw.ml. DO NOT USE in client code. *)
+(** [declaration property value] creates a CSS declaration with arbitrary
+    property and value. This is an escape hatch for properties not yet modeled
+    in the typed API. *)
 
 val rule : selector:string -> declaration list -> rule
-(** [rule ~selector declarations] creates a CSS rule with a selector and
-    declarations. *)
+(** [rule ~selector declarations] creates a CSS rule with the given selector and
+    list of declarations. This is the primary way to create CSS rules. *)
 
 val selector : rule -> string
-(** [selector rule] returns the selector of a CSS rule. *)
+(** [selector rule] returns the selector string of a CSS rule. *)
 
 val declarations : rule -> declaration list
-(** [declarations rule] returns the declarations of a CSS rule. *)
+(** [declarations rule] returns the list of declarations in a CSS rule. *)
 
 val rule_to_nested : rule -> nested_rule
-(** [rule_to_nested rule] converts a rule to a nested_rule. *)
+(** [rule_to_nested rule] converts a rule to a nested_rule for use in layered or
+    nested contexts. *)
 
 val supports_to_nested : supports_query -> nested_rule
 (** [supports_to_nested supports] converts a supports query to a nested_rule. *)
