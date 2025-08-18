@@ -30,11 +30,12 @@ type length =
   | Auto
   | Zero
   | Inherit
+  | Var of string (* CSS variable reference *)
   | Calc of calc_value (* Calculated expressions *)
 
 and calc_value =
   | Length of length
-  | Var of var (* CSS variable *)
+  | Calc_var of string (* CSS variable name *)
   | Calc_num of float
   | Expr of calc_value * calc_op * calc_value
 
@@ -269,11 +270,12 @@ let rec string_of_length = function
   | Auto -> "auto"
   | Zero -> "0"
   | Inherit -> "inherit"
+  | Var name -> str [ "var("; name; ")" ]
   | Calc cv -> str [ "calc("; string_of_calc_value cv; ")" ]
 
 and string_of_calc_value = function
   | Length l -> string_of_length l
-  | Var v -> str [ "var(--"; string_of_var v; ")" ]
+  | Calc_var name -> str [ "var("; name; ")" ]
   | Calc_num f -> pp_float f
   | Expr (left, op, right) ->
       let op_str =
@@ -285,21 +287,6 @@ and string_of_calc_value = function
       in
       str [ string_of_calc_value left; op_str; string_of_calc_value right ]
 
-and string_of_var = function
-  | Color { name; shade = Some s } ->
-      str [ "color-"; name; "-"; string_of_int s ]
-  | Color { name; shade = None } -> "color-" ^ name
-  | Spacing n -> "spacing-" ^ string_of_int n
-  | Font family -> "font-" ^ family
-  | Text_size size -> "text-" ^ size
-  | Font_weight weight -> "font-weight-" ^ weight
-  | Radius r -> "radius-" ^ r
-  | Transition -> "transition"
-  | Custom { name; _ } ->
-      if String.starts_with ~prefix:"--" name then
-        String.sub name 2 (String.length name - 2)
-      else name
-
 (* Smart constructors for CSS variables *)
 let color_var ?shade name = Color { name; shade }
 let spacing_var n = Spacing n
@@ -309,6 +296,17 @@ let font_weight_var weight = Font_weight weight
 let radius_var r = Radius r
 let transition_var = Transition
 let custom_var name value = Custom { name; value }
+
+(* Calc module for building calc() expressions *)
+module Calc = struct
+  let add left right = Expr (left, Add, right)
+  let sub left right = Expr (left, Sub, right)
+  let mul left right = Expr (left, Mult, right)
+  let div left right = Expr (left, Div, right)
+  let from_length len = Length len
+  let from_var name = Calc_var name
+  let from_float f = Calc_num f
+end
 
 let string_of_color = function
   | Hex s -> str [ "#"; s ]

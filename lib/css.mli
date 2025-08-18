@@ -123,14 +123,40 @@ type length =
   | Auto
   | Zero
   | Inherit
+  | Var of string (* CSS variable reference *)
   | Calc of calc_value (* Calculated expressions *)
 
 (** CSS calc values. *)
 and calc_value =
   | Length of length
-  | Var of var (* CSS variable *)
+  | Calc_var of string (* CSS variable name *)
   | Calc_num of float (* Numeric value in calc expressions *)
   | Expr of calc_value * calc_op * calc_value
+
+(** Builder functions for calc() expressions. *)
+module Calc : sig
+  val add : calc_value -> calc_value -> calc_value
+  (** [add left right] creates [left + right] *)
+
+  val sub : calc_value -> calc_value -> calc_value
+  (** [sub left right] creates [left - right] *)
+
+  val mul : calc_value -> calc_value -> calc_value
+  (** [mul left right] creates [left * right] *)
+
+  val div : calc_value -> calc_value -> calc_value
+  (** [div left right] creates [left / right] *)
+
+  val from_length : length -> calc_value
+  (** [from_length len] lifts a length value into calc_value *)
+
+  val from_var : string -> calc_value
+  (** [from_var name] creates a variable reference for calc expressions.
+      Example: [from_var "--spacing"] *)
+
+  val from_float : float -> calc_value
+  (** [from_float f] creates a numeric value for calc expressions *)
+end
 
 (** CSS color values. *)
 type color =
