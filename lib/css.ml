@@ -6,14 +6,14 @@ let lines segments = str ~sep:"\n" segments
 
 (** CSS variable types *)
 type var =
-  | Color of string * int option (* color name and optional shade *)
-  | Spacing of int (* spacing value *)
-  | Font of string (* font family *)
-  | Text_size of string (* text size *)
-  | Font_weight of string (* font weight *)
-  | Radius of string (* border radius *)
-  | Transition (* transition timing *)
-  | Custom of string * string (* custom variable name and value *)
+  | Color of { name : string; shade : int option }
+  | Spacing of int
+  | Font of string
+  | Text_size of string
+  | Font_weight of string
+  | Radius of string
+  | Transition
+  | Custom of { name : string; value : string }
 
 (** CSS length values *)
 type calc_op = Add | Sub | Mult | Div
@@ -35,7 +35,7 @@ type length =
 and calc_value =
   | Length of length
   | Var of var (* CSS variable *)
-  | CalcNum of float
+  | Calc_num of float
   | Expr of calc_value * calc_op * calc_value
 
 (** CSS color values *)
@@ -177,21 +177,21 @@ type user_select = None | Auto | Text | All | Contain
 (** CSS grid track sizing *)
 type grid_track_size =
   | Fr of float
-  | MinMax of length * grid_track_size
-  | GridAuto
-  | MaxContent
-  | MinContent
-  | FitContent of length
-  | GridLength of length
+  | Min_max of length * grid_track_size
+  | Grid_auto
+  | Max_content
+  | Min_content
+  | Fit_content of length
+  | Grid_length of length
 
 (** CSS grid template values *)
 type grid_template =
   | Tracks of grid_track_size list
   | Repeat of int * grid_track_size
-  | RepeatAutoFill of grid_track_size
-  | RepeatAutoFit of grid_track_size
-  | GridNone
-  | GridInherit
+  | Repeat_auto_fill of grid_track_size
+  | Repeat_auto_fit of grid_track_size
+  | Grid_none
+  | Grid_inherit
 
 (** CSS transform angle values *)
 type angle =
@@ -199,36 +199,36 @@ type angle =
   | Rad of float
   | Turn of float
   | Grad of float
-  | AngleVar of { var_name : string; fallback : float option }
+  | Angle_var of { var_name : string; fallback : float option }
 
 (** CSS transform scale values *)
 type scale_value =
-  | ScaleNum of float
-  | ScaleVar of { var_name : string; fallback : float option }
+  | Scale_num of float
+  | Scale_var of { var_name : string; fallback : float option }
 
 (** CSS transform values *)
 type transform_value =
-  | TranslateX of length
-  | TranslateY of length
-  | TranslateZ of length
+  | Translate_x of length
+  | Translate_y of length
+  | Translate_z of length
   | Translate of length * length
-  | TranslateVar of { var_name : string; fallback : string option }
+  | Translate_var of { var_name : string; fallback : string option }
   | Translate3d of length * length * length
-  | RotateX of angle
-  | RotateY of angle
-  | RotateZ of angle
+  | Rotate_x of angle
+  | Rotate_y of angle
+  | Rotate_z of angle
   | Rotate of angle
-  | RotateVar of { var_name : string; fallback : string option }
+  | Rotate_var of { var_name : string; fallback : string option }
   | Rotate3d of float * float * float * angle
-  | ScaleX of scale_value
-  | ScaleY of scale_value
-  | ScaleZ of scale_value
+  | Scale_x of scale_value
+  | Scale_y of scale_value
+  | Scale_z of scale_value
   | Scale of scale_value
   | Scale2 of scale_value * scale_value
   | Scale3d of scale_value * scale_value * scale_value
-  | SkewX of angle
-  | SkewY of angle
-  | SkewVar of { var_name : string; fallback : string option }
+  | Skew_x of angle
+  | Skew_y of angle
+  | Skew_var of { var_name : string; fallback : string option }
   | Skew of angle * angle
   | Matrix of float * float * float * float * float * float
   | Matrix3d of
@@ -251,25 +251,30 @@ type transform_value =
   | Perspective of length
   | Transform_none
 
+let pp_float f =
+  let s = string_of_float f in
+  if String.ends_with ~suffix:"." s then String.sub s 0 (String.length s - 1)
+  else s
+
 (* Convert typed values to strings *)
 let rec string_of_length = function
-  | Px n -> string_of_int n ^ "px"
-  | Rem f -> string_of_float f ^ "rem"
-  | Em f -> string_of_float f ^ "em"
-  | Pct f -> string_of_float f ^ "%"
-  | Vw f -> string_of_float f ^ "vw"
-  | Vh f -> string_of_float f ^ "vh"
-  | Ch f -> string_of_float f ^ "ch"
-  | Num f -> string_of_float f
+  | Px n -> str [ string_of_int n; "px" ]
+  | Rem f -> str [ pp_float f; "rem" ]
+  | Em f -> str [ pp_float f; "em" ]
+  | Pct f -> str [ pp_float f; "%" ]
+  | Vw f -> str [ pp_float f; "vw" ]
+  | Vh f -> str [ pp_float f; "vh" ]
+  | Ch f -> str [ pp_float f; "ch" ]
+  | Num f -> pp_float f
   | Auto -> "auto"
   | Zero -> "0"
   | Inherit -> "inherit"
-  | Calc cv -> "calc(" ^ string_of_calc_value cv ^ ")"
+  | Calc cv -> str [ "calc("; string_of_calc_value cv; ")" ]
 
 and string_of_calc_value = function
   | Length l -> string_of_length l
-  | Var v -> "var(--" ^ string_of_var v ^ ")"
-  | CalcNum f -> string_of_float f
+  | Var v -> str [ "var(--"; string_of_var v; ")" ]
+  | Calc_num f -> pp_float f
   | Expr (left, op, right) ->
       let op_str =
         match op with
@@ -278,18 +283,29 @@ and string_of_calc_value = function
         | Mult -> " * "
         | Div -> " / "
       in
-      string_of_calc_value left ^ op_str ^ string_of_calc_value right
+      str [ string_of_calc_value left; op_str; string_of_calc_value right ]
 
 and string_of_var = function
-  | Color (name, Some shade) -> "color-" ^ name ^ "-" ^ string_of_int shade
-  | Color (name, None) -> "color-" ^ name
+  | Color { name; shade = Some s } ->
+      str [ "color-"; name; "-"; string_of_int s ]
+  | Color { name; shade = None } -> "color-" ^ name
   | Spacing n -> "spacing-" ^ string_of_int n
   | Font family -> "font-" ^ family
   | Text_size size -> "text-" ^ size
   | Font_weight weight -> "font-weight-" ^ weight
   | Radius r -> "radius-" ^ r
   | Transition -> "transition"
-  | Custom (name, _) -> name
+  | Custom { name; _ } -> name
+
+(* Smart constructors for CSS variables *)
+let color_var ?shade name = Color { name; shade }
+let spacing_var n = Spacing n
+let font_var family = Font family
+let text_size_var size = Text_size size
+let font_weight_var weight = Font_weight weight
+let radius_var r = Radius r
+let transition_var = Transition
+let custom_var name value = Custom { name; value }
 
 let string_of_color = function
   | Hex s -> str [ "#"; s ]
@@ -314,7 +330,7 @@ let string_of_color = function
           ", ";
           string_of_int b;
           ", ";
-          string_of_float a;
+          pp_float a;
           ")";
         ]
   | Var v -> str [ "var(--"; v; ")" ]
@@ -465,123 +481,195 @@ let string_of_user_select : user_select -> string = function
   | Contain -> "contain"
 
 let rec string_of_grid_track_size = function
-  | Fr f -> string_of_float f ^ "fr"
-  | MinMax (min, max) ->
-      "minmax(" ^ string_of_length min ^ ", "
-      ^ string_of_grid_track_size max
-      ^ ")"
-  | GridAuto -> "auto"
-  | MaxContent -> "max-content"
-  | MinContent -> "min-content"
-  | FitContent l -> "fit-content(" ^ string_of_length l ^ ")"
-  | GridLength l -> string_of_length l
+  | Fr f -> str [ pp_float f; "fr" ]
+  | Min_max (min, max) ->
+      str
+        [
+          "minmax(";
+          string_of_length min;
+          ", ";
+          string_of_grid_track_size max;
+          ")";
+        ]
+  | Grid_auto -> "auto"
+  | Max_content -> "max-content"
+  | Min_content -> "min-content"
+  | Fit_content l -> str [ "fit-content("; string_of_length l; ")" ]
+  | Grid_length l -> string_of_length l
 
 let string_of_grid_template = function
   | Tracks sizes -> String.concat " " (List.map string_of_grid_track_size sizes)
   | Repeat (count, size) ->
-      "repeat(" ^ string_of_int count ^ ", "
-      ^ string_of_grid_track_size size
-      ^ ")"
-  | RepeatAutoFill size ->
-      "repeat(auto-fill, " ^ string_of_grid_track_size size ^ ")"
-  | RepeatAutoFit size ->
-      "repeat(auto-fit, " ^ string_of_grid_track_size size ^ ")"
-  | GridNone -> "none"
-  | GridInherit -> "inherit"
+      str
+        [
+          "repeat(";
+          string_of_int count;
+          ", ";
+          string_of_grid_track_size size;
+          ")";
+        ]
+  | Repeat_auto_fill size ->
+      str [ "repeat(auto-fill, "; string_of_grid_track_size size; ")" ]
+  | Repeat_auto_fit size ->
+      str [ "repeat(auto-fit, "; string_of_grid_track_size size; ")" ]
+  | Grid_none -> "none"
+  | Grid_inherit -> "inherit"
 
 let string_of_angle = function
-  | Deg f -> string_of_float f ^ "deg"
-  | Rad f -> string_of_float f ^ "rad"
-  | Turn f -> string_of_float f ^ "turn"
-  | Grad f -> string_of_float f ^ "grad"
-  | AngleVar { var_name; fallback } -> (
+  | Deg f -> str [ pp_float f; "deg" ]
+  | Rad f -> str [ pp_float f; "rad" ]
+  | Turn f -> str [ pp_float f; "turn" ]
+  | Grad f -> str [ pp_float f; "grad" ]
+  | Angle_var { var_name; fallback } -> (
       match fallback with
-      | None -> "var(--" ^ var_name ^ ")"
-      | Some f -> "var(--" ^ var_name ^ ", " ^ string_of_float f ^ ")")
+      | None -> str [ "var(--"; var_name; ")" ]
+      | Some f -> str [ "var(--"; var_name; ", "; pp_float f; ")" ])
 
 let string_of_scale_value = function
-  | ScaleNum f -> string_of_float f
-  | ScaleVar { var_name; fallback } -> (
+  | Scale_num f -> pp_float f
+  | Scale_var { var_name; fallback } -> (
       match fallback with
-      | None -> "var(--" ^ var_name ^ ")"
-      | Some f -> "var(--" ^ var_name ^ ", " ^ string_of_float f ^ ")")
+      | None -> str [ "var(--"; var_name; ")" ]
+      | Some f -> str [ "var(--"; var_name; ", "; pp_float f; ")" ])
 
-let string_of_transform_value = function
-  | TranslateX l -> "translateX(" ^ string_of_length l ^ ")"
-  | TranslateY l -> "translateY(" ^ string_of_length l ^ ")"
-  | TranslateZ l -> "translateZ(" ^ string_of_length l ^ ")"
+(* Helper functions for transform values *)
+let string_of_translate = function
+  | Translate_x l -> str [ "translateX("; string_of_length l; ")" ]
+  | Translate_y l -> str [ "translateY("; string_of_length l; ")" ]
+  | Translate_z l -> str [ "translateZ("; string_of_length l; ")" ]
   | Translate (x, y) ->
-      "translate(" ^ string_of_length x ^ ", " ^ string_of_length y ^ ")"
-  | TranslateVar { var_name; fallback } -> (
+      str [ "translate("; string_of_length x; ", "; string_of_length y; ")" ]
+  | Translate_var { var_name; fallback } -> (
       match fallback with
-      | None -> "translate(var(--" ^ var_name ^ "))"
-      | Some fb -> "translate(var(--" ^ var_name ^ ", " ^ fb ^ "))")
+      | None -> str [ "translate(var(--"; var_name; "))" ]
+      | Some fb -> str [ "translate(var(--"; var_name; ", "; fb; "))" ])
   | Translate3d (x, y, z) ->
-      "translate3d(" ^ string_of_length x ^ ", " ^ string_of_length y ^ ", "
-      ^ string_of_length z ^ ")"
-  | RotateX a -> "rotateX(" ^ string_of_angle a ^ ")"
-  | RotateY a -> "rotateY(" ^ string_of_angle a ^ ")"
-  | RotateZ a -> "rotateZ(" ^ string_of_angle a ^ ")"
-  | Rotate a -> "rotate(" ^ string_of_angle a ^ ")"
-  | RotateVar { var_name; fallback } -> (
+      str
+        [
+          "translate3d(";
+          string_of_length x;
+          ", ";
+          string_of_length y;
+          ", ";
+          string_of_length z;
+          ")";
+        ]
+  | _ -> invalid_arg "string_of_translate"
+
+let string_of_rotate = function
+  | Rotate_x a -> str [ "rotateX("; string_of_angle a; ")" ]
+  | Rotate_y a -> str [ "rotateY("; string_of_angle a; ")" ]
+  | Rotate_z a -> str [ "rotateZ("; string_of_angle a; ")" ]
+  | Rotate a -> str [ "rotate("; string_of_angle a; ")" ]
+  | Rotate_var { var_name; fallback } -> (
       match fallback with
-      | None -> "rotate(var(--" ^ var_name ^ "))"
-      | Some fb -> "rotate(var(--" ^ var_name ^ ", " ^ fb ^ "))")
+      | None -> str [ "rotate(var(--"; var_name; "))" ]
+      | Some fb -> str [ "rotate(var(--"; var_name; ", "; fb; "))" ])
   | Rotate3d (x, y, z, angle) ->
-      "rotate3d(" ^ string_of_float x ^ ", " ^ string_of_float y ^ ", "
-      ^ string_of_float z ^ ", " ^ string_of_angle angle ^ ")"
-  | ScaleX s -> "scaleX(" ^ string_of_scale_value s ^ ")"
-  | ScaleY s -> "scaleY(" ^ string_of_scale_value s ^ ")"
-  | ScaleZ s -> "scaleZ(" ^ string_of_scale_value s ^ ")"
-  | Scale s -> "scale(" ^ string_of_scale_value s ^ ")"
+      str
+        [
+          "rotate3d(";
+          pp_float x;
+          ", ";
+          pp_float y;
+          ", ";
+          pp_float z;
+          ", ";
+          string_of_angle angle;
+          ")";
+        ]
+  | _ -> invalid_arg "string_of_rotate"
+
+let string_of_scale = function
+  | Scale_x s -> str [ "scaleX("; string_of_scale_value s; ")" ]
+  | Scale_y s -> str [ "scaleY("; string_of_scale_value s; ")" ]
+  | Scale_z s -> str [ "scaleZ("; string_of_scale_value s; ")" ]
+  | Scale s -> str [ "scale("; string_of_scale_value s; ")" ]
   | Scale2 (x, y) ->
-      "scale(" ^ string_of_scale_value x ^ ", " ^ string_of_scale_value y ^ ")"
+      str
+        [
+          "scale("; string_of_scale_value x; ", "; string_of_scale_value y; ")";
+        ]
   | Scale3d (x, y, z) ->
-      "scale3d(" ^ string_of_scale_value x ^ ", " ^ string_of_scale_value y
-      ^ ", " ^ string_of_scale_value z ^ ")"
-  | SkewX a -> "skewX(" ^ string_of_angle a ^ ")"
-  | SkewY a -> "skewY(" ^ string_of_angle a ^ ")"
-  | SkewVar { var_name; fallback } -> (
+      str
+        [
+          "scale3d(";
+          string_of_scale_value x;
+          ", ";
+          string_of_scale_value y;
+          ", ";
+          string_of_scale_value z;
+          ")";
+        ]
+  | _ -> invalid_arg "string_of_scale"
+
+let string_of_skew = function
+  | Skew_x a -> str [ "skewX("; string_of_angle a; ")" ]
+  | Skew_y a -> str [ "skewY("; string_of_angle a; ")" ]
+  | Skew_var { var_name; fallback } -> (
       match fallback with
-      | None -> "skew(var(--" ^ var_name ^ "))"
-      | Some fb -> "skew(var(--" ^ var_name ^ ", " ^ fb ^ "))")
-  | Skew (x, y) -> "skew(" ^ string_of_angle x ^ ", " ^ string_of_angle y ^ ")"
+      | None -> str [ "skew(var(--"; var_name; "))" ]
+      | Some fb -> str [ "skew(var(--"; var_name; ", "; fb; "))" ])
+  | Skew (x, y) ->
+      str [ "skew("; string_of_angle x; ", "; string_of_angle y; ")" ]
+  | _ -> invalid_arg "string_of_skew"
+
+let string_of_matrix = function
   | Matrix (a, b, c, d, e, f) ->
-      "matrix("
-      ^ String.concat ", "
-          [
-            string_of_float a;
-            string_of_float b;
-            string_of_float c;
-            string_of_float d;
-            string_of_float e;
-            string_of_float f;
-          ]
-      ^ ")"
+      str
+        [
+          "matrix(";
+          String.concat ", "
+            [
+              pp_float a;
+              pp_float b;
+              pp_float c;
+              pp_float d;
+              pp_float e;
+              pp_float f;
+            ];
+          ")";
+        ]
   | Matrix3d
       (m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11, m12, m13, m14, m15, m16) ->
-      "matrix3d("
-      ^ String.concat ", "
-          [
-            string_of_float m1;
-            string_of_float m2;
-            string_of_float m3;
-            string_of_float m4;
-            string_of_float m5;
-            string_of_float m6;
-            string_of_float m7;
-            string_of_float m8;
-            string_of_float m9;
-            string_of_float m10;
-            string_of_float m11;
-            string_of_float m12;
-            string_of_float m13;
-            string_of_float m14;
-            string_of_float m15;
-            string_of_float m16;
-          ]
-      ^ ")"
-  | Perspective l -> "perspective(" ^ string_of_length l ^ ")"
+      str
+        [
+          "matrix3d(";
+          String.concat ", "
+            [
+              pp_float m1;
+              pp_float m2;
+              pp_float m3;
+              pp_float m4;
+              pp_float m5;
+              pp_float m6;
+              pp_float m7;
+              pp_float m8;
+              pp_float m9;
+              pp_float m10;
+              pp_float m11;
+              pp_float m12;
+              pp_float m13;
+              pp_float m14;
+              pp_float m15;
+              pp_float m16;
+            ];
+          ")";
+        ]
+  | _ -> invalid_arg "string_of_matrix"
+
+let string_of_transform_value = function
+  | ( Translate_x _ | Translate_y _ | Translate_z _ | Translate _
+    | Translate_var _ | Translate3d _ ) as t ->
+      string_of_translate t
+  | (Rotate_x _ | Rotate_y _ | Rotate_z _ | Rotate _ | Rotate_var _ | Rotate3d _)
+    as t ->
+      string_of_rotate t
+  | (Scale_x _ | Scale_y _ | Scale_z _ | Scale _ | Scale2 _ | Scale3d _) as t ->
+      string_of_scale t
+  | (Skew_x _ | Skew_y _ | Skew_var _ | Skew _) as t -> string_of_skew t
+  | (Matrix _ | Matrix3d _) as t -> string_of_matrix t
+  | Perspective l -> str [ "perspective("; string_of_length l; ")" ]
   | Transform_none -> "none"
 
 type property =
@@ -1364,7 +1452,14 @@ let render_minified_rule rule =
   let props =
     rule.declarations
     |> List.map (fun (prop_name, value) ->
-           str [ string_of_property prop_name; ":"; minify_value value ])
+           let value =
+             (* Convert transparent to #0000 for background-color in minified
+                output *)
+             if prop_name = Background_color && value = "transparent" then
+               "#0000"
+             else minify_value value
+           in
+           str [ string_of_property prop_name; ":"; value ])
   in
   str [ selector; "{"; str ~sep:";" props; "}" ]
 
@@ -1559,7 +1654,9 @@ let render_layer_containers ~config container_queries =
   container_queries
   |> List.map (fun cq ->
          let name_part =
-           match cq.container_name with None -> "" | Some name -> name ^ " "
+           match cq.container_name with
+           | None -> ""
+           | Some name -> str [ name; " " ]
          in
          let content =
            if config.minify then
@@ -1641,7 +1738,9 @@ let render_stylesheet_containers ~config container_queries =
   container_queries
   |> List.map (fun cq ->
          let name_part =
-           match cq.container_name with None -> "" | Some name -> name ^ " "
+           match cq.container_name with
+           | None -> ""
+           | Some name -> str [ name; " " ]
          in
          let content =
            if config.minify then
@@ -1791,19 +1890,7 @@ let render_optional_section render_fn items =
   let rendered = render_fn items in
   if rendered = "" then [] else [ rendered ]
 
-let to_string ?(minify = false) stylesheet =
-  let config = { minify } in
-  (* Add tw library header *)
-  let header_str =
-    if List.length stylesheet.layers > 0 then str [ header; "\n" ] else ""
-  in
-
-  (* Prepare layer strings *)
-  let layer_strings, empty_layers_decl =
-    prepare_layer_strings ~config stylesheet
-  in
-
-  (* Render all optional sections *)
+let render_stylesheet_sections ~config stylesheet =
   let rule_strings =
     render_optional_section (render_stylesheet_rules ~config) stylesheet.rules
   in
@@ -1832,14 +1919,34 @@ let to_string ?(minify = false) stylesheet =
       (render_stylesheet_media ~config)
       stylesheet.media_queries
   in
+  ( rule_strings,
+    at_property_strings,
+    starting_style_strings,
+    container_strings,
+    supports_strings,
+    media_strings )
 
-  (* Combine all parts *)
-  let all_parts =
-    [ header_str; "" ] (* layer_declarations is always empty for Tailwind v4 *)
-    @ layer_strings @ empty_layers_decl @ rule_strings @ starting_style_strings
-    @ container_strings @ supports_strings @ media_strings @ at_property_strings
+let to_string ?(minify = false) stylesheet =
+  let config = { minify } in
+  let header_str =
+    if List.length stylesheet.layers > 0 then str [ header; "\n" ] else ""
   in
-
+  let layer_strings, empty_layers_decl =
+    prepare_layer_strings ~config stylesheet
+  in
+  let ( rule_strings,
+        at_property_strings,
+        starting_style_strings,
+        container_strings,
+        supports_strings,
+        media_strings ) =
+    render_stylesheet_sections ~config stylesheet
+  in
+  let all_parts =
+    [ header_str; "" ] @ layer_strings @ empty_layers_decl @ rule_strings
+    @ starting_style_strings @ container_strings @ supports_strings
+    @ media_strings @ at_property_strings
+  in
   if config.minify then String.concat "" all_parts
   else String.concat "\n" (List.filter (fun s -> s <> "") all_parts)
 
