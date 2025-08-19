@@ -557,7 +557,17 @@ let rec string_of_color_in_mix = function
   | c -> string_of_color c
 
 and string_of_color = function
-  | Hex s -> str [ "#"; s ]
+  | Hex s ->
+      (* For arbitrary hex values, Tailwind v4 outputs without # prefix *)
+      (* Also normalize hex by removing redundant leading zeros *)
+      (* Only remove ONE leading zero from the first pair if it's "00" *)
+      let normalize_hex h =
+        if String.length h = 6 && String.sub h 0 2 = "00" then
+          (* 00ff00 -> 0ff00 (remove one leading zero) *)
+          String.sub h 1 5
+        else h
+      in
+      normalize_hex s
   | Rgb { r; g; b } ->
       str
         [
