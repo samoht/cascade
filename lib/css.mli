@@ -93,6 +93,7 @@ type length =
   | Vw of float
   | Vh of float
   | Ch of float (* Character units *)
+  | Lh of float (* Line height units *)
   | Num of float (* Unitless numbers, e.g., line-height multipliers *)
   | Auto
   | Zero
@@ -152,6 +153,24 @@ module Calc : sig
   (** [pct f] creates a percentage value for calc expressions *)
 end
 
+(** CSS color spaces for color-mix() *)
+type color_space =
+  | Srgb
+  | Srgb_linear
+  | Display_p3
+  | A98_rgb
+  | Prophoto_rgb
+  | Rec2020
+  | Lab
+  | Oklab
+  | Xyz
+  | Xyz_d50
+  | Xyz_d65
+  | Lch
+  | Oklch
+  | Hsl
+  | Hwb
+
 (** CSS color values. *)
 type color =
   | Hex of string
@@ -162,6 +181,13 @@ type color =
   | Current
   | Transparent
   | Inherit
+  | Mix of {
+      in_space : color_space;  (** Color space for mixing *)
+      color1 : color;  (** First color *)
+      percent1 : int option;  (** Optional percentage for first color *)
+      color2 : color;  (** Second color *)
+      percent2 : int option;  (** Optional percentage for second color *)
+    }
 
 (** CSS display values. *)
 type display =
@@ -215,7 +241,13 @@ type align =
   | Auto
 
 (** CSS text decoration values. *)
-type text_decoration = None | Underline | Overline | Line_through | Inherit
+type text_decoration =
+  | None
+  | Underline
+  | Overline
+  | Line_through
+  | Inherit
+  | Underline_dotted (* underline dotted *)
 
 (** CSS font style values. *)
 type font_style = Font_normal | Italic | Oblique | Font_inherit
@@ -489,6 +521,9 @@ type property
 
 type declaration
 (** Abstract type for CSS declarations (property-value pairs). *)
+
+val important : declaration -> declaration
+(** [important decl] marks a declaration as !important. *)
 
 type rule
 (** Abstract type for CSS rules. *)

@@ -27,6 +27,7 @@ type length =
   | Vw of float
   | Vh of float
   | Ch of float (* Character units *)
+  | Lh of float (* Line height units *)
   | Num of float (* Unitless numbers, e.g., line-height multipliers *)
   | Auto
   | Zero
@@ -36,6 +37,23 @@ type length =
   | Min_content (* min-content keyword *)
   | Var of length var (* CSS variable reference *)
   | Calc of length calc (* Calculated expressions *)
+
+type color_space =
+  | Srgb
+  | Srgb_linear
+  | Display_p3
+  | A98_rgb
+  | Prophoto_rgb
+  | Rec2020
+  | Lab
+  | Oklab
+  | Xyz
+  | Xyz_d50
+  | Xyz_d65
+  | Lch
+  | Oklch
+  | Hsl
+  | Hwb
 
 (** CSS color values *)
 type color =
@@ -47,6 +65,13 @@ type color =
   | Current
   | Transparent
   | Inherit
+  | Mix of {
+      in_space : color_space;  (** Color space for mixing *)
+      color1 : color;  (** First color *)
+      percent1 : int option;  (** Optional percentage for first color *)
+      color2 : color;  (** Second color *)
+      percent2 : int option;  (** Optional percentage for second color *)
+    }
 
 (** CSS display values *)
 type display =
@@ -100,7 +125,13 @@ type align =
   | Auto
 
 (** CSS text decoration values *)
-type text_decoration = None | Underline | Overline | Line_through | Inherit
+type text_decoration =
+  | None
+  | Underline
+  | Overline
+  | Line_through
+  | Inherit
+  | Underline_dotted (* underline dotted *)
 
 (** CSS font style values *)
 type font_style = Font_normal | Italic | Oblique | Font_inherit
@@ -465,6 +496,7 @@ and string_of_length = function
   | Vw f -> str [ pp_float f; "vw" ]
   | Vh f -> str [ pp_float f; "vh" ]
   | Ch f -> str [ pp_float f; "ch" ]
+  | Lh f -> str [ pp_float f; "lh" ]
   | Num f -> pp_float f
   | Auto -> "auto"
   | Zero -> "0"
@@ -518,7 +550,11 @@ module Calc = struct
   let pct f = Val (Pct f)
 end
 
-let string_of_color = function
+let rec string_of_color_in_mix = function
+  | Current -> "currentcolor" (* lowercase in color-mix *)
+  | c -> string_of_color c
+
+and string_of_color = function
   | Hex s -> str [ "#"; s ]
   | Rgb { r; g; b } ->
       str
@@ -553,6 +589,43 @@ let string_of_color = function
   | Current -> "currentColor"
   | Transparent -> "transparent"
   | Inherit -> "inherit"
+  | Mix { in_space; color1; percent1; color2; percent2 } ->
+      let space_str = string_of_color_space in_space in
+      let p1_str =
+        match percent1 with Some p -> " " ^ string_of_int p ^ "%" | None -> ""
+      in
+      let p2_str =
+        match percent2 with Some p -> " " ^ string_of_int p ^ "%" | None -> ""
+      in
+      str
+        [
+          "color-mix(in ";
+          space_str;
+          ",";
+          string_of_color_in_mix color1;
+          p1_str;
+          ",";
+          string_of_color_in_mix color2;
+          p2_str;
+          ")";
+        ]
+
+and string_of_color_space = function
+  | Srgb -> "srgb"
+  | Srgb_linear -> "srgb-linear"
+  | Display_p3 -> "display-p3"
+  | A98_rgb -> "a98-rgb"
+  | Prophoto_rgb -> "prophoto-rgb"
+  | Rec2020 -> "rec2020"
+  | Lab -> "lab"
+  | Oklab -> "oklab"
+  | Xyz -> "xyz"
+  | Xyz_d50 -> "xyz-d50"
+  | Xyz_d65 -> "xyz-d65"
+  | Lch -> "lch"
+  | Oklch -> "oklch"
+  | Hsl -> "hsl"
+  | Hwb -> "hwb"
 
 let string_of_display : display -> string = function
   | Block -> "block"
@@ -872,6 +945,7 @@ let string_of_text_decoration : text_decoration -> string = function
   | Overline -> "overline"
   | Line_through -> "line-through"
   | Inherit -> "inherit"
+  | Underline_dotted -> "underline dotted"
 
 let string_of_font_style = function
   | Font_normal -> "normal"
@@ -1248,6 +1322,9 @@ type property =
 
 type declaration = property * string
 (** A CSS property as (name, value) pair *)
+
+(* Helper to mark a declaration as important *)
+let important (prop, value) = (prop, value ^ "!important")
 
 (* Typed property constructors *)
 let background_color c = (Background_color, string_of_color c)
