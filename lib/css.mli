@@ -1,3 +1,7 @@
+[@@@warning "-30"]
+(* Disable duplicate constructor warnings - we use type constraints to
+   disambiguate *)
+
 (** Type-safe CSS generation library.
 
     This library provides OCaml types to represent CSS declarations, rules, and
@@ -65,6 +69,16 @@
 
 (** CSS variable requirements. *)
 
+type 'a var = {
+  name : string;  (** Variable name (without --) *)
+  fallback : 'a var_fallback option;  (** Optional fallback value *)
+}
+(** CSS variable reference *)
+
+and 'a var_fallback =
+  | Var of 'a var  (** Another variable as fallback *)
+  | Value of 'a  (** Direct value as fallback *)
+
 (** CSS calc operations. *)
 type calc_op = Add | Sub | Mult | Div
 
@@ -81,14 +95,17 @@ type length =
   | Auto
   | Zero
   | Inherit
-  | Var of string (* CSS variable reference *)
+  | Fit_content (* fit-content keyword *)
+  | Max_content (* max-content keyword *)
+  | Min_content (* min-content keyword *)
+  | Var of length var (* CSS variable reference *)
   | Calc of calc_value (* Calculated expressions *)
 
 (** CSS calc values. *)
 and calc_value =
   | Length of length
-  | Calc_var of string (* CSS variable name *)
-  | Calc_num of float (* Numeric value in calc expressions *)
+  | Var of calc_value var (* CSS variable *)
+  | Num of float (* Numeric value in calc expressions *)
   | Expr of calc_value * calc_op * calc_value
 
 (** Builder functions for calc() expressions. *)
@@ -121,6 +138,7 @@ type color =
   | Hex of string
   | Rgb of { r : int; g : int; b : int }
   | Rgba of { r : int; g : int; b : int; a : float }
+  | Oklch of { l : float; c : float; h : float }  (** OKLCH color space *)
   | Var of string
   | Current
   | Transparent
@@ -139,12 +157,20 @@ type display =
   | Table
   | Table_row
   | Table_cell
+  | List_item
 
 (** CSS position values. *)
 type position = Static | Relative | Absolute | Fixed | Sticky
 
 (** CSS font weight values. *)
-type font_weight = Weight of int | Normal | Bold | Bolder | Lighter | Inherit
+type font_weight =
+  | Weight of int
+  | Normal
+  | Bold
+  | Bolder
+  | Lighter
+  | Inherit
+  | Var of font_weight var (* CSS variable reference *)
 
 (** CSS text align values. *)
 type text_align = Left | Right | Center | Justify | Start | End | Inherit
@@ -167,6 +193,7 @@ type align =
   | Start
   | End
   | Baseline
+  | Auto
 
 (** CSS text decoration values. *)
 type text_decoration = None | Underline | Overline | Line_through | Inherit
@@ -197,6 +224,8 @@ type border_style =
   | Ridge
   | Inset
   | Outset
+  | Hidden
+  | Var of border_style var (* CSS variable reference *)
 
 (** CSS cursor values. *)
 type cursor =
@@ -673,16 +702,17 @@ end
 
 (** {2 CSS Custom Properties (Variables)} *)
 
-val custom_property : string -> string -> declaration
-(** [custom_property name value] creates a CSS custom property declaration. The
-    name should start with "--".
+val var : ?fallback:'a var_fallback -> string -> 'a var
+(** [var ?fallback name] creates a CSS variable reference. Example:
+    [var "spacing"] creates var(--spacing) Example:
+    [var ~fallback:(Var (var "default")) "custom"] creates var(--custom,
+    var(--default)) Example: [var ~fallback:(Value (Px 10)) "spacing"] creates
+    var(--spacing, 10px) *)
 
-    Example:
-    {[
-      custom_property "--primary-color" "#3b82f6"
-      (* Generates: --primary-color: #3b82f6 *)
-    ]}
-
+val css_variable : string -> string -> declaration
+(** [css_variable name value] creates a CSS custom property declaration. The
+    name must start with "--". Example:
+    [css_variable "--color-primary" "#3b82f6"]
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/--*>
       MDN: CSS Custom Properties. *)
 
@@ -1341,11 +1371,6 @@ val z_index : int -> declaration
 (** [z_index value] sets the CSS z-index property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/z-index>
       MDN: z-index. *)
-
-val declaration : string -> string -> declaration
-(** [declaration property value] creates a CSS declaration with arbitrary
-    property and value. This is an escape hatch for properties not yet modeled
-    in the typed API. *)
 
 val rule : selector:string -> declaration list -> rule
 (** [rule ~selector declarations] creates a CSS rule with the given selector and

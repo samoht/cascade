@@ -1,8 +1,19 @@
+[@@@warning "-30"]
+(* Disable duplicate constructor warnings - we use type constraints to
+   disambiguate *)
+
 (** CSS generation utilities *)
 
 (* Simple string formatting utilities *)
 let str ?(sep = "") segments = String.concat sep segments
 let lines segments = str ~sep:"\n" segments
+
+type 'a var = { name : string; fallback : 'a var_fallback option }
+(** CSS variable reference *)
+
+and 'a var_fallback = Var of 'a var | Value of 'a
+
+let var ?fallback name = { name; fallback }
 
 (** CSS length values *)
 type calc_op = Add | Sub | Mult | Div
@@ -19,13 +30,16 @@ type length =
   | Auto
   | Zero
   | Inherit
-  | Var of string (* CSS variable reference *)
+  | Fit_content (* fit-content keyword *)
+  | Max_content (* max-content keyword *)
+  | Min_content (* min-content keyword *)
+  | Var of length var (* CSS variable reference *)
   | Calc of calc_value (* Calculated expressions *)
 
 and calc_value =
   | Length of length
-  | Calc_var of string (* CSS variable name *)
-  | Calc_num of float
+  | Var of calc_value var (* CSS variable *)
+  | Num of float
   | Expr of calc_value * calc_op * calc_value
 
 (** CSS color values *)
@@ -33,6 +47,7 @@ type color =
   | Hex of string
   | Rgb of { r : int; g : int; b : int }
   | Rgba of { r : int; g : int; b : int; a : float }
+  | Oklch of { l : float; c : float; h : float }
   | Var of string
   | Current
   | Transparent
@@ -51,12 +66,20 @@ type display =
   | Table
   | Table_row
   | Table_cell
+  | List_item
 
 (** CSS position values *)
 type position = Static | Relative | Absolute | Fixed | Sticky
 
 (** CSS font weight values *)
-type font_weight = Weight of int | Normal | Bold | Bolder | Lighter | Inherit
+type font_weight =
+  | Weight of int
+  | Normal
+  | Bold
+  | Bolder
+  | Lighter
+  | Inherit
+  | Var of font_weight var (* CSS variable reference *)
 
 (** CSS text align values *)
 type text_align = Left | Right | Center | Justify | Start | End | Inherit
@@ -79,6 +102,7 @@ type align =
   | Start
   | End
   | Baseline
+  | Auto
 
 (** CSS text decoration values *)
 type text_decoration = None | Underline | Overline | Line_through | Inherit
@@ -109,6 +133,8 @@ type border_style =
   | Ridge
   | Inset
   | Outset
+  | Hidden
+  | Var of border_style var (* CSS variable reference *)
 
 (** CSS cursor values *)
 type cursor =
@@ -427,7 +453,16 @@ let pp_float f =
     else s
 
 (* Convert typed values to strings *)
-let rec string_of_length = function
+let rec string_of_var : type a. (a -> string) -> a var -> string =
+ fun value_to_string v ->
+  let base = str [ "var(--"; v.name ] in
+  match v.fallback with
+  | None -> str [ base; ")" ]
+  | Some (Var fallback) ->
+      str [ base; ", "; string_of_var value_to_string fallback; ")" ]
+  | Some (Value value) -> str [ base; ", "; value_to_string value; ")" ]
+
+and string_of_length = function
   | Px n -> str [ string_of_int n; "px" ]
   | Rem f -> str [ pp_float f; "rem" ]
   | Em f -> str [ pp_float f; "em" ]
@@ -439,13 +474,16 @@ let rec string_of_length = function
   | Auto -> "auto"
   | Zero -> "0"
   | Inherit -> "inherit"
-  | Var name -> str [ "var("; name; ")" ]
+  | Fit_content -> "fit-content"
+  | Max_content -> "max-content"
+  | Min_content -> "min-content"
+  | Var v -> string_of_var string_of_length v
   | Calc cv -> str [ "calc("; string_of_calc_value cv; ")" ]
 
-and string_of_calc_value = function
+and string_of_calc_value : calc_value -> string = function
   | Length l -> string_of_length l
-  | Calc_var name -> str [ "var("; name; ")" ]
-  | Calc_num f -> pp_float f
+  | Var v -> string_of_var string_of_calc_value v
+  | Num f -> pp_float f
   | Expr (left, op, right) ->
       let op_str =
         match op with
@@ -463,8 +501,8 @@ module Calc = struct
   let mul left right = Expr (left, Mult, right)
   let div left right = Expr (left, Div, right)
   let from_length len = (Length len : calc_value)
-  let from_var name = Calc_var name
-  let from_float f = Calc_num f
+  let from_var name = (Var (var name) : calc_value)
+  let from_float f = (Num f : calc_value)
 end
 
 let string_of_color = function
@@ -493,6 +531,11 @@ let string_of_color = function
           pp_float a;
           ")";
         ]
+  | Oklch { l; c; h } ->
+      str
+        [
+          "oklch("; pp_float (l /. 100.0); " "; pp_float c; " "; pp_float h; ")";
+        ]
   | Var v -> str [ "var(--"; v; ")" ]
   | Current -> "currentColor"
   | Transparent -> "transparent"
@@ -510,6 +553,7 @@ let string_of_display : display -> string = function
   | Table -> "table"
   | Table_row -> "table-row"
   | Table_cell -> "table-cell"
+  | List_item -> "list-item"
 
 let string_of_position = function
   | Static -> "static"
@@ -518,13 +562,14 @@ let string_of_position = function
   | Fixed -> "fixed"
   | Sticky -> "sticky"
 
-let string_of_font_weight = function
+let rec string_of_font_weight = function
   | Weight n -> string_of_int n
   | Normal -> "normal"
   | Bold -> "bold"
   | Bolder -> "bolder"
   | Lighter -> "lighter"
   | Inherit -> "inherit"
+  | Var v -> string_of_var string_of_font_weight v
 
 let string_of_text_align = function
   | Left -> "left"
@@ -806,6 +851,7 @@ let string_of_align = function
   | Start -> "start"
   | End -> "end"
   | Baseline -> "baseline"
+  | Auto -> "auto"
 
 let string_of_text_decoration : text_decoration -> string = function
   | None -> "none"
@@ -831,7 +877,7 @@ let string_of_list_style_type : list_style_type -> string = function
   | Lower_roman -> "lower-roman"
   | Upper_roman -> "upper-roman"
 
-let string_of_border_style : border_style -> string = function
+let rec string_of_border_style : border_style -> string = function
   | None -> "none"
   | Solid -> "solid"
   | Dashed -> "dashed"
@@ -841,6 +887,8 @@ let string_of_border_style : border_style -> string = function
   | Ridge -> "ridge"
   | Inset -> "inset"
   | Outset -> "outset"
+  | Hidden -> "hidden"
+  | Var v -> string_of_var string_of_border_style v
 
 let string_of_cursor : cursor -> string = function
   | Auto -> "auto"
@@ -1492,13 +1540,11 @@ let background_repeat value =
   (Background_repeat, string_of_background_repeat value)
 
 let background_size value = (Background_size, value)
-let unsafe_declaration name value = ((Custom name : property), value)
 
 (* CSS Custom Properties *)
-let custom_property name value : declaration =
+let css_variable name value : declaration =
   if not (String.starts_with ~prefix:"--" name) then
-    invalid_arg
-      (str [ "custom_property: name must start with '--', got: "; name ])
+    invalid_arg (str [ "css_variable: name must start with '--', got: "; name ])
   else ((Custom name : property), value)
 
 (* Additional property constructors *)
@@ -1511,9 +1557,6 @@ let border_left_color c = (Border_left_color, string_of_color c)
 let border_bottom_color c = (Border_bottom_color, string_of_color c)
 let transition value = (Transition, string_of_transition_value value)
 let quotes value = (Quotes, value)
-
-(* Internal declaration function for tw.ml *)
-let declaration = unsafe_declaration
 
 (* New property constructors for tw.ml *)
 let border value = (Border, value)
