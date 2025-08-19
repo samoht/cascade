@@ -2207,21 +2207,14 @@ let render_minified_rule rule =
   in
   str [ selector; "{"; str ~sep:";" props; "}" ]
 
-let render_formatted_rule rule =
+let render_formatted_rule ?(indent = "") rule =
   let props =
     rule.declarations
     |> List.map (fun (prop_name, value) ->
-           str [ "  "; string_of_property prop_name; ": "; value; ";" ])
+           str [ indent; "  "; string_of_property prop_name; ": "; value; ";" ])
   in
-  lines [ str [ rule.selector; " {" ]; lines props; "}" ]
-
-let render_formatted_media_rule rule =
-  let props =
-    rule.declarations
-    |> List.map (fun (prop_name, value) ->
-           str [ "    "; string_of_property prop_name; ": "; value; ";" ])
-  in
-  str [ "  "; rule.selector; " {\n"; lines props; "\n  }" ]
+  lines
+    [ str [ indent; rule.selector; " {" ]; lines props; str [ indent; "}" ] ]
 
 let layer_to_string = function
   | Properties -> "properties"
@@ -2237,14 +2230,20 @@ let rec render_supports_content ~minify content =
         rules |> merge_rules |> merge_by_properties
         |> List.map render_minified_rule
         |> String.concat ""
-      else rules |> List.map render_formatted_media_rule |> String.concat "\n"
+      else
+        rules
+        |> List.map (render_formatted_rule ~indent:"    ")
+        |> String.concat "\n"
   | Support_nested (rules, nested_queries) ->
       let rules_str =
         if minify then
           rules |> merge_rules |> merge_by_properties
           |> List.map render_minified_rule
           |> String.concat ""
-        else rules |> List.map render_formatted_media_rule |> String.concat "\n"
+        else
+          rules
+          |> List.map (render_formatted_rule ~indent:"    ")
+          |> String.concat "\n"
       in
       let nested_str =
         nested_queries
@@ -2374,23 +2373,25 @@ let render_layer_rules ~config rules =
   |> List.map render_nested_rule
   |> String.concat (if config.minify then "" else "\n")
 
+(* Generic at-rule rendering function *)
+let render_at_rules ~config ~at_rule ~condition ~name_part ~rules ~indent =
+  let content =
+    if config.minify then
+      rules |> merge_rules |> merge_by_properties
+      |> List.map render_minified_rule
+      |> String.concat ""
+    else rules |> List.map (render_formatted_rule ~indent) |> String.concat "\n"
+  in
+  if config.minify then
+    str [ "@"; at_rule; " "; name_part; condition; "{"; content; "}" ]
+  else str [ "@"; at_rule; " "; name_part; condition; " {\n"; content; "\n}" ]
+
 (* Helper: Render media queries *)
 let render_layer_media ~config media_queries =
   media_queries
   |> List.map (fun mq ->
-         let content =
-           if config.minify then
-             mq.media_rules |> merge_rules |> merge_by_properties
-             |> List.map render_minified_rule
-             |> String.concat ""
-           else
-             mq.media_rules
-             |> List.map render_formatted_media_rule
-             |> String.concat "\n"
-         in
-         if config.minify then
-           str [ "@media "; mq.media_condition; "{"; content; "}" ]
-         else str [ "@media "; mq.media_condition; " {\n"; content; "\n}" ])
+         render_at_rules ~config ~at_rule:"media" ~condition:mq.media_condition
+           ~name_part:"" ~rules:mq.media_rules ~indent:"  ")
   |> String.concat (if config.minify then "" else "\n")
 
 (* Helper: Render container queries *)
@@ -2402,36 +2403,9 @@ let render_layer_containers ~config container_queries =
            | None -> ""
            | Some name -> str [ name; " " ]
          in
-         let content =
-           if config.minify then
-             cq.container_rules |> merge_rules |> merge_by_properties
-             |> List.map render_minified_rule
-             |> String.concat ""
-           else
-             cq.container_rules
-             |> List.map render_formatted_media_rule
-             |> String.concat "\n"
-         in
-         if config.minify then
-           str
-             [
-               "@container ";
-               name_part;
-               cq.container_condition;
-               "{";
-               content;
-               "}";
-             ]
-         else
-           str
-             [
-               "@container ";
-               name_part;
-               cq.container_condition;
-               " {\n";
-               content;
-               "\n}";
-             ])
+         render_at_rules ~config ~at_rule:"container"
+           ~condition:cq.container_condition ~name_part
+           ~rules:cq.container_rules ~indent:"  ")
   |> String.concat (if config.minify then "" else "\n")
 
 (* Helper: Render supports queries *)
@@ -2463,19 +2437,8 @@ let render_stylesheet_rules ~config rules =
 let render_stylesheet_media ~config media_queries =
   media_queries
   |> List.map (fun mq ->
-         let content =
-           if config.minify then
-             mq.media_rules |> merge_rules |> merge_by_properties
-             |> List.map render_minified_rule
-             |> String.concat ""
-           else
-             mq.media_rules
-             |> List.map render_formatted_rule
-             |> String.concat "\n"
-         in
-         if config.minify then
-           str [ "@media "; mq.media_condition; "{"; content; "}" ]
-         else str [ "@media "; mq.media_condition; " {\n"; content; "\n}" ])
+         render_at_rules ~config ~at_rule:"media" ~condition:mq.media_condition
+           ~name_part:"" ~rules:mq.media_rules ~indent:"")
   |> String.concat (if config.minify then "" else "\n")
 
 let render_stylesheet_containers ~config container_queries =
@@ -2486,36 +2449,9 @@ let render_stylesheet_containers ~config container_queries =
            | None -> ""
            | Some name -> str [ name; " " ]
          in
-         let content =
-           if config.minify then
-             cq.container_rules |> merge_rules |> merge_by_properties
-             |> List.map render_minified_rule
-             |> String.concat ""
-           else
-             cq.container_rules
-             |> List.map render_formatted_rule
-             |> String.concat "\n"
-         in
-         if config.minify then
-           str
-             [
-               "@container ";
-               name_part;
-               cq.container_condition;
-               "{";
-               content;
-               "}";
-             ]
-         else
-           str
-             [
-               "@container ";
-               name_part;
-               cq.container_condition;
-               " {\n";
-               content;
-               "\n}";
-             ])
+         render_at_rules ~config ~at_rule:"container"
+           ~condition:cq.container_condition ~name_part
+           ~rules:cq.container_rules ~indent:"")
   |> String.concat (if config.minify then "" else "\n")
 
 let render_stylesheet_supports ~config supports_queries =
