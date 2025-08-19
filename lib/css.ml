@@ -1542,9 +1542,10 @@ let background_repeat value =
 let background_size value = (Background_size, value)
 
 (* CSS Custom Properties *)
-let css_variable name value : declaration =
+let custom_property name value : declaration =
   if not (String.starts_with ~prefix:"--" name) then
-    invalid_arg (str [ "css_variable: name must start with '--', got: "; name ])
+    invalid_arg
+      (str [ "custom_property: name must start with '--', got: "; name ])
   else ((Custom name : property), value)
 
 (* Additional property constructors *)

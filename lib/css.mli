@@ -709,10 +709,10 @@ val var : ?fallback:'a var_fallback -> string -> 'a var
     var(--default)) Example: [var ~fallback:(Value (Px 10)) "spacing"] creates
     var(--spacing, 10px) *)
 
-val css_variable : string -> string -> declaration
-(** [css_variable name value] creates a CSS custom property declaration. The
+val custom_property : string -> string -> declaration
+(** [custom_property name value] creates a CSS custom property declaration. The
     name must start with "--". Example:
-    [css_variable "--color-primary" "#3b82f6"]
+    [custom_property "--color-primary" "#3b82f6"]
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/--*>
       MDN: CSS Custom Properties. *)
 
