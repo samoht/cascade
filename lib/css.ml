@@ -1,7 +1,3 @@
-[@@@warning "-30"]
-(* Disable duplicate constructor warnings - we use type constraints to
-   disambiguate *)
-
 (** CSS generation utilities *)
 
 (* Simple string formatting utilities *)
@@ -17,6 +13,11 @@ let var ?fallback name = { name; fallback }
 
 (** CSS length values *)
 type calc_op = Add | Sub | Mult | Div
+
+type 'a calc =
+  | Var of 'a calc var (* CSS variable *)
+  | Val of 'a
+  | Expr of 'a calc * calc_op * 'a calc
 
 type length =
   | Px of int
@@ -34,13 +35,7 @@ type length =
   | Max_content (* max-content keyword *)
   | Min_content (* min-content keyword *)
   | Var of length var (* CSS variable reference *)
-  | Calc of calc_value (* Calculated expressions *)
-
-and calc_value =
-  | Length of length
-  | Var of calc_value var (* CSS variable *)
-  | Num of float
-  | Expr of calc_value * calc_op * calc_value
+  | Calc of length calc (* Calculated expressions *)
 
 (** CSS color values *)
 type color =
@@ -478,12 +473,13 @@ and string_of_length = function
   | Max_content -> "max-content"
   | Min_content -> "min-content"
   | Var v -> string_of_var string_of_length v
-  | Calc cv -> str [ "calc("; string_of_calc_value cv; ")" ]
+  | Calc cv -> str [ "calc("; string_of_calc string_of_length cv; ")" ]
 
-and string_of_calc_value : calc_value -> string = function
-  | Length l -> string_of_length l
-  | Var v -> string_of_var string_of_calc_value v
-  | Num f -> pp_float f
+and string_of_calc : ('a -> string) -> 'a calc -> string =
+ fun string_of_val calc ->
+  match calc with
+  | Val v -> string_of_val v
+  | Var v -> string_of_var (string_of_calc string_of_val) v
   | Expr (left, op, right) ->
       let op_str =
         match op with
@@ -492,7 +488,12 @@ and string_of_calc_value : calc_value -> string = function
         | Mult -> " * "
         | Div -> " / "
       in
-      str [ string_of_calc_value left; op_str; string_of_calc_value right ]
+      str
+        [
+          string_of_calc string_of_val left;
+          op_str;
+          string_of_calc string_of_val right;
+        ]
 
 (* Calc module for building calc() expressions *)
 module Calc = struct
@@ -500,9 +501,21 @@ module Calc = struct
   let sub left right = Expr (left, Sub, right)
   let mul left right = Expr (left, Mult, right)
   let div left right = Expr (left, Div, right)
-  let from_length len = (Length len : calc_value)
-  let from_var name = (Var (var name) : calc_value)
-  let from_float f = (Num f : calc_value)
+
+  (* Operators *)
+  let ( + ) = add
+  let ( - ) = sub
+  let ( * ) = mul
+  let ( / ) = div
+
+  (* Value constructors *)
+  let length len = Val len
+  let var name = (Var (var name) : 'a calc)
+  let float f = Val (Num f)
+  let px n = Val (Px n)
+  let rem f = Val (Rem f)
+  let em f = Val (Em f)
+  let pct f = Val (Pct f)
 end
 
 let string_of_color = function

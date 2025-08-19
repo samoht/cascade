@@ -1,7 +1,3 @@
-[@@@warning "-30"]
-(* Disable duplicate constructor warnings - we use type constraints to
-   disambiguate *)
-
 (** Type-safe CSS generation library.
 
     This library provides OCaml types to represent CSS declarations, rules, and
@@ -82,6 +78,12 @@ and 'a var_fallback =
 (** CSS calc operations. *)
 type calc_op = Add | Sub | Mult | Div
 
+(** CSS calc values. *)
+type 'a calc =
+  | Var of 'a calc var (* CSS variable *)
+  | Val of 'a
+  | Expr of 'a calc * calc_op * 'a calc
+
 (** CSS length values. *)
 type length =
   | Px of int
@@ -99,38 +101,55 @@ type length =
   | Max_content (* max-content keyword *)
   | Min_content (* min-content keyword *)
   | Var of length var (* CSS variable reference *)
-  | Calc of calc_value (* Calculated expressions *)
-
-(** CSS calc values. *)
-and calc_value =
-  | Length of length
-  | Var of calc_value var (* CSS variable *)
-  | Num of float (* Numeric value in calc expressions *)
-  | Expr of calc_value * calc_op * calc_value
+  | Calc of length calc (* Calculated expressions *)
 
 (** Builder functions for calc() expressions. *)
 module Calc : sig
-  val add : calc_value -> calc_value -> calc_value
+  val add : 'a calc -> 'a calc -> 'a calc
   (** [add left right] creates [left + right] *)
 
-  val sub : calc_value -> calc_value -> calc_value
+  val sub : 'a calc -> 'a calc -> 'a calc
   (** [sub left right] creates [left - right] *)
 
-  val mul : calc_value -> calc_value -> calc_value
+  val mul : 'a calc -> 'a calc -> 'a calc
   (** [mul left right] creates [left * right] *)
 
-  val div : calc_value -> calc_value -> calc_value
+  val div : 'a calc -> 'a calc -> 'a calc
   (** [div left right] creates [left / right] *)
 
-  val from_length : length -> calc_value
-  (** [from_length len] lifts a length value into calc_value *)
+  val ( + ) : 'a calc -> 'a calc -> 'a calc
+  (** [(+)] is {!add} *)
 
-  val from_var : string -> calc_value
-  (** [from_var name] creates a variable reference for calc expressions.
-      Example: [from_var "--spacing"] *)
+  val ( - ) : 'a calc -> 'a calc -> 'a calc
+  (** [(-)] is {!sub} *)
 
-  val from_float : float -> calc_value
-  (** [from_float f] creates a numeric value for calc expressions *)
+  val ( * ) : 'a calc -> 'a calc -> 'a calc
+  (** [( * )] is {!mul} *)
+
+  val ( / ) : 'a calc -> 'a calc -> 'a calc
+  (** [(/)] is {!div} *)
+
+  val length : length -> length calc
+  (** [length len] lifts a length value into calc *)
+
+  val var : string -> 'a calc
+  (** [var name] creates a variable reference for calc expressions. Example:
+      [var "spacing"] *)
+
+  val float : float -> length calc
+  (** [float f] creates a numeric value for calc expressions *)
+
+  val px : int -> length calc
+  (** [px n] creates a pixel value for calc expressions *)
+
+  val rem : float -> length calc
+  (** [rem f] creates a rem value for calc expressions *)
+
+  val em : float -> length calc
+  (** [em f] creates an em value for calc expressions *)
+
+  val pct : float -> length calc
+  (** [pct f] creates a percentage value for calc expressions *)
 end
 
 (** CSS color values. *)
@@ -704,10 +723,11 @@ end
 
 val var : ?fallback:'a var_fallback -> string -> 'a var
 (** [var ?fallback name] creates a CSS variable reference. Example:
-    [var "spacing"] creates var(--spacing) Example:
-    [var ~fallback:(Var (var "default")) "custom"] creates var(--custom,
-    var(--default)) Example: [var ~fallback:(Value (Px 10)) "spacing"] creates
-    var(--spacing, 10px) *)
+    - [var "spacing"] creates [var(--spacing)]
+    - [var ~fallback:(Var (var "default")) "custom"] creates
+      [var(--custom, var(--default))]
+    - [var ~fallback:(Value (Px 10)) "spacing"] creates [var(--spacing, 10px)].
+*)
 
 val custom_property : string -> string -> declaration
 (** [custom_property name value] creates a CSS custom property declaration. The
