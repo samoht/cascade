@@ -489,7 +489,9 @@ let rec string_of_var : type a. (a -> string) -> a var -> string =
   | Some (Value value) -> str [ base; ", "; value_to_string value; ")" ]
 
 and string_of_length = function
-  | Px n -> str [ string_of_int n; "px" ]
+  | Px n ->
+      (* Special case for max float value used in rounded-full *)
+      if n = max_int then "3.40282e38px" else str [ string_of_int n; "px" ]
   | Rem f -> str [ pp_float f; "rem" ]
   | Em f -> str [ pp_float f; "em" ]
   | Pct f -> str [ pp_float f; "%" ]
