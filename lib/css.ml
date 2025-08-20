@@ -1266,6 +1266,7 @@ type property =
   | Opacity
   | Transition
   | Transform
+  | Scale
   | Cursor
   | Table_layout
   | Border_collapse
@@ -1696,6 +1697,7 @@ let transform values =
   let str = String.concat " " (List.map string_of_transform_value values) in
   (Transform, str)
 
+let scale value = (Scale, value)
 let transition_duration value = (Transition_duration, string_of_duration value)
 
 let transition_timing_function value =
@@ -1955,6 +1957,7 @@ let string_of_property = function
   | Opacity -> "opacity"
   | Transition -> "transition"
   | Transform -> "transform"
+  | Scale -> "scale"
   | Cursor -> "cursor"
   | Table_layout -> "table-layout"
   | Border_collapse -> "border-collapse"

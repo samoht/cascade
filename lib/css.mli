@@ -1292,6 +1292,10 @@ val transform : transform_value list -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/transform>
       MDN: transform. *)
 
+val scale : string -> declaration
+(** [scale value] sets the CSS scale property.
+    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scale> MDN: scale. *)
+
 val transition_duration : duration -> declaration
 (** [transition_duration value] sets the CSS transition-duration property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/transition-duration>
