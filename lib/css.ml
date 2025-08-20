@@ -557,17 +557,7 @@ let rec string_of_color_in_mix = function
   | c -> string_of_color c
 
 and string_of_color = function
-  | Hex s ->
-      (* For arbitrary hex values, Tailwind v4 outputs without # prefix *)
-      (* Also normalize hex by removing redundant leading zeros *)
-      (* Only remove ONE leading zero from the first pair if it's "00" *)
-      let normalize_hex h =
-        if String.length h = 6 && String.sub h 0 2 = "00" then
-          (* 00ff00 -> 0ff00 (remove one leading zero) *)
-          String.sub h 1 5
-        else h
-      in
-      normalize_hex s
+  | Hex s -> str [ "#"; s ] (* Proper CSS requires # prefix for hex colors *)
   | Rgb { r; g; b } ->
       str
         [
@@ -872,7 +862,7 @@ let string_of_flex_value = function
   | Initial -> "0 1 auto"
   | Auto -> "1 1 auto"
   | None -> "0 0 auto"
-  | Grow f -> str [ pp_float f; " 1 0%" ]
+  | Grow f -> pp_float f (* Simplified flex shorthand for single grow value *)
   | Basis len -> str [ "1 1 "; string_of_length len ]
   | Grow_shrink (g, s) -> str [ pp_float g; " "; pp_float s; " 0%" ]
   | Full (g, s, b) ->
