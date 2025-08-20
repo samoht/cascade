@@ -4,12 +4,19 @@ open Css
 let test_property_creation () =
   let color_prop = color (Hex { hash = true; value = "ff0000" }) in
   let padding_prop = padding (Px 10) in
-  ignore color_prop;
-  ignore padding_prop;
 
-  (* Properties should be created - just verify no exceptions *)
-  Alcotest.(check pass) "color property created" () ();
-  Alcotest.(check pass) "padding property created" () ()
+  (* Verify properties are created correctly *)
+  let sheet1 = stylesheet [ Rule (rule ~selector:".test" [ color_prop ]) ] in
+  let sheet2 = stylesheet [ Rule (rule ~selector:".test" [ padding_prop ]) ] in
+  let css1 = to_string sheet1 in
+  let css2 = to_string sheet2 in
+
+  Alcotest.(check bool)
+    "color property creates valid CSS" true
+    (Astring.String.is_infix ~affix:"color:" css1);
+  Alcotest.(check bool)
+    "padding property creates valid CSS" true
+    (Astring.String.is_infix ~affix:"padding:" css2)
 
 let test_property_deduplication () =
   let props =
