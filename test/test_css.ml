@@ -2,8 +2,10 @@
 open Css
 
 let test_property_creation () =
-  let _color_prop = color (Hex "ff0000") in
-  let _padding_prop = padding (Px 10) in
+  let color_prop = color (Hex { hash = true; value = "ff0000" }) in
+  let padding_prop = padding (Px 10) in
+  ignore color_prop;
+  ignore padding_prop;
 
   (* Properties should be created - just verify no exceptions *)
   Alcotest.(check pass) "color property created" () ();
@@ -12,9 +14,9 @@ let test_property_creation () =
 let test_property_deduplication () =
   let props =
     [
-      color (Hex "ff0000");
+      color (Hex { hash = true; value = "ff0000" });
       padding (Px 10);
-      color (Hex "0000ff");
+      color (Hex { hash = true; value = "0000ff" });
       (* Should override first color *)
       margin (Px 5);
     ]
@@ -83,7 +85,13 @@ let test_media_query () =
     (Astring.String.is_infix ~affix:".responsive" output)
 
 let test_inline_style () =
-  let props = [ color (Hex "ff0000"); padding (Px 10); margin (Px 5) ] in
+  let props =
+    [
+      color (Hex { hash = true; value = "ff0000" });
+      padding (Px 10);
+      margin (Px 5);
+    ]
+  in
 
   let inline = inline_style_of_declarations props in
 
@@ -102,7 +110,8 @@ let test_property_names () =
   (* Test that property names are converted correctly *)
   let names =
     [
-      ("background-color", background_color (Hex "0000ff"));
+      ( "background-color",
+        background_color (Hex { hash = true; value = "0000ff" }) );
       ("padding-left", padding_left (Px 5));
       ("margin-top", margin_top (Px 10));
       ("border-radius", border_radius (Px 4));

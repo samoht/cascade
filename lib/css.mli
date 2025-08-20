@@ -173,8 +173,8 @@ type color_space =
 
 (** CSS color values. *)
 type color =
-  | Hex of string
-  | Hex_arbitrary of string  (** Tailwind v4 arbitrary hex without # prefix *)
+  | Hex of { hash : bool; value : string }
+      (** hash indicates if # was present *)
   | Rgb of { r : int; g : int; b : int }
   | Rgba of { r : int; g : int; b : int; a : float }
   | Oklch of { l : float; c : float; h : float }  (** OKLCH color space *)
