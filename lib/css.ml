@@ -58,6 +58,7 @@ type color_space =
 (** CSS color values *)
 type color =
   | Hex of string
+  | Hex_arbitrary of string (* Tailwind v4 arbitrary hex without # prefix *)
   | Rgb of { r : int; g : int; b : int }
   | Rgba of { r : int; g : int; b : int; a : float }
   | Oklch of { l : float; c : float; h : float }
@@ -558,6 +559,12 @@ let rec string_of_color_in_mix = function
 
 and string_of_color = function
   | Hex s -> str [ "#"; s ] (* Proper CSS requires # prefix for hex colors *)
+  | Hex_arbitrary s ->
+      (* Tailwind v4 arbitrary hex values without # prefix *)
+      (* Also normalize by removing ONE leading zero from hex if starts with "00" *)
+      if String.length s = 6 && String.sub s 0 2 = "00" then
+        String.sub s 1 5 (* 00ff00 -> 0ff00 *)
+      else s
   | Rgb { r; g; b } ->
       str
         [
