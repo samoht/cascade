@@ -976,6 +976,18 @@ val border_style : border_style -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-style>
       MDN: border-style. *)
 
+val border_top_style : border_style -> declaration
+(** [border_top_style s] sets the CSS border-top-style property. *)
+
+val border_right_style : border_style -> declaration
+(** [border_right_style s] sets the CSS border-right-style property. *)
+
+val border_bottom_style : border_style -> declaration
+(** [border_bottom_style s] sets the CSS border-bottom-style property. *)
+
+val border_left_style : border_style -> declaration
+(** [border_left_style s] sets the CSS border-left-style property. *)
+
 val text_decoration : text_decoration -> declaration
 (** [text_decoration td] sets the CSS text-decoration property.
 

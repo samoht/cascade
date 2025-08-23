@@ -1191,6 +1191,10 @@ type property =
   | Color
   | Border_color
   | Border_style
+  | Border_top_style
+  | Border_right_style
+  | Border_bottom_style
+  | Border_left_style
   | Padding
   | Padding_left
   | Padding_right
@@ -1343,6 +1347,10 @@ let background_color c = (Background_color, string_of_color c)
 let color c = (Color, string_of_color c)
 let border_color c = (Border_color, string_of_color c)
 let border_style bs = (Border_style, string_of_border_style bs)
+let border_top_style bs = (Border_top_style, string_of_border_style bs)
+let border_right_style bs = (Border_right_style, string_of_border_style bs)
+let border_bottom_style bs = (Border_bottom_style, string_of_border_style bs)
+let border_left_style bs = (Border_left_style, string_of_border_style bs)
 let text_decoration td = (Text_decoration, string_of_text_decoration td)
 let font_style fs = (Font_style, string_of_font_style fs)
 let list_style_type lst = (List_style_type, string_of_list_style_type lst)
@@ -1882,6 +1890,10 @@ let string_of_property = function
   | Color -> "color"
   | Border_color -> "border-color"
   | Border_style -> "border-style"
+  | Border_top_style -> "border-top-style"
+  | Border_right_style -> "border-right-style"
+  | Border_bottom_style -> "border-bottom-style"
+  | Border_left_style -> "border-left-style"
   | Padding -> "padding"
   | Padding_left -> "padding-left"
   | Padding_right -> "padding-right"
