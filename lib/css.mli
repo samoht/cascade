@@ -1320,6 +1320,11 @@ val transition_timing_function : timing_function -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/transition-timing-function>
       MDN: transition-timing-function. *)
 
+val transition_delay : duration -> declaration
+(** [transition_delay value] sets the CSS transition-delay property.
+    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/transition-delay>
+      MDN: transition-delay. *)
+
 val will_change : string -> declaration
 (** [will_change value] sets the CSS will-change property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/will-change>

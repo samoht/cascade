@@ -1308,6 +1308,7 @@ type property =
   | Rotate
   | Transition_duration
   | Transition_timing_function
+  | Transition_delay
   | Will_change
   | Contain
   | Isolation
@@ -1710,6 +1711,7 @@ let transition_duration value = (Transition_duration, string_of_duration value)
 let transition_timing_function value =
   (Transition_timing_function, string_of_timing_function value)
 
+let transition_delay value = (Transition_delay, string_of_duration value)
 let will_change value = (Will_change, value)
 let contain value = (Contain, value)
 let isolation value = (Isolation, string_of_isolation value)
@@ -2007,6 +2009,7 @@ let string_of_property = function
   | Rotate -> "rotate"
   | Transition_duration -> "transition-duration"
   | Transition_timing_function -> "transition-timing-function"
+  | Transition_delay -> "transition-delay"
   | Will_change -> "will-change"
   | Contain -> "contain"
   | Isolation -> "isolation"
