@@ -140,6 +140,9 @@ module Calc : sig
   val float : float -> length calc
   (** [float f] creates a numeric value for calc expressions *)
 
+  val infinity : length calc
+  (** [infinity] represents the CSS infinity value for calc expressions *)
+
   val px : int -> length calc
   (** [px n] creates a pixel value for calc expressions *)
 
@@ -677,6 +680,16 @@ type blend_mode_value =
   | Color
   | Luminosity
   | Inherit
+
+(** CSS aspect-ratio values. *)
+type aspect_ratio_value =
+  | Auto
+  | Ratio of int * int
+  | Number of float
+  | Inherit
+
+val aspect_ratio : aspect_ratio_value -> declaration
+(** [aspect_ratio v] sets the CSS aspect-ratio property. *)
 
 (** {1 Declaration Constructors} *)
 

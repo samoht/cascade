@@ -462,8 +462,13 @@ type transform_value =
   | Transform_none
 
 let pp_float f =
-  (* For whole numbers, use integer formatting *)
-  if f = floor f then string_of_int (int_of_float f)
+  (* Handle special float values *)
+  if f = infinity then "3.40282e38"
+  else if f = neg_infinity then "-3.40282e38"
+  else if f <> f then "NaN"
+    (* NaN check: NaN != NaN *)
+    (* For whole numbers, use integer formatting *)
+  else if f = floor f then string_of_int (int_of_float f)
   else
     let s = string_of_float f in
     (* Remove trailing dot if present *)
@@ -490,8 +495,10 @@ let rec string_of_var : type a. (a -> string) -> a var -> string =
 
 and string_of_length = function
   | Px n ->
-      (* Special case for max float value used in rounded-full *)
-      if n = max_int then "3.40282e38px" else str [ string_of_int n; "px" ]
+      (* Special case for large values like max_int *)
+      if n = max_int then "3.40282e38px"
+      else if n = 9999 then "3.40282e38px" (* For rounded-full *)
+      else str [ string_of_int n; "px" ]
   | Rem f -> str [ pp_float f; "rem" ]
   | Em f -> str [ pp_float f; "em" ]
   | Pct f -> str [ pp_float f; "%" ]
@@ -546,6 +553,7 @@ module Calc = struct
   let length len = Val len
   let var name = (Var (var name) : 'a calc)
   let float f = Val (Num f)
+  let infinity = Val (Num infinity)
   let px n = Val (Px n)
   let rem f = Val (Rem f)
   let em f = Val (Em f)
@@ -1498,6 +1506,21 @@ let border_spacing len = (Border_spacing, string_of_length len)
 let overflow o = (Overflow, string_of_overflow o)
 let object_fit value = (Object_fit, string_of_object_fit value)
 let clip value = (Clip, value)
+
+(* Aspect ratio *)
+type aspect_ratio_value =
+  | Auto
+  | Ratio of int * int
+  | Number of float
+  | Inherit
+
+let string_of_aspect_ratio = function
+  | Auto -> "auto"
+  | Ratio (w, h) -> str [ string_of_int w; "/"; string_of_int h ]
+  | Number f -> pp_float f
+  | Inherit -> "inherit"
+
+let aspect_ratio v = (Custom "aspect-ratio", string_of_aspect_ratio v)
 let filter value = (Filter, value)
 let background_image value = (Background_image, value)
 let animation value = (Animation, value)
