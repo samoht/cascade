@@ -494,11 +494,7 @@ let rec string_of_var : type a. (a -> string) -> a var -> string =
   | Some (Value value) -> str [ base; ", "; value_to_string value; ")" ]
 
 and string_of_length = function
-  | Px n ->
-      (* Special case for large values like max_int *)
-      if n = max_int then "3.40282e38px"
-      else if n = 9999 then "3.40282e38px" (* For rounded-full *)
-      else str [ string_of_int n; "px" ]
+  | Px n -> str [ string_of_int n; "px" ]
   | Rem f -> str [ pp_float f; "rem" ]
   | Em f -> str [ pp_float f; "em" ]
   | Pct f -> str [ pp_float f; "%" ]
@@ -514,7 +510,11 @@ and string_of_length = function
   | Max_content -> "max-content"
   | Min_content -> "min-content"
   | Var v -> string_of_var string_of_length v
-  | Calc cv -> str [ "calc("; string_of_calc string_of_length cv; ")" ]
+  | Calc cv -> (
+      (* Optimize calc(infinity * 1px) to 3.40282e38px for minification *)
+      match cv with
+      | Expr (Val (Num f), Mult, Val (Px 1)) when f = infinity -> "3.40282e38px"
+      | _ -> str [ "calc("; string_of_calc string_of_length cv; ")" ])
 
 and string_of_calc : ('a -> string) -> 'a calc -> string =
  fun string_of_val calc ->
