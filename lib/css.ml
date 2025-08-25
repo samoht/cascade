@@ -1414,9 +1414,85 @@ let justify_self a = (Justify_self, string_of_align a)
 let place_content value = (Place_content, value)
 let place_items value = (Place_items, value)
 let place_self value = (Place_self, value)
+
+(* Typed place-* helpers *)
+type place_value =
+  | Start
+  | End
+  | Center
+  | Stretch
+  | Space_between
+  | Space_around
+  | Space_evenly
+  | Inherit
+
+let string_of_place_value = function
+  | Start -> "start"
+  | End -> "end"
+  | Center -> "center"
+  | Stretch -> "stretch"
+  | Space_between -> "space-between"
+  | Space_around -> "space-around"
+  | Space_evenly -> "space-evenly"
+  | Inherit -> "inherit"
+
+let place_content_v v = (Place_content, string_of_place_value v)
+let place_items_v v = (Place_items, string_of_place_value v)
+
+let place_self_v = function
+  | `Auto -> (Place_self, "auto")
+  | `Start -> (Place_self, "start")
+  | `End -> (Place_self, "end")
+  | `Center -> (Place_self, "center")
+  | `Stretch -> (Place_self, "stretch")
+
 let border_width len = (Border_width, string_of_length len)
 let border_radius len = (Border_radius, string_of_length len)
+
+let border_top_left_radius len =
+  (Custom "border-top-left-radius", string_of_length len)
+
+let border_top_right_radius len =
+  (Custom "border-top-right-radius", string_of_length len)
+
+let border_bottom_right_radius len =
+  (Custom "border-bottom-right-radius", string_of_length len)
+
+let border_bottom_left_radius len =
+  (Custom "border-bottom-left-radius", string_of_length len)
+
 let box_shadow value = (Box_shadow, value)
+
+(* Outline helpers using shorthand 'outline' property *)
+type outline_style_value =
+  | None
+  | Auto
+  | Dotted
+  | Dashed
+  | Solid
+  | Double
+  | Groove
+  | Ridge
+  | Inset
+  | Outset
+  | Inherit
+
+let string_of_outline_style = function
+  | None -> "none"
+  | Auto -> "auto"
+  | Dotted -> "dotted"
+  | Dashed -> "dashed"
+  | Solid -> "solid"
+  | Double -> "double"
+  | Groove -> "groove"
+  | Ridge -> "ridge"
+  | Inset -> "inset"
+  | Outset -> "outset"
+  | Inherit -> "inherit"
+
+let outline_style v = (Outline, string_of_outline_style v)
+let outline_width len = (Outline, string_of_length len)
+let outline_color c = (Outline, string_of_color c)
 let table_layout value = (Table_layout, string_of_table_layout value)
 let border_spacing len = (Border_spacing, string_of_length len)
 let overflow o = (Overflow, string_of_overflow o)
@@ -1425,6 +1501,50 @@ let clip value = (Clip, value)
 let filter value = (Filter, value)
 let background_image value = (Background_image, value)
 let animation value = (Animation, value)
+
+(* Blend modes *)
+type blend_mode_value =
+  | Normal
+  | Multiply
+  | Screen
+  | Overlay
+  | Darken
+  | Lighten
+  | Color_dodge
+  | Color_burn
+  | Hard_light
+  | Soft_light
+  | Difference
+  | Exclusion
+  | Hue
+  | Saturation
+  | Color
+  | Luminosity
+  | Inherit
+
+let string_of_blend_mode = function
+  | Normal -> "normal"
+  | Multiply -> "multiply"
+  | Screen -> "screen"
+  | Overlay -> "overlay"
+  | Darken -> "darken"
+  | Lighten -> "lighten"
+  | Color_dodge -> "color-dodge"
+  | Color_burn -> "color-burn"
+  | Hard_light -> "hard-light"
+  | Soft_light -> "soft-light"
+  | Difference -> "difference"
+  | Exclusion -> "exclusion"
+  | Hue -> "hue"
+  | Saturation -> "saturation"
+  | Color -> "color"
+  | Luminosity -> "luminosity"
+  | Inherit -> "inherit"
+
+let mix_blend_mode v = (Custom "mix-blend-mode", string_of_blend_mode v)
+
+let backdrop_blend_mode v =
+  (Custom "backdrop-blend-mode", string_of_blend_mode v)
 
 let grid_template_columns value =
   (Grid_template_columns, string_of_grid_template value)

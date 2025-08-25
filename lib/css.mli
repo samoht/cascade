@@ -633,6 +633,51 @@ type background_repeat_value =
 (** CSS container-type values. *)
 type container_type_value = Normal | Size | Inline_size | Inherit
 
+(** CSS place-* values. *)
+type place_value =
+  | Start
+  | End
+  | Center
+  | Stretch
+  | Space_between
+  | Space_around
+  | Space_evenly
+  | Inherit
+
+(** CSS outline-style values. *)
+type outline_style_value =
+  | None
+  | Auto
+  | Dotted
+  | Dashed
+  | Solid
+  | Double
+  | Groove
+  | Ridge
+  | Inset
+  | Outset
+  | Inherit
+
+(** CSS blend mode values. *)
+type blend_mode_value =
+  | Normal
+  | Multiply
+  | Screen
+  | Overlay
+  | Darken
+  | Lighten
+  | Color_dodge
+  | Color_burn
+  | Hard_light
+  | Soft_light
+  | Difference
+  | Exclusion
+  | Hue
+  | Saturation
+  | Color
+  | Luminosity
+  | Inherit
+
 (** {1 Declaration Constructors} *)
 
 (** {2 Modular Property Groups} *)
@@ -899,6 +944,16 @@ val place_items : string -> declaration
 val place_self : string -> declaration
 (** [place_self value] sets the CSS place-self property. *)
 
+(** Typed place-* helpers. *)
+val place_content_v : place_value -> declaration
+(** [place_content_v v] sets place-content with a typed value. *)
+
+val place_items_v : place_value -> declaration
+(** [place_items_v v] sets place-items with a typed value. *)
+
+val place_self_v : [ `Auto | `Start | `End | `Center | `Stretch ] -> declaration
+(** [place_self_v v] sets place-self with a typed value. *)
+
 val gap : length -> declaration
 (** [gap len] sets the CSS gap property.
 
@@ -1037,6 +1092,24 @@ val border_bottom_width : length -> declaration
 
 val border_top_width : length -> declaration
 (** [border_top_width len] sets the CSS border-top-width property. *)
+
+val outline_style : outline_style_value -> declaration
+(** Outline helpers. *)
+
+val outline_width : length -> declaration
+val outline_color : color -> declaration
+
+val border_top_left_radius : length -> declaration
+(** Corner border radius helpers. *)
+
+val border_top_right_radius : length -> declaration
+val border_bottom_right_radius : length -> declaration
+val border_bottom_left_radius : length -> declaration
+
+val mix_blend_mode : blend_mode_value -> declaration
+(** Blend mode helpers. *)
+
+val backdrop_blend_mode : blend_mode_value -> declaration
 
 val border_right_width : length -> declaration
 (** [border_right_width len] sets the CSS border-right-width property. *)
