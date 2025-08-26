@@ -728,10 +728,36 @@ and string_of_color ?(mode = Variables) = function
           ")";
         ]
   | Oklch { l; c; h } ->
-      str
-        [
-          "oklch("; pp_float (l /. 100.0); " "; pp_float c; " "; pp_float h; ")";
-        ]
+      (* Copy of Pp.float_n for consistent precision formatting like color.ml *)
+      let float_n decimals f =
+        let multiplier = Float.pow 10.0 (float_of_int decimals) in
+        let rounded = Float.round (f *. multiplier) /. multiplier in
+        if Float.is_integer rounded then string_of_int (int_of_float rounded)
+        else
+          let whole = int_of_float (Float.floor rounded) in
+          let frac_value = (rounded -. Float.floor rounded) *. multiplier in
+          let frac_int = int_of_float (Float.round frac_value) in
+          if frac_int = 0 then string_of_int whole
+          else
+            let frac_str = string_of_int frac_int in
+            let padded_frac =
+              let len = String.length frac_str in
+              if len < decimals then String.make (decimals - len) '0' ^ frac_str
+              else frac_str
+            in
+            let rec remove_trailing_zeros s =
+              let len = String.length s in
+              if len > 0 && s.[len - 1] = '0' then
+                remove_trailing_zeros (String.sub s 0 (len - 1))
+              else s
+            in
+            let trimmed_frac = remove_trailing_zeros padded_frac in
+            string_of_int whole ^ "." ^ trimmed_frac
+      in
+      let l_str = float_n 1 l in
+      let c_str = float_n 3 c in
+      let h_str = float_n 3 h in
+      str [ "oklch("; l_str; "% "; c_str; " "; h_str; ")" ]
   | Var v -> string_of_var ~mode (string_of_color ~mode) v
   | Current -> "currentColor"
   | Transparent -> "transparent"
