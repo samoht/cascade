@@ -97,6 +97,12 @@ type display =
 (** CSS position values *)
 type position = Static | Relative | Absolute | Fixed | Sticky
 
+(** CSS visibility values *)
+type visibility = Visible | Hidden | Collapse
+
+(** CSS z-index values *)
+type z_index_value = Auto | Index of int
+
 (** CSS font weight values *)
 type font_weight =
   | Weight of int
@@ -827,6 +833,15 @@ let string_of_position = function
   | Fixed -> "fixed"
   | Sticky -> "sticky"
 
+let string_of_visibility : visibility -> string = function
+  | Visible -> "visible"
+  | Hidden -> "hidden"
+  | Collapse -> "collapse"
+
+let string_of_z_index_value : z_index_value -> string = function
+  | Auto -> "auto"
+  | Index n -> string_of_int n
+
 let rec string_of_font_weight = function
   | Weight n -> string_of_int n
   | Normal -> "normal"
@@ -1522,6 +1537,7 @@ type 'a property =
   | List_style_image : list_style_image property
   | Display : display property
   | Position : position property
+  | Visibility : visibility property
   | Flex_direction : flex_direction property
   | Flex_wrap : flex_wrap property
   | Flex : string property
@@ -1572,7 +1588,7 @@ type 'a property =
   | Right : length property
   | Bottom : length property
   | Left : length property
-  | Z_index : int property
+  | Z_index : z_index_value property
   | Outline : string property
   | Outline_style : outline_style property
   | Outline_width : length property
@@ -1710,6 +1726,7 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
   | Font_weight -> string_of_font_weight value
   | Display -> string_of_display value
   | Position -> string_of_position value
+  | Visibility -> string_of_visibility value
   | Align_items -> string_of_align_items value
   | Justify_content -> string_of_justify_content value
   | Justify_items -> string_of_justify_self value
@@ -1718,7 +1735,7 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
   | Table_layout -> string_of_table_layout value
   | Grid_auto_flow -> string_of_grid_auto_flow value
   | Opacity -> pp_float value
-  | Z_index -> string_of_int value
+  | Z_index -> string_of_z_index_value value
   | Tab_size -> string_of_int value
   | Webkit_line_clamp -> string_of_int value
   | Top -> string_of_length ~mode value
@@ -1952,6 +1969,7 @@ let letter_spacing len = Declaration (Letter_spacing, len)
 let white_space value = Declaration (White_space, value)
 let display d = Declaration (Display, d)
 let position p = Declaration (Position, p)
+let visibility v = Declaration (Visibility, v)
 let top len = Declaration (Top, len)
 let right len = Declaration (Right, len)
 let bottom len = Declaration (Bottom, len)
@@ -2076,7 +2094,8 @@ type blend_mode_value =
 let grid_template_columns value = Declaration (Grid_template_columns, value)
 let grid_template_rows value = Declaration (Grid_template_rows, value)
 let pointer_events value = Declaration (Pointer_events, value)
-let z_index value = Declaration (Z_index, value)
+let z_index value = Declaration (Z_index, Index value)
+let z_index_auto = Declaration (Z_index, Auto)
 let appearance value = Declaration (Appearance, value)
 let overflow_x o = Declaration (Overflow_x, o)
 let overflow_y o = Declaration (Overflow_y, o)
@@ -2540,6 +2559,7 @@ let string_of_property : type a. a property -> string = function
   | List_style_image -> "list-style-image"
   | Display -> "display"
   | Position -> "position"
+  | Visibility -> "visibility"
   | Flex_direction -> "flex-direction"
   | Flex_wrap -> "flex-wrap"
   | Flex -> "flex"

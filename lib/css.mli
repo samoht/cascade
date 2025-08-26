@@ -218,6 +218,12 @@ type display =
 (** CSS position values. *)
 type position = Static | Relative | Absolute | Fixed | Sticky
 
+(** CSS visibility values. *)
+type visibility = Visible | Hidden | Collapse
+
+(** CSS z-index values. *)
+type z_index_value = Auto | Index of int
+
 (** CSS font weight values. *)
 type font_weight =
   | Weight of int
@@ -1033,6 +1039,12 @@ val position : position -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/position>
       MDN: position. *)
 
+val visibility : visibility -> declaration
+(** [visibility v] sets the CSS visibility property.
+
+    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/visibility>
+      MDN: visibility. *)
+
 val top : length -> declaration
 (** [top value] sets the CSS top property. *)
 
@@ -1754,7 +1766,12 @@ val pointer_events : pointer_events_value -> declaration
       MDN: pointer-events. *)
 
 val z_index : int -> declaration
-(** [z_index value] sets the CSS z-index property.
+(** [z_index value] sets the CSS z-index property to an integer value.
+    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/z-index>
+      MDN: z-index. *)
+
+val z_index_auto : declaration
+(** [z_index_auto] sets the CSS z-index property to auto.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/z-index>
       MDN: z-index. *)
 
