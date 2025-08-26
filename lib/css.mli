@@ -68,12 +68,20 @@
 type 'a var = {
   name : string;  (** Variable name (without --) *)
   fallback : 'a var_fallback option;  (** Optional fallback value *)
+  default_value : 'a option;
+      (** Default value for inline mode and theme layer *)
 }
 (** CSS variable reference *)
 
 and 'a var_fallback =
   | Var of 'a var  (** Another variable as fallback *)
   | Value of 'a  (** Direct value as fallback *)
+
+(** CSS generation mode. *)
+type mode =
+  | Variables  (** Emit var(--name) and generate theme/properties layers *)
+  | Inline  (** Resolve vars to default_value, no CSS variables *)
+  | Optimize  (** Inline small values, keep key theme vars *)
 
 (** CSS calc operations. *)
 type calc_op = Add | Sub | Mult | Div
@@ -181,7 +189,7 @@ type color =
   | Rgb of { r : int; g : int; b : int }
   | Rgba of { r : int; g : int; b : int; a : float }
   | Oklch of { l : float; c : float; h : float }  (** OKLCH color space *)
-  | Var of string
+  | Var of color var
   | Current
   | Transparent
   | Inherit
@@ -229,6 +237,34 @@ type overflow = Visible | Hidden | Scroll | Auto | Clip
 
 (** CSS flex direction values. *)
 type flex_direction = Row | Row_reverse | Column | Column_reverse
+
+(** CSS flex wrap values. *)
+type flex_wrap = Nowrap | Wrap | Wrap_reverse
+
+(** CSS flex shorthand values. *)
+type flex_value =
+  | Initial (* 0 1 auto *)
+  | Auto (* 1 1 auto *)
+  | None (* 0 0 auto *)
+  | Grow of float (* Single grow value *)
+  | Basis of length (* 1 1 <length> *)
+  | Grow_shrink of float * float (* grow shrink 0% *)
+  | Full of float * float * length (* grow shrink basis *)
+
+(** CSS align-items values. *)
+type align_items = Flex_start | Flex_end | Center | Baseline | Stretch
+
+(** CSS justify-content values. *)
+type justify_content =
+  | Flex_start
+  | Flex_end
+  | Center
+  | Space_between
+  | Space_around
+  | Space_evenly
+
+(** CSS align-self values. *)
+type align_self = Auto | Flex_start | Flex_end | Center | Baseline | Stretch
 
 (** CSS align/justify values. *)
 type align =
@@ -282,6 +318,20 @@ type border_style =
   | Hidden
   | Var of border_style var (* CSS variable reference *)
 
+(** CSS outline style values. *)
+type outline_style =
+  | None
+  | Auto
+  | Dotted
+  | Dashed
+  | Solid
+  | Double
+  | Groove
+  | Ridge
+  | Inset
+  | Outset
+  | Inherit
+
 (** CSS cursor values. *)
 type cursor =
   | Auto
@@ -324,8 +374,8 @@ type cursor =
 (** CSS user-select values. *)
 type user_select = None | Auto | Text | All | Contain
 
-(** CSS flex wrap values. *)
-type flex_wrap = Nowrap | Wrap | Wrap_reverse
+(** CSS resize values. *)
+type resize = None | Both | Horizontal | Vertical | Block | Inline | Inherit
 
 (** CSS text transform values. *)
 type text_transform =
@@ -353,16 +403,6 @@ type white_space =
 (** CSS table layout values. *)
 type table_layout = Auto | Fixed | Inherit
 
-(** CSS resize values. *)
-type resize_value =
-  | None
-  | Both
-  | Horizontal
-  | Vertical
-  | Block
-  | Inline
-  | Inherit
-
 (** CSS object fit values. *)
 type object_fit = Fill | Contain | Cover | None | Scale_down | Inherit
 
@@ -384,7 +424,7 @@ type vertical_align_value =
   | Inherit
 
 (** CSS border-collapse values. *)
-type border_collapse_value = Collapse | Separate | Inherit
+type border_collapse = Collapse | Separate | Inherit
 
 (** CSS pointer-events values. *)
 type pointer_events_value =
@@ -399,16 +439,6 @@ type pointer_events_value =
   | Stroke
   | All
   | Inherit
-
-(** CSS flex shorthand values. *)
-type flex_value =
-  | Initial (* 0 1 auto *)
-  | Auto (* 1 1 auto *)
-  | None (* 0 0 auto *)
-  | Grow of float (* grow 1 0% *)
-  | Basis of length (* 1 1 basis *)
-  | Grow_shrink of float * float (* grow shrink 0% *)
-  | Full of float * float * length (* grow shrink basis *)
 
 (** CSS duration values. *)
 type duration =
@@ -520,8 +550,11 @@ type transform_value =
   | Perspective of length
   | Transform_none
 
-type property
-(** Abstract type for CSS property names. *)
+type _ property
+(** GADT for typed CSS properties. *)
+
+(** Typed CSS value that can be rendered to string based on mode *)
+(* value type removed - using GADT property types instead *)
 
 type declaration
 (** Abstract type for CSS declarations (property-value pairs). *)
@@ -560,9 +593,11 @@ type layered_rules
 type t
 (** Abstract type for CSS stylesheets. *)
 
-val pp : ?minify:bool -> t -> string
-(** [pp stylesheet] is [to_string]. We don't use Format to have an efficient
-    js_of_ocaml bundle. *)
+val pp : ?minify:bool -> ?mode:mode -> t -> string
+(** [pp ?minify ?mode stylesheet] converts a stylesheet to string.
+    - [minify] removes unnecessary whitespace (default: false)
+    - [mode] controls CSS variable handling (default: Variables) We don't use
+      Format to have an efficient js_of_ocaml bundle. *)
 
 type at_property
 (** Abstract type for [@property] rules *)
@@ -588,17 +623,40 @@ type webkit_font_smoothing_value =
 type moz_osx_font_smoothing_value = Auto | Grayscale | Inherit
 
 (** CSS transform-style values. *)
-type transform_style_value = Flat | Preserve_3d | Inherit
+type transform_style = Flat | Preserve_3d | Inherit
 
 (** CSS backface-visibility values. *)
-type backface_visibility_value = Visible | Hidden | Inherit
+type backface_visibility = Visible | Hidden | Inherit
 
 (** CSS scroll-behavior values. *)
-type scroll_behavior_value = Auto | Smooth | Inherit
+type scroll_behavior = Auto | Smooth | Inherit
+
+(** CSS clear values for clearing floats. *)
+type clear = None | Left | Right | Both
+
+(** CSS float values. *)
+type float_value = None | Left | Right
+
+(** CSS touch-action values. *)
+type touch_action =
+  | Auto
+  | None
+  | Pan_x
+  | Pan_y
+  | Manipulation
+  | Pan_left
+  | Pan_right
+  | Pan_up
+  | Pan_down
 
 (** CSS scroll-snap-type values. *)
-type scroll_snap_type_value =
+type scroll_snap_type =
   | None
+  | X
+  | Y
+  | Block
+  | Inline
+  | Both
   | X_mandatory
   | Y_mandatory
   | Block_mandatory
@@ -615,13 +673,13 @@ type scroll_snap_type_value =
   | Inherit
 
 (** CSS scroll-snap-align values. *)
-type scroll_snap_align_value = None | Start | End | Center | Inherit
+type scroll_snap_align = None | Start | End | Center | Inherit
 
 (** CSS scroll-snap-stop values. *)
-type scroll_snap_stop_value = Normal | Always | Inherit
+type scroll_snap_stop = Normal | Always | Inherit
 
 (** CSS isolation values. *)
-type isolation_value = Auto | Isolate | Inherit
+type isolation = Auto | Isolate | Inherit
 
 (** CSS background-repeat values. *)
 type background_repeat_value =
@@ -634,7 +692,7 @@ type background_repeat_value =
   | Inherit
 
 (** CSS container-type values. *)
-type container_type_value = Normal | Size | Inline_size | Inherit
+type container_type = Normal | Size | Inline_size | Inherit
 
 (** CSS place-* values. *)
 type place_value =
@@ -645,20 +703,6 @@ type place_value =
   | Space_between
   | Space_around
   | Space_evenly
-  | Inherit
-
-(** CSS outline-style values. *)
-type outline_style_value =
-  | None
-  | Auto
-  | Dotted
-  | Dashed
-  | Solid
-  | Double
-  | Groove
-  | Ridge
-  | Inset
-  | Outset
   | Inherit
 
 (** CSS blend mode values. *)
@@ -682,14 +726,20 @@ type blend_mode_value =
   | Inherit
 
 (** CSS aspect-ratio values. *)
-type aspect_ratio_value =
-  | Auto
-  | Ratio of int * int
-  | Number of float
-  | Inherit
+type aspect_ratio = Auto | Ratio of int * int | Number of float | Inherit
 
-val aspect_ratio : aspect_ratio_value -> declaration
-(** [aspect_ratio v] sets the CSS aspect-ratio property. *)
+(** CSS justify-self values. *)
+type justify_self =
+  | Auto
+  | Start
+  | End
+  | Center
+  | Stretch
+  | Flex_start
+  | Flex_end
+
+val aspect_ratio : aspect_ratio -> declaration
+(** [aspect_ratio value] sets the CSS aspect-ratio property. *)
 
 (** {1 Declaration Constructors} *)
 
@@ -718,23 +768,13 @@ module Flex : sig
   val order : int -> declaration
   (** [order n] sets the order property. *)
 
-  val align_items :
-    [ `Flex_start | `Flex_end | `Center | `Baseline | `Stretch ] -> declaration
+  val align_items : align_items -> declaration
   (** [align_items value] sets the align-items property. *)
 
-  val align_self :
-    [ `Auto | `Flex_start | `Flex_end | `Center | `Baseline | `Stretch ] ->
-    declaration
+  val align_self : align_self -> declaration
   (** [align_self value] sets the align-self property. *)
 
-  val justify_content :
-    [ `Flex_start
-    | `Flex_end
-    | `Center
-    | `Space_between
-    | `Space_around
-    | `Space_evenly ] ->
-    declaration
+  val justify_content : justify_content -> declaration
   (** [justify_content value] sets the justify-content property. *)
 
   val gap : length -> declaration
@@ -815,12 +855,16 @@ end
 
 (** {2 CSS Custom Properties (Variables)} *)
 
-val var : ?fallback:'a var_fallback -> string -> 'a var
-(** [var ?fallback name] creates a CSS variable reference. Example:
+val var : ?fallback:'a var_fallback -> ?default_value:'a -> string -> 'a var
+(** [var ?fallback ?default_value name] creates a CSS variable reference.
+    - [fallback] is used inside [var(--name, fallback)] in CSS output
+    - [default_value] is used for inline mode and :root theme layer generation
+      Examples:
     - [var "spacing"] creates [var(--spacing)]
     - [var ~fallback:(Var (var "default")) "custom"] creates
       [var(--custom, var(--default))]
-    - [var ~fallback:(Value (Px 10)) "spacing"] creates [var(--spacing, 10px)].
+    - [var ~fallback:(Value (Px 10)) "spacing"] creates [var(--spacing, 10px)]
+    - [var ~default_value:(Rem 1.0) "spacing-4"] provides default for inlining.
 *)
 
 val custom_property : string -> string -> declaration
@@ -894,6 +938,21 @@ val display : display -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/display>
       MDN: display. *)
 
+val flex_direction : flex_direction -> declaration
+(** [flex_direction d] sets the CSS flex-direction property. *)
+
+val flex : string -> declaration
+(** [flex value] sets the CSS flex shorthand property. *)
+
+val flex_grow : float -> declaration
+(** [flex_grow value] sets the CSS flex-grow property. *)
+
+val flex_shrink : float -> declaration
+(** [flex_shrink value] sets the CSS flex-shrink property. *)
+
+val flex_wrap : flex_wrap -> declaration
+(** [flex_wrap value] sets the CSS flex-wrap property. *)
+
 val position : position -> declaration
 (** [position p] sets the CSS position property.
 
@@ -930,42 +989,51 @@ val overflow_y : overflow -> declaration
 val opacity : float -> declaration
 (** [opacity value] sets the CSS opacity property. *)
 
-val resize : resize_value -> declaration
+val resize : resize -> declaration
 (** [resize value] sets the CSS resize property. *)
 
-val align_items : align -> declaration
+val align_items : align_items -> declaration
 (** [align_items a] sets the CSS align-items property. *)
 
 val align_content : align -> declaration
 (** [align_content a] sets the CSS align-content property. *)
 
-val align_self : align -> declaration
+val align_self : align_self -> declaration
 (** [align_self a] sets the CSS align-self property. *)
 
-val justify_content : align -> declaration
+val justify_content : justify_content -> declaration
 (** [justify_content a] sets the CSS justify-content property. *)
 
-val justify_self : align -> declaration
-(** [justify_self a] sets the CSS justify-self property. *)
+val justify_self : justify_self -> declaration
+(** [justify_self js] sets the CSS justify-self property. *)
 
-val place_content : string -> declaration
+type place_content =
+  | Start
+  | End
+  | Center
+  | Stretch
+  | Space_between
+  | Space_around
+  | Space_evenly
+
+val place_content : place_content -> declaration
 (** [place_content value] sets the CSS place-content property. *)
 
-val place_items : string -> declaration
+val place_items : place_content -> declaration
 (** [place_items value] sets the CSS place-items property. *)
 
 val place_self : string -> declaration
 (** [place_self value] sets the CSS place-self property. *)
 
 (** Typed place-* helpers. *)
-val place_content_v : place_value -> declaration
-(** [place_content_v v] sets place-content with a typed value. *)
 
-val place_items_v : place_value -> declaration
-(** [place_items_v v] sets place-items with a typed value. *)
+val place_items_v : place_content -> declaration
+(** [place_items_v value] sets the CSS place-items property from a typed
+    [value]. *)
 
 val place_self_v : [ `Auto | `Start | `End | `Center | `Stretch ] -> declaration
-(** [place_self_v v] sets place-self with a typed value. *)
+(** [place_self_v value] sets the CSS place-self property from a typed [value].
+*)
 
 val gap : length -> declaration
 (** [gap len] sets the CSS gap property.
@@ -1062,6 +1130,17 @@ val text_decoration : text_decoration -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration>
       MDN: text-decoration. *)
 
+val text_decoration_color : color -> declaration
+(** [text_decoration_color value] sets the CSS text-decoration-color property.
+*)
+
+val text_decoration_thickness : string -> declaration
+(** [text_decoration_thickness value] sets the CSS text-decoration-thickness
+    property. *)
+
+val text_size_adjust : string -> declaration
+(** [text_size_adjust value] sets the CSS text-size-adjust property. *)
+
 val text_transform : text_transform -> declaration
 (** [text_transform value] sets the CSS text-transform property.
 
@@ -1106,23 +1185,21 @@ val border_bottom_width : length -> declaration
 val border_top_width : length -> declaration
 (** [border_top_width len] sets the CSS border-top-width property. *)
 
-val outline_style : outline_style_value -> declaration
-(** Outline helpers. *)
+val outline_style : outline_style -> declaration
+(** [outline_style v] sets the CSS outline-style property. *)
 
 val outline_width : length -> declaration
+(** [outline_width len] sets the CSS outline-width property. *)
+
 val outline_color : color -> declaration
+(** [outline_color c] sets the CSS outline-color property. *)
 
-val border_top_left_radius : length -> declaration
-(** Corner border radius helpers. *)
-
-val border_top_right_radius : length -> declaration
-val border_bottom_right_radius : length -> declaration
-val border_bottom_left_radius : length -> declaration
-
-val mix_blend_mode : blend_mode_value -> declaration
-(** Blend mode helpers. *)
-
-val backdrop_blend_mode : blend_mode_value -> declaration
+(* TODO: Add these to property GADT if needed val border_top_left_radius :
+   length -> declaration val border_top_right_radius : length -> declaration val
+   border_bottom_right_radius : length -> declaration val
+   border_bottom_left_radius : length -> declaration val mix_blend_mode :
+   blend_mode_value -> declaration val backdrop_blend_mode : blend_mode_value ->
+   declaration *)
 
 val border_right_width : length -> declaration
 (** [border_right_width len] sets the CSS border-right-width property. *)
@@ -1257,7 +1334,7 @@ val border : string -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border> MDN: border.
 *)
 
-val tab_size : string -> declaration
+val tab_size : int -> declaration
 (** [tab_size value] sets the CSS tab-size property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/tab-size>
       MDN: tab-size. *)
@@ -1278,7 +1355,7 @@ val font_variation_settings : string -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/font-variation-settings>
       MDN: font-variation-settings. *)
 
-val webkit_tap_highlight_color : string -> declaration
+val webkit_tap_highlight_color : color -> declaration
 (** [webkit_tap_highlight_color value] sets the -webkit-tap-highlight-color
     property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/-webkit-tap-highlight-color>
@@ -1292,7 +1369,7 @@ val text_indent : length -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/text-indent>
       MDN: text-indent. *)
 
-val border_collapse : border_collapse_value -> declaration
+val border_collapse : border_collapse -> declaration
 (** [border_collapse value] sets the CSS border-collapse property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-collapse>
       MDN: border-collapse. *)
@@ -1316,7 +1393,7 @@ val letter_spacing : length -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/letter-spacing>
       MDN: letter-spacing. *)
 
-val webkit_appearance : string -> declaration
+val webkit_appearance : appearance_value -> declaration
 (** [webkit_appearance value] sets the -webkit-appearance property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/appearance>
       MDN: appearance. *)
@@ -1327,7 +1404,7 @@ val webkit_font_smoothing : webkit_font_smoothing_value -> declaration
 val moz_osx_font_smoothing : moz_osx_font_smoothing_value -> declaration
 (** [moz_osx_font_smoothing value] sets the -moz-osx-font-smoothing property. *)
 
-val webkit_line_clamp : string -> declaration
+val webkit_line_clamp : int -> declaration
 (** [webkit_line_clamp value] sets the -webkit-line-clamp property. *)
 
 val cursor : cursor -> declaration
@@ -1340,7 +1417,7 @@ val user_select : user_select -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/user-select>
       MDN: user-select. *)
 
-val container_type : container_type_value -> declaration
+val container_type : container_type -> declaration
 (** [container_type value] sets the CSS container-type property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/container-type>
       MDN: container-type. *)
@@ -1360,12 +1437,12 @@ val perspective_origin : string -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/perspective-origin>
       MDN: perspective-origin. *)
 
-val transform_style : transform_style_value -> declaration
+val transform_style : transform_style -> declaration
 (** [transform_style value] sets the CSS transform-style property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/transform-style>
       MDN: transform-style. *)
 
-val backface_visibility : backface_visibility_value -> declaration
+val backface_visibility : backface_visibility -> declaration
 (** [backface_visibility value] sets the CSS backface-visibility property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/backface-visibility>
       MDN: backface-visibility. *)
@@ -1395,6 +1472,13 @@ val scale : string -> declaration
 (** [scale value] sets the CSS scale property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scale> MDN: scale. *)
 
+val grid_template_columns : grid_template -> declaration
+(** [grid_template_columns value] sets the CSS grid-template-columns property.
+*)
+
+val grid_template_rows : grid_template -> declaration
+(** [grid_template_rows value] sets the CSS grid-template-rows property. *)
+
 val transition_duration : duration -> declaration
 (** [transition_duration value] sets the CSS transition-duration property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/transition-duration>
@@ -1421,7 +1505,7 @@ val contain : string -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/contain>
       MDN: contain. *)
 
-val isolation : isolation_value -> declaration
+val isolation : isolation -> declaration
 (** [isolation value] sets the CSS isolation property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/isolation>
       MDN: isolation. *)
@@ -1475,22 +1559,35 @@ val clip : string -> declaration
 (** [clip value] sets the CSS clip property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/clip> MDN: clip. *)
 
-val scroll_snap_type : scroll_snap_type_value -> declaration
+val clear : clear -> declaration
+(** [clear value] sets the CSS clear property for clearing floats.
+    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/clear> MDN: clear. *)
+
+val float : float_value -> declaration
+(** [float value] sets the CSS float property.
+    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/float> MDN: float. *)
+
+val touch_action : touch_action -> declaration
+(** [touch_action value] sets the CSS touch-action property.
+    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/touch-action>
+      MDN: touch-action. *)
+
+val scroll_snap_type : scroll_snap_type -> declaration
 (** [scroll_snap_type value] sets the CSS scroll-snap-type property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-snap-type>
       MDN: scroll-snap-type. *)
 
-val scroll_snap_align : scroll_snap_align_value -> declaration
+val scroll_snap_align : scroll_snap_align -> declaration
 (** [scroll_snap_align value] sets the CSS scroll-snap-align property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-snap-align>
       MDN: scroll-snap-align. *)
 
-val scroll_snap_stop : scroll_snap_stop_value -> declaration
+val scroll_snap_stop : scroll_snap_stop -> declaration
 (** [scroll_snap_stop value] sets the CSS scroll-snap-stop property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-snap-stop>
       MDN: scroll-snap-stop. *)
 
-val scroll_behavior : scroll_behavior_value -> declaration
+val scroll_behavior : scroll_behavior -> declaration
 (** [scroll_behavior value] sets the CSS scroll-behavior property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-behavior>
       MDN: scroll-behavior. *)
@@ -1609,35 +1706,32 @@ val stylesheet : sheet_item list -> t
 
 (** {1 Rendering} *)
 
-val to_string : ?minify:bool -> t -> string
+val to_string : ?minify:bool -> ?mode:mode -> t -> string
 (** [to_string ?minify stylesheet] renders a complete stylesheet to CSS. If
     [minify] is [true], the output will be minified (no unnecessary whitespace).
     Default is [false]. *)
 
-val string_of_property : property -> string
+val string_of_property : _ property -> string
 (** [string_of_property prop] converts a property to its CSS string
     representation. *)
 
-val declaration_value : declaration -> string
-(** [declaration_value decl] extracts the value from a declaration. *)
-
-val declaration_property : declaration -> property
-(** [declaration_property decl] extracts the property from a declaration. *)
-
-val is_custom_property : declaration -> bool
-(** [is_custom_property decl] returns true if the declaration is a CSS custom
-    property (starts with --). *)
-
 (** {1 Utilities} *)
+
+(** Existential wrapper for variables *)
+type any_var = V : 'a var -> any_var
 
 val all_vars : declaration list -> string list
 (** [all_vars declarations] extracts all CSS variable names referenced in
     declaration values, returning them sorted and deduplicated. *)
 
+val analyze_declarations : declaration list -> any_var list
+(** [analyze_declarations declarations] extracts typed CSS variables from
+    declarations. *)
+
 val deduplicate_declarations : declaration list -> declaration list
 (** [deduplicate_declarations declarations] removes duplicate declarations,
     keeping the last occurrence. *)
 
-val inline_style_of_declarations : declaration list -> string
+val inline_style_of_declarations : ?mode:mode -> declaration list -> string
 (** [inline_style_of_declarations declarations] converts a list of declarations
     to an inline style string. *)

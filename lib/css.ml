@@ -4,12 +4,18 @@
 let str ?(sep = "") segments = String.concat sep segments
 let lines segments = str ~sep:"\n" segments
 
-type 'a var = { name : string; fallback : 'a var_fallback option }
+type 'a var = {
+  name : string;
+  fallback : 'a var_fallback option;
+  default_value : 'a option;
+}
 (** CSS variable reference *)
 
 and 'a var_fallback = Var of 'a var | Value of 'a
 
-let var ?fallback name = { name; fallback }
+type mode = Variables | Inline | Optimize
+
+let var ?fallback ?default_value name = { name; fallback; default_value }
 
 (** CSS length values *)
 type calc_op = Add | Sub | Mult | Div
@@ -61,7 +67,7 @@ type color =
   | Rgb of { r : int; g : int; b : int }
   | Rgba of { r : int; g : int; b : int; a : float }
   | Oklch of { l : float; c : float; h : float }
-  | Var of string
+  | Var of color var (* Use typed var instead of string *)
   | Current
   | Transparent
   | Inherit
@@ -162,6 +168,20 @@ type border_style =
   | Hidden
   | Var of border_style var (* CSS variable reference *)
 
+(** CSS outline style values *)
+type outline_style =
+  | None
+  | Auto
+  | Dotted
+  | Dashed
+  | Solid
+  | Double
+  | Groove
+  | Ridge
+  | Inset
+  | Outset
+  | Inherit
+
 (** CSS cursor values *)
 type cursor =
   | Auto
@@ -207,6 +227,64 @@ type user_select = None | Auto | Text | All | Contain
 (** CSS flex wrap values *)
 type flex_wrap = Nowrap | Wrap | Wrap_reverse
 
+type align_items = Flex_start | Flex_end | Center | Baseline | Stretch
+
+type justify_content =
+  | Flex_start
+  | Flex_end
+  | Center
+  | Space_between
+  | Space_around
+  | Space_evenly
+
+type align_self = Auto | Flex_start | Flex_end | Center | Baseline | Stretch
+type border_collapse = Collapse | Separate | Inherit
+type grid_auto_flow = Row | Column | Row_dense | Column_dense
+type isolation = Auto | Isolate | Inherit
+type clear = None | Left | Right | Both
+type float_value = None | Left | Right
+type transform_style = Flat | Preserve_3d | Inherit
+type backface_visibility = Visible | Hidden | Inherit
+type resize = None | Both | Horizontal | Vertical | Block | Inline | Inherit
+type object_fit = Fill | Contain | Cover | None | Scale_down | Inherit
+type box_sizing = Border_box | Content_box | Inherit
+type scroll_behavior = Auto | Smooth | Inherit
+type scroll_snap_stop = Normal | Always | Inherit
+type scroll_snap_align = None | Start | End | Center | Inherit
+
+type scroll_snap_type =
+  | None
+  | X
+  | Y
+  | Block
+  | Inline
+  | Both
+  | X_mandatory
+  | Y_mandatory
+  | Block_mandatory
+  | Inline_mandatory
+  | Both_mandatory
+  | X_proximity
+  | Y_proximity
+  | Block_proximity
+  | Inline_proximity
+  | Both_proximity
+  | X_var of string
+  | Y_var of string
+  | Both_var of string
+  | Inherit
+
+type touch_action =
+  | Auto
+  | None
+  | Pan_x
+  | Pan_y
+  | Manipulation
+  | Pan_left
+  | Pan_right
+  | Pan_up
+  | Pan_down
+
 (** CSS text transform values *)
 type text_transform =
   | None
@@ -216,9 +294,6 @@ type text_transform =
   | Full_width
   | Full_size_kana
   | Inherit
-
-(** CSS box sizing values *)
-type box_sizing = Border_box | Content_box | Inherit
 
 (** CSS white space values *)
 type white_space =
@@ -234,17 +309,6 @@ type white_space =
 type table_layout = Auto | Fixed | Inherit
 
 (** CSS resize values *)
-type resize_value =
-  | None
-  | Both
-  | Horizontal
-  | Vertical
-  | Block
-  | Inline
-  | Inherit
-
-(** CSS object fit values *)
-type object_fit = Fill | Contain | Cover | None | Scale_down | Inherit
 
 (** CSS appearance values *)
 type appearance_value = None | Auto | Button | Textfield | Menulist | Inherit
@@ -261,8 +325,6 @@ type vertical_align_value =
   | Length of length
   | Percentage of float
   | Inherit
-
-type border_collapse_value = Collapse | Separate | Inherit
 
 type pointer_events_value =
   | Auto
@@ -298,40 +360,18 @@ type webkit_font_smoothing_value =
 type moz_osx_font_smoothing_value = Auto | Grayscale | Inherit
 
 (** CSS transform-style values *)
-type transform_style_value = Flat | Preserve_3d | Inherit
 
 (** CSS backface-visibility values *)
-type backface_visibility_value = Visible | Hidden | Inherit
 
 (** CSS scroll-behavior values *)
-type scroll_behavior_value = Auto | Smooth | Inherit
 
 (** CSS scroll-snap-type values *)
-type scroll_snap_type_value =
-  | None
-  | X_mandatory
-  | Y_mandatory
-  | Block_mandatory
-  | Inline_mandatory
-  | Both_mandatory
-  | X_proximity
-  | Y_proximity
-  | Block_proximity
-  | Inline_proximity
-  | Both_proximity
-  | X_var of string
-  | Y_var of string
-  | Both_var of string
-  | Inherit
 
 (** CSS scroll-snap-align values *)
-type scroll_snap_align_value = None | Start | End | Center | Inherit
 
 (** CSS scroll-snap-stop values *)
-type scroll_snap_stop_value = Normal | Always | Inherit
 
 (** CSS isolation values *)
-type isolation_value = Auto | Isolate | Inherit
 
 (** CSS background-repeat values *)
 type background_repeat_value =
@@ -344,7 +384,30 @@ type background_repeat_value =
   | Inherit
 
 (** CSS container-type values *)
-type container_type_value = Normal | Size | Inline_size | Inherit
+type container_type = Normal | Size | Inline_size | Inherit
+
+(** CSS aspect-ratio values *)
+type aspect_ratio = Auto | Ratio of int * int | Number of float | Inherit
+
+(** CSS justify-self values *)
+type justify_self =
+  | Auto
+  | Start
+  | End
+  | Center
+  | Stretch
+  | Flex_start
+  | Flex_end
+
+(** CSS place-content values *)
+type place_content =
+  | Start
+  | End
+  | Center
+  | Stretch
+  | Space_between
+  | Space_around
+  | Space_evenly
 
 (** CSS flex shorthand values *)
 type flex_value =
@@ -483,17 +546,34 @@ let pp_float f =
       String.sub s 1 (String.length s - 1)
     else s
 
-(* Convert typed values to strings *)
-let rec string_of_var : type a. (a -> string) -> a var -> string =
- fun value_to_string v ->
-  let base = str [ "var(--"; v.name ] in
-  match v.fallback with
-  | None -> str [ base; ")" ]
-  | Some (Var fallback) ->
-      str [ base; ", "; string_of_var value_to_string fallback; ")" ]
-  | Some (Value value) -> str [ base; ", "; value_to_string value; ")" ]
+(* Convert CSS variable to string *)
+let rec string_of_var : type a. ?mode:mode -> (a -> string) -> a var -> string =
+ fun ?(mode = Variables) value_to_string v ->
+  match mode with
+  | Inline -> (
+      match v.default_value with
+      | Some value -> value_to_string value
+      | None -> (
+          (* Fallback to var() if no default in inline mode *)
+          let base = str [ "var(--"; v.name ] in
+          match v.fallback with
+          | None -> str [ base; ")" ]
+          | Some (Var fallback) ->
+              str
+                [
+                  base; ", "; string_of_var ~mode value_to_string fallback; ")";
+                ]
+          | Some (Value value) -> str [ base; ", "; value_to_string value; ")" ]
+          ))
+  | Variables | Optimize -> (
+      let base = str [ "var(--"; v.name ] in
+      match v.fallback with
+      | None -> str [ base; ")" ]
+      | Some (Var fallback) ->
+          str [ base; ", "; string_of_var ~mode value_to_string fallback; ")" ]
+      | Some (Value value) -> str [ base; ", "; value_to_string value; ")" ])
 
-and string_of_length = function
+and string_of_length ?(mode = Variables) = function
   | Px n -> str [ string_of_int n; "px" ]
   | Rem f -> str [ pp_float f; "rem" ]
   | Em f -> str [ pp_float f; "em" ]
@@ -509,12 +589,12 @@ and string_of_length = function
   | Fit_content -> "fit-content"
   | Max_content -> "max-content"
   | Min_content -> "min-content"
-  | Var v -> string_of_var string_of_length v
+  | Var v -> string_of_var ~mode (string_of_length ~mode) v
   | Calc cv -> (
       (* Optimize calc(infinity * 1px) to 3.40282e38px for minification *)
       match cv with
       | Expr (Val (Num f), Mult, Val (Px 1)) when f = infinity -> "3.40282e38px"
-      | _ -> str [ "calc("; string_of_calc string_of_length cv; ")" ])
+      | _ -> str [ "calc("; string_of_calc (string_of_length ~mode) cv; ")" ])
 
 and string_of_calc : ('a -> string) -> 'a calc -> string =
  fun string_of_val calc ->
@@ -564,7 +644,7 @@ let rec string_of_color_in_mix = function
   | Current -> "currentcolor" (* lowercase in color-mix *)
   | c -> string_of_color c
 
-and string_of_color = function
+and string_of_color ?(mode = Variables) = function
   | Hex { hash; value } ->
       (* If hash was originally present, include it; for Tailwind arbitrary
          values without hash, omit it *)
@@ -604,7 +684,7 @@ and string_of_color = function
         [
           "oklch("; pp_float (l /. 100.0); " "; pp_float c; " "; pp_float h; ")";
         ]
-  | Var v -> str [ "var(--"; v; ")" ]
+  | Var v -> string_of_var ~mode (string_of_color ~mode) v
   | Current -> "currentColor"
   | Transparent -> "transparent"
   | Inherit -> "inherit"
@@ -676,7 +756,7 @@ let rec string_of_font_weight = function
   | Inherit -> "inherit"
   | Var v -> string_of_var string_of_font_weight v
 
-let string_of_text_align = function
+let string_of_text_align : text_align -> string = function
   | Left -> "left"
   | Right -> "right"
   | Center -> "center"
@@ -692,7 +772,7 @@ let string_of_overflow : overflow -> string = function
   | (Auto : overflow) -> "auto"
   | Clip -> "clip"
 
-let string_of_flex_direction = function
+let string_of_flex_direction : flex_direction -> string = function
   | Row -> "row"
   | Row_reverse -> "row-reverse"
   | Column -> "column"
@@ -703,35 +783,75 @@ let string_of_flex_wrap : flex_wrap -> string = function
   | Wrap -> "wrap"
   | Wrap_reverse -> "wrap-reverse"
 
-let string_of_text_transform : text_transform -> string = function
-  | None -> "none"
-  | Uppercase -> "uppercase"
-  | Lowercase -> "lowercase"
-  | Capitalize -> "capitalize"
-  | Full_width -> "full-width"
-  | Full_size_kana -> "full-size-kana"
-  | Inherit -> "inherit"
+let string_of_align_items : align_items -> string = function
+  | Flex_start -> "flex-start"
+  | Flex_end -> "flex-end"
+  | Center -> "center"
+  | Baseline -> "baseline"
+  | Stretch -> "stretch"
 
-let string_of_box_sizing : box_sizing -> string = function
-  | Border_box -> "border-box"
-  | Content_box -> "content-box"
-  | Inherit -> "inherit"
+let string_of_justify_content : justify_content -> string = function
+  | Flex_start -> "flex-start"
+  | Flex_end -> "flex-end"
+  | Center -> "center"
+  | Space_between -> "space-between"
+  | Space_around -> "space-around"
+  | Space_evenly -> "space-evenly"
 
-let string_of_white_space : white_space -> string = function
-  | Normal -> "normal"
-  | Nowrap -> "nowrap"
-  | Pre -> "pre"
-  | Pre_wrap -> "pre-wrap"
-  | Pre_line -> "pre-line"
-  | Break_spaces -> "break-spaces"
-  | Inherit -> "inherit"
-
-let string_of_table_layout : table_layout -> string = function
+let string_of_align_self : align_self -> string = function
   | Auto -> "auto"
-  | Fixed -> "fixed"
+  | Flex_start -> "flex-start"
+  | Flex_end -> "flex-end"
+  | Center -> "center"
+  | Baseline -> "baseline"
+  | Stretch -> "stretch"
+
+let string_of_border_collapse : border_collapse -> string = function
+  | Collapse -> "collapse"
+  | Separate -> "separate"
   | Inherit -> "inherit"
 
-let string_of_resize : resize_value -> string = function
+let string_of_grid_auto_flow : grid_auto_flow -> string = function
+  | Row -> "row"
+  | Column -> "column"
+  | Row_dense -> "row dense"
+  | Column_dense -> "column dense"
+
+let string_of_isolation : isolation -> string = function
+  | Auto -> "auto"
+  | Isolate -> "isolate"
+  | Inherit -> "inherit"
+
+let string_of_clear : clear -> string = function
+  | None -> "none"
+  | Left -> "left"
+  | Right -> "right"
+  | Both -> "both"
+
+let string_of_float_value : float_value -> string = function
+  | None -> "none"
+  | Left -> "left"
+  | Right -> "right"
+
+let string_of_transform_style : transform_style -> string = function
+  | Flat -> "flat"
+  | Preserve_3d -> "preserve-3d"
+  | Inherit -> "inherit"
+
+let string_of_backface_visibility : backface_visibility -> string = function
+  | Visible -> "visible"
+  | Hidden -> "hidden"
+  | Inherit -> "inherit"
+
+let string_of_appearance_value : appearance_value -> string = function
+  | None -> "none"
+  | Auto -> "auto"
+  | Button -> "button"
+  | Textfield -> "textfield"
+  | Menulist -> "menulist"
+  | Inherit -> "inherit"
+
+let string_of_resize : resize -> string = function
   | None -> "none"
   | Both -> "both"
   | Horizontal -> "horizontal"
@@ -748,13 +868,88 @@ let string_of_object_fit : object_fit -> string = function
   | Scale_down -> "scale-down"
   | Inherit -> "inherit"
 
-let string_of_appearance : appearance_value -> string = function
-  | (None : appearance_value) -> "none"
-  | (Auto : appearance_value) -> "auto"
-  | Button -> "button"
-  | Textfield -> "textfield"
-  | Menulist -> "menulist"
-  | (Inherit : appearance_value) -> "inherit"
+let string_of_box_sizing : box_sizing -> string = function
+  | Border_box -> "border-box"
+  | Content_box -> "content-box"
+  | Inherit -> "inherit"
+
+let string_of_scroll_behavior : scroll_behavior -> string = function
+  | Auto -> "auto"
+  | Smooth -> "smooth"
+  | Inherit -> "inherit"
+
+let string_of_scroll_snap_stop : scroll_snap_stop -> string = function
+  | Normal -> "normal"
+  | Always -> "always"
+  | Inherit -> "inherit"
+
+let string_of_scroll_snap_align : scroll_snap_align -> string = function
+  | None -> "none"
+  | Start -> "start"
+  | End -> "end"
+  | Center -> "center"
+  | Inherit -> "inherit"
+
+let string_of_scroll_snap_type : scroll_snap_type -> string = function
+  | None -> "none"
+  | X -> "x"
+  | Y -> "y"
+  | Block -> "block"
+  | Inline -> "inline"
+  | Both -> "both"
+  | X_mandatory -> "x mandatory"
+  | Y_mandatory -> "y mandatory"
+  | Block_mandatory -> "block mandatory"
+  | Inline_mandatory -> "inline mandatory"
+  | Both_mandatory -> "both mandatory"
+  | X_proximity -> "x proximity"
+  | Y_proximity -> "y proximity"
+  | Block_proximity -> "block proximity"
+  | Inline_proximity -> "inline proximity"
+  | Both_proximity -> "both proximity"
+  | X_var var -> str [ "x "; var ]
+  | Y_var var -> str [ "y "; var ]
+  | Both_var var -> str [ "both "; var ]
+  | Inherit -> "inherit"
+
+let string_of_touch_action : touch_action -> string = function
+  | Auto -> "auto"
+  | None -> "none"
+  | Pan_x -> "pan-x"
+  | Pan_y -> "pan-y"
+  | Manipulation -> "manipulation"
+  | Pan_left -> "pan-left"
+  | Pan_right -> "pan-right"
+  | Pan_up -> "pan-up"
+  | Pan_down -> "pan-down"
+
+let string_of_text_transform : text_transform -> string = function
+  | None -> "none"
+  | Uppercase -> "uppercase"
+  | Lowercase -> "lowercase"
+  | Capitalize -> "capitalize"
+  | Full_width -> "full-width"
+  | Full_size_kana -> "full-size-kana"
+  | Inherit -> "inherit"
+
+let string_of_white_space : white_space -> string = function
+  | Normal -> "normal"
+  | Nowrap -> "nowrap"
+  | Pre -> "pre"
+  | Pre_wrap -> "pre-wrap"
+  | Pre_line -> "pre-line"
+  | Break_spaces -> "break-spaces"
+  | Inherit -> "inherit"
+
+let string_of_table_layout : table_layout -> string = function
+  | Auto -> "auto"
+  | Fixed -> "fixed"
+  | Inherit -> "inherit"
+
+(* Not currently used let string_of_appearance : appearance_value -> string =
+   function | (None : appearance_value) -> "none" | (Auto : appearance_value) ->
+   "auto" | Button -> "button" | Textfield -> "textfield" | Menulist ->
+   "menulist" | (Inherit : appearance_value) -> "inherit" *)
 
 let string_of_vertical_align : vertical_align_value -> string = function
   | Baseline -> "baseline"
@@ -768,11 +963,6 @@ let string_of_vertical_align : vertical_align_value -> string = function
   | Length l -> string_of_length l
   | Percentage p -> pp_float p ^ "%"
   | (Inherit : vertical_align_value) -> "inherit"
-
-let string_of_border_collapse : border_collapse_value -> string = function
-  | Collapse -> "collapse"
-  | Separate -> "separate"
-  | (Inherit : border_collapse_value) -> "inherit"
 
 let string_of_pointer_events : pointer_events_value -> string = function
   | (Auto : pointer_events_value) -> "auto"
@@ -810,56 +1000,6 @@ let string_of_moz_font_smoothing : moz_osx_font_smoothing_value -> string =
   | Grayscale -> "grayscale"
   | (Inherit : moz_osx_font_smoothing_value) -> "inherit"
 
-let string_of_transform_style : transform_style_value -> string = function
-  | Flat -> "flat"
-  | Preserve_3d -> "preserve-3d"
-  | (Inherit : transform_style_value) -> "inherit"
-
-let string_of_backface_visibility : backface_visibility_value -> string =
-  function
-  | (Visible : backface_visibility_value) -> "visible"
-  | Hidden -> "hidden"
-  | (Inherit : backface_visibility_value) -> "inherit"
-
-let string_of_scroll_behavior : scroll_behavior_value -> string = function
-  | (Auto : scroll_behavior_value) -> "auto"
-  | Smooth -> "smooth"
-  | (Inherit : scroll_behavior_value) -> "inherit"
-
-let string_of_scroll_snap_type : scroll_snap_type_value -> string = function
-  | (None : scroll_snap_type_value) -> "none"
-  | X_mandatory -> "x mandatory"
-  | Y_mandatory -> "y mandatory"
-  | Block_mandatory -> "block mandatory"
-  | Inline_mandatory -> "inline mandatory"
-  | Both_mandatory -> "both mandatory"
-  | X_proximity -> "x proximity"
-  | Y_proximity -> "y proximity"
-  | Block_proximity -> "block proximity"
-  | Inline_proximity -> "inline proximity"
-  | Both_proximity -> "both proximity"
-  | X_var var -> str [ "x "; var ]
-  | Y_var var -> str [ "y "; var ]
-  | Both_var var -> str [ "both "; var ]
-  | (Inherit : scroll_snap_type_value) -> "inherit"
-
-let string_of_scroll_snap_align : scroll_snap_align_value -> string = function
-  | (None : scroll_snap_align_value) -> "none"
-  | Start -> "start"
-  | End -> "end"
-  | (Center : scroll_snap_align_value) -> "center"
-  | (Inherit : scroll_snap_align_value) -> "inherit"
-
-let string_of_scroll_snap_stop : scroll_snap_stop_value -> string = function
-  | Normal -> "normal"
-  | Always -> "always"
-  | (Inherit : scroll_snap_stop_value) -> "inherit"
-
-let string_of_isolation : isolation_value -> string = function
-  | (Auto : isolation_value) -> "auto"
-  | Isolate -> "isolate"
-  | (Inherit : isolation_value) -> "inherit"
-
 let string_of_background_repeat : background_repeat_value -> string = function
   | Repeat -> "repeat"
   | Repeat_x -> "repeat-x"
@@ -869,11 +1009,11 @@ let string_of_background_repeat : background_repeat_value -> string = function
   | Round -> "round"
   | (Inherit : background_repeat_value) -> "inherit"
 
-let string_of_container_type : container_type_value -> string = function
+let string_of_container_type : container_type -> string = function
   | Normal -> "normal"
   | Size -> "size"
   | Inline_size -> "inline-size"
-  | (Inherit : container_type_value) -> "inherit"
+  | Inherit -> "inherit"
 
 let string_of_flex_value = function
   | Initial -> "0 1 auto"
@@ -945,7 +1085,7 @@ let rec string_of_transition_value = function
   | Multiple transitions ->
       String.concat ", " (List.map string_of_transition_value transitions)
 
-let string_of_align = function
+let string_of_align : align -> string = function
   | Flex_start -> "flex-start"
   | Flex_end -> "flex-end"
   | Center -> "center"
@@ -957,6 +1097,30 @@ let string_of_align = function
   | End -> "end"
   | Baseline -> "baseline"
   | Auto -> "auto"
+
+let string_of_justify_self : justify_self -> string = function
+  | Auto -> "auto"
+  | Start -> "start"
+  | End -> "end"
+  | Center -> "center"
+  | Stretch -> "stretch"
+  | Flex_start -> "flex-start"
+  | Flex_end -> "flex-end"
+
+let string_of_aspect_ratio : aspect_ratio -> string = function
+  | Auto -> "auto"
+  | Ratio (w, h) -> str [ string_of_int w; "/"; string_of_int h ]
+  | Number f -> pp_float f
+  | Inherit -> "inherit"
+
+let string_of_place_content : place_content -> string = function
+  | Start -> "start"
+  | End -> "end"
+  | Center -> "center"
+  | Stretch -> "stretch"
+  | Space_between -> "space-between"
+  | Space_around -> "space-around"
+  | Space_evenly -> "space-evenly"
 
 let string_of_text_decoration : text_decoration -> string = function
   | None -> "none"
@@ -995,6 +1159,19 @@ let rec string_of_border_style : border_style -> string = function
   | Outset -> "outset"
   | Hidden -> "hidden"
   | Var v -> string_of_var string_of_border_style v
+
+let string_of_outline_style : outline_style -> string = function
+  | None -> "none"
+  | Auto -> "auto"
+  | Dotted -> "dotted"
+  | Dashed -> "dashed"
+  | Solid -> "solid"
+  | Double -> "double"
+  | Groove -> "groove"
+  | Ridge -> "ridge"
+  | Inset -> "inset"
+  | Outset -> "outset"
+  | Inherit -> "inherit"
 
 let string_of_cursor : cursor -> string = function
   | Auto -> "auto"
@@ -1194,234 +1371,412 @@ let string_of_transform_value = function
   | Perspective l -> str [ "perspective("; string_of_length l; ")" ]
   | Transform_none -> "none"
 
-type property =
-  | Background_color
-  | Color
-  | Border_color
-  | Border_style
-  | Border_top_style
-  | Border_right_style
-  | Border_bottom_style
-  | Border_left_style
-  | Padding
-  | Padding_left
-  | Padding_right
-  | Padding_bottom
-  | Padding_top
-  | Padding_inline
-  | Padding_inline_start
-  | Padding_block
-  | Margin
-  | Margin_inline_end
-  | Margin_left
-  | Margin_right
-  | Margin_top
-  | Margin_bottom
-  | Margin_inline
-  | Margin_block
-  | Gap
-  | Column_gap
-  | Row_gap
-  | Width
-  | Height
-  | Min_width
-  | Min_height
-  | Max_width
-  | Max_height
-  | Font_size
-  | Line_height
-  | Font_weight
-  | Font_style
-  | Text_align
-  | Text_decoration
-  | Text_decoration_style
-  | Text_underline_offset
-  | Text_transform
-  | Letter_spacing
-  | List_style_type
-  | Display
-  | Position
-  | Flex_direction
-  | Flex_wrap
-  | Flex
-  | Flex_grow
-  | Flex_shrink
-  | Flex_basis
-  | Order
-  | Align_items
-  | Justify_content
-  | Align_content
-  | Align_self
-  | Justify_self
-  | Place_content
-  | Place_items
-  | Place_self
-  | Grid_template_columns
-  | Grid_template_rows
-  | Grid_auto_flow
-  | Grid_auto_columns
-  | Grid_auto_rows
-  | Grid_column
-  | Grid_row
-  | Border_width
-  | Border_top_width
-  | Border_right_width
-  | Border_bottom_width
-  | Border_left_width
-  | Border_radius
-  | Border_top_color
-  | Border_right_color
-  | Border_bottom_color
-  | Border_left_color
-  | Box_shadow
-  | Opacity
-  | Transition
-  | Transform
-  | Scale
-  | Cursor
-  | Table_layout
-  | Border_collapse
-  | Border_spacing
-  | User_select
-  | Pointer_events
-  | Overflow
-  | Top
-  | Right
-  | Bottom
-  | Left
-  | Z_index
-  | Outline
-  | Outline_offset
-  | Scroll_snap_type
-  | Clip
-  | White_space
-  | Border
-  | Tab_size
-  | Webkit_text_size_adjust
-  | Font_feature_settings
-  | Font_variation_settings
-  | Webkit_tap_highlight_color
-  | Webkit_text_decoration
-  | Text_indent
-  | List_style
-  | Font
-  | Webkit_appearance
-  | Container_type
-  | Container_name
-  | Perspective
-  | Perspective_origin
-  | Transform_style
-  | Backface_visibility
-  | Object_position
-  | Rotate
-  | Transition_duration
-  | Transition_timing_function
-  | Transition_delay
-  | Will_change
-  | Contain
-  | Isolation
-  | Filter
-  | Background_image
-  | Animation
-  | Overflow_x
-  | Overflow_y
-  | Vertical_align
-  | Font_family
-  | Background_position
-  | Background_repeat
-  | Background_size
-  | Webkit_font_smoothing
-  | Moz_osx_font_smoothing
-  | Webkit_line_clamp
-  | Backdrop_filter
-  | Scroll_snap_align
-  | Scroll_snap_stop
-  | Scroll_behavior
-  | Box_sizing
-  | Resize
-  | Object_fit
-  | Appearance
-  | Content
-  | Quotes
-  | Custom of string (* For arbitrary CSS properties - use sparingly! *)
+type 'a property =
+  | Background_color : color property
+  | Color : color property
+  | Border_color : color property
+  | Border_style : border_style property
+  | Border_top_style : border_style property
+  | Border_right_style : border_style property
+  | Border_bottom_style : border_style property
+  | Border_left_style : border_style property
+  | Padding : length property
+  | Padding_left : length property
+  | Padding_right : length property
+  | Padding_bottom : length property
+  | Padding_top : length property
+  | Padding_inline : length property
+  | Padding_inline_start : length property
+  | Padding_block : length property
+  | Margin : length property
+  | Margin_inline_end : length property
+  | Margin_left : length property
+  | Margin_right : length property
+  | Margin_top : length property
+  | Margin_bottom : length property
+  | Margin_inline : length property
+  | Margin_block : length property
+  | Gap : length property
+  | Column_gap : length property
+  | Row_gap : length property
+  | Width : length property
+  | Height : length property
+  | Min_width : length property
+  | Min_height : length property
+  | Max_width : length property
+  | Max_height : length property
+  | Font_size : length property
+  | Line_height : length property
+  | Font_weight : font_weight property
+  | Font_style : font_style property
+  | Text_align : text_align property
+  | Text_decoration : text_decoration property
+  | Text_decoration_style : text_decoration_style_value property
+  | Text_decoration_color : color property
+  | Text_underline_offset : string property
+  | Text_transform : text_transform property
+  | Letter_spacing : length property
+  | List_style_type : list_style_type property
+  | Display : display property
+  | Position : position property
+  | Flex_direction : flex_direction property
+  | Flex_wrap : flex_wrap property
+  | Flex : string property
+  | Flex_grow : float property
+  | Flex_shrink : float property
+  | Flex_basis : string property
+  | Order : int property
+  | Align_items : align_items property
+  | Justify_content : justify_content property
+  | Align_content : align property
+  | Align_self : align_self property
+  | Justify_self : justify_self property
+  | Place_content : place_content property
+  | Place_items : place_content property
+  | Place_self : string property
+  | Grid_template_columns : grid_template property
+  | Grid_template_rows : grid_template property
+  | Grid_auto_flow : grid_auto_flow property
+  | Grid_auto_columns : grid_track_size property
+  | Grid_auto_rows : grid_track_size property
+  | Grid_column : string property
+  | Grid_row : string property
+  | Border_width : length property
+  | Border_top_width : length property
+  | Border_right_width : length property
+  | Border_bottom_width : length property
+  | Border_left_width : length property
+  | Border_radius : length property
+  | Border_top_color : color property
+  | Border_right_color : color property
+  | Border_bottom_color : color property
+  | Border_left_color : color property
+  | Opacity : float property
+  | Transform : transform_value list property
+  | Cursor : cursor property
+  | Table_layout : table_layout property
+  | Border_collapse : border_collapse property
+  | Border_spacing : length property
+  | User_select : user_select property
+  | Pointer_events : pointer_events_value property
+  | Overflow : overflow property
+  | Top : length property
+  | Right : length property
+  | Bottom : length property
+  | Left : length property
+  | Z_index : int property
+  | Outline : string property
+  | Outline_style : outline_style property
+  | Outline_width : length property
+  | Outline_color : color property
+  | Outline_offset : length property
+  | Scroll_snap_type : scroll_snap_type property
+  | White_space : white_space property
+  | Border : string property
+  | Tab_size : int property
+  | Webkit_text_size_adjust : string property
+  | Font_feature_settings : string property
+  | Font_variation_settings : string property
+  | Webkit_tap_highlight_color : color property
+  | Webkit_text_decoration : string property
+  | Text_indent : length property
+  | List_style : string property
+  | Font : string property
+  | Webkit_appearance : appearance_value property
+  | Container_type : container_type property
+  | Container_name : string property
+  | Perspective : length property
+  | Perspective_origin : string property
+  | Transform_style : transform_style property
+  | Backface_visibility : backface_visibility property
+  | Object_position : string property
+  | Rotate : angle property
+  | Transition_duration : duration property
+  | Transition_timing_function : timing_function property
+  | Transition_delay : duration property
+  | Will_change : string property
+  | Contain : string property
+  | Isolation : isolation property
+  | Filter : string property
+  | Background_image : string property
+  | Animation : string property
+  | Aspect_ratio : aspect_ratio property
+  | Overflow_x : overflow property
+  | Overflow_y : overflow property
+  | Vertical_align : vertical_align_value property
+  | Font_family : string property
+  | Background_position : string property
+  | Background_repeat : background_repeat_value property
+  | Background_size : string property
+  | Webkit_font_smoothing : webkit_font_smoothing_value property
+  | Moz_osx_font_smoothing : string property
+  | Webkit_line_clamp : int property
+  | Backdrop_filter : string property
+  | Scroll_snap_align : scroll_snap_align property
+  | Scroll_snap_stop : scroll_snap_stop property
+  | Scroll_behavior : scroll_behavior property
+  | Box_sizing : box_sizing property
+  | Resize : resize property
+  | Object_fit : object_fit property
+  | Appearance : appearance_value property
+  | Content : string property
+  | Quotes : string property
+  | Text_decoration_thickness : string property
+  | Text_size_adjust : string property
+  | Touch_action : touch_action property
+  | Clip : string property
+  | Clear : clear property
+  | Float : float_value property
+  | Scale : string property
+  | Transition : transition_value property
+  | Box_shadow : string property
 
-type declaration = property * string
-(** A CSS property as (name, value) pair *)
+type declaration =
+  | Declaration : 'a property * 'a -> declaration
+      (** A CSS property-value pair with typed value using existential type *)
+  | Custom_declaration : string * string -> declaration
+      (** Custom property with dynamic name and string value *)
 
-(* Helper to mark a declaration as important *)
-let important (prop, value) = (prop, value ^ "!important")
+(* Helper to mark a declaration as important - needs special handling for
+   GADT *)
+let important = function
+  | Declaration (prop, value) ->
+      Declaration (prop, value) (* TODO: add Important wrapper *)
+  | Custom_declaration (name, value) -> Custom_declaration (name, value)
+(* TODO: add Important wrapper *)
 
-(* Typed property constructors *)
-let background_color c = (Background_color, string_of_color c)
-let color c = (Color, string_of_color c)
-let border_color c = (Border_color, string_of_color c)
-let border_style bs = (Border_style, string_of_border_style bs)
-let border_top_style bs = (Border_top_style, string_of_border_style bs)
-let border_right_style bs = (Border_right_style, string_of_border_style bs)
-let border_bottom_style bs = (Border_bottom_style, string_of_border_style bs)
-let border_left_style bs = (Border_left_style, string_of_border_style bs)
-let text_decoration td = (Text_decoration, string_of_text_decoration td)
-let font_style fs = (Font_style, string_of_font_style fs)
-let list_style_type lst = (List_style_type, string_of_list_style_type lst)
-let padding len = (Padding, string_of_length len)
-let padding_left len = (Padding_left, string_of_length len)
-let padding_right len = (Padding_right, string_of_length len)
-let padding_bottom len = (Padding_bottom, string_of_length len)
-let padding_top len = (Padding_top, string_of_length len)
+(* Convert property value to string based on its type *)
+let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
+ fun ?(mode = Variables) prop value ->
+  match prop with
+  | Background_color -> string_of_color ~mode value
+  | Color -> string_of_color ~mode value
+  | Border_color -> string_of_color ~mode value
+  | Border_style -> string_of_border_style value
+  | Border_top_style -> string_of_border_style value
+  | Border_right_style -> string_of_border_style value
+  | Border_bottom_style -> string_of_border_style value
+  | Border_left_style -> string_of_border_style value
+  | Padding -> string_of_length ~mode value
+  | Padding_left -> string_of_length ~mode value
+  | Padding_right -> string_of_length ~mode value
+  | Padding_bottom -> string_of_length ~mode value
+  | Padding_top -> string_of_length ~mode value
+  | Padding_inline -> string_of_length ~mode value
+  | Padding_inline_start -> string_of_length ~mode value
+  | Padding_block -> string_of_length ~mode value
+  | Margin -> string_of_length ~mode value
+  | Margin_inline_end -> string_of_length ~mode value
+  | Margin_left -> string_of_length ~mode value
+  | Margin_right -> string_of_length ~mode value
+  | Margin_top -> string_of_length ~mode value
+  | Margin_bottom -> string_of_length ~mode value
+  | Margin_inline -> string_of_length ~mode value
+  | Margin_block -> string_of_length ~mode value
+  | Gap -> string_of_length ~mode value
+  | Column_gap -> string_of_length ~mode value
+  | Row_gap -> string_of_length ~mode value
+  | Width -> string_of_length ~mode value
+  | Height -> string_of_length ~mode value
+  | Min_width -> string_of_length ~mode value
+  | Min_height -> string_of_length ~mode value
+  | Max_width -> string_of_length ~mode value
+  | Max_height -> string_of_length ~mode value
+  | Font_size -> string_of_length ~mode value
+  | Line_height -> string_of_length ~mode value
+  | Font_weight -> string_of_font_weight value
+  | Display -> string_of_display value
+  | Position -> string_of_position value
+  | Align_items -> string_of_align_items value
+  | Justify_content -> string_of_justify_content value
+  | Align_self -> string_of_align_self value
+  | Border_collapse -> string_of_border_collapse value
+  | Table_layout -> string_of_table_layout value
+  | Grid_auto_flow -> string_of_grid_auto_flow value
+  | Opacity -> pp_float value
+  | Z_index -> string_of_int value
+  | Tab_size -> string_of_int value
+  | Webkit_line_clamp -> string_of_int value
+  | Top -> string_of_length ~mode value
+  | Right -> string_of_length ~mode value
+  | Bottom -> string_of_length ~mode value
+  | Left -> string_of_length ~mode value
+  | Border_width -> string_of_length ~mode value
+  | Border_top_width -> string_of_length ~mode value
+  | Border_right_width -> string_of_length ~mode value
+  | Border_bottom_width -> string_of_length ~mode value
+  | Border_left_width -> string_of_length ~mode value
+  | Border_radius -> string_of_length ~mode value
+  | Border_top_color -> string_of_color ~mode value
+  | Border_right_color -> string_of_color ~mode value
+  | Border_bottom_color -> string_of_color ~mode value
+  | Border_left_color -> string_of_color ~mode value
+  | Text_decoration_color -> string_of_color ~mode value
+  | Webkit_tap_highlight_color -> string_of_color ~mode value
+  | Text_indent -> string_of_length ~mode value
+  | Border_spacing -> string_of_length ~mode value
+  | Outline_offset -> string_of_length ~mode value
+  | Perspective -> string_of_length ~mode value
+  | Transform -> List.map string_of_transform_value value |> String.concat " "
+  | Isolation -> string_of_isolation value
+  | Transform_style -> string_of_transform_style value
+  | Backface_visibility -> string_of_backface_visibility value
+  | Scroll_snap_align -> string_of_scroll_snap_align value
+  | Scroll_snap_stop -> string_of_scroll_snap_stop value
+  | Scroll_behavior -> string_of_scroll_behavior value
+  | Box_sizing -> string_of_box_sizing value
+  | Resize -> string_of_resize value
+  | Object_fit -> string_of_object_fit value
+  | Appearance -> string_of_appearance_value value
+  | Flex_grow -> pp_float value
+  | Flex_shrink -> pp_float value
+  | Order -> string_of_int value
+  | Flex_direction -> string_of_flex_direction value
+  | Flex_wrap -> string_of_flex_wrap value
+  | Font_style -> string_of_font_style value
+  | Text_align -> string_of_text_align value
+  | Text_decoration -> string_of_text_decoration value
+  | Text_decoration_style -> string_of_text_decoration_style value
+  | Text_transform -> string_of_text_transform value
+  | List_style_type -> string_of_list_style_type value
+  | Overflow -> string_of_overflow value
+  | Overflow_x -> string_of_overflow value
+  | Overflow_y -> string_of_overflow value
+  | Vertical_align -> string_of_vertical_align value
+  | Webkit_font_smoothing -> string_of_webkit_font_smoothing value
+  | Scroll_snap_type -> string_of_scroll_snap_type value
+  | Container_type -> string_of_container_type value
+  | White_space -> string_of_white_space value
+  | Grid_template_columns -> string_of_grid_template value
+  | Grid_template_rows -> string_of_grid_template value
+  | Grid_auto_columns -> string_of_grid_track_size value
+  | Grid_auto_rows -> string_of_grid_track_size value
+  (* String properties *)
+  | Flex -> value
+  | Flex_basis -> value
+  | Align_content -> string_of_align value
+  | Justify_self -> string_of_justify_self value
+  | Place_content -> string_of_place_content value
+  | Place_items -> string_of_place_content value
+  | Place_self -> value
+  | Grid_column -> value
+  | Grid_row -> value
+  | Text_underline_offset -> value
+  | Font_family -> value
+  | Background_position -> value
+  | Background_repeat -> string_of_background_repeat value
+  | Background_size -> value
+  | Moz_osx_font_smoothing -> value
+  | Backdrop_filter -> value
+  | Container_name -> value
+  | Perspective_origin -> value
+  | Object_position -> value
+  | Rotate -> string_of_angle value
+  | Transition_duration -> string_of_duration value
+  | Transition_timing_function -> string_of_timing_function value
+  | Transition_delay -> string_of_duration value
+  | Will_change -> value
+  | Contain -> value
+  | Filter -> value
+  | Background_image -> value
+  | Animation -> value
+  | Aspect_ratio -> string_of_aspect_ratio value
+  | Content -> value
+  | Quotes -> value
+  | Box_shadow -> value
+  | Transition -> string_of_transition_value value
+  | Scale -> value
+  | Outline -> value
+  | Outline_style -> string_of_outline_style value
+  | Outline_width -> string_of_length ~mode value
+  | Outline_color -> string_of_color ~mode value
+  | Clip -> value
+  | Clear -> string_of_clear value
+  | Float -> string_of_float_value value
+  | Border -> value
+  | Text_decoration_thickness -> value
+  | Text_size_adjust -> value
+  | Touch_action -> string_of_touch_action value
+  | List_style -> value
+  | Font -> value
+  | Webkit_appearance -> string_of_appearance_value value
+  | Letter_spacing -> string_of_length ~mode value
+  | Cursor -> string_of_cursor value
+  | Pointer_events -> string_of_pointer_events value
+  | User_select -> string_of_user_select value
+  | Font_feature_settings -> value
+  | Font_variation_settings -> value
+  | Webkit_text_decoration -> value
+  | Webkit_text_size_adjust -> value
+
+(* Property constructors with typed values *)
+let background_color c = Declaration (Background_color, c)
+let color c = Declaration (Color, c)
+let border_color c = Declaration (Border_color, c)
+let border_style bs = Declaration (Border_style, bs)
+let border_top_style bs = Declaration (Border_top_style, bs)
+let border_right_style bs = Declaration (Border_right_style, bs)
+let border_bottom_style bs = Declaration (Border_bottom_style, bs)
+let border_left_style bs = Declaration (Border_left_style, bs)
+let text_decoration td = Declaration (Text_decoration, td)
+let font_style fs = Declaration (Font_style, fs)
+let list_style_type lst = Declaration (List_style_type, lst)
+let padding len = Declaration (Padding, len)
+let padding_left len = Declaration (Padding_left, len)
+let padding_right len = Declaration (Padding_right, len)
+let padding_bottom len = Declaration (Padding_bottom, len)
+let padding_top len = Declaration (Padding_top, len)
 
 (* Remove deprecated string-based versions *)
-let margin len = (Margin, string_of_length len)
-let margin_left len = (Margin_left, string_of_length len)
-let margin_right len = (Margin_right, string_of_length len)
-let margin_top len = (Margin_top, string_of_length len)
-let margin_bottom len = (Margin_bottom, string_of_length len)
+let margin len = Declaration (Margin, len)
+let margin_left len = Declaration (Margin_left, len)
+let margin_right len = Declaration (Margin_right, len)
+let margin_top len = Declaration (Margin_top, len)
+let margin_bottom len = Declaration (Margin_bottom, len)
 
 (* Remove deprecated string-based versions *)
-let gap len = (Gap, string_of_length len)
-let column_gap len = (Column_gap, string_of_length len)
-let row_gap len = (Row_gap, string_of_length len)
-let width len = (Width, string_of_length len)
-let height len = (Height, string_of_length len)
+let gap len = Declaration (Gap, len)
+let column_gap len = Declaration (Column_gap, len)
+let row_gap len = Declaration (Row_gap, len)
+let width len = Declaration (Width, len)
+let height len = Declaration (Height, len)
 
 (* Remove deprecated string-based versions *)
-let min_width len = (Min_width, string_of_length len)
-let min_height len = (Min_height, string_of_length len)
-let max_width len = (Max_width, string_of_length len)
-let max_height len = (Max_height, string_of_length len)
-let font_size len = (Font_size, string_of_length len)
-let line_height len = (Line_height, string_of_length len)
-let font_weight w = (Font_weight, string_of_font_weight w)
-let text_align a = (Text_align, string_of_text_align a)
-
-let text_decoration_style value =
-  (Text_decoration_style, string_of_text_decoration_style value)
-
-let text_underline_offset value = (Text_underline_offset, value)
-let text_transform value = (Text_transform, string_of_text_transform value)
-let letter_spacing len = (Letter_spacing, string_of_length len)
-let white_space value = (White_space, string_of_white_space value)
-let display d = (Display, string_of_display d)
-let position p = (Position, string_of_position p)
-let top len = (Top, string_of_length len)
-let right len = (Right, string_of_length len)
-let bottom len = (Bottom, string_of_length len)
-let left len = (Left, string_of_length len)
-let opacity value = (Opacity, pp_float value)
+let min_width len = Declaration (Min_width, len)
+let min_height len = Declaration (Min_height, len)
+let max_width len = Declaration (Max_width, len)
+let max_height len = Declaration (Max_height, len)
+let font_size len = Declaration (Font_size, len)
+let line_height len = Declaration (Line_height, len)
+let font_weight w = Declaration (Font_weight, w)
+let text_align a = Declaration (Text_align, a)
+let text_decoration_style value = Declaration (Text_decoration_style, value)
+let text_underline_offset value = Declaration (Text_underline_offset, value)
+let text_transform value = Declaration (Text_transform, value)
+let letter_spacing len = Declaration (Letter_spacing, len)
+let white_space value = Declaration (White_space, value)
+let display d = Declaration (Display, d)
+let position p = Declaration (Position, p)
+let top len = Declaration (Top, len)
+let right len = Declaration (Right, len)
+let bottom len = Declaration (Bottom, len)
+let left len = Declaration (Left, len)
+let opacity value = Declaration (Opacity, value)
 
 (* Remove deprecated string-based versions *)
-let flex_direction d = (Flex_direction, string_of_flex_direction d)
-let flex value = (Flex, string_of_flex_value value)
-let flex_grow value = (Flex_grow, pp_float value)
-let flex_shrink value = (Flex_shrink, pp_float value)
-let flex_wrap value = (Flex_wrap, string_of_flex_wrap value)
-let align_items a = (Align_items, string_of_align a)
-let align_content a = (Align_content, string_of_align a)
-let align_self a = (Align_self, string_of_align a)
-let justify_content a = (Justify_content, string_of_align a)
-let justify_self a = (Justify_self, string_of_align a)
-let place_content value = (Place_content, value)
-let place_items value = (Place_items, value)
-let place_self value = (Place_self, value)
+let flex_direction d = Declaration (Flex_direction, d)
+let flex value = Declaration (Flex, value)
+let flex_grow value = Declaration (Flex_grow, value)
+let flex_shrink value = Declaration (Flex_shrink, value)
+let flex_wrap value = Declaration (Flex_wrap, value)
+let align_items a = Declaration (Align_items, a)
+let align_content a = Declaration (Align_content, a)
+let align_self a = Declaration (Align_self, a)
+let justify_content a = Declaration (Justify_content, a)
+let justify_self a = Declaration (Justify_self, a)
+let place_content value = Declaration (Place_content, value)
+let place_items value = Declaration (Place_items, value)
+let place_self value = Declaration (Place_self, value)
 
 (* Typed place-* helpers *)
 type place_value =
@@ -1434,96 +1789,56 @@ type place_value =
   | Space_evenly
   | Inherit
 
-let string_of_place_value = function
-  | Start -> "start"
-  | End -> "end"
-  | Center -> "center"
-  | Stretch -> "stretch"
-  | Space_between -> "space-between"
-  | Space_around -> "space-around"
-  | Space_evenly -> "space-evenly"
-  | Inherit -> "inherit"
+(* Not currently used let string_of_place_value = function | Start -> "start" |
+   End -> "end" | Center -> "center" | Stretch -> "stretch" | Space_between ->
+   "space-between" | Space_around -> "space-around" | Space_evenly ->
+   "space-evenly" | Inherit -> "inherit" *)
 
-let place_content_v v = (Place_content, string_of_place_value v)
-let place_items_v v = (Place_items, string_of_place_value v)
+let place_items_v v = Declaration (Place_items, v)
 
 let place_self_v = function
-  | `Auto -> (Place_self, "auto")
-  | `Start -> (Place_self, "start")
-  | `End -> (Place_self, "end")
-  | `Center -> (Place_self, "center")
-  | `Stretch -> (Place_self, "stretch")
+  | `Auto -> Declaration (Place_self, "auto")
+  | `Start -> Declaration (Place_self, "start")
+  | `End -> Declaration (Place_self, "end")
+  | `Center -> Declaration (Place_self, "center")
+  | `Stretch -> Declaration (Place_self, "stretch")
 
-let border_width len = (Border_width, string_of_length len)
-let border_radius len = (Border_radius, string_of_length len)
+let border_width len = Declaration (Border_width, len)
+let border_radius len = Declaration (Border_radius, len)
 
-let border_top_left_radius len =
-  (Custom "border-top-left-radius", string_of_length len)
+(* TODO: Add specific border radius properties to GADT if needed let
+   border_top_left_radius len = Declaration (Border_top_left_radius, len)
 
-let border_top_right_radius len =
-  (Custom "border-top-right-radius", string_of_length len)
+   let border_top_right_radius len = Declaration (Border_top_right_radius, len)
 
-let border_bottom_right_radius len =
-  (Custom "border-bottom-right-radius", string_of_length len)
+   let border_bottom_right_radius len = Declaration (Border_bottom_right_radius,
+   len)
 
-let border_bottom_left_radius len =
-  (Custom "border-bottom-left-radius", string_of_length len)
+   let border_bottom_left_radius len = Declaration (Border_bottom_left_radius,
+   len) *)
 
-let box_shadow value = (Box_shadow, value)
+let box_shadow value = Declaration (Box_shadow, value)
+let outline_style v = Declaration (Outline_style, v)
+let outline_width len = Declaration (Outline_width, len)
+let outline_color c = Declaration (Outline_color, c)
+let table_layout value = Declaration (Table_layout, value)
+let border_spacing len = Declaration (Border_spacing, len)
+let overflow o = Declaration (Overflow, o)
+let object_fit value = Declaration (Object_fit, value)
+let clip value = Declaration (Clip, value)
+let clear value = Declaration (Clear, value)
+let float value = Declaration (Float, value)
+let touch_action value = Declaration (Touch_action, value)
+let text_decoration_color value = Declaration (Text_decoration_color, value)
 
-(* Outline helpers using shorthand 'outline' property *)
-type outline_style_value =
-  | None
-  | Auto
-  | Dotted
-  | Dashed
-  | Solid
-  | Double
-  | Groove
-  | Ridge
-  | Inset
-  | Outset
-  | Inherit
+let text_decoration_thickness value =
+  Declaration (Text_decoration_thickness, value)
 
-let string_of_outline_style = function
-  | None -> "none"
-  | Auto -> "auto"
-  | Dotted -> "dotted"
-  | Dashed -> "dashed"
-  | Solid -> "solid"
-  | Double -> "double"
-  | Groove -> "groove"
-  | Ridge -> "ridge"
-  | Inset -> "inset"
-  | Outset -> "outset"
-  | Inherit -> "inherit"
-
-let outline_style v = (Outline, string_of_outline_style v)
-let outline_width len = (Outline, string_of_length len)
-let outline_color c = (Outline, string_of_color c)
-let table_layout value = (Table_layout, string_of_table_layout value)
-let border_spacing len = (Border_spacing, string_of_length len)
-let overflow o = (Overflow, string_of_overflow o)
-let object_fit value = (Object_fit, string_of_object_fit value)
-let clip value = (Clip, value)
-
-(* Aspect ratio *)
-type aspect_ratio_value =
-  | Auto
-  | Ratio of int * int
-  | Number of float
-  | Inherit
-
-let string_of_aspect_ratio = function
-  | Auto -> "auto"
-  | Ratio (w, h) -> str [ string_of_int w; "/"; string_of_int h ]
-  | Number f -> pp_float f
-  | Inherit -> "inherit"
-
-let aspect_ratio v = (Custom "aspect-ratio", string_of_aspect_ratio v)
-let filter value = (Filter, value)
-let background_image value = (Background_image, value)
-let animation value = (Animation, value)
+let text_size_adjust value = Declaration (Text_size_adjust, value)
+let aspect_ratio v = Declaration (Aspect_ratio, v)
+let filter value = Declaration (Filter, value)
+let background_image value = Declaration (Background_image, value)
+let animation value = Declaration (Animation, value)
 
 (* Blend modes *)
 type blend_mode_value =
@@ -1545,44 +1860,30 @@ type blend_mode_value =
   | Luminosity
   | Inherit
 
-let string_of_blend_mode = function
-  | Normal -> "normal"
-  | Multiply -> "multiply"
-  | Screen -> "screen"
-  | Overlay -> "overlay"
-  | Darken -> "darken"
-  | Lighten -> "lighten"
-  | Color_dodge -> "color-dodge"
-  | Color_burn -> "color-burn"
-  | Hard_light -> "hard-light"
-  | Soft_light -> "soft-light"
-  | Difference -> "difference"
-  | Exclusion -> "exclusion"
-  | Hue -> "hue"
-  | Saturation -> "saturation"
-  | Color -> "color"
-  | Luminosity -> "luminosity"
-  | Inherit -> "inherit"
+(* Not currently used let string_of_blend_mode = function | Normal -> "normal" |
+   Multiply -> "multiply" | Screen -> "screen" | Overlay -> "overlay" | Darken
+   -> "darken" | Lighten -> "lighten" | Color_dodge -> "color-dodge" |
+   Color_burn -> "color-burn" | Hard_light -> "hard-light" | Soft_light ->
+   "soft-light" | Difference -> "difference" | Exclusion -> "exclusion" | Hue ->
+   "hue" | Saturation -> "saturation" | Color -> "color" | Luminosity ->
+   "luminosity" | Inherit -> "inherit" *)
 
-let mix_blend_mode v = (Custom "mix-blend-mode", string_of_blend_mode v)
+(* TODO: Add Mix_blend_mode to property GADT if needed let mix_blend_mode v =
+   Declaration (Mix_blend_mode, v) *)
 
-let backdrop_blend_mode v =
-  (Custom "backdrop-blend-mode", string_of_blend_mode v)
+(* TODO: Add backdrop_blend_mode to property GADT if needed let
+   backdrop_blend_mode v = Declaration (Backdrop_blend_mode, v) *)
 
-let grid_template_columns value =
-  (Grid_template_columns, string_of_grid_template value)
-
-let grid_template_rows value =
-  (Grid_template_rows, string_of_grid_template value)
-
-let pointer_events value = (Pointer_events, string_of_pointer_events value)
-let z_index value = (Z_index, string_of_int value)
-let appearance value = (Appearance, string_of_appearance value)
-let overflow_x o = (Overflow_x, string_of_overflow o)
-let overflow_y o = (Overflow_y, string_of_overflow o)
-let resize value = (Resize, string_of_resize value)
-let vertical_align value = (Vertical_align, string_of_vertical_align value)
-let box_sizing value = (Box_sizing, string_of_box_sizing value)
+let grid_template_columns value = Declaration (Grid_template_columns, value)
+let grid_template_rows value = Declaration (Grid_template_rows, value)
+let pointer_events value = Declaration (Pointer_events, value)
+let z_index value = Declaration (Z_index, value)
+let appearance value = Declaration (Appearance, value)
+let overflow_x o = Declaration (Overflow_x, o)
+let overflow_y o = Declaration (Overflow_y, o)
+let resize value = Declaration (Resize, value)
+let vertical_align value = Declaration (Vertical_align, value)
+let box_sizing value = Declaration (Box_sizing, value)
 
 type font_family_value =
   (* Generic CSS font families *)
@@ -1781,169 +2082,125 @@ let rec string_of_font_family_value = function
             ])
 
 let font_family fonts =
-  (Font_family, String.concat ", " (List.map string_of_font_family_value fonts))
+  Declaration
+    ( Font_family,
+      String.concat ", " (List.map string_of_font_family_value fonts) )
 
 let moz_osx_font_smoothing value =
-  (Moz_osx_font_smoothing, string_of_moz_font_smoothing value)
+  Declaration (Moz_osx_font_smoothing, string_of_moz_font_smoothing value)
 
-let webkit_line_clamp value = (Webkit_line_clamp, value)
-let backdrop_filter value = (Backdrop_filter, value)
-let background_position value = (Background_position, value)
-
-let background_repeat value =
-  (Background_repeat, string_of_background_repeat value)
-
-let background_size value = (Background_size, value)
+let webkit_line_clamp value = Declaration (Webkit_line_clamp, value)
+let backdrop_filter value = Declaration (Backdrop_filter, value)
+let background_position value = Declaration (Background_position, value)
+let background_repeat value = Declaration (Background_repeat, value)
+let background_size value = Declaration (Background_size, value)
 
 (* CSS Custom Properties *)
 let custom_property name value : declaration =
   if not (String.starts_with ~prefix:"--" name) then
     invalid_arg
       (str [ "custom_property: name must start with '--', got: "; name ])
-  else ((Custom name : property), value)
+  else Custom_declaration (name, value)
 
 (* Additional property constructors *)
-let content value = (Content, value)
-let border_left_width len = (Border_left_width, string_of_length len)
-let border_bottom_width len = (Border_bottom_width, string_of_length len)
-let border_top_width len = (Border_top_width, string_of_length len)
-let border_right_width len = (Border_right_width, string_of_length len)
-let border_left_color c = (Border_left_color, string_of_color c)
-let border_bottom_color c = (Border_bottom_color, string_of_color c)
-let transition value = (Transition, string_of_transition_value value)
-let quotes value = (Quotes, value)
+let content value = Declaration (Content, value)
+let border_left_width len = Declaration (Border_left_width, len)
+let border_bottom_width len = Declaration (Border_bottom_width, len)
+let border_top_width len = Declaration (Border_top_width, len)
+let border_right_width len = Declaration (Border_right_width, len)
+let border_left_color c = Declaration (Border_left_color, c)
+let border_bottom_color c = Declaration (Border_bottom_color, c)
+let transition value = Declaration (Transition, value)
+let quotes value = Declaration (Quotes, value)
 
 (* New property constructors for tw.ml *)
-let border value = (Border, value)
-let tab_size value = (Tab_size, value)
-let webkit_text_size_adjust value = (Webkit_text_size_adjust, value)
-let font_feature_settings value = (Font_feature_settings, value)
-let font_variation_settings value = (Font_variation_settings, value)
-let webkit_tap_highlight_color value = (Webkit_tap_highlight_color, value)
-let webkit_text_decoration value = (Webkit_text_decoration, value)
-let text_indent len = (Text_indent, string_of_length len)
-let border_collapse value = (Border_collapse, string_of_border_collapse value)
-let list_style value = (List_style, value)
-let font value = (Font, value)
-let webkit_appearance value = (Webkit_appearance, value)
+let border value = Declaration (Border, value)
+let tab_size value = Declaration (Tab_size, value)
+let webkit_text_size_adjust value = Declaration (Webkit_text_size_adjust, value)
+let font_feature_settings value = Declaration (Font_feature_settings, value)
+let font_variation_settings value = Declaration (Font_variation_settings, value)
 
-let webkit_font_smoothing value =
-  (Webkit_font_smoothing, string_of_webkit_font_smoothing value)
+let webkit_tap_highlight_color value =
+  Declaration (Webkit_tap_highlight_color, value)
 
-let cursor c = (Cursor, string_of_cursor c)
-let user_select u = (User_select, string_of_user_select u)
-let container_type value = (Container_type, string_of_container_type value)
-let container_name value = (Container_name, value)
-let perspective len = (Perspective, string_of_length len)
-let perspective_origin value = (Perspective_origin, value)
-let transform_style value = (Transform_style, string_of_transform_style value)
-
-let backface_visibility value =
-  (Backface_visibility, string_of_backface_visibility value)
-
-let object_position value = (Object_position, value)
-let rotate a = (Rotate, string_of_angle a)
-
-let transform values =
-  let str = String.concat " " (List.map string_of_transform_value values) in
-  (Transform, str)
-
-let scale value = (Scale, value)
-let transition_duration value = (Transition_duration, string_of_duration value)
+let webkit_text_decoration value = Declaration (Webkit_text_decoration, value)
+let text_indent len = Declaration (Text_indent, len)
+let border_collapse value = Declaration (Border_collapse, value)
+let list_style value = Declaration (List_style, value)
+let font value = Declaration (Font, value)
+let webkit_appearance value = Declaration (Webkit_appearance, value)
+let webkit_font_smoothing value = Declaration (Webkit_font_smoothing, value)
+let cursor c = Declaration (Cursor, c)
+let user_select u = Declaration (User_select, u)
+let container_type value = Declaration (Container_type, value)
+let container_name value = Declaration (Container_name, value)
+let perspective len = Declaration (Perspective, len)
+let perspective_origin value = Declaration (Perspective_origin, value)
+let transform_style value = Declaration (Transform_style, value)
+let backface_visibility value = Declaration (Backface_visibility, value)
+let object_position value = Declaration (Object_position, value)
+let rotate a = Declaration (Rotate, a)
+let transform values = Declaration (Transform, values)
+let scale value = Declaration (Scale, value)
+let transition_duration value = Declaration (Transition_duration, value)
 
 let transition_timing_function value =
-  (Transition_timing_function, string_of_timing_function value)
+  Declaration (Transition_timing_function, value)
 
-let transition_delay value = (Transition_delay, string_of_duration value)
-let will_change value = (Will_change, value)
-let contain value = (Contain, value)
-let isolation value = (Isolation, string_of_isolation value)
-let padding_inline len = (Padding_inline, string_of_length len)
-let padding_inline_start len = (Padding_inline_start, string_of_length len)
-let padding_block len = (Padding_block, string_of_length len)
-let margin_inline len = (Margin_inline, string_of_length len)
-let margin_block len = (Margin_block, string_of_length len)
-let margin_inline_end len = (Margin_inline_end, string_of_length len)
-let outline value = (Outline, value)
-let outline_offset len = (Outline_offset, string_of_length len)
-let scroll_snap_type value = (Scroll_snap_type, string_of_scroll_snap_type value)
-
-let scroll_snap_align value =
-  (Scroll_snap_align, string_of_scroll_snap_align value)
-
-let scroll_snap_stop value = (Scroll_snap_stop, string_of_scroll_snap_stop value)
-let scroll_behavior value = (Scroll_behavior, string_of_scroll_behavior value)
+let transition_delay value = Declaration (Transition_delay, value)
+let will_change value = Declaration (Will_change, value)
+let contain value = Declaration (Contain, value)
+let isolation value = Declaration (Isolation, value)
+let padding_inline len = Declaration (Padding_inline, len)
+let padding_inline_start len = Declaration (Padding_inline_start, len)
+let padding_block len = Declaration (Padding_block, len)
+let margin_inline len = Declaration (Margin_inline, len)
+let margin_block len = Declaration (Margin_block, len)
+let margin_inline_end len = Declaration (Margin_inline_end, len)
+let outline value = Declaration (Outline, value)
+let outline_offset len = Declaration (Outline_offset, len)
+let scroll_snap_type value = Declaration (Scroll_snap_type, value)
+let scroll_snap_align value = Declaration (Scroll_snap_align, value)
+let scroll_snap_stop value = Declaration (Scroll_snap_stop, value)
+let scroll_behavior value = Declaration (Scroll_behavior, value)
 
 (** Flex module *)
 module Flex = struct
-  let direction dir = flex_direction dir
-  let wrap w = flex_wrap w
-  let flex v = flex v
-  let grow n = flex_grow n
-  let shrink n = flex_shrink n
-  let basis len = (Flex_basis, string_of_length len)
-  let order n = (Order, string_of_int n)
-
-  let align_items v =
-    let str =
-      match v with
-      | `Flex_start -> "flex-start"
-      | `Flex_end -> "flex-end"
-      | `Center -> "center"
-      | `Baseline -> "baseline"
-      | `Stretch -> "stretch"
-    in
-    (Align_items, str)
-
-  let align_self v =
-    let str =
-      match v with
-      | `Auto -> "auto"
-      | `Flex_start -> "flex-start"
-      | `Flex_end -> "flex-end"
-      | `Center -> "center"
-      | `Baseline -> "baseline"
-      | `Stretch -> "stretch"
-    in
-    (Align_self, str)
-
-  let justify_content v =
-    let str =
-      match v with
-      | `Flex_start -> "flex-start"
-      | `Flex_end -> "flex-end"
-      | `Center -> "center"
-      | `Space_between -> "space-between"
-      | `Space_around -> "space-around"
-      | `Space_evenly -> "space-evenly"
-    in
-    (Justify_content, str)
-
-  let gap len = (Gap, string_of_length len)
+  let direction dir = Declaration (Flex_direction, dir)
+  let wrap w = Declaration (Flex_wrap, w)
+  let flex v = Declaration (Flex, string_of_flex_value v)
+  let grow n = Declaration (Flex_grow, n)
+  let shrink n = Declaration (Flex_shrink, n)
+  let basis len = Declaration (Flex_basis, string_of_length len)
+  let order n = Declaration (Order, n)
+  let align_items v = Declaration (Align_items, v)
+  let align_self v = Declaration (Align_self, v)
+  let justify_content v = Declaration (Justify_content, v)
+  let gap len = Declaration (Gap, len)
 end
 
 (** Grid module *)
 module Grid = struct
-  let template_columns template = grid_template_columns template
-  let template_rows template = grid_template_rows template
-  let column_gap len = (Column_gap, string_of_length len)
-  let row_gap len = (Row_gap, string_of_length len)
-  let gap len = (Gap, string_of_length len)
+  let template_columns template = Declaration (Grid_template_columns, template)
+  let template_rows template = Declaration (Grid_template_rows, template)
+  let column_gap len = Declaration (Column_gap, len)
+  let row_gap len = Declaration (Row_gap, len)
+  let gap len = Declaration (Gap, len)
 
   let auto_flow flow =
-    let str =
+    let value =
       match flow with
-      | `Row -> "row"
-      | `Column -> "column"
-      | `Row_dense -> "row dense"
-      | `Column_dense -> "column dense"
+      | `Row -> Row
+      | `Column -> Column
+      | `Row_dense -> Row_dense
+      | `Column_dense -> Column_dense
     in
-    (Grid_auto_flow, str)
+    Declaration (Grid_auto_flow, value)
 
-  let auto_columns size = (Grid_auto_columns, string_of_grid_track_size size)
-  let auto_rows size = (Grid_auto_rows, string_of_grid_track_size size)
-  let column value = (Grid_column, value)
-  let row value = (Grid_row, value)
+  let auto_columns size = Declaration (Grid_auto_columns, size)
+  let auto_rows size = Declaration (Grid_auto_rows, size)
+  let column value = Declaration (Grid_column, value)
+  let row value = Declaration (Grid_row, value)
 end
 
 (** Border module *)
@@ -1952,14 +2209,14 @@ module Border = struct
   let style s = border_style s
   let color c = border_color c
   let radius len = border_radius len
-  let top_width len = (Border_top_width, string_of_length len)
-  let right_width len = (Border_right_width, string_of_length len)
-  let bottom_width len = (Border_bottom_width, string_of_length len)
-  let left_width len = (Border_left_width, string_of_length len)
-  let top_color c = (Border_top_color, string_of_color c)
-  let right_color c = (Border_right_color, string_of_color c)
-  let bottom_color c = (Border_bottom_color, string_of_color c)
-  let left_color c = (Border_left_color, string_of_color c)
+  let top_width len = Declaration (Border_top_width, len)
+  let right_width len = Declaration (Border_right_width, len)
+  let bottom_width len = Declaration (Border_bottom_width, len)
+  let left_width len = Declaration (Border_left_width, len)
+  let top_color c = Declaration (Border_top_color, c)
+  let right_color c = Declaration (Border_right_color, c)
+  let bottom_color c = Declaration (Border_bottom_color, c)
+  let left_color c = Declaration (Border_left_color, c)
 end
 
 type rule = { selector : string; declarations : declaration list }
@@ -2022,15 +2279,7 @@ type sheet_item =
 
 (** {1 Creation} *)
 
-let declaration_value (_, value) = value
-let declaration_property (prop_name, _) = prop_name
-
-let is_custom_property ((prop_name, _) : declaration) =
-  match prop_name with
-  | Custom name -> String.starts_with ~prefix:"--" name
-  | _ -> false
-
-let string_of_property = function
+let string_of_property : type a. a property -> string = function
   | Background_color -> "background-color"
   | Color -> "color"
   | Border_color -> "border-color"
@@ -2130,6 +2379,8 @@ let string_of_property = function
   | Outline_offset -> "outline-offset"
   | Scroll_snap_type -> "scroll-snap-type"
   | Clip -> "clip"
+  | Clear -> "clear"
+  | Float -> "float"
   | White_space -> "white-space"
   | Border -> "border"
   | Tab_size -> "tab-size"
@@ -2159,6 +2410,7 @@ let string_of_property = function
   | Filter -> "filter"
   | Background_image -> "background-image"
   | Animation -> "animation"
+  | Aspect_ratio -> "aspect-ratio"
   | Overflow_x -> "overflow-x"
   | Overflow_y -> "overflow-y"
   | Vertical_align -> "vertical-align"
@@ -2179,7 +2431,7 @@ let string_of_property = function
   | Appearance -> "appearance"
   | Content -> "content"
   | Quotes -> "quotes"
-  | Custom s -> s
+  | _ -> "unknown" (* Custom properties removed *)
 
 let rule ~selector declarations = { selector; declarations }
 let selector rule = rule.selector
@@ -2297,7 +2549,11 @@ let all_vars properties =
       with Not_found -> acc
   in
   List.concat_map
-    (fun (_, value) -> extract_vars_from_value value [] 0)
+    (function
+      | Declaration (prop, value) ->
+          let value_str = string_of_property_value ~mode:Variables prop value in
+          extract_vars_from_value value_str [] 0
+      | Custom_declaration (_name, value) -> extract_vars_from_value value [] 0)
     properties
   |> List.sort_uniq String.compare
 
@@ -2305,17 +2561,89 @@ let deduplicate_declarations props =
   (* Keep last occurrence of each property while preserving order *)
   let seen = Hashtbl.create 16 in
   List.fold_right
-    (fun (prop_name, value) acc ->
+    (fun decl acc ->
+      let prop_name =
+        match decl with
+        | Declaration (prop, _) -> string_of_property prop
+        | Custom_declaration (name, _) -> name
+      in
       if Hashtbl.mem seen prop_name then acc
       else (
         Hashtbl.add seen prop_name ();
-        (prop_name, value) :: acc))
+        decl :: acc))
     props []
 
-let inline_style_of_declarations props =
+(* Existential wrapper for variables to allow collecting them *)
+type any_var = V : 'a var -> any_var
+
+(* Extract variables from a typed value - needs to handle each property type *)
+let extract_vars_from_declaration : declaration -> any_var list = function
+  | Custom_declaration (_, _) ->
+      [] (* Custom properties don't have typed vars *)
+  | Declaration (prop, value) -> (
+      match (prop, value) with
+      | Background_color, Var v -> [ V v ]
+      | Color, Var v -> [ V v ]
+      | Border_color, Var v -> [ V v ]
+      | Border_top_color, Var v -> [ V v ]
+      | Border_right_color, Var v -> [ V v ]
+      | Border_bottom_color, Var v -> [ V v ]
+      | Border_left_color, Var v -> [ V v ]
+      | Text_decoration_color, Var v -> [ V v ]
+      | Webkit_tap_highlight_color, Var v -> [ V v ]
+      | Padding, Var v -> [ V v ]
+      | Padding_left, Var v -> [ V v ]
+      | Padding_right, Var v -> [ V v ]
+      | Padding_top, Var v -> [ V v ]
+      | Padding_bottom, Var v -> [ V v ]
+      | Margin, Var v -> [ V v ]
+      | Margin_left, Var v -> [ V v ]
+      | Margin_right, Var v -> [ V v ]
+      | Margin_top, Var v -> [ V v ]
+      | Margin_bottom, Var v -> [ V v ]
+      | Width, Var v -> [ V v ]
+      | Height, Var v -> [ V v ]
+      | Min_width, Var v -> [ V v ]
+      | Min_height, Var v -> [ V v ]
+      | Max_width, Var v -> [ V v ]
+      | Max_height, Var v -> [ V v ]
+      | Gap, Var v -> [ V v ]
+      | Column_gap, Var v -> [ V v ]
+      | Row_gap, Var v -> [ V v ]
+      | Font_size, Var v -> [ V v ]
+      | Line_height, Var v -> [ V v ]
+      | Letter_spacing, Var v -> [ V v ]
+      | Border_width, Var v -> [ V v ]
+      | Border_top_width, Var v -> [ V v ]
+      | Border_right_width, Var v -> [ V v ]
+      | Border_bottom_width, Var v -> [ V v ]
+      | Border_left_width, Var v -> [ V v ]
+      | Border_radius, Var v -> [ V v ]
+      | Top, Var v -> [ V v ]
+      | Right, Var v -> [ V v ]
+      | Bottom, Var v -> [ V v ]
+      | Left, Var v -> [ V v ]
+      | Outline_offset, Var v -> [ V v ]
+      | Text_indent, Var v -> [ V v ]
+      | Perspective, Var v -> [ V v ]
+      | Border_spacing, Var v -> [ V v ]
+      | _ -> [] (* Other property types don't have variables yet *))
+
+(* Analyze declarations to find all variable references *)
+let analyze_declarations (decls : declaration list) : any_var list =
+  List.concat_map extract_vars_from_declaration decls
+
+let inline_style_of_declarations ?(mode : mode = Inline) props =
   props
-  |> List.map (fun (prop_name, value) ->
-         str [ string_of_property prop_name; ": "; value ])
+  |> List.map (function
+       | Declaration (prop, value) ->
+           str
+             [
+               string_of_property prop;
+               ": ";
+               string_of_property_value ~mode prop value;
+             ]
+       | Custom_declaration (name, value) -> str [ name; ": "; value ])
   |> String.concat "; "
 
 let merge_rules rules =
@@ -2353,8 +2681,15 @@ let merge_by_properties rules =
   (* Create a hash of properties for comparison *)
   let properties_hash props =
     props
-    |> List.map (fun (name, value) ->
-           str [ string_of_property name; ":"; value ])
+    |> List.map (function
+         | Declaration (prop, value) ->
+             str
+               [
+                 string_of_property prop;
+                 ":";
+                 string_of_property_value ~mode:Inline prop value;
+               ]
+         | Custom_declaration (name, value) -> str [ name; ":"; value ])
     |> List.sort String.compare |> String.concat ";"
   in
 
@@ -2458,23 +2793,39 @@ let render_minified_rule rule =
   let selector = minify_selector rule.selector in
   let props =
     rule.declarations
-    |> List.map (fun (prop_name, value) ->
-           let value =
-             (* Convert transparent to #0000 for background-color in minified
-                output *)
-             if prop_name = Background_color && value = "transparent" then
-               "#0000"
-             else minify_value value
-           in
-           str [ string_of_property prop_name; ":"; value ])
+    |> List.map (function
+         | Declaration (prop, value) ->
+             let prop_name = string_of_property prop in
+             let value_str = string_of_property_value ~mode:Inline prop value in
+             let final_value =
+               (* Convert transparent to #0000 for background-color in minified
+                  output *)
+               match prop with
+               | Background_color when value_str = "transparent" -> "#0000"
+               | _ -> minify_value value_str
+             in
+             str [ prop_name; ":"; final_value ]
+         | Custom_declaration (name, value) ->
+             str [ name; ":"; minify_value value ])
   in
   str [ selector; "{"; str ~sep:";" props; "}" ]
 
 let render_formatted_rule ?(indent = "") rule =
   let props =
     rule.declarations
-    |> List.map (fun (prop_name, value) ->
-           str [ indent; "  "; string_of_property prop_name; ": "; value; ";" ])
+    |> List.map (function
+         | Declaration (prop, value) ->
+             str
+               [
+                 indent;
+                 "  ";
+                 string_of_property prop;
+                 ": ";
+                 string_of_property_value ~mode:Inline prop value;
+                 ";";
+               ]
+         | Custom_declaration (name, value) ->
+             str [ indent; "  "; name; ": "; value; ";" ])
   in
   lines
     [ str [ indent; rule.selector; " {" ]; lines props; str [ indent; "}" ] ]
@@ -2544,7 +2895,7 @@ let header =
     [ "/*! tw v"; version; " | MIT License | https://github.com/samoht/tw */" ]
 
 (* Configuration for stylesheet rendering *)
-type config = { minify : bool }
+type config = { minify : bool; mode : mode }
 
 (* TODO: Complete migration to structured CSS representation Intermediate
    representation for CSS output type css_block = | RuleBlock of { selector:
@@ -2869,8 +3220,8 @@ let render_stylesheet_sections ~config stylesheet =
     supports_strings,
     media_strings )
 
-let to_string ?(minify = false) stylesheet =
-  let config = { minify } in
+let to_string ?(minify = false) ?(mode = Variables) stylesheet =
+  let config = { minify; mode } in
   let header_str =
     if List.length stylesheet.layers > 0 then str [ header; "\n" ] else ""
   in
@@ -2893,4 +3244,4 @@ let to_string ?(minify = false) stylesheet =
   if config.minify then String.concat "" all_parts
   else String.concat "\n" (List.filter (fun s -> s <> "") all_parts)
 
-let pp = to_string
+let pp ?minify ?mode stylesheet = to_string ?minify ?mode stylesheet
