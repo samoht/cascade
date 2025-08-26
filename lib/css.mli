@@ -68,8 +68,7 @@
 type 'a var = {
   name : string;  (** Variable name (without --) *)
   fallback : 'a var_fallback option;  (** Optional fallback value *)
-  default_value : 'a option;
-      (** Default value for inline mode and theme layer *)
+  default : 'a option;  (** Default value for inline mode and theme layer *)
 }
 (** CSS variable reference *)
 
@@ -80,14 +79,14 @@ and 'a var_fallback =
 (** CSS generation mode. *)
 type mode =
   | Variables  (** Emit var(--name) and generate theme/properties layers *)
-  | Inline  (** Resolve vars to default_value, no CSS variables *)
+  | Inline  (** Resolve vars to default, no CSS variables *)
 
 (** CSS calc operations. *)
 type calc_op = Add | Sub | Mult | Div
 
 (** CSS calc values. *)
 type 'a calc =
-  | Var of 'a calc var (* CSS variable *)
+  | Var of 'a var (* CSS variable *)
   | Val of 'a
   | Expr of 'a calc * calc_op * 'a calc
 
@@ -140,9 +139,9 @@ module Calc : sig
   val length : length -> length calc
   (** [length len] lifts a length value into calc *)
 
-  val var : string -> 'a calc
-  (** [var name] creates a variable reference for calc expressions. Example:
-      [var "spacing"] *)
+  val var : ?default:'a -> string -> 'a calc
+  (** [var ?default name] creates a variable reference for calc expressions.
+      Example: [var "spacing"] *)
 
   val float : float -> length calc
   (** [float f] creates a numeric value for calc expressions *)
@@ -935,17 +934,16 @@ end
 
 (** {2 CSS Custom Properties (Variables)} *)
 
-val var : ?fallback:'a var_fallback -> ?default_value:'a -> string -> 'a var
-(** [var ?fallback ?default_value name] creates a CSS variable reference.
+val var : ?fallback:'a var_fallback -> ?default:'a -> string -> 'a var
+(** [var ?fallback ?default name] creates a CSS variable reference.
     - [fallback] is used inside [var(--name, fallback)] in CSS output
-    - [default_value] is used for inline mode and :root theme layer generation
+    - [default] is used for inline mode and :root theme layer generation
       Examples:
     - [var "spacing"] creates [var(--spacing)]
     - [var ~fallback:(Var (var "default")) "custom"] creates
       [var(--custom, var(--default))]
     - [var ~fallback:(Value (Px 10)) "spacing"] creates [var(--spacing, 10px)]
-    - [var ~default_value:(Rem 1.0) "spacing-4"] provides default for inlining.
-*)
+    - [var ~default:(Rem 1.0) "spacing-4"] provides default for inlining. *)
 
 val custom_property : string -> string -> declaration
 (** [custom_property name value] creates a CSS custom property declaration. The

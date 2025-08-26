@@ -7,7 +7,7 @@ let lines segments = str ~sep:"\n" segments
 type 'a var = {
   name : string;
   fallback : 'a var_fallback option;
-  default_value : 'a option;
+  default : 'a option;
 }
 (** CSS variable reference *)
 
@@ -15,13 +15,13 @@ and 'a var_fallback = Var of 'a var | Value of 'a
 
 type mode = Variables | Inline
 
-let var ?fallback ?default_value name = { name; fallback; default_value }
+let var ?fallback ?default name = { name; fallback; default }
 
 (** CSS length values *)
 type calc_op = Add | Sub | Mult | Div
 
 type 'a calc =
-  | Var of 'a calc var (* CSS variable *)
+  | Var of 'a var (* CSS variable *)
   | Val of 'a
   | Expr of 'a calc * calc_op * 'a calc
 
@@ -605,7 +605,7 @@ let rec string_of_var : type a. ?mode:mode -> (a -> string) -> a var -> string =
  fun ?(mode = Variables) value_to_string v ->
   match mode with
   | Inline -> (
-      match v.default_value with
+      match v.default with
       | Some value -> value_to_string value
       | None -> (
           (* Fallback to var() if no default in inline mode *)
@@ -654,7 +654,7 @@ and string_of_calc : ('a -> string) -> 'a calc -> string =
  fun string_of_val calc ->
   match calc with
   | Val v -> string_of_val v
-  | Var v -> string_of_var (string_of_calc string_of_val) v
+  | Var v -> string_of_var string_of_val v
   | Expr (left, op, right) ->
       let op_str =
         match op with
@@ -685,7 +685,10 @@ module Calc = struct
 
   (* Value constructors *)
   let length len = Val len
-  let var name = (Var (var name) : 'a calc)
+
+  let var : ?default:'a -> string -> 'a calc =
+   fun ?default name -> Var (var ?default name)
+
   let float f = Val (Num f)
   let infinity = Val (Num infinity)
   let px n = Val (Px n)
@@ -2764,52 +2767,153 @@ let stylesheet items =
 
 (** Extract all CSS variables referenced in properties (for theme layer) *)
 let all_vars properties =
-  let extract_var_name var_content =
-    match String.index var_content ',' with
-    | exception Not_found -> String.trim var_content
-    | comma -> String.trim (String.sub var_content 0 comma)
+  (* Extract variables from calc expressions *)
+  let rec extract_from_calc : type a. a calc -> string list = function
+    | Val _ -> []
+    | Var v -> [ "--" ^ v.name ]
+    | Expr (left, _, right) -> extract_from_calc left @ extract_from_calc right
   in
 
-  let process_var_at_position value var_pos acc =
-    if var_pos + 4 > String.length value || String.sub value var_pos 4 <> "var("
-    then Option.none
-    else
-      let var_start = var_pos + 4 in
-      match String.index_from value var_start ')' with
-      | exception Not_found -> Option.none
-      | end_paren ->
-          let var_content =
-            String.sub value var_start (end_paren - var_start)
-          in
-          let var_name = extract_var_name var_content in
-          let new_acc =
-            if String.length var_name > 2 && String.sub var_name 0 2 = "--" then
-              var_name :: acc
-            else acc
-          in
-          Option.some (new_acc, end_paren + 1)
+  (* Extract variables from any property value *)
+  let extract_from_property : type a. a property -> a -> string list =
+   fun prop value ->
+    match (prop, value) with
+    (* Length properties *)
+    | Width, Var v -> [ "--" ^ v.name ]
+    | Width, Calc calc -> extract_from_calc calc
+    | Height, Var v -> [ "--" ^ v.name ]
+    | Height, Calc calc -> extract_from_calc calc
+    | Min_width, Var v -> [ "--" ^ v.name ]
+    | Min_width, Calc calc -> extract_from_calc calc
+    | Min_height, Var v -> [ "--" ^ v.name ]
+    | Min_height, Calc calc -> extract_from_calc calc
+    | Max_width, Var v -> [ "--" ^ v.name ]
+    | Max_width, Calc calc -> extract_from_calc calc
+    | Max_height, Var v -> [ "--" ^ v.name ]
+    | Max_height, Calc calc -> extract_from_calc calc
+    | Padding, Var v -> [ "--" ^ v.name ]
+    | Padding, Calc calc -> extract_from_calc calc
+    | Padding_top, Var v -> [ "--" ^ v.name ]
+    | Padding_top, Calc calc -> extract_from_calc calc
+    | Padding_right, Var v -> [ "--" ^ v.name ]
+    | Padding_right, Calc calc -> extract_from_calc calc
+    | Padding_bottom, Var v -> [ "--" ^ v.name ]
+    | Padding_bottom, Calc calc -> extract_from_calc calc
+    | Padding_left, Var v -> [ "--" ^ v.name ]
+    | Padding_left, Calc calc -> extract_from_calc calc
+    | Padding_inline, Var v -> [ "--" ^ v.name ]
+    | Padding_inline, Calc calc -> extract_from_calc calc
+    | Padding_inline_start, Var v -> [ "--" ^ v.name ]
+    | Padding_inline_start, Calc calc -> extract_from_calc calc
+    | Padding_block, Var v -> [ "--" ^ v.name ]
+    | Padding_block, Calc calc -> extract_from_calc calc
+    | Margin, Var v -> [ "--" ^ v.name ]
+    | Margin, Calc calc -> extract_from_calc calc
+    | Margin_top, Var v -> [ "--" ^ v.name ]
+    | Margin_top, Calc calc -> extract_from_calc calc
+    | Margin_right, Var v -> [ "--" ^ v.name ]
+    | Margin_right, Calc calc -> extract_from_calc calc
+    | Margin_bottom, Var v -> [ "--" ^ v.name ]
+    | Margin_bottom, Calc calc -> extract_from_calc calc
+    | Margin_left, Var v -> [ "--" ^ v.name ]
+    | Margin_left, Calc calc -> extract_from_calc calc
+    | Margin_inline, Var v -> [ "--" ^ v.name ]
+    | Margin_inline, Calc calc -> extract_from_calc calc
+    | Margin_block, Var v -> [ "--" ^ v.name ]
+    | Margin_block, Calc calc -> extract_from_calc calc
+    | Top, Var v -> [ "--" ^ v.name ]
+    | Top, Calc calc -> extract_from_calc calc
+    | Right, Var v -> [ "--" ^ v.name ]
+    | Right, Calc calc -> extract_from_calc calc
+    | Bottom, Var v -> [ "--" ^ v.name ]
+    | Bottom, Calc calc -> extract_from_calc calc
+    | Left, Var v -> [ "--" ^ v.name ]
+    | Left, Calc calc -> extract_from_calc calc
+    | Font_size, Var v -> [ "--" ^ v.name ]
+    | Font_size, Calc calc -> extract_from_calc calc
+    | Letter_spacing, Var v -> [ "--" ^ v.name ]
+    | Letter_spacing, Calc calc -> extract_from_calc calc
+    | Line_height, Var v -> [ "--" ^ v.name ]
+    | Line_height, Calc calc -> extract_from_calc calc
+    | Border_width, Var v -> [ "--" ^ v.name ]
+    | Border_width, Calc calc -> extract_from_calc calc
+    | Border_top_width, Var v -> [ "--" ^ v.name ]
+    | Border_top_width, Calc calc -> extract_from_calc calc
+    | Border_right_width, Var v -> [ "--" ^ v.name ]
+    | Border_right_width, Calc calc -> extract_from_calc calc
+    | Border_bottom_width, Var v -> [ "--" ^ v.name ]
+    | Border_bottom_width, Calc calc -> extract_from_calc calc
+    | Border_left_width, Var v -> [ "--" ^ v.name ]
+    | Border_left_width, Calc calc -> extract_from_calc calc
+    | Outline_width, Var v -> [ "--" ^ v.name ]
+    | Outline_width, Calc calc -> extract_from_calc calc
+    | Column_gap, Var v -> [ "--" ^ v.name ]
+    | Column_gap, Calc calc -> extract_from_calc calc
+    | Row_gap, Var v -> [ "--" ^ v.name ]
+    | Row_gap, Calc calc -> extract_from_calc calc
+    | Gap, Var v -> [ "--" ^ v.name ]
+    | Gap, Calc calc -> extract_from_calc calc
+    (* Color properties *)
+    | Background_color, Var v -> [ "--" ^ v.name ]
+    | Color, Var v -> [ "--" ^ v.name ]
+    | Border_color, Var v -> [ "--" ^ v.name ]
+    | Border_top_color, Var v -> [ "--" ^ v.name ]
+    | Border_right_color, Var v -> [ "--" ^ v.name ]
+    | Border_bottom_color, Var v -> [ "--" ^ v.name ]
+    | Border_left_color, Var v -> [ "--" ^ v.name ]
+    | Text_decoration_color, Var v -> [ "--" ^ v.name ]
+    | Outline_color, Var v -> [ "--" ^ v.name ]
+    (* Border radius *)
+    | Border_radius, Var v -> [ "--" ^ v.name ]
+    | Border_radius, Calc calc -> extract_from_calc calc
+    (* Outline offset *)
+    | Outline_offset, Var v -> [ "--" ^ v.name ]
+    | Outline_offset, Calc calc -> extract_from_calc calc
+    (* Other properties don't support Var *)
+    (* All other cases *)
+    | _ -> []
   in
 
-  let rec extract_vars_from_value value acc pos =
-    if pos >= String.length value then acc
-    else
-      try
-        let var_pos = String.index_from value pos 'v' in
-        match process_var_at_position value var_pos acc with
-        | Some (new_acc, next_pos) ->
-            extract_vars_from_value value new_acc next_pos
-        | None -> extract_vars_from_value value acc (var_pos + 1)
-      with Not_found -> acc
-  in
   List.concat_map
     (function
-      | Declaration (prop, value) ->
-          let value_str = string_of_property_value ~mode:Variables prop value in
-          extract_vars_from_value value_str [] 0
-      | Important_declaration (prop, value) ->
-          let value_str = string_of_property_value ~mode:Variables prop value in
-          extract_vars_from_value value_str [] 0
-      | Custom_declaration (_name, value) -> extract_vars_from_value value [] 0)
+      | Declaration (prop, value) -> extract_from_property prop value
+      | Important_declaration (prop, value) -> extract_from_property prop value
+      | Custom_declaration (_name, value) ->
+          (* For custom declarations, we still need to parse the string *)
+          let rec extract_vars_from_string value acc pos =
+            if pos >= String.length value then acc
+            else
+              try
+                let var_pos = String.index_from value pos 'v' in
+                if
+                  var_pos + 4 > String.length value
+                  || String.sub value var_pos 4 <> "var("
+                then extract_vars_from_string value acc (var_pos + 1)
+                else
+                  let var_start = var_pos + 4 in
+                  match String.index_from value var_start ')' with
+                  | exception Not_found ->
+                      extract_vars_from_string value acc (var_pos + 1)
+                  | end_paren ->
+                      let var_content =
+                        String.sub value var_start (end_paren - var_start)
+                      in
+                      let var_name =
+                        match String.index var_content ',' with
+                        | exception Not_found -> String.trim var_content
+                        | comma -> String.trim (String.sub var_content 0 comma)
+                      in
+                      let new_acc =
+                        if
+                          String.length var_name > 2
+                          && String.sub var_name 0 2 = "--"
+                        then var_name :: acc
+                        else acc
+                      in
+                      extract_vars_from_string value new_acc (end_paren + 1)
+              with Not_found -> acc
+          in
+          extract_vars_from_string value [] 0)
     properties
   |> List.sort_uniq String.compare
 
