@@ -1655,14 +1655,18 @@ type declaration =
       (** A CSS property-value pair with typed value using existential type *)
   | Custom_declaration : string * string -> declaration
       (** Custom property with dynamic name and string value *)
+  | Important_declaration : 'a property * 'a -> declaration
+      (** A CSS property-value pair marked as !important *)
 
 (* Helper to mark a declaration as important - needs special handling for
    GADT *)
 let important = function
-  | Declaration (prop, value) ->
-      Declaration (prop, value) (* TODO: add Important wrapper *)
-  | Custom_declaration (name, value) -> Custom_declaration (name, value)
-(* TODO: add Important wrapper *)
+  | Declaration (prop, value) -> Important_declaration (prop, value)
+  | Custom_declaration (name, value) ->
+      Custom_declaration (name, value)
+      (* Custom properties don't support !important in this implementation *)
+  | Important_declaration (prop, value) -> Important_declaration (prop, value)
+(* Already important *)
 
 (* Convert property value to string based on its type *)
 let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
@@ -2782,6 +2786,9 @@ let all_vars properties =
       | Declaration (prop, value) ->
           let value_str = string_of_property_value ~mode:Variables prop value in
           extract_vars_from_value value_str [] 0
+      | Important_declaration (prop, value) ->
+          let value_str = string_of_property_value ~mode:Variables prop value in
+          extract_vars_from_value value_str [] 0
       | Custom_declaration (_name, value) -> extract_vars_from_value value [] 0)
     properties
   |> List.sort_uniq String.compare
@@ -2794,6 +2801,7 @@ let deduplicate_declarations props =
       let prop_name =
         match decl with
         | Declaration (prop, _) -> string_of_property prop
+        | Important_declaration (prop, _) -> string_of_property prop
         | Custom_declaration (name, _) -> name
       in
       if Hashtbl.mem seen prop_name then acc
@@ -2806,57 +2814,55 @@ let deduplicate_declarations props =
 type any_var = V : 'a var -> any_var
 
 (* Extract variables from a typed value - needs to handle each property type *)
+let extract_vars_from_prop_value : type a. a property -> a -> any_var list =
+ fun prop value ->
+  match (prop, value) with
+  | Background_color, Var v -> [ V v ]
+  | Color, Var v -> [ V v ]
+  | Border_color, Var v -> [ V v ]
+  | Border_top_color, Var v -> [ V v ]
+  | Border_right_color, Var v -> [ V v ]
+  | Border_bottom_color, Var v -> [ V v ]
+  | Border_left_color, Var v -> [ V v ]
+  | Text_decoration_color, Var v -> [ V v ]
+  | Webkit_tap_highlight_color, Var v -> [ V v ]
+  | Padding, Var v -> [ V v ]
+  | Padding_left, Var v -> [ V v ]
+  | Padding_right, Var v -> [ V v ]
+  | Padding_top, Var v -> [ V v ]
+  | Padding_bottom, Var v -> [ V v ]
+  | Margin, Var v -> [ V v ]
+  | Margin_left, Var v -> [ V v ]
+  | Margin_right, Var v -> [ V v ]
+  | Margin_top, Var v -> [ V v ]
+  | Margin_bottom, Var v -> [ V v ]
+  | Gap, Var v -> [ V v ]
+  | Column_gap, Var v -> [ V v ]
+  | Row_gap, Var v -> [ V v ]
+  | Width, Var v -> [ V v ]
+  | Height, Var v -> [ V v ]
+  | Min_width, Var v -> [ V v ]
+  | Min_height, Var v -> [ V v ]
+  | Max_width, Var v -> [ V v ]
+  | Max_height, Var v -> [ V v ]
+  | Font_size, Var v -> [ V v ]
+  | Line_height, Var v -> [ V v ]
+  | Letter_spacing, Var v -> [ V v ]
+  | Top, Var v -> [ V v ]
+  | Right, Var v -> [ V v ]
+  | Bottom, Var v -> [ V v ]
+  | Left, Var v -> [ V v ]
+  | Border_radius, Var v -> [ V v ]
+  | Border_width, Var v -> [ V v ]
+  | Outline_offset, Var v -> [ V v ]
+  | _ -> [] (* No variables in this value *)
+
 let extract_vars_from_declaration : declaration -> any_var list = function
   | Custom_declaration (_, _) ->
       [] (* Custom properties don't have typed vars *)
-  | Declaration (prop, value) -> (
-      match (prop, value) with
-      | Background_color, Var v -> [ V v ]
-      | Color, Var v -> [ V v ]
-      | Border_color, Var v -> [ V v ]
-      | Border_top_color, Var v -> [ V v ]
-      | Border_right_color, Var v -> [ V v ]
-      | Border_bottom_color, Var v -> [ V v ]
-      | Border_left_color, Var v -> [ V v ]
-      | Text_decoration_color, Var v -> [ V v ]
-      | Webkit_tap_highlight_color, Var v -> [ V v ]
-      | Padding, Var v -> [ V v ]
-      | Padding_left, Var v -> [ V v ]
-      | Padding_right, Var v -> [ V v ]
-      | Padding_top, Var v -> [ V v ]
-      | Padding_bottom, Var v -> [ V v ]
-      | Margin, Var v -> [ V v ]
-      | Margin_left, Var v -> [ V v ]
-      | Margin_right, Var v -> [ V v ]
-      | Margin_top, Var v -> [ V v ]
-      | Margin_bottom, Var v -> [ V v ]
-      | Width, Var v -> [ V v ]
-      | Height, Var v -> [ V v ]
-      | Min_width, Var v -> [ V v ]
-      | Min_height, Var v -> [ V v ]
-      | Max_width, Var v -> [ V v ]
-      | Max_height, Var v -> [ V v ]
-      | Gap, Var v -> [ V v ]
-      | Column_gap, Var v -> [ V v ]
-      | Row_gap, Var v -> [ V v ]
-      | Font_size, Var v -> [ V v ]
-      | Line_height, Var v -> [ V v ]
-      | Letter_spacing, Var v -> [ V v ]
-      | Border_width, Var v -> [ V v ]
-      | Border_top_width, Var v -> [ V v ]
-      | Border_right_width, Var v -> [ V v ]
-      | Border_bottom_width, Var v -> [ V v ]
-      | Border_left_width, Var v -> [ V v ]
-      | Border_radius, Var v -> [ V v ]
-      | Top, Var v -> [ V v ]
-      | Right, Var v -> [ V v ]
-      | Bottom, Var v -> [ V v ]
-      | Left, Var v -> [ V v ]
-      | Outline_offset, Var v -> [ V v ]
-      | Text_indent, Var v -> [ V v ]
-      | Perspective, Var v -> [ V v ]
-      | Border_spacing, Var v -> [ V v ]
-      | _ -> [] (* Other property types don't have variables yet *))
+  | Declaration (prop, value) -> extract_vars_from_prop_value prop value
+  | Important_declaration (prop, value) ->
+      extract_vars_from_prop_value prop value
 
 (* Analyze declarations to find all variable references *)
 let analyze_declarations (decls : declaration list) : any_var list =
@@ -2871,6 +2877,14 @@ let inline_style_of_declarations ?(mode : mode = Inline) props =
                string_of_property prop;
                ": ";
                string_of_property_value ~mode prop value;
+             ]
+       | Important_declaration (prop, value) ->
+           str
+             [
+               string_of_property prop;
+               ": ";
+               string_of_property_value ~mode prop value;
+               " !important";
              ]
        | Custom_declaration (name, value) -> str [ name; ": "; value ])
   |> String.concat "; "
@@ -2917,6 +2931,14 @@ let merge_by_properties rules =
                  string_of_property prop;
                  ":";
                  string_of_property_value ~mode:Inline prop value;
+               ]
+         | Important_declaration (prop, value) ->
+             str
+               [
+                 string_of_property prop;
+                 ":";
+                 string_of_property_value ~mode:Inline prop value;
+                 "!important";
                ]
          | Custom_declaration (name, value) -> str [ name; ":"; value ])
     |> List.sort String.compare |> String.concat ";"
@@ -3034,6 +3056,17 @@ let render_minified_rule ~mode rule =
                | _ -> minify_value value_str
              in
              str [ prop_name; ":"; final_value ]
+         | Important_declaration (prop, value) ->
+             let prop_name = string_of_property prop in
+             let value_str = string_of_property_value ~mode prop value in
+             let final_value =
+               (* Convert transparent to #0000 for background-color in minified
+                  output *)
+               match prop with
+               | Background_color when value_str = "transparent" -> "#0000"
+               | _ -> minify_value value_str
+             in
+             str [ prop_name; ":"; final_value; "!important" ]
          | Custom_declaration (name, value) ->
              str [ name; ":"; minify_value value ])
   in
@@ -3052,6 +3085,16 @@ let render_formatted_rule ~mode ?(indent = "") rule =
                  ": ";
                  string_of_property_value ~mode prop value;
                  ";";
+               ]
+         | Important_declaration (prop, value) ->
+             str
+               [
+                 indent;
+                 "  ";
+                 string_of_property prop;
+                 ": ";
+                 string_of_property_value ~mode prop value;
+                 " !important;";
                ]
          | Custom_declaration (name, value) ->
              str [ indent; "  "; name; ": "; value; ";" ])
