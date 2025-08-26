@@ -135,6 +135,30 @@ let test_property_names () =
         (Astring.String.is_infix ~affix:expected_name css))
     names
 
+let test_css_modes () =
+  (* Test the different CSS generation modes *)
+  
+  (* Create a color variable with default value *)
+  let color_var = var ~default_value:(Oklch { l = 62.3; c = 0.214; h = 259.815 }) "color-blue-500" in
+  let bg_prop = background_color (Var color_var) in
+  let rule = rule ~selector:".bg-blue-500" [ bg_prop ] in
+  let sheet = stylesheet [ Rule rule ] in
+  
+  (* Test Variables mode - should output var(--color-blue-500) *)
+  let css_variables = to_string ~mode:Variables sheet in
+  Alcotest.(check bool)
+    "Variables mode contains var()" true
+    (Astring.String.is_infix ~affix:"var(--color-blue-500)" css_variables);
+  
+  (* Test Inline mode - should output the actual OKLCH value *)
+  let css_inline = to_string ~mode:Inline sheet in
+  Alcotest.(check bool)
+    "Inline mode contains oklch()" true
+    (Astring.String.is_infix ~affix:"oklch(" css_inline);
+  Alcotest.(check bool)
+    "Inline mode does not contain var()" false
+    (Astring.String.is_infix ~affix:"var(--" css_inline)
+
 let suite =
   [
     ( "Css",
@@ -146,5 +170,7 @@ let suite =
         Alcotest.test_case "media query" `Quick test_media_query;
         Alcotest.test_case "inline style" `Quick test_inline_style;
         Alcotest.test_case "property names" `Quick test_property_names;
+        Alcotest.test_case "CSS modes" `Quick test_css_modes;
       ] );
   ]
+

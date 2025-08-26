@@ -81,7 +81,6 @@ and 'a var_fallback =
 type mode =
   | Variables  (** Emit var(--name) and generate theme/properties layers *)
   | Inline  (** Resolve vars to default_value, no CSS variables *)
-  | Optimize  (** Inline small values, keep key theme vars *)
 
 (** CSS calc operations. *)
 type calc_op = Add | Sub | Mult | Div
@@ -304,6 +303,12 @@ type list_style_type =
   | Lower_roman
   | Upper_roman
 
+(** CSS list-style-position values. *)
+type list_style_position = Inside | Outside | Inherit
+
+(** CSS list-style-image values. *)
+type list_style_image = None_img | Url of string | Inherit
+
 (** CSS border style values. *)
 type border_style =
   | None
@@ -331,6 +336,9 @@ type outline_style =
   | Inset
   | Outset
   | Inherit
+
+(** CSS forced-color-adjust values. *)
+type forced_color_adjust = Auto | None | Inherit
 
 (** CSS cursor values. *)
 type cursor =
@@ -423,6 +431,47 @@ type vertical_align_value =
   | Percentage of float
   | Inherit
 
+(** CSS text-overflow values. *)
+type text_overflow = Clip | Ellipsis | String of string | Inherit
+
+(** CSS text-wrap values. *)
+type text_wrap = Wrap | No_wrap | Balance | Pretty | Inherit
+
+(** CSS word-break values. *)
+type word_break = Normal | Break_all | Keep_all | Break_word | Inherit
+
+(** CSS overflow-wrap values. *)
+type overflow_wrap = Normal_wrap | Anywhere | Break_word_wrap | Inherit
+
+(** CSS hyphens values. *)
+type hyphens = None_h | Manual | Auto | Inherit
+
+(** CSS font-stretch values. *)
+type font_stretch =
+  | Ultra_condensed
+  | Extra_condensed
+  | Condensed
+  | Semi_condensed
+  | Normal
+  | Semi_expanded
+  | Expanded
+  | Extra_expanded
+  | Ultra_expanded
+  | Percentage of float
+  | Inherit
+
+(** CSS font-variant-numeric tokens. *)
+type font_variant_numeric_token =
+  | Ordinal
+  | Slashed_zero
+  | Lining_nums
+  | Oldstyle_nums
+  | Proportional_nums
+  | Tabular_nums
+  | Diagonal_fractions
+  | Stacked_fractions
+  | Normal_numeric
+
 (** CSS border-collapse values. *)
 type border_collapse = Collapse | Separate | Inherit
 
@@ -486,6 +535,13 @@ type grid_template =
   | Repeat_auto_fit of grid_track_size (* repeat(auto-fit, size) *)
   | Grid_none (* none *)
   | Grid_inherit (* inherit *)
+
+(** CSS grid line values. *)
+type grid_line =
+  | Line_number of int (* 1, 2, 3, ... or -1, -2, ... *)
+  | Line_name of string (* "header-start", "main-end", etc. *)
+  | Span of int (* span 2, span 3, etc. *)
+  | Auto (* auto *)
 
 (** CSS transform angle values. *)
 type angle =
@@ -777,6 +833,12 @@ module Flex : sig
   val justify_content : justify_content -> declaration
   (** [justify_content value] sets the justify-content property. *)
 
+  val justify_items : justify_self -> declaration
+  (** [justify_items value] sets the justify-items property. *)
+
+  val justify_self : justify_self -> declaration
+  (** [justify_self value] sets the justify-self property. *)
+
   val gap : length -> declaration
   (** [gap len] sets the gap property for flex containers. *)
 end
@@ -812,6 +874,18 @@ module Grid : sig
 
   val row : string -> declaration
   (** [row value] sets the grid-row shorthand property. *)
+
+  val column_start : grid_line -> declaration
+  (** [column_start value] sets the grid-column-start property. *)
+
+  val column_end : grid_line -> declaration
+  (** [column_end value] sets the grid-column-end property. *)
+
+  val row_start : grid_line -> declaration
+  (** [row_start value] sets the grid-row-start property. *)
+
+  val row_end : grid_line -> declaration
+  (** [row_end value] sets the grid-row-end property. *)
 end
 
 (** Border properties. *)
@@ -1171,6 +1245,18 @@ val list_style_type : list_style_type -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/list-style-type>
       MDN: list-style-type. *)
 
+val list_style_position : list_style_position -> declaration
+(** [list_style_position pos] sets the CSS list-style-position property.
+
+    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/list-style-position>
+      MDN: list-style-position. *)
+
+val list_style_image : list_style_image -> declaration
+(** [list_style_image img] sets the CSS list-style-image property.
+
+    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/list-style-image>
+      MDN: list-style-image. *)
+
 (** {2 Additional Properties} *)
 
 val content : string -> declaration
@@ -1194,6 +1280,9 @@ val outline_width : length -> declaration
 val outline_color : color -> declaration
 (** [outline_color c] sets the CSS outline-color property. *)
 
+val forced_color_adjust : forced_color_adjust -> declaration
+(** [forced_color_adjust v] sets the CSS forced-color-adjust property. *)
+
 (* TODO: Add these to property GADT if needed val border_top_left_radius :
    length -> declaration val border_top_right_radius : length -> declaration val
    border_bottom_right_radius : length -> declaration val
@@ -1215,6 +1304,12 @@ val transition : transition_value -> declaration
 
 val quotes : string -> declaration
 (** [quotes value] sets the CSS quotes property. *)
+
+(** SVG paint values for fill and stroke properties *)
+type svg_paint =
+  | None  (** No paint *)
+  | Current_color  (** Current color value *)
+  | Color of color  (** Specific color value *)
 
 type font_family_value =
   (* Generic CSS font families *)
@@ -1324,6 +1419,15 @@ val box_sizing : box_sizing -> declaration
 val box_shadow : string -> declaration
 (** [box_shadow value] sets the CSS box-shadow property. *)
 
+val fill : svg_paint -> declaration
+(** [fill value] sets the SVG fill property. *)
+
+val stroke : svg_paint -> declaration
+(** [stroke value] sets the SVG stroke property. *)
+
+val stroke_width : length -> declaration
+(** [stroke_width value] sets the SVG stroke-width property. *)
+
 val appearance : appearance_value -> declaration
 (** [appearance value] sets the CSS appearance property. *)
 
@@ -1406,6 +1510,28 @@ val moz_osx_font_smoothing : moz_osx_font_smoothing_value -> declaration
 
 val webkit_line_clamp : int -> declaration
 (** [webkit_line_clamp value] sets the -webkit-line-clamp property. *)
+
+val text_overflow : text_overflow -> declaration
+(** [text_overflow value] sets the CSS text-overflow property. *)
+
+val text_wrap : text_wrap -> declaration
+(** [text_wrap value] sets the CSS text-wrap property. *)
+
+val word_break : word_break -> declaration
+(** [word_break value] sets the CSS word-break property. *)
+
+val overflow_wrap : overflow_wrap -> declaration
+(** [overflow_wrap value] sets the CSS overflow-wrap property. *)
+
+val hyphens : hyphens -> declaration
+(** [hyphens value] sets the CSS hyphens property. *)
+
+val font_stretch : font_stretch -> declaration
+(** [font_stretch value] sets the CSS font-stretch property. *)
+
+val font_variant_numeric : font_variant_numeric_token list -> declaration
+(** [font_variant_numeric tokens] sets CSS font-variant-numeric to a
+    space-separated list of [tokens]. *)
 
 val cursor : cursor -> declaration
 (** [cursor c] sets the CSS cursor property.
