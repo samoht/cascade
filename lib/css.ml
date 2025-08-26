@@ -1672,8 +1672,9 @@ type 'a property =
 type declaration =
   | Declaration : 'a property * 'a -> declaration
       (** A CSS property-value pair with typed value using existential type *)
-  | Custom_declaration : string * string -> declaration
-      (** Custom property with dynamic name and string value *)
+  | Custom_declaration : string * string * string list -> declaration
+      (** Custom property with dynamic name, string value, and dependency list
+      *)
   | Important_declaration : 'a property * 'a -> declaration
       (** A CSS property-value pair marked as !important *)
 
@@ -1681,9 +1682,9 @@ type declaration =
    GADT *)
 let important = function
   | Declaration (prop, value) -> Important_declaration (prop, value)
-  | Custom_declaration (name, value) ->
-      Custom_declaration (name, value)
-      (* Custom properties don't support !important in this implementation *)
+  | Custom_declaration (name, value, deps) ->
+      Custom_declaration (name, value, deps)
+      (* Custom properties remain as-is; we don't attach !important here *)
   | Important_declaration (prop, value) -> Important_declaration (prop, value)
 (* Already important *)
 
@@ -2324,11 +2325,11 @@ let background_repeat value = Declaration (Background_repeat, value)
 let background_size value = Declaration (Background_size, value)
 
 (* CSS Custom Properties *)
-let custom_property name value : declaration =
+let custom_property ?(deps = []) name value : declaration =
   if not (String.starts_with ~prefix:"--" name) then
     invalid_arg
       (str [ "custom_property: name must start with '--', got: "; name ])
-  else Custom_declaration (name, value)
+  else Custom_declaration (name, value, deps)
 
 (* Additional property constructors *)
 let content value = Declaration (Content, value)
@@ -2878,41 +2879,9 @@ let vars_of_declarations properties =
     (function
       | Declaration (prop, value) -> extract_from_property prop value
       | Important_declaration (prop, value) -> extract_from_property prop value
-      | Custom_declaration (name, value) ->
-          (* Extract both the property being assigned and any var() references
-             in the value *)
-          let assigned = [ name ] in
-          (* Simple extraction of var() references from the value string *)
-          let rec extract_var_refs str acc =
-            match String.index_opt str 'v' with
-            | None -> acc
-            | Some idx
-              when idx + 4 <= String.length str && String.sub str idx 4 = "var("
-              -> (
-                let start = idx + 4 in
-                match String.index_from_opt str start ')' with
-                | Some end_idx ->
-                    let var_content = String.sub str start (end_idx - start) in
-                    let var_name =
-                      match String.index_opt var_content ',' with
-                      | Some comma ->
-                          String.trim (String.sub var_content 0 comma)
-                      | None -> String.trim var_content
-                    in
-                    let rest =
-                      String.sub str (end_idx + 1)
-                        (String.length str - end_idx - 1)
-                    in
-                    extract_var_refs rest (var_name :: acc)
-                | None -> acc)
-            | Some idx ->
-                let rest =
-                  String.sub str (idx + 1) (String.length str - idx - 1)
-                in
-                extract_var_refs rest acc
-          in
-          let referenced = extract_var_refs value [] in
-          assigned @ referenced)
+      | Custom_declaration (name, _value, deps) ->
+          (* Use explicitly provided dependencies *)
+          name :: deps)
     properties
   |> List.sort_uniq String.compare
 
@@ -2925,7 +2894,7 @@ let deduplicate_declarations props =
         match decl with
         | Declaration (prop, _) -> string_of_property prop
         | Important_declaration (prop, _) -> string_of_property prop
-        | Custom_declaration (name, _) -> name
+        | Custom_declaration (name, _, _) -> name
       in
       if Hashtbl.mem seen prop_name then acc
       else (
@@ -2981,7 +2950,7 @@ let extract_vars_from_prop_value : type a. a property -> a -> any_var list =
   | _ -> [] (* No variables in this value *)
 
 let extract_vars_from_declaration : declaration -> any_var list = function
-  | Custom_declaration (_, _) ->
+  | Custom_declaration (_, _, _) ->
       [] (* Custom properties don't have typed vars *)
   | Declaration (prop, value) -> extract_vars_from_prop_value prop value
   | Important_declaration (prop, value) ->
@@ -3009,7 +2978,7 @@ let inline_style_of_declarations ?(mode : mode = Inline) props =
                string_of_property_value ~mode prop value;
                " !important";
              ]
-       | Custom_declaration (name, value) -> str [ name; ": "; value ])
+       | Custom_declaration (name, value, _) -> str [ name; ": "; value ])
   |> String.concat "; "
 
 let merge_rules rules =
@@ -3063,7 +3032,7 @@ let merge_by_properties rules =
                  string_of_property_value ~mode:Inline prop value;
                  "!important";
                ]
-         | Custom_declaration (name, value) -> str [ name; ":"; value ])
+         | Custom_declaration (name, value, _deps) -> str [ name; ":"; value ])
     |> List.sort String.compare |> String.concat ";"
   in
 
@@ -3190,7 +3159,7 @@ let render_minified_rule ~mode rule =
                | _ -> minify_value value_str
              in
              str [ prop_name; ":"; final_value; "!important" ]
-         | Custom_declaration (name, value) ->
+         | Custom_declaration (name, value, _deps) ->
              str [ name; ":"; minify_value value ])
   in
   str [ selector; "{"; str ~sep:";" props; "}" ]
@@ -3219,7 +3188,7 @@ let render_formatted_rule ~mode ?(indent = "") rule =
                  string_of_property_value ~mode prop value;
                  " !important;";
                ]
-         | Custom_declaration (name, value) ->
+         | Custom_declaration (name, value, _deps) ->
              str [ indent; "  "; name; ": "; value; ";" ])
   in
   lines

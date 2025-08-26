@@ -945,10 +945,15 @@ val var : ?fallback:'a var_fallback -> ?default:'a -> string -> 'a var
     - [var ~fallback:(Value (Px 10)) "spacing"] creates [var(--spacing, 10px)]
     - [var ~default:(Rem 1.0) "spacing-4"] provides default for inlining. *)
 
-val custom_property : string -> string -> declaration
-(** [custom_property name value] creates a CSS custom property declaration. The
-    name must start with "--". Example:
-    [custom_property "--color-primary" "#3b82f6"]
+val custom_property : ?deps:string list -> string -> string -> declaration
+(** [custom_property ?deps name value] creates a CSS custom property
+    declaration.
+    - [deps] is an optional list of CSS variable names this property depends on.
+    - [name] must start with "--".
+    - [value] is the string value of the property. Example:
+      [custom_property ~deps:["--color-blue-500"] "--tw-gradient-from"
+       "var(--color-blue-500)"]
+
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/--*>
       MDN: CSS Custom Properties. *)
 
