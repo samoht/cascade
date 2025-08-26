@@ -1861,9 +1861,27 @@ val string_of_property : _ property -> string
 (** Existential wrapper for variables *)
 type any_var = V : 'a var -> any_var
 
-val all_vars : declaration list -> string list
-(** [all_vars declarations] extracts all CSS variable names referenced in
-    declaration values, returning them sorted and deduplicated. *)
+val vars_of_declarations : declaration list -> string list
+(** [vars_of_declarations declarations] extracts all CSS variable names
+    referenced in declaration values, returning them sorted and deduplicated. *)
+
+val vars_of_rules : rule list -> string list
+(** [vars_of_rules rules] extracts all CSS variable names referenced in the
+    rules' declarations, returning them sorted and deduplicated. *)
+
+val vars_of_media_queries : media_query list -> string list
+(** [vars_of_media_queries media_queries] extracts all CSS variable names
+    referenced in the media queries' rules, returning them sorted and
+    deduplicated. *)
+
+val vars_of_container_queries : container_query list -> string list
+(** [vars_of_container_queries container_queries] extracts all CSS variable
+    names referenced in the container queries' rules, returning them sorted and
+    deduplicated. *)
+
+val vars_of_stylesheet : t -> string list
+(** [vars_of_stylesheet stylesheet] extracts all CSS variable names referenced
+    in the entire stylesheet, returning them sorted and deduplicated. *)
 
 val analyze_declarations : declaration list -> any_var list
 (** [analyze_declarations declarations] extracts typed CSS variables from

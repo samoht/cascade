@@ -135,7 +135,7 @@ let test_property_names () =
         (Astring.String.is_infix ~affix:expected_name css))
     names
 
-let test_css_modes () =
+let modes () =
   (* Test the different CSS generation modes *)
 
   (* Create a color variable with default value *)
@@ -163,7 +163,7 @@ let test_css_modes () =
 
 let suite =
   [
-    ( "Css",
+    ( "css",
       [
         Alcotest.test_case "property creation" `Quick test_property_creation;
         Alcotest.test_case "property deduplication" `Quick
@@ -172,6 +172,6 @@ let suite =
         Alcotest.test_case "media query" `Quick test_media_query;
         Alcotest.test_case "inline style" `Quick test_inline_style;
         Alcotest.test_case "property names" `Quick test_property_names;
-        Alcotest.test_case "CSS modes" `Quick test_css_modes;
+        Alcotest.test_case "CSS modes" `Quick modes;
       ] );
   ]

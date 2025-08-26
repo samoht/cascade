@@ -2766,7 +2766,7 @@ let stylesheet items =
 (** {1 Utilities} *)
 
 (** Extract all CSS variables referenced in properties (for theme layer) *)
-let all_vars properties =
+let vars_of_declarations properties =
   (* Extract variables from calc expressions *)
   let rec extract_from_calc : type a. a calc -> string list = function
     | Val _ -> []
@@ -2878,42 +2878,41 @@ let all_vars properties =
     (function
       | Declaration (prop, value) -> extract_from_property prop value
       | Important_declaration (prop, value) -> extract_from_property prop value
-      | Custom_declaration (_name, value) ->
-          (* For custom declarations, we still need to parse the string *)
-          let rec extract_vars_from_string value acc pos =
-            if pos >= String.length value then acc
-            else
-              try
-                let var_pos = String.index_from value pos 'v' in
-                if
-                  var_pos + 4 > String.length value
-                  || String.sub value var_pos 4 <> "var("
-                then extract_vars_from_string value acc (var_pos + 1)
-                else
-                  let var_start = var_pos + 4 in
-                  match String.index_from value var_start ')' with
-                  | exception Not_found ->
-                      extract_vars_from_string value acc (var_pos + 1)
-                  | end_paren ->
-                      let var_content =
-                        String.sub value var_start (end_paren - var_start)
-                      in
-                      let var_name =
-                        match String.index var_content ',' with
-                        | exception Not_found -> String.trim var_content
-                        | comma -> String.trim (String.sub var_content 0 comma)
-                      in
-                      let new_acc =
-                        if
-                          String.length var_name > 2
-                          && String.sub var_name 0 2 = "--"
-                        then var_name :: acc
-                        else acc
-                      in
-                      extract_vars_from_string value new_acc (end_paren + 1)
-              with Not_found -> acc
+      | Custom_declaration (name, value) ->
+          (* Extract both the property being assigned and any var() references
+             in the value *)
+          let assigned = [ name ] in
+          (* Simple extraction of var() references from the value string *)
+          let rec extract_var_refs str acc =
+            match String.index_opt str 'v' with
+            | None -> acc
+            | Some idx
+              when idx + 4 <= String.length str && String.sub str idx 4 = "var("
+              -> (
+                let start = idx + 4 in
+                match String.index_from_opt str start ')' with
+                | Some end_idx ->
+                    let var_content = String.sub str start (end_idx - start) in
+                    let var_name =
+                      match String.index_opt var_content ',' with
+                      | Some comma ->
+                          String.trim (String.sub var_content 0 comma)
+                      | None -> String.trim var_content
+                    in
+                    let rest =
+                      String.sub str (end_idx + 1)
+                        (String.length str - end_idx - 1)
+                    in
+                    extract_var_refs rest (var_name :: acc)
+                | None -> acc)
+            | Some idx ->
+                let rest =
+                  String.sub str (idx + 1) (String.length str - idx - 1)
+                in
+                extract_var_refs rest acc
           in
-          extract_vars_from_string value [] 0)
+          let referenced = extract_var_refs value [] in
+          assigned @ referenced)
     properties
   |> List.sort_uniq String.compare
 
@@ -3648,5 +3647,21 @@ let to_string ?(minify = false) ?(mode = Variables) stylesheet =
   in
   if config.minify then String.concat "" all_parts
   else String.concat "\n" (List.filter (fun s -> s <> "") all_parts)
+
+(** Extract all CSS variables from different input types *)
+
+let vars_of_rules rules =
+  List.concat_map (fun rule -> vars_of_declarations rule.declarations) rules
+
+let vars_of_media_queries media_queries =
+  List.concat_map (fun mq -> vars_of_rules mq.media_rules) media_queries
+
+let vars_of_container_queries container_queries =
+  List.concat_map (fun cq -> vars_of_rules cq.container_rules) container_queries
+
+let vars_of_stylesheet stylesheet =
+  vars_of_rules stylesheet.rules
+  @ vars_of_media_queries stylesheet.media_queries
+  @ vars_of_container_queries stylesheet.container_queries
 
 let pp ?minify ?mode stylesheet = to_string ?minify ?mode stylesheet
