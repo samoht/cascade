@@ -79,8 +79,12 @@ type 'a var = {
   fallback : 'a var_fallback option;  (** Optional fallback value *)
   default : 'a option;  (** Default value for inline mode and theme layer *)
   layer : string option;  (** Optional layer name where variable is defined *)
+  meta : meta option;  (** Optional metadata for tracking variable source *)
 }
 (** CSS variable reference *)
+
+and meta
+(** Opaque metadata type *)
 
 and 'a var_fallback =
   | Var of 'a var  (** Another variable as fallback *)
@@ -722,6 +726,9 @@ type touch_action =
   | Pan_up
   | Pan_down
 
+(** CSS scroll-snap-strictness values. *)
+type scroll_snap_strictness = Mandatory | Proximity
+
 (** CSS scroll-snap-type values. *)
 type scroll_snap_type =
   | None
@@ -740,9 +747,9 @@ type scroll_snap_type =
   | Block_proximity
   | Inline_proximity
   | Both_proximity
-  | X_var of string (* For "x var(--tw-scroll-snap-strictness)" *)
-  | Y_var of string (* For "y var(--tw-scroll-snap-strictness)" *)
-  | Both_var of string (* For "both var(--tw-scroll-snap-strictness)" *)
+  | X_var of scroll_snap_strictness var
+  | Y_var of scroll_snap_strictness var
+  | Both_var of scroll_snap_strictness var
   | Inherit
 
 (** CSS scroll-snap-align values. *)
@@ -750,8 +757,6 @@ type scroll_snap_align = None | Start | End | Center | Inherit
 
 (** CSS scroll-snap-stop values. *)
 type scroll_snap_stop = Normal | Always | Inherit
-
-type scroll_snap_strictness = Mandatory | Proximity
 
 (** CSS isolation values. *)
 type isolation = Auto | Isolate | Inherit
@@ -966,10 +971,16 @@ end
 
 (** {2 CSS Custom Properties (Variables)} *)
 
+val meta : unit -> ('a -> meta) * (meta -> 'a option)
+(** [meta ()] creates an injection/projection pair for metadata. The injection
+    function converts a value to metadata, the projection function attempts to
+    extract the value back. *)
+
 val var :
   ?fallback:'a var_fallback ->
   ?deps:string list ->
   ?layer:string ->
+  ?meta:meta ->
   string ->
   'a kind ->
   'a ->
@@ -996,9 +1007,18 @@ val var :
     "var(--radius-md)". In inline mode, it uses "0.5rem" directly when the
     default equals the defined value. *)
 
+val var_to_string : ?fallback:string -> 'a var -> string
+(** [var_to_string ?fallback var] creates a string reference to a CSS variable.
+    Returns a string like "var(--name)" or "var(--name, fallback)" that can be
+    used in string-valued CSS properties. *)
+
 val default_value : 'a var -> 'a option
 (** [default_value var] returns the default value of a variable if it was
     created with one. *)
+
+val declaration_meta : declaration -> meta option
+(** [declaration_meta decl] extracts metadata from a declaration if it has any.
+*)
 
 (** {2 Typed Constructors} *)
 
@@ -1519,7 +1539,21 @@ val vertical_align : vertical_align_value -> declaration
 val box_sizing : box_sizing -> declaration
 (** [box_sizing value] sets the CSS box-sizing property. *)
 
-val box_shadow : string -> declaration
+type shadow = {
+  inset : bool;
+  h_offset : length;
+  v_offset : length;
+  blur : length;
+  spread : length;
+  color : color;
+}
+
+type box_shadow =
+  | Shadow of shadow
+  | Shadows of shadow list  (** Multiple shadows *)
+  | None  (** No shadow *)
+
+val box_shadow : box_shadow -> declaration
 (** [box_shadow value] sets the CSS box-shadow property. *)
 
 val fill : svg_paint -> declaration

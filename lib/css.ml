@@ -4,11 +4,14 @@
 let str ?(sep = "") segments = String.concat sep segments
 let lines segments = str ~sep:"\n" segments
 
+type meta = ..
+
 type 'a var = {
   name : string;
   fallback : 'a var_fallback option;
   default : 'a option;
   layer : string option;
+  meta : meta option;
 }
 (** CSS variable reference *)
 
@@ -16,8 +19,24 @@ and 'a var_fallback = Var of 'a var | Value of 'a
 
 type mode = Variables | Inline
 
-let var_ref ?fallback ?default ?layer name = { name; fallback; default; layer }
+let var_ref ?fallback ?default ?layer ?meta name =
+  { name; fallback; default; layer; meta }
+
 let default_value var = var.default
+
+let meta (type t) () =
+  let module M = struct
+    type meta += V : t -> meta
+  end in
+  let inj x = M.V x in
+  let proj = function M.V v -> Some v | _ -> None in
+  (inj, proj)
+
+(* Create a string reference to a CSS variable *)
+let var_to_string ?fallback var =
+  match fallback with
+  | None -> Printf.sprintf "var(--%s)" var.name
+  | Some fb -> Printf.sprintf "var(--%s, %s)" var.name fb
 
 (** CSS length values *)
 type calc_op = Add | Sub | Mult | Div
@@ -286,9 +305,9 @@ type scroll_snap_type =
   | Block_proximity
   | Inline_proximity
   | Both_proximity
-  | X_var of string
-  | Y_var of string
-  | Both_var of string
+  | X_var of scroll_snap_strictness var
+  | Y_var of scroll_snap_strictness var
+  | Both_var of scroll_snap_strictness var
   | Inherit
 
 type touch_action =
@@ -617,6 +636,17 @@ type transform_value =
   | Perspective of length
   | Transform_none
 
+type shadow = {
+  inset : bool;
+  h_offset : length;
+  v_offset : length;
+  blur : length;
+  spread : length;
+  color : color;
+}
+
+type box_shadow = Shadow of shadow | Shadows of shadow list | None
+
 let pp_float f =
   (* Handle special float values *)
   if f = infinity then "3.40282e38"
@@ -854,6 +884,22 @@ let string_of_svg_paint ?(mode = Variables) (paint : svg_paint) =
   | Current_color -> "currentColor"
   | Color c -> string_of_color ~mode c
 
+let string_of_shadow ?(mode = Variables)
+    { inset; h_offset; v_offset; blur; spread; color } =
+  let h = string_of_length ~mode h_offset in
+  let v = string_of_length ~mode v_offset in
+  let b = string_of_length ~mode blur in
+  let s = string_of_length ~mode spread in
+  let c = string_of_color ~mode color in
+  if inset then str [ "inset "; h; " "; v; " "; b; " "; s; " "; c ]
+  else str [ h; " "; v; " "; b; " "; s; " "; c ]
+
+let string_of_box_shadow ?(mode = Variables) = function
+  | None -> "none"
+  | Shadow shadow -> string_of_shadow ~mode shadow
+  | Shadows shadows ->
+      shadows |> List.map (string_of_shadow ~mode) |> String.concat ", "
+
 let string_of_blend_mode_value : blend_mode_value -> string = function
   | Normal -> "normal"
   | Multiply -> "multiply"
@@ -1068,9 +1114,10 @@ let string_of_scroll_snap_type : scroll_snap_type -> string = function
   | Block_proximity -> "block proximity"
   | Inline_proximity -> "inline proximity"
   | Both_proximity -> "both proximity"
-  | X_var var -> str [ "x "; var ]
-  | Y_var var -> str [ "y "; var ]
-  | Both_var var -> str [ "both "; var ]
+  | X_var v -> str [ "x "; string_of_var string_of_scroll_snap_strictness v ]
+  | Y_var v -> str [ "y "; string_of_var string_of_scroll_snap_strictness v ]
+  | Both_var v ->
+      str [ "both "; string_of_var string_of_scroll_snap_strictness v ]
   | Inherit -> "inherit"
 
 let string_of_touch_action : touch_action -> string = function
@@ -1726,7 +1773,7 @@ type 'a property =
   | Float : float_value property
   | Scale : string property
   | Transition : transition_value property
-  | Box_shadow : string property
+  | Box_shadow : box_shadow property
   | Fill : svg_paint property
   | Stroke : svg_paint property
   | Stroke_width : length property
@@ -1746,6 +1793,12 @@ type declaration =
           dependency list *)
   | Important_declaration : 'a property * 'a -> declaration
       (** A CSS property-value pair marked as !important *)
+
+(* Extract metadata from a declaration *)
+let declaration_meta : declaration -> meta option = function
+  | Custom_declaration _ -> None
+  | Declaration _ -> None
+  | Important_declaration _ -> None
 
 (* Helper to mark a declaration as important - needs special handling for
    GADT *)
@@ -1967,7 +2020,7 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
   | Aspect_ratio -> string_of_aspect_ratio value
   | Content -> value
   | Quotes -> value
-  | Box_shadow -> value
+  | Box_shadow -> string_of_box_shadow ~mode value
   | Fill -> string_of_svg_paint ~mode value
   | Stroke -> string_of_svg_paint ~mode value
   | Stroke_width -> string_of_length ~mode value
@@ -2019,15 +2072,16 @@ let var : type a.
     ?fallback:a var_fallback ->
     ?deps:string list ->
     ?layer:string ->
+    ?meta:meta ->
     string ->
     a kind ->
     a ->
     declaration * a var =
- fun ?fallback ?(deps = []) ?layer name kind value ->
+ fun ?fallback ?(deps = []) ?layer ?meta name kind value ->
   let declaration =
     Custom_declaration { name = "--" ^ name; kind; value; deps; layer }
   in
-  let var_handle = { name; fallback; default = Some value; layer } in
+  let var_handle = { name; fallback; default = Some value; layer; meta } in
   (declaration, var_handle)
 
 (* Property constructors with typed values *)
