@@ -139,8 +139,8 @@ let modes () =
   (* Test the different CSS generation modes *)
 
   (* Create a color variable with default value *)
-  let color_var =
-    var ~default:(Oklch { l = 62.3; c = 0.214; h = 259.815 }) "color-blue-500"
+  let _, color_var =
+    var "color-blue-500" Color (Oklch { l = 62.3; c = 0.214; h = 259.815 })
   in
   let bg_prop = background_color (Var color_var) in
   let rule = rule ~selector:".bg-blue-500" [ bg_prop ] in

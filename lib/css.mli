@@ -38,22 +38,31 @@
 
     {b CSS Custom Properties:}
     {[
-      (* Define CSS variables *)
+      (* Define CSS variables with typed API *)
+      let primary_color_def, primary_color_var =
+        var "primary-color" Color (Hex "#3b82f6")
+      in
+      let text_color_def, text_color_var =
+        var "text-color" Color (Hex "#1f2937")
+      in
+      let spacing_def, spacing_var =
+        var "spacing" Length (Rem 1.0)
+      in
       let theme_vars =
         rule ~selector:":root"
           [
-            custom_property "--primary-color" "#3b82f6";
-            custom_property "--text-color" "#1f2937";
-            custom_property "--spacing" "1rem";
+            primary_color_def;
+            text_color_def;
+            spacing_def;
           ]
 
       (* Use CSS variables *)
       let component =
         rule ~selector:".card"
           [
-            background_color (Var "primary-color");
-            color (Var "text-color");
-            padding (Var "spacing");
+            background_color (Var primary_color_var);
+            color (Var text_color_var);
+            padding (Var spacing_var);
           ]
     ]}
 
@@ -499,6 +508,7 @@ type duration =
   | Ms of int
   (* milliseconds *)
   | S of float (* seconds *)
+  | Var of duration var (* CSS variable reference *)
 
 (** CSS timing function values. *)
 type timing_function =
@@ -554,7 +564,8 @@ type angle =
   | Rad of float
   | Turn of float
   | Grad of float
-  | Angle_var of { var_name : string; fallback : float option }
+  | Var of angle var
+(* CSS variable reference *)
 (* CSS variable with optional fallback *)
 
 (** CSS transform scale values. *)
@@ -739,6 +750,8 @@ type scroll_snap_align = None | Start | End | Center | Inherit
 (** CSS scroll-snap-stop values. *)
 type scroll_snap_stop = Normal | Always | Inherit
 
+type scroll_snap_strictness = Mandatory | Proximity
+
 (** CSS isolation values. *)
 type isolation = Auto | Isolate | Inherit
 
@@ -789,6 +802,21 @@ type blend_mode_value =
 (** CSS aspect-ratio values. *)
 type aspect_ratio = Auto | Ratio of int * int | Number of float | Inherit
 
+(** Value kind GADT for typed custom properties *)
+type _ kind =
+  | Length : length kind
+  | Color : color kind
+  | Int : int kind
+  | Float : float kind
+  | Duration : duration kind
+  | Aspect_ratio : aspect_ratio kind
+  | Border_style : border_style kind
+  | Font_weight : font_weight kind
+  | Blend_mode : blend_mode_value kind
+  | Scroll_snap_strictness : scroll_snap_strictness kind
+  | Angle : angle kind
+  | String : string kind
+
 (** CSS justify-self values. *)
 type justify_self =
   | Auto
@@ -801,6 +829,9 @@ type justify_self =
 
 val aspect_ratio : aspect_ratio -> declaration
 (** [aspect_ratio value] sets the CSS aspect-ratio property. *)
+
+val mix_blend_mode : blend_mode_value -> declaration
+(** [mix_blend_mode value] sets the CSS mix-blend-mode property. *)
 
 (** {1 Declaration Constructors} *)
 
@@ -934,28 +965,37 @@ end
 
 (** {2 CSS Custom Properties (Variables)} *)
 
-val var : ?fallback:'a var_fallback -> ?default:'a -> string -> 'a var
-(** [var ?fallback ?default name] creates a CSS variable reference.
+val var :
+  ?fallback:'a var_fallback ->
+  ?deps:string list ->
+  string ->
+  'a kind ->
+  'a ->
+  declaration * 'a var
+(** [var ?fallback ?deps name kind value] creates a CSS custom property
+    declaration and returns a variable handle.
+
+    - [name] is the variable name without the [--] prefix
+    - [kind] specifies the value type (Length, Color, Angle, Float, etc.)
+    - [value] becomes both the CSS custom property value and the variable's
+      default
     - [fallback] is used inside [var(--name, fallback)] in CSS output
-    - [default] is used for inline mode and :root theme layer generation
-      Examples:
-    - [var "spacing"] creates [var(--spacing)]
-    - [var ~fallback:(Var (var "default")) "custom"] creates
-      [var(--custom, var(--default))]
-    - [var ~fallback:(Value (Px 10)) "spacing"] creates [var(--spacing, 10px)]
-    - [var ~default:(Rem 1.0) "spacing-4"] provides default for inlining. *)
+    - [deps] is an optional list of CSS variable names this property depends on
 
-val custom_property : ?deps:string list -> string -> string -> declaration
-(** [custom_property ?deps name value] creates a CSS custom property
-    declaration.
-    - [deps] is an optional list of CSS variable names this property depends on.
-    - [name] must start with "--".
-    - [value] is the string value of the property. Example:
-      [custom_property ~deps:["--color-blue-500"] "--tw-gradient-from"
-       "var(--color-blue-500)"]
+    Example:
+    {[
+      let def_radius, radius_var = var "radius-md" Length (Rem 0.5) in
+      rule ~selector:".card" [ def_radius; border_radius (Var radius_var) ]
+    ]}
 
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/--*>
-      MDN: CSS Custom Properties. *)
+    The returned [radius_var] must be wrapped with [Var] when used in CSS
+    properties. In variables mode, it emits "--radius-md: 0.5rem" and uses
+    "var(--radius-md)". In inline mode, it uses "0.5rem" directly when the
+    default equals the defined value. *)
+
+val default_value : 'a var -> 'a option
+(** [default_value var] returns the default value of a variable if it was
+    created with one. *)
 
 (** {2 Typed Constructors} *)
 
@@ -965,11 +1005,56 @@ val background_color : color -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/background-color>
       MDN: background-color. *)
 
-val background_image : string -> declaration
+(** Gradient direction values *)
+type gradient_direction =
+  | To_top
+  | To_top_right
+  | To_right
+  | To_bottom_right
+  | To_bottom
+  | To_bottom_left
+  | To_left
+  | To_top_left
+  | Angle of angle
+
+(** Gradient stop values *)
+type gradient_stop =
+  | Color_stop of color
+  | Color_position of color * length
+  | Color_var of color var (* Reference to a color variable *)
+  | Computed_stops of
+      string (* For complex computed values like --tw-gradient-stops *)
+
+(** Background image values *)
+type background_image_value =
+  | Url of string
+  | Linear_gradient of gradient_direction * gradient_stop list
+  | Radial_gradient of gradient_stop list
+  | None
+
+val background_image : background_image_value -> declaration
 (** [background_image value] sets the CSS background-image property.
 
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/background-image>
       MDN: background-image. *)
+
+(** Helper functions for background images *)
+val url : string -> background_image_value
+(** [url path] creates a URL background image value *)
+
+val linear_gradient :
+  gradient_direction -> gradient_stop list -> background_image_value
+(** [linear_gradient dir stops] creates a linear gradient background *)
+
+val radial_gradient : gradient_stop list -> background_image_value
+(** [radial_gradient stops] creates a radial gradient background *)
+
+(** Helper functions for gradient stops *)
+val color_stop : color -> gradient_stop
+(** [color_stop c] creates a simple color stop *)
+
+val color_position : color -> length -> gradient_stop
+(** [color_position c pos] creates a color stop at a specific position *)
 
 val color : color -> declaration
 (** [color c] sets the CSS color property.
@@ -1863,6 +1948,11 @@ val string_of_property : _ property -> string
 
 (** {1 Utilities} *)
 
+val custom_property : ?deps:string list -> string -> string -> declaration
+(** [custom_property ?deps name value] creates a CSS custom property
+    declaration. This is primarily for internal use. For typed variables, use
+    the [var] API instead. *)
+
 (** Existential wrapper for variables *)
 type any_var = V : 'a var -> any_var
 
@@ -1891,6 +1981,14 @@ val vars_of_stylesheet : t -> string list
 val analyze_declarations : declaration list -> any_var list
 (** [analyze_declarations declarations] extracts typed CSS variables from
     declarations. *)
+
+val extract_custom_declarations : declaration list -> declaration list
+(** [extract_custom_declarations decls] returns only the custom property
+    declarations (variable definitions) from a list of declarations. *)
+
+val custom_declaration_name : declaration -> string option
+(** [custom_declaration_name decl] returns the variable name if the declaration
+    is a custom property declaration, None otherwise. *)
 
 val deduplicate_declarations : declaration list -> declaration list
 (** [deduplicate_declarations declarations] removes duplicate declarations,

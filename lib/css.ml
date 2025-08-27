@@ -15,7 +15,8 @@ and 'a var_fallback = Var of 'a var | Value of 'a
 
 type mode = Variables | Inline
 
-let var ?fallback ?default name = { name; fallback; default }
+let var_ref ?fallback ?default name = { name; fallback; default }
+let default_value var = var.default
 
 (** CSS length values *)
 type calc_op = Add | Sub | Mult | Div
@@ -264,6 +265,7 @@ type object_fit = Fill | Contain | Cover | None | Scale_down | Inherit
 type box_sizing = Border_box | Content_box | Inherit
 type scroll_behavior = Auto | Smooth | Inherit
 type scroll_snap_stop = Normal | Always | Inherit
+type scroll_snap_strictness = Mandatory | Proximity
 type scroll_snap_align = None | Start | End | Center | Inherit
 
 type scroll_snap_type =
@@ -471,6 +473,50 @@ type duration =
   | Ms of int
   (* milliseconds *)
   | S of float (* seconds *)
+  | Var of duration var (* CSS variable reference *)
+
+(** CSS blend mode values *)
+type blend_mode_value =
+  | Normal
+  | Multiply
+  | Screen
+  | Overlay
+  | Darken
+  | Lighten
+  | Color_dodge
+  | Color_burn
+  | Hard_light
+  | Soft_light
+  | Difference
+  | Exclusion
+  | Hue
+  | Saturation
+  | Color
+  | Luminosity
+  | Inherit
+
+(** CSS angle values *)
+type angle =
+  | Deg of float
+  | Rad of float
+  | Turn of float
+  | Grad of float
+  | Var of angle var (* CSS variable reference *)
+
+(** Value kind GADT for typed custom properties *)
+type _ kind =
+  | Length : length kind
+  | Color : color kind
+  | Int : int kind
+  | Float : float kind
+  | Duration : duration kind
+  | Aspect_ratio : aspect_ratio kind
+  | Border_style : border_style kind
+  | Font_weight : font_weight kind
+  | Blend_mode : blend_mode_value kind
+  | Scroll_snap_strictness : scroll_snap_strictness kind
+  | Angle : angle kind
+  | String : string kind
 
 (** CSS timing function values *)
 type timing_function =
@@ -519,14 +565,6 @@ type grid_line =
   | Line_name of string (* "header-start", "main-end", etc. *)
   | Span of int (* span 2, span 3, etc. *)
   | Auto (* auto *)
-
-(** CSS transform angle values *)
-type angle =
-  | Deg of float
-  | Rad of float
-  | Turn of float
-  | Grad of float
-  | Angle_var of { var_name : string; fallback : float option }
 
 (** CSS transform scale values *)
 type scale_value =
@@ -687,7 +725,7 @@ module Calc = struct
   let length len = Val len
 
   let var : ?default:'a -> string -> 'a calc =
-   fun ?default name -> Var (var ?default name)
+   fun ?default name -> Var (var_ref ?default name)
 
   let float f = Val (Num f)
   let infinity = Val (Num infinity)
@@ -814,6 +852,25 @@ let string_of_svg_paint ?(mode = Variables) (paint : svg_paint) =
   | None -> "none"
   | Current_color -> "currentColor"
   | Color c -> string_of_color ~mode c
+
+let string_of_blend_mode_value : blend_mode_value -> string = function
+  | Normal -> "normal"
+  | Multiply -> "multiply"
+  | Screen -> "screen"
+  | Overlay -> "overlay"
+  | Darken -> "darken"
+  | Lighten -> "lighten"
+  | Color_dodge -> "color-dodge"
+  | Color_burn -> "color-burn"
+  | Hard_light -> "hard-light"
+  | Soft_light -> "soft-light"
+  | Difference -> "difference"
+  | Exclusion -> "exclusion"
+  | Hue -> "hue"
+  | Saturation -> "saturation"
+  | Color -> "color"
+  | Luminosity -> "luminosity"
+  | Inherit -> "inherit"
 
 let string_of_display : display -> string = function
   | Block -> "block"
@@ -981,6 +1038,11 @@ let string_of_scroll_snap_stop : scroll_snap_stop -> string = function
   | Always -> "always"
   | Inherit -> "inherit"
 
+let string_of_scroll_snap_strictness : scroll_snap_strictness -> string =
+  function
+  | Mandatory -> "mandatory"
+  | Proximity -> "proximity"
+
 let string_of_scroll_snap_align : scroll_snap_align -> string = function
   | None -> "none"
   | Start -> "start"
@@ -1123,9 +1185,10 @@ let string_of_flex_value = function
   | Full (g, s, b) ->
       str [ pp_float g; " "; pp_float s; " "; string_of_length b ]
 
-let string_of_duration = function
+let rec string_of_duration = function
   | Ms n -> str [ string_of_int n; "ms" ]
   | S f -> str [ pp_float f; "s" ]
+  | Var v -> string_of_var string_of_duration v
 
 let string_of_timing_function = function
   | Ease -> "ease"
@@ -1372,15 +1435,12 @@ let string_of_grid_line = function
   | Span n -> str [ "span "; string_of_int n ]
   | Auto -> "auto"
 
-let string_of_angle = function
+let rec string_of_angle = function
   | Deg f -> str [ pp_float f; "deg" ]
   | Rad f -> str [ pp_float f; "rad" ]
   | Turn f -> str [ pp_float f; "turn" ]
   | Grad f -> str [ pp_float f; "grad" ]
-  | Angle_var { var_name; fallback } -> (
-      match fallback with
-      | None -> str [ "var(--"; var_name; ")" ]
-      | Some f -> str [ "var(--"; var_name; ", "; pp_float f; ")" ])
+  | Var v -> string_of_var string_of_angle v
 
 let string_of_scale_value = function
   | Scale_num f -> pp_float f
@@ -1579,6 +1639,7 @@ type 'a property =
   | Border_bottom_color : color property
   | Border_left_color : color property
   | Opacity : float property
+  | Mix_blend_mode : blend_mode_value property
   | Transform : transform_value list property
   | Cursor : cursor property
   | Table_layout : table_layout property
@@ -1672,9 +1733,15 @@ type 'a property =
 type declaration =
   | Declaration : 'a property * 'a -> declaration
       (** A CSS property-value pair with typed value using existential type *)
-  | Custom_declaration : string * string * string list -> declaration
-      (** Custom property with dynamic name, string value, and dependency list
-      *)
+  | Custom_declaration : {
+      name : string;
+      kind : 'a kind;
+      value : 'a;
+      deps : string list;
+    }
+      -> declaration
+      (** Custom property with dynamic name, typed value via value kind, and
+          dependency list *)
   | Important_declaration : 'a property * 'a -> declaration
       (** A CSS property-value pair marked as !important *)
 
@@ -1682,11 +1749,15 @@ type declaration =
    GADT *)
 let important = function
   | Declaration (prop, value) -> Important_declaration (prop, value)
-  | Custom_declaration (name, value, deps) ->
-      Custom_declaration (name, value, deps)
+  | Custom_declaration { name; kind; value; deps } ->
+      Custom_declaration { name; kind; value; deps }
       (* Custom properties remain as-is; we don't attach !important here *)
   | Important_declaration (prop, value) -> Important_declaration (prop, value)
 (* Already important *)
+
+(* Helper for raw custom properties - primarily for internal use *)
+let custom_property ?(deps = []) name value =
+  Custom_declaration { name; kind = String; value; deps }
 
 (* Convert property value to string based on its type *)
 let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
@@ -1739,6 +1810,7 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
   | Table_layout -> string_of_table_layout value
   | Grid_auto_flow -> string_of_grid_auto_flow value
   | Opacity -> pp_float value
+  | Mix_blend_mode -> string_of_blend_mode_value value
   | Z_index -> string_of_z_index_value value
   | Tab_size -> string_of_int value
   | Webkit_line_clamp -> string_of_int value
@@ -1923,6 +1995,39 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
   | Webkit_text_decoration -> value
   | Webkit_text_size_adjust -> value
 
+(* String conversion for value kinds - reuses existing printers *)
+let string_of_value : type a. ?mode:mode -> a kind -> a -> string =
+ fun ?(mode = Variables) kind value ->
+  match kind with
+  | Length -> string_of_length ~mode value
+  | Color -> string_of_color ~mode value
+  | Int -> string_of_int value
+  | Float -> pp_float value
+  | Duration -> string_of_duration value
+  | Aspect_ratio -> string_of_aspect_ratio value
+  | Border_style -> string_of_border_style value
+  | Font_weight -> string_of_font_weight value
+  | Blend_mode -> string_of_blend_mode_value value
+  | Scroll_snap_strictness -> string_of_scroll_snap_strictness value
+  | Angle -> string_of_angle value
+  | String -> value
+
+(* Typed variable setters *)
+let var : type a.
+    ?fallback:a var_fallback ->
+    ?deps:string list ->
+    string ->
+    a kind ->
+    a ->
+    declaration * a var =
+ fun ?fallback ?deps name kind value ->
+  let deps = Option.value deps ~default:[] in
+  let declaration =
+    Custom_declaration { name = "--" ^ name; kind; value; deps }
+  in
+  let var_handle = { name; fallback; default = Some value } in
+  (declaration, var_handle)
+
 (* Property constructors with typed values *)
 let background_color c = Declaration (Background_color, c)
 let color c = Declaration (Color, c)
@@ -2058,39 +2163,81 @@ let text_decoration_thickness value =
 let text_size_adjust value = Declaration (Text_size_adjust, value)
 let aspect_ratio v = Declaration (Aspect_ratio, v)
 let filter value = Declaration (Filter, value)
-let background_image value = Declaration (Background_image, value)
+
+(* Gradient direction values *)
+type gradient_direction =
+  | To_top
+  | To_top_right
+  | To_right
+  | To_bottom_right
+  | To_bottom
+  | To_bottom_left
+  | To_left
+  | To_top_left
+  | Angle of angle
+
+(* Gradient stop values *)
+type gradient_stop =
+  | Color_stop of color
+  | Color_position of color * length
+  | Color_var of color var (* Reference to a color variable *)
+  | Computed_stops of
+      string (* For complex computed values like --tw-gradient-stops *)
+
+(* Background image values *)
+type background_image_value =
+  | Url of string
+  | Linear_gradient of gradient_direction * gradient_stop list
+  | Radial_gradient of gradient_stop list
+  | None
+
+let string_of_gradient_direction = function
+  | To_top -> "to top"
+  | To_top_right -> "to top right"
+  | To_right -> "to right"
+  | To_bottom_right -> "to bottom right"
+  | To_bottom -> "to bottom"
+  | To_bottom_left -> "to bottom left"
+  | To_left -> "to left"
+  | To_top_left -> "to top left"
+  | Angle a -> string_of_angle a
+
+let string_of_gradient_stop = function
+  | Color_stop c -> string_of_color c
+  | Color_position (c, len) -> string_of_color c ^ " " ^ string_of_length len
+  | Color_var v -> "var(--" ^ v.name ^ ")"
+  | Computed_stops s -> s
+
+let string_of_background_image_value = function
+  | Url url -> "url(\"" ^ url ^ "\")"
+  | Linear_gradient (dir, stops) ->
+      "linear-gradient("
+      ^ string_of_gradient_direction dir
+      ^ ", "
+      ^ String.concat ", " (List.map string_of_gradient_stop stops)
+      ^ ")"
+  | Radial_gradient stops ->
+      "radial-gradient("
+      ^ String.concat ", " (List.map string_of_gradient_stop stops)
+      ^ ")"
+  | None -> "none"
+
+let background_image value =
+  Declaration (Background_image, string_of_background_image_value value)
+
+(* Helper functions for background images *)
+let url path = Url path
+let linear_gradient dir stops = Linear_gradient (dir, stops)
+let radial_gradient stops = Radial_gradient stops
+
+(* Helper functions for gradient stops *)
+let color_stop c = Color_stop c
+let color_position c pos = Color_position (c, pos)
 let animation value = Declaration (Animation, value)
 
 (* Blend modes *)
-type blend_mode_value =
-  | Normal
-  | Multiply
-  | Screen
-  | Overlay
-  | Darken
-  | Lighten
-  | Color_dodge
-  | Color_burn
-  | Hard_light
-  | Soft_light
-  | Difference
-  | Exclusion
-  | Hue
-  | Saturation
-  | Color
-  | Luminosity
-  | Inherit
 
-(* Not currently used let string_of_blend_mode = function | Normal -> "normal" |
-   Multiply -> "multiply" | Screen -> "screen" | Overlay -> "overlay" | Darken
-   -> "darken" | Lighten -> "lighten" | Color_dodge -> "color-dodge" |
-   Color_burn -> "color-burn" | Hard_light -> "hard-light" | Soft_light ->
-   "soft-light" | Difference -> "difference" | Exclusion -> "exclusion" | Hue ->
-   "hue" | Saturation -> "saturation" | Color -> "color" | Luminosity ->
-   "luminosity" | Inherit -> "inherit" *)
-
-(* TODO: Add Mix_blend_mode to property GADT if needed let mix_blend_mode v =
-   Declaration (Mix_blend_mode, v) *)
+let mix_blend_mode v = Declaration (Mix_blend_mode, v)
 
 (* TODO: Add backdrop_blend_mode to property GADT if needed let
    backdrop_blend_mode v = Declaration (Backdrop_blend_mode, v) *)
@@ -2323,13 +2470,6 @@ let backdrop_filter value = Declaration (Backdrop_filter, value)
 let background_position value = Declaration (Background_position, value)
 let background_repeat value = Declaration (Background_repeat, value)
 let background_size value = Declaration (Background_size, value)
-
-(* CSS Custom Properties *)
-let custom_property ?(deps = []) name value : declaration =
-  if not (String.starts_with ~prefix:"--" name) then
-    invalid_arg
-      (str [ "custom_property: name must start with '--', got: "; name ])
-  else Custom_declaration (name, value, deps)
 
 (* Additional property constructors *)
 let content value = Declaration (Content, value)
@@ -2606,6 +2746,7 @@ let string_of_property : type a. a property -> string = function
   | Stroke -> "stroke"
   | Stroke_width -> "stroke-width"
   | Opacity -> "opacity"
+  | Mix_blend_mode -> "mix-blend-mode"
   | Transition -> "transition"
   | Transform -> "transform"
   | Scale -> "scale"
@@ -2769,91 +2910,91 @@ let stylesheet items =
 (** Extract all CSS variables referenced in properties (for theme layer) *)
 let vars_of_declarations properties =
   (* Extract variables from calc expressions *)
-  let rec extract_from_calc : type a. a calc -> string list = function
+  let rec vars_of_calc : type a. a calc -> string list = function
     | Val _ -> []
     | Var v -> [ "--" ^ v.name ]
-    | Expr (left, _, right) -> extract_from_calc left @ extract_from_calc right
+    | Expr (left, _, right) -> vars_of_calc left @ vars_of_calc right
   in
 
   (* Extract variables from any property value *)
-  let extract_from_property : type a. a property -> a -> string list =
+  let vars_of_property : type a. a property -> a -> string list =
    fun prop value ->
     match (prop, value) with
     (* Length properties *)
     | Width, Var v -> [ "--" ^ v.name ]
-    | Width, Calc calc -> extract_from_calc calc
+    | Width, Calc calc -> vars_of_calc calc
     | Height, Var v -> [ "--" ^ v.name ]
-    | Height, Calc calc -> extract_from_calc calc
+    | Height, Calc calc -> vars_of_calc calc
     | Min_width, Var v -> [ "--" ^ v.name ]
-    | Min_width, Calc calc -> extract_from_calc calc
+    | Min_width, Calc calc -> vars_of_calc calc
     | Min_height, Var v -> [ "--" ^ v.name ]
-    | Min_height, Calc calc -> extract_from_calc calc
+    | Min_height, Calc calc -> vars_of_calc calc
     | Max_width, Var v -> [ "--" ^ v.name ]
-    | Max_width, Calc calc -> extract_from_calc calc
+    | Max_width, Calc calc -> vars_of_calc calc
     | Max_height, Var v -> [ "--" ^ v.name ]
-    | Max_height, Calc calc -> extract_from_calc calc
+    | Max_height, Calc calc -> vars_of_calc calc
     | Padding, Var v -> [ "--" ^ v.name ]
-    | Padding, Calc calc -> extract_from_calc calc
+    | Padding, Calc calc -> vars_of_calc calc
     | Padding_top, Var v -> [ "--" ^ v.name ]
-    | Padding_top, Calc calc -> extract_from_calc calc
+    | Padding_top, Calc calc -> vars_of_calc calc
     | Padding_right, Var v -> [ "--" ^ v.name ]
-    | Padding_right, Calc calc -> extract_from_calc calc
+    | Padding_right, Calc calc -> vars_of_calc calc
     | Padding_bottom, Var v -> [ "--" ^ v.name ]
-    | Padding_bottom, Calc calc -> extract_from_calc calc
+    | Padding_bottom, Calc calc -> vars_of_calc calc
     | Padding_left, Var v -> [ "--" ^ v.name ]
-    | Padding_left, Calc calc -> extract_from_calc calc
+    | Padding_left, Calc calc -> vars_of_calc calc
     | Padding_inline, Var v -> [ "--" ^ v.name ]
-    | Padding_inline, Calc calc -> extract_from_calc calc
+    | Padding_inline, Calc calc -> vars_of_calc calc
     | Padding_inline_start, Var v -> [ "--" ^ v.name ]
-    | Padding_inline_start, Calc calc -> extract_from_calc calc
+    | Padding_inline_start, Calc calc -> vars_of_calc calc
     | Padding_block, Var v -> [ "--" ^ v.name ]
-    | Padding_block, Calc calc -> extract_from_calc calc
+    | Padding_block, Calc calc -> vars_of_calc calc
     | Margin, Var v -> [ "--" ^ v.name ]
-    | Margin, Calc calc -> extract_from_calc calc
+    | Margin, Calc calc -> vars_of_calc calc
     | Margin_top, Var v -> [ "--" ^ v.name ]
-    | Margin_top, Calc calc -> extract_from_calc calc
+    | Margin_top, Calc calc -> vars_of_calc calc
     | Margin_right, Var v -> [ "--" ^ v.name ]
-    | Margin_right, Calc calc -> extract_from_calc calc
+    | Margin_right, Calc calc -> vars_of_calc calc
     | Margin_bottom, Var v -> [ "--" ^ v.name ]
-    | Margin_bottom, Calc calc -> extract_from_calc calc
+    | Margin_bottom, Calc calc -> vars_of_calc calc
     | Margin_left, Var v -> [ "--" ^ v.name ]
-    | Margin_left, Calc calc -> extract_from_calc calc
+    | Margin_left, Calc calc -> vars_of_calc calc
     | Margin_inline, Var v -> [ "--" ^ v.name ]
-    | Margin_inline, Calc calc -> extract_from_calc calc
+    | Margin_inline, Calc calc -> vars_of_calc calc
     | Margin_block, Var v -> [ "--" ^ v.name ]
-    | Margin_block, Calc calc -> extract_from_calc calc
+    | Margin_block, Calc calc -> vars_of_calc calc
     | Top, Var v -> [ "--" ^ v.name ]
-    | Top, Calc calc -> extract_from_calc calc
+    | Top, Calc calc -> vars_of_calc calc
     | Right, Var v -> [ "--" ^ v.name ]
-    | Right, Calc calc -> extract_from_calc calc
+    | Right, Calc calc -> vars_of_calc calc
     | Bottom, Var v -> [ "--" ^ v.name ]
-    | Bottom, Calc calc -> extract_from_calc calc
+    | Bottom, Calc calc -> vars_of_calc calc
     | Left, Var v -> [ "--" ^ v.name ]
-    | Left, Calc calc -> extract_from_calc calc
+    | Left, Calc calc -> vars_of_calc calc
     | Font_size, Var v -> [ "--" ^ v.name ]
-    | Font_size, Calc calc -> extract_from_calc calc
+    | Font_size, Calc calc -> vars_of_calc calc
     | Letter_spacing, Var v -> [ "--" ^ v.name ]
-    | Letter_spacing, Calc calc -> extract_from_calc calc
+    | Letter_spacing, Calc calc -> vars_of_calc calc
     | Line_height, Var v -> [ "--" ^ v.name ]
-    | Line_height, Calc calc -> extract_from_calc calc
+    | Line_height, Calc calc -> vars_of_calc calc
     | Border_width, Var v -> [ "--" ^ v.name ]
-    | Border_width, Calc calc -> extract_from_calc calc
+    | Border_width, Calc calc -> vars_of_calc calc
     | Border_top_width, Var v -> [ "--" ^ v.name ]
-    | Border_top_width, Calc calc -> extract_from_calc calc
+    | Border_top_width, Calc calc -> vars_of_calc calc
     | Border_right_width, Var v -> [ "--" ^ v.name ]
-    | Border_right_width, Calc calc -> extract_from_calc calc
+    | Border_right_width, Calc calc -> vars_of_calc calc
     | Border_bottom_width, Var v -> [ "--" ^ v.name ]
-    | Border_bottom_width, Calc calc -> extract_from_calc calc
+    | Border_bottom_width, Calc calc -> vars_of_calc calc
     | Border_left_width, Var v -> [ "--" ^ v.name ]
-    | Border_left_width, Calc calc -> extract_from_calc calc
+    | Border_left_width, Calc calc -> vars_of_calc calc
     | Outline_width, Var v -> [ "--" ^ v.name ]
-    | Outline_width, Calc calc -> extract_from_calc calc
+    | Outline_width, Calc calc -> vars_of_calc calc
     | Column_gap, Var v -> [ "--" ^ v.name ]
-    | Column_gap, Calc calc -> extract_from_calc calc
+    | Column_gap, Calc calc -> vars_of_calc calc
     | Row_gap, Var v -> [ "--" ^ v.name ]
-    | Row_gap, Calc calc -> extract_from_calc calc
+    | Row_gap, Calc calc -> vars_of_calc calc
     | Gap, Var v -> [ "--" ^ v.name ]
-    | Gap, Calc calc -> extract_from_calc calc
+    | Gap, Calc calc -> vars_of_calc calc
     (* Color properties *)
     | Background_color, Var v -> [ "--" ^ v.name ]
     | Color, Var v -> [ "--" ^ v.name ]
@@ -2866,22 +3007,47 @@ let vars_of_declarations properties =
     | Outline_color, Var v -> [ "--" ^ v.name ]
     (* Border radius *)
     | Border_radius, Var v -> [ "--" ^ v.name ]
-    | Border_radius, Calc calc -> extract_from_calc calc
+    | Border_radius, Calc calc -> vars_of_calc calc
     (* Outline offset *)
     | Outline_offset, Var v -> [ "--" ^ v.name ]
-    | Outline_offset, Calc calc -> extract_from_calc calc
+    | Outline_offset, Calc calc -> vars_of_calc calc
     (* Other properties don't support Var *)
     (* All other cases *)
     | _ -> []
   in
 
+  (* Extract variables from typed custom property values using GADT pattern
+     matching *)
+  let vars_of_value : type a. a kind -> a -> string list =
+   fun kind value ->
+    match (kind, value) with
+    | Length, Var v -> [ v.name ]
+    | Color, Var v -> [ v.name ]
+    | Duration, Var v -> [ v.name ]
+    | Blend_mode, _ -> [] (* blend_mode_value doesn't have Var constructor *)
+    | Scroll_snap_strictness, _ ->
+        [] (* scroll_snap_strictness doesn't have Var constructor *)
+    | Angle, Var v -> [ v.name ] (* angle can have variable references *)
+    | Angle, _ -> [] (* other angle values don't have variables *)
+    | Length, Calc calc -> vars_of_calc calc
+    | Color, Mix _ -> [] (* Could extend to extract from color mix *)
+    | Int, _ -> []
+    | Float, _ -> []
+    | Aspect_ratio, _ -> []
+    | Border_style, _ -> []
+    | Font_weight, _ -> []
+    | String, _ -> [] (* String values don't have typed variables *)
+    | _ -> []
+  in
+
   List.concat_map
     (function
-      | Declaration (prop, value) -> extract_from_property prop value
-      | Important_declaration (prop, value) -> extract_from_property prop value
-      | Custom_declaration (name, _value, deps) ->
-          (* Use explicitly provided dependencies *)
-          name :: deps)
+      | Declaration (prop, value) -> vars_of_property prop value
+      | Important_declaration (prop, value) -> vars_of_property prop value
+      | Custom_declaration { name; kind; value; deps } ->
+          (* Extract variables from typed value based on kind *)
+          let value_deps = vars_of_value kind value in
+          name :: (deps @ value_deps))
     properties
   |> List.sort_uniq String.compare
 
@@ -2894,7 +3060,7 @@ let deduplicate_declarations props =
         match decl with
         | Declaration (prop, _) -> string_of_property prop
         | Important_declaration (prop, _) -> string_of_property prop
-        | Custom_declaration (name, _, _) -> name
+        | Custom_declaration { name; _ } -> name
       in
       if Hashtbl.mem seen prop_name then acc
       else (
@@ -2950,8 +3116,7 @@ let extract_vars_from_prop_value : type a. a property -> a -> any_var list =
   | _ -> [] (* No variables in this value *)
 
 let extract_vars_from_declaration : declaration -> any_var list = function
-  | Custom_declaration (_, _, _) ->
-      [] (* Custom properties don't have typed vars *)
+  | Custom_declaration _ -> [] (* Custom properties don't have typed vars *)
   | Declaration (prop, value) -> extract_vars_from_prop_value prop value
   | Important_declaration (prop, value) ->
       extract_vars_from_prop_value prop value
@@ -2959,6 +3124,14 @@ let extract_vars_from_declaration : declaration -> any_var list = function
 (* Analyze declarations to find all variable references *)
 let analyze_declarations (decls : declaration list) : any_var list =
   List.concat_map extract_vars_from_declaration decls
+
+(* Extract only custom property declarations (variable definitions) *)
+let extract_custom_declarations (decls : declaration list) : declaration list =
+  List.filter (function Custom_declaration _ -> true | _ -> false) decls
+
+(* Extract the variable name from a custom declaration *)
+let custom_declaration_name (decl : declaration) : string option =
+  match decl with Custom_declaration { name; _ } -> Some name | _ -> None
 
 let inline_style_of_declarations ?(mode : mode = Inline) props =
   props
@@ -2978,7 +3151,8 @@ let inline_style_of_declarations ?(mode : mode = Inline) props =
                string_of_property_value ~mode prop value;
                " !important";
              ]
-       | Custom_declaration (name, value, _) -> str [ name; ": "; value ])
+       | Custom_declaration { name; kind; value; _ } ->
+           str [ name; ": "; string_of_value kind value ])
   |> String.concat "; "
 
 let merge_rules rules =
@@ -3032,7 +3206,8 @@ let merge_by_properties rules =
                  string_of_property_value ~mode:Inline prop value;
                  "!important";
                ]
-         | Custom_declaration (name, value, _deps) -> str [ name; ":"; value ])
+         | Custom_declaration { name; kind; value; _ } ->
+             str [ name; ":"; string_of_value kind value ])
     |> List.sort String.compare |> String.concat ";"
   in
 
@@ -3159,8 +3334,9 @@ let render_minified_rule ~mode rule =
                | _ -> minify_value value_str
              in
              str [ prop_name; ":"; final_value; "!important" ]
-         | Custom_declaration (name, value, _deps) ->
-             str [ name; ":"; minify_value value ])
+         | Custom_declaration { name; kind; value; _ } ->
+             let value_str = string_of_value kind value in
+             str [ name; ":"; minify_value value_str ])
   in
   str [ selector; "{"; str ~sep:";" props; "}" ]
 
@@ -3188,8 +3364,11 @@ let render_formatted_rule ~mode ?(indent = "") rule =
                  string_of_property_value ~mode prop value;
                  " !important;";
                ]
-         | Custom_declaration (name, value, _deps) ->
-             str [ indent; "  "; name; ": "; value; ";" ])
+         | Custom_declaration { name; kind; value; _ } ->
+             str
+               [
+                 indent; "  "; name; ": "; string_of_value ~mode kind value; ";";
+               ])
   in
   lines
     [ str [ indent; rule.selector; " {" ]; lines props; str [ indent; "}" ] ]
