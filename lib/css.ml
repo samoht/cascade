@@ -8,6 +8,7 @@ type 'a var = {
   name : string;
   fallback : 'a var_fallback option;
   default : 'a option;
+  layer : string option;
 }
 (** CSS variable reference *)
 
@@ -15,7 +16,7 @@ and 'a var_fallback = Var of 'a var | Value of 'a
 
 type mode = Variables | Inline
 
-let var_ref ?fallback ?default name = { name; fallback; default }
+let var_ref ?fallback ?default ?layer name = { name; fallback; default; layer }
 let default_value var = var.default
 
 (** CSS length values *)
@@ -1738,6 +1739,7 @@ type declaration =
       kind : 'a kind;
       value : 'a;
       deps : string list;
+      layer : string option;
     }
       -> declaration
       (** Custom property with dynamic name, typed value via value kind, and
@@ -1749,15 +1751,15 @@ type declaration =
    GADT *)
 let important = function
   | Declaration (prop, value) -> Important_declaration (prop, value)
-  | Custom_declaration { name; kind; value; deps } ->
-      Custom_declaration { name; kind; value; deps }
+  | Custom_declaration { name; kind; value; deps; layer } ->
+      Custom_declaration { name; kind; value; deps; layer }
       (* Custom properties remain as-is; we don't attach !important here *)
   | Important_declaration (prop, value) -> Important_declaration (prop, value)
 (* Already important *)
 
 (* Helper for raw custom properties - primarily for internal use *)
-let custom_property ?(deps = []) name value =
-  Custom_declaration { name; kind = String; value; deps }
+let custom_property ?(deps = []) ?layer name value =
+  Custom_declaration { name; kind = String; value; deps; layer }
 
 (* Convert property value to string based on its type *)
 let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
@@ -2016,16 +2018,16 @@ let string_of_value : type a. ?mode:mode -> a kind -> a -> string =
 let var : type a.
     ?fallback:a var_fallback ->
     ?deps:string list ->
+    ?layer:string ->
     string ->
     a kind ->
     a ->
     declaration * a var =
- fun ?fallback ?deps name kind value ->
-  let deps = Option.value deps ~default:[] in
+ fun ?fallback ?(deps = []) ?layer name kind value ->
   let declaration =
-    Custom_declaration { name = "--" ^ name; kind; value; deps }
+    Custom_declaration { name = "--" ^ name; kind; value; deps; layer }
   in
-  let var_handle = { name; fallback; default = Some value } in
+  let var_handle = { name; fallback; default = Some value; layer } in
   (declaration, var_handle)
 
 (* Property constructors with typed values *)
@@ -3044,7 +3046,7 @@ let vars_of_declarations properties =
     (function
       | Declaration (prop, value) -> vars_of_property prop value
       | Important_declaration (prop, value) -> vars_of_property prop value
-      | Custom_declaration { name; kind; value; deps } ->
+      | Custom_declaration { name; kind; value; deps; _ } ->
           (* Extract variables from typed value based on kind *)
           let value_deps = vars_of_value kind value in
           name :: (deps @ value_deps))
@@ -3070,6 +3072,9 @@ let deduplicate_declarations props =
 
 (* Existential wrapper for variables to allow collecting them *)
 type any_var = V : 'a var -> any_var
+
+(* Get the name of a variable *)
+let var_name (V v) = "--" ^ v.name
 
 (* Extract variables from a typed value - needs to handle each property type *)
 let extract_vars_from_prop_value : type a. a property -> a -> any_var list =

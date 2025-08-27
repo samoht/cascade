@@ -78,6 +78,7 @@ type 'a var = {
   name : string;  (** Variable name (without --) *)
   fallback : 'a var_fallback option;  (** Optional fallback value *)
   default : 'a option;  (** Default value for inline mode and theme layer *)
+  layer : string option;  (** Optional layer name where variable is defined *)
 }
 (** CSS variable reference *)
 
@@ -968,11 +969,12 @@ end
 val var :
   ?fallback:'a var_fallback ->
   ?deps:string list ->
+  ?layer:string ->
   string ->
   'a kind ->
   'a ->
   declaration * 'a var
-(** [var ?fallback ?deps name kind value] creates a CSS custom property
+(** [var ?fallback ?deps ?layer name kind value] creates a CSS custom property
     declaration and returns a variable handle.
 
     - [name] is the variable name without the [--] prefix
@@ -981,6 +983,7 @@ val var :
       default
     - [fallback] is used inside [var(--name, fallback)] in CSS output
     - [deps] is an optional list of CSS variable names this property depends on
+    - [layer] is an optional CSS layer name where the variable should be placed
 
     Example:
     {[
@@ -1948,8 +1951,9 @@ val string_of_property : _ property -> string
 
 (** {1 Utilities} *)
 
-val custom_property : ?deps:string list -> string -> string -> declaration
-(** [custom_property ?deps name value] creates a CSS custom property
+val custom_property :
+  ?deps:string list -> ?layer:string -> string -> string -> declaration
+(** [custom_property ?deps ?layer name value] creates a CSS custom property
     declaration. This is primarily for internal use. For typed variables, use
     the [var] API instead. *)
 
@@ -1977,6 +1981,9 @@ val vars_of_container_queries : container_query list -> string list
 val vars_of_stylesheet : t -> string list
 (** [vars_of_stylesheet stylesheet] extracts all CSS variable names referenced
     in the entire stylesheet, returning them sorted and deduplicated. *)
+
+val var_name : any_var -> string
+(** [var_name v] returns the name of a CSS variable (with -- prefix). *)
 
 val analyze_declarations : declaration list -> any_var list
 (** [analyze_declarations declarations] extracts typed CSS variables from
