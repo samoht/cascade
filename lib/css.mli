@@ -877,14 +877,14 @@ type font_family =
   (* CSS variables *)
   | Var of font_family list var
 
-(** Font feature settings value *)
+(** Font feature settings value. *)
 type font_feature_settings =
   | Normal
   | Feature_string of string
   | Inherit
   | Var of font_feature_settings var
 
-(** Font variation settings value *)
+(** Font variation settings value. *)
 type font_variation_settings =
   | Normal
   | Variation_string of string
@@ -1136,23 +1136,21 @@ val background_image : background_image -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/background-image>
       MDN: background-image. *)
 
-(** Helper functions for background images *)
 val url : string -> background_image
-(** [url path] creates a URL background image value *)
+(** [url path] creates a URL background image value. *)
 
 val linear_gradient :
   gradient_direction -> gradient_stop list -> background_image
-(** [linear_gradient dir stops] creates a linear gradient background *)
+(** [linear_gradient dir stops] creates a linear gradient background. *)
 
 val radial_gradient : gradient_stop list -> background_image
-(** [radial_gradient stops] creates a radial gradient background *)
+(** [radial_gradient stops] creates a radial gradient background. *)
 
-(** Helper functions for gradient stops *)
 val color_stop : color -> gradient_stop
-(** [color_stop c] creates a simple color stop *)
+(** [color_stop c] creates a simple color stop. *)
 
 val color_position : color -> length -> gradient_stop
-(** [color_position c pos] creates a color stop at a specific position *)
+(** [color_position c pos] creates a color stop at a specific position. *)
 
 val color : color -> declaration
 (** [color c] sets the CSS color property.
@@ -1567,7 +1565,6 @@ val webkit_text_size_adjust : string -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/text-size-adjust>
       MDN: text-size-adjust. *)
 
-(** Font feature settings value *)
 val font_feature_settings : font_feature_settings -> declaration
 (** [font_feature_settings value] sets the CSS font-feature-settings property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/font-feature-settings>
@@ -1905,11 +1902,11 @@ val supports_to_nested : supports_rule -> nested_rule
 
 val media : condition:string -> rule list -> media_rule
 (** [media ~condition rules] creates a [@media] rule.
-    @param condition Media query condition (e.g., "(min-width: 768px)") *)
+    @param condition Media query condition (e.g., "(min-width: 768px)"). *)
 
 val supports : condition:string -> rule list -> supports_rule
 (** [supports ~condition rules] creates a [@supports] rule for feature queries.
-    @param condition Feature query condition (e.g., "(display: grid)") *)
+    @param condition Feature query condition (e.g., "(display: grid)"). *)
 
 val supports_nested :
   condition:string -> rule list -> supports_rule list -> supports_rule
@@ -1919,8 +1916,8 @@ val supports_nested :
 val container :
   ?name:string option -> condition:string -> rule list -> container_rule
 (** [container ?name ~condition rules] creates a [@container] rule.
-    @param name Optional container name
-    @param condition Container query condition (e.g., "(min-width: 700px)") *)
+    @param name Optional container name.
+    @param condition Container query condition (e.g., "(min-width: 700px)"). *)
 
 val layer :
   name:string ->
@@ -1930,10 +1927,10 @@ val layer :
   nested_rule list ->
   layer_rule
 (** [layer ~name ?media ?container ?supports rules] creates a [@layer] rule.
-    @param name Layer name
-    @param media Optional nested [@media] rules
-    @param container Optional nested [@container] rules
-    @param supports Optional nested [@supports] rules *)
+    @param name Layer name.
+    @param media Optional nested [@media] rules.
+    @param container Optional nested [@container] rules.
+    @param supports Optional nested [@supports] rules. *)
 
 val property :
   name:string ->
@@ -1944,10 +1941,10 @@ val property :
   property_rule
 (** [property ~name ~syntax ~initial_value ?inherits ()] creates a [@property]
     rule to register a custom CSS property.
-    @param name Property name (including --)
-    @param syntax Property syntax (e.g., "<color>")
-    @param initial_value Default value
-    @param inherits Whether property inherits (default: false) *)
+    @param name Property name (including --).
+    @param syntax Property syntax (e.g., "<color>").
+    @param initial_value Default value.
+    @param inherits Whether property inherits (default: false). *)
 
 (** {2 Stylesheet Construction} *)
 
