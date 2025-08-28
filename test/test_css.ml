@@ -161,17 +161,208 @@ let modes () =
     "Inline mode does not contain var()" false
     (Astring.String.is_infix ~affix:"var(--" css_inline)
 
+(* Suite is defined at the bottom after all tests are declared *)
+
+(* Additional coverage for css.mli *)
+
+let test_var_helpers () =
+  (* Create a typed var and exercise helpers *)
+  let def, v = var "primary" Color (Rgb { r = 1; g = 2; b = 3 }) in
+  (* default_value returns Some ... *)
+  Alcotest.(check bool)
+    "default_value is set" true
+    (Option.is_some (default_value v));
+  (* var_to_string builds var(--name) *)
+  Alcotest.(check string) "var_to_string" "var(--primary)" (var_to_string v);
+  (* var_to_string with fallback *)
+  Alcotest.(check string)
+    "var_to_string with fallback" "var(--primary, #000)"
+    (var_to_string ~fallback:"#000" v);
+  (* Using the var in Variables vs Inline mode *)
+  let rule_ = rule ~selector:".x" [ background_color (Var v) ] in
+  let sheet =
+    stylesheet [ Rule rule_; Rule (rule ~selector:".vars" [ def ]) ]
+  in
+  let css_vars = to_string ~mode:Variables sheet in
+  Alcotest.(check bool)
+    "Variables mode uses var()" true
+    (Astring.String.is_infix ~affix:"var(--primary)" css_vars);
+  let css_inline = to_string ~mode:Inline sheet in
+  Alcotest.(check bool)
+    "Inline mode resolves value" true
+    (Astring.String.is_infix ~affix:"rgb(1, 2, 3)" css_inline)
+
+let test_calc_expressions () =
+  (* Build a calc expression with a calc var and ensure formatting *)
+  let open Calc in
+  let cvar = var ~default:(Rem 0.25) "gap" in
+  let expr = px 10 + rem 0.5 + cvar in
+  let r = rule ~selector:".calc" [ width (Calc expr) ] in
+  let sheet = stylesheet [ Rule r ] in
+  let css_vars = to_string ~mode:Variables sheet in
+  Alcotest.(check bool)
+    "calc emits var() in Variables" true
+    (Astring.String.is_infix ~affix:"calc(10px + .5rem + var(--gap))" css_vars);
+  let css_inline = to_string ~mode:Inline sheet in
+  Alcotest.(check bool)
+    "calc resolves default in Inline" true
+    (Astring.String.is_infix ~affix:"calc(10px + .5rem + .25rem)" css_inline)
+
+let test_color_mix () =
+  let mixed =
+    Mix
+      {
+        in_space = Srgb;
+        color1 = Rgb { r = 255; g = 0; b = 0 };
+        percent1 = Some 25;
+        color2 = Rgb { r = 0; g = 0; b = 255 };
+        percent2 = None;
+      }
+  in
+  let r = rule ~selector:".mix" [ background_color mixed ] in
+  let css = to_string (stylesheet [ Rule r ]) in
+  Alcotest.(check bool)
+    "color-mix rendered" true
+    (Astring.String.is_infix ~affix:"color-mix(in srgb," css)
+
+let test_transform () =
+  let t =
+    transform
+      [
+        Translate (Px 10, Pct 50.);
+        Rotate (Deg 45.);
+        Scale2 (Scale_num 1., Scale_var { var_name = "sx"; fallback = Some 0.5 });
+        Skew (Deg 10., Deg 5.);
+      ]
+  in
+  let r = rule ~selector:".t" [ t ] in
+  let css = to_string (stylesheet [ Rule r ]) in
+  Alcotest.(check bool)
+    "transform translate" true
+    (Astring.String.is_infix ~affix:"translate(10px, 50%)" css);
+  Alcotest.(check bool)
+    "transform rotate" true
+    (Astring.String.is_infix ~affix:"rotate(45deg)" css);
+  Alcotest.(check bool)
+    "transform scale var fallback" true
+    (Astring.String.is_infix ~affix:"scale(1, var(--sx, .5))" css);
+  Alcotest.(check bool)
+    "transform skew" true
+    (Astring.String.is_infix ~affix:"skew(10deg, 5deg)" css)
+
+let test_grid_and_flex () =
+  (* Grid template and flex shorthand *)
+  let grid =
+    Grid.template_columns (Tracks [ Fr 1.; Min_max (Px 100, Fr 2.) ])
+  in
+  let flex_decl = Flex.flex (Full (1., 0., Pct 0.)) in
+  let r = rule ~selector:".layout" [ grid; flex_decl; display Flex ] in
+  let css = to_string (stylesheet [ Rule r ]) in
+  Alcotest.(check bool)
+    "grid template rendered" true
+    (Astring.String.is_infix
+       ~affix:"grid-template-columns: 1fr minmax(100px, 2fr)" css);
+  Alcotest.(check bool)
+    "flex shorthand rendered" true
+    (Astring.String.is_infix ~affix:"flex: 1 0 0%" css)
+
+let test_transitions () =
+  let vdef, dv = var "dur" Duration (Ms 200) in
+  let tr =
+    transition
+      (Multiple
+         [
+           With_delay (Property "opacity", Var dv, Ease_in, Ms 100);
+           With_timing (Property "transform", S 1., Linear);
+         ])
+  in
+  let r = rule ~selector:".tr" [ vdef; tr ] in
+  let css_vars = to_string ~mode:Variables (stylesheet [ Rule r ]) in
+  Alcotest.(check bool)
+    "transition multiple" true
+    (Astring.String.is_infix
+       ~affix:
+         "transition: opacity var(--dur) ease-in 100ms, transform 1s linear"
+       css_vars)
+
+let test_transparent_minify () =
+  let r = rule ~selector:".transparent" [ background_color Transparent ] in
+  let sheet = stylesheet [ Rule r ] in
+  let pretty = to_string sheet in
+  let mini = to_string ~minify:true sheet in
+  Alcotest.(check bool)
+    "pretty uses transparent" true
+    (Astring.String.is_infix ~affix:"background-color: transparent" pretty);
+  Alcotest.(check bool)
+    "minified converts to #0000" true
+    (Astring.String.is_infix ~affix:"background-color:#0000" mini)
+
+let test_vars_utilities () =
+  (* Define vars and use them in properties, then analyze *)
+  let def_len, vlen = var "space" Length (Rem 1.) in
+  let def_col, vcol =
+    var "brand" Color (Hex { hash = true; value = "ff00ff" })
+  in
+  let props =
+    [
+      def_len;
+      def_col;
+      padding (Var vlen);
+      color (Var vcol);
+      width (Calc Calc.(px 10 + var ~default:(Px 2) "w"));
+    ]
+  in
+  (* vars_of_declarations returns names prefixed with -- and includes custom
+     decls *)
+  let names = vars_of_declarations props in
+  Alcotest.(check int) "vars count" 3 (List.length names);
+  List.iter
+    (fun expected ->
+      Alcotest.(check bool)
+        (Fmt.str "contains %s" expected)
+        true (List.mem expected names))
+    [ "--brand"; "--space"; "--w" ];
+  (* analyze_declarations returns typed vars; map var_name *)
+  let anys = analyze_declarations props in
+  Alcotest.(check int) "analyzed var count" 2 (List.length anys);
+  let got = List.map var_name anys |> List.sort String.compare in
+  List.iter
+    (fun expected ->
+      Alcotest.(check bool)
+        (Fmt.str "analyzed contains %s" expected)
+        true (List.mem expected got))
+    [ "--brand"; "--space" ];
+  (* extract_custom_declarations keeps only defs *)
+  let defs = extract_custom_declarations props in
+  Alcotest.(check int) "two custom declarations" 2 (List.length defs);
+  (* names of custom declarations *)
+  let def_names =
+    defs |> List.filter_map custom_declaration_name |> List.sort String.compare
+  in
+  Alcotest.(check (list string))
+    "custom decl names" [ "--brand"; "--space" ] def_names
+
 let suite =
+  let open Alcotest in
   [
     ( "css",
       [
-        Alcotest.test_case "property creation" `Quick test_property_creation;
-        Alcotest.test_case "property deduplication" `Quick
-          test_property_deduplication;
-        Alcotest.test_case "minification" `Quick test_minification;
-        Alcotest.test_case "media query" `Quick test_media_query;
-        Alcotest.test_case "inline style" `Quick test_inline_style;
-        Alcotest.test_case "property names" `Quick test_property_names;
-        Alcotest.test_case "CSS modes" `Quick modes;
+        (* original tests *)
+        test_case "property creation" `Quick test_property_creation;
+        test_case "property deduplication" `Quick test_property_deduplication;
+        test_case "minification" `Quick test_minification;
+        test_case "media query" `Quick test_media_query;
+        test_case "inline style" `Quick test_inline_style;
+        test_case "property names" `Quick test_property_names;
+        test_case "CSS modes" `Quick modes;
+        (* extra coverage *)
+        test_case "var helpers" `Quick test_var_helpers;
+        test_case "calc expressions" `Quick test_calc_expressions;
+        test_case "color mix" `Quick test_color_mix;
+        test_case "transform values" `Quick test_transform;
+        test_case "grid and flex" `Quick test_grid_and_flex;
+        test_case "transitions" `Quick test_transitions;
+        test_case "transparent minify" `Quick test_transparent_minify;
+        test_case "vars utilities" `Quick test_vars_utilities;
       ] );
   ]

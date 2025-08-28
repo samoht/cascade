@@ -717,13 +717,15 @@ and string_of_length ?(mode = Variables) = function
       (* Optimize calc(infinity * 1px) to 3.40282e38px for minification *)
       match cv with
       | Expr (Val (Num f), Mult, Val (Px 1)) when f = infinity -> "3.40282e38px"
-      | _ -> str [ "calc("; string_of_calc (string_of_length ~mode) cv; ")" ])
+      | _ ->
+          str [ "calc("; string_of_calc ~mode (string_of_length ~mode) cv; ")" ]
+      )
 
-and string_of_calc : ('a -> string) -> 'a calc -> string =
- fun string_of_val calc ->
+and string_of_calc : ?mode:mode -> ('a -> string) -> 'a calc -> string =
+ fun ?(mode = Variables) string_of_val calc ->
   match calc with
   | Val v -> string_of_val v
-  | Var v -> string_of_var string_of_val v
+  | Var v -> string_of_var ~mode string_of_val v
   | Expr (left, op, right) ->
       let op_str =
         match op with
@@ -734,9 +736,9 @@ and string_of_calc : ('a -> string) -> 'a calc -> string =
       in
       str
         [
-          string_of_calc string_of_val left;
+          string_of_calc ~mode string_of_val left;
           op_str;
-          string_of_calc string_of_val right;
+          string_of_calc ~mode string_of_val right;
         ]
 
 (* Calc module for building calc() expressions *)
@@ -3682,6 +3684,11 @@ let render_layer ~config layer_rules =
     if config.minify then str [ "@layer "; layer_name; "{"; content; "}" ]
     else str [ "@layer "; layer_name; " {\n"; content; "\n}" ]
 
+let is_layer_empty (layer : layer_rule) =
+  layer.rules = [] && layer.media_queries = []
+  && layer.container_queries = []
+  && layer.supports_queries = []
+
 let render_optional_section render_fn items =
   let rendered = render_fn items in
   if rendered = "" then [] else [ rendered ]
@@ -3722,12 +3729,45 @@ let render_stylesheet_sections ~config stylesheet =
     supports_strings,
     media_strings )
 
+let merge_empty_layers ~config layers =
+  (* Merge consecutive empty layers into single @layer declarations *)
+  if not config.minify then List.map (render_layer ~config) layers
+  else
+    let rec process_layers acc current_empty_group = function
+      | [] ->
+          (* Finish any remaining empty group *)
+          if current_empty_group = [] then List.rev acc
+          else
+            let merged =
+              "@layer " ^ String.concat "," (List.rev current_empty_group) ^ ";"
+            in
+            List.rev (merged :: acc)
+      | layer :: rest ->
+          if is_layer_empty layer then
+            (* Collect empty layer names *)
+            process_layers acc (layer.layer :: current_empty_group) rest
+          else
+            (* Non-empty layer: finish any empty group and add this layer *)
+            let acc' =
+              if current_empty_group = [] then acc
+              else
+                let merged =
+                  "@layer "
+                  ^ String.concat "," (List.rev current_empty_group)
+                  ^ ";"
+                in
+                merged :: acc
+            in
+            process_layers (render_layer ~config layer :: acc') [] rest
+    in
+    process_layers [] [] layers
+
 let to_string ?(minify = false) ?(mode = Variables) stylesheet =
   let config = { minify; mode } in
   let header_str =
     if List.length stylesheet.layers > 0 then str [ header; "\n" ] else ""
   in
-  let layer_strings = stylesheet.layers |> List.map (render_layer ~config) in
+  let layer_strings = merge_empty_layers ~config stylesheet.layers in
   let ( rule_strings,
         at_property_strings,
         starting_style_strings,
