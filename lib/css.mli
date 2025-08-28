@@ -76,7 +76,7 @@
 
 type 'a var = {
   name : string;  (** Variable name (without --) *)
-  fallback : 'a var_fallback option;  (** Optional fallback value *)
+  fallback : 'a option;  (** Optional fallback value *)
   default : 'a option;  (** Default value for inline mode and theme layer *)
   layer : string option;  (** Optional layer name where variable is defined *)
   meta : meta option;  (** Optional metadata for tracking variable source *)
@@ -85,10 +85,6 @@ type 'a var = {
 
 and meta
 (** Opaque metadata type *)
-
-and 'a var_fallback =
-  | Var of 'a var  (** Another variable as fallback *)
-  | Value of 'a  (** Direct value as fallback *)
 
 (** CSS generation mode. *)
 type mode =
@@ -153,9 +149,10 @@ module Calc : sig
   val length : length -> length calc
   (** [length len] lifts a length value into calc *)
 
-  val var : ?default:'a -> string -> 'a calc
-  (** [var ?default name] creates a variable reference for calc expressions.
-      Example: [var "spacing"] *)
+  val var : ?default:'a -> ?fallback:'a -> string -> 'a calc
+  (** [var ?default ?fallback name] creates a variable reference for calc
+      expressions. Example: [var "spacing"] or
+      [var ~fallback:(Var lh_var) "tw-leading"] *)
 
   val float : float -> length calc
   (** [float f] creates a numeric value for calc expressions *)
@@ -235,7 +232,7 @@ type position = Static | Relative | Absolute | Fixed | Sticky
 type visibility = Visible | Hidden | Collapse
 
 (** CSS z-index values. *)
-type z_index_value = Auto | Index of int
+type z_index = Auto | Index of int
 
 (** CSS font weight values. *)
 type font_weight =
@@ -260,7 +257,7 @@ type flex_direction = Row | Row_reverse | Column | Column_reverse
 type flex_wrap = Nowrap | Wrap | Wrap_reverse
 
 (** CSS flex shorthand values. *)
-type flex_value =
+type flex =
   | Initial (* 0 1 auto *)
   | Auto (* 1 1 auto *)
   | None (* 0 0 auto *)
@@ -308,7 +305,7 @@ type text_decoration =
   | Underline_dotted (* underline dotted *)
 
 (** CSS font style values. *)
-type font_style = Font_normal | Italic | Oblique | Font_inherit
+type font_style = Normal | Italic | Oblique | Inherit
 
 (** CSS list style type values. *)
 type list_style_type =
@@ -434,10 +431,10 @@ type table_layout = Auto | Fixed | Inherit
 type object_fit = Fill | Contain | Cover | None | Scale_down | Inherit
 
 (** CSS appearance values. *)
-type appearance_value = None | Auto | Button | Textfield | Menulist | Inherit
+type appearance = None | Auto | Button | Textfield | Menulist | Inherit
 
 (** CSS vertical-align values. *)
-type vertical_align_value =
+type vertical_align =
   | Baseline
   | Top
   | Middle
@@ -495,7 +492,7 @@ type font_variant_numeric_token =
 type border_collapse = Collapse | Separate | Inherit
 
 (** CSS pointer-events values. *)
-type pointer_events_value =
+type pointer_events =
   | Auto
   | None
   | Visible_painted
@@ -531,11 +528,11 @@ type timing_function =
 type transition_property = All | None | Property of string
 
 (** CSS transition values. *)
-type transition_value =
+type transition =
   | Simple of transition_property * duration
   | With_timing of transition_property * duration * timing_function
   | With_delay of transition_property * duration * timing_function * duration
-  | Multiple of transition_value list
+  | Multiple of transition list
 
 (** CSS grid track sizing. *)
 type grid_track_size =
@@ -549,19 +546,19 @@ type grid_track_size =
 
 (** CSS grid template values. *)
 type grid_template =
-  | Tracks of grid_track_size list (* List of track sizes *)
-  | Repeat of int * grid_track_size (* repeat(count, size) *)
-  | Repeat_auto_fill of grid_track_size (* repeat(auto-fill, size) *)
-  | Repeat_auto_fit of grid_track_size (* repeat(auto-fit, size) *)
-  | Grid_none (* none *)
-  | Grid_inherit (* inherit *)
+  | Tracks of grid_track_size list
+  | Repeat of int * grid_track_size
+  | Repeat_auto_fill of grid_track_size
+  | Repeat_auto_fit of grid_track_size
+  | None
+  | Inherit
 
 (** CSS grid line values. *)
 type grid_line =
-  | Line_number of int (* 1, 2, 3, ... or -1, -2, ... *)
-  | Line_name of string (* "header-start", "main-end", etc. *)
-  | Span of int (* span 2, span 3, etc. *)
-  | Auto (* auto *)
+  | Line_number of int  (** 1, 2, 3, ... or -1, -2, ... *)
+  | Line_name of string  (** "header-start", "main-end", etc. *)
+  | Span of int  (** span 2, span 3, etc. *)
+  | Auto  (** auto *)
 
 (** CSS transform angle values. *)
 type angle =
@@ -570,42 +567,32 @@ type angle =
   | Turn of float
   | Grad of float
   | Var of angle var
-(* CSS variable reference *)
-(* CSS variable with optional fallback *)
 
 (** CSS transform scale values. *)
-type scale_value =
-  | Scale_num of float
-  | Scale_var of { var_name : string; fallback : float option }
-(* CSS variable with optional fallback *)
+type scale =
+  | Num of float
+  | Var of { var_name : string; fallback : float option }
 
 (** CSS transform values. *)
-type transform_value =
-  | Translate_x of length
-  | Translate_y of length
-  | Translate_z of length
-  | Translate of length * length
-  | Translate_var of { var_name : string; fallback : string option }
-    (* var name and optional fallback *)
+type transform =
+  | Translate of length * length option (* translate(x) or translate(x, y) *)
+  | TranslateX of length
+  | TranslateY of length
+  | TranslateZ of length
   | Translate3d of length * length * length
-  | Rotate_x of angle
-  | Rotate_y of angle
-  | Rotate_z of angle
   | Rotate of angle
-  | Rotate_var of { var_name : string; fallback : string option }
-    (* var name and optional fallback *)
+  | RotateX of angle
+  | RotateY of angle
+  | RotateZ of angle
   | Rotate3d of float * float * float * angle
-  | Scale_x of scale_value
-  | Scale_y of scale_value
-  | Scale_z of scale_value
-  | Scale of scale_value
-  | Scale2 of scale_value * scale_value
-  | Scale3d of scale_value * scale_value * scale_value
-  | Skew_x of angle
-  | Skew_y of angle
-  | Skew_var of { var_name : string; fallback : string option }
-    (* var name and optional fallback *)
-  | Skew of angle * angle
+  | Scale of scale * scale option (* scale(x) or scale(x, y) *)
+  | ScaleX of scale
+  | ScaleY of scale
+  | ScaleZ of scale
+  | Scale3d of scale * scale * scale
+  | Skew of angle * angle option (* skew(x) or skew(x, y) *)
+  | SkewX of angle
+  | SkewY of angle
   | Matrix of float * float * float * float * float * float
   | Matrix3d of
       float
@@ -625,7 +612,8 @@ type transform_value =
       * float
       * float
   | Perspective of length
-  | Transform_none
+  | Var of transform list var (* Proper var type *)
+  | None
 
 type _ property
 (** GADT for typed CSS properties. *)
@@ -687,16 +675,10 @@ type starting_style_rule
     initial styles for animating elements. *)
 
 (** CSS text-decoration-style values. *)
-type text_decoration_style_value =
-  | Solid
-  | Double
-  | Dotted
-  | Dashed
-  | Wavy
-  | Inherit
+type text_decoration_style = Solid | Double | Dotted | Dashed | Wavy | Inherit
 
 (** CSS webkit-font-smoothing values. *)
-type webkit_font_smoothing_value =
+type webkit_font_smoothing =
   | Auto
   | None
   | Antialiased
@@ -704,7 +686,7 @@ type webkit_font_smoothing_value =
   | Inherit
 
 (** CSS -moz-osx-font-smoothing values. *)
-type moz_osx_font_smoothing_value = Auto | Grayscale | Inherit
+type moz_osx_font_smoothing = Auto | Grayscale | Inherit
 
 (** CSS transform-style values. *)
 type transform_style = Flat | Preserve_3d | Inherit
@@ -719,7 +701,7 @@ type scroll_behavior = Auto | Smooth | Inherit
 type clear = None | Left | Right | Both
 
 (** CSS float values. *)
-type float_value = None | Left | Right
+type float_side = None | Left | Right
 
 (** CSS touch-action values. *)
 type touch_action =
@@ -733,30 +715,16 @@ type touch_action =
   | Pan_up
   | Pan_down
 
-(** CSS scroll-snap-strictness values. *)
+(** CSS scroll-snap strictness (second part of scroll-snap-type). *)
 type scroll_snap_strictness = Mandatory | Proximity
+
+(** CSS scroll-snap axis (first part of scroll-snap-type). *)
+type scroll_snap_axis = X | Y | Block | Inline | Both
 
 (** CSS scroll-snap-type values. *)
 type scroll_snap_type =
   | None
-  | X
-  | Y
-  | Block
-  | Inline
-  | Both
-  | X_mandatory
-  | Y_mandatory
-  | Block_mandatory
-  | Inline_mandatory
-  | Both_mandatory
-  | X_proximity
-  | Y_proximity
-  | Block_proximity
-  | Inline_proximity
-  | Both_proximity
-  | X_var of scroll_snap_strictness var
-  | Y_var of scroll_snap_strictness var
-  | Both_var of scroll_snap_strictness var
+  | Axis of scroll_snap_axis * scroll_snap_strictness option
   | Inherit
 
 (** CSS scroll-snap-align values. *)
@@ -769,7 +737,7 @@ type scroll_snap_stop = Normal | Always | Inherit
 type isolation = Auto | Isolate | Inherit
 
 (** CSS background-repeat values. *)
-type background_repeat_value =
+type background_repeat =
   | Repeat
   | Repeat_x
   | Repeat_y
@@ -782,7 +750,7 @@ type background_repeat_value =
 type container_type = Normal | Size | Inline_size | Inherit
 
 (** CSS place-* values. *)
-type place_value =
+type place =
   | Start
   | End
   | Center
@@ -793,7 +761,7 @@ type place_value =
   | Inherit
 
 (** CSS blend mode values. *)
-type blend_mode_value =
+type blend_mode =
   | Normal
   | Multiply
   | Screen
@@ -815,6 +783,100 @@ type blend_mode_value =
 (** CSS aspect-ratio values. *)
 type aspect_ratio = Auto | Ratio of int * int | Number of float | Inherit
 
+(** CSS font family values. *)
+type font_family =
+  (* Generic CSS font families *)
+  | Sans_serif
+  | Serif
+  | Monospace
+  | Cursive
+  | Fantasy
+  | System_ui
+  | Ui_sans_serif
+  | Ui_serif
+  | Ui_monospace
+  | Ui_rounded
+  | Emoji
+  | Math
+  | Fangsong
+  (* Popular web fonts *)
+  | Inter
+  | Roboto
+  | Open_sans
+  | Lato
+  | Montserrat
+  | Poppins
+  | Source_sans_pro
+  | Raleway
+  | Oswald
+  | Noto_sans
+  | Ubuntu
+  | Playfair_display
+  | Merriweather
+  | Lora
+  | PT_sans
+  | PT_serif
+  | Nunito
+  | Nunito_sans
+  | Work_sans
+  | Rubik
+  | Fira_sans
+  | Fira_code
+  | JetBrains_mono
+  | IBM_plex_sans
+  | IBM_plex_serif
+  | IBM_plex_mono
+  | Source_code_pro
+  | Space_mono
+  | DM_sans
+  | DM_serif_display
+  | Bebas_neue
+  | Barlow
+  | Mulish
+  | Josefin_sans
+  (* Platform-specific fonts *)
+  | Helvetica
+  | Helvetica_neue
+  | Arial
+  | Verdana
+  | Tahoma
+  | Trebuchet_ms
+  | Times_new_roman
+  | Georgia
+  | Garamond
+  | Courier_new
+  | Courier
+  | Lucida_console
+  | SF_pro
+  | SF_pro_display
+  | SF_pro_text
+  | SF_mono
+  | NY
+  | Segoe_ui
+  | Segoe_ui_emoji
+  | Segoe_ui_symbol
+  | Apple_color_emoji
+  | Noto_color_emoji
+  | Android_emoji
+  | Twemoji_mozilla
+  (* Developer fonts *)
+  | Menlo
+  | Monaco
+  | Consolas
+  | Liberation_mono
+  | SFMono_regular
+  | Cascadia_code
+  | Cascadia_mono
+  | Victor_mono
+  | Inconsolata
+  | Hack
+  (* CSS keywords *)
+  | Inherit
+  | Initial
+  | Unset
+  (* CSS variables *)
+  | Var of font_family list var
+
 (** Value kind GADT for typed custom properties *)
 type _ kind =
   | Length : length kind
@@ -825,7 +887,8 @@ type _ kind =
   | Aspect_ratio : aspect_ratio kind
   | Border_style : border_style kind
   | Font_weight : font_weight kind
-  | Blend_mode : blend_mode_value kind
+  | Font_family : font_family list kind
+  | Blend_mode : blend_mode kind
   | Scroll_snap_strictness : scroll_snap_strictness kind
   | Angle : angle kind
   | String : string kind
@@ -843,7 +906,7 @@ type justify_self =
 val aspect_ratio : aspect_ratio -> declaration
 (** [aspect_ratio value] sets the CSS aspect-ratio property. *)
 
-val mix_blend_mode : blend_mode_value -> declaration
+val mix_blend_mode : blend_mode -> declaration
 (** [mix_blend_mode value] sets the CSS mix-blend-mode property. *)
 
 (** {1 Declaration Constructors} *)
@@ -858,7 +921,7 @@ module Flex : sig
   val wrap : flex_wrap -> declaration
   (** [wrap w] sets the flex-wrap property. *)
 
-  val flex : flex_value -> declaration
+  val flex : flex -> declaration
   (** [flex value] sets the flex shorthand property. *)
 
   val grow : float -> declaration
@@ -984,15 +1047,14 @@ val meta : unit -> ('a -> meta) * (meta -> 'a option)
     extract the value back. *)
 
 val var :
-  ?fallback:'a var_fallback ->
-  ?deps:string list ->
+  ?fallback:'a ->
   ?layer:string ->
   ?meta:meta ->
   string ->
   'a kind ->
   'a ->
   declaration * 'a var
-(** [var ?fallback ?deps ?layer name kind value] creates a CSS custom property
+(** [var ?fallback ?layer name kind value] creates a CSS custom property
     declaration and returns a variable handle.
 
     - [name] is the variable name without the [--] prefix
@@ -1000,7 +1062,6 @@ val var :
     - [value] becomes both the CSS custom property value and the variable's
       default
     - [fallback] is used inside [var(--name, fallback)] in CSS output
-    - [deps] is an optional list of CSS variable names this property depends on
     - [layer] is an optional CSS layer name where the variable should be placed
 
     Example:
@@ -1013,15 +1074,6 @@ val var :
     properties. In variables mode, it emits "--radius-md: 0.5rem" and uses
     "var(--radius-md)". In inline mode, it uses "0.5rem" directly when the
     default equals the defined value. *)
-
-val var_to_string : ?fallback:string -> 'a var -> string
-(** [var_to_string ?fallback var] creates a string reference to a CSS variable.
-    Returns a string like "var(--name)" or "var(--name, fallback)" that can be
-    used in string-valued CSS properties. *)
-
-val default_value : 'a var -> 'a option
-(** [default_value var] returns the default value of a variable if it was
-    created with one. *)
 
 val declaration_meta : declaration -> meta option
 (** [declaration_meta decl] extracts metadata from a declaration if it has any.
@@ -1051,32 +1103,32 @@ type gradient_direction =
 type gradient_stop =
   | Color_stop of color
   | Color_position of color * length
-  | Color_var of color var (* Reference to a color variable *)
+  | Var of color var (* Reference to a color variable *)
   | Computed_stops of
       string (* For complex computed values like --tw-gradient-stops *)
 
 (** Background image values *)
-type background_image_value =
+type background_image =
   | Url of string
   | Linear_gradient of gradient_direction * gradient_stop list
   | Radial_gradient of gradient_stop list
   | None
 
-val background_image : background_image_value -> declaration
+val background_image : background_image -> declaration
 (** [background_image value] sets the CSS background-image property.
 
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/background-image>
       MDN: background-image. *)
 
 (** Helper functions for background images *)
-val url : string -> background_image_value
+val url : string -> background_image
 (** [url path] creates a URL background image value *)
 
 val linear_gradient :
-  gradient_direction -> gradient_stop list -> background_image_value
+  gradient_direction -> gradient_stop list -> background_image
 (** [linear_gradient dir stops] creates a linear gradient background *)
 
-val radial_gradient : gradient_stop list -> background_image_value
+val radial_gradient : gradient_stop list -> background_image
 (** [radial_gradient stops] creates a radial gradient background *)
 
 (** Helper functions for gradient stops *)
@@ -1351,7 +1403,7 @@ val text_transform : text_transform -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/text-transform>
       MDN: text-transform. *)
 
-val text_decoration_style : text_decoration_style_value -> declaration
+val text_decoration_style : text_decoration_style -> declaration
 (** [text_decoration_style value] sets the CSS text-decoration-style property.
 
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration-style>
@@ -1417,7 +1469,7 @@ val forced_color_adjust : forced_color_adjust -> declaration
    length -> declaration val border_top_right_radius : length -> declaration val
    border_bottom_right_radius : length -> declaration val
    border_bottom_left_radius : length -> declaration val mix_blend_mode :
-   blend_mode_value -> declaration val backdrop_blend_mode : blend_mode_value ->
+   blend_mode -> declaration val backdrop_blend_mode : blend_mode ->
    declaration *)
 
 val border_right_width : length -> declaration
@@ -1429,7 +1481,7 @@ val border_left_color : color -> declaration
 val border_bottom_color : color -> declaration
 (** [border_bottom_color c] sets the CSS border-bottom-color property. *)
 
-val transition : transition_value -> declaration
+val transition : transition -> declaration
 (** [transition value] sets the CSS transition property. *)
 
 val quotes : string -> declaration
@@ -1441,106 +1493,13 @@ type svg_paint =
   | Current_color  (** Current color value *)
   | Color of color  (** Specific color value *)
 
-type font_family_value =
-  (* Generic CSS font families *)
-  | Sans_serif
-  | Serif
-  | Monospace
-  | Cursive
-  | Fantasy
-  | System_ui
-  | Ui_sans_serif
-  | Ui_serif
-  | Ui_monospace
-  | Ui_rounded
-  | Emoji
-  | Math
-  | Fangsong
-  (* Popular web fonts *)
-  | Inter
-  | Roboto
-  | Open_sans
-  | Lato
-  | Montserrat
-  | Poppins
-  | Source_sans_pro
-  | Raleway
-  | Oswald
-  | Noto_sans
-  | Ubuntu
-  | Playfair_display
-  | Merriweather
-  | Lora
-  | PT_sans
-  | PT_serif
-  | Nunito
-  | Nunito_sans
-  | Work_sans
-  | Rubik
-  | Fira_sans
-  | Fira_code
-  | JetBrains_mono
-  | IBM_plex_sans
-  | IBM_plex_serif
-  | IBM_plex_mono
-  | Source_code_pro
-  | Space_mono
-  | DM_sans
-  | DM_serif_display
-  | Bebas_neue
-  | Barlow
-  | Mulish
-  | Josefin_sans
-  (* Platform-specific fonts *)
-  | Helvetica
-  | Helvetica_neue
-  | Arial
-  | Verdana
-  | Tahoma
-  | Trebuchet_ms
-  | Times_new_roman
-  | Georgia
-  | Garamond
-  | Courier_new
-  | Courier
-  | Lucida_console
-  | SF_pro
-  | SF_pro_display
-  | SF_pro_text
-  | SF_mono
-  | NY
-  | Segoe_ui
-  | Segoe_ui_emoji
-  | Segoe_ui_symbol
-  | Apple_color_emoji
-  | Noto_color_emoji
-  | Android_emoji
-  | Twemoji_mozilla
-  (* Developer fonts *)
-  | Menlo
-  | Monaco
-  | Consolas
-  | Liberation_mono
-  | SFMono_regular
-  | Cascadia_code
-  | Cascadia_mono
-  | Victor_mono
-  | Inconsolata
-  | Hack
-  (* CSS keywords *)
-  | Inherit
-  | Initial
-  | Unset
-  (* CSS variables *)
-  | Var of { name : string; fallback : font_family_value list option }
-
-val font_family : font_family_value list -> declaration
+val font_family : font_family list -> declaration
 (** [font_family value] sets the CSS font-family property. *)
 
 val table_layout : table_layout -> declaration
 (** [table_layout value] sets the CSS table-layout property. *)
 
-val vertical_align : vertical_align_value -> declaration
+val vertical_align : vertical_align -> declaration
 (** [vertical_align value] sets the CSS vertical-align property. *)
 
 val box_sizing : box_sizing -> declaration
@@ -1572,7 +1531,7 @@ val stroke : svg_paint -> declaration
 val stroke_width : length -> declaration
 (** [stroke_width value] sets the SVG stroke-width property. *)
 
-val appearance : appearance_value -> declaration
+val appearance : appearance -> declaration
 (** [appearance value] sets the CSS appearance property. *)
 
 (** {2 Additional CSS Properties} *)
@@ -1641,15 +1600,15 @@ val letter_spacing : length -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/letter-spacing>
       MDN: letter-spacing. *)
 
-val webkit_appearance : appearance_value -> declaration
+val webkit_appearance : appearance -> declaration
 (** [webkit_appearance value] sets the -webkit-appearance property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/appearance>
       MDN: appearance. *)
 
-val webkit_font_smoothing : webkit_font_smoothing_value -> declaration
+val webkit_font_smoothing : webkit_font_smoothing -> declaration
 (** [webkit_font_smoothing value] sets the -webkit-font-smoothing property. *)
 
-val moz_osx_font_smoothing : moz_osx_font_smoothing_value -> declaration
+val moz_osx_font_smoothing : moz_osx_font_smoothing -> declaration
 (** [moz_osx_font_smoothing value] sets the -moz-osx-font-smoothing property. *)
 
 val webkit_line_clamp : int -> declaration
@@ -1732,7 +1691,7 @@ val rotate : angle -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/rotate> MDN: rotate.
 *)
 
-val transform : transform_value list -> declaration
+val transform : transform list -> declaration
 (** [transform values] sets the CSS transform property with a list of
     transformations.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/transform>
@@ -1833,7 +1792,7 @@ val clear : clear -> declaration
 (** [clear value] sets the CSS clear property for clearing floats.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/clear> MDN: clear. *)
 
-val float : float_value -> declaration
+val float : float_side -> declaration
 (** [float value] sets the CSS float property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/float> MDN: float. *)
 
@@ -1877,7 +1836,7 @@ val background_position : string -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/background-position>
       MDN: background-position. *)
 
-val background_repeat : background_repeat_value -> declaration
+val background_repeat : background_repeat -> declaration
 (** [background_repeat value] sets the CSS background-repeat property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/background-repeat>
       MDN: background-repeat. *)
@@ -1892,7 +1851,7 @@ val animation : string -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/animation>
       MDN: animation. *)
 
-val pointer_events : pointer_events_value -> declaration
+val pointer_events : pointer_events -> declaration
 (** [pointer_events value] sets the CSS pointer-events property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/pointer-events>
       MDN: pointer-events. *)
@@ -2008,36 +1967,34 @@ val string_of_property : _ property -> string
 
 (** {1 Utilities} *)
 
-val custom_property :
-  ?deps:string list -> ?layer:string -> string -> string -> declaration
-(** [custom_property ?deps ?layer name value] creates a CSS custom property
+val custom_property : ?layer:string -> string -> string -> declaration
+(** [custom_property ?layer name value] creates a CSS custom property
     declaration. This is primarily for internal use. For typed variables, use
     the [var] API instead. *)
 
 (** Existential wrapper for variables *)
 type any_var = V : 'a var -> any_var
 
-val vars_of_declarations : declaration list -> string list
-(** [vars_of_declarations declarations] extracts all CSS variable names
-    referenced in declaration values, returning them sorted and deduplicated. *)
+val vars_of_declarations : declaration list -> any_var list
+(** [vars_of_declarations declarations] extracts all CSS variable referenced in
+    declaration values, returning them sorted and deduplicated. *)
 
-val vars_of_rules : rule list -> string list
-(** [vars_of_rules rules] extracts all CSS variable names referenced in the
-    rules' declarations, returning them sorted and deduplicated. *)
+val vars_of_rules : rule list -> any_var list
+(** [vars_of_rules rules] extracts all CSS variable referenced in the rules'
+    declarations, returning them sorted and deduplicated. *)
 
-val vars_of_media_queries : media_rule list -> string list
-(** [vars_of_media_queries media_queries] extracts all CSS variable names
-    referenced in the media queries' rules, returning them sorted and
-    deduplicated. *)
+val vars_of_media_queries : media_rule list -> any_var list
+(** [vars_of_media_queries media_queries] extracts all CSS variable referenced
+    in the media queries' rules, returning them sorted and deduplicated. *)
 
-val vars_of_container_queries : container_rule list -> string list
+val vars_of_container_queries : container_rule list -> any_var list
 (** [vars_of_container_queries container_queries] extracts all CSS variable
-    names referenced in the container queries' rules, returning them sorted and
+    referenced in the container queries' rules, returning them sorted and
     deduplicated. *)
 
-val vars_of_stylesheet : t -> string list
-(** [vars_of_stylesheet stylesheet] extracts all CSS variable names referenced
-    in the entire stylesheet, returning them sorted and deduplicated. *)
+val vars_of_stylesheet : t -> any_var list
+(** [vars_of_stylesheet stylesheet] extracts all CSS variable referenced in the
+    entire stylesheet, returning them sorted and deduplicated. *)
 
 val var_name : any_var -> string
 (** [var_name v] returns the name of a CSS variable (with -- prefix). *)
