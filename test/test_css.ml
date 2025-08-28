@@ -397,7 +397,7 @@ let test_property_rule_rendering () =
 let test_font_family_var_fallback () =
   let _, ff =
     var
-      ~fallback:(Value [ Ui_sans_serif; System_ui ])
+      ~fallback:[ Ui_sans_serif; System_ui ]
       "fonts" Font_family [ Ui_sans_serif ]
   in
   let decl = font_family [ Var ff ] in

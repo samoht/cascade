@@ -88,7 +88,7 @@ and meta
 
 (** CSS generation mode. *)
 type mode =
-  | Variables  (** Emit var(--name) and generate theme/properties layers *)
+  | Variables  (** Emit var(--name) and generate a theme layer *)
   | Inline  (** Resolve vars to default, no CSS variables *)
 
 (** CSS calc operations. *)
@@ -576,23 +576,23 @@ type scale =
 (** CSS transform values. *)
 type transform =
   | Translate of length * length option (* translate(x) or translate(x, y) *)
-  | TranslateX of length
-  | TranslateY of length
-  | TranslateZ of length
+  | Translate_x of length
+  | Translate_y of length
+  | Translate_z of length
   | Translate3d of length * length * length
   | Rotate of angle
-  | RotateX of angle
-  | RotateY of angle
-  | RotateZ of angle
+  | Rotate_x of angle
+  | Rotate_y of angle
+  | Rotate_z of angle
   | Rotate3d of float * float * float * angle
   | Scale of scale * scale option (* scale(x) or scale(x, y) *)
-  | ScaleX of scale
-  | ScaleY of scale
-  | ScaleZ of scale
+  | Scale_x of scale
+  | Scale_y of scale
+  | Scale_z of scale
   | Scale3d of scale * scale * scale
   | Skew of angle * angle option (* skew(x) or skew(x, y) *)
-  | SkewX of angle
-  | SkewY of angle
+  | Skew_x of angle
+  | Skew_y of angle
   | Matrix of float * float * float * float * float * float
   | Matrix3d of
       float
@@ -877,6 +877,20 @@ type font_family =
   (* CSS variables *)
   | Var of font_family list var
 
+(** Font feature settings value *)
+type font_feature_settings =
+  | Normal
+  | Feature_string of string
+  | Inherit
+  | Var of font_feature_settings var
+
+(** Font variation settings value *)
+type font_variation_settings =
+  | Normal
+  | Variation_string of string
+  | Inherit
+  | Var of font_variation_settings var
+
 (** Value kind GADT for typed custom properties *)
 type _ kind =
   | Length : length kind
@@ -888,6 +902,8 @@ type _ kind =
   | Border_style : border_style kind
   | Font_weight : font_weight kind
   | Font_family : font_family list kind
+  | Font_feature_settings : font_feature_settings kind
+  | Font_variation_settings : font_variation_settings kind
   | Blend_mode : blend_mode kind
   | Scroll_snap_strictness : scroll_snap_strictness kind
   | Angle : angle kind
@@ -1551,12 +1567,13 @@ val webkit_text_size_adjust : string -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/text-size-adjust>
       MDN: text-size-adjust. *)
 
-val font_feature_settings : string -> declaration
+(** Font feature settings value *)
+val font_feature_settings : font_feature_settings -> declaration
 (** [font_feature_settings value] sets the CSS font-feature-settings property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/font-feature-settings>
       MDN: font-feature-settings. *)
 
-val font_variation_settings : string -> declaration
+val font_variation_settings : font_variation_settings -> declaration
 (** [font_variation_settings value] sets the CSS font-variation-settings
     property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/font-variation-settings>

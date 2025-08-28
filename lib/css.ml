@@ -638,6 +638,18 @@ type font_family =
   (* CSS variables *)
   | Var of font_family list var
 
+type font_feature_settings =
+  | Normal
+  | Feature_string of string
+  | Inherit
+  | Var of font_feature_settings var
+
+type font_variation_settings =
+  | Normal
+  | Variation_string of string
+  | Inherit
+  | Var of font_variation_settings var
+
 (** Value kind GADT for typed custom properties *)
 type _ kind =
   | Length : length kind
@@ -649,6 +661,8 @@ type _ kind =
   | Border_style : border_style kind
   | Font_weight : font_weight kind
   | Font_family : font_family list kind
+  | Font_feature_settings : font_feature_settings kind
+  | Font_variation_settings : font_variation_settings kind
   | Blend_mode : blend_mode kind
   | Scroll_snap_strictness : scroll_snap_strictness kind
   | Angle : angle kind
@@ -710,23 +724,23 @@ type scale =
 (** CSS transform values *)
 type transform =
   | Translate of length * length option
-  | TranslateX of length
-  | TranslateY of length
-  | TranslateZ of length
+  | Translate_x of length
+  | Translate_y of length
+  | Translate_z of length
   | Translate3d of length * length * length
   | Rotate of angle
-  | RotateX of angle
-  | RotateY of angle
-  | RotateZ of angle
+  | Rotate_x of angle
+  | Rotate_y of angle
+  | Rotate_z of angle
   | Rotate3d of float * float * float * angle
   | Scale of scale * scale option
-  | ScaleX of scale
-  | ScaleY of scale
-  | ScaleZ of scale
+  | Scale_x of scale
+  | Scale_y of scale
+  | Scale_z of scale
   | Scale3d of scale * scale * scale
   | Skew of angle * angle option
-  | SkewX of angle
-  | SkewY of angle
+  | Skew_x of angle
+  | Skew_y of angle
   | Matrix of float * float * float * float * float * float
   | Matrix3d of
       float
@@ -1543,6 +1557,20 @@ let string_of_scale = function
       | None -> Pp.str [ "var(--"; var_name; ")" ]
       | Some f -> Pp.str [ "var(--"; var_name; ", "; Pp.float f; ")" ])
 
+let rec string_of_font_feature_settings : font_feature_settings -> string =
+  function
+  | Normal -> "normal"
+  | Feature_string s -> s
+  | Inherit -> "inherit"
+  | Var v -> string_of_var string_of_font_feature_settings v
+
+let rec string_of_font_variation_settings : font_variation_settings -> string =
+  function
+  | Normal -> "normal"
+  | Variation_string s -> s
+  | Inherit -> "inherit"
+  | Var v -> string_of_var string_of_font_variation_settings v
+
 let transform_func name args = Pp.str ((name :: "(" :: args) @ [ ")" ])
 
 let rec string_of_transform = function
@@ -1551,9 +1579,9 @@ let rec string_of_transform = function
   | Translate (x, Some y) ->
       transform_func "translate"
         [ string_of_length x; ", "; string_of_length y ]
-  | TranslateX l -> transform_func "translateX" [ string_of_length l ]
-  | TranslateY l -> transform_func "translateY" [ string_of_length l ]
-  | TranslateZ l -> transform_func "translateZ" [ string_of_length l ]
+  | Translate_x l -> transform_func "translateX" [ string_of_length l ]
+  | Translate_y l -> transform_func "translateY" [ string_of_length l ]
+  | Translate_z l -> transform_func "translateZ" [ string_of_length l ]
   | Translate3d (x, y, z) ->
       transform_func "translate3d"
         [
@@ -1561,9 +1589,9 @@ let rec string_of_transform = function
         ]
   (* Rotate transforms *)
   | Rotate a -> transform_func "rotate" [ string_of_angle a ]
-  | RotateX a -> transform_func "rotateX" [ string_of_angle a ]
-  | RotateY a -> transform_func "rotateY" [ string_of_angle a ]
-  | RotateZ a -> transform_func "rotateZ" [ string_of_angle a ]
+  | Rotate_x a -> transform_func "rotateX" [ string_of_angle a ]
+  | Rotate_y a -> transform_func "rotateY" [ string_of_angle a ]
+  | Rotate_z a -> transform_func "rotateZ" [ string_of_angle a ]
   | Rotate3d (x, y, z, angle) ->
       transform_func "rotate3d"
         [
@@ -1579,9 +1607,9 @@ let rec string_of_transform = function
   | Scale (x, None) -> transform_func "scale" [ string_of_scale x ]
   | Scale (x, Some y) ->
       transform_func "scale" [ string_of_scale x; ", "; string_of_scale y ]
-  | ScaleX s -> transform_func "scaleX" [ string_of_scale s ]
-  | ScaleY s -> transform_func "scaleY" [ string_of_scale s ]
-  | ScaleZ s -> transform_func "scaleZ" [ string_of_scale s ]
+  | Scale_x s -> transform_func "scaleX" [ string_of_scale s ]
+  | Scale_y s -> transform_func "scaleY" [ string_of_scale s ]
+  | Scale_z s -> transform_func "scaleZ" [ string_of_scale s ]
   | Scale3d (x, y, z) ->
       transform_func "scale3d"
         [ string_of_scale x; ", "; string_of_scale y; ", "; string_of_scale z ]
@@ -1589,8 +1617,8 @@ let rec string_of_transform = function
   | Skew (x, None) -> transform_func "skewX" [ string_of_angle x ]
   | Skew (x, Some y) ->
       transform_func "skew" [ string_of_angle x; ", "; string_of_angle y ]
-  | SkewX a -> transform_func "skewX" [ string_of_angle a ]
-  | SkewY a -> transform_func "skewY" [ string_of_angle a ]
+  | Skew_x a -> transform_func "skewX" [ string_of_angle a ]
+  | Skew_y a -> transform_func "skewY" [ string_of_angle a ]
   (* Matrix transforms *)
   | Matrix (a, b, c, d, e, f) ->
       let values =
@@ -1745,8 +1773,8 @@ type 'a property =
   | Border : string property
   | Tab_size : int property
   | Webkit_text_size_adjust : string property
-  | Font_feature_settings : string property
-  | Font_variation_settings : string property
+  | Font_feature_settings : font_feature_settings property
+  | Font_variation_settings : font_variation_settings property
   | Webkit_tap_highlight_color : color property
   | Webkit_text_decoration : string property
   | Text_indent : length property
@@ -1819,6 +1847,7 @@ type declaration =
       kind : 'a kind;
       value : 'a;
       layer : string option;
+      meta : meta option;
     }
       -> declaration
       (** Custom property with dynamic name, typed value via value kind, and
@@ -1828,7 +1857,7 @@ type declaration =
 
 (* Extract metadata from a declaration *)
 let declaration_meta : declaration -> meta option = function
-  | Custom_declaration _ -> None
+  | Custom_declaration { meta; _ } -> meta
   | Declaration _ -> None
   | Important_declaration _ -> None
 
@@ -1836,15 +1865,15 @@ let declaration_meta : declaration -> meta option = function
    GADT *)
 let important = function
   | Declaration (prop, value) -> Important_declaration (prop, value)
-  | Custom_declaration { name; kind; value; layer } ->
-      Custom_declaration { name; kind; value; layer }
+  | Custom_declaration { name; kind; value; layer; meta } ->
+      Custom_declaration { name; kind; value; layer; meta }
       (* Custom properties remain as-is; we don't attach !important here *)
   | Important_declaration (prop, value) -> Important_declaration (prop, value)
 (* Already important *)
 
 (* Helper for raw custom properties - primarily for internal use *)
 let custom_property ?layer name value =
-  Custom_declaration { name; kind = String; value; layer }
+  Custom_declaration { name; kind = String; value; layer; meta = None }
 
 (* Convert property value to string based on its type *)
 let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
@@ -2077,8 +2106,8 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
   | Cursor -> string_of_cursor value
   | Pointer_events -> string_of_pointer_events value
   | User_select -> string_of_user_select value
-  | Font_feature_settings -> value
-  | Font_variation_settings -> value
+  | Font_feature_settings -> string_of_font_feature_settings value
+  | Font_variation_settings -> string_of_font_variation_settings value
   | Webkit_text_decoration -> value
   | Webkit_text_size_adjust -> value
 
@@ -2198,6 +2227,8 @@ let string_of_value : type a. ?mode:mode -> a kind -> a -> string =
   | Border_style -> string_of_border_style value
   | Font_weight -> string_of_font_weight value
   | Font_family -> Pp.str ~sep:", " (List.map string_of_font_family value)
+  | Font_feature_settings -> string_of_font_feature_settings value
+  | Font_variation_settings -> string_of_font_variation_settings value
   | Blend_mode -> string_of_blend_mode value
   | Scroll_snap_strictness -> string_of_scroll_snap_strictness value
   | Angle -> string_of_angle value
@@ -2214,7 +2245,8 @@ let var : type a.
     declaration * a var =
  fun ?fallback ?layer ?meta name kind value ->
   let declaration =
-    Custom_declaration { name = Pp.str [ "--"; name ]; kind; value; layer }
+    Custom_declaration
+      { name = Pp.str [ "--"; name ]; kind; value; layer; meta }
   in
   let var_handle = { name; fallback; default = Some value; layer; meta } in
   (declaration, var_handle)
