@@ -639,45 +639,52 @@ type declaration
 val important : declaration -> declaration
 (** [important decl] marks a declaration as !important. *)
 
+(** {2 CSS Rules and Stylesheets} *)
+
 type rule
-(** Abstract type for CSS rules. *)
+(** Abstract type for CSS rules (selector + declarations). *)
 
 type nested_rule
-(** Abstract type for rules or nested content. *)
-
-type media_query
-(** Abstract type for media queries. *)
-
-type container_query
-(** Abstract type for container queries. *)
-
-type starting_style
-(** Abstract type for [@starting-style] rules. *)
-
-type supports_query
-(** Abstract type for [@supports] rules. *)
-
-type layer =
-  | Properties
-  | Theme
-  | Base
-  | Components
-  | Utilities  (** CSS layer types for Tailwind v4. *)
-
-type layered_rules
-(** Abstract type for rules within a layer. *)
+(** Abstract type for rules that can be nested in at-rules. *)
 
 type t
 (** Abstract type for CSS stylesheets. *)
 
 val pp : ?minify:bool -> ?mode:mode -> t -> string
-(** [pp ?minify ?mode stylesheet] converts a stylesheet to string.
-    - [minify] removes unnecessary whitespace (default: false)
-    - [mode] controls CSS variable handling (default: Variables) We don't use
-      Format to have an efficient js_of_ocaml bundle. *)
+(** [pp] is {!to_string}. *)
 
-type at_property
-(** Abstract type for [@property] rules *)
+(** {2 CSS At-Rules}
+
+    At-rules are CSS statements that instruct CSS how to behave. They begin with
+    an at sign (@) followed by an identifier and include everything up to the
+    next semicolon or CSS block.
+
+    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/At-rule> MDN At-rules
+*)
+
+type media_rule
+(** Abstract type for [@media] rules. Media queries apply styles based on device
+    characteristics. *)
+
+type supports_rule
+(** Abstract type for [@supports] rules. Feature queries apply styles based on
+    CSS feature support. *)
+
+type container_rule
+(** Abstract type for [@container] rules. Container queries apply styles based
+    on containing element size. *)
+
+type layer_rule
+(** Abstract type for [@layer] rules. Cascade layers control style precedence.
+*)
+
+type property_rule
+(** Abstract type for [@property] rules. Property rules register custom CSS
+    properties with type checking and constraints. *)
+
+type starting_style_rule
+(** Abstract type for [@starting-style] rules. Starting style rules define
+    initial styles for animating elements. *)
 
 (** CSS text-decoration-style values. *)
 type text_decoration_style_value =
@@ -1910,57 +1917,73 @@ val selector : rule -> string
 val declarations : rule -> declaration list
 (** [declarations rule] returns the list of declarations in a CSS rule. *)
 
+(** {3 Nesting Helpers} *)
+
 val rule_to_nested : rule -> nested_rule
-(** [rule_to_nested rule] converts a rule to a nested_rule for use in layered or
-    nested contexts. *)
+(** [rule_to_nested rule] converts a rule to nested_rule for use in at-rules. *)
 
-val supports_to_nested : supports_query -> nested_rule
-(** [supports_to_nested supports] converts a supports query to a nested_rule. *)
+val supports_to_nested : supports_rule -> nested_rule
+(** [supports_to_nested supports] converts a supports rule to nested_rule. *)
 
-val media : condition:string -> rule list -> media_query
-(** [media ~condition rules] creates a media query. *)
+(** {3 At-Rule Constructors} *)
 
-val supports : condition:string -> rule list -> supports_query
-(** [supports ~condition rules] creates a [@supports] query. *)
+val media : condition:string -> rule list -> media_rule
+(** [media ~condition rules] creates a [@media] rule.
+    @param condition Media query condition (e.g., "(min-width: 768px)") *)
+
+val supports : condition:string -> rule list -> supports_rule
+(** [supports ~condition rules] creates a [@supports] rule for feature queries.
+    @param condition Feature query condition (e.g., "(display: grid)") *)
 
 val supports_nested :
-  condition:string -> rule list -> supports_query list -> supports_query
-(** [supports_nested ~condition rules nested_queries] creates a [@supports]
-    query with nested [@supports] queries. *)
+  condition:string -> rule list -> supports_rule list -> supports_rule
+(** [supports_nested ~condition rules nested_supports] creates a [@supports]
+    rule with nested [@supports] rules. *)
 
 val container :
-  ?name:string option -> condition:string -> rule list -> container_query
-(** [container ?name ~condition rules] creates a container query. *)
+  ?name:string option -> condition:string -> rule list -> container_rule
+(** [container ?name ~condition rules] creates a [@container] rule.
+    @param name Optional container name
+    @param condition Container query condition (e.g., "(min-width: 700px)") *)
 
-val at_property :
+val layer :
+  name:string ->
+  ?media:media_rule list ->
+  ?container:container_rule list ->
+  ?supports:supports_rule list ->
+  nested_rule list ->
+  layer_rule
+(** [layer ~name ?media ?container ?supports rules] creates a [@layer] rule.
+    @param name Layer name
+    @param media Optional nested [@media] rules
+    @param container Optional nested [@container] rules
+    @param supports Optional nested [@supports] rules *)
+
+val property :
   name:string ->
   syntax:string ->
   initial_value:string ->
   ?inherits:bool ->
   unit ->
-  at_property
-(** [at_property ~name ~syntax ~initial_value ?inherits ()] creates a
-    [@property] rule for custom properties. *)
+  property_rule
+(** [property ~name ~syntax ~initial_value ?inherits ()] creates a [@property]
+    rule to register a custom CSS property.
+    @param name Property name (including --)
+    @param syntax Property syntax (e.g., "<color>")
+    @param initial_value Default value
+    @param inherits Whether property inherits (default: false) *)
 
-val layered_rules :
-  layer:layer ->
-  ?media_queries:media_query list ->
-  ?container_queries:container_query list ->
-  ?supports_queries:supports_query list ->
-  nested_rule list ->
-  layered_rules
-(** [layered_rules ~layer ?media_queries ?container_queries ?supports_queries
-     rules] creates rules within a specific CSS layer with optional nested
-    at-rules. *)
+(** {2 Stylesheet Construction} *)
 
+(** Items that can appear at the top level of a stylesheet. *)
 type sheet_item =
-  | Rule of rule
-  | Media of media_query
-  | Container of container_query
-  | Starting_style of starting_style
-  | Supports of supports_query
-  | At_property of at_property
-  | Layer of layered_rules  (** Items that can be added to a stylesheet. *)
+  | Rule of rule  (** Regular CSS rule *)
+  | Media of media_rule  (** [@media] at-rule *)
+  | Supports of supports_rule  (** [@supports] at-rule *)
+  | Container of container_rule  (** [@container] at-rule *)
+  | Layer of layer_rule  (** [@layer] at-rule *)
+  | Property of property_rule  (** [@property] at-rule *)
+  | Starting_style of starting_style_rule  (** [@starting-style] at-rule *)
 
 val empty : t
 (** [empty] is an empty stylesheet. *)
@@ -2002,12 +2025,12 @@ val vars_of_rules : rule list -> string list
 (** [vars_of_rules rules] extracts all CSS variable names referenced in the
     rules' declarations, returning them sorted and deduplicated. *)
 
-val vars_of_media_queries : media_query list -> string list
+val vars_of_media_queries : media_rule list -> string list
 (** [vars_of_media_queries media_queries] extracts all CSS variable names
     referenced in the media queries' rules, returning them sorted and
     deduplicated. *)
 
-val vars_of_container_queries : container_query list -> string list
+val vars_of_container_queries : container_rule list -> string list
 (** [vars_of_container_queries container_queries] extracts all CSS variable
     names referenced in the container queries' rules, returning them sorted and
     deduplicated. *)

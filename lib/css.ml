@@ -2651,62 +2651,60 @@ module Border = struct
 end
 
 type rule = { selector : string; declarations : declaration list }
-type media_query = { media_condition : string; media_rules : rule list }
+type media_rule = { media_condition : string; media_rules : rule list }
 
-type container_query = {
+type container_rule = {
   container_name : string option;
   container_condition : string;
   container_rules : rule list;
 }
 
-type starting_style = { starting_rules : rule list }
+type starting_style_rule = { starting_rules : rule list }
 
 type supports_content =
   | Support_rules of rule list
-  | Support_nested of rule list * supports_query list
+  | Support_nested of rule list * supports_rule list
 
-and supports_query = {
+and supports_rule = {
   supports_condition : string;
   supports_content : supports_content;
 }
 
-type nested_rule = Rule of rule | Supports of supports_query
+type nested_rule = Rule of rule | Supports of supports_rule
 
-type at_property = {
+type property_rule = {
   name : string;
   syntax : string;
   inherits : bool;
   initial_value : string;
 }
 
-type layer = Properties | Theme | Base | Components | Utilities
-
-type layered_rules = {
-  layer : layer;
+type layer_rule = {
+  layer : string;
   rules : nested_rule list;
-  media_queries : media_query list;
-  container_queries : container_query list;
-  supports_queries : supports_query list;
+  media_queries : media_rule list;
+  container_queries : container_rule list;
+  supports_queries : supports_rule list;
 }
 
 type t = {
-  layers : layered_rules list;
+  layers : layer_rule list;
   rules : rule list;
-  media_queries : media_query list;
-  container_queries : container_query list;
-  starting_styles : starting_style list;
-  supports_queries : supports_query list;
-  at_properties : at_property list;
+  media_queries : media_rule list;
+  container_queries : container_rule list;
+  starting_styles : starting_style_rule list;
+  supports_queries : supports_rule list;
+  at_properties : property_rule list;
 }
 
 type sheet_item =
   | Rule of rule
-  | Media of media_query
-  | Container of container_query
-  | Starting_style of starting_style
-  | Supports of supports_query
-  | At_property of at_property
-  | Layer of layered_rules
+  | Media of media_rule
+  | Supports of supports_rule
+  | Container of container_rule
+  | Layer of layer_rule
+  | Property of property_rule
+  | Starting_style of starting_style_rule
 
 (** {1 Creation} *)
 
@@ -2910,15 +2908,20 @@ let container ?(name = Option.none) ~condition rules =
     container_rules = rules;
   }
 
-let at_property ~name ~syntax ~initial_value ?(inherits = false) () =
+let property ~name ~syntax ~initial_value ?(inherits = false) () =
   { name; syntax; inherits; initial_value }
 
 let rule_to_nested rule : nested_rule = Rule rule
 let supports_to_nested supports : nested_rule = Supports supports
 
-let layered_rules ~layer ?(media_queries = []) ?(container_queries = [])
-    ?(supports_queries = []) rules =
-  { layer; rules; media_queries; container_queries; supports_queries }
+let layer ~name ?(media = []) ?(container = []) ?(supports = []) rules =
+  {
+    layer = name;
+    rules;
+    media_queries = media;
+    container_queries = container;
+    supports_queries = supports;
+  }
 
 let empty =
   {
@@ -2957,7 +2960,7 @@ let stylesheet items =
           { acc with starting_styles = acc.starting_styles @ [ s ] }
       | Supports s ->
           { acc with supports_queries = acc.supports_queries @ [ s ] }
-      | At_property a -> { acc with at_properties = acc.at_properties @ [ a ] }
+      | Property a -> { acc with at_properties = acc.at_properties @ [ a ] }
       | Layer l -> { acc with layers = acc.layers @ [ l ] })
     empty items
 
@@ -3432,13 +3435,6 @@ let render_formatted_rule ~mode ?(indent = "") rule =
   lines
     [ str [ indent; rule.selector; " {" ]; lines props; str [ indent; "}" ] ]
 
-let layer_to_string = function
-  | Properties -> "properties"
-  | Theme -> "theme"
-  | Base -> "base"
-  | Components -> "components"
-  | Utilities -> "utilities"
-
 let rec render_supports_content ~minify ~mode content =
   match content with
   | Support_rules rules ->
@@ -3499,76 +3495,6 @@ let header =
 (* Configuration for stylesheet rendering *)
 type config = { minify : bool; mode : mode }
 
-(* TODO: Complete migration to structured CSS representation Intermediate
-   representation for CSS output type css_block = | RuleBlock of { selector:
-   string; properties: (declaration_property * string) list } | MediaBlock of {
-   condition: string; blocks: css_block list } | ContainerBlock of { name:
-   string option; condition: string; blocks: css_block list } | SupportsBlock of
-   { condition: string; blocks: css_block list } | LayerBlock of { name: string;
-   blocks: css_block list } | StartingStyleBlock of { blocks: css_block list } |
-   PropertyBlock of { name: string; syntax: string; inherits: bool;
-   initial_value: string } | Raw of string
-
-   let rules_to_blocks rules = List.map (fun r -> RuleBlock { selector =
-   r.selector; properties = r.declarations }) rules
-
-   let rec format_block ~config block = match block with | RuleBlock { selector;
-   properties } -> let sel = if config.minify then minify_selector selector else
-   selector in let props = properties |> List.map (fun (name, value) -> let
-   prop_name = string_of_property name in let val_str = if config.minify then
-   minify_value value else value in str [prop_name; ":"; val_str]) in if
-   config.minify then str [sel; "{"; str ~sep:";" props; "}"] else let
-   prop_lines = props |> List.map (fun p -> " " ^ p ^ ";") |> String.concat "\n"
-   in str [sel; " {\n"; prop_lines; "\n}"]
-
-   | MediaBlock { condition; blocks } -> let content = blocks |> List.map
-   (format_block ~config) |> String.concat (if config.minify then "" else "\n")
-   in if config.minify then str ["@media "; condition; "{"; content; "}"] else
-   let indented = blocks |> List.map (format_block ~config) |> List.map (fun s
-   -> " " ^ String.concat "\n " (String.split_on_char '\n' s)) |> String.concat
-   "\n" in str ["@media "; condition; " {\n"; indented; "\n}"]
-
-   | ContainerBlock { name; condition; blocks } -> let name_part = match name
-   with None -> "" | Some n -> n ^ " " in let content = blocks |> List.map
-   (format_block ~config) |> String.concat (if config.minify then "" else "\n")
-   in if config.minify then str ["@container "; name_part; condition; "{";
-   content; "}"] else let indented = blocks |> List.map (format_block ~config)
-   |> List.map (fun s -> " " ^ String.concat "\n " (String.split_on_char '\n'
-   s)) |> String.concat "\n" in str ["@container "; name_part; condition; "
-   {\n"; indented; "\n}"]
-
-   | SupportsBlock { condition; blocks } -> let content = blocks |> List.map
-   (format_block ~config) |> String.concat (if config.minify then "" else "\n")
-   in if config.minify then str ["@supports "; condition; "{"; content; "}"]
-   else let indented = blocks |> List.map (format_block ~config) |> List.map
-   (fun s -> " " ^ String.concat "\n " (String.split_on_char '\n' s)) |>
-   String.concat "\n" in str ["@supports "; condition; " {\n"; indented; "\n}"]
-
-   | LayerBlock { name; blocks } -> if blocks = [] then str ["@layer "; name;
-   ";"] else let content = blocks |> List.map (format_block ~config) |>
-   String.concat (if config.minify then "" else "\n") in if config.minify then
-   str ["@layer "; name; "{"; content; "}"] else let indented = blocks |>
-   List.map (format_block ~config) |> List.map (fun s -> " " ^ String.concat "\n
-   " (String.split_on_char '\n' s)) |> String.concat "\n" in str ["@layer ";
-   name; " {\n"; indented; "\n}"]
-
-   | StartingStyleBlock { blocks } -> let content = blocks |> List.map
-   (format_block ~config) |> String.concat (if config.minify then "" else "\n")
-   in if config.minify then str ["@starting-style{"; content; "}"] else let
-   indented = blocks |> List.map (format_block ~config) |> List.map (fun s -> "
-   " ^ String.concat "\n " (String.split_on_char '\n' s)) |> String.concat "\n"
-   in str ["@starting-style {\n"; indented; "\n}"]
-
-   | PropertyBlock { name; syntax; inherits; initial_value } -> if config.minify
-   then str ["@property "; name; "{syntax:\""; syntax; "\";inherits:"; (if
-   inherits then "true" else "false"); ";initial-value:"; initial_value; "}"]
-   else str ["@property "; name; " {\n syntax: \""; syntax; "\";\n inherits: ";
-   (if inherits then "true" else "false"); ";\n initial-value: "; initial_value;
-   ";\n}"]
-
-   | Raw s -> s *)
-
-(* Helper: Render rules string for a layer *)
 let render_layer_rules ~config rules =
   let render_nested_rule : nested_rule -> string = function
     | Rule r ->
@@ -3606,7 +3532,6 @@ let render_at_rules ~config ~at_rule ~condition ~name_part ~rules ~indent =
     str [ "@"; at_rule; " "; name_part; condition; "{"; content; "}" ]
   else str [ "@"; at_rule; " "; name_part; condition; " {\n"; content; "\n}" ]
 
-(* Helper: Render media queries *)
 let render_layer_media ~config media_queries =
   media_queries
   |> List.map (fun mq ->
@@ -3614,7 +3539,6 @@ let render_layer_media ~config media_queries =
            ~name_part:"" ~rules:mq.media_rules ~indent:"  ")
   |> String.concat (if config.minify then "" else "\n")
 
-(* Helper: Render container queries *)
 let render_layer_containers ~config container_queries =
   container_queries
   |> List.map (fun cq ->
@@ -3628,7 +3552,6 @@ let render_layer_containers ~config container_queries =
            ~rules:cq.container_rules ~indent:"  ")
   |> String.concat (if config.minify then "" else "\n")
 
-(* Helper: Render supports queries *)
 let render_layer_supports ~config supports_queries =
   supports_queries
   |> List.map (fun sq ->
@@ -3642,12 +3565,6 @@ let render_layer_supports ~config supports_queries =
            str [ "@supports "; sq.supports_condition; " {\n"; content; "\n}" ])
   |> String.concat (if config.minify then "" else "\n")
 
-(* Helper: Check if layer is empty *)
-let is_layer_empty (lr : layered_rules) =
-  lr.rules = [] && lr.media_queries = [] && lr.container_queries = []
-  && lr.supports_queries = []
-
-(* Helper: Render non-layered elements *)
 let render_stylesheet_rules ~config rules =
   if config.minify then
     rules |> merge_rules |> merge_by_properties
@@ -3747,7 +3664,7 @@ let render_at_properties ~config at_properties =
 
 (* Helper functions for to_string *)
 let render_layer ~config layer_rules =
-  let layer_name = layer_to_string layer_rules.layer in
+  let layer_name = layer_rules.layer in
   let all_parts =
     [
       render_layer_rules ~config layer_rules.rules;
@@ -3764,32 +3681,6 @@ let render_layer ~config layer_rules =
     in
     if config.minify then str [ "@layer "; layer_name; "{"; content; "}" ]
     else str [ "@layer "; layer_name; " {\n"; content; "\n}" ]
-
-let prepare_layer_strings ~config stylesheet =
-  let has_empty_components_and_utilities =
-    List.exists
-      (fun lr -> lr.layer = Components && is_layer_empty lr)
-      stylesheet.layers
-    && List.exists
-         (fun lr -> lr.layer = Utilities && is_layer_empty lr)
-         stylesheet.layers
-  in
-  let layer_strings =
-    if has_empty_components_and_utilities && config.minify then
-      stylesheet.layers
-      |> List.filter (fun lr ->
-             not
-               ((lr.layer = Components || lr.layer = Utilities)
-               && is_layer_empty lr))
-      |> List.map (render_layer ~config)
-    else stylesheet.layers |> List.map (render_layer ~config)
-  in
-  let empty_layers_decl =
-    if has_empty_components_and_utilities && config.minify then
-      [ "@layer components,utilities;" ]
-    else []
-  in
-  (layer_strings, empty_layers_decl)
 
 let render_optional_section render_fn items =
   let rendered = render_fn items in
@@ -3836,9 +3727,7 @@ let to_string ?(minify = false) ?(mode = Variables) stylesheet =
   let header_str =
     if List.length stylesheet.layers > 0 then str [ header; "\n" ] else ""
   in
-  let layer_strings, empty_layers_decl =
-    prepare_layer_strings ~config stylesheet
-  in
+  let layer_strings = stylesheet.layers |> List.map (render_layer ~config) in
   let ( rule_strings,
         at_property_strings,
         starting_style_strings,
@@ -3848,9 +3737,8 @@ let to_string ?(minify = false) ?(mode = Variables) stylesheet =
     render_stylesheet_sections ~config stylesheet
   in
   let all_parts =
-    [ header_str; "" ] @ layer_strings @ empty_layers_decl @ rule_strings
-    @ starting_style_strings @ container_strings @ supports_strings
-    @ media_strings @ at_property_strings
+    [ header_str; "" ] @ layer_strings @ rule_strings @ starting_style_strings
+    @ container_strings @ supports_strings @ media_strings @ at_property_strings
   in
   if config.minify then String.concat "" all_parts
   else String.concat "\n" (List.filter (fun s -> s <> "") all_parts)
