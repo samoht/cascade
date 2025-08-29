@@ -842,7 +842,9 @@ type font_family =
   | Tahoma
   | Trebuchet_ms
   | Times_new_roman
+  | Times
   | Georgia
+  | Cambria
   | Garamond
   | Courier_new
   | Courier
@@ -1945,6 +1947,18 @@ val property :
     @param syntax Property syntax (e.g., "<color>").
     @param initial_value Default value.
     @param inherits Whether property inherits (default: false). *)
+
+val property_rule_name : property_rule -> string
+(** [property_rule_name rule] returns the property name from a property rule. *)
+
+val property_rule_initial : property_rule -> string
+(** [property_rule_initial rule] returns the initial value from a property rule.
+*)
+
+val default_decl_of_property_rule : property_rule -> declaration
+(** [default_decl_of_property_rule rule] converts a property rule to a custom
+    property declaration with its initial value. This is useful for creating
+    default declarations in the properties layer. *)
 
 (** {2 Stylesheet Construction} *)
 

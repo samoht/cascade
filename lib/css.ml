@@ -603,7 +603,9 @@ type font_family =
   | Tahoma
   | Trebuchet_ms
   | Times_new_roman
+  | Times
   | Georgia
+  | Cambria
   | Garamond
   | Courier_new
   | Courier
@@ -2170,7 +2172,9 @@ let rec string_of_font_family = function
   | Tahoma -> "Tahoma"
   | Trebuchet_ms -> "\"Trebuchet MS\""
   | Times_new_roman -> "\"Times New Roman\""
+  | Times -> "Times"
   | Georgia -> "Georgia"
+  | Cambria -> "Cambria"
   | Garamond -> "Garamond"
   | Courier_new -> "\"Courier New\""
   | Courier -> "Courier"
@@ -2875,6 +2879,9 @@ let container ?(name = Option.none) ~condition rules =
 let property ~name ~syntax ~initial_value ?(inherits = false) () =
   { name; syntax; inherits; initial_value }
 
+let property_rule_name r = r.name
+let property_rule_initial r = r.initial_value
+let default_decl_of_property_rule r = custom_property r.name r.initial_value
 let rule_to_nested rule : nested_rule = Rule rule
 let supports_to_nested supports : nested_rule = Supports supports
 
