@@ -771,7 +771,15 @@ type shadow = {
   color : color;
 }
 
-type box_shadow = Shadow of shadow | Shadows of shadow list | None
+type box_shadow =
+  | Shadow of shadow
+  | Shadows of shadow list
+  | None
+  | Var of box_shadow var
+  | Composite of string var list (* For Tailwind v4 style composite shadows *)
+  | Raw of string
+(* Temporary: for complex Tailwind v4 compositions - should be avoided *)
+
 type float_side = None | Left | Right
 
 (** Value kind GADT for typed custom properties *)
@@ -888,16 +896,9 @@ let rec string_of_color_in_mix = function
   | c -> string_of_color c
 
 and string_of_color ?(mode = Variables) = function
-  | Hex { hash; value } ->
-      (* If hash was originally present, include it; for Tailwind arbitrary
-         values without hash, omit it *)
-      if hash then Pp.str [ "#"; value ]
-      else if
-        (* Also normalize by removing ONE leading zero from hex if starts with
-           "00" *)
-        String.length value = 6 && String.sub value 0 2 = "00"
-      then String.sub value 1 5 (* 00ff00 -> 0ff00 *)
-      else value
+  | Hex { hash = _; value } ->
+      (* Always include # for valid CSS output *)
+      Pp.str [ "#"; value ]
   | Rgb { r; g; b } ->
       Pp.str
         [
@@ -989,11 +990,19 @@ let string_of_shadow ?(mode = Variables)
   if inset then Pp.str [ "inset "; h; " "; v; " "; b; " "; s; " "; c ]
   else Pp.str [ h; " "; v; " "; b; " "; s; " "; c ]
 
-let string_of_box_shadow ?(mode = Variables) : box_shadow -> string = function
+let rec string_of_box_shadow ?(mode = Variables) : box_shadow -> string =
+  function
   | None -> "none"
   | Shadow shadow -> string_of_shadow ~mode shadow
   | Shadows shadows ->
       shadows |> List.map (string_of_shadow ~mode) |> String.concat ", "
+  | Var var -> string_of_var ~mode (string_of_box_shadow ~mode) var
+  | Composite vars ->
+      vars
+      |> List.map (fun v -> string_of_var ~mode (fun s -> s) v)
+      |> String.concat ","
+  | Raw s ->
+      s (* Pass through raw string - temporary for Tailwind v4 compatibility *)
 
 let string_of_blend_mode : blend_mode -> string = function
   | Normal -> "normal"

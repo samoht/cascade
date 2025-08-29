@@ -1555,6 +1555,11 @@ type box_shadow =
   | Shadow of shadow
   | Shadows of shadow list  (** Multiple shadows *)
   | None  (** No shadow *)
+  | Var of box_shadow var  (** CSS variable reference *)
+  | Composite of string var list
+      (** Composite of multiple shadow variables for Tailwind v4 *)
+  | Raw of string
+      (** Temporary: for complex Tailwind v4 compositions - should be avoided *)
 
 val box_shadow : box_shadow -> declaration
 (** [box_shadow value] sets the CSS box-shadow property. *)
