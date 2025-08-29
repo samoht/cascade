@@ -224,6 +224,7 @@ type display =
   | Table_row
   | Table_cell
   | List_item
+  | Webkit_box
 
 (** CSS position values. *)
 type position = Static | Relative | Absolute | Fixed | Sticky
@@ -414,6 +415,9 @@ type text_transform =
 (** CSS box sizing values. *)
 type box_sizing = Border_box | Content_box | Inherit
 
+(** CSS webkit-box-orient values. *)
+type webkit_box_orient = Horizontal | Vertical | Inherit
+
 (** CSS white space values. *)
 type white_space =
   | Normal
@@ -487,6 +491,19 @@ type font_variant_numeric_token =
   | Diagonal_fractions
   | Stacked_fractions
   | Normal_numeric
+
+(** CSS font-variant-numeric value, supporting both tokens and composed
+    variables. *)
+type font_variant_numeric =
+  | Tokens of font_variant_numeric_token list
+  | Var of font_variant_numeric_token var
+  | Composed of {
+      ordinal : font_variant_numeric_token option;
+      slashed_zero : font_variant_numeric_token option;
+      numeric_figure : font_variant_numeric_token option;
+      numeric_spacing : font_variant_numeric_token option;
+      numeric_fraction : font_variant_numeric_token option;
+    }
 
 (** CSS border-collapse values. *)
 type border_collapse = Collapse | Separate | Inherit
@@ -1584,8 +1601,12 @@ val webkit_tap_highlight_color : color -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/-webkit-tap-highlight-color>
       MDN: -webkit-tap-highlight-color. *)
 
-val webkit_text_decoration : string -> declaration
+val webkit_text_decoration : text_decoration -> declaration
 (** [webkit_text_decoration value] sets the -webkit-text-decoration property. *)
+
+val webkit_text_decoration_color : color -> declaration
+(** [webkit_text_decoration_color color] sets the -webkit-text-decoration-color
+    property. *)
 
 val text_indent : length -> declaration
 (** [text_indent len] sets the CSS text-indent property.
@@ -1630,6 +1651,9 @@ val moz_osx_font_smoothing : moz_osx_font_smoothing -> declaration
 val webkit_line_clamp : int -> declaration
 (** [webkit_line_clamp value] sets the -webkit-line-clamp property. *)
 
+val webkit_box_orient : webkit_box_orient -> declaration
+(** [webkit_box_orient value] sets the -webkit-box-orient property. *)
+
 val text_overflow : text_overflow -> declaration
 (** [text_overflow value] sets the CSS text-overflow property. *)
 
@@ -1645,12 +1669,31 @@ val overflow_wrap : overflow_wrap -> declaration
 val hyphens : hyphens -> declaration
 (** [hyphens value] sets the CSS hyphens property. *)
 
+val webkit_hyphens : hyphens -> declaration
+(** [webkit_hyphens value] sets the -webkit-hyphens property. *)
+
 val font_stretch : font_stretch -> declaration
 (** [font_stretch value] sets the CSS font-stretch property. *)
 
-val font_variant_numeric : font_variant_numeric_token list -> declaration
-(** [font_variant_numeric tokens] sets CSS font-variant-numeric to a
-    space-separated list of [tokens]. *)
+val font_variant_numeric : font_variant_numeric -> declaration
+(** [font_variant_numeric value] sets CSS font-variant-numeric. Can use either a
+    list of tokens or composed CSS variables for Tailwind v4 compatibility. *)
+
+val font_variant_numeric_tokens :
+  font_variant_numeric_token list -> font_variant_numeric
+(** [font_variant_numeric_tokens tokens] creates a font-variant-numeric value
+    from tokens. *)
+
+val font_variant_numeric_composed :
+  ?ordinal:font_variant_numeric_token ->
+  ?slashed_zero:font_variant_numeric_token ->
+  ?numeric_figure:font_variant_numeric_token ->
+  ?numeric_spacing:font_variant_numeric_token ->
+  ?numeric_fraction:font_variant_numeric_token ->
+  unit ->
+  font_variant_numeric
+(** [font_variant_numeric_composed ...] creates a composed font-variant-numeric
+    value using CSS variables for Tailwind v4 style composition. *)
 
 val cursor : cursor -> declaration
 (** [cursor c] sets the CSS cursor property.
@@ -2041,7 +2084,9 @@ val custom_declaration_name : declaration -> string option
 
 val deduplicate_declarations : declaration list -> declaration list
 (** [deduplicate_declarations declarations] removes duplicate declarations,
-    keeping the last occurrence. *)
+    keeping the last occurrence. It also automatically duplicates properties
+    that have known browser bugs requiring duplication for correct rendering
+    (e.g., -webkit-text-decoration-color). *)
 
 val inline_style_of_declarations : ?mode:mode -> declaration list -> string
 (** [inline_style_of_declarations declarations] converts a list of declarations

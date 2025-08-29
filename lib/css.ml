@@ -159,6 +159,7 @@ type display =
   | Table_row
   | Table_cell
   | List_item
+  | Webkit_box
 
 (** CSS position values *)
 type position = Static | Relative | Absolute | Fixed | Sticky
@@ -332,6 +333,7 @@ type scroll_snap_stop = Normal | Always | Inherit
 type scroll_snap_strictness = Mandatory | Proximity
 type scroll_snap_align = None | Start | End | Center | Inherit
 type scroll_snap_axis = X | Y | Block | Inline | Both
+type webkit_box_orient = Horizontal | Vertical | Inherit
 
 type scroll_snap_type =
   | None
@@ -422,6 +424,17 @@ type font_variant_numeric_token =
   | Diagonal_fractions
   | Stacked_fractions
   | Normal_numeric
+
+type font_variant_numeric =
+  | Tokens of font_variant_numeric_token list
+  | Var of font_variant_numeric_token var
+  | Composed of {
+      ordinal : font_variant_numeric_token option;
+      slashed_zero : font_variant_numeric_token option;
+      numeric_figure : font_variant_numeric_token option;
+      numeric_spacing : font_variant_numeric_token option;
+      numeric_fraction : font_variant_numeric_token option;
+    }
 
 type pointer_events =
   | Auto
@@ -1009,6 +1022,7 @@ let string_of_display : display -> string = function
   | Table_row -> "table-row"
   | Table_cell -> "table-cell"
   | List_item -> "list-item"
+  | Webkit_box -> "-webkit-box"
 
 let string_of_position = function
   | Static -> "static"
@@ -1137,6 +1151,11 @@ let string_of_resize : resize -> string = function
   | Vertical -> "vertical"
   | Block -> "block"
   | Inline -> "inline"
+  | Inherit -> "inherit"
+
+let string_of_webkit_box_orient : webkit_box_orient -> string = function
+  | Horizontal -> "horizontal"
+  | Vertical -> "vertical"
   | Inherit -> "inherit"
 
 let string_of_object_fit : object_fit -> string = function
@@ -1661,6 +1680,43 @@ let rec string_of_transform = function
       string_of_var string_of_transforms v
   | None -> "none"
 
+let string_of_font_variant_numeric_token = function
+  | Ordinal -> "ordinal"
+  | Slashed_zero -> "slashed-zero"
+  | Lining_nums -> "lining-nums"
+  | Oldstyle_nums -> "oldstyle-nums"
+  | Proportional_nums -> "proportional-nums"
+  | Tabular_nums -> "tabular-nums"
+  | Diagonal_fractions -> "diagonal-fractions"
+  | Stacked_fractions -> "stacked-fractions"
+  | Normal_numeric -> "normal"
+
+let string_of_font_variant_numeric mode : font_variant_numeric -> string =
+  function
+  | Tokens tokens ->
+      String.concat " " (List.map string_of_font_variant_numeric_token tokens)
+  | Var v -> string_of_var ~mode string_of_font_variant_numeric_token v
+  | Composed
+      {
+        ordinal;
+        slashed_zero;
+        numeric_figure;
+        numeric_spacing;
+        numeric_fraction;
+      } ->
+      let tokens =
+        List.filter_map
+          (fun x -> x)
+          [
+            ordinal;
+            slashed_zero;
+            numeric_figure;
+            numeric_spacing;
+            numeric_fraction;
+          ]
+      in
+      String.concat " " (List.map string_of_font_variant_numeric_token tokens)
+
 type 'a property =
   | Background_color : color property
   | Color : color property
@@ -1778,7 +1834,8 @@ type 'a property =
   | Font_feature_settings : font_feature_settings property
   | Font_variation_settings : font_variation_settings property
   | Webkit_tap_highlight_color : color property
-  | Webkit_text_decoration : string property
+  | Webkit_text_decoration : text_decoration property
+  | Webkit_text_decoration_color : color property
   | Text_indent : length property
   | List_style : string property
   | Font : string property
@@ -1811,13 +1868,15 @@ type 'a property =
   | Webkit_font_smoothing : webkit_font_smoothing property
   | Moz_osx_font_smoothing : string property
   | Webkit_line_clamp : int property
+  | Webkit_box_orient : webkit_box_orient property
   | Text_overflow : text_overflow property
   | Text_wrap : text_wrap property
   | Word_break : word_break property
   | Overflow_wrap : overflow_wrap property
   | Hyphens : hyphens property
+  | Webkit_hyphens : hyphens property
   | Font_stretch : font_stretch property
-  | Font_variant_numeric : font_variant_numeric_token list property
+  | Font_variant_numeric : font_variant_numeric property
   | Backdrop_filter : string property
   | Scroll_snap_align : scroll_snap_align property
   | Scroll_snap_stop : scroll_snap_stop property
@@ -1932,6 +1991,7 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
   | Z_index -> string_of_z_index value
   | Tab_size -> string_of_int value
   | Webkit_line_clamp -> string_of_int value
+  | Webkit_box_orient -> string_of_webkit_box_orient value
   | Top -> string_of_length ~mode value
   | Right -> string_of_length ~mode value
   | Bottom -> string_of_length ~mode value
@@ -1947,6 +2007,7 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
   | Border_bottom_color -> string_of_color ~mode value
   | Border_left_color -> string_of_color ~mode value
   | Text_decoration_color -> string_of_color ~mode value
+  | Webkit_text_decoration_color -> string_of_color ~mode value
   | Webkit_tap_highlight_color -> string_of_color ~mode value
   | Text_indent -> string_of_length ~mode value
   | Border_spacing -> string_of_length ~mode value
@@ -2012,33 +2073,26 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
       | Manual -> "manual"
       | Auto -> "auto"
       | Inherit -> "inherit")
+  | Webkit_hyphens -> (
+      match value with
+      | None_h -> "none"
+      | Manual -> "manual"
+      | Auto -> "auto"
+      | Inherit -> "inherit")
   | Font_stretch -> (
       match value with
-      | Ultra_condensed -> "ultra-condensed"
-      | Extra_condensed -> "extra-condensed"
-      | Condensed -> "condensed"
-      | Semi_condensed -> "semi-condensed"
-      | Normal -> "normal"
-      | Semi_expanded -> "semi-expanded"
-      | Expanded -> "expanded"
-      | Extra_expanded -> "extra-expanded"
-      | Ultra_expanded -> "ultra-expanded"
+      | Ultra_condensed -> "50%"
+      | Extra_condensed -> "62.5%"
+      | Condensed -> "75%"
+      | Semi_condensed -> "87.5%"
+      | Normal -> "100%"
+      | Semi_expanded -> "112.5%"
+      | Expanded -> "125%"
+      | Extra_expanded -> "150%"
+      | Ultra_expanded -> "200%"
       | Percentage p -> Pp.str [ string_of_float p; "%" ]
       | Inherit -> "inherit")
-  | Font_variant_numeric ->
-      String.concat " "
-        (List.map
-           (function
-             | Ordinal -> "ordinal"
-             | Slashed_zero -> "slashed-zero"
-             | Lining_nums -> "lining-nums"
-             | Oldstyle_nums -> "oldstyle-nums"
-             | Proportional_nums -> "proportional-nums"
-             | Tabular_nums -> "tabular-nums"
-             | Diagonal_fractions -> "diagonal-fractions"
-             | Stacked_fractions -> "stacked-fractions"
-             | Normal_numeric -> "normal")
-           value)
+  | Font_variant_numeric -> string_of_font_variant_numeric mode value
   | Webkit_font_smoothing -> string_of_webkit_font_smoothing value
   | Scroll_snap_type -> string_of_scroll_snap_type value
   | Container_type -> string_of_container_type value
@@ -2110,7 +2164,7 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
   | User_select -> string_of_user_select value
   | Font_feature_settings -> string_of_font_feature_settings value
   | Font_variation_settings -> string_of_font_variation_settings value
-  | Webkit_text_decoration -> value
+  | Webkit_text_decoration -> string_of_text_decoration value
   | Webkit_text_size_adjust -> value
 
 (* String conversion for value kinds - reuses existing printers *)
@@ -2483,13 +2537,22 @@ let moz_osx_font_smoothing value =
   Declaration (Moz_osx_font_smoothing, string_of_moz_font_smoothing value)
 
 let webkit_line_clamp value = Declaration (Webkit_line_clamp, value)
+let webkit_box_orient value = Declaration (Webkit_box_orient, value)
 let text_overflow v = Declaration (Text_overflow, v)
 let text_wrap v = Declaration (Text_wrap, v)
 let word_break v = Declaration (Word_break, v)
 let overflow_wrap v = Declaration (Overflow_wrap, v)
 let hyphens v = Declaration (Hyphens, v)
+let webkit_hyphens v = Declaration (Webkit_hyphens, v)
 let font_stretch v = Declaration (Font_stretch, v)
 let font_variant_numeric v = Declaration (Font_variant_numeric, v)
+let font_variant_numeric_tokens tokens = Tokens tokens
+
+let font_variant_numeric_composed ?ordinal ?slashed_zero ?numeric_figure
+    ?numeric_spacing ?numeric_fraction () =
+  Composed
+    { ordinal; slashed_zero; numeric_figure; numeric_spacing; numeric_fraction }
+
 let backdrop_filter value = Declaration (Backdrop_filter, value)
 let background_position value = Declaration (Background_position, value)
 let background_repeat value = Declaration (Background_repeat, value)
@@ -2517,6 +2580,10 @@ let webkit_tap_highlight_color value =
   Declaration (Webkit_tap_highlight_color, value)
 
 let webkit_text_decoration value = Declaration (Webkit_text_decoration, value)
+
+let webkit_text_decoration_color value =
+  Declaration (Webkit_text_decoration_color, value)
+
 let text_indent len = Declaration (Text_indent, len)
 let border_collapse value = Declaration (Border_collapse, value)
 let list_style value = Declaration (List_style, value)
@@ -2717,6 +2784,8 @@ let string_of_property : type a. a property -> string = function
   | Text_align -> "text-align"
   | Text_decoration -> "text-decoration"
   | Text_decoration_style -> "text-decoration-style"
+  | Text_decoration_color -> "text-decoration-color"
+  | Text_decoration_thickness -> "text-decoration-thickness"
   | Text_underline_offset -> "text-underline-offset"
   | Text_transform -> "text-transform"
   | Letter_spacing -> "letter-spacing"
@@ -2802,6 +2871,7 @@ let string_of_property : type a. a property -> string = function
   | Font_variation_settings -> "font-variation-settings"
   | Webkit_tap_highlight_color -> "-webkit-tap-highlight-color"
   | Webkit_text_decoration -> "-webkit-text-decoration"
+  | Webkit_text_decoration_color -> "-webkit-text-decoration-color"
   | Text_indent -> "text-indent"
   | List_style -> "list-style"
   | Font -> "font"
@@ -2834,11 +2904,13 @@ let string_of_property : type a. a property -> string = function
   | Webkit_font_smoothing -> "-webkit-font-smoothing"
   | Moz_osx_font_smoothing -> "-moz-osx-font-smoothing"
   | Webkit_line_clamp -> "-webkit-line-clamp"
+  | Webkit_box_orient -> "-webkit-box-orient"
   | Text_overflow -> "text-overflow"
   | Text_wrap -> "text-wrap"
   | Word_break -> "word-break"
   | Overflow_wrap -> "overflow-wrap"
   | Hyphens -> "hyphens"
+  | Webkit_hyphens -> "-webkit-hyphens"
   | Font_stretch -> "font-stretch"
   | Font_variant_numeric -> "font-variant-numeric"
   | Backdrop_filter -> "backdrop-filter"
@@ -3074,22 +3146,50 @@ let vars_of_declarations properties =
     properties
   |> List.sort_uniq compare_vars_by_name
 
+(* Helper function to check if a property should allow duplicates Some webkit
+   properties need to be duplicated for browser compatibility. This is a
+   workaround for older WebKit/Safari versions that had bugs with certain CSS
+   properties.
+
+   See: https://bugs.webkit.org/show_bug.cgi?id=101180 and:
+   https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration-color#browser_compatibility
+
+   Modern CSS libraries include these duplicates for maximum compatibility. *)
+
+(* Duplicate known buggy properties for browser compatibility *)
+let duplicate_buggy_properties decls =
+  List.concat_map
+    (fun decl ->
+      match decl with
+      | Declaration (Webkit_text_decoration, Inherit)
+      | Important_declaration (Webkit_text_decoration, Inherit) ->
+          [ decl; decl; decl ] (* Triplicate only when inherit *)
+      | Declaration (Webkit_text_decoration_color, _)
+      | Important_declaration (Webkit_text_decoration_color, _) ->
+          [ decl; decl ] (* Always duplicate webkit-text-decoration-color *)
+      | _ -> [ decl ])
+    decls
+
 let deduplicate_declarations props =
   (* Keep last occurrence of each property while preserving order *)
   let seen = Hashtbl.create 16 in
-  List.fold_right
-    (fun decl acc ->
-      let prop_name =
-        match decl with
-        | Declaration (prop, _) -> string_of_property prop
-        | Important_declaration (prop, _) -> string_of_property prop
-        | Custom_declaration { name; _ } -> name
-      in
-      if Hashtbl.mem seen prop_name then acc
-      else (
-        Hashtbl.add seen prop_name ();
-        decl :: acc))
-    props []
+  let deduped =
+    List.fold_right
+      (fun decl acc ->
+        let prop_name =
+          match decl with
+          | Declaration (prop, _) -> string_of_property prop
+          | Important_declaration (prop, _) -> string_of_property prop
+          | Custom_declaration { name; _ } -> name
+        in
+        if Hashtbl.mem seen prop_name then acc
+        else (
+          Hashtbl.add seen prop_name ();
+          decl :: acc))
+      props []
+  in
+  (* Apply buggy property duplication after deduplication *)
+  duplicate_buggy_properties deduped
 
 (* Get the name of a variable *)
 let var_name (V v) = Pp.str [ "--"; v.name ]
@@ -3106,6 +3206,7 @@ let extract_vars_from_prop_value : type a. a property -> a -> any_var list =
   | Border_bottom_color, Var v -> [ V v ]
   | Border_left_color, Var v -> [ V v ]
   | Text_decoration_color, Var v -> [ V v ]
+  | Webkit_text_decoration_color, Var v -> [ V v ]
   | Webkit_tap_highlight_color, Var v -> [ V v ]
   | Padding, Var v -> [ V v ]
   | Padding_left, Var v -> [ V v ]
@@ -3196,13 +3297,7 @@ let merge_rules rules =
           merge_helper acc' seen rest
         else
           (* New selector, add to acc and mark as seen *)
-          merge_helper
-            ({
-               rule with
-               declarations = deduplicate_declarations rule.declarations;
-             }
-            :: acc)
-            (rule.selector :: seen) rest
+          merge_helper (rule :: acc) (rule.selector :: seen) rest
   in
   merge_helper [] [] rules
   |> List.map (fun r ->
@@ -3458,6 +3553,9 @@ type config = { minify : bool; mode : mode }
 let render_layer_rules ~config rules =
   let render_nested_rule : nested_rule -> string = function
     | Rule r ->
+        let r =
+          { r with declarations = deduplicate_declarations r.declarations }
+        in
         if config.minify then render_minified_rule ~mode:config.mode r
         else render_formatted_rule ~mode:config.mode r
     | Supports sq ->
