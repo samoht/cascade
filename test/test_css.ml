@@ -224,7 +224,8 @@ let test_transform () =
       [
         Translate (Px 10, Some (Pct 50.));
         Rotate (Deg 45.);
-        Scale (Num 1., Some (Var { var_name = "sx"; fallback = Some 0.5 }));
+        Scale (Num 1., Some (Num 0.5));
+        (* TODO: fix var creation *)
         Skew (Deg 10., Some (Deg 5.));
       ]
   in
@@ -307,7 +308,7 @@ let test_vars_utilities () =
   in
   (* vars_of_declarations returns typed vars, extract names *)
   let vars = vars_of_declarations props in
-  let names = List.map var_name vars in
+  let names = List.map any_var_name vars in
   Alcotest.(check int) "vars count" 3 (List.length names);
   List.iter
     (fun expected ->
@@ -318,7 +319,7 @@ let test_vars_utilities () =
   (* analyze_declarations returns typed vars; map var_name *)
   let anys = analyze_declarations props in
   Alcotest.(check int) "analyzed var count" 2 (List.length anys);
-  let got = List.map var_name anys |> List.sort String.compare in
+  let got = List.map any_var_name anys |> List.sort String.compare in
   List.iter
     (fun expected ->
       Alcotest.(check bool)

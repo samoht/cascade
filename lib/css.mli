@@ -74,17 +74,16 @@
 
 (** CSS variable requirements. *)
 
-type 'a var = {
-  name : string;  (** Variable name (without --) *)
-  fallback : 'a option;  (** Optional fallback value *)
-  default : 'a option;  (** Default value for inline mode and theme layer *)
-  layer : string option;  (** Optional layer name where variable is defined *)
-  meta : meta option;  (** Optional metadata for tracking variable source *)
-}
-(** CSS variable reference *)
+type 'a var
+(** The type of CSS variable holding values of type ['a]. *)
 
-and meta
-(** Opaque metadata type *)
+val var_name : 'a var -> string
+(** [var_name v] is [v]'s variable name (without --). *)
+
+val var_layer : 'a var -> string option
+(** [var_name v] is [v]'s optional layer where it's defined. *)
+
+(** CSS variable reference *)
 
 (** CSS generation mode. *)
 type mode =
@@ -498,11 +497,11 @@ type font_variant_numeric =
   | Tokens of font_variant_numeric_token list
   | Var of font_variant_numeric_token var
   | Composed of {
-      ordinal : font_variant_numeric_token option;
-      slashed_zero : font_variant_numeric_token option;
-      numeric_figure : font_variant_numeric_token option;
-      numeric_spacing : font_variant_numeric_token option;
-      numeric_fraction : font_variant_numeric_token option;
+      ordinal : font_variant_numeric option;
+      slashed_zero : font_variant_numeric option;
+      numeric_figure : font_variant_numeric option;
+      numeric_spacing : font_variant_numeric option;
+      numeric_fraction : font_variant_numeric option;
     }
 
 (** CSS border-collapse values. *)
@@ -586,9 +585,7 @@ type angle =
   | Var of angle var
 
 (** CSS transform scale values. *)
-type scale =
-  | Num of float
-  | Var of { var_name : string; fallback : float option }
+type scale = Num of float | Var of scale var
 
 (** CSS transform values. *)
 type transform =
@@ -923,9 +920,12 @@ type _ kind =
   | Font_family : font_family list kind
   | Font_feature_settings : font_feature_settings kind
   | Font_variation_settings : font_variation_settings kind
+  | Font_variant_numeric : font_variant_numeric kind
+  | Font_variant_numeric_token : font_variant_numeric_token kind
   | Blend_mode : blend_mode kind
   | Scroll_snap_strictness : scroll_snap_strictness kind
   | Angle : angle kind
+  | Scale : scale kind
   | String : string kind
 
 (** CSS justify-self values. *)
@@ -1075,6 +1075,9 @@ module Border : sig
 end
 
 (** {2 CSS Custom Properties (Variables)} *)
+
+type meta
+(** The type for CSS variable metadata. *)
 
 val meta : unit -> ('a -> meta) * (meta -> 'a option)
 (** [meta ()] creates an injection/projection pair for metadata. The injection
@@ -1685,11 +1688,11 @@ val font_variant_numeric_tokens :
     from tokens. *)
 
 val font_variant_numeric_composed :
-  ?ordinal:font_variant_numeric_token ->
-  ?slashed_zero:font_variant_numeric_token ->
-  ?numeric_figure:font_variant_numeric_token ->
-  ?numeric_spacing:font_variant_numeric_token ->
-  ?numeric_fraction:font_variant_numeric_token ->
+  ?ordinal:font_variant_numeric ->
+  ?slashed_zero:font_variant_numeric ->
+  ?numeric_figure:font_variant_numeric ->
+  ?numeric_spacing:font_variant_numeric ->
+  ?numeric_fraction:font_variant_numeric ->
   unit ->
   font_variant_numeric
 (** [font_variant_numeric_composed ...] creates a composed font-variant-numeric
@@ -2067,8 +2070,8 @@ val vars_of_stylesheet : t -> any_var list
 (** [vars_of_stylesheet stylesheet] extracts all CSS variable referenced in the
     entire stylesheet, returning them sorted and deduplicated. *)
 
-val var_name : any_var -> string
-(** [var_name v] returns the name of a CSS variable (with -- prefix). *)
+val any_var_name : any_var -> string
+(** [any_var_name v] returns the name of a CSS variable (with -- prefix). *)
 
 val analyze_declarations : declaration list -> any_var list
 (** [analyze_declarations declarations] extracts typed CSS variables from
@@ -2081,6 +2084,11 @@ val extract_custom_declarations : declaration list -> declaration list
 val custom_declaration_name : declaration -> string option
 (** [custom_declaration_name decl] returns the variable name if the declaration
     is a custom property declaration, None otherwise. *)
+
+val custom_declaration_layer : declaration -> string option
+(** [custom_declaration_layer decl] returns the declared layer for a custom
+    property declaration if present (e.g., "theme" or "utilities"). Returns
+    [None] for non-custom declarations or when no layer metadata is attached. *)
 
 val deduplicate_declarations : declaration list -> declaration list
 (** [deduplicate_declarations declarations] removes duplicate declarations,

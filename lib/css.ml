@@ -69,6 +69,9 @@ type 'a var = {
   meta : meta option;
 }
 
+let var_name v = v.name
+let var_layer v = v.layer
+
 type any_var = V : 'a var -> any_var
 type mode = Variables | Inline
 
@@ -429,11 +432,11 @@ type font_variant_numeric =
   | Tokens of font_variant_numeric_token list
   | Var of font_variant_numeric_token var
   | Composed of {
-      ordinal : font_variant_numeric_token option;
-      slashed_zero : font_variant_numeric_token option;
-      numeric_figure : font_variant_numeric_token option;
-      numeric_spacing : font_variant_numeric_token option;
-      numeric_fraction : font_variant_numeric_token option;
+      ordinal : font_variant_numeric option;
+      slashed_zero : font_variant_numeric option;
+      numeric_figure : font_variant_numeric option;
+      numeric_spacing : font_variant_numeric option;
+      numeric_fraction : font_variant_numeric option;
     }
 
 type pointer_events =
@@ -665,24 +668,6 @@ type font_variation_settings =
   | Inherit
   | Var of font_variation_settings var
 
-(** Value kind GADT for typed custom properties *)
-type _ kind =
-  | Length : length kind
-  | Color : color kind
-  | Int : int kind
-  | Float : float kind
-  | Duration : duration kind
-  | Aspect_ratio : aspect_ratio kind
-  | Border_style : border_style kind
-  | Font_weight : font_weight kind
-  | Font_family : font_family list kind
-  | Font_feature_settings : font_feature_settings kind
-  | Font_variation_settings : font_variation_settings kind
-  | Blend_mode : blend_mode kind
-  | Scroll_snap_strictness : scroll_snap_strictness kind
-  | Angle : angle kind
-  | String : string kind
-
 (** CSS timing function values *)
 type timing_function =
   | Ease
@@ -732,9 +717,7 @@ type grid_line =
   | Auto (* auto *)
 
 (** CSS transform scale values *)
-type scale =
-  | Num of float
-  | Var of { var_name : string; fallback : float option }
+type scale = Num of float | Var of scale var
 
 (** CSS transform values *)
 type transform =
@@ -789,6 +772,27 @@ type shadow = {
 
 type box_shadow = Shadow of shadow | Shadows of shadow list | None
 type float_side = None | Left | Right
+
+(** Value kind GADT for typed custom properties *)
+type _ kind =
+  | Length : length kind
+  | Color : color kind
+  | Int : int kind
+  | Float : float kind
+  | Duration : duration kind
+  | Aspect_ratio : aspect_ratio kind
+  | Border_style : border_style kind
+  | Font_weight : font_weight kind
+  | Font_family : font_family list kind
+  | Font_feature_settings : font_feature_settings kind
+  | Font_variation_settings : font_variation_settings kind
+  | Font_variant_numeric : font_variant_numeric kind
+  | Font_variant_numeric_token : font_variant_numeric_token kind
+  | Blend_mode : blend_mode kind
+  | Scroll_snap_strictness : scroll_snap_strictness kind
+  | Angle : angle kind
+  | Scale : scale kind
+  | String : string kind
 
 (* Convert CSS variable to string *)
 let rec string_of_var : type a. ?mode:mode -> (a -> string) -> a var -> string =
@@ -1571,12 +1575,9 @@ let rec string_of_angle = function
   | Grad f -> Pp.str [ Pp.float f; "grad" ]
   | Var v -> string_of_var string_of_angle v
 
-let string_of_scale = function
+let rec string_of_scale = function
   | Num f -> Pp.float f
-  | Var { var_name; fallback } -> (
-      match fallback with
-      | None -> Pp.str [ "var(--"; var_name; ")" ]
-      | Some f -> Pp.str [ "var(--"; var_name; ", "; Pp.float f; ")" ])
+  | Var v -> string_of_var string_of_scale v
 
 let rec string_of_font_feature_settings : font_feature_settings -> string =
   function
@@ -1691,7 +1692,7 @@ let string_of_font_variant_numeric_token = function
   | Stacked_fractions -> "stacked-fractions"
   | Normal_numeric -> "normal"
 
-let string_of_font_variant_numeric mode : font_variant_numeric -> string =
+let rec string_of_font_variant_numeric mode : font_variant_numeric -> string =
   function
   | Tokens tokens ->
       String.concat " " (List.map string_of_font_variant_numeric_token tokens)
@@ -1704,9 +1705,10 @@ let string_of_font_variant_numeric mode : font_variant_numeric -> string =
         numeric_spacing;
         numeric_fraction;
       } ->
-      let tokens =
-        List.filter_map
-          (fun x -> x)
+      let values =
+        List.map
+          (function
+            | Some o -> string_of_font_variant_numeric mode o | None -> "")
           [
             ordinal;
             slashed_zero;
@@ -1715,7 +1717,7 @@ let string_of_font_variant_numeric mode : font_variant_numeric -> string =
             numeric_fraction;
           ]
       in
-      String.concat " " (List.map string_of_font_variant_numeric_token tokens)
+      String.concat "," values
 
 type 'a property =
   | Background_color : color property
@@ -1935,6 +1937,12 @@ let important = function
 (* Helper for raw custom properties - primarily for internal use *)
 let custom_property ?layer name value =
   Custom_declaration { name; kind = String; value; layer; meta = None }
+
+(* Access the layer associated with a custom declaration, if any *)
+let custom_declaration_layer = function
+  | Custom_declaration { layer; _ } -> layer
+  | Declaration _ -> None
+  | Important_declaration _ -> None
 
 (* Convert property value to string based on its type *)
 let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
@@ -2287,9 +2295,12 @@ let string_of_value : type a. ?mode:mode -> a kind -> a -> string =
   | Font_family -> Pp.str ~sep:", " (List.map string_of_font_family value)
   | Font_feature_settings -> string_of_font_feature_settings value
   | Font_variation_settings -> string_of_font_variation_settings value
+  | Font_variant_numeric -> string_of_font_variant_numeric mode value
+  | Font_variant_numeric_token -> string_of_font_variant_numeric_token value
   | Blend_mode -> string_of_blend_mode value
   | Scroll_snap_strictness -> string_of_scroll_snap_strictness value
   | Angle -> string_of_angle value
+  | Scale -> string_of_scale value
   | String -> value
 
 (* Typed variable setters *)
@@ -3113,7 +3124,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   (* All other cases *)
   | _ -> []
 
-let vars_of_value : type a. a kind -> a -> any_var list =
+let rec vars_of_value : type a. a kind -> a -> any_var list =
  fun kind value ->
   match (kind, value) with
   | Length, Var v -> [ V v ]
@@ -3132,7 +3143,35 @@ let vars_of_value : type a. a kind -> a -> any_var list =
   | Border_style, _ -> []
   | Font_weight, _ -> []
   | String, _ -> [] (* String values don't have typed variables *)
+  | Font_variant_numeric, Var v -> [ V v ]
+  | ( Font_variant_numeric,
+      Composed
+        {
+          ordinal;
+          slashed_zero;
+          numeric_figure;
+          numeric_spacing;
+          numeric_fraction;
+        } ) ->
+      vars_of_values_opt
+        [
+          ordinal;
+          slashed_zero;
+          numeric_figure;
+          numeric_spacing;
+          numeric_fraction;
+        ]
+  | Font_variant_numeric, _ -> []
+  | Font_variant_numeric_token, _ -> []
   | _ -> []
+
+and vars_of_values_opt values =
+  let collect_vars (opt_fv : _ option) =
+    match opt_fv with
+    | None -> []
+    | Some fv -> vars_of_value Font_variant_numeric fv
+  in
+  List.concat_map collect_vars values
 
 let compare_vars_by_name (V x) (V y) = String.compare x.name y.name
 
@@ -3192,7 +3231,7 @@ let deduplicate_declarations props =
   duplicate_buggy_properties deduped
 
 (* Get the name of a variable *)
-let var_name (V v) = Pp.str [ "--"; v.name ]
+let any_var_name (V v) = Pp.str [ "--"; v.name ]
 
 (* Extract variables from a typed value - needs to handle each property type *)
 let extract_vars_from_prop_value : type a. a property -> a -> any_var list =
@@ -3692,7 +3731,7 @@ let render_at_properties ~config at_properties =
   |> List.map (fun at ->
          if config.minify then
            let initial_value_part =
-             if at.initial_value = "" then ""
+             if at.initial_value = "" || at.initial_value = "initial" then ""
              else Pp.str [ ";initial-value:"; at.initial_value ]
            in
            Pp.str
@@ -3708,7 +3747,7 @@ let render_at_properties ~config at_properties =
              ]
          else
            let initial_value_part =
-             if at.initial_value = "" then ""
+             if at.initial_value = "" || at.initial_value = "initial" then ""
              else Pp.str [ ";\n  initial-value: "; at.initial_value ]
            in
            Pp.str
