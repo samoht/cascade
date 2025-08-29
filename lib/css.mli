@@ -490,6 +490,7 @@ type font_variant_numeric_token =
   | Diagonal_fractions
   | Stacked_fractions
   | Normal_numeric
+  | Empty
 
 (** CSS font-variant-numeric value, supporting both tokens and composed
     variables. *)

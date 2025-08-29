@@ -427,6 +427,7 @@ type font_variant_numeric_token =
   | Diagonal_fractions
   | Stacked_fractions
   | Normal_numeric
+  | Empty
 
 type font_variant_numeric =
   | Tokens of font_variant_numeric_token list
@@ -1691,6 +1692,7 @@ let string_of_font_variant_numeric_token = function
   | Diagonal_fractions -> "diagonal-fractions"
   | Stacked_fractions -> "stacked-fractions"
   | Normal_numeric -> "normal"
+  | Empty -> ""
 
 let rec string_of_font_variant_numeric mode : font_variant_numeric -> string =
   function
@@ -1717,7 +1719,7 @@ let rec string_of_font_variant_numeric mode : font_variant_numeric -> string =
             numeric_fraction;
           ]
       in
-      String.concat "," values
+      String.concat "" values
 
 type 'a property =
   | Background_color : color property
