@@ -631,7 +631,7 @@ type transform =
       * float
       * float
   | Perspective of length
-  | Vars of transform var list
+  | Var of transform list var
   | None
 
 type _ property
@@ -899,7 +899,7 @@ type font_family =
   | Initial
   | Unset
   (* CSS variables *)
-  | Vars of font_family var list
+  | Var of font_family list var
 
 (** Font feature settings value. *)
 type font_feature_settings =
@@ -914,6 +914,23 @@ type font_variation_settings =
   | Variation_string of string
   | Inherit
   | Var of font_variation_settings var
+
+type shadow = {
+  inset : bool;
+  h_offset : length;
+  v_offset : length;
+  blur : length;
+  spread : length;
+  color : color;
+}
+(** Shadow value. *)
+
+(** Box shadow value. *)
+type box_shadow =
+  | Shadow of shadow
+  | Shadows of shadow list  (** Multiple shadows *)
+  | None  (** No shadow *)
+  | Vars of string var list  (** Composed shadow variables *)
 
 (** Value kind GADT for typed custom properties *)
 type _ kind =
@@ -934,6 +951,7 @@ type _ kind =
   | Scroll_snap_strictness : scroll_snap_strictness kind
   | Angle : angle kind
   | Transform_scale : transform_scale kind
+  | Box_shadow : box_shadow kind
   | String : string kind
 
 (** CSS justify-self values. *)
@@ -1549,25 +1567,6 @@ val vertical_align : vertical_align -> declaration
 val box_sizing : box_sizing -> declaration
 (** [box_sizing value] sets the CSS box-sizing property. *)
 
-type shadow = {
-  inset : bool;
-  h_offset : length;
-  v_offset : length;
-  blur : length;
-  spread : length;
-  color : color;
-}
-
-type box_shadow =
-  | Shadow of shadow
-  | Shadows of shadow list  (** Multiple shadows *)
-  | None  (** No shadow *)
-  | Var of box_shadow var  (** CSS variable reference *)
-  | Composite of string var list
-      (** Composite of multiple shadow variables for Tailwind v4 *)
-  | Raw of string
-      (** Temporary: for complex Tailwind v4 compositions - should be avoided *)
-
 val box_shadow : box_shadow -> declaration
 (** [box_shadow value] sets the CSS box-shadow property. *)
 
@@ -1693,7 +1692,7 @@ val font_stretch : font_stretch -> declaration
 
 val font_variant_numeric : font_variant_numeric -> declaration
 (** [font_variant_numeric value] sets CSS font-variant-numeric. Can use either a
-    list of tokens or composed CSS variables for Tailwind v4 compatibility. *)
+    list of tokens or composed CSS variables. *)
 
 val font_variant_numeric_tokens :
   font_variant_numeric_token list -> font_variant_numeric
@@ -1709,7 +1708,7 @@ val font_variant_numeric_composed :
   unit ->
   font_variant_numeric
 (** [font_variant_numeric_composed ...] creates a composed font-variant-numeric
-    value using CSS variables for Tailwind v4 style composition. *)
+    value using CSS variables for style composition. *)
 
 val cursor : cursor -> declaration
 (** [cursor c] sets the CSS cursor property.

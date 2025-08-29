@@ -660,7 +660,7 @@ type font_family =
   | Initial
   | Unset
   (* CSS variables *)
-  | Vars of font_family var list
+  | Var of font_family list var
 
 type font_feature_settings =
   | Normal
@@ -775,7 +775,7 @@ type transform =
       * float
       * float
   | Perspective of length
-  | Vars of transform var list
+  | Var of transform list var
   | None
 
 type shadow = {
@@ -791,8 +791,7 @@ type box_shadow =
   | Shadow of shadow
   | Shadows of shadow list
   | None
-  | Var of box_shadow var
-  | Composite of box_shadow var list
+  | Vars of string var list
 
 type float_side = None | Left | Right
 
@@ -815,6 +814,7 @@ type _ kind =
   | Scroll_snap_strictness : scroll_snap_strictness kind
   | Angle : angle kind
   | Transform_scale : transform_scale kind
+  | Box_shadow : box_shadow kind
   | String : string kind
 
 (* Convert CSS variable to string *)
@@ -1004,17 +1004,13 @@ let string_of_shadow ?(mode = Variables)
   if inset then Pp.str [ "inset "; h; " "; v; " "; b; " "; s; " "; c ]
   else Pp.str [ h; " "; v; " "; b; " "; s; " "; c ]
 
-let rec string_of_box_shadow ?(mode = Variables) : box_shadow -> string =
-  function
+let string_of_box_shadow ~mode : box_shadow -> string = function
   | None -> "none"
   | Shadow shadow -> string_of_shadow ~mode shadow
   | Shadows shadows ->
-      shadows |> List.map (string_of_shadow ~mode) |> String.concat ", "
-  | Var var -> string_of_var ~mode (string_of_box_shadow ~mode) var
-  | Composite vars ->
-      vars
-      |> List.map (string_of_var ~mode (string_of_box_shadow ~mode))
-      |> String.concat ","
+      List.map (string_of_shadow ~mode) shadows |> String.concat ", "
+  | Vars vars ->
+      String.concat ", " (List.map (string_of_var ~mode (fun s -> s)) vars)
 
 let string_of_blend_mode : blend_mode -> string = function
   | Normal -> "normal"
@@ -1066,14 +1062,14 @@ let string_of_z_index : z_index -> string = function
   | Auto -> "auto"
   | Index n -> string_of_int n
 
-let rec string_of_font_weight = function
+let rec string_of_font_weight ~mode = function
   | Weight n -> string_of_int n
   | Normal -> "normal"
   | Bold -> "bold"
   | Bolder -> "bolder"
   | Lighter -> "lighter"
   | Inherit -> "inherit"
-  | Var v -> string_of_var string_of_font_weight v
+  | Var v -> string_of_var ~mode (string_of_font_weight ~mode) v
 
 let string_of_text_align : text_align -> string = function
   | Left -> "left"
@@ -1207,11 +1203,11 @@ let string_of_scroll_snap_stop : scroll_snap_stop -> string = function
   | Always -> "always"
   | Inherit -> "inherit"
 
-let rec string_of_scroll_snap_strictness : scroll_snap_strictness -> string =
-  function
+let rec string_of_scroll_snap_strictness ~mode :
+    scroll_snap_strictness -> string = function
   | Mandatory -> "mandatory"
   | Proximity -> "proximity"
-  | Var v -> string_of_var string_of_scroll_snap_strictness v
+  | Var v -> string_of_var ~mode (string_of_scroll_snap_strictness ~mode) v
 
 let string_of_scroll_snap_align : scroll_snap_align -> string = function
   | None -> "none"
@@ -1227,13 +1223,14 @@ let string_of_scroll_snap_axis : scroll_snap_axis -> string = function
   | Inline -> "inline"
   | Both -> "both"
 
-let string_of_scroll_snap_type : scroll_snap_type -> string = function
+let string_of_scroll_snap_type ~mode : scroll_snap_type -> string = function
   | None -> "none"
   | Axis (axis, strictness) -> (
       let axis_str = string_of_scroll_snap_axis axis in
       match strictness with
       | None -> axis_str
-      | Some s -> Pp.str [ axis_str; " "; string_of_scroll_snap_strictness s ])
+      | Some s ->
+          Pp.str [ axis_str; " "; string_of_scroll_snap_strictness ~mode s ])
   | Inherit -> "inherit"
 
 let string_of_touch_action : touch_action -> string = function
@@ -1341,10 +1338,10 @@ let string_of_flex : flex -> string = function
   | Full (g, s, b) ->
       Pp.str [ Pp.float g; " "; Pp.float s; " "; string_of_length b ]
 
-let rec string_of_duration = function
+let rec string_of_duration ~mode = function
   | Ms n -> Pp.str [ string_of_int n; "ms" ]
   | S f -> Pp.str [ Pp.float f; "s" ]
-  | Var v -> string_of_var string_of_duration v
+  | Var v -> string_of_var ~mode (string_of_duration ~mode) v
 
 let string_of_timing_function = function
   | Ease -> "ease"
@@ -1376,15 +1373,18 @@ let string_of_transition_property : transition_property -> string = function
   | None -> "none"
   | Property p -> p
 
-let rec string_of_transition = function
+let rec string_of_transition ~mode = function
   | Simple (prop, dur) ->
-      Pp.str [ string_of_transition_property prop; " "; string_of_duration dur ]
+      Pp.str
+        [
+          string_of_transition_property prop; " "; string_of_duration ~mode dur;
+        ]
   | With_timing (prop, dur, timing) ->
       Pp.str
         [
           string_of_transition_property prop;
           " ";
-          string_of_duration dur;
+          string_of_duration ~mode dur;
           " ";
           string_of_timing_function timing;
         ]
@@ -1393,14 +1393,14 @@ let rec string_of_transition = function
         [
           string_of_transition_property prop;
           " ";
-          string_of_duration dur;
+          string_of_duration ~mode dur;
           " ";
           string_of_timing_function timing;
           " ";
-          string_of_duration delay;
+          string_of_duration ~mode delay;
         ]
   | Multiple transitions ->
-      String.concat ", " (List.map string_of_transition transitions)
+      String.concat ", " (List.map (string_of_transition ~mode) transitions)
 
 let string_of_align : align -> string = function
   | Flex_start -> "flex-start"
@@ -1474,7 +1474,7 @@ let string_of_list_style_image = function
   | Url u -> Pp.str [ "url("; u; ")" ]
   | Inherit -> "inherit"
 
-let rec string_of_border_style : border_style -> string = function
+let rec string_of_border_style ~mode : border_style -> string = function
   | None -> "none"
   | Solid -> "solid"
   | Dashed -> "dashed"
@@ -1485,7 +1485,7 @@ let rec string_of_border_style : border_style -> string = function
   | Inset -> "inset"
   | Outset -> "outset"
   | Hidden -> "hidden"
-  | Var v -> string_of_var string_of_border_style v
+  | Var v -> string_of_var ~mode (string_of_border_style ~mode) v
 
 let string_of_outline_style : outline_style -> string = function
   | None -> "none"
@@ -1591,61 +1591,67 @@ let string_of_grid_line = function
   | Span n -> Pp.str [ "span "; string_of_int n ]
   | Auto -> "auto"
 
-let rec string_of_angle = function
+let rec string_of_angle ~mode = function
   | Deg f -> Pp.str [ Pp.float f; "deg" ]
   | Rad f -> Pp.str [ Pp.float f; "rad" ]
   | Turn f -> Pp.str [ Pp.float f; "turn" ]
   | Grad f -> Pp.str [ Pp.float f; "grad" ]
-  | Var v -> string_of_var string_of_angle v
+  | Var v -> string_of_var ~mode (string_of_angle ~mode) v
 
-let rec string_of_transform_scale : transform_scale -> string = function
+let rec string_of_transform_scale ~mode : transform_scale -> string = function
   | Num f -> Pp.float f
   | Pct f -> Pp.str [ Pp.float f; "%" ]
-  | Var v -> string_of_var string_of_transform_scale v
+  | Var v -> string_of_var ~mode (string_of_transform_scale ~mode) v
 
-let rec string_of_scale : scale -> string = function
+let string_of_scale ~mode : scale -> string = function
   | String s -> s
   | Num f -> Pp.float f
   | Pct f -> Pp.str [ Pp.float f; "%" ]
   | None -> "none"
   | Vars vars ->
-      String.concat "" (List.map (string_of_var string_of_transform_scale) vars)
+      String.concat ""
+        (List.map (string_of_var ~mode (string_of_transform_scale ~mode)) vars)
 
-let rec string_of_font_feature_settings : font_feature_settings -> string =
-  function
+let rec string_of_font_feature_settings ~mode : font_feature_settings -> string
+    = function
   | Normal -> "normal"
   | Feature_string s -> s
   | Inherit -> "inherit"
-  | Var v -> string_of_var string_of_font_feature_settings v
+  | Var v -> string_of_var ~mode (string_of_font_feature_settings ~mode) v
 
-let rec string_of_font_variation_settings : font_variation_settings -> string =
-  function
+let rec string_of_font_variation_settings ~mode :
+    font_variation_settings -> string = function
   | Normal -> "normal"
   | Variation_string s -> s
   | Inherit -> "inherit"
-  | Var v -> string_of_var string_of_font_variation_settings v
+  | Var v -> string_of_var ~mode (string_of_font_variation_settings ~mode) v
 
 let transform_func name args = Pp.str ((name :: "(" :: args) @ [ ")" ])
 
-let rec string_of_transform = function
+let rec string_of_transform ~mode = function
   (* Translate transforms *)
-  | Translate (x, None) -> transform_func "translate" [ string_of_length x ]
+  | Translate (x, None) ->
+      transform_func "translate" [ string_of_length ~mode x ]
   | Translate (x, Some y) ->
       transform_func "translate"
-        [ string_of_length x; ", "; string_of_length y ]
-  | Translate_x l -> transform_func "translateX" [ string_of_length l ]
-  | Translate_y l -> transform_func "translateY" [ string_of_length l ]
-  | Translate_z l -> transform_func "translateZ" [ string_of_length l ]
+        [ string_of_length ~mode x; ", "; string_of_length ~mode y ]
+  | Translate_x l -> transform_func "translateX" [ string_of_length ~mode l ]
+  | Translate_y l -> transform_func "translateY" [ string_of_length ~mode l ]
+  | Translate_z l -> transform_func "translateZ" [ string_of_length ~mode l ]
   | Translate3d (x, y, z) ->
       transform_func "translate3d"
         [
-          string_of_length x; ", "; string_of_length y; ", "; string_of_length z;
+          string_of_length ~mode x;
+          ", ";
+          string_of_length ~mode y;
+          ", ";
+          string_of_length ~mode z;
         ]
   (* Rotate transforms *)
-  | Rotate a -> transform_func "rotate" [ string_of_angle a ]
-  | Rotate_x a -> transform_func "rotateX" [ string_of_angle a ]
-  | Rotate_y a -> transform_func "rotateY" [ string_of_angle a ]
-  | Rotate_z a -> transform_func "rotateZ" [ string_of_angle a ]
+  | Rotate a -> transform_func "rotate" [ string_of_angle ~mode a ]
+  | Rotate_x a -> transform_func "rotateX" [ string_of_angle ~mode a ]
+  | Rotate_y a -> transform_func "rotateY" [ string_of_angle ~mode a ]
+  | Rotate_z a -> transform_func "rotateZ" [ string_of_angle ~mode a ]
   | Rotate3d (x, y, z, angle) ->
       transform_func "rotate3d"
         [
@@ -1655,31 +1661,37 @@ let rec string_of_transform = function
           ", ";
           Pp.float z;
           ", ";
-          string_of_angle angle;
+          string_of_angle ~mode angle;
         ]
   (* Scale transforms *)
-  | Scale (x, None) -> transform_func "scale" [ string_of_transform_scale x ]
+  | Scale (x, None) ->
+      transform_func "scale" [ string_of_transform_scale ~mode x ]
   | Scale (x, Some y) ->
       transform_func "scale"
-        [ string_of_transform_scale x; ", "; string_of_transform_scale y ]
-  | Scale_x s -> transform_func "scaleX" [ string_of_transform_scale s ]
-  | Scale_y s -> transform_func "scaleY" [ string_of_transform_scale s ]
-  | Scale_z s -> transform_func "scaleZ" [ string_of_transform_scale s ]
+        [
+          string_of_transform_scale ~mode x;
+          ", ";
+          string_of_transform_scale ~mode y;
+        ]
+  | Scale_x s -> transform_func "scaleX" [ string_of_transform_scale ~mode s ]
+  | Scale_y s -> transform_func "scaleY" [ string_of_transform_scale ~mode s ]
+  | Scale_z s -> transform_func "scaleZ" [ string_of_transform_scale ~mode s ]
   | Scale3d (x, y, z) ->
       transform_func "scale3d"
         [
-          string_of_transform_scale x;
+          string_of_transform_scale ~mode x;
           ", ";
-          string_of_transform_scale y;
+          string_of_transform_scale ~mode y;
           ", ";
-          string_of_transform_scale z;
+          string_of_transform_scale ~mode z;
         ]
   (* Skew transforms *)
-  | Skew (x, None) -> transform_func "skewX" [ string_of_angle x ]
+  | Skew (x, None) -> transform_func "skewX" [ string_of_angle ~mode x ]
   | Skew (x, Some y) ->
-      transform_func "skew" [ string_of_angle x; ", "; string_of_angle y ]
-  | Skew_x a -> transform_func "skewX" [ string_of_angle a ]
-  | Skew_y a -> transform_func "skewY" [ string_of_angle a ]
+      transform_func "skew"
+        [ string_of_angle ~mode x; ", "; string_of_angle ~mode y ]
+  | Skew_x a -> transform_func "skewX" [ string_of_angle ~mode a ]
+  | Skew_y a -> transform_func "skewY" [ string_of_angle ~mode a ]
   (* Matrix transforms *)
   | Matrix (a, b, c, d, e, f) ->
       let values =
@@ -1712,9 +1724,12 @@ let rec string_of_transform = function
       in
       Pp.str [ "matrix3d("; String.concat ", " values; ")" ]
   (* Other transforms *)
-  | Perspective l -> Pp.str [ "perspective("; string_of_length l; ")" ]
-  | Vars vars ->
-      String.concat " " (List.map (string_of_var string_of_transform) vars)
+  | Perspective l -> Pp.str [ "perspective("; string_of_length ~mode l; ")" ]
+  | Var v ->
+      string_of_var ~mode
+        (fun transforms ->
+          String.concat " " (List.map (string_of_transform ~mode) transforms))
+        v
   | None -> "none"
 
 let string_of_font_variant_numeric_token = function
@@ -1729,7 +1744,7 @@ let string_of_font_variant_numeric_token = function
   | Normal_numeric -> "normal"
   | Empty -> ""
 
-let rec string_of_font_variant_numeric mode : font_variant_numeric -> string =
+let rec string_of_font_variant_numeric ~mode : font_variant_numeric -> string =
   function
   | Tokens tokens ->
       String.concat " " (List.map string_of_font_variant_numeric_token tokens)
@@ -1745,7 +1760,7 @@ let rec string_of_font_variant_numeric mode : font_variant_numeric -> string =
       let values =
         List.map
           (function
-            | Some o -> string_of_font_variant_numeric mode o | None -> "")
+            | Some o -> string_of_font_variant_numeric ~mode o | None -> "")
           [
             ordinal;
             slashed_zero;
@@ -1932,7 +1947,7 @@ type 'a property =
   | Clip : string property
   | Clear : clear property
   | Float : float_side property
-  | Scale : string property
+  | Scale : scale property
   | Transition : transition property
   | Box_shadow : box_shadow property
   | Fill : svg_paint property
@@ -1988,11 +2003,11 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
   | Background_color -> string_of_color ~mode value
   | Color -> string_of_color ~mode value
   | Border_color -> string_of_color ~mode value
-  | Border_style -> string_of_border_style value
-  | Border_top_style -> string_of_border_style value
-  | Border_right_style -> string_of_border_style value
-  | Border_bottom_style -> string_of_border_style value
-  | Border_left_style -> string_of_border_style value
+  | Border_style -> string_of_border_style ~mode value
+  | Border_top_style -> string_of_border_style ~mode value
+  | Border_right_style -> string_of_border_style ~mode value
+  | Border_bottom_style -> string_of_border_style ~mode value
+  | Border_left_style -> string_of_border_style ~mode value
   | Padding -> string_of_length ~mode value
   | Padding_left -> string_of_length ~mode value
   | Padding_right -> string_of_length ~mode value
@@ -2020,7 +2035,7 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
   | Max_height -> string_of_length ~mode value
   | Font_size -> string_of_length ~mode value
   | Line_height -> string_of_length ~mode value
-  | Font_weight -> string_of_font_weight value
+  | Font_weight -> string_of_font_weight ~mode value
   | Display -> string_of_display value
   | Position -> string_of_position value
   | Visibility -> string_of_visibility value
@@ -2058,7 +2073,7 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
   | Border_spacing -> string_of_length ~mode value
   | Outline_offset -> string_of_length ~mode value
   | Perspective -> string_of_length ~mode value
-  | Transform -> List.map string_of_transform value |> String.concat " "
+  | Transform -> List.map (string_of_transform ~mode) value |> String.concat " "
   | Isolation -> string_of_isolation value
   | Transform_style -> string_of_transform_style value
   | Backface_visibility -> string_of_backface_visibility value
@@ -2137,9 +2152,9 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
       | Ultra_expanded -> "200%"
       | Percentage p -> Pp.str [ string_of_float p; "%" ]
       | Inherit -> "inherit")
-  | Font_variant_numeric -> string_of_font_variant_numeric mode value
+  | Font_variant_numeric -> string_of_font_variant_numeric ~mode value
   | Webkit_font_smoothing -> string_of_webkit_font_smoothing value
-  | Scroll_snap_type -> string_of_scroll_snap_type value
+  | Scroll_snap_type -> string_of_scroll_snap_type ~mode value
   | Container_type -> string_of_container_type value
   | White_space -> string_of_white_space value
   | Grid_template_columns -> string_of_grid_template value
@@ -2170,10 +2185,10 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
   | Container_name -> value
   | Perspective_origin -> value
   | Object_position -> value
-  | Rotate -> string_of_angle value
-  | Transition_duration -> string_of_duration value
+  | Rotate -> string_of_angle ~mode value
+  | Transition_duration -> string_of_duration ~mode value
   | Transition_timing_function -> string_of_timing_function value
-  | Transition_delay -> string_of_duration value
+  | Transition_delay -> string_of_duration ~mode value
   | Will_change -> value
   | Contain -> value
   | Filter -> value
@@ -2186,8 +2201,8 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
   | Fill -> string_of_svg_paint ~mode value
   | Stroke -> string_of_svg_paint ~mode value
   | Stroke_width -> string_of_length ~mode value
-  | Transition -> string_of_transition value
-  | Scale -> value
+  | Transition -> string_of_transition ~mode value
+  | Scale -> string_of_scale ~mode value
   | Outline -> value
   | Outline_style -> string_of_outline_style value
   | Outline_width -> string_of_length ~mode value
@@ -2207,13 +2222,13 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
   | Cursor -> string_of_cursor value
   | Pointer_events -> string_of_pointer_events value
   | User_select -> string_of_user_select value
-  | Font_feature_settings -> string_of_font_feature_settings value
-  | Font_variation_settings -> string_of_font_variation_settings value
+  | Font_feature_settings -> string_of_font_feature_settings ~mode value
+  | Font_variation_settings -> string_of_font_variation_settings ~mode value
   | Webkit_text_decoration -> string_of_text_decoration value
   | Webkit_text_size_adjust -> value
 
 (* String conversion for value kinds - reuses existing printers *)
-let rec string_of_font_family = function
+let rec string_of_font_family ~mode = function
   (* Generic CSS font families *)
   | Sans_serif -> "sans-serif"
   | Serif -> "serif"
@@ -2305,29 +2320,34 @@ let rec string_of_font_family = function
   | Inherit -> "inherit"
   | Initial -> "initial"
   | Unset -> "unset"
-  | Vars vars ->
-      String.concat "," (List.map (string_of_var string_of_font_family) vars)
+  | Var v ->
+      string_of_var ~mode
+        (fun fonts ->
+          String.concat "," (List.map (string_of_font_family ~mode) fonts))
+        v
 
-let string_of_value : type a. ?mode:mode -> a kind -> a -> string =
- fun ?(mode = Variables) kind value ->
+let string_of_value : type a. mode:mode -> a kind -> a -> string =
+ fun ~mode kind value ->
   match kind with
   | Length -> string_of_length ~mode value
   | Color -> string_of_color ~mode value
   | Int -> string_of_int value
   | Float -> Pp.float value
-  | Duration -> string_of_duration value
+  | Duration -> string_of_duration ~mode value
   | Aspect_ratio -> string_of_aspect_ratio value
-  | Border_style -> string_of_border_style value
-  | Font_weight -> string_of_font_weight value
-  | Font_family -> Pp.str ~sep:", " (List.map string_of_font_family value)
-  | Font_feature_settings -> string_of_font_feature_settings value
-  | Font_variation_settings -> string_of_font_variation_settings value
-  | Font_variant_numeric -> string_of_font_variant_numeric mode value
+  | Border_style -> string_of_border_style ~mode value
+  | Font_weight -> string_of_font_weight ~mode value
+  | Font_family ->
+      Pp.str ~sep:", " (List.map (string_of_font_family ~mode) value)
+  | Font_feature_settings -> string_of_font_feature_settings ~mode value
+  | Font_variation_settings -> string_of_font_variation_settings ~mode value
+  | Font_variant_numeric -> string_of_font_variant_numeric ~mode value
   | Font_variant_numeric_token -> string_of_font_variant_numeric_token value
   | Blend_mode -> string_of_blend_mode value
-  | Scroll_snap_strictness -> string_of_scroll_snap_strictness value
-  | Angle -> string_of_angle value
-  | Scale -> string_of_scale value
+  | Scroll_snap_strictness -> string_of_scroll_snap_strictness ~mode value
+  | Angle -> string_of_angle ~mode value
+  | Transform_scale -> string_of_transform_scale ~mode value
+  | Box_shadow -> string_of_box_shadow ~mode value
   | String -> value
 
 (* Typed variable setters *)
@@ -2498,7 +2518,7 @@ type background_image =
   | Radial_gradient of gradient_stop list
   | None
 
-let string_of_gradient_direction = function
+let string_of_gradient_direction ~mode = function
   | To_top -> "to top"
   | To_top_right -> "to top right"
   | To_right -> "to right"
@@ -2507,40 +2527,42 @@ let string_of_gradient_direction = function
   | To_bottom_left -> "to bottom left"
   | To_left -> "to left"
   | To_top_left -> "to top left"
-  | Angle a -> string_of_angle a
+  | Angle a -> string_of_angle ~mode a
 
-let string_of_gradient_stop = function
-  | Color_stop c -> string_of_color c
+let string_of_gradient_stop ~mode = function
+  | Color_stop c -> string_of_color ~mode c
   | Color_position (c, len) ->
-      Pp.str [ string_of_color c; " "; string_of_length len ]
-  | Var v -> Pp.str [ "var(--"; v.name; ")" ]
+      Pp.str [ string_of_color ~mode c; " "; string_of_length ~mode len ]
+  | Var v -> string_of_var ~mode (string_of_color ~mode) v
   | Computed_stops s -> s
 
-let string_of_background_image = function
+let string_of_background_image ~mode = function
   | Url url -> Pp.str [ "url(\""; url; "\")" ]
   | Linear_gradient (dir, stops) -> (
-      let stop_strings = List.map string_of_gradient_stop stops in
+      let stop_strings = List.map (string_of_gradient_stop ~mode) stops in
       match stop_strings with
       | [] ->
-          Pp.str [ "linear-gradient("; string_of_gradient_direction dir; ")" ]
+          Pp.str
+            [ "linear-gradient("; string_of_gradient_direction ~mode dir; ")" ]
       | _ ->
           Pp.str
             [
               "linear-gradient(";
-              string_of_gradient_direction dir;
+              string_of_gradient_direction ~mode dir;
               ", ";
               Pp.str ~sep:", " stop_strings;
               ")";
             ])
   | Radial_gradient stops -> (
-      let stop_strings = List.map string_of_gradient_stop stops in
+      let stop_strings = List.map (string_of_gradient_stop ~mode) stops in
       match stop_strings with
       | [] -> "radial-gradient()"
       | _ -> Pp.str [ "radial-gradient("; Pp.str ~sep:", " stop_strings; ")" ])
   | None -> "none"
 
 let background_image value =
-  Declaration (Background_image, string_of_background_image value)
+  Declaration
+    (Background_image, string_of_background_image ~mode:Variables value)
 
 (* Helper functions for background images *)
 let url path = Url path
@@ -2569,7 +2591,9 @@ let box_sizing value = Declaration (Box_sizing, value)
 
 let font_family fonts =
   Declaration
-    (Font_family, String.concat ", " (List.map string_of_font_family fonts))
+    ( Font_family,
+      String.concat ", "
+        (List.map (string_of_font_family ~mode:Variables) fonts) )
 
 let moz_osx_font_smoothing value =
   Declaration (Moz_osx_font_smoothing, string_of_moz_font_smoothing value)
@@ -3342,7 +3366,7 @@ let inline_style_of_declarations ?(mode : mode = Inline) props =
                " !important";
              ]
        | Custom_declaration { name; kind; value; _ } ->
-           Pp.str [ name; ": "; string_of_value kind value ])
+           Pp.str [ name; ": "; string_of_value ~mode kind value ])
   |> String.concat "; "
 
 let merge_rules rules =
@@ -3386,7 +3410,7 @@ let merge_by_properties rules =
                  "!important";
                ]
          | Custom_declaration { name; kind; value; _ } ->
-             Pp.str [ name; ":"; string_of_value kind value ])
+             Pp.str [ name; ":"; string_of_value ~mode:Inline kind value ])
     |> List.sort String.compare |> String.concat ";"
   in
 
@@ -3514,7 +3538,7 @@ let render_minified_rule ~mode rule =
              in
              Pp.str [ prop_name; ":"; final_value; "!important" ]
          | Custom_declaration { name; kind; value; _ } ->
-             let value_str = string_of_value kind value in
+             let value_str = string_of_value ~mode kind value in
              Pp.str [ name; ":"; minify_value value_str ])
   in
   Pp.str [ selector; "{"; Pp.str ~sep:";" props; "}" ]
