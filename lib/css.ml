@@ -333,7 +333,12 @@ type object_fit = Fill | Contain | Cover | None | Scale_down | Inherit
 type box_sizing = Border_box | Content_box | Inherit
 type scroll_behavior = Auto | Smooth | Inherit
 type scroll_snap_stop = Normal | Always | Inherit
-type scroll_snap_strictness = Mandatory | Proximity
+
+type scroll_snap_strictness =
+  | Mandatory
+  | Proximity
+  | Var of scroll_snap_strictness var
+
 type scroll_snap_align = None | Start | End | Center | Inherit
 type scroll_snap_axis = X | Y | Block | Inline | Both
 type webkit_box_orient = Horizontal | Vertical | Inherit
@@ -655,7 +660,7 @@ type font_family =
   | Initial
   | Unset
   (* CSS variables *)
-  | Var of font_family list var
+  | Vars of font_family var list
 
 type font_feature_settings =
   | Normal
@@ -718,7 +723,18 @@ type grid_line =
   | Auto (* auto *)
 
 (** CSS transform scale values *)
-type scale = Num of float | Var of scale var
+type transform_scale =
+  | Num of float
+  | Pct of float
+  | Var of transform_scale var
+
+(** CSS scale property values *)
+type scale =
+  | String of string
+  | Num of float
+  | Pct of float
+  | None
+  | Vars of transform_scale var list
 
 (** CSS transform values *)
 type transform =
@@ -732,11 +748,11 @@ type transform =
   | Rotate_y of angle
   | Rotate_z of angle
   | Rotate3d of float * float * float * angle
-  | Scale of scale * scale option
-  | Scale_x of scale
-  | Scale_y of scale
-  | Scale_z of scale
-  | Scale3d of scale * scale * scale
+  | Scale of transform_scale * transform_scale option
+  | Scale_x of transform_scale
+  | Scale_y of transform_scale
+  | Scale_z of transform_scale
+  | Scale3d of transform_scale * transform_scale * transform_scale
   | Skew of angle * angle option
   | Skew_x of angle
   | Skew_y of angle
@@ -759,7 +775,7 @@ type transform =
       * float
       * float
   | Perspective of length
-  | Var of transform list var
+  | Vars of transform var list
   | None
 
 type shadow = {
@@ -776,9 +792,7 @@ type box_shadow =
   | Shadows of shadow list
   | None
   | Var of box_shadow var
-  | Composite of string var list (* For Tailwind v4 style composite shadows *)
-  | Raw of string
-(* Temporary: for complex Tailwind v4 compositions - should be avoided *)
+  | Composite of box_shadow var list
 
 type float_side = None | Left | Right
 
@@ -800,7 +814,7 @@ type _ kind =
   | Blend_mode : blend_mode kind
   | Scroll_snap_strictness : scroll_snap_strictness kind
   | Angle : angle kind
-  | Scale : scale kind
+  | Transform_scale : transform_scale kind
   | String : string kind
 
 (* Convert CSS variable to string *)
@@ -888,7 +902,7 @@ module Calc = struct
   let px n = Val (Px n)
   let rem f = Val (Rem f)
   let em f = Val (Em f)
-  let pct f = Val (Pct f)
+  let pct f : length calc = Val (Pct f)
 end
 
 let rec string_of_color_in_mix = function
@@ -999,10 +1013,8 @@ let rec string_of_box_shadow ?(mode = Variables) : box_shadow -> string =
   | Var var -> string_of_var ~mode (string_of_box_shadow ~mode) var
   | Composite vars ->
       vars
-      |> List.map (fun v -> string_of_var ~mode (fun s -> s) v)
+      |> List.map (string_of_var ~mode (string_of_box_shadow ~mode))
       |> String.concat ","
-  | Raw s ->
-      s (* Pass through raw string - temporary for Tailwind v4 compatibility *)
 
 let string_of_blend_mode : blend_mode -> string = function
   | Normal -> "normal"
@@ -1195,10 +1207,11 @@ let string_of_scroll_snap_stop : scroll_snap_stop -> string = function
   | Always -> "always"
   | Inherit -> "inherit"
 
-let string_of_scroll_snap_strictness : scroll_snap_strictness -> string =
+let rec string_of_scroll_snap_strictness : scroll_snap_strictness -> string =
   function
   | Mandatory -> "mandatory"
   | Proximity -> "proximity"
+  | Var v -> string_of_var string_of_scroll_snap_strictness v
 
 let string_of_scroll_snap_align : scroll_snap_align -> string = function
   | None -> "none"
@@ -1585,9 +1598,18 @@ let rec string_of_angle = function
   | Grad f -> Pp.str [ Pp.float f; "grad" ]
   | Var v -> string_of_var string_of_angle v
 
-let rec string_of_scale = function
+let rec string_of_transform_scale : transform_scale -> string = function
   | Num f -> Pp.float f
-  | Var v -> string_of_var string_of_scale v
+  | Pct f -> Pp.str [ Pp.float f; "%" ]
+  | Var v -> string_of_var string_of_transform_scale v
+
+let rec string_of_scale : scale -> string = function
+  | String s -> s
+  | Num f -> Pp.float f
+  | Pct f -> Pp.str [ Pp.float f; "%" ]
+  | None -> "none"
+  | Vars vars ->
+      String.concat "" (List.map (string_of_var string_of_transform_scale) vars)
 
 let rec string_of_font_feature_settings : font_feature_settings -> string =
   function
@@ -1636,15 +1658,22 @@ let rec string_of_transform = function
           string_of_angle angle;
         ]
   (* Scale transforms *)
-  | Scale (x, None) -> transform_func "scale" [ string_of_scale x ]
+  | Scale (x, None) -> transform_func "scale" [ string_of_transform_scale x ]
   | Scale (x, Some y) ->
-      transform_func "scale" [ string_of_scale x; ", "; string_of_scale y ]
-  | Scale_x s -> transform_func "scaleX" [ string_of_scale s ]
-  | Scale_y s -> transform_func "scaleY" [ string_of_scale s ]
-  | Scale_z s -> transform_func "scaleZ" [ string_of_scale s ]
+      transform_func "scale"
+        [ string_of_transform_scale x; ", "; string_of_transform_scale y ]
+  | Scale_x s -> transform_func "scaleX" [ string_of_transform_scale s ]
+  | Scale_y s -> transform_func "scaleY" [ string_of_transform_scale s ]
+  | Scale_z s -> transform_func "scaleZ" [ string_of_transform_scale s ]
   | Scale3d (x, y, z) ->
       transform_func "scale3d"
-        [ string_of_scale x; ", "; string_of_scale y; ", "; string_of_scale z ]
+        [
+          string_of_transform_scale x;
+          ", ";
+          string_of_transform_scale y;
+          ", ";
+          string_of_transform_scale z;
+        ]
   (* Skew transforms *)
   | Skew (x, None) -> transform_func "skewX" [ string_of_angle x ]
   | Skew (x, Some y) ->
@@ -1684,11 +1713,8 @@ let rec string_of_transform = function
       Pp.str [ "matrix3d("; String.concat ", " values; ")" ]
   (* Other transforms *)
   | Perspective l -> Pp.str [ "perspective("; string_of_length l; ")" ]
-  | Var v ->
-      let string_of_transforms ts =
-        Pp.str ~sep:" " (List.map string_of_transform ts)
-      in
-      string_of_var string_of_transforms v
+  | Vars vars ->
+      String.concat " " (List.map (string_of_var string_of_transform) vars)
   | None -> "none"
 
 let string_of_font_variant_numeric_token = function
@@ -2279,18 +2305,8 @@ let rec string_of_font_family = function
   | Inherit -> "inherit"
   | Initial -> "initial"
   | Unset -> "unset"
-  | Var { name; fallback; _ } -> (
-      match fallback with
-      | None -> Pp.str [ "var(--"; name; ")" ]
-      | Some fonts ->
-          Pp.str
-            [
-              "var(--";
-              name;
-              ",";
-              String.concat "," (List.map string_of_font_family fonts);
-              ")";
-            ])
+  | Vars vars ->
+      String.concat "," (List.map (string_of_var string_of_font_family) vars)
 
 let string_of_value : type a. ?mode:mode -> a kind -> a -> string =
  fun ?(mode = Variables) kind value ->
@@ -3142,8 +3158,8 @@ let rec vars_of_value : type a. a kind -> a -> any_var list =
   | Color, Var v -> [ V v ]
   | Duration, Var v -> [ V v ]
   | Blend_mode, _ -> [] (* blend_mode doesn't have Var constructor *)
-  | Scroll_snap_strictness, _ ->
-      [] (* scroll_snap_strictness doesn't have Var constructor *)
+  | Scroll_snap_strictness, Var v -> [ V v ]
+  | Scroll_snap_strictness, _ -> []
   | Angle, Var v -> [ V v ] (* angle can have variable references *)
   | Angle, _ -> [] (* other angle values don't have variables *)
   | Length, Calc calc -> vars_of_calc calc

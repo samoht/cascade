@@ -586,7 +586,10 @@ type angle =
   | Var of angle var
 
 (** CSS transform scale values. *)
-type scale = Num of float | Var of scale var
+type transform_scale =
+  | Num of float
+  | Pct of float
+  | Var of transform_scale var
 
 (** CSS transform values. *)
 type transform =
@@ -600,11 +603,12 @@ type transform =
   | Rotate_y of angle
   | Rotate_z of angle
   | Rotate3d of float * float * float * angle
-  | Scale of scale * scale option (* scale(x) or scale(x, y) *)
-  | Scale_x of scale
-  | Scale_y of scale
-  | Scale_z of scale
-  | Scale3d of scale * scale * scale
+  | Scale of
+      transform_scale * transform_scale option (* scale(x) or scale(x, y) *)
+  | Scale_x of transform_scale
+  | Scale_y of transform_scale
+  | Scale_z of transform_scale
+  | Scale3d of transform_scale * transform_scale * transform_scale
   | Skew of angle * angle option (* skew(x) or skew(x, y) *)
   | Skew_x of angle
   | Skew_y of angle
@@ -627,7 +631,7 @@ type transform =
       * float
       * float
   | Perspective of length
-  | Var of transform list var (* Proper var type *)
+  | Vars of transform var list
   | None
 
 type _ property
@@ -731,7 +735,10 @@ type touch_action =
   | Pan_down
 
 (** CSS scroll-snap strictness (second part of scroll-snap-type). *)
-type scroll_snap_strictness = Mandatory | Proximity
+type scroll_snap_strictness =
+  | Mandatory
+  | Proximity
+  | Var of scroll_snap_strictness var
 
 (** CSS scroll-snap axis (first part of scroll-snap-type). *)
 type scroll_snap_axis = X | Y | Block | Inline | Both
@@ -892,7 +899,7 @@ type font_family =
   | Initial
   | Unset
   (* CSS variables *)
-  | Var of font_family list var
+  | Vars of font_family var list
 
 (** Font feature settings value. *)
 type font_feature_settings =
@@ -926,7 +933,7 @@ type _ kind =
   | Blend_mode : blend_mode kind
   | Scroll_snap_strictness : scroll_snap_strictness kind
   | Angle : angle kind
-  | Scale : scale kind
+  | Transform_scale : transform_scale kind
   | String : string kind
 
 (** CSS justify-self values. *)
@@ -1765,7 +1772,14 @@ val transform : transform list -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/transform>
       MDN: transform. *)
 
-val scale : string -> declaration
+type scale =
+  | String of string
+  | Num of float
+  | Pct of float
+  | None
+  | Vars of transform_scale var list
+
+val scale : scale -> declaration
 (** [scale value] sets the CSS scale property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scale> MDN: scale. *)
 
