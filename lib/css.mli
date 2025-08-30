@@ -460,23 +460,29 @@ type text_wrap = Wrap | No_wrap | Balance | Pretty | Inherit
 type word_break = Normal | Break_all | Keep_all | Break_word | Inherit
 
 (** CSS overflow-wrap values. *)
-type overflow_wrap = Normal_wrap | Anywhere | Break_word_wrap | Inherit
+type overflow_wrap = Normal | Anywhere | Break_word | Inherit
 
 (** CSS hyphens values. *)
-type hyphens = None_h | Manual | Auto | Inherit
+type hyphens = None | Manual | Auto | Inherit
+
+type content =
+  | String of string
+  | None
+  | Normal
+  | Var of content var  (** TODO *)
 
 (** CSS font-stretch values. *)
 type font_stretch =
-  | Ultra_condensed
-  | Extra_condensed
-  | Condensed
-  | Semi_condensed
-  | Normal
-  | Semi_expanded
-  | Expanded
-  | Extra_expanded
-  | Ultra_expanded
-  | Percentage of float
+  | Pct of float (* CSS spec: accepts percentage values from 50% to 200% *)
+  | Ultra_condensed (* 50% *)
+  | Extra_condensed (* 62.5% *)
+  | Condensed (* 75% *)
+  | Semi_condensed (* 87.5% *)
+  | Normal (* 100% *)
+  | Semi_expanded (* 112.5% *)
+  | Expanded (* 125% *)
+  | Extra_expanded (* 150% *)
+  | Ultra_expanded (* 200% *)
   | Inherit
 
 (** CSS font-variant-numeric tokens. *)
@@ -489,7 +495,7 @@ type font_variant_numeric_token =
   | Tabular_nums
   | Diagonal_fractions
   | Stacked_fractions
-  | Normal_numeric
+  | Normal
   | Empty
 
 (** CSS font-variant-numeric value, supporting both tokens and composed
@@ -931,6 +937,7 @@ type box_shadow =
   | Shadows of shadow list  (** Multiple shadows *)
   | None  (** No shadow *)
   | Vars of string var list  (** Composed shadow variables *)
+  | Raw of string  (** Complex shadows with var() references *)
 
 (** Value kind GADT for typed custom properties *)
 type _ kind =
@@ -953,6 +960,7 @@ type _ kind =
   | Transform_scale : transform_scale kind
   | Box_shadow : box_shadow kind
   | String : string kind
+  | Content : content kind
 
 (** CSS justify-self values. *)
 type justify_self =
@@ -1503,11 +1511,19 @@ val list_style_image : list_style_image -> declaration
 
 (** {2 Additional Properties} *)
 
-val content : string -> declaration
-(** [content value] sets the CSS content property. *)
+val content : content -> declaration
+(** [content c] sets the CSS content property. *)
 
 val border_left_width : length -> declaration
 (** [border_left_width len] sets the CSS border-left-width property. *)
+
+val border_inline_start_width : length -> declaration
+(** [border_inline_start_width len] sets the CSS border-inline-start-width
+    property. *)
+
+val border_inline_end_width : length -> declaration
+(** [border_inline_end_width len] sets the CSS border-inline-end-width property.
+*)
 
 val border_bottom_width : length -> declaration
 (** [border_bottom_width len] sets the CSS border-bottom-width property. *)
@@ -1537,11 +1553,25 @@ val forced_color_adjust : forced_color_adjust -> declaration
 val border_right_width : length -> declaration
 (** [border_right_width len] sets the CSS border-right-width property. *)
 
-val border_left_color : color -> declaration
-(** [border_left_color c] sets the CSS border-left-color property. *)
+val border_top_color : color -> declaration
+(** [border_top_color c] sets the CSS border-top-color property. *)
+
+val border_right_color : color -> declaration
+(** [border_right_color c] sets the CSS border-right-color property. *)
 
 val border_bottom_color : color -> declaration
 (** [border_bottom_color c] sets the CSS border-bottom-color property. *)
+
+val border_left_color : color -> declaration
+(** [border_left_color c] sets the CSS border-left-color property. *)
+
+val border_inline_start_color : color -> declaration
+(** [border_inline_start_color c] sets the CSS border-inline-start-color
+    property. *)
+
+val border_inline_end_color : color -> declaration
+(** [border_inline_end_color c] sets the CSS border-inline-end-color property.
+*)
 
 val transition : transition -> declaration
 (** [transition value] sets the CSS transition property. *)
@@ -1825,6 +1855,11 @@ val padding_inline_start : length -> declaration
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/padding-inline-start>
       MDN: padding-inline-start. *)
 
+val padding_inline_end : length -> declaration
+(** [padding_inline_end value] sets the CSS padding-inline-end property.
+    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/padding-inline-end>
+      MDN: padding-inline-end. *)
+
 val padding_inline : length -> declaration
 (** [padding_inline value] sets the CSS padding-inline shorthand property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/padding-inline>
@@ -2098,7 +2133,38 @@ val analyze_declarations : declaration list -> any_var list
 
 val extract_custom_declarations : declaration list -> declaration list
 (** [extract_custom_declarations decls] returns only the custom property
-    declarations (variable definitions) from a list of declarations. *)
+    declarations from a list. *)
+
+(** {2 CSS Optimization Functions} *)
+
+val optimize : t -> t
+(** [optimize stylesheet] applies CSS optimizations to the stylesheet, including
+    merging consecutive identical selectors and combining rules with identical
+    properties. Preserves CSS cascade semantics. *)
+
+val stylesheet_rules : t -> rule list
+(** [stylesheet_rules stylesheet] returns the top-level rules of a stylesheet.
+*)
+
+val stylesheet_layers : t -> layer_rule list
+(** [stylesheet_layers stylesheet] returns the layer rules of a stylesheet. *)
+
+val stylesheet_media_queries : t -> media_rule list
+(** [stylesheet_media_queries stylesheet] returns the media queries of a
+    stylesheet. *)
+
+val stylesheet_container_queries : t -> container_rule list
+(** [stylesheet_container_queries stylesheet] returns the container queries of a
+    stylesheet. *)
+
+val merge_rules : rule list -> rule list
+(** [merge_rules rules] merges consecutive rules with identical selectors,
+    combining their declarations. Preserves CSS cascade order. *)
+
+val combine_identical_rules : rule list -> rule list
+(** [combine_identical_rules rules] combines rules with identical declarations
+    into comma-separated selectors. Only combines consecutive rules to preserve
+    CSS cascade semantics. *)
 
 val custom_declaration_name : declaration -> string option
 (** [custom_declaration_name decl] returns the variable name if the declaration

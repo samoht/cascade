@@ -406,20 +406,21 @@ type vertical_align =
 type text_overflow = Clip | Ellipsis | String of string | Inherit
 type text_wrap = Wrap | No_wrap | Balance | Pretty | Inherit
 type word_break = Normal | Break_all | Keep_all | Break_word | Inherit
-type overflow_wrap = Normal_wrap | Anywhere | Break_word_wrap | Inherit
-type hyphens = None_h | Manual | Auto | Inherit
+type overflow_wrap = Normal | Anywhere | Break_word | Inherit
+type hyphens = None | Manual | Auto | Inherit
+type content = String of string | None | Normal | Var of content var
 
 type font_stretch =
-  | Ultra_condensed
-  | Extra_condensed
-  | Condensed
-  | Semi_condensed
-  | Normal
-  | Semi_expanded
-  | Expanded
-  | Extra_expanded
-  | Ultra_expanded
-  | Percentage of float
+  | Pct of float (* CSS spec: accepts percentage values from 50% to 200% *)
+  | Ultra_condensed (* 50% *)
+  | Extra_condensed (* 62.5% *)
+  | Condensed (* 75% *)
+  | Semi_condensed (* 87.5% *)
+  | Normal (* 100% *)
+  | Semi_expanded (* 112.5% *)
+  | Expanded (* 125% *)
+  | Extra_expanded (* 150% *)
+  | Ultra_expanded (* 200% *)
   | Inherit
 
 type font_variant_numeric_token =
@@ -431,7 +432,7 @@ type font_variant_numeric_token =
   | Tabular_nums
   | Diagonal_fractions
   | Stacked_fractions
-  | Normal_numeric
+  | Normal
   | Empty
 
 type font_variant_numeric =
@@ -792,6 +793,7 @@ type box_shadow =
   | Shadows of shadow list
   | None
   | Vars of string var list
+  | Raw of string (* For complex shadows with var references *)
 
 type float_side = None | Left | Right
 
@@ -816,6 +818,7 @@ type _ kind =
   | Transform_scale : transform_scale kind
   | Box_shadow : box_shadow kind
   | String : string kind
+  | Content : content kind
 
 (* Convert CSS variable to string *)
 let rec string_of_var : type a. ?mode:mode -> (a -> string) -> a var -> string =
@@ -904,6 +907,12 @@ module Calc = struct
   let em f = Val (Em f)
   let pct f : length calc = Val (Pct f)
 end
+
+let rec string_of_content ~mode : content -> string = function
+  | String s -> Pp.str [ "\""; s; "\"" ]
+  | None -> "none"
+  | Normal -> "normal"
+  | Var v -> string_of_var ~mode (string_of_content ~mode) v
 
 let rec string_of_color_in_mix = function
   | Current -> "currentcolor" (* lowercase in color-mix *)
@@ -1011,6 +1020,7 @@ let string_of_box_shadow ~mode : box_shadow -> string = function
       List.map (string_of_shadow ~mode) shadows |> String.concat ", "
   | Vars vars ->
       String.concat ", " (List.map (string_of_var ~mode (fun s -> s)) vars)
+  | Raw s -> s
 
 let string_of_blend_mode : blend_mode -> string = function
   | Normal -> "normal"
@@ -1741,7 +1751,7 @@ let string_of_font_variant_numeric_token = function
   | Tabular_nums -> "tabular-nums"
   | Diagonal_fractions -> "diagonal-fractions"
   | Stacked_fractions -> "stacked-fractions"
-  | Normal_numeric -> "normal"
+  | Normal -> "normal"
   | Empty -> ""
 
 let rec string_of_font_variant_numeric ~mode : font_variant_numeric -> string =
@@ -1771,6 +1781,51 @@ let rec string_of_font_variant_numeric ~mode : font_variant_numeric -> string =
       in
       String.concat "" values
 
+let string_of_text_overflow : text_overflow -> string = function
+  | Clip -> "clip"
+  | Ellipsis -> "ellipsis"
+  | String s -> s
+  | Inherit -> "inherit"
+
+let string_of_text_wrap : text_wrap -> string = function
+  | Wrap -> "wrap"
+  | No_wrap -> "nowrap"
+  | Balance -> "balance"
+  | Pretty -> "pretty"
+  | Inherit -> "inherit"
+
+let string_of_word_break : word_break -> string = function
+  | Normal -> "normal"
+  | Break_all -> "break-all"
+  | Keep_all -> "keep-all"
+  | Break_word -> "break-word"
+  | Inherit -> "inherit"
+
+let string_of_overflow_wrap : overflow_wrap -> string = function
+  | Normal -> "normal"
+  | Anywhere -> "anywhere"
+  | Break_word -> "break-word"
+  | Inherit -> "inherit"
+
+let string_of_hyphens : hyphens -> string = function
+  | None -> "none"
+  | Manual -> "manual"
+  | Auto -> "auto"
+  | Inherit -> "inherit"
+
+let string_of_font_stretch : font_stretch -> string = function
+  | Pct p -> Pp.str [ Pp.float p; "%" ]
+  | Ultra_condensed -> "ultra-condensed"
+  | Extra_condensed -> "extra-condensed"
+  | Condensed -> "condensed"
+  | Semi_condensed -> "semi-condensed"
+  | Normal -> "normal"
+  | Semi_expanded -> "semi-expanded"
+  | Expanded -> "expanded"
+  | Extra_expanded -> "extra-expanded"
+  | Ultra_expanded -> "ultra-expanded"
+  | Inherit -> "inherit"
+
 type 'a property =
   | Background_color : color property
   | Color : color property
@@ -1787,6 +1842,7 @@ type 'a property =
   | Padding_top : length property
   | Padding_inline : length property
   | Padding_inline_start : length property
+  | Padding_inline_end : length property
   | Padding_block : length property
   | Margin : length property
   | Margin_inline_end : length property
@@ -1854,11 +1910,15 @@ type 'a property =
   | Border_right_width : length property
   | Border_bottom_width : length property
   | Border_left_width : length property
+  | Border_inline_start_width : length property
+  | Border_inline_end_width : length property
   | Border_radius : length property
   | Border_top_color : color property
   | Border_right_color : color property
   | Border_bottom_color : color property
   | Border_left_color : color property
+  | Border_inline_start_color : color property
+  | Border_inline_end_color : color property
   | Opacity : float property
   | Mix_blend_mode : blend_mode property
   | Transform : transform list property
@@ -1939,7 +1999,7 @@ type 'a property =
   | Resize : resize property
   | Object_fit : object_fit property
   | Appearance : appearance property
-  | Content : string property
+  | Content : content property
   | Quotes : string property
   | Text_decoration_thickness : string property
   | Text_size_adjust : string property
@@ -2015,6 +2075,7 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
   | Padding_top -> string_of_length ~mode value
   | Padding_inline -> string_of_length ~mode value
   | Padding_inline_start -> string_of_length ~mode value
+  | Padding_inline_end -> string_of_length ~mode value
   | Padding_block -> string_of_length ~mode value
   | Margin -> string_of_length ~mode value
   | Margin_inline_end -> string_of_length ~mode value
@@ -2061,11 +2122,15 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
   | Border_right_width -> string_of_length ~mode value
   | Border_bottom_width -> string_of_length ~mode value
   | Border_left_width -> string_of_length ~mode value
+  | Border_inline_start_width -> string_of_length ~mode value
+  | Border_inline_end_width -> string_of_length ~mode value
   | Border_radius -> string_of_length ~mode value
   | Border_top_color -> string_of_color ~mode value
   | Border_right_color -> string_of_color ~mode value
   | Border_bottom_color -> string_of_color ~mode value
   | Border_left_color -> string_of_color ~mode value
+  | Border_inline_start_color -> string_of_color ~mode value
+  | Border_inline_end_color -> string_of_color ~mode value
   | Text_decoration_color -> string_of_color ~mode value
   | Webkit_text_decoration_color -> string_of_color ~mode value
   | Webkit_tap_highlight_color -> string_of_color ~mode value
@@ -2101,57 +2166,13 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
   | Overflow_x -> string_of_overflow value
   | Overflow_y -> string_of_overflow value
   | Vertical_align -> string_of_vertical_align value
-  | Text_overflow -> (
-      match value with
-      | Clip -> "clip"
-      | Ellipsis -> "ellipsis"
-      | String s -> s
-      | Inherit -> "inherit")
-  | Text_wrap -> (
-      match value with
-      | Wrap -> "wrap"
-      | No_wrap -> "nowrap"
-      | Balance -> "balance"
-      | Pretty -> "pretty"
-      | Inherit -> "inherit")
-  | Word_break -> (
-      match value with
-      | Normal -> "normal"
-      | Break_all -> "break-all"
-      | Keep_all -> "keep-all"
-      | Break_word -> "break-word"
-      | Inherit -> "inherit")
-  | Overflow_wrap -> (
-      match value with
-      | Normal_wrap -> "normal"
-      | Anywhere -> "anywhere"
-      | Break_word_wrap -> "break-word"
-      | Inherit -> "inherit")
-  | Hyphens -> (
-      match value with
-      | None_h -> "none"
-      | Manual -> "manual"
-      | Auto -> "auto"
-      | Inherit -> "inherit")
-  | Webkit_hyphens -> (
-      match value with
-      | None_h -> "none"
-      | Manual -> "manual"
-      | Auto -> "auto"
-      | Inherit -> "inherit")
-  | Font_stretch -> (
-      match value with
-      | Ultra_condensed -> "50%"
-      | Extra_condensed -> "62.5%"
-      | Condensed -> "75%"
-      | Semi_condensed -> "87.5%"
-      | Normal -> "100%"
-      | Semi_expanded -> "112.5%"
-      | Expanded -> "125%"
-      | Extra_expanded -> "150%"
-      | Ultra_expanded -> "200%"
-      | Percentage p -> Pp.str [ string_of_float p; "%" ]
-      | Inherit -> "inherit")
+  | Text_overflow -> string_of_text_overflow value
+  | Text_wrap -> string_of_text_wrap value
+  | Word_break -> string_of_word_break value
+  | Overflow_wrap -> string_of_overflow_wrap value
+  | Hyphens -> string_of_hyphens value
+  | Webkit_hyphens -> string_of_hyphens value
+  | Font_stretch -> string_of_font_stretch value
   | Font_variant_numeric -> string_of_font_variant_numeric ~mode value
   | Webkit_font_smoothing -> string_of_webkit_font_smoothing value
   | Scroll_snap_type -> string_of_scroll_snap_type ~mode value
@@ -2195,7 +2216,7 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
   | Background_image -> value
   | Animation -> value
   | Aspect_ratio -> string_of_aspect_ratio value
-  | Content -> value
+  | Content -> string_of_content ~mode value
   | Quotes -> value
   | Box_shadow -> string_of_box_shadow ~mode value
   | Fill -> string_of_svg_paint ~mode value
@@ -2349,6 +2370,7 @@ let string_of_value : type a. mode:mode -> a kind -> a -> string =
   | Transform_scale -> string_of_transform_scale ~mode value
   | Box_shadow -> string_of_box_shadow ~mode value
   | String -> value
+  | Content -> string_of_content ~mode value
 
 (* Typed variable setters *)
 let var : type a.
@@ -2623,11 +2645,17 @@ let background_size value = Declaration (Background_size, value)
 (* Additional property constructors *)
 let content value = Declaration (Content, value)
 let border_left_width len = Declaration (Border_left_width, len)
+let border_inline_start_width len = Declaration (Border_inline_start_width, len)
+let border_inline_end_width len = Declaration (Border_inline_end_width, len)
 let border_bottom_width len = Declaration (Border_bottom_width, len)
 let border_top_width len = Declaration (Border_top_width, len)
 let border_right_width len = Declaration (Border_right_width, len)
-let border_left_color c = Declaration (Border_left_color, c)
+let border_top_color c = Declaration (Border_top_color, c)
+let border_right_color c = Declaration (Border_right_color, c)
 let border_bottom_color c = Declaration (Border_bottom_color, c)
+let border_left_color c = Declaration (Border_left_color, c)
+let border_inline_start_color c = Declaration (Border_inline_start_color, c)
+let border_inline_end_color c = Declaration (Border_inline_end_color, c)
 let transition value = Declaration (Transition, value)
 let quotes value = Declaration (Quotes, value)
 
@@ -2675,6 +2703,7 @@ let contain value = Declaration (Contain, value)
 let isolation value = Declaration (Isolation, value)
 let padding_inline len = Declaration (Padding_inline, len)
 let padding_inline_start len = Declaration (Padding_inline_start, len)
+let padding_inline_end len = Declaration (Padding_inline_end, len)
 let padding_block len = Declaration (Padding_block, len)
 let margin_inline len = Declaration (Margin_inline, len)
 let margin_block len = Declaration (Margin_block, len)
@@ -2803,6 +2832,13 @@ type sheet_item =
   | Property of property_rule
   | Starting_style of starting_style_rule
 
+(** Stylesheet accessors *)
+let stylesheet_rules t = t.rules
+
+let stylesheet_layers t = t.layers
+let stylesheet_media_queries t = t.media_queries
+let stylesheet_container_queries t = t.container_queries
+
 (** {1 Creation} *)
 
 let string_of_property : type a. a property -> string = function
@@ -2821,6 +2857,7 @@ let string_of_property : type a. a property -> string = function
   | Padding_top -> "padding-top"
   | Padding_inline -> "padding-inline"
   | Padding_inline_start -> "padding-inline-start"
+  | Padding_inline_end -> "padding-inline-end"
   | Padding_block -> "padding-block"
   | Margin -> "margin"
   | Margin_inline_end -> "margin-inline-end"
@@ -2889,11 +2926,15 @@ let string_of_property : type a. a property -> string = function
   | Border_right_width -> "border-right-width"
   | Border_bottom_width -> "border-bottom-width"
   | Border_left_width -> "border-left-width"
+  | Border_inline_start_width -> "border-inline-start-width"
+  | Border_inline_end_width -> "border-inline-end-width"
   | Border_radius -> "border-radius"
   | Border_top_color -> "border-top-color"
   | Border_right_color -> "border-right-color"
   | Border_bottom_color -> "border-bottom-color"
   | Border_left_color -> "border-left-color"
+  | Border_inline_start_color -> "border-inline-start-color"
+  | Border_inline_end_color -> "border-inline-end-color"
   | Box_shadow -> "box-shadow"
   | Fill -> "fill"
   | Stroke -> "stroke"
@@ -3107,6 +3148,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Padding_inline, Calc calc -> vars_of_calc calc
   | Padding_inline_start, Var v -> [ V v ]
   | Padding_inline_start, Calc calc -> vars_of_calc calc
+  | Padding_inline_end, Var v -> [ V v ]
+  | Padding_inline_end, Calc calc -> vars_of_calc calc
   | Padding_block, Var v -> [ V v ]
   | Padding_block, Calc calc -> vars_of_calc calc
   | Margin, Var v -> [ V v ]
@@ -3147,6 +3190,10 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Border_bottom_width, Calc calc -> vars_of_calc calc
   | Border_left_width, Var v -> [ V v ]
   | Border_left_width, Calc calc -> vars_of_calc calc
+  | Border_inline_start_width, Var v -> [ V v ]
+  | Border_inline_start_width, Calc calc -> vars_of_calc calc
+  | Border_inline_end_width, Var v -> [ V v ]
+  | Border_inline_end_width, Calc calc -> vars_of_calc calc
   | Outline_width, Var v -> [ V v ]
   | Outline_width, Calc calc -> vars_of_calc calc
   | Column_gap, Var v -> [ V v ]
@@ -3163,6 +3210,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Border_right_color, Var v -> [ V v ]
   | Border_bottom_color, Var v -> [ V v ]
   | Border_left_color, Var v -> [ V v ]
+  | Border_inline_start_color, Var v -> [ V v ]
+  | Border_inline_end_color, Var v -> [ V v ]
   | Text_decoration_color, Var v -> [ V v ]
   | Outline_color, Var v -> [ V v ]
   (* Border radius *)
@@ -3295,6 +3344,8 @@ let extract_vars_from_prop_value : type a. a property -> a -> any_var list =
   | Border_right_color, Var v -> [ V v ]
   | Border_bottom_color, Var v -> [ V v ]
   | Border_left_color, Var v -> [ V v ]
+  | Border_inline_start_color, Var v -> [ V v ]
+  | Border_inline_end_color, Var v -> [ V v ]
   | Text_decoration_color, Var v -> [ V v ]
   | Webkit_text_decoration_color, Var v -> [ V v ]
   | Webkit_tap_highlight_color, Var v -> [ V v ]
@@ -3370,28 +3421,25 @@ let inline_style_of_declarations ?(mode : mode = Inline) props =
   |> String.concat "; "
 
 let merge_rules rules =
-  (* Group rules by selector while preserving first occurrence order *)
-  let rec merge_helper acc seen = function
+  (* Only merge consecutive rules with the same selector to preserve cascade
+     order *)
+  let rec merge_consecutive acc = function
     | [] -> List.rev acc
-    | rule :: rest ->
-        if List.mem rule.selector seen then
-          (* Selector already seen, merge properties into existing rule *)
-          let acc' =
-            List.map
-              (fun r ->
-                if r.selector = rule.selector then
-                  { r with declarations = r.declarations @ rule.declarations }
-                else r)
-              acc
+    | [ r ] -> List.rev (r :: acc)
+    | r1 :: r2 :: rest ->
+        if r1.selector = r2.selector then
+          (* Merge consecutive rules with same selector *)
+          let merged =
+            {
+              selector = r1.selector;
+              declarations =
+                deduplicate_declarations (r1.declarations @ r2.declarations);
+            }
           in
-          merge_helper acc' seen rest
-        else
-          (* New selector, add to acc and mark as seen *)
-          merge_helper (rule :: acc) (rule.selector :: seen) rest
+          merge_consecutive acc (merged :: rest)
+        else merge_consecutive (r1 :: acc) (r2 :: rest)
   in
-  merge_helper [] [] rules
-  |> List.map (fun r ->
-         { r with declarations = deduplicate_declarations r.declarations })
+  merge_consecutive [] rules
 
 (* Merge rules with identical properties into combined selectors *)
 let merge_by_properties rules =
@@ -3455,8 +3503,10 @@ let minify_selector s =
   |> Re.replace_string
        (Re.compile (Re.seq [ Re.rep Re.space; Re.char ','; Re.rep Re.space ]))
        ~by:","
+  (* Don't remove spaces before pseudo-classes that might be descendant selectors *)
+  (* Only remove spaces after colons and before regular pseudo-classes *)
   |> Re.replace_string
-       (Re.compile (Re.seq [ Re.rep Re.space; Re.char ':'; Re.rep Re.space ]))
+       (Re.compile (Re.seq [ Re.char ':'; Re.rep1 Re.space ]))
        ~by:":"
   |> String.trim
 
@@ -3920,12 +3970,124 @@ let merge_empty_layers ~config layers =
     in
     process_layers [] [] layers
 
+(* ======================================================================== *)
+(* CSS Optimization *)
+(* ======================================================================== *)
+
+(* Check if a selector should not be combined with others *)
+let should_not_combine selector =
+  (* Don't combine certain pseudo-elements that need separate rules *)
+  String.starts_with ~prefix:"::file-selector-button" selector
+  || String.contains selector
+       ',' (* Already combined selectors shouldn't be re-combined *)
+
+(* Combine consecutive rules with identical declarations into comma-separated
+   selectors *)
+let combine_identical_rules rules =
+  (* Only combine consecutive rules to preserve cascade semantics *)
+  let rec combine_consecutive acc current_group = function
+    | [] ->
+        let final =
+          match current_group with
+          | [] -> acc
+          | [ (sel, decls) ] -> { selector = sel; declarations = decls } :: acc
+          | group ->
+              let selectors = List.map fst (List.rev group) in
+              let decls = snd (List.hd group) in
+              { selector = String.concat "," selectors; declarations = decls }
+              :: acc
+        in
+        List.rev final
+    | rule :: rest -> (
+        if should_not_combine rule.selector then
+          (* Don't combine this selector, flush current group and start fresh *)
+          let acc' =
+            match current_group with
+            | [] -> rule :: acc
+            | [ (sel, decls) ] ->
+                rule :: { selector = sel; declarations = decls } :: acc
+            | group ->
+                let selectors = List.map fst (List.rev group) in
+                let decls = snd (List.hd group) in
+                rule
+                :: {
+                     selector = String.concat "," selectors;
+                     declarations = decls;
+                   }
+                :: acc
+          in
+          combine_consecutive acc' [] rest
+        else
+          match current_group with
+          | [] ->
+              (* Start a new group *)
+              combine_consecutive acc
+                [ (rule.selector, rule.declarations) ]
+                rest
+          | (_, prev_decls) :: _ ->
+              if prev_decls = rule.declarations then
+                (* Same declarations, add to current group *)
+                combine_consecutive acc
+                  ((rule.selector, rule.declarations) :: current_group)
+                  rest
+              else
+                (* Different declarations, flush current group and start new
+                   one *)
+                let acc' =
+                  match current_group with
+                  | [ (sel, decls) ] ->
+                      { selector = sel; declarations = decls } :: acc
+                  | group ->
+                      let selectors = List.map fst (List.rev group) in
+                      let decls = snd (List.hd group) in
+                      {
+                        selector = String.concat "," selectors;
+                        declarations = decls;
+                      }
+                      :: acc
+                in
+                combine_consecutive acc'
+                  [ (rule.selector, rule.declarations) ]
+                  rest)
+  in
+  combine_consecutive [] [] rules
+
+let optimize stylesheet =
+  (* Apply CSS optimizations while preserving cascade semantics *)
+  let deduplicate_rule rule =
+    { rule with declarations = deduplicate_declarations rule.declarations }
+  in
+  (* Helper to optimize a list of rules *)
+  let optimize_rules rules =
+    rules
+    |> List.map deduplicate_rule (* Deduplicate within each rule first *)
+    |> merge_rules (* Then merge consecutive same-selector rules *)
+    |> combine_identical_rules (* Finally combine consecutive identical rules *)
+  in
+  {
+    stylesheet with
+    rules = optimize_rules stylesheet.rules;
+    (* Apply the same optimization to nested rules *)
+    media_queries =
+      List.map
+        (fun mq -> { mq with media_rules = optimize_rules mq.media_rules })
+        stylesheet.media_queries;
+    container_queries =
+      List.map
+        (fun cq ->
+          { cq with container_rules = optimize_rules cq.container_rules })
+        stylesheet.container_queries;
+  }
+
 let to_string ?(minify = false) ?(mode = Variables) stylesheet =
+  let optimized_stylesheet =
+    if minify then optimize stylesheet else stylesheet
+  in
   let config = { minify; mode } in
   let header_str =
     if List.length stylesheet.layers > 0 then Pp.str [ header; "\n" ] else ""
   in
-  let layer_strings = merge_empty_layers ~config stylesheet.layers in
+  let layer_strings = merge_empty_layers ~config optimized_stylesheet.layers in
   let ( rule_strings,
         at_property_strings,
         starting_style_strings,
