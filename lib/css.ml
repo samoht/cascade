@@ -3423,23 +3423,41 @@ let inline_style_of_declarations ?(mode : mode = Inline) props =
 let merge_rules rules =
   (* Only merge consecutive rules with the same selector to preserve cascade
      order *)
-  let rec merge_consecutive acc = function
-    | [] -> List.rev acc
-    | [ r ] -> List.rev (r :: acc)
-    | r1 :: r2 :: rest ->
-        if r1.selector = r2.selector then
-          (* Merge consecutive rules with same selector *)
-          let merged =
-            {
-              selector = r1.selector;
-              declarations =
-                deduplicate_declarations (r1.declarations @ r2.declarations);
-            }
+  let rec merge_consecutive acc current_decls_rev current_selector = function
+    | [] ->
+        (* Flush any accumulated declarations *)
+        let final =
+          match current_decls_rev with
+          | [] -> acc
+          | decls ->
+              let merged_decls =
+                List.rev decls |> List.concat |> deduplicate_declarations
+              in
+              { selector = current_selector; declarations = merged_decls }
+              :: acc
+        in
+        List.rev final
+    | rule :: rest ->
+        if current_decls_rev = [] then
+          (* Start new group *)
+          merge_consecutive acc [ rule.declarations ] rule.selector rest
+        else if rule.selector = current_selector then
+          (* Same selector - accumulate declarations *)
+          merge_consecutive acc
+            (rule.declarations :: current_decls_rev)
+            current_selector rest
+        else
+          (* Different selector - flush current and start new *)
+          let merged_decls =
+            List.rev current_decls_rev |> List.concat
+            |> deduplicate_declarations
           in
-          merge_consecutive acc (merged :: rest)
-        else merge_consecutive (r1 :: acc) (r2 :: rest)
+          let acc' =
+            { selector = current_selector; declarations = merged_decls } :: acc
+          in
+          merge_consecutive acc' [ rule.declarations ] rule.selector rest
   in
-  merge_consecutive [] rules
+  merge_consecutive [] [] "" rules
 
 (* Merge rules with identical properties into combined selectors *)
 let merge_by_properties rules =
@@ -3488,26 +3506,56 @@ let merge_by_properties rules =
     groups []
   |> List.sort (fun a b -> String.compare a.selector b.selector)
 
+(* Pre-compiled regexes for minification - compiled once at module
+   initialization *)
+module Minification = struct
+  (* Selector minification regexes *)
+  let spaces_around_gt =
+    Re.compile (Re.seq [ Re.rep Re.space; Re.char '>'; Re.rep Re.space ])
+
+  let spaces_around_plus =
+    Re.compile (Re.seq [ Re.rep Re.space; Re.char '+'; Re.rep Re.space ])
+
+  let spaces_around_tilde =
+    Re.compile (Re.seq [ Re.rep Re.space; Re.char '~'; Re.rep Re.space ])
+
+  let spaces_around_comma =
+    Re.compile (Re.seq [ Re.rep Re.space; Re.char ','; Re.rep Re.space ])
+
+  let spaces_after_colon = Re.compile (Re.seq [ Re.char ':'; Re.rep1 Re.space ])
+
+  (* Value minification regexes *)
+  let color_functions =
+    Re.compile (Re.str "\\b(rgb|rgba|hsl|hsla|color-mix|oklab|oklch)\\s*\\(")
+
+  let comma_space = Re.compile (Re.str ", ")
+  let calc_multiply = Re.compile (Re.str " * ")
+  let calc_add = Re.compile (Re.str " + ")
+  let calc_subtract = Re.compile (Re.str " - ")
+  let calc_divide = Re.compile (Re.str " / ")
+  let leading_zero_in_oklch = Re.compile (Re.str " 0.")
+
+  let decimal_with_leading_zero =
+    Re.compile
+      (Re.seq
+         [
+           Re.bos;
+           Re.str "0.";
+           Re.group (Re.rep1 Re.digit);
+           Re.group (Re.rep Re.any);
+         ])
+end
+
 let minify_selector s =
   (* Remove unnecessary whitespace in selectors *)
   s
-  |> Re.replace_string
-       (Re.compile (Re.seq [ Re.rep Re.space; Re.char '>'; Re.rep Re.space ]))
-       ~by:">"
-  |> Re.replace_string
-       (Re.compile (Re.seq [ Re.rep Re.space; Re.char '+'; Re.rep Re.space ]))
-       ~by:"+"
-  |> Re.replace_string
-       (Re.compile (Re.seq [ Re.rep Re.space; Re.char '~'; Re.rep Re.space ]))
-       ~by:"~"
-  |> Re.replace_string
-       (Re.compile (Re.seq [ Re.rep Re.space; Re.char ','; Re.rep Re.space ]))
-       ~by:","
+  |> Re.replace_string Minification.spaces_around_gt ~by:">"
+  |> Re.replace_string Minification.spaces_around_plus ~by:"+"
+  |> Re.replace_string Minification.spaces_around_tilde ~by:"~"
+  |> Re.replace_string Minification.spaces_around_comma ~by:","
   (* Don't remove spaces before pseudo-classes that might be descendant selectors *)
   (* Only remove spaces after colons and before regular pseudo-classes *)
-  |> Re.replace_string
-       (Re.compile (Re.seq [ Re.char ':'; Re.rep1 Re.space ]))
-       ~by:":"
+  |> Re.replace_string Minification.spaces_after_colon ~by:":"
   |> String.trim
 
 let minify_value v =
@@ -3518,43 +3566,29 @@ let minify_value v =
     let v =
       (* Remove spaces after commas in specific contexts *)
       (* Keep spaces in: color functions like rgb(), hsl(), color-mix() *)
-      if
-        Re.execp
-          (Re.compile
-             (Re.str "\\b(rgb|rgba|hsl|hsla|color-mix|oklab|oklch)\\s*\\("))
-          v
-      then v (* Don't remove spaces in color functions *)
-      else Re.replace_string (Re.compile (Re.str ", ")) ~by:"," v
+      if Re.execp Minification.color_functions v then v
+        (* Don't remove spaces in color functions *)
+      else Re.replace_string Minification.comma_space ~by:"," v
     in
     let v =
       (* Remove spaces in calc expressions *)
       if String.contains v '(' && String.contains v ')' then
-        Re.replace_string (Re.compile (Re.str " * ")) ~by:"*" v
-        |> Re.replace_string (Re.compile (Re.str " + ")) ~by:"+"
-        |> Re.replace_string (Re.compile (Re.str " - ")) ~by:"-"
-        |> Re.replace_string (Re.compile (Re.str " / ")) ~by:"/"
+        Re.replace_string Minification.calc_multiply ~by:"*" v
+        |> Re.replace_string Minification.calc_add ~by:"+"
+        |> Re.replace_string Minification.calc_subtract ~by:"-"
+        |> Re.replace_string Minification.calc_divide ~by:"/"
       else v
     in
     (* Remove leading 0 from decimals in oklch values and measurements *)
     (* Handle oklch values specially - replace " 0." with " ." *)
     let v =
       if String.contains v 'o' && String.contains v 'k' then
-        Re.replace_string (Re.compile (Re.str " 0.")) ~by:" ." v
+        Re.replace_string Minification.leading_zero_in_oklch ~by:" ." v
       else v
     in
     (* Remove leading 0 from decimals but preserve units - e.g., "0.5rem" ->
        ".5rem" *)
-    let decimal_re =
-      Re.compile
-        (Re.seq
-           [
-             Re.bos;
-             Re.str "0.";
-             Re.group (Re.rep1 Re.digit);
-             Re.group (Re.rep Re.any);
-           ])
-    in
-    match Re.exec_opt decimal_re v with
+    match Re.exec_opt Minification.decimal_with_leading_zero v with
     | Some m -> Pp.str [ "."; Re.Group.get m 1; Re.Group.get m 2 ]
     | None -> v
 
