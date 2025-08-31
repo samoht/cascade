@@ -127,7 +127,7 @@ let test_calc () =
     "contains calc" true
     (Astring.String.is_infix ~affix:"calc(100px - 2rem)" output)
 
-let test_css_variables () =
+let test_variables () =
   let _, ff =
     var
       ~fallback:[ Ui_sans_serif; System_ui ]
@@ -383,6 +383,70 @@ let test_cascade_with_intervening () =
     [ ".base"; ".override"; ".base" ]
     selectors
 
+let test_merge_truly_adjacent () =
+  (* Test that only truly adjacent rules get merged *)
+  let rule1 =
+    rule ~selector:".a" [ color (Hex { hash = false; value = "ff0000" }) ]
+  in
+  let rule2 = rule ~selector:".a" [ font_size (Px 14) ] in
+  (* Adjacent - should merge *)
+  let rule3 = rule ~selector:".b" [ margin Zero ] in
+  let rule4 = rule ~selector:".a" [ padding (Px 10) ] in
+  (* Not adjacent to other .a rules *)
+  let rule5 = rule ~selector:".a" [ border_width (Px 1) ] in
+  (* Adjacent to previous .a - should merge *)
+
+  let rules = [ Rule rule1; Rule rule2; Rule rule3; Rule rule4; Rule rule5 ] in
+  let stylesheet = stylesheet rules in
+  let optimized = optimize stylesheet in
+  let merged = stylesheet_rules optimized in
+
+  (* Should result in 3 rules: merged .a, .b, merged .a *)
+  Alcotest.(check int) "rule count" 3 (List.length merged);
+
+  (* First merged .a rule should have 2 declarations *)
+  let first = List.nth merged 0 in
+  Alcotest.(check string) "first selector" ".a" (selector first);
+  Alcotest.(check int) "first decl count" 2 (List.length (declarations first));
+
+  (* Middle .b rule *)
+  let middle = List.nth merged 1 in
+  Alcotest.(check string) "middle selector" ".b" (selector middle);
+
+  (* Last merged .a rule should have 2 declarations *)
+  let last = List.nth merged 2 in
+  Alcotest.(check string) "last selector" ".a" (selector last);
+  Alcotest.(check int) "last decl count" 2 (List.length (declarations last))
+
+let test_cascade_order_preservation () =
+  (* Test that merge preserves cascade semantics for specificity conflicts *)
+  let btn_base =
+    rule ~selector:".btn" [ color (Hex { hash = false; value = "0000ff" }) ]
+  in
+  let btn_hover =
+    rule ~selector:".btn:hover"
+      [ color (Hex { hash = false; value = "ff0000" }) ]
+  in
+  let btn_bg =
+    rule ~selector:".btn"
+      [ background_color (Hex { hash = false; value = "ffffff" }) ]
+  in
+
+  let rules = [ Rule btn_base; Rule btn_hover; Rule btn_bg ] in
+  let stylesheet = stylesheet rules in
+  let optimized = optimize stylesheet in
+  let merged = stylesheet_rules optimized in
+
+  (* The two .btn rules should NOT be merged due to intervening :hover rule *)
+  Alcotest.(check int) "rule count" 3 (List.length merged);
+
+  (* Verify order is preserved *)
+  let selectors = List.map selector merged in
+  Alcotest.(check (list string))
+    "Order preserved"
+    [ ".btn"; ".btn:hover"; ".btn" ]
+    selectors
+
 (* Test runner *)
 let tests =
   [
@@ -392,7 +456,7 @@ let tests =
     ("media query", `Quick, test_media_query);
     ("inline style", `Quick, test_inline_style);
     ("calc expressions", `Quick, test_calc);
-    ("CSS variables", `Quick, test_css_variables);
+    ("CSS variables", `Quick, test_variables);
     ("grid template", `Quick, test_grid_template);
     ("container query", `Quick, test_container_query);
     ("var extraction", `Quick, test_var_extraction);
@@ -407,6 +471,8 @@ let tests =
     ("selector merging correctness", `Quick, test_selector_merging_correctness);
     ("non merging different rules", `Quick, test_non_merging_different_rules);
     ("cascade with intervening", `Quick, test_cascade_with_intervening);
+    ("merge truly adjacent", `Quick, test_merge_truly_adjacent);
+    ("cascade order preservation", `Quick, test_cascade_order_preservation);
   ]
 
-let suite = [ ("CSS", tests) ]
+let suite = [ ("css", tests) ]

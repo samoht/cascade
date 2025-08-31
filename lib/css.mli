@@ -81,7 +81,7 @@ val var_name : 'a var -> string
 (** [var_name v] is [v]'s variable name (without --). *)
 
 val var_layer : 'a var -> string option
-(** [var_name v] is [v]'s optional layer where it's defined. *)
+(** [var_layer v] returns the optional layer where [v] is defined. *)
 
 (** CSS variable reference *)
 
@@ -504,11 +504,11 @@ type font_variant_numeric =
   | Tokens of font_variant_numeric_token list
   | Var of font_variant_numeric_token var
   | Composed of {
-      ordinal : font_variant_numeric option;
-      slashed_zero : font_variant_numeric option;
-      numeric_figure : font_variant_numeric option;
-      numeric_spacing : font_variant_numeric option;
-      numeric_fraction : font_variant_numeric option;
+      ordinal : font_variant_numeric_token option;
+      slashed_zero : font_variant_numeric_token option;
+      numeric_figure : font_variant_numeric_token option;
+      numeric_spacing : font_variant_numeric_token option;
+      numeric_fraction : font_variant_numeric_token option;
     }
 
 (** CSS border-collapse values. *)
@@ -1730,11 +1730,11 @@ val font_variant_numeric_tokens :
     from tokens. *)
 
 val font_variant_numeric_composed :
-  ?ordinal:font_variant_numeric ->
-  ?slashed_zero:font_variant_numeric ->
-  ?numeric_figure:font_variant_numeric ->
-  ?numeric_spacing:font_variant_numeric ->
-  ?numeric_fraction:font_variant_numeric ->
+  ?ordinal:font_variant_numeric_token ->
+  ?slashed_zero:font_variant_numeric_token ->
+  ?numeric_figure:font_variant_numeric_token ->
+  ?numeric_spacing:font_variant_numeric_token ->
+  ?numeric_fraction:font_variant_numeric_token ->
   unit ->
   font_variant_numeric
 (** [font_variant_numeric_composed ...] creates a composed font-variant-numeric

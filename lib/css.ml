@@ -439,11 +439,11 @@ type font_variant_numeric =
   | Tokens of font_variant_numeric_token list
   | Var of font_variant_numeric_token var
   | Composed of {
-      ordinal : font_variant_numeric option;
-      slashed_zero : font_variant_numeric option;
-      numeric_figure : font_variant_numeric option;
-      numeric_spacing : font_variant_numeric option;
-      numeric_fraction : font_variant_numeric option;
+      ordinal : font_variant_numeric_token option;
+      slashed_zero : font_variant_numeric_token option;
+      numeric_figure : font_variant_numeric_token option;
+      numeric_spacing : font_variant_numeric_token option;
+      numeric_fraction : font_variant_numeric_token option;
     }
 
 type pointer_events =
@@ -1638,17 +1638,16 @@ let rec string_of_font_variation_settings ~mode :
 
 let transform_func name args = Pp.str ((name :: "(" :: args) @ [ ")" ])
 
-let rec string_of_transform ~mode = function
-  (* Translate transforms *)
-  | Translate (x, None) ->
-      transform_func "translate" [ string_of_length ~mode x ]
-  | Translate (x, Some y) ->
+let string_of_translate ~mode (x : length) (y_opt : length option)
+    (z_opt : length option) : string =
+  match (y_opt, z_opt) with
+  | Some y, None ->
       transform_func "translate"
         [ string_of_length ~mode x; ", "; string_of_length ~mode y ]
-  | Translate_x l -> transform_func "translateX" [ string_of_length ~mode l ]
-  | Translate_y l -> transform_func "translateY" [ string_of_length ~mode l ]
-  | Translate_z l -> transform_func "translateZ" [ string_of_length ~mode l ]
-  | Translate3d (x, y, z) ->
+  | None, Some z ->
+      transform_func "translate3d"
+        [ string_of_length ~mode x; ", "; "0"; ", "; string_of_length ~mode z ]
+  | Some y, Some z ->
       transform_func "translate3d"
         [
           string_of_length ~mode x;
@@ -1657,12 +1656,17 @@ let rec string_of_transform ~mode = function
           ", ";
           string_of_length ~mode z;
         ]
-  (* Rotate transforms *)
-  | Rotate a -> transform_func "rotate" [ string_of_angle ~mode a ]
-  | Rotate_x a -> transform_func "rotateX" [ string_of_angle ~mode a ]
-  | Rotate_y a -> transform_func "rotateY" [ string_of_angle ~mode a ]
-  | Rotate_z a -> transform_func "rotateZ" [ string_of_angle ~mode a ]
-  | Rotate3d (x, y, z, angle) ->
+  | None, None -> transform_func "translate" [ string_of_length ~mode x ]
+
+let string_of_rotate ~mode (angle : angle)
+    (axis : [ `None | `X | `Y | `Z | `Vec3d of float * float * float ]) : string
+    =
+  match axis with
+  | `None -> transform_func "rotate" [ string_of_angle ~mode angle ]
+  | `X -> transform_func "rotateX" [ string_of_angle ~mode angle ]
+  | `Y -> transform_func "rotateY" [ string_of_angle ~mode angle ]
+  | `Z -> transform_func "rotateZ" [ string_of_angle ~mode angle ]
+  | `Vec3d (x, y, z) ->
       transform_func "rotate3d"
         [
           Pp.float x;
@@ -1673,20 +1677,27 @@ let rec string_of_transform ~mode = function
           ", ";
           string_of_angle ~mode angle;
         ]
-  (* Scale transforms *)
-  | Scale (x, None) ->
-      transform_func "scale" [ string_of_transform_scale ~mode x ]
-  | Scale (x, Some y) ->
+
+let string_of_scale_transform ~mode (x : transform_scale)
+    (y_opt : transform_scale option) (z_opt : transform_scale option) : string =
+  match (y_opt, z_opt) with
+  | Some y, None ->
       transform_func "scale"
         [
           string_of_transform_scale ~mode x;
           ", ";
           string_of_transform_scale ~mode y;
         ]
-  | Scale_x s -> transform_func "scaleX" [ string_of_transform_scale ~mode s ]
-  | Scale_y s -> transform_func "scaleY" [ string_of_transform_scale ~mode s ]
-  | Scale_z s -> transform_func "scaleZ" [ string_of_transform_scale ~mode s ]
-  | Scale3d (x, y, z) ->
+  | None, Some z ->
+      transform_func "scale3d"
+        [
+          string_of_transform_scale ~mode x;
+          ", ";
+          "1";
+          ", ";
+          string_of_transform_scale ~mode z;
+        ]
+  | Some y, Some z ->
       transform_func "scale3d"
         [
           string_of_transform_scale ~mode x;
@@ -1695,22 +1706,44 @@ let rec string_of_transform ~mode = function
           ", ";
           string_of_transform_scale ~mode z;
         ]
-  (* Skew transforms *)
-  | Skew (x, None) -> transform_func "skewX" [ string_of_angle ~mode x ]
-  | Skew (x, Some y) ->
+  | None, None -> transform_func "scale" [ string_of_transform_scale ~mode x ]
+
+let string_of_skew ~mode (x : angle) (y_opt : angle option) : string =
+  match y_opt with
+  | Some y ->
       transform_func "skew"
         [ string_of_angle ~mode x; ", "; string_of_angle ~mode y ]
-  | Skew_x a -> transform_func "skewX" [ string_of_angle ~mode a ]
-  | Skew_y a -> transform_func "skewY" [ string_of_angle ~mode a ]
-  (* Matrix transforms *)
-  | Matrix (a, b, c, d, e, f) ->
+  | None -> transform_func "skewX" [ string_of_angle ~mode x ]
+
+let string_of_matrix
+    (vals :
+      [ `Matrix2d of float * float * float * float * float * float
+      | `Matrix3d of
+        float
+        * float
+        * float
+        * float
+        * float
+        * float
+        * float
+        * float
+        * float
+        * float
+        * float
+        * float
+        * float
+        * float
+        * float
+        * float ]) : string =
+  match vals with
+  | `Matrix2d (a, b, c, d, e, f) ->
       let values =
         [
           Pp.float a; Pp.float b; Pp.float c; Pp.float d; Pp.float e; Pp.float f;
         ]
       in
       Pp.str [ "matrix("; String.concat ", " values; ")" ]
-  | Matrix3d
+  | `Matrix3d
       (m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11, m12, m13, m14, m15, m16) ->
       let values =
         [
@@ -1733,7 +1766,50 @@ let rec string_of_transform ~mode = function
         ]
       in
       Pp.str [ "matrix3d("; String.concat ", " values; ")" ]
-  (* Other transforms *)
+
+let rec string_of_transform ~mode = function
+  | Translate (x, None) -> string_of_translate ~mode x None None
+  | Translate (x, Some y) -> string_of_translate ~mode x (Some y) None
+  | Translate_x l -> transform_func "translateX" [ string_of_length ~mode l ]
+  | Translate_y l -> transform_func "translateY" [ string_of_length ~mode l ]
+  | Translate_z l -> transform_func "translateZ" [ string_of_length ~mode l ]
+  | Translate3d (x, y, z) -> string_of_translate ~mode x (Some y) (Some z)
+  | Rotate a -> string_of_rotate ~mode a `None
+  | Rotate_x a -> string_of_rotate ~mode a `X
+  | Rotate_y a -> string_of_rotate ~mode a `Y
+  | Rotate_z a -> string_of_rotate ~mode a `Z
+  | Rotate3d (x, y, z, angle) -> string_of_rotate ~mode angle (`Vec3d (x, y, z))
+  | Scale (x, None) -> string_of_scale_transform ~mode x None None
+  | Scale (x, Some y) -> string_of_scale_transform ~mode x (Some y) None
+  | Scale_x s -> transform_func "scaleX" [ string_of_transform_scale ~mode s ]
+  | Scale_y s -> transform_func "scaleY" [ string_of_transform_scale ~mode s ]
+  | Scale_z s -> transform_func "scaleZ" [ string_of_transform_scale ~mode s ]
+  | Scale3d (x, y, z) -> string_of_scale_transform ~mode x (Some y) (Some z)
+  | Skew (x, None) -> string_of_skew ~mode x None
+  | Skew (x, Some y) -> string_of_skew ~mode x (Some y)
+  | Skew_x a -> transform_func "skewX" [ string_of_angle ~mode a ]
+  | Skew_y a -> transform_func "skewY" [ string_of_angle ~mode a ]
+  | Matrix (a, b, c, d, e, f) -> string_of_matrix (`Matrix2d (a, b, c, d, e, f))
+  | Matrix3d
+      (m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11, m12, m13, m14, m15, m16) ->
+      string_of_matrix
+        (`Matrix3d
+           ( m1,
+             m2,
+             m3,
+             m4,
+             m5,
+             m6,
+             m7,
+             m8,
+             m9,
+             m10,
+             m11,
+             m12,
+             m13,
+             m14,
+             m15,
+             m16 ))
   | Perspective l -> Pp.str [ "perspective("; string_of_length ~mode l; ")" ]
   | Var v ->
       string_of_var ~mode
@@ -1742,7 +1818,7 @@ let rec string_of_transform ~mode = function
         v
   | None -> "none"
 
-let string_of_font_variant_numeric_token = function
+let string_of_font_variant_token = function
   | Ordinal -> "ordinal"
   | Slashed_zero -> "slashed-zero"
   | Lining_nums -> "lining-nums"
@@ -1754,11 +1830,11 @@ let string_of_font_variant_numeric_token = function
   | Normal -> "normal"
   | Empty -> ""
 
-let rec string_of_font_variant_numeric ~mode : font_variant_numeric -> string =
+let string_of_font_variant_numeric ~mode : font_variant_numeric -> string =
   function
   | Tokens tokens ->
-      String.concat " " (List.map string_of_font_variant_numeric_token tokens)
-  | Var v -> string_of_var ~mode string_of_font_variant_numeric_token v
+      String.concat " " (List.map string_of_font_variant_token tokens)
+  | Var v -> string_of_var ~mode string_of_font_variant_token v
   | Composed
       {
         ordinal;
@@ -1769,8 +1845,7 @@ let rec string_of_font_variant_numeric ~mode : font_variant_numeric -> string =
       } ->
       let values =
         List.map
-          (function
-            | Some o -> string_of_font_variant_numeric ~mode o | None -> "")
+          (function Some o -> string_of_font_variant_token o | None -> "")
           [
             ordinal;
             slashed_zero;
@@ -2363,7 +2438,7 @@ let string_of_value : type a. mode:mode -> a kind -> a -> string =
   | Font_feature_settings -> string_of_font_feature_settings ~mode value
   | Font_variation_settings -> string_of_font_variation_settings ~mode value
   | Font_variant_numeric -> string_of_font_variant_numeric ~mode value
-  | Font_variant_numeric_token -> string_of_font_variant_numeric_token value
+  | Font_variant_numeric_token -> string_of_font_variant_token value
   | Blend_mode -> string_of_blend_mode value
   | Scroll_snap_strictness -> string_of_scroll_snap_strictness ~mode value
   | Angle -> string_of_angle ~mode value
@@ -3266,10 +3341,10 @@ let rec vars_of_value : type a. a kind -> a -> any_var list =
   | _ -> []
 
 and vars_of_values_opt values =
-  let collect_vars (opt_fv : _ option) =
+  let collect_vars (opt_fv : font_variant_numeric_token option) =
     match opt_fv with
     | None -> []
-    | Some fv -> vars_of_value Font_variant_numeric fv
+    | Some _token -> [] (* Font variant tokens don't contain variables *)
   in
   List.concat_map collect_vars values
 
@@ -3421,43 +3496,35 @@ let inline_style_of_declarations ?(mode : mode = Inline) props =
   |> String.concat "; "
 
 let merge_rules rules =
-  (* Only merge consecutive rules with the same selector to preserve cascade
-     order *)
-  let rec merge_consecutive acc current_decls_rev current_selector = function
-    | [] ->
-        (* Flush any accumulated declarations *)
-        let final =
-          match current_decls_rev with
-          | [] -> acc
-          | decls ->
-              let merged_decls =
-                List.rev decls |> List.concat |> deduplicate_declarations
+  (* Only merge truly adjacent rules with the same selector to preserve cascade
+     order. This is safe because we don't reorder rules - we only combine
+     immediately adjacent rules with identical selectors, which maintains
+     cascade semantics. *)
+  let rec merge_adjacent acc prev_rule = function
+    | [] -> List.rev (match prev_rule with Some r -> r :: acc | None -> acc)
+    | rule :: rest -> (
+        match prev_rule with
+        | None ->
+            (* First rule - just store it *)
+            merge_adjacent acc (Some rule) rest
+        | Some prev ->
+            if prev.selector = rule.selector then
+              (* Same selector immediately following - safe to merge *)
+              let merged =
+                {
+                  selector = prev.selector;
+                  declarations =
+                    deduplicate_declarations
+                      (prev.declarations @ rule.declarations);
+                }
               in
-              { selector = current_selector; declarations = merged_decls }
-              :: acc
-        in
-        List.rev final
-    | rule :: rest ->
-        if current_decls_rev = [] then
-          (* Start new group *)
-          merge_consecutive acc [ rule.declarations ] rule.selector rest
-        else if rule.selector = current_selector then
-          (* Same selector - accumulate declarations *)
-          merge_consecutive acc
-            (rule.declarations :: current_decls_rev)
-            current_selector rest
-        else
-          (* Different selector - flush current and start new *)
-          let merged_decls =
-            List.rev current_decls_rev |> List.concat
-            |> deduplicate_declarations
-          in
-          let acc' =
-            { selector = current_selector; declarations = merged_decls } :: acc
-          in
-          merge_consecutive acc' [ rule.declarations ] rule.selector rest
+              merge_adjacent acc (Some merged) rest
+            else
+              (* Different selector - emit previous rule and continue with
+                 current *)
+              merge_adjacent (prev :: acc) (Some rule) rest)
   in
-  merge_consecutive [] [] "" rules
+  merge_adjacent [] None rules
 
 (* Merge rules with identical properties into combined selectors *)
 let merge_by_properties rules =
@@ -3508,7 +3575,7 @@ let merge_by_properties rules =
 
 (* Pre-compiled regexes for minification - compiled once at module
    initialization *)
-module Minification = struct
+module Minify = struct
   (* Selector minification regexes *)
   let spaces_around_gt =
     Re.compile (Re.seq [ Re.rep Re.space; Re.char '>'; Re.rep Re.space ])
@@ -3549,13 +3616,13 @@ end
 let minify_selector s =
   (* Remove unnecessary whitespace in selectors *)
   s
-  |> Re.replace_string Minification.spaces_around_gt ~by:">"
-  |> Re.replace_string Minification.spaces_around_plus ~by:"+"
-  |> Re.replace_string Minification.spaces_around_tilde ~by:"~"
-  |> Re.replace_string Minification.spaces_around_comma ~by:","
+  |> Re.replace_string Minify.spaces_around_gt ~by:">"
+  |> Re.replace_string Minify.spaces_around_plus ~by:"+"
+  |> Re.replace_string Minify.spaces_around_tilde ~by:"~"
+  |> Re.replace_string Minify.spaces_around_comma ~by:","
   (* Don't remove spaces before pseudo-classes that might be descendant selectors *)
   (* Only remove spaces after colons and before regular pseudo-classes *)
-  |> Re.replace_string Minification.spaces_after_colon ~by:":"
+  |> Re.replace_string Minify.spaces_after_colon ~by:":"
   |> String.trim
 
 let minify_value v =
@@ -3566,29 +3633,29 @@ let minify_value v =
     let v =
       (* Remove spaces after commas in specific contexts *)
       (* Keep spaces in: color functions like rgb(), hsl(), color-mix() *)
-      if Re.execp Minification.color_functions v then v
+      if Re.execp Minify.color_functions v then v
         (* Don't remove spaces in color functions *)
-      else Re.replace_string Minification.comma_space ~by:"," v
+      else Re.replace_string Minify.comma_space ~by:"," v
     in
     let v =
       (* Remove spaces in calc expressions *)
       if String.contains v '(' && String.contains v ')' then
-        Re.replace_string Minification.calc_multiply ~by:"*" v
-        |> Re.replace_string Minification.calc_add ~by:"+"
-        |> Re.replace_string Minification.calc_subtract ~by:"-"
-        |> Re.replace_string Minification.calc_divide ~by:"/"
+        Re.replace_string Minify.calc_multiply ~by:"*" v
+        |> Re.replace_string Minify.calc_add ~by:"+"
+        |> Re.replace_string Minify.calc_subtract ~by:"-"
+        |> Re.replace_string Minify.calc_divide ~by:"/"
       else v
     in
     (* Remove leading 0 from decimals in oklch values and measurements *)
     (* Handle oklch values specially - replace " 0." with " ." *)
     let v =
       if String.contains v 'o' && String.contains v 'k' then
-        Re.replace_string Minification.leading_zero_in_oklch ~by:" ." v
+        Re.replace_string Minify.leading_zero_in_oklch ~by:" ." v
       else v
     in
     (* Remove leading 0 from decimals but preserve units - e.g., "0.5rem" ->
        ".5rem" *)
-    match Re.exec_opt Minification.decimal_with_leading_zero v with
+    match Re.exec_opt Minify.decimal_with_leading_zero v with
     | Some m -> Pp.str [ "."; Re.Group.get m 1; Re.Group.get m 2 ]
     | None -> v
 
@@ -4015,41 +4082,29 @@ let should_not_combine selector =
   || String.contains selector
        ',' (* Already combined selectors shouldn't be re-combined *)
 
+(* Convert group of selectors to a rule *)
+let group_to_rule = function
+  | [ (sel, decls) ] -> Some { selector = sel; declarations = decls }
+  | [] -> None
+  | group ->
+      let selectors = List.map fst (List.rev group) in
+      let decls = snd (List.hd group) in
+      Some { selector = String.concat "," selectors; declarations = decls }
+
+(* Flush current group to accumulator *)
+let flush_group acc group =
+  match group_to_rule group with Some rule -> rule :: acc | None -> acc
+
 (* Combine consecutive rules with identical declarations into comma-separated
    selectors *)
 let combine_identical_rules rules =
   (* Only combine consecutive rules to preserve cascade semantics *)
   let rec combine_consecutive acc current_group = function
-    | [] ->
-        let final =
-          match current_group with
-          | [] -> acc
-          | [ (sel, decls) ] -> { selector = sel; declarations = decls } :: acc
-          | group ->
-              let selectors = List.map fst (List.rev group) in
-              let decls = snd (List.hd group) in
-              { selector = String.concat "," selectors; declarations = decls }
-              :: acc
-        in
-        List.rev final
+    | [] -> List.rev (flush_group acc current_group)
     | rule :: rest -> (
         if should_not_combine rule.selector then
           (* Don't combine this selector, flush current group and start fresh *)
-          let acc' =
-            match current_group with
-            | [] -> rule :: acc
-            | [ (sel, decls) ] ->
-                rule :: { selector = sel; declarations = decls } :: acc
-            | group ->
-                let selectors = List.map fst (List.rev group) in
-                let decls = snd (List.hd group) in
-                rule
-                :: {
-                     selector = String.concat "," selectors;
-                     declarations = decls;
-                   }
-                :: acc
-          in
+          let acc' = rule :: flush_group acc current_group in
           combine_consecutive acc' [] rest
         else
           match current_group with
@@ -4067,19 +4122,7 @@ let combine_identical_rules rules =
               else
                 (* Different declarations, flush current group and start new
                    one *)
-                let acc' =
-                  match current_group with
-                  | [ (sel, decls) ] ->
-                      { selector = sel; declarations = decls } :: acc
-                  | group ->
-                      let selectors = List.map fst (List.rev group) in
-                      let decls = snd (List.hd group) in
-                      {
-                        selector = String.concat "," selectors;
-                        declarations = decls;
-                      }
-                      :: acc
-                in
+                let acc' = flush_group acc current_group in
                 combine_consecutive acc'
                   [ (rule.selector, rule.declarations) ]
                   rest)
