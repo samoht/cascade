@@ -497,6 +497,7 @@ type font_variant_numeric_token =
   | Stacked_fractions
   | Normal
   | Empty
+  | Var of font_variant_numeric_token var
 
 (** CSS font-variant-numeric value, supporting both tokens and composed
     variables. *)
@@ -663,7 +664,7 @@ type nested_rule
 type t
 (** Abstract type for CSS stylesheets. *)
 
-val pp : ?minify:bool -> ?mode:mode -> t -> string
+val pp : ?minify:bool -> ?optimize:bool -> ?mode:mode -> t -> string
 (** [pp] is {!to_string}. *)
 
 (** {2 CSS At-Rules}
@@ -1261,7 +1262,7 @@ val display : display -> declaration
 val flex_direction : flex_direction -> declaration
 (** [flex_direction d] sets the CSS flex-direction property. *)
 
-val flex : string -> declaration
+val flex : flex -> declaration
 (** [flex value] sets the CSS flex shorthand property. *)
 
 val flex_grow : float -> declaration
@@ -2035,25 +2036,24 @@ val layer :
     @param supports Optional nested [@supports] rules. *)
 
 val property :
-  name:string ->
   syntax:string ->
-  initial_value:string ->
+  ?initial_value:string ->
   ?inherits:bool ->
-  unit ->
+  string ->
   property_rule
-(** [property ~name ~syntax ~initial_value ?inherits ()] creates a [@property]
-    rule to register a custom CSS property.
-    @param name Property name (including --).
+(** [property ~syntax ?initial_value ?inherits name] creates a [@property] rule
+    to register a custom CSS property.
     @param syntax Property syntax (e.g., "<color>").
-    @param initial_value Default value.
-    @param inherits Whether property inherits (default: false). *)
+    @param initial_value Optional initial value.
+    @param inherits Whether the property inherits (default: false).
+    @param name Property name (including --). *)
 
 val property_rule_name : property_rule -> string
 (** [property_rule_name rule] returns the property name from a property rule. *)
 
-val property_rule_initial : property_rule -> string
-(** [property_rule_initial rule] returns the initial value from a property rule.
-*)
+val property_rule_initial : property_rule -> string option
+(** [property_rule_initial rule] returns the initial value from a property rule,
+    if set. *)
 
 val default_decl_of_property_rule : property_rule -> declaration
 (** [default_decl_of_property_rule rule] converts a property rule to a custom
@@ -2084,10 +2084,15 @@ val stylesheet : sheet_item list -> t
 
 (** {1 Rendering} *)
 
-val to_string : ?minify:bool -> ?mode:mode -> t -> string
-(** [to_string ?minify stylesheet] renders a complete stylesheet to CSS. If
-    [minify] is [true], the output will be minified (no unnecessary whitespace).
-    Default is [false]. *)
+val to_string : ?minify:bool -> ?optimize:bool -> ?mode:mode -> t -> string
+(** [to_string ?minify ?optimize ?mode stylesheet] renders a complete stylesheet
+    to CSS.
+    - If [minify] is [true], the output will be compact (no unnecessary
+      whitespace).
+    - If [optimize] is [true], rule-level optimizations are applied
+      (deduplication, merging consecutive rules, combining identical rules).
+    - [mode] controls whether CSS variables are used (Variables) or inlined
+      (Inline). Defaults: [minify=false], [optimize=false], [mode=Variables]. *)
 
 val string_of_property : _ property -> string
 (** [string_of_property prop] converts a property to its CSS string
@@ -2142,6 +2147,35 @@ val optimize : t -> t
     merging consecutive identical selectors and combining rules with identical
     properties. Preserves CSS cascade semantics. *)
 
+type layer_stats = {
+  name : string;
+  rules : int;
+  selectors : string list;  (** First few selectors as examples *)
+}
+(** Type representing statistics about a CSS stylesheet *)
+
+type stats = {
+  rules : int;  (** Number of top-level rules *)
+  layer_rules : int;  (** Total number of rules in all layers *)
+  layers : layer_stats list;  (** Per-layer rule counts and sample selectors *)
+  media_queries : int;  (** Number of media query blocks *)
+  container_queries : int;  (** Number of container query blocks *)
+  top_selectors : string list;  (** First few top-level selectors as examples *)
+}
+
+val stats : t -> stats
+(** [stats stylesheet] computes statistics about the stylesheet, including rule
+    counts per layer and total counts for various CSS constructs. *)
+
+val pp_stats : stats -> string
+(** [pp_stats stats] pretty-prints stylesheet statistics in a human-readable
+    format without using Printf/Format to minimize js_of_ocaml bundle size. *)
+
+val pp_stats_diff : before:stats -> after:stats -> string
+(** [pp_stats_diff ~before ~after] pretty-prints the difference between two sets
+    of statistics, showing the optimization results. Useful for comparing before
+    and after optimization. *)
+
 val stylesheet_rules : t -> rule list
 (** [stylesheet_rules stylesheet] returns the top-level rules of a stylesheet.
 *)
@@ -2181,6 +2215,7 @@ val deduplicate_declarations : declaration list -> declaration list
     that have known browser bugs requiring duplication for correct rendering
     (e.g., -webkit-text-decoration-color). *)
 
-val inline_style_of_declarations : ?mode:mode -> declaration list -> string
+val inline_style_of_declarations :
+  ?optimize:bool -> ?minify:bool -> ?mode:mode -> declaration list -> string
 (** [inline_style_of_declarations declarations] converts a list of declarations
     to an inline style string. *)

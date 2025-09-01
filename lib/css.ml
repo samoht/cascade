@@ -8,7 +8,10 @@ module Pp = struct
 
   let lines segments = str ~sep:"\n" segments
 
-  (* Float formatting from Pp *)
+  (* Integer formatting *)
+  let int n = string_of_int n
+
+  (* Float formatting *)
   let float f =
     (* Handle special float values *)
     if f = infinity then "3.40282e38"
@@ -57,6 +60,13 @@ module Pp = struct
         in
         let trimmed_frac = remove_trailing_zeros padded_frac in
         str [ string_of_int whole; "."; trimmed_frac ]
+
+  (* Format a value with CSS unit, handling zero minification *)
+  let unit ~minify value_str is_zero unit_str =
+    if is_zero && minify && unit_str <> "%" then "0"
+      (* Zero doesn't need units in CSS (except percentage) *)
+    else if unit_str = "" then value_str
+    else str [ value_str; unit_str ]
 end
 
 type meta = ..
@@ -74,6 +84,7 @@ let var_layer v = v.layer
 
 type any_var = V : 'a var -> any_var
 type mode = Variables | Inline
+type config = { minify : bool; mode : mode; optimize : bool }
 
 let var_ref ?fallback ?default ?layer ?meta name =
   { name; fallback; default; layer; meta }
@@ -434,6 +445,7 @@ type font_variant_numeric_token =
   | Stacked_fractions
   | Normal
   | Empty
+  | Var of font_variant_numeric_token var
 
 type font_variant_numeric =
   | Tokens of font_variant_numeric_token list
@@ -821,30 +833,31 @@ type _ kind =
   | Content : content kind
 
 (* Convert CSS variable to string *)
-let rec string_of_var : type a. ?mode:mode -> (a -> string) -> a var -> string =
- fun ?(mode = Variables) value_to_string v ->
+let rec string_of_var : type a.
+    config:config -> (a -> string) -> a var -> string =
+ fun ~config value_to_string v ->
   let var () =
     let base = Pp.str [ "var(--"; v.name ] in
     match v.fallback with
     | None -> Pp.str [ base; ")" ]
     | Some value -> Pp.str [ base; ", "; value_to_string value; ")" ]
   in
-  match mode with
+  match config.mode with
   | Variables -> var ()
   | Inline -> (
       match v.default with
       | Some value -> value_to_string value
       | None -> var ())
 
-and string_of_length ?(mode = Variables) = function
-  | Px n -> Pp.str [ string_of_int n; "px" ]
-  | Rem f -> Pp.str [ Pp.float f; "rem" ]
-  | Em f -> Pp.str [ Pp.float f; "em" ]
-  | Pct f -> Pp.str [ Pp.float f; "%" ]
-  | Vw f -> Pp.str [ Pp.float f; "vw" ]
-  | Vh f -> Pp.str [ Pp.float f; "vh" ]
-  | Ch f -> Pp.str [ Pp.float f; "ch" ]
-  | Lh f -> Pp.str [ Pp.float f; "lh" ]
+and string_of_length ~config = function
+  | Px n -> Pp.unit ~minify:config.minify (Pp.int n) (n = 0) "px"
+  | Rem f -> Pp.unit ~minify:config.minify (Pp.float f) (f = 0.) "rem"
+  | Em f -> Pp.unit ~minify:config.minify (Pp.float f) (f = 0.) "em"
+  | Pct f -> Pp.unit ~minify:config.minify (Pp.float f) (f = 0.) "%"
+  | Vw f -> Pp.unit ~minify:config.minify (Pp.float f) (f = 0.) "vw"
+  | Vh f -> Pp.unit ~minify:config.minify (Pp.float f) (f = 0.) "vh"
+  | Ch f -> Pp.unit ~minify:config.minify (Pp.float f) (f = 0.) "ch"
+  | Lh f -> Pp.unit ~minify:config.minify (Pp.float f) (f = 0.) "lh"
   | Num f -> Pp.float f
   | Auto -> "auto"
   | Zero -> "0"
@@ -852,20 +865,22 @@ and string_of_length ?(mode = Variables) = function
   | Fit_content -> "fit-content"
   | Max_content -> "max-content"
   | Min_content -> "min-content"
-  | Var v -> string_of_var ~mode (string_of_length ~mode) v
+  | Var v -> string_of_var ~config (string_of_length ~config) v
   | Calc cv -> (
       (* Optimize calc(infinity * 1px) to 3.40282e38px for minification *)
       match cv with
       | Expr (Val (Num f), Mult, Val (Px 1)) when f = infinity -> "3.40282e38px"
       | _ ->
           Pp.str
-            [ "calc("; string_of_calc ~mode (string_of_length ~mode) cv; ")" ])
+            [
+              "calc("; string_of_calc ~config (string_of_length ~config) cv; ")";
+            ])
 
-and string_of_calc : ?mode:mode -> ('a -> string) -> 'a calc -> string =
- fun ?(mode = Variables) string_of_val calc ->
+and string_of_calc : config:config -> ('a -> string) -> 'a calc -> string =
+ fun ~config string_of_val calc ->
   match calc with
   | Val v -> string_of_val v
-  | Var v -> string_of_var ~mode string_of_val v
+  | Var v -> string_of_var ~config string_of_val v
   | Expr (left, op, right) ->
       let op_str =
         match op with
@@ -876,9 +891,9 @@ and string_of_calc : ?mode:mode -> ('a -> string) -> 'a calc -> string =
       in
       Pp.str
         [
-          string_of_calc ~mode string_of_val left;
+          string_of_calc ~config string_of_val left;
           op_str;
-          string_of_calc ~mode string_of_val right;
+          string_of_calc ~config string_of_val right;
         ]
 
 (* Calc module for building calc() expressions *)
@@ -908,17 +923,17 @@ module Calc = struct
   let pct f : length calc = Val (Pct f)
 end
 
-let rec string_of_content ~mode : content -> string = function
+let rec string_of_content ~config : content -> string = function
   | String s -> Pp.str [ "\""; s; "\"" ]
   | None -> "none"
   | Normal -> "normal"
-  | Var v -> string_of_var ~mode (string_of_content ~mode) v
+  | Var v -> string_of_var ~config (string_of_content ~config) v
 
-let rec string_of_color_in_mix = function
+let rec string_of_color_in_mix ~config = function
   | Current -> "currentcolor" (* lowercase in color-mix *)
-  | c -> string_of_color c
+  | c -> string_of_color ~config c
 
-and string_of_color ?(mode = Variables) = function
+and string_of_color ~config = function
   | Hex { hash = _; value } ->
       (* Always include # for valid CSS output *)
       Pp.str [ "#"; value ]
@@ -951,7 +966,7 @@ and string_of_color ?(mode = Variables) = function
       let c_str = Pp.float_n 3 c in
       let h_str = Pp.float_n 3 h in
       Pp.str [ "oklch("; l_str; "% "; c_str; " "; h_str; ")" ]
-  | Var v -> string_of_var ~mode (string_of_color ~mode) v
+  | Var v -> string_of_var ~config (string_of_color ~config) v
   | Current -> "currentColor"
   | Transparent -> "transparent"
   | Inherit -> "inherit"
@@ -972,10 +987,10 @@ and string_of_color ?(mode = Variables) = function
           "color-mix(in ";
           space_str;
           ",";
-          string_of_color_in_mix color1;
+          string_of_color_in_mix ~config color1;
           p1_str;
           ",";
-          string_of_color_in_mix color2;
+          string_of_color_in_mix ~config color2;
           p2_str;
           ")";
         ]
@@ -997,29 +1012,29 @@ and string_of_color_space = function
   | Hsl -> "hsl"
   | Hwb -> "hwb"
 
-let string_of_svg_paint ?(mode = Variables) (paint : svg_paint) =
+let string_of_svg_paint ~config (paint : svg_paint) =
   match paint with
   | None -> "none"
   | Current_color -> "currentColor"
-  | Color c -> string_of_color ~mode c
+  | Color c -> string_of_color ~config c
 
-let string_of_shadow ?(mode = Variables)
-    { inset; h_offset; v_offset; blur; spread; color } =
-  let h = string_of_length ~mode h_offset in
-  let v = string_of_length ~mode v_offset in
-  let b = string_of_length ~mode blur in
-  let s = string_of_length ~mode spread in
-  let c = string_of_color ~mode color in
+let string_of_shadow ~config { inset; h_offset; v_offset; blur; spread; color }
+    =
+  let h = string_of_length ~config h_offset in
+  let v = string_of_length ~config v_offset in
+  let b = string_of_length ~config blur in
+  let s = string_of_length ~config spread in
+  let c = string_of_color ~config color in
   if inset then Pp.str [ "inset "; h; " "; v; " "; b; " "; s; " "; c ]
   else Pp.str [ h; " "; v; " "; b; " "; s; " "; c ]
 
-let string_of_box_shadow ~mode : box_shadow -> string = function
+let string_of_box_shadow ~config : box_shadow -> string = function
   | None -> "none"
-  | Shadow shadow -> string_of_shadow ~mode shadow
+  | Shadow shadow -> string_of_shadow ~config shadow
   | Shadows shadows ->
-      List.map (string_of_shadow ~mode) shadows |> String.concat ", "
+      List.map (string_of_shadow ~config) shadows |> String.concat ", "
   | Vars vars ->
-      String.concat ", " (List.map (string_of_var ~mode (fun s -> s)) vars)
+      String.concat ", " (List.map (string_of_var ~config (fun s -> s)) vars)
   | Raw s -> s
 
 let string_of_blend_mode : blend_mode -> string = function
@@ -1072,14 +1087,14 @@ let string_of_z_index : z_index -> string = function
   | Auto -> "auto"
   | Index n -> string_of_int n
 
-let rec string_of_font_weight ~mode = function
+let rec string_of_font_weight ~config = function
   | Weight n -> string_of_int n
   | Normal -> "normal"
   | Bold -> "bold"
   | Bolder -> "bolder"
   | Lighter -> "lighter"
   | Inherit -> "inherit"
-  | Var v -> string_of_var ~mode (string_of_font_weight ~mode) v
+  | Var v -> string_of_var ~config (string_of_font_weight ~config) v
 
 let string_of_text_align : text_align -> string = function
   | Left -> "left"
@@ -1213,11 +1228,11 @@ let string_of_scroll_snap_stop : scroll_snap_stop -> string = function
   | Always -> "always"
   | Inherit -> "inherit"
 
-let rec string_of_scroll_snap_strictness ~mode :
+let rec string_of_scroll_snap_strictness ~config :
     scroll_snap_strictness -> string = function
   | Mandatory -> "mandatory"
   | Proximity -> "proximity"
-  | Var v -> string_of_var ~mode (string_of_scroll_snap_strictness ~mode) v
+  | Var v -> string_of_var ~config (string_of_scroll_snap_strictness ~config) v
 
 let string_of_scroll_snap_align : scroll_snap_align -> string = function
   | None -> "none"
@@ -1233,14 +1248,14 @@ let string_of_scroll_snap_axis : scroll_snap_axis -> string = function
   | Inline -> "inline"
   | Both -> "both"
 
-let string_of_scroll_snap_type ~mode : scroll_snap_type -> string = function
+let string_of_scroll_snap_type ~config : scroll_snap_type -> string = function
   | None -> "none"
   | Axis (axis, strictness) -> (
       let axis_str = string_of_scroll_snap_axis axis in
       match strictness with
       | None -> axis_str
       | Some s ->
-          Pp.str [ axis_str; " "; string_of_scroll_snap_strictness ~mode s ])
+          Pp.str [ axis_str; " "; string_of_scroll_snap_strictness ~config s ])
   | Inherit -> "inherit"
 
 let string_of_touch_action : touch_action -> string = function
@@ -1277,7 +1292,7 @@ let string_of_table_layout : table_layout -> string = function
   | Fixed -> "fixed"
   | Inherit -> "inherit"
 
-let string_of_vertical_align : vertical_align -> string = function
+let string_of_vertical_align ~config : vertical_align -> string = function
   | Baseline -> "baseline"
   | Top -> "top"
   | Middle -> "middle"
@@ -1286,7 +1301,7 @@ let string_of_vertical_align : vertical_align -> string = function
   | Text_bottom -> "text-bottom"
   | Sub -> "sub"
   | Super -> "super"
-  | Length l -> string_of_length l
+  | Length l -> string_of_length ~config l
   | Percentage p -> Pp.str [ Pp.float p; "%" ]
   | Inherit -> "inherit"
 
@@ -1338,20 +1353,20 @@ let string_of_container_type : container_type -> string = function
   | Inline_size -> "inline-size"
   | Inherit -> "inherit"
 
-let string_of_flex : flex -> string = function
+let string_of_flex ~config : flex -> string = function
   | Initial -> "0 1 auto"
   | Auto -> "1 1 auto"
   | None -> "0 0 auto"
   | Grow f -> Pp.float f
-  | Basis len -> Pp.str [ "1 1 "; string_of_length len ]
+  | Basis len -> Pp.str [ "1 1 "; string_of_length ~config len ]
   | Grow_shrink (g, s) -> Pp.str [ Pp.float g; " "; Pp.float s; " 0%" ]
   | Full (g, s, b) ->
-      Pp.str [ Pp.float g; " "; Pp.float s; " "; string_of_length b ]
+      Pp.str [ Pp.float g; " "; Pp.float s; " "; string_of_length ~config b ]
 
-let rec string_of_duration ~mode = function
+let rec string_of_duration ~config = function
   | Ms n -> Pp.str [ string_of_int n; "ms" ]
   | S f -> Pp.str [ Pp.float f; "s" ]
-  | Var v -> string_of_var ~mode (string_of_duration ~mode) v
+  | Var v -> string_of_var ~config (string_of_duration ~config) v
 
 let string_of_timing_function = function
   | Ease -> "ease"
@@ -1383,18 +1398,20 @@ let string_of_transition_property : transition_property -> string = function
   | None -> "none"
   | Property p -> p
 
-let rec string_of_transition ~mode = function
+let rec string_of_transition ~config = function
   | Simple (prop, dur) ->
       Pp.str
         [
-          string_of_transition_property prop; " "; string_of_duration ~mode dur;
+          string_of_transition_property prop;
+          " ";
+          string_of_duration ~config dur;
         ]
   | With_timing (prop, dur, timing) ->
       Pp.str
         [
           string_of_transition_property prop;
           " ";
-          string_of_duration ~mode dur;
+          string_of_duration ~config dur;
           " ";
           string_of_timing_function timing;
         ]
@@ -1403,14 +1420,14 @@ let rec string_of_transition ~mode = function
         [
           string_of_transition_property prop;
           " ";
-          string_of_duration ~mode dur;
+          string_of_duration ~config dur;
           " ";
           string_of_timing_function timing;
           " ";
-          string_of_duration ~mode delay;
+          string_of_duration ~config delay;
         ]
   | Multiple transitions ->
-      String.concat ", " (List.map (string_of_transition ~mode) transitions)
+      String.concat ", " (List.map (string_of_transition ~config) transitions)
 
 let string_of_align : align -> string = function
   | Flex_start -> "flex-start"
@@ -1484,7 +1501,7 @@ let string_of_list_style_image = function
   | Url u -> Pp.str [ "url("; u; ")" ]
   | Inherit -> "inherit"
 
-let rec string_of_border_style ~mode : border_style -> string = function
+let rec string_of_border_style ~config : border_style -> string = function
   | None -> "none"
   | Solid -> "solid"
   | Dashed -> "dashed"
@@ -1495,7 +1512,7 @@ let rec string_of_border_style ~mode : border_style -> string = function
   | Inset -> "inset"
   | Outset -> "outset"
   | Hidden -> "hidden"
-  | Var v -> string_of_var ~mode (string_of_border_style ~mode) v
+  | Var v -> string_of_var ~config (string_of_border_style ~config) v
 
 let string_of_outline_style : outline_style -> string = function
   | None -> "none"
@@ -1560,38 +1577,41 @@ let string_of_user_select : user_select -> string = function
   | All -> "all"
   | Contain -> "contain"
 
-let rec string_of_grid_track_size = function
+let rec string_of_grid_track_size ~config = function
   | Fr f -> Pp.str [ Pp.float f; "fr" ]
   | Min_max (min, max) ->
       Pp.str
         [
           "minmax(";
-          string_of_length min;
+          string_of_length ~config min;
           ", ";
-          string_of_grid_track_size max;
+          string_of_grid_track_size ~config max;
           ")";
         ]
   | Grid_auto -> "auto"
   | Max_content -> "max-content"
   | Min_content -> "min-content"
-  | Fit_content l -> Pp.str [ "fit-content("; string_of_length l; ")" ]
-  | Grid_length l -> string_of_length l
+  | Fit_content l -> Pp.str [ "fit-content("; string_of_length ~config l; ")" ]
+  | Grid_length l -> string_of_length ~config l
 
-let string_of_grid_template = function
-  | Tracks sizes -> String.concat " " (List.map string_of_grid_track_size sizes)
+let string_of_grid_template ~config = function
+  | Tracks sizes ->
+      String.concat " " (List.map (string_of_grid_track_size ~config) sizes)
   | Repeat (count, size) ->
       Pp.str
         [
           "repeat(";
           string_of_int count;
           ", ";
-          string_of_grid_track_size size;
+          string_of_grid_track_size ~config size;
           ")";
         ]
   | Repeat_auto_fill size ->
-      Pp.str [ "repeat(auto-fill, "; string_of_grid_track_size size; ")" ]
+      Pp.str
+        [ "repeat(auto-fill, "; string_of_grid_track_size ~config size; ")" ]
   | Repeat_auto_fit size ->
-      Pp.str [ "repeat(auto-fit, "; string_of_grid_track_size size; ")" ]
+      Pp.str
+        [ "repeat(auto-fit, "; string_of_grid_track_size ~config size; ")" ]
   | None -> "none"
   | Inherit -> "inherit"
 
@@ -1601,71 +1621,79 @@ let string_of_grid_line = function
   | Span n -> Pp.str [ "span "; string_of_int n ]
   | Auto -> "auto"
 
-let rec string_of_angle ~mode = function
+let rec string_of_angle ~config = function
   | Deg f -> Pp.str [ Pp.float f; "deg" ]
   | Rad f -> Pp.str [ Pp.float f; "rad" ]
   | Turn f -> Pp.str [ Pp.float f; "turn" ]
   | Grad f -> Pp.str [ Pp.float f; "grad" ]
-  | Var v -> string_of_var ~mode (string_of_angle ~mode) v
+  | Var v -> string_of_var ~config (string_of_angle ~config) v
 
-let rec string_of_transform_scale ~mode : transform_scale -> string = function
+let rec string_of_transform_scale ~config : transform_scale -> string = function
   | Num f -> Pp.float f
   | Pct f -> Pp.str [ Pp.float f; "%" ]
-  | Var v -> string_of_var ~mode (string_of_transform_scale ~mode) v
+  | Var v -> string_of_var ~config (string_of_transform_scale ~config) v
 
-let string_of_scale ~mode : scale -> string = function
+let string_of_scale ~config : scale -> string = function
   | String s -> s
   | Num f -> Pp.float f
   | Pct f -> Pp.str [ Pp.float f; "%" ]
   | None -> "none"
   | Vars vars ->
       String.concat ""
-        (List.map (string_of_var ~mode (string_of_transform_scale ~mode)) vars)
+        (List.map
+           (string_of_var ~config (string_of_transform_scale ~config))
+           vars)
 
-let rec string_of_font_feature_settings ~mode : font_feature_settings -> string
-    = function
+let rec string_of_font_feature_settings ~config :
+    font_feature_settings -> string = function
   | Normal -> "normal"
   | Feature_string s -> s
   | Inherit -> "inherit"
-  | Var v -> string_of_var ~mode (string_of_font_feature_settings ~mode) v
+  | Var v -> string_of_var ~config (string_of_font_feature_settings ~config) v
 
-let rec string_of_font_variation_settings ~mode :
+let rec string_of_font_variation_settings ~config :
     font_variation_settings -> string = function
   | Normal -> "normal"
   | Variation_string s -> s
   | Inherit -> "inherit"
-  | Var v -> string_of_var ~mode (string_of_font_variation_settings ~mode) v
+  | Var v -> string_of_var ~config (string_of_font_variation_settings ~config) v
 
 let transform_func name args = Pp.str ((name :: "(" :: args) @ [ ")" ])
 
-let string_of_translate ~mode (x : length) (y_opt : length option)
+let string_of_translate ~config (x : length) (y_opt : length option)
     (z_opt : length option) : string =
   match (y_opt, z_opt) with
   | Some y, None ->
       transform_func "translate"
-        [ string_of_length ~mode x; ", "; string_of_length ~mode y ]
+        [ string_of_length ~config x; ", "; string_of_length ~config y ]
   | None, Some z ->
       transform_func "translate3d"
-        [ string_of_length ~mode x; ", "; "0"; ", "; string_of_length ~mode z ]
+        [
+          string_of_length ~config x;
+          ", ";
+          "0";
+          ", ";
+          string_of_length ~config z;
+        ]
   | Some y, Some z ->
       transform_func "translate3d"
         [
-          string_of_length ~mode x;
+          string_of_length ~config x;
           ", ";
-          string_of_length ~mode y;
+          string_of_length ~config y;
           ", ";
-          string_of_length ~mode z;
+          string_of_length ~config z;
         ]
-  | None, None -> transform_func "translate" [ string_of_length ~mode x ]
+  | None, None -> transform_func "translate" [ string_of_length ~config x ]
 
-let string_of_rotate ~mode (angle : angle)
+let string_of_rotate ~config (angle : angle)
     (axis : [ `None | `X | `Y | `Z | `Vec3d of float * float * float ]) : string
     =
   match axis with
-  | `None -> transform_func "rotate" [ string_of_angle ~mode angle ]
-  | `X -> transform_func "rotateX" [ string_of_angle ~mode angle ]
-  | `Y -> transform_func "rotateY" [ string_of_angle ~mode angle ]
-  | `Z -> transform_func "rotateZ" [ string_of_angle ~mode angle ]
+  | `None -> transform_func "rotate" [ string_of_angle ~config angle ]
+  | `X -> transform_func "rotateX" [ string_of_angle ~config angle ]
+  | `Y -> transform_func "rotateY" [ string_of_angle ~config angle ]
+  | `Z -> transform_func "rotateZ" [ string_of_angle ~config angle ]
   | `Vec3d (x, y, z) ->
       transform_func "rotate3d"
         [
@@ -1675,45 +1703,45 @@ let string_of_rotate ~mode (angle : angle)
           ", ";
           Pp.float z;
           ", ";
-          string_of_angle ~mode angle;
+          string_of_angle ~config angle;
         ]
 
-let string_of_scale_transform ~mode (x : transform_scale)
+let string_of_scale_transform ~config (x : transform_scale)
     (y_opt : transform_scale option) (z_opt : transform_scale option) : string =
   match (y_opt, z_opt) with
   | Some y, None ->
       transform_func "scale"
         [
-          string_of_transform_scale ~mode x;
+          string_of_transform_scale ~config x;
           ", ";
-          string_of_transform_scale ~mode y;
+          string_of_transform_scale ~config y;
         ]
   | None, Some z ->
       transform_func "scale3d"
         [
-          string_of_transform_scale ~mode x;
+          string_of_transform_scale ~config x;
           ", ";
           "1";
           ", ";
-          string_of_transform_scale ~mode z;
+          string_of_transform_scale ~config z;
         ]
   | Some y, Some z ->
       transform_func "scale3d"
         [
-          string_of_transform_scale ~mode x;
+          string_of_transform_scale ~config x;
           ", ";
-          string_of_transform_scale ~mode y;
+          string_of_transform_scale ~config y;
           ", ";
-          string_of_transform_scale ~mode z;
+          string_of_transform_scale ~config z;
         ]
-  | None, None -> transform_func "scale" [ string_of_transform_scale ~mode x ]
+  | None, None -> transform_func "scale" [ string_of_transform_scale ~config x ]
 
-let string_of_skew ~mode (x : angle) (y_opt : angle option) : string =
+let string_of_skew ~config (x : angle) (y_opt : angle option) : string =
   match y_opt with
   | Some y ->
       transform_func "skew"
-        [ string_of_angle ~mode x; ", "; string_of_angle ~mode y ]
-  | None -> transform_func "skewX" [ string_of_angle ~mode x ]
+        [ string_of_angle ~config x; ", "; string_of_angle ~config y ]
+  | None -> transform_func "skewX" [ string_of_angle ~config x ]
 
 let string_of_matrix
     (vals :
@@ -1767,28 +1795,29 @@ let string_of_matrix
       in
       Pp.str [ "matrix3d("; String.concat ", " values; ")" ]
 
-let rec string_of_transform ~mode = function
-  | Translate (x, None) -> string_of_translate ~mode x None None
-  | Translate (x, Some y) -> string_of_translate ~mode x (Some y) None
-  | Translate_x l -> transform_func "translateX" [ string_of_length ~mode l ]
-  | Translate_y l -> transform_func "translateY" [ string_of_length ~mode l ]
-  | Translate_z l -> transform_func "translateZ" [ string_of_length ~mode l ]
-  | Translate3d (x, y, z) -> string_of_translate ~mode x (Some y) (Some z)
-  | Rotate a -> string_of_rotate ~mode a `None
-  | Rotate_x a -> string_of_rotate ~mode a `X
-  | Rotate_y a -> string_of_rotate ~mode a `Y
-  | Rotate_z a -> string_of_rotate ~mode a `Z
-  | Rotate3d (x, y, z, angle) -> string_of_rotate ~mode angle (`Vec3d (x, y, z))
-  | Scale (x, None) -> string_of_scale_transform ~mode x None None
-  | Scale (x, Some y) -> string_of_scale_transform ~mode x (Some y) None
-  | Scale_x s -> transform_func "scaleX" [ string_of_transform_scale ~mode s ]
-  | Scale_y s -> transform_func "scaleY" [ string_of_transform_scale ~mode s ]
-  | Scale_z s -> transform_func "scaleZ" [ string_of_transform_scale ~mode s ]
-  | Scale3d (x, y, z) -> string_of_scale_transform ~mode x (Some y) (Some z)
-  | Skew (x, None) -> string_of_skew ~mode x None
-  | Skew (x, Some y) -> string_of_skew ~mode x (Some y)
-  | Skew_x a -> transform_func "skewX" [ string_of_angle ~mode a ]
-  | Skew_y a -> transform_func "skewY" [ string_of_angle ~mode a ]
+let rec string_of_transform ~config = function
+  | Translate (x, None) -> string_of_translate ~config x None None
+  | Translate (x, Some y) -> string_of_translate ~config x (Some y) None
+  | Translate_x l -> transform_func "translateX" [ string_of_length ~config l ]
+  | Translate_y l -> transform_func "translateY" [ string_of_length ~config l ]
+  | Translate_z l -> transform_func "translateZ" [ string_of_length ~config l ]
+  | Translate3d (x, y, z) -> string_of_translate ~config x (Some y) (Some z)
+  | Rotate a -> string_of_rotate ~config a `None
+  | Rotate_x a -> string_of_rotate ~config a `X
+  | Rotate_y a -> string_of_rotate ~config a `Y
+  | Rotate_z a -> string_of_rotate ~config a `Z
+  | Rotate3d (x, y, z, angle) ->
+      string_of_rotate ~config angle (`Vec3d (x, y, z))
+  | Scale (x, None) -> string_of_scale_transform ~config x None None
+  | Scale (x, Some y) -> string_of_scale_transform ~config x (Some y) None
+  | Scale_x s -> transform_func "scaleX" [ string_of_transform_scale ~config s ]
+  | Scale_y s -> transform_func "scaleY" [ string_of_transform_scale ~config s ]
+  | Scale_z s -> transform_func "scaleZ" [ string_of_transform_scale ~config s ]
+  | Scale3d (x, y, z) -> string_of_scale_transform ~config x (Some y) (Some z)
+  | Skew (x, None) -> string_of_skew ~config x None
+  | Skew (x, Some y) -> string_of_skew ~config x (Some y)
+  | Skew_x a -> transform_func "skewX" [ string_of_angle ~config a ]
+  | Skew_y a -> transform_func "skewY" [ string_of_angle ~config a ]
   | Matrix (a, b, c, d, e, f) -> string_of_matrix (`Matrix2d (a, b, c, d, e, f))
   | Matrix3d
       (m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11, m12, m13, m14, m15, m16) ->
@@ -1810,15 +1839,15 @@ let rec string_of_transform ~mode = function
              m14,
              m15,
              m16 ))
-  | Perspective l -> Pp.str [ "perspective("; string_of_length ~mode l; ")" ]
+  | Perspective l -> Pp.str [ "perspective("; string_of_length ~config l; ")" ]
   | Var v ->
-      string_of_var ~mode
+      string_of_var ~config
         (fun transforms ->
-          String.concat " " (List.map (string_of_transform ~mode) transforms))
+          String.concat " " (List.map (string_of_transform ~config) transforms))
         v
   | None -> "none"
 
-let string_of_font_variant_token = function
+let rec string_of_font_variant_token ~config = function
   | Ordinal -> "ordinal"
   | Slashed_zero -> "slashed-zero"
   | Lining_nums -> "lining-nums"
@@ -1829,12 +1858,13 @@ let string_of_font_variant_token = function
   | Stacked_fractions -> "stacked-fractions"
   | Normal -> "normal"
   | Empty -> ""
+  | Var v -> string_of_var ~config (string_of_font_variant_token ~config) v
 
-let string_of_font_variant_numeric ~mode : font_variant_numeric -> string =
+let string_of_font_variant_numeric ~config : font_variant_numeric -> string =
   function
   | Tokens tokens ->
-      String.concat " " (List.map string_of_font_variant_token tokens)
-  | Var v -> string_of_var ~mode string_of_font_variant_token v
+      String.concat " " (List.map (string_of_font_variant_token ~config) tokens)
+  | Var v -> string_of_var ~config (string_of_font_variant_token ~config) v
   | Composed
       {
         ordinal;
@@ -1845,7 +1875,8 @@ let string_of_font_variant_numeric ~mode : font_variant_numeric -> string =
       } ->
       let values =
         List.map
-          (function Some o -> string_of_font_variant_token o | None -> "")
+          (function
+            | Some o -> string_of_font_variant_token ~config o | None -> "")
           [
             ordinal;
             slashed_zero;
@@ -1901,6 +1932,30 @@ let string_of_font_stretch : font_stretch -> string = function
   | Ultra_expanded -> "ultra-expanded"
   | Inherit -> "inherit"
 
+type gradient_direction =
+  | To_top
+  | To_top_right
+  | To_right
+  | To_bottom_right
+  | To_bottom
+  | To_bottom_left
+  | To_left
+  | To_top_left
+  | Angle of angle
+
+type gradient_stop =
+  | Color_stop of color
+  | Color_position of color * length
+  | Var of color var
+  | Computed_stops of
+      string (* For complex computed values like --tw-gradient-stops *)
+
+type background_image =
+  | Url of string
+  | Linear_gradient of gradient_direction * gradient_stop list
+  | Radial_gradient of gradient_stop list
+  | None
+
 type 'a property =
   | Background_color : color property
   | Color : color property
@@ -1955,10 +2010,10 @@ type 'a property =
   | Visibility : visibility property
   | Flex_direction : flex_direction property
   | Flex_wrap : flex_wrap property
-  | Flex : string property
+  | Flex : flex property
   | Flex_grow : float property
   | Flex_shrink : float property
-  | Flex_basis : string property
+  | Flex_basis : length property
   | Order : int property
   | Align_items : align_items property
   | Justify_content : justify_content property
@@ -2044,13 +2099,13 @@ type 'a property =
   | Contain : string property
   | Isolation : isolation property
   | Filter : string property
-  | Background_image : string property
+  | Background_image : background_image property
   | Animation : string property
   | Aspect_ratio : aspect_ratio property
   | Overflow_x : overflow property
   | Overflow_y : overflow property
   | Vertical_align : vertical_align property
-  | Font_family : string property
+  | Font_family : font_family list property
   | Background_position : string property
   | Background_repeat : background_repeat property
   | Background_size : string property
@@ -2117,7 +2172,7 @@ let important = function
   | Declaration (prop, value) -> Important_declaration (prop, value)
   | Custom_declaration { name; kind; value; layer; meta } ->
       Custom_declaration { name; kind; value; layer; meta }
-      (* Custom properties remain as-is; we don't attach !important here *)
+  (* Custom properties remain as-is; we don't attach !important here *)
   | Important_declaration (prop, value) -> Important_declaration (prop, value)
 (* Already important *)
 
@@ -2131,47 +2186,92 @@ let custom_declaration_layer = function
   | Declaration _ -> None
   | Important_declaration _ -> None
 
+let string_of_gradient_direction ~config = function
+  | To_top -> "to top"
+  | To_top_right -> "to top right"
+  | To_right -> "to right"
+  | To_bottom_right -> "to bottom right"
+  | To_bottom -> "to bottom"
+  | To_bottom_left -> "to bottom left"
+  | To_left -> "to left"
+  | To_top_left -> "to top left"
+  | Angle a -> string_of_angle ~config a
+
+let string_of_gradient_stop ~config = function
+  | Color_stop c -> string_of_color ~config c
+  | Color_position (c, len) ->
+      Pp.str [ string_of_color ~config c; " "; string_of_length ~config len ]
+  | Var v -> string_of_var ~config (string_of_color ~config) v
+  | Computed_stops s -> s
+
+let string_of_background_image ~config = function
+  | Url url -> Pp.str [ "url(\""; url; "\")" ]
+  | Linear_gradient (dir, stops) -> (
+      let stop_strings = List.map (string_of_gradient_stop ~config) stops in
+      match stop_strings with
+      | [] ->
+          Pp.str
+            [
+              "linear-gradient("; string_of_gradient_direction ~config dir; ")";
+            ]
+      | _ ->
+          Pp.str
+            [
+              "linear-gradient(";
+              string_of_gradient_direction ~config dir;
+              ", ";
+              Pp.str ~sep:", " stop_strings;
+              ")";
+            ])
+  | Radial_gradient stops -> (
+      let stop_strings = List.map (string_of_gradient_stop ~config) stops in
+      match stop_strings with
+      | [] -> "radial-gradient()"
+      | _ -> Pp.str [ "radial-gradient("; Pp.str ~sep:", " stop_strings; ")" ])
+  | None -> "none"
+
 (* Convert property value to string based on its type *)
-let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
- fun ?(mode = Variables) prop value ->
+let rec string_of_property_value : type a.
+    config:config -> a property -> a -> string =
+ fun ~config prop value ->
   match prop with
-  | Background_color -> string_of_color ~mode value
-  | Color -> string_of_color ~mode value
-  | Border_color -> string_of_color ~mode value
-  | Border_style -> string_of_border_style ~mode value
-  | Border_top_style -> string_of_border_style ~mode value
-  | Border_right_style -> string_of_border_style ~mode value
-  | Border_bottom_style -> string_of_border_style ~mode value
-  | Border_left_style -> string_of_border_style ~mode value
-  | Padding -> string_of_length ~mode value
-  | Padding_left -> string_of_length ~mode value
-  | Padding_right -> string_of_length ~mode value
-  | Padding_bottom -> string_of_length ~mode value
-  | Padding_top -> string_of_length ~mode value
-  | Padding_inline -> string_of_length ~mode value
-  | Padding_inline_start -> string_of_length ~mode value
-  | Padding_inline_end -> string_of_length ~mode value
-  | Padding_block -> string_of_length ~mode value
-  | Margin -> string_of_length ~mode value
-  | Margin_inline_end -> string_of_length ~mode value
-  | Margin_left -> string_of_length ~mode value
-  | Margin_right -> string_of_length ~mode value
-  | Margin_top -> string_of_length ~mode value
-  | Margin_bottom -> string_of_length ~mode value
-  | Margin_inline -> string_of_length ~mode value
-  | Margin_block -> string_of_length ~mode value
-  | Gap -> string_of_length ~mode value
-  | Column_gap -> string_of_length ~mode value
-  | Row_gap -> string_of_length ~mode value
-  | Width -> string_of_length ~mode value
-  | Height -> string_of_length ~mode value
-  | Min_width -> string_of_length ~mode value
-  | Min_height -> string_of_length ~mode value
-  | Max_width -> string_of_length ~mode value
-  | Max_height -> string_of_length ~mode value
-  | Font_size -> string_of_length ~mode value
-  | Line_height -> string_of_length ~mode value
-  | Font_weight -> string_of_font_weight ~mode value
+  | Background_color -> string_of_color ~config value
+  | Color -> string_of_color ~config value
+  | Border_color -> string_of_color ~config value
+  | Border_style -> string_of_border_style ~config value
+  | Border_top_style -> string_of_border_style ~config value
+  | Border_right_style -> string_of_border_style ~config value
+  | Border_bottom_style -> string_of_border_style ~config value
+  | Border_left_style -> string_of_border_style ~config value
+  | Padding -> string_of_length ~config value
+  | Padding_left -> string_of_length ~config value
+  | Padding_right -> string_of_length ~config value
+  | Padding_bottom -> string_of_length ~config value
+  | Padding_top -> string_of_length ~config value
+  | Padding_inline -> string_of_length ~config value
+  | Padding_inline_start -> string_of_length ~config value
+  | Padding_inline_end -> string_of_length ~config value
+  | Padding_block -> string_of_length ~config value
+  | Margin -> string_of_length ~config value
+  | Margin_inline_end -> string_of_length ~config value
+  | Margin_left -> string_of_length ~config value
+  | Margin_right -> string_of_length ~config value
+  | Margin_top -> string_of_length ~config value
+  | Margin_bottom -> string_of_length ~config value
+  | Margin_inline -> string_of_length ~config value
+  | Margin_block -> string_of_length ~config value
+  | Gap -> string_of_length ~config value
+  | Column_gap -> string_of_length ~config value
+  | Row_gap -> string_of_length ~config value
+  | Width -> string_of_length ~config value
+  | Height -> string_of_length ~config value
+  | Min_width -> string_of_length ~config value
+  | Min_height -> string_of_length ~config value
+  | Max_width -> string_of_length ~config value
+  | Max_height -> string_of_length ~config value
+  | Font_size -> string_of_length ~config value
+  | Line_height -> string_of_length ~config value
+  | Font_weight -> string_of_font_weight ~config value
   | Display -> string_of_display value
   | Position -> string_of_position value
   | Visibility -> string_of_visibility value
@@ -2188,32 +2288,33 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
   | Tab_size -> string_of_int value
   | Webkit_line_clamp -> string_of_int value
   | Webkit_box_orient -> string_of_webkit_box_orient value
-  | Top -> string_of_length ~mode value
-  | Right -> string_of_length ~mode value
-  | Bottom -> string_of_length ~mode value
-  | Left -> string_of_length ~mode value
-  | Border_width -> string_of_length ~mode value
-  | Border_top_width -> string_of_length ~mode value
-  | Border_right_width -> string_of_length ~mode value
-  | Border_bottom_width -> string_of_length ~mode value
-  | Border_left_width -> string_of_length ~mode value
-  | Border_inline_start_width -> string_of_length ~mode value
-  | Border_inline_end_width -> string_of_length ~mode value
-  | Border_radius -> string_of_length ~mode value
-  | Border_top_color -> string_of_color ~mode value
-  | Border_right_color -> string_of_color ~mode value
-  | Border_bottom_color -> string_of_color ~mode value
-  | Border_left_color -> string_of_color ~mode value
-  | Border_inline_start_color -> string_of_color ~mode value
-  | Border_inline_end_color -> string_of_color ~mode value
-  | Text_decoration_color -> string_of_color ~mode value
-  | Webkit_text_decoration_color -> string_of_color ~mode value
-  | Webkit_tap_highlight_color -> string_of_color ~mode value
-  | Text_indent -> string_of_length ~mode value
-  | Border_spacing -> string_of_length ~mode value
-  | Outline_offset -> string_of_length ~mode value
-  | Perspective -> string_of_length ~mode value
-  | Transform -> List.map (string_of_transform ~mode) value |> String.concat " "
+  | Top -> string_of_length ~config value
+  | Right -> string_of_length ~config value
+  | Bottom -> string_of_length ~config value
+  | Left -> string_of_length ~config value
+  | Border_width -> string_of_length ~config value
+  | Border_top_width -> string_of_length ~config value
+  | Border_right_width -> string_of_length ~config value
+  | Border_bottom_width -> string_of_length ~config value
+  | Border_left_width -> string_of_length ~config value
+  | Border_inline_start_width -> string_of_length ~config value
+  | Border_inline_end_width -> string_of_length ~config value
+  | Border_radius -> string_of_length ~config value
+  | Border_top_color -> string_of_color ~config value
+  | Border_right_color -> string_of_color ~config value
+  | Border_bottom_color -> string_of_color ~config value
+  | Border_left_color -> string_of_color ~config value
+  | Border_inline_start_color -> string_of_color ~config value
+  | Border_inline_end_color -> string_of_color ~config value
+  | Text_decoration_color -> string_of_color ~config value
+  | Webkit_text_decoration_color -> string_of_color ~config value
+  | Webkit_tap_highlight_color -> string_of_color ~config value
+  | Text_indent -> string_of_length ~config value
+  | Border_spacing -> string_of_length ~config value
+  | Outline_offset -> string_of_length ~config value
+  | Perspective -> string_of_length ~config value
+  | Transform ->
+      List.map (string_of_transform ~config) value |> String.concat " "
   | Isolation -> string_of_isolation value
   | Transform_style -> string_of_transform_style value
   | Backface_visibility -> string_of_backface_visibility value
@@ -2240,7 +2341,7 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
   | Overflow -> string_of_overflow value
   | Overflow_x -> string_of_overflow value
   | Overflow_y -> string_of_overflow value
-  | Vertical_align -> string_of_vertical_align value
+  | Vertical_align -> string_of_vertical_align ~config value
   | Text_overflow -> string_of_text_overflow value
   | Text_wrap -> string_of_text_wrap value
   | Word_break -> string_of_word_break value
@@ -2248,18 +2349,18 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
   | Hyphens -> string_of_hyphens value
   | Webkit_hyphens -> string_of_hyphens value
   | Font_stretch -> string_of_font_stretch value
-  | Font_variant_numeric -> string_of_font_variant_numeric ~mode value
+  | Font_variant_numeric -> string_of_font_variant_numeric ~config value
   | Webkit_font_smoothing -> string_of_webkit_font_smoothing value
-  | Scroll_snap_type -> string_of_scroll_snap_type ~mode value
+  | Scroll_snap_type -> string_of_scroll_snap_type ~config value
   | Container_type -> string_of_container_type value
   | White_space -> string_of_white_space value
-  | Grid_template_columns -> string_of_grid_template value
-  | Grid_template_rows -> string_of_grid_template value
-  | Grid_auto_columns -> string_of_grid_track_size value
-  | Grid_auto_rows -> string_of_grid_track_size value
+  | Grid_template_columns -> string_of_grid_template ~config value
+  | Grid_template_rows -> string_of_grid_template ~config value
+  | Grid_auto_columns -> string_of_grid_track_size ~config value
+  | Grid_auto_rows -> string_of_grid_track_size ~config value
   (* String properties *)
-  | Flex -> value
-  | Flex_basis -> value
+  | Flex -> string_of_flex ~config value
+  | Flex_basis -> string_of_length ~config value
   | Align_content -> string_of_align value
   | Justify_self -> string_of_justify_self value
   | Place_content -> string_of_place_content value
@@ -2272,7 +2373,6 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
   | Grid_row_start -> string_of_grid_line value
   | Grid_row_end -> string_of_grid_line value
   | Text_underline_offset -> value
-  | Font_family -> value
   | Background_position -> value
   | Background_repeat -> string_of_background_repeat value
   | Background_size -> value
@@ -2281,28 +2381,28 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
   | Container_name -> value
   | Perspective_origin -> value
   | Object_position -> value
-  | Rotate -> string_of_angle ~mode value
-  | Transition_duration -> string_of_duration ~mode value
+  | Rotate -> string_of_angle ~config value
+  | Transition_duration -> string_of_duration ~config value
   | Transition_timing_function -> string_of_timing_function value
-  | Transition_delay -> string_of_duration ~mode value
+  | Transition_delay -> string_of_duration ~config value
   | Will_change -> value
   | Contain -> value
   | Filter -> value
-  | Background_image -> value
+  | Background_image -> string_of_background_image ~config value
   | Animation -> value
   | Aspect_ratio -> string_of_aspect_ratio value
-  | Content -> string_of_content ~mode value
+  | Content -> string_of_content ~config value
   | Quotes -> value
-  | Box_shadow -> string_of_box_shadow ~mode value
-  | Fill -> string_of_svg_paint ~mode value
-  | Stroke -> string_of_svg_paint ~mode value
-  | Stroke_width -> string_of_length ~mode value
-  | Transition -> string_of_transition ~mode value
-  | Scale -> string_of_scale ~mode value
+  | Box_shadow -> string_of_box_shadow ~config value
+  | Fill -> string_of_svg_paint ~config value
+  | Stroke -> string_of_svg_paint ~config value
+  | Stroke_width -> string_of_length ~config value
+  | Transition -> string_of_transition ~config value
+  | Scale -> string_of_scale ~config value
   | Outline -> value
   | Outline_style -> string_of_outline_style value
-  | Outline_width -> string_of_length ~mode value
-  | Outline_color -> string_of_color ~mode value
+  | Outline_width -> string_of_length ~config value
+  | Outline_color -> string_of_color ~config value
   | Forced_color_adjust -> string_of_forced_color_adjust value
   | Clip -> value
   | Clear -> string_of_clear value
@@ -2314,17 +2414,19 @@ let string_of_property_value : type a. ?mode:mode -> a property -> a -> string =
   | List_style -> value
   | Font -> value
   | Webkit_appearance -> string_of_appearance value
-  | Letter_spacing -> string_of_length ~mode value
+  | Letter_spacing -> string_of_length ~config value
   | Cursor -> string_of_cursor value
   | Pointer_events -> string_of_pointer_events value
   | User_select -> string_of_user_select value
-  | Font_feature_settings -> string_of_font_feature_settings ~mode value
-  | Font_variation_settings -> string_of_font_variation_settings ~mode value
+  | Font_feature_settings -> string_of_font_feature_settings ~config value
+  | Font_variation_settings -> string_of_font_variation_settings ~config value
   | Webkit_text_decoration -> string_of_text_decoration value
   | Webkit_text_size_adjust -> value
+  | Font_family ->
+      Pp.str ~sep:", " (List.map (string_of_font_family ~config) value)
 
 (* String conversion for value kinds - reuses existing printers *)
-let rec string_of_font_family ~mode = function
+and string_of_font_family ~config = function
   (* Generic CSS font families *)
   | Sans_serif -> "sans-serif"
   | Serif -> "serif"
@@ -2417,35 +2519,35 @@ let rec string_of_font_family ~mode = function
   | Initial -> "initial"
   | Unset -> "unset"
   | Var v ->
-      string_of_var ~mode
+      string_of_var ~config
         (fun fonts ->
-          String.concat "," (List.map (string_of_font_family ~mode) fonts))
+          String.concat "," (List.map (string_of_font_family ~config) fonts))
         v
 
-let string_of_value : type a. mode:mode -> a kind -> a -> string =
- fun ~mode kind value ->
+let string_of_value : type a. config:config -> a kind -> a -> string =
+ fun ~config kind value ->
   match kind with
-  | Length -> string_of_length ~mode value
-  | Color -> string_of_color ~mode value
+  | Length -> string_of_length ~config value
+  | Color -> string_of_color ~config value
   | Int -> string_of_int value
   | Float -> Pp.float value
-  | Duration -> string_of_duration ~mode value
+  | Duration -> string_of_duration ~config value
   | Aspect_ratio -> string_of_aspect_ratio value
-  | Border_style -> string_of_border_style ~mode value
-  | Font_weight -> string_of_font_weight ~mode value
+  | Border_style -> string_of_border_style ~config value
+  | Font_weight -> string_of_font_weight ~config value
   | Font_family ->
-      Pp.str ~sep:", " (List.map (string_of_font_family ~mode) value)
-  | Font_feature_settings -> string_of_font_feature_settings ~mode value
-  | Font_variation_settings -> string_of_font_variation_settings ~mode value
-  | Font_variant_numeric -> string_of_font_variant_numeric ~mode value
-  | Font_variant_numeric_token -> string_of_font_variant_token value
+      Pp.str ~sep:", " (List.map (string_of_font_family ~config) value)
+  | Font_feature_settings -> string_of_font_feature_settings ~config value
+  | Font_variation_settings -> string_of_font_variation_settings ~config value
+  | Font_variant_numeric -> string_of_font_variant_numeric ~config value
+  | Font_variant_numeric_token -> string_of_font_variant_token ~config value
   | Blend_mode -> string_of_blend_mode value
-  | Scroll_snap_strictness -> string_of_scroll_snap_strictness ~mode value
-  | Angle -> string_of_angle ~mode value
-  | Transform_scale -> string_of_transform_scale ~mode value
-  | Box_shadow -> string_of_box_shadow ~mode value
+  | Scroll_snap_strictness -> string_of_scroll_snap_strictness ~config value
+  | Angle -> string_of_angle ~config value
+  | Transform_scale -> string_of_transform_scale ~config value
+  | Box_shadow -> string_of_box_shadow ~config value
   | String -> value
-  | Content -> string_of_content ~mode value
+  | Content -> string_of_content ~config value
 
 (* Typed variable setters *)
 let var : type a.
@@ -2547,11 +2649,6 @@ type place =
   | Space_evenly
   | Inherit
 
-(* Not currently used let string_of_place = function | Start -> "start" | End ->
-   "end" | Center -> "center" | Stretch -> "stretch" | Space_between ->
-   "space-between" | Space_around -> "space-around" | Space_evenly ->
-   "space-evenly" | Inherit -> "inherit" *)
-
 let place_items_v v = Declaration (Place_items, v)
 
 let place_self_v = function
@@ -2589,77 +2686,9 @@ let aspect_ratio v = Declaration (Aspect_ratio, v)
 let filter value = Declaration (Filter, value)
 
 (* Gradient direction values *)
-type gradient_direction =
-  | To_top
-  | To_top_right
-  | To_right
-  | To_bottom_right
-  | To_bottom
-  | To_bottom_left
-  | To_left
-  | To_top_left
-  | Angle of angle
-
-(* Gradient stop values *)
-type gradient_stop =
-  | Color_stop of color
-  | Color_position of color * length
-  | Var of color var
-  | Computed_stops of
-      string (* For complex computed values like --tw-gradient-stops *)
-
 (* Background image values *)
-type background_image =
-  | Url of string
-  | Linear_gradient of gradient_direction * gradient_stop list
-  | Radial_gradient of gradient_stop list
-  | None
 
-let string_of_gradient_direction ~mode = function
-  | To_top -> "to top"
-  | To_top_right -> "to top right"
-  | To_right -> "to right"
-  | To_bottom_right -> "to bottom right"
-  | To_bottom -> "to bottom"
-  | To_bottom_left -> "to bottom left"
-  | To_left -> "to left"
-  | To_top_left -> "to top left"
-  | Angle a -> string_of_angle ~mode a
-
-let string_of_gradient_stop ~mode = function
-  | Color_stop c -> string_of_color ~mode c
-  | Color_position (c, len) ->
-      Pp.str [ string_of_color ~mode c; " "; string_of_length ~mode len ]
-  | Var v -> string_of_var ~mode (string_of_color ~mode) v
-  | Computed_stops s -> s
-
-let string_of_background_image ~mode = function
-  | Url url -> Pp.str [ "url(\""; url; "\")" ]
-  | Linear_gradient (dir, stops) -> (
-      let stop_strings = List.map (string_of_gradient_stop ~mode) stops in
-      match stop_strings with
-      | [] ->
-          Pp.str
-            [ "linear-gradient("; string_of_gradient_direction ~mode dir; ")" ]
-      | _ ->
-          Pp.str
-            [
-              "linear-gradient(";
-              string_of_gradient_direction ~mode dir;
-              ", ";
-              Pp.str ~sep:", " stop_strings;
-              ")";
-            ])
-  | Radial_gradient stops -> (
-      let stop_strings = List.map (string_of_gradient_stop ~mode) stops in
-      match stop_strings with
-      | [] -> "radial-gradient()"
-      | _ -> Pp.str [ "radial-gradient("; Pp.str ~sep:", " stop_strings; ")" ])
-  | None -> "none"
-
-let background_image value =
-  Declaration
-    (Background_image, string_of_background_image ~mode:Variables value)
+let background_image value = Declaration (Background_image, value)
 
 (* Helper functions for background images *)
 let url path = Url path
@@ -2685,12 +2714,7 @@ let overflow_y o = Declaration (Overflow_y, o)
 let resize value = Declaration (Resize, value)
 let vertical_align value = Declaration (Vertical_align, value)
 let box_sizing value = Declaration (Box_sizing, value)
-
-let font_family fonts =
-  Declaration
-    ( Font_family,
-      String.concat ", "
-        (List.map (string_of_font_family ~mode:Variables) fonts) )
+let font_family fonts = Declaration (Font_family, fonts)
 
 let moz_osx_font_smoothing value =
   Declaration (Moz_osx_font_smoothing, string_of_moz_font_smoothing value)
@@ -2794,10 +2818,10 @@ let scroll_behavior value = Declaration (Scroll_behavior, value)
 module Flex = struct
   let direction dir = Declaration (Flex_direction, dir)
   let wrap w = Declaration (Flex_wrap, w)
-  let flex v = Declaration (Flex, string_of_flex v)
+  let flex v = Declaration (Flex, v)
   let grow n = Declaration (Flex_grow, n)
   let shrink n = Declaration (Flex_shrink, n)
-  let basis len = Declaration (Flex_basis, string_of_length len)
+  let basis len = Declaration (Flex_basis, len)
   let order n = Declaration (Order, n)
   let align_items v = Declaration (Align_items, v)
   let align_self v = Declaration (Align_self, v)
@@ -2877,7 +2901,7 @@ type property_rule = {
   name : string;
   syntax : string;
   inherits : bool;
-  initial_value : string;
+  initial_value : string option;
 }
 
 type layer_rule = {
@@ -3126,12 +3150,17 @@ let container ?(name = Option.none) ~condition rules =
     container_rules = rules;
   }
 
-let property ~name ~syntax ~initial_value ?(inherits = false) () =
+let property ~syntax ?initial_value ?(inherits = false) name =
   { name; syntax; inherits; initial_value }
 
 let property_rule_name r = r.name
 let property_rule_initial r = r.initial_value
-let default_decl_of_property_rule r = custom_property r.name r.initial_value
+
+let default_decl_of_property_rule r =
+  match r.initial_value with
+  | Some v -> custom_property r.name v
+  | None -> custom_property r.name ""
+
 let rule_to_nested rule : nested_rule = Rule rule
 let supports_to_nested supports : nested_rule = Supports supports
 
@@ -3196,7 +3225,6 @@ let rec vars_of_calc : type a. a calc -> any_var list = function
 let vars_of_property : type a. a property -> a -> any_var list =
  fun prop value ->
   match (prop, value) with
-  (* Length properties *)
   | Width, Var v -> [ V v ]
   | Width, Calc calc -> vars_of_calc calc
   | Height, Var v -> [ V v ]
@@ -3474,28 +3502,63 @@ let custom_declaration_name (decl : declaration) : string option =
   match decl with Custom_declaration { name; _ } -> Some name | _ -> None
 
 (* Helper to format a property-value pair *)
-let format_property_value ~mode ~sep prop value =
+let format_property_value ~config ~sep prop value =
   Pp.str
-    [ string_of_property prop; sep; string_of_property_value ~mode prop value ]
+    [
+      string_of_property prop; sep; string_of_property_value ~config prop value;
+    ]
 
-let inline_style_of_declarations ?(mode : mode = Inline) props =
+let inline_style_of_declarations ?(optimize = false) ?(minify = false)
+    ?(mode : mode = Inline) props =
+  let config = { mode; minify; optimize } in
   props
   |> List.map (function
        | Declaration (prop, value) ->
-           format_property_value ~mode ~sep:": " prop value
+           format_property_value ~config ~sep:": " prop value
        | Important_declaration (prop, value) ->
            Pp.str
              [
                string_of_property prop;
                ": ";
-               string_of_property_value ~mode prop value;
+               string_of_property_value ~config prop value;
                " !important";
              ]
        | Custom_declaration { name; kind; value; _ } ->
-           Pp.str [ name; ": "; string_of_value ~mode kind value ])
+           Pp.str [ name; ": "; string_of_value ~config kind value ])
   |> String.concat "; "
 
+(* TW_DEBUG helper to show rule positions *)
+let debug_rules label rules =
+  let prose_positions = ref [] in
+  List.iteri
+    (fun i rule ->
+      if rule.selector = ".prose" then prose_positions := i :: !prose_positions)
+    rules;
+  let prose_count = List.length !prose_positions in
+  print_endline
+    (Pp.str
+       [
+         "TW_DEBUG: ";
+         label;
+         " - Total: ";
+         Pp.int (List.length rules);
+         " rules, ";
+         Pp.int prose_count;
+         " .prose rules";
+       ]);
+  if prose_count > 0 then
+    print_endline
+      (Pp.str
+         [
+           "  .prose at positions: ";
+           String.concat ", "
+             (List.map string_of_int (List.rev !prose_positions));
+         ])
+
 let merge_rules rules =
+  (* TW_DEBUG_START: merge_rules debug *)
+  debug_rules "merge_rules IN" rules;
+  (* TW_DEBUG_END *)
   (* Only merge truly adjacent rules with the same selector to preserve cascade
      order. This is safe because we don't reorder rules - we only combine
      immediately adjacent rules with identical selectors, which maintains
@@ -3524,54 +3587,67 @@ let merge_rules rules =
                  current *)
               merge_adjacent (prev :: acc) (Some rule) rest)
   in
-  merge_adjacent [] None rules
+  let result = merge_adjacent [] None rules in
+  (* TW_DEBUG_START *)
+  debug_rules "merge_rules OUT" result;
+  (* TW_DEBUG_END *)
+  result
 
-(* Merge rules with identical properties into combined selectors *)
-let merge_by_properties rules =
-  (* Create a hash of properties for comparison *)
-  let properties_hash props =
-    props
-    |> List.map (function
-         | Declaration (prop, value) ->
-             format_property_value ~mode:Inline ~sep:":" prop value
-         | Important_declaration (prop, value) ->
-             Pp.str
-               [
-                 string_of_property prop;
-                 ":";
-                 string_of_property_value ~mode:Inline prop value;
-                 "!important";
-               ]
-         | Custom_declaration { name; kind; value; _ } ->
-             Pp.str [ name; ":"; string_of_value ~mode:Inline kind value ])
-    |> List.sort String.compare |> String.concat ";"
+(* Check if a selector should not be combined with others *)
+let should_not_combine selector =
+  (* Don't combine certain pseudo-elements that need separate rules *)
+  String.starts_with ~prefix:"::file-selector-button" selector
+  || String.starts_with ~prefix:"::-webkit-"
+       selector (* Don't combine webkit pseudo-elements *)
+  || String.contains selector
+       ',' (* Already combined selectors shouldn't be re-combined *)
+
+(* Convert group of selectors to a rule *)
+let group_to_rule = function
+  | [ (sel, decls) ] -> Some { selector = sel; declarations = decls }
+  | [] -> None
+  | group ->
+      let selectors = List.map fst (List.rev group) in
+      let decls = snd (List.hd group) in
+      Some { selector = String.concat "," selectors; declarations = decls }
+
+(* Flush current group to accumulator *)
+let flush_group acc group =
+  match group_to_rule group with Some rule -> rule :: acc | None -> acc
+
+(* Combine consecutive rules with identical declarations into comma-separated
+   selectors *)
+let combine_identical_rules rules =
+  (* Only combine consecutive rules to preserve cascade semantics *)
+  let rec combine_consecutive acc current_group = function
+    | [] -> List.rev (flush_group acc current_group)
+    | rule :: rest -> (
+        if should_not_combine rule.selector then
+          (* Don't combine this selector, flush current group and start fresh *)
+          let acc' = rule :: flush_group acc current_group in
+          combine_consecutive acc' [] rest
+        else
+          match current_group with
+          | [] ->
+              (* Start a new group *)
+              combine_consecutive acc
+                [ (rule.selector, rule.declarations) ]
+                rest
+          | (_, prev_decls) :: _ ->
+              if prev_decls = rule.declarations then
+                (* Same declarations, add to current group *)
+                combine_consecutive acc
+                  ((rule.selector, rule.declarations) :: current_group)
+                  rest
+              else
+                (* Different declarations, flush current group and start new
+                   one *)
+                let acc' = flush_group acc current_group in
+                combine_consecutive acc'
+                  [ (rule.selector, rule.declarations) ]
+                  rest)
   in
-
-  (* Group rules by their properties *)
-  let groups = Hashtbl.create 16 in
-  List.iter
-    (fun rule ->
-      let hash = properties_hash rule.declarations in
-      let existing = try Hashtbl.find groups hash with Not_found -> [] in
-      Hashtbl.replace groups hash (rule :: existing))
-    rules;
-
-  (* Create merged rules *)
-  Hashtbl.fold
-    (fun _hash rules_with_same_props acc ->
-      match rules_with_same_props with
-      | [] -> acc
-      | [ rule ] -> rule :: acc
-      | multiple ->
-          let selectors =
-            multiple
-            |> List.map (fun r -> r.selector)
-            |> List.sort String.compare |> String.concat ","
-          in
-          let declarations = (List.hd multiple).declarations in
-          { selector = selectors; declarations } :: acc)
-    groups []
-  |> List.sort (fun a b -> String.compare a.selector b.selector)
+  combine_consecutive [] [] rules
 
 (* Pre-compiled regexes for minification - compiled once at module
    initialization *)
@@ -3620,7 +3696,8 @@ let minify_selector s =
   |> Re.replace_string Minify.spaces_around_plus ~by:"+"
   |> Re.replace_string Minify.spaces_around_tilde ~by:"~"
   |> Re.replace_string Minify.spaces_around_comma ~by:","
-  (* Don't remove spaces before pseudo-classes that might be descendant selectors *)
+  (* Don't remove spaces before pseudo-classes that might be descendant
+     selectors *)
   (* Only remove spaces after colons and before regular pseudo-classes *)
   |> Re.replace_string Minify.spaces_after_colon ~by:":"
   |> String.trim
@@ -3661,14 +3738,14 @@ let minify_value v =
 
 (** {1 Rendering} *)
 
-let render_minified_rule ~mode rule =
+let render_minified_rule ~config rule =
   let selector = minify_selector rule.selector in
   let props =
     rule.declarations
     |> List.map (function
          | Declaration (prop, value) ->
              let prop_name = string_of_property prop in
-             let value_str = string_of_property_value ~mode prop value in
+             let value_str = string_of_property_value ~config prop value in
              let final_value =
                (* Convert transparent to #0000 for background-color in minified
                   output *)
@@ -3679,7 +3756,7 @@ let render_minified_rule ~mode rule =
              Pp.str [ prop_name; ":"; final_value ]
          | Important_declaration (prop, value) ->
              let prop_name = string_of_property prop in
-             let value_str = string_of_property_value ~mode prop value in
+             let value_str = string_of_property_value ~config prop value in
              let final_value =
                (* Convert transparent to #0000 for background-color in minified
                   output *)
@@ -3689,12 +3766,12 @@ let render_minified_rule ~mode rule =
              in
              Pp.str [ prop_name; ":"; final_value; "!important" ]
          | Custom_declaration { name; kind; value; _ } ->
-             let value_str = string_of_value ~mode kind value in
+             let value_str = string_of_value ~config kind value in
              Pp.str [ name; ":"; minify_value value_str ])
   in
   Pp.str [ selector; "{"; Pp.str ~sep:";" props; "}" ]
 
-let render_formatted_rule ~mode ?(indent = "") rule =
+let render_formatted_rule ~config ?(indent = "") rule =
   let props =
     rule.declarations
     |> List.map (function
@@ -3705,7 +3782,7 @@ let render_formatted_rule ~mode ?(indent = "") rule =
                  "  ";
                  string_of_property prop;
                  ": ";
-                 string_of_property_value ~mode prop value;
+                 string_of_property_value ~config prop value;
                  ";";
                ]
          | Important_declaration (prop, value) ->
@@ -3715,13 +3792,18 @@ let render_formatted_rule ~mode ?(indent = "") rule =
                  "  ";
                  string_of_property prop;
                  ": ";
-                 string_of_property_value ~mode prop value;
+                 string_of_property_value ~config prop value;
                  " !important;";
                ]
          | Custom_declaration { name; kind; value; _ } ->
              Pp.str
                [
-                 indent; "  "; name; ": "; string_of_value ~mode kind value; ";";
+                 indent;
+                 "  ";
+                 name;
+                 ": ";
+                 string_of_value ~config kind value;
+                 ";";
                ])
   in
   Pp.lines
@@ -3731,33 +3813,29 @@ let render_formatted_rule ~mode ?(indent = "") rule =
       Pp.str [ indent; "}" ];
     ]
 
-let rec render_supports_content ~minify ~mode content =
+let rec render_supports_content ~minify ~config content =
   match content with
   | Support_rules rules ->
       if minify then
-        rules |> merge_rules |> merge_by_properties
-        |> List.map (render_minified_rule ~mode)
-        |> String.concat ""
+        rules |> List.map (render_minified_rule ~config) |> String.concat ""
       else
         rules
-        |> List.map (render_formatted_rule ~mode ~indent:"    ")
+        |> List.map (render_formatted_rule ~config ~indent:"    ")
         |> String.concat "\n"
   | Support_nested (rules, nested_queries) ->
       let rules_str =
         if minify then
-          rules |> merge_rules |> merge_by_properties
-          |> List.map (render_minified_rule ~mode)
-          |> String.concat ""
+          rules |> List.map (render_minified_rule ~config) |> String.concat ""
         else
           rules
-          |> List.map (render_formatted_rule ~mode ~indent:"    ")
+          |> List.map (render_formatted_rule ~config ~indent:"    ")
           |> String.concat "\n"
       in
       let nested_str =
         nested_queries
         |> List.map (fun nsq ->
                let content_str =
-                 render_supports_content ~minify ~mode nsq.supports_content
+                 render_supports_content ~minify ~config nsq.supports_content
                in
                if minify then
                  Pp.str
@@ -3788,20 +3866,21 @@ let header =
   Pp.str
     [ "/*! tw v"; version; " | MIT License | https://github.com/samoht/tw */" ]
 
-(* Configuration for stylesheet rendering *)
-type config = { minify : bool; mode : mode }
+let render_layer_rules ~config (rules : nested_rule list) =
+  (* Don't optimize at layer level - it breaks rule adjacency *)
+  (* Optimization should happen at the stylesheet level before layer splitting *)
+  let optimized_rules : nested_rule list = rules in
 
-let render_layer_rules ~config rules =
   let render_nested_rule : nested_rule -> string = function
     | Rule r ->
         let r =
           { r with declarations = deduplicate_declarations r.declarations }
         in
-        if config.minify then render_minified_rule ~mode:config.mode r
-        else render_formatted_rule ~mode:config.mode r
+        if config.minify then render_minified_rule ~config r
+        else render_formatted_rule ~config r
     | Supports sq ->
         let sq_content =
-          render_supports_content ~minify:config.minify ~mode:config.mode
+          render_supports_content ~minify:config.minify ~config
             sq.supports_content
         in
         if config.minify then
@@ -3811,21 +3890,20 @@ let render_layer_rules ~config rules =
             [ "@supports "; sq.supports_condition; " {\n"; sq_content; "\n}" ]
   in
 
-  (* Render rules in order without merging *)
-  rules
+  (* Render optimized rules *)
+  optimized_rules
   |> List.map render_nested_rule
   |> String.concat (if config.minify then "" else "\n")
 
 (* Generic at-rule rendering function *)
 let render_at_rules ~config ~at_rule ~condition ~name_part ~rules ~indent =
+  (* Optimization already done at the Rules level before layer assembly *)
   let content =
     if config.minify then
-      rules |> merge_rules |> merge_by_properties
-      |> List.map (render_minified_rule ~mode:config.mode)
-      |> String.concat ""
+      rules |> List.map (render_minified_rule ~config) |> String.concat ""
     else
       rules
-      |> List.map (render_formatted_rule ~mode:config.mode ~indent)
+      |> List.map (render_formatted_rule ~config ~indent)
       |> String.concat "\n"
   in
   if config.minify then
@@ -3857,7 +3935,7 @@ let render_layer_supports ~config supports_queries =
   supports_queries
   |> List.map (fun sq ->
          let content =
-           render_supports_content ~minify:config.minify ~mode:config.mode
+           render_supports_content ~minify:config.minify ~config
              sq.supports_content
          in
          if config.minify then
@@ -3868,14 +3946,10 @@ let render_layer_supports ~config supports_queries =
   |> String.concat (if config.minify then "" else "\n")
 
 let render_stylesheet_rules ~config rules =
+  (* Optimization already done at the Rules level before layer assembly *)
   if config.minify then
-    rules |> merge_rules |> merge_by_properties
-    |> List.map (render_minified_rule ~mode:config.mode)
-    |> String.concat ""
-  else
-    rules
-    |> List.map (render_formatted_rule ~mode:config.mode)
-    |> String.concat "\n"
+    rules |> List.map (render_minified_rule ~config) |> String.concat ""
+  else rules |> List.map (render_formatted_rule ~config) |> String.concat "\n"
 
 let render_stylesheet_media ~config media_queries =
   media_queries
@@ -3901,7 +3975,7 @@ let render_stylesheet_supports ~config supports_queries =
   supports_queries
   |> List.map (fun sq ->
          let content =
-           render_supports_content ~minify:config.minify ~mode:config.mode
+           render_supports_content ~minify:config.minify ~config
              sq.supports_content
          in
          if config.minify then
@@ -3914,14 +3988,18 @@ let render_stylesheet_supports ~config supports_queries =
 let render_starting_styles ~config starting_styles =
   starting_styles
   |> List.map (fun ss ->
+         let optimized =
+           if config.optimize then ss.starting_rules |> merge_rules
+           else ss.starting_rules
+         in
          let content =
            if config.minify then
-             ss.starting_rules |> merge_rules |> merge_by_properties
-             |> List.map (render_minified_rule ~mode:config.mode)
+             optimized
+             |> List.map (render_minified_rule ~config)
              |> String.concat ""
            else
-             ss.starting_rules
-             |> List.map (render_formatted_rule ~mode:config.mode)
+             optimized
+             |> List.map (render_formatted_rule ~config)
              |> String.concat "\n"
          in
          if config.minify then Pp.str [ "@starting-style{"; content; "}" ]
@@ -3933,8 +4011,10 @@ let render_at_properties ~config at_properties =
   |> List.map (fun at ->
          if config.minify then
            let initial_value_part =
-             if at.initial_value = "" || at.initial_value = "initial" then ""
-             else Pp.str [ ";initial-value:"; at.initial_value ]
+             match at.initial_value with
+             | None -> ""
+             | Some "" | Some "initial" -> ""
+             | Some v -> Pp.str [ ";initial-value:"; v ]
            in
            Pp.str
              [
@@ -3949,8 +4029,10 @@ let render_at_properties ~config at_properties =
              ]
          else
            let initial_value_part =
-             if at.initial_value = "" || at.initial_value = "initial" then ""
-             else Pp.str [ ";\n  initial-value: "; at.initial_value ]
+             match at.initial_value with
+             | None -> ""
+             | Some "" | Some "initial" -> ""
+             | Some v -> Pp.str [ ";\n  initial-value: "; v ]
            in
            Pp.str
              [
@@ -4075,92 +4157,446 @@ let merge_empty_layers ~config layers =
 (* CSS Optimization *)
 (* ======================================================================== *)
 
-(* Check if a selector should not be combined with others *)
-let should_not_combine selector =
-  (* Don't combine certain pseudo-elements that need separate rules *)
-  String.starts_with ~prefix:"::file-selector-button" selector
-  || String.contains selector
-       ',' (* Already combined selectors shouldn't be re-combined *)
+type layer_stats = {
+  name : string;
+  rules : int;
+  selectors : string list; (* First few selectors as examples *)
+}
 
-(* Convert group of selectors to a rule *)
-let group_to_rule = function
-  | [ (sel, decls) ] -> Some { selector = sel; declarations = decls }
-  | [] -> None
-  | group ->
-      let selectors = List.map fst (List.rev group) in
-      let decls = snd (List.hd group) in
-      Some { selector = String.concat "," selectors; declarations = decls }
+type stats = {
+  rules : int;
+  layer_rules : int;
+  layers : layer_stats list;
+  media_queries : int;
+  container_queries : int;
+  top_selectors : string list; (* First few top-level selectors *)
+}
 
-(* Flush current group to accumulator *)
-let flush_group acc group =
-  match group_to_rule group with Some rule -> rule :: acc | None -> acc
+(* Helper to take first n elements from a list *)
+let rec list_take n = function
+  | [] -> []
+  | _ when n <= 0 -> []
+  | h :: t -> h :: list_take (n - 1) t
 
-(* Combine consecutive rules with identical declarations into comma-separated
-   selectors *)
-let combine_identical_rules rules =
-  (* Only combine consecutive rules to preserve cascade semantics *)
-  let rec combine_consecutive acc current_group = function
-    | [] -> List.rev (flush_group acc current_group)
-    | rule :: rest -> (
-        if should_not_combine rule.selector then
-          (* Don't combine this selector, flush current group and start fresh *)
-          let acc' = rule :: flush_group acc current_group in
-          combine_consecutive acc' [] rest
-        else
-          match current_group with
-          | [] ->
-              (* Start a new group *)
-              combine_consecutive acc
-                [ (rule.selector, rule.declarations) ]
-                rest
-          | (_, prev_decls) :: _ ->
-              if prev_decls = rule.declarations then
-                (* Same declarations, add to current group *)
-                combine_consecutive acc
-                  ((rule.selector, rule.declarations) :: current_group)
-                  rest
-              else
-                (* Different declarations, flush current group and start new
-                   one *)
-                let acc' = flush_group acc current_group in
-                combine_consecutive acc'
-                  [ (rule.selector, rule.declarations) ]
-                  rest)
+(* Helper to extract selectors from nested rules *)
+let selectors_from_nested_rules (rules : nested_rule list) max_count =
+  let rec collect acc count = function
+    | [] -> List.rev acc
+    | _ when count >= max_count -> List.rev acc
+    | (Rule r : nested_rule) :: rest ->
+        collect (r.selector :: acc) (count + 1) rest
+    | _ :: rest -> collect acc count rest
   in
-  combine_consecutive [] [] rules
+  collect [] 0 rules
 
-let optimize stylesheet =
+(* Helper to extract selectors from regular rules *)
+let selectors_from_rules (rules : rule list) max_count =
+  rules |> List.map (fun r -> r.selector) |> list_take max_count
+
+(* Helper to format selector list with count *)
+let pp_selectors selectors total_count max_shown =
+  let shown = list_take max_shown selectors in
+  let shown_count = List.length shown in
+  let more_count = total_count - shown_count in
+  let base = String.concat ", " shown in
+  if more_count > 0 then
+    Pp.str [ base; " ("; string_of_int more_count; " more)" ]
+  else base
+
+(* Helper to format count with label *)
+let format_count_info label count = Pp.str [ label; string_of_int count ]
+
+(* Compute stats from a stylesheet *)
+let stats (stylesheet : t) : stats =
+  let layer_rules =
+    List.fold_left
+      (fun acc (l : layer_rule) -> acc + List.length l.rules)
+      0 stylesheet.layers
+  in
+  let layers =
+    List.map
+      (fun (l : layer_rule) ->
+        let layer_rules = l.rules in
+        (* Extract the nested_rule list *)
+        ({
+           name = l.layer;
+           rules = List.length layer_rules;
+           selectors = selectors_from_nested_rules layer_rules 5;
+           (* Show first 5 selectors *)
+         }
+          : layer_stats))
+      stylesheet.layers
+  in
+  let top_selectors = selectors_from_rules stylesheet.rules 5 in
+  {
+    rules = List.length stylesheet.rules;
+    layer_rules;
+    layers;
+    media_queries = List.length stylesheet.media_queries;
+    container_queries = List.length stylesheet.container_queries;
+    top_selectors;
+  }
+
+(* Pretty print stats using Pp module *)
+let pp_stats stats =
+  let parts = [ "=== CSS Stats ===" ] in
+
+  (* Top-level rules *)
+  let parts =
+    if stats.rules > 0 then
+      let rules_line = format_count_info "Rules: " stats.rules in
+      let selector_parts =
+        if stats.top_selectors <> [] then
+          let total = List.length stats.top_selectors in
+          let formatted = pp_selectors stats.top_selectors total 3 in
+          [ Pp.str [ "  Selectors ("; string_of_int total; "): "; formatted ] ]
+        else []
+      in
+      parts @ (rules_line :: selector_parts)
+    else parts
+  in
+
+  let parts =
+    if stats.layer_rules > 0 then
+      parts @ [ format_count_info "Layer rules: " stats.layer_rules ]
+    else parts
+  in
+
+  let parts =
+    if stats.media_queries > 0 then
+      parts @ [ format_count_info "Media queries: " stats.media_queries ]
+    else parts
+  in
+
+  let parts =
+    if stats.container_queries > 0 then
+      parts
+      @ [ format_count_info "Container queries: " stats.container_queries ]
+    else parts
+  in
+
+  (* Detailed layer breakdown *)
+  let parts = if stats.layers <> [] then parts @ [ ""; "Layers:" ] else parts in
+
+  let parts =
+    List.fold_left
+      (fun acc (layer : layer_stats) ->
+        if layer.rules > 0 then
+          let layer_line =
+            Pp.str
+              [
+                "  @layer ";
+                layer.name;
+                " (";
+                string_of_int layer.rules;
+                " rules)";
+              ]
+          in
+          let selector_parts =
+            if layer.selectors <> [] then
+              let formatted = pp_selectors layer.selectors layer.rules 3 in
+              [ Pp.str [ "    Examples: "; formatted; " rules" ] ]
+            else []
+          in
+          acc @ (layer_line :: selector_parts)
+        else acc)
+      parts stats.layers
+  in
+
+  Pp.lines parts
+
+(* Helper to format a change *)
+let pp_change name before after =
+  if before <> after then
+    Some
+      (Pp.str
+         [
+           name;
+           ": ";
+           string_of_int before;
+           " -> ";
+           string_of_int after;
+           " (-";
+           string_of_int (before - after);
+           ")";
+         ])
+  else None
+
+(* Helper to find first difference position between two lists *)
+let rec find_first_diff_index idx list1 list2 : int option =
+  match (list1, list2) with
+  | [], [] -> None
+  | [], _ | _, [] -> Some idx
+  | h1 :: t1, h2 :: t2 ->
+      if h1 = h2 then find_first_diff_index (idx + 1) t1 t2 else Some idx
+
+(* Helper to safely drop n elements from a list *)
+let rec list_drop n lst =
+  match (n, lst) with 0, _ | _, [] -> lst | n, _ :: t -> list_drop (n - 1) t
+
+(* Helper to format selector context for diffs showing where changes occur *)
+let pp_selector_diff_context before_sels after_sels before_total after_total =
+  match find_first_diff_index 0 before_sels after_sels with
+  | None when before_total = after_total ->
+      (* No changes detected in the first 5 *)
+      []
+  | None ->
+      (* Lists are identical in first 5 but totals differ *)
+      [
+        Pp.str
+          [
+            "    First ";
+            string_of_int (min 5 before_total);
+            " rules unchanged, remaining differ";
+          ];
+      ]
+  | Some diff_idx ->
+      (* Show context: 1 before, the change, 2 after *)
+      let format_with_context sels total =
+        let before_change =
+          if diff_idx > 0 then [ List.nth sels (diff_idx - 1) ] else []
+        in
+        let at_change = List.nth_opt sels diff_idx in
+        let after_change = list_take 2 (list_drop (diff_idx + 1) sels) in
+
+        let parts = [] in
+        let parts =
+          if before_change <> [] then
+            parts @ [ String.concat ", " before_change ]
+          else parts
+        in
+
+        let parts =
+          match at_change with
+          | Some s -> parts @ [ "[" ^ s ^ "]" ]
+          | None -> parts @ [ "[end of list]" ]
+        in
+
+        let parts =
+          if after_change <> [] then parts @ [ String.concat ", " after_change ]
+          else parts
+        in
+
+        let shown_count =
+          List.length before_change
+          + (if at_change <> None then 1 else 0)
+          + List.length after_change
+        in
+        let remaining = total - shown_count in
+
+        (String.concat ", " parts, remaining)
+      in
+
+      let before_str, before_remaining =
+        format_with_context before_sels before_total
+      in
+      let after_str, after_remaining =
+        format_with_context after_sels after_total
+      in
+
+      [
+        Pp.str
+          [
+            "    Before (";
+            string_of_int before_total;
+            "): ";
+            before_str;
+            (if before_remaining > 0 then
+               Pp.str [ " ... ("; string_of_int before_remaining; " more)" ]
+             else "");
+          ];
+        Pp.str
+          [
+            "    After  (";
+            string_of_int after_total;
+            "): ";
+            after_str;
+            (if after_remaining > 0 then
+               Pp.str [ " ... ("; string_of_int after_remaining; " more)" ]
+             else "");
+          ];
+      ]
+
+(* Compare two stats to show optimization results *)
+let pp_stats_diff ~before ~after =
+  (* Check if any optimization happened *)
+  let has_changes =
+    before.rules <> after.rules
+    || before.layer_rules <> after.layer_rules
+    || before.layers <> after.layers
+  in
+
+  if not has_changes then "No optimization changes (CSS already optimal)"
+  else
+    let parts = [ "=== CSS Optimization Results ===" ] in
+
+    (* Overall rules *)
+    let parts =
+      match pp_change "Rules" before.rules after.rules with
+      | Some line ->
+          let context =
+            pp_selector_diff_context before.top_selectors after.top_selectors
+              (List.length before.top_selectors)
+              (List.length after.top_selectors)
+          in
+          parts @ (line :: context)
+      | None -> parts
+    in
+
+    (* Layer rules *)
+    let parts =
+      match pp_change "Layer rules" before.layer_rules after.layer_rules with
+      | Some line -> parts @ [ line ]
+      | None -> parts
+    in
+
+    (* Per-layer breakdown with context - find matching layers *)
+    let layer_changes =
+      List.filter_map
+        (fun b_layer ->
+          match
+            List.find_opt
+              (fun a_layer -> a_layer.name = b_layer.name)
+              after.layers
+          with
+          | Some a_layer when b_layer.rules <> a_layer.rules ->
+              Some (b_layer, a_layer)
+          | _ -> None)
+        before.layers
+    in
+
+    let parts =
+      if layer_changes <> [] then parts @ [ ""; "Layer changes:" ] else parts
+    in
+
+    let parts =
+      List.fold_left
+        (fun acc ((b_layer : layer_stats), (a_layer : layer_stats)) ->
+          let change_line =
+            Pp.str
+              [
+                "  @layer ";
+                b_layer.name;
+                ": ";
+                string_of_int b_layer.rules;
+                " -> ";
+                string_of_int a_layer.rules;
+                " (-";
+                string_of_int (b_layer.rules - a_layer.rules);
+                ")";
+              ]
+          in
+          (* Show detailed selector difference context *)
+          let context =
+            pp_selector_diff_context b_layer.selectors a_layer.selectors
+              b_layer.rules a_layer.rules
+          in
+          acc @ (change_line :: context))
+        parts layer_changes
+    in
+
+    Pp.lines parts
+
+(* Optimize a single rule by deduplicating its declarations *)
+let optimize_single_rule (rule : rule) : rule =
+  { rule with declarations = deduplicate_declarations rule.declarations }
+
+(* Optimize a list of plain CSS rules *)
+let optimize_rule_list (rules : rule list) : rule list =
+  (* TW_DEBUG_START: CSS optimization debug *)
+  debug_rules "optimize_rule_list IN" rules;
+  (* TW_DEBUG_END *)
+  let deduped = List.map optimize_single_rule rules in
+  debug_rules "after dedupe" deduped;
+  let merged = merge_rules deduped in
+  let combined = combine_identical_rules merged in
+  (* TW_DEBUG_START *)
+  debug_rules "optimize_rule_list OUT" combined;
+  (* TW_DEBUG_END *)
+  combined
+
+(* Optimize nested rules (Rule | Supports) while preserving order *)
+let optimize_nested_rules (rules : nested_rule list) : nested_rule list =
+  (* Process rules in batches separated by non-Rule items *)
+  let rec process_nested (acc : nested_rule list) (remaining : nested_rule list)
+      : nested_rule list =
+    match remaining with
+    | [] -> List.rev acc
+    | Rule r :: rest ->
+        (* Collect consecutive Rule items *)
+        let rec collect_rules (rules_acc : rule list) :
+            nested_rule list -> rule list * nested_rule list = function
+          | Rule r :: rest -> collect_rules (r :: rules_acc) rest
+          | rest -> (List.rev rules_acc, rest)
+        in
+        let plain_rules, rest = collect_rules [ r ] rest in
+        (* Optimize this batch of consecutive rules *)
+        let optimized = optimize_rule_list plain_rules in
+        let as_nested = List.map rule_to_nested optimized in
+        process_nested (List.rev_append as_nested acc) rest
+    | hd :: rest ->
+        (* Non-Rule item (e.g., Supports) - keep as-is *)
+        process_nested (hd :: acc) rest
+  in
+  process_nested [] rules
+
+(* Optimize a layer_rule *)
+let optimize_layer (layer : layer_rule) : layer_rule =
+  let optimized_rules = optimize_nested_rules layer.rules in
+  { layer with rules = optimized_rules }
+
+(* Optimize a media rule *)
+let optimize_media_rule (mq : media_rule) : media_rule =
+  { mq with media_rules = optimize_rule_list mq.media_rules }
+
+(* Optimize a container rule *)
+let optimize_container_rule (cq : container_rule) : container_rule =
+  { cq with container_rules = optimize_rule_list cq.container_rules }
+
+let rec optimize_supports_rule (sq : supports_rule) : supports_rule =
+  let optimized_content =
+    match sq.supports_content with
+    | Support_rules rules -> Support_rules (optimize_rule_list rules)
+    | Support_nested (rules, nested) ->
+        Support_nested
+          (optimize_rule_list rules, List.map optimize_supports_rule nested)
+  in
+  { sq with supports_content = optimized_content }
+
+let optimize (stylesheet : t) : t =
   (* Apply CSS optimizations while preserving cascade semantics *)
-  let deduplicate_rule rule =
-    { rule with declarations = deduplicate_declarations rule.declarations }
-  in
-  (* Helper to optimize a list of rules *)
-  let optimize_rules rules =
-    rules
-    |> List.map deduplicate_rule (* Deduplicate within each rule first *)
-    |> merge_rules (* Then merge consecutive same-selector rules *)
-    |> combine_identical_rules (* Finally combine consecutive identical rules *)
+  let optimized_layers = List.map optimize_layer stylesheet.layers in
+  (* When @supports blocks are present alongside top-level rules, we cannot
+     safely merge the top-level rules because the stylesheet structure separates
+     rules from @supports blocks into different lists, losing their relative
+     ordering.
+
+     However, we can still optimize if there are no top-level rules (everything
+     is in layers/@supports/@media), or if there are no @supports blocks. *)
+  let optimized_rules =
+    if stylesheet.supports_queries = [] || stylesheet.rules = [] then
+      (* Safe to optimize: either no @supports or no top-level rules to
+         interfere *)
+      optimize_rule_list stylesheet.rules
+    else
+      (* Both top-level rules and @supports exist - can't merge safely *)
+      List.map optimize_single_rule stylesheet.rules
   in
   {
     stylesheet with
-    rules = optimize_rules stylesheet.rules;
-    (* Apply the same optimization to nested rules *)
-    media_queries =
-      List.map
-        (fun mq -> { mq with media_rules = optimize_rules mq.media_rules })
-        stylesheet.media_queries;
+    layers = optimized_layers;
+    rules = optimized_rules;
+    media_queries = List.map optimize_media_rule stylesheet.media_queries;
     container_queries =
-      List.map
-        (fun cq ->
-          { cq with container_rules = optimize_rules cq.container_rules })
-        stylesheet.container_queries;
+      List.map optimize_container_rule stylesheet.container_queries;
+    supports_queries =
+      List.map optimize_supports_rule stylesheet.supports_queries;
   }
 
-let to_string ?(minify = false) ?(mode = Variables) stylesheet =
-  let optimized_stylesheet =
-    if minify then optimize stylesheet else stylesheet
-  in
-  let config = { minify; mode } in
+let to_string ?(minify = false) ?optimize:(opt = false) ?(mode = Variables)
+    stylesheet =
+  let optimized_stylesheet = if opt then optimize stylesheet else stylesheet in
+  let config = { minify; mode; optimize = opt } in
   let header_str =
     if List.length stylesheet.layers > 0 then Pp.str [ header; "\n" ] else ""
   in
@@ -4171,7 +4607,8 @@ let to_string ?(minify = false) ?(mode = Variables) stylesheet =
         container_strings,
         supports_strings,
         media_strings ) =
-    render_stylesheet_sections ~config stylesheet
+    render_stylesheet_sections ~config
+      optimized_stylesheet (* Use optimized version *)
   in
   let all_parts =
     [ header_str; "" ] @ layer_strings @ rule_strings @ starting_style_strings
@@ -4191,9 +4628,10 @@ let vars_of_media_queries media_queries =
 let vars_of_container_queries container_queries =
   List.concat_map (fun cq -> vars_of_rules cq.container_rules) container_queries
 
-let vars_of_stylesheet stylesheet =
-  vars_of_rules stylesheet.rules
-  @ vars_of_media_queries stylesheet.media_queries
-  @ vars_of_container_queries stylesheet.container_queries
+let vars_of_stylesheet (ss : t) =
+  vars_of_rules ss.rules
+  @ vars_of_media_queries ss.media_queries
+  @ vars_of_container_queries ss.container_queries
 
-let pp ?minify ?mode stylesheet = to_string ?minify ?mode stylesheet
+let pp ?minify ?optimize ?mode stylesheet =
+  to_string ?minify ?optimize ?mode stylesheet
