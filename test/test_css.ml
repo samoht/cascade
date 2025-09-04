@@ -1,6 +1,92 @@
 (* Tests for CSS module *)
 open Css
 
+(* Toplevel selectors for reuse *)
+let test = Selector.class_ "test"
+let responsive = Selector.class_ "responsive"
+let calc = Selector.class_ "calc"
+let var_test = Selector.class_ "var-test"
+let grid = Selector.class_ "grid"
+let container_item = Selector.class_ "container-item"
+let spin = Selector.class_ "spin"
+let btn = Selector.class_ "btn"
+let card = Selector.class_ "card"
+let s1 = Selector.class_ "s1"
+let s1_where_p = Selector.(class_ "s1" ++ where [ element "p" ])
+let s1_complex_p = Selector.(class_ "s1" ++ element "p")
+let s1_complex_h1 = Selector.(class_ "s1" ++ element "h1")
+
+let s1_where_a_strong =
+  Selector.(class_ "s1" ++ where [ element "a" ++ element "strong" ])
+
+let s1_where_blockquote_strong =
+  Selector.(class_ "s1" ++ where [ element "blockquote" ++ element "strong" ])
+
+let s1_where_thead_th_strong =
+  Selector.(
+    class_ "s1" ++ where [ element "thead" ++ element "th" ++ element "strong" ])
+
+let diff_selectorerent = Selector.class_ "diff_selectorerent"
+let component = Selector.class_ "component"
+let component_p = Selector.(class_ "component" ++ element "p")
+let component_h1 = Selector.(class_ "component" ++ element "h1")
+let component_h2 = Selector.(class_ "component" ++ element "h2")
+let component_a = Selector.(class_ "component" ++ element "a")
+let component_strong = Selector.(class_ "component" ++ element "strong")
+let universal = Selector.universal
+let f = Selector.class_ "f"
+let ff_class = Selector.class_ "ff"
+let btn_primary = Selector.class_ "btn-primary"
+let btn_secondary = Selector.class_ "btn-secondary"
+let base = Selector.class_ "base"
+let override = Selector.class_ "override"
+let a = Selector.class_ "a"
+let b = Selector.class_ "b"
+let c = Selector.class_ "c"
+let btn_hover = Selector.(class_ "btn" && pseudo_class "hover")
+let feature = Selector.class_ "feature"
+let critical = Selector.class_ "critical"
+let normal = Selector.class_ "normal"
+let empty_class = Selector.class_ "empty"
+let has_content = Selector.class_ "has-content"
+let also_empty = Selector.class_ "also-empty"
+let another = Selector.class_ "another"
+let other = Selector.class_ "other"
+let component_where_p = Selector.(class_ "component" ++ where [ element "p" ])
+
+let component_where_component_last_child =
+  Selector.(
+    class_ "component"
+    ++ where [ class_ "component" >> pseudo_class "last-child" ])
+
+let compact = Selector.class_ "compact"
+let z_class = Selector.class_ "z-class"
+let a_class = Selector.class_ "a-class"
+let m_class = Selector.class_ "m-class"
+let b_class = Selector.class_ "b-class"
+let margins = Selector.class_ "margins"
+let colors = Selector.class_ "colors"
+let more_margins = Selector.class_ "more-margins"
+let paddings = Selector.class_ "paddings"
+let more_colors = Selector.class_ "more-colors"
+let s2 = Selector.class_ "s2"
+let s3 = Selector.class_ "s3"
+let s4 = Selector.class_ "s4"
+let s5 = Selector.class_ "s5"
+let s6 = Selector.class_ "s6"
+
+let prose_a_strong =
+  Selector.(class_ "prose" ++ where [ element "a" ++ element "strong" ])
+
+let prose_blockquote_strong =
+  Selector.(
+    class_ "prose" ++ where [ element "blockquote" ++ element "strong" ])
+
+let prose_thead_th_strong =
+  Selector.(
+    class_ "prose"
+    ++ where [ element "thead" ++ element "th" ++ element "strong" ])
+
 (* Generic debug helper for CSS tests *)
 let with_debug test_name f =
   try f ()
@@ -17,7 +103,6 @@ let debug_stylesheet ?(label = "") original optimized =
     (if label = "" then "" else ": " ^ label);
   Fmt.pr "Original rules: %d@," (List.length (stylesheet_rules original));
   Fmt.pr "Optimized rules: %d@," (List.length (stylesheet_rules optimized));
-  Fmt.pr "Stats: %s@," (Css.pp_stats (Css.stats optimized));
   Fmt.pr "@,Original CSS:@,%s@," (to_string ~minify:true original);
   Fmt.pr "@,Optimized CSS:@,%s@," (to_string ~minify:true optimized);
   Fmt.pr "==========================================@,@]@."
@@ -41,8 +126,13 @@ let test_property_creation () =
   let padding_prop = padding (Px 10) in
 
   (* Verify properties are created correctly *)
-  let sheet1 = stylesheet [ Rule (rule ~selector:".test" [ color_prop ]) ] in
-  let sheet2 = stylesheet [ Rule (rule ~selector:".test" [ padding_prop ]) ] in
+  let sheet1 =
+    stylesheet [ Rule (rule ~selector:(Selector.class_ "test") [ color_prop ]) ]
+  in
+  let sheet2 =
+    stylesheet
+      [ Rule (rule ~selector:(Selector.class_ "test") [ padding_prop ]) ]
+  in
   let css1 = to_string sheet1 in
   let css2 = to_string sheet2 in
 
@@ -71,7 +161,9 @@ let test_property_deduplication () =
     "deduplication removes duplicates" 3 (List.length deduped);
 
   (* Create a stylesheet to check the output *)
-  let sheet = stylesheet [ Rule (rule ~selector:".test" deduped) ] in
+  let sheet =
+    stylesheet [ Rule (rule ~selector:(Selector.class_ "test") deduped) ]
+  in
   let css = to_string sheet in
 
   (* Should have blue, not red *)
@@ -84,7 +176,7 @@ let test_property_deduplication () =
 
 let test_minification () =
   let test_rule =
-    rule ~selector:".test"
+    rule ~selector:test
       [ padding Zero; margin Zero; color (Rgb { r = 255; g = 0; b = 0 }) ]
   in
 
@@ -111,7 +203,7 @@ let test_minification () =
     (Astring.String.is_infix ~affix:"color:" minified)
 
 let test_media_query () =
-  let rules = [ rule ~selector:".responsive" [ padding (Px 20) ] ] in
+  let rules = [ rule ~selector:responsive [ padding (Px 20) ] ] in
   let mq = media ~condition:"(min-width: 768px)" rules in
   let sheet = stylesheet [ Media mq ] in
   let output = to_string sheet in
@@ -154,7 +246,7 @@ let test_inline_style () =
 let test_calc () =
   let calc_len = Calc (Expr (Val (Px 100), Sub, Val (Rem 2.0))) in
   let prop = width calc_len in
-  let sheet = stylesheet [ Rule (rule ~selector:".calc" [ prop ]) ] in
+  let sheet = stylesheet [ Rule (rule ~selector:calc [ prop ]) ] in
   let output = to_string sheet in
 
   (* Should contain calc expression *)
@@ -163,13 +255,13 @@ let test_calc () =
     (Astring.String.is_infix ~affix:"calc(100px - 2rem)" output)
 
 let test_variables () =
-  let _, ff =
+  let _, ff_selector =
     var
       ~fallback:[ Ui_sans_serif; System_ui ]
       "fonts" Font_family [ Ui_sans_serif ]
   in
-  let font_decl = font_family [ Var ff ] in
-  let sheet = stylesheet [ Rule (rule ~selector:".var-test" [ font_decl ]) ] in
+  let font_decl = font_family [ Var ff_selector ] in
+  let sheet = stylesheet [ Rule (rule ~selector:var_test [ font_decl ]) ] in
   let output = to_string sheet in
 
   (* Should contain var with fallback *)
@@ -183,7 +275,7 @@ let test_variables () =
 let test_grid_template () =
   let template_cols = Tracks [ Fr 1.0; Grid_length (Px 200); Fr 2.0 ] in
   let prop = grid_template_columns template_cols in
-  let sheet = stylesheet [ Rule (rule ~selector:".grid" [ prop ]) ] in
+  let sheet = stylesheet [ Rule (rule ~selector:grid [ prop ]) ] in
   let output = to_string sheet in
 
   (* Should contain grid template *)
@@ -192,8 +284,8 @@ let test_grid_template () =
     (Astring.String.is_infix ~affix:"1fr 200px 2fr" output)
 
 let test_container_query () =
-  let rules = [ rule ~selector:".container-item" [ padding (Px 30) ] ] in
-  let cq = container ~condition:"min-width: 400px" rules in
+  let rules = [ rule ~selector:container_item [ padding (Px 30) ] ] in
+  let cq = Css.container ~condition:"min-width: 400px" rules in
   let sheet = stylesheet [ Container cq ] in
   let output = to_string sheet in
 
@@ -211,14 +303,26 @@ let test_var_extraction () =
   let _, v1 = var "test-var" Length Zero in
   let _, v2 = var "test-color" Color Current in
   let props = [ padding (Var v1); color (Var v2) ] in
-  let extracted = vars_of_declarations props in
+  let extracted = analyze_declarations props in
 
   (* Should extract both variables *)
   Alcotest.(check int) "extracts two vars" 2 (List.length extracted)
 
 let test_animation () =
-  let anim = animation "spin 1s linear infinite" in
-  let sheet = stylesheet [ Rule (rule ~selector:".spin" [ anim ]) ] in
+  let anim =
+    animation
+      {
+        name = Some "spin";
+        duration = Some (S 1.0);
+        timing_function = Some Linear;
+        iteration_count = Some Infinite;
+        delay = None;
+        direction = None;
+        fill_mode = None;
+        play_state = None;
+      }
+  in
+  let sheet = stylesheet [ Rule (rule ~selector:spin [ anim ]) ] in
   let output = to_string sheet in
 
   (* Should contain animation properties *)
@@ -235,10 +339,10 @@ let test_animation () =
 let test_merge_rules () =
   let rules =
     [
-      rule ~selector:".btn" [ color (Hex { hash = true; value = "ff0000" }) ];
-      rule ~selector:".btn" [ padding (Px 10) ];
-      rule ~selector:".card" [ margin (Px 5) ];
-      rule ~selector:".btn" [ margin (Px 15) ];
+      rule ~selector:btn [ color (Hex { hash = true; value = "ff0000" }) ];
+      rule ~selector:btn [ padding (Px 10) ];
+      rule ~selector:card [ margin (Px 5) ];
+      rule ~selector:btn [ margin (Px 15) ];
     ]
   in
 
@@ -249,18 +353,24 @@ let test_merge_rules () =
 
   (* Check that first rule has both color and padding *)
   let first_rule = List.nth merged 0 in
-  Alcotest.(check string) "first rule selector" ".btn" (selector first_rule);
+  Alcotest.(check string)
+    "first rule selector" ".btn"
+    (Selector.to_string (selector first_rule));
   Alcotest.(check int)
     "first rule has 2 declarations" 2
     (List.length (declarations first_rule));
 
   (* .card should be second *)
   let second_rule = List.nth merged 1 in
-  Alcotest.(check string) "second rule selector" ".card" (selector second_rule);
+  Alcotest.(check string)
+    "second rule selector" (Selector.to_string card)
+    (Selector.to_string (selector second_rule));
 
   (* Last .btn should be third (not merged due to intervening .card) *)
   let third_rule = List.nth merged 2 in
-  Alcotest.(check string) "third rule selector" ".btn" (selector third_rule)
+  Alcotest.(check string)
+    "third rule selector" ".btn"
+    (Selector.to_string (selector third_rule))
 
 (* Test that adjacent rules with same selector merge correctly *)
 let test_adjacent_same_selector_merge () =
@@ -269,9 +379,9 @@ let test_adjacent_same_selector_merge () =
   in
   let rules =
     [
-      rule ~selector:".s1" [ color (Var prose_body_var); max_width (Ch 65.) ];
-      rule ~selector:".s1" [ font_size (Rem 1.0); line_height (Num 1.75) ];
-      rule ~selector:".s1 :where(p)" [ margin_top (Em 1.25) ];
+      rule ~selector:s1 [ color (Var prose_body_var); max_width (Ch 65.) ];
+      rule ~selector:s1 [ font_size (Rem 1.0); line_height (Number 1.75) ];
+      rule ~selector:s1_where_p [ margin_top (Em 1.25) ];
     ]
   in
 
@@ -281,14 +391,18 @@ let test_adjacent_same_selector_merge () =
   Alcotest.(check int) "adjacent rules merged" 2 (List.length merged);
 
   let first_rule = List.nth merged 0 in
-  Alcotest.(check string) "merged selector" ".s1" (selector first_rule);
+  Alcotest.(check string)
+    "merged selector" (Selector.to_string s1)
+    (Selector.to_string (selector first_rule));
   Alcotest.(check int)
     "merged rule has all 4 properties" 4
     (List.length (declarations first_rule));
 
   let second_rule = List.nth merged 1 in
   Alcotest.(check string)
-    "s1 :where(p) selector preserved" ".s1 :where(p)" (selector second_rule)
+    "s1 :where(p) selector preserved"
+    (Selector.to_string s1_where_p)
+    (Selector.to_string (selector second_rule))
 
 (* Test optimization with layers like prose generates *)
 let test_layer_adjacent_rule_optimization () =
@@ -297,8 +411,8 @@ let test_layer_adjacent_rule_optimization () =
   in
   let s1_rules =
     [
-      rule ~selector:".s1" [ color (Var prose_body_var); max_width (Ch 65.) ];
-      rule ~selector:".s1" [ font_size (Rem 1.0); line_height (Num 1.75) ];
+      rule ~selector:s1 [ color (Var prose_body_var); max_width (Ch 65.) ];
+      rule ~selector:s1 [ font_size (Rem 1.0); line_height (Number 1.75) ];
     ]
   in
 
@@ -343,9 +457,9 @@ let test_layer_adjacent_rule_optimization () =
 let test_no_merge_non_adjacent () =
   let rules =
     [
-      rule ~selector:".s1" [ color (Hex { hash = false; value = "000000" }) ];
-      rule ~selector:".s1 :where(p)" [ margin_top (Em 1.0) ];
-      rule ~selector:".s1" [ font_size (Rem 1.0) ];
+      rule ~selector:s1 [ color (Hex { hash = false; value = "000000" }) ];
+      rule ~selector:s1_where_p [ margin_top (Em 1.0) ];
+      rule ~selector:s1 [ font_size (Rem 1.0) ];
     ]
   in
 
@@ -359,23 +473,13 @@ let test_non_adjacent_same_selector () =
   let rules =
     [
       (* First .s1 rule with basic properties *)
-      rule ~selector:".s1"
+      rule ~selector:s1
         [ color (Hex { hash = false; value = "374151" }); max_width (Ch 65.0) ];
       (* Descendant selectors in between *)
-      rule
-        ~selector:
-          ".s1 \
-           :where(p):not(:where([class~=\"not-prose\"],[class~=\"not-prose\"] \
-           *))"
-        [ margin_top (Em 1.25) ];
-      rule
-        ~selector:
-          ".s1 \
-           :where(h1):not(:where([class~=\"not-prose\"],[class~=\"not-prose\"] \
-           *))"
-        [ font_size (Em 2.25) ];
-      (* Second .s1 rule with different properties *)
-      rule ~selector:".s1" [ line_height (Num 1.6); font_weight Bold ];
+      rule ~selector:s1_complex_p [ margin_top (Em 1.25) ];
+      rule ~selector:s1_complex_h1 [ font_size (Em 2.25) ];
+      (* Second .s1 rule with diff_selectorerent properties *)
+      rule ~selector:s1 [ line_height (Number 1.6); font_weight Bold ];
     ]
   in
 
@@ -392,18 +496,19 @@ let test_non_adjacent_same_selector () =
   let s1_count = Astring.String.cuts ~sep:".s1{" css |> List.length |> pred in
   Alcotest.(check int) "both s1 rules in output" 2 s1_count
 
-(* Test that rules with different descendants are never merged *)
+(* Test that rules with diff_selectorerent descendants are never merged *)
 let test_no_merge_different_descendants () =
   let rules =
     [
       (* First .s1 rule - base selector *)
-      rule ~selector:".s1"
+      rule ~selector:s1
         [ color (Hex { hash = false; value = "374151" }); max_width (Ch 65.0) ];
-      (* Descendant rule with different selector - should not be merged *)
-      rule ~selector:".s1 :where(p)"
+      (* Descendant rule with diff_selectorerent selector - should not be
+         merged *)
+      rule ~selector:s1_where_p
         [ margin_top (Em 1.25); margin_bottom (Em 1.25) ];
       (* Second .s1 rule - same base selector as first *)
-      rule ~selector:".s1" [ line_height (Num 1.75); font_size (Rem 1.0) ];
+      rule ~selector:s1 [ line_height (Number 1.75); font_size (Rem 1.0) ];
     ]
   in
 
@@ -430,7 +535,7 @@ let test_no_merge_different_descendants () =
 let test_rules_grouping_cascade_bug () =
   (* This reproduces the core issue: when CSS rules are processed through
      optimize(), non-adjacent rules with the same selector get incorrectly
-     merged even when different-selector rules are between them.
+     merged even when diff_selectorerent-selector rules are between them.
 
      Structure that should be preserved: 1. .component rule (basic styles) 2.
      .component descendant rules (:where(), etc) 3. .component rule
@@ -440,16 +545,16 @@ let test_rules_grouping_cascade_bug () =
   let rules =
     [
       (* First .component rule with basic styles *)
-      rule ~selector:".component"
+      rule ~selector:component
         [ color (Hex { hash = false; value = "333333" }); max_width (Ch 50.0) ];
       (* Descendant rules that should prevent merging *)
-      rule ~selector:".component p" [ margin_top (Em 1.0) ];
-      rule ~selector:".component h1" [ font_size (Em 2.0) ];
-      rule ~selector:".component h2" [ font_size (Em 1.5) ];
-      rule ~selector:".component a" [ text_decoration Underline ];
-      rule ~selector:".component strong" [ font_weight Bold ];
+      rule ~selector:component_p [ margin_top (Em 1.0) ];
+      rule ~selector:component_h1 [ font_size (Em 2.0) ];
+      rule ~selector:component_h2 [ font_size (Em 1.5) ];
+      rule ~selector:component_a [ text_decoration Underline ];
+      rule ~selector:component_strong [ font_weight Bold ];
       (* Second .component rule with additional styles *)
-      rule ~selector:".component" [ line_height (Num 1.5); font_size (Rem 1.0) ];
+      rule ~selector:component [ line_height (Number 1.5); font_size (Rem 1.0) ];
     ]
   in
 
@@ -475,7 +580,10 @@ let test_rules_grouping_cascade_bug () =
 let test_full_optimization_with_layers () =
   let base_layer =
     layer ~name:"base"
-      [ rule_to_nested (rule ~selector:"*" [ margin (Px 0); padding (Px 0) ]) ]
+      [
+        rule_to_nested
+          (rule ~selector:universal [ margin (Px 0); padding (Px 0) ]);
+      ]
   in
 
   let _, s1_body_var =
@@ -484,9 +592,9 @@ let test_full_optimization_with_layers () =
   let utilities_layer =
     layer ~name:"utilities"
       [
-        rule_to_nested (rule ~selector:".s1" [ color (Var s1_body_var) ]);
-        rule_to_nested (rule ~selector:".s1" [ font_size (Rem 1.0) ]);
-        rule_to_nested (rule ~selector:".s1 :where(p)" [ margin_top (Em 1.25) ]);
+        rule_to_nested (rule ~selector:s1 [ color (Var s1_body_var) ]);
+        rule_to_nested (rule ~selector:s1 [ font_size (Rem 1.0) ]);
+        rule_to_nested (rule ~selector:s1_where_p [ margin_top (Em 1.25) ]);
       ]
   in
 
@@ -536,9 +644,7 @@ let test_full_optimization_with_layers () =
     && Astring.String.is_infix ~affix:"font-size:" css_unoptimized)
 
 let test_pp_float () =
-  let r =
-    rule ~selector:".f" [ letter_spacing (Rem 0.5); rotate (Turn (-0.5)) ]
-  in
+  let r = rule ~selector:f [ letter_spacing (Rem 0.5); rotate (Turn (-0.5)) ] in
   let css = to_string (stylesheet [ Rule r ]) in
   Alcotest.(check bool)
     "leading zero dropped" true
@@ -554,7 +660,9 @@ let test_var_with_fallback () =
       "fonts" Font_family [ Ui_sans_serif ]
   in
   let decl = font_family [ Var ff ] in
-  let css = to_string (stylesheet [ Rule (rule ~selector:".ff" [ decl ]) ]) in
+  let css =
+    to_string (stylesheet [ Rule (rule ~selector:ff_class [ decl ]) ])
+  in
   Alcotest.(check bool)
     "font family var with fallback" true
     (Astring.String.is_infix ~affix:"font-family: var(--fonts" css
@@ -565,14 +673,14 @@ let test_var_with_fallback () =
 let test_layer_precedence_respected () =
   (* 1. Define a rule for a 'base' layer *)
   let base_rule =
-    rule ~selector:".btn"
+    rule ~selector:btn
       [ background_color (Hex { hash = false; value = "0000ff" }) ]
   in
   let base_layer = layer ~name:"base" [ rule_to_nested base_rule ] in
 
   (* 2. Define an overriding rule for a 'utilities' layer *)
   let utility_rule =
-    rule ~selector:".btn"
+    rule ~selector:btn
       [ background_color (Hex { hash = false; value = "ff0000" }) ]
   in
   let utility_layer = layer ~name:"utilities" [ rule_to_nested utility_rule ] in
@@ -599,7 +707,7 @@ let test_layer_precedence_respected () =
 
 let test_source_order_within_selector () =
   let rule =
-    rule ~selector:".card"
+    rule ~selector:card
       [ padding (Px 10); padding (Px 20) (* Later declaration should win *) ]
   in
   let stylesheet = stylesheet [ Rule rule ] in
@@ -611,16 +719,16 @@ let test_source_order_within_selector () =
     "One declaration after dedup" 1
     (List.length (declarations opt_rule))
 
-let test_selector_merging_correctness () =
+let test_merging_correctness () =
   let rule1 =
-    rule ~selector:".btn-primary"
+    rule ~selector:btn_primary
       [
         background_color (Hex { hash = false; value = "0000ff" });
         color (Hex { hash = false; value = "ffffff" });
       ]
   in
   let rule2 =
-    rule ~selector:".btn-secondary"
+    rule ~selector:btn_secondary
       [
         background_color (Hex { hash = false; value = "0000ff" });
         color (Hex { hash = false; value = "ffffff" });
@@ -634,19 +742,20 @@ let test_selector_merging_correctness () =
     (List.length (stylesheet_rules optimized));
   let rule = List.hd (stylesheet_rules optimized) in
   Alcotest.(check string)
-    "Combined selector" ".btn-primary,.btn-secondary" (selector rule)
+    "Combined selector" ".btn-primary,.btn-secondary"
+    (Selector.to_string ~minify:true (selector rule))
 
 let test_non_merging_different_rules () =
   let rule1 =
-    rule ~selector:".btn"
+    rule ~selector:btn
       [ background_color (Hex { hash = false; value = "0000ff" }) ]
   in
   let rule2 =
-    rule ~selector:".btn" [ color (Hex { hash = false; value = "ffffff" }) ]
+    rule ~selector:btn [ color (Hex { hash = false; value = "ffffff" }) ]
   in
   let stylesheet = stylesheet [ Rule rule1; Rule rule2 ] in
   let optimized = optimize stylesheet in
-  (* Rules with same selector but different properties should merge *)
+  (* Rules with same selector but diff_selectorerent properties should merge *)
   Alcotest.(check int)
     "Rules merged" 1
     (List.length (stylesheet_rules optimized));
@@ -657,14 +766,13 @@ let test_non_merging_different_rules () =
 
 let test_cascade_with_intervening () =
   let rule1 =
-    rule ~selector:".base" [ color (Hex { hash = false; value = "000000" }) ]
+    rule ~selector:base [ color (Hex { hash = false; value = "000000" }) ]
   in
   let rule2 =
-    rule ~selector:".override"
-      [ color (Hex { hash = false; value = "ff0000" }) ]
+    rule ~selector:override [ color (Hex { hash = false; value = "ff0000" }) ]
   in
   let rule3 =
-    rule ~selector:".base"
+    rule ~selector:base
       [ background_color (Hex { hash = false; value = "ffffff" }) ]
   in
   let stylesheet = stylesheet [ Rule rule1; Rule rule2; Rule rule3 ] in
@@ -674,23 +782,27 @@ let test_cascade_with_intervening () =
     "Three rules preserved" 3
     (List.length (stylesheet_rules optimized));
   (* Verify order is preserved *)
-  let selectors = List.map selector (stylesheet_rules optimized) in
+  let selectors =
+    List.map
+      (fun r -> Selector.to_string (selector r))
+      (stylesheet_rules optimized)
+  in
   Alcotest.(check (list string))
     "Order preserved"
-    [ ".base"; ".override"; ".base" ]
+    [ Selector.to_string base; ".override"; Selector.to_string base ]
     selectors
 
 let test_merge_truly_adjacent () =
   (* Test that only truly adjacent rules get merged *)
   let rule1 =
-    rule ~selector:".a" [ color (Hex { hash = false; value = "ff0000" }) ]
+    rule ~selector:a [ color (Hex { hash = false; value = "ff0000" }) ]
   in
-  let rule2 = rule ~selector:".a" [ font_size (Px 14) ] in
+  let rule2 = rule ~selector:a [ font_size (Px 14) ] in
   (* Adjacent - should merge *)
-  let rule3 = rule ~selector:".b" [ margin Zero ] in
-  let rule4 = rule ~selector:".a" [ padding (Px 10) ] in
+  let rule3 = rule ~selector:b [ margin Zero ] in
+  let rule4 = rule ~selector:a [ padding (Px 10) ] in
   (* Not adjacent to other .a rules *)
-  let rule5 = rule ~selector:".a" [ border_width (Px 1) ] in
+  let rule5 = rule ~selector:a [ border_width (Px 1) ] in
   (* Adjacent to previous .a - should merge *)
 
   let rules = [ Rule rule1; Rule rule2; Rule rule3; Rule rule4; Rule rule5 ] in
@@ -703,29 +815,34 @@ let test_merge_truly_adjacent () =
 
   (* First merged .a rule should have 2 declarations *)
   let first = List.nth merged 0 in
-  Alcotest.(check string) "first selector" ".a" (selector first);
+  Alcotest.(check string)
+    "first selector" ".a"
+    (Selector.to_string (selector first));
   Alcotest.(check int) "first decl count" 2 (List.length (declarations first));
 
   (* Middle .b rule *)
   let middle = List.nth merged 1 in
-  Alcotest.(check string) "middle selector" ".b" (selector middle);
+  Alcotest.(check string)
+    "middle selector" ".b"
+    (Selector.to_string (selector middle));
 
   (* Last merged .a rule should have 2 declarations *)
   let last = List.nth merged 2 in
-  Alcotest.(check string) "last selector" ".a" (selector last);
+  Alcotest.(check string)
+    "last selector" ".a"
+    (Selector.to_string (selector last));
   Alcotest.(check int) "last decl count" 2 (List.length (declarations last))
 
 let test_cascade_order_preservation () =
   (* Test that merge preserves cascade semantics for specificity conflicts *)
   let btn_base =
-    rule ~selector:".btn" [ color (Hex { hash = false; value = "0000ff" }) ]
+    rule ~selector:btn [ color (Hex { hash = false; value = "0000ff" }) ]
   in
   let btn_hover =
-    rule ~selector:".btn:hover"
-      [ color (Hex { hash = false; value = "ff0000" }) ]
+    rule ~selector:btn_hover [ color (Hex { hash = false; value = "ff0000" }) ]
   in
   let btn_bg =
-    rule ~selector:".btn"
+    rule ~selector:btn
       [ background_color (Hex { hash = false; value = "ffffff" }) ]
   in
 
@@ -738,36 +855,37 @@ let test_cascade_order_preservation () =
   Alcotest.(check int) "rule count" 3 (List.length merged);
 
   (* Verify order is preserved *)
-  let selectors = List.map selector merged in
+  let selectors = List.map (fun r -> Selector.to_string (selector r)) merged in
   Alcotest.(check (list string))
     "Order preserved"
     [ ".btn"; ".btn:hover"; ".btn" ]
     selectors
 
 (* Test that non-adjacent rules with identical properties NEVER merge *)
+(* Stats functions removed from simplified API 
 let test_optimization_stats () =
   (* Create a stylesheet with multiple layers and rules that can be optimized *)
   let s1_rules =
     [
-      rule ~selector:".s1"
+      rule ~selector:s1
         [ color (Hex { hash = false; value = "374151" }); max_width (Ch 65.) ];
-      rule ~selector:".s1" [ font_size (Rem 1.0); line_height (Num 1.75) ];
-      rule ~selector:".s1 h1" [ font_size (Em 2.0) ];
-      rule ~selector:".s1 h1" [ font_weight Bold ];
+      rule ~selector:s1 [ font_size (Rem 1.0); line_height (Number 1.75) ];
+      rule ~selector:s1_h1 [ font_size (Em 2.0) ];
+      rule ~selector:s1_h1 [ font_weight Bold ];
     ]
   in
 
   let btn_rules =
     [
-      rule ~selector:".btn"
+      rule ~selector:btn
         [
           padding (Px 10);
           background_color (Hex { hash = false; value = "3b82f6" });
         ];
-      rule ~selector:".btn" [ border_radius (Px 4) ];
-      rule ~selector:".btn-primary"
+      rule ~selector:btn [ border_radius (Px 4) ];
+      rule ~selector:btn_primary
         [ background_color (Hex { hash = false; value = "3b82f6" }) ];
-      rule ~selector:".btn-secondary"
+      rule ~selector:btn_secondary
         [ background_color (Hex { hash = false; value = "6b7280" }) ];
     ]
   in
@@ -776,8 +894,8 @@ let test_optimization_stats () =
     layer ~name:"base"
       (List.map rule_to_nested
          [
-           rule ~selector:"*" [ margin (Px 0); padding (Px 0) ];
-           rule ~selector:"body" [ font_family [ Sans_serif ] ];
+           rule ~selector:universal [ margin (Px 0); padding (Px 0) ];
+           rule ~selector:body [ font_family [ Sans_serif ] ];
          ])
   in
 
@@ -790,8 +908,8 @@ let test_optimization_stats () =
 
   let top_level_rules =
     [
-      rule ~selector:".container" [ max_width (Px 1200); margin Auto ];
-      rule ~selector:".container" [ padding (Px 20) ];
+      rule ~selector:container [ max_width (Px 1200); margin Auto ];
+      rule ~selector:container [ padding (Px 20) ];
     ]
   in
 
@@ -817,7 +935,7 @@ let test_optimization_stats () =
 
   (* Pretty print the stats *)
   let stats_str = pp_stats stats_before in
-  let stats_diff_str = pp_stats_diff ~before:stats_before ~after:stats_after in
+  let stats_diff_selector_str = pp_stats_diff ~before:stats_before ~after:stats_after in
 
   (* Print stats when test fails to help debug *)
   let utilities_layer_opt =
@@ -830,7 +948,7 @@ let test_optimization_stats () =
     print_endline "\n--- FAILING TEST DEBUG: Before Optimization ---";
     print_endline stats_str;
     print_endline "\n--- FAILING TEST DEBUG: After Optimization ---";
-    print_endline stats_diff_str);
+    print_endline stats_diff_selector_str);
 
   (* Verify that optimization reduces rule counts *)
   Alcotest.(check bool)
@@ -850,15 +968,16 @@ let test_optimization_stats () =
   | Some layer ->
       Alcotest.(check int) "utilities layer optimized to 2 rules" 2 layer.rules
   | None -> Alcotest.fail "utilities layer not found"
+*)
 
 let test_no_merge_by_properties () =
   let open Css in
   (* Create non-adjacent rules with identical properties *)
   let rules =
     [
-      Css.rule ~selector:".a" [ color (Hex { hash = false; value = "ff0000" }) ];
-      Css.rule ~selector:".b" [ margin Zero ];
-      Css.rule ~selector:".c" [ color (Hex { hash = false; value = "ff0000" }) ];
+      Css.rule ~selector:a [ color (Hex { hash = false; value = "ff0000" }) ];
+      Css.rule ~selector:b [ margin Zero ];
+      Css.rule ~selector:c [ color (Hex { hash = false; value = "ff0000" }) ];
       (* Same as .a but not adjacent *)
     ]
   in
@@ -894,10 +1013,10 @@ let test_combine_identical_rules () =
   (* Test that consecutive rules with identical properties are combined *)
   let rules =
     [
-      Css.rule ~selector:".s1 :where(a strong)" [ color Inherit ];
-      Css.rule ~selector:".s1 :where(blockquote strong)" [ color Inherit ];
-      Css.rule ~selector:".s1 :where(thead th strong)" [ color Inherit ];
-      Css.rule ~selector:".different" [ font_size (Rem 1.0) ];
+      Css.rule ~selector:s1_where_a_strong [ color Inherit ];
+      Css.rule ~selector:s1_where_blockquote_strong [ color Inherit ];
+      Css.rule ~selector:s1_where_thead_th_strong [ color Inherit ];
+      Css.rule ~selector:diff_selectorerent [ font_size (Rem 1.0) ];
     ]
   in
 
@@ -910,14 +1029,14 @@ let test_combine_identical_rules () =
   let first_rule = List.hd combined in
   Alcotest.(check bool)
     "selectors combined with comma" true
-    (String.contains (Css.selector first_rule) ',');
+    (String.contains (Selector.to_string (Css.selector first_rule)) ',');
 
   (* Non-consecutive identical rules should not be combined *)
   let rules2 =
     [
-      Css.rule ~selector:".a" [ color (Hex { hash = false; value = "ff0000" }) ];
-      Css.rule ~selector:".b" [ color (Hex { hash = false; value = "0000ff" }) ];
-      Css.rule ~selector:".c" [ color (Hex { hash = false; value = "ff0000" }) ];
+      Css.rule ~selector:a [ color (Hex { hash = false; value = "ff0000" }) ];
+      Css.rule ~selector:b [ color (Hex { hash = false; value = "0000ff" }) ];
+      Css.rule ~selector:c [ color (Hex { hash = false; value = "ff0000" }) ];
     ]
   in
 
@@ -925,15 +1044,15 @@ let test_combine_identical_rules () =
   Alcotest.(check int) "non-consecutive not combined" 3 (List.length combined2)
 
 (* Test that optimization doesn't merge across @supports boundaries *)
-let test_no_merge_across_supports_boundary () =
+let test_no_merge_across_supports () =
   with_debug "no_merge_across_supports_boundary" @@ fun () ->
   let open Css in
   (* Create rules with same selector separated by @supports *)
-  let rule1 = rule ~selector:".feature" [ padding (Px 10) ] in
-  let rule2 = rule ~selector:".feature" [ margin (Px 5) ] in
+  let rule1 = rule ~selector:feature [ padding (Px 10) ] in
+  let rule2 = rule ~selector:feature [ margin (Px 5) ] in
   let supports_rule =
     supports ~condition:"(display: grid)"
-      [ rule ~selector:".feature" [ display Grid ] ]
+      [ rule ~selector:feature [ display Grid ] ]
   in
 
   (* Create stylesheet with rule -> @supports -> rule structure *)
@@ -972,12 +1091,12 @@ let test_important_preservation () =
   let open Css in
   (* Create rules with !important declarations *)
   let rule1 =
-    rule ~selector:".critical"
+    rule ~selector:critical
       [ important (color (Hex { hash = false; value = "ff0000" })) ]
   in
-  let rule2 = rule ~selector:".critical" [ padding (Px 10) ] in
+  let rule2 = rule ~selector:critical [ padding (Px 10) ] in
   let rule3 =
-    rule ~selector:".normal" [ color (Hex { hash = false; value = "0000ff" }) ]
+    rule ~selector:normal [ color (Hex { hash = false; value = "0000ff" }) ]
   in
 
   let stylesheet = stylesheet [ Rule rule1; Rule rule2; Rule rule3 ] in
@@ -997,12 +1116,12 @@ let test_important_preservation () =
 (* Test that empty rules are preserved but can be merged if adjacent *)
 let test_empty_rules_handling () =
   let open Css in
-  let rule1 = rule ~selector:".empty" [] in
-  let rule2 = rule ~selector:".empty" [] in
+  let rule1 = rule ~selector:empty_class [] in
+  let rule2 = rule ~selector:empty_class [] in
   (* Adjacent empty with same selector *)
-  let rule3 = rule ~selector:".has-content" [ padding (Px 10) ] in
-  let rule4 = rule ~selector:".also-empty" [] in
-  let rule5 = rule ~selector:".another" [ margin (Px 5) ] in
+  let rule3 = rule ~selector:has_content [ padding (Px 10) ] in
+  let rule4 = rule ~selector:also_empty [] in
+  let rule5 = rule ~selector:another [ margin (Px 5) ] in
 
   let stylesheet =
     stylesheet [ Rule rule1; Rule rule2; Rule rule3; Rule rule4; Rule rule5 ]
@@ -1018,7 +1137,9 @@ let test_empty_rules_handling () =
 
   (* First rule should be the merged .empty rule (still empty) *)
   let first = List.hd remaining_rules in
-  Alcotest.(check string) "first rule is .empty" ".empty" (selector first);
+  Alcotest.(check string)
+    "first rule is .empty" ".empty"
+    (Selector.to_string (selector first));
   Alcotest.(check int)
     "first rule still empty" 0
     (List.length (declarations first))
@@ -1029,9 +1150,9 @@ let test_optimize_within_nested_contexts () =
   (* Create adjacent rules inside @media that should merge *)
   let media_rules =
     [
-      rule ~selector:".responsive" [ padding (Px 10) ];
-      rule ~selector:".responsive" [ margin (Px 5) ];
-      rule ~selector:".other" [ color (Hex { hash = false; value = "000000" }) ];
+      rule ~selector:responsive [ padding (Px 10) ];
+      rule ~selector:responsive [ margin (Px 5) ];
+      rule ~selector:other [ color (Hex { hash = false; value = "000000" }) ];
     ]
   in
 
@@ -1057,12 +1178,11 @@ let test_no_duplicate_last_child () =
   (* Simulate component structure with last-child rule *)
   let rules =
     [
-      rule ~selector:".component"
+      rule ~selector:component
         [ color (Hex { hash = false; value = "374151" }) ];
-      rule ~selector:".component :where(p)" [ margin_top (Em 1.0) ];
-      rule ~selector:".component :where(.component>:last-child)"
-        [ margin_bottom Zero ];
-      rule ~selector:".component" [ font_size (Rem 1.0) ];
+      rule ~selector:component_where_p [ margin_top (Em 1.0) ];
+      rule ~selector:component_where_component_last_child [ margin_bottom Zero ];
+      rule ~selector:component [ font_size (Rem 1.0) ];
     ]
   in
 
@@ -1102,7 +1222,7 @@ let test_minify_values () =
   with_debug "minify_values" @@ fun () ->
   let open Css in
   let r =
-    rule ~selector:".compact"
+    rule ~selector:compact
       [
         padding (Rem 0.5);
         margin (Px 0);
@@ -1147,16 +1267,15 @@ let test_minify_values () =
     && not (Astring.String.is_infix ~affix:"margin:0px" minified))
 
 (* Test that selector ordering is preserved (no reordering) *)
-let test_selector_order_preservation () =
+let test_order_preservation () =
   let open Css in
-  (* Create rules with different selectors in specific order *)
+  (* Create rules with diff_selectorerent selectors in specific order *)
   let rules =
     [
-      rule ~selector:".z-class" [ padding (Px 10) ];
-      rule ~selector:".a-class" [ margin (Px 5) ];
-      rule ~selector:".m-class"
-        [ color (Hex { hash = false; value = "ff0000" }) ];
-      rule ~selector:".b-class" [ font_size (Rem 1.0) ];
+      rule ~selector:z_class [ padding (Px 10) ];
+      rule ~selector:a_class [ margin (Px 5) ];
+      rule ~selector:m_class [ color (Hex { hash = false; value = "ff0000" }) ];
+      rule ~selector:b_class [ font_size (Rem 1.0) ];
     ]
   in
 
@@ -1184,7 +1303,9 @@ let test_selector_order_preservation () =
 
   (* Verify exact selector order from optimized rules *)
   let opt_rules = stylesheet_rules optimized in
-  let selectors = List.map selector opt_rules in
+  let selectors =
+    List.map (fun r -> Selector.to_string (selector r)) opt_rules
+  in
   Alcotest.(check (list string))
     "selector order preserved exactly"
     [ ".z-class"; ".a-class"; ".m-class"; ".b-class" ]
@@ -1196,12 +1317,11 @@ let test_no_property_based_reordering () =
   (* Create rules that might be tempting to reorder by property type *)
   let rules =
     [
-      rule ~selector:".margins" [ margin (Px 10) ];
-      rule ~selector:".colors"
-        [ color (Hex { hash = false; value = "ff0000" }) ];
-      rule ~selector:".more-margins" [ margin (Px 20) ];
-      rule ~selector:".paddings" [ padding (Px 5) ];
-      rule ~selector:".more-colors"
+      rule ~selector:margins [ margin (Px 10) ];
+      rule ~selector:colors [ color (Hex { hash = false; value = "ff0000" }) ];
+      rule ~selector:more_margins [ margin (Px 20) ];
+      rule ~selector:paddings [ padding (Px 5) ];
+      rule ~selector:more_colors
         [ color (Hex { hash = false; value = "0000ff" }) ];
     ]
   in
@@ -1211,7 +1331,9 @@ let test_no_property_based_reordering () =
 
   (* Verify rules are not grouped by property type *)
   let opt_rules = stylesheet_rules optimized in
-  let selectors = List.map selector opt_rules in
+  let selectors =
+    List.map (fun r -> Selector.to_string (selector r)) opt_rules
+  in
   Alcotest.(check (list string))
     "no reordering by property type"
     [ ".margins"; ".colors"; ".more-margins"; ".paddings"; ".more-colors" ]
@@ -1220,14 +1342,14 @@ let test_no_property_based_reordering () =
 (* Test that cross-context optimization is prevented *)
 let test_no_cross_context_optimization () =
   let open Css in
-  (* Same selector in different contexts should not merge *)
+  (* Same selector in diff_selectorerent contexts should not merge *)
   let base_layer =
     layer ~name:"base"
-      [ rule_to_nested (rule ~selector:".btn" [ padding (Px 10) ]) ]
+      [ rule_to_nested (rule ~selector:btn [ padding (Px 10) ]) ]
   in
   let utilities_layer =
     layer ~name:"utilities"
-      [ rule_to_nested (rule ~selector:".btn" [ margin (Px 5) ]) ]
+      [ rule_to_nested (rule ~selector:btn [ margin (Px 5) ]) ]
   in
 
   let stylesheet = stylesheet [ Layer base_layer; Layer utilities_layer ] in
@@ -1248,31 +1370,25 @@ let test_no_cross_context_optimization () =
 
 (* Test that optimize_nested_rules doesn't merge non-adjacent rules with same
    selector *)
-let test_optimize_nested_rules_preserves_non_adjacent () =
+let test_optimize_nested_non_adjacent () =
   let open Css in
   (* Create test rules: .s1 rule, then 5 other rules, then another .s1 rule *)
   let nested_rules =
     [
       rule_to_nested
-        (rule ~selector:".s1"
-           [ color (Hex { hash = false; value = "ff0000" }) ]);
+        (rule ~selector:s1 [ color (Hex { hash = false; value = "ff0000" }) ]);
       rule_to_nested
-        (rule ~selector:".s2"
-           [ color (Hex { hash = false; value = "0000ff" }) ]);
+        (rule ~selector:s2 [ color (Hex { hash = false; value = "0000ff" }) ]);
       rule_to_nested
-        (rule ~selector:".s3"
-           [ color (Hex { hash = false; value = "00ff00" }) ]);
+        (rule ~selector:s3 [ color (Hex { hash = false; value = "00ff00" }) ]);
       rule_to_nested
-        (rule ~selector:".s4"
-           [ color (Hex { hash = false; value = "ffff00" }) ]);
+        (rule ~selector:s4 [ color (Hex { hash = false; value = "ffff00" }) ]);
       rule_to_nested
-        (rule ~selector:".s5"
-           [ color (Hex { hash = false; value = "ff00ff" }) ]);
+        (rule ~selector:s5 [ color (Hex { hash = false; value = "ff00ff" }) ]);
       rule_to_nested
-        (rule ~selector:".s6"
-           [ color (Hex { hash = false; value = "ffa500" }) ]);
+        (rule ~selector:s6 [ color (Hex { hash = false; value = "ffa500" }) ]);
       rule_to_nested
-        (rule ~selector:".s1"
+        (rule ~selector:s1
            [ background_color (Hex { hash = false; value = "ffffff" }) ]);
     ]
   in
@@ -1290,6 +1406,213 @@ let test_optimize_nested_rules_preserves_non_adjacent () =
   Alcotest.(check int) "Non-adjacent .s1 rules not merged" 2 s1_count
 
 (* Test runner *)
+(* Test that multiple selectors with identical properties get merged *)
+let test_merge_prose_selectors () =
+  let open Css in
+  (* Test consecutive rules with identical properties - matching actual prose
+     selectors *)
+  let rules =
+    [
+      Css.rule ~selector:prose_a_strong [ color Inherit ];
+      Css.rule ~selector:prose_blockquote_strong [ color Inherit ];
+      Css.rule ~selector:prose_thead_th_strong [ color Inherit ];
+    ]
+  in
+
+  (* Test combine_identical_rules *)
+  let combined = combine_identical_rules rules in
+  Printf.eprintf "DEBUG: Got %d rules back from combine_identical_rules\n"
+    (List.length combined);
+  List.iteri
+    (fun i rule ->
+      Printf.eprintf "  [%d] %s\n" i (Selector.to_string (Css.selector rule)))
+    combined;
+  Alcotest.(check int) "should combine into 1 rule" 1 (List.length combined);
+
+  (* Check the combined selector *)
+  match combined with
+  | [ rule ] ->
+      let expected_selector =
+        ".prose :where(a strong)," ^ ".prose :where(blockquote strong),"
+        ^ ".prose :where(thead th strong)"
+      in
+      let actual_selector =
+        Selector.to_string ~minify:true (Css.selector rule)
+      in
+      Alcotest.(check string)
+        "combined selector" expected_selector actual_selector
+  | _ -> Alcotest.fail "Expected exactly 1 combined rule"
+
+(* Fun selector tests *)
+let test_fun_selector_basic () =
+  let open Css.Selector in
+  (* Test :is() functional pseudo-class *)
+  let is_selector = fun_ "is" [ element "button"; element "input" ] in
+  Alcotest.(check string)
+    ":is() selector" ":is(button, input)" (to_string is_selector);
+
+  (* Test :has() functional pseudo-class *)
+  let has_selector = fun_ "has" [ class_ "active" ] in
+  Alcotest.(check string)
+    ":has() selector" ":has(.active)" (to_string has_selector);
+
+  (* Test minified output *)
+  let minified = fun_ "is" [ element "a"; element "button" ] in
+  Alcotest.(check string)
+    "minified :is()" ":is(a,button)"
+    (to_string ~minify:true minified)
+
+let test_fun_selector_combination () =
+  let open Css.Selector in
+  (* Test combining Fun selector with other selectors *)
+  let combined =
+    element "select"
+    ++ fun_ "is" [ attribute "multiple" Presence; attribute "size" Presence ]
+  in
+  Alcotest.(check string)
+    "select :is(...)" "select :is([multiple], [size])" (to_string combined)
+
+let test_fun_selector_complex () =
+  let open Css.Selector in
+  (* Test Fun selector with complex selectors inside *)
+  let complex_fun =
+    fun_ "is"
+      [ element "div" && class_ "active"; element "span" && class_ "highlight" ]
+  in
+  Alcotest.(check string)
+    "complex :is()" ":is(div.active, span.highlight)" (to_string complex_fun)
+
+(* CSS Selector validation tests *)
+let test_valid_identifier_basic () =
+  let open Css.Selector in
+  (* These should all succeed *)
+  let _e1 = element "div" in
+  let _c1 = class_ "my-class" in
+  let _i1 = id "header" in
+  let _p1 = pseudo_class "hover" in
+  let _pe1 = pseudo_element "before" in
+  Alcotest.(check string) "element selector" "div" (to_string _e1);
+  Alcotest.(check string) "class selector" ".my-class" (to_string _c1);
+  Alcotest.(check string) "id selector" "#header" (to_string _i1);
+  Alcotest.(check string) "pseudo-class" ":hover" (to_string _p1);
+  Alcotest.(check string) "pseudo-element" "::before" (to_string _pe1)
+
+let test_valid_identifier_underscore () =
+  let open Css.Selector in
+  (* Underscore start and continuation should work *)
+  let _e1 = element "_special" in
+  let _c1 = class_ "test_class" in
+  let _i1 = id "_id123" in
+  Alcotest.(check string) "underscore start" "_special" (to_string _e1);
+  Alcotest.(check string)
+    "underscore continuation" ".test_class" (to_string _c1);
+  Alcotest.(check string) "underscore mixed" "#_id123" (to_string _i1)
+
+let test_valid_identifier_hyphen () =
+  let open Css.Selector in
+  (* Vendor prefix pattern should work *)
+  let _c1 = class_ "-webkit-transform" in
+  let _p1 = pseudo_class "-moz-appearance" in
+  Alcotest.(check string)
+    "vendor prefix class" ".-webkit-transform" (to_string _c1);
+  Alcotest.(check string)
+    "vendor prefix pseudo" ":-moz-appearance" (to_string _p1)
+
+let test_invalid_identifier_digit () =
+  let open Css.Selector in
+  (* Starting with digit should fail *)
+  Alcotest.check_raises "element starts with digit"
+    (Invalid_argument "CSS identifier '2test' cannot start with digit")
+    (fun () -> ignore (element "2test"));
+  Alcotest.check_raises "class starts with digit"
+    (Invalid_argument "CSS identifier '9invalid' cannot start with digit")
+    (fun () -> ignore (class_ "9invalid"));
+  Alcotest.check_raises "id starts with digit"
+    (Invalid_argument "CSS identifier '0id' cannot start with digit") (fun () ->
+      ignore (id "0id"))
+
+let test_invalid_identifier_double_hyphen () =
+  let open Css.Selector in
+  (* Double hyphen start should fail (reserved for custom properties) *)
+  Alcotest.check_raises "element starts with double hyphen"
+    (Invalid_argument
+       "CSS identifier '--custom' cannot start with '--' (reserved for custom \
+        properties)") (fun () -> ignore (element "--custom"));
+  Alcotest.check_raises "class starts with double hyphen"
+    (Invalid_argument
+       "CSS identifier '--invalid' cannot start with '--' (reserved for custom \
+        properties)") (fun () -> ignore (class_ "--invalid"))
+
+let test_invalid_identifier_hyphen_digit () =
+  let open Css.Selector in
+  (* Hyphen followed by digit should fail *)
+  Alcotest.check_raises "element starts with hyphen-digit"
+    (Invalid_argument
+       "CSS identifier '-2invalid' cannot start with '-' followed by digit")
+    (fun () -> ignore (element "-2invalid"));
+  Alcotest.check_raises "class starts with hyphen-digit"
+    (Invalid_argument
+       "CSS identifier '-9test' cannot start with '-' followed by digit")
+    (fun () -> ignore (class_ "-9test"))
+
+let test_invalid_identifier_empty () =
+  let open Css.Selector in
+  (* Empty identifier should fail *)
+  Alcotest.check_raises "empty element name"
+    (Invalid_argument "CSS identifier '' cannot be empty") (fun () ->
+      ignore (element ""));
+  Alcotest.check_raises "empty class name"
+    (Invalid_argument "CSS identifier '' cannot be empty") (fun () ->
+      ignore (class_ ""));
+  Alcotest.check_raises "empty id name"
+    (Invalid_argument "CSS identifier '' cannot be empty") (fun () ->
+      ignore (id ""))
+
+let test_invalid_identifier_special_chars () =
+  let open Css.Selector in
+  (* Invalid ASCII characters should fail *)
+  Alcotest.check_raises "element with space"
+    (Invalid_argument
+       "CSS identifier 'invalid space' contains invalid character ' ' at \
+        position 7") (fun () -> ignore (element "invalid space"));
+  Alcotest.check_raises "class with dot"
+    (Invalid_argument
+       "CSS identifier 'test.class' contains invalid character '.' at position \
+        4") (fun () -> ignore (class_ "test.class"));
+  Alcotest.check_raises "id with hash"
+    (Invalid_argument
+       "CSS identifier 'test#id' contains invalid character '#' at position 4")
+    (fun () -> ignore (id "test#id"))
+
+let test_typed_attribute_selectors () =
+  let open Css.Selector in
+  (* Test all attribute selector types *)
+  let presence = attribute "disabled" Presence in
+  let exact = attribute "type" (Exact "text") in
+  let whitespace = attribute "class" (Whitespace_list "active") in
+  let hyphen = attribute "lang" (Hyphen_list "en") in
+  let prefix = attribute "href" (Prefix "https") in
+  let suffix = attribute "src" (Suffix ".jpg") in
+  let substring = attribute "title" (Substring "important") in
+
+  Alcotest.(check string) "attribute presence" "[disabled]" (to_string presence);
+  Alcotest.(check string) "attribute exact" "[type=\"text\"]" (to_string exact);
+  Alcotest.(check string)
+    "attribute whitespace list" "[class~=\"active\"]" (to_string whitespace);
+  Alcotest.(check string)
+    "attribute hyphen list" "[lang|=\"en\"]" (to_string hyphen);
+  Alcotest.(check string)
+    "attribute prefix" "[href^=\"https\"]" (to_string prefix);
+  Alcotest.(check string)
+    "attribute suffix" "[src$=\".jpg\"]" (to_string suffix);
+  Alcotest.(check string)
+    "attribute substring" "[title*=\"important\"]" (to_string substring);
+
+  (* Test validation of attribute names *)
+  Alcotest.check_raises "invalid attribute name"
+    (Invalid_argument "CSS identifier '2data' cannot start with digit")
+    (fun () -> ignore (attribute "2data" Presence))
+
 let tests =
   [
     ("property creation", `Quick, test_property_creation);
@@ -1310,7 +1633,7 @@ let tests =
       test_layer_adjacent_rule_optimization );
     ("no merge non-adjacent", `Quick, test_no_merge_non_adjacent);
     ("non-adjacent same selector", `Quick, test_non_adjacent_same_selector);
-    ( "no merge different descendants",
+    ( "no merge diff_selectorerent descendants",
       `Quick,
       test_no_merge_different_descendants );
     ("full optimization with layers", `Quick, test_full_optimization_with_layers);
@@ -1319,21 +1642,19 @@ let tests =
     (* CSS Optimization tests *)
     ("layer precedence respected", `Quick, test_layer_precedence_respected);
     ("source order within selector", `Quick, test_source_order_within_selector);
-    ("selector merging correctness", `Quick, test_selector_merging_correctness);
+    ("selector merging correctness", `Quick, test_merging_correctness);
     ("non merging different rules", `Quick, test_non_merging_different_rules);
     ("cascade with intervening", `Quick, test_cascade_with_intervening);
     ("merge truly adjacent", `Quick, test_merge_truly_adjacent);
     ("cascade order preservation", `Quick, test_cascade_order_preservation);
+    ("merge prose selectors", `Quick, test_merge_prose_selectors);
     ("no merge by properties", `Quick, test_no_merge_by_properties);
     ("combine identical rules", `Quick, test_combine_identical_rules);
-    ("optimization stats", `Quick, test_optimization_stats);
     ( "rules grouping breaks cascade order",
       `Quick,
       test_rules_grouping_cascade_bug );
     (* New tests from optimize.md *)
-    ( "no merge across @supports boundary",
-      `Quick,
-      test_no_merge_across_supports_boundary );
+    ("no merge across @supports boundary", `Quick, test_no_merge_across_supports);
     ("!important preservation", `Quick, test_important_preservation);
     ("empty rules handling", `Quick, test_empty_rules_handling);
     ( "optimize within nested contexts",
@@ -1341,12 +1662,39 @@ let tests =
       test_optimize_within_nested_contexts );
     ("no duplicate last-child", `Quick, test_no_duplicate_last_child);
     ("minify values", `Quick, test_minify_values);
-    ("selector order preservation", `Quick, test_selector_order_preservation);
+    ("selector order preservation", `Quick, test_order_preservation);
     ("no property-based reordering", `Quick, test_no_property_based_reordering);
     ("no cross-context optimization", `Quick, test_no_cross_context_optimization);
     ( "optimize_nested_rules preserves non-adjacent",
       `Quick,
-      test_optimize_nested_rules_preserves_non_adjacent );
+      test_optimize_nested_non_adjacent );
+    ( "merge prose selectors with identical properties",
+      `Quick,
+      test_merge_prose_selectors );
+    (* Fun selector tests *)
+    ("fun selector basic", `Quick, test_fun_selector_basic);
+    ("fun selector combination", `Quick, test_fun_selector_combination);
+    ("fun selector complex", `Quick, test_fun_selector_complex);
+    (* CSS Selector validation tests *)
+    ("valid css identifier - basic", `Quick, test_valid_identifier_basic);
+    ( "valid css identifier - underscore",
+      `Quick,
+      test_valid_identifier_underscore );
+    ("valid css identifier - hyphen", `Quick, test_valid_identifier_hyphen);
+    ( "invalid css identifier - starts with digit",
+      `Quick,
+      test_invalid_identifier_digit );
+    ( "invalid css identifier - starts with double hyphen",
+      `Quick,
+      test_invalid_identifier_double_hyphen );
+    ( "invalid css identifier - starts with hyphen-digit",
+      `Quick,
+      test_invalid_identifier_hyphen_digit );
+    ("invalid css identifier - empty", `Quick, test_invalid_identifier_empty);
+    ( "invalid css identifier - special chars",
+      `Quick,
+      test_invalid_identifier_special_chars );
+    ("typed attribute selectors", `Quick, test_typed_attribute_selectors);
   ]
 
 let suite = [ ("css", tests) ]
