@@ -439,15 +439,41 @@ type 'a calc =
 
 (** CSS length values.
 
-    Supports absolute units (px), relative units (rem, em, %, viewport units),
-    character-based units (ch, lh), keywords, and calculated expressions. *)
+    Supports absolute, relative, viewport (including dynamic/large/small),
+    character-based units, keywords, and calculated expressions. *)
 type length =
-  | Px of int
+  | Px of float
+  | Cm of float
+  | Mm of float
+  | Q of float
+  | In of float
+  | Pt of float
+  | Pc of float
   | Rem of float
   | Em of float
+  | Ex of float
+  | Cap of float
+  | Ic of float
+  | Rlh of float
   | Pct of float
   | Vw of float
   | Vh of float
+  | Vmin of float
+  | Vmax of float
+  | Vi of float
+  | Vb of float
+  | Dvh of float
+  | Dvw of float
+  | Dvmin of float
+  | Dvmax of float
+  | Lvh of float
+  | Lvw of float
+  | Lvmin of float
+  | Lvmax of float
+  | Svh of float
+  | Svw of float
+  | Svmin of float
+  | Svmax of float
   | Ch of float  (** Character units *)
   | Lh of float  (** Line height units *)
   | Num of float  (** Unitless numbers, e.g., line-height multipliers *)
@@ -501,7 +527,7 @@ module Calc : sig
   val infinity : length calc
   (** [infinity] is the CSS infinity value for [calc] expressions. *)
 
-  val px : int -> length calc
+  val px : float -> length calc
   (** [px n] is a pixel value for [calc] expressions. *)
 
   val rem : float -> length calc
@@ -558,6 +584,133 @@ type color_name =
   | Navy
   | Teal
   | Aqua
+  | Alice_blue
+  | Antique_white
+  | Aquamarine
+  | Azure
+  | Beige
+  | Bisque
+  | Blanched_almond
+  | Blue_violet
+  | Brown
+  | Burlywood
+  | Cadet_blue
+  | Chartreuse
+  | Chocolate
+  | Coral
+  | Cornflower_blue
+  | Cornsilk
+  | Crimson
+  | Dark_blue
+  | Dark_cyan
+  | Dark_goldenrod
+  | Dark_gray
+  | Dark_green
+  | Dark_grey
+  | Dark_khaki
+  | Dark_magenta
+  | Dark_olive_green
+  | Dark_orange
+  | Dark_orchid
+  | Dark_red
+  | Dark_salmon
+  | Dark_sea_green
+  | Dark_slate_blue
+  | Dark_slate_gray
+  | Dark_slate_grey
+  | Dark_turquoise
+  | Dark_violet
+  | Deep_pink
+  | Deep_sky_blue
+  | Dim_gray
+  | Dim_grey
+  | Dodger_blue
+  | Firebrick
+  | Floral_white
+  | Forest_green
+  | Gainsboro
+  | Ghost_white
+  | Gold
+  | Goldenrod
+  | Green_yellow
+  | Honeydew
+  | Hot_pink
+  | Indian_red
+  | Indigo
+  | Ivory
+  | Khaki
+  | Lavender
+  | Lavender_blush
+  | Lawn_green
+  | Lemon_chiffon
+  | Light_blue
+  | Light_coral
+  | Light_cyan
+  | Light_goldenrod_yellow
+  | Light_gray
+  | Light_green
+  | Light_grey
+  | Light_pink
+  | Light_salmon
+  | Light_sea_green
+  | Light_sky_blue
+  | Light_slate_gray
+  | Light_slate_grey
+  | Light_steel_blue
+  | Light_yellow
+  | Lime_green
+  | Linen
+  | Medium_aquamarine
+  | Medium_blue
+  | Medium_orchid
+  | Medium_purple
+  | Medium_sea_green
+  | Medium_slate_blue
+  | Medium_spring_green
+  | Medium_turquoise
+  | Medium_violet_red
+  | Midnight_blue
+  | Mint_cream
+  | Misty_rose
+  | Moccasin
+  | Navajo_white
+  | Old_lace
+  | Olive_drab
+  | Orange_red
+  | Orchid
+  | Pale_goldenrod
+  | Pale_green
+  | Pale_turquoise
+  | Pale_violet_red
+  | Papaya_whip
+  | Peach_puff
+  | Peru
+  | Plum
+  | Powder_blue
+  | Rebecca_purple
+  | Rosy_brown
+  | Royal_blue
+  | Saddle_brown
+  | Salmon
+  | Sandy_brown
+  | Sea_green
+  | Sea_shell
+  | Sienna
+  | Sky_blue
+  | Slate_blue
+  | Slate_gray
+  | Slate_grey
+  | Snow
+  | Spring_green
+  | Steel_blue
+  | Tan
+  | Thistle
+  | Tomato
+  | Turquoise
+  | Violet
+  | Wheat
+  | White_smoke
+  | Yellow_green
 
 (** CSS color values. *)
 type color =
@@ -565,6 +718,13 @@ type color =
       (** hash indicates if # was present *)
   | Rgb of { r : int; g : int; b : int }
   | Rgba of { r : int; g : int; b : int; a : float }
+  | Hsl of { h : float; s : float; l : float; a : float option }
+  | Hwb of { h : float; w : float; b : float; a : float option }
+  | Color of {
+      space : color_space;
+      components : float list;
+      alpha : float option;
+    }
   | Oklch of { l : float; c : float; h : float }  (** OKLCH color space *)
   | Named of color_name  (** Named colors like Red, Blue, etc. *)
   | Var of color var

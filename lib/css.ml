@@ -807,12 +807,12 @@ type shadow =
     }
   | Var of shadow var
 
-let shadow ?(inset = false) ?(h_offset = Px 0) ?(v_offset = Px 0) ?(blur = Px 0)
-    ?(spread = Px 0) ?(color = Transparent) () =
+let shadow ?(inset = false) ?(h_offset = Px 0.) ?(v_offset = Px 0.)
+    ?(blur = Px 0.) ?(spread = Px 0.) ?(color = Transparent) () =
   Shadow { inset; h_offset; v_offset; blur; spread; color }
 
-let inset_ring_shadow ?(h_offset = Px 0) ?(v_offset = Px 0) ?(blur = Px 0)
-    ?(spread = Px 0) ?(color = Transparent) () =
+let inset_ring_shadow ?(h_offset = Px 0.) ?(v_offset = Px 0.) ?(blur = Px 0.)
+    ?(spread = Px 0.) ?(color = Transparent) () =
   shadow ~inset:true ~h_offset ~v_offset ~blur ~spread ~color ()
 
 type box_shadow =

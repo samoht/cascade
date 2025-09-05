@@ -1,6 +1,6 @@
 (** CSS Property value parsing using Reader API *)
 
-open Reader
+open Css.Reader
 
 (** Error helpers *)
 let err_invalid_value t prop_name value =
@@ -259,26 +259,26 @@ let read_box_shadow t : Css.box_shadow =
       true)
     else false
   in
-  let h_offset = Values.read_length t in
+  let h_offset = Css.Values.read_length t in
   ws t;
-  let v_offset = Values.read_length t in
+  let v_offset = Css.Values.read_length t in
   ws t;
   let blur =
-    match try_parse Values.read_length t with
+    match try_parse Css.Values.read_length t with
     | Some l ->
         ws t;
         l
     | None -> Zero
   in
   let spread =
-    match try_parse Values.read_length t with
+    match try_parse Css.Values.read_length t with
     | Some l ->
         ws t;
         l
     | None -> Zero
   in
   let color =
-    match try_parse Values.read_color t with Some c -> c | None -> Current
+    match try_parse Css.Values.read_color t with Some c -> c | None -> Current
   in
   Shadow (Shadow { inset; h_offset; v_offset; blur; spread; color })
 
@@ -290,19 +290,19 @@ let read_transform t : Css.transform =
   let result =
     match String.lowercase_ascii name with
     | "translatex" ->
-        let x = Values.read_length t in
+        let x = Css.Values.read_length t in
         Css.Translate_x x
     | "translatey" ->
-        let y = Values.read_length t in
+        let y = Css.Values.read_length t in
         Css.Translate_y y
     | "translate" ->
-        let x = Values.read_length t in
+        let x = Css.Values.read_length t in
         ws t;
         if peek t = Some ',' then (
           skip t;
           ws t);
         let y =
-          match try_parse Values.read_length t with
+          match try_parse Css.Values.read_length t with
           | Some l -> Some l
           | None -> None
         in
@@ -326,13 +326,13 @@ let read_transform t : Css.transform =
         let y = number t in
         Css.Scale_y (Css.Num y)
     | "rotate" ->
-        let angle = Values.read_angle t in
+        let angle = Css.Values.read_angle t in
         Css.Rotate angle
     | "skewx" ->
-        let angle = Values.read_angle t in
+        let angle = Css.Values.read_angle t in
         Css.Skew_x angle
     | "skewy" ->
-        let angle = Values.read_angle t in
+        let angle = Css.Values.read_angle t in
         Css.Skew_y angle
     | _ -> err_invalid_function t "transform" name
   in
@@ -352,7 +352,7 @@ let read_transform_list t : Css.transform list =
 
 (** Parse a property value based on property name *)
 let parse_by_name prop_name value_str : Css.declaration option =
-  let t = Reader.of_string value_str in
+  let t = Css.Reader.of_string value_str in
   try
     match String.lowercase_ascii prop_name with
     (* Display & Positioning *)
@@ -371,7 +371,7 @@ let parse_by_name prop_name value_str : Css.declaration option =
     (* Box Model *)
     | "width" | "height" | "min-width" | "min-height" | "max-width"
     | "max-height" ->
-        let length = Values.read_length t in
+        let length = Css.Values.read_length t in
         Some
           (match prop_name with
           | "width" -> Css.width length
@@ -383,7 +383,7 @@ let parse_by_name prop_name value_str : Css.declaration option =
           | _ -> failwith "unreachable")
     | "padding" | "padding-top" | "padding-right" | "padding-bottom"
     | "padding-left" ->
-        let length = Values.read_length t in
+        let length = Css.Values.read_length t in
         Some
           (match prop_name with
           | "padding-top" -> Css.padding_top length
@@ -394,7 +394,7 @@ let parse_by_name prop_name value_str : Css.declaration option =
           | _ -> failwith "unreachable")
     | "margin" | "margin-top" | "margin-right" | "margin-bottom" | "margin-left"
       ->
-        let length = Values.read_length t in
+        let length = Css.Values.read_length t in
         Some
           (match prop_name with
           | "margin-top" -> Css.margin_top length
@@ -404,12 +404,13 @@ let parse_by_name prop_name value_str : Css.declaration option =
           | "margin" -> Css.margin length
           | _ -> failwith "unreachable")
     (* Colors & Backgrounds *)
-    | "color" -> Some (Css.color (Values.read_color t))
-    | "background-color" -> Some (Css.background_color (Values.read_color t))
+    | "color" -> Some (Css.color (Css.Values.read_color t))
+    | "background-color" ->
+        Some (Css.background_color (Css.Values.read_color t))
     (* Borders *)
     | "border-style" -> Some (Css.border_style (read_border_style t))
-    | "border-width" -> Some (Css.border_width (Values.read_length t))
-    | "border-color" -> Some (Css.border_color (Values.read_color t))
+    | "border-width" -> Some (Css.border_width (Css.Values.read_length t))
+    | "border-color" -> Some (Css.border_color (Css.Values.read_color t))
     (* Visual Effects *)
     | "opacity" ->
         let n = number t in

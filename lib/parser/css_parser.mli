@@ -1,6 +1,6 @@
 (** Main CSS parser module that coordinates all section parsers. *)
 
-type error = Parse_error of string * Reader.t
+type error = Parse_error of string * Css.Reader.t
 
 val of_string : string -> (Css.t, error) result
 (** [of_string css] parses a CSS string and returns a stylesheet or a parse
@@ -12,10 +12,6 @@ val of_string_exn : string -> Css.t
 
 (**/**)
 
-module Reader = Reader
-(** Re-export all parser submodules *)
-
-module Values = Values
 module Property = Property
 module Custom_property = Custom_property
 module Selector = Selector

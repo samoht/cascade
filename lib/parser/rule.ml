@@ -1,6 +1,6 @@
 (** CSS rule parser using simple Reader API. *)
 
-open Reader
+open Css.Reader
 
 (** Parse a CSS rule (selector + declarations) or at-rule *)
 let rec one t =

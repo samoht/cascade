@@ -1,6 +1,6 @@
 (** CSS declaration parser using simple Reader API. *)
 
-open Reader
+open Css.Reader
 
 (** Parse a property name *)
 let property_name t =

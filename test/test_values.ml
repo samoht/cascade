@@ -70,6 +70,9 @@ let test_color_parsing () =
   check_color "#000000";
   check_color "#ffffff";
   check_color "#FFFFFF";
+  (* Additional named colors *)
+  check_color "rebeccapurple";
+  check_color "aliceblue";
 
   (* Named colors - all variants *)
   check_color "red";
@@ -308,7 +311,7 @@ let test_var_parsing_and_printing () =
 let test_var_default_inline () =
   (* When inline printing is enabled and a default is present, pp_var should
      inline the default value instead of var(). *)
-  let v : length var = var_ref ~default:(Px 10) "spacing" in
+  let v : length var = var_ref ~default:(Px 10.) "spacing" in
   let len : length = Var v in
   let s = Css.Pp.to_string ~minify:true ~inline:true pp_length len in
   check string "inline var default" "10px" s

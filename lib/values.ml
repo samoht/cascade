@@ -19,12 +19,38 @@ type calc_op = Add | Sub | Mult | Div
 type 'a calc = Var of 'a var | Val of 'a | Expr of 'a calc * calc_op * 'a calc
 
 type length =
-  | Px of int
+  | Px of float
+  | Cm of float
+  | Mm of float
+  | Q of float
+  | In of float
+  | Pt of float
+  | Pc of float
   | Rem of float
   | Em of float
+  | Ex of float
+  | Cap of float
+  | Ic of float
+  | Rlh of float
   | Pct of float
   | Vw of float
   | Vh of float
+  | Vmin of float
+  | Vmax of float
+  | Vi of float
+  | Vb of float
+  | Dvh of float
+  | Dvw of float
+  | Dvmin of float
+  | Dvmax of float
+  | Lvh of float
+  | Lvw of float
+  | Lvmin of float
+  | Lvmax of float
+  | Svh of float
+  | Svw of float
+  | Svmin of float
+  | Svmax of float
   | Ch of float
   | Lh of float
   | Num of float
@@ -77,11 +103,145 @@ type color_name =
   | Navy
   | Teal
   | Aqua
+  | Alice_blue
+  | Antique_white
+  | Aquamarine
+  | Azure
+  | Beige
+  | Bisque
+  | Blanched_almond
+  | Blue_violet
+  | Brown
+  | Burlywood
+  | Cadet_blue
+  | Chartreuse
+  | Chocolate
+  | Coral
+  | Cornflower_blue
+  | Cornsilk
+  | Crimson
+  | Dark_blue
+  | Dark_cyan
+  | Dark_goldenrod
+  | Dark_gray
+  | Dark_green
+  | Dark_grey
+  | Dark_khaki
+  | Dark_magenta
+  | Dark_olive_green
+  | Dark_orange
+  | Dark_orchid
+  | Dark_red
+  | Dark_salmon
+  | Dark_sea_green
+  | Dark_slate_blue
+  | Dark_slate_gray
+  | Dark_slate_grey
+  | Dark_turquoise
+  | Dark_violet
+  | Deep_pink
+  | Deep_sky_blue
+  | Dim_gray
+  | Dim_grey
+  | Dodger_blue
+  | Firebrick
+  | Floral_white
+  | Forest_green
+  | Gainsboro
+  | Ghost_white
+  | Gold
+  | Goldenrod
+  | Green_yellow
+  | Honeydew
+  | Hot_pink
+  | Indian_red
+  | Indigo
+  | Ivory
+  | Khaki
+  | Lavender
+  | Lavender_blush
+  | Lawn_green
+  | Lemon_chiffon
+  | Light_blue
+  | Light_coral
+  | Light_cyan
+  | Light_goldenrod_yellow
+  | Light_gray
+  | Light_green
+  | Light_grey
+  | Light_pink
+  | Light_salmon
+  | Light_sea_green
+  | Light_sky_blue
+  | Light_slate_gray
+  | Light_slate_grey
+  | Light_steel_blue
+  | Light_yellow
+  | Lime_green
+  | Linen
+  | Medium_aquamarine
+  | Medium_blue
+  | Medium_orchid
+  | Medium_purple
+  | Medium_sea_green
+  | Medium_slate_blue
+  | Medium_spring_green
+  | Medium_turquoise
+  | Medium_violet_red
+  | Midnight_blue
+  | Mint_cream
+  | Misty_rose
+  | Moccasin
+  | Navajo_white
+  | Old_lace
+  | Olive_drab
+  | Orange_red
+  | Orchid
+  | Pale_goldenrod
+  | Pale_green
+  | Pale_turquoise
+  | Pale_violet_red
+  | Papaya_whip
+  | Peach_puff
+  | Peru
+  | Plum
+  | Powder_blue
+  | Rebecca_purple
+  | Rosy_brown
+  | Royal_blue
+  | Saddle_brown
+  | Salmon
+  | Sandy_brown
+  | Sea_green
+  | Sea_shell
+  | Sienna
+  | Sky_blue
+  | Slate_blue
+  | Slate_gray
+  | Slate_grey
+  | Snow
+  | Spring_green
+  | Steel_blue
+  | Tan
+  | Thistle
+  | Tomato
+  | Turquoise
+  | Violet
+  | Wheat
+  | White_smoke
+  | Yellow_green
 
 type color =
   | Hex of { hash : bool; value : string }
   | Rgb of { r : int; g : int; b : int }
   | Rgba of { r : int; g : int; b : int; a : float }
+  | Hsl of { h : float; s : float; l : float; a : float option }
+  | Hwb of { h : float; w : float; b : float; a : float option }
+  | Color of {
+      space : color_space;
+      components : float list;
+      alpha : float option;
+    }
   | Oklch of { l : float; c : float; h : float }
   | Named of color_name
   | Var of color var
@@ -133,22 +293,21 @@ let pp_op ctx = function
 
 let pp_var : type a. a Pp.t -> a var Pp.t =
  fun pp_value ctx v ->
-  (* TODO: Add proper CSS variable inlining phase *)
+  (* When inlining is enabled, output the default value if available *)
   if ctx.inline && v.default <> None then
-    (* When inlining is enabled, output the default value if available *)
     match v.default with
     | Some value -> pp_value ctx value
     | None -> assert false (* unreachable due to condition above *)
-  else
+  else (
     (* Standard var() reference output *)
     Pp.string ctx "var(--";
-  Pp.string ctx v.name;
-  match v.fallback with
-  | None -> Pp.char ctx ')'
-  | Some value ->
-      Pp.string ctx ", ";
-      pp_value ctx value;
-      Pp.char ctx ')'
+    Pp.string ctx v.name;
+    match v.fallback with
+    | None -> Pp.char ctx ')'
+    | Some value ->
+        Pp.string ctx ", ";
+        pp_value ctx value;
+        Pp.char ctx ')')
 
 (** Helper to format function calls: name(args) *)
 let pp_fun name pp_args ctx args =
@@ -183,24 +342,80 @@ let pp_calc : type a. a Pp.t -> a calc Pp.t =
 
 let rec pp_length : length Pp.t =
  fun ctx -> function
-  | Px n when n = 0 -> Pp.char ctx '0'
+  | Px n when n = 0. -> Pp.char ctx '0'
+  | Cm f when f = 0. -> Pp.char ctx '0'
+  | Mm f when f = 0. -> Pp.char ctx '0'
+  | Q f when f = 0. -> Pp.char ctx '0'
+  | In f when f = 0. -> Pp.char ctx '0'
+  | Pt f when f = 0. -> Pp.char ctx '0'
+  | Pc f when f = 0. -> Pp.char ctx '0'
   | Rem f when f = 0. -> Pp.char ctx '0'
   | Em f when f = 0. -> Pp.char ctx '0'
+  | Ex f when f = 0. -> Pp.char ctx '0'
+  | Cap f when f = 0. -> Pp.char ctx '0'
+  | Ic f when f = 0. -> Pp.char ctx '0'
+  | Rlh f when f = 0. -> Pp.char ctx '0'
   | Pct f when f = 0. -> Pp.char ctx '0'
   | Vw f when f = 0. -> Pp.char ctx '0'
   | Vh f when f = 0. -> Pp.char ctx '0'
+  | Vmin f when f = 0. -> Pp.char ctx '0'
+  | Vmax f when f = 0. -> Pp.char ctx '0'
+  | Vi f when f = 0. -> Pp.char ctx '0'
+  | Vb f when f = 0. -> Pp.char ctx '0'
+  | Dvh f when f = 0. -> Pp.char ctx '0'
+  | Dvw f when f = 0. -> Pp.char ctx '0'
+  | Dvmin f when f = 0. -> Pp.char ctx '0'
+  | Dvmax f when f = 0. -> Pp.char ctx '0'
+  | Lvh f when f = 0. -> Pp.char ctx '0'
+  | Lvw f when f = 0. -> Pp.char ctx '0'
+  | Lvmin f when f = 0. -> Pp.char ctx '0'
+  | Lvmax f when f = 0. -> Pp.char ctx '0'
+  | Svh f when f = 0. -> Pp.char ctx '0'
+  | Svw f when f = 0. -> Pp.char ctx '0'
+  | Svmin f when f = 0. -> Pp.char ctx '0'
+  | Svmax f when f = 0. -> Pp.char ctx '0'
   | Ch f when f = 0. -> Pp.char ctx '0'
   | Lh f when f = 0. -> Pp.char ctx '0'
   | Zero -> Pp.char ctx '0'
   | Px n ->
-      Pp.int ctx n;
+      Pp.float ctx n;
       Pp.string ctx "px"
+  | Cm f ->
+      Pp.float ctx f;
+      Pp.string ctx "cm"
+  | Mm f ->
+      Pp.float ctx f;
+      Pp.string ctx "mm"
+  | Q f ->
+      Pp.float ctx f;
+      Pp.string ctx "q"
+  | In f ->
+      Pp.float ctx f;
+      Pp.string ctx "in"
+  | Pt f ->
+      Pp.float ctx f;
+      Pp.string ctx "pt"
+  | Pc f ->
+      Pp.float ctx f;
+      Pp.string ctx "pc"
   | Rem f ->
       Pp.float ctx f;
       Pp.string ctx "rem"
   | Em f ->
       Pp.float ctx f;
       Pp.string ctx "em"
+  | Ex f ->
+      Pp.float ctx f;
+      Pp.string ctx "ex"
+  | Cap f ->
+      Pp.float ctx f;
+      Pp.string ctx "cap"
+  | Ic f ->
+      Pp.float ctx f;
+      Pp.string ctx "ic"
+  | Rlh f ->
+      Pp.float ctx f;
+      Pp.string ctx "rlh"
   | Pct f ->
       Pp.float ctx f;
       Pp.char ctx '%'
@@ -210,6 +425,54 @@ let rec pp_length : length Pp.t =
   | Vh f ->
       Pp.float ctx f;
       Pp.string ctx "vh"
+  | Vmin f ->
+      Pp.float ctx f;
+      Pp.string ctx "vmin"
+  | Vmax f ->
+      Pp.float ctx f;
+      Pp.string ctx "vmax"
+  | Vi f ->
+      Pp.float ctx f;
+      Pp.string ctx "vi"
+  | Vb f ->
+      Pp.float ctx f;
+      Pp.string ctx "vb"
+  | Dvh f ->
+      Pp.float ctx f;
+      Pp.string ctx "dvh"
+  | Dvw f ->
+      Pp.float ctx f;
+      Pp.string ctx "dvw"
+  | Dvmin f ->
+      Pp.float ctx f;
+      Pp.string ctx "dvmin"
+  | Dvmax f ->
+      Pp.float ctx f;
+      Pp.string ctx "dvmax"
+  | Lvh f ->
+      Pp.float ctx f;
+      Pp.string ctx "lvh"
+  | Lvw f ->
+      Pp.float ctx f;
+      Pp.string ctx "lvw"
+  | Lvmin f ->
+      Pp.float ctx f;
+      Pp.string ctx "lvmin"
+  | Lvmax f ->
+      Pp.float ctx f;
+      Pp.string ctx "lvmax"
+  | Svh f ->
+      Pp.float ctx f;
+      Pp.string ctx "svh"
+  | Svw f ->
+      Pp.float ctx f;
+      Pp.string ctx "svw"
+  | Svmin f ->
+      Pp.float ctx f;
+      Pp.string ctx "svmin"
+  | Svmax f ->
+      Pp.float ctx f;
+      Pp.string ctx "svmax"
   | Ch f ->
       Pp.float ctx f;
       Pp.string ctx "ch"
@@ -227,7 +490,7 @@ let rec pp_length : length Pp.t =
   | Calc cv -> (
       (* Optimize calc(infinity * 1px) to 3.40282e38px for minification *)
       match cv with
-      | Expr (Val (Num f), Mult, Val (Px 1)) when f = infinity ->
+      | Expr (Val (Num f), Mult, Val (Px 1.)) when f = infinity ->
           Pp.string ctx "3.40282e38px"
       | _ -> pp_calc pp_length ctx cv)
 
@@ -254,6 +517,133 @@ and pp_color_name : color_name Pp.t =
   | Navy -> Pp.string ctx "navy"
   | Teal -> Pp.string ctx "teal"
   | Aqua -> Pp.string ctx "aqua"
+  | Alice_blue -> Pp.string ctx "aliceblue"
+  | Antique_white -> Pp.string ctx "antiquewhite"
+  | Aquamarine -> Pp.string ctx "aquamarine"
+  | Azure -> Pp.string ctx "azure"
+  | Beige -> Pp.string ctx "beige"
+  | Bisque -> Pp.string ctx "bisque"
+  | Blanched_almond -> Pp.string ctx "blanchedalmond"
+  | Blue_violet -> Pp.string ctx "blueviolet"
+  | Brown -> Pp.string ctx "brown"
+  | Burlywood -> Pp.string ctx "burlywood"
+  | Cadet_blue -> Pp.string ctx "cadetblue"
+  | Chartreuse -> Pp.string ctx "chartreuse"
+  | Chocolate -> Pp.string ctx "chocolate"
+  | Coral -> Pp.string ctx "coral"
+  | Cornflower_blue -> Pp.string ctx "cornflowerblue"
+  | Cornsilk -> Pp.string ctx "cornsilk"
+  | Crimson -> Pp.string ctx "crimson"
+  | Dark_blue -> Pp.string ctx "darkblue"
+  | Dark_cyan -> Pp.string ctx "darkcyan"
+  | Dark_goldenrod -> Pp.string ctx "darkgoldenrod"
+  | Dark_gray -> Pp.string ctx "darkgray"
+  | Dark_green -> Pp.string ctx "darkgreen"
+  | Dark_grey -> Pp.string ctx "darkgrey"
+  | Dark_khaki -> Pp.string ctx "darkkhaki"
+  | Dark_magenta -> Pp.string ctx "darkmagenta"
+  | Dark_olive_green -> Pp.string ctx "darkolivegreen"
+  | Dark_orange -> Pp.string ctx "darkorange"
+  | Dark_orchid -> Pp.string ctx "darkorchid"
+  | Dark_red -> Pp.string ctx "darkred"
+  | Dark_salmon -> Pp.string ctx "darksalmon"
+  | Dark_sea_green -> Pp.string ctx "darkseagreen"
+  | Dark_slate_blue -> Pp.string ctx "darkslateblue"
+  | Dark_slate_gray -> Pp.string ctx "darkslategray"
+  | Dark_slate_grey -> Pp.string ctx "darkslategrey"
+  | Dark_turquoise -> Pp.string ctx "darkturquoise"
+  | Dark_violet -> Pp.string ctx "darkviolet"
+  | Deep_pink -> Pp.string ctx "deeppink"
+  | Deep_sky_blue -> Pp.string ctx "deepskyblue"
+  | Dim_gray -> Pp.string ctx "dimgray"
+  | Dim_grey -> Pp.string ctx "dimgrey"
+  | Dodger_blue -> Pp.string ctx "dodgerblue"
+  | Firebrick -> Pp.string ctx "firebrick"
+  | Floral_white -> Pp.string ctx "floralwhite"
+  | Forest_green -> Pp.string ctx "forestgreen"
+  | Gainsboro -> Pp.string ctx "gainsboro"
+  | Ghost_white -> Pp.string ctx "ghostwhite"
+  | Gold -> Pp.string ctx "gold"
+  | Goldenrod -> Pp.string ctx "goldenrod"
+  | Green_yellow -> Pp.string ctx "greenyellow"
+  | Honeydew -> Pp.string ctx "honeydew"
+  | Hot_pink -> Pp.string ctx "hotpink"
+  | Indian_red -> Pp.string ctx "indianred"
+  | Indigo -> Pp.string ctx "indigo"
+  | Ivory -> Pp.string ctx "ivory"
+  | Khaki -> Pp.string ctx "khaki"
+  | Lavender -> Pp.string ctx "lavender"
+  | Lavender_blush -> Pp.string ctx "lavenderblush"
+  | Lawn_green -> Pp.string ctx "lawngreen"
+  | Lemon_chiffon -> Pp.string ctx "lemonchiffon"
+  | Light_blue -> Pp.string ctx "lightblue"
+  | Light_coral -> Pp.string ctx "lightcoral"
+  | Light_cyan -> Pp.string ctx "lightcyan"
+  | Light_goldenrod_yellow -> Pp.string ctx "lightgoldenrodyellow"
+  | Light_gray -> Pp.string ctx "lightgray"
+  | Light_green -> Pp.string ctx "lightgreen"
+  | Light_grey -> Pp.string ctx "lightgrey"
+  | Light_pink -> Pp.string ctx "lightpink"
+  | Light_salmon -> Pp.string ctx "lightsalmon"
+  | Light_sea_green -> Pp.string ctx "lightseagreen"
+  | Light_sky_blue -> Pp.string ctx "lightskyblue"
+  | Light_slate_gray -> Pp.string ctx "lightslategray"
+  | Light_slate_grey -> Pp.string ctx "lightslategrey"
+  | Light_steel_blue -> Pp.string ctx "lightsteelblue"
+  | Light_yellow -> Pp.string ctx "lightyellow"
+  | Lime_green -> Pp.string ctx "limegreen"
+  | Linen -> Pp.string ctx "linen"
+  | Medium_aquamarine -> Pp.string ctx "mediumaquamarine"
+  | Medium_blue -> Pp.string ctx "mediumblue"
+  | Medium_orchid -> Pp.string ctx "mediumorchid"
+  | Medium_purple -> Pp.string ctx "mediumpurple"
+  | Medium_sea_green -> Pp.string ctx "mediumseagreen"
+  | Medium_slate_blue -> Pp.string ctx "mediumslateblue"
+  | Medium_spring_green -> Pp.string ctx "mediumspringgreen"
+  | Medium_turquoise -> Pp.string ctx "mediumturquoise"
+  | Medium_violet_red -> Pp.string ctx "mediumvioletred"
+  | Midnight_blue -> Pp.string ctx "midnightblue"
+  | Mint_cream -> Pp.string ctx "mintcream"
+  | Misty_rose -> Pp.string ctx "mistyrose"
+  | Moccasin -> Pp.string ctx "moccasin"
+  | Navajo_white -> Pp.string ctx "navajowhite"
+  | Old_lace -> Pp.string ctx "oldlace"
+  | Olive_drab -> Pp.string ctx "olivedrab"
+  | Orange_red -> Pp.string ctx "orangered"
+  | Orchid -> Pp.string ctx "orchid"
+  | Pale_goldenrod -> Pp.string ctx "palegoldenrod"
+  | Pale_green -> Pp.string ctx "palegreen"
+  | Pale_turquoise -> Pp.string ctx "paleturquoise"
+  | Pale_violet_red -> Pp.string ctx "palevioletred"
+  | Papaya_whip -> Pp.string ctx "papayawhip"
+  | Peach_puff -> Pp.string ctx "peachpuff"
+  | Peru -> Pp.string ctx "peru"
+  | Plum -> Pp.string ctx "plum"
+  | Powder_blue -> Pp.string ctx "powderblue"
+  | Rebecca_purple -> Pp.string ctx "rebeccapurple"
+  | Rosy_brown -> Pp.string ctx "rosybrown"
+  | Royal_blue -> Pp.string ctx "royalblue"
+  | Saddle_brown -> Pp.string ctx "saddlebrown"
+  | Salmon -> Pp.string ctx "salmon"
+  | Sandy_brown -> Pp.string ctx "sandybrown"
+  | Sea_green -> Pp.string ctx "seagreen"
+  | Sea_shell -> Pp.string ctx "seashell"
+  | Sienna -> Pp.string ctx "sienna"
+  | Sky_blue -> Pp.string ctx "skyblue"
+  | Slate_blue -> Pp.string ctx "slateblue"
+  | Slate_gray -> Pp.string ctx "slategray"
+  | Slate_grey -> Pp.string ctx "slategrey"
+  | Snow -> Pp.string ctx "snow"
+  | Spring_green -> Pp.string ctx "springgreen"
+  | Steel_blue -> Pp.string ctx "steelblue"
+  | Tan -> Pp.string ctx "tan"
+  | Thistle -> Pp.string ctx "thistle"
+  | Tomato -> Pp.string ctx "tomato"
+  | Turquoise -> Pp.string ctx "turquoise"
+  | Violet -> Pp.string ctx "violet"
+  | Wheat -> Pp.string ctx "wheat"
+  | White_smoke -> Pp.string ctx "whitesmoke"
+  | Yellow_green -> Pp.string ctx "yellowgreen"
 
 (* RGB helper function *)
 and pp_rgb ctx r g b alpha =
@@ -333,6 +723,50 @@ and pp_color : color Pp.t =
       Pp.string ctx value
   | Rgb { r; g; b } -> pp_rgb ctx r g b None
   | Rgba { r; g; b; a } -> pp_rgb ctx r g b (Some a)
+  | Hsl { h; s; l; a } ->
+      Pp.string ctx "hsl(";
+      Pp.float ctx h;
+      Pp.space ctx ();
+      Pp.float ctx s;
+      Pp.char ctx '%';
+      Pp.space ctx ();
+      Pp.float ctx l;
+      Pp.char ctx '%';
+      (match a with
+      | Some aa ->
+          Pp.string ctx " / ";
+          Pp.float ctx aa
+      | None -> ());
+      Pp.char ctx ')'
+  | Hwb { h; w; b; a } ->
+      Pp.string ctx "hwb(";
+      Pp.float ctx h;
+      Pp.space ctx ();
+      Pp.float ctx w;
+      Pp.char ctx '%';
+      Pp.space ctx ();
+      Pp.float ctx b;
+      Pp.char ctx '%';
+      (match a with
+      | Some aa ->
+          Pp.string ctx " / ";
+          Pp.float ctx aa
+      | None -> ());
+      Pp.char ctx ')'
+  | Color { space; components; alpha } ->
+      Pp.string ctx "color(";
+      pp_color_space ctx space;
+      (match components with
+      | [] -> ()
+      | _ ->
+          Pp.string ctx " ";
+          Pp.list ~sep:Pp.space Pp.float ctx components);
+      (match alpha with
+      | Some a ->
+          Pp.string ctx " / ";
+          Pp.float ctx a
+      | None -> ());
+      Pp.char ctx ')'
   | Oklch { l; c; h } -> pp_oklch ctx l c h
   | Named name -> pp_color_name ctx name
   | Var v -> pp_var pp_color ctx v
@@ -426,20 +860,49 @@ let read_length t : length =
       | "max-content" -> Max_content
       | "min-content" -> Min_content
       | "fit-content" -> Fit_content
+      | "from-font" -> From_font
       | "inherit" -> Inherit
       | _ -> err_invalid t ("length keyword: " ^ keyword))
-  | Some n when n = 0.0 -> Zero
   | Some n -> (
       (* Check for unit *)
       let unit = while_ t (fun c -> (c >= 'a' && c <= 'z') || c = '%') in
       match unit with
+      | "" when n = 0.0 -> Zero (* Zero only when 0 without unit *)
       | "" -> Num n
-      | "px" -> Px (int_of_float n)
+      | _ when n = 0.0 -> Zero (* 0 with any unit becomes Zero *)
+      | "px" -> Px n
+      | "cm" -> Cm n
+      | "mm" -> Mm n
+      | "q" -> Q n
+      | "in" -> In n
+      | "pt" -> Pt n
+      | "pc" -> Pc n
       | "em" -> Em n
       | "rem" -> Rem n
+      | "ex" -> Ex n
+      | "cap" -> Cap n
+      | "ic" -> Ic n
+      | "rlh" -> Rlh n
       | "vh" -> Vh n
       | "vw" -> Vw n
+      | "vmin" -> Vmin n
+      | "vmax" -> Vmax n
+      | "vi" -> Vi n
+      | "vb" -> Vb n
+      | "dvh" -> Dvh n
+      | "dvw" -> Dvw n
+      | "dvmin" -> Dvmin n
+      | "dvmax" -> Dvmax n
+      | "lvh" -> Lvh n
+      | "lvw" -> Lvw n
+      | "lvmin" -> Lvmin n
+      | "lvmax" -> Lvmax n
+      | "svh" -> Svh n
+      | "svw" -> Svw n
+      | "svmin" -> Svmin n
+      | "svmax" -> Svmax n
       | "ch" -> Ch n
+      | "lh" -> Lh n
       | "%" -> Pct n
       | _ -> err_invalid t ("length unit: " ^ unit))
 
@@ -514,7 +977,8 @@ and read_color_value t : color =
 
 and parse_color_keyword t : color =
   let keyword = ident t in
-  match String.lowercase_ascii keyword with
+  let lower = String.lowercase_ascii keyword in
+  match lower with
   | "transparent" -> Transparent
   | "currentcolor" -> Current
   | "inherit" -> Inherit
@@ -536,6 +1000,133 @@ and parse_color_keyword t : color =
   | "purple" -> Named Purple
   | "orange" -> Named Orange
   | "pink" -> Named Pink
+  | "aliceblue" -> Named Alice_blue
+  | "antiquewhite" -> Named Antique_white
+  | "aquamarine" -> Named Aquamarine
+  | "azure" -> Named Azure
+  | "beige" -> Named Beige
+  | "bisque" -> Named Bisque
+  | "blanchedalmond" -> Named Blanched_almond
+  | "blueviolet" -> Named Blue_violet
+  | "brown" -> Named Brown
+  | "burlywood" -> Named Burlywood
+  | "cadetblue" -> Named Cadet_blue
+  | "chartreuse" -> Named Chartreuse
+  | "chocolate" -> Named Chocolate
+  | "coral" -> Named Coral
+  | "cornflowerblue" -> Named Cornflower_blue
+  | "cornsilk" -> Named Cornsilk
+  | "crimson" -> Named Crimson
+  | "darkblue" -> Named Dark_blue
+  | "darkcyan" -> Named Dark_cyan
+  | "darkgoldenrod" -> Named Dark_goldenrod
+  | "darkgray" -> Named Dark_gray
+  | "darkgreen" -> Named Dark_green
+  | "darkgrey" -> Named Dark_grey
+  | "darkkhaki" -> Named Dark_khaki
+  | "darkmagenta" -> Named Dark_magenta
+  | "darkolivegreen" -> Named Dark_olive_green
+  | "darkorange" -> Named Dark_orange
+  | "darkorchid" -> Named Dark_orchid
+  | "darkred" -> Named Dark_red
+  | "darksalmon" -> Named Dark_salmon
+  | "darkseagreen" -> Named Dark_sea_green
+  | "darkslateblue" -> Named Dark_slate_blue
+  | "darkslategray" -> Named Dark_slate_gray
+  | "darkslategrey" -> Named Dark_slate_grey
+  | "darkturquoise" -> Named Dark_turquoise
+  | "darkviolet" -> Named Dark_violet
+  | "deeppink" -> Named Deep_pink
+  | "deepskyblue" -> Named Deep_sky_blue
+  | "dimgray" -> Named Dim_gray
+  | "dimgrey" -> Named Dim_grey
+  | "dodgerblue" -> Named Dodger_blue
+  | "firebrick" -> Named Firebrick
+  | "floralwhite" -> Named Floral_white
+  | "forestgreen" -> Named Forest_green
+  | "gainsboro" -> Named Gainsboro
+  | "ghostwhite" -> Named Ghost_white
+  | "gold" -> Named Gold
+  | "goldenrod" -> Named Goldenrod
+  | "greenyellow" -> Named Green_yellow
+  | "honeydew" -> Named Honeydew
+  | "hotpink" -> Named Hot_pink
+  | "indianred" -> Named Indian_red
+  | "indigo" -> Named Indigo
+  | "ivory" -> Named Ivory
+  | "khaki" -> Named Khaki
+  | "lavender" -> Named Lavender
+  | "lavenderblush" -> Named Lavender_blush
+  | "lawngreen" -> Named Lawn_green
+  | "lemonchiffon" -> Named Lemon_chiffon
+  | "lightblue" -> Named Light_blue
+  | "lightcoral" -> Named Light_coral
+  | "lightcyan" -> Named Light_cyan
+  | "lightgoldenrodyellow" -> Named Light_goldenrod_yellow
+  | "lightgray" -> Named Light_gray
+  | "lightgreen" -> Named Light_green
+  | "lightgrey" -> Named Light_grey
+  | "lightpink" -> Named Light_pink
+  | "lightsalmon" -> Named Light_salmon
+  | "lightseagreen" -> Named Light_sea_green
+  | "lightskyblue" -> Named Light_sky_blue
+  | "lightslategray" -> Named Light_slate_gray
+  | "lightslategrey" -> Named Light_slate_grey
+  | "lightsteelblue" -> Named Light_steel_blue
+  | "lightyellow" -> Named Light_yellow
+  | "limegreen" -> Named Lime_green
+  | "linen" -> Named Linen
+  | "mediumaquamarine" -> Named Medium_aquamarine
+  | "mediumblue" -> Named Medium_blue
+  | "mediumorchid" -> Named Medium_orchid
+  | "mediumpurple" -> Named Medium_purple
+  | "mediumseagreen" -> Named Medium_sea_green
+  | "mediumslateblue" -> Named Medium_slate_blue
+  | "mediumspringgreen" -> Named Medium_spring_green
+  | "mediumturquoise" -> Named Medium_turquoise
+  | "mediumvioletred" -> Named Medium_violet_red
+  | "midnightblue" -> Named Midnight_blue
+  | "mintcream" -> Named Mint_cream
+  | "mistyrose" -> Named Misty_rose
+  | "moccasin" -> Named Moccasin
+  | "navajowhite" -> Named Navajo_white
+  | "oldlace" -> Named Old_lace
+  | "olivedrab" -> Named Olive_drab
+  | "orangered" -> Named Orange_red
+  | "orchid" -> Named Orchid
+  | "palegoldenrod" -> Named Pale_goldenrod
+  | "palegreen" -> Named Pale_green
+  | "paleturquoise" -> Named Pale_turquoise
+  | "palevioletred" -> Named Pale_violet_red
+  | "papayawhip" -> Named Papaya_whip
+  | "peachpuff" -> Named Peach_puff
+  | "peru" -> Named Peru
+  | "plum" -> Named Plum
+  | "powderblue" -> Named Powder_blue
+  | "rebeccapurple" -> Named Rebecca_purple
+  | "rosybrown" -> Named Rosy_brown
+  | "royalblue" -> Named Royal_blue
+  | "saddlebrown" -> Named Saddle_brown
+  | "salmon" -> Named Salmon
+  | "sandybrown" -> Named Sandy_brown
+  | "seagreen" -> Named Sea_green
+  | "seashell" -> Named Sea_shell
+  | "sienna" -> Named Sienna
+  | "skyblue" -> Named Sky_blue
+  | "slateblue" -> Named Slate_blue
+  | "slategray" -> Named Slate_gray
+  | "slategrey" -> Named Slate_grey
+  | "snow" -> Named Snow
+  | "springgreen" -> Named Spring_green
+  | "steelblue" -> Named Steel_blue
+  | "tan" -> Named Tan
+  | "thistle" -> Named Thistle
+  | "tomato" -> Named Tomato
+  | "turquoise" -> Named Turquoise
+  | "violet" -> Named Violet
+  | "wheat" -> Named Wheat
+  | "whitesmoke" -> Named White_smoke
+  | "yellowgreen" -> Named Yellow_green
   | _ -> err_invalid t ("color: " ^ keyword)
 
 let parse_color_keyword_or_var t : color =
@@ -543,7 +1134,7 @@ let parse_color_keyword_or_var t : color =
   match String.lowercase_ascii keyword with
   | "var" -> parse_var_in_color t
   | _ ->
-      (* Put back the keyword and parse it as a color *)
+      (* Try known color keywords, otherwise treat as custom named color *)
       let t' = Reader.of_string keyword in
       parse_color_keyword t'
 
@@ -552,12 +1143,111 @@ let read_color t : color =
   match peek t with
   | Some '#' -> parse_hex_color t
   | _ -> (
-      match rgb_function t with
-      | Some (r, g, b, alpha) -> (
-          match alpha with
-          | None -> Rgb { r; g; b }
-          | Some a -> Rgba { r; g; b; a })
-      | None -> parse_color_keyword_or_var t)
+      if looking_at t "hsl(" then (
+        skip_n t 4;
+        (* hsl( *)
+        ws t;
+        let hue =
+          let a = read_angle t in
+          match a with
+          | Deg d -> d
+          | Rad r -> r *. (180.0 /. Float.pi)
+          | Grad g -> g *. 0.9
+          | Turn tr -> tr *. 360.0
+        in
+        ws t;
+        let s = read_percentage t in
+        ws t;
+        let l = read_percentage t in
+        ws t;
+        let alpha =
+          if peek t = Some '/' then (
+            skip t;
+            ws t;
+            Some (number t))
+          else None
+        in
+        ws t;
+        expect t ')';
+        Hsl { h = hue; s; l; a = alpha })
+      else if looking_at t "hwb(" then (
+        skip_n t 4;
+        (* hwb( *)
+        ws t;
+        let hue =
+          let a = read_angle t in
+          match a with
+          | Deg d -> d
+          | Rad r -> r *. (180.0 /. Float.pi)
+          | Grad g -> g *. 0.9
+          | Turn tr -> tr *. 360.0
+        in
+        ws t;
+        let w = read_percentage t in
+        ws t;
+        let b = read_percentage t in
+        ws t;
+        let alpha =
+          if peek t = Some '/' then (
+            skip t;
+            ws t;
+            Some (number t))
+          else None
+        in
+        ws t;
+        expect t ')';
+        Hwb { h = hue; w; b; a = alpha })
+      else if looking_at t "color(" then (
+        skip_n t 6;
+        (* color( *)
+        ws t;
+        let space_ident = ident t |> String.lowercase_ascii in
+        let space =
+          match space_ident with
+          | "srgb" -> Srgb
+          | "srgb-linear" -> Srgb_linear
+          | "display-p3" -> Display_p3
+          | "a98-rgb" -> A98_rgb
+          | "prophoto-rgb" -> Prophoto_rgb
+          | "rec2020" -> Rec2020
+          | "lab" -> Lab
+          | "oklab" -> Oklab
+          | "xyz" -> Xyz
+          | "xyz-d50" -> Xyz_d50
+          | "xyz-d65" -> Xyz_d65
+          | "lch" -> Lch
+          | "oklch" -> Oklch
+          | "hsl" -> Hsl
+          | "hwb" -> Hwb
+          | _ -> err_invalid t ("color space: " ^ space_ident)
+        in
+        ws t;
+        let rec read_components acc =
+          ws t;
+          match peek t with
+          | Some ')' | Some '/' -> List.rev acc
+          | Some _ ->
+              let v = number t in
+              read_components (v :: acc)
+          | None -> err_invalid t "color()"
+        in
+        let components = read_components [] in
+        let alpha =
+          if peek t = Some '/' then (
+            skip t;
+            ws t;
+            Some (number t))
+          else None
+        in
+        expect t ')';
+        Color { space; components; alpha })
+      else
+        match rgb_function t with
+        | Some (r, g, b, alpha) -> (
+            match alpha with
+            | None -> Rgb { r; g; b }
+            | Some a -> Rgba { r; g; b; a })
+        | None -> parse_color_keyword_or_var t)
 
 (** Read an angle value *)
 let read_angle t : angle =

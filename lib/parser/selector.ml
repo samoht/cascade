@@ -1,6 +1,6 @@
 (** CSS selector parser using simple Reader API. *)
 
-open Reader
+open Css.Reader
 
 (** Error helpers *)
 let err_expected t what = raise (Parse_error ("expected " ^ what, t))

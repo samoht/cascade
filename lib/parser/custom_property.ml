@@ -1,6 +1,6 @@
 (** CSS Custom Properties (CSS Variables) parsing using Reader API *)
 
-open Reader
+open Css.Reader
 
 (** Check if a property name is a custom property (starts with --) *)
 let is_custom_property name =

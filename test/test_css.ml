@@ -118,7 +118,7 @@ let debug_css ?(label = "") css_string expected_patterns =
 
 let test_property_creation () =
   let color_prop = color (Hex { hash = true; value = "ff0000" }) in
-  let padding_prop = padding (Px 10) in
+  let padding_prop = padding (Px 10.) in
 
   (* Verify properties are created correctly *)
   let sheet1 =
@@ -142,10 +142,10 @@ let test_property_deduplication () =
   let props =
     [
       color (Hex { hash = true; value = "ff0000" });
-      padding (Px 10);
+      padding (Px 10.);
       color (Hex { hash = true; value = "0000ff" });
       (* Should override first color *)
-      margin (Px 5);
+      margin (Px 5.);
     ]
   in
 
@@ -198,7 +198,7 @@ let test_minification () =
     (Astring.String.is_infix ~affix:"color:" minified)
 
 let test_media_query () =
-  let rules = [ rule ~selector:responsive [ padding (Px 20) ] ] in
+  let rules = [ rule ~selector:responsive [ padding (Px 20.) ] ] in
   let mq = media ~condition:"(min-width: 768px)" rules in
   let sheet = stylesheet [ Media mq ] in
   let output = to_string sheet in
@@ -217,8 +217,8 @@ let test_inline_style () =
   let props =
     [
       color (Hex { hash = true; value = "ff0000" });
-      padding (Px 10);
-      margin (Px 5);
+      padding (Px 10.);
+      margin (Px 5.);
     ]
   in
 
@@ -239,7 +239,7 @@ let test_inline_style () =
   Alcotest.(check bool) "has semicolons" true (String.contains inline ';')
 
 let test_grid_template () =
-  let template_cols = Tracks [ Fr 1.0; Grid_length (Px 200); Fr 2.0 ] in
+  let template_cols = Tracks [ Fr 1.0; Grid_length (Px 200.); Fr 2.0 ] in
   let prop = grid_template_columns template_cols in
   let sheet = stylesheet [ Rule (rule ~selector:grid [ prop ]) ] in
   let output = to_string sheet in
@@ -250,7 +250,7 @@ let test_grid_template () =
     (Astring.String.is_infix ~affix:"1fr 200px 2fr" output)
 
 let test_container_query () =
-  let rules = [ rule ~selector:container_item [ padding (Px 30) ] ] in
+  let rules = [ rule ~selector:container_item [ padding (Px 30.) ] ] in
   let cq = Css.container ~condition:"min-width: 400px" rules in
   let sheet = stylesheet [ Container cq ] in
   let output = to_string sheet in
@@ -303,9 +303,9 @@ let test_merge_rules () =
   let rules =
     [
       rule ~selector:btn [ color (Hex { hash = true; value = "ff0000" }) ];
-      rule ~selector:btn [ padding (Px 10) ];
-      rule ~selector:card [ margin (Px 5) ];
-      rule ~selector:btn [ margin (Px 15) ];
+      rule ~selector:btn [ padding (Px 10.) ];
+      rule ~selector:card [ margin (Px 5.) ];
+      rule ~selector:btn [ margin (Px 15.) ];
     ]
   in
 
@@ -545,7 +545,7 @@ let test_full_optimization_with_layers () =
     layer ~name:"base"
       [
         rule_to_nested
-          (rule ~selector:universal [ margin (Px 0); padding (Px 0) ]);
+          (rule ~selector:universal [ margin (Px 0.); padding (Px 0.) ]);
       ]
   in
 
@@ -646,7 +646,7 @@ let test_layer_precedence_respected () =
 let test_source_order_within_selector () =
   let rule =
     rule ~selector:card
-      [ padding (Px 10); padding (Px 20) (* Later declaration should win *) ]
+      [ padding (Px 10.); padding (Px 20.) (* Later declaration should win *) ]
   in
   let stylesheet = stylesheet [ Rule rule ] in
   let optimized = optimize stylesheet in
@@ -735,12 +735,12 @@ let test_merge_truly_adjacent () =
   let rule1 =
     rule ~selector:a [ color (Hex { hash = false; value = "ff0000" }) ]
   in
-  let rule2 = rule ~selector:a [ font_size (Px 14) ] in
+  let rule2 = rule ~selector:a [ font_size (Px 14.) ] in
   (* Adjacent - should merge *)
   let rule3 = rule ~selector:b [ margin Zero ] in
-  let rule4 = rule ~selector:a [ padding (Px 10) ] in
+  let rule4 = rule ~selector:a [ padding (Px 10.) ] in
   (* Not adjacent to other .a rules *)
-  let rule5 = rule ~selector:a [ border_width (Px 1) ] in
+  let rule5 = rule ~selector:a [ border_width (Px 1.) ] in
   (* Adjacent to previous .a - should merge *)
 
   let rules = [ Rule rule1; Rule rule2; Rule rule3; Rule rule4; Rule rule5 ] in
@@ -878,8 +878,8 @@ let test_no_merge_across_supports () =
   with_debug "no_merge_across_supports_boundary" @@ fun () ->
   let open Css in
   (* Create rules with same selector separated by @supports *)
-  let rule1 = rule ~selector:feature [ padding (Px 10) ] in
-  let rule2 = rule ~selector:feature [ margin (Px 5) ] in
+  let rule1 = rule ~selector:feature [ padding (Px 10.) ] in
+  let rule2 = rule ~selector:feature [ margin (Px 5.) ] in
   let supports_rule =
     supports ~condition:"(display: grid)"
       [ rule ~selector:feature [ display Grid ] ]
@@ -924,7 +924,7 @@ let test_important_preservation () =
     rule ~selector:critical
       [ important (color (Hex { hash = false; value = "ff0000" })) ]
   in
-  let rule2 = rule ~selector:critical [ padding (Px 10) ] in
+  let rule2 = rule ~selector:critical [ padding (Px 10.) ] in
   let rule3 =
     rule ~selector:normal [ color (Hex { hash = false; value = "0000ff" }) ]
   in
@@ -949,9 +949,9 @@ let test_empty_rules_handling () =
   let rule1 = rule ~selector:empty_class [] in
   let rule2 = rule ~selector:empty_class [] in
   (* Adjacent empty with same selector *)
-  let rule3 = rule ~selector:has_content [ padding (Px 10) ] in
+  let rule3 = rule ~selector:has_content [ padding (Px 10.) ] in
   let rule4 = rule ~selector:also_empty [] in
-  let rule5 = rule ~selector:another [ margin (Px 5) ] in
+  let rule5 = rule ~selector:another [ margin (Px 5.) ] in
 
   let stylesheet =
     stylesheet [ Rule rule1; Rule rule2; Rule rule3; Rule rule4; Rule rule5 ]
@@ -980,8 +980,8 @@ let test_optimize_within_nested_contexts () =
   (* Create adjacent rules inside @media that should merge *)
   let media_rules =
     [
-      rule ~selector:responsive [ padding (Px 10) ];
-      rule ~selector:responsive [ margin (Px 5) ];
+      rule ~selector:responsive [ padding (Px 10.) ];
+      rule ~selector:responsive [ margin (Px 5.) ];
       rule ~selector:other [ color (Hex { hash = false; value = "000000" }) ];
     ]
   in
@@ -1056,8 +1056,8 @@ let test_order_preservation () =
   (* Create rules with diff_selectorerent selectors in specific order *)
   let rules =
     [
-      rule ~selector:z_class [ padding (Px 10) ];
-      rule ~selector:a_class [ margin (Px 5) ];
+      rule ~selector:z_class [ padding (Px 10.) ];
+      rule ~selector:a_class [ margin (Px 5.) ];
       rule ~selector:m_class [ color (Hex { hash = false; value = "ff0000" }) ];
       rule ~selector:b_class [ font_size (Rem 1.0) ];
     ]
@@ -1101,10 +1101,10 @@ let test_no_property_based_reordering () =
   (* Create rules that might be tempting to reorder by property type *)
   let rules =
     [
-      rule ~selector:margins [ margin (Px 10) ];
+      rule ~selector:margins [ margin (Px 10.) ];
       rule ~selector:colors [ color (Hex { hash = false; value = "ff0000" }) ];
-      rule ~selector:more_margins [ margin (Px 20) ];
-      rule ~selector:paddings [ padding (Px 5) ];
+      rule ~selector:more_margins [ margin (Px 20.) ];
+      rule ~selector:paddings [ padding (Px 5.) ];
       rule ~selector:more_colors
         [ color (Hex { hash = false; value = "0000ff" }) ];
     ]
@@ -1129,11 +1129,11 @@ let test_no_cross_context_optimization () =
   (* Same selector in diff_selectorerent contexts should not merge *)
   let base_layer =
     layer ~name:"base"
-      [ rule_to_nested (rule ~selector:btn [ padding (Px 10) ]) ]
+      [ rule_to_nested (rule ~selector:btn [ padding (Px 10.) ]) ]
   in
   let utilities_layer =
     layer ~name:"utilities"
-      [ rule_to_nested (rule ~selector:btn [ margin (Px 5) ]) ]
+      [ rule_to_nested (rule ~selector:btn [ margin (Px 5.) ]) ]
   in
 
   let stylesheet = stylesheet [ Layer base_layer; Layer utilities_layer ] in
