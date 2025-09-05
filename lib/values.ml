@@ -162,15 +162,24 @@ let pp_fun name pp_args ctx args =
 let pp_fun' name pp_item ctx items =
   pp_fun name (Pp.list ~sep:Pp.comma pp_item) ctx items
 
-let rec pp_calc : type a. a Pp.t -> a calc Pp.t =
+let pp_calc : type a. a Pp.t -> a calc Pp.t =
  fun pp_value ctx calc ->
-  match calc with
-  | Val v -> pp_value ctx v
-  | Var v -> pp_var pp_value ctx v
-  | Expr (left, op, right) ->
-      pp_calc pp_value ctx left;
-      pp_op ctx op;
-      pp_calc pp_value ctx right
+  pp_fun "calc"
+    (fun ctx calc ->
+      match calc with
+      | Val v -> pp_value ctx v
+      | Var v -> pp_var pp_value ctx v
+      | Expr (left, op, right) ->
+          let rec pp_calc_inner ctx = function
+            | Val v -> pp_value ctx v
+            | Var v -> pp_var pp_value ctx v
+            | Expr (left, op, right) ->
+                pp_calc_inner ctx left;
+                pp_op ctx op;
+                pp_calc_inner ctx right
+          in
+          pp_calc_inner ctx (Expr (left, op, right)))
+    ctx calc
 
 let rec pp_length : length Pp.t =
  fun ctx -> function
@@ -220,7 +229,7 @@ let rec pp_length : length Pp.t =
       match cv with
       | Expr (Val (Num f), Mult, Val (Px 1)) when f = infinity ->
           Pp.string ctx "3.40282e38px"
-      | _ -> pp_fun "calc" (pp_calc pp_length) ctx cv)
+      | _ -> pp_calc pp_length ctx cv)
 
 and pp_color_name : color_name Pp.t =
  fun ctx -> function

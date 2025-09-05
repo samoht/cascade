@@ -325,8 +325,6 @@ let test_calc_with_different_units () =
   check_calc "calc(50vh + 10px)";
   check_calc "calc(100% - 20px)";
   check_calc "calc(1em + 2rem + 3px)";
-
-  (* Round-trip test is already covered by check_calc above *)
   check_calc "calc(100vw - 50px)"
 
 let test_var_parsing_and_printing () =
@@ -351,6 +349,36 @@ let test_var_with_multiple_fallbacks () =
   check_length "var(--custom-size, 10px)";
   check_angle "var(--custom-angle, 45deg)";
   check_duration "var(--custom-time, 1s)"
+
+let test_calc_with_other_types () =
+  (* Test calc with angles *)
+  let check_calc_angle =
+    check_value "calc_angle" (read_calc read_angle) (pp_calc pp_angle)
+  in
+
+  check_calc_angle "calc(180deg + 0.5turn)";
+  check_calc_angle "calc(90deg * 2)";
+  check_calc_angle "calc(360deg / 4)";
+
+  (* Test calc with durations *)
+  let check_calc_duration =
+    check_value "calc_duration" (read_calc read_duration) (pp_calc pp_duration)
+  in
+
+  check_calc_duration "calc(1s + 500ms)";
+  check_calc_duration "calc(2s - 500ms)";
+  check_calc_duration "calc(100ms * 10)";
+
+  (* Test calc with percentages *)
+  let check_calc_percentage =
+    check_value "calc_percentage"
+      (read_calc read_percentage)
+      (pp_calc pp_percentage)
+  in
+
+  check_calc_percentage "calc(50% + 25%)";
+  check_calc_percentage "calc(100% / 2)";
+  check_calc_percentage "calc(25% * 3)"
 
 let suite =
   [
@@ -383,5 +411,6 @@ let suite =
         test_case "float value formatting" `Quick test_float_value_formatting;
         test_case "var with multiple fallbacks" `Quick
           test_var_with_multiple_fallbacks;
+        test_case "calc with other types" `Quick test_calc_with_other_types;
       ] );
   ]
