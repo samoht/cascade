@@ -2,7 +2,7 @@ open Alcotest
 open Css_parser
 
 let test_one () =
-  let r = Reader.of_string "color: red;" in
+  let r = Css.Reader.of_string "color: red;" in
   match Declaration.one r with
   | Some (name, value, important) ->
       check string "property" "color" name;
@@ -11,7 +11,7 @@ let test_one () =
   | None -> fail "Expected declaration"
 
 let test_one_important () =
-  let r = Reader.of_string "margin: 10px !important;" in
+  let r = Css.Reader.of_string "margin: 10px !important;" in
   match Declaration.one r with
   | Some (name, value, important) ->
       check string "property" "margin" name;
@@ -21,7 +21,7 @@ let test_one_important () =
 
 let test_declarations () =
   let r =
-    Reader.of_string "color: red; margin: 10px; padding: 5px !important"
+    Css.Reader.of_string "color: red; margin: 10px; padding: 5px !important"
   in
   let decls = Declaration.declarations r in
   check int "count" 3 (List.length decls);
@@ -37,7 +37,7 @@ let test_declarations () =
   check bool "third is important" true imp3
 
 let test_block () =
-  let r = Reader.of_string "{ color: blue; display: block; }" in
+  let r = Css.Reader.of_string "{ color: blue; display: block; }" in
   let decls = Declaration.block r in
   check int "count" 2 (List.length decls);
 
@@ -46,21 +46,23 @@ let test_block () =
   check string "first value" "blue" value1
 
 let test_empty () =
-  let r = Reader.of_string "" in
+  let r = Css.Reader.of_string "" in
   let decls = Declaration.declarations r in
   check int "empty" 0 (List.length decls)
 
 let test_missing_semicolon_and_strings () =
   (* Missing trailing semicolon should still parse value; quoted strings with
      escapes *)
-  let r = Reader.of_string "content: \"a\\\"b\"; width: calc(100% - 10px)" in
+  let r =
+    Css.Reader.of_string "content: \"a\\\"b\"; width: calc(100% - 10px)"
+  in
   (match Declaration.one r with
   | Some (n, v, imp) ->
       check string "prop1" "content" n;
       check string "val1" "\"a\\\"b\"" v;
       check bool "imp1" false imp
   | None -> fail "expected first decl");
-  let _ = Reader.ws r in
+  let _ = Css.Reader.ws r in
   match Declaration.one r with
   | Some (n, v, _) ->
       check string "prop2" "width" n;
@@ -69,7 +71,7 @@ let test_missing_semicolon_and_strings () =
 
 let test_block_nested_and_important () =
   let r =
-    Reader.of_string
+    Css.Reader.of_string
       "{ padding: 10px !important; background: url(x.png), \
        linear-gradient(red, blue); }"
   in

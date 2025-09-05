@@ -40,7 +40,7 @@ module To_string = struct
 end
 
 (** Helper to create a Reader from a string *)
-let reader_of_string s = Css_parser.Reader.of_string s
+let reader_of_string s = Css.Reader.of_string s
 
 (** Helper to parse and pretty-print a value *)
 let parse_and_pp parser pp s =

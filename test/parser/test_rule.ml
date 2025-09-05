@@ -2,20 +2,20 @@ open Alcotest
 open Css_parser
 
 let test_one_style_rule () =
-  let r = Reader.of_string ".class { color: red; }" in
+  let r = Css.Reader.of_string ".class { color: red; }" in
   match Rule.one r with
   | Some _ -> check bool "parsed style rule" true true
   | None -> fail "Expected style rule"
 
 let test_one_at_rule () =
-  let r = Reader.of_string "@media screen { .class { color: blue; } }" in
+  let r = Css.Reader.of_string "@media screen { .class { color: blue; } }" in
   match Rule.one r with
   | Some _ -> check bool "parsed at-rule" true true
   | None -> fail "Expected at-rule"
 
 let test_rules () =
   let css = ".a { color: red; } .b { margin: 10px; }" in
-  let r = Reader.of_string css in
+  let r = Css.Reader.of_string css in
   let rules = Rule.rules r in
   check int "rule count" 2 (List.length rules)
 
@@ -23,12 +23,12 @@ let test_stylesheet () =
   let css =
     ".class { padding: 5px; } @media print { .hidden { display: none; } }"
   in
-  let r = Reader.of_string css in
+  let r = Css.Reader.of_string css in
   let _ = Rule.stylesheet r in
   check bool "parsed stylesheet" true true
 
 let test_empty () =
-  let r = Reader.of_string "" in
+  let r = Css.Reader.of_string "" in
   let rules = Rule.rules r in
   check int "empty" 0 (List.length rules)
 
@@ -36,7 +36,7 @@ let test_media_rule_parsing () =
   let css =
     "@media (min-width: 768px) { .a { color: red } .b { margin: 0 } }"
   in
-  let r = Reader.of_string css in
+  let r = Css.Reader.of_string css in
   match Rule.stylesheet r with
   | sheet ->
       let medias = Css.stylesheet_media_queries sheet in
@@ -49,7 +49,7 @@ let test_layer_and_supports_parsing () =
     "@layer components { .btn { padding: 4px } @supports (display:grid) { .g { \
      display: grid } } }"
   in
-  let r = Reader.of_string css in
+  let r = Css.Reader.of_string css in
   let sheet = Rule.stylesheet r in
   let layers = Css.stylesheet_layers sheet in
   check int "one layer" 1 (List.length layers);
@@ -58,7 +58,7 @@ let test_layer_and_supports_parsing () =
 
 let test_unknown_at_rule_skipped () =
   let css = "@unknown stuff; .x { color: red }" in
-  let r = Reader.of_string css in
+  let r = Css.Reader.of_string css in
   let sheet = Rule.stylesheet r in
   check int "rule preserved after unknown" 1
     (Css.stylesheet_rules sheet |> List.length)

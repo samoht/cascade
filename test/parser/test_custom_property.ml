@@ -4,7 +4,7 @@ open Alcotest
 
 let test_is_custom_property () =
   let test name expected =
-    let result = Css_parser.Custom_property.is_custom_property name in
+    let result = Css.Parser.Custom_property.is_custom_property name in
     check bool (Fmt.str "is_custom_property %s" name) expected result
   in
 
@@ -23,12 +23,12 @@ let test_is_custom_property () =
 
 let test_read_var () =
   let test input expected_name expected_fallback =
-    let t = Css_parser.Reader.of_string input in
+    let t = Css.Reader.of_string input in
     try
-      let name, fallback = Css_parser.Custom_property.read_var t in
+      let name, fallback = Css.Parser.Custom_property.read_var t in
       check string "var name" expected_name name;
       check (option string) "var fallback" expected_fallback fallback
-    with Css_parser.Reader.Parse_error (msg, _) ->
+    with Css.Reader.Parse_error (msg, _) ->
       fail (Fmt.str "Failed to parse %s: %s" input msg)
   in
 
@@ -40,11 +40,11 @@ let test_read_var () =
 
 let test_read_custom_property_name () =
   let test input expected =
-    let t = Css_parser.Reader.of_string input in
+    let t = Css.Reader.of_string input in
     try
-      let result = Css_parser.Custom_property.read_custom_property_name t in
+      let result = Css.Parser.Custom_property.read_custom_property_name t in
       check string "custom property name" expected result
-    with Css_parser.Reader.Parse_error (msg, _) ->
+    with Css.Reader.Parse_error (msg, _) ->
       fail (Fmt.str "Failed to parse %s: %s" input msg)
   in
 
@@ -55,11 +55,11 @@ let test_read_custom_property_name () =
 
 let test_read_custom_property_value () =
   let test input desc =
-    let t = Css_parser.Reader.of_string input in
+    let t = Css.Reader.of_string input in
     try
-      let result = Css_parser.Custom_property.read_custom_property_value t in
+      let result = Css.Parser.Custom_property.read_custom_property_value t in
       check string (Fmt.str "custom property value: %s" desc) input result
-    with Css_parser.Reader.Parse_error (msg, _) ->
+    with Css.Reader.Parse_error (msg, _) ->
       fail (Fmt.str "Failed to parse %s: %s" input msg)
   in
 
@@ -85,8 +85,8 @@ let test_read_custom_property_value () =
 
 let test_read_complex_values () =
   let test input desc =
-    let t = Css_parser.Reader.of_string input in
-    let result = Css_parser.Custom_property.read_custom_property_value t in
+    let t = Css.Reader.of_string input in
+    let result = Css.Parser.Custom_property.read_custom_property_value t in
     (* Just verify it parses without error and preserves the general
        structure *)
     check bool (Fmt.str "parses %s" desc) true (String.length result > 0)
@@ -106,8 +106,8 @@ let test_read_complex_values () =
 
 let test_whitespace_trimming () =
   let test input expected desc =
-    let t = Css_parser.Reader.of_string input in
-    let result = Css_parser.Custom_property.read_custom_property_value t in
+    let t = Css.Reader.of_string input in
+    let result = Css.Parser.Custom_property.read_custom_property_value t in
     check string desc expected result
   in
 

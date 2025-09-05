@@ -14,8 +14,8 @@ end
 
 let test_display_parsing () =
   let test input expected =
-    let t = Css_parser.Reader.of_string input in
-    let result = Css_parser.Property.read_display t in
+    let t = Css.Reader.of_string input in
+    let result = Css.Parser.Property.read_display t in
     let pp_str = To_string.display result in
     check string (Fmt.str "display %s" input) expected pp_str
   in
@@ -30,8 +30,8 @@ let test_display_parsing () =
 
 let test_position_parsing () =
   let test input expected =
-    let t = Css_parser.Reader.of_string input in
-    let result = Css_parser.Property.read_position t in
+    let t = Css.Reader.of_string input in
+    let result = Css.Parser.Property.read_position t in
     let pp_str = To_string.position result in
     check string (Fmt.str "position %s" input) expected pp_str
   in
@@ -44,8 +44,8 @@ let test_position_parsing () =
 
 let test_font_weight_parsing () =
   let test input expected =
-    let t = Css_parser.Reader.of_string input in
-    let result = Css_parser.Property.read_font_weight t in
+    let t = Css.Reader.of_string input in
+    let result = Css.Parser.Property.read_font_weight t in
     let pp_str = To_string.font_weight result in
     check string (Fmt.str "font-weight %s" input) expected pp_str
   in
@@ -57,8 +57,8 @@ let test_font_weight_parsing () =
 
 let test_cursor_parsing () =
   let test input expected =
-    let t = Css_parser.Reader.of_string input in
-    let result = Css_parser.Property.read_cursor t in
+    let t = Css.Reader.of_string input in
+    let result = Css.Parser.Property.read_cursor t in
     let pp_str = To_string.cursor result in
     check string (Fmt.str "cursor %s" input) expected pp_str
   in
@@ -71,8 +71,8 @@ let test_cursor_parsing () =
 
 let test_transform_parsing () =
   let test input expected =
-    let t = Css_parser.Reader.of_string input in
-    let result = Css_parser.Property.read_transform t in
+    let t = Css.Reader.of_string input in
+    let result = Css.Parser.Property.read_transform t in
     let pp_str = To_string.transform result in
     check string (Fmt.str "transform %s" input) expected pp_str
   in
@@ -84,8 +84,8 @@ let test_transform_parsing () =
 
 let test_box_shadow_parsing () =
   let test input expected =
-    let t = Css_parser.Reader.of_string input in
-    let result = Css_parser.Property.read_box_shadow t in
+    let t = Css.Reader.of_string input in
+    let result = Css.Parser.Property.read_box_shadow t in
     let pp_str = To_string.box_shadow result in
     check string (Fmt.str "box-shadow %s" input) expected pp_str
   in
@@ -97,11 +97,11 @@ let test_box_shadow_parsing () =
 
 let test_round_trip_display () =
   let round_trip input =
-    let t = Css_parser.Reader.of_string input in
-    let parsed = Css_parser.Property.read_display t in
+    let t = Css.Reader.of_string input in
+    let parsed = Css.Parser.Property.read_display t in
     let output = To_string.display parsed in
-    let t2 = Css_parser.Reader.of_string output in
-    let reparsed = Css_parser.Property.read_display t2 in
+    let t2 = Css.Reader.of_string output in
+    let reparsed = Css.Parser.Property.read_display t2 in
     let output2 = To_string.display reparsed in
     check string (Fmt.str "round-trip %s" input) output output2
   in
@@ -112,8 +112,8 @@ let test_round_trip_display () =
 
 let test_round_trip_transform () =
   let round_trip input =
-    let t = Css_parser.Reader.of_string input in
-    let parsed = Css_parser.Property.read_transform t in
+    let t = Css.Reader.of_string input in
+    let parsed = Css.Parser.Property.read_transform t in
     let output = To_string.transform parsed in
     (* For transforms, we need to handle that output might be normalized *)
     check bool

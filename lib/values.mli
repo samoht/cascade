@@ -333,8 +333,35 @@ val rgb : int -> int -> int -> color
 val rgba : int -> int -> int -> float -> color
 (** [rgba r g b a] creates an RGBA color with alpha. *)
 
+val hsl : float -> float -> float -> color
+(** [hsl h s l] creates an HSL color. *)
+
+val hsla : float -> float -> float -> float -> color
+(** [hsla h s l a] creates an HSLA color with alpha. *)
+
+val hwb : float -> float -> float -> color
+(** [hwb h w b] creates an HWB color. *)
+
+val hwba : float -> float -> float -> float -> color
+(** [hwba h w b a] creates an HWB color with alpha. *)
+
 val oklch : float -> float -> float -> color
 (** [oklch l c h] creates an OKLCH color. *)
+
+val oklcha : float -> float -> float -> float -> color
+(** [oklcha l c h a] creates an OKLCH color with alpha. *)
+
+val oklab : float -> float -> float -> color
+(** [oklab l a b] creates an OKLAB color. *)
+
+val oklaba : float -> float -> float -> float -> color
+(** [oklaba l a b alpha] creates an OKLAB color with alpha. *)
+
+val lch : float -> float -> float -> color
+(** [lch l c h] creates an LCH color. *)
+
+val lcha : float -> float -> float -> float -> color
+(** [lcha l c h a] creates an LCH color with alpha. *)
 
 val color_name : color_name -> color
 (** [color_name n] creates a named color. *)
