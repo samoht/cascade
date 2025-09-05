@@ -130,17 +130,18 @@ let test_round_trip_color () =
   round_trip "#fff";
   round_trip "transparent"
 
-let test_var_in_expressions () =
-  (* These should fail with clear error messages about unsupported features *)
-  let expect_unsupported_error test_name f =
+let test_var_function_errors () =
+  (* Test that var() functions in unsupported contexts produce clear error
+     messages *)
+  let expect_not_implemented_error test_name f =
     try
       f ();
-      fail (test_name ^ " should have failed with unsupported error")
+      fail (test_name ^ " should have failed with 'not implemented' error")
     with
     | Css_parser.Reader.Parse_error msg
       when Astring.String.is_infix ~affix:"not implemented" msg ->
-        (* Expected - test passes *)
-        check bool (test_name ^ " error contains 'not implemented'") true true
+        (* This is expected behavior - var() is not yet implemented *)
+        ()
     | Css_parser.Reader.Parse_error msg ->
         fail (test_name ^ " failed with wrong error: " ^ msg)
     | exn ->
@@ -149,13 +150,13 @@ let test_var_in_expressions () =
          ^ Printexc.to_string exn)
   in
 
-  (* Test var() in color context *)
-  expect_unsupported_error "var() in color" (fun () ->
+  (* Test var() in color context fails clearly *)
+  expect_not_implemented_error "var() in color" (fun () ->
       let t = Css_parser.Reader.of_string "var(--primary-color)" in
       ignore (Css_parser.Values.read_color t));
 
-  (* Test var() in calc expressions *)
-  expect_unsupported_error "var() in calc" (fun () ->
+  (* Test var() in calc expressions fails clearly *)
+  expect_not_implemented_error "var() in calc" (fun () ->
       let t = Css_parser.Reader.of_string "calc(100% - var(--spacing))" in
       ignore (Css_parser.Values.read_calc t))
 
@@ -169,6 +170,5 @@ let tests =
     test_case "parse calc expressions" `Quick test_calc_parsing;
     test_case "round-trip lengths" `Quick test_round_trip_length;
     test_case "round-trip colors" `Quick test_round_trip_color;
-    test_case "var() in expressions fails appropriately" `Quick
-      test_var_in_expressions;
+    test_case "var() function error handling" `Quick test_var_function_errors;
   ]
