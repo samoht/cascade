@@ -368,6 +368,11 @@ let rec pp_number : number Pp.t =
       Pp.char ctx '%'
   | Var v -> pp_var pp_number ctx v
 
+let pp_percentage : float Pp.t =
+ fun ctx p ->
+  Pp.float ctx p;
+  Pp.char ctx '%'
+
 (* Calc module for building calc() expressions *)
 module Calc = struct
   let add left right = Expr (left, Add, right)
@@ -397,8 +402,6 @@ end
 
 (** Error helpers *)
 let err_invalid t what = raise (Parse_error ("invalid " ^ what, t))
-
-let err_expected t what = raise (Parse_error ("expected " ^ what, t))
 
 (** Read a CSS length value *)
 let read_length t : length =
@@ -584,44 +587,52 @@ let read_percentage t : float =
   expect t '%';
   n
 
-(** Helper to read a length value for fallback parsing *)
-let rec read_length_value t : length =
+let rec read_calc_expr : type a. (Reader.t -> a) -> Reader.t -> a calc =
+ fun read_a t ->
   ws t;
-  (* Try to parse number first *)
-  let num_opt = try_parse number t in
-  match num_opt with
-  | None -> (
-      (* Try keyword values *)
-      let keyword = ident t in
-      match String.lowercase_ascii keyword with
-      | "auto" -> Auto
-      | "max-content" -> Max_content
-      | "min-content" -> Min_content
-      | "fit-content" -> Fit_content
-      | "inherit" -> Inherit
-      | _ -> err_invalid t ("length keyword: " ^ keyword))
-  | Some n when n = 0.0 -> Zero
-  | Some n -> (
-      (* Check for unit *)
-      let unit = while_ t (fun c -> (c >= 'a' && c <= 'z') || c = '%') in
-      match unit with
-      | "" -> Num n
-      | "px" -> Px (int_of_float n)
-      | "em" -> Em n
-      | "rem" -> Rem n
-      | "vh" -> Vh n
-      | "vw" -> Vw n
-      | "ch" -> Ch n
-      | "%" -> Pct n
-      | _ -> err_invalid t ("length unit: " ^ unit))
+  let left = read_calc_term read_a t in
+  ws t;
+  match peek t with
+  | Some '+' ->
+      skip t;
+      Expr (left, Add, read_calc_expr read_a t)
+  | Some '-' ->
+      skip t;
+      Expr (left, Sub, read_calc_expr read_a t)
+  | _ -> left
 
-(** Read calc() expression *)
-and read_calc t : length calc =
+and read_calc_term : type a. (Reader.t -> a) -> Reader.t -> a calc =
+ fun read_a t ->
+  ws t;
+  let left = read_calc_factor read_a t in
+  ws t;
+  match peek t with
+  | Some '*' ->
+      skip t;
+      Expr (left, Mult, read_calc_term read_a t)
+  | Some '/' ->
+      skip t;
+      Expr (left, Div, read_calc_term read_a t)
+  | _ -> left
+
+and read_calc_factor : type a. (Reader.t -> a) -> Reader.t -> a calc =
+ fun read_a t ->
+  ws t;
+  if peek t = Some '(' then (
+    skip t;
+    let expr = read_calc_expr read_a t in
+    ws t;
+    expect t ')';
+    expr)
+  else read_calc read_a t
+
+and read_calc : type a. (Reader.t -> a) -> Reader.t -> a calc =
+ fun read_a t ->
   ws t;
   if looking_at t "calc(" then (
     skip_n t 5;
     (* skip "calc(" *)
-    let expr = read_calc_expr t in
+    let expr = read_calc_expr read_a t in
     expect t ')';
     expr)
   else if looking_at t "var(" then (
@@ -640,7 +651,7 @@ and read_calc t : length calc =
         skip t;
         ws t;
         (* Parse the fallback length value *)
-        Some (read_length_value t))
+        Some (read_a t))
       else None
     in
     expect t ')';
@@ -648,53 +659,5 @@ and read_calc t : length calc =
     let v = var_ref ?fallback var_name in
     Var v)
   else
-    (* Try to parse a value *)
-    match try_parse number t with
-    | Some n -> (
-        let unit = while_ t (fun c -> (c >= 'a' && c <= 'z') || c = '%') in
-        match unit with
-        | "" -> Val (Num n)
-        | "px" -> Val (Px (int_of_float n))
-        | "em" -> Val (Em n)
-        | "rem" -> Val (Rem n)
-        | "%" -> Val (Pct n)
-        | "vh" -> Val (Vh n)
-        | "vw" -> Val (Vw n)
-        | _ -> err_invalid t ("calc unit: " ^ unit))
-    | None -> err_expected t "calc expression"
-
-and read_calc_expr t : length calc =
-  ws t;
-  let left = read_calc_term t in
-  ws t;
-  match peek t with
-  | Some '+' ->
-      skip t;
-      Expr (left, Add, read_calc_expr t)
-  | Some '-' ->
-      skip t;
-      Expr (left, Sub, read_calc_expr t)
-  | _ -> left
-
-and read_calc_term t : length calc =
-  ws t;
-  let left = read_calc_factor t in
-  ws t;
-  match peek t with
-  | Some '*' ->
-      skip t;
-      Expr (left, Mult, read_calc_term t)
-  | Some '/' ->
-      skip t;
-      Expr (left, Div, read_calc_term t)
-  | _ -> left
-
-and read_calc_factor t : length calc =
-  ws t;
-  if peek t = Some '(' then (
-    skip t;
-    let expr = read_calc_expr t in
-    ws t;
-    expect t ')';
-    expr)
-  else read_calc t
+    (* Try to parse a value directly *)
+    Val (read_a t)

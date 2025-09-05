@@ -1,257 +1,346 @@
 (** Tests for CSS Values parsing *)
 
 open Alcotest
+open Css.Values
 
-(** Helper module for converting CSS values to strings *)
-module To_string = struct
-  let length v = Css.Pp.to_string Css.Values.pp_length v
-  let color v = Css.Pp.to_string Css.Values.pp_color v
-  let angle v = Css.Pp.to_string Css.Values.pp_angle v
-  let duration v = Css.Pp.to_string Css.Values.pp_duration v
-  let calc pp_value v = Css.Pp.to_string (Css.Values.pp_calc pp_value) v
-end
+(** Generic read/print round-trip test *)
+let check_value type_name reader pp_func ?expected input =
+  let expected = Option.value ~default:input expected in
+  let t = Css.Reader.of_string input in
+  let result = reader t in
+  let pp_str = Css.Pp.to_string pp_func result in
+  check string (Fmt.str "%s %s" type_name input) expected pp_str
 
-let parse_and_pp parser pp s =
-  let t = Css.Reader.of_string s in
-  pp (parser t)
+(** Test functions for each value type *)
+let check_length = check_value "length" read_length pp_length
+
+let check_color = check_value "color" read_color pp_color
+let check_angle = check_value "angle" read_angle pp_angle
+let check_duration = check_value "duration" read_duration pp_duration
+let check_percentage = check_value "percentage" read_percentage pp_percentage
+let check_calc = check_value "calc" (read_calc read_length) (pp_calc pp_length)
+
+(** Round-trip test - parse, print, parse again, print again *)
+let check_round_trip_stable _type_name reader pp_func input =
+  let t = Css.Reader.of_string input in
+  let parsed = reader t in
+  let output = Css.Pp.to_string pp_func parsed in
+  let t2 = Css.Reader.of_string output in
+  let reparsed = reader t2 in
+  let output2 = Css.Pp.to_string pp_func reparsed in
+  check string (Fmt.str "round-trip %s" input) output output2
 
 let test_length_parsing () =
-  let test input expected =
-    let t = Css.Reader.of_string input in
-    let result = Css.Values.read_length t in
-    let pp_str = To_string.length result in
-    check string (Fmt.str "length %s" input) expected pp_str
-  in
+  (* Basic units *)
+  check_length "10px";
+  check_length ~expected:"0" "0px";
+  check_length "-10px";
+  check_length "2.5rem";
+  check_length "0.5em";
+  check_length "-1.5em";
+  check_length "100%";
+  check_length ~expected:"0" "0%";
+  check_length "-50%";
 
-  test "10px" "10px";
-  test "2.5rem" "2.5rem";
-  test "100%" "100%";
-  test "50vh" "50vh";
-  test "auto" "auto";
-  test "0" "0";
-  test "max-content" "max-content";
-  test "min-content" "min-content";
-  test "fit-content" "fit-content"
+  (* Viewport units *)
+  check_length "50vh";
+  check_length "100vw";
+
+  (* Container units *)
+  check_length "1ch";
+  check_length "2lh";
+
+  (* Keywords *)
+  check_length "auto";
+  check_length "inherit";
+  check_length "max-content";
+  check_length "min-content";
+  check_length "fit-content";
+  check_length "from-font";
+
+  (* Edge cases *)
+  check_length "0";
+  check_length ~expected:"0.5rem" ".5rem";
+  check_length "999999px";
+  check_length "-999999px";
+  check_length "0.000001em";
+  check_length "0.0000001rem";
+  check_length "999999999px";
+  check_length "-999px";
+  check_length ".5px"
 
 let test_color_parsing () =
-  let test input expected =
-    let t = Css.Reader.of_string input in
-    let result = Css.Values.read_color t in
-    let pp_str = To_string.color result in
-    check string (Fmt.str "color %s" input) expected pp_str
-  in
+  (* Hex colors with # *)
+  check_color "#fff";
+  check_color "#FFF";
+  check_color "#000";
+  check_color "#123";
+  check_color "#abc";
+  check_color "#ABC";
+  check_color "#123456";
+  check_color "#abcdef";
+  check_color "#ABCDEF";
+  check_color "#000000";
+  check_color "#ffffff";
+  check_color "#FFFFFF";
 
-  test "#fff" "#fff";
-  test "#123456" "#123456";
-  test "red" "red";
-  test "blue" "blue";
-  test "transparent" "transparent";
-  test "currentcolor" "currentcolor";
-  test "rgb(255, 0, 0)" "rgb(255 0 0)";
-  test "rgba(255, 0, 0, 0.5)" "rgb(255 0 0 / 0.5)"
+  (* Named colors - all variants *)
+  check_color "red";
+  check_color "blue";
+  check_color "green";
+  check_color "white";
+  check_color "black";
+  check_color "yellow";
+  check_color "cyan";
+  check_color "magenta";
+  check_color "gray";
+  check_color "grey";
+  check_color "orange";
+  check_color "purple";
+  check_color "pink";
+  check_color "silver";
+  check_color "maroon";
+  check_color "fuchsia";
+  check_color "lime";
+  check_color "olive";
+  check_color "navy";
+  check_color "teal";
+  check_color "aqua";
+
+  (* Special keywords *)
+  check_color "transparent";
+  check_color "currentcolor";
+  check_color "inherit";
+
+  (* RGB functions - various formats *)
+  check_color ~expected:"rgb(255 0 0)" "rgb(255, 0, 0)";
+  check_color ~expected:"rgb(0 0 0)" "rgb(0, 0, 0)";
+  check_color ~expected:"rgb(255 255 255)" "rgb(255, 255, 255)";
+  check_color ~expected:"rgb(128 128 128)" "rgb(128, 128, 128)";
+
+  (* RGBA with alpha *)
+  check_color ~expected:"rgb(255 0 0 / 0.5)" "rgba(255, 0, 0, 0.5)";
+  check_color ~expected:"rgb(255 0 0 / 0)" "rgba(255, 0, 0, 0)";
+  check_color ~expected:"rgb(255 0 0 / 1)" "rgba(255, 0, 0, 1)";
+  check_color ~expected:"rgb(0 0 0 / 0.25)" "rgba(0, 0, 0, 0.25)";
+  check_color ~expected:"rgb(128 128 128 / 0.75)" "rgba(128, 128, 128, 0.75)"
 
 let test_angle_parsing () =
-  let test input expected =
-    let t = Css.Reader.of_string input in
-    let result = Css.Values.read_angle t in
-    let pp_str = To_string.angle result in
-    check string (Fmt.str "angle %s" input) expected pp_str
-  in
+  (* Degrees *)
+  check_angle "45deg";
+  check_angle "0deg";
+  check_angle "360deg";
+  check_angle "-45deg";
+  check_angle "90.5deg";
+  check_angle ~expected:"0.5deg" ".5deg";
 
-  test "45deg" "45deg";
-  test "1.5rad" "1.5rad";
-  test "0.25turn" "0.25turn";
-  test "100grad" "100grad"
+  (* Radians *)
+  check_angle "1.5rad";
+  check_angle "0rad";
+  check_angle "3.14159rad";
+  check_angle "-1.5rad";
+
+  (* Turns *)
+  check_angle "0.25turn";
+  check_angle "0turn";
+  check_angle "1turn";
+  check_angle "-0.5turn";
+  check_angle "2.5turn";
+
+  (* Gradians *)
+  check_angle "100grad";
+  check_angle "0grad";
+  check_angle "400grad";
+  check_angle "-200grad";
+
+  (* Edge cases *)
+  check_angle "999999deg";
+  check_angle "-360deg";
+  check_angle ~expected:"0.25deg" ".25deg"
 
 let test_duration_parsing () =
-  let test input expected =
-    let t = Css.Reader.of_string input in
-    let result = Css.Values.read_duration t in
-    let pp_str = To_string.duration result in
-    check string (Fmt.str "duration %s" input) expected pp_str
-  in
+  (* Seconds *)
+  check_duration "1s";
+  check_duration "0s";
+  check_duration "0.5s";
+  check_duration ~expected:"0.25s" ".25s";
+  check_duration "10s";
+  check_duration "999s";
 
-  test "1s" "1s";
-  test "500ms" "500ms";
-  test "0.5s" "0.5s"
+  (* Milliseconds *)
+  check_duration "500ms";
+  check_duration "0ms";
+  check_duration "1ms";
+  check_duration "1000ms";
+  check_duration "50.5ms";
+  check_duration "999999ms";
+  check_duration ~expected:"0.1s" ".1s"
 
 let test_percentage_parsing () =
-  let test input expected =
-    let t = Css.Reader.of_string input in
-    let result = Css.Values.read_percentage t in
-    check (float 0.01) (Fmt.str "percentage %s" input) expected result
-  in
-
-  test "50%" 50.0;
-  test "100%" 100.0;
-  test "12.5%" 12.5
+  check_percentage "50%";
+  check_percentage "100%";
+  check_percentage "0%";
+  check_percentage "12.5%";
+  check_percentage "99.99%";
+  check_percentage "200%";
+  check_percentage "0.01%";
+  check_percentage ~expected:"0.5%" ".5%";
+  check_percentage "0.0001%";
+  check_percentage "-50%";
+  check_percentage ~expected:"0.01%" ".01%"
 
 let test_calc_parsing () =
-  let test input expected =
-    let t = Css.Reader.of_string input in
-    let calc_expr = Css.Values.read_calc t in
-    let result = Css.Calc calc_expr in
-    let pp_str = To_string.length result in
-    check string (Fmt.str "calc %s" input) expected pp_str
-  in
+  (* Basic operations *)
+  check_calc "calc(100% - 20px)";
+  check_calc "calc(50vh + 10px)";
+  check_calc "calc(2em * 3)";
+  check_calc "calc(100% / 4)";
 
-  test "calc(100% - 20px)" "calc(100% - 20px)";
-  test "calc(50vh + 10px)" "calc(50vh + 10px)";
-  test "calc(2em * 3)" "calc(2em * 3)"
+  (* Nested calculations *)
+  check_calc "calc(10px + 20px + 30px)";
+  check_calc "calc(100% - 50% - 25%)";
+
+  (* Edge cases with zero *)
+  check_calc "calc(0px + 10px)";
+  check_calc "calc(100% - 0px)";
+  check_calc "calc(0 * 100px)";
+
+  (* Mixed units *)
+  check_calc "calc(1rem + 2em + 3px)";
+  check_calc "calc(100vw - 2rem)";
+  check_calc "calc(50% + 25vw)"
 
 let test_round_trip_length () =
-  let round_trip input =
-    let t = Css.Reader.of_string input in
-    let parsed = Css.Values.read_length t in
-    let output = To_string.length parsed in
-    let t2 = Css.Reader.of_string output in
-    let reparsed = Css.Values.read_length t2 in
-    let output2 = To_string.length reparsed in
-    check string (Fmt.str "round-trip %s" input) output output2
-  in
-
-  round_trip "10px";
-  round_trip "2.5rem";
-  round_trip "100%";
-  round_trip "auto"
+  check_round_trip_stable "length" read_length pp_length "10px";
+  check_round_trip_stable "length" read_length pp_length "2.5rem";
+  check_round_trip_stable "length" read_length pp_length "100%";
+  check_round_trip_stable "length" read_length pp_length "auto"
 
 let test_round_trip_color () =
-  let round_trip input =
-    let t = Css.Reader.of_string input in
-    let parsed = Css.Values.read_color t in
-    let output = To_string.color parsed in
-    let t2 = Css.Reader.of_string output in
-    let reparsed = Css.Values.read_color t2 in
-    let output2 = To_string.color reparsed in
-    check string (Fmt.str "round-trip %s" input) output output2
-  in
+  check_round_trip_stable "color" read_color pp_color "red";
+  check_round_trip_stable "color" read_color pp_color "#fff";
+  check_round_trip_stable "color" read_color pp_color "transparent"
 
-  round_trip "red";
-  round_trip "#fff";
-  round_trip "transparent"
+(* test_edge_cases removed - integrated into individual tests *)
+
+let test_calc_operations () =
+  (* Operator precedence *)
+  check_calc "calc(100% - 20px * 0.5)";
+  check_calc "calc(10px + 5em / 2)";
+  check_calc "calc(1em * 2 + 3px)";
+  check_calc "calc(2 * 3px + 4px)";
+  check_calc "calc(10px / 2 - 1px)";
+
+  (* Complex expressions *)
+  check_calc "calc((100% - 20px) / 2)";
+  check_calc "calc(100% * 0.5 + 10px * 2)";
+  check_calc "calc(50vh - 10px * 3 + 5rem)"
 
 let test_var_in_color () =
-  (* Test parsing var() in color context *)
   let t = Css.Reader.of_string "var(--primary-color)" in
-  let color = Css.Values.read_color t in
-  (* Should return a Var variant with the variable name *)
+  let color = read_color t in
   match color with
-  | Css.Var var -> check string "var name" "primary-color" (Css.var_name var)
+  | Var var -> check string "var name" "primary-color" var.name
   | _ -> fail "Expected Var variant for var() expression"
 
 let test_var_with_fallback () =
-  (* Test parsing var() with fallback value *)
   let t = Css.Reader.of_string "var(--theme-color, #007bff)" in
-  let color = Css.Values.read_color t in
+  let color = read_color t in
   match color with
-  | Css.Var var -> check string "var name" "theme-color" (Css.var_name var)
-  (* TODO: Once fallback is implemented, should verify the fallback is parsed *)
-  (* For now, we just verify the variable name is correct *)
+  | Var var -> check string "var name" "theme-color" var.name
   | _ -> fail "Expected Var for var() expression"
 
 let test_var_with_color_keyword_fallback () =
-  (* Test var() with color keyword as fallback *)
   let t = Css.Reader.of_string "var(--custom-color, red)" in
-  let color = Css.Values.read_color t in
+  let color = read_color t in
   match color with
-  | Css.Var var -> check string "var name" "custom-color" (Css.var_name var)
-  (* TODO: Should parse and store fallback value 'red' *)
+  | Var var -> check string "var name" "custom-color" var.name
   | _ -> fail "Expected Var with red fallback"
 
 let test_var_with_rgb_fallback () =
-  (* Test var() with rgb() function as fallback *)
   let t = Css.Reader.of_string "var(--brand-color, rgb(255, 0, 0))" in
-  let color = Css.Values.read_color t in
+  let color = read_color t in
   match color with
-  | Css.Var var -> check string "var name" "brand-color" (Css.var_name var)
-  (* Fallback should be parsed and stored *)
+  | Var var -> check string "var name" "brand-color" var.name
   | _ -> fail "Expected Var with rgb fallback"
 
 let test_var_fallback_in_output () =
-  (* Test that fallback values are preserved in the output *)
   let t = Css.Reader.of_string "var(--theme-color, #007bff)" in
-  let color = Css.Values.read_color t in
-  let output = To_string.color color in
-  (* The output should include the fallback value *)
+  let color = read_color t in
+  let output = Css.Pp.to_string pp_color color in
   check string "var with fallback output" "var(--theme-color, #007bff)" output
 
 let test_var_in_calc_with_fallback () =
-  (* Test var() in calc with fallback value *)
   let t = Css.Reader.of_string "calc(100% - var(--gap, 20px))" in
-  let calc_expr = Css.Values.read_calc t in
+  let calc_expr = read_calc read_length t in
   match calc_expr with
-  | Css.Expr (left, Css.Sub, right) -> (
+  | Expr (left, Sub, right) -> (
       match (left, right) with
-      | Css.Val (Css.Pct p), Css.Var var ->
-          check (float 0.01) "percentage" 100.0 p;
-          check string "var name in calc" "gap" (Css.var_name var)
-          (* TODO: Should parse and store fallback value 20px *)
+      | Val (Pct p), Var var ->
+          Alcotest.(check (float 0.01)) "percentage" 100.0 p;
+          check string "var name in calc" "gap" var.name
       | _, _ -> fail "Expected Pct(100) on left and Var on right")
   | _ -> fail "Expected subtraction expression"
 
 let test_var_in_calc () =
-  (* Test parsing var() in calc expressions *)
   let t = Css.Reader.of_string "calc(100% - var(--spacing))" in
-  let calc_expr = Css.Values.read_calc t in
-  (* Should create Expr(Val(Pct 100), Sub, Var(--spacing)) *)
+  let calc_expr = read_calc read_length t in
   match calc_expr with
-  | Css.Expr (left, Css.Sub, right) -> (
+  | Expr (left, Sub, right) -> (
       match (left, right) with
-      | Css.Val (Css.Pct p), Css.Var var ->
-          check (float 0.01) "percentage" 100.0 p;
-          check string "var name in calc" "spacing" (Css.var_name var)
-      | Css.Val (Css.Pct _), _ -> fail "Expected Var(--spacing) on right"
+      | Val (Pct p), Var var ->
+          Alcotest.(check (float 0.01)) "percentage" 100.0 p;
+          check string "var name in calc" "spacing" var.name
+      | Val (Pct _), _ -> fail "Expected Var(--spacing) on right"
       | _, _ -> fail "Expected Pct(100) on left and Var on right")
   | _ -> fail "Expected subtraction expression"
 
-let test_additional_named_colors () =
-  let test input expected =
-    let t = Css.Reader.of_string input in
-    let result = Css.Values.read_color t in
-    let pp_str = To_string.color result in
-    check string (Fmt.str "color %s" input) expected pp_str
-  in
+(* Test that minified output removes unnecessary characters *)
+let test_minified_output () =
+  (* RGB/RGBA should use space-separated format without commas *)
+  check_color ~expected:"rgb(255 0 0)" "rgb(255, 0, 0)";
+  check_color ~expected:"rgb(255 0 0 / 0.5)" "rgba(255, 0, 0, 0.5)";
 
-  (* Test additional named colors *)
-  test "orange" "orange";
-  test "pink" "pink";
-  test "silver" "silver";
-  test "maroon" "maroon";
-  test "navy" "navy"
+  (* Zero units should be optimized *)
+  check_length ~expected:"0" "0px";
+  check_length ~expected:"0" "0%";
+  check_length ~expected:"0" "0em";
 
-let test_calc_operations () =
-  let test input expected =
-    let t = Css.Reader.of_string input in
-    let calc_expr = Css.Values.read_calc t in
-    let result = Css.Calc calc_expr in
-    let pp_str = To_string.length result in
-    check string (Fmt.str "calc %s" input) expected pp_str
-  in
+  (* Leading zeros should be removed *)
+  check_length ~expected:"0.5rem" ".5rem";
+  check_angle ~expected:"0.5deg" ".5deg";
+  check_duration ~expected:"0.25s" ".25s";
 
-  (* Test operator precedence and associations *)
-  test "calc(100% - 20px * 0.5)" "calc(100% - 20px * 0.5)";
-  test "calc(10px + 5em / 2)" "calc(10px + 5em / 2)";
-  test "calc(1em * 2 + 3px)" "calc(1em * 2 + 3px)"
+  (* Hex colors should be lowercase and shortened when possible *)
+  (* Note: We might need to adjust these based on actual behavior *)
+  check_color "#fff";
+  (* Already short *)
+  check_color "#000";
+  (* Already short *)
+  check_color "#123456"
 
-let tests =
+let suite =
   [
-    test_case "parse lengths" `Quick test_length_parsing;
-    test_case "parse colors" `Quick test_color_parsing;
-    test_case "parse angles" `Quick test_angle_parsing;
-    test_case "parse durations" `Quick test_duration_parsing;
-    test_case "parse percentages" `Quick test_percentage_parsing;
-    test_case "parse calc expressions" `Quick test_calc_parsing;
-    test_case "round-trip lengths" `Quick test_round_trip_length;
-    test_case "round-trip colors" `Quick test_round_trip_color;
-    test_case "additional named colors" `Quick test_additional_named_colors;
-    test_case "calc operations" `Quick test_calc_operations;
-    test_case "var() in color context" `Quick test_var_in_color;
-    test_case "var() with fallback" `Quick test_var_with_fallback;
-    test_case "var() with color keyword fallback" `Quick
-      test_var_with_color_keyword_fallback;
-    test_case "var() with rgb fallback" `Quick test_var_with_rgb_fallback;
-    test_case "var() fallback in output" `Quick test_var_fallback_in_output;
-    test_case "var() in calc with fallback" `Quick
-      test_var_in_calc_with_fallback;
-    test_case "var() in calc expressions" `Quick test_var_in_calc;
+    ( "values",
+      [
+        test_case "parse lengths" `Quick test_length_parsing;
+        test_case "parse colors" `Quick test_color_parsing;
+        test_case "parse angles" `Quick test_angle_parsing;
+        test_case "parse durations" `Quick test_duration_parsing;
+        test_case "parse percentages" `Quick test_percentage_parsing;
+        test_case "parse calc expressions" `Quick test_calc_parsing;
+        test_case "round-trip lengths" `Quick test_round_trip_length;
+        test_case "round-trip colors" `Quick test_round_trip_color;
+        test_case "minified output" `Quick test_minified_output;
+        test_case "calc operations" `Quick test_calc_operations;
+        test_case "var() in color context" `Quick test_var_in_color;
+        test_case "var() with fallback" `Quick test_var_with_fallback;
+        test_case "var() with color keyword fallback" `Quick
+          test_var_with_color_keyword_fallback;
+        test_case "var() with rgb fallback" `Quick test_var_with_rgb_fallback;
+        test_case "var() fallback in output" `Quick test_var_fallback_in_output;
+        test_case "var() in calc with fallback" `Quick
+          test_var_in_calc_with_fallback;
+        test_case "var() in calc expressions" `Quick test_var_in_calc;
+      ] );
   ]

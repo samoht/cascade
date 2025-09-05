@@ -1,5 +1,5 @@
 open Alcotest
-open Css_parser
+open Css
 
 let test_basic_operations () =
   let r = Reader.of_string "hello world" in
@@ -83,24 +83,24 @@ let test_numbers_and_units () =
   (* number, int, percentage, dimension/angle/duration *)
   let r = Reader.of_string "-12.5 42 33% 1.5rem 90deg 250ms" in
   let n = Reader.number r in
-  check (float 0.0001) "number" (-12.5) n;
+  Alcotest.(check (float 0.0001)) "number" (-12.5) n;
   Reader.ws r;
   let i = Reader.int r in
   check int "int" 42 i;
   Reader.ws r;
   let pct = Reader.percentage r in
-  check (float 0.0001) "percentage" 33. pct;
+  Alcotest.(check (float 0.0001)) "percentage" 33. pct;
   Reader.ws r;
   let d1, u1 = Reader.dimension r in
-  check (float 0.0001) "dimension value" 1.5 d1;
+  Alcotest.(check (float 0.0001)) "dimension value" 1.5 d1;
   check string "dimension unit" "rem" u1;
   Reader.ws r;
   let ang, au = Reader.angle r in
-  check (float 0.0001) "angle value" 90. ang;
+  Alcotest.(check (float 0.0001)) "angle value" 90. ang;
   check string "angle unit" "deg" au;
   Reader.ws r;
   let dur, du = Reader.duration r in
-  check (float 0.0001) "duration value" 250. dur;
+  Alcotest.(check (float 0.0001)) "duration value" 250. dur;
   check string "duration unit" "ms" du
 
 let test_hex_and_colors () =
@@ -113,10 +113,12 @@ let test_hex_and_colors () =
     let r = Reader.of_string "ab" in
     ignore (Reader.hex_color r)
   in
-  check_raises "bad hex"
-    (Reader.Parse_error
-       ("invalid hex color (must be 3 or 6 digits)", Reader.of_string "ab"))
-    bad_hex;
+  (try
+     bad_hex ();
+     fail "Expected Parse_error exception"
+   with
+  | Reader.Parse_error ("invalid hex color (must be 3 or 6 digits)", _) -> ()
+  | _ -> fail "Expected Parse_error with correct message");
   (* color_keyword succeeds for known names, resets on unknown *)
   let r = Reader.of_string "red" in
   (match Reader.color_keyword r with Some "red" -> () | _ -> fail "red");
@@ -128,7 +130,7 @@ let test_hex_and_colors () =
 let test_rgb_function () =
   let ok = Reader.(rgb_function (of_string "rgba(255, 0, 10, 0.5)")) in
   (match ok with
-  | Some (255, 0, 10, Some a) -> check (float 0.0001) "alpha" 0.5 a
+  | Some (255, 0, 10, Some a) -> Alcotest.(check (float 0.0001)) "alpha" 0.5 a
   | _ -> fail "expected rgba tuple");
   let ok2 = Reader.(rgb_function (of_string "rgb(10,20,30)")) in
   (match ok2 with Some (10, 20, 30, None) -> () | _ -> fail "rgb tuple");

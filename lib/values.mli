@@ -172,6 +172,9 @@ val pp_duration : duration Pp.t
 val pp_number : number Pp.t
 (** [pp_number] is the pretty printer for {!number} values. *)
 
+val pp_percentage : float Pp.t
+(** [pp_percentage] is the pretty printer for percentage values. *)
+
 val pp_calc : 'a Pp.t -> 'a calc Pp.t
 (** [pp_calc pp_value] is the pretty printer for calc expressions. *)
 
@@ -234,5 +237,5 @@ val read_percentage : Reader.t -> float
 (** [read_percentage t] reads a percentage value and returns the numeric part.
 *)
 
-val read_calc : Reader.t -> length calc
+val read_calc : (Reader.t -> 'a) -> Reader.t -> 'a calc
 (** [read_calc t] reads a calc() expression or a value promotable to calc. *)
