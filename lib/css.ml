@@ -3572,32 +3572,26 @@ module Selector = struct
     || (not (is_valid_nmstart value.[0]))
     || not (String.for_all is_valid_nmchar value)
 
-  let string_of_attribute_match name = function
+  let pp_attribute_value ~minify value =
+    (* Deterministic rule: minified = no quotes unless needed; pretty = always
+       quotes *)
+    if minify && not (needs_quotes value) then value
+    else String.concat "" [ "\""; value; "\"" ]
+
+  let pp_attribute_match ~minify name = function
     | Presence -> name
     | Exact value ->
-        (* Check if value needs quotes - valid identifiers don't need them *)
-        if needs_quotes value then String.concat "" [ name; "=\""; value; "\"" ]
-        else String.concat "" [ name; "="; value ]
+        String.concat "" [ name; "="; pp_attribute_value ~minify value ]
     | Whitespace_list value ->
-        if needs_quotes value then
-          String.concat "" [ name; "~=\""; value; "\"" ]
-        else String.concat "" [ name; "~="; value ]
+        String.concat "" [ name; "~="; pp_attribute_value ~minify value ]
     | Hyphen_list value ->
-        if needs_quotes value then
-          String.concat "" [ name; "|=\""; value; "\"" ]
-        else String.concat "" [ name; "|="; value ]
+        String.concat "" [ name; "|="; pp_attribute_value ~minify value ]
     | Prefix value ->
-        if needs_quotes value then
-          String.concat "" [ name; "^=\""; value; "\"" ]
-        else String.concat "" [ name; "^="; value ]
+        String.concat "" [ name; "^="; pp_attribute_value ~minify value ]
     | Suffix value ->
-        if needs_quotes value then
-          String.concat "" [ name; "$=\""; value; "\"" ]
-        else String.concat "" [ name; "$="; value ]
+        String.concat "" [ name; "$="; pp_attribute_value ~minify value ]
     | Substring value ->
-        if needs_quotes value then
-          String.concat "" [ name; "*=\""; value; "\"" ]
-        else String.concat "" [ name; "*="; value ]
+        String.concat "" [ name; "*="; pp_attribute_value ~minify value ]
 
   let rec to_string ?(minify = false) = function
     | Element e -> e
@@ -3605,7 +3599,8 @@ module Selector = struct
     | Id i -> String.concat "" [ "#"; i ]
     | Universal -> "*"
     | Attribute (name, match_type) ->
-        String.concat "" [ "["; string_of_attribute_match name match_type; "]" ]
+        String.concat ""
+          [ "["; pp_attribute_match ~minify name match_type; "]" ]
     | Pseudo_class pc -> String.concat "" [ ":"; pc ]
     | Pseudo_element pe -> String.concat "" [ "::"; pe ]
     | Where selectors ->

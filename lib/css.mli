@@ -21,10 +21,10 @@
             Rule
               (rule ~selector:".button"
                  [
-                   background_color (Hex "3b82f6");
-                   color (Hex "ffffff");
+                   background_color (Hex { hash = true; value = "3b82f6" });
+                   color (Hex { hash = true; value = "ffffff" });
                    padding (Rem 0.5);
-                   border_radius "0.375rem";
+                   border_radius (Rem 0.375);
                    font_weight Bold;
                    display Inline_block;
                  ]);
@@ -40,10 +40,10 @@
     {[
       (* Define CSS variables with typed API *)
       let primary_color_def, primary_color_var =
-        var "primary-color" Color (Hex "#3b82f6")
+        var "primary-color" Color (Hex { hash = true; value = "3b82f6" })
       in
       let text_color_def, text_color_var =
-        var "text-color" Color (Hex "#1f2937")
+        var "text-color" Color (Hex { hash = true; value = "1f2937" })
       in
       let spacing_def, spacing_var =
         var "spacing" Length (Rem 1.0)
@@ -127,25 +127,25 @@ module Selector : sig
     | Subsequent_sibling  (** ~: "div ~ p" *)
 
   val to_string : ?minify:bool -> t -> string
-  (** Convert a selector to its string representation *)
+  (** [to_string ?minify s] is the string representation of [s]. *)
 
   val element : string -> t
-  (** [element name] creates an element selector (e.g., "div", "p"). Validates
-      that [name] is a valid CSS identifier.
+  (** [element name] is an element selector (e.g., "div", "p"). Validates that
+      [name] is a valid CSS identifier.
       @raise Invalid_argument if [name] violates CSS identifier rules. *)
 
   val class_ : string -> t
-  (** [class_ name] creates a class selector (e.g., ".button", ".prose").
-      Validates that [name] is a valid CSS identifier.
+  (** [class_ name] is a class selector (e.g., ".button", ".prose"). Validates
+      that [name] is a valid CSS identifier.
       @raise Invalid_argument if [name] violates CSS identifier rules. *)
 
   val id : string -> t
-  (** [id name] creates an ID selector (e.g., "#header"). Validates that [name]
-      is a valid CSS identifier.
+  (** [id name] is an ID selector (e.g., "#header"). Validates that [name] is a
+      valid CSS identifier.
       @raise Invalid_argument if [name] violates CSS identifier rules. *)
 
   val universal : t
-  (** [universal] creates the universal selector "*" *)
+  (** [universal] is the universal selector "*". *)
 
   (** Typed attribute selector values *)
   type attribute_match =
@@ -159,59 +159,60 @@ module Selector : sig
     | Substring of string  (** [attribute*="value"] - substring match *)
 
   val attribute : string -> attribute_match -> t
-  (** [attribute name match] creates a typed attribute selector. Validates that
+  (** [attribute name match] is a typed attribute selector. Validates that
       [name] is a valid CSS identifier.
       @raise Invalid_argument if [name] violates CSS identifier rules. *)
 
   val pseudo_class : string -> t
-  (** [pseudo_class name] creates a pseudo-class selector (e.g., ":hover",
+  (** [pseudo_class name] is a pseudo-class selector (e.g., ":hover",
       ":first-child"). Validates that [name] is a valid CSS identifier.
       @raise Invalid_argument if [name] violates CSS identifier rules. *)
 
   val pseudo_element : string -> t
-  (** [pseudo_element name] creates a pseudo-element selector (e.g., "::before",
+  (** [pseudo_element name] is a pseudo-element selector (e.g., "::before",
       "::marker"). Validates that [name] is a valid CSS identifier.
       @raise Invalid_argument if [name] violates CSS identifier rules. *)
 
   val combine : t -> combinator -> t -> t
-  (** Combine two selectors with a combinator *)
+  (** [combine a c b] is [a] combined with [b] using combinator [c]. *)
 
   val ( ++ ) : t -> t -> t
-  (** [sel1 ++ sel2] combines two selectors with descendant combinator (space).
-      Equivalent to [combine sel1 Descendant sel2]. *)
+  (** [sel1 ++ sel2] is [sel1] and [sel2] combined with the descendant
+      combinator (space). Equivalent to [combine sel1 Descendant sel2]. *)
 
   val ( >> ) : t -> t -> t
-  (** [sel1 >> sel2] combines two selectors with child combinator (>).
-      Equivalent to [combine sel1 Child sel2]. *)
+  (** [sel1 >> sel2] is [sel1] and [sel2] combined with the child combinator
+      (>). Equivalent to [combine sel1 Child sel2]. *)
 
   val where : t list -> t
-  (** Create a :where() functional pseudo-class *)
+  (** [where sels] is a [:where()] functional pseudo-class. *)
 
   val not : t list -> t
-  (** Create a :not() functional pseudo-class *)
+  (** [not sels] is a [:not()] functional pseudo-class. *)
 
   val fun_ : string -> t list -> t
-  (** Create a functional pseudo-class like :is(), :has(), etc. *)
+  (** [fun_ name sels] is a functional pseudo-class like [:is()], [:has()], etc.
+  *)
 
   val list : t list -> t
-  (** Create a comma-separated selector list *)
+  (** [list sels] is a comma-separated selector list. *)
 
   val is_compound_list : t -> bool
-  (** Check if this is already a comma-separated list of selectors *)
+  (** [is_compound_list s] is [true] if [s] is already a comma-separated list of
+      selectors. *)
 
   val compound : t list -> t
-  (** [compound selectors] creates a compound selector by combining multiple
-      simple selectors (e.g., element + attribute: "div[class=foo]") *)
+  (** [compound selectors] is a compound selector made by combining multiple
+      simple selectors (e.g., element + attribute: "div[class=foo]"). *)
 
   val ( && ) : t -> t -> t
-  (** [sel1 && sel2] creates a compound selector by combining two simple
-      selectors. Equivalent to [compound [sel1; sel2]]. Example:
-      [element "div" && class_ "foo"] *)
+  (** [sel1 && sel2] is a compound selector of two simple selectors. Equivalent
+      to [compound [sel1; sel2]]. Example: [element "div" && class_ "foo"]. *)
 
   val ( || ) : t -> t -> t
-  (** [sel1 || sel2] creates a comma-separated selector list (OR semantics).
-      Equivalent to [list [sel1; sel2]]. Example: [element "h1" || element "h2"]
-  *)
+  (** [sel1 || sel2] is a comma-separated selector list (OR semantics).
+      Equivalent to [list [sel1; sel2]]. Example:
+      [element "h1" || element "h2"]. *)
 end
 
 (** {2:css_rules CSS Rules and Stylesheets}
@@ -227,7 +228,7 @@ type declaration
 (** Abstract type for CSS declarations (property-value pairs). *)
 
 val rule : selector:Selector.t -> declaration list -> rule
-(** [rule ~selector declarations] creates a CSS rule with the given selector and
+(** [rule ~selector declarations] is a CSS rule with the given selector and
     declarations. *)
 
 type nested_rule
@@ -237,10 +238,10 @@ type t
 (** Abstract type for CSS stylesheets. *)
 
 val selector : rule -> Selector.t
-(** [selector rule] returns the selector of a CSS rule. *)
+(** [selector rule] is the selector of [rule]. *)
 
 val declarations : rule -> declaration list
-(** [declarations rule] returns the list of declarations in a CSS rule. *)
+(** [declarations rule] is the list of declarations in [rule]. *)
 
 (** {2:at_rules At-Rules}
 
@@ -278,27 +279,27 @@ type starting_style_rule
     initial styles for animating elements. *)
 
 val media : condition:string -> rule list -> media_rule
-(** [media ~condition rules] creates a [@media] rule.
+(** [media ~condition rules] is a [@media] rule.
     @param condition Media query condition (e.g., "(min-width: 768px)"). *)
 
 val media_condition : media_rule -> string
-(** [media_condition media] returns the condition string of a media rule. *)
+(** [media_condition media] is the condition string of [media]. *)
 
 val media_rules : media_rule -> rule list
-(** [media_rules media] returns the rules contained in a media rule. *)
+(** [media_rules media] is the list of rules contained in [media]. *)
 
 val supports : condition:string -> rule list -> supports_rule
-(** [supports ~condition rules] creates a [@supports] rule for feature queries.
+(** [supports ~condition rules] is a [@supports] rule for feature queries.
     @param condition Feature query condition (e.g., "(display: grid)"). *)
 
 val supports_nested :
   condition:string -> rule list -> supports_rule list -> supports_rule
-(** [supports_nested ~condition rules nested_supports] creates a [@supports]
-    rule with nested [@supports] rules. *)
+(** [supports_nested ~condition rules nested_supports] is a [@supports] rule
+    with nested [@supports] rules. *)
 
 val container :
   ?name:string option -> condition:string -> rule list -> container_rule
-(** [container ?name ~condition rules] creates a [@container] rule.
+(** [container ?name ~condition rules] is a [@container] rule.
     @param name Optional container name.
     @param condition Container query condition (e.g., "(min-width: 700px)"). *)
 
@@ -309,7 +310,7 @@ val layer :
   ?supports:supports_rule list ->
   nested_rule list ->
   layer_rule
-(** [layer ~name ?media ?container ?supports rules] creates a [@layer] rule.
+(** [layer ~name ?media ?container ?supports rules] is a [@layer] rule.
     @param name Layer name.
     @param media Optional nested [@media] rules.
     @param container Optional nested [@container] rules.
@@ -327,10 +328,10 @@ val layer :
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/@layer> MDN: @layer *)
 
 val layer_name : layer_rule -> string
-(** [layer_name layer] returns the name of a layer rule. *)
+(** [layer_name layer] is the name of [layer]. *)
 
 val layer_rules : layer_rule -> nested_rule list
-(** [layer_rules layer] returns the rules contained in a layer rule. *)
+(** [layer_rules layer] is the list of rules contained in [layer]. *)
 
 val property :
   syntax:string ->
@@ -338,24 +339,23 @@ val property :
   ?inherits:bool ->
   string ->
   property_rule
-(** [property ~syntax ?initial_value ?inherits name] creates a [@property] rule
-    to register a custom CSS property.
+(** [property ~syntax ?initial_value ?inherits name] is a [@property] rule to
+    register a custom CSS property.
     @param syntax Property syntax (e.g., "<color>").
     @param initial_value Optional initial value.
     @param inherits Whether the property inherits (default: false).
     @param name Property name (including --). *)
 
 val property_rule_name : property_rule -> string
-(** [property_rule_name rule] returns the property name from a property rule. *)
+(** [property_rule_name rule] is the property name of [rule]. *)
 
 val property_rule_initial : property_rule -> string option
-(** [property_rule_initial rule] returns the initial value from a property rule.
-*)
+(** [property_rule_initial rule] is the initial value of [rule], if any. *)
 
 val default_decl_of_property_rule : property_rule -> declaration
-(** [default_decl_of_property_rule rule] converts a property rule to a custom
-    property declaration with its initial value. This is useful for creating
-    default declarations in the properties layer. *)
+(** [default_decl_of_property_rule rule] is the custom property declaration for
+    [rule] with its initial value. Useful to add defaults in the properties
+    layer. *)
 
 (** {2:stylesheet_construction Stylesheet Construction}
 
@@ -375,25 +375,26 @@ val empty : t
 (** [empty] is an empty stylesheet. *)
 
 val concat : t list -> t
-(** [concat stylesheets] concatenates multiple stylesheets into one. Rules are
+(** [concat stylesheets] is [stylesheets] concatenated into one. Rules are
     combined in order, with later stylesheets taking precedence. *)
 
 val stylesheet : sheet_item list -> t
-(** [stylesheet items] creates a stylesheet from a list of items. *)
+(** [stylesheet items] is a stylesheet from a list of items. *)
 
 val stylesheet_items : t -> sheet_item list
-(** [stylesheet_items t] returns all top-level items in the stylesheet. *)
+(** [stylesheet_items t] is the list of top-level items in [t]. *)
 
 val stylesheet_layers : t -> layer_rule list
-(** [stylesheet_layers stylesheet] returns the layer rules of a stylesheet. *)
+(** [stylesheet_layers stylesheet] is the list of layer rules of [stylesheet].
+*)
 
 val stylesheet_media_queries : t -> media_rule list
-(** [stylesheet_media_queries stylesheet] returns the media queries of a
-    stylesheet. *)
+(** [stylesheet_media_queries stylesheet] is the list of media queries of
+    [stylesheet]. *)
 
 val stylesheet_container_queries : t -> container_rule list
-(** [stylesheet_container_queries stylesheet] returns the container queries of a
-    stylesheet. *)
+(** [stylesheet_container_queries stylesheet] is the list of container queries
+    of [stylesheet]. *)
 
 val merge_rules : rule list -> rule list
 (** [merge_rules rules] merges consecutive rules with identical selectors,
@@ -409,10 +410,10 @@ val combine_identical_rules : rule list -> rule list
     Utilities for CSS nesting and hierarchical rule organization. *)
 
 val rule_to_nested : rule -> nested_rule
-(** [rule_to_nested rule] converts a rule to nested_rule for use in at-rules. *)
+(** [rule_to_nested rule] is [rule] as a [nested_rule] for use in at-rules. *)
 
 val supports_to_nested : supports_rule -> nested_rule
-(** [supports_to_nested supports] converts a supports rule to nested_rule. *)
+(** [supports_to_nested supports] is [supports] as a [nested_rule]. *)
 
 (** {1 Declarations}
 
@@ -435,7 +436,7 @@ val var_name : 'a var -> string
 (** [var_name v] is [v]'s variable name (without --). *)
 
 val var_layer : 'a var -> string option
-(** [var_layer v] returns the optional layer where [v] is defined. *)
+(** [var_layer v] is the optional layer where [v] is defined. *)
 
 (** CSS generation mode. *)
 type mode =
@@ -485,54 +486,54 @@ type length =
 (** Builder functions for calc() expressions. *)
 module Calc : sig
   val add : 'a calc -> 'a calc -> 'a calc
-  (** [add left right] creates [left + right] *)
+  (** [add left right] is [left + right]. *)
 
   val sub : 'a calc -> 'a calc -> 'a calc
-  (** [sub left right] creates [left - right] *)
+  (** [sub left right] is [left - right]. *)
 
   val mul : 'a calc -> 'a calc -> 'a calc
-  (** [mul left right] creates [left * right] *)
+  (** [mul left right] is [left * right]. *)
 
   val div : 'a calc -> 'a calc -> 'a calc
-  (** [div left right] creates [left / right] *)
+  (** [div left right] is [left / right]. *)
 
   val ( + ) : 'a calc -> 'a calc -> 'a calc
-  (** [(+)] is {!add} *)
+  (** [(+)] is {!add}. *)
 
   val ( - ) : 'a calc -> 'a calc -> 'a calc
-  (** [(-)] is {!sub} *)
+  (** [(-)] is {!sub}. *)
 
   val ( * ) : 'a calc -> 'a calc -> 'a calc
-  (** [( * )] is {!mul} *)
+  (** [( * )] is {!mul}. *)
 
   val ( / ) : 'a calc -> 'a calc -> 'a calc
-  (** [(/)] is {!div} *)
+  (** [(/)] is {!div}. *)
 
   val length : length -> length calc
-  (** [length len] lifts a length value into calc *)
+  (** [length len] is [len] lifted into [calc]. *)
 
   val var : ?default:'a -> ?fallback:'a -> string -> 'a calc
-  (** [var ?default ?fallback name] creates a variable reference for calc
+  (** [var ?default ?fallback name] is a variable reference for [calc]
       expressions. Example: [var "spacing"] or
-      [var ~fallback:(Var lh_var) "tw-leading"] *)
+      [var ~fallback:(Rem 1.2) "tw-leading"]. *)
 
   val float : float -> length calc
-  (** [float f] creates a numeric value for calc expressions *)
+  (** [float f] is a numeric value for [calc] expressions. *)
 
   val infinity : length calc
-  (** [infinity] represents the CSS infinity value for calc expressions *)
+  (** [infinity] is the CSS infinity value for [calc] expressions. *)
 
   val px : int -> length calc
-  (** [px n] creates a pixel value for calc expressions *)
+  (** [px n] is a pixel value for [calc] expressions. *)
 
   val rem : float -> length calc
-  (** [rem f] creates a rem value for calc expressions *)
+  (** [rem f] is a rem value for [calc] expressions. *)
 
   val em : float -> length calc
-  (** [em f] creates an em value for calc expressions *)
+  (** [em f] is an em value for [calc] expressions. *)
 
   val pct : float -> length calc
-  (** [pct f] creates a percentage value for calc expressions *)
+  (** [pct f] is a percentage value for [calc] expressions. *)
 end
 
 type _ property
@@ -607,8 +608,8 @@ val color_mix :
   color ->
   color ->
   color
-(** [color_mix ?in_space ?percent1 ?percent2 color1 color2] creates a color-mix
-    value. Defaults: in_space=Srgb, percent1=None, percent2=None *)
+(** [color_mix ?in_space ?percent1 ?percent2 c1 c2] is a color-mix value.
+    Defaults: [in_space = Srgb], [percent1 = None], [percent2 = None]. *)
 
 (** CSS angle values *)
 type angle =
@@ -657,9 +658,7 @@ type font_variation_settings =
   | Var of font_variation_settings var
 
 val important : declaration -> declaration
-(** [important decl] marks a declaration as !important. Validates that [name] is
-    a valid CSS identifier.
-    @raise Invalid_argument if [name] violates CSS identifier rules. *)
+(** [important decl] is [decl] marked as [!important]. *)
 
 (** {1 Property Categories}
 
@@ -679,93 +678,94 @@ val important : declaration -> declaration
 type box_sizing = Border_box | Content_box | Inherit
 
 val width : length -> declaration
-(** [width len] sets the CSS width property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/width> MDN: width *)
+(** [width len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/width} width} property.
+*)
 
 val height : length -> declaration
-(** [height len] sets the CSS height property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/height> MDN: height
-*)
+(** [height len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/height} height}
+    property. *)
 
 val min_width : length -> declaration
-(** [min_width len] sets the CSS min-width property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/min-width>
-      MDN: min-width *)
+(** [min_width len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/min-width} min-width}
+    property. *)
 
 val max_width : length -> declaration
-(** [max_width len] sets the CSS max-width property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/max-width>
-      MDN: max-width *)
+(** [max_width len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/max-width} max-width}
+    property. *)
 
 val min_height : length -> declaration
-(** [min_height len] sets the CSS min-height property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/min-height>
-      MDN: min-height *)
+(** [min_height len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/min-height} min-height}
+    property. *)
 
 val max_height : length -> declaration
-(** [max_height len] sets the CSS max-height property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/max-height>
-      MDN: max-height *)
+(** [max_height len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/max-height} max-height}
+    property. *)
 
 val padding : length -> declaration
-(** [padding len] sets the CSS padding property for all sides.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/padding> MDN: padding
-*)
+(** [padding len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/padding} padding}
+    property for all sides. *)
 
 val padding_top : length -> declaration
-(** [padding_top len] sets the CSS padding-top property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/padding-top>
-      MDN: padding-top *)
+(** [padding_top len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/padding-top}
+     padding-top} property. *)
 
 val padding_right : length -> declaration
-(** [padding_right len] sets the CSS padding-right property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/padding-right>
-      MDN: padding-right *)
+(** [padding_right len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/padding-right}
+     padding-right} property. *)
 
 val padding_bottom : length -> declaration
-(** [padding_bottom len] sets the CSS padding-bottom property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/padding-bottom>
-      MDN: padding-bottom *)
+(** [padding_bottom len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/padding-bottom}
+     padding-bottom} property. *)
 
 val padding_left : length -> declaration
-(** [padding_left len] sets the CSS padding-left property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/padding-left>
-      MDN: padding-left *)
+(** [padding_left len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/padding-left}
+     padding-left} property. *)
 
 val margin : length -> declaration
-(** [margin len] sets the CSS margin property for all sides.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/margin> MDN: margin
-*)
+(** [margin len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/margin} margin} property
+    for all sides. *)
 
 val margin_top : length -> declaration
-(** [margin_top len] sets the CSS margin-top property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/margin-top>
-      MDN: margin-top *)
+(** [margin_top len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/margin-top} margin-top}
+    property. *)
 
 val margin_right : length -> declaration
-(** [margin_right len] sets the CSS margin-right property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/margin-right>
-      MDN: margin-right *)
+(** [margin_right len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/margin-right}
+     margin-right} property. *)
 
 val margin_bottom : length -> declaration
-(** [margin_bottom len] sets the CSS margin-bottom property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/margin-bottom>
-      MDN: margin-bottom *)
+(** [margin_bottom len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/margin-bottom}
+     margin-bottom} property. *)
 
 val margin_left : length -> declaration
-(** [margin_left len] sets the CSS margin-left property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/margin-left>
-      MDN: margin-left *)
+(** [margin_left len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/margin-left}
+     margin-left} property. *)
 
 val box_sizing : box_sizing -> declaration
-(** [box_sizing value] sets the CSS box-sizing property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/box-sizing>
-      MDN: box-sizing *)
+(** [box_sizing value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/box-sizing} box-sizing}
+    property. *)
 
 val aspect_ratio : aspect_ratio -> declaration
-(** [aspect_ratio value] sets the CSS aspect-ratio property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/aspect-ratio>
-      MDN: aspect-ratio *)
+(** [aspect_ratio value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/aspect-ratio}
+     aspect-ratio} property. *)
 
 (** {2:logical_properties Logical Properties}
 
@@ -777,61 +777,59 @@ val aspect_ratio : aspect_ratio -> declaration
       CSS Logical Properties and Values Level 1 *)
 
 val border_inline_start_width : length -> declaration
-(** [border_inline_start_width len] sets the CSS border-inline-start-width
-    property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-inline-start-width>
-      MDN: border-inline-start-width *)
+(** [border_inline_start_width len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-inline-start-width}
+     border-inline-start-width} property. *)
 
 val border_inline_end_width : length -> declaration
-(** [border_inline_end_width len] sets the CSS border-inline-end-width property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-inline-end-width>
-      MDN: border-inline-end-width *)
+(** [border_inline_end_width len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-inline-end-width}
+     border-inline-end-width} property. *)
 
 val border_inline_start_color : color -> declaration
-(** [border_inline_start_color c] sets the CSS border-inline-start-color
-    property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-inline-start-color>
-      MDN: border-inline-start-color *)
+(** [border_inline_start_color c] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-inline-start-color}
+     border-inline-start-color} property. *)
 
 val border_inline_end_color : color -> declaration
-(** [border_inline_end_color c] sets the CSS border-inline-end-color property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-inline-end-color>
-      MDN: border-inline-end-color *)
+(** [border_inline_end_color c] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-inline-end-color}
+     border-inline-end-color} property. *)
 
 val padding_inline_start : length -> declaration
-(** [padding_inline_start value] sets the CSS padding-inline-start property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/padding-inline-start>
-      MDN: padding-inline-start. *)
+(** [padding_inline_start value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/padding-inline-start}
+     padding-inline-start} property. *)
 
 val padding_inline_end : length -> declaration
-(** [padding_inline_end value] sets the CSS padding-inline-end property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/padding-inline-end>
-      MDN: padding-inline-end. *)
+(** [padding_inline_end value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/padding-inline-end}
+     padding-inline-end} property. *)
 
 val padding_inline : length -> declaration
-(** [padding_inline value] sets the CSS padding-inline shorthand property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/padding-inline>
-      MDN: padding-inline. *)
+(** [padding_inline value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/padding-inline}
+     padding-inline} shorthand property. *)
 
 val padding_block : length -> declaration
-(** [padding_block value] sets the CSS padding-block shorthand property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/padding-block>
-      MDN: padding-block. *)
+(** [padding_block value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/padding-block}
+     padding-block} shorthand property. *)
 
 val margin_inline : length -> declaration
-(** [margin_inline len] sets the CSS margin-inline property with a length value.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/margin-inline>
-      MDN: margin-inline. *)
+(** [margin_inline len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/margin-inline}
+     margin-inline} property with a length value. *)
 
 val margin_block : length -> declaration
-(** [margin_block len] sets the CSS margin-block property with a length value.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/margin-block>
-      MDN: margin-block. *)
+(** [margin_block len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/margin-block}
+     margin-block} property with a length value. *)
 
 val margin_inline_end : length -> declaration
-(** [margin_inline_end len] sets the CSS margin-inline-end property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/margin-inline-end>
-      MDN: margin-inline-end. *)
+(** [margin_inline_end len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/margin-inline-end}
+     margin-inline-end} property. *)
 
 (** {2:display_positioning Display & Positioning}
 
@@ -880,82 +878,86 @@ type z_index = Auto | Index of int
 type overflow = Visible | Hidden | Scroll | Auto | Clip
 
 val display : display -> declaration
-(** [display d] sets the CSS display property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/display> MDN: display
-*)
+(** [display d] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/display} display}
+    property. *)
 
 val position : position -> declaration
-(** [position p] sets the CSS position property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/position>
-      MDN: position *)
+(** [position p] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/position} position}
+    property. *)
 
 val top : length -> declaration
-(** [top len] sets the CSS top property for positioned elements.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/top> MDN: top *)
+(** [top len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/top} top} property for
+    positioned elements. *)
 
 val right : length -> declaration
-(** [right len] sets the CSS right property for positioned elements.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/right> MDN: right *)
+(** [right len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/right} right} property
+    for positioned elements. *)
 
 val bottom : length -> declaration
-(** [bottom len] sets the CSS bottom property for positioned elements.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/bottom> MDN: bottom
-*)
+(** [bottom len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/bottom} bottom} property
+    for positioned elements. *)
 
 val left : length -> declaration
-(** [left len] sets the CSS left property for positioned elements.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/left> MDN: left *)
+(** [left len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/left} left} property for
+    positioned elements. *)
 
 val z_index : z_index -> declaration
-(** [z_index value] sets the CSS z-index property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/z-index> MDN: z-index
-*)
+(** [z_index value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/z-index} z-index}
+    property. *)
 
 val z_index_auto : declaration
-(** [z_index_auto] sets the CSS z-index property to auto. *)
+(** [z_index_auto] is the CSS z-index property set to [auto]. *)
 
 (** CSS isolation values *)
 type isolation = Auto | Isolate | Inherit
 
 val isolation : isolation -> declaration
-(** [isolation value] sets the CSS isolation property for stacking context
-    control.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/isolation>
-      MDN: isolation. *)
+(** [isolation value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/isolation} isolation}
+    property for stacking context control. *)
 
 val visibility : visibility -> declaration
-(** [visibility v] sets the CSS visibility property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/visibility>
-      MDN: visibility *)
+(** [visibility v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/visibility} visibility}
+    property. *)
 
 (** CSS float side values. *)
 type float_side = None | Left | Right
 
 val float : float_side -> declaration
-(** [float value] sets the CSS float property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/float> MDN: float *)
+(** [float value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/float} float} property.
+*)
 
 (* Clear property values *)
 type clear = None | Left | Right | Both
 
 val clear : clear -> declaration
-(** [clear value] sets the CSS clear property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/clear> MDN: clear *)
+(** [clear value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/clear} clear} property.
+*)
 
 val overflow : overflow -> declaration
-(** [overflow value] sets the CSS overflow property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/overflow>
-      MDN: overflow *)
+(** [overflow value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/overflow} overflow}
+    property. *)
 
 val overflow_x : overflow -> declaration
-(** [overflow_x value] sets the CSS overflow-x property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/overflow-x>
-      MDN: overflow-x *)
+(** [overflow_x value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/overflow-x} overflow-x}
+    property. *)
 
 val overflow_y : overflow -> declaration
-(** [overflow_y value] sets the CSS overflow-y property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/overflow-y>
-      MDN: overflow-y *)
+(** [overflow_y value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/overflow-y} overflow-y}
+    property. *)
 
 (** CSS content values *)
 type content =
@@ -967,45 +969,44 @@ type content =
   | Var of content var
 
 val content : content -> declaration
-(** [content c] sets the CSS content property. *)
+(** [content c] is the CSS content property. *)
 
 (** CSS object-fit values *)
 type object_fit = Fill | Contain | Cover | None | Scale_down | Inherit
 
 val object_fit : object_fit -> declaration
-(** [object_fit value] sets the CSS object-fit property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/object-fit>
-      MDN: object-fit *)
+(** [object_fit value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/object-fit} object-fit}
+    property. *)
 
 val object_position : string -> declaration
-(** [object_position value] sets the CSS object-position property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/object-position>
-      MDN: object-position *)
+(** [object_position value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/object-position}
+     object-position} property. *)
 
 (** CSS text-overflow values *)
 type text_overflow = Clip | Ellipsis | String of string | Inherit
 
 val text_overflow : text_overflow -> declaration
-(** [text_overflow value] sets the CSS text-overflow property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/text-overflow>
-      MDN: text-overflow *)
+(** [text_overflow value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-overflow}
+     text-overflow} property. *)
 
 (** CSS text-wrap values *)
 type text_wrap = Wrap | No_wrap | Balance | Pretty | Inherit
 
 val text_wrap : text_wrap -> declaration
-(** [text_wrap value] sets the CSS text-wrap property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/text-wrap>
-      MDN: text-wrap *)
+(** [text_wrap value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-wrap} text-wrap}
+    property. *)
 
 (** CSS backface-visibility values *)
 type backface_visibility = Visible | Hidden | Inherit
 
 val backface_visibility : backface_visibility -> declaration
-(** [backface_visibility value] sets the CSS backface-visibility property (3D
-    transforms).
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/backface-visibility>
-      MDN: backface-visibility *)
+(** [backface_visibility value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/backface-visibility}
+     backface-visibility} property (3D transforms). *)
 
 (** CSS content-visibility values. *)
 type content_visibility =
@@ -1016,17 +1017,17 @@ type content_visibility =
   | Var of content_visibility var  (** CSS variable reference *)
 
 val content_visibility : content_visibility -> declaration
-(** [content_visibility value] sets the CSS content-visibility property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/content-visibility>
-      MDN: content-visibility *)
+(** [content_visibility value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/content-visibility}
+     content-visibility} property. *)
 
 (** CSS list-style-position values *)
 type list_style_position = Inside | Outside | Inherit
 
 val list_style_position : list_style_position -> declaration
-(** [list_style_position pos] sets the CSS list-style-position property.
-
-    MDN: list-style-position. *)
+(** [list_style_position pos] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/list-style-position}
+     list-style-position} property. *)
 
 (** {2:colors_backgrounds Colors & Backgrounds}
 
@@ -1091,59 +1092,60 @@ type background_image =
   | None
 
 val color : color -> declaration
-(** [color value] sets the CSS color property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/color> MDN: color *)
-
-val background_color : color -> declaration
-(** [background_color color] sets the CSS background-color property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/background-color>
-      MDN: background-color *)
-
-val background_image : background_image -> declaration
-(** [background_image value] sets the CSS background-image property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/background-image>
-      MDN: background-image *)
-
-val background_position : string -> declaration
-(** [background_position value] sets the CSS background-position property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/background-position>
-      MDN: background-position *)
-
-val background_size : background_size -> declaration
-(** [background_size value] sets the CSS background-size property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/background-size>
-      MDN: background-size *)
-
-val background_repeat : background_repeat -> declaration
-(** [background_repeat value] sets the CSS background-repeat property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/background-repeat>
-      MDN: background-repeat *)
-
-val background_attachment : background_attachment -> declaration
-(** [background_attachment value] sets the CSS background-attachment property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/background-attachment>
-      MDN: background-attachment *)
-
-val opacity : float -> declaration
-(** [opacity value] sets the CSS opacity property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/opacity> MDN: opacity
+(** [color value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/color} color} property.
 *)
 
+val background_color : color -> declaration
+(** [background_color color] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background-color}
+     background-color} property. *)
+
+val background_image : background_image -> declaration
+(** [background_image value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background-image}
+     background-image} property. *)
+
+val background_position : string -> declaration
+(** [background_position value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background-position}
+     background-position} property. *)
+
+val background_size : background_size -> declaration
+(** [background_size value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background-size}
+     background-size} property. *)
+
+val background_repeat : background_repeat -> declaration
+(** [background_repeat value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background-repeat}
+     background-repeat} property. *)
+
+val background_attachment : background_attachment -> declaration
+(** [background_attachment value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background-attachment}
+     background-attachment} property. *)
+
+val opacity : float -> declaration
+(** [opacity value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/opacity} opacity}
+    property. *)
+
 val url : string -> background_image
-(** [url path] creates a URL background image value. *)
+(** [url path] is a URL background image value. *)
 
 val linear_gradient :
   gradient_direction -> gradient_stop list -> background_image
-(** [linear_gradient dir stops] creates a linear gradient background. *)
+(** [linear_gradient dir stops] is a linear gradient background. *)
 
 val radial_gradient : gradient_stop list -> background_image
-(** [radial_gradient stops] creates a radial gradient background. *)
+(** [radial_gradient stops] is a radial gradient background. *)
 
 val color_stop : color -> gradient_stop
-(** [color_stop c] creates a simple color stop. *)
+(** [color_stop c] is a simple color stop. *)
 
 val color_position : color -> length -> gradient_stop
-(** [color_position c pos] creates a color stop at a specific position. *)
+(** [color_position c pos] is a color stop at a specific position. *)
 
 (** {2:flexbox Flexbox Layout}
 
@@ -1227,81 +1229,84 @@ type align =
   | Auto
 
 val flex_direction : flex_direction -> declaration
-(** [flex_direction value] sets the CSS flex-direction property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/flex-direction>
-      MDN: flex-direction *)
+(** [flex_direction value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/flex-direction}
+     flex-direction} property. *)
 
 val flex_wrap : flex_wrap -> declaration
-(** [flex_wrap value] sets the CSS flex-wrap property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/flex-wrap>
-      MDN: flex-wrap *)
+(** [flex_wrap value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/flex-wrap} flex-wrap}
+    property. *)
 
 val justify_content : justify_content -> declaration
-(** [justify_content value] sets the CSS justify-content property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/justify-content>
-      MDN: justify-content *)
+(** [justify_content value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-content}
+     justify-content} property. *)
 
 val align_items : align_items -> declaration
-(** [align_items value] sets the CSS align-items property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/align-items>
-      MDN: align-items *)
+(** [align_items value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-items}
+     align-items} property. *)
 
 val align_content : align -> declaration
-(** [align_content value] sets the CSS align-content property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/align-content>
-      MDN: align-content *)
+(** [align_content value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-content}
+     align-content} property. *)
 
 val flex : flex -> declaration
-(** [flex value] sets the CSS flex shorthand property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/flex> MDN: flex *)
+(** [flex value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/flex} flex} shorthand
+    property. *)
 
 val flex_grow : float -> declaration
-(** [flex_grow value] sets the CSS flex-grow property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/flex-grow>
-      MDN: flex-grow *)
+(** [flex_grow value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/flex-grow} flex-grow}
+    property. *)
 
 val flex_shrink : float -> declaration
-(** [flex_shrink value] sets the CSS flex-shrink property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/flex-shrink>
-      MDN: flex-shrink *)
+(** [flex_shrink value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/flex-shrink}
+     flex-shrink} property. *)
 
 val flex_basis : length -> declaration
-(** [flex_basis value] sets the CSS flex-basis property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/flex-basis>
-      MDN: flex-basis *)
+(** [flex_basis value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/flex-basis} flex-basis}
+    property. *)
 
 val align_self : align_self -> declaration
-(** [align_self value] sets the CSS align-self property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/align-self>
-      MDN: align-self *)
+(** [align_self value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-self} align-self}
+    property. *)
 
 val justify_self : justify -> declaration
-(** [justify_self value] sets the CSS justify-self property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/justify-self>
-      MDN: justify-self *)
+(** [justify_self value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-self}
+     justify-self} property. *)
 
 val justify_items : justify -> declaration
-(** [justify_items value] sets the CSS justify-items property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/justify-items>
-      MDN: justify-items *)
+(** [justify_items value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-items}
+     justify-items} property. *)
 
 val order : int -> declaration
-(** [order value] sets the CSS order property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/order> MDN: order *)
-
-val gap : length -> declaration
-(** [gap value] sets the CSS gap property (applies to both row and column gaps).
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/gap> MDN: gap *)
-
-val row_gap : length -> declaration
-(** [row_gap value] sets the CSS row-gap property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/row-gap> MDN: row-gap
+(** [order value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/order} order} property.
 *)
 
+val gap : length -> declaration
+(** [gap value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/gap} gap} property
+    (applies to both row and column gaps). *)
+
+val row_gap : length -> declaration
+(** [row_gap value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/row-gap} row-gap}
+    property. *)
+
 val column_gap : length -> declaration
-(** [column_gap value] sets the CSS column-gap property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/column-gap>
-      MDN: column-gap *)
+(** [column_gap value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/column-gap} column-gap}
+    property. *)
 
 (** {2:grid Grid Layout}
 
@@ -1338,77 +1343,77 @@ type grid_line =
   | Auto  (** auto *)
 
 val grid_template_columns : grid_template -> declaration
-(** [grid_template_columns value] sets the CSS grid-template-columns property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/grid-template-columns>
-      MDN: grid-template-columns *)
+(** [grid_template_columns value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-template-columns}
+     grid-template-columns} property. *)
 
 val grid_template_rows : grid_template -> declaration
-(** [grid_template_rows value] sets the CSS grid-template-rows property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/grid-template-rows>
-      MDN: grid-template-rows *)
+(** [grid_template_rows value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-template-rows}
+     grid-template-rows} property. *)
 
 val grid_template_areas : string -> declaration
-(** [grid_template_areas value] sets the CSS grid-template-areas property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/grid-template-areas>
-      MDN: grid-template-areas *)
+(** [grid_template_areas value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-template-areas}
+     grid-template-areas} property. *)
 
 val grid_template : grid_template -> declaration
-(** [grid_template value] sets the CSS grid-template shorthand property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/grid-template>
-      MDN: grid-template *)
+(** [grid_template value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-template}
+     grid-template} shorthand property. *)
 
 val grid_auto_columns : grid_template -> declaration
-(** [grid_auto_columns value] sets the CSS grid-auto-columns property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/grid-auto-columns>
-      MDN: grid-auto-columns *)
+(** [grid_auto_columns value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-auto-columns}
+     grid-auto-columns} property. *)
 
 val grid_auto_rows : grid_template -> declaration
-(** [grid_auto_rows value] sets the CSS grid-auto-rows property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/grid-auto-rows>
-      MDN: grid-auto-rows *)
+(** [grid_auto_rows value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-auto-rows}
+     grid-auto-rows} property. *)
 
 (** CSS grid-auto-flow values *)
 type grid_auto_flow = Row | Column | Row_dense | Column_dense
 
 val grid_auto_flow : grid_auto_flow -> declaration
-(** [grid_auto_flow value] sets the CSS grid-auto-flow property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/grid-auto-flow>
-      MDN: grid-auto-flow *)
+(** [grid_auto_flow value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-auto-flow}
+     grid-auto-flow} property. *)
 
 val grid_row_start : grid_line -> declaration
-(** [grid_row_start value] sets the CSS grid-row-start property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/grid-row-start>
-      MDN: grid-row-start *)
+(** [grid_row_start value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-row-start}
+     grid-row-start} property. *)
 
 val grid_row_end : grid_line -> declaration
-(** [grid_row_end value] sets the CSS grid-row-end property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/grid-row-end>
-      MDN: grid-row-end *)
+(** [grid_row_end value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-row-end}
+     grid-row-end} property. *)
 
 val grid_column_start : grid_line -> declaration
-(** [grid_column_start value] sets the CSS grid-column-start property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/grid-column-start>
-      MDN: grid-column-start *)
+(** [grid_column_start value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-column-start}
+     grid-column-start} property. *)
 
 val grid_column_end : grid_line -> declaration
-(** [grid_column_end value] sets the CSS grid-column-end property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/grid-column-end>
-      MDN: grid-column-end *)
+(** [grid_column_end value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-column-end}
+     grid-column-end} property. *)
 
 val grid_row : grid_line * grid_line -> declaration
-(** [grid_row (start, end)] sets the CSS grid-row shorthand property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/grid-row>
-      MDN: grid-row *)
+(** [grid_row (start, end)] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-row} grid-row}
+    shorthand property. *)
 
 val grid_column : grid_line * grid_line -> declaration
-(** [grid_column (start, end)] sets the CSS grid-column shorthand property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/grid-column>
-      MDN: grid-column *)
+(** [grid_column (start, end)] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-column}
+     grid-column} shorthand property. *)
 
 val grid_area : string -> declaration
-(** [grid_area value] sets the CSS grid-area property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/grid-area>
-      MDN: grid-area *)
+(** [grid_area value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-area} grid-area}
+    property. *)
 
 (** CSS place-items values *)
 type place_items =
@@ -1428,9 +1433,9 @@ type place_items =
   | Inherit
 
 val place_items : place_items -> declaration
-(** [place_items value] sets the CSS place-items shorthand property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/place-items>
-      MDN: place-items *)
+(** [place_items value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/place-items}
+     place-items} shorthand property. *)
 
 (** CSS place-content values *)
 type place_content =
@@ -1443,14 +1448,14 @@ type place_content =
   | Space_evenly
 
 val place_content : place_content -> declaration
-(** [place_content value] sets the CSS place-content shorthand property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/place-content>
-      MDN: place-content *)
+(** [place_content value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/place-content}
+     place-content} shorthand property. *)
 
 val place_self : align_self -> declaration
-(** [place_self value] sets the CSS place-self shorthand property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/place-self>
-      MDN: place-self *)
+(** [place_self value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/place-self} place-self}
+    shorthand property. *)
 
 (** {2:typography Typography}
 
@@ -1597,19 +1602,19 @@ val font_family : font_family list -> declaration
       MDN: font-family *)
 
 val font_size : length -> declaration
-(** [font_size value] sets the CSS font-size property.
+(** [font_size value] is the CSS font-size property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/font-size>
       MDN: font-size *)
 
 val font_weight : font_weight -> declaration
-(** [font_weight value] sets the CSS font-weight property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/font-weight>
-      MDN: font-weight *)
+(** [font_weight value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-weight}
+     font-weight} property. *)
 
 val font_style : font_style -> declaration
-(** [font_style value] sets the CSS font-style property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/font-style>
-      MDN: font-style *)
+(** [font_style value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-style} font-style}
+    property. *)
 
 (** CSS line-height values *)
 type line_height =
@@ -1621,41 +1626,40 @@ type line_height =
   | Var of line_height var
 
 val line_height : line_height -> declaration
-(** [line_height value] sets the CSS line-height property. Accepts Normal,
-    Length values (e.g., `Length (Rem 1.5)`), Number values (e.g., `Number
-    1.5`), or Percentage values.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/line-height>
-      MDN: line-height *)
+(** [line_height value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/line-height}
+     line-height} property. Accepts [Normal], Length values (e.g., `Length (Rem
+    1.5)`), Number values (e.g., `Number 1.5`), or Percentage values. *)
 
 val letter_spacing : length -> declaration
-(** [letter_spacing value] sets the CSS letter-spacing property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/letter-spacing>
-      MDN: letter-spacing *)
+(** [letter_spacing value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/letter-spacing}
+     letter-spacing} property. *)
 
 val word_spacing : length -> declaration
-(** [word_spacing value] sets the CSS word-spacing property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/word-spacing>
-      MDN: word-spacing *)
+(** [word_spacing value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/word-spacing}
+     word-spacing} property. *)
 
 val text_align : text_align -> declaration
-(** [text_align value] sets the CSS text-align property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/text-align>
-      MDN: text-align *)
+(** [text_align value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-align} text-align}
+    property. *)
 
 val text_decoration : text_decoration -> declaration
-(** [text_decoration value] sets the CSS text-decoration property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration>
-      MDN: text-decoration *)
+(** [text_decoration value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration}
+     text-decoration} property. *)
 
 val text_transform : text_transform -> declaration
-(** [text_transform value] sets the CSS text-transform property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/text-transform>
-      MDN: text-transform *)
+(** [text_transform value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-transform}
+     text-transform} property. *)
 
 val text_indent : length -> declaration
-(** [text_indent value] sets the CSS text-indent property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/text-indent>
-      MDN: text-indent *)
+(** [text_indent value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-indent}
+     text-indent} property. *)
 
 (** CSS white-space values *)
 type white_space =
@@ -1668,56 +1672,56 @@ type white_space =
   | Inherit
 
 val white_space : white_space -> declaration
-(** [white_space value] sets the CSS white-space property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/white-space>
-      MDN: white-space *)
+(** [white_space value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/white-space}
+     white-space} property. *)
 
 (** CSS word-break values *)
 type word_break = Normal | Break_all | Keep_all | Break_word | Inherit
 
 val word_break : word_break -> declaration
-(** [word_break value] sets the CSS word-break property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/word-break>
-      MDN: word-break *)
+(** [word_break value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/word-break} word-break}
+    property. *)
 
 val text_decoration_color : color -> declaration
-(** [text_decoration_color value] sets the CSS text-decoration-color property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration-color>
-      MDN: text-decoration-color *)
+(** [text_decoration_color value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration-color}
+     text-decoration-color} property. *)
 
 val text_size_adjust : string -> declaration
-(** [text_size_adjust value] sets the CSS text-size-adjust property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/text-size-adjust>
-      MDN: text-size-adjust *)
+(** [text_size_adjust value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-size-adjust}
+     text-size-adjust} property. *)
 
 (** CSS text-decoration-style values *)
 type text_decoration_style = Solid | Double | Dotted | Dashed | Wavy | Inherit
 
 val text_decoration_style : text_decoration_style -> declaration
-(** [text_decoration_style value] sets the CSS text-decoration-style property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration-style>
-      MDN: text-decoration-style *)
+(** [text_decoration_style value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration-style}
+     text-decoration-style} property. *)
 
 val text_underline_offset : string -> declaration
-(** [text_underline_offset value] sets the CSS text-underline-offset property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/text-underline-offset>
-      MDN: text-underline-offset *)
+(** [text_underline_offset value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-underline-offset}
+     text-underline-offset} property. *)
 
 (** CSS overflow-wrap values *)
 type overflow_wrap = Normal | Break_word | Anywhere | Inherit
 
 val overflow_wrap : overflow_wrap -> declaration
-(** [overflow_wrap value] sets the CSS overflow-wrap property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/overflow-wrap>
-      MDN: overflow-wrap *)
+(** [overflow_wrap value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/overflow-wrap}
+     overflow-wrap} property. *)
 
 (** CSS hyphens values *)
 type hyphens = None | Manual | Auto | Inherit
 
 val hyphens : hyphens -> declaration
-(** [hyphens value] sets the CSS hyphens property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/hyphens> MDN: hyphens
-*)
+(** [hyphens value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/hyphens} hyphens}
+    property. *)
 
 (** CSS font-stretch values *)
 type font_stretch =
@@ -1734,7 +1738,7 @@ type font_stretch =
   | Inherit
 
 val font_stretch : font_stretch -> declaration
-(** [font_stretch value] sets the CSS font-stretch property. *)
+(** [font_stretch value] is the CSS font-stretch property. *)
 
 (** CSS font-variant-numeric token values *)
 type font_variant_numeric_token =
@@ -1767,8 +1771,8 @@ val font_variant_numeric : font_variant_numeric -> declaration
 
 val font_variant_numeric_tokens :
   font_variant_numeric_token list -> font_variant_numeric
-(** [font_variant_numeric_tokens tokens] creates a font-variant-numeric value
-    from tokens. *)
+(** [font_variant_numeric_tokens tokens] is a font-variant-numeric value from
+    tokens. *)
 
 val font_variant_numeric_composed :
   ?ordinal:font_variant_numeric_token ->
@@ -1778,13 +1782,13 @@ val font_variant_numeric_composed :
   ?numeric_fraction:font_variant_numeric_token ->
   unit ->
   font_variant_numeric
-(** [font_variant_numeric_composed ...] creates a composed font-variant-numeric
-    value using CSS variables for style composition. *)
+(** [font_variant_numeric_composed ...] is a composed font-variant-numeric value
+    using CSS variables for style composition. *)
 
 val font_feature_settings : font_feature_settings -> declaration
-(** [font_feature_settings value] sets the CSS font-feature-settings property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/font-feature-settings>
-      MDN: font-feature-settings *)
+(** [font_feature_settings value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-feature-settings}
+     font-feature-settings} property. *)
 
 (** CSS shadow values *)
 type shadow =
@@ -1807,7 +1811,7 @@ val shadow :
   ?color:color ->
   unit ->
   shadow
-(** [shadow ?inset ?h_offset ?v_offset ?blur ?spread ?color ()] creates a shadow
+(** [shadow ?inset ?h_offset ?v_offset ?blur ?spread ?color ()] is a shadow
     value with optional parameters. Defaults: inset=false, h_offset=0px,
     v_offset=0px, blur=0px, spread=0px, color=Transparent *)
 
@@ -1819,8 +1823,8 @@ val inset_ring_shadow :
   ?color:color ->
   unit ->
   shadow
-(** [inset_ring_shadow ?h_offset ?v_offset ?blur ?spread ?color ()] creates an
-    inset shadow value suitable for ring utilities. Defaults: h_offset=0px,
+(** [inset_ring_shadow ?h_offset ?v_offset ?blur ?spread ?color ()] is an inset
+    shadow value suitable for ring utilities. Defaults: h_offset=0px,
     v_offset=0px, blur=0px, spread=0px, color=Transparent *)
 
 (** CSS text-shadow values *)
@@ -1831,21 +1835,22 @@ type text_shadow =
   | Var of text_shadow var  (** Composed shadow variable *)
 
 val text_shadow : text_shadow -> declaration
-(** [text_shadow value] sets the CSS text-shadow property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/text-shadow>
-      MDN: text-shadow *)
+(** [text_shadow value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-shadow}
+     text-shadow} property. *)
 
 val font : string -> declaration
-(** [font value] sets the CSS font shorthand property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/font> MDN: font. *)
+(** [font value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font} font} shorthand
+    property. *)
 
 (** CSS direction values *)
 type direction = Ltr | Rtl | Inherit
 
 val direction : direction -> declaration
-(** [direction value] sets the CSS direction property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/direction>
-      MDN: direction *)
+(** [direction value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/direction} direction}
+    property. *)
 
 (** CSS unicode-bidi values *)
 type unicode_bidi =
@@ -1858,32 +1863,30 @@ type unicode_bidi =
   | Inherit
 
 val unicode_bidi : unicode_bidi -> declaration
-(** [unicode_bidi value] sets the CSS unicode-bidi property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/unicode-bidi>
-      MDN: unicode-bidi *)
+(** [unicode_bidi value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/unicode-bidi}
+     unicode-bidi} property. *)
 
 (** CSS writing-mode values *)
 type writing_mode = Horizontal_tb | Vertical_rl | Vertical_lr | Inherit
 
 val writing_mode : writing_mode -> declaration
-(** [writing_mode value] sets the CSS writing-mode property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/writing-mode>
-      MDN: writing-mode *)
+(** [writing_mode value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/writing-mode}
+     writing-mode} property. *)
 
 val text_decoration_thickness : length -> declaration
-(** [text_decoration_thickness value] sets the CSS text-decoration-thickness
-    property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration-thickness>
-      MDN: text-decoration-thickness *)
+(** [text_decoration_thickness value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration-thickness}
+     text-decoration-thickness} property. *)
 
 (** CSS text-decoration-skip-ink values *)
 type text_decoration_skip_ink = Auto | None | All | Inherit
 
 val text_decoration_skip_ink : text_decoration_skip_ink -> declaration
-(** [text_decoration_skip_ink value] sets the CSS text-decoration-skip-ink
-    property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration-skip-ink>
-      MDN: text-decoration-skip-ink *)
+(** [text_decoration_skip_ink value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration-skip-ink}
+     text-decoration-skip-ink} property. *)
 
 (** {2:borders_outlines Borders & Outlines}
 
@@ -1924,142 +1927,142 @@ type outline_style =
   | Inherit
 
 val border : string -> declaration
-(** [border value] sets the CSS border shorthand property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border> MDN: border
-*)
+(** [border value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border} border}
+    shorthand property. *)
 
 val border_width : length -> declaration
-(** [border_width value] sets the CSS border-width property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-width>
-      MDN: border-width *)
+(** [border_width value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-width}
+     border-width} property. *)
 
 val border_style : border_style -> declaration
-(** [border_style value] sets the CSS border-style property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-style>
-      MDN: border-style *)
+(** [border_style value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-style}
+     border-style} property. *)
 
 val border_color : color -> declaration
-(** [border_color value] sets the CSS border-color property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-color>
-      MDN: border-color *)
+(** [border_color value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-color}
+     border-color} property. *)
 
 val border_radius : length -> declaration
-(** [border_radius value] sets the CSS border-radius property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-radius>
-      MDN: border-radius *)
+(** [border_radius value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-radius}
+     border-radius} property. *)
 
 val border_top : string -> declaration
-(** [border_top value] sets the CSS border-top property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-top>
-      MDN: border-top *)
+(** [border_top value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-top} border-top}
+    property. *)
 
 val border_right : string -> declaration
-(** [border_right value] sets the CSS border-right property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-right>
-      MDN: border-right *)
+(** [border_right value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-right}
+     border-right} property. *)
 
 val border_bottom : string -> declaration
-(** [border_bottom value] sets the CSS border-bottom property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-bottom>
-      MDN: border-bottom *)
+(** [border_bottom value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-bottom}
+     border-bottom} property. *)
 
 val border_left : string -> declaration
-(** [border_left value] sets the CSS border-left property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-left>
-      MDN: border-left *)
+(** [border_left value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-left}
+     border-left} property. *)
 
 val outline : string -> declaration
-(** [outline value] sets the CSS outline property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/outline>
-      MDN: outline `*)
+(** [outline value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/outline} outline}
+    property. *)
 
 val outline_width : length -> declaration
-(** [outline_width value] sets the CSS outline-width property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/outline-width>
-      MDN: outline-width *)
+(** [outline_width value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/outline-width}
+     outline-width} property. *)
 
 val outline_style : outline_style -> declaration
-(** [outline_style value] sets the CSS outline-style property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/outline-style>
-      MDN: outline-style *)
+(** [outline_style value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/outline-style}
+     outline-style} property. *)
 
 val outline_color : color -> declaration
-(** [outline_color value] sets the CSS outline-color property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/outline-color>
-      MDN: outline-color *)
+(** [outline_color value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/outline-color}
+     outline-color} property. *)
 
 val outline_offset : length -> declaration
-(** [outline_offset value] sets the CSS outline-offset property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/outline-offset>
-      MDN: outline-offset *)
+(** [outline_offset value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/outline-offset}
+     outline-offset} property. *)
 
 val border_top_style : border_style -> declaration
-(** [border_top_style s] sets the CSS border-top-style property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-top-style>
-      MDN: border-top-style *)
+(** [border_top_style s] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-top-style}
+     border-top-style} property. *)
 
 val border_right_style : border_style -> declaration
-(** [border_right_style s] sets the CSS border-right-style property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-right-style>
-      MDN: border-right-style *)
+(** [border_right_style s] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-right-style}
+     border-right-style} property. *)
 
 val border_bottom_style : border_style -> declaration
-(** [border_bottom_style s] sets the CSS border-bottom-style property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-bottom-style>
-      MDN: border-bottom-style *)
+(** [border_bottom_style s] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-bottom-style}
+     border-bottom-style} property. *)
 
 val border_left_style : border_style -> declaration
-(** [border_left_style s] sets the CSS border-left-style property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-left-style>
-      MDN: border-left-style *)
+(** [border_left_style s] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-left-style}
+     border-left-style} property. *)
 
 val border_left_width : length -> declaration
-(** [border_left_width len] sets the CSS border-left-width property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-left-width>
-      MDN: border-left-width *)
+(** [border_left_width len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-left-width}
+     border-left-width} property. *)
 
 val border_top_width : length -> declaration
-(** [border_top_width len] sets the CSS border-top-width property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-top-width>
-      MDN: border-top-width *)
+(** [border_top_width len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-top-width}
+     border-top-width} property. *)
 
 val border_right_width : length -> declaration
-(** [border_right_width len] sets the CSS border-right-width property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-right-width>
-      MDN: border-right-width *)
+(** [border_right_width len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-right-width}
+     border-right-width} property. *)
 
 val border_bottom_width : length -> declaration
-(** [border_bottom_width len] sets the CSS border-bottom-width property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-bottom-width>
-      MDN: border-bottom-width *)
+(** [border_bottom_width len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-bottom-width}
+     border-bottom-width} property. *)
 
 val border_top_color : color -> declaration
-(** [border_top_color c] sets the CSS border-top-color property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-top-color>
-      MDN: border-top-color *)
+(** [border_top_color c] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-top-color}
+     border-top-color} property. *)
 
 val border_right_color : color -> declaration
-(** [border_right_color c] sets the CSS border-right-color property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-right-color>
-      MDN: border-right-color *)
+(** [border_right_color c] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-right-color}
+     border-right-color} property. *)
 
 val border_bottom_color : color -> declaration
-(** [border_bottom_color c] sets the CSS border-bottom-color property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-bottom-color>
-      MDN: border-bottom-color *)
+(** [border_bottom_color c] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-bottom-color}
+     border-bottom-color} property. *)
 
 val border_left_color : color -> declaration
-(** [border_left_color c] sets the CSS border-left-color property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-left-color>
-      MDN: border-left-color *)
+(** [border_left_color c] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-left-color}
+     border-left-color} property. *)
 
 (** CSS border-collapse values *)
 type border_collapse = Collapse | Separate | Inherit
 
 val border_collapse : border_collapse -> declaration
-(** [border_collapse value] sets the CSS border-collapse property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-collapse>
-      MDN: border-collapse *)
+(** [border_collapse value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-collapse}
+     border-collapse} property. *)
 
 (** {2:transforms_animations Transforms & Animations}
 
@@ -2120,20 +2123,19 @@ type transform =
   | Var of transform list var
 
 val transform : transform list -> declaration
-(** [transform values] sets the CSS transform property with a list of
-    transformations.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/transform>
-      MDN: transform *)
+(** [transform values] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transform} transform}
+    property with a list of transformations. *)
 
 val transform_origin : string -> declaration
-(** [transform_origin value] sets the CSS transform-origin property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/transform-origin>
-      MDN: transform-origin *)
+(** [transform_origin value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transform-origin}
+     transform-origin} property. *)
 
 val rotate : angle -> declaration
-(** [rotate value] sets the CSS rotate property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/rotate> MDN: rotate
-*)
+(** [rotate value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/rotate} rotate}
+    property. *)
 
 (** CSS scale property values *)
 type scale =
@@ -2144,27 +2146,27 @@ type scale =
   | Vars of transform_scale var list
 
 val scale : scale -> declaration
-(** [scale value] sets the CSS scale property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scale> MDN: scale *)
+(** [scale value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scale} scale} property.
+*)
 
 val perspective : length -> declaration
-(** [perspective value] sets the CSS perspective property (3D transforms).
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/perspective>
-      MDN: perspective *)
+(** [perspective value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/perspective}
+     perspective} property (3D transforms). *)
 
 val perspective_origin : string -> declaration
-(** [perspective_origin value] sets the CSS perspective-origin property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/perspective-origin>
-      MDN: perspective-origin *)
+(** [perspective_origin value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/perspective-origin}
+     perspective-origin} property. *)
 
 (** CSS transform-style values *)
 type transform_style = Flat | Preserve_3d | Inherit
 
 val transform_style : transform_style -> declaration
-(** [transform_style value] sets the CSS transform-style property (3D
-    transforms).
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/transform-style>
-      MDN: transform-style *)
+(** [transform_style value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transform-style}
+     transform-style} property (3D transforms). *)
 
 (** CSS animation timing function values. *)
 type timing_function =
@@ -2195,24 +2197,24 @@ type transition =
   | Multiple of transition list
 
 val transition : transition -> declaration
-(** [transition value] sets the CSS transition property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/transition>
-      MDN: transition *)
+(** [transition value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transition} transition}
+    property. *)
 
 val transition_timing_function : timing_function -> declaration
-(** [transition_timing_function value] sets the CSS transition-timing-function
-    property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/transition-timing-function>
-*)
+(** [transition_timing_function value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transition-timing-function}
+     transition-timing-function} property. *)
 
 val transition_duration : duration -> declaration
-(** [transition_duration value] sets the CSS transition-duration property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/transition-duration>
-*)
+(** [transition_duration value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transition-duration}
+     transition-duration} property. *)
 
 val transition_delay : duration -> declaration
-(** [transition_delay value] sets the CSS transition-delay property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/transition-delay> *)
+(** [transition_delay value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transition-delay}
+     transition-delay} property. *)
 
 (** CSS animation fill mode values *)
 type animation_fill_mode = None | Forwards | Backwards | Both | Inherit
@@ -2254,54 +2256,52 @@ val make_animation :
   ?play_state:animation_play_state ->
   unit ->
   animation
-(** [make_animation ()] creates an animation record with optional parameters *)
+(** [make_animation ()] is an animation record with optional parameters *)
 
 val animation : animation -> declaration
-(** [animation props] sets the CSS animation shorthand property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/animation>
-      MDN: animation *)
+(** [animation props] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/animation} animation}
+    shorthand property. *)
 
 val animation_name : string -> declaration
-(** [animation_name name] sets the CSS animation-name property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/animation-name>
-      MDN: animation-name *)
+(** [animation_name name] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/animation-name}
+     animation-name} property. *)
 
 val animation_duration : duration -> declaration
-(** [animation_duration value] sets the CSS animation-duration property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/animation-duration>
-      MDN: animation-duration *)
+(** [animation_duration value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/animation-duration}
+     animation-duration} property. *)
 
 val animation_timing_function : timing_function -> declaration
-(** [animation_timing_function value] sets the CSS animation-timing-function
-    property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/animation-timing-function>
-      MDN: animation-timing-function *)
+(** [animation_timing_function value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/animation-timing-function}
+     animation-timing-function} property. *)
 
 val animation_delay : duration -> declaration
-(** [animation_delay value] sets the CSS animation-delay property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/animation-delay>
-      MDN: animation-delay *)
+(** [animation_delay value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/animation-delay}
+     animation-delay} property. *)
 
 val animation_iteration_count : animation_iteration_count -> declaration
-(** [animation_iteration_count value] sets the CSS animation-iteration-count
-    property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/animation-iteration-count>
-      MDN: animation-iteration-count *)
+(** [animation_iteration_count value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/animation-iteration-count}
+     animation-iteration-count} property. *)
 
 val animation_direction : animation_direction -> declaration
-(** [animation_direction value] sets the CSS animation-direction property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/animation-direction>
-      MDN: animation-direction *)
+(** [animation_direction value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/animation-direction}
+     animation-direction} property. *)
 
 val animation_fill_mode : animation_fill_mode -> declaration
-(** [animation_fill_mode value] sets the CSS animation-fill-mode property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/animation-fill-mode>
-      MDN: animation-fill-mode *)
+(** [animation_fill_mode value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/animation-fill-mode}
+     animation-fill-mode} property. *)
 
 val animation_play_state : animation_play_state -> declaration
-(** [animation_play_state value] sets the CSS animation-play-state property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/animation-play-state>
-      MDN: animation-play-state *)
+(** [animation_play_state value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/animation-play-state}
+     animation-play-state} property. *)
 
 (** {2:visual_effects Visual Effects}
 
@@ -2319,9 +2319,9 @@ type box_shadow =
   | Var of box_shadow var
 
 val box_shadow : box_shadow -> declaration
-(** [box_shadow values] sets the CSS box-shadow property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/box-shadow>
-      MDN: box-shadow *)
+(** [box_shadow values] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/box-shadow} box-shadow}
+    property. *)
 
 (** CSS number values (unitless numbers for filters, transforms, etc.) *)
 type number =
@@ -2348,37 +2348,38 @@ type filter =
   | Var of filter var  (** Custom filter variable *)
 
 val filter : filter -> declaration
-(** [filter values] sets the CSS filter property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/filter> MDN: filter
-*)
+(** [filter values] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/filter} filter}
+    property. *)
 
 val backdrop_filter : filter -> declaration
-(** [backdrop_filter values] sets the CSS backdrop-filter property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/backdrop-filter>
-      MDN: backdrop-filter *)
+(** [backdrop_filter values] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/backdrop-filter}
+     backdrop-filter} property. *)
 
 val clip : string -> declaration
-(** [clip value] sets the CSS clip property (deprecated).
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/clip> MDN: clip *)
+(** [clip value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/clip} clip} property
+    (deprecated). *)
 
 val clip_path : string -> declaration
-(** [clip_path value] sets the CSS clip-path property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/clip-path>
-      MDN: clip-path *)
+(** [clip_path value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/clip-path} clip-path}
+    property. *)
 
 val mask : string -> declaration
-(** [mask value] sets the CSS mask property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/mask> MDN: mask *)
+(** [mask value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/mask} mask} property. *)
 
 val mix_blend_mode : blend_mode -> declaration
-(** [mix_blend_mode value] sets the CSS mix-blend-mode property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/mix-blend-mode>
-      MDN: mix-blend-mode *)
+(** [mix_blend_mode value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/mix-blend-mode}
+     mix-blend-mode} property. *)
 
 val background_blend_mode : blend_mode -> declaration
-(** [background_blend_mode values] sets the CSS background-blend-mode property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/background-blend-mode>
-      MDN: background-blend-mode *)
+(** [background_blend_mode values] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background-blend-mode}
+     background-blend-mode} property. *)
 
 (** {2:interaction User Interaction}
 
@@ -2434,9 +2435,9 @@ type user_select = None | Auto | Text | All | Contain
 type resize = None | Both | Horizontal | Vertical | Block | Inline | Inherit
 
 val cursor : cursor -> declaration
-(** [cursor value] sets the CSS cursor property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/cursor> MDN: cursor
-*)
+(** [cursor value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/cursor} cursor}
+    property. *)
 
 (** CSS pointer-events values *)
 type pointer_events =
@@ -2453,19 +2454,19 @@ type pointer_events =
   | Inherit
 
 val pointer_events : pointer_events -> declaration
-(** [pointer_events value] sets the CSS pointer-events property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/pointer-events>
-      MDN: pointer-events *)
+(** [pointer_events value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/pointer-events}
+     pointer-events} property. *)
 
 val user_select : user_select -> declaration
-(** [user_select value] sets the CSS user-select property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/user-select>
-      MDN: user-select *)
+(** [user_select value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/user-select}
+     user-select} property. *)
 
 val resize : resize -> declaration
-(** [resize value] sets the CSS resize property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/resize> MDN: resize
-*)
+(** [resize value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/resize} resize}
+    property. *)
 
 (** {2:container_containment Container Queries & Containment}
 
@@ -2476,23 +2477,22 @@ val resize : resize -> declaration
     @see <https://www.w3.org/TR/css-contain-2/> CSS Containment Module Level 2
 *)
 
-(** [aspect_ratio value] sets the CSS aspect-ratio property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/aspect-ratio>
-      MDN: aspect-ratio *)
+(** [aspect_ratio value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/aspect-ratio}
+     aspect-ratio} property. *)
 
 (** CSS container-type values *)
 type container_type = Normal | Size | Inline_size | Inherit
 
 val container_type : container_type -> declaration
-(** [container_type value] sets the CSS container-type property for container
-    queries.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/container-type>
-      MDN: container-type *)
+(** [container_type value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/container-type}
+     container-type} property for container queries. *)
 
 val container_name : string -> declaration
-(** [container_name value] sets the CSS container-name property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/container-name>
-      MDN: container-name *)
+(** [container_name value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/container-name}
+     container-name} property. *)
 
 (** CSS contain values *)
 type contain =
@@ -2509,9 +2509,9 @@ type contain =
   | Var of contain var  (** CSS variable reference *)
 
 val contain : contain -> declaration
-(** [contain value] sets the CSS contain property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/contain> MDN: contain
-*)
+(** [contain value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/contain} contain}
+    property. *)
 
 (** {1 Advanced Features}
 
@@ -2554,42 +2554,40 @@ type webkit_font_smoothing =
 type moz_osx_font_smoothing = Auto | Grayscale | Inherit
 
 val webkit_appearance : webkit_appearance -> declaration
-(** [webkit_appearance value] sets the -webkit-appearance property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/-webkit-appearance>
-      MDN: -webkit-appearance *)
+(** [webkit_appearance value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/-webkit-appearance}
+     -webkit-appearance} property. *)
 
 val webkit_font_smoothing : webkit_font_smoothing -> declaration
-(** [webkit_font_smoothing value] sets the -webkit-font-smoothing property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/-webkit-font-smoothing>
-      MDN: -webkit-font-smoothing *)
+(** [webkit_font_smoothing value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/-webkit-font-smoothing}
+     -webkit-font-smoothing} property. *)
 
 val moz_osx_font_smoothing : moz_osx_font_smoothing -> declaration
-(** [moz_osx_font_smoothing value] sets the -moz-osx-font-smoothing property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/-moz-osx-font-smoothing>
-      MDN: -moz-osx-font-smoothing *)
+(** [moz_osx_font_smoothing value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/-moz-osx-font-smoothing}
+     -moz-osx-font-smoothing} property. *)
 
 val webkit_tap_highlight_color : color -> declaration
-(** [webkit_tap_highlight_color value] sets the -webkit-tap-highlight-color
-    property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/-webkit-tap-highlight-color>
-      MDN: -webkit-tap-highlight-color. *)
+(** [webkit_tap_highlight_color value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/-webkit-tap-highlight-color}
+     -webkit-tap-highlight-color} property. *)
 
 val webkit_text_decoration : text_decoration -> declaration
-(** [webkit_text_decoration value] sets the -webkit-text-decoration property. *)
+(** [webkit_text_decoration value] is the -webkit-text-decoration property. *)
 
 val webkit_text_decoration_color : color -> declaration
-(** [webkit_text_decoration_color color] sets the -webkit-text-decoration-color
+(** [webkit_text_decoration_color color] is the -webkit-text-decoration-color
     property. *)
 
 val webkit_line_clamp : int -> declaration
 val webkit_box_orient : webkit_box_orient -> declaration
 
 val webkit_hyphens : hyphens -> declaration
-(** [webkit_hyphens value] sets the -webkit-hyphens property. *)
+(** [webkit_hyphens value] is the -webkit-hyphens property. *)
 
 val webkit_text_size_adjust : string -> declaration
-(** [webkit_text_size_adjust value] sets the -webkit-text-size-adjust property.
-*)
+(** [webkit_text_size_adjust value] is the -webkit-text-size-adjust property. *)
 
 (** {1 Additional Properties}
 
@@ -2615,15 +2613,14 @@ type list_style_type =
 type list_style_image = None_img | Url of string | Inherit
 
 val list_style_type : list_style_type -> declaration
-(** [list_style_type lst] sets the CSS list-style-type property.
-
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/list-style-type> *)
+(** [list_style_type lst] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/list-style-type}
+     list-style-type} property. *)
 
 val list_style_image : list_style_image -> declaration
-(** [list_style_image img] sets the CSS list-style-image property.
-
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/list-style-image>
-      MDN: list-style-image. *)
+(** [list_style_image img] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/list-style-image}
+     list-style-image} property. *)
 
 (* Table layout and vertical-align types *)
 type table_layout = Auto | Fixed | Inherit
@@ -2642,20 +2639,20 @@ type vertical_align =
   | Inherit
 
 val table_layout : table_layout -> declaration
-(** [table_layout value] sets the CSS table-layout property. *)
+(** [table_layout value] is the CSS table-layout property. *)
 
 val vertical_align : vertical_align -> declaration
-(** [vertical_align value] sets the CSS vertical-align property. *)
+(** [vertical_align value] is the CSS vertical-align property. *)
 
 val list_style : string -> declaration
-(** [list_style value] sets the CSS list-style shorthand property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/list-style>
-      MDN: list-style *)
+(** [list_style value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/list-style} list-style}
+    shorthand property. *)
 
 val border_spacing : length -> declaration
-(** [border_spacing value] sets the CSS border-spacing property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/border-spacing>
-      MDN: border-spacing *)
+(** [border_spacing value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-spacing}
+     border-spacing} property. *)
 
 (** {2:svg_properties SVG Properties}
 
@@ -2668,13 +2665,13 @@ type svg_paint =
   | Color of color  (** Specific color value *)
 
 val fill : svg_paint -> declaration
-(** [fill value] sets the SVG fill property. *)
+(** [fill value] is the SVG fill property. *)
 
 val stroke : svg_paint -> declaration
-(** [stroke value] sets the SVG stroke property. *)
+(** [stroke value] is the SVG stroke property. *)
 
 val stroke_width : length -> declaration
-(** [stroke_width value] sets the SVG stroke-width property. *)
+(** [stroke_width value] is the SVG stroke-width property. *)
 
 (** {2:scroll_touch Scroll & Touch}
 
@@ -2702,132 +2699,130 @@ type scroll_snap_type =
 type scroll_snap_align = None | Start | End | Center
 
 val touch_action : touch_action -> declaration
-(** [touch_action value] sets the CSS touch-action property. *)
+(** [touch_action value] is the CSS touch-action property. *)
 
 val scroll_snap_type : scroll_snap_type -> declaration
-(** [scroll_snap_type value] sets the CSS scroll-snap-type property. *)
+(** [scroll_snap_type value] is the CSS scroll-snap-type property. *)
 
 val scroll_snap_align : scroll_snap_align -> declaration
-(** [scroll_snap_align value] sets the CSS scroll-snap-align property. *)
+(** [scroll_snap_align value] is the CSS scroll-snap-align property. *)
 
 (** CSS scroll-snap-stop values *)
 type scroll_snap_stop = Normal | Always | Inherit
 
 val scroll_snap_stop : scroll_snap_stop -> declaration
-(** [scroll_snap_stop value] sets the CSS scroll-snap-stop property. *)
+(** [scroll_snap_stop value] is the CSS scroll-snap-stop property. *)
 
 (** CSS scroll behavior values *)
 type scroll_behavior = Auto | Smooth | Inherit
 
 val scroll_behavior : scroll_behavior -> declaration
-(** [scroll_behavior value] sets the CSS scroll-behavior property for smooth
-    scrolling.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-behavior>
-      MDN: scroll-behavior *)
+(** [scroll_behavior value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-behavior}
+     scroll-behavior} property for smooth scrolling. *)
 
 val scroll_margin : length -> declaration
-(** [scroll_margin value] sets the CSS scroll-margin property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin>
-      MDN: scroll-margin *)
+(** [scroll_margin value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin}
+     scroll-margin} property. *)
 
 val scroll_margin_top : length -> declaration
-(** [scroll_margin_top value] sets the CSS scroll-margin-top property.
+(** [scroll_margin_top value] is the CSS scroll-margin-top property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-top>
       MDN: scroll-margin-top *)
 
 val scroll_margin_right : length -> declaration
-(** [scroll_margin_right value] sets the CSS scroll-margin-right property.
+(** [scroll_margin_right value] is the CSS scroll-margin-right property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-right>
       MDN: scroll-margin-right *)
 
 val scroll_margin_bottom : length -> declaration
-(** [scroll_margin_bottom value] sets the CSS scroll-margin-bottom property.
+(** [scroll_margin_bottom value] is the CSS scroll-margin-bottom property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-bottom>
       MDN: scroll-margin-bottom *)
 
 val scroll_margin_left : length -> declaration
-(** [scroll_margin_left value] sets the CSS scroll-margin-left property.
+(** [scroll_margin_left value] is the CSS scroll-margin-left property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-left>
       MDN: scroll-margin-left *)
 
 val scroll_padding : length -> declaration
-(** [scroll_padding value] sets the CSS scroll-padding property.
+(** [scroll_padding value] is the CSS scroll-padding property.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding>
       MDN: scroll-padding *)
 
 val scroll_padding_top : length -> declaration
-(** [scroll_padding_top value] sets the CSS scroll-padding-top property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-top>
-      MDN: scroll-padding-top *)
+(** [scroll_padding_top value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-top}
+     scroll-padding-top} property. *)
 
 val scroll_padding_right : length -> declaration
-(** [scroll_padding_right value] sets the CSS scroll-padding-right property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-right>
-      MDN: scroll-padding-right *)
+(** [scroll_padding_right value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-right}
+     scroll-padding-right} property. *)
 
 val scroll_padding_bottom : length -> declaration
-(** [scroll_padding_bottom value] sets the CSS scroll-padding-bottom property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-bottom>
-      MDN: scroll-padding-bottom *)
+(** [scroll_padding_bottom value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-bottom}
+     scroll-padding-bottom} property. *)
 
 val scroll_padding_left : length -> declaration
-(** [scroll_padding_left value] sets the CSS scroll-padding-left property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-left>
-      MDN: scroll-padding-left *)
+(** [scroll_padding_left value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-left}
+     scroll-padding-left} property. *)
 
 (** CSS overscroll behavior values *)
 type overscroll_behavior = Auto | Contain | None | Inherit
 
 val overscroll_behavior : overscroll_behavior -> declaration
-(** [overscroll_behavior value] sets the CSS overscroll-behavior property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/overscroll-behavior>
-      MDN: overscroll-behavior *)
+(** [overscroll_behavior value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/overscroll-behavior}
+     overscroll-behavior} property. *)
 
 val overscroll_behavior_x : overscroll_behavior -> declaration
-(** [overscroll_behavior_x value] sets the CSS overscroll-behavior-x property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/overscroll-behavior-x>
-      MDN: overscroll-behavior-x *)
+(** [overscroll_behavior_x value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/overscroll-behavior-x}
+     overscroll-behavior-x} property. *)
 
 val overscroll_behavior_y : overscroll_behavior -> declaration
-(** [overscroll_behavior_y value] sets the CSS overscroll-behavior-y property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/overscroll-behavior-y>
-      MDN: overscroll-behavior-y *)
+(** [overscroll_behavior_y value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/overscroll-behavior-y}
+     overscroll-behavior-y} property. *)
 
 val accent_color : color -> declaration
-(** [accent_color value] sets the CSS accent-color property for form controls.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/accent-color>
-      MDN: accent-color *)
+(** [accent_color value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/accent-color}
+     accent-color} property for form controls. *)
 
 val caret_color : color -> declaration
-(** [caret_color value] sets the CSS caret-color property for text input cursor.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/caret-color>
-      MDN: caret-color *)
+(** [caret_color value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/caret-color}
+     caret-color} property for the text input cursor. *)
 
 (** {2:misc_properties Miscellaneous}
 
     Other properties that don't fit into specific categories. *)
 
 val forced_color_adjust : forced_color_adjust -> declaration
-(** [forced_color_adjust value] sets the CSS forced-color-adjust property. *)
+(** [forced_color_adjust value] is the CSS forced-color-adjust property. *)
 
 val quotes : string -> declaration
-(** [quotes value] sets the CSS quotes property. *)
+(** [quotes value] is the CSS quotes property. *)
 
 type appearance = None | Auto | Button | Textfield | Menulist | Inherit
 
 val appearance : appearance -> declaration
-(** [appearance value] sets the CSS appearance property. *)
+(** [appearance value] is the CSS appearance property. *)
 
 val tab_size : int -> declaration
-(** [tab_size value] sets the CSS tab-size property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/tab-size>
-      MDN: tab-size. *)
+(** [tab_size value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/tab-size} tab-size}
+    property. *)
 
 val font_variation_settings : font_variation_settings -> declaration
-(** [font_variation_settings value] sets the CSS font-variation-settings
-    property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/font-variation-settings>
-      MDN: font-variation-settings. *)
+(** [font_variation_settings value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-variation-settings}
+     font-variation-settings} property. *)
 
 (** {1 Custom Properties}
 
@@ -2862,14 +2857,14 @@ type meta
 (** The type for CSS variable metadata. *)
 
 val meta : unit -> ('a -> meta) * (meta -> 'a option)
-(** [meta ()] creates an injection/projection pair for metadata. The injection
+(** [meta ()] is an injection/projection pair for metadata. The injection
     function converts a value to metadata, the projection function attempts to
     extract the value back. *)
 
 val var_ref :
   ?fallback:'a -> ?default:'a -> ?layer:string -> ?meta:meta -> string -> 'a var
-(** [var_ref ?fallback ?default ?layer ?meta name] creates a CSS variable
-    reference. This is primarily for the CSS parser to create var() references.
+(** [var_ref ?fallback ?default ?layer ?meta name] is a CSS variable reference.
+    This is primarily for the CSS parser to create var() references.
 
     - [name] is the variable name (without the -- prefix)
     - [fallback] is used inside var(--name, fallback) in CSS output
@@ -2885,8 +2880,8 @@ val var :
   'a kind ->
   'a ->
   declaration * 'a var
-(** [var ?fallback ?layer name kind value] creates a CSS custom property
-    declaration and returns a variable handle.
+(** [var ?fallback ?layer name kind value] is a CSS custom property declaration
+    and returns a variable handle.
 
     - [name] is the variable name without the [--] prefix
     - [kind] specifies the value type (Length, Color, Angle, Float, etc.)
@@ -2911,7 +2906,7 @@ val declaration_meta : declaration -> meta option
 *)
 
 val custom_property : ?layer:string -> string -> string -> declaration
-(** [custom_property ?layer name value] creates a CSS custom property
+(** [custom_property ?layer name value] is a CSS custom property
     declaration.
 
     For type-safe variable declarations and usage, prefer using the {!var} API
@@ -2926,13 +2921,13 @@ val custom_property : ?layer:string -> string -> string -> declaration
     @see {!var} Type-safe CSS variable API *)
 
 val custom_declaration_name : declaration -> string option
-(** [custom_declaration_name decl] returns the variable name if the declaration
-    is a custom property declaration, None otherwise. *)
+(** [custom_declaration_name decl] is the variable name if [decl] is a custom
+    property declaration, [None] otherwise. *)
 
 val custom_declaration_layer : declaration -> string option
-(** [custom_declaration_layer decl] returns the declared layer for a custom
-    property declaration if present (e.g., "theme" or "utilities"). Returns
-    [None] for non-custom declarations or when no layer metadata is attached. *)
+(** [custom_declaration_layer decl] is the declared layer for a custom property
+    declaration if present (e.g., "theme" or "utilities"). It is [None] for
+    non-custom declarations or when no layer metadata is attached. *)
 
 (** {1 Rendering & Optimization}
 
@@ -2958,31 +2953,31 @@ val pp : ?minify:bool -> ?optimize:bool -> ?mode:mode -> t -> string
 type any_var = V : 'a var -> any_var
 
 val vars_of_rules : rule list -> any_var list
-(** [vars_of_rules rules] extracts all CSS variable referenced in the rules'
+(** [vars_of_rules rules] extracts all CSS variables referenced in the rules'
     declarations, returning them sorted and deduplicated. *)
 
 val vars_of_media_queries : media_rule list -> any_var list
-(** [vars_of_media_queries media_queries] extracts all CSS variable referenced
+(** [vars_of_media_queries media_queries] extracts all CSS variables referenced
     in the media queries' rules, returning them sorted and deduplicated. *)
 
-(** [vars_of_container_queries container_queries] extracts all CSS variable
+(** [vars_of_container_queries container_queries] extracts all CSS variables
     referenced in the container queries' rules, returning them sorted and
     deduplicated. *)
 
 val vars_of_stylesheet : t -> any_var list
-(** [vars_of_stylesheet stylesheet] extracts all CSS variable referenced in the
+(** [vars_of_stylesheet stylesheet] extracts all CSS variables referenced in the
     entire stylesheet, returning them sorted and deduplicated. *)
 
 val any_var_name : any_var -> string
-(** [any_var_name v] returns the name of a CSS variable (with -- prefix). *)
+(** [any_var_name v] is the name of a CSS variable (with [--] prefix). *)
 
 val analyze_declarations : declaration list -> any_var list
-(** [analyze_declarations declarations] extracts typed CSS variables from
-    declarations. *)
+(** [analyze_declarations declarations] is the typed CSS variables extracted
+    from [declarations]. *)
 
 val extract_custom_declarations : declaration list -> declaration list
-(** [extract_custom_declarations decls] returns only the custom property
-    declarations from a list. *)
+(** [extract_custom_declarations decls] is only the custom property declarations
+    from [decls]. *)
 
 (** {2:optimization Optimization}
 
@@ -3000,11 +2995,11 @@ type layer_stats = {
 }
 
 val stylesheet_rules : t -> rule list
-(** [stylesheet_rules stylesheet] returns the top-level rules of a stylesheet.
-*)
+(** [stylesheet_rules stylesheet] is the list of top-level rules of
+    [stylesheet]. *)
 
 val will_change : string -> declaration
-(** [will_change value] sets the CSS will-change property for performance
+(** [will_change value] is the CSS will-change property for performance
     optimization.
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS/will-change>
       MDN: will-change. *)

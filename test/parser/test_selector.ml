@@ -38,12 +38,12 @@ let test_attribute_selectors () =
   let cases =
     [
       ("[data-x]", "[data-x]");
-      ("[type=button]", "[type=button]");
-      ("[data-x~=v]", "[data-x~=v]");
-      ("[lang|=en]", "[lang|=en]");
-      ("[href^=https]", "[href^=https]");
+      ("[type=button]", "[type=\"button\"]");
+      ("[data-x~=v]", "[data-x~=\"v\"]");
+      ("[lang|=en]", "[lang|=\"en\"]");
+      ("[href^=https]", "[href^=\"https\"]");
       ("[href$=\".png\"]", "[href$=\".png\"]");
-      ("[title*=foo]", "[title*=foo]");
+      ("[title*=foo]", "[title*=\"foo\"]");
     ]
   in
   List.iter

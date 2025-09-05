@@ -144,10 +144,50 @@ let test_var_with_fallback () =
   let t = Css_parser.Reader.of_string "var(--theme-color, #007bff)" in
   let color = Css_parser.Values.read_color t in
   match color with
-  | Css.Var var ->
-      (* For now, fallback isn't parsed - just check the var name *)
-      check string "var name" "theme-color" (Css.var_name var)
+  | Css.Var var -> check string "var name" "theme-color" (Css.var_name var)
+  (* TODO: Once fallback is implemented, should verify the fallback is parsed *)
+  (* For now, we just verify the variable name is correct *)
   | _ -> fail "Expected Var for var() expression"
+
+let test_var_with_color_keyword_fallback () =
+  (* Test var() with color keyword as fallback *)
+  let t = Css_parser.Reader.of_string "var(--custom-color, red)" in
+  let color = Css_parser.Values.read_color t in
+  match color with
+  | Css.Var var -> check string "var name" "custom-color" (Css.var_name var)
+  (* TODO: Should parse and store fallback value 'red' *)
+  | _ -> fail "Expected Var with red fallback"
+
+let test_var_with_rgb_fallback () =
+  (* Test var() with rgb() function as fallback *)
+  let t = Css_parser.Reader.of_string "var(--brand-color, rgb(255, 0, 0))" in
+  let color = Css_parser.Values.read_color t in
+  match color with
+  | Css.Var var -> check string "var name" "brand-color" (Css.var_name var)
+  (* Fallback should be parsed and stored *)
+  | _ -> fail "Expected Var with rgb fallback"
+
+let test_var_fallback_in_output () =
+  (* Test that fallback values are preserved in the output *)
+  let t = Css_parser.Reader.of_string "var(--theme-color, #007bff)" in
+  let color = Css_parser.Values.read_color t in
+  let output = To_string.color color in
+  (* The output should include the fallback value *)
+  check string "var with fallback output" "var(--theme-color, #007bff)" output
+
+let test_var_in_calc_with_fallback () =
+  (* Test var() in calc with fallback value *)
+  let t = Css_parser.Reader.of_string "calc(100% - var(--gap, 20px))" in
+  let calc_expr = Css_parser.Values.read_calc t in
+  match calc_expr with
+  | Css.Expr (left, Css.Sub, right) -> (
+      match (left, right) with
+      | Css.Val (Css.Pct p), Css.Var var ->
+          check (float 0.01) "percentage" 100.0 p;
+          check string "var name in calc" "gap" (Css.var_name var)
+          (* TODO: Should parse and store fallback value 20px *)
+      | _, _ -> fail "Expected Pct(100) on left and Var on right")
+  | _ -> fail "Expected subtraction expression"
 
 let test_var_in_calc () =
   (* Test parsing var() in calc expressions *)
@@ -207,5 +247,11 @@ let tests =
     test_case "calc operations" `Quick test_calc_operations;
     test_case "var() in color context" `Quick test_var_in_color;
     test_case "var() with fallback" `Quick test_var_with_fallback;
+    test_case "var() with color keyword fallback" `Quick
+      test_var_with_color_keyword_fallback;
+    test_case "var() with rgb fallback" `Quick test_var_with_rgb_fallback;
+    test_case "var() fallback in output" `Quick test_var_fallback_in_output;
+    test_case "var() in calc with fallback" `Quick
+      test_var_in_calc_with_fallback;
     test_case "var() in calc expressions" `Quick test_var_in_calc;
   ]

@@ -46,7 +46,7 @@ let parse_hex_color t : Css.color =
   let hex = hex_color t in
   Hex { hash = true; value = hex }
 
-let parse_var_in_color t : Css.color =
+let rec parse_var_in_color t : Css.color =
   expect t '(';
   ws t;
   let var_name =
@@ -60,17 +60,55 @@ let parse_var_in_color t : Css.color =
     if peek t = Some ',' then (
       skip t;
       ws t;
-      (* Parse the fallback value - for now just skip it *)
-      let _ = until t ')' in
-      None (* TODO: Parse actual fallback color *))
+      (* Parse the fallback color value *)
+      Some (read_color_value t))
     else None
   in
   expect t ')';
-  (* Create a color var *)
+  (* Create a color var with fallback *)
   let v = Css.var_ref ?fallback var_name in
   Css.Var v
 
-let parse_color_keyword_or_var t : Css.color =
+and read_color_value t : Css.color =
+  (* Parse a color value that could be a keyword, hex, or rgb function *)
+  ws t;
+  match peek t with
+  | Some '#' -> parse_hex_color t
+  | _ -> (
+      (* Try rgb function first *)
+      match rgb_function t with
+      | Some (r, g, b, alpha) -> (
+          match alpha with
+          | None -> Rgb { r; g; b }
+          | Some a -> Rgba { r; g; b; a })
+      | None -> (
+          (* Not a function, try keyword *)
+          let keyword = ident t in
+          match String.lowercase_ascii keyword with
+          | "transparent" -> Transparent
+          | "currentcolor" -> Current
+          | "inherit" -> Inherit
+          | "red" -> Named Red
+          | "green" -> Named Green
+          | "blue" -> Named Blue
+          | "white" -> Named White
+          | "black" -> Named Black
+          | "gray" | "grey" -> Named Gray
+          | "silver" -> Named Silver
+          | "maroon" -> Named Maroon
+          | "yellow" -> Named Yellow
+          | "olive" -> Named Olive
+          | "lime" -> Named Lime
+          | "aqua" | "cyan" -> Named Cyan
+          | "teal" -> Named Teal
+          | "navy" -> Named Navy
+          | "fuchsia" | "magenta" -> Named Fuchsia
+          | "purple" -> Named Purple
+          | "orange" -> Named Orange
+          | "pink" -> Named Pink
+          | _ -> err_invalid ("color: " ^ keyword)))
+
+and parse_color_keyword t : Css.color =
   let keyword = ident t in
   match String.lowercase_ascii keyword with
   | "transparent" -> Transparent
@@ -94,8 +132,16 @@ let parse_color_keyword_or_var t : Css.color =
   | "purple" -> Named Purple
   | "orange" -> Named Orange
   | "pink" -> Named Pink
-  | "var" -> parse_var_in_color t
   | _ -> err_invalid ("color: " ^ keyword)
+
+let parse_color_keyword_or_var t : Css.color =
+  let keyword = ident t in
+  match String.lowercase_ascii keyword with
+  | "var" -> parse_var_in_color t
+  | _ ->
+      (* Put back the keyword and parse it as a color *)
+      let t' = Reader.of_string keyword in
+      parse_color_keyword t'
 
 let read_color t : Css.color =
   ws t;
@@ -146,8 +192,39 @@ let read_percentage t : float =
   expect t '%';
   n
 
+(** Helper to read a length value for fallback parsing *)
+let rec read_length_value t : Css.length =
+  ws t;
+  (* Try to parse number first *)
+  let num_opt = try_parse number t in
+  match num_opt with
+  | None -> (
+      (* Try keyword values *)
+      let keyword = ident t in
+      match String.lowercase_ascii keyword with
+      | "auto" -> Auto
+      | "max-content" -> Max_content
+      | "min-content" -> Min_content
+      | "fit-content" -> Fit_content
+      | "inherit" -> Inherit
+      | _ -> err_invalid ("length keyword: " ^ keyword))
+  | Some n when n = 0.0 -> Zero
+  | Some n -> (
+      (* Check for unit *)
+      let unit = while_ t (fun c -> (c >= 'a' && c <= 'z') || c = '%') in
+      match unit with
+      | "" -> Num n
+      | "px" -> Px (int_of_float n)
+      | "em" -> Em n
+      | "rem" -> Rem n
+      | "vh" -> Vh n
+      | "vw" -> Vw n
+      | "ch" -> Ch n
+      | "%" -> Pct n
+      | _ -> err_invalid ("length unit: " ^ unit))
+
 (** Read calc() expression *)
-let rec read_calc t : Css.length Css.calc =
+and read_calc t : Css.length Css.calc =
   ws t;
   if looking_at t "calc(" then (
     skip_n t 5;
@@ -166,15 +243,17 @@ let rec read_calc t : Css.length Css.calc =
       else ident t
     in
     ws t;
-    (* TODO: Parse optional fallback *)
-    if peek t = Some ',' then (
-      skip t;
-      ws t;
-      let _ = until t ')' in
-      ());
+    let fallback =
+      if peek t = Some ',' then (
+        skip t;
+        ws t;
+        (* Parse the fallback length value *)
+        Some (read_length_value t))
+      else None
+    in
     expect t ')';
-    (* Create a length var for calc *)
-    let v = Css.var_ref var_name in
+    (* Create a length var with fallback *)
+    let v = Css.var_ref ?fallback var_name in
     Var v)
   else
     (* Try to parse a value *)

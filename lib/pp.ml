@@ -19,6 +19,9 @@ let sp ctx () = if not ctx.minify then Buffer.add_char ctx.buf ' '
 let cut ctx () = if not ctx.minify then Buffer.add_string ctx.buf "\n" else ()
 
 let indent pp ctx a =
+  (* Output indentation spaces when not minifying *)
+  if not ctx.minify then
+    Buffer.add_string ctx.buf (String.make (2 * (ctx.indent + 1)) ' ');
   let new_ctx = { ctx with indent = ctx.indent + 1 } in
   pp new_ctx a
 
@@ -77,7 +80,7 @@ let surround ~left ~right pp ctx a =
   right ctx ()
 
 (* Number formatting to be implemented according to the plan *)
-let format_decimal s max_decimals is_neg =
+let format_decimal ?(drop_leading_zero = false) s max_decimals is_neg =
   let len = String.length s in
   let s =
     if len < max_decimals then String.make (max_decimals - len) '0' ^ s else s
@@ -98,11 +101,13 @@ let format_decimal s max_decimals is_neg =
   let frac_part = trim_zeros frac_part in
 
   let final_str =
-    if frac_part = "" then int_part else int_part ^ "." ^ frac_part
+    if frac_part = "" then int_part
+    else if drop_leading_zero && int_part = "0" then "." ^ frac_part
+    else int_part ^ "." ^ frac_part
   in
   if is_neg then "-" ^ final_str else final_str
 
-let float_to_string ?(max_decimals = 8) f =
+let float_to_string ?(drop_leading_zero = false) ?(max_decimals = 8) f =
   if f = 0.0 then "0"
   else if f <> f then "0" (* NaN *)
   else if f = infinity then "3.40282e38"
@@ -120,12 +125,13 @@ let float_to_string ?(max_decimals = 8) f =
         String.sub s 0 (String.length s - 1)
       else s
     in
-    format_decimal s max_decimals is_neg
+    format_decimal ~drop_leading_zero s max_decimals is_neg
 
-let float ctx f = Buffer.add_string ctx.buf (float_to_string f)
+let float ctx f =
+  Buffer.add_string ctx.buf (float_to_string ~drop_leading_zero:ctx.minify f)
 
 let float_n n ctx f =
-  let s = float_to_string ~max_decimals:n f in
+  let s = float_to_string ~drop_leading_zero:ctx.minify ~max_decimals:n f in
   Buffer.add_string ctx.buf s
 
 let int ctx i = Buffer.add_string ctx.buf (string_of_int i)

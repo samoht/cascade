@@ -645,13 +645,14 @@ let test_full_optimization_with_layers () =
 
 let test_pp_float () =
   let r = rule ~selector:f [ letter_spacing (Rem 0.5); rotate (Turn (-0.5)) ] in
-  let css = to_string (stylesheet [ Rule r ]) in
+  let css = to_string ~minify:true (stylesheet [ Rule r ]) in
+  (* In minified mode, leading zeros are dropped for values between -1 and 1 *)
   Alcotest.(check bool)
-    "leading zero dropped" true
-    (Astring.String.is_infix ~affix:"letter-spacing: .5rem" css);
+    "leading zero dropped in minified mode" true
+    (Astring.String.is_infix ~affix:"letter-spacing:.5rem" css);
   Alcotest.(check bool)
-    "negative leading zero dropped" true
-    (Astring.String.is_infix ~affix:"rotate: -.5turn" css)
+    "negative leading zero dropped in minified mode" true
+    (Astring.String.is_infix ~affix:"rotate:-.5turn" css)
 
 let test_var_with_fallback () =
   let _, ff =
