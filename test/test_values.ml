@@ -3,11 +3,11 @@
 open Alcotest
 open Css.Values
 
-let check_value type_name reader pp_func ?expected input =
+let check_value type_name reader pp_func ?(minify = true) ?expected input =
   let expected = Option.value ~default:input expected in
   let t = Css.Reader.of_string input in
   let result = reader t in
-  let pp_str = Css.Pp.to_string pp_func result in
+  let pp_str = Css.Pp.to_string ~minify pp_func result in
   check string (Fmt.str "%s %s" type_name input) expected pp_str
 
 let check_length = check_value "length" read_length pp_length
@@ -23,7 +23,7 @@ let test_length_parsing () =
   check_length ~expected:"0" "0px";
   check_length "-10px";
   check_length "2.5rem";
-  check_length "0.5em";
+  check_length ~expected:".5em" "0.5em";
   check_length "-1.5em";
   check_length "100%";
   check_length ~expected:"0" "0%";
@@ -47,14 +47,54 @@ let test_length_parsing () =
 
   (* Edge cases *)
   check_length "0";
-  check_length ~expected:"0.5rem" ".5rem";
+  check_length ".5rem";
   check_length "999999px";
   check_length "-999999px";
-  check_length "0.000001em";
-  check_length "0.0000001rem";
+  check_length ~expected:".000001em" "0.000001em";
+  check_length ~expected:".0000001rem" "0.0000001rem";
   check_length "999999999px";
   check_length "-999px";
   check_length ".5px"
+
+let test_additional_length_units () =
+  (* Absolute length units *)
+  check_length "10cm";
+  check_length "10mm";
+  check_length "10q";
+  check_length "1in";
+  check_length "12pt";
+  check_length "1pc";
+
+  (* Relative glyph units *)
+  check_length "2ex";
+  check_length "2cap";
+  check_length "2ic";
+  check_length "2rlh";
+
+  (* Viewport units *)
+  check_length "10vmin";
+  check_length "10vmax";
+  check_length "10vi";
+  check_length "10vb";
+
+  (* Dynamic/Large/Small viewport units *)
+  check_length "10dvh";
+  check_length "10dvw";
+  check_length "10dvmin";
+  check_length "10dvmax";
+  check_length "10lvh";
+  check_length "10lvw";
+  check_length "10lvmin";
+  check_length "10lvmax";
+  check_length "10svh";
+  check_length "10svw";
+  check_length "10svmin";
+  check_length "10svmax";
+
+  (* Zero normalization for new units *)
+  check_length ~expected:"0" "0cm";
+  check_length ~expected:"0" "0vi";
+  check_length ~expected:"0" "0svh"
 
 let test_color_parsing () =
   (* Hex colors with # *)
@@ -73,6 +113,24 @@ let test_color_parsing () =
   (* Additional named colors *)
   check_color "rebeccapurple";
   check_color "aliceblue";
+
+  (* Modern color notations *)
+  check_color ~expected:"hsl(180 50% 25%)" "hsl(180deg 50% 25%)";
+  check_color ~expected:"hsl(180 50% 25% / .5)" "hsl(180 50% 25% / 0.5)";
+  check_color "hwb(90 10% 20%)";
+  check_color ~expected:"hwb(90 10% 20% / .25)" "hwb(90 10% 20% / 0.25)";
+  check_color "color(srgb 1 0 0)";
+  check_color ~expected:"color(display-p3 .8 .2 .1 / .5)"
+    "color(display-p3 0.8 0.2 0.1 / 0.5)";
+  check_color ~expected:"color(oklab .5 .1 -.05)" "color(oklab 0.5 0.1 -0.05)";
+  check_color "color(lch 50 40 120)";
+  check_color ~expected:"color(xyz .3 .4 .5)" "color(xyz 0.3 0.4 0.5)";
+  (* Additional color functions and forms *)
+  check_color ~expected:"oklch(50% .2 30)" "oklch(50% 0.2 30)";
+  check_color ~expected:"rgb(255 0 0)" "rgb(100% 0% 0%)";
+  check_color ~expected:"oklab(.5 .1 -.05)" "oklab(0.5 0.1 -0.05)";
+  check_color "lch(50 40 120)";
+  check_color ~expected:"rgb(255 0 0 / .5)" "rgb(255 0 0 / 50%)";
 
   (* Named colors - all variants *)
   check_color "red";
@@ -109,11 +167,11 @@ let test_color_parsing () =
   check_color ~expected:"rgb(128 128 128)" "rgb(128, 128, 128)";
 
   (* RGBA with alpha *)
-  check_color ~expected:"rgb(255 0 0 / 0.5)" "rgba(255, 0, 0, 0.5)";
+  check_color ~expected:"rgb(255 0 0 / .5)" "rgba(255, 0, 0, 0.5)";
   check_color ~expected:"rgb(255 0 0 / 0)" "rgba(255, 0, 0, 0)";
   check_color ~expected:"rgb(255 0 0 / 1)" "rgba(255, 0, 0, 1)";
-  check_color ~expected:"rgb(0 0 0 / 0.25)" "rgba(0, 0, 0, 0.25)";
-  check_color ~expected:"rgb(128 128 128 / 0.75)" "rgba(128, 128, 128, 0.75)"
+  check_color ~expected:"rgb(0 0 0 / .25)" "rgba(0, 0, 0, 0.25)";
+  check_color ~expected:"rgb(128 128 128 / .75)" "rgba(128, 128, 128, 0.75)"
 
 let test_angle_parsing () =
   (* Degrees *)
@@ -122,7 +180,7 @@ let test_angle_parsing () =
   check_angle "360deg";
   check_angle "-45deg";
   check_angle "90.5deg";
-  check_angle ~expected:"0.5deg" ".5deg";
+  check_angle ".5deg";
 
   (* Radians *)
   check_angle "1.5rad";
@@ -131,10 +189,10 @@ let test_angle_parsing () =
   check_angle "-1.5rad";
 
   (* Turns *)
-  check_angle "0.25turn";
+  check_angle ~expected:".25turn" "0.25turn";
   check_angle "0turn";
   check_angle "1turn";
-  check_angle "-0.5turn";
+  check_angle ~expected:"-.5turn" "-0.5turn";
   check_angle "2.5turn";
 
   (* Gradians *)
@@ -152,8 +210,8 @@ let test_duration_parsing () =
   (* Seconds *)
   check_duration "1s";
   check_duration "0s";
-  check_duration "0.5s";
-  check_duration ~expected:"0.25s" ".25s";
+  check_duration ~expected:".5s" "0.5s";
+  check_duration ".25s";
   check_duration "10s";
   check_duration "999s";
 
@@ -173,11 +231,11 @@ let test_percentage_parsing () =
   check_percentage "12.5%";
   check_percentage "99.99%";
   check_percentage "200%";
-  check_percentage "0.01%";
-  check_percentage ~expected:"0.5%" ".5%";
-  check_percentage "0.0001%";
+  check_percentage ~expected:".01%" "0.01%";
+  check_percentage ".5%";
+  check_percentage ~expected:".0001%" "0.0001%";
   check_percentage "-50%";
-  check_percentage ~expected:"0.01%" ".01%"
+  check_percentage ".01%"
 
 let test_default_units_and_unitless () =
   (* Angle without unit defaults to deg when printed *)
@@ -198,10 +256,7 @@ let test_calc_expressions () =
       (* Nested and associative chains *)
       "calc(10px + 20px + 30px)";
       "calc(100% - 50% - 25%)";
-      (* Edge cases with zero *)
-      "calc(0px + 10px)";
-      "calc(100% - 0px)";
-      "calc(0 * 100px)";
+      (* Edge cases with zero - handled separately below *)
       (* Mixed units *)
       "calc(1rem + 2em + 3px)";
       "calc(100vw - 2rem)";
@@ -219,7 +274,11 @@ let test_calc_expressions () =
       "calc((10px + 20px) * 2)";
     ]
   in
-  List.iter check_calc cases
+  List.iter check_calc cases;
+  (* Edge cases with zero *)
+  check_calc ~expected:"calc(0 + 10px)" "calc(0px + 10px)";
+  check_calc ~expected:"calc(100% - 0)" "calc(100% - 0px)";
+  check_calc ~expected:"calc(0 * 100px)" "calc(0 * 100px)"
 
 let test_var_in_color () =
   let t = Css.Reader.of_string "var(--primary-color)" in
@@ -303,7 +362,7 @@ let test_regular_value_formatting () =
 
 let test_var_parsing_and_printing () =
   (* Test var() parsing and printing *)
-  check_color "var(--primary-color, #007bff)";
+  check_color "var(--primary-color)";
 
   (* Test var in length context *)
   check_length "var(--spacing, 10px)"
@@ -318,12 +377,12 @@ let test_var_default_inline () =
 
 let test_float_value_formatting () =
   (* Test float formatting with leading zeros *)
-  check_length "0.5rem";
-  check_length ~expected:"0.5rem" ".5rem";
-  check_length ~expected:"-0.5rem" "-.5rem";
+  check_length ~expected:".5rem" "0.5rem";
+  check_length ".5rem";
+  check_length "-.5rem";
 
   (* Test with angles *)
-  check_angle ~expected:"-0.5turn" "-.5turn"
+  check_angle "-.5turn"
 
 let test_var_with_multiple_fallbacks () =
   (* Test var() with multiple fallback values - round-trip test *)
@@ -331,6 +390,69 @@ let test_var_with_multiple_fallbacks () =
   check_length "var(--custom-size, 10px)";
   check_angle "var(--custom-angle, 45deg)";
   check_duration "var(--custom-time, 1s)"
+
+let test_color_oklch_printing () =
+  let open Css.Values in
+  let c = oklch 50.0 0.123 30.0 in
+  let s = Css.Pp.to_string pp_color c in
+  Alcotest.(check string) "oklch printing" "oklch(50% 0.123 30)" s
+
+let test_color_mix_printing () =
+  let open Css.Values in
+  let c1 = rgb 255 0 0 in
+  let c2 = rgb 0 0 255 in
+  let mix = color_mix ~in_space:Display_p3 ~percent1:30 ~percent2:70 c1 c2 in
+  let s = Css.Pp.to_string pp_color mix in
+  Alcotest.(check string)
+    "color-mix printing"
+    "color-mix(in display-p3, rgb(255 0 0) 30%, rgb(0 0 255) 70%)" s
+
+let test_var_in_calc_other_types () =
+  let open Css.Values in
+  (* Angle var in calc *)
+  let t = Css.Reader.of_string "calc(90deg + var(--angle, 0.5turn))" in
+  let calc_expr = read_calc read_angle t in
+  (match calc_expr with
+  | Expr (Val (Deg 90.), Add, Var v) ->
+      Alcotest.(check string) "var name" "angle" v.name
+  | _ -> Alcotest.fail "Expected angle var in calc");
+  (* Duration var in calc *)
+  let t = Css.Reader.of_string "calc(1s + var(--dur, 500ms))" in
+  let calc_expr = read_calc read_duration t in
+  (match calc_expr with
+  | Expr (Val (S 1.), Add, Var v) ->
+      Alcotest.(check string) "var name" "dur" v.name
+  | _ -> Alcotest.fail "Expected duration var in calc");
+  (* Percentage var in calc *)
+  let t = Css.Reader.of_string "calc(50% + var(--p, 25%))" in
+  let calc_expr = read_calc read_percentage t in
+  match calc_expr with
+  | Expr (Val 50., Add, Var v) -> Alcotest.(check string) "var name" "p" v.name
+  | _ -> Alcotest.fail "Expected percentage var in calc"
+
+let test_number_var_printing () =
+  let open Css.Values in
+  let v : number var = var_ref "scale" in
+  let n : number = Var v in
+  let s = Css.Pp.to_string pp_number n in
+  Alcotest.(check string) "number var printing" "var(--scale)" s
+
+let test_nested_var_fallbacks_roundtrip () =
+  (* Nested var() in color fallback *)
+  check_color "var(--primary, var(--secondary, red))";
+  (* Nested var() in length fallback *)
+  check_length "var(--gap, var(--gap2, 10px))";
+  (* Nested var() in angle and duration via calc contexts *)
+  let check_calc_angle =
+    check_value "calc_angle" (read_calc read_angle) (pp_calc pp_angle)
+  in
+  check_calc_angle ~expected:"calc(90deg + var(--a, var(--b, 45deg)))"
+    "calc(90deg + var(--a, var(--b, 45deg)))";
+  let check_calc_duration =
+    check_value "calc_duration" (read_calc read_duration) (pp_calc pp_duration)
+  in
+  check_calc_duration ~expected:"calc(1s + var(--t, var(--t2, 500ms)))"
+    "calc(1s + var(--t, var(--t2, 500ms)))"
 
 let test_calc_with_other_types () =
   (* Test calc with angles *)
@@ -367,6 +489,8 @@ let suite =
     ( "values",
       [
         test_case "parse lengths" `Quick test_length_parsing;
+        test_case "parse additional length units" `Quick
+          test_additional_length_units;
         test_case "parse colors" `Quick test_color_parsing;
         test_case "parse angles" `Quick test_angle_parsing;
         test_case "parse durations" `Quick test_duration_parsing;
@@ -395,5 +519,11 @@ let suite =
         test_case "var with multiple fallbacks" `Quick
           test_var_with_multiple_fallbacks;
         test_case "calc with other types" `Quick test_calc_with_other_types;
+        test_case "oklch printing" `Quick test_color_oklch_printing;
+        test_case "color-mix printing" `Quick test_color_mix_printing;
+        test_case "var in calc other types" `Quick test_var_in_calc_other_types;
+        test_case "number var printing" `Quick test_number_var_printing;
+        test_case "nested var() fallbacks roundtrip" `Quick
+          test_nested_var_fallbacks_roundtrip;
       ] );
   ]

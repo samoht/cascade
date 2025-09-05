@@ -114,18 +114,39 @@ let float_to_string ?(drop_leading_zero = false) ?(max_decimals = 8) f =
   else if f = neg_infinity then "-3.40282e38"
   else
     let is_neg = f < 0.0 in
-    let scale = 10.0 ** float_of_int max_decimals in
-    let scaled = floor (((if is_neg then -.f else f) *. scale) +. 0.5) in
-    let s = string_of_float scaled in
-    (* remove .0 or . *)
-    let s =
-      if String.ends_with ~suffix:".0" s then
-        String.sub s 0 (String.length s - 2)
-      else if String.ends_with ~suffix:"." s then
-        String.sub s 0 (String.length s - 1)
-      else s
-    in
-    format_decimal ~drop_leading_zero s max_decimals is_neg
+    let abs_f = if is_neg then -.f else f in
+    (* Check if this is an integer or needs decimal handling *)
+    if abs_f = floor abs_f then
+      (* It's an integer - convert directly *)
+      if abs_f <= float_of_int max_int then
+        let s = string_of_int (int_of_float abs_f) in
+        if is_neg then "-" ^ s else s
+      else
+        (* Very large integer - use string_of_float and clean it up *)
+        let s = string_of_float f in
+        if String.ends_with ~suffix:".0" s then
+          String.sub s 0 (String.length s - 2)
+        else if String.ends_with ~suffix:"." s then
+          String.sub s 0 (String.length s - 1)
+        else s
+    else
+      (* Has decimal places - use the scaling approach *)
+      let scale = 10.0 ** float_of_int max_decimals in
+      let scaled = floor ((abs_f *. scale) +. 0.5) in
+      let s =
+        if scaled <= float_of_int max_int then
+          string_of_int (int_of_float scaled)
+        else string_of_float scaled
+      in
+      (* remove .0 or . *)
+      let s =
+        if String.ends_with ~suffix:".0" s then
+          String.sub s 0 (String.length s - 2)
+        else if String.ends_with ~suffix:"." s then
+          String.sub s 0 (String.length s - 1)
+        else s
+      in
+      format_decimal ~drop_leading_zero s max_decimals is_neg
 
 let float ctx f =
   Buffer.add_string ctx.buf (float_to_string ~drop_leading_zero:ctx.minify f)

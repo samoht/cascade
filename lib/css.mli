@@ -718,6 +718,8 @@ type color =
       (** hash indicates if # was present *)
   | Rgb of { r : int; g : int; b : int }
   | Rgba of { r : int; g : int; b : int; a : float }
+  | Rgb_pct of { r : float; g : float; b : float }
+  | Rgba_pct of { r : float; g : float; b : float; a : float }
   | Hsl of { h : float; s : float; l : float; a : float option }
   | Hwb of { h : float; w : float; b : float; a : float option }
   | Color of {
@@ -726,6 +728,10 @@ type color =
       alpha : float option;
     }
   | Oklch of { l : float; c : float; h : float }  (** OKLCH color space *)
+  | Oklab of { l : float; a : float; b : float; alpha : float option }
+      (** Oklab color space *)
+  | Lch of { l : float; c : float; h : float; alpha : float option }
+      (** LCH color space *)
   | Named of color_name  (** Named colors like Red, Blue, etc. *)
   | Var of color var
   | Current

@@ -247,6 +247,8 @@ type color =
   | Hex of { hash : bool; value : string }
   | Rgb of { r : int; g : int; b : int }
   | Rgba of { r : int; g : int; b : int; a : float }
+  | Rgb_pct of { r : float; g : float; b : float }
+  | Rgba_pct of { r : float; g : float; b : float; a : float }
   | Hsl of { h : float; s : float; l : float; a : float option }
   | Hwb of { h : float; w : float; b : float; a : float option }
   | Color of {
@@ -255,6 +257,8 @@ type color =
       alpha : float option;
     }
   | Oklch of { l : float; c : float; h : float }
+  | Oklab of { l : float; a : float; b : float; alpha : float option }
+  | Lch of { l : float; c : float; h : float; alpha : float option }
   | Named of color_name
   | Var of color var
   | Current

@@ -235,6 +235,8 @@ type color =
   | Hex of { hash : bool; value : string }
   | Rgb of { r : int; g : int; b : int }
   | Rgba of { r : int; g : int; b : int; a : float }
+  | Rgb_pct of { r : float; g : float; b : float }
+  | Rgba_pct of { r : float; g : float; b : float; a : float }
   | Hsl of { h : float; s : float; l : float; a : float option }
   | Hwb of { h : float; w : float; b : float; a : float option }
   | Color of {
@@ -243,6 +245,8 @@ type color =
       alpha : float option;
     }
   | Oklch of { l : float; c : float; h : float }
+  | Oklab of { l : float; a : float; b : float; alpha : float option }
+  | Lch of { l : float; c : float; h : float; alpha : float option }
   | Named of color_name
   | Var of color var
   | Current
@@ -660,14 +664,31 @@ and pp_rgb ctx r g b alpha =
   | None -> ());
   Pp.char ctx ')'
 
+(* RGB percentage helper function - converts percentages to integers for
+   output *)
+and pp_rgb_pct ctx r g b alpha =
+  let pct_to_int pct = int_of_float (pct *. 255.0 /. 100.0) in
+  Pp.string ctx "rgb(";
+  Pp.int ctx (pct_to_int r);
+  Pp.space ctx ();
+  Pp.int ctx (pct_to_int g);
+  Pp.space ctx ();
+  Pp.int ctx (pct_to_int b);
+  (match alpha with
+  | Some a ->
+      Pp.string ctx " / ";
+      Pp.float ctx a
+  | None -> ());
+  Pp.char ctx ')'
+
 (* OKLCH helper function *)
 and pp_oklch ctx l c h =
   Pp.string ctx "oklch(";
   Pp.float_n 1 ctx l;
   Pp.string ctx "% ";
-  Pp.float_n 3 ctx c;
+  Pp.float ctx c;
   Pp.space ctx ();
-  Pp.float_n 3 ctx h;
+  Pp.float ctx h;
   Pp.char ctx ')'
 
 and pp_color_space : color_space Pp.t =
@@ -723,6 +744,8 @@ and pp_color : color Pp.t =
       Pp.string ctx value
   | Rgb { r; g; b } -> pp_rgb ctx r g b None
   | Rgba { r; g; b; a } -> pp_rgb ctx r g b (Some a)
+  | Rgb_pct { r; g; b } -> pp_rgb_pct ctx r g b None
+  | Rgba_pct { r; g; b; a } -> pp_rgb_pct ctx r g b (Some a)
   | Hsl { h; s; l; a } ->
       Pp.string ctx "hsl(";
       Pp.float ctx h;
@@ -768,6 +791,32 @@ and pp_color : color Pp.t =
       | None -> ());
       Pp.char ctx ')'
   | Oklch { l; c; h } -> pp_oklch ctx l c h
+  | Oklab { l; a; b; alpha } ->
+      Pp.string ctx "oklab(";
+      Pp.float ctx l;
+      Pp.space ctx ();
+      Pp.float ctx a;
+      Pp.space ctx ();
+      Pp.float ctx b;
+      (match alpha with
+      | Some aa ->
+          Pp.string ctx " / ";
+          Pp.float ctx aa
+      | None -> ());
+      Pp.char ctx ')'
+  | Lch { l; c; h; alpha } ->
+      Pp.string ctx "lch(";
+      Pp.float ctx l;
+      Pp.space ctx ();
+      Pp.float ctx c;
+      Pp.space ctx ();
+      Pp.float ctx h;
+      (match alpha with
+      | Some aa ->
+          Pp.string ctx " / ";
+          Pp.float ctx aa
+      | None -> ());
+      Pp.char ctx ')'
   | Named name -> pp_color_name ctx name
   | Var v -> pp_var pp_color ctx v
   | Current -> Pp.string ctx "currentcolor"
@@ -846,8 +895,31 @@ end
 (** Error helpers *)
 let err_invalid t what = raise (Parse_error ("invalid " ^ what, t))
 
+(** Generic var() parser that returns a var reference *)
+let read_var : type a. (Reader.t -> a) -> Reader.t -> a var =
+ fun read_value t ->
+  expect_string t "var(";
+  ws t;
+  let var_name =
+    if looking_at t "--" then (
+      expect_string t "--";
+      ident t)
+    else ident t
+  in
+  ws t;
+  let fallback =
+    if peek t = Some ',' then (
+      skip t;
+      ws t;
+      Some (read_value t))
+    else None
+  in
+  ws t;
+  expect t ')';
+  var_ref ?fallback var_name
+
 (** Read a CSS length value *)
-let read_length t : length =
+let rec read_length t : length =
   ws t;
   (* Try to parse number first *)
   let num_opt = try_parse number t in
@@ -862,6 +934,9 @@ let read_length t : length =
       | "fit-content" -> Fit_content
       | "from-font" -> From_font
       | "inherit" -> Inherit
+      | "var" ->
+          expect t '(';
+          Var (read_var read_length t)
       | _ -> err_invalid t ("length keyword: " ^ keyword))
   | Some n -> (
       (* Check for unit *)
@@ -906,76 +981,273 @@ let read_length t : length =
       | "%" -> Pct n
       | _ -> err_invalid t ("length unit: " ^ unit))
 
-(** Read a CSS color value *)
-let parse_hex_color t : color =
-  skip t;
-  (* skip the # *)
-  let hex = hex_color t in
-  Hex { hash = true; value = hex }
+(** Convert angle to degrees *)
+let angle_to_degrees : angle -> float = function
+  | Deg d -> d
+  | Rad r -> r *. (180.0 /. Float.pi)
+  | Grad g -> g *. 0.9
+  | Turn tr -> tr *. 360.0
+  | Var _ -> assert false
 
-let rec parse_var_in_color t : color =
-  expect t '(';
+(** Read a percentage value *)
+let read_percentage t : float =
   ws t;
-  let var_name =
-    if looking_at t "--" then (
-      skip_n t 2;
-      ident t (* var_name should be without -- *))
-    else ident t
-  in
+  let n = number t in
+  expect t '%';
+  n
+
+(** Read optional alpha component *)
+let read_optional_alpha t : float option =
   ws t;
-  let fallback =
-    if peek t = Some ',' then (
-      skip t;
+  if peek t = Some '/' then (
+    skip t;
+    ws t;
+    (* Alpha can be either a number (0-1) or percentage (0%-100%) *)
+    let alpha =
+      (* Use try_parse for proper backtracking *)
+      match try_parse read_percentage t with
+      | Some pct -> pct /. 100.0 (* Convert percentage to 0-1 range *)
+      | None -> number t (* Fall back to number *)
+    in
+    Some alpha)
+  else None
+
+(** Read space-separated RGB values (modern syntax) *)
+let read_rgb_space_separated t : color =
+  (* Try percentage format first with proper backtracking *)
+  match
+    try_parse
+      (fun t ->
+        let r_pct = read_percentage t in
+        ws t;
+        let g_pct = read_percentage t in
+        ws t;
+        let b_pct = read_percentage t in
+        let alpha = read_optional_alpha t in
+        ws t;
+        expect t ')';
+        (r_pct, g_pct, b_pct, alpha))
+      t
+  with
+  | Some (r_pct, g_pct, b_pct, alpha) -> (
+      (* Create percentage-based AST nodes *)
+      match alpha with
+      | None -> Rgb_pct { r = r_pct; g = g_pct; b = b_pct }
+      | Some a -> Rgba_pct { r = r_pct; g = g_pct; b = b_pct; a })
+  | None -> (
+      (* Fall back to integer format *)
+      let r = int_of_float (number t) in
       ws t;
-      (* Parse the fallback color value *)
-      Some (read_color_value t))
-    else None
-  in
-  expect t ')';
-  (* Create a color var with fallback *)
-  let v = var_ref ?fallback var_name in
-  Var v
+      let g = int_of_float (number t) in
+      ws t;
+      let b = int_of_float (number t) in
+      let alpha = read_optional_alpha t in
+      ws t;
+      expect t ')';
+      (* Create integer-based AST nodes *)
+      match alpha with
+      | None -> Rgb { r; g; b }
+      | Some a -> Rgba { r; g; b; a })
 
-and read_color_value t : color =
-  (* Parse a color value that could be a keyword, hex, or rgb function *)
+(** Read comma-separated RGB values (legacy syntax) *)
+let read_rgb_comma_separated t : color =
+  (* Try percentage format first with proper backtracking *)
+  match
+    try_parse
+      (fun t ->
+        let r_pct = read_percentage t in
+        ws t;
+        expect t ',';
+        ws t;
+        let g_pct = read_percentage t in
+        ws t;
+        expect t ',';
+        ws t;
+        let b_pct = read_percentage t in
+        (* For legacy syntax, alpha uses comma *)
+        let alpha =
+          ws t;
+          if peek t = Some ',' then (
+            skip t;
+            ws t;
+            Some
+              (match try_parse read_percentage t with
+              | Some pct -> pct /. 100.0
+              | None -> number t))
+          else None
+        in
+        ws t;
+        expect t ')';
+        (r_pct, g_pct, b_pct, alpha))
+      t
+  with
+  | Some (r_pct, g_pct, b_pct, alpha) -> (
+      (* Create percentage-based AST nodes *)
+      match alpha with
+      | None -> Rgb_pct { r = r_pct; g = g_pct; b = b_pct }
+      | Some a -> Rgba_pct { r = r_pct; g = g_pct; b = b_pct; a })
+  | None -> (
+      (* Fall back to integer format *)
+      let r = int_of_float (number t) in
+      ws t;
+      expect t ',';
+      ws t;
+      let g = int_of_float (number t) in
+      ws t;
+      expect t ',';
+      ws t;
+      let b = int_of_float (number t) in
+      (* For legacy syntax, alpha uses comma *)
+      let alpha =
+        ws t;
+        if peek t = Some ',' then (
+          skip t;
+          ws t;
+          Some
+            (match try_parse read_percentage t with
+            | Some pct -> pct /. 100.0
+            | None -> number t))
+        else None
+      in
+      ws t;
+      expect t ')';
+      (* Create integer-based AST nodes *)
+      match alpha with
+      | None -> Rgb { r; g; b }
+      | Some a -> Rgba { r; g; b; a })
+
+(** Read color space identifier *)
+let read_color_space t : color_space =
+  let space_ident = ident t |> String.lowercase_ascii in
+  match space_ident with
+  | "srgb" -> Srgb
+  | "srgb-linear" -> Srgb_linear
+  | "display-p3" -> Display_p3
+  | "a98-rgb" -> A98_rgb
+  | "prophoto-rgb" -> Prophoto_rgb
+  | "rec2020" -> Rec2020
+  | "lab" -> Lab
+  | "oklab" -> Oklab
+  | "xyz" -> Xyz
+  | "xyz-d50" -> Xyz_d50
+  | "xyz-d65" -> Xyz_d65
+  | "lch" -> Lch
+  | "oklch" -> Oklch
+  | "hsl" -> Hsl
+  | "hwb" -> Hwb
+  | _ -> err_invalid t ("color space: " ^ space_ident)
+
+(** Read color components until ')' or '/' *)
+let rec read_color_components t acc =
   ws t;
   match peek t with
-  | Some '#' -> parse_hex_color t
-  | _ -> (
-      (* Try rgb function first *)
-      match rgb_function t with
-      | Some (r, g, b, alpha) -> (
-          match alpha with
-          | None -> Rgb { r; g; b }
-          | Some a -> Rgba { r; g; b; a })
-      | None -> (
-          (* Not a function, try keyword *)
-          let keyword = ident t in
-          match String.lowercase_ascii keyword with
-          | "transparent" -> Transparent
-          | "currentcolor" -> Current
-          | "inherit" -> Inherit
-          | "red" -> Named Red
-          | "green" -> Named Green
-          | "blue" -> Named Blue
-          | "white" -> Named White
-          | "black" -> Named Black
-          | "gray" | "grey" -> Named Gray
-          | "silver" -> Named Silver
-          | "maroon" -> Named Maroon
-          | "yellow" -> Named Yellow
-          | "olive" -> Named Olive
-          | "lime" -> Named Lime
-          | "aqua" | "cyan" -> Named Cyan
-          | "teal" -> Named Teal
-          | "navy" -> Named Navy
-          | "fuchsia" | "magenta" -> Named Fuchsia
-          | "purple" -> Named Purple
-          | "orange" -> Named Orange
-          | "pink" -> Named Pink
-          | _ -> err_invalid t ("color: " ^ keyword)))
+  | Some ')' | Some '/' -> List.rev acc
+  | Some _ ->
+      let v = number t in
+      read_color_components t (v :: acc)
+  | None -> err_invalid t "color()"
 
-and parse_color_keyword t : color =
+(** Read a CSS color value - single entry point for all color parsing *)
+let rec read_color t : color =
+  ws t;
+  match peek t with
+  | Some '#' ->
+      (* Hex color: #fff or #ffffff *)
+      expect t '#';
+      let hex = hex_color t in
+      Hex { hash = true; value = hex }
+  | _ ->
+      if
+        (* Check for color functions *)
+        looking_at t "rgb(" || looking_at t "rgba("
+      then (
+        (* Parse rgb() or rgba() function - both legacy and modern syntax *)
+        let _ = ident t in
+        (* consume "rgb" or "rgba" *)
+        expect t '(';
+        ws t;
+
+        (* Try space-separated first, then comma-separated *)
+        match try_parse read_rgb_space_separated t with
+        | Some result -> result
+        | None -> read_rgb_comma_separated t)
+      else if looking_at t "hsl(" then (
+        expect_string t "hsl(";
+        ws t;
+        let hue = angle_to_degrees (read_angle t) in
+        ws t;
+        let s = read_percentage t in
+        ws t;
+        let l = read_percentage t in
+        let a = read_optional_alpha t in
+        ws t;
+        expect t ')';
+        Hsl { h = hue; s; l; a })
+      else if looking_at t "hwb(" then (
+        expect_string t "hwb(";
+        ws t;
+        let hue = angle_to_degrees (read_angle t) in
+        ws t;
+        let w = read_percentage t in
+        ws t;
+        let b = read_percentage t in
+        let a = read_optional_alpha t in
+        ws t;
+        expect t ')';
+        Hwb { h = hue; w; b; a })
+      else if looking_at t "oklch(" then (
+        expect_string t "oklch(";
+        ws t;
+        let l = number t in
+        expect t '%';
+        ws t;
+        let c = number t in
+        ws t;
+        let h = number t in
+        ws t;
+        expect t ')';
+        Oklch { l; c; h })
+      else if looking_at t "oklab(" then (
+        expect_string t "oklab(";
+        ws t;
+        let l = number t in
+        ws t;
+        let a = number t in
+        ws t;
+        let b = number t in
+        let alpha = read_optional_alpha t in
+        ws t;
+        expect t ')';
+        Oklab { l; a; b; alpha })
+      else if looking_at t "lch(" then (
+        expect_string t "lch(";
+        ws t;
+        let l = number t in
+        ws t;
+        let c = number t in
+        ws t;
+        let h = number t in
+        let alpha = read_optional_alpha t in
+        ws t;
+        expect t ')';
+        Lch { l; c; h; alpha })
+      else if looking_at t "color(" then (
+        expect_string t "color(";
+        ws t;
+        let space = read_color_space t in
+        ws t;
+        let components = read_color_components t [] in
+        let alpha = read_optional_alpha t in
+        expect t ')';
+        Color { space; components; alpha })
+      else if looking_at t "var(" then
+        (* CSS variable *)
+        Var (read_var read_color t)
+      else
+        (* Color keyword or error *)
+        read_color_keyword t
+
+and read_color_keyword t : color =
   let keyword = ident t in
   let lower = String.lowercase_ascii keyword in
   match lower with
@@ -987,16 +1259,19 @@ and parse_color_keyword t : color =
   | "blue" -> Named Blue
   | "white" -> Named White
   | "black" -> Named Black
-  | "gray" | "grey" -> Named Gray
+  | "gray" -> Named Gray
+  | "grey" -> Named Grey
   | "silver" -> Named Silver
   | "maroon" -> Named Maroon
   | "yellow" -> Named Yellow
   | "olive" -> Named Olive
   | "lime" -> Named Lime
-  | "aqua" | "cyan" -> Named Cyan
+  | "aqua" -> Named Aqua
+  | "cyan" -> Named Cyan
   | "teal" -> Named Teal
   | "navy" -> Named Navy
-  | "fuchsia" | "magenta" -> Named Fuchsia
+  | "fuchsia" -> Named Fuchsia
+  | "magenta" -> Named Magenta
   | "purple" -> Named Purple
   | "orange" -> Named Orange
   | "pink" -> Named Pink
@@ -1129,162 +1404,44 @@ and parse_color_keyword t : color =
   | "yellowgreen" -> Named Yellow_green
   | _ -> err_invalid t ("color: " ^ keyword)
 
-let parse_color_keyword_or_var t : color =
-  let keyword = ident t in
-  match String.lowercase_ascii keyword with
-  | "var" -> parse_var_in_color t
-  | _ ->
-      (* Try known color keywords, otherwise treat as custom named color *)
-      let t' = Reader.of_string keyword in
-      parse_color_keyword t'
-
-let read_color t : color =
-  ws t;
-  match peek t with
-  | Some '#' -> parse_hex_color t
-  | _ -> (
-      if looking_at t "hsl(" then (
-        skip_n t 4;
-        (* hsl( *)
-        ws t;
-        let hue =
-          let a = read_angle t in
-          match a with
-          | Deg d -> d
-          | Rad r -> r *. (180.0 /. Float.pi)
-          | Grad g -> g *. 0.9
-          | Turn tr -> tr *. 360.0
-        in
-        ws t;
-        let s = read_percentage t in
-        ws t;
-        let l = read_percentage t in
-        ws t;
-        let alpha =
-          if peek t = Some '/' then (
-            skip t;
-            ws t;
-            Some (number t))
-          else None
-        in
-        ws t;
-        expect t ')';
-        Hsl { h = hue; s; l; a = alpha })
-      else if looking_at t "hwb(" then (
-        skip_n t 4;
-        (* hwb( *)
-        ws t;
-        let hue =
-          let a = read_angle t in
-          match a with
-          | Deg d -> d
-          | Rad r -> r *. (180.0 /. Float.pi)
-          | Grad g -> g *. 0.9
-          | Turn tr -> tr *. 360.0
-        in
-        ws t;
-        let w = read_percentage t in
-        ws t;
-        let b = read_percentage t in
-        ws t;
-        let alpha =
-          if peek t = Some '/' then (
-            skip t;
-            ws t;
-            Some (number t))
-          else None
-        in
-        ws t;
-        expect t ')';
-        Hwb { h = hue; w; b; a = alpha })
-      else if looking_at t "color(" then (
-        skip_n t 6;
-        (* color( *)
-        ws t;
-        let space_ident = ident t |> String.lowercase_ascii in
-        let space =
-          match space_ident with
-          | "srgb" -> Srgb
-          | "srgb-linear" -> Srgb_linear
-          | "display-p3" -> Display_p3
-          | "a98-rgb" -> A98_rgb
-          | "prophoto-rgb" -> Prophoto_rgb
-          | "rec2020" -> Rec2020
-          | "lab" -> Lab
-          | "oklab" -> Oklab
-          | "xyz" -> Xyz
-          | "xyz-d50" -> Xyz_d50
-          | "xyz-d65" -> Xyz_d65
-          | "lch" -> Lch
-          | "oklch" -> Oklch
-          | "hsl" -> Hsl
-          | "hwb" -> Hwb
-          | _ -> err_invalid t ("color space: " ^ space_ident)
-        in
-        ws t;
-        let rec read_components acc =
-          ws t;
-          match peek t with
-          | Some ')' | Some '/' -> List.rev acc
-          | Some _ ->
-              let v = number t in
-              read_components (v :: acc)
-          | None -> err_invalid t "color()"
-        in
-        let components = read_components [] in
-        let alpha =
-          if peek t = Some '/' then (
-            skip t;
-            ws t;
-            Some (number t))
-          else None
-        in
-        expect t ')';
-        Color { space; components; alpha })
-      else
-        match rgb_function t with
-        | Some (r, g, b, alpha) -> (
-            match alpha with
-            | None -> Rgb { r; g; b }
-            | Some a -> Rgba { r; g; b; a })
-        | None -> parse_color_keyword_or_var t)
-
 (** Read an angle value *)
-let read_angle t : angle =
+and read_angle t : angle =
   ws t;
-  let n = number t in
-  let unit = while_ t (fun c -> c >= 'a' && c <= 'z') in
-  match unit with
-  | "deg" -> Deg n
-  | "rad" -> Rad n
-  | "turn" -> Turn n
-  | "grad" -> Grad n
-  | "" -> Deg n (* Default to degrees *)
-  | _ -> err_invalid t ("angle unit: " ^ unit)
+  (* Check for var() *)
+  if looking_at t "var(" then Var (read_var read_angle t)
+  else
+    let n = number t in
+    let unit = while_ t (fun c -> c >= 'a' && c <= 'z') in
+    match unit with
+    | "deg" -> Deg n
+    | "rad" -> Rad n
+    | "turn" -> Turn n
+    | "grad" -> Grad n
+    | "" -> Deg n (* Default to degrees *)
+    | _ -> err_invalid t ("angle unit: " ^ unit)
 
 (** Read a duration value *)
-let read_duration t : duration =
+let rec read_duration t : duration =
   ws t;
-  let n = number t in
-  let unit = while_ t (fun c -> c >= 'a' && c <= 'z') in
-  match unit with
-  | "s" -> S n
-  | "ms" -> Ms (int_of_float n)
-  | "" -> Ms (int_of_float n) (* Default to milliseconds *)
-  | _ -> err_invalid t ("duration unit: " ^ unit)
+  (* Check for var() *)
+  if looking_at t "var(" then Var (read_var read_duration t)
+  else
+    let n = number t in
+    let unit = while_ t (fun c -> c >= 'a' && c <= 'z') in
+    match unit with
+    | "s" -> S n
+    | "ms" -> Ms (int_of_float n)
+    | "" -> Ms (int_of_float n) (* Default to milliseconds *)
+    | _ -> err_invalid t ("duration unit: " ^ unit)
 
 (** Read a number value *)
-let read_number t : number =
+let rec read_number t : number =
   ws t;
-  let n = number t in
-  if n = float_of_int (int_of_float n) then Int (int_of_float n) else Float n
-
-(** Read a percentage value *)
-let read_percentage t : float =
-  ws t;
-  let n = number t in
-  expect t '%';
-  n
+  (* Check for var() *)
+  if looking_at t "var(" then Var (read_var read_number t)
+  else
+    let n = number t in
+    if n = float_of_int (int_of_float n) then Int (int_of_float n) else Float n
 
 let rec read_calc_expr : type a. (Reader.t -> a) -> Reader.t -> a calc =
  fun read_a t ->
@@ -1329,18 +1486,18 @@ and read_calc : type a. (Reader.t -> a) -> Reader.t -> a calc =
  fun read_a t ->
   ws t;
   if looking_at t "calc(" then (
-    skip_n t 5;
+    expect_string t "calc(";
     (* skip "calc(" *)
     let expr = read_calc_expr read_a t in
     expect t ')';
     expr)
   else if looking_at t "var(" then (
-    skip_n t 4;
+    expect_string t "var(";
     (* skip "var(" *)
     ws t;
     let var_name =
       if looking_at t "--" then (
-        skip_n t 2;
+        expect_string t "--";
         ident t (* var_name should be without -- *))
       else ident t
     in
