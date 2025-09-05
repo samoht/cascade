@@ -2,6 +2,14 @@
 
 exception Parse_error of string
 
+(** Error helpers *)
+let err msg = raise (Parse_error msg)
+
+let err_eof () = err "unexpected end of input"
+let err_expected what = err ("expected " ^ what)
+let err_invalid_number () = err "invalid number"
+let err_invalid what = err ("invalid " ^ what)
+
 type t = {
   input : string;
   len : int;
@@ -29,37 +37,42 @@ let looking_at t s =
 (** {1 Reading Characters} *)
 
 let skip t =
-  if t.pos >= t.len then raise (Parse_error "unexpected end of input");
+  if t.pos >= t.len then err_eof ();
   t.pos <- t.pos + 1
 
 let skip_n t n =
-  if t.pos + n > t.len then raise (Parse_error "unexpected end of input");
+  if t.pos + n > t.len then err_eof ();
   t.pos <- t.pos + n
 
 let char t =
-  if t.pos >= t.len then raise (Parse_error "unexpected end of input");
+  if t.pos >= t.len then err_eof ();
   let c = t.input.[t.pos] in
   t.pos <- t.pos + 1;
   c
 
+let err_expect expected actual =
+  err
+    ("Expected '" ^ String.make 1 expected ^ "' but got '"
+   ^ String.make 1 actual ^ "'")
+
 let expect t c =
   let actual = char t in
-  if actual <> c then
-    raise (Parse_error (Fmt.str "expected '%c' but got '%c'" c actual))
+  if actual <> c then err_expect c actual
+
+let err_expect_string expected = err ("expected \"" ^ expected ^ "\"")
 
 let expect_string t s =
   let slen = String.length s in
-  if not (looking_at t s) then raise (Parse_error (Fmt.str "expected \"%s\"" s));
+  if not (looking_at t s) then err_expect_string s;
   skip_n t slen
 
 (** Pretty-printer for parser state. *)
-let pp fmt t =
+let pp t =
   let remaining = max 0 (t.len - t.pos) in
-  let preview_len = min 20 remaining in
-  let preview =
-    if preview_len > 0 then String.sub t.input t.pos preview_len else ""
-  in
-  Fmt.pf fmt "pos=%d next=%S" t.pos preview
+  if remaining = 0 then "<EOF>"
+  else
+    let preview_len = min 20 remaining in
+    String.sub t.input t.pos preview_len
 
 (** {1 Reading Strings} *)
 
@@ -91,13 +104,12 @@ let is_ident_char c = is_ident_start c || (c >= '0' && c <= '9')
 
 let ident t =
   if t.pos >= t.len || not (is_ident_start t.input.[t.pos]) then
-    raise (Parse_error "expected identifier");
+    err_expected "identifier";
   while_ t is_ident_char
 
 let string t =
   let quote = char t in
-  if quote <> '"' && quote <> '\'' then
-    raise (Parse_error "expected string quote");
+  if quote <> '"' && quote <> '\'' then err_expected "string quote";
   let rec loop acc =
     match char t with
     | '\\' ->
@@ -111,6 +123,7 @@ let string t =
 let is_digit c = c >= '0' && c <= '9'
 
 let number t =
+  let negative = peek t = Some '-' in
   let sign = peek t = Some '-' || peek t = Some '+' in
   if sign then skip t;
 
@@ -120,18 +133,16 @@ let number t =
       skip t;
       let frac = while_ t is_digit in
       if String.length whole = 0 && String.length frac = 0 then
-        raise (Parse_error "invalid number");
+        err_invalid_number ();
       "." ^ frac)
     else ""
   in
 
   let num_str = whole ^ decimal in
-  if String.length num_str = 0 || num_str = "." then
-    raise (Parse_error "invalid number");
+  if String.length num_str = 0 || num_str = "." then err_invalid_number ();
 
   let value = float_of_string num_str in
-  if sign && t.input.[t.pos - String.length num_str - 1] = '-' then -.value
-  else value
+  if negative then -.value else value
 
 let int t = int_of_float (number t)
 
@@ -157,14 +168,14 @@ let save t = t.saved <- t.pos :: t.saved
 
 let restore t =
   match t.saved with
-  | [] -> raise (Parse_error "no saved position to restore")
+  | [] -> err "no saved position to restore"
   | pos :: rest ->
       t.pos <- pos;
       t.saved <- rest
 
 let commit t =
   match t.saved with
-  | [] -> raise (Parse_error "no saved position to commit")
+  | [] -> err "no saved position to commit"
   | _ :: rest -> t.saved <- rest
 
 let try_parse f t =
@@ -208,7 +219,7 @@ let is_hex c = is_digit c || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
 let hex_color t =
   let hex = while_ t is_hex in
   if String.length hex <> 3 && String.length hex <> 6 then
-    raise (Parse_error "hex color must be 3 or 6 digits");
+    err_invalid "hex color (must be 3 or 6 digits)";
   hex
 
 let percentage t =
@@ -278,8 +289,7 @@ let rgb_function t =
   try_parse
     (fun t ->
       let func_name = ident t in
-      if func_name <> "rgb" && func_name <> "rgba" then
-        failwith "not rgb function";
+      if func_name <> "rgb" && func_name <> "rgba" then err "not rgb function";
       expect t '(';
       ws t;
       let r = int t in

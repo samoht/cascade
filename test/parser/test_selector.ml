@@ -34,6 +34,36 @@ let test_one_opt_empty () =
   | Some _ -> fail "Should not parse empty string"
   | None -> check bool "returned None as expected" true true
 
+let test_attribute_selectors () =
+  let cases =
+    [
+      ("[data-x]", "[data-x]");
+      ("[type=button]", "[type=button]");
+      ("[data-x~=v]", "[data-x~=v]");
+      ("[lang|=en]", "[lang|=en]");
+      ("[href^=https]", "[href^=https]");
+      ("[href$=.png]", "[href$=.png]");
+      ("[title*=foo]", "[title*=foo]");
+    ]
+  in
+  List.iter
+    (fun (src, expect) ->
+      let r = Reader.of_string src in
+      let sel = Selector.one r in
+      check string "attr matcher" expect (Css.Selector.to_string sel))
+    cases
+
+let test_pseudo_and_combinators () =
+  let r = Reader.of_string ".a:hover > div + p ~ span::before" in
+  let sel = Selector.one r in
+  check string "complex" ".a:hover > div + p ~ span::before"
+    (Css.Selector.to_string sel)
+
+let test_universal_and_compound () =
+  let r = Reader.of_string "*#id.class" in
+  let sel = Selector.one r in
+  check string "compound" "*#id.class" (Css.Selector.to_string sel)
+
 let tests =
   [
     test_case "one_simple" `Quick test_one_simple;
@@ -42,4 +72,7 @@ let tests =
     test_case "one_complex" `Quick test_one_complex;
     test_case "one_opt_valid" `Quick test_one_opt_valid;
     test_case "one_opt_empty" `Quick test_one_opt_empty;
+    test_case "attribute_selectors" `Quick test_attribute_selectors;
+    test_case "pseudo_and_combinators" `Quick test_pseudo_and_combinators;
+    test_case "universal_and_compound" `Quick test_universal_and_compound;
   ]

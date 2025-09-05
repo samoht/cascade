@@ -98,9 +98,7 @@ let format_decimal s max_decimals is_neg =
   let frac_part = trim_zeros frac_part in
 
   let final_str =
-    if frac_part = "" then int_part
-    else if int_part = "0" then "." ^ frac_part
-    else int_part ^ "." ^ frac_part
+    if frac_part = "" then int_part else int_part ^ "." ^ frac_part
   in
   if is_neg then "-" ^ final_str else final_str
 
@@ -114,10 +112,12 @@ let float_to_string ?(max_decimals = 8) f =
     let scale = 10.0 ** float_of_int max_decimals in
     let scaled = floor (((if is_neg then -.f else f) *. scale) +. 0.5) in
     let s = string_of_float scaled in
-    (* remove .0 *)
+    (* remove .0 or . *)
     let s =
       if String.ends_with ~suffix:".0" s then
         String.sub s 0 (String.length s - 2)
+      else if String.ends_with ~suffix:"." s then
+        String.sub s 0 (String.length s - 1)
       else s
     in
     format_decimal s max_decimals is_neg

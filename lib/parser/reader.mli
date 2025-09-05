@@ -136,5 +136,5 @@ val rgb_function : t -> (int * int * int * float option) option
 val is_ident_start : char -> bool
 (** [is_ident_start c] is [true] if [c] can start an identifier. *)
 
-val pp : t Fmt.t
+val pp : t -> string
 (** [pp] pretty-printer for parser state. *)

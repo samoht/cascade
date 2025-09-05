@@ -2,32 +2,27 @@
 
 open Reader
 
-(** Parse a CSS rule (selector + declarations) *)
-let one t =
-  try
-    ws t;
+(** Parse a CSS rule (selector + declarations) or at-rule *)
+let rec one t =
+  ws t;
+  (* Check if it's an at-rule *)
+  if peek t = Some '@' then at_rule t
+  else
     (* Try to parse selector *)
     match Selector.one_opt t with
     | None -> None
     | Some selector ->
         ws t;
         (* Parse declaration block *)
-        let declarations = Declaration.block t in
+        let _declarations = Declaration.block t in
 
-        (* Convert to Css.t *)
-        let properties =
-          List.map
-            (fun (name, value, important) ->
-              if important then Css.important (Css.custom_property name value)
-              else Css.custom_property name value)
-            declarations
-        in
-
-        Some (Css.Rule (Css.rule ~selector properties))
-  with Failure _ | Invalid_argument _ -> None
+        (* Create a temporary rule with empty declarations *)
+        (* The actual conversion to typed declarations happens in css_parser.ml *)
+        Some (Css.Rule (Css.rule ~selector []))
+(* TODO: Return raw parsed data instead of Css.t types to avoid circular deps *)
 
 (** Parse multiple CSS rules (including at-rules) *)
-let rec rules t =
+and rules t =
   ws t;
   if is_done t then []
   else
@@ -36,16 +31,27 @@ let rec rules t =
     | Some r -> r :: rules t
 
 (** Parse only regular CSS rules (no at-rules) *)
-let rec rules_only t =
+and rules_only t =
   ws t;
   if is_done t then []
+  else if peek t = Some '}' then
+    (* Stop at closing brace *)
+    []
   else
-    match one t with
-    | Some (Css.Rule r) -> r :: rules_only t
-    | _ -> rules_only t (* Skip non-rule items *)
+    (* Try to parse a style rule without at-rules *)
+    match Selector.one_opt t with
+    | None -> []
+    | Some selector ->
+        ws t;
+        (* Parse declaration block *)
+        let _declarations = Declaration.block t in
+        (* Create a temporary rule with empty declarations *)
+        (* The actual conversion to typed declarations happens in css_parser.ml *)
+        let rule = Css.rule ~selector [] in
+        rule :: rules_only t
 
 (** Parse @media rule *)
-let media_rule t =
+and media_rule t =
   expect_string t "@media";
   ws t;
   (* Parse media query until opening brace *)
@@ -58,7 +64,7 @@ let media_rule t =
   Css.Media (Css.media ~condition content)
 
 (** Parse @layer rule *)
-let layer_rule t =
+and layer_rule t =
   expect_string t "@layer";
   ws t;
   (* Parse layer name until opening brace or semicolon *)
@@ -79,7 +85,7 @@ let layer_rule t =
   | _ -> failwith "Invalid @layer rule"
 
 (** Parse @supports rule *)
-let supports_rule t =
+and supports_rule t =
   expect_string t "@supports";
   ws t;
   (* Parse supports condition until opening brace *)
@@ -92,7 +98,7 @@ let supports_rule t =
   Css.Supports (Css.supports ~condition content)
 
 (** Parse any at-rule *)
-let at_rule t =
+and at_rule t =
   ws t;
   peek t |> function
   | Some '@' -> (

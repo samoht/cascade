@@ -852,10 +852,19 @@ type display =
   | Grid
   | Inline_grid
   | None
+  | Flow_root
   | Table
   | Table_row
   | Table_cell
+  | Table_caption
+  | Table_column
+  | Table_column_group
+  | Table_footer_group
+  | Table_header_group
+  | Table_row_group
+  | Inline_table
   | List_item
+  | Contents
   | Webkit_box
 
 (** CSS position values. *)
@@ -1161,16 +1170,41 @@ type flex =
   | Full of float * float * length  (** grow shrink basis *)
 
 (** CSS align-items values. *)
-type align_items = Flex_start | Flex_end | Center | Baseline | Stretch
+type align_items =
+  | Normal
+  | Stretch
+  | Center
+  | Start
+  | End
+  | Self_start
+  | Self_end
+  | Flex_start
+  | Flex_end
+  | Baseline
+  | First_baseline
+  | Last_baseline
+  | Safe_center
+  | Unsafe_center
+  | Inherit_align
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
 
 (** CSS justify-content values. *)
 type justify_content =
+  | Normal
   | Flex_start
   | Flex_end
   | Center
   | Space_between
   | Space_around
   | Space_evenly
+  | Stretch
+  | Start
+  | End
+  | Left
+  | Right
 
 (** CSS align-self values. *)
 type align_self = Auto | Flex_start | Flex_end | Center | Baseline | Stretch
@@ -2985,6 +3019,68 @@ val inline_style_of_declarations :
   ?optimize:bool -> ?minify:bool -> ?mode:mode -> declaration list -> string
 (** [inline_style_of_declarations declarations] converts a list of declarations
     to an inline style string. *)
+
+(** {2 Pretty-printing functions for types} *)
+
+val pp_display : display Pp.t
+(** [pp_display] is the pretty printer for display values. *)
+
+val pp_position : position Pp.t
+(** [pp_position] is the pretty printer for position values. *)
+
+val pp_length : length Pp.t
+(** [pp_length] is the pretty printer for length values. *)
+
+val pp_color : color Pp.t
+(** [pp_color] is the pretty printer for color values. *)
+
+val pp_angle : angle Pp.t
+(** [pp_angle] is the pretty printer for angle values. *)
+
+val pp_duration : duration Pp.t
+(** [pp_duration] is the pretty printer for duration values. *)
+
+val pp_font_weight : font_weight Pp.t
+(** [pp_font_weight] is the pretty printer for font-weight values. *)
+
+val pp_cursor : cursor Pp.t
+(** [pp_cursor] is the pretty printer for cursor values. *)
+
+val pp_transform : transform Pp.t
+(** [pp_transform] is the pretty printer for transform values. *)
+
+val pp_box_shadow : box_shadow Pp.t
+(** [pp_box_shadow] is the pretty printer for box-shadow values. *)
+
+val pp_calc : 'a Pp.t -> 'a calc Pp.t
+(** [pp_calc pp_value] is the pretty printer for calc expressions. *)
+
+val pp_font_style : font_style Pp.t
+(** [pp_font_style] is the pretty printer for font-style values. *)
+
+val pp_text_align : text_align Pp.t
+(** [pp_text_align] is the pretty printer for text-align values. *)
+
+val pp_text_decoration : text_decoration Pp.t
+(** [pp_text_decoration] is the pretty printer for text-decoration values. *)
+
+val pp_text_transform : text_transform Pp.t
+(** [pp_text_transform] is the pretty printer for text-transform values. *)
+
+val pp_overflow : overflow Pp.t
+(** [pp_overflow] is the pretty printer for overflow values. *)
+
+val pp_border_style : border_style Pp.t
+(** [pp_border_style] is the pretty printer for border-style values. *)
+
+val pp_flex_direction : flex_direction Pp.t
+(** [pp_flex_direction] is the pretty printer for flex-direction values. *)
+
+val pp_align_items : align_items Pp.t
+(** [pp_align_items] is the pretty printer for align-items values. *)
+
+val pp_justify_content : justify_content Pp.t
+(** [pp_justify_content] is the pretty printer for justify-content values. *)
 
 (**/**)
 

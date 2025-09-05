@@ -50,6 +50,35 @@ let test_empty () =
   let decls = Declaration.declarations r in
   check int "empty" 0 (List.length decls)
 
+let test_missing_semicolon_and_strings () =
+  (* Missing trailing semicolon should still parse value; quoted strings with
+     escapes *)
+  let r = Reader.of_string "content: \"a\\\"b\"; width: calc(100% - 10px)" in
+  (match Declaration.one r with
+  | Some (n, v, imp) ->
+      check string "prop1" "content" n;
+      check string "val1" "\"a\\\"b\"" v;
+      check bool "imp1" false imp
+  | None -> fail "expected first decl");
+  let _ = Reader.ws r in
+  match Declaration.one r with
+  | Some (n, v, _) ->
+      check string "prop2" "width" n;
+      check string "val2" "calc(100% - 10px)" v
+  | None -> fail "expected second decl"
+
+let test_block_nested_and_important () =
+  let r =
+    Reader.of_string
+      "{ padding: 10px !important; background: url(x.png), \
+       linear-gradient(red, blue); }"
+  in
+  let decls = Declaration.block r in
+  check int "count" 2 (List.length decls);
+  let n1, _v1, i1 = List.nth decls 0 in
+  check string "name1" "padding" n1;
+  check bool "important" true i1
+
 let tests =
   [
     test_case "one" `Quick test_one;
@@ -57,4 +86,8 @@ let tests =
     test_case "declarations" `Quick test_declarations;
     test_case "block" `Quick test_block;
     test_case "empty" `Quick test_empty;
+    test_case "missing_semicolon_and_strings" `Quick
+      test_missing_semicolon_and_strings;
+    test_case "block_nested_and_important" `Quick
+      test_block_nested_and_important;
   ]

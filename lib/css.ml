@@ -136,10 +136,19 @@ type display =
   | Grid
   | Inline_grid
   | None
+  | Flow_root
   | Table
   | Table_row
   | Table_cell
+  | Table_caption
+  | Table_column
+  | Table_column_group
+  | Table_footer_group
+  | Table_header_group
+  | Table_row_group
+  | Inline_table
   | List_item
+  | Contents
   | Webkit_box
 
 (** CSS position values *)
@@ -289,7 +298,26 @@ type user_select = None | Auto | Text | All | Contain
 (** CSS flex wrap values *)
 type flex_wrap = Nowrap | Wrap | Wrap_reverse
 
-type align_items = Flex_start | Flex_end | Center | Baseline | Stretch
+type align_items =
+  | Normal
+  | Stretch
+  | Center
+  | Start
+  | End
+  | Self_start
+  | Self_end
+  | Flex_start
+  | Flex_end
+  | Baseline
+  | First_baseline
+  | Last_baseline
+  | Safe_center
+  | Unsafe_center
+  | Inherit_align
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
 
 type place_items =
   | Normal
@@ -308,12 +336,18 @@ type place_items =
   | Inherit
 
 type justify_content =
+  | Normal
   | Flex_start
   | Flex_end
   | Center
   | Space_between
   | Space_around
   | Space_evenly
+  | Stretch
+  | Start
+  | End
+  | Left
+  | Right
 
 type align_self = Auto | Flex_start | Flex_end | Center | Baseline | Stretch
 type border_collapse = Collapse | Separate | Inherit
@@ -1120,58 +1154,69 @@ and pp_color_name : color_name Pp.t =
   | Teal -> Pp.string ctx "teal"
   | Aqua -> Pp.string ctx "aqua"
 
+(* RGB helper function *)
+and pp_rgb ctx r g b alpha =
+  Pp.string ctx "rgb(";
+  Pp.int ctx r;
+  Pp.space ctx ();
+  Pp.int ctx g;
+  Pp.space ctx ();
+  Pp.int ctx b;
+  (match alpha with
+  | Some a ->
+      Pp.string ctx " / ";
+      Pp.float ctx a
+  | None -> ());
+  Pp.char ctx ')'
+
+(* OKLCH helper function *)
+and pp_oklch ctx l c h =
+  Pp.string ctx "oklch(";
+  Pp.float_n 1 ctx l;
+  Pp.string ctx "% ";
+  Pp.float_n 3 ctx c;
+  Pp.space ctx ();
+  Pp.float_n 3 ctx h;
+  Pp.char ctx ')'
+
+(* Color-mix helper function *)
+and pp_color_mix ctx in_space color1 percent1 color2 percent2 =
+  Pp.string ctx "color-mix(in ";
+  pp_color_space ctx in_space;
+  Pp.string ctx ", ";
+  pp_color_in_mix ctx color1;
+  (match percent1 with
+  | Some p ->
+      Pp.space ctx ();
+      Pp.int ctx p;
+      Pp.char ctx '%'
+  | None -> ());
+  Pp.string ctx ", ";
+  pp_color_in_mix ctx color2;
+  (match percent2 with
+  | Some p ->
+      Pp.space ctx ();
+      Pp.int ctx p;
+      Pp.char ctx '%'
+  | None -> ());
+  Pp.char ctx ')'
+
 (* Convert to Pp-based color formatter *)
 and pp_color : color Pp.t =
  fun ctx -> function
   | Hex { hash = _; value } ->
       Pp.char ctx '#';
       Pp.string ctx value
-  | Rgb { r; g; b } ->
-      pp_fun "rgb" (Pp.triple ~sep:Pp.comma Pp.int Pp.int Pp.int) ctx (r, g, b)
-  | Rgba { r; g; b; a } ->
-      Pp.string ctx "rgba(";
-      Pp.int ctx r;
-      Pp.comma ctx ();
-      Pp.int ctx g;
-      Pp.comma ctx ();
-      Pp.int ctx b;
-      Pp.comma ctx ();
-      Pp.float ctx a;
-      Pp.char ctx ')'
-  | Oklch { l; c; h } ->
-      Pp.string ctx "oklch(";
-      Pp.float_n 1 ctx l;
-      Pp.string ctx "% ";
-      Pp.float_n 3 ctx c;
-      Pp.space ctx ();
-      Pp.float_n 3 ctx h;
-      Pp.char ctx ')'
+  | Rgb { r; g; b } -> pp_rgb ctx r g b None
+  | Rgba { r; g; b; a } -> pp_rgb ctx r g b (Some a)
+  | Oklch { l; c; h } -> pp_oklch ctx l c h
   | Named name -> pp_color_name ctx name
   | Var v -> pp_var pp_color ctx v
-  | Current -> Pp.string ctx "currentColor"
+  | Current -> Pp.string ctx "currentcolor"
   | Transparent -> Pp.string ctx "transparent"
   | Inherit -> Pp.string ctx "inherit"
   | Mix { in_space; color1; percent1; color2; percent2 } ->
-      (* For now, implement basic mix format - will enhance later *)
-      Pp.string ctx "color-mix(in ";
-      pp_color_space ctx in_space;
-      Pp.string ctx ", ";
-      pp_color_in_mix ctx color1;
-      (match percent1 with
-      | Some p ->
-          Pp.space ctx ();
-          Pp.int ctx p;
-          Pp.char ctx '%'
-      | None -> ());
-      Pp.string ctx ", ";
-      pp_color_in_mix ctx color2;
-      (match percent2 with
-      | Some p ->
-          Pp.space ctx ();
-          Pp.int ctx p;
-          Pp.char ctx '%'
-      | None -> ());
-      Pp.char ctx ')'
+      pp_color_mix ctx in_space color1 percent1 color2 percent2
 
 and pp_color_space : color_space Pp.t =
  fun ctx -> function
@@ -1204,12 +1249,19 @@ let rec pp_shadow : shadow Pp.t =
       pp_length ctx h_offset;
       Pp.space ctx ();
       pp_length ctx v_offset;
-      Pp.space ctx ();
-      pp_length ctx blur;
-      Pp.space ctx ();
-      pp_length ctx spread;
-      Pp.space ctx ();
-      pp_color ctx color
+      (* Only include blur if it's not zero *)
+      if blur <> Zero then (
+        Pp.space ctx ();
+        pp_length ctx blur;
+        (* Only include spread if blur is present and spread is not zero *)
+        if spread <> Zero then (
+          Pp.space ctx ();
+          pp_length ctx spread));
+      (* Only include color if it's not currentcolor and some values were
+         specified, or if color is explicitly different *)
+      if color <> Current && (blur <> Zero || spread <> Zero) then (
+        Pp.space ctx ();
+        pp_color ctx color)
   | Var v -> pp_var pp_shadow ctx v
 
 let rec pp_box_shadow : box_shadow Pp.t =
@@ -1248,10 +1300,19 @@ let pp_display : display Pp.t =
   | Grid -> Pp.string ctx "grid"
   | Inline_grid -> Pp.string ctx "inline-grid"
   | None -> Pp.string ctx "none"
+  | Flow_root -> Pp.string ctx "flow-root"
   | Table -> Pp.string ctx "table"
   | Table_row -> Pp.string ctx "table-row"
   | Table_cell -> Pp.string ctx "table-cell"
+  | Table_caption -> Pp.string ctx "table-caption"
+  | Table_column -> Pp.string ctx "table-column"
+  | Table_column_group -> Pp.string ctx "table-column-group"
+  | Table_footer_group -> Pp.string ctx "table-footer-group"
+  | Table_header_group -> Pp.string ctx "table-header-group"
+  | Table_row_group -> Pp.string ctx "table-row-group"
+  | Inline_table -> Pp.string ctx "inline-table"
   | List_item -> Pp.string ctx "list-item"
+  | Contents -> Pp.string ctx "contents"
   | Webkit_box -> Pp.string ctx "-webkit-box"
 
 let pp_position : position Pp.t =
@@ -1314,20 +1375,40 @@ let pp_flex_wrap : flex_wrap Pp.t =
 
 let pp_align_items : align_items Pp.t =
  fun ctx -> function
+  | Normal -> Pp.string ctx "normal"
+  | Stretch -> Pp.string ctx "stretch"
+  | Center -> Pp.string ctx "center"
+  | Start -> Pp.string ctx "start"
+  | End -> Pp.string ctx "end"
+  | Self_start -> Pp.string ctx "self-start"
+  | Self_end -> Pp.string ctx "self-end"
   | Flex_start -> Pp.string ctx "flex-start"
   | Flex_end -> Pp.string ctx "flex-end"
-  | Center -> Pp.string ctx "center"
   | Baseline -> Pp.string ctx "baseline"
-  | Stretch -> Pp.string ctx "stretch"
+  | First_baseline -> Pp.string ctx "first baseline"
+  | Last_baseline -> Pp.string ctx "last baseline"
+  | Safe_center -> Pp.string ctx "safe center"
+  | Unsafe_center -> Pp.string ctx "unsafe center"
+  | Inherit_align -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let pp_justify_content : justify_content Pp.t =
  fun ctx -> function
+  | Normal -> Pp.string ctx "normal"
   | Flex_start -> Pp.string ctx "flex-start"
   | Flex_end -> Pp.string ctx "flex-end"
   | Center -> Pp.string ctx "center"
   | Space_between -> Pp.string ctx "space-between"
   | Space_around -> Pp.string ctx "space-around"
   | Space_evenly -> Pp.string ctx "space-evenly"
+  | Stretch -> Pp.string ctx "stretch"
+  | Start -> Pp.string ctx "start"
+  | End -> Pp.string ctx "end"
+  | Left -> Pp.string ctx "left"
+  | Right -> Pp.string ctx "right"
 
 let pp_align_self : align_self Pp.t =
  fun ctx -> function
