@@ -428,6 +428,7 @@ type calc_op = Add | Sub | Mult | Div
 type 'a calc =
   | Var of 'a var  (** CSS variable *)
   | Val of 'a
+  | Num of float  (** Unitless number *)
   | Expr of 'a calc * calc_op * 'a calc
 
 (** {2:values CSS Values & Units}
@@ -712,25 +713,57 @@ type color_name =
   | White_smoke
   | Yellow_green
 
+(** CSS channel values (for RGB) *)
+type channel =
+  | Int of int (* 0–255, legacy/comma syntax *)
+  | Num of float (* 0–255, modern/space syntax *)
+  | Pct of float (* 0%–100% *)
+  | Var of channel var
+
+(** CSS alpha values (for HSL/HWB/etc) *)
+type alpha =
+  | None
+  | Num of float (* Number value (0-1) *)
+  | Pct of float (* Percentage value (0%-100%) *)
+  | Var of alpha var
+
+(** CSS hue values (for HSL/HWB) *)
+type hue =
+  | Unitless of float (* Unitless number, defaults to degrees *)
+  | Angle of Values.angle (* Explicit angle unit *)
+  | Var of hue var
+
+(** CSS color component values *)
+type component =
+  | Number of float
+  | Pct of float
+  | Angle of hue (* for color(lch ...) / color(lab ...) syntaxes *)
+  | Var of component var
+  | Calc of component calc
+
+(** CSS percentage values *)
+type percentage =
+  | Pct of float (* 0%–100% as a % token *)
+  | Var of percentage var
+  | Calc of percentage calc (* calc(...) that resolves to a % *)
+
+(** CSS hue interpolation options *)
+type hue_interpolation = Shorter | Longer | Increasing | Decreasing | Default
+
 (** CSS color values. *)
 type color =
   | Hex of { hash : bool; value : string }
       (** hash indicates if # was present *)
-  | Rgb of { r : int; g : int; b : int }
-  | Rgba of { r : int; g : int; b : int; a : float }
-  | Rgb_pct of { r : float; g : float; b : float }
-  | Rgba_pct of { r : float; g : float; b : float; a : float }
-  | Hsl of { h : float; s : float; l : float; a : float option }
-  | Hwb of { h : float; w : float; b : float; a : float option }
-  | Color of {
-      space : color_space;
-      components : float list;
-      alpha : float option;
-    }
-  | Oklch of { l : float; c : float; h : float }  (** OKLCH color space *)
-  | Oklab of { l : float; a : float; b : float; alpha : float option }
+  | Rgb of { r : channel; g : channel; b : channel }
+  | Rgba of { r : channel; g : channel; b : channel; a : alpha }
+  | Hsl of { h : hue; s : percentage; l : percentage; a : alpha }
+  | Hwb of { h : hue; w : percentage; b : percentage; a : alpha }
+  | Color of { space : color_space; components : component list; alpha : alpha }
+  | Oklch of { l : percentage; c : float; h : hue; alpha : alpha }
+      (** OKLCH color space *)
+  | Oklab of { l : percentage; a : float; b : float; alpha : alpha }
       (** Oklab color space *)
-  | Lch of { l : float; c : float; h : float; alpha : float option }
+  | Lch of { l : percentage; c : float; h : hue; alpha : alpha }
       (** LCH color space *)
   | Named of color_name  (** Named colors like Red, Blue, etc. *)
   | Var of color var
@@ -738,11 +771,12 @@ type color =
   | Transparent
   | Inherit
   | Mix of {
-      in_space : color_space;  (** Color space for mixing *)
-      color1 : color;  (** First color *)
-      percent1 : int option;  (** Optional percentage for first color *)
-      color2 : color;  (** Second color *)
-      percent2 : int option;  (** Optional percentage for second color *)
+      in_space : color_space option; (* None => default per spec *)
+      hue : hue_interpolation;
+      color1 : color;
+      percent1 : percentage option;
+      color2 : color;
+      percent2 : percentage option;
     }
 
 val hex : string -> color
@@ -755,8 +789,37 @@ val rgb : int -> int -> int -> color
 val rgba : int -> int -> int -> float -> color
 (** [rgba r g b a] is an RGBA color with alpha in [0., 1.]. *)
 
+val hsl : float -> float -> float -> color
+(** [hsl h s l] is an HSL color with h in degrees, s and l in percentages
+    (0-100). *)
+
+val hsla : float -> float -> float -> float -> color
+(** [hsla h s l a] is an HSLA color with alpha in [0., 1.]. *)
+
+val hwb : float -> float -> float -> color
+(** [hwb h w b] is an HWB color with h in degrees, w and b in percentages
+    (0-100). *)
+
+val hwba : float -> float -> float -> float -> color
+(** [hwba h w b a] is an HWB color with alpha in [0., 1.]. *)
+
 val oklch : float -> float -> float -> color
-(** [oklch l c h] is an OKLCH color. *)
+(** [oklch l c h] is an OKLCH color. L in percentage (0-100), h in degrees. *)
+
+val oklcha : float -> float -> float -> float -> color
+(** [oklcha l c h a] is an OKLCH color with alpha in [0., 1.]. *)
+
+val oklab : float -> float -> float -> color
+(** [oklab l a b] is an OKLAB color. L in percentage (0-100). *)
+
+val oklaba : float -> float -> float -> float -> color
+(** [oklaba l a b alpha] is an OKLAB color with alpha in [0., 1.]. *)
+
+val lch : float -> float -> float -> color
+(** [lch l c h] is an LCH color. L in percentage (0-100), h in degrees. *)
+
+val lcha : float -> float -> float -> float -> color
+(** [lcha l c h a] is an LCH color with alpha in [0., 1.]. *)
 
 val color_name : color_name -> color
 (** [color_name n] is a named color. *)
@@ -769,6 +832,7 @@ val transparent : color
 
 val color_mix :
   ?in_space:color_space ->
+  ?hue:hue_interpolation ->
   ?percent1:int ->
   ?percent2:int ->
   color ->
@@ -2349,7 +2413,7 @@ type timing_function =
 
 (** CSS duration values. *)
 type duration =
-  | Ms of int  (** milliseconds *)
+  | Ms of float  (** milliseconds *)
   | S of float  (** seconds *)
   | Var of duration var  (** CSS variable reference *)
 

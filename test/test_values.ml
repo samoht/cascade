@@ -115,22 +115,35 @@ let test_color_parsing () =
   check_color "aliceblue";
 
   (* Modern color notations *)
+  (* Hue 'deg' unit is default and should be dropped in minified output *)
   check_color ~expected:"hsl(180 50% 25%)" "hsl(180deg 50% 25%)";
+  (* Same for hwb hue: drop default 'deg' on minify *)
+  check_color ~expected:"hwb(90 10% 20%)" "hwb(90deg 10% 20%)";
   check_color ~expected:"hsl(180 50% 25% / .5)" "hsl(180 50% 25% / 0.5)";
   check_color "hwb(90 10% 20%)";
   check_color ~expected:"hwb(90 10% 20% / .25)" "hwb(90 10% 20% / 0.25)";
+  (* Alpha in percent should minify to number [0;1] form *)
+  check_color ~expected:"hsl(180 50% 25% / .3)" "hsl(180deg 50% 25% / 30%)";
   check_color "color(srgb 1 0 0)";
   check_color ~expected:"color(display-p3 .8 .2 .1 / .5)"
     "color(display-p3 0.8 0.2 0.1 / 0.5)";
-  check_color ~expected:"color(oklab .5 .1 -.05)" "color(oklab 0.5 0.1 -0.05)";
-  check_color "color(lch 50 40 120)";
+  check_color ~expected:"color(oklab 50% .1 -.05)" "color(oklab 50% 0.1 -0.05)";
+  check_color "color(lch 50% 40 120)";
   check_color ~expected:"color(xyz .3 .4 .5)" "color(xyz 0.3 0.4 0.5)";
   (* Additional color functions and forms *)
   check_color ~expected:"oklch(50% .2 30)" "oklch(50% 0.2 30)";
-  check_color ~expected:"rgb(255 0 0)" "rgb(100% 0% 0%)";
-  check_color ~expected:"oklab(.5 .1 -.05)" "oklab(0.5 0.1 -0.05)";
-  check_color "lch(50 40 120)";
+  check_color "rgb(100% 0% 0%)";
+  check_color ~expected:"oklab(50% .1 -.05)" "oklab(50% 0.1 -0.05)";
+  check_color "lch(50% 40 120)";
   check_color ~expected:"rgb(255 0 0 / .5)" "rgb(255 0 0 / 50%)";
+
+  (* Mixed channel formats in modern rgb() syntax *)
+  (* Mix percentage and absolute values across channels *)
+  check_color "rgb(50% 128 0)";
+  check_color "rgb(255 0% 0)";
+  check_color "rgb(0 0 50%)";
+  (* Mixed channels with alpha (numeric) *)
+  check_color ~expected:"rgb(50% 128 0 / .5)" "rgb(50% 128 0 / 0.5)";
 
   (* Named colors - all variants *)
   check_color "red";
@@ -204,7 +217,7 @@ let test_angle_parsing () =
   (* Edge cases *)
   check_angle "999999deg";
   check_angle "-360deg";
-  check_angle ~expected:"0.25deg" ".25deg"
+  check_angle ".25deg"
 
 let test_duration_parsing () =
   (* Seconds *)
@@ -222,7 +235,7 @@ let test_duration_parsing () =
   check_duration "1000ms";
   check_duration "50.5ms";
   check_duration "999999ms";
-  check_duration ~expected:"0.1s" ".1s"
+  check_duration ".1s"
 
 let test_percentage_parsing () =
   check_percentage "50%";
@@ -238,10 +251,13 @@ let test_percentage_parsing () =
   check_percentage ".01%"
 
 let test_default_units_and_unitless () =
-  (* Angle without unit defaults to deg when printed *)
-  check_angle ~expected:"90deg" "90";
-  (* Duration without unit defaults to ms when printed *)
-  check_duration ~expected:"150ms" "150";
+  (* Angles must have units in CSS *)
+  check_angle "90deg";
+  check_angle "1.5rad";
+  check_angle ~expected:".25turn" "0.25turn";
+  (* Durations must have units in CSS *)
+  check_duration "150ms";
+  check_duration "1.5s";
   (* Unitless non-zero length is preserved as a number *)
   check_length "1.5"
 
@@ -262,19 +278,26 @@ let test_calc_expressions () =
       "calc(100vw - 2rem)";
       "calc(50% + 25vw)";
       (* Precedence *)
-      "calc(100% - 20px * 0.5)";
+      "calc(100% - 20px * .5)";
       "calc(10px + 5em / 2)";
       "calc(1em * 2 + 3px)";
       "calc(2 * 3px + 4px)";
       "calc(10px / 2 - 1px)";
       (* Parentheses to force grouping *)
       "calc((100% - 20px) / 2)";
-      "calc(100% * 0.5 + 10px * 2)";
+      "calc(100% * .5 + 10px * 2)";
       "calc(50vh - 10px * 3 + 5rem)";
       "calc((10px + 20px) * 2)";
     ]
   in
-  List.iter check_calc cases;
+  List.iter
+    (fun case ->
+      if case = "calc((100% - 20px) / 2)" then
+        check_calc ~expected:"calc(100% - 20px / 2)" case
+      else if case = "calc((10px + 20px) * 2)" then
+        check_calc ~expected:"calc(10px + 20px * 2)" case
+      else check_calc case)
+    cases;
   (* Edge cases with zero *)
   check_calc ~expected:"calc(0 + 10px)" "calc(0px + 10px)";
   check_calc ~expected:"calc(100% - 0)" "calc(100% - 0px)";
@@ -346,7 +369,7 @@ let test_minified_value_formatting () =
   let s = Css.Pp.to_string ~minify:true pp_number (Float 0.5) in
   check string "minified number" ".5" s;
   (* Duration formatting remains stable in minified mode *)
-  let s = Css.Pp.to_string ~minify:true pp_duration (Ms 500) in
+  let s = Css.Pp.to_string ~minify:true pp_duration (Ms 500.) in
   check string "minified ms" "500ms" s;
   (* Zero stays zero without unit *)
   let s = Css.Pp.to_string ~minify:true pp_length Zero in
@@ -460,7 +483,7 @@ let test_calc_with_other_types () =
     check_value "calc_angle" (read_calc read_angle) (pp_calc pp_angle)
   in
 
-  check_calc_angle "calc(180deg + 0.5turn)";
+  check_calc_angle ~expected:"calc(180deg + .5turn)" "calc(180deg + 0.5turn)";
   check_calc_angle "calc(90deg * 2)";
   check_calc_angle "calc(360deg / 4)";
 

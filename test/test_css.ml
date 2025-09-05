@@ -172,7 +172,11 @@ let test_property_deduplication () =
 let test_minification () =
   let test_rule =
     rule ~selector:test
-      [ padding Zero; margin Zero; color (Rgb { r = 255; g = 0; b = 0 }) ]
+      [
+        padding Zero;
+        margin Zero;
+        color (Rgb { r = Int 255; g = Int 0; b = Int 0 });
+      ]
   in
 
   let sheet = stylesheet [ Rule test_rule ] in

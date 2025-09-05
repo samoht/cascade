@@ -3854,6 +3854,7 @@ let stylesheet_items t =
 let rec vars_of_calc : type a. a calc -> any_var list = function
   | Val _ -> []
   | Var v -> [ V v ]
+  | Num _ -> []
   | Expr (left, _, right) -> vars_of_calc left @ vars_of_calc right
 
 (* Extract variables from any property value *)

@@ -22,7 +22,11 @@ val var_ref :
 type calc_op = Add | Sub | Mult | Div
 
 (** CSS calc() expressions *)
-type 'a calc = Var of 'a var | Val of 'a | Expr of 'a calc * calc_op * 'a calc
+type 'a calc =
+  | Var of 'a var
+  | Val of 'a
+  | Num of float
+  | Expr of 'a calc * calc_op * 'a calc
 
 (** {1 Value Types} *)
 
@@ -242,35 +246,12 @@ type color_name =
   | White_smoke
   | Yellow_green
 
-(** CSS color values *)
-type color =
-  | Hex of { hash : bool; value : string }
-  | Rgb of { r : int; g : int; b : int }
-  | Rgba of { r : int; g : int; b : int; a : float }
-  | Rgb_pct of { r : float; g : float; b : float }
-  | Rgba_pct of { r : float; g : float; b : float; a : float }
-  | Hsl of { h : float; s : float; l : float; a : float option }
-  | Hwb of { h : float; w : float; b : float; a : float option }
-  | Color of {
-      space : color_space;
-      components : float list;
-      alpha : float option;
-    }
-  | Oklch of { l : float; c : float; h : float }
-  | Oklab of { l : float; a : float; b : float; alpha : float option }
-  | Lch of { l : float; c : float; h : float; alpha : float option }
-  | Named of color_name
-  | Var of color var
-  | Current
-  | Transparent
-  | Inherit
-  | Mix of {
-      in_space : color_space;
-      color1 : color;
-      percent1 : int option;
-      color2 : color;
-      percent2 : int option;
-    }
+(** CSS channel values (for RGB) *)
+type channel =
+  | Int of int (* 0–255, legacy/comma syntax *)
+  | Num of float (* 0–255, modern/space syntax *)
+  | Pct of float (* 0%–100% *)
+  | Var of channel var
 
 (** CSS angle values *)
 type angle =
@@ -280,8 +261,63 @@ type angle =
   | Grad of float
   | Var of angle var
 
+(** CSS alpha values (for HSL/HWB/etc) *)
+type alpha =
+  | None
+  | Num of float (* Number value (0-1) *)
+  | Pct of float (* Percentage value (0%-100%) *)
+  | Var of alpha var
+
+(** CSS hue values (for HSL/HWB) *)
+type hue =
+  | Unitless of float (* Unitless number, defaults to degrees *)
+  | Angle of angle (* Explicit angle unit *)
+  | Var of hue var
+
+(** CSS color component values *)
+type component =
+  | Number of float
+  | Pct of float
+  | Angle of hue (* for color(lch ...) / color(lab ...) syntaxes *)
+  | Var of component var
+  | Calc of component calc
+
+(** CSS percentage values *)
+type percentage =
+  | Pct of float (* 0%–100% as a % token *)
+  | Var of percentage var
+  | Calc of percentage calc (* calc(...) that resolves to a % *)
+
+(** CSS hue interpolation options *)
+type hue_interpolation = Shorter | Longer | Increasing | Decreasing | Default
+
+(** CSS color values *)
+type color =
+  | Hex of { hash : bool; value : string }
+  | Rgb of { r : channel; g : channel; b : channel }
+  | Rgba of { r : channel; g : channel; b : channel; a : alpha }
+  | Hsl of { h : hue; s : percentage; l : percentage; a : alpha }
+  | Hwb of { h : hue; w : percentage; b : percentage; a : alpha }
+  | Color of { space : color_space; components : component list; alpha : alpha }
+  | Oklch of { l : percentage; c : float; h : hue; alpha : alpha }
+  | Oklab of { l : percentage; a : float; b : float; alpha : alpha }
+  | Lch of { l : percentage; c : float; h : hue; alpha : alpha }
+  | Named of color_name
+  | Var of color var
+  | Current
+  | Transparent
+  | Inherit
+  | Mix of {
+      in_space : color_space option; (* None => default per spec *)
+      hue : hue_interpolation;
+      color1 : color;
+      percent1 : percentage option;
+      color2 : color;
+      percent2 : percentage option;
+    }
+
 (** CSS duration values *)
-type duration = Ms of int | S of float | Var of duration var
+type duration = Ms of float | S of float | Var of duration var
 
 (** CSS number values (unitless) *)
 type number = Float of float | Int of int | Pct of float | Var of number var
@@ -311,6 +347,7 @@ val transparent : color
 
 val color_mix :
   ?in_space:color_space ->
+  ?hue:hue_interpolation ->
   ?percent1:int ->
   ?percent2:int ->
   color ->

@@ -16,7 +16,12 @@ let var_ref ?fallback ?default ?layer ?meta name =
   { name; fallback; default; layer; meta }
 
 type calc_op = Add | Sub | Mult | Div
-type 'a calc = Var of 'a var | Val of 'a | Expr of 'a calc * calc_op * 'a calc
+
+type 'a calc =
+  | Var of 'a var
+  | Val of 'a
+  | Num of float
+  | Expr of 'a calc * calc_op * 'a calc
 
 type length =
   | Px of float
@@ -231,34 +236,11 @@ type color_name =
   | White_smoke
   | Yellow_green
 
-type color =
-  | Hex of { hash : bool; value : string }
-  | Rgb of { r : int; g : int; b : int }
-  | Rgba of { r : int; g : int; b : int; a : float }
-  | Rgb_pct of { r : float; g : float; b : float }
-  | Rgba_pct of { r : float; g : float; b : float; a : float }
-  | Hsl of { h : float; s : float; l : float; a : float option }
-  | Hwb of { h : float; w : float; b : float; a : float option }
-  | Color of {
-      space : color_space;
-      components : float list;
-      alpha : float option;
-    }
-  | Oklch of { l : float; c : float; h : float }
-  | Oklab of { l : float; a : float; b : float; alpha : float option }
-  | Lch of { l : float; c : float; h : float; alpha : float option }
-  | Named of color_name
-  | Var of color var
-  | Current
-  | Transparent
-  | Inherit
-  | Mix of {
-      in_space : color_space;
-      color1 : color;
-      percent1 : int option;
-      color2 : color;
-      percent2 : int option;
-    }
+type channel =
+  | Int of int (* 0–255, legacy/comma syntax *)
+  | Num of float (* 0–255, modern/space syntax *)
+  | Pct of float (* 0%–100% *)
+  | Var of channel var
 
 type angle =
   | Deg of float
@@ -267,7 +249,59 @@ type angle =
   | Grad of float
   | Var of angle var
 
-type duration = Ms of int | S of float | Var of duration var
+type hue =
+  | Unitless of float (* Unitless number, defaults to degrees *)
+  | Angle of angle (* Explicit angle unit *)
+  | Var of hue var
+
+type alpha =
+  | None
+  | Num of float (* Number value (0-1) *)
+  | Pct of float (* Percentage value (0%-100%) *)
+  | Var of alpha var
+
+(** CSS color component values *)
+type component =
+  | Number of float
+  | Pct of float
+  | Angle of hue (* for color(lch ...) / color(lab ...) syntaxes *)
+  | Var of component var
+  | Calc of component calc
+
+(** CSS percentage values *)
+type percentage =
+  | Pct of float (* 0%–100% as a % token *)
+  | Var of percentage var
+  | Calc of percentage calc (* calc(...) that resolves to a % *)
+
+(** CSS hue interpolation options *)
+type hue_interpolation = Shorter | Longer | Increasing | Decreasing | Default
+
+type color =
+  | Hex of { hash : bool; value : string }
+  | Rgb of { r : channel; g : channel; b : channel }
+  | Rgba of { r : channel; g : channel; b : channel; a : alpha }
+  | Hsl of { h : hue; s : percentage; l : percentage; a : alpha }
+  | Hwb of { h : hue; w : percentage; b : percentage; a : alpha }
+  | Color of { space : color_space; components : component list; alpha : alpha }
+  | Oklch of { l : percentage; c : float; h : hue; alpha : alpha }
+  | Oklab of { l : percentage; a : float; b : float; alpha : alpha }
+  | Lch of { l : percentage; c : float; h : hue; alpha : alpha }
+  | Named of color_name
+  | Var of color var
+  | Current
+  | Transparent
+  | Inherit
+  | Mix of {
+      in_space : color_space option; (* None => default per spec *)
+      hue : hue_interpolation;
+      color1 : color;
+      percent1 : percentage option;
+      color2 : color;
+      percent2 : percentage option;
+    }
+
+type duration = Ms of float | S of float | Var of duration var
 type number = Float of float | Int of int | Pct of float | Var of number var
 
 (** Color constructors *)
@@ -277,15 +311,30 @@ let hex s =
     Hex { hash = true; value = String.sub s 1 (len - 1) }
   else Hex { hash = false; value = s }
 
-let rgb r g b = Rgb { r; g; b }
-let rgba r g b a = Rgba { r; g; b; a }
-let oklch l c h = Oklch { l; c; h }
+let rgb r g b = Rgb { r = Int r; g = Int g; b = Int b }
+let rgba r g b a = Rgba { r = Int r; g = Int g; b = Int b; a = Num a }
+let hsl h s l = Hsl { h = Unitless h; s = Pct s; l = Pct l; a = None }
+let hsla h s l a = Hsl { h = Unitless h; s = Pct s; l = Pct l; a = Num a }
+let hwb h w b = Hwb { h = Unitless h; w = Pct w; b = Pct b; a = None }
+let hwba h w b a = Hwb { h = Unitless h; w = Pct w; b = Pct b; a = Num a }
+let oklch l c h = Oklch { l = Pct l; c; h = Unitless h; alpha = None }
+let oklcha l c h a = Oklch { l = Pct l; c; h = Unitless h; alpha = Num a }
+let oklab l a b = Oklab { l = Pct l; a; b; alpha = None }
+let oklaba l a b alpha = Oklab { l = Pct l; a; b; alpha = Num alpha }
+let lch l c h = Lch { l = Pct l; c; h = Unitless h; alpha = None }
+let lcha l c h a = Lch { l = Pct l; c; h = Unitless h; alpha = Num a }
 let color_name n = Named n
 let current_color = Current
 let transparent = Transparent
 
-let color_mix ?(in_space = Srgb) ?percent1 ?percent2 color1 color2 =
-  Mix { in_space; color1; percent1; color2; percent2 }
+let color_mix ?in_space ?(hue = Default) ?percent1 ?percent2 color1 color2 =
+  let percent1 : percentage option =
+    match percent1 with Some p -> Some (Pct (float_of_int p)) | None -> None
+  in
+  let percent2 : percentage option =
+    match percent2 with Some p -> Some (Pct (float_of_int p)) | None -> None
+  in
+  Mix { in_space; hue; color1; percent1; color2; percent2 }
 
 (** Pretty-printing functions *)
 
@@ -332,10 +381,12 @@ let pp_calc : type a. a Pp.t -> a calc Pp.t =
       match calc with
       | Val v -> pp_value ctx v
       | Var v -> pp_var pp_value ctx v
+      | Num n -> Pp.float ctx n
       | Expr (left, op, right) ->
           let rec pp_calc_inner ctx = function
             | Val v -> pp_value ctx v
             | Var v -> pp_var pp_value ctx v
+            | Num n -> Pp.float ctx n
             | Expr (left, op, right) ->
                 pp_calc_inner ctx left;
                 pp_op ctx op;
@@ -498,7 +549,7 @@ let rec pp_length : length Pp.t =
           Pp.string ctx "3.40282e38px"
       | _ -> pp_calc pp_length ctx cv)
 
-and pp_color_name : color_name Pp.t =
+let pp_color_name : color_name Pp.t =
  fun ctx -> function
   | Red -> Pp.string ctx "red"
   | Blue -> Pp.string ctx "blue"
@@ -649,49 +700,167 @@ and pp_color_name : color_name Pp.t =
   | White_smoke -> Pp.string ctx "whitesmoke"
   | Yellow_green -> Pp.string ctx "yellowgreen"
 
-(* RGB helper function *)
-and pp_rgb ctx r g b alpha =
-  Pp.string ctx "rgb(";
-  Pp.int ctx r;
-  Pp.space ctx ();
-  Pp.int ctx g;
-  Pp.space ctx ();
-  Pp.int ctx b;
-  (match alpha with
-  | Some a ->
-      Pp.string ctx " / ";
-      Pp.float ctx a
-  | None -> ());
-  Pp.char ctx ')'
+let rec pp_channel : channel Pp.t =
+ fun ctx -> function
+  | Int i -> Pp.int ctx i
+  | Num f -> Pp.float ctx f
+  | Pct f ->
+      Pp.float ctx f;
+      Pp.char ctx '%'
+  | Var v -> pp_var pp_channel ctx v
 
-(* RGB percentage helper function - converts percentages to integers for
-   output *)
-and pp_rgb_pct ctx r g b alpha =
-  let pct_to_int pct = int_of_float (pct *. 255.0 /. 100.0) in
+let rec pp_angle : angle Pp.t =
+ fun ctx -> function
+  | Deg f ->
+      Pp.float ctx f;
+      Pp.string ctx "deg"
+  | Rad f ->
+      Pp.float ctx f;
+      Pp.string ctx "rad"
+  | Turn f ->
+      Pp.float ctx f;
+      Pp.string ctx "turn"
+  | Grad f ->
+      Pp.float ctx f;
+      Pp.string ctx "grad"
+  | Var v -> pp_var pp_angle ctx v
+
+let rec pp_hue : hue Pp.t =
+ fun ctx -> function
+  | Unitless f -> Pp.float ctx f
+  | Angle (Deg f) when ctx.minify ->
+      (* During minification, omit 'deg' since it's the default unit *)
+      Pp.float ctx f
+  | Angle a -> pp_angle ctx a
+  | Var v -> pp_var pp_hue ctx v
+
+and pp_alpha : alpha Pp.t =
+ fun ctx -> function
+  | None -> ()
+  | Num f -> Pp.float ctx f
+  | Pct f ->
+      if ctx.minify then
+        (* During minification, convert percentage to decimal [0,1] *)
+        Pp.float ctx (f /. 100.0)
+      else (
+        Pp.float ctx f;
+        Pp.char ctx '%')
+  | Var v -> pp_var pp_alpha ctx v
+
+and pp_percentage : percentage Pp.t =
+ fun ctx -> function
+  | Pct f ->
+      Pp.float ctx f;
+      Pp.char ctx '%'
+  | Var v -> pp_var pp_percentage ctx v
+  | Calc c -> pp_calc pp_percentage ctx c
+
+and pp_component : component Pp.t =
+ fun ctx -> function
+  | Number f -> Pp.float ctx f
+  | Pct f ->
+      Pp.float ctx f;
+      Pp.char ctx '%'
+  | Angle h -> pp_hue ctx h
+  | Var v -> pp_var pp_component ctx v
+  | Calc c -> pp_calc pp_component ctx c
+
+and pp_hue_interpolation : hue_interpolation Pp.t =
+ fun ctx -> function
+  | Shorter -> Pp.string ctx "shorter"
+  | Longer -> Pp.string ctx "longer"
+  | Increasing -> Pp.string ctx "increasing"
+  | Decreasing -> Pp.string ctx "decreasing"
+  | Default -> ()
+
+(* RGB helper function *)
+let pp_rgb ctx r g b alpha =
   Pp.string ctx "rgb(";
-  Pp.int ctx (pct_to_int r);
+  pp_channel ctx r;
   Pp.space ctx ();
-  Pp.int ctx (pct_to_int g);
+  pp_channel ctx g;
   Pp.space ctx ();
-  Pp.int ctx (pct_to_int b);
+  pp_channel ctx b;
   (match alpha with
-  | Some a ->
+  | None -> ()
+  | (Num _ | Pct _ | Var _) as a ->
       Pp.string ctx " / ";
-      Pp.float ctx a
-  | None -> ());
+      pp_alpha ctx a);
   Pp.char ctx ')'
 
 (* OKLCH helper function *)
-and pp_oklch ctx l c h =
+let pp_oklch ctx l c h alpha =
   Pp.string ctx "oklch(";
-  Pp.float_n 1 ctx l;
-  Pp.string ctx "% ";
+  pp_percentage ctx l;
+  Pp.space ctx ();
   Pp.float ctx c;
   Pp.space ctx ();
-  Pp.float ctx h;
+  pp_hue ctx h;
+  (match alpha with
+  | None -> ()
+  | (Num _ | Pct _ | Var _) as a ->
+      Pp.string ctx " / ";
+      pp_alpha ctx a);
   Pp.char ctx ')'
 
-and pp_color_space : color_space Pp.t =
+let pp_hsl ctx h s l a =
+  Pp.string ctx "hsl(";
+  pp_hue ctx h;
+  Pp.space ctx ();
+  pp_percentage ctx s;
+  Pp.space ctx ();
+  pp_percentage ctx l;
+  (match a with
+  | None -> ()
+  | (Num _ | Pct _ | Var _) as alpha ->
+      Pp.string ctx " / ";
+      pp_alpha ctx alpha);
+  Pp.char ctx ')'
+
+let pp_hwb ctx h w b a =
+  Pp.string ctx "hwb(";
+  pp_hue ctx h;
+  Pp.space ctx ();
+  pp_percentage ctx w;
+  Pp.space ctx ();
+  pp_percentage ctx b;
+  (match a with
+  | None -> ()
+  | (Num _ | Pct _ | Var _) as alpha ->
+      Pp.string ctx " / ";
+      pp_alpha ctx alpha);
+  Pp.char ctx ')'
+
+let pp_oklab ctx l a b alpha =
+  Pp.string ctx "oklab(";
+  (* Oklab L must always be output as percentage per CSS spec *)
+  pp_percentage ctx l;
+  Pp.space ctx ();
+  Pp.float ctx a;
+  Pp.space ctx ();
+  Pp.float ctx b;
+  (match alpha with
+  | None -> ()
+  | (Num _ | Pct _ | Var _) as a ->
+      Pp.string ctx " / ";
+      pp_alpha ctx a);
+  Pp.char ctx ')'
+
+let pp_lch ctx l c h alpha =
+  Pp.string ctx "lch(";
+  pp_percentage ctx l;
+  Pp.space ctx ();
+  Pp.float ctx c;
+  Pp.space ctx ();
+  pp_hue ctx h;
+  (match alpha with
+  | None -> ()
+  | (Num _ | Pct _ | Var _) as a ->
+      Pp.string ctx " / ";
+      pp_alpha ctx a);
+  Pp.char ctx ')'
+
+let pp_color_space : color_space Pp.t =
  fun ctx -> function
   | Srgb -> Pp.string ctx "srgb"
   | Srgb_linear -> Pp.string ctx "srgb-linear"
@@ -715,25 +884,49 @@ let rec pp_color_in_mix : color Pp.t =
   | c -> pp_color ctx c
 
 (* Color-mix helper function *)
-and pp_color_mix ctx in_space color1 percent1 color2 percent2 =
-  Pp.string ctx "color-mix(in ";
-  pp_color_space ctx in_space;
+and pp_color_mix ctx in_space hue color1 percent1 color2 percent2 =
+  Pp.string ctx "color-mix(";
+  (match in_space with
+  | Some space ->
+      Pp.string ctx "in ";
+      pp_color_space ctx space
+  | None -> Pp.string ctx "in oklab");
+  (* default per spec *)
+  (match hue with
+  | Default -> ()
+  | _ ->
+      Pp.space ctx ();
+      pp_hue_interpolation ctx hue;
+      Pp.string ctx " hue");
   Pp.string ctx ", ";
   pp_color_in_mix ctx color1;
   (match percent1 with
   | Some p ->
       Pp.space ctx ();
-      Pp.int ctx p;
-      Pp.char ctx '%'
+      pp_percentage ctx p
   | None -> ());
   Pp.string ctx ", ";
   pp_color_in_mix ctx color2;
   (match percent2 with
   | Some p ->
       Pp.space ctx ();
-      Pp.int ctx p;
-      Pp.char ctx '%'
+      pp_percentage ctx p
   | None -> ());
+  Pp.char ctx ')'
+
+and pp_color' ctx space components alpha =
+  Pp.string ctx "color(";
+  pp_color_space ctx space;
+  (match components with
+  | [] -> ()
+  | _ ->
+      Pp.string ctx " ";
+      Pp.list ~sep:Pp.space pp_component ctx components);
+  (match alpha with
+  | None -> ()
+  | (Num _ | Pct _ | Var _) as a ->
+      Pp.string ctx " / ";
+      pp_alpha ctx a);
   Pp.char ctx ')'
 
 (* Convert to Pp-based color formatter *)
@@ -743,108 +936,25 @@ and pp_color : color Pp.t =
       Pp.char ctx '#';
       Pp.string ctx value
   | Rgb { r; g; b } -> pp_rgb ctx r g b None
-  | Rgba { r; g; b; a } -> pp_rgb ctx r g b (Some a)
-  | Rgb_pct { r; g; b } -> pp_rgb_pct ctx r g b None
-  | Rgba_pct { r; g; b; a } -> pp_rgb_pct ctx r g b (Some a)
-  | Hsl { h; s; l; a } ->
-      Pp.string ctx "hsl(";
-      Pp.float ctx h;
-      Pp.space ctx ();
-      Pp.float ctx s;
-      Pp.char ctx '%';
-      Pp.space ctx ();
-      Pp.float ctx l;
-      Pp.char ctx '%';
-      (match a with
-      | Some aa ->
-          Pp.string ctx " / ";
-          Pp.float ctx aa
-      | None -> ());
-      Pp.char ctx ')'
-  | Hwb { h; w; b; a } ->
-      Pp.string ctx "hwb(";
-      Pp.float ctx h;
-      Pp.space ctx ();
-      Pp.float ctx w;
-      Pp.char ctx '%';
-      Pp.space ctx ();
-      Pp.float ctx b;
-      Pp.char ctx '%';
-      (match a with
-      | Some aa ->
-          Pp.string ctx " / ";
-          Pp.float ctx aa
-      | None -> ());
-      Pp.char ctx ')'
-  | Color { space; components; alpha } ->
-      Pp.string ctx "color(";
-      pp_color_space ctx space;
-      (match components with
-      | [] -> ()
-      | _ ->
-          Pp.string ctx " ";
-          Pp.list ~sep:Pp.space Pp.float ctx components);
-      (match alpha with
-      | Some a ->
-          Pp.string ctx " / ";
-          Pp.float ctx a
-      | None -> ());
-      Pp.char ctx ')'
-  | Oklch { l; c; h } -> pp_oklch ctx l c h
-  | Oklab { l; a; b; alpha } ->
-      Pp.string ctx "oklab(";
-      Pp.float ctx l;
-      Pp.space ctx ();
-      Pp.float ctx a;
-      Pp.space ctx ();
-      Pp.float ctx b;
-      (match alpha with
-      | Some aa ->
-          Pp.string ctx " / ";
-          Pp.float ctx aa
-      | None -> ());
-      Pp.char ctx ')'
-  | Lch { l; c; h; alpha } ->
-      Pp.string ctx "lch(";
-      Pp.float ctx l;
-      Pp.space ctx ();
-      Pp.float ctx c;
-      Pp.space ctx ();
-      Pp.float ctx h;
-      (match alpha with
-      | Some aa ->
-          Pp.string ctx " / ";
-          Pp.float ctx aa
-      | None -> ());
-      Pp.char ctx ')'
+  | Rgba { r; g; b; a } -> pp_rgb ctx r g b a
+  | Hsl { h; s; l; a } -> pp_hsl ctx h s l a
+  | Hwb { h; w; b; a } -> pp_hwb ctx h w b a
+  | Color { space; components; alpha } -> pp_color' ctx space components alpha
+  | Oklch { l; c; h; alpha } -> pp_oklch ctx l c h alpha
+  | Oklab { l; a; b; alpha } -> pp_oklab ctx l a b alpha
+  | Lch { l; c; h; alpha } -> pp_lch ctx l c h alpha
   | Named name -> pp_color_name ctx name
   | Var v -> pp_var pp_color ctx v
   | Current -> Pp.string ctx "currentcolor"
   | Transparent -> Pp.string ctx "transparent"
   | Inherit -> Pp.string ctx "inherit"
-  | Mix { in_space; color1; percent1; color2; percent2 } ->
-      pp_color_mix ctx in_space color1 percent1 color2 percent2
-
-let rec pp_angle : angle Pp.t =
- fun ctx -> function
-  | Deg f ->
-      Pp.float ctx f;
-      Pp.string ctx "deg"
-  | Rad f ->
-      Pp.float ctx f;
-      Pp.string ctx "rad"
-  | Turn f ->
-      Pp.float ctx f;
-      Pp.string ctx "turn"
-  | Grad f ->
-      Pp.float ctx f;
-      Pp.string ctx "grad"
-  | Var v -> pp_var pp_angle ctx v
+  | Mix { in_space; hue; color1; percent1; color2; percent2 } ->
+      pp_color_mix ctx in_space hue color1 percent1 color2 percent2
 
 let rec pp_duration : duration Pp.t =
  fun ctx -> function
-  | Ms n ->
-      Pp.int ctx n;
+  | Ms f ->
+      Pp.float ctx f;
       Pp.string ctx "ms"
   | S f ->
       Pp.float ctx f;
@@ -895,10 +1005,10 @@ end
 (** Error helpers *)
 let err_invalid t what = raise (Parse_error ("invalid " ^ what, t))
 
-(** Generic var() parser that returns a var reference *)
-let read_var : type a. (Reader.t -> a) -> Reader.t -> a var =
+(** var() parser after "var" ident has been consumed *)
+let read_var_after_ident : type a. (Reader.t -> a) -> Reader.t -> a var =
  fun read_value t ->
-  expect_string t "var(";
+  expect t '(';
   ws t;
   let var_name =
     if looking_at t "--" then (
@@ -918,6 +1028,12 @@ let read_var : type a. (Reader.t -> a) -> Reader.t -> a var =
   expect t ')';
   var_ref ?fallback var_name
 
+(** Generic var() parser that returns a var reference *)
+let read_var : type a. (Reader.t -> a) -> Reader.t -> a var =
+ fun read_value t ->
+  expect_string t "var";
+  read_var_after_ident read_value t
+
 (** Read a CSS length value *)
 let rec read_length t : length =
   ws t;
@@ -934,9 +1050,7 @@ let rec read_length t : length =
       | "fit-content" -> Fit_content
       | "from-font" -> From_font
       | "inherit" -> Inherit
-      | "var" ->
-          expect t '(';
-          Var (read_var read_length t)
+      | "var" -> Var (read_var_after_ident read_length t)
       | _ -> err_invalid t ("length keyword: " ^ keyword))
   | Some n -> (
       (* Check for unit *)
@@ -981,14 +1095,6 @@ let rec read_length t : length =
       | "%" -> Pct n
       | _ -> err_invalid t ("length unit: " ^ unit))
 
-(** Convert angle to degrees *)
-let angle_to_degrees : angle -> float = function
-  | Deg d -> d
-  | Rad r -> r *. (180.0 /. Float.pi)
-  | Grad g -> g *. 0.9
-  | Turn tr -> tr *. 360.0
-  | Var _ -> assert false
-
 (** Read a percentage value *)
 let read_percentage t : float =
   ws t;
@@ -996,21 +1102,39 @@ let read_percentage t : float =
   expect t '%';
   n
 
+(** Read an alpha value *)
+let rec read_alpha t : alpha =
+  ws t;
+  (* Check for var() first *)
+  if looking_at t "var(" then Var (read_var read_alpha t)
+  else
+    (* Try percentage first *)
+    match try_parse read_percentage t with
+    | Some pct -> Pct pct
+    | None -> Num (number t)
+(* Fall back to number *)
+
 (** Read optional alpha component *)
-let read_optional_alpha t : float option =
+and read_optional_alpha t : alpha =
   ws t;
   if peek t = Some '/' then (
     skip t;
     ws t;
-    (* Alpha can be either a number (0-1) or percentage (0%-100%) *)
-    let alpha =
-      (* Use try_parse for proper backtracking *)
-      match try_parse read_percentage t with
-      | Some pct -> pct /. 100.0 (* Convert percentage to 0-1 range *)
-      | None -> number t (* Fall back to number *)
-    in
-    Some alpha)
+    read_alpha t)
   else None
+
+(** Read a channel value (RGB) *)
+let rec read_channel t : channel =
+  ws t;
+  (* Check for var() *)
+  if looking_at t "var(" then Var (read_var read_channel t)
+  else
+    let n = number t in
+    let unit = while_ t (fun c -> c = '%') in
+    match unit with
+    | "%" -> Pct n
+    | "" -> Int (int_of_float n)
+    | _ -> err_invalid t "channel value"
 
 (** Read space-separated RGB values (modern syntax) *)
 let read_rgb_space_separated t : color =
@@ -1018,103 +1142,50 @@ let read_rgb_space_separated t : color =
   match
     try_parse
       (fun t ->
-        let r_pct = read_percentage t in
+        let r_pct = read_channel t in
         ws t;
-        let g_pct = read_percentage t in
+        let g_pct = read_channel t in
         ws t;
-        let b_pct = read_percentage t in
+        let b_pct = read_channel t in
         let alpha = read_optional_alpha t in
         ws t;
         expect t ')';
         (r_pct, g_pct, b_pct, alpha))
       t
   with
-  | Some (r_pct, g_pct, b_pct, alpha) -> (
-      (* Create percentage-based AST nodes *)
-      match alpha with
-      | None -> Rgb_pct { r = r_pct; g = g_pct; b = b_pct }
-      | Some a -> Rgba_pct { r = r_pct; g = g_pct; b = b_pct; a })
-  | None -> (
-      (* Fall back to integer format *)
-      let r = int_of_float (number t) in
-      ws t;
-      let g = int_of_float (number t) in
-      ws t;
-      let b = int_of_float (number t) in
-      let alpha = read_optional_alpha t in
-      ws t;
-      expect t ')';
-      (* Create integer-based AST nodes *)
+  | Some (r, g, b, alpha) -> (
+      (* Use channels directly from the parsed result *)
       match alpha with
       | None -> Rgb { r; g; b }
-      | Some a -> Rgba { r; g; b; a })
+      | Num _ | Pct _ | Var _ -> Rgba { r; g; b; a = alpha })
+  | None ->
+      (* This should not happen with the current logic *)
+      err_invalid t "RGB values"
 
 (** Read comma-separated RGB values (legacy syntax) *)
 let read_rgb_comma_separated t : color =
-  (* Try percentage format first with proper backtracking *)
-  match
-    try_parse
-      (fun t ->
-        let r_pct = read_percentage t in
-        ws t;
-        expect t ',';
-        ws t;
-        let g_pct = read_percentage t in
-        ws t;
-        expect t ',';
-        ws t;
-        let b_pct = read_percentage t in
-        (* For legacy syntax, alpha uses comma *)
-        let alpha =
-          ws t;
-          if peek t = Some ',' then (
-            skip t;
-            ws t;
-            Some
-              (match try_parse read_percentage t with
-              | Some pct -> pct /. 100.0
-              | None -> number t))
-          else None
-        in
-        ws t;
-        expect t ')';
-        (r_pct, g_pct, b_pct, alpha))
-      t
-  with
-  | Some (r_pct, g_pct, b_pct, alpha) -> (
-      (* Create percentage-based AST nodes *)
-      match alpha with
-      | None -> Rgb_pct { r = r_pct; g = g_pct; b = b_pct }
-      | Some a -> Rgba_pct { r = r_pct; g = g_pct; b = b_pct; a })
-  | None -> (
-      (* Fall back to integer format *)
-      let r = int_of_float (number t) in
+  (* Allow mixed channel formats - each channel can be int or percentage *)
+  let r = read_channel t in
+  ws t;
+  expect t ',';
+  ws t;
+  let g = read_channel t in
+  ws t;
+  expect t ',';
+  ws t;
+  let b = read_channel t in
+  ws t;
+  (* For legacy comma syntax, alpha uses comma instead of slash *)
+  let alpha =
+    if peek t = Some ',' then (
+      skip t;
       ws t;
-      expect t ',';
-      ws t;
-      let g = int_of_float (number t) in
-      ws t;
-      expect t ',';
-      ws t;
-      let b = int_of_float (number t) in
-      (* For legacy syntax, alpha uses comma *)
-      let alpha =
-        ws t;
-        if peek t = Some ',' then (
-          skip t;
-          ws t;
-          Some
-            (match try_parse read_percentage t with
-            | Some pct -> pct /. 100.0
-            | None -> number t))
-        else None
-      in
-      ws t;
-      expect t ')';
-      (* Create integer-based AST nodes *)
-      match alpha with
-      | None -> Rgb { r; g; b }
-      | Some a -> Rgba { r; g; b; a })
+      Some (read_alpha t))
+    else None
+  in
+  ws t;
+  expect t ')';
+  match alpha with None -> Rgb { r; g; b } | Some a -> Rgba { r; g; b; a }
 
 (** Read color space identifier *)
 let read_color_space t : color_space =
@@ -1138,13 +1209,29 @@ let read_color_space t : color_space =
   | _ -> err_invalid t ("color space: " ^ space_ident)
 
 (** Read color components until ')' or '/' *)
-let rec read_color_components t acc =
+let rec read_color_components space t acc =
   ws t;
   match peek t with
   | Some ')' | Some '/' -> List.rev acc
   | Some _ ->
-      let v = number t in
-      read_color_components t (v :: acc)
+      (* Check if this component should be a percentage based on color space and
+         position *)
+      let component_count = List.length acc in
+      let component =
+        match space with
+        | (Lab | Oklab | Lch | Oklch) when component_count = 0 ->
+            (* L component must be percentage for these spaces in color()
+               syntax *)
+            let n = number t in
+            expect t '%';
+            (Pct n : component)
+        | _ -> (
+            (* Try percentage first, then plain number *)
+            match try_parse read_percentage t with
+            | Some pct -> Pct pct
+            | None -> Number (number t))
+      in
+      read_color_components space t (component :: acc)
   | None -> err_invalid t "color()"
 
 (** Read a CSS color value - single entry point for all color parsing *)
@@ -1174,7 +1261,7 @@ let rec read_color t : color =
       else if looking_at t "hsl(" then (
         expect_string t "hsl(";
         ws t;
-        let hue = angle_to_degrees (read_angle t) in
+        let hue = read_hue t in
         ws t;
         let s = read_percentage t in
         ws t;
@@ -1182,11 +1269,11 @@ let rec read_color t : color =
         let a = read_optional_alpha t in
         ws t;
         expect t ')';
-        Hsl { h = hue; s; l; a })
+        Hsl { h = hue; s = Pct s; l = Pct l; a })
       else if looking_at t "hwb(" then (
         expect_string t "hwb(";
         ws t;
-        let hue = angle_to_degrees (read_angle t) in
+        let hue = read_hue t in
         ws t;
         let w = read_percentage t in
         ws t;
@@ -1194,23 +1281,25 @@ let rec read_color t : color =
         let a = read_optional_alpha t in
         ws t;
         expect t ')';
-        Hwb { h = hue; w; b; a })
+        Hwb { h = hue; w = Pct w; b = Pct b; a })
       else if looking_at t "oklch(" then (
         expect_string t "oklch(";
         ws t;
-        let l = number t in
-        expect t '%';
+        (* Oklch L must be a percentage per CSS spec *)
+        let l = read_percentage t in
         ws t;
         let c = number t in
         ws t;
         let h = number t in
+        let alpha = read_optional_alpha t in
         ws t;
         expect t ')';
-        Oklch { l; c; h })
+        Oklch { l = Pct l; c; h = Unitless h; alpha })
       else if looking_at t "oklab(" then (
         expect_string t "oklab(";
         ws t;
-        let l = number t in
+        (* Oklab L must be a percentage per CSS spec *)
+        let l = read_percentage t in
         ws t;
         let a = number t in
         ws t;
@@ -1218,11 +1307,12 @@ let rec read_color t : color =
         let alpha = read_optional_alpha t in
         ws t;
         expect t ')';
-        Oklab { l; a; b; alpha })
+        Oklab { l = Pct l; a; b; alpha })
       else if looking_at t "lch(" then (
         expect_string t "lch(";
         ws t;
-        let l = number t in
+        (* Lch L must be a percentage per CSS spec *)
+        let l = read_percentage t in
         ws t;
         let c = number t in
         ws t;
@@ -1230,13 +1320,13 @@ let rec read_color t : color =
         let alpha = read_optional_alpha t in
         ws t;
         expect t ')';
-        Lch { l; c; h; alpha })
+        Lch { l = Pct l; c; h = Unitless h; alpha })
       else if looking_at t "color(" then (
         expect_string t "color(";
         ws t;
         let space = read_color_space t in
         ws t;
-        let components = read_color_components t [] in
+        let components = read_color_components space t [] in
         let alpha = read_optional_alpha t in
         expect t ')';
         Color { space; components; alpha })
@@ -1417,8 +1507,23 @@ and read_angle t : angle =
     | "rad" -> Rad n
     | "turn" -> Turn n
     | "grad" -> Grad n
-    | "" -> Deg n (* Default to degrees *)
     | _ -> err_invalid t ("angle unit: " ^ unit)
+
+(** Read a hue value (preserves unitless vs explicit angle) *)
+and read_hue t : hue =
+  ws t;
+  (* Check for var() *)
+  if looking_at t "var(" then Var (read_var read_hue t)
+  else
+    let n = number t in
+    let unit = while_ t (fun c -> c >= 'a' && c <= 'z') in
+    match unit with
+    | "" -> Unitless n (* Unitless number, defaults to degrees *)
+    | "deg" -> Angle (Deg n)
+    | "rad" -> Angle (Rad n)
+    | "turn" -> Angle (Turn n)
+    | "grad" -> Angle (Grad n)
+    | _ -> err_invalid t ("hue unit: " ^ unit)
 
 (** Read a duration value *)
 let rec read_duration t : duration =
@@ -1430,8 +1535,7 @@ let rec read_duration t : duration =
     let unit = while_ t (fun c -> c >= 'a' && c <= 'z') in
     match unit with
     | "s" -> S n
-    | "ms" -> Ms (int_of_float n)
-    | "" -> Ms (int_of_float n) (* Default to milliseconds *)
+    | "ms" -> Ms n
     | _ -> err_invalid t ("duration unit: " ^ unit)
 
 (** Read a number value *)
@@ -1515,5 +1619,10 @@ and read_calc : type a. (Reader.t -> a) -> Reader.t -> a calc =
     let v = var_ref ?fallback var_name in
     Var v)
   else
-    (* Try to parse a value directly *)
-    Val (read_a t)
+    (* Try to parse with specific unit first, fall back to raw number *)
+    let _pos = save t in
+    try Val (read_a t)
+    with Parse_error _ ->
+      (* If parsing failed due to unit error, try parsing as raw number *)
+      restore t;
+      Num (number t)
