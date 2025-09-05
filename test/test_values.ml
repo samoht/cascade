@@ -346,12 +346,11 @@ let test_float_value_formatting () =
   check_angle ~expected:"-0.5turn" "-.5turn"
 
 let test_var_with_multiple_fallbacks () =
-  (* Test var() with multiple fallback values *)
-  let t = Css.Reader.of_string "var(--custom-font, Arial, sans-serif)" in
-  (* For now, just test that it parses without error *)
-  let _parsed = try Some (read_color t) with _ -> None in
-  ()
-(* Note: Full var() with multiple fallbacks may need more work *)
+  (* Test var() with multiple fallback values - round-trip test *)
+  check_color "var(--custom-color, red)";
+  check_length "var(--custom-size, 10px)";
+  check_angle "var(--custom-angle, 45deg)";
+  check_duration "var(--custom-time, 1s)"
 
 let suite =
   [
