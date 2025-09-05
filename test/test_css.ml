@@ -55,7 +55,6 @@ let component_where_component_last_child =
     class_ "component"
     ++ where [ class_ "component" >> pseudo_class "last-child" ])
 
-let compact = Selector.class_ "compact"
 let z_class = Selector.class_ "z-class"
 let a_class = Selector.class_ "a-class"
 let m_class = Selector.class_ "m-class"
@@ -255,9 +254,6 @@ let test_container_query () =
   let cq = Css.container ~condition:"min-width: 400px" rules in
   let sheet = stylesheet [ Container cq ] in
   let output = to_string sheet in
-
-  (* Debug: print actual output *)
-  (* Printf.printf "Container output: '%s'\n" output; *)
 
   (* Should contain container query - check for both possible formats *)
   let has_container =
@@ -1052,53 +1048,7 @@ let test_no_duplicate_last_child () =
     "non-adjacent .component rules not merged" 2 component_count
 
 (* Test that minification produces compact output *)
-let test_minify_values () =
-  with_debug "minify_values" @@ fun () ->
-  let open Css in
-  let r =
-    rule ~selector:compact
-      [
-        padding (Rem 0.5);
-        margin (Px 0);
-        opacity 0.5;
-        transition_duration (Ms 500);
-      ]
-  in
-
-  let stylesheet = stylesheet [ Rule r ] in
-  let minified = to_string ~minify:true stylesheet in
-
-  (* Debug output if any check will fail *)
-  let expected_patterns =
-    [ "padding:.5rem"; "opacity:.5"; "transition-duration:500ms"; "margin:0" ]
-  in
-  let has_unwanted = Astring.String.is_infix ~affix:"margin:0px" minified in
-  let missing_pattern =
-    List.exists
-      (fun p -> not (Astring.String.is_infix ~affix:p minified))
-      expected_patterns
-  in
-
-  if missing_pattern || has_unwanted then
-    debug_css ~label:"minification test" minified
-      (expected_patterns @ [ "margin:0px (should NOT be present)" ]);
-
-  (* Check that leading zeros are dropped *)
-  Alcotest.(check bool)
-    "0.5rem becomes .5rem" true
-    (Astring.String.is_infix ~affix:"padding:.5rem" minified);
-  Alcotest.(check bool)
-    "opacity .5 (not 0.5)" true
-    (Astring.String.is_infix ~affix:"opacity:.5" minified);
-  Alcotest.(check bool)
-    "transition-duration 500ms" true
-    (Astring.String.is_infix ~affix:"transition-duration:500ms" minified);
-
-  (* Check that 0 values are simplified *)
-  Alcotest.(check bool)
-    "0px becomes 0" true
-    (Astring.String.is_infix ~affix:"margin:0" minified
-    && not (Astring.String.is_infix ~affix:"margin:0px" minified))
+(* value-specific minification checks are covered in test_values.ml *)
 
 (* Test that selector ordering is preserved (no reordering) *)
 let test_order_preservation () =
@@ -1495,7 +1445,6 @@ let tests =
       `Quick,
       test_optimize_within_nested_contexts );
     ("no duplicate last-child", `Quick, test_no_duplicate_last_child);
-    ("minify values", `Quick, test_minify_values);
     ("selector order preservation", `Quick, test_order_preservation);
     ("no property-based reordering", `Quick, test_no_property_based_reordering);
     ("no cross-context optimization", `Quick, test_no_cross_context_optimization);
