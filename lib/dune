@@ -1,5 +1,4 @@
 (library
  (public_name tw.css)
  (name css)
- (modules css pp)
- (libraries astring re dune-build-info))
+ (libraries dune-build-info))

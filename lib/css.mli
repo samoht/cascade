@@ -592,8 +592,8 @@ val rgba : int -> int -> int -> float -> color
 val oklch : float -> float -> float -> color
 (** [oklch l c h] is an OKLCH color. *)
 
-val named : color_name -> color
-(** [named n] is a named color. *)
+val color_name : color_name -> color
+(** [color_name n] is a named color. *)
 
 val current_color : color
 (** [current_color] is the CSS [currentcolor] value. *)
@@ -2324,6 +2324,9 @@ val box_shadow : box_shadow -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/box-shadow} box-shadow}
     property. *)
 
+val box_shadows : shadow list -> box_shadow
+(** [box_shadows lst] is multiple box-shadows. *)
+
 (** CSS number values (unitless numbers for filters, transforms, etc.) *)
 type number =
   | Float of float  (** Floating point number *)
@@ -3080,6 +3083,5 @@ val pp_justify_content : justify_content Pp.t
 (**/**)
 
 module Pp = Pp
-
-val box_shadows : shadow list -> box_shadow
-(** [box_shadows lst] is multiple box-shadows. *)
+module Reader = Reader
+module Values = Values
