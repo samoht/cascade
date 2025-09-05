@@ -326,24 +326,15 @@ let test_calc_with_different_units () =
   check_calc "calc(100% - 20px)";
   check_calc "calc(1em + 2rem + 3px)";
 
-  (* Test calc parsing and printing *)
-  let t = Css.Reader.of_string "calc(100px - 2rem)" in
-  let calc_expr = read_calc read_length t in
-  let output = Css.Pp.to_string (pp_calc pp_length) calc_expr in
-  check string "calc round-trip" "calc(100px - 2rem)" output
+  (* Round-trip test is already covered by check_calc above *)
+  check_calc "calc(100vw - 50px)"
 
 let test_var_parsing_and_printing () =
   (* Test var() parsing and printing *)
-  let t = Css.Reader.of_string "var(--primary-color, #007bff)" in
-  let color = read_color t in
-  let output = Css.Pp.to_string pp_color color in
-  check string "var with fallback" "var(--primary-color, #007bff)" output;
+  check_color "var(--primary-color, #007bff)";
 
   (* Test var in length context *)
-  let t = Css.Reader.of_string "var(--spacing, 10px)" in
-  let length = read_length t in
-  let output = Css.Pp.to_string pp_length length in
-  check string "var length with fallback" "var(--spacing, 10px)" output
+  check_length "var(--spacing, 10px)"
 
 let test_float_value_formatting () =
   (* Test float formatting with leading zeros *)
