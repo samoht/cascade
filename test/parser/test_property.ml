@@ -116,10 +116,10 @@ let test_round_trip_transform () =
     let parsed = Css_parser.Property.read_transform t in
     let output = To_string.transform parsed in
     (* For transforms, we need to handle that output might be normalized *)
-    check (neg bool)
-      (Fmt.str "round-trip %s produces output" input)
-      false
-      (String.length output = 0)
+    check bool
+      (Fmt.str "round-trip %s produces non-empty output" input)
+      true
+      (String.length output > 0)
   in
 
   round_trip "rotate(45deg)";

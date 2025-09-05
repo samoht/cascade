@@ -104,16 +104,17 @@ let test_read_complex_values () =
   test "1px solid var(--border-color)" "mixed values with var";
   test "0 0 10px rgba(0, 0, 0, 0.5)" "shadow value"
 
-let test_whitespace_handling () =
+let test_whitespace_trimming () =
   let test input expected desc =
     let t = Css_parser.Reader.of_string input in
     let result = Css_parser.Custom_property.read_custom_property_value t in
     check string desc expected result
   in
 
-  (* Whitespace should be preserved in custom property values *)
-  test "  red  " "  red  " "preserves leading/trailing spaces";
-  test "10px  20px" "10px  20px" "preserves multiple spaces";
+  (* Leading/trailing whitespace should be trimmed, inner whitespace
+     preserved *)
+  test "  red  " "red" "trims leading/trailing spaces";
+  test "10px  20px" "10px  20px" "preserves multiple inner spaces";
   test "10px\n20px" "10px\n20px" "preserves newlines";
   test "10px\t20px" "10px\t20px" "preserves tabs"
 
@@ -124,5 +125,5 @@ let tests =
     ("read_custom_property_name", `Quick, test_read_custom_property_name);
     ("read_custom_property_value", `Quick, test_read_custom_property_value);
     ("read_complex_values", `Quick, test_read_complex_values);
-    ("whitespace_handling", `Quick, test_whitespace_handling);
+    ("whitespace_handling", `Quick, test_whitespace_trimming);
   ]

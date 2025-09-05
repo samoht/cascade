@@ -80,4 +80,4 @@ let read_custom_property_value t =
         let c = char t in
         read_value depth (String.make 1 c :: acc)
   in
-  read_value 0 []
+  String.trim (read_value 0 [])
