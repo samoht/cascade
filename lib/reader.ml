@@ -129,7 +129,7 @@ let string t =
     match char t with
     | '\\' ->
         let escaped = char t in
-        loop (escaped :: '\\' :: acc)
+        loop (escaped :: acc)
     | c when c = quote -> String.concat "" (List.rev_map (String.make 1) acc)
     | c -> loop (c :: acc)
   in

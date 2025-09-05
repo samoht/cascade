@@ -176,6 +176,14 @@ let test_percentage_parsing () =
   check_percentage "-50%";
   check_percentage ~expected:"0.01%" ".01%"
 
+let test_default_units_and_unitless () =
+  (* Angle without unit defaults to deg when printed *)
+  check_angle ~expected:"90deg" "90";
+  (* Duration without unit defaults to ms when printed *)
+  check_duration ~expected:"150ms" "150";
+  (* Unitless non-zero length is preserved as a number *)
+  check_length "1.5"
+
 let test_calc_expressions () =
   let cases =
     [
@@ -289,6 +297,14 @@ let test_var_parsing_and_printing () =
   (* Test var in length context *)
   check_length "var(--spacing, 10px)"
 
+let test_var_default_inline () =
+  (* When inline printing is enabled and a default is present, pp_var should
+     inline the default value instead of var(). *)
+  let v : length var = var_ref ~default:(Px 10) "spacing" in
+  let len : length = Var v in
+  let s = Css.Pp.to_string ~minify:true ~inline:true pp_length len in
+  check string "inline var default" "10px" s
+
 let test_float_value_formatting () =
   (* Test float formatting with leading zeros *)
   check_length "0.5rem";
@@ -344,6 +360,8 @@ let suite =
         test_case "parse angles" `Quick test_angle_parsing;
         test_case "parse durations" `Quick test_duration_parsing;
         test_case "parse percentages" `Quick test_percentage_parsing;
+        test_case "default units and unitless" `Quick
+          test_default_units_and_unitless;
         test_case "calc expressions" `Quick test_calc_expressions;
         test_case "var() in color context" `Quick test_var_in_color;
         test_case "var() with fallback" `Quick test_var_with_fallback;
@@ -357,6 +375,7 @@ let suite =
         (* Additional value tests *)
         test_case "var parsing and printing" `Quick
           test_var_parsing_and_printing;
+        test_case "var default inline" `Quick test_var_default_inline;
         test_case "float value formatting" `Quick test_float_value_formatting;
         test_case "minified value formatting" `Quick
           test_minified_value_formatting;

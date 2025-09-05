@@ -148,7 +148,9 @@ let test_until_string_and_separated () =
   let r = Reader.of_string "item1,item2 , item3;rest" in
   let items =
     Reader.separated r
-      (fun r -> Reader.while_ r (fun c -> c <> ',' && c <> ';'))
+      (fun r ->
+        let item = Reader.while_ r (fun c -> c <> ',' && c <> ';') in
+        String.trim item)
       (fun r ->
         Reader.ws r;
         Reader.expect r ',';
