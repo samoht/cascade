@@ -9,7 +9,7 @@ let rec one t =
   if peek t = Some '@' then at_rule t
   else
     (* Try to parse selector *)
-    match Selector.one_opt t with
+    match Css.Selector.read_opt t with
     | None -> None
     | Some selector ->
         ws t;
@@ -43,7 +43,7 @@ and rules_only t =
     []
   else
     (* Try to parse a style rule without at-rules *)
-    match Selector.one_opt t with
+    match Css.Selector.read_opt t with
     | None -> []
     | Some selector ->
         ws t;

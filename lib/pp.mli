@@ -125,6 +125,9 @@ val colon : unit t
 val comma : unit t
 (** [comma] outputs "," when minifying, ", " when formatting. *)
 
+val sep : string t
+(** [sep s] prints [s] and, when not minifying, appends a single space. *)
+
 val semicolon : unit t
 (** [semicolon] always outputs ";". *)
 
@@ -160,3 +163,12 @@ val braces : 'a t -> 'a t
 (** [braces formatter] wraps formatter in braces with proper spacing and
     indentation: [{ <indented content> }] when formatting, [{<content>}] when
     minifying. *)
+
+(** {2 Generic Helpers} *)
+
+val call : string -> 'a t -> 'a t
+(** [call name args] formats a function call: [name( args )]. *)
+
+val call_list : string -> 'a t -> 'a list t
+(** [call_list name item] formats a function call with a comma-separated list of
+    items: [name(a, b, c)]. *)

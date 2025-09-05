@@ -6,10 +6,6 @@ module Pp = Pp
 (* Include Values module to get core types *)
 include Values
 
-(* Error handling helpers *)
-let err_invalid_identifier name reason =
-  invalid_arg (String.concat "" [ "CSS identifier '"; name; "' "; reason ])
-
 let var_name v = v.name
 let var_layer v = v.layer
 
@@ -1669,7 +1665,7 @@ let pp_list_style_position : list_style_position Pp.t =
 let pp_list_style_image : list_style_image Pp.t =
  fun ctx -> function
   | None_img -> Pp.string ctx "none"
-  | Url u -> pp_fun "url" Pp.string ctx u
+  | Url u -> Pp.call "url" Pp.string ctx u
   | Inherit -> Pp.string ctx "inherit"
 
 let rec pp_border_style : border_style Pp.t =
@@ -1931,13 +1927,13 @@ let pp_scale_transform :
 let pp_skew : (angle * angle option) Pp.t =
  fun ctx (x, y_opt) ->
   match y_opt with
-  | Some y -> pp_fun "skew" (Pp.list ~sep:Pp.comma pp_angle) ctx [ x; y ]
-  | None -> pp_fun "skewX" pp_angle ctx x
+  | Some y -> Pp.call "skew" (Pp.list ~sep:Pp.comma pp_angle) ctx [ x; y ]
+  | None -> Pp.call "skewX" pp_angle ctx x
 
 let pp_matrix_2d : (float * float * float * float * float * float) Pp.t =
  fun ctx (a, b, c, d, e, f) ->
   let values = [ a; b; c; d; e; f ] in
-  pp_fun' "matrix" Pp.float ctx values
+  Pp.call_list "matrix" Pp.float ctx values
 
 let pp_matrix_3d : _ Pp.t =
  fun ctx
@@ -1953,9 +1949,9 @@ let rec pp_transform : transform Pp.t =
  fun ctx -> function
   | Translate (x, None) -> pp_translate ctx (x, None, None)
   | Translate (x, Some y) -> pp_translate ctx (x, Some y, None)
-  | Translate_x l -> pp_fun "translateX" pp_length ctx l
-  | Translate_y l -> pp_fun "translateY" pp_length ctx l
-  | Translate_z l -> pp_fun "translateZ" pp_length ctx l
+  | Translate_x l -> Pp.call "translateX" pp_length ctx l
+  | Translate_y l -> Pp.call "translateY" pp_length ctx l
+  | Translate_z l -> Pp.call "translateZ" pp_length ctx l
   | Translate3d (x, y, z) -> pp_translate ctx (x, Some y, Some z)
   | Rotate a -> pp_rotate ctx (a, `None)
   | Rotate_x a -> pp_rotate ctx (a, `X)
@@ -1964,17 +1960,17 @@ let rec pp_transform : transform Pp.t =
   | Rotate3d (x, y, z, angle) -> pp_rotate ctx (angle, `Vec3d (x, y, z))
   | Scale (x, None) -> pp_scale_transform ctx (x, None, None)
   | Scale (x, Some y) -> pp_scale_transform ctx (x, Some y, None)
-  | Scale_x s -> pp_fun "scaleX" pp_transform_scale ctx s
-  | Scale_y s -> pp_fun "scaleY" pp_transform_scale ctx s
-  | Scale_z s -> pp_fun "scaleZ" pp_transform_scale ctx s
+  | Scale_x s -> Pp.call "scaleX" pp_transform_scale ctx s
+  | Scale_y s -> Pp.call "scaleY" pp_transform_scale ctx s
+  | Scale_z s -> Pp.call "scaleZ" pp_transform_scale ctx s
   | Scale3d (x, y, z) -> pp_scale_transform ctx (x, Some y, Some z)
   | Skew (x, None) -> pp_skew ctx (x, None)
   | Skew (x, Some y) -> pp_skew ctx (x, Some y)
-  | Skew_x a -> pp_fun "skewX" pp_angle ctx a
-  | Skew_y a -> pp_fun "skewY" pp_angle ctx a
+  | Skew_x a -> Pp.call "skewX" pp_angle ctx a
+  | Skew_y a -> Pp.call "skewY" pp_angle ctx a
   | Matrix m -> pp_matrix_2d ctx m
   | Matrix3d m -> pp_matrix_3d ctx m
-  | Perspective l -> pp_fun "perspective" pp_length ctx l
+  | Perspective l -> Pp.call "perspective" pp_length ctx l
   | None -> Pp.string ctx "none"
   | Inherit -> Pp.string ctx "inherit"
   | Var v -> pp_var (Pp.list ~sep:Pp.space pp_transform) ctx v
@@ -2394,17 +2390,17 @@ let pp_gradient_stop : gradient_stop Pp.t =
 let rec pp_filter : filter Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
-  | Blur l -> pp_fun "blur" pp_length ctx l
-  | Brightness n -> pp_fun "brightness" pp_number ctx n
-  | Contrast n -> pp_fun "contrast" pp_number ctx n
-  | Drop_shadow s -> pp_fun "drop-shadow" pp_shadow ctx s
-  | Grayscale n -> pp_fun "grayscale" pp_number ctx n
-  | Hue_rotate a -> pp_fun "hue-rotate" pp_angle ctx a
-  | Invert n -> pp_fun "invert" pp_number ctx n
-  | Opacity n -> pp_fun "opacity" pp_number ctx n
-  | Saturate n -> pp_fun "saturate" pp_number ctx n
-  | Sepia n -> pp_fun "sepia" pp_number ctx n
-  | Url url -> pp_fun "url" Pp.string ctx url
+  | Blur l -> Pp.call "blur" pp_length ctx l
+  | Brightness n -> Pp.call "brightness" pp_number ctx n
+  | Contrast n -> Pp.call "contrast" pp_number ctx n
+  | Drop_shadow s -> Pp.call "drop-shadow" pp_shadow ctx s
+  | Grayscale n -> Pp.call "grayscale" pp_number ctx n
+  | Hue_rotate a -> Pp.call "hue-rotate" pp_angle ctx a
+  | Invert n -> Pp.call "invert" pp_number ctx n
+  | Opacity n -> Pp.call "opacity" pp_number ctx n
+  | Saturate n -> Pp.call "saturate" pp_number ctx n
+  | Sepia n -> Pp.call "sepia" pp_number ctx n
+  | Url url -> Pp.call "url" Pp.string ctx url
   | List filters -> Pp.list ~sep:Pp.space pp_filter ctx filters
   | Var v -> pp_var pp_filter ctx v
 
@@ -3136,318 +3132,7 @@ let scroll_snap_stop value = Declaration (Scroll_snap_stop, value)
 let scroll_behavior value = Declaration (Scroll_behavior, value)
 
 (* Selector module for structured selector representation *)
-module Selector = struct
-  type attribute_match =
-    | Presence
-    | Exact of string
-    | Whitespace_list of string
-    | Hyphen_list of string
-    | Prefix of string
-    | Suffix of string
-    | Substring of string
-
-  type combinator = Descendant | Child | Next_sibling | Subsequent_sibling
-
-  type t =
-    | Element of string
-    | Class of string
-    | Id of string
-    | Universal
-    | Attribute of string * attribute_match
-    | Pseudo_class of string
-    | Pseudo_element of string
-    | Where of t list
-    | Not of t list
-    | Fun of string * t list
-    | Compound of t list (* Compound selector like div.class#id *)
-    | Combined of t * combinator * t (* Selectors with combinators *)
-    | List of t list (* Comma-separated list of selectors *)
-
-  let combinator_to_string ~minify = function
-    | Descendant -> " "
-    | Child -> if minify then ">" else " > "
-    | Next_sibling -> if minify then "+" else " + "
-    | Subsequent_sibling -> if minify then "~" else " ~ "
-
-  (* CSS identifier validation functions *)
-  let is_valid_nmstart c =
-    (c >= 'a' && c <= 'z')
-    || (c >= 'A' && c <= 'Z')
-    || c = '_'
-    || Char.code c > 127
-    || c = '\\'
-
-  let is_valid_nmchar c =
-    is_valid_nmstart c || (c >= '0' && c <= '9') || c = '-'
-
-  let needs_quotes value =
-    String.length value = 0
-    || (not (is_valid_nmstart value.[0]))
-    || not (String.for_all is_valid_nmchar value)
-
-  let pp_attribute_value ~minify value =
-    (* Deterministic rule: minified = no quotes unless needed; pretty = always
-       quotes *)
-    if minify && not (needs_quotes value) then value
-    else String.concat "" [ "\""; value; "\"" ]
-
-  let pp_attribute_match ~minify name = function
-    | Presence -> name
-    | Exact value ->
-        String.concat "" [ name; "="; pp_attribute_value ~minify value ]
-    | Whitespace_list value ->
-        String.concat "" [ name; "~="; pp_attribute_value ~minify value ]
-    | Hyphen_list value ->
-        String.concat "" [ name; "|="; pp_attribute_value ~minify value ]
-    | Prefix value ->
-        String.concat "" [ name; "^="; pp_attribute_value ~minify value ]
-    | Suffix value ->
-        String.concat "" [ name; "$="; pp_attribute_value ~minify value ]
-    | Substring value ->
-        String.concat "" [ name; "*="; pp_attribute_value ~minify value ]
-
-  let rec to_string ?(minify = false) = function
-    | Element e -> e
-    | Class c -> String.concat "" [ "."; c ]
-    | Id i -> String.concat "" [ "#"; i ]
-    | Universal -> "*"
-    | Attribute (name, match_type) ->
-        String.concat ""
-          [ "["; pp_attribute_match ~minify name match_type; "]" ]
-    | Pseudo_class pc -> String.concat "" [ ":"; pc ]
-    | Pseudo_element pe -> String.concat "" [ "::"; pe ]
-    | Where selectors ->
-        let sep = if minify then "," else ", " in
-        String.concat ""
-          [
-            ":where(";
-            String.concat sep (List.map (to_string ~minify) selectors);
-            ")";
-          ]
-    | Not selectors ->
-        let sep = if minify then "," else ", " in
-        String.concat ""
-          [
-            ":not(";
-            String.concat sep (List.map (to_string ~minify) selectors);
-            ")";
-          ]
-    | Fun (name, selectors) ->
-        let sep = if minify then "," else ", " in
-        String.concat ""
-          [
-            ":";
-            name;
-            "(";
-            String.concat sep (List.map (to_string ~minify) selectors);
-            ")";
-          ]
-    | Compound selectors ->
-        String.concat "" (List.map (to_string ~minify) selectors)
-    | Combined (left, comb, right) ->
-        let comb_str = combinator_to_string ~minify comb in
-        String.concat ""
-          [ to_string ~minify left; comb_str; to_string ~minify right ]
-    | List selectors ->
-        let sep = if minify then "," else ", " in
-        String.concat sep (List.map (to_string ~minify) selectors)
-
-  let validate_css_identifier name =
-    if String.length name = 0 then err_invalid_identifier name "cannot be empty";
-
-    let first_char = name.[0] in
-
-    (* Check for invalid starting patterns *)
-    if first_char >= '0' && first_char <= '9' then
-      err_invalid_identifier name "cannot start with digit";
-
-    if String.length name >= 2 then (
-      if name.[0] = '-' && name.[1] = '-' then
-        err_invalid_identifier name
-          "cannot start with '--' (reserved for custom properties)";
-      if name.[0] = '-' && name.[1] >= '0' && name.[1] <= '9' then
-        err_invalid_identifier name "cannot start with '-' followed by digit");
-
-    (* Validate characters with CSS escape support *)
-    let len = String.length name in
-    let i = ref 0 in
-    while !i < len do
-      let c = name.[!i] in
-      if c = '\\' then (
-        (* Skip escaped sequence payload: either next char or up to 6 hex digits
-           optionally followed by a space *)
-        incr i;
-        if !i < len then (
-          let is_hex c =
-            (c >= '0' && c <= '9')
-            || (c >= 'a' && c <= 'f')
-            || (c >= 'A' && c <= 'F')
-          in
-          let start = !i in
-          let rec consume_hex n =
-            if n = 6 || !i >= len then ()
-            else if is_hex name.[!i] then (
-              incr i;
-              consume_hex (n + 1))
-            else ()
-          in
-          consume_hex 0;
-          if !i = start then incr i (* single escaped char *)
-          else if !i < len && name.[!i] = ' ' then incr i))
-      else
-        let idx = !i in
-        let is_valid =
-          if idx = 0 then
-            (* Allow - at start for vendor prefixes, but other rules still
-               apply *)
-            is_valid_nmstart c || c = '-'
-          else is_valid_nmchar c
-        in
-        if (not is_valid) && Char.code c <= 127 then
-          (* Only validate ASCII, allow non-ASCII *)
-          err_invalid_identifier name
-            (String.concat ""
-               [
-                 "contains invalid character '";
-                 String.make 1 c;
-                 "' at position ";
-                 Int.to_string idx;
-               ]);
-        incr i
-    done
-
-  let element name =
-    validate_css_identifier name;
-    Element name
-
-  let class_ name =
-    validate_css_identifier name;
-    Class name
-
-  let id name =
-    validate_css_identifier name;
-    Id name
-
-  let universal = Universal
-
-  let attribute name match_type =
-    validate_css_identifier name;
-    Attribute (name, match_type)
-
-  let pseudo_class name =
-    (* Skip validation for functional pseudo-classes that contain parentheses *)
-    if not (String.contains name '(') then validate_css_identifier name;
-    Pseudo_class name
-
-  let pseudo_element name =
-    validate_css_identifier name;
-    Pseudo_element name
-
-  let rec combine s1 comb s2 =
-    match s2 with
-    | List selectors ->
-        (* When combining with a List, distribute the combinator over each
-           element *)
-        List (List.map (combine s1 comb) selectors)
-    | _ ->
-        (* For all other cases, create a Combined node *)
-        Combined (s1, comb, s2)
-
-  let ( ++ ) s1 s2 = combine s1 Descendant s2
-  let ( >> ) s1 s2 = combine s1 Child s2
-  let where selectors = Where selectors
-  let not selectors = Not selectors
-  let fun_ name selectors = Fun (name, selectors)
-  let list selectors = List selectors
-  let is_compound_list = function List _ -> true | _ -> false
-  let compound selectors = Compound selectors
-  let ( && ) sel1 sel2 = compound [ sel1; sel2 ]
-  let ( || ) sel1 sel2 = list [ sel1; sel2 ]
-
-  (* Pretty printer for selectors *)
-  let rec pp : t Pp.t =
-   fun ctx -> function
-    | Element name -> Pp.string ctx name
-    | Class name ->
-        Pp.char ctx '.';
-        Pp.string ctx name
-    | Id name ->
-        Pp.char ctx '#';
-        Pp.string ctx name
-    | Universal -> Pp.char ctx '*'
-    | Attribute (name, match_type) ->
-        Pp.char ctx '[';
-        Pp.string ctx name;
-        (match match_type with
-        | Presence -> ()
-        | Exact value ->
-            Pp.char ctx '=';
-            if needs_quotes value then (
-              Pp.char ctx '"';
-              Pp.string ctx value;
-              Pp.char ctx '"')
-            else Pp.string ctx value
-        | Whitespace_list value ->
-            Pp.string ctx "~=";
-            Pp.char ctx '"';
-            Pp.string ctx value;
-            Pp.char ctx '"'
-        | Hyphen_list value ->
-            Pp.string ctx "|=";
-            Pp.char ctx '"';
-            Pp.string ctx value;
-            Pp.char ctx '"'
-        | Prefix value ->
-            Pp.string ctx "^=";
-            Pp.char ctx '"';
-            Pp.string ctx value;
-            Pp.char ctx '"'
-        | Suffix value ->
-            Pp.string ctx "$=";
-            Pp.char ctx '"';
-            Pp.string ctx value;
-            Pp.char ctx '"'
-        | Substring value ->
-            Pp.string ctx "*=";
-            Pp.char ctx '"';
-            Pp.string ctx value;
-            Pp.char ctx '"');
-        Pp.char ctx ']'
-    | Pseudo_class name ->
-        Pp.char ctx ':';
-        Pp.string ctx name
-    | Pseudo_element name ->
-        Pp.string ctx "::";
-        Pp.string ctx name
-    | Where selectors ->
-        Pp.string ctx ":where(";
-        Pp.list ~sep:Pp.comma pp ctx selectors;
-        Pp.char ctx ')'
-    | Not selectors ->
-        Pp.string ctx ":not(";
-        Pp.list ~sep:Pp.comma pp ctx selectors;
-        Pp.char ctx ')'
-    | Fun (name, selectors) ->
-        Pp.char ctx ':';
-        Pp.string ctx name;
-        Pp.char ctx '(';
-        Pp.list ~sep:Pp.comma pp ctx selectors;
-        Pp.char ctx ')'
-    | Compound selectors -> List.iter (pp ctx) selectors
-    | Combined (left, comb, right) ->
-        pp ctx left;
-        pp_combinator ctx comb;
-        pp ctx right
-    | List selectors -> Pp.list ~sep:Pp.comma pp ctx selectors
-
-  and pp_combinator ctx = function
-    | Descendant -> Pp.space ctx ()
-    | Child -> if ctx.minify then Pp.char ctx '>' else Pp.string ctx " > "
-    | Next_sibling ->
-        if ctx.minify then Pp.char ctx '+' else Pp.string ctx " + "
-    | Subsequent_sibling ->
-        if ctx.minify then Pp.char ctx '~' else Pp.string ctx " ~ "
-end
+module Selector = Selector
 
 type rule = { selector : Selector.t; declarations : declaration list }
 type media_rule = { media_condition : string; media_rules : rule list }
@@ -4213,7 +3898,7 @@ let should_not_combine selector =
   Selector.is_compound_list selector
   ||
   (* Check string representation for specific prefixes *)
-  let s = Selector.to_string selector in
+  let s = Pp.to_string Selector.pp selector in
   String.starts_with ~prefix:"::file-selector-button" s
   || String.starts_with ~prefix:"::-webkit-" s
 
@@ -4227,7 +3912,7 @@ let group_to_rule = function
       (* Create a List selector from all the selectors *)
       let combined_selector =
         if List.length selector_list = 1 then List.hd selector_list
-        else Selector.List selector_list
+        else Selector.list selector_list
       in
       Some { selector = combined_selector; declarations = decls }
 

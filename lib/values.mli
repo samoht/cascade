@@ -400,8 +400,8 @@ val pp_duration : duration Pp.t
 val pp_number : number Pp.t
 (** [pp_number] is the pretty printer for {!number} values. *)
 
-val pp_percentage : float Pp.t
-(** [pp_percentage] is the pretty printer for percentage values. *)
+val pp_percentage : percentage Pp.t
+(** [pp_percentage] is the pretty printer for percentage types. *)
 
 val pp_calc : 'a Pp.t -> 'a calc Pp.t
 (** [pp_calc pp_value] is the pretty printer for calc expressions. *)
@@ -413,13 +413,6 @@ val pp_color_space : color_space Pp.t
 (** [pp_color_space] is the pretty printer for {!color_space} values. *)
 
 (** {2 Helper Functions} *)
-
-val pp_fun : string -> 'a Pp.t -> Pp.ctx -> 'a -> unit
-(** [pp_fun name pp_args] formats function calls as [name(args)]. *)
-
-val pp_fun' : string -> 'a Pp.t -> Pp.ctx -> 'a list -> unit
-(** [pp_fun' name pp_item] formats function calls with comma-separated list
-    arguments. *)
 
 val pp_var : 'a Pp.t -> 'a var Pp.t
 (** [pp_var pp_value] is the pretty printer for CSS variables. *)
@@ -458,10 +451,14 @@ val read_angle : Reader.t -> angle
 val read_duration : Reader.t -> duration
 (** [read_duration t] reads a CSS duration value. *)
 
+val read_dimension : Reader.t -> float * string
+(** [read_dimension t] reads a dimension (number with unit) and returns (value,
+    unit). *)
+
 val read_number : Reader.t -> number
 (** [read_number t] reads a CSS number (int or float). *)
 
-val read_percentage : Reader.t -> float
+val read_percentage : Reader.t -> percentage
 (** [read_percentage t] reads a percentage value and returns the numeric part.
 *)
 

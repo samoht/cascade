@@ -7,6 +7,11 @@ exception Parse_error of string * t
 (** [Parse_error (msg, reader)] is raised on parse errors with the reader state.
 *)
 
+(** {1 Error Helpers} *)
+
+val err_invalid : t -> string -> 'a
+(** [err_invalid t what] raises a parse error for an invalid [what]. *)
+
 (** {1 Running Parsers} *)
 
 val of_string : string -> t
@@ -107,30 +112,6 @@ val braces : t -> (t -> 'a) -> 'a
 val separated : t -> (t -> 'a) -> (t -> unit) -> 'a list
 (** [separated t parse_item parse_sep] parses a list separated by [parse_sep].
 *)
-
-(** {1 CSS-Specific Helpers} *)
-
-val hex_color : t -> string
-(** [hex_color t] reads a hex color without '#'. *)
-
-val percentage : t -> float
-(** [percentage t] reads a percentage value (without '%'). *)
-
-val dimension : t -> float * string
-(** [dimension t] reads a number with unit, e.g., ["10px"] → [(10.0, "px")]. *)
-
-val angle : t -> float * string
-(** [angle t] reads an angle value, e.g., ["45deg"] → [(45.0, "deg")]. *)
-
-val duration : t -> float * string
-(** [duration t] reads a duration, e.g., ["2s"] → [(2.0, "s")], ["500ms"] →
-    [(500.0, "ms")]. *)
-
-val color_keyword : t -> string option
-(** [color_keyword t] reads CSS color keywords like "red", "blue", etc. *)
-
-val rgb_function : t -> (int * int * int * float option) option
-(** [rgb_function t] reads rgb() or rgba() function calls. *)
 
 (** {1 Character Predicates} *)
 

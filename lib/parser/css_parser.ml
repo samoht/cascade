@@ -18,6 +18,5 @@ let of_string_exn s =
 
 module Property = Property
 module Custom_property = Custom_property
-module Selector = Selector
 module Declaration = Declaration
 module Rule = Rule

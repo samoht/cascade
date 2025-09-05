@@ -450,7 +450,8 @@ let test_var_in_calc_other_types () =
   let t = Css.Reader.of_string "calc(50% + var(--p, 25%))" in
   let calc_expr = read_calc read_percentage t in
   match calc_expr with
-  | Expr (Val 50., Add, Var v) -> Alcotest.(check string) "var name" "p" v.name
+  | Expr (Val (Pct 50.), Add, Var v) ->
+      Alcotest.(check string) "var name" "p" v.name
   | _ -> Alcotest.fail "Expected percentage var in calc"
 
 let test_number_var_printing () =

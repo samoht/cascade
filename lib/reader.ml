@@ -117,10 +117,97 @@ let is_ident_start c =
 
 let is_ident_char c = is_ident_start c || (c >= '0' && c <= '9')
 
+let is_hex c =
+  (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+
+(* Encode a Unicode codepoint as UTF-8 *)
+let utf8_of_codepoint cp =
+  if cp < 0 then "?"
+  else if cp <= 0x7F then String.make 1 (Char.chr cp)
+  else if cp <= 0x7FF then
+    let b1 = 0xC0 lor (cp lsr 6) in
+    let b2 = 0x80 lor (cp land 0x3F) in
+    Bytes.init 2 (function 0 -> Char.chr b1 | _ -> Char.chr b2)
+    |> Bytes.to_string
+  else if cp <= 0xFFFF then
+    let b1 = 0xE0 lor (cp lsr 12) in
+    let b2 = 0x80 lor ((cp lsr 6) land 0x3F) in
+    let b3 = 0x80 lor (cp land 0x3F) in
+    Bytes.init 3 (function
+      | 0 -> Char.chr b1
+      | 1 -> Char.chr b2
+      | _ -> Char.chr b3)
+    |> Bytes.to_string
+  else if cp <= 0x10FFFF then
+    let b1 = 0xF0 lor (cp lsr 18) in
+    let b2 = 0x80 lor ((cp lsr 12) land 0x3F) in
+    let b3 = 0x80 lor ((cp lsr 6) land 0x3F) in
+    let b4 = 0x80 lor (cp land 0x3F) in
+    Bytes.init 4 (function
+      | 0 -> Char.chr b1
+      | 1 -> Char.chr b2
+      | 2 -> Char.chr b3
+      | _ -> Char.chr b4)
+    |> Bytes.to_string
+  else "?"
+
+let read_escape t =
+  (* Assumes the leading backslash has already been consumed. *)
+  match peek t with
+  | Some c when is_hex c ->
+      (* Consume up to 6 hex digits *)
+      let start = t.pos in
+      let rec consume n =
+        if n = 6 then ()
+        else
+          match peek t with
+          | Some c when is_hex c ->
+              ignore (char t);
+              consume (n + 1)
+          | _ -> ()
+      in
+      consume 0;
+      let hex = String.sub t.input start (t.pos - start) in
+      (* Optional whitespace after hex escape consumes one space *)
+      (match peek t with Some ' ' -> skip t | _ -> ());
+      let cp = int_of_string_opt ("0x" ^ hex) |> Option.value ~default:0x3F in
+      utf8_of_codepoint cp
+  | Some c ->
+      (* Simple escape of a single char. If it's an ident char, return it
+         unescaped. Otherwise, preserve the backslash to keep the original
+         escaped representation (e.g., ":" or "."). *)
+      ignore (char t);
+      if is_ident_char c then String.make 1 c
+      else String.concat "" [ "\\"; String.make 1 c ]
+  | None -> err_eof t
+
 let ident t =
-  if t.pos >= t.len || not (is_ident_start t.input.[t.pos]) then
-    err_expected t "identifier";
-  while_ t is_ident_char
+  if t.pos >= t.len then err_expected t "identifier";
+  let buf = Buffer.create 16 in
+  (* First char: ident-start or escape *)
+  (match peek t with
+  | Some '\\' ->
+      ignore (char t);
+      Buffer.add_string buf (read_escape t)
+  | Some c when is_ident_start c ->
+      Buffer.add_char buf c;
+      ignore (char t)
+  | _ -> err_expected t "identifier");
+  (* Rest: ident-char or escape sequences *)
+  let rec loop () =
+    match peek t with
+    | Some '\\' ->
+        ignore (char t);
+        Buffer.add_string buf (read_escape t);
+        loop ()
+    | Some c when is_ident_char c ->
+        Buffer.add_char buf c;
+        ignore (char t);
+        loop ()
+    | _ -> ()
+  in
+  loop ();
+  Buffer.contents buf
 
 let string t =
   let quote = char t in
@@ -226,106 +313,3 @@ let separated t parse_item parse_sep =
         if try_parse parse_sep t = Some () then loop acc else List.rev acc
   in
   loop []
-
-(** {1 CSS-Specific Helpers} *)
-
-let is_hex c = is_digit c || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
-
-let hex_color t =
-  let hex = while_ t is_hex in
-  if String.length hex <> 3 && String.length hex <> 6 then
-    err_invalid t "hex color (must be 3 or 6 digits)";
-  hex
-
-let percentage t =
-  let n = number t in
-  expect t '%';
-  n
-
-let dimension t =
-  let n = number t in
-  let unit =
-    while_ t (fun c -> (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))
-  in
-  (n, unit)
-
-let angle t =
-  let n = number t in
-  let unit = while_ t (fun c -> c >= 'a' && c <= 'z') in
-  (n, unit)
-
-let duration t =
-  let n = number t in
-  let unit = while_ t (fun c -> c >= 'a' && c <= 'z') in
-  (n, unit)
-
-let color_keywords =
-  [
-    "red";
-    "blue";
-    "green";
-    "white";
-    "black";
-    "yellow";
-    "cyan";
-    "magenta";
-    "gray";
-    "grey";
-    "orange";
-    "purple";
-    "pink";
-    "silver";
-    "maroon";
-    "fuchsia";
-    "lime";
-    "olive";
-    "navy";
-    "teal";
-    "aqua";
-    "transparent";
-    "currentcolor";
-    "inherit";
-    "initial";
-    "unset";
-  ]
-
-let color_keyword t =
-  let start_pos = t.pos in
-  let word =
-    while_ t (function 'a' .. 'z' | 'A' .. 'Z' | '-' -> true | _ -> false)
-  in
-  let word_lower = String.lowercase_ascii word in
-  if List.mem word_lower color_keywords then Some word_lower
-  else (
-    t.pos <- start_pos;
-    None)
-
-let rgb_function t =
-  try_parse
-    (fun t ->
-      let func_name = ident t in
-      if func_name <> "rgb" && func_name <> "rgba" then err t "not rgb function";
-      expect t '(';
-      ws t;
-      let r = int t in
-      ws t;
-      expect t ',';
-      ws t;
-      let g = int t in
-      ws t;
-      expect t ',';
-      ws t;
-      let b = int t in
-      let alpha =
-        try_parse
-          (fun t ->
-            ws t;
-            expect t ',';
-            ws t;
-            number t)
-          t
-      in
-      ws t;
-      expect t ')';
-      (r, g, b, alpha))
-    t

@@ -116,20 +116,30 @@ let test_numbers_and_units () =
   let i = Reader.int r in
   check int "int" 42 i;
   Reader.ws r;
-  let pct = Reader.percentage r in
+  let pct = Reader.number r in
+  Reader.expect r '%';
   Alcotest.(check (float 0.0001)) "percentage" 33. pct;
   Reader.ws r;
-  let d1, u1 = Reader.dimension r in
+  (* Use Values.read_dimension *)
+  let d1, u1 = Css.Values.read_dimension r in
   Alcotest.(check (float 0.0001)) "dimension value" 1.5 d1;
   check string "dimension unit" "rem" u1;
   Reader.ws r;
-  let ang, au = Reader.angle r in
-  Alcotest.(check (float 0.0001)) "angle value" 90. ang;
-  check string "angle unit" "deg" au;
+  (* Parse angle using Values *)
+  let ang = Css.Values.read_angle r in
+  (match ang with
+  | Css.Values.Deg v ->
+      Alcotest.(check (float 0.0001)) "angle value" 90. v;
+      check string "angle unit" "deg" "deg"
+  | _ -> fail "Expected Deg angle");
   Reader.ws r;
-  let dur, du = Reader.duration r in
-  Alcotest.(check (float 0.0001)) "duration value" 250. dur;
-  check string "duration unit" "ms" du
+  (* Parse duration using Values *)
+  let dur = Css.Values.read_duration r in
+  match dur with
+  | Css.Values.Ms v ->
+      Alcotest.(check (float 0.0001)) "duration value" 250. v;
+      check string "duration unit" "ms" "ms"
+  | _ -> fail "Expected Ms duration"
 
 let test_ident_and_string () =
   let r = Reader.of_string "my-ident 'a\\'b'\"c\"\ndone" in
@@ -184,39 +194,96 @@ let test_ident_failure () =
     (Reader.Parse_error ("expected identifier", r))
     f
 
+let test_ident_with_escapes () =
+  (* Test escaped colon in identifier (Tailwind-style class) *)
+  let r = Reader.of_string "hover\\:text-red" in
+  let id = Reader.ident r in
+  (* Should read the escaped colon as part of the identifier *)
+  check string "ident with escaped colon" "hover\\:text-red" id;
+
+  (* Test escaped dot *)
+  let r = Reader.of_string "v1\\.0\\.1" in
+  let id = Reader.ident r in
+  check string "ident with escaped dots" "v1\\.0\\.1" id;
+
+  (* Test Unicode escape sequence *)
+  let r = Reader.of_string "\\000026B" in
+  let id = Reader.ident r in
+  (* Should parse as the character '&B' *)
+  check string "unicode escape" "&B" id;
+
+  (* Test simple backslash escape *)
+  let r = Reader.of_string "test\\-name" in
+  let id = Reader.ident r in
+  check string "escaped hyphen" "test-name" id
+
+let test_ident_hex_termination () =
+  (* Exactly 6 hex digits are consumed; next hex-like char remains *)
+  let r = Reader.of_string "\\000041Z" in
+  let id = Reader.ident r in
+  check string "hex escape termination at 6 digits" "AZ" id;
+  (* Delimiter after ident is preserved for next parse *)
+  let r = Reader.of_string "abc.def" in
+  let id = Reader.ident r in
+  check string "ident before delimiter" "abc" id;
+  check (option char) "delimiter remains" (Some '.') (Reader.peek r)
+
+let test_ident_roundtrip_pp () =
+  (* Roundtrip via Selector.class_ to_string should preserve escaped forms *)
+  let samples = [ "simple"; "hover\\:text-red"; "v1\\.0\\.1"; "éxämple" ] in
+  List.iter
+    (fun s ->
+      let cls = Selector.(to_string (class_ s)) in
+      check string (Fmt.str "roundtrip class %s" s) ("." ^ s) cls)
+    samples
+
 let test_hex_and_colors () =
-  (* hex_color requires 3 or 6 hex digits *)
-  let ok3 = Reader.(hex_color (of_string "abc")) in
-  check string "hex 3" "abc" ok3;
-  let ok6 = Reader.(hex_color (of_string "a1b2c3")) in
-  check string "hex 6" "a1b2c3" ok6;
-  let bad_hex () =
-    let r = Reader.of_string "ab" in
-    ignore (Reader.hex_color r)
+  (* hex colors are parsed in Values module, not Reader *)
+  let r = Reader.of_string "#abc #a1b2c3" in
+  Reader.expect r '#';
+  (* Read hex digits manually using while_ *)
+  let hex3 =
+    Reader.while_ r (fun c ->
+        (c >= '0' && c <= '9')
+        || (c >= 'a' && c <= 'f')
+        || (c >= 'A' && c <= 'F'))
   in
-  (try
-     bad_hex ();
-     fail "Expected Parse_error exception"
-   with
-  | Reader.Parse_error ("invalid hex color (must be 3 or 6 digits)", _) -> ()
-  | _ -> fail "Expected Parse_error with correct message");
+  check string "hex 3" "abc" hex3;
+  Reader.ws r;
+  Reader.expect r '#';
+  let hex6 =
+    Reader.while_ r (fun c ->
+        (c >= '0' && c <= '9')
+        || (c >= 'a' && c <= 'f')
+        || (c >= 'A' && c <= 'F'))
+  in
+  check string "hex 6" "a1b2c3" hex6;
   (* color_keyword succeeds for known names, resets on unknown *)
+  (* color keywords are parsed in Values module, not Reader *)
   let r = Reader.of_string "red" in
-  (match Reader.color_keyword r with Some "red" -> () | _ -> fail "red");
+  (match Values.read_color r with
+  | Values.Named Values.Red -> ()
+  | _ -> fail "expected red color");
   let r = Reader.of_string "unknown" in
-  match Reader.color_keyword r with
-  | None -> ()
-  | _ -> fail "unknown should be None"
+  match Reader.try_parse Values.read_color r with
+  | None -> () (* expected to fail *)
+  | _ -> fail "unknown should fail"
 
 let test_rgb_function () =
-  let ok = Reader.(rgb_function (of_string "rgba(255, 0, 10, 0.5)")) in
-  (match ok with
-  | Some (255, 0, 10, Some a) -> Alcotest.(check (float 0.0001)) "alpha" 0.5 a
-  | _ -> fail "expected rgba tuple");
-  let ok2 = Reader.(rgb_function (of_string "rgb(10,20,30)")) in
-  (match ok2 with Some (10, 20, 30, None) -> () | _ -> fail "rgb tuple");
-  let none = Reader.(rgb_function (of_string "hsl(10,10%,10%)")) in
-  check bool "not rgb" true (Option.is_none none)
+  (* RGB functions are parsed in Values module *)
+  let r = Reader.of_string "rgba(255, 0, 10, 0.5)" in
+  (match Values.read_color r with
+  | Values.Rgba { r = Int 255; g = Int 0; b = Int 10; a = Num a } ->
+      Alcotest.(check (float 0.0001)) "alpha" 0.5 a
+  | _ -> fail "expected rgba value");
+  let r = Reader.of_string "rgb(10, 20, 30)" in
+  (match Values.read_color r with
+  | Values.Rgb { r = Int 10; g = Int 20; b = Int 30 } -> ()
+  | _ -> fail "expected rgb value");
+  let r = Reader.of_string "hsl(10, 10%, 10%)" in
+  match Values.read_color r with
+  | Values.Hsl _ -> ()
+  | _ -> fail "expected hsl value"
 
 let suite =
   [
@@ -239,6 +306,9 @@ let suite =
           test_until_string_and_separated;
         test_case "context_and_pp" `Quick test_context_and_pp;
         test_case "ident_failure" `Quick test_ident_failure;
+        test_case "ident_with_escapes" `Quick test_ident_with_escapes;
+        test_case "ident_hex_termination" `Quick test_ident_hex_termination;
+        test_case "ident_roundtrip_pp" `Quick test_ident_roundtrip_pp;
         test_case "hex_and_colors" `Quick test_hex_and_colors;
         test_case "rgb_function" `Quick test_rgb_function;
       ] );

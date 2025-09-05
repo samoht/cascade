@@ -158,10 +158,11 @@ let float_n n ctx f =
 let int ctx i = Buffer.add_string ctx.buf (string_of_int i)
 let colon ctx () = Buffer.add_char ctx.buf ':'
 
-let comma ctx () =
-  if ctx.minify then Buffer.add_char ctx.buf ','
-  else Buffer.add_string ctx.buf ", "
+let sep ctx s =
+  Buffer.add_string ctx.buf s;
+  if not ctx.minify then Buffer.add_char ctx.buf ' '
 
+let comma ctx () = sep ctx ","
 let semicolon ctx () = Buffer.add_char ctx.buf ';'
 let slash ctx () = Buffer.add_char ctx.buf '/'
 let space ctx () = Buffer.add_char ctx.buf ' '
@@ -184,3 +185,11 @@ let braces pp =
     block_close ctx ()
   in
   surround ~left:open_ ~right:close_ (indent pp)
+
+let call name pp_args ctx args =
+  string ctx name;
+  char ctx '(';
+  pp_args ctx args;
+  char ctx ')'
+
+let call_list name pp_item = call name (list ~sep:comma pp_item)

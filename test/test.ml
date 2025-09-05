@@ -2,4 +2,5 @@
 
 let () =
   Alcotest.run "css"
-    (Test_css.suite @ Test_pp.suite @ Test_reader.suite @ Test_values.suite)
+    (Test_css.suite @ Test_pp.suite @ Test_reader.suite @ Test_selector.suite
+   @ Test_values.suite)
