@@ -347,22 +347,12 @@ let test_var_parsing_and_printing () =
 
 let test_float_value_formatting () =
   (* Test float formatting with leading zeros *)
-  let check_float_format input expected =
-    let t = Css.Reader.of_string input in
-    let length = read_length t in
-    let output = Css.Pp.to_string pp_length length in
-    check string ("float format " ^ input) expected output
-  in
-
-  check_float_format "0.5rem" "0.5rem";
-  check_float_format ".5rem" "0.5rem";
-  check_float_format "-.5rem" "-0.5rem";
+  check_length "0.5rem";
+  check_length ~expected:"0.5rem" ".5rem";
+  check_length ~expected:"-0.5rem" "-.5rem";
 
   (* Test with angles *)
-  let t = Css.Reader.of_string "-.5turn" in
-  let angle = read_angle t in
-  let output = Css.Pp.to_string pp_angle angle in
-  check string "negative turn" "-0.5turn" output
+  check_angle ~expected:"-0.5turn" "-.5turn"
 
 let test_var_with_multiple_fallbacks () =
   (* Test var() with multiple fallback values *)
