@@ -16,10 +16,11 @@ let rec one t =
         (* Parse declaration block *)
         let _declarations = Declaration.block t in
 
-        (* Create a temporary rule with empty declarations *)
-        (* The actual conversion to typed declarations happens in css_parser.ml *)
+        (* ARCHITECTURAL LIMITATION: Creating placeholder rule with empty
+           declarations because full declaration processing requires CSS type
+           conversion which creates circular dependency. This means parsed CSS
+           rules lose their declaration content. *)
         Some (Css.Rule (Css.rule ~selector []))
-(* TODO: Return raw parsed data instead of Css.t types to avoid circular deps *)
 
 (** Parse multiple CSS rules (including at-rules) *)
 and rules t =

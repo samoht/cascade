@@ -7,7 +7,7 @@ module C = Css
 let err_invalid what = raise (Parse_error ("invalid " ^ what))
 
 let err_expected what = raise (Parse_error ("expected " ^ what))
-let err_todo what = raise (Parse_error ("TODO: " ^ what ^ " not yet supported"))
+let err_not_implemented what = raise (Parse_error (what ^ " not implemented"))
 
 (** Read a CSS length value *)
 let read_length t : Css.length =
@@ -63,7 +63,7 @@ let parse_var_in_color t : Css.color =
     let fallback = until t ')' in
     ignore fallback);
   expect t ')';
-  err_todo "var() in color"
+  err_not_implemented "var() in color expressions"
 
 let parse_color_keyword_or_var t : Css.color =
   let keyword = ident t in
@@ -162,8 +162,8 @@ let rec read_calc t : Css.length Css.calc =
     in
     ws t;
     expect t ')';
-    (* TODO: need to create a typed var *)
-    err_todo "var() in calc expressions")
+    (* var() expressions in calc need proper CSS variable type support *)
+    err_not_implemented "var() in calc expressions")
   else
     (* Try to parse a value *)
     match try_parse number t with

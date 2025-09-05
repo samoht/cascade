@@ -130,6 +130,35 @@ let test_round_trip_color () =
   round_trip "#fff";
   round_trip "transparent"
 
+let test_var_in_expressions () =
+  (* These should fail with clear error messages about unsupported features *)
+  let expect_unsupported_error test_name f =
+    try
+      f ();
+      fail (test_name ^ " should have failed with unsupported error")
+    with
+    | Css_parser.Reader.Parse_error msg
+      when Astring.String.is_infix ~affix:"not implemented" msg ->
+        (* Expected - test passes *)
+        check bool (test_name ^ " error contains 'not implemented'") true true
+    | Css_parser.Reader.Parse_error msg ->
+        fail (test_name ^ " failed with wrong error: " ^ msg)
+    | exn ->
+        fail
+          (test_name ^ " failed with unexpected exception: "
+         ^ Printexc.to_string exn)
+  in
+
+  (* Test var() in color context *)
+  expect_unsupported_error "var() in color" (fun () ->
+      let t = Css_parser.Reader.of_string "var(--primary-color)" in
+      ignore (Css_parser.Values.read_color t));
+
+  (* Test var() in calc expressions *)
+  expect_unsupported_error "var() in calc" (fun () ->
+      let t = Css_parser.Reader.of_string "calc(100% - var(--spacing))" in
+      ignore (Css_parser.Values.read_calc t))
+
 let tests =
   [
     test_case "parse lengths" `Quick test_length_parsing;
@@ -140,4 +169,6 @@ let tests =
     test_case "parse calc expressions" `Quick test_calc_parsing;
     test_case "round-trip lengths" `Quick test_round_trip_length;
     test_case "round-trip colors" `Quick test_round_trip_color;
+    test_case "var() in expressions fails appropriately" `Quick
+      test_var_in_expressions;
   ]
