@@ -7,7 +7,6 @@ module C = Css
 let err_invalid what = raise (Parse_error ("invalid " ^ what))
 
 let err_expected what = raise (Parse_error ("expected " ^ what))
-let err_not_implemented what = raise (Parse_error (what ^ " not implemented"))
 
 (** Read a CSS length value *)
 let read_length t : Css.length =
@@ -50,20 +49,26 @@ let parse_hex_color t : Css.color =
 let parse_var_in_color t : Css.color =
   expect t '(';
   ws t;
-  let _var_name =
+  let var_name =
     if looking_at t "--" then (
       skip_n t 2;
-      "--" ^ ident t)
+      ident t (* var_name should be without -- *))
     else ident t
   in
   ws t;
-  if peek t = Some ',' then (
-    skip t;
-    ws t;
-    let fallback = until t ')' in
-    ignore fallback);
+  let fallback =
+    if peek t = Some ',' then (
+      skip t;
+      ws t;
+      (* Parse the fallback value - for now just skip it *)
+      let _ = until t ')' in
+      None (* TODO: Parse actual fallback color *))
+    else None
+  in
   expect t ')';
-  err_not_implemented "var() in color expressions"
+  (* Create a color var *)
+  let v = Css.var_ref ?fallback var_name in
+  Css.Var v
 
 let parse_color_keyword_or_var t : Css.color =
   let keyword = ident t in
@@ -154,16 +159,23 @@ let rec read_calc t : Css.length Css.calc =
     skip_n t 4;
     (* skip "var(" *)
     ws t;
-    let _var_name =
+    let var_name =
       if looking_at t "--" then (
         skip_n t 2;
-        "--" ^ ident t)
+        ident t (* var_name should be without -- *))
       else ident t
     in
     ws t;
+    (* TODO: Parse optional fallback *)
+    if peek t = Some ',' then (
+      skip t;
+      ws t;
+      let _ = until t ')' in
+      ());
     expect t ')';
-    (* var() expressions in calc need proper CSS variable type support *)
-    err_not_implemented "var() in calc expressions")
+    (* Create a length var for calc *)
+    let v = Css.var_ref var_name in
+    Var v)
   else
     (* Try to parse a value *)
     match try_parse number t with

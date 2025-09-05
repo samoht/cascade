@@ -18,4 +18,3 @@ module Custom_property = Custom_property
 module Selector = Selector
 module Declaration = Declaration
 module Rule = Rule
-module Rendering = Rendering

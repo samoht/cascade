@@ -12,5 +12,4 @@ let () =
         ("declaration", Test_declaration.tests);
         ("rule", Test_rule.tests);
         ("css_parser", Test_css_parser.tests);
-        ("rendering", Test_rendering.tests);
       ])
