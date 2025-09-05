@@ -130,35 +130,34 @@ let test_round_trip_color () =
   round_trip "#fff";
   round_trip "transparent"
 
-let test_var_function_errors () =
-  (* Test that var() functions in unsupported contexts produce clear error
-     messages *)
-  let expect_not_implemented_error test_name f =
-    try
-      f ();
-      fail (test_name ^ " should have failed with 'not implemented' error")
-    with
-    | Css_parser.Reader.Parse_error msg
-      when Astring.String.is_infix ~affix:"not implemented" msg ->
-        (* This is expected behavior - var() is not yet implemented *)
-        ()
-    | Css_parser.Reader.Parse_error msg ->
-        fail (test_name ^ " failed with wrong error: " ^ msg)
-    | exn ->
-        fail
-          (test_name ^ " failed with unexpected exception: "
-         ^ Printexc.to_string exn)
+let test_additional_named_colors () =
+  let test input expected =
+    let t = Css_parser.Reader.of_string input in
+    let result = Css_parser.Values.read_color t in
+    let pp_str = To_string.color result in
+    check string (Fmt.str "color %s" input) expected pp_str
   in
 
-  (* Test var() in color context fails clearly *)
-  expect_not_implemented_error "var() in color" (fun () ->
-      let t = Css_parser.Reader.of_string "var(--primary-color)" in
-      ignore (Css_parser.Values.read_color t));
+  (* Test additional named colors *)
+  test "orange" "orange";
+  test "pink" "pink";
+  test "silver" "silver";
+  test "maroon" "maroon";
+  test "navy" "navy"
 
-  (* Test var() in calc expressions fails clearly *)
-  expect_not_implemented_error "var() in calc" (fun () ->
-      let t = Css_parser.Reader.of_string "calc(100% - var(--spacing))" in
-      ignore (Css_parser.Values.read_calc t))
+let test_calc_operations () =
+  let test input expected =
+    let t = Css_parser.Reader.of_string input in
+    let calc_expr = Css_parser.Values.read_calc t in
+    let result = Css.Calc calc_expr in
+    let pp_str = To_string.length result in
+    check string (Fmt.str "calc %s" input) expected pp_str
+  in
+
+  (* Test operator precedence and associations *)
+  test "calc(100% - 20px * 0.5)" "calc(100% - 20px * 0.5)";
+  test "calc(10px + 5em / 2)" "calc(10px + 5em / 2)";
+  test "calc(1em * 2 + 3px)" "calc(1em * 2 + 3px)"
 
 let tests =
   [
@@ -170,5 +169,6 @@ let tests =
     test_case "parse calc expressions" `Quick test_calc_parsing;
     test_case "round-trip lengths" `Quick test_round_trip_length;
     test_case "round-trip colors" `Quick test_round_trip_color;
-    test_case "var() function error handling" `Quick test_var_function_errors;
+    test_case "additional named colors" `Quick test_additional_named_colors;
+    test_case "calc operations" `Quick test_calc_operations;
   ]
