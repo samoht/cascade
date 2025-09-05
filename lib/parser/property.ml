@@ -3,11 +3,11 @@
 open Reader
 
 (** Error helpers *)
-let err_invalid_value prop_name value =
-  raise (Parse_error ("invalid " ^ prop_name ^ " value: " ^ value))
+let err_invalid_value t prop_name value =
+  raise (Parse_error ("invalid " ^ prop_name ^ " value: " ^ value, t))
 
-let err_invalid_function func_type name =
-  raise (Parse_error ("invalid " ^ func_type ^ " function: " ^ name))
+let err_invalid_function t func_type name =
+  raise (Parse_error ("invalid " ^ func_type ^ " function: " ^ name, t))
 
 (** Read display property value *)
 let read_display t : Css.display =
@@ -35,7 +35,7 @@ let read_display t : Css.display =
   | "list-item" -> List_item
   | "contents" -> Contents
   | "-webkit-box" -> Webkit_box
-  | _ -> err_invalid_value "display" v
+  | _ -> err_invalid_value t "display" v
 
 (** Read position property value *)
 let read_position t : Css.position =
@@ -46,7 +46,7 @@ let read_position t : Css.position =
   | "absolute" -> Absolute
   | "fixed" -> Fixed
   | "sticky" -> Sticky
-  | _ -> err_invalid_value "position" v
+  | _ -> err_invalid_value t "position" v
 
 (** Read flex-direction property value *)
 let read_flex_direction t : Css.flex_direction =
@@ -56,7 +56,7 @@ let read_flex_direction t : Css.flex_direction =
   | "row-reverse" -> Row_reverse
   | "column" -> Column
   | "column-reverse" -> Column_reverse
-  | _ -> err_invalid_value "flex-direction" v
+  | _ -> err_invalid_value t "flex-direction" v
 
 (** Read align-items property value *)
 let read_align_items t : Css.align_items =
@@ -78,30 +78,30 @@ let read_align_items t : Css.align_items =
         skip_n t 8;
         (* skip "baseline" *)
         First_baseline)
-      else err_invalid_value "align-items" (v ^ " " ^ peek_string t 10)
+      else err_invalid_value t "align-items" (v ^ " " ^ peek_string t 10)
   | "last" ->
       ws t;
       if looking_at t "baseline" then (
         skip_n t 8;
         (* skip "baseline" *)
         Last_baseline)
-      else err_invalid_value "align-items" (v ^ " " ^ peek_string t 10)
+      else err_invalid_value t "align-items" (v ^ " " ^ peek_string t 10)
   | "safe" ->
       ws t;
       let next = ident t in
       if String.lowercase_ascii next = "center" then Safe_center
-      else err_invalid_value "align-items" (v ^ " " ^ next)
+      else err_invalid_value t "align-items" (v ^ " " ^ next)
   | "unsafe" ->
       ws t;
       let next = ident t in
       if String.lowercase_ascii next = "center" then Unsafe_center
-      else err_invalid_value "align-items" (v ^ " " ^ next)
+      else err_invalid_value t "align-items" (v ^ " " ^ next)
   | "inherit" -> Inherit_align
   | "initial" -> Initial
   | "unset" -> Unset
   | "revert" -> Revert
   | "revert-layer" -> Revert_layer
-  | _ -> err_invalid_value "align-items" v
+  | _ -> err_invalid_value t "align-items" v
 
 (** Read justify-content property value *)
 let read_justify_content t : Css.justify_content =
@@ -119,7 +119,7 @@ let read_justify_content t : Css.justify_content =
   | "end" -> End
   | "left" -> Left
   | "right" -> Right
-  | _ -> err_invalid_value "justify-content" v
+  | _ -> err_invalid_value t "justify-content" v
 
 (** Read font-weight property value *)
 let read_font_weight t : Css.font_weight =
@@ -133,7 +133,7 @@ let read_font_weight t : Css.font_weight =
       | "bolder" -> Bolder
       | "lighter" -> Lighter
       | "inherit" -> Inherit
-      | _ -> err_invalid_value "font-weight" v)
+      | _ -> err_invalid_value t "font-weight" v)
 
 (** Read font-style property value *)
 let read_font_style t : Css.font_style =
@@ -143,7 +143,7 @@ let read_font_style t : Css.font_style =
   | "italic" -> Italic
   | "oblique" -> Oblique
   | "inherit" -> Inherit
-  | _ -> err_invalid_value "font-style" v
+  | _ -> err_invalid_value t "font-style" v
 
 (** Read text-align property value *)
 let read_text_align t : Css.text_align =
@@ -156,7 +156,7 @@ let read_text_align t : Css.text_align =
   | "start" -> Start
   | "end" -> End
   | "inherit" -> Inherit
-  | _ -> err_invalid_value "text-align" v
+  | _ -> err_invalid_value t "text-align" v
 
 (** Read text-decoration property value *)
 let read_text_decoration t : Css.text_decoration =
@@ -167,7 +167,7 @@ let read_text_decoration t : Css.text_decoration =
   | "overline" -> Overline
   | "line-through" -> Line_through
   | "inherit" -> Inherit
-  | _ -> err_invalid_value "text-decoration" v
+  | _ -> err_invalid_value t "text-decoration" v
 
 (** Read text-transform property value *)
 let read_text_transform t : Css.text_transform =
@@ -178,7 +178,7 @@ let read_text_transform t : Css.text_transform =
   | "uppercase" -> Uppercase
   | "lowercase" -> Lowercase
   | "full-width" -> Full_width
-  | _ -> err_invalid_value "text-transform" v
+  | _ -> err_invalid_value t "text-transform" v
 
 (** Read overflow property value *)
 let read_overflow t : Css.overflow =
@@ -189,7 +189,7 @@ let read_overflow t : Css.overflow =
   | "scroll" -> Scroll
   | "auto" -> Auto
   | "clip" -> Clip
-  | _ -> err_invalid_value "overflow" v
+  | _ -> err_invalid_value t "overflow" v
 
 (** Read border-style property value *)
 let read_border_style t : Css.border_style =
@@ -205,7 +205,7 @@ let read_border_style t : Css.border_style =
   | "ridge" -> Ridge
   | "inset" -> Inset
   | "outset" -> Outset
-  | _ -> err_invalid_value "border-style" v
+  | _ -> err_invalid_value t "border-style" v
 
 (** Read cursor property value *)
 let read_cursor t : Css.cursor =
@@ -247,7 +247,7 @@ let read_cursor t : Css.cursor =
   | "nwse-resize" -> Nwse_resize
   | "zoom-in" -> Zoom_in
   | "zoom-out" -> Zoom_out
-  | _ -> err_invalid_value "cursor" v
+  | _ -> err_invalid_value t "cursor" v
 
 (** Read box-shadow property value *)
 let read_box_shadow t : Css.box_shadow =
@@ -334,7 +334,7 @@ let read_transform t : Css.transform =
     | "skewy" ->
         let angle = Values.read_angle t in
         Css.Skew_y angle
-    | _ -> err_invalid_function "transform" name
+    | _ -> err_invalid_function t "transform" name
   in
   ws t;
   expect t ')';

@@ -3,7 +3,7 @@
 open Reader
 
 (** Error helpers *)
-let err_expected what = raise (Parse_error ("expected " ^ what))
+let err_expected t what = raise (Parse_error ("expected " ^ what, t))
 
 (** Parse a class selector (.classname) *)
 let class_selector t =
@@ -95,7 +95,7 @@ let simple_selector t =
   | Some ':' -> if looking_at t "::" then pseudo_element t else pseudo_class t
   | Some '*' -> universal_selector t
   | Some c when is_ident_start c -> type_selector t
-  | _ -> err_expected "selector"
+  | _ -> err_expected t "selector"
 
 (** Parse a compound selector (multiple simple selectors without spaces) *)
 let compound_selector t =
@@ -105,7 +105,7 @@ let compound_selector t =
     | Some s -> loop (s :: acc)
   in
   match loop [] with
-  | [] -> err_expected "at least one selector"
+  | [] -> err_expected t "at least one selector"
   | [ s ] -> s
   | selectors -> Css.Selector.compound (List.rev selectors)
 

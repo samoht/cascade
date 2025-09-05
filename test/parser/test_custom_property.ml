@@ -28,7 +28,7 @@ let test_read_var () =
       let name, fallback = Css_parser.Custom_property.read_var t in
       check string "var name" expected_name name;
       check (option string) "var fallback" expected_fallback fallback
-    with Css_parser.Reader.Parse_error msg ->
+    with Css_parser.Reader.Parse_error (msg, _) ->
       fail (Fmt.str "Failed to parse %s: %s" input msg)
   in
 
@@ -44,7 +44,7 @@ let test_read_custom_property_name () =
     try
       let result = Css_parser.Custom_property.read_custom_property_name t in
       check string "custom property name" expected result
-    with Css_parser.Reader.Parse_error msg ->
+    with Css_parser.Reader.Parse_error (msg, _) ->
       fail (Fmt.str "Failed to parse %s: %s" input msg)
   in
 
@@ -59,7 +59,7 @@ let test_read_custom_property_value () =
     try
       let result = Css_parser.Custom_property.read_custom_property_value t in
       check string (Fmt.str "custom property value: %s" desc) input result
-    with Css_parser.Reader.Parse_error msg ->
+    with Css_parser.Reader.Parse_error (msg, _) ->
       fail (Fmt.str "Failed to parse %s: %s" input msg)
   in
 

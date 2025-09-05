@@ -1,74 +1,52 @@
-(** Type-safe CSS generation library.
+(** Typed CSS construction.
 
-    This library provides OCaml types to represent CSS declarations, rules, and
-    stylesheets, preventing common errors through a structured, typed approach
-    instead of raw strings.
+    This library provides types and functions to construct CSS declarations,
+    rules and stylesheets. It avoids stringly-typed CSS by keeping close to the
+    CSS syntax and specifications.
 
-    {b Core Concepts:}
-    - A {!type:declaration} is a single property-value pair (e.g., [color: red])
-    - A {!type:rule} combines a selector with a list of declarations
-    - A {!type:t} (stylesheet) is a collection of rules and other top-level
-      items
-    - Typed values like {!type:length} and {!type:color} ensure valid CSS
+    The main notions are:
+    - A {!type:declaration} is a property/value pair.
+    - A {!type:rule} couples a selector with declarations.
+    - A {!type:t} is a stylesheet: a sequence of rules and at-rules (see
+      {!type:sheet_item}).
+    - Values are typed (e.g., {!type:length}, {!type:color}); invalid constructs
+      raise [Invalid_argument].
 
-    {b Example:}
+    Minimal example:
     {[
       open Css
 
-      let my_stylesheet =
+      let s =
         stylesheet
-          [
-            Rule
-              (rule ~selector:".button"
-                 [
-                   background_color (Hex { hash = true; value = "3b82f6" });
-                   color (Hex { hash = true; value = "ffffff" });
-                   padding (Rem 0.5);
-                   border_radius (Rem 0.375);
-                   font_weight Bold;
-                   display Inline_block;
-                 ]);
-            Media
-              (media ~condition:"(min-width: 768px)"
-                 [ rule ~selector:".button" [ padding (Rem 1.0) ] ]);
-          ]
-
-      let () = print_endline (to_string my_stylesheet)
+          [ Rule (rule ~selector:(Selector.class_ "button")
+                     [ background_color (hex "#3b82f6");
+                       color (hex "#ffffff");
+                       padding (Rem 0.5);
+                       border_radius (Rem 0.375);
+                       display Inline_block ]);
+            Media (media ~condition:"(min-width: 768px)"
+                     [ rule ~selector:".button" [ padding (Rem 1.) ] ]) ]
+      in
+      to_string s
     ]}
 
-    {b CSS Custom Properties:}
+    Custom properties:
     {[
-      (* Define CSS variables with typed API *)
-      let primary_color_def, primary_color_var =
-        var "primary-color" Color (Hex { hash = true; value = "3b82f6" })
-      in
-      let text_color_def, text_color_var =
-        var "text-color" Color (Hex { hash = true; value = "1f2937" })
-      in
-      let spacing_def, spacing_var =
-        var "spacing" Length (Rem 1.0)
-      in
-      let theme_vars =
-        rule ~selector:":root"
-          [
-            primary_color_def;
-            text_color_def;
-            spacing_def;
-          ]
-
-      (* Use CSS variables *)
-      let component =
-        rule ~selector:".card"
-          [
-            background_color (Var primary_color_var);
-            color (Var text_color_var);
-            padding (Var spacing_var);
-          ]
+      let def, v = var "primary-color" Color (hex "#3b82f6") in
+      stylesheet
+        [
+          Rule (rule ~selector:(Selector.pseudo_class "root") [ def ]);
+          Rule (rule ~selector:(Selector.class_ "card") [ color (Var v) ]);
+        ]
+      |> to_string
     ]}
 
-    {b Interface Organization:} This interface is organized into a hierarchical
-    structure that follows logical learning and usage patterns, progressing from
-    basic setup to advanced features:
+    Interface
+    - Selectors and rules: {!section:css_selectors}, {!section:css_rules},
+      {!section:at_rules}
+    - Values and declarations: {!section:values}
+    - Property groups: see sections below
+    - Rendering and optimization: {!section:rendering}, {!section:optimization}
 
     {b Core Concepts} - Core CSS system setup and construction:
     - {!section:css_selectors} - CSS Selectors
@@ -79,14 +57,14 @@
 
     {b Declarations} - Core value types and declaration building:
     - {!section:core_types} - Core Types & Calculations
-    - {!section:css_values} - CSS Values & Units
+    - {!section:values} - CSS Values & Units
 
     {b Property Categories} - Organized CSS properties by functionality:
     - {!section:box_model} - Box Model & Sizing
     - {!section:display_positioning} - Display & Positioning
     - {!section:flexbox} - Flexbox Layout
     - {!section:grid} - Grid Layout
-    - {!section:modern_layout} - Modern Layout Features
+    - {!section:logical_properties} - Logical Properties
     - {!section:colors_backgrounds} - Colors & Backgrounds
     - {!section:typography} - Typography
     - {!section:borders_outlines} - Borders & Outlines
@@ -99,7 +77,7 @@
     - {!section:optimization} - Optimization
 
     {b Advanced Features} - Specialized functionality:
-    - {!section:vendor_prefixes} - Vendor Prefixes & Legacy Support
+    - {!section:vendor_specific} - Vendor Prefixes & Legacy Support
     - {!section:custom_properties} - Custom Properties API
 
     @see <https://www.w3.org/Style/CSS/specs.en.html> W3C CSS Specifications
@@ -131,18 +109,18 @@ module Selector : sig
 
   val element : string -> t
   (** [element name] is an element selector (e.g., "div", "p"). Validates that
-      [name] is a valid CSS identifier.
-      @raise Invalid_argument if [name] violates CSS identifier rules. *)
+      [name] is a valid CSS identifier. Raise [Invalid_argument] if [name]
+      violates CSS identifier rules. *)
 
   val class_ : string -> t
   (** [class_ name] is a class selector (e.g., ".button", ".prose"). Validates
-      that [name] is a valid CSS identifier.
-      @raise Invalid_argument if [name] violates CSS identifier rules. *)
+      that [name] is a valid CSS identifier. Raise [Invalid_argument] if [name]
+      violates CSS identifier rules. *)
 
   val id : string -> t
   (** [id name] is an ID selector (e.g., "#header"). Validates that [name] is a
-      valid CSS identifier.
-      @raise Invalid_argument if [name] violates CSS identifier rules. *)
+      valid CSS identifier. Raise [Invalid_argument] if [name] violates CSS
+      identifier rules. *)
 
   val universal : t
   (** [universal] is the universal selector "*". *)
@@ -160,18 +138,18 @@ module Selector : sig
 
   val attribute : string -> attribute_match -> t
   (** [attribute name match] is a typed attribute selector. Validates that
-      [name] is a valid CSS identifier.
-      @raise Invalid_argument if [name] violates CSS identifier rules. *)
+      [name] is a valid CSS identifier. Raise [Invalid_argument] if [name]
+      violates CSS identifier rules. *)
 
   val pseudo_class : string -> t
   (** [pseudo_class name] is a pseudo-class selector (e.g., ":hover",
-      ":first-child"). Validates that [name] is a valid CSS identifier.
-      @raise Invalid_argument if [name] violates CSS identifier rules. *)
+      ":first-child"). Validates that [name] is a valid CSS identifier. Raise
+      [Invalid_argument] if [name] violates CSS identifier rules. *)
 
   val pseudo_element : string -> t
   (** [pseudo_element name] is a pseudo-element selector (e.g., "::before",
-      "::marker"). Validates that [name] is a valid CSS identifier.
-      @raise Invalid_argument if [name] violates CSS identifier rules. *)
+      "::marker"). Validates that [name] is a valid CSS identifier. Raise
+      [Invalid_argument] if [name] violates CSS identifier rules. *)
 
   val combine : t -> combinator -> t -> t
   (** [combine a c b] is [a] combined with [b] using combinator [c]. *)
@@ -299,7 +277,7 @@ val supports_nested :
 
 val container :
   ?name:string option -> condition:string -> rule list -> container_rule
-(** [container ?name ~condition rules] is a [@container] rule.
+(** [container ?name ~condition rules] is a [\@container] rule.
     @param name Optional container name.
     @param condition Container query condition (e.g., "(min-width: 700px)"). *)
 
@@ -310,22 +288,22 @@ val layer :
   ?supports:supports_rule list ->
   nested_rule list ->
   layer_rule
-(** [layer ~name ?media ?container ?supports rules] is a [@layer] rule.
+(** [layer ~name ?media ?container ?supports rules] is a [\@layer] rule.
     @param name Layer name.
     @param media Optional nested [@media] rules.
     @param container Optional nested [@container] rules.
     @param supports Optional nested [@supports] rules.
 
-    {b CSS Cascade Layer Ordering:}
-    Layers are applied in the order they are declared. The standard layer order is:
-    1. [theme] - CSS custom properties and design tokens
-    2. [properties] - @property rules for custom property registration
-    3. [base] - Normalize/reset styles and base element styling
-    4. [components] - Reusable component styles
-    5. [utilities] - Single-purpose utility classes
+    {b CSS Cascade Layer Ordering:} Layers are applied in the order they are
+    declared. The standard layer order is: 1. [theme] - CSS custom properties
+    and design tokens 2. [properties] - [@property] rules for custom property
+    registration 3. [base] - Normalize/reset styles and base element styling 4.
+    [components] - Reusable component styles 5. [utilities] - Single-purpose
+    utility classes
 
-    Later layers override earlier layers, and unlayered styles have the highest priority.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/@layer> MDN: @layer *)
+    Later layers override earlier layers, and unlayered styles have the highest
+    priority.
+    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/@layer> *)
 
 val layer_name : layer_rule -> string
 (** [layer_name layer] is the name of [layer]. *)
@@ -339,7 +317,7 @@ val property :
   ?inherits:bool ->
   string ->
   property_rule
-(** [property ~syntax ?initial_value ?inherits name] is a [@property] rule to
+(** [property ~syntax ?initial_value ?inherits name] is a [\@property] rule to
     register a custom CSS property.
     @param syntax Property syntax (e.g., "<color>").
     @param initial_value Optional initial value.
@@ -364,12 +342,12 @@ val default_decl_of_property_rule : property_rule -> declaration
 (** Items that can appear at the top level of a stylesheet. *)
 type sheet_item =
   | Rule of rule  (** Regular CSS rule *)
-  | Media of media_rule  (** [@media] at-rule *)
+  | Media of media_rule  (** [\@media] at-rule *)
   | Supports of supports_rule  (** [@supports] at-rule *)
-  | Container of container_rule  (** [@container] at-rule *)
-  | Layer of layer_rule  (** [@layer] at-rule *)
-  | Property of property_rule  (** [@property] at-rule *)
-  | Starting_style of starting_style_rule  (** [@starting-style] at-rule *)
+  | Container of container_rule  (** [\@container] at-rule *)
+  | Layer of layer_rule  (** [\@layer] at-rule *)
+  | Property of property_rule  (** [\@property] at-rule *)
+  | Starting_style of starting_style_rule  (** [\@starting-style] at-rule *)
 
 val empty : t
 (** [empty] is an empty stylesheet. *)
@@ -600,6 +578,28 @@ type color =
       color2 : color;  (** Second color *)
       percent2 : int option;  (** Optional percentage for second color *)
     }
+
+val hex : string -> color
+(** [hex s] is a hexadecimal color. Accepts with or without leading [#].
+    Examples: [hex "#3b82f6"], [hex "ffffff"]. *)
+
+val rgb : int -> int -> int -> color
+(** [rgb r g b] is an RGB color (0–255 components). *)
+
+val rgba : int -> int -> int -> float -> color
+(** [rgba r g b a] is an RGBA color with alpha in [0., 1.]. *)
+
+val oklch : float -> float -> float -> color
+(** [oklch l c h] is an OKLCH color. *)
+
+val named : color_name -> color
+(** [named n] is a named color. *)
+
+val current_color : color
+(** [current_color] is the CSS [currentcolor] value. *)
+
+val transparent : color
+(** [transparent] is the CSS [transparent] value. *)
 
 val color_mix :
   ?in_space:color_space ->
@@ -1598,13 +1598,14 @@ type font_family =
   | Var of font_family list var
 
 val font_family : font_family list -> declaration
-(** @see <https://developer.mozilla.org/en-US/docs/Web/CSS/font-family>
-      MDN: font-family *)
+(** [font_family fonts] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-family}
+     font-family} property. *)
 
 val font_size : length -> declaration
-(** [font_size value] is the CSS font-size property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/font-size>
-      MDN: font-size *)
+(** [font_size value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-size} font-size}
+    property. *)
 
 val font_weight : font_weight -> declaration
 (** [font_weight value] is the
@@ -2727,29 +2728,29 @@ val scroll_margin : length -> declaration
      scroll-margin} property. *)
 
 val scroll_margin_top : length -> declaration
-(** [scroll_margin_top value] is the CSS scroll-margin-top property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-top>
-      MDN: scroll-margin-top *)
+(** [scroll_margin_top value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-top}
+     scroll-margin-top} property. *)
 
 val scroll_margin_right : length -> declaration
-(** [scroll_margin_right value] is the CSS scroll-margin-right property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-right>
-      MDN: scroll-margin-right *)
+(** [scroll_margin_right value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-right}
+     scroll-margin-right} property. *)
 
 val scroll_margin_bottom : length -> declaration
-(** [scroll_margin_bottom value] is the CSS scroll-margin-bottom property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-bottom>
-      MDN: scroll-margin-bottom *)
+(** [scroll_margin_bottom value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-bottom}
+     scroll-margin-bottom} property. *)
 
 val scroll_margin_left : length -> declaration
-(** [scroll_margin_left value] is the CSS scroll-margin-left property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-left>
-      MDN: scroll-margin-left *)
+(** [scroll_margin_left value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-left}
+     scroll-margin-left} property. *)
 
 val scroll_padding : length -> declaration
-(** [scroll_padding value] is the CSS scroll-padding property.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding>
-      MDN: scroll-padding *)
+(** [scroll_padding value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding}
+     scroll-padding} property. *)
 
 val scroll_padding_top : length -> declaration
 (** [scroll_padding_top value] is the
@@ -2824,7 +2825,7 @@ val font_variation_settings : font_variation_settings -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-variation-settings}
      font-variation-settings} property. *)
 
-(** {1 Custom Properties}
+(** {1:custom_properties Custom Properties}
 
     Type-safe CSS custom properties (CSS variables) with GADT-based type
     checking. *)
@@ -2906,11 +2907,10 @@ val declaration_meta : declaration -> meta option
 *)
 
 val custom_property : ?layer:string -> string -> string -> declaration
-(** [custom_property ?layer name value] is a CSS custom property
-    declaration.
+(** [custom_property ?layer name value] is a CSS custom property declaration.
 
-    For type-safe variable declarations and usage, prefer using the {!var} API
-    which provides compile-time checking and automatic variable management.
+    For type-safe variable declarations and usage, prefer using the {!val:var}
+    API which provides compile-time checking and automatic variable management.
 
     @param layer Optional CSS layer name for the custom property
     @param name CSS custom property name (must start with --)
@@ -2918,7 +2918,7 @@ val custom_property : ?layer:string -> string -> string -> declaration
 
     Example: [custom_property "--primary-color" "#3b82f6"]
 
-    @see {!var} Type-safe CSS variable API *)
+    See also {!val:var} (type-safe CSS variable API). *)
 
 val custom_declaration_name : declaration -> string option
 (** [custom_declaration_name decl] is the variable name if [decl] is a custom
@@ -2945,7 +2945,8 @@ val to_string : ?minify:bool -> ?optimize:bool -> ?mode:mode -> t -> string
     - If [optimize] is [true], rule-level optimizations are applied
       (deduplication, merging consecutive rules, combining identical rules).
     - [mode] controls variable layer emission behavior.
-      @see {{:https://developer.mozilla.org/en-US/docs/Web/CSS} MDN: CSS} *)
+
+    @see <https://developer.mozilla.org/en-US/docs/Web/CSS> "MDN: CSS" *)
 
 val pp : ?minify:bool -> ?optimize:bool -> ?mode:mode -> t -> string
 (** [pp] is {!to_string}. *)
@@ -2999,10 +3000,9 @@ val stylesheet_rules : t -> rule list
     [stylesheet]. *)
 
 val will_change : string -> declaration
-(** [will_change value] is the CSS will-change property for performance
-    optimization.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/will-change>
-      MDN: will-change. *)
+(** [will_change value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/will-change}
+     will-change} property for performance optimization. *)
 
 val deduplicate_declarations : declaration list -> declaration list
 (** [deduplicate_declarations declarations] removes duplicate declarations,
@@ -3080,3 +3080,6 @@ val pp_justify_content : justify_content Pp.t
 (**/**)
 
 module Pp = Pp
+
+val box_shadows : shadow list -> box_shadow
+(** [box_shadows lst] is multiple box-shadows. *)

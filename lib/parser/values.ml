@@ -4,9 +4,9 @@ open Reader
 module C = Css
 
 (** Error helpers *)
-let err_invalid what = raise (Parse_error ("invalid " ^ what))
+let err_invalid t what = raise (Parse_error ("invalid " ^ what, t))
 
-let err_expected what = raise (Parse_error ("expected " ^ what))
+let err_expected t what = raise (Parse_error ("expected " ^ what, t))
 
 (** Read a CSS length value *)
 let read_length t : Css.length =
@@ -23,7 +23,7 @@ let read_length t : Css.length =
       | "min-content" -> Min_content
       | "fit-content" -> Fit_content
       | "inherit" -> Inherit
-      | _ -> err_invalid ("length keyword: " ^ keyword))
+      | _ -> err_invalid t ("length keyword: " ^ keyword))
   | Some n when n = 0.0 -> Zero
   | Some n -> (
       (* Check for unit *)
@@ -37,7 +37,7 @@ let read_length t : Css.length =
       | "vw" -> Vw n
       | "ch" -> Ch n
       | "%" -> Pct n
-      | _ -> err_invalid ("length unit: " ^ unit))
+      | _ -> err_invalid t ("length unit: " ^ unit))
 
 (** Read a CSS color value *)
 let parse_hex_color t : Css.color =
@@ -106,7 +106,7 @@ and read_color_value t : Css.color =
           | "purple" -> Named Purple
           | "orange" -> Named Orange
           | "pink" -> Named Pink
-          | _ -> err_invalid ("color: " ^ keyword)))
+          | _ -> err_invalid t ("color: " ^ keyword)))
 
 and parse_color_keyword t : Css.color =
   let keyword = ident t in
@@ -132,7 +132,7 @@ and parse_color_keyword t : Css.color =
   | "purple" -> Named Purple
   | "orange" -> Named Orange
   | "pink" -> Named Pink
-  | _ -> err_invalid ("color: " ^ keyword)
+  | _ -> err_invalid t ("color: " ^ keyword)
 
 let parse_color_keyword_or_var t : Css.color =
   let keyword = ident t in
@@ -166,7 +166,7 @@ let read_angle t : Css.angle =
   | "turn" -> Turn n
   | "grad" -> Grad n
   | "" -> Deg n (* Default to degrees *)
-  | _ -> err_invalid ("angle unit: " ^ unit)
+  | _ -> err_invalid t ("angle unit: " ^ unit)
 
 (** Read a duration value *)
 let read_duration t : Css.duration =
@@ -177,7 +177,7 @@ let read_duration t : Css.duration =
   | "s" -> S n
   | "ms" -> Ms (int_of_float n)
   | "" -> Ms (int_of_float n) (* Default to milliseconds *)
-  | _ -> err_invalid ("duration unit: " ^ unit)
+  | _ -> err_invalid t ("duration unit: " ^ unit)
 
 (** Read a number value *)
 let read_number t : Css.number =
@@ -207,7 +207,7 @@ let rec read_length_value t : Css.length =
       | "min-content" -> Min_content
       | "fit-content" -> Fit_content
       | "inherit" -> Inherit
-      | _ -> err_invalid ("length keyword: " ^ keyword))
+      | _ -> err_invalid t ("length keyword: " ^ keyword))
   | Some n when n = 0.0 -> Zero
   | Some n -> (
       (* Check for unit *)
@@ -221,7 +221,7 @@ let rec read_length_value t : Css.length =
       | "vw" -> Vw n
       | "ch" -> Ch n
       | "%" -> Pct n
-      | _ -> err_invalid ("length unit: " ^ unit))
+      | _ -> err_invalid t ("length unit: " ^ unit))
 
 (** Read calc() expression *)
 and read_calc t : Css.length Css.calc =
@@ -268,8 +268,8 @@ and read_calc t : Css.length Css.calc =
         | "%" -> Val (Pct n)
         | "vh" -> Val (Vh n)
         | "vw" -> Val (Vw n)
-        | _ -> err_invalid ("calc unit: " ^ unit))
-    | None -> err_expected "calc expression"
+        | _ -> err_invalid t ("calc unit: " ^ unit))
+    | None -> err_expected t "calc expression"
 
 and read_calc_expr t : Css.length Css.calc =
   ws t;

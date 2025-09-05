@@ -1,7 +1,10 @@
 (** Main CSS parser module that coordinates all section parsers. *)
 
-val of_string : string -> (Css.t, string) result
-(** [of_string css] parses a CSS string and returns a stylesheet or an error. *)
+type error = Parse_error of string * Reader.t
+
+val of_string : string -> (Css.t, error) result
+(** [of_string css] parses a CSS string and returns a stylesheet or a parse
+    error. *)
 
 val of_string_exn : string -> Css.t
 (** [of_string_exn css] parses a CSS string and returns a stylesheet or raises

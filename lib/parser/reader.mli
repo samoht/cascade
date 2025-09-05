@@ -3,8 +3,9 @@
 type t
 (** [t] is the parser context. *)
 
-exception Parse_error of string
-(** [Parse_error msg] is raised on parse errors. *)
+exception Parse_error of string * t
+(** [Parse_error (msg, reader)] is raised on parse errors with the reader state.
+*)
 
 (** {1 Running Parsers} *)
 
@@ -138,3 +139,13 @@ val is_ident_start : char -> bool
 
 val pp : t -> string
 (** [pp] pretty-printer for parser state. *)
+
+val context_string : ?window:int -> t -> string * string
+(** [context_string ?window t] returns (before, after) strings around the
+    current position. [window] defaults to 40 characters. *)
+
+val position : t -> int
+(** [position t] returns the current position in the input. *)
+
+val length : t -> int
+(** [length t] returns the total length of the input. *)

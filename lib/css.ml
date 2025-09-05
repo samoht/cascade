@@ -123,6 +123,19 @@ type color =
       percent2 : int option;  (** Optional percentage for second color *)
     }
 
+let hex s =
+  let len = String.length s in
+  if len > 0 && s.[0] = '#' then
+    Hex { hash = true; value = String.sub s 1 (len - 1) }
+  else Hex { hash = false; value = s }
+
+let rgb r g b = Rgb { r; g; b }
+let rgba r g b a = Rgba { r; g; b; a }
+let oklch l c h = Oklch { l; c; h }
+let named n = Named n
+let current_color = Current
+let transparent = Transparent
+
 let color_mix ?(in_space = Srgb) ?percent1 ?percent2 color1 color2 =
   Mix { in_space; color1; percent1; color2; percent2 }
 
@@ -939,6 +952,8 @@ type box_shadow =
   | Shadows of shadow list
   | None
   | Var of box_shadow var
+
+let box_shadows lst = Shadows lst
 
 type text_shadow =
   | Shadow of shadow

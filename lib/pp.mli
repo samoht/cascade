@@ -135,10 +135,10 @@ val space : unit t
 (** [space] always outputs " " (mandatory lexical space, not layout). *)
 
 val block_open : unit t
-(** [block_open] outputs "{" (block formatting controlled elsewhere). *)
+(** [block_open] outputs "\{" (block formatting controlled elsewhere). *)
 
 val block_close : unit t
-(** [block_close] outputs "}" (block formatting controlled elsewhere). *)
+(** [block_close] outputs "\}" (block formatting controlled elsewhere). *)
 
 (** {2 Helper Types and Functions} *)
 

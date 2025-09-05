@@ -1,13 +1,19 @@
 (** Main CSS parser module that coordinates all section parsers *)
 
+type error = Parse_error of string * Reader.t
+
 (** Parse a CSS stylesheet from a string *)
 let of_string s =
   let t = Reader.of_string s in
-  try Ok (Rule.stylesheet t) with Reader.Parse_error msg -> Error msg
+  try Ok (Rule.stylesheet t)
+  with Reader.Parse_error (msg, reader) -> Error (Parse_error (msg, reader))
 
 (** Parse a CSS stylesheet from a string, raising on error *)
 let of_string_exn s =
-  match of_string s with Ok css -> css | Error msg -> failwith msg
+  match of_string s with
+  | Ok css -> css
+  | Error (Parse_error (msg, reader)) ->
+      raise (Reader.Parse_error (msg, reader))
 
 module Reader = Reader
 (** Re-export all parser submodules *)

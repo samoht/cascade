@@ -6,7 +6,7 @@ let test_of_string () =
   let css = ".class { color: red; }" in
   match of_string css with
   | Ok _ -> check bool "parsed successfully" true true
-  | Error e -> fail ("Failed to parse CSS: " ^ e)
+  | Error (Parse_error (msg, _)) -> fail ("Failed to parse CSS: " ^ msg)
 
 let test_of_string_error () =
   (* Test CSS parsing with invalid input *)
@@ -34,7 +34,7 @@ let tests =
            utilities{.u{padding:1rem}}"
         in
         match of_string css with
-        | Error e -> fail e
+        | Error (Parse_error (msg, _)) -> fail msg
         | Ok ast ->
             check int "media count" 1
               (Css.stylesheet_media_queries ast |> List.length);
@@ -46,7 +46,7 @@ let tests =
             let s = Css.to_string ~minify:true ast in
             check bool "contains @supports" true
               (Astring.String.is_infix ~affix:"@supports" s)
-        | Error e -> fail e);
+        | Error (Parse_error (msg, _)) -> fail msg);
     test_case "typed_values_color_length_var" `Quick (fun () ->
         let css = ".x{color: rgba(255,0,0,50%); width: var(--w, 10px)}" in
         match of_string css with
@@ -57,5 +57,5 @@ let tests =
             check bool "selector present" true
               (Astring.String.is_infix ~affix:".x{" s);
             check bool "parses without error" true true
-        | Error e -> fail e);
+        | Error (Parse_error (msg, _)) -> fail msg);
   ]

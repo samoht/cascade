@@ -1,21 +1,21 @@
 (** Simple CSS parser implementation. *)
 
-exception Parse_error of string
-
-(** Error helpers *)
-let err msg = raise (Parse_error msg)
-
-let err_eof () = err "unexpected end of input"
-let err_expected what = err ("expected " ^ what)
-let err_invalid_number () = err "invalid number"
-let err_invalid what = err ("invalid " ^ what)
-
 type t = {
   input : string;
   len : int;
   mutable pos : int;
   mutable saved : int list; (* Stack of saved positions *)
 }
+
+exception Parse_error of string * t
+
+(** Error helpers *)
+let err t msg = raise (Parse_error (msg, t))
+
+let err_eof t = err t "unexpected end of input"
+let err_expected t what = err t ("expected " ^ what)
+let err_invalid_number t = err t "invalid number"
+let err_invalid t what = err t ("invalid " ^ what)
 
 (** {1 Creation} *)
 
@@ -37,36 +37,51 @@ let looking_at t s =
 (** {1 Reading Characters} *)
 
 let skip t =
-  if t.pos >= t.len then err_eof ();
+  if t.pos >= t.len then err_eof t;
   t.pos <- t.pos + 1
 
 let skip_n t n =
-  if t.pos + n > t.len then err_eof ();
+  if t.pos + n > t.len then err_eof t;
   t.pos <- t.pos + n
 
 let char t =
-  if t.pos >= t.len then err_eof ();
+  if t.pos >= t.len then err_eof t;
   let c = t.input.[t.pos] in
   t.pos <- t.pos + 1;
   c
 
-let err_expect expected actual =
-  err
-    ("Expected '" ^ String.make 1 expected ^ "' but got '"
-   ^ String.make 1 actual ^ "'")
-
 let expect t c =
+  let actual_pos = t.pos in
   let actual = char t in
-  if actual <> c then err_expect c actual
-
-let err_expect_string expected = err ("expected \"" ^ expected ^ "\"")
+  if actual <> c then (
+    (* Go back one position for better context display *)
+    t.pos <- actual_pos;
+    err t
+      ("Expected '" ^ String.make 1 c ^ "' but got '" ^ String.make 1 actual
+     ^ "'"))
 
 let expect_string t s =
   let slen = String.length s in
-  if not (looking_at t s) then err_expect_string s;
+  if not (looking_at t s) then err t ("expected \"" ^ s ^ "\"");
   skip_n t slen
 
-(** Pretty-printer for parser state. *)
+(** Get context around current position. Returns (before, after) strings. *)
+let context_string ?(window = 40) t =
+  let context_start = max 0 (t.pos - window) in
+  let context_end = min t.len (t.pos + window) in
+  let before = String.sub t.input context_start (t.pos - context_start) in
+  let after =
+    if t.pos < t.len then String.sub t.input t.pos (context_end - t.pos) else ""
+  in
+  (before, after)
+
+(** Get current position in input *)
+let position t = t.pos
+
+(** Get total length of input *)
+let length t = t.len
+
+(** Simple pretty-printer for parser state. *)
 let pp t =
   let remaining = max 0 (t.len - t.pos) in
   if remaining = 0 then "<EOF>"
@@ -104,12 +119,12 @@ let is_ident_char c = is_ident_start c || (c >= '0' && c <= '9')
 
 let ident t =
   if t.pos >= t.len || not (is_ident_start t.input.[t.pos]) then
-    err_expected "identifier";
+    err_expected t "identifier";
   while_ t is_ident_char
 
 let string t =
   let quote = char t in
-  if quote <> '"' && quote <> '\'' then err_expected "string quote";
+  if quote <> '"' && quote <> '\'' then err_expected t "string quote";
   let rec loop acc =
     match char t with
     | '\\' ->
@@ -133,13 +148,13 @@ let number t =
       skip t;
       let frac = while_ t is_digit in
       if String.length whole = 0 && String.length frac = 0 then
-        err_invalid_number ();
+        err_invalid_number t;
       "." ^ frac)
     else ""
   in
 
   let num_str = whole ^ decimal in
-  if String.length num_str = 0 || num_str = "." then err_invalid_number ();
+  if String.length num_str = 0 || num_str = "." then err_invalid_number t;
 
   let value = float_of_string num_str in
   if negative then -.value else value
@@ -168,14 +183,14 @@ let save t = t.saved <- t.pos :: t.saved
 
 let restore t =
   match t.saved with
-  | [] -> err "no saved position to restore"
+  | [] -> err t "no saved position to restore"
   | pos :: rest ->
       t.pos <- pos;
       t.saved <- rest
 
 let commit t =
   match t.saved with
-  | [] -> err "no saved position to commit"
+  | [] -> err t "no saved position to commit"
   | _ :: rest -> t.saved <- rest
 
 let try_parse f t =
@@ -219,7 +234,7 @@ let is_hex c = is_digit c || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
 let hex_color t =
   let hex = while_ t is_hex in
   if String.length hex <> 3 && String.length hex <> 6 then
-    err_invalid "hex color (must be 3 or 6 digits)";
+    err_invalid t "hex color (must be 3 or 6 digits)";
   hex
 
 let percentage t =
@@ -289,7 +304,7 @@ let rgb_function t =
   try_parse
     (fun t ->
       let func_name = ident t in
-      if func_name <> "rgb" && func_name <> "rgba" then err "not rgb function";
+      if func_name <> "rgb" && func_name <> "rgba" then err t "not rgb function";
       expect t '(';
       ws t;
       let r = int t in

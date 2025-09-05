@@ -48,7 +48,8 @@ let test_expect () =
 
   let expect_fail () = Reader.expect r 'x' in
   check_raises "expect wrong char"
-    (Reader.Parse_error "Expected 'x' but got 'e'") expect_fail
+    (Reader.Parse_error ("Expected 'x' but got 'e'", r))
+    expect_fail
 
 let test_expect_string_and_between () =
   let r = Reader.of_string "(a[b]{c})" in
@@ -108,9 +109,14 @@ let test_hex_and_colors () =
   check string "hex 3" "abc" ok3;
   let ok6 = Reader.(hex_color (of_string "a1b2c3")) in
   check string "hex 6" "a1b2c3" ok6;
-  let bad_hex () = ignore Reader.(hex_color (of_string "ab")) in
+  let bad_hex () =
+    let r = Reader.of_string "ab" in
+    ignore (Reader.hex_color r)
+  in
   check_raises "bad hex"
-    (Reader.Parse_error "invalid hex color (must be 3 or 6 digits)") bad_hex;
+    (Reader.Parse_error
+       ("invalid hex color (must be 3 or 6 digits)", Reader.of_string "ab"))
+    bad_hex;
   (* color_keyword succeeds for known names, resets on unknown *)
   let r = Reader.of_string "red" in
   (match Reader.color_keyword r with Some "red" -> () | _ -> fail "red");
