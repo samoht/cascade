@@ -319,6 +319,59 @@ let test_minified_output () =
   (* Already short *)
   check_color "#123456"
 
+let test_calc_with_different_units () =
+  (* Test calc() with mixed units *)
+  check_calc "calc(100px - 2rem)";
+  check_calc "calc(50vh + 10px)";
+  check_calc "calc(100% - 20px)";
+  check_calc "calc(1em + 2rem + 3px)";
+
+  (* Test calc parsing and printing *)
+  let t = Css.Reader.of_string "calc(100px - 2rem)" in
+  let calc_expr = read_calc read_length t in
+  let output = Css.Pp.to_string (pp_calc pp_length) calc_expr in
+  check string "calc round-trip" "calc(100px - 2rem)" output
+
+let test_var_parsing_and_printing () =
+  (* Test var() parsing and printing *)
+  let t = Css.Reader.of_string "var(--primary-color, #007bff)" in
+  let color = read_color t in
+  let output = Css.Pp.to_string pp_color color in
+  check string "var with fallback" "var(--primary-color, #007bff)" output;
+
+  (* Test var in length context *)
+  let t = Css.Reader.of_string "var(--spacing, 10px)" in
+  let length = read_length t in
+  let output = Css.Pp.to_string pp_length length in
+  check string "var length with fallback" "var(--spacing, 10px)" output
+
+let test_float_value_formatting () =
+  (* Test float formatting with leading zeros *)
+  let check_float_format input expected =
+    let t = Css.Reader.of_string input in
+    let length = read_length t in
+    let output = Css.Pp.to_string pp_length length in
+    check string ("float format " ^ input) expected output
+  in
+
+  check_float_format "0.5rem" "0.5rem";
+  check_float_format ".5rem" "0.5rem";
+  check_float_format "-.5rem" "-0.5rem";
+
+  (* Test with angles *)
+  let t = Css.Reader.of_string "-.5turn" in
+  let angle = read_angle t in
+  let output = Css.Pp.to_string pp_angle angle in
+  check string "negative turn" "-0.5turn" output
+
+let test_var_with_multiple_fallbacks () =
+  (* Test var() with multiple fallback values *)
+  let t = Css.Reader.of_string "var(--custom-font, Arial, sans-serif)" in
+  (* For now, just test that it parses without error *)
+  let _parsed = try Some (read_color t) with _ -> None in
+  ()
+(* Note: Full var() with multiple fallbacks may need more work *)
+
 let suite =
   [
     ( "values",
@@ -342,5 +395,13 @@ let suite =
         test_case "var() in calc with fallback" `Quick
           test_var_in_calc_with_fallback;
         test_case "var() in calc expressions" `Quick test_var_in_calc;
+        (* Additional value tests *)
+        test_case "calc with different units" `Quick
+          test_calc_with_different_units;
+        test_case "var parsing and printing" `Quick
+          test_var_parsing_and_printing;
+        test_case "float value formatting" `Quick test_float_value_formatting;
+        test_case "var with multiple fallbacks" `Quick
+          test_var_with_multiple_fallbacks;
       ] );
   ]

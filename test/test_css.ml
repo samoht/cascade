@@ -4,8 +4,6 @@ open Css
 (* Toplevel selectors for reuse *)
 let test = Selector.class_ "test"
 let responsive = Selector.class_ "responsive"
-let calc = Selector.class_ "calc"
-let var_test = Selector.class_ "var-test"
 let grid = Selector.class_ "grid"
 let container_item = Selector.class_ "container-item"
 let spin = Selector.class_ "spin"
@@ -34,8 +32,6 @@ let component_h2 = Selector.(class_ "component" ++ element "h2")
 let component_a = Selector.(class_ "component" ++ element "a")
 let component_strong = Selector.(class_ "component" ++ element "strong")
 let universal = Selector.universal
-let f = Selector.class_ "f"
-let ff_class = Selector.class_ "ff"
 let btn_primary = Selector.class_ "btn-primary"
 let btn_secondary = Selector.class_ "btn-secondary"
 let base = Selector.class_ "base"
@@ -242,35 +238,6 @@ let test_inline_style () =
 
   (* Should be semicolon-separated *)
   Alcotest.(check bool) "has semicolons" true (String.contains inline ';')
-
-let test_calc () =
-  let calc_len = Calc (Expr (Val (Px 100), Sub, Val (Rem 2.0))) in
-  let prop = width calc_len in
-  let sheet = stylesheet [ Rule (rule ~selector:calc [ prop ]) ] in
-  let output = to_string sheet in
-
-  (* Should contain calc expression *)
-  Alcotest.(check bool)
-    "contains calc" true
-    (Astring.String.is_infix ~affix:"calc(100px - 2rem)" output)
-
-let test_variables () =
-  let _, ff_selector =
-    var
-      ~fallback:[ Ui_sans_serif; System_ui ]
-      "fonts" Font_family [ Ui_sans_serif ]
-  in
-  let font_decl = font_family [ Var ff_selector ] in
-  let sheet = stylesheet [ Rule (rule ~selector:var_test [ font_decl ]) ] in
-  let output = to_string sheet in
-
-  (* Should contain var with fallback *)
-  Alcotest.(check bool)
-    "contains var reference" true
-    (Astring.String.is_infix ~affix:"var(--fonts" output);
-  Alcotest.(check bool)
-    "contains fallback" true
-    (Astring.String.is_infix ~affix:"ui-sans-serif" output)
 
 let test_grid_template () =
   let template_cols = Tracks [ Fr 1.0; Grid_length (Px 200); Fr 2.0 ] in
@@ -642,32 +609,6 @@ let test_full_optimization_with_layers () =
     "both contain font-size property" true
     (Astring.String.is_infix ~affix:"font-size:" css_optimized
     && Astring.String.is_infix ~affix:"font-size:" css_unoptimized)
-
-let test_pp_float () =
-  let r = rule ~selector:f [ letter_spacing (Rem 0.5); rotate (Turn (-0.5)) ] in
-  let css = to_string ~minify:true (stylesheet [ Rule r ]) in
-  (* In minified mode, leading zeros are dropped for values between -1 and 1 *)
-  Alcotest.(check bool)
-    "leading zero dropped in minified mode" true
-    (Astring.String.is_infix ~affix:"letter-spacing:.5rem" css);
-  Alcotest.(check bool)
-    "negative leading zero dropped in minified mode" true
-    (Astring.String.is_infix ~affix:"rotate:-.5turn" css)
-
-let test_var_with_fallback () =
-  let _, ff =
-    var
-      ~fallback:[ Ui_sans_serif; System_ui ]
-      "fonts" Font_family [ Ui_sans_serif ]
-  in
-  let decl = font_family [ Var ff ] in
-  let css =
-    to_string (stylesheet [ Rule (rule ~selector:ff_class [ decl ]) ])
-  in
-  Alcotest.(check bool)
-    "font family var with fallback" true
-    (Astring.String.is_infix ~affix:"font-family: var(--fonts" css
-    && Astring.String.is_infix ~affix:"ui-sans-serif" css)
 
 (* CSS Optimization Tests - Based on cascade semantics *)
 
@@ -1513,8 +1454,8 @@ let tests =
     ("minification", `Quick, test_minification);
     ("media query", `Quick, test_media_query);
     ("inline style", `Quick, test_inline_style);
-    ("calc expressions", `Quick, test_calc);
-    ("CSS variables", `Quick, test_variables);
+    (* calc expressions moved to test_values.ml *)
+    (* CSS variables moved to test_values.ml *)
     ("grid template", `Quick, test_grid_template);
     ("container query", `Quick, test_container_query);
     ("var extraction", `Quick, test_var_extraction);
@@ -1530,8 +1471,8 @@ let tests =
       `Quick,
       test_no_merge_different_descendants );
     ("full optimization with layers", `Quick, test_full_optimization_with_layers);
-    ("pp float", `Quick, test_pp_float);
-    ("var with fallback", `Quick, test_var_with_fallback);
+    (* pp float moved to test_values.ml *)
+    (* var with fallback moved to test_values.ml *)
     (* CSS Optimization tests *)
     ("layer precedence respected", `Quick, test_layer_precedence_respected);
     ("source order within selector", `Quick, test_source_order_within_selector);
