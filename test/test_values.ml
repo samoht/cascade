@@ -290,6 +290,14 @@ let test_minified_value_formatting () =
   let s = Css.Pp.to_string ~minify:true pp_length Zero in
   check string "minified zero" "0" s
 
+let test_regular_value_formatting () =
+  let s = Css.Pp.to_string pp_length (Rem 0.5) in
+  check string "regular rem keeps 0" "0.5rem" s;
+  let s = Css.Pp.to_string pp_number (Float 0.5) in
+  check string "regular number keeps 0" "0.5" s;
+  let s = Css.Pp.to_string pp_number (Int 10) in
+  check string "regular int" "10" s
+
 let test_var_parsing_and_printing () =
   (* Test var() parsing and printing *)
   check_color "var(--primary-color, #007bff)";
@@ -379,6 +387,8 @@ let suite =
         test_case "float value formatting" `Quick test_float_value_formatting;
         test_case "minified value formatting" `Quick
           test_minified_value_formatting;
+        test_case "regular value formatting" `Quick
+          test_regular_value_formatting;
         test_case "var with multiple fallbacks" `Quick
           test_var_with_multiple_fallbacks;
         test_case "calc with other types" `Quick test_calc_with_other_types;

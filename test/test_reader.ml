@@ -167,6 +167,23 @@ let test_until_string_and_separated () =
   check string "until_string before token" "abc" before;
   check string "after until_string" "XYZdef" (Reader.peek_string r2 7)
 
+let test_context_and_pp () =
+  let r = Reader.of_string "abcdefghij" in
+  Reader.skip_n r 5;
+  let before, after = Reader.context_string ~window:3 r in
+  check string "context before" "cde" before;
+  check string "context after" "fgh" after;
+  let r2 = Reader.of_string "hello world" in
+  Reader.skip_n r2 6;
+  check string "pp preview" "world" (Reader.pp r2)
+
+let test_ident_failure () =
+  let r = Reader.of_string "1bad" in
+  let f () = ignore (Reader.ident r) in
+  check_raises "ident must start correctly"
+    (Reader.Parse_error ("expected identifier", r))
+    f
+
 let test_hex_and_colors () =
   (* hex_color requires 3 or 6 hex digits *)
   let ok3 = Reader.(hex_color (of_string "abc")) in
@@ -220,6 +237,8 @@ let suite =
         test_case "ident_and_string" `Quick test_ident_and_string;
         test_case "until_string_and_separated" `Quick
           test_until_string_and_separated;
+        test_case "context_and_pp" `Quick test_context_and_pp;
+        test_case "ident_failure" `Quick test_ident_failure;
         test_case "hex_and_colors" `Quick test_hex_and_colors;
         test_case "rgb_function" `Quick test_rgb_function;
       ] );
