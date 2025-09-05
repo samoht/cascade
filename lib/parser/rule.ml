@@ -25,6 +25,9 @@ let rec one t =
 and rules t =
   ws t;
   if is_done t then []
+  else if peek t = Some '}' then
+    (* Stop at closing brace *)
+    []
   else
     match one t with
     | None -> [] (* Stop if we can't parse a rule *)
@@ -68,20 +71,40 @@ and layer_rule t =
   expect_string t "@layer";
   ws t;
   (* Parse layer name until opening brace or semicolon *)
-  let name = while_ t (fun c -> c <> '{' && c <> ';') in
+  let name = String.trim (while_ t (fun c -> c <> '{' && c <> ';')) in
   ws t;
   peek t |> function
   | Some '{' ->
       skip t;
-      let content = rules_only t in
+      let content = rules t in
       ws t;
       expect t '}';
-      let nested_content = List.map Css.rule_to_nested content in
-      Css.Layer (Css.layer ~name nested_content ~media:[] ~container:[])
+      (* Separate sheet items into categories for layer *)
+      let nested_rules =
+        List.filter_map
+          (function Css.Rule r -> Some (Css.rule_to_nested r) | _ -> None)
+          content
+      in
+      let media_queries =
+        List.filter_map (function Css.Media m -> Some m | _ -> None) content
+      in
+      let supports_queries =
+        List.filter_map
+          (function Css.Supports s -> Some s | _ -> None)
+          content
+      in
+      let container_queries =
+        List.filter_map
+          (function Css.Container c -> Some c | _ -> None)
+          content
+      in
+      Css.Layer
+        (Css.layer ~name nested_rules ~media:media_queries
+           ~container:container_queries ~supports:supports_queries)
   | Some ';' ->
       skip t;
       (* Layer declaration without rules *)
-      Css.Layer (Css.layer ~name [] ~media:[] ~container:[])
+      Css.Layer (Css.layer ~name [] ~media:[] ~container:[] ~supports:[])
   | _ -> failwith "Invalid @layer rule"
 
 (** Parse @supports rule *)

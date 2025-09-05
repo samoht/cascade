@@ -21,9 +21,8 @@ let property_value t =
         expect t c;
         parse_value (String.make 1 c :: acc) (depth - 1)
     | Some (('"' | '\'') as q) ->
-        expect t q;
-        let str = until t q in
-        expect t q;
+        (* Use proper string parsing that handles escapes *)
+        let str = string t in
         parse_value ((String.make 1 q ^ str ^ String.make 1 q) :: acc) depth
     | _ -> parse_value (String.make 1 (char t) :: acc) depth
   in
