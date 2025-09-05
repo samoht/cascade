@@ -130,6 +130,40 @@ let test_round_trip_color () =
   round_trip "#fff";
   round_trip "transparent"
 
+let test_var_in_color () =
+  (* Test parsing var() in color context *)
+  let t = Css_parser.Reader.of_string "var(--primary-color)" in
+  let color = Css_parser.Values.read_color t in
+  (* Should return a Var variant with the variable name *)
+  match color with
+  | Css.Var var -> check string "var name" "primary-color" (Css.var_name var)
+  | _ -> fail "Expected Var variant for var() expression"
+
+let test_var_with_fallback () =
+  (* Test parsing var() with fallback value *)
+  let t = Css_parser.Reader.of_string "var(--theme-color, #007bff)" in
+  let color = Css_parser.Values.read_color t in
+  match color with
+  | Css.Var var ->
+      (* For now, fallback isn't parsed - just check the var name *)
+      check string "var name" "theme-color" (Css.var_name var)
+  | _ -> fail "Expected Var for var() expression"
+
+let test_var_in_calc () =
+  (* Test parsing var() in calc expressions *)
+  let t = Css_parser.Reader.of_string "calc(100% - var(--spacing))" in
+  let calc_expr = Css_parser.Values.read_calc t in
+  (* Should create Expr(Val(Pct 100), Sub, Var(--spacing)) *)
+  match calc_expr with
+  | Css.Expr (left, Css.Sub, right) -> (
+      match (left, right) with
+      | Css.Val (Css.Pct p), Css.Var var ->
+          check (float 0.01) "percentage" 100.0 p;
+          check string "var name in calc" "spacing" (Css.var_name var)
+      | Css.Val (Css.Pct _), _ -> fail "Expected Var(--spacing) on right"
+      | _, _ -> fail "Expected Pct(100) on left and Var on right")
+  | _ -> fail "Expected subtraction expression"
+
 let test_additional_named_colors () =
   let test input expected =
     let t = Css_parser.Reader.of_string input in
@@ -171,4 +205,7 @@ let tests =
     test_case "round-trip colors" `Quick test_round_trip_color;
     test_case "additional named colors" `Quick test_additional_named_colors;
     test_case "calc operations" `Quick test_calc_operations;
+    test_case "var() in color context" `Quick test_var_in_color;
+    test_case "var() with fallback" `Quick test_var_with_fallback;
+    test_case "var() in calc expressions" `Quick test_var_in_calc;
   ]
