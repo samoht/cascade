@@ -172,3 +172,12 @@ val call : string -> 'a t -> 'a t
 val call_list : string -> 'a t -> 'a list t
 (** [call_list name item] formats a function call with a comma-separated list of
     items: [name(a, b, c)]. *)
+
+val call_2 : string -> 'a t -> 'b t -> ('a * 'b) t
+(** [call_2 name a b] formats a 2-arg function call: [name(a, b)]. *)
+
+val call_3 : string -> 'a t -> 'b t -> 'c t -> ('a * 'b * 'c) t
+(** [call_3 name a b c] formats a 3-arg function call: [name(a, b, c)]. *)
+
+val url : string t
+(** [url s] formats CSS url with quotes: url("s"). *)

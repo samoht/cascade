@@ -12,7 +12,5 @@ val of_string_exn : string -> Css.t
 
 (**/**)
 
-module Property = Property
 module Custom_property = Custom_property
-module Declaration = Declaration
 module Rule = Rule

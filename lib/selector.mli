@@ -1,115 +1,74 @@
-type t
-(** Abstract type for CSS selectors *)
+(** CSS selectors: core types and helpers. *)
 
-type combinator =
-  | Descendant  (** Space: "div p" *)
-  | Child  (** >: "div > p" *)
-  | Next_sibling  (** +: "div + p" *)
-  | Subsequent_sibling  (** ~: "div ~ p" *)
-  | Column  (** ||: column combinator "col || th" *)
-
-type ns =
-  | Any
-  | None
-  | Prefix of string
-      (** CSS namespace qualifier for type, universal, and attribute selectors.
-      *)
+include module type of Selector_intf
+(** Shared selector types exposed by both implementation and interface. *)
 
 val element : ?ns:ns -> string -> t
-(** [element name] is an element selector (e.g., "div", "p"). Validates that
-    [name] is a valid CSS identifier. Raise [Invalid_argument] if [name]
-    violates CSS identifier rules. *)
+(** Element selector (e.g., "div"). Validates CSS identifiers; raises
+    [Invalid_argument] on invalid. *)
 
 val class_ : string -> t
-(** [class_ name] is a class selector (e.g., ".button", ".prose"). Validates
-    that [name] is a valid CSS identifier. Raise [Invalid_argument] if [name]
-    violates CSS identifier rules. *)
+(** Class selector (e.g., ".prose"). Validates CSS identifiers; raises
+    [Invalid_argument] on invalid. *)
 
 val id : string -> t
-(** [id name] is an ID selector (e.g., "#header"). Validates that [name] is a
-    valid CSS identifier. Raise [Invalid_argument] if [name] violates CSS
-    identifier rules. *)
+(** ID selector (e.g., "#header"). Validates CSS identifiers; raises
+    [Invalid_argument] on invalid. *)
 
 val universal : t
-(** [universal] is the universal selector "*" (no namespace). *)
+(** Universal selector "*" (no namespace). *)
 
 val universal_ns : ns -> t
-(** [universal_ns ns] is the namespaced universal selector, e.g., [*|*] or
-    [svg|*]. *)
+(** Namespaced universal selector (e.g., [*|*], [svg|*]). *)
 
-(** Typed attribute selector values *)
-type attribute_match =
-  | Presence  (** [attribute] - attribute exists *)
-  | Exact of string  (** [attribute="value"] - exact match *)
-  | Whitespace_list of string
-      (** [attribute~="value"] - whitespace-separated list *)
-  | Hyphen_list of string  (** [attribute|="value"] - hyphen-separated list *)
-  | Prefix of string  (** [attribute^="value"] - prefix match *)
-  | Suffix of string  (** [attribute$="value"] - suffix match *)
-  | Substring of string  (** [attribute*="value"] - substring match *)
-
-type attr_flag =
-  | Case_insensitive
-  | Case_sensitive
-      (** CSS attribute selector flags: [i] (ASCII case-insensitive), [s]
-          (case-sensitive). *)
+(* Typed attribute selector helpers *)
 
 val attribute : ?ns:ns -> ?flag:attr_flag -> string -> attribute_match -> t
-(** [attribute name match] is a typed attribute selector. Validates that [name]
-    is a valid CSS identifier. Raise [Invalid_argument] if [name] violates CSS
-    identifier rules. *)
+(** Attribute selector. Validates CSS identifiers; raises [Invalid_argument] on
+    invalid. *)
 
 val pseudo_class : string -> t
-(** [pseudo_class name] is a pseudo-class selector (e.g., ":hover",
-    ":first-child"). Validates that [name] is a valid CSS identifier. Raise
-    [Invalid_argument] if [name] violates CSS identifier rules. *)
+(** Pseudo-class selector (e.g., ":hover"). Validates identifiers where
+    applicable. *)
 
 val pseudo_element : string -> t
-(** [pseudo_element name] is a pseudo-element selector (e.g., "::before",
-    "::marker"). Validates that [name] is a valid CSS identifier. Raise
-    [Invalid_argument] if [name] violates CSS identifier rules. *)
+(** Pseudo-element selector (e.g., "::before"). Validates identifiers. *)
 
 val combine : t -> combinator -> t -> t
-(** [combine a c b] is [a] combined with [b] using combinator [c]. *)
+(** Combine selectors with a combinator. *)
 
 val ( ++ ) : t -> t -> t
-(** [sel1 ++ sel2] is [sel1] and [sel2] combined with the descendant combinator
-    (space). Equivalent to [combine sel1 Descendant sel2]. *)
+(** Combine with descendant (space). *)
 
 val ( >> ) : t -> t -> t
-(** [sel1 >> sel2] is [sel1] and [sel2] combined with the child combinator (>).
-    Equivalent to [combine sel1 Child sel2]. *)
+(** Combine with child (>). *)
 
 val where : t list -> t
-(** [where sels] is a [:where()] functional pseudo-class. *)
+(** [:where(...)] pseudo-class. *)
 
 val not : t list -> t
-(** [not sels] is a [:not()] functional pseudo-class. *)
+(** [:not(...)] pseudo-class. *)
 
 val fun_ : string -> t list -> t
-(** [fun_ name sels] is a functional pseudo-class like [:is()], [:has()], etc.
-*)
+(** Functional pseudo-class (e.g., [:is], [:has]). *)
 
 val list : t list -> t
-(** [list sels] is a comma-separated selector list. *)
+(** Comma-separated selector list. *)
 
 val is_compound_list : t -> bool
-(** [is_compound_list s] is [true] if [s] is already a comma-separated list of
-    selectors. *)
+(** True if already a list of selectors. *)
 
 val compound : t list -> t
-(** [compound selectors] is a compound selector made by combining multiple
-    simple selectors (e.g., element + attribute: "div[class=foo]"). *)
+(** Compound selector (concatenates simple selectors). *)
 
 val ( && ) : t -> t -> t
-(** [sel1 && sel2] is a compound selector of two simple selectors. Equivalent to
-    [compound [sel1; sel2]]. Example: [element "div" && class_ "foo"]. *)
+(** Combine two simple selectors into a compound selector. *)
 
 val ( || ) : t -> t -> t
-(** [sel1 || sel2] combines selectors with the CSS column combinator. *)
+(** Combine with column combinator (||). *)
 
 val pp : t Pp.t
-(** Pretty printer for selectors *)
+(** Pretty-printer for selectors. *)
 
 val to_string : ?minify:bool -> t -> string
 val pp_combinator : combinator Pp.t
@@ -117,36 +76,59 @@ val pp_attribute_match : attribute_match Pp.t
 val pp_ns : ns Pp.t
 val pp_attr_flag : attr_flag option Pp.t
 
-type nth =
-  | Even
-  | Odd
-  | An_plus_b of int * int  (** Typed An+B notation for :nth-* selectors. *)
-
 val pp_nth : nth Pp.t
 (** Pretty-printer for nth expressions. *)
 
 val read : Reader.t -> t
-(** [read t] parses a CSS selector from the reader. *)
+(** Parse a CSS selector. *)
 
 val read_opt : Reader.t -> t option
-(** [read_opt t] parses a CSS selector and returns [None] on failure. *)
+(** Parse a CSS selector; returns [None] on failure. *)
 
 val read_combinator : Reader.t -> combinator
+(** Parse a combinator. *)
+
 val read_attribute_match : Reader.t -> attribute_match
+(** Parse an attribute matcher. *)
+
 val read_ns : Reader.t -> ns option
+(** Parse an optional attribute/selector namespace. *)
+
 val read_attr_flag : Reader.t -> attr_flag option
+(** Parse an attribute selector flag ([i] or [s]). *)
+
 val read_nth : Reader.t -> nth
+(** Parse an An+B nth expression. *)
 
 val is_ : t list -> t
-(** Typed helpers for functional selectors *)
+(** [:is(...)] pseudo-class. *)
 
 val has : t list -> t
+(** [:has(...)] pseudo-class. *)
+
 val nth_child : ?of_:t list -> nth -> t
+(** [:nth-child] with optional [:of]. *)
+
 val nth_last_child : ?of_:t list -> nth -> t
+(** [:nth-last-child] with optional [:of]. *)
+
 val nth_of_type : ?of_:t list -> nth -> t
+(** [:nth-of-type] with optional [:of]. *)
+
 val nth_last_of_type : ?of_:t list -> nth -> t
+(** [:nth-last-of-type] with optional [:of]. *)
+
 val pseudo_element_fun : string -> t list -> t
+(** Pseudo-element with selector list payload (e.g., ::slotted). *)
+
 val part : string list -> t
+(** ::part(...) pseudo-element. *)
+
 val slotted : t list -> t
+(** ::slotted(...) pseudo-element. *)
+
 val cue : t list -> t
+(** ::cue(...) pseudo-element. *)
+
 val cue_region : t list -> t
+(** ::cue-region(...) pseudo-element. *)

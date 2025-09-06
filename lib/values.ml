@@ -1,306 +1,9 @@
 (** CSS Values & Units parsing using Reader API *)
 
-type meta = ..
-
-type 'a var = {
-  name : string;
-  fallback : 'a option;
-  default : 'a option;
-  layer : string option;
-  meta : meta option;
-}
+include Values_intf
 
 let var_ref ?fallback ?default ?layer ?meta name =
   { name; fallback; default; layer; meta }
-
-type calc_op = Add | Sub | Mult | Div
-
-type 'a calc =
-  | Var of 'a var
-  | Val of 'a
-  | Num of float
-  | Expr of 'a calc * calc_op * 'a calc
-
-type length =
-  | Px of float
-  | Cm of float
-  | Mm of float
-  | Q of float
-  | In of float
-  | Pt of float
-  | Pc of float
-  | Rem of float
-  | Em of float
-  | Ex of float
-  | Cap of float
-  | Ic of float
-  | Rlh of float
-  | Pct of float
-  | Vw of float
-  | Vh of float
-  | Vmin of float
-  | Vmax of float
-  | Vi of float
-  | Vb of float
-  | Dvh of float
-  | Dvw of float
-  | Dvmin of float
-  | Dvmax of float
-  | Lvh of float
-  | Lvw of float
-  | Lvmin of float
-  | Lvmax of float
-  | Svh of float
-  | Svw of float
-  | Svmin of float
-  | Svmax of float
-  | Ch of float
-  | Lh of float
-  | Num of float
-  | Auto
-  | Zero
-  | Inherit
-  | Fit_content
-  | Max_content
-  | Min_content
-  | From_font
-  | Var of length var
-  | Calc of length calc
-
-type color_space =
-  | Srgb
-  | Srgb_linear
-  | Display_p3
-  | A98_rgb
-  | Prophoto_rgb
-  | Rec2020
-  | Lab
-  | Oklab
-  | Xyz
-  | Xyz_d50
-  | Xyz_d65
-  | Lch
-  | Oklch
-  | Hsl
-  | Hwb
-
-type color_name =
-  | Red
-  | Blue
-  | Green
-  | White
-  | Black
-  | Yellow
-  | Cyan
-  | Magenta
-  | Gray
-  | Grey
-  | Orange
-  | Purple
-  | Pink
-  | Silver
-  | Maroon
-  | Fuchsia
-  | Lime
-  | Olive
-  | Navy
-  | Teal
-  | Aqua
-  | Alice_blue
-  | Antique_white
-  | Aquamarine
-  | Azure
-  | Beige
-  | Bisque
-  | Blanched_almond
-  | Blue_violet
-  | Brown
-  | Burlywood
-  | Cadet_blue
-  | Chartreuse
-  | Chocolate
-  | Coral
-  | Cornflower_blue
-  | Cornsilk
-  | Crimson
-  | Dark_blue
-  | Dark_cyan
-  | Dark_goldenrod
-  | Dark_gray
-  | Dark_green
-  | Dark_grey
-  | Dark_khaki
-  | Dark_magenta
-  | Dark_olive_green
-  | Dark_orange
-  | Dark_orchid
-  | Dark_red
-  | Dark_salmon
-  | Dark_sea_green
-  | Dark_slate_blue
-  | Dark_slate_gray
-  | Dark_slate_grey
-  | Dark_turquoise
-  | Dark_violet
-  | Deep_pink
-  | Deep_sky_blue
-  | Dim_gray
-  | Dim_grey
-  | Dodger_blue
-  | Firebrick
-  | Floral_white
-  | Forest_green
-  | Gainsboro
-  | Ghost_white
-  | Gold
-  | Goldenrod
-  | Green_yellow
-  | Honeydew
-  | Hot_pink
-  | Indian_red
-  | Indigo
-  | Ivory
-  | Khaki
-  | Lavender
-  | Lavender_blush
-  | Lawn_green
-  | Lemon_chiffon
-  | Light_blue
-  | Light_coral
-  | Light_cyan
-  | Light_goldenrod_yellow
-  | Light_gray
-  | Light_green
-  | Light_grey
-  | Light_pink
-  | Light_salmon
-  | Light_sea_green
-  | Light_sky_blue
-  | Light_slate_gray
-  | Light_slate_grey
-  | Light_steel_blue
-  | Light_yellow
-  | Lime_green
-  | Linen
-  | Medium_aquamarine
-  | Medium_blue
-  | Medium_orchid
-  | Medium_purple
-  | Medium_sea_green
-  | Medium_slate_blue
-  | Medium_spring_green
-  | Medium_turquoise
-  | Medium_violet_red
-  | Midnight_blue
-  | Mint_cream
-  | Misty_rose
-  | Moccasin
-  | Navajo_white
-  | Old_lace
-  | Olive_drab
-  | Orange_red
-  | Orchid
-  | Pale_goldenrod
-  | Pale_green
-  | Pale_turquoise
-  | Pale_violet_red
-  | Papaya_whip
-  | Peach_puff
-  | Peru
-  | Plum
-  | Powder_blue
-  | Rebecca_purple
-  | Rosy_brown
-  | Royal_blue
-  | Saddle_brown
-  | Salmon
-  | Sandy_brown
-  | Sea_green
-  | Sea_shell
-  | Sienna
-  | Sky_blue
-  | Slate_blue
-  | Slate_gray
-  | Slate_grey
-  | Snow
-  | Spring_green
-  | Steel_blue
-  | Tan
-  | Thistle
-  | Tomato
-  | Turquoise
-  | Violet
-  | Wheat
-  | White_smoke
-  | Yellow_green
-
-type channel =
-  | Int of int (* 0–255, legacy/comma syntax *)
-  | Num of float (* 0–255, modern/space syntax *)
-  | Pct of float (* 0%–100% *)
-  | Var of channel var
-
-type angle =
-  | Deg of float
-  | Rad of float
-  | Turn of float
-  | Grad of float
-  | Var of angle var
-
-type hue =
-  | Unitless of float (* Unitless number, defaults to degrees *)
-  | Angle of angle (* Explicit angle unit *)
-  | Var of hue var
-
-type alpha =
-  | None
-  | Num of float (* Number value (0-1) *)
-  | Pct of float (* Percentage value (0%-100%) *)
-  | Var of alpha var
-
-(** CSS color component values *)
-type component =
-  | Number of float
-  | Pct of float
-  | Angle of hue (* for color(lch ...) / color(lab ...) syntaxes *)
-  | Var of component var
-  | Calc of component calc
-
-(** CSS percentage values *)
-type percentage =
-  | Pct of float (* 0%–100% as a % token *)
-  | Var of percentage var
-  | Calc of percentage calc (* calc(...) that resolves to a % *)
-
-(** CSS hue interpolation options *)
-type hue_interpolation = Shorter | Longer | Increasing | Decreasing | Default
-
-type color =
-  | Hex of { hash : bool; value : string }
-  | Rgb of { r : channel; g : channel; b : channel }
-  | Rgba of { r : channel; g : channel; b : channel; a : alpha }
-  | Hsl of { h : hue; s : percentage; l : percentage; a : alpha }
-  | Hwb of { h : hue; w : percentage; b : percentage; a : alpha }
-  | Color of { space : color_space; components : component list; alpha : alpha }
-  | Oklch of { l : percentage; c : float; h : hue; alpha : alpha }
-  | Oklab of { l : percentage; a : float; b : float; alpha : alpha }
-  | Lch of { l : percentage; c : float; h : hue; alpha : alpha }
-  | Named of color_name
-  | Var of color var
-  | Current
-  | Transparent
-  | Inherit
-  | Mix of {
-      in_space : color_space option; (* None => default per spec *)
-      hue : hue_interpolation;
-      color1 : color;
-      percent1 : percentage option;
-      color2 : color;
-      percent2 : percentage option;
-    }
-
-type duration = Ms of float | S of float | Var of duration var
-type number = Float of float | Int of int | Pct of float | Var of number var
 
 (** Color constructors *)
 let hex s =
@@ -871,8 +574,7 @@ let read_var_after_ident : type a. (Reader.t -> a) -> Reader.t -> a var =
   Reader.ws t;
   let fallback =
     if Reader.peek t = Some ',' then (
-      Reader.skip t;
-      Reader.ws t;
+      Reader.comma t;
       Some (read_value t))
     else None
   in
@@ -970,8 +672,7 @@ let rec read_alpha t : alpha =
 and read_optional_alpha t : alpha =
   Reader.ws t;
   if Reader.peek t = Some '/' then (
-    Reader.skip t;
-    Reader.ws t;
+    Reader.slash t;
     read_alpha t)
   else None
 
@@ -988,50 +689,24 @@ let rec read_channel t : channel =
     | "" -> Int (int_of_float n)
     | _ -> Reader.err_invalid t "channel value"
 
-(** Read space-separated RGB values (modern syntax) *)
 let read_rgb_space_separated t : color =
-  (* Try percentage format first with proper backtracking *)
-  match
-    Reader.try_parse
-      (fun t ->
-        let r_pct = read_channel t in
-        Reader.ws t;
-        let g_pct = read_channel t in
-        Reader.ws t;
-        let b_pct = read_channel t in
-        let alpha = read_optional_alpha t in
-        Reader.ws t;
-        Reader.expect t ')';
-        (r_pct, g_pct, b_pct, alpha))
-      t
-  with
-  | Some (r, g, b, alpha) -> (
-      (* Use channels directly from the parsed result *)
-      match alpha with
-      | None -> Rgb { r; g; b }
-      | Num _ | Pct _ | Var _ -> Rgba { r; g; b; a = alpha })
-  | None ->
-      (* This should not happen with the current logic *)
-      Reader.err_invalid t "RGB values"
+  let r, g, b =
+    Reader.triple ~sep:Reader.ws read_channel read_channel read_channel t
+  in
+  let alpha = read_optional_alpha t in
+  Reader.ws t;
+  Reader.expect t ')';
+  match alpha with
+  | None -> Rgb { r; g; b }
+  | Num _ | Pct _ | Var _ -> Rgba { r; g; b; a = alpha }
 
-(** Read comma-separated RGB values (legacy syntax) *)
 let read_rgb_comma_separated t : color =
-  (* Allow mixed channel formats - each channel can be int or percentage *)
-  let r = read_channel t in
-  Reader.ws t;
-  Reader.expect t ',';
-  Reader.ws t;
-  let g = read_channel t in
-  Reader.ws t;
-  Reader.expect t ',';
-  Reader.ws t;
-  let b = read_channel t in
-  Reader.ws t;
-  (* For legacy comma syntax, alpha uses comma instead of slash *)
+  let r, g, b =
+    Reader.triple ~sep:Reader.comma read_channel read_channel read_channel t
+  in
   let alpha =
     if Reader.peek t = Some ',' then (
-      Reader.skip t;
-      Reader.ws t;
+      Reader.comma t;
       read_alpha t)
     else None
   in
@@ -1122,30 +797,20 @@ let rec read_hue t : hue =
     | "grad" -> Angle (Grad n)
     | _ -> Reader.err_invalid t ("hue unit: " ^ unit)
 
-(** Read HSL/HSLA function (supports both legacy comma and modern space syntax)
-*)
 let read_hsl t : color =
-  (* Already consumed "hsl(" or "hsla(" *)
   Reader.ws t;
   let hue = read_hue t in
   Reader.ws t;
-
-  (* Check if comma-separated (legacy) or space-separated (modern) *)
   if Reader.peek t = Some ',' then (
-    (* Legacy comma-separated syntax *)
-    Reader.expect t ',';
+    Reader.comma t;
+    let s, l =
+      Reader.pair ~sep:Reader.comma read_percentage_float read_percentage_float
+        t
+    in
     Reader.ws t;
-    let s = read_percentage_float t in
-    Reader.ws t;
-    Reader.expect t ',';
-    Reader.ws t;
-    let l = read_percentage_float t in
-    Reader.ws t;
-    (* For legacy syntax, alpha uses comma *)
     let a =
       if Reader.peek t = Some ',' then (
-        Reader.skip t;
-        Reader.ws t;
+        Reader.comma t;
         read_alpha t)
       else None
     in
@@ -1153,37 +818,28 @@ let read_hsl t : color =
     Reader.expect t ')';
     Hsl { h = hue; s = Pct s; l = Pct l; a })
   else
-    (* Modern space-separated syntax *)
-    let s = read_percentage_float t in
-    Reader.ws t;
-    let l = read_percentage_float t in
+    let s, l =
+      Reader.pair ~sep:Reader.ws read_percentage_float read_percentage_float t
+    in
     let a = read_optional_alpha t in
     Reader.ws t;
     Reader.expect t ')';
     Hsl { h = hue; s = Pct s; l = Pct l; a }
 
-(** Read HWB function *)
 let read_hwb t : color =
-  (* Already consumed "hwb(" *)
   Reader.ws t;
   let hue = read_hue t in
   Reader.ws t;
-
-  (* Check if comma-separated or space-separated *)
   if Reader.peek t = Some ',' then (
-    (* Legacy comma-separated syntax *)
-    Reader.expect t ',';
-    Reader.ws t;
-    let w = read_percentage_float t in
-    Reader.ws t;
-    Reader.expect t ',';
-    Reader.ws t;
-    let b = read_percentage_float t in
+    Reader.comma t;
+    let w, b =
+      Reader.pair ~sep:Reader.comma read_percentage_float read_percentage_float
+        t
+    in
     Reader.ws t;
     let a =
       if Reader.peek t = Some ',' then (
-        Reader.skip t;
-        Reader.ws t;
+        Reader.comma t;
         read_alpha t)
       else None
     in
@@ -1191,60 +847,48 @@ let read_hwb t : color =
     Reader.expect t ')';
     Hwb { h = hue; w = Pct w; b = Pct b; a })
   else
-    (* Modern space-separated syntax *)
-    let w = read_percentage_float t in
-    Reader.ws t;
-    let b = read_percentage_float t in
+    let w, b =
+      Reader.pair ~sep:Reader.ws read_percentage_float read_percentage_float t
+    in
     let a = read_optional_alpha t in
     Reader.ws t;
     Reader.expect t ')';
     Hwb { h = hue; w = Pct w; b = Pct b; a }
 
-(** Read OKLCH function *)
 let read_oklch t : color =
-  (* Already consumed "oklch(" *)
   Reader.ws t;
-  let l = read_percentage_float t in
-  Reader.ws t;
-  let c = Reader.number t in
-  Reader.ws t;
-  let h = Reader.number t in
+  let l, c, h =
+    Reader.triple ~sep:Reader.ws read_percentage_float Reader.number
+      Reader.number t
+  in
   let alpha = read_optional_alpha t in
   Reader.ws t;
   Reader.expect t ')';
   Oklch { l = Pct l; c; h = Unitless h; alpha }
 
-(** Read OKLAB function *)
 let read_oklab t : color =
-  (* Already consumed "oklab(" *)
   Reader.ws t;
-  let l = read_percentage_float t in
-  Reader.ws t;
-  let a = Reader.number t in
-  Reader.ws t;
-  let b = Reader.number t in
+  let l, a, b =
+    Reader.triple ~sep:Reader.ws read_percentage_float Reader.number
+      Reader.number t
+  in
   let alpha = read_optional_alpha t in
   Reader.ws t;
   Reader.expect t ')';
   Oklab { l = Pct l; a; b; alpha }
 
-(** Read LCH function *)
 let read_lch t : color =
-  (* Already consumed "lch(" *)
   Reader.ws t;
-  let l = read_percentage_float t in
-  Reader.ws t;
-  let c = Reader.number t in
-  Reader.ws t;
-  let h = Reader.number t in
+  let l, c, h =
+    Reader.triple ~sep:Reader.ws read_percentage_float Reader.number
+      Reader.number t
+  in
   let alpha = read_optional_alpha t in
   Reader.ws t;
   Reader.expect t ')';
   Lch { l = Pct l; c; h = Unitless h; alpha }
 
-(** Read color() function *)
 let read_color_function t : color =
-  (* Already consumed "color(" *)
   Reader.ws t;
   let space = read_color_space t in
   Reader.ws t;
@@ -1262,17 +906,12 @@ let rec read_color t : color =
       let hex = read_hex_color t in
       Hex { hash = true; value = hex }
   | _ ->
-      if
-        (* Check for color functions *)
-        Reader.looking_at t "rgb(" || Reader.looking_at t "rgba("
-      then (
-        (* Parse rgb() or rgba() function - both legacy and modern syntax *)
+      if Reader.looking_at t "rgb(" || Reader.looking_at t "rgba(" then (
         let _ = Reader.ident t in
         (* consume "rgb" or "rgba" *)
         Reader.expect t '(';
         Reader.ws t;
 
-        (* Try space-separated first, then comma-separated *)
         match Reader.try_parse read_rgb_space_separated t with
         | Some result -> result
         | None -> read_rgb_comma_separated t)
@@ -1545,8 +1184,7 @@ and read_calc : type a. (Reader.t -> a) -> Reader.t -> a calc =
     Reader.ws t;
     let fallback =
       if Reader.peek t = Some ',' then (
-        Reader.skip t;
-        Reader.ws t;
+        Reader.comma t;
         (* Parse the fallback length value *)
         Some (read_a t))
       else None
@@ -1573,3 +1211,7 @@ let rec read_percentage t : percentage =
     let n = Reader.number t in
     Reader.expect t '%';
     Pct n
+
+(* Var helper functions *)
+let var_name v = v.name
+let var_layer v = v.layer

@@ -14,7 +14,7 @@ let rec one t =
     | Some selector ->
         ws t;
         (* Parse declaration block *)
-        let _declarations = Declaration.block t in
+        let _declarations = Css.Declaration.read_block t in
 
         (* ARCHITECTURAL LIMITATION: Creating placeholder rule with empty
            declarations because full declaration processing requires CSS type
@@ -48,7 +48,7 @@ and rules_only t =
     | Some selector ->
         ws t;
         (* Parse declaration block *)
-        let _declarations = Declaration.block t in
+        let _declarations = Css.Declaration.read_block t in
         (* Create a temporary rule with empty declarations *)
         (* The actual conversion to typed declarations happens in css_parser.ml *)
         let rule = Css.rule ~selector [] in

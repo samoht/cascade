@@ -773,6 +773,7 @@ type blend_mode =
   | Saturation
   | Color
   | Luminosity
+  | Var of blend_mode var
 
 (** CSS font-feature-settings values *)
 type font_feature_settings =
@@ -1062,7 +1063,7 @@ val visibility : visibility -> declaration
     property. *)
 
 (** CSS float side values. *)
-type float_side = None | Left | Right
+type float_side = None | Left | Right | Inline_start | Inline_end | Inherit
 
 val float : float_side -> declaration
 (** [float value] is the
@@ -1311,8 +1312,6 @@ type align_items =
   | Center
   | Start
   | End
-  | Self_start
-  | Self_end
   | Flex_start
   | Flex_end
   | Baseline
@@ -1320,22 +1319,18 @@ type align_items =
   | Last_baseline
   | Safe_center
   | Unsafe_center
-  | Inherit_align
+  | Inherit
   | Initial
   | Unset
-  | Revert
-  | Revert_layer
 
 (** CSS justify-content values. *)
 type justify_content =
-  | Normal
   | Flex_start
   | Flex_end
   | Center
   | Space_between
   | Space_around
   | Space_evenly
-  | Stretch
   | Start
   | End
   | Left
@@ -1344,22 +1339,33 @@ type justify_content =
 (** CSS align-self values. *)
 type align_self = Auto | Flex_start | Flex_end | Center | Baseline | Stretch
 
-(** CSS justify values (used by justify-self, justify-items, etc.). *)
-type justify = Auto | Start | End | Center | Stretch | Flex_start | Flex_end
-
-(** CSS align/justify values. *)
 type align =
-  | Flex_start
-  | Flex_end
+  | Normal
+  | Start
+  | End
   | Center
+  | Stretch
   | Space_between
   | Space_around
   | Space_evenly
+  | Var of align var
+
+(** CSS align/justify values. *)
+type justify =
+  | Auto
+  | Normal
   | Stretch
+  | Center
   | Start
   | End
+  | Flex_start
+  | Flex_end
+  | Self_start
+  | Self_end
+  | Left
+  | Right
   | Baseline
-  | Auto
+  | Inherit
 
 val flex_direction : flex_direction -> declaration
 (** [flex_direction value] is the
@@ -1451,29 +1457,27 @@ val column_gap : length -> declaration
 
 (** CSS grid track sizing *)
 type grid_track_size =
-  | Fr of float
-  | Min_max of length * grid_track_size
-  | Grid_auto
-  | Max_content
-  | Min_content
+  | Track_size of length
+  | MinMax of length * length
   | Fit_content of length
-  | Grid_length of length
+  | Repeat of int * grid_track_size list
+  | Auto
+  | Fr of float
 
 (** CSS grid template values *)
 type grid_template =
-  | Tracks of grid_track_size list
-  | Repeat of int * grid_track_size
-  | Repeat_auto_fill of grid_track_size
-  | Repeat_auto_fit of grid_track_size
   | None
-  | Inherit
+  | Tracks of grid_track_size list
+  | Named_tracks of (string option * grid_track_size) list
+  | Subgrid
+  | Masonry
 
 (** CSS grid line values *)
 type grid_line =
-  | Line_number of int  (** 1, 2, 3, ... or -1, -2, ... *)
-  | Line_name of string  (** "header-start", "main-end", etc. *)
-  | Span of int  (** span 2, span 3, etc. *)
   | Auto  (** auto *)
+  | Number of int  (** 1, 2, 3, ... or -1, -2, ... *)
+  | Name of string  (** "header-start", "main-end", etc. *)
+  | Span of int  (** span 2, span 3, etc. *)
 
 val grid_template_columns : grid_template -> declaration
 (** [grid_template_columns value] is the
@@ -1551,19 +1555,11 @@ val grid_area : string -> declaration
 (** CSS place-items values *)
 type place_items =
   | Normal
-  | Auto
-  | Stretch
-  | Center
   | Start
   | End
-  | Self_start
-  | Self_end
-  | Flex_start
-  | Flex_end
-  | Baseline
-  | First_baseline
-  | Last_baseline
-  | Inherit
+  | Center
+  | Stretch
+  | Align_justify of align_items * justify
 
 val place_items : place_items -> declaration
 (** [place_items value] is the
@@ -1572,6 +1568,7 @@ val place_items : place_items -> declaration
 
 (** CSS place-content values *)
 type place_content =
+  | Normal
   | Start
   | End
   | Center
@@ -1579,6 +1576,7 @@ type place_content =
   | Space_between
   | Space_around
   | Space_evenly
+  | Align_justify of align * justify
 
 val place_content : place_content -> declaration
 (** [place_content value] is the
@@ -1616,10 +1614,12 @@ type text_align = Left | Right | Center | Justify | Start | End | Inherit
 type text_decoration =
   | None
   | Underline
+  | Underline_dotted
   | Overline
   | Line_through
+  | Blink
   | Inherit
-  | Underline_dotted  (** underline dotted *)
+  | Var of text_decoration var
 
 (** CSS font style values. *)
 type font_style = Normal | Italic | Oblique | Inherit
@@ -1627,12 +1627,13 @@ type font_style = Normal | Italic | Oblique | Inherit
 (** CSS text transform values. *)
 type text_transform =
   | None
+  | Capitalize
   | Uppercase
   | Lowercase
-  | Capitalize
   | Full_width
   | Full_size_kana
   | Inherit
+  | Var of text_transform var
 
 (** CSS font-family values *)
 type font_family =
@@ -1727,6 +1728,8 @@ type font_family =
   | Inherit
   | Initial
   | Unset
+  (* Arbitrary font family name *)
+  | Name of string
   (* CSS variables *)
   | Var of font_family list var
 
@@ -1926,14 +1929,10 @@ val font_feature_settings : font_feature_settings -> declaration
 
 (** CSS shadow values *)
 type shadow =
-  | Shadow of {
-      inset : bool;
-      h_offset : length;
-      v_offset : length;
-      blur : length;
-      spread : length;
-      color : color;
-    }
+  | Simple of length * length * length option * length option * color option
+  | Inset of length * length * length option * length option * color option
+  | None
+  | Inherit
   | Var of shadow var
 
 val shadow :
@@ -1961,12 +1960,13 @@ val inset_ring_shadow :
     shadow value suitable for ring utilities. Defaults: h_offset=0px,
     v_offset=0px, blur=0px, spread=0px, color=Transparent *)
 
+type text_shadow = {
+  h_offset : length;
+  v_offset : length;
+  blur : length option;
+  color : color option;
+}
 (** CSS text-shadow values *)
-type text_shadow =
-  | Shadow of shadow
-  | Shadows of shadow list  (** Multiple text shadows *)
-  | None  (** No shadow *)
-  | Var of text_shadow var  (** Composed shadow variable *)
 
 val text_shadow : text_shadow -> declaration
 (** [text_shadow value] is the
@@ -1990,8 +1990,8 @@ val direction : direction -> declaration
 type unicode_bidi =
   | Normal
   | Embed
-  | Bidi_override
   | Isolate
+  | Bidi_override
   | Isolate_override
   | Plaintext
   | Inherit
@@ -2049,16 +2049,15 @@ type border_style =
 (** CSS outline style values. *)
 type outline_style =
   | None
-  | Auto
-  | Dotted
-  | Dashed
   | Solid
+  | Dashed
+  | Dotted
   | Double
   | Groove
   | Ridge
   | Inset
   | Outset
-  | Inherit
+  | Auto
 
 val border : string -> declaration
 (** [border value] is the
@@ -2208,10 +2207,7 @@ val border_collapse : border_collapse -> declaration
     @see <https://www.w3.org/TR/css-transitions-1/> CSS Transitions Level 1 *)
 
 (** CSS transform scale values *)
-type transform_scale =
-  | Num of float
-  | Pct of float
-  | Var of transform_scale var
+type transform_scale = Scale of float | ScaleXY of float * float
 
 (** CSS transform values *)
 type transform =
@@ -2219,22 +2215,22 @@ type transform =
   | Translate_x of length
   | Translate_y of length
   | Translate_z of length
-  | Translate3d of length * length * length
+  | Translate_3d of length * length * length
   | Rotate of angle
   | Rotate_x of angle
   | Rotate_y of angle
   | Rotate_z of angle
-  | Rotate3d of float * float * float * angle
-  | Scale of transform_scale * transform_scale option
+  | Rotate_3d of float * float * float * angle
+  | Scale of float * float option
   | Scale_x of transform_scale
   | Scale_y of transform_scale
   | Scale_z of transform_scale
-  | Scale3d of transform_scale * transform_scale * transform_scale
+  | Scale_3d of float * float * float
   | Skew of angle * angle option
   | Skew_x of angle
   | Skew_y of angle
-  | Matrix of (float * float * float * float * float * float)
-  | Matrix3d of
+  | Matrix of float * float * float * float * float * float
+  | Matrix_3d of
       (float
       * float
       * float
@@ -2273,11 +2269,11 @@ val rotate : angle -> declaration
 
 (** CSS scale property values *)
 type scale =
-  | String of string
-  | Num of float
-  | Pct of float
+  | Number of float
+  | XY of float * float
+  | XYZ of float * float * float
   | None
-  | Vars of transform_scale var list
+  | Var of scale var
 
 val scale : scale -> declaration
 (** [scale value] is the
@@ -2311,7 +2307,10 @@ type timing_function =
   | Ease_in_out
   | Step_start
   | Step_end
-  | Steps of int * [ `Start | `End ]
+  | Steps of
+      int
+      * [ `End | `Jump_both | `Jump_end | `Jump_none | `Jump_start | `Start ]
+        option
   | Cubic_bezier of float * float * float * float
 
 (** CSS duration values. *)
@@ -2323,14 +2322,17 @@ type duration =
 (** CSS transition property values. *)
 type transition_property = All | None | Property of string
 
+type transition = {
+  property : transition_property;
+  duration : duration option;
+  timing_function : timing_function option;
+  delay : duration option;
+}
 (** CSS transition values. *)
-type transition =
-  | Simple of transition_property * duration
-  | With_timing of transition_property * duration * timing_function
-  | With_delay of transition_property * duration * timing_function * duration
-  | Multiple of transition list
 
 val transition : transition -> declaration
+
+val transitions : transition list -> declaration
 (** [transition value] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transition} transition}
     property. *)
@@ -2351,21 +2353,16 @@ val transition_delay : duration -> declaration
      transition-delay} property. *)
 
 (** CSS animation fill mode values *)
-type animation_fill_mode = None | Forwards | Backwards | Both | Inherit
+type animation_fill_mode = None | Forwards | Backwards | Both
 
 (** CSS animation direction values *)
-type animation_direction =
-  | Normal
-  | Reverse
-  | Alternate
-  | Alternate_reverse
-  | Inherit
+type animation_direction = Normal | Reverse | Alternate | Alternate_reverse
 
 (** CSS animation play state values *)
-type animation_play_state = Running | Paused | Inherit
+type animation_play_state = Running | Paused
 
 (** CSS animation iteration count values *)
-type animation_iteration_count = Count of int | Infinite | Inherit
+type animation_iteration_count = Number of float | Infinite
 
 type animation = {
   name : string option;
@@ -2447,18 +2444,29 @@ val animation_play_state : animation_play_state -> declaration
 
 (** CSS box-shadow values *)
 type box_shadow =
-  | Shadow of shadow
-  | Shadows of shadow list
   | None
+  | Shadow of {
+      inset : bool;
+      h_offset : length;
+      v_offset : length;
+      blur : length option;
+      spread : length option;
+      color : color option;
+    }
+  | Shadows of box_shadow list  (** For multiple shadows *)
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of box_shadow var
 
 val box_shadow : box_shadow -> declaration
+
+val box_shadow_list : box_shadow list -> declaration
 (** [box_shadow values] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/box-shadow} box-shadow}
     property. *)
-
-val box_shadows : shadow list -> box_shadow
-(** [box_shadows lst] is multiple box-shadows. *)
 
 (** CSS number values (unitless numbers for filters, transforms, etc.) *)
 type number =
@@ -2530,40 +2538,42 @@ val background_blend_mode : blend_mode -> declaration
 type cursor =
   | Auto
   | Default
-  | Pointer
-  | Wait
-  | Text
-  | Move
-  | Help
-  | Not_allowed
   | None
   | Context_menu
+  | Help
+  | Pointer
   | Progress
+  | Wait
   | Cell
   | Crosshair
+  | Text
   | Vertical_text
   | Alias
   | Copy
+  | Move
   | No_drop
+  | Not_allowed
   | Grab
   | Grabbing
-  | All_scroll
-  | Col_resize
-  | Row_resize
-  | N_resize
   | E_resize
-  | S_resize
-  | W_resize
+  | N_resize
   | Ne_resize
   | Nw_resize
+  | S_resize
   | Se_resize
   | Sw_resize
+  | W_resize
   | Ew_resize
   | Ns_resize
   | Nesw_resize
   | Nwse_resize
+  | Col_resize
+  | Row_resize
+  | All_scroll
   | Zoom_in
   | Zoom_out
+  | Url of string * (float * float) option
+  | Inherit
 
 (** CSS user-select values. *)
 type user_select = None | Auto | Text | All | Contain
@@ -2619,7 +2629,7 @@ val resize : resize -> declaration
      aspect-ratio} property. *)
 
 (** CSS container-type values *)
-type container_type = Normal | Size | Inline_size | Inherit
+type container_type = Size | Inline_size | Normal
 
 val container_type : container_type -> declaration
 (** [container_type value] is the
@@ -2633,17 +2643,14 @@ val container_name : string -> declaration
 
 (** CSS contain values *)
 type contain =
-  | None  (** No containment *)
-  | Layout  (** Layout containment *)
-  | Style  (** Style containment *)
-  | Paint  (** Paint containment *)
-  | Size  (** Size containment *)
-  | Inline_size  (** Inline-size containment *)
-  | Block_size  (** Block-size containment *)
-  | Strict  (** Strict containment (layout + style + paint + size) *)
-  | Content  (** Content containment (layout + style + paint) *)
-  | Inherit  (** Inherit from parent *)
-  | Var of contain var  (** CSS variable reference *)
+  | None
+  | Strict
+  | Content
+  | Size
+  | Layout
+  | Style
+  | Paint
+  | List of contain list
 
 val contain : contain -> declaration
 (** [contain value] is the
@@ -2747,7 +2754,7 @@ type list_style_type =
   | Upper_roman
 
 (** CSS list-style-image values *)
-type list_style_image = None_img | Url of string | Inherit
+type list_style_image = None | Url of string | Inherit
 
 val list_style_type : list_style_type -> declaration
 (** [list_style_type lst] is the
@@ -3218,3 +3225,5 @@ val pp_justify_content : justify_content Pp.t
 module Pp = Pp
 module Reader = Reader
 module Values = Values
+module Properties = Properties
+module Declaration = Declaration

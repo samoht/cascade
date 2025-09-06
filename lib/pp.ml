@@ -193,3 +193,10 @@ let call name pp_args ctx args =
   char ctx ')'
 
 let call_list name pp_item = call name (list ~sep:comma pp_item)
+let call_2 name pp_a pp_b = call name (pair ~sep:comma pp_a pp_b)
+let call_3 name pp_a pp_b pp_c = call name (triple ~sep:comma pp_a pp_b pp_c)
+
+let url ctx s =
+  string ctx "url(\"";
+  string ctx s;
+  string ctx "\")"

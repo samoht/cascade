@@ -16,7 +16,5 @@ let of_string_exn s =
   | Error (Parse_error (msg, reader)) ->
       raise (Css.Reader.Parse_error (msg, reader))
 
-module Property = Property
 module Custom_property = Custom_property
-module Declaration = Declaration
 module Rule = Rule

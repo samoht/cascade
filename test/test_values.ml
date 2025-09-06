@@ -549,5 +549,28 @@ let suite =
         test_case "number var printing" `Quick test_number_var_printing;
         test_case "nested var() fallbacks roundtrip" `Quick
           test_nested_var_fallbacks_roundtrip;
+        (* Negative parses using try_parse to avoid brittle exceptions *)
+        test_case "negative values" `Quick (fun () ->
+            let open Css.Reader in
+            (* Invalid length unit *)
+            let r = of_string "10pp" in
+            check bool "invalid length" true
+              (Option.is_none (try_parse Css.Values.read_length r));
+            (* Angle without unit *)
+            let r = of_string "90" in
+            check bool "invalid angle" true
+              (Option.is_none (try_parse Css.Values.read_angle r));
+            (* Invalid duration unit *)
+            let r = of_string "10xs" in
+            check bool "invalid duration" true
+              (Option.is_none (try_parse Css.Values.read_duration r));
+            (* Percentage missing % sign *)
+            let r = of_string "10" in
+            check bool "invalid percentage" true
+              (Option.is_none (try_parse Css.Values.read_percentage r));
+            (* Unknown color keyword *)
+            let r = of_string "notacolor" in
+            check bool "invalid color keyword" true
+              (Option.is_none (try_parse Css.Values.read_color r)));
       ] );
   ]

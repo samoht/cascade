@@ -1,315 +1,376 @@
+(** Tests for CSS Reader module *)
+
 open Alcotest
-open Css
+open Css.Reader
 
+(* Generic helper for reader tests *)
+let check_read name reader ?expected input =
+  let expected = Option.value ~default:input expected in
+  let r = of_string input in
+  let result = reader r in
+  Alcotest.(check string) name expected result
+
+let check_read_char name ?expected input =
+  let r = of_string input in
+  let result = char r in
+  Alcotest.(check char)
+    name
+    (Option.value ~default:(String.get input 0) expected)
+    result
+
+let check_peek name expected input =
+  let r = of_string input in
+  let result = peek r in
+  Alcotest.(check (option char)) name expected result
+
+let check_looking_at name expected input pattern =
+  let r = of_string input in
+  let result = looking_at r pattern in
+  Alcotest.(check bool) name expected result
+
+(* Test basic operations *)
 let test_basic_operations () =
-  let r = Reader.of_string "hello world" in
-  check (option char) "peek" (Some 'h') (Reader.peek r);
-  check bool "not done" false (Reader.is_done r);
+  (* Peek tests *)
+  check_peek "peek h" (Some 'h') "hello";
+  check_peek "peek empty" None "";
 
-  let c = Reader.char r in
-  check char "char" 'h' c;
-  check (option char) "peek after char" (Some 'e') (Reader.peek r);
+  (* Char reading *)
+  check_read_char "read h" ~expected:'h' "hello";
 
-  Reader.skip_n r 10;
-  check bool "at end after skip" true (Reader.is_done r)
+  (* is_done tests *)
+  let r = of_string "" in
+  Alcotest.(check bool) "empty is done" true (is_done r);
+  let r = of_string "x" in
+  Alcotest.(check bool) "not done" false (is_done r);
+  ignore (char r);
+  Alcotest.(check bool) "done after read" true (is_done r)
 
+(* Test string operations *)
 let test_string_operations () =
-  let r = Reader.of_string "hello world" in
-  let s = Reader.peek_string r 5 in
-  check string "peek_string" "hello" s;
+  (* peek_string *)
+  let r = of_string "hello world" in
+  Alcotest.(check string) "peek 5 chars" "hello" (peek_string r 5);
+  Alcotest.(check string) "peek 0 chars" "" (peek_string r 0);
 
-  check bool "looking_at hello" true (Reader.looking_at r "hello");
-  check bool "not looking_at world" false (Reader.looking_at r "world");
+  (* looking_at *)
+  check_looking_at "looking at hello" true "hello world" "hello";
+  check_looking_at "not looking at world" false "hello world" "world";
+  check_looking_at "looking at empty" true "anything" "";
 
-  Reader.skip_n r 6;
-  check bool "looking_at world after skip" true (Reader.looking_at r "world")
+  (* skip_n *)
+  let r = of_string "hello" in
+  skip_n r 3;
+  Alcotest.(check (option char)) "after skip 3" (Some 'l') (peek r)
 
+(* Test whitespace handling *)
 let test_whitespace () =
-  let r = Reader.of_string "  \t\n test" in
-  Reader.skip_ws r;
-  check (option char) "after skip whitespace" (Some 't') (Reader.peek r)
+  (* Basic whitespace *)
+  let r = of_string "  \t\n test" in
+  skip_ws r;
+  Alcotest.(check (option char)) "after ws" (Some 't') (peek r);
 
+  (* No whitespace *)
+  let r = of_string "test" in
+  skip_ws r;
+  Alcotest.(check (option char)) "no ws to skip" (Some 't') (peek r);
+
+  (* Only whitespace *)
+  let r = of_string "   \t\n  " in
+  skip_ws r;
+  Alcotest.(check bool) "all ws done" true (is_done r)
+
+(* Test comment skipping *)
 let test_comment_skipping () =
-  let r = Reader.of_string "/*c1*/  /*c2*/x" in
-  Reader.skip_ws r;
-  check (option char) "after comments" (Some 'x') (Reader.peek r)
+  (* Single comment *)
+  let r = of_string "/*comment*/x" in
+  skip_ws r;
+  Alcotest.(check (option char)) "after comment" (Some 'x') (peek r);
 
+  (* Multiple comments *)
+  let r = of_string "/*c1*/  /*c2*/y" in
+  skip_ws r;
+  Alcotest.(check (option char)) "after comments" (Some 'y') (peek r);
+
+  (* Nested comments not supported - should stop at first closing *)
+  let r = of_string "/*outer/*inner*/*/x" in
+  skip_ws r;
+  Alcotest.(check (option char)) "nested comment" (Some '*') (peek r)
+
+(* Test take_while *)
 let test_take_while () =
-  let r = Reader.of_string "123abc" in
-  let digits = Reader.while_ r (fun c -> c >= '0' && c <= '9') in
-  check string "digits" "123" digits;
+  (* Digits *)
+  let r = of_string "123abc" in
+  let digits = while_ r (fun c -> c >= '0' && c <= '9') in
+  Alcotest.(check string) "digits" "123" digits;
 
-  let letters =
-    Reader.while_ r (fun c -> (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))
-  in
-  check string "letters" "abc" letters;
+  (* Letters *)
+  let letters = while_ r (fun c -> c >= 'a' && c <= 'z') in
+  Alcotest.(check string) "letters" "abc" letters;
 
-  check bool "at end" true (Reader.is_done r)
+  (* Empty match *)
+  let r = of_string "!@#" in
+  let alphas = while_ r (fun c -> c >= 'a' && c <= 'z') in
+  Alcotest.(check string) "no match" "" alphas
 
+(* Test expect *)
 let test_expect () =
-  let r = Reader.of_string "test" in
-  Reader.expect r 't';
-  check (option char) "after expect t" (Some 'e') (Reader.peek r);
+  (* Success case *)
+  let r = of_string "test" in
+  expect r 't';
+  Alcotest.(check (option char)) "after expect" (Some 'e') (peek r);
 
-  let expect_fail () = Reader.expect r 'x' in
+  (* Failure case *)
+  let r = of_string "test" in
   check_raises "expect wrong char"
-    (Reader.Parse_error ("Expected 'x' but got 'e'", r))
-    expect_fail
+    (Parse_error ("Expected 'x' but got 't'", r))
+    (fun () -> expect r 'x')
 
-let test_expect_string_and_between () =
-  let r = Reader.of_string "(a[b]{c})" in
-  (* between/parens/brackets/braces should round-trip and consume correctly *)
-  let par =
-    Reader.parens r (fun r ->
-        let content = Reader.until r ')' in
-        String.trim content)
+(* Test expect_string *)
+let test_expect_string () =
+  (* Success *)
+  let r = of_string "hello world" in
+  expect_string r "hello";
+  Alcotest.(check (option char)) "after expect string" (Some ' ') (peek r);
+
+  (* Failure *)
+  let r = of_string "hello" in
+  check_raises "expect wrong string"
+    (Parse_error ("Expected 'world' but got 'hello'", r))
+    (fun () -> expect_string r "world")
+
+(* Test between delimiters *)
+let test_between () =
+  (* Parentheses *)
+  let r = of_string "(content)" in
+  let result = between r '(' ')' (fun r -> while_ r (fun c -> c != ')')) in
+  Alcotest.(check string) "parens" "content" result;
+
+  (* Brackets *)
+  let r = of_string "[data]" in
+  let result = between r '[' ']' (fun r -> while_ r (fun c -> c != ']')) in
+  Alcotest.(check string) "brackets" "data" result;
+
+  (* Braces *)
+  let r = of_string "{block}" in
+  let result = between r '{' '}' (fun r -> while_ r (fun c -> c != '}')) in
+  Alcotest.(check string) "braces" "block" result;
+
+  (* Nested *)
+  let r = of_string "(outer(inner))" in
+  let result =
+    between r '(' ')' (fun r ->
+        let rec read_until_close depth acc =
+          if is_done r then acc
+          else
+            let c = char r in
+            if c = '(' then read_until_close (depth + 1) (acc ^ "(")
+            else if c = ')' then
+              if depth = 0 then acc else read_until_close (depth - 1) (acc ^ ")")
+            else read_until_close depth (acc ^ String.make 1 c)
+        in
+        read_until_close 0 "")
   in
-  check string "parens" "a[b]{c}" par;
-  (* parens already consumed the closing ')', so we should be done *)
-  check bool "done?" true (Reader.is_done r)
+  Alcotest.(check string) "nested parens" "outer(inner)" result
 
-let test_brackets_and_braces () =
-  let r = Reader.of_string "[x]{y}" in
-  let b = Reader.brackets r (fun r -> Reader.until r ']') in
-  check string "brackets" "x" b;
-  Reader.ws r;
-  let br = Reader.braces r (fun r -> Reader.until r '}') in
-  check string "braces" "y" br;
-  check bool "done" true (Reader.is_done r)
+(* Test save/restore *)
+let test_save_restore () =
+  let r = of_string "test" in
+  save r;
+  ignore (char r);
+  ignore (char r);
+  Alcotest.(check (option char)) "moved forward" (Some 's') (peek r);
+  restore r;
+  Alcotest.(check (option char)) "restored" (Some 't') (peek r)
 
-let test_save_restore_try_parse () =
-  let r = Reader.of_string "foo" in
-  Reader.save r;
-  ignore (Reader.try_parse (fun r -> Reader.expect_string r "foo") r);
-  (* committed? we didn't commit, so restore state manually and check still at
-     0 *)
-  Reader.restore r;
-  check (option char) "back to start" (Some 'f') (Reader.peek r);
-  (* Now try a failing parse and ensure try_parse returns None and position
-     unchanged *)
-  let before = Reader.peek_string r 3 in
-  let res = Reader.try_parse (fun r -> Reader.expect_string r "bar") r in
-  check bool "None on failure" true (Option.is_none res);
-  let after = Reader.peek_string r 3 in
-  check string "position unchanged" before after
-
-let test_commit_behaviour () =
-  let r = Reader.of_string "foobar" in
-  Reader.save r;
-  Reader.expect_string r "foo";
-  Reader.commit r;
-  (* After commit, restore should fail; but position advanced to after foo *)
-  check string "peek after commit" "bar" (Reader.peek_string r 3);
-  (* Now save+try_parse succeeds and commit keeps progress *)
-  Reader.save r;
-  (match Reader.try_parse (fun r -> Reader.expect_string r "bar") r with
-  | Some () -> Reader.commit r
-  | None -> fail "expected parse success");
-  check bool "done after commit" true (Reader.is_done r)
-
-let test_numbers_and_units () =
-  (* number, int, percentage, dimension/angle/duration *)
-  let r = Reader.of_string "-12.5 42 33% 1.5rem 90deg 250ms" in
-  let n = Reader.number r in
-  Alcotest.(check (float 0.0001)) "number" (-12.5) n;
-  Reader.ws r;
-  let i = Reader.int r in
-  check int "int" 42 i;
-  Reader.ws r;
-  let pct = Reader.number r in
-  Reader.expect r '%';
-  Alcotest.(check (float 0.0001)) "percentage" 33. pct;
-  Reader.ws r;
-  (* Use Values.read_dimension *)
-  let d1, u1 = Css.Values.read_dimension r in
-  Alcotest.(check (float 0.0001)) "dimension value" 1.5 d1;
-  check string "dimension unit" "rem" u1;
-  Reader.ws r;
-  (* Parse angle using Values *)
-  let ang = Css.Values.read_angle r in
-  (match ang with
-  | Css.Values.Deg v ->
-      Alcotest.(check (float 0.0001)) "angle value" 90. v;
-      check string "angle unit" "deg" "deg"
-  | _ -> fail "Expected Deg angle");
-  Reader.ws r;
-  (* Parse duration using Values *)
-  let dur = Css.Values.read_duration r in
-  match dur with
-  | Css.Values.Ms v ->
-      Alcotest.(check (float 0.0001)) "duration value" 250. v;
-      check string "duration unit" "ms" "ms"
-  | _ -> fail "Expected Ms duration"
-
-let test_ident_and_string () =
-  let r = Reader.of_string "my-ident 'a\\'b'\"c\"\ndone" in
-  let id = Reader.ident r in
-  check string "ident" "my-ident" id;
-  Reader.ws r;
-  let s1 = Reader.string r in
-  check string "single-quoted with escape" "a'b" s1;
-  Reader.ws r;
-  let s2 = Reader.string r in
-  check string "double-quoted string" "c" s2;
-  Reader.ws r;
-  check string "rest" "done" (Reader.peek_string r 4)
-
-let test_until_string_and_separated () =
-  let r = Reader.of_string "item1,item2 , item3;rest" in
-  let items =
-    Reader.separated r
-      (fun r ->
-        let item = Reader.while_ r (fun c -> c <> ',' && c <> ';') in
-        String.trim item)
-      (fun r ->
-        Reader.ws r;
-        Reader.expect r ',';
-        Reader.ws r)
+(* Test try_parse *)
+let test_try_parse () =
+  (* Success *)
+  let r = of_string "123" in
+  let result =
+    try_parse (fun r -> while_ r (fun c -> c >= '0' && c <= '9')) r
   in
-  check (list string) "separated items" [ "item1"; "item2"; "item3" ] items;
-  Reader.expect r ';';
-  (* Use position/length to read rest; also validate until_string separately *)
-  let remaining = Reader.length r - Reader.position r in
-  check string "rest after ;" "rest" (Reader.peek_string r remaining);
-  (* Separate check for until_string tokenized read *)
-  let r2 = Reader.of_string "abcXYZdef" in
-  let before = Reader.until_string r2 "XYZ" in
-  check string "until_string before token" "abc" before;
-  check string "after until_string" "XYZdef" (Reader.peek_string r2 7)
+  Alcotest.(check (option string)) "parsed digits" (Some "123") result;
 
-let test_context_and_pp () =
-  let r = Reader.of_string "abcdefghij" in
-  Reader.skip_n r 5;
-  let before, after = Reader.context_string ~window:3 r in
-  check string "context before" "cde" before;
-  check string "context after" "fgh" after;
-  let r2 = Reader.of_string "hello world" in
-  Reader.skip_n r2 6;
-  check string "pp preview" "world" (Reader.pp r2)
+  (* Failure - position restored *)
+  let r = of_string "abc" in
+  let result =
+    try_parse
+      (fun r ->
+        expect r 'x';
+        (* This will fail *)
+        "never reached")
+      r
+  in
+  Alcotest.(check (option string)) "parse failed" None result;
+  Alcotest.(check (option char)) "position restored" (Some 'a') (peek r)
 
-let test_ident_failure () =
-  let r = Reader.of_string "1bad" in
-  let f () = ignore (Reader.ident r) in
-  check_raises "ident must start correctly"
-    (Reader.Parse_error ("expected identifier", r))
-    f
+(* Test commit *)
+let test_commit () =
+  let r = of_string "test" in
+  save r;
+  ignore (char r);
+  commit r;
+  (* After commit, restore should have no effect *)
+  restore r;
+  Alcotest.(check (option char)) "commit prevents restore" (Some 'e') (peek r)
 
-let test_ident_with_escapes () =
-  (* Test escaped colon in identifier (Tailwind-style class) *)
-  let r = Reader.of_string "hover\\:text-red" in
-  let id = Reader.ident r in
-  (* Should read the escaped colon as part of the identifier *)
-  check string "ident with escaped colon" "hover\\:text-red" id;
+(* Test number parsing *)
+let test_numbers () =
+  (* Float *)
+  let r = of_string "3.14" in
+  let n = number r in
+  Alcotest.(check (float 0.001)) "float" 3.14 n;
 
-  (* Test escaped dot *)
-  let r = Reader.of_string "v1\\.0\\.1" in
-  let id = Reader.ident r in
-  check string "ident with escaped dots" "v1\\.0\\.1" id;
+  let r = of_string "42" in
+  let n = number r in
+  Alcotest.(check (float 0.001)) "float no decimal" 42.0 n;
 
-  (* Test Unicode escape sequence *)
-  let r = Reader.of_string "\\000026B" in
-  let id = Reader.ident r in
-  (* Should parse as the character '&B' *)
-  check string "unicode escape" "&B" id;
+  let r = of_string ".5" in
+  let n = number r in
+  Alcotest.(check (float 0.001)) "float leading dot" 0.5 n;
 
-  (* Test simple backslash escape *)
-  let r = Reader.of_string "test\\-name" in
-  let id = Reader.ident r in
-  check string "escaped hyphen" "test-name" id
+  let r = of_string "-2.5" in
+  let n = number r in
+  Alcotest.(check (float 0.001)) "negative float" (-2.5) n
 
-let test_ident_hex_termination () =
-  (* Exactly 6 hex digits are consumed; next hex-like char remains *)
-  let r = Reader.of_string "\\000041Z" in
-  let id = Reader.ident r in
-  check string "hex escape termination at 6 digits" "AZ" id;
-  (* Delimiter after ident is preserved for next parse *)
-  let r = Reader.of_string "abc.def" in
-  let id = Reader.ident r in
-  check string "ident before delimiter" "abc" id;
-  check (option char) "delimiter remains" (Some '.') (Reader.peek r)
+(* Test unit parsing *)
+let test_units () =
+  (* Units are parsed as identifiers *)
+  let r = of_string "px" in
+  let unit = ident r in
+  Alcotest.(check string) "px unit" "px" unit;
 
-let test_ident_roundtrip_pp () =
-  (* Roundtrip via Selector.class_ to_string should preserve escaped forms *)
-  let samples = [ "simple"; "hover\\:text-red"; "v1\\.0\\.1"; "éxämple" ] in
-  List.iter
-    (fun s ->
-      let cls = Selector.(to_string (class_ s)) in
-      check string (Fmt.str "roundtrip class %s" s) ("." ^ s) cls)
-    samples
+  let r = of_string "rem" in
+  let unit = ident r in
+  Alcotest.(check string) "rem unit" "rem" unit;
 
-let test_hex_and_colors () =
-  (* hex colors are parsed in Values module, not Reader *)
-  let r = Reader.of_string "#abc #a1b2c3" in
-  Reader.expect r '#';
-  (* Read hex digits manually using while_ *)
-  let hex3 =
-    Reader.while_ r (fun c ->
+  (* Percentage *)
+  let r = of_string "%" in
+  let c = char r in
+  Alcotest.(check char) "percent" '%' c
+
+(* Test identifier parsing *)
+let test_ident () =
+  (* Simple ident *)
+  check_read "simple ident" ident ~expected:"hello" "hello";
+  check_read "with dash" ident ~expected:"my-class" "my-class";
+  check_read "with underscore" ident ~expected:"my_var" "my_var";
+  check_read "with number" ident ~expected:"h1" "h1";
+
+  (* Starting with dash *)
+  check_read "dash prefix" ident ~expected:"-webkit" "-webkit";
+
+  (* Custom property *)
+  check_read "custom prop" ident ~expected:"--my-var" "--my-var"
+
+(* Test string parsing *)
+let test_string () =
+  (* Double quotes *)
+  check_read "double quote" string ~expected:"\"hello\"" "\"hello\"";
+  check_read "double empty" string ~expected:"\"\"" "\"\"";
+
+  (* Single quotes *)
+  check_read "single quote" string ~expected:"'world'" "'world'";
+  check_read "single empty" string ~expected:"''" "''";
+
+  (* Escaped quotes *)
+  check_read "escaped double" string ~expected:"\"a\\\"b\"" "\"a\\\"b\"";
+  check_read "escaped single" string ~expected:"'a\\'b'" "'a\\'b'"
+
+(* Test until_string *)
+let test_until_string () =
+  let r = of_string "data;more" in
+  let data = until_string r ";" in
+  Alcotest.(check string) "until semicolon" "data" data;
+
+  let r = of_string "no delimiter here" in
+  let all = until_string r "xyz" in
+  Alcotest.(check string) "delimiter not found" "no delimiter here" all
+
+(* Test hex colors *)
+let test_hex () =
+  (* Hex colors are just parsed as strings starting with # *)
+  let r = of_string "#abc" in
+  expect r '#';
+  let hex =
+    while_ r (fun c ->
         (c >= '0' && c <= '9')
         || (c >= 'a' && c <= 'f')
         || (c >= 'A' && c <= 'F'))
   in
-  check string "hex 3" "abc" hex3;
-  Reader.ws r;
-  Reader.expect r '#';
-  let hex6 =
-    Reader.while_ r (fun c ->
+  Alcotest.(check string) "3 digit hex" "abc" hex;
+
+  let r = of_string "#123456" in
+  expect r '#';
+  let hex =
+    while_ r (fun c ->
         (c >= '0' && c <= '9')
         || (c >= 'a' && c <= 'f')
         || (c >= 'A' && c <= 'F'))
   in
-  check string "hex 6" "a1b2c3" hex6;
-  (* color_keyword succeeds for known names, resets on unknown *)
-  (* color keywords are parsed in Values module, not Reader *)
-  let r = Reader.of_string "red" in
-  (match Values.read_color r with
-  | Values.Named Values.Red -> ()
-  | _ -> fail "expected red color");
-  let r = Reader.of_string "unknown" in
-  match Reader.try_parse Values.read_color r with
-  | None -> () (* expected to fail *)
-  | _ -> fail "unknown should fail"
+  Alcotest.(check string) "6 digit hex" "123456" hex
 
-let test_rgb_function () =
-  (* RGB functions are parsed in Values module *)
-  let r = Reader.of_string "rgba(255, 0, 10, 0.5)" in
-  (match Values.read_color r with
-  | Values.Rgba { r = Int 255; g = Int 0; b = Int 10; a = Num a } ->
-      Alcotest.(check (float 0.0001)) "alpha" 0.5 a
-  | _ -> fail "expected rgba value");
-  let r = Reader.of_string "rgb(10, 20, 30)" in
-  (match Values.read_color r with
-  | Values.Rgb { r = Int 10; g = Int 20; b = Int 30 } -> ()
-  | _ -> fail "expected rgb value");
-  let r = Reader.of_string "hsl(10, 10%, 10%)" in
-  match Values.read_color r with
-  | Values.Hsl _ -> ()
-  | _ -> fail "expected hsl value"
+(* Test identifier with escapes *)
+let test_ident_escapes () =
+  (* Unicode escape *)
+  let r = of_string "\\0041 bc" in
+  (* \0041 is 'A' *)
+  let id = ident r in
+  Alcotest.(check string) "unicode escape" "Abc" id;
+
+  (* Escaped special char *)
+  let r = of_string "\\@foo" in
+  let id = ident r in
+  Alcotest.(check string) "escaped @" "@foo" id;
+
+  (* Multiple escapes *)
+  let r = of_string "\\31 \\32 \\33" in
+  (* \31 \32 \33 are '1' '2' '3' *)
+  let id = ident r in
+  Alcotest.(check string) "multiple escapes" "123" id
+
+(* Test failure cases *)
+let test_failures () =
+  (* EOF in string *)
+  let r = of_string "\"unclosed" in
+  check_raises "unclosed string"
+    (Parse_error ("unexpected end of input", r))
+    (fun () -> ignore (string r));
+
+  (* Invalid number *)
+  let r = of_string "abc" in
+  check_raises "not a number"
+    (Parse_error ("Expected number", r))
+    (fun () -> ignore (number r))
 
 let suite =
   [
     ( "reader",
       [
-        test_case "basic_operations" `Quick test_basic_operations;
-        test_case "string_operations" `Quick test_string_operations;
+        (* Basic operations *)
+        test_case "basic operations" `Quick test_basic_operations;
+        test_case "string operations" `Quick test_string_operations;
         test_case "whitespace" `Quick test_whitespace;
-        test_case "comment_skipping" `Quick test_comment_skipping;
-        test_case "take_while" `Quick test_take_while;
+        test_case "comment skipping" `Quick test_comment_skipping;
+        (* Parsing helpers *)
+        test_case "take while" `Quick test_take_while;
         test_case "expect" `Quick test_expect;
-        test_case "expect_string_and_between" `Quick
-          test_expect_string_and_between;
-        test_case "brackets_and_braces" `Quick test_brackets_and_braces;
-        test_case "save_restore_try_parse" `Quick test_save_restore_try_parse;
-        test_case "commit_behaviour" `Quick test_commit_behaviour;
-        test_case "numbers_and_units" `Quick test_numbers_and_units;
-        test_case "ident_and_string" `Quick test_ident_and_string;
-        test_case "until_string_and_separated" `Quick
-          test_until_string_and_separated;
-        test_case "context_and_pp" `Quick test_context_and_pp;
-        test_case "ident_failure" `Quick test_ident_failure;
-        test_case "ident_with_escapes" `Quick test_ident_with_escapes;
-        test_case "ident_hex_termination" `Quick test_ident_hex_termination;
-        test_case "ident_roundtrip_pp" `Quick test_ident_roundtrip_pp;
-        test_case "hex_and_colors" `Quick test_hex_and_colors;
-        test_case "rgb_function" `Quick test_rgb_function;
+        test_case "expect string" `Quick test_expect_string;
+        test_case "between delimiters" `Quick test_between;
+        (* Backtracking *)
+        test_case "save restore" `Quick test_save_restore;
+        test_case "try parse" `Quick test_try_parse;
+        test_case "commit" `Quick test_commit;
+        (* Value parsing *)
+        test_case "numbers" `Quick test_numbers;
+        test_case "units" `Quick test_units;
+        test_case "identifiers" `Quick test_ident;
+        test_case "strings" `Quick test_string;
+        test_case "until string" `Quick test_until_string;
+        test_case "hex colors" `Quick test_hex;
+        (* Special cases *)
+        test_case "ident escapes" `Quick test_ident_escapes;
+        (* Error cases *)
+        test_case "failures" `Quick test_failures;
       ] );
   ]

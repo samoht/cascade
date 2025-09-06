@@ -222,6 +222,7 @@ let string t =
   in
   loop []
 
+let ident_lc t = String.lowercase_ascii (ident t)
 let is_digit c = c >= '0' && c <= '9'
 
 let number t =
@@ -313,3 +314,55 @@ let separated t parse_item parse_sep =
         if try_parse parse_sep t = Some () then loop acc else List.rev acc
   in
   loop []
+
+(* Helpers for reading function calls and simple combinators *)
+let comma t =
+  ws t;
+  expect t ',';
+  ws t
+
+let slash t =
+  ws t;
+  expect t '/';
+  ws t
+
+let pair ?(sep = fun (_ : t) -> ()) p1 p2 t =
+  let a = p1 t in
+  sep t;
+  let b = p2 t in
+  (a, b)
+
+let triple ?(sep = fun (_ : t) -> ()) p1 p2 p3 t =
+  let a = p1 t in
+  sep t;
+  let b = p2 t in
+  sep t;
+  let c = p3 t in
+  (a, b, c)
+
+let list ?(sep = fun (_ : t) -> ()) item t = separated t item sep
+
+(* Helpers for reading function calls *)
+let call name p t =
+  let got = ident t |> String.lowercase_ascii in
+  if got <> String.lowercase_ascii name then
+    err t ("expected function '" ^ name ^ "', got '" ^ got ^ "'")
+  else
+    parens t (fun t ->
+        ws t;
+        let r = p t in
+        ws t;
+        r)
+
+let call_2 name p1 p2 t = call name (pair ~sep:comma p1 p2) t
+let call_3 name p1 p2 p3 t = call name (triple ~sep:comma p1 p2 p3) t
+let call_list name item t = call name (fun t -> list ~sep:comma item t) t
+
+let url t =
+  call "url"
+    (fun t ->
+      ws t;
+      match peek t with
+      | Some ('"' | '\'') -> string t
+      | _ -> String.trim (until t ')'))
+    t

@@ -1,44 +1,10 @@
 (** CSS Selectors - types and pretty printing *)
 
+include Selector_intf
+
 (** Helper function for invalid identifiers *)
 let err_invalid_identifier name reason =
   invalid_arg (String.concat "" [ "CSS identifier '"; name; "' "; reason ])
-
-type attribute_match =
-  | Presence
-  | Exact of string
-  | Whitespace_list of string
-  | Hyphen_list of string
-  | Prefix of string
-  | Suffix of string
-  | Substring of string
-
-type combinator =
-  | Descendant
-  | Child
-  | Next_sibling
-  | Subsequent_sibling
-  | Column
-
-type ns = Any | None | Prefix of string
-type attr_flag = Case_insensitive | Case_sensitive
-
-type t =
-  | Element of ns option * string
-  | Class of string
-  | Id of string
-  | Universal of ns option
-  | Attribute of ns option * string * attribute_match * attr_flag option
-  | Pseudo_class of string
-  | Pseudo_element of string
-  | Pseudo_element_fun of string * t list
-  | Pseudo_element_fun_idents of string * string list
-  | Where of t list
-  | Not of t list
-  | Fun of string * t list
-  | Compound of t list (* Compound selector like div.class#id *)
-  | Combined of t * combinator * t (* Selectors with combinators *)
-  | List of t list (* Comma-separated list of selectors *)
 
 (* CSS identifier validation functions *)
 let is_valid_nmstart c =
@@ -406,7 +372,7 @@ and parse_selector_list_from_string s =
         Reader.ws sub;
         match Reader.peek sub with
         | Some ',' ->
-            Reader.skip sub;
+            Reader.comma sub;
             loop (sel :: acc)
         | None -> List.rev (sel :: acc)
         | _ -> List.rev (sel :: acc))
@@ -467,7 +433,6 @@ and read_complex t =
       | Some right -> combine left Descendant right
       | None -> left)
 
-(** Main selector parser - renamed to read to match Values convention *)
 let read t =
   Reader.ws t;
   let first = read_complex t in
@@ -475,8 +440,7 @@ let read t =
   let rec loop acc =
     match Reader.peek t with
     | Some ',' ->
-        Reader.skip t;
-        Reader.ws t;
+        Reader.comma t;
         let next = read_complex t in
         Reader.ws t;
         loop (next :: acc)
@@ -487,7 +451,6 @@ let read t =
 (** Parse selector, return [None] on failure. *)
 let read_opt t = Reader.try_parse read t
 
-(* Pretty printer for selectors *)
 let rec pp : t Pp.t =
  fun ctx -> function
   | Element (ns, name) ->
@@ -570,8 +533,6 @@ and pp_combinator ctx = function
 let to_string ?minify t = Pp.to_string ?minify pp t
 
 (* nth helpers *)
-type nth = Even | Odd | An_plus_b of int * int
-
 let pp_nth ctx = function
   | Even -> Pp.string ctx "even"
   | Odd -> Pp.string ctx "odd"

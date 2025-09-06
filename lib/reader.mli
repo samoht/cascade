@@ -62,6 +62,9 @@ val until_string : t -> string -> string
 val ident : t -> string
 (** [ident t] reads a CSS identifier. *)
 
+val ident_lc : t -> string
+(** [ident_lc t] reads an identifier and lowercases it. *)
+
 val string : t -> string
 (** [string t] reads a quoted string (handles escapes). *)
 
@@ -112,6 +115,44 @@ val braces : t -> (t -> 'a) -> 'a
 val separated : t -> (t -> 'a) -> (t -> unit) -> 'a list
 (** [separated t parse_item parse_sep] parses a list separated by [parse_sep].
 *)
+
+(** {1 Function Call Helpers} *)
+
+val comma : t -> unit
+(** [comma t] consumes a comma with surrounding optional whitespace. *)
+
+val slash : t -> unit
+(** [slash t] consumes a slash with surrounding optional whitespace. *)
+
+val pair : ?sep:(t -> unit) -> (t -> 'a) -> (t -> 'b) -> t -> 'a * 'b
+(** [pair ~sep p1 p2 t] parses [p1], optional [sep], then [p2]. Default [sep]
+    does nothing. *)
+
+val triple :
+  ?sep:(t -> unit) -> (t -> 'a) -> (t -> 'b) -> (t -> 'c) -> t -> 'a * 'b * 'c
+(** [triple ~sep p1 p2 p3 t] parses [p1], [sep], [p2], [sep], [p3]. Default
+    [sep] does nothing. *)
+
+val list : ?sep:(t -> unit) -> (t -> 'a) -> t -> 'a list
+(** [list ~sep item t] parses a list of [item] separated by [sep]. *)
+
+val call : string -> (t -> 'a) -> t -> 'a
+(** [call name p t] expects the ident [name] then parses [p] inside parentheses.
+*)
+
+val call_2 : string -> (t -> 'a) -> (t -> 'b) -> t -> 'a * 'b
+(** [call_2 name p1 p2 t] parses [name(a, b)] with comma separation. *)
+
+val call_3 : string -> (t -> 'a) -> (t -> 'b) -> (t -> 'c) -> t -> 'a * 'b * 'c
+(** [call_3 name p1 p2 p3 t] parses [name(a, b, c)] with comma separation. *)
+
+val call_list : string -> (t -> 'a) -> t -> 'a list
+(** [call_list name item t] parses [name(a, b, ...)] as a comma-separated list.
+*)
+
+val url : t -> string
+(** [url t] parses [url(...)] returning the inner content. Supports quoted or
+    unquoted content (unquoted is trimmed). *)
 
 (** {1 Character Predicates} *)
 

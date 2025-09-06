@@ -1,6 +1,8 @@
 (* Tests for CSS module *)
 open Css
 
+(* Basic helpers to standardize checks in this file, similar to other suites. *)
+
 (* Toplevel selectors for reuse *)
 let test = Selector.class_ "test"
 let responsive = Selector.class_ "responsive"
@@ -116,6 +118,14 @@ let debug_css ?(label = "") css_string expected_patterns =
     expected_patterns;
   Fmt.pr "==========================================@,@]@."
 
+(* Roundtrip: pp -> parse -> pp should be stable (minified) *)
+let check_css_roundtrip name sheet =
+  let s1 = to_string ~minify:true sheet in
+  let parsed = Css_parser.of_string_exn s1 in
+  let s2 = to_string ~minify:true parsed in
+  Alcotest.(check string) name s1 s2;
+  s1
+
 let test_property_creation () =
   let color_prop = color (Hex { hash = true; value = "ff0000" }) in
   let padding_prop = padding (Px 10.) in
@@ -128,8 +138,8 @@ let test_property_creation () =
     stylesheet
       [ Rule (rule ~selector:(Selector.class_ "test") [ padding_prop ]) ]
   in
-  let css1 = to_string sheet1 in
-  let css2 = to_string sheet2 in
+  let css1 = check_css_roundtrip "rt property creation 1" sheet1 in
+  let css2 = check_css_roundtrip "rt property creation 2" sheet2 in
 
   Alcotest.(check bool)
     "color property creates valid CSS" true
@@ -159,7 +169,7 @@ let test_property_deduplication () =
   let sheet =
     stylesheet [ Rule (rule ~selector:(Selector.class_ "test") deduped) ]
   in
-  let css = to_string sheet in
+  let css = check_css_roundtrip "rt merge rules" sheet in
 
   (* Should have blue, not red *)
   Alcotest.(check bool)
@@ -181,7 +191,7 @@ let test_minification () =
 
   let sheet = stylesheet [ Rule test_rule ] in
   let normal = to_string ~minify:false sheet in
-  let minified = to_string ~minify:true sheet in
+  let minified = check_css_roundtrip "rt minification" sheet in
 
   (* Minified should be shorter *)
   Alcotest.(check bool)
@@ -205,7 +215,7 @@ let test_media_query () =
   let rules = [ rule ~selector:responsive [ padding (Px 20.) ] ] in
   let mq = media ~condition:"(min-width: 768px)" rules in
   let sheet = stylesheet [ Media mq ] in
-  let output = to_string sheet in
+  let output = check_css_roundtrip "rt media query" sheet in
 
   (* Should contain media query *)
   Alcotest.(check bool)
@@ -243,10 +253,10 @@ let test_inline_style () =
   Alcotest.(check bool) "has semicolons" true (String.contains inline ';')
 
 let test_grid_template () =
-  let template_cols = Tracks [ Fr 1.0; Grid_length (Px 200.); Fr 2.0 ] in
+  let template_cols = Tracks [ Fr 1.0; Track_size (Px 200.); Fr 2.0 ] in
   let prop = grid_template_columns template_cols in
   let sheet = stylesheet [ Rule (rule ~selector:grid [ prop ]) ] in
-  let output = to_string sheet in
+  let output = check_css_roundtrip "rt grid template" sheet in
 
   (* Should contain grid template *)
   Alcotest.(check bool)
@@ -257,7 +267,7 @@ let test_container_query () =
   let rules = [ rule ~selector:container_item [ padding (Px 30.) ] ] in
   let cq = Css.container ~condition:"min-width: 400px" rules in
   let sheet = stylesheet [ Container cq ] in
-  let output = to_string sheet in
+  let output = check_css_roundtrip "rt container query" sheet in
 
   (* Should contain container query - check for both possible formats *)
   let has_container =
@@ -290,7 +300,7 @@ let test_animation () =
       }
   in
   let sheet = stylesheet [ Rule (rule ~selector:spin [ anim ]) ] in
-  let output = to_string sheet in
+  let output = check_css_roundtrip "rt animation" sheet in
 
   (* Should contain animation properties *)
   Alcotest.(check bool)
@@ -387,6 +397,7 @@ let test_layer_adjacent_rule_optimization () =
     layer ~name:"utilities" (List.map rule_to_nested s1_rules)
   in
   let stylesheet = stylesheet [ Layer utility_layer ] in
+  let _ = check_css_roundtrip "rt layer adjacent optimization" stylesheet in
 
   (* Generate CSS with and without optimization *)
   let css_optimized = to_string ~minify:true ~optimize:true stylesheet in
@@ -458,7 +469,8 @@ let test_non_adjacent_same_selector () =
 
   (* Test by converting to CSS and checking for separate .s1 rules *)
   let css =
-    to_string ~minify:true (stylesheet (List.map (fun r -> Rule r) merged))
+    check_css_roundtrip "rt non-adjacent same-selector"
+      (stylesheet (List.map (fun r -> Rule r) merged))
   in
   let s1_count = Astring.String.cuts ~sep:".s1{" css |> List.length |> pred in
   Alcotest.(check int) "both s1 rules in output" 2 s1_count
@@ -487,7 +499,8 @@ let test_no_merge_different_descendants () =
 
   (* Test by converting to CSS and checking structure *)
   let css =
-    to_string ~minify:true (stylesheet (List.map (fun r -> Rule r) merged))
+    check_css_roundtrip "rt no-merge different descendants"
+      (stylesheet (List.map (fun r -> Rule r) merged))
   in
   let s1_base_count =
     Astring.String.cuts ~sep:".s1{" css |> List.length |> pred
@@ -1068,7 +1081,9 @@ let test_order_preservation () =
   in
 
   let stylesheet = stylesheet (List.map (fun r -> Rule r) rules) in
+  let _ = check_css_roundtrip "rt order preservation base" stylesheet in
   let optimized = optimize stylesheet in
+  let _ = check_css_roundtrip "rt order preservation optimized" optimized in
   let css = to_string ~minify:true optimized in
 
   (* Verify selectors appear in original order, not alphabetically *)
@@ -1231,64 +1246,79 @@ let test_merge_prose_selectors () =
         "combined selector" expected_selector actual_selector
   | _ -> Alcotest.fail "Expected exactly 1 combined rule"
 
-let tests =
+let suite =
   [
-    ("property creation", `Quick, test_property_creation);
-    ("property deduplication", `Quick, test_property_deduplication);
-    ("minification", `Quick, test_minification);
-    ("media query", `Quick, test_media_query);
-    ("inline style", `Quick, test_inline_style);
-    (* calc expressions moved to test_values.ml *)
-    (* CSS variables moved to test_values.ml *)
-    ("grid template", `Quick, test_grid_template);
-    ("container query", `Quick, test_container_query);
-    ("var extraction", `Quick, test_var_extraction);
-    ("animation", `Quick, test_animation);
-    ("merge rules", `Quick, test_merge_rules);
-    ("adjacent same selector merge", `Quick, test_adjacent_same_selector_merge);
-    ( "optimize layer with adjacent rules",
-      `Quick,
-      test_layer_adjacent_rule_optimization );
-    ("no merge non-adjacent", `Quick, test_no_merge_non_adjacent);
-    ("non-adjacent same selector", `Quick, test_non_adjacent_same_selector);
-    ( "no merge diff_selectorerent descendants",
-      `Quick,
-      test_no_merge_different_descendants );
-    ("full optimization with layers", `Quick, test_full_optimization_with_layers);
-    (* pp float moved to test_values.ml *)
-    (* var with fallback moved to test_values.ml *)
-    (* CSS Optimization tests *)
-    ("layer precedence respected", `Quick, test_layer_precedence_respected);
-    ("source order within selector", `Quick, test_source_order_within_selector);
-    ("selector merging correctness", `Quick, test_merging_correctness);
-    ("non merging different rules", `Quick, test_non_merging_different_rules);
-    ("cascade with intervening", `Quick, test_cascade_with_intervening);
-    ("merge truly adjacent", `Quick, test_merge_truly_adjacent);
-    ("cascade order preservation", `Quick, test_cascade_order_preservation);
-    ("merge prose selectors", `Quick, test_merge_prose_selectors);
-    ("no merge by properties", `Quick, test_no_merge_by_properties);
-    ("combine identical rules", `Quick, test_combine_identical_rules);
-    ( "rules grouping breaks cascade order",
-      `Quick,
-      test_rules_grouping_cascade_bug );
-    (* New tests from optimize.md *)
-    ("no merge across @supports boundary", `Quick, test_no_merge_across_supports);
-    ("!important preservation", `Quick, test_important_preservation);
-    ("empty rules handling", `Quick, test_empty_rules_handling);
-    ( "optimize within nested contexts",
-      `Quick,
-      test_optimize_within_nested_contexts );
-    ("no duplicate last-child", `Quick, test_no_duplicate_last_child);
-    ("selector order preservation", `Quick, test_order_preservation);
-    ("no property-based reordering", `Quick, test_no_property_based_reordering);
-    ("no cross-context optimization", `Quick, test_no_cross_context_optimization);
-    ( "optimize_nested_rules preserves non-adjacent",
-      `Quick,
-      test_optimize_nested_non_adjacent );
-    ( "merge prose selectors with identical properties",
-      `Quick,
-      test_merge_prose_selectors );
-    (* selector-specific tests moved to test/css/test_selector.ml *)
+    ( "css",
+      [
+        Alcotest.test_case "property creation" `Quick test_property_creation;
+        Alcotest.test_case "property deduplication" `Quick
+          test_property_deduplication;
+        Alcotest.test_case "minification" `Quick test_minification;
+        Alcotest.test_case "media query" `Quick test_media_query;
+        Alcotest.test_case "inline style" `Quick test_inline_style;
+        (* calc expressions moved to test_values.ml *)
+        (* CSS variables moved to test_values.ml *)
+        Alcotest.test_case "grid template" `Quick test_grid_template;
+        Alcotest.test_case "container query" `Quick test_container_query;
+        Alcotest.test_case "var extraction" `Quick test_var_extraction;
+        Alcotest.test_case "animation" `Quick test_animation;
+        Alcotest.test_case "merge rules" `Quick test_merge_rules;
+        Alcotest.test_case "adjacent same selector merge" `Quick
+          test_adjacent_same_selector_merge;
+        Alcotest.test_case "optimize layer with adjacent rules" `Quick
+          test_layer_adjacent_rule_optimization;
+        Alcotest.test_case "no merge non-adjacent" `Quick
+          test_no_merge_non_adjacent;
+        Alcotest.test_case "non-adjacent same selector" `Quick
+          test_non_adjacent_same_selector;
+        Alcotest.test_case "no merge diff_selectorerent descendants" `Quick
+          test_no_merge_different_descendants;
+        Alcotest.test_case "full optimization with layers" `Quick
+          test_full_optimization_with_layers;
+        (* pp float moved to test_values.ml *)
+        (* var with fallback moved to test_values.ml *)
+        (* CSS Optimization tests *)
+        Alcotest.test_case "layer precedence respected" `Quick
+          test_layer_precedence_respected;
+        Alcotest.test_case "source order within selector" `Quick
+          test_source_order_within_selector;
+        Alcotest.test_case "selector merging correctness" `Quick
+          test_merging_correctness;
+        Alcotest.test_case "non merging different rules" `Quick
+          test_non_merging_different_rules;
+        Alcotest.test_case "cascade with intervening" `Quick
+          test_cascade_with_intervening;
+        Alcotest.test_case "merge truly adjacent" `Quick
+          test_merge_truly_adjacent;
+        Alcotest.test_case "cascade order preservation" `Quick
+          test_cascade_order_preservation;
+        Alcotest.test_case "merge prose selectors" `Quick
+          test_merge_prose_selectors;
+        Alcotest.test_case "no merge by properties" `Quick
+          test_no_merge_by_properties;
+        Alcotest.test_case "combine identical rules" `Quick
+          test_combine_identical_rules;
+        Alcotest.test_case "rules grouping breaks cascade order" `Quick
+          test_rules_grouping_cascade_bug;
+        (* New tests from optimize.md *)
+        Alcotest.test_case "no merge across @supports boundary" `Quick
+          test_no_merge_across_supports;
+        Alcotest.test_case "!important preservation" `Quick
+          test_important_preservation;
+        Alcotest.test_case "empty rules handling" `Quick
+          test_empty_rules_handling;
+        Alcotest.test_case "optimize within nested contexts" `Quick
+          test_optimize_within_nested_contexts;
+        Alcotest.test_case "no duplicate last-child" `Quick
+          test_no_duplicate_last_child;
+        Alcotest.test_case "selector order preservation" `Quick
+          test_order_preservation;
+        Alcotest.test_case "no property-based reordering" `Quick
+          test_no_property_based_reordering;
+        Alcotest.test_case "no cross-context optimization" `Quick
+          test_no_cross_context_optimization;
+        Alcotest.test_case "optimize_nested_rules preserves non-adjacent" `Quick
+          test_optimize_nested_non_adjacent;
+        (* selector-specific tests moved to test/css/test_selector.ml *)
+      ] );
   ]
-
-let suite = [ ("css", tests) ]

@@ -1,9 +1,8 @@
 open Alcotest
-open Css_parser
 
 let test_one () =
   let r = Css.Reader.of_string "color: red;" in
-  match Declaration.one r with
+  match Css.Declaration.read_declaration r with
   | Some (name, value, important) ->
       check string "property" "color" name;
       check string "value" "red" value;
@@ -12,7 +11,7 @@ let test_one () =
 
 let test_one_important () =
   let r = Css.Reader.of_string "margin: 10px !important;" in
-  match Declaration.one r with
+  match Css.Declaration.read_declaration r with
   | Some (name, value, important) ->
       check string "property" "margin" name;
       check string "value" "10px" value;
@@ -23,7 +22,7 @@ let test_declarations () =
   let r =
     Css.Reader.of_string "color: red; margin: 10px; padding: 5px !important"
   in
-  let decls = Declaration.declarations r in
+  let decls = Css.Declaration.read_declarations r in
   check int "count" 3 (List.length decls);
 
   let name1, value1, imp1 = List.nth decls 0 in
@@ -38,7 +37,7 @@ let test_declarations () =
 
 let test_block () =
   let r = Css.Reader.of_string "{ color: blue; display: block; }" in
-  let decls = Declaration.block r in
+  let decls = Css.Declaration.read_block r in
   check int "count" 2 (List.length decls);
 
   let name1, value1, _ = List.nth decls 0 in
@@ -47,7 +46,7 @@ let test_block () =
 
 let test_empty () =
   let r = Css.Reader.of_string "" in
-  let decls = Declaration.declarations r in
+  let decls = Css.Declaration.read_declarations r in
   check int "empty" 0 (List.length decls)
 
 let test_missing_semicolon_and_strings () =
@@ -56,14 +55,14 @@ let test_missing_semicolon_and_strings () =
   let r =
     Css.Reader.of_string "content: \"a\\\"b\"; width: calc(100% - 10px)"
   in
-  (match Declaration.one r with
+  (match Css.Declaration.read_declaration r with
   | Some (n, v, imp) ->
       check string "prop1" "content" n;
       check string "val1" "\"a\\\"b\"" v;
       check bool "imp1" false imp
   | None -> fail "expected first decl");
   let _ = Css.Reader.ws r in
-  match Declaration.one r with
+  match Css.Declaration.read_declaration r with
   | Some (n, v, _) ->
       check string "prop2" "width" n;
       check string "val2" "calc(100% - 10px)" v
@@ -75,7 +74,7 @@ let test_block_nested_and_important () =
       "{ padding: 10px !important; background: url(x.png), \
        linear-gradient(red, blue); }"
   in
-  let decls = Declaration.block r in
+  let decls = Css.Declaration.read_block r in
   check int "count" 2 (List.length decls);
   let n1, _v1, i1 = List.nth decls 0 in
   check string "name1" "padding" n1;
