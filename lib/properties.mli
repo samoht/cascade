@@ -1,5 +1,6 @@
 (** CSS properties: types and helpers. *)
 
+open Values
 include module type of Properties_intf
 
 val pp_property : 'a property Pp.t
@@ -340,12 +341,6 @@ val read_font_variation_settings : Reader.t -> font_variation_settings
 (** [read_font_variation_settings t] is the [font_variation_settings] parsed
     from [t]. *)
 
-val pp_transform_scale : transform_scale Pp.t
-(** [pp_transform_scale] is the pretty-printer for [transform_scale]. *)
-
-val read_transform_scale : Reader.t -> transform_scale
-(** [read_transform_scale t] is the [transform_scale] parsed from [t]. *)
-
 val pp_transform : transform Pp.t
 (** [pp_transform] is the pretty-printer for [transform]. *)
 
@@ -450,6 +445,26 @@ val read_box_shadow : Reader.t -> box_shadow
 
 val read_box_shadows : Reader.t -> box_shadow list
 (** [read_box_shadows t] parses a comma-separated list of [box_shadow]s. *)
+
+val pp_position_2d : position_2d Pp.t
+(** [pp_position_2d] pretty-prints a 2D position. Special case: [Center, Center]
+    prints as "center". *)
+
+val pp_transform_origin : transform_origin Pp.t
+(** [pp_transform_origin] pretty-prints a transform-origin value. *)
+
+val pos_left : position_2d
+(** Position helpers (shorter than direct variants) *)
+
+val pos_right : position_2d
+val pos_top : position_2d
+val pos_bottom : position_2d
+
+val origin : position_component -> position_component -> transform_origin
+(** Transform origin helpers (shorter than direct constructors) *)
+
+val origin3d :
+  position_component -> position_component -> length -> transform_origin
 
 val pp_text_shadow : text_shadow Pp.t
 (** [pp_text_shadow] is the pretty-printer for [text_shadow]. *)
@@ -711,8 +726,6 @@ val read_text_decoration_skip_ink : Reader.t -> text_decoration_skip_ink
     from [t]. *)
 
 (** {2 Helper functions for property types} *)
-
-open Values
 
 val shadow :
   ?inset:bool ->

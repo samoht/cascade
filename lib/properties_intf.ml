@@ -153,7 +153,7 @@ type place_items =
   | Align_justify of align_items * justify
 
 (* Grid Types *)
-type grid_auto_flow = Row | Column | Row_dense | Column_dense
+type grid_auto_flow = Row | Column | Dense | Row_dense | Column_dense
 
 type grid_track_size =
   | Track_size of length
@@ -174,18 +174,19 @@ type grid_line = Auto | Number of int | Name of string | Span of int
 type aspect_ratio = Auto | Ratio of float * float | Inherit
 type font_style = Normal | Italic | Oblique | Inherit
 type text_align = Left | Right | Center | Justify | Start | End | Inherit
+type text_decoration_line = Underline | Overline | Line_through
+type text_decoration_style = Solid | Double | Dotted | Dashed | Wavy | Inherit
 
 type text_decoration =
   | None
-  | Underline
-  | Underline_dotted
-  | Overline
-  | Line_through
-  | Blink
+  | Shorthand of {
+      lines : text_decoration_line list;
+      style : text_decoration_style option;
+      color : color option;
+      thickness : length option;
+    }
   | Inherit
   | Var of text_decoration var
-
-type text_decoration_style = Solid | Double | Dotted | Dashed | Wavy | Inherit
 
 type text_transform =
   | None
@@ -409,8 +410,6 @@ type font_variation_settings =
   | Var of font_variation_settings var
 
 (* Transform & Animation Types *)
-type transform_scale = Scale of float | ScaleXY of float * float
-
 type transform =
   | Translate of length * length option
   | Translate_x of length
@@ -423,9 +422,9 @@ type transform =
   | Rotate_z of angle
   | Rotate_3d of float * float * float * angle
   | Scale of float * float option
-  | Scale_x of transform_scale
-  | Scale_y of transform_scale
-  | Scale_z of transform_scale
+  | Scale_x of float
+  | Scale_y of float
+  | Scale_z of float
   | Scale_3d of float * float * float
   | Skew of angle * angle option
   | Skew_x of angle
@@ -539,7 +538,6 @@ type box_shadow =
       spread : length option;
       color : color option;
     }
-  | Shadows of box_shadow list (* For multiple shadows *)
   | Inherit
   | Initial
   | Unset
@@ -547,12 +545,15 @@ type box_shadow =
   | Revert_layer
   | Var of box_shadow var
 
-type text_shadow = {
-  h_offset : length;
-  v_offset : length;
-  blur : length option;
-  color : color option;
-}
+type text_shadow =
+  | None
+  | Text_shadow of {
+      h_offset : length;
+      v_offset : length;
+      blur : length option;
+      color : color option;
+    }
+  | Inherit
 
 type filter =
   | None
@@ -756,6 +757,7 @@ type webkit_appearance =
   | Radio
   | Push_button
   | Square_button
+  | Inherit
 
 type webkit_font_smoothing =
   | Auto
@@ -773,6 +775,26 @@ type appearance = None | Auto | Button | Textfield | Menulist | Inherit
 type clear = None | Left | Right | Both
 type float_side = None | Left | Right | Inline_start | Inline_end | Inherit
 type text_decoration_skip_ink = Auto | None | All | Inherit
+
+type position_component =
+  | Left
+  | Center
+  | Right
+  | Top
+  | Bottom
+  | Length of length
+  | Percentage of float
+
+type position_2d =
+  | Center
+  | XY of position_component * position_component
+  | Inherit
+
+type transform_origin =
+  | Center
+  | XY of position_component * position_component
+  | XYZ of position_component * position_component * length
+  | Inherit
 
 (* Property type definition *)
 type 'a property =
@@ -912,7 +934,7 @@ type 'a property =
   | Perspective_origin : string property
   | Transform_style : transform_style property
   | Backface_visibility : backface_visibility property
-  | Object_position : string property
+  | Object_position : position_2d property
   | Rotate : angle property
   | Transition_duration : duration property
   | Transition_timing_function : timing_function property
@@ -926,7 +948,7 @@ type 'a property =
   | Border_right : string property
   | Border_bottom : string property
   | Border_left : string property
-  | Transform_origin : string property
+  | Transform_origin : transform_origin property
   | Text_shadow : text_shadow list property
   | Clip_path : string property
   | Mask : string property
@@ -939,7 +961,7 @@ type 'a property =
   | Overflow_y : overflow property
   | Vertical_align : vertical_align property
   | Font_family : font_family list property
-  | Background_position : string property
+  | Background_position : position_2d list property
   | Background_repeat : background_repeat property
   | Background_size : background_size property
   | Webkit_font_smoothing : webkit_font_smoothing property

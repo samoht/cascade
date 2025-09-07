@@ -725,13 +725,19 @@ val lcha : float -> float -> float -> float -> color
 (** [lcha l c h a] is an LCH color with alpha in [0., 1.]. *)
 
 val color_name : color_name -> color
-(** [color_name n] is a named color. *)
+(** [color_name n] is a named color as defined in the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/named-color} CSS Color
+     specification}. *)
 
 val current_color : color
-(** [current_color] is the CSS [currentcolor] value. *)
+(** [current_color] is the CSS
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/color_value#currentcolor_keyword}
+     currentcolor} value. *)
 
 val transparent : color
-(** [transparent] is the CSS [transparent] value. *)
+(** [transparent] is the CSS
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/color_value#transparent_keyword}
+     transparent} value. *)
 
 val color_mix :
   ?in_space:color_space ->
@@ -741,8 +747,10 @@ val color_mix :
   color ->
   color ->
   color
-(** [color_mix ?in_space ?percent1 ?percent2 c1 c2] is a color-mix value.
-    Defaults: [in_space = Srgb], [percent1 = None], [percent2 = None]. *)
+(** [color_mix ?in_space ?percent1 ?percent2 c1 c2] is a
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/color-mix}
+     color-mix} value. Defaults: [in_space = Srgb], [percent1 = None],
+    [percent2 = None]. *)
 
 (** CSS angle values *)
 type angle =
@@ -1113,7 +1121,31 @@ val object_fit : object_fit -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/object-fit} object-fit}
     property. *)
 
-val object_position : string -> declaration
+(** One axis of a 2D position. *)
+type position_component =
+  | Left
+  | Center
+  | Right
+  | Top
+  | Bottom
+  | Length of length  (** Absolute length (e.g., [Px 10.]). *)
+  | Percentage of float  (** Percentage (e.g., [Percentage 50.]). *)
+
+type position_2d =
+  | Center
+  | XY of position_component * position_component
+  | Inherit
+      (** 2D positions (x, y). Special case: [Center, Center] pretty-prints as
+          "center". *)
+
+val pos_left : position_2d
+(** Position helpers (only when shorter than direct variants) *)
+
+val pos_right : position_2d
+val pos_top : position_2d
+val pos_bottom : position_2d
+
+val object_position : position_2d -> declaration
 (** [object_position value] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/object-position}
      object-position} property. *)
@@ -1240,7 +1272,7 @@ val background_image : background_image -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background-image}
      background-image} property. *)
 
-val background_position : string -> declaration
+val background_position : position_2d list -> declaration
 (** [background_position value] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background-position}
      background-position} property. *)
@@ -1510,7 +1542,7 @@ val grid_auto_rows : grid_template -> declaration
      grid-auto-rows} property. *)
 
 (** CSS grid-auto-flow values *)
-type grid_auto_flow = Row | Column | Row_dense | Column_dense
+type grid_auto_flow = Row | Column | Dense | Row_dense | Column_dense
 
 val grid_auto_flow : grid_auto_flow -> declaration
 (** [grid_auto_flow value] is the
@@ -1611,13 +1643,18 @@ type font_weight =
 type text_align = Left | Right | Center | Justify | Start | End | Inherit
 
 (** CSS text decoration values. *)
+type text_decoration_line = Underline | Overline | Line_through
+
+type text_decoration_style = Solid | Double | Dotted | Dashed | Wavy | Inherit
+
 type text_decoration =
   | None
-  | Underline
-  | Underline_dotted
-  | Overline
-  | Line_through
-  | Blink
+  | Shorthand of {
+      lines : text_decoration_line list;
+      style : text_decoration_style option;
+      color : color option;
+      thickness : length option;
+    }
   | Inherit
   | Var of text_decoration var
 
@@ -1832,8 +1869,6 @@ val text_size_adjust : string -> declaration
      text-size-adjust} property. *)
 
 (** CSS text-decoration-style values *)
-type text_decoration_style = Solid | Double | Dotted | Dashed | Wavy | Inherit
-
 val text_decoration_style : text_decoration_style -> declaration
 (** [text_decoration_style value] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration-style}
@@ -1960,13 +1995,15 @@ val inset_ring_shadow :
     shadow value suitable for ring utilities. Defaults: h_offset=0px,
     v_offset=0px, blur=0px, spread=0px, color=Transparent *)
 
-type text_shadow = {
-  h_offset : length;
-  v_offset : length;
-  blur : length option;
-  color : color option;
-}
-(** CSS text-shadow values *)
+type text_shadow =
+  | None
+  | Text_shadow of {
+      h_offset : length;
+      v_offset : length;
+      blur : length option;
+      color : color option;
+    }
+  | Inherit  (** CSS text-shadow values *)
 
 val text_shadow : text_shadow -> declaration
 (** [text_shadow value] is the
@@ -2206,9 +2243,6 @@ val border_collapse : border_collapse -> declaration
     @see <https://www.w3.org/TR/css-animations-1/> CSS Animations Level 1
     @see <https://www.w3.org/TR/css-transitions-1/> CSS Transitions Level 1 *)
 
-(** CSS transform scale values *)
-type transform_scale = Scale of float | ScaleXY of float * float
-
 (** CSS transform values *)
 type transform =
   | Translate of length * length option
@@ -2222,9 +2256,9 @@ type transform =
   | Rotate_z of angle
   | Rotate_3d of float * float * float * angle
   | Scale of float * float option
-  | Scale_x of transform_scale
-  | Scale_y of transform_scale
-  | Scale_z of transform_scale
+  | Scale_x of float
+  | Scale_y of float
+  | Scale_z of float
   | Scale_3d of float * float * float
   | Skew of angle * angle option
   | Skew_x of angle
@@ -2257,7 +2291,19 @@ val transform : transform list -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transform} transform}
     property with a list of transformations. *)
 
-val transform_origin : string -> declaration
+type transform_origin =
+  | Center
+  | XY of position_component * position_component
+  | XYZ of position_component * position_component * length
+  | Inherit  (** Transform origin (2D or 3D). *)
+
+val origin : position_component -> position_component -> transform_origin
+(** Transform origin helpers (shorter than direct constructors) *)
+
+val origin3d :
+  position_component -> position_component -> length -> transform_origin
+
+val transform_origin : transform_origin -> declaration
 (** [transform_origin value] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transform-origin}
      transform-origin} property. *)
@@ -2453,7 +2499,6 @@ type box_shadow =
       spread : length option;
       color : color option;
     }
-  | Shadows of box_shadow list  (** For multiple shadows *)
   | Inherit
   | Initial
   | Unset
@@ -2685,6 +2730,7 @@ type webkit_appearance =
   | Radio  (** Radio button appearance *)
   | Push_button  (** Push button appearance *)
   | Square_button  (** Square button appearance *)
+  | Inherit  (** Inherit from parent *)
 
 (** CSS -webkit-font-smoothing values. *)
 type webkit_font_smoothing =
@@ -2993,7 +3039,6 @@ type _ kind =
   | Scroll_snap_strictness : scroll_snap_strictness kind
   | Angle : angle kind
   | Shadow : shadow kind
-  | Transform_scale : transform_scale kind
   | Box_shadow : box_shadow kind
   | Content : content kind
 

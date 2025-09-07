@@ -113,16 +113,88 @@ let read_text_align t : text_align =
   | "inherit" -> Inherit
   | _ -> err_invalid_value t "text-align" v
 
-let read_text_decoration t : text_decoration =
+let read_text_decoration_line t : text_decoration_line =
   let v = ident t in
   match String.lowercase_ascii v with
-  | "none" -> None
   | "underline" -> Underline
-  | "underline dotted" -> Underline_dotted
   | "overline" -> Overline
   | "line-through" -> Line_through
+  | _ -> err_invalid_value t "text-decoration-line" v
+
+let read_text_decoration_style t : text_decoration_style =
+  let v = ident t in
+  match String.lowercase_ascii v with
+  | "solid" -> Solid
+  | "double" -> Double
+  | "dotted" -> Dotted
+  | "dashed" -> Dashed
+  | "wavy" -> Wavy
   | "inherit" -> Inherit
-  | _ -> err_invalid_value t "text-decoration" v
+  | _ -> err_invalid_value t "text-decoration-style" v
+
+let read_text_decoration t : text_decoration =
+  (* Parse full MDN shorthand: [<text-decoration-line>#] ||
+     <text-decoration-style> || <color> || <length [from-font]> *)
+  ws t;
+  (* CSS-wide keyword *)
+  Reader.save t;
+  match Reader.try_parse ident_lc t with
+  | Some v when v = "inherit" -> Inherit
+  | Some v when v = "none" -> None
+  | Some _ ->
+      (* Put back the token for generic parsing *)
+      Reader.restore t;
+      (* We'll gather components in any order *)
+      let lines = ref [] in
+      let style = ref (None : text_decoration_style option) in
+      let color = ref (None : color option) in
+      let thickness = ref (None : length option) in
+      let rec loop () =
+        ws t;
+        if is_done t then ()
+        else
+          (* Try line(s) *)
+          match Reader.try_parse read_text_decoration_line t with
+          | Some l ->
+              lines := !lines @ [ l ];
+              loop ()
+          | None -> (
+              (* Try style *)
+              match Reader.try_parse read_text_decoration_style t with
+              | Some s ->
+                  (match !style with None -> style := Some s | Some _ -> ());
+                  loop ()
+              | None -> (
+                  (* Try color *)
+                  match !color with
+                  | None -> (
+                      match Reader.try_parse Values.read_color t with
+                      | Some c ->
+                          color := Some c;
+                          loop ()
+                      | None -> (
+                          (* Try thickness as length *)
+                          match !thickness with
+                          | None -> (
+                              match Reader.try_parse Values.read_length t with
+                              | Some l ->
+                                  thickness := Some l;
+                                  loop ()
+                              | None -> ())
+                          | Some _ -> loop ()))
+                  | Some _ -> loop ()))
+      in
+      (* Reset reader position to before the first token we examined *)
+      (* Note: we used Reader.restore above to undo first ident; continue parsing now *)
+      loop ();
+      Shorthand
+        {
+          lines = !lines;
+          style = !style;
+          color = !color;
+          thickness = !thickness;
+        }
+  | None -> err_invalid_value t "text-decoration" "<empty>"
 
 let read_text_transform t : text_transform =
   let v = ident t in
@@ -187,30 +259,236 @@ let read_cursor t : cursor =
   | _ -> err_invalid_value t "cursor" v
 
 let read_box_shadow t : box_shadow =
-  (* Simplified - just read none for now *)
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "none" ->
-      Shadow
-        {
-          inset = false;
-          h_offset = Px 0.;
-          v_offset = Px 0.;
-          blur = None;
-          spread = None;
-          color = None;
-        }
-  | _ -> err_invalid_value t "box-shadow" v
+  let open Option in
+  skip_ws t;
+  (* Check for specific keywords first without consuming other identifiers *)
+  if looking_at t "none" then (
+    expect_string t "none";
+    None)
+  else if looking_at t "inherit" then (
+    expect_string t "inherit";
+    Inherit)
+  else if looking_at t "inset" then (
+    expect_string t "inset";
+    (* Handle inset shadow *)
+    skip_ws t;
+    let color_opt = ref None in
+    let h_offset = ref None in
+    let v_offset = ref None in
+    let blur_opt = ref None in
+    let spread_opt = ref None in
+
+    (* Try to read color first (it can be after inset) *)
+    (match try_parse read_color t with
+    | Some c ->
+        color_opt := Some c;
+        skip_ws t
+    | None -> ());
+
+    (* Read h-offset and v-offset (required) *)
+    h_offset := Some (read_length t);
+    skip_ws t;
+    v_offset := Some (read_length t);
+    skip_ws t;
+
+    (* Try to read blur (optional) *)
+    (match try_parse read_length t with
+    | Some b -> (
+        blur_opt := Some b;
+        skip_ws t;
+        (* Try to read spread after blur (optional) *)
+        match try_parse read_length t with
+        | Some s ->
+            spread_opt := Some s;
+            skip_ws t
+        | None -> ())
+    | None -> ());
+
+    (* Try to read color at end if not already read *)
+    (if !color_opt = None then
+       match try_parse read_color t with
+       | Some c -> color_opt := Some c
+       | None -> ());
+
+    match (!h_offset, !v_offset) with
+    | Some h, Some v ->
+        Shadow
+          {
+            inset = true;
+            h_offset = h;
+            v_offset = v;
+            blur = !blur_opt;
+            spread = !spread_opt;
+            color = !color_opt;
+          }
+    | _ -> err_invalid_value t "box-shadow" "invalid shadow")
+  else
+    (* Parse non-inset shadow *)
+    let color_opt = ref None in
+    let h_offset = ref None in
+    let v_offset = ref None in
+    let blur_opt = ref None in
+    let spread_opt = ref None in
+
+    (* Try to read color first (it can be at beginning or end) *)
+    (match try_parse read_color t with
+    | Some c ->
+        color_opt := Some c;
+        skip_ws t
+    | None -> ());
+
+    (* Read h-offset and v-offset (required) *)
+    h_offset := Some (read_length t);
+    skip_ws t;
+    v_offset := Some (read_length t);
+    skip_ws t;
+
+    (* Try to read blur (optional) *)
+    (match try_parse read_length t with
+    | Some b -> (
+        blur_opt := Some b;
+        skip_ws t;
+        (* Try to read spread after blur (optional) *)
+        match try_parse read_length t with
+        | Some s ->
+            spread_opt := Some s;
+            skip_ws t
+        | None -> ())
+    | None -> ());
+
+    (* Try to read color at end if not already read *)
+    (if !color_opt = None then
+       match try_parse read_color t with
+       | Some c -> color_opt := Some c
+       | None -> ());
+
+    match (!h_offset, !v_offset) with
+    | Some h, Some v ->
+        Shadow
+          {
+            inset = false;
+            h_offset = h;
+            v_offset = v;
+            blur = !blur_opt;
+            spread = !spread_opt;
+            color = !color_opt;
+          }
+    | _ -> err_invalid_value t "box-shadow" "invalid shadow"
 
 let read_box_shadows t : box_shadow list =
   Reader.list ~sep:Reader.comma read_box_shadow t
 
 let read_transform t : transform =
-  (* Simplified - complex transform parsing *)
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "none" -> None
-  | _ -> err_invalid_value t "transform" v
+  skip_ws t;
+  let fn_name = ident_lc t in
+  match fn_name with
+  | "none" -> (None : transform)
+  | "translatex" -> parens t (fun t -> Translate_x (read_length t))
+  | "translatey" -> parens t (fun t -> Translate_y (read_length t))
+  | "translatez" -> parens t (fun t -> Translate_z (read_length t))
+  | "translate3d" ->
+      parens t (fun t ->
+          let x, y, z =
+            triple ~sep:comma read_length read_length read_length t
+          in
+          Translate_3d (x, y, z))
+  | "translate" ->
+      parens t (fun t ->
+          let x = read_length t in
+          let y =
+            try_parse
+              (fun t ->
+                comma t;
+                read_length t)
+              t
+          in
+          Translate (x, y))
+  | "rotatex" -> parens t (fun t -> Rotate_x (read_angle t))
+  | "rotatey" -> parens t (fun t -> Rotate_y (read_angle t))
+  | "rotatez" -> parens t (fun t -> Rotate_z (read_angle t))
+  | "rotate3d" ->
+      parens t (fun t ->
+          let x, y, z = triple ~sep:comma number number number t in
+          comma t;
+          let angle = read_angle t in
+          Rotate_3d (x, y, z, angle))
+  | "rotate" -> parens t (fun t -> (Rotate (read_angle t) : transform))
+  | "scalex" -> parens t (fun t -> Scale_x (number t))
+  | "scaley" -> parens t (fun t -> Scale_y (number t))
+  | "scalez" -> parens t (fun t -> Scale_z (number t))
+  | "scale3d" ->
+      parens t (fun t ->
+          let x, y, z = triple ~sep:comma number number number t in
+          Scale_3d (x, y, z))
+  | "scale" ->
+      parens t (fun t ->
+          let x = number t in
+          let y =
+            try_parse
+              (fun t ->
+                comma t;
+                number t)
+              t
+          in
+          (Scale (x, y) : transform))
+  | "skewx" -> parens t (fun t -> Skew_x (read_angle t))
+  | "skewy" -> parens t (fun t -> Skew_y (read_angle t))
+  | "skew" ->
+      parens t (fun t ->
+          let x = read_angle t in
+          let y =
+            try_parse
+              (fun t ->
+                comma t;
+                read_angle t)
+              t
+          in
+          Skew (x, y))
+  | "matrix" ->
+      parens t (fun t ->
+          list ~sep:comma number t |> function
+          | [ a; b; c; d; e; f ] -> Matrix (a, b, c, d, e, f)
+          | _ -> err_invalid_value t "matrix" "expected 6 arguments")
+  | "matrix3d" ->
+      parens t (fun t ->
+          list ~sep:comma number t |> function
+          | [
+              m11;
+              m12;
+              m13;
+              m14;
+              m21;
+              m22;
+              m23;
+              m24;
+              m31;
+              m32;
+              m33;
+              m34;
+              m41;
+              m42;
+              m43;
+              m44;
+            ] ->
+              Matrix_3d
+                ( m11,
+                  m12,
+                  m13,
+                  m14,
+                  m21,
+                  m22,
+                  m23,
+                  m24,
+                  m31,
+                  m32,
+                  m33,
+                  m34,
+                  m41,
+                  m42,
+                  m43,
+                  m44 )
+          | _ -> err_invalid_value t "matrix3d" "expected 16 arguments")
+  | _ -> err_invalid_value t "transform" fn_name
 
 let pp_opt_space pp ctx = function
   | Some v ->
@@ -556,16 +834,11 @@ let pp_text_align : text_align Pp.t =
   | End -> Pp.string ctx "end"
   | Inherit -> Pp.string ctx "inherit"
 
-let rec pp_text_decoration : text_decoration Pp.t =
+let pp_text_decoration_line : text_decoration_line Pp.t =
  fun ctx -> function
-  | None -> Pp.string ctx "none"
   | Underline -> Pp.string ctx "underline"
-  | Underline_dotted -> Pp.string ctx "underline dotted"
   | Overline -> Pp.string ctx "overline"
   | Line_through -> Pp.string ctx "line-through"
-  | Blink -> Pp.string ctx "blink"
-  | Inherit -> Pp.string ctx "inherit"
-  | Var v -> pp_var pp_text_decoration ctx v
 
 let pp_text_decoration_style : text_decoration_style Pp.t =
  fun ctx -> function
@@ -575,6 +848,37 @@ let pp_text_decoration_style : text_decoration_style Pp.t =
   | Dashed -> Pp.string ctx "dashed"
   | Wavy -> Pp.string ctx "wavy"
   | Inherit -> Pp.string ctx "inherit"
+
+let rec pp_text_decoration : text_decoration Pp.t =
+ fun ctx -> function
+  | None -> Pp.string ctx "none"
+  | Shorthand { lines; style; color; thickness } -> (
+      let first = ref true in
+      let space_if_needed () =
+        if !first then first := false else Pp.space ctx ()
+      in
+      (match lines with
+      | [] -> ()
+      | ls ->
+          space_if_needed ();
+          Pp.list ~sep:Pp.space pp_text_decoration_line ctx ls);
+      (match style with
+      | None -> ()
+      | Some s ->
+          space_if_needed ();
+          pp_text_decoration_style ctx s);
+      (match color with
+      | None -> ()
+      | Some c ->
+          space_if_needed ();
+          pp_color ctx c);
+      match thickness with
+      | None -> ()
+      | Some l ->
+          space_if_needed ();
+          pp_length ctx l)
+  | Inherit -> Pp.string ctx "inherit"
+  | Var v -> pp_var pp_text_decoration ctx v
 
 let rec pp_text_transform : text_transform Pp.t =
  fun ctx -> function
@@ -684,6 +988,7 @@ let pp_grid_auto_flow : grid_auto_flow Pp.t =
  fun ctx -> function
   | Row -> Pp.string ctx "row"
   | Column -> Pp.string ctx "column"
+  | Dense -> Pp.string ctx "dense"
   | Row_dense -> Pp.string ctx "row dense"
   | Column_dense -> Pp.string ctx "column dense"
 
@@ -693,7 +998,8 @@ let pp_grid_line : grid_line Pp.t =
   | Number n -> Pp.int ctx n
   | Name s -> Pp.string ctx s
   | Span n ->
-      Pp.string ctx "span ";
+      Pp.string ctx "span";
+      Pp.char ctx ' ';
       Pp.int ctx n
 
 let pp_aspect_ratio : aspect_ratio Pp.t =
@@ -959,11 +1265,6 @@ let rec pp_font_variation_settings : font_variation_settings Pp.t =
       Pp.char ctx '"'
   | Var v -> pp_var pp_font_variation_settings ctx v
 
-let pp_transform_scale : transform_scale Pp.t =
- fun ctx -> function
-  | Scale f -> Pp.call "scale" Pp.float ctx f
-  | ScaleXY (x, y) -> Pp.call_2 "scale" Pp.float Pp.float ctx (x, y)
-
 let pp_rotate_3d : (float * float * float * angle) Pp.t =
  fun ctx (x, y, z, a) ->
   Pp.string ctx "rotate3d(";
@@ -1011,9 +1312,9 @@ let rec pp_transform : transform Pp.t =
   | Rotate_3d (x, y, z, a) -> pp_rotate_3d ctx (x, y, z, a)
   | Scale (x, None) -> Pp.call "scale" Pp.float ctx x
   | Scale (x, Some y) -> Pp.call_2 "scale" Pp.float Pp.float ctx (x, y)
-  | Scale_x s -> Pp.call "scaleX" pp_transform_scale ctx s
-  | Scale_y s -> Pp.call "scaleY" pp_transform_scale ctx s
-  | Scale_z s -> Pp.call "scaleZ" pp_transform_scale ctx s
+  | Scale_x f -> Pp.call "scaleX" Pp.float ctx f
+  | Scale_y f -> Pp.call "scaleY" Pp.float ctx f
+  | Scale_z f -> Pp.call "scaleZ" Pp.float ctx f
   | Scale_3d (x, y, z) ->
       Pp.call_3 "scale3d" Pp.float Pp.float Pp.float ctx (x, y, z)
   | Skew (x, None) -> Pp.call "skew" pp_angle ctx x
@@ -1078,7 +1379,6 @@ let rec pp_box_shadow : box_shadow Pp.t =
           Pp.space ctx ();
           pp_color ctx c
       | None -> ())
-  | Shadows shadows -> Pp.list ~sep:Pp.comma pp_box_shadow ctx shadows
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -1087,20 +1387,23 @@ let rec pp_box_shadow : box_shadow Pp.t =
   | Var v -> pp_var pp_box_shadow ctx v
 
 let pp_text_shadow : text_shadow Pp.t =
- fun ctx { h_offset; v_offset; blur; color } ->
-  pp_length ctx h_offset;
-  Pp.space ctx ();
-  pp_length ctx v_offset;
-  (match blur with
-  | Some b ->
+ fun ctx -> function
+  | None -> Pp.string ctx "none"
+  | Inherit -> Pp.string ctx "inherit"
+  | Text_shadow { h_offset; v_offset; blur; color } -> (
+      pp_length ctx h_offset;
       Pp.space ctx ();
-      pp_length ctx b
-  | None -> ());
-  match color with
-  | Some c ->
-      Pp.space ctx ();
-      pp_color ctx c
-  | None -> ()
+      pp_length ctx v_offset;
+      (match blur with
+      | Some b ->
+          Pp.space ctx ();
+          pp_length ctx b
+      | None -> ());
+      match color with
+      | Some c ->
+          Pp.space ctx ();
+          pp_color ctx c
+      | None -> ())
 
 let pp_background_attachment : background_attachment Pp.t =
  fun ctx -> function
@@ -1118,6 +1421,57 @@ let pp_background_repeat : background_repeat Pp.t =
   | Space -> Pp.string ctx "space"
   | Round -> Pp.string ctx "round"
   | Inherit -> Pp.string ctx "inherit"
+
+let pp_position_component : position_component Pp.t =
+ fun ctx -> function
+  | Left -> Pp.string ctx "left"
+  | Center -> Pp.string ctx "center"
+  | Right -> Pp.string ctx "right"
+  | Top -> Pp.string ctx "top"
+  | Bottom -> Pp.string ctx "bottom"
+  | Length l -> pp_length ctx l
+  | Percentage p ->
+      Pp.float ctx p;
+      Pp.char ctx '%'
+
+let pp_position_2d : position_2d Pp.t =
+ fun ctx -> function
+  | Inherit -> Pp.string ctx "inherit"
+  | Center -> Pp.string ctx "center"
+  | XY (a, b) ->
+      pp_position_component ctx a;
+      Pp.space ctx ();
+      pp_position_component ctx b
+
+let pp_transform_origin : transform_origin Pp.t =
+ fun ctx -> function
+  | Inherit -> Pp.string ctx "inherit"
+  | Center -> Pp.string ctx "center"
+  | XY (a, b) ->
+      pp_position_component ctx a;
+      Pp.space ctx ();
+      pp_position_component ctx b
+  | XYZ (a, b, z) ->
+      pp_position_component ctx a;
+      Pp.space ctx ();
+      pp_position_component ctx b;
+      Pp.space ctx ();
+      pp_length ctx z
+
+(* Helpers for typed positions (shorter than direct constructors) *)
+let pos_left : position_2d = XY (Left, Center)
+let pos_right : position_2d = XY (Right, Center)
+let pos_top : position_2d = XY (Center, Top)
+let pos_bottom : position_2d = XY (Center, Bottom)
+
+(* Helpers for transform-origin *)
+let origin (a : position_component) (b : position_component) : transform_origin
+    =
+  XY (a, b)
+
+let origin3d (a : position_component) (b : position_component) (z : length) :
+    transform_origin =
+  XYZ (a, b, z)
 
 let pp_background_size : background_size Pp.t =
  fun ctx -> function
@@ -1557,7 +1911,7 @@ let pp_timing_function : timing_function Pp.t =
 let pp_svg_paint : svg_paint Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
-  | Current_color -> Pp.string ctx "currentColor"
+  | Current_color -> Pp.string ctx "currentcolor"
   | Color c -> pp_color ctx c
 
 let pp_transition_property : transition_property Pp.t =
@@ -1681,14 +2035,15 @@ let pp_webkit_appearance : webkit_appearance Pp.t =
   | Radio -> Pp.string ctx "radio"
   | Push_button -> Pp.string ctx "push-button"
   | Square_button -> Pp.string ctx "square-button"
+  | Inherit -> Pp.string ctx "inherit"
 
 let pp_pointer_events : pointer_events Pp.t =
  fun ctx -> function
   | Auto -> Pp.string ctx "auto"
   | None -> Pp.string ctx "none"
-  | Visible_painted -> Pp.string ctx "visiblePainted"
-  | Visible_fill -> Pp.string ctx "visibleFill"
-  | Visible_stroke -> Pp.string ctx "visibleStroke"
+  | Visible_painted -> Pp.string ctx "visiblepainted"
+  | Visible_fill -> Pp.string ctx "visiblefill"
+  | Visible_stroke -> Pp.string ctx "visiblestroke"
   | Visible -> Pp.string ctx "visible"
   | Painted -> Pp.string ctx "painted"
   | Fill -> Pp.string ctx "fill"
@@ -1710,7 +2065,7 @@ let rec pp_line_height : line_height Pp.t =
   | Length l -> pp_length ctx l
   | Number n -> Pp.float ctx n
   | Percentage p ->
-      Pp.float ctx p;
+      Pp.float ctx (p *. 100.);
       Pp.char ctx '%'
   | Inherit -> Pp.string ctx "inherit"
   | Var v -> pp_var pp_line_height ctx v
@@ -1874,14 +2229,14 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Grid_row_start -> pp pp_grid_line
   | Grid_row_end -> pp pp_grid_line
   | Text_underline_offset -> pp Pp.string
-  | Background_position -> pp Pp.string
+  | Background_position -> pp (Pp.list ~sep:Pp.comma pp_position_2d)
   | Background_repeat -> pp pp_background_repeat
   | Background_size -> pp pp_background_size
   | Moz_osx_font_smoothing -> pp pp_moz_osx_font_smoothing
   | Backdrop_filter -> pp pp_filter
   | Container_name -> pp Pp.string
   | Perspective_origin -> pp Pp.string
-  | Object_position -> pp Pp.string
+  | Object_position -> pp pp_position_2d
   | Rotate -> pp pp_angle
   | Transition_duration -> pp pp_duration
   | Transition_timing_function -> pp pp_timing_function
@@ -1894,7 +2249,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_right -> pp Pp.string
   | Border_bottom -> pp Pp.string
   | Border_left -> pp Pp.string
-  | Transform_origin -> pp Pp.string
+  | Transform_origin -> pp pp_transform_origin
   | Text_shadow -> pp (Pp.list ~sep:Pp.comma pp_text_shadow)
   | Clip_path -> pp Pp.string
   | Mask -> pp Pp.string
@@ -1988,12 +2343,18 @@ let read_visibility t : visibility =
   | _ -> err_invalid_value t "visibility" v
 
 let read_z_index t : z_index =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "auto" -> Auto
+  skip_ws t;
+  match peek t with
+  | Some '-' | Some '0' .. '9' ->
+      (* It's a number *)
+      let n = number t in
+      Index (int_of_float n)
   | _ -> (
-      try Index (int_of_string v)
-      with Failure _ -> err_invalid_value t "z-index" v)
+      (* It's an identifier *)
+      let v = ident t in
+      match String.lowercase_ascii v with
+      | "auto" -> Auto
+      | _ -> err_invalid_value t "z-index" v)
 
 let read_flex_wrap t : flex_wrap =
   let v = ident t in
@@ -2047,14 +2408,18 @@ let read_justify t : justify =
   | _ -> err_invalid_value t "justify" v
 
 let read_flex t : flex =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "initial" -> Initial
-  | "auto" -> Auto
-  | "none" -> None
-  | _ -> (
-      try Grow (float_of_string v)
-      with Failure _ -> err_invalid_value t "flex" v)
+  skip_ws t;
+  (* Try to read as a number first *)
+  match try_parse number t with
+  | Some f -> Grow f
+  | None -> (
+      (* Not a number, read as identifier *)
+      let v = ident t in
+      match String.lowercase_ascii v with
+      | "initial" -> Initial
+      | "auto" -> Auto
+      | "none" -> None
+      | _ -> err_invalid_value t "flex" v)
 
 let read_place_content t : place_content =
   let v = ident t in
@@ -2071,26 +2436,69 @@ let read_place_content t : place_content =
 
 let read_place_items t : place_items =
   let v = ident t in
-  match String.lowercase_ascii v with
-  | "normal" -> Normal
-  | "start" -> Start
-  | "end" -> End
-  | "center" -> Center
-  | "stretch" -> Stretch
-  | _ -> err_invalid_value t "place-items" v
+  let v_lower = String.lowercase_ascii v in
+  (* Check for a second value for align-items / justify-items pair *)
+  skip_ws t;
+  match try_parse ident t with
+  | Some second ->
+      (* Two values: align-items justify-items *)
+      let align : align_items =
+        match v_lower with
+        | "normal" -> Normal
+        | "start" -> Start
+        | "flex-start" -> Flex_start
+        | "end" -> End
+        | "flex-end" -> Flex_end
+        | "center" -> Center
+        | "baseline" -> Baseline
+        | "stretch" -> Stretch
+        | _ -> err_invalid_value t "place-items align" v
+      in
+      let justify : justify =
+        match String.lowercase_ascii second with
+        | "normal" -> Normal
+        | "start" -> Start
+        | "flex-start" -> Flex_start
+        | "end" -> End
+        | "flex-end" -> Flex_end
+        | "center" -> Center
+        | "baseline" -> Baseline
+        | "stretch" -> Stretch
+        | _ -> err_invalid_value t "place-items justify" second
+      in
+      Align_justify (align, justify)
+  | None -> (
+      (* Single value *)
+      match v_lower with
+      | "normal" -> Normal
+      | "start" -> Start
+      | "end" -> End
+      | "center" -> Center
+      | "stretch" -> Stretch
+      | _ -> err_invalid_value t "place-items" v)
 
 let read_grid_auto_flow t : grid_auto_flow =
   let v = ident t in
   match String.lowercase_ascii v with
-  | "row" -> Row
-  | "column" -> Column
-  | "row dense" | "dense row" -> Row_dense
-  | "column dense" | "dense column" -> Column_dense
-  | "dense" -> Row_dense (* Default to row dense when just "dense" *)
+  | "row" -> (
+      (* Check if followed by "dense" *)
+      skip_ws t;
+      match try_parse ident t with Some "dense" -> Row_dense | _ -> Row)
+  | "column" -> (
+      (* Check if followed by "dense" *)
+      skip_ws t;
+      match try_parse ident t with Some "dense" -> Column_dense | _ -> Column)
+  | "dense" -> (
+      (* Check if followed by "row" or "column" *)
+      skip_ws t;
+      match try_parse ident t with
+      | Some "row" -> Row_dense
+      | Some "column" -> Column_dense
+      | _ -> Dense)
   | _ -> err_invalid_value t "grid-auto-flow" v
 
 let read_grid_track_size t : grid_track_size =
-  let v = ident t in
+  let v = Reader.token t in
   match String.lowercase_ascii v with
   | "auto" -> Track_size Auto
   | _
@@ -2127,15 +2535,23 @@ let read_grid_template t : grid_template =
       Tracks []
 
 let read_grid_line t : grid_line =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "auto" -> Auto
-  | _ when String.starts_with ~prefix:"span" v -> (
-      let span = String.trim (String.sub v 4 (String.length v - 4)) in
-      match int_of_string_opt span with
-      | Some n -> Span n
-      | None -> err_invalid_value t "grid-line" v)
-  | _ -> ( match int_of_string_opt v with Some n -> Number n | None -> Name v)
+  skip_ws t;
+  (* Try to read as a number first *)
+  match try_parse int t with
+  | Some n -> Number n
+  | None -> (
+      (* Not a number, read as identifier *)
+      let v = ident t in
+      let v_lower = String.lowercase_ascii v in
+      match v_lower with
+      | "auto" -> Auto
+      | "span" -> (
+          (* Handle "span" followed by a number with space - CSS spec requires
+             space *)
+          skip_ws t;
+          try Span (int t)
+          with _ -> err_invalid_value t "grid-line" "span <number>")
+      | _ -> Name v)
 
 let read_aspect_ratio t : aspect_ratio =
   let v = ident t in
@@ -2149,17 +2565,6 @@ let read_aspect_ratio t : aspect_ratio =
         | [ w; h ] -> Ratio (float_of_string w, float_of_string h)
         | _ -> err_invalid_value t "aspect-ratio" v
       with Failure _ -> err_invalid_value t "aspect-ratio" v)
-
-let read_text_decoration_style t : text_decoration_style =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "solid" -> Solid
-  | "double" -> Double
-  | "dotted" -> Dotted
-  | "dashed" -> Dashed
-  | "wavy" -> Wavy
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "text-decoration-style" v
 
 let read_text_overflow t : text_overflow =
   let v = ident t in
@@ -2220,19 +2625,28 @@ let read_hyphens t : hyphens =
   | _ -> err_invalid_value t "hyphens" v
 
 let read_line_height t : line_height =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "normal" -> Normal
-  | "inherit" -> Inherit
+  skip_ws t;
+  match peek t with
+  | Some '0' .. '9' | Some '.' ->
+      (* It's a number or percentage *)
+      let n = number t in
+      if looking_at t "%" then (
+        expect t '%';
+        Percentage (n /. 100.))
+      else if looking_at t "px" || looking_at t "em" || looking_at t "rem" then
+        (* It's a length, re-parse from beginning *)
+        let t2 =
+          Reader.of_string (string_of_float n ^ Reader.until_string t " ")
+        in
+        Length (read_length t2)
+      else Number n
   | _ -> (
-      try
-        let f = float_of_string v in
-        if String.contains v '%' then Percentage (f /. 100.)
-        else if String.contains v '.' then Number f
-        else Number f
-      with Failure _ -> (
-        try Length (read_length t)
-        with _ -> err_invalid_value t "line-height" v))
+      (* It's an identifier *)
+      let v = ident t in
+      match String.lowercase_ascii v with
+      | "normal" -> Normal
+      | "inherit" -> Inherit
+      | _ -> err_invalid_value t "line-height" v)
 
 let read_list_style_type t : list_style_type =
   let v = ident t in
@@ -2257,11 +2671,17 @@ let read_list_style_position t : list_style_position =
   | _ -> err_invalid_value t "list-style-position" v
 
 let read_list_style_image t : list_style_image =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "none" -> None
-  | "inherit" -> Inherit
-  | _ -> Url v
+  skip_ws t;
+  if looking_at t "url(" then
+    (* Parse url function *)
+    Url (url t)
+  else
+    (* Parse as identifier *)
+    let v = ident t in
+    match String.lowercase_ascii v with
+    | "none" -> None
+    | "inherit" -> Inherit
+    | _ -> err_invalid_value t "list-style-image" v
 
 let read_table_layout t : table_layout =
   let v = ident t in
@@ -2348,8 +2768,19 @@ let read_object_fit t : object_fit =
   | _ -> err_invalid_value t "object-fit" v
 
 let read_content t : content =
-  let v = ident t in
-  match String.lowercase_ascii v with "none" -> None | _ -> String v
+  skip_ws t;
+  if looking_at t "\"" || looking_at t "'" then
+    (* Quoted string *)
+    String (string t)
+  else
+    (* Identifier or keyword *)
+    let v = ident t in
+    match String.lowercase_ascii v with
+    | "none" -> None
+    | "normal" -> Normal
+    | "open-quote" -> Open_quote
+    | "close-quote" -> Close_quote
+    | _ -> String v
 
 let read_content_visibility t : content_visibility =
   let v = ident t in
@@ -2516,6 +2947,7 @@ let read_webkit_appearance t : webkit_appearance =
   | "radio" -> Radio
   | "push-button" -> Push_button
   | "square-button" -> Square_button
+  | "inherit" -> Inherit
   | _ -> err_invalid_value t "webkit-appearance" v
 
 let read_webkit_font_smoothing t : webkit_font_smoothing =
@@ -2639,23 +3071,29 @@ let read_font_family t : font_family =
 (* Unknown families are treated as arbitrary names *)
 
 let read_font_stretch t : font_stretch =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "ultra-condensed" -> Ultra_condensed
-  | "extra-condensed" -> Extra_condensed
-  | "condensed" -> Condensed
-  | "semi-condensed" -> Semi_condensed
-  | "normal" -> Normal
-  | "semi-expanded" -> Semi_expanded
-  | "expanded" -> Expanded
-  | "extra-expanded" -> Extra_expanded
-  | "ultra-expanded" -> Ultra_expanded
-  | "inherit" -> Inherit
+  skip_ws t;
+  match peek t with
+  | Some ('0' .. '9' | '.') ->
+      (* It's a percentage *)
+      let n = number t in
+      skip_ws t;
+      expect t '%';
+      Pct (n /. 100.)
   | _ -> (
-      try
-        let f = float_of_string (String.sub v 0 (String.length v - 1)) in
-        Pct (f /. 100.)
-      with _ -> err_invalid_value t "font-stretch" v)
+      (* It's an identifier *)
+      let v = ident t in
+      match String.lowercase_ascii v with
+      | "ultra-condensed" -> Ultra_condensed
+      | "extra-condensed" -> Extra_condensed
+      | "condensed" -> Condensed
+      | "semi-condensed" -> Semi_condensed
+      | "normal" -> Normal
+      | "semi-expanded" -> Semi_expanded
+      | "expanded" -> Expanded
+      | "extra-expanded" -> Extra_expanded
+      | "ultra-expanded" -> Ultra_expanded
+      | "inherit" -> Inherit
+      | _ -> err_invalid_value t "font-stretch" v)
 
 let read_font_variant_numeric_token t : font_variant_numeric_token =
   let v = ident t in
@@ -2672,42 +3110,56 @@ let read_font_variant_numeric_token t : font_variant_numeric_token =
   | _ -> err_invalid_value t "font-variant-numeric-token" v
 
 let read_font_variant_numeric t : font_variant_numeric =
+  Reader.save t;
   let v = ident t in
   match String.lowercase_ascii v with
   | "normal" -> Normal
-  | _ -> (
-      try
-        let token = read_font_variant_numeric_token t in
-        Tokens [ token ]
-      with _ -> err_invalid_value t "font-variant-numeric" v)
+  | _ ->
+      (* Restore position and read as tokens *)
+      Reader.restore t;
+      let rec read_tokens acc =
+        match Reader.try_parse read_font_variant_numeric_token t with
+        | Some token ->
+            skip_ws t;
+            read_tokens (token :: acc)
+        | None -> List.rev acc
+      in
+      let tokens = read_tokens [] in
+      if tokens = [] then err_invalid_value t "font-variant-numeric" v
+      else Tokens tokens
 
 let read_font_feature_settings t : font_feature_settings =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "normal" -> Normal
-  | "inherit" -> Inherit
-  | _ when String.starts_with ~prefix:"\"" v ->
-      String (String.sub v 1 (String.length v - 2))
-  | _ -> Feature_list v (* Simplified - proper parsing would be more complex *)
+  skip_ws t;
+  match peek t with
+  | Some '"' ->
+      (* It's a quoted string *)
+      let s = string t in
+      String s
+  | _ -> (
+      (* It's an identifier *)
+      let v = ident t in
+      match String.lowercase_ascii v with
+      | "normal" -> Normal
+      | "inherit" -> Inherit
+      | _ ->
+          Feature_list v (* Simplified - proper parsing would be more complex *)
+      )
 
 let read_font_variation_settings t : font_variation_settings =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "normal" -> Normal
-  | "inherit" -> Inherit
-  | _ when String.starts_with ~prefix:"\"" v ->
-      String (String.sub v 1 (String.length v - 2))
-  | _ -> Axis_list v (* Simplified - proper parsing would be more complex *)
-
-let read_transform_scale t : transform_scale =
-  let v = ident t in
-  (* Try to parse as a number for uniform scaling *)
-  match float_of_string_opt v with
-  | Some f -> Scale f
-  | None ->
-      (* Try to parse as two numbers for X,Y scaling *)
-      (* Simplified - would need more complex parsing for actual scale(x, y) syntax *)
-      err_invalid_value t "transform-scale" v
+  skip_ws t;
+  match peek t with
+  | Some '"' ->
+      (* It's a quoted string *)
+      let s = string t in
+      String s
+  | _ -> (
+      (* It's an identifier *)
+      let v = ident t in
+      match String.lowercase_ascii v with
+      | "normal" -> Normal
+      | "inherit" -> Inherit
+      | _ -> Axis_list v (* Simplified - proper parsing would be more complex *)
+      )
 
 let read_transform_style t : transform_style =
   let v = ident t in
@@ -2726,12 +3178,18 @@ let read_backface_visibility t : backface_visibility =
   | _ -> err_invalid_value t "backface-visibility" v
 
 let read_scale t : scale =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "none" -> None
+  skip_ws t;
+  match peek t with
+  | Some ('0' .. '9' | '.' | '-') ->
+      (* It's a number *)
+      let n = number t in
+      Number n
   | _ -> (
-      try Number (float_of_string v)
-      with Failure _ -> err_invalid_value t "scale" v)
+      (* It's an identifier *)
+      let v = ident t in
+      match String.lowercase_ascii v with
+      | "none" -> None
+      | _ -> err_invalid_value t "scale" v)
 
 let read_timing_function t : timing_function =
   let v = ident t in
@@ -2784,12 +3242,18 @@ let read_animation_fill_mode t : animation_fill_mode =
   | _ -> err_invalid_value t "animation-fill-mode" v
 
 let read_animation_iteration_count t : animation_iteration_count =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "infinite" -> Infinite
+  skip_ws t;
+  match peek t with
+  | Some ('0' .. '9' | '.' | '-') ->
+      (* It's a number *)
+      let n = number t in
+      Number n
   | _ -> (
-      try Number (float_of_string v)
-      with Failure _ -> err_invalid_value t "animation-iteration-count" v)
+      (* It's an identifier *)
+      let v = ident t in
+      match String.lowercase_ascii v with
+      | "infinite" -> Infinite
+      | _ -> err_invalid_value t "animation-iteration-count" v)
 
 let read_animation_play_state t : animation_play_state =
   let v = ident t in
@@ -2840,10 +3304,53 @@ let read_blend_modes t : blend_mode list =
   Reader.list ~sep:Reader.comma read_blend_mode t
 
 let read_text_shadow t : text_shadow =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "none" -> { h_offset = Px 0.; v_offset = Px 0.; blur = None; color = None }
-  | _ -> err_invalid_value t "text-shadow" v (* Simplified *)
+  let open Option in
+  skip_ws t;
+  (* Check for specific keywords first without consuming other identifiers *)
+  if looking_at t "none" then (
+    expect_string t "none";
+    None)
+  else if looking_at t "inherit" then (
+    expect_string t "inherit";
+    Inherit)
+  else
+    (* Parse shadow components *)
+    let color_opt = ref None in
+    let h_offset = ref None in
+    let v_offset = ref None in
+    let blur_opt = ref None in
+
+    (* Try to read color first (it can be at beginning or end) *)
+    (match try_parse read_color t with
+    | Some c ->
+        color_opt := Some c;
+        skip_ws t
+    | None -> ());
+
+    (* Read h-offset and v-offset (required) *)
+    h_offset := Some (read_length t);
+    skip_ws t;
+    v_offset := Some (read_length t);
+    skip_ws t;
+
+    (* Try to read blur (optional) *)
+    (match try_parse read_length t with
+    | Some b ->
+        blur_opt := Some b;
+        skip_ws t
+    | None -> ());
+
+    (* Try to read color at end if not already read *)
+    (if !color_opt = None then
+       match try_parse read_color t with
+       | Some c -> color_opt := Some c
+       | None -> ());
+
+    match (!h_offset, !v_offset) with
+    | Some h, Some v ->
+        Text_shadow
+          { h_offset = h; v_offset = v; blur = !blur_opt; color = !color_opt }
+    | _ -> err_invalid_value t "text-shadow" "invalid shadow"
 
 let read_text_shadows t : text_shadow list =
   Reader.list ~sep:Reader.comma read_text_shadow t
@@ -2895,9 +3402,10 @@ let read_background_size t : background_size =
       with _ -> err_invalid_value t "background-size" v)
 
 let read_gradient_direction t : gradient_direction =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "to" -> (
+  skip_ws t;
+  match peek t with
+  | Some 't' when looking_at t "to" -> (
+      expect_string t "to";
       ws t;
       let dir = ident t in
       match String.lowercase_ascii dir with
@@ -2908,9 +3416,10 @@ let read_gradient_direction t : gradient_direction =
       | _ -> err_invalid_value t "gradient-direction" dir)
   | _ -> (
       (* Try to parse as angle *)
-      let t2 = Reader.of_string v in
-      try Angle (read_angle t2)
-      with _ -> err_invalid_value t "gradient-direction" v)
+      try Angle (read_angle t)
+      with _ ->
+        err_invalid_value t "gradient-direction"
+          "expected angle or 'to <direction>'")
 
 let read_gradient_stop t : gradient_stop =
   (* Simple implementation - just read color for now *)
@@ -2918,16 +3427,37 @@ let read_gradient_stop t : gradient_stop =
   Color_stop color
 
 let read_background_image t : background_image =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "none" -> None
-  | _ when String.starts_with ~prefix:"url(" v ->
-      let url = String.sub v 4 (String.length v - 5) |> String.trim in
-      Url url
-  | _ when String.starts_with ~prefix:"linear-gradient(" v ->
-      (* Simplified gradient parsing - just return None for now *)
-      None
-  | _ -> err_invalid_value t "background-image" v
+  Reader.ws t;
+  match Reader.peek t with
+  | Some 'u' when Reader.peek_string t 4 = "url(" ->
+      (* Parse url() function *)
+      Reader.expect_string t "url(";
+      Reader.ws t;
+      let url_content =
+        let acc = Buffer.create 16 in
+        let rec loop depth =
+          match Reader.peek t with
+          | Some ')' when depth = 0 -> Buffer.contents acc
+          | Some ')' ->
+              Buffer.add_char acc (Reader.char t);
+              loop (depth - 1)
+          | Some '(' ->
+              Buffer.add_char acc (Reader.char t);
+              loop (depth + 1)
+          | Some _ ->
+              Buffer.add_char acc (Reader.char t);
+              loop depth
+          | None -> Buffer.contents acc
+        in
+        loop 0
+      in
+      Reader.expect t ')';
+      Url (String.trim url_content)
+  | _ -> (
+      let v = ident t in
+      match String.lowercase_ascii v with
+      | "none" -> None
+      | _ -> err_invalid_value t "background-image" v)
 
 let read_background_images t : background_image list =
   Reader.list ~sep:Reader.comma read_background_image t

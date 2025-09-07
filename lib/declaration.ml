@@ -47,15 +47,30 @@ let is_custom_property name =
 (** Parse a property name *)
 let read_property_name t =
   Reader.ws t;
-  Reader.while_ t (fun c -> c <> ':' && c <> ';' && c <> '}')
+  let name = Reader.while_ t (fun c -> c <> ':' && c <> ';' && c <> '}') in
+  String.trim name
 
-(** Parse property value until semicolon or closing brace *)
+(** Parse property value until semicolon, closing brace, or !important *)
 let read_property_value t =
   let rec parse_value acc depth =
     Reader.peek t |> function
     | None -> String.concat "" (List.rev acc)
     | Some ';' when depth = 0 -> String.concat "" (List.rev acc)
     | Some '}' when depth = 0 -> String.concat "" (List.rev acc)
+    | Some '!' when depth = 0 -> (
+        (* Check if this is !important *)
+        Reader.save t;
+        Reader.expect t '!';
+        Reader.ws t;
+        try
+          Reader.expect_string t "important";
+          Reader.restore t;
+          (* Rewind to the '!' *)
+          String.concat "" (List.rev acc)
+          (* Stop parsing, leave !important for caller *)
+        with Reader.Parse_error _ ->
+          Reader.restore t;
+          parse_value (String.make 1 (Reader.char t) :: acc) depth)
     | Some (('(' | '[' | '{') as c) ->
         Reader.expect t c;
         parse_value (String.make 1 c :: acc) (depth + 1)
@@ -85,14 +100,21 @@ let read_property_value t =
   in
   String.trim (parse_value [] 0)
 
-(** Check for !important at the end of a value *)
-let read_importance value =
-  let trimmed = String.trim value in
-  if
-    String.length trimmed > 10
-    && String.sub trimmed (String.length trimmed - 10) 10 = "!important"
-  then (String.sub trimmed 0 (String.length trimmed - 10) |> String.trim, true)
-  else (trimmed, false)
+(** Check for and consume !important *)
+let read_importance t =
+  Reader.ws t;
+  match Reader.peek t with
+  | Some '!' -> (
+      Reader.save t;
+      try
+        Reader.expect t '!';
+        Reader.ws t;
+        Reader.expect_string t "important";
+        true
+      with Reader.Parse_error _ ->
+        Reader.restore t;
+        false)
+  | _ -> false
 
 (** Parse a single declaration. *)
 let read_declaration t : (string * string * bool) option =
@@ -106,13 +128,14 @@ let read_declaration t : (string * string * bool) option =
       Reader.ws t;
       let value = read_property_value t in
       Reader.ws t;
+      let is_important = read_importance t in
+      Reader.ws t;
       (* Skip optional semicolon *)
       ignore
         (Reader.peek t = Some ';'
         &&
         (Reader.expect t ';';
          true));
-      let value, is_important = read_importance value in
       Some (name, value, is_important)
 
 (** Parse all declarations in a block (without braces). *)
@@ -186,7 +209,6 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Blend_mode -> pp Properties.pp_blend_mode
   | Scroll_snap_strictness -> pp Properties.pp_scroll_snap_strictness
   | Angle -> pp Values.pp_angle
-  | Transform_scale -> pp Properties.pp_transform_scale
   | Box_shadow -> pp Properties.pp_box_shadow
   | Content -> pp Properties.pp_content
 

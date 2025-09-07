@@ -22,7 +22,6 @@ type _ kind =
   | Scroll_snap_strictness : scroll_snap_strictness kind
   | Angle : angle kind
   | Shadow : shadow kind
-  | Transform_scale : transform_scale kind
   | Box_shadow : box_shadow kind
   | Content : content kind
 
@@ -34,6 +33,9 @@ type declaration =
       value : 'a;
       layer : string option;
       meta : Values.meta option;
+          (* TODO: Add support for !important on custom properties According to
+             CSS spec, custom properties can have !important: --color: red
+             !important; is valid CSS *)
     }
       -> declaration
   | Important_declaration : 'a property * 'a -> declaration
