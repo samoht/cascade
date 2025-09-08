@@ -341,7 +341,7 @@ and pp_alpha : alpha Pp.t =
 let pp_opt_alpha ctx = function
   | None -> ()
   | (Num _ | Pct _ | Var _) as a ->
-      Pp.string ctx " / ";
+      Pp.string ctx "/";
       pp_alpha ctx a
 
 (** Pretty printer for percentage types *)

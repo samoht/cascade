@@ -27,8 +27,9 @@ let var : type a.
     declaration * a var =
  fun ?fallback ?layer ?meta name kind value ->
   let declaration =
-    Custom_declaration
-      { name = String.concat "" [ "--"; name ]; kind; value; layer; meta }
+    Declaration.custom_declaration ?layer ?meta
+      (String.concat "" [ "--"; name ])
+      kind value
   in
   let var_handle = { name; fallback; default = Some value; layer; meta } in
   (declaration, var_handle)
@@ -206,8 +207,7 @@ let compare_vars_by_name (V x) (V y) = String.compare x.name y.name
 let vars_of_declarations properties =
   List.concat_map
     (function
-      | Declaration (prop, value) -> vars_of_property prop value
-      | Important_declaration (prop, value) -> vars_of_property prop value
+      | Declaration { property; value; _ } -> vars_of_property property value
       | Custom_declaration { kind; value; _ } -> vars_of_value kind value)
     properties
   |> List.sort_uniq compare_vars_by_name
@@ -267,9 +267,8 @@ let extract_vars_from_prop_value : type a. a property -> a -> any_var list =
 
 let extract_vars_from_declaration : declaration -> any_var list = function
   | Custom_declaration _ -> [] (* Custom properties don't have typed vars *)
-  | Declaration (prop, value) -> extract_vars_from_prop_value prop value
-  | Important_declaration (prop, value) ->
-      extract_vars_from_prop_value prop value
+  | Declaration { property; value; _ } ->
+      extract_vars_from_prop_value property value
 
 (* Analyze declarations to find all variable references *)
 let analyze_declarations (decls : declaration list) : any_var list =

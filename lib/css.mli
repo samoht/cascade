@@ -301,15 +301,6 @@ val stylesheet_container_queries : t -> container_rule list
 (** [stylesheet_container_queries stylesheet] is the list of container queries
     of [stylesheet]. *)
 
-val merge_rules : rule list -> rule list
-(** [merge_rules rules] merges consecutive rules with identical selectors,
-    combining their declarations. Preserves CSS cascade order. *)
-
-val combine_identical_rules : rule list -> rule list
-(** [combine_identical_rules rules] combines rules with identical declarations
-    into comma-separated selectors. Only combines consecutive rules to preserve
-    CSS cascade semantics. *)
-
 (** {2:nesting_helpers Nesting Helpers}
 
     Utilities for CSS nesting and hierarchical rule organization. *)
@@ -3201,26 +3192,10 @@ val optimize : t -> t
     merging consecutive identical selectors and combining rules with identical
     properties. Preserves CSS cascade semantics. *)
 
-type layer_stats = {
-  name : string;
-  rules : int;
-  selectors : string list;  (** First few selectors as examples *)
-}
-
-val stylesheet_rules : t -> rule list
-(** [stylesheet_rules stylesheet] is the list of top-level rules of
-    [stylesheet]. *)
-
 val will_change : string -> declaration
 (** [will_change value] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/will-change}
      will-change} property for performance optimization. *)
-
-val deduplicate_declarations : declaration list -> declaration list
-(** [deduplicate_declarations declarations] removes duplicate declarations,
-    keeping the last occurrence. It also automatically duplicates properties
-    that have known browser bugs requiring duplication for correct rendering
-    (e.g., -webkit-text-decoration-color). *)
 
 val inline_style_of_declarations :
   ?optimize:bool -> ?minify:bool -> ?mode:mode -> declaration list -> string
@@ -3292,7 +3267,16 @@ val pp_justify_content : justify_content Pp.t
 (**/**)
 
 module Pp = Pp
+(** {1 CSS Parsing} *)
+
+val of_string : string -> (t, string) result
+(** [of_string css] parses a CSS string into a stylesheet. Returns [Error msg]
+    on invalid CSS. *)
+
 module Reader = Reader
 module Values = Values
 module Properties = Properties
 module Declaration = Declaration
+module Variables = Variables
+module Optimize = Optimize
+module Render = Render

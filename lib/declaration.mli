@@ -2,6 +2,9 @@
 
 include module type of Declaration_intf
 
+val pp_property : 'a Properties.property Pp.t
+(** [pp_property] is the pretty-printer for CSS property names. *)
+
 val pp_declaration : declaration Pp.t
 (** [pp_declaration] is the pretty-printer for declarations. *)
 
@@ -30,15 +33,46 @@ val read_property_name : Reader.t -> string
 val read_property_value : Reader.t -> string
 (** [read_property_value t] is the value read from [t] (until ';' or '\}'). *)
 
-val read_declaration : Reader.t -> (string * string * bool) option
-(** [read_declaration t] is one declaration as [(name, value, is_important)], or
-    [None]. *)
+val read_declaration : Reader.t -> declaration option
+(** [read_declaration t] is one typed declaration, or [None] when no more valid
+    declarations. Performs full property name and value validation per CSS spec.
+*)
 
-val read_declarations : Reader.t -> (string * string * bool) list
-(** [read_declarations t] is all declarations in an unbraced block. *)
+val read_declarations : Reader.t -> declaration list
+(** [read_declarations t] is all typed declarations in an unbraced block. *)
 
-val read_block : Reader.t -> (string * string * bool) list
-(** [read_block t] is the declarations parsed from a braced block. *)
+val read_block : Reader.t -> declaration list
+(** [read_block t] is the typed declarations parsed from a braced block. *)
+
+(** {2 Type-driven helper functions} *)
+
+val declaration : ?important:bool -> 'a Properties.property -> 'a -> declaration
+(** [declaration ?important property value] creates a typed declaration. *)
+
+val custom_declaration :
+  ?important:bool ->
+  ?layer:string ->
+  ?meta:Values.meta ->
+  string ->
+  'a kind ->
+  'a ->
+  declaration
+(** [custom_declaration ?important ?layer ?meta name kind value] creates a
+    custom property declaration. *)
+
+val is_important : declaration -> bool
+(** [is_important decl] returns true if the declaration has !important. *)
+
+val property_name : declaration -> string
+(** [property_name decl] returns the property name as a string. *)
+
+val string_of_value : ?minify:bool -> declaration -> string
+(** [string_of_value ?minify decl] returns the value as a string. *)
+
+val read_typed_declaration : string -> string -> bool -> declaration option
+(** [read_typed_declaration name value is_important] parses a property name and
+    value into a typed declaration. Returns [None] if the property cannot be
+    parsed. *)
 
 (** Single-to-list property helpers. These construct typed declarations for
     properties that accept comma-separated lists, while keeping a simple

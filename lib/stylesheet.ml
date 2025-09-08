@@ -139,3 +139,515 @@ let stylesheet_items t =
   let pages = List.map (fun p -> Page p) t.pages in
   charset @ imports @ namespaces @ keyframes @ font_faces @ pages @ rules
   @ media @ containers @ supports @ layers @ properties @ starting
+
+(** {1 Pretty-printing} *)
+
+let pp_rule : rule Pp.t =
+ fun ctx rule ->
+  Selector.pp ctx rule.selector;
+  Pp.sp ctx ();
+  let pp_body ctx () =
+    match rule.declarations with
+    | [] -> ()
+    | decls ->
+        Pp.cut ctx ();
+        Pp.nest 2
+          (Pp.list
+             ~sep:(fun ctx () ->
+               Pp.semicolon ctx ();
+               Pp.cut ctx ())
+             Declaration.pp_declaration)
+          ctx decls;
+        Pp.cut ctx ()
+  in
+  Pp.surround ~left:Pp.block_open ~right:Pp.block_close pp_body ctx ()
+
+let rec pp_supports_content : supports_content Pp.t =
+ fun ctx -> function
+  | Support_rules rules -> Pp.list ~sep:Pp.cut pp_rule ctx rules
+  | Support_nested (rules, nested_queries) ->
+      Pp.list ~sep:Pp.cut pp_rule ctx rules;
+      if rules <> [] && nested_queries <> [] then Pp.cut ctx ();
+      Pp.list ~sep:Pp.cut pp_supports_rule ctx nested_queries
+
+and pp_supports_rule : supports_rule Pp.t =
+ fun ctx sq ->
+  Pp.string ctx "@supports ";
+  Pp.string ctx sq.supports_condition;
+  Pp.sp ctx ();
+  Pp.braces pp_supports_content ctx sq.supports_content
+
+let pp_media_rule : media_rule Pp.t =
+ fun ctx mq ->
+  Pp.string ctx "@media ";
+  Pp.string ctx mq.media_condition;
+  Pp.sp ctx ();
+  Pp.braces (Pp.list ~sep:Pp.cut pp_rule) ctx mq.media_rules
+
+let pp_container_rule : container_rule Pp.t =
+ fun ctx cq ->
+  Pp.string ctx "@container ";
+  (match cq.container_name with
+  | Some name ->
+      Pp.string ctx name;
+      Pp.sp ctx ()
+  | None -> ());
+  Pp.string ctx cq.container_condition;
+  Pp.sp ctx ();
+  Pp.braces (Pp.list ~sep:Pp.cut pp_rule) ctx cq.container_rules
+
+let pp_property_rule : property_rule Pp.t =
+ fun ctx prop ->
+  Pp.string ctx "@property ";
+  Pp.string ctx prop.name;
+  Pp.sp ctx ();
+  let pp_body ctx () =
+    Pp.cut ctx ();
+    Pp.nest 2
+      (fun ctx () ->
+        Pp.string ctx "syntax: \"";
+        Pp.string ctx prop.syntax;
+        Pp.string ctx "\"";
+        Pp.semicolon ctx ();
+        Pp.cut ctx ();
+        Pp.string ctx "inherits: ";
+        Pp.string ctx (if prop.inherits then "true" else "false");
+        (match prop.initial_value with
+        | None | Some "" -> ()
+        | Some v ->
+            Pp.semicolon ctx ();
+            Pp.cut ctx ();
+            Pp.string ctx "initial-value: ";
+            Pp.string ctx v);
+        Pp.semicolon ctx ())
+      ctx ();
+    Pp.cut ctx ()
+  in
+  Pp.surround ~left:Pp.block_open ~right:Pp.block_close pp_body ctx ()
+
+let pp_nested_rule : nested_rule Pp.t =
+ fun ctx -> function
+  | Rule r -> pp_rule ctx r
+  | Supports sq -> pp_supports_rule ctx sq
+
+let pp_layer_rule : layer_rule Pp.t =
+ fun ctx layer ->
+  Pp.string ctx "@layer ";
+  Pp.string ctx layer.layer;
+  if
+    layer.rules = [] && layer.media_queries = []
+    && layer.container_queries = []
+    && layer.supports_queries = []
+  then Pp.semicolon ctx ()
+  else (
+    Pp.sp ctx ();
+    Pp.braces
+      (fun ctx () ->
+        Pp.list ~sep:Pp.cut pp_nested_rule ctx layer.rules;
+        if layer.rules <> [] && layer.media_queries <> [] then Pp.cut ctx ();
+        Pp.list ~sep:Pp.cut pp_media_rule ctx layer.media_queries;
+        if
+          (layer.rules <> [] || layer.media_queries <> [])
+          && layer.container_queries <> []
+        then Pp.cut ctx ();
+        Pp.list ~sep:Pp.cut pp_container_rule ctx layer.container_queries;
+        if
+          (layer.rules <> [] || layer.media_queries <> []
+          || layer.container_queries <> [])
+          && layer.supports_queries <> []
+        then Pp.cut ctx ();
+        Pp.list ~sep:Pp.cut pp_supports_rule ctx layer.supports_queries)
+      ctx ())
+
+let pp_starting_style_rule : starting_style_rule Pp.t =
+ fun ctx ss ->
+  Pp.string ctx "@starting-style";
+  Pp.sp ctx ();
+  Pp.braces (Pp.list ~sep:Pp.cut pp_rule) ctx ss.starting_rules
+
+let pp_keyframe_block : keyframe_block Pp.t =
+ fun ctx kb ->
+  Pp.string ctx kb.selector;
+  Pp.sp ctx ();
+  let pp_body ctx () =
+    match kb.declarations with
+    | [] -> ()
+    | decls ->
+        Pp.cut ctx ();
+        Pp.nest 2
+          (Pp.list
+             ~sep:(fun ctx () ->
+               Pp.semicolon ctx ();
+               Pp.cut ctx ())
+             Declaration.pp_declaration)
+          ctx decls;
+        Pp.cut ctx ()
+  in
+  Pp.surround ~left:Pp.block_open ~right:Pp.block_close pp_body ctx ()
+
+let pp_keyframes_rule : keyframes_rule Pp.t =
+ fun ctx kf ->
+  Pp.string ctx "@keyframes ";
+  Pp.string ctx kf.name;
+  Pp.sp ctx ();
+  Pp.braces (Pp.list ~sep:Pp.cut pp_keyframe_block) ctx kf.keyframes
+
+let pp_font_face_rule : font_face_rule Pp.t =
+ fun ctx ff ->
+  Pp.string ctx "@font-face";
+  Pp.sp ctx ();
+  let pp_body ctx () =
+    Pp.cut ctx ();
+    Pp.nest 2
+      (fun ctx () ->
+        let pp_prop name value =
+          match value with
+          | None -> ()
+          | Some v ->
+              Pp.string ctx name;
+              Pp.string ctx ": ";
+              Pp.string ctx v;
+              Pp.semicolon ctx ();
+              Pp.cut ctx ()
+        in
+        pp_prop "font-family" ff.font_family;
+        pp_prop "src" ff.src;
+        pp_prop "font-style" ff.font_style;
+        pp_prop "font-weight" ff.font_weight;
+        pp_prop "font-stretch" ff.font_stretch;
+        pp_prop "font-display" ff.font_display;
+        pp_prop "unicode-range" ff.unicode_range;
+        pp_prop "font-variant" ff.font_variant;
+        pp_prop "font-feature-settings" ff.font_feature_settings;
+        pp_prop "font-variation-settings" ff.font_variation_settings)
+      ctx ();
+    Pp.cut ctx ()
+  in
+  Pp.surround ~left:Pp.block_open ~right:Pp.block_close pp_body ctx ()
+
+let pp_import_rule : import_rule Pp.t =
+ fun ctx imp ->
+  Pp.string ctx "@import ";
+  Pp.string ctx "\"";
+  Pp.string ctx imp.url;
+  Pp.string ctx "\"";
+  (match imp.layer with
+  | Some l ->
+      Pp.string ctx " layer(";
+      Pp.string ctx l;
+      Pp.string ctx ")"
+  | None -> ());
+  (match imp.supports with
+  | Some s ->
+      Pp.string ctx " supports(";
+      Pp.string ctx s;
+      Pp.string ctx ")"
+  | None -> ());
+  (match imp.media with
+  | Some m ->
+      Pp.string ctx " ";
+      Pp.string ctx m
+  | None -> ());
+  Pp.semicolon ctx ()
+
+let pp_charset_rule : charset_rule Pp.t =
+ fun ctx cs ->
+  Pp.string ctx "@charset \"";
+  Pp.string ctx cs.encoding;
+  Pp.string ctx "\"";
+  Pp.semicolon ctx ()
+
+let pp_namespace_rule : namespace_rule Pp.t =
+ fun ctx ns ->
+  Pp.string ctx "@namespace ";
+  (match ns.prefix with
+  | Some p ->
+      Pp.string ctx p;
+      Pp.sp ctx ()
+  | None -> ());
+  Pp.string ctx "\"";
+  Pp.string ctx ns.uri;
+  Pp.string ctx "\"";
+  Pp.semicolon ctx ()
+
+let pp_page_rule : page_rule Pp.t =
+ fun ctx pg ->
+  Pp.string ctx "@page";
+  (match pg.selector with
+  | Some s ->
+      Pp.string ctx " ";
+      Pp.string ctx s
+  | None -> ());
+  Pp.sp ctx ();
+  let pp_body ctx () =
+    match pg.declarations with
+    | [] -> ()
+    | decls ->
+        Pp.cut ctx ();
+        Pp.nest 2
+          (Pp.list
+             ~sep:(fun ctx () ->
+               Pp.semicolon ctx ();
+               Pp.cut ctx ())
+             Declaration.pp_declaration)
+          ctx decls;
+        Pp.cut ctx ()
+  in
+  Pp.surround ~left:Pp.block_open ~right:Pp.block_close pp_body ctx ()
+
+let pp : t Pp.t =
+ fun ctx sheet ->
+  (* Charset must be first *)
+  (match sheet.charset with
+  | Some cs ->
+      pp_charset_rule ctx cs;
+      Pp.cut ctx ()
+  | None -> ());
+
+  (* Imports after charset *)
+  List.iter
+    (fun imp ->
+      pp_import_rule ctx imp;
+      Pp.cut ctx ())
+    sheet.imports;
+
+  (* Namespaces after imports *)
+  List.iter
+    (fun ns ->
+      pp_namespace_rule ctx ns;
+      Pp.cut ctx ())
+    sheet.namespaces;
+
+  (* Layers *)
+  List.iter
+    (fun l ->
+      pp_layer_rule ctx l;
+      Pp.cut ctx ())
+    sheet.layers;
+
+  (* Keyframes *)
+  List.iter
+    (fun kf ->
+      pp_keyframes_rule ctx kf;
+      Pp.cut ctx ())
+    sheet.keyframes;
+
+  (* Font faces *)
+  List.iter
+    (fun ff ->
+      pp_font_face_rule ctx ff;
+      Pp.cut ctx ())
+    sheet.font_faces;
+
+  (* Pages *)
+  List.iter
+    (fun pg ->
+      pp_page_rule ctx pg;
+      Pp.cut ctx ())
+    sheet.pages;
+
+  (* Property rules *)
+  List.iter
+    (fun pr ->
+      pp_property_rule ctx pr;
+      Pp.cut ctx ())
+    sheet.at_properties;
+
+  (* Regular rules *)
+  List.iter
+    (fun r ->
+      pp_rule ctx r;
+      Pp.cut ctx ())
+    sheet.rules;
+
+  (* Media queries *)
+  List.iter
+    (fun mq ->
+      pp_media_rule ctx mq;
+      Pp.cut ctx ())
+    sheet.media_queries;
+
+  (* Container queries *)
+  List.iter
+    (fun cq ->
+      pp_container_rule ctx cq;
+      Pp.cut ctx ())
+    sheet.container_queries;
+
+  (* Starting styles *)
+  List.iter
+    (fun ss ->
+      pp_starting_style_rule ctx ss;
+      Pp.cut ctx ())
+    sheet.starting_styles;
+
+  (* Supports queries *)
+  List.iter
+    (fun sq ->
+      pp_supports_rule ctx sq;
+      Pp.cut ctx ())
+    sheet.supports_queries
+
+(** {1 Reading/Parsing} *)
+
+let read_rule (r : Reader.t) : rule =
+  let selector = Selector.read r in
+  Reader.skip_ws r;
+  Reader.expect r '{';
+  let declarations = Declaration.read_declarations r in
+  Reader.expect r '}';
+  { selector; declarations }
+
+let read_media_rule (r : Reader.t) : media_rule =
+  Reader.expect_string r "@media";
+  Reader.skip_ws r;
+  let condition = Reader.until r '{' in
+  let condition = String.trim condition in
+  Reader.expect r '{';
+  let rec read_rules acc =
+    Reader.skip_ws r;
+    if Reader.peek r = Some '}' then (
+      Reader.skip r;
+      List.rev acc)
+    else
+      let rule = read_rule r in
+      read_rules (rule :: acc)
+  in
+  let media_rules = read_rules [] in
+  { media_condition = condition; media_rules }
+
+let read_supports_rule (r : Reader.t) : supports_rule =
+  Reader.expect_string r "@supports";
+  Reader.skip_ws r;
+  let condition = Reader.until r '{' in
+  let condition = String.trim condition in
+  Reader.expect r '{';
+  (* For simplicity, just read rules, not nested supports *)
+  let rec read_rules acc =
+    Reader.skip_ws r;
+    if Reader.peek r = Some '}' then (
+      Reader.skip r;
+      List.rev acc)
+    else
+      let rule = read_rule r in
+      read_rules (rule :: acc)
+  in
+  let rules = read_rules [] in
+  { supports_condition = condition; supports_content = Support_rules rules }
+
+let read_property_rule (r : Reader.t) : property_rule =
+  Reader.expect_string r "@property";
+  Reader.skip_ws r;
+  let name = Reader.ident r in
+  Reader.skip_ws r;
+  Reader.expect r '{';
+  Reader.skip_ws r;
+
+  (* Read syntax *)
+  Reader.expect_string r "syntax:";
+  Reader.skip_ws r;
+  Reader.expect r '"';
+  let syntax = Reader.until r '"' in
+  Reader.expect r '"';
+  Reader.skip_ws r;
+  Reader.expect r ';';
+  Reader.skip_ws r;
+
+  (* Read inherits *)
+  Reader.expect_string r "inherits:";
+  Reader.skip_ws r;
+  let inherits =
+    match Reader.peek_string r 4 with
+    | "true" ->
+        Reader.skip_n r 4;
+        true
+    | _ ->
+        Reader.expect_string r "false";
+        false
+  in
+  Reader.skip_ws r;
+  Reader.expect r ';';
+  Reader.skip_ws r;
+
+  (* Optional initial-value *)
+  let initial_value =
+    match Reader.peek_string r 14 with
+    | "initial-value:" ->
+        Reader.skip_n r 14;
+        Reader.skip_ws r;
+        let value = Reader.until r ';' in
+        Reader.expect r ';';
+        Reader.skip_ws r;
+        Some (String.trim value)
+    | _ -> None
+  in
+
+  Reader.expect r '}';
+  { name; syntax; inherits; initial_value }
+
+let read_stylesheet (r : Reader.t) : t =
+  let rec read_items acc =
+    Reader.skip_ws r;
+    if Reader.is_done r then List.rev acc
+    else
+      let rule = read_rule r in
+      read_items (Rule rule :: acc)
+  in
+  let items = read_items [] in
+  (* Organize items into proper stylesheet structure *)
+  let empty_sheet =
+    {
+      charset = None;
+      imports = [];
+      namespaces = [];
+      layers = [];
+      keyframes = [];
+      font_faces = [];
+      pages = [];
+      rules = [];
+      media_queries = [];
+      container_queries = [];
+      starting_styles = [];
+      supports_queries = [];
+      at_properties = [];
+    }
+  in
+  let rec categorize_items acc = function
+    | [] -> acc
+    | Charset c :: rest -> categorize_items { acc with charset = Some c } rest
+    | Import i :: rest ->
+        categorize_items { acc with imports = i :: acc.imports } rest
+    | Namespace n :: rest ->
+        categorize_items { acc with namespaces = n :: acc.namespaces } rest
+    | Layer l :: rest ->
+        categorize_items { acc with layers = l :: acc.layers } rest
+    | Keyframes k :: rest ->
+        categorize_items { acc with keyframes = k :: acc.keyframes } rest
+    | Font_face f :: rest ->
+        categorize_items { acc with font_faces = f :: acc.font_faces } rest
+    | Page p :: rest ->
+        categorize_items { acc with pages = p :: acc.pages } rest
+    | Rule r :: rest ->
+        categorize_items { acc with rules = r :: acc.rules } rest
+    | Media m :: rest ->
+        categorize_items
+          { acc with media_queries = m :: acc.media_queries }
+          rest
+    | Container c :: rest ->
+        categorize_items
+          { acc with container_queries = c :: acc.container_queries }
+          rest
+    | Starting_style s :: rest ->
+        categorize_items
+          { acc with starting_styles = s :: acc.starting_styles }
+          rest
+    | Supports s :: rest ->
+        categorize_items
+          { acc with supports_queries = s :: acc.supports_queries }
+          rest
+    | Property p :: rest ->
+        categorize_items
+          { acc with at_properties = p :: acc.at_properties }
+          rest
+  in
+  categorize_items empty_sheet items

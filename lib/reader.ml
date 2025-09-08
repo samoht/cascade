@@ -265,11 +265,11 @@ let rec skip_ws t =
 let ws = skip_ws
 
 (** Check if a character is whitespace *)
-let is_whitespace c = c = ' ' || c = '\t' || c = '\n' || c = '\r'
+let is_ws c = c = ' ' || c = '\t' || c = '\n' || c = '\r'
 
 (** Check if a character is a token separator in CSS *)
 let is_token_separator c =
-  is_whitespace c || c = ';' || c = ')' || c = '}' || c = ',' || c = '!'
+  is_ws c || c = ';' || c = ')' || c = '}' || c = ',' || c = '!'
 
 (** Read a non-whitespace token *)
 let token t =

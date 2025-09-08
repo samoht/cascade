@@ -99,3 +99,64 @@ val stylesheet : sheet_item list -> t
 
 val stylesheet_items : t -> sheet_item list
 (** [stylesheet_items t] converts a stylesheet to a list of items *)
+
+(** {1 Pretty-printing} *)
+
+val pp_rule : rule Pp.t
+(** [pp_rule] pretty-prints a CSS rule *)
+
+val pp_media_rule : media_rule Pp.t
+(** [pp_media_rule] pretty-prints a media rule *)
+
+val pp_container_rule : container_rule Pp.t
+(** [pp_container_rule] pretty-prints a container rule *)
+
+val pp_supports_rule : supports_rule Pp.t
+(** [pp_supports_rule] pretty-prints a supports rule *)
+
+val pp_layer_rule : layer_rule Pp.t
+(** [pp_layer_rule] pretty-prints a layer rule *)
+
+val pp_property_rule : property_rule Pp.t
+(** [pp_property_rule] pretty-prints a [@property] rule *)
+
+val pp_keyframes_rule : keyframes_rule Pp.t
+(** [pp_keyframes_rule] pretty-prints a [@keyframes] rule *)
+
+val pp_font_face_rule : font_face_rule Pp.t
+(** [pp_font_face_rule] pretty-prints a [@font-face] rule *)
+
+val pp_import_rule : import_rule Pp.t
+(** [pp_import_rule] pretty-prints an [@import] rule *)
+
+val pp_charset_rule : charset_rule Pp.t
+(** [pp_charset_rule] pretty-prints a [@charset] rule *)
+
+val pp_namespace_rule : namespace_rule Pp.t
+(** [pp_namespace_rule] pretty-prints a [@namespace] rule *)
+
+val pp_page_rule : page_rule Pp.t
+(** [pp_page_rule] pretty-prints a [@page] rule *)
+
+val pp_starting_style_rule : starting_style_rule Pp.t
+(** [pp_starting_style_rule] pretty-prints a [@starting-style] rule *)
+
+val pp : t Pp.t
+(** [pp] pretty-prints a complete stylesheet *)
+
+(** {1 Reading/Parsing} *)
+
+val read_rule : Reader.t -> rule
+(** [read_rule t] reads a CSS rule from the reader *)
+
+val read_media_rule : Reader.t -> media_rule
+(** [read_media_rule t] reads a media rule from the reader *)
+
+val read_supports_rule : Reader.t -> supports_rule
+(** [read_supports_rule t] reads a supports rule from the reader *)
+
+val read_property_rule : Reader.t -> property_rule
+(** [read_property_rule t] reads a [@property] rule from the reader *)
+
+val read_stylesheet : Reader.t -> t
+(** [read_stylesheet t] reads a complete stylesheet from [t]. *)

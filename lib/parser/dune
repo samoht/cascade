@@ -1,4 +1,0 @@
-(library
- (name css_parser)
- (public_name tw.css.parser)
- (libraries tw.css fmt))

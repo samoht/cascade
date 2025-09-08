@@ -26,16 +26,18 @@ type _ kind =
   | Content : content kind
 
 type declaration =
-  | Declaration : 'a property * 'a -> declaration
+  | Declaration : {
+      property : 'a property;
+      value : 'a;
+      important : bool;
+    }
+      -> declaration
   | Custom_declaration : {
       name : string;
       kind : 'a kind;
       value : 'a;
       layer : string option;
       meta : Values.meta option;
-          (* TODO: Add support for !important on custom properties According to
-             CSS spec, custom properties can have !important: --color: red
-             !important; is valid CSS *)
+      important : bool;
     }
       -> declaration
-  | Important_declaration : 'a property * 'a -> declaration

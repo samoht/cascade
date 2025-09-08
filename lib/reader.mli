@@ -82,8 +82,8 @@ val skip_ws : t -> unit
 val ws : t -> unit
 (** [ws t] is an alias for [skip_ws]. *)
 
-val is_whitespace : char -> bool
-(** [is_whitespace c] returns true if [c] is a whitespace character. *)
+val is_ws : char -> bool
+(** [is_ws c] returns true if [c] is a whitespace character. *)
 
 val is_token_separator : char -> bool
 (** [is_token_separator c] returns true if [c] is a CSS token separator
