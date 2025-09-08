@@ -6,9 +6,11 @@ module Values = Values
 module Properties = Properties
 module Declaration = Declaration
 module Selector = Selector
+module Stylesheet = Stylesheet
 include Values
 include Declaration
 include Properties
+include Stylesheet
 
 type any_var = V : 'a var -> any_var
 type mode = Variables | Inline
@@ -38,174 +40,6 @@ let var : type a.
   in
   let var_handle = { name; fallback; default = Some value; layer; meta } in
   (declaration, var_handle)
-
-type rule = { selector : Selector.t; declarations : declaration list }
-type media_rule = { media_condition : string; media_rules : rule list }
-
-type container_rule = {
-  container_name : string option;
-  container_condition : string;
-  container_rules : rule list;
-}
-
-type starting_style_rule = { starting_rules : rule list }
-
-type supports_content =
-  | Support_rules of rule list
-  | Support_nested of rule list * supports_rule list
-
-and supports_rule = {
-  supports_condition : string;
-  supports_content : supports_content;
-}
-
-type nested_rule = Rule of rule | Supports of supports_rule
-
-type property_rule = {
-  name : string;
-  syntax : string;
-  inherits : bool;
-  initial_value : string option;
-}
-
-type layer_rule = {
-  layer : string;
-  rules : nested_rule list;
-  media_queries : media_rule list;
-  container_queries : container_rule list;
-  supports_queries : supports_rule list;
-}
-
-type t = {
-  layers : layer_rule list;
-  rules : rule list;
-  media_queries : media_rule list;
-  container_queries : container_rule list;
-  starting_styles : starting_style_rule list;
-  supports_queries : supports_rule list;
-  at_properties : property_rule list;
-}
-
-type sheet_item =
-  | Rule of rule
-  | Media of media_rule
-  | Supports of supports_rule
-  | Container of container_rule
-  | Layer of layer_rule
-  | Property of property_rule
-  | Starting_style of starting_style_rule
-
-(** Stylesheet accessors *)
-let stylesheet_rules t = t.rules
-
-let stylesheet_layers t = t.layers
-let stylesheet_media_queries t = t.media_queries
-let stylesheet_container_queries t = t.container_queries
-
-(** {1 Creation} *)
-
-let rule ~selector declarations = { selector; declarations }
-let selector rule = rule.selector
-let declarations rule = rule.declarations
-
-let media ~condition rules =
-  { media_condition = condition; media_rules = rules }
-
-let media_condition media = media.media_condition
-let media_rules media = media.media_rules
-
-let supports ~condition rules =
-  { supports_condition = condition; supports_content = Support_rules rules }
-
-let supports_nested ~condition rules nested_queries =
-  {
-    supports_condition = condition;
-    supports_content = Support_nested (rules, nested_queries);
-  }
-
-let container ?(name = Option.none) ~condition rules =
-  {
-    container_name = name;
-    container_condition = condition;
-    container_rules = rules;
-  }
-
-let property ~syntax ?initial_value ?(inherits = false) name =
-  { name; syntax; inherits; initial_value }
-
-let property_rule_name r = r.name
-let property_rule_initial r = r.initial_value
-
-let default_decl_of_property_rule r =
-  match r.initial_value with
-  | Some v -> custom_property r.name v
-  | None -> custom_property r.name ""
-
-let rule_to_nested rule : nested_rule = Rule rule
-let supports_to_nested supports : nested_rule = Supports supports
-
-let layer ~name ?(media = []) ?(container = []) ?(supports = []) rules =
-  {
-    layer = name;
-    rules;
-    media_queries = media;
-    container_queries = container;
-    supports_queries = supports;
-  }
-
-let layer_name (layer : layer_rule) = layer.layer
-let layer_rules (layer : layer_rule) : nested_rule list = layer.rules
-
-let empty =
-  {
-    layers = [];
-    rules = [];
-    media_queries = [];
-    container_queries = [];
-    starting_styles = [];
-    supports_queries = [];
-    at_properties = [];
-  }
-
-let concat stylesheets =
-  List.fold_left
-    (fun acc sheet ->
-      {
-        layers = acc.layers @ sheet.layers;
-        rules = acc.rules @ sheet.rules;
-        media_queries = acc.media_queries @ sheet.media_queries;
-        container_queries = acc.container_queries @ sheet.container_queries;
-        starting_styles = acc.starting_styles @ sheet.starting_styles;
-        supports_queries = acc.supports_queries @ sheet.supports_queries;
-        at_properties = acc.at_properties @ sheet.at_properties;
-      })
-    empty stylesheets
-
-let stylesheet items =
-  List.fold_left
-    (fun acc item ->
-      match item with
-      | Rule r -> { acc with rules = acc.rules @ [ r ] }
-      | Media m -> { acc with media_queries = acc.media_queries @ [ m ] }
-      | Container c ->
-          { acc with container_queries = acc.container_queries @ [ c ] }
-      | Starting_style s ->
-          { acc with starting_styles = acc.starting_styles @ [ s ] }
-      | Supports s ->
-          { acc with supports_queries = acc.supports_queries @ [ s ] }
-      | Property a -> { acc with at_properties = acc.at_properties @ [ a ] }
-      | Layer l -> { acc with layers = acc.layers @ [ l ] })
-    empty items
-
-let stylesheet_items t =
-  let rules = List.map (fun r -> Rule r) t.rules in
-  let media = List.map (fun m -> Media m) t.media_queries in
-  let containers = List.map (fun c -> Container c) t.container_queries in
-  let supports = List.map (fun s -> Supports s) t.supports_queries in
-  let layers = List.map (fun l -> Layer l) t.layers in
-  let properties = List.map (fun p -> Property p) t.at_properties in
-  let starting = List.map (fun s -> Starting_style s) t.starting_styles in
-  rules @ media @ containers @ supports @ layers @ properties @ starting
 
 (** {1 Utilities} *)
 
@@ -412,26 +246,58 @@ let duplicate_buggy_properties decls =
     decls
 
 let deduplicate_declarations props =
-  (* Keep last occurrence of each property while preserving order *)
-  let seen = Hashtbl.create 16 in
-  let deduped =
-    List.fold_right
-      (fun decl acc ->
-        let prop_name =
-          match decl with
-          | Declaration (prop, _) -> Pp.to_string ~minify:true pp_property prop
-          | Important_declaration (prop, _) ->
-              Pp.to_string ~minify:true pp_property prop
-          | Custom_declaration { name; _ } -> name
+  (* CSS cascade rules: 1. !important declarations always win over normal
+     declarations 2. Among declarations of same importance, last one wins We
+     need to track normal and important separately *)
+  let normal_seen = Hashtbl.create 16 in
+  let important_seen = Hashtbl.create 16 in
+
+  (* First pass: collect last occurrence of each property by importance *)
+  List.iter
+    (fun decl ->
+      match decl with
+      | Declaration (prop, value) ->
+          let prop_name = Pp.to_string ~minify:true pp_property prop in
+          Hashtbl.replace normal_seen prop_name (Declaration (prop, value))
+      | Important_declaration (prop, value) ->
+          let prop_name = Pp.to_string ~minify:true pp_property prop in
+          Hashtbl.replace important_seen prop_name
+            (Important_declaration (prop, value))
+      | Custom_declaration { name; _ } as cdecl ->
+          (* Custom properties can't be important, just track last occurrence *)
+          Hashtbl.replace normal_seen name cdecl)
+    props;
+
+  (* Second pass: build result, important wins over normal for same property *)
+  let deduped = ref [] in
+  let processed = Hashtbl.create 16 in
+
+  (* Process in reverse order to maintain first occurrence position *)
+  List.iter
+    (fun decl ->
+      let prop_name =
+        match decl with
+        | Declaration (prop, _) -> Pp.to_string ~minify:true pp_property prop
+        | Important_declaration (prop, _) ->
+            Pp.to_string ~minify:true pp_property prop
+        | Custom_declaration { name; _ } -> name
+      in
+
+      if not (Hashtbl.mem processed prop_name) then (
+        Hashtbl.add processed prop_name ();
+        (* If there's an important version, use it; otherwise use normal *)
+        let final_decl =
+          if Hashtbl.mem important_seen prop_name then
+            Hashtbl.find important_seen prop_name
+          else if Hashtbl.mem normal_seen prop_name then
+            Hashtbl.find normal_seen prop_name
+          else decl (* Should not happen *)
         in
-        if Hashtbl.mem seen prop_name then acc
-        else (
-          Hashtbl.add seen prop_name ();
-          decl :: acc))
-      props []
-  in
+        deduped := final_decl :: !deduped))
+    props;
+
   (* Apply buggy property duplication after deduplication *)
-  duplicate_buggy_properties deduped
+  duplicate_buggy_properties (List.rev !deduped)
 
 (* Get the name of a variable *)
 let any_var_name (V v) = String.concat "" [ "--"; v.name ]
@@ -633,7 +499,10 @@ let rec pp_rule : rule Pp.t =
   Selector.pp ctx rule.selector;
   Pp.sp ctx ();
   let pp_body ctx () =
-    match rule.declarations with
+    (* Apply deduplication when printing to ensure cascade rules are
+       respected *)
+    let deduped_decls = deduplicate_declarations rule.declarations in
+    match deduped_decls with
     | [] -> ()
     | decls ->
         Pp.cut ctx ();

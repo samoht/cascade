@@ -5,7 +5,8 @@ open Css.Declaration
 
 let to_string pp v = Css.Pp.to_string ~minify:true pp v
 
-(* Helper for roundtrip testing of declarations *)
+(* Generic check function for declarations - handles parse/print roundtrip
+   testing *)
 let check_declaration ?expected input =
   let expected = Option.value ~default:input expected in
   let r = Css.Reader.of_string input in
@@ -18,6 +19,7 @@ let check_declaration ?expected input =
       check string (Fmt.str "declaration %s" input) expected reconstructed
   | None -> fail (Printf.sprintf "Failed to parse declaration: %s" input)
 
+(* Check individual parts of a declaration *)
 let check_declaration_parts input exp_name exp_value exp_important =
   let r = Css.Reader.of_string input in
   match read_declaration r with
@@ -31,6 +33,7 @@ let check_declaration_parts input exp_name exp_value exp_important =
       check bool (Fmt.str "important flag %s" input) exp_important important
   | None -> fail (Printf.sprintf "Failed to parse declaration: %s" input)
 
+(* Check multiple declarations *)
 let check_declarations input expected_count =
   let r = Css.Reader.of_string input in
   let decls = read_declarations r in
@@ -39,6 +42,7 @@ let check_declarations input expected_count =
     expected_count (List.length decls);
   decls
 
+(* Check declaration block *)
 let check_block input expected_count =
   let r = Css.Reader.of_string input in
   let decls = read_block r in
@@ -47,7 +51,7 @@ let check_block input expected_count =
     expected_count (List.length decls);
   decls
 
-let test_simple_declarations () =
+let test_declaration_simple () =
   (* Basic declarations *)
   check_declaration_parts "color: red;" "color" "red" false;
   check_declaration_parts "margin: 10px;" "margin" "10px" false;
@@ -57,7 +61,7 @@ let test_simple_declarations () =
   check_declaration_parts "  color  :  red  ;  " "color" "red" false;
   check_declaration_parts "\tmargin\t:\t10px\t;\t" "margin" "10px" false
 
-let test_important_declarations () =
+let test_declaration_important () =
   check_declaration_parts "color: red !important;" "color" "red" true;
   check_declaration_parts "margin: 10px !important;" "margin" "10px" true;
   check_declaration_parts "padding: 5px !important;" "padding" "5px" true;
@@ -67,7 +71,7 @@ let test_important_declarations () =
   check_declaration_parts "color: red ! important;" "color" "red" true;
   check_declaration_parts "color: red   !   important   ;" "color" "red" true
 
-let test_complex_values () =
+let test_declaration_complex_values () =
   (* Function values *)
   check_declaration_parts "background: url(image.png);" "background"
     "url(image.png)" false;
@@ -90,7 +94,7 @@ let test_complex_values () =
   check_declaration_parts "width: calc(100% - calc(50px + 10px));" "width"
     "calc(100% - calc(50px + 10px))" false
 
-let test_quoted_strings () =
+let test_declaration_quoted_strings () =
   (* Simple quoted strings *)
   check_declaration_parts "content: \"hello\";" "content" "\"hello\"" false;
   check_declaration_parts "content: 'world';" "content" "'world'" false;
@@ -104,7 +108,7 @@ let test_quoted_strings () =
   check_declaration_parts "content: \"a:b\";" "content" "\"a:b\"" false;
   check_declaration_parts "content: \"a{b}\";" "content" "\"a{b}\"" false
 
-let test_custom_properties () =
+let test_declaration_custom_properties () =
   check_declaration_parts "--color: red;" "--color" "red" false;
   check_declaration_parts "--my-var: 10px;" "--my-var" "10px" false;
   check_declaration_parts "--complex: var(--other, 10px);" "--complex"
@@ -112,7 +116,7 @@ let test_custom_properties () =
   check_declaration_parts "--important: value !important;" "--important" "value"
     true
 
-let test_vendor_prefixes () =
+let test_declaration_vendor_prefixes () =
   check_declaration_parts "-webkit-transform: rotate(45deg);"
     "-webkit-transform" "rotate(45deg)" false;
   check_declaration_parts "-moz-appearance: none;" "-moz-appearance" "none"
@@ -122,7 +126,7 @@ let test_vendor_prefixes () =
   check_declaration_parts "-o-transition: all 0.3s;" "-o-transition" "all 0.3s"
     false
 
-let test_multiple_declarations () =
+let test_declaration_multiple () =
   (* Basic multiple declarations *)
   let decls = check_declarations "color: red; margin: 10px;" 2 in
   let n1, v1, i1 = List.nth decls 0 in
@@ -141,7 +145,7 @@ let test_multiple_declarations () =
   let _, _, i2 = List.nth decls 1 in
   check bool "second is important" true i2
 
-let test_declaration_blocks () =
+let test_declaration_block () =
   (* Basic block *)
   let decls = check_block "{ color: blue; display: block; }" 2 in
   let n1, v1, _ = List.nth decls 0 in
@@ -159,7 +163,7 @@ let test_declaration_blocks () =
   let _ = check_block "{ }" 0 in
   ()
 
-let test_missing_semicolon () =
+let test_declaration_missing_semicolon () =
   (* Last declaration without semicolon *)
   let decls = check_declarations "color: red; margin: 10px" 2 in
   let n2, v2, _ = List.nth decls 1 in
@@ -173,7 +177,7 @@ let test_missing_semicolon () =
   check_declaration_parts "width: calc(100% - 10px)" "width" "calc(100% - 10px)"
     false
 
-let test_empty_input () =
+let test_declaration_empty_input () =
   let r = Css.Reader.of_string "" in
   let decls = read_declarations r in
   check int "empty input" 0 (List.length decls);
@@ -182,7 +186,7 @@ let test_empty_input () =
   let decls = read_declarations r in
   check int "whitespace only" 0 (List.length decls)
 
-let test_property_name_formats () =
+let test_declaration_property_name () =
   (* Test read_property_name directly *)
   let test_prop_name input expected =
     let r = Css.Reader.of_string input in
@@ -196,7 +200,7 @@ let test_property_name_formats () =
   test_prop_name "--custom-var:" "--custom-var";
   test_prop_name "font-family:" "font-family"
 
-let test_property_value_formats () =
+let test_declaration_property_value () =
   (* Test read_property_value directly *)
   let test_prop_value input expected =
     let r = Css.Reader.of_string input in
@@ -212,7 +216,7 @@ let test_property_value_formats () =
   test_prop_value "linear-gradient(to right, red, blue);"
     "linear-gradient(to right, red, blue)"
 
-let test_roundtrip () =
+let test_declaration_roundtrip () =
   (* Test that parsing and re-serializing gives expected results *)
   check_declaration "color:red";
   check_declaration "margin:10px";
@@ -227,25 +231,25 @@ let test_roundtrip () =
   check_declaration ~expected:"margin:10px" "margin : 10px";
   check_declaration ~expected:"padding:5px!important" "padding: 5px !important"
 
-let test_error_missing_colon () =
+let test_declaration_error_missing_colon () =
   let r = Css.Reader.of_string "color red;" in
   check_raises "missing colon"
     (Css.Reader.Parse_error ("Expected ':' but got ';'", r))
     (fun () -> ignore (read_declaration r))
 
-let test_error_stray_semicolon () =
+let test_declaration_error_stray_semicolon () =
   let r = Css.Reader.of_string "; color: red;" in
   check_raises "stray semicolon"
     (Css.Reader.Parse_error ("Expected ':' but got ';'", r))
     (fun () -> ignore (read_declaration r))
 
-let test_error_unclosed_block () =
+let test_declaration_error_unclosed_block () =
   let r = Css.Reader.of_string "{ color: red;" in
   check_raises "missing closing brace"
     (Css.Reader.Parse_error ("unexpected end of input", r))
     (fun () -> ignore (read_block r))
 
-let test_special_cases () =
+let test_declaration_special_cases () =
   (* Nested parentheses *)
   check_declaration_parts "width: calc(100% - calc(50px + 10px));" "width"
     "calc(100% - calc(50px + 10px))" false;
@@ -261,22 +265,25 @@ let suite =
   [
     ( "declaration",
       [
-        test_case "simple declarations" `Quick test_simple_declarations;
-        test_case "important declarations" `Quick test_important_declarations;
-        test_case "complex values" `Quick test_complex_values;
-        test_case "quoted strings" `Quick test_quoted_strings;
-        test_case "custom properties" `Quick test_custom_properties;
-        test_case "vendor prefixes" `Quick test_vendor_prefixes;
-        test_case "multiple declarations" `Quick test_multiple_declarations;
-        test_case "declaration blocks" `Quick test_declaration_blocks;
-        test_case "missing semicolon" `Quick test_missing_semicolon;
-        test_case "empty input" `Quick test_empty_input;
-        test_case "property name formats" `Quick test_property_name_formats;
-        test_case "property value formats" `Quick test_property_value_formats;
-        test_case "roundtrip" `Quick test_roundtrip;
-        test_case "special cases" `Quick test_special_cases;
-        test_case "error missing colon" `Quick test_error_missing_colon;
-        test_case "error stray semicolon" `Quick test_error_stray_semicolon;
-        test_case "error unclosed block" `Quick test_error_unclosed_block;
+        test_case "simple" `Quick test_declaration_simple;
+        test_case "important" `Quick test_declaration_important;
+        test_case "complex values" `Quick test_declaration_complex_values;
+        test_case "quoted strings" `Quick test_declaration_quoted_strings;
+        test_case "custom properties" `Quick test_declaration_custom_properties;
+        test_case "vendor prefixes" `Quick test_declaration_vendor_prefixes;
+        test_case "multiple" `Quick test_declaration_multiple;
+        test_case "block" `Quick test_declaration_block;
+        test_case "missing semicolon" `Quick test_declaration_missing_semicolon;
+        test_case "empty input" `Quick test_declaration_empty_input;
+        test_case "property name" `Quick test_declaration_property_name;
+        test_case "property value" `Quick test_declaration_property_value;
+        test_case "roundtrip" `Quick test_declaration_roundtrip;
+        test_case "special cases" `Quick test_declaration_special_cases;
+        test_case "error missing colon" `Quick
+          test_declaration_error_missing_colon;
+        test_case "error stray semicolon" `Quick
+          test_declaration_error_stray_semicolon;
+        test_case "error unclosed block" `Quick
+          test_declaration_error_unclosed_block;
       ] );
   ]

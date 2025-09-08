@@ -3,6 +3,8 @@
 open Alcotest
 open Css.Values
 
+(* Generic check function for CSS value types - handles parse/print roundtrip
+   testing *)
 let check_value type_name reader pp_func ?(minify = true) ?expected input =
   let expected = Option.value ~default:input expected in
   let t = Css.Reader.of_string input in
@@ -10,14 +12,29 @@ let check_value type_name reader pp_func ?(minify = true) ?expected input =
   let pp_str = Css.Pp.to_string ~minify pp_func result in
   check string (Fmt.str "%s %s" type_name input) expected pp_str
 
+(* One-liner check functions for each CSS value type *)
 let check_length = check_value "length" read_length pp_length
 let check_color = check_value "color" read_color pp_color
 let check_angle = check_value "angle" read_angle pp_angle
 let check_duration = check_value "duration" read_duration pp_duration
 let check_percentage = check_value "percentage" read_percentage pp_percentage
-let check_calc = check_value "calc" (read_calc read_length) (pp_calc pp_length)
+let check_number = check_value "number" read_number pp_number
 
-let test_length_parsing () =
+let check_calc_length =
+  check_value "calc_length" (read_calc read_length) (pp_calc pp_length)
+
+let check_calc_angle =
+  check_value "calc_angle" (read_calc read_angle) (pp_calc pp_angle)
+
+let check_calc_duration =
+  check_value "calc_duration" (read_calc read_duration) (pp_calc pp_duration)
+
+let check_calc_percentage =
+  check_value "calc_percentage"
+    (read_calc read_percentage)
+    (pp_calc pp_percentage)
+
+let test_length () =
   (* Basic units *)
   check_length "10px";
   check_length ~expected:"0" "0px";
@@ -56,7 +73,7 @@ let test_length_parsing () =
   check_length "-999px";
   check_length ".5px"
 
-let test_additional_length_units () =
+let test_length_additional_units () =
   (* Absolute length units *)
   check_length "10cm";
   check_length "10mm";
@@ -96,7 +113,7 @@ let test_additional_length_units () =
   check_length ~expected:"0" "0vi";
   check_length ~expected:"0" "0svh"
 
-let test_color_parsing () =
+let test_color () =
   (* Hex colors with # *)
   check_color "#fff";
   check_color "#FFF";
@@ -186,7 +203,7 @@ let test_color_parsing () =
   check_color ~expected:"rgb(0 0 0 / .25)" "rgba(0, 0, 0, 0.25)";
   check_color ~expected:"rgb(128 128 128 / .75)" "rgba(128, 128, 128, 0.75)"
 
-let test_angle_parsing () =
+let test_angle () =
   (* Degrees *)
   check_angle "45deg";
   check_angle "0deg";
@@ -219,7 +236,7 @@ let test_angle_parsing () =
   check_angle "-360deg";
   check_angle ".25deg"
 
-let test_duration_parsing () =
+let test_duration () =
   (* Seconds *)
   check_duration "1s";
   check_duration "0s";
@@ -237,7 +254,7 @@ let test_duration_parsing () =
   check_duration "999999ms";
   check_duration ".1s"
 
-let test_percentage_parsing () =
+let test_percentage () =
   check_percentage "50%";
   check_percentage "100%";
   check_percentage "0%";
@@ -261,7 +278,8 @@ let test_default_units_and_unitless () =
   (* Unitless non-zero length is preserved as a number *)
   check_length "1.5"
 
-let test_calc_expressions () =
+let test_calc () =
+  (* Test calc with length values *)
   let cases =
     [
       (* Basic operations *)
@@ -293,15 +311,15 @@ let test_calc_expressions () =
   List.iter
     (fun case ->
       if case = "calc((100% - 20px) / 2)" then
-        check_calc ~expected:"calc(100% - 20px / 2)" case
+        check_calc_length ~expected:"calc(100% - 20px / 2)" case
       else if case = "calc((10px + 20px) * 2)" then
-        check_calc ~expected:"calc(10px + 20px * 2)" case
-      else check_calc case)
+        check_calc_length ~expected:"calc(10px + 20px * 2)" case
+      else check_calc_length case)
     cases;
   (* Edge cases with zero *)
-  check_calc ~expected:"calc(0 + 10px)" "calc(0px + 10px)";
-  check_calc ~expected:"calc(100% - 0)" "calc(100% - 0px)";
-  check_calc ~expected:"calc(0 * 100px)" "calc(0 * 100px)"
+  check_calc_length ~expected:"calc(0 + 10px)" "calc(0px + 10px)";
+  check_calc_length ~expected:"calc(100% - 0)" "calc(100% - 0px)";
+  check_calc_length ~expected:"calc(0 * 100px)" "calc(0 * 100px)"
 
 let test_var_in_color () =
   let t = Css.Reader.of_string "var(--primary-color)" in
@@ -467,43 +485,23 @@ let test_nested_var_fallbacks_roundtrip () =
   (* Nested var() in length fallback *)
   check_length "var(--gap, var(--gap2, 10px))";
   (* Nested var() in angle and duration via calc contexts *)
-  let check_calc_angle =
-    check_value "calc_angle" (read_calc read_angle) (pp_calc pp_angle)
-  in
   check_calc_angle ~expected:"calc(90deg + var(--a, var(--b, 45deg)))"
     "calc(90deg + var(--a, var(--b, 45deg)))";
-  let check_calc_duration =
-    check_value "calc_duration" (read_calc read_duration) (pp_calc pp_duration)
-  in
   check_calc_duration ~expected:"calc(1s + var(--t, var(--t2, 500ms)))"
     "calc(1s + var(--t, var(--t2, 500ms)))"
 
 let test_calc_with_other_types () =
   (* Test calc with angles *)
-  let check_calc_angle =
-    check_value "calc_angle" (read_calc read_angle) (pp_calc pp_angle)
-  in
-
   check_calc_angle ~expected:"calc(180deg + .5turn)" "calc(180deg + 0.5turn)";
   check_calc_angle "calc(90deg * 2)";
   check_calc_angle "calc(360deg / 4)";
 
   (* Test calc with durations *)
-  let check_calc_duration =
-    check_value "calc_duration" (read_calc read_duration) (pp_calc pp_duration)
-  in
-
   check_calc_duration "calc(1s + 500ms)";
   check_calc_duration "calc(2s - 500ms)";
   check_calc_duration "calc(100ms * 10)";
 
   (* Test calc with percentages *)
-  let check_calc_percentage =
-    check_value "calc_percentage"
-      (read_calc read_percentage)
-      (pp_calc pp_percentage)
-  in
-
   check_calc_percentage "calc(50% + 25%)";
   check_calc_percentage "calc(100% / 2)";
   check_calc_percentage "calc(25% * 3)"
@@ -512,16 +510,15 @@ let suite =
   [
     ( "values",
       [
-        test_case "parse lengths" `Quick test_length_parsing;
-        test_case "parse additional length units" `Quick
-          test_additional_length_units;
-        test_case "parse colors" `Quick test_color_parsing;
-        test_case "parse angles" `Quick test_angle_parsing;
-        test_case "parse durations" `Quick test_duration_parsing;
-        test_case "parse percentages" `Quick test_percentage_parsing;
+        test_case "length" `Quick test_length;
+        test_case "length additional units" `Quick test_length_additional_units;
+        test_case "color" `Quick test_color;
+        test_case "angle" `Quick test_angle;
+        test_case "duration" `Quick test_duration;
+        test_case "percentage" `Quick test_percentage;
         test_case "default units and unitless" `Quick
           test_default_units_and_unitless;
-        test_case "calc expressions" `Quick test_calc_expressions;
+        test_case "calc" `Quick test_calc;
         test_case "var() in color context" `Quick test_var_in_color;
         test_case "var() with fallback" `Quick test_var_with_fallback;
         test_case "var() with color keyword fallback" `Quick

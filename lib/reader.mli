@@ -82,6 +82,16 @@ val skip_ws : t -> unit
 val ws : t -> unit
 (** [ws t] is an alias for [skip_ws]. *)
 
+val is_whitespace : char -> bool
+(** [is_whitespace c] returns true if [c] is a whitespace character. *)
+
+val is_token_separator : char -> bool
+(** [is_token_separator c] returns true if [c] is a CSS token separator
+    (whitespace, semicolon, closing paren/brace, comma, or exclamation). *)
+
+val token : t -> string
+(** [token t] reads a non-whitespace CSS token, stopping at separators. *)
+
 (** {1 Backtracking} *)
 
 val save : t -> unit

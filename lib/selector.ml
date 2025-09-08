@@ -537,11 +537,14 @@ let pp_nth ctx = function
   | Even -> Pp.string ctx "even"
   | Odd -> Pp.string ctx "odd"
   | An_plus_b (a, b) ->
-      (match a with 1 -> () | -1 -> Pp.char ctx '-' | _ -> Pp.int ctx a);
-      Pp.char ctx 'n';
-      if b <> 0 then (
-        if b > 0 then Pp.char ctx '+';
-        Pp.int ctx b)
+      (* Special case: if a=0, just print the constant b *)
+      if a = 0 then Pp.int ctx b
+      else (
+        (match a with 1 -> () | -1 -> Pp.char ctx '-' | _ -> Pp.int ctx a);
+        Pp.char ctx 'n';
+        if b <> 0 then (
+          if b > 0 then Pp.char ctx '+';
+          Pp.int ctx b))
 
 let is_ sels = Fun ("is", sels)
 let has sels = Fun ("has", sels)

@@ -25,20 +25,20 @@ let check_float_n ?(minify = false) n ?expected input =
   let result = Pp.to_string ~minify (Pp.float_n n) input in
   check string (Fmt.str "float_n %d %f" n input) expected result
 
-let test_minified () = check_pp_minified "string output" Pp.string "test"
-let test_pretty () = check_pp_pretty "string output" Pp.string "test"
+let test_pp_minified () = check_pp_minified "string output" Pp.string "test"
+let test_pp_pretty () = check_pp_pretty "string output" Pp.string "test"
 
-let test_indent () =
+let test_pp_indent () =
   check_pp_pretty "indented string" (Pp.indent Pp.string) ~expected:"  test"
     "test"
 
-let test_block () =
+let test_pp_block () =
   check_pp_minified "braces" (Pp.braces Pp.string) ~expected:"{content}"
     "content";
   check_pp_pretty "braces pretty" (Pp.braces Pp.string)
     ~expected:"{\n  content\n}" "content"
 
-let test_list () =
+let test_pp_list () =
   let pp_list = Pp.list ~sep:Pp.comma Pp.string in
   let result = Pp.to_string ~minify:true pp_list [ "a"; "b"; "c" ] in
   check string "comma list" "a,b,c" result;
@@ -54,14 +54,14 @@ let test_list () =
   let result = Pp.to_string ~minify:true pp_list [ "single" ] in
   check string "single item" "single" result
 
-let test_float () =
+let test_pp_float () =
   (* Basic floats *)
   check_float 3.14159 ~expected:"3.14159";
   check_float 42.0 ~expected:"42";
   check_float 1.0 ~expected:"1";
   check_float (-3.14) ~expected:"-3.14"
 
-let test_float_leading_zero () =
+let test_pp_float_leading_zero () =
   (* Pretty keeps leading zero *)
   check_float 0.5 ~expected:"0.5";
   check_float 0.25 ~expected:"0.25";
@@ -72,7 +72,7 @@ let test_float_leading_zero () =
   check_float ~minify:true 0.25 ~expected:".25";
   check_float ~minify:true 0.125 ~expected:".125"
 
-let test_float_negative_leading_zero () =
+let test_pp_float_negative_leading_zero () =
   (* Pretty negative keeps zero *)
   check_float (-0.5) ~expected:"-0.5";
   check_float (-0.25) ~expected:"-0.25";
@@ -81,7 +81,7 @@ let test_float_negative_leading_zero () =
   check_float ~minify:true (-0.5) ~expected:"-.5";
   check_float ~minify:true (-0.25) ~expected:"-.25"
 
-let test_float_zero_and_nan_inf () =
+let test_pp_float_zero_and_nan_inf () =
   (* Zero handling *)
   check_float 0.0 ~expected:"0";
   check_float (-0.0) ~expected:"0";
@@ -93,7 +93,7 @@ let test_float_zero_and_nan_inf () =
   (* NaN becomes 0 *)
   check_float nan ~expected:"0"
 
-let test_float_rounding_and_trim () =
+let test_pp_float_rounding_and_trim () =
   (* Rounding with float_n *)
   check_float_n 3 1.23456 ~expected:"1.235";
   (* Round up *)
@@ -109,7 +109,7 @@ let test_float_rounding_and_trim () =
   check_float_n ~minify:true 3 0.25 ~expected:".25";
   check_float_n ~minify:true 2 0.999 ~expected:"1"
 
-let test_cond () =
+let test_pp_cond () =
   let pp = Pp.cond (fun ctx -> not (Pp.minified ctx)) Pp.string Pp.nop in
 
   (* Conditional shows in pretty mode *)
@@ -118,7 +118,7 @@ let test_cond () =
   (* Conditional hidden in minified mode *)
   check_pp_minified "conditional minified" pp ~expected:"" "test"
 
-let test_space_if_pretty () =
+let test_pp_space_if_pretty () =
   (* No space in minified *)
   let minified = Pp.to_string ~minify:true Pp.space_if_pretty () in
   check string "minified space" "" minified;
@@ -127,7 +127,7 @@ let test_space_if_pretty () =
   let pretty = Pp.to_string ~minify:false Pp.space_if_pretty () in
   check string "pretty space" " " pretty
 
-let test_combinations () =
+let test_pp_combinations () =
   (* Combined formatters *)
   let pp_indented_braces = Pp.indent (Pp.braces Pp.string) in
   check_pp_pretty "indented braces" pp_indented_braces
@@ -146,21 +146,22 @@ let suite =
   [
     ( "pp",
       [
-        Alcotest.test_case "minified output" `Quick test_minified;
-        Alcotest.test_case "pretty output" `Quick test_pretty;
-        Alcotest.test_case "indentation" `Quick test_indent;
-        Alcotest.test_case "block formatting" `Quick test_block;
-        Alcotest.test_case "list formatting" `Quick test_list;
-        Alcotest.test_case "float formatting" `Quick test_float;
-        Alcotest.test_case "float leading zero" `Quick test_float_leading_zero;
+        Alcotest.test_case "minified" `Quick test_pp_minified;
+        Alcotest.test_case "pretty" `Quick test_pp_pretty;
+        Alcotest.test_case "indent" `Quick test_pp_indent;
+        Alcotest.test_case "block" `Quick test_pp_block;
+        Alcotest.test_case "list" `Quick test_pp_list;
+        Alcotest.test_case "float" `Quick test_pp_float;
+        Alcotest.test_case "float leading zero" `Quick
+          test_pp_float_leading_zero;
         Alcotest.test_case "float negative leading zero" `Quick
-          test_float_negative_leading_zero;
-        Alcotest.test_case "float zero/nan/inf" `Quick
-          test_float_zero_and_nan_inf;
+          test_pp_float_negative_leading_zero;
+        Alcotest.test_case "float zero nan inf" `Quick
+          test_pp_float_zero_and_nan_inf;
         Alcotest.test_case "float rounding and trim" `Quick
-          test_float_rounding_and_trim;
-        Alcotest.test_case "conditional output" `Quick test_cond;
-        Alcotest.test_case "space_if_pretty" `Quick test_space_if_pretty;
-        Alcotest.test_case "combinations" `Quick test_combinations;
+          test_pp_float_rounding_and_trim;
+        Alcotest.test_case "cond" `Quick test_pp_cond;
+        Alcotest.test_case "space if pretty" `Quick test_pp_space_if_pretty;
+        Alcotest.test_case "combinations" `Quick test_pp_combinations;
       ] );
   ]

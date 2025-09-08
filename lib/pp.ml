@@ -197,6 +197,17 @@ let call_2 name pp_a pp_b = call name (pair ~sep:comma pp_a pp_b)
 let call_3 name pp_a pp_b pp_c = call name (triple ~sep:comma pp_a pp_b pp_c)
 
 let url ctx s =
-  string ctx "url(\"";
-  string ctx s;
-  string ctx "\")"
+  string ctx "url(";
+  (* Only quote if the URL contains special characters *)
+  let needs_quotes =
+    String.exists
+      (fun c ->
+        c = ' ' || c = ')' || c = '"' || c = '\'' || c = '(' || c = '\\')
+      s
+  in
+  if needs_quotes then (
+    string ctx "\"";
+    string ctx s;
+    string ctx "\"")
+  else string ctx s;
+  string ctx ")"

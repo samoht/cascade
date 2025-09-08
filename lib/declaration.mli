@@ -216,7 +216,8 @@ val border_top : string -> declaration
 val border_right : string -> declaration
 val border_bottom : string -> declaration
 val border_left : string -> declaration
-val transform_origin : string -> declaration
+val object_position : position_2d -> declaration
+val transform_origin : transform_origin -> declaration
 val clip_path : string -> declaration
 val mask : string -> declaration
 val content_visibility : content_visibility -> declaration
@@ -232,7 +233,7 @@ val webkit_hyphens : hyphens -> declaration
 val font_stretch : font_stretch -> declaration
 val font_variant_numeric : font_variant_numeric -> declaration
 val backdrop_filter : filter -> declaration
-val background_position : string -> declaration
+val background_position : position_2d list -> declaration
 val background_repeat : background_repeat -> declaration
 val background_size : background_size -> declaration
 val content : content -> declaration
@@ -274,7 +275,6 @@ val perspective : length -> declaration
 val perspective_origin : string -> declaration
 val transform_style : transform_style -> declaration
 val backface_visibility : backface_visibility -> declaration
-val object_position : string -> declaration
 val transition_duration : duration -> declaration
 val transition_timing_function : timing_function -> declaration
 val transition_delay : duration -> declaration

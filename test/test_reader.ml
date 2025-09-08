@@ -3,7 +3,7 @@
 open Alcotest
 open Css.Reader
 
-(* Generic helper for reader tests *)
+(* Generic check function for reader tests - handles read operations *)
 let check_read name reader ?expected input =
   let expected = Option.value ~default:input expected in
   let r = of_string input in
@@ -29,7 +29,7 @@ let check_looking_at name expected input pattern =
   Alcotest.(check bool) name expected result
 
 (* Test basic operations *)
-let test_basic_operations () =
+let test_reader_basic () =
   (* Peek tests *)
   check_peek "peek h" (Some 'h') "hello";
   check_peek "peek empty" None "";
@@ -46,7 +46,7 @@ let test_basic_operations () =
   Alcotest.(check bool) "done after read" true (is_done r)
 
 (* Test string operations *)
-let test_string_operations () =
+let test_reader_string () =
   (* peek_string *)
   let r = of_string "hello world" in
   Alcotest.(check string) "peek 5 chars" "hello" (peek_string r 5);
@@ -63,7 +63,7 @@ let test_string_operations () =
   Alcotest.(check (option char)) "after skip 3" (Some 'l') (peek r)
 
 (* Test whitespace handling *)
-let test_whitespace () =
+let test_reader_whitespace () =
   (* Basic whitespace *)
   let r = of_string "  \t\n test" in
   skip_ws r;
@@ -80,7 +80,7 @@ let test_whitespace () =
   Alcotest.(check bool) "all ws done" true (is_done r)
 
 (* Test comment skipping *)
-let test_comment_skipping () =
+let test_reader_comments () =
   (* Single comment *)
   let r = of_string "/*comment*/x" in
   skip_ws r;
@@ -97,7 +97,7 @@ let test_comment_skipping () =
   Alcotest.(check (option char)) "nested comment" (Some '*') (peek r)
 
 (* Test take_while *)
-let test_take_while () =
+let test_reader_take_while () =
   (* Digits *)
   let r = of_string "123abc" in
   let digits = while_ r (fun c -> c >= '0' && c <= '9') in
@@ -113,7 +113,7 @@ let test_take_while () =
   Alcotest.(check string) "no match" "" alphas
 
 (* Test expect *)
-let test_expect () =
+let test_reader_expect () =
   (* Success case *)
   let r = of_string "test" in
   expect r 't';
@@ -126,7 +126,7 @@ let test_expect () =
     (fun () -> expect r 'x')
 
 (* Test expect_string *)
-let test_expect_string () =
+let test_reader_expect_string () =
   (* Success *)
   let r = of_string "hello world" in
   expect_string r "hello";
@@ -135,11 +135,11 @@ let test_expect_string () =
   (* Failure *)
   let r = of_string "hello" in
   check_raises "expect wrong string"
-    (Parse_error ("Expected 'world' but got 'hello'", r))
+    (Parse_error ("expected \"world\"", r))
     (fun () -> expect_string r "world")
 
 (* Test between delimiters *)
-let test_between () =
+let test_reader_between () =
   (* Parentheses *)
   let r = of_string "(content)" in
   let result = between r '(' ')' (fun r -> while_ r (fun c -> c != ')')) in
@@ -161,19 +161,24 @@ let test_between () =
     between r '(' ')' (fun r ->
         let rec read_until_close depth acc =
           if is_done r then acc
-          else
+          else (
+            save r;
             let c = char r in
             if c = '(' then read_until_close (depth + 1) (acc ^ "(")
             else if c = ')' then
-              if depth = 0 then acc else read_until_close (depth - 1) (acc ^ ")")
-            else read_until_close depth (acc ^ String.make 1 c)
+              if depth = 0 then (
+                (* Do not consume the closing ')'; restore to before it *)
+                restore r;
+                acc)
+              else read_until_close (depth - 1) (acc ^ ")")
+            else read_until_close depth (acc ^ String.make 1 c))
         in
         read_until_close 0 "")
   in
   Alcotest.(check string) "nested parens" "outer(inner)" result
 
 (* Test save/restore *)
-let test_save_restore () =
+let test_reader_save_restore () =
   let r = of_string "test" in
   save r;
   ignore (char r);
@@ -183,7 +188,7 @@ let test_save_restore () =
   Alcotest.(check (option char)) "restored" (Some 't') (peek r)
 
 (* Test try_parse *)
-let test_try_parse () =
+let test_reader_try_parse () =
   (* Success *)
   let r = of_string "123" in
   let result =
@@ -205,17 +210,19 @@ let test_try_parse () =
   Alcotest.(check (option char)) "position restored" (Some 'a') (peek r)
 
 (* Test commit *)
-let test_commit () =
+let test_reader_commit () =
   let r = of_string "test" in
   save r;
   ignore (char r);
   commit r;
-  (* After commit, restore should have no effect *)
-  restore r;
-  Alcotest.(check (option char)) "commit prevents restore" (Some 'e') (peek r)
+  (* After commit, restore should fail; position remains advanced *)
+  check_raises "restore after commit"
+    (Parse_error ("no saved position to restore", r))
+    (fun () -> restore r);
+  Alcotest.(check (option char)) "position after commit" (Some 'e') (peek r)
 
 (* Test number parsing *)
-let test_numbers () =
+let test_reader_numbers () =
   (* Float *)
   let r = of_string "3.14" in
   let n = number r in
@@ -234,7 +241,7 @@ let test_numbers () =
   Alcotest.(check (float 0.001)) "negative float" (-2.5) n
 
 (* Test unit parsing *)
-let test_units () =
+let test_reader_units () =
   (* Units are parsed as identifiers *)
   let r = of_string "px" in
   let unit = ident r in
@@ -250,7 +257,7 @@ let test_units () =
   Alcotest.(check char) "percent" '%' c
 
 (* Test identifier parsing *)
-let test_ident () =
+let test_reader_ident () =
   (* Simple ident *)
   check_read "simple ident" ident ~expected:"hello" "hello";
   check_read "with dash" ident ~expected:"my-class" "my-class";
@@ -264,21 +271,21 @@ let test_ident () =
   check_read "custom prop" ident ~expected:"--my-var" "--my-var"
 
 (* Test string parsing *)
-let test_string () =
-  (* Double quotes *)
-  check_read "double quote" string ~expected:"\"hello\"" "\"hello\"";
-  check_read "double empty" string ~expected:"\"\"" "\"\"";
+let test_reader_string_literals () =
+  (* Double quotes return content without quotes *)
+  check_read "double quote" string ~expected:"hello" "\"hello\"";
+  check_read "double empty" string ~expected:"" "\"\"";
 
   (* Single quotes *)
-  check_read "single quote" string ~expected:"'world'" "'world'";
-  check_read "single empty" string ~expected:"''" "''";
+  check_read "single quote" string ~expected:"world" "'world'";
+  check_read "single empty" string ~expected:"" "''";
 
-  (* Escaped quotes *)
-  check_read "escaped double" string ~expected:"\"a\\\"b\"" "\"a\\\"b\"";
-  check_read "escaped single" string ~expected:"'a\\'b'" "'a\\'b'"
+  (* Escaped quotes yield unescaped content *)
+  check_read "escaped double" string ~expected:"a\"b" "\"a\\\"b\"";
+  check_read "escaped single" string ~expected:"a'b" "'a\\'b'"
 
 (* Test until_string *)
-let test_until_string () =
+let test_reader_until_string () =
   let r = of_string "data;more" in
   let data = until_string r ";" in
   Alcotest.(check string) "until semicolon" "data" data;
@@ -288,7 +295,7 @@ let test_until_string () =
   Alcotest.(check string) "delimiter not found" "no delimiter here" all
 
 (* Test hex colors *)
-let test_hex () =
+let test_reader_hex () =
   (* Hex colors are just parsed as strings starting with # *)
   let r = of_string "#abc" in
   expect r '#';
@@ -311,7 +318,7 @@ let test_hex () =
   Alcotest.(check string) "6 digit hex" "123456" hex
 
 (* Test identifier with escapes *)
-let test_ident_escapes () =
+let test_reader_ident_with_escapes () =
   (* Unicode escape *)
   let r = of_string "\\0041 bc" in
   (* \0041 is 'A' *)
@@ -330,7 +337,7 @@ let test_ident_escapes () =
   Alcotest.(check string) "multiple escapes" "123" id
 
 (* Test failure cases *)
-let test_failures () =
+let test_reader_failures () =
   (* EOF in string *)
   let r = of_string "\"unclosed" in
   check_raises "unclosed string"
@@ -340,7 +347,7 @@ let test_failures () =
   (* Invalid number *)
   let r = of_string "abc" in
   check_raises "not a number"
-    (Parse_error ("Expected number", r))
+    (Parse_error ("invalid number", r))
     (fun () -> ignore (number r))
 
 let suite =
@@ -348,29 +355,29 @@ let suite =
     ( "reader",
       [
         (* Basic operations *)
-        test_case "basic operations" `Quick test_basic_operations;
-        test_case "string operations" `Quick test_string_operations;
-        test_case "whitespace" `Quick test_whitespace;
-        test_case "comment skipping" `Quick test_comment_skipping;
+        test_case "basic" `Quick test_reader_basic;
+        test_case "string" `Quick test_reader_string;
+        test_case "whitespace" `Quick test_reader_whitespace;
+        test_case "comments" `Quick test_reader_comments;
         (* Parsing helpers *)
-        test_case "take while" `Quick test_take_while;
-        test_case "expect" `Quick test_expect;
-        test_case "expect string" `Quick test_expect_string;
-        test_case "between delimiters" `Quick test_between;
+        test_case "take while" `Quick test_reader_take_while;
+        test_case "expect" `Quick test_reader_expect;
+        test_case "expect string" `Quick test_reader_expect_string;
+        test_case "between" `Quick test_reader_between;
         (* Backtracking *)
-        test_case "save restore" `Quick test_save_restore;
-        test_case "try parse" `Quick test_try_parse;
-        test_case "commit" `Quick test_commit;
+        test_case "save restore" `Quick test_reader_save_restore;
+        test_case "try parse" `Quick test_reader_try_parse;
+        test_case "commit" `Quick test_reader_commit;
         (* Value parsing *)
-        test_case "numbers" `Quick test_numbers;
-        test_case "units" `Quick test_units;
-        test_case "identifiers" `Quick test_ident;
-        test_case "strings" `Quick test_string;
-        test_case "until string" `Quick test_until_string;
-        test_case "hex colors" `Quick test_hex;
+        test_case "numbers" `Quick test_reader_numbers;
+        test_case "units" `Quick test_reader_units;
+        test_case "ident" `Quick test_reader_ident;
+        test_case "string literals" `Quick test_reader_string_literals;
+        test_case "until string" `Quick test_reader_until_string;
+        test_case "hex" `Quick test_reader_hex;
         (* Special cases *)
-        test_case "ident escapes" `Quick test_ident_escapes;
+        test_case "ident with escapes" `Quick test_reader_ident_with_escapes;
         (* Error cases *)
-        test_case "failures" `Quick test_failures;
+        test_case "failures" `Quick test_reader_failures;
       ] );
   ]

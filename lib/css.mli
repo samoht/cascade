@@ -95,6 +95,7 @@
     @see <https://www.w3.org/TR/selectors-4/> CSS Selectors Level 4 *)
 
 module Selector = Selector
+module Stylesheet = Stylesheet
 
 (** {2:css_rules CSS Rules and Stylesheets}
 
@@ -178,8 +179,7 @@ val supports_nested :
 (** [supports_nested ~condition rules nested_supports] is a [@supports] rule
     with nested [@supports] rules. *)
 
-val container :
-  ?name:string option -> condition:string -> rule list -> container_rule
+val container : ?name:string -> condition:string -> rule list -> container_rule
 (** [container ?name ~condition rules] is a [\@container] rule.
     @param name Optional container name.
     @param condition Container query condition (e.g., "(min-width: 700px)"). *)

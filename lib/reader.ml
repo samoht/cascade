@@ -173,12 +173,11 @@ let read_escape t =
       let cp = int_of_string_opt ("0x" ^ hex) |> Option.value ~default:0x3F in
       utf8_of_codepoint cp
   | Some c ->
-      (* Simple escape of a single char. If it's an ident char, return it
-         unescaped. Otherwise, preserve the backslash to keep the original
-         escaped representation (e.g., ":" or "."). *)
+      (* Simple escape of a single character within an identifier: return the
+         unescaped character so escapes normalize to their intended
+         codepoint. *)
       ignore (char t);
-      if is_ident_char c then String.make 1 c
-      else String.concat "" [ "\\"; String.make 1 c ]
+      String.make 1 c
   | None -> err_eof t
 
 let ident t =
@@ -264,6 +263,18 @@ let rec skip_ws t =
     skip_ws t)
 
 let ws = skip_ws
+
+(** Check if a character is whitespace *)
+let is_whitespace c = c = ' ' || c = '\t' || c = '\n' || c = '\r'
+
+(** Check if a character is a token separator in CSS *)
+let is_token_separator c =
+  is_whitespace c || c = ';' || c = ')' || c = '}' || c = ',' || c = '!'
+
+(** Read a non-whitespace token *)
+let token t =
+  skip_ws t;
+  while_ t (fun c -> not (is_token_separator c))
 
 (** {1 Backtracking} *)
 
