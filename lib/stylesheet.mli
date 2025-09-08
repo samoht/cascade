@@ -54,7 +54,8 @@ val property :
   ?inherits:bool ->
   string ->
   property_rule
-(** [property ~syntax ?initial_value ?inherits name] creates a @property rule *)
+(** [property ~syntax ?initial_value ?inherits name] creates a [@property] rule
+*)
 
 val property_rule_name : property_rule -> string
 (** [property_rule_name r] returns the name of a property rule *)

@@ -7,219 +7,14 @@ module Properties = Properties
 module Declaration = Declaration
 module Selector = Selector
 module Stylesheet = Stylesheet
+module Variables = Variables
 include Values
 include Declaration
 include Properties
 include Stylesheet
-
-type any_var = V : 'a var -> any_var
-type mode = Variables | Inline
-type config = { minify : bool; mode : mode; optimize : bool }
-
-let meta (type t) () =
-  let module M = struct
-    type meta += V : t -> meta
-  end in
-  let inj x = M.V x in
-  let proj = function M.V v -> Some v | _ -> None in
-  (inj, proj)
-
-(* Typed variable setters *)
-let var : type a.
-    ?fallback:a ->
-    ?layer:string ->
-    ?meta:meta ->
-    string ->
-    a kind ->
-    a ->
-    declaration * a var =
- fun ?fallback ?layer ?meta name kind value ->
-  let declaration =
-    Custom_declaration
-      { name = String.concat "" [ "--"; name ]; kind; value; layer; meta }
-  in
-  let var_handle = { name; fallback; default = Some value; layer; meta } in
-  (declaration, var_handle)
+include Variables
 
 (** {1 Utilities} *)
-
-let rec vars_of_calc : type a. a calc -> any_var list = function
-  | Val _ -> []
-  | Var v -> [ V v ]
-  | Num _ -> []
-  | Expr (left, _, right) -> vars_of_calc left @ vars_of_calc right
-
-(* Extract variables from any property value *)
-let vars_of_property : type a. a property -> a -> any_var list =
- fun prop value ->
-  match (prop, value) with
-  | Width, Var v -> [ V v ]
-  | Width, Calc calc -> vars_of_calc calc
-  | Height, Var v -> [ V v ]
-  | Height, Calc calc -> vars_of_calc calc
-  | Min_width, Var v -> [ V v ]
-  | Min_width, Calc calc -> vars_of_calc calc
-  | Min_height, Var v -> [ V v ]
-  | Min_height, Calc calc -> vars_of_calc calc
-  | Max_width, Var v -> [ V v ]
-  | Max_width, Calc calc -> vars_of_calc calc
-  | Max_height, Var v -> [ V v ]
-  | Max_height, Calc calc -> vars_of_calc calc
-  | Padding, Var v -> [ V v ]
-  | Padding, Calc calc -> vars_of_calc calc
-  | Padding_top, Var v -> [ V v ]
-  | Padding_top, Calc calc -> vars_of_calc calc
-  | Padding_right, Var v -> [ V v ]
-  | Padding_right, Calc calc -> vars_of_calc calc
-  | Padding_bottom, Var v -> [ V v ]
-  | Padding_bottom, Calc calc -> vars_of_calc calc
-  | Padding_left, Var v -> [ V v ]
-  | Padding_left, Calc calc -> vars_of_calc calc
-  | Padding_inline, Var v -> [ V v ]
-  | Padding_inline, Calc calc -> vars_of_calc calc
-  | Padding_inline_start, Var v -> [ V v ]
-  | Padding_inline_start, Calc calc -> vars_of_calc calc
-  | Padding_inline_end, Var v -> [ V v ]
-  | Padding_inline_end, Calc calc -> vars_of_calc calc
-  | Padding_block, Var v -> [ V v ]
-  | Padding_block, Calc calc -> vars_of_calc calc
-  | Margin, Var v -> [ V v ]
-  | Margin, Calc calc -> vars_of_calc calc
-  | Margin_top, Var v -> [ V v ]
-  | Margin_top, Calc calc -> vars_of_calc calc
-  | Margin_right, Var v -> [ V v ]
-  | Margin_right, Calc calc -> vars_of_calc calc
-  | Margin_bottom, Var v -> [ V v ]
-  | Margin_bottom, Calc calc -> vars_of_calc calc
-  | Margin_left, Var v -> [ V v ]
-  | Margin_left, Calc calc -> vars_of_calc calc
-  | Margin_inline, Var v -> [ V v ]
-  | Margin_inline, Calc calc -> vars_of_calc calc
-  | Margin_block, Var v -> [ V v ]
-  | Margin_block, Calc calc -> vars_of_calc calc
-  | Top, Var v -> [ V v ]
-  | Top, Calc calc -> vars_of_calc calc
-  | Right, Var v -> [ V v ]
-  | Right, Calc calc -> vars_of_calc calc
-  | Bottom, Var v -> [ V v ]
-  | Bottom, Calc calc -> vars_of_calc calc
-  | Left, Var v -> [ V v ]
-  | Left, Calc calc -> vars_of_calc calc
-  | Font_size, Var v -> [ V v ]
-  | Font_size, Calc calc -> vars_of_calc calc
-  | Letter_spacing, Var v -> [ V v ]
-  | Letter_spacing, Calc calc -> vars_of_calc calc
-  | Line_height, Normal -> []
-  | Line_height, Length (Var v) -> [ V v ]
-  | Line_height, Length (Calc calc) -> vars_of_calc calc
-  | Line_height, Length _ -> []
-  | Line_height, Number _ -> []
-  | Line_height, Percentage _ -> []
-  | Line_height, Inherit -> []
-  | Line_height, Var v -> [ V v ]
-  | Border_width, Var v -> [ V v ]
-  | Border_width, Calc calc -> vars_of_calc calc
-  | Border_top_width, Var v -> [ V v ]
-  | Border_top_width, Calc calc -> vars_of_calc calc
-  | Border_right_width, Var v -> [ V v ]
-  | Border_right_width, Calc calc -> vars_of_calc calc
-  | Border_bottom_width, Var v -> [ V v ]
-  | Border_bottom_width, Calc calc -> vars_of_calc calc
-  | Border_left_width, Var v -> [ V v ]
-  | Border_left_width, Calc calc -> vars_of_calc calc
-  | Border_inline_start_width, Var v -> [ V v ]
-  | Border_inline_start_width, Calc calc -> vars_of_calc calc
-  | Border_inline_end_width, Var v -> [ V v ]
-  | Border_inline_end_width, Calc calc -> vars_of_calc calc
-  | Outline_width, Var v -> [ V v ]
-  | Outline_width, Calc calc -> vars_of_calc calc
-  | Column_gap, Var v -> [ V v ]
-  | Column_gap, Calc calc -> vars_of_calc calc
-  | Row_gap, Var v -> [ V v ]
-  | Row_gap, Calc calc -> vars_of_calc calc
-  | Gap, Var v -> [ V v ]
-  | Gap, Calc calc -> vars_of_calc calc
-  (* Color properties *)
-  | Background_color, Var v -> [ V v ]
-  | Color, Var v -> [ V v ]
-  | Border_color, Var v -> [ V v ]
-  | Border_top_color, Var v -> [ V v ]
-  | Border_right_color, Var v -> [ V v ]
-  | Border_bottom_color, Var v -> [ V v ]
-  | Border_left_color, Var v -> [ V v ]
-  | Border_inline_start_color, Var v -> [ V v ]
-  | Border_inline_end_color, Var v -> [ V v ]
-  | Text_decoration_color, Var v -> [ V v ]
-  | Outline_color, Var v -> [ V v ]
-  (* Border radius *)
-  | Border_radius, Var v -> [ V v ]
-  | Border_radius, Calc calc -> vars_of_calc calc
-  (* Outline offset *)
-  | Outline_offset, Var v -> [ V v ]
-  | Outline_offset, Calc calc -> vars_of_calc calc
-  (* Other properties don't support Var *)
-  (* All other cases *)
-  | _ -> []
-
-let rec vars_of_value : type a. a kind -> a -> any_var list =
- fun kind value ->
-  match (kind, value) with
-  | Length, Var v -> [ V v ]
-  | Color, Var v -> [ V v ]
-  | Duration, Var v -> [ V v ]
-  | Blend_mode, _ -> []
-  | Scroll_snap_strictness, _ -> []
-  | Angle, Var v -> [ V v ]
-  | Angle, _ -> []
-  | Length, Calc calc -> vars_of_calc calc
-  | Color, Mix _ -> [] (* TODO: extend to extract from color mix *)
-  | Int, _ -> []
-  | Float, _ -> []
-  | Aspect_ratio, _ -> []
-  | Border_style, _ -> []
-  | Font_weight, _ -> []
-  | String, _ -> []
-  | Font_variant_numeric, Var v -> [ V v ]
-  | ( Font_variant_numeric,
-      Composed
-        {
-          ordinal;
-          slashed_zero;
-          numeric_figure;
-          numeric_spacing;
-          numeric_fraction;
-        } ) ->
-      vars_of_values_opt
-        [
-          ordinal;
-          slashed_zero;
-          numeric_figure;
-          numeric_spacing;
-          numeric_fraction;
-        ]
-  | Font_variant_numeric, _ -> []
-  | Font_variant_numeric_token, Var v -> [ V v ]
-  | Font_variant_numeric_token, _ -> []
-  | Box_shadow, _ -> []
-  | _ -> []
-
-and vars_of_values_opt values =
-  let collect_vars (opt_fv : font_variant_numeric_token option) =
-    match opt_fv with None -> [] | Some (Var v) -> [ V v ] | Some _token -> []
-  in
-  List.concat_map collect_vars values
-
-let compare_vars_by_name (V x) (V y) = String.compare x.name y.name
-
-(** Extract all CSS variables referenced in properties (for theme layer) *)
-let vars_of_declarations properties =
-  List.concat_map
-    (function
-      | Declaration (prop, value) -> vars_of_property prop value
-      | Important_declaration (prop, value) -> vars_of_property prop value
-      | Custom_declaration { kind; value; _ } -> vars_of_value kind value)
-    properties
-  |> List.sort_uniq compare_vars_by_name
 
 (* Helper function to check if a property should allow duplicates Some webkit
    properties need to be duplicated for browser compatibility. This is a
@@ -299,74 +94,6 @@ let deduplicate_declarations props =
   (* Apply buggy property duplication after deduplication *)
   duplicate_buggy_properties (List.rev !deduped)
 
-(* Get the name of a variable *)
-let any_var_name (V v) = String.concat "" [ "--"; v.name ]
-
-(* Extract variables from a typed value - needs to handle each property type *)
-let extract_vars_from_prop_value : type a. a property -> a -> any_var list =
- fun prop value ->
-  match (prop, value) with
-  | Background_color, Var v -> [ V v ]
-  | Color, Var v -> [ V v ]
-  | Border_color, Var v -> [ V v ]
-  | Border_top_color, Var v -> [ V v ]
-  | Border_right_color, Var v -> [ V v ]
-  | Border_bottom_color, Var v -> [ V v ]
-  | Border_left_color, Var v -> [ V v ]
-  | Border_inline_start_color, Var v -> [ V v ]
-  | Border_inline_end_color, Var v -> [ V v ]
-  | Text_decoration_color, Var v -> [ V v ]
-  | Webkit_text_decoration_color, Var v -> [ V v ]
-  | Webkit_tap_highlight_color, Var v -> [ V v ]
-  | Padding, Var v -> [ V v ]
-  | Padding_left, Var v -> [ V v ]
-  | Padding_right, Var v -> [ V v ]
-  | Padding_top, Var v -> [ V v ]
-  | Padding_bottom, Var v -> [ V v ]
-  | Margin, Var v -> [ V v ]
-  | Margin_left, Var v -> [ V v ]
-  | Margin_right, Var v -> [ V v ]
-  | Margin_top, Var v -> [ V v ]
-  | Margin_bottom, Var v -> [ V v ]
-  | Gap, Var v -> [ V v ]
-  | Column_gap, Var v -> [ V v ]
-  | Row_gap, Var v -> [ V v ]
-  | Width, Var v -> [ V v ]
-  | Height, Var v -> [ V v ]
-  | Min_width, Var v -> [ V v ]
-  | Min_height, Var v -> [ V v ]
-  | Max_width, Var v -> [ V v ]
-  | Max_height, Var v -> [ V v ]
-  | Font_size, Var v -> [ V v ]
-  | Line_height, Var v -> [ V v ]
-  | Letter_spacing, Var v -> [ V v ]
-  | Top, Var v -> [ V v ]
-  | Right, Var v -> [ V v ]
-  | Bottom, Var v -> [ V v ]
-  | Left, Var v -> [ V v ]
-  | Border_radius, Var v -> [ V v ]
-  | Border_width, Var v -> [ V v ]
-  | Outline_offset, Var v -> [ V v ]
-  | _ -> [] (* No variables in this value *)
-
-let extract_vars_from_declaration : declaration -> any_var list = function
-  | Custom_declaration _ -> [] (* Custom properties don't have typed vars *)
-  | Declaration (prop, value) -> extract_vars_from_prop_value prop value
-  | Important_declaration (prop, value) ->
-      extract_vars_from_prop_value prop value
-
-(* Analyze declarations to find all variable references *)
-let analyze_declarations (decls : declaration list) : any_var list =
-  List.concat_map extract_vars_from_declaration decls
-
-(* Extract only custom property declarations (variable definitions) *)
-let extract_custom_declarations (decls : declaration list) : declaration list =
-  List.filter (function Custom_declaration _ -> true | _ -> false) decls
-
-(* Extract the variable name from a custom declaration *)
-let custom_declaration_name (decl : declaration) : string option =
-  match decl with Custom_declaration { name; _ } -> Some name | _ -> None
-
 let inline_style_of_declarations ?(optimize = false) ?(minify = false)
     ?(mode : mode = Inline) props =
   let config = { mode; minify; optimize } in
@@ -398,14 +125,16 @@ let inline_style_of_declarations ?(optimize = false) ?(minify = false)
            else String.concat "" [ name; ": "; value_str ])
   |> String.concat "; "
 
-let merge_rules rules =
+let merge_rules (rules : Stylesheet.rule list) : Stylesheet.rule list =
   (* Only merge truly adjacent rules with the same selector to preserve cascade
      order. This is safe because we don't reorder rules - we only combine
      immediately adjacent rules with identical selectors, which maintains
      cascade semantics. *)
-  let rec merge_adjacent acc prev_rule = function
+  let rec merge_adjacent (acc : Stylesheet.rule list)
+      (prev_rule : Stylesheet.rule option) :
+      Stylesheet.rule list -> Stylesheet.rule list = function
     | [] -> List.rev (match prev_rule with Some r -> r :: acc | None -> acc)
-    | rule :: rest -> (
+    | (rule : Stylesheet.rule) :: rest -> (
         match prev_rule with
         | None ->
             (* First rule - just store it *)
@@ -413,7 +142,7 @@ let merge_rules rules =
         | Some prev ->
             if prev.selector = rule.selector then
               (* Same selector immediately following - safe to merge *)
-              let merged =
+              let merged : Stylesheet.rule =
                 {
                   selector = prev.selector;
                   declarations =
@@ -440,7 +169,8 @@ let should_not_combine selector =
   || String.starts_with ~prefix:"::-webkit-" s
 
 (* Convert group of selectors to a rule *)
-let group_to_rule = function
+let group_to_rule :
+    (Selector.t * declaration list) list -> Stylesheet.rule option = function
   | [ (sel, decls) ] -> Some { selector = sel; declarations = decls }
   | [] -> None
   | group ->
@@ -459,11 +189,12 @@ let flush_group acc group =
 
 (* Combine consecutive rules with identical declarations into comma-separated
    selectors *)
-let combine_identical_rules rules =
+let combine_identical_rules (rules : Stylesheet.rule list) :
+    Stylesheet.rule list =
   (* Only combine consecutive rules to preserve cascade semantics *)
   let rec combine_consecutive acc current_group = function
     | [] -> List.rev (flush_group acc current_group)
-    | rule :: rest -> (
+    | (rule : Stylesheet.rule) :: rest -> (
         if should_not_combine rule.selector then
           (* Don't combine this selector, flush current group and start fresh *)
           let acc' = rule :: flush_group acc current_group in
@@ -873,22 +604,6 @@ let to_string ?(minify = false) ?optimize:(opt = false) ?(mode = Variables)
     pp_stylesheet_sections ~optimize:opt ctx optimized_stylesheet
   in
   Pp.to_string ~minify ~inline:(mode = Inline) pp ()
-
-(** Extract all CSS variables from different input types *)
-
-let vars_of_rules rules =
-  List.concat_map (fun rule -> vars_of_declarations rule.declarations) rules
-
-let vars_of_media_queries media_queries =
-  List.concat_map (fun mq -> vars_of_rules mq.media_rules) media_queries
-
-let vars_of_container_queries container_queries =
-  List.concat_map (fun cq -> vars_of_rules cq.container_rules) container_queries
-
-let vars_of_stylesheet (ss : t) =
-  vars_of_rules ss.rules
-  @ vars_of_media_queries ss.media_queries
-  @ vars_of_container_queries ss.container_queries
 
 let pp ?minify ?optimize ?mode stylesheet =
   to_string ?minify ?optimize ?mode stylesheet

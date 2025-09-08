@@ -28,7 +28,7 @@ val read_property_name : Reader.t -> string
 (** [read_property_name t] is the property name read from [t]. *)
 
 val read_property_value : Reader.t -> string
-(** [read_property_value t] is the value read from [t] (until ';' or '}'). *)
+(** [read_property_value t] is the value read from [t] (until ';' or '\}'). *)
 
 val read_declaration : Reader.t -> (string * string * bool) option
 (** [read_declaration t] is one declaration as [(name, value, is_important)], or

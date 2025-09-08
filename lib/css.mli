@@ -242,15 +242,39 @@ val default_decl_of_property_rule : property_rule -> declaration
 
     Tools for building complete CSS stylesheets from rules and declarations. *)
 
+type charset_rule
+(** Type for [@charset] at-rules *)
+
+type import_rule
+(** Type for [@import] at-rules *)
+
+type namespace_rule
+(** Type for [@namespace] at-rules *)
+
+type keyframes_rule
+(** Type for [@keyframes] at-rules *)
+
+type font_face_rule
+(** Type for [@font-face] at-rules *)
+
+type page_rule
+(** Type for [@page] at-rules *)
+
 (** Items that can appear at the top level of a stylesheet. *)
 type sheet_item =
+  | Charset of charset_rule  (** [@charset] at-rule *)
+  | Import of import_rule  (** [@import] at-rule *)
+  | Namespace of namespace_rule  (** [@namespace] at-rule *)
   | Rule of rule  (** Regular CSS rule *)
-  | Media of media_rule  (** [\@media] at-rule *)
+  | Media of media_rule  (** [@media] at-rule *)
   | Supports of supports_rule  (** [@supports] at-rule *)
-  | Container of container_rule  (** [\@container] at-rule *)
-  | Layer of layer_rule  (** [\@layer] at-rule *)
-  | Property of property_rule  (** [\@property] at-rule *)
-  | Starting_style of starting_style_rule  (** [\@starting-style] at-rule *)
+  | Container of container_rule  (** [@container] at-rule *)
+  | Layer of layer_rule  (** [@layer] at-rule *)
+  | Property of property_rule  (** [@property] at-rule *)
+  | Starting_style of starting_style_rule  (** [@starting-style] at-rule *)
+  | Keyframes of keyframes_rule  (** [@keyframes] at-rule *)
+  | Font_face of font_face_rule  (** [@font-face] at-rule *)
+  | Page of page_rule  (** [@page] at-rule *)
 
 val empty : t
 (** [empty] is an empty stylesheet. *)
