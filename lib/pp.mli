@@ -50,6 +50,10 @@ val string : string t
 val char : char t
 (** [char] writes a single character to the buffer. *)
 
+val quoted_string : string t
+(** [quoted_string] writes a double-quoted string with proper escaping of quotes
+    and backslashes. *)
+
 (** {2 Layout Control}
 
     These formatters control whitespace and indentation for readable output.

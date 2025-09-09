@@ -41,10 +41,7 @@ let pp_attr_flag ctx = function
 let pp_attr_value : string Pp.t =
  fun ctx value ->
   if Pp.minified ctx && not (needs_quotes value) then Pp.string ctx value
-  else (
-    Pp.char ctx '"';
-    Pp.string ctx value;
-    Pp.char ctx '"')
+  else Pp.quoted_string ctx value
 
 let pp_attribute_match : attribute_match Pp.t =
  fun ctx -> function
@@ -177,7 +174,9 @@ let fun_ name selectors = Fun (name, selectors)
 let list selectors = List selectors
 let is_compound_list = function List _ -> true | _ -> false
 let compound selectors = Compound selectors
-let err_expected t what = raise (Reader.Parse_error ("expected " ^ what, t))
+
+let err_expected t what =
+  raise (Reader.Parse_error ("expected " ^ what, None, t))
 
 (** Parse attribute value (quoted or unquoted) *)
 let read_attribute_value t =
@@ -188,13 +187,13 @@ let read_attribute_value t =
 
 (** Parse a class selector (.classname) *)
 let read_class t =
-  Reader.expect t '.';
-  class_ (Reader.ident t)
+  Reader.expect '.' t;
+  class_ (Reader.ident ~keep_case:true t)
 
 (** Parse an ID selector (#id) *)
 let read_id t =
-  Reader.expect t '#';
-  id (Reader.ident t)
+  Reader.expect '#' t;
+  id (Reader.ident ~keep_case:true t)
 
 (** Parse a namespaced type or universal selector *)
 let read_type_or_universal t =
@@ -202,8 +201,8 @@ let read_type_or_universal t =
     match
       Reader.try_parse
         (fun t ->
-          let p = Reader.ident t in
-          Reader.expect t '|';
+          let p = Reader.ident ~keep_case:true t in
+          Reader.expect '|' t;
           p)
         t
     with
@@ -212,8 +211,8 @@ let read_type_or_universal t =
         match
           Reader.try_parse
             (fun t ->
-              Reader.expect t '*';
-              Reader.expect t '|')
+              Reader.expect '*' t;
+              Reader.expect '|' t)
             t
         with
         | Some _ -> Some Any
@@ -224,7 +223,7 @@ let read_type_or_universal t =
       Reader.skip t;
       match ns with None -> universal | Some ns -> universal_ns ns)
   | _ -> (
-      let name = Reader.ident t in
+      let name = Reader.ident ~keep_case:true t in
       match ns with None -> element name | Some ns -> element ~ns name)
 
 (** Parse attribute selector [attr] or [attr=value] *)
@@ -240,26 +239,26 @@ let read_combinator t =
       Reader.skip t;
       Subsequent_sibling
   | Some '|' when Reader.looking_at t "||" ->
-      Reader.expect_string t "||";
+      Reader.expect_string "||" t;
       Column
   | _ -> Descendant
 
 let read_attribute_match t : attribute_match =
   match Reader.peek_string t 2 with
   | "~=" ->
-      Reader.expect_string t "~=";
+      Reader.expect_string "~=" t;
       Whitespace_list (read_attribute_value t)
   | "|=" ->
-      Reader.expect_string t "|=";
+      Reader.expect_string "|=" t;
       Hyphen_list (read_attribute_value t)
   | "^=" ->
-      Reader.expect_string t "^=";
+      Reader.expect_string "^=" t;
       Prefix (read_attribute_value t)
   | "$=" ->
-      Reader.expect_string t "$=";
+      Reader.expect_string "$=" t;
       Suffix (read_attribute_value t)
   | "*=" ->
-      Reader.expect_string t "*=";
+      Reader.expect_string "*=" t;
       Substring (read_attribute_value t)
   | _ -> (
       match Reader.peek t with
@@ -272,8 +271,8 @@ let read_ns t : ns option =
   match
     Reader.try_parse
       (fun t ->
-        Reader.expect t '*';
-        Reader.expect t '|')
+        Reader.expect '*' t;
+        Reader.expect '|' t)
       t
   with
   | Some () -> Some Any
@@ -281,11 +280,11 @@ let read_ns t : ns option =
       match
         Reader.try_parse
           (fun t ->
-            let p = Reader.ident t in
+            let p = Reader.ident ~keep_case:true t in
             (* Avoid treating '|=' as a namespace separator *)
             if Reader.peek_string t 2 = "|=" then
-              raise (Reader.Parse_error ("not a namespace", t));
-            Reader.expect t '|';
+              raise (Reader.Parse_error ("not a namespace", None, t));
+            Reader.expect '|' t;
             p)
           t
       with
@@ -304,26 +303,26 @@ let read_attr_flag t : attr_flag option =
   | _ -> None
 
 let read_attribute t =
-  Reader.expect t '[';
+  Reader.expect '[' t;
   Reader.ws t;
   let ns = read_ns t in
-  let attr = Reader.ident t in
+  let attr = Reader.ident ~keep_case:true t in
   Reader.ws t;
   let matcher = read_attribute_match t in
   Reader.ws t;
   let flag = read_attr_flag t in
-  Reader.expect t ']';
+  Reader.expect ']' t;
   attribute ?ns attr matcher ?flag
 
 (** Parse pseudo-class (:hover, :nth-child(2n+1), etc.) *)
 let rec read_pseudo_class t =
-  Reader.expect t ':';
-  let name = Reader.ident t in
+  Reader.expect ':' t;
+  let name = Reader.ident ~keep_case:true t in
   Reader.peek t |> function
   | Some '(' -> (
       Reader.skip t;
       let inner = Reader.until t ')' in
-      Reader.expect t ')';
+      Reader.expect ')' t;
       (* Only selector-list functions get parsed structurally *)
       match String.lowercase_ascii name with
       | "is" | "has" | "not" | "where" ->
@@ -333,19 +332,19 @@ let rec read_pseudo_class t =
 
 (** Parse pseudo-element (::before, ::after, etc.) *)
 and read_pseudo_element t =
-  Reader.expect_string t "::";
-  let name = Reader.ident t in
+  Reader.expect_string "::" t;
+  let name = Reader.ident ~keep_case:true t in
   match Reader.peek t with
   | Some '(' -> (
       Reader.skip t;
       let inner = Reader.until t ')' in
-      Reader.expect t ')';
+      Reader.expect ')' t;
       match String.lowercase_ascii name with
       | "part" ->
           let sub = Reader.of_string inner in
           let rec loop acc =
             Reader.ws sub;
-            match Reader.try_parse Reader.ident sub with
+            match Reader.try_parse (fun sub -> Reader.ident ~keep_case:true sub) sub with
             | None -> List.rev acc
             | Some id -> (
                 Reader.ws sub;
@@ -422,7 +421,7 @@ and read_complex t =
       Reader.ws t;
       combine left Subsequent_sibling (read_complex t)
   | Some '|' when Reader.looking_at t "||" ->
-      Reader.expect_string t "||";
+      Reader.expect_string "||" t;
       Reader.ws t;
       combine left Column (read_complex t)
   | Some ',' | Some '{' | None -> left
@@ -595,7 +594,7 @@ let read_nth t : nth =
         | Some n -> ( match sign_a with Some s -> s * n | None -> n)
         | None -> ( match sign_a with Some 1 -> 1 | Some -1 -> -1 | _ -> 1)
       in
-      Reader.expect t 'n';
+      Reader.expect 'n' t;
       let b =
         match
           Reader.try_parse

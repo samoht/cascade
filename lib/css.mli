@@ -1662,14 +1662,16 @@ type text_decoration_line = Underline | Overline | Line_through
 
 type text_decoration_style = Solid | Double | Dotted | Dashed | Wavy | Inherit
 
+type text_decoration_shorthand = {
+  lines : text_decoration_line list;
+  style : text_decoration_style option;
+  color : color option;
+  thickness : length option;
+}
+
 type text_decoration =
   | None
-  | Shorthand of {
-      lines : text_decoration_line list;
-      style : text_decoration_style option;
-      color : color option;
-      thickness : length option;
-    }
+  | Shorthand of text_decoration_shorthand
   | Inherit
   | Var of text_decoration var
 
@@ -2503,7 +2505,6 @@ val animation_play_state : animation_play_state -> declaration
     @see <https://www.w3.org/TR/filter-effects-1/> Filter Effects Module Level 1
     @see <https://www.w3.org/TR/css-masking-1/> CSS Masking Module Level 1 *)
 
-(** CSS box-shadow values *)
 type box_shadow =
   | None
   | Shadow of {

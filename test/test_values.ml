@@ -136,13 +136,13 @@ let test_color () =
   check_color ~expected:"hsl(180 50% 25%)" "hsl(180deg 50% 25%)";
   (* Same for hwb hue: drop default 'deg' on minify *)
   check_color ~expected:"hwb(90 10% 20%)" "hwb(90deg 10% 20%)";
-  check_color ~expected:"hsl(180 50% 25% / .5)" "hsl(180 50% 25% / 0.5)";
+  check_color ~expected:"hsl(180 50% 25%/.5)" "hsl(180 50% 25% / 0.5)";
   check_color "hwb(90 10% 20%)";
-  check_color ~expected:"hwb(90 10% 20% / .25)" "hwb(90 10% 20% / 0.25)";
+  check_color ~expected:"hwb(90 10% 20%/.25)" "hwb(90 10% 20% / 0.25)";
   (* Alpha in percent should minify to number [0;1] form *)
-  check_color ~expected:"hsl(180 50% 25% / .3)" "hsl(180deg 50% 25% / 30%)";
+  check_color ~expected:"hsl(180 50% 25%/.3)" "hsl(180deg 50% 25% / 30%)";
   check_color "color(srgb 1 0 0)";
-  check_color ~expected:"color(display-p3 .8 .2 .1 / .5)"
+  check_color ~expected:"color(display-p3 .8 .2 .1/.5)"
     "color(display-p3 0.8 0.2 0.1 / 0.5)";
   check_color ~expected:"color(oklab 50% .1 -.05)" "color(oklab 50% 0.1 -0.05)";
   check_color "color(lch 50% 40 120)";
@@ -152,7 +152,7 @@ let test_color () =
   check_color "rgb(100% 0% 0%)";
   check_color ~expected:"oklab(50% .1 -.05)" "oklab(50% 0.1 -0.05)";
   check_color "lch(50% 40 120)";
-  check_color ~expected:"rgb(255 0 0 / .5)" "rgb(255 0 0 / 50%)";
+  check_color ~expected:"rgb(255 0 0/.5)" "rgb(255 0 0 / 50%)";
 
   (* Mixed channel formats in modern rgb() syntax *)
   (* Mix percentage and absolute values across channels *)
@@ -160,7 +160,7 @@ let test_color () =
   check_color "rgb(255 0% 0)";
   check_color "rgb(0 0 50%)";
   (* Mixed channels with alpha (numeric) *)
-  check_color ~expected:"rgb(50% 128 0 / .5)" "rgb(50% 128 0 / 0.5)";
+  check_color ~expected:"rgb(50% 128 0/.5)" "rgb(50% 128 0 / 0.5)";
 
   (* Named colors - all variants *)
   check_color "red";
@@ -197,11 +197,11 @@ let test_color () =
   check_color ~expected:"rgb(128 128 128)" "rgb(128, 128, 128)";
 
   (* RGBA with alpha *)
-  check_color ~expected:"rgb(255 0 0 / .5)" "rgba(255, 0, 0, 0.5)";
-  check_color ~expected:"rgb(255 0 0 / 0)" "rgba(255, 0, 0, 0)";
-  check_color ~expected:"rgb(255 0 0 / 1)" "rgba(255, 0, 0, 1)";
-  check_color ~expected:"rgb(0 0 0 / .25)" "rgba(0, 0, 0, 0.25)";
-  check_color ~expected:"rgb(128 128 128 / .75)" "rgba(128, 128, 128, 0.75)"
+  check_color ~expected:"rgb(255 0 0/.5)" "rgba(255, 0, 0, 0.5)";
+  check_color ~expected:"rgb(255 0 0/0)" "rgba(255, 0, 0, 0)";
+  check_color ~expected:"rgb(255 0 0/1)" "rgba(255, 0, 0, 1)";
+  check_color ~expected:"rgb(0 0 0/.25)" "rgba(0, 0, 0, 0.25)";
+  check_color ~expected:"rgb(128 128 128/.75)" "rgba(128, 128, 128, 0.75)"
 
 let test_angle () =
   (* Degrees *)

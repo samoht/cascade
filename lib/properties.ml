@@ -1,494 +1,434 @@
 open Values
 include Properties_intf
-open Reader
 
-let err_invalid_value t prop_name value =
-  raise (Parse_error ("invalid " ^ prop_name ^ " value: " ^ value, t))
+let err_invalid_value ?got t prop_name value =
+  raise
+    (Reader.Parse_error ("invalid " ^ prop_name ^ " value: " ^ value, got, t))
 
 let read_display t : display =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "none" -> None
-  | "block" -> Block
-  | "inline" -> Inline
-  | "inline-block" -> Inline_block
-  | "flex" -> Flex
-  | "inline-flex" -> Inline_flex
-  | "grid" -> Grid
-  | "inline-grid" -> Inline_grid
-  | "flow-root" -> Flow_root
-  | "table" -> Table
-  | "table-row" -> Table_row
-  | "table-cell" -> Table_cell
-  | "table-caption" -> Table_caption
-  | "table-column" -> Table_column
-  | "table-column-group" -> Table_column_group
-  | "table-footer-group" -> Table_footer_group
-  | "table-header-group" -> Table_header_group
-  | "table-row-group" -> Table_row_group
-  | "inline-table" -> Inline_table
-  | "list-item" -> List_item
-  | "contents" -> Contents
-  | "-webkit-box" -> Webkit_box
-  | _ -> err_invalid_value t "display" v
+  Reader.enum "display"
+    [
+      ("none", (None : display));
+      ("block", Block);
+      ("inline", Inline);
+      ("inline-block", Inline_block);
+      ("flex", Flex);
+      ("inline-flex", Inline_flex);
+      ("grid", Grid);
+      ("inline-grid", Inline_grid);
+      ("flow-root", Flow_root);
+      ("table", Table);
+      ("table-row", Table_row);
+      ("table-cell", Table_cell);
+      ("table-caption", Table_caption);
+      ("table-column", Table_column);
+      ("table-column-group", Table_column_group);
+      ("table-footer-group", Table_footer_group);
+      ("table-header-group", Table_header_group);
+      ("table-row-group", Table_row_group);
+      ("inline-table", Inline_table);
+      ("list-item", List_item);
+      ("contents", Contents);
+      ("-webkit-box", Webkit_box);
+    ]
+    t
 
 let read_position t : position =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "static" -> Static
-  | "relative" -> Relative
-  | "absolute" -> Absolute
-  | "fixed" -> Fixed
-  | "sticky" -> Sticky
-  | _ -> err_invalid_value t "position" v
+  Reader.enum "position"
+    [
+      ("static", (Static : position));
+      ("relative", Relative);
+      ("absolute", Absolute);
+      ("fixed", Fixed);
+      ("sticky", Sticky);
+    ]
+    t
 
 let read_flex_direction t : flex_direction =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "row" -> Row
-  | "row-reverse" -> Row_reverse
-  | "column" -> Column
-  | "column-reverse" -> Column_reverse
-  | _ -> err_invalid_value t "flex-direction" v
+  Reader.enum "flex-direction"
+    [
+      ("row", (Row : flex_direction));
+      ("row-reverse", Row_reverse);
+      ("column", Column);
+      ("column-reverse", Column_reverse);
+    ]
+    t
 
 let read_align_items t : align_items =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "normal" -> Normal
-  | "stretch" -> Stretch
-  | "center" -> Center
-  | "start" -> Start
-  | "end" -> End
-  | "flex-start" -> Flex_start
-  | "flex-end" -> Flex_end
-  | "baseline" -> Baseline
-  | _ -> err_invalid_value t "align-items" v
+  Reader.enum "align-items"
+    [
+      ("normal", (Normal : align_items));
+      ("stretch", Stretch);
+      ("center", Center);
+      ("start", Start);
+      ("end", End);
+      ("flex-start", Flex_start);
+      ("flex-end", Flex_end);
+      ("baseline", Baseline);
+    ]
+    t
 
 let read_justify_content t : justify_content =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "left" -> Left
-  | "right" -> Right
-  | "center" -> Center
-  | "start" -> Start
-  | "end" -> End
-  | "flex-start" -> Flex_start
-  | "flex-end" -> Flex_end
-  | "space-between" -> Space_between
-  | "space-around" -> Space_around
-  | "space-evenly" -> Space_evenly
-  | _ -> err_invalid_value t "justify-content" v
+  Reader.enum "justify-content"
+    [
+      ("left", (Left : justify_content));
+      ("right", Right);
+      ("center", Center);
+      ("start", Start);
+      ("end", End);
+      ("flex-start", Flex_start);
+      ("flex-end", Flex_end);
+      ("space-between", Space_between);
+      ("space-around", Space_around);
+      ("space-evenly", Space_evenly);
+    ]
+    t
 
 let read_font_weight t : font_weight =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "normal" -> Normal
-  | "bold" -> Bold
-  | "bolder" -> Bolder
-  | "lighter" -> Lighter
-  | "inherit" -> Inherit
-  | _ -> (
-      match int_of_string_opt v with
-      | Some n when n >= 1 && n <= 1000 -> Weight n
-      | _ -> err_invalid_value t "font-weight" v)
+  Reader.ws t;
+  Reader.enum "font-weight"
+    [
+      ("normal", Normal);
+      ("bold", Bold);
+      ("bolder", Bolder);
+      ("lighter", Lighter);
+      ("inherit", Inherit);
+    ]
+    t
+    ~default:(fun t ->
+      let n = Reader.number t in
+      let weight = int_of_float n in
+      if weight >= 1 && weight <= 1000 then Weight weight
+      else err_invalid_value t "font-weight" (string_of_int weight))
 
 let read_font_style t : font_style =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "normal" -> Normal
-  | "italic" -> Italic
-  | "oblique" -> Oblique
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "font-style" v
+  Reader.enum "font-style"
+    [
+      ("normal", (Normal : font_style));
+      ("italic", (Italic : font_style));
+      ("oblique", (Oblique : font_style));
+      ("inherit", (Inherit : font_style));
+    ]
+    t
 
 let read_text_align t : text_align =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "left" -> Left
-  | "right" -> Right
-  | "center" -> Center
-  | "justify" -> Justify
-  | "start" -> Start
-  | "end" -> End
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "text-align" v
+  Reader.enum "text-align"
+    [
+      ("left", (Left : text_align));
+      ("right", Right);
+      ("center", Center);
+      ("justify", Justify);
+      ("start", Start);
+      ("end", End);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_text_decoration_line t : text_decoration_line =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "underline" -> Underline
-  | "overline" -> Overline
-  | "line-through" -> Line_through
-  | _ -> err_invalid_value t "text-decoration-line" v
+  Reader.enum "text-decoration-line"
+    [
+      ("underline", (Underline : text_decoration_line));
+      ("overline", Overline);
+      ("line-through", Line_through);
+    ]
+    t
 
 let read_text_decoration_style t : text_decoration_style =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "solid" -> Solid
-  | "double" -> Double
-  | "dotted" -> Dotted
-  | "dashed" -> Dashed
-  | "wavy" -> Wavy
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "text-decoration-style" v
+  Reader.enum "text-decoration-style"
+    [
+      ("solid", (Solid : text_decoration_style));
+      ("double", Double);
+      ("dotted", Dotted);
+      ("dashed", Dashed);
+      ("wavy", Wavy);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_text_decoration t : text_decoration =
-  (* Parse full MDN shorthand: [<text-decoration-line>#] ||
-     <text-decoration-style> || <color> || <length [from-font]> *)
-  ws t;
-  (* CSS-wide keyword *)
-  Reader.save t;
-  match Reader.try_parse ident_lc t with
-  | Some v when v = "inherit" -> Inherit
-  | Some v when v = "none" -> None
-  | Some _ ->
-      (* Put back the token for generic parsing *)
-      Reader.restore t;
-      (* We'll gather components in any order *)
-      let lines = ref [] in
-      let style = ref (None : text_decoration_style option) in
-      let color = ref (None : color option) in
-      let thickness = ref (None : length option) in
-      let rec loop () =
-        ws t;
-        if is_done t then ()
-        else
-          (* Try line(s) *)
-          match Reader.try_parse read_text_decoration_line t with
-          | Some l ->
-              lines := !lines @ [ l ];
-              loop ()
-          | None -> (
-              (* Try style *)
-              match Reader.try_parse read_text_decoration_style t with
-              | Some s ->
-                  (match !style with None -> style := Some s | Some _ -> ());
-                  loop ()
-              | None -> (
-                  (* Try color *)
-                  match !color with
-                  | None -> (
-                      match Reader.try_parse Values.read_color t with
-                      | Some c ->
-                          color := Some c;
-                          loop ()
-                      | None -> (
-                          (* Try thickness as length *)
-                          match !thickness with
-                          | None -> (
-                              match Reader.try_parse Values.read_length t with
-                              | Some l ->
-                                  thickness := Some l;
-                                  loop ()
-                              | None -> ())
-                          | Some _ -> loop ()))
-                  | Some _ -> loop ()))
+  let process_component (acc : text_decoration_shorthand) = function
+    | `Line l -> { acc with lines = l :: acc.lines }
+    | `Style s -> if acc.style = None then { acc with style = Some s } else acc
+    | `Color c -> if acc.color = None then { acc with color = Some c } else acc
+    | `Thickness th ->
+        if acc.thickness = None then { acc with thickness = Some th } else acc
+  in
+  let parse_component =
+    Reader.one_of
+      [
+        (fun t -> `Line (read_text_decoration_line t));
+        (fun t -> `Style (read_text_decoration_style t));
+        (fun t -> `Color (Values.read_color t));
+        (fun t -> `Thickness (Values.read_length t));
+      ]
+  in
+  Reader.ws t;
+  Reader.enum "text-decoration"
+    [ ("inherit", (Inherit : text_decoration)); ("none", None) ]
+    t
+    ~default:(fun t ->
+      let components, _ = Reader.many parse_component t in
+      let initial_shorthand =
+        { lines = []; style = None; color = None; thickness = None }
       in
-      (* Reset reader position to before the first token we examined *)
-      (* Note: we used Reader.restore above to undo first ident; continue parsing now *)
-      loop ();
-      Shorthand
-        {
-          lines = !lines;
-          style = !style;
-          color = !color;
-          thickness = !thickness;
-        }
-  | None -> err_invalid_value t "text-decoration" "<empty>"
+      let shorthand =
+        List.fold_left process_component initial_shorthand components
+      in
+      Shorthand { shorthand with lines = List.rev shorthand.lines })
 
 let read_text_transform t : text_transform =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "none" -> None
-  | "uppercase" -> Uppercase
-  | "lowercase" -> Lowercase
-  | "capitalize" -> Capitalize
-  | "full-width" -> Full_width
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "text-transform" v
+  Reader.enum "text-transform"
+    [
+      ("none", (None : text_transform));
+      ("uppercase", Uppercase);
+      ("lowercase", Lowercase);
+      ("capitalize", Capitalize);
+      ("full-width", Full_width);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_overflow t : overflow =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "visible" -> Visible
-  | "hidden" -> Hidden
-  | "scroll" -> Scroll
-  | "auto" -> Auto
-  | "clip" -> Clip
-  | _ -> err_invalid_value t "overflow" v
+  Reader.enum "overflow"
+    [
+      ("visible", (Visible : overflow));
+      ("hidden", Hidden);
+      ("scroll", Scroll);
+      ("auto", Auto);
+      ("clip", Clip);
+    ]
+    t
 
 let read_cursor t : cursor =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "auto" -> Auto
-  | "default" -> Default
-  | "none" -> None
-  | "context-menu" -> Context_menu
-  | "help" -> Help
-  | "pointer" -> Pointer
-  | "progress" -> Progress
-  | "wait" -> Wait
-  | "cell" -> Cell
-  | "crosshair" -> Crosshair
-  | "text" -> Text
-  | "vertical-text" -> Vertical_text
-  | "alias" -> Alias
-  | "copy" -> Copy
-  | "move" -> Move
-  | "no-drop" -> No_drop
-  | "not-allowed" -> Not_allowed
-  | "grab" -> Grab
-  | "grabbing" -> Grabbing
-  | "all-scroll" -> All_scroll
-  | "col-resize" -> Col_resize
-  | "row-resize" -> Row_resize
-  | "n-resize" -> N_resize
-  | "e-resize" -> E_resize
-  | "s-resize" -> S_resize
-  | "w-resize" -> W_resize
-  | "ne-resize" -> Ne_resize
-  | "nw-resize" -> Nw_resize
-  | "se-resize" -> Se_resize
-  | "sw-resize" -> Sw_resize
-  | "ew-resize" -> Ew_resize
-  | "ns-resize" -> Ns_resize
-  | "nesw-resize" -> Nesw_resize
-  | "nwse-resize" -> Nwse_resize
-  | "zoom-in" -> Zoom_in
-  | "zoom-out" -> Zoom_out
-  | _ -> err_invalid_value t "cursor" v
+  Reader.enum "cursor"
+    [
+      ("auto", (Auto : cursor));
+      ("default", Default);
+      ("none", None);
+      ("context-menu", Context_menu);
+      ("help", Help);
+      ("pointer", Pointer);
+      ("progress", Progress);
+      ("wait", Wait);
+      ("cell", Cell);
+      ("crosshair", Crosshair);
+      ("text", Text);
+      ("vertical-text", Vertical_text);
+      ("alias", Alias);
+      ("copy", Copy);
+      ("move", Move);
+      ("no-drop", No_drop);
+      ("not-allowed", Not_allowed);
+      ("grab", Grab);
+      ("grabbing", Grabbing);
+      ("all-scroll", All_scroll);
+      ("col-resize", Col_resize);
+      ("row-resize", Row_resize);
+      ("n-resize", N_resize);
+      ("e-resize", E_resize);
+      ("s-resize", S_resize);
+      ("w-resize", W_resize);
+      ("ne-resize", Ne_resize);
+      ("nw-resize", Nw_resize);
+      ("se-resize", Se_resize);
+      ("sw-resize", Sw_resize);
+      ("ew-resize", Ew_resize);
+      ("ns-resize", Ns_resize);
+      ("nesw-resize", Nesw_resize);
+      ("nwse-resize", Nwse_resize);
+      ("zoom-in", Zoom_in);
+      ("zoom-out", Zoom_out);
+    ]
+    t
+
+let read_box_shadow_component t =
+  Reader.one_of
+    [
+      (fun t -> Reader.enum "" [ ("inset", `Inset) ] t);
+      (fun t -> `Color (read_color t));
+      (fun t -> `Length (read_length t));
+    ]
+    t
+
+let parse_box_shadow_lengths lengths =
+  match lengths with
+  | h_offset :: v_offset :: rest ->
+      let blur, spread =
+        match rest with
+        | b :: s :: _ -> (Some b, Some s)
+        | b :: [] -> (Some b, None)
+        | [] -> (None, None)
+      in
+      Some (h_offset, v_offset, blur, spread)
+  | _ -> None
+
+(* Helper type for accumulating box shadow components *)
+type box_shadow_accumulator = {
+  inset : bool;
+  lengths : length list;
+  color : color option;
+}
+
+let fold_box_shadow_components components =
+  List.fold_left
+    (fun (acc : box_shadow_accumulator) comp ->
+      match comp with
+      | `Inset -> { acc with inset = true }
+      | `Color c ->
+          if acc.color = None then { acc with color = Some c } else acc
+      | `Length l -> { acc with lengths = l :: acc.lengths })
+    { inset = false; lengths = []; color = None }
+    components
+
+let read_box_shadow_custom t =
+  let components, _ = Reader.many read_box_shadow_component t in
+  let parts = fold_box_shadow_components components in
+  let lengths = List.rev parts.lengths in
+  match parse_box_shadow_lengths lengths with
+  | Some (h_offset, v_offset, blur, spread) ->
+      Shadow
+        {
+          inset = parts.inset;
+          h_offset;
+          v_offset;
+          blur;
+          spread;
+          color = parts.color;
+        }
+  | None -> err_invalid_value t "box-shadow" "at least two lengths are required"
 
 let read_box_shadow t : box_shadow =
-  let open Option in
-  skip_ws t;
-  (* Check for specific keywords first without consuming other identifiers *)
-  if looking_at t "none" then (
-    expect_string t "none";
-    None)
-  else if looking_at t "inherit" then (
-    expect_string t "inherit";
-    Inherit)
-  else if looking_at t "inset" then (
-    expect_string t "inset";
-    (* Handle inset shadow *)
-    skip_ws t;
-    let color_opt = ref None in
-    let h_offset = ref None in
-    let v_offset = ref None in
-    let blur_opt = ref None in
-    let spread_opt = ref None in
-
-    (* Try to read color first (it can be after inset) *)
-    (match try_parse read_color t with
-    | Some c ->
-        color_opt := Some c;
-        skip_ws t
-    | None -> ());
-
-    (* Read h-offset and v-offset (required) *)
-    h_offset := Some (read_length t);
-    skip_ws t;
-    v_offset := Some (read_length t);
-    skip_ws t;
-
-    (* Try to read blur (optional) *)
-    (match try_parse read_length t with
-    | Some b -> (
-        blur_opt := Some b;
-        skip_ws t;
-        (* Try to read spread after blur (optional) *)
-        match try_parse read_length t with
-        | Some s ->
-            spread_opt := Some s;
-            skip_ws t
-        | None -> ())
-    | None -> ());
-
-    (* Try to read color at end if not already read *)
-    (if !color_opt = None then
-       match try_parse read_color t with
-       | Some c -> color_opt := Some c
-       | None -> ());
-
-    match (!h_offset, !v_offset) with
-    | Some h, Some v ->
-        Shadow
-          {
-            inset = true;
-            h_offset = h;
-            v_offset = v;
-            blur = !blur_opt;
-            spread = !spread_opt;
-            color = !color_opt;
-          }
-    | _ -> err_invalid_value t "box-shadow" "invalid shadow")
-  else
-    (* Parse non-inset shadow *)
-    let color_opt = ref None in
-    let h_offset = ref None in
-    let v_offset = ref None in
-    let blur_opt = ref None in
-    let spread_opt = ref None in
-
-    (* Try to read color first (it can be at beginning or end) *)
-    (match try_parse read_color t with
-    | Some c ->
-        color_opt := Some c;
-        skip_ws t
-    | None -> ());
-
-    (* Read h-offset and v-offset (required) *)
-    h_offset := Some (read_length t);
-    skip_ws t;
-    v_offset := Some (read_length t);
-    skip_ws t;
-
-    (* Try to read blur (optional) *)
-    (match try_parse read_length t with
-    | Some b -> (
-        blur_opt := Some b;
-        skip_ws t;
-        (* Try to read spread after blur (optional) *)
-        match try_parse read_length t with
-        | Some s ->
-            spread_opt := Some s;
-            skip_ws t
-        | None -> ())
-    | None -> ());
-
-    (* Try to read color at end if not already read *)
-    (if !color_opt = None then
-       match try_parse read_color t with
-       | Some c -> color_opt := Some c
-       | None -> ());
-
-    match (!h_offset, !v_offset) with
-    | Some h, Some v ->
-        Shadow
-          {
-            inset = false;
-            h_offset = h;
-            v_offset = v;
-            blur = !blur_opt;
-            spread = !spread_opt;
-            color = !color_opt;
-          }
-    | _ -> err_invalid_value t "box-shadow" "invalid shadow"
+  Reader.ws t;
+  Reader.enum "box-shadow"
+    [ ("none", None); ("inherit", Inherit) ]
+    t ~default:read_box_shadow_custom
 
 let read_box_shadows t : box_shadow list =
   Reader.list ~sep:Reader.comma read_box_shadow t
 
+let transform_parsers =
+  [
+    ("translatex", fun t -> Translate_x (read_length t));
+    ("translatey", fun t -> Translate_y (read_length t));
+    ("translatez", fun t -> Translate_z (read_length t));
+    ( "translate3d",
+      fun t ->
+        let x, y, z =
+          Reader.triple ~sep:Reader.comma read_length read_length read_length t
+        in
+        Translate_3d (x, y, z) );
+    ( "translate",
+      fun t ->
+        let x = read_length t in
+        let y =
+          Reader.optional
+            (fun t ->
+              Reader.comma t;
+              read_length t)
+            t
+        in
+        Translate (x, y) );
+    ("rotatex", fun t -> Rotate_x (read_angle t));
+    ("rotatey", fun t -> Rotate_y (read_angle t));
+    ("rotatez", fun t -> Rotate_z (read_angle t));
+    ( "rotate3d",
+      fun t ->
+        let x, y, z =
+          Reader.triple ~sep:Reader.comma Reader.number Reader.number
+            Reader.number t
+        in
+        Reader.comma t;
+        let angle = read_angle t in
+        Rotate_3d (x, y, z, angle) );
+    ("rotate", fun t -> Rotate (read_angle t));
+    ("scalex", fun t -> Scale_x (Reader.number t));
+    ("scaley", fun t -> Scale_y (Reader.number t));
+    ("scalez", fun t -> Scale_z (Reader.number t));
+    ( "scale3d",
+      fun t ->
+        let x, y, z =
+          Reader.triple ~sep:Reader.comma Reader.number Reader.number
+            Reader.number t
+        in
+        Scale_3d (x, y, z) );
+    ( "scale",
+      fun t ->
+        let x = Reader.number t in
+        let y =
+          Reader.optional
+            (fun t ->
+              Reader.comma t;
+              Reader.number t)
+            t
+        in
+        Scale (x, y) );
+    ("skewx", fun t -> Skew_x (read_angle t));
+    ("skewy", fun t -> Skew_y (read_angle t));
+    ( "skew",
+      fun t ->
+        let x = read_angle t in
+        let y =
+          Reader.optional
+            (fun t ->
+              Reader.comma t;
+              read_angle t)
+            t
+        in
+        Skew (x, y) );
+    ( "matrix",
+      fun t ->
+        match Reader.list ~sep:Reader.comma Reader.number t with
+        | [ a; b; c; d; e; f ] -> Matrix (a, b, c, d, e, f)
+        | _ -> err_invalid_value t "matrix" "expected 6 arguments" );
+    ( "matrix3d",
+      fun t ->
+        match Reader.list ~sep:Reader.comma Reader.number t with
+        | [
+         m11;
+         m12;
+         m13;
+         m14;
+         m21;
+         m22;
+         m23;
+         m24;
+         m31;
+         m32;
+         m33;
+         m34;
+         m41;
+         m42;
+         m43;
+         m44;
+        ] ->
+            Matrix_3d
+              ( m11,
+                m12,
+                m13,
+                m14,
+                m21,
+                m22,
+                m23,
+                m24,
+                m31,
+                m32,
+                m33,
+                m34,
+                m41,
+                m42,
+                m43,
+                m44 )
+        | _ -> err_invalid_value t "matrix3d" "expected 16 arguments" );
+  ]
+
 let read_transform t : transform =
-  skip_ws t;
-  let fn_name = ident_lc t in
-  match fn_name with
-  | "none" -> (None : transform)
-  | "translatex" -> parens t (fun t -> Translate_x (read_length t))
-  | "translatey" -> parens t (fun t -> Translate_y (read_length t))
-  | "translatez" -> parens t (fun t -> Translate_z (read_length t))
-  | "translate3d" ->
-      parens t (fun t ->
-          let x, y, z =
-            triple ~sep:comma read_length read_length read_length t
-          in
-          Translate_3d (x, y, z))
-  | "translate" ->
-      parens t (fun t ->
-          let x = read_length t in
-          let y =
-            try_parse
-              (fun t ->
-                comma t;
-                read_length t)
-              t
-          in
-          Translate (x, y))
-  | "rotatex" -> parens t (fun t -> Rotate_x (read_angle t))
-  | "rotatey" -> parens t (fun t -> Rotate_y (read_angle t))
-  | "rotatez" -> parens t (fun t -> Rotate_z (read_angle t))
-  | "rotate3d" ->
-      parens t (fun t ->
-          let x, y, z = triple ~sep:comma number number number t in
-          comma t;
-          let angle = read_angle t in
-          Rotate_3d (x, y, z, angle))
-  | "rotate" -> parens t (fun t -> (Rotate (read_angle t) : transform))
-  | "scalex" -> parens t (fun t -> Scale_x (number t))
-  | "scaley" -> parens t (fun t -> Scale_y (number t))
-  | "scalez" -> parens t (fun t -> Scale_z (number t))
-  | "scale3d" ->
-      parens t (fun t ->
-          let x, y, z = triple ~sep:comma number number number t in
-          Scale_3d (x, y, z))
-  | "scale" ->
-      parens t (fun t ->
-          let x = number t in
-          let y =
-            try_parse
-              (fun t ->
-                comma t;
-                number t)
-              t
-          in
-          (Scale (x, y) : transform))
-  | "skewx" -> parens t (fun t -> Skew_x (read_angle t))
-  | "skewy" -> parens t (fun t -> Skew_y (read_angle t))
-  | "skew" ->
-      parens t (fun t ->
-          let x = read_angle t in
-          let y =
-            try_parse
-              (fun t ->
-                comma t;
-                read_angle t)
-              t
-          in
-          Skew (x, y))
-  | "matrix" ->
-      parens t (fun t ->
-          list ~sep:comma number t |> function
-          | [ a; b; c; d; e; f ] -> Matrix (a, b, c, d, e, f)
-          | _ -> err_invalid_value t "matrix" "expected 6 arguments")
-  | "matrix3d" ->
-      parens t (fun t ->
-          list ~sep:comma number t |> function
-          | [
-              m11;
-              m12;
-              m13;
-              m14;
-              m21;
-              m22;
-              m23;
-              m24;
-              m31;
-              m32;
-              m33;
-              m34;
-              m41;
-              m42;
-              m43;
-              m44;
-            ] ->
-              Matrix_3d
-                ( m11,
-                  m12,
-                  m13,
-                  m14,
-                  m21,
-                  m22,
-                  m23,
-                  m24,
-                  m31,
-                  m32,
-                  m33,
-                  m34,
-                  m41,
-                  m42,
-                  m43,
-                  m44 )
-          | _ -> err_invalid_value t "matrix3d" "expected 16 arguments")
-  | _ -> err_invalid_value t "transform" fn_name
+  Reader.ws t;
+  let fn_name = Reader.ident t in
+  if fn_name = "none" then (None : transform)
+  else
+    match List.assoc_opt fn_name transform_parsers with
+    | Some parser -> Reader.parens parser t
+    | None -> err_invalid_value t "transform" fn_name
 
 let pp_opt_space pp ctx = function
   | Some v ->
@@ -564,7 +504,8 @@ let pp_background_image : background_image Pp.t =
   | Linear_gradient (dir, stops) ->
       Pp.string ctx "linear-gradient(";
       pp_gradient_direction ctx dir;
-      if stops <> [] then Pp.string ctx ", ";
+      if stops <> [] then
+        if ctx.minify then Pp.string ctx "," else Pp.string ctx ", ";
       Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops;
       Pp.char ctx ')'
   | Radial_gradient stops ->
@@ -668,7 +609,9 @@ let rec pp_font_family : font_family Pp.t =
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
-  | Name s -> Pp.string ctx s
+  | Name s ->
+      (* Output the name as-is (it may already include quotes if needed) *)
+      Pp.string ctx s
   | Var v -> pp_var (Pp.list ~sep:Pp.comma pp_font_family) ctx v
 
 let rec pp_border_style : border_style Pp.t =
@@ -1142,6 +1085,7 @@ let pp_property : type a. a property Pp.t =
   | Float -> Pp.string ctx "float"
   | White_space -> Pp.string ctx "white-space"
   | Border -> Pp.string ctx "border"
+  | Background -> Pp.string ctx "background"
   | Tab_size -> Pp.string ctx "tab-size"
   | Webkit_text_size_adjust -> Pp.string ctx "-webkit-text-size-adjust"
   | Font_feature_settings -> Pp.string ctx "font-feature-settings"
@@ -1248,10 +1192,7 @@ let rec pp_font_feature_settings : font_feature_settings Pp.t =
   | Normal -> Pp.string ctx "normal"
   | Feature_list s -> Pp.string ctx s
   | Inherit -> Pp.string ctx "inherit"
-  | String s ->
-      Pp.char ctx '"';
-      Pp.string ctx s;
-      Pp.char ctx '"'
+  | String s -> Pp.quoted_string ctx s
   | Var v -> pp_var pp_font_feature_settings ctx v
 
 let rec pp_font_variation_settings : font_variation_settings Pp.t =
@@ -1259,10 +1200,7 @@ let rec pp_font_variation_settings : font_variation_settings Pp.t =
   | Normal -> Pp.string ctx "normal"
   | Axis_list s -> Pp.string ctx s
   | Inherit -> Pp.string ctx "inherit"
-  | String s ->
-      Pp.char ctx '"';
-      Pp.string ctx s;
-      Pp.char ctx '"'
+  | String s -> Pp.quoted_string ctx s
   | Var v -> pp_var pp_font_variation_settings ctx v
 
 let pp_rotate_3d : (float * float * float * angle) Pp.t =
@@ -1422,6 +1360,14 @@ let pp_background_repeat : background_repeat Pp.t =
   | Round -> Pp.string ctx "round"
   | Inherit -> Pp.string ctx "inherit"
 
+let pp_background_box : background_box Pp.t =
+ fun ctx -> function
+  | Border_box -> Pp.string ctx "border-box"
+  | Padding_box -> Pp.string ctx "padding-box"
+  | Content_box -> Pp.string ctx "content-box"
+  | Text -> Pp.string ctx "text"
+  | Inherit -> Pp.string ctx "inherit"
+
 let pp_position_component : position_component Pp.t =
  fun ctx -> function
   | Left -> Pp.string ctx "left"
@@ -1442,6 +1388,79 @@ let pp_position_2d : position_2d Pp.t =
       pp_position_component ctx a;
       Pp.space ctx ();
       pp_position_component ctx b
+
+let pp_background_size : background_size Pp.t =
+ fun ctx -> function
+  | Auto -> Pp.string ctx "auto"
+  | Cover -> Pp.string ctx "cover"
+  | Contain -> Pp.string ctx "contain"
+  | Length l -> pp_length ctx l
+  | Percentage p ->
+      Pp.float ctx p;
+      Pp.char ctx '%'
+  | Size (w, h) ->
+      pp_length ctx w;
+      Pp.char ctx ' ';
+      pp_length ctx h
+  | Inherit -> Pp.string ctx "inherit"
+
+let pp_background : background Pp.t =
+ fun ctx bg ->
+  let first = ref true in
+  let maybe_space () = if !first then first := false else Pp.space ctx () in
+  (* Add image if present *)
+  (match bg.image with
+  | Some img ->
+      maybe_space ();
+      pp_background_image ctx img
+  | None -> ());
+  (* Add position if present *)
+  (match bg.position with
+  | Some pos ->
+      maybe_space ();
+      pp_position_2d ctx pos
+  | None -> ());
+  (* Add size if present (must follow position with /) *)
+  (match bg.size with
+  | Some size when bg.position <> None ->
+      Pp.string ctx "/";
+      pp_background_size ctx size
+  | Some size ->
+      maybe_space ();
+      pp_background_size ctx size
+  | None -> ());
+  (* Add repeat if present *)
+  (match bg.repeat with
+  | Some rep ->
+      maybe_space ();
+      pp_background_repeat ctx rep
+  | None -> ());
+  (* Add attachment if present *)
+  (match bg.attachment with
+  | Some att ->
+      maybe_space ();
+      pp_background_attachment ctx att
+  | None -> ());
+  (* Add origin if present *)
+  (match bg.origin with
+  | Some orig ->
+      maybe_space ();
+      pp_background_box ctx orig
+  | None -> ());
+  (* Add clip if present *)
+  (match bg.clip with
+  | Some cl ->
+      maybe_space ();
+      pp_background_box ctx cl
+  | None -> ());
+  (* Add color last *)
+  (match bg.color with
+  | Some c ->
+      maybe_space ();
+      pp_color ctx c
+  | None -> ());
+  (* If nothing was set, output 'none' *)
+  if !first then Pp.string ctx "none"
 
 let pp_transform_origin : transform_origin Pp.t =
  fun ctx -> function
@@ -1472,21 +1491,6 @@ let origin (a : position_component) (b : position_component) : transform_origin
 let origin3d (a : position_component) (b : position_component) (z : length) :
     transform_origin =
   XYZ (a, b, z)
-
-let pp_background_size : background_size Pp.t =
- fun ctx -> function
-  | Auto -> Pp.string ctx "auto"
-  | Cover -> Pp.string ctx "cover"
-  | Contain -> Pp.string ctx "contain"
-  | Length l -> pp_length ctx l
-  | Percentage p ->
-      Pp.float ctx p;
-      Pp.char ctx '%'
-  | Size (w, h) ->
-      pp_length ctx w;
-      Pp.char ctx ' ';
-      pp_length ctx h
-  | Inherit -> Pp.string ctx "inherit"
 
 let pp_animation : animation Pp.t =
  fun ctx anim ->
@@ -1579,10 +1583,7 @@ let rec pp_content : content Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
   | Normal -> Pp.string ctx "normal"
-  | String s ->
-      Pp.char ctx '"';
-      Pp.string ctx s;
-      Pp.char ctx '"'
+  | String s -> Pp.quoted_string ctx s
   | Open_quote -> Pp.string ctx "open-quote"
   | Close_quote -> Pp.string ctx "close-quote"
   | Var v -> pp_var pp_content ctx v
@@ -2275,6 +2276,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Clear -> pp pp_clear
   | Float -> pp pp_float_side
   | Border -> pp Pp.string
+  | Background -> pp pp_background
   | Text_decoration_thickness -> pp pp_length
   | Text_size_adjust -> pp Pp.string
   | Touch_action -> pp pp_touch_action
@@ -2320,130 +2322,134 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Font_family -> pp (Pp.list ~sep:Pp.comma pp_font_family)
 
 let read_border_style t : border_style =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "none" -> None
-  | "solid" -> Solid
-  | "dashed" -> Dashed
-  | "dotted" -> Dotted
-  | "double" -> Double
-  | "groove" -> Groove
-  | "ridge" -> Ridge
-  | "inset" -> Inset
-  | "outset" -> Outset
-  | "hidden" -> Hidden
-  | _ -> err_invalid_value t "border-style" v
+  Reader.enum "border-style"
+    [
+      ("none", (None : border_style));
+      ("solid", Solid);
+      ("dashed", Dashed);
+      ("dotted", Dotted);
+      ("double", Double);
+      ("groove", Groove);
+      ("ridge", Ridge);
+      ("inset", Inset);
+      ("outset", Outset);
+      ("hidden", Hidden);
+    ]
+    t
 
 let read_visibility t : visibility =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "visible" -> Visible
-  | "hidden" -> Hidden
-  | "collapse" -> Collapse
-  | _ -> err_invalid_value t "visibility" v
+  Reader.enum "visibility"
+    [
+      ("visible", (Visible : visibility));
+      ("hidden", Hidden);
+      ("collapse", Collapse);
+    ]
+    t
 
 let read_z_index t : z_index =
-  skip_ws t;
-  match peek t with
+  Reader.ws t;
+  match Reader.peek t with
   | Some '-' | Some '0' .. '9' ->
       (* It's a number *)
-      let n = number t in
+      let n = Reader.number t in
       Index (int_of_float n)
   | _ -> (
       (* It's an identifier *)
-      let v = ident t in
-      match String.lowercase_ascii v with
-      | "auto" -> Auto
-      | _ -> err_invalid_value t "z-index" v)
+      let v = Reader.ident t in
+      match v with "auto" -> Auto | _ -> err_invalid_value t "z-index" v)
 
 let read_flex_wrap t : flex_wrap =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "nowrap" -> Nowrap
-  | "wrap" -> Wrap
-  | "wrap-reverse" -> Wrap_reverse
-  | _ -> err_invalid_value t "flex-wrap" v
+  Reader.enum "flex-wrap"
+    [
+      ("nowrap", (Nowrap : flex_wrap));
+      ("wrap", Wrap);
+      ("wrap-reverse", Wrap_reverse);
+    ]
+    t
 
 let read_align t : align =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "normal" -> Normal
-  | "start" -> Start
-  | "end" -> End
-  | "center" -> Center
-  | "stretch" -> Stretch
-  | "space-between" -> Space_between
-  | "space-around" -> Space_around
-  | "space-evenly" -> Space_evenly
-  | _ -> err_invalid_value t "align" v
+  Reader.enum "align"
+    [
+      ("normal", (Normal : align));
+      ("start", Start);
+      ("end", End);
+      ("center", Center);
+      ("stretch", Stretch);
+      ("space-between", Space_between);
+      ("space-around", Space_around);
+      ("space-evenly", Space_evenly);
+    ]
+    t
 
 let read_align_self t : align_self =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "auto" -> Auto
-  | "flex-start" -> Flex_start
-  | "flex-end" -> Flex_end
-  | "center" -> Center
-  | "baseline" -> Baseline
-  | "stretch" -> Stretch
-  | _ -> err_invalid_value t "align-self" v
+  Reader.enum "align-self"
+    [
+      ("auto", (Auto : align_self));
+      ("flex-start", Flex_start);
+      ("flex-end", Flex_end);
+      ("center", Center);
+      ("baseline", Baseline);
+      ("stretch", Stretch);
+    ]
+    t
 
 let read_justify t : justify =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "auto" -> Auto
-  | "normal" -> Normal
-  | "stretch" -> Stretch
-  | "center" -> Center
-  | "start" -> Start
-  | "end" -> End
-  | "flex-start" -> Flex_start
-  | "flex-end" -> Flex_end
-  | "self-start" -> Self_start
-  | "self-end" -> Self_end
-  | "left" -> Left
-  | "right" -> Right
-  | "baseline" -> Baseline
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "justify" v
+  Reader.enum "justify"
+    [
+      ("auto", (Auto : justify));
+      ("normal", Normal);
+      ("stretch", Stretch);
+      ("center", Center);
+      ("start", Start);
+      ("end", End);
+      ("flex-start", Flex_start);
+      ("flex-end", Flex_end);
+      ("self-start", Self_start);
+      ("self-end", Self_end);
+      ("left", Left);
+      ("right", Right);
+      ("baseline", Baseline);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_flex t : flex =
-  skip_ws t;
+  Reader.ws t;
   (* Try to read as a number first *)
-  match try_parse number t with
+  match Reader.(try_parse number) t with
   | Some f -> Grow f
   | None -> (
       (* Not a number, read as identifier *)
-      let v = ident t in
-      match String.lowercase_ascii v with
+      let v = Reader.ident t in
+      match v with
       | "initial" -> Initial
       | "auto" -> Auto
       | "none" -> None
       | _ -> err_invalid_value t "flex" v)
 
 let read_place_content t : place_content =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "normal" -> Normal
-  | "start" -> Start
-  | "end" -> End
-  | "center" -> Center
-  | "stretch" -> Stretch
-  | "space-between" -> Space_between
-  | "space-around" -> Space_around
-  | "space-evenly" -> Space_evenly
-  | _ -> err_invalid_value t "place-content" v
+  Reader.enum "place-content"
+    [
+      ("normal", (Normal : place_content));
+      ("start", Start);
+      ("end", End);
+      ("center", Center);
+      ("stretch", Stretch);
+      ("space-between", Space_between);
+      ("space-around", Space_around);
+      ("space-evenly", Space_evenly);
+    ]
+    t
 
 let read_place_items t : place_items =
-  let v = ident t in
-  let v_lower = String.lowercase_ascii v in
+  let v = Reader.ident t in
   (* Check for a second value for align-items / justify-items pair *)
-  skip_ws t;
-  match try_parse ident t with
+  Reader.ws t;
+  match Reader.(try_parse ident) t with
   | Some second ->
       (* Two values: align-items justify-items *)
       let align : align_items =
-        match v_lower with
+        match v with
         | "normal" -> Normal
         | "start" -> Start
         | "flex-start" -> Flex_start
@@ -2455,21 +2461,21 @@ let read_place_items t : place_items =
         | _ -> err_invalid_value t "place-items align" v
       in
       let justify : justify =
-        match String.lowercase_ascii second with
-        | "normal" -> Normal
-        | "start" -> Start
-        | "flex-start" -> Flex_start
-        | "end" -> End
-        | "flex-end" -> Flex_end
-        | "center" -> Center
-        | "baseline" -> Baseline
-        | "stretch" -> Stretch
-        | _ -> err_invalid_value t "place-items justify" second
+        match second with
+          | "normal" -> Normal
+          | "start" -> Start
+          | "flex-start" -> Flex_start
+          | "end" -> End
+          | "flex-end" -> Flex_end
+          | "center" -> Center
+          | "baseline" -> Baseline
+          | "stretch" -> Stretch
+          | _ -> err_invalid_value t "place-items justify" second
       in
       Align_justify (align, justify)
   | None -> (
       (* Single value *)
-      match v_lower with
+      match v with
       | "normal" -> Normal
       | "start" -> Start
       | "end" -> End
@@ -2478,20 +2484,24 @@ let read_place_items t : place_items =
       | _ -> err_invalid_value t "place-items" v)
 
 let read_grid_auto_flow t : grid_auto_flow =
-  let v = ident t in
-  match String.lowercase_ascii v with
+  let v = Reader.ident t in
+  match v with
   | "row" -> (
       (* Check if followed by "dense" *)
-      skip_ws t;
-      match try_parse ident t with Some "dense" -> Row_dense | _ -> Row)
+      Reader.ws t;
+      match Reader.(try_parse ident) t with
+      | Some "dense" -> Row_dense
+      | _ -> Row)
   | "column" -> (
       (* Check if followed by "dense" *)
-      skip_ws t;
-      match try_parse ident t with Some "dense" -> Column_dense | _ -> Column)
+      Reader.ws t;
+      match Reader.(try_parse ident) t with
+      | Some "dense" -> Column_dense
+      | _ -> Column)
   | "dense" -> (
       (* Check if followed by "row" or "column" *)
-      skip_ws t;
-      match try_parse ident t with
+      Reader.ws t;
+      match Reader.(try_parse ident) t with
       | Some "row" -> Row_dense
       | Some "column" -> Column_dense
       | _ -> Dense)
@@ -2499,7 +2509,7 @@ let read_grid_auto_flow t : grid_auto_flow =
 
 let read_grid_track_size t : grid_track_size =
   let v = Reader.token t in
-  match String.lowercase_ascii v with
+  match v with
   | "auto" -> Track_size Auto
   | _
     when String.starts_with ~prefix:"fit-content(" v
@@ -2525,8 +2535,8 @@ let read_grid_track_size t : grid_track_size =
       with _ -> err_invalid_value t "grid-track-size" v)
 
 let read_grid_template t : grid_template =
-  let v = ident t in
-  match String.lowercase_ascii v with
+  let v = Reader.ident t in
+  match v with
   | "none" -> None
   | "subgrid" -> Subgrid
   | "masonry" -> Masonry
@@ -2535,27 +2545,26 @@ let read_grid_template t : grid_template =
       Tracks []
 
 let read_grid_line t : grid_line =
-  skip_ws t;
+  Reader.ws t;
   (* Try to read as a number first *)
-  match try_parse int t with
+  match Reader.(try_parse int) t with
   | Some n -> Number n
   | None -> (
       (* Not a number, read as identifier *)
-      let v = ident t in
-      let v_lower = String.lowercase_ascii v in
-      match v_lower with
+      let v = Reader.ident t in
+      match v with
       | "auto" -> Auto
       | "span" -> (
           (* Handle "span" followed by a number with space - CSS spec requires
              space *)
-          skip_ws t;
-          try Span (int t)
+          Reader.ws t;
+          try Span (Reader.int t)
           with _ -> err_invalid_value t "grid-line" "span <number>")
       | _ -> Name v)
 
 let read_aspect_ratio t : aspect_ratio =
-  let v = ident t in
-  match String.lowercase_ascii v with
+  let v = Reader.ident t in
+  match v with
   | "auto" -> Auto
   | "inherit" -> Inherit
   | _ -> (
@@ -2567,309 +2576,327 @@ let read_aspect_ratio t : aspect_ratio =
       with Failure _ -> err_invalid_value t "aspect-ratio" v)
 
 let read_text_overflow t : text_overflow =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "clip" -> Clip
-  | "ellipsis" -> Ellipsis
-  | "inherit" -> Inherit
-  | _ -> String v
+  Reader.ws t;
+  if Reader.looking_at t "\"" || Reader.looking_at t "'" then
+    (* Quoted string for custom text-overflow value *)
+    String (Reader.string t)
+  else
+    (* Keyword values *)
+    Reader.enum "text-overflow"
+      [
+        ("clip", (Clip : text_overflow));
+        ("ellipsis", Ellipsis);
+        ("inherit", Inherit);
+      ]
+      t
 
 let read_text_wrap t : text_wrap =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "wrap" -> Wrap
-  | "nowrap" -> No_wrap
-  | "balance" -> Balance
-  | "pretty" -> Pretty
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "text-wrap" v
+  Reader.enum "text-wrap"
+    [
+      ("wrap", (Wrap : text_wrap));
+      ("nowrap", No_wrap);
+      ("balance", Balance);
+      ("pretty", Pretty);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_white_space t : white_space =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "normal" -> Normal
-  | "nowrap" -> Nowrap
-  | "pre" -> Pre
-  | "pre-wrap" -> Pre_wrap
-  | "pre-line" -> Pre_line
-  | "break-spaces" -> Break_spaces
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "white-space" v
+  Reader.enum "white-space"
+    [
+      ("normal", (Normal : white_space));
+      ("nowrap", Nowrap);
+      ("pre", Pre);
+      ("pre-wrap", Pre_wrap);
+      ("pre-line", Pre_line);
+      ("break-spaces", Break_spaces);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_word_break t : word_break =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "normal" -> Normal
-  | "break-all" -> Break_all
-  | "keep-all" -> Keep_all
-  | "break-word" -> Break_word
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "word-break" v
+  Reader.enum "word-break"
+    [
+      ("normal", (Normal : word_break));
+      ("break-all", Break_all);
+      ("keep-all", Keep_all);
+      ("break-word", Break_word);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_overflow_wrap t : overflow_wrap =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "normal" -> Normal
-  | "break-word" -> Break_word
-  | "anywhere" -> Anywhere
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "overflow-wrap" v
+  Reader.enum "overflow-wrap"
+    [
+      ("normal", (Normal : overflow_wrap));
+      ("break-word", Break_word);
+      ("anywhere", Anywhere);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_hyphens t : hyphens =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "none" -> None
-  | "manual" -> Manual
-  | "auto" -> Auto
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "hyphens" v
+  Reader.enum "hyphens"
+    [
+      ("none", (None : hyphens));
+      ("manual", Manual);
+      ("auto", Auto);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_line_height t : line_height =
-  skip_ws t;
-  match peek t with
+  Reader.ws t;
+  match Reader.peek t with
   | Some '0' .. '9' | Some '.' ->
       (* It's a number or percentage *)
-      let n = number t in
-      if looking_at t "%" then (
-        expect t '%';
+      let n = Reader.number t in
+      if Reader.looking_at t "%" then (
+        Reader.expect '%' t;
         Percentage (n /. 100.))
-      else if looking_at t "px" || looking_at t "em" || looking_at t "rem" then
-        (* It's a length, re-parse from beginning *)
-        let t2 =
-          Reader.of_string (string_of_float n ^ Reader.until_string t " ")
-        in
-        Length (read_length t2)
       else Number n
   | _ -> (
       (* It's an identifier *)
-      let v = ident t in
-      match String.lowercase_ascii v with
+      let v = Reader.ident t in
+      match v with
       | "normal" -> Normal
       | "inherit" -> Inherit
       | _ -> err_invalid_value t "line-height" v)
 
 let read_list_style_type t : list_style_type =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "none" -> None
-  | "disc" -> Disc
-  | "circle" -> Circle
-  | "square" -> Square
-  | "decimal" -> Decimal
-  | "lower-alpha" -> Lower_alpha
-  | "upper-alpha" -> Upper_alpha
-  | "lower-roman" -> Lower_roman
-  | "upper-roman" -> Upper_roman
-  | _ -> err_invalid_value t "list-style-type" v
+  Reader.enum "list-style-type"
+    [
+      ("none", (None : list_style_type));
+      ("disc", Disc);
+      ("circle", Circle);
+      ("square", Square);
+      ("decimal", Decimal);
+      ("lower-alpha", Lower_alpha);
+      ("upper-alpha", Upper_alpha);
+      ("lower-roman", Lower_roman);
+      ("upper-roman", Upper_roman);
+    ]
+    t
 
 let read_list_style_position t : list_style_position =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "inside" -> Inside
-  | "outside" -> Outside
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "list-style-position" v
+  Reader.enum "list-style-position"
+    [
+      ("inside", (Inside : list_style_position));
+      ("outside", Outside);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_list_style_image t : list_style_image =
-  skip_ws t;
-  if looking_at t "url(" then
+  Reader.ws t;
+  if Reader.looking_at t "url(" then
     (* Parse url function *)
-    Url (url t)
+    Url (Reader.url t)
   else
     (* Parse as identifier *)
-    let v = ident t in
-    match String.lowercase_ascii v with
+    let v = Reader.ident t in
+    match v with
     | "none" -> None
     | "inherit" -> Inherit
     | _ -> err_invalid_value t "list-style-image" v
 
 let read_table_layout t : table_layout =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "auto" -> Auto
-  | "fixed" -> Fixed
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "table-layout" v
+  Reader.enum "table-layout"
+    [ ("auto", (Auto : table_layout)); ("fixed", Fixed); ("inherit", Inherit) ]
+    t
 
 let read_border_collapse t : border_collapse =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "collapse" -> Collapse
-  | "separate" -> Separate
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "border-collapse" v
+  Reader.enum "border-collapse"
+    [
+      ("collapse", (Collapse : border_collapse));
+      ("separate", Separate);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_user_select t : user_select =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "none" -> None
-  | "auto" -> Auto
-  | "text" -> Text
-  | "all" -> All
-  | "contain" -> Contain
-  | _ -> err_invalid_value t "user-select" v
+  Reader.enum "user-select"
+    [
+      ("none", (None : user_select));
+      ("auto", Auto);
+      ("text", Text);
+      ("all", All);
+      ("contain", Contain);
+    ]
+    t
 
 let read_pointer_events t : pointer_events =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "auto" -> Auto
-  | "none" -> None
-  | "visiblepainted" -> Visible_painted
-  | "visiblefill" -> Visible_fill
-  | "visiblestroke" -> Visible_stroke
-  | "visible" -> Visible
-  | "painted" -> Painted
-  | "fill" -> Fill
-  | "stroke" -> Stroke
-  | "all" -> All
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "pointer-events" v
+  Reader.enum "pointer-events"
+    [
+      ("auto", (Auto : pointer_events));
+      ("none", None);
+      ("visiblepainted", Visible_painted);
+      ("visiblefill", Visible_fill);
+      ("visiblestroke", Visible_stroke);
+      ("visible", Visible);
+      ("painted", Painted);
+      ("fill", Fill);
+      ("stroke", Stroke);
+      ("all", All);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_touch_action t : touch_action =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "auto" -> Auto
-  | "none" -> None
-  | "pan-x" -> Pan_x
-  | "pan-y" -> Pan_y
-  | "manipulation" -> Manipulation
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "touch-action" v
+  Reader.enum "touch-action"
+    [
+      ("auto", (Auto : touch_action));
+      ("none", None);
+      ("pan-x", Pan_x);
+      ("pan-y", Pan_y);
+      ("manipulation", Manipulation);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_resize t : resize =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "none" -> None
-  | "both" -> Both
-  | "horizontal" -> Horizontal
-  | "vertical" -> Vertical
-  | "block" -> Block
-  | "inline" -> Inline
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "resize" v
+  Reader.enum "resize"
+    [
+      ("none", (None : resize));
+      ("both", Both);
+      ("horizontal", Horizontal);
+      ("vertical", Vertical);
+      ("block", Block);
+      ("inline", Inline);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_box_sizing t : box_sizing =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "border-box" -> Border_box
-  | "content-box" -> Content_box
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "box-sizing" v
+  Reader.enum "box-sizing"
+    [
+      ("border-box", (Border_box : box_sizing));
+      ("content-box", Content_box);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_object_fit t : object_fit =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "fill" -> Fill
-  | "contain" -> Contain
-  | "cover" -> Cover
-  | "none" -> None
-  | "scale-down" -> Scale_down
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "object-fit" v
+  Reader.enum "object-fit"
+    [
+      ("fill", (Fill : object_fit));
+      ("contain", Contain);
+      ("cover", Cover);
+      ("none", None);
+      ("scale-down", Scale_down);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_content t : content =
-  skip_ws t;
-  if looking_at t "\"" || looking_at t "'" then
+  Reader.ws t;
+  if Reader.looking_at t "\"" || Reader.looking_at t "'" then
     (* Quoted string *)
-    String (string t)
+    String (Reader.string t)
   else
     (* Identifier or keyword *)
-    let v = ident t in
-    match String.lowercase_ascii v with
-    | "none" -> None
-    | "normal" -> Normal
-    | "open-quote" -> Open_quote
-    | "close-quote" -> Close_quote
-    | _ -> String v
+    Reader.enum "content"
+      [
+        ("none", (None : content));
+        ("normal", Normal);
+        ("open-quote", Open_quote);
+        ("close-quote", Close_quote);
+      ]
+      t
 
 let read_content_visibility t : content_visibility =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "visible" -> Visible
-  | "auto" -> Auto
-  | "hidden" -> Hidden
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "content-visibility" v
+  Reader.enum "content-visibility"
+    [
+      ("visible", (Visible : content_visibility));
+      ("auto", Auto);
+      ("hidden", Hidden);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_container_type t : container_type =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "normal" -> Normal
-  | "inline-size" -> Inline_size
-  | "size" -> Size
-  | _ -> err_invalid_value t "container-type" v
+  Reader.enum "container-type"
+    [
+      ("normal", (Normal : container_type));
+      ("inline-size", Inline_size);
+      ("size", Size);
+    ]
+    t
 
 let read_contain t : contain =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "none" -> None
-  | "strict" -> Strict
-  | "content" -> Content
-  | "size" -> Size
-  | "layout" -> Layout
-  | "style" -> Style
-  | "paint" -> Paint
-  | _ -> err_invalid_value t "contain" v
+  Reader.enum "contain"
+    [
+      ("none", (None : contain));
+      ("strict", Strict);
+      ("content", Content);
+      ("size", Size);
+      ("layout", Layout);
+      ("style", Style);
+      ("paint", Paint);
+    ]
+    t
 
 let read_isolation t : isolation =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "auto" -> Auto
-  | "isolate" -> Isolate
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "isolation" v
+  Reader.enum "isolation"
+    [ ("auto", (Auto : isolation)); ("isolate", Isolate); ("inherit", Inherit) ]
+    t
 
 let read_scroll_behavior t : scroll_behavior =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "auto" -> Auto
-  | "smooth" -> Smooth
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "scroll-behavior" v
+  Reader.enum "scroll-behavior"
+    [
+      ("auto", (Auto : scroll_behavior));
+      ("smooth", Smooth);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_scroll_snap_align t : scroll_snap_align =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "none" -> None
-  | "start" -> Start
-  | "end" -> End
-  | "center" -> Center
-  | _ -> err_invalid_value t "scroll-snap-align" v
+  Reader.enum "scroll-snap-align"
+    [
+      ("none", (None : scroll_snap_align));
+      ("start", Start);
+      ("end", End);
+      ("center", Center);
+    ]
+    t
 
 let read_scroll_snap_stop t : scroll_snap_stop =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "normal" -> Normal
-  | "always" -> Always
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "scroll-snap-stop" v
+  Reader.enum "scroll-snap-stop"
+    [
+      ("normal", (Normal : scroll_snap_stop));
+      ("always", Always);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_scroll_snap_axis t : scroll_snap_axis =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "x" -> X
-  | "y" -> Y
-  | "block" -> Block
-  | "inline" -> Inline
-  | "both" -> Both
-  | _ -> err_invalid_value t "scroll-snap-axis" v
+  Reader.enum "scroll-snap-axis"
+    [
+      ("x", (X : scroll_snap_axis));
+      ("y", Y);
+      ("block", Block);
+      ("inline", Inline);
+      ("both", Both);
+    ]
+    t
 
 let read_scroll_snap_strictness t : scroll_snap_strictness =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "proximity" -> Proximity
-  | "mandatory" -> Mandatory
-  | _ -> err_invalid_value t "scroll-snap-strictness" v
+  Reader.enum "scroll-snap-strictness"
+    [
+      ("proximity", (Proximity : scroll_snap_strictness));
+      ("mandatory", Mandatory);
+    ]
+    t
 
 let read_scroll_snap_type t : scroll_snap_type =
-  let v = ident t in
-  match String.lowercase_ascii v with
+  let v = Reader.ident t in
+  match v with
   | "none" -> None
   | "inherit" -> Inherit
   | _ ->
       (* Try to parse axis and optional strictness *)
       let axis =
-        match String.lowercase_ascii v with
+        match v with
         | "x" -> X
         | "y" -> Y
         | "block" -> Block
@@ -2879,154 +2906,160 @@ let read_scroll_snap_type t : scroll_snap_type =
       in
       (* Check for optional strictness *)
       let strictness : scroll_snap_strictness option =
-        if is_done t then None
+        if Reader.is_done t then None
         else
-          let s = ident t in
-          match String.lowercase_ascii s with
-          | "proximity" -> Some Proximity
-          | "mandatory" -> Some Mandatory
-          | _ -> None (* No strictness specified *)
+          let s = Reader.ident t in
+          match s with
+            | "proximity" -> Some Proximity
+            | "mandatory" -> Some Mandatory
+            | _ -> None (* No strictness specified *)
       in
       Axis (axis, strictness)
 
 let read_overscroll_behavior t : overscroll_behavior =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "auto" -> Auto
-  | "contain" -> Contain
-  | "none" -> None
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "overscroll-behavior" v
+  Reader.enum "overscroll-behavior"
+    [
+      ("auto", (Auto : overscroll_behavior));
+      ("contain", Contain);
+      ("none", None);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_svg_paint t : svg_paint =
-  let v = ident t in
-  match String.lowercase_ascii v with
+  let v = Reader.ident t in
+  match v with
   | "none" -> None
   | "currentcolor" -> Current_color
   | _ -> Color (read_color t)
 
 let read_direction t : direction =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "ltr" -> Ltr
-  | "rtl" -> Rtl
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "direction" v
+  Reader.enum "direction"
+    [ ("ltr", (Ltr : direction)); ("rtl", Rtl); ("inherit", Inherit) ]
+    t
 
 let read_unicode_bidi t : unicode_bidi =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "normal" -> Normal
-  | "embed" -> Embed
-  | "isolate" -> Isolate
-  | "bidi-override" -> Bidi_override
-  | "isolate-override" -> Isolate_override
-  | "plaintext" -> Plaintext
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "unicode-bidi" v
+  Reader.enum "unicode-bidi"
+    [
+      ("normal", (Normal : unicode_bidi));
+      ("embed", Embed);
+      ("isolate", Isolate);
+      ("bidi-override", Bidi_override);
+      ("isolate-override", Isolate_override);
+      ("plaintext", Plaintext);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_writing_mode t : writing_mode =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "horizontal-tb" -> Horizontal_tb
-  | "vertical-rl" -> Vertical_rl
-  | "vertical-lr" -> Vertical_lr
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "writing-mode" v
+  Reader.enum "writing-mode"
+    [
+      ("horizontal-tb", (Horizontal_tb : writing_mode));
+      ("vertical-rl", Vertical_rl);
+      ("vertical-lr", Vertical_lr);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_webkit_appearance t : webkit_appearance =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "none" -> None
-  | "auto" -> Auto
-  | "button" -> Button
-  | "textfield" -> Textfield
-  | "menulist" -> Menulist
-  | "listbox" -> Listbox
-  | "checkbox" -> Checkbox
-  | "radio" -> Radio
-  | "push-button" -> Push_button
-  | "square-button" -> Square_button
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "webkit-appearance" v
+  Reader.enum "webkit-appearance"
+    [
+      ("none", (None : webkit_appearance));
+      ("auto", Auto);
+      ("button", Button);
+      ("textfield", Textfield);
+      ("menulist", Menulist);
+      ("listbox", Listbox);
+      ("checkbox", Checkbox);
+      ("radio", Radio);
+      ("push-button", Push_button);
+      ("square-button", Square_button);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_webkit_font_smoothing t : webkit_font_smoothing =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "auto" -> Auto
-  | "none" -> None
-  | "antialiased" -> Antialiased
-  | "subpixel-antialiased" -> Subpixel_antialiased
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "webkit-font-smoothing" v
+  Reader.enum "webkit-font-smoothing"
+    [
+      ("auto", (Auto : webkit_font_smoothing));
+      ("none", None);
+      ("antialiased", Antialiased);
+      ("subpixel-antialiased", Subpixel_antialiased);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_moz_osx_font_smoothing t : moz_osx_font_smoothing =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "auto" -> Auto
-  | "grayscale" -> Grayscale
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "moz-osx-font-smoothing" v
+  Reader.enum "moz-osx-font-smoothing"
+    [
+      ("auto", (Auto : moz_osx_font_smoothing));
+      ("grayscale", Grayscale);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_webkit_box_orient t : webkit_box_orient =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "horizontal" -> Horizontal
-  | "vertical" -> Vertical
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "webkit-box-orient" v
+  Reader.enum "webkit-box-orient"
+    [
+      ("horizontal", (Horizontal : webkit_box_orient));
+      ("vertical", Vertical);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_forced_color_adjust t : forced_color_adjust =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "auto" -> Auto
-  | "none" -> None
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "forced-color-adjust" v
+  Reader.enum "forced-color-adjust"
+    [
+      ("auto", (Auto : forced_color_adjust));
+      ("none", None);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_appearance t : appearance =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "none" -> None
-  | "auto" -> Auto
-  | "button" -> Button
-  | "textfield" -> Textfield
-  | "menulist" -> Menulist
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "appearance" v
+  Reader.enum "appearance"
+    [
+      ("none", (None : appearance));
+      ("auto", Auto);
+      ("button", Button);
+      ("textfield", Textfield);
+      ("menulist", Menulist);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_clear t : clear =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "none" -> None
-  | "left" -> Left
-  | "right" -> Right
-  | "both" -> Both
-  | _ -> err_invalid_value t "clear" v
+  Reader.enum "clear"
+    [
+      ("none", (None : clear)); ("left", Left); ("right", Right); ("both", Both);
+    ]
+    t
 
 let read_float_side t : float_side =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "none" -> None
-  | "left" -> Left
-  | "right" -> Right
-  | "inline-start" -> Inline_start
-  | "inline-end" -> Inline_end
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "float" v
+  Reader.enum "float-side"
+    [
+      ("none", (None : float_side));
+      ("left", Left);
+      ("right", Right);
+      ("inline-start", Inline_start);
+      ("inline-end", Inline_end);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_text_decoration_skip_ink t : text_decoration_skip_ink =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "auto" -> Auto
-  | "none" -> None
-  | "all" -> All
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "text-decoration-skip-ink" v
+  Reader.enum "text-decoration-skip-ink"
+    [
+      ("auto", (Auto : text_decoration_skip_ink));
+      ("none", None);
+      ("all", All);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_vertical_align t : vertical_align =
-  let v = ident t in
-  match String.lowercase_ascii v with
+  let v = Reader.ident t in
+  match v with
   | "baseline" -> Baseline
   | "top" -> Top
   | "middle" -> Middle
@@ -3043,46 +3076,132 @@ let read_vertical_align t : vertical_align =
         with _ -> err_invalid_value t "vertical-align" v))
 
 let read_outline_style t : outline_style =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "none" -> None
-  | "solid" -> Solid
-  | "dashed" -> Dashed
-  | "dotted" -> Dotted
-  | "double" -> Double
-  | "groove" -> Groove
-  | "ridge" -> Ridge
-  | "inset" -> Inset
-  | "outset" -> Outset
-  | "auto" -> Auto
-  | _ -> err_invalid_value t "outline-style" v
+  Reader.enum "outline-style"
+    [
+      ("none", (None : outline_style));
+      ("solid", Solid);
+      ("dashed", Dashed);
+      ("dotted", Dotted);
+      ("double", Double);
+      ("groove", Groove);
+      ("ridge", Ridge);
+      ("inset", Inset);
+      ("outset", Outset);
+      ("auto", Auto);
+    ]
+    t
 
 let read_font_family t : font_family =
-  (* This is complex - for now just return a single family *)
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "sans-serif" -> Sans_serif
-  | "serif" -> Serif
-  | "monospace" -> Monospace
-  | "cursive" -> Cursive
-  | "fantasy" -> Fantasy
-  | "system-ui" -> System_ui
-  | _ -> Name v
-(* Unknown families are treated as arbitrary names *)
+  Reader.enum "font-family"
+    [
+      (* Generic CSS font families *)
+      ("sans-serif", Sans_serif);
+      ("serif", Serif);
+      ("monospace", Monospace);
+      ("cursive", Cursive);
+      ("fantasy", Fantasy);
+      ("system-ui", System_ui);
+      ("ui-sans-serif", Ui_sans_serif);
+      ("ui-serif", Ui_serif);
+      ("ui-monospace", Ui_monospace);
+      ("ui-rounded", Ui_rounded);
+      ("emoji", Emoji);
+      ("math", Math);
+      ("fangsong", Fangsong);
+      (* CSS keywords *)
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      (* Popular web fonts *)
+      ("inter", Inter);
+      ("roboto", Roboto);
+      ("open-sans", Open_sans);
+      ("lato", Lato);
+      ("montserrat", Montserrat);
+      ("poppins", Poppins);
+      ("source-sans-pro", Source_sans_pro);
+      ("raleway", Raleway);
+      ("oswald", Oswald);
+      ("noto-sans", Noto_sans);
+      ("ubuntu", Ubuntu);
+      ("playfair-display", Playfair_display);
+      ("merriweather", Merriweather);
+      ("lora", Lora);
+      ("pt-sans", PT_sans);
+      ("pt-serif", PT_serif);
+      ("nunito", Nunito);
+      ("nunito-sans", Nunito_sans);
+      ("work-sans", Work_sans);
+      ("rubik", Rubik);
+      ("fira-sans", Fira_sans);
+      ("fira-code", Fira_code);
+      ("jetbrains-mono", JetBrains_mono);
+      ("ibm-plex-sans", IBM_plex_sans);
+      ("ibm-plex-serif", IBM_plex_serif);
+      ("ibm-plex-mono", IBM_plex_mono);
+      ("source-code-pro", Source_code_pro);
+      ("space-mono", Space_mono);
+      ("dm-sans", DM_sans);
+      ("dm-serif-display", DM_serif_display);
+      ("bebas-neue", Bebas_neue);
+      ("barlow", Barlow);
+      ("mulish", Mulish);
+      ("josefin-sans", Josefin_sans);
+      (* Platform-specific fonts *)
+      ("helvetica", Helvetica);
+      ("helvetica-neue", Helvetica_neue);
+      ("arial", Arial);
+      ("verdana", Verdana);
+      ("tahoma", Tahoma);
+      ("trebuchet-ms", Trebuchet_ms);
+      ("times-new-roman", Times_new_roman);
+      ("times", Times);
+      ("georgia", Georgia);
+      ("cambria", Cambria);
+      ("garamond", Garamond);
+      ("courier-new", Courier_new);
+      ("courier", Courier);
+      ("lucida-console", Lucida_console);
+      ("sf-pro", SF_pro);
+      ("sf-pro-display", SF_pro_display);
+      ("sf-pro-text", SF_pro_text);
+      ("sf-mono", SF_mono);
+      ("ny", NY);
+      ("segoe-ui", Segoe_ui);
+      ("segoe-ui-emoji", Segoe_ui_emoji);
+      ("segoe-ui-symbol", Segoe_ui_symbol);
+      ("apple-color-emoji", Apple_color_emoji);
+      ("noto-color-emoji", Noto_color_emoji);
+      ("android-emoji", Android_emoji);
+      ("twemoji-mozilla", Twemoji_mozilla);
+      (* Developer fonts *)
+      ("menlo", Menlo);
+      ("monaco", Monaco);
+      ("consolas", Consolas);
+      ("liberation-mono", Liberation_mono);
+      ("sfmono-regular", SFMono_regular);
+      ("cascadia-code", Cascadia_code);
+      ("cascadia-mono", Cascadia_mono);
+      ("victor-mono", Victor_mono);
+      ("inconsolata", Inconsolata);
+      ("hack", Hack);
+    ]
+    t
+    ~default:(fun t -> Name (Reader.ident ~keep_case:true t))
 
 let read_font_stretch t : font_stretch =
-  skip_ws t;
-  match peek t with
+  Reader.ws t;
+  match Reader.peek t with
   | Some ('0' .. '9' | '.') ->
       (* It's a percentage *)
-      let n = number t in
-      skip_ws t;
-      expect t '%';
+      let n = Reader.number t in
+      Reader.ws t;
+      Reader.expect '%' t;
       Pct (n /. 100.)
   | _ -> (
       (* It's an identifier *)
-      let v = ident t in
-      match String.lowercase_ascii v with
+      let v = Reader.ident t in
+      match v with
       | "ultra-condensed" -> Ultra_condensed
       | "extra-condensed" -> Extra_condensed
       | "condensed" -> Condensed
@@ -3096,49 +3215,43 @@ let read_font_stretch t : font_stretch =
       | _ -> err_invalid_value t "font-stretch" v)
 
 let read_font_variant_numeric_token t : font_variant_numeric_token =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "normal" -> Normal
-  | "lining-nums" -> Lining_nums
-  | "oldstyle-nums" -> Oldstyle_nums
-  | "proportional-nums" -> Proportional_nums
-  | "tabular-nums" -> Tabular_nums
-  | "diagonal-fractions" -> Diagonal_fractions
-  | "stacked-fractions" -> Stacked_fractions
-  | "ordinal" -> Ordinal
-  | "slashed-zero" -> Slashed_zero
-  | _ -> err_invalid_value t "font-variant-numeric-token" v
+  Reader.enum "font-variant-numeric-token"
+    [
+      ("normal", (Normal : font_variant_numeric_token));
+      ("lining-nums", Lining_nums);
+      ("oldstyle-nums", Oldstyle_nums);
+      ("proportional-nums", Proportional_nums);
+      ("tabular-nums", Tabular_nums);
+      ("diagonal-fractions", Diagonal_fractions);
+      ("stacked-fractions", Stacked_fractions);
+      ("ordinal", Ordinal);
+      ("slashed-zero", Slashed_zero);
+    ]
+    t
 
 let read_font_variant_numeric t : font_variant_numeric =
-  Reader.save t;
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "normal" -> Normal
-  | _ ->
-      (* Restore position and read as tokens *)
-      Reader.restore t;
-      let rec read_tokens acc =
-        match Reader.try_parse read_font_variant_numeric_token t with
-        | Some token ->
-            skip_ws t;
-            read_tokens (token :: acc)
-        | None -> List.rev acc
-      in
-      let tokens = read_tokens [] in
-      if tokens = [] then err_invalid_value t "font-variant-numeric" v
-      else Tokens tokens
+  Reader.one_of
+    [
+      Reader.enum "font-variant-numeric"
+        [ ("normal", (Normal : font_variant_numeric)) ];
+      (fun t ->
+        let tokens, _ = Reader.many read_font_variant_numeric_token t in
+        if tokens = [] then err_invalid_value t "font-variant-numeric" "<empty>"
+        else Tokens tokens);
+    ]
+    t
 
 let read_font_feature_settings t : font_feature_settings =
-  skip_ws t;
-  match peek t with
+  Reader.ws t;
+  match Reader.peek t with
   | Some '"' ->
       (* It's a quoted string *)
-      let s = string t in
+      let s = Reader.string t in
       String s
   | _ -> (
       (* It's an identifier *)
-      let v = ident t in
-      match String.lowercase_ascii v with
+      let v = Reader.ident t in
+      match v with
       | "normal" -> Normal
       | "inherit" -> Inherit
       | _ ->
@@ -3146,72 +3259,70 @@ let read_font_feature_settings t : font_feature_settings =
       )
 
 let read_font_variation_settings t : font_variation_settings =
-  skip_ws t;
-  match peek t with
+  Reader.ws t;
+  match Reader.peek t with
   | Some '"' ->
       (* It's a quoted string *)
-      let s = string t in
+      let s = Reader.string t in
       String s
   | _ -> (
       (* It's an identifier *)
-      let v = ident t in
-      match String.lowercase_ascii v with
+      let v = Reader.ident t in
+      match v with
       | "normal" -> Normal
       | "inherit" -> Inherit
       | _ -> Axis_list v (* Simplified - proper parsing would be more complex *)
       )
 
 let read_transform_style t : transform_style =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "flat" -> Flat
-  | "preserve-3d" -> Preserve_3d
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "transform-style" v
+  Reader.enum "transform-style"
+    [
+      ("flat", (Flat : transform_style));
+      ("preserve-3d", Preserve_3d);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_backface_visibility t : backface_visibility =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "visible" -> Visible
-  | "hidden" -> Hidden
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "backface-visibility" v
+  Reader.enum "backface-visibility"
+    [
+      ("visible", (Visible : backface_visibility));
+      ("hidden", Hidden);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_scale t : scale =
-  skip_ws t;
-  match peek t with
+  Reader.ws t;
+  match Reader.peek t with
   | Some ('0' .. '9' | '.' | '-') ->
       (* It's a number *)
-      let n = number t in
+      let n = Reader.number t in
       Number n
   | _ -> (
       (* It's an identifier *)
-      let v = ident t in
-      match String.lowercase_ascii v with
-      | "none" -> None
-      | _ -> err_invalid_value t "scale" v)
+      let v = Reader.ident t in
+      match v with "none" -> None | _ -> err_invalid_value t "scale" v)
 
 let read_timing_function t : timing_function =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "ease" -> Ease
-  | "linear" -> Linear
-  | "ease-in" -> Ease_in
-  | "ease-out" -> Ease_out
-  | "ease-in-out" -> Ease_in_out
-  | "step-start" -> Step_start
-  | "step-end" -> Step_end
-  | _ -> err_invalid_value t "timing-function" v
+  Reader.enum "timing-function"
+    [
+      ("ease", (Ease : timing_function));
+      ("linear", Linear);
+      ("ease-in", Ease_in);
+      ("ease-out", Ease_out);
+      ("ease-in-out", Ease_in_out);
+      ("step-start", Step_start);
+      ("step-end", Step_end);
+    ]
+    t
 
 let read_transition_property t : transition_property =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "all" -> All
-  | "none" -> None
-  | _ -> Property v
+  let v = Reader.ident t in
+  match v with "all" -> All | "none" -> None | _ -> Property v
 
 let read_transition t : transition =
-  let v = ident t in
+  let v = Reader.ident t in
   (* Simplified - real parsing would be much more complex *)
   {
     property = Property v;
@@ -3224,46 +3335,46 @@ let read_transitions t : transition list =
   Reader.list ~sep:Reader.comma read_transition t
 
 let read_animation_direction t : animation_direction =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "normal" -> Normal
-  | "reverse" -> Reverse
-  | "alternate" -> Alternate
-  | "alternate-reverse" -> Alternate_reverse
-  | _ -> err_invalid_value t "animation-direction" v
+  Reader.enum "animation-direction"
+    [
+      ("normal", (Normal : animation_direction));
+      ("reverse", Reverse);
+      ("alternate", Alternate);
+      ("alternate-reverse", Alternate_reverse);
+    ]
+    t
 
 let read_animation_fill_mode t : animation_fill_mode =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "none" -> None
-  | "forwards" -> Forwards
-  | "backwards" -> Backwards
-  | "both" -> Both
-  | _ -> err_invalid_value t "animation-fill-mode" v
+  Reader.enum "animation-fill-mode"
+    [
+      ("none", (None : animation_fill_mode));
+      ("forwards", Forwards);
+      ("backwards", Backwards);
+      ("both", Both);
+    ]
+    t
 
 let read_animation_iteration_count t : animation_iteration_count =
-  skip_ws t;
-  match peek t with
+  Reader.ws t;
+  match Reader.peek t with
   | Some ('0' .. '9' | '.' | '-') ->
       (* It's a number *)
-      let n = number t in
+      let n = Reader.number t in
       Number n
   | _ -> (
       (* It's an identifier *)
-      let v = ident t in
-      match String.lowercase_ascii v with
+      let v = Reader.ident t in
+      match v with
       | "infinite" -> Infinite
       | _ -> err_invalid_value t "animation-iteration-count" v)
 
 let read_animation_play_state t : animation_play_state =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "running" -> Running
-  | "paused" -> Paused
-  | _ -> err_invalid_value t "animation-play-state" v
+  Reader.enum "animation-play-state"
+    [ ("running", (Running : animation_play_state)); ("paused", Paused) ]
+    t
 
 let read_animation t : animation =
-  let v = ident t in
+  let v = Reader.ident t in
   (* Simplified - real parsing would be much more complex *)
   {
     name = Some v;
@@ -3280,38 +3391,39 @@ let read_animations t : animation list =
   Reader.list ~sep:Reader.comma read_animation t
 
 let read_blend_mode t : blend_mode =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "normal" -> Normal
-  | "multiply" -> Multiply
-  | "screen" -> Screen
-  | "overlay" -> Overlay
-  | "darken" -> Darken
-  | "lighten" -> Lighten
-  | "color-dodge" -> Color_dodge
-  | "color-burn" -> Color_burn
-  | "hard-light" -> Hard_light
-  | "soft-light" -> Soft_light
-  | "difference" -> Difference
-  | "exclusion" -> Exclusion
-  | "hue" -> Hue
-  | "saturation" -> Saturation
-  | "color" -> Color
-  | "luminosity" -> Luminosity
-  | _ -> err_invalid_value t "blend-mode" v
+  Reader.enum "blend-mode"
+    [
+      ("normal", (Normal : blend_mode));
+      ("multiply", Multiply);
+      ("screen", Screen);
+      ("overlay", Overlay);
+      ("darken", Darken);
+      ("lighten", Lighten);
+      ("color-dodge", Color_dodge);
+      ("color-burn", Color_burn);
+      ("hard-light", Hard_light);
+      ("soft-light", Soft_light);
+      ("difference", Difference);
+      ("exclusion", Exclusion);
+      ("hue", Hue);
+      ("saturation", Saturation);
+      ("color", Color);
+      ("luminosity", Luminosity);
+    ]
+    t
 
 let read_blend_modes t : blend_mode list =
   Reader.list ~sep:Reader.comma read_blend_mode t
 
 let read_text_shadow t : text_shadow =
   let open Option in
-  skip_ws t;
+  Reader.ws t;
   (* Check for specific keywords first without consuming other identifiers *)
-  if looking_at t "none" then (
-    expect_string t "none";
+  if Reader.looking_at t "none" then (
+    Reader.expect_string "none" t;
     None)
-  else if looking_at t "inherit" then (
-    expect_string t "inherit";
+  else if Reader.looking_at t "inherit" then (
+    Reader.expect_string "inherit" t;
     Inherit)
   else
     (* Parse shadow components *)
@@ -3321,28 +3433,28 @@ let read_text_shadow t : text_shadow =
     let blur_opt = ref None in
 
     (* Try to read color first (it can be at beginning or end) *)
-    (match try_parse read_color t with
+    (match Reader.try_parse read_color t with
     | Some c ->
         color_opt := Some c;
-        skip_ws t
+        Reader.ws t
     | None -> ());
 
     (* Read h-offset and v-offset (required) *)
     h_offset := Some (read_length t);
-    skip_ws t;
+    Reader.ws t;
     v_offset := Some (read_length t);
-    skip_ws t;
+    Reader.ws t;
 
     (* Try to read blur (optional) *)
-    (match try_parse read_length t with
+    (match Reader.try_parse read_length t with
     | Some b ->
         blur_opt := Some b;
-        skip_ws t
+        Reader.ws t
     | None -> ());
 
     (* Try to read color at end if not already read *)
     (if !color_opt = None then
-       match try_parse read_color t with
+       match Reader.try_parse read_color t with
        | Some c -> color_opt := Some c
        | None -> ());
 
@@ -3356,36 +3468,35 @@ let read_text_shadows t : text_shadow list =
   Reader.list ~sep:Reader.comma read_text_shadow t
 
 let read_filter t : filter =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "none" -> None
-  | _ -> err_invalid_value t "filter" v (* Simplified *)
+  Reader.enum "filter" [ ("none", (None : filter)) ] t (* Simplified *)
 
 (* Background-related readers *)
 let read_background_attachment t : background_attachment =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "scroll" -> Scroll
-  | "fixed" -> Fixed
-  | "local" -> Local
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "background-attachment" v
+  Reader.enum "background-attachment"
+    [
+      ("scroll", (Scroll : background_attachment));
+      ("fixed", Fixed);
+      ("local", Local);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_background_repeat t : background_repeat =
-  let v = ident t in
-  match String.lowercase_ascii v with
-  | "repeat" -> Repeat
-  | "repeat-x" -> Repeat_x
-  | "repeat-y" -> Repeat_y
-  | "no-repeat" -> No_repeat
-  | "space" -> Space
-  | "round" -> Round
-  | "inherit" -> Inherit
-  | _ -> err_invalid_value t "background-repeat" v
+  Reader.enum "background-repeat"
+    [
+      ("repeat", (Repeat : background_repeat));
+      ("repeat-x", Repeat_x);
+      ("repeat-y", Repeat_y);
+      ("no-repeat", No_repeat);
+      ("space", Space);
+      ("round", Round);
+      ("inherit", Inherit);
+    ]
+    t
 
 let read_background_size t : background_size =
-  let v = ident t in
-  match String.lowercase_ascii v with
+  let v = Reader.ident t in
+  match v with
   | "auto" -> Auto
   | "cover" -> Cover
   | "contain" -> Contain
@@ -3402,13 +3513,13 @@ let read_background_size t : background_size =
       with _ -> err_invalid_value t "background-size" v)
 
 let read_gradient_direction t : gradient_direction =
-  skip_ws t;
-  match peek t with
-  | Some 't' when looking_at t "to" -> (
-      expect_string t "to";
-      ws t;
-      let dir = ident t in
-      match String.lowercase_ascii dir with
+  Reader.ws t;
+  match Reader.peek t with
+  | Some 't' when Reader.looking_at t "to" -> (
+      Reader.expect_string "to" t;
+      Reader.ws t;
+      let dir = Reader.ident t in
+      match dir with
       | "top" -> To_top
       | "bottom" -> To_bottom
       | "left" -> To_left
@@ -3430,32 +3541,40 @@ let read_background_image t : background_image =
   Reader.ws t;
   match Reader.peek t with
   | Some 'u' when Reader.peek_string t 4 = "url(" ->
-      (* Parse url() function *)
-      Reader.expect_string t "url(";
+      (* Parse url() function using Reader.url to normalize quotes/whitespace *)
+      let u = Reader.url t in
+      Url (String.trim u)
+  | Some 'l' when Reader.peek_string t 15 = "linear-gradient" ->
+      (* Parse linear-gradient() function *)
+      Reader.expect_string "linear-gradient(" t;
       Reader.ws t;
-      let url_content =
-        let acc = Buffer.create 16 in
-        let rec loop depth =
-          match Reader.peek t with
-          | Some ')' when depth = 0 -> Buffer.contents acc
-          | Some ')' ->
-              Buffer.add_char acc (Reader.char t);
-              loop (depth - 1)
-          | Some '(' ->
-              Buffer.add_char acc (Reader.char t);
-              loop (depth + 1)
-          | Some _ ->
-              Buffer.add_char acc (Reader.char t);
-              loop depth
-          | None -> Buffer.contents acc
-        in
-        loop 0
+
+      (* Parse direction (optional) *)
+      let direction =
+        if Reader.peek_string t 2 = "to" then (
+          let dir = read_gradient_direction t in
+          Reader.ws t;
+          if Reader.peek t = Some ',' then (
+            Reader.expect ',' t;
+            Reader.ws t);
+          dir)
+        else To_bottom (* Default direction *)
       in
-      Reader.expect t ')';
-      Url (String.trim url_content)
+
+      (* Parse gradient stops *)
+      let stops = Reader.list ~sep:Reader.comma read_gradient_stop t in
+      Reader.expect ')' t;
+      Linear_gradient (direction, stops)
+  | Some 'r' when Reader.peek_string t 15 = "radial-gradient" ->
+      (* Parse radial-gradient() function *)
+      Reader.expect_string "radial-gradient(" t;
+      Reader.ws t;
+      let stops = Reader.list ~sep:Reader.comma read_gradient_stop t in
+      Reader.expect ')' t;
+      Radial_gradient stops
   | _ -> (
-      let v = ident t in
-      match String.lowercase_ascii v with
+      let v = Reader.ident t in
+      match v with
       | "none" -> None
       | _ -> err_invalid_value t "background-image" v)
 
@@ -3463,19 +3582,72 @@ let read_background_images t : background_image list =
   Reader.list ~sep:Reader.comma read_background_image t
 
 let read_property t =
-  let prop_name = ident t in
-  match String.lowercase_ascii prop_name with
+  let prop_name = Reader.ident t in
+  match prop_name with
   | "width" -> Prop Width
   | "height" -> Prop Height
+  | "min-width" -> Prop Min_width
+  | "min-height" -> Prop Min_height
+  | "max-width" -> Prop Max_width
+  | "max-height" -> Prop Max_height
   | "color" -> Prop Color
   | "background-color" -> Prop Background_color
+  | "background" -> Prop Background (* Shorthand property *)
+  | "background-image" -> Prop Background_image
+  | "border-color" -> Prop Border_color
+  | "border-top-color" -> Prop Border_top_color
+  | "border-right-color" -> Prop Border_right_color
+  | "border-bottom-color" -> Prop Border_bottom_color
+  | "border-left-color" -> Prop Border_left_color
+  | "border-style" -> Prop Border_style
+  | "border-top-style" -> Prop Border_top_style
+  | "border-right-style" -> Prop Border_right_style
+  | "border-bottom-style" -> Prop Border_bottom_style
+  | "border-left-style" -> Prop Border_left_style
+  | "border-width" -> Prop Border_width
+  | "border-top-width" -> Prop Border_top_width
+  | "border-right-width" -> Prop Border_right_width
+  | "border-bottom-width" -> Prop Border_bottom_width
+  | "border-left-width" -> Prop Border_left_width
+  | "outline-color" -> Prop Outline_color
+  | "text-decoration-color" -> Prop Text_decoration_color
   | "display" -> Prop Display
   | "position" -> Prop Position
+  | "visibility" -> Prop Visibility
   | "overflow" -> Prop Overflow
+  | "overflow-x" -> Prop Overflow_x
+  | "overflow-y" -> Prop Overflow_y
   | "margin" -> Prop Margin
+  | "margin-left" -> Prop Margin_left
+  | "margin-right" -> Prop Margin_right
+  | "margin-top" -> Prop Margin_top
+  | "margin-bottom" -> Prop Margin_bottom
   | "padding" -> Prop Padding
-  | "border-width" -> Prop Border_width
+  | "padding-left" -> Prop Padding_left
+  | "padding-right" -> Prop Padding_right
+  | "padding-top" -> Prop Padding_top
+  | "padding-bottom" -> Prop Padding_bottom
   | "font-size" -> Prop Font_size
+  | "font-weight" -> Prop Font_weight
+  | "font-style" -> Prop Font_style
+  | "font-family" -> Prop Font_family
+  | "text-align" -> Prop Text_align
+  | "text-decoration" -> Prop Text_decoration
+  | "text-transform" -> Prop Text_transform
+  | "flex" -> Prop Flex
+  | "flex-direction" -> Prop Flex_direction
+  | "flex-wrap" -> Prop Flex_wrap
+  | "align-items" -> Prop Align_items
+  | "justify-content" -> Prop Justify_content
+  | "opacity" -> Prop Opacity
+  | "animation-name" -> Prop Animation_name
+  | "transform" -> Prop Transform
+  | "grid-template-columns" -> Prop Grid_template_columns
+  | "grid-template-rows" -> Prop Grid_template_rows
+  | "box-shadow" -> Prop Box_shadow
+  | "content" -> Prop Content
+  | "accent-color" -> Prop Accent_color
+  | "caret-color" -> Prop Caret_color
   | _ -> failwith ("read_property: unknown property " ^ prop_name)
 
 (* Helper functions for property types *)
@@ -3550,3 +3722,135 @@ let make_animation ?name ?duration ?timing_function ?delay ?iteration_count
     fill_mode;
     play_state;
   }
+
+(* Background constructor with optional arguments *)
+let background ?color ?image ?position ?size ?repeat ?attachment ?clip ?origin
+    () =
+  { color; image; position; size; repeat; attachment; clip; origin }
+
+(* Parser for background_box values *)
+let read_background_box t : background_box =
+  Reader.enum "background-box"
+    [
+      ("border-box", (Border_box : background_box));
+      ("padding-box", Padding_box);
+      ("content-box", Content_box);
+      ("text", Text);
+      ("inherit", Inherit);
+    ]
+    t
+
+let read_position_component t : position_component =
+  let v = Reader.ident t in
+  match v with
+  | "left" -> Left
+  | "center" -> Center
+  | "right" -> Right
+  | "top" -> Top
+  | "bottom" -> Bottom
+  | _ when String.ends_with ~suffix:"%" v -> (
+      let p = String.sub v 0 (String.length v - 1) in
+      match float_of_string_opt p with
+      | Some f -> Percentage f
+      | None -> err_invalid_value t "position-component" v)
+  | _ -> (
+      (* Try to parse as length *)
+      let t2 = Reader.of_string v in
+      try Length (read_length t2)
+      with _ -> err_invalid_value t "position-component" v)
+
+let read_position_2d t : position_2d =
+  let v = Reader.ident t in
+  match v with
+  | "center" -> Center
+  | "inherit" -> Inherit
+  | _ ->
+      (* Try to parse as two position components *)
+      let t_full = Reader.of_string v in
+      let first = read_position_component t_full in
+      Reader.ws t_full;
+      if Reader.is_done t_full then
+        (* Only one component, treat as both x and y *)
+        XY (first, first)
+      else
+        let second = read_position_component t_full in
+        XY (first, second)
+
+let read_transform_origin t : transform_origin =
+  Reader.ws t;
+  if Reader.looking_at t "inherit" then (
+    Reader.expect_string "inherit" t;
+    Inherit)
+  else if Reader.looking_at t "center" then (
+    Reader.expect_string "center" t;
+    Center)
+  else
+    let a = read_position_component t in
+    Reader.ws t;
+    let b_opt = Reader.try_parse read_position_component t in
+    Reader.ws t;
+    let z_opt = Reader.try_parse read_length t in
+    match (b_opt, z_opt) with
+    | Some b, Some z -> XYZ (a, b, z)
+    | Some b, None -> XY (a, b)
+    | None, Some z -> XYZ (a, Center, z)
+    | None, None -> (
+        match a with
+        | Top | Bottom -> XY (Center, a)
+        | Left | Right | Length _ | Percentage _ -> XY (a, Center)
+        | Center -> Center)
+
+(* Full CSS background shorthand parser *)
+let read_background t : background =
+  Reader.ws t;
+  if Reader.is_done t then background ()
+  else
+    let parse_component t =
+      Reader.one_of
+        [
+          (fun t -> `Image (read_background_image t));
+          (fun t ->
+            let pos = read_position_2d t in
+            Reader.ws t;
+            if Reader.peek t = Some '/' then (
+              Reader.expect '/' t;
+              Reader.ws t;
+              let bg_size = read_background_size t in
+              `Position (pos, Some bg_size))
+            else `Position (pos, None));
+          (fun t -> `Repeat (read_background_repeat t));
+          (fun t -> `Attachment (read_background_attachment t));
+          (fun t -> `Box (read_background_box t));
+          (fun t -> `Color (read_color t));
+        ]
+        t
+    in
+
+    let components, _ = Reader.many parse_component t in
+
+    let rec build_background bg = function
+      | [] -> bg
+      | `Image img :: rest when bg.image = None ->
+          build_background { bg with image = Some img } rest
+      | `Position (pos, size_opt) :: rest when bg.position = None ->
+          let new_bg = { bg with position = Some pos } in
+          let new_bg =
+            match size_opt with
+            | Some s -> { new_bg with size = Some s }
+            | None -> new_bg
+          in
+          build_background new_bg rest
+      | `Repeat rep :: rest when bg.repeat = None ->
+          build_background { bg with repeat = Some rep } rest
+      | `Attachment att :: rest when bg.attachment = None ->
+          build_background { bg with attachment = Some att } rest
+      | `Box box :: rest when bg.origin = None ->
+          build_background { bg with origin = Some box } rest
+      | `Box box :: rest when bg.clip = None ->
+          build_background { bg with clip = Some box } rest
+      | `Color col :: rest when bg.color = None ->
+          build_background { bg with color = Some col } rest
+      | _ :: rest -> build_background bg rest
+    in
+
+    build_background (background ()) components

@@ -15,9 +15,9 @@ let test_inline_style_of_declarations () =
       declaration Background_color (Hex { hash = true; value = "0000ff" });
     ]
   in
-  let style = inline_style_of_declarations decls in
-  check bool "contains color property" true (String.contains style ':');
-  check bool "contains semicolon separator" true (String.contains style ';');
+  let style = inline_style_of_declarations ~minify:true decls in
+  check string "exact inline style" "color:#ff0000;background-color:#0000ff"
+    style;
 
   (* With !important *)
   let important_decls =
@@ -39,8 +39,8 @@ let test_inline_style_of_declarations () =
 
   (* Minified output *)
   let minified = inline_style_of_declarations ~minify:true decls in
-  check bool "minified has no spaces after colon" true
-    (not (String.contains minified ' '))
+  check string "minified exact" "color:#ff0000;background-color:#0000ff"
+    minified
 
 (** Test stylesheet rendering *)
 let test_to_string () =
@@ -51,11 +51,8 @@ let test_to_string () =
   let stylesheet = { Css.Stylesheet.empty with rules = [ rule ] } in
 
   (* Normal rendering *)
-  let output = to_string stylesheet in
-  check bool "contains selector" true (String.contains output '.');
-  check bool "contains declaration" true (String.contains output ':');
-  check bool "contains braces" true
-    (String.contains output '{' && String.contains output '}');
+  let output = to_string ~minify:true stylesheet in
+  check string "exact rule" ".test{color:#ff0000}" output;
 
   (* Minified rendering *)
   let minified = to_string ~minify:true stylesheet in
@@ -79,12 +76,9 @@ let test_render_media () =
     { Css.Stylesheet.empty with media_queries = [ media_rule ] }
   in
 
-  let output = to_string stylesheet in
-  check bool "contains @media" true (String.contains output '@');
-  check bool "contains media condition" true
-    (String.contains output '7' && String.contains output '6'
-   && String.contains output '8');
-  check bool "contains nested rule" true (String.contains output '.')
+  let output = to_string ~minify:true stylesheet in
+  check string "media exact"
+    "@media screen and (min-width: 768px){.responsive{display:grid}}" output
 
 (** Test layer rendering *)
 let test_render_layer () =
@@ -146,10 +140,9 @@ let test_render_container () =
     { Css.Stylesheet.empty with container_queries = [ container_rule ] }
   in
 
-  let output = to_string stylesheet in
-  check bool "contains @container" true (String.contains output '@');
-  check bool "contains container name" true (String.contains output 's');
-  check bool "contains container condition" true (String.contains output '4')
+  let output = to_string ~minify:true stylesheet in
+  check string "container exact"
+    "@container sidebar (min-width: 400px){.card{display:flex}}" output
 
 (** Test @supports rendering *)
 let test_render_supports () =
@@ -168,11 +161,9 @@ let test_render_supports () =
     { Css.Stylesheet.empty with supports_queries = [ supports_rule ] }
   in
 
-  let output = to_string stylesheet in
-  check bool "contains @supports" true (String.contains output '@');
-  check bool "contains condition" true
-    (String.contains output '(' && String.contains output ')');
-  check bool "contains nested rule" true (String.contains output '.')
+  let output = to_string ~minify:true stylesheet in
+  check string "supports exact"
+    "@supports (display: grid){.modern{display:grid}}" output
 
 (** Test @property rendering *)
 let test_render_property () =

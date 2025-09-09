@@ -38,14 +38,10 @@ let test_css_generation () =
   in
 
   let css = Css.to_string ~minify:true stylesheet in
-
-  (* Basic checks that CSS was generated *)
-  Alcotest.(check bool) "contains .btn selector" true (String.contains css '.');
-  Alcotest.(check bool)
-    "contains braces" true
-    (String.contains css '{' && String.contains css '}');
-  Alcotest.(check bool)
-    "contains colon for properties" true (String.contains css ':')
+  Alcotest.(check string)
+    "exact css generation"
+    ".btn{color:#ff0000;padding:10px}.card{margin:5px;background-color:#ffffff}"
+    css
 
 (* Test optimization flag works *)
 let test_css_optimization_flag () =
@@ -63,12 +59,7 @@ let test_css_optimization_flag () =
   in
 
   let css_optimized = Css.to_string ~minify:true ~optimize:true stylesheet in
-  let css_unoptimized = Css.to_string ~minify:true ~optimize:false stylesheet in
-
-  (* With optimization, should have less CSS (duplicate removed) *)
-  Alcotest.(check bool)
-    "optimization reduces output" true
-    (String.length css_optimized <= String.length css_unoptimized)
+  Alcotest.(check string) "optimized exact" ".btn{color:#0000ff}" css_optimized
 
 (* Test layers work end-to-end *)
 let test_css_layers_integration () =
@@ -92,11 +83,8 @@ let test_css_media_integration () =
   let stylesheet = stylesheet [ Media media_query ] in
 
   let css = Css.to_string ~minify:true stylesheet in
-
-  (* Should contain @media and condition *)
-  Alcotest.(check bool) "contains @media" true (String.contains css '@');
-  Alcotest.(check bool)
-    "contains width condition" true (String.contains css '6')
+  Alcotest.(check string)
+    "media exact" "@media (max-width: 640px){.btn{font-size:.875rem}}" css
 
 (* Test minify flag *)
 let test_css_minify_flag () =
@@ -109,12 +97,7 @@ let test_css_minify_flag () =
   in
 
   let css_minified = Css.to_string ~minify:true stylesheet in
-  let css_pretty = Css.to_string ~minify:false stylesheet in
-
-  (* Minified should be shorter *)
-  Alcotest.(check bool)
-    "minified is shorter" true
-    (String.length css_minified < String.length css_pretty)
+  Alcotest.(check string) "minified exact" ".btn{color:#ff0000}" css_minified
 
 (* Test important declarations *)
 let test_css_important_integration () =
@@ -131,11 +114,8 @@ let test_css_important_integration () =
   in
 
   let css = Css.to_string ~minify:true stylesheet in
-
-  (* Should contain !important *)
-  Alcotest.(check bool)
-    "contains !important" true
-    (String.contains css '!' && String.contains css 't')
+  Alcotest.(check string)
+    "important exact" ".btn{color:#ff0000!important;padding:10px}" css
 
 (* Test custom properties integration *)
 let test_css_custom_properties_integration () =
@@ -149,11 +129,8 @@ let test_css_custom_properties_integration () =
   in
 
   let css = Css.to_string ~minify:true stylesheet in
-
-  (* Should contain custom property with -- prefix *)
-  Alcotest.(check bool)
-    "contains custom property" true
-    (String.contains css '-' && String.contains css '-')
+  Alcotest.(check string)
+    "custom properties exact" ".btn{--primary-color:blue;color:blue}" css
 
 let suite =
   [

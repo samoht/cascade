@@ -3,16 +3,13 @@
 type t
 (** [t] is the parser context. *)
 
-exception Parse_error of string * t
-(** [Parse_error (msg, reader)] is raised on parse errors with the reader state.
-*)
+exception Parse_error of string * string option * t
+(** [Parse_error (expected, got, reader)] is raised on parse errors.
+    - [expected]: what was expected (e.g. "number", "red")
+    - [got]: what was actually found (e.g. Some "yellow"), None if unknown
+    - [reader]: the reader state *)
 
-(** {1 Error Helpers} *)
-
-val err_invalid : t -> string -> 'a
-(** [err_invalid t what] raises a parse error for an invalid [what]. *)
-
-(** {1 Running Parsers} *)
+(** {1 Core} *)
 
 val of_string : string -> t
 (** [of_string s] creates a parser from a string. *)
@@ -20,164 +17,130 @@ val of_string : string -> t
 val is_done : t -> bool
 (** [is_done t] is [true] when at end of input. *)
 
-(** {1 Looking Ahead} *)
+val position : t -> int
+(** [position t] returns the current position in the input. *)
+
+(** {1 Error Handling} *)
+
+val err : ?got:string -> t -> string -> 'a
+(** [err ?got t expected] raises a parse error. *)
+
+val err_invalid : t -> string -> 'a
+(** [err_invalid t what] raises a parse error for an invalid [what]. *)
+
+val try_parse : (t -> 'a) -> t -> 'a option
+(** [try_parse f t] tries [f t], returning [None] on failure. *)
+
+(** {1 Characters & Strings} *)
 
 val peek : t -> char option
 (** [peek t] returns the current character without consuming it. *)
 
 val peek_string : t -> int -> string
-(** [peek_string t n] returns the next [n] characters without consuming them. *)
-
-val looking_at : t -> string -> bool
-(** [looking_at t s] is [true] if input at [t] starts with [s]. *)
-
-(** {1 Reading Characters} *)
-
-val skip : t -> unit
-(** [skip t] consumes one character or raises on EOF. *)
-
-val skip_n : t -> int -> unit
-(** [skip_n t n] consumes [n] characters or raises on EOF. *)
+(** [peek_string t n] returns next [n] chars without consuming them. *)
 
 val char : t -> char
 (** [char t] reads and consumes one character. *)
 
-val expect : t -> char -> unit
-(** [expect t c] consumes [c] or raises [Parse_error]. *)
+val skip : t -> unit
+(** [skip t] consumes one character. *)
 
-val expect_string : t -> string -> unit
-(** [expect_string t s] consumes [s] or raises [Parse_error]. *)
+val expect : char -> t -> unit
+(** [expect c t] consumes [c] or raises [Parse_error]. *)
 
-(** {1 Reading Strings} *)
+val expect_string : string -> t -> unit
+(** [expect_string s t] consumes [s] or raises [Parse_error]. *)
+
+val looking_at : t -> string -> bool
+(** [looking_at t s] is [true] if input starts with [s]. *)
 
 val while_ : t -> (char -> bool) -> string
 (** [while_ t p] reads characters while predicate [p] holds. *)
 
 val until : t -> char -> string
-(** [until t c] reads until character [c] (not including it). *)
+(** [until t c] reads until character [c]. *)
 
-val until_string : t -> string -> string
-(** [until_string t s] reads until string [s] (not including it). *)
+val css_value : stops:char list -> t -> string
+(** [css_value ~stops t] reads a CSS value until [stops], handling nested
+    functions and blocks. *)
 
-val ident : t -> string
-(** [ident t] reads a CSS identifier. *)
+val is_alpha : char -> bool
+(** [is_alpha c] returns true if [c] is alphabetic. *)
 
-val ident_lc : t -> string
-(** [ident_lc t] reads an identifier and lowercases it. *)
+val is_ident_start : char -> bool
+(** [is_ident_start c] returns true if [c] can start a CSS identifier. *)
+
+(** {1 CSS Tokens} *)
+
+val ident : ?keep_case:bool -> t -> string
+(** [ident ?keep_case t] reads a CSS identifier. By default identifiers are
+    treated case-insensitively and the returned string is lowercased (ASCII).
+    Pass [~keep_case:true] to preserve the original spelling when needed
+    (e.g., when storing and re-emitting author-provided identifiers). *)
+
+val token : t -> string
+(** [token t] reads a non-whitespace token. *)
 
 val string : t -> string
 (** [string t] reads a quoted string (handles escapes). *)
 
 val number : t -> float
-(** [number t] reads a number (integer or float). *)
+(** [number t] reads a number. *)
 
 val int : t -> int
 (** [int t] reads an integer. *)
 
-(** {1 Whitespace} *)
-
-val skip_ws : t -> unit
-(** [skip_ws t] skips whitespace and CSS comments. *)
-
 val ws : t -> unit
-(** [ws t] is an alias for [skip_ws]. *)
-
-val is_ws : char -> bool
-(** [is_ws c] returns true if [c] is a whitespace character. *)
-
-val is_token_separator : char -> bool
-(** [is_token_separator c] returns true if [c] is a CSS token separator
-    (whitespace, semicolon, closing paren/brace, comma, or exclamation). *)
-
-val token : t -> string
-(** [token t] reads a non-whitespace CSS token, stopping at separators. *)
-
-(** {1 Backtracking} *)
-
-val save : t -> unit
-(** [save t] saves current position for potential backtracking. *)
-
-val restore : t -> unit
-(** [restore t] restores to last saved position. *)
-
-val commit : t -> unit
-(** [commit t] discards the last saved position. *)
-
-val try_parse : (t -> 'a) -> t -> 'a option
-(** [try_parse f t] tries [f t], restoring position and returning [None] on
-    failure. *)
+(** [ws t] skips whitespace and CSS comments. *)
 
 (** {1 Structured Parsing} *)
 
-val between : t -> char -> char -> (t -> 'a) -> 'a
-(** [between t open_c close_c f] parses using [f] between [open_c] and
-    [close_c]. *)
+val parens : (t -> 'a) -> t -> 'a
+(** [parens f t] parses [f] between parentheses. *)
 
-val parens : t -> (t -> 'a) -> 'a
-(** [parens t f] parses between parentheses. *)
-
-val brackets : t -> (t -> 'a) -> 'a
-(** [brackets t f] parses between brackets. *)
-
-val braces : t -> (t -> 'a) -> 'a
-(** [braces t f] parses between braces. *)
-
-val separated : t -> (t -> 'a) -> (t -> unit) -> 'a list
-(** [separated t parse_item parse_sep] parses a list separated by [parse_sep].
-*)
-
-(** {1 Function Call Helpers} *)
+val braces : (t -> 'a) -> t -> 'a
+(** [braces f t] parses [f] between braces. *)
 
 val comma : t -> unit
-(** [comma t] consumes a comma with surrounding optional whitespace. *)
+(** [comma t] consumes comma with optional whitespace. *)
 
 val slash : t -> unit
-(** [slash t] consumes a slash with surrounding optional whitespace. *)
+(** [slash t] consumes slash with optional whitespace. *)
+
+(** {1 High-Level Combinators} *)
+
+val take : int -> (t -> 'a) -> t -> 'a list
+(** [take n parser t] parses up to [n] items. Requires at least 1. *)
+
+val many : (t -> 'a) -> t -> 'a list * string option
+(** [many parser t] repeatedly applies [parser] until failure. *)
+
+val one_of : (t -> 'a) list -> t -> 'a
+(** [one_of parsers t] tries each parser until one succeeds. *)
+
+val optional : (t -> 'a) -> t -> 'a option
+(** [optional parser t] tries [parser], returning [None] if it fails. *)
+
+val enum : ?default:(t -> 'a) -> string -> (string * 'a) list -> t -> 'a
+(** [enum ?default label cases t] reads identifier and matches against cases. If
+    no match found, tries [default] function if provided. *)
+
+val list : ?sep:(t -> unit) -> (t -> 'a) -> t -> 'a list
+(** [list ~sep item t] parses items separated by [sep] (default: no separator).
+*)
 
 val pair : ?sep:(t -> unit) -> (t -> 'a) -> (t -> 'b) -> t -> 'a * 'b
-(** [pair ~sep p1 p2 t] parses [p1], optional [sep], then [p2]. Default [sep]
-    does nothing. *)
+(** [pair ~sep p1 p2 t] parses two items with optional separator. *)
 
 val triple :
   ?sep:(t -> unit) -> (t -> 'a) -> (t -> 'b) -> (t -> 'c) -> t -> 'a * 'b * 'c
-(** [triple ~sep p1 p2 p3 t] parses [p1], [sep], [p2], [sep], [p3]. Default
-    [sep] does nothing. *)
-
-val list : ?sep:(t -> unit) -> (t -> 'a) -> t -> 'a list
-(** [list ~sep item t] parses a list of [item] separated by [sep]. *)
-
-val call : string -> (t -> 'a) -> t -> 'a
-(** [call name p t] expects the ident [name] then parses [p] inside parentheses.
-*)
-
-val call_2 : string -> (t -> 'a) -> (t -> 'b) -> t -> 'a * 'b
-(** [call_2 name p1 p2 t] parses [name(a, b)] with comma separation. *)
-
-val call_3 : string -> (t -> 'a) -> (t -> 'b) -> (t -> 'c) -> t -> 'a * 'b * 'c
-(** [call_3 name p1 p2 p3 t] parses [name(a, b, c)] with comma separation. *)
-
-val call_list : string -> (t -> 'a) -> t -> 'a list
-(** [call_list name item t] parses [name(a, b, ...)] as a comma-separated list.
-*)
+(** [triple ~sep p1 p2 p3 t] parses three items with optional separator. *)
 
 val url : t -> string
-(** [url t] parses [url(...)] returning the inner content. Supports quoted or
-    unquoted content (unquoted is trimmed). *)
+(** [url t] parses [url(...)] content. *)
 
-(** {1 Character Predicates} *)
+(* Note: CSS identifiers are matched case-insensitively by default. This API
+   follows that convention by lowercasing identifiers unless [~keep_case:true]
+   is provided. *)
 
-val is_ident_start : char -> bool
-(** [is_ident_start c] is [true] if [c] can start an identifier. *)
-
-val pp : t -> string
-(** [pp] pretty-printer for parser state. *)
-
-val context_string : ?window:int -> t -> string * string
-(** [context_string ?window t] returns (before, after) strings around the
-    current position. [window] defaults to 40 characters. *)
-
-val position : t -> int
-(** [position t] returns the current position in the input. *)
-
-val length : t -> int
-(** [length t] returns the total length of the input. *)
+(** {1 Debugging} *)

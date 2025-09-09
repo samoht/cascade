@@ -345,6 +345,8 @@ val pp_transform : transform Pp.t
 (** [pp_transform] is the pretty-printer for [transform]. *)
 
 val read_transform : Reader.t -> transform
+
+val read_transform_origin : Reader.t -> transform_origin
 (** [read_transform t] is the [transform] parsed from [t]. *)
 
 val pp_transform_style : transform_style Pp.t
@@ -522,6 +524,20 @@ val read_background_image : Reader.t -> background_image
 val read_background_images : Reader.t -> background_image list
 (** [read_background_images t] parses a comma-separated list of
     [background_image]s. *)
+
+val read_background_box : Reader.t -> background_box
+(** [read_background_box t] parses a background-clip or background-origin value.
+*)
+
+val pp_background_box : background_box Pp.t
+(** [pp_background_box] pretty-prints a background-clip or background-origin
+    value. *)
+
+val read_background : Reader.t -> background
+(** [read_background t] parses a background shorthand property. *)
+
+val pp_background : background Pp.t
+(** [pp_background] pretty-prints a background value. *)
 
 val pp_cursor : cursor Pp.t
 (** [pp_cursor] is the pretty-printer for [cursor]. *)
@@ -753,3 +769,17 @@ val inset_ring_shadow :
 
 val box_shadows : shadow list -> box_shadow
 (** [box_shadows shadows] wraps a list of shadows in a [box_shadow] value. *)
+
+val background :
+  ?color:color ->
+  ?image:background_image ->
+  ?position:position_2d ->
+  ?size:background_size ->
+  ?repeat:background_repeat ->
+  ?attachment:background_attachment ->
+  ?clip:background_box ->
+  ?origin:background_box ->
+  unit ->
+  background
+(** [background ?color ?image ?position ?size ?repeat ?attachment ?clip ?origin
+     ()] constructs a background value with optional components. *)

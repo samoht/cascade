@@ -14,6 +14,16 @@ let duplicate_buggy_properties decls =
           [ decl; decl; decl ] (* Triplicate only when inherit *)
       | Declaration { property = Webkit_text_decoration_color; _ } ->
           [ decl; decl ] (* Always duplicate webkit-text-decoration-color *)
+      | Declaration { property = Transform; value = _; important } ->
+          (* Add -webkit-transform prefix for Transform properties *)
+          let value_str = Declaration.string_of_value ~minify:false decl in
+          let webkit_decl =
+            Declaration.vendor_property "-webkit-transform" value_str
+          in
+          let webkit_decl =
+            if important then Declaration.important webkit_decl else webkit_decl
+          in
+          [ decl; webkit_decl ]
       | _ -> [ decl ])
     decls
 

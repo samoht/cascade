@@ -7,10 +7,10 @@ type t = {
   mutable saved : int list; (* Stack of saved positions *)
 }
 
-exception Parse_error of string * t
+exception Parse_error of string * string option * t
 
 (** Error helpers *)
-let err t msg = raise (Parse_error (msg, t))
+let err ?got t expected = raise (Parse_error (expected, got, t))
 
 let err_eof t = err t "unexpected end of input"
 let err_expected t what = err t ("expected " ^ what)
@@ -50,7 +50,7 @@ let char t =
   t.pos <- t.pos + 1;
   c
 
-let expect t c =
+let expect c t =
   let actual_pos = t.pos in
   let actual = char t in
   if actual <> c then (
@@ -60,34 +60,19 @@ let expect t c =
       ("Expected '" ^ String.make 1 c ^ "' but got '" ^ String.make 1 actual
      ^ "'"))
 
-let expect_string t s =
+let expect_string s t =
   let slen = String.length s in
   if not (looking_at t s) then err t ("expected \"" ^ s ^ "\"");
   skip_n t slen
 
-(** Get context around current position. Returns (before, after) strings. *)
-let context_string ?(window = 40) t =
-  let context_start = max 0 (t.pos - window) in
-  let context_end = min t.len (t.pos + window) in
-  let before = String.sub t.input context_start (t.pos - context_start) in
-  let after =
-    if t.pos < t.len then String.sub t.input t.pos (context_end - t.pos) else ""
-  in
-  (before, after)
-
 (** Get current position in input *)
 let position t = t.pos
 
-(** Get total length of input *)
-let length t = t.len
-
-(** Simple pretty-printer for parser state. *)
-let pp t =
-  let remaining = max 0 (t.len - t.pos) in
-  if remaining = 0 then "<EOF>"
-  else
-    let preview_len = min 20 remaining in
-    String.sub t.input t.pos preview_len
+let consume_if c t =
+  if peek t = Some c then (
+    skip t;
+    true)
+  else false
 
 (** {1 Reading Strings} *)
 
@@ -101,13 +86,6 @@ let while_ t pred =
 let until t c =
   let start = t.pos in
   while t.pos < t.len && t.input.[t.pos] <> c do
-    t.pos <- t.pos + 1
-  done;
-  String.sub t.input start (t.pos - start)
-
-let until_string t s =
-  let start = t.pos in
-  while t.pos < t.len && not (looking_at t s) do
     t.pos <- t.pos + 1
   done;
   String.sub t.input start (t.pos - start)
@@ -169,7 +147,7 @@ let read_escape t =
       consume 0;
       let hex = String.sub t.input start (t.pos - start) in
       (* Optional whitespace after hex escape consumes one space *)
-      (match peek t with Some ' ' -> skip t | _ -> ());
+      ignore (consume_if ' ' t);
       let cp = int_of_string_opt ("0x" ^ hex) |> Option.value ~default:0x3F in
       utf8_of_codepoint cp
   | Some c ->
@@ -180,7 +158,7 @@ let read_escape t =
       String.make 1 c
   | None -> err_eof t
 
-let ident t =
+let ident ?(keep_case = false) t =
   if t.pos >= t.len then err_expected t "identifier";
   let buf = Buffer.create 16 in
   (* First char: ident-start or escape *)
@@ -206,23 +184,30 @@ let ident t =
     | _ -> ()
   in
   loop ();
-  Buffer.contents buf
+  let s = Buffer.contents buf in
+  if keep_case then s else String.lowercase_ascii s
 
 let string t =
   let quote = char t in
   if quote <> '"' && quote <> '\'' then err_expected t "string quote";
-  let rec loop acc =
+  let buf = Buffer.create 16 in
+  let rec loop () =
     match char t with
     | '\\' ->
+        (* Read the escaped character *)
         let escaped = char t in
-        loop (escaped :: acc)
-    | c when c = quote -> String.concat "" (List.rev_map (String.make 1) acc)
-    | c -> loop (c :: acc)
+        (* Store the actual character, not the escape sequence *)
+        Buffer.add_char buf escaped;
+        loop ()
+    | c when c = quote -> Buffer.contents buf
+    | c ->
+        Buffer.add_char buf c;
+        loop ()
   in
-  loop []
+  loop ()
 
-let ident_lc t = String.lowercase_ascii (ident t)
 let is_digit c = c >= '0' && c <= '9'
+let is_alpha c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 
 let number t =
   let negative = peek t = Some '-' in
@@ -298,43 +283,196 @@ let try_parse f t =
     let result = f t in
     commit t;
     Some result
-  with Parse_error _ ->
+  with
+  | Parse_error _ ->
+      restore t;
+      None
+  | _ ->
+      restore t;
+      None
+
+let try_parse_err f t =
+  save t;
+  try
+    let result = f t in
+    commit t;
+    Ok result
+  with Parse_error (msg, _, _) ->
     restore t;
-    None
+    Error msg
+
+let many f t =
+  let rec loop acc last_error =
+    ws t;
+    if is_done t then (List.rev acc, last_error)
+    else
+      match try_parse_err f t with
+      | Ok item -> loop (item :: acc) None
+      | Error msg ->
+          (* If we haven't parsed anything yet, this is a fatal error *)
+          if acc = [] then ([], Some msg) else (List.rev acc, Some msg)
+  in
+  loop [] None
+
+let one_of parsers t =
+  let rec try_parsers parsers_list errors got_value =
+    match parsers_list with
+    | [] ->
+        let msg =
+          if errors = [] then "no parsers provided"
+          else "expected one of: " ^ String.concat ", " errors
+        in
+        raise (Parse_error (msg, got_value, t))
+    | parser :: rest -> (
+        save t;
+        try
+          let result = parser t in
+          commit t;
+          result
+        with Parse_error (expected, got, _) ->
+          restore t;
+          let new_got =
+            match got_value with
+            | None -> got (* Use the first 'got' value we encounter *)
+            | some -> some (* Keep the existing got value *)
+          in
+          try_parsers rest (expected :: errors) new_got)
+  in
+  try_parsers parsers [] None
+
+let optional parser t = try_parse parser t
+
+let take max_count parser t =
+  if max_count < 1 then invalid_arg "take: max_count must be >= 1";
+
+  ws t;
+  (* Read the first item (required) *)
+  let first_item = parser t in
+  let items = ref [ first_item ] in
+
+  (* Try to read additional items (up to max_count - 1 more) *)
+  let rec read_more () =
+    ws t;
+    (* Check if we've reached end of value or special tokens *)
+    if is_done t || looking_at t "!" || looking_at t ";" then ()
+    else if List.length !items >= max_count then ()
+    else (
+      (* Save position in case this isn't a valid item *)
+      save t;
+      try
+        let item = parser t in
+        commit t;
+        items := item :: !items;
+        read_more ()
+      with Parse_error _ ->
+        restore t;
+        (* Not a valid item, stop reading *)
+        ())
+  in
+
+  read_more ();
+
+  (* Now check if there are more valid items that would exceed max_count *)
+  ws t;
+  (if not (is_done t || looking_at t "!" || looking_at t ";") then
+     (* Only check for excess if we've already read max_count items *)
+     if List.length !items >= max_count then
+       match try_parse parser t with
+       | Some _ ->
+           err t
+             ("too many values (maximum " ^ string_of_int max_count
+            ^ " allowed)")
+       | None ->
+           (* Not a valid item, that's fine *)
+           ());
+
+  (* Return items in correct order *)
+  List.rev !items
+
+(* New enhanced combinators *)
+
+let css_value ~stops t =
+  let rec parse_until acc depth in_quote quote_char =
+    match peek t with
+    | None -> String.concat "" (List.rev acc)
+    | Some c when in_quote ->
+        skip t;
+        if c = quote_char then
+          parse_until (String.make 1 c :: acc) depth false '\000'
+        else if c = '\\' then (
+          (* Handle escape sequence *)
+          match peek t with
+          | None ->
+              parse_until (String.make 1 c :: acc) depth in_quote quote_char
+          | Some next_c ->
+              skip t;
+              parse_until
+                (String.make 1 next_c :: String.make 1 c :: acc)
+                depth in_quote quote_char)
+        else parse_until (String.make 1 c :: acc) depth in_quote quote_char
+    | Some (('"' | '\'') as q) ->
+        skip t;
+        parse_until (String.make 1 q :: acc) depth true q
+    | Some (('(' | '[' | '{') as c) ->
+        skip t;
+        parse_until (String.make 1 c :: acc) (depth + 1) in_quote quote_char
+    | Some ((')' | ']' | '}') as c) when depth > 0 ->
+        skip t;
+        parse_until (String.make 1 c :: acc) (depth - 1) in_quote quote_char
+    | Some c when depth = 0 && List.mem c stops ->
+        String.concat "" (List.rev acc)
+    | Some c ->
+        skip t;
+        parse_until (String.make 1 c :: acc) depth in_quote quote_char
+  in
+  String.trim (parse_until [] 0 false '\000')
+
+let enum ?default label mapping t =
+  ws t;
+  let value = ident t in
+  match
+    List.find_opt (fun (k, _) -> String.lowercase_ascii k = value) mapping
+  with
+  | Some (_, result) -> result
+  | None -> (
+      match default with
+      | Some default_fn -> default_fn t
+      | None ->
+          let options = List.map fst mapping |> String.concat ", " in
+          err t (label ^ ": expected one of: " ^ options ^ ", got: " ^ value))
 
 (** {1 Structured Parsing} *)
 
-let between t open_c close_c f =
-  expect t open_c;
+let between open_c close_c f t =
+  expect open_c t;
   ws t;
   let result = f t in
   ws t;
-  expect t close_c;
+  expect close_c t;
   result
 
-let parens t f = between t '(' ')' f
-let brackets t f = between t '[' ']' f
-let braces t f = between t '{' '}' f
+let parens f t = between '(' ')' f t
+let braces f t = between '{' '}' f t
 
-let separated t parse_item parse_sep =
+let separated ~sep parse_item t =
   let rec loop acc =
     match try_parse parse_item t with
     | None -> List.rev acc
     | Some item ->
         let acc = item :: acc in
-        if try_parse parse_sep t = Some () then loop acc else List.rev acc
+        if try_parse sep t = Some () then loop acc else List.rev acc
   in
   loop []
 
 (* Helpers for reading function calls and simple combinators *)
 let comma t =
   ws t;
-  expect t ',';
+  expect ',' t;
   ws t
 
 let slash t =
   ws t;
-  expect t '/';
+  expect '/' t;
   ws t
 
 let pair ?(sep = fun (_ : t) -> ()) p1 p2 t =
@@ -351,23 +489,21 @@ let triple ?(sep = fun (_ : t) -> ()) p1 p2 p3 t =
   let c = p3 t in
   (a, b, c)
 
-let list ?(sep = fun (_ : t) -> ()) item t = separated t item sep
+let list ?(sep = fun (_ : t) -> ()) item t = separated item ~sep t
 
 (* Helpers for reading function calls *)
 let call name p t =
-  let got = ident t |> String.lowercase_ascii in
+  let got = ident t in
   if got <> String.lowercase_ascii name then
     err t ("expected function '" ^ name ^ "', got '" ^ got ^ "'")
   else
-    parens t (fun t ->
+    parens
+      (fun t ->
         ws t;
         let r = p t in
         ws t;
         r)
-
-let call_2 name p1 p2 t = call name (pair ~sep:comma p1 p2) t
-let call_3 name p1 p2 p3 t = call name (triple ~sep:comma p1 p2 p3) t
-let call_list name item t = call name (fun t -> list ~sep:comma item t) t
+      t
 
 let url t =
   call "url"

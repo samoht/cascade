@@ -1127,6 +1127,28 @@ let test_typed_positions () =
          Css.Properties.origin3d Css.Properties.Right Css.Properties.Bottom
            (Css.Values.Px 10.) ))
 
+let test_background_box () =
+  let check =
+    check_value "background_box" Css.Properties.pp_background_box
+      Css.Properties.read_background_box
+  in
+  check "border-box";
+  check "padding-box";
+  check "content-box"
+
+let test_background () =
+  let check =
+    check_value "background" Css.Properties.pp_background
+      Css.Properties.read_background
+  in
+  check "red";
+  check "url(image.png)";
+  check ~expected:"linear-gradient(to right,red,blue)"
+    "linear-gradient(to right, red, blue)";
+  check ~expected:"url(image.png) center/cover no-repeat fixed red"
+    "red url(image.png) center/cover no-repeat fixed";
+  check "none"
+
 let tests =
   [
     test_case "display" `Quick test_display;
@@ -1182,6 +1204,8 @@ let tests =
     test_case "transform" `Quick test_transform;
     test_case "gradients (direction/stop)" `Quick test_gradients_direction_stop;
     test_case "overscroll/aspect/content" `Quick test_overscroll_aspect_content;
+    test_case "background_box" `Quick test_background_box;
+    test_case "background" `Quick test_background;
   ]
 
 let suite = [ ("properties", tests) ]

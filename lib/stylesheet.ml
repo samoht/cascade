@@ -492,20 +492,20 @@ let pp : t Pp.t =
 
 let read_rule (r : Reader.t) : rule =
   let selector = Selector.read r in
-  Reader.skip_ws r;
-  Reader.expect r '{';
+  Reader.ws r;
+  Reader.expect '{' r;
   let declarations = Declaration.read_declarations r in
-  Reader.expect r '}';
+  Reader.expect '}' r;
   { selector; declarations }
 
 let read_media_rule (r : Reader.t) : media_rule =
-  Reader.expect_string r "@media";
-  Reader.skip_ws r;
+  Reader.expect_string "@media" r;
+  Reader.ws r;
   let condition = Reader.until r '{' in
   let condition = String.trim condition in
-  Reader.expect r '{';
+  Reader.expect '{' r;
   let rec read_rules acc =
-    Reader.skip_ws r;
+    Reader.ws r;
     if Reader.peek r = Some '}' then (
       Reader.skip r;
       List.rev acc)
@@ -517,14 +517,14 @@ let read_media_rule (r : Reader.t) : media_rule =
   { media_condition = condition; media_rules }
 
 let read_supports_rule (r : Reader.t) : supports_rule =
-  Reader.expect_string r "@supports";
-  Reader.skip_ws r;
+  Reader.expect_string "@supports" r;
+  Reader.ws r;
   let condition = Reader.until r '{' in
   let condition = String.trim condition in
-  Reader.expect r '{';
+  Reader.expect '{' r;
   (* For simplicity, just read rules, not nested supports *)
   let rec read_rules acc =
-    Reader.skip_ws r;
+    Reader.ws r;
     if Reader.peek r = Some '}' then (
       Reader.skip r;
       List.rev acc)
@@ -536,58 +536,61 @@ let read_supports_rule (r : Reader.t) : supports_rule =
   { supports_condition = condition; supports_content = Support_rules rules }
 
 let read_property_rule (r : Reader.t) : property_rule =
-  Reader.expect_string r "@property";
-  Reader.skip_ws r;
-  let name = Reader.ident r in
-  Reader.skip_ws r;
-  Reader.expect r '{';
-  Reader.skip_ws r;
+  Reader.expect_string "@property" r;
+  Reader.ws r;
+  let name = Reader.ident ~keep_case:true r in
+  Reader.ws r;
+  Reader.expect '{' r;
+  Reader.ws r;
 
   (* Read syntax *)
-  Reader.expect_string r "syntax:";
-  Reader.skip_ws r;
-  Reader.expect r '"';
+  Reader.expect_string "syntax:" r;
+  Reader.ws r;
+  Reader.expect '"' r;
   let syntax = Reader.until r '"' in
-  Reader.expect r '"';
-  Reader.skip_ws r;
-  Reader.expect r ';';
-  Reader.skip_ws r;
+  Reader.expect '"' r;
+  Reader.ws r;
+  Reader.expect ';' r;
+  Reader.ws r;
 
   (* Read inherits *)
-  Reader.expect_string r "inherits:";
-  Reader.skip_ws r;
+  Reader.expect_string "inherits:" r;
+  Reader.ws r;
   let inherits =
-    match Reader.peek_string r 4 with
-    | "true" ->
-        Reader.skip_n r 4;
-        true
-    | _ ->
-        Reader.expect_string r "false";
-        false
+    Reader.one_of
+      [
+        (fun r ->
+          Reader.expect_string "true" r;
+          true);
+        (fun r ->
+          Reader.expect_string "false" r;
+          false);
+      ]
+      r
   in
-  Reader.skip_ws r;
-  Reader.expect r ';';
-  Reader.skip_ws r;
+  Reader.ws r;
+  Reader.expect ';' r;
+  Reader.ws r;
 
   (* Optional initial-value *)
   let initial_value =
-    match Reader.peek_string r 14 with
-    | "initial-value:" ->
-        Reader.skip_n r 14;
-        Reader.skip_ws r;
+    Reader.optional
+      (fun r ->
+        Reader.expect_string "initial-value:" r;
+        Reader.ws r;
         let value = Reader.until r ';' in
-        Reader.expect r ';';
-        Reader.skip_ws r;
-        Some (String.trim value)
-    | _ -> None
+        Reader.expect ';' r;
+        Reader.ws r;
+        String.trim value)
+      r
   in
 
-  Reader.expect r '}';
+  Reader.expect '}' r;
   { name; syntax; inherits; initial_value }
 
 let read_stylesheet (r : Reader.t) : t =
   let rec read_items acc =
-    Reader.skip_ws r;
+    Reader.ws r;
     if Reader.is_done r then List.rev acc
     else
       let rule = read_rule r in

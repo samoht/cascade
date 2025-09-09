@@ -177,14 +177,16 @@ type text_align = Left | Right | Center | Justify | Start | End | Inherit
 type text_decoration_line = Underline | Overline | Line_through
 type text_decoration_style = Solid | Double | Dotted | Dashed | Wavy | Inherit
 
+type text_decoration_shorthand = {
+  lines : text_decoration_line list;
+  style : text_decoration_style option;
+  color : color option;
+  thickness : length option;
+}
+
 type text_decoration =
   | None
-  | Shorthand of {
-      lines : text_decoration_line list;
-      style : text_decoration_style option;
-      color : color option;
-      thickness : length option;
-    }
+  | Shorthand of text_decoration_shorthand
   | Inherit
   | Var of text_decoration var
 
@@ -573,6 +575,7 @@ type filter =
 
 (* Background Types *)
 type background_attachment = Scroll | Fixed | Local | Inherit
+type background_box = Border_box | Padding_box | Content_box | Text | Inherit
 
 type background_repeat =
   | Repeat
@@ -614,6 +617,32 @@ type background_image =
   | Linear_gradient of gradient_direction * gradient_stop list
   | Radial_gradient of gradient_stop list
   | None
+
+type position_component =
+  | Left
+  | Center
+  | Right
+  | Top
+  | Bottom
+  | Length of length
+  | Percentage of float
+
+type position_2d =
+  | Center
+  | XY of position_component * position_component
+  | Inherit
+
+(* Structured background type for the shorthand property *)
+type background = {
+  color : color option;
+  image : background_image option;
+  position : position_2d option;
+  size : background_size option;
+  repeat : background_repeat option;
+  attachment : background_attachment option;
+  clip : background_box option;
+  origin : background_box option;
+}
 
 (* User Interaction Types *)
 type cursor =
@@ -776,20 +805,6 @@ type clear = None | Left | Right | Both
 type float_side = None | Left | Right | Inline_start | Inline_end | Inherit
 type text_decoration_skip_ink = Auto | None | All | Inherit
 
-type position_component =
-  | Left
-  | Center
-  | Right
-  | Top
-  | Bottom
-  | Length of length
-  | Percentage of float
-
-type position_2d =
-  | Center
-  | XY of position_component * position_component
-  | Inherit
-
 type transform_origin =
   | Center
   | XY of position_component * position_component
@@ -917,6 +932,7 @@ type 'a property =
   | Scroll_snap_type : scroll_snap_type property
   | White_space : white_space property
   | Border : string property
+  | Background : background property
   | Tab_size : int property
   | Webkit_text_size_adjust : string property
   | Font_feature_settings : font_feature_settings property

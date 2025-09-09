@@ -119,16 +119,15 @@ let test_group_selectors () =
   let rule1 : Css.Stylesheet.rule =
     { selector = Css.Selector.class_ "a"; declarations = decls }
   in
-  let _rule2 : Css.Stylesheet.rule =
+  let rule2 : Css.Stylesheet.rule =
     { selector = Css.Selector.class_ "b"; declarations = decls }
   in
-  let _rule3 : Css.Stylesheet.rule =
+  let rule3 : Css.Stylesheet.rule =
     { selector = Css.Selector.class_ "c"; declarations = decls }
   in
 
-  (* Note: group_selectors may not exist, testing concept *)
-  let grouped = [ rule1 ] in
-  (* Simplified for testing *)
+  (* Test combine_identical_rules function *)
+  let grouped = combine_identical_rules [ rule1; rule2; rule3 ] in
   check int "rules with same declarations are grouped" 1 (List.length grouped);
 
   (* Check that selector is a list *)

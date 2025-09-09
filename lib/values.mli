@@ -127,7 +127,15 @@ end
 (** {1 Parsing Functions} *)
 
 val read_length : Reader.t -> length
-(** Parse a CSS length/keyword. *)
+
+val read_non_negative_length : Reader.t -> length
+(** [read_non_negative_length reader] parses a length value that must be
+    non-negative. Used for padding properties which cannot have negative values
+    per CSS specification. *)
+
+val read_margin_shorthand : Reader.t -> length
+(** [read_margin_shorthand reader] parses a margin shorthand property accepting
+    1-4 space-separated length values according to CSS specification. *)
 
 val read_color : Reader.t -> color
 (** Parse a CSS color (hex, rgb/rgba, keywords, etc.). *)

@@ -26,6 +26,22 @@ let important = function
   | Custom_declaration d -> Custom_declaration { d with important = true }
 
 (* Helper for raw custom properties - primarily for internal use *)
+(* Create a vendor-prefixed property (like -webkit-transform) *)
+let vendor_property name value =
+  (* Vendor prefixes start with a single dash followed by vendor name *)
+  (* Validate against known vendor prefixes *)
+  let known_prefixes = [ "-webkit-"; "-moz-"; "-ms-"; "-o-" ] in
+  let has_valid_prefix =
+    List.exists
+      (fun prefix ->
+        String.length name >= String.length prefix
+        && String.sub name 0 (String.length prefix) = prefix)
+      known_prefixes
+  in
+  if not has_valid_prefix then failwith ("unknown vendor prefix: " ^ name);
+  (* We'll store them as custom declarations with String kind *)
+  custom_declaration name String value
+
 let custom_property ?layer name value =
   (* Validate that this is a proper CSS variable name *)
   if not (String.length name > 2 && String.sub name 0 2 = "--") then
@@ -57,150 +73,29 @@ let read_property_name t =
 
 (** Parse property value until semicolon, closing brace, or !important *)
 let read_property_value t =
-  let rec parse_value acc depth =
-    Reader.peek t |> function
-    | None -> String.concat "" (List.rev acc)
-    | Some ';' when depth = 0 -> String.concat "" (List.rev acc)
-    | Some '}' when depth = 0 -> String.concat "" (List.rev acc)
-    | Some '!' when depth = 0 -> (
-        (* Check if this is !important *)
-        Reader.save t;
-        Reader.expect t '!';
-        Reader.ws t;
-        try
-          Reader.expect_string t "important";
-          Reader.restore t;
-          (* Rewind to the '!' *)
-          String.concat "" (List.rev acc)
-          (* Stop parsing, leave !important for caller *)
-        with Reader.Parse_error _ ->
-          Reader.restore t;
-          parse_value (String.make 1 (Reader.char t) :: acc) depth)
-    | Some (('(' | '[' | '{') as c) ->
-        Reader.expect t c;
-        parse_value (String.make 1 c :: acc) (depth + 1)
-    | Some ((')' | ']' | '}') as c) when depth > 0 ->
-        Reader.expect t c;
-        parse_value (String.make 1 c :: acc) (depth - 1)
-    | Some (('"' | '\'') as q) ->
-        (* Parse quoted string keeping original escape sequences *)
-        Reader.expect t q;
-        let rec parse_quoted acc =
-          match Reader.peek t with
-          | None -> String.concat "" (List.rev acc)
-          | Some '\\' ->
-              let esc = Reader.char t in
-              let next = Reader.char t in
-              parse_quoted (String.make 1 next :: String.make 1 esc :: acc)
-          | Some c when c = q ->
-              Reader.expect t q;
-              String.concat "" (List.rev acc)
-          | Some c ->
-              Reader.expect t c;
-              parse_quoted (String.make 1 c :: acc)
-        in
-        let content = parse_quoted [] in
-        parse_value ((String.make 1 q ^ content ^ String.make 1 q) :: acc) depth
-    | _ -> parse_value (String.make 1 (Reader.char t) :: acc) depth
-  in
-  let trimmed = String.trim (parse_value [] 0) in
+  let value = Reader.css_value ~stops:[ ';'; '}'; '!' ] t in
   (* CSS spec: empty property values are invalid *)
-  if String.length trimmed = 0 then
+  if String.length value = 0 then
     Reader.err_invalid t "property value (cannot be empty)";
-  trimmed
+  value
 
 (** Check for and consume !important *)
 let read_importance t =
   Reader.ws t;
   match Reader.peek t with
   | Some '!' -> (
-      Reader.save t;
-      try
-        Reader.expect t '!';
-        Reader.ws t;
-        Reader.expect_string t "important";
-        true
-      with Reader.Parse_error _ ->
-        Reader.restore t;
-        false)
+      Reader.expect '!' t;
+      (* After !, we can have optional whitespace/comments before "important" *)
+      Reader.ws t;
+      (* Try to read an identifier after the ! *)
+      match Reader.try_parse Reader.ident t with
+      | Some "important" -> true
+      | Some ident ->
+          Reader.err_invalid t ("invalid !important declaration: !" ^ ident)
+      | None ->
+          (* No identifier after ! - dangling bang *)
+          Reader.err_invalid t "dangling ! without important")
   | _ -> false
-
-(** Parse a single declaration with full type checking. *)
-let read_declaration t : declaration option =
-  Reader.ws t;
-  match Reader.peek t with
-  | Some '}' | None -> None
-  | _ ->
-      let name = read_property_name t in
-      Reader.ws t;
-      Reader.expect t ':';
-      Reader.ws t;
-      let value = read_property_value t in
-      Reader.ws t;
-      let is_important = read_importance t in
-      Reader.ws t;
-      (* Skip optional semicolon *)
-      ignore
-        (Reader.peek t = Some ';'
-        &&
-        (Reader.expect t ';';
-         true));
-
-      (* Convert to typed declaration *)
-      let decl =
-        if is_custom_property name then custom_property name value
-        else
-          (* Parse standard properties using proper type-driven approach *)
-          try
-            (* First, identify the property type from the name *)
-            let prop_reader = Reader.of_string name in
-            let (Properties.Prop prop_type) =
-              Properties.read_property prop_reader
-            in
-
-            (* Now parse the value based on the property type *)
-            let value_reader = Reader.of_string value in
-            let declaration =
-              match prop_type with
-              | Properties.Color ->
-                  let color = Values.read_color value_reader in
-                  declaration Properties.Color color
-              | Properties.Background_color ->
-                  let color = Values.read_color value_reader in
-                  declaration Properties.Background_color color
-              | Properties.Display ->
-                  let display = Properties.read_display value_reader in
-                  declaration Properties.Display display
-              | Properties.Position ->
-                  let position = Properties.read_position value_reader in
-                  declaration Properties.Position position
-              | Properties.Width ->
-                  let width = Values.read_length value_reader in
-                  declaration Properties.Width width
-              | Properties.Height ->
-                  let height = Values.read_length value_reader in
-                  declaration Properties.Height height
-              | Properties.Padding ->
-                  let padding = Values.read_length value_reader in
-                  declaration Properties.Padding padding
-              | Properties.Margin ->
-                  let margin = Values.read_length value_reader in
-                  declaration Properties.Margin margin
-              | _ ->
-                  (* For properties we haven't implemented readers for yet *)
-                  Reader.err_invalid t
-                    ("property '" ^ name ^ "' (not yet implemented)")
-            in
-            declaration
-          with
-          | Reader.Parse_error _ as e -> raise e (* Re-raise parse errors *)
-          | _ ->
-              (* If parsing fails for other reasons, it's an invalid property *)
-              Reader.err_invalid t ("property '" ^ name ^ "' (unknown property)")
-      in
-      Some (if is_important then important decl else decl)
-
-(** Type-driven helper functions for working with declarations *)
 
 (** Check if a declaration is marked as important *)
 let is_important = function
@@ -255,8 +150,346 @@ let string_of_value ?(minify = true) decl =
       pp_value ctx (kind, value);
       Buffer.contents ctx.buf
 
-(** Parse all declarations in a block (without braces). *)
-let read_declarations t =
+(** Parse a typed declaration from property name and value strings *)
+let read_typed_declaration name value is_important =
+  try
+    if is_custom_property name then
+      let decl = custom_property name value in
+      Some (if is_important then important decl else decl)
+    else if String.length name > 1 && String.get name 0 = '-' then
+      (* Vendor-prefixed property *)
+      let decl = vendor_property name value in
+      Some (if is_important then important decl else decl)
+    else
+      (* Standard CSS property - use type-driven parsing *)
+      let prop_reader = Reader.of_string name in
+      let (Properties.Prop prop_type) = Properties.read_property prop_reader in
+
+      let value_reader = Reader.of_string value in
+      let parsed_decl =
+        match prop_type with
+        (* Transform property - needed for optimize tests *)
+        | Properties.Transform ->
+            let original_value = String.trim value in
+            let transforms, error_opt =
+              Reader.many Properties.read_transform value_reader
+            in
+            (* If the original value was non-empty but we got no valid
+               transforms, that's an error *)
+            if String.length original_value > 0 && List.length transforms = 0
+            then
+              match error_opt with
+              | Some msg -> failwith ("invalid transform: " ^ msg)
+              | None -> failwith ("invalid transform value: " ^ original_value)
+            else declaration Properties.Transform transforms
+        | Properties.Background_image ->
+            let images = Properties.read_background_images value_reader in
+            declaration Properties.Background_image images
+        (* Grid properties *)
+        | Properties.Grid_template_columns ->
+            let template = Properties.read_grid_template value_reader in
+            declaration Properties.Grid_template_columns template
+        | Properties.Grid_template_rows ->
+            let template = Properties.read_grid_template value_reader in
+            declaration Properties.Grid_template_rows template
+        | Properties.Grid_row_start ->
+            declaration Properties.Grid_row_start
+              (Properties.read_grid_line value_reader)
+        | Properties.Grid_row_end ->
+            declaration Properties.Grid_row_end
+              (Properties.read_grid_line value_reader)
+        | Properties.Grid_column_start ->
+            declaration Properties.Grid_column_start
+              (Properties.read_grid_line value_reader)
+        | Properties.Grid_column_end ->
+            declaration Properties.Grid_column_end
+              (Properties.read_grid_line value_reader)
+        | Properties.Grid_auto_flow ->
+            declaration Properties.Grid_auto_flow
+              (Properties.read_grid_auto_flow value_reader)
+        | Properties.Grid_template_areas ->
+            declaration Properties.Grid_template_areas (String.trim value)
+        (* Box shadow *)
+        | Properties.Box_shadow ->
+            let shadows = Properties.read_box_shadows value_reader in
+            declaration Properties.Box_shadow shadows
+        | Properties.Text_shadow ->
+            let shadows = Properties.read_text_shadows value_reader in
+            declaration Properties.Text_shadow shadows
+        (* Content *)
+        | Properties.Content ->
+            let content = Properties.read_content value_reader in
+            declaration Properties.Content content
+        (* Color properties *)
+        | Properties.Color ->
+            declaration Properties.Color (Values.read_color value_reader)
+        | Properties.Background ->
+            let background = Properties.read_background value_reader in
+            declaration Properties.Background background
+        | Properties.Background_color ->
+            declaration Properties.Background_color
+              (Values.read_color value_reader)
+        | Properties.Border_color ->
+            declaration Properties.Border_color (Values.read_color value_reader)
+        | Properties.Outline_color ->
+            declaration Properties.Outline_color
+              (Values.read_color value_reader)
+        | Properties.Border_top_color ->
+            declaration Properties.Border_top_color
+              (Values.read_color value_reader)
+        | Properties.Border_right_color ->
+            declaration Properties.Border_right_color
+              (Values.read_color value_reader)
+        | Properties.Border_bottom_color ->
+            declaration Properties.Border_bottom_color
+              (Values.read_color value_reader)
+        | Properties.Border_left_color ->
+            declaration Properties.Border_left_color
+              (Values.read_color value_reader)
+        (* Display and layout *)
+        | Properties.Display ->
+            declaration Properties.Display
+              (Properties.read_display value_reader)
+        | Properties.Position ->
+            declaration Properties.Position
+              (Properties.read_position value_reader)
+        | Properties.Visibility ->
+            declaration Properties.Visibility
+              (Properties.read_visibility value_reader)
+        | Properties.Overflow ->
+            declaration Properties.Overflow
+              (Properties.read_overflow value_reader)
+        | Properties.Overflow_x ->
+            declaration Properties.Overflow_x
+              (Properties.read_overflow value_reader)
+        | Properties.Overflow_y ->
+            declaration Properties.Overflow_y
+              (Properties.read_overflow value_reader)
+        (* Length properties *)
+        | Properties.Width ->
+            declaration Properties.Width (Values.read_length value_reader)
+        | Properties.Height ->
+            declaration Properties.Height (Values.read_length value_reader)
+        | Properties.Min_width ->
+            declaration Properties.Min_width (Values.read_length value_reader)
+        | Properties.Min_height ->
+            declaration Properties.Min_height (Values.read_length value_reader)
+        | Properties.Max_width ->
+            declaration Properties.Max_width (Values.read_length value_reader)
+        | Properties.Max_height ->
+            declaration Properties.Max_height (Values.read_length value_reader)
+        (* Padding/Margin *)
+        | Properties.Padding ->
+            declaration Properties.Padding
+              (Values.read_non_negative_length value_reader)
+        | Properties.Margin ->
+            declaration Properties.Margin
+              (Values.read_margin_shorthand value_reader)
+        | Properties.Gap ->
+            declaration Properties.Gap (Values.read_length value_reader)
+        | Properties.Column_gap ->
+            declaration Properties.Column_gap (Values.read_length value_reader)
+        | Properties.Row_gap ->
+            declaration Properties.Row_gap (Values.read_length value_reader)
+        (* Border styles *)
+        | Properties.Border_style ->
+            declaration Properties.Border_style
+              (Properties.read_border_style value_reader)
+        | Properties.Border_width ->
+            declaration Properties.Border_width
+              (Values.read_length value_reader)
+        | Properties.Border_radius ->
+            declaration Properties.Border_radius
+              (Values.read_length value_reader)
+        | Properties.Border_top_width ->
+            declaration Properties.Border_top_width
+              (Values.read_length value_reader)
+        | Properties.Border_right_width ->
+            declaration Properties.Border_right_width
+              (Values.read_length value_reader)
+        | Properties.Border_bottom_width ->
+            declaration Properties.Border_bottom_width
+              (Values.read_length value_reader)
+        | Properties.Border_left_width ->
+            declaration Properties.Border_left_width
+              (Values.read_length value_reader)
+        (* Typography *)
+        | Properties.Font_size ->
+            declaration Properties.Font_size (Values.read_length value_reader)
+        | Properties.Line_height ->
+            declaration Properties.Line_height
+              (Properties.read_line_height value_reader)
+        | Properties.Font_weight ->
+            declaration Properties.Font_weight
+              (Properties.read_font_weight value_reader)
+        | Properties.Font_style ->
+            declaration Properties.Font_style
+              (Properties.read_font_style value_reader)
+        | Properties.Font_family ->
+            (* Font-family accepts a comma-separated list of font names *)
+            let rec read_families t acc =
+              Reader.ws t;
+              (* Check if it's a quoted string *)
+              let family =
+                match Reader.peek t with
+                | Some ('"' | '\'') ->
+                    (* Read quoted string and preserve quotes in the name *)
+                    let quote = Reader.char t in
+                    let content = Reader.until t quote in
+                    Reader.skip t;
+                    (* skip closing quote *)
+                    (* Store with quotes to preserve them during output *)
+                    Properties.Name
+                      (Printf.sprintf "%c%s%c" quote content quote)
+                | _ ->
+                    (* Read unquoted identifier *)
+                    Properties.read_font_family t
+              in
+              let acc = family :: acc in
+              Reader.ws t;
+              if Reader.peek t = Some ',' then (
+                Reader.skip t;
+                (* skip comma *)
+                read_families t acc)
+              else List.rev acc
+            in
+            let families = read_families value_reader [] in
+            declaration Properties.Font_family families
+        | Properties.Text_align ->
+            declaration Properties.Text_align
+              (Properties.read_text_align value_reader)
+        | Properties.Text_transform ->
+            declaration Properties.Text_transform
+              (Properties.read_text_transform value_reader)
+        | Properties.White_space ->
+            declaration Properties.White_space
+              (Properties.read_white_space value_reader)
+        | Properties.Text_decoration ->
+            declaration Properties.Text_decoration
+              (Properties.read_text_decoration value_reader)
+        | Properties.Transform_origin ->
+            declaration Properties.Transform_origin
+              (Properties.read_transform_origin value_reader)
+        (* Flexbox *)
+        | Properties.Flex_direction ->
+            declaration Properties.Flex_direction
+              (Properties.read_flex_direction value_reader)
+        | Properties.Flex_wrap ->
+            declaration Properties.Flex_wrap
+              (Properties.read_flex_wrap value_reader)
+        | Properties.Flex ->
+            declaration Properties.Flex (Properties.read_flex value_reader)
+        | Properties.Flex_grow ->
+            declaration Properties.Flex_grow (Reader.number value_reader)
+        | Properties.Flex_shrink ->
+            declaration Properties.Flex_shrink (Reader.number value_reader)
+        | Properties.Flex_basis ->
+            declaration Properties.Flex_basis (Values.read_length value_reader)
+        | Properties.Align_items ->
+            declaration Properties.Align_items
+              (Properties.read_align_items value_reader)
+        | Properties.Justify_content ->
+            declaration Properties.Justify_content
+              (Properties.read_justify_content value_reader)
+        (* Other common properties *)
+        | Properties.Z_index ->
+            declaration Properties.Z_index
+              (Properties.read_z_index value_reader)
+        | Properties.Opacity ->
+            let n = Reader.number value_reader in
+            Reader.ws value_reader;
+            if not (Reader.is_done value_reader) then
+              failwith "trailing tokens in opacity";
+            declaration Properties.Opacity n
+        | Properties.Cursor ->
+            declaration Properties.Cursor (Properties.read_cursor value_reader)
+        | Properties.Box_sizing ->
+            declaration Properties.Box_sizing
+              (Properties.read_box_sizing value_reader)
+        | Properties.User_select ->
+            declaration Properties.User_select
+              (Properties.read_user_select value_reader)
+        | Properties.Pointer_events ->
+            declaration Properties.Pointer_events
+              (Properties.read_pointer_events value_reader)
+        | Properties.Resize ->
+            declaration Properties.Resize (Properties.read_resize value_reader)
+        | Properties.Transition ->
+            declaration Properties.Transition
+              (Properties.read_transitions value_reader)
+        | Properties.Animation ->
+            declaration Properties.Animation
+              (Properties.read_animations value_reader)
+        | _ ->
+            (* For unimplemented properties, fall back to string value *)
+            failwith ("Property not yet implemented: " ^ name)
+      in
+      Some (if is_important then important parsed_decl else parsed_decl)
+  with
+  | Reader.Parse_error _ as e ->
+      raise e (* Preserve parse errors with their messages *)
+  | _ -> None
+
+(** Parse a single declaration from a reader stream *)
+let rec read_declaration t : declaration option =
+  Reader.ws t;
+  match Reader.peek t with
+  | Some '}' | None -> None
+  | _ -> (
+      let name = read_property_name t in
+      Reader.ws t;
+      Reader.expect ':' t;
+      Reader.ws t;
+
+      (* For now we still need to read value as string for custom/vendor properties *)
+      (* TODO: refactor to parse directly from stream *)
+      let value_str = read_property_value t in
+
+      (* Parse the declaration based on property type *)
+      try
+        let is_important = read_importance t in
+        Reader.ws t;
+        (* Check for duplicate !important *)
+        (match Reader.peek t with
+        | Some '!' -> Reader.err_invalid t "duplicate !important"
+        | _ -> ());
+        (* Skip optional semicolon *)
+        ignore
+          (Reader.peek t = Some ';'
+          &&
+          (Reader.expect ';' t;
+           true));
+        if is_custom_property name then
+          let decl = custom_property name value_str in
+          Some (if is_important then important decl else decl)
+        else if String.length name > 1 && String.get name 0 = '-' then
+          (* Vendor-prefixed property *)
+          let decl = vendor_property name value_str in
+          Some (if is_important then important decl else decl)
+        else
+          (* Standard CSS property - parse from string for now *)
+          (* This is inefficient but maintains compatibility *)
+          match read_typed_declaration name value_str is_important with
+          | Some decl -> Some decl
+          | None ->
+              let vtrim = String.trim value_str |> String.lowercase_ascii in
+              let is_css_wide =
+                vtrim = "inherit" || vtrim = "initial" || vtrim = "unset"
+                || vtrim = "revert" || vtrim = "revert-layer"
+              in
+              if is_css_wide then
+                let decl = custom_declaration name String vtrim in
+                Some (if is_important then important decl else decl)
+              else
+                Reader.err_invalid t
+                  ("property '" ^ name ^ "' (parse error or unknown)")
+      with
+      | Reader.Parse_error (msg, _, _) ->
+          (* Re-raise with more context about which property failed *)
+          Reader.err_invalid t (Printf.sprintf "property '%s': %s" name msg)
+      | _ -> None)
+
+and read_declarations t =
   let rec loop acc =
     match read_declaration t with
     | None -> List.rev acc
@@ -264,30 +497,31 @@ let read_declarations t =
   in
   loop []
 
-(** Parse declaration block including braces. *)
-let read_block t =
+and read_block t =
   Reader.ws t;
-  Reader.expect t '{';
+  Reader.expect '{' t;
   Reader.ws t;
   let decls = read_declarations t in
   Reader.ws t;
-  Reader.expect t '}';
+  Reader.expect '}' t;
   decls
 
 (* Pretty printer for declarations *)
 let pp_declaration : declaration Pp.t =
  fun ctx -> function
-  | Declaration { property; value; _ } ->
+  | Declaration { property; value; important } ->
       Properties.pp_property ctx property;
       Pp.string ctx ":";
       Pp.space_if_pretty ctx ();
-      Properties.pp_property_value ctx (property, value)
-  | Custom_declaration { name; kind; value; _ } -> (
+      Properties.pp_property_value ctx (property, value);
+      if important then
+        Pp.string ctx (if ctx.minify then "!important" else " !important")
+  | Custom_declaration { name; kind; value; important; _ } ->
       Pp.string ctx name;
       Pp.string ctx ":";
       Pp.space_if_pretty ctx ();
       (* Pretty-print custom property value by kind *)
-      match kind with
+      (match kind with
       | String -> Pp.string ctx value
       | Length -> Values.pp_length ctx value
       | Color -> Values.pp_color ctx value
@@ -298,7 +532,9 @@ let pp_declaration : declaration Pp.t =
       | Shadow -> Properties.pp_shadow ctx value
       | Box_shadow -> Properties.pp_box_shadow ctx value
       | Content -> Properties.pp_content ctx value
-      | _ -> Pp.string ctx "")
+      | _ -> Pp.string ctx "");
+      if important then
+        Pp.string ctx (if ctx.minify then "!important" else " !important")
 
 (* Single-to-list property helpers *)
 let background_image value = declaration Background_image [ value ]
@@ -595,211 +831,3 @@ let scroll_snap_type value = declaration Scroll_snap_type value
 let scroll_snap_align value = declaration Scroll_snap_align value
 let scroll_snap_stop value = declaration Scroll_snap_stop value
 let scroll_behavior value = declaration Scroll_behavior value
-
-(** Parse a typed declaration from property name and value strings *)
-let read_typed_declaration name value is_important =
-  if is_custom_property name then Some (custom_property name value)
-  else
-    (* Parse standard properties using type-driven approach *)
-    try
-      (* First, identify the property type from the name *)
-      let prop_reader = Reader.of_string name in
-      let (Properties.Prop prop_type) = Properties.read_property prop_reader in
-
-      (* Now parse the value based on the property type *)
-      let value_reader = Reader.of_string value in
-      let declaration =
-        match prop_type with
-        (* Color properties *)
-        | Properties.Color ->
-            let color = Values.read_color value_reader in
-            declaration Properties.Color color
-        | Properties.Background_color ->
-            let color = Values.read_color value_reader in
-            declaration Properties.Background_color color
-        | Properties.Border_color ->
-            let color = Values.read_color value_reader in
-            declaration Properties.Border_color color
-        | Properties.Border_top_color ->
-            let color = Values.read_color value_reader in
-            declaration Properties.Border_top_color color
-        | Properties.Border_right_color ->
-            let color = Values.read_color value_reader in
-            declaration Properties.Border_right_color color
-        | Properties.Border_bottom_color ->
-            let color = Values.read_color value_reader in
-            declaration Properties.Border_bottom_color color
-        | Properties.Border_left_color ->
-            let color = Values.read_color value_reader in
-            declaration Properties.Border_left_color color
-        | Properties.Outline_color ->
-            let color = Values.read_color value_reader in
-            declaration Properties.Outline_color color
-        | Properties.Text_decoration_color ->
-            let color = Values.read_color value_reader in
-            declaration Properties.Text_decoration_color color
-        | Properties.Accent_color ->
-            let color = Values.read_color value_reader in
-            declaration Properties.Accent_color color
-        | Properties.Caret_color ->
-            let color = Values.read_color value_reader in
-            declaration Properties.Caret_color color
-        (* Display and layout *)
-        | Properties.Display ->
-            let display = Properties.read_display value_reader in
-            declaration Properties.Display display
-        | Properties.Position ->
-            let position = Properties.read_position value_reader in
-            declaration Properties.Position position
-        | Properties.Visibility ->
-            let visibility = Properties.read_visibility value_reader in
-            declaration Properties.Visibility visibility
-        | Properties.Overflow ->
-            let overflow = Properties.read_overflow value_reader in
-            declaration Properties.Overflow overflow
-        | Properties.Overflow_x ->
-            let overflow = Properties.read_overflow value_reader in
-            declaration Properties.Overflow_x overflow
-        | Properties.Overflow_y ->
-            let overflow = Properties.read_overflow value_reader in
-            declaration Properties.Overflow_y overflow
-        (* Length properties *)
-        | Properties.Width ->
-            let width = Values.read_length value_reader in
-            declaration Properties.Width width
-        | Properties.Height ->
-            let height = Values.read_length value_reader in
-            declaration Properties.Height height
-        | Properties.Min_width ->
-            let width = Values.read_length value_reader in
-            declaration Properties.Min_width width
-        | Properties.Min_height ->
-            let height = Values.read_length value_reader in
-            declaration Properties.Min_height height
-        | Properties.Max_width ->
-            let width = Values.read_length value_reader in
-            declaration Properties.Max_width width
-        | Properties.Max_height ->
-            let height = Values.read_length value_reader in
-            declaration Properties.Max_height height
-        (* Padding *)
-        | Properties.Padding ->
-            let padding = Values.read_length value_reader in
-            declaration Properties.Padding padding
-        | Properties.Padding_left ->
-            let padding = Values.read_length value_reader in
-            declaration Properties.Padding_left padding
-        | Properties.Padding_right ->
-            let padding = Values.read_length value_reader in
-            declaration Properties.Padding_right padding
-        | Properties.Padding_top ->
-            let padding = Values.read_length value_reader in
-            declaration Properties.Padding_top padding
-        | Properties.Padding_bottom ->
-            let padding = Values.read_length value_reader in
-            declaration Properties.Padding_bottom padding
-        (* Margin *)
-        | Properties.Margin ->
-            let margin = Values.read_length value_reader in
-            declaration Properties.Margin margin
-        | Properties.Margin_left ->
-            let margin = Values.read_length value_reader in
-            declaration Properties.Margin_left margin
-        | Properties.Margin_right ->
-            let margin = Values.read_length value_reader in
-            declaration Properties.Margin_right margin
-        | Properties.Margin_top ->
-            let margin = Values.read_length value_reader in
-            declaration Properties.Margin_top margin
-        | Properties.Margin_bottom ->
-            let margin = Values.read_length value_reader in
-            declaration Properties.Margin_bottom margin
-        (* Border styles *)
-        | Properties.Border_style ->
-            let style = Properties.read_border_style value_reader in
-            declaration Properties.Border_style style
-        | Properties.Border_top_style ->
-            let style = Properties.read_border_style value_reader in
-            declaration Properties.Border_top_style style
-        | Properties.Border_right_style ->
-            let style = Properties.read_border_style value_reader in
-            declaration Properties.Border_right_style style
-        | Properties.Border_bottom_style ->
-            let style = Properties.read_border_style value_reader in
-            declaration Properties.Border_bottom_style style
-        | Properties.Border_left_style ->
-            let style = Properties.read_border_style value_reader in
-            declaration Properties.Border_left_style style
-        (* Border widths *)
-        | Properties.Border_width ->
-            let width = Values.read_length value_reader in
-            declaration Properties.Border_width width
-        | Properties.Border_top_width ->
-            let width = Values.read_length value_reader in
-            declaration Properties.Border_top_width width
-        | Properties.Border_right_width ->
-            let width = Values.read_length value_reader in
-            declaration Properties.Border_right_width width
-        | Properties.Border_bottom_width ->
-            let width = Values.read_length value_reader in
-            declaration Properties.Border_bottom_width width
-        | Properties.Border_left_width ->
-            let width = Values.read_length value_reader in
-            declaration Properties.Border_left_width width
-        (* Typography *)
-        | Properties.Font_size ->
-            let size = Values.read_length value_reader in
-            declaration Properties.Font_size size
-        | Properties.Font_weight ->
-            let weight = Properties.read_font_weight value_reader in
-            declaration Properties.Font_weight weight
-        | Properties.Font_style ->
-            let style = Properties.read_font_style value_reader in
-            declaration Properties.Font_style style
-        | Properties.Line_height ->
-            let height = Properties.read_line_height value_reader in
-            declaration Properties.Line_height height
-        | Properties.Letter_spacing ->
-            let spacing = Values.read_length value_reader in
-            declaration Properties.Letter_spacing spacing
-        | Properties.Word_spacing ->
-            let spacing = Values.read_length value_reader in
-            declaration Properties.Word_spacing spacing
-        | Properties.Text_align ->
-            let align = Properties.read_text_align value_reader in
-            declaration Properties.Text_align align
-        | Properties.Text_transform ->
-            let transform = Properties.read_text_transform value_reader in
-            declaration Properties.Text_transform transform
-        | Properties.White_space ->
-            let ws = Properties.read_white_space value_reader in
-            declaration Properties.White_space ws
-        (* Flexbox *)
-        | Properties.Flex_direction ->
-            let dir = Properties.read_flex_direction value_reader in
-            declaration Properties.Flex_direction dir
-        | Properties.Flex_wrap ->
-            let wrap = Properties.read_flex_wrap value_reader in
-            declaration Properties.Flex_wrap wrap
-        | Properties.Align_items ->
-            let align = Properties.read_align_items value_reader in
-            declaration Properties.Align_items align
-        | Properties.Justify_content ->
-            let justify = Properties.read_justify_content value_reader in
-            declaration Properties.Justify_content justify
-        (* Z-index *)
-        | Properties.Z_index ->
-            let z = Properties.read_z_index value_reader in
-            declaration Properties.Z_index z
-        (* Opacity *)
-        | Properties.Opacity ->
-            let opacity = Reader.number value_reader in
-            declaration Properties.Opacity opacity
-        | _ ->
-            (* For properties we haven't implemented readers for yet *)
-            raise Not_found
-      in
-      Some (if is_important then important declaration else declaration)
-    with _ ->
-      (* If parsing fails, return None *)
-      None

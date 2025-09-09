@@ -10,19 +10,29 @@ include Render_intf
 let inline_style_of_declarations ?(optimize = false) ?(minify = false)
     ?(mode : mode = Inline) props =
   let config = { mode; minify; optimize } in
-  props
-  |> List.map (fun decl ->
-         let name = Declaration.property_name decl in
-         let value = Declaration.string_of_value ~minify:config.minify decl in
-         let is_important = Declaration.is_important decl in
+  let pp ctx () =
+    let pp_decl_inline ctx decl =
+      let name = Declaration.property_name decl in
+      let value = Declaration.string_of_value ~minify:config.minify decl in
+      let is_important = Declaration.is_important decl in
 
-         if is_important then
-           if config.minify then
-             String.concat "" [ name; ":"; value; "!important" ]
-           else String.concat "" [ name; ": "; value; " !important" ]
-         else if config.minify then String.concat "" [ name; ":"; value ]
-         else String.concat "" [ name; ": "; value ])
-  |> String.concat "; "
+      Pp.string ctx name;
+      Pp.char ctx ':';
+      if not config.minify then Pp.space ctx ();
+      Pp.string ctx value;
+      if is_important then
+        if config.minify then Pp.string ctx "!important"
+        else (
+          Pp.space ctx ();
+          Pp.string ctx "!important")
+    in
+    let sep ctx () =
+      Pp.semicolon ctx ();
+      if not config.minify then Pp.space ctx ()
+    in
+    Pp.list ~sep pp_decl_inline ctx props
+  in
+  Pp.to_string ~minify ~inline:(mode = Inline) pp ()
 
 (** {1 Pretty-Printing} *)
 
@@ -289,6 +299,27 @@ let to_string ?(minify = false) ?optimize:(opt = false) ?(mode = Variables)
     if opt then Optimize.optimize stylesheet else stylesheet
   in
   let pp ctx () =
+    (* Charset must be first *)
+    (match optimized_stylesheet.charset with
+    | Some cs ->
+        Stylesheet.pp_charset_rule ctx cs;
+        Pp.cut ctx ()
+    | None -> ());
+
+    (* Imports after charset *)
+    List.iter
+      (fun imp ->
+        Stylesheet.pp_import_rule ctx imp;
+        Pp.cut ctx ())
+      optimized_stylesheet.imports;
+
+    (* Namespaces after imports *)
+    List.iter
+      (fun ns ->
+        Stylesheet.pp_namespace_rule ctx ns;
+        Pp.cut ctx ())
+      optimized_stylesheet.namespaces;
+
     (* Add header if there are layers *)
     if List.length stylesheet.layers > 0 then (
       Pp.string ctx header;

@@ -15,6 +15,16 @@ let nop _ _ = ()
 let str s ctx _ = Buffer.add_string ctx.buf s
 let string ctx s = Buffer.add_string ctx.buf s
 let char ctx c = Buffer.add_char ctx.buf c
+
+(* Helper to output a quoted string with proper escaping *)
+let quoted_string ctx s =
+  char ctx '"';
+  String.iter
+    (function
+      | '"' -> string ctx "\\\"" | '\\' -> string ctx "\\\\" | c -> char ctx c)
+    s;
+  char ctx '"'
+
 let sp ctx () = if not ctx.minify then Buffer.add_char ctx.buf ' '
 let cut ctx () = if not ctx.minify then Buffer.add_string ctx.buf "\n" else ()
 

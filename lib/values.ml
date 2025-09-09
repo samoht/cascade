@@ -341,7 +341,7 @@ and pp_alpha : alpha Pp.t =
 let pp_opt_alpha ctx = function
   | None -> ()
   | (Num _ | Pct _ | Var _) as a ->
-      Pp.string ctx "/";
+      Pp.string ctx (if ctx.minify then "/" else " / ");
       pp_alpha ctx a
 
 (** Pretty printer for percentage types *)
@@ -563,13 +563,13 @@ end
 (** var() parser after "var" ident has been consumed *)
 let read_var_after_ident : type a. (Reader.t -> a) -> Reader.t -> a var =
  fun read_value t ->
-  Reader.expect t '(';
+  Reader.expect '(' t;
   Reader.ws t;
   let var_name =
     if Reader.looking_at t "--" then (
-      Reader.expect_string t "--";
-      Reader.ident t)
-    else Reader.ident t
+      Reader.expect_string "--" t;
+      Reader.ident ~keep_case:true t)
+    else Reader.ident ~keep_case:true t
   in
   Reader.ws t;
   let fallback =
@@ -579,81 +579,185 @@ let read_var_after_ident : type a. (Reader.t -> a) -> Reader.t -> a var =
     else None
   in
   Reader.ws t;
-  Reader.expect t ')';
+  Reader.expect ')' t;
   var_ref ?fallback var_name
 
 (** Generic var() parser that returns a var reference *)
 let read_var : type a. (Reader.t -> a) -> Reader.t -> a var =
  fun read_value t ->
-  Reader.expect_string t "var";
+  Reader.expect_string "var" t;
   read_var_after_ident read_value t
 
-(** Read a CSS length value *)
+let read_length_unit t =
+  let n = Reader.number t in
+  let unit_raw = Reader.while_ t (fun c -> Reader.is_alpha c || c = '%') in
+  let unit = String.lowercase_ascii unit_raw in
+  match unit with
+  | "" when n = 0.0 -> Zero
+  | "" -> Num n
+  | _ when n = 0.0 -> Zero
+  | "px" -> Px n
+  | "cm" -> Cm n
+  | "mm" -> Mm n
+  | "q" -> Q n
+  | "in" -> In n
+  | "pt" -> Pt n
+  | "pc" -> Pc n
+  | "em" -> Em n
+  | "rem" -> Rem n
+  | "ex" -> Ex n
+  | "cap" -> Cap n
+  | "ic" -> Ic n
+  | "rlh" -> Rlh n
+  | "vh" -> Vh n
+  | "vw" -> Vw n
+  | "vmin" -> Vmin n
+  | "vmax" -> Vmax n
+  | "vi" -> Vi n
+  | "vb" -> Vb n
+  | "dvh" -> Dvh n
+  | "dvw" -> Dvw n
+  | "dvmin" -> Dvmin n
+  | "dvmax" -> Dvmax n
+  | "lvh" -> Lvh n
+  | "lvw" -> Lvw n
+  | "lvmin" -> Lvmin n
+  | "lvmax" -> Lvmax n
+  | "svh" -> Svh n
+  | "svw" -> Svw n
+  | "svmin" -> Svmin n
+  | "svmax" -> Svmax n
+  | "ch" -> Ch n
+  | "lh" -> Lh n
+  | "%" -> Pct n
+  | _ -> Reader.err_invalid t ("length unit: " ^ unit)
+
+let read_length_keyword =
+  Reader.enum "length"
+    [
+      ("auto", Auto);
+      ("max-content", Max_content);
+      ("min-content", Min_content);
+      ("fit-content", Fit_content);
+      ("from-font", From_font);
+      ("inherit", Inherit);
+    ]
+
+let rec read_calc_expr : type a. (Reader.t -> a) -> Reader.t -> a calc =
+ fun read_a t ->
+  Reader.ws t;
+  let left = read_calc_term read_a t in
+  Reader.ws t;
+  match Reader.peek t with
+  | Some '+' ->
+      Reader.skip t;
+      Expr (left, Add, read_calc_expr read_a t)
+  | Some '-' ->
+      Reader.skip t;
+      Expr (left, Sub, read_calc_expr read_a t)
+  | _ -> left
+
+and read_calc_term : type a. (Reader.t -> a) -> Reader.t -> a calc =
+ fun read_a t ->
+  Reader.ws t;
+  let left = read_calc_factor read_a t in
+  Reader.ws t;
+  match Reader.peek t with
+  | Some '*' ->
+      Reader.skip t;
+      Expr (left, Mult, read_calc_term read_a t)
+  | Some '/' ->
+      Reader.skip t;
+      Expr (left, Div, read_calc_term read_a t)
+  | _ -> left
+
+and read_calc_factor : type a. (Reader.t -> a) -> Reader.t -> a calc =
+ fun read_a t ->
+  Reader.ws t;
+  if Reader.peek t = Some '(' then (
+    Reader.skip t;
+    let expr = read_calc_expr read_a t in
+    Reader.ws t;
+    Reader.expect ')' t;
+    expr)
+  else if Reader.looking_at t "var(" then
+    (* Parse var() directly to avoid infinite recursion *)
+    Var (read_var read_a t)
+  else
+    (* Try to parse with specific unit first, fall back to raw number *)
+    Reader.one_of
+      [ (fun t -> Val (read_a t)); (fun t -> Num (Reader.number t)) ]
+      t
+
+and read_calc : type a. (Reader.t -> a) -> Reader.t -> a calc =
+ fun read_a t ->
+  Reader.ws t;
+  if Reader.looking_at t "calc(" then (
+    Reader.expect_string "calc(" t;
+    let expr = read_calc_expr read_a t in
+    Reader.expect ')' t;
+    expr)
+  else if Reader.looking_at t "var(" then (
+    Reader.expect_string "var(" t;
+    Reader.ws t;
+    let var_name =
+      if Reader.looking_at t "--" then (
+        Reader.expect_string "--" t;
+        Reader.ident ~keep_case:true t (* var_name should be without -- *))
+      else Reader.ident ~keep_case:true t
+    in
+    Reader.ws t;
+    let fallback =
+      if Reader.peek t = Some ',' then (
+        Reader.comma t;
+        (* Parse the fallback length value *)
+        Some (read_a t))
+      else None
+    in
+    Reader.expect ')' t;
+    (* Create a length var with fallback *)
+    let v = var_ref ?fallback var_name in
+    Var v)
+  else
+    (* Not a calc() or var(), so this is not a valid calc expression *)
+    Reader.err t "calc() or var()"
+
 let rec read_length t : length =
   Reader.ws t;
-  (* Try to parse number first *)
-  let num_opt = Reader.try_parse Reader.number t in
-  match num_opt with
-  | None -> (
-      (* Try keyword values *)
-      let keyword = Reader.ident t in
-      match String.lowercase_ascii keyword with
-      | "auto" -> Auto
-      | "max-content" -> Max_content
-      | "min-content" -> Min_content
-      | "fit-content" -> Fit_content
-      | "from-font" -> From_font
-      | "inherit" -> Inherit
-      | "var" -> Var (read_var_after_ident read_length t)
-      | _ -> Reader.err_invalid t ("length keyword: " ^ keyword))
-  | Some n -> (
-      (* Check for unit *)
-      let unit = Reader.while_ t (fun c -> (c >= 'a' && c <= 'z') || c = '%') in
-      match unit with
-      | "" when n = 0.0 -> Zero (* Zero only when 0 without unit *)
-      | "" -> Num n
-      | _ when n = 0.0 -> Zero (* 0 with any unit becomes Zero *)
-      | "px" -> Px n
-      | "cm" -> Cm n
-      | "mm" -> Mm n
-      | "q" -> Q n
-      | "in" -> In n
-      | "pt" -> Pt n
-      | "pc" -> Pc n
-      | "em" -> Em n
-      | "rem" -> Rem n
-      | "ex" -> Ex n
-      | "cap" -> Cap n
-      | "ic" -> Ic n
-      | "rlh" -> Rlh n
-      | "vh" -> Vh n
-      | "vw" -> Vw n
-      | "vmin" -> Vmin n
-      | "vmax" -> Vmax n
-      | "vi" -> Vi n
-      | "vb" -> Vb n
-      | "dvh" -> Dvh n
-      | "dvw" -> Dvw n
-      | "dvmin" -> Dvmin n
-      | "dvmax" -> Dvmax n
-      | "lvh" -> Lvh n
-      | "lvw" -> Lvw n
-      | "lvmin" -> Lvmin n
-      | "lvmax" -> Lvmax n
-      | "svh" -> Svh n
-      | "svw" -> Svw n
-      | "svmin" -> Svmin n
-      | "svmax" -> Svmax n
-      | "ch" -> Ch n
-      | "lh" -> Lh n
-      | "%" -> Pct n
-      | _ -> Reader.err_invalid t ("length unit: " ^ unit))
+  Reader.one_of
+    [
+      (fun t -> (Var (read_var read_length t) : length));
+      (fun t -> Calc (read_calc read_length t));
+      read_length_unit;
+      read_length_keyword;
+    ]
+    t
+
+(** Read a non-negative length value (for padding properties) *)
+let read_non_negative_length t : length =
+  let length = read_length t in
+  (* Check if the length represents a negative value *)
+  match length with
+  | Px n when n < 0. -> Reader.err_invalid t "padding values cannot be negative"
+  | Rem n when n < 0. ->
+      Reader.err_invalid t "padding values cannot be negative"
+  | Em n when n < 0. -> Reader.err_invalid t "padding values cannot be negative"
+  | Vw n when n < 0. -> Reader.err_invalid t "padding values cannot be negative"
+  | Vh n when n < 0. -> Reader.err_invalid t "padding values cannot be negative"
+  | Cm n when n < 0. -> Reader.err_invalid t "padding values cannot be negative"
+  | Mm n when n < 0. -> Reader.err_invalid t "padding values cannot be negative"
+  | In n when n < 0. -> Reader.err_invalid t "padding values cannot be negative"
+  | Pt n when n < 0. -> Reader.err_invalid t "padding values cannot be negative"
+  | Pc n when n < 0. -> Reader.err_invalid t "padding values cannot be negative"
+  | Num n when n < 0. ->
+      Reader.err_invalid t "padding values cannot be negative"
+  | _ -> length
 
 (** Read a percentage value as float (number followed by %) *)
 let read_percentage_float t : float =
   Reader.ws t;
   let n = Reader.number t in
-  Reader.expect t '%';
+  Reader.expect '%' t;
   n
 
 (** Read an alpha value *)
@@ -685,17 +789,24 @@ let rec read_channel t : channel =
     let n = Reader.number t in
     let unit = Reader.while_ t (fun c -> c = '%') in
     match unit with
-    | "%" -> Pct n
-    | "" -> Int (int_of_float n)
+    | "%" ->
+        (* Clamp percentage to 0-100 per CSS spec *)
+        Pct (max 0. (min 100. n))
+    | "" ->
+        (* Clamp integer RGB values to 0-255 per CSS spec *)
+        Int (int_of_float (max 0. (min 255. n)))
     | _ -> Reader.err_invalid t "channel value"
 
 let read_rgb_space_separated t : color =
   let r, g, b =
     Reader.triple ~sep:Reader.ws read_channel read_channel read_channel t
   in
+  (* CSS4 allows mixing percentages and numbers in RGB functions. This is a
+     change from CSS3 which required all values to be the same type. Since we
+     target CSS4 (supported by all major browsers), we allow mixing. *)
   let alpha = read_optional_alpha t in
   Reader.ws t;
-  Reader.expect t ')';
+  Reader.expect ')' t;
   match alpha with
   | None -> Rgb { r; g; b }
   | Num _ | Pct _ | Var _ -> Rgba { r; g; b; a = alpha }
@@ -704,6 +815,9 @@ let read_rgb_comma_separated t : color =
   let r, g, b =
     Reader.triple ~sep:Reader.comma read_channel read_channel read_channel t
   in
+  (* CSS4 allows mixing percentages and numbers in RGB functions. This is a
+     change from CSS3 which required all values to be the same type. Since we
+     target CSS4 (supported by all major browsers), we allow mixing. *)
   let alpha =
     if Reader.peek t = Some ',' then (
       Reader.comma t;
@@ -711,12 +825,12 @@ let read_rgb_comma_separated t : color =
     else None
   in
   Reader.ws t;
-  Reader.expect t ')';
+  Reader.expect ')' t;
   match alpha with None -> Rgb { r; g; b } | a -> Rgba { r; g; b; a }
 
 (** Read color space identifier *)
 let read_color_space t : color_space =
-  let space_ident = Reader.ident t |> String.lowercase_ascii in
+  let space_ident = Reader.ident t in
   match space_ident with
   | "srgb" -> Srgb
   | "srgb-linear" -> Srgb_linear
@@ -750,7 +864,7 @@ let rec read_color_components space t acc =
             (* L component must be percentage for these spaces in color()
                syntax *)
             let n = Reader.number t in
-            Reader.expect t '%';
+            Reader.expect '%' t;
             (Pct n : component)
         | _ -> (
             (* Try percentage first, then plain number *)
@@ -763,8 +877,16 @@ let rec read_color_components space t acc =
 
 (** Read hex color digits *)
 let read_hex_color t =
-  Reader.while_ t (fun c ->
-      (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))
+  let hex =
+    Reader.while_ t (fun c ->
+        (c >= '0' && c <= '9')
+        || (c >= 'a' && c <= 'f')
+        || (c >= 'A' && c <= 'F'))
+  in
+  let len = String.length hex in
+  if len = 0 then Reader.err_invalid t "empty hex color"
+  else if len = 3 || len = 4 || len = 6 || len = 8 then hex
+  else Reader.err_invalid t ("invalid hex color length: " ^ string_of_int len)
 
 (** Read an angle value *)
 let rec read_angle t : angle =
@@ -773,13 +895,19 @@ let rec read_angle t : angle =
   if Reader.looking_at t "var(" then Var (read_var read_angle t)
   else
     let n = Reader.number t in
-    let unit = Reader.while_ t (fun c -> c >= 'a' && c <= 'z') in
+    let unit =
+      let u = Reader.while_ t Reader.is_alpha in
+      String.lowercase_ascii u
+    in
     match unit with
     | "deg" -> Deg n
     | "rad" -> Rad n
     | "turn" -> Turn n
     | "grad" -> Grad n
-    | _ -> Reader.err_invalid t ("angle unit: " ^ unit)
+    | "" ->
+        Reader.err_invalid t
+          "angle values must have units (deg, rad, turn, or grad)"
+    | _ -> Reader.err_invalid t ("invalid angle unit: " ^ unit)
 
 (** Read a hue value (preserves unitless vs explicit angle) *)
 let rec read_hue t : hue =
@@ -788,7 +916,10 @@ let rec read_hue t : hue =
   if Reader.looking_at t "var(" then Var (read_var read_hue t)
   else
     let n = Reader.number t in
-    let unit = Reader.while_ t (fun c -> c >= 'a' && c <= 'z') in
+    let unit =
+      let u = Reader.while_ t Reader.is_alpha in
+      String.lowercase_ascii u
+    in
     match unit with
     | "" -> Unitless n (* Unitless number, defaults to degrees *)
     | "deg" -> Angle (Deg n)
@@ -797,84 +928,94 @@ let rec read_hue t : hue =
     | "grad" -> Angle (Grad n)
     | _ -> Reader.err_invalid t ("hue unit: " ^ unit)
 
+let read_separated_values t p1 p2 =
+  let v1 = p1 t in
+  Reader.ws t;
+  let separator = Reader.peek t in
+  if separator = Some ',' then Reader.comma t;
+  let v2 = p2 t in
+  (v1, v2)
+
 let read_hsl t : color =
   Reader.ws t;
-  let hue = read_hue t in
+  let h = read_hue t in
+  let s, l =
+    read_separated_values t read_percentage_float read_percentage_float
+  in
+  let a =
+    Reader.ws t;
+    let next_char = Reader.peek t in
+    if next_char = Some ',' then (
+      Reader.comma t;
+      read_alpha t)
+    else if next_char = Some '/' then read_optional_alpha t
+    else None
+  in
   Reader.ws t;
-  if Reader.peek t = Some ',' then (
-    Reader.comma t;
-    let s, l =
-      Reader.pair ~sep:Reader.comma read_percentage_float read_percentage_float
-        t
-    in
-    Reader.ws t;
-    let a =
-      if Reader.peek t = Some ',' then (
-        Reader.comma t;
-        read_alpha t)
-      else None
-    in
-    Reader.ws t;
-    Reader.expect t ')';
-    Hsl { h = hue; s = Pct s; l = Pct l; a })
-  else
-    let s, l =
-      Reader.pair ~sep:Reader.ws read_percentage_float read_percentage_float t
-    in
-    let a = read_optional_alpha t in
-    Reader.ws t;
-    Reader.expect t ')';
-    Hsl { h = hue; s = Pct s; l = Pct l; a }
+  Reader.expect ')' t;
+  Hsl { h; s = Pct s; l = Pct l; a }
 
 let read_hwb t : color =
   Reader.ws t;
-  let hue = read_hue t in
+  let h = read_hue t in
+  let w, b =
+    read_separated_values t read_percentage_float read_percentage_float
+  in
+  let a =
+    Reader.ws t;
+    let next_char = Reader.peek t in
+    if next_char = Some ',' then (
+      Reader.comma t;
+      read_alpha t)
+    else if next_char = Some '/' then read_optional_alpha t
+    else None
+  in
   Reader.ws t;
-  if Reader.peek t = Some ',' then (
-    Reader.comma t;
-    let w, b =
-      Reader.pair ~sep:Reader.comma read_percentage_float read_percentage_float
-        t
-    in
-    Reader.ws t;
-    let a =
-      if Reader.peek t = Some ',' then (
-        Reader.comma t;
-        read_alpha t)
-      else None
-    in
-    Reader.ws t;
-    Reader.expect t ')';
-    Hwb { h = hue; w = Pct w; b = Pct b; a })
-  else
-    let w, b =
-      Reader.pair ~sep:Reader.ws read_percentage_float read_percentage_float t
-    in
-    let a = read_optional_alpha t in
-    Reader.ws t;
-    Reader.expect t ')';
-    Hwb { h = hue; w = Pct w; b = Pct b; a }
+  Reader.expect ')' t;
+  Hwb { h; w = Pct w; b = Pct b; a }
 
 let read_oklch t : color =
   Reader.ws t;
-  let l, c, h =
-    Reader.triple ~sep:Reader.ws read_percentage_float Reader.number
-      Reader.number t
+  (* L can be 0-1 or 0%-100% per CSS spec *)
+  let l =
+    let n = Reader.number t in
+    if Reader.peek t = Some '%' then (
+      Reader.expect '%' t;
+      n (* Already a percentage value *))
+    else if n >= 0. && n <= 1. then n *. 100. (* Convert 0-1 to percentage *)
+    else
+      Reader.err_invalid t
+        (Printf.sprintf "oklch() L value must be 0-1 or 0%%-100%%, got %g" n)
   in
+  Reader.ws t;
+  let c = Reader.number t in
+  Reader.ws t;
+  let h = Reader.number t in
   let alpha = read_optional_alpha t in
   Reader.ws t;
-  Reader.expect t ')';
+  Reader.expect ')' t;
   Oklch { l = Pct l; c; h = Unitless h; alpha }
 
 let read_oklab t : color =
   Reader.ws t;
-  let l, a, b =
-    Reader.triple ~sep:Reader.ws read_percentage_float Reader.number
-      Reader.number t
+  (* L can be 0-1 or 0%-100% per CSS spec *)
+  let l =
+    let n = Reader.number t in
+    if Reader.peek t = Some '%' then (
+      Reader.expect '%' t;
+      n (* Already a percentage value *))
+    else if n >= 0. && n <= 1. then n *. 100. (* Convert 0-1 to percentage *)
+    else
+      Reader.err_invalid t
+        (Printf.sprintf "oklab() L value must be 0-1 or 0%%-100%%, got %g" n)
   in
+  Reader.ws t;
+  let a = Reader.number t in
+  Reader.ws t;
+  let b = Reader.number t in
   let alpha = read_optional_alpha t in
   Reader.ws t;
-  Reader.expect t ')';
+  Reader.expect ')' t;
   Oklab { l = Pct l; a; b; alpha }
 
 let read_lch t : color =
@@ -885,7 +1026,7 @@ let read_lch t : color =
   in
   let alpha = read_optional_alpha t in
   Reader.ws t;
-  Reader.expect t ')';
+  Reader.expect ')' t;
   Lch { l = Pct l; c; h = Unitless h; alpha }
 
 let read_color_function t : color =
@@ -894,55 +1035,73 @@ let read_color_function t : color =
   Reader.ws t;
   let components = read_color_components space t [] in
   let alpha = read_optional_alpha t in
-  Reader.expect t ')';
+  Reader.expect ')' t;
   Color { space; components; alpha }
+
+let color_parsers =
+  [
+    ( "rgb",
+      fun t ->
+        Reader.expect '(' t;
+        Reader.ws t;
+        match Reader.try_parse read_rgb_space_separated t with
+        | Some result -> result
+        | None -> read_rgb_comma_separated t );
+    ( "rgba",
+      fun t ->
+        Reader.expect '(' t;
+        Reader.ws t;
+        match Reader.try_parse read_rgb_space_separated t with
+        | Some result -> result
+        | None -> read_rgb_comma_separated t );
+    ( "hsl",
+      fun t ->
+        Reader.expect '(' t;
+        read_hsl t );
+    ( "hsla",
+      fun t ->
+        Reader.expect '(' t;
+        read_hsl t );
+    ( "hwb",
+      fun t ->
+        Reader.expect '(' t;
+        read_hwb t );
+    ( "oklch",
+      fun t ->
+        Reader.expect '(' t;
+        read_oklch t );
+    ( "oklab",
+      fun t ->
+        Reader.expect '(' t;
+        read_oklab t );
+    ( "lch",
+      fun t ->
+        Reader.expect '(' t;
+        read_lch t );
+    ( "color",
+      fun t ->
+        Reader.expect '(' t;
+        read_color_function t );
+  ]
 
 let rec read_color t : color =
   Reader.ws t;
-  match Reader.peek t with
-  | Some '#' ->
-      (* Hex color: #fff or #ffffff *)
-      Reader.expect t '#';
-      let hex = read_hex_color t in
-      Hex { hash = true; value = hex }
-  | _ ->
-      if Reader.looking_at t "rgb(" || Reader.looking_at t "rgba(" then (
-        let _ = Reader.ident t in
-        (* consume "rgb" or "rgba" *)
-        Reader.expect t '(';
-        Reader.ws t;
-
-        match Reader.try_parse read_rgb_space_separated t with
-        | Some result -> result
-        | None -> read_rgb_comma_separated t)
-      else if Reader.looking_at t "hsl(" || Reader.looking_at t "hsla(" then (
-        Reader.expect_string t
-          (if Reader.looking_at t "hsla(" then "hsla(" else "hsl(");
-        read_hsl t)
-      else if Reader.looking_at t "hwb(" then (
-        Reader.expect_string t "hwb(";
-        read_hwb t)
-      else if Reader.looking_at t "oklch(" then (
-        Reader.expect_string t "oklch(";
-        read_oklch t)
-      else if Reader.looking_at t "oklab(" then (
-        Reader.expect_string t "oklab(";
-        read_oklab t)
-      else if Reader.looking_at t "lch(" then (
-        Reader.expect_string t "lch(";
-        read_lch t)
-      else if Reader.looking_at t "color(" then (
-        Reader.expect_string t "color(";
-        read_color_function t)
-      else if Reader.looking_at t "var(" then
-        (* CSS variable *)
-        Var (read_var read_color t)
-      else read_color_keyword t
+  if Reader.peek t = Some '#' then (
+    Reader.expect '#' t;
+    let hex = read_hex_color t in
+    Hex { hash = true; value = hex })
+  else
+    let ident = Reader.ident t in
+    match List.assoc_opt ident color_parsers with
+    | Some parser -> parser t
+    | None -> (
+        match ident with
+        | "var" -> Var (read_var_after_ident read_color t)
+        | _ -> read_color_keyword (Reader.of_string ident))
 
 and read_color_keyword t : color =
   let keyword = Reader.ident t in
-  let lower = String.lowercase_ascii keyword in
-  match lower with
+  match keyword with
   | "transparent" -> Transparent
   | "currentcolor" -> Current
   | "inherit" -> Inherit
@@ -1103,7 +1262,10 @@ let rec read_duration t : duration =
   if Reader.looking_at t "var(" then Var (read_var read_duration t)
   else
     let n = Reader.number t in
-    let unit = Reader.while_ t (fun c -> c >= 'a' && c <= 'z') in
+    let unit =
+      let u = Reader.while_ t Reader.is_alpha in
+      String.lowercase_ascii u
+    in
     match unit with
     | "s" -> S n
     | "ms" -> Ms n
@@ -1125,83 +1287,6 @@ let rec read_number t : number =
     let n = Reader.number t in
     if n = float_of_int (int_of_float n) then Int (int_of_float n) else Float n
 
-let rec read_calc_expr : type a. (Reader.t -> a) -> Reader.t -> a calc =
- fun read_a t ->
-  Reader.ws t;
-  let left = read_calc_term read_a t in
-  Reader.ws t;
-  match Reader.peek t with
-  | Some '+' ->
-      Reader.skip t;
-      Expr (left, Add, read_calc_expr read_a t)
-  | Some '-' ->
-      Reader.skip t;
-      Expr (left, Sub, read_calc_expr read_a t)
-  | _ -> left
-
-and read_calc_term : type a. (Reader.t -> a) -> Reader.t -> a calc =
- fun read_a t ->
-  Reader.ws t;
-  let left = read_calc_factor read_a t in
-  Reader.ws t;
-  match Reader.peek t with
-  | Some '*' ->
-      Reader.skip t;
-      Expr (left, Mult, read_calc_term read_a t)
-  | Some '/' ->
-      Reader.skip t;
-      Expr (left, Div, read_calc_term read_a t)
-  | _ -> left
-
-and read_calc_factor : type a. (Reader.t -> a) -> Reader.t -> a calc =
- fun read_a t ->
-  Reader.ws t;
-  if Reader.peek t = Some '(' then (
-    Reader.skip t;
-    let expr = read_calc_expr read_a t in
-    Reader.ws t;
-    Reader.expect t ')';
-    expr)
-  else read_calc read_a t
-
-and read_calc : type a. (Reader.t -> a) -> Reader.t -> a calc =
- fun read_a t ->
-  Reader.ws t;
-  if Reader.looking_at t "calc(" then (
-    Reader.expect_string t "calc(";
-    let expr = read_calc_expr read_a t in
-    Reader.expect t ')';
-    expr)
-  else if Reader.looking_at t "var(" then (
-    Reader.expect_string t "var(";
-    Reader.ws t;
-    let var_name =
-      if Reader.looking_at t "--" then (
-        Reader.expect_string t "--";
-        Reader.ident t (* var_name should be without -- *))
-      else Reader.ident t
-    in
-    Reader.ws t;
-    let fallback =
-      if Reader.peek t = Some ',' then (
-        Reader.comma t;
-        (* Parse the fallback length value *)
-        Some (read_a t))
-      else None
-    in
-    Reader.expect t ')';
-    (* Create a length var with fallback *)
-    let v = var_ref ?fallback var_name in
-    Var v)
-  else
-    (* Try to parse with specific unit first, fall back to raw number *)
-    let _pos = Reader.save t in
-    try Val (read_a t)
-    with Reader.Parse_error _ ->
-      (* If parsing failed due to unit error, try parsing as raw number *)
-      Reader.restore t;
-      Num (Reader.number t)
-
 (** Read a percentage type with var() and calc() support *)
 let rec read_percentage t : percentage =
   Reader.ws t;
@@ -1209,9 +1294,17 @@ let rec read_percentage t : percentage =
   else if Reader.looking_at t "calc(" then Calc (read_calc read_percentage t)
   else
     let n = Reader.number t in
-    Reader.expect t '%';
+    Reader.expect '%' t;
     Pct n
 
 (* Var helper functions *)
 let var_name v = v.name
 let var_layer v = v.layer
+
+(** Read margin shorthand property (1-4 values) Source:
+    https://www.w3.org/TR/CSS21/box.html#margin-properties CSS margin accepts
+    1-4 space-separated values *)
+let read_margin_shorthand t : length =
+  let values = Reader.take 4 read_length t in
+  (* Return the first value as we're constrained by the type system *)
+  List.hd values

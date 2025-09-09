@@ -20,6 +20,9 @@ val important : declaration -> declaration
 val custom_property : ?layer:string -> string -> string -> declaration
 (** [custom_property ?layer name value] is a raw custom property declaration. *)
 
+val vendor_property : string -> string -> declaration
+(** [vendor_property name value] is a vendor-prefixed property declaration. *)
+
 val custom_declaration_layer : declaration -> string option
 (** [custom_declaration_layer d] is the layer of [d], if any. *)
 
@@ -68,11 +71,6 @@ val property_name : declaration -> string
 
 val string_of_value : ?minify:bool -> declaration -> string
 (** [string_of_value ?minify decl] returns the value as a string. *)
-
-val read_typed_declaration : string -> string -> bool -> declaration option
-(** [read_typed_declaration name value is_important] parses a property name and
-    value into a typed declaration. Returns [None] if the property cannot be
-    parsed. *)
 
 (** Single-to-list property helpers. These construct typed declarations for
     properties that accept comma-separated lists, while keeping a simple

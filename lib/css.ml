@@ -16,7 +16,7 @@ module Render = Render
 let of_string css =
   let reader = Reader.of_string css in
   try Ok (Stylesheet.read_stylesheet reader)
-  with Reader.Parse_error (msg, _reader) -> Error msg
+  with Reader.Parse_error (msg, _, _reader) -> Error msg
 
 (* Include all public APIs *)
 include Values
