@@ -102,11 +102,11 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Letter_spacing, Var v -> [ V v ]
   | Letter_spacing, Calc calc -> vars_of_calc calc
   | Line_height, Normal -> []
-  | Line_height, Length (Var v) -> [ V v ]
-  | Line_height, Length (Calc calc) -> vars_of_calc calc
-  | Line_height, Length _ -> []
-  | Line_height, Number _ -> []
-  | Line_height, Percentage _ -> []
+  | Line_height, Px _ -> []
+  | Line_height, Rem _ -> []
+  | Line_height, Em _ -> []
+  | Line_height, Pct _ -> []
+  | Line_height, Num _ -> []
   | Line_height, Inherit -> []
   | Line_height, Var v -> [ V v ]
   | Border_width, Var v -> [ V v ]

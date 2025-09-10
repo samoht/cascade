@@ -51,11 +51,15 @@ type length =
   | Svmax of float
   | Ch of float
   | Lh of float
-  | Num of float
   | Auto
   | Zero
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Fit_content
+  | Content
   | Max_content
   | Min_content
   | From_font
@@ -242,7 +246,7 @@ type alpha = None | Num of float | Pct of float | Var of alpha var
 type hue = Unitless of float | Angle of angle | Var of hue var
 
 type component =
-  | Number of float
+  | Num of float
   | Pct of float
   | Angle of hue
   | Var of component var
@@ -270,6 +274,10 @@ type color =
   | Current
   | Transparent
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Mix of {
       in_space : color_space option;
       hue : hue_interpolation;

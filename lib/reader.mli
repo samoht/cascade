@@ -73,6 +73,9 @@ val is_alpha : char -> bool
 val is_ident_start : char -> bool
 (** [is_ident_start c] returns true if [c] can start a CSS identifier. *)
 
+val is_digit : char -> bool
+(** [is_digit c] returns true if [c] is a digit (0-9). *)
+
 (** {1 CSS Tokens} *)
 
 val ident : ?keep_case:bool -> t -> string

@@ -166,6 +166,13 @@ let float_n n ctx f =
   Buffer.add_string ctx.buf s
 
 let int ctx i = Buffer.add_string ctx.buf (string_of_int i)
+
+let unit ctx f suffix =
+  if f = 0. then char ctx '0'
+  else (
+    float ctx f;
+    string ctx suffix)
+
 let colon ctx () = Buffer.add_char ctx.buf ':'
 
 let sep ctx s =

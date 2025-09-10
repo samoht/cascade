@@ -167,32 +167,30 @@ let test_reader_between () =
 (* Test try_parse backtracking (replaces save/restore functionality) *)
 let test_reader_backtrack () =
   let r = of_string "test" in
-  (* Test that try_parse backtracks on failure *)
+  (* Test that option backtracks on failure *)
   let result =
-    Css.Reader.try_parse
+    Css.Reader.option
       (fun r ->
         ignore (char r);
         (* consume 't' *)
         if char r = 'x' then "success" else failwith "not x")
       r
   in
-  Alcotest.(check (option string)) "try_parse failed" None result;
+  Alcotest.(check (option string)) "option failed" None result;
   (* Position should be restored *)
   Alcotest.(check (option char)) "position restored" (Some 't') (peek r)
 
-(* Test try_parse *)
-let test_reader_try_parse () =
+(* Test option *)
+let test_reader_option () =
   (* Success *)
   let r = of_string "123" in
-  let result =
-    try_parse (fun r -> while_ r (fun c -> c >= '0' && c <= '9')) r
-  in
+  let result = option (fun r -> while_ r (fun c -> c >= '0' && c <= '9')) r in
   Alcotest.(check (option string)) "parsed digits" (Some "123") result;
 
   (* Failure - position restored *)
   let r = of_string "abc" in
   let result =
-    try_parse
+    option
       (fun r ->
         expect 'x' r;
         (* This will fail *)
@@ -204,18 +202,18 @@ let test_reader_try_parse () =
 
 (* Test commit *)
 let test_reader_commit () =
-  (* Test that try_parse commits changes on success *)
+  (* Test that option commits changes on success *)
   let r = of_string "test" in
   let result =
-    Css.Reader.try_parse
+    Css.Reader.option
       (fun r ->
         ignore (char r);
         (* consume 't' *)
         "success")
       r
   in
-  Alcotest.(check (option string)) "try_parse success" (Some "success") result;
-  (* Position should remain advanced after successful try_parse *)
+  Alcotest.(check (option string)) "option success" (Some "success") result;
+  (* Position should remain advanced after successful option *)
   Alcotest.(check (option char)) "position advanced" (Some 'e') (peek r)
 
 (* Test number parsing *)
@@ -338,7 +336,7 @@ let test_reader_failures () =
   (* EOF in string *)
   let r = of_string "\"unclosed" in
   check_raises "unclosed string"
-    (Parse_error ("unexpected end of input", None, r))
+    (Parse_error ("unclosed string", None, r))
     (fun () -> ignore (string r));
 
   (* Invalid number *)
@@ -347,18 +345,18 @@ let test_reader_failures () =
     (Parse_error ("invalid number", None, r))
     (fun () -> ignore (number r))
 
-(* Test try_parse helper *)
-let test_try_parse () =
+(* Test option helper *)
+let test_option () =
   (* Success case *)
   let r = of_string "123 abc" in
-  let result = try_parse number r in
+  let result = option number r in
   (match result with
   | Some n -> Alcotest.(check (float 0.001)) "parsed number" 123.0 n
   | None -> Alcotest.fail "Expected success but got None");
 
   (* Error case with message preservation *)
   let r = of_string "not-a-number" in
-  let result = try_parse number r in
+  let result = option number r in
   (match result with
   | Some _ -> Alcotest.fail "Expected error but got success"
   | None -> Alcotest.(check bool) "parse failed" true true);
@@ -491,6 +489,92 @@ let test_one_of () =
     (Parse_error ("expected one of: number, green, blue, red", Some "yellow", r))
     (fun () -> ignore (one_of parsers r))
 
+let test_reader_enum () =
+  (* Test basic enum parsing *)
+  let r = of_string "bold" in
+  let result =
+    enum "font-weight" [ ("normal", 1); ("bold", 2); ("lighter", 3) ] r
+  in
+  Alcotest.(check int) "enum bold" 2 result;
+
+  (* Test case insensitive matching *)
+  let r = of_string "BOLD" in
+  let result =
+    enum "font-weight" [ ("normal", 1); ("bold", 2); ("lighter", 3) ] r
+  in
+  Alcotest.(check int) "enum BOLD" 2 result;
+
+  (* Test enum with unknown value should fail *)
+  let r = of_string "unknown" in
+  check_raises "enum unknown"
+    (Parse_error
+       ( "font-weight: expected one of: normal, bold, lighter, got: unknown",
+         None,
+         r ))
+    (fun () ->
+      let _ =
+        enum "font-weight" [ ("normal", 1); ("bold", 2); ("lighter", 3) ] r
+      in
+      ())
+
+let test_reader_enum_with_default () =
+  (* Test enum with default handler for identifiers *)
+  let r = of_string "bold" in
+  let result =
+    enum "test"
+      [ ("normal", "n"); ("bold", "b") ]
+      r
+      ~default:(fun _ -> "default")
+  in
+  Alcotest.(check string) "enum bold" "b" result;
+
+  (* Test enum with default handler for unknown identifier *)
+  let r = of_string "unknown" in
+  let result =
+    enum "test"
+      [ ("normal", "n"); ("bold", "b") ]
+      r
+      ~default:(fun _ -> "default")
+  in
+  Alcotest.(check string) "enum unknown uses default" "default" result;
+
+  (* Test enum with default handler for numeric value *)
+  let r = of_string "123" in
+  let result =
+    enum "font-weight"
+      [ ("normal", 0); ("bold", 700) ]
+      r
+      ~default:(fun t -> int_of_float (number t))
+  in
+  Alcotest.(check int) "enum numeric with default" 123 result;
+
+  (* Test enum with default handler for float value *)
+  let r = of_string "1.5" in
+  let result =
+    enum "line-height" [ ("normal", 0.0) ] r ~default:(fun t -> number t)
+  in
+  check (float 0.01) "enum float with default" 1.5 result;
+
+  (* Test that default is called first for non-identifier start *)
+  let r = of_string "400" in
+  let result =
+    enum "font-weight"
+      [ ("normal", 0); ("bold", 700) ]
+      r
+      ~default:(fun t -> int_of_float (number t))
+  in
+  Alcotest.(check int) "enum calls default first for number" 400 result;
+
+  (* Test that default is NOT called when identifier matches an enum value *)
+  let r = of_string "normal" in
+  let result =
+    enum "font-weight"
+      [ ("normal", 100); ("bold", 700) ]
+      r
+      ~default:(fun _ -> failwith "should not call default")
+  in
+  Alcotest.(check int) "enum uses matching value, not default" 100 result
+
 let suite =
   [
     ( "reader",
@@ -507,7 +591,7 @@ let suite =
         test_case "between" `Quick test_reader_between;
         (* Backtracking *)
         test_case "backtrack" `Quick test_reader_backtrack;
-        test_case "try parse" `Quick test_reader_try_parse;
+        test_case "option" `Quick test_reader_option;
         test_case "commit" `Quick test_reader_commit;
         (* Value parsing *)
         test_case "numbers" `Quick test_reader_numbers;
@@ -521,9 +605,12 @@ let suite =
         (* Error cases *)
         test_case "failures" `Quick test_reader_failures;
         (* New helper functions *)
-        test_case "try_parse" `Quick test_try_parse;
+        test_case "option" `Quick test_option;
         test_case "parse_many" `Quick test_parse_many;
         test_case "one_of" `Quick test_one_of;
         test_case "take" `Quick test_take;
+        (* enum combinator tests *)
+        test_case "enum" `Quick test_reader_enum;
+        test_case "enum with default" `Quick test_reader_enum_with_default;
       ] );
   ]

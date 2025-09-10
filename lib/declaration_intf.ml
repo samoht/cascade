@@ -12,6 +12,7 @@ type _ kind =
   | Duration : duration kind
   | Aspect_ratio : aspect_ratio kind
   | Border_style : border_style kind
+  | Border : border kind
   | Font_weight : font_weight kind
   | Font_family : font_family list kind
   | Font_feature_settings : font_feature_settings kind

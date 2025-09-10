@@ -54,6 +54,18 @@ val pp_border_style : border_style Pp.t
 val read_border_style : Reader.t -> border_style
 (** [read_border_style t] is the [border_style] parsed from [t]. *)
 
+val pp_border_width : border_width Pp.t
+(** [pp_border_width] is the pretty-printer for [border_width]. *)
+
+val read_border_width : Reader.t -> border_width
+(** [read_border_width t] is the [border_width] parsed from [t]. *)
+
+val pp_border : border Pp.t
+(** [pp_border] is the pretty-printer for [border]. *)
+
+val read_border : Reader.t -> border
+(** [read_border t] is the [border] shorthand parsed from [t]. *)
+
 val pp_line_height : line_height Pp.t
 (** [pp_line_height] is the pretty-printer for [line_height]. *)
 
@@ -480,6 +492,9 @@ val read_text_shadows : Reader.t -> text_shadow list
 val pp_filter : filter Pp.t
 (** [pp_filter] is the pretty-printer for [filter]. *)
 
+val read_filter_item : Reader.t -> filter
+(** [read_filter_item t] reads a single filter function *)
+
 val read_filter : Reader.t -> filter
 (** [read_filter t] is the [filter] parsed from [t]. *)
 
@@ -580,6 +595,9 @@ val pp_object_fit : object_fit Pp.t
 
 val read_object_fit : Reader.t -> object_fit
 (** [read_object_fit t] is the [object_fit] parsed from [t]. *)
+
+val read_position_2d : Reader.t -> position_2d
+(** [read_position_2d t] is the [position_2d] parsed from [t]. *)
 
 val pp_content : content Pp.t
 (** [pp_content] is the pretty-printer for [content]. *)
@@ -707,6 +725,9 @@ val pp_webkit_box_orient : webkit_box_orient Pp.t
 
 val read_webkit_box_orient : Reader.t -> webkit_box_orient
 (** [read_webkit_box_orient t] is the [webkit_box_orient] parsed from [t]. *)
+
+val read_text_size_adjust : Reader.t -> text_size_adjust
+(** [read_text_size_adjust t] is the text size adjust value parsed from [t]. *)
 
 val pp_forced_color_adjust : forced_color_adjust Pp.t
 (** [pp_forced_color_adjust] is the pretty-printer for [forced_color_adjust]. *)

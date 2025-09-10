@@ -68,6 +68,16 @@ let expect_string s t =
 (** Get current position in input *)
 let position t = t.pos
 
+(** Get context window around current position for better error messages *)
+let context_window ?(before = 30) ?(after = 30) t =
+  let pos = t.pos in
+  let start_pos = max 0 (pos - before) in
+  let end_pos = min t.len (pos + after) in
+  let before_text = String.sub t.input start_pos (pos - start_pos) in
+  let after_text = String.sub t.input pos (end_pos - pos) in
+  let marker_pos = String.length before_text in
+  (before_text ^ after_text, marker_pos)
+
 let consume_if c t =
   if peek t = Some c then (
     skip t;
@@ -160,14 +170,16 @@ let read_escape t =
 
 let ident ?(keep_case = false) t =
   if t.pos >= t.len then err_expected t "identifier";
-  let buf = Buffer.create 16 in
+  let chars = ref [] in
+  (* Track escaped chars separately - they keep their case *)
   (* First char: ident-start or escape *)
   (match peek t with
   | Some '\\' ->
       ignore (char t);
-      Buffer.add_string buf (read_escape t)
+      let escaped = read_escape t in
+      String.iter (fun c -> chars := (c, true) :: !chars) escaped
   | Some c when is_ident_start c ->
-      Buffer.add_char buf c;
+      chars := (c, false) :: !chars;
       ignore (char t)
   | _ -> err_expected t "identifier");
   (* Rest: ident-char or escape sequences *)
@@ -175,39 +187,96 @@ let ident ?(keep_case = false) t =
     match peek t with
     | Some '\\' ->
         ignore (char t);
-        Buffer.add_string buf (read_escape t);
+        let escaped = read_escape t in
+        String.iter (fun c -> chars := (c, true) :: !chars) escaped;
         loop ()
     | Some c when is_ident_char c ->
-        Buffer.add_char buf c;
+        chars := (c, false) :: !chars;
         ignore (char t);
         loop ()
     | _ -> ()
   in
   loop ();
-  let s = Buffer.contents buf in
-  if keep_case then s else String.lowercase_ascii s
+  (* Build result, only lowercasing non-escaped chars *)
+  let buf = Buffer.create 16 in
+  List.iter
+    (fun (c, is_escaped) ->
+      let c' = if keep_case || is_escaped then c else Char.lowercase_ascii c in
+      Buffer.add_char buf c')
+    (List.rev !chars);
+  Buffer.contents buf
 
-let string t =
+let is_digit c = c >= '0' && c <= '9'
+let is_alpha c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+
+let is_hex_digit c =
+  (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+
+let string ?(trim = false) t =
   let quote = char t in
   if quote <> '"' && quote <> '\'' then err_expected t "string quote";
   let buf = Buffer.create 16 in
   let rec loop () =
-    match char t with
-    | '\\' ->
-        (* Read the escaped character *)
-        let escaped = char t in
-        (* Store the actual character, not the escape sequence *)
-        Buffer.add_char buf escaped;
-        loop ()
-    | c when c = quote -> Buffer.contents buf
-    | c ->
+    match peek t with
+    | None -> err t "unclosed string"
+    | Some '\\' -> (
+        skip t;
+        (* skip backslash *)
+        (* Handle CSS escape sequences *)
+        match peek t with
+        | None -> err t "incomplete escape sequence"
+        | Some c when is_hex_digit c ->
+            (* Unicode escape: read up to 6 hex digits *)
+            let hex_buf = Buffer.create 6 in
+            let rec read_hex count =
+              if count < 6 then
+                match peek t with
+                | Some h when is_hex_digit h ->
+                    skip t;
+                    Buffer.add_char hex_buf h;
+                    read_hex (count + 1)
+                | _ -> ()
+              else ()
+            in
+            read_hex 0;
+            let hex = Buffer.contents hex_buf in
+            (if String.length hex = 0 then err_invalid t "empty unicode escape"
+             else
+               (* Validate that it forms valid unicode *)
+               try
+                 let code = int_of_string ("0x" ^ hex) in
+                 if code > 0x10FFFF then
+                   err_invalid t "unicode escape out of range";
+                 (* Add the unicode character *)
+                 Buffer.add_string buf (Printf.sprintf "\\%s" hex)
+               with _ -> err_invalid t "invalid unicode escape");
+            (* Optional whitespace after unicode escape *)
+            (match peek t with
+            | Some (' ' | '\t' | '\n' | '\r') -> skip t
+            | _ -> ());
+            loop ()
+        | Some c ->
+            (* Single character escape or invalid *)
+            skip t;
+            if
+              (not (is_alpha c || is_digit c))
+              && c <> '"' && c <> '\'' && c <> '\\' && c <> '/' && c <> ' '
+              && c <> '\n' && c <> '\r' && c <> '\t'
+            then
+              (* For CSS, only certain characters can be escaped directly *)
+              err_invalid t (Printf.sprintf "invalid escape sequence '\\%c'" c);
+            Buffer.add_char buf c;
+            loop ())
+    | Some c when c = quote ->
+        skip t;
+        let result = Buffer.contents buf in
+        if trim then String.trim result else result
+    | Some c ->
+        skip t;
         Buffer.add_char buf c;
         loop ()
   in
   loop ()
-
-let is_digit c = c >= '0' && c <= '9'
-let is_alpha c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 
 let number t =
   let negative = peek t = Some '-' in
@@ -277,7 +346,7 @@ let commit t =
   | [] -> err t "no saved position to commit"
   | _ :: rest -> t.saved <- rest
 
-let try_parse f t =
+let option f t =
   save t;
   try
     let result = f t in
@@ -340,8 +409,6 @@ let one_of parsers t =
   in
   try_parsers parsers [] None
 
-let optional parser t = try_parse parser t
-
 let take max_count parser t =
   if max_count < 1 then invalid_arg "take: max_count must be >= 1";
 
@@ -377,7 +444,7 @@ let take max_count parser t =
   (if not (is_done t || looking_at t "!" || looking_at t ";") then
      (* Only check for excess if we've already read max_count items *)
      if List.length !items >= max_count then
-       match try_parse parser t with
+       match option parser t with
        | Some _ ->
            err t
              ("too many values (maximum " ^ string_of_int max_count
@@ -429,17 +496,29 @@ let css_value ~stops t =
 
 let enum ?default label mapping t =
   ws t;
-  let value = ident t in
-  match
-    List.find_opt (fun (k, _) -> String.lowercase_ascii k = value) mapping
-  with
-  | Some (_, result) -> result
-  | None -> (
-      match default with
-      | Some default_fn -> default_fn t
-      | None ->
-          let options = List.map fst mapping |> String.concat ", " in
-          err t (label ^ ": expected one of: " ^ options ^ ", got: " ^ value))
+  let starts_with_ident = is_ident_start (Option.value (peek t) ~default:' ') in
+  if not starts_with_ident then
+    match default with
+    | Some f -> f t
+    | None -> err t (label ^ ": expected " ^ label)
+  else (
+    (* Try identifier; on failure, restore and delegate to default if present *)
+    save t;
+    let value = ident t in
+    match
+      List.find_opt (fun (k, _) -> String.lowercase_ascii k = value) mapping
+    with
+    | Some (_, result) ->
+        commit t;
+        result
+    | None -> (
+        match default with
+        | Some default_fn ->
+            restore t;
+            default_fn t
+        | None ->
+            let options = List.map fst mapping |> String.concat ", " in
+            err t (label ^ ": expected one of: " ^ options ^ ", got: " ^ value)))
 
 (** {1 Structured Parsing} *)
 
@@ -454,16 +533,6 @@ let between open_c close_c f t =
 let parens f t = between '(' ')' f t
 let braces f t = between '{' '}' f t
 
-let separated ~sep parse_item t =
-  let rec loop acc =
-    match try_parse parse_item t with
-    | None -> List.rev acc
-    | Some item ->
-        let acc = item :: acc in
-        if try_parse sep t = Some () then loop acc else List.rev acc
-  in
-  loop []
-
 (* Helpers for reading function calls and simple combinators *)
 let comma t =
   ws t;
@@ -474,6 +543,20 @@ let slash t =
   ws t;
   expect '/' t;
   ws t
+
+let comma_opt t =
+  ws t;
+  if peek t = Some ',' then (
+    comma t;
+    true)
+  else false
+
+let slash_opt t =
+  ws t;
+  if peek t = Some '/' then (
+    slash t;
+    true)
+  else false
 
 let pair ?(sep = fun (_ : t) -> ()) p1 p2 t =
   let a = p1 t in
@@ -489,10 +572,27 @@ let triple ?(sep = fun (_ : t) -> ()) p1 p2 p3 t =
   let c = p3 t in
   (a, b, c)
 
-let list ?(sep = fun (_ : t) -> ()) item t = separated item ~sep t
+let list ?(sep = fun (_ : t) -> ()) ?at_least ?at_most item t =
+  let rec loop acc =
+    match option item t with
+    | None -> List.rev acc
+    | Some item ->
+        let acc = item :: acc in
+        if option sep t = Some () then loop acc else List.rev acc
+  in
+  let items = loop [] in
+  (match at_least with
+  | Some n when List.length items < n ->
+      err t ("expected at least " ^ string_of_int n ^ " item(s)")
+  | _ -> ());
+  (match at_most with
+  | Some n when List.length items > n ->
+      err t ("too many values (maximum " ^ string_of_int n ^ " allowed)")
+  | _ -> ());
+  items
 
 (* Helpers for reading function calls *)
-let call name p t =
+let call name t p =
   let got = ident t in
   if got <> String.lowercase_ascii name then
     err t ("expected function '" ^ name ^ "', got '" ^ got ^ "'")
@@ -505,11 +605,75 @@ let call name p t =
         r)
       t
 
-let url t =
-  call "url"
-    (fun t ->
-      ws t;
-      match peek t with
-      | Some ('"' | '\'') -> string t
-      | _ -> String.trim (until t ')'))
-    t
+let quoted_or_unquoted_url t =
+  ws t;
+  match peek t with
+  | Some ('"' | '\'') -> string t
+  | _ -> String.trim (until t ')')
+
+let url t = call "url" t quoted_or_unquoted_url
+
+let enum_calls ?default cases t =
+  ws t;
+  let starts_with_ident = is_ident_start (Option.value (peek t) ~default:' ') in
+  if not starts_with_ident then
+    match default with
+    | Some f -> f t
+    | None ->
+        let options = List.map fst cases |> String.concat ", " in
+        err t ("expected one of functions: " ^ options)
+  else (
+    save t;
+    let got = ident t in
+    match
+      List.find_opt (fun (n, _) -> String.lowercase_ascii n = got) cases
+    with
+    | None -> (
+        match default with
+        | Some f ->
+            restore t;
+            f t
+        | None ->
+            let options = List.map fst cases |> String.concat ", " in
+            err t ("expected one of functions: " ^ options))
+    | Some (_, p) ->
+        commit t;
+        parens
+          (fun t ->
+            ws t;
+            let r = p t in
+            ws t;
+            r)
+          t)
+
+let enum_or_calls ?default label idents ~calls t =
+  enum ~default:(enum_calls ?default calls) label idents t
+
+let fold_many parser ~init ~f t =
+  let rec loop acc consumed last_error =
+    ws t;
+    if is_done t then (acc, last_error)
+    else
+      match try_parse_err parser t with
+      | Ok item -> loop (f acc item) true None
+      | Error msg -> if consumed then (acc, Some msg) else (init, Some msg)
+  in
+  loop init false None
+
+let number_with_unit t =
+  ws t;
+  let n = number t in
+  let u =
+    if looking_at t "%" then (
+      ignore (char t);
+      "%")
+    else Option.value ~default:"" (option ident t)
+  in
+  (n, u)
+
+let unit expected t =
+  ws t;
+  let n = number t in
+  let u = ident t in
+  if String.equal u expected then n
+  else err t ("expected unit '" ^ expected ^ "', got '" ^ u ^ "'")

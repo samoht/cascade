@@ -30,6 +30,9 @@ let check_border_style =
   check_value "border-style" Css.Properties.pp_border_style
     Css.Properties.read_border_style
 
+let check_border =
+  check_value "border" Css.Properties.pp_border Css.Properties.read_border
+
 let check_visibility =
   check_value "visibility" Css.Properties.pp_visibility
     Css.Properties.read_visibility
@@ -442,6 +445,30 @@ let test_border_style () =
   check_border_style "inset";
   check_border_style "outset";
   check_border_style "hidden"
+
+let test_border () =
+  (* Test individual components *)
+  check_border "2px";
+  check_border "solid";
+  check_border "red";
+
+  (* Test combinations *)
+  check_border "1px solid";
+  check_border "2px red";
+  check_border "solid red";
+  check_border "1px solid red";
+
+  (* Test with different order - parser should normalize *)
+  check_border ~expected:"2px solid red" "red solid 2px";
+  check_border ~expected:"2px solid" "solid 2px";
+
+  (* Test with zero width *)
+  check_border "0 solid";
+  check_border "0 solid black";
+
+  (* Test with inherit/initial *)
+  check_border "inherit";
+  check_border "initial"
 
 let test_visibility () =
   check_visibility "visible";
@@ -988,6 +1015,10 @@ let test_place_align_justify_flex () =
   check_flex "initial";
   check_flex "1";
   check_flex "2";
+  (* Basis-only forms per spec: equivalent to 1 1 <basis> *)
+  check_flex "10px";
+  check_flex "50%";
+  check_flex "content";
   check_place_items "center";
   check_place_items "stretch baseline"
 
@@ -1050,8 +1081,8 @@ let test_overscroll_aspect_content () =
   check_overscroll_behavior "inherit";
   check_aspect_ratio "auto";
   check_aspect_ratio "inherit";
-  (* content: bare id prints as quoted string, set expected accordingly *)
-  check_content ~expected:"\"hello\"" "hello";
+  (* content: strings must be quoted per CSS spec *)
+  check_content "\"hello\"";
   check_content "none"
 
 let test_grid_auto_flow () =
@@ -1089,7 +1120,8 @@ let test_negative_property_values () =
   let open Css.Reader in
   let neg reader s label =
     let r = of_string s in
-    check bool label true (Option.is_none (try_parse reader r))
+    let result = option reader r in
+    check bool label true (Option.is_none result)
   in
   neg Css.Properties.read_align_items "diagonal" "align-items invalid";
   neg Css.Properties.read_justify_content "aroundish" "justify-content invalid";
@@ -1101,7 +1133,25 @@ let test_negative_property_values () =
   neg Css.Properties.read_content_visibility "supervisible"
     "content-visibility invalid";
   neg Css.Properties.read_box_shadow "10px" "box-shadow missing v-offset";
-  neg Css.Properties.read_transform "invalidfunc()" "transform invalid function"
+  neg Css.Properties.read_transform "invalidfunc()" "transform invalid function";
+  neg Css.Properties.read_transform "translate3d(10px,20px)"
+    "translate3d arity invalid";
+  neg Css.Properties.read_transform "scale3d(1,2)" "scale3d arity invalid";
+  neg Css.Properties.read_transform "matrix(1,2,3,4,5)" "matrix arity invalid";
+  neg Css.Properties.read_transform "matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0)"
+    "matrix3d arity invalid";
+  neg Css.Properties.read_background_image "linear-gradient(red)"
+    "gradient requires at least 2 stops";
+  neg Css.Properties.read_transitions "" "transitions require at least 1";
+  neg Css.Properties.read_animations "" "animations require at least 1";
+  (* Note: blur(5px)contrast(1.2) is actually valid CSS - functions don't require spaces between them *)
+  (* Content property: unquoted strings are invalid per CSS spec *)
+  neg Css.Properties.read_content "hello" "content strings must be quoted";
+  (* Invalid gradient direction and angle unit in property context *)
+  neg Css.Properties.read_gradient_direction "to middle"
+    "gradient-direction invalid";
+  neg Css.Properties.read_gradient_direction "twentydeg"
+    "gradient-direction invalid"
 
 let test_typed_positions () =
   let to_s f = Css.Pp.to_string ~minify:true f in
@@ -1149,12 +1199,41 @@ let test_background () =
     "red url(image.png) center/cover no-repeat fixed";
   check "none"
 
+let test_filter () =
+  let check =
+    check_value "filter" Css.Properties.pp_filter Css.Properties.read_filter
+  in
+  check "none";
+  check "blur(5px)";
+  check ~expected:"blur(5px) contrast(1.2)" "blur(5px) contrast(1.2)";
+  check ~expected:"hue-rotate(30deg) opacity(.5)"
+    "hue-rotate(30deg) opacity(0.5)";
+  check ~expected:"drop-shadow(2px 4px 6px red)" "drop-shadow(2px 4px 6px red)"
+
+(** Test that font family lists in custom declarations are properly printed *)
+let test_font_family_custom_declarations () =
+  let fonts =
+    [
+      Css.Properties.Ui_sans_serif;
+      Css.Properties.System_ui;
+      Css.Properties.Sans_serif;
+      Css.Properties.Apple_color_emoji;
+    ]
+  in
+  let decl, _var =
+    Css.Variables.var "--test-fonts" Css.Declaration.Font_family fonts
+  in
+  let css_output = Css.Declaration.string_of_value decl in
+  let expected = "ui-sans-serif,system-ui,sans-serif,\"Apple Color Emoji\"" in
+  check string "font family list in custom declaration" expected css_output
+
 let tests =
   [
     test_case "display" `Quick test_display;
     test_case "position" `Quick test_position;
     test_case "overflow" `Quick test_overflow;
     test_case "border-style" `Quick test_border_style;
+    test_case "border" `Quick test_border;
     test_case "visibility" `Quick test_visibility;
     test_case "z-index" `Quick test_z_index;
     test_case "flex-direction" `Quick test_flex_direction;
@@ -1206,6 +1285,9 @@ let tests =
     test_case "overscroll/aspect/content" `Quick test_overscroll_aspect_content;
     test_case "background_box" `Quick test_background_box;
     test_case "background" `Quick test_background;
+    test_case "filter" `Quick test_filter;
+    test_case "font family custom declarations" `Quick
+      test_font_family_custom_declarations;
   ]
 
 let suite = [ ("properties", tests) ]

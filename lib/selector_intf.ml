@@ -17,6 +17,12 @@ type combinator =
 type ns = Any | None | Prefix of string
 type attr_flag = Case_insensitive | Case_sensitive
 
+type nth =
+  | Odd (* 2n+1 *)
+  | Even (* 2n *)
+  | Index of int (* Just B: matches a single index *)
+  | An_plus_b of int * int (* An+B: a is coefficient, b is offset *)
+
 type t =
   | Element of ns option * string
   | Class of string
@@ -30,8 +36,10 @@ type t =
   | Where of t list
   | Not of t list
   | Fun of string * t list
+  | Nth_child of nth * t list option (* :nth-child(An+B [of S]) *)
+  | Nth_last_child of nth * t list option (* :nth-last-child(An+B [of S]) *)
+  | Nth_of_type of nth * t list option (* :nth-of-type(An+B [of S]) *)
+  | Nth_last_of_type of nth * t list option (* :nth-last-of-type(An+B [of S]) *)
   | Compound of t list
   | Combined of t * combinator * t
   | List of t list
-
-type nth = Even | Odd | An_plus_b of int * int

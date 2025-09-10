@@ -2,12 +2,13 @@
 
 include Declaration_intf
 open Properties
+open Values
 
 (* Re-export pp_property from Properties module *)
-let pp_property = Properties.pp_property
+let pp_property = pp_property
 
 (* Extract metadata from a declaration *)
-let declaration_meta : declaration -> Values.meta option = function
+let declaration_meta : declaration -> meta option = function
   | Custom_declaration { meta; _ } -> meta
   | Declaration _ -> None
 
@@ -26,21 +27,6 @@ let important = function
   | Custom_declaration d -> Custom_declaration { d with important = true }
 
 (* Helper for raw custom properties - primarily for internal use *)
-(* Create a vendor-prefixed property (like -webkit-transform) *)
-let vendor_property name value =
-  (* Vendor prefixes start with a single dash followed by vendor name *)
-  (* Validate against known vendor prefixes *)
-  let known_prefixes = [ "-webkit-"; "-moz-"; "-ms-"; "-o-" ] in
-  let has_valid_prefix =
-    List.exists
-      (fun prefix ->
-        String.length name >= String.length prefix
-        && String.sub name 0 (String.length prefix) = prefix)
-      known_prefixes
-  in
-  if not has_valid_prefix then failwith ("unknown vendor prefix: " ^ name);
-  (* We'll store them as custom declarations with String kind *)
-  custom_declaration name String value
 
 let custom_property ?layer name value =
   (* Validate that this is a proper CSS variable name *)
@@ -71,30 +57,92 @@ let read_property_name t =
   let name = Reader.while_ t (fun c -> c <> ':' && c <> ';' && c <> '}') in
   String.trim name
 
-(** Parse property value until semicolon, closing brace, or !important *)
+(** Parse property value with validation for missing semicolons *)
 let read_property_value t =
-  let value = Reader.css_value ~stops:[ ';'; '}'; '!' ] t in
-  (* CSS spec: empty property values are invalid *)
-  if String.length value = 0 then
+  (* Read value token by token, detecting property-like patterns early *)
+  let buf = Buffer.create 64 in
+  let rec parse_tokens depth in_quote quote_char =
+    match Reader.peek t with
+    | None -> Buffer.contents buf
+    | Some c when in_quote ->
+        Buffer.add_char buf c;
+        Reader.skip t;
+        if c = quote_char then parse_tokens depth false '\000'
+        else if c = '\\' then (
+          match Reader.peek t with
+          | None -> Buffer.contents buf
+          | Some next_c ->
+              Buffer.add_char buf next_c;
+              Reader.skip t;
+              parse_tokens depth in_quote quote_char)
+        else parse_tokens depth in_quote quote_char
+    | Some (('"' | '\'') as q) ->
+        Buffer.add_char buf q;
+        Reader.skip t;
+        parse_tokens depth true q
+    | Some (('(' | '[' | '{') as c) ->
+        Buffer.add_char buf c;
+        Reader.skip t;
+        parse_tokens (depth + 1) in_quote quote_char
+    | Some ((')' | ']' | '}') as c) when depth > 0 ->
+        Buffer.add_char buf c;
+        Reader.skip t;
+        parse_tokens (depth - 1) in_quote quote_char
+    | Some c when depth = 0 && (c = ';' || c = '}' || c = '!') ->
+        Buffer.contents buf
+    | Some c when depth = 0 && Reader.is_ident_start c ->
+        (* Check if this could be start of a new property declaration *)
+        let potential_prop =
+          Reader.while_ t (fun ch ->
+              Reader.is_ident_start ch || (ch >= '0' && ch <= '9') || ch = '-')
+        in
+        (* Save the next character before consuming whitespace *)
+        let next_char_before_ws = Reader.peek t in
+        Reader.ws t;
+        if Reader.peek t = Some ':' then
+          (* This looks like "property:" pattern - missing semicolon *)
+          Reader.err_invalid t "missing semicolon before property declaration"
+        else (
+          (* Not a property, add to buffer and continue *)
+          Buffer.add_string buf potential_prop;
+          (* Add a space if we consumed whitespace *)
+          let next_char_after_ws = Reader.peek t in
+          if
+            next_char_before_ws <> next_char_after_ws
+            && next_char_after_ws <> None
+          then Buffer.add_char buf ' ';
+          parse_tokens depth in_quote quote_char)
+    | Some c ->
+        Buffer.add_char buf c;
+        Reader.skip t;
+        parse_tokens depth in_quote quote_char
+  in
+  let value = parse_tokens 0 false '\000' in
+  let trimmed = String.trim value in
+  if String.length trimmed = 0 then
     Reader.err_invalid t "property value (cannot be empty)";
-  value
+  trimmed
 
 (** Check for and consume !important *)
 let read_importance t =
   Reader.ws t;
   match Reader.peek t with
-  | Some '!' -> (
+  | Some '!' ->
       Reader.expect '!' t;
       (* After !, we can have optional whitespace/comments before "important" *)
       Reader.ws t;
       (* Try to read an identifier after the ! *)
-      match Reader.try_parse Reader.ident t with
-      | Some "important" -> true
-      | Some ident ->
-          Reader.err_invalid t ("invalid !important declaration: !" ^ ident)
-      | None ->
-          (* No identifier after ! - dangling bang *)
-          Reader.err_invalid t "dangling ! without important")
+      if
+        Reader.peek t
+        |> Option.map Reader.is_ident_start
+        |> Option.value ~default:false
+      then
+        let ident = Reader.ident t in
+        if ident = "important" then true
+        else Reader.err_invalid t ("invalid !important declaration: !" ^ ident)
+      else
+        (* No identifier after ! - dangling bang *)
+        Reader.err_invalid t "dangling ! without important"
   | _ -> false
 
 (** Check if a declaration is marked as important *)
@@ -109,7 +157,7 @@ let property_name decl =
   in
   match decl with
   | Declaration { property; _ } ->
-      Properties.pp_property ctx property;
+      pp_property ctx property;
       Buffer.contents ctx.buf
   | Custom_declaration { name; _ } -> name
 
@@ -118,386 +166,476 @@ let pp_value : type a. (a kind * a) Pp.t =
  fun ctx (kind, value) ->
   let pp pp_a = pp_a ctx value in
   match kind with
-  | Length -> pp Values.pp_length
-  | Color -> pp Values.pp_color
+  | Length -> pp pp_length
+  | Color -> pp pp_color
   | Int -> pp Pp.int
   | Float -> pp Pp.float
   | String -> pp Pp.string
-  | Shadow -> pp Properties.pp_shadow
-  | Duration -> pp Values.pp_duration
-  | Aspect_ratio -> pp Properties.pp_aspect_ratio
-  | Border_style -> pp Properties.pp_border_style
-  | Font_weight -> pp Properties.pp_font_weight
-  | Font_family -> pp (Pp.list ~sep:Pp.comma Properties.pp_font_family)
-  | Font_feature_settings -> pp Properties.pp_font_feature_settings
-  | Font_variation_settings -> pp Properties.pp_font_variation_settings
-  | Font_variant_numeric -> pp Properties.pp_font_variant_numeric
-  | Font_variant_numeric_token -> pp Properties.pp_font_variant_numeric_token
-  | Blend_mode -> pp Properties.pp_blend_mode
-  | Scroll_snap_strictness -> pp Properties.pp_scroll_snap_strictness
-  | Angle -> pp Values.pp_angle
-  | Box_shadow -> pp Properties.pp_box_shadow
-  | Content -> pp Properties.pp_content
+  | Shadow -> pp pp_shadow
+  | Duration -> pp pp_duration
+  | Aspect_ratio -> pp pp_aspect_ratio
+  | Border_style -> pp pp_border_style
+  | Border -> pp pp_border
+  | Font_weight -> pp pp_font_weight
+  | Font_family -> pp (Pp.list ~sep:Pp.comma pp_font_family)
+  | Font_feature_settings -> pp pp_font_feature_settings
+  | Font_variation_settings -> pp pp_font_variation_settings
+  | Font_variant_numeric -> pp pp_font_variant_numeric
+  | Font_variant_numeric_token -> pp pp_font_variant_numeric_token
+  | Blend_mode -> pp pp_blend_mode
+  | Scroll_snap_strictness -> pp pp_scroll_snap_strictness
+  | Angle -> pp pp_angle
+  | Box_shadow -> pp pp_box_shadow
+  | Content -> pp pp_content
 
-(** Get the value as a string from a declaration *)
 let string_of_value ?(minify = true) decl =
   let ctx = { Pp.minify; indent = 0; buf = Buffer.create 16; inline = false } in
   match decl with
   | Declaration { property; value; _ } ->
-      Properties.pp_property_value ctx (property, value);
+      pp_property_value ctx (property, value);
       Buffer.contents ctx.buf
   | Custom_declaration { kind; value; _ } ->
       pp_value ctx (kind, value);
       Buffer.contents ctx.buf
 
-(** Parse a typed declaration from property name and value strings *)
-let read_typed_declaration name value is_important =
-  try
-    if is_custom_property name then
-      let decl = custom_property name value in
-      Some (if is_important then important decl else decl)
-    else if String.length name > 1 && String.get name 0 = '-' then
-      (* Vendor-prefixed property *)
-      let decl = vendor_property name value in
-      Some (if is_important then important decl else decl)
-    else
-      (* Standard CSS property - use type-driven parsing *)
-      let prop_reader = Reader.of_string name in
-      let (Properties.Prop prop_type) = Properties.read_property prop_reader in
+(* Helper to read a trimmed string *)
+let read_string t = Reader.string ~trim:true t
 
-      let value_reader = Reader.of_string value in
-      let parsed_decl =
-        match prop_type with
-        (* Transform property - needed for optimize tests *)
-        | Properties.Transform ->
-            let original_value = String.trim value in
-            let transforms, error_opt =
-              Reader.many Properties.read_transform value_reader
-            in
-            (* If the original value was non-empty but we got no valid
-               transforms, that's an error *)
-            if String.length original_value > 0 && List.length transforms = 0
-            then
-              match error_opt with
-              | Some msg -> failwith ("invalid transform: " ^ msg)
-              | None -> failwith ("invalid transform value: " ^ original_value)
-            else declaration Properties.Transform transforms
-        | Properties.Background_image ->
-            let images = Properties.read_background_images value_reader in
-            declaration Properties.Background_image images
-        (* Grid properties *)
-        | Properties.Grid_template_columns ->
-            let template = Properties.read_grid_template value_reader in
-            declaration Properties.Grid_template_columns template
-        | Properties.Grid_template_rows ->
-            let template = Properties.read_grid_template value_reader in
-            declaration Properties.Grid_template_rows template
-        | Properties.Grid_row_start ->
-            declaration Properties.Grid_row_start
-              (Properties.read_grid_line value_reader)
-        | Properties.Grid_row_end ->
-            declaration Properties.Grid_row_end
-              (Properties.read_grid_line value_reader)
-        | Properties.Grid_column_start ->
-            declaration Properties.Grid_column_start
-              (Properties.read_grid_line value_reader)
-        | Properties.Grid_column_end ->
-            declaration Properties.Grid_column_end
-              (Properties.read_grid_line value_reader)
-        | Properties.Grid_auto_flow ->
-            declaration Properties.Grid_auto_flow
-              (Properties.read_grid_auto_flow value_reader)
-        | Properties.Grid_template_areas ->
-            declaration Properties.Grid_template_areas (String.trim value)
-        (* Box shadow *)
-        | Properties.Box_shadow ->
-            let shadows = Properties.read_box_shadows value_reader in
-            declaration Properties.Box_shadow shadows
-        | Properties.Text_shadow ->
-            let shadows = Properties.read_text_shadows value_reader in
-            declaration Properties.Text_shadow shadows
-        (* Content *)
-        | Properties.Content ->
-            let content = Properties.read_content value_reader in
-            declaration Properties.Content content
-        (* Color properties *)
-        | Properties.Color ->
-            declaration Properties.Color (Values.read_color value_reader)
-        | Properties.Background ->
-            let background = Properties.read_background value_reader in
-            declaration Properties.Background background
-        | Properties.Background_color ->
-            declaration Properties.Background_color
-              (Values.read_color value_reader)
-        | Properties.Border_color ->
-            declaration Properties.Border_color (Values.read_color value_reader)
-        | Properties.Outline_color ->
-            declaration Properties.Outline_color
-              (Values.read_color value_reader)
-        | Properties.Border_top_color ->
-            declaration Properties.Border_top_color
-              (Values.read_color value_reader)
-        | Properties.Border_right_color ->
-            declaration Properties.Border_right_color
-              (Values.read_color value_reader)
-        | Properties.Border_bottom_color ->
-            declaration Properties.Border_bottom_color
-              (Values.read_color value_reader)
-        | Properties.Border_left_color ->
-            declaration Properties.Border_left_color
-              (Values.read_color value_reader)
-        (* Display and layout *)
-        | Properties.Display ->
-            declaration Properties.Display
-              (Properties.read_display value_reader)
-        | Properties.Position ->
-            declaration Properties.Position
-              (Properties.read_position value_reader)
-        | Properties.Visibility ->
-            declaration Properties.Visibility
-              (Properties.read_visibility value_reader)
-        | Properties.Overflow ->
-            declaration Properties.Overflow
-              (Properties.read_overflow value_reader)
-        | Properties.Overflow_x ->
-            declaration Properties.Overflow_x
-              (Properties.read_overflow value_reader)
-        | Properties.Overflow_y ->
-            declaration Properties.Overflow_y
-              (Properties.read_overflow value_reader)
-        (* Length properties *)
-        | Properties.Width ->
-            declaration Properties.Width (Values.read_length value_reader)
-        | Properties.Height ->
-            declaration Properties.Height (Values.read_length value_reader)
-        | Properties.Min_width ->
-            declaration Properties.Min_width (Values.read_length value_reader)
-        | Properties.Min_height ->
-            declaration Properties.Min_height (Values.read_length value_reader)
-        | Properties.Max_width ->
-            declaration Properties.Max_width (Values.read_length value_reader)
-        | Properties.Max_height ->
-            declaration Properties.Max_height (Values.read_length value_reader)
-        (* Padding/Margin *)
-        | Properties.Padding ->
-            declaration Properties.Padding
-              (Values.read_non_negative_length value_reader)
-        | Properties.Margin ->
-            declaration Properties.Margin
-              (Values.read_margin_shorthand value_reader)
-        | Properties.Gap ->
-            declaration Properties.Gap (Values.read_length value_reader)
-        | Properties.Column_gap ->
-            declaration Properties.Column_gap (Values.read_length value_reader)
-        | Properties.Row_gap ->
-            declaration Properties.Row_gap (Values.read_length value_reader)
-        (* Border styles *)
-        | Properties.Border_style ->
-            declaration Properties.Border_style
-              (Properties.read_border_style value_reader)
-        | Properties.Border_width ->
-            declaration Properties.Border_width
-              (Values.read_length value_reader)
-        | Properties.Border_radius ->
-            declaration Properties.Border_radius
-              (Values.read_length value_reader)
-        | Properties.Border_top_width ->
-            declaration Properties.Border_top_width
-              (Values.read_length value_reader)
-        | Properties.Border_right_width ->
-            declaration Properties.Border_right_width
-              (Values.read_length value_reader)
-        | Properties.Border_bottom_width ->
-            declaration Properties.Border_bottom_width
-              (Values.read_length value_reader)
-        | Properties.Border_left_width ->
-            declaration Properties.Border_left_width
-              (Values.read_length value_reader)
-        (* Typography *)
-        | Properties.Font_size ->
-            declaration Properties.Font_size (Values.read_length value_reader)
-        | Properties.Line_height ->
-            declaration Properties.Line_height
-              (Properties.read_line_height value_reader)
-        | Properties.Font_weight ->
-            declaration Properties.Font_weight
-              (Properties.read_font_weight value_reader)
-        | Properties.Font_style ->
-            declaration Properties.Font_style
-              (Properties.read_font_style value_reader)
-        | Properties.Font_family ->
-            (* Font-family accepts a comma-separated list of font names *)
-            let rec read_families t acc =
-              Reader.ws t;
-              (* Check if it's a quoted string *)
-              let family =
-                match Reader.peek t with
-                | Some ('"' | '\'') ->
-                    (* Read quoted string and preserve quotes in the name *)
-                    let quote = Reader.char t in
-                    let content = Reader.until t quote in
-                    Reader.skip t;
-                    (* skip closing quote *)
-                    (* Store with quotes to preserve them during output *)
-                    Properties.Name
-                      (Printf.sprintf "%c%s%c" quote content quote)
-                | _ ->
-                    (* Read unquoted identifier *)
-                    Properties.read_font_family t
-              in
-              let acc = family :: acc in
-              Reader.ws t;
-              if Reader.peek t = Some ',' then (
-                Reader.skip t;
-                (* skip comma *)
-                read_families t acc)
-              else List.rev acc
-            in
-            let families = read_families value_reader [] in
-            declaration Properties.Font_family families
-        | Properties.Text_align ->
-            declaration Properties.Text_align
-              (Properties.read_text_align value_reader)
-        | Properties.Text_transform ->
-            declaration Properties.Text_transform
-              (Properties.read_text_transform value_reader)
-        | Properties.White_space ->
-            declaration Properties.White_space
-              (Properties.read_white_space value_reader)
-        | Properties.Text_decoration ->
-            declaration Properties.Text_decoration
-              (Properties.read_text_decoration value_reader)
-        | Properties.Transform_origin ->
-            declaration Properties.Transform_origin
-              (Properties.read_transform_origin value_reader)
-        (* Flexbox *)
-        | Properties.Flex_direction ->
-            declaration Properties.Flex_direction
-              (Properties.read_flex_direction value_reader)
-        | Properties.Flex_wrap ->
-            declaration Properties.Flex_wrap
-              (Properties.read_flex_wrap value_reader)
-        | Properties.Flex ->
-            declaration Properties.Flex (Properties.read_flex value_reader)
-        | Properties.Flex_grow ->
-            declaration Properties.Flex_grow (Reader.number value_reader)
-        | Properties.Flex_shrink ->
-            declaration Properties.Flex_shrink (Reader.number value_reader)
-        | Properties.Flex_basis ->
-            declaration Properties.Flex_basis (Values.read_length value_reader)
-        | Properties.Align_items ->
-            declaration Properties.Align_items
-              (Properties.read_align_items value_reader)
-        | Properties.Justify_content ->
-            declaration Properties.Justify_content
-              (Properties.read_justify_content value_reader)
-        (* Other common properties *)
-        | Properties.Z_index ->
-            declaration Properties.Z_index
-              (Properties.read_z_index value_reader)
-        | Properties.Opacity ->
-            let n = Reader.number value_reader in
-            Reader.ws value_reader;
-            if not (Reader.is_done value_reader) then
-              failwith "trailing tokens in opacity";
-            declaration Properties.Opacity n
-        | Properties.Cursor ->
-            declaration Properties.Cursor (Properties.read_cursor value_reader)
-        | Properties.Box_sizing ->
-            declaration Properties.Box_sizing
-              (Properties.read_box_sizing value_reader)
-        | Properties.User_select ->
-            declaration Properties.User_select
-              (Properties.read_user_select value_reader)
-        | Properties.Pointer_events ->
-            declaration Properties.Pointer_events
-              (Properties.read_pointer_events value_reader)
-        | Properties.Resize ->
-            declaration Properties.Resize (Properties.read_resize value_reader)
-        | Properties.Transition ->
-            declaration Properties.Transition
-              (Properties.read_transitions value_reader)
-        | Properties.Animation ->
-            declaration Properties.Animation
-              (Properties.read_animations value_reader)
-        | _ ->
-            (* For unimplemented properties, fall back to string value *)
-            failwith ("Property not yet implemented: " ^ name)
-      in
-      Some (if is_important then important parsed_decl else parsed_decl)
-  with
-  | Reader.Parse_error _ as e ->
-      raise e (* Preserve parse errors with their messages *)
-  | _ -> None
+(* Parse value directly based on property type *)
+let read_value (type a) (prop_type : a property) t : declaration =
+  match prop_type with
+  | Color -> declaration Color (read_color t)
+  | Background_color -> declaration Background_color (read_color t)
+  | Border_color -> declaration Border_color (read_color t)
+  | Outline_color -> declaration Outline_color (read_color t)
+  | Border_top_color -> declaration Border_top_color (read_color t)
+  | Border_right_color -> declaration Border_right_color (read_color t)
+  | Border_bottom_color -> declaration Border_bottom_color (read_color t)
+  | Border_left_color -> declaration Border_left_color (read_color t)
+  (* Length properties *)
+  | Width -> declaration Width (read_length t)
+  | Height -> declaration Height (read_length t)
+  | Min_width -> declaration Min_width (read_length t)
+  | Min_height -> declaration Min_height (read_length t)
+  | Max_width -> declaration Max_width (read_length t)
+  | Max_height -> declaration Max_height (read_length t)
+  | Font_size -> declaration Font_size (read_length t)
+  | Border_radius -> declaration Border_radius (read_length t)
+  | Gap -> declaration Gap (read_length t)
+  | Column_gap -> declaration Column_gap (read_length t)
+  | Row_gap -> declaration Row_gap (read_length t)
+  (* Display and layout *)
+  | Display -> declaration Display (read_display t)
+  | Position -> declaration Position (read_position t)
+  | Visibility -> declaration Visibility (read_visibility t)
+  | Overflow -> declaration Overflow (read_overflow t)
+  | Overflow_x -> declaration Overflow_x (read_overflow t)
+  | Overflow_y -> declaration Overflow_y (read_overflow t)
+  (* Padding/Margin *)
+  | Padding -> declaration Padding (read_non_negative_length t)
+  | Margin -> declaration Margin (read_margin_shorthand t)
+  (* Border styles *)
+  | Border_style -> declaration Border_style (read_border_style t)
+  | Border_width -> declaration Border_width (read_border_width t)
+  | Border_top_width -> declaration Border_top_width (read_border_width t)
+  | Border_right_width -> declaration Border_right_width (read_border_width t)
+  | Border_bottom_width -> declaration Border_bottom_width (read_border_width t)
+  | Border_left_width -> declaration Border_left_width (read_border_width t)
+  (* Typography *)
+  | Line_height -> declaration Line_height (read_line_height t)
+  | Font_weight -> declaration Font_weight (read_font_weight t)
+  | Font_style -> declaration Font_style (read_font_style t)
+  | Font_family ->
+      (* Font-family accepts a comma-separated list *)
+      declaration Font_family (Reader.list ~sep:Reader.comma read_font_family t)
+  | Text_align -> declaration Text_align (read_text_align t)
+  | Text_transform -> declaration Text_transform (read_text_transform t)
+  | White_space -> declaration White_space (read_white_space t)
+  | Text_decoration -> declaration Text_decoration (read_text_decoration t)
+  | Transform_origin -> declaration Transform_origin (read_transform_origin t)
+  (* Flexbox *)
+  | Flex_direction -> declaration Flex_direction (read_flex_direction t)
+  | Flex_wrap -> declaration Flex_wrap (read_flex_wrap t)
+  | Flex -> declaration Flex (read_flex t)
+  | Flex_grow -> declaration Flex_grow (Reader.number t)
+  | Flex_shrink -> declaration Flex_shrink (Reader.number t)
+  | Flex_basis -> declaration Flex_basis (read_length t)
+  | Align_items -> declaration Align_items (read_align_items t)
+  | Justify_content -> declaration Justify_content (read_justify_content t)
+  (* Transform property *)
+  | Transform ->
+      let transforms, error_opt = Reader.many read_transform t in
+      if List.length transforms = 0 then
+        match error_opt with
+        | Some msg -> failwith ("invalid transform: " ^ msg)
+        | None -> failwith "invalid transform value"
+      else declaration Transform transforms
+  (* Webkit Transform *)
+  | Webkit_transform ->
+      let transforms, error_opt = Reader.many read_transform t in
+      if List.length transforms = 0 then
+        match error_opt with
+        | Some msg -> failwith ("invalid webkit-transform: " ^ msg)
+        | None -> failwith "invalid webkit-transform value"
+      else declaration Webkit_transform transforms
+  (* Webkit Transition *)
+  | Webkit_transition -> declaration Webkit_transition (read_transitions t)
+  (* Webkit Filter *)
+  | Webkit_filter -> declaration Webkit_filter (read_filter t)
+  (* Moz Appearance *)
+  | Moz_appearance -> declaration Moz_appearance (read_appearance t)
+  (* Ms Filter *)
+  | Ms_filter -> declaration Ms_filter (read_filter t)
+  (* O Transition *)
+  | O_transition -> declaration O_transition (read_transitions t)
+  (* Filter *)
+  | Filter -> declaration Filter (read_filter t)
+  (* Appearance *)
+  | Appearance -> declaration Appearance (read_appearance t)
+  (* Background *)
+  | Background_image ->
+      let images = read_background_images t in
+      declaration Background_image images
+  | Background -> declaration Background (read_background t)
+  | Border -> declaration Border (read_border t)
+  (* Grid properties *)
+  | Grid_template_columns ->
+      declaration Grid_template_columns (read_grid_template t)
+  | Grid_template_rows -> declaration Grid_template_rows (read_grid_template t)
+  | Grid_row_start -> declaration Grid_row_start (read_grid_line t)
+  | Grid_row_end -> declaration Grid_row_end (read_grid_line t)
+  | Grid_column_start -> declaration Grid_column_start (read_grid_line t)
+  | Grid_column_end -> declaration Grid_column_end (read_grid_line t)
+  | Grid_auto_flow -> declaration Grid_auto_flow (read_grid_auto_flow t)
+  | Grid_template_areas -> declaration Grid_template_areas (read_string t)
+  (* Shadows *)
+  | Box_shadow -> declaration Box_shadow (read_box_shadows t)
+  | Text_shadow -> declaration Text_shadow (read_text_shadows t)
+  (* Content *)
+  | Content -> declaration Content (read_content t)
+  (* Other properties *)
+  | Z_index -> declaration Z_index (read_z_index t)
+  | Opacity ->
+      let n = Reader.number t in
+      declaration Opacity n
+  | Cursor -> declaration Cursor (read_cursor t)
+  | Box_sizing -> declaration Box_sizing (read_box_sizing t)
+  | User_select -> declaration User_select (read_user_select t)
+  | Pointer_events -> declaration Pointer_events (read_pointer_events t)
+  | Resize -> declaration Resize (read_resize t)
+  | Transition -> declaration Transition (read_transitions t)
+  | Animation -> declaration Animation (read_animations t)
+  (* Border style properties *)
+  | Border_top_style -> declaration Border_top_style (read_border_style t)
+  | Border_right_style -> declaration Border_right_style (read_border_style t)
+  | Border_bottom_style -> declaration Border_bottom_style (read_border_style t)
+  | Border_left_style -> declaration Border_left_style (read_border_style t)
+  (* Additional margin/padding properties *)
+  | Padding_left -> declaration Padding_left (read_non_negative_length t)
+  | Padding_right -> declaration Padding_right (read_non_negative_length t)
+  | Padding_top -> declaration Padding_top (read_non_negative_length t)
+  | Padding_bottom -> declaration Padding_bottom (read_non_negative_length t)
+  | Padding_inline -> declaration Padding_inline (read_non_negative_length t)
+  | Padding_inline_start ->
+      declaration Padding_inline_start (read_non_negative_length t)
+  | Padding_inline_end ->
+      declaration Padding_inline_end (read_non_negative_length t)
+  | Padding_block -> declaration Padding_block (read_non_negative_length t)
+  | Margin_left -> declaration Margin_left (read_margin_shorthand t)
+  | Margin_right -> declaration Margin_right (read_margin_shorthand t)
+  | Margin_top -> declaration Margin_top (read_margin_shorthand t)
+  | Margin_bottom -> declaration Margin_bottom (read_margin_shorthand t)
+  | Margin_inline -> declaration Margin_inline (read_margin_shorthand t)
+  | Margin_inline_end -> declaration Margin_inline_end (read_margin_shorthand t)
+  | Margin_block -> declaration Margin_block (read_margin_shorthand t)
+  (* Additional color properties *)
+  | Text_decoration_color -> declaration Text_decoration_color (read_color t)
+  (* Text decoration style *)
+  | Text_decoration_style ->
+      declaration Text_decoration_style (read_text_decoration_style t)
+  | Text_underline_offset -> declaration Text_underline_offset (read_string t)
+  | Letter_spacing -> declaration Letter_spacing (read_length t)
+  (* List properties *)
+  | List_style_type -> declaration List_style_type (read_list_style_type t)
+  | List_style_position ->
+      declaration List_style_position (read_list_style_position t)
+  | List_style_image -> declaration List_style_image (read_list_style_image t)
+  (* Flexbox order *)
+  | Order -> declaration Order (int_of_float (Reader.number t))
+  (* Justify properties *)
+  | Justify_items -> declaration Justify_items (read_justify t)
+  | Justify_self -> declaration Justify_self (read_justify t)
+  (* Align content *)
+  | Align_content -> declaration Align_content (read_align t)
+  | Align_self -> declaration Align_self (read_align_self t)
+  (* Place properties *)
+  | Place_content -> declaration Place_content (read_place_content t)
+  | Place_items -> declaration Place_items (read_place_items t)
+  | Place_self -> declaration Place_self (read_align_self t)
+  (* Additional grid properties *)
+  | Grid_template -> declaration Grid_template (read_grid_template t)
+  | Grid_area -> declaration Grid_area (read_string t)
+  | Grid_auto_columns -> declaration Grid_auto_columns (read_grid_template t)
+  | Grid_auto_rows -> declaration Grid_auto_rows (read_grid_template t)
+  | Grid_column -> declaration Grid_column (read_string t)
+  | Grid_row -> declaration Grid_row (read_string t)
+  (* Border inline/block properties *)
+  | Border_inline_start_width ->
+      declaration Border_inline_start_width (read_border_width t)
+  | Border_inline_end_width ->
+      declaration Border_inline_end_width (read_border_width t)
+  | Border_inline_start_color ->
+      declaration Border_inline_start_color (read_color t)
+  | Border_inline_end_color ->
+      declaration Border_inline_end_color (read_color t)
+  (* Position properties *)
+  | Top -> declaration Top (read_length t)
+  | Right -> declaration Right (read_length t)
+  | Bottom -> declaration Bottom (read_length t)
+  | Left -> declaration Left (read_length t)
+  (* Outline properties *)
+  | Outline -> declaration Outline (read_string t)
+  | Outline_style -> declaration Outline_style (read_outline_style t)
+  | Outline_width -> declaration Outline_width (read_length t)
+  | Outline_offset -> declaration Outline_offset (read_length t)
+  (* Forced color adjust *)
+  | Forced_color_adjust ->
+      declaration Forced_color_adjust (read_forced_color_adjust t)
+  (* Scroll snap *)
+  | Scroll_snap_type -> declaration Scroll_snap_type (read_scroll_snap_type t)
+  (* Tab size *)
+  | Tab_size -> declaration Tab_size (int_of_float (Reader.number t))
+  (* Webkit properties *)
+  | Webkit_text_size_adjust ->
+      declaration Webkit_text_size_adjust (read_text_size_adjust t)
+  | Webkit_tap_highlight_color ->
+      declaration Webkit_tap_highlight_color (read_color t)
+  | Webkit_text_decoration ->
+      declaration Webkit_text_decoration (read_text_decoration t)
+  | Webkit_text_decoration_color ->
+      declaration Webkit_text_decoration_color (read_color t)
+  | Webkit_appearance ->
+      declaration Webkit_appearance (read_webkit_appearance t)
+  | Webkit_font_smoothing ->
+      declaration Webkit_font_smoothing (read_webkit_font_smoothing t)
+  | Webkit_line_clamp ->
+      declaration Webkit_line_clamp (int_of_float (Reader.number t))
+  | Webkit_box_orient ->
+      declaration Webkit_box_orient (read_webkit_box_orient t)
+  | Webkit_hyphens -> declaration Webkit_hyphens (read_hyphens t)
+  (* Font properties *)
+  | Font_feature_settings ->
+      declaration Font_feature_settings (read_font_feature_settings t)
+  | Font_variation_settings ->
+      declaration Font_variation_settings (read_font_variation_settings t)
+  | Font_stretch -> declaration Font_stretch (read_font_stretch t)
+  | Font_variant_numeric ->
+      declaration Font_variant_numeric (read_font_variant_numeric t)
+  | Font -> declaration Font (read_string t)
+  (* Text properties *)
+  | Text_indent -> declaration Text_indent (read_length t)
+  | Text_overflow -> declaration Text_overflow (read_text_overflow t)
+  | Text_wrap -> declaration Text_wrap (read_text_wrap t)
+  | Text_decoration_thickness ->
+      declaration Text_decoration_thickness (read_length t)
+  | Text_size_adjust -> declaration Text_size_adjust (read_string t)
+  | Text_decoration_skip_ink ->
+      declaration Text_decoration_skip_ink (read_text_decoration_skip_ink t)
+  (* Word/text breaking *)
+  | Word_break -> declaration Word_break (read_word_break t)
+  | Overflow_wrap -> declaration Overflow_wrap (read_overflow_wrap t)
+  | Hyphens -> declaration Hyphens (read_hyphens t)
+  | Word_spacing -> declaration Word_spacing (read_length t)
+  (* List style *)
+  | List_style -> declaration List_style (read_string t)
+  (* Container properties *)
+  | Container_type -> declaration Container_type (read_container_type t)
+  | Container_name -> declaration Container_name (read_string t)
+  (* Transform properties *)
+  | Perspective -> declaration Perspective (read_length t)
+  | Perspective_origin -> declaration Perspective_origin (read_string t)
+  | Transform_style -> declaration Transform_style (read_transform_style t)
+  | Backface_visibility ->
+      declaration Backface_visibility (read_backface_visibility t)
+  | Rotate -> declaration Rotate (read_angle t)
+  | Scale -> declaration Scale (read_scale t)
+  (* Object properties *)
+  | Object_position -> declaration Object_position (read_position_2d t)
+  | Object_fit -> declaration Object_fit (read_object_fit t)
+  (* Transition properties *)
+  | Transition_duration -> declaration Transition_duration (read_duration t)
+  | Transition_timing_function ->
+      declaration Transition_timing_function (read_timing_function t)
+  | Transition_delay -> declaration Transition_delay (read_duration t)
+  (* Will change *)
+  | Will_change -> declaration Will_change (read_string t)
+  (* Contain and isolation *)
+  | Contain -> declaration Contain (read_contain t)
+  | Isolation -> declaration Isolation (read_isolation t)
+  (* Background properties *)
+  | Background_attachment ->
+      declaration Background_attachment (read_background_attachment t)
+  | Background_position ->
+      declaration Background_position
+        (Reader.list ~sep:Reader.comma read_position_2d t)
+  | Background_repeat ->
+      declaration Background_repeat (read_background_repeat t)
+  | Background_size -> declaration Background_size (read_background_size t)
+  | Background_blend_mode ->
+      declaration Background_blend_mode
+        (Reader.list ~sep:Reader.comma read_blend_mode t)
+  (* Border shorthands *)
+  | Border_top -> declaration Border_top (read_string t)
+  | Border_right -> declaration Border_right (read_string t)
+  | Border_bottom -> declaration Border_bottom (read_string t)
+  | Border_left -> declaration Border_left (read_string t)
+  | Border_spacing -> declaration Border_spacing (read_length t)
+  | Border_collapse -> declaration Border_collapse (read_border_collapse t)
+  (* Clip and mask *)
+  | Clip_path -> declaration Clip_path (read_string t)
+  | Mask -> declaration Mask (read_string t)
+  | Clip -> declaration Clip (read_string t)
+  (* Content visibility *)
+  | Content_visibility ->
+      declaration Content_visibility (read_content_visibility t)
+  (* Aspect ratio *)
+  | Aspect_ratio -> declaration Aspect_ratio (read_aspect_ratio t)
+  (* Vertical align *)
+  | Vertical_align -> declaration Vertical_align (read_vertical_align t)
+  (* Moz properties *)
+  | Moz_osx_font_smoothing ->
+      declaration Moz_osx_font_smoothing (read_moz_osx_font_smoothing t)
+  (* Backdrop filter *)
+  | Backdrop_filter -> declaration Backdrop_filter (read_filter t)
+  (* Scroll properties *)
+  | Scroll_snap_align ->
+      declaration Scroll_snap_align (read_scroll_snap_align t)
+  | Scroll_snap_stop -> declaration Scroll_snap_stop (read_scroll_snap_stop t)
+  | Scroll_behavior -> declaration Scroll_behavior (read_scroll_behavior t)
+  | Scroll_margin -> declaration Scroll_margin (read_length t)
+  | Scroll_margin_top -> declaration Scroll_margin_top (read_length t)
+  | Scroll_margin_right -> declaration Scroll_margin_right (read_length t)
+  | Scroll_margin_bottom -> declaration Scroll_margin_bottom (read_length t)
+  | Scroll_margin_left -> declaration Scroll_margin_left (read_length t)
+  | Scroll_padding -> declaration Scroll_padding (read_length t)
+  | Scroll_padding_top -> declaration Scroll_padding_top (read_length t)
+  | Scroll_padding_right -> declaration Scroll_padding_right (read_length t)
+  | Scroll_padding_bottom -> declaration Scroll_padding_bottom (read_length t)
+  | Scroll_padding_left -> declaration Scroll_padding_left (read_length t)
+  | Overscroll_behavior ->
+      declaration Overscroll_behavior (read_overscroll_behavior t)
+  | Overscroll_behavior_x ->
+      declaration Overscroll_behavior_x (read_overscroll_behavior t)
+  | Overscroll_behavior_y ->
+      declaration Overscroll_behavior_y (read_overscroll_behavior t)
+  (* Quotes *)
+  | Quotes -> declaration Quotes (read_string t)
+  (* Touch action *)
+  | Touch_action -> declaration Touch_action (read_touch_action t)
+  (* Clear and float *)
+  | Clear -> declaration Clear (read_clear t)
+  | Float -> declaration Float (read_float_side t)
+  (* SVG properties *)
+  | Fill -> declaration Fill (read_svg_paint t)
+  | Stroke -> declaration Stroke (read_svg_paint t)
+  | Stroke_width -> declaration Stroke_width (read_length t)
+  (* Direction and writing *)
+  | Direction -> declaration Direction (read_direction t)
+  | Unicode_bidi -> declaration Unicode_bidi (read_unicode_bidi t)
+  | Writing_mode -> declaration Writing_mode (read_writing_mode t)
+  (* Animation properties *)
+  | Animation_name -> declaration Animation_name (read_string t)
+  | Animation_duration -> declaration Animation_duration (read_duration t)
+  | Animation_timing_function ->
+      declaration Animation_timing_function (read_timing_function t)
+  | Animation_delay -> declaration Animation_delay (read_duration t)
+  | Animation_iteration_count ->
+      declaration Animation_iteration_count (read_animation_iteration_count t)
+  | Animation_direction ->
+      declaration Animation_direction (read_animation_direction t)
+  | Animation_fill_mode ->
+      declaration Animation_fill_mode (read_animation_fill_mode t)
+  | Animation_play_state ->
+      declaration Animation_play_state (read_animation_play_state t)
+  (* Color properties *)
+  | Accent_color -> declaration Accent_color (read_color t)
+  | Caret_color -> declaration Caret_color (read_color t)
+  (* Mix blend mode *)
+  | Mix_blend_mode -> declaration Mix_blend_mode (read_blend_mode t)
+  (* Table layout *)
+  | Table_layout -> declaration Table_layout (read_table_layout t)
 
-(** Parse a single declaration from a reader stream *)
-let rec read_declaration t : declaration option =
+(** Parse a single declaration directly from stream - no string roundtrips *)
+let read_declaration t : declaration option =
   Reader.ws t;
   match Reader.peek t with
   | Some '}' | None -> None
   | _ -> (
-      let name = read_property_name t in
-      Reader.ws t;
-      Reader.expect ':' t;
-      Reader.ws t;
-
-      (* For now we still need to read value as string for custom/vendor properties *)
-      (* TODO: refactor to parse directly from stream *)
-      let value_str = read_property_value t in
-
-      (* Parse the declaration based on property type *)
       try
-        let is_important = read_importance t in
-        Reader.ws t;
-        (* Check for duplicate !important *)
-        (match Reader.peek t with
-        | Some '!' -> Reader.err_invalid t "duplicate !important"
-        | _ -> ());
-        (* Skip optional semicolon *)
-        ignore
-          (Reader.peek t = Some ';'
-          &&
-          (Reader.expect ';' t;
-           true));
-        if is_custom_property name then
+        (* Check if this is a custom property (starts with --) *)
+        if Reader.looking_at t "--" then (
+          let name = read_property_name t in
+          Reader.ws t;
+          Reader.expect ':' t;
+          Reader.ws t;
+          let value_str = read_property_value t in
+          let is_important = read_importance t in
           let decl = custom_property name value_str in
-          Some (if is_important then important decl else decl)
-        else if String.length name > 1 && String.get name 0 = '-' then
-          (* Vendor-prefixed property *)
-          let decl = vendor_property name value_str in
-          Some (if is_important then important decl else decl)
+          Some (if is_important then important decl else decl))
         else
-          (* Standard CSS property - parse from string for now *)
-          (* This is inefficient but maintains compatibility *)
-          match read_typed_declaration name value_str is_important with
-          | Some decl -> Some decl
-          | None ->
-              let vtrim = String.trim value_str |> String.lowercase_ascii in
-              let is_css_wide =
-                vtrim = "inherit" || vtrim = "initial" || vtrim = "unset"
-                || vtrim = "revert" || vtrim = "revert-layer"
-              in
-              if is_css_wide then
-                let decl = custom_declaration name String vtrim in
-                Some (if is_important then important decl else decl)
-              else
-                Reader.err_invalid t
-                  ("property '" ^ name ^ "' (parse error or unknown)")
+          let (Prop prop_type) = read_property t in
+          Reader.ws t;
+          Reader.expect ':' t;
+          Reader.ws t;
+
+          let decl = read_value prop_type t in
+          let is_important = read_importance t in
+          Reader.ws t;
+          (match Reader.peek t with
+          | Some '!' -> Reader.err_invalid t "duplicate !important"
+          | _ -> ());
+          Some (if is_important then important decl else decl)
       with
       | Reader.Parse_error (msg, _, _) ->
-          (* Re-raise with more context about which property failed *)
-          Reader.err_invalid t (Printf.sprintf "property '%s': %s" name msg)
+          (* Re-raise with more context *)
+          Reader.err_invalid t (Printf.sprintf "declaration parsing: %s" msg)
+      | Failure msg ->
+          (* Handle property parsing errors *)
+          Reader.err_invalid t msg
       | _ -> None)
 
-and read_declarations t =
+let read_declarations t =
   let rec loop acc =
-    match read_declaration t with
-    | None -> List.rev acc
-    | Some decl -> loop (decl :: acc)
+    Reader.ws t;
+    match Reader.peek t with
+    | Some '}' | None -> List.rev acc
+    | _ -> (
+        match read_declaration t with
+        | None -> List.rev acc
+        | Some decl -> (
+            let acc = decl :: acc in
+            (* After reading a declaration, check for proper separation *)
+            Reader.ws t;
+            match Reader.peek t with
+            | Some '}' -> List.rev acc (* End of block, no semicolon needed *)
+            | Some ';' ->
+                Reader.expect ';' t;
+                loop acc
+            | None -> List.rev acc (* End of input *)
+            | _ ->
+                (* Check if we have more tokens that look like a new
+                   declaration *)
+                if
+                  Reader.is_ident_start
+                    (Option.value (Reader.peek t) ~default:' ')
+                then Reader.err t "missing semicolon between declarations"
+                else
+                  (* Some other character - let the next iteration handle it *)
+                  List.rev acc))
   in
   loop []
 
-and read_block t =
+let read_block t =
   Reader.ws t;
   Reader.expect '{' t;
   Reader.ws t;
@@ -510,10 +648,10 @@ and read_block t =
 let pp_declaration : declaration Pp.t =
  fun ctx -> function
   | Declaration { property; value; important } ->
-      Properties.pp_property ctx property;
+      pp_property ctx property;
       Pp.string ctx ":";
       Pp.space_if_pretty ctx ();
-      Properties.pp_property_value ctx (property, value);
+      pp_property_value ctx (property, value);
       if important then
         Pp.string ctx (if ctx.minify then "!important" else " !important")
   | Custom_declaration { name; kind; value; important; _ } ->
@@ -523,16 +661,26 @@ let pp_declaration : declaration Pp.t =
       (* Pretty-print custom property value by kind *)
       (match kind with
       | String -> Pp.string ctx value
-      | Length -> Values.pp_length ctx value
-      | Color -> Values.pp_color ctx value
+      | Length -> pp_length ctx value
+      | Color -> pp_color ctx value
       | Int -> Pp.int ctx value
       | Float -> Pp.float ctx value
-      | Duration -> Values.pp_duration ctx value
-      | Angle -> Values.pp_angle ctx value
-      | Shadow -> Properties.pp_shadow ctx value
-      | Box_shadow -> Properties.pp_box_shadow ctx value
-      | Content -> Properties.pp_content ctx value
-      | _ -> Pp.string ctx "");
+      | Duration -> pp_duration ctx value
+      | Angle -> pp_angle ctx value
+      | Shadow -> pp_shadow ctx value
+      | Box_shadow -> pp_box_shadow ctx value
+      | Content -> pp_content ctx value
+      | Font_family -> Pp.list ~sep:Pp.comma pp_font_family ctx value
+      | Font_weight -> pp_font_weight ctx value
+      | Font_feature_settings -> pp_font_feature_settings ctx value
+      | Font_variation_settings -> pp_font_variation_settings ctx value
+      | Font_variant_numeric -> pp_font_variant_numeric ctx value
+      | Font_variant_numeric_token -> pp_font_variant_numeric_token ctx value
+      | Border_style -> pp_border_style ctx value
+      | Border -> pp_border ctx value
+      | Blend_mode -> pp_blend_mode ctx value
+      | Scroll_snap_strictness -> pp_scroll_snap_strictness ctx value
+      | Aspect_ratio -> pp_aspect_ratio ctx value);
       if important then
         Pp.string ctx (if ctx.minify then "!important" else " !important")
 
@@ -600,17 +748,17 @@ let grid_column_end value = declaration Grid_column_end value
 
 let grid_row (start, end_) =
   let pp ctx () =
-    Properties.pp_grid_line ctx start;
+    pp_grid_line ctx start;
     Pp.string ctx " / ";
-    Properties.pp_grid_line ctx end_
+    pp_grid_line ctx end_
   in
   declaration Grid_row (Pp.to_string pp ())
 
 let grid_column (start, end_) =
   let pp ctx () =
-    Properties.pp_grid_line ctx start;
+    pp_grid_line ctx start;
     Pp.string ctx " / ";
-    Properties.pp_grid_line ctx end_
+    pp_grid_line ctx end_
   in
   declaration Grid_column (Pp.to_string pp ())
 
@@ -719,7 +867,15 @@ let aspect_ratio v = declaration Aspect_ratio v
 let filter value = declaration Filter value
 let word_spacing value = declaration Word_spacing value
 let quotes value = declaration Quotes value
-let border value = declaration Border value
+
+let border ?width ?style ?color () =
+  let border_value : border =
+    match (width, style, color) with
+    | None, None, None -> None
+    | _ -> Border { width; style; color }
+  in
+  declaration Border border_value
+
 let tab_size value = declaration Tab_size value
 let webkit_text_size_adjust value = declaration Webkit_text_size_adjust value
 let font_feature_settings value = declaration Font_feature_settings value

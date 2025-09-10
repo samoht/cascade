@@ -17,9 +17,11 @@ type border_style =
 
 type line_height =
   | Normal
-  | Length of length
-  | Number of float
-  | Percentage of float
+  | Px of float
+  | Rem of float
+  | Em of float
+  | Pct of float
+  | Num of float
   | Inherit
   | Var of line_height var
 
@@ -56,6 +58,7 @@ type display =
   | List_item
   | Contents
   | Webkit_box
+  | Inherit
 
 type position = Static | Relative | Absolute | Fixed | Sticky
 type visibility = Visible | Hidden | Collapse
@@ -124,14 +127,88 @@ type justify =
   | Baseline
   | Inherit
 
+type flex_basis =
+  | Auto
+  | Content
+  | Px of float
+  | Cm of float
+  | Mm of float
+  | Q of float
+  | In of float
+  | Pt of float
+  | Pc of float
+  | Rem of float
+  | Em of float
+  | Ex of float
+  | Cap of float
+  | Ic of float
+  | Rlh of float
+  | Pct of float
+  | Vw of float
+  | Vh of float
+  | Vmin of float
+  | Vmax of float
+  | Vi of float
+  | Vb of float
+  | Dvh of float
+  | Dvw of float
+  | Dvmin of float
+  | Dvmax of float
+  | Lvh of float
+  | Lvw of float
+  | Lvmin of float
+  | Lvmax of float
+  | Svh of float
+  | Svw of float
+  | Svmin of float
+  | Svmax of float
+  | Ch of float
+  | Lh of float
+  | Num of float
+  | Zero
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Fit_content
+  | Max_content
+  | Min_content
+  | From_font
+  | Var of flex_basis var
+  | Calc of flex_basis calc
+
+type border_width =
+  | Thin
+  | Medium
+  | Thick
+  | Px of float
+  | Rem of float
+  | Em of float
+  | Ch of float
+  | Vh of float
+  | Vw of float
+  | Vmin of float
+  | Vmax of float
+  | Pct of float
+  | Zero
+  | Auto
+  | Max_content
+  | Min_content
+  | Fit_content
+  | From_font
+  | Calc of border_width calc
+  | Var of border_width var
+  | Inherit
+
 type flex =
   | Initial (* 0 1 auto *)
   | Auto (* 1 1 auto *)
   | None (* 0 0 auto *)
   | Grow of float (* Single grow value *)
-  | Basis of length (* 1 1 <length> *)
+  | Basis of flex_basis (* 1 1 <flex-basis> *)
   | Grow_shrink of float * float (* grow shrink 0% *)
-  | Full of float * float * length (* grow shrink basis *)
+  | Full of float * float * flex_basis (* grow shrink basis *)
 
 type place_content =
   | Normal
@@ -170,7 +247,7 @@ type grid_template =
   | Subgrid
   | Masonry
 
-type grid_line = Auto | Number of int | Name of string | Span of int
+type grid_line = Auto | Num of int | Name of string | Span of int
 type aspect_ratio = Auto | Ratio of float * float | Inherit
 type font_style = Normal | Italic | Oblique | Inherit
 type text_align = Left | Right | Center | Justify | Start | End | Inherit
@@ -243,12 +320,23 @@ type vertical_align =
   | Text_bottom
   | Sub
   | Super
-  | Length of length
-  | Percentage of float
+  | Px of float
+  | Rem of float
+  | Em of float
+  | Pct of float
   | Inherit
 
 (* Border Types *)
 type border_collapse = Collapse | Separate | Inherit
+
+(* Border shorthand type *)
+type border_shorthand = {
+  width : border_width option;
+  style : border_style option;
+  color : color option;
+}
+
+type border = Inherit | Initial | None | Border of border_shorthand
 
 type outline_style =
   | None
@@ -458,7 +546,7 @@ type transform_style = Flat | Preserve_3d | Inherit
 type backface_visibility = Visible | Hidden | Inherit
 
 type scale =
-  | Number of float
+  | X of float
   | XY of float * float
   | XYZ of float * float * float
   | None
@@ -489,7 +577,7 @@ type transition = {
 
 type animation_direction = Normal | Reverse | Alternate | Alternate_reverse
 type animation_fill_mode = None | Forwards | Backwards | Both
-type animation_iteration_count = Number of float | Infinite
+type animation_iteration_count = Num of float | Infinite
 type animation_play_state = Running | Paused
 
 type animation = {
@@ -590,8 +678,12 @@ type background_size =
   | Auto
   | Cover
   | Contain
-  | Length of length
-  | Percentage of float
+  | Px of float
+  | Rem of float
+  | Em of float
+  | Pct of float
+  | Vw of float
+  | Vh of float
   | Size of length * length
   | Inherit
 
@@ -624,8 +716,12 @@ type position_component =
   | Right
   | Top
   | Bottom
-  | Length of length
-  | Percentage of float
+  | Px of float
+  | Rem of float
+  | Em of float
+  | Pct of float
+  | Vw of float
+  | Vh of float
 
 type position_2d =
   | Center
@@ -797,6 +893,7 @@ type webkit_font_smoothing =
 
 type moz_osx_font_smoothing = Auto | Grayscale | Inherit
 type webkit_box_orient = Horizontal | Vertical | Inherit
+type text_size_adjust = None | Auto | Pct of float | Inherit
 
 (* Other Types *)
 type forced_color_adjust = Auto | None | Inherit
@@ -894,13 +991,13 @@ type 'a property =
   | Grid_column_end : grid_line property
   | Grid_row_start : grid_line property
   | Grid_row_end : grid_line property
-  | Border_width : length property
-  | Border_top_width : length property
-  | Border_right_width : length property
-  | Border_bottom_width : length property
-  | Border_left_width : length property
-  | Border_inline_start_width : length property
-  | Border_inline_end_width : length property
+  | Border_width : border_width property
+  | Border_top_width : border_width property
+  | Border_right_width : border_width property
+  | Border_bottom_width : border_width property
+  | Border_left_width : border_width property
+  | Border_inline_start_width : border_width property
+  | Border_inline_end_width : border_width property
   | Border_radius : length property
   | Border_top_color : color property
   | Border_right_color : color property
@@ -931,10 +1028,10 @@ type 'a property =
   | Forced_color_adjust : forced_color_adjust property
   | Scroll_snap_type : scroll_snap_type property
   | White_space : white_space property
-  | Border : string property
+  | Border : border property
   | Background : background property
   | Tab_size : int property
-  | Webkit_text_size_adjust : string property
+  | Webkit_text_size_adjust : text_size_adjust property
   | Font_feature_settings : font_feature_settings property
   | Font_variation_settings : font_variation_settings property
   | Webkit_tap_highlight_color : color property
@@ -944,6 +1041,12 @@ type 'a property =
   | List_style : string property
   | Font : string property
   | Webkit_appearance : webkit_appearance property
+  | Webkit_transform : transform list property
+  | Webkit_transition : transition list property
+  | Webkit_filter : filter property
+  | Moz_appearance : appearance property
+  | Ms_filter : filter property
+  | O_transition : transition list property
   | Container_type : container_type property
   | Container_name : string property
   | Perspective : length property

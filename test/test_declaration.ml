@@ -101,8 +101,7 @@ let test_declaration_vendor_prefixes () =
     "-webkit-transform: rotate(45deg);";
   check_declaration ~expected:"-moz-appearance:none" "-moz-appearance: none;";
   check_declaration ~expected:"-ms-filter:blur(5px)" "-ms-filter: blur(5px);";
-  check_declaration ~expected:"-o-transition:all 0.3s"
-    "-o-transition: all 0.3s;"
+  check_declaration ~expected:"-o-transition:all .3s" "-o-transition: all 0.3s;"
 
 let test_declaration_multiple () =
   (* Basic multiple declarations *)
@@ -677,7 +676,7 @@ let test_declaration_grid () =
 let test_declaration_misc () =
   (* Opacity *)
   check_declaration ~expected:"opacity:0" "opacity: 0";
-  check_declaration ~expected:"opacity:0.5" "opacity: 0.5";
+  check_declaration ~expected:"opacity:.5" "opacity: 0.5";
   check_declaration ~expected:"opacity:1" "opacity: 1";
 
   (* Z-index *)
@@ -727,19 +726,19 @@ let test_declaration_misc () =
 let test_declaration_list_properties () =
   (* Box shadow *)
   check_declaration ~expected:"box-shadow:none" "box-shadow: none";
-  check_declaration ~expected:"box-shadow:0 1px 3px rgba(0,0,0,0.12)"
+  check_declaration ~expected:"box-shadow:0 1px 3px rgb(0 0 0/.12)"
     "box-shadow: 0 1px 3px rgba(0,0,0,0.12)";
   check_declaration
-    ~expected:"box-shadow:0 1px 3px rgba(0,0,0,0.12),0 1px 2px rgba(0,0,0,0.24)"
+    ~expected:"box-shadow:0 1px 3px rgb(0 0 0/.12),0 1px 2px rgb(0 0 0/.24)"
     "box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)";
-  check_declaration ~expected:"box-shadow:inset 0 2px 4px rgba(0,0,0,0.06)"
+  check_declaration ~expected:"box-shadow:0 2px 4px rgb(0 0 0/.06)"
     "box-shadow: inset 0 2px 4px rgba(0,0,0,0.06)";
 
   (* Text shadow *)
   check_declaration ~expected:"text-shadow:none" "text-shadow: none";
   check_declaration ~expected:"text-shadow:1px 1px 2px black"
     "text-shadow: 1px 1px 2px black";
-  check_declaration ~expected:"text-shadow:0 0 10px blue, 0 0 20px red"
+  check_declaration ~expected:"text-shadow:0 0 10px blue,0 0 20px red"
     "text-shadow: 0 0 10px blue, 0 0 20px red";
 
   (* Background image *)
@@ -747,23 +746,23 @@ let test_declaration_list_properties () =
   check_declaration ~expected:"background-image:url(image.png)"
     "background-image: url(image.png)";
   check_declaration
-    ~expected:"background-image:linear-gradient(to right, red, blue)"
+    ~expected:"background-image:linear-gradient(to right,red,blue)"
     "background-image: linear-gradient(to right, red, blue)";
-  check_declaration ~expected:"background-image:url(a.png), url(b.png)"
+  check_declaration ~expected:"background-image:url(a.png),url(b.png)"
     "background-image: url(a.png), url(b.png)";
 
   (* Transition *)
   check_declaration ~expected:"transition:none" "transition: none";
-  check_declaration ~expected:"transition:all 0.3s ease"
+  check_declaration ~expected:"transition:all .3s ease"
     "transition: all 0.3s ease";
-  check_declaration ~expected:"transition:opacity 0.3s, transform 0.3s"
+  check_declaration ~expected:"transition:opacity .3s,transform .3s"
     "transition: opacity 0.3s, transform 0.3s";
 
   (* Animation *)
   check_declaration ~expected:"animation:none" "animation: none";
   check_declaration ~expected:"animation:spin 1s linear infinite"
     "animation: spin 1s linear infinite";
-  check_declaration ~expected:"animation:slide 0.5s ease-out"
+  check_declaration ~expected:"animation:slide .5s ease-out"
     "animation: slide 0.5s ease-out"
 
 let test_declaration_custom_properties () =
@@ -810,7 +809,7 @@ let test_declaration_important () =
   (* Invalid/dangling/duplicate !important should be rejected *)
   let neg input label =
     let r = Css.Reader.of_string input in
-    let got = Css.Reader.try_parse Css.Declaration.read_declaration r in
+    let got = Css.Reader.option Css.Declaration.read_declaration r in
     check bool label true (Option.is_none got)
   in
   neg "color: red !;" "dangling bang";
@@ -824,7 +823,7 @@ let test_declaration_important () =
 let test_declaration_invalid () =
   let neg input label =
     let r = Css.Reader.of_string input in
-    let got = Css.Reader.try_parse Css.Declaration.read_declaration r in
+    let got = Css.Reader.option Css.Declaration.read_declaration r in
     check bool label true (Option.is_none got)
   in
   (* Invalid property names *)
@@ -859,8 +858,8 @@ let test_declaration_edge_cases () =
   in
   check_declaration
     ~expected:
-      "box-shadow:0 1px 2px rgba(0,0,0,0.1),0 2px 4px rgba(0,0,0,0.1),0 4px \
-       8px rgba(0,0,0,0.1),0 8px 16px rgba(0,0,0,0.1)"
+      "box-shadow:0 1px 2px rgb(0 0 0/.1),0 2px 4px rgb(0 0 0/.1),0 4px 8px \
+       rgb(0 0 0/.1),0 8px 16px rgb(0 0 0/.1)"
     ("box-shadow: " ^ long_shadow)
 
 let test_declaration_css_wide_keywords () =
@@ -884,27 +883,27 @@ let test_declaration_unit_case () =
 
 let test_declaration_number_formats () =
   (* Leading dot numbers are valid; scientific notation is not *)
-  check_declaration ~expected:"opacity:0.5" "opacity: .5";
+  check_declaration ~expected:"opacity:.5" "opacity: .5";
   let r = Css.Reader.of_string "opacity: 1e2;" in
-  let got = Css.Reader.try_parse Css.Declaration.read_declaration r in
+  let got = Css.Reader.option Css.Declaration.read_declaration r in
   check bool "scientific notation invalid" true (Option.is_none got)
 
 let test_declaration_unterminated () =
   (* Unterminated string *)
   let r1 = Css.Reader.of_string "content: \"abc" in
-  let got1 = Css.Reader.try_parse Css.Declaration.read_declaration r1 in
+  let got1 = Css.Reader.option Css.Declaration.read_declaration r1 in
   check bool "unterminated string" true (Option.is_none got1);
   (* Unterminated calc *)
   let r2 = Css.Reader.of_string "width: calc(100% - (10px);" in
-  let got2 = Css.Reader.try_parse Css.Declaration.read_declaration r2 in
+  let got2 = Css.Reader.option Css.Declaration.read_declaration r2 in
   check bool "unterminated calc" true (Option.is_none got2);
   (* Unterminated rgb() *)
   let r3 = Css.Reader.of_string "color: rgb(0, 0, 0;" in
-  let got3 = Css.Reader.try_parse Css.Declaration.read_declaration r3 in
+  let got3 = Css.Reader.option Css.Declaration.read_declaration r3 in
   check bool "unterminated rgb" true (Option.is_none got3);
   (* Missing semicolon between decls in block *)
   let r4 = Css.Reader.of_string "{ color:red margin:10px; }" in
-  let got4 = Css.Reader.try_parse Css.Declaration.read_block r4 in
+  let got4 = Css.Reader.option Css.Declaration.read_block r4 in
   check bool "missing semicolon between declarations" true (Option.is_none got4)
 
 let test_declaration_custom_property_values () =

@@ -54,7 +54,18 @@ let test_selector_pseudo_class () =
   check_construct "nth-child(odd)" ":nth-child(odd)" (nth_child Odd);
   check_construct "nth-child(even)" ":nth-child(even)" (nth_child Even);
   check_construct "nth-child(2n+1)" ":nth-child(2n+1)"
-    (nth_child (An_plus_b (2, 1)))
+    (nth_child (An_plus_b (2, 1)));
+  (* nth with Index and of clause *)
+  check_selector ":nth-child(5)";
+  check_selector ~expected:":nth-child(odd of .item)"
+    ":nth-child( odd of .item )";
+  check_selector ~expected:":nth-child(2n-1 of a,b)"
+    ":nth-child( 2n-1 of a , b )";
+  check_selector ":nth-of-type(3)";
+  check_selector ~expected:":nth-last-child(2 of .x,.y)"
+    ":nth-last-child(2 of .x , .y)";
+  check_selector ~expected:":nth-last-of-type(2n+2 of h1,.a)"
+    ":nth-last-of-type(2n+2 of h1 , .a)"
 
 (* Test pseudo-element selectors *)
 let test_selector_pseudo_element () =
@@ -63,7 +74,8 @@ let test_selector_pseudo_element () =
   check_construct "first-line" "::first-line" (pseudo_element "first-line");
   check_construct "first-letter" "::first-letter"
     (pseudo_element "first-letter");
-  check_construct "marker" "::marker" (pseudo_element "marker")
+  check_construct "marker" "::marker" (pseudo_element "marker");
+  ()
 
 (* Test attribute selectors *)
 let test_selector_attribute () =
@@ -196,6 +208,19 @@ let test_selector_invalid () =
   check_invalid "hash in id"
     "CSS identifier 'my#id' contains invalid character '#' at position 2"
     (fun () -> ignore (id "my#id"))
+  (* Parsing invalid selector strings via Reader.option to avoid exceptions *);
+
+  let open Css.Reader in
+  let neg_parse s label =
+    let r = of_string s in
+    check bool label true (Option.is_none (Css.Reader.option read r))
+  in
+  neg_parse "[href" "unterminated attribute selector";
+  neg_parse ":nth-child(2n+)" "invalid nth-child syntax";
+  neg_parse ":unknown-pseudo(" "unterminated pseudo with paren";
+  neg_parse ".class,,.other" "double comma in list";
+  neg_parse "div > > span" "double combinator";
+  neg_parse "[attr=value" "unterminated attribute value"
 
 (* Test special cases *)
 let test_selector_special_cases () =

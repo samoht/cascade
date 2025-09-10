@@ -20,9 +20,6 @@ val important : declaration -> declaration
 val custom_property : ?layer:string -> string -> string -> declaration
 (** [custom_property ?layer name value] is a raw custom property declaration. *)
 
-val vendor_property : string -> string -> declaration
-(** [vendor_property name value] is a vendor-prefixed property declaration. *)
-
 val custom_declaration_layer : declaration -> string option
 (** [custom_declaration_layer d] is the layer of [d], if any. *)
 
@@ -179,7 +176,7 @@ val justify_self : justify -> declaration
 val place_content : place_content -> declaration
 val place_items : place_items -> declaration
 val place_self : align_self -> declaration
-val border_width : length -> declaration
+val border_width : border_width -> declaration
 val border_radius : length -> declaration
 val fill : svg_paint -> declaration
 val stroke : svg_paint -> declaration
@@ -269,12 +266,12 @@ val background_position : position_2d list -> declaration
 val background_repeat : background_repeat -> declaration
 val background_size : background_size -> declaration
 val content : content -> declaration
-val border_left_width : length -> declaration
-val border_inline_start_width : length -> declaration
-val border_inline_end_width : length -> declaration
-val border_bottom_width : length -> declaration
-val border_top_width : length -> declaration
-val border_right_width : length -> declaration
+val border_left_width : border_width -> declaration
+val border_inline_start_width : border_width -> declaration
+val border_inline_end_width : border_width -> declaration
+val border_bottom_width : border_width -> declaration
+val border_top_width : border_width -> declaration
+val border_right_width : border_width -> declaration
 val border_top_color : color -> declaration
 val border_right_color : color -> declaration
 val border_bottom_color : color -> declaration
@@ -282,9 +279,16 @@ val border_left_color : color -> declaration
 val border_inline_start_color : color -> declaration
 val border_inline_end_color : color -> declaration
 val quotes : string -> declaration
-val border : string -> declaration
+
+val border :
+  ?width:Properties.border_width ->
+  ?style:Properties.border_style ->
+  ?color:Values.color ->
+  unit ->
+  declaration
+
 val tab_size : int -> declaration
-val webkit_text_size_adjust : string -> declaration
+val webkit_text_size_adjust : text_size_adjust -> declaration
 val font_feature_settings : font_feature_settings -> declaration
 val font_variation_settings : font_variation_settings -> declaration
 val webkit_tap_highlight_color : color -> declaration

@@ -145,7 +145,7 @@ let test_stylesheet_construction () =
 
   Alcotest.(check int)
     "sheet rules count" 1
-    (List.length (stylesheet_rules sheet));
+    (List.length (Css.Stylesheet.stylesheet_rules sheet));
   Alcotest.(check int)
     "sheet media count" 1
     (List.length (stylesheet_media_queries sheet));
@@ -505,7 +505,7 @@ let test_read_stylesheet_basic () =
   let css = ".btn { color: red; padding: 10px; }" in
   let reader = Css.Reader.of_string css in
   let sheet = Css.Stylesheet.read_stylesheet reader in
-  let rules = stylesheet_rules sheet in
+  let rules = Css.Stylesheet.stylesheet_rules sheet in
   check int "has one rule" 1 (List.length rules);
   let rule = List.hd rules in
   let decls = Css.Stylesheet.declarations rule in
@@ -515,28 +515,28 @@ let test_read_stylesheet_multiple_rules () =
   let css = ".btn { color: red; } .card { margin: 5px; }" in
   let reader = Css.Reader.of_string css in
   let sheet = Css.Stylesheet.read_stylesheet reader in
-  let rules = stylesheet_rules sheet in
+  let rules = Css.Stylesheet.stylesheet_rules sheet in
   check int "has two rules" 2 (List.length rules)
 
 let test_read_stylesheet_empty () =
   let css = "" in
   let reader = Css.Reader.of_string css in
   let sheet = Css.Stylesheet.read_stylesheet reader in
-  let rules = stylesheet_rules sheet in
+  let rules = Css.Stylesheet.stylesheet_rules sheet in
   check int "empty stylesheet has no rules" 0 (List.length rules)
 
 let test_read_stylesheet_whitespace_only () =
   let css = "   \n\t  " in
   let reader = Css.Reader.of_string css in
   let sheet = Css.Stylesheet.read_stylesheet reader in
-  let rules = stylesheet_rules sheet in
+  let rules = Css.Stylesheet.stylesheet_rules sheet in
   check int "whitespace-only stylesheet has no rules" 0 (List.length rules)
 
 let test_read_stylesheet_with_comments () =
   let css = "/* comment */ .btn { color: red; } /* another comment */" in
   let reader = Css.Reader.of_string css in
   let sheet = Css.Stylesheet.read_stylesheet reader in
-  let rules = stylesheet_rules sheet in
+  let rules = Css.Stylesheet.stylesheet_rules sheet in
   check int "has one rule despite comments" 1 (List.length rules)
 
 let test_read_stylesheet_error_recovery () =
@@ -559,7 +559,7 @@ let test_of_string () =
   let css = ".btn { color: red; }" in
   match of_string css with
   | Ok sheet ->
-      let rules = stylesheet_rules sheet in
+      let rules = Css.Stylesheet.stylesheet_rules sheet in
       check int "of_string works" 1 (List.length rules)
   | Error msg -> Alcotest.fail ("of_string failed: " ^ msg)
 
@@ -568,7 +568,7 @@ let test_of_string_positive () =
   let css1 = ".btn { color: red; }" in
   (match of_string css1 with
   | Ok sheet ->
-      let rules = stylesheet_rules sheet in
+      let rules = Css.Stylesheet.stylesheet_rules sheet in
       check int "single rule parsed" 1 (List.length rules)
   | Error msg -> Alcotest.fail ("valid CSS failed: " ^ msg));
 
@@ -576,7 +576,7 @@ let test_of_string_positive () =
   let css2 = ".btn { color: red; } .card { margin: 10px; }" in
   (match of_string css2 with
   | Ok sheet ->
-      let rules = stylesheet_rules sheet in
+      let rules = Css.Stylesheet.stylesheet_rules sheet in
       check int "multiple rules parsed" 2 (List.length rules)
   | Error msg -> Alcotest.fail ("multiple rules failed: " ^ msg));
 
@@ -584,7 +584,7 @@ let test_of_string_positive () =
   let css3 = "" in
   (match of_string css3 with
   | Ok sheet ->
-      let rules = stylesheet_rules sheet in
+      let rules = Css.Stylesheet.stylesheet_rules sheet in
       check int "empty stylesheet" 0 (List.length rules)
   | Error msg -> Alcotest.fail ("empty stylesheet failed: " ^ msg));
 
@@ -592,7 +592,7 @@ let test_of_string_positive () =
   let css4 = "   \n\t  " in
   (match of_string css4 with
   | Ok sheet ->
-      let rules = stylesheet_rules sheet in
+      let rules = Css.Stylesheet.stylesheet_rules sheet in
       check int "whitespace only" 0 (List.length rules)
   | Error msg -> Alcotest.fail ("whitespace only failed: " ^ msg));
 
@@ -601,7 +601,7 @@ let test_of_string_positive () =
   let css5 = ".btn { color: rgb(300, 300, 300); }" in
   (match of_string css5 with
   | Ok sheet -> (
-      let rules = stylesheet_rules sheet in
+      let rules = Css.Stylesheet.stylesheet_rules sheet in
       check int "rgb clamping: rule parsed" 1 (List.length rules);
       (* The RGB values should be clamped to 255, 255, 255 *)
       let rule = List.hd rules in
@@ -625,7 +625,7 @@ let test_of_string_positive () =
   let css6 = ".btn { color: rgba(255, 0, 0); }" in
   (match of_string css6 with
   | Ok sheet -> (
-      let rules = stylesheet_rules sheet in
+      let rules = Css.Stylesheet.stylesheet_rules sheet in
       check int "rgba with 3 values: rule parsed" 1 (List.length rules);
       (* The rgba(255, 0, 0) should be valid and treated as rgba(255, 0, 0,
          1) *)
@@ -642,7 +642,7 @@ let test_of_string_positive () =
   let css7 = ".btn { color: rgb(50%, 100, 50%); }" in
   match of_string css7 with
   | Ok sheet -> (
-      let rules = stylesheet_rules sheet in
+      let rules = Css.Stylesheet.stylesheet_rules sheet in
       check int "mixed RGB units (CSS4): rule parsed" 1 (List.length rules);
       (* The mixed units should be valid in CSS4 *)
       let rule = List.hd rules in
@@ -758,12 +758,24 @@ let test_of_string_negative () =
 
   (* Specificity and cascade errors *)
   test_invalid_css "btn.#id { color: red; }" "invalid selector combination";
-  test_invalid_css ".btn .btn { color: red; }"
-    "duplicate class selector (should parse but warn)";
+
+  (* NOTE: .btn .btn is valid CSS - it selects nested elements with same class *)
+  (* Removed: test_invalid_css ".btn .btn { color: red; }" - this is valid CSS *)
 
   (* Unicode and encoding errors *)
   test_invalid_css ".btn { content: '\\'; }" "incomplete escape sequence";
-  test_invalid_css ".btn { content: '\\gggg'; }" "invalid unicode escape"
+
+  (* According to CSS spec section 4.3.7, \g is a valid escape that produces 'g'
+     So '\gggg' is valid CSS and should parse successfully. *)
+  match of_string ".btn { content: '\\gggg'; }" with
+  | Ok sheet ->
+      let rules = Css.Stylesheet.stylesheet_rules sheet in
+      check int "\\gggg escape sequence should parse (valid per CSS spec)" 1
+        (List.length rules)
+  | Error _ ->
+      Alcotest.fail
+        "\\gggg should be valid per CSS spec (\\g escapes to 'g', followed by \
+         'ggg')"
 
 let stylesheet_tests =
   [

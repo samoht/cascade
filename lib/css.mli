@@ -399,7 +399,12 @@ type length =
   | Auto
   | Zero
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Fit_content  (** fit-content keyword *)
+  | Content  (** content keyword *)
   | Max_content  (** max-content keyword *)
   | Min_content  (** min-content keyword *)
   | From_font  (** from-font keyword for text-decoration-thickness *)
@@ -653,7 +658,7 @@ type hue =
 
 (** CSS color component values *)
 type component =
-  | Number of float
+  | Num of float
   | Pct of float
   | Angle of hue (* for color(lch ...) / color(lab ...) syntaxes *)
   | Var of component var
@@ -688,6 +693,10 @@ type color =
   | Current
   | Transparent
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Mix of {
       in_space : color_space option; (* None => default per spec *)
       hue : hue_interpolation;
@@ -933,12 +942,35 @@ val aspect_ratio : aspect_ratio -> declaration
     @see <https://www.w3.org/TR/css-logical-1/>
       CSS Logical Properties and Values Level 1 *)
 
-val border_inline_start_width : length -> declaration
+type border_width =
+  | Thin
+  | Medium
+  | Thick
+  | Px of float
+  | Rem of float
+  | Em of float
+  | Ch of float
+  | Vh of float
+  | Vw of float
+  | Vmin of float
+  | Vmax of float
+  | Pct of float
+  | Zero
+  | Auto
+  | Max_content
+  | Min_content
+  | Fit_content
+  | From_font
+  | Calc of border_width calc
+  | Var of border_width var
+  | Inherit
+
+val border_inline_start_width : border_width -> declaration
 (** [border_inline_start_width len] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-inline-start-width}
      border-inline-start-width} property. *)
 
-val border_inline_end_width : length -> declaration
+val border_inline_end_width : border_width -> declaration
 (** [border_inline_end_width len] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-inline-end-width}
      border-inline-end-width} property. *)
@@ -1021,6 +1053,7 @@ type display =
   | List_item
   | Contents
   | Webkit_box
+  | Inherit
 
 (** CSS position values. *)
 type position = Static | Relative | Absolute | Fixed | Sticky
@@ -1143,8 +1176,12 @@ type position_component =
   | Right
   | Top
   | Bottom
-  | Length of length  (** Absolute length (e.g., [Px 10.]). *)
-  | Percentage of float  (** Percentage (e.g., [Percentage 50.]). *)
+  | Px of float  (** Pixels (e.g., [Px 10.]). *)
+  | Rem of float  (** Root em units (e.g., [Rem 1.5]). *)
+  | Em of float  (** Em units (e.g., [Em 2.]). *)
+  | Pct of float  (** Percentage (e.g., [Pct 50.]). *)
+  | Vw of float  (** Viewport width units (e.g., [Vw 100.]). *)
+  | Vh of float  (** Viewport height units (e.g., [Vh 50.]). *)
 
 type position_2d =
   | Center
@@ -1237,8 +1274,12 @@ type background_size =
   | Auto
   | Cover
   | Contain
-  | Length of length
-  | Percentage of float
+  | Px of float
+  | Rem of float
+  | Em of float
+  | Pct of float
+  | Vw of float
+  | Vh of float
   | Size of length * length
   | Inherit
 
@@ -1342,15 +1383,67 @@ type flex_direction = Row | Row_reverse | Column | Column_reverse
 (** CSS flex wrap values. *)
 type flex_wrap = Nowrap | Wrap | Wrap_reverse
 
+(** CSS flex basis values. *)
+type flex_basis =
+  | Auto
+  | Content
+  | Px of float
+  | Cm of float
+  | Mm of float
+  | Q of float
+  | In of float
+  | Pt of float
+  | Pc of float
+  | Rem of float
+  | Em of float
+  | Ex of float
+  | Cap of float
+  | Ic of float
+  | Rlh of float
+  | Pct of float
+  | Vw of float
+  | Vh of float
+  | Vmin of float
+  | Vmax of float
+  | Vi of float
+  | Vb of float
+  | Dvh of float
+  | Dvw of float
+  | Dvmin of float
+  | Dvmax of float
+  | Lvh of float
+  | Lvw of float
+  | Lvmin of float
+  | Lvmax of float
+  | Svh of float
+  | Svw of float
+  | Svmin of float
+  | Svmax of float
+  | Ch of float
+  | Lh of float
+  | Num of float
+  | Zero
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Fit_content
+  | Max_content
+  | Min_content
+  | From_font
+  | Var of flex_basis var
+  | Calc of flex_basis calc
+
 (** CSS flex shorthand values. *)
 type flex =
   | Initial  (** 0 1 auto *)
   | Auto  (** 1 1 auto *)
   | None  (** 0 0 auto *)
   | Grow of float  (** Single grow value *)
-  | Basis of length  (** 1 1 <length> *)
+  | Basis of flex_basis  (** 1 1 <flex-basis> *)
   | Grow_shrink of float * float  (** grow shrink 0% *)
-  | Full of float * float * length  (** grow shrink basis *)
+  | Full of float * float * flex_basis  (** grow shrink basis *)
 
 (** CSS align-items values. *)
 type align_items =
@@ -1522,7 +1615,7 @@ type grid_template =
 (** CSS grid line values *)
 type grid_line =
   | Auto  (** auto *)
-  | Number of int  (** 1, 2, 3, ... or -1, -2, ... *)
+  | Num of int  (** 1, 2, 3, ... or -1, -2, ... *)
   | Name of string  (** "header-start", "main-end", etc. *)
   | Span of int  (** span 2, span 3, etc. *)
 
@@ -1810,9 +1903,11 @@ val font_style : font_style -> declaration
 (** CSS line-height values *)
 type line_height =
   | Normal
-  | Length of length
-  | Number of float
-  | Percentage of float
+  | Px of float
+  | Rem of float
+  | Em of float
+  | Pct of float
+  | Num of float
   | Inherit
   | Var of line_height var
 
@@ -1820,7 +1915,7 @@ val line_height : line_height -> declaration
 (** [line_height value] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/line-height}
      line-height} property. Accepts [Normal], Length values (e.g., `Length (Rem
-    1.5)`), Number values (e.g., `Number 1.5`), or Percentage values. *)
+    1.5)`), Number values (e.g., `Num 1.5`), or Percentage values. *)
 
 val letter_spacing : length -> declaration
 (** [letter_spacing value] is the
@@ -2100,6 +2195,15 @@ type border_style =
   | Hidden
   | Var of border_style var  (** CSS variable reference *)
 
+type border_shorthand = {
+  width : border_width option;
+  style : border_style option;
+  color : color option;
+}
+(** CSS border shorthand type. *)
+
+type border = Inherit | Initial | None | Border of border_shorthand
+
 (** CSS outline style values. *)
 type outline_style =
   | None
@@ -2113,12 +2217,17 @@ type outline_style =
   | Outset
   | Auto
 
-val border : string -> declaration
+val border :
+  ?width:border_width ->
+  ?style:border_style ->
+  ?color:color ->
+  unit ->
+  declaration
 (** [border value] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border} border}
     shorthand property. *)
 
-val border_width : length -> declaration
+val border_width : border_width -> declaration
 (** [border_width value] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-width}
      border-width} property. *)
@@ -2203,22 +2312,22 @@ val border_left_style : border_style -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-left-style}
      border-left-style} property. *)
 
-val border_left_width : length -> declaration
+val border_left_width : border_width -> declaration
 (** [border_left_width len] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-left-width}
      border-left-width} property. *)
 
-val border_top_width : length -> declaration
+val border_top_width : border_width -> declaration
 (** [border_top_width len] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-top-width}
      border-top-width} property. *)
 
-val border_right_width : length -> declaration
+val border_right_width : border_width -> declaration
 (** [border_right_width len] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-right-width}
      border-right-width} property. *)
 
-val border_bottom_width : length -> declaration
+val border_bottom_width : border_width -> declaration
 (** [border_bottom_width len] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-bottom-width}
      border-bottom-width} property. *)
@@ -2332,7 +2441,7 @@ val rotate : angle -> declaration
 
 (** CSS scale property values *)
 type scale =
-  | Number of float
+  | X of float
   | XY of float * float
   | XYZ of float * float * float
   | None
@@ -2425,7 +2534,7 @@ type animation_direction = Normal | Reverse | Alternate | Alternate_reverse
 type animation_play_state = Running | Paused
 
 (** CSS animation iteration count values *)
-type animation_iteration_count = Number of float | Infinite
+type animation_iteration_count = Num of float | Infinite
 
 type animation = {
   name : string option;
@@ -2759,6 +2868,9 @@ type webkit_font_smoothing =
 (** CSS -moz-osx-font-smoothing values. *)
 type moz_osx_font_smoothing = Auto | Grayscale | Inherit
 
+(** CSS text-size-adjust values (including vendor prefixes). *)
+type text_size_adjust = None | Auto | Pct of float | Inherit
+
 val webkit_appearance : webkit_appearance -> declaration
 (** [webkit_appearance value] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/-webkit-appearance}
@@ -2792,7 +2904,7 @@ val webkit_box_orient : webkit_box_orient -> declaration
 val webkit_hyphens : hyphens -> declaration
 (** [webkit_hyphens value] is the -webkit-hyphens property. *)
 
-val webkit_text_size_adjust : string -> declaration
+val webkit_text_size_adjust : text_size_adjust -> declaration
 (** [webkit_text_size_adjust value] is the -webkit-text-size-adjust property. *)
 
 (** {1 Additional Properties}
@@ -2840,8 +2952,10 @@ type vertical_align =
   | Text_bottom
   | Sub
   | Super
-  | Length of length
-  | Percentage of float
+  | Px of float
+  | Rem of float
+  | Em of float
+  | Pct of float
   | Inherit
 
 val table_layout : table_layout -> declaration
@@ -3045,6 +3159,7 @@ type _ kind =
   | Duration : duration kind
   | Aspect_ratio : aspect_ratio kind
   | Border_style : border_style kind
+  | Border : border kind
   | Font_weight : font_weight kind
   | Font_family : font_family list kind
   | Font_feature_settings : font_feature_settings kind
@@ -3270,9 +3385,10 @@ val pp_justify_content : justify_content Pp.t
 module Pp = Pp
 (** {1 CSS Parsing} *)
 
-val of_string : string -> (t, string) result
-(** [of_string css] parses a CSS string into a stylesheet. Returns [Error msg]
-    on invalid CSS. *)
+val of_string : ?filename:string -> string -> (t, string) result
+(** [of_string ?filename css] parses a CSS string into a stylesheet. Returns
+    [Error msg] on invalid CSS. The optional [filename] parameter is used for
+    error reporting (defaults to "<string>"). *)
 
 module Reader = Reader
 module Values = Values

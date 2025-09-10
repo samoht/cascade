@@ -1417,27 +1417,31 @@ let rec pp_box_shadow : box_shadow Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
   | Shadow { inset; h_offset; v_offset; blur; spread; color } -> (
-      if inset then (
-        Pp.string ctx "inset";
-        Pp.space ctx ());
-      pp_length ctx h_offset;
-      Pp.space ctx ();
-      pp_length ctx v_offset;
-      (match blur with
-      | Some b ->
+      (* Special case: box-shadow: 0 0 is equivalent to none when minifying *)
+      match (ctx.minify, inset, h_offset, v_offset, blur, spread, color) with
+      | true, false, Zero, Zero, None, None, None -> Pp.string ctx "none"
+      | _ -> (
+          if inset then (
+            Pp.string ctx "inset";
+            Pp.space ctx ());
+          pp_length ctx h_offset;
           Pp.space ctx ();
-          pp_length ctx b
-      | None -> ());
-      (match spread with
-      | Some s ->
-          Pp.space ctx ();
-          pp_length ctx s
-      | None -> ());
-      match color with
-      | Some c ->
-          Pp.space ctx ();
-          pp_color ctx c
-      | None -> ())
+          pp_length ctx v_offset;
+          (match blur with
+          | Some b ->
+              Pp.space ctx ();
+              pp_length ctx b
+          | None -> ());
+          (match spread with
+          | Some s ->
+              Pp.space ctx ();
+              pp_length ctx s
+          | None -> ());
+          match color with
+          | Some c ->
+              Pp.space ctx ();
+              pp_color ctx c
+          | None -> ()))
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -1874,6 +1878,13 @@ and pp_font_variant_numeric : font_variant_numeric Pp.t =
         |> List.filter_map (fun x -> x)
       in
       Pp.list ~sep:Pp.space pp_font_variant_numeric_token ctx tokens
+
+let pp_text_size_adjust : text_size_adjust Pp.t =
+ fun ctx -> function
+  | None -> Pp.string ctx "none"
+  | Auto -> Pp.string ctx "auto"
+  | Pct n -> Pp.unit ctx n "%"
+  | Inherit -> Pp.string ctx "inherit"
 
 let pp_webkit_font_smoothing : webkit_font_smoothing Pp.t =
  fun ctx -> function
@@ -2504,7 +2515,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Font_feature_settings -> pp pp_font_feature_settings
   | Font_variation_settings -> pp pp_font_variation_settings
   | Webkit_text_decoration -> pp pp_text_decoration
-  | Webkit_text_size_adjust -> pp Pp.string
+  | Webkit_text_size_adjust -> pp pp_text_size_adjust
   | Webkit_transform -> pp (Pp.list ~sep:Pp.space pp_transform)
   | Webkit_transition -> pp (Pp.list ~sep:Pp.comma pp_transition)
   | Webkit_filter -> pp pp_filter
@@ -3179,6 +3190,24 @@ let read_webkit_appearance t : webkit_appearance =
     ]
     t
 
+let read_text_size_adjust t : text_size_adjust =
+  Reader.ws t;
+  match Reader.peek t with
+  | Some c when Reader.is_digit c || c = '-' || c = '.' ->
+      (* Percentage value *)
+      let n = Reader.number t in
+      Reader.expect '%' t;
+      Pct n
+  | _ ->
+      (* Keyword *)
+      Reader.enum "text-size-adjust"
+        [
+          ("none", (None : text_size_adjust));
+          ("auto", Auto);
+          ("inherit", Inherit);
+        ]
+        t
+
 let read_webkit_font_smoothing t : webkit_font_smoothing =
   Reader.enum "webkit-font-smoothing"
     [
@@ -3552,7 +3581,7 @@ let read_transition t : transition =
   }
 
 let read_transitions t : transition list =
-  Reader.list ~sep:Reader.comma read_transition t
+  Reader.list ~at_least:1 ~sep:Reader.comma read_transition t
 
 let read_animation_direction t : animation_direction =
   Reader.enum "animation-direction"
@@ -3600,7 +3629,7 @@ let read_animation t : animation =
   }
 
 let read_animations t : animation list =
-  Reader.list ~sep:Reader.comma read_animation t
+  Reader.list ~at_least:1 ~sep:Reader.comma read_animation t
 
 let read_blend_mode t : blend_mode =
   Reader.enum "blend-mode"
@@ -3699,21 +3728,14 @@ let read_filter_item t : filter =
     t
 
 let read_filter t : filter =
-  Reader.ws t;
-  (* Try to read "none" first *)
-  match
-    Reader.option
-      (fun t ->
-        if Reader.ident t = "none" then (None : filter) else failwith "not none")
-      t
-  with
-  | Some filter_none -> filter_none
-  | None -> (
-      let filters, _ = Reader.many read_filter_item t in
-      match filters with
-      | [] -> err_invalid_value t "filter" "expected filter function(s)"
-      | [ f ] -> f
-      | fs -> List fs)
+  let read_filter_list t =
+    let filters, _ = Reader.many read_filter_item t in
+    match filters with
+    | [] -> err_invalid_value t "filter" "expected filter function(s)"
+    | [ f ] -> f
+    | fs -> List fs
+  in
+  Reader.enum "filter" [ ("none", (None : filter)) ] ~default:read_filter_list t
 
 (* Background-related readers *)
 let read_background_attachment t : background_attachment =
@@ -3803,12 +3825,16 @@ let read_background_image t : background_image =
           d
       | None -> To_bottom
     in
-    let stops = Reader.list ~sep:Reader.comma read_gradient_stop t in
+    let stops =
+      Reader.list ~at_least:2 ~sep:Reader.comma read_gradient_stop t
+    in
     Linear_gradient (direction, stops)
   in
   let read_radial_body t =
     Reader.ws t;
-    let stops = Reader.list ~sep:Reader.comma read_gradient_stop t in
+    let stops =
+      Reader.list ~at_least:2 ~sep:Reader.comma read_gradient_stop t
+    in
     Radial_gradient stops
   in
   Reader.enum_or_calls "background-image"
@@ -3892,11 +3918,41 @@ let read_property t =
   | "content" -> Prop Content
   | "accent-color" -> Prop Accent_color
   | "caret-color" -> Prop Caret_color
+  (* Common properties that were missing *)
+  | "border" -> Prop Border
+  | "resize" -> Prop Resize
+  | "user-select" -> Prop User_select
+  | "pointer-events" -> Prop Pointer_events
+  | "cursor" -> Prop Cursor
+  | "appearance" -> Prop Appearance
+  | "filter" -> Prop Filter
+  | "transition" -> Prop Transition
+  | "animation" -> Prop Animation
+  | "text-shadow" -> Prop Text_shadow
+  | "font" -> Prop Font
+  | "outline" -> Prop Outline
+  | "z-index" -> Prop Z_index
+  | "border-top" -> Prop Border_top
+  | "border-right" -> Prop Border_right
+  | "border-bottom" -> Prop Border_bottom
+  | "border-left" -> Prop Border_left
+  | "tab-size" -> Prop Tab_size
+  | "line-height" -> Prop Line_height
   (* Vendor prefixed properties *)
   | "-webkit-transform" -> Prop Webkit_transform
   | "-webkit-transition" -> Prop Webkit_transition
   | "-webkit-filter" -> Prop Webkit_filter
+  | "-webkit-text-size-adjust" -> Prop Webkit_text_size_adjust
+  | "-webkit-tap-highlight-color" -> Prop Webkit_tap_highlight_color
+  | "-webkit-text-decoration" -> Prop Webkit_text_decoration
+  | "-webkit-text-decoration-color" -> Prop Webkit_text_decoration_color
+  | "-webkit-appearance" -> Prop Webkit_appearance
+  | "-webkit-font-smoothing" -> Prop Webkit_font_smoothing
+  | "-webkit-line-clamp" -> Prop Webkit_line_clamp
+  | "-webkit-box-orient" -> Prop Webkit_box_orient
+  | "-webkit-hyphens" -> Prop Webkit_hyphens
   | "-moz-appearance" -> Prop Moz_appearance
+  | "-moz-osx-font-smoothing" -> Prop Moz_osx_font_smoothing
   | "-ms-filter" -> Prop Ms_filter
   | "-o-transition" -> Prop O_transition
   | _ -> failwith ("read_property: unknown property " ^ prop_name)

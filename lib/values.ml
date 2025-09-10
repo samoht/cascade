@@ -59,7 +59,7 @@ let pp_var : type a. a Pp.t -> a var Pp.t =
     match v.fallback with
     | None -> Pp.char ctx ')'
     | Some value ->
-        Pp.string ctx ", ";
+        Pp.comma ctx ();
         pp_value ctx value;
         Pp.char ctx ')')
 
@@ -132,7 +132,6 @@ let rec pp_length : length Pp.t =
   | Svmax f -> pp_unit f "svmax"
   | Ch f -> pp_unit f "ch"
   | Lh f -> pp_unit f "lh"
-  | Num f -> Pp.float ctx f
   | Auto -> Pp.string ctx "auto"
   | Inherit -> Pp.string ctx "inherit"
   | Fit_content -> Pp.string ctx "fit-content"
@@ -522,7 +521,8 @@ and pp_color : color Pp.t =
   | Named name -> pp_color_name ctx name
   | Var v -> pp_var pp_color ctx v
   | Current -> Pp.string ctx "currentcolor"
-  | Transparent -> Pp.string ctx "transparent"
+  | Transparent ->
+      if ctx.minify then Pp.string ctx "#0000" else Pp.string ctx "transparent"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -608,9 +608,8 @@ let read_length_unit t =
   let unit_raw = Reader.while_ t (fun c -> Reader.is_alpha c || c = '%') in
   let unit = String.lowercase_ascii unit_raw in
   match unit with
-  | "" when n = 0.0 -> Zero
-  | "" -> Num n
   | _ when n = 0.0 -> Zero
+  | "" -> Reader.err t "length values must have units (except for zero)"
   | "px" -> Px n
   | "cm" -> Cm n
   | "mm" -> Mm n
@@ -681,23 +680,25 @@ and read_calc_term : type a. (Reader.t -> a) -> Reader.t -> a calc =
   | Some '*' ->
       Reader.skip t;
       let right = read_calc_term read_a t in
-      (* Validate multiplication: at least one operand must be a number *)
-      let is_number : type a. a calc -> bool = function
-        | Num _ -> true
+      (* Validate multiplication: can't multiply two raw dimensions (but
+         expressions are OK) *)
+      let is_dimension : type a. a calc -> bool = function
+        | Val _ -> true
         | _ -> false
       in
-      if (not (is_number left)) && not (is_number right) then
+      if is_dimension left && is_dimension right then
         Reader.err t "invalid calc: cannot multiply two dimensions";
       Expr (left, Mult, right)
   | Some '/' ->
       Reader.skip t;
       let right = read_calc_term read_a t in
-      (* Validate division: right operand must be a number *)
-      let is_number : type a. a calc -> bool = function
-        | Num _ -> true
-        | _ -> false
+      (* Validate division: right operand must be a number (not a dimension) *)
+      let is_not_number : type a. a calc -> bool = function
+        | Val _ -> true (* definitely not a number *)
+        | Num _ -> false (* is a number *)
+        | _ -> false (* expressions could evaluate to numbers *)
       in
-      if not (is_number right) then
+      if is_not_number right then
         Reader.err t "invalid calc: division requires a number on the right";
       Expr (left, Div, right)
   | _ -> left
@@ -711,14 +712,11 @@ and read_calc_factor : type a. (Reader.t -> a) -> Reader.t -> a calc =
     Reader.ws t;
     Reader.expect ')' t;
     expr)
-  else if Reader.looking_at t "var(" then
-    (* Parse var() directly to avoid infinite recursion *)
-    Var (read_var read_a t)
+  else if Reader.looking_at t "var(" then Var (read_var read_a t)
   else
-    (* Try to parse with specific unit first, fall back to raw number *)
-    Reader.one_of
-      [ (fun t -> Val (read_a t)); (fun t -> Num (Reader.number t)) ]
-      t
+    let read_val : Reader.t -> a calc = fun t -> Val (read_a t) in
+    let read_num : Reader.t -> a calc = fun t -> Num (Reader.number t) in
+    Reader.one_of [ read_val; read_num ] t
 
 and read_calc : type a. (Reader.t -> a) -> Reader.t -> a calc =
  fun read_a t ->
@@ -780,8 +778,6 @@ let read_non_negative_length t : length =
   | In n when n < 0. -> Reader.err_invalid t "padding values cannot be negative"
   | Pt n when n < 0. -> Reader.err_invalid t "padding values cannot be negative"
   | Pc n when n < 0. -> Reader.err_invalid t "padding values cannot be negative"
-  | Num n when n < 0. ->
-      Reader.err_invalid t "padding values cannot be negative"
   | _ -> length
 
 (** Read a percentage value as float (number followed by %) *)
