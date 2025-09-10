@@ -395,7 +395,6 @@ type length =
   | Svmax of float
   | Ch of float  (** Character units *)
   | Lh of float  (** Line height units *)
-  | Num of float  (** Unitless numbers, e.g., line-height multipliers *)
   | Auto
   | Zero
   | Inherit
@@ -3385,9 +3384,15 @@ val pp_justify_content : justify_content Pp.t
 module Pp = Pp
 (** {1 CSS Parsing} *)
 
-val of_string : ?filename:string -> string -> (t, string) result
+type parse_error = Reader.parse_error
+
+val pp_parse_error : parse_error -> string
+(** [pp_parse_error error] formats a parse error as a string, including call
+    stack if available. *)
+
+val of_string : ?filename:string -> string -> (t, parse_error) result
 (** [of_string ?filename css] parses a CSS string into a stylesheet. Returns
-    [Error msg] on invalid CSS. The optional [filename] parameter is used for
+    [Error error] on invalid CSS. The optional [filename] parameter is used for
     error reporting (defaults to "<string>"). *)
 
 module Reader = Reader

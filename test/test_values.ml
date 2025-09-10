@@ -12,6 +12,14 @@ let check_value type_name reader pp_func ?(minify = true) ?expected input =
   let pp_str = Css.Pp.to_string ~minify pp_func result in
   check string (Fmt.str "%s %s" type_name input) expected pp_str
 
+(* Helper for checking that parsing fails *)
+let check_parse_fails type_name reader input =
+  let r = Css.Reader.of_string input in
+  try
+    let _ = reader r in
+    Alcotest.failf "Expected %s '%s' to fail parsing" type_name input
+  with Css.Reader.Parse_error _ -> ()
+
 (* One-liner check functions for each CSS value type *)
 let check_length = check_value "length" read_length pp_length
 let check_color = check_value "color" read_color pp_color
@@ -19,6 +27,12 @@ let check_angle = check_value "angle" read_angle pp_angle
 let check_duration = check_value "duration" read_duration pp_duration
 let check_percentage = check_value "percentage" read_percentage pp_percentage
 let check_number = check_value "number" read_number pp_number
+
+(* Negative check functions *)
+let check_length_fails = check_parse_fails "length" read_length
+let check_color_fails = check_parse_fails "color" read_color
+let check_angle_fails = check_parse_fails "angle" read_angle
+let check_duration_fails = check_parse_fails "duration" read_duration
 
 let check_calc_length =
   check_value "calc_length" (read_calc read_length) (pp_calc pp_length)
@@ -187,7 +201,7 @@ let test_color () =
 
   (* Special keywords *)
   check_color "transparent";
-  check_color "currentcolor";
+  check_color ~expected:"currentColor" "currentcolor";
   check_color "inherit";
 
   (* RGB functions - various formats *)
@@ -275,8 +289,8 @@ let test_default_units_and_unitless () =
   (* Durations must have units in CSS *)
   check_duration "150ms";
   check_duration "1.5s";
-  (* Unitless non-zero length is preserved as a number *)
-  check_length "1.5"
+  (* CSS doesn't allow unitless non-zero lengths - test that it fails *)
+  check_length_fails "1.5"
 
 let test_calc () =
   (* Test calc with length values *)
@@ -399,7 +413,7 @@ let test_var_parsing_and_printing () =
   check_color "var(--primary-color)";
 
   (* Test var in length context *)
-  check_length "var(--spacing, 10px)"
+  check_length ~expected:"var(--spacing,10px)" "var(--spacing, 10px)"
 
 let test_var_default_inline () =
   (* When inline printing is enabled and a default is present, pp_var should
@@ -420,10 +434,10 @@ let test_float_value_formatting () =
 
 let test_var_with_multiple_fallbacks () =
   (* Test var() with multiple fallback values - round-trip test *)
-  check_color "var(--custom-color, red)";
-  check_length "var(--custom-size, 10px)";
-  check_angle "var(--custom-angle, 45deg)";
-  check_duration "var(--custom-time, 1s)"
+  check_color ~expected:"var(--custom-color,red)" "var(--custom-color, red)";
+  check_length ~expected:"var(--custom-size,10px)" "var(--custom-size, 10px)";
+  check_angle ~expected:"var(--custom-angle,45deg)" "var(--custom-angle, 45deg)";
+  check_duration ~expected:"var(--custom-time,1s)" "var(--custom-time, 1s)"
 
 let test_color_oklch_printing () =
   let open Css.Values in
@@ -474,13 +488,15 @@ let test_number_var_printing () =
 
 let test_nested_var_fallbacks_roundtrip () =
   (* Nested var() in color fallback *)
-  check_color "var(--primary, var(--secondary, red))";
+  check_color ~expected:"var(--primary,var(--secondary,red))"
+    "var(--primary, var(--secondary, red))";
   (* Nested var() in length fallback *)
-  check_length "var(--gap, var(--gap2, 10px))";
+  check_length ~expected:"var(--gap,var(--gap2,10px))"
+    "var(--gap, var(--gap2, 10px))";
   (* Nested var() in angle and duration via calc contexts *)
-  check_calc_angle ~expected:"calc(90deg + var(--a, var(--b, 45deg)))"
+  check_calc_angle ~expected:"calc(90deg + var(--a,var(--b,45deg)))"
     "calc(90deg + var(--a, var(--b, 45deg)))";
-  check_calc_duration ~expected:"calc(1s + var(--t, var(--t2, 500ms)))"
+  check_calc_duration ~expected:"calc(1s + var(--t,var(--t2,500ms)))"
     "calc(1s + var(--t, var(--t2, 500ms)))"
 
 let test_calc_with_other_types () =

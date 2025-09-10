@@ -3,6 +3,20 @@
 open Alcotest
 open Css.Reader
 
+(* Helper to create parse_error for test expectations *)
+let make_parse_error ?(got = None) ?(filename = "<string>") message reader =
+  let context_window, marker_pos = context_window reader in
+  Parse_error
+    {
+      message;
+      got;
+      position = position reader;
+      filename;
+      context_window;
+      marker_pos;
+      callstack = callstack reader;
+    }
+
 (* Generic check function for reader tests - handles read operations *)
 let check_read name reader ?expected input =
   let expected = Option.value ~default:input expected in
@@ -27,6 +41,39 @@ let check_looking_at name expected input pattern =
   let r = of_string input in
   let result = looking_at r pattern in
   Alcotest.(check bool) name expected result
+
+(* Helper to check Parse_error fields match *)
+let check_parse_error_fields name expected actual =
+  if actual.message <> expected.message then
+    Alcotest.failf "%s: expected message '%s' but got '%s'" name
+      expected.message actual.message
+  else if actual.got <> expected.got then
+    Alcotest.failf "%s: expected got=%a but got=%a" name
+      Fmt.(option string)
+      expected.got
+      Fmt.(option string)
+      actual.got
+
+(* Helper to check that a function raises a specific exception *)
+let check_raises name expected_exn f =
+  try
+    f ();
+    Alcotest.failf "%s: expected exception but none was raised" name
+  with
+  | Parse_error actual
+    when match expected_exn with
+         | Parse_error expected ->
+             check_parse_error_fields name expected actual;
+             true
+         | _ -> false ->
+      ()
+  | exn when exn = expected_exn ->
+      (* For other exceptions, use structural equality *)
+      ()
+  | exn ->
+      Alcotest.failf "%s: expected %s but got %s" name
+        (Printexc.to_string expected_exn)
+        (Printexc.to_string exn)
 
 (* Test basic operations *)
 let test_reader_basic () =
@@ -124,8 +171,7 @@ let test_reader_expect () =
   (* Failure case *)
   let r = of_string "test" in
   check_raises "expect wrong char"
-    (Parse_error ("Expected 'x' but got 't'", None, r))
-    (fun () -> expect 'x' r)
+    (make_parse_error "Expected 'x' but got 't'" r) (fun () -> expect 'x' r)
 
 (* Test expect_string *)
 let test_reader_expect_string () =
@@ -136,8 +182,7 @@ let test_reader_expect_string () =
 
   (* Failure *)
   let r = of_string "hello" in
-  check_raises "expect wrong string"
-    (Parse_error ("expected \"world\"", None, r))
+  check_raises "expect wrong string" (make_parse_error "expected \"world\"" r)
     (fun () -> expect_string "world" r)
 
 (* Test between delimiters *)
@@ -335,15 +380,13 @@ let test_reader_ident_with_escapes () =
 let test_reader_failures () =
   (* EOF in string *)
   let r = of_string "\"unclosed" in
-  check_raises "unclosed string"
-    (Parse_error ("unclosed string", None, r))
+  check_raises "unclosed string" (make_parse_error "unclosed string" r)
     (fun () -> ignore (string r));
 
   (* Invalid number *)
   let r = of_string "abc" in
-  check_raises "not a number"
-    (Parse_error ("invalid number", None, r))
-    (fun () -> ignore (number r))
+  check_raises "not a number" (make_parse_error "invalid number" r) (fun () ->
+      ignore (number r))
 
 (* Test option helper *)
 let test_option () =
@@ -414,14 +457,13 @@ let test_take () =
   (* Too many values should fail *)
   let r = of_string "1 2 3 4 5" in
   check_raises "too many values"
-    (Parse_error ("too many values (maximum 4 allowed)", None, r))
-    (fun () -> ignore (take 4 number r));
+    (make_parse_error "too many values (maximum 4 allowed)" r) (fun () ->
+      ignore (take 4 number r));
 
   (* Empty input should fail *)
   let r = of_string "" in
-  check_raises "empty input"
-    (Parse_error ("invalid number", None, r))
-    (fun () -> ignore (take 2 number r));
+  check_raises "empty input" (make_parse_error "invalid number" r) (fun () ->
+      ignore (take 2 number r));
 
   (* Parse stops at non-matching content *)
   let r = of_string "1 2 abc 3" in
@@ -486,8 +528,9 @@ let test_one_of () =
   (* No match - should raise with descriptive error *)
   let r = of_string "yellow" in
   check_raises "no match"
-    (Parse_error ("expected one of: number, green, blue, red", Some "yellow", r))
-    (fun () -> ignore (one_of parsers r))
+    (make_parse_error ~got:(Some "yellow")
+       "expected one of: number, green, blue, red" r) (fun () ->
+      ignore (one_of parsers r))
 
 let test_reader_enum () =
   (* Test basic enum parsing *)
@@ -507,10 +550,8 @@ let test_reader_enum () =
   (* Test enum with unknown value should fail *)
   let r = of_string "unknown" in
   check_raises "enum unknown"
-    (Parse_error
-       ( "font-weight: expected one of: normal, bold, lighter, got: unknown",
-         None,
-         r ))
+    (make_parse_error
+       "font-weight: expected one of: normal, bold, lighter, got: unknown" r)
     (fun () ->
       let _ =
         enum "font-weight" [ ("normal", 1); ("bold", 2); ("lighter", 3) ] r
@@ -575,6 +616,208 @@ let test_reader_enum_with_default () =
   in
   Alcotest.(check int) "enum uses matching value, not default" 100 result
 
+(* Test call stack functionality *)
+let test_callstack () =
+  let r = of_string "test" in
+
+  (* Initially empty call stack *)
+  Alcotest.(check (list string)) "initial callstack empty" [] (callstack r);
+
+  (* Push context *)
+  push_context r "context1";
+  Alcotest.(check (list string)) "single context" [ "context1" ] (callstack r);
+
+  (* Push another context *)
+  push_context r "context2";
+  Alcotest.(check (list string))
+    "nested contexts" [ "context1"; "context2" ] (callstack r);
+
+  (* Pop context *)
+  pop_context r;
+  Alcotest.(check (list string)) "after pop" [ "context1" ] (callstack r);
+
+  (* Pop last context *)
+  pop_context r;
+  Alcotest.(check (list string)) "empty after pop all" [] (callstack r);
+
+  (* Pop empty stack should not crash *)
+  pop_context r;
+  Alcotest.(check (list string)) "pop empty stack" [] (callstack r)
+
+let test_with_context () =
+  let r = of_string "test" in
+  let result = ref [] in
+
+  (* Test with_context preserves and cleans up context *)
+  with_context r "test_context" (fun () ->
+      result := callstack r;
+      42)
+  |> ignore;
+
+  Alcotest.(check (list string))
+    "context during execution" [ "test_context" ] !result;
+  Alcotest.(check (list string)) "context cleaned up after" [] (callstack r)
+
+let test_with_context_exception () =
+  let r = of_string "test" in
+
+  (* Test that context is cleaned up even when exception is raised *)
+  (try
+     with_context r "test_context" (fun () -> failwith "test exception")
+     |> ignore
+   with _ -> ());
+
+  Alcotest.(check (list string))
+    "context cleaned up after exception" [] (callstack r)
+
+let test_enum_call_stack () =
+  let r = of_string "invalid" in
+  let call_stack_during_error = ref [] in
+
+  (* Test that enum combinator populates call stack when failing *)
+  (try
+     enum "test-enum" [ ("valid", 42) ] r |> ignore;
+     Alcotest.fail "Should have raised Parse_error"
+   with Css.Reader.Parse_error error ->
+     call_stack_during_error := error.callstack);
+
+  (* Should contain the enum context when error occurred *)
+  Alcotest.(check (list string))
+    "enum adds context to call stack" [ "enum:test-enum" ]
+    !call_stack_during_error
+
+let test_enum_or_calls_stack () =
+  let r = of_string "invalid" in
+  let call_stack_during_error = ref [] in
+
+  (* Test enum_or_calls populates call stack *)
+  (try
+     enum_or_calls "test-property" [ ("valid", 42) ] ~calls:[] r |> ignore;
+     Alcotest.fail "Should have raised Parse_error"
+   with Css.Reader.Parse_error error ->
+     call_stack_during_error := error.callstack);
+
+  (* Should contain the enum_or_calls context *)
+  Alcotest.(check (list string))
+    "enum_or_calls adds context to call stack"
+    [ "enum_or_calls:test-property" ]
+    !call_stack_during_error
+
+let test_list_call_stack () =
+  let r = of_string "invalid" in
+  let call_stack_during_error = ref [] in
+  let failing_parser r = enum "failing" [ ("valid", 42) ] r in
+
+  (* Test that list combinator adds context *)
+  (try
+     Css.Reader.list ~at_least:1 failing_parser r |> ignore;
+     Alcotest.fail "Should have raised Parse_error"
+   with Css.Reader.Parse_error error ->
+     call_stack_during_error := error.callstack);
+
+  (* Should contain both list and enum contexts *)
+  let expected = [ "list"; "enum:failing" ] in
+  Alcotest.(check (list string))
+    "list and enum add nested contexts" expected !call_stack_during_error
+
+let test_fold_many_call_stack () =
+  (* Test that fold_many preserves call stack on errors *)
+  let r = of_string "valid invalid" in
+  let parser r = enum "item" [ ("valid", 1); ("good", 2) ] r in
+  let acc, error_opt =
+    Css.Reader.fold_many parser ~init:[] ~f:(fun acc x -> x :: acc) r
+  in
+
+  (* Should have parsed one item before failing *)
+  Alcotest.(check (list int)) "parsed one valid item" [ 1 ] acc;
+  Alcotest.(check bool) "has error message" true (Option.is_some error_opt);
+
+  (* Now test that the error preserves context *)
+  let r2 = of_string "invalid" in
+  try
+    with_context r2 "fold-context" (fun () ->
+        let _, _ =
+          Css.Reader.fold_many parser ~init:[] ~f:(fun acc x -> x :: acc) r2
+        in
+        ())
+  with Css.Reader.Parse_error error ->
+    (* Should have fold-context in the call stack *)
+    Alcotest.(check bool)
+      "fold_many preserves context" true
+      (List.mem "fold-context" error.callstack)
+
+let test_fold_many_with_enum_context () =
+  (* Test that fold_many inside enum preserves both contexts *)
+  let r = of_string "invalid" in
+
+  (* This simulates what happens with border parsing *)
+  let parser r =
+    enum "outer-enum" []
+      ~default:(fun r ->
+        let parse_component r =
+          one_of
+            [
+              (fun r -> enum "inner1" [ ("valid1", 1) ] r);
+              (fun r -> enum "inner2" [ ("valid2", 2) ] r);
+            ]
+            r
+        in
+        let acc, _ =
+          Css.Reader.fold_many parse_component ~init:[]
+            ~f:(fun acc x -> x :: acc)
+            r
+        in
+        acc)
+      r
+  in
+
+  try
+    let _ = parser r in
+    Alcotest.fail "Should have raised Parse_error"
+  with Css.Reader.Parse_error error ->
+    (* Check if outer-enum is in the call stack *)
+    Alcotest.(check bool)
+      "enum context preserved with fold_many" true
+      (List.mem "enum:outer-enum" error.callstack
+      || List.mem "outer-enum" error.callstack)
+
+let test_many_call_stack () =
+  (* Test that many preserves call stack on errors *)
+  let r = of_string "valid invalid" in
+  let parser r = enum "item" [ ("valid", 1); ("good", 2) ] r in
+  let items, error_opt = Css.Reader.many parser r in
+
+  (* Should have parsed one item before failing *)
+  Alcotest.(check (list int)) "parsed one valid item" [ 1 ] items;
+  Alcotest.(check bool) "has error message" true (Option.is_some error_opt);
+
+  (* Now test error context preservation *)
+  let r2 = of_string "invalid" in
+  try
+    with_context r2 "many-context" (fun () ->
+        let _, _ = Css.Reader.many parser r2 in
+        ())
+  with Css.Reader.Parse_error error ->
+    (* Should have many-context in the call stack *)
+    Alcotest.(check bool)
+      "many preserves context" true
+      (List.mem "many-context" error.callstack)
+
+let test_triple_call_stack () =
+  (* Test that triple combinator preserves context *)
+  let r = of_string "1 2 invalid" in
+  let parse_int r = int_of_float (Css.Reader.number r) in
+
+  try
+    with_context r "triple-context" (fun () ->
+        let _ = Css.Reader.triple ~sep:ws parse_int parse_int parse_int r in
+        ())
+  with Css.Reader.Parse_error error ->
+    (* Should have triple-context in the call stack *)
+    Alcotest.(check bool)
+      "triple preserves context" true
+      (List.mem "triple-context" error.callstack)
+
 let suite =
   [
     ( "reader",
@@ -612,5 +855,17 @@ let suite =
         (* enum combinator tests *)
         test_case "enum" `Quick test_reader_enum;
         test_case "enum with default" `Quick test_reader_enum_with_default;
+        (* call stack tests *)
+        test_case "call stack" `Quick test_callstack;
+        test_case "with context" `Quick test_with_context;
+        test_case "with context exception" `Quick test_with_context_exception;
+        test_case "enum call stack" `Quick test_enum_call_stack;
+        test_case "enum_or_calls call stack" `Quick test_enum_or_calls_stack;
+        test_case "list call stack" `Quick test_list_call_stack;
+        test_case "fold_many call stack" `Quick test_fold_many_call_stack;
+        test_case "fold_many with enum context" `Quick
+          test_fold_many_with_enum_context;
+        test_case "many call stack" `Quick test_many_call_stack;
+        test_case "triple call stack" `Quick test_triple_call_stack;
       ] );
   ]

@@ -145,9 +145,11 @@ let rec pp_length : length Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Content -> Pp.string ctx "content"
   | Calc cv -> (
-      (* Optimize calc(infinity * 1px) to 3.40282e38px for minification *)
+      (* Optimize calc(infinity * dimension) to large value for minification *)
       match cv with
-      | Expr (Val (Num f), Mult, Val (Px 1.)) when ctx.minify && f = infinity ->
+      | Expr (Num f, Mult, Val _) when ctx.minify && f = infinity ->
+          Pp.string ctx "3.40282e38px"
+      | Expr (Val _, Mult, Num f) when ctx.minify && f = infinity ->
           Pp.string ctx "3.40282e38px"
       | _ -> pp_calc pp_length ctx cv)
 
@@ -520,9 +522,8 @@ and pp_color : color Pp.t =
   | Lch { l; c; h; alpha } -> pp_lch ctx (l, c, h, alpha)
   | Named name -> pp_color_name ctx name
   | Var v -> pp_var pp_color ctx v
-  | Current -> Pp.string ctx "currentcolor"
-  | Transparent ->
-      if ctx.minify then Pp.string ctx "#0000" else Pp.string ctx "transparent"
+  | Current -> Pp.string ctx "currentColor"
+  | Transparent -> Pp.string ctx "transparent"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -567,8 +568,8 @@ module Calc = struct
   let var : ?default:'a -> ?fallback:'a -> string -> 'a calc =
    fun ?default ?fallback name -> Var (var_ref ?default ?fallback name)
 
-  let float f : length calc = Val (Num f)
-  let infinity : length calc = Val (Num infinity)
+  let float f : length calc = Num f
+  let infinity : length calc = Num infinity
   let px n = Val (Px n)
   let rem f = Val (Rem f)
   let em f = Val (Em f)
@@ -590,26 +591,57 @@ let read_var_after_ident : type a. (Reader.t -> a) -> Reader.t -> a var =
   let fallback =
     if Reader.peek t = Some ',' then (
       Reader.comma t;
-      Some (read_value t))
+      Reader.ws t;
+      (* For fallback, we need to capture everything until the closing paren,
+         respecting nested parens and quotes. Then parse that as the value. *)
+      let fallback_str = Reader.css_value ~stops:[ ')' ] t in
+      let fallback_reader = Reader.of_string fallback_str in
+      Some (read_value fallback_reader))
     else None
   in
   Reader.ws t;
   Reader.expect ')' t;
   var_ref ?fallback var_name
 
-(** Generic var() parser that returns a var reference *)
+(** Generic var() parser that returns a var reference. This works when called
+    from enum_calls/enum_or_calls context where "var" has been consumed and
+    we're inside parens *)
 let read_var : type a. (Reader.t -> a) -> Reader.t -> a var =
  fun read_value t ->
+  Reader.ws t;
   Reader.expect_string "var" t;
-  read_var_after_ident read_value t
+  Reader.expect '(' t;
+  Reader.ws t;
+  let var_name =
+    if Reader.looking_at t "--" then (
+      Reader.expect_string "--" t;
+      Reader.ident ~keep_case:true t)
+    else Reader.ident ~keep_case:true t
+  in
+  Reader.ws t;
+  let fallback =
+    if Reader.peek t = Some ',' then (
+      Reader.comma t;
+      Reader.ws t;
+      (* For fallback, we need to capture everything until the closing paren,
+         respecting nested parens and quotes. Then parse that as the value. *)
+      let fallback_str = Reader.css_value ~stops:[ ')' ] t in
+      let fallback_reader = Reader.of_string fallback_str in
+      Some (read_value fallback_reader))
+    else None
+  in
+  Reader.ws t;
+  Reader.expect ')' t;
+  var_ref ?fallback var_name
 
 let read_length_unit t =
   let n = Reader.number t in
   let unit_raw = Reader.while_ t (fun c -> Reader.is_alpha c || c = '%') in
   let unit = String.lowercase_ascii unit_raw in
   match unit with
-  | _ when n = 0.0 -> Zero
+  | "" when n = 0.0 -> Zero
   | "" -> Reader.err t "length values must have units (except for zero)"
+  | _ when n = 0.0 -> Zero
   | "px" -> Px n
   | "cm" -> Cm n
   | "mm" -> Mm n
@@ -714,9 +746,21 @@ and read_calc_factor : type a. (Reader.t -> a) -> Reader.t -> a calc =
     expr)
   else if Reader.looking_at t "var(" then Var (read_var read_a t)
   else
+    let read_zero : Reader.t -> a calc =
+     fun t ->
+      let n = Reader.number t in
+      if n = 0. then
+        (* Check if there's a unit after the 0 *)
+        match Reader.peek t with
+        | Some c when Reader.is_alpha c || c = '%' ->
+            (* Has a unit, fail so read_val can handle it *)
+            Reader.err t "zero with unit"
+        | _ -> Num 0.
+      else Reader.err t "expected zero"
+    in
     let read_val : Reader.t -> a calc = fun t -> Val (read_a t) in
     let read_num : Reader.t -> a calc = fun t -> Num (Reader.number t) in
-    Reader.one_of [ read_val; read_num ] t
+    Reader.one_of [ read_zero; read_val; read_num ] t
 
 and read_calc : type a. (Reader.t -> a) -> Reader.t -> a calc =
  fun read_a t ->
@@ -753,13 +797,10 @@ and read_calc : type a. (Reader.t -> a) -> Reader.t -> a calc =
 
 let rec read_length t : length =
   Reader.ws t;
+  let read_var_length t : length = Var (read_var read_length t) in
+  let read_calc_length t : length = Calc (read_calc read_length t) in
   Reader.one_of
-    [
-      (fun t -> (Var (read_var read_length t) : length));
-      (fun t -> Calc (read_calc read_length t));
-      read_length_unit;
-      read_length_keyword;
-    ]
+    [ read_var_length; read_calc_length; read_length_unit; read_length_keyword ]
     t
 
 (** Read a non-negative length value (for padding properties) *)

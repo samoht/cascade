@@ -1,399 +1,291 @@
 open Alcotest
-
-let to_string pp v = Css.Pp.to_string ~minify:true pp v
+open Css.Properties
 
 (* Generic check function for property values *)
-let check_value name pp reader ?expected input =
+let check_value name pp reader ?(minify = true) ?expected input =
   let expected = Option.value ~default:input expected in
   (* First pass: parse + print equals expected (minified) *)
   let t = Css.Reader.of_string input in
   let v = reader t in
-  let s = to_string pp v in
+  let s = Css.Pp.to_string ~minify pp v in
   check string (Fmt.str "%s %s" name input) expected s;
   (* Roundtrip stability: read printed output and ensure idempotent printing *)
   let t2 = Css.Reader.of_string s in
   let v2 = reader t2 in
-  let s2 = to_string pp v2 in
+  let s2 = Css.Pp.to_string ~minify pp v2 in
   check string (Fmt.str "roundtrip %s %s" name input) s s2
 
 (* Check functions for each type - one-liner definitions *)
-let check_display =
-  check_value "display" Css.Properties.pp_display Css.Properties.read_display
-
-let check_position =
-  check_value "position" Css.Properties.pp_position Css.Properties.read_position
-
-let check_overflow =
-  check_value "overflow" Css.Properties.pp_overflow Css.Properties.read_overflow
+let check_display = check_value "display" pp_display read_display
+let check_position = check_value "position" pp_position read_position
+let check_overflow = check_value "overflow" pp_overflow read_overflow
 
 let check_border_style =
-  check_value "border-style" Css.Properties.pp_border_style
-    Css.Properties.read_border_style
+  check_value "border-style" pp_border_style read_border_style
 
-let check_border =
-  check_value "border" Css.Properties.pp_border Css.Properties.read_border
-
-let check_visibility =
-  check_value "visibility" Css.Properties.pp_visibility
-    Css.Properties.read_visibility
-
-let check_z_index =
-  check_value "z-index" Css.Properties.pp_z_index Css.Properties.read_z_index
+let check_border = check_value "border" pp_border read_border
+let check_visibility = check_value "visibility" pp_visibility read_visibility
+let check_z_index = check_value "z-index" pp_z_index read_z_index
 
 let check_flex_direction =
-  check_value "flex-direction" Css.Properties.pp_flex_direction
-    Css.Properties.read_flex_direction
+  check_value "flex-direction" pp_flex_direction read_flex_direction
 
-let check_flex_wrap =
-  check_value "flex-wrap" Css.Properties.pp_flex_wrap
-    Css.Properties.read_flex_wrap
-
-let check_align =
-  check_value "align" Css.Properties.pp_align Css.Properties.read_align
-
-let check_align_self =
-  check_value "align-self" Css.Properties.pp_align_self
-    Css.Properties.read_align_self
-
-let check_justify =
-  check_value "justify" Css.Properties.pp_justify Css.Properties.read_justify
-
-let check_font_style =
-  check_value "font-style" Css.Properties.pp_font_style
-    Css.Properties.read_font_style
-
-let check_text_align =
-  check_value "text-align" Css.Properties.pp_text_align
-    Css.Properties.read_text_align
+let check_flex_wrap = check_value "flex-wrap" pp_flex_wrap read_flex_wrap
+let check_align = check_value "align" pp_align read_align
+let check_align_self = check_value "align-self" pp_align_self read_align_self
+let check_justify = check_value "justify" pp_justify read_justify
+let check_font_style = check_value "font-style" pp_font_style read_font_style
+let check_text_align = check_value "text-align" pp_text_align read_text_align
 
 let check_text_decoration_style =
-  check_value "text-decoration-style" Css.Properties.pp_text_decoration_style
-    Css.Properties.read_text_decoration_style
+  check_value "text-decoration-style" pp_text_decoration_style
+    read_text_decoration_style
 
 let check_text_overflow =
-  check_value "text-overflow" Css.Properties.pp_text_overflow
-    Css.Properties.read_text_overflow
+  check_value "text-overflow" pp_text_overflow read_text_overflow
 
-let check_text_wrap =
-  check_value "text-wrap" Css.Properties.pp_text_wrap
-    Css.Properties.read_text_wrap
+let check_text_wrap = check_value "text-wrap" pp_text_wrap read_text_wrap
 
 let check_white_space =
-  check_value "white-space" Css.Properties.pp_white_space
-    Css.Properties.read_white_space
+  check_value "white-space" pp_white_space read_white_space
 
-let check_word_break =
-  check_value "word-break" Css.Properties.pp_word_break
-    Css.Properties.read_word_break
+let check_word_break = check_value "word-break" pp_word_break read_word_break
 
 let check_overflow_wrap =
-  check_value "overflow-wrap" Css.Properties.pp_overflow_wrap
-    Css.Properties.read_overflow_wrap
+  check_value "overflow-wrap" pp_overflow_wrap read_overflow_wrap
 
-let check_hyphens =
-  check_value "hyphens" Css.Properties.pp_hyphens Css.Properties.read_hyphens
+let check_hyphens = check_value "hyphens" pp_hyphens read_hyphens
 
 let check_line_height =
-  check_value "line-height" Css.Properties.pp_line_height
-    Css.Properties.read_line_height
+  check_value "line-height" pp_line_height read_line_height
 
 (* Additional check functions for list, table, and other types *)
 let check_list_style_type =
-  check_value "list-style-type" Css.Properties.pp_list_style_type
-    Css.Properties.read_list_style_type
+  check_value "list-style-type" pp_list_style_type read_list_style_type
 
 let check_list_style_position =
-  check_value "list-style-position" Css.Properties.pp_list_style_position
-    Css.Properties.read_list_style_position
+  check_value "list-style-position" pp_list_style_position
+    read_list_style_position
 
 let check_list_style_image =
-  check_value "list-style-image" Css.Properties.pp_list_style_image
-    Css.Properties.read_list_style_image
+  check_value "list-style-image" pp_list_style_image read_list_style_image
 
 let check_table_layout =
-  check_value "table-layout" Css.Properties.pp_table_layout
-    Css.Properties.read_table_layout
+  check_value "table-layout" pp_table_layout read_table_layout
 
 let check_border_collapse =
-  check_value "border-collapse" Css.Properties.pp_border_collapse
-    Css.Properties.read_border_collapse
+  check_value "border-collapse" pp_border_collapse read_border_collapse
 
 let check_user_select =
-  check_value "user-select" Css.Properties.pp_user_select
-    Css.Properties.read_user_select
+  check_value "user-select" pp_user_select read_user_select
 
 let check_pointer_events =
-  check_value "pointer-events" Css.Properties.pp_pointer_events
-    Css.Properties.read_pointer_events
+  check_value "pointer-events" pp_pointer_events read_pointer_events
 
 let check_touch_action =
-  check_value "touch-action" Css.Properties.pp_touch_action
-    Css.Properties.read_touch_action
+  check_value "touch-action" pp_touch_action read_touch_action
 
-let check_resize =
-  check_value "resize" Css.Properties.pp_resize Css.Properties.read_resize
-
-let check_box_sizing =
-  check_value "box-sizing" Css.Properties.pp_box_sizing
-    Css.Properties.read_box_sizing
-
-let check_object_fit =
-  check_value "object-fit" Css.Properties.pp_object_fit
-    Css.Properties.read_object_fit
+let check_resize = check_value "resize" pp_resize read_resize
+let check_box_sizing = check_value "box-sizing" pp_box_sizing read_box_sizing
+let check_object_fit = check_value "object-fit" pp_object_fit read_object_fit
 
 let check_content_visibility =
-  check_value "content-visibility" Css.Properties.pp_content_visibility
-    Css.Properties.read_content_visibility
+  check_value "content-visibility" pp_content_visibility read_content_visibility
 
 let check_container_type =
-  check_value "container-type" Css.Properties.pp_container_type
-    Css.Properties.read_container_type
+  check_value "container-type" pp_container_type read_container_type
 
-let check_contain =
-  check_value "contain" Css.Properties.pp_contain Css.Properties.read_contain
-
-let check_isolation =
-  check_value "isolation" Css.Properties.pp_isolation
-    Css.Properties.read_isolation
+let check_contain = check_value "contain" pp_contain read_contain
+let check_isolation = check_value "isolation" pp_isolation read_isolation
 
 let check_scroll_behavior =
-  check_value "scroll-behavior" Css.Properties.pp_scroll_behavior
-    Css.Properties.read_scroll_behavior
+  check_value "scroll-behavior" pp_scroll_behavior read_scroll_behavior
 
 (* More check functions for complex types *)
 let check_scroll_snap_align =
-  check_value "scroll-snap-align" Css.Properties.pp_scroll_snap_align
-    Css.Properties.read_scroll_snap_align
+  check_value "scroll-snap-align" pp_scroll_snap_align read_scroll_snap_align
 
 let check_scroll_snap_stop =
-  check_value "scroll-snap-stop" Css.Properties.pp_scroll_snap_stop
-    Css.Properties.read_scroll_snap_stop
+  check_value "scroll-snap-stop" pp_scroll_snap_stop read_scroll_snap_stop
 
 let check_scroll_snap_type =
-  check_value "scroll-snap-type" Css.Properties.pp_scroll_snap_type
-    Css.Properties.read_scroll_snap_type
+  check_value "scroll-snap-type" pp_scroll_snap_type read_scroll_snap_type
 
-let check_svg_paint =
-  check_value "svg-paint" Css.Properties.pp_svg_paint
-    Css.Properties.read_svg_paint
-
-let check_direction =
-  check_value "direction" Css.Properties.pp_direction
-    Css.Properties.read_direction
+let check_svg_paint = check_value "svg-paint" pp_svg_paint read_svg_paint
+let check_direction = check_value "direction" pp_direction read_direction
 
 let check_unicode_bidi =
-  check_value "unicode-bidi" Css.Properties.pp_unicode_bidi
-    Css.Properties.read_unicode_bidi
+  check_value "unicode-bidi" pp_unicode_bidi read_unicode_bidi
 
 let check_writing_mode =
-  check_value "writing-mode" Css.Properties.pp_writing_mode
-    Css.Properties.read_writing_mode
+  check_value "writing-mode" pp_writing_mode read_writing_mode
 
 let check_webkit_appearance =
-  check_value "-webkit-appearance" Css.Properties.pp_webkit_appearance
-    Css.Properties.read_webkit_appearance
+  check_value "-webkit-appearance" pp_webkit_appearance read_webkit_appearance
 
 let check_webkit_font_smoothing =
-  check_value "-webkit-font-smoothing" Css.Properties.pp_webkit_font_smoothing
-    Css.Properties.read_webkit_font_smoothing
+  check_value "-webkit-font-smoothing" pp_webkit_font_smoothing
+    read_webkit_font_smoothing
 
 let check_moz_osx_font_smoothing =
-  check_value "-moz-osx-font-smoothing" Css.Properties.pp_moz_osx_font_smoothing
-    Css.Properties.read_moz_osx_font_smoothing
+  check_value "-moz-osx-font-smoothing" pp_moz_osx_font_smoothing
+    read_moz_osx_font_smoothing
 
 let check_webkit_box_orient =
-  check_value "-webkit-box-orient" Css.Properties.pp_webkit_box_orient
-    Css.Properties.read_webkit_box_orient
+  check_value "-webkit-box-orient" pp_webkit_box_orient read_webkit_box_orient
 
 let check_forced_color_adjust =
-  check_value "forced-color-adjust" Css.Properties.pp_forced_color_adjust
-    Css.Properties.read_forced_color_adjust
+  check_value "forced-color-adjust" pp_forced_color_adjust
+    read_forced_color_adjust
 
-let check_appearance =
-  check_value "appearance" Css.Properties.pp_appearance
-    Css.Properties.read_appearance
-
-let check_clear =
-  check_value "clear" Css.Properties.pp_clear Css.Properties.read_clear
-
-let check_float_side =
-  check_value "float" Css.Properties.pp_float_side
-    Css.Properties.read_float_side
+let check_appearance = check_value "appearance" pp_appearance read_appearance
+let check_clear = check_value "clear" pp_clear read_clear
+let check_float_side = check_value "float" pp_float_side read_float_side
 
 let check_text_decoration_skip_ink =
-  check_value "text-decoration-skip-ink"
-    Css.Properties.pp_text_decoration_skip_ink
-    Css.Properties.read_text_decoration_skip_ink
+  check_value "text-decoration-skip-ink" pp_text_decoration_skip_ink
+    read_text_decoration_skip_ink
 
 let check_vertical_align =
-  check_value "vertical-align" Css.Properties.pp_vertical_align
-    Css.Properties.read_vertical_align
+  check_value "vertical-align" pp_vertical_align read_vertical_align
 
 let check_outline_style =
-  check_value "outline-style" Css.Properties.pp_outline_style
-    Css.Properties.read_outline_style
+  check_value "outline-style" pp_outline_style read_outline_style
 
 let check_font_family =
-  check_value "font-family" Css.Properties.pp_font_family
-    Css.Properties.read_font_family
+  check_value "font-family" pp_font_family read_font_family
 
 let check_font_stretch =
-  check_value "font-stretch" Css.Properties.pp_font_stretch
-    Css.Properties.read_font_stretch
+  check_value "font-stretch" pp_font_stretch read_font_stretch
 
 let check_font_variant_numeric =
-  check_value "font-variant-numeric" Css.Properties.pp_font_variant_numeric
-    Css.Properties.read_font_variant_numeric
+  check_value "font-variant-numeric" pp_font_variant_numeric
+    read_font_variant_numeric
 
 let check_font_feature_settings =
-  check_value "font-feature-settings" Css.Properties.pp_font_feature_settings
-    Css.Properties.read_font_feature_settings
+  check_value "font-feature-settings" pp_font_feature_settings
+    read_font_feature_settings
 
 let check_font_variation_settings =
-  check_value "font-variation-settings"
-    Css.Properties.pp_font_variation_settings
-    Css.Properties.read_font_variation_settings
+  check_value "font-variation-settings" pp_font_variation_settings
+    read_font_variation_settings
 
 let check_backface_visibility =
-  check_value "backface-visibility" Css.Properties.pp_backface_visibility
-    Css.Properties.read_backface_visibility
+  check_value "backface-visibility" pp_backface_visibility
+    read_backface_visibility
 
-let check_scale =
-  check_value "scale" Css.Properties.pp_scale Css.Properties.read_scale
+let check_scale = check_value "scale" pp_scale read_scale
 
 let check_timing_function =
-  check_value "timing-function" Css.Properties.pp_timing_function
-    Css.Properties.read_timing_function
+  check_value "timing-function" pp_timing_function read_timing_function
 
 let check_transition_property =
-  check_value "transition-property" Css.Properties.pp_transition_property
-    Css.Properties.read_transition_property
+  check_value "transition-property" pp_transition_property
+    read_transition_property
 
-let check_transition =
-  check_value "transition" Css.Properties.pp_transition
-    Css.Properties.read_transition
+let check_transition = check_value "transition" pp_transition read_transition
 
 let check_animation_direction =
-  check_value "animation-direction" Css.Properties.pp_animation_direction
-    Css.Properties.read_animation_direction
+  check_value "animation-direction" pp_animation_direction
+    read_animation_direction
 
 let check_animation_fill_mode =
-  check_value "animation-fill-mode" Css.Properties.pp_animation_fill_mode
-    Css.Properties.read_animation_fill_mode
+  check_value "animation-fill-mode" pp_animation_fill_mode
+    read_animation_fill_mode
 
 let check_animation_iteration_count =
-  check_value "animation-iteration-count"
-    Css.Properties.pp_animation_iteration_count
-    Css.Properties.read_animation_iteration_count
+  check_value "animation-iteration-count" pp_animation_iteration_count
+    read_animation_iteration_count
 
 let check_animation_play_state =
-  check_value "animation-play-state" Css.Properties.pp_animation_play_state
-    Css.Properties.read_animation_play_state
+  check_value "animation-play-state" pp_animation_play_state
+    read_animation_play_state
 
-let check_animation =
-  check_value "animation" Css.Properties.pp_animation
-    Css.Properties.read_animation
+let check_animation = check_value "animation" pp_animation read_animation
 
 let check_blend_mode =
-  check_value "mix-blend-mode" Css.Properties.pp_blend_mode
-    Css.Properties.read_blend_mode
+  check_value "mix-blend-mode" pp_blend_mode read_blend_mode
 
 let check_text_shadow =
-  check_value "text-shadow" Css.Properties.pp_text_shadow
-    Css.Properties.read_text_shadow
+  check_value "text-shadow" pp_text_shadow read_text_shadow
 
-let check_box_shadow =
-  check_value "box-shadow" Css.Properties.pp_box_shadow
-    Css.Properties.read_box_shadow
+let check_box_shadow = check_value "box-shadow" pp_box_shadow read_box_shadow
 
 let check_box_shadows =
   check_value "box-shadows"
-    (Css.Pp.list ~sep:Css.Pp.comma Css.Properties.pp_box_shadow)
-    Css.Properties.read_box_shadows
+    (Css.Pp.list ~sep:Css.Pp.comma pp_box_shadow)
+    read_box_shadows
 
-let check_filter =
-  check_value "filter" Css.Properties.pp_filter Css.Properties.read_filter
+let check_filter = check_value "filter" pp_filter read_filter
 
 let check_background_attachment =
-  check_value "background-attachment" Css.Properties.pp_background_attachment
-    Css.Properties.read_background_attachment
+  check_value "background-attachment" pp_background_attachment
+    read_background_attachment
 
 let check_background_repeat =
-  check_value "background-repeat" Css.Properties.pp_background_repeat
-    Css.Properties.read_background_repeat
+  check_value "background-repeat" pp_background_repeat read_background_repeat
 
 let check_background_size =
-  check_value "background-size" Css.Properties.pp_background_size
-    Css.Properties.read_background_size
+  check_value "background-size" pp_background_size read_background_size
 
 let check_background_image =
-  check_value "background-image" Css.Properties.pp_background_image
-    Css.Properties.read_background_image
+  check_value "background-image" pp_background_image read_background_image
 
 let check_overscroll_behavior =
-  check_value "overscroll-behavior" Css.Properties.pp_overscroll_behavior
-    Css.Properties.read_overscroll_behavior
+  check_value "overscroll-behavior" pp_overscroll_behavior
+    read_overscroll_behavior
 
 let check_aspect_ratio =
-  check_value "aspect-ratio" Css.Properties.pp_aspect_ratio
-    Css.Properties.read_aspect_ratio
+  check_value "aspect-ratio" pp_aspect_ratio read_aspect_ratio
 
-let check_content =
-  check_value "content" Css.Properties.pp_content Css.Properties.read_content
+let check_content = check_value "content" pp_content read_content
 
 let check_grid_auto_flow =
-  check_value "grid-auto-flow" Css.Properties.pp_grid_auto_flow
-    Css.Properties.read_grid_auto_flow
+  check_value "grid-auto-flow" pp_grid_auto_flow read_grid_auto_flow
 
 let check_grid_track_size =
-  check_value "grid-track-size" Css.Properties.pp_grid_track_size
-    Css.Properties.read_grid_track_size
+  check_value "grid-track-size" pp_grid_track_size read_grid_track_size
 
 let check_grid_template =
-  check_value "grid-template" Css.Properties.pp_grid_template
-    Css.Properties.read_grid_template
+  check_value "grid-template" pp_grid_template read_grid_template
 
-let check_grid_line =
-  check_value "grid-line" Css.Properties.pp_grid_line
-    Css.Properties.read_grid_line
+let check_grid_line = check_value "grid-line" pp_grid_line read_grid_line
 
 let check_align_items =
-  check_value "align-items" Css.Properties.pp_align_items
-    Css.Properties.read_align_items
+  check_value "align-items" pp_align_items read_align_items
 
 let check_justify_content =
-  check_value "justify-content" Css.Properties.pp_justify_content
-    Css.Properties.read_justify_content
+  check_value "justify-content" pp_justify_content read_justify_content
 
-let check_flex =
-  check_value "flex" Css.Properties.pp_flex Css.Properties.read_flex
+let check_flex = check_value "flex" pp_flex read_flex
 
 let check_place_items =
-  check_value "place-items" Css.Properties.pp_place_items
-    Css.Properties.read_place_items
+  check_value "place-items" pp_place_items read_place_items
 
 let check_place_content =
-  check_value "place-content" Css.Properties.pp_place_content
-    Css.Properties.read_place_content
+  check_value "place-content" pp_place_content read_place_content
 
-let check_transform =
-  check_value "transform" Css.Properties.pp_transform
-    Css.Properties.read_transform
+let check_transform = check_value "transform" pp_transform read_transform
 
 let check_gradient_direction =
-  check_value "gradient-direction" Css.Properties.pp_gradient_direction
-    Css.Properties.read_gradient_direction
+  check_value "gradient-direction" pp_gradient_direction read_gradient_direction
 
 let check_gradient_stop =
-  check_value "gradient-stop" Css.Properties.pp_gradient_stop
-    Css.Properties.read_gradient_stop
+  check_value "gradient-stop" pp_gradient_stop read_gradient_stop
 
 (* Helper for any_property type *)
-let pp_any_property : Css.Properties.any_property Css.Pp.t =
- fun ctx (Css.Properties.Prop p) -> Css.Properties.pp_property ctx p
+let pp_any_property : any_property Css.Pp.t =
+ fun ctx (Prop p) -> pp_property ctx p
 
-let check_property =
-  check_value "property" pp_any_property Css.Properties.read_property
+let check_property = check_value "property" pp_any_property read_property
+
+(* Helper for property-value pairs printing *)
+let check_property_value expected (prop, value) =
+  let pp = pp_property_value in
+  let to_string f = Css.Pp.to_string ~minify:true f in
+  let actual = to_string pp (prop, value) in
+  let name = Fmt.str "%s value" (Css.Pp.to_string pp_property prop) in
+  check string name expected actual
 
 (* Test functions that use the check_<type> functions *)
 let test_display () =
@@ -933,32 +825,30 @@ let test_shadows_filters_background () =
   check_background_image "url(./img.png)"
 
 let test_property_names () =
-  let to_s : type a. a Css.Properties.property -> string =
-   fun prop -> Css.Pp.to_string Css.Properties.pp_property prop
+  let to_s : type a. a property -> string =
+   fun prop -> Css.Pp.to_string pp_property prop
   in
   (* Test color properties *)
-  check string "property name" "background-color"
-    (to_s Css.Properties.Background_color);
-  check string "property name" "color" (to_s Css.Properties.Color);
-  check string "property name" "border-color" (to_s Css.Properties.Border_color);
-  check string "property name" "outline-color"
-    (to_s Css.Properties.Outline_color);
+  check string "property name" "background-color" (to_s Background_color);
+  check string "property name" "color" (to_s Color);
+  check string "property name" "border-color" (to_s Border_color);
+  check string "property name" "outline-color" (to_s Outline_color);
   (* Test border style property *)
-  check string "property name" "border-style" (to_s Css.Properties.Border_style);
+  check string "property name" "border-style" (to_s Border_style);
   (* Test length properties *)
-  check string "property name" "padding-left" (to_s Css.Properties.Padding_left);
-  check string "property name" "margin-top" (to_s Css.Properties.Margin_top);
-  check string "property name" "width" (to_s Css.Properties.Width);
-  check string "property name" "height" (to_s Css.Properties.Height);
-  check string "property name" "font-size" (to_s Css.Properties.Font_size);
-  check string "property name" "line-height" (to_s Css.Properties.Line_height);
+  check string "property name" "padding-left" (to_s Padding_left);
+  check string "property name" "margin-top" (to_s Margin_top);
+  check string "property name" "width" (to_s Width);
+  check string "property name" "height" (to_s Height);
+  check string "property name" "font-size" (to_s Font_size);
+  check string "property name" "line-height" (to_s Line_height);
   (* Test other properties *)
-  check string "property name" "display" (to_s Css.Properties.Display);
-  check string "property name" "position" (to_s Css.Properties.Position);
-  check string "property name" "visibility" (to_s Css.Properties.Visibility);
-  check string "property name" "z-index" (to_s Css.Properties.Z_index);
-  check string "property name" "transform" (to_s Css.Properties.Transform);
-  check string "property name" "cursor" (to_s Css.Properties.Cursor)
+  check string "property name" "display" (to_s Display);
+  check string "property name" "position" (to_s Position);
+  check string "property name" "visibility" (to_s Visibility);
+  check string "property name" "z-index" (to_s Z_index);
+  check string "property name" "transform" (to_s Transform);
+  check string "property name" "cursor" (to_s Cursor)
 
 (* Roundtrip tests for property names via read_property/pp_property *)
 let test_property_read_pp_roundtrip () =
@@ -975,19 +865,12 @@ let test_property_read_pp_roundtrip () =
   check_property "font-size"
 
 let test_pp_property_value () =
-  let pp = Css.Properties.pp_property_value in
-  check string "width 10px" "10px"
-    (to_string pp (Css.Properties.Width, Css.Values.Px 10.));
-  check string "color red" "red"
-    (to_string pp (Css.Properties.Color, Css.Values.Named Css.Values.Red));
-  check string "background-image list" "url(./x.png), none"
-    (to_string pp
-       ( Css.Properties.Background_image,
-         [ Css.Properties.Url "./x.png"; Css.Properties.None ] ));
-  check string "transform none" "none"
-    (to_string pp (Css.Properties.Transform, [ Css.Properties.None ]));
-  check string "content hello" "\"hello\""
-    (to_string pp (Css.Properties.Content, Css.Properties.String "hello"))
+  check_property_value "10px" (Width, Css.Values.Px 10.);
+  check_property_value "red" (Color, Css.Values.Named Css.Values.Red);
+  check_property_value "url(./x.png),none"
+    (Background_image, [ Url "./x.png"; None ]);
+  check_property_value "none" (Transform, [ None ]);
+  check_property_value "\"hello\"" (Content, String "hello")
 
 let test_grid_template_line () =
   check_grid_template "none";
@@ -1098,23 +981,21 @@ let test_grid_track_size () =
 (* Any-property value printing for representative properties *)
 let test_pp_property_value_samples () =
   let to_s f = Css.Pp.to_string ~minify:true f in
-  let ppv = Css.Properties.pp_property_value in
+  let ppv = pp_property_value in
   let check_pp name expected prop value =
     let actual = to_s ppv (prop, value) in
     check string name expected actual
   in
-  check_pp "width 10px" "10px" Css.Properties.Width (Css.Values.Px 10.);
+  check_pp "width 10px" "10px" Width (Css.Values.Px 10.);
   check string "color red" "red"
-    (to_s ppv (Css.Properties.Color, Css.Values.Named Css.Values.Red));
-  let imgs : Css.Properties.background_image list = [ Url "./x.png"; None ] in
+    (to_s ppv (Color, Css.Values.Named Css.Values.Red));
+  let imgs : background_image list = [ Url "./x.png"; None ] in
   check string "background-image list" "url(./x.png),none"
-    (to_s ppv (Css.Properties.Background_image, imgs));
+    (to_s ppv (Background_image, imgs));
   check string "transform none" "none"
-    (to_s ppv
-       (Css.Properties.Transform, ([ None ] : Css.Properties.transform list)));
+    (to_s ppv (Transform, ([ None ] : transform list)));
   check string "content hello" "\"hello\""
-    (to_s ppv
-       (Css.Properties.Content, (String "hello" : Css.Properties.content)))
+    (to_s ppv (Content, (String "hello" : content)))
 
 let test_negative_property_values () =
   let open Css.Reader in
@@ -1123,74 +1004,58 @@ let test_negative_property_values () =
     let result = option reader r in
     check bool label true (Option.is_none result)
   in
-  neg Css.Properties.read_align_items "diagonal" "align-items invalid";
-  neg Css.Properties.read_justify_content "aroundish" "justify-content invalid";
-  neg Css.Properties.read_grid_auto_flow "stack" "grid-auto-flow invalid";
-  neg Css.Properties.read_aspect_ratio "1" "aspect-ratio missing /";
-  neg Css.Properties.read_overscroll_behavior "bounce"
-    "overscroll-behavior invalid";
-  neg Css.Properties.read_background_size "bogus" "background-size invalid";
-  neg Css.Properties.read_content_visibility "supervisible"
-    "content-visibility invalid";
-  neg Css.Properties.read_box_shadow "10px" "box-shadow missing v-offset";
-  neg Css.Properties.read_transform "invalidfunc()" "transform invalid function";
-  neg Css.Properties.read_transform "translate3d(10px,20px)"
-    "translate3d arity invalid";
-  neg Css.Properties.read_transform "scale3d(1,2)" "scale3d arity invalid";
-  neg Css.Properties.read_transform "matrix(1,2,3,4,5)" "matrix arity invalid";
-  neg Css.Properties.read_transform "matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0)"
+  neg read_align_items "diagonal" "align-items invalid";
+  neg read_justify_content "aroundish" "justify-content invalid";
+  neg read_grid_auto_flow "stack" "grid-auto-flow invalid";
+  neg read_aspect_ratio "1" "aspect-ratio missing /";
+  neg read_overscroll_behavior "bounce" "overscroll-behavior invalid";
+  neg read_background_size "bogus" "background-size invalid";
+  neg read_content_visibility "supervisible" "content-visibility invalid";
+  neg read_box_shadow "10px" "box-shadow missing v-offset";
+  neg read_transform "invalidfunc()" "transform invalid function";
+  neg read_transform "translate3d(10px,20px)" "translate3d arity invalid";
+  neg read_transform "scale3d(1,2)" "scale3d arity invalid";
+  neg read_transform "matrix(1,2,3,4,5)" "matrix arity invalid";
+  neg read_transform "matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0)"
     "matrix3d arity invalid";
-  neg Css.Properties.read_background_image "linear-gradient(red)"
+  neg read_background_image "linear-gradient(red)"
     "gradient requires at least 2 stops";
-  neg Css.Properties.read_transitions "" "transitions require at least 1";
-  neg Css.Properties.read_animations "" "animations require at least 1";
+  neg read_transitions "" "transitions require at least 1";
+  neg read_animations "" "animations require at least 1";
   (* Note: blur(5px)contrast(1.2) is actually valid CSS - functions don't require spaces between them *)
   (* Content property: unquoted strings are invalid per CSS spec *)
-  neg Css.Properties.read_content "hello" "content strings must be quoted";
+  neg read_content "hello" "content strings must be quoted";
   (* Invalid gradient direction and angle unit in property context *)
-  neg Css.Properties.read_gradient_direction "to middle"
-    "gradient-direction invalid";
-  neg Css.Properties.read_gradient_direction "twentydeg"
-    "gradient-direction invalid"
+  neg read_gradient_direction "to middle" "gradient-direction invalid";
+  neg read_gradient_direction "twentydeg" "gradient-direction invalid"
 
 let test_typed_positions () =
   let to_s f = Css.Pp.to_string ~minify:true f in
-  let ppv = Css.Properties.pp_property_value in
+  let ppv = pp_property_value in
   (* background-position: list *)
   check string "bg-pos center" "center"
-    (to_s ppv (Css.Properties.Background_position, [ Css.Properties.Center ]));
+    (to_s ppv (Background_position, [ Center ]));
   check string "bg-pos left, top" "left center,center top"
-    (to_s ppv
-       ( Css.Properties.Background_position,
-         [ Css.Properties.pos_left; Css.Properties.pos_top ] ));
+    (to_s ppv (Background_position, [ pos_left; pos_top ]));
   (* object-position: single *)
   check string "object-pos bottom" "center bottom"
-    (to_s ppv (Css.Properties.Object_position, Css.Properties.pos_bottom));
+    (to_s ppv (Object_position, pos_bottom));
   (* transform-origin: 2D and 3D *)
   check string "origin left top" "left top"
-    (to_s ppv
-       ( Css.Properties.Transform_origin,
-         Css.Properties.origin Css.Properties.Left Css.Properties.Top ));
+    (to_s ppv (Transform_origin, origin Left Top));
   check string "origin3d right bottom 10px" "right bottom 10px"
-    (to_s ppv
-       ( Css.Properties.Transform_origin,
-         Css.Properties.origin3d Css.Properties.Right Css.Properties.Bottom
-           (Css.Values.Px 10.) ))
+    (to_s ppv (Transform_origin, origin3d Right Bottom (Css.Values.Px 10.)))
 
 let test_background_box () =
   let check =
-    check_value "background_box" Css.Properties.pp_background_box
-      Css.Properties.read_background_box
+    check_value "background_box" pp_background_box read_background_box
   in
   check "border-box";
   check "padding-box";
   check "content-box"
 
 let test_background () =
-  let check =
-    check_value "background" Css.Properties.pp_background
-      Css.Properties.read_background
-  in
+  let check = check_value "background" pp_background read_background in
   check "red";
   check "url(image.png)";
   check ~expected:"linear-gradient(to right,red,blue)"
@@ -1200,9 +1065,7 @@ let test_background () =
   check "none"
 
 let test_filter () =
-  let check =
-    check_value "filter" Css.Properties.pp_filter Css.Properties.read_filter
-  in
+  let check = check_value "filter" pp_filter read_filter in
   check "none";
   check "blur(5px)";
   check ~expected:"blur(5px) contrast(1.2)" "blur(5px) contrast(1.2)";
@@ -1212,20 +1075,26 @@ let test_filter () =
 
 (** Test that font family lists in custom declarations are properly printed *)
 let test_font_family_custom_declarations () =
-  let fonts =
-    [
-      Css.Properties.Ui_sans_serif;
-      Css.Properties.System_ui;
-      Css.Properties.Sans_serif;
-      Css.Properties.Apple_color_emoji;
-    ]
-  in
+  let fonts = [ Ui_sans_serif; System_ui; Sans_serif; Apple_color_emoji ] in
   let decl, _var =
     Css.Variables.var "--test-fonts" Css.Declaration.Font_family fonts
   in
   let css_output = Css.Declaration.string_of_value decl in
   let expected = "ui-sans-serif,system-ui,sans-serif,\"Apple Color Emoji\"" in
   check string "font family list in custom declaration" expected css_output
+
+let test_font_family_with_var_fallback () =
+  let minified =
+    "var(--default-font-family,ui-sans-serif,system-ui,sans-serif,\"Apple \
+     Color Emoji\")"
+  in
+  check_font_family minified;
+
+  let pretty =
+    "var(--default-font-family, ui-sans-serif, system-ui, sans-serif, \"Apple \
+     Color Emoji\")"
+  in
+  check_font_family ~minify:false ~expected:pretty minified
 
 let tests =
   [

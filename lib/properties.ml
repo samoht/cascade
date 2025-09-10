@@ -2,8 +2,9 @@ open Values
 include Properties_intf
 
 let err_invalid_value ?got t prop_name value =
-  raise
-    (Reader.Parse_error ("invalid " ^ prop_name ^ " value: " ^ value, got, t))
+  Reader.err ?got t ("invalid " ^ prop_name ^ " value: " ^ value)
+
+(* Parse a var(...) body and build a typed Var value *)
 
 (* Generic length parsing helpers *)
 let read_line_height_length t : line_height =
@@ -126,9 +127,10 @@ let read_justify_content t : justify_content =
     ]
     t
 
-let read_font_weight t : font_weight =
+let rec read_font_weight t : font_weight =
+  let read_var t : font_weight = Var (Values.read_var read_font_weight t) in
   Reader.ws t;
-  Reader.enum "font-weight"
+  Reader.enum_or_calls "font-weight"
     [
       ("normal", Normal);
       ("bold", Bold);
@@ -136,12 +138,13 @@ let read_font_weight t : font_weight =
       ("lighter", Lighter);
       ("inherit", Inherit);
     ]
-    t
+    ~calls:[ ("var", read_var) ]
     ~default:(fun t ->
       let n = Reader.number t in
       let weight = int_of_float n in
       if weight >= 1 && weight <= 1000 then Weight weight
       else err_invalid_value t "font-weight" (string_of_int weight))
+    t
 
 let read_font_style t : font_style =
   Reader.enum "font-style"
@@ -187,7 +190,7 @@ let read_text_decoration_style t : text_decoration_style =
     ]
     t
 
-let read_text_decoration t : text_decoration =
+let rec read_text_decoration t : text_decoration =
   let update (acc : text_decoration_shorthand) = function
     | `Line l -> { acc with lines = l :: acc.lines }
     | `Style s -> if acc.style = None then { acc with style = Some s } else acc
@@ -204,16 +207,23 @@ let read_text_decoration t : text_decoration =
       [ read_line_comp; read_style_comp; read_color_comp; read_thickness_comp ]
       t
   in
-  Reader.enum "text-decoration"
+  let read_var t : text_decoration =
+    Var (Values.read_var read_text_decoration t)
+  in
+  Reader.enum_or_calls "text-decoration"
     [ ("inherit", (Inherit : text_decoration)); ("none", None) ]
+    ~calls:[ ("var", read_var) ]
     ~default:(fun t ->
       let init = { lines = []; style = None; color = None; thickness = None } in
       let acc, _ = Reader.fold_many read_component ~init ~f:update t in
       Shorthand { acc with lines = List.rev acc.lines })
     t
 
-let read_text_transform t : text_transform =
-  Reader.enum "text-transform"
+let rec read_text_transform t : text_transform =
+  let read_var t : text_transform =
+    Var (Values.read_var read_text_transform t)
+  in
+  Reader.enum_or_calls "text-transform"
     [
       ("none", (None : text_transform));
       ("uppercase", Uppercase);
@@ -222,6 +232,7 @@ let read_text_transform t : text_transform =
       ("full-width", Full_width);
       ("inherit", Inherit);
     ]
+    ~calls:[ ("var", read_var) ]
     t
 
 let read_overflow t : overflow =
@@ -335,14 +346,16 @@ let read_box_shadow_custom t =
         }
   | None -> err_invalid_value t "box-shadow" "at least two lengths are required"
 
-let read_box_shadow t : box_shadow =
+let rec read_box_shadow t : box_shadow =
+  let read_var t : box_shadow = Var (Values.read_var read_box_shadow t) in
   Reader.ws t;
-  Reader.enum "box-shadow"
+  Reader.enum_or_calls "box-shadow"
     [ ("none", None); ("inherit", Inherit) ]
-    t ~default:read_box_shadow_custom
+    ~calls:[ ("var", read_var) ]
+    ~default:read_box_shadow_custom t
 
 let read_box_shadows t : box_shadow list =
-  Reader.list ~sep:Reader.comma read_box_shadow t
+  Reader.list ~sep:Reader.comma ~at_least:1 read_box_shadow t
 
 (* Named helpers for transform function bodies to keep the call table tidy *)
 let read_translate_x t = Translate_x (read_length t)
@@ -2524,8 +2537,9 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | O_transition -> pp (Pp.list ~sep:Pp.comma pp_transition)
   | Font_family -> pp (Pp.list ~sep:Pp.comma pp_font_family)
 
-let read_border_style t : border_style =
-  Reader.enum "border-style"
+let rec read_border_style t : border_style =
+  let read_var t : border_style = Var (Values.read_var read_border_style t) in
+  Reader.enum_or_calls "border-style"
     [
       ("none", (None : border_style));
       ("solid", Solid);
@@ -2538,9 +2552,11 @@ let read_border_style t : border_style =
       ("outset", Outset);
       ("hidden", Hidden);
     ]
+    ~calls:[ ("var", read_var) ]
     t
 
-let read_border_width t : border_width =
+let rec read_border_width t : border_width =
+  let read_var t : border_width = Var (Values.read_var read_border_width t) in
   let read_length_as_border_width t =
     let length = read_length t in
     match length with
@@ -2568,7 +2584,8 @@ let read_border_width t : border_width =
       ("fit-content", Fit_content);
       ("from-font", From_font);
     ]
-    ~calls:[] ~default:read_length_as_border_width t
+    ~calls:[ ("var", read_var) ]
+    ~default:read_length_as_border_width t
 
 let read_border_component t =
   Reader.one_of
@@ -2621,8 +2638,9 @@ let read_flex_wrap t : flex_wrap =
     ]
     t
 
-let read_align t : align =
-  Reader.enum "align"
+let rec read_align t : align =
+  let read_var t : align = Var (Values.read_var read_align t) in
+  Reader.enum_or_calls "align"
     [
       ("normal", (Normal : align));
       ("start", Start);
@@ -2633,6 +2651,7 @@ let read_align t : align =
       ("space-around", Space_around);
       ("space-evenly", Space_evenly);
     ]
+    ~calls:[ ("var", read_var) ]
     t
 
 let read_align_self t : align_self =
@@ -2872,9 +2891,11 @@ let read_hyphens t : hyphens =
     ]
     t
 
-let read_line_height t : line_height =
-  Reader.enum "line-height"
+let rec read_line_height t : line_height =
+  let read_var t : line_height = Var (Values.read_var read_line_height t) in
+  Reader.enum_or_calls "line-height"
     [ ("normal", Normal); ("inherit", Inherit) ]
+    ~calls:[ ("var", read_var) ]
     ~default:read_line_height_length t
 
 let read_list_style_type t : list_style_type =
@@ -2996,31 +3017,31 @@ let read_object_fit t : object_fit =
     ]
     t
 
-let read_content t : content =
+let rec read_content t : content =
+  let read_var t : content = Var (Values.read_var read_content t) in
   let read_string t = String (Reader.string t) in
-  Reader.one_of
+  Reader.enum_or_calls "content"
     [
-      read_string;
-      (fun t ->
-        Reader.enum "content"
-          [
-            ("none", (None : content));
-            ("normal", Normal);
-            ("open-quote", Open_quote);
-            ("close-quote", Close_quote);
-          ]
-          t);
+      ("none", (None : content));
+      ("normal", Normal);
+      ("open-quote", Open_quote);
+      ("close-quote", Close_quote);
     ]
-    t
+    ~calls:[ ("var", read_var) ]
+    ~default:read_string t
 
-let read_content_visibility t : content_visibility =
-  Reader.enum "content-visibility"
+let rec read_content_visibility t : content_visibility =
+  let read_var t : content_visibility =
+    Var (Values.read_var read_content_visibility t)
+  in
+  Reader.enum_or_calls "content-visibility"
     [
       ("visible", (Visible : content_visibility));
       ("auto", Auto);
       ("hidden", Hidden);
       ("inherit", Inherit);
     ]
+    ~calls:[ ("var", read_var) ]
     t
 
 let read_container_type t : container_type =
@@ -3089,12 +3110,14 @@ let read_scroll_snap_axis t : scroll_snap_axis =
     ]
     t
 
-let read_scroll_snap_strictness t : scroll_snap_strictness =
-  Reader.enum "scroll-snap-strictness"
+let rec read_scroll_snap_strictness t : scroll_snap_strictness =
+  let read_var t = Var (Values.read_var read_scroll_snap_strictness t) in
+  Reader.enum_or_calls "scroll-snap-strictness"
     [
       ("proximity", (Proximity : scroll_snap_strictness));
       ("mandatory", Mandatory);
     ]
+    ~calls:[ ("var", read_var) ]
     t
 
 let read_scroll_snap_type t : scroll_snap_type =
@@ -3320,8 +3343,14 @@ let read_outline_style t : outline_style =
     ]
     t
 
-let read_font_family t : font_family =
-  Reader.enum "font-family"
+let rec read_font_family t : font_family =
+  let read_var t : font_family =
+    let v =
+      Values.read_var (Reader.list ~sep:Reader.comma read_font_family) t
+    in
+    Var v
+  in
+  Reader.enum_or_calls "font-family"
     [
       (* Generic CSS font families *)
       ("sans-serif", Sans_serif);
@@ -3415,18 +3444,18 @@ let read_font_family t : font_family =
       ("inconsolata", Inconsolata);
       ("hack", Hack);
     ]
-    t
+    ~calls:[ ("var", read_var) ]
     ~default:(fun t ->
+      (* Handle quoted strings and arbitrary identifiers *)
+      Reader.ws t;
       match Reader.peek t with
-      | Some (('"' | '\'') as quote) ->
-          let content = Reader.string ~trim:false t in
-          (* Preserve quotes in the font name *)
-          let buf = Buffer.create (String.length content + 2) in
-          Buffer.add_char buf quote;
-          Buffer.add_string buf content;
-          Buffer.add_char buf quote;
-          Name (Buffer.contents buf)
-      | _ -> Name (Reader.ident ~keep_case:true t))
+      | Some ('"' | '\'') ->
+          let name = Reader.string t in
+          Name name
+      | _ ->
+          let name = Reader.ident t in
+          Name name)
+    t
 
 let read_font_stretch t : font_stretch =
   let read_percentage t : font_stretch =
@@ -3449,8 +3478,11 @@ let read_font_stretch t : font_stretch =
     ]
     ~default:read_percentage t
 
-let read_font_variant_numeric_token t : font_variant_numeric_token =
-  Reader.enum "font-variant-numeric-token"
+let rec read_font_variant_numeric_token t : font_variant_numeric_token =
+  let read_var t : font_variant_numeric_token =
+    Var (Values.read_var read_font_variant_numeric_token t)
+  in
+  Reader.enum_or_calls "font-variant-numeric-token"
     [
       ("normal", (Normal : font_variant_numeric_token));
       ("lining-nums", Lining_nums);
@@ -3462,43 +3494,44 @@ let read_font_variant_numeric_token t : font_variant_numeric_token =
       ("ordinal", Ordinal);
       ("slashed-zero", Slashed_zero);
     ]
+    ~calls:[ ("var", read_var) ]
     t
 
-let read_font_variant_numeric t : font_variant_numeric =
-  Reader.enum "font-variant-numeric"
+let rec read_font_variant_numeric t : font_variant_numeric =
+  let read_var t : font_variant_numeric =
+    Var (Values.read_var read_font_variant_numeric t)
+  in
+  Reader.enum_or_calls "font-variant-numeric"
     [ ("normal", (Normal : font_variant_numeric)) ]
+    ~calls:[ ("var", read_var) ]
     ~default:(fun t ->
       let tokens, _ = Reader.many read_font_variant_numeric_token t in
       if tokens = [] then err_invalid_value t "font-variant-numeric" "<empty>"
       else Tokens tokens)
     t
 
-let read_font_feature_settings t : font_feature_settings =
+let rec read_font_feature_settings t : font_feature_settings =
+  let read_var t : font_feature_settings =
+    Var (Values.read_var read_font_feature_settings t)
+  in
   let read_string t : font_feature_settings = String (Reader.string t) in
   let read_feature_list t = Feature_list (Reader.ident t) in
-  Reader.one_of
-    [
-      read_string;
-      (fun t ->
-        Reader.enum "font-feature-settings"
-          [ ("normal", (Normal : font_feature_settings)); ("inherit", Inherit) ]
-          ~default:read_feature_list t);
-    ]
+  Reader.enum_or_calls "font-feature-settings"
+    [ ("normal", (Normal : font_feature_settings)); ("inherit", Inherit) ]
+    ~calls:[ ("var", read_var) ]
+    ~default:(fun t -> Reader.one_of [ read_string; read_feature_list ] t)
     t
 
-let read_font_variation_settings t : font_variation_settings =
+let rec read_font_variation_settings t : font_variation_settings =
+  let read_var t : font_variation_settings =
+    Var (Values.read_var read_font_variation_settings t)
+  in
   let read_string t : font_variation_settings = String (Reader.string t) in
   let read_axis_list t = Axis_list (Reader.ident t) in
-  Reader.one_of
-    [
-      read_string;
-      (fun t ->
-        Reader.enum "font-variation-settings"
-          [
-            ("normal", (Normal : font_variation_settings)); ("inherit", Inherit);
-          ]
-          ~default:read_axis_list t);
-    ]
+  Reader.enum_or_calls "font-variation-settings"
+    [ ("normal", (Normal : font_variation_settings)); ("inherit", Inherit) ]
+    ~calls:[ ("var", read_var) ]
+    ~default:(fun t -> Reader.one_of [ read_string; read_axis_list ] t)
     t
 
 let read_transform_style t : transform_style =
@@ -3519,9 +3552,13 @@ let read_backface_visibility t : backface_visibility =
     ]
     t
 
-let read_scale t : scale =
+let rec read_scale t : scale =
+  let read_var t : scale = Var (Values.read_var read_scale t) in
   let read_number t : scale = X (Reader.number t) in
-  Reader.enum "scale" [ ("none", (None : scale)) ] ~default:read_number t
+  Reader.enum_or_calls "scale"
+    [ ("none", (None : scale)) ]
+    ~calls:[ ("var", read_var) ]
+    ~default:read_number t
 
 let read_timing_function t : timing_function =
   let read_steps t : timing_function =
@@ -3631,8 +3668,9 @@ let read_animation t : animation =
 let read_animations t : animation list =
   Reader.list ~at_least:1 ~sep:Reader.comma read_animation t
 
-let read_blend_mode t : blend_mode =
-  Reader.enum "blend-mode"
+let rec read_blend_mode t : blend_mode =
+  let read_var t : blend_mode = Var (Values.read_var read_blend_mode t) in
+  Reader.enum_or_calls "blend-mode"
     [
       ("normal", (Normal : blend_mode));
       ("multiply", Multiply);
@@ -3651,6 +3689,7 @@ let read_blend_mode t : blend_mode =
       ("color", Color);
       ("luminosity", Luminosity);
     ]
+    ~calls:[ ("var", read_var) ]
     t
 
 let read_blend_modes t : blend_mode list =
@@ -3681,7 +3720,7 @@ let read_text_shadow t : text_shadow =
       | _ -> err_invalid_value t "text-shadow" "expected at least two lengths")
 
 let read_text_shadows t : text_shadow list =
-  Reader.list ~sep:Reader.comma read_text_shadow t
+  Reader.list ~sep:Reader.comma ~at_least:1 read_text_shadow t
 
 let read_blur t : filter = Blur (read_length t)
 let read_brightness t : filter = Brightness (read_number t)
@@ -3694,20 +3733,40 @@ let read_saturate t : filter = Saturate (read_number t)
 let read_sepia t : filter = Sepia (read_number t)
 
 let read_drop_shadow t : filter =
-  let components, _ = Reader.many read_box_shadow_component t in
-  let parts = fold_box_shadow_components components in
-  let lengths = List.rev parts.lengths in
-  match read_box_shadow_lengths lengths with
-  | Some (h, v, blur, spread) ->
-      let s =
-        if parts.inset then Inset (h, v, blur, spread, parts.color)
-        else Simple (h, v, blur, spread, parts.color)
-      in
-      Drop_shadow s
-  | None ->
-      err_invalid_value t "drop-shadow" "at least two lengths are required"
+  (* Allow var() to produce a shadow via fallback parser *)
+  if Reader.looking_at t "var" then
+    let read_shadow t =
+      let components, _ = Reader.many read_box_shadow_component t in
+      let parts = fold_box_shadow_components components in
+      let lengths = List.rev parts.lengths in
+      match read_box_shadow_lengths lengths with
+      | Some (h, v, blur, spread) ->
+          if parts.inset then Inset (h, v, blur, spread, parts.color)
+          else Simple (h, v, blur, spread, parts.color)
+      | None ->
+          err_invalid_value t "drop-shadow" "at least two lengths are required"
+    in
+    let v = Values.read_var read_shadow t in
+    Drop_shadow (Var v)
+  else
+    let components, _ = Reader.many read_box_shadow_component t in
+    let parts = fold_box_shadow_components components in
+    let lengths = List.rev parts.lengths in
+    match read_box_shadow_lengths lengths with
+    | Some (h, v, blur, spread) ->
+        let s =
+          if parts.inset then Inset (h, v, blur, spread, parts.color)
+          else Simple (h, v, blur, spread, parts.color)
+        in
+        Drop_shadow s
+    | None ->
+        err_invalid_value t "drop-shadow" "at least two lengths are required"
 
-let read_filter_item t : filter =
+let rec read_filter_item t : filter =
+  let read_var t : filter =
+    let v = Values.read_var read_filter t in
+    Var v
+  in
   let read_url t = (Url (read_url_arg t) : filter) in
   Reader.enum_or_calls "filter"
     [ ("none", (None : filter)) ]
@@ -3724,10 +3783,11 @@ let read_filter_item t : filter =
         ("sepia", read_sepia);
         ("drop-shadow", read_drop_shadow);
         ("url", read_url);
+        ("var", read_var);
       ]
     t
 
-let read_filter t : filter =
+and read_filter t : filter =
   let read_filter_list t =
     let filters, _ = Reader.many read_filter_item t in
     match filters with
@@ -3900,6 +3960,8 @@ let read_property t =
   | "font-weight" -> Prop Font_weight
   | "font-style" -> Prop Font_style
   | "font-family" -> Prop Font_family
+  | "font-feature-settings" -> Prop Font_feature_settings
+  | "font-variation-settings" -> Prop Font_variation_settings
   | "text-align" -> Prop Text_align
   | "text-decoration" -> Prop Text_decoration
   | "text-transform" -> Prop Text_transform
@@ -3932,12 +3994,17 @@ let read_property t =
   | "font" -> Prop Font
   | "outline" -> Prop Outline
   | "z-index" -> Prop Z_index
+  | "top" -> Prop Top
+  | "right" -> Prop Right
+  | "bottom" -> Prop Bottom
+  | "left" -> Prop Left
   | "border-top" -> Prop Border_top
   | "border-right" -> Prop Border_right
   | "border-bottom" -> Prop Border_bottom
   | "border-left" -> Prop Border_left
   | "tab-size" -> Prop Tab_size
   | "line-height" -> Prop Line_height
+  | "vertical-align" -> Prop Vertical_align
   (* Vendor prefixed properties *)
   | "-webkit-transform" -> Prop Webkit_transform
   | "-webkit-transition" -> Prop Webkit_transition
@@ -3955,7 +4022,7 @@ let read_property t =
   | "-moz-osx-font-smoothing" -> Prop Moz_osx_font_smoothing
   | "-ms-filter" -> Prop Ms_filter
   | "-o-transition" -> Prop O_transition
-  | _ -> failwith ("read_property: unknown property " ^ prop_name)
+  | _ -> Reader.err_invalid t ("read_property: unknown property " ^ prop_name)
 
 (* Helper functions for property types *)
 let shadow ?(inset = false) ?(h_offset : length option)

@@ -4,23 +4,93 @@ type t = {
   input : string;
   len : int;
   mutable pos : int;
-  mutable saved : int list; (* Stack of saved positions *)
+  mutable saved : int list; (* Stack of saved positions for backtracking *)
+  mutable call_stack : string list; (* Stack of parsing contexts for debugging *)
 }
 
-exception Parse_error of string * string option * t
+type parse_error = {
+  message : string;
+  got : string option;
+  position : int;
+  filename : string;
+  context_window : string;
+  marker_pos : int;
+  callstack : string list;
+}
+(** Parse error information with structured details. *)
+
+exception Parse_error of parse_error
+
+(** Pretty print parse error with debugging information *)
+let pp_parse_error (err : parse_error) =
+  let callstack_str =
+    if err.callstack = [] then ""
+    else " [stack: " ^ String.concat " -> " err.callstack ^ "]"
+  in
+  err.message ^ " at " ^ err.filename ^ ":" ^ string_of_int err.position
+  ^ callstack_str
+
+(** {1 Creation} *)
+
+let of_string input =
+  { input; len = String.length input; pos = 0; saved = []; call_stack = [] }
+
+let is_done t = t.pos >= t.len
+
+(** {1 Call Stack Management} *)
+
+let push_context t context = t.call_stack <- context :: t.call_stack
+
+let pop_context t =
+  match t.call_stack with
+  | [] -> () (* No context to pop *)
+  | _ :: rest -> t.call_stack <- rest
+
+let with_context t context f =
+  push_context t context;
+  try
+    let result = f () in
+    pop_context t;
+    result
+  with exn ->
+    pop_context t;
+    raise exn
+
+let callstack t = List.rev t.call_stack
+
+let context_window ?(before = 20) ?(after = 20) t =
+  let pos = t.pos in
+  let start_pos = max 0 (pos - before) in
+  let end_pos = min t.len (pos + after) in
+  let before_text = String.sub t.input start_pos (pos - start_pos) in
+  let after_text = String.sub t.input pos (end_pos - pos) in
+  let marker_pos = String.length before_text in
+  let context = before_text ^ after_text in
+  (context, marker_pos)
 
 (** Error helpers *)
-let err ?got t expected = raise (Parse_error (expected, got, t))
+let err ?got t expected =
+  let context, marker_pos = context_window t in
+  raise
+    (Parse_error
+       {
+         message = expected;
+         got;
+         position = t.pos;
+         filename = "<string>";
+         context_window = context;
+         marker_pos;
+         callstack = callstack t;
+       })
 
 let err_eof t = err t "unexpected end of input"
 let err_expected t what = err t ("expected " ^ what)
 let err_invalid_number t = err t "invalid number"
 let err_invalid t what = err t ("invalid " ^ what)
 
-(** {1 Creation} *)
+(** {1 Error Utilities} *)
 
-let of_string input = { input; len = String.length input; pos = 0; saved = [] }
-let is_done t = t.pos >= t.len
+let with_filename error filename = { error with filename }
 
 (** {1 Looking Ahead} *)
 
@@ -76,7 +146,8 @@ let context_window ?(before = 30) ?(after = 30) t =
   let before_text = String.sub t.input start_pos (pos - start_pos) in
   let after_text = String.sub t.input pos (end_pos - pos) in
   let marker_pos = String.length before_text in
-  (before_text ^ after_text, marker_pos)
+  let context = before_text ^ after_text in
+  (context, marker_pos)
 
 let consume_if c t =
   if peek t = Some c then (
@@ -366,9 +437,9 @@ let try_parse_err f t =
     let result = f t in
     commit t;
     Ok result
-  with Parse_error (msg, _, _) ->
+  with Parse_error error ->
     restore t;
-    Error msg
+    Error error.message
 
 let many f t =
   let rec loop acc last_error =
@@ -391,21 +462,21 @@ let one_of parsers t =
           if errors = [] then "no parsers provided"
           else "expected one of: " ^ String.concat ", " errors
         in
-        raise (Parse_error (msg, got_value, t))
+        err ?got:got_value t msg
     | parser :: rest -> (
         save t;
         try
           let result = parser t in
           commit t;
           result
-        with Parse_error (expected, got, _) ->
+        with Parse_error error ->
           restore t;
           let new_got =
             match got_value with
-            | None -> got (* Use the first 'got' value we encounter *)
+            | None -> error.got (* Use the first 'got' value we encounter *)
             | some -> some (* Keep the existing got value *)
           in
-          try_parsers rest (expected :: errors) new_got)
+          try_parsers rest (error.message :: errors) new_got)
   in
   try_parsers parsers [] None
 
@@ -494,7 +565,7 @@ let css_value ~stops t =
   in
   String.trim (parse_until [] 0 false '\000')
 
-let enum ?default label mapping t =
+let enum_impl ?default label mapping t =
   ws t;
   let starts_with_ident = is_ident_start (Option.value (peek t) ~default:' ') in
   if not starts_with_ident then
@@ -572,7 +643,7 @@ let triple ?(sep = fun (_ : t) -> ()) p1 p2 p3 t =
   let c = p3 t in
   (a, b, c)
 
-let list ?(sep = fun (_ : t) -> ()) ?at_least ?at_most item t =
+let list_impl ?(sep = fun (_ : t) -> ()) ?(at_least = 0) ?at_most item t =
   let rec loop acc =
     match option item t with
     | None -> List.rev acc
@@ -581,10 +652,14 @@ let list ?(sep = fun (_ : t) -> ()) ?at_least ?at_most item t =
         if option sep t = Some () then loop acc else List.rev acc
   in
   let items = loop [] in
-  (match at_least with
-  | Some n when List.length items < n ->
-      err t ("expected at least " ^ string_of_int n ^ " item(s)")
-  | _ -> ());
+  if List.length items < at_least then
+    (* If we got no items and at_least:1 was specified, try to parse one more
+       time to get a better error message that includes the nested context *)
+    if List.length items = 0 && at_least > 0 then
+      (* This will fail and propagate the error with full context *)
+      let _ = item t in
+      err t ("expected at least " ^ string_of_int at_least ^ " item(s)")
+    else err t ("expected at least " ^ string_of_int at_least ^ " item(s)");
   (match at_most with
   | Some n when List.length items > n ->
       err t ("too many values (maximum " ^ string_of_int n ^ " allowed)")
@@ -613,7 +688,7 @@ let quoted_or_unquoted_url t =
 
 let url t = call "url" t quoted_or_unquoted_url
 
-let enum_calls ?default cases t =
+let enum_calls_impl ?default cases t =
   ws t;
   let starts_with_ident = is_ident_start (Option.value (peek t) ~default:' ') in
   if not starts_with_ident then
@@ -637,26 +712,27 @@ let enum_calls ?default cases t =
             let options = List.map fst cases |> String.concat ", " in
             err t ("expected one of functions: " ^ options))
     | Some (_, p) ->
-        commit t;
-        parens
-          (fun t ->
-            ws t;
-            let r = p t in
-            ws t;
-            r)
-          t)
+        (* Restore position so the handler can parse the full function call *)
+        restore t;
+        p t)
 
-let enum_or_calls ?default label idents ~calls t =
-  enum ~default:(enum_calls ?default calls) label idents t
+let enum_or_calls_impl ?default label idents ~calls t =
+  enum_impl ~default:(enum_calls_impl ?default calls) label idents t
 
 let fold_many parser ~init ~f t =
+  with_context t "fold_many" @@ fun () ->
   let rec loop acc consumed last_error =
     ws t;
     if is_done t then (acc, last_error)
     else
       match try_parse_err parser t with
       | Ok item -> loop (f acc item) true None
-      | Error msg -> if consumed then (acc, Some msg) else (init, Some msg)
+      | Error msg ->
+          if consumed then (acc, Some msg)
+          else
+            (* No items parsed at all - this is an error that should propagate *)
+            (* Simplify the error message - just say it's invalid *)
+            err_invalid t "value"
   in
   loop init false None
 
@@ -677,3 +753,19 @@ let unit expected t =
   let u = ident t in
   if String.equal u expected then n
   else err t ("expected unit '" ^ expected ^ "', got '" ^ u ^ "'")
+
+(** {1 Context Wrappers} *)
+
+let enum ?default label mapping t =
+  with_context t ("enum:" ^ label) @@ fun () ->
+  enum_impl ?default label mapping t
+
+let list ?sep ?at_least ?at_most item t =
+  with_context t "list" @@ fun () -> list_impl ?sep ?at_least ?at_most item t
+
+let enum_calls ?default cases t =
+  with_context t "enum_calls" @@ fun () -> enum_calls_impl ?default cases t
+
+let enum_or_calls ?default label idents ~calls t =
+  with_context t ("enum_or_calls:" ^ label) @@ fun () ->
+  enum_or_calls_impl ?default label idents ~calls t

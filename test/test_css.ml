@@ -132,6 +132,62 @@ let test_css_custom_properties_integration () =
   Alcotest.(check string)
     "custom properties exact" ".btn{--primary-color:blue;color:blue}" css
 
+(* CSS Roundtrip Test: Parse generated CSS and compare roundtrip *)
+let test_css_roundtrip () =
+  let original_css =
+    match Examples.read "empty_tailwind.css" with
+    | Some css -> css
+    | None -> Alcotest.fail "Could not read empty_tailwind.css from examples"
+  in
+
+  (* Parse the CSS with context on failure *)
+  let parsed_stylesheet =
+    match Css.of_string original_css with
+    | Ok stylesheet -> stylesheet
+    | Error err ->
+        (* Format the structured error *)
+        let formatted_error =
+          Css.pp_parse_error err ^ "\n" ^ err.context_window ^ "\n"
+          ^ String.make err.marker_pos ' '
+          ^ "^"
+        in
+        Alcotest.fail ("Failed to parse CSS: " ^ formatted_error)
+  in
+
+  (* Render it back to string with same settings (minified) *)
+  let roundtrip_css = Css.to_string ~minify:true parsed_stylesheet in
+
+  (* Compare - they should be identical *)
+  if original_css <> roundtrip_css then (
+    (* Show a helpful diff around the first mismatch to ease debugging *)
+    let len_a = String.length original_css in
+    let len_b = String.length roundtrip_css in
+    let rec first_diff i =
+      if i >= len_a || i >= len_b then i
+      else if original_css.[i] <> roundtrip_css.[i] then i
+      else first_diff (i + 1)
+    in
+    let i = first_diff 0 in
+    let start = max 0 (i - 40) in
+    let take n s =
+      let l = String.length s in
+      let k = min n (l - start) in
+      if k <= 0 then "" else String.sub s start k
+    in
+    let a_snip = take 80 original_css in
+    let b_snip = take 80 roundtrip_css in
+    let caret_pos = i - start in
+    let caret = String.make (max 0 caret_pos) ' ' ^ "^" in
+    Fmt.epr "Roundtrip mismatch at byte %d (orig len=%d, roundtrip len=%d)\n" i
+      len_a len_b;
+    Fmt.epr "Original:  %S\n" a_snip;
+    Fmt.epr "Roundtrip: %S\n" b_snip;
+    Fmt.epr "           %s\n" caret;
+    Alcotest.fail "CSS roundtrip should be identical")
+  else
+    Alcotest.(check string)
+      "CSS roundtrip should be identical" original_css roundtrip_css
+
 let suite =
   [
     ( "css",
@@ -150,5 +206,6 @@ let suite =
           test_css_important_integration;
         Alcotest.test_case "custom properties" `Quick
           test_css_custom_properties_integration;
+        Alcotest.test_case "CSS roundtrip parsing" `Quick test_css_roundtrip;
       ] );
   ]

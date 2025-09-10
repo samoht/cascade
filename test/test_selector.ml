@@ -12,6 +12,40 @@ let check_selector ?expected input =
   let output = to_string ~minify:true selector in
   check string (Fmt.str "selector %s" input) expected output
 
+(* Helper to check Parse_error fields match *)
+let check_parse_error_fields name (expected : Css.Reader.parse_error)
+    (actual : Css.Reader.parse_error) =
+  if actual.message <> expected.message then
+    Alcotest.failf "%s: expected message '%s' but got '%s'" name
+      expected.message actual.message
+  else if actual.got <> expected.got then
+    Alcotest.failf "%s: expected got=%a but got=%a" name
+      Fmt.(option string)
+      expected.got
+      Fmt.(option string)
+      actual.got
+
+(* Helper to check that a function raises a specific exception *)
+let check_raises name expected_exn f =
+  try
+    f ();
+    Alcotest.failf "%s: expected exception but none was raised" name
+  with
+  | Css.Reader.Parse_error actual
+    when match expected_exn with
+         | Css.Reader.Parse_error expected ->
+             check_parse_error_fields name expected actual;
+             true
+         | _ -> false ->
+      ()
+  | exn when exn = expected_exn ->
+      (* For other exceptions, use structural equality *)
+      ()
+  | exn ->
+      Alcotest.failf "%s: expected %s but got %s" name
+        (Printexc.to_string expected_exn)
+        (Printexc.to_string exn)
+
 (* Helper for checking invalid selectors *)
 let check_invalid name exn_msg f =
   check_raises name (Invalid_argument exn_msg) f
@@ -207,9 +241,9 @@ let test_selector_invalid () =
 
   check_invalid "hash in id"
     "CSS identifier 'my#id' contains invalid character '#' at position 2"
-    (fun () -> ignore (id "my#id"))
-  (* Parsing invalid selector strings via Reader.option to avoid exceptions *);
+    (fun () -> ignore (id "my#id"));
 
+  (* Parsing invalid selector strings via Reader.option to avoid exceptions *)
   let open Css.Reader in
   let neg_parse s label =
     let r = of_string s in
@@ -221,6 +255,169 @@ let test_selector_invalid () =
   neg_parse ".class,,.other" "double comma in list";
   neg_parse "div > > span" "double combinator";
   neg_parse "[attr=value" "unterminated attribute value"
+
+(* Test broken selectors with Parse_error exceptions *)
+let test_selector_parse_errors () =
+  let check_parse_error name input expected_msg =
+    let t = Css.Reader.of_string input in
+    try
+      let _ = read t in
+      Alcotest.failf "%s: expected Parse_error but parsing succeeded" name
+    with
+    | Css.Reader.Parse_error err ->
+        let contains_substring haystack needle =
+          let len_h = String.length haystack in
+          let len_n = String.length needle in
+          let rec search i =
+            if i > len_h - len_n then false
+            else if String.sub haystack i len_n = needle then true
+            else search (i + 1)
+          in
+          if len_n = 0 then true else search 0
+        in
+        if Bool.not @@ contains_substring err.message expected_msg then
+          Alcotest.failf "%s: expected message containing '%s' but got '%s'"
+            name expected_msg err.message
+    | exn ->
+        Alcotest.failf "%s: expected Parse_error but got %s" name
+          (Printexc.to_string exn)
+  in
+
+  (* Unclosed attribute selectors - check for common error patterns *)
+  check_parse_error "unclosed_attr" "[class=\"test\"" "Expected";
+  check_parse_error "missing_bracket" ".test[data-id=\"123\"" "Expected";
+
+  (* Empty attribute selector *)
+  check_parse_error "empty_attr" ".test[]" "expected identifier";
+
+  (* Invalid combinators *)
+  check_parse_error "invalid_combinator" ".test >> .child"
+    "expected at least one selector";
+  check_parse_error "multiple_combinators" ".parent + + .child"
+    "expected at least one selector";
+  check_parse_error "missing_after_combinator" ".parent >"
+    "expected at least one selector";
+  check_parse_error "just_combinator" ">" "expected at least one selector";
+
+  (* Invalid selector starts *)
+  check_parse_error "invalid_class_start" ".123test" "expected identifier";
+  check_parse_error "invalid_id_start" "#123" "expected identifier";
+
+  (* Nested brackets *)
+  check_parse_error "nested_brackets" ".test[[attr]]" "expected identifier";
+
+  (* Space in attribute name *)
+  check_parse_error "space_in_attr" ".test[data id=\"value\"]" "Expected ']'";
+
+  (* Unquoted spaces in attribute value *)
+  check_parse_error "unquoted_spaces" ".test[data-id=value with spaces]"
+    "Expected ']'";
+
+  (* Invalid pseudo-function calls *)
+  check_parse_error "invalid_not" ".test:not()" "Expected '{'";
+  check_parse_error "unclosed_not" ".test:not(.other" "Expected '{'";
+  check_parse_error "invalid_is" ":is()" "Expected '{'";
+  check_parse_error "invalid_has" ".test:has()" "Expected '{'";
+
+  (* Mixed up combinators *)
+  check_parse_error "mixed_combinators" ".parent ~> .child"
+    "expected at least one selector";
+
+  (* Empty selector list *)
+  check_parse_error "empty_list" ", ," "expected at least one selector";
+  check_parse_error "leading_comma" ", h1, h2" "expected at least one selector";
+  check_parse_error "trailing_comma" "h1, h2," "expected at least one selector";
+
+  (* Invalid universal selector combinations *)
+  check_parse_error "invalid_universal" "*.*" "expected identifier";
+
+  (* Complex broken selectors *)
+  check_parse_error "complex_broken" ".parent > [data-id=\"test\" .child:hover"
+    "Expected ']'";
+  check_parse_error "long_chain_broken" "body > main > section[data-tooltip"
+    "Expected ']'";
+  check_parse_error "multi_attr_broken" ".test[attr1=\"val1\"][attr4$="
+    "Expected ']'";
+  check_parse_error "sibling_chain_broken" ".first ~ .second ~ [invalid"
+    "Expected ']'"
+
+(* Test callstack accuracy for selector errors *)
+let test_selector_callstack_accuracy () =
+  let contains_substring haystack needle =
+    let len_h = String.length haystack in
+    let len_n = String.length needle in
+    let rec search i =
+      if i > len_h - len_n then false
+      else if String.sub haystack i len_n = needle then true
+      else search (i + 1)
+    in
+    if len_n = 0 then true else search 0
+  in
+  let check_callstack name input expected_stack_parts =
+    let t = Css.Reader.of_string input in
+    try
+      let _ = read t in
+      Alcotest.failf "%s: expected Parse_error but parsing succeeded" name
+    with
+    | Css.Reader.Parse_error err ->
+        let callstack_str = String.concat " -> " err.callstack in
+        List.iter
+          (fun stack_item ->
+            if Bool.not @@ contains_substring callstack_str stack_item then
+              Alcotest.failf
+                "%s: expected callstack containing '%s' but got '%s'" name
+                stack_item callstack_str)
+          expected_stack_parts;
+        (* Also verify position and context window are set *)
+        if err.position < 0 then
+          Alcotest.failf "%s: position should be >= 0 but got %d" name
+            err.position;
+        if String.length err.context_window = 0 then
+          Alcotest.failf "%s: context_window should not be empty" name
+    | exn ->
+        Alcotest.failf "%s: expected Parse_error but got %s" name
+          (Printexc.to_string exn)
+  in
+
+  (* When parsing selectors directly (not through full CSS), callstack is
+     shallower *)
+  check_callstack "selector_list_error" ".test[[attr]]" [ "list" ];
+  check_callstack "combinator_error" ".parent + +" [ "list" ];
+  check_callstack "empty_selector" ", ," [ "list" ];
+
+  (* These fail at even higher level when parsing selectors directly *)
+  check_callstack "pseudo_function_error" ".test:not()" [];
+  (* No specific context when selector fails early *)
+  check_callstack "invalid_pseudo" ":is()" [];
+
+  (* Test full CSS parsing to get complete callstack like cascade binary *)
+  let check_full_css_callstack name css_input expected_stack_parts =
+    match Css.of_string css_input with
+    | Ok _ ->
+        Alcotest.failf "%s: expected Parse_error but parsing succeeded" name
+    | Error err ->
+        let callstack_str = String.concat " -> " err.callstack in
+        List.iter
+          (fun stack_item ->
+            if Bool.not @@ contains_substring callstack_str stack_item then
+              Alcotest.failf
+                "%s: expected callstack containing '%s' but got '%s'" name
+                stack_item callstack_str)
+          expected_stack_parts
+  in
+
+  (* Full CSS parsing should show complete callstack *)
+  check_full_css_callstack "full_css_selector_error"
+    ".test[[attr]] { color: red; }"
+    [ "stylesheet"; "rule"; "list" ];
+  check_full_css_callstack "full_css_pseudo_error" ".test:not() { color: red; }"
+    [ "stylesheet"; "rule" ];
+
+  (* Test that escaped characters now give proper Parse_error instead of
+     Invalid_argument *)
+  check_full_css_callstack "escaped_character_error"
+    ".test\\!class { color: red; }"
+    [ "stylesheet"; "rule"; "list" ]
 
 (* Test special cases *)
 let test_selector_special_cases () =
@@ -283,6 +480,8 @@ let suite =
         test_case "roundtrip" `Quick test_selector_roundtrip;
         (* Error cases *)
         test_case "invalid" `Quick test_selector_invalid;
+        test_case "parse errors" `Quick test_selector_parse_errors;
+        test_case "callstack accuracy" `Quick test_selector_callstack_accuracy;
         (* Special cases *)
         test_case "special cases" `Quick test_selector_special_cases;
         test_case "distribution" `Quick test_selector_distribution;

@@ -183,9 +183,7 @@ let fun_ name selectors = Fun (name, selectors)
 let list selectors = List selectors
 let is_compound_list = function List _ -> true | _ -> false
 let compound selectors = Compound selectors
-
-let err_expected t what =
-  raise (Reader.Parse_error ("expected " ^ what, None, t))
+let err_expected t what = Reader.err_expected t what
 
 (** Parse attribute value (quoted or unquoted) *)
 let read_attribute_value t =
@@ -196,15 +194,34 @@ let read_attribute_value t =
          (Reader.while_ t (fun c ->
               c <> ']' && c <> ' ' && c <> '\t' && c <> '\n'))
 
+(** Validate CSS identifier with proper reader error context *)
+let validate_css_identifier_with_reader t name =
+  try validate_css_identifier name
+  with Invalid_argument msg ->
+    (* Extract just the validation reason from the message *)
+    let clean_msg =
+      if String.contains msg '\'' then
+        let parts = String.split_on_char '\'' msg in
+        match parts with
+        | _ :: _ :: reason :: _ -> "invalid identifier: " ^ String.trim reason
+        | _ -> msg
+      else msg
+    in
+    Reader.err t clean_msg
+
 (** Parse a class selector (.classname) *)
 let read_class t =
   Reader.expect '.' t;
-  class_ (Reader.ident ~keep_case:true t)
+  let name = Reader.ident ~keep_case:true t in
+  validate_css_identifier_with_reader t name;
+  Class name
 
 (** Parse an ID selector (#id) *)
 let read_id t =
   Reader.expect '#' t;
-  id (Reader.ident ~keep_case:true t)
+  let name = Reader.ident ~keep_case:true t in
+  validate_css_identifier_with_reader t name;
+  Id name
 
 (** Parse a namespaced type or universal selector *)
 let read_type_or_universal t =
@@ -229,7 +246,10 @@ let read_type_or_universal t =
       match ns with None -> universal | Some ns -> universal_ns ns)
   | _ -> (
       let name = Reader.ident ~keep_case:true t in
-      match ns with None -> element name | Some ns -> element ~ns name)
+      validate_css_identifier_with_reader t name;
+      match ns with
+      | None -> Element (None, name)
+      | Some ns -> Element (Some ns, name))
 
 (** Parse attribute selector [attr] or [attr=value] *)
 let read_combinator t =
@@ -279,8 +299,7 @@ let read_ns t : ns option =
       else
         let p = Reader.ident ~keep_case:true t in
         (* Avoid treating '|=' as a namespace separator *)
-        if Reader.peek_string t 2 = "|=" then
-          raise (Reader.Parse_error ("not a namespace", None, t));
+        if Reader.peek_string t 2 = "|=" then Reader.err t "not a namespace";
         Reader.expect '|' t;
         Prefix p)
     t
@@ -404,7 +423,7 @@ let rec read_nth_selector t : nth * t list option =
       (fun t ->
         Reader.expect_string "of" t;
         Reader.ws t;
-        Reader.list ~sep:Reader.comma read_complex t)
+        Reader.list ~sep:Reader.comma ~at_least:1 read_complex t)
       t
   in
   (expr, of_clause)
@@ -424,24 +443,16 @@ and read_pseudo_class t =
         pseudo_class (name ^ "(" ^ inner ^ ")")
     | _ -> pseudo_class name
   in
+  let read_selector_list constructor t =
+    let sels = read_complex_list t in
+    constructor sels
+  in
   Reader.enum_calls
     [
-      ( "is",
-        fun t ->
-          let sels = read_selector_list t in
-          fun_ "is" sels );
-      ( "has",
-        fun t ->
-          let sels = read_selector_list t in
-          fun_ "has" sels );
-      ( "not",
-        fun t ->
-          let sels = read_selector_list t in
-          fun_ "not" sels );
-      ( "where",
-        fun t ->
-          let sels = read_selector_list t in
-          where sels );
+      ("is", read_selector_list (fun_ "is"));
+      ("has", read_selector_list (fun_ "has"));
+      ("not", read_selector_list (fun_ "not"));
+      ("where", read_selector_list where);
       ( "nth-child",
         fun t ->
           let expr, of_sel = read_nth_selector t in
@@ -466,6 +477,7 @@ and read_pseudo_element t =
   Reader.expect_string "::" t;
   let default t =
     let name = Reader.ident t in
+    validate_css_identifier_with_reader t name;
     match Reader.peek t with
     | Some '(' ->
         Reader.expect '(' t;
@@ -478,25 +490,29 @@ and read_pseudo_element t =
     [
       ( "part",
         fun t ->
-          let idents = Reader.list ~sep:Reader.comma Reader.ident t in
+          let idents =
+            Reader.list ~sep:Reader.comma ~at_least:1 Reader.ident t
+          in
           Pseudo_element_fun_idents ("part", idents) );
       ( "slotted",
         fun t ->
-          let sels = read_selector_list t in
+          let sels = read_complex_list t in
           Pseudo_element_fun ("slotted", sels) );
       ( "cue",
         fun t ->
-          let sels = read_selector_list t in
+          let sels = read_complex_list t in
           Pseudo_element_fun ("cue", sels) );
       ( "cue-region",
         fun t ->
-          let sels = read_selector_list t in
+          let sels = read_complex_list t in
           Pseudo_element_fun ("cue-region", sels) );
     ]
     ~default t
 
-(* Parse a selector list directly from the current reader *)
-and read_selector_list t = Reader.list ~sep:Reader.comma read_complex t
+(* Parse a comma-separated list of complex selectors *)
+and read_complex_list t =
+  try Reader.list ~sep:Reader.comma ~at_least:1 read_complex t
+  with Reader.Parse_error _ -> Reader.err t "expected at least one selector"
 
 (** Parse a simple selector (one part) *)
 and read_simple t =

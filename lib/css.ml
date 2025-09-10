@@ -13,17 +13,14 @@ module Optimize = Optimize
 module Render = Render
 
 (* CSS Parsing *)
+type parse_error = Reader.parse_error
+
+let pp_parse_error = Reader.pp_parse_error
+
 let of_string ?(filename = "<string>") css =
   let reader = Reader.of_string css in
   try Ok (Stylesheet.read_stylesheet reader)
-  with Reader.Parse_error (msg, _, reader) ->
-    let pos = Reader.position reader in
-    let context, marker_pos = Reader.context_window reader in
-    let error_msg =
-      Printf.sprintf "%s at %s:%d\n%s\n%s^" msg filename pos context
-        (String.make marker_pos ' ')
-    in
-    Error error_msg
+  with Reader.Parse_error error -> Error (Reader.with_filename error filename)
 
 (* Include all public APIs *)
 include Values

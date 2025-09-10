@@ -491,14 +491,17 @@ let pp : t Pp.t =
 (** {1 Reading/Parsing} *)
 
 let read_rule (r : Reader.t) : rule =
+  Reader.with_context r "rule" @@ fun () ->
   let selector = Selector.read_selector_list r in
   Reader.ws r;
   Reader.expect '{' r;
   let declarations = Declaration.read_declarations r in
+  Reader.ws r;
   Reader.expect '}' r;
-  { selector; declarations }
+  ({ selector; declarations } : rule)
 
 let read_media_rule (r : Reader.t) : media_rule =
+  Reader.with_context r "@media" @@ fun () ->
   Reader.expect_string "@media" r;
   Reader.ws r;
   let condition = Reader.until r '{' in
@@ -519,6 +522,7 @@ let read_media_rule (r : Reader.t) : media_rule =
   { media_condition = condition; media_rules }
 
 let read_supports_rule (r : Reader.t) : supports_rule =
+  Reader.with_context r "@supports" @@ fun () ->
   Reader.expect_string "@supports" r;
   Reader.ws r;
   let condition = Reader.until r '{' in
@@ -538,6 +542,7 @@ let read_supports_rule (r : Reader.t) : supports_rule =
   { supports_condition = condition; supports_content = Support_rules rules }
 
 let read_property_rule (r : Reader.t) : property_rule =
+  Reader.with_context r "@property" @@ fun () ->
   Reader.expect_string "@property" r;
   Reader.ws r;
   let name = Reader.ident ~keep_case:true r in
@@ -582,6 +587,7 @@ let read_property_rule (r : Reader.t) : property_rule =
   { name; syntax; inherits; initial_value }
 
 let read_layer_rule (r : Reader.t) : layer_rule =
+  Reader.with_context r "@layer" @@ fun () ->
   Reader.expect_string "@layer" r;
   Reader.ws r;
   let name = Reader.ident ~keep_case:true r in
@@ -617,14 +623,17 @@ let read_sheet_item (r : Reader.t) : sheet_item =
   else Rule (read_rule r)
 
 let read_stylesheet (r : Reader.t) : t =
-  let rec read_items acc =
-    Reader.ws r;
-    if Reader.is_done r then List.rev acc
-    else
-      let item = read_sheet_item r in
-      read_items (item :: acc)
+  let items =
+    Reader.with_context r "stylesheet" @@ fun () ->
+    let rec read_items acc =
+      Reader.ws r;
+      if Reader.is_done r then List.rev acc
+      else
+        let item = read_sheet_item r in
+        read_items (item :: acc)
+    in
+    read_items []
   in
-  let items = read_items [] in
   (* Organize items into proper stylesheet structure *)
   let empty_sheet =
     {

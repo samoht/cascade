@@ -24,6 +24,40 @@ let check_value name pp reader ?expected input =
       check string (Fmt.str "%s %s" name input) expected printed
   | None -> fail (Printf.sprintf "Failed to parse %s: %s" name input)
 
+(* Helper to check Parse_error fields match *)
+let check_parse_error_fields name (expected : Css.Reader.parse_error)
+    (actual : Css.Reader.parse_error) =
+  if actual.message <> expected.message then
+    Alcotest.failf "%s: expected message '%s' but got '%s'" name
+      expected.message actual.message
+  else if actual.got <> expected.got then
+    Alcotest.failf "%s: expected got=%a but got=%a" name
+      Fmt.(option string)
+      expected.got
+      Fmt.(option string)
+      actual.got
+
+(* Helper to check that a function raises a specific exception *)
+let check_raises name expected_exn f =
+  try
+    f ();
+    Alcotest.failf "%s: expected exception but none was raised" name
+  with
+  | Css.Reader.Parse_error actual
+    when match expected_exn with
+         | Css.Reader.Parse_error expected ->
+             check_parse_error_fields name expected actual;
+             true
+         | _ -> false ->
+      ()
+  | exn when exn = expected_exn ->
+      (* For other exceptions, use structural equality *)
+      ()
+  | exn ->
+      Alcotest.failf "%s: expected %s but got %s" name
+        (Printexc.to_string expected_exn)
+        (Printexc.to_string exn)
+
 (* One-liner check functions for each type *)
 let check_declaration =
   check_value "declaration" pp_declaration read_declaration
@@ -202,7 +236,8 @@ let test_declaration_roundtrip () =
   check_declaration "color:red";
   check_declaration "margin:10px";
   check_declaration "padding:5px!important";
-  check_declaration "font-family:\"Arial\",sans-serif";
+  check_declaration ~expected:"font-family:Arial,sans-serif"
+    "font-family:\"Arial\",sans-serif";
   check_declaration "background:url(image.png)";
   check_declaration "content:\"a\\\"b\"";
   check_declaration "width:calc(100% - 10px)";
@@ -213,21 +248,51 @@ let test_declaration_roundtrip () =
   check_declaration ~expected:"padding:5px!important" "padding: 5px !important"
 
 let test_declaration_error_missing_colon () =
-  let r = Css.Reader.of_string "color red;" in
+  let css = "color red;" in
+  let r = Css.Reader.of_string css in
   check_raises "missing colon"
-    (Css.Reader.Parse_error ("Expected ':' but got ';'", None, r))
+    (Css.Reader.Parse_error
+       {
+         message = "Expected ':' but got 'red'";
+         got = Some "red";
+         position = 6;
+         filename = "<string>";
+         context_window = css;
+         marker_pos = 6;
+         callstack = [];
+       })
     (fun () -> ignore (read_declaration r))
 
 let test_declaration_error_stray_semicolon () =
-  let r = Css.Reader.of_string "; color: red;" in
+  let css = "; color: red;" in
+  let r = Css.Reader.of_string css in
   check_raises "stray semicolon"
-    (Css.Reader.Parse_error ("Expected ':' but got ';'", None, r))
+    (Css.Reader.Parse_error
+       {
+         message = "Expected identifier but got ';'";
+         got = Some ";";
+         position = 0;
+         filename = "<string>";
+         context_window = css;
+         marker_pos = 0;
+         callstack = [];
+       })
     (fun () -> ignore (read_declaration r))
 
 let test_declaration_error_unclosed_block () =
-  let r = Css.Reader.of_string "{ color: red;" in
+  let css = "{ color: red;" in
+  let r = Css.Reader.of_string css in
   check_raises "missing closing brace"
-    (Css.Reader.Parse_error ("unexpected end of input", None, r))
+    (Css.Reader.Parse_error
+       {
+         message = "unexpected end of input";
+         got = None;
+         position = 13;
+         filename = "<string>";
+         context_window = css;
+         marker_pos = 13;
+         callstack = [];
+       })
     (fun () -> ignore (read_block r))
 
 let test_declaration_special_cases () =

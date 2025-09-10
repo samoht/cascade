@@ -59,6 +59,7 @@ let read_property_name t =
 
 (** Parse property value with validation for missing semicolons *)
 let read_property_value t =
+  Reader.with_context t "property-value" @@ fun () ->
   (* Read value token by token, detecting property-like patterns early *)
   let buf = Buffer.create 64 in
   let rec parse_tokens depth in_quote quote_char =
@@ -203,6 +204,13 @@ let read_string t = Reader.string ~trim:true t
 
 (* Parse value directly based on property type *)
 let read_value (type a) (prop_type : a property) t : declaration =
+  let prop_name =
+    let buf = Buffer.create 32 in
+    let ctx = { Pp.minify = true; indent = 0; buf; inline = false } in
+    pp_property ctx prop_type;
+    Buffer.contents buf
+  in
+  Reader.with_context t prop_name @@ fun () ->
   match prop_type with
   | Color -> declaration Color (read_color t)
   | Background_color -> declaration Background_color (read_color t)
@@ -267,16 +275,16 @@ let read_value (type a) (prop_type : a property) t : declaration =
       let transforms, error_opt = Reader.many read_transform t in
       if List.length transforms = 0 then
         match error_opt with
-        | Some msg -> failwith ("invalid transform: " ^ msg)
-        | None -> failwith "invalid transform value"
+        | Some msg -> Reader.err_invalid t ("transform: " ^ msg)
+        | None -> Reader.err_invalid t "transform value"
       else declaration Transform transforms
   (* Webkit Transform *)
   | Webkit_transform ->
       let transforms, error_opt = Reader.many read_transform t in
       if List.length transforms = 0 then
         match error_opt with
-        | Some msg -> failwith ("invalid webkit-transform: " ^ msg)
-        | None -> failwith "invalid webkit-transform value"
+        | Some msg -> Reader.err_invalid t ("webkit-transform: " ^ msg)
+        | None -> Reader.err_invalid t "webkit-transform value"
       else declaration Webkit_transform transforms
   (* Webkit Transition *)
   | Webkit_transition -> declaration Webkit_transition (read_transitions t)
@@ -571,6 +579,7 @@ let read_declaration t : declaration option =
   match Reader.peek t with
   | Some '}' | None -> None
   | _ -> (
+      Reader.with_context t "read_declaration" @@ fun () ->
       try
         (* Check if this is a custom property (starts with --) *)
         if Reader.looking_at t "--" then (
@@ -596,15 +605,15 @@ let read_declaration t : declaration option =
           | _ -> ());
           Some (if is_important then important decl else decl)
       with
-      | Reader.Parse_error (msg, _, _) ->
-          (* Re-raise with more context *)
-          Reader.err_invalid t (Printf.sprintf "declaration parsing: %s" msg)
       | Failure msg ->
           (* Handle property parsing errors *)
           Reader.err_invalid t msg
-      | _ -> None)
+      | Invalid_argument msg ->
+          (* Normalize invalid_arg into a structured parse error with context *)
+          Reader.err_invalid t msg)
 
 let read_declarations t =
+  Reader.with_context t "declarations" @@ fun () ->
   let rec loop acc =
     Reader.ws t;
     match Reader.peek t with

@@ -3,11 +3,24 @@
 type t
 (** [t] is the parser context. *)
 
-exception Parse_error of string * string option * t
-(** [Parse_error (expected, got, reader)] is raised on parse errors.
-    - [expected]: what was expected (e.g. "number", "red")
-    - [got]: what was actually found (e.g. Some "yellow"), None if unknown
-    - [reader]: the reader state *)
+type parse_error = {
+  message : string;
+  got : string option;
+  position : int;
+  filename : string;
+  context_window : string;
+  marker_pos : int;
+  callstack : string list;
+}
+(** Parse error information with structured details. *)
+
+exception Parse_error of parse_error
+(** [Parse_error error] is raised on parse errors with structured debugging
+    information. *)
+
+val pp_parse_error : parse_error -> string
+(** [pp_parse_error error] formats a parse error as a string, including call
+    stack if available. *)
 
 (** {1 Core} *)
 
@@ -26,13 +39,43 @@ val context_window : ?before:int -> ?after:int -> t -> string * int
     where in the context the current position is. Used for better error
     messages. *)
 
+(** {1 Call Stack Management} *)
+
+val push_context : t -> string -> unit
+(** [push_context t context] pushes a parsing context onto the call stack. *)
+
+val pop_context : t -> unit
+(** [pop_context t] pops the top parsing context from the call stack. *)
+
+val with_context : t -> string -> (unit -> 'a) -> 'a
+(** [with_context t context f] runs [f] with [context] pushed onto the call
+    stack, automatically popping it when done (even if [f] raises an exception).
+*)
+
+val callstack : t -> string list
+(** [callstack t] returns the current parsing call stack for debugging. *)
+
 (** {1 Error Handling} *)
 
 val err : ?got:string -> t -> string -> 'a
 (** [err ?got t expected] raises a parse error. *)
 
+val err_eof : t -> 'a
+(** [err_eof t] raises an "unexpected end of input" error. *)
+
+val err_expected : t -> string -> 'a
+(** [err_expected t what] raises an "expected [what]" error. *)
+
+val err_invalid_number : t -> 'a
+(** [err_invalid_number t] raises an "invalid number" error. *)
+
 val err_invalid : t -> string -> 'a
 (** [err_invalid t what] raises a parse error for an invalid [what]. *)
+
+(** {1 Error Utilities} *)
+
+val with_filename : parse_error -> string -> parse_error
+(** [with_filename error filename] returns error with updated filename. *)
 
 (** {1 Characters & Strings} *)
 

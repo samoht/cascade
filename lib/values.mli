@@ -104,6 +104,14 @@ val pp_color_space : color_space Pp.t
 val pp_var : 'a Pp.t -> 'a var Pp.t
 (** Pretty-printer for CSS variables. *)
 
+val read_var : (Reader.t -> 'a) -> Reader.t -> 'a var
+(** Parse a CSS variable with var(...) syntax. Expects to be positioned at
+    'var(' and parses the full expression. *)
+
+val read_var_after_ident : (Reader.t -> 'a) -> Reader.t -> 'a var
+(** Parse a CSS variable with var(...) syntax after 'var' has been consumed.
+    Used in enum_or_calls ~calls. *)
+
 (** {1 Calc Module} *)
 module Calc : sig
   val add : 'a calc -> 'a calc -> 'a calc
