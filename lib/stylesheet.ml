@@ -491,7 +491,7 @@ let pp : t Pp.t =
 (** {1 Reading/Parsing} *)
 
 let read_rule (r : Reader.t) : rule =
-  let selector = Selector.read r in
+  let selector = Selector.read_selector_list r in
   Reader.ws r;
   Reader.expect '{' r;
   let declarations = Declaration.read_declarations r in
@@ -503,6 +503,8 @@ let read_media_rule (r : Reader.t) : media_rule =
   Reader.ws r;
   let condition = Reader.until r '{' in
   let condition = String.trim condition in
+  if String.length condition = 0 then
+    Reader.err_invalid r "media query requires a condition";
   Reader.expect '{' r;
   let rec read_rules acc =
     Reader.ws r;
@@ -557,16 +559,7 @@ let read_property_rule (r : Reader.t) : property_rule =
   Reader.expect_string "inherits:" r;
   Reader.ws r;
   let inherits =
-    Reader.one_of
-      [
-        (fun r ->
-          Reader.expect_string "true" r;
-          true);
-        (fun r ->
-          Reader.expect_string "false" r;
-          false);
-      ]
-      r
+    Reader.enum "inherits" [ ("true", true); ("false", false) ] r
   in
   Reader.ws r;
   Reader.expect ';' r;
@@ -574,7 +567,7 @@ let read_property_rule (r : Reader.t) : property_rule =
 
   (* Optional initial-value *)
   let initial_value =
-    Reader.optional
+    Reader.option
       (fun r ->
         Reader.expect_string "initial-value:" r;
         Reader.ws r;
@@ -588,13 +581,48 @@ let read_property_rule (r : Reader.t) : property_rule =
   Reader.expect '}' r;
   { name; syntax; inherits; initial_value }
 
+let read_layer_rule (r : Reader.t) : layer_rule =
+  Reader.expect_string "@layer" r;
+  Reader.ws r;
+  let name = Reader.ident ~keep_case:true r in
+  Reader.ws r;
+  Reader.expect '{' r;
+  let rec read_nested_rules (acc : nested_rule list) =
+    Reader.ws r;
+    if Reader.peek r = Some '}' then (
+      Reader.skip r;
+      List.rev acc)
+    else if Reader.looking_at r "@supports" then
+      let supports = read_supports_rule r in
+      read_nested_rules (Supports supports :: acc)
+    else
+      let rule = read_rule r in
+      read_nested_rules (Rule rule :: acc)
+  in
+  let rules : nested_rule list = read_nested_rules [] in
+  {
+    layer = name;
+    rules;
+    media_queries = [];
+    container_queries = [];
+    supports_queries = [];
+  }
+
+let read_sheet_item (r : Reader.t) : sheet_item =
+  Reader.ws r;
+  if Reader.looking_at r "@layer" then Layer (read_layer_rule r)
+  else if Reader.looking_at r "@media" then Media (read_media_rule r)
+  else if Reader.looking_at r "@supports" then Supports (read_supports_rule r)
+  else if Reader.looking_at r "@property" then Property (read_property_rule r)
+  else Rule (read_rule r)
+
 let read_stylesheet (r : Reader.t) : t =
   let rec read_items acc =
     Reader.ws r;
     if Reader.is_done r then List.rev acc
     else
-      let rule = read_rule r in
-      read_items (Rule rule :: acc)
+      let item = read_sheet_item r in
+      read_items (item :: acc)
   in
   let items = read_items [] in
   (* Organize items into proper stylesheet structure *)

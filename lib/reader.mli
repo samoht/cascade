@@ -20,6 +20,12 @@ val is_done : t -> bool
 val position : t -> int
 (** [position t] returns the current position in the input. *)
 
+val context_window : ?before:int -> ?after:int -> t -> string * int
+(** [context_window ~before ~after t] returns [(context, marker_pos)] where
+    [context] is text around the current position and [marker_pos] indicates
+    where in the context the current position is. Used for better error
+    messages. *)
+
 (** {1 Error Handling} *)
 
 val err : ?got:string -> t -> string -> 'a
@@ -27,9 +33,6 @@ val err : ?got:string -> t -> string -> 'a
 
 val err_invalid : t -> string -> 'a
 (** [err_invalid t what] raises a parse error for an invalid [what]. *)
-
-val try_parse : (t -> 'a) -> t -> 'a option
-(** [try_parse f t] tries [f t], returning [None] on failure. *)
 
 (** {1 Characters & Strings} *)
 
@@ -75,14 +78,15 @@ val is_ident_start : char -> bool
 val ident : ?keep_case:bool -> t -> string
 (** [ident ?keep_case t] reads a CSS identifier. By default identifiers are
     treated case-insensitively and the returned string is lowercased (ASCII).
-    Pass [~keep_case:true] to preserve the original spelling when needed
-    (e.g., when storing and re-emitting author-provided identifiers). *)
+    Pass [~keep_case:true] to preserve the original spelling when needed (e.g.,
+    when storing and re-emitting author-provided identifiers). *)
 
 val token : t -> string
 (** [token t] reads a non-whitespace token. *)
 
-val string : t -> string
-(** [string t] reads a quoted string (handles escapes). *)
+val string : ?trim:bool -> t -> string
+(** [string ?trim t] reads a quoted string (handles escapes). If [trim] is true
+    (default: false), trims whitespace from the result. *)
 
 val number : t -> float
 (** [number t] reads a number. *)
@@ -107,6 +111,17 @@ val comma : t -> unit
 val slash : t -> unit
 (** [slash t] consumes slash with optional whitespace. *)
 
+val consume_if : char -> t -> bool
+(** [consume_if c t] consumes [c] if present, returns [true] if consumed. *)
+
+val comma_opt : t -> bool
+(** [comma_opt t] consumes an optional comma (with surrounding whitespace).
+    Returns [true] if a comma was consumed. *)
+
+val slash_opt : t -> bool
+(** [slash_opt t] consumes an optional slash (with surrounding whitespace).
+    Returns [true] if a slash was consumed. *)
+
 (** {1 High-Level Combinators} *)
 
 val take : int -> (t -> 'a) -> t -> 'a list
@@ -118,16 +133,18 @@ val many : (t -> 'a) -> t -> 'a list * string option
 val one_of : (t -> 'a) list -> t -> 'a
 (** [one_of parsers t] tries each parser until one succeeds. *)
 
-val optional : (t -> 'a) -> t -> 'a option
-(** [optional parser t] tries [parser], returning [None] if it fails. *)
+val option : (t -> 'a) -> t -> 'a option
+(** [option parser t] tries [parser], returning [None] if it fails. *)
 
 val enum : ?default:(t -> 'a) -> string -> (string * 'a) list -> t -> 'a
 (** [enum ?default label cases t] reads identifier and matches against cases. If
-    no match found, tries [default] function if provided. *)
+    no match is found and [~default] is provided, the input position is not
+    consumed and [default t] is tried from the original position. *)
 
-val list : ?sep:(t -> unit) -> (t -> 'a) -> t -> 'a list
-(** [list ~sep item t] parses items separated by [sep] (default: no separator).
-*)
+val list :
+  ?sep:(t -> unit) -> ?at_least:int -> ?at_most:int -> (t -> 'a) -> t -> 'a list
+(** [list ~sep ~at_least ~at_most item t] parses items separated by [sep]
+    (default: no separator). Enforces optional cardinality constraints. *)
 
 val pair : ?sep:(t -> unit) -> (t -> 'a) -> (t -> 'b) -> t -> 'a * 'b
 (** [pair ~sep p1 p2 t] parses two items with optional separator. *)
@@ -139,8 +156,40 @@ val triple :
 val url : t -> string
 (** [url t] parses [url(...)] content. *)
 
-(* Note: CSS identifiers are matched case-insensitively by default. This API
-   follows that convention by lowercasing identifiers unless [~keep_case:true]
-   is provided. *)
+val call : string -> t -> (t -> 'a) -> 'a
+(** [call name p t] parses a case-insensitive function call [name(...)] and
+    applies [p] to the contents between parentheses with surrounding whitespace
+    handled. *)
 
-(** {1 Debugging} *)
+val enum_calls : ?default:(t -> 'a) -> (string * (t -> 'a)) list -> t -> 'a
+(** [enum_calls ?default cases t] reads a case-insensitive function name and
+    dispatches to the matching parser, parsing the body between parentheses. If
+    no match is found and [~default] is provided, the input position is not
+    consumed and [default t] is tried from the original position. *)
+
+val enum_or_calls :
+  ?default:(t -> 'a) ->
+  string ->
+  (string * 'a) list ->
+  calls:(string * (t -> 'a)) list ->
+  t ->
+  'a
+(** [enum_or_calls ?default label idents ~calls t] handles values that can be
+    either a keyword ([enum]) or a function call ([enum_calls]). It peeks after
+    the identifier: if a '(' follows, dispatches to [enum_calls]; otherwise
+    matches against [idents]. If no match is found and [~default] is provided,
+    the input position is restored before trying [default t]. *)
+
+val fold_many :
+  (t -> 'a) -> init:'s -> f:('s -> 'a -> 's) -> t -> 's * string option
+(** [fold_many parser ~init ~f t] like [many] but folds into an accumulator as
+    it parses. Returns the final accumulator and the last error (if any). *)
+
+val number_with_unit : t -> float * string
+(** [number_with_unit t] parses a number followed by a unit identifier (e.g.,
+    "12px", "3.5rem"). Returns [(number, unit_string)]. *)
+
+val unit : string -> t -> float
+(** [unit expected t] parses a number followed by the expected unit identifier.
+    Returns just the number if the unit matches, raises Parse_error otherwise.
+*)

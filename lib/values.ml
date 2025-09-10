@@ -69,21 +69,21 @@ let pp_calc : type a. a Pp.t -> a calc Pp.t =
  fun pp_value ctx calc ->
   Pp.call "calc"
     (fun ctx calc ->
-      match calc with
-      | Val v -> pp_value ctx v
-      | Var v -> pp_var pp_value ctx v
-      | Num n -> Pp.float ctx n
-      | Expr (left, op, right) ->
-          let rec pp_calc_inner ctx = function
-            | Val v -> pp_value ctx v
-            | Var v -> pp_var pp_value ctx v
-            | Num n -> Pp.float ctx n
-            | Expr (left, op, right) ->
-                pp_calc_inner ctx left;
-                pp_op ctx op;
-                pp_calc_inner ctx right
-          in
-          pp_calc_inner ctx (Expr (left, op, right)))
+      let precedence = function Add | Sub -> 1 | Mult | Div -> 2 in
+      let rec pp_calc_inner ~parent_prec ctx = function
+        | Val v -> pp_value ctx v
+        | Var v -> pp_var pp_value ctx v
+        | Num n -> Pp.float ctx n
+        | Expr (left, op, right) ->
+            let op_prec = precedence op in
+            let needs_parens = op_prec < parent_prec in
+            if needs_parens then Pp.char ctx '(';
+            pp_calc_inner ~parent_prec:op_prec ctx left;
+            pp_op ctx op;
+            pp_calc_inner ~parent_prec:op_prec ctx right;
+            if needs_parens then Pp.char ctx ')'
+      in
+      pp_calc_inner ~parent_prec:0 ctx calc)
     ctx calc
 
 (* Small helpers *)
@@ -140,10 +140,15 @@ let rec pp_length : length Pp.t =
   | Min_content -> Pp.string ctx "min-content"
   | From_font -> Pp.string ctx "from-font"
   | Var v -> pp_var pp_length ctx v
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Content -> Pp.string ctx "content"
   | Calc cv -> (
       (* Optimize calc(infinity * 1px) to 3.40282e38px for minification *)
       match cv with
-      | Expr (Val (Num f), Mult, Val (Px 1.)) when f = infinity ->
+      | Expr (Val (Num f), Mult, Val (Px 1.)) when ctx.minify && f = infinity ->
           Pp.string ctx "3.40282e38px"
       | _ -> pp_calc pp_length ctx cv)
 
@@ -355,7 +360,7 @@ let rec pp_percentage : percentage Pp.t =
 
 and pp_component : component Pp.t =
  fun ctx -> function
-  | Number f -> Pp.float ctx f
+  | Num f -> Pp.float ctx f
   | Pct f ->
       Pp.float ctx f;
       Pp.char ctx '%'
@@ -371,66 +376,69 @@ and pp_hue_interpolation : hue_interpolation Pp.t =
   | Decreasing -> Pp.string ctx "decreasing"
   | Default -> ()
 
-let pp_rgb ctx r g b alpha =
-  Pp.string ctx "rgb(";
-  pp_channel ctx r;
-  Pp.space ctx ();
-  pp_channel ctx g;
-  Pp.space ctx ();
-  pp_channel ctx b;
-  pp_opt_alpha ctx alpha;
-  Pp.char ctx ')'
+(* Helpers to pretty print CSS color functions using Pp.call *)
+let pp_rgb_args : (channel * channel * channel * alpha) Pp.t =
+ fun ctx (r, g, b, alpha) ->
+  Pp.list ~sep:Pp.space pp_channel ctx [ r; g; b ];
+  pp_opt_alpha ctx alpha
 
-let pp_oklch ctx l c h alpha =
-  Pp.string ctx "oklch(";
+let pp_rgb = Pp.call "rgb" pp_rgb_args
+
+let pp_oklch_args : (percentage * float * hue * alpha) Pp.t =
+ fun ctx (l, c, h, alpha) ->
   pp_percentage ctx l;
   Pp.space ctx ();
   Pp.float ctx c;
   Pp.space ctx ();
   pp_hue ctx h;
-  pp_opt_alpha ctx alpha;
-  Pp.char ctx ')'
+  pp_opt_alpha ctx alpha
 
-let pp_hsl ctx h s l a =
-  Pp.string ctx "hsl(";
+let pp_oklch = Pp.call "oklch" pp_oklch_args
+
+let pp_hsl_args : (hue * percentage * percentage * alpha) Pp.t =
+ fun ctx (h, s, l, a) ->
   pp_hue ctx h;
   Pp.space ctx ();
   pp_percentage ctx s;
   Pp.space ctx ();
   pp_percentage ctx l;
-  pp_opt_alpha ctx a;
-  Pp.char ctx ')'
+  pp_opt_alpha ctx a
 
-let pp_hwb ctx h w b a =
-  Pp.string ctx "hwb(";
+let pp_hsl = Pp.call "hsl" pp_hsl_args
+
+let pp_hwb_args : (hue * percentage * percentage * alpha) Pp.t =
+ fun ctx (h, w, b, a) ->
   pp_hue ctx h;
   Pp.space ctx ();
   pp_percentage ctx w;
   Pp.space ctx ();
   pp_percentage ctx b;
-  pp_opt_alpha ctx a;
-  Pp.char ctx ')'
+  pp_opt_alpha ctx a
 
-let pp_oklab ctx l a b alpha =
-  Pp.string ctx "oklab(";
+let pp_hwb = Pp.call "hwb" pp_hwb_args
+
+let pp_oklab_args : (percentage * float * float * alpha) Pp.t =
+ fun ctx (l, a, b, alpha) ->
   (* Oklab L must always be output as percentage per CSS spec *)
   pp_percentage ctx l;
   Pp.space ctx ();
   Pp.float ctx a;
   Pp.space ctx ();
   Pp.float ctx b;
-  pp_opt_alpha ctx alpha;
-  Pp.char ctx ')'
+  pp_opt_alpha ctx alpha
 
-let pp_lch ctx l c h alpha =
-  Pp.string ctx "lch(";
+let pp_oklab = Pp.call "oklab" pp_oklab_args
+
+let pp_lch_args : (percentage * float * hue * alpha) Pp.t =
+ fun ctx (l, c, h, alpha) ->
   pp_percentage ctx l;
   Pp.space ctx ();
   Pp.float ctx c;
   Pp.space ctx ();
   pp_hue ctx h;
-  pp_opt_alpha ctx alpha;
-  Pp.char ctx ')'
+  pp_opt_alpha ctx alpha
+
+let pp_lch = Pp.call "lch" pp_lch_args
 
 let pp_color_space : color_space Pp.t =
  fun ctx -> function
@@ -456,63 +464,70 @@ let rec pp_color_in_mix : color Pp.t =
   | c -> pp_color ctx c
 
 and pp_color_mix ctx in_space hue color1 percent1 color2 percent2 =
-  Pp.string ctx "color-mix(";
-  (match in_space with
-  | Some space ->
-      Pp.string ctx "in ";
-      pp_color_space ctx space
-  | None -> Pp.string ctx "in oklab");
-  (match hue with
-  | Default -> ()
-  | _ ->
-      Pp.space ctx ();
-      pp_hue_interpolation ctx hue;
-      Pp.string ctx " hue");
-  Pp.string ctx ", ";
-  pp_color_in_mix ctx color1;
-  (match percent1 with
-  | Some p ->
-      Pp.space ctx ();
-      pp_percentage ctx p
-  | None -> ());
-  Pp.string ctx ", ";
-  pp_color_in_mix ctx color2;
-  (match percent2 with
-  | Some p ->
-      Pp.space ctx ();
-      pp_percentage ctx p
-  | None -> ());
-  Pp.char ctx ')'
+  Pp.call "color-mix"
+    (fun ctx (in_space, hue, color1, percent1, color2, percent2) ->
+      (match in_space with
+      | Some space ->
+          Pp.string ctx "in ";
+          pp_color_space ctx space
+      | None -> Pp.string ctx "in oklab");
+      (match hue with
+      | Default -> ()
+      | _ ->
+          Pp.space ctx ();
+          pp_hue_interpolation ctx hue;
+          Pp.string ctx " hue");
+      Pp.comma ctx ();
+      pp_color_in_mix ctx color1;
+      (match percent1 with
+      | Some p ->
+          Pp.space ctx ();
+          pp_percentage ctx p
+      | None -> ());
+      Pp.comma ctx ();
+      pp_color_in_mix ctx color2;
+      match percent2 with
+      | Some p ->
+          Pp.space ctx ();
+          pp_percentage ctx p
+      | None -> ())
+    ctx
+    (in_space, hue, color1, percent1, color2, percent2)
 
 and pp_color' ctx space components alpha =
-  Pp.string ctx "color(";
-  pp_color_space ctx space;
-  (match components with
-  | [] -> ()
-  | _ ->
-      Pp.string ctx " ";
-      Pp.list ~sep:Pp.space pp_component ctx components);
-  pp_opt_alpha ctx alpha;
-  Pp.char ctx ')'
+  Pp.call "color"
+    (fun ctx (space, components, alpha) ->
+      pp_color_space ctx space;
+      (match components with
+      | [] -> ()
+      | _ ->
+          Pp.space ctx ();
+          Pp.list ~sep:Pp.space pp_component ctx components);
+      pp_opt_alpha ctx alpha)
+    ctx (space, components, alpha)
 
 and pp_color : color Pp.t =
  fun ctx -> function
   | Hex { hash = _; value } ->
       Pp.char ctx '#';
       Pp.string ctx value
-  | Rgb { r; g; b } -> pp_rgb ctx r g b None
-  | Rgba { r; g; b; a } -> pp_rgb ctx r g b a
-  | Hsl { h; s; l; a } -> pp_hsl ctx h s l a
-  | Hwb { h; w; b; a } -> pp_hwb ctx h w b a
+  | Rgb { r; g; b } -> pp_rgb ctx (r, g, b, None)
+  | Rgba { r; g; b; a } -> pp_rgb ctx (r, g, b, a)
+  | Hsl { h; s; l; a } -> pp_hsl ctx (h, s, l, a)
+  | Hwb { h; w; b; a } -> pp_hwb ctx (h, w, b, a)
   | Color { space; components; alpha } -> pp_color' ctx space components alpha
-  | Oklch { l; c; h; alpha } -> pp_oklch ctx l c h alpha
-  | Oklab { l; a; b; alpha } -> pp_oklab ctx l a b alpha
-  | Lch { l; c; h; alpha } -> pp_lch ctx l c h alpha
+  | Oklch { l; c; h; alpha } -> pp_oklch ctx (l, c, h, alpha)
+  | Oklab { l; a; b; alpha } -> pp_oklab ctx (l, a, b, alpha)
+  | Lch { l; c; h; alpha } -> pp_lch ctx (l, c, h, alpha)
   | Named name -> pp_color_name ctx name
   | Var v -> pp_var pp_color ctx v
   | Current -> Pp.string ctx "currentcolor"
   | Transparent -> Pp.string ctx "transparent"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Mix { in_space; hue; color1; percent1; color2; percent2 } ->
       pp_color_mix ctx in_space hue color1 percent1 color2 percent2
 
@@ -665,10 +680,26 @@ and read_calc_term : type a. (Reader.t -> a) -> Reader.t -> a calc =
   match Reader.peek t with
   | Some '*' ->
       Reader.skip t;
-      Expr (left, Mult, read_calc_term read_a t)
+      let right = read_calc_term read_a t in
+      (* Validate multiplication: at least one operand must be a number *)
+      let is_number : type a. a calc -> bool = function
+        | Num _ -> true
+        | _ -> false
+      in
+      if (not (is_number left)) && not (is_number right) then
+        Reader.err t "invalid calc: cannot multiply two dimensions";
+      Expr (left, Mult, right)
   | Some '/' ->
       Reader.skip t;
-      Expr (left, Div, read_calc_term read_a t)
+      let right = read_calc_term read_a t in
+      (* Validate division: right operand must be a number *)
+      let is_number : type a. a calc -> bool = function
+        | Num _ -> true
+        | _ -> false
+      in
+      if not (is_number right) then
+        Reader.err t "invalid calc: division requires a number on the right";
+      Expr (left, Div, right)
   | _ -> left
 
 and read_calc_factor : type a. (Reader.t -> a) -> Reader.t -> a calc =
@@ -766,10 +797,12 @@ let rec read_alpha t : alpha =
   (* Check for var() first *)
   if Reader.looking_at t "var(" then Var (read_var read_alpha t)
   else
-    (* Try percentage first *)
-    match Reader.try_parse read_percentage_float t with
-    | Some pct -> Pct pct
-    | None -> Num (Reader.number t)
+    (* Check if it's a percentage by looking ahead after the number *)
+    let n = Reader.number t in
+    if Reader.peek t = Some '%' then (
+      Reader.expect '%' t;
+      Pct n)
+    else Num n
 (* Fall back to number *)
 
 (** Read optional alpha component *)
@@ -866,11 +899,13 @@ let rec read_color_components space t acc =
             let n = Reader.number t in
             Reader.expect '%' t;
             (Pct n : component)
-        | _ -> (
-            (* Try percentage first, then plain number *)
-            match Reader.try_parse read_percentage_float t with
-            | Some pct -> Pct pct
-            | None -> Number (Reader.number t))
+        | _ ->
+            (* Check if it's a percentage by looking ahead after the number *)
+            let n = Reader.number t in
+            if Reader.peek t = Some '%' then (
+              Reader.expect '%' t;
+              Pct (n /. 100.))
+            else Num n
       in
       read_color_components space t (component :: acc)
   | None -> Reader.err_invalid t "color()"
@@ -1044,16 +1079,14 @@ let color_parsers =
       fun t ->
         Reader.expect '(' t;
         Reader.ws t;
-        match Reader.try_parse read_rgb_space_separated t with
-        | Some result -> result
-        | None -> read_rgb_comma_separated t );
+        Reader.one_of [ read_rgb_space_separated; read_rgb_comma_separated ] t
+    );
     ( "rgba",
       fun t ->
         Reader.expect '(' t;
         Reader.ws t;
-        match Reader.try_parse read_rgb_space_separated t with
-        | Some result -> result
-        | None -> read_rgb_comma_separated t );
+        Reader.one_of [ read_rgb_space_separated; read_rgb_comma_separated ] t
+    );
     ( "hsl",
       fun t ->
         Reader.expect '(' t;

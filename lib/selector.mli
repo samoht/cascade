@@ -79,6 +79,10 @@ val pp_attr_flag : attr_flag option Pp.t
 val pp_nth : nth Pp.t
 (** Pretty-printer for nth expressions. *)
 
+val read_selector_list : Reader.t -> t
+(** Read a selector list without checking for end of input. Used when parsing
+    selectors as part of a larger CSS structure. *)
+
 val read : Reader.t -> t
 (** Parse a CSS selector. *)
 
