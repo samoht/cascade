@@ -687,8 +687,8 @@ let rec pp_font_family : font_family Pp.t =
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
   | Name s ->
-      (* Output the name as-is (it may already include quotes if needed) *)
-      Pp.string ctx s
+      (* Font names with spaces must be quoted per CSS spec *)
+      if String.contains s ' ' then Pp.quoted_string ctx s else Pp.string ctx s
   | Var v -> pp_var (Pp.list ~sep:Pp.comma pp_font_family) ctx v
 
 let rec pp_border_style : border_style Pp.t =
@@ -3875,7 +3875,6 @@ let read_gradient_stop t : gradient_stop =
   Color_stop color
 
 let read_background_image t : background_image =
-  let read_url_body t = read_url_arg t in
   let read_linear_body t =
     Reader.ws t;
     let direction =
@@ -3901,7 +3900,7 @@ let read_background_image t : background_image =
     [ ("none", (None : background_image)) ]
     ~calls:
       [
-        ("url", fun t -> Url (read_url_body t));
+        ("url", fun t -> Url (Reader.url t));
         ("linear-gradient", read_linear_body);
         ("radial-gradient", read_radial_body);
       ]
