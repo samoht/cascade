@@ -202,6 +202,29 @@ let string_of_value ?(minify = true) decl =
 (* Helper to read a trimmed string *)
 let read_string t = Reader.string ~trim:true t
 
+(* Helper to read raw property value - for properties that accept any text *)
+let read_raw_value t =
+  (* Read characters until we hit a semicolon, closing brace, or !important *)
+  let buffer = Buffer.create 64 in
+  let rec loop () =
+    match Reader.peek t with
+    | Some ';' | Some '}' | None -> Buffer.contents buffer |> String.trim
+    | Some '!' ->
+        (* Look ahead to see if this is !important *)
+        Buffer.add_char buffer '!';
+        Reader.expect '!' t;
+        if Reader.looking_at t "important" then
+          (* This is !important, stop reading the value *)
+          String.trim
+            (String.sub (Buffer.contents buffer) 0 (Buffer.length buffer - 1))
+        else loop ()
+    | Some c ->
+        Reader.expect c t;
+        Buffer.add_char buffer c;
+        loop ()
+  in
+  loop ()
+
 (* Parse value directly based on property type *)
 let read_value (type a) (prop_type : a property) t : declaration =
   let prop_name =
@@ -256,6 +279,7 @@ let read_value (type a) (prop_type : a property) t : declaration =
   | Font_family ->
       (* Font-family accepts a comma-separated list *)
       declaration Font_family (Reader.list ~sep:Reader.comma read_font_family t)
+  | Font -> declaration Font (read_raw_value t)
   | Text_align -> declaration Text_align (read_text_align t)
   | Text_transform -> declaration Text_transform (read_text_transform t)
   | White_space -> declaration White_space (read_white_space t)
@@ -281,9 +305,7 @@ let read_value (type a) (prop_type : a property) t : declaration =
   (* Webkit Transform *)
   | Webkit_transform ->
       let transforms, error_opt =
-        Reader.fold_many Properties.read_transform ~init:[]
-          ~f:(fun acc t -> t :: acc)
-          t
+        Reader.fold_many read_transform ~init:[] ~f:(fun acc t -> t :: acc) t
       in
       let transforms = List.rev transforms in
       if transforms = [] then
@@ -373,6 +395,7 @@ let read_value (type a) (prop_type : a property) t : declaration =
   | List_style_position ->
       declaration List_style_position (read_list_style_position t)
   | List_style_image -> declaration List_style_image (read_list_style_image t)
+  | List_style -> declaration List_style (read_raw_value t)
   (* Flexbox order *)
   | Order -> declaration Order (int_of_float (Reader.number t))
   (* Justify properties *)
@@ -387,11 +410,11 @@ let read_value (type a) (prop_type : a property) t : declaration =
   | Place_self -> declaration Place_self (read_align_self t)
   (* Additional grid properties *)
   | Grid_template -> declaration Grid_template (read_grid_template t)
-  | Grid_area -> declaration Grid_area (read_string t)
+  | Grid_area -> declaration Grid_area (read_raw_value t)
   | Grid_auto_columns -> declaration Grid_auto_columns (read_grid_template t)
   | Grid_auto_rows -> declaration Grid_auto_rows (read_grid_template t)
-  | Grid_column -> declaration Grid_column (read_string t)
-  | Grid_row -> declaration Grid_row (read_string t)
+  | Grid_column -> declaration Grid_column (read_raw_value t)
+  | Grid_row -> declaration Grid_row (read_raw_value t)
   (* Border inline/block properties *)
   | Border_inline_start_width ->
       declaration Border_inline_start_width (read_border_width t)
@@ -407,7 +430,7 @@ let read_value (type a) (prop_type : a property) t : declaration =
   | Bottom -> declaration Bottom (read_length t)
   | Left -> declaration Left (read_length t)
   (* Outline properties *)
-  | Outline -> declaration Outline (read_string t)
+  | Outline -> declaration Outline (read_raw_value t)
   | Outline_style -> declaration Outline_style (read_outline_style t)
   | Outline_width -> declaration Outline_width (read_length t)
   | Outline_offset -> declaration Outline_offset (read_length t)
@@ -444,7 +467,6 @@ let read_value (type a) (prop_type : a property) t : declaration =
   | Font_stretch -> declaration Font_stretch (read_font_stretch t)
   | Font_variant_numeric ->
       declaration Font_variant_numeric (read_font_variant_numeric t)
-  | Font -> declaration Font (read_string t)
   (* Text properties *)
   | Text_indent -> declaration Text_indent (read_length t)
   | Text_overflow -> declaration Text_overflow (read_text_overflow t)
@@ -459,11 +481,9 @@ let read_value (type a) (prop_type : a property) t : declaration =
   | Overflow_wrap -> declaration Overflow_wrap (read_overflow_wrap t)
   | Hyphens -> declaration Hyphens (read_hyphens t)
   | Word_spacing -> declaration Word_spacing (read_length t)
-  (* List style *)
-  | List_style -> declaration List_style (read_string t)
   (* Container properties *)
   | Container_type -> declaration Container_type (read_container_type t)
-  | Container_name -> declaration Container_name (read_string t)
+  | Container_name -> declaration Container_name (read_raw_value t)
   (* Transform properties *)
   | Perspective -> declaration Perspective (read_length t)
   | Perspective_origin -> declaration Perspective_origin (read_string t)

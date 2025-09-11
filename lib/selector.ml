@@ -520,8 +520,14 @@ and read_pseudo_element t =
 
 (* Parse a comma-separated list of complex selectors *)
 and read_complex_list t =
-  try Reader.list ~sep:Reader.comma ~at_least:1 read_complex t
-  with Reader.Parse_error _ -> Reader.err t "expected at least one selector"
+  Reader.ws t;
+  (* Check if we have empty content right away *)
+  match Reader.peek t with
+  | Some ')' -> Reader.err t "expected at least one selector"
+  | _ -> (
+      try Reader.list ~sep:Reader.comma ~at_least:1 read_complex t
+      with Reader.Parse_error _ ->
+        Reader.err t "expected at least one selector")
 
 (** Parse a simple selector (one part) *)
 and read_simple t =
@@ -587,6 +593,7 @@ and read_complex t =
       else left
 
 let read_selector_list t =
+  Reader.with_context t "list" @@ fun () ->
   Reader.ws t;
   (* Parse the selector list manually to properly handle trailing commas *)
   let rec parse_list acc =

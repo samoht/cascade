@@ -314,13 +314,10 @@ let test_selector_parse_errors () =
     "Expected ']'";
 
   (* Invalid pseudo-function calls *)
-  check_parse_error "invalid_not" ".test:not()"
-    "unexpected characters after selector";
-  check_parse_error "unclosed_not" ".test:not(.other"
-    "unexpected characters after selector";
-  check_parse_error "invalid_is" ":is()" "unexpected characters after selector";
-  check_parse_error "invalid_has" ".test:has()"
-    "unexpected characters after selector";
+  check_parse_error "invalid_not" ".test:not()" "expected at least one selector";
+  check_parse_error "unclosed_not" ".test:not(.other" "unexpected end of input";
+  check_parse_error "invalid_is" ":is()" "expected at least one selector";
+  check_parse_error "invalid_has" ".test:has()" "expected at least one selector";
 
   (* Mixed up combinators *)
   check_parse_error "mixed_combinators" ".parent ~> .child"

@@ -60,7 +60,7 @@ let pp_var : type a. a Pp.t -> a var Pp.t =
     | None -> Pp.char ctx ')'
     | Some value ->
         Pp.char ctx ',';
-        Pp.space ctx ();
+        Pp.space_if_pretty ctx ();
         pp_value ctx value;
         Pp.char ctx ')')
 

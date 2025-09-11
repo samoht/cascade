@@ -358,113 +358,129 @@ let read_box_shadows t : box_shadow list =
   Reader.list ~sep:Reader.comma ~at_least:1 read_box_shadow t
 
 (* Named helpers for transform function bodies to keep the call table tidy *)
-let read_translate_x t = Translate_x (read_length t)
-let read_translate_y t = Translate_y (read_length t)
-let read_translate_z t = Translate_z (read_length t)
+let read_translate_x t =
+  Reader.call "translatex" t (fun t -> Translate_x (read_length t))
+
+let read_translate_y t =
+  Reader.call "translatey" t (fun t -> Translate_y (read_length t))
+
+let read_translate_z t =
+  Reader.call "translatez" t (fun t -> Translate_z (read_length t))
 
 let read_translate3d t =
-  let x, y, z =
-    Reader.(triple ~sep:comma read_length read_length read_length) t
-  in
-  Translate_3d (x, y, z)
+  Reader.call "translate3d" t (fun t ->
+      let x, y, z =
+        Reader.(triple ~sep:comma read_length read_length read_length) t
+      in
+      Translate_3d (x, y, z))
 
 let read_translate t =
-  let x = read_length t in
-  let y =
-    Reader.option
-      (fun t ->
-        Reader.comma t;
-        read_length t)
-      t
-  in
-  Translate (x, y)
+  Reader.call "translate" t (fun t ->
+      let x = read_length t in
+      let y =
+        Reader.option
+          (fun t ->
+            Reader.comma t;
+            read_length t)
+          t
+      in
+      Translate (x, y))
 
-let read_rotate_x t = Rotate_x (read_angle t)
-let read_rotate_y t = Rotate_y (read_angle t)
-let read_rotate_z t = Rotate_z (read_angle t)
-let read_rotate t : transform = Rotate (read_angle t)
-let read_scale_x t = Scale_x (Reader.number t)
-let read_scale_y t = Scale_y (Reader.number t)
-let read_scale_z t = Scale_z (Reader.number t)
+let read_rotate_x t = Reader.call "rotatex" t (fun t -> Rotate_x (read_angle t))
+let read_rotate_y t = Reader.call "rotatey" t (fun t -> Rotate_y (read_angle t))
+let read_rotate_z t = Reader.call "rotatez" t (fun t -> Rotate_z (read_angle t))
+
+let read_rotate t : transform =
+  Reader.call "rotate" t (fun t -> (Rotate (read_angle t) : transform))
+
+let read_scale_x t = Reader.call "scalex" t (fun t -> Scale_x (Reader.number t))
+let read_scale_y t = Reader.call "scaley" t (fun t -> Scale_y (Reader.number t))
+let read_scale_z t = Reader.call "scalez" t (fun t -> Scale_z (Reader.number t))
 
 let read_rotate3d t =
-  let x, y, z = Reader.(triple ~sep:comma number number number) t in
-  Reader.comma t;
-  let angle = read_angle t in
-  Rotate_3d (x, y, z, angle)
+  Reader.call "rotate3d" t (fun t ->
+      let x, y, z = Reader.(triple ~sep:comma number number number) t in
+      Reader.comma t;
+      let angle = read_angle t in
+      Rotate_3d (x, y, z, angle))
 
 let read_scale3d t =
-  let x, y, z = Reader.(triple ~sep:comma number number number) t in
-  Scale_3d (x, y, z)
+  Reader.call "scale3d" t (fun t ->
+      let x, y, z = Reader.(triple ~sep:comma number number number) t in
+      Scale_3d (x, y, z))
 
 let read_scale t : transform =
-  let x = Reader.number t in
-  let y =
-    Reader.option
-      (fun t ->
-        Reader.comma t;
-        Reader.number t)
-      t
-  in
-  Scale (x, y)
+  Reader.call "scale" t (fun t ->
+      let x = Reader.number t in
+      let y =
+        Reader.option
+          (fun t ->
+            Reader.comma t;
+            Reader.number t)
+          t
+      in
+      (Scale (x, y) : transform))
 
-let read_skew_x t = Skew_x (read_angle t)
-let read_skew_y t = Skew_y (read_angle t)
+let read_skew_x t = Reader.call "skewx" t (fun t -> Skew_x (read_angle t))
+let read_skew_y t = Reader.call "skewy" t (fun t -> Skew_y (read_angle t))
 
 let read_skew t =
-  let x = read_angle t in
-  let y =
-    Reader.option
-      (fun t ->
-        Reader.comma t;
-        read_angle t)
-      t
-  in
-  Skew (x, y)
+  Reader.call "skew" t (fun t ->
+      let x = read_angle t in
+      let y =
+        Reader.option
+          (fun t ->
+            Reader.comma t;
+            read_angle t)
+          t
+      in
+      Skew (x, y))
 
 let read_matrix t =
-  match Reader.list ~sep:Reader.comma Reader.number t with
-  | [ a; b; c; d; e; f ] -> Matrix (a, b, c, d, e, f)
-  | _ -> err_invalid_value t "matrix" "expected 6 arguments"
+  Reader.call "matrix" t (fun t ->
+      match Reader.list ~sep:Reader.comma Reader.number t with
+      | [ a; b; c; d; e; f ] -> Matrix (a, b, c, d, e, f)
+      | _ -> err_invalid_value t "matrix" "expected 6 arguments")
 
 let read_matrix3d t =
-  match Reader.list ~sep:Reader.comma Reader.number t with
-  | [
-   m11;
-   m12;
-   m13;
-   m14;
-   m21;
-   m22;
-   m23;
-   m24;
-   m31;
-   m32;
-   m33;
-   m34;
-   m41;
-   m42;
-   m43;
-   m44;
-  ] ->
-      Matrix_3d
-        ( m11,
-          m12,
-          m13,
-          m14,
-          m21,
-          m22,
-          m23,
-          m24,
-          m31,
-          m32,
-          m33,
-          m34,
-          m41,
-          m42,
-          m43,
-          m44 )
-  | _ -> err_invalid_value t "matrix3d" "expected 16 arguments"
+  Reader.call "matrix3d" t (fun t ->
+      match Reader.list ~sep:Reader.comma Reader.number t with
+      | [
+       m11;
+       m12;
+       m13;
+       m14;
+       m21;
+       m22;
+       m23;
+       m24;
+       m31;
+       m32;
+       m33;
+       m34;
+       m41;
+       m42;
+       m43;
+       m44;
+      ] ->
+          Matrix_3d
+            ( m11,
+              m12,
+              m13,
+              m14,
+              m21,
+              m22,
+              m23,
+              m24,
+              m31,
+              m32,
+              m33,
+              m34,
+              m41,
+              m42,
+              m43,
+              m44 )
+      | _ -> err_invalid_value t "matrix3d" "expected 16 arguments")
 
 let transform_parsers =
   [
@@ -2923,10 +2939,15 @@ let read_list_style_position t : list_style_position =
     t
 
 let read_list_style_image t : list_style_image =
-  let read_url_body t = read_url_arg t in
   Reader.enum_or_calls "list-style-image"
     [ ("none", (None : list_style_image)); ("inherit", Inherit) ]
-    ~calls:[ ("url", fun t -> Url (read_url_body t)) ]
+    ~calls:
+      [
+        ( "url",
+          fun t ->
+            Reader.call "url" t (fun t ->
+                (Url (read_url_arg t) : list_style_image)) );
+      ]
     t
 
 let read_table_layout t : table_layout =
@@ -3722,45 +3743,64 @@ let read_text_shadow t : text_shadow =
 let read_text_shadows t : text_shadow list =
   Reader.list ~sep:Reader.comma ~at_least:1 read_text_shadow t
 
-let read_blur t : filter = Blur (read_length t)
-let read_brightness t : filter = Brightness (read_number t)
-let read_contrast t : filter = Contrast (read_number t)
-let read_grayscale t : filter = Grayscale (read_number t)
-let read_hue_rotate t : filter = Hue_rotate (read_angle t)
-let read_invert t : filter = Invert (read_number t)
-let read_opacity t : filter = Opacity (read_number t)
-let read_saturate t : filter = Saturate (read_number t)
-let read_sepia t : filter = Sepia (read_number t)
+let read_blur t : filter = Reader.call "blur" t (fun t -> Blur (read_length t))
+
+let read_brightness t : filter =
+  Reader.call "brightness" t (fun t -> Brightness (read_number t))
+
+let read_contrast t : filter =
+  Reader.call "contrast" t (fun t -> Contrast (read_number t))
+
+let read_grayscale t : filter =
+  Reader.call "grayscale" t (fun t -> (Grayscale (read_number t) : filter))
+
+let read_hue_rotate t : filter =
+  Reader.call "hue-rotate" t (fun t -> Hue_rotate (read_angle t))
+
+let read_invert t : filter =
+  Reader.call "invert" t (fun t -> Invert (read_number t))
+
+let read_opacity t : filter =
+  Reader.call "opacity" t (fun t -> (Opacity (read_number t) : filter))
+
+let read_saturate t : filter =
+  Reader.call "saturate" t (fun t -> Saturate (read_number t))
+
+let read_sepia t : filter =
+  Reader.call "sepia" t (fun t -> Sepia (read_number t))
 
 let read_drop_shadow t : filter =
-  (* Allow var() to produce a shadow via fallback parser *)
-  if Reader.looking_at t "var" then
-    let read_shadow t =
-      let components, _ = Reader.many read_box_shadow_component t in
-      let parts = fold_box_shadow_components components in
-      let lengths = List.rev parts.lengths in
-      match read_box_shadow_lengths lengths with
-      | Some (h, v, blur, spread) ->
-          if parts.inset then Inset (h, v, blur, spread, parts.color)
-          else Simple (h, v, blur, spread, parts.color)
-      | None ->
-          err_invalid_value t "drop-shadow" "at least two lengths are required"
-    in
-    let v = Values.read_var read_shadow t in
-    Drop_shadow (Var v)
-  else
-    let components, _ = Reader.many read_box_shadow_component t in
-    let parts = fold_box_shadow_components components in
-    let lengths = List.rev parts.lengths in
-    match read_box_shadow_lengths lengths with
-    | Some (h, v, blur, spread) ->
-        let s =
-          if parts.inset then Inset (h, v, blur, spread, parts.color)
-          else Simple (h, v, blur, spread, parts.color)
+  Reader.call "drop-shadow" t (fun t ->
+      (* Allow var() to produce a shadow via fallback parser *)
+      if Reader.looking_at t "var" then
+        let read_shadow t =
+          let components, _ = Reader.many read_box_shadow_component t in
+          let parts = fold_box_shadow_components components in
+          let lengths = List.rev parts.lengths in
+          match read_box_shadow_lengths lengths with
+          | Some (h, v, blur, spread) ->
+              if parts.inset then Inset (h, v, blur, spread, parts.color)
+              else Simple (h, v, blur, spread, parts.color)
+          | None ->
+              err_invalid_value t "drop-shadow"
+                "at least two lengths are required"
         in
-        Drop_shadow s
-    | None ->
-        err_invalid_value t "drop-shadow" "at least two lengths are required"
+        let v = Values.read_var read_shadow t in
+        Drop_shadow (Var v)
+      else
+        let components, _ = Reader.many read_box_shadow_component t in
+        let parts = fold_box_shadow_components components in
+        let lengths = List.rev parts.lengths in
+        match read_box_shadow_lengths lengths with
+        | Some (h, v, blur, spread) ->
+            let s =
+              if parts.inset then Inset (h, v, blur, spread, parts.color)
+              else Simple (h, v, blur, spread, parts.color)
+            in
+            Drop_shadow s
+        | None ->
+            err_invalid_value t "drop-shadow"
+              "at least two lengths are required")
 
 let rec read_filter_item t : filter =
   let read_var t : filter =
@@ -3901,8 +3941,10 @@ let read_background_image t : background_image =
     ~calls:
       [
         ("url", fun t -> Url (Reader.url t));
-        ("linear-gradient", read_linear_body);
-        ("radial-gradient", read_radial_body);
+        ( "linear-gradient",
+          fun t -> Reader.call "linear-gradient" t read_linear_body );
+        ( "radial-gradient",
+          fun t -> Reader.call "radial-gradient" t read_radial_body );
       ]
     t
 
@@ -3937,6 +3979,7 @@ let read_property t =
   | "border-right-width" -> Prop Border_right_width
   | "border-bottom-width" -> Prop Border_bottom_width
   | "border-left-width" -> Prop Border_left_width
+  | "border-radius" -> Prop Border_radius
   | "outline-color" -> Prop Outline_color
   | "text-decoration-color" -> Prop Text_decoration_color
   | "display" -> Prop Display
@@ -3950,11 +3993,18 @@ let read_property t =
   | "margin-right" -> Prop Margin_right
   | "margin-top" -> Prop Margin_top
   | "margin-bottom" -> Prop Margin_bottom
+  | "margin-inline" -> Prop Margin_inline
+  | "margin-inline-end" -> Prop Margin_inline_end
+  | "margin-block" -> Prop Margin_block
   | "padding" -> Prop Padding
   | "padding-left" -> Prop Padding_left
   | "padding-right" -> Prop Padding_right
   | "padding-top" -> Prop Padding_top
   | "padding-bottom" -> Prop Padding_bottom
+  | "padding-inline" -> Prop Padding_inline
+  | "padding-inline-start" -> Prop Padding_inline_start
+  | "padding-inline-end" -> Prop Padding_inline_end
+  | "padding-block" -> Prop Padding_block
   | "font-size" -> Prop Font_size
   | "font-weight" -> Prop Font_weight
   | "font-style" -> Prop Font_style
@@ -3964,6 +4014,8 @@ let read_property t =
   | "text-align" -> Prop Text_align
   | "text-decoration" -> Prop Text_decoration
   | "text-transform" -> Prop Text_transform
+  | "text-indent" -> Prop Text_indent
+  | "letter-spacing" -> Prop Letter_spacing
   | "flex" -> Prop Flex
   | "flex-direction" -> Prop Flex_direction
   | "flex-wrap" -> Prop Flex_wrap
@@ -4001,8 +4053,10 @@ let read_property t =
   | "border-right" -> Prop Border_right
   | "border-bottom" -> Prop Border_bottom
   | "border-left" -> Prop Border_left
+  | "border-collapse" -> Prop Border_collapse
   | "tab-size" -> Prop Tab_size
   | "line-height" -> Prop Line_height
+  | "list-style" -> Prop List_style
   | "vertical-align" -> Prop Vertical_align
   (* Vendor prefixed properties *)
   | "-webkit-transform" -> Prop Webkit_transform
