@@ -2939,15 +2939,12 @@ let read_list_style_position t : list_style_position =
     t
 
 let read_list_style_image t : list_style_image =
+  let read_url t =
+    Reader.call "url" t (fun t -> (Url (read_url_arg t) : list_style_image))
+  in
   Reader.enum_or_calls "list-style-image"
     [ ("none", (None : list_style_image)); ("inherit", Inherit) ]
-    ~calls:
-      [
-        ( "url",
-          fun t ->
-            Reader.call "url" t (fun t ->
-                (Url (read_url_arg t) : list_style_image)) );
-      ]
+    ~calls:[ ("url", read_url) ]
     t
 
 let read_table_layout t : table_layout =
@@ -4024,6 +4021,7 @@ let read_property t =
   | "opacity" -> Prop Opacity
   | "animation-name" -> Prop Animation_name
   | "transform" -> Prop Transform
+  | "transform-origin" -> Prop Transform_origin
   | "box-sizing" -> Prop Box_sizing
   | "grid-template-columns" -> Prop Grid_template_columns
   | "grid-template-rows" -> Prop Grid_template_rows

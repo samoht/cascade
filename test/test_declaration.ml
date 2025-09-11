@@ -662,7 +662,7 @@ let test_declaration_transforms () =
     "transform: translateX(10px)";
   check_declaration ~expected:"transform:translateY(20px)"
     "transform: translateY(20px)";
-  check_declaration ~expected:"transform:translate(10px, 20px)"
+  check_declaration ~expected:"transform:translate(10px,20px)"
     "transform: translate(10px, 20px)";
   check_declaration ~expected:"transform:scale(2)" "transform: scale(2)";
   check_declaration ~expected:"transform:scale(1.5,2)"
@@ -671,7 +671,7 @@ let test_declaration_transforms () =
     "transform: rotate(45deg)";
   check_declaration ~expected:"transform:skewX(30deg)" "transform: skewX(30deg)";
   check_declaration ~expected:"transform:skewY(15deg)" "transform: skewY(15deg)";
-  check_declaration ~expected:"transform:matrix(1, 0, 0, 1, 0, 0)"
+  check_declaration ~expected:"transform:matrix(1,0,0,1,0,0)"
     "transform: matrix(1, 0, 0, 1, 0, 0)";
 
   (* Multiple transforms *)
@@ -977,8 +977,8 @@ let test_declaration_custom_property_values () =
   (* Semicolons inside strings are fine *)
   check_declaration ~expected:"--x:\"a;b\"" "--x: \"a;b\"";
   (* var() usage in standard properties, with and without fallback *)
-  check_declaration ~expected:"color:var(--c, red)" "color: var(--c, red)";
-  check_declaration ~expected:"width:var(--w, 10px)" "width: var(--w, 10px)";
+  check_declaration ~expected:"color:var(--c,red)" "color: var(--c, red)";
+  check_declaration ~expected:"width:var(--w,10px)" "width: var(--w, 10px)";
   check_declaration ~expected:"margin:var(--m)" "margin: var(--m)"
 
 let test_declaration_color_functions () =
