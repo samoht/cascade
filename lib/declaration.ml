@@ -280,8 +280,13 @@ let read_value (type a) (prop_type : a property) t : declaration =
       else declaration Transform transforms
   (* Webkit Transform *)
   | Webkit_transform ->
-      let transforms, error_opt = Reader.many read_transform t in
-      if List.length transforms = 0 then
+      let transforms, error_opt =
+        Reader.fold_many Properties.read_transform ~init:[]
+          ~f:(fun acc t -> t :: acc)
+          t
+      in
+      let transforms = List.rev transforms in
+      if transforms = [] then
         match error_opt with
         | Some msg -> Reader.err_invalid t ("webkit-transform: " ^ msg)
         | None -> Reader.err_invalid t "webkit-transform value"

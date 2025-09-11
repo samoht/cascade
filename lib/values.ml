@@ -59,7 +59,8 @@ let pp_var : type a. a Pp.t -> a var Pp.t =
     match v.fallback with
     | None -> Pp.char ctx ')'
     | Some value ->
-        Pp.comma ctx ();
+        Pp.char ctx ',';
+        Pp.space ctx ();
         pp_value ctx value;
         Pp.char ctx ')')
 
@@ -1005,15 +1006,23 @@ let read_separated_values t p1 p2 =
   Reader.ws t;
   let separator = Reader.peek t in
   if separator = Some ',' then Reader.comma t;
+  Reader.ws t;
+  (* Need whitespace after comma *)
   let v2 = p2 t in
   (v1, v2)
 
 let read_hsl t : color =
   Reader.ws t;
   let h = read_hue t in
-  let s, l =
-    read_separated_values t read_percentage_float read_percentage_float
-  in
+  Reader.ws t;
+  (* Handle comma or space separator after hue *)
+  if Reader.peek t = Some ',' then Reader.comma t;
+  Reader.ws t;
+  let s = read_percentage_float t in
+  Reader.ws t;
+  if Reader.peek t = Some ',' then Reader.comma t;
+  Reader.ws t;
+  let l = read_percentage_float t in
   let a =
     Reader.ws t;
     let next_char = Reader.peek t in

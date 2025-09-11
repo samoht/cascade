@@ -443,32 +443,37 @@ and read_pseudo_class t =
         pseudo_class (name ^ "(" ^ inner ^ ")")
     | _ -> pseudo_class name
   in
-  let read_selector_list constructor t =
-    let sels = read_complex_list t in
-    constructor sels
+  let read_selector_list name constructor t =
+    Reader.call name t (fun t ->
+        let sels = read_complex_list t in
+        constructor sels)
   in
   Reader.enum_calls
     [
-      ("is", read_selector_list (fun_ "is"));
-      ("has", read_selector_list (fun_ "has"));
-      ("not", read_selector_list (fun_ "not"));
-      ("where", read_selector_list where);
+      ("is", read_selector_list "is" (fun_ "is"));
+      ("has", read_selector_list "has" (fun_ "has"));
+      ("not", read_selector_list "not" (fun_ "not"));
+      ("where", read_selector_list "where" where);
       ( "nth-child",
         fun t ->
-          let expr, of_sel = read_nth_selector t in
-          Nth_child (expr, of_sel) );
+          Reader.call "nth-child" t (fun t ->
+              let expr, of_sel = read_nth_selector t in
+              Nth_child (expr, of_sel)) );
       ( "nth-last-child",
         fun t ->
-          let expr, of_sel = read_nth_selector t in
-          Nth_last_child (expr, of_sel) );
+          Reader.call "nth-last-child" t (fun t ->
+              let expr, of_sel = read_nth_selector t in
+              Nth_last_child (expr, of_sel)) );
       ( "nth-of-type",
         fun t ->
-          let expr, of_sel = read_nth_selector t in
-          Nth_of_type (expr, of_sel) );
+          Reader.call "nth-of-type" t (fun t ->
+              let expr, of_sel = read_nth_selector t in
+              Nth_of_type (expr, of_sel)) );
       ( "nth-last-of-type",
         fun t ->
-          let expr, of_sel = read_nth_selector t in
-          Nth_last_of_type (expr, of_sel) );
+          Reader.call "nth-last-of-type" t (fun t ->
+              let expr, of_sel = read_nth_selector t in
+              Nth_last_of_type (expr, of_sel)) );
     ]
     ~default t
 
@@ -490,22 +495,26 @@ and read_pseudo_element t =
     [
       ( "part",
         fun t ->
-          let idents =
-            Reader.list ~sep:Reader.comma ~at_least:1 Reader.ident t
-          in
-          Pseudo_element_fun_idents ("part", idents) );
+          Reader.call "part" t (fun t ->
+              let idents =
+                Reader.list ~sep:Reader.comma ~at_least:1 Reader.ident t
+              in
+              Pseudo_element_fun_idents ("part", idents)) );
       ( "slotted",
         fun t ->
-          let sels = read_complex_list t in
-          Pseudo_element_fun ("slotted", sels) );
+          Reader.call "slotted" t (fun t ->
+              let sels = read_complex_list t in
+              Pseudo_element_fun ("slotted", sels)) );
       ( "cue",
         fun t ->
-          let sels = read_complex_list t in
-          Pseudo_element_fun ("cue", sels) );
+          Reader.call "cue" t (fun t ->
+              let sels = read_complex_list t in
+              Pseudo_element_fun ("cue", sels)) );
       ( "cue-region",
         fun t ->
-          let sels = read_complex_list t in
-          Pseudo_element_fun ("cue-region", sels) );
+          Reader.call "cue-region" t (fun t ->
+              let sels = read_complex_list t in
+              Pseudo_element_fun ("cue-region", sels)) );
     ]
     ~default t
 
@@ -579,7 +588,19 @@ and read_complex t =
 
 let read_selector_list t =
   Reader.ws t;
-  let selectors = Reader.list ~at_least:1 ~sep:Reader.comma read_complex t in
+  (* Parse the selector list manually to properly handle trailing commas *)
+  let rec parse_list acc =
+    let sel = read_complex t in
+    let acc = sel :: acc in
+    Reader.ws t;
+    if Reader.consume_if ',' t then (
+      Reader.ws t;
+      (* After a comma, we must have another selector - trailing commas are
+         invalid *)
+      parse_list acc)
+    else List.rev acc
+  in
+  let selectors = parse_list [] in
   match selectors with [ s ] -> s | selectors -> List selectors
 
 let read t =

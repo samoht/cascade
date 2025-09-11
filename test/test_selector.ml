@@ -314,10 +314,13 @@ let test_selector_parse_errors () =
     "Expected ']'";
 
   (* Invalid pseudo-function calls *)
-  check_parse_error "invalid_not" ".test:not()" "Expected '{'";
-  check_parse_error "unclosed_not" ".test:not(.other" "Expected '{'";
-  check_parse_error "invalid_is" ":is()" "Expected '{'";
-  check_parse_error "invalid_has" ".test:has()" "Expected '{'";
+  check_parse_error "invalid_not" ".test:not()"
+    "unexpected characters after selector";
+  check_parse_error "unclosed_not" ".test:not(.other"
+    "unexpected characters after selector";
+  check_parse_error "invalid_is" ":is()" "unexpected characters after selector";
+  check_parse_error "invalid_has" ".test:has()"
+    "unexpected characters after selector";
 
   (* Mixed up combinators *)
   check_parse_error "mixed_combinators" ".parent ~> .child"
@@ -335,11 +338,11 @@ let test_selector_parse_errors () =
   check_parse_error "complex_broken" ".parent > [data-id=\"test\" .child:hover"
     "Expected ']'";
   check_parse_error "long_chain_broken" "body > main > section[data-tooltip"
-    "Expected ']'";
+    "expected one of";
   check_parse_error "multi_attr_broken" ".test[attr1=\"val1\"][attr4$="
-    "Expected ']'";
+    "expected one of";
   check_parse_error "sibling_chain_broken" ".first ~ .second ~ [invalid"
-    "Expected ']'"
+    "expected one of"
 
 (* Test callstack accuracy for selector errors *)
 let test_selector_callstack_accuracy () =
