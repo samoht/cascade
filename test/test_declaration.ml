@@ -911,7 +911,8 @@ let test_declaration_edge_cases () =
   check_declaration ~expected:"content:\" \"" "content: \" \"";
 
   (* Complex calc expressions *)
-  check_declaration ~expected:"width:calc((100% - 20px) / 2)"
+  (* Cases with / operator - should be minified without spaces per CSS spec *)
+  check_declaration ~expected:"width:calc((100% - 20px)/2)"
     "width: calc((100% - 20px) / 2)";
   check_declaration ~expected:"height:calc(100vh - calc(50px + 1em))"
     "height: calc(100vh - calc(50px + 1em))";
@@ -947,7 +948,8 @@ let test_declaration_unit_case () =
   check_declaration ~expected:"margin:1em" "margin: 1EM"
 
 let test_declaration_number_formats () =
-  (* Leading dot numbers are valid; scientific notation is also valid per CSS spec *)
+  (* Leading dot numbers are valid; scientific notation is also valid per CSS
+     spec *)
   check_declaration ~expected:"opacity:.5" "opacity: .5";
   (* Scientific notation IS valid in CSS per the spec *)
   check_declaration ~expected:"opacity:100" "opacity: 1e2"

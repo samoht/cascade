@@ -40,10 +40,14 @@ let color_mix ?in_space ?(hue = Default) ?percent1 ?percent2 color1 color2 =
 (** Pretty-printing functions *)
 
 let pp_op ctx = function
-  | Add -> Pp.string ctx " + "
-  | Sub -> Pp.string ctx " - "
-  | Mult -> Pp.string ctx " * "
-  | Div -> Pp.string ctx " / "
+  | Add -> 
+    (* CSS spec requires spaces around + and - in calc() *)
+    Pp.space ctx (); Pp.char ctx '+'; Pp.space ctx ()
+  | Sub -> 
+    (* CSS spec requires spaces around + and - in calc() *)
+    Pp.space ctx (); Pp.char ctx '-'; Pp.space ctx ()
+  | Mult -> Pp.op_char ctx '*'  (* CSS spec: spaces optional, omit when minified *)
+  | Div -> Pp.op_char ctx '/'   (* CSS spec: spaces optional, omit when minified *)
 
 let pp_var : type a. a Pp.t -> a var Pp.t =
  fun pp_value ctx v ->
@@ -348,7 +352,7 @@ and pp_alpha : alpha Pp.t =
 let pp_opt_alpha ctx = function
   | None -> ()
   | (Num _ | Pct _ | Var _) as a ->
-      Pp.string ctx (if ctx.minify then "/" else " / ");
+      Pp.op_char ctx '/';
       pp_alpha ctx a
 
 (** Pretty printer for percentage types *)
@@ -1147,7 +1151,7 @@ let read_color_space t : color_space =
 (** Parse color-mix() function - forward declaration needed *)
 let rec read_color_mix t : color =
   Reader.ws t;
-  
+
   (* Parse "in <color-space> [<hue-interpolation-method>]" if present *)
   let in_space, hue =
     (* Check if next word is "in" without consuming it *)
@@ -1156,51 +1160,54 @@ let rec read_color_mix t : color =
       Reader.ws t;
       let space = read_color_space t in
       Reader.ws t;
-      
+
       (* For cylindrical color spaces, check for hue interpolation *)
-      let hue = Default in  (* Simplified for now *)
+      let hue = Default in
+      (* Simplified for now *)
       (Some space, hue))
     else (None, Default)
   in
-  
+
   Reader.ws t;
   Reader.expect ',' t;
   Reader.ws t;
-  
+
   (* Parse first color and optional percentage *)
   let color1 = read_color t in
   Reader.ws t;
-  
+
   (* Parse optional percentage for first color - immediately after color *)
   let percent1 : percentage option =
     try
       let n = Reader.number t in
       Reader.expect '%' t;
       Reader.ws t;
-      Some (Pct n)  (* Don't divide by 100 - keep the raw percentage value *)
+      Some (Pct n)
+      (* Don't divide by 100 - keep the raw percentage value *)
     with _ -> None
   in
-  
+
   Reader.expect ',' t;
   Reader.ws t;
-  
+
   (* Parse second color and optional percentage *)
   let color2 = read_color t in
   Reader.ws t;
-  
+
   (* Parse optional percentage for second color - immediately after color *)
   let percent2 : percentage option =
     try
       let n = Reader.number t in
       Reader.expect '%' t;
       Reader.ws t;
-      Some (Pct n)  (* Don't divide by 100 - keep the raw percentage value *)
+      Some (Pct n)
+      (* Don't divide by 100 - keep the raw percentage value *)
     with _ -> None
   in
-  
+
   Reader.ws t;
   Reader.expect ')' t;
-  
+
   Mix { in_space; hue; color1; percent1; color2; percent2 }
 
 and color_parsers =

@@ -167,6 +167,10 @@ val space_if_pretty : unit t
 (** [space_if_pretty] is an alias for [sp] - outputs space when not minifying.
 *)
 
+val op_char : char t
+(** [op_char c] outputs a character with spaces around it when not minifying.
+    Useful for operators like +, -, *, / in expressions. *)
+
 val braces : 'a t -> 'a t
 (** [braces formatter] wraps formatter in braces with proper spacing and
     indentation: [{ <indented content> }] when formatting, [{<content>}] when

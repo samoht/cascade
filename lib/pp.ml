@@ -192,6 +192,10 @@ let minified ctx = ctx.minify
 let cond p a b ctx x = if p ctx then a ctx x else b ctx x
 let space_if_pretty = sp
 
+(* Operator character with conditional spacing *)
+let op_char ctx c = 
+  space_if_pretty ctx (); char ctx c; space_if_pretty ctx ()
+
 let braces pp =
   let open_ ctx () =
     block_open ctx ();

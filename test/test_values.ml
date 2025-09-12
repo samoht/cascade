@@ -296,37 +296,33 @@ let test_calc () =
   (* Test calc with length values *)
   let cases =
     [
-      (* Basic operations *)
+      (* Basic operations with + and - (spaces always required) *)
       "calc(100% - 20px)";
       "calc(50vh + 10px)";
-      "calc(2em * 3)";
-      "calc(100% / 4)";
       (* Nested and associative chains *)
       "calc(10px + 20px + 30px)";
       "calc(100% - 50% - 25%)";
-      (* Edge cases with zero - handled separately below *)
       (* Mixed units *)
       "calc(1rem + 2em + 3px)";
       "calc(100vw - 2rem)";
       "calc(50% + 25vw)";
-      (* Precedence *)
-      "calc(100% - 20px * .5)";
-      "calc(10px + 5em / 2)";
-      "calc(1em * 2 + 3px)";
-      "calc(2 * 3px + 4px)";
-      "calc(10px / 2 - 1px)";
-      (* Parentheses to force grouping *)
-      "calc((100% - 20px) / 2)";
-      "calc(100% * .5 + 10px * 2)";
-      "calc(50vh - 10px * 3 + 5rem)";
-      "calc((10px + 20px) * 2)";
     ]
   in
   List.iter check_calc_length cases;
+  (* Cases with * and / operators - should be minified without spaces per CSS spec *)
+  check_calc_length ~expected:"calc(2em*3)" "calc(2em * 3)";
+  check_calc_length ~expected:"calc(100%/4)" "calc(100% / 4)";
+  check_calc_length ~expected:"calc(1em*2 + 3px)" "calc(1em * 2 + 3px)";
+  check_calc_length ~expected:"calc(2*3px + 4px)" "calc(2 * 3px + 4px)";
+  check_calc_length ~expected:"calc(10px/2 - 1px)" "calc(10px / 2 - 1px)";
+  check_calc_length ~expected:"calc((100% - 20px)/2)" "calc((100% - 20px) / 2)";
+  check_calc_length ~expected:"calc(100%*.5 + 10px*2)" "calc(100% * .5 + 10px * 2)";
+  check_calc_length ~expected:"calc(50vh - 10px*3 + 5rem)" "calc(50vh - 10px * 3 + 5rem)";
+  check_calc_length ~expected:"calc((10px + 20px)*2)" "calc((10px + 20px) * 2)";
   (* Edge cases with zero *)
   check_calc_length ~expected:"calc(0 + 10px)" "calc(0px + 10px)";
   check_calc_length ~expected:"calc(100% - 0)" "calc(100% - 0px)";
-  check_calc_length ~expected:"calc(0 * 100px)" "calc(0 * 100px)"
+  check_calc_length ~expected:"calc(0*100px)" "calc(0 * 100px)"
 
 let test_var_in_color () =
   let t = Css.Reader.of_string "var(--primary-color)" in
@@ -502,18 +498,21 @@ let test_nested_var_fallbacks_roundtrip () =
 let test_calc_with_other_types () =
   (* Test calc with angles *)
   check_calc_angle ~expected:"calc(180deg + .5turn)" "calc(180deg + 0.5turn)";
-  check_calc_angle "calc(90deg * 2)";
-  check_calc_angle "calc(360deg / 4)";
+  (* Cases with * and / operators - should be minified without spaces per CSS spec *)
+  check_calc_angle ~expected:"calc(90deg*2)" "calc(90deg * 2)";
+  check_calc_angle ~expected:"calc(360deg/4)" "calc(360deg / 4)";
 
   (* Test calc with durations *)
   check_calc_duration "calc(1s + 500ms)";
   check_calc_duration "calc(2s - 500ms)";
-  check_calc_duration "calc(100ms * 10)";
+  (* Cases with * and / operators - should be minified without spaces per CSS spec *)
+  check_calc_duration ~expected:"calc(100ms*10)" "calc(100ms * 10)";
 
   (* Test calc with percentages *)
   check_calc_percentage "calc(50% + 25%)";
-  check_calc_percentage "calc(100% / 2)";
-  check_calc_percentage "calc(25% * 3)"
+  (* Cases with * and / operators - should be minified without spaces per CSS spec *)
+  check_calc_percentage ~expected:"calc(100%/2)" "calc(100% / 2)";
+  check_calc_percentage ~expected:"calc(25%*3)" "calc(25% * 3)"
 
 let suite =
   [
