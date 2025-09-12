@@ -180,7 +180,12 @@ let ( ++ ) s1 s2 = combine s1 Descendant s2
 let ( >> ) s1 s2 = combine s1 Child s2
 let where selectors = Where selectors
 let fun_ name selectors = Fun (name, selectors)
-let list selectors = List selectors
+
+let list selectors =
+  match selectors with
+  | [] -> invalid_arg "CSS selector list cannot be empty"
+  | _ -> List selectors
+
 let is_compound_list = function List _ -> true | _ -> false
 let compound selectors = Compound selectors
 let err_expected t what = Reader.err_expected t what

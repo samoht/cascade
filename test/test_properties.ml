@@ -310,7 +310,9 @@ let test_display () =
   check_display "inline-table";
   check_display "list-item";
   check_display "contents";
-  check_display "-webkit-box"
+  check_display "-webkit-box";
+  (* CSS-wide keyword supported by this reader *)
+  check_display "unset"
 
 let test_position () =
   check_position "static";
@@ -419,6 +421,13 @@ let test_font_style () =
   check_font_style "italic";
   check_font_style "oblique";
   check_font_style "inherit"
+
+let test_css_wide_keywords_subset () =
+  (* A small subset where readers support CSS-wide keywords beyond
+     inherit/initial *)
+  check_display "unset";
+  (* font-family supports 'unset' via reader *)
+  check_font_family "unset"
 
 let test_text_align () =
   check_text_align "left";
@@ -964,6 +973,9 @@ let test_overscroll_aspect_content () =
   check_overscroll_behavior "inherit";
   check_aspect_ratio "auto";
   check_aspect_ratio "inherit";
+  check_aspect_ratio "16/9";
+  check_aspect_ratio "4/3";
+  check_aspect_ratio "1.5/2.5";
   (* content: strings must be quoted per CSS spec *)
   check_content "\"hello\"";
   check_content "none"
@@ -1111,6 +1123,7 @@ let tests =
     test_case "align-self" `Quick test_align_self;
     test_case "justify" `Quick test_justify;
     test_case "font-style" `Quick test_font_style;
+    test_case "css-wide subset" `Quick test_css_wide_keywords_subset;
     test_case "text-align" `Quick test_text_align;
     test_case "text-decoration-style" `Quick test_text_decoration_style;
     test_case "text-overflow" `Quick test_text_overflow;

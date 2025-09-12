@@ -1,6 +1,7 @@
 (** CSS declarations and parser. *)
 
 include module type of Declaration_intf
+include module type of Render_intf
 
 val pp_property : 'a Properties.property Pp.t
 (** [pp_property] is the pretty-printer for CSS property names. *)
@@ -66,7 +67,7 @@ val is_important : declaration -> bool
 val property_name : declaration -> string
 (** [property_name decl] returns the property name as a string. *)
 
-val string_of_value : ?minify:bool -> declaration -> string
+val string_of_value : ?minify:bool -> ?mode:mode -> declaration -> string
 (** [string_of_value ?minify decl] returns the value as a string. *)
 
 (** Single-to-list property helpers. These construct typed declarations for

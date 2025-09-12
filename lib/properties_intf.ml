@@ -24,6 +24,7 @@ type line_height =
   | Num of float
   | Inherit
   | Var of line_height var
+  | Calc of line_height calc
 
 type font_weight =
   | Weight of int
@@ -757,10 +758,7 @@ type background = {
 }
 
 (* Gap shorthand type *)
-type gap = {
-  row_gap : length option;
-  column_gap : length option;
-}
+type gap = { row_gap : length option; column_gap : length option }
 
 (* User Interaction Types *)
 type cursor =

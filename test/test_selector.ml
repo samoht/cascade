@@ -432,10 +432,9 @@ let test_selector_special_cases () =
   let nested = where [ where [ class_ "a" ] ] in
   check_construct "nested where" ":where(:where(.a))" nested;
 
-  (* Empty list edge case - should probably be invalid but test current
-     behavior *)
-  let empty = list [] in
-  check_construct "empty list" "" empty
+  (* Empty list should be invalid per spec *)
+  check_invalid "empty list" "CSS selector list cannot be empty" (fun () ->
+      ignore (list []))
 
 (* Test distribution semantics *)
 let test_selector_distribution () =

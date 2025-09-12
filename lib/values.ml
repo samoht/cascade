@@ -40,14 +40,20 @@ let color_mix ?in_space ?(hue = Default) ?percent1 ?percent2 color1 color2 =
 (** Pretty-printing functions *)
 
 let pp_op ctx = function
-  | Add -> 
-    (* CSS spec requires spaces around + and - in calc() *)
-    Pp.space ctx (); Pp.char ctx '+'; Pp.space ctx ()
-  | Sub -> 
-    (* CSS spec requires spaces around + and - in calc() *)
-    Pp.space ctx (); Pp.char ctx '-'; Pp.space ctx ()
-  | Mult -> Pp.op_char ctx '*'  (* CSS spec: spaces optional, omit when minified *)
-  | Div -> Pp.op_char ctx '/'   (* CSS spec: spaces optional, omit when minified *)
+  | Add ->
+      (* CSS spec requires spaces around + and - in calc() *)
+      Pp.space ctx ();
+      Pp.char ctx '+';
+      Pp.space ctx ()
+  | Sub ->
+      (* CSS spec requires spaces around + and - in calc() *)
+      Pp.space ctx ();
+      Pp.char ctx '-';
+      Pp.space ctx ()
+  | Mult ->
+      Pp.op_char ctx '*' (* CSS spec: spaces optional, omit when minified *)
+  | Div ->
+      Pp.op_char ctx '/' (* CSS spec: spaces optional, omit when minified *)
 
 let pp_var : type a. a Pp.t -> a var Pp.t =
  fun pp_value ctx v ->

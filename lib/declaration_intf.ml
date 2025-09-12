@@ -14,6 +14,7 @@ type _ kind =
   | Border_style : border_style kind
   | Border : border kind
   | Font_weight : font_weight kind
+  | Line_height : line_height kind
   | Font_family : font_family list kind
   | Font_feature_settings : font_feature_settings kind
   | Font_variation_settings : font_variation_settings kind

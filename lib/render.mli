@@ -7,7 +7,12 @@ include module type of Render_intf
 (** {1 Inline Styles} *)
 
 val inline_style_of_declarations :
-  ?optimize:bool -> ?minify:bool -> ?mode:mode -> declaration list -> string
+  ?optimize:bool ->
+  ?minify:bool ->
+  ?mode:mode ->
+  ?newline:bool ->
+  declaration list ->
+  string
 (** Convert declarations to inline style string.
     @param optimize Apply optimization to declarations
     @param minify Produce minified output
@@ -56,11 +61,14 @@ val version : string
 val header : string
 (** Header comment for generated CSS *)
 
-val to_string : ?minify:bool -> ?optimize:bool -> ?mode:mode -> t -> string
+val to_string :
+  ?minify:bool -> ?optimize:bool -> ?mode:mode -> ?newline:bool -> t -> string
 (** Convert stylesheet to string.
     @param minify Produce minified output
     @param optimize Apply optimization
-    @param mode Rendering mode (Variables or Inline) *)
+    @param mode Rendering mode (Variables or Inline)
+    @param newline Add trailing newline (default: true) *)
 
-val pp : ?minify:bool -> ?optimize:bool -> ?mode:mode -> t -> string
+val pp :
+  ?minify:bool -> ?optimize:bool -> ?mode:mode -> ?newline:bool -> t -> string
 (** Pretty-print stylesheet (equivalent to to_string) *)

@@ -375,18 +375,21 @@ let number t =
         if next_pos < String.length t.input then
           let next_char = t.input.[next_pos] in
           match next_char with
-          | '0'..'9' | '+' | '-' ->
+          | '0' .. '9' | '+' | '-' ->
               skip t;
-              let exp_sign = 
-                if peek t = Some '+' then (skip t; "+")
-                else if peek t = Some '-' then (skip t; "-")
+              let exp_sign =
+                if peek t = Some '+' then (
+                  skip t;
+                  "+")
+                else if peek t = Some '-' then (
+                  skip t;
+                  "-")
                 else ""
               in
               let exp_digits = while_ t is_digit in
-              if String.length exp_digits = 0 then
-                err_invalid_number t;
+              if String.length exp_digits = 0 then err_invalid_number t;
               "e" ^ exp_sign ^ exp_digits
-          | _ -> ""  (* Not scientific notation, could be a unit like 'em' *)
+          | _ -> "" (* Not scientific notation, could be a unit like 'em' *)
         else ""
     | _ -> ""
   in

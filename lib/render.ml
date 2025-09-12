@@ -8,12 +8,14 @@ include Render_intf
 (** {1 Inline Styles} *)
 
 let inline_style_of_declarations ?(optimize = false) ?(minify = false)
-    ?(mode : mode = Inline) props =
-  let config = { mode; minify; optimize } in
+    ?(mode : mode = Inline) ?(newline = false) props =
+  let config = { mode; minify; optimize; newline } in
   let pp ctx () =
     let pp_decl_inline ctx decl =
       let name = Declaration.property_name decl in
-      let value = Declaration.string_of_value ~minify:config.minify decl in
+      let value =
+        Declaration.string_of_value ~minify:config.minify ~mode:config.mode decl
+      in
       let is_important = Declaration.is_important decl in
 
       Pp.string ctx name;
@@ -158,21 +160,20 @@ let pp_property_rule : property_rule Pp.t =
     Pp.cut ctx ();
     Pp.nest 2
       (fun ctx () ->
-        Pp.string ctx "syntax: \"";
+        Pp.string ctx "syntax:\"";
         Pp.string ctx at.syntax;
         Pp.string ctx "\"";
         Pp.semicolon ctx ();
         Pp.cut ctx ();
-        Pp.string ctx "inherits: ";
+        Pp.string ctx "inherits:";
         Pp.string ctx (if at.inherits then "true" else "false");
-        (match at.initial_value with
+        match at.initial_value with
         | None | Some "" | Some "initial" -> ()
         | Some v ->
             Pp.semicolon ctx ();
             Pp.cut ctx ();
-            Pp.string ctx "initial-value: ";
-            Pp.string ctx v);
-        Pp.semicolon ctx ())
+            Pp.string ctx "initial-value:";
+            Pp.string ctx v)
       ctx ();
     Pp.cut ctx ()
   in
@@ -294,7 +295,7 @@ let header =
     [ "/*! tw v"; version; " | MIT License | https://github.com/samoht/tw */" ]
 
 let to_string ?(minify = false) ?optimize:(opt = false) ?(mode = Variables)
-    stylesheet =
+    ?(newline = true) stylesheet =
   let optimized_stylesheet =
     if opt then Optimize.optimize stylesheet else stylesheet
   in
@@ -341,11 +342,11 @@ let to_string ?(minify = false) ?optimize:(opt = false) ?(mode = Variables)
 
     (* Render stylesheet sections *)
     pp_stylesheet_sections ~optimize:opt ctx optimized_stylesheet;
-    
+
     (* Add trailing newline (standard for CSS files) *)
-    if mode <> Inline then Pp.char ctx '\n'
+    if newline && mode <> Inline then Pp.char ctx '\n'
   in
   Pp.to_string ~minify ~inline:(mode = Inline) pp ()
 
-let pp ?minify ?optimize ?mode stylesheet =
-  to_string ?minify ?optimize ?mode stylesheet
+let pp ?minify ?optimize ?mode ?newline stylesheet =
+  to_string ?minify ?optimize ?mode ?newline stylesheet

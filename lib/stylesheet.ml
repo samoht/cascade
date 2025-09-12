@@ -205,21 +205,20 @@ let pp_property_rule : property_rule Pp.t =
     Pp.cut ctx ();
     Pp.nest 2
       (fun ctx () ->
-        Pp.string ctx "syntax: \"";
+        Pp.string ctx "syntax:\"";
         Pp.string ctx prop.syntax;
         Pp.string ctx "\"";
         Pp.semicolon ctx ();
         Pp.cut ctx ();
-        Pp.string ctx "inherits: ";
+        Pp.string ctx "inherits:";
         Pp.string ctx (if prop.inherits then "true" else "false");
-        (match prop.initial_value with
+        match prop.initial_value with
         | None | Some "" -> ()
         | Some v ->
             Pp.semicolon ctx ();
             Pp.cut ctx ();
-            Pp.string ctx "initial-value: ";
-            Pp.string ctx v);
-        Pp.semicolon ctx ())
+            Pp.string ctx "initial-value:";
+            Pp.string ctx v)
       ctx ();
     Pp.cut ctx ()
   in
@@ -543,7 +542,7 @@ let rec read_supports_rule (r : Reader.t) : supports_rule =
       read_nested_content (rule :: rules_acc) nested_acc
   in
   let rules, nested_supports = read_nested_content [] [] in
-  let content = 
+  let content =
     match nested_supports with
     | [] -> Support_rules rules
     | _ -> Support_nested (rules, nested_supports)
@@ -599,7 +598,7 @@ let read_layer_rule (r : Reader.t) : layer_rule =
   Reader.with_context r "@layer" @@ fun () ->
   Reader.expect_string "@layer" r;
   Reader.ws r;
-  
+
   (* Check if this is a layer statement (ends with semicolon) or layer rule (has braces) *)
   (* First, try to read layer names *)
   let rec read_layer_names acc =
@@ -611,10 +610,10 @@ let read_layer_rule (r : Reader.t) : layer_rule =
       read_layer_names (name :: acc))
     else name :: acc
   in
-  
+
   let first_name = Reader.ident ~keep_case:true r in
   Reader.ws r;
-  
+
   (* Check what comes next *)
   if Reader.peek r = Some ',' then (
     (* Multiple layer names - this is a statement *)
@@ -626,7 +625,8 @@ let read_layer_rule (r : Reader.t) : layer_rule =
     (* Return an empty layer rule for each name - they'll be split later *)
     (* For now, just return one with the first name and empty rules *)
     {
-      layer = String.concat "," all_names;  (* Store all names for now *)
+      layer = String.concat "," all_names;
+      (* Store all names for now *)
       rules = [];
       media_queries = [];
       container_queries = [];
@@ -708,38 +708,38 @@ let read_stylesheet (r : Reader.t) : t =
     | [] -> acc
     | Charset c :: rest -> categorize_items { acc with charset = Some c } rest
     | Import i :: rest ->
-        categorize_items { acc with imports = acc.imports @ [i] } rest
+        categorize_items { acc with imports = acc.imports @ [ i ] } rest
     | Namespace n :: rest ->
-        categorize_items { acc with namespaces = acc.namespaces @ [n] } rest
+        categorize_items { acc with namespaces = acc.namespaces @ [ n ] } rest
     | Layer l :: rest ->
-        categorize_items { acc with layers = acc.layers @ [l] } rest
+        categorize_items { acc with layers = acc.layers @ [ l ] } rest
     | Keyframes k :: rest ->
-        categorize_items { acc with keyframes = acc.keyframes @ [k] } rest
+        categorize_items { acc with keyframes = acc.keyframes @ [ k ] } rest
     | Font_face f :: rest ->
-        categorize_items { acc with font_faces = acc.font_faces @ [f] } rest
+        categorize_items { acc with font_faces = acc.font_faces @ [ f ] } rest
     | Page p :: rest ->
-        categorize_items { acc with pages = acc.pages @ [p] } rest
+        categorize_items { acc with pages = acc.pages @ [ p ] } rest
     | Rule r :: rest ->
-        categorize_items { acc with rules = acc.rules @ [r] } rest
+        categorize_items { acc with rules = acc.rules @ [ r ] } rest
     | Media m :: rest ->
         categorize_items
-          { acc with media_queries = acc.media_queries @ [m] }
+          { acc with media_queries = acc.media_queries @ [ m ] }
           rest
     | Container c :: rest ->
         categorize_items
-          { acc with container_queries = acc.container_queries @ [c] }
+          { acc with container_queries = acc.container_queries @ [ c ] }
           rest
     | Starting_style s :: rest ->
         categorize_items
-          { acc with starting_styles = acc.starting_styles @ [s] }
+          { acc with starting_styles = acc.starting_styles @ [ s ] }
           rest
     | Supports s :: rest ->
         categorize_items
-          { acc with supports_queries = acc.supports_queries @ [s] }
+          { acc with supports_queries = acc.supports_queries @ [ s ] }
           rest
     | Property p :: rest ->
         categorize_items
-          { acc with at_properties = acc.at_properties @ [p] }
+          { acc with at_properties = acc.at_properties @ [ p ] }
           rest
   in
   categorize_items empty_sheet items

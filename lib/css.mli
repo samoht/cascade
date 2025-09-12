@@ -1573,11 +1573,8 @@ val order : int -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/order} order} property.
 *)
 
+type gap = { row_gap : length option; column_gap : length option }
 (** CSS gap shorthand type. *)
-type gap = {
-  row_gap : length option;
-  column_gap : length option;
-}
 
 val gap : gap -> declaration
 (** [gap value] is the
@@ -1931,6 +1928,7 @@ type line_height =
   | Num of float
   | Inherit
   | Var of line_height var
+  | Calc of line_height calc
 
 val line_height : line_height -> declaration
 (** [line_height value] is the
@@ -3182,6 +3180,7 @@ type _ kind =
   | Border_style : border_style kind
   | Border : border kind
   | Font_weight : font_weight kind
+  | Line_height : line_height kind
   | Font_family : font_family list kind
   | Font_feature_settings : font_feature_settings kind
   | Font_variation_settings : font_variation_settings kind
@@ -3277,18 +3276,22 @@ val custom_declaration_layer : declaration -> string option
 
     Functions for converting CSS structures to string output. *)
 
-val to_string : ?minify:bool -> ?optimize:bool -> ?mode:mode -> t -> string
-(** [to_string ?minify ?optimize ?mode stylesheet] renders a complete stylesheet
-    to CSS.
+val to_string :
+  ?minify:bool -> ?optimize:bool -> ?mode:mode -> ?newline:bool -> t -> string
+(** [to_string ?minify ?optimize ?mode ?newline stylesheet] renders a complete
+    stylesheet to CSS.
     - If [minify] is [true], the output will be compact (no unnecessary
       whitespace).
     - If [optimize] is [true], rule-level optimizations are applied
       (deduplication, merging consecutive rules, combining identical rules).
     - [mode] controls variable layer emission behavior.
+    - If [newline] is [true] (default), adds a trailing newline for POSIX
+      compliance.
 
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS> "MDN: CSS" *)
 
-val pp : ?minify:bool -> ?optimize:bool -> ?mode:mode -> t -> string
+val pp :
+  ?minify:bool -> ?optimize:bool -> ?mode:mode -> ?newline:bool -> t -> string
 (** [pp] is {!to_string}. *)
 
 type any_var = V : 'a var -> any_var
@@ -3335,7 +3338,12 @@ val will_change : string -> declaration
      will-change} property for performance optimization. *)
 
 val inline_style_of_declarations :
-  ?optimize:bool -> ?minify:bool -> ?mode:mode -> declaration list -> string
+  ?optimize:bool ->
+  ?minify:bool ->
+  ?mode:mode ->
+  ?newline:bool ->
+  declaration list ->
+  string
 (** [inline_style_of_declarations declarations] converts a list of declarations
     to an inline style string. *)
 

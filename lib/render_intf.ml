@@ -2,8 +2,7 @@
 
 (** {1 Types} *)
 
-(** Rendering mode for CSS output *)
-type mode = Variables | Inline
+type mode = Variables | Inline  (** Rendering mode for CSS output *)
 
-type config = { minify : bool; mode : mode; optimize : bool }
+type config = { minify : bool; mode : mode; optimize : bool; newline : bool }
 (** Configuration for CSS rendering *)

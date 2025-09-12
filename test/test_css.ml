@@ -59,7 +59,8 @@ let test_css_optimization_flag () =
   in
 
   let css_optimized = Css.to_string ~minify:true ~optimize:true stylesheet in
-  Alcotest.(check string) "optimized exact" ".btn{color:#0000ff}\n" css_optimized
+  Alcotest.(check string)
+    "optimized exact" ".btn{color:#0000ff}\n" css_optimized
 
 (* Test layers work end-to-end *)
 let test_css_layers_integration () =

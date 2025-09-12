@@ -3,6 +3,7 @@
 include Declaration_intf
 open Properties
 open Values
+include Render_intf
 
 (* Re-export pp_property from Properties module *)
 let pp_property = pp_property
@@ -178,6 +179,7 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Border_style -> pp pp_border_style
   | Border -> pp pp_border
   | Font_weight -> pp pp_font_weight
+  | Line_height -> pp pp_line_height
   | Font_family -> pp (Pp.list ~sep:Pp.comma pp_font_family)
   | Font_feature_settings -> pp pp_font_feature_settings
   | Font_variation_settings -> pp pp_font_variation_settings
@@ -189,8 +191,9 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Box_shadow -> pp pp_box_shadow
   | Content -> pp pp_content
 
-let string_of_value ?(minify = true) decl =
-  let ctx = { Pp.minify; indent = 0; buf = Buffer.create 16; inline = false } in
+let string_of_value ?(minify = true) ?(mode = Variables) decl =
+  let inline = mode = Inline in
+  let ctx = { Pp.minify; indent = 0; buf = Buffer.create 16; inline } in
   match decl with
   | Declaration { property; value; _ } ->
       pp_property_value ctx (property, value);
@@ -214,16 +217,13 @@ let read_grid_template_areas t =
   in
   read_strings []
 
-
-
 (* Helper to read animation-name: none | <custom-ident> *)
 let read_animation_name t =
   if Reader.looking_at t "none" then (
     Reader.expect_string "none" t;
     Reader.ws t;
-    "none"
-  ) else
-    Reader.ident t
+    "none")
+  else Reader.ident t
 
 (* Helper to read raw property value - for properties that accept any text *)
 let read_raw_value t =
@@ -365,7 +365,8 @@ let read_value (type a) (prop_type : a property) t : declaration =
   | Grid_column_start -> declaration Grid_column_start (read_grid_line t)
   | Grid_column_end -> declaration Grid_column_end (read_grid_line t)
   | Grid_auto_flow -> declaration Grid_auto_flow (read_grid_auto_flow t)
-  | Grid_template_areas -> declaration Grid_template_areas (read_grid_template_areas t)
+  | Grid_template_areas ->
+      declaration Grid_template_areas (read_grid_template_areas t)
   (* Shadows *)
   | Box_shadow -> declaration Box_shadow (read_box_shadows t)
   | Text_shadow -> declaration Text_shadow (read_text_shadows t)
@@ -729,6 +730,7 @@ let pp_declaration : declaration Pp.t =
       | Content -> pp_content ctx value
       | Font_family -> Pp.list ~sep:Pp.comma pp_font_family ctx value
       | Font_weight -> pp_font_weight ctx value
+      | Line_height -> pp_line_height ctx value
       | Font_feature_settings -> pp_font_feature_settings ctx value
       | Font_variation_settings -> pp_font_variation_settings ctx value
       | Font_variant_numeric -> pp_font_variant_numeric ctx value
@@ -806,7 +808,7 @@ let grid_column_end value = declaration Grid_column_end value
 let grid_row (start, end_) =
   let pp ctx () =
     pp_grid_line ctx start;
-    Pp.string ctx " / ";
+    Pp.op_char ctx '/';
     pp_grid_line ctx end_
   in
   declaration Grid_row (Pp.to_string pp ())
@@ -814,7 +816,7 @@ let grid_row (start, end_) =
 let grid_column (start, end_) =
   let pp ctx () =
     pp_grid_line ctx start;
-    Pp.string ctx " / ";
+    Pp.op_char ctx '/';
     pp_grid_line ctx end_
   in
   declaration Grid_column (Pp.to_string pp ())

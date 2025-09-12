@@ -552,7 +552,8 @@ val read_background : Reader.t -> background
 (** [read_background t] parses a background shorthand property. *)
 
 val read_backgrounds : Reader.t -> background list
-(** [read_backgrounds t] parses a comma-separated list of background shorthand properties. *)
+(** [read_backgrounds t] parses a comma-separated list of background shorthand
+    properties. *)
 
 val read_gap : Reader.t -> gap
 (** [read_gap t] parses a gap shorthand property (one or two length values). *)
