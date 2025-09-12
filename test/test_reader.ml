@@ -278,7 +278,36 @@ let test_reader_numbers () =
 
   let r = of_string "-2.5" in
   let n = number r in
-  Alcotest.(check (float 0.001)) "negative float" (-2.5) n
+  Alcotest.(check (float 0.001)) "negative float" (-2.5) n;
+
+  (* Scientific notation tests *)
+  let r = of_string "1e2" in
+  let n = number r in
+  Alcotest.(check (float 0.001)) "scientific notation" 100.0 n;
+
+  let r = of_string "1E2" in
+  let n = number r in
+  Alcotest.(check (float 0.001)) "scientific notation uppercase" 100.0 n;
+
+  let r = of_string "1.5e2" in
+  let n = number r in
+  Alcotest.(check (float 0.001)) "scientific notation with decimal" 150.0 n;
+
+  let r = of_string "1e+2" in
+  let n = number r in
+  Alcotest.(check (float 0.001)) "scientific notation with plus" 100.0 n;
+
+  let r = of_string "1e-2" in
+  let n = number r in
+  Alcotest.(check (float 0.001)) "scientific notation negative exp" 0.01 n;
+
+  let r = of_string "-3.4e-2" in
+  let n = number r in
+  Alcotest.(check (float 0.001)) "complex scientific notation" (-0.034) n;
+
+  let r = of_string ".5e3" in
+  let n = number r in
+  Alcotest.(check (float 0.001)) "leading dot with exponent" 500.0 n
 
 (* Test unit parsing *)
 let test_reader_units () =

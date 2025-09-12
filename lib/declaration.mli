@@ -123,7 +123,7 @@ val margin_left : length -> declaration
 val margin_right : length -> declaration
 val margin_top : length -> declaration
 val margin_bottom : length -> declaration
-val gap : length -> declaration
+val gap : Properties.gap -> declaration
 val column_gap : length -> declaration
 val row_gap : length -> declaration
 val grid_template_areas : string -> declaration

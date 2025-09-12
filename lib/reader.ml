@@ -365,7 +365,33 @@ let number t =
     else ""
   in
 
-  let num_str = whole ^ decimal in
+  (* Handle scientific notation: e or E followed by optional sign and digits *)
+  (* Only treat as exponent if followed by digit or sign+digit *)
+  let exponent =
+    match peek t with
+    | Some ('e' | 'E') ->
+        (* Look ahead to see if this is scientific notation *)
+        let next_pos = t.pos + 1 in
+        if next_pos < String.length t.input then
+          let next_char = t.input.[next_pos] in
+          match next_char with
+          | '0'..'9' | '+' | '-' ->
+              skip t;
+              let exp_sign = 
+                if peek t = Some '+' then (skip t; "+")
+                else if peek t = Some '-' then (skip t; "-")
+                else ""
+              in
+              let exp_digits = while_ t is_digit in
+              if String.length exp_digits = 0 then
+                err_invalid_number t;
+              "e" ^ exp_sign ^ exp_digits
+          | _ -> ""  (* Not scientific notation, could be a unit like 'em' *)
+        else ""
+    | _ -> ""
+  in
+
+  let num_str = whole ^ decimal ^ exponent in
   if String.length num_str = 0 || num_str = "." then err_invalid_number t;
 
   let value = float_of_string num_str in

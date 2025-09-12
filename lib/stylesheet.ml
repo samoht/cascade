@@ -521,25 +521,34 @@ let read_media_rule (r : Reader.t) : media_rule =
   let media_rules = read_rules [] in
   { media_condition = condition; media_rules }
 
-let read_supports_rule (r : Reader.t) : supports_rule =
+let rec read_supports_rule (r : Reader.t) : supports_rule =
   Reader.with_context r "@supports" @@ fun () ->
   Reader.expect_string "@supports" r;
   Reader.ws r;
   let condition = Reader.until r '{' in
   let condition = String.trim condition in
   Reader.expect '{' r;
-  (* For simplicity, just read rules, not nested supports *)
-  let rec read_rules acc =
+  (* Read rules and nested @supports *)
+  let rec read_nested_content rules_acc nested_acc =
     Reader.ws r;
     if Reader.peek r = Some '}' then (
       Reader.skip r;
-      List.rev acc)
+      (List.rev rules_acc, List.rev nested_acc))
+    else if Reader.looking_at r "@supports" then
+      (* Handle nested @supports *)
+      let nested_supports = read_supports_rule r in
+      read_nested_content rules_acc (nested_supports :: nested_acc)
     else
       let rule = read_rule r in
-      read_rules (rule :: acc)
+      read_nested_content (rule :: rules_acc) nested_acc
   in
-  let rules = read_rules [] in
-  { supports_condition = condition; supports_content = Support_rules rules }
+  let rules, nested_supports = read_nested_content [] [] in
+  let content = 
+    match nested_supports with
+    | [] -> Support_rules rules
+    | _ -> Support_nested (rules, nested_supports)
+  in
+  { supports_condition = condition; supports_content = content }
 
 let read_property_rule (r : Reader.t) : property_rule =
   Reader.with_context r "@property" @@ fun () ->
@@ -590,29 +599,72 @@ let read_layer_rule (r : Reader.t) : layer_rule =
   Reader.with_context r "@layer" @@ fun () ->
   Reader.expect_string "@layer" r;
   Reader.ws r;
-  let name = Reader.ident ~keep_case:true r in
-  Reader.ws r;
-  Reader.expect '{' r;
-  let rec read_nested_rules (acc : nested_rule list) =
+  
+  (* Check if this is a layer statement (ends with semicolon) or layer rule (has braces) *)
+  (* First, try to read layer names *)
+  let rec read_layer_names acc =
+    let name = Reader.ident ~keep_case:true r in
     Reader.ws r;
-    if Reader.peek r = Some '}' then (
+    if Reader.peek r = Some ',' then (
       Reader.skip r;
-      List.rev acc)
-    else if Reader.looking_at r "@supports" then
-      let supports = read_supports_rule r in
-      read_nested_rules (Supports supports :: acc)
-    else
-      let rule = read_rule r in
-      read_nested_rules (Rule rule :: acc)
+      Reader.ws r;
+      read_layer_names (name :: acc))
+    else name :: acc
   in
-  let rules : nested_rule list = read_nested_rules [] in
-  {
-    layer = name;
-    rules;
-    media_queries = [];
-    container_queries = [];
-    supports_queries = [];
-  }
+  
+  let first_name = Reader.ident ~keep_case:true r in
+  Reader.ws r;
+  
+  (* Check what comes next *)
+  if Reader.peek r = Some ',' then (
+    (* Multiple layer names - this is a statement *)
+    Reader.skip r;
+    Reader.ws r;
+    let rest_names = read_layer_names [] in
+    let all_names = first_name :: List.rev rest_names in
+    Reader.expect ';' r;
+    (* Return an empty layer rule for each name - they'll be split later *)
+    (* For now, just return one with the first name and empty rules *)
+    {
+      layer = String.concat "," all_names;  (* Store all names for now *)
+      rules = [];
+      media_queries = [];
+      container_queries = [];
+      supports_queries = [];
+    })
+  else if Reader.peek r = Some ';' then (
+    (* Single layer name statement without rules *)
+    Reader.skip r;
+    {
+      layer = first_name;
+      rules = [];
+      media_queries = [];
+      container_queries = [];
+      supports_queries = [];
+    })
+  else (
+    (* Layer rule with braces *)
+    Reader.expect '{' r;
+    let rec read_nested_rules (acc : nested_rule list) =
+      Reader.ws r;
+      if Reader.peek r = Some '}' then (
+        Reader.skip r;
+        List.rev acc)
+      else if Reader.looking_at r "@supports" then
+        let supports = read_supports_rule r in
+        read_nested_rules (Supports supports :: acc)
+      else
+        let rule = read_rule r in
+        read_nested_rules (Rule rule :: acc)
+    in
+    let rules : nested_rule list = read_nested_rules [] in
+    {
+      layer = first_name;
+      rules;
+      media_queries = [];
+      container_queries = [];
+      supports_queries = [];
+    })
 
 let read_sheet_item (r : Reader.t) : sheet_item =
   Reader.ws r;
@@ -656,38 +708,38 @@ let read_stylesheet (r : Reader.t) : t =
     | [] -> acc
     | Charset c :: rest -> categorize_items { acc with charset = Some c } rest
     | Import i :: rest ->
-        categorize_items { acc with imports = i :: acc.imports } rest
+        categorize_items { acc with imports = acc.imports @ [i] } rest
     | Namespace n :: rest ->
-        categorize_items { acc with namespaces = n :: acc.namespaces } rest
+        categorize_items { acc with namespaces = acc.namespaces @ [n] } rest
     | Layer l :: rest ->
-        categorize_items { acc with layers = l :: acc.layers } rest
+        categorize_items { acc with layers = acc.layers @ [l] } rest
     | Keyframes k :: rest ->
-        categorize_items { acc with keyframes = k :: acc.keyframes } rest
+        categorize_items { acc with keyframes = acc.keyframes @ [k] } rest
     | Font_face f :: rest ->
-        categorize_items { acc with font_faces = f :: acc.font_faces } rest
+        categorize_items { acc with font_faces = acc.font_faces @ [f] } rest
     | Page p :: rest ->
-        categorize_items { acc with pages = p :: acc.pages } rest
+        categorize_items { acc with pages = acc.pages @ [p] } rest
     | Rule r :: rest ->
-        categorize_items { acc with rules = r :: acc.rules } rest
+        categorize_items { acc with rules = acc.rules @ [r] } rest
     | Media m :: rest ->
         categorize_items
-          { acc with media_queries = m :: acc.media_queries }
+          { acc with media_queries = acc.media_queries @ [m] }
           rest
     | Container c :: rest ->
         categorize_items
-          { acc with container_queries = c :: acc.container_queries }
+          { acc with container_queries = acc.container_queries @ [c] }
           rest
     | Starting_style s :: rest ->
         categorize_items
-          { acc with starting_styles = s :: acc.starting_styles }
+          { acc with starting_styles = acc.starting_styles @ [s] }
           rest
     | Supports s :: rest ->
         categorize_items
-          { acc with supports_queries = s :: acc.supports_queries }
+          { acc with supports_queries = acc.supports_queries @ [s] }
           rest
     | Property p :: rest ->
         categorize_items
-          { acc with at_properties = p :: acc.at_properties }
+          { acc with at_properties = acc.at_properties @ [p] }
           rest
   in
   categorize_items empty_sheet items

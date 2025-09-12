@@ -202,6 +202,29 @@ let string_of_value ?(minify = true) decl =
 (* Helper to read a trimmed string *)
 let read_string t = Reader.string ~trim:true t
 
+(* Custom parser for grid-template-areas: reads multiple quoted strings *)
+let read_grid_template_areas t =
+  let rec read_strings acc =
+    Reader.ws t;
+    if Reader.is_done t then String.concat " " (List.rev acc)
+    else
+      let s = Reader.string t in
+      let quoted_s = "\"" ^ s ^ "\"" in
+      read_strings (quoted_s :: acc)
+  in
+  read_strings []
+
+
+
+(* Helper to read animation-name: none | <custom-ident> *)
+let read_animation_name t =
+  if Reader.looking_at t "none" then (
+    Reader.expect_string "none" t;
+    Reader.ws t;
+    "none"
+  ) else
+    Reader.ident t
+
 (* Helper to read raw property value - for properties that accept any text *)
 let read_raw_value t =
   (* Read characters until we hit a semicolon, closing brace, or !important *)
@@ -252,7 +275,7 @@ let read_value (type a) (prop_type : a property) t : declaration =
   | Max_height -> declaration Max_height (read_length t)
   | Font_size -> declaration Font_size (read_length t)
   | Border_radius -> declaration Border_radius (read_length t)
-  | Gap -> declaration Gap (read_length t)
+  | Gap -> declaration Gap (Properties.read_gap t)
   | Column_gap -> declaration Column_gap (read_length t)
   | Row_gap -> declaration Row_gap (read_length t)
   (* Display and layout *)
@@ -331,7 +354,7 @@ let read_value (type a) (prop_type : a property) t : declaration =
   | Background_image ->
       let images = read_background_images t in
       declaration Background_image images
-  | Background -> declaration Background (read_background t)
+  | Background -> declaration Background (read_backgrounds t)
   | Border -> declaration Border (read_border t)
   (* Grid properties *)
   | Grid_template_columns ->
@@ -342,7 +365,7 @@ let read_value (type a) (prop_type : a property) t : declaration =
   | Grid_column_start -> declaration Grid_column_start (read_grid_line t)
   | Grid_column_end -> declaration Grid_column_end (read_grid_line t)
   | Grid_auto_flow -> declaration Grid_auto_flow (read_grid_auto_flow t)
-  | Grid_template_areas -> declaration Grid_template_areas (read_string t)
+  | Grid_template_areas -> declaration Grid_template_areas (read_grid_template_areas t)
   (* Shadows *)
   | Box_shadow -> declaration Box_shadow (read_box_shadows t)
   | Text_shadow -> declaration Text_shadow (read_text_shadows t)
@@ -577,7 +600,7 @@ let read_value (type a) (prop_type : a property) t : declaration =
   | Unicode_bidi -> declaration Unicode_bidi (read_unicode_bidi t)
   | Writing_mode -> declaration Writing_mode (read_writing_mode t)
   (* Animation properties *)
-  | Animation_name -> declaration Animation_name (read_string t)
+  | Animation_name -> declaration Animation_name (read_animation_name t)
   | Animation_duration -> declaration Animation_duration (read_duration t)
   | Animation_timing_function ->
       declaration Animation_timing_function (read_timing_function t)

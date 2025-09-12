@@ -1053,6 +1053,8 @@ type display =
   | Contents
   | Webkit_box
   | Inherit
+  | Initial
+  | Unset
 
 (** CSS position values. *)
 type position = Static | Relative | Absolute | Fixed | Sticky
@@ -1571,10 +1573,16 @@ val order : int -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/order} order} property.
 *)
 
-val gap : length -> declaration
+(** CSS gap shorthand type. *)
+type gap = {
+  row_gap : length option;
+  column_gap : length option;
+}
+
+val gap : gap -> declaration
 (** [gap value] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/gap} gap} property
-    (applies to both row and column gaps). *)
+    shorthand (applies to both row and column gaps). *)
 
 val row_gap : length -> declaration
 (** [row_gap value] is the
@@ -1594,14 +1602,28 @@ val column_gap : length -> declaration
     @see <https://www.w3.org/TR/css-grid-1/> CSS Grid Layout Module Level 1
     @see <https://www.w3.org/TR/css-grid-2/> CSS Grid Layout Module Level 2 *)
 
+(** CSS grid track breadth values *)
+type grid_track_breadth =
+  | Px of float
+  | Rem of float
+  | Em of float
+  | Pct of float
+  | Vw of float
+  | Vh of float
+  | Vmin of float
+  | Vmax of float
+  | Zero
+  | Fr of float
+  | Auto
+  | Min_content
+  | Max_content
+
 (** CSS grid track sizing *)
 type grid_track_size =
-  | Track_size of length
-  | MinMax of length * length
+  | Track_size of grid_track_breadth
+  | Min_max of grid_track_breadth * grid_track_breadth
   | Fit_content of length
   | Repeat of int * grid_track_size list
-  | Auto
-  | Fr of float
 
 (** CSS grid template values *)
 type grid_template =

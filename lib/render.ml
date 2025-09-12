@@ -340,7 +340,10 @@ let to_string ?(minify = false) ?optimize:(opt = false) ?(mode = Variables)
     then Pp.cut ctx ();
 
     (* Render stylesheet sections *)
-    pp_stylesheet_sections ~optimize:opt ctx optimized_stylesheet
+    pp_stylesheet_sections ~optimize:opt ctx optimized_stylesheet;
+    
+    (* Add trailing newline (standard for CSS files) *)
+    if mode <> Inline then Pp.char ctx '\n'
   in
   Pp.to_string ~minify ~inline:(mode = Inline) pp ()
 

@@ -40,7 +40,7 @@ let test_css_generation () =
   let css = Css.to_string ~minify:true stylesheet in
   Alcotest.(check string)
     "exact css generation"
-    ".btn{color:#ff0000;padding:10px}.card{margin:5px;background-color:#ffffff}"
+    ".btn{color:#ff0000;padding:10px}.card{margin:5px;background-color:#ffffff}\n"
     css
 
 (* Test optimization flag works *)
@@ -59,7 +59,7 @@ let test_css_optimization_flag () =
   in
 
   let css_optimized = Css.to_string ~minify:true ~optimize:true stylesheet in
-  Alcotest.(check string) "optimized exact" ".btn{color:#0000ff}" css_optimized
+  Alcotest.(check string) "optimized exact" ".btn{color:#0000ff}\n" css_optimized
 
 (* Test layers work end-to-end *)
 let test_css_layers_integration () =
@@ -84,7 +84,7 @@ let test_css_media_integration () =
 
   let css = Css.to_string ~minify:true stylesheet in
   Alcotest.(check string)
-    "media exact" "@media (max-width: 640px){.btn{font-size:.875rem}}" css
+    "media exact" "@media (max-width: 640px){.btn{font-size:.875rem}}\n" css
 
 (* Test minify flag *)
 let test_css_minify_flag () =
@@ -97,7 +97,7 @@ let test_css_minify_flag () =
   in
 
   let css_minified = Css.to_string ~minify:true stylesheet in
-  Alcotest.(check string) "minified exact" ".btn{color:#ff0000}" css_minified
+  Alcotest.(check string) "minified exact" ".btn{color:#ff0000}\n" css_minified
 
 (* Test important declarations *)
 let test_css_important_integration () =
@@ -115,7 +115,7 @@ let test_css_important_integration () =
 
   let css = Css.to_string ~minify:true stylesheet in
   Alcotest.(check string)
-    "important exact" ".btn{color:#ff0000!important;padding:10px}" css
+    "important exact" ".btn{color:#ff0000!important;padding:10px}\n" css
 
 (* Test custom properties integration *)
 let test_css_custom_properties_integration () =
@@ -130,7 +130,7 @@ let test_css_custom_properties_integration () =
 
   let css = Css.to_string ~minify:true stylesheet in
   Alcotest.(check string)
-    "custom properties exact" ".btn{--primary-color:blue;color:blue}" css
+    "custom properties exact" ".btn{--primary-color:blue;color:blue}\n" css
 
 (* CSS Roundtrip Test: Parse generated CSS and compare roundtrip *)
 let test_css_roundtrip () =

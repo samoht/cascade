@@ -688,6 +688,10 @@ let read_length_keyword =
       ("fit-content", Fit_content);
       ("from-font", From_font);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
 
 let rec read_calc_expr : type a. (Reader.t -> a) -> Reader.t -> a calc =
@@ -1119,7 +1123,87 @@ let read_color_function t : color =
   Reader.expect ')' t;
   Color { space; components; alpha }
 
-let color_parsers =
+(** Parse color space for color-mix - moved before color_parsers *)
+let read_color_space t : color_space =
+  let ident = Reader.ident t in
+  match ident with
+  | "srgb" -> Srgb
+  | "srgb-linear" -> Srgb_linear
+  | "display-p3" -> Display_p3
+  | "a98-rgb" -> A98_rgb
+  | "prophoto-rgb" -> Prophoto_rgb
+  | "rec2020" -> Rec2020
+  | "lab" -> Lab
+  | "oklab" -> Oklab
+  | "xyz" -> Xyz
+  | "xyz-d50" -> Xyz_d50
+  | "xyz-d65" -> Xyz_d65
+  | "lch" -> Lch
+  | "oklch" -> Oklch
+  | "hsl" -> Hsl
+  | "hwb" -> Hwb
+  | _ -> Reader.err_invalid t ("color space: " ^ ident)
+
+(** Parse color-mix() function - forward declaration needed *)
+let rec read_color_mix t : color =
+  Reader.ws t;
+  
+  (* Parse "in <color-space> [<hue-interpolation-method>]" if present *)
+  let in_space, hue =
+    (* Check if next word is "in" without consuming it *)
+    if Reader.looking_at t "in " || Reader.looking_at t "in," then (
+      Reader.expect_string "in" t;
+      Reader.ws t;
+      let space = read_color_space t in
+      Reader.ws t;
+      
+      (* For cylindrical color spaces, check for hue interpolation *)
+      let hue = Default in  (* Simplified for now *)
+      (Some space, hue))
+    else (None, Default)
+  in
+  
+  Reader.ws t;
+  Reader.expect ',' t;
+  Reader.ws t;
+  
+  (* Parse first color and optional percentage *)
+  let color1 = read_color t in
+  Reader.ws t;
+  
+  (* Parse optional percentage for first color - immediately after color *)
+  let percent1 : percentage option =
+    try
+      let n = Reader.number t in
+      Reader.expect '%' t;
+      Reader.ws t;
+      Some (Pct n)  (* Don't divide by 100 - keep the raw percentage value *)
+    with _ -> None
+  in
+  
+  Reader.expect ',' t;
+  Reader.ws t;
+  
+  (* Parse second color and optional percentage *)
+  let color2 = read_color t in
+  Reader.ws t;
+  
+  (* Parse optional percentage for second color - immediately after color *)
+  let percent2 : percentage option =
+    try
+      let n = Reader.number t in
+      Reader.expect '%' t;
+      Reader.ws t;
+      Some (Pct n)  (* Don't divide by 100 - keep the raw percentage value *)
+    with _ -> None
+  in
+  
+  Reader.ws t;
+  Reader.expect ')' t;
+  
+  Mix { in_space; hue; color1; percent1; color2; percent2 }
+
+and color_parsers =
   [
     ( "rgb",
       fun t ->
@@ -1161,9 +1245,13 @@ let color_parsers =
       fun t ->
         Reader.expect '(' t;
         read_color_function t );
+    ( "color-mix",
+      fun t ->
+        Reader.expect '(' t;
+        read_color_mix t );
   ]
 
-let rec read_color t : color =
+and read_color t : color =
   Reader.ws t;
   if Reader.peek t = Some '#' then (
     Reader.expect '#' t;
@@ -1332,6 +1420,10 @@ and read_color_keyword t : color =
   | "wheat" -> Named Wheat
   | "whitesmoke" -> Named White_smoke
   | "yellowgreen" -> Named Yellow_green
+  | "initial" -> Initial
+  | "unset" -> Unset
+  | "revert" -> Revert
+  | "revert-layer" -> Revert_layer
   | _ -> Reader.err_invalid t ("color: " ^ keyword)
 
 (** Read a duration value *)

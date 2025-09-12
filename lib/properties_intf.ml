@@ -59,6 +59,8 @@ type display =
   | Contents
   | Webkit_box
   | Inherit
+  | Initial
+  | Unset
 
 type position = Static | Relative | Absolute | Fixed | Sticky
 type visibility = Visible | Hidden | Collapse
@@ -232,13 +234,27 @@ type place_items =
 (* Grid Types *)
 type grid_auto_flow = Row | Column | Dense | Row_dense | Column_dense
 
+(* Grid track breadth - represents <track-breadth> in CSS Grid spec *)
+type grid_track_breadth =
+  | Px of float
+  | Rem of float
+  | Em of float
+  | Pct of float
+  | Vw of float
+  | Vh of float
+  | Vmin of float
+  | Vmax of float
+  | Zero
+  | Fr of float
+  | Auto
+  | Min_content
+  | Max_content
+
 type grid_track_size =
-  | Track_size of length
-  | MinMax of length * length
+  | Track_size of grid_track_breadth
+  | Min_max of grid_track_breadth * grid_track_breadth
   | Fit_content of length
   | Repeat of int * grid_track_size list
-  | Auto
-  | Fr of float
 
 type grid_template =
   | None
@@ -740,6 +756,12 @@ type background = {
   origin : background_box option;
 }
 
+(* Gap shorthand type *)
+type gap = {
+  row_gap : length option;
+  column_gap : length option;
+}
+
 (* User Interaction Types *)
 type cursor =
   | Auto
@@ -935,7 +957,7 @@ type 'a property =
   | Margin_bottom : length property
   | Margin_inline : length property
   | Margin_block : length property
-  | Gap : length property
+  | Gap : gap property
   | Column_gap : length property
   | Row_gap : length property
   | Width : length property
@@ -1029,7 +1051,7 @@ type 'a property =
   | Scroll_snap_type : scroll_snap_type property
   | White_space : white_space property
   | Border : border property
-  | Background : background property
+  | Background : background list property
   | Tab_size : int property
   | Webkit_text_size_adjust : text_size_adjust property
   | Font_feature_settings : font_feature_settings property

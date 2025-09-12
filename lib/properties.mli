@@ -551,8 +551,17 @@ val pp_background_box : background_box Pp.t
 val read_background : Reader.t -> background
 (** [read_background t] parses a background shorthand property. *)
 
+val read_backgrounds : Reader.t -> background list
+(** [read_backgrounds t] parses a comma-separated list of background shorthand properties. *)
+
+val read_gap : Reader.t -> gap
+(** [read_gap t] parses a gap shorthand property (one or two length values). *)
+
 val pp_background : background Pp.t
 (** [pp_background] pretty-prints a background value. *)
+
+val pp_gap : gap Pp.t
+(** [pp_gap] pretty-prints a gap shorthand value. *)
 
 val pp_cursor : cursor Pp.t
 (** [pp_cursor] is the pretty-printer for [cursor]. *)

@@ -129,8 +129,20 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Column_gap, Calc calc -> vars_of_calc calc
   | Row_gap, Var v -> [ V v ]
   | Row_gap, Calc calc -> vars_of_calc calc
-  | Gap, Var v -> [ V v ]
-  | Gap, Calc calc -> vars_of_calc calc
+  | Gap, { row_gap; column_gap } ->
+      let row_vars = 
+        match row_gap with 
+        | Some (Var v) -> [ V v ]
+        | Some (Calc calc) -> vars_of_calc calc
+        | _ -> []
+      in
+      let col_vars = 
+        match column_gap with 
+        | Some (Var v) -> [ V v ]
+        | Some (Calc calc) -> vars_of_calc calc
+        | _ -> []
+      in
+      row_vars @ col_vars
   (* Color properties *)
   | Background_color, Var v -> [ V v ]
   | Color, Var v -> [ V v ]
@@ -244,7 +256,20 @@ let extract_vars_from_prop_value : type a. a property -> a -> any_var list =
   | Margin_right, Var v -> [ V v ]
   | Margin_top, Var v -> [ V v ]
   | Margin_bottom, Var v -> [ V v ]
-  | Gap, Var v -> [ V v ]
+  | Gap, { row_gap; column_gap } ->
+      let row_vars = 
+        match row_gap with 
+        | Some (Var v) -> [ V v ]
+        | Some (Calc calc) -> vars_of_calc calc
+        | _ -> []
+      in
+      let col_vars = 
+        match column_gap with 
+        | Some (Var v) -> [ V v ]
+        | Some (Calc calc) -> vars_of_calc calc
+        | _ -> []
+      in
+      row_vars @ col_vars
   | Column_gap, Var v -> [ V v ]
   | Row_gap, Var v -> [ V v ]
   | Width, Var v -> [ V v ]

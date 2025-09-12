@@ -45,7 +45,7 @@ let read_position_component_length t : position_component =
   | "px" -> Px n
   | "rem" -> Rem n
   | "em" -> Em n
-  | "%" -> Pct (n /. 100.)
+  | "%" -> Pct n
   | _ -> Reader.err t ("unsupported position unit: " ^ unit)
 
 let read_display t : display =
@@ -73,6 +73,9 @@ let read_display t : display =
       ("list-item", List_item);
       ("contents", Contents);
       ("-webkit-box", Webkit_box);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
     ]
     t
 
@@ -128,7 +131,7 @@ let read_justify_content t : justify_content =
     t
 
 let rec read_font_weight t : font_weight =
-  let read_var t : font_weight = Var (Values.read_var read_font_weight t) in
+  let read_var t : font_weight = Var (read_var read_font_weight t) in
   Reader.ws t;
   Reader.enum_or_calls "font-weight"
     [
@@ -200,16 +203,14 @@ let rec read_text_decoration t : text_decoration =
   in
   let read_line_comp t = `Line (read_text_decoration_line t) in
   let read_style_comp t = `Style (read_text_decoration_style t) in
-  let read_color_comp t = `Color (Values.read_color t) in
-  let read_thickness_comp t = `Thickness (Values.read_length t) in
+  let read_color_comp t = `Color (read_color t) in
+  let read_thickness_comp t = `Thickness (read_length t) in
   let read_component t =
     Reader.one_of
       [ read_line_comp; read_style_comp; read_color_comp; read_thickness_comp ]
       t
   in
-  let read_var t : text_decoration =
-    Var (Values.read_var read_text_decoration t)
-  in
+  let read_var t : text_decoration = Var (read_var read_text_decoration t) in
   Reader.enum_or_calls "text-decoration"
     [ ("inherit", (Inherit : text_decoration)); ("none", None) ]
     ~calls:[ ("var", read_var) ]
@@ -220,9 +221,7 @@ let rec read_text_decoration t : text_decoration =
     t
 
 let rec read_text_transform t : text_transform =
-  let read_var t : text_transform =
-    Var (Values.read_var read_text_transform t)
-  in
+  let read_var t : text_transform = Var (read_var read_text_transform t) in
   Reader.enum_or_calls "text-transform"
     [
       ("none", (None : text_transform));
@@ -347,7 +346,7 @@ let read_box_shadow_custom t =
   | None -> err_invalid_value t "box-shadow" "at least two lengths are required"
 
 let rec read_box_shadow t : box_shadow =
-  let read_var t : box_shadow = Var (Values.read_var read_box_shadow t) in
+  let read_var t : box_shadow = Var (read_var read_box_shadow t) in
   Reader.ws t;
   Reader.enum_or_calls "box-shadow"
     [ ("none", None); ("inherit", Inherit) ]
@@ -593,12 +592,17 @@ let pp_background_image : background_image Pp.t =
   | Linear_gradient (dir, stops) ->
       Pp.call "linear-gradient"
         (fun ctx (dir, stops) ->
-          pp_gradient_direction ctx dir;
+          (* Only print direction if it's not the default "to bottom" *)
+          let print_direction = match dir with To_bottom -> false | _ -> true in
+          if print_direction then (
+            pp_gradient_direction ctx dir;
+            match stops with
+            | [] -> ()
+            | _ -> Pp.comma ctx ()
+          );
           match stops with
           | [] -> ()
-          | _ ->
-              Pp.comma ctx ();
-              Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
+          | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
         ctx (dir, stops)
   | Radial_gradient stops ->
       Pp.call "radial-gradient"
@@ -796,6 +800,8 @@ let pp_display : display Pp.t =
   | Contents -> Pp.string ctx "contents"
   | Webkit_box -> Pp.string ctx "-webkit-box"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
 
 let pp_position : position Pp.t =
  fun ctx -> function
@@ -1620,6 +1626,24 @@ let pp_background : background Pp.t =
   (* If nothing was set, output 'none' *)
   if !first then Pp.string ctx "none"
 
+let pp_gap : gap Pp.t =
+ fun ctx gap ->
+  match (gap.row_gap, gap.column_gap) with
+  | (Some row, Some col) when row = col ->
+      (* Single value when both gaps are equal *)
+      pp_length ctx row
+  | (Some row, Some col) ->
+      (* Two values when different *)
+      pp_length ctx row;
+      Pp.space ctx ();
+      pp_length ctx col
+  | (Some row, None) | (None, Some row) ->
+      (* Single value *)
+      pp_length ctx row
+  | (None, None) ->
+      (* Fallback - shouldn't happen with proper parsing *)
+      Pp.string ctx "0"
+
 let pp_transform_origin : transform_origin Pp.t =
  fun ctx -> function
   | Inherit -> Pp.string ctx "inherit"
@@ -1652,15 +1676,46 @@ let origin3d (a : position_component) (b : position_component) (z : length) :
 
 let pp_animation : animation Pp.t =
  fun ctx anim ->
+  let opt pp f = Pp.option (fun ctx v -> Pp.char ctx ' '; pp ctx v) ctx f in
+  let pp_iter_count ctx = function
+    | Infinite -> Pp.string ctx "infinite"
+    | Num n -> Pp.float ctx n
+  in
+  let pp_timing ctx = function
+    | Linear -> Pp.string ctx "linear"
+    | Ease -> Pp.string ctx "ease"
+    | Ease_in -> Pp.string ctx "ease-in"
+    | Ease_out -> Pp.string ctx "ease-out"
+    | Ease_in_out -> Pp.string ctx "ease-in-out"
+    | Step_start -> Pp.string ctx "step-start"
+    | Step_end -> Pp.string ctx "step-end"
+    | Cubic_bezier (x1, y1, x2, y2) ->
+        Pp.string ctx "cubic-bezier(";
+        Pp.float ctx x1; Pp.char ctx ',';
+        Pp.float ctx y1; Pp.char ctx ',';
+        Pp.float ctx x2; Pp.char ctx ',';
+        Pp.float ctx y2; Pp.char ctx ')'
+    | Steps (steps, direction) ->
+        Pp.string ctx "steps(";
+        Pp.int ctx steps;
+        (match direction with
+         | Some `Start -> Pp.string ctx ",start"
+         | Some `End -> Pp.string ctx ",end"
+         | Some `Jump_start -> Pp.string ctx ",jump-start"
+         | Some `Jump_end -> Pp.string ctx ",jump-end"
+         | Some `Jump_none -> Pp.string ctx ",jump-none"
+         | Some `Jump_both -> Pp.string ctx ",jump-both"
+         | None -> ());
+        Pp.char ctx ')'
+  in
   match anim.name with
   | None -> Pp.string ctx "none"
-  | Some name -> (
+  | Some name -> 
       Pp.string ctx name;
-      match anim.duration with
-      | Some d ->
-          Pp.char ctx ' ';
-          pp_duration ctx d
-      | None -> ())
+      opt pp_duration anim.duration;
+      opt pp_timing anim.timing_function;
+      opt pp_iter_count anim.iteration_count;
+      opt pp_duration anim.delay
 
 let pp_animation_direction : animation_direction Pp.t =
  fun ctx -> function
@@ -1949,22 +2004,35 @@ let pp_scroll_snap_type : scroll_snap_type Pp.t =
           pp_scroll_snap_strictness ctx s)
   | Inherit -> Pp.string ctx "inherit"
 
+let pp_grid_track_breadth : grid_track_breadth Pp.t =
+ fun ctx -> function
+  | Px f -> Pp.float ctx f; Pp.string ctx "px"
+  | Rem f -> Pp.float ctx f; Pp.string ctx "rem"
+  | Em f -> Pp.float ctx f; Pp.string ctx "em"
+  | Pct f -> Pp.float ctx f; Pp.char ctx '%'
+  | Vw f -> Pp.float ctx f; Pp.string ctx "vw"
+  | Vh f -> Pp.float ctx f; Pp.string ctx "vh"
+  | Vmin f -> Pp.float ctx f; Pp.string ctx "vmin"
+  | Vmax f -> Pp.float ctx f; Pp.string ctx "vmax"
+  | Zero -> Pp.char ctx '0'
+  | Fr f -> Pp.float ctx f; Pp.string ctx "fr"
+  | Auto -> Pp.string ctx "auto"
+  | Min_content -> Pp.string ctx "min-content"
+  | Max_content -> Pp.string ctx "max-content"
+
 let rec pp_grid_track_size : grid_track_size Pp.t =
  fun ctx -> function
-  | Track_size l -> pp_length ctx l
-  | MinMax (min, max) -> Pp.call_2 "minmax" pp_length pp_length ctx (min, max)
+  | Track_size breadth -> pp_grid_track_breadth ctx breadth
+  | Min_max (min, max) -> Pp.call_2 "minmax" pp_grid_track_breadth pp_grid_track_breadth ctx (min, max)
   | Fit_content l -> Pp.call "fit-content" pp_length ctx l
   | Repeat (count, sizes) ->
       Pp.call "repeat"
         (fun ctx (count, sizes) ->
           Pp.int ctx count;
           Pp.comma ctx ();
+          Pp.space ctx ();
           Pp.list ~sep:Pp.space pp_grid_track_size ctx sizes)
         ctx (count, sizes)
-  | Auto -> Pp.string ctx "auto"
-  | Fr f ->
-      Pp.float ctx f;
-      Pp.string ctx "fr"
 
 let pp_grid_template : grid_template Pp.t =
  fun ctx -> function
@@ -2166,6 +2234,7 @@ let pp_transition : transition Pp.t =
       pp_duration ctx d
   | None -> ()
 
+
 let rec pp_scale : scale Pp.t =
  fun ctx -> function
   | X f -> Pp.float ctx f
@@ -2342,7 +2411,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Margin_bottom -> pp pp_length
   | Margin_inline -> pp pp_length
   | Margin_block -> pp pp_length
-  | Gap -> pp pp_length
+  | Gap -> pp pp_gap
   | Column_gap -> pp pp_length
   | Row_gap -> pp pp_length
   | Width -> pp pp_length
@@ -2502,7 +2571,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Clear -> pp pp_clear
   | Float -> pp pp_float_side
   | Border -> pp pp_border
-  | Background -> pp pp_background
+  | Background -> pp (Pp.list ~sep:Pp.comma pp_background)
   | Text_decoration_thickness -> pp pp_length
   | Text_size_adjust -> pp Pp.string
   | Touch_action -> pp pp_touch_action
@@ -2554,7 +2623,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Font_family -> pp (Pp.list ~sep:Pp.comma pp_font_family)
 
 let rec read_border_style t : border_style =
-  let read_var t : border_style = Var (Values.read_var read_border_style t) in
+  let read_var t : border_style = Var (read_var read_border_style t) in
   Reader.enum_or_calls "border-style"
     [
       ("none", (None : border_style));
@@ -2572,7 +2641,7 @@ let rec read_border_style t : border_style =
     t
 
 let rec read_border_width t : border_width =
-  let read_var t : border_width = Var (Values.read_var read_border_width t) in
+  let read_var t : border_width = Var (read_var read_border_width t) in
   let read_length_as_border_width t =
     let length = read_length t in
     match length with
@@ -2655,7 +2724,7 @@ let read_flex_wrap t : flex_wrap =
     t
 
 let rec read_align t : align =
-  let read_var t : align = Var (Values.read_var read_align t) in
+  let read_var t : align = Var (read_var read_align t) in
   Reader.enum_or_calls "align"
     [
       ("normal", (Normal : align));
@@ -2702,27 +2771,77 @@ let read_justify t : justify =
     ]
     t
 
-let read_flex t : flex =
-  let read_default t =
-    (* Try to read number with unit to determine if it's grow or basis *)
-    let n, unit = Reader.number_with_unit t in
-    if unit = "" then
-      (* Unitless number is flex-grow *)
-      Grow n
-    else
-      (* Number with unit is flex-basis *)
-      let fb : flex_basis =
-        match unit with
-        | "px" -> Px n
-        | "%" -> Pct n
-        | "rem" -> Rem n
-        | "em" -> Em n
-        | "vh" -> Vh n
-        | "vw" -> Vw n
-        | _ -> Reader.err t ("unsupported flex-basis unit: " ^ unit)
+let read_flex_basis t : flex_basis =
+  (* Read flex-basis: auto | content | <length> *)
+  Reader.enum "flex-basis"
+    [ ("auto", (Auto : flex_basis)); ("content", Content) ]
+    ~default:(fun t ->
+      (* Parse as length and convert to flex_basis *)
+      match read_length t with
+      | Px n -> (Px n : flex_basis)
+      | Rem n -> Rem n
+      | Em n -> Em n
+      | Ex n -> Ex n
+      | Pct n -> Pct n
+      | Cm n -> Cm n
+      | Mm n -> Mm n
+      | Q n -> Q n
+      | In n -> In n
+      | Pt n -> Pt n
+      | Pc n -> Pc n
+      | Cap n -> Cap n
+      | Ic n -> Ic n
+      | Rlh n -> Rlh n
+      | Vw n -> Vw n
+      | Vh n -> Vh n
+      | Vmin n -> Vmin n
+      | Vmax n -> Vmax n
+      | Zero -> Px 0.0 (* Convert Zero to Px 0 *)
+      | _ -> Reader.err_invalid t "unsupported flex-basis value")
+    t
+
+(* Helper functions for flex parsing *)
+let read_flex_basis_only t = Basis (read_flex_basis t)
+
+let read_flex_grow_shrink_basis t =
+  (* Parse grow [shrink] [basis] *)
+  let grow = Reader.number t in
+  
+  (* Check if there's a unit immediately after the first number (no whitespace) *)
+  (* If so, this is actually a flex-basis value with units, not flex-grow *)
+  (match Reader.peek t with
+  | Some '%' ->
+      (* This number has a unit, it's not a flex-grow value *)
+      Reader.err t "not a flex-grow value"
+  | Some c when (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ->
+      (* This number has a unit, it's not a flex-grow value *)
+      Reader.err t "not a flex-grow value"
+  | _ ->
+      (* It's a unitless number, continue parsing as flex-grow *)
+      (* Optional shrink (defaults to 1) *)
+      let shrink =
+        Reader.option
+          (fun t ->
+            Reader.ws t;
+            Reader.number t)
+          t
       in
-      Basis fb
-  in
+      
+      (* Optional basis (defaults to 0%) *)
+      let basis =
+        Reader.option
+          (fun t ->
+            Reader.ws t;
+            read_flex_basis t)
+          t
+      in
+      
+      match (shrink, basis) with
+      | None, None -> Grow grow
+      | Some s, None -> Grow_shrink (grow, s)
+      | _, Some b -> Full (grow, Option.value shrink ~default:1.0, b))
+
+let read_flex t : flex =
   Reader.enum "flex"
     [
       ("initial", (Initial : flex));
@@ -2730,7 +2849,7 @@ let read_flex t : flex =
       ("none", (None : flex));
       ("content", Basis Content);
     ]
-    ~default:read_default t
+    ~default:(Reader.one_of [read_flex_grow_shrink_basis; read_flex_basis_only]) t
 
 let read_place_content t : place_content =
   let read_pair t =
@@ -2787,17 +2906,84 @@ let read_grid_auto_flow t : grid_auto_flow =
   | "dense", _ -> Dense
   | _ -> err_invalid_value t "grid-auto-flow" v
 
-let read_grid_track_size t : grid_track_size =
-  let read_fit_content t = Fit_content (read_length t) in
-  let read_minmax t =
-    let a, b = Reader.pair ~sep:Reader.comma read_length read_length t in
-    MinMax (a, b)
+(* CSS Grid track breadth - supports <length-percentage> | <flex> | min-content | max-content | auto *)
+let read_grid_track_breadth t : grid_track_breadth =
+  Reader.one_of [
+    (* Keywords first *)
+    (fun t -> Reader.enum "track-breadth" [
+      ("auto", (Auto : grid_track_breadth));
+      ("min-content", (Min_content : grid_track_breadth));
+      ("max-content", (Max_content : grid_track_breadth));
+    ] t);
+    (* Fr unit *)
+    (fun t ->
+      let n, unit = Reader.number_with_unit t in
+      if unit = "fr" then Fr n
+      else Reader.err_invalid t ("expected 'fr' unit, got '" ^ unit ^ "'"));
+    (* Length units *)
+    (fun t ->
+      let n, unit = Reader.number_with_unit t in
+      match unit with
+      | "" -> if n = 0.0 then Zero else Reader.err_invalid t "unitless non-zero values not allowed"
+      | "px" -> Px n
+      | "rem" -> Rem n
+      | "em" -> Em n
+      | "%" -> Pct n
+      | "vw" -> Vw n
+      | "vh" -> Vh n
+      | "vmin" -> Vmin n
+      | "vmax" -> Vmax n
+      | _ -> failwith ("unsupported grid track breadth unit: " ^ unit));
+  ] t
+
+let rec read_grid_track_size t : grid_track_size =
+  let read_fit_content t = 
+    Reader.call "fit-content" t (fun t -> Fit_content (read_length t)) 
   in
-  Reader.enum_or_calls "grid-track-size"
-    [ ("auto", Track_size Auto) ]
-    ~calls:[ ("fit-content", read_fit_content); ("minmax", read_minmax) ]
-    ~default:(fun t -> Track_size (read_length t))
-    t
+  let read_minmax t =
+    Reader.call "minmax" t (fun t ->
+      (* Per CSS spec: min cannot be flex, max can be flex *)
+      let read_min_breadth t = 
+        Reader.one_of [
+          (* Keywords *)
+          (fun t -> Reader.enum "min-breadth" [
+            ("auto", (Auto : grid_track_breadth));
+            ("min-content", (Min_content : grid_track_breadth));
+            ("max-content", (Max_content : grid_track_breadth));
+          ] t);
+          (* Length only for min *)
+          (fun t ->
+            let n, unit = Reader.number_with_unit t in
+            match unit with
+            | "" -> if n = 0.0 then Zero else Reader.err_invalid t "unitless non-zero values not allowed"
+            | "px" -> Px n
+            | "rem" -> Rem n
+            | "em" -> Em n
+            | "%" -> Pct n
+            | "vw" -> Vw n
+            | "vh" -> Vh n
+            | "vmin" -> Vmin n
+            | "vmax" -> Vmax n
+            | _ -> failwith ("unsupported min breadth unit: " ^ unit));
+        ] t
+      in
+      let a, b = Reader.pair ~sep:Reader.comma read_min_breadth read_grid_track_breadth t in
+      Min_max (a, b))
+  in
+  let read_repeat t =
+    Reader.call "repeat" t (fun t ->
+      let count, sizes = Reader.pair ~sep:Reader.comma Reader.int (Reader.list read_grid_track_size) t in
+      (Repeat (count, sizes) : grid_track_size))
+  in
+  let read_default t =
+    Track_size (read_grid_track_breadth t)
+  in
+  Reader.one_of [
+    read_fit_content;
+    read_minmax; 
+    read_repeat;
+    read_default;
+  ] t
 
 let read_grid_template t : grid_template =
   Reader.enum "grid-template"
@@ -2908,7 +3094,7 @@ let read_hyphens t : hyphens =
     t
 
 let rec read_line_height t : line_height =
-  let read_var t : line_height = Var (Values.read_var read_line_height t) in
+  let read_var t : line_height = Var (read_var read_line_height t) in
   Reader.enum_or_calls "line-height"
     [ ("normal", Normal); ("inherit", Inherit) ]
     ~calls:[ ("var", read_var) ]
@@ -3036,7 +3222,7 @@ let read_object_fit t : object_fit =
     t
 
 let rec read_content t : content =
-  let read_var t : content = Var (Values.read_var read_content t) in
+  let read_var t : content = Var (read_var read_content t) in
   let read_string t = String (Reader.string t) in
   Reader.enum_or_calls "content"
     [
@@ -3050,7 +3236,7 @@ let rec read_content t : content =
 
 let rec read_content_visibility t : content_visibility =
   let read_var t : content_visibility =
-    Var (Values.read_var read_content_visibility t)
+    Var (read_var read_content_visibility t)
   in
   Reader.enum_or_calls "content-visibility"
     [
@@ -3129,7 +3315,7 @@ let read_scroll_snap_axis t : scroll_snap_axis =
     t
 
 let rec read_scroll_snap_strictness t : scroll_snap_strictness =
-  let read_var t = Var (Values.read_var read_scroll_snap_strictness t) in
+  let read_var t = Var (read_var read_scroll_snap_strictness t) in
   Reader.enum_or_calls "scroll-snap-strictness"
     [
       ("proximity", (Proximity : scroll_snap_strictness));
@@ -3363,9 +3549,7 @@ let read_outline_style t : outline_style =
 
 let rec read_font_family t : font_family =
   let read_var t : font_family =
-    let v =
-      Values.read_var (Reader.list ~sep:Reader.comma read_font_family) t
-    in
+    let v = read_var (Reader.list ~sep:Reader.comma read_font_family) t in
     Var v
   in
   Reader.enum_or_calls "font-family"
@@ -3498,7 +3682,7 @@ let read_font_stretch t : font_stretch =
 
 let rec read_font_variant_numeric_token t : font_variant_numeric_token =
   let read_var t : font_variant_numeric_token =
-    Var (Values.read_var read_font_variant_numeric_token t)
+    Var (read_var read_font_variant_numeric_token t)
   in
   Reader.enum_or_calls "font-variant-numeric-token"
     [
@@ -3517,7 +3701,7 @@ let rec read_font_variant_numeric_token t : font_variant_numeric_token =
 
 let rec read_font_variant_numeric t : font_variant_numeric =
   let read_var t : font_variant_numeric =
-    Var (Values.read_var read_font_variant_numeric t)
+    Var (read_var read_font_variant_numeric t)
   in
   Reader.enum_or_calls "font-variant-numeric"
     [ ("normal", (Normal : font_variant_numeric)) ]
@@ -3530,7 +3714,7 @@ let rec read_font_variant_numeric t : font_variant_numeric =
 
 let rec read_font_feature_settings t : font_feature_settings =
   let read_var t : font_feature_settings =
-    Var (Values.read_var read_font_feature_settings t)
+    Var (read_var read_font_feature_settings t)
   in
   let read_string t : font_feature_settings = String (Reader.string t) in
   let read_feature_list t = Feature_list (Reader.ident t) in
@@ -3542,7 +3726,7 @@ let rec read_font_feature_settings t : font_feature_settings =
 
 let rec read_font_variation_settings t : font_variation_settings =
   let read_var t : font_variation_settings =
-    Var (Values.read_var read_font_variation_settings t)
+    Var (read_var read_font_variation_settings t)
   in
   let read_string t : font_variation_settings = String (Reader.string t) in
   let read_axis_list t = Axis_list (Reader.ident t) in
@@ -3571,7 +3755,7 @@ let read_backface_visibility t : backface_visibility =
     t
 
 let rec read_scale t : scale =
-  let read_var t : scale = Var (Values.read_var read_scale t) in
+  let read_var t : scale = Var (read_var read_scale t) in
   let read_number t : scale = X (Reader.number t) in
   Reader.enum_or_calls "scale"
     [ ("none", (None : scale)) ]
@@ -3580,28 +3764,37 @@ let rec read_scale t : scale =
 
 let read_timing_function t : timing_function =
   let read_steps t : timing_function =
-    let n = int_of_float (Reader.number t) in
-    let kind =
-      Reader.option
-        (fun t ->
-          Reader.comma t;
-          match Reader.ident t with
-          | "jump-start" -> `Jump_start
-          | "jump-end" -> `Jump_end
-          | "jump-none" -> `Jump_none
-          | "jump-both" -> `Jump_both
-          | "start" -> `Start
-          | "end" -> `End
-          | s -> err_invalid_value t "steps kind" s)
-        t
-    in
-    Steps (n, kind)
+    Reader.call "steps" t (fun t ->
+      let n = int_of_float (Reader.number t) in
+      let kind =
+        Reader.option
+          (fun t ->
+            Reader.comma t;
+            match Reader.ident t with
+            | "jump-start" -> `Jump_start
+            | "jump-end" -> `Jump_end
+            | "jump-none" -> `Jump_none
+            | "jump-both" -> `Jump_both
+            | "start" -> `Start
+            | "end" -> `End
+            | s -> err_invalid_value t "steps kind" s)
+          t
+      in
+      Steps (n, kind))
   in
   let read_cubic_bezier t : timing_function =
-    let a, b, c = Reader.(triple ~sep:comma number number number) t in
-    Reader.comma t;
-    let d = Reader.number t in
-    Cubic_bezier (a, b, c, d)
+    Reader.call "cubic-bezier" t (fun t ->
+      let a = Reader.number t in
+      Reader.comma t;
+      Reader.ws t;
+      let b = Reader.number t in
+      Reader.comma t;
+      Reader.ws t;
+      let c = Reader.number t in
+      Reader.comma t;
+      Reader.ws t;
+      let d = Reader.number t in
+      Cubic_bezier (a, b, c, d))
   in
   Reader.enum_or_calls "timing-function"
     [
@@ -3626,14 +3819,43 @@ let read_transition_property t : transition_property =
     t
 
 let read_transition t : transition =
-  let v = Reader.ident t in
-  (* Simplified - real parsing would be much more complex *)
-  {
-    property = Property v;
-    duration = None;
-    timing_function = None;
-    delay = None;
-  }
+  (* Parse transition shorthand: property duration timing-function delay *)
+  let property = read_transition_property t in
+
+  (* Optional duration *)
+  let duration =
+    Reader.option
+      (fun t ->
+        Reader.ws t;
+        read_duration t)
+      t
+  in
+
+  (* Optional timing function (only if we have duration) *)
+  let timing_function =
+    match duration with
+    | Some _ ->
+        Reader.option
+          (fun t ->
+            Reader.ws t;
+            read_timing_function t)
+          t
+    | None -> None
+  in
+
+  (* Optional delay (only if we have duration) *)
+  let delay =
+    match (duration, timing_function) with
+    | Some _, _ ->
+        Reader.option
+          (fun t ->
+            Reader.ws t;
+            read_duration t)
+          t
+    | _ -> None
+  in
+
+  { property; duration; timing_function; delay }
 
 let read_transitions t : transition list =
   Reader.list ~at_least:1 ~sep:Reader.comma read_transition t
@@ -3669,25 +3891,72 @@ let read_animation_play_state t : animation_play_state =
     [ ("running", (Running : animation_play_state)); ("paused", Paused) ]
     t
 
+let read_animation_component t =
+  Reader.one_of [
+    (* Duration - parse durations before other components *)
+    (fun t -> `Duration (read_duration t));
+    
+    (* Timing function *)
+    (fun t -> `Timing_function (read_timing_function t));
+    
+    (* Iteration count *)
+    (fun t -> `Iteration_count (read_animation_iteration_count t));
+    
+    (* Direction *)
+    (fun t -> `Direction (read_animation_direction t));
+    
+    (* Fill mode *)
+    (fun t -> `Fill_mode (read_animation_fill_mode t));
+    
+    (* Play state *)
+    (fun t -> `Play_state (read_animation_play_state t));
+    
+    (* Animation name (including "none") - parse this LAST since it accepts any identifier *)
+    (fun t -> 
+      let v = Reader.ident t in
+      if v = "none" then `Name (None : string option) else `Name (Some v : string option));
+  ] t
+
 let read_animation t : animation =
-  let v = Reader.ident t in
-  (* Simplified - real parsing would be much more complex *)
-  {
-    name = Some v;
-    duration = None;
+  let apply acc = function
+    | `Name name -> 
+        (* Only set name if we don't already have one *)
+        if acc.name = None then { acc with name } else acc
+    | `Duration d -> 
+        (* First duration is duration, second is delay *)
+        if acc.duration = None then { acc with duration = Some d }
+        else if acc.delay = None then { acc with delay = Some d }
+        else acc
+    | `Timing_function tf -> { acc with timing_function = Some tf }
+    | `Iteration_count ic -> { acc with iteration_count = Some ic }
+    | `Direction dir -> { acc with direction = Some dir }
+    | `Fill_mode fm -> { acc with fill_mode = Some fm }
+    | `Play_state ps -> { acc with play_state = Some ps }
+  in
+  
+  let init = {
+    name = None;
+    duration = None; 
     timing_function = None;
     delay = None;
     iteration_count = None;
     direction = None;
     fill_mode = None;
     play_state = None;
-  }
+  } in
+  
+  let acc, _ = Reader.fold_many read_animation_component ~init ~f:apply t in
+  (* CSS animation shorthand requires at least one component *)
+  if acc = init then
+    Reader.err t "animation shorthand requires at least one component"
+  else
+    acc
 
 let read_animations t : animation list =
   Reader.list ~at_least:1 ~sep:Reader.comma read_animation t
 
 let rec read_blend_mode t : blend_mode =
-  let read_var t : blend_mode = Var (Values.read_var read_blend_mode t) in
+  let read_var t : blend_mode = Var (read_var read_blend_mode t) in
   Reader.enum_or_calls "blend-mode"
     [
       ("normal", (Normal : blend_mode));
@@ -3749,7 +4018,7 @@ let read_contrast t : filter =
   Reader.call "contrast" t (fun t -> Contrast (read_number t))
 
 let read_grayscale t : filter =
-  Reader.call "grayscale" t (fun t -> (Grayscale (read_number t) : filter))
+  Reader.call "grayscale" t (fun t : filter -> Grayscale (read_number t))
 
 let read_hue_rotate t : filter =
   Reader.call "hue-rotate" t (fun t -> Hue_rotate (read_angle t))
@@ -3758,7 +4027,7 @@ let read_invert t : filter =
   Reader.call "invert" t (fun t -> Invert (read_number t))
 
 let read_opacity t : filter =
-  Reader.call "opacity" t (fun t -> (Opacity (read_number t) : filter))
+  Reader.call "opacity" t (fun t : filter -> Opacity (read_number t))
 
 let read_saturate t : filter =
   Reader.call "saturate" t (fun t -> Saturate (read_number t))
@@ -3782,7 +4051,7 @@ let read_drop_shadow t : filter =
               err_invalid_value t "drop-shadow"
                 "at least two lengths are required"
         in
-        let v = Values.read_var read_shadow t in
+        let v = read_var read_shadow t in
         Drop_shadow (Var v)
       else
         let components, _ = Reader.many read_box_shadow_component t in
@@ -3801,7 +4070,7 @@ let read_drop_shadow t : filter =
 
 let rec read_filter_item t : filter =
   let read_var t : filter =
-    let v = Values.read_var read_filter t in
+    let v = read_var read_filter t in
     Var v
   in
   let read_url t = (Url (read_url_arg t) : filter) in
@@ -3948,8 +4217,10 @@ let read_background_image t : background_image =
 let read_background_images t : background_image list =
   Reader.list ~sep:Reader.comma read_background_image t
 
+
 let read_property t =
   let prop_name = Reader.ident t in
+  (* PROPERTY_MATCHING_START - Used by scripts/check_properties.ml *)
   match prop_name with
   | "width" -> Prop Width
   | "height" -> Prop Height
@@ -4056,6 +4327,122 @@ let read_property t =
   | "line-height" -> Prop Line_height
   | "list-style" -> Prop List_style
   | "vertical-align" -> Prop Vertical_align
+  (* Missing properties to add *)
+  | "align-content" -> Prop Align_content
+  | "align-self" -> Prop Align_self
+  | "animation-delay" -> Prop Animation_delay
+  | "animation-direction" -> Prop Animation_direction
+  | "animation-duration" -> Prop Animation_duration
+  | "animation-fill-mode" -> Prop Animation_fill_mode
+  | "animation-iteration-count" -> Prop Animation_iteration_count
+  | "animation-play-state" -> Prop Animation_play_state
+  | "animation-timing-function" -> Prop Animation_timing_function
+  | "aspect-ratio" -> Prop Aspect_ratio
+  | "backdrop-filter" -> Prop Backdrop_filter
+  | "backface-visibility" -> Prop Backface_visibility
+  | "background-attachment" -> Prop Background_attachment
+  | "background-blend-mode" -> Prop Background_blend_mode
+  | "background-position" -> Prop Background_position
+  | "background-repeat" -> Prop Background_repeat
+  | "background-size" -> Prop Background_size
+  | "border-inline-end-color" -> Prop Border_inline_end_color
+  | "border-inline-end-width" -> Prop Border_inline_end_width
+  | "border-inline-start-color" -> Prop Border_inline_start_color
+  | "border-inline-start-width" -> Prop Border_inline_start_width
+  | "border-spacing" -> Prop Border_spacing
+  | "clear" -> Prop Clear
+  | "clip" -> Prop Clip
+  | "clip-path" -> Prop Clip_path
+  | "column-gap" -> Prop Column_gap
+  | "contain" -> Prop Contain
+  | "container-name" -> Prop Container_name
+  | "container-type" -> Prop Container_type
+  | "content-visibility" -> Prop Content_visibility
+  | "direction" -> Prop Direction
+  | "fill" -> Prop Fill
+  | "flex-basis" -> Prop Flex_basis
+  | "flex-grow" -> Prop Flex_grow
+  | "flex-shrink" -> Prop Flex_shrink
+  | "float" -> Prop Float
+  | "font-stretch" -> Prop Font_stretch
+  | "font-variant-numeric" -> Prop Font_variant_numeric
+  | "forced-color-adjust" -> Prop Forced_color_adjust
+  | "gap" -> Prop Gap
+  | "grid-area" -> Prop Grid_area
+  | "grid-auto-columns" -> Prop Grid_auto_columns
+  | "grid-auto-flow" -> Prop Grid_auto_flow
+  | "grid-auto-rows" -> Prop Grid_auto_rows
+  | "grid-column" -> Prop Grid_column
+  | "grid-column-end" -> Prop Grid_column_end
+  | "grid-column-start" -> Prop Grid_column_start
+  | "grid-row" -> Prop Grid_row
+  | "grid-row-end" -> Prop Grid_row_end
+  | "grid-row-start" -> Prop Grid_row_start
+  | "grid-template" -> Prop Grid_template
+  | "grid-template-areas" -> Prop Grid_template_areas
+  | "hyphens" -> Prop Hyphens
+  | "isolation" -> Prop Isolation
+  | "justify-items" -> Prop Justify_items
+  | "justify-self" -> Prop Justify_self
+  | "list-style-image" -> Prop List_style_image
+  | "list-style-position" -> Prop List_style_position
+  | "list-style-type" -> Prop List_style_type
+  | "mask" -> Prop Mask
+  | "mix-blend-mode" -> Prop Mix_blend_mode
+  | "object-fit" -> Prop Object_fit
+  | "object-position" -> Prop Object_position
+  | "order" -> Prop Order
+  | "outline-offset" -> Prop Outline_offset
+  | "outline-style" -> Prop Outline_style
+  | "outline-width" -> Prop Outline_width
+  | "overflow-wrap" -> Prop Overflow_wrap
+  | "overscroll-behavior" -> Prop Overscroll_behavior
+  | "overscroll-behavior-x" -> Prop Overscroll_behavior_x
+  | "overscroll-behavior-y" -> Prop Overscroll_behavior_y
+  | "perspective" -> Prop Perspective
+  | "perspective-origin" -> Prop Perspective_origin
+  | "place-content" -> Prop Place_content
+  | "place-items" -> Prop Place_items
+  | "place-self" -> Prop Place_self
+  | "quotes" -> Prop Quotes
+  | "rotate" -> Prop Rotate
+  | "row-gap" -> Prop Row_gap
+  | "scale" -> Prop Scale
+  | "scroll-behavior" -> Prop Scroll_behavior
+  | "scroll-margin" -> Prop Scroll_margin
+  | "scroll-margin-bottom" -> Prop Scroll_margin_bottom
+  | "scroll-margin-left" -> Prop Scroll_margin_left
+  | "scroll-margin-right" -> Prop Scroll_margin_right
+  | "scroll-margin-top" -> Prop Scroll_margin_top
+  | "scroll-padding" -> Prop Scroll_padding
+  | "scroll-padding-bottom" -> Prop Scroll_padding_bottom
+  | "scroll-padding-left" -> Prop Scroll_padding_left
+  | "scroll-padding-right" -> Prop Scroll_padding_right
+  | "scroll-padding-top" -> Prop Scroll_padding_top
+  | "scroll-snap-align" -> Prop Scroll_snap_align
+  | "scroll-snap-stop" -> Prop Scroll_snap_stop
+  | "scroll-snap-type" -> Prop Scroll_snap_type
+  | "stroke" -> Prop Stroke
+  | "stroke-width" -> Prop Stroke_width
+  | "table-layout" -> Prop Table_layout
+  | "text-decoration-skip-ink" -> Prop Text_decoration_skip_ink
+  | "text-decoration-style" -> Prop Text_decoration_style
+  | "text-decoration-thickness" -> Prop Text_decoration_thickness
+  | "text-overflow" -> Prop Text_overflow
+  | "text-size-adjust" -> Prop Text_size_adjust
+  | "text-underline-offset" -> Prop Text_underline_offset
+  | "text-wrap" -> Prop Text_wrap
+  | "touch-action" -> Prop Touch_action
+  | "transform-style" -> Prop Transform_style
+  | "transition-delay" -> Prop Transition_delay
+  | "transition-duration" -> Prop Transition_duration
+  | "transition-timing-function" -> Prop Transition_timing_function
+  | "unicode-bidi" -> Prop Unicode_bidi
+  | "white-space" -> Prop White_space
+  | "will-change" -> Prop Will_change
+  | "word-break" -> Prop Word_break
+  | "word-spacing" -> Prop Word_spacing
+  | "writing-mode" -> Prop Writing_mode
   (* Vendor prefixed properties *)
   | "-webkit-transform" -> Prop Webkit_transform
   | "-webkit-transition" -> Prop Webkit_transition
@@ -4073,6 +4460,7 @@ let read_property t =
   | "-moz-osx-font-smoothing" -> Prop Moz_osx_font_smoothing
   | "-ms-filter" -> Prop Ms_filter
   | "-o-transition" -> Prop O_transition
+  (* PROPERTY_MATCHING_END - Used by scripts/check_properties.ml *)
   | _ -> Reader.err_invalid t ("read_property: unknown property " ^ prop_name)
 
 (* Helper functions for property types *)
@@ -4283,3 +4671,15 @@ let read_background t : background =
   let apply acc upd = upd acc in
   let acc, _ = Reader.fold_many read_item ~init ~f:apply t in
   acc
+
+let read_backgrounds t : background list =
+  Reader.list ~sep:Reader.comma read_background t
+
+(* Gap shorthand parser *)
+let read_gap t : gap =
+  let first_length = read_length t in
+  Reader.ws t;
+  let second_length = Reader.option read_length t in
+  match second_length with
+  | Some col_gap -> { row_gap = Some first_length; column_gap = Some col_gap }
+  | None -> { row_gap = Some first_length; column_gap = Some first_length }

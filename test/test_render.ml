@@ -52,7 +52,7 @@ let test_to_string () =
 
   (* Normal rendering *)
   let output = to_string ~minify:true stylesheet in
-  check string "exact rule" ".test{color:#ff0000}" output;
+  check string "exact rule" ".test{color:#ff0000}\n" output;
 
   (* Minified rendering *)
   let minified = to_string ~minify:true stylesheet in
@@ -78,7 +78,7 @@ let test_render_media () =
 
   let output = to_string ~minify:true stylesheet in
   check string "media exact"
-    "@media screen and (min-width: 768px){.responsive{display:grid}}" output
+    "@media screen and (min-width: 768px){.responsive{display:grid}}\n" output
 
 (** Test layer rendering *)
 let test_render_layer () =
@@ -142,7 +142,7 @@ let test_render_container () =
 
   let output = to_string ~minify:true stylesheet in
   check string "container exact"
-    "@container sidebar (min-width: 400px){.card{display:flex}}" output
+    "@container sidebar (min-width: 400px){.card{display:flex}}\n" output
 
 (** Test @supports rendering *)
 let test_render_supports () =
@@ -163,7 +163,7 @@ let test_render_supports () =
 
   let output = to_string ~minify:true stylesheet in
   check string "supports exact"
-    "@supports (display: grid){.modern{display:grid}}" output
+    "@supports (display: grid){.modern{display:grid}}\n" output
 
 (** Test @property rendering *)
 let test_render_property () =
