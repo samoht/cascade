@@ -1920,7 +1920,7 @@ let pp_object_fit : object_fit Pp.t =
 let pp_font_stretch : font_stretch Pp.t =
  fun ctx -> function
   | Pct f ->
-      Pp.float ctx (f *. 100.);
+      Pp.float ctx f;
       Pp.char ctx '%'
   | Ultra_condensed -> Pp.string ctx "ultra-condensed"
   | Extra_condensed -> Pp.string ctx "extra-condensed"
@@ -2015,34 +2015,16 @@ let pp_scroll_snap_type : scroll_snap_type Pp.t =
 
 let pp_grid_track_breadth : grid_track_breadth Pp.t =
  fun ctx -> function
-  | Px f ->
-      Pp.float ctx f;
-      Pp.string ctx "px"
-  | Rem f ->
-      Pp.float ctx f;
-      Pp.string ctx "rem"
-  | Em f ->
-      Pp.float ctx f;
-      Pp.string ctx "em"
-  | Pct f ->
-      Pp.float ctx f;
-      Pp.char ctx '%'
-  | Vw f ->
-      Pp.float ctx f;
-      Pp.string ctx "vw"
-  | Vh f ->
-      Pp.float ctx f;
-      Pp.string ctx "vh"
-  | Vmin f ->
-      Pp.float ctx f;
-      Pp.string ctx "vmin"
-  | Vmax f ->
-      Pp.float ctx f;
-      Pp.string ctx "vmax"
+  | Px f -> Pp.unit ctx f "px"
+  | Rem f -> Pp.unit ctx f "rem"
+  | Em f -> Pp.unit ctx f "em"
+  | Pct f -> Pp.unit ctx f "%"
+  | Vw f -> Pp.unit ctx f "vw"
+  | Vh f -> Pp.unit ctx f "vh"
+  | Vmin f -> Pp.unit ctx f "vmin"
+  | Vmax f -> Pp.unit ctx f "vmax"
   | Zero -> Pp.char ctx '0'
-  | Fr f ->
-      Pp.float ctx f;
-      Pp.string ctx "fr"
+  | Fr f -> Pp.unit ctx f "fr"
   | Auto -> Pp.string ctx "auto"
   | Min_content -> Pp.string ctx "min-content"
   | Max_content -> Pp.string ctx "max-content"
@@ -3938,26 +3920,36 @@ let read_animation_play_state t : animation_play_state =
     t
 
 let read_animation_component t =
+  let read_duration_component t = `Duration (read_duration t) in
+  let read_timing_component t = `Timing_function (read_timing_function t) in
+  let read_iteration_component t =
+    `Iteration_count (read_animation_iteration_count t)
+  in
+  let read_direction_component t = `Direction (read_animation_direction t) in
+  let read_fill_component t = `Fill_mode (read_animation_fill_mode t) in
+  let read_play_component t = `Play_state (read_animation_play_state t) in
+  let read_name_component t =
+    let v = Reader.ident t in
+    if v = "none" then `Name (None : string option)
+    else `Name (Some v : string option)
+  in
   Reader.one_of
     [
       (* Duration - parse durations before other components *)
-      (fun t -> `Duration (read_duration t));
+      read_duration_component;
       (* Timing function *)
-      (fun t -> `Timing_function (read_timing_function t));
+      read_timing_component;
       (* Iteration count *)
-      (fun t -> `Iteration_count (read_animation_iteration_count t));
+      read_iteration_component;
       (* Direction *)
-      (fun t -> `Direction (read_animation_direction t));
+      read_direction_component;
       (* Fill mode *)
-      (fun t -> `Fill_mode (read_animation_fill_mode t));
+      read_fill_component;
       (* Play state *)
-      (fun t -> `Play_state (read_animation_play_state t));
+      read_play_component;
       (* Animation name (including "none") - parse this LAST since it accepts
          any identifier *)
-      (fun t ->
-        let v = Reader.ident t in
-        if v = "none" then `Name (None : string option)
-        else `Name (Some v : string option));
+      read_name_component;
     ]
     t
 
