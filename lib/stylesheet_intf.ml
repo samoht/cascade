@@ -1,6 +1,8 @@
 (** CSS stylesheet interface types *)
 
-(** {1 Types} *)
+(** {1 Core Types} *)
+
+(** {2 Basic Rules} *)
 
 type rule = {
   selector : Selector.t;
@@ -8,18 +10,38 @@ type rule = {
 }
 (** A CSS rule with a selector and declarations *)
 
+(** {2 At-Rules} *)
+
+(** {3 Document Structure At-Rules} *)
+
+type charset_rule = { encoding : string  (** e.g., "UTF-8" *) }
+(** A CSS [@charset] rule (must be first in stylesheet) *)
+
+type import_rule = {
+  url : string;  (** URL or string to import *)
+  layer : string option;  (** Optional layer name *)
+  supports : string option;  (** Optional supports condition *)
+  media : string option;  (** Optional media query *)
+}
+(** A CSS [@import] rule *)
+
+type namespace_rule = {
+  prefix : string option;  (** Optional namespace prefix *)
+  uri : string;  (** Namespace URI *)
+}
+(** A CSS [@namespace] rule for XML namespaces *)
+
+(** {3 Conditional At-Rules} *)
+
 type media_rule = { media_condition : string; media_rules : rule list }
-(** A CSS media query rule *)
+(** A CSS [@media] query rule *)
 
 type container_rule = {
   container_name : string option;
   container_condition : string;
   container_rules : rule list;
 }
-(** A CSS container query rule *)
-
-type starting_style_rule = { starting_rules : rule list }
-(** A CSS [@starting-style] rule *)
+(** A CSS [@container] query rule *)
 
 type supports_content =
   | Support_rules of rule list
@@ -30,19 +52,16 @@ and supports_rule = {
   supports_condition : string;
   supports_content : supports_content;
 }
-(** A CSS [@supports] rule *)
+(** A CSS [@supports] rule for feature queries *)
+
+type starting_style_rule = { starting_rules : rule list }
+(** A CSS [@starting-style] rule for entry animations *)
+
+(** {3 Layer System} *)
 
 type nested_rule =
   | Rule of rule
   | Supports of supports_rule  (** A nested rule within a layer *)
-
-type property_rule = {
-  name : string;
-  syntax : string;
-  inherits : bool;
-  initial_value : string option;
-}
-(** A CSS [@property] rule *)
 
 type layer_rule = {
   layer : string;
@@ -51,7 +70,24 @@ type layer_rule = {
   container_queries : container_rule list;
   supports_queries : supports_rule list;
 }
-(** A CSS [@layer] rule *)
+(** A CSS [@layer] rule for cascade layers *)
+
+(** {3 Property Registration} *)
+
+type property_initial_value =
+  | V : 'a Declaration.kind * 'a -> property_initial_value
+  | Universal of string
+  | None  (** Initial value for a registered custom property *)
+
+type property_rule = {
+  name : string;
+  syntax : string;
+  inherits : bool;
+  initial_value : property_initial_value;
+}
+(** A CSS [@property] rule for registering custom properties *)
+
+(** {3 Animation and Font At-Rules} *)
 
 type keyframe_block = {
   selector : string;  (** e.g., "0%", "from", "50%", "to" *)
@@ -79,13 +115,7 @@ type font_face_rule = {
 }
 (** A CSS [@font-face] rule for custom fonts *)
 
-type import_rule = {
-  url : string;  (** URL or string to import *)
-  layer : string option;  (** Optional layer name *)
-  supports : string option;  (** Optional supports condition *)
-  media : string option;  (** Optional media query *)
-}
-(** A CSS [@import] rule *)
+(** {3 Print Styling} *)
 
 type page_rule = {
   selector : string option;  (** e.g., ":first", ":left", ":right" *)
@@ -93,14 +123,7 @@ type page_rule = {
 }
 (** A CSS [@page] rule for print styling *)
 
-type charset_rule = { encoding : string  (** e.g., "UTF-8" *) }
-(** A CSS [@charset] rule (must be first in stylesheet) *)
-
-type namespace_rule = {
-  prefix : string option;  (** Optional namespace prefix *)
-  uri : string;  (** Namespace URI *)
-}
-(** A CSS [@namespace] rule for XML namespaces *)
+(** {1 Stylesheet Structure} *)
 
 type t = {
   charset : charset_rule option;  (** Must be first if present *)
@@ -135,3 +158,10 @@ type sheet_item =
   | Keyframes of keyframes_rule
   | Font_face of font_face_rule
   | Page of page_rule  (** A single item that can appear in a stylesheet *)
+
+(** {1 Rendering Configuration} *)
+
+type mode = Variables | Inline  (** Rendering mode for CSS output *)
+
+type config = { minify : bool; mode : mode; optimize : bool; newline : bool }
+(** Configuration for CSS rendering *)

@@ -34,6 +34,7 @@ let of_string css =
   with Css.Reader.Parse_error _ -> Error "boom"
 
 let string_of_rule r = Css.Pp.to_string ~minify:true pp_rule r
+let string_of_stylesheet s = Css.Stylesheet.pp ~minify:true ~newline:false s
 
 (* Helper for testing rule construction *)
 let check_construct_rule name expected rule =
@@ -42,7 +43,7 @@ let check_construct_rule name expected rule =
 
 (* Helper for testing complete stylesheet *)
 let check_stylesheet name expected sheet =
-  let actual = Css.pp ~minify:true sheet in
+  let actual = string_of_stylesheet sheet in
   Alcotest.check Alcotest.string name expected actual
 
 let test_rule_creation () =
@@ -123,6 +124,33 @@ let test_layer_rule_creation () =
   let layer = layer ~name:"utilities" [ nested_rule ] in
   Alcotest.(check string) "layer name" "utilities" (layer_name layer);
   Alcotest.(check int) "layer rules count" 1 (List.length (layer_rules layer))
+
+let test_construct_rule_helper () =
+  (* Test rule construction and string representation *)
+  let decl = background_color (Hex { hash = true; value = "ff0000" }) in
+  let rule1 = rule ~selector:(Selector.class_ "red") [ decl ] in
+  check_construct_rule "simple rule" ".red{background-color:#ff0000}" rule1;
+
+  let decls =
+    [
+      declaration Color (Hex { hash = true; value = "000000" });
+      declaration Margin [ Px 10. ];
+    ]
+  in
+  let rule2 = rule ~selector:(Selector.id "test") decls in
+  check_construct_rule "multiple declarations"
+    "#test{color:#000000;margin:10px}" rule2
+
+let test_stylesheet_helper () =
+  (* Test complete stylesheet construction and string representation *)
+  let decl = declaration Display Block in
+  let rule = rule ~selector:(Selector.element "div") [ decl ] in
+  let sheet = stylesheet [ Rule rule ] in
+  check_stylesheet "simple stylesheet" "div{display:block}" sheet;
+
+  let media = media ~condition:"print" [ rule ] in
+  let sheet2 = stylesheet [ Media media ] in
+  check_stylesheet "media stylesheet" "@media print{div{display:block}}" sheet2
 
 let test_empty_stylesheet () =
   let empty = empty in
@@ -248,6 +276,89 @@ let test_property_roundtrip () =
   Alcotest.(check string) "property syntax preserved" "<color>" prop_rule.syntax;
   Alcotest.(check bool) "property inherits preserved" true prop_rule.inherits
 
+(** Test @property descriptor permutations and minified canonical order *)
+let test_rule_parsing () =
+  (* Test basic rule parsing and pretty-printing *)
+  check_rule ".class{color:red}";
+  check_rule "#id{margin:10px}";
+  check_rule "div{padding:5px 10px}";
+  check_rule ".a,.b{display:block}";
+  check_rule ~expected:"*{box-sizing:border-box}" "* { box-sizing: border-box }";
+  check_rule ~expected:"h1{font-size:2rem}" "h1 { font-size: 2rem; }"
+
+let test_media_parsing () =
+  (* Test media rule parsing and pretty-printing *)
+  check_media "@media screen{.test{color:red}}";
+  check_media "@media print{body{margin:0}}";
+  check_media ~expected:"@media (min-width:768px){.responsive{display:flex}}"
+    "@media (min-width: 768px) { .responsive { display: flex } }";
+  check_media "@media screen and (max-width:600px){.mobile{font-size:14px}}"
+
+let test_supports_parsing () =
+  (* Test supports rule parsing and pretty-printing *)
+  check_supports "@supports (display:grid){.grid{display:grid}}";
+  check_supports "@supports (display:flex){.flex{display:flex}}";
+  check_supports
+    ~expected:"@supports not (display:grid){.fallback{display:block}}"
+    "@supports not (display: grid) { .fallback { display: block } }"
+
+let test_property_permutations () =
+  (* helpers reuse check_property: pp_property_rule + read_property_rule *)
+  let case input expected = check_property ~expected input in
+  (* inherits before syntax, extra whitespace, trailing semicolons *)
+  case "@property --gap { inherits: true;  syntax: \"*\"; }"
+    "@property --gap{syntax:\"*\";inherits:true}";
+  (* initial-value first, different quotes, mixed spacing *)
+  case
+    "@property --color { initial-value: red;  inherits: true; syntax: \
+     \"<color>\" }"
+    "@property --color{syntax:\"<color>\";inherits:true;initial-value:red}";
+  (* typed initial value consistent with syntax *)
+  case
+    "@property --size { inherits: false; initial-value: 10px; syntax: \
+     \"<length>\"; }"
+    "@property --size{syntax:\"<length>\";inherits:false;initial-value:10px}"
+
+(** Negative helper for @property parsing errors *)
+let expect_property_error name input =
+  let r = Css.Reader.of_string input in
+  try
+    let _ = read_property_rule r in
+    Alcotest.failf "%s: expected parse error" name
+  with Css.Reader.Parse_error _ -> ()
+
+(** Test @property missing required descriptors *)
+let test_property_missing_descriptors () =
+  expect_property_error "missing syntax" "@property --x { inherits: true }";
+  expect_property_error "missing inherits"
+    "@property --x { syntax: \"<color>\" }"
+
+(** Test @property invalid inherits values *)
+let test_property_invalid_inherits () =
+  expect_property_error "invalid inherits value"
+    "@property --x { syntax: \"*\"; inherits: maybe }"
+
+(** Test @property unknown descriptor handling *)
+let test_property_unknown_descriptor () =
+  expect_property_error "unknown descriptor"
+    "@property --x { syntax: \"*\"; inherits: true; unknown: 1 }"
+
+(** Test @property duplicate descriptors: last one wins and prints canonically *)
+let test_property_duplicate_descriptors () =
+  check_property ~expected:"@property --dup{syntax:\"*\";inherits:false}"
+    "@property --dup { inherits: true; syntax: \"*\"; inherits: false; }";
+  check_property
+    ~expected:
+      "@property --color{syntax:\"<color>\";inherits:true;initial-value:red}"
+    "@property --color { syntax: \"<color>\"; initial-value: blue; inherits: \
+     true; initial-value: red }"
+
+(** Test @property with comments/whitespace inside the block *)
+let test_property_comments_whitespace () =
+  check_property ~expected:"@property --gap{syntax:\"*\";inherits:true}"
+    "@property --gap { /* allow any */ syntax: \"*\"; /* ws */  inherits: true \
+     }"
+
 (** Test supports rule read/pp roundtrip *)
 let test_supports_roundtrip () =
   let input = "@supports (display: grid) { .grid { display: grid } }" in
@@ -280,6 +391,39 @@ let test_layer_pp () =
     "empty layer ends with semicolon" true
     (String.contains empty_output ';')
 
+(** Test keyframes read/pp roundtrip *)
+let test_keyframes_roundtrip () =
+  let input = "@keyframes slide { 0% { opacity: 0 } 100% { opacity: 1 } }" in
+  let r = Css.Reader.of_string input in
+  let kf = Css.Stylesheet.read_keyframes_rule r in
+  let output =
+    Css.Pp.to_string Css.Stylesheet.pp_keyframes_rule ~minify:true kf
+  in
+  Alcotest.(check bool) "contains @keyframes" true (String.contains output '@');
+  Alcotest.(check string) "name preserved" "slide" kf.name
+
+(** Test font-face read/pp roundtrip *)
+let test_font_face_roundtrip () =
+  let input = "@font-face { font-family: MyFont; src: url(font.woff2); }" in
+  let r = Css.Reader.of_string input in
+  let ff = Css.Stylesheet.read_font_face_rule r in
+  let output =
+    Css.Pp.to_string Css.Stylesheet.pp_font_face_rule ~minify:true ff
+  in
+  Alcotest.(check bool) "contains @font-face" true (String.contains output '@');
+  Alcotest.(check (option string))
+    "font-family preserved" (Some "MyFont") ff.font_family
+
+(** Test page read/pp roundtrip *)
+let test_page_roundtrip () =
+  let input = "@page :first { margin: 1in }" in
+  let r = Css.Reader.of_string input in
+  let pg = Css.Stylesheet.read_page_rule r in
+  let output = Css.Pp.to_string Css.Stylesheet.pp_page_rule ~minify:true pg in
+  Alcotest.(check bool) "contains @page" true (String.contains output '@');
+  Alcotest.(check (option string))
+    "selector preserved" (Some ":first") pg.selector
+
 (** Test complete stylesheet pp *)
 let test_stylesheet_pp () =
   let decl = background_color (Hex { hash = true; value = "ff0000" }) in
@@ -289,7 +433,7 @@ let test_stylesheet_pp () =
 
   let sheet = stylesheet [ Rule r; Media m; Property prop ] in
 
-  let output = Css.Pp.to_string Css.Stylesheet.pp ~minify:true sheet in
+  let output = Css.Stylesheet.pp ~minify:true sheet in
   Alcotest.(check bool)
     "stylesheet contains rule" true
     (String.contains output '.');
@@ -786,6 +930,11 @@ let stylesheet_tests =
     ("supports nested creation", `Quick, test_supports_nested_creation);
     ("property rule creation", `Quick, test_property_rule_creation);
     ("layer rule creation", `Quick, test_layer_rule_creation);
+    ("construct rule helper", `Quick, test_construct_rule_helper);
+    ("stylesheet helper", `Quick, test_stylesheet_helper);
+    ("rule parsing", `Quick, test_rule_parsing);
+    ("media parsing", `Quick, test_media_parsing);
+    ("supports parsing", `Quick, test_supports_parsing);
     ("empty stylesheet", `Quick, test_empty_stylesheet);
     ("stylesheet construction", `Quick, test_stylesheet_construction);
     ("stylesheet items conversion", `Quick, test_stylesheet_items_conversion);
@@ -795,8 +944,19 @@ let stylesheet_tests =
     ("rule roundtrip", `Quick, test_rule_roundtrip);
     ("media roundtrip", `Quick, test_media_roundtrip);
     ("property roundtrip", `Quick, test_property_roundtrip);
+    ("property permutations", `Quick, test_property_permutations);
+    ("property missing descriptors", `Quick, test_property_missing_descriptors);
+    ("property invalid inherits", `Quick, test_property_invalid_inherits);
+    ("property unknown descriptor", `Quick, test_property_unknown_descriptor);
+    ( "property duplicate descriptors",
+      `Quick,
+      test_property_duplicate_descriptors );
+    ("property comments/whitespace", `Quick, test_property_comments_whitespace);
     ("supports roundtrip", `Quick, test_supports_roundtrip);
     ("layer pp", `Quick, test_layer_pp);
+    ("keyframes roundtrip", `Quick, test_keyframes_roundtrip);
+    ("font-face roundtrip", `Quick, test_font_face_roundtrip);
+    ("page roundtrip", `Quick, test_page_roundtrip);
     ("stylesheet pp", `Quick, test_stylesheet_pp);
     (* New CSS/MDN spec compliance tests *)
     ("charset", `Quick, test_stylesheet_charset);
@@ -825,4 +985,4 @@ let stylesheet_tests =
     ("of_string negative", `Quick, test_of_string_negative);
   ]
 
-let suite = [ ("stylesheet", stylesheet_tests) ]
+let suite = ("stylesheet", stylesheet_tests)

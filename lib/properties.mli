@@ -7,6 +7,7 @@ val pp_property : 'a property Pp.t
 (** [pp_property] is the pretty-printer for property names. *)
 
 val read_property : Reader.t -> any_property
+(** [read_property t] reads one property and returns an existential wrapper. *)
 
 val pp_property_value : ('a property * 'a) Pp.t
 (** [pp_property_value] is the pretty-printer for a property and its typed
@@ -15,7 +16,11 @@ val pp_property_value : ('a property * 'a) Pp.t
 val pp_shadow : shadow Pp.t
 (** [pp_shadow] is the pretty-printer for [shadow] values. *)
 
-(** Background and animation helpers moved from Css *)
+val read_shadow : Reader.t -> shadow
+(** [read_shadow t] parses a [shadow] value from [t]. *)
+
+(* Background and animation helpers moved from Css *)
+
 val url : string -> background_image
 (** [url path] builds a [background_image] URL value. *)
 
@@ -32,7 +37,7 @@ val color_stop : Values.color -> gradient_stop
 val color_position : Values.color -> Values.length -> gradient_stop
 (** [color_position c pos] is a gradient stop with color and position. *)
 
-val make_animation :
+val animation_spec :
   ?name:string ->
   ?duration:Values.duration ->
   ?timing_function:timing_function ->
@@ -43,7 +48,7 @@ val make_animation :
   ?play_state:animation_play_state ->
   unit ->
   animation
-(** [make_animation ?name ?duration ?timing_function ?delay ?iteration_count
+(** [animation_spec ?name ?duration ?timing_function ?delay ?iteration_count
      ?direction ?fill_mode ?play_state ()] constructs an [animation] record. *)
 
 (** Pretty-printers and readers for property value types. *)
@@ -357,9 +362,10 @@ val pp_transform : transform Pp.t
 (** [pp_transform] is the pretty-printer for [transform]. *)
 
 val read_transform : Reader.t -> transform
+(** [read_transform t] is the [transform] parsed from [t]. *)
 
 val read_transform_origin : Reader.t -> transform_origin
-(** [read_transform t] is the [transform] parsed from [t]. *)
+(** [read_transform_origin t] is the [transform_origin] parsed from [t]. *)
 
 val pp_transform_style : transform_style Pp.t
 (** [pp_transform_style] is the pretty-printer for [transform_style]. *)
@@ -451,15 +457,6 @@ val read_blend_modes : Reader.t -> blend_mode list
 (** [read_blend_modes t] parses a comma-separated list of [blend_mode] values.
 *)
 
-val pp_box_shadow : box_shadow Pp.t
-(** [pp_box_shadow] is the pretty-printer for [box_shadow]. *)
-
-val read_box_shadow : Reader.t -> box_shadow
-(** [read_box_shadow t] is the [box_shadow] parsed from [t]. *)
-
-val read_box_shadows : Reader.t -> box_shadow list
-(** [read_box_shadows t] parses a comma-separated list of [box_shadow]s. *)
-
 val pp_position_2d : position_2d Pp.t
 (** [pp_position_2d] pretty-prints a 2D position. Special case: [Center, Center]
     prints as "center". *)
@@ -468,17 +465,23 @@ val pp_transform_origin : transform_origin Pp.t
 (** [pp_transform_origin] pretty-prints a transform-origin value. *)
 
 val pos_left : position_2d
-(** Position helpers (shorter than direct variants) *)
+(** [pos_left] position helper for [XY (Left, Center)]. *)
 
 val pos_right : position_2d
+(** [pos_right] position helper for [XY (Right, Center)]. *)
+
 val pos_top : position_2d
+(** [pos_top] position helper for [XY (Center, Top)]. *)
+
 val pos_bottom : position_2d
+(** [pos_bottom] position helper for [XY (Center, Bottom)]. *)
 
 val origin : position_component -> position_component -> transform_origin
-(** Transform origin helpers (shorter than direct constructors) *)
+(** [origin x y] transform-origin helper for 2D positions. *)
 
 val origin3d :
   position_component -> position_component -> length -> transform_origin
+(** [origin3d x y z] transform-origin helper for 3D positions. *)
 
 val pp_text_shadow : text_shadow Pp.t
 (** [pp_text_shadow] is the pretty-printer for [text_shadow]. *)
@@ -493,7 +496,7 @@ val pp_filter : filter Pp.t
 (** [pp_filter] is the pretty-printer for [filter]. *)
 
 val read_filter_item : Reader.t -> filter
-(** [read_filter_item t] reads a single filter function *)
+(** [read_filter_item t] reads a single filter function. *)
 
 val read_filter : Reader.t -> filter
 (** [read_filter t] is the [filter] parsed from [t]. *)
@@ -785,7 +788,7 @@ val shadow :
   shadow
 (** [shadow ?inset ?h_offset ?v_offset ?blur ?spread ?color ()] is a shadow
     value with optional parameters. Defaults: inset=false, h_offset=0px,
-    v_offset=0px, blur=0px, spread=0px, color=Rgb(0,0,0) *)
+    v_offset=0px, blur=0px, spread=0px, color=Rgb(0,0,0). *)
 
 val inset_ring_shadow :
   ?h_offset:length ->
@@ -797,9 +800,6 @@ val inset_ring_shadow :
   shadow
 (** [inset_ring_shadow ~h_offset ~v_offset ~blur ~spread ~color] is an inset
     shadow with the given parameters. *)
-
-val box_shadows : shadow list -> box_shadow
-(** [box_shadows shadows] wraps a list of shadows in a [box_shadow] value. *)
 
 val background :
   ?color:color ->

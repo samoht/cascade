@@ -31,6 +31,9 @@ let var : type a.
       (String.concat "" [ "--"; name ])
       kind value
   in
+  let fallback =
+    match fallback with None -> No_fallback | Some v -> Fallback v
+  in
   let var_handle = { name; fallback; default = Some value; layer; meta } in
   (declaration, var_handle)
 
@@ -41,6 +44,15 @@ let rec vars_of_calc : type a. a calc -> any_var list = function
   | Var v -> [ V v ]
   | Num _ -> []
   | Expr (left, _, right) -> vars_of_calc left @ vars_of_calc right
+
+let vars_of_length_list (values : Values.length list) : any_var list =
+  List.concat_map
+    (fun (value : Values.length) ->
+      match value with
+      | Values.Var v -> [ V v ]
+      | Values.Calc calc -> vars_of_calc calc
+      | _ -> [])
+    values
 
 let vars_of_property : type a. a property -> a -> any_var list =
  fun prop value ->
@@ -57,8 +69,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Max_width, Calc calc -> vars_of_calc calc
   | Max_height, Var v -> [ V v ]
   | Max_height, Calc calc -> vars_of_calc calc
-  | Padding, Var v -> [ V v ]
-  | Padding, Calc calc -> vars_of_calc calc
+  | Padding, values -> vars_of_length_list values
   | Padding_top, Var v -> [ V v ]
   | Padding_top, Calc calc -> vars_of_calc calc
   | Padding_right, Var v -> [ V v ]
@@ -75,8 +86,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Padding_inline_end, Calc calc -> vars_of_calc calc
   | Padding_block, Var v -> [ V v ]
   | Padding_block, Calc calc -> vars_of_calc calc
-  | Margin, Var v -> [ V v ]
-  | Margin, Calc calc -> vars_of_calc calc
+  | Margin, values -> vars_of_length_list values
   | Margin_top, Var v -> [ V v ]
   | Margin_top, Calc calc -> vars_of_calc calc
   | Margin_right, Var v -> [ V v ]
@@ -246,16 +256,6 @@ let extract_vars_from_prop_value : type a. a property -> a -> any_var list =
   | Text_decoration_color, Var v -> [ V v ]
   | Webkit_text_decoration_color, Var v -> [ V v ]
   | Webkit_tap_highlight_color, Var v -> [ V v ]
-  | Padding, Var v -> [ V v ]
-  | Padding_left, Var v -> [ V v ]
-  | Padding_right, Var v -> [ V v ]
-  | Padding_top, Var v -> [ V v ]
-  | Padding_bottom, Var v -> [ V v ]
-  | Margin, Var v -> [ V v ]
-  | Margin_left, Var v -> [ V v ]
-  | Margin_right, Var v -> [ V v ]
-  | Margin_top, Var v -> [ V v ]
-  | Margin_bottom, Var v -> [ V v ]
   | Gap, { row_gap; column_gap } ->
       let row_vars =
         match row_gap with

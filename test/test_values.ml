@@ -26,13 +26,13 @@ let check_color = check_value "color" read_color pp_color
 let check_angle = check_value "angle" read_angle pp_angle
 let check_duration = check_value "duration" read_duration pp_duration
 let check_percentage = check_value "percentage" read_percentage pp_percentage
-let check_number = check_value "number" read_number pp_number
+let _check_number = check_value "number" read_number pp_number
 
 (* Negative check functions *)
 let check_length_fails = check_parse_fails "length" read_length
-let check_color_fails = check_parse_fails "color" read_color
-let check_angle_fails = check_parse_fails "angle" read_angle
-let check_duration_fails = check_parse_fails "duration" read_duration
+let _check_color_fails = check_parse_fails "color" read_color
+let _check_angle_fails = check_parse_fails "angle" read_angle
+let _check_duration_fails = check_parse_fails "duration" read_duration
 
 let check_calc_length =
   check_value "calc_length" (read_calc read_length) (pp_calc pp_length)
@@ -521,72 +521,68 @@ let test_calc_with_other_types () =
   check_calc_percentage ~expected:"calc(25%*3)" "calc(25% * 3)"
 
 let suite =
-  [
-    ( "values",
-      [
-        test_case "length" `Quick test_length;
-        test_case "length additional units" `Quick test_length_additional_units;
-        test_case "color" `Quick test_color;
-        test_case "angle" `Quick test_angle;
-        test_case "duration" `Quick test_duration;
-        test_case "percentage" `Quick test_percentage;
-        test_case "default units and unitless" `Quick
-          test_default_units_and_unitless;
-        test_case "calc" `Quick test_calc;
-        test_case "var() in color context" `Quick test_var_in_color;
-        test_case "var() with fallback" `Quick test_var_with_fallback;
-        test_case "var() with color keyword fallback" `Quick
-          test_var_with_color_keyword_fallback;
-        test_case "var() with rgb fallback" `Quick test_var_with_rgb_fallback;
-        test_case "var() fallback in output" `Quick test_var_fallback_in_output;
-        test_case "var() in calc with fallback" `Quick
-          test_var_in_calc_with_fallback;
-        test_case "var() in calc expressions" `Quick test_var_in_calc;
-        (* Additional value tests *)
-        test_case "var parsing and printing" `Quick
-          test_var_parsing_and_printing;
-        test_case "var default inline" `Quick test_var_default_inline;
-        test_case "float value formatting" `Quick test_float_value_formatting;
-        test_case "minified value formatting" `Quick
-          test_minified_value_formatting;
-        test_case "regular value formatting" `Quick
-          test_regular_value_formatting;
-        test_case "var with multiple fallbacks" `Quick
-          test_var_with_multiple_fallbacks;
-        test_case "calc with other types" `Quick test_calc_with_other_types;
-        test_case "oklch printing" `Quick test_color_oklch_printing;
-        test_case "color-mix printing" `Quick test_color_mix_printing;
-        test_case "var in calc other types" `Quick test_var_in_calc_other_types;
-        test_case "number var printing" `Quick test_number_var_printing;
-        test_case "nested var() fallbacks roundtrip" `Quick
-          test_nested_var_fallbacks_roundtrip;
-        (* Negative parses using option to avoid brittle exceptions *)
-        test_case "negative values" `Quick (fun () ->
-            let open Css.Reader in
-            (* Invalid length unit *)
-            let r = of_string "10pp" in
-            check bool "invalid length" true
-              (Option.is_none (Css.Reader.option Css.Values.read_length r));
-            (* Angle without unit *)
-            let r = of_string "90" in
-            check bool "invalid angle" true
-              (Option.is_none (Css.Reader.option Css.Values.read_angle r));
-            (* Invalid duration unit *)
-            let r = of_string "10xs" in
-            check bool "invalid duration" true
-              (Option.is_none (Css.Reader.option Css.Values.read_duration r));
-            (* Percentage missing % sign *)
-            let r = of_string "10" in
-            check bool "invalid percentage" true
-              (Option.is_none (Css.Reader.option Css.Values.read_percentage r));
-            (* Non-negative length contexts *)
-            let r = of_string "-5px" in
-            check bool "non-negative length rejected" true
-              (Option.is_none
-                 (Css.Reader.option Css.Values.read_non_negative_length r));
-            (* Unknown color keyword *)
-            let r = of_string "notacolor" in
-            check bool "invalid color keyword" true
-              (Option.is_none (Css.Reader.option Css.Values.read_color r)));
-      ] );
-  ]
+  ( "values",
+    [
+      test_case "length" `Quick test_length;
+      test_case "length additional units" `Quick test_length_additional_units;
+      test_case "color" `Quick test_color;
+      test_case "angle" `Quick test_angle;
+      test_case "duration" `Quick test_duration;
+      test_case "percentage" `Quick test_percentage;
+      test_case "default units and unitless" `Quick
+        test_default_units_and_unitless;
+      test_case "calc" `Quick test_calc;
+      test_case "var() in color context" `Quick test_var_in_color;
+      test_case "var() with fallback" `Quick test_var_with_fallback;
+      test_case "var() with color keyword fallback" `Quick
+        test_var_with_color_keyword_fallback;
+      test_case "var() with rgb fallback" `Quick test_var_with_rgb_fallback;
+      test_case "var() fallback in output" `Quick test_var_fallback_in_output;
+      test_case "var() in calc with fallback" `Quick
+        test_var_in_calc_with_fallback;
+      test_case "var() in calc expressions" `Quick test_var_in_calc;
+      (* Additional value tests *)
+      test_case "var parsing and printing" `Quick test_var_parsing_and_printing;
+      test_case "var default inline" `Quick test_var_default_inline;
+      test_case "float value formatting" `Quick test_float_value_formatting;
+      test_case "minified value formatting" `Quick
+        test_minified_value_formatting;
+      test_case "regular value formatting" `Quick test_regular_value_formatting;
+      test_case "var with multiple fallbacks" `Quick
+        test_var_with_multiple_fallbacks;
+      test_case "calc with other types" `Quick test_calc_with_other_types;
+      test_case "oklch printing" `Quick test_color_oklch_printing;
+      test_case "color-mix printing" `Quick test_color_mix_printing;
+      test_case "var in calc other types" `Quick test_var_in_calc_other_types;
+      test_case "number var printing" `Quick test_number_var_printing;
+      test_case "nested var() fallbacks roundtrip" `Quick
+        test_nested_var_fallbacks_roundtrip;
+      (* Negative parses using option to avoid brittle exceptions *)
+      test_case "negative values" `Quick (fun () ->
+          let open Css.Reader in
+          (* Invalid length unit *)
+          let r = of_string "10pp" in
+          check bool "invalid length" true
+            (Option.is_none (Css.Reader.option Css.Values.read_length r));
+          (* Angle without unit *)
+          let r = of_string "90" in
+          check bool "invalid angle" true
+            (Option.is_none (Css.Reader.option Css.Values.read_angle r));
+          (* Invalid duration unit *)
+          let r = of_string "10xs" in
+          check bool "invalid duration" true
+            (Option.is_none (Css.Reader.option Css.Values.read_duration r));
+          (* Percentage missing % sign *)
+          let r = of_string "10" in
+          check bool "invalid percentage" true
+            (Option.is_none (Css.Reader.option Css.Values.read_percentage r));
+          (* Non-negative length contexts *)
+          let r = of_string "-5px" in
+          check bool "non-negative length rejected" true
+            (Option.is_none
+               (Css.Reader.option Css.Values.read_non_negative_length r));
+          (* Unknown color keyword *)
+          let r = of_string "notacolor" in
+          check bool "invalid color keyword" true
+            (Option.is_none (Css.Reader.option Css.Values.read_color r)));
+    ] )

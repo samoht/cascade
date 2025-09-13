@@ -4,7 +4,7 @@ open Alcotest
 open Css.Reader
 
 (* Helper to create parse_error for test expectations *)
-let make_parse_error ?(got = None) ?(filename = "<string>") message reader =
+let parse_error_expected ?(got = None) ?(filename = "<string>") message reader =
   let context_window, marker_pos = context_window reader in
   Parse_error
     {
@@ -171,7 +171,7 @@ let test_reader_expect () =
   (* Failure case *)
   let r = of_string "test" in
   check_raises "expect wrong char"
-    (make_parse_error "Expected 'x' but got 't'" r) (fun () -> expect 'x' r)
+    (parse_error_expected "Expected 'x' but got 't'" r) (fun () -> expect 'x' r)
 
 (* Test expect_string *)
 let test_reader_expect_string () =
@@ -182,8 +182,9 @@ let test_reader_expect_string () =
 
   (* Failure *)
   let r = of_string "hello" in
-  check_raises "expect wrong string" (make_parse_error "expected \"world\"" r)
-    (fun () -> expect_string "world" r)
+  check_raises "expect wrong string"
+    (parse_error_expected "expected \"world\"" r) (fun () ->
+      expect_string "world" r)
 
 (* Test between delimiters *)
 let test_reader_between () =
@@ -409,13 +410,13 @@ let test_reader_ident_with_escapes () =
 let test_reader_failures () =
   (* EOF in string *)
   let r = of_string "\"unclosed" in
-  check_raises "unclosed string" (make_parse_error "unclosed string" r)
+  check_raises "unclosed string" (parse_error_expected "unclosed string" r)
     (fun () -> ignore (string r));
 
   (* Invalid number *)
   let r = of_string "abc" in
-  check_raises "not a number" (make_parse_error "invalid number" r) (fun () ->
-      ignore (number r))
+  check_raises "not a number" (parse_error_expected "invalid number" r)
+    (fun () -> ignore (number r))
 
 (* Test option helper *)
 let test_option () =
@@ -486,13 +487,13 @@ let test_take () =
   (* Too many values should fail *)
   let r = of_string "1 2 3 4 5" in
   check_raises "too many values"
-    (make_parse_error "too many values (maximum 4 allowed)" r) (fun () ->
+    (parse_error_expected "too many values (maximum 4 allowed)" r) (fun () ->
       ignore (take 4 number r));
 
   (* Empty input should fail *)
   let r = of_string "" in
-  check_raises "empty input" (make_parse_error "invalid number" r) (fun () ->
-      ignore (take 2 number r));
+  check_raises "empty input" (parse_error_expected "invalid number" r)
+    (fun () -> ignore (take 2 number r));
 
   (* Parse stops at non-matching content *)
   let r = of_string "1 2 abc 3" in
@@ -557,7 +558,7 @@ let test_one_of () =
   (* No match - should raise with descriptive error *)
   let r = of_string "yellow" in
   check_raises "no match"
-    (make_parse_error ~got:(Some "yellow")
+    (parse_error_expected ~got:(Some "yellow")
        "expected one of: number, green, blue, red" r) (fun () ->
       ignore (one_of parsers r))
 
@@ -579,7 +580,7 @@ let test_reader_enum () =
   (* Test enum with unknown value should fail *)
   let r = of_string "unknown" in
   check_raises "enum unknown"
-    (make_parse_error
+    (parse_error_expected
        "font-weight: expected one of: normal, bold, lighter, got: unknown" r)
     (fun () ->
       let _ =
@@ -694,7 +695,7 @@ let test_with_context_exception () =
   (try
      with_context r "test_context" (fun () -> failwith "test exception")
      |> ignore
-   with _ -> ());
+   with Failure _ -> ());
 
   Alcotest.(check (list string))
     "context cleaned up after exception" [] (callstack r)

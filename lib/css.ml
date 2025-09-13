@@ -10,7 +10,6 @@ module Selector = Selector
 module Stylesheet = Stylesheet
 module Variables = Variables
 module Optimize = Optimize
-module Render = Render
 
 (* CSS Parsing *)
 type parse_error = Reader.parse_error
@@ -29,4 +28,22 @@ include Properties
 include Stylesheet
 include Variables
 include Optimize
-include Render
+
+(* Wrapper functions that handle optimization *)
+let to_string ?(minify = false) ?(optimize = false) ?(mode = Variables)
+    ?(newline = true) stylesheet =
+  let stylesheet =
+    if optimize then Optimize.optimize stylesheet else stylesheet
+  in
+  Stylesheet.to_string ~minify ~mode ~newline stylesheet
+
+let pp ?minify ?optimize ?mode ?newline stylesheet =
+  to_string ?minify ?optimize ?mode ?newline stylesheet
+
+let inline_style_of_declarations ?(optimize = false) ?minify ?mode ?newline
+    declarations =
+  let declarations =
+    if optimize then Optimize.deduplicate_declarations declarations
+    else declarations
+  in
+  Stylesheet.inline_style_of_declarations ?minify ?mode ?newline declarations

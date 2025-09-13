@@ -7,7 +7,13 @@ include module type of Values_intf
 
 val var_ref :
   ?fallback:'a -> ?default:'a -> ?layer:string -> ?meta:meta -> string -> 'a var
-(** Create a CSS variable reference *)
+(** [var_ref ?fallback ?default ?layer ?meta name] creates a CSS variable
+    reference to [--name]. *)
+
+val var_ref_empty :
+  ?default:'a -> ?layer:string -> ?meta:meta -> string -> 'a var
+(** [var_ref_empty ?default ?layer ?meta name] creates a CSS variable reference
+    with an empty fallback, i.e. [var(--name,)]. *)
 
 (** {1 Constructor Functions} *)
 
@@ -73,44 +79,45 @@ val color_mix :
 (** {1 Pretty-printing Functions} *)
 
 val pp_length : length Pp.t
-(** Pretty-printer for {!length}. *)
+(** [pp_length] pretty-prints {!length} values. *)
 
 val pp_color : color Pp.t
-(** Pretty-printer for {!color}. *)
+(** [pp_color] pretty-prints {!color} values. *)
 
 val pp_angle : angle Pp.t
-(** Pretty-printer for {!angle}. *)
+(** [pp_angle] pretty-prints {!angle} values. *)
 
 val pp_duration : duration Pp.t
-(** Pretty-printer for {!duration}. *)
+(** [pp_duration] pretty-prints {!duration} values. *)
 
 val pp_number : number Pp.t
-(** Pretty-printer for {!number}. *)
+(** [pp_number] pretty-prints {!number} values. *)
 
 val pp_percentage : percentage Pp.t
-(** Pretty-printer for {!percentage}. *)
+(** [pp_percentage] pretty-prints {!percentage} values. *)
 
 val pp_calc : 'a Pp.t -> 'a calc Pp.t
-(** Pretty-printer for calc expressions. *)
+(** [pp_calc pp] pretty-prints [calc] expressions using [pp] for leaf values. *)
 
 val pp_color_name : color_name Pp.t
-(** Pretty-printer for {!color_name}. *)
+(** [pp_color_name] pretty-prints {!color_name} values. *)
 
 val pp_color_space : color_space Pp.t
-(** Pretty-printer for {!color_space}. *)
+(** [pp_color_space] pretty-prints {!color_space} values. *)
 
 (** {2 Helper Functions} *)
 
 val pp_var : 'a Pp.t -> 'a var Pp.t
-(** Pretty-printer for CSS variables. *)
+(** [pp_var pp] pretty-prints CSS variables using [pp] for the payload. *)
 
 val read_var : (Reader.t -> 'a) -> Reader.t -> 'a var
-(** Parse a CSS variable with var(...) syntax. Expects to be positioned at
-    'var(' and parses the full expression. *)
+(** [read_var read t] parses a CSS variable with [var(...)] syntax using [read]
+    for the payload. Expects to be positioned at [var(] and parses the full
+    expression. *)
 
 val read_var_after_ident : (Reader.t -> 'a) -> Reader.t -> 'a var
-(** Parse a CSS variable with var(...) syntax after 'var' has been consumed.
-    Used in enum_or_calls ~calls. *)
+(** [read_var_after_ident read t] parses a CSS variable after the [var]
+    identifier has been consumed. Used in [enum_or_calls ~calls]. *)
 
 (** {1 Calc Module} *)
 module Calc : sig
@@ -135,36 +142,43 @@ end
 (** {1 Parsing Functions} *)
 
 val read_length : Reader.t -> length
+(** [read_length t] parses a CSS length. *)
 
 val read_non_negative_length : Reader.t -> length
 (** [read_non_negative_length reader] parses a length value that must be
     non-negative. Used for padding properties which cannot have negative values
     per CSS specification. *)
 
-val read_margin_shorthand : Reader.t -> length
+val read_padding_shorthand : Reader.t -> length list
+(** [read_padding_shorthand reader] parses a padding shorthand property
+    accepting 1-4 space-separated non-negative length values according to CSS
+    specification. *)
+
+val read_margin_shorthand : Reader.t -> length list
 (** [read_margin_shorthand reader] parses a margin shorthand property accepting
     1-4 space-separated length values according to CSS specification. *)
 
 val read_color : Reader.t -> color
-(** Parse a CSS color (hex, rgb/rgba, keywords, etc.). *)
+(** [read_color t] parses a CSS color (hex, rgb/rgba, keywords, etc.). *)
 
 val read_angle : Reader.t -> angle
-(** Parse a CSS angle. *)
+(** [read_angle t] parses a CSS angle. *)
 
 val read_duration : Reader.t -> duration
-(** Parse a CSS duration. *)
+(** [read_duration t] parses a CSS duration. *)
 
 val read_dimension : Reader.t -> float * string
-(** Parse a dimension (number + unit). Returns (value, unit). *)
+(** [read_dimension t] parses a dimension (number + unit) returning
+    [(value, unit)]. *)
 
 val read_number : Reader.t -> number
-(** Parse a CSS number (int/float). *)
+(** [read_number t] parses a CSS number (int/float). *)
 
 val read_percentage : Reader.t -> percentage
-(** Parse a CSS percentage. *)
+(** [read_percentage t] parses a CSS percentage. *)
 
 val read_calc : (Reader.t -> 'a) -> Reader.t -> 'a calc
-(** Parse a calc() expression or a promotable value. *)
+(** [read_calc read t] parses a [calc(...)] expression or a promotable value. *)
 
 val var_name : 'a var -> string
 (** [var_name v] is [v]'s variable name (without --). *)

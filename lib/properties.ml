@@ -287,7 +287,7 @@ let read_cursor t : cursor =
     ]
     t
 
-let read_box_shadow_component t =
+let read_shadow_component t =
   Reader.one_of
     [
       (fun t ->
@@ -298,7 +298,7 @@ let read_box_shadow_component t =
     ]
     t
 
-let read_box_shadow_lengths lengths =
+let read_shadow_lengths lengths =
   match lengths with
   | h_offset :: v_offset :: rest ->
       let blur, spread =
@@ -311,15 +311,15 @@ let read_box_shadow_lengths lengths =
   | _ -> None
 
 (* Helper type for accumulating box shadow components *)
-type box_shadow_accumulator = {
+type shadow_accumulator = {
   inset : bool;
   lengths : length list;
   color : color option;
 }
 
-let fold_box_shadow_components components =
+let fold_shadow_components components =
   List.fold_left
-    (fun (acc : box_shadow_accumulator) comp ->
+    (fun (acc : shadow_accumulator) comp ->
       match comp with
       | `Inset -> { acc with inset = true }
       | `Color c ->
@@ -328,11 +328,11 @@ let fold_box_shadow_components components =
     { inset = false; lengths = []; color = None }
     components
 
-let read_box_shadow_custom t =
-  let components, _ = Reader.many read_box_shadow_component t in
-  let parts = fold_box_shadow_components components in
+let read_shadow_custom t =
+  let components, _ = Reader.many read_shadow_component t in
+  let parts = fold_shadow_components components in
   let lengths = List.rev parts.lengths in
-  match read_box_shadow_lengths lengths with
+  match read_shadow_lengths lengths with
   | Some (h_offset, v_offset, blur, spread) ->
       Shadow
         {
@@ -343,18 +343,22 @@ let read_box_shadow_custom t =
           spread;
           color = parts.color;
         }
-  | None -> err_invalid_value t "box-shadow" "at least two lengths are required"
+  | None -> err_invalid_value t "shadow" "at least two lengths are required"
 
-let rec read_box_shadow t : box_shadow =
-  let read_var t : box_shadow = Var (read_var read_box_shadow t) in
+let rec read_shadow t : shadow =
+  let read_var t : shadow = Var (read_var read_shadow t) in
   Reader.ws t;
-  Reader.enum_or_calls "box-shadow"
-    [ ("none", None); ("inherit", Inherit) ]
+  Reader.enum_or_calls "shadow"
+    [
+      ("none", None);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
     ~calls:[ ("var", read_var) ]
-    ~default:read_box_shadow_custom t
-
-let read_box_shadows t : box_shadow list =
-  Reader.list ~sep:Reader.comma ~at_least:1 read_box_shadow t
+    ~default:read_shadow_custom t
 
 (* Named helpers for transform function bodies to keep the call table tidy *)
 let read_translate_x t =
@@ -539,12 +543,14 @@ let pp_shadow_parts ctx ~inset h v blur spread color =
 
 let rec pp_shadow : shadow Pp.t =
  fun ctx -> function
-  | Simple (h, v, blur, spread, color) ->
-      pp_shadow_parts ctx ~inset:false h v blur spread color
-  | Inset (h, v, blur, spread, color) ->
-      pp_shadow_parts ctx ~inset:true h v blur spread color
+  | Shadow { inset; h_offset; v_offset; blur; spread; color } ->
+      pp_shadow_parts ctx ~inset h_offset v_offset blur spread color
   | None -> Pp.string ctx "none"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_shadow ctx v
 
 let pp_gradient_direction : gradient_direction Pp.t =
@@ -1447,42 +1453,6 @@ let rec pp_blend_mode : blend_mode Pp.t =
   | Luminosity -> Pp.string ctx "luminosity"
   | Var v -> pp_var pp_blend_mode ctx v
 
-let rec pp_box_shadow : box_shadow Pp.t =
- fun ctx -> function
-  | None -> Pp.string ctx "none"
-  | Shadow { inset; h_offset; v_offset; blur; spread; color } -> (
-      (* Special case: box-shadow: 0 0 is equivalent to none when minifying *)
-      match (ctx.minify, inset, h_offset, v_offset, blur, spread, color) with
-      | true, false, Zero, Zero, None, None, None -> Pp.string ctx "none"
-      | _ -> (
-          if inset then (
-            Pp.string ctx "inset";
-            Pp.space ctx ());
-          pp_length ctx h_offset;
-          Pp.space ctx ();
-          pp_length ctx v_offset;
-          (match blur with
-          | Some b ->
-              Pp.space ctx ();
-              pp_length ctx b
-          | None -> ());
-          (match spread with
-          | Some s ->
-              Pp.space ctx ();
-              pp_length ctx s
-          | None -> ());
-          match color with
-          | Some c ->
-              Pp.space ctx ();
-              pp_color ctx c
-          | None -> ()))
-  | Inherit -> Pp.string ctx "inherit"
-  | Initial -> Pp.string ctx "initial"
-  | Unset -> Pp.string ctx "unset"
-  | Revert -> Pp.string ctx "revert"
-  | Revert_layer -> Pp.string ctx "revert-layer"
-  | Var v -> pp_var pp_box_shadow ctx v
-
 let pp_text_shadow : text_shadow Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
@@ -1567,61 +1537,37 @@ let pp_background_size : background_size Pp.t =
       pp_length ctx h
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_background : background Pp.t =
- fun ctx bg ->
-  let first = ref true in
-  let maybe_space () = if !first then first := false else Pp.space ctx () in
-  (* Add image if present *)
-  (match bg.image with
-  | Some img ->
+let pp_bg_prop maybe_space pp_func ctx = function
+  | Some value ->
       maybe_space ();
-      pp_background_image ctx img
-  | None -> ());
-  (* Add position if present *)
-  (match bg.position with
-  | Some pos ->
-      maybe_space ();
-      pp_position_2d ctx pos
-  | None -> ());
-  (* Add size if present (must follow position with /) *)
-  (match bg.size with
+      pp_func ctx value
+  | None -> ()
+
+let pp_bg_size_with_position maybe_space bg ctx =
+  match bg.size with
   | Some size when bg.position <> None ->
       Pp.string ctx "/";
       pp_background_size ctx size
   | Some size ->
       maybe_space ();
       pp_background_size ctx size
-  | None -> ());
-  (* Add repeat if present *)
-  (match bg.repeat with
-  | Some rep ->
-      maybe_space ();
-      pp_background_repeat ctx rep
-  | None -> ());
-  (* Add attachment if present *)
-  (match bg.attachment with
-  | Some att ->
-      maybe_space ();
-      pp_background_attachment ctx att
-  | None -> ());
-  (* Add origin if present *)
-  (match bg.origin with
-  | Some orig ->
-      maybe_space ();
-      pp_background_box ctx orig
-  | None -> ());
-  (* Add clip if present *)
-  (match bg.clip with
-  | Some cl ->
-      maybe_space ();
-      pp_background_box ctx cl
-  | None -> ());
-  (* Add color last *)
-  (match bg.color with
-  | Some c ->
-      maybe_space ();
-      pp_color ctx c
-  | None -> ());
+  | None -> ()
+
+let pp_background : background Pp.t =
+ fun ctx bg ->
+  let first = ref true in
+  let maybe_space () = if !first then first := false else Pp.space ctx () in
+
+  (* Add all properties in order *)
+  pp_bg_prop maybe_space pp_background_image ctx bg.image;
+  pp_bg_prop maybe_space pp_position_2d ctx bg.position;
+  pp_bg_size_with_position maybe_space bg ctx;
+  pp_bg_prop maybe_space pp_background_repeat ctx bg.repeat;
+  pp_bg_prop maybe_space pp_background_attachment ctx bg.attachment;
+  pp_bg_prop maybe_space pp_background_box ctx bg.origin;
+  pp_bg_prop maybe_space pp_background_box ctx bg.clip;
+  pp_bg_prop maybe_space pp_color ctx bg.color;
+
   (* If nothing was set, output 'none' *)
   if !first then Pp.string ctx "none"
 
@@ -1920,7 +1866,7 @@ let pp_object_fit : object_fit Pp.t =
 let pp_font_stretch : font_stretch Pp.t =
  fun ctx -> function
   | Pct f ->
-      Pp.float ctx f;
+      Pp.float ctx (f *. 100.);
       Pp.char ctx '%'
   | Ultra_condensed -> Pp.string ctx "ultra-condensed"
   | Extra_condensed -> Pp.string ctx "extra-condensed"
@@ -1960,17 +1906,17 @@ and pp_font_variant_numeric : font_variant_numeric Pp.t =
         numeric_spacing;
         numeric_fraction;
       } ->
-      let tokens =
-        [
-          ordinal;
-          slashed_zero;
-          numeric_figure;
-          numeric_spacing;
-          numeric_fraction;
-        ]
-        |> List.filter_map (fun x -> x)
+      (* Print all 5 variables, including None values The Empty fallback in vars
+         will produce var(--name,) *)
+      let pp_opt_token = function
+        | Some token -> pp_font_variant_numeric_token ctx token
+        | None -> ()
       in
-      Pp.list ~sep:Pp.space pp_font_variant_numeric_token ctx tokens
+      pp_opt_token ordinal;
+      pp_opt_token slashed_zero;
+      pp_opt_token numeric_figure;
+      pp_opt_token numeric_spacing;
+      pp_opt_token numeric_fraction
 
 let pp_text_size_adjust : text_size_adjust Pp.t =
  fun ctx -> function
@@ -2405,7 +2351,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_right_style -> pp pp_border_style
   | Border_bottom_style -> pp pp_border_style
   | Border_left_style -> pp pp_border_style
-  | Padding -> pp pp_length
+  | Padding -> pp (Pp.list ~sep:Pp.space pp_length)
   | Padding_left -> pp pp_length
   | Padding_right -> pp pp_length
   | Padding_bottom -> pp pp_length
@@ -2414,7 +2360,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Padding_inline_start -> pp pp_length
   | Padding_inline_end -> pp pp_length
   | Padding_block -> pp pp_length
-  | Margin -> pp pp_length
+  | Margin -> pp (Pp.list ~sep:Pp.space pp_length)
   | Margin_inline_end -> pp pp_length
   | Margin_left -> pp pp_length
   | Margin_right -> pp pp_length
@@ -2567,7 +2513,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Aspect_ratio -> pp pp_aspect_ratio
   | Content -> pp pp_content
   | Quotes -> pp Pp.string
-  | Box_shadow -> pp (Pp.list ~sep:Pp.comma pp_box_shadow)
+  | Box_shadow -> pp (Pp.list ~sep:Pp.comma pp_shadow)
   | Fill -> pp pp_svg_paint
   | Stroke -> pp pp_svg_paint
   | Stroke_width -> pp pp_length
@@ -2953,56 +2899,54 @@ let read_grid_track_breadth t : grid_track_breadth =
         | "vh" -> Vh n
         | "vmin" -> Vmin n
         | "vmax" -> Vmax n
-        | _ -> failwith ("unsupported grid track breadth unit: " ^ unit));
+        | _ ->
+            Reader.err_invalid t ("unsupported grid track breadth unit: " ^ unit));
     ]
     t
 
+let read_grid_min_breadth_keywords t =
+  Reader.enum "min-breadth"
+    [
+      ("auto", (Auto : grid_track_breadth));
+      ("min-content", (Min_content : grid_track_breadth));
+      ("max-content", (Max_content : grid_track_breadth));
+    ]
+    t
+
+let read_grid_min_breadth_length t =
+  let n, unit = Reader.number_with_unit t in
+  match unit with
+  | "" ->
+      if n = 0.0 then Zero
+      else Reader.err_invalid t "unitless non-zero values not allowed"
+  | "px" -> Px n
+  | "rem" -> Rem n
+  | "em" -> Em n
+  | "%" -> Pct n
+  | "vw" -> Vw n
+  | "vh" -> Vh n
+  | "vmin" -> Vmin n
+  | "vmax" -> Vmax n
+  | _ -> Reader.err_invalid t ("unsupported min breadth unit: " ^ unit)
+
+let read_grid_min_breadth t =
+  Reader.one_of
+    [ read_grid_min_breadth_keywords; read_grid_min_breadth_length ]
+    t
+
+let read_grid_fit_content t =
+  Reader.call "fit-content" t (fun t -> Fit_content (read_length t))
+
+let read_grid_minmax t =
+  Reader.call "minmax" t (fun t ->
+      (* Per CSS spec: min cannot be flex, max can be flex *)
+      let a, b =
+        Reader.pair ~sep:Reader.comma read_grid_min_breadth
+          read_grid_track_breadth t
+      in
+      Min_max (a, b))
+
 let rec read_grid_track_size t : grid_track_size =
-  let read_fit_content t =
-    Reader.call "fit-content" t (fun t -> Fit_content (read_length t))
-  in
-  let read_minmax t =
-    Reader.call "minmax" t (fun t ->
-        (* Per CSS spec: min cannot be flex, max can be flex *)
-        let read_min_breadth t =
-          Reader.one_of
-            [
-              (* Keywords *)
-              (fun t ->
-                Reader.enum "min-breadth"
-                  [
-                    ("auto", (Auto : grid_track_breadth));
-                    ("min-content", (Min_content : grid_track_breadth));
-                    ("max-content", (Max_content : grid_track_breadth));
-                  ]
-                  t);
-              (* Length only for min *)
-              (fun t ->
-                let n, unit = Reader.number_with_unit t in
-                match unit with
-                | "" ->
-                    if n = 0.0 then Zero
-                    else
-                      Reader.err_invalid t
-                        "unitless non-zero values not allowed"
-                | "px" -> Px n
-                | "rem" -> Rem n
-                | "em" -> Em n
-                | "%" -> Pct n
-                | "vw" -> Vw n
-                | "vh" -> Vh n
-                | "vmin" -> Vmin n
-                | "vmax" -> Vmax n
-                | _ -> failwith ("unsupported min breadth unit: " ^ unit));
-            ]
-            t
-        in
-        let a, b =
-          Reader.pair ~sep:Reader.comma read_min_breadth read_grid_track_breadth
-            t
-        in
-        Min_max (a, b))
-  in
   let read_repeat t =
     Reader.call "repeat" t (fun t ->
         let count, sizes =
@@ -3013,7 +2957,9 @@ let rec read_grid_track_size t : grid_track_size =
         (Repeat (count, sizes) : grid_track_size))
   in
   let read_default t = Track_size (read_grid_track_breadth t) in
-  Reader.one_of [ read_fit_content; read_minmax; read_repeat; read_default ] t
+  Reader.one_of
+    [ read_grid_fit_content; read_grid_minmax; read_repeat; read_default ]
+    t
 
 let read_grid_template t : grid_template =
   Reader.enum "grid-template"
@@ -3365,10 +3311,7 @@ let read_scroll_snap_type t : scroll_snap_type =
         | "block" -> Block
         | "inline" -> Inline
         | "both" -> Both
-        | _ ->
-            raise
-              (Invalid_argument
-                 (Printf.sprintf "Invalid scroll-snap-axis: %s" v))
+        | _ -> Reader.err_invalid t ("invalid scroll-snap-axis: " ^ v)
       in
       Reader.ws t;
       let strictness =
@@ -3575,105 +3518,118 @@ let read_outline_style t : outline_style =
     ]
     t
 
+let font_family_generic_css =
+  [
+    ("sans-serif", Sans_serif);
+    ("serif", Serif);
+    ("monospace", Monospace);
+    ("cursive", Cursive);
+    ("fantasy", Fantasy);
+    ("system-ui", System_ui);
+    ("ui-sans-serif", Ui_sans_serif);
+    ("ui-serif", Ui_serif);
+    ("ui-monospace", Ui_monospace);
+    ("ui-rounded", Ui_rounded);
+    ("emoji", Emoji);
+    ("math", Math);
+    ("fangsong", Fangsong);
+  ]
+
+let font_family_css_keywords : (string * font_family) list =
+  [ ("inherit", Inherit); ("initial", Initial); ("unset", Unset) ]
+
+let font_family_popular_web =
+  [
+    ("inter", Inter);
+    ("roboto", Roboto);
+    ("open-sans", Open_sans);
+    ("lato", Lato);
+    ("montserrat", Montserrat);
+    ("poppins", Poppins);
+    ("source-sans-pro", Source_sans_pro);
+    ("raleway", Raleway);
+    ("oswald", Oswald);
+    ("noto-sans", Noto_sans);
+    ("ubuntu", Ubuntu);
+    ("playfair-display", Playfair_display);
+    ("merriweather", Merriweather);
+    ("lora", Lora);
+    ("pt-sans", PT_sans);
+    ("pt-serif", PT_serif);
+    ("nunito", Nunito);
+    ("nunito-sans", Nunito_sans);
+    ("work-sans", Work_sans);
+    ("rubik", Rubik);
+    ("fira-sans", Fira_sans);
+    ("fira-code", Fira_code);
+    ("jetbrains-mono", JetBrains_mono);
+    ("ibm-plex-sans", IBM_plex_sans);
+    ("ibm-plex-serif", IBM_plex_serif);
+    ("ibm-plex-mono", IBM_plex_mono);
+    ("source-code-pro", Source_code_pro);
+    ("space-mono", Space_mono);
+    ("dm-sans", DM_sans);
+    ("dm-serif-display", DM_serif_display);
+    ("bebas-neue", Bebas_neue);
+    ("barlow", Barlow);
+    ("mulish", Mulish);
+    ("josefin-sans", Josefin_sans);
+  ]
+
+let font_family_platform =
+  [
+    ("helvetica", Helvetica);
+    ("helvetica-neue", Helvetica_neue);
+    ("arial", Arial);
+    ("verdana", Verdana);
+    ("tahoma", Tahoma);
+    ("trebuchet-ms", Trebuchet_ms);
+    ("times-new-roman", Times_new_roman);
+    ("times", Times);
+    ("georgia", Georgia);
+    ("cambria", Cambria);
+    ("garamond", Garamond);
+    ("courier-new", Courier_new);
+    ("courier", Courier);
+    ("lucida-console", Lucida_console);
+    ("sf-pro", SF_pro);
+    ("sf-pro-display", SF_pro_display);
+    ("sf-pro-text", SF_pro_text);
+    ("sf-mono", SF_mono);
+    ("ny", NY);
+    ("segoe-ui", Segoe_ui);
+    ("segoe-ui-emoji", Segoe_ui_emoji);
+    ("segoe-ui-symbol", Segoe_ui_symbol);
+    ("apple-color-emoji", Apple_color_emoji);
+    ("noto-color-emoji", Noto_color_emoji);
+    ("android-emoji", Android_emoji);
+    ("twemoji-mozilla", Twemoji_mozilla);
+  ]
+
+let font_family_developer =
+  [
+    ("menlo", Menlo);
+    ("monaco", Monaco);
+    ("consolas", Consolas);
+    ("liberation-mono", Liberation_mono);
+    ("sfmono-regular", SFMono_regular);
+    ("cascadia-code", Cascadia_code);
+    ("cascadia-mono", Cascadia_mono);
+    ("victor-mono", Victor_mono);
+    ("inconsolata", Inconsolata);
+    ("hack", Hack);
+  ]
+
+let font_family_all_enums : (string * font_family) list =
+  font_family_generic_css @ font_family_css_keywords @ font_family_popular_web
+  @ font_family_platform @ font_family_developer
+
 let rec read_font_family t : font_family =
   let read_var t : font_family =
     let v = read_var (Reader.list ~sep:Reader.comma read_font_family) t in
     Var v
   in
-  Reader.enum_or_calls "font-family"
-    [
-      (* Generic CSS font families *)
-      ("sans-serif", Sans_serif);
-      ("serif", Serif);
-      ("monospace", Monospace);
-      ("cursive", Cursive);
-      ("fantasy", Fantasy);
-      ("system-ui", System_ui);
-      ("ui-sans-serif", Ui_sans_serif);
-      ("ui-serif", Ui_serif);
-      ("ui-monospace", Ui_monospace);
-      ("ui-rounded", Ui_rounded);
-      ("emoji", Emoji);
-      ("math", Math);
-      ("fangsong", Fangsong);
-      (* CSS keywords *)
-      ("inherit", Inherit);
-      ("initial", Initial);
-      ("unset", Unset);
-      (* Popular web fonts *)
-      ("inter", Inter);
-      ("roboto", Roboto);
-      ("open-sans", Open_sans);
-      ("lato", Lato);
-      ("montserrat", Montserrat);
-      ("poppins", Poppins);
-      ("source-sans-pro", Source_sans_pro);
-      ("raleway", Raleway);
-      ("oswald", Oswald);
-      ("noto-sans", Noto_sans);
-      ("ubuntu", Ubuntu);
-      ("playfair-display", Playfair_display);
-      ("merriweather", Merriweather);
-      ("lora", Lora);
-      ("pt-sans", PT_sans);
-      ("pt-serif", PT_serif);
-      ("nunito", Nunito);
-      ("nunito-sans", Nunito_sans);
-      ("work-sans", Work_sans);
-      ("rubik", Rubik);
-      ("fira-sans", Fira_sans);
-      ("fira-code", Fira_code);
-      ("jetbrains-mono", JetBrains_mono);
-      ("ibm-plex-sans", IBM_plex_sans);
-      ("ibm-plex-serif", IBM_plex_serif);
-      ("ibm-plex-mono", IBM_plex_mono);
-      ("source-code-pro", Source_code_pro);
-      ("space-mono", Space_mono);
-      ("dm-sans", DM_sans);
-      ("dm-serif-display", DM_serif_display);
-      ("bebas-neue", Bebas_neue);
-      ("barlow", Barlow);
-      ("mulish", Mulish);
-      ("josefin-sans", Josefin_sans);
-      (* Platform-specific fonts *)
-      ("helvetica", Helvetica);
-      ("helvetica-neue", Helvetica_neue);
-      ("arial", Arial);
-      ("verdana", Verdana);
-      ("tahoma", Tahoma);
-      ("trebuchet-ms", Trebuchet_ms);
-      ("times-new-roman", Times_new_roman);
-      ("times", Times);
-      ("georgia", Georgia);
-      ("cambria", Cambria);
-      ("garamond", Garamond);
-      ("courier-new", Courier_new);
-      ("courier", Courier);
-      ("lucida-console", Lucida_console);
-      ("sf-pro", SF_pro);
-      ("sf-pro-display", SF_pro_display);
-      ("sf-pro-text", SF_pro_text);
-      ("sf-mono", SF_mono);
-      ("ny", NY);
-      ("segoe-ui", Segoe_ui);
-      ("segoe-ui-emoji", Segoe_ui_emoji);
-      ("segoe-ui-symbol", Segoe_ui_symbol);
-      ("apple-color-emoji", Apple_color_emoji);
-      ("noto-color-emoji", Noto_color_emoji);
-      ("android-emoji", Android_emoji);
-      ("twemoji-mozilla", Twemoji_mozilla);
-      (* Developer fonts *)
-      ("menlo", Menlo);
-      ("monaco", Monaco);
-      ("consolas", Consolas);
-      ("liberation-mono", Liberation_mono);
-      ("sfmono-regular", SFMono_regular);
-      ("cascadia-code", Cascadia_code);
-      ("cascadia-mono", Cascadia_mono);
-      ("victor-mono", Victor_mono);
-      ("inconsolata", Inconsolata);
-      ("hack", Hack);
-    ]
+  Reader.enum_or_calls "font-family" font_family_all_enums
     ~calls:[ ("var", read_var) ]
     ~default:(fun t ->
       (* Handle quoted strings and arbitrary identifiers *)
@@ -4077,13 +4033,20 @@ let read_drop_shadow t : filter =
       (* Allow var() to produce a shadow via fallback parser *)
       if Reader.looking_at t "var" then
         let read_shadow t =
-          let components, _ = Reader.many read_box_shadow_component t in
-          let parts = fold_box_shadow_components components in
+          let components, _ = Reader.many read_shadow_component t in
+          let parts = fold_shadow_components components in
           let lengths = List.rev parts.lengths in
-          match read_box_shadow_lengths lengths with
+          match read_shadow_lengths lengths with
           | Some (h, v, blur, spread) ->
-              if parts.inset then Inset (h, v, blur, spread, parts.color)
-              else Simple (h, v, blur, spread, parts.color)
+              Shadow
+                {
+                  inset = parts.inset;
+                  h_offset = h;
+                  v_offset = v;
+                  blur;
+                  spread;
+                  color = parts.color;
+                }
           | None ->
               err_invalid_value t "drop-shadow"
                 "at least two lengths are required"
@@ -4091,14 +4054,21 @@ let read_drop_shadow t : filter =
         let v = read_var read_shadow t in
         Drop_shadow (Var v)
       else
-        let components, _ = Reader.many read_box_shadow_component t in
-        let parts = fold_box_shadow_components components in
+        let components, _ = Reader.many read_shadow_component t in
+        let parts = fold_shadow_components components in
         let lengths = List.rev parts.lengths in
-        match read_box_shadow_lengths lengths with
+        match read_shadow_lengths lengths with
         | Some (h, v, blur, spread) ->
             let s =
-              if parts.inset then Inset (h, v, blur, spread, parts.color)
-              else Simple (h, v, blur, spread, parts.color)
+              Shadow
+                {
+                  inset = parts.inset;
+                  h_offset = h;
+                  v_offset = v;
+                  blur;
+                  spread;
+                  color = parts.color;
+                }
             in
             Drop_shadow s
         | None ->
@@ -4504,55 +4474,22 @@ let shadow ?(inset = false) ?(h_offset : length option)
     ?(v_offset : length option) ?(blur : length option)
     ?(spread : length option) ?(color : color option) () : shadow =
   let default_color = Rgb { r = Int 0; g = Int 0; b = Int 0 } in
-  if inset then
-    Inset
-      ( Option.value h_offset ~default:(Px 0.),
-        Option.value v_offset ~default:(Px 0.),
-        Some (Option.value blur ~default:(Px 0.)),
-        Some (Option.value spread ~default:(Px 0.)),
-        Some (Option.value color ~default:default_color) )
-  else
-    Simple
-      ( Option.value h_offset ~default:(Px 0.),
-        Option.value v_offset ~default:(Px 0.),
-        Some (Option.value blur ~default:(Px 0.)),
-        Some (Option.value spread ~default:(Px 0.)),
-        Some (Option.value color ~default:default_color) )
+  Shadow
+    {
+      inset;
+      h_offset = Option.value h_offset ~default:(Px 0.);
+      v_offset = Option.value v_offset ~default:(Px 0.);
+      blur = Some (Option.value blur ~default:(Px 0.));
+      spread = Some (Option.value spread ~default:(Px 0.));
+      color = Some (Option.value color ~default:default_color);
+    }
 
 let inset_ring_shadow ?(h_offset : length option) ?(v_offset : length option)
     ?(blur : length option) ?(spread : length option) ?(color : color option) ()
     : shadow =
   let h_offset = Option.value h_offset ~default:(Zero : length) in
   let v_offset = Option.value v_offset ~default:(Zero : length) in
-  Inset (h_offset, v_offset, blur, spread, color)
-
-let box_shadows shadows =
-  match shadows with
-  | [] -> failwith "box_shadows requires at least one shadow"
-  | [ s ] -> (
-      match s with
-      | Simple (h, v, b, s, c) ->
-          Shadow
-            {
-              inset = false;
-              h_offset = h;
-              v_offset = v;
-              blur = b;
-              spread = s;
-              color = c;
-            }
-      | Inset (h, v, b, s, c) ->
-          Shadow
-            {
-              inset = true;
-              h_offset = h;
-              v_offset = v;
-              blur = b;
-              spread = s;
-              color = c;
-            }
-      | _ -> failwith "Invalid shadow type for box_shadows")
-  | _ -> failwith "Multiple shadows not yet supported"
+  Shadow { inset = true; h_offset; v_offset; blur; spread; color }
 
 (* make_animation removed - unused *)
 
@@ -4563,7 +4500,7 @@ let radial_gradient stops = Radial_gradient stops
 let color_stop c = Color_stop c
 let color_position c pos = Color_position (c, pos)
 
-let make_animation ?name ?duration ?timing_function ?delay ?iteration_count
+let animation_spec ?name ?duration ?timing_function ?delay ?iteration_count
     ?direction ?fill_mode ?play_state () =
   {
     name;
@@ -4648,64 +4585,64 @@ let read_transform_origin t : transform_origin =
     t
 
 (* Full CSS background shorthand parser *)
+let read_bg_image_item t =
+  let img = read_background_image t in
+  fun (bg : background) ->
+    if bg.image = None then { bg with image = Some img } else bg
+
+let read_bg_position_size_item t =
+  let pos = read_position_2d t in
+  Reader.ws t;
+  let size_opt =
+    if Reader.slash_opt t then Some (read_background_size t) else None
+  in
+  fun (bg : background) ->
+    if bg.position <> None then bg
+    else
+      let bg' = { bg with position = Some pos } in
+      match size_opt with
+      | Some s when bg'.size = None -> { bg' with size = Some s }
+      | _ -> bg'
+
+let read_bg_repeat_item t =
+  let rep = read_background_repeat t in
+  fun (bg : background) ->
+    if bg.repeat = None then { bg with repeat = Some rep } else bg
+
+let read_bg_attachment_item t =
+  let att = read_background_attachment t in
+  fun (bg : background) ->
+    if bg.attachment = None then { bg with attachment = Some att } else bg
+
+let read_bg_box_item t =
+  let box = read_background_box t in
+  fun (bg : background) ->
+    if bg.origin = None then { bg with origin = Some box }
+    else if bg.clip = None then { bg with clip = Some box }
+    else bg
+
+let read_bg_color_item t =
+  let col = read_color t in
+  fun (bg : background) ->
+    if bg.color = None then { bg with color = Some col } else bg
+
+let read_bg_item t =
+  Reader.one_of
+    [
+      read_bg_image_item;
+      read_bg_position_size_item;
+      read_bg_repeat_item;
+      read_bg_attachment_item;
+      read_bg_box_item;
+      read_bg_color_item;
+    ]
+    t
+
 let read_background t : background =
-  let read_image_item t =
-    let img = read_background_image t in
-    fun (bg : background) ->
-      if bg.image = None then { bg with image = Some img } else bg
-  in
-  let read_position_size_item t =
-    let pos = read_position_2d t in
-    Reader.ws t;
-    let size_opt =
-      if Reader.slash_opt t then Some (read_background_size t) else None
-    in
-    fun (bg : background) ->
-      if bg.position = None then
-        let bg' = { bg with position = Some pos } in
-        match size_opt with
-        | Some s when bg'.size = None -> { bg' with size = Some s }
-        | _ -> bg'
-      else bg
-  in
-  let read_repeat_item t =
-    let rep = read_background_repeat t in
-    fun (bg : background) ->
-      if bg.repeat = None then { bg with repeat = Some rep } else bg
-  in
-  let read_attachment_item t =
-    let att = read_background_attachment t in
-    fun (bg : background) ->
-      if bg.attachment = None then { bg with attachment = Some att } else bg
-  in
-  let read_box_item t =
-    let box = read_background_box t in
-    fun (bg : background) ->
-      if bg.origin = None then { bg with origin = Some box }
-      else if bg.clip = None then { bg with clip = Some box }
-      else bg
-  in
-  let read_color_item t =
-    let col = read_color t in
-    fun (bg : background) ->
-      if bg.color = None then { bg with color = Some col } else bg
-  in
-  let read_item t =
-    Reader.one_of
-      [
-        read_image_item;
-        read_position_size_item;
-        read_repeat_item;
-        read_attachment_item;
-        read_box_item;
-        read_color_item;
-      ]
-      t
-  in
   Reader.ws t;
   let init = background () in
   let apply acc upd = upd acc in
-  let acc, _ = Reader.fold_many read_item ~init ~f:apply t in
+  let acc, _ = Reader.fold_many read_bg_item ~init ~f:apply t in
   acc
 
 let read_backgrounds t : background list =

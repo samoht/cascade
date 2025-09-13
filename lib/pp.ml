@@ -117,46 +117,43 @@ let format_decimal ?(drop_leading_zero = false) s max_decimals is_neg =
   in
   if is_neg then "-" ^ final_str else final_str
 
-let float_to_string ?(drop_leading_zero = false) ?(max_decimals = 8) f =
-  if f = 0.0 then "0"
-  else if f <> f then "0" (* NaN *)
-  else if f = infinity then "3.40282e38"
-  else if f = neg_infinity then "-3.40282e38"
+let trim_decimal_suffix s =
+  if String.ends_with ~suffix:".0" s then String.sub s 0 (String.length s - 2)
+  else if String.ends_with ~suffix:"." s then
+    String.sub s 0 (String.length s - 1)
+  else s
+
+let format_integer is_neg abs_f f =
+  if abs_f <= float_of_int max_int then
+    let s = string_of_int (int_of_float abs_f) in
+    if is_neg then "-" ^ s else s
   else
-    let is_neg = f < 0.0 in
-    let abs_f = if is_neg then -.f else f in
-    (* Check if this is an integer or needs decimal handling *)
-    if abs_f = floor abs_f then
-      (* It's an integer - convert directly *)
-      if abs_f <= float_of_int max_int then
-        let s = string_of_int (int_of_float abs_f) in
-        if is_neg then "-" ^ s else s
-      else
-        (* Very large integer - use string_of_float and clean it up *)
-        let s = string_of_float f in
-        if String.ends_with ~suffix:".0" s then
-          String.sub s 0 (String.length s - 2)
-        else if String.ends_with ~suffix:"." s then
-          String.sub s 0 (String.length s - 1)
-        else s
-    else
-      (* Has decimal places - use the scaling approach *)
-      let scale = 10.0 ** float_of_int max_decimals in
-      let scaled = floor ((abs_f *. scale) +. 0.5) in
-      let s =
-        if scaled <= float_of_int max_int then
-          string_of_int (int_of_float scaled)
-        else string_of_float scaled
-      in
-      (* remove .0 or . *)
-      let s =
-        if String.ends_with ~suffix:".0" s then
-          String.sub s 0 (String.length s - 2)
-        else if String.ends_with ~suffix:"." s then
-          String.sub s 0 (String.length s - 1)
-        else s
-      in
-      format_decimal ~drop_leading_zero s max_decimals is_neg
+    (* Very large integer - use string_of_float and clean it up *)
+    trim_decimal_suffix (string_of_float f)
+
+let format_decimal_value ~drop_leading_zero max_decimals is_neg abs_f =
+  let scale = 10.0 ** float_of_int max_decimals in
+  let scaled = floor ((abs_f *. scale) +. 0.5) in
+  let s =
+    if scaled <= float_of_int max_int then string_of_int (int_of_float scaled)
+    else string_of_float scaled
+  in
+  let s = trim_decimal_suffix s in
+  format_decimal ~drop_leading_zero s max_decimals is_neg
+
+let float_to_string ?(drop_leading_zero = false) ?(max_decimals = 8) f =
+  (* Handle special cases first *)
+  match classify_float f with
+  | FP_zero -> "0"
+  | FP_nan -> "0"
+  | FP_infinite when f > 0.0 -> "3.40282e38"
+  | FP_infinite -> "-3.40282e38"
+  | FP_normal | FP_subnormal ->
+      let is_neg = f < 0.0 in
+      let abs_f = if is_neg then -.f else f in
+      (* Check if this is an integer or needs decimal handling *)
+      if abs_f = floor abs_f then format_integer is_neg abs_f f
+      else format_decimal_value ~drop_leading_zero max_decimals is_neg abs_f
 
 let float ctx f =
   Buffer.add_string ctx.buf (float_to_string ~drop_leading_zero:ctx.minify f)

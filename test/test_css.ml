@@ -10,7 +10,6 @@
     - test_declaration.ml - CSS declarations
     - test_stylesheet.ml - Stylesheet construction
     - test_optimize.ml - CSS optimization
-    - test_render.ml - CSS rendering
     - test_variables.ml - CSS variables
     - test_pp.ml - Pretty printing *)
 
@@ -27,11 +26,13 @@ let test_css_generation () =
       [
         Rule
           (rule ~selector:btn
-             [ color (Hex { hash = true; value = "ff0000" }); padding (Px 10.) ]);
+             [
+               color (Hex { hash = true; value = "ff0000" }); padding [ Px 10. ];
+             ]);
         Rule
           (rule ~selector:card
              [
-               margin (Px 5.);
+               margin [ Px 5. ];
                background_color (Hex { hash = false; value = "ffffff" });
              ]);
       ]
@@ -64,7 +65,7 @@ let test_css_optimization_flag () =
 
 (* Test layers work end-to-end *)
 let test_css_layers_integration () =
-  let utility_rule = rule ~selector:btn [ padding (Px 10.) ] in
+  let utility_rule = rule ~selector:btn [ padding [ Px 10. ] ] in
   let nested_utility_rule = rule_to_nested utility_rule in
   let utility_layer = layer ~name:"utilities" [ nested_utility_rule ] in
   let stylesheet = stylesheet [ Layer utility_layer ] in
@@ -109,7 +110,7 @@ let test_css_important_integration () =
           (rule ~selector:btn
              [
                important (color (Hex { hash = true; value = "ff0000" }));
-               padding (Px 10.);
+               padding [ Px 10. ];
              ]);
       ]
   in
@@ -147,11 +148,7 @@ let test_css_roundtrip () =
     | Ok stylesheet -> stylesheet
     | Error err ->
         (* Format the structured error *)
-        let formatted_error =
-          Css.pp_parse_error err ^ "\n" ^ err.context_window ^ "\n"
-          ^ String.make err.marker_pos ' '
-          ^ "^"
-        in
+        let formatted_error = Css.pp_parse_error err in
         Alcotest.fail ("Failed to parse CSS: " ^ formatted_error)
   in
 

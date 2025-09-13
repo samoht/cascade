@@ -27,8 +27,21 @@ let pp_parse_error (err : parse_error) =
     if err.callstack = [] then ""
     else " [stack: " ^ String.concat " -> " err.callstack ^ "]"
   in
+  let context_str =
+    if err.context_window = "" then ""
+    else
+      let marker = String.make err.marker_pos ' ' ^ "^" in
+      "\n" ^ err.context_window ^ "\n" ^ marker
+  in
   err.message ^ " at " ^ err.filename ^ ":" ^ string_of_int err.position
-  ^ callstack_str
+  ^ callstack_str ^ context_str
+
+(* Pretty-printer for the parser state *)
+let pp (ctx : Pp.ctx) (t : t) =
+  let open Buffer in
+  add_string ctx.buf "<reader pos=";
+  add_string ctx.buf (string_of_int t.pos);
+  add_string ctx.buf ">"
 
 (** {1 Creation} *)
 
@@ -139,15 +152,7 @@ let expect_string s t =
 let position t = t.pos
 
 (** Get context window around current position for better error messages *)
-let context_window ?(before = 30) ?(after = 30) t =
-  let pos = t.pos in
-  let start_pos = max 0 (pos - before) in
-  let end_pos = min t.len (pos + after) in
-  let before_text = String.sub t.input start_pos (pos - start_pos) in
-  let after_text = String.sub t.input pos (end_pos - pos) in
-  let marker_pos = String.length before_text in
-  let context = before_text ^ after_text in
-  (context, marker_pos)
+(* Removed duplicate context_window function - already defined above *)
 
 let consume_if c t =
   if peek t = Some c then (
@@ -318,9 +323,12 @@ let string ?(trim = false) t =
                  let code = int_of_string ("0x" ^ hex) in
                  if code > 0x10FFFF then
                    err_invalid t "unicode escape out of range";
-                 (* Add the unicode character *)
-                 Buffer.add_string buf (Printf.sprintf "\\%s" hex)
-               with _ -> err_invalid t "invalid unicode escape");
+                 (* Add the unicode character as a backslash followed by hex *)
+                 Buffer.add_char buf '\\';
+                 Buffer.add_string buf hex
+               with
+               | Invalid_argument _ -> err_invalid t "invalid unicode escape"
+               | Failure _ -> err_invalid t "invalid unicode escape");
             (* Optional whitespace after unicode escape *)
             (match peek t with
             | Some (' ' | '\t' | '\n' | '\r') -> skip t
@@ -335,7 +343,8 @@ let string ?(trim = false) t =
               && c <> '\n' && c <> '\r' && c <> '\t'
             then
               (* For CSS, only certain characters can be escaped directly *)
-              err_invalid t (Printf.sprintf "invalid escape sequence '\\%c'" c);
+              err_invalid t
+                ("invalid escape sequence '" ^ "\\" ^ String.make 1 c ^ "'");
             Buffer.add_char buf c;
             loop ())
     | Some c when c = quote ->
@@ -509,6 +518,19 @@ let one_of parsers t =
   in
   try_parsers parsers [] None
 
+let should_stop_reading t = is_done t || looking_at t "!" || looking_at t ";"
+
+let try_read_item parser items t =
+  save t;
+  try
+    let item = parser t in
+    commit t;
+    items := item :: !items;
+    true
+  with Parse_error _ ->
+    restore t;
+    false
+
 let take max_count parser t =
   if max_count < 1 then invalid_arg "take: max_count must be >= 1";
 
@@ -520,38 +542,23 @@ let take max_count parser t =
   (* Try to read additional items (up to max_count - 1 more) *)
   let rec read_more () =
     ws t;
-    (* Check if we've reached end of value or special tokens *)
-    if is_done t || looking_at t "!" || looking_at t ";" then ()
+    if should_stop_reading t then ()
     else if List.length !items >= max_count then ()
-    else (
-      (* Save position in case this isn't a valid item *)
-      save t;
-      try
-        let item = parser t in
-        commit t;
-        items := item :: !items;
-        read_more ()
-      with Parse_error _ ->
-        restore t;
-        (* Not a valid item, stop reading *)
-        ())
+    else if try_read_item parser items t then read_more ()
   in
 
   read_more ();
 
   (* Now check if there are more valid items that would exceed max_count *)
   ws t;
-  (if not (is_done t || looking_at t "!" || looking_at t ";") then
-     (* Only check for excess if we've already read max_count items *)
-     if List.length !items >= max_count then
-       match option parser t with
-       | Some _ ->
-           err t
-             ("too many values (maximum " ^ string_of_int max_count
-            ^ " allowed)")
-       | None ->
-           (* Not a valid item, that's fine *)
-           ());
+  (if (not (should_stop_reading t)) && List.length !items >= max_count then
+     match option parser t with
+     | Some _ ->
+         err t
+           ("too many values (maximum " ^ string_of_int max_count ^ " allowed)")
+     | None ->
+         (* Not a valid item, that's fine *)
+         ());
 
   (* Return items in correct order *)
   List.rev !items

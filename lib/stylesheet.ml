@@ -39,14 +39,32 @@ let container ?name ~condition rules : container_rule =
   }
 
 let property ~syntax ?initial_value ?(inherits = false) name : property_rule =
+  let initial_value =
+    match initial_value with
+    | None -> None
+    | Some s -> Universal s (* For now, use Universal for string values *)
+  in
   { name; syntax; inherits; initial_value }
 
 let property_rule_name (r : property_rule) = r.name
-let property_rule_initial (r : property_rule) = r.initial_value
+
+let property_rule_initial (r : property_rule) =
+  match r.initial_value with
+  | Universal s -> Some s
+  | None -> None
+  | V (kind, v) ->
+      (* Render the typed initial value consistently with Declaration
+         printers *)
+      let ctx =
+        { Pp.minify = true; indent = 0; buf = Buffer.create 16; inline = false }
+      in
+      Declaration.pp_value ctx (kind, v);
+      Some (Buffer.contents ctx.buf)
 
 let default_decl_of_property_rule (r : property_rule) =
   match r.initial_value with
-  | Some v -> custom_property r.name v
+  | Universal v -> custom_property r.name v
+  | V (kind, v) -> custom_declaration r.name kind v
   | None -> custom_property r.name ""
 
 let rule_to_nested rule : nested_rule = Rule rule
@@ -140,7 +158,9 @@ let stylesheet_items t =
   charset @ imports @ namespaces @ keyframes @ font_faces @ pages @ rules
   @ media @ containers @ supports @ layers @ properties @ starting
 
-(** {1 Pretty-printing} *)
+(** {1 Printers & Readers} *)
+
+(** {2 Rule} *)
 
 let pp_rule : rule Pp.t =
  fun ctx rule ->
@@ -162,6 +182,17 @@ let pp_rule : rule Pp.t =
   in
   Pp.surround ~left:Pp.block_open ~right:Pp.block_close pp_body ctx ()
 
+(* Reader for Rule — placed next to its printer for cohesion *)
+let read_rule (r : Reader.t) : rule =
+  Reader.with_context r "rule" @@ fun () ->
+  let selector = Selector.read_selector_list r in
+  Reader.ws r;
+  Reader.expect '{' r;
+  let declarations = Declaration.read_declarations r in
+  Reader.ws r;
+  Reader.expect '}' r;
+  ({ selector; declarations } : rule)
+
 let rec pp_supports_content : supports_content Pp.t =
  fun ctx -> function
   | Support_rules rules -> Pp.list ~sep:Pp.cut pp_rule ctx rules
@@ -170,6 +201,7 @@ let rec pp_supports_content : supports_content Pp.t =
       if rules <> [] && nested_queries <> [] then Pp.cut ctx ();
       Pp.list ~sep:Pp.cut pp_supports_rule ctx nested_queries
 
+(** {2 Supports} *)
 and pp_supports_rule : supports_rule Pp.t =
  fun ctx sq ->
   Pp.string ctx "@supports ";
@@ -177,6 +209,7 @@ and pp_supports_rule : supports_rule Pp.t =
   Pp.sp ctx ();
   Pp.braces pp_supports_content ctx sq.supports_content
 
+(** {2 Media} *)
 let pp_media_rule : media_rule Pp.t =
  fun ctx mq ->
   Pp.string ctx "@media ";
@@ -184,6 +217,28 @@ let pp_media_rule : media_rule Pp.t =
   Pp.sp ctx ();
   Pp.braces (Pp.list ~sep:Pp.cut pp_rule) ctx mq.media_rules
 
+(* Reader for Media *)
+let read_media_rule (r : Reader.t) : media_rule =
+  Reader.with_context r "@media" @@ fun () ->
+  Reader.expect_string "@media" r;
+  Reader.ws r;
+  let condition = Reader.until r '{' |> String.trim in
+  if String.length condition = 0 then
+    Reader.err_invalid r "media query requires a condition";
+  Reader.expect '{' r;
+  let rec read_rules acc =
+    Reader.ws r;
+    if Reader.peek r = Some '}' then (
+      Reader.skip r;
+      List.rev acc)
+    else
+      let rule = read_rule r in
+      read_rules (rule :: acc)
+  in
+  let media_rules = read_rules [] in
+  { media_condition = condition; media_rules }
+
+(** {2 Container} *)
 let pp_container_rule : container_rule Pp.t =
  fun ctx cq ->
   Pp.string ctx "@container ";
@@ -196,6 +251,44 @@ let pp_container_rule : container_rule Pp.t =
   Pp.sp ctx ();
   Pp.braces (Pp.list ~sep:Pp.cut pp_rule) ctx cq.container_rules
 
+(* Reader for Container *)
+let read_container_rule (r : Reader.t) : container_rule =
+  Reader.with_context r "@container" @@ fun () ->
+  Reader.expect_string "@container" r;
+  Reader.ws r;
+  (* Split the header up to the opening brace: optional name then condition *)
+  let header = Reader.until r '{' |> String.trim in
+  let name_opt, condition =
+    try
+      let i = String.index header ' ' in
+      if i > 0 then
+        let name = String.sub header 0 i |> String.trim in
+        let cond =
+          String.sub header (i + 1) (String.length header - i - 1)
+          |> String.trim
+        in
+        ((if name <> "" then Some name else None), cond)
+      else (None, header)
+    with Not_found -> (None, header)
+  in
+  Reader.expect '{' r;
+  let rec read_rules acc =
+    Reader.ws r;
+    if Reader.peek r = Some '}' then (
+      Reader.skip r;
+      List.rev acc)
+    else
+      let rule = read_rule r in
+      read_rules (rule :: acc)
+  in
+  let rules = read_rules [] in
+  {
+    container_name = name_opt;
+    container_condition = condition;
+    container_rules = rules;
+  }
+
+(** {2 Property} *)
 let pp_property_rule : property_rule Pp.t =
  fun ctx prop ->
   Pp.string ctx "@property ";
@@ -213,12 +306,18 @@ let pp_property_rule : property_rule Pp.t =
         Pp.string ctx "inherits:";
         Pp.string ctx (if prop.inherits then "true" else "false");
         match prop.initial_value with
-        | None | Some "" -> ()
-        | Some v ->
+        | None -> ()
+        | Universal s ->
             Pp.semicolon ctx ();
             Pp.cut ctx ();
             Pp.string ctx "initial-value:";
-            Pp.string ctx v)
+            Pp.string ctx s
+        | V (kind, v) ->
+            Pp.semicolon ctx ();
+            Pp.cut ctx ();
+            Pp.string ctx "initial-value:";
+            (* Pretty-print the value based on its kind *)
+            Declaration.pp_value ctx (kind, v))
       ctx ();
     Pp.cut ctx ()
   in
@@ -229,6 +328,7 @@ let pp_nested_rule : nested_rule Pp.t =
   | Rule r -> pp_rule ctx r
   | Supports sq -> pp_supports_rule ctx sq
 
+(** {2 Layer} *)
 let pp_layer_rule : layer_rule Pp.t =
  fun ctx layer ->
   Pp.string ctx "@layer ";
@@ -258,267 +358,11 @@ let pp_layer_rule : layer_rule Pp.t =
         Pp.list ~sep:Pp.cut pp_supports_rule ctx layer.supports_queries)
       ctx ())
 
-let pp_starting_style_rule : starting_style_rule Pp.t =
- fun ctx ss ->
-  Pp.string ctx "@starting-style";
-  Pp.sp ctx ();
-  Pp.braces (Pp.list ~sep:Pp.cut pp_rule) ctx ss.starting_rules
-
-let pp_keyframe_block : keyframe_block Pp.t =
- fun ctx kb ->
-  Pp.string ctx kb.selector;
-  Pp.sp ctx ();
-  let pp_body ctx () =
-    match kb.declarations with
-    | [] -> ()
-    | decls ->
-        Pp.cut ctx ();
-        Pp.nest 2
-          (Pp.list
-             ~sep:(fun ctx () ->
-               Pp.semicolon ctx ();
-               Pp.cut ctx ())
-             Declaration.pp_declaration)
-          ctx decls;
-        Pp.cut ctx ()
-  in
-  Pp.surround ~left:Pp.block_open ~right:Pp.block_close pp_body ctx ()
-
-let pp_keyframes_rule : keyframes_rule Pp.t =
- fun ctx kf ->
-  Pp.string ctx "@keyframes ";
-  Pp.string ctx kf.name;
-  Pp.sp ctx ();
-  Pp.braces (Pp.list ~sep:Pp.cut pp_keyframe_block) ctx kf.keyframes
-
-let pp_font_face_rule : font_face_rule Pp.t =
- fun ctx ff ->
-  Pp.string ctx "@font-face";
-  Pp.sp ctx ();
-  let pp_body ctx () =
-    Pp.cut ctx ();
-    Pp.nest 2
-      (fun ctx () ->
-        let pp_prop name value =
-          match value with
-          | None -> ()
-          | Some v ->
-              Pp.string ctx name;
-              Pp.string ctx ": ";
-              Pp.string ctx v;
-              Pp.semicolon ctx ();
-              Pp.cut ctx ()
-        in
-        pp_prop "font-family" ff.font_family;
-        pp_prop "src" ff.src;
-        pp_prop "font-style" ff.font_style;
-        pp_prop "font-weight" ff.font_weight;
-        pp_prop "font-stretch" ff.font_stretch;
-        pp_prop "font-display" ff.font_display;
-        pp_prop "unicode-range" ff.unicode_range;
-        pp_prop "font-variant" ff.font_variant;
-        pp_prop "font-feature-settings" ff.font_feature_settings;
-        pp_prop "font-variation-settings" ff.font_variation_settings)
-      ctx ();
-    Pp.cut ctx ()
-  in
-  Pp.surround ~left:Pp.block_open ~right:Pp.block_close pp_body ctx ()
-
-let pp_import_rule : import_rule Pp.t =
- fun ctx imp ->
-  Pp.string ctx "@import ";
-  Pp.string ctx "\"";
-  Pp.string ctx imp.url;
-  Pp.string ctx "\"";
-  (match imp.layer with
-  | Some l ->
-      Pp.string ctx " layer(";
-      Pp.string ctx l;
-      Pp.string ctx ")"
-  | None -> ());
-  (match imp.supports with
-  | Some s ->
-      Pp.string ctx " supports(";
-      Pp.string ctx s;
-      Pp.string ctx ")"
-  | None -> ());
-  (match imp.media with
-  | Some m ->
-      Pp.string ctx " ";
-      Pp.string ctx m
-  | None -> ());
-  Pp.semicolon ctx ()
-
-let pp_charset_rule : charset_rule Pp.t =
- fun ctx cs ->
-  Pp.string ctx "@charset \"";
-  Pp.string ctx cs.encoding;
-  Pp.string ctx "\"";
-  Pp.semicolon ctx ()
-
-let pp_namespace_rule : namespace_rule Pp.t =
- fun ctx ns ->
-  Pp.string ctx "@namespace ";
-  (match ns.prefix with
-  | Some p ->
-      Pp.string ctx p;
-      Pp.sp ctx ()
-  | None -> ());
-  Pp.string ctx "\"";
-  Pp.string ctx ns.uri;
-  Pp.string ctx "\"";
-  Pp.semicolon ctx ()
-
-let pp_page_rule : page_rule Pp.t =
- fun ctx pg ->
-  Pp.string ctx "@page";
-  (match pg.selector with
-  | Some s ->
-      Pp.string ctx " ";
-      Pp.string ctx s
-  | None -> ());
-  Pp.sp ctx ();
-  let pp_body ctx () =
-    match pg.declarations with
-    | [] -> ()
-    | decls ->
-        Pp.cut ctx ();
-        Pp.nest 2
-          (Pp.list
-             ~sep:(fun ctx () ->
-               Pp.semicolon ctx ();
-               Pp.cut ctx ())
-             Declaration.pp_declaration)
-          ctx decls;
-        Pp.cut ctx ()
-  in
-  Pp.surround ~left:Pp.block_open ~right:Pp.block_close pp_body ctx ()
-
-let pp : t Pp.t =
- fun ctx sheet ->
-  (* Charset must be first *)
-  (match sheet.charset with
-  | Some cs ->
-      pp_charset_rule ctx cs;
-      Pp.cut ctx ()
-  | None -> ());
-
-  (* Imports after charset *)
-  List.iter
-    (fun imp ->
-      pp_import_rule ctx imp;
-      Pp.cut ctx ())
-    sheet.imports;
-
-  (* Namespaces after imports *)
-  List.iter
-    (fun ns ->
-      pp_namespace_rule ctx ns;
-      Pp.cut ctx ())
-    sheet.namespaces;
-
-  (* Layers *)
-  List.iter
-    (fun l ->
-      pp_layer_rule ctx l;
-      Pp.cut ctx ())
-    sheet.layers;
-
-  (* Keyframes *)
-  List.iter
-    (fun kf ->
-      pp_keyframes_rule ctx kf;
-      Pp.cut ctx ())
-    sheet.keyframes;
-
-  (* Font faces *)
-  List.iter
-    (fun ff ->
-      pp_font_face_rule ctx ff;
-      Pp.cut ctx ())
-    sheet.font_faces;
-
-  (* Pages *)
-  List.iter
-    (fun pg ->
-      pp_page_rule ctx pg;
-      Pp.cut ctx ())
-    sheet.pages;
-
-  (* Property rules *)
-  List.iter
-    (fun pr ->
-      pp_property_rule ctx pr;
-      Pp.cut ctx ())
-    sheet.at_properties;
-
-  (* Regular rules *)
-  List.iter
-    (fun r ->
-      pp_rule ctx r;
-      Pp.cut ctx ())
-    sheet.rules;
-
-  (* Media queries *)
-  List.iter
-    (fun mq ->
-      pp_media_rule ctx mq;
-      Pp.cut ctx ())
-    sheet.media_queries;
-
-  (* Container queries *)
-  List.iter
-    (fun cq ->
-      pp_container_rule ctx cq;
-      Pp.cut ctx ())
-    sheet.container_queries;
-
-  (* Starting styles *)
-  List.iter
-    (fun ss ->
-      pp_starting_style_rule ctx ss;
-      Pp.cut ctx ())
-    sheet.starting_styles;
-
-  (* Supports queries *)
-  List.iter
-    (fun sq ->
-      pp_supports_rule ctx sq;
-      Pp.cut ctx ())
-    sheet.supports_queries
+(* Pretty-printers kept unified for clarity and consistency *)
 
 (** {1 Reading/Parsing} *)
 
-let read_rule (r : Reader.t) : rule =
-  Reader.with_context r "rule" @@ fun () ->
-  let selector = Selector.read_selector_list r in
-  Reader.ws r;
-  Reader.expect '{' r;
-  let declarations = Declaration.read_declarations r in
-  Reader.ws r;
-  Reader.expect '}' r;
-  ({ selector; declarations } : rule)
-
-let read_media_rule (r : Reader.t) : media_rule =
-  Reader.with_context r "@media" @@ fun () ->
-  Reader.expect_string "@media" r;
-  Reader.ws r;
-  let condition = Reader.until r '{' in
-  let condition = String.trim condition in
-  if String.length condition = 0 then
-    Reader.err_invalid r "media query requires a condition";
-  Reader.expect '{' r;
-  let rec read_rules acc =
-    Reader.ws r;
-    if Reader.peek r = Some '}' then (
-      Reader.skip r;
-      List.rev acc)
-    else
-      let rule = read_rule r in
-      read_rules (rule :: acc)
-  in
-  let media_rules = read_rules [] in
-  { media_condition = condition; media_rules }
+(* (removed duplicate read_media_rule definition) *)
 
 let rec read_supports_rule (r : Reader.t) : supports_rule =
   Reader.with_context r "@supports" @@ fun () ->
@@ -549,6 +393,13 @@ let rec read_supports_rule (r : Reader.t) : supports_rule =
   in
   { supports_condition = condition; supports_content = content }
 
+(* Property descriptors record *)
+type property_descriptors = {
+  mutable syntax : string option;
+  mutable inherits : bool option;
+  mutable initial_value : string option;
+}
+
 let read_property_rule (r : Reader.t) : property_rule =
   Reader.with_context r "@property" @@ fun () ->
   Reader.expect_string "@property" r;
@@ -558,37 +409,93 @@ let read_property_rule (r : Reader.t) : property_rule =
   Reader.expect '{' r;
   Reader.ws r;
 
-  (* Read syntax *)
-  Reader.expect_string "syntax:" r;
-  Reader.ws r;
-  Reader.expect '"' r;
-  let syntax = Reader.until r '"' in
-  Reader.expect '"' r;
-  Reader.ws r;
-  Reader.expect ';' r;
-  Reader.ws r;
+  (* Read descriptors in any order *)
+  let descriptors = { syntax = None; inherits = None; initial_value = None } in
 
-  (* Read inherits *)
-  Reader.expect_string "inherits:" r;
-  Reader.ws r;
-  let inherits =
-    Reader.enum "inherits" [ ("true", true); ("false", false) ] r
+  let rec read_descriptors () =
+    Reader.ws r;
+    if Reader.peek r = Some '}' then ()
+    else if Reader.looking_at r "syntax:" then (
+      Reader.expect_string "syntax:" r;
+      Reader.ws r;
+      Reader.expect '"' r;
+      let value = Reader.until r '"' in
+      Reader.expect '"' r;
+      descriptors.syntax <- Some value;
+      Reader.ws r;
+      if Reader.peek r = Some ';' then (
+        Reader.skip r;
+        Reader.ws r);
+      read_descriptors ())
+    else if Reader.looking_at r "inherits:" then (
+      Reader.expect_string "inherits:" r;
+      Reader.ws r;
+      let value =
+        Reader.enum "inherits" [ ("true", true); ("false", false) ] r
+      in
+      descriptors.inherits <- Some value;
+      Reader.ws r;
+      if Reader.peek r = Some ';' then (
+        Reader.skip r;
+        Reader.ws r);
+      read_descriptors ())
+    else if Reader.looking_at r "initial-value:" then (
+      Reader.expect_string "initial-value:" r;
+      Reader.ws r;
+      let rec read_value acc =
+        match Reader.peek r with
+        | Some ';' | Some '}' -> String.concat "" (List.rev acc)
+        | Some c ->
+            Reader.skip r;
+            read_value (String.make 1 c :: acc)
+        | None -> String.concat "" (List.rev acc)
+      in
+      let value = String.trim (read_value []) in
+      descriptors.initial_value <- Some value;
+      Reader.ws r;
+      if Reader.peek r = Some ';' then (
+        Reader.skip r;
+        Reader.ws r);
+      read_descriptors ())
+    else Reader.err_invalid r "unexpected property descriptor"
   in
-  Reader.ws r;
-  Reader.expect ';' r;
-  Reader.ws r;
 
-  (* Optional initial-value *)
+  read_descriptors ();
+
+  (* Validate required descriptors *)
+  let syntax =
+    match descriptors.syntax with
+    | None -> Reader.err_invalid r "@property requires 'syntax' descriptor"
+    | Some s -> s
+  in
+
+  let inherits =
+    match descriptors.inherits with
+    | None -> Reader.err_invalid r "@property requires 'inherits' descriptor"
+    | Some b -> b
+  in
+
+  (* Parse initial value based on syntax *)
+  let parse_initial_value value syntax : property_initial_value =
+    match syntax with
+    | "*" -> Universal value
+    | "<color>" -> (
+        try
+          let r = Reader.of_string value in
+          V (Declaration.Color, Values.read_color r)
+        with Reader.Parse_error _ | End_of_file -> Universal value)
+    | "<length>" -> (
+        try
+          let r = Reader.of_string value in
+          V (Declaration.Length, Values.read_length r)
+        with Reader.Parse_error _ | End_of_file -> Universal value)
+    | _ -> Universal value (* Fallback for unsupported syntax *)
+  in
+
   let initial_value =
-    Reader.option
-      (fun r ->
-        Reader.expect_string "initial-value:" r;
-        Reader.ws r;
-        let value = Reader.until r ';' in
-        Reader.expect ';' r;
-        Reader.ws r;
-        String.trim value)
-      r
+    match descriptors.initial_value with
+    | None -> None
+    | Some v -> parse_initial_value v syntax
   in
 
   Reader.expect '}' r;
@@ -626,7 +533,7 @@ let read_layer_rule (r : Reader.t) : layer_rule =
     (* For now, just return one with the first name and empty rules *)
     {
       layer = String.concat "," all_names;
-      (* Store all names for now *)
+      (* Store combined names; splitting can be added later. *)
       rules = [];
       media_queries = [];
       container_queries = [];
@@ -666,11 +573,108 @@ let read_layer_rule (r : Reader.t) : layer_rule =
       supports_queries = [];
     })
 
+(* Forward declaration of readers needed by read_sheet_item *)
+
+let read_keyframes_rule (r : Reader.t) : keyframes_rule =
+  Reader.with_context r "@keyframes" @@ fun () ->
+  Reader.expect_string "@keyframes" r;
+  Reader.ws r;
+  let name = Reader.ident ~keep_case:true r in
+  Reader.ws r;
+  Reader.expect '{' r;
+  let rec read_blocks acc =
+    Reader.ws r;
+    match Reader.peek r with
+    | Some '}' ->
+        Reader.skip r;
+        List.rev acc
+    | _ ->
+        let selector = String.trim (Reader.until r '{') in
+        Reader.expect '{' r;
+        let declarations = Declaration.read_declarations r in
+        Reader.ws r;
+        Reader.expect '}' r;
+        read_blocks (({ selector; declarations } : keyframe_block) :: acc)
+  in
+  { name; keyframes = read_blocks [] }
+
+let read_font_face_rule (r : Reader.t) : font_face_rule =
+  Reader.with_context r "@font-face" @@ fun () ->
+  Reader.expect_string "@font-face" r;
+  Reader.ws r;
+  Reader.expect '{' r;
+  let ff : font_face_rule ref =
+    ref
+      {
+        font_family = None;
+        src = None;
+        font_style = None;
+        font_weight = None;
+        font_stretch = None;
+        font_display = None;
+        unicode_range = None;
+        font_variant = None;
+        font_feature_settings = None;
+        font_variation_settings = None;
+      }
+  in
+  let set name value =
+    let v = Some (String.trim value) in
+    match String.lowercase_ascii name with
+    | "font-family" -> ff := { !ff with font_family = v }
+    | "src" -> ff := { !ff with src = v }
+    | "font-style" -> ff := { !ff with font_style = v }
+    | "font-weight" -> ff := { !ff with font_weight = v }
+    | "font-stretch" -> ff := { !ff with font_stretch = v }
+    | "font-display" -> ff := { !ff with font_display = v }
+    | "unicode-range" -> ff := { !ff with unicode_range = v }
+    | "font-variant" -> ff := { !ff with font_variant = v }
+    | "font-feature-settings" -> ff := { !ff with font_feature_settings = v }
+    | "font-variation-settings" ->
+        ff := { !ff with font_variation_settings = v }
+    | _ -> Reader.err_invalid r "unknown font-face descriptor"
+  in
+  let rec loop () =
+    Reader.ws r;
+    match Reader.peek r with
+    | Some '}' -> Reader.skip r
+    | _ ->
+        let name = Reader.ident ~keep_case:true r in
+        Reader.ws r;
+        Reader.expect ':' r;
+        Reader.ws r;
+        let value = Reader.until r ';' in
+        (match Reader.peek r with Some ';' -> Reader.skip r | _ -> ());
+        set name value;
+        loop ()
+  in
+  loop ();
+  !ff
+
+let read_page_rule (r : Reader.t) : page_rule =
+  Reader.with_context r "@page" @@ fun () ->
+  Reader.expect_string "@page" r;
+  Reader.ws r;
+  let header = String.trim (Reader.until r '{') in
+  let selector : string option = if header = "" then None else Some header in
+  Reader.expect '{' r;
+  let declarations = Declaration.read_declarations r in
+  Reader.ws r;
+  Reader.expect '}' r;
+  ({ selector; declarations } : page_rule)
+
 let read_sheet_item (r : Reader.t) : sheet_item =
   Reader.ws r;
   if Reader.looking_at r "@layer" then Layer (read_layer_rule r)
   else if Reader.looking_at r "@media" then Media (read_media_rule r)
   else if Reader.looking_at r "@supports" then Supports (read_supports_rule r)
+  else if Reader.looking_at r "@container" then
+    Container (read_container_rule r)
+  else if Reader.looking_at r "@keyframes" then
+    Keyframes (read_keyframes_rule r)
+  else if Reader.looking_at r "@font-face" then
+    Font_face (read_font_face_rule r)
+  else if Reader.looking_at r "@page" then Page (read_page_rule r)
   else if Reader.looking_at r "@property" then Property (read_property_rule r)
   else Rule (read_rule r)
 
@@ -743,3 +747,376 @@ let read_stylesheet (r : Reader.t) : t =
           rest
   in
   categorize_items empty_sheet items
+
+(** {1 Inline Styles} *)
+
+let pp_important config pp_ctx =
+  if config.minify then Pp.string pp_ctx "!important"
+  else (
+    Pp.space pp_ctx ();
+    Pp.string pp_ctx "!important")
+
+let pp_decl_inline config pp_ctx decl =
+  let name = Declaration.property_name decl in
+  let value =
+    Declaration.string_of_value ~minify:config.minify
+      ~inline:(config.mode = Inline) decl
+  in
+  let is_important = Declaration.is_important decl in
+  Pp.string pp_ctx name;
+  Pp.char pp_ctx ':';
+  if not config.minify then Pp.space pp_ctx ();
+  Pp.string pp_ctx value;
+  if is_important then pp_important config pp_ctx
+
+let inline_style_of_declarations ?(minify = false) ?(mode : mode = Inline)
+    ?(newline = false) props =
+  let config = { mode; minify; optimize = false; newline } in
+  let pp ctx () =
+    let sep ctx () =
+      Pp.semicolon ctx ();
+      if not config.minify then Pp.space ctx ()
+    in
+    Pp.list ~sep (pp_decl_inline config) ctx props
+  in
+  Pp.to_string ~minify ~inline:(mode = Inline) pp ()
+
+(** {1 Pretty-Printing} *)
+
+(* Forward declarations for mutually recursive functions *)
+(* Pretty-printer helpers *)
+
+(* Generic at-rule pretty printer - currently unused but kept for potential
+   future use *)
+let _pp_at_rules ~at_rule ~condition ~name_part : rule list Pp.t =
+ fun ctx rules ->
+  Pp.char ctx '@';
+  Pp.string ctx at_rule;
+  Pp.space ctx ();
+  if name_part <> "" then Pp.string ctx name_part;
+  Pp.string ctx condition;
+  Pp.sp ctx ();
+  Pp.braces (Pp.list ~sep:Pp.cut pp_rule) ctx rules
+
+let pp_layer_media : media_rule list Pp.t =
+ fun ctx media_queries -> Pp.list ~sep:Pp.cut pp_media_rule ctx media_queries
+
+let pp_layer_containers : container_rule list Pp.t =
+ fun ctx container_queries ->
+  Pp.list ~sep:Pp.cut pp_container_rule ctx container_queries
+
+let pp_layer_supports : supports_rule list Pp.t =
+ fun ctx supports_queries ->
+  Pp.list ~sep:Pp.cut pp_supports_rule ctx supports_queries
+
+let pp_layer_rules : nested_rule list Pp.t =
+ fun ctx rules -> Pp.list ~sep:Pp.cut pp_nested_rule ctx rules
+
+(* Helpers for layered stylesheet pretty-printing *)
+let pp_stylesheet_rules : rule list Pp.t =
+ fun ctx rules -> Pp.list ~sep:Pp.cut pp_rule ctx rules
+
+let pp_stylesheet_media : media_rule list Pp.t =
+ fun ctx media_queries -> Pp.list ~sep:Pp.cut pp_media_rule ctx media_queries
+
+let pp_stylesheet_containers : container_rule list Pp.t =
+ fun ctx container_queries ->
+  Pp.list ~sep:Pp.cut pp_container_rule ctx container_queries
+
+let pp_stylesheet_supports : supports_rule list Pp.t =
+ fun ctx supports_queries ->
+  Pp.list ~sep:Pp.cut pp_supports_rule ctx supports_queries
+
+let pp_starting_style_rule : starting_style_rule Pp.t =
+ fun ctx ssr ->
+  Pp.string ctx "@starting-style";
+  Pp.sp ctx ();
+  Pp.braces (Pp.list ~sep:Pp.cut pp_rule) ctx ssr.starting_rules
+
+let pp_starting_styles : starting_style_rule list Pp.t =
+ fun ctx starting_styles ->
+  Pp.list ~sep:Pp.cut pp_starting_style_rule ctx starting_styles
+
+let pp_at_properties : property_rule list Pp.t =
+ fun ctx at_properties -> Pp.list ~sep:Pp.cut pp_property_rule ctx at_properties
+
+let pp_charset_rule : charset_rule Pp.t =
+ fun ctx charset ->
+  Pp.string ctx "@charset \"";
+  Pp.string ctx charset.encoding;
+  Pp.string ctx "\";"
+
+let pp_import_rule : import_rule Pp.t =
+ fun ctx import ->
+  Pp.string ctx "@import ";
+  Pp.string ctx import.url;
+  (match import.layer with
+  | Some l ->
+      Pp.string ctx " layer(";
+      Pp.string ctx l;
+      Pp.string ctx ")"
+  | None -> ());
+  (match import.supports with
+  | Some s ->
+      Pp.string ctx " supports(";
+      Pp.string ctx s;
+      Pp.string ctx ")"
+  | None -> ());
+  (match import.media with
+  | Some m ->
+      Pp.sp ctx ();
+      Pp.string ctx m
+  | None -> ());
+  Pp.semicolon ctx ()
+
+let pp_namespace_rule : namespace_rule Pp.t =
+ fun ctx ns ->
+  Pp.string ctx "@namespace ";
+  (match ns.prefix with
+  | Some p ->
+      Pp.string ctx p;
+      Pp.sp ctx ()
+  | None -> ());
+  Pp.string ctx "url(";
+  Pp.string ctx ns.uri;
+  Pp.string ctx ");"
+
+let pp_keyframes_rule : keyframes_rule Pp.t =
+ fun ctx kf ->
+  Pp.string ctx "@keyframes ";
+  Pp.string ctx kf.name;
+  Pp.sp ctx ();
+  let pp_keyframe_block ctx (block : keyframe_block) =
+    Pp.string ctx block.selector;
+    Pp.sp ctx ();
+    Pp.braces
+      (fun ctx () ->
+        Pp.cut ctx ();
+        Pp.nest 2
+          (Pp.list
+             ~sep:(fun ctx () ->
+               Pp.semicolon ctx ();
+               Pp.cut ctx ())
+             Declaration.pp_declaration)
+          ctx block.declarations;
+        Pp.cut ctx ())
+      ctx ()
+  in
+  Pp.braces
+    (fun ctx () ->
+      Pp.cut ctx ();
+      Pp.nest 2 (Pp.list ~sep:Pp.cut pp_keyframe_block) ctx kf.keyframes;
+      Pp.cut ctx ())
+    ctx ()
+
+let pp_font_face_rule : font_face_rule Pp.t =
+ fun ctx ff ->
+  Pp.string ctx "@font-face ";
+  let pp_descriptor ctx name value_opt =
+    match value_opt with
+    | Some value ->
+        Pp.string ctx name;
+        Pp.char ctx ':';
+        Pp.sp ctx ();
+        Pp.string ctx value;
+        Pp.semicolon ctx ();
+        Pp.cut ctx ()
+    | None -> ()
+  in
+  Pp.braces
+    (fun ctx () ->
+      Pp.cut ctx ();
+      Pp.nest 2
+        (fun ctx () ->
+          pp_descriptor ctx "font-family" ff.font_family;
+          pp_descriptor ctx "src" ff.src;
+          pp_descriptor ctx "font-style" ff.font_style;
+          pp_descriptor ctx "font-weight" ff.font_weight;
+          pp_descriptor ctx "font-stretch" ff.font_stretch;
+          pp_descriptor ctx "font-display" ff.font_display;
+          pp_descriptor ctx "unicode-range" ff.unicode_range;
+          pp_descriptor ctx "font-variant" ff.font_variant;
+          pp_descriptor ctx "font-feature-settings" ff.font_feature_settings;
+          pp_descriptor ctx "font-variation-settings" ff.font_variation_settings)
+        ctx ();
+      Pp.cut ctx ())
+    ctx ()
+
+let pp_page_rule : page_rule Pp.t =
+ fun ctx page ->
+  Pp.string ctx "@page";
+  (match page.selector with
+  | Some s ->
+      Pp.sp ctx ();
+      Pp.string ctx s
+  | None -> ());
+  Pp.sp ctx ();
+  Pp.braces
+    (fun ctx () ->
+      Pp.cut ctx ();
+      Pp.nest 2
+        (Pp.list
+           ~sep:(fun ctx () ->
+             Pp.semicolon ctx ();
+             Pp.cut ctx ())
+           Declaration.pp_declaration)
+        ctx page.declarations;
+      Pp.cut ctx ())
+    ctx ()
+
+(* Helper functions for to_string *)
+let is_layer_empty (layer : layer_rule) =
+  layer.rules = [] && layer.media_queries = []
+  && layer.container_queries = []
+  && layer.supports_queries = []
+
+let pp_layer_body ctx (layer_rules : layer_rule) =
+  let sep_if_needed prev_empty current =
+    if (not prev_empty) && current <> [] then Pp.cut ctx ()
+  in
+  let rules_empty = layer_rules.rules = [] in
+  pp_layer_rules ctx layer_rules.rules;
+  sep_if_needed rules_empty layer_rules.media_queries;
+  let media_empty = layer_rules.media_queries = [] in
+  pp_layer_media ctx layer_rules.media_queries;
+  sep_if_needed (rules_empty && media_empty) layer_rules.container_queries;
+  let container_empty = layer_rules.container_queries = [] in
+  pp_layer_containers ctx layer_rules.container_queries;
+  sep_if_needed
+    (rules_empty && media_empty && container_empty)
+    layer_rules.supports_queries;
+  pp_layer_supports ctx layer_rules.supports_queries
+
+let pp_layer : layer_rule Pp.t =
+ fun ctx layer_rules ->
+  Pp.string ctx "@layer ";
+  Pp.string ctx layer_rules.layer;
+  if is_layer_empty layer_rules then Pp.semicolon ctx ()
+  else (
+    Pp.sp ctx ();
+    Pp.braces (fun ctx () -> pp_layer_body ctx layer_rules) ctx ())
+
+let pp_stylesheet_sections : t Pp.t =
+ fun ctx stylesheet ->
+  let sep_if_needed prev_empty current =
+    if (not prev_empty) && current <> [] then Pp.cut ctx ()
+  in
+
+  let rules_empty = stylesheet.rules = [] in
+  pp_stylesheet_rules ctx stylesheet.rules;
+
+  sep_if_needed rules_empty stylesheet.starting_styles;
+  let starting_empty = stylesheet.starting_styles = [] in
+  pp_starting_styles ctx stylesheet.starting_styles;
+
+  sep_if_needed (rules_empty && starting_empty) stylesheet.container_queries;
+  let container_empty = stylesheet.container_queries = [] in
+  pp_stylesheet_containers ctx stylesheet.container_queries;
+
+  sep_if_needed
+    (rules_empty && starting_empty && container_empty)
+    stylesheet.supports_queries;
+  let supports_empty = stylesheet.supports_queries = [] in
+  pp_stylesheet_supports ctx stylesheet.supports_queries;
+
+  sep_if_needed
+    (rules_empty && starting_empty && container_empty && supports_empty)
+    stylesheet.media_queries;
+  let media_empty = stylesheet.media_queries = [] in
+  pp_stylesheet_media ctx stylesheet.media_queries;
+
+  sep_if_needed
+    (rules_empty && starting_empty && container_empty && supports_empty
+   && media_empty)
+    stylesheet.at_properties;
+  pp_at_properties ctx stylesheet.at_properties
+
+let pp_empty_layer_group ctx prev_empty names =
+  if names = [] then ()
+  else (
+    if not prev_empty then Pp.cut ctx ();
+    Pp.string ctx "@layer ";
+    Pp.string ctx (String.concat "," (List.rev names));
+    Pp.semicolon ctx ())
+
+let pp_layers : layer_rule list Pp.t =
+ fun ctx layers ->
+  if not ctx.minify then Pp.list ~sep:Pp.cut pp_layer ctx layers
+  else
+    let rec process_layers prev_empty current_empty_group = function
+      | [] -> pp_empty_layer_group ctx prev_empty current_empty_group
+      | layer :: rest when is_layer_empty layer ->
+          process_layers prev_empty (layer.layer :: current_empty_group) rest
+      | layer :: rest ->
+          pp_empty_layer_group ctx prev_empty current_empty_group;
+          if current_empty_group <> [] then Pp.cut ctx ()
+          else if not prev_empty then Pp.cut ctx ();
+          pp_layer ctx layer;
+          process_layers false [] rest
+    in
+    process_layers true [] layers
+
+(** {1 Stylesheet Rendering} *)
+
+(* Version information *)
+let version =
+  match Build_info.V1.version () with
+  | None -> "dev"
+  | Some v -> Build_info.V1.Version.to_string v
+
+let header =
+  String.concat ""
+    [ "/*! tw v"; version; " | MIT License | https://github.com/samoht/tw */" ]
+
+let to_string ?(minify = false) ?(mode = Variables) ?(newline = true) stylesheet
+    =
+  let pp ctx () =
+    (* Charset must be first *)
+    (match stylesheet.charset with
+    | Some cs ->
+        pp_charset_rule ctx cs;
+        Pp.cut ctx ()
+    | None -> ());
+
+    (* Imports after charset *)
+    List.iter
+      (fun imp ->
+        pp_import_rule ctx imp;
+        Pp.cut ctx ())
+      stylesheet.imports;
+
+    (* Namespaces after imports *)
+    List.iter
+      (fun ns ->
+        pp_namespace_rule ctx ns;
+        Pp.cut ctx ())
+      stylesheet.namespaces;
+
+    (* Add header if there are layers *)
+    if List.length stylesheet.layers > 0 then (
+      Pp.string ctx header;
+      Pp.cut ctx ());
+
+    (* Render layers with merging for minified mode *)
+    pp_layers ctx stylesheet.layers;
+
+    (* Add separator if needed *)
+    if
+      stylesheet.layers <> []
+      && (stylesheet.rules <> []
+         || stylesheet.starting_styles <> []
+         || stylesheet.container_queries <> []
+         || stylesheet.supports_queries <> []
+         || stylesheet.media_queries <> []
+         || stylesheet.at_properties <> [])
+    then Pp.cut ctx ();
+
+    (* Render stylesheet sections *)
+    pp_stylesheet_sections ctx stylesheet;
+
+    (* Add trailing newline (standard for CSS files) *)
+    if newline && mode <> Inline then Pp.char ctx '\n'
+  in
+  Pp.to_string ~minify ~inline:(mode = Inline) pp ()
+
+let pp = to_string

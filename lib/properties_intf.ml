@@ -629,14 +629,6 @@ type blend_mode =
   | Var of blend_mode var
 
 type shadow =
-  | Simple of length * length * length option * length option * color option
-  | Inset of length * length * length option * length option * color option
-  | None
-  | Inherit
-  | Var of shadow var
-
-type box_shadow =
-  | None
   | Shadow of {
       inset : bool;
       h_offset : length;
@@ -645,12 +637,13 @@ type box_shadow =
       spread : length option;
       color : color option;
     }
+  | None
   | Inherit
   | Initial
   | Unset
   | Revert
   | Revert_layer
-  | Var of box_shadow var
+  | Var of shadow var
 
 type text_shadow =
   | None
@@ -938,7 +931,7 @@ type 'a property =
   | Border_right_style : border_style property
   | Border_bottom_style : border_style property
   | Border_left_style : border_style property
-  | Padding : length property
+  | Padding : length list property
   | Padding_left : length property
   | Padding_right : length property
   | Padding_bottom : length property
@@ -947,7 +940,7 @@ type 'a property =
   | Padding_inline_start : length property
   | Padding_inline_end : length property
   | Padding_block : length property
-  | Margin : length property
+  | Margin : length list property
   | Margin_inline_end : length property
   | Margin_left : length property
   | Margin_right : length property
@@ -1133,7 +1126,7 @@ type 'a property =
   | Float : float_side property
   | Scale : scale property
   | Transition : transition list property
-  | Box_shadow : box_shadow list property
+  | Box_shadow : shadow list property
   | Fill : svg_paint property
   | Stroke : svg_paint property
   | Stroke_width : length property

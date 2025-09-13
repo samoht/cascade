@@ -95,7 +95,7 @@ let test_declaration_complex_values () =
     "transform: rotate(45deg);";
 
   (* Multiple values *)
-  check_declaration ~expected:"font-family:\"Arial\",sans-serif"
+  check_declaration ~expected:"font-family:Arial,sans-serif"
     "font-family: \"Arial\", sans-serif;";
   check_declaration ~expected:"margin:10px 20px 30px 40px"
     "margin: 10px 20px 30px 40px;";
@@ -111,11 +111,11 @@ let test_declaration_complex_values () =
 let test_declaration_quoted_strings () =
   (* Simple quoted strings *)
   check_declaration ~expected:"content:\"hello\"" "content: \"hello\";";
-  check_declaration ~expected:"content:'world'" "content: 'world';";
+  check_declaration ~expected:"content:\"world\"" "content: 'world';";
 
   (* Escaped quotes *)
   check_declaration ~expected:"content:\"a\\\"b\"" "content: \"a\\\"b\";";
-  check_declaration ~expected:"content:'a\\'b'" "content: 'a\\'b';";
+  check_declaration ~expected:"content:\"a'b\"" "content: 'a\\'b';";
 
   (* Strings with special characters *)
   check_declaration ~expected:"content:\"a;b\"" "content: \"a;b\";";
@@ -314,7 +314,7 @@ let check_declaration ~expected input =
   | Some decl ->
       let output = Css.Pp.to_string ~minify:true pp_declaration decl in
       check string input expected output
-  | None -> fail (Fmt.str "Failed to parse declaration: %s" input)
+  | None -> Alcotest.failf "Failed to parse declaration: %s" input
 
 let test_declaration_colors () =
   (* Named colors *)
@@ -1022,61 +1022,61 @@ let test_declaration_url_values () =
     "background-image: url(data:image/svg+xml;utf8,<svg/>)"
 
 let suite =
-  [
-    ( "declaration",
-      [
-        (* Parsing basics *)
-        test_case "simple" `Quick test_declaration_simple;
-        test_case "multiple" `Quick test_declaration_multiple;
-        test_case "block" `Quick test_declaration_block;
-        test_case "property name" `Quick test_declaration_property_name;
-        test_case "property value" `Quick test_declaration_property_value;
-        test_case "missing semicolon" `Quick test_declaration_missing_semicolon;
-        test_case "empty input" `Quick test_declaration_empty_input;
-        test_case "roundtrip" `Quick test_declaration_roundtrip;
-        (* !important handling *)
-        test_case "important" `Quick test_declaration_important;
-        (* Custom properties and vendor prefixes *)
-        test_case "custom properties basic" `Quick
-          test_declaration_custom_properties_basic;
-        test_case "custom properties" `Quick test_declaration_custom_properties;
-        test_case "custom property values" `Quick
-          test_declaration_custom_property_values;
-        test_case "vendor prefixes" `Quick test_declaration_vendor_prefixes;
-        (* Property value categories *)
-        test_case "colors" `Quick test_declaration_colors;
-        test_case "color functions" `Quick test_declaration_color_functions;
-        test_case "lengths" `Quick test_declaration_lengths;
-        test_case "display" `Quick test_declaration_display;
-        test_case "position" `Quick test_declaration_position;
-        test_case "font properties" `Quick test_declaration_font_properties;
-        test_case "text properties" `Quick test_declaration_text_properties;
-        test_case "flexbox" `Quick test_declaration_flexbox;
-        test_case "borders" `Quick test_declaration_borders;
-        test_case "overflow" `Quick test_declaration_overflow;
-        test_case "animations" `Quick test_declaration_animations;
-        test_case "transforms" `Quick test_declaration_transforms;
-        test_case "angle units" `Quick test_declaration_angle_units;
-        test_case "grid" `Quick test_declaration_grid;
-        test_case "list properties" `Quick test_declaration_list_properties;
-        test_case "misc properties" `Quick test_declaration_misc;
-        test_case "url values" `Quick test_declaration_url_values;
-        (* Error handling *)
-        test_case "error missing colon" `Quick
-          test_declaration_error_missing_colon;
-        test_case "error stray semicolon" `Quick
-          test_declaration_error_stray_semicolon;
-        test_case "error unclosed block" `Quick
-          test_declaration_error_unclosed_block;
-        test_case "unterminated parsing" `Quick test_declaration_unterminated;
-        test_case "invalid declarations" `Quick test_declaration_invalid;
-        (* Spec details and edge cases *)
-        test_case "CSS-wide keywords" `Quick test_declaration_css_wide_keywords;
-        test_case "comments handling" `Quick test_declaration_comments;
-        test_case "unit case-insensitivity" `Quick test_declaration_unit_case;
-        test_case "number formats" `Quick test_declaration_number_formats;
-        test_case "property name case" `Quick test_declaration_property_case;
-        test_case "special cases" `Quick test_declaration_special_cases;
-        test_case "edge cases" `Quick test_declaration_edge_cases;
-      ] );
-  ]
+  ( "declaration",
+    [
+      (* Parsing basics *)
+      test_case "simple" `Quick test_declaration_simple;
+      test_case "multiple" `Quick test_declaration_multiple;
+      test_case "block" `Quick test_declaration_block;
+      test_case "complex values" `Quick test_declaration_complex_values;
+      test_case "quoted strings" `Quick test_declaration_quoted_strings;
+      test_case "property name" `Quick test_declaration_property_name;
+      test_case "property value" `Quick test_declaration_property_value;
+      test_case "missing semicolon" `Quick test_declaration_missing_semicolon;
+      test_case "empty input" `Quick test_declaration_empty_input;
+      test_case "roundtrip" `Quick test_declaration_roundtrip;
+      (* !important handling *)
+      test_case "important" `Quick test_declaration_important;
+      (* Custom properties and vendor prefixes *)
+      test_case "custom properties basic" `Quick
+        test_declaration_custom_properties_basic;
+      test_case "custom properties" `Quick test_declaration_custom_properties;
+      test_case "custom property values" `Quick
+        test_declaration_custom_property_values;
+      test_case "vendor prefixes" `Quick test_declaration_vendor_prefixes;
+      (* Property value categories *)
+      test_case "colors" `Quick test_declaration_colors;
+      test_case "color functions" `Quick test_declaration_color_functions;
+      test_case "lengths" `Quick test_declaration_lengths;
+      test_case "display" `Quick test_declaration_display;
+      test_case "position" `Quick test_declaration_position;
+      test_case "font properties" `Quick test_declaration_font_properties;
+      test_case "text properties" `Quick test_declaration_text_properties;
+      test_case "flexbox" `Quick test_declaration_flexbox;
+      test_case "borders" `Quick test_declaration_borders;
+      test_case "overflow" `Quick test_declaration_overflow;
+      test_case "animations" `Quick test_declaration_animations;
+      test_case "transforms" `Quick test_declaration_transforms;
+      test_case "angle units" `Quick test_declaration_angle_units;
+      test_case "grid" `Quick test_declaration_grid;
+      test_case "list properties" `Quick test_declaration_list_properties;
+      test_case "misc properties" `Quick test_declaration_misc;
+      test_case "url values" `Quick test_declaration_url_values;
+      (* Error handling *)
+      test_case "error missing colon" `Quick
+        test_declaration_error_missing_colon;
+      test_case "error stray semicolon" `Quick
+        test_declaration_error_stray_semicolon;
+      test_case "error unclosed block" `Quick
+        test_declaration_error_unclosed_block;
+      test_case "unterminated parsing" `Quick test_declaration_unterminated;
+      test_case "invalid declarations" `Quick test_declaration_invalid;
+      (* Spec details and edge cases *)
+      test_case "CSS-wide keywords" `Quick test_declaration_css_wide_keywords;
+      test_case "comments handling" `Quick test_declaration_comments;
+      test_case "unit case-insensitivity" `Quick test_declaration_unit_case;
+      test_case "number formats" `Quick test_declaration_number_formats;
+      test_case "property name case" `Quick test_declaration_property_case;
+      test_case "special cases" `Quick test_declaration_special_cases;
+      test_case "edge cases" `Quick test_declaration_edge_cases;
+    ] )

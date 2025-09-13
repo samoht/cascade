@@ -24,7 +24,7 @@ type _ kind =
   | Scroll_snap_strictness : scroll_snap_strictness kind
   | Angle : angle kind
   | Shadow : shadow kind
-  | Box_shadow : box_shadow kind
+  | Box_shadow : shadow list kind
   | Content : content kind
 
 type declaration =

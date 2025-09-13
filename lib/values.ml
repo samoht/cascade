@@ -3,7 +3,13 @@
 include Values_intf
 
 let var_ref ?fallback ?default ?layer ?meta name =
+  let fallback =
+    match fallback with None -> No_fallback | Some v -> Fallback v
+  in
   { name; fallback; default; layer; meta }
+
+let var_ref_empty ?default ?layer ?meta name =
+  { name; fallback = Empty; default; layer; meta }
 
 (** Color constructors *)
 let hex s =
@@ -58,17 +64,20 @@ let pp_op ctx = function
 let pp_var : type a. a Pp.t -> a var Pp.t =
  fun pp_value ctx v ->
   (* When inlining is enabled, output the default value if available *)
-  if ctx.inline && v.default <> None then
+  if ctx.inline && v.default <> Option.None then
     match v.default with
     | Some value -> pp_value ctx value
-    | None -> assert false (* unreachable due to condition above *)
+    | Option.None -> assert false (* unreachable due to condition above *)
   else (
     (* Standard var() reference output *)
     Pp.string ctx "var(--";
     Pp.string ctx v.name;
     match v.fallback with
-    | None -> Pp.char ctx ')'
-    | Some value ->
+    | No_fallback -> Pp.char ctx ')'
+    | Empty ->
+        Pp.char ctx ',';
+        Pp.char ctx ')'
+    | Fallback value ->
         Pp.char ctx ',';
         Pp.space_if_pretty ctx ();
         pp_value ctx value;
@@ -750,32 +759,33 @@ and read_calc_term : type a. (Reader.t -> a) -> Reader.t -> a calc =
       Expr (left, Div, right)
   | _ -> left
 
+and read_calc_parenthesized : type a. (Reader.t -> a) -> Reader.t -> a calc =
+ fun read_a t ->
+  Reader.skip t;
+  let expr = read_calc_expr read_a t in
+  Reader.ws t;
+  Reader.expect ')' t;
+  expr
+
+and read_calc_zero : type a. Reader.t -> a calc =
+ fun t ->
+  let n = Reader.number t in
+  if n <> 0. then Reader.err t "expected zero"
+  else
+    match Reader.peek t with
+    | Some c when Reader.is_alpha c || c = '%' -> Reader.err t "zero with unit"
+    | _ -> Num 0.
+
 and read_calc_factor : type a. (Reader.t -> a) -> Reader.t -> a calc =
  fun read_a t ->
   Reader.ws t;
-  if Reader.peek t = Some '(' then (
-    Reader.skip t;
-    let expr = read_calc_expr read_a t in
-    Reader.ws t;
-    Reader.expect ')' t;
-    expr)
-  else if Reader.looking_at t "var(" then Var (read_var read_a t)
-  else
-    let read_zero : Reader.t -> a calc =
-     fun t ->
-      let n = Reader.number t in
-      if n = 0. then
-        (* Check if there's a unit after the 0 *)
-        match Reader.peek t with
-        | Some c when Reader.is_alpha c || c = '%' ->
-            (* Has a unit, fail so read_val can handle it *)
-            Reader.err t "zero with unit"
-        | _ -> Num 0.
-      else Reader.err t "expected zero"
-    in
-    let read_val : Reader.t -> a calc = fun t -> Val (read_a t) in
-    let read_num : Reader.t -> a calc = fun t -> Num (Reader.number t) in
-    Reader.one_of [ read_zero; read_val; read_num ] t
+  match Reader.peek t with
+  | Some '(' -> read_calc_parenthesized read_a t
+  | _ when Reader.looking_at t "var(" -> Var (read_var read_a t)
+  | _ ->
+      let read_val t = Val (read_a t) in
+      let read_num t : a calc = Num (Reader.number t) in
+      Reader.one_of [ read_calc_zero; read_val; read_num ] t
 
 and read_calc : type a. (Reader.t -> a) -> Reader.t -> a calc =
  fun read_a t ->
@@ -1080,7 +1090,7 @@ let read_oklch t : color =
     else if n >= 0. && n <= 1. then n *. 100. (* Convert 0-1 to percentage *)
     else
       Reader.err_invalid t
-        (Printf.sprintf "oklch() L value must be 0-1 or 0%%-100%%, got %g" n)
+        ("oklch() L value must be 0-1 or 0%-100%, got " ^ string_of_float n)
   in
   Reader.ws t;
   let c = Reader.number t in
@@ -1102,7 +1112,7 @@ let read_oklab t : color =
     else if n >= 0. && n <= 1. then n *. 100. (* Convert 0-1 to percentage *)
     else
       Reader.err_invalid t
-        (Printf.sprintf "oklab() L value must be 0-1 or 0%%-100%%, got %g" n)
+        ("oklab() L value must be 0-1 or 0%-100%, got " ^ string_of_float n)
   in
   Reader.ws t;
   let a = Reader.number t in
@@ -1190,7 +1200,7 @@ let rec read_color_mix t : color =
       Reader.ws t;
       Some (Pct n)
       (* Don't divide by 100 - keep the raw percentage value *)
-    with _ -> None
+    with Reader.Parse_error _ | End_of_file | Failure _ -> None
   in
 
   Reader.expect ',' t;
@@ -1208,7 +1218,7 @@ let rec read_color_mix t : color =
       Reader.ws t;
       Some (Pct n)
       (* Don't divide by 100 - keep the raw percentage value *)
-    with _ -> None
+    with Reader.Parse_error _ | End_of_file | Failure _ -> None
   in
 
   Reader.ws t;
@@ -1485,10 +1495,32 @@ let rec read_percentage t : percentage =
 let var_name v = v.name
 let var_layer v = v.layer
 
+(** Read padding shorthand property (1-4 values) *)
+let read_padding_shorthand t : length list =
+  (* CSS padding accepts 1-4 space-separated non-negative values *)
+  let rec read_values acc count =
+    if count >= 4 then List.rev acc
+    else
+      match Reader.option read_non_negative_length t with
+      | Some v -> read_values (v :: acc) (count + 1)
+      | None -> List.rev acc
+  in
+  let values = read_values [] 0 in
+  if values = [] then Reader.err_invalid t "padding requires at least one value"
+  else values
+
 (** Read margin shorthand property (1-4 values) Source:
     https://www.w3.org/TR/CSS21/box.html#margin-properties CSS margin accepts
     1-4 space-separated values *)
-let read_margin_shorthand t : length =
-  let values = Reader.take 4 read_length t in
-  (* Return the first value as we're constrained by the type system *)
-  List.hd values
+let read_margin_shorthand t : length list =
+  (* CSS margin accepts 1-4 space-separated values *)
+  let rec read_values acc count =
+    if count >= 4 then List.rev acc
+    else
+      match Reader.option read_length t with
+      | Some v -> read_values (v :: acc) (count + 1)
+      | None -> List.rev acc
+  in
+  let values = read_values [] 0 in
+  if values = [] then Reader.err_invalid t "margin requires at least one value"
+  else values

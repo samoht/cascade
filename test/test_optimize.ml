@@ -10,7 +10,7 @@ let hex_color s = Hex { hash = true; value = s }
 let to_string pp v = Css.Pp.to_string ~minify:true pp v
 
 (* Generic check function for optimize types *)
-let check_value name pp reader ?expected input =
+let _check_value name pp reader ?expected input =
   let expected = Option.value ~default:input expected in
   (* First pass: parse + print equals expected (minified) *)
   let t = Css.Reader.of_string input in
@@ -265,4 +265,4 @@ let optimize_tests =
     ("optimize layers", `Quick, test_optimize_layers);
   ]
 
-let suite = [ ("optimize", optimize_tests) ]
+let suite = ("optimize", optimize_tests)

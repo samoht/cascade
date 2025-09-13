@@ -3,7 +3,6 @@
 include Declaration_intf
 open Properties
 open Values
-include Render_intf
 
 (* Re-export pp_property from Properties module *)
 let pp_property = pp_property
@@ -188,11 +187,10 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Blend_mode -> pp pp_blend_mode
   | Scroll_snap_strictness -> pp pp_scroll_snap_strictness
   | Angle -> pp pp_angle
-  | Box_shadow -> pp pp_box_shadow
+  | Box_shadow -> pp (Pp.list ~sep:Pp.comma pp_shadow)
   | Content -> pp pp_content
 
-let string_of_value ?(minify = true) ?(mode = Variables) decl =
-  let inline = mode = Inline in
+let string_of_value ?(minify = true) ?(inline = false) decl =
   let ctx = { Pp.minify; indent = 0; buf = Buffer.create 16; inline } in
   match decl with
   | Declaration { property; value; _ } ->
@@ -286,7 +284,7 @@ let read_value (type a) (prop_type : a property) t : declaration =
   | Overflow_x -> declaration Overflow_x (read_overflow t)
   | Overflow_y -> declaration Overflow_y (read_overflow t)
   (* Padding/Margin *)
-  | Padding -> declaration Padding (read_non_negative_length t)
+  | Padding -> declaration Padding (read_padding_shorthand t)
   | Margin -> declaration Margin (read_margin_shorthand t)
   (* Border styles *)
   | Border_style -> declaration Border_style (read_border_style t)
@@ -368,7 +366,9 @@ let read_value (type a) (prop_type : a property) t : declaration =
   | Grid_template_areas ->
       declaration Grid_template_areas (read_grid_template_areas t)
   (* Shadows *)
-  | Box_shadow -> declaration Box_shadow (read_box_shadows t)
+  | Box_shadow ->
+      declaration Box_shadow
+        (Reader.list ~sep:Reader.comma ~at_least:1 Properties.read_shadow t)
   | Text_shadow -> declaration Text_shadow (read_text_shadows t)
   (* Content *)
   | Content -> declaration Content (read_content t)
@@ -400,13 +400,13 @@ let read_value (type a) (prop_type : a property) t : declaration =
   | Padding_inline_end ->
       declaration Padding_inline_end (read_non_negative_length t)
   | Padding_block -> declaration Padding_block (read_non_negative_length t)
-  | Margin_left -> declaration Margin_left (read_margin_shorthand t)
-  | Margin_right -> declaration Margin_right (read_margin_shorthand t)
-  | Margin_top -> declaration Margin_top (read_margin_shorthand t)
-  | Margin_bottom -> declaration Margin_bottom (read_margin_shorthand t)
-  | Margin_inline -> declaration Margin_inline (read_margin_shorthand t)
-  | Margin_inline_end -> declaration Margin_inline_end (read_margin_shorthand t)
-  | Margin_block -> declaration Margin_block (read_margin_shorthand t)
+  | Margin_left -> declaration Margin_left (read_length t)
+  | Margin_right -> declaration Margin_right (read_length t)
+  | Margin_top -> declaration Margin_top (read_length t)
+  | Margin_bottom -> declaration Margin_bottom (read_length t)
+  | Margin_inline -> declaration Margin_inline (read_length t)
+  | Margin_inline_end -> declaration Margin_inline_end (read_length t)
+  | Margin_block -> declaration Margin_block (read_length t)
   (* Additional color properties *)
   | Text_decoration_color -> declaration Text_decoration_color (read_color t)
   (* Text decoration style *)
@@ -726,7 +726,7 @@ let pp_declaration : declaration Pp.t =
       | Duration -> pp_duration ctx value
       | Angle -> pp_angle ctx value
       | Shadow -> pp_shadow ctx value
-      | Box_shadow -> pp_box_shadow ctx value
+      | Box_shadow -> Pp.list ~sep:Pp.comma pp_shadow ctx value
       | Content -> pp_content ctx value
       | Font_family -> Pp.list ~sep:Pp.comma pp_font_family ctx value
       | Font_weight -> pp_font_weight ctx value
@@ -777,14 +777,12 @@ let font_style fs = declaration Font_style fs
 let list_style_type lst = declaration List_style_type lst
 let list_style_position v = declaration List_style_position v
 let list_style_image v = declaration List_style_image v
-let padding len = declaration Padding len
+let padding (values : length list) = declaration Padding values
 let padding_left len = declaration Padding_left len
 let padding_right len = declaration Padding_right len
 let padding_bottom len = declaration Padding_bottom len
 let padding_top len = declaration Padding_top len
-
-(* Remove deprecated string-based versions *)
-let margin len = declaration Margin len
+let margin (values : length list) = declaration Margin values
 let margin_left len = declaration Margin_left len
 let margin_right len = declaration Margin_right len
 let margin_top len = declaration Margin_top len

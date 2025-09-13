@@ -134,7 +134,7 @@ val comma : unit t
 (** [comma] outputs "," when minifying, ", " when formatting. *)
 
 val sep : string t
-(** [sep s] prints [s] and, when not minifying, appends a single space. *)
+(** [sep] prints a string and, when not minifying, appends a single space. *)
 
 val semicolon : unit t
 (** [semicolon] always outputs ";". *)
@@ -168,7 +168,7 @@ val space_if_pretty : unit t
 *)
 
 val op_char : char t
-(** [op_char c] outputs a character with spaces around it when not minifying.
+(** [op_char] outputs a character with spaces around it when not minifying.
     Useful for operators like +, -, *, / in expressions. *)
 
 val braces : 'a t -> 'a t
@@ -192,4 +192,4 @@ val call_3 : string -> 'a t -> 'b t -> 'c t -> ('a * 'b * 'c) t
 (** [call_3 name a b c] formats a 3-arg function call: [name(a, b, c)]. *)
 
 val url : string t
-(** [url s] formats CSS url with quotes: url("s"). *)
+(** [url] formats a CSS url with quotes: url("s"). *)

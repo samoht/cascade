@@ -209,12 +209,10 @@ let check_blend_mode =
 let check_text_shadow =
   check_value "text-shadow" pp_text_shadow read_text_shadow
 
-let check_box_shadow = check_value "box-shadow" pp_box_shadow read_box_shadow
-
-let check_box_shadows =
-  check_value "box-shadows"
-    (Css.Pp.list ~sep:Css.Pp.comma pp_box_shadow)
-    read_box_shadows
+let check_box_shadow =
+  check_value "box-shadow"
+    (Css.Pp.list ~sep:Css.Pp.comma pp_shadow)
+    (Css.Reader.list ~sep:Css.Reader.comma ~at_least:1 read_shadow)
 
 let check_filter = check_value "filter" pp_filter read_filter
 
@@ -810,9 +808,9 @@ let test_shadows_filters_background () =
     ~expected:"inset 2px 2px 4px 1px red";
   (* color normalizes to end *)
   (* List variant for shadows *)
-  check_box_shadows "none";
-  check_box_shadows "none,none";
-  check_box_shadows "2px 2px,4px 4px red";
+  check_box_shadow "none";
+  check_box_shadow "none,none";
+  check_box_shadow "2px 2px,4px 4px red";
 
   check_filter "none";
   check_background_attachment "scroll";
@@ -901,6 +899,10 @@ let test_place_align_justify_flex () =
   check_justify_content "flex-end";
   check_justify_content "space-between";
   check_justify_content "space-around";
+  check_place_items "center";
+  check_place_items "start end";
+  check_place_content "center";
+  check_place_content "space-between";
   check_justify_content "space-evenly";
   check_flex "none";
   check_flex "auto";
@@ -1023,7 +1025,7 @@ let test_negative_property_values () =
   neg read_overscroll_behavior "bounce" "overscroll-behavior invalid";
   neg read_background_size "bogus" "background-size invalid";
   neg read_content_visibility "supervisible" "content-visibility invalid";
-  neg read_box_shadow "10px" "box-shadow missing v-offset";
+  neg read_shadow "10px" "shadow missing v-offset";
   neg read_transform "invalidfunc()" "transform invalid function";
   neg read_transform "translate3d(10px,20px)" "translate3d arity invalid";
   neg read_transform "scale3d(1,2)" "scale3d arity invalid";
@@ -1170,6 +1172,9 @@ let tests =
     test_case "filter" `Quick test_filter;
     test_case "font family custom declarations" `Quick
       test_font_family_custom_declarations;
+    test_case "pp property value" `Quick test_pp_property_value;
+    test_case "font family with var fallback" `Quick
+      test_font_family_with_var_fallback;
   ]
 
-let suite = [ ("properties", tests) ]
+let suite = ("properties", tests)

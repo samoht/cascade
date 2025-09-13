@@ -1,8 +1,13 @@
 type meta = ..
 
+type 'a fallback =
+  | No_fallback (* No fallback *)
+  | Empty (* Empty fallback: var(--name,) *)
+  | Fallback of 'a (* Explicit fallback value: var(--name, value) *)
+
 type 'a var = {
   name : string;
-  fallback : 'a option;
+  fallback : 'a fallback;
   default : 'a option;
   layer : string option;
   meta : meta option;

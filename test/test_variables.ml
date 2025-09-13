@@ -31,7 +31,7 @@ let test_var_with_fallback () =
       (Hex { hash = true; value = "ff0000" })
   in
 
-  Alcotest.(check bool) "has fallback" true (var_handle.fallback <> None);
+  Alcotest.(check bool) "has fallback" true (var_handle.fallback <> No_fallback);
 
   (* Verify CSS custom property naming convention *)
   match decl with
@@ -162,4 +162,4 @@ let variables_tests =
     ("custom property roundtrip", `Quick, test_custom_property_roundtrip);
   ]
 
-let suite = [ ("variables", variables_tests) ]
+let suite = ("variables", variables_tests)

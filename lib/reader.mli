@@ -3,6 +3,10 @@
 type t
 (** [t] is the parser context. *)
 
+val pp : t Pp.t
+(** [pp] pretty-prints the parser context with current position and a small
+    context window for debugging. *)
+
 type parse_error = {
   message : string;
   got : string option;

@@ -460,29 +460,27 @@ let test_selector_distribution () =
   check_construct "subsequent sibling distribution" ".first~.x,.first~.y" s
 
 let suite =
-  [
-    ( "selector",
-      [
-        (* Basic selector types *)
-        test_case "element" `Quick test_selector_element;
-        test_case "class" `Quick test_selector_class;
-        test_case "id" `Quick test_selector_id;
-        test_case "pseudo class" `Quick test_selector_pseudo_class;
-        test_case "pseudo element" `Quick test_selector_pseudo_element;
-        test_case "attribute" `Quick test_selector_attribute;
-        (* Combinations *)
-        test_case "combinator" `Quick test_selector_combinator;
-        test_case "compound" `Quick test_selector_compound;
-        test_case "list" `Quick test_selector_list;
-        test_case "where is" `Quick test_selector_where_is;
-        (* Parsing *)
-        test_case "roundtrip" `Quick test_selector_roundtrip;
-        (* Error cases *)
-        test_case "invalid" `Quick test_selector_invalid;
-        test_case "parse errors" `Quick test_selector_parse_errors;
-        test_case "callstack accuracy" `Quick test_selector_callstack_accuracy;
-        (* Special cases *)
-        test_case "special cases" `Quick test_selector_special_cases;
-        test_case "distribution" `Quick test_selector_distribution;
-      ] );
-  ]
+  ( "selector",
+    [
+      (* Basic selector types *)
+      test_case "element" `Quick test_selector_element;
+      test_case "class" `Quick test_selector_class;
+      test_case "id" `Quick test_selector_id;
+      test_case "pseudo class" `Quick test_selector_pseudo_class;
+      test_case "pseudo element" `Quick test_selector_pseudo_element;
+      test_case "attribute" `Quick test_selector_attribute;
+      (* Combinations *)
+      test_case "combinator" `Quick test_selector_combinator;
+      test_case "compound" `Quick test_selector_compound;
+      test_case "list" `Quick test_selector_list;
+      test_case "where is" `Quick test_selector_where_is;
+      (* Parsing *)
+      test_case "roundtrip" `Quick test_selector_roundtrip;
+      (* Error cases *)
+      test_case "invalid" `Quick test_selector_invalid;
+      test_case "parse errors" `Quick test_selector_parse_errors;
+      test_case "callstack accuracy" `Quick test_selector_callstack_accuracy;
+      (* Special cases *)
+      test_case "special cases" `Quick test_selector_special_cases;
+      test_case "distribution" `Quick test_selector_distribution;
+    ] )

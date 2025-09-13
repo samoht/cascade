@@ -206,7 +206,7 @@ val layer :
 
     Later layers override earlier layers, and unlayered styles have the highest
     priority.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/@layer> *)
+    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/@layer> . *)
 
 val layer_name : layer_rule -> string
 (** [layer_name layer] is the name of [layer]. *)
@@ -872,10 +872,10 @@ val max_height : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/max-height} max-height}
     property. *)
 
-val padding : length -> declaration
-(** [padding len] is the
+val padding : length list -> declaration
+(** [padding values] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/padding} padding}
-    property for all sides. *)
+    shorthand property. Accepts 1-4 values. *)
 
 val padding_top : length -> declaration
 (** [padding_top len] is the
@@ -897,10 +897,10 @@ val padding_left : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/padding-left}
      padding-left} property. *)
 
-val margin : length -> declaration
-(** [margin len] is the
-    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/margin} margin} property
-    for all sides. *)
+val margin : length list -> declaration
+(** [margin values] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/margin} margin}
+    shorthand property. Accepts 1-4 values. *)
 
 val margin_top : length -> declaration
 (** [margin_top len] is the
@@ -1192,11 +1192,16 @@ type position_2d =
           "center". *)
 
 val pos_left : position_2d
-(** Position helpers (only when shorter than direct variants) *)
+(** [pos_left] position helper for [XY (Left, Center)]. *)
 
 val pos_right : position_2d
+(** [pos_right] position helper for [XY (Right, Center)]. *)
+
 val pos_top : position_2d
+(** [pos_top] position helper for [XY (Center, Top)]. *)
+
 val pos_bottom : position_2d
+(** [pos_bottom] position helper for [XY (Center, Bottom)]. *)
 
 val object_position : position_2d -> declaration
 (** [object_position value] is the
@@ -1999,7 +2004,8 @@ val text_size_adjust : string -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-size-adjust}
      text-size-adjust} property. *)
 
-(** CSS text-decoration-style values *)
+(* CSS text-decoration-style values. *)
+
 val text_decoration_style : text_decoration_style -> declaration
 (** [text_decoration_style value] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration-style}
@@ -2070,7 +2076,10 @@ type font_variant_numeric =
     }
 
 val font_variant_numeric : font_variant_numeric -> declaration
-(** list of tokens or composed CSS variables. *)
+(** [font_variant_numeric value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-variant-numeric}
+     font-variant-numeric} property using a list of tokens or a composed value.
+*)
 
 val font_variant_numeric_tokens :
   font_variant_numeric_token list -> font_variant_numeric
@@ -2095,10 +2104,20 @@ val font_feature_settings : font_feature_settings -> declaration
 
 (** CSS shadow values *)
 type shadow =
-  | Simple of length * length * length option * length option * color option
-  | Inset of length * length * length option * length option * color option
+  | Shadow of {
+      inset : bool;
+      h_offset : length;
+      v_offset : length;
+      blur : length option;
+      spread : length option;
+      color : color option;
+    }
   | None
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of shadow var
 
 val shadow :
@@ -2112,7 +2131,7 @@ val shadow :
   shadow
 (** [shadow ?inset ?h_offset ?v_offset ?blur ?spread ?color ()] is a shadow
     value with optional parameters. Defaults: inset=false, h_offset=0px,
-    v_offset=0px, blur=0px, spread=0px, color=Transparent *)
+    v_offset=0px, blur=0px, spread=0px, color=Transparent. *)
 
 val inset_ring_shadow :
   ?h_offset:length ->
@@ -2124,7 +2143,7 @@ val inset_ring_shadow :
   shadow
 (** [inset_ring_shadow ?h_offset ?v_offset ?blur ?spread ?color ()] is an inset
     shadow value suitable for ring utilities. Defaults: h_offset=0px,
-    v_offset=0px, blur=0px, spread=0px, color=Transparent *)
+    v_offset=0px, blur=0px, spread=0px, color=Transparent. *)
 
 type text_shadow =
   | None
@@ -2443,10 +2462,11 @@ type transform_origin =
   | Inherit  (** Transform origin (2D or 3D). *)
 
 val origin : position_component -> position_component -> transform_origin
-(** Transform origin helpers (shorter than direct constructors) *)
+(** [origin x y] is a transform-origin helper for 2D positions. *)
 
 val origin3d :
   position_component -> position_component -> length -> transform_origin
+(** [origin3d x y z] is a transform-origin helper for 3D positions. *)
 
 val transform_origin : transform_origin -> declaration
 (** [transform_origin value] is the
@@ -2522,11 +2542,14 @@ type transition = {
 (** CSS transition values. *)
 
 val transition : transition -> declaration
-
-val transitions : transition list -> declaration
 (** [transition value] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transition} transition}
     property. *)
+
+val transitions : transition list -> declaration
+(** [transitions values] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transition} transition}
+    property from a comma-separated list. *)
 
 val transition_timing_function : timing_function -> declaration
 (** [transition_timing_function value] is the
@@ -2567,7 +2590,7 @@ type animation = {
 }
 (** CSS animation properties *)
 
-val make_animation :
+val animation_spec :
   ?name:string ->
   ?duration:duration ->
   ?timing_function:timing_function ->
@@ -2578,7 +2601,9 @@ val make_animation :
   ?play_state:animation_play_state ->
   unit ->
   animation
-(** [make_animation ()] is an animation record with optional parameters *)
+(** [animation_spec ?name ?duration ?timing_function ?delay ?iteration_count
+     ?direction ?fill_mode ?play_state ()] creates an animation record with
+    optional parameters. *)
 
 val animation : animation -> declaration
 (** [animation props] is the
@@ -2633,27 +2658,13 @@ val animation_play_state : animation_play_state -> declaration
     @see <https://www.w3.org/TR/filter-effects-1/> Filter Effects Module Level 1
     @see <https://www.w3.org/TR/css-masking-1/> CSS Masking Module Level 1 *)
 
-type box_shadow =
-  | None
-  | Shadow of {
-      inset : bool;
-      h_offset : length;
-      v_offset : length;
-      blur : length option;
-      spread : length option;
-      color : color option;
-    }
-  | Inherit
-  | Initial
-  | Unset
-  | Revert
-  | Revert_layer
-  | Var of box_shadow var
+val box_shadow : shadow -> declaration
+(** [box_shadow value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/box-shadow} box-shadow}
+    property. *)
 
-val box_shadow : box_shadow -> declaration
-
-val box_shadow_list : box_shadow list -> declaration
-(** [box_shadow values] is the
+val box_shadow_list : shadow list -> declaration
+(** [box_shadow_list values] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/box-shadow} box-shadow}
     property. *)
 
@@ -2911,20 +2922,34 @@ val webkit_tap_highlight_color : color -> declaration
      -webkit-tap-highlight-color} property. *)
 
 val webkit_text_decoration : text_decoration -> declaration
-(** [webkit_text_decoration value] is the -webkit-text-decoration property. *)
+(** [webkit_text_decoration value] is the WebKit-only
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration}
+     -webkit-text-decoration} property. *)
 
 val webkit_text_decoration_color : color -> declaration
-(** [webkit_text_decoration_color color] is the -webkit-text-decoration-color
-    property. *)
+(** [webkit_text_decoration_color color] is the WebKit-only
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration-color}
+     -webkit-text-decoration-color} property. *)
 
 val webkit_line_clamp : int -> declaration
+(** [webkit_line_clamp value] is the WebKit-only
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/-webkit-line-clamp}
+     -webkit-line-clamp} property. *)
+
 val webkit_box_orient : webkit_box_orient -> declaration
+(** [webkit_box_orient value] is the WebKit-only
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/-webkit-box-orient}
+     -webkit-box-orient} property. *)
 
 val webkit_hyphens : hyphens -> declaration
-(** [webkit_hyphens value] is the -webkit-hyphens property. *)
+(** [webkit_hyphens value] is the WebKit-only
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/hyphens}
+     -webkit-hyphens} property. *)
 
 val webkit_text_size_adjust : text_size_adjust -> declaration
-(** [webkit_text_size_adjust value] is the -webkit-text-size-adjust property. *)
+(** [webkit_text_size_adjust value] is the WebKit-only
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-size-adjust}
+     -webkit-text-size-adjust} property. *)
 
 (** {1 Additional Properties}
 
@@ -3190,7 +3215,7 @@ type _ kind =
   | Scroll_snap_strictness : scroll_snap_strictness kind
   | Angle : angle kind
   | Shadow : shadow kind
-  | Box_shadow : box_shadow kind
+  | Box_shadow : shadow list kind
   | Content : content kind
 
 type meta
@@ -3210,7 +3235,12 @@ val var_ref :
     - [fallback] is used inside var(--name, fallback) in CSS output
     - [default] is the resolved value when mode is Inline
     - [layer] is an optional CSS layer name
-    - [meta] is optional metadata *)
+    - [meta] is optional metadata. *)
+
+val var_ref_empty :
+  ?default:'a -> ?layer:string -> ?meta:meta -> string -> 'a var
+(** [var_ref_empty ?default ?layer ?meta name] creates a CSS variable reference
+    with empty fallback, i.e. [var(--name,)]. *)
 
 val var :
   ?fallback:'a ->
@@ -3288,7 +3318,7 @@ val to_string :
     - If [newline] is [true] (default), adds a trailing newline for POSIX
       compliance.
 
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS> "MDN: CSS" *)
+    @see <https://developer.mozilla.org/en-US/docs/Web/CSS> "MDN: CSS". *)
 
 val pp :
   ?minify:bool -> ?optimize:bool -> ?mode:mode -> ?newline:bool -> t -> string
@@ -3376,9 +3406,6 @@ val pp_cursor : cursor Pp.t
 val pp_transform : transform Pp.t
 (** [pp_transform] is the pretty printer for transform values. *)
 
-val pp_box_shadow : box_shadow Pp.t
-(** [pp_box_shadow] is the pretty printer for box-shadow values. *)
-
 val pp_calc : 'a Pp.t -> 'a calc Pp.t
 (** [pp_calc pp_value] is the pretty printer for calc expressions. *)
 
@@ -3431,4 +3458,3 @@ module Properties = Properties
 module Declaration = Declaration
 module Variables = Variables
 module Optimize = Optimize
-module Render = Render
