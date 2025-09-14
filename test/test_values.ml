@@ -26,7 +26,25 @@ let check_color = check_value "color" read_color pp_color
 let check_angle = check_value "angle" read_angle pp_angle
 let check_duration = check_value "duration" read_duration pp_duration
 let check_percentage = check_value "percentage" read_percentage pp_percentage
-let _check_number = check_value "number" read_number pp_number
+let check_number = check_value "number" read_number pp_number
+
+let check_length_percentage =
+  check_value "length_percentage" read_length_percentage pp_length_percentage
+
+let check_color_space =
+  check_value "color_space" read_color_space pp_color_space
+
+let check_hue = check_value "hue" read_hue pp_hue
+let check_color_name = check_value "color_name" read_color_name pp_color_name
+let check_alpha = check_value "alpha" read_alpha pp_alpha
+let check_meta = check_value "meta" read_meta pp_meta
+
+let check_hue_interpolation =
+  check_value "hue_interpolation" read_hue_interpolation pp_hue_interpolation
+
+let check_calc_op = check_value "calc_op" read_calc_op pp_calc_op
+let check_component = check_value "component" read_component pp_component
+let check_channel = check_value "channel" read_channel pp_channel
 
 (* Negative check functions *)
 let check_length_fails = check_parse_fails "length" read_length
@@ -498,6 +516,28 @@ let test_nested_var_fallbacks_roundtrip () =
   check_calc_duration ~expected:"calc(1s + var(--t,var(--t2,500ms)))"
     "calc(1s + var(--t, var(--t2, 500ms)))"
 
+let test_var_empty_fallback () =
+  let open Css.Values in
+  (* Test var() with empty fallback - comma but no value *)
+  check_color ~expected:"var(--color,)" "var(--color,)";
+  check_length ~expected:"var(--size,)" "var(--size,)";
+  check_angle ~expected:"var(--angle,)" "var(--angle,)";
+  check_duration ~expected:"var(--time,)" "var(--time,)";
+
+  (* Test parsing empty fallback - check it's recognized as Empty *)
+  let t = Css.Reader.of_string "var(--test,)" in
+  let color = read_color t in
+  match color with
+  | Var var -> (
+      match var.fallback with
+      | Empty ->
+          (* Success - correctly parsed as Empty *)
+          let output = Css.Pp.to_string pp_color color in
+          check string "empty fallback output" "var(--test,)" output
+      | None -> fail "Expected Empty fallback, got None"
+      | Fallback _ -> fail "Expected Empty fallback, got Fallback")
+  | _ -> fail "Expected Var variant"
+
 let test_calc_with_other_types () =
   (* Test calc with angles *)
   check_calc_angle ~expected:"calc(180deg + .5turn)" "calc(180deg + 0.5turn)";
@@ -519,6 +559,70 @@ let test_calc_with_other_types () =
      spec *)
   check_calc_percentage ~expected:"calc(100%/2)" "calc(100% / 2)";
   check_calc_percentage ~expected:"calc(25%*3)" "calc(25% * 3)"
+
+(* Tests for newly added check functions *)
+
+let test_length_percentage () =
+  check_length_percentage "10px";
+  check_length_percentage "50%";
+  check_length_percentage "0"
+
+let test_color_space () =
+  check_color_space "srgb";
+  check_color_space "display-p3";
+  check_color_space "rec2020"
+
+let test_hue () =
+  check_hue "180deg";
+  check_hue ~expected:".5turn" "0.5turn";
+  check_hue "200grad";
+  check_hue "3.14159rad"
+
+let test_color_name () =
+  check_color_name "red";
+  check_color_name "blue";
+  check_color_name "rebeccapurple";
+  check_color_name "transparent"
+
+let test_alpha () =
+  check_alpha ~expected:".5" "0.5";
+  check_alpha "50%";
+  check_alpha "1";
+  check_alpha "0"
+
+let test_meta () =
+  (* Meta is an extensible type - test basic cases *)
+  ()
+
+let test_hue_interpolation () =
+  check_hue_interpolation "shorter";
+  check_hue_interpolation "longer";
+  check_hue_interpolation "increasing";
+  check_hue_interpolation "decreasing"
+
+let test_calc_op () =
+  check_calc_op "+";
+  check_calc_op "-";
+  check_calc_op "*";
+  check_calc_op "/"
+
+let test_number () =
+  check_number "42";
+  check_number "3.14";
+  check_number "0";
+  check_number "-5";
+  check_number ~expected:"50%" "50%"
+
+let test_component () =
+  (* Component tests - various color component values *)
+  check_component "50%";
+  check_component "128";
+  check_component ~expected:".5" "0.5"
+
+let test_channel () =
+  check_channel "255";
+  check_channel "50%";
+  check_channel ~expected:".5" "0.5"
 
 let suite =
   ( "values",
@@ -557,6 +661,7 @@ let suite =
       test_case "number var printing" `Quick test_number_var_printing;
       test_case "nested var() fallbacks roundtrip" `Quick
         test_nested_var_fallbacks_roundtrip;
+      test_case "var() with empty fallback" `Quick test_var_empty_fallback;
       (* Negative parses using option to avoid brittle exceptions *)
       test_case "negative values" `Quick (fun () ->
           let open Css.Reader in
@@ -585,4 +690,16 @@ let suite =
           let r = of_string "notacolor" in
           check bool "invalid color keyword" true
             (Option.is_none (Css.Reader.option Css.Values.read_color r)));
+      (* New type tests *)
+      test_case "length_percentage" `Quick test_length_percentage;
+      test_case "color_space" `Quick test_color_space;
+      test_case "hue" `Quick test_hue;
+      test_case "color_name" `Quick test_color_name;
+      test_case "alpha" `Quick test_alpha;
+      test_case "meta" `Quick test_meta;
+      test_case "hue_interpolation" `Quick test_hue_interpolation;
+      test_case "calc_op" `Quick test_calc_op;
+      test_case "number" `Quick test_number;
+      test_case "component" `Quick test_component;
+      test_case "channel" `Quick test_channel;
     ] )

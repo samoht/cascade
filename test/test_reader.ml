@@ -76,7 +76,7 @@ let check_raises name expected_exn f =
         (Printexc.to_string exn)
 
 (* Test basic operations *)
-let test_reader_basic () =
+let basic () =
   (* Peek tests *)
   check_peek "peek h" (Some 'h') "hello";
   check_peek "peek empty" None "";
@@ -93,7 +93,7 @@ let test_reader_basic () =
   Alcotest.(check bool) "done after read" true (is_done r)
 
 (* Test string operations *)
-let test_reader_string () =
+let string_ops () =
   (* peek_string *)
   let r = of_string "hello world" in
   Alcotest.(check string) "peek 5 chars" "hello" (peek_string r 5);
@@ -112,7 +112,7 @@ let test_reader_string () =
   Alcotest.(check (option char)) "after skip 3" (Some 'l') (peek r)
 
 (* Test whitespace handling *)
-let test_reader_whitespace () =
+let whitespace () =
   (* Basic whitespace *)
   let r = of_string "  \t\n test" in
   Css.Reader.ws r;
@@ -129,7 +129,7 @@ let test_reader_whitespace () =
   Alcotest.(check bool) "all ws done" true (is_done r)
 
 (* Test comment skipping *)
-let test_reader_comments () =
+let comments () =
   (* Single comment *)
   let r = of_string "/*comment*/x" in
   Css.Reader.ws r;
@@ -146,7 +146,7 @@ let test_reader_comments () =
   Alcotest.(check (option char)) "nested comment" (Some '*') (peek r)
 
 (* Test take_while *)
-let test_reader_take_while () =
+let take_while_case () =
   (* Digits *)
   let r = of_string "123abc" in
   let digits = while_ r (fun c -> c >= '0' && c <= '9') in
@@ -162,7 +162,7 @@ let test_reader_take_while () =
   Alcotest.(check string) "no match" "" alphas
 
 (* Test expect *)
-let test_reader_expect () =
+let expect_case () =
   (* Success case *)
   let r = of_string "test" in
   expect 't' r;
@@ -174,7 +174,7 @@ let test_reader_expect () =
     (parse_error_expected "Expected 'x' but got 't'" r) (fun () -> expect 'x' r)
 
 (* Test expect_string *)
-let test_reader_expect_string () =
+let expect_string_case () =
   (* Success *)
   let r = of_string "hello world" in
   expect_string "hello" r;
@@ -187,7 +187,7 @@ let test_reader_expect_string () =
       expect_string "world" r)
 
 (* Test between delimiters *)
-let test_reader_between () =
+let between_case () =
   (* Parentheses *)
   let r = of_string "(content)" in
   let result = parens (fun r -> while_ r (fun c -> c != ')')) r in
@@ -211,7 +211,7 @@ let test_reader_between () =
   Alcotest.(check string) "parens with content" "content" result
 
 (* Test try_parse backtracking (replaces save/restore functionality) *)
-let test_reader_backtrack () =
+let backtrack () =
   let r = of_string "test" in
   (* Test that option backtracks on failure *)
   let result =
@@ -227,7 +227,7 @@ let test_reader_backtrack () =
   Alcotest.(check (option char)) "position restored" (Some 't') (peek r)
 
 (* Test option *)
-let test_reader_option () =
+let option_case () =
   (* Success *)
   let r = of_string "123" in
   let result = option (fun r -> while_ r (fun c -> c >= '0' && c <= '9')) r in
@@ -247,7 +247,7 @@ let test_reader_option () =
   Alcotest.(check (option char)) "position restored" (Some 'a') (peek r)
 
 (* Test commit *)
-let test_reader_commit () =
+let commit_case () =
   (* Test that option commits changes on success *)
   let r = of_string "test" in
   let result =
@@ -263,7 +263,7 @@ let test_reader_commit () =
   Alcotest.(check (option char)) "position advanced" (Some 'e') (peek r)
 
 (* Test number parsing *)
-let test_reader_numbers () =
+let numbers () =
   (* Float *)
   let r = of_string "3.14" in
   let n = number r in
@@ -311,7 +311,7 @@ let test_reader_numbers () =
   Alcotest.(check (float 0.001)) "leading dot with exponent" 500.0 n
 
 (* Test unit parsing *)
-let test_reader_units () =
+let units () =
   (* Units are parsed as identifiers *)
   let r = of_string "px" in
   let unit = ident r in
@@ -327,7 +327,7 @@ let test_reader_units () =
   Alcotest.(check char) "percent" '%' c
 
 (* Test identifier parsing *)
-let test_reader_ident () =
+let ident_case () =
   (* Simple ident *)
   check_read "simple ident" ident ~expected:"hello" "hello";
   check_read "with dash" ident ~expected:"my-class" "my-class";
@@ -341,7 +341,7 @@ let test_reader_ident () =
   check_read "custom prop" ident ~expected:"--my-var" "--my-var"
 
 (* Test string parsing *)
-let test_reader_string_literals () =
+let string_literals () =
   (* Double quotes return content without quotes *)
   check_read "double quote" string ~expected:"hello" "\"hello\"";
   check_read "double empty" string ~expected:"" "\"\"";
@@ -355,7 +355,7 @@ let test_reader_string_literals () =
   check_read "escaped single" string ~expected:"a'b" "'a\\'b'"
 
 (* Test until_string *)
-let test_reader_until_string () =
+let until_string () =
   let r = of_string "data;more" in
   let data = until r ';' in
   Alcotest.(check string) "until semicolon" "data" data;
@@ -365,7 +365,7 @@ let test_reader_until_string () =
   Alcotest.(check string) "delimiter not found" "no delimiter here" all
 
 (* Test hex colors *)
-let test_reader_hex () =
+let hex_case () =
   (* Hex colors are just parsed as strings starting with # *)
   let r = of_string "#abc" in
   expect '#' r;
@@ -388,7 +388,7 @@ let test_reader_hex () =
   Alcotest.(check string) "6 digit hex" "123456" hex
 
 (* Test identifier with escapes *)
-let test_reader_ident_with_escapes () =
+let ident_with_escapes () =
   (* Unicode escape *)
   let r = of_string "\\0041 bc" in
   (* \0041 is 'A' *)
@@ -407,7 +407,7 @@ let test_reader_ident_with_escapes () =
   Alcotest.(check string) "multiple escapes" "123" id
 
 (* Test failure cases *)
-let test_reader_failures () =
+let failures () =
   (* EOF in string *)
   let r = of_string "\"unclosed" in
   check_raises "unclosed string" (parse_error_expected "unclosed string" r)
@@ -419,7 +419,7 @@ let test_reader_failures () =
     (fun () -> ignore (number r))
 
 (* Test option helper *)
-let test_option () =
+let option_parser () =
   (* Success case *)
   let r = of_string "123 abc" in
   let result = option number r in
@@ -439,7 +439,7 @@ let test_option () =
     "position restored after error" (Some 'n') (peek r)
 
 (* Test parse_many helper *)
-let test_parse_many () =
+let parse_many () =
   (* Parse multiple numbers *)
   let r = of_string "1 2 3 xyz" in
   let numbers, error = many number r in
@@ -467,7 +467,7 @@ let test_parse_many () =
   Alcotest.(check bool) "error is some" true (Option.is_some error)
 
 (* Test take helper *)
-let test_take () =
+let take_case () =
   (* Parse exactly 2 numbers *)
   let r = of_string "1 2" in
   let numbers = take 2 number r in
@@ -514,7 +514,7 @@ let test_take () =
     "parse stops at !important" [ 5.0; 10.0 ] numbers
 
 (* Test one_of helper *)
-let test_one_of () =
+let one_of_case () =
   (* Helper to parse specific keywords *)
   let parse_keyword kw r =
     let id = ident r in
@@ -525,7 +525,7 @@ let test_one_of () =
   let number_as_string r =
     try
       let n = number r in
-      Printf.sprintf "%.0f" n
+      Fmt.str "%.0f" n
     with Parse_error _ ->
       let found = ident r in
       err ~got:found r "number"
@@ -562,7 +562,7 @@ let test_one_of () =
        "expected one of: number, green, blue, red" r) (fun () ->
       ignore (one_of parsers r))
 
-let test_reader_enum () =
+let enum_case () =
   (* Test basic enum parsing *)
   let r = of_string "bold" in
   let result =
@@ -588,7 +588,7 @@ let test_reader_enum () =
       in
       ())
 
-let test_reader_enum_with_default () =
+let enum_with_default () =
   (* Test enum with default handler for identifiers *)
   let r = of_string "bold" in
   let result =
@@ -647,7 +647,7 @@ let test_reader_enum_with_default () =
   Alcotest.(check int) "enum uses matching value, not default" 100 result
 
 (* Test call stack functionality *)
-let test_callstack () =
+let callstack_case () =
   let r = of_string "test" in
 
   (* Initially empty call stack *)
@@ -674,7 +674,7 @@ let test_callstack () =
   pop_context r;
   Alcotest.(check (list string)) "pop empty stack" [] (callstack r)
 
-let test_with_context () =
+let with_context_case () =
   let r = of_string "test" in
   let result = ref [] in
 
@@ -688,7 +688,7 @@ let test_with_context () =
     "context during execution" [ "test_context" ] !result;
   Alcotest.(check (list string)) "context cleaned up after" [] (callstack r)
 
-let test_with_context_exception () =
+let with_context_exception () =
   let r = of_string "test" in
 
   (* Test that context is cleaned up even when exception is raised *)
@@ -700,7 +700,7 @@ let test_with_context_exception () =
   Alcotest.(check (list string))
     "context cleaned up after exception" [] (callstack r)
 
-let test_enum_call_stack () =
+let enum_call_stack () =
   let r = of_string "invalid" in
   let call_stack_during_error = ref [] in
 
@@ -716,7 +716,7 @@ let test_enum_call_stack () =
     "enum adds context to call stack" [ "enum:test-enum" ]
     !call_stack_during_error
 
-let test_enum_or_calls_stack () =
+let enum_or_calls_stack () =
   let r = of_string "invalid" in
   let call_stack_during_error = ref [] in
 
@@ -733,7 +733,7 @@ let test_enum_or_calls_stack () =
     [ "enum_or_calls:test-property" ]
     !call_stack_during_error
 
-let test_list_call_stack () =
+let list_call_stack () =
   let r = of_string "invalid" in
   let call_stack_during_error = ref [] in
   let failing_parser r = enum "failing" [ ("valid", 42) ] r in
@@ -750,7 +750,7 @@ let test_list_call_stack () =
   Alcotest.(check (list string))
     "list and enum add nested contexts" expected !call_stack_during_error
 
-let test_fold_many_call_stack () =
+let fold_many_call_stack () =
   (* Test that fold_many preserves call stack on errors *)
   let r = of_string "valid invalid" in
   let parser r = enum "item" [ ("valid", 1); ("good", 2) ] r in
@@ -776,7 +776,7 @@ let test_fold_many_call_stack () =
       "fold_many preserves context" true
       (List.mem "fold-context" error.callstack)
 
-let test_fold_many_with_enum_context () =
+let fold_many_with_enum_context () =
   (* Test that fold_many inside enum preserves both contexts *)
   let r = of_string "invalid" in
 
@@ -811,7 +811,7 @@ let test_fold_many_with_enum_context () =
       (List.mem "enum:outer-enum" error.callstack
       || List.mem "outer-enum" error.callstack)
 
-let test_many_call_stack () =
+let many_call_stack () =
   (* Test that many preserves call stack on errors *)
   let r = of_string "valid invalid" in
   let parser r = enum "item" [ ("valid", 1); ("good", 2) ] r in
@@ -833,7 +833,7 @@ let test_many_call_stack () =
       "many preserves context" true
       (List.mem "many-context" error.callstack)
 
-let test_triple_call_stack () =
+let triple_call_stack () =
   (* Test that triple combinator preserves context *)
   let r = of_string "1 2 invalid" in
   let parse_int r = int_of_float (Css.Reader.number r) in
@@ -853,49 +853,49 @@ let suite =
     ( "reader",
       [
         (* Basic operations *)
-        test_case "basic" `Quick test_reader_basic;
-        test_case "string" `Quick test_reader_string;
-        test_case "whitespace" `Quick test_reader_whitespace;
-        test_case "comments" `Quick test_reader_comments;
+        test_case "basic" `Quick basic;
+        test_case "string" `Quick string_ops;
+        test_case "whitespace" `Quick whitespace;
+        test_case "comments" `Quick comments;
         (* Parsing helpers *)
-        test_case "take while" `Quick test_reader_take_while;
-        test_case "expect" `Quick test_reader_expect;
-        test_case "expect string" `Quick test_reader_expect_string;
-        test_case "between" `Quick test_reader_between;
+        test_case "take while" `Quick take_while_case;
+        test_case "expect" `Quick expect_case;
+        test_case "expect string" `Quick expect_string_case;
+        test_case "between" `Quick between_case;
         (* Backtracking *)
-        test_case "backtrack" `Quick test_reader_backtrack;
-        test_case "option" `Quick test_reader_option;
-        test_case "commit" `Quick test_reader_commit;
+        test_case "backtrack" `Quick backtrack;
+        test_case "option" `Quick option_case;
+        test_case "commit" `Quick commit_case;
         (* Value parsing *)
-        test_case "numbers" `Quick test_reader_numbers;
-        test_case "units" `Quick test_reader_units;
-        test_case "ident" `Quick test_reader_ident;
-        test_case "string literals" `Quick test_reader_string_literals;
-        test_case "until string" `Quick test_reader_until_string;
-        test_case "hex" `Quick test_reader_hex;
+        test_case "numbers" `Quick numbers;
+        test_case "units" `Quick units;
+        test_case "ident" `Quick ident_case;
+        test_case "string literals" `Quick string_literals;
+        test_case "until string" `Quick until_string;
+        test_case "hex" `Quick hex_case;
         (* Special cases *)
-        test_case "ident with escapes" `Quick test_reader_ident_with_escapes;
+        test_case "ident with escapes" `Quick ident_with_escapes;
         (* Error cases *)
-        test_case "failures" `Quick test_reader_failures;
+        test_case "failures" `Quick failures;
         (* New helper functions *)
-        test_case "option" `Quick test_option;
-        test_case "parse_many" `Quick test_parse_many;
-        test_case "one_of" `Quick test_one_of;
-        test_case "take" `Quick test_take;
+        test_case "option" `Quick option_parser;
+        test_case "parse_many" `Quick parse_many;
+        test_case "one_of" `Quick one_of_case;
+        test_case "take" `Quick take_case;
         (* enum combinator tests *)
-        test_case "enum" `Quick test_reader_enum;
-        test_case "enum with default" `Quick test_reader_enum_with_default;
+        test_case "enum" `Quick enum_case;
+        test_case "enum with default" `Quick enum_with_default;
         (* call stack tests *)
-        test_case "call stack" `Quick test_callstack;
-        test_case "with context" `Quick test_with_context;
-        test_case "with context exception" `Quick test_with_context_exception;
-        test_case "enum call stack" `Quick test_enum_call_stack;
-        test_case "enum_or_calls call stack" `Quick test_enum_or_calls_stack;
-        test_case "list call stack" `Quick test_list_call_stack;
-        test_case "fold_many call stack" `Quick test_fold_many_call_stack;
+        test_case "call stack" `Quick callstack_case;
+        test_case "with context" `Quick with_context_case;
+        test_case "with context exception" `Quick with_context_exception;
+        test_case "enum call stack" `Quick enum_call_stack;
+        test_case "enum_or_calls call stack" `Quick enum_or_calls_stack;
+        test_case "list call stack" `Quick list_call_stack;
+        test_case "fold_many call stack" `Quick fold_many_call_stack;
         test_case "fold_many with enum context" `Quick
-          test_fold_many_with_enum_context;
-        test_case "many call stack" `Quick test_many_call_stack;
-        test_case "triple call stack" `Quick test_triple_call_stack;
+          fold_many_with_enum_context;
+        test_case "many call stack" `Quick many_call_stack;
+        test_case "triple call stack" `Quick triple_call_stack;
       ] );
   ]

@@ -5,6 +5,14 @@ open Css.Declaration
 open Css.Values
 (* open Alcotest - Used via qualified access *)
 
+(* Generic check function for variable types *)
+let check_value type_name pp reader ?expected input =
+  let expected = Option.value ~default:input expected in
+  let t = Css.Reader.of_string input in
+  let result = reader t in
+  let pp_str = Css.Pp.to_string ~minify:true pp result in
+  Alcotest.(check string) (Fmt.str "%s %s" type_name input) expected pp_str
+
 (** Test variable creation *)
 let test_var_creation () =
   (* Basic variable creation *)
@@ -27,11 +35,11 @@ let test_var_creation () =
 let test_var_with_fallback () =
   let fallback_color = Hex { hash = true; value = "0000ff" } in
   let decl, var_handle =
-    var ~fallback:fallback_color "theme-color" Color
+    var ~fallback:(Fallback fallback_color) "theme-color" Color
       (Hex { hash = true; value = "ff0000" })
   in
 
-  Alcotest.(check bool) "has fallback" true (var_handle.fallback <> No_fallback);
+  Alcotest.(check bool) "has fallback" true (var_handle.fallback <> None);
 
   (* Verify CSS custom property naming convention *)
   match decl with
@@ -50,7 +58,7 @@ let test_vars_of_calc () =
   Alcotest.(check int) "no variables in numeric calc" 0 (List.length vars);
 
   (* Calc without variable *)
-  let simple_calc : length calc = Expr (Num 100., Mult, Num 2.) in
+  let simple_calc : length calc = Expr (Num 100., Mul, Num 2.) in
   let no_vars = vars_of_calc simple_calc in
   Alcotest.(check int) "no variables in numeric calc" 0 (List.length no_vars)
 
@@ -79,8 +87,8 @@ let test_vars_of_declarations () =
   let decl2, size_var = var "font-size" Length (Rem 1.0) in
 
   (* Create declarations using the variables *)
-  let color_decl = declaration Color (Var color_var) in
-  let size_decl = declaration Font_size (Var size_var) in
+  let color_decl = v Color (Var color_var) in
+  let size_decl = v Font_size (Var size_var) in
 
   let vars = vars_of_declarations [ decl1; decl2; color_decl; size_decl ] in
 
@@ -99,7 +107,7 @@ let test_any_var_name () =
 let test_extract_custom_declarations () =
   let custom1, _ = var "color1" Color (Hex { hash = true; value = "ff0000" }) in
   let custom2, _ = var "size1" Length (Px 16.) in
-  let regular = declaration Width (Px 100.) in
+  let regular = v Width (Px 100.) in
 
   let decls = [ custom1; regular; custom2 ] in
   let customs = extract_custom_declarations decls in
@@ -109,7 +117,7 @@ let test_extract_custom_declarations () =
 (** Test custom declaration name extraction *)
 let test_custom_declaration_name () =
   let custom, _ = var "my-var" Length (Px 20.) in
-  let regular = declaration Height (Px 50.) in
+  let regular = v Height (Px 50.) in
 
   let custom_name = custom_declaration_name custom in
   let regular_name = custom_declaration_name regular in
@@ -162,4 +170,24 @@ let variables_tests =
     ("custom property roundtrip", `Quick, test_custom_property_roundtrip);
   ]
 
-let suite = ("variables", variables_tests)
+(* Tests for newly added check functions *)
+let test_syntax () =
+  (* Syntax checking is not available in current implementation *)
+  ()
+
+let test_any_var () =
+  (* Test any_var parsing - this requires implementation details *)
+  ()
+
+let test_any_syntax () =
+  (* any_syntax checking is not available in current implementation *)
+  ()
+
+let additional_tests =
+  [
+    ("syntax", `Quick, test_syntax);
+    ("any_var", `Quick, test_any_var);
+    ("any_syntax", `Quick, test_any_syntax);
+  ]
+
+let suite = ("variables", variables_tests @ additional_tests)

@@ -5,6 +5,111 @@ open Properties
 open Declaration
 include Variables_intf
 
+(** {1 Custom Property Support} *)
+
+(** Pretty-print a syntax descriptor to CSS syntax string *)
+let rec pp_syntax : type a. a syntax Pp.t =
+ fun ctx syn ->
+  match syn with
+  | Length -> Pp.string ctx "<length>"
+  | Color -> Pp.string ctx "<color>"
+  | Number -> Pp.string ctx "<number>"
+  | Integer -> Pp.string ctx "<integer>"
+  | Percentage -> Pp.string ctx "<percentage>"
+  | Length_percentage -> Pp.string ctx "<length-percentage>"
+  | Angle -> Pp.string ctx "<angle>"
+  | Time -> Pp.string ctx "<time>"
+  | Custom_ident -> Pp.string ctx "<custom-ident>"
+  | String -> Pp.string ctx "<string>"
+  | Url -> Pp.string ctx "<url>"
+  | Image -> Pp.string ctx "<image>"
+  | Transform_function -> Pp.string ctx "<transform-function>"
+  | Universal -> Pp.string ctx "*"
+  | Or (syn1, syn2) ->
+      pp_syntax ctx syn1;
+      Pp.string ctx " | ";
+      pp_syntax ctx syn2
+  | Plus syn ->
+      pp_syntax ctx syn;
+      Pp.string ctx "+"
+  | Hash syn ->
+      pp_syntax ctx syn;
+      Pp.string ctx "#"
+  | Question syn ->
+      pp_syntax ctx syn;
+      Pp.string ctx "?"
+  | Brackets s ->
+      Pp.string ctx "[";
+      Pp.string ctx s;
+      Pp.string ctx "]"
+
+(** Pretty-print a value according to its syntax type *)
+let rec pp_value : type a. a syntax -> a Pp.t =
+ fun syntax ctx value ->
+  match syntax with
+  | Length -> Values.pp_length ctx value
+  | Color -> Values.pp_color ctx value
+  | Number -> Pp.float ctx value
+  | Integer -> Pp.int ctx value
+  | Percentage -> Values.pp_percentage ctx value
+  | Length_percentage -> Values.pp_length_percentage ctx value
+  | Angle -> Values.pp_angle ctx value
+  | Time -> Values.pp_duration ctx value
+  | Custom_ident -> Pp.string ctx value
+  | String -> Pp.quoted ctx value
+  | Url ->
+      Pp.string ctx "url(";
+      Pp.quoted ctx value;
+      Pp.string ctx ")"
+  | Image -> Pp.string ctx value
+  | Transform_function -> Pp.string ctx value
+  | Universal -> Pp.string ctx value
+  | Or (syn1, syn2) -> (
+      match value with
+      | Left v -> pp_value syn1 ctx v
+      | Right v -> pp_value syn2 ctx v)
+  | Plus syn ->
+      List.iteri
+        (fun i v ->
+          if i > 0 then Pp.sp ctx ();
+          pp_value syn ctx v)
+        value
+  | Hash syn ->
+      List.iteri
+        (fun i v ->
+          if i > 0 then Pp.string ctx ", ";
+          pp_value syn ctx v)
+        value
+  | Question syn -> (
+      match value with None -> () | Some v -> pp_value syn ctx v)
+  | Brackets _ -> Pp.string ctx value
+
+(** Read a CSS syntax descriptor from input *)
+let read_syntax (r : Reader.t) : any_syntax =
+  let s = Reader.css_value ~stops:[ ';'; '}' ] r in
+  match String.trim s with
+  | "<length>" -> Syntax Length
+  | "<color>" -> Syntax Color
+  | "<number>" -> Syntax Number
+  | "<integer>" -> Syntax Integer
+  | "<percentage>" -> Syntax Percentage
+  | "<length-percentage>" -> Syntax Length_percentage
+  | "<angle>" -> Syntax Angle
+  | "<time>" -> Syntax Time
+  | "<custom-ident>" -> Syntax Custom_ident
+  | "<string>" -> Syntax String
+  | "<url>" -> Syntax Url
+  | "<image>" -> Syntax Image
+  | "<transform-function>" -> Syntax Transform_function
+  | "*" -> Syntax String (* universal syntax treated as string *)
+  | s when String.length s > 2 && s.[0] = '[' && s.[String.length s - 1] = ']'
+    ->
+      Syntax (Brackets (String.sub s 1 (String.length s - 2)))
+  | s -> failwith ("Unsupported CSS syntax: " ^ s)
+
+(** Placeholder for reading values - needs proper implementation *)
+let read_value _reader _syntax = () (* FIXME: implement proper value parsing *)
+
 (** {1 Meta handling} *)
 
 let meta (type t) () =
@@ -18,7 +123,7 @@ let meta (type t) () =
 (** {1 Variable creation} *)
 
 let var : type a.
-    ?fallback:a ->
+    ?fallback:a fallback ->
     ?layer:string ->
     ?meta:meta ->
     string ->
@@ -31,8 +136,8 @@ let var : type a.
       (String.concat "" [ "--"; name ])
       kind value
   in
-  let fallback =
-    match fallback with None -> No_fallback | Some v -> Fallback v
+  let fallback : a fallback =
+    match fallback with None -> None | Some v -> v
   in
   let var_handle = { name; fallback; default = Some value; layer; meta } in
   (declaration, var_handle)
@@ -306,25 +411,3 @@ let extract_custom_declarations (decls : declaration list) : declaration list =
 (* Extract the variable name from a custom declaration *)
 let custom_declaration_name (decl : declaration) : string option =
   match decl with Custom_declaration { name; _ } -> Some name | _ -> None
-
-(** {1 Stylesheet variable extraction} *)
-
-let vars_of_rules rules =
-  List.concat_map
-    (fun (rule : Stylesheet.rule) -> vars_of_declarations rule.declarations)
-    rules
-
-let vars_of_media_queries media_queries =
-  List.concat_map
-    (fun (mq : Stylesheet.media_rule) -> vars_of_rules mq.media_rules)
-    media_queries
-
-let vars_of_container_queries container_queries =
-  List.concat_map
-    (fun (cq : Stylesheet.container_rule) -> vars_of_rules cq.container_rules)
-    container_queries
-
-let vars_of_stylesheet (ss : Stylesheet.t) =
-  vars_of_rules ss.rules
-  @ vars_of_media_queries ss.media_queries
-  @ vars_of_container_queries ss.container_queries

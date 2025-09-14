@@ -5,6 +5,23 @@ open Properties
 open Declaration
 include module type of Variables_intf
 
+(** {1 Custom Property Support} *)
+
+val pp_syntax : 'a syntax Pp.t
+(** [pp_syntax] pretty-prints a syntax descriptor to a CSS syntax string. *)
+
+val pp_value : 'a syntax -> 'a Pp.t
+(** [pp_value syntax value] pretty-prints a value according to its syntax type.
+*)
+
+val read_syntax : Reader.t -> any_syntax
+(** [read_syntax r] reads a CSS syntax descriptor from input. *)
+
+val read_value :
+  Reader.t ->
+  any_syntax ->
+  unit (* FIXME: should return ('a syntax * 'a) option *)
+
 (** {1 Meta handling} *)
 
 val meta : unit -> ('a -> meta) * (meta -> 'a option)
@@ -13,7 +30,7 @@ val meta : unit -> ('a -> meta) * (meta -> 'a option)
 (** {1 Variable creation} *)
 
 val var :
-  ?fallback:'a ->
+  ?fallback:'a fallback ->
   ?layer:string ->
   ?meta:meta ->
   string ->
@@ -67,18 +84,3 @@ val extract_custom_declarations : declaration list -> declaration list
 val custom_declaration_name : declaration -> string option
 (** [custom_declaration_name decl] returns the variable name if it's a custom
     declaration. *)
-
-(** {1 Stylesheet variable extraction} *)
-
-val vars_of_rules : Stylesheet.rule list -> any_var list
-(** [vars_of_rules rules] extracts variables from CSS rules. *)
-
-val vars_of_media_queries : Stylesheet.media_rule list -> any_var list
-(** [vars_of_media_queries media] extracts variables from media queries. *)
-
-val vars_of_container_queries : Stylesheet.container_rule list -> any_var list
-(** [vars_of_container_queries container] extracts variables from container
-    queries. *)
-
-val vars_of_stylesheet : Stylesheet.t -> any_var list
-(** [vars_of_stylesheet ss] extracts all variables from a stylesheet. *)

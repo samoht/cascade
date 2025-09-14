@@ -7,8 +7,8 @@
     The main notions are:
     - A {!type:declaration} is a property/value pair.
     - A {!type:rule} couples a selector with declarations.
-    - A {!type:t} is a stylesheet: a sequence of rules and at-rules (see
-      {!type:sheet_item}).
+    - A {!type:t} is a stylesheet (sequence of rules and at-rules; internal
+      representation is not exposed).
     - Values are typed (e.g., {!type:length}, {!type:color}); invalid constructs
       raise [Invalid_argument].
 
@@ -16,29 +16,25 @@
     {[
       open Css
 
-      let s =
-        stylesheet
-          [ Rule (rule ~selector:(Selector.class_ "button")
-                     [ background_color (hex "#3b82f6");
-                       color (hex "#ffffff");
-                       padding (Rem 0.5);
-                       border_radius (Rem 0.375);
-                       display Inline_block ]);
-            Media (media ~condition:"(min-width: 768px)"
-                     [ rule ~selector:".button" [ padding (Rem 1.) ] ]) ]
+      (* Build a ".btn" rule and render a stylesheet from it. *)
+      let button =
+        rule ~selector:(Selector.class_ "btn")
+          [ display Inline_block
+          ; background_color (hex "#3b82f6")
+          ; color (hex "#ffffff")
+          ; padding (Rem 0.5)
+          ; border_radius (Rem 0.375)
+          ]
       in
-      to_string s
+      to_string (v [ button ])
     ]}
 
     Custom properties:
     {[
       let def, v = var "primary-color" Color (hex "#3b82f6") in
-      stylesheet
-        [
-          Rule (rule ~selector:(Selector.pseudo_class "root") [ def ]);
-          Rule (rule ~selector:(Selector.class_ "card") [ color (Var v) ]);
-        ]
-      |> to_string
+      let root = rule ~selector:(Selector.pseudo_class "root") [ def ] in
+      let card = rule ~selector:(Selector.class_ "card") [ color (Var v) ] in
+      to_string (v [ root; card ])
     ]}
 
     Interface
@@ -80,9 +76,9 @@
     - {!section:vendor_specific} - Vendor Prefixes & Legacy Support
     - {!section:custom_properties} - Custom Properties API
 
-    @see <https://www.w3.org/Style/CSS/specs.en.html> W3C CSS Specifications
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS>
-      MDN CSS Documentation *)
+    See {:https://www.w3.org/Style/CSS/specs.en.html W3C CSS Specifications} and
+    {:https://developer.mozilla.org/en-US/docs/Web/CSS MDN CSS Documentation}.
+*)
 
 (** {1 Core Concepts}
 
@@ -92,32 +88,47 @@
 
     Structured representation of CSS selectors for targeting HTML elements.
 
-    @see <https://www.w3.org/TR/selectors-4/> CSS Selectors Level 4 *)
+    See {:https://www.w3.org/TR/selectors-4/ CSS Selectors Level 4}. *)
 
 module Selector = Selector
-module Stylesheet = Stylesheet
 
 (** {2:css_rules CSS Rules and Stylesheets}
 
     Core building blocks for CSS rules and stylesheet construction.
 
-    @see <https://www.w3.org/TR/css-syntax-3/> CSS Syntax Module Level 3 *)
+    See {:https://www.w3.org/TR/css-syntax-3/ CSS Syntax Module Level 3}. *)
 
 type rule
 (** Abstract type for CSS rules (selector + declarations). *)
 
+type 'a property_rule
+(** Abstract type for CSS property rules with typed syntax. *)
+
 type declaration
 (** Abstract type for CSS declarations (property-value pairs). *)
 
-val rule : selector:Selector.t -> declaration list -> rule
+type statement =
+  | Rule of rule
+  | Charset of string
+  | Import of Stylesheet.import_rule
+  | Namespace of string option * string
+  | Property : 'a property_rule -> statement
+  | Layer_decl of string list
+  | Layer of string option * Stylesheet.block
+  | Media of string * Stylesheet.block
+  | Container of string option * string * Stylesheet.block
+  | Supports of string * Stylesheet.block
+  | Starting_style of Stylesheet.block
+  | Scope of string option * string option * Stylesheet.block
+  | Keyframes of string * Stylesheet.keyframe list
+  | Font_face of declaration list
+  | Page of string option * declaration list
+      (** CSS statement type - either a rule or an at-rule *)
+
+val rule :
+  selector:Selector.t -> ?nested:statement list -> declaration list -> rule
 (** [rule ~selector declarations] is a CSS rule with the given selector and
     declarations. *)
-
-type nested_rule
-(** Abstract type for rules that can be nested in at-rules. *)
-
-type t
-(** Abstract type for CSS stylesheets. *)
 
 val selector : rule -> Selector.t
 (** [selector rule] is the selector of [rule]. *)
@@ -131,185 +142,45 @@ val declarations : rule -> declaration list
     an at sign (@) followed by an identifier and include everything up to the
     next semicolon or CSS block.
 
-    @see <https://www.w3.org/TR/css-conditional-3/>
-      CSS Conditional Rules Module Level 3
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/At-rule> MDN At-rules
-*)
-
-type media_rule
-(** Abstract type for [@media] rules. Media queries apply styles based on device
-    characteristics. *)
-
-type supports_rule
-(** Abstract type for [@supports] rules. Feature queries apply styles based on
-    CSS feature support. *)
-
-type container_rule
-(** Abstract type for [@container] rules. Container queries apply styles based
-    on containing element size. *)
-
-type layer_rule
-(** Abstract type for [@layer] rules. Cascade layers control style precedence.
-*)
-
-type property_rule
-(** Abstract type for [@property] rules. Property rules register custom CSS
-    properties with type checking and constraints. *)
-
-type starting_style_rule
-(** Abstract type for [@starting-style] rules. Starting style rules define
-    initial styles for animating elements. *)
-
-val media : condition:string -> rule list -> media_rule
-(** [media ~condition rules] is a [@media] rule.
-    @param condition Media query condition (e.g., "(min-width: 768px)"). *)
-
-val media_condition : media_rule -> string
-(** [media_condition media] is the condition string of [media]. *)
-
-val media_rules : media_rule -> rule list
-(** [media_rules media] is the list of rules contained in [media]. *)
-
-val supports : condition:string -> rule list -> supports_rule
-(** [supports ~condition rules] is a [@supports] rule for feature queries.
-    @param condition Feature query condition (e.g., "(display: grid)"). *)
-
-val supports_nested :
-  condition:string -> rule list -> supports_rule list -> supports_rule
-(** [supports_nested ~condition rules nested_supports] is a [@supports] rule
-    with nested [@supports] rules. *)
-
-val container : ?name:string -> condition:string -> rule list -> container_rule
-(** [container ?name ~condition rules] is a [\@container] rule.
-    @param name Optional container name.
-    @param condition Container query condition (e.g., "(min-width: 700px)"). *)
-
-val layer :
-  name:string ->
-  ?media:media_rule list ->
-  ?container:container_rule list ->
-  ?supports:supports_rule list ->
-  nested_rule list ->
-  layer_rule
-(** [layer ~name ?media ?container ?supports rules] is a [\@layer] rule.
-    @param name Layer name.
-    @param media Optional nested [@media] rules.
-    @param container Optional nested [@container] rules.
-    @param supports Optional nested [@supports] rules.
-
-    {b CSS Cascade Layer Ordering:} Layers are applied in the order they are
-    declared. The standard layer order is: 1. [theme] - CSS custom properties
-    and design tokens 2. [properties] - [@property] rules for custom property
-    registration 3. [base] - Normalize/reset styles and base element styling 4.
-    [components] - Reusable component styles 5. [utilities] - Single-purpose
-    utility classes
-
-    Later layers override earlier layers, and unlayered styles have the highest
-    priority.
-    @see <https://developer.mozilla.org/en-US/docs/Web/CSS/@layer> . *)
-
-val layer_name : layer_rule -> string
-(** [layer_name layer] is the name of [layer]. *)
-
-val layer_rules : layer_rule -> nested_rule list
-(** [layer_rules layer] is the list of rules contained in [layer]. *)
-
-val property :
-  syntax:string ->
-  ?initial_value:string ->
-  ?inherits:bool ->
-  string ->
-  property_rule
-(** [property ~syntax ?initial_value ?inherits name] is a [\@property] rule to
-    register a custom CSS property.
-    @param syntax Property syntax (e.g., "<color>").
-    @param initial_value Optional initial value.
-    @param inherits Whether the property inherits (default: false).
-    @param name Property name (including --). *)
-
-val property_rule_name : property_rule -> string
-(** [property_rule_name rule] is the property name of [rule]. *)
-
-val property_rule_initial : property_rule -> string option
-(** [property_rule_initial rule] is the initial value of [rule], if any. *)
-
-val default_decl_of_property_rule : property_rule -> declaration
-(** [default_decl_of_property_rule rule] is the custom property declaration for
-    [rule] with its initial value. Useful to add defaults in the properties
-    layer. *)
+    See {:https://www.w3.org/TR/css-conditional-3/ CSS Conditional Rules Module
+    Level 3} and {:https://developer.mozilla.org/en-US/docs/Web/CSS/At-rule MDN
+    At-rules}. *)
 
 (** {2:stylesheet_construction Stylesheet Construction}
 
     Tools for building complete CSS stylesheets from rules and declarations. *)
 
-type charset_rule
-(** Type for [@charset] at-rules *)
-
-type import_rule
-(** Type for [@import] at-rules *)
-
-type namespace_rule
-(** Type for [@namespace] at-rules *)
-
-type keyframes_rule
-(** Type for [@keyframes] at-rules *)
-
-type font_face_rule
-(** Type for [@font-face] at-rules *)
-
-type page_rule
-(** Type for [@page] at-rules *)
-
-(** Items that can appear at the top level of a stylesheet. *)
-type sheet_item =
-  | Charset of charset_rule  (** [@charset] at-rule *)
-  | Import of import_rule  (** [@import] at-rule *)
-  | Namespace of namespace_rule  (** [@namespace] at-rule *)
-  | Rule of rule  (** Regular CSS rule *)
-  | Media of media_rule  (** [@media] at-rule *)
-  | Supports of supports_rule  (** [@supports] at-rule *)
-  | Container of container_rule  (** [@container] at-rule *)
-  | Layer of layer_rule  (** [@layer] at-rule *)
-  | Property of property_rule  (** [@property] at-rule *)
-  | Starting_style of starting_style_rule  (** [@starting-style] at-rule *)
-  | Keyframes of keyframes_rule  (** [@keyframes] at-rule *)
-  | Font_face of font_face_rule  (** [@font-face] at-rule *)
-  | Page of page_rule  (** [@page] at-rule *)
+type t
+(** The type for CSS stylesheets. *)
 
 val empty : t
 (** [empty] is an empty stylesheet. *)
 
 val concat : t list -> t
-(** [concat stylesheets] is [stylesheets] concatenated into one. Rules are
-    combined in order, with later stylesheets taking precedence. *)
+(** [concat stylesheets] concatenates multiple stylesheets into one. *)
 
-val stylesheet : sheet_item list -> t
-(** [stylesheet items] is a stylesheet from a list of items. *)
+val v : rule list -> t
+(** [v rules] creates a stylesheet from a list of rules. *)
 
-val stylesheet_items : t -> sheet_item list
-(** [stylesheet_items t] is the list of top-level items in [t]. *)
+val stylesheet : statement list -> t
+(** [stylesheet statements] creates a stylesheet from a list of statements. *)
 
-val stylesheet_layers : t -> layer_rule list
-(** [stylesheet_layers stylesheet] is the list of layer rules of [stylesheet].
-*)
+val stylesheet_rules : t -> rule list
+(** [stylesheet_rules t] returns the top-level rules from the stylesheet. *)
 
-val stylesheet_media_queries : t -> media_rule list
-(** [stylesheet_media_queries stylesheet] is the list of media queries of
-    [stylesheet]. *)
+val media : condition:string -> rule list -> t
+(** [media ~condition rules] creates a stylesheet with rules wrapped in @media. *)
 
-val stylesheet_container_queries : t -> container_rule list
-(** [stylesheet_container_queries stylesheet] is the list of container queries
-    of [stylesheet]. *)
+val layer : ?name:string -> rule list -> t
+(** [layer ?name rules] creates a stylesheet with rules wrapped in [@layer]. *)
 
-(** {2:nesting_helpers Nesting Helpers}
+val container : ?name:string -> condition:string -> rule list -> t
+(** [container ?name ~condition rules] creates a stylesheet with rules wrapped
+    in [@container]. *)
 
-    Utilities for CSS nesting and hierarchical rule organization. *)
-
-val rule_to_nested : rule -> nested_rule
-(** [rule_to_nested rule] is [rule] as a [nested_rule] for use in at-rules. *)
-
-val supports_to_nested : supports_rule -> nested_rule
-(** [supports_to_nested supports] is [supports] as a [nested_rule]. *)
+val supports : condition:string -> rule list -> t
+(** [supports ~condition rules] creates a stylesheet with rules wrapped in
+    [@supports]. *)
 
 (** {1 Declarations}
 
@@ -320,10 +191,10 @@ val supports_to_nested : supports_rule -> nested_rule
     Fundamental types for CSS values, variables, and calculations that underpin
     the entire CSS system.
 
-    @see <https://www.w3.org/TR/css-variables-1/>
-      CSS Custom Properties for Cascading Variables Module Level 1
-    @see <https://www.w3.org/TR/css-values-3/>
-      CSS Values and Units Module Level 3 *)
+    See {:https://www.w3.org/TR/css-variables-1/ CSS Custom Properties for
+    Cascading Variables Module Level 1} and
+    {:https://www.w3.org/TR/css-values-3/ CSS Values and Units Module Level 3}.
+*)
 
 type 'a var
 (** The type of CSS variable holding values of type ['a]. *)
@@ -334,13 +205,8 @@ val var_name : 'a var -> string
 val var_layer : 'a var -> string option
 (** [var_layer v] is the optional layer where [v] is defined. *)
 
-(** CSS generation mode. *)
-type mode =
-  | Variables  (** Emit var(--name) and generate a theme layer *)
-  | Inline  (** Resolve vars to default, no CSS variables *)
-
 (** CSS calc operations. *)
-type calc_op = Add | Sub | Mult | Div
+type calc_op = Add | Sub | Mul | Div
 
 (** CSS calc values. *)
 type 'a calc =
@@ -349,12 +215,17 @@ type 'a calc =
   | Num of float  (** Unitless number *)
   | Expr of 'a calc * calc_op * 'a calc
 
+type 'a fallback =
+  | Empty  (** Empty fallback: var(--name,) *)
+  | None  (** No fallback: var(--name) *)
+  | Fallback of 'a  (** Value fallback: var(--name, value) *)
+
 (** {2:values CSS Values & Units}
 
     Core value types used across CSS properties.
 
-    @see <https://www.w3.org/TR/css-values-4/>
-      CSS Values and Units Module Level 4 *)
+    See {:https://www.w3.org/TR/css-values-4/ CSS Values and Units Module Level
+    4}. *)
 
 (** CSS length values.
 
@@ -439,7 +310,7 @@ module Calc : sig
   val length : length -> length calc
   (** [length len] is [len] lifted into [calc]. *)
 
-  val var : ?default:'a -> ?fallback:'a -> string -> 'a calc
+  val var : ?default:'a -> ?fallback:'a fallback -> string -> 'a calc
   (** [var ?default ?fallback name] is a variable reference for [calc]
       expressions. Example: [var "spacing"] or
       [var ~fallback:(Rem 1.2) "tw-leading"]. *)
@@ -668,6 +539,12 @@ type percentage =
   | Pct of float (* 0%–100% as a % token *)
   | Var of percentage var
   | Calc of percentage calc (* calc(...) that resolves to a % *)
+
+type length_percentage =
+  | Length of length
+  | Percentage of percentage
+  | Var of length_percentage var
+  | Calc of length_percentage calc
 
 (** CSS hue interpolation options *)
 type hue_interpolation = Shorter | Longer | Increasing | Decreasing | Default
@@ -1128,7 +1005,7 @@ val float : float_side -> declaration
 *)
 
 (* Clear property values *)
-type clear = None | Left | Right | Both
+type clear = None | Left | Right | Both | Inline_start | Inline_end
 
 val clear : clear -> declaration
 (** [clear value] is the
@@ -1265,14 +1142,15 @@ val list_style_position : list_style_position -> declaration
 (** CSS forced-color-adjust values. *)
 type forced_color_adjust = Auto | None | Inherit
 
+(** CSS repeat style values. *)
+type repeat_style = Repeat | Space | Round | No_repeat
+
 (** CSS background-repeat values. *)
 type background_repeat =
-  | Repeat
   | Repeat_x
   | Repeat_y
-  | No_repeat
-  | Space
-  | Round
+  | Single of repeat_style
+  | Pair of repeat_style * repeat_style
   | Inherit
 
 (** CSS background-size values. *)
@@ -1318,6 +1196,49 @@ type background_image =
   | Linear_gradient of gradient_direction * gradient_stop list
   | Radial_gradient of gradient_stop list
   | None
+
+type background_box = Border_box | Padding_box | Content_box | Text | Inherit
+
+type background_shorthand = {
+  color : color option;
+  image : background_image option;
+  position : position_2d option;
+  size : background_size option;
+  repeat : background_repeat option;
+  attachment : background_attachment option;
+  clip : background_box option;
+  origin : background_box option;
+}
+(** CSS background shorthand values. *)
+
+type background =
+  | Inherit
+  | Initial
+  | None
+  | Var of background var
+  | Shorthand of background_shorthand  (** CSS background values. *)
+
+val background_shorthand :
+  ?color:color ->
+  ?image:background_image ->
+  ?position:position_2d ->
+  ?size:background_size ->
+  ?repeat:background_repeat ->
+  ?attachment:background_attachment ->
+  ?clip:background_box ->
+  ?origin:background_box ->
+  unit ->
+  background
+(** [background_shorthand ?color ?image ?position ?size ?repeat ?attachment
+     ?clip ?origin ()] is the background shorthand.
+    - [color]: background color
+    - [image]: background image (url or gradient)
+    - [position]: image position
+    - [size]: image size (cover, contain, or specific size)
+    - [repeat]: repeat behavior (repeat, no-repeat, etc.)
+    - [attachment]: scroll behavior (scroll, fixed, local)
+    - [clip]: clipping area
+    - [origin]: positioning area. *)
 
 val color : color -> declaration
 (** [color value] is the
@@ -1451,67 +1372,232 @@ type flex =
   | Grow_shrink of float * float  (** grow shrink 0% *)
   | Full of float * float * flex_basis  (** grow shrink basis *)
 
-(** CSS align-items values. *)
+(** CSS baseline position for alignment properties.
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_alignment/Box_alignment_in_block_abspos_tables}
+     MDN: Box Alignment in Block Layout} *)
+type baseline = Baseline | First_baseline | Last_baseline
+
+(** CSS self position values for align-items.
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-items} MDN:
+     align-items} *)
+type self_position_items =
+  | Center
+  | Start
+  | End
+  | Self_start
+  | Self_end
+  | Flex_start
+  | Flex_end
+
+(** CSS content position values.
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_alignment} MDN:
+     CSS Box Alignment} *)
+type content_position =
+  | Center
+  | Start
+  | End
+  | Flex_start
+  | Flex_end
+  | Left
+  | Right
+
+(** CSS content distribution values.
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_alignment} MDN:
+     CSS Box Alignment} *)
+type content_distribution =
+  | Space_between
+  | Space_around
+  | Space_evenly
+  | Stretch
+
+(** CSS align-content values.
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-content} MDN:
+     align-content} *)
+type align_content =
+  | Normal
+  | Baseline of baseline
+  | Content_pos of bool option * content_position
+  | Content_dist of content_distribution
+
+(** CSS align-items values.
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-items} MDN:
+     align-items} *)
 type align_items =
   | Normal
   | Stretch
-  | Center
-  | Start
-  | End
-  | Flex_start
-  | Flex_end
-  | Baseline
-  | First_baseline
-  | Last_baseline
-  | Safe_center
-  | Unsafe_center
-  | Inherit
-  | Initial
-  | Unset
+  | Baseline of baseline
+  | Self_pos of bool option * self_position_items
+  | Safe
+  | Unsafe
+  | Anchor_center
 
-(** CSS justify-content values. *)
+(** CSS justify-content values.
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-content} MDN:
+     justify-content} *)
 type justify_content =
-  | Flex_start
-  | Flex_end
-  | Center
-  | Space_between
-  | Space_around
-  | Space_evenly
-  | Start
-  | End
-  | Left
-  | Right
-
-(** CSS align-self values. *)
-type align_self = Auto | Flex_start | Flex_end | Center | Baseline | Stretch
-
-type align =
   | Normal
-  | Start
-  | End
-  | Center
-  | Stretch
-  | Space_between
-  | Space_around
-  | Space_evenly
-  | Var of align var
+  | Content_pos of bool option * content_position
+  | Content_dist of content_distribution
 
-(** CSS align/justify values. *)
-type justify =
+(** CSS align-self values.
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-self} MDN:
+     align-self} *)
+type align_self =
   | Auto
   | Normal
   | Stretch
+  | Baseline of baseline
+  | Self_pos of bool option * self_position_items
+
+(** CSS self position values for justify properties.
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-items} MDN:
+     justify-items} *)
+type self_position_justify =
   | Center
   | Start
   | End
-  | Flex_start
-  | Flex_end
   | Self_start
   | Self_end
+  | Flex_start
+  | Flex_end
   | Left
   | Right
-  | Baseline
+
+(** CSS justify-items values.
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-items} MDN:
+     justify-items} *)
+type justify_items =
+  | Normal
+  | Stretch
+  | Baseline of baseline
+  | Self_pos of bool option * self_position_justify
+  | Anchor_center
+  | Legacy
+  | Safe
+  | Unsafe
+
+(** CSS justify-self values.
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-self} MDN:
+     justify-self} *)
+type justify_self =
+  | Auto
+  | Normal
+  | Stretch
+  | Baseline of baseline
+  | Self_pos of bool option * self_position_justify
+  | Anchor_center
+  | Safe
+  | Unsafe
   | Inherit
+
+(** {2:alignment_constructors Alignment Constructors}
+    Constructor functions for complex alignment types. *)
+
+val align_content :
+  ?v:align_content ->
+  ?distribution:content_distribution ->
+  ?safe:bool ->
+  ?position:content_position ->
+  ?baseline:baseline ->
+  unit ->
+  declaration
+(** [align_content ?distribution ?safe ?position ?baseline ()] creates an
+    align-content declaration. Exactly one of distribution, position (with
+    optional safe), or baseline must be specified.
+    @param distribution
+      Content distribution (Space_between, Space_around, Space_evenly, or
+      Stretch)
+    @param safe Optional safe alignment (true for safe, false for unsafe)
+    @param position
+      Content position (Center, Start, End, Flex_start, Flex_end, Left, or
+      Right)
+    @param baseline
+      Baseline position (Baseline, First_baseline, or Last_baseline). *)
+
+val justify_content :
+  ?v:justify_content ->
+  ?distribution:content_distribution ->
+  ?safe:bool ->
+  ?position:content_position ->
+  unit ->
+  declaration
+(** [justify_content ?distribution ?safe ?position ()] creates a justify-content
+    declaration. Either distribution or position (with optional safe) must be
+    specified.
+    @param distribution
+      Content distribution (Space_between, Space_around, Space_evenly, or
+      Stretch)
+    @param safe Optional safe alignment (true for safe, false for unsafe)
+    @param position
+      Content position (Center, Start, End, Flex_start, Flex_end, Left, or
+      Right). *)
+
+val align_items :
+  ?v:align_items ->
+  ?safe:bool ->
+  ?position:self_position_items ->
+  ?baseline:baseline ->
+  unit ->
+  declaration
+(** [align_items ?safe ?position ?baseline ()] creates an align-items
+    declaration. Either position (with optional safe) or baseline must be
+    specified.
+    @param safe Optional safe alignment (true for safe, false for unsafe)
+    @param position
+      Self position (Center, Start, End, Self_start, Self_end, Flex_start, or
+      Flex_end)
+    @param baseline
+      Baseline position (Baseline, First_baseline, or Last_baseline). *)
+
+val align_self :
+  ?v:align_self ->
+  ?safe:bool ->
+  ?position:self_position_items ->
+  ?baseline:baseline ->
+  unit ->
+  declaration
+(** [align_self ?safe ?position ?baseline ()] creates an align-self declaration.
+    Either position (with optional safe) or baseline must be specified.
+    @param safe Optional safe alignment (true for safe, false for unsafe)
+    @param position
+      Self position (Center, Start, End, Self_start, Self_end, Flex_start, or
+      Flex_end)
+    @param baseline
+      Baseline position (Baseline, First_baseline, or Last_baseline). *)
+
+val justify_items :
+  ?v:justify_items ->
+  ?safe:bool ->
+  ?position:self_position_justify ->
+  ?baseline:baseline ->
+  unit ->
+  declaration
+(** [justify_items ?safe ?position ?baseline ()] creates a justify-items
+    declaration. Either position (with optional safe) or baseline must be
+    specified.
+    @param safe Optional safe alignment (true for safe, false for unsafe)
+    @param position
+      Self position (Center, Start, End, Self_start, Self_end, Flex_start,
+      Flex_end, Left, or Right)
+    @param baseline
+      Baseline position (Baseline, First_baseline, or Last_baseline). *)
+
+val justify_self :
+  ?v:justify_self ->
+  ?safe:bool ->
+  ?position:self_position_justify ->
+  ?baseline:baseline ->
+  unit ->
+  declaration
+(** [justify_self ?safe ?position ?baseline ()] creates a justify-self
+    declaration. Either position (with optional safe) or baseline must be
+    specified.
+    @param safe Optional safe alignment (true for safe, false for unsafe)
+    @param position
+      Self position (Center, Start, End, Self_start, Self_end, Flex_start,
+      Flex_end, Left, or Right)
+    @param baseline
+      Baseline position (Baseline, First_baseline, or Last_baseline). *)
 
 val flex_direction : flex_direction -> declaration
 (** [flex_direction value] is the
@@ -1522,21 +1608,6 @@ val flex_wrap : flex_wrap -> declaration
 (** [flex_wrap value] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/flex-wrap} flex-wrap}
     property. *)
-
-val justify_content : justify_content -> declaration
-(** [justify_content value] is the
-    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-content}
-     justify-content} property. *)
-
-val align_items : align_items -> declaration
-(** [align_items value] is the
-    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-items}
-     align-items} property. *)
-
-val align_content : align -> declaration
-(** [align_content value] is the
-    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-content}
-     align-content} property. *)
 
 val flex : flex -> declaration
 (** [flex value] is the
@@ -1557,21 +1628,6 @@ val flex_basis : length -> declaration
 (** [flex_basis value] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/flex-basis} flex-basis}
     property. *)
-
-val align_self : align_self -> declaration
-(** [align_self value] is the
-    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-self} align-self}
-    property. *)
-
-val justify_self : justify -> declaration
-(** [justify_self value] is the
-    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-self}
-     justify-self} property. *)
-
-val justify_items : justify -> declaration
-(** [justify_items value] is the
-    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-items}
-     justify-items} property. *)
 
 val order : int -> declaration
 (** [order value] is the
@@ -1722,7 +1778,7 @@ type place_items =
   | End
   | Center
   | Stretch
-  | Align_justify of align_items * justify
+  | Align_justify of align_items * justify_items
 
 val place_items : place_items -> declaration
 (** [place_items value] is the
@@ -1739,14 +1795,14 @@ type place_content =
   | Space_between
   | Space_around
   | Space_evenly
-  | Align_justify of align * justify
+  | Align_justify of align_content * justify_content
 
 val place_content : place_content -> declaration
 (** [place_content value] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/place-content}
      place-content} shorthand property. *)
 
-val place_self : align_self -> declaration
+val place_self : align_self * justify_self -> declaration
 (** [place_self value] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/place-self} place-self}
     shorthand property. *)
@@ -1771,7 +1827,15 @@ type font_weight =
   | Var of font_weight var  (** CSS variable reference *)
 
 (** CSS text align values. *)
-type text_align = Left | Right | Center | Justify | Start | End | Inherit
+type text_align =
+  | Left
+  | Right
+  | Center
+  | Justify
+  | Start
+  | End
+  | Match_parent
+  | Inherit
 
 (** CSS text decoration values. *)
 type text_decoration_line = Underline | Overline | Line_through
@@ -1790,6 +1854,20 @@ type text_decoration =
   | Shorthand of text_decoration_shorthand
   | Inherit
   | Var of text_decoration var
+
+val text_decoration_shorthand :
+  ?lines:text_decoration_line list ->
+  ?style:text_decoration_style ->
+  ?color:color ->
+  ?thickness:length ->
+  unit ->
+  text_decoration
+(** [text_decoration_shorthand ?lines ?style ?color ?thickness ()] is the
+    text-decoration shorthand.
+    - [lines]: decoration lines (underline, overline, line-through)
+    - [style]: line style (solid, double, dotted, dashed, wavy)
+    - [color]: decoration color
+    - [thickness]: line thickness. *)
 
 (** CSS font style values. *)
 type font_style = Normal | Italic | Oblique | Inherit
@@ -2189,7 +2267,13 @@ val unicode_bidi : unicode_bidi -> declaration
      unicode-bidi} property. *)
 
 (** CSS writing-mode values *)
-type writing_mode = Horizontal_tb | Vertical_rl | Vertical_lr | Inherit
+type writing_mode =
+  | Horizontal_tb
+  | Vertical_rl
+  | Vertical_lr
+  | Sideways_lr
+  | Sideways_rl
+  | Inherit
 
 val writing_mode : writing_mode -> declaration
 (** [writing_mode value] is the
@@ -2240,7 +2324,7 @@ type border_shorthand = {
 }
 (** CSS border shorthand type. *)
 
-type border = Inherit | Initial | None | Border of border_shorthand
+type border = Inherit | Initial | None | Shorthand of border_shorthand
 
 (** CSS outline style values. *)
 type outline_style =
@@ -2254,6 +2338,13 @@ type outline_style =
   | Inset
   | Outset
   | Auto
+
+val border_shorthand :
+  ?width:border_width -> ?style:border_style -> ?color:color -> unit -> border
+(** [border_shorthand ?width ?style ?color ()] is the border shorthand.
+    - [width]: border width (thin, medium, thick, or specific length)
+    - [style]: border style (solid, dashed, dotted, etc.)
+    - [color]: border color. *)
 
 val border :
   ?width:border_width ->
@@ -2533,13 +2624,34 @@ type duration =
 (** CSS transition property values. *)
 type transition_property = All | None | Property of string
 
-type transition = {
+type transition_shorthand = {
   property : transition_property;
   duration : duration option;
   timing_function : timing_function option;
   delay : duration option;
 }
-(** CSS transition values. *)
+(** CSS transition shorthand values. *)
+
+type transition =
+  | Inherit
+  | Initial
+  | None
+  | Var of transition var
+  | Shorthand of transition_shorthand  (** CSS transition values. *)
+
+val transition_shorthand :
+  ?property:transition_property ->
+  ?duration:duration ->
+  ?timing_function:timing_function ->
+  ?delay:duration ->
+  unit ->
+  transition
+(** [transition_shorthand ?property ?duration ?timing_function ?delay ()] is the
+    transition shorthand.
+    - [property]: CSS property to transition (defaults to All)
+    - [duration]: transition duration
+    - [timing_function]: easing function (ease, linear, ease-in, etc.)
+    - [delay]: delay before transition starts. *)
 
 val transition : transition -> declaration
 (** [transition value] is the
@@ -2578,7 +2690,7 @@ type animation_play_state = Running | Paused
 (** CSS animation iteration count values *)
 type animation_iteration_count = Num of float | Infinite
 
-type animation = {
+type animation_shorthand = {
   name : string option;
   duration : duration option;
   timing_function : timing_function option;
@@ -2588,9 +2700,16 @@ type animation = {
   fill_mode : animation_fill_mode option;
   play_state : animation_play_state option;
 }
-(** CSS animation properties *)
+(** CSS animation shorthand properties *)
 
-val animation_spec :
+type animation =
+  | Inherit
+  | Initial
+  | None
+  | Var of animation var
+  | Shorthand of animation_shorthand  (** CSS animation properties *)
+
+val animation_shorthand :
   ?name:string ->
   ?duration:duration ->
   ?timing_function:timing_function ->
@@ -2601,9 +2720,17 @@ val animation_spec :
   ?play_state:animation_play_state ->
   unit ->
   animation
-(** [animation_spec ?name ?duration ?timing_function ?delay ?iteration_count
-     ?direction ?fill_mode ?play_state ()] creates an animation record with
-    optional parameters. *)
+(** [animation_shorthand ?name ?duration ?timing_function ?delay
+     ?iteration_count ?direction ?fill_mode ?play_state ()] is the animation
+    shorthand.
+    - [name]: animation name
+    - [duration]: animation duration
+    - [timing_function]: easing function
+    - [delay]: delay before animation starts
+    - [iteration_count]: number of iterations (or Infinite)
+    - [direction]: animation direction (normal, reverse, alternate, etc.)
+    - [fill_mode]: how styles apply before/after animation
+    - [play_state]: running or paused. *)
 
 val animation : animation -> declaration
 (** [animation props] is the
@@ -2829,7 +2956,7 @@ val resize : resize -> declaration
      aspect-ratio} property. *)
 
 (** CSS container-type values *)
-type container_type = Size | Inline_size | Normal
+type container_type = Size | Inline_size | Scroll_state | Normal
 
 val container_type : container_type -> declaration
 (** [container_type value] is the
@@ -3227,7 +3354,12 @@ val meta : unit -> ('a -> meta) * (meta -> 'a option)
     extract the value back. *)
 
 val var_ref :
-  ?fallback:'a -> ?default:'a -> ?layer:string -> ?meta:meta -> string -> 'a var
+  ?fallback:'a fallback ->
+  ?default:'a ->
+  ?layer:string ->
+  ?meta:meta ->
+  string ->
+  'a var
 (** [var_ref ?fallback ?default ?layer ?meta name] is a CSS variable reference.
     This is primarily for the CSS parser to create var() references.
 
@@ -3237,13 +3369,47 @@ val var_ref :
     - [layer] is an optional CSS layer name
     - [meta] is optional metadata. *)
 
-val var_ref_empty :
-  ?default:'a -> ?layer:string -> ?meta:meta -> string -> 'a var
-(** [var_ref_empty ?default ?layer ?meta name] creates a CSS variable reference
-    with empty fallback, i.e. [var(--name,)]. *)
+(** {2 CSS @property Support} *)
+
+type 'a syntax =
+  | Length : length syntax
+  | Color : color syntax
+  | Number : float syntax
+  | Integer : int syntax
+  | Percentage : percentage syntax
+  | Length_percentage : length_percentage syntax
+  | Angle : angle syntax
+  | Time : duration syntax
+  | Custom_ident : string syntax
+  | String : string syntax
+  | Url : string syntax
+  | Image : string syntax
+  | Transform_function : string syntax
+  | Universal : string syntax
+  (* Compound syntax types *)
+  | Or : 'a syntax * 'b syntax -> ('a, 'b) Either.t syntax
+  | Plus : 'a syntax -> 'a list syntax
+  | Hash : 'a syntax -> 'a list syntax
+  | Question : 'a syntax -> 'a option syntax
+  | Brackets : string -> string syntax
+      (** Type-safe syntax descriptors for CSS [@property] rules. *)
+
+val property :
+  name:string -> 'a syntax -> ?initial_value:'a -> ?inherits:bool -> unit -> t
+(** [property ~name syntax ?initial_value ?inherits ()] creates a [@property]
+    rule for registering a custom CSS property with type-safe syntax and initial
+    value.
+
+    Examples:
+    - [property ~name:"--my-color" Variables.Color ~initial_value:(hex
+       "#ff0000") ()]
+    - [property ~name:"--my-size" Variables.Length ~initial_value:(Px 10.) ()]
+
+    See {:https://developer.mozilla.org/en-US/docs/Web/CSS/@property MDN
+    @property}. *)
 
 val var :
-  ?fallback:'a ->
+  ?fallback:'a fallback ->
   ?layer:string ->
   ?meta:meta ->
   string ->
@@ -3271,9 +3437,9 @@ val var :
     "var(--radius-md)". In inline mode, it uses "0.5rem" directly when the
     default equals the defined value. *)
 
-val declaration_meta : declaration -> meta option
-(** [declaration_meta decl] extracts metadata from a declaration if it has any.
-*)
+val meta_of_declaration : declaration -> meta option
+(** [meta_of_declaration decl] extracts metadata from a declaration if it has
+    any. *)
 
 val custom_property : ?layer:string -> string -> string -> declaration
 (** [custom_property ?layer name value] is a CSS custom property declaration.
@@ -3306,6 +3472,14 @@ val custom_declaration_layer : declaration -> string option
 
     Functions for converting CSS structures to string output. *)
 
+type mode =
+  | Variables
+  | Inline
+      (** Rendering mode for CSS output.
+          - [Variables]: Standard rendering with CSS custom properties support
+          - [Inline]: For inline styles (no at-rules, variables expanded with
+            their values) *)
+
 val to_string :
   ?minify:bool -> ?optimize:bool -> ?mode:mode -> ?newline:bool -> t -> string
 (** [to_string ?minify ?optimize ?mode ?newline stylesheet] renders a complete
@@ -3329,14 +3503,6 @@ type any_var = V : 'a var -> any_var
 val vars_of_rules : rule list -> any_var list
 (** [vars_of_rules rules] extracts all CSS variables referenced in the rules'
     declarations, returning them sorted and deduplicated. *)
-
-val vars_of_media_queries : media_rule list -> any_var list
-(** [vars_of_media_queries media_queries] extracts all CSS variables referenced
-    in the media queries' rules, returning them sorted and deduplicated. *)
-
-(** [vars_of_container_queries container_queries] extracts all CSS variables
-    referenced in the container queries' rules, returning them sorted and
-    deduplicated. *)
 
 val vars_of_stylesheet : t -> any_var list
 (** [vars_of_stylesheet stylesheet] extracts all CSS variables referenced in the
@@ -3458,3 +3624,7 @@ module Properties = Properties
 module Declaration = Declaration
 module Variables = Variables
 module Optimize = Optimize
+
+(* Expose the internal Stylesheet module for test access only. Public callers
+   should use the abstract Css API above. *)
+module Stylesheet = Stylesheet

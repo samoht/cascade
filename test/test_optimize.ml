@@ -26,21 +26,16 @@ let _check_value name pp reader ?expected input =
 (** Test declaration deduplication *)
 let test_deduplicate_declarations () =
   (* Test case: later declaration wins *)
-  let decls =
-    [
-      declaration Color (hex_color "ff0000");
-      declaration Color (hex_color "0000ff");
-    ]
-  in
+  let decls = [ v Color (hex_color "ff0000"); v Color (hex_color "0000ff") ] in
   let deduped = deduplicate_declarations decls in
   check int "single color property remains" 1 (List.length deduped);
 
   (* Test case: !important wins over normal *)
   let decls_important =
     [
-      declaration Color (hex_color "ff0000");
-      declaration ~important:true Color (hex_color "00ff00");
-      declaration Color (hex_color "0000ff");
+      v Color (hex_color "ff0000");
+      v ~important:true Color (hex_color "00ff00");
+      v Color (hex_color "0000ff");
     ]
   in
   let deduped_important = deduplicate_declarations decls_important in
@@ -63,24 +58,26 @@ let test_deduplicate_declarations () =
 (** Test buggy property duplication *)
 let test_duplicate_buggy_properties () =
   (* Test -webkit-transform duplication *)
-  let decls = [ declaration Transform [ Rotate (Deg 45.) ] ] in
+  let decls = [ v Transform [ Rotate (Deg 45.) ] ] in
   let duplicated = duplicate_buggy_properties decls in
   (* Should add -webkit-transform *)
   check bool "adds webkit prefix" true
     (List.length duplicated > List.length decls)
 
 (** Test rule optimization *)
-let test_optimize_single_rule () =
+let single_rule () =
   let selector = Css.Selector.class_ "test" in
   let decls =
     [
-      declaration Color (hex_color "ff0000");
-      declaration Color (hex_color "0000ff");
-      declaration Background_color (hex_color "ffffff");
+      v Color (hex_color "ff0000");
+      v Color (hex_color "0000ff");
+      v Background_color (hex_color "ffffff");
     ]
   in
-  let rule : Css.Stylesheet.rule = { selector; declarations = decls } in
-  let optimized = optimize_single_rule rule in
+  let rule : Css.Stylesheet.rule =
+    { selector; declarations = decls; nested = [] }
+  in
+  let optimized = single_rule rule in
 
   (* Check that duplicate color declarations are removed *)
   let color_count =
@@ -97,12 +94,13 @@ let test_optimize_single_rule () =
 let test_merge_rules () =
   let selector = Css.Selector.class_ "test" in
   let rule1 : Css.Stylesheet.rule =
-    { selector; declarations = [ declaration Color (hex_color "ff0000") ] }
+    { selector; declarations = [ v Color (hex_color "ff0000") ]; nested = [] }
   in
   let rule2 : Css.Stylesheet.rule =
     {
       selector;
-      declarations = [ declaration Background_color (hex_color "0000ff") ];
+      declarations = [ v Background_color (hex_color "0000ff") ];
+      nested = [];
     }
   in
 
@@ -115,15 +113,15 @@ let test_merge_rules () =
 
 (** Test selector grouping *)
 let test_group_selectors () =
-  let decls = [ declaration Color (hex_color "ff0000") ] in
+  let decls = [ v Color (hex_color "ff0000") ] in
   let rule1 : Css.Stylesheet.rule =
-    { selector = Css.Selector.class_ "a"; declarations = decls }
+    { selector = Css.Selector.class_ "a"; declarations = decls; nested = [] }
   in
   let rule2 : Css.Stylesheet.rule =
-    { selector = Css.Selector.class_ "b"; declarations = decls }
+    { selector = Css.Selector.class_ "b"; declarations = decls; nested = [] }
   in
   let rule3 : Css.Stylesheet.rule =
-    { selector = Css.Selector.class_ "c"; declarations = decls }
+    { selector = Css.Selector.class_ "c"; declarations = decls; nested = [] }
   in
 
   (* Test combine_identical_rules function *)
@@ -136,7 +134,7 @@ let test_group_selectors () =
     (Css.Selector.is_compound_list grouped_rule.selector)
 
 (** Test complete stylesheet optimization *)
-let test_optimize () =
+let optimize_all () =
   let selector1 = Css.Selector.class_ "test" in
   let selector2 = Css.Selector.class_ "other" in
 
@@ -144,62 +142,71 @@ let test_optimize () =
     {
       selector = selector1;
       declarations =
-        [
-          declaration Color (hex_color "ff0000");
-          declaration Color (hex_color "0000ff");
-        ];
+        [ v Color (hex_color "ff0000"); v Color (hex_color "0000ff") ];
+      nested = [];
     }
   in
   let rule2 : Css.Stylesheet.rule =
     {
       selector = selector1;
-      declarations = [ declaration Background_color (hex_color "ffffff") ];
+      declarations = [ v Background_color (hex_color "ffffff") ];
+      nested = [];
     }
   in
   let rule3 : Css.Stylesheet.rule =
     {
       selector = selector2;
-      declarations = [ declaration Color (hex_color "0000ff") ];
+      declarations = [ v Color (hex_color "0000ff") ];
+      nested = [];
     }
   in
 
   let stylesheet =
-    { Css.Stylesheet.empty with rules = [ rule1; rule2; rule3 ] }
+    [
+      Css.Stylesheet.Rule rule1;
+      Css.Stylesheet.Rule rule2;
+      Css.Stylesheet.Rule rule3;
+    ]
   in
 
-  let optimized = optimize stylesheet in
+  let optimized = stylesheet stylesheet in
 
   (* Should merge rule1 and rule2 since they have same selector *)
+  let rule_count stmts =
+    List.fold_left
+      (fun acc stmt ->
+        match stmt with Css.Stylesheet.Rule _ -> acc + 1 | _ -> acc)
+      0 stmts
+  in
   check bool "optimization reduces rule count" true
-    (List.length optimized.rules < List.length stylesheet.rules)
+    (rule_count optimized < rule_count stylesheet)
 
 (** Test media query optimization *)
-let test_optimize_media_queries () =
+let media_queries () =
   let selector = Css.Selector.class_ "test" in
   let rule : Css.Stylesheet.rule =
     {
       selector;
       declarations =
-        [
-          declaration Color (hex_color "ff0000");
-          declaration Color (hex_color "0000ff");
-        ];
+        [ v Color (hex_color "ff0000"); v Color (hex_color "0000ff") ];
+      nested = [];
     }
   in
 
-  let media_rule : Css.Stylesheet.media_rule =
-    { media_condition = "screen"; media_rules = [ rule ] }
+  let media_stmt =
+    Css.Stylesheet.Media ("screen", [ Css.Stylesheet.Rule rule ])
   in
 
-  let stylesheet =
-    { Css.Stylesheet.empty with media_queries = [ media_rule ] }
-  in
+  let stylesheet = [ media_stmt ] in
 
-  let optimized = optimize stylesheet in
+  let optimized = stylesheet stylesheet in
 
   (* Check that declarations within media queries are also deduplicated *)
-  let optimized_media = List.hd optimized.media_queries in
-  let optimized_rule = List.hd optimized_media.media_rules in
+  let optimized_rule =
+    match List.hd optimized with
+    | Css.Stylesheet.Media (_, [ Css.Stylesheet.Rule r ]) -> r
+    | _ -> failwith "Expected Media with Rule"
+  in
   let color_count =
     List.fold_left
       (fun acc decl ->
@@ -211,37 +218,28 @@ let test_optimize_media_queries () =
   check int "media rule declarations are deduplicated" 1 color_count
 
 (** Test layer optimization *)
-let test_optimize_layers () =
+let layers () =
   let selector = Css.Selector.class_ "test" in
   let rule : Css.Stylesheet.rule =
     {
       selector;
       declarations =
-        [
-          declaration Color (hex_color "ff0000");
-          declaration Color (hex_color "0000ff");
-        ];
+        [ v Color (hex_color "ff0000"); v Color (hex_color "0000ff") ];
+      nested = [];
     }
   in
 
-  let layer : Css.Stylesheet.layer_rule =
-    {
-      layer = "utilities";
-      rules = [ Css.Stylesheet.Rule rule ];
-      media_queries = [];
-      container_queries = [];
-      supports_queries = [];
-    }
+  let layer_stmt =
+    Css.Stylesheet.Layer (Some "utilities", [ Css.Stylesheet.Rule rule ])
   in
 
-  let stylesheet = { Css.Stylesheet.empty with layers = [ layer ] } in
+  let stylesheet = [ layer_stmt ] in
 
-  let optimized = optimize stylesheet in
+  let optimized = stylesheet stylesheet in
 
   (* Check that layer rules are optimized *)
-  let optimized_layer = List.hd optimized.layers in
-  match List.hd optimized_layer.rules with
-  | Css.Stylesheet.Rule optimized_rule ->
+  match List.hd optimized with
+  | Css.Stylesheet.Layer (_, [ Css.Stylesheet.Rule optimized_rule ]) ->
       let color_count =
         List.fold_left
           (fun acc decl ->
@@ -257,12 +255,12 @@ let optimize_tests =
   [
     ("deduplicate declarations", `Quick, test_deduplicate_declarations);
     ("duplicate buggy properties", `Quick, test_duplicate_buggy_properties);
-    ("optimize single rule", `Quick, test_optimize_single_rule);
+    ("optimize single rule", `Quick, single_rule);
     ("merge rules", `Quick, test_merge_rules);
     ("group selectors", `Quick, test_group_selectors);
-    ("optimize stylesheet", `Quick, test_optimize);
-    ("optimize media queries", `Quick, test_optimize_media_queries);
-    ("optimize layers", `Quick, test_optimize_layers);
+    ("optimize stylesheet", `Quick, optimize_all);
+    ("optimize media queries", `Quick, media_queries);
+    ("optimize layers", `Quick, layers);
   ]
 
 let suite = ("optimize", optimize_tests)

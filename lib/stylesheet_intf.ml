@@ -2,20 +2,7 @@
 
 (** {1 Core Types} *)
 
-(** {2 Basic Rules} *)
-
-type rule = {
-  selector : Selector.t;
-  declarations : Declaration.declaration list;
-}
-(** A CSS rule with a selector and declarations *)
-
-(** {2 At-Rules} *)
-
-(** {3 Document Structure At-Rules} *)
-
-type charset_rule = { encoding : string  (** e.g., "UTF-8" *) }
-(** A CSS [@charset] rule (must be first in stylesheet) *)
+(** {2 Import Rule} *)
 
 type import_rule = {
   url : string;  (** URL or string to import *)
@@ -25,141 +12,67 @@ type import_rule = {
 }
 (** A CSS [@import] rule *)
 
-type namespace_rule = {
-  prefix : string option;  (** Optional namespace prefix *)
-  uri : string;  (** Namespace URI *)
-}
-(** A CSS [@namespace] rule for XML namespaces *)
+(** {2 Property Rule} *)
 
-(** {3 Conditional At-Rules} *)
-
-type media_rule = { media_condition : string; media_rules : rule list }
-(** A CSS [@media] query rule *)
-
-type container_rule = {
-  container_name : string option;
-  container_condition : string;
-  container_rules : rule list;
-}
-(** A CSS [@container] query rule *)
-
-type supports_content =
-  | Support_rules of rule list
-  | Support_nested of rule list * supports_rule list
-      (** Content of a [@supports] rule *)
-
-and supports_rule = {
-  supports_condition : string;
-  supports_content : supports_content;
-}
-(** A CSS [@supports] rule for feature queries *)
-
-type starting_style_rule = { starting_rules : rule list }
-(** A CSS [@starting-style] rule for entry animations *)
-
-(** {3 Layer System} *)
-
-type nested_rule =
-  | Rule of rule
-  | Supports of supports_rule  (** A nested rule within a layer *)
-
-type layer_rule = {
-  layer : string;
-  rules : nested_rule list;
-  media_queries : media_rule list;
-  container_queries : container_rule list;
-  supports_queries : supports_rule list;
-}
-(** A CSS [@layer] rule for cascade layers *)
-
-(** {3 Property Registration} *)
-
-type property_initial_value =
-  | V : 'a Declaration.kind * 'a -> property_initial_value
-  | Universal of string
-  | None  (** Initial value for a registered custom property *)
-
-type property_rule = {
+type 'a property_rule = {
   name : string;
-  syntax : string;
+  syntax : 'a Variables.syntax;
   inherits : bool;
-  initial_value : property_initial_value;
+  initial_value : 'a option;
 }
-(** A CSS [@property] rule for registering custom properties *)
+(** Type-safe CSS [@property] rule with typed syntax and initial value *)
 
-(** {3 Animation and Font At-Rules} *)
+(** {2 Basic Rules} *)
 
-type keyframe_block = {
-  selector : string;  (** e.g., "0%", "from", "50%", "to" *)
+type rule = {
+  selector : Selector.t;
   declarations : Declaration.declaration list;
+  nested : statement list;
 }
-(** A single keyframe block within [@keyframes] *)
+(** A CSS rule with a selector, declarations, and optional nested rules/at-rules
+*)
 
-type keyframes_rule = {
-  name : string;  (** Animation name *)
-  keyframes : keyframe_block list;
+(** {2 Statements and Blocks} *)
+
+(** A CSS statement - either a rule or an at-rule *)
+and statement =
+  | Rule of rule
+  | Charset of string  (** [@charset "UTF-8";] *)
+  | Import of import_rule  (** [@import url(...) layer(...) supports(...);] *)
+  | Namespace of string option * string  (** [@namespace prefix? url;] *)
+  | Property : 'a property_rule -> statement  (** [@property --name { ... }] *)
+  | Layer_decl of string list  (** [@layer theme, base, utilities;] *)
+  | Layer of string option * block  (** [@layer name? { ... }] *)
+  | Media of string * block  (** [@media (...) { ... }] *)
+  | Container of string option * string * block
+      (** [@container name? (...) { ... }] *)
+  | Supports of string * block  (** [@supports (...) { ... }] *)
+  | Starting_style of block  (** [@starting-style { ... }] *)
+  | Scope of string option * string option * block
+      (** [@scope (start)? to (end)? { ... }] *)
+  | Keyframes of string * keyframe list  (** [@keyframes name { ... }] *)
+  | Font_face of Declaration.declaration list  (** [@font-face { ... }] *)
+  | Page of string option * Declaration.declaration list
+      (** [@page :first { ... }] *)
+
+and block = statement list
+(** A block contains a list of statements *)
+
+and keyframe = {
+  keyframe_selector : string;  (** e.g., "0%", "from", "50%", "to" *)
+  keyframe_declarations : Declaration.declaration list;
 }
-(** A CSS [@keyframes] rule for animations *)
-
-type font_face_rule = {
-  font_family : string option;
-  src : string option;  (** URL or local font *)
-  font_style : string option;
-  font_weight : string option;
-  font_stretch : string option;
-  font_display : string option;
-  unicode_range : string option;
-  font_variant : string option;
-  font_feature_settings : string option;
-  font_variation_settings : string option;
-}
-(** A CSS [@font-face] rule for custom fonts *)
-
-(** {3 Print Styling} *)
-
-type page_rule = {
-  selector : string option;  (** e.g., ":first", ":left", ":right" *)
-  declarations : Declaration.declaration list;
-}
-(** A CSS [@page] rule for print styling *)
+(** A single keyframe within [@keyframes] *)
 
 (** {1 Stylesheet Structure} *)
 
-type t = {
-  charset : charset_rule option;  (** Must be first if present *)
-  imports : import_rule list;
-      (** Must come before other rules except [@charset] *)
-  namespaces : namespace_rule list;
-      (** Must come after [@charset] and [@import] *)
-  layers : layer_rule list;
-  keyframes : keyframes_rule list;
-  font_faces : font_face_rule list;
-  pages : page_rule list;
-  rules : rule list;
-  media_queries : media_rule list;
-  container_queries : container_rule list;
-  starting_styles : starting_style_rule list;
-  supports_queries : supports_rule list;
-  at_properties : property_rule list;
-}
-(** A complete CSS stylesheet with proper at-rule ordering *)
+type stylesheet = statement list
+(** A CSS stylesheet is a list of statements *)
 
-type sheet_item =
-  | Charset of charset_rule
-  | Import of import_rule
-  | Namespace of namespace_rule
-  | Rule of rule
-  | Media of media_rule
-  | Supports of supports_rule
-  | Container of container_rule
-  | Layer of layer_rule
-  | Property of property_rule
-  | Starting_style of starting_style_rule
-  | Keyframes of keyframes_rule
-  | Font_face of font_face_rule
-  | Page of page_rule  (** A single item that can appear in a stylesheet *)
+type t = stylesheet
+(** Alias for backwards compatibility *)
 
-(** {1 Rendering Configuration} *)
+(** {1 Rendering} *)
 
 type mode = Variables | Inline  (** Rendering mode for CSS output *)
 

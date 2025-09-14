@@ -71,63 +71,91 @@ type overflow = Visible | Hidden | Scroll | Auto | Clip
 (* Flexbox Types *)
 type flex_direction = Row | Row_reverse | Column | Column_reverse
 type flex_wrap = Nowrap | Wrap | Wrap_reverse
+type baseline = Baseline | First_baseline | Last_baseline
 
-type align =
-  | Normal
+type self_position_items =
+  | Center
   | Start
   | End
+  | Self_start
+  | Self_end
+  | Flex_start
+  | Flex_end
+
+type content_position =
   | Center
-  | Stretch
+  | Start
+  | End
+  | Flex_start
+  | Flex_end
+  | Left
+  | Right
+
+type content_distribution =
   | Space_between
   | Space_around
   | Space_evenly
-  | Var of align var
+  | Stretch
+
+type align_content =
+  | Normal
+  | Baseline of baseline
+  | Content_pos of bool option * content_position
+  | Content_dist of content_distribution
 
 type align_items =
   | Normal
   | Stretch
-  | Center
-  | Start
-  | End
-  | Flex_start
-  | Flex_end
-  | Baseline
-  | First_baseline
-  | Last_baseline
-  | Safe_center
-  | Unsafe_center
-  | Inherit
-  | Initial
-  | Unset
+  | Baseline of baseline
+  | Self_pos of bool option * self_position_items
+  | Safe
+  | Unsafe
+  | Anchor_center
 
-type align_self = Auto | Flex_start | Flex_end | Center | Baseline | Stretch
-
-type justify_content =
-  | Flex_start
-  | Flex_end
-  | Center
-  | Space_between
-  | Space_around
-  | Space_evenly
-  | Start
-  | End
-  | Left
-  | Right
-
-type justify =
+type align_self =
   | Auto
   | Normal
   | Stretch
+  | Baseline of baseline
+  | Self_pos of bool option * self_position_items
+
+type justify_content =
+  | Normal
+  | Content_pos of bool option * content_position
+  | Content_dist of content_distribution
+
+(* Exact type for justify-items (Box Alignment) *)
+type self_position_justify =
   | Center
   | Start
   | End
-  | Flex_start
-  | Flex_end
   | Self_start
   | Self_end
+  | Flex_start
+  | Flex_end
   | Left
   | Right
-  | Baseline
+
+type justify_items =
+  | Normal
+  | Stretch
+  | Baseline of baseline
+  | Self_pos of bool option * self_position_justify
+  | Anchor_center
+  | Legacy
+  | Safe
+  | Unsafe
+
+(* Exact type for justify-self (Box Alignment) *)
+type justify_self =
+  | Auto
+  | Normal
+  | Stretch
+  | Baseline of baseline
+  | Self_pos of bool option * self_position_justify
+  | Anchor_center
+  | Safe
+  | Unsafe
   | Inherit
 
 type flex_basis =
@@ -222,7 +250,7 @@ type place_content =
   | Space_between
   | Space_around
   | Space_evenly
-  | Align_justify of align * justify
+  | Align_justify of align_content * justify_content
 
 type place_items =
   | Normal
@@ -230,7 +258,7 @@ type place_items =
   | End
   | Center
   | Stretch
-  | Align_justify of align_items * justify
+  | Align_justify of align_items * justify_items
 
 (* Grid Types *)
 type grid_auto_flow = Row | Column | Dense | Row_dense | Column_dense
@@ -267,7 +295,17 @@ type grid_template =
 type grid_line = Auto | Num of int | Name of string | Span of int
 type aspect_ratio = Auto | Ratio of float * float | Inherit
 type font_style = Normal | Italic | Oblique | Inherit
-type text_align = Left | Right | Center | Justify | Start | End | Inherit
+
+type text_align =
+  | Left
+  | Right
+  | Center
+  | Justify
+  | Start
+  | End
+  | Match_parent
+  | Inherit
+
 type text_decoration_line = Underline | Overline | Line_through
 type text_decoration_style = Solid | Double | Dotted | Dashed | Wavy | Inherit
 
@@ -353,7 +391,7 @@ type border_shorthand = {
   color : color option;
 }
 
-type border = Inherit | Initial | None | Border of border_shorthand
+type border = Inherit | Initial | None | Shorthand of border_shorthand
 
 type outline_style =
   | None
@@ -585,19 +623,26 @@ type timing_function =
 
 type transition_property = All | None | Property of string
 
-type transition = {
+type transition_shorthand = {
   property : transition_property;
   duration : duration option;
   timing_function : timing_function option;
   delay : duration option;
 }
 
+type transition =
+  | Inherit
+  | Initial
+  | None
+  | Var of transition var
+  | Shorthand of transition_shorthand
+
 type animation_direction = Normal | Reverse | Alternate | Alternate_reverse
 type animation_fill_mode = None | Forwards | Backwards | Both
 type animation_iteration_count = Num of float | Infinite
 type animation_play_state = Running | Paused
 
-type animation = {
+type animation_shorthand = {
   name : string option;
   duration : duration option;
   timing_function : timing_function option;
@@ -607,6 +652,13 @@ type animation = {
   fill_mode : animation_fill_mode option;
   play_state : animation_play_state option;
 }
+
+type animation =
+  | Inherit
+  | Initial
+  | None
+  | Var of animation var
+  | Shorthand of animation_shorthand
 
 (* Visual Effects Types *)
 type blend_mode =
@@ -674,14 +726,13 @@ type filter =
 (* Background Types *)
 type background_attachment = Scroll | Fixed | Local | Inherit
 type background_box = Border_box | Padding_box | Content_box | Text | Inherit
+type repeat_style = Repeat | Space | Round | No_repeat
 
 type background_repeat =
-  | Repeat
   | Repeat_x
   | Repeat_y
-  | No_repeat
-  | Space
-  | Round
+  | Single of repeat_style
+  | Pair of repeat_style * repeat_style
   | Inherit
 
 type background_size =
@@ -739,7 +790,7 @@ type position_2d =
   | Inherit
 
 (* Structured background type for the shorthand property *)
-type background = {
+type background_shorthand = {
   color : color option;
   image : background_image option;
   position : position_2d option;
@@ -749,6 +800,13 @@ type background = {
   clip : background_box option;
   origin : background_box option;
 }
+
+type background =
+  | Inherit
+  | Initial
+  | None
+  | Var of background var
+  | Shorthand of background_shorthand
 
 (* Gap shorthand type *)
 type gap = { row_gap : length option; column_gap : length option }
@@ -833,7 +891,7 @@ type content_visibility =
   | Var of content_visibility var
 
 (* Container Types *)
-type container_type = Size | Inline_size | Normal
+type container_type = Size | Inline_size | Scroll_state | Normal
 
 (* Containment Types *)
 type contain =
@@ -881,7 +939,13 @@ type unicode_bidi =
   | Plaintext
   | Inherit
 
-type writing_mode = Horizontal_tb | Vertical_rl | Vertical_lr | Inherit
+type writing_mode =
+  | Horizontal_tb
+  | Vertical_rl
+  | Vertical_lr
+  | Sideways_lr
+  | Sideways_rl
+  | Inherit
 
 (* Webkit & Mozilla Specific Types *)
 type webkit_appearance =
@@ -911,7 +975,7 @@ type text_size_adjust = None | Auto | Pct of float | Inherit
 (* Other Types *)
 type forced_color_adjust = Auto | None | Inherit
 type appearance = None | Auto | Button | Textfield | Menulist | Inherit
-type clear = None | Left | Right | Both
+type clear = None | Left | Right | Both | Inline_start | Inline_end
 type float_side = None | Left | Right | Inline_start | Inline_end | Inherit
 type text_decoration_skip_ink = Auto | None | All | Inherit
 
@@ -983,13 +1047,13 @@ type 'a property =
   | Order : int property
   | Align_items : align_items property
   | Justify_content : justify_content property
-  | Justify_items : justify property
-  | Justify_self : justify property
-  | Align_content : align property
+  | Justify_items : justify_items property
+  | Justify_self : justify_self property
+  | Align_content : align_content property
   | Align_self : align_self property
   | Place_content : place_content property
   | Place_items : place_items property
-  | Place_self : align_self property
+  | Place_self : (align_self * justify_self) property
   | Grid_template_columns : grid_template property
   | Grid_template_rows : grid_template property
   | Grid_template_areas : string property

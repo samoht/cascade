@@ -19,10 +19,10 @@ let check_value name pp reader ?expected input =
       | Some v2 ->
           let printed2 = Css.Pp.to_string ~minify:true pp v2 in
           check string (Fmt.str "roundtrip %s %s" name input) printed printed2
-      | None -> fail (Printf.sprintf "Failed to re-parse %s: %s" name printed));
+      | None -> Alcotest.failf "Failed to re-parse %s: %s" name printed);
       (* Check against expected *)
       check string (Fmt.str "%s %s" name input) expected printed
-  | None -> fail (Printf.sprintf "Failed to parse %s: %s" name input)
+  | None -> Alcotest.failf "Failed to parse %s: %s" name input
 
 (* Helper to check Parse_error fields match *)
 let check_parse_error_fields name (expected : Css.Reader.parse_error)
@@ -76,7 +76,7 @@ let check_block input expected_count =
   check int (Fmt.str "block count %s" input) expected_count (List.length decls);
   decls
 
-let test_declaration_simple () =
+let simple () =
   (* Basic declarations *)
   check_declaration ~expected:"color:red" "color: red;";
   check_declaration ~expected:"margin:10px" "margin: 10px;";
@@ -85,7 +85,7 @@ let test_declaration_simple () =
   check_declaration ~expected:"color:red" "  color  :  red  ;  ";
   check_declaration ~expected:"margin:10px" "\tmargin\t:\t10px\t;\t"
 
-let test_declaration_complex_values () =
+let complex_values () =
   (* Function values *)
   check_declaration ~expected:"background:url(image.png)"
     "background: url(image.png);";
@@ -108,7 +108,7 @@ let test_declaration_complex_values () =
   check_declaration ~expected:"width:calc(100% - calc(50px + 10px))"
     "width: calc(100% - calc(50px + 10px));"
 
-let test_declaration_quoted_strings () =
+let quoted_strings () =
   (* Simple quoted strings *)
   check_declaration ~expected:"content:\"hello\"" "content: \"hello\";";
   check_declaration ~expected:"content:\"world\"" "content: 'world';";
@@ -122,7 +122,7 @@ let test_declaration_quoted_strings () =
   check_declaration ~expected:"content:\"a:b\"" "content: \"a:b\";";
   check_declaration ~expected:"content:\"a{b}\"" "content: \"a{b}\";"
 
-let test_declaration_custom_properties_basic () =
+let custom_properties_basic () =
   check_declaration ~expected:"--color:red" "--color: red;";
   check_declaration ~expected:"--my-var:10px" "--my-var: 10px;";
   check_declaration ~expected:"--complex:var(--other, 10px)"
@@ -130,14 +130,14 @@ let test_declaration_custom_properties_basic () =
   check_declaration ~expected:"--important:value!important"
     "--important: value !important;"
 
-let test_declaration_vendor_prefixes () =
+let vendor_prefixes () =
   check_declaration ~expected:"-webkit-transform:rotate(45deg)"
     "-webkit-transform: rotate(45deg);";
   check_declaration ~expected:"-moz-appearance:none" "-moz-appearance: none;";
   check_declaration ~expected:"-ms-filter:blur(5px)" "-ms-filter: blur(5px);";
   check_declaration ~expected:"-o-transition:all .3s" "-o-transition: all 0.3s;"
 
-let test_declaration_multiple () =
+let multiple () =
   (* Basic multiple declarations *)
   let decls = check_declarations "color: red; margin: 10px;" 2 in
   (* Check first declaration *)
@@ -162,7 +162,7 @@ let test_declaration_multiple () =
   | Some decl -> check bool "second is important" true (is_important decl)
   | None -> fail "Missing second declaration"
 
-let test_declaration_block () =
+let block () =
   (* Basic block *)
   let decls = check_block "{ color: blue; display: block; }" 2 in
   (match List.nth_opt decls 0 with
@@ -182,7 +182,7 @@ let test_declaration_block () =
   let _ = check_block "{ }" 0 in
   ()
 
-let test_declaration_missing_semicolon () =
+let missing_semicolon () =
   (* Last declaration without semicolon *)
   let _ = check_declarations "color: red; margin: 10px" 2 in
   (* Single declaration without semicolon *)
@@ -192,7 +192,7 @@ let test_declaration_missing_semicolon () =
   check_declaration ~expected:"width:calc(100% - 10px)"
     "width: calc(100% - 10px)"
 
-let test_declaration_empty_input () =
+let empty_input () =
   let r = Css.Reader.of_string "" in
   let decls = read_declarations r in
   check int "empty input" 0 (List.length decls);
@@ -201,7 +201,7 @@ let test_declaration_empty_input () =
   let decls = read_declarations r in
   check int "whitespace only" 0 (List.length decls)
 
-let test_declaration_property_name () =
+let property_name () =
   (* Test read_property_name directly *)
   let test_prop_name input expected =
     let r = Css.Reader.of_string input in
@@ -215,7 +215,7 @@ let test_declaration_property_name () =
   test_prop_name "--custom-var:" "--custom-var";
   test_prop_name "font-family:" "font-family"
 
-let test_declaration_property_value () =
+let property_value () =
   (* Test read_property_value directly *)
   let test_prop_value input expected =
     let r = Css.Reader.of_string input in
@@ -231,7 +231,7 @@ let test_declaration_property_value () =
   test_prop_value "linear-gradient(to right, red, blue);"
     "linear-gradient(to right, red, blue)"
 
-let test_declaration_roundtrip () =
+let roundtrip () =
   (* Test that parsing and re-serializing gives expected results *)
   check_declaration "color:red";
   check_declaration "margin:10px";
@@ -247,7 +247,7 @@ let test_declaration_roundtrip () =
   check_declaration ~expected:"margin:10px" "margin : 10px";
   check_declaration ~expected:"padding:5px!important" "padding: 5px !important"
 
-let test_declaration_error_missing_colon () =
+let error_missing_colon () =
   let css = "color red;" in
   let r = Css.Reader.of_string css in
   check_raises "missing colon"
@@ -263,7 +263,7 @@ let test_declaration_error_missing_colon () =
        })
     (fun () -> ignore (read_declaration r))
 
-let test_declaration_error_stray_semicolon () =
+let error_stray_semicolon () =
   let css = "; color: red;" in
   let r = Css.Reader.of_string css in
   check_raises "stray semicolon"
@@ -279,7 +279,7 @@ let test_declaration_error_stray_semicolon () =
        })
     (fun () -> ignore (read_declaration r))
 
-let test_declaration_error_unclosed_block () =
+let error_unclosed_block () =
   let css = "{ color: red;" in
   let r = Css.Reader.of_string css in
   check_raises "missing closing brace"
@@ -295,7 +295,7 @@ let test_declaration_error_unclosed_block () =
        })
     (fun () -> ignore (read_block r))
 
-let test_declaration_special_cases () =
+let special_cases () =
   (* Nested parentheses *)
   check_declaration ~expected:"width:calc(100% - calc(50px + 10px))"
     "width: calc(100% - calc(50px + 10px));";
@@ -316,7 +316,7 @@ let check_declaration ~expected input =
       check string input expected output
   | None -> Alcotest.failf "Failed to parse declaration: %s" input
 
-let test_declaration_colors () =
+let colors () =
   (* Named colors *)
   check_declaration ~expected:"color:red" "color: red";
   check_declaration ~expected:"color:blue" "color: blue";
@@ -348,7 +348,7 @@ let test_declaration_colors () =
   check_declaration ~expected:"border-color:blue" "border-color: blue";
   check_declaration ~expected:"outline-color:#ff0000" "outline-color: #ff0000"
 
-let test_declaration_lengths () =
+let lengths () =
   (* Pixels *)
   check_declaration ~expected:"width:100px" "width: 100px";
   check_declaration ~expected:"height:50px" "height: 50px";
@@ -384,7 +384,7 @@ let test_declaration_lengths () =
   check_declaration ~expected:"width:50vmin" "width: 50vmin";
   check_declaration ~expected:"height:50vmax" "height: 50vmax"
 
-let test_declaration_display () =
+let display () =
   let c = check_declaration in
   c ~expected:"display:none" "display: none";
   c ~expected:"display:block" "display: block";
@@ -401,7 +401,7 @@ let test_declaration_display () =
   c ~expected:"display:contents" "display: contents";
   c ~expected:"display:flow-root" "display: flow-root"
 
-let test_declaration_position () =
+let position () =
   let c = check_declaration in
   c ~expected:"position:static" "position: static";
   c ~expected:"position:relative" "position: relative";
@@ -409,7 +409,7 @@ let test_declaration_position () =
   c ~expected:"position:fixed" "position: fixed";
   c ~expected:"position:sticky" "position: sticky"
 
-let test_declaration_font_properties () =
+let font_properties () =
   (* Font weight *)
   check_declaration ~expected:"font-weight:normal" "font-weight: normal";
   check_declaration ~expected:"font-weight:bold" "font-weight: bold";
@@ -440,7 +440,7 @@ let test_declaration_font_properties () =
   check_declaration ~expected:"line-height:20px" "line-height: 20px";
   check_declaration ~expected:"line-height:1.5em" "line-height: 1.5em"
 
-let test_declaration_text_properties () =
+let text_properties () =
   (* Text align *)
   check_declaration ~expected:"text-align:left" "text-align: left";
   check_declaration ~expected:"text-align:right" "text-align: right";
@@ -476,7 +476,7 @@ let test_declaration_text_properties () =
   check_declaration ~expected:"white-space:break-spaces"
     "white-space: break-spaces"
 
-let test_declaration_flexbox () =
+let flexbox () =
   (* Flex direction *)
   check_declaration ~expected:"flex-direction:row" "flex-direction: row";
   check_declaration ~expected:"flex-direction:row-reverse"
@@ -530,7 +530,7 @@ let test_declaration_flexbox () =
   check_declaration ~expected:"justify-content:space-evenly"
     "justify-content: space-evenly"
 
-let test_declaration_borders () =
+let borders () =
   (* Border style *)
   check_declaration ~expected:"border-style:none" "border-style: none";
   check_declaration ~expected:"border-style:solid" "border-style: solid";
@@ -578,7 +578,7 @@ let test_declaration_borders () =
   check_declaration ~expected:"border-left-color:yellow"
     "border-left-color: yellow"
 
-let test_declaration_overflow () =
+let overflow () =
   check_declaration ~expected:"overflow:visible" "overflow: visible";
   check_declaration ~expected:"overflow:hidden" "overflow: hidden";
   check_declaration ~expected:"overflow:scroll" "overflow: scroll";
@@ -595,7 +595,7 @@ let test_declaration_overflow () =
   check_declaration ~expected:"overflow-y:scroll" "overflow-y: scroll";
   check_declaration ~expected:"overflow-y:auto" "overflow-y: auto"
 
-let test_declaration_animations () =
+let animations () =
   (* Animation properties *)
   check_declaration ~expected:"animation-name:slide-in"
     "animation-name: slide-in";
@@ -655,7 +655,7 @@ let test_declaration_animations () =
   check_declaration ~expected:"animation-play-state:paused"
     "animation-play-state: paused"
 
-let test_declaration_transforms () =
+let transforms () =
   (* Transform functions *)
   check_declaration ~expected:"transform:none" "transform: none";
   check_declaration ~expected:"transform:translateX(10px)"
@@ -691,7 +691,7 @@ let test_declaration_transforms () =
   check_declaration ~expected:"transform-origin:10px 20px"
     "transform-origin: 10px 20px"
 
-let test_declaration_grid () =
+let grid () =
   (* Grid template columns/rows *)
   check_declaration ~expected:"grid-template-columns:none"
     "grid-template-columns: none";
@@ -738,7 +738,7 @@ let test_declaration_grid () =
   check_declaration ~expected:"column-gap:10px" "column-gap: 10px";
   check_declaration ~expected:"row-gap:20px" "row-gap: 20px"
 
-let test_declaration_misc () =
+let misc () =
   (* Opacity *)
   check_declaration ~expected:"opacity:0" "opacity: 0";
   check_declaration ~expected:"opacity:.5" "opacity: 0.5";
@@ -788,7 +788,7 @@ let test_declaration_misc () =
   check_declaration ~expected:"resize:horizontal" "resize: horizontal";
   check_declaration ~expected:"resize:vertical" "resize: vertical"
 
-let test_declaration_list_properties () =
+let list_properties () =
   (* Box shadow *)
   check_declaration ~expected:"box-shadow:none" "box-shadow: none";
   check_declaration ~expected:"box-shadow:0 1px 3px rgb(0 0 0/.12)"
@@ -830,7 +830,7 @@ let test_declaration_list_properties () =
   check_declaration ~expected:"animation:slide .5s ease-out"
     "animation: slide 0.5s ease-out"
 
-let test_declaration_custom_properties () =
+let custom_properties () =
   (* Basic custom properties *)
   check_declaration ~expected:"--color:red" "--color: red";
   check_declaration ~expected:"--my-var:10px" "--my-var: 10px";
@@ -845,7 +845,7 @@ let test_declaration_custom_properties () =
   check_declaration ~expected:"--fallback:var(--undefined, 10px)"
     "--fallback: var(--undefined, 10px)"
 
-let test_declaration_important () =
+let important () =
   (* Standard properties with !important *)
   check_declaration ~expected:"color:red!important" "color: red !important";
   check_declaration ~expected:"display:none!important"
@@ -885,7 +885,7 @@ let test_declaration_important () =
   (* Valid per CSS spec *)
   neg "color: red !IMPORTANT!;" "trailing bang"
 
-let test_declaration_invalid () =
+let invalid () =
   let neg input label =
     let r = Css.Reader.of_string input in
     let got = Css.Reader.option Css.Declaration.read_declaration r in
@@ -905,7 +905,7 @@ let test_declaration_invalid () =
   neg "z-index: blue" "z-index expects integer";
   neg "font-weight: green" "font-weight expects numeric/enum"
 
-let test_declaration_edge_cases () =
+let edge_cases () =
   (* Empty/whitespace values where valid *)
   check_declaration ~expected:"content:\"\"" "content: \"\"";
   check_declaration ~expected:"content:\" \"" "content: \" \"";
@@ -928,33 +928,33 @@ let test_declaration_edge_cases () =
        rgb(0 0 0/.1),0 8px 16px rgb(0 0 0/.1)"
     ("box-shadow: " ^ long_shadow)
 
-let test_declaration_css_wide_keywords () =
+let css_wide_keywords () =
   (* All properties accept CSS-wide keywords per spec *)
   check_declaration ~expected:"display:inherit" "display: inherit";
   check_declaration ~expected:"margin:unset" "margin: unset";
   check_declaration ~expected:"width:revert-layer" "width: revert-layer";
   check_declaration ~expected:"color:revert" "color: revert"
 
-let test_declaration_comments () =
+let comments () =
   (* Comments around colon and inside values *)
   check_declaration ~expected:"color:red" "color/*c*/:/**/red";
   check_declaration ~expected:"width:calc(100% - 10px)"
     "width:/*x*/calc(100% - 10px)";
   check_declaration ~expected:"color:red!important" "color: red!/**/important"
 
-let test_declaration_unit_case () =
+let unit_case () =
   (* Units are ASCII case-insensitive per spec *)
   check_declaration ~expected:"width:10px" "width: 10PX";
   check_declaration ~expected:"margin:1em" "margin: 1EM"
 
-let test_declaration_number_formats () =
+let number_formats () =
   (* Leading dot numbers are valid; scientific notation is also valid per CSS
      spec *)
   check_declaration ~expected:"opacity:.5" "opacity: .5";
   (* Scientific notation IS valid in CSS per the spec *)
   check_declaration ~expected:"opacity:100" "opacity: 1e2"
 
-let test_declaration_unterminated () =
+let unterminated () =
   (* Unterminated string *)
   let r1 = Css.Reader.of_string "content: \"abc" in
   let got1 = Css.Reader.option Css.Declaration.read_declaration r1 in
@@ -972,7 +972,7 @@ let test_declaration_unterminated () =
   let got4 = Css.Reader.option Css.Declaration.read_block r4 in
   check bool "missing semicolon between declarations" true (Option.is_none got4)
 
-let test_declaration_custom_property_values () =
+let custom_property_values () =
   (* Balanced braces in custom property values *)
   check_declaration ~expected:"--x:{ a: b; }" "--x: { a: b; }";
   (* Semicolons inside strings are fine *)
@@ -982,7 +982,7 @@ let test_declaration_custom_property_values () =
   check_declaration ~expected:"width:var(--w,10px)" "width: var(--w, 10px)";
   check_declaration ~expected:"margin:var(--m)" "margin: var(--m)"
 
-let test_declaration_color_functions () =
+let color_functions () =
   (* color() with alternate spaces and alpha *)
   check_declaration ~expected:"color:color(display-p3 1 0 0/.5)"
     "color: color(display-p3 1 0 0 / 0.5)";
@@ -997,7 +997,7 @@ let test_declaration_color_functions () =
   check_declaration ~expected:"color:#ff000080" "color: #ff000080";
   check_declaration ~expected:"color:#0f08" "color: #0f08"
 
-let test_declaration_angle_units () =
+let angle_units () =
   check_declaration ~expected:"transform:rotate(.5turn)"
     "transform: rotate(0.5turn)";
   check_declaration ~expected:"transform:rotate(1.5708rad)"
@@ -1005,13 +1005,13 @@ let test_declaration_angle_units () =
   check_declaration ~expected:"transform:skew(.25turn,100grad)"
     "transform: skew(0.25turn, 100grad)"
 
-let test_declaration_property_case () =
+let property_case () =
   (* Property names are ASCII case-insensitive *)
   check_declaration ~expected:"color:red" "COLOR: red";
   check_declaration ~expected:"background-image:url(\"a b (1).png\")"
     "BACKGROUND-IMAGE: url(\"a b (1).png\")"
 
-let test_declaration_url_values () =
+let url_values () =
   check_declaration
     ~expected:"background-image:url(https://example.com/img/a.png)"
     "background-image: url(https://example.com/img/a.png)";
@@ -1025,58 +1025,53 @@ let suite =
   ( "declaration",
     [
       (* Parsing basics *)
-      test_case "simple" `Quick test_declaration_simple;
-      test_case "multiple" `Quick test_declaration_multiple;
-      test_case "block" `Quick test_declaration_block;
-      test_case "complex values" `Quick test_declaration_complex_values;
-      test_case "quoted strings" `Quick test_declaration_quoted_strings;
-      test_case "property name" `Quick test_declaration_property_name;
-      test_case "property value" `Quick test_declaration_property_value;
-      test_case "missing semicolon" `Quick test_declaration_missing_semicolon;
-      test_case "empty input" `Quick test_declaration_empty_input;
-      test_case "roundtrip" `Quick test_declaration_roundtrip;
+      test_case "simple" `Quick simple;
+      test_case "multiple" `Quick multiple;
+      test_case "block" `Quick block;
+      test_case "complex values" `Quick complex_values;
+      test_case "quoted strings" `Quick quoted_strings;
+      test_case "property name" `Quick property_name;
+      test_case "property value" `Quick property_value;
+      test_case "missing semicolon" `Quick missing_semicolon;
+      test_case "empty input" `Quick empty_input;
+      test_case "roundtrip" `Quick roundtrip;
       (* !important handling *)
-      test_case "important" `Quick test_declaration_important;
+      test_case "important" `Quick important;
       (* Custom properties and vendor prefixes *)
-      test_case "custom properties basic" `Quick
-        test_declaration_custom_properties_basic;
-      test_case "custom properties" `Quick test_declaration_custom_properties;
-      test_case "custom property values" `Quick
-        test_declaration_custom_property_values;
-      test_case "vendor prefixes" `Quick test_declaration_vendor_prefixes;
+      test_case "custom properties basic" `Quick custom_properties_basic;
+      test_case "custom properties" `Quick custom_properties;
+      test_case "custom property values" `Quick custom_property_values;
+      test_case "vendor prefixes" `Quick vendor_prefixes;
       (* Property value categories *)
-      test_case "colors" `Quick test_declaration_colors;
-      test_case "color functions" `Quick test_declaration_color_functions;
-      test_case "lengths" `Quick test_declaration_lengths;
-      test_case "display" `Quick test_declaration_display;
-      test_case "position" `Quick test_declaration_position;
-      test_case "font properties" `Quick test_declaration_font_properties;
-      test_case "text properties" `Quick test_declaration_text_properties;
-      test_case "flexbox" `Quick test_declaration_flexbox;
-      test_case "borders" `Quick test_declaration_borders;
-      test_case "overflow" `Quick test_declaration_overflow;
-      test_case "animations" `Quick test_declaration_animations;
-      test_case "transforms" `Quick test_declaration_transforms;
-      test_case "angle units" `Quick test_declaration_angle_units;
-      test_case "grid" `Quick test_declaration_grid;
-      test_case "list properties" `Quick test_declaration_list_properties;
-      test_case "misc properties" `Quick test_declaration_misc;
-      test_case "url values" `Quick test_declaration_url_values;
+      test_case "colors" `Quick colors;
+      test_case "color functions" `Quick color_functions;
+      test_case "lengths" `Quick lengths;
+      test_case "display" `Quick display;
+      test_case "position" `Quick position;
+      test_case "font properties" `Quick font_properties;
+      test_case "text properties" `Quick text_properties;
+      test_case "flexbox" `Quick flexbox;
+      test_case "borders" `Quick borders;
+      test_case "overflow" `Quick overflow;
+      test_case "animations" `Quick animations;
+      test_case "transforms" `Quick transforms;
+      test_case "angle units" `Quick angle_units;
+      test_case "grid" `Quick grid;
+      test_case "list properties" `Quick list_properties;
+      test_case "misc properties" `Quick misc;
+      test_case "url values" `Quick url_values;
       (* Error handling *)
-      test_case "error missing colon" `Quick
-        test_declaration_error_missing_colon;
-      test_case "error stray semicolon" `Quick
-        test_declaration_error_stray_semicolon;
-      test_case "error unclosed block" `Quick
-        test_declaration_error_unclosed_block;
-      test_case "unterminated parsing" `Quick test_declaration_unterminated;
-      test_case "invalid declarations" `Quick test_declaration_invalid;
+      test_case "error missing colon" `Quick error_missing_colon;
+      test_case "error stray semicolon" `Quick error_stray_semicolon;
+      test_case "error unclosed block" `Quick error_unclosed_block;
+      test_case "unterminated parsing" `Quick unterminated;
+      test_case "invalid declarations" `Quick invalid;
       (* Spec details and edge cases *)
-      test_case "CSS-wide keywords" `Quick test_declaration_css_wide_keywords;
-      test_case "comments handling" `Quick test_declaration_comments;
-      test_case "unit case-insensitivity" `Quick test_declaration_unit_case;
-      test_case "number formats" `Quick test_declaration_number_formats;
-      test_case "property name case" `Quick test_declaration_property_case;
-      test_case "special cases" `Quick test_declaration_special_cases;
-      test_case "edge cases" `Quick test_declaration_edge_cases;
+      test_case "CSS-wide keywords" `Quick css_wide_keywords;
+      test_case "comments handling" `Quick comments;
+      test_case "unit case-insensitivity" `Quick unit_case;
+      test_case "number formats" `Quick number_formats;
+      test_case "property name case" `Quick property_case;
+      test_case "special cases" `Quick special_cases;
+      test_case "edge cases" `Quick edge_cases;
     ] )

@@ -37,7 +37,7 @@ val color_stop : Values.color -> gradient_stop
 val color_position : Values.color -> Values.length -> gradient_stop
 (** [color_position c pos] is a gradient stop with color and position. *)
 
-val animation_spec :
+val animation_shorthand :
   ?name:string ->
   ?duration:Values.duration ->
   ?timing_function:timing_function ->
@@ -48,8 +48,51 @@ val animation_spec :
   ?play_state:animation_play_state ->
   unit ->
   animation
-(** [animation_spec ?name ?duration ?timing_function ?delay ?iteration_count
-     ?direction ?fill_mode ?play_state ()] constructs an [animation] record. *)
+(** [animation_shorthand ?name ?duration ?timing_function ?delay
+     ?iteration_count ?direction ?fill_mode ?play_state ()] is the animation
+    shorthand. *)
+
+val transition_shorthand :
+  ?property:transition_property ->
+  ?duration:Values.duration ->
+  ?timing_function:timing_function ->
+  ?delay:Values.duration ->
+  unit ->
+  transition
+(** [transition_shorthand ?property ?duration ?timing_function ?delay ()] is the
+    transition shorthand. Defaults to property = All. *)
+
+val border_shorthand :
+  ?width:border_width ->
+  ?style:border_style ->
+  ?color:Values.color ->
+  unit ->
+  border
+(** [border_shorthand ?width ?style ?color ()] is the border shorthand. *)
+
+val text_decoration_shorthand :
+  ?lines:text_decoration_line list ->
+  ?style:text_decoration_style ->
+  ?color:Values.color ->
+  ?thickness:Values.length ->
+  unit ->
+  text_decoration
+(** [text_decoration_shorthand ?lines ?style ?color ?thickness ()] is the
+    text-decoration shorthand. *)
+
+val background_shorthand :
+  ?color:Values.color ->
+  ?image:background_image ->
+  ?position:position_2d ->
+  ?size:background_size ->
+  ?repeat:background_repeat ->
+  ?attachment:background_attachment ->
+  ?clip:background_box ->
+  ?origin:background_box ->
+  unit ->
+  background
+(** [background_shorthand ?color ?image ?position ?size ?repeat ?attachment
+     ?clip ?origin ()] is the background shorthand. *)
 
 (** Pretty-printers and readers for property value types. *)
 
@@ -125,11 +168,7 @@ val pp_flex_wrap : flex_wrap Pp.t
 val read_flex_wrap : Reader.t -> flex_wrap
 (** [read_flex_wrap t] is the [flex_wrap] parsed from [t]. *)
 
-val pp_align : align Pp.t
-(** [pp_align] is the pretty-printer for [align]. *)
-
-val read_align : Reader.t -> align
-(** [read_align t] is the [align] parsed from [t]. *)
+(* align type removed; use align_content/justify_* instead *)
 
 val pp_align_items : align_items Pp.t
 (** [pp_align_items] is the pretty-printer for [align_items]. *)
@@ -149,11 +188,64 @@ val pp_justify_content : justify_content Pp.t
 val read_justify_content : Reader.t -> justify_content
 (** [read_justify_content t] is the [justify_content] parsed from [t]. *)
 
-val pp_justify : justify Pp.t
-(** [pp_justify] is the pretty-printer for [justify]. *)
+val pp_align_content : align_content Pp.t
+(** [pp_align_content] is the pretty-printer for [align_content]. *)
 
-val read_justify : Reader.t -> justify
-(** [read_justify t] is the [justify] parsed from [t]. *)
+val read_align_content : Reader.t -> align_content
+(** [read_align_content t] is the [align_content] parsed from [t]. *)
+
+val pp_safe : bool Pp.t
+(** [pp_safe] is the pretty-printer for safe/unsafe overflow alignment. *)
+
+val read_safe : Reader.t -> bool
+(** [read_safe t] is the safe/unsafe flag parsed from [t]. *)
+
+val pp_baseline : baseline Pp.t
+(** [pp_baseline] is the pretty-printer for [baseline]. *)
+
+val read_baseline : Reader.t -> baseline
+(** [read_baseline t] is the [baseline] parsed from [t]. *)
+
+val pp_content_position : content_position Pp.t
+(** [pp_content_position] is the pretty-printer for [content_position]. *)
+
+val read_content_position : Reader.t -> content_position
+(** [read_content_position t] is the [content_position] parsed from [t]. *)
+
+val pp_content_distribution : content_distribution Pp.t
+(** [pp_content_distribution] is the pretty-printer for [content_distribution].
+*)
+
+val read_content_distribution : Reader.t -> content_distribution
+(** [read_content_distribution t] is the [content_distribution] parsed from [t].
+*)
+
+val pp_self_position_items : self_position_items Pp.t
+(** [pp_self_position_items] is the pretty-printer for [self_position_items]. *)
+
+val read_self_position_items : Reader.t -> self_position_items
+(** [read_self_position_items t] is the [self_position_items] parsed from [t].
+*)
+
+val pp_self_position_justify : self_position_justify Pp.t
+(** [pp_self_position_justify] is the pretty-printer for
+    [self_position_justify]. *)
+
+val read_self_position_justify : Reader.t -> self_position_justify
+(** [read_self_position_justify t] is the [self_position_justify] parsed from
+    [t]. *)
+
+val pp_justify_items : justify_items Pp.t
+(** [pp_justify_items] is the pretty-printer for [justify_items]. *)
+
+val read_justify_items : Reader.t -> justify_items
+(** [read_justify_items t] is the [justify_items] parsed from [t]. *)
+
+val pp_justify_self : justify_self Pp.t
+(** [pp_justify_self] is the pretty-printer for [justify_self]. *)
+
+val read_justify_self : Reader.t -> justify_self
+(** [read_justify_self t] is the [justify_self] parsed from [t]. *)
 
 val pp_flex : flex Pp.t
 (** [pp_flex] is the pretty-printer for [flex]. *)
@@ -399,6 +491,14 @@ val read_transition_property : Reader.t -> transition_property
 (** [read_transition_property t] is the [transition_property] parsed from [t].
 *)
 
+val pp_transition_shorthand : transition_shorthand Pp.t
+(** [pp_transition_shorthand] is the pretty-printer for [transition_shorthand].
+*)
+
+val read_transition_shorthand : Reader.t -> transition_shorthand
+(** [read_transition_shorthand t] is the [transition_shorthand] parsed from [t].
+*)
+
 val pp_transition : transition Pp.t
 (** [pp_transition] is the pretty-printer for [transition]. *)
 
@@ -436,6 +536,13 @@ val pp_animation_play_state : animation_play_state Pp.t
 
 val read_animation_play_state : Reader.t -> animation_play_state
 (** [read_animation_play_state t] is the [animation_play_state] parsed from [t].
+*)
+
+val pp_animation_shorthand : animation_shorthand Pp.t
+(** [pp_animation_shorthand] is the pretty-printer for [animation_shorthand]. *)
+
+val read_animation_shorthand : Reader.t -> animation_shorthand
+(** [read_animation_shorthand t] is the [animation_shorthand] parsed from [t].
 *)
 
 val pp_animation : animation Pp.t
@@ -551,18 +658,24 @@ val pp_background_box : background_box Pp.t
 (** [pp_background_box] pretty-prints a background-clip or background-origin
     value. *)
 
+val read_background_shorthand : Reader.t -> background_shorthand
+(** [read_background_shorthand t] parses a background shorthand property. *)
+
+val pp_background_shorthand : background_shorthand Pp.t
+(** [pp_background_shorthand] pretty-prints a background shorthand value. *)
+
 val read_background : Reader.t -> background
-(** [read_background t] parses a background shorthand property. *)
+(** [read_background t] parses a background property. *)
 
 val read_backgrounds : Reader.t -> background list
-(** [read_backgrounds t] parses a comma-separated list of background shorthand
-    properties. *)
-
-val read_gap : Reader.t -> gap
-(** [read_gap t] parses a gap shorthand property (one or two length values). *)
+(** [read_backgrounds t] parses a comma-separated list of background properties.
+*)
 
 val pp_background : background Pp.t
 (** [pp_background] pretty-prints a background value. *)
+
+val read_gap : Reader.t -> gap
+(** [read_gap t] parses a gap shorthand property (one or two length values). *)
 
 val pp_gap : gap Pp.t
 (** [pp_gap] pretty-prints a gap shorthand value. *)
@@ -811,6 +924,6 @@ val background :
   ?clip:background_box ->
   ?origin:background_box ->
   unit ->
-  background
+  background_shorthand
 (** [background ?color ?image ?position ?size ?repeat ?attachment ?clip ?origin
-     ()] constructs a background value with optional components. *)
+     ()] constructs a background_shorthand value with optional components. *)

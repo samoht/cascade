@@ -47,6 +47,9 @@ val str : string -> 'a t
 val string : string t
 (** [string] writes a string value to the buffer. *)
 
+val quoted : string t
+(** [quoted] writes a double-quoted string value to the buffer. *)
+
 val char : char t
 (** [char] writes a single character to the buffer. *)
 

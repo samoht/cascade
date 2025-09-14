@@ -3,8 +3,8 @@
 include Values_intf
 
 let var_ref ?fallback ?default ?layer ?meta name =
-  let fallback =
-    match fallback with None -> No_fallback | Some v -> Fallback v
+  let fallback : _ fallback =
+    match fallback with None -> None | Some x -> x
   in
   { name; fallback; default; layer; meta }
 
@@ -56,7 +56,7 @@ let pp_op ctx = function
       Pp.space ctx ();
       Pp.char ctx '-';
       Pp.space ctx ()
-  | Mult ->
+  | Mul ->
       Pp.op_char ctx '*' (* CSS spec: spaces optional, omit when minified *)
   | Div ->
       Pp.op_char ctx '/' (* CSS spec: spaces optional, omit when minified *)
@@ -73,7 +73,7 @@ let pp_var : type a. a Pp.t -> a var Pp.t =
     Pp.string ctx "var(--";
     Pp.string ctx v.name;
     match v.fallback with
-    | No_fallback -> Pp.char ctx ')'
+    | None -> Pp.char ctx ')'
     | Empty ->
         Pp.char ctx ',';
         Pp.char ctx ')'
@@ -89,7 +89,7 @@ let pp_calc : type a. a Pp.t -> a calc Pp.t =
  fun pp_value ctx calc ->
   Pp.call "calc"
     (fun ctx calc ->
-      let precedence = function Add | Sub -> 1 | Mult | Div -> 2 in
+      let precedence = function Add | Sub -> 1 | Mul | Div -> 2 in
       let rec pp_calc_inner ~parent_prec ctx = function
         | Val v -> pp_value ctx v
         | Var v -> pp_var pp_value ctx v
@@ -167,9 +167,9 @@ let rec pp_length : length Pp.t =
   | Calc cv -> (
       (* Optimize calc(infinity * dimension) to large value for minification *)
       match cv with
-      | Expr (Num f, Mult, Val _) when ctx.minify && f = infinity ->
+      | Expr (Num f, Mul, Val _) when ctx.minify && f = infinity ->
           Pp.string ctx "3.40282e38px"
-      | Expr (Val _, Mult, Num f) when ctx.minify && f = infinity ->
+      | Expr (Val _, Mul, Num f) when ctx.minify && f = infinity ->
           Pp.string ctx "3.40282e38px"
       | _ -> pp_calc pp_length ctx cv)
 
@@ -379,6 +379,13 @@ let rec pp_percentage : percentage Pp.t =
   | Var v -> pp_var pp_percentage ctx v
   | Calc c -> pp_calc pp_percentage ctx c
 
+and pp_length_percentage : length_percentage Pp.t =
+ fun ctx -> function
+  | Length l -> pp_length ctx l
+  | Percentage p -> pp_percentage ctx p
+  | Var v -> pp_var pp_length_percentage ctx v
+  | Calc c -> pp_calc pp_length_percentage ctx c
+
 and pp_component : component Pp.t =
  fun ctx -> function
   | Num f -> Pp.float ctx f
@@ -573,7 +580,7 @@ let rec pp_number : number Pp.t =
 module Calc = struct
   let add left right = Expr (left, Add, right)
   let sub left right = Expr (left, Sub, right)
-  let mul left right = Expr (left, Mult, right)
+  let mul left right = Expr (left, Mul, right)
   let div left right = Expr (left, Div, right)
 
   (* Operators *)
@@ -585,7 +592,7 @@ module Calc = struct
   (* Value constructors *)
   let length len = Val len
 
-  let var : ?default:'a -> ?fallback:'a -> string -> 'a calc =
+  let var : ?default:'a -> ?fallback:'a fallback -> string -> 'a calc =
    fun ?default ?fallback name -> Var (var_ref ?default ?fallback name)
 
   let float f : length calc = Num f
@@ -608,20 +615,23 @@ let read_var_after_ident : type a. (Reader.t -> a) -> Reader.t -> a var =
     else Reader.ident ~keep_case:true t
   in
   Reader.ws t;
-  let fallback =
+  let fallback : _ fallback =
     if Reader.peek t = Some ',' then (
       Reader.comma t;
       Reader.ws t;
-      (* For fallback, we need to capture everything until the closing paren,
-         respecting nested parens and quotes. Then parse that as the value. *)
-      let fallback_str = Reader.css_value ~stops:[ ')' ] t in
-      let fallback_reader = Reader.of_string fallback_str in
-      Some (read_value fallback_reader))
+      (* Check if we have an empty fallback (nothing before ')') *)
+      if Reader.peek t = Some ')' then Empty
+      else
+        (* For fallback, we need to capture everything until the closing paren,
+           respecting nested parens and quotes. Then parse that as the value. *)
+        let fallback_str = Reader.css_value ~stops:[ ')' ] t in
+        let fallback_reader = Reader.of_string fallback_str in
+        Fallback (read_value fallback_reader))
     else None
   in
   Reader.ws t;
   Reader.expect ')' t;
-  var_ref ?fallback var_name
+  var_ref ~fallback var_name
 
 (** Generic var() parser that returns a var reference. This works when called
     from enum_calls/enum_or_calls context where "var" has been consumed and
@@ -639,20 +649,23 @@ let read_var : type a. (Reader.t -> a) -> Reader.t -> a var =
     else Reader.ident ~keep_case:true t
   in
   Reader.ws t;
-  let fallback =
+  let fallback : _ fallback =
     if Reader.peek t = Some ',' then (
       Reader.comma t;
       Reader.ws t;
-      (* For fallback, we need to capture everything until the closing paren,
-         respecting nested parens and quotes. Then parse that as the value. *)
-      let fallback_str = Reader.css_value ~stops:[ ')' ] t in
-      let fallback_reader = Reader.of_string fallback_str in
-      Some (read_value fallback_reader))
+      (* Check if we have an empty fallback (nothing before ')') *)
+      if Reader.peek t = Some ')' then Empty
+      else
+        (* For fallback, we need to capture everything until the closing paren,
+           respecting nested parens and quotes. Then parse that as the value. *)
+        let fallback_str = Reader.css_value ~stops:[ ')' ] t in
+        let fallback_reader = Reader.of_string fallback_str in
+        Fallback (read_value fallback_reader))
     else None
   in
   Reader.ws t;
   Reader.expect ')' t;
-  var_ref ?fallback var_name
+  var_ref ~fallback var_name
 
 let read_length_unit t =
   let n = Reader.number t in
@@ -744,7 +757,7 @@ and read_calc_term : type a. (Reader.t -> a) -> Reader.t -> a calc =
       in
       if is_dimension left && is_dimension right then
         Reader.err t "invalid calc: cannot multiply two dimensions";
-      Expr (left, Mult, right)
+      Expr (left, Mul, right)
   | Some '/' ->
       Reader.skip t;
       let right = read_calc_term read_a t in
@@ -809,7 +822,7 @@ and read_calc : type a. (Reader.t -> a) -> Reader.t -> a calc =
       if Reader.peek t = Some ',' then (
         Reader.comma t;
         (* Parse the fallback length value *)
-        Some (read_a t))
+        Some (Fallback (read_a t)))
       else None
     in
     Reader.expect ')' t;
@@ -1490,6 +1503,111 @@ let rec read_percentage t : percentage =
     let n = Reader.number t in
     Reader.expect '%' t;
     Pct n
+
+(** Read length_percentage value *)
+let rec read_length_percentage t : length_percentage =
+  Reader.ws t;
+  if Reader.looking_at t "var(" then Var (read_var read_length_percentage t)
+  else if Reader.looking_at t "calc(" then
+    Calc (read_calc read_length_percentage t)
+  else
+    (* Try to read as percentage first *)
+    match Reader.option read_percentage t with
+    | Some p -> Percentage p
+    | None -> (
+        (* Otherwise try to read as length *)
+        match read_length t with
+        | l -> Length l)
+
+(** Read color_name value *)
+let read_color_name t : color_name =
+  Reader.ws t;
+  let s = Reader.ident t in
+  match String.lowercase_ascii s with
+  | "red" -> Red
+  | "blue" -> Blue
+  | "green" -> Green
+  | "white" -> White
+  | "black" -> Black
+  | "yellow" -> Yellow
+  | "cyan" -> Cyan
+  | "magenta" -> Magenta
+  | "gray" | "grey" -> Gray
+  | "orange" -> Orange
+  | "purple" -> Purple
+  | "pink" -> Pink
+  | "silver" -> Silver
+  | "maroon" -> Maroon
+  | "fuchsia" -> Fuchsia
+  | "lime" -> Lime
+  | "olive" -> Olive
+  | "navy" -> Navy
+  | "teal" -> Teal
+  | "aqua" -> Aqua
+  | _ -> Reader.err_invalid t ("color name: " ^ s)
+
+(** Pretty print and read meta values *)
+let pp_meta : meta Pp.t =
+ fun _ctx _v ->
+  (* Meta is an abstract type - cannot pattern match on it *)
+  failwith "pp_meta: not implemented for abstract meta type"
+
+let read_meta _t : meta =
+  (* Meta is an abstract type - cannot construct values of it *)
+  failwith "read_meta: not implemented for abstract meta type"
+
+(** Read hue_interpolation *)
+let read_hue_interpolation t : hue_interpolation =
+  Reader.ws t;
+  Reader.enum "hue-interpolation"
+    [
+      ("shorter", Shorter);
+      ("longer", Longer);
+      ("increasing", Increasing);
+      ("decreasing", Decreasing);
+      ("default", Default);
+    ]
+    t
+
+(** Pretty print calc_op *)
+let pp_calc_op : calc_op Pp.t =
+ fun ctx op ->
+  match op with
+  | Add -> Pp.string ctx " + "
+  | Sub -> Pp.string ctx " - "
+  | Mul -> Pp.string ctx " * "
+  | Div -> Pp.string ctx " / "
+
+(** Read calc_op *)
+let read_calc_op t : calc_op =
+  Reader.ws t;
+  match Reader.peek t with
+  | Some '+' ->
+      Reader.skip t;
+      Add
+  | Some '-' ->
+      Reader.skip t;
+      Sub
+  | Some '*' ->
+      Reader.skip t;
+      Mul
+  | Some '/' ->
+      Reader.skip t;
+      Div
+  | _ -> Reader.err_invalid t "calc operator"
+
+(** Read component value *)
+let rec read_component t : component =
+  Reader.ws t;
+  if Reader.looking_at t "var(" then Var (read_var read_component t)
+  else if Reader.looking_at t "calc(" then Calc (read_calc read_component t)
+  else
+    let n = Reader.number t in
+    match Reader.peek t with
+    | Some '%' ->
+        Reader.skip t;
+        Pct n
+    | _ -> Num n
 
 (* Var helper functions *)
 let var_name v = v.name

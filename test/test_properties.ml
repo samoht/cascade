@@ -31,9 +31,7 @@ let check_flex_direction =
   check_value "flex-direction" pp_flex_direction read_flex_direction
 
 let check_flex_wrap = check_value "flex-wrap" pp_flex_wrap read_flex_wrap
-let check_align = check_value "align" pp_align read_align
 let check_align_self = check_value "align-self" pp_align_self read_align_self
-let check_justify = check_value "justify" pp_justify read_justify
 let check_font_style = check_value "font-style" pp_font_style read_font_style
 let check_text_align = check_value "text-align" pp_text_align read_text_align
 
@@ -277,6 +275,48 @@ let pp_any_property : any_property Css.Pp.t =
 
 let check_property = check_value "property" pp_any_property read_property
 
+let check_background_box =
+  check_value "background_box" pp_background_box read_background_box
+
+let check_shadow = check_value "shadow" pp_shadow read_shadow
+
+let check_text_decoration =
+  check_value "text_decoration" pp_text_decoration read_text_decoration
+
+let check_gap = check_value "gap" pp_gap read_gap
+let check_background = check_value "background" pp_background read_background
+
+let check_font_weight =
+  check_value "font_weight" pp_font_weight read_font_weight
+
+let check_scroll_snap_strictness =
+  check_value "scroll_snap_strictness" pp_scroll_snap_strictness
+    read_scroll_snap_strictness
+
+let check_transform_style =
+  check_value "transform_style" pp_transform_style read_transform_style
+
+let check_cursor = check_value "cursor" pp_cursor read_cursor
+
+let check_font_variant_numeric_token =
+  check_value "font_variant_numeric_token" pp_font_variant_numeric_token
+    read_font_variant_numeric_token
+
+let check_scroll_snap_axis =
+  check_value "scroll_snap_axis" pp_scroll_snap_axis read_scroll_snap_axis
+
+let check_position_2d =
+  check_value "position_2d" pp_position_2d read_position_2d
+
+let check_border_width =
+  check_value "border_width" pp_border_width read_border_width
+
+let check_transform_origin =
+  check_value "transform_origin" pp_transform_origin read_transform_origin
+
+let check_text_transform =
+  check_value "text_transform" pp_text_transform read_text_transform
+
 (* Helper for property-value pairs printing *)
 let check_property_value expected (prop, value) =
   let pp = pp_property_value in
@@ -383,13 +423,6 @@ let test_flex_wrap () =
   check_flex_wrap "wrap";
   check_flex_wrap "wrap-reverse"
 
-let test_align () =
-  check_align "normal";
-  check_align "start";
-  check_align "end";
-  check_align "center";
-  check_align "stretch"
-
 let test_align_self () =
   check_align_self "auto";
   check_align_self "flex-start";
@@ -397,22 +430,6 @@ let test_align_self () =
   check_align_self "center";
   check_align_self "baseline";
   check_align_self "stretch"
-
-let test_justify () =
-  check_justify "auto";
-  check_justify "normal";
-  check_justify "stretch";
-  check_justify "center";
-  check_justify "start";
-  check_justify "end";
-  check_justify "flex-start";
-  check_justify "flex-end";
-  check_justify "self-start";
-  check_justify "self-end";
-  check_justify "left";
-  check_justify "right";
-  check_justify "baseline";
-  check_justify "inherit"
 
 let test_font_style () =
   check_font_style "normal";
@@ -1121,9 +1138,7 @@ let tests =
     test_case "z-index" `Quick test_z_index;
     test_case "flex-direction" `Quick test_flex_direction;
     test_case "flex-wrap" `Quick test_flex_wrap;
-    test_case "align" `Quick test_align;
     test_case "align-self" `Quick test_align_self;
-    test_case "justify" `Quick test_justify;
     test_case "font-style" `Quick test_font_style;
     test_case "css-wide subset" `Quick test_css_wide_keywords_subset;
     test_case "text-align" `Quick test_text_align;
@@ -1177,4 +1192,45 @@ let tests =
       test_font_family_with_var_fallback;
   ]
 
-let suite = ("properties", tests)
+(* Tests for newly added check functions *)
+let test_font_weight () =
+  check_font_weight "normal";
+  check_font_weight "bold";
+  check_font_weight "700";
+  check_font_weight "lighter"
+
+let test_text_transform () =
+  check_text_transform "uppercase";
+  check_text_transform "lowercase";
+  check_text_transform "capitalize";
+  check_text_transform "none"
+
+let test_text_decoration_line () =
+  check_text_decoration_line "underline";
+  check_text_decoration_line "overline";
+  check_text_decoration_line "line-through";
+  check_text_decoration_line "none"
+
+let test_cursor () =
+  check_cursor "pointer";
+  check_cursor "default";
+  check_cursor "text";
+  check_cursor "wait";
+  check_cursor "help"
+
+let test_border_width () =
+  check_border_width "thin";
+  check_border_width "medium";
+  check_border_width "thick";
+  check_border_width "2px"
+
+let additional_tests =
+  [
+    test_case "font_weight" `Quick test_font_weight;
+    test_case "text_transform" `Quick test_text_transform;
+    test_case "text_decoration_line" `Quick test_text_decoration_line;
+    test_case "cursor" `Quick test_cursor;
+    test_case "border_width" `Quick test_border_width;
+  ]
+
+let suite = ("properties", tests @ additional_tests)

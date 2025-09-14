@@ -14,6 +14,12 @@ let to_buffer ?(minify = false) ?(inline = false) buf pp a =
 let nop _ _ = ()
 let str s ctx _ = Buffer.add_string ctx.buf s
 let string ctx s = Buffer.add_string ctx.buf s
+
+let quoted ctx s =
+  Buffer.add_char ctx.buf '"';
+  Buffer.add_string ctx.buf s;
+  Buffer.add_char ctx.buf '"'
+
 let char ctx c = Buffer.add_char ctx.buf c
 
 (* Helper to output a quoted string with proper escaping *)

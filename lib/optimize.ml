@@ -2,7 +2,6 @@
 
 open Declaration
 open Stylesheet
-include Optimize_intf
 
 (** {1 Declaration Optimization} *)
 
@@ -17,7 +16,7 @@ let duplicate_buggy_properties decls =
       | Declaration { property = Transform; value; important } ->
           (* Add -webkit-transform prefix for Transform properties *)
           (* Since -webkit-transform now maps to Transform property, create directly *)
-          let webkit_decl = Declaration.declaration Transform value in
+          let webkit_decl = Declaration.v Transform value in
           let webkit_decl =
             if important then Declaration.important webkit_decl else webkit_decl
           in
@@ -67,7 +66,7 @@ let deduplicate_declarations props =
 
 (** {1 Rule Optimization} *)
 
-let optimize_single_rule (rule : rule) : rule =
+let single_rule (rule : rule) : rule =
   { rule with declarations = deduplicate_declarations rule.declarations }
 
 let merge_rules (rules : Stylesheet.rule list) : Stylesheet.rule list =
@@ -93,6 +92,7 @@ let merge_rules (rules : Stylesheet.rule list) : Stylesheet.rule list =
                   declarations =
                     deduplicate_declarations
                       (prev.declarations @ rule.declarations);
+                  nested = prev.nested @ rule.nested;
                 }
               in
               merge_adjacent acc (Some merged) rest
@@ -116,7 +116,8 @@ let should_not_combine selector =
 (* Convert group of selectors to a rule *)
 let group_to_rule :
     (Selector.t * declaration list) list -> Stylesheet.rule option = function
-  | [ (sel, decls) ] -> Some { selector = sel; declarations = decls }
+  | [ (sel, decls) ] ->
+      Some { selector = sel; declarations = decls; nested = [] }
   | [] -> None
   | group ->
       let selector_list = List.map fst (List.rev group) in
@@ -126,7 +127,7 @@ let group_to_rule :
         if List.length selector_list = 1 then List.hd selector_list
         else Selector.list selector_list
       in
-      Some { selector = combined_selector; declarations = decls }
+      Some { selector = combined_selector; declarations = decls; nested = [] }
 
 (* Flush current group to accumulator *)
 let flush_group acc group =
@@ -165,85 +166,51 @@ let combine_identical_rules (rules : Stylesheet.rule list) :
   in
   combine_consecutive [] [] rules
 
-let optimize_rule_list (rules : rule list) : rule list =
-  let deduped = List.map optimize_single_rule rules in
+let rules (rules : rule list) : rule list =
+  let deduped = List.map single_rule rules in
   let merged = merge_rules deduped in
   combine_identical_rules merged
 
-(** {1 Nested Structure Optimization} *)
+(** {1 Statement Optimization} *)
 
-let optimize_nested_rules (rules : nested_rule list) : nested_rule list =
+let rec statements (stmts : statement list) : statement list =
   (* Process rules in batches separated by non-Rule items *)
-  let rec process_nested (acc : nested_rule list) (remaining : nested_rule list)
-      : nested_rule list =
+  let rec process_statements (acc : statement list) (remaining : statement list)
+      : statement list =
     match remaining with
     | [] -> List.rev acc
     | Rule r :: rest ->
         (* Collect consecutive Rule items *)
         let rec collect_rules (rules_acc : rule list) :
-            nested_rule list -> rule list * nested_rule list = function
+            statement list -> rule list * statement list = function
           | Rule r :: rest -> collect_rules (r :: rules_acc) rest
           | rest -> (List.rev rules_acc, rest)
         in
         let plain_rules, rest = collect_rules [ r ] rest in
         (* Optimize this batch of consecutive rules *)
-        let optimized = optimize_rule_list plain_rules in
-        let as_nested = List.map rule_to_nested optimized in
-        process_nested (List.rev_append as_nested acc) rest
+        let optimized = rules plain_rules in
+        let as_statements = List.map (fun r -> Rule r) optimized in
+        process_statements (List.rev_append as_statements acc) rest
+    | Media (cond, block) :: rest ->
+        let optimized = Media (cond, statements block) in
+        process_statements (optimized :: acc) rest
+    | Container (name, cond, block) :: rest ->
+        let optimized = Container (name, cond, statements block) in
+        process_statements (optimized :: acc) rest
+    | Supports (cond, block) :: rest ->
+        let optimized = Supports (cond, statements block) in
+        process_statements (optimized :: acc) rest
+    | Layer (name, block) :: rest ->
+        let optimized = Layer (name, statements block) in
+        process_statements (optimized :: acc) rest
     | hd :: rest ->
-        (* Non-Rule item (e.g., Supports) - keep as-is *)
-        process_nested (hd :: acc) rest
+        (* Other statement types - keep as-is *)
+        process_statements (hd :: acc) rest
   in
-  process_nested [] rules
-
-let optimize_layer (layer : layer_rule) : layer_rule =
-  let optimized_rules = optimize_nested_rules layer.rules in
-  { layer with rules = optimized_rules }
-
-let optimize_media_rule (mq : media_rule) : media_rule =
-  { mq with media_rules = optimize_rule_list mq.media_rules }
-
-let optimize_container_rule (cq : container_rule) : container_rule =
-  { cq with container_rules = optimize_rule_list cq.container_rules }
-
-let rec optimize_supports_rule (sq : supports_rule) : supports_rule =
-  let optimized_content =
-    match sq.supports_content with
-    | Support_rules rules -> Support_rules (optimize_rule_list rules)
-    | Support_nested (rules, nested) ->
-        Support_nested
-          (optimize_rule_list rules, List.map optimize_supports_rule nested)
-  in
-  { sq with supports_content = optimized_content }
+  process_statements [] stmts
 
 (** {1 Stylesheet Optimization} *)
 
-let optimize (stylesheet : t) : t =
+let stylesheet (stylesheet : t) : t =
   (* Apply CSS optimizations while preserving cascade semantics *)
-  let optimized_layers = List.map optimize_layer stylesheet.layers in
-  (* When @supports blocks are present alongside top-level rules, we cannot
-     safely merge the top-level rules because the stylesheet structure separates
-     rules from @supports blocks into different lists, losing their relative
-     ordering.
-
-     However, we can still optimize if there are no top-level rules (everything
-     is in layers/@supports/@media), or if there are no @supports blocks. *)
-  let optimized_rules =
-    if stylesheet.supports_queries = [] || stylesheet.rules = [] then
-      (* Safe to optimize: either no @supports or no top-level rules to
-         interfere *)
-      optimize_rule_list stylesheet.rules
-    else
-      (* Both top-level rules and @supports exist - can't merge safely *)
-      List.map optimize_single_rule stylesheet.rules
-  in
-  {
-    stylesheet with
-    layers = optimized_layers;
-    rules = optimized_rules;
-    media_queries = List.map optimize_media_rule stylesheet.media_queries;
-    container_queries =
-      List.map optimize_container_rule stylesheet.container_queries;
-    supports_queries =
-      List.map optimize_supports_rule stylesheet.supports_queries;
-  }
+  statements stylesheet

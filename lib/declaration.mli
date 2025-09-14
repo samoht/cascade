@@ -11,8 +11,8 @@ val pp_declaration : declaration Pp.t
 val pp_value : ('a kind * 'a) Pp.t
 (** [pp_value] is the pretty-printer for typed values. *)
 
-val declaration_meta : declaration -> Values.meta option
-(** [declaration_meta d] is the metadata of [d], if any. *)
+val meta_of_declaration : declaration -> Values.meta option
+(** [meta_of_declaration d] is the metadata of [d], if any. *)
 
 val important : declaration -> declaration
 (** [important d] is [d] marked as [!important]. *)
@@ -46,8 +46,8 @@ val read_block : Reader.t -> declaration list
 
 (** {2 Type-driven helper functions} *)
 
-val declaration : ?important:bool -> 'a Properties.property -> 'a -> declaration
-(** [declaration ?important property value] creates a typed declaration. *)
+val v : ?important:bool -> 'a Properties.property -> 'a -> declaration
+(** [v ?important property value] creates a typed declaration. *)
 
 val custom_declaration :
   ?important:bool ->
@@ -464,33 +464,70 @@ val order : int -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/order} order} property.
 *)
 
-val align_items : align_items -> declaration
-(** [align_items v] is the
+val align_items :
+  ?v:Properties_intf.align_items ->
+  ?safe:bool ->
+  ?position:Properties_intf.self_position_items ->
+  ?baseline:Properties_intf.baseline ->
+  unit ->
+  declaration
+(** [align_items ?safe ?position ?baseline ()] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-items}
      align-items} property. *)
 
-val align_content : align -> declaration
-(** [align_content v] is the
+val align_content :
+  ?v:Properties_intf.align_content ->
+  ?distribution:Properties_intf.content_distribution ->
+  ?safe:bool ->
+  ?position:Properties_intf.content_position ->
+  ?baseline:Properties_intf.baseline ->
+  unit ->
+  declaration
+(** [align_content ?distribution ?safe ?position ?baseline ()] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-content}
      align-content} property. *)
 
-val align_self : align_self -> declaration
-(** [align_self v] is the
+val align_self :
+  ?v:Properties_intf.align_self ->
+  ?safe:bool ->
+  ?position:Properties_intf.self_position_items ->
+  ?baseline:Properties_intf.baseline ->
+  unit ->
+  declaration
+(** [align_self ?safe ?position ?baseline ()] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-self} align-self}
     property. *)
 
-val justify_content : justify_content -> declaration
-(** [justify_content v] is the
+val justify_content :
+  ?v:Properties_intf.justify_content ->
+  ?distribution:Properties_intf.content_distribution ->
+  ?safe:bool ->
+  ?position:Properties_intf.content_position ->
+  unit ->
+  declaration
+(** [justify_content ?distribution ?safe ?position ()] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-content}
      justify-content} property. *)
 
-val justify_items : justify -> declaration
-(** [justify_items v] is the
+val justify_items :
+  ?v:Properties_intf.justify_items ->
+  ?safe:bool ->
+  ?position:Properties_intf.self_position_justify ->
+  ?baseline:Properties_intf.baseline ->
+  unit ->
+  declaration
+(** [justify_items ?safe ?position ?baseline ()] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-items}
      justify-items} property. *)
 
-val justify_self : justify -> declaration
-(** [justify_self v] is the
+val justify_self :
+  ?v:Properties_intf.justify_self ->
+  ?safe:bool ->
+  ?position:Properties_intf.self_position_justify ->
+  ?baseline:Properties_intf.baseline ->
+  unit ->
+  declaration
+(** [justify_self ?safe ?position ?baseline ()] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-self}
      justify-self} property. *)
 
@@ -504,7 +541,7 @@ val place_items : place_items -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/place-items}
      place-items} property. *)
 
-val place_self : align_self -> declaration
+val place_self : align_self * justify_self -> declaration
 (** [place_self v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/place-self} place-self}
     property. *)

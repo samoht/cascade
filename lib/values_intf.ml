@@ -1,9 +1,9 @@
 type meta = ..
 
 type 'a fallback =
-  | No_fallback (* No fallback *)
   | Empty (* Empty fallback: var(--name,) *)
-  | Fallback of 'a (* Explicit fallback value: var(--name, value) *)
+  | None (* No fallback: var(--name) *)
+  | Fallback of 'a (* Value fallback: var(--name, value) *)
 
 type 'a var = {
   name : string;
@@ -13,7 +13,7 @@ type 'a var = {
   meta : meta option;
 }
 
-type calc_op = Add | Sub | Mult | Div
+type calc_op = Add | Sub | Mul | Div
 
 type 'a calc =
   | Var of 'a var
@@ -261,6 +261,12 @@ type percentage =
   | Pct of float
   | Var of percentage var
   | Calc of percentage calc
+
+type length_percentage =
+  | Length of length
+  | Percentage of percentage
+  | Var of length_percentage var
+  | Calc of length_percentage calc
 
 type hue_interpolation = Shorter | Longer | Increasing | Decreasing | Default
 

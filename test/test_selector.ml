@@ -12,6 +12,32 @@ let check_selector ?expected input =
   let output = to_string ~minify:true selector in
   check string (Fmt.str "selector %s" input) expected output
 
+(* Generic check function for selector types *)
+let check_value name pp reader ?expected input =
+  let expected = Option.value ~default:input expected in
+  let t = Css.Reader.of_string input in
+  let result = reader t in
+  let pp_str = Css.Pp.to_string ~minify:true pp result in
+  check string (Fmt.str "%s %s" name input) expected pp_str
+
+(* Check functions for missing types - special case for type t *)
+let check = check_selector
+let check_nth = check_value "nth" pp_nth read_nth
+let check_combinator = check_value "combinator" pp_combinator read_combinator
+
+let check_ns input =
+  let t = Css.Reader.of_string input in
+  match read_ns t with
+  | Some ns ->
+      let output = Css.Pp.to_string ~minify:true pp_ns ns in
+      Alcotest.(check string) (Fmt.str "ns %s" input) input output
+  | None -> Fmt.failwith "Failed to parse ns: %s" input
+
+let check_attribute_match =
+  check_value "attribute_match" pp_attribute_match read_attribute_match
+
+let check_attr_flag = check_value "attr_flag" pp_attr_flag read_attr_flag
+
 (* Helper to check Parse_error fields match *)
 let check_parse_error_fields name (expected : Css.Reader.parse_error)
     (actual : Css.Reader.parse_error) =
@@ -53,10 +79,10 @@ let check_invalid name exn_msg f =
 (* Helper for testing selector construction *)
 let check_construct name expected selector =
   let actual = to_string ~minify:true selector in
-  check string name expected actual
+  Alcotest.(check string) name expected actual
 
 (* Test element selectors *)
-let test_selector_element () =
+let element_cases () =
   check_construct "div" "div" (element "div");
   check_construct "span" "span" (element "span");
   check_construct "h1" "h1" (element "h1");
@@ -64,21 +90,21 @@ let test_selector_element () =
   check_construct "custom-element" "custom-element" (element "custom-element")
 
 (* Test class selectors *)
-let test_selector_class () =
+let class_cases () =
   check_construct "class" ".test" (class_ "test");
   check_construct "class with dash" ".test-class" (class_ "test-class");
   check_construct "class with underscore" ".test_class" (class_ "test_class");
   check_construct "class with number" ".test123" (class_ "test123")
 
 (* Test ID selectors *)
-let test_selector_id () =
+let id_cases () =
   check_construct "id" "#myid" (id "myid");
   check_construct "id with dash" "#my-id" (id "my-id");
   check_construct "id with underscore" "#my_id" (id "my_id");
   check_construct "id with number" "#id123" (id "id123")
 
 (* Test pseudo-class selectors *)
-let test_selector_pseudo_class () =
+let pseudo_class_cases () =
   check_construct "hover" ":hover" (pseudo_class "hover");
   check_construct "active" ":active" (pseudo_class "active");
   check_construct "focus" ":focus" (pseudo_class "focus");
@@ -102,7 +128,7 @@ let test_selector_pseudo_class () =
     ":nth-last-of-type(2n+2 of h1 , .a)"
 
 (* Test pseudo-element selectors *)
-let test_selector_pseudo_element () =
+let pseudo_element_cases () =
   check_construct "before" "::before" (pseudo_element "before");
   check_construct "after" "::after" (pseudo_element "after");
   check_construct "first-line" "::first-line" (pseudo_element "first-line");
@@ -112,7 +138,7 @@ let test_selector_pseudo_element () =
   ()
 
 (* Test attribute selectors *)
-let test_selector_attribute () =
+let attribute_cases () =
   check_construct "has attribute" "[href]" (attribute "href" Presence);
   check_construct "exact match" "[type=text]" (attribute "type" (Exact "text"));
   check_construct "contains word" "[class~=active]"
@@ -127,7 +153,7 @@ let test_selector_attribute () =
     (attribute "lang" (Hyphen_list "en"))
 
 (* Test combinators *)
-let test_selector_combinator () =
+let combinator_cases () =
   check_construct "descendant" ".parent .child"
     (class_ "parent" ++ class_ "child");
   check_construct "child" ".parent>.child" (class_ "parent" >> class_ "child");
@@ -139,7 +165,7 @@ let test_selector_combinator () =
     (combine (class_ "col1") Column (class_ "col2"))
 
 (* Test compound selectors *)
-let test_selector_compound () =
+let compound_cases () =
   check_construct "element.class" "div.container"
     (element "div" && class_ "container");
   check_construct "element#id" "div#main" (element "div" && id "main");
@@ -149,7 +175,7 @@ let test_selector_compound () =
     (class_ "link" && attribute "href" Presence)
 
 (* Test selector lists *)
-let test_selector_list () =
+let list_cases () =
   check_construct "list of classes" ".a,.b,.c"
     (list [ class_ "a"; class_ "b"; class_ "c" ]);
   check_construct "list of elements" "h1,h2,h3"
@@ -158,7 +184,7 @@ let test_selector_list () =
     (list [ element "div"; class_ "class"; id "id" ])
 
 (* Test :where() and :is() *)
-let test_selector_where_is () =
+let where_is_cases () =
   check_construct ":where(div)" ":where(div)" (where [ element "div" ]);
   check_construct ":where(.a,.b)" ":where(.a,.b)"
     (where [ class_ "a"; class_ "b" ]);
@@ -166,7 +192,7 @@ let test_selector_where_is () =
   check_construct ":not(.active)" ":not(.active)" (not [ class_ "active" ])
 
 (* Test parsing roundtrips *)
-let test_selector_roundtrip () =
+let roundtrip () =
   (* Basic selectors *)
   check_selector "div";
   check_selector ".class";
@@ -206,7 +232,7 @@ let test_selector_roundtrip () =
   check_selector ":not(.active)"
 
 (* Test invalid selectors *)
-let test_selector_invalid () =
+let invalid () =
   (* Empty identifier *)
   check_invalid "empty class" "CSS identifier '' cannot be empty" (fun () ->
       ignore (class_ ""));
@@ -247,7 +273,7 @@ let test_selector_invalid () =
   let open Css.Reader in
   let neg_parse s label =
     let r = of_string s in
-    check bool label true (Option.is_none (Css.Reader.option read r))
+    Alcotest.(check bool) label true (Option.is_none (Css.Reader.option read r))
   in
   neg_parse "[href" "unterminated attribute selector";
   neg_parse ":nth-child(2n+)" "invalid nth-child syntax";
@@ -257,7 +283,7 @@ let test_selector_invalid () =
   neg_parse "[attr=value" "unterminated attribute value"
 
 (* Test broken selectors with Parse_error exceptions *)
-let test_selector_parse_errors () =
+let parse_errors () =
   let check_parse_error name input expected_msg =
     let t = Css.Reader.of_string input in
     try
@@ -342,7 +368,7 @@ let test_selector_parse_errors () =
     "expected one of"
 
 (* Test callstack accuracy for selector errors *)
-let test_selector_callstack_accuracy () =
+let callstack_accuracy () =
   let contains_substring haystack needle =
     let len_h = String.length haystack in
     let len_n = String.length needle in
@@ -420,7 +446,7 @@ let test_selector_callstack_accuracy () =
     [ "stylesheet"; "rule"; "list" ]
 
 (* Test special cases *)
-let test_selector_special_cases () =
+let special_cases () =
   (* Universal selector *)
   check_construct "universal" "*" universal;
 
@@ -437,7 +463,7 @@ let test_selector_special_cases () =
       ignore (list []))
 
 (* Test distribution semantics *)
-let test_selector_distribution () =
+let distribution () =
   (* Child combinator distributes over list *)
   let s = class_ "parent" >> list [ class_ "a"; class_ "b" ] in
   check_construct "child distribution" ".parent>.a,.parent>.b" s;
@@ -463,24 +489,24 @@ let suite =
   ( "selector",
     [
       (* Basic selector types *)
-      test_case "element" `Quick test_selector_element;
-      test_case "class" `Quick test_selector_class;
-      test_case "id" `Quick test_selector_id;
-      test_case "pseudo class" `Quick test_selector_pseudo_class;
-      test_case "pseudo element" `Quick test_selector_pseudo_element;
-      test_case "attribute" `Quick test_selector_attribute;
+      test_case "element" `Quick element_cases;
+      test_case "class" `Quick class_cases;
+      test_case "id" `Quick id_cases;
+      test_case "pseudo class" `Quick pseudo_class_cases;
+      test_case "pseudo element" `Quick pseudo_element_cases;
+      test_case "attribute" `Quick attribute_cases;
       (* Combinations *)
-      test_case "combinator" `Quick test_selector_combinator;
-      test_case "compound" `Quick test_selector_compound;
-      test_case "list" `Quick test_selector_list;
-      test_case "where is" `Quick test_selector_where_is;
+      test_case "combinator" `Quick combinator_cases;
+      test_case "compound" `Quick compound_cases;
+      test_case "list" `Quick list_cases;
+      test_case "where is" `Quick where_is_cases;
       (* Parsing *)
-      test_case "roundtrip" `Quick test_selector_roundtrip;
+      test_case "roundtrip" `Quick roundtrip;
       (* Error cases *)
-      test_case "invalid" `Quick test_selector_invalid;
-      test_case "parse errors" `Quick test_selector_parse_errors;
-      test_case "callstack accuracy" `Quick test_selector_callstack_accuracy;
+      test_case "invalid" `Quick invalid;
+      test_case "parse errors" `Quick parse_errors;
+      test_case "callstack accuracy" `Quick callstack_accuracy;
       (* Special cases *)
-      test_case "special cases" `Quick test_selector_special_cases;
-      test_case "distribution" `Quick test_selector_distribution;
+      test_case "special cases" `Quick special_cases;
+      test_case "distribution" `Quick distribution;
     ] )

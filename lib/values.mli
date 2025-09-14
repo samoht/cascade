@@ -6,7 +6,12 @@ include module type of Values_intf
 (** Shared value/unit types exposed by both implementation and interface. *)
 
 val var_ref :
-  ?fallback:'a -> ?default:'a -> ?layer:string -> ?meta:meta -> string -> 'a var
+  ?fallback:'a fallback ->
+  ?default:'a ->
+  ?layer:string ->
+  ?meta:meta ->
+  string ->
+  'a var
 (** [var_ref ?fallback ?default ?layer ?meta name] creates a CSS variable
     reference to [--name]. *)
 
@@ -96,14 +101,26 @@ val pp_number : number Pp.t
 val pp_percentage : percentage Pp.t
 (** [pp_percentage] pretty-prints {!percentage} values. *)
 
+val pp_length_percentage : length_percentage Pp.t
+(** [pp_length_percentage] pretty-prints {!length_percentage} values. *)
+
+val read_length_percentage : Reader.t -> length_percentage
+(** [read_length_percentage] reads a {!length_percentage} value. *)
+
 val pp_calc : 'a Pp.t -> 'a calc Pp.t
 (** [pp_calc pp] pretty-prints [calc] expressions using [pp] for leaf values. *)
 
 val pp_color_name : color_name Pp.t
 (** [pp_color_name] pretty-prints {!color_name} values. *)
 
+val read_color_name : Reader.t -> color_name
+(** [read_color_name] reads a {!color_name} value. *)
+
 val pp_color_space : color_space Pp.t
 (** [pp_color_space] pretty-prints {!color_space} values. *)
+
+val read_color_space : Reader.t -> color_space
+(** [read_color_space] reads a {!color_space} value. *)
 
 (** {2 Helper Functions} *)
 
@@ -130,7 +147,7 @@ module Calc : sig
   val ( * ) : 'a calc -> 'a calc -> 'a calc
   val ( / ) : 'a calc -> 'a calc -> 'a calc
   val length : 'a -> 'a calc
-  val var : ?default:'a -> ?fallback:'a -> string -> 'a calc
+  val var : ?default:'a -> ?fallback:'a fallback -> string -> 'a calc
   val float : float -> length calc
   val infinity : length calc
   val px : float -> length calc
@@ -160,6 +177,48 @@ val read_margin_shorthand : Reader.t -> length list
 
 val read_color : Reader.t -> color
 (** [read_color t] parses a CSS color (hex, rgb/rgba, keywords, etc.). *)
+
+val pp_hue : hue Pp.t
+(** [pp_hue] pretty-prints {!hue} values. *)
+
+val read_hue : Reader.t -> hue
+(** [read_hue t] parses a CSS hue value. *)
+
+val pp_alpha : alpha Pp.t
+(** [pp_alpha] pretty-prints {!alpha} values. *)
+
+val read_alpha : Reader.t -> alpha
+(** [read_alpha t] parses a CSS alpha value. *)
+
+val pp_meta : meta Pp.t
+(** [pp_meta] pretty-prints {!meta} values. *)
+
+val read_meta : Reader.t -> meta
+(** [read_meta t] parses metadata. *)
+
+val pp_hue_interpolation : hue_interpolation Pp.t
+(** [pp_hue_interpolation] pretty-prints {!hue_interpolation} values. *)
+
+val read_hue_interpolation : Reader.t -> hue_interpolation
+(** [read_hue_interpolation t] parses a hue interpolation method. *)
+
+val pp_calc_op : calc_op Pp.t
+(** [pp_calc_op] pretty-prints {!calc_op} values. *)
+
+val read_calc_op : Reader.t -> calc_op
+(** [read_calc_op t] parses a calc operation. *)
+
+val pp_component : component Pp.t
+(** [pp_component] pretty-prints {!component} values. *)
+
+val read_component : Reader.t -> component
+(** [read_component t] parses a component value. *)
+
+val pp_channel : channel Pp.t
+(** [pp_channel] pretty-prints {!channel} values. *)
+
+val read_channel : Reader.t -> channel
+(** [read_channel t] parses a channel value. *)
 
 val read_angle : Reader.t -> angle
 (** [read_angle t] parses a CSS angle. *)
