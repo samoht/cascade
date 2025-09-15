@@ -109,8 +109,9 @@ let read_syntax (r : Reader.t) : any_syntax =
 
 (** Read a value according to its syntax type - placeholder implementation *)
 let read_value (reader : Reader.t) (syntax : 'a syntax) : 'a =
-  (* For now, use a simplified approach that works with the type system *)
-  (* This is a placeholder that needs proper implementation for each syntax type *)
+  (* This function is problematic because it tries to return 'a for any syntax,
+     but different syntax types have different return types. For now, we use a
+     simplified approach that works only for string-like syntax. *)
   match syntax with
   | Universal -> Reader.string ~trim:true reader
   | String -> Reader.string ~trim:true reader
@@ -119,18 +120,15 @@ let read_value (reader : Reader.t) (syntax : 'a syntax) : 'a =
   | Image -> Reader.string ~trim:true reader
   | Transform_function -> Reader.string ~trim:true reader
   | Brackets _desc -> Reader.string ~trim:true reader
-  | Length -> failwith "Length parsing not implemented"
-  | Color -> failwith "Color parsing not implemented"
-  | Number -> failwith "Number parsing not implemented"
-  | Integer -> failwith "Integer parsing not implemented"
-  | Percentage -> failwith "Percentage parsing not implemented"
-  | Length_percentage -> failwith "Length_percentage parsing not implemented"
-  | Angle -> failwith "Angle parsing not implemented"
-  | Time -> failwith "Time parsing not implemented"
-  | Or (_, _) -> failwith "Or syntax parsing not implemented"
-  | Plus _ -> failwith "Plus syntax parsing not implemented"
-  | Hash _ -> failwith "Hash syntax parsing not implemented"
-  | Question _ -> failwith "Question syntax parsing not implemented"
+  | _ -> failwith "read_value: complex syntax types not yet implemented"
+
+(** Read a value as a string regardless of syntax type. This is used for parsing
+    CSS property initial-value fields which are always strings in CSS syntax and
+    get parsed later when needed. *)
+let read_value_as_string (reader : Reader.t) (_syntax : 'a syntax) : string =
+  (* For @property parsing, we always read the initial value as a string since
+     that's how it appears in CSS. The type checking happens later. *)
+  Reader.string ~trim:true reader
 
 (** {1 Meta handling} *)
 
