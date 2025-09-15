@@ -105,7 +105,10 @@ let read_syntax (r : Reader.t) : any_syntax =
   | s when String.length s > 2 && s.[0] = '[' && s.[String.length s - 1] = ']'
     ->
       Syntax (Brackets (String.sub s 1 (String.length s - 2)))
-  | s -> failwith ("Unsupported CSS syntax: " ^ s)
+  | s -> (
+      match List.map String.trim (String.split_on_char '|' s) with
+      | [ "<length>"; "<percentage>" ] -> Syntax (Or (Length, Percentage))
+      | _ -> Reader.err_invalid r ("Unsupported CSS syntax: " ^ s))
 
 (** Read a value according to its syntax type *)
 let rec read_value : type a. Reader.t -> a syntax -> a =
@@ -465,8 +468,9 @@ let pp_any_syntax : any_syntax Pp.t = fun ctx (Syntax syn) -> pp_syntax ctx syn
 
 (* Reader for any_syntax *)
 let read_any_syntax (r : Reader.t) : any_syntax =
-  let s = Reader.until r ' ' in
-  match String.trim s with
+  (* Read remaining input - this is used for syntax strings in @property *)
+  let s = Reader.css_value ~stops:[ ';'; '}' ] r |> String.trim in
+  match s with
   | "<length>" -> Syntax Length
   | "<color>" -> Syntax Color
   | "<number>" -> Syntax Number
@@ -481,9 +485,15 @@ let read_any_syntax (r : Reader.t) : any_syntax =
   | "<image>" -> Syntax Image
   | "<transform-function>" -> Syntax Transform_function
   | "*" -> Syntax Universal
-  | s when String.contains s '|' ->
-      (* Simple parsing for Or types - this is a simplified version *)
-      Syntax Universal
+  | s when String.contains s '|' -> (
+      (* Parse composite syntax like "<length> | <percentage>" *)
+      let parts = String.split_on_char '|' s |> List.map String.trim in
+      match parts with
+      | [ "<length>"; "<percentage>" ] | [ "<percentage>"; "<length>" ] ->
+          (* <length> | <percentage> maps to the predefined Length_percentage
+             type *)
+          Syntax Length_percentage
+      | _ -> Syntax Universal (* Other composite syntax not yet supported *))
   | _ -> Syntax Universal (* Default to universal for unknown syntax *)
 
 (* Pretty-printer for any_var *)

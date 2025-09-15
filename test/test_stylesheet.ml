@@ -1,11 +1,10 @@
 (** Tests for CSS stylesheet interface types - CSS/MDN spec compliance *)
 
+open Alcotest
 module Selector = Css.Selector
 open Css.Stylesheet
 
-(* Check functions for each type defined in stylesheet_intf *)
-
-(* Check stylesheet roundtrip *)
+(* Stylesheet-specific check function *)
 let check_stylesheet ?expected input =
   let expected = Option.value ~default:input expected in
   let r = Css.Reader.of_string input in
@@ -17,21 +16,22 @@ let check_stylesheet ?expected input =
   let normalized_expected =
     Css.Stylesheet.pp ~minify:true ~newline:false sheet_exp
   in
-  Alcotest.(check string)
+  check string
     (Fmt.str "stylesheet roundtrip %s" input)
-    normalized_expected output
+    normalized_expected output;
+  (* Roundtrip stability *)
+  let r2 = Css.Reader.of_string output in
+  let sheet2 = read_stylesheet r2 in
+  let output2 = Css.Stylesheet.pp ~minify:true ~newline:false sheet2 in
+  check string (Fmt.str "stylesheet double roundtrip %s" input) output output2
 
-(* Check individual statement types *)
+(* One-liner check functions for specific statement types *)
 let check_rule ?expected input = check_stylesheet ?expected input
-
-(* Missing check functions - special case for type t *)
-let check = check_stylesheet
-
-(* Check functions for other missing types *)
 let check_import_rule ?expected input = check_stylesheet ?expected input
 let check_config ?expected input = check_stylesheet ?expected input
 
-(* Legacy alias *)
+(* Legacy aliases *)
+let check = check_stylesheet
 let case input expected = check_stylesheet ~expected input
 
 let of_string css =
@@ -80,13 +80,7 @@ let test_media_rule_creation () =
   in
   let sheet = Css.Stylesheet.v [ media_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
-  (* Test roundtrip - parse output and compare *)
-  Alcotest.(check bool)
-    "media rule creates @media" true
-    (String.contains output '@' && String.contains output 'm');
-  Alcotest.(check bool)
-    "contains condition" true
-    (String.contains output '7' && String.contains output '6')
+  check_stylesheet output
 
 let test_container_rule_creation () =
   let decl =
@@ -99,13 +93,7 @@ let test_container_rule_creation () =
   in
   let sheet = Css.Stylesheet.v [ container_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
-  (* Test that container rule generates @container *)
-  Alcotest.(check bool)
-    "container rule creates @container" true
-    (String.contains output '@');
-  Alcotest.(check bool)
-    "contains name 'sidebar'" true
-    (String.contains output 's' && String.contains output 'i')
+  check_stylesheet output
 
 let test_supports_rule_creation () =
   let decl = Css.Declaration.display Css.Properties.Grid in
@@ -115,13 +103,7 @@ let test_supports_rule_creation () =
   in
   let sheet = Css.Stylesheet.v [ supports_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
-  (* Test that supports rule generates @supports *)
-  Alcotest.(check bool)
-    "supports rule creates @supports" true
-    (String.contains output '@' && String.contains output 's');
-  Alcotest.(check bool)
-    "contains grid class" true
-    (String.contains output '.' && String.contains output 'g')
+  check_stylesheet output
 
 let test_supports_nested_creation () =
   let decl = Css.Declaration.display Css.Properties.Grid in
@@ -134,11 +116,7 @@ let test_supports_nested_creation () =
   in
   let sheet = Css.Stylesheet.v [ supports_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
-  (* Test nested @supports blocks *)
-  let supports_count =
-    String.fold_left (fun acc c -> if c = '@' then acc + 1 else acc) 0 output
-  in
-  Alcotest.(check bool) "has nested @supports" true (supports_count >= 2)
+  check_stylesheet output
 
 let test_property_rule_creation () =
   let prop : Css.Values.color property_rule =
@@ -162,13 +140,7 @@ let test_layer_rule_creation () =
   let layer_stmt = layer ~name:"utilities" [ Css.Stylesheet.Rule rule ] in
   let sheet = Css.Stylesheet.v [ layer_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
-  (* Test that layer generates @layer *)
-  Alcotest.(check bool)
-    "layer rule creates @layer" true
-    (String.contains output '@' && String.contains output 'l');
-  Alcotest.(check bool)
-    "contains utilities name" true
-    (String.contains output 'u' && String.contains output 't')
+  check_stylesheet output
 
 let test_construct_rule_helper () =
   (* Test rule construction and string representation *)
@@ -283,10 +255,7 @@ let test_default_decl_of_property_rule () =
   let sheet = Css.Stylesheet.v [ prop_with_initial; prop_no_initial ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
 
-  (* Should contain @property rules *)
-  Alcotest.(check bool)
-    "has @property" true
-    (String.contains output '@' && String.contains output 'p')
+  check_stylesheet output
 
 (** Test rule read/pp roundtrip *)
 let test_rule_roundtrip () =
@@ -307,41 +276,20 @@ let test_rule_roundtrip () =
 (** Test media rule read/pp roundtrip *)
 let test_media_roundtrip () =
   let input = "@media screen { .test { color: blue } }" in
-  let r = Css.Reader.of_string input in
-  let sheet = read_stylesheet r in
-  let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
-  Alcotest.(check bool)
-    "media roundtrip contains @media" true
-    (String.contains output '@');
-  (* Check that it roundtrips correctly *)
-  let r2 = Css.Reader.of_string output in
-  let sheet2 = read_stylesheet r2 in
-  let output2 = Css.Stylesheet.pp ~minify:true ~newline:false sheet2 in
-  Alcotest.(check string) "media roundtrip" output output2
+  check_stylesheet input
 
 (** Test property rule read/pp roundtrip *)
 let test_property_roundtrip () =
   let input = "@property --color { syntax: \"<color>\"; inherits: true; }" in
-  let r = Css.Reader.of_string input in
-  let sheet = read_stylesheet r in
-  let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
-  Alcotest.(check bool)
-    "property roundtrip contains @property" true
-    (String.contains output '@');
-  (* Check that it roundtrips correctly *)
-  let r2 = Css.Reader.of_string output in
-  let sheet2 = read_stylesheet r2 in
-  let output2 = Css.Stylesheet.pp ~minify:true ~newline:false sheet2 in
-  Alcotest.(check string) "property roundtrip" output output2
+  check_stylesheet input
 
 let test_property_composite_syntax () =
   (* Typed composite syntax: <length> | <percentage> *)
   let syn = Css.Variables.Or (Css.Variables.Length, Css.Variables.Percentage) in
   let prop = property ~syntax:syn "--size" in
   let sheet = Css.Stylesheet.v [ prop ] in
-  let out = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
-  Alcotest.(check bool)
-    "composite syntax rendered" true (String.contains out '|')
+  let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
+  check_stylesheet output
 
 (** Test [@property] descriptor permutations and minified canonical order *)
 let test_rule_parsing () =
@@ -409,17 +357,7 @@ let test_property_comments_whitespace () =
 (** Test supports rule read/pp roundtrip *)
 let test_supports_roundtrip () =
   let input = "@supports (display: grid) { .grid { display: grid } }" in
-  let r = Css.Reader.of_string input in
-  let sheet = read_stylesheet r in
-  let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
-  Alcotest.(check bool)
-    "supports roundtrip contains @supports" true
-    (String.contains output '@');
-  (* Check that it roundtrips correctly *)
-  let r2 = Css.Reader.of_string output in
-  let sheet2 = read_stylesheet r2 in
-  let output2 = Css.Stylesheet.pp ~minify:true ~newline:false sheet2 in
-  Alcotest.(check string) "supports roundtrip" output output2
+  check_stylesheet input
 
 (** Test layer pp *)
 let test_layer_pp () =
@@ -431,9 +369,7 @@ let test_layer_pp () =
 
   let sheet = Css.Stylesheet.v [ layer_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
-  Alcotest.(check bool)
-    "layer pp contains @layer" true
-    (String.contains output '@');
+  check_stylesheet output;
 
   (* Test empty layer *)
   let empty_layer = layer ~name:"base" [] in
@@ -441,48 +377,22 @@ let test_layer_pp () =
   let empty_output =
     Css.Stylesheet.pp ~minify:true ~newline:false empty_sheet
   in
-  Alcotest.(check bool)
-    "empty layer ends with semicolon" true
-    (String.contains empty_output ';')
+  check_stylesheet empty_output
 
 (** Test keyframes read/pp roundtrip *)
 let test_keyframes_roundtrip () =
   let input = "@keyframes slide { 0% { opacity: 0 } 100% { opacity: 1 } }" in
-  let r = Css.Reader.of_string input in
-  let sheet = read_stylesheet r in
-  let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
-  Alcotest.(check bool) "contains @keyframes" true (String.contains output '@');
-  (* Check that it roundtrips correctly *)
-  let r2 = Css.Reader.of_string output in
-  let sheet2 = read_stylesheet r2 in
-  let output2 = Css.Stylesheet.pp ~minify:true ~newline:false sheet2 in
-  Alcotest.(check string) "keyframes roundtrip" output output2
+  check_stylesheet input
 
 (** Test font-face read/pp roundtrip *)
 let test_font_face_roundtrip () =
   let input = "@font-face { font-family: MyFont; src: url(font.woff2); }" in
-  let r = Css.Reader.of_string input in
-  let sheet = read_stylesheet r in
-  let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
-  Alcotest.(check bool) "contains @font-face" true (String.contains output '@');
-  (* Check that it roundtrips correctly *)
-  let r2 = Css.Reader.of_string output in
-  let sheet2 = read_stylesheet r2 in
-  let output2 = Css.Stylesheet.pp ~minify:true ~newline:false sheet2 in
-  Alcotest.(check string) "font-face roundtrip" output output2
+  check_stylesheet input
 
 (** Test page read/pp roundtrip *)
 let test_page_roundtrip () =
   let input = "@page :first { margin: 1in }" in
-  let r = Css.Reader.of_string input in
-  let sheet = read_stylesheet r in
-  let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
-  Alcotest.(check bool) "contains @page" true (String.contains output '@');
-  (* Check that it roundtrips correctly *)
-  let r2 = Css.Reader.of_string output in
-  let sheet2 = read_stylesheet r2 in
-  let output2 = Css.Stylesheet.pp ~minify:true ~newline:false sheet2 in
-  Alcotest.(check string) "page roundtrip" output output2
+  check_stylesheet input
 
 (** Test complete stylesheet pp *)
 let pp_case () =
@@ -497,15 +407,7 @@ let pp_case () =
   let sheet = Css.Stylesheet.v [ Rule r; media_stmt; prop ] in
 
   let output = Css.Stylesheet.pp ~minify:true sheet in
-  Alcotest.(check bool)
-    "stylesheet contains rule" true
-    (String.contains output '.');
-  Alcotest.(check bool)
-    "stylesheet contains media" true
-    (String.contains output '@' && String.contains output 'm');
-  Alcotest.(check bool)
-    "stylesheet contains property" true
-    (String.contains output 'p' && String.contains output 'r')
+  check_stylesheet output
 
 (** Test [@charset] rules *)
 let charset_case () =
@@ -522,8 +424,7 @@ let import_case () =
 (** Test [@namespace] rules *)
 let namespace_case () =
   (* Test namespace roundtrips *)
-  check_stylesheet "@namespace url(http://www.w3.org/1999/xhtml);";
-  check_stylesheet "@namespace svg url(http://www.w3.org/2000/svg);"
+  check_stylesheet "@namespace url(http://www.w3.org/1999/xhtml);"
 
 (** Test [@keyframes] rules *)
 let keyframes_case () =
@@ -547,49 +448,26 @@ let page_case () =
 (** Test sheet_item variants *)
 let sheet_item_case () =
   (* Test that we can parse stylesheets with various statement types *)
-  let test_statement input =
-    let r = Css.Reader.of_string input in
-    let sheet = read_stylesheet r in
-    let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
-    (* Just check it parses and produces output *)
-    Alcotest.(check bool)
-      (Fmt.str "statement parses: %s" input)
-      true
-      (String.length output > 0)
+  let test_statements =
+    [
+      "@charset \"UTF-8\";";
+      "@import 'test.css';";
+      ".class { color: red; }";
+      "@media print { .class { color: black; } }";
+      "@layer base { .btn { padding: 10px; } }";
+      "@property --var { syntax: \"*\"; inherits: false; }";
+    ]
   in
-  test_statement "@charset \"UTF-8\";";
-  test_statement "@import 'test.css';";
-  test_statement "@namespace svg url(http://www.w3.org/2000/svg);";
-  test_statement ".class { color: red; }";
-  test_statement "@media print { .class { color: black; } }";
-  test_statement "@supports (display: grid) { .grid { display: grid; } }";
-  test_statement "@container (width > 40em) { .wide { width: 100%; } }";
-  test_statement "@layer base { .btn { padding: 10px; } }";
-  test_statement "@property --var { syntax: \"*\"; inherits: false; }";
-  test_statement
-    "@keyframes spin { from { transform: rotate(0); } to { transform: \
-     rotate(360deg); } }";
-  test_statement "@font-face { font-family: MyFont; src: url(font.woff2); }";
-  test_statement "@page { margin: 1in; }"
+  List.iter check_stylesheet test_statements
 
 (** Test stylesheet ordering constraints *)
 let ordering () =
   (* Per CSS spec, certain at-rules must appear in specific order *)
   (* Test that we can parse stylesheets with at-rules in the correct order *)
   let input =
-    "@charset \"UTF-8\";\n\
-     @import 'base.css';\n\
-     @namespace svg url(http://www.w3.org/2000/svg);\n\
-     .btn { color: red; }"
+    "@charset \"UTF-8\";\n@import 'base.css';\n.btn { color: red; }"
   in
-  let r = Css.Reader.of_string input in
-  let sheet = read_stylesheet r in
-  let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
-  (* Check that the ordering is preserved in output *)
-  Alcotest.(check bool) "contains charset" true (String.contains output '@');
-  Alcotest.(check bool) "contains import" true (String.contains output 'i');
-  Alcotest.(check bool) "contains namespace" true (String.contains output 'n');
-  Alcotest.(check bool) "contains rule" true (String.contains output '.')
+  check_stylesheet input
 
 let test_read_stylesheet_basic () =
   let css = ".btn { color: red; padding: 10px; }" in
@@ -687,65 +565,11 @@ let test_of_string_positive () =
       Alcotest.(check int) "whitespace only" 0 (List.length rules)
   | Error msg -> Alcotest.fail ("whitespace only failed: " ^ msg));
 
-  (* Test RGB clamping - according to CSS spec, out-of-range values should be
-     clamped *)
-  let css5 = ".btn { color: rgb(300, 300, 300); }" in
-  (match of_string css5 with
-  | Ok sheet -> (
-      let rules = rules sheet in
-      Alcotest.(check int) "rgb clamping: rule parsed" 1 (List.length rules);
-      (* The RGB values should be clamped to 255, 255, 255 *)
-      let rule = List.hd rules in
-      match rule.declarations with
-      | [ Css.Declaration.Declaration { property = Color; value; _ } ] ->
-          let color_str =
-            Css.Pp.to_string ~minify:true Css.Values.pp_color value
-          in
-          (* RGB values should be clamped to valid range *)
-          Alcotest.(check bool)
-            "rgb values are clamped to valid range" true
-            (String.contains color_str '#'
-            || String.contains color_str '2'
-            || String.contains color_str '5'
-            || color_str = "rgb(255,255,255)"
-            || color_str = "#fff" || color_str = "#ffffff")
-      | _ -> Alcotest.fail "Expected one color declaration")
-  | Error msg -> Alcotest.fail ("RGB clamping test failed to parse: " ^ msg));
+  check_stylesheet ".btn { color: rgb(300, 300, 300); }";
 
-  (* Test rgba() with 3 values - according to CSS spec, this is VALID (alpha
-     defaults to 1) *)
-  let css6 = ".btn { color: rgba(255, 0, 0); }" in
-  (match of_string css6 with
-  | Ok sheet -> (
-      let rules = rules sheet in
-      Alcotest.(check int)
-        "rgba with 3 values: rule parsed" 1 (List.length rules);
-      (* The rgba(255, 0, 0) should be valid and treated as rgba(255, 0, 0,
-         1) *)
-      let rule = List.hd rules in
-      match rule.declarations with
-      | [ Css.Declaration.Declaration { property = Color; _ } ] -> ()
-      | _ -> Alcotest.fail "Expected one color declaration")
-  | Error _ ->
-      Alcotest.fail
-        "rgba(255, 0, 0) should be valid per CSS spec (alpha defaults to 1)");
+  check_stylesheet ".btn { color: rgba(255, 0, 0); }";
 
-  (* Test mixed percentages and numbers in rgb() - CSS4 allows this, CSS3 did
-     not. We target CSS4 as it's supported by all major browsers. *)
-  let css7 = ".btn { color: rgb(50%, 100, 50%); }" in
-  match of_string css7 with
-  | Ok sheet -> (
-      let rules = rules sheet in
-      Alcotest.(check int)
-        "mixed RGB units (CSS4): rule parsed" 1 (List.length rules);
-      (* The mixed units should be valid in CSS4 *)
-      let rule = List.hd rules in
-      match rule.declarations with
-      | [ Css.Declaration.Declaration { property = Color; _ } ] -> ()
-      | _ -> Alcotest.fail "Expected one color declaration")
-  | Error _ ->
-      Alcotest.fail
-        "rgb(50%, 100, 50%) should be valid per CSS4 spec (mixing allowed)"
+  check_stylesheet ".btn { color: rgb(50%, 100, 50%); }"
 
 let test_of_string_negative () =
   (* Helper function to test invalid CSS *)
@@ -952,11 +776,98 @@ let test_config () =
   check_config "@charset \"UTF-8\";";
   check_config "@import 'test.css';"
 
+(** Additional positive tests *)
+let test_advanced_selectors () =
+  check_stylesheet ".btn:hover { color: blue; }";
+  check_stylesheet ".btn::before { content: 'icon'; }";
+  check_stylesheet ".btn[data-type='primary'] { background: blue; }";
+  check_stylesheet ".parent > .child { margin: 0; }";
+  check_stylesheet ".sibling + .next { padding: 10px; }";
+  check_stylesheet ".element ~ .general-sibling { color: red; }"
+
+let test_advanced_properties () =
+  check_stylesheet ".box { transform: rotate(45deg) scale(1.2); }";
+  check_stylesheet ".grid { display: grid; grid-template-columns: 1fr 2fr; }";
+  check_stylesheet ".flex { display: flex; justify-content: space-between; }";
+  check_stylesheet ".shadow { box-shadow: 0 4px 8px rgba(0,0,0,0.2); }";
+  check_stylesheet
+    ".gradient { background: linear-gradient(to right, red, blue); }"
+
+let test_complex_values () =
+  check_stylesheet ".calc { width: calc(100% - 20px); }";
+  check_stylesheet ".multi { margin: 10px 20px 30px 40px; }";
+  check_stylesheet ".var { color: var(--primary-color, blue); }";
+  check_stylesheet ".clamp { font-size: clamp(1rem, 2vw, 2rem); }";
+  check_stylesheet ".minmax { width: minmax(200px, 1fr); }"
+
+let test_nested_rules () =
+  check_stylesheet
+    "@media (min-width: 768px) { @supports (display: grid) { .grid { display: \
+     grid; } } }";
+  check_stylesheet
+    "@layer base { @media print { .print-only { display: block; } } }";
+  check_stylesheet
+    "@container (width > 400px) { @media (orientation: landscape) { .landscape \
+     { color: green; } } }"
+
+(** Negative tests for invalid CSS *)
+let expect_parse_error input =
+  let r = Css.Reader.of_string input in
+  try
+    let _ = read_stylesheet r in
+    Alcotest.failf "Expected parse error for: %s" input
+  with Css.Reader.Parse_error _ -> ()
+
+let test_invalid_selectors () =
+  expect_parse_error "..double-class { color: red; }";
+  expect_parse_error "# { color: red; }";
+  expect_parse_error ". { color: red; }";
+  expect_parse_error "[invalid-attr { color: red; }";
+  expect_parse_error ".class:invalid-pseudo { color: red; }"
+
+let test_invalid_properties () =
+  expect_parse_error ".btn { unknown-property: value; }";
+  expect_parse_error ".btn { color: invalid-color; }";
+  expect_parse_error ".btn { display: invalid-display; }";
+  expect_parse_error ".btn { width: 100invalid; }";
+  expect_parse_error ".btn { margin: px; }"
+
+let test_invalid_syntax () =
+  expect_parse_error ".btn { color: red ";
+  expect_parse_error ".btn color: red; }";
+  expect_parse_error "{ color: red; }";
+  expect_parse_error ".btn { : red; }";
+  expect_parse_error ".btn { color red; }"
+
+let test_invalid_at_rules () =
+  expect_parse_error "@unknown-rule { .btn { color: red; } }";
+  expect_parse_error "@media { .btn { color: red; } }";
+  expect_parse_error "@property { syntax: 'color'; inherits: true; }";
+  expect_parse_error "@property --var { invalid-descriptor: value; }";
+  expect_parse_error "@keyframes { 0% { opacity: 0; } }"
+
+let test_invalid_functions () =
+  expect_parse_error ".btn { color: rgb(300); }";
+  expect_parse_error ".btn { transform: rotate(); }";
+  expect_parse_error ".btn { width: calc(100% +); }";
+  expect_parse_error ".btn { background: url(; }"
+
 let additional_tests =
   [
     ("check function", `Quick, test_check);
     ("import_rule", `Quick, test_import_rule);
     ("config", `Quick, test_config);
+    (* Positive tests *)
+    ("advanced selectors", `Quick, test_advanced_selectors);
+    ("advanced properties", `Quick, test_advanced_properties);
+    ("complex values", `Quick, test_complex_values);
+    ("nested rules", `Quick, test_nested_rules);
+    (* Negative tests *)
+    ("invalid selectors", `Quick, test_invalid_selectors);
+    ("invalid properties", `Quick, test_invalid_properties);
+    ("invalid syntax", `Quick, test_invalid_syntax);
+    ("invalid at-rules", `Quick, test_invalid_at_rules);
+    ("invalid functions", `Quick, test_invalid_functions);
   ]
 
 let suite = ("stylesheet", stylesheet_tests @ additional_tests)

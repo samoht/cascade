@@ -30,7 +30,7 @@ include Stylesheet
 let v rules = List.map (fun r -> Rule r) rules
 let concat = List.concat
 let empty = []
-let stylesheet_rules = Stylesheet.rules
+let of_statements = Stylesheet.v
 
 let media ~condition rules =
   [ Media (condition, List.map (fun r -> Rule r) rules) ]

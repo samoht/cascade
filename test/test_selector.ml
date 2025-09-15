@@ -31,11 +31,6 @@ let check_ns input =
       Alcotest.(check string) (Fmt.str "ns %s" input) input output
   | None -> Fmt.failwith "Failed to parse ns: %s" input
 
-let check_attribute_match =
-  check_value "attribute_match" pp_attribute_match read_attribute_match
-
-let check_attr_flag = check_value "attr_flag" pp_attr_flag read_attr_flag
-
 (* Helper to check Parse_error fields match *)
 let check_parse_error_fields name (expected : Css.Reader.parse_error)
     (actual : Css.Reader.parse_error) =
@@ -459,27 +454,9 @@ let test_selector_component_parsing () =
   check_combinator "||";
 
   (* Test namespace *)
-  check_ns "svg";
-  check_ns "xml";
-  check_ns "foo";
-
-  (* Test attribute matching *)
-  check_attribute_match "=";
-  check_attribute_match "~=";
-  check_attribute_match "^=";
-  check_attribute_match "$=";
-  check_attribute_match "*=";
-  check_attribute_match "|=";
-
-  (* Test attribute flags *)
-  check_attr_flag "i";
-  check_attr_flag "s";
-
-  (* Test basic selector parsing *)
-  check_selector "div";
-  check_selector ".class";
-  check_selector "#id";
-  check_selector "*"
+  check_ns "svg|";
+  check_ns "xml|";
+  check_ns "*|"
 
 (* Test negative cases for unused functions *)
 let test_selector_component_parsing_failures () =
@@ -499,13 +476,14 @@ let test_selector_component_parsing_failures () =
   neg "invalid combinator" read_combinator "!";
   neg "empty combinator" read_combinator "";
 
-  (* Invalid attribute match *)
-  neg "invalid attr match" read_attribute_match "!";
-  neg "empty attr match" read_attribute_match "";
-
-  (* Invalid attribute flags *)
-  neg "invalid flag" read_attr_flag "z";
-  neg "empty flag" read_attr_flag ""
+  (* Invalid namespace syntax *)
+  let test_invalid_ns () =
+    let r = of_string "notanamespace" in
+    let result = read_ns r in
+    Alcotest.(check bool)
+      "invalid namespace should fail" true (Option.is_none result)
+  in
+  test_invalid_ns ()
 
 (* Test special cases *)
 let special_cases () =

@@ -271,6 +271,12 @@ let read_combinator t =
   | Some '|' when Reader.looking_at t "||" ->
       Reader.expect_string "||" t;
       Column
+  | Some '!' ->
+      (* Invalid combinator character *)
+      Reader.err t "invalid combinator character"
+  | None when Reader.is_done t ->
+      (* Empty input should fail in isolation *)
+      Reader.err t "empty combinator"
   | _ -> Descendant
 
 let read_attribute_match t : attribute_match =
@@ -305,6 +311,9 @@ let read_ns t : ns option =
         let p = Reader.ident ~keep_case:true t in
         (* Avoid treating '|=' as a namespace separator *)
         if Reader.peek_string t 2 = "|=" then Reader.err t "not a namespace";
+        (* Check if we're at end of input - this should fail *)
+        if Reader.is_done t then
+          Reader.err t "expected | after namespace prefix";
         Reader.expect '|' t;
         Prefix p)
     t
@@ -354,6 +363,23 @@ let read_nth t : nth =
                   let c = Reader.char t in
                   if c = 'n' then read_an_plus_b_chars (acc ^ "n")
                   else Reader.err t "not an nth expression"
+              | Some ' ' when acc <> "" && not (String.contains acc 'n') ->
+                  (* Look ahead past spaces to see if there's an 'n' *)
+                  let lookahead = Reader.peek_string t 5 in
+                  let has_n_after_space =
+                    let rec check i =
+                      if i >= String.length lookahead then false
+                      else
+                        match lookahead.[i] with
+                        | ' ' -> check (i + 1)
+                        | 'n' | 'N' -> true
+                        | _ -> false
+                    in
+                    check 1 (* skip current space *)
+                  in
+                  if has_n_after_space then
+                    Reader.err t "invalid spacing in nth expression"
+                  else acc
               | _ -> acc
             in
             let expr_str = read_an_plus_b_chars "" in
@@ -392,7 +418,13 @@ let read_nth t : nth =
           t
       with
       | Some result -> result
-      | None -> Index (Reader.int t))
+      | None ->
+          (* If An+B parsing failed, check if there's suspicious remaining
+             input *)
+          let remaining = Reader.peek_string t 5 in
+          if String.contains remaining 'n' then
+            Reader.err t "malformed nth expression"
+          else Index (Reader.int t))
     t
 
 (** Pretty print nth expression *)

@@ -66,10 +66,12 @@ let layers_integration () =
   let css = Css.to_string ~minify:true stylesheet in
 
   (* Should contain @layer *)
-  Alcotest.(check bool) "contains @layer" true (String.contains css '@');
+  Alcotest.(check bool)
+    "contains @layer" true
+    (Astring.String.is_infix ~affix:"@layer" css);
   Alcotest.(check bool)
     "contains layer name" true
-    (String.contains css 'u' && String.contains css 't')
+    (Astring.String.is_infix ~affix:"utilities" css)
 
 (* Test media queries work end-to-end *)
 let media_integration () =
