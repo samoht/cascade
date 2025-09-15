@@ -25,7 +25,7 @@ let supports ~condition content = Supports (condition, content)
 let starting_style content = Starting_style content
 let scope ?start ?end_ content = Scope (start, end_, content)
 let keyframes name frames = Keyframes (name, frames)
-let font_face declarations = Font_face declarations
+let font_face descriptors = Font_face descriptors
 let page ?selector declarations = Page (selector, declarations)
 let v statements : stylesheet = statements
 let empty_stylesheet : stylesheet = []
@@ -101,6 +101,39 @@ and pp_keyframe : keyframe Pp.t =
       Pp.cut ctx ())
     ctx ()
 
+and pp_font_face_descriptor : font_face_descriptor Pp.t =
+ fun ctx desc ->
+  let pp_descriptor name pp_value value =
+    Pp.string ctx name;
+    Pp.string ctx ":";
+    Pp.space_if_pretty ctx ();
+    pp_value ctx value
+  in
+  match desc with
+  | Font_family families ->
+      pp_descriptor "font-family"
+        (fun ctx fams ->
+          Pp.list ~sep:Pp.comma Properties.pp_font_family ctx fams)
+        families
+  | Src value -> pp_descriptor "src" Pp.string value
+  | Font_style style ->
+      pp_descriptor "font-style" Properties.pp_font_style style
+  | Font_weight weight ->
+      pp_descriptor "font-weight" Properties.pp_font_weight weight
+  | Font_stretch stretch ->
+      pp_descriptor "font-stretch" Properties.pp_font_stretch stretch
+  | Font_display value -> pp_descriptor "font-display" Pp.string value
+  | Unicode_range value -> pp_descriptor "unicode-range" Pp.string value
+  | Font_variant value -> pp_descriptor "font-variant" Pp.string value
+  | Font_feature_settings value ->
+      pp_descriptor "font-feature-settings" Pp.string value
+  | Font_variation_settings value ->
+      pp_descriptor "font-variation-settings" Pp.string value
+  | Size_adjust value -> pp_descriptor "size-adjust" Pp.string value
+  | Ascent_override value -> pp_descriptor "ascent-override" Pp.string value
+  | Descent_override value -> pp_descriptor "descent-override" Pp.string value
+  | Line_gap_override value -> pp_descriptor "line-gap-override" Pp.string value
+
 and pp_statement : statement Pp.t =
  fun ctx -> function
   | Rule rule -> pp_rule ctx rule
@@ -166,16 +199,15 @@ and pp_statement : statement Pp.t =
         ctx ()
   | Layer_decl names ->
       Pp.string ctx "@layer ";
-      Pp.string ctx (String.concat ", " names);
+      Pp.list ~sep:Pp.comma Pp.string ctx names;
       Pp.semicolon ctx ()
   | Layer (name, content) ->
       Pp.string ctx "@layer";
       (match name with
       | Some n ->
-          Pp.sp ctx ();
+          Pp.string ctx " ";
           Pp.string ctx n
-      | None -> ());
-      Pp.sp ctx ();
+      | None -> Pp.string ctx " ");
       Pp.braces pp_block ctx content
   | Media (condition, content) ->
       Pp.string ctx "@media ";
@@ -228,7 +260,7 @@ and pp_statement : statement Pp.t =
           Pp.nest 2 (Pp.list ~sep:Pp.cut pp_keyframe) ctx frames;
           Pp.cut ctx ())
         ctx ()
-  | Font_face declarations ->
+  | Font_face descriptors ->
       Pp.string ctx "@font-face ";
       Pp.braces
         (fun ctx () ->
@@ -238,8 +270,8 @@ and pp_statement : statement Pp.t =
                ~sep:(fun ctx () ->
                  Pp.semicolon ctx ();
                  Pp.cut ctx ())
-               Declaration.pp_declaration)
-            ctx declarations;
+               pp_font_face_descriptor)
+            ctx descriptors;
           Pp.cut ctx ())
         ctx ()
   | Page (selector, declarations) ->
@@ -369,13 +401,21 @@ let read_import (r : Reader.t) : statement =
 let read_namespace (r : Reader.t) : statement =
   Reader.expect_string "@namespace" r;
   Reader.ws r;
-  let content = Reader.until r ';' in
+  let content = String.trim (Reader.until r ';') in
   Reader.expect ';' r;
-  (* Parse namespace - simplified *)
-  let parts = String.split_on_char ' ' (String.trim content) in
+  (* Parse namespace - handle url() wrapper *)
+  let extract_url s =
+    let s = String.trim s in
+    if String.starts_with ~prefix:"url(" s && String.ends_with ~suffix:")" s
+    then String.sub s 4 (String.length s - 5) |> String.trim
+    else s
+  in
+  let parts = String.split_on_char ' ' content in
   match parts with
-  | [ uri ] -> Namespace (None, uri)
-  | prefix :: uri :: _ -> Namespace (Some prefix, uri)
+  | [ uri ] -> Namespace (None, extract_url uri)
+  | prefix :: rest ->
+      let uri = String.concat " " rest in
+      Namespace (Some prefix, extract_url uri)
   | [] -> Namespace (None, "")
 
 let read_keyframes (r : Reader.t) : statement =
@@ -397,15 +437,165 @@ let read_keyframes (r : Reader.t) : statement =
   let frames = read_frames [] in
   Keyframes (name, frames)
 
+(* Read a font-face descriptor *)
+let read_font_face_descriptor (r : Reader.t) : font_face_descriptor option =
+  Reader.ws r;
+  if Reader.peek r = Some '}' then None
+  else if Reader.peek r = Some ';' then (
+    Reader.skip r;
+    None)
+  else
+    (* Define local readers for each descriptor type *)
+    let read_font_family r =
+      Reader.ws r;
+      Reader.expect ':' r;
+      Reader.ws r;
+      let families =
+        Reader.list ~sep:Reader.comma Properties.read_font_family r
+      in
+      Font_family families
+    in
+    let read_src r =
+      Reader.ws r;
+      Reader.expect ':' r;
+      Reader.ws r;
+      (* TODO: Proper src parsing with url() and local() *)
+      let value = Declaration.read_property_value r in
+      Src value
+    in
+    let read_font_style r =
+      Reader.ws r;
+      Reader.expect ':' r;
+      Reader.ws r;
+      let style = Properties.read_font_style r in
+      Font_style style
+    in
+    let read_font_weight r =
+      Reader.ws r;
+      Reader.expect ':' r;
+      Reader.ws r;
+      let weight = Properties.read_font_weight r in
+      Font_weight weight
+    in
+    let read_font_stretch r =
+      Reader.ws r;
+      Reader.expect ':' r;
+      Reader.ws r;
+      let stretch = Properties.read_font_stretch r in
+      Font_stretch stretch
+    in
+    let read_font_display r =
+      Reader.ws r;
+      Reader.expect ':' r;
+      Reader.ws r;
+      (* TODO: Define proper font-display type *)
+      let value = Declaration.read_property_value r in
+      Font_display value
+    in
+    let read_unicode_range r =
+      Reader.ws r;
+      Reader.expect ':' r;
+      Reader.ws r;
+      (* TODO: Proper unicode-range parsing *)
+      let value = Declaration.read_property_value r in
+      Unicode_range value
+    in
+    let read_font_variant r =
+      Reader.ws r;
+      Reader.expect ':' r;
+      Reader.ws r;
+      (* TODO: Proper font-variant parsing *)
+      let value = Declaration.read_property_value r in
+      Font_variant value
+    in
+    let read_font_feature_settings r =
+      Reader.ws r;
+      Reader.expect ':' r;
+      Reader.ws r;
+      (* TODO: Proper font-feature-settings parsing *)
+      let value = Declaration.read_property_value r in
+      Font_feature_settings value
+    in
+    let read_font_variation_settings r =
+      Reader.ws r;
+      Reader.expect ':' r;
+      Reader.ws r;
+      (* TODO: Proper font-variation-settings parsing *)
+      let value = Declaration.read_property_value r in
+      Font_variation_settings value
+    in
+    let read_size_adjust r =
+      Reader.ws r;
+      Reader.expect ':' r;
+      Reader.ws r;
+      (* TODO: Proper percentage parsing *)
+      let value = Declaration.read_property_value r in
+      Size_adjust value
+    in
+    let read_ascent_override r =
+      Reader.ws r;
+      Reader.expect ':' r;
+      Reader.ws r;
+      (* TODO: Proper percentage or normal parsing *)
+      let value = Declaration.read_property_value r in
+      Ascent_override value
+    in
+    let read_descent_override r =
+      Reader.ws r;
+      Reader.expect ':' r;
+      Reader.ws r;
+      (* TODO: Proper percentage or normal parsing *)
+      let value = Declaration.read_property_value r in
+      Descent_override value
+    in
+    let read_line_gap_override r =
+      Reader.ws r;
+      Reader.expect ':' r;
+      Reader.ws r;
+      (* TODO: Proper percentage or normal parsing *)
+      let value = Declaration.read_property_value r in
+      Line_gap_override value
+    in
+    (* Use Reader.enum to get the descriptor name, then parse its value *)
+    let name = Reader.ident ~keep_case:false r in
+    let descriptor =
+      match name with
+      | "font-family" -> read_font_family r
+      | "src" -> read_src r
+      | "font-style" -> read_font_style r
+      | "font-weight" -> read_font_weight r
+      | "font-stretch" -> read_font_stretch r
+      | "font-display" -> read_font_display r
+      | "unicode-range" -> read_unicode_range r
+      | "font-variant" -> read_font_variant r
+      | "font-feature-settings" -> read_font_feature_settings r
+      | "font-variation-settings" -> read_font_variation_settings r
+      | "size-adjust" -> read_size_adjust r
+      | "ascent-override" -> read_ascent_override r
+      | "descent-override" -> read_descent_override r
+      | "line-gap-override" -> read_line_gap_override r
+      | _ -> Reader.err_invalid r ("unknown font-face descriptor: " ^ name)
+    in
+    Reader.ws r;
+    if Reader.peek r = Some ';' then Reader.skip r;
+    Some descriptor
+
 let read_font_face (r : Reader.t) : statement =
   Reader.with_context r "@font-face" @@ fun () ->
   Reader.expect_string "@font-face" r;
   Reader.ws r;
   Reader.expect '{' r;
-  let declarations = Declaration.read_declarations r in
+  let rec read_descriptors acc =
+    match read_font_face_descriptor r with
+    | Some desc -> read_descriptors (desc :: acc)
+    | None ->
+        Reader.ws r;
+        if Reader.peek r = Some '}' then List.rev acc else read_descriptors acc
+  in
+  let descriptors = read_descriptors [] in
   Reader.ws r;
   Reader.expect '}' r;
-  Font_face declarations
+  Font_face descriptors
 
 let read_page (r : Reader.t) : statement =
   Reader.with_context r "@page" @@ fun () ->
@@ -720,8 +910,7 @@ and read_property_descriptors (r : Reader.t) : property_reader_state =
       loop (Syntax syntax))
     else if Reader.looking_at r "inherits:" then (
       Reader.expect_string "inherits:" r;
-      Reader.ws r;
-      let inherits_value = Reader.ident r = "true" in
+      let inherits_value = Reader.bool r in
       Reader.ws r;
       if Reader.peek r = Some ';' then Reader.skip r;
       match state with
@@ -810,7 +999,8 @@ let rec vars_of_statement (stmt : statement) : Variables.any_var list =
   | Starting_style block
   | Scope (_, _, block) ->
       vars_of_block block
-  | Font_face decls | Page (_, decls) -> Variables.vars_of_declarations decls
+  | Font_face _ -> [] (* Font-face descriptors don't contribute CSS variables *)
+  | Page (_, decls) -> Variables.vars_of_declarations decls
   | Charset _ | Import _ | Namespace _ | Property _ | Layer_decl _ | Keyframes _
     ->
       []

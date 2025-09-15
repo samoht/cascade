@@ -121,7 +121,7 @@ type statement =
   | Starting_style of Stylesheet.block
   | Scope of string option * string option * Stylesheet.block
   | Keyframes of string * Stylesheet.keyframe list
-  | Font_face of declaration list
+  | Font_face of Stylesheet.font_face_descriptor list
   | Page of string option * declaration list
       (** CSS statement type - either a rule or an at-rule *)
 

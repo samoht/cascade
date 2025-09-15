@@ -58,8 +58,8 @@ val scope : ?start:string -> ?end_:string -> block -> statement
 val keyframes : string -> keyframe list -> statement
 (** [keyframes name frames] creates a [@keyframes] rule. *)
 
-val font_face : declaration list -> statement
-(** [font_face declarations] creates a [@font-face] rule. *)
+val font_face : font_face_descriptor list -> statement
+(** [font_face descriptors] creates a [@font-face] rule. *)
 
 val page : ?selector:string -> declaration list -> statement
 (** [page ?selector declarations] creates a [@page] rule. *)

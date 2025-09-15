@@ -243,3 +243,7 @@ val unit : string -> t -> float
 (** [unit expected t] parses a number followed by the expected unit identifier.
     Returns just the number if the unit matches, raises Parse_error otherwise.
 *)
+
+val bool : t -> bool
+(** [bool t] parses a boolean value ("true" or "false"). Raises Parse_error if
+    the value is not a valid boolean. *)

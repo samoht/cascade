@@ -24,6 +24,12 @@ let check_value name pp reader ?expected input =
       check string (Fmt.str "%s %s" name input) expected printed
   | None -> Alcotest.failf "Failed to parse %s: %s" name input
 
+(* Generic negative test combinator - tests that parsing should fail *)
+let neg reader input =
+  let r = Css.Reader.of_string input in
+  let got = Css.Reader.option reader r in
+  Alcotest.(check bool) ("should reject: " ^ input) true (Option.is_none got)
+
 (* Helper to check Parse_error fields match *)
 let check_parse_error_fields name (expected : Css.Reader.parse_error)
     (actual : Css.Reader.parse_error) =
@@ -876,38 +882,35 @@ let important () =
   (* Multiple spaces should be valid *)
 
   (* Invalid/dangling/duplicate !important should be rejected *)
-  let neg input label =
-    let r = Css.Reader.of_string input in
-    let got = Css.Reader.option Css.Declaration.read_declaration r in
-    check bool label true (Option.is_none got)
-  in
-  neg "color: red !;" "dangling bang";
-  neg "color: red !notimportant;" "invalid important ident";
-  neg "color: red !important !important;" "duplicate important";
-  neg "color: red !importent;" "misspelled important";
+  neg read_declaration "color: red !;";
+  neg read_declaration "color: red !notimportant;";
+  neg read_declaration "color: red !important !important;";
+  neg read_declaration "color: red !importent;";
   check_declaration ~expected:"color:red!important" "color: red! important";
   (* Valid per CSS spec *)
-  neg "color: red !IMPORTANT!;" "trailing bang"
+  neg read_declaration "color: red !IMPORTANT!;"
 
 let invalid () =
-  let neg input label =
+  let neg input =
     let r = Css.Reader.of_string input in
     let got = Css.Reader.option Css.Declaration.read_declaration r in
-    check bool label true (Option.is_none got)
+    Alcotest.(check bool)
+      (Printf.sprintf "should reject: %s" input)
+      true (Option.is_none got)
   in
   (* Invalid property names *)
-  neg "not-a-property: value" "invalid property name";
-  neg "123invalid: value" "property cannot start with digit";
-  neg ": value" "missing property name";
+  neg "not-a-property: value";
+  neg "123invalid: value";
+  neg ": value";
   (* Invalid values for known properties *)
-  neg "color: not-a-color" "invalid color value";
-  neg "display: not-a-display" "invalid display value";
-  neg "position: nowhere" "invalid position value";
-  neg "width: invalid" "invalid length value";
+  neg "color: not-a-color";
+  neg "display: not-a-display";
+  neg "position: nowhere";
+  neg "width: invalid";
   (* Type mismatches *)
-  neg "opacity: red" "opacity expects number";
-  neg "z-index: blue" "z-index expects integer";
-  neg "font-weight: green" "font-weight expects numeric/enum"
+  neg "opacity: red";
+  neg "z-index: blue";
+  neg "font-weight: green"
 
 let edge_cases () =
   (* Empty/whitespace values where valid *)
@@ -959,22 +962,28 @@ let number_formats () =
   check_declaration ~expected:"opacity:100" "opacity: 1e2"
 
 let unterminated () =
+  let neg input =
+    let r = Css.Reader.of_string input in
+    let got = Css.Reader.option Css.Declaration.read_declaration r in
+    Alcotest.(check bool)
+      (Printf.sprintf "should reject: %s" input)
+      true (Option.is_none got)
+  in
+  let neg_block input =
+    let r = Css.Reader.of_string input in
+    let got = Css.Reader.option Css.Declaration.read_block r in
+    Alcotest.(check bool)
+      (Printf.sprintf "should reject: %s" input)
+      true (Option.is_none got)
+  in
   (* Unterminated string *)
-  let r1 = Css.Reader.of_string "content: \"abc" in
-  let got1 = Css.Reader.option Css.Declaration.read_declaration r1 in
-  check bool "unterminated string" true (Option.is_none got1);
+  neg "content: \"abc";
   (* Unterminated calc *)
-  let r2 = Css.Reader.of_string "width: calc(100% - (10px);" in
-  let got2 = Css.Reader.option Css.Declaration.read_declaration r2 in
-  check bool "unterminated calc" true (Option.is_none got2);
+  neg "width: calc(100% - (10px);";
   (* Unterminated rgb() *)
-  let r3 = Css.Reader.of_string "color: rgb(0, 0, 0;" in
-  let got3 = Css.Reader.option Css.Declaration.read_declaration r3 in
-  check bool "unterminated rgb" true (Option.is_none got3);
+  neg "color: rgb(0, 0, 0;";
   (* Missing semicolon between decls in block *)
-  let r4 = Css.Reader.of_string "{ color:red margin:10px; }" in
-  let got4 = Css.Reader.option Css.Declaration.read_block r4 in
-  check bool "missing semicolon between declarations" true (Option.is_none got4)
+  neg_block "{ color:red margin:10px; }"
 
 let custom_property_values () =
   (* Balanced braces in custom property values *)

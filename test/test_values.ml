@@ -618,6 +618,52 @@ let test_channel () =
   check_channel "50%";
   check_channel ~expected:".5" "0.5"
 
+let test_negative_values () =
+  let open Css.Reader in
+  let open Css.Values in
+  (* Helper to test that parsing should fail *)
+  let neg reader s =
+    let r = of_string s in
+    Alcotest.(check bool)
+      ("should reject: " ^ s) true
+      (Option.is_none (Css.Reader.option reader r))
+  in
+  (* Helper to test that parsing should succeed *)
+  let pos reader s =
+    let r = of_string s in
+    Alcotest.(check bool)
+      ("should accept: " ^ s) true
+      (Option.is_some (Css.Reader.option reader r))
+  in
+
+  (* Invalid length unit *)
+  neg read_length "10pp";
+  (* Angle without unit *)
+  neg read_angle "90";
+  (* Invalid duration unit *)
+  neg read_duration "10xs";
+  (* Percentage missing % sign *)
+  neg read_percentage "10";
+  (* Non-negative length contexts *)
+  neg read_non_negative_length "-5px";
+  (* Unknown color keyword *)
+  neg read_color "notacolor";
+
+  (* Boundary value tests - RGB values beyond valid range *)
+  pos read_color "rgb(256, 0, 0)";
+  pos read_color "rgb(-1, 0, 0)";
+
+  (* Invalid percentage values *)
+  pos read_percentage "150%";
+  pos read_percentage "-50%";
+
+  (* Invalid angle formats *)
+  neg read_angle "360.5.5deg";
+
+  (* Invalid calc expressions *)
+  neg (read_calc read_length) "calc()";
+  neg (read_calc read_length) "calc(10px +)"
+
 let suite =
   ( "values",
     [
@@ -656,63 +702,7 @@ let suite =
       test_case "nested var() fallbacks roundtrip" `Quick
         test_nested_var_fallbacks_roundtrip;
       test_case "var() with empty fallback" `Quick test_var_empty_fallback;
-      (* Negative parses using option to avoid brittle exceptions *)
-      test_case "negative values" `Quick (fun () ->
-          let open Css.Reader in
-          (* Invalid length unit *)
-          let r = of_string "10pp" in
-          check bool "invalid length" true
-            (Option.is_none (Css.Reader.option Css.Values.read_length r));
-          (* Angle without unit *)
-          let r = of_string "90" in
-          check bool "invalid angle" true
-            (Option.is_none (Css.Reader.option Css.Values.read_angle r));
-          (* Invalid duration unit *)
-          let r = of_string "10xs" in
-          check bool "invalid duration" true
-            (Option.is_none (Css.Reader.option Css.Values.read_duration r));
-          (* Percentage missing % sign *)
-          let r = of_string "10" in
-          check bool "invalid percentage" true
-            (Option.is_none (Css.Reader.option Css.Values.read_percentage r));
-          (* Non-negative length contexts *)
-          let r = of_string "-5px" in
-          check bool "non-negative length rejected" true
-            (Option.is_none
-               (Css.Reader.option Css.Values.read_non_negative_length r));
-          (* Unknown color keyword *)
-          let r = of_string "notacolor" in
-          check bool "invalid color keyword" true
-            (Option.is_none (Css.Reader.option Css.Values.read_color r));
-
-          (* Boundary value tests - RGB values beyond valid range *)
-          let r = of_string "rgb(256, 0, 0)" in
-          check bool "RGB value > 255 handled" true
-            (Option.is_some (Css.Reader.option Css.Values.read_color r));
-          let r = of_string "rgb(-1, 0, 0)" in
-          check bool "negative RGB value handled" true
-            (Option.is_some (Css.Reader.option Css.Values.read_color r));
-
-          (* Invalid percentage values *)
-          let r = of_string "150%" in
-          check bool "percentage > 100% handled" true
-            (Option.is_some (Css.Reader.option Css.Values.read_percentage r));
-          let r = of_string "-50%" in
-          check bool "negative percentage handled" true
-            (Option.is_some (Css.Reader.option Css.Values.read_percentage r));
-
-          (* Invalid angle formats *)
-          let r = of_string "360.5.5deg" in
-          check bool "malformed angle rejected" true
-            (Option.is_none (Css.Reader.option Css.Values.read_angle r));
-
-          (* Invalid calc expressions *)
-          let r = of_string "calc()" in
-          check bool "empty calc rejected" true
-            (Option.is_none (Css.Reader.option (read_calc read_length) r));
-          let r = of_string "calc(10px +)" in
-          check bool "incomplete calc rejected" true
-            (Option.is_none (Css.Reader.option (read_calc read_length) r)));
+      test_case "negative values" `Quick test_negative_values;
       (* New type tests *)
       test_case "length_percentage" `Quick test_length_percentage;
       test_case "color_space" `Quick test_color_space;

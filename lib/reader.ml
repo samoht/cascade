@@ -807,6 +807,16 @@ let unit expected t =
   if String.equal u expected then n
   else err t ("expected unit '" ^ expected ^ "', got '" ^ u ^ "'")
 
+let bool t =
+  ws t;
+  let id = ident t in
+  match id with
+  | "true" -> true
+  | "false" -> false
+  | _ ->
+      err_invalid t
+        ("invalid boolean value: " ^ id ^ " (expected true or false)")
+
 (** {1 Context Wrappers} *)
 
 let enum ?default label mapping t =
