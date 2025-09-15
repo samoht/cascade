@@ -209,9 +209,9 @@ let test_any_syntax () =
   check_any_syntax "<time>";
   check_any_syntax "*";
 
-  (* According to spec, these should parse properly but our simplified
-     implementation returns universal - this is a limitation to be fixed *)
-  check_any_syntax ~expected:"*" "<length> | <percentage>";
+  (* Composite syntax normalizes to canonical form *)
+  check_any_syntax ~expected:"<length-percentage>" "<length> | <percentage>";
+  (* Unknown syntax still falls back to universal *)
   check_any_syntax ~expected:"*" "unknown-syntax"
 
 let additional_tests =

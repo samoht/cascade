@@ -162,11 +162,18 @@ val concat : t list -> t
 val v : rule list -> t
 (** [v rules] creates a stylesheet from a list of rules. *)
 
-val stylesheet : statement list -> t
-(** [stylesheet statements] creates a stylesheet from a list of statements. *)
+val of_statements : statement list -> t
+(** [of_statements statements] creates a stylesheet from a list of statements.
+*)
 
-val stylesheet_rules : t -> rule list
-(** [stylesheet_rules t] returns the top-level rules from the stylesheet. *)
+val rules : t -> rule list
+(** [rules t] returns the top-level rules from the stylesheet. *)
+
+val media_queries : t -> (string * rule list) list
+(** [media_queries t] returns media queries and their rules. *)
+
+val layers : t -> string list
+(** [layers t] returns the layer names from the stylesheet. *)
 
 val media : condition:string -> rule list -> t
 (** [media ~condition rules] creates a stylesheet with rules wrapped in @media. *)

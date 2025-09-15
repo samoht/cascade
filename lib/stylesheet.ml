@@ -641,14 +641,15 @@ and read_property_descriptors (r : Reader.t) : property_reader_state =
   loop Init
 
 let read_stylesheet (r : Reader.t) : stylesheet =
-  let rec read_statements acc =
-    Reader.ws r;
-    if Reader.is_done r then List.rev acc
-    else
-      let stmt = read_statement r in
-      read_statements (stmt :: acc)
-  in
-  read_statements []
+  Reader.with_context r "stylesheet" (fun () ->
+      let rec read_statements acc =
+        Reader.ws r;
+        if Reader.is_done r then List.rev acc
+        else
+          let stmt = read_statement r in
+          read_statements (stmt :: acc)
+      in
+      read_statements [])
 
 (** {1 Inline Styles} *)
 

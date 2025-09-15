@@ -31,7 +31,8 @@ let pp_parse_error (err : parse_error) =
     if err.context_window = "" then ""
     else
       let marker = String.make err.marker_pos ' ' ^ "^" in
-      "\n" ^ err.context_window ^ "\n" ^ marker
+      let context_clean = String.trim err.context_window in
+      "\n" ^ context_clean ^ "\n" ^ marker
   in
   err.message ^ " at " ^ err.filename ^ ":" ^ string_of_int err.position
   ^ callstack_str ^ context_str
