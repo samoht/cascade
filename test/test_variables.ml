@@ -13,6 +13,9 @@ let check_value type_name pp reader ?expected input =
   let pp_str = Css.Pp.to_string ~minify:true pp result in
   Alcotest.(check string) (Fmt.str "%s %s" type_name input) expected pp_str
 
+let check_any_var = check_value "any_var" pp_any_var read_any_var
+let check_any_syntax = check_value "any_syntax" pp_any_syntax read_any_syntax
+
 (** Test variable creation *)
 let test_var_creation () =
   (* Basic variable creation *)
@@ -176,12 +179,40 @@ let test_syntax () =
   ()
 
 let test_any_var () =
-  (* Test any_var parsing - this requires implementation details *)
-  ()
+  (* Test any_var parsing *)
+  check_any_var ~expected:"var(--color)" "var(--color)";
+  check_any_var ~expected:"var(--primary)" "var(--primary)";
+  check_any_var ~expected:"var(--theme-bg)" "var(--theme-bg)";
+
+  (* Test invalid cases *)
+  let try_parse s =
+    try
+      let r = Css.Reader.of_string s in
+      let _ = read_any_var r in
+      Alcotest.fail (Fmt.str "Should have failed parsing: %s" s)
+    with _ -> ()
+  in
+  try_parse "not-a-var";
+  try_parse "var(color)";
+  (* Missing -- prefix *)
+  try_parse "var()"
 
 let test_any_syntax () =
-  (* any_syntax checking is not available in current implementation *)
-  ()
+  (* Test syntax parsing according to CSS @property spec
+     https://developer.mozilla.org/en-US/docs/Web/CSS/@property/syntax *)
+  check_any_syntax "<length>";
+  check_any_syntax "<color>";
+  check_any_syntax "<number>";
+  check_any_syntax "<integer>";
+  check_any_syntax "<percentage>";
+  check_any_syntax "<angle>";
+  check_any_syntax "<time>";
+  check_any_syntax "*";
+
+  (* According to spec, these should parse properly but our simplified
+     implementation returns universal - this is a limitation to be fixed *)
+  check_any_syntax ~expected:"*" "<length> | <percentage>";
+  check_any_syntax ~expected:"*" "unknown-syntax"
 
 let additional_tests =
   [

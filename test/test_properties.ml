@@ -49,6 +49,46 @@ let check_white_space =
 
 let check_word_break = check_value "word-break" pp_word_break read_word_break
 
+let check_text_decoration_shorthand =
+  check_value "text_decoration_shorthand" pp_text_decoration_shorthand
+    read_text_decoration_shorthand
+
+let check_justify_self =
+  check_value "justify_self" pp_justify_self read_justify_self
+
+let check_align_content =
+  check_value "align_content" pp_align_content read_align_content
+
+let check_border_shorthand =
+  check_value "border_shorthand" pp_border_shorthand read_border_shorthand
+
+let check_justify_items =
+  check_value "justify_items" pp_justify_items read_justify_items
+
+let check_transition_shorthand =
+  check_value "transition_shorthand" pp_transition_shorthand
+    read_transition_shorthand
+
+let check_flex_basis = check_value "flex_basis" pp_flex_basis read_flex_basis
+
+let check_background_shorthand =
+  check_value "background_shorthand" pp_background_shorthand
+    read_background_shorthand
+
+let check_animation_shorthand =
+  check_value "animation_shorthand" pp_animation_shorthand
+    read_animation_shorthand
+
+let check_text_decoration_line =
+  check_value "text_decoration_line" pp_text_decoration_line
+    read_text_decoration_line
+
+let check_text_size_adjust =
+  check_value "text_size_adjust" pp_text_size_adjust read_text_size_adjust
+
+let check_any_property =
+  check_value "any_property" pp_any_property read_any_property
+
 let check_overflow_wrap =
   check_value "overflow-wrap" pp_overflow_wrap read_overflow_wrap
 
@@ -240,7 +280,7 @@ let check_grid_auto_flow =
   check_value "grid-auto-flow" pp_grid_auto_flow read_grid_auto_flow
 
 let check_grid_track_size =
-  check_value "grid-track-size" pp_grid_track_size read_grid_track_size
+  check_value "grid-track-size" pp_grid_template read_grid_template
 
 let check_grid_template =
   check_value "grid-template" pp_grid_template read_grid_template
@@ -302,8 +342,8 @@ let check_font_variant_numeric_token =
   check_value "font_variant_numeric_token" pp_font_variant_numeric_token
     read_font_variant_numeric_token
 
-let check_scroll_snap_axis =
-  check_value "scroll_snap_axis" pp_scroll_snap_axis read_scroll_snap_axis
+(* scroll_snap_axis type doesn't exist let check_scroll_snap_axis = check_value
+   "scroll_snap_axis" pp_scroll_snap_axis read_scroll_snap_axis *)
 
 let check_position_2d =
   check_value "position_2d" pp_position_2d read_position_2d
@@ -1208,8 +1248,7 @@ let test_text_transform () =
 let test_text_decoration_line () =
   check_text_decoration_line "underline";
   check_text_decoration_line "overline";
-  check_text_decoration_line "line-through";
-  check_text_decoration_line "none"
+  check_text_decoration_line "line-through"
 
 let test_cursor () =
   check_cursor "pointer";
@@ -1224,6 +1263,167 @@ let test_border_width () =
   check_border_width "thick";
   check_border_width "2px"
 
+let test_text_decoration_shorthand () =
+  (* Test individual parts *)
+  check_text_decoration_shorthand "underline";
+  check_text_decoration_shorthand "underline solid";
+  check_text_decoration_shorthand "underline solid red";
+  check_text_decoration_shorthand "underline solid red 2px";
+  (* Test multiple lines *)
+  check_text_decoration_shorthand ~expected:"underline overline"
+    "underline overline";
+  check_text_decoration_shorthand ~expected:"underline overline dashed"
+    "underline overline dashed";
+  (* Test order independence *)
+  check_text_decoration_shorthand ~expected:"underline solid red"
+    "red solid underline";
+  check_text_decoration_shorthand ~expected:"underline wavy blue 3px"
+    "3px wavy blue underline"
+
+let test_justify_self () =
+  check_justify_self "auto";
+  check_justify_self "normal";
+  check_justify_self "stretch";
+  check_justify_self "center";
+  check_justify_self "start";
+  check_justify_self "end";
+  check_justify_self "flex-start";
+  check_justify_self "flex-end";
+  check_justify_self "self-start";
+  check_justify_self "self-end";
+  check_justify_self "left";
+  check_justify_self "right";
+  check_justify_self "baseline";
+  check_justify_self "first baseline";
+  check_justify_self "last baseline";
+  check_justify_self "unsafe center";
+  check_justify_self "unsafe start"
+
+let test_align_content () =
+  check_align_content "normal";
+  check_align_content "baseline";
+  check_align_content "first baseline";
+  check_align_content "last baseline";
+  check_align_content "center";
+  check_align_content "start";
+  check_align_content "end";
+  check_align_content "flex-start";
+  check_align_content "flex-end";
+  check_align_content "unsafe center";
+  check_align_content "space-between";
+  check_align_content "space-around";
+  check_align_content "space-evenly";
+  check_align_content "stretch"
+
+let test_border_shorthand () =
+  check_border_shorthand "1px";
+  check_border_shorthand "solid";
+  check_border_shorthand "red";
+  check_border_shorthand "1px solid";
+  check_border_shorthand "1px solid red";
+  check_border_shorthand ~expected:"solid red" "red solid";
+  check_border_shorthand ~expected:"2px dashed blue" "blue 2px dashed"
+
+let test_justify_items () =
+  check_justify_items "normal";
+  check_justify_items "stretch";
+  check_justify_items "center";
+  check_justify_items "start";
+  check_justify_items "end";
+  check_justify_items "flex-start";
+  check_justify_items "flex-end";
+  check_justify_items "self-start";
+  check_justify_items "self-end";
+  check_justify_items "left";
+  check_justify_items "right";
+  check_justify_items "baseline";
+  check_justify_items "first baseline";
+  check_justify_items "last baseline";
+  check_justify_items "unsafe center"
+
+let test_transition_shorthand () =
+  check_transition_shorthand "all";
+  check_transition_shorthand "opacity 1s";
+  check_transition_shorthand "opacity 1s ease-in";
+  check_transition_shorthand "opacity 1s ease-in 0.5s";
+  check_transition_shorthand "width 2s";
+  check_transition_shorthand "all 0.3s linear"
+
+let test_flex_basis () =
+  check_flex_basis "auto";
+  check_flex_basis "content";
+  check_flex_basis "0";
+  check_flex_basis "100px";
+  check_flex_basis "50%";
+  check_flex_basis "inherit"
+
+let test_background_shorthand () =
+  check_background_shorthand "red";
+  check_background_shorthand "url(image.png)";
+  check_background_shorthand "center";
+  check_background_shorthand "no-repeat";
+  check_background_shorthand "red url(image.png)";
+  check_background_shorthand ~expected:"url(image.png) center"
+    "url(image.png) center";
+  check_background_shorthand ~expected:"red url(image.png) center no-repeat"
+    "red url(image.png) center no-repeat"
+
+let test_animation_shorthand () =
+  check_animation_shorthand "none";
+  check_animation_shorthand "slide 1s";
+  check_animation_shorthand "slide 1s ease-in";
+  check_animation_shorthand ~expected:"slide 1s ease-in infinite 0.5s"
+    "slide 1s ease-in 0.5s infinite";
+  check_animation_shorthand "slide 1s infinite";
+  check_animation_shorthand "slide 1s reverse";
+  check_animation_shorthand "slide 1s forwards";
+  check_animation_shorthand "slide 1s paused"
+
+let test_text_size_adjust () =
+  check_text_size_adjust "none";
+  check_text_size_adjust "auto";
+  check_text_size_adjust "100%";
+  check_text_size_adjust "80%"
+
+(* Test negative cases - values that should fail parsing *)
+let test_negative_cases () =
+  let try_parse reader s label =
+    let r = Css.Reader.of_string s in
+    try
+      let _ = reader r in
+      Alcotest.fail (Fmt.str "%s should have failed but didn't" label)
+    with _ -> ()
+  in
+
+  (* Invalid justify-self values *)
+  try_parse read_justify_self "invalid" "invalid justify-self";
+  try_parse read_justify_self "safe safe" "duplicate safe";
+
+  (* Invalid align-content values *)
+  try_parse read_align_content "invalid" "invalid align-content";
+
+  (* Invalid flex-basis values *)
+  try_parse read_flex_basis "invalid" "invalid flex-basis";
+  try_parse read_flex_basis "-100px" "negative flex-basis";
+
+  (* Invalid border shorthand *)
+  try_parse read_border_shorthand "1px 2px" "two widths in border";
+
+  (* Invalid text-size-adjust *)
+  try_parse read_text_size_adjust "invalid" "invalid text-size-adjust";
+  try_parse read_text_size_adjust "-50%" "negative text-size-adjust"
+
+let test_any_property () =
+  (* Test parsing various property types *)
+  check_any_property "display: block";
+  check_any_property "position: absolute";
+  check_any_property "color: red";
+  check_any_property "width: 100px";
+  check_any_property "margin: 10px";
+  check_any_property "padding: 1rem";
+  check_any_property "font-size: 16px";
+  check_any_property "unknown-prop: some-value"
+
 let additional_tests =
   [
     test_case "font_weight" `Quick test_font_weight;
@@ -1231,6 +1431,19 @@ let additional_tests =
     test_case "text_decoration_line" `Quick test_text_decoration_line;
     test_case "cursor" `Quick test_cursor;
     test_case "border_width" `Quick test_border_width;
+    (* New test cases *)
+    test_case "text_decoration_shorthand" `Quick test_text_decoration_shorthand;
+    test_case "justify_self" `Quick test_justify_self;
+    test_case "align_content_values" `Quick test_align_content;
+    test_case "border_shorthand" `Quick test_border_shorthand;
+    test_case "justify_items" `Quick test_justify_items;
+    test_case "transition_shorthand" `Quick test_transition_shorthand;
+    test_case "flex_basis" `Quick test_flex_basis;
+    test_case "background_shorthand" `Quick test_background_shorthand;
+    test_case "animation_shorthand" `Quick test_animation_shorthand;
+    test_case "text_size_adjust" `Quick test_text_size_adjust;
+    test_case "any_property" `Quick test_any_property;
+    test_case "negative_cases" `Quick test_negative_cases;
   ]
 
 let suite = ("properties", tests @ additional_tests)

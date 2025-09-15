@@ -160,3 +160,20 @@ val media_queries : t -> (string * rule list) list
 
 val container_queries : t -> (string option * string * rule list) list
 (** [container_queries t] returns the container queries from the stylesheet. *)
+
+(** {1 Parsing and Pretty-printing} *)
+
+val read : Reader.t -> t
+(** [read r] parses a stylesheet from the reader. *)
+
+val pp_import_rule : import_rule Pp.t
+(** [pp_import_rule] pretty-prints an import rule. *)
+
+val read_import_rule : Reader.t -> import_rule
+(** [read_import_rule r] parses an import rule. *)
+
+val pp_config : config Pp.t
+(** [pp_config] pretty-prints a config. *)
+
+val read_config : Reader.t -> config
+(** [read_config r] parses a config. *)

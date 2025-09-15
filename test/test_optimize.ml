@@ -169,7 +169,7 @@ let optimize_all () =
     ]
   in
 
-  let optimized = stylesheet stylesheet in
+  let optimized = optimize_stylesheet stylesheet in
 
   (* Should merge rule1 and rule2 since they have same selector *)
   let rule_count stmts =
@@ -199,7 +199,7 @@ let media_queries () =
 
   let stylesheet = [ media_stmt ] in
 
-  let optimized = stylesheet stylesheet in
+  let optimized = optimize_stylesheet stylesheet in
 
   (* Check that declarations within media queries are also deduplicated *)
   let optimized_rule =
@@ -235,7 +235,7 @@ let layers () =
 
   let stylesheet = [ layer_stmt ] in
 
-  let optimized = stylesheet stylesheet in
+  let optimized = optimize_stylesheet stylesheet in
 
   (* Check that layer rules are optimized *)
   match List.hd optimized with

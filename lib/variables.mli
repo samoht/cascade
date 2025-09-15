@@ -81,3 +81,15 @@ val extract_custom_declarations : declaration list -> declaration list
 val custom_declaration_name : declaration -> string option
 (** [custom_declaration_name decl] returns the variable name if it's a custom
     declaration. *)
+
+val pp_any_syntax : any_syntax Pp.t
+(** [pp_any_syntax] pretty-prints any CSS syntax descriptor. *)
+
+val read_any_syntax : Reader.t -> any_syntax
+(** [read_any_syntax t] parses a CSS syntax descriptor. *)
+
+val pp_any_var : any_var Pp.t
+(** [pp_any_var] pretty-prints any CSS variable. *)
+
+val read_any_var : Reader.t -> any_var
+(** [read_any_var t] parses a CSS variable reference. *)

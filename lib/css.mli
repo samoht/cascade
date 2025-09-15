@@ -1047,38 +1047,18 @@ val object_fit : object_fit -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/object-fit} object-fit}
     property. *)
 
-(** One axis of a 2D position. *)
-type position_component =
-  | Left
-  | Center
-  | Right
-  | Top
-  | Bottom
-  | Px of float  (** Pixels (e.g., [Px 10.]). *)
-  | Rem of float  (** Root em units (e.g., [Rem 1.5]). *)
-  | Em of float  (** Em units (e.g., [Em 2.]). *)
-  | Pct of float  (** Percentage (e.g., [Pct 50.]). *)
-  | Vw of float  (** Viewport width units (e.g., [Vw 100.]). *)
-  | Vh of float  (** Viewport height units (e.g., [Vh 50.]). *)
-
 type position_2d =
   | Center
-  | XY of position_component * position_component
+  | Left_top
+  | Left_center
+  | Left_bottom
+  | Right_top
+  | Right_center
+  | Right_bottom
+  | Center_top
+  | Center_bottom
+  | XY of length * length
   | Inherit
-      (** 2D positions (x, y). Special case: [Center, Center] pretty-prints as
-          "center". *)
-
-val pos_left : position_2d
-(** [pos_left] position helper for [XY (Left, Center)]. *)
-
-val pos_right : position_2d
-(** [pos_right] position helper for [XY (Right, Center)]. *)
-
-val pos_top : position_2d
-(** [pos_top] position helper for [XY (Center, Top)]. *)
-
-val pos_bottom : position_2d
-(** [pos_bottom] position helper for [XY (Center, Bottom)]. *)
 
 val object_position : position_2d -> declaration
 (** [object_position value] is the
@@ -1142,15 +1122,30 @@ val list_style_position : list_style_position -> declaration
 (** CSS forced-color-adjust values. *)
 type forced_color_adjust = Auto | None | Inherit
 
-(** CSS repeat style values. *)
-type repeat_style = Repeat | Space | Round | No_repeat
-
 (** CSS background-repeat values. *)
 type background_repeat =
+  | Repeat
+  | Space
+  | Round
+  | No_repeat
   | Repeat_x
   | Repeat_y
-  | Single of repeat_style
-  | Pair of repeat_style * repeat_style
+  | Repeat_repeat
+  | Repeat_space
+  | Repeat_round
+  | Repeat_no_repeat
+  | Space_repeat
+  | Space_space
+  | Space_round
+  | Space_no_repeat
+  | Round_repeat
+  | Round_space
+  | Round_round
+  | Round_no_repeat
+  | No_repeat_repeat
+  | No_repeat_space
+  | No_repeat_round
+  | No_repeat_no_repeat
   | Inherit
 
 (** CSS background-size values. *)
@@ -1372,27 +1367,14 @@ type flex =
   | Grow_shrink of float * float  (** grow shrink 0% *)
   | Full of float * float * flex_basis  (** grow shrink basis *)
 
-(** CSS baseline position for alignment properties.
-    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_alignment/Box_alignment_in_block_abspos_tables}
-     MDN: Box Alignment in Block Layout} *)
-type baseline = Baseline | First_baseline | Last_baseline
-
-(** CSS self position values for align-items.
-    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-items} MDN:
-     align-items} *)
-type self_position_items =
-  | Center
-  | Start
-  | End
-  | Self_start
-  | Self_end
-  | Flex_start
-  | Flex_end
-
-(** CSS content position values.
-    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_alignment} MDN:
-     CSS Box Alignment} *)
-type content_position =
+(** CSS align-content values.
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-content} MDN:
+     align-content} *)
+type align_content =
+  | Normal
+  | Baseline
+  | First_baseline
+  | Last_baseline
   | Center
   | Start
   | End
@@ -1400,24 +1382,17 @@ type content_position =
   | Flex_end
   | Left
   | Right
-
-(** CSS content distribution values.
-    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_box_alignment} MDN:
-     CSS Box Alignment} *)
-type content_distribution =
+  | Unsafe_center
+  | Unsafe_start
+  | Unsafe_end
+  | Unsafe_flex_start
+  | Unsafe_flex_end
+  | Unsafe_left
+  | Unsafe_right
   | Space_between
   | Space_around
   | Space_evenly
   | Stretch
-
-(** CSS align-content values.
-    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-content} MDN:
-     align-content} *)
-type align_content =
-  | Normal
-  | Baseline of baseline
-  | Content_pos of bool option * content_position
-  | Content_dist of content_distribution
 
 (** CSS align-items values.
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-items} MDN:
@@ -1425,10 +1400,23 @@ type align_content =
 type align_items =
   | Normal
   | Stretch
-  | Baseline of baseline
-  | Self_pos of bool option * self_position_items
-  | Safe
-  | Unsafe
+  | Baseline
+  | First_baseline
+  | Last_baseline
+  | Center
+  | Start
+  | End
+  | Self_start
+  | Self_end
+  | Flex_start
+  | Flex_end
+  | Unsafe_center
+  | Unsafe_start
+  | Unsafe_end
+  | Unsafe_self_start
+  | Unsafe_self_end
+  | Unsafe_flex_start
+  | Unsafe_flex_end
   | Anchor_center
 
 (** CSS justify-content values.
@@ -1436,8 +1424,24 @@ type align_items =
      justify-content} *)
 type justify_content =
   | Normal
-  | Content_pos of bool option * content_position
-  | Content_dist of content_distribution
+  | Center
+  | Start
+  | End
+  | Flex_start
+  | Flex_end
+  | Left
+  | Right
+  | Unsafe_center
+  | Unsafe_start
+  | Unsafe_end
+  | Unsafe_flex_start
+  | Unsafe_flex_end
+  | Unsafe_left
+  | Unsafe_right
+  | Space_between
+  | Space_around
+  | Space_evenly
+  | Stretch
 
 (** CSS align-self values.
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-self} MDN:
@@ -1446,13 +1450,33 @@ type align_self =
   | Auto
   | Normal
   | Stretch
-  | Baseline of baseline
-  | Self_pos of bool option * self_position_items
+  | Baseline
+  | First_baseline
+  | Last_baseline
+  | Center
+  | Start
+  | End
+  | Self_start
+  | Self_end
+  | Flex_start
+  | Flex_end
+  | Unsafe_center
+  | Unsafe_start
+  | Unsafe_end
+  | Unsafe_self_start
+  | Unsafe_self_end
+  | Unsafe_flex_start
+  | Unsafe_flex_end
 
-(** CSS self position values for justify properties.
+(** CSS justify-items values.
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-items} MDN:
      justify-items} *)
-type self_position_justify =
+type justify_items =
+  | Normal
+  | Stretch
+  | Baseline
+  | First_baseline
+  | Last_baseline
   | Center
   | Start
   | End
@@ -1462,19 +1486,17 @@ type self_position_justify =
   | Flex_end
   | Left
   | Right
-
-(** CSS justify-items values.
-    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-items} MDN:
-     justify-items} *)
-type justify_items =
-  | Normal
-  | Stretch
-  | Baseline of baseline
-  | Self_pos of bool option * self_position_justify
+  | Unsafe_center
+  | Unsafe_start
+  | Unsafe_end
+  | Unsafe_self_start
+  | Unsafe_self_end
+  | Unsafe_flex_start
+  | Unsafe_flex_end
+  | Unsafe_left
+  | Unsafe_right
   | Anchor_center
   | Legacy
-  | Safe
-  | Unsafe
 
 (** CSS justify-self values.
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-self} MDN:
@@ -1483,115 +1505,61 @@ type justify_self =
   | Auto
   | Normal
   | Stretch
-  | Baseline of baseline
-  | Self_pos of bool option * self_position_justify
+  | Baseline
+  | First_baseline
+  | Last_baseline
+  | Center
+  | Start
+  | End
+  | Self_start
+  | Self_end
+  | Flex_start
+  | Flex_end
+  | Left
+  | Right
+  | Unsafe_center
+  | Unsafe_start
+  | Unsafe_end
+  | Unsafe_self_start
+  | Unsafe_self_end
+  | Unsafe_flex_start
+  | Unsafe_flex_end
+  | Unsafe_left
+  | Unsafe_right
   | Anchor_center
-  | Safe
-  | Unsafe
   | Inherit
 
-(** {2:alignment_constructors Alignment Constructors}
-    Constructor functions for complex alignment types. *)
+(** {2:alignment_properties Alignment Properties}
+    CSS Box Alignment properties for flexbox and grid layouts. *)
 
-val align_content :
-  ?v:align_content ->
-  ?distribution:content_distribution ->
-  ?safe:bool ->
-  ?position:content_position ->
-  ?baseline:baseline ->
-  unit ->
-  declaration
-(** [align_content ?distribution ?safe ?position ?baseline ()] creates an
-    align-content declaration. Exactly one of distribution, position (with
-    optional safe), or baseline must be specified.
-    @param distribution
-      Content distribution (Space_between, Space_around, Space_evenly, or
-      Stretch)
-    @param safe Optional safe alignment (true for safe, false for unsafe)
-    @param position
-      Content position (Center, Start, End, Flex_start, Flex_end, Left, or
-      Right)
-    @param baseline
-      Baseline position (Baseline, First_baseline, or Last_baseline). *)
+val align_content : align_content -> declaration
+(** [align_content value] creates an align-content declaration. Sets how content
+    is aligned along the cross axis. Common values: Normal, Baseline, Center,
+    Start, End, Space_between, Stretch. *)
 
-val justify_content :
-  ?v:justify_content ->
-  ?distribution:content_distribution ->
-  ?safe:bool ->
-  ?position:content_position ->
-  unit ->
-  declaration
-(** [justify_content ?distribution ?safe ?position ()] creates a justify-content
-    declaration. Either distribution or position (with optional safe) must be
-    specified.
-    @param distribution
-      Content distribution (Space_between, Space_around, Space_evenly, or
-      Stretch)
-    @param safe Optional safe alignment (true for safe, false for unsafe)
-    @param position
-      Content position (Center, Start, End, Flex_start, Flex_end, Left, or
-      Right). *)
+val justify_content : justify_content -> declaration
+(** [justify_content value] creates a justify-content declaration. Sets how
+    content is aligned along the main axis. Common values: Normal, Center,
+    Start, End, Space_between, Space_around, Stretch. *)
 
-val align_items :
-  ?v:align_items ->
-  ?safe:bool ->
-  ?position:self_position_items ->
-  ?baseline:baseline ->
-  unit ->
-  declaration
-(** [align_items ?safe ?position ?baseline ()] creates an align-items
-    declaration. Either position (with optional safe) or baseline must be
-    specified.
-    @param safe Optional safe alignment (true for safe, false for unsafe)
-    @param position
-      Self position (Center, Start, End, Self_start, Self_end, Flex_start, or
-      Flex_end)
-    @param baseline
-      Baseline position (Baseline, First_baseline, or Last_baseline). *)
+val align_items : align_items -> declaration
+(** [align_items value] creates an align-items declaration. Sets alignment for
+    all items along the cross axis. Common values: Normal, Baseline, Center,
+    Start, End, Stretch. *)
 
-val align_self :
-  ?v:align_self ->
-  ?safe:bool ->
-  ?position:self_position_items ->
-  ?baseline:baseline ->
-  unit ->
-  declaration
-(** [align_self ?safe ?position ?baseline ()] creates an align-self declaration.
-    Either position (with optional safe) or baseline must be specified.
-    @param safe Optional safe alignment (true for safe, false for unsafe)
-    @param position
-      Self position (Center, Start, End, Self_start, Self_end, Flex_start, or
-      Flex_end)
-    @param baseline
-      Baseline position (Baseline, First_baseline, or Last_baseline). *)
+val align_self : align_self -> declaration
+(** [align_self value] creates an align-self declaration. Overrides align-items
+    for individual items. Common values: Auto, Normal, Baseline, Center, Start,
+    End, Stretch. *)
 
-val justify_items :
-  ?v:justify_items ->
-  ?safe:bool ->
-  ?position:self_position_justify ->
-  ?baseline:baseline ->
-  unit ->
-  declaration
-(** [justify_items ?safe ?position ?baseline ()] creates a justify-items
-    declaration. Either position (with optional safe) or baseline must be
-    specified.
-    @param safe Optional safe alignment (true for safe, false for unsafe)
-    @param position
-      Self position (Center, Start, End, Self_start, Self_end, Flex_start,
-      Flex_end, Left, or Right)
-    @param baseline
-      Baseline position (Baseline, First_baseline, or Last_baseline). *)
+val justify_items : justify_items -> declaration
+(** [justify_items value] creates a justify-items declaration. Sets default
+    justification for all items. Common values: Normal, Baseline, Center, Start,
+    End, Stretch, Legacy. *)
 
-val justify_self :
-  ?v:justify_self ->
-  ?safe:bool ->
-  ?position:self_position_justify ->
-  ?baseline:baseline ->
-  unit ->
-  declaration
-(** [justify_self ?safe ?position ?baseline ()] creates a justify-self
-    declaration. Either position (with optional safe) or baseline must be
-    specified.
+val justify_self : justify_self -> declaration
+(** [justify_self value] creates a justify-self declaration. Either position
+    (with optional safe) or baseline must be specified.
     @param safe Optional safe alignment (true for safe, false for unsafe)
     @param position
       Self position (Center, Start, End, Self_start, Self_end, Flex_start,
@@ -1660,8 +1628,9 @@ val column_gap : length -> declaration
     @see <https://www.w3.org/TR/css-grid-1/> CSS Grid Layout Module Level 1
     @see <https://www.w3.org/TR/css-grid-2/> CSS Grid Layout Module Level 2 *)
 
-(** CSS grid track breadth values *)
-type grid_track_breadth =
+(** CSS grid template values *)
+type grid_template =
+  | None
   | Px of float
   | Rem of float
   | Em of float
@@ -1675,19 +1644,11 @@ type grid_track_breadth =
   | Auto
   | Min_content
   | Max_content
-
-(** CSS grid track sizing *)
-type grid_track_size =
-  | Track_size of grid_track_breadth
-  | Min_max of grid_track_breadth * grid_track_breadth
+  | Min_max of length * length
   | Fit_content of length
-  | Repeat of int * grid_track_size list
-
-(** CSS grid template values *)
-type grid_template =
-  | None
-  | Tracks of grid_track_size list
-  | Named_tracks of (string option * grid_track_size) list
+  | Repeat of int * grid_template list
+  | Tracks of grid_template list
+  | Named_tracks of (string option * grid_template) list
   | Subgrid
   | Masonry
 
@@ -2548,15 +2509,22 @@ val transform : transform list -> declaration
 
 type transform_origin =
   | Center
-  | XY of position_component * position_component
-  | XYZ of position_component * position_component * length
+  | Left_top
+  | Left_center
+  | Left_bottom
+  | Right_top
+  | Right_center
+  | Right_bottom
+  | Center_top
+  | Center_bottom
+  | XY of length * length
+  | XYZ of length * length * length
   | Inherit  (** Transform origin (2D or 3D). *)
 
-val origin : position_component -> position_component -> transform_origin
+val origin : length -> length -> transform_origin
 (** [origin x y] is a transform-origin helper for 2D positions. *)
 
-val origin3d :
-  position_component -> position_component -> length -> transform_origin
+val origin3d : length -> length -> length -> transform_origin
 (** [origin3d x y z] is a transform-origin helper for 3D positions. *)
 
 val transform_origin : transform_origin -> declaration
@@ -3171,9 +3139,6 @@ val stroke_width : length -> declaration
 (** CSS touch-action values *)
 type touch_action = Auto | None | Pan_x | Pan_y | Manipulation | Inherit
 
-(** CSS scroll-snap-axis values *)
-type scroll_snap_axis = X | Y | Block | Inline | Both
-
 (** CSS scroll-snap-strictness values *)
 type scroll_snap_strictness =
   | Mandatory
@@ -3183,7 +3148,21 @@ type scroll_snap_strictness =
 (** CSS scroll-snap-type values *)
 type scroll_snap_type =
   | None
-  | Axis of scroll_snap_axis * scroll_snap_strictness option
+  | X
+  | Y
+  | Block
+  | Inline
+  | Both
+  | X_mandatory
+  | Y_mandatory
+  | Block_mandatory
+  | Inline_mandatory
+  | Both_mandatory
+  | X_proximity
+  | Y_proximity
+  | Block_proximity
+  | Inline_proximity
+  | Both_proximity
   | Inherit
 
 (** CSS scroll-snap-align values *)

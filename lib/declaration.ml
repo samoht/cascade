@@ -431,7 +431,7 @@ let read_value (type a) (prop_type : a property) t : declaration =
       Reader.ws t;
       let j = Reader.option read_justify_self t in
       let pair =
-        match j with None -> (a, Self_pos (None, Center)) | Some jj -> (a, jj)
+        match j with None -> (a, (Center : justify_self)) | Some jj -> (a, jj)
       in
       v Place_self pair
   (* Additional grid properties *)
@@ -1002,76 +1002,3 @@ let scroll_snap_stop value = v Scroll_snap_stop value
 let scroll_behavior value = v Scroll_behavior value
 
 (* Alignment constructor helpers (declarations) *)
-
-let align_content ?v ?distribution ?safe ?position ?baseline () =
-  let value =
-    match (v, baseline, distribution, position) with
-    | Some v, None, None, None -> v
-    | None, Some b, None, None -> (Baseline b : align_content)
-    | None, None, Some d, None -> Content_dist d
-    | None, None, None, Some p -> Content_pos (safe, p)
-    | _ ->
-        invalid_arg
-          "align_content: specify exactly one of v, distribution, position, or \
-           baseline"
-  in
-  align_content value
-
-let justify_content ?v ?distribution ?safe ?position () =
-  let value =
-    match (v, distribution, position) with
-    | Some v, None, None -> v
-    | None, Some d, None -> Content_dist d
-    | None, None, Some p -> Content_pos (safe, p)
-    | _ ->
-        invalid_arg
-          "justify_content: specify exactly one of v, distribution or position"
-  in
-  justify_content value
-
-let align_items ?v ?safe ?position ?baseline () =
-  let value =
-    match (v, position, baseline) with
-    | Some v, None, None -> v
-    | None, Some p, None -> (Self_pos (safe, p) : align_items)
-    | None, None, Some b -> Baseline b
-    | _ ->
-        invalid_arg
-          "align_items: specify exactly one of v, position or baseline"
-  in
-  align_items value
-
-let align_self ?v ?safe ?position ?baseline () =
-  let value : align_self =
-    match (v, position, baseline) with
-    | Some v, None, None -> v
-    | None, Some p, None -> Self_pos (safe, p)
-    | None, None, Some b -> Baseline b
-    | _ ->
-        invalid_arg "align_self: specify exactly one of v, position or baseline"
-  in
-  align_self value
-
-let justify_items ?v ?safe ?position ?baseline () =
-  let value : justify_items =
-    match (v, position, baseline) with
-    | Some v, None, None -> v
-    | None, Some p, None -> Self_pos (safe, p)
-    | None, None, Some b -> Baseline b
-    | _ ->
-        invalid_arg
-          "justify_items: specify exactly one of v, position or baseline"
-  in
-  justify_items value
-
-let justify_self ?v ?safe ?position ?baseline () =
-  let value : justify_self =
-    match (v, position, baseline) with
-    | Some v, None, None -> v
-    | None, Some p, None -> Self_pos (safe, p)
-    | None, None, Some b -> Baseline b
-    | _ ->
-        invalid_arg
-          "justify_self: specify exactly one of v, position or baseline"
-  in
-  justify_self value

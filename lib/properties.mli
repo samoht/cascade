@@ -114,6 +114,12 @@ val pp_border : border Pp.t
 val read_border : Reader.t -> border
 (** [read_border t] is the [border] shorthand parsed from [t]. *)
 
+val pp_border_shorthand : border_shorthand Pp.t
+(** [pp_border_shorthand] pretty-prints a border shorthand value. *)
+
+val read_border_shorthand : Reader.t -> border_shorthand
+(** [read_border_shorthand t] parses a border shorthand value. *)
+
 val pp_line_height : line_height Pp.t
 (** [pp_line_height] is the pretty-printer for [line_height]. *)
 
@@ -200,41 +206,6 @@ val pp_safe : bool Pp.t
 val read_safe : Reader.t -> bool
 (** [read_safe t] is the safe/unsafe flag parsed from [t]. *)
 
-val pp_baseline : baseline Pp.t
-(** [pp_baseline] is the pretty-printer for [baseline]. *)
-
-val read_baseline : Reader.t -> baseline
-(** [read_baseline t] is the [baseline] parsed from [t]. *)
-
-val pp_content_position : content_position Pp.t
-(** [pp_content_position] is the pretty-printer for [content_position]. *)
-
-val read_content_position : Reader.t -> content_position
-(** [read_content_position t] is the [content_position] parsed from [t]. *)
-
-val pp_content_distribution : content_distribution Pp.t
-(** [pp_content_distribution] is the pretty-printer for [content_distribution].
-*)
-
-val read_content_distribution : Reader.t -> content_distribution
-(** [read_content_distribution t] is the [content_distribution] parsed from [t].
-*)
-
-val pp_self_position_items : self_position_items Pp.t
-(** [pp_self_position_items] is the pretty-printer for [self_position_items]. *)
-
-val read_self_position_items : Reader.t -> self_position_items
-(** [read_self_position_items t] is the [self_position_items] parsed from [t].
-*)
-
-val pp_self_position_justify : self_position_justify Pp.t
-(** [pp_self_position_justify] is the pretty-printer for
-    [self_position_justify]. *)
-
-val read_self_position_justify : Reader.t -> self_position_justify
-(** [read_self_position_justify t] is the [self_position_justify] parsed from
-    [t]. *)
-
 val pp_justify_items : justify_items Pp.t
 (** [pp_justify_items] is the pretty-printer for [justify_items]. *)
 
@@ -253,6 +224,12 @@ val pp_flex : flex Pp.t
 val read_flex : Reader.t -> flex
 (** [read_flex t] is the [flex] parsed from [t]. *)
 
+val pp_flex_basis : flex_basis Pp.t
+(** [pp_flex_basis] pretty-prints a flex-basis value. *)
+
+val read_flex_basis : Reader.t -> flex_basis
+(** [read_flex_basis t] parses a flex-basis value. *)
+
 val pp_place_content : place_content Pp.t
 (** [pp_place_content] is the pretty-printer for [place_content]. *)
 
@@ -270,12 +247,6 @@ val pp_grid_auto_flow : grid_auto_flow Pp.t
 
 val read_grid_auto_flow : Reader.t -> grid_auto_flow
 (** [read_grid_auto_flow t] is the [grid_auto_flow] parsed from [t]. *)
-
-val pp_grid_track_size : grid_track_size Pp.t
-(** [pp_grid_track_size] is the pretty-printer for [grid_track_size]. *)
-
-val read_grid_track_size : Reader.t -> grid_track_size
-(** [read_grid_track_size t] is the [grid_track_size] parsed from [t]. *)
 
 val pp_grid_template : grid_template Pp.t
 (** [pp_grid_template] is the pretty-printer for [grid_template]. *)
@@ -313,6 +284,19 @@ val pp_text_decoration : text_decoration Pp.t
 val read_text_decoration : Reader.t -> text_decoration
 (** [read_text_decoration t] is the [text_decoration] parsed from [t]. *)
 
+val pp_text_decoration_line : text_decoration_line Pp.t
+(** [pp_text_decoration_line] pretty-prints a text-decoration-line value. *)
+
+val read_text_decoration_line : Reader.t -> text_decoration_line
+(** [read_text_decoration_line t] parses a text-decoration-line value. *)
+
+val pp_text_decoration_shorthand : text_decoration_shorthand Pp.t
+(** [pp_text_decoration_shorthand] pretty-prints a text-decoration shorthand
+    value. *)
+
+val read_text_decoration_shorthand : Reader.t -> text_decoration_shorthand
+(** [read_text_decoration_shorthand t] parses a text-decoration shorthand. *)
+
 val pp_text_decoration_style : text_decoration_style Pp.t
 (** [pp_text_decoration_style] is the pretty-printer for
     [text_decoration_style]. *)
@@ -338,6 +322,9 @@ val pp_text_wrap : text_wrap Pp.t
 
 val read_text_wrap : Reader.t -> text_wrap
 (** [read_text_wrap t] is the [text_wrap] parsed from [t]. *)
+
+val pp_text_size_adjust : text_size_adjust Pp.t
+(** [pp_text_size_adjust] pretty-prints a text-size-adjust value. *)
 
 val pp_white_space : white_space Pp.t
 (** [pp_white_space] is the pretty-printer for [white_space]. *)
@@ -583,11 +570,10 @@ val pos_top : position_2d
 val pos_bottom : position_2d
 (** [pos_bottom] position helper for [XY (Center, Bottom)]. *)
 
-val origin : position_component -> position_component -> transform_origin
+val origin : length -> length -> transform_origin
 (** [origin x y] transform-origin helper for 2D positions. *)
 
-val origin3d :
-  position_component -> position_component -> length -> transform_origin
+val origin3d : length -> length -> length -> transform_origin
 (** [origin3d x y z] transform-origin helper for 3D positions. *)
 
 val pp_text_shadow : text_shadow Pp.t
@@ -773,12 +759,6 @@ val pp_scroll_snap_stop : scroll_snap_stop Pp.t
 val read_scroll_snap_stop : Reader.t -> scroll_snap_stop
 (** [read_scroll_snap_stop t] is the [scroll_snap_stop] parsed from [t]. *)
 
-val pp_scroll_snap_axis : scroll_snap_axis Pp.t
-(** [pp_scroll_snap_axis] is the pretty-printer for [scroll_snap_axis]. *)
-
-val read_scroll_snap_axis : Reader.t -> scroll_snap_axis
-(** [read_scroll_snap_axis t] is the [scroll_snap_axis] parsed from [t]. *)
-
 val pp_scroll_snap_strictness : scroll_snap_strictness Pp.t
 (** [pp_scroll_snap_strictness] is the pretty-printer for
     [scroll_snap_strictness]. *)
@@ -927,3 +907,11 @@ val background :
   background_shorthand
 (** [background ?color ?image ?position ?size ?repeat ?attachment ?clip ?origin
      ()] constructs a background_shorthand value with optional components. *)
+
+(** {2 Generic property handling} *)
+
+val pp_any_property : any_property Pp.t
+(** [pp_any_property] pretty-prints any CSS property. *)
+
+val read_any_property : Reader.t -> any_property
+(** [read_any_property t] parses any CSS property. *)

@@ -705,3 +705,98 @@ and vars_of_block (block : block) : Variables.any_var list =
 
 let vars_of_stylesheet (ss : stylesheet) : Variables.any_var list =
   vars_of_block ss
+
+(* Alias for API consistency *)
+let read = read_stylesheet
+
+(* Pretty-printer for import_rule *)
+let pp_import_rule : import_rule Pp.t =
+ fun ctx { url; layer; supports; media } ->
+  Pp.string ctx "@import ";
+  if String.contains url ' ' then (
+    Pp.char ctx '"';
+    Pp.string ctx url;
+    Pp.char ctx '"')
+  else (
+    Pp.string ctx "url(";
+    Pp.string ctx url;
+    Pp.char ctx ')');
+  Option.iter
+    (fun l ->
+      Pp.string ctx " layer(";
+      Pp.string ctx l;
+      Pp.char ctx ')')
+    layer;
+  Option.iter
+    (fun s ->
+      Pp.string ctx " supports(";
+      Pp.string ctx s;
+      Pp.char ctx ')')
+    supports;
+  Option.iter
+    (fun m ->
+      Pp.space ctx ();
+      Pp.string ctx m)
+    media;
+  Pp.string ctx ";"
+
+(* Reader for import_rule *)
+let read_import_rule (r : Reader.t) : import_rule =
+  Reader.ws r;
+  if Reader.looking_at r "@import" then Reader.skip r;
+  Reader.ws r;
+  let url =
+    if Reader.looking_at r "url(" then (
+      Reader.skip r;
+      let u = Reader.until r ')' in
+      Reader.expect ')' r;
+      u)
+    else Reader.string r
+  in
+  Reader.ws r;
+  let layer =
+    if Reader.looking_at r "layer(" then (
+      for _ = 1 to 6 do
+        Reader.skip r
+      done;
+      let l = Reader.until r ')' in
+      Reader.expect ')' r;
+      Some l)
+    else None
+  in
+  Reader.ws r;
+  let supports =
+    if Reader.looking_at r "supports(" then (
+      for _ = 1 to 9 do
+        Reader.skip r
+      done;
+      let s = Reader.until r ')' in
+      Reader.expect ')' r;
+      Some s)
+    else None
+  in
+  Reader.ws r;
+  let media =
+    if Reader.looking_at r ";" then None else Some (Reader.until r ';')
+  in
+  if Reader.looking_at r ";" then Reader.expect ';' r;
+  { url; layer; supports; media }
+
+(* Pretty-printer for config *)
+let pp_config : config Pp.t =
+ fun ctx { minify; mode; optimize; newline } ->
+  Pp.string ctx "{ minify = ";
+  Pp.string ctx (if minify then "true" else "false");
+  Pp.string ctx "; mode = ";
+  Pp.string ctx
+    (match mode with Inline -> "Inline" | Variables -> "Variables");
+  Pp.string ctx "; optimize = ";
+  Pp.string ctx (if optimize then "true" else "false");
+  Pp.string ctx "; newline = ";
+  Pp.string ctx (if newline then "true" else "false");
+  Pp.string ctx " }"
+
+(* Reader for config *)
+let read_config (_ : Reader.t) : config =
+  (* Simple default config reader *)
+  { minify = false; mode = Variables; optimize = false; newline = false }
