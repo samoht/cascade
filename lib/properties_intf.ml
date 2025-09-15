@@ -1082,6 +1082,10 @@ type transform_origin =
   | Right_bottom
   | Center_top
   | Center_bottom
+  | Top_left
+  | Top_right
+  | Bottom_left
+  | Bottom_right
   | XY of length * length
   | XYZ of length * length * length
   | Inherit
