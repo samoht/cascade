@@ -20,8 +20,6 @@ let check_value name pp reader ?expected input =
   let pp_str = Css.Pp.to_string ~minify:true pp result in
   check string (Fmt.str "%s %s" name input) expected pp_str
 
-(* Check functions for missing types - special case for type t *)
-let check = check_selector
 let check_nth = check_value "nth" pp_nth read_nth
 let check_combinator = check_value "combinator" pp_combinator read_combinator
 
@@ -445,6 +443,70 @@ let callstack_accuracy () =
     ".test\\!class { color: red; }"
     [ "stylesheet"; "rule"; "list" ]
 
+(* Test check functions for selector components *)
+let test_selector_component_parsing () =
+  (* Test nth values *)
+  check_nth "2n+1";
+  check_nth "odd";
+  check_nth "even";
+  check_nth "3n";
+  check_nth "5";
+
+  (* Test combinators *)
+  check_combinator ">";
+  check_combinator "+";
+  check_combinator "~";
+  check_combinator "||";
+
+  (* Test namespace *)
+  check_ns "svg";
+  check_ns "xml";
+  check_ns "foo";
+
+  (* Test attribute matching *)
+  check_attribute_match "=";
+  check_attribute_match "~=";
+  check_attribute_match "^=";
+  check_attribute_match "$=";
+  check_attribute_match "*=";
+  check_attribute_match "|=";
+
+  (* Test attribute flags *)
+  check_attr_flag "i";
+  check_attr_flag "s";
+
+  (* Test basic selector parsing *)
+  check_selector "div";
+  check_selector ".class";
+  check_selector "#id";
+  check_selector "*"
+
+(* Test negative cases for unused functions *)
+let test_selector_component_parsing_failures () =
+  let open Css.Reader in
+  let neg name reader s =
+    let r = of_string s in
+    let result = option reader r in
+    Alcotest.(check bool) (name ^ " should fail") true (Option.is_none result)
+  in
+
+  (* Invalid nth values *)
+  neg "invalid nth" read_nth "invalid";
+  neg "empty nth" read_nth "";
+  neg "nth with space" read_nth "2 n";
+
+  (* Invalid combinators *)
+  neg "invalid combinator" read_combinator "!";
+  neg "empty combinator" read_combinator "";
+
+  (* Invalid attribute match *)
+  neg "invalid attr match" read_attribute_match "!";
+  neg "empty attr match" read_attribute_match "";
+
+  (* Invalid attribute flags *)
+  neg "invalid flag" read_attr_flag "z";
+  neg "empty flag" read_attr_flag ""
+
 (* Test special cases *)
 let special_cases () =
   (* Universal selector *)
@@ -502,6 +564,10 @@ let suite =
       test_case "where is" `Quick where_is_cases;
       (* Parsing *)
       test_case "roundtrip" `Quick roundtrip;
+      test_case "selector component parsing" `Quick
+        test_selector_component_parsing;
+      test_case "selector component failures" `Quick
+        test_selector_component_parsing_failures;
       (* Error cases *)
       test_case "invalid" `Quick invalid;
       test_case "parse errors" `Quick parse_errors;

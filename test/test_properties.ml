@@ -1113,9 +1113,9 @@ let test_typed_positions () =
     (to_s ppv (Object_position, pos_bottom));
   (* transform-origin: 2D and 3D *)
   check string "origin left top" "left top"
-    (to_s ppv (Transform_origin, origin Left Top));
+    (to_s ppv (Transform_origin, Left_top));
   check string "origin3d right bottom 10px" "right bottom 10px"
-    (to_s ppv (Transform_origin, origin3d Right Bottom (Css.Values.Px 10.)))
+    (to_s ppv (Transform_origin, origin3d (Pct 100.) (Pct 100.) (Px 10.)))
 
 let test_background_box () =
   let check =
@@ -1424,6 +1424,55 @@ let test_any_property () =
   check_any_property "font-size: 16px";
   check_any_property "unknown-prop: some-value"
 
+let test_unused_check_functions () =
+  (* Test background_box *)
+  check_background_box "border-box";
+  check_background_box "padding-box";
+  check_background_box "content-box";
+
+  (* Test shadow *)
+  check_shadow "5px 5px 10px rgba(0,0,0,0.3)";
+  check_shadow "inset 0 1px 2px #000";
+  check_shadow ~expected:"none" "none";
+
+  (* Test text_decoration *)
+  check_text_decoration "underline";
+  check_text_decoration "line-through";
+  check_text_decoration ~expected:"none" "none";
+
+  (* Test gap *)
+  check_gap "10px";
+  check_gap "1rem 2rem";
+  check_gap "normal";
+
+  (* Test background *)
+  check_background "red";
+  check_background "url(image.png)";
+  check_background "linear-gradient(to right, red, blue)";
+
+  (* Test scroll_snap_strictness *)
+  check_scroll_snap_strictness "proximity";
+  check_scroll_snap_strictness "mandatory";
+
+  (* Test transform_style *)
+  check_transform_style "flat";
+  check_transform_style "preserve-3d";
+
+  (* Test font_variant_numeric_token *)
+  check_font_variant_numeric_token "normal";
+  check_font_variant_numeric_token "ordinal";
+  check_font_variant_numeric_token "slashed-zero";
+
+  (* Test position_2d *)
+  check_position_2d "center";
+  check_position_2d "left top";
+  check_position_2d "50% 25%";
+
+  (* Test transform_origin *)
+  check_transform_origin "center";
+  check_transform_origin "left top";
+  check_transform_origin "50% 50% 10px"
+
 let additional_tests =
   [
     test_case "font_weight" `Quick test_font_weight;
@@ -1444,6 +1493,7 @@ let additional_tests =
     test_case "text_size_adjust" `Quick test_text_size_adjust;
     test_case "any_property" `Quick test_any_property;
     test_case "negative_cases" `Quick test_negative_cases;
+    test_case "unused_check_functions" `Quick test_unused_check_functions;
   ]
 
 let suite = ("properties", tests @ additional_tests)

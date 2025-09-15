@@ -2,23 +2,6 @@
 
 module Selector = Css.Selector
 open Css.Stylesheet
-open Alcotest
-
-let pp_to_string pp v = Css.Pp.to_string ~minify:true pp v
-
-(* Generic check function for stylesheet types *)
-let check_value name pp reader ?expected input =
-  let expected = Option.value ~default:input expected in
-  (* First pass: parse + print equals expected (minified) *)
-  let t = Css.Reader.of_string input in
-  let v = reader t in
-  let s = pp_to_string pp v in
-  Alcotest.check Alcotest.string (Fmt.str "%s %s" name input) expected s;
-  (* Roundtrip stability: read printed output and ensure idempotent printing *)
-  let t2 = Css.Reader.of_string s in
-  let v2 = reader t2 in
-  let s2 = pp_to_string pp v2 in
-  Alcotest.check Alcotest.string (Fmt.str "roundtrip %s %s" name input) s s2
 
 (* Check functions for each type defined in stylesheet_intf *)
 
@@ -267,7 +250,7 @@ let items_conversion () =
     (List.length (Css.Stylesheet.rules reconstructed));
   Alcotest.(check int)
     "reconstructed media" 1
-    (List.length (stylesheet_media_queries reconstructed))
+    (List.length (media_queries reconstructed))
 
 let test_concat_stylesheets () =
   let decl1 =
@@ -735,7 +718,8 @@ let test_of_string_positive () =
   (match of_string css6 with
   | Ok sheet -> (
       let rules = rules sheet in
-      check int "rgba with 3 values: rule parsed" 1 (List.length rules);
+      Alcotest.(check int)
+        "rgba with 3 values: rule parsed" 1 (List.length rules);
       (* The rgba(255, 0, 0) should be valid and treated as rgba(255, 0, 0,
          1) *)
       let rule = List.hd rules in
@@ -752,7 +736,8 @@ let test_of_string_positive () =
   match of_string css7 with
   | Ok sheet -> (
       let rules = rules sheet in
-      check int "mixed RGB units (CSS4): rule parsed" 1 (List.length rules);
+      Alcotest.(check int)
+        "mixed RGB units (CSS4): rule parsed" 1 (List.length rules);
       (* The mixed units should be valid in CSS4 *)
       let rule = List.hd rules in
       match rule.declarations with
@@ -770,7 +755,7 @@ let test_of_string_negative () =
         Alcotest.fail
           ("should have failed: " ^ expected_error ^ " - CSS: " ^ css)
     | Error msg ->
-        check bool
+        Alcotest.(check bool)
           ("error contains information for " ^ expected_error)
           true
           (String.length msg > 0)
@@ -879,7 +864,8 @@ let test_of_string_negative () =
   match of_string ".btn { content: '\\gggg'; }" with
   | Ok sheet ->
       let rules = Css.Stylesheet.rules sheet in
-      check int "\\gggg escape sequence should parse (valid per CSS spec)" 1
+      Alcotest.(check int)
+        "\\gggg escape sequence should parse (valid per CSS spec)" 1
         (List.length rules)
   | Error _ ->
       Alcotest.fail
@@ -962,8 +948,9 @@ let test_import_rule () =
   check_import_rule "@import url('styles.css') screen;"
 
 let test_config () =
-  (* Config type tests - implementation specific *)
-  ()
+  (* Test config parsing - basic cases *)
+  check_config "@charset \"UTF-8\";";
+  check_config "@import 'test.css';"
 
 let additional_tests =
   [
