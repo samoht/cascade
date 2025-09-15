@@ -148,9 +148,9 @@ and pp_statement : statement Pp.t =
           Pp.cut ctx ();
           Pp.nest 2
             (fun ctx () ->
-              Pp.string ctx "syntax: \"";
+              Pp.string ctx "syntax: ";
               Variables.pp_syntax ctx syntax;
-              Pp.string ctx "\";";
+              Pp.string ctx ";";
               Pp.cut ctx ();
               Pp.string ctx "inherits: ";
               Pp.string ctx (if inherits then "true" else "false");
@@ -379,6 +379,7 @@ let read_namespace (r : Reader.t) : statement =
   | [] -> Namespace (None, "")
 
 let read_keyframes (r : Reader.t) : statement =
+  Reader.with_context r "@keyframes" @@ fun () ->
   Reader.expect_string "@keyframes" r;
   Reader.ws r;
   let name = Reader.ident ~keep_case:true r in
@@ -397,6 +398,7 @@ let read_keyframes (r : Reader.t) : statement =
   Keyframes (name, frames)
 
 let read_font_face (r : Reader.t) : statement =
+  Reader.with_context r "@font-face" @@ fun () ->
   Reader.expect_string "@font-face" r;
   Reader.ws r;
   Reader.expect '{' r;
@@ -406,6 +408,7 @@ let read_font_face (r : Reader.t) : statement =
   Font_face declarations
 
 let read_page (r : Reader.t) : statement =
+  Reader.with_context r "@page" @@ fun () ->
   Reader.expect_string "@page" r;
   Reader.ws r;
   let (selector : string option) =
@@ -576,6 +579,7 @@ and read_declarations_block (r : Reader.t) : Declaration.declaration list =
 (* Helper: Read nested at-rule with declarations content *)
 and read_nested_at_rule_with_decls (r : Reader.t) (at_rule : string)
     (selector : Selector.t) : statement =
+  Reader.with_context r at_rule @@ fun () ->
   Reader.expect_string at_rule r;
   Reader.ws r;
   let condition = String.trim (Reader.until r '{') in

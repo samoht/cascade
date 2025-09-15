@@ -11,20 +11,20 @@ include Variables_intf
 let rec pp_syntax : type a. a syntax Pp.t =
  fun ctx syn ->
   match syn with
-  | Length -> Pp.string ctx "<length>"
-  | Color -> Pp.string ctx "<color>"
-  | Number -> Pp.string ctx "<number>"
-  | Integer -> Pp.string ctx "<integer>"
-  | Percentage -> Pp.string ctx "<percentage>"
-  | Length_percentage -> Pp.string ctx "<length-percentage>"
-  | Angle -> Pp.string ctx "<angle>"
-  | Time -> Pp.string ctx "<time>"
-  | Custom_ident -> Pp.string ctx "<custom-ident>"
-  | String -> Pp.string ctx "<string>"
-  | Url -> Pp.string ctx "<url>"
-  | Image -> Pp.string ctx "<image>"
-  | Transform_function -> Pp.string ctx "<transform-function>"
-  | Universal -> Pp.string ctx "*"
+  | Length -> Pp.string ctx "\"<length>\""
+  | Color -> Pp.string ctx "\"<color>\""
+  | Number -> Pp.string ctx "\"<number>\""
+  | Integer -> Pp.string ctx "\"<integer>\""
+  | Percentage -> Pp.string ctx "\"<percentage>\""
+  | Length_percentage -> Pp.string ctx "\"<length-percentage>\""
+  | Angle -> Pp.string ctx "\"<angle>\""
+  | Time -> Pp.string ctx "\"<time>\""
+  | Custom_ident -> Pp.string ctx "\"<custom-ident>\""
+  | String -> Pp.string ctx "\"<string>\""
+  | Url -> Pp.string ctx "\"<url>\""
+  | Image -> Pp.string ctx "\"<image>\""
+  | Transform_function -> Pp.string ctx "\"<transform-function>\""
+  | Universal -> Pp.string ctx "\"*\""
   | Or (syn1, syn2) ->
       pp_syntax ctx syn1;
       Pp.string ctx " | ";
@@ -87,7 +87,14 @@ let rec pp_value : type a. a syntax -> a Pp.t =
 (** Read a CSS syntax descriptor from input *)
 let read_syntax (r : Reader.t) : any_syntax =
   let s = Reader.css_value ~stops:[ ';'; '}' ] r in
-  match String.trim s with
+  let s = String.trim s in
+  (* Remove quotes if present *)
+  let s =
+    if String.length s >= 2 && s.[0] = '"' && s.[String.length s - 1] = '"' then
+      String.sub s 1 (String.length s - 2)
+    else s
+  in
+  match s with
   | "<length>" -> Syntax Length
   | "<color>" -> Syntax Color
   | "<number>" -> Syntax Number
@@ -101,7 +108,7 @@ let read_syntax (r : Reader.t) : any_syntax =
   | "<url>" -> Syntax Url
   | "<image>" -> Syntax Image
   | "<transform-function>" -> Syntax Transform_function
-  | "*" -> Syntax String (* universal syntax treated as string *)
+  | "*" -> Syntax Universal
   | s when String.length s > 2 && s.[0] = '[' && s.[String.length s - 1] = ']'
     ->
       Syntax (Brackets (String.sub s 1 (String.length s - 2)))
@@ -468,33 +475,8 @@ let pp_any_syntax : any_syntax Pp.t = fun ctx (Syntax syn) -> pp_syntax ctx syn
 
 (* Reader for any_syntax *)
 let read_any_syntax (r : Reader.t) : any_syntax =
-  (* Read remaining input - this is used for syntax strings in @property *)
-  let s = Reader.css_value ~stops:[ ';'; '}' ] r |> String.trim in
-  match s with
-  | "<length>" -> Syntax Length
-  | "<color>" -> Syntax Color
-  | "<number>" -> Syntax Number
-  | "<integer>" -> Syntax Integer
-  | "<percentage>" -> Syntax Percentage
-  | "<length-percentage>" -> Syntax Length_percentage
-  | "<angle>" -> Syntax Angle
-  | "<time>" -> Syntax Time
-  | "<custom-ident>" -> Syntax Custom_ident
-  | "<string>" -> Syntax String
-  | "<url>" -> Syntax Url
-  | "<image>" -> Syntax Image
-  | "<transform-function>" -> Syntax Transform_function
-  | "*" -> Syntax Universal
-  | s when String.contains s '|' -> (
-      (* Parse composite syntax like "<length> | <percentage>" *)
-      let parts = String.split_on_char '|' s |> List.map String.trim in
-      match parts with
-      | [ "<length>"; "<percentage>" ] | [ "<percentage>"; "<length>" ] ->
-          (* <length> | <percentage> maps to the predefined Length_percentage
-             type *)
-          Syntax Length_percentage
-      | _ -> Syntax Universal (* Other composite syntax not yet supported *))
-  | _ -> Syntax Universal (* Default to universal for unknown syntax *)
+  (* Reuse the main read_syntax function *)
+  read_syntax r
 
 (* Pretty-printer for any_var *)
 let pp_any_var : any_var Pp.t = fun ctx (V v) -> pp_var (fun _ _ -> ()) ctx v
