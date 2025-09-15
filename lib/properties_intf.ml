@@ -71,18 +71,13 @@ type overflow = Visible | Hidden | Scroll | Auto | Clip
 (* Flexbox Types *)
 type flex_direction = Row | Row_reverse | Column | Column_reverse
 type flex_wrap = Nowrap | Wrap | Wrap_reverse
-type baseline = Baseline | First_baseline | Last_baseline
 
-type self_position_items =
-  | Center
-  | Start
-  | End
-  | Self_start
-  | Self_end
-  | Flex_start
-  | Flex_end
-
-type content_position =
+type align_content =
+  | Normal
+  | Baseline
+  | First_baseline
+  | Last_baseline
+  (* Content position values - safe by default *)
   | Center
   | Start
   | End
@@ -90,42 +85,99 @@ type content_position =
   | Flex_end
   | Left
   | Right
-
-type content_distribution =
+  (* Unsafe content position values *)
+  | Unsafe_center
+  | Unsafe_start
+  | Unsafe_end
+  | Unsafe_flex_start
+  | Unsafe_flex_end
+  | Unsafe_left
+  | Unsafe_right
+  (* Content distribution *)
   | Space_between
   | Space_around
   | Space_evenly
   | Stretch
 
-type align_content =
-  | Normal
-  | Baseline of baseline
-  | Content_pos of bool option * content_position
-  | Content_dist of content_distribution
-
 type align_items =
   | Normal
   | Stretch
-  | Baseline of baseline
-  | Self_pos of bool option * self_position_items
-  | Safe
-  | Unsafe
+  | Baseline
+  | First_baseline
+  | Last_baseline
+  (* Self position values - safe by default *)
+  | Center
+  | Start
+  | End
+  | Self_start
+  | Self_end
+  | Flex_start
+  | Flex_end
+  (* Unsafe self position values *)
+  | Unsafe_center
+  | Unsafe_start
+  | Unsafe_end
+  | Unsafe_self_start
+  | Unsafe_self_end
+  | Unsafe_flex_start
+  | Unsafe_flex_end
   | Anchor_center
 
 type align_self =
   | Auto
   | Normal
   | Stretch
-  | Baseline of baseline
-  | Self_pos of bool option * self_position_items
+  | Baseline
+  | First_baseline
+  | Last_baseline
+  (* Self position values - safe by default *)
+  | Center
+  | Start
+  | End
+  | Self_start
+  | Self_end
+  | Flex_start
+  | Flex_end
+  (* Unsafe self position values *)
+  | Unsafe_center
+  | Unsafe_start
+  | Unsafe_end
+  | Unsafe_self_start
+  | Unsafe_self_end
+  | Unsafe_flex_start
+  | Unsafe_flex_end
 
 type justify_content =
   | Normal
-  | Content_pos of bool option * content_position
-  | Content_dist of content_distribution
+  (* Content position values - safe by default *)
+  | Center
+  | Start
+  | End
+  | Flex_start
+  | Flex_end
+  | Left
+  | Right
+  (* Unsafe content position values *)
+  | Unsafe_center
+  | Unsafe_start
+  | Unsafe_end
+  | Unsafe_flex_start
+  | Unsafe_flex_end
+  | Unsafe_left
+  | Unsafe_right
+  (* Content distribution *)
+  | Space_between
+  | Space_around
+  | Space_evenly
+  | Stretch
 
-(* Exact type for justify-items (Box Alignment) *)
-type self_position_justify =
+type justify_items =
+  | Normal
+  | Stretch
+  | Baseline
+  | First_baseline
+  | Last_baseline
+  (* Self position values - safe by default *)
   | Center
   | Start
   | End
@@ -135,27 +187,47 @@ type self_position_justify =
   | Flex_end
   | Left
   | Right
-
-type justify_items =
-  | Normal
-  | Stretch
-  | Baseline of baseline
-  | Self_pos of bool option * self_position_justify
+  (* Unsafe self position values *)
+  | Unsafe_center
+  | Unsafe_start
+  | Unsafe_end
+  | Unsafe_self_start
+  | Unsafe_self_end
+  | Unsafe_flex_start
+  | Unsafe_flex_end
+  | Unsafe_left
+  | Unsafe_right
   | Anchor_center
   | Legacy
-  | Safe
-  | Unsafe
 
-(* Exact type for justify-self (Box Alignment) *)
 type justify_self =
   | Auto
   | Normal
   | Stretch
-  | Baseline of baseline
-  | Self_pos of bool option * self_position_justify
+  | Baseline
+  | First_baseline
+  | Last_baseline
+  (* Self position values - safe by default *)
+  | Center
+  | Start
+  | End
+  | Self_start
+  | Self_end
+  | Flex_start
+  | Flex_end
+  | Left
+  | Right
+  (* Unsafe self position values *)
+  | Unsafe_center
+  | Unsafe_start
+  | Unsafe_end
+  | Unsafe_self_start
+  | Unsafe_self_end
+  | Unsafe_flex_start
+  | Unsafe_flex_end
+  | Unsafe_left
+  | Unsafe_right
   | Anchor_center
-  | Safe
-  | Unsafe
   | Inherit
 
 type flex_basis =
@@ -263,8 +335,9 @@ type place_items =
 (* Grid Types *)
 type grid_auto_flow = Row | Column | Dense | Row_dense | Column_dense
 
-(* Grid track breadth - represents <track-breadth> in CSS Grid spec *)
-type grid_track_breadth =
+type grid_template =
+  | None
+  (* Single track values *)
   | Px of float
   | Rem of float
   | Em of float
@@ -278,17 +351,12 @@ type grid_track_breadth =
   | Auto
   | Min_content
   | Max_content
-
-type grid_track_size =
-  | Track_size of grid_track_breadth
-  | Min_max of grid_track_breadth * grid_track_breadth
+  (* Complex track values *)
+  | Min_max of length * length
   | Fit_content of length
-  | Repeat of int * grid_track_size list
-
-type grid_template =
-  | None
-  | Tracks of grid_track_size list
-  | Named_tracks of (string option * grid_track_size) list
+  | Repeat of int * grid_template list
+  | Tracks of grid_template list
+  | Named_tracks of (string option * grid_template) list
   | Subgrid
   | Masonry
 
@@ -726,13 +794,30 @@ type filter =
 (* Background Types *)
 type background_attachment = Scroll | Fixed | Local | Inherit
 type background_box = Border_box | Padding_box | Content_box | Text | Inherit
-type repeat_style = Repeat | Space | Round | No_repeat
 
 type background_repeat =
+  | Repeat
+  | Space
+  | Round
+  | No_repeat
   | Repeat_x
   | Repeat_y
-  | Single of repeat_style
-  | Pair of repeat_style * repeat_style
+  | Repeat_repeat
+  | Repeat_space
+  | Repeat_round
+  | Repeat_no_repeat
+  | Space_repeat
+  | Space_space
+  | Space_round
+  | Space_no_repeat
+  | Round_repeat
+  | Round_space
+  | Round_round
+  | Round_no_repeat
+  | No_repeat_repeat
+  | No_repeat_space
+  | No_repeat_round
+  | No_repeat_no_repeat
   | Inherit
 
 type background_size =
@@ -771,22 +856,17 @@ type background_image =
   | Radial_gradient of gradient_stop list
   | None
 
-type position_component =
-  | Left
-  | Center
-  | Right
-  | Top
-  | Bottom
-  | Px of float
-  | Rem of float
-  | Em of float
-  | Pct of float
-  | Vw of float
-  | Vh of float
-
 type position_2d =
   | Center
-  | XY of position_component * position_component
+  | Left_top
+  | Left_center
+  | Left_bottom
+  | Right_top
+  | Right_center
+  | Right_bottom
+  | Center_top
+  | Center_bottom
+  | XY of length * length
   | Inherit
 
 (* Structured background type for the shorthand property *)
@@ -910,7 +990,6 @@ type isolation = Auto | Isolate | Inherit
 type scroll_behavior = Auto | Smooth | Inherit
 type scroll_snap_align = None | Start | End | Center
 type scroll_snap_stop = Normal | Always | Inherit
-type scroll_snap_axis = X | Y | Block | Inline | Both
 
 type scroll_snap_strictness =
   | Mandatory
@@ -919,7 +998,21 @@ type scroll_snap_strictness =
 
 type scroll_snap_type =
   | None
-  | Axis of scroll_snap_axis * scroll_snap_strictness option
+  | X
+  | Y
+  | Block
+  | Inline
+  | Both
+  | X_mandatory
+  | Y_mandatory
+  | Block_mandatory
+  | Inline_mandatory
+  | Both_mandatory
+  | X_proximity
+  | Y_proximity
+  | Block_proximity
+  | Inline_proximity
+  | Both_proximity
   | Inherit
 
 type overscroll_behavior = Auto | Contain | None | Inherit
@@ -981,8 +1074,16 @@ type text_decoration_skip_ink = Auto | None | All | Inherit
 
 type transform_origin =
   | Center
-  | XY of position_component * position_component
-  | XYZ of position_component * position_component * length
+  | Left_top
+  | Left_center
+  | Left_bottom
+  | Right_top
+  | Right_center
+  | Right_bottom
+  | Center_top
+  | Center_bottom
+  | XY of length * length
+  | XYZ of length * length * length
   | Inherit
 
 (* Property type definition *)
