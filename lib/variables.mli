@@ -17,10 +17,7 @@ val pp_value : 'a syntax -> 'a Pp.t
 val read_syntax : Reader.t -> any_syntax
 (** [read_syntax r] reads a CSS syntax descriptor from input. *)
 
-val read_value :
-  Reader.t ->
-  any_syntax ->
-  unit (* FIXME: should return ('a syntax * 'a) option *)
+val read_value : Reader.t -> 'a syntax -> 'a
 
 (** {1 Meta handling} *)
 

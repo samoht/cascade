@@ -418,6 +418,13 @@ let read_page (r : Reader.t) : statement =
   Reader.expect '}' r;
   Page (selector, declarations)
 
+type property_reader_state =
+  | Init : property_reader_state
+  | Syntax : 'a Variables.syntax -> property_reader_state
+  | Final :
+      'a Variables.syntax * bool option * 'a option
+      -> property_reader_state
+
 let rec read_statement (r : Reader.t) : statement =
   Reader.ws r;
   let table : (string * (Reader.t -> statement)) list =
@@ -578,45 +585,60 @@ and read_property_rule (r : Reader.t) : statement =
   let name = Reader.ident ~keep_case:true r in
   Reader.ws r;
   Reader.expect '{' r;
-  let syntax, inherits, initial = read_property_descriptors r in
-  Property
-    {
-      name;
-      syntax;
-      inherits = Option.value inherits ~default:false;
-      initial_value = initial;
-    }
+  match read_property_descriptors r with
+  | Final (syntax, inherits, initial_value) ->
+      Property
+        {
+          name;
+          syntax;
+          inherits = Option.value inherits ~default:false;
+          initial_value;
+        }
+  | _ -> Reader.err_invalid r "read_property_rule"
 
-and read_property_descriptors (r : Reader.t) :
-    Variables.any_syntax option * bool option * string option =
-  let rec loop syntax inherits initial =
+and read_property_descriptors (r : Reader.t) : property_reader_state =
+  let rec loop (state : property_reader_state) =
     Reader.ws r;
     if Reader.peek r = Some '}' then (
       Reader.skip r;
-      (syntax, inherits, initial))
+      state)
     else if Reader.looking_at r "syntax:" then (
       Reader.expect_string "syntax:" r;
       Reader.ws r;
-      let value = Variables.read_syntax r in
+      let (Variables.Syntax syntax) = Variables.read_syntax r in
       Reader.ws r;
       if Reader.peek r = Some ';' then Reader.skip r;
-      loop (Some value) inherits initial)
+      loop (Syntax syntax))
     else if Reader.looking_at r "inherits:" then (
       Reader.expect_string "inherits:" r;
       Reader.ws r;
-      let value = Reader.ident r = "true" in
+      let inherits_value = Reader.ident r = "true" in
       Reader.ws r;
       if Reader.peek r = Some ';' then Reader.skip r;
-      loop syntax (Some value) initial)
+      match state with
+      | Init -> loop Init (* Need syntax first *)
+      | Syntax syntax -> loop (Final (syntax, Some inherits_value, None))
+      | Final (syntax, _, initial) ->
+          loop (Final (syntax, Some inherits_value, initial)))
     else if Reader.looking_at r "initial-value:" then (
       Reader.expect_string "initial-value:" r;
       Reader.ws r;
-      let values = Variables.read_value r syntax in
-      if Reader.peek r = Some ';' then Reader.skip r;
-      loop syntax inherits (Some value))
+      match state with
+      | Syntax syntax ->
+          let initial_value = Variables.read_value r syntax in
+          Reader.ws r;
+          if Reader.peek r = Some ';' then Reader.skip r;
+          loop (Final (syntax, None, Some initial_value))
+      | Final (syntax, inherits, _) ->
+          let initial_value = Variables.read_value r syntax in
+          Reader.ws r;
+          if Reader.peek r = Some ';' then Reader.skip r;
+          loop (Final (syntax, inherits, Some initial_value))
+      | Init ->
+          Reader.err_invalid r "syntax must be specified before initial-value")
     else Reader.err_invalid r "unknown property descriptor"
   in
-  loop None None None
+  loop Init
 
 let read_stylesheet (r : Reader.t) : stylesheet =
   let rec read_statements acc =
