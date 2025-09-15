@@ -107,11 +107,9 @@ let read_syntax (r : Reader.t) : any_syntax =
       Syntax (Brackets (String.sub s 1 (String.length s - 2)))
   | s -> failwith ("Unsupported CSS syntax: " ^ s)
 
-(** Read a value according to its syntax type - placeholder implementation *)
-let read_value (reader : Reader.t) (syntax : 'a syntax) : 'a =
-  (* This function is problematic because it tries to return 'a for any syntax,
-     but different syntax types have different return types. For now, we use a
-     simplified approach that works only for string-like syntax. *)
+(** Read a value according to its syntax type *)
+let rec read_value : type a. Reader.t -> a syntax -> a =
+ fun reader syntax ->
   match syntax with
   | Universal -> Reader.string ~trim:true reader
   | String -> Reader.string ~trim:true reader
@@ -120,15 +118,45 @@ let read_value (reader : Reader.t) (syntax : 'a syntax) : 'a =
   | Image -> Reader.string ~trim:true reader
   | Transform_function -> Reader.string ~trim:true reader
   | Brackets _desc -> Reader.string ~trim:true reader
-  | _ -> failwith "read_value: complex syntax types not yet implemented"
-
-(** Read a value as a string regardless of syntax type. This is used for parsing
-    CSS property initial-value fields which are always strings in CSS syntax and
-    get parsed later when needed. *)
-let read_value_as_string (reader : Reader.t) (_syntax : 'a syntax) : string =
-  (* For @property parsing, we always read the initial value as a string since
-     that's how it appears in CSS. The type checking happens later. *)
-  Reader.string ~trim:true reader
+  | Length -> Values.read_length reader
+  | Color -> Values.read_color reader
+  | Number -> Reader.number reader
+  | Integer -> int_of_float (Reader.number reader)
+  | Percentage -> Values.read_percentage reader
+  | Length_percentage -> Values.read_length_percentage reader
+  | Angle -> Values.read_angle reader
+  | Time -> Values.read_duration reader
+  | Or (syn1, _syn2) ->
+      (* For now, only try the first syntax - proper backtracking would require
+         a seekable reader *)
+      Either.Left (read_value reader syn1)
+  | Plus syn ->
+      (* Read space-separated list *)
+      let values = ref [] in
+      let rec read_all () =
+        if not (Reader.is_done reader) then (
+          values := read_value reader syn :: !values;
+          Reader.ws reader;
+          read_all ())
+      in
+      read_all ();
+      List.rev !values
+  | Hash syn ->
+      (* Read comma-separated list *)
+      let values = ref [] in
+      let rec read_all () =
+        if not (Reader.is_done reader) then (
+          values := read_value reader syn :: !values;
+          if Reader.peek reader = Some ',' then (
+            Reader.skip reader;
+            Reader.ws reader;
+            read_all ()))
+      in
+      read_all ();
+      List.rev !values
+  | Question syn ->
+      (* Optional value *)
+      if Reader.is_done reader then None else Some (read_value reader syn)
 
 (** {1 Meta handling} *)
 
