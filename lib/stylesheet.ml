@@ -556,6 +556,51 @@ and read_layer (r : Reader.t) : statement =
         Layer (Some first, content)
     | _ -> Reader.err_invalid r "expected ';' or '{' after @layer name"
 
+(* Helper: Read declarations until closing brace *)
+and read_declarations_block (r : Reader.t) : Declaration.declaration list =
+  let rec loop acc =
+    Reader.ws r;
+    if Reader.peek r = Some '}' then List.rev acc
+    else
+      match Declaration.read_declaration r with
+      | Some d ->
+          Reader.ws r;
+          (match Reader.peek r with Some ';' -> Reader.skip r | _ -> ());
+          loop (d :: acc)
+      | None ->
+          (* If we can't read a declaration, check if we're at the end *)
+          if Reader.peek r = Some '}' then List.rev acc else List.rev acc
+  in
+  loop []
+
+(* Helper: Read nested at-rule with declarations content *)
+and read_nested_at_rule_with_decls (r : Reader.t) (at_rule : string)
+    (selector : Selector.t) : statement =
+  Reader.expect_string at_rule r;
+  Reader.ws r;
+  let condition = String.trim (Reader.until r '{') in
+  Reader.expect '{' r;
+  let decls = read_declarations_block r in
+  Reader.expect '}' r;
+  (* Wrap declarations in a rule with the parent selector *)
+  let content = [ Rule { selector; declarations = decls; nested = [] } ] in
+  match at_rule with
+  | "@supports" -> Supports (condition, content)
+  | "@media" -> Media (condition, content)
+  | "@container" ->
+      (* Parse container name if present *)
+      let container_name, cond =
+        let rr = Reader.of_string condition in
+        try
+          let nm = Reader.ident ~keep_case:true rr in
+          Reader.ws rr;
+          if Reader.is_done rr then (None, condition)
+          else (Some nm, Reader.string ~trim:true rr)
+        with Reader.Parse_error _ -> (None, condition)
+      in
+      Container (container_name, cond, content)
+  | _ -> Reader.err_invalid r ("Unexpected nested at-rule: " ^ at_rule)
+
 and read_rule (r : Reader.t) : rule =
   Reader.with_context r "rule" @@ fun () ->
   let selector = Selector.read_selector_list r in
@@ -568,7 +613,43 @@ and read_rule (r : Reader.t) : rule =
         Reader.skip r;
         { selector; declarations = List.rev decls; nested = List.rev nested }
     | Some '@' ->
-        let stmt = read_statement r in
+        (* Handle nested at-rules within rule blocks *)
+        let stmt =
+          if
+            Reader.looking_at r "@supports"
+            || Reader.looking_at r "@media"
+            || Reader.looking_at r "@container"
+          then
+            read_nested_at_rule_with_decls r
+              (if Reader.looking_at r "@supports" then "@supports"
+               else if Reader.looking_at r "@media" then "@media"
+               else "@container")
+              selector
+          else if Reader.looking_at r "@layer" then (
+            Reader.expect_string "@layer" r;
+            Reader.ws r;
+            if Reader.peek r = Some '{' then (
+              Reader.expect '{' r;
+              let decls = read_declarations_block r in
+              Reader.expect '}' r;
+              let content =
+                [ Rule { selector; declarations = decls; nested = [] } ]
+              in
+              Layer (None, content))
+            else
+              let name = Reader.ident ~keep_case:true r in
+              Reader.ws r;
+              Reader.expect '{' r;
+              let decls = read_declarations_block r in
+              Reader.expect '}' r;
+              let content =
+                [ Rule { selector; declarations = decls; nested = [] } ]
+              in
+              Layer (Some name, content))
+          else
+            (* For other at-rules, use the standard read_statement *)
+            read_statement r
+        in
         loop decls (stmt :: nested)
     | Some ';' ->
         (* Skip empty statements/extra semicolons *)

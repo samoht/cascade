@@ -427,7 +427,7 @@ let read_text_decoration_component t =
 
 let read_text_decoration_shorthand t : text_decoration_shorthand =
   let apply acc = function
-    | `Line l -> { acc with lines = l :: acc.lines }
+    | `Line l -> { acc with lines = acc.lines @ [ l ] }
     | `Style s when acc.style = None -> { acc with style = Some s }
     | `Color c when acc.color = None -> { acc with color = Some c }
     | `Thickness th when acc.thickness = None ->
@@ -3070,9 +3070,11 @@ let read_flex_wrap t : flex_wrap =
     t
 
 let read_flex_basis t : flex_basis =
-  (* Read flex-basis: auto | content | <length> *)
+  (* Read flex-basis: auto | content | inherit | <length> *)
   Reader.enum "flex-basis"
-    [ ("auto", (Auto : flex_basis)); ("content", Content) ]
+    [
+      ("auto", (Auto : flex_basis)); ("content", Content); ("inherit", Inherit);
+    ]
     ~default:(fun t ->
       (* Parse as length and convert to flex_basis *)
       match read_length t with
@@ -3282,6 +3284,8 @@ let rec read_grid_template t : grid_template =
       ("auto", Auto);
       ("min-content", Min_content);
       ("max-content", Max_content);
+      ("subgrid", Subgrid);
+      ("masonry", Masonry);
     ]
     ~calls:
       [
@@ -4564,7 +4568,7 @@ let read_background_image t : background_image =
 let read_background_images t : background_image list =
   Reader.list ~sep:Reader.comma read_background_image t
 
-let read_property t =
+let read_any_property t =
   let prop_name = Reader.ident t in
   (* PROPERTY_MATCHING_START - Used by scripts/check_properties.ml *)
   match prop_name with
@@ -5047,13 +5051,5 @@ let read_gap t : gap =
   match second_length with
   | Some col_gap -> { row_gap = Some first_length; column_gap = Some col_gap }
   | None -> { row_gap = Some first_length; column_gap = Some first_length }
-(* Missing pp_ and read_ functions for API consistency *)
 
-(* any_property *)
-(* TODO: Implement pp_any_property correctly for existential type *)
-let pp_any_property : any_property Pp.t =
- fun ctx (Prop _prop) -> Pp.string ctx "any-property"
-
-let read_any_property t : any_property =
-  (* TODO: Implement read_any_property correctly for existential type *)
-  Reader.err t "any_property parsing not implemented"
+let pp_any_property ctx (Prop p) = pp_property ctx p

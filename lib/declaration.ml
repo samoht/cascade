@@ -638,7 +638,7 @@ let read_declaration t : declaration option =
           let decl = custom_property name value_str in
           Some (if is_important then important decl else decl))
         else
-          let (Prop prop_type) = read_property t in
+          let (Prop prop_type) = read_any_property t in
           Reader.ws t;
           Reader.expect ':' t;
           Reader.ws t;
