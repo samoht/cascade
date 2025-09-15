@@ -95,7 +95,7 @@ let test_media_rule_creation () =
   let media_stmt =
     media ~condition:"screen and (min-width: 768px)" [ Rule r ]
   in
-  let sheet = stylesheet [ media_stmt ] in
+  let sheet = Css.Stylesheet.v [ media_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
   (* Test roundtrip - parse output and compare *)
   Alcotest.(check bool)
@@ -114,7 +114,7 @@ let test_container_rule_creation () =
   let container_stmt =
     container ~name:"sidebar" ~condition:"(min-width: 400px)" [ Rule r ]
   in
-  let sheet = stylesheet [ container_stmt ] in
+  let sheet = Css.Stylesheet.v [ container_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
   (* Test that container rule generates @container *)
   Alcotest.(check bool)
@@ -130,7 +130,7 @@ let test_supports_rule_creation () =
   let supports_stmt =
     supports ~condition:"(display: grid)" [ Css.Stylesheet.Rule r ]
   in
-  let sheet = stylesheet [ supports_stmt ] in
+  let sheet = Css.Stylesheet.v [ supports_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
   (* Test that supports rule generates @supports *)
   Alcotest.(check bool)
@@ -149,7 +149,7 @@ let test_supports_nested_creation () =
   let supports_stmt =
     supports ~condition:"(display: grid)" [ Rule r; nested_supports ]
   in
-  let sheet = stylesheet [ supports_stmt ] in
+  let sheet = Css.Stylesheet.v [ supports_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
   (* Test nested @supports blocks *)
   let supports_count =
@@ -177,7 +177,7 @@ let test_layer_rule_creation () =
   in
   let rule = rule ~selector:(Selector.class_ "red") [ decl ] in
   let layer_stmt = layer ~name:"utilities" [ Css.Stylesheet.Rule rule ] in
-  let sheet = stylesheet [ layer_stmt ] in
+  let sheet = Css.Stylesheet.v [ layer_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
   (* Test that layer generates @layer *)
   Alcotest.(check bool)
@@ -210,11 +210,11 @@ let helper () =
   (* Test complete stylesheet construction and string representation *)
   let decl = Css.Declaration.display Css.Properties.Block in
   let rule = rule ~selector:(Selector.element "div") [ decl ] in
-  let sheet = stylesheet [ Css.Stylesheet.Rule rule ] in
+  let sheet = Css.Stylesheet.v [ Css.Stylesheet.Rule rule ] in
   check_stylesheet_helper "simple stylesheet" "div{display:block}" sheet;
 
   let media_stmt = media ~condition:"print" [ Css.Stylesheet.Rule rule ] in
-  let sheet2 = stylesheet [ media_stmt ] in
+  let sheet2 = Css.Stylesheet.v [ media_stmt ] in
   check_stylesheet_helper "media stylesheet" "@media print{div{display:block}}"
     sheet2
 
@@ -236,7 +236,7 @@ let construction () =
   let media_stmt = media ~condition:"screen" [ Css.Stylesheet.Rule rule ] in
   let prop = property ~syntax:Css.Variables.Color "--my-color" in
 
-  let sheet = stylesheet [ Css.Stylesheet.Rule rule; media_stmt; prop ] in
+  let sheet = Css.Stylesheet.v [ Css.Stylesheet.Rule rule; media_stmt; prop ] in
 
   Alcotest.(check int) "sheet rules count" 1 (List.length (rules sheet));
   Alcotest.(check int) "sheet media count" 1 (List.length (media_queries sheet));
@@ -255,16 +255,16 @@ let items_conversion () =
   let rule = rule ~selector:(Selector.class_ "red") [ decl ] in
   let media_stmt = media ~condition:"screen" [ Css.Stylesheet.Rule rule ] in
 
-  let sheet = stylesheet [ Css.Stylesheet.Rule rule; media_stmt ] in
+  let sheet = Css.Stylesheet.v [ Css.Stylesheet.Rule rule; media_stmt ] in
 
   let items = sheet in
   Alcotest.(check int) "items count" 2 (List.length items);
 
   (* Check we can round-trip *)
-  let reconstructed = stylesheet items in
+  let reconstructed = Css.Stylesheet.v items in
   Alcotest.(check int)
     "reconstructed rules" 1
-    (List.length (stylesheet_rules reconstructed));
+    (List.length (Css.Stylesheet.rules reconstructed));
   Alcotest.(check int)
     "reconstructed media" 1
     (List.length (stylesheet_media_queries reconstructed))
@@ -275,18 +275,18 @@ let test_concat_stylesheets () =
       (Css.Values.Hex { hash = true; value = "ff0000" })
   in
   let rule1 = rule ~selector:(Selector.class_ "red") [ decl1 ] in
-  let _sheet1 = stylesheet [ Rule rule1 ] in
+  let _sheet1 = Css.Stylesheet.v [ Rule rule1 ] in
 
   let decl2 =
     Css.Declaration.color (Css.Values.Hex { hash = true; value = "0000ff" })
   in
   let rule2 = rule ~selector:(Selector.class_ "blue") [ decl2 ] in
-  let _sheet2 = stylesheet [ Rule rule2 ] in
+  let _sheet2 = Css.Stylesheet.v [ Rule rule2 ] in
 
-  let combined = stylesheet [ Rule rule1; Rule rule2 ] in
+  let combined = Css.Stylesheet.v [ Rule rule1; Rule rule2 ] in
   Alcotest.(check int)
     "combined rules count" 2
-    (List.length (stylesheet_rules combined))
+    (List.length (Css.Stylesheet.rules combined))
 
 let test_default_decl_of_property_rule () =
   (* Test that property rules can be created with and without initial values *)
@@ -297,7 +297,7 @@ let test_default_decl_of_property_rule () =
   let prop_no_initial = property ~syntax:Css.Variables.Color "--other-color" in
 
   (* Test these generate valid statements *)
-  let sheet = stylesheet [ prop_with_initial; prop_no_initial ] in
+  let sheet = Css.Stylesheet.v [ prop_with_initial; prop_no_initial ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
 
   (* Should contain @property rules *)
@@ -355,7 +355,7 @@ let test_property_composite_syntax () =
   (* Typed composite syntax: <length> | <percentage> *)
   let syn = Css.Variables.Or (Css.Variables.Length, Css.Variables.Percentage) in
   let prop = property ~syntax:syn "--size" in
-  let sheet = stylesheet [ prop ] in
+  let sheet = Css.Stylesheet.v [ prop ] in
   let out = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
   Alcotest.(check bool)
     "composite syntax rendered" true (String.contains out '|')
@@ -446,7 +446,7 @@ let test_layer_pp () =
   let rule_obj = rule ~selector:(Selector.class_ "blue") [ decl ] in
   let layer_stmt = layer ~name:"utilities" [ Rule rule_obj ] in
 
-  let sheet = stylesheet [ layer_stmt ] in
+  let sheet = Css.Stylesheet.v [ layer_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
   Alcotest.(check bool)
     "layer pp contains @layer" true
@@ -454,7 +454,7 @@ let test_layer_pp () =
 
   (* Test empty layer *)
   let empty_layer = layer ~name:"base" [] in
-  let empty_sheet = stylesheet [ empty_layer ] in
+  let empty_sheet = Css.Stylesheet.v [ empty_layer ] in
   let empty_output =
     Css.Stylesheet.pp ~minify:true ~newline:false empty_sheet
   in
@@ -511,7 +511,7 @@ let pp_case () =
   let media_stmt = media ~condition:"screen" [ Rule r ] in
   let prop = property ~syntax:Css.Variables.Color "--primary" in
 
-  let sheet = stylesheet [ Rule r; media_stmt; prop ] in
+  let sheet = Css.Stylesheet.v [ Rule r; media_stmt; prop ] in
 
   let output = Css.Stylesheet.pp ~minify:true sheet in
   Alcotest.(check bool)
@@ -878,7 +878,7 @@ let test_of_string_negative () =
      So '\gggg' is valid CSS and should parse successfully. *)
   match of_string ".btn { content: '\\gggg'; }" with
   | Ok sheet ->
-      let rules = stylesheet_rules sheet in
+      let rules = Css.Stylesheet.rules sheet in
       check int "\\gggg escape sequence should parse (valid per CSS spec)" 1
         (List.length rules)
   | Error _ ->

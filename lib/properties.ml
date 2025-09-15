@@ -39,15 +39,6 @@ let read_background_size_length t : background_size =
   | "vh" -> Vh n
   | _ -> Reader.err t ("unsupported background-size unit: " ^ unit)
 
-let read_position_component_length t : position_component =
-  let n, unit = Reader.number_with_unit t in
-  match unit with
-  | "px" -> Px n
-  | "rem" -> Rem n
-  | "em" -> Em n
-  | "%" -> Pct n
-  | _ -> Reader.err t ("unsupported position unit: " ^ unit)
-
 let read_display t : display =
   Reader.enum "display"
     [
@@ -100,30 +91,54 @@ let read_flex_direction t : flex_direction =
     ]
     t
 
-let read_safe t : bool =
-  Reader.enum "overflow" [ ("safe", true); ("unsafe", false) ] t
-
-let read_baseline t : baseline =
-  Reader.enum "baseline"
-    [ ("baseline", Baseline) ]
-    ~default:(fun t : baseline ->
+(* Helper to parse flattened baseline tokens shared across align/justify
+   readers *)
+let read_flat_baseline ~what ~baseline ~first ~last t =
+  Reader.enum what
+    [ ("baseline", baseline) ]
+    ~default:(fun t ->
       let tok = Reader.ident t in
       match tok with
       | "first" ->
           Reader.ws t;
           Reader.expect_string "baseline" t;
-          First_baseline
+          first
       | "last" ->
           Reader.ws t;
           Reader.expect_string "baseline" t;
-          Last_baseline
-      | s -> Reader.err_invalid t ("invalid baseline: " ^ s))
+          last
+      | s -> err_invalid_value t what s)
     t
 
-let read_self_position_items t : self_position_items =
-  Reader.enum "self-position-items"
+let read_align_items t : align_items =
+  let read_flat_baseline t : align_items =
+    read_flat_baseline ~what:"align-items"
+      ~baseline:(Baseline : align_items)
+      ~first:(First_baseline : align_items)
+      ~last:(Last_baseline : align_items)
+      t
+  in
+  let read_unsafe t : align_items =
+    Reader.expect_string "unsafe" t;
+    Reader.ws t;
+    Reader.enum "align-items unsafe"
+      [
+        ("center", (Unsafe_center : align_items));
+        ("start", Unsafe_start);
+        ("end", Unsafe_end);
+        ("self-start", Unsafe_self_start);
+        ("self-end", Unsafe_self_end);
+        ("flex-start", Unsafe_flex_start);
+        ("flex-end", Unsafe_flex_end);
+      ]
+      t
+  in
+  Reader.enum "align-items"
     [
-      ("center", (Center : self_position_items));
+      ("normal", Normal);
+      ("stretch", Stretch);
+      ("anchor-center", Anchor_center);
+      ("center", Center);
       ("start", Start);
       ("end", End);
       ("self-start", Self_start);
@@ -131,102 +146,209 @@ let read_self_position_items t : self_position_items =
       ("flex-start", Flex_start);
       ("flex-end", Flex_end);
     ]
+    ~default:(Reader.one_of [ read_flat_baseline; read_unsafe ])
     t
 
-let read_self_position_justify t : self_position_justify =
-  Reader.enum "self-position-justify"
+let read_align_content t : align_content =
+  let read_flat_baseline t : align_content =
+    read_flat_baseline ~what:"align-content"
+      ~baseline:(Baseline : align_content)
+      ~first:(First_baseline : align_content)
+      ~last:(Last_baseline : align_content)
+      t
+  in
+  let read_unsafe t : align_content =
+    Reader.expect_string "unsafe" t;
+    Reader.ws t;
+    Reader.enum "align-content unsafe"
+      [
+        ("center", (Unsafe_center : align_content));
+        ("start", Unsafe_start);
+        ("end", Unsafe_end);
+        ("flex-start", Unsafe_flex_start);
+        ("flex-end", Unsafe_flex_end);
+        ("left", Unsafe_left);
+        ("right", Unsafe_right);
+      ]
+      t
+  in
+  Reader.enum "align-content"
     [
-      ("center", (Center : self_position_justify));
+      ("normal", Normal);
+      ("center", Center);
       ("start", Start);
       ("end", End);
-      ("self-start", Self_start);
-      ("self-end", Self_end);
       ("flex-start", Flex_start);
       ("flex-end", Flex_end);
       ("left", Left);
       ("right", Right);
-    ]
-    t
-
-let read_content_position t : content_position =
-  Reader.enum "content-position"
-    [
-      ("center", (Center : content_position));
-      ("start", Start);
-      ("end", End);
-      ("flex-start", Flex_start);
-      ("flex-end", Flex_end);
-      ("left", Left);
-      ("right", Right);
-    ]
-    t
-
-let read_content_distribution t : content_distribution =
-  Reader.enum "content-distribution"
-    [
-      ("space-between", (Space_between : content_distribution));
+      ("space-between", Space_between);
       ("space-around", Space_around);
       ("space-evenly", Space_evenly);
       ("stretch", Stretch);
     ]
-    t
-
-let read_content_with_safe t : bool option * content_position =
-  let safe = Reader.option read_safe t in
-  let () = if safe <> None then Reader.ws t else () in
-  (safe, read_content_position t)
-
-let read_self_with_safe t : bool option * self_position_items =
-  let safe = Reader.option read_safe t in
-  let () = if safe <> None then Reader.ws t else () in
-  (safe, read_self_position_items t)
-
-let read_self_justify_with_safe t : bool option * self_position_justify =
-  let safe = Reader.option read_safe t in
-  let () = if safe <> None then Reader.ws t else () in
-  (safe, read_self_position_justify t)
-
-let read_align_items t : align_items =
-  let read_baseline_val t : align_items = Baseline (read_baseline t) in
-  let read_self_pos t : align_items =
-    let safe, pos = read_self_with_safe t in
-    Self_pos (safe, pos)
-  in
-  Reader.enum "align-items"
-    [
-      ("normal", (Normal : align_items));
-      ("stretch", Stretch);
-      ("anchor-center", Anchor_center);
-      ("safe", Safe);
-      ("unsafe", Unsafe);
-    ]
-    ~default:(Reader.one_of [ read_baseline_val; read_self_pos ])
-    t
-
-let read_align_content t : align_content =
-  let read_baseline_val t : align_content = Baseline (read_baseline t) in
-  let read_content_dist t : align_content =
-    Content_dist (read_content_distribution t)
-  in
-  let read_content_pos t : align_content =
-    let safe, pos = read_content_with_safe t in
-    Content_pos (safe, pos)
-  in
-  Reader.enum "align-content"
-    [ ("normal", (Normal : align_content)) ]
-    ~default:
-      (Reader.one_of [ read_baseline_val; read_content_dist; read_content_pos ])
+    ~default:(Reader.one_of [ read_flat_baseline; read_unsafe ])
     t
 
 let read_justify_content t : justify_content =
-  let read_content_dist t = Content_dist (read_content_distribution t) in
-  let read_content_pos t =
-    let safe, pos = read_content_with_safe t in
-    Content_pos (safe, pos)
+  let read_unsafe t : justify_content =
+    Reader.expect_string "unsafe" t;
+    Reader.ws t;
+    Reader.enum "justify-content unsafe"
+      [
+        ("center", (Unsafe_center : justify_content));
+        ("start", Unsafe_start);
+        ("end", Unsafe_end);
+        ("flex-start", Unsafe_flex_start);
+        ("flex-end", Unsafe_flex_end);
+        ("left", Unsafe_left);
+        ("right", Unsafe_right);
+      ]
+      t
   in
   Reader.enum "justify-content"
-    [ ("normal", (Normal : justify_content)) ]
-    ~default:(Reader.one_of [ read_content_dist; read_content_pos ])
+    [
+      ("normal", Normal);
+      ("center", Center);
+      ("start", Start);
+      ("end", End);
+      ("flex-start", Flex_start);
+      ("flex-end", Flex_end);
+      ("left", Left);
+      ("right", Right);
+      ("space-between", Space_between);
+      ("space-around", Space_around);
+      ("space-evenly", Space_evenly);
+      ("stretch", Stretch);
+    ]
+    ~default:read_unsafe t
+
+let read_align_self t : align_self =
+  let read_flat_baseline t : align_self =
+    read_flat_baseline ~what:"align-self"
+      ~baseline:(Baseline : align_self)
+      ~first:(First_baseline : align_self)
+      ~last:(Last_baseline : align_self)
+      t
+  in
+  let read_unsafe t : align_self =
+    Reader.expect_string "unsafe" t;
+    Reader.ws t;
+    Reader.enum "align-self unsafe"
+      [
+        ("center", (Unsafe_center : align_self));
+        ("start", Unsafe_start);
+        ("end", Unsafe_end);
+        ("self-start", Unsafe_self_start);
+        ("self-end", Unsafe_self_end);
+        ("flex-start", Unsafe_flex_start);
+        ("flex-end", Unsafe_flex_end);
+      ]
+      t
+  in
+  Reader.enum "align-self"
+    [
+      ("auto", Auto);
+      ("normal", Normal);
+      ("stretch", Stretch);
+      ("center", Center);
+      ("start", Start);
+      ("end", End);
+      ("self-start", Self_start);
+      ("self-end", Self_end);
+      ("flex-start", Flex_start);
+      ("flex-end", Flex_end);
+    ]
+    ~default:(Reader.one_of [ read_flat_baseline; read_unsafe ])
+    t
+
+let read_justify_items t : justify_items =
+  let read_flat_baseline t : justify_items =
+    read_flat_baseline ~what:"justify-items"
+      ~baseline:(Baseline : justify_items)
+      ~first:(First_baseline : justify_items)
+      ~last:(Last_baseline : justify_items)
+      t
+  in
+  let read_unsafe t : justify_items =
+    Reader.expect_string "unsafe" t;
+    Reader.ws t;
+    Reader.enum "justify-items unsafe"
+      [
+        ("center", (Unsafe_center : justify_items));
+        ("start", Unsafe_start);
+        ("end", Unsafe_end);
+        ("self-start", Unsafe_self_start);
+        ("self-end", Unsafe_self_end);
+        ("flex-start", Unsafe_flex_start);
+        ("flex-end", Unsafe_flex_end);
+        ("left", Unsafe_left);
+        ("right", Unsafe_right);
+      ]
+      t
+  in
+  Reader.enum "justify-items"
+    [
+      ("normal", Normal);
+      ("stretch", Stretch);
+      ("anchor-center", Anchor_center);
+      ("legacy", Legacy);
+      ("center", Center);
+      ("start", Start);
+      ("end", End);
+      ("self-start", Self_start);
+      ("self-end", Self_end);
+      ("flex-start", Flex_start);
+      ("flex-end", Flex_end);
+      ("left", Left);
+      ("right", Right);
+    ]
+    ~default:(Reader.one_of [ read_flat_baseline; read_unsafe ])
+    t
+
+let read_justify_self t : justify_self =
+  let read_flat_baseline t : justify_self =
+    read_flat_baseline ~what:"justify-self"
+      ~baseline:(Baseline : justify_self)
+      ~first:(First_baseline : justify_self)
+      ~last:(Last_baseline : justify_self)
+      t
+  in
+  let read_unsafe t : justify_self =
+    Reader.expect_string "unsafe" t;
+    Reader.ws t;
+    Reader.enum "justify-self unsafe"
+      [
+        ("center", (Unsafe_center : justify_self));
+        ("start", Unsafe_start);
+        ("end", Unsafe_end);
+        ("self-start", Unsafe_self_start);
+        ("self-end", Unsafe_self_end);
+        ("flex-start", Unsafe_flex_start);
+        ("flex-end", Unsafe_flex_end);
+        ("left", Unsafe_left);
+        ("right", Unsafe_right);
+      ]
+      t
+  in
+  Reader.enum "justify-self"
+    [
+      ("auto", Auto);
+      ("inherit", Inherit);
+      ("normal", Normal);
+      ("stretch", Stretch);
+      ("anchor-center", Anchor_center);
+      ("center", Center);
+      ("start", Start);
+      ("end", End);
+      ("self-start", Self_start);
+      ("self-end", Self_end);
+      ("flex-start", Flex_start);
+      ("flex-end", Flex_end);
+      ("left", Left);
+      ("right", Right);
+    ]
+    ~default:(Reader.one_of [ read_flat_baseline; read_unsafe ])
     t
 
 let rec read_font_weight t : font_weight =
@@ -293,35 +415,39 @@ let read_text_decoration_style t : text_decoration_style =
     ]
     t
 
-let rec read_text_decoration t : text_decoration =
-  let update (acc : text_decoration_shorthand) = function
+let read_text_decoration_component t =
+  Reader.one_of
+    [
+      (fun t -> `Line (read_text_decoration_line t));
+      (fun t -> `Style (read_text_decoration_style t));
+      (fun t -> `Color (read_color t));
+      (fun t -> `Thickness (read_length t));
+    ]
+    t
+
+let read_text_decoration_shorthand t : text_decoration_shorthand =
+  let apply acc = function
     | `Line l -> { acc with lines = l :: acc.lines }
-    | `Style s -> if acc.style = None then { acc with style = Some s } else acc
-    | `Color c -> if acc.color = None then { acc with color = Some c } else acc
-    | `Thickness th ->
-        if acc.thickness = None then { acc with thickness = Some th } else acc
+    | `Style s when acc.style = None -> { acc with style = Some s }
+    | `Color c when acc.color = None -> { acc with color = Some c }
+    | `Thickness th when acc.thickness = None ->
+        { acc with thickness = Some th }
+    | `Style _ | `Color _ | `Thickness _ -> acc (* Already set, ignore *)
   in
-  let read_line_comp t = `Line (read_text_decoration_line t) in
-  let read_style_comp t = `Style (read_text_decoration_style t) in
-  let read_color_comp t = `Color (read_color t) in
-  let read_thickness_comp t = `Thickness (read_length t) in
-  let read_component t =
-    Reader.one_of
-      [ read_line_comp; read_style_comp; read_color_comp; read_thickness_comp ]
-      t
+  let acc, _ =
+    Reader.fold_many read_text_decoration_component
+      ~init:{ lines = []; style = None; color = None; thickness = None }
+      ~f:apply t
   in
+  acc
+
+let rec read_text_decoration t : text_decoration =
   let read_var t : text_decoration = Var (read_var read_text_decoration t) in
   Reader.enum_or_calls "text-decoration"
     [ ("inherit", (Inherit : text_decoration)); ("none", None) ]
     ~calls:[ ("var", read_var) ]
     ~default:(fun t ->
-      let init : text_decoration_shorthand =
-        { lines = []; style = None; color = None; thickness = None }
-      in
-      let acc, _ = Reader.fold_many read_component ~init ~f:update t in
-      (Shorthand
-         ({ acc with lines = List.rev acc.lines } : text_decoration_shorthand)
-        : text_decoration))
+      (Shorthand (read_text_decoration_shorthand t) : text_decoration))
     t
 
 let rec read_text_transform t : text_transform =
@@ -858,29 +984,32 @@ let rec pp_border_width : border_width Pp.t =
   | Var v -> pp_var pp_border_width ctx v
   | Inherit -> Pp.string ctx "inherit"
 
+let pp_border_shorthand : border_shorthand Pp.t =
+ fun ctx { width; style; color } ->
+  let first = ref true in
+  let add_space () = if !first then first := false else Pp.space ctx () in
+  Option.iter
+    (fun w ->
+      add_space ();
+      pp_border_width ctx w)
+    width;
+  Option.iter
+    (fun s ->
+      add_space ();
+      pp_border_style ctx s)
+    style;
+  Option.iter
+    (fun c ->
+      add_space ();
+      pp_color ctx c)
+    color
+
 let pp_border : border Pp.t =
  fun ctx -> function
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | None -> Pp.string ctx "none"
-  | Shorthand { width; style; color } ->
-      let first = ref true in
-      let add_space () = if !first then first := false else Pp.space ctx () in
-      Option.iter
-        (fun w ->
-          add_space ();
-          pp_border_width ctx w)
-        width;
-      Option.iter
-        (fun s ->
-          add_space ();
-          pp_border_style ctx s)
-        style;
-      Option.iter
-        (fun c ->
-          add_space ();
-          pp_color ctx c)
-        color
+  | Shorthand shorthand -> pp_border_shorthand ctx shorthand
 
 let pp_clip : string Pp.t = Pp.string
 
@@ -950,50 +1079,27 @@ let pp_flex_wrap : flex_wrap Pp.t =
   | Wrap -> Pp.string ctx "wrap"
   | Wrap_reverse -> Pp.string ctx "wrap-reverse"
 
-let pp_safe : bool Pp.t =
- fun ctx -> function
-  | true -> Pp.string ctx "safe"
-  | false -> Pp.string ctx "unsafe"
-
-let pp_baseline : baseline Pp.t =
- fun ctx -> function
-  | Baseline -> Pp.string ctx "baseline"
-  | First_baseline -> Pp.string ctx "first baseline"
-  | Last_baseline -> Pp.string ctx "last baseline"
-
-let pp_self_position_items : self_position_items Pp.t =
- fun ctx -> function
-  | Center -> Pp.string ctx "center"
-  | Start -> Pp.string ctx "start"
-  | End -> Pp.string ctx "end"
-  | Self_start -> Pp.string ctx "self-start"
-  | Self_end -> Pp.string ctx "self-end"
-  | Flex_start -> Pp.string ctx "flex-start"
-  | Flex_end -> Pp.string ctx "flex-end"
-
-let pp_self_position_justify : self_position_justify Pp.t =
- fun ctx -> function
-  | Center -> Pp.string ctx "center"
-  | Start -> Pp.string ctx "start"
-  | End -> Pp.string ctx "end"
-  | Self_start -> Pp.string ctx "self-start"
-  | Self_end -> Pp.string ctx "self-end"
-  | Flex_start -> Pp.string ctx "flex-start"
-  | Flex_end -> Pp.string ctx "flex-end"
-  | Left -> Pp.string ctx "left"
-  | Right -> Pp.string ctx "right"
-
 let pp_align_items : align_items Pp.t =
  fun ctx -> function
   | Normal -> Pp.string ctx "normal"
   | Stretch -> Pp.string ctx "stretch"
-  | Baseline b -> pp_baseline ctx b
-  | Self_pos (q, p) ->
-      Option.iter (pp_safe ctx) q;
-      (match q with Some _ -> Pp.space ctx () | None -> ());
-      pp_self_position_items ctx p
-  | Safe -> Pp.string ctx "safe"
-  | Unsafe -> Pp.string ctx "unsafe"
+  | Baseline -> Pp.string ctx "baseline"
+  | First_baseline -> Pp.string ctx "first baseline"
+  | Last_baseline -> Pp.string ctx "last baseline"
+  | Center -> Pp.string ctx "center"
+  | Start -> Pp.string ctx "start"
+  | End -> Pp.string ctx "end"
+  | Self_start -> Pp.string ctx "self-start"
+  | Self_end -> Pp.string ctx "self-end"
+  | Flex_start -> Pp.string ctx "flex-start"
+  | Flex_end -> Pp.string ctx "flex-end"
+  | Unsafe_center -> Pp.string ctx "unsafe center"
+  | Unsafe_start -> Pp.string ctx "unsafe start"
+  | Unsafe_end -> Pp.string ctx "unsafe end"
+  | Unsafe_self_start -> Pp.string ctx "unsafe self-start"
+  | Unsafe_self_end -> Pp.string ctx "unsafe self-end"
+  | Unsafe_flex_start -> Pp.string ctx "unsafe flex-start"
+  | Unsafe_flex_end -> Pp.string ctx "unsafe flex-end"
   | Anchor_center -> Pp.string ctx "anchor-center"
 
 let pp_align_self : align_self Pp.t =
@@ -1001,14 +1107,27 @@ let pp_align_self : align_self Pp.t =
   | Auto -> Pp.string ctx "auto"
   | Normal -> Pp.string ctx "normal"
   | Stretch -> Pp.string ctx "stretch"
-  | Baseline b -> pp_baseline ctx b
-  | Self_pos (q, p) ->
-      Option.iter (pp_safe ctx) q;
-      (match q with Some _ -> Pp.space ctx () | None -> ());
-      pp_self_position_items ctx p
+  | Baseline -> Pp.string ctx "baseline"
+  | First_baseline -> Pp.string ctx "first baseline"
+  | Last_baseline -> Pp.string ctx "last baseline"
+  | Center -> Pp.string ctx "center"
+  | Start -> Pp.string ctx "start"
+  | End -> Pp.string ctx "end"
+  | Self_start -> Pp.string ctx "self-start"
+  | Self_end -> Pp.string ctx "self-end"
+  | Flex_start -> Pp.string ctx "flex-start"
+  | Flex_end -> Pp.string ctx "flex-end"
+  | Unsafe_center -> Pp.string ctx "unsafe center"
+  | Unsafe_start -> Pp.string ctx "unsafe start"
+  | Unsafe_end -> Pp.string ctx "unsafe end"
+  | Unsafe_self_start -> Pp.string ctx "unsafe self-start"
+  | Unsafe_self_end -> Pp.string ctx "unsafe self-end"
+  | Unsafe_flex_start -> Pp.string ctx "unsafe flex-start"
+  | Unsafe_flex_end -> Pp.string ctx "unsafe flex-end"
 
-let pp_content_position : content_position Pp.t =
+let pp_justify_content : justify_content Pp.t =
  fun ctx -> function
+  | Normal -> Pp.string ctx "normal"
   | Center -> Pp.string ctx "center"
   | Start -> Pp.string ctx "start"
   | End -> Pp.string ctx "end"
@@ -1016,59 +1135,73 @@ let pp_content_position : content_position Pp.t =
   | Flex_end -> Pp.string ctx "flex-end"
   | Left -> Pp.string ctx "left"
   | Right -> Pp.string ctx "right"
-
-let pp_content_distribution : content_distribution Pp.t =
- fun ctx -> function
+  | Unsafe_center -> Pp.string ctx "unsafe center"
+  | Unsafe_start -> Pp.string ctx "unsafe start"
+  | Unsafe_end -> Pp.string ctx "unsafe end"
+  | Unsafe_flex_start -> Pp.string ctx "unsafe flex-start"
+  | Unsafe_flex_end -> Pp.string ctx "unsafe flex-end"
+  | Unsafe_left -> Pp.string ctx "unsafe left"
+  | Unsafe_right -> Pp.string ctx "unsafe right"
   | Space_between -> Pp.string ctx "space-between"
   | Space_around -> Pp.string ctx "space-around"
   | Space_evenly -> Pp.string ctx "space-evenly"
   | Stretch -> Pp.string ctx "stretch"
 
-let pp_justify_content : justify_content Pp.t =
- fun ctx -> function
-  | Normal -> Pp.string ctx "normal"
-  | Content_dist d -> pp_content_distribution ctx d
-  | Content_pos (q, p) ->
-      Option.iter
-        (fun ov ->
-          pp_safe ctx ov;
-          Pp.space ctx ())
-        q;
-      pp_content_position ctx p
-
 let pp_justify_items : justify_items Pp.t =
  fun ctx -> function
   | Normal -> Pp.string ctx "normal"
   | Stretch -> Pp.string ctx "stretch"
-  | Baseline b -> pp_baseline ctx b
-  | Self_pos (q, p) ->
-      Option.iter
-        (fun ov ->
-          pp_safe ctx ov;
-          Pp.space ctx ())
-        q;
-      pp_self_position_justify ctx p
+  | Baseline -> Pp.string ctx "baseline"
+  | First_baseline -> Pp.string ctx "first baseline"
+  | Last_baseline -> Pp.string ctx "last baseline"
+  | Center -> Pp.string ctx "center"
+  | Start -> Pp.string ctx "start"
+  | End -> Pp.string ctx "end"
+  | Self_start -> Pp.string ctx "self-start"
+  | Self_end -> Pp.string ctx "self-end"
+  | Flex_start -> Pp.string ctx "flex-start"
+  | Flex_end -> Pp.string ctx "flex-end"
+  | Left -> Pp.string ctx "left"
+  | Right -> Pp.string ctx "right"
+  | Unsafe_center -> Pp.string ctx "unsafe center"
+  | Unsafe_start -> Pp.string ctx "unsafe start"
+  | Unsafe_end -> Pp.string ctx "unsafe end"
+  | Unsafe_self_start -> Pp.string ctx "unsafe self-start"
+  | Unsafe_self_end -> Pp.string ctx "unsafe self-end"
+  | Unsafe_flex_start -> Pp.string ctx "unsafe flex-start"
+  | Unsafe_flex_end -> Pp.string ctx "unsafe flex-end"
+  | Unsafe_left -> Pp.string ctx "unsafe left"
+  | Unsafe_right -> Pp.string ctx "unsafe right"
   | Anchor_center -> Pp.string ctx "anchor-center"
   | Legacy -> Pp.string ctx "legacy"
-  | Safe -> Pp.string ctx "safe"
-  | Unsafe -> Pp.string ctx "unsafe"
 
 let pp_justify_self : justify_self Pp.t =
  fun ctx -> function
   | Auto -> Pp.string ctx "auto"
   | Normal -> Pp.string ctx "normal"
   | Stretch -> Pp.string ctx "stretch"
-  | Baseline b -> pp_baseline ctx b
-  | Self_pos (q, p) ->
-      Option.iter
-        (fun ov ->
-          pp_safe ctx ov;
-          Pp.space ctx ())
-        q;
-      pp_self_position_justify ctx p
+  | Baseline -> Pp.string ctx "baseline"
+  | First_baseline -> Pp.string ctx "first baseline"
+  | Last_baseline -> Pp.string ctx "last baseline"
+  | Center -> Pp.string ctx "center"
+  | Start -> Pp.string ctx "start"
+  | End -> Pp.string ctx "end"
+  | Self_start -> Pp.string ctx "self-start"
+  | Self_end -> Pp.string ctx "self-end"
+  | Flex_start -> Pp.string ctx "flex-start"
+  | Flex_end -> Pp.string ctx "flex-end"
+  | Left -> Pp.string ctx "left"
+  | Right -> Pp.string ctx "right"
+  | Unsafe_center -> Pp.string ctx "unsafe center"
+  | Unsafe_start -> Pp.string ctx "unsafe start"
+  | Unsafe_end -> Pp.string ctx "unsafe end"
+  | Unsafe_self_start -> Pp.string ctx "unsafe self-start"
+  | Unsafe_self_end -> Pp.string ctx "unsafe self-end"
+  | Unsafe_flex_start -> Pp.string ctx "unsafe flex-start"
+  | Unsafe_flex_end -> Pp.string ctx "unsafe flex-end"
+  | Unsafe_left -> Pp.string ctx "unsafe left"
+  | Unsafe_right -> Pp.string ctx "unsafe right"
   | Anchor_center -> Pp.string ctx "anchor-center"
-  | Safe -> Pp.string ctx "safe"
-  | Unsafe -> Pp.string ctx "unsafe"
   | Inherit -> Pp.string ctx "inherit"
 
 let pp_font_style : font_style Pp.t =
@@ -1104,34 +1237,35 @@ let pp_text_decoration_style : text_decoration_style Pp.t =
   | Wavy -> Pp.string ctx "wavy"
   | Inherit -> Pp.string ctx "inherit"
 
+let pp_text_decoration_shorthand : text_decoration_shorthand Pp.t =
+ fun ctx { lines; style; color; thickness } ->
+  let first = ref true in
+  let space_if_needed () = if !first then first := false else Pp.space ctx () in
+  (match lines with
+  | [] -> ()
+  | ls ->
+      space_if_needed ();
+      Pp.list ~sep:Pp.space pp_text_decoration_line ctx ls);
+  (match style with
+  | None -> ()
+  | Some s ->
+      space_if_needed ();
+      pp_text_decoration_style ctx s);
+  (match color with
+  | None -> ()
+  | Some c ->
+      space_if_needed ();
+      pp_color ctx c);
+  match thickness with
+  | None -> ()
+  | Some l ->
+      space_if_needed ();
+      pp_length ctx l
+
 let rec pp_text_decoration : text_decoration Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
-  | Shorthand { lines; style; color; thickness } -> (
-      let first = ref true in
-      let space_if_needed () =
-        if !first then first := false else Pp.space ctx ()
-      in
-      (match lines with
-      | [] -> ()
-      | ls ->
-          space_if_needed ();
-          Pp.list ~sep:Pp.space pp_text_decoration_line ctx ls);
-      (match style with
-      | None -> ()
-      | Some s ->
-          space_if_needed ();
-          pp_text_decoration_style ctx s);
-      (match color with
-      | None -> ()
-      | Some c ->
-          space_if_needed ();
-          pp_color ctx c);
-      match thickness with
-      | None -> ()
-      | Some l ->
-          space_if_needed ();
-          pp_length ctx l)
+  | Shorthand shorthand -> pp_text_decoration_shorthand ctx shorthand
   | Inherit -> Pp.string ctx "inherit"
   | Var v -> pp_var pp_text_decoration ctx v
 
@@ -1636,22 +1770,30 @@ let pp_background_attachment : background_attachment Pp.t =
   | Scroll -> Pp.string ctx "scroll"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_repeat_style : repeat_style Pp.t =
+let pp_background_repeat : background_repeat Pp.t =
  fun ctx -> function
   | Repeat -> Pp.string ctx "repeat"
   | Space -> Pp.string ctx "space"
   | Round -> Pp.string ctx "round"
   | No_repeat -> Pp.string ctx "no-repeat"
-
-let pp_background_repeat : background_repeat Pp.t =
- fun ctx -> function
   | Repeat_x -> Pp.string ctx "repeat-x"
   | Repeat_y -> Pp.string ctx "repeat-y"
-  | Single s -> pp_repeat_style ctx s
-  | Pair (a, b) ->
-      pp_repeat_style ctx a;
-      Pp.space ctx ();
-      pp_repeat_style ctx b
+  | Repeat_repeat -> Pp.string ctx "repeat repeat"
+  | Repeat_space -> Pp.string ctx "repeat space"
+  | Repeat_round -> Pp.string ctx "repeat round"
+  | Repeat_no_repeat -> Pp.string ctx "repeat no-repeat"
+  | Space_repeat -> Pp.string ctx "space repeat"
+  | Space_space -> Pp.string ctx "space space"
+  | Space_round -> Pp.string ctx "space round"
+  | Space_no_repeat -> Pp.string ctx "space no-repeat"
+  | Round_repeat -> Pp.string ctx "round repeat"
+  | Round_space -> Pp.string ctx "round space"
+  | Round_round -> Pp.string ctx "round round"
+  | Round_no_repeat -> Pp.string ctx "round no-repeat"
+  | No_repeat_repeat -> Pp.string ctx "no-repeat repeat"
+  | No_repeat_space -> Pp.string ctx "no-repeat space"
+  | No_repeat_round -> Pp.string ctx "no-repeat round"
+  | No_repeat_no_repeat -> Pp.string ctx "no-repeat no-repeat"
   | Inherit -> Pp.string ctx "inherit"
 
 let pp_background_box : background_box Pp.t =
@@ -1662,28 +1804,22 @@ let pp_background_box : background_box Pp.t =
   | Text -> Pp.string ctx "text"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_position_component : position_component Pp.t =
- fun ctx -> function
-  | Left -> Pp.string ctx "left"
-  | Center -> Pp.string ctx "center"
-  | Right -> Pp.string ctx "right"
-  | Top -> Pp.string ctx "top"
-  | Bottom -> Pp.string ctx "bottom"
-  | Px f -> Pp.unit ctx f "px"
-  | Rem f -> Pp.unit ctx f "rem"
-  | Em f -> Pp.unit ctx f "em"
-  | Pct p -> Pp.unit ctx p "%"
-  | Vw f -> Pp.unit ctx f "vw"
-  | Vh f -> Pp.unit ctx f "vh"
-
 let pp_position_2d : position_2d Pp.t =
  fun ctx -> function
   | Inherit -> Pp.string ctx "inherit"
   | Center -> Pp.string ctx "center"
+  | Left_top -> Pp.string ctx "left top"
+  | Left_center -> Pp.string ctx "left center"
+  | Left_bottom -> Pp.string ctx "left bottom"
+  | Right_top -> Pp.string ctx "right top"
+  | Right_center -> Pp.string ctx "right center"
+  | Right_bottom -> Pp.string ctx "right bottom"
+  | Center_top -> Pp.string ctx "center top"
+  | Center_bottom -> Pp.string ctx "center bottom"
   | XY (a, b) ->
-      pp_position_component ctx a;
+      pp_length ctx a;
       Pp.space ctx ();
-      pp_position_component ctx b
+      pp_length ctx b
 
 let pp_background_size : background_size Pp.t =
  fun ctx -> function
@@ -1758,14 +1894,22 @@ let pp_transform_origin : transform_origin Pp.t =
  fun ctx -> function
   | Inherit -> Pp.string ctx "inherit"
   | Center -> Pp.string ctx "center"
+  | Left_top -> Pp.string ctx "left top"
+  | Left_center -> Pp.string ctx "left center"
+  | Left_bottom -> Pp.string ctx "left bottom"
+  | Right_top -> Pp.string ctx "right top"
+  | Right_center -> Pp.string ctx "right center"
+  | Right_bottom -> Pp.string ctx "right bottom"
+  | Center_top -> Pp.string ctx "center top"
+  | Center_bottom -> Pp.string ctx "center bottom"
   | XY (a, b) ->
-      pp_position_component ctx a;
+      pp_length ctx a;
       Pp.space ctx ();
-      pp_position_component ctx b
+      pp_length ctx b
   | XYZ (a, b, z) ->
-      pp_position_component ctx a;
+      pp_length ctx a;
       Pp.space ctx ();
-      pp_position_component ctx b;
+      pp_length ctx b;
       Pp.space ctx ();
       pp_length ctx z
 
@@ -1778,19 +1922,40 @@ let rec pp_background : background Pp.t =
   | Shorthand s -> pp_background_shorthand ctx s
 
 (* Helpers for typed positions (shorter than direct constructors) *)
-let pos_left : position_2d = XY (Left, Center)
-let pos_right : position_2d = XY (Right, Center)
-let pos_top : position_2d = XY (Center, Top)
-let pos_bottom : position_2d = XY (Center, Bottom)
+let pos_left : position_2d = Left_center
+let pos_right : position_2d = Right_center
+let pos_top : position_2d = Center_top
+let pos_bottom : position_2d = Center_bottom
 
 (* Helpers for transform-origin *)
-let origin (a : position_component) (b : position_component) : transform_origin
-    =
-  XY (a, b)
+let origin (a : length) (b : length) : transform_origin = XY (a, b)
 
-let origin3d (a : position_component) (b : position_component) (z : length) :
-    transform_origin =
+let origin3d (a : length) (b : length) (z : length) : transform_origin =
   XYZ (a, b, z)
+
+let pp_animation_direction : animation_direction Pp.t =
+ fun ctx -> function
+  | Normal -> Pp.string ctx "normal"
+  | Reverse -> Pp.string ctx "reverse"
+  | Alternate -> Pp.string ctx "alternate"
+  | Alternate_reverse -> Pp.string ctx "alternate-reverse"
+
+let pp_animation_fill_mode : animation_fill_mode Pp.t =
+ fun ctx -> function
+  | None -> Pp.string ctx "none"
+  | Forwards -> Pp.string ctx "forwards"
+  | Backwards -> Pp.string ctx "backwards"
+  | Both -> Pp.string ctx "both"
+
+let pp_animation_iteration_count : animation_iteration_count Pp.t =
+ fun ctx -> function
+  | Infinite -> Pp.string ctx "infinite"
+  | Num n -> Pp.float ctx n
+
+let pp_animation_play_state : animation_play_state Pp.t =
+ fun ctx -> function
+  | Running -> Pp.string ctx "running"
+  | Paused -> Pp.string ctx "paused"
 
 let pp_animation_shorthand : animation_shorthand Pp.t =
  fun ctx anim ->
@@ -1838,36 +2003,44 @@ let pp_animation_shorthand : animation_shorthand Pp.t =
   in
   match anim.name with
   | None -> Pp.string ctx "none"
-  | Some name ->
+  | Some name -> (
       Pp.string ctx name;
-      opt pp_duration anim.duration;
-      opt pp_timing anim.timing_function;
-      opt pp_iter_count anim.iteration_count;
-      opt pp_duration anim.delay
-
-let pp_animation_direction : animation_direction Pp.t =
- fun ctx -> function
-  | Normal -> Pp.string ctx "normal"
-  | Reverse -> Pp.string ctx "reverse"
-  | Alternate -> Pp.string ctx "alternate"
-  | Alternate_reverse -> Pp.string ctx "alternate-reverse"
-
-let pp_animation_fill_mode : animation_fill_mode Pp.t =
- fun ctx -> function
-  | None -> Pp.string ctx "none"
-  | Forwards -> Pp.string ctx "forwards"
-  | Backwards -> Pp.string ctx "backwards"
-  | Both -> Pp.string ctx "both"
-
-let pp_animation_iteration_count : animation_iteration_count Pp.t =
- fun ctx -> function
-  | Infinite -> Pp.string ctx "infinite"
-  | Num n -> Pp.float ctx n
-
-let pp_animation_play_state : animation_play_state Pp.t =
- fun ctx -> function
-  | Running -> Pp.string ctx "running"
-  | Paused -> Pp.string ctx "paused"
+      (* Only output non-default values for proper minification *)
+      (match anim.duration with
+      | Some (S 0.) | Some (Ms 0.) | None -> ()
+      | Some d ->
+          Pp.char ctx ' ';
+          pp_duration ctx d);
+      (match anim.timing_function with
+      | Some Ease | None -> ()
+      | Some t ->
+          Pp.char ctx ' ';
+          pp_timing ctx t);
+      (match anim.delay with
+      | Some (S 0.) | Some (Ms 0.) | None -> ()
+      | Some d ->
+          Pp.char ctx ' ';
+          pp_duration ctx d);
+      (match anim.iteration_count with
+      | Some (Num 1.) | None -> ()
+      | Some c ->
+          Pp.char ctx ' ';
+          pp_iter_count ctx c);
+      (match anim.direction with
+      | Some Normal | None -> ()
+      | Some d ->
+          Pp.char ctx ' ';
+          pp_animation_direction ctx d);
+      (match anim.fill_mode with
+      | Some None | None -> ()
+      | Some m ->
+          Pp.char ctx ' ';
+          pp_animation_fill_mode ctx m);
+      match anim.play_state with
+      | Some Running | None -> ()
+      | Some s ->
+          Pp.char ctx ' ';
+          pp_animation_play_state ctx s)
 
 let rec pp_animation : animation Pp.t =
  fun ctx -> function
@@ -2117,14 +2290,6 @@ let pp_webkit_font_smoothing : webkit_font_smoothing Pp.t =
   | Subpixel_antialiased -> Pp.string ctx "subpixel-antialiased"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_scroll_snap_axis : scroll_snap_axis Pp.t =
- fun ctx -> function
-  | X -> Pp.string ctx "x"
-  | Y -> Pp.string ctx "y"
-  | Block -> Pp.string ctx "block"
-  | Inline -> Pp.string ctx "inline"
-  | Both -> Pp.string ctx "both"
-
 let rec pp_scroll_snap_strictness : scroll_snap_strictness Pp.t =
  fun ctx -> function
   | Proximity -> Pp.string ctx "proximity"
@@ -2134,17 +2299,26 @@ let rec pp_scroll_snap_strictness : scroll_snap_strictness Pp.t =
 let pp_scroll_snap_type : scroll_snap_type Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
-  | Axis (axis, strictness) -> (
-      pp_scroll_snap_axis ctx axis;
-      match strictness with
-      | None -> ()
-      | Some s ->
-          Pp.space ctx ();
-          pp_scroll_snap_strictness ctx s)
+  | X -> Pp.string ctx "x"
+  | Y -> Pp.string ctx "y"
+  | Block -> Pp.string ctx "block"
+  | Inline -> Pp.string ctx "inline"
+  | Both -> Pp.string ctx "both"
+  | X_mandatory -> Pp.string ctx "x mandatory"
+  | Y_mandatory -> Pp.string ctx "y mandatory"
+  | Block_mandatory -> Pp.string ctx "block mandatory"
+  | Inline_mandatory -> Pp.string ctx "inline mandatory"
+  | Both_mandatory -> Pp.string ctx "both mandatory"
+  | X_proximity -> Pp.string ctx "x proximity"
+  | Y_proximity -> Pp.string ctx "y proximity"
+  | Block_proximity -> Pp.string ctx "block proximity"
+  | Inline_proximity -> Pp.string ctx "inline proximity"
+  | Both_proximity -> Pp.string ctx "both proximity"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_grid_track_breadth : grid_track_breadth Pp.t =
+let rec pp_grid_template : grid_template Pp.t =
  fun ctx -> function
+  | None -> Pp.string ctx "none"
   | Px f -> Pp.unit ctx f "px"
   | Rem f -> Pp.unit ctx f "rem"
   | Em f -> Pp.unit ctx f "em"
@@ -2158,13 +2332,7 @@ let pp_grid_track_breadth : grid_track_breadth Pp.t =
   | Auto -> Pp.string ctx "auto"
   | Min_content -> Pp.string ctx "min-content"
   | Max_content -> Pp.string ctx "max-content"
-
-let rec pp_grid_track_size : grid_track_size Pp.t =
- fun ctx -> function
-  | Track_size breadth -> pp_grid_track_breadth ctx breadth
-  | Min_max (min, max) ->
-      Pp.call_2 "minmax" pp_grid_track_breadth pp_grid_track_breadth ctx
-        (min, max)
+  | Min_max (min, max) -> Pp.call_2 "minmax" pp_length pp_length ctx (min, max)
   | Fit_content l -> Pp.call "fit-content" pp_length ctx l
   | Repeat (count, sizes) ->
       Pp.call "repeat"
@@ -2172,13 +2340,9 @@ let rec pp_grid_track_size : grid_track_size Pp.t =
           Pp.int ctx count;
           Pp.comma ctx ();
           Pp.space ctx ();
-          Pp.list ~sep:Pp.space pp_grid_track_size ctx sizes)
+          Pp.list ~sep:Pp.space pp_grid_template ctx sizes)
         ctx (count, sizes)
-
-let pp_grid_template : grid_template Pp.t =
- fun ctx -> function
-  | None -> Pp.string ctx "none"
-  | Tracks sizes -> Pp.list ~sep:Pp.space pp_grid_track_size ctx sizes
+  | Tracks sizes -> Pp.list ~sep:Pp.space pp_grid_template ctx sizes
   | Named_tracks tracks ->
       let pp_named_track ctx (name, size) =
         (match name with
@@ -2187,7 +2351,7 @@ let pp_grid_template : grid_template Pp.t =
             Pp.string ctx n;
             Pp.string ctx "] "
         | None -> ());
-        pp_grid_track_size ctx size
+        pp_grid_template ctx size
       in
       Pp.list ~sep:Pp.space pp_named_track ctx tracks
   | Subgrid -> Pp.string ctx "subgrid"
@@ -2263,8 +2427,12 @@ let pp_flex : flex Pp.t =
       Pp.space ctx ();
       pp_flex_basis ctx basis
 
-let pp_content_position : content_position Pp.t =
+let pp_align_content : align_content Pp.t =
  fun ctx -> function
+  | Normal -> Pp.string ctx "normal"
+  | Baseline -> Pp.string ctx "baseline"
+  | First_baseline -> Pp.string ctx "first baseline"
+  | Last_baseline -> Pp.string ctx "last baseline"
   | Center -> Pp.string ctx "center"
   | Start -> Pp.string ctx "start"
   | End -> Pp.string ctx "end"
@@ -2272,26 +2440,17 @@ let pp_content_position : content_position Pp.t =
   | Flex_end -> Pp.string ctx "flex-end"
   | Left -> Pp.string ctx "left"
   | Right -> Pp.string ctx "right"
-
-let pp_content_distribution : content_distribution Pp.t =
- fun ctx -> function
+  | Unsafe_center -> Pp.string ctx "unsafe center"
+  | Unsafe_start -> Pp.string ctx "unsafe start"
+  | Unsafe_end -> Pp.string ctx "unsafe end"
+  | Unsafe_flex_start -> Pp.string ctx "unsafe flex-start"
+  | Unsafe_flex_end -> Pp.string ctx "unsafe flex-end"
+  | Unsafe_left -> Pp.string ctx "unsafe left"
+  | Unsafe_right -> Pp.string ctx "unsafe right"
   | Space_between -> Pp.string ctx "space-between"
   | Space_around -> Pp.string ctx "space-around"
   | Space_evenly -> Pp.string ctx "space-evenly"
   | Stretch -> Pp.string ctx "stretch"
-
-let pp_align_content : align_content Pp.t =
- fun ctx -> function
-  | Normal -> Pp.string ctx "normal"
-  | Baseline b -> pp_baseline ctx b
-  | Content_dist d -> pp_content_distribution ctx d
-  | Content_pos (q, p) ->
-      Option.iter
-        (fun ov ->
-          pp_safe ctx ov;
-          Pp.space ctx ())
-        q;
-      pp_content_position ctx p
 
 let pp_place_content : place_content Pp.t =
  fun ctx -> function
@@ -2389,21 +2548,22 @@ let pp_transition_property : transition_property Pp.t =
 let pp_transition_shorthand : transition_shorthand Pp.t =
  fun ctx { property; duration; timing_function; delay } ->
   pp_transition_property ctx property;
+  (* Only output non-default values: defaults are 0s, ease, 0s *)
   (match duration with
+  | Some (S 0.) | Some (Ms 0.) | None -> ()
   | Some d ->
       Pp.space ctx ();
-      pp_duration ctx d
-  | None -> ());
+      pp_duration ctx d);
   (match timing_function with
+  | Some Ease | None -> ()
   | Some tf ->
       Pp.space ctx ();
-      pp_timing_function ctx tf
-  | None -> ());
+      pp_timing_function ctx tf);
   match delay with
+  | Some (S 0.) | Some (Ms 0.) | None -> ()
   | Some d ->
       Pp.space ctx ();
       pp_duration ctx d
-  | None -> ()
 
 let rec pp_transition : transition Pp.t =
  fun ctx -> function
@@ -2866,20 +3026,24 @@ let read_border_component t =
     ]
     t
 
-let read_border t : border =
+let read_border_shorthand t : border_shorthand =
   let apply acc = function
-    | `Width w -> if acc.width = None then { acc with width = Some w } else acc
-    | `Style s -> if acc.style = None then { acc with style = Some s } else acc
-    | `Color c -> if acc.color = None then { acc with color = Some c } else acc
+    | `Width w when acc.width = None -> { acc with width = Some w }
+    | `Style s when acc.style = None -> { acc with style = Some s }
+    | `Color c when acc.color = None -> { acc with color = Some c }
+    | `Width _ | `Style _ | `Color _ -> acc (* Already set, ignore *)
   in
+  let acc, _ =
+    Reader.fold_many read_border_component
+      ~init:{ width = None; style = None; color = None }
+      ~f:apply t
+  in
+  acc
+
+let read_border t : border =
   Reader.enum "border"
     [ ("inherit", (Inherit : border)); ("initial", Initial); ("none", None) ]
-    ~default:(fun t : border ->
-      let init : border_shorthand =
-        { width = None; style = None; color = None }
-      in
-      let acc, _ = Reader.fold_many read_border_component ~init ~f:apply t in
-      (Shorthand acc : border))
+    ~default:(fun t : border -> Shorthand (read_border_shorthand t))
     t
 
 let read_visibility t : visibility =
@@ -2906,54 +3070,6 @@ let read_flex_wrap t : flex_wrap =
       ("wrap", Wrap);
       ("wrap-reverse", Wrap_reverse);
     ]
-    t
-
-let read_align_self t : align_self =
-  let read_baseline_pos t : align_self = Baseline (read_baseline t) in
-  let read_self_pos t : align_self =
-    let safe, pos = read_self_with_safe t in
-    Self_pos (safe, pos)
-  in
-  Reader.enum "align-self"
-    [ ("auto", Auto); ("normal", Normal); ("stretch", Stretch) ]
-    ~default:(Reader.one_of [ read_baseline_pos; read_self_pos ])
-    t
-
-let read_justify_items t : justify_items =
-  let read_baseline_val t : justify_items = Baseline (read_baseline t) in
-  let read_self_pos t : justify_items =
-    let safe, pos = read_self_justify_with_safe t in
-    Self_pos (safe, pos)
-  in
-  Reader.enum "justify-items"
-    [
-      ("normal", (Normal : justify_items));
-      ("stretch", Stretch);
-      ("anchor-center", Anchor_center);
-      ("legacy", Legacy);
-      ("safe", Safe);
-      ("unsafe", Unsafe);
-    ]
-    ~default:(Reader.one_of [ read_baseline_val; read_self_pos ])
-    t
-
-let read_justify_self t : justify_self =
-  let read_baseline_pos t : justify_self = Baseline (read_baseline t) in
-  let read_self_pos t : justify_self =
-    let safe, pos = read_self_justify_with_safe t in
-    Self_pos (safe, pos)
-  in
-  Reader.enum "justify-self"
-    [
-      ("auto", (Auto : justify_self));
-      ("inherit", Inherit);
-      ("normal", Normal);
-      ("stretch", Stretch);
-      ("anchor-center", Anchor_center);
-      ("safe", Safe);
-      ("unsafe", Unsafe);
-    ]
-    ~default:(Reader.one_of [ read_baseline_pos; read_self_pos ])
     t
 
 let read_flex_basis t : flex_basis =
@@ -3059,74 +3175,6 @@ let read_place_content t : place_content =
   in
   Reader.one_of [ read_pair; read_single ] t
 
-let read_content_distribution t : content_distribution =
-  Reader.enum "content-distribution"
-    [
-      ("space-between", (Space_between : content_distribution));
-      ("space-around", Space_around);
-      ("space-evenly", Space_evenly);
-      ("stretch", Stretch);
-    ]
-    t
-
-let read_self_position_items t : self_position_items =
-  Reader.enum "self-position-items"
-    [
-      ("center", (Center : self_position_items));
-      ("start", Start);
-      ("end", End);
-      ("self-start", Self_start);
-      ("self-end", Self_end);
-      ("flex-start", Flex_start);
-      ("flex-end", Flex_end);
-    ]
-    t
-
-let read_self_position_justify t : self_position_justify =
-  Reader.enum "self-position-justify"
-    [
-      ("center", (Center : self_position_justify));
-      ("start", Start);
-      ("end", End);
-      ("self-start", Self_start);
-      ("self-end", Self_end);
-      ("flex-start", Flex_start);
-      ("flex-end", Flex_end);
-      ("left", Left);
-      ("right", Right);
-    ]
-    t
-
-let read_align_content t : align_content =
-  let tok = Reader.ident t in
-  let read_overflow s : bool option =
-    match s with "safe" -> Some true | "unsafe" -> Some false | _ -> None
-  in
-  match tok with
-  | "normal" -> (Normal : align_content)
-  | "baseline" -> Baseline Baseline
-  | "first" ->
-      Reader.ws t;
-      Reader.expect_string "baseline" t;
-      Baseline First_baseline
-  | "last" ->
-      Reader.ws t;
-      Reader.expect_string "baseline" t;
-      Baseline Last_baseline
-  | s when read_overflow s <> None ->
-      let q = read_overflow s in
-      Reader.ws t;
-      Content_pos (q, read_content_position t)
-  | s -> (
-      match s with
-      | "center" | "start" | "end" | "flex-start" | "flex-end" | "left"
-      | "right" ->
-          let p = read_content_position t in
-          Content_pos (None, p)
-      | "space-between" | "space-around" | "space-evenly" | "stretch" ->
-          Content_dist (read_content_distribution t)
-      | _ -> err_invalid_value t "align-content" s)
-
 let read_place_items t : place_items =
   (* Pair path: align-items then justify (whitespace-separated) *)
   let read_pair t =
@@ -3161,123 +3209,61 @@ let read_grid_auto_flow t : grid_auto_flow =
   | "dense", _ -> Dense
   | _ -> err_invalid_value t "grid-auto-flow" v
 
-(* CSS Grid track breadth - supports <length-percentage> | <flex> | min-content
-   | max-content | auto *)
-let read_grid_track_breadth t : grid_track_breadth =
-  Reader.one_of
-    [
-      (* Keywords first *)
-      (fun t ->
-        Reader.enum "track-breadth"
-          [
-            ("auto", (Auto : grid_track_breadth));
-            ("min-content", (Min_content : grid_track_breadth));
-            ("max-content", (Max_content : grid_track_breadth));
-          ]
-          t);
-      (* Fr unit *)
-      (fun t ->
-        let n, unit = Reader.number_with_unit t in
-        if unit = "fr" then Fr n
-        else Reader.err_invalid t ("expected 'fr' unit, got '" ^ unit ^ "'"));
-      (* Length units *)
-      (fun t ->
-        let n, unit = Reader.number_with_unit t in
-        match unit with
-        | "" ->
-            if n = 0.0 then Zero
-            else Reader.err_invalid t "unitless non-zero values not allowed"
-        | "px" -> Px n
-        | "rem" -> Rem n
-        | "em" -> Em n
-        | "%" -> Pct n
-        | "vw" -> Vw n
-        | "vh" -> Vh n
-        | "vmin" -> Vmin n
-        | "vmax" -> Vmax n
-        | _ ->
-            Reader.err_invalid t ("unsupported grid track breadth unit: " ^ unit));
-    ]
-    t
+(* CSS Grid template - flattened type with direct constructors *)
 
-let read_grid_min_breadth_keywords t =
-  Reader.enum "min-breadth"
-    [
-      ("auto", (Auto : grid_track_breadth));
-      ("min-content", (Min_content : grid_track_breadth));
-      ("max-content", (Max_content : grid_track_breadth));
-    ]
-    t
-
-let read_grid_min_breadth_length t =
-  let n, unit = Reader.number_with_unit t in
-  match unit with
-  | "" ->
-      if n = 0.0 then Zero
-      else Reader.err_invalid t "unitless non-zero values not allowed"
-  | "px" -> Px n
-  | "rem" -> Rem n
-  | "em" -> Em n
-  | "%" -> Pct n
-  | "vw" -> Vw n
-  | "vh" -> Vh n
-  | "vmin" -> Vmin n
-  | "vmax" -> Vmax n
-  | _ -> Reader.err_invalid t ("unsupported min breadth unit: " ^ unit)
-
-let read_grid_min_breadth t =
-  Reader.one_of
-    [ read_grid_min_breadth_keywords; read_grid_min_breadth_length ]
-    t
-
-let read_grid_fit_content t =
-  Reader.call "fit-content" t (fun t -> Fit_content (read_length t))
-
-let read_grid_minmax t =
-  Reader.call "minmax" t (fun t ->
-      (* Per CSS spec: min cannot be flex, max can be flex *)
-      let a, b =
-        Reader.pair ~sep:Reader.comma read_grid_min_breadth
-          read_grid_track_breadth t
-      in
-      Min_max (a, b))
-
-let rec read_grid_track_size t : grid_track_size =
-  let read_repeat t =
-    Reader.call "repeat" t (fun t ->
-        let count, sizes =
-          Reader.pair ~sep:Reader.comma Reader.int
-            (Reader.list read_grid_track_size)
-            t
-        in
-        (Repeat (count, sizes) : grid_track_size))
+let rec read_grid_template t : grid_template =
+  let read_minmax t : grid_template =
+    let min = read_length t in
+    Reader.ws t;
+    Reader.expect ',' t;
+    Reader.ws t;
+    let max = read_length t in
+    Min_max (min, max)
   in
-  let read_default t = Track_size (read_grid_track_breadth t) in
-  Reader.one_of
-    [ read_grid_fit_content; read_grid_minmax; read_repeat; read_default ]
-    t
-
-let read_grid_template t : grid_template =
-  Reader.enum "grid-template"
+  let read_fit_content t : grid_template =
+    let len = read_length t in
+    Fit_content len
+  in
+  let read_repeat t : grid_template =
+    let count = Reader.int t in
+    Reader.ws t;
+    Reader.expect ',' t;
+    Reader.ws t;
+    let tracks = Reader.list ~sep:(fun t -> Reader.ws t) read_grid_template t in
+    Repeat (count, tracks)
+  in
+  let read_length_value t : grid_template =
+    match read_length t with
+    | Px n -> (Px n : grid_template)
+    | Rem n -> Rem n
+    | Em n -> Em n
+    | Vw n -> Vw n
+    | Vh n -> Vh n
+    | Vmin n -> Vmin n
+    | Vmax n -> Vmax n
+    | Pct n -> Pct n
+    | Zero -> Zero
+    | _ -> Auto
+  in
+  let read_fr t : grid_template =
+    let n = Reader.number t in
+    Reader.expect_string "fr" t;
+    Fr n
+  in
+  Reader.enum_or_calls "grid-template"
     [
       ("none", (None : grid_template));
-      ("subgrid", Subgrid);
-      ("masonry", Masonry);
+      ("auto", Auto);
+      ("min-content", Min_content);
+      ("max-content", Max_content);
     ]
-    ~default:(fun t -> Tracks (Reader.list read_grid_track_size t))
-    t
-
-let read_grid_line t : grid_line =
-  let read_span t =
-    Reader.expect_string "span" t;
-    Reader.ws t;
-    Span (Reader.int t)
-  in
-  let read_number t : grid_line = Num (Reader.int t) in
-  let read_name t : grid_line = Name (Reader.ident t) in
-  Reader.enum "grid-line"
-    [ ("auto", (Auto : grid_line)) ]
-    ~default:(fun t -> Reader.one_of [ read_span; read_number; read_name ] t)
+    ~calls:
+      [
+        ("minmax", read_minmax);
+        ("fit-content", read_fit_content);
+        ("repeat", read_repeat);
+      ]
+    ~default:(fun t -> Reader.one_of [ read_fr; read_length_value ] t)
     t
 
 let read_aspect_ratio t : aspect_ratio =
@@ -3574,17 +3560,6 @@ let read_scroll_snap_stop t : scroll_snap_stop =
     ]
     t
 
-let read_scroll_snap_axis t : scroll_snap_axis =
-  Reader.enum "scroll-snap-axis"
-    [
-      ("x", (X : scroll_snap_axis));
-      ("y", Y);
-      ("block", Block);
-      ("inline", Inline);
-      ("both", Both);
-    ]
-    t
-
 let rec read_scroll_snap_strictness t : scroll_snap_strictness =
   let read_var t = Var (read_var read_scroll_snap_strictness t) in
   Reader.enum_or_calls "scroll-snap-strictness"
@@ -3596,33 +3571,36 @@ let rec read_scroll_snap_strictness t : scroll_snap_strictness =
     t
 
 let read_scroll_snap_type t : scroll_snap_type =
-  let v = Reader.ident t in
-  match v with
-  | "none" -> None
-  | "inherit" -> Inherit
-  | _ ->
-      let axis =
-        match v with
-        | "x" -> X
-        | "y" -> Y
-        | "block" -> Block
-        | "inline" -> Inline
-        | "both" -> Both
-        | _ -> Reader.err_invalid t ("invalid scroll-snap-axis: " ^ v)
-      in
+  Reader.enum "scroll-snap-type"
+    [
+      ("none", (None : scroll_snap_type));
+      ("x", X);
+      ("y", Y);
+      ("block", Block);
+      ("inline", Inline);
+      ("both", Both);
+      ("inherit", Inherit);
+    ]
+    ~default:(fun t : scroll_snap_type ->
+      (* Read compound values like "x mandatory" *)
+      let axis = Reader.ident t in
       Reader.ws t;
-      let strictness =
-        Reader.option
-          (fun t ->
-            Reader.enum "scroll-snap-strictness"
-              [
-                ("proximity", (Proximity : scroll_snap_strictness));
-                ("mandatory", Mandatory);
-              ]
-              t)
-          t
-      in
-      Axis (axis, strictness)
+      let strictness = Reader.ident t in
+      match (axis, strictness) with
+      | "x", "mandatory" -> X_mandatory
+      | "y", "mandatory" -> Y_mandatory
+      | "block", "mandatory" -> Block_mandatory
+      | "inline", "mandatory" -> Inline_mandatory
+      | "both", "mandatory" -> Both_mandatory
+      | "x", "proximity" -> X_proximity
+      | "y", "proximity" -> Y_proximity
+      | "block", "proximity" -> Block_proximity
+      | "inline", "proximity" -> Inline_proximity
+      | "both", "proximity" -> Both_proximity
+      | _ ->
+          Reader.err_invalid t
+            ("invalid scroll-snap-type: " ^ axis ^ " " ^ strictness))
+    t
 
 let read_overscroll_behavior t : overscroll_behavior =
   Reader.enum "overscroll-behavior"
@@ -4146,18 +4124,12 @@ let read_transition_shorthand t : transition_shorthand =
   { property; duration; timing_function; delay }
 
 let rec read_transition t : transition =
-  Reader.ws t;
-  if Reader.looking_at t "inherit" then (
-    ignore (Reader.ident t);
-    Inherit)
-  else if Reader.looking_at t "initial" then (
-    ignore (Reader.ident t);
-    Initial)
-  else if Reader.looking_at t "none" then (
-    ignore (Reader.ident t);
-    None)
-  else if Reader.looking_at t "var(" then Var (read_var read_transition t)
-  else Shorthand (read_transition_shorthand t)
+  let read_var_call t : transition = Var (read_var read_transition t) in
+  Reader.enum_or_calls "transition"
+    [ ("inherit", Inherit); ("initial", Initial); ("none", None) ]
+    ~calls:[ ("var", read_var_call) ]
+    ~default:(fun t : transition -> Shorthand (read_transition_shorthand t))
+    t
 
 let read_transitions t : transition list =
   Reader.list ~at_least:1 ~sep:Reader.comma read_transition t
@@ -4264,18 +4236,12 @@ let read_animation_shorthand t : animation_shorthand =
   else acc
 
 let rec read_animation t : animation =
-  Reader.ws t;
-  if Reader.looking_at t "inherit" then (
-    ignore (Reader.ident t);
-    Inherit)
-  else if Reader.looking_at t "initial" then (
-    ignore (Reader.ident t);
-    Initial)
-  else if Reader.looking_at t "none" then (
-    ignore (Reader.ident t);
-    None)
-  else if Reader.looking_at t "var(" then Var (read_var read_animation t)
-  else Shorthand (read_animation_shorthand t)
+  let read_var_call t : animation = Var (read_var read_animation t) in
+  Reader.enum_or_calls "animation"
+    [ ("inherit", Inherit); ("initial", Initial); ("none", None) ]
+    ~calls:[ ("var", read_var_call) ]
+    ~default:(fun t -> (Shorthand (read_animation_shorthand t) : animation))
+    t
 
 let read_animations t : animation list =
   Reader.list ~at_least:1 ~sep:Reader.comma read_animation t
@@ -4453,24 +4419,33 @@ let read_background_attachment t : background_attachment =
     ]
     t
 
-let read_repeat_style t : repeat_style =
-  Reader.enum "repeat-style"
+let read_background_repeat t : background_repeat =
+  Reader.enum "background-repeat"
     [
-      ("repeat", Repeat);
+      ("repeat", (Repeat : background_repeat));
       ("space", Space);
       ("round", Round);
       ("no-repeat", No_repeat);
+      ("repeat-x", Repeat_x);
+      ("repeat-y", Repeat_y);
+      ("repeat repeat", Repeat_repeat);
+      ("repeat space", Repeat_space);
+      ("repeat round", Repeat_round);
+      ("repeat no-repeat", Repeat_no_repeat);
+      ("space repeat", Space_repeat);
+      ("space space", Space_space);
+      ("space round", Space_round);
+      ("space no-repeat", Space_no_repeat);
+      ("round repeat", Round_repeat);
+      ("round space", Round_space);
+      ("round round", Round_round);
+      ("round no-repeat", Round_no_repeat);
+      ("no-repeat repeat", No_repeat_repeat);
+      ("no-repeat space", No_repeat_space);
+      ("no-repeat round", No_repeat_round);
+      ("no-repeat no-repeat", No_repeat_no_repeat);
+      ("inherit", Inherit);
     ]
-    t
-
-let read_background_repeat t : background_repeat =
-  Reader.enum "background-repeat"
-    [ ("repeat-x", Repeat_x); ("repeat-y", Repeat_y); ("inherit", Inherit) ]
-    ~default:(fun t ->
-      match Reader.list ~at_least:1 ~at_most:2 read_repeat_style t with
-      | [ s ] -> Single s
-      | [ a; b ] -> Pair (a, b)
-      | _ -> Reader.err_invalid t "expected 1 or 2 repeat styles")
     t
 
 let read_background_size t : background_size =
@@ -4885,58 +4860,52 @@ let read_background_box t : background_box =
     ]
     t
 
-let read_position_component t : position_component =
-  let read_pct t : position_component =
-    let n = Reader.number t in
-    Reader.expect '%' t;
-    Pct n
-  in
-  let read_length_value t : position_component =
-    read_position_component_length t
-  in
-  Reader.enum "position-component"
-    [
-      ("left", (Left : position_component));
-      ("center", Center);
-      ("right", Right);
-      ("top", Top);
-      ("bottom", Bottom);
-    ]
-    ~default:(fun t -> Reader.one_of [ read_length_value; read_pct ] t)
-    t
-
 let read_position_2d t : position_2d =
   Reader.enum "position-2d"
-    [ ("center", Center); ("inherit", Inherit) ]
-    ~default:(fun t : position_2d ->
-      let first = read_position_component t in
+    [
+      ("center", (Center : position_2d));
+      ("left", Left_center);
+      ("right", Right_center);
+      ("top", Center_top);
+      ("bottom", Center_bottom);
+      ("inherit", Inherit);
+    ]
+    ~default:(fun t ->
+      let x = read_length t in
       Reader.ws t;
-      match Reader.option read_position_component t with
-      | Some second -> XY (first, second)
-      | None -> XY (first, first))
+      let y = Reader.option read_length t |> Option.value ~default:x in
+      (XY (x, y) : position_2d))
     t
 
 let read_transform_origin t : transform_origin =
-  let read_component t =
-    Reader.one_of
-      [
-        (fun t -> `Pos (read_position_component t));
-        (fun t -> `Len (read_length t));
-      ]
-      t
-  in
   Reader.enum "transform-origin"
-    [ ("inherit", Inherit); ("center", Center) ]
+    [
+      ("inherit", (Inherit : transform_origin));
+      ("center", Center);
+      ("left", Left_center);
+      ("right", Right_center);
+      ("top", Center_top);
+      ("bottom", Center_bottom);
+      ("left top", Left_top);
+      ("left center", Left_center);
+      ("left bottom", Left_bottom);
+      ("right top", Right_top);
+      ("right center", Right_center);
+      ("right bottom", Right_bottom);
+      ("center top", Center_top);
+      ("center bottom", Center_bottom);
+    ]
     ~default:(fun t ->
-      let components, _ = Reader.many read_component t in
-      match components with
-      | [ `Pos a ] -> (
-          match a with Top | Bottom -> XY (Center, a) | _ -> XY (a, Center))
-      | [ `Pos a; `Pos b ] -> XY (a, b)
-      | [ `Pos a; `Pos b; `Len z ] -> XYZ (a, b, z)
-      | [ `Pos a; `Len z ] -> XYZ (a, Center, z)
-      | _ ->
-          err_invalid_value t "transform-origin" "invalid component combination")
+      (* Try to read lengths for XY or XYZ *)
+      let x = read_length t in
+      Reader.ws t;
+      match Reader.option read_length t with
+      | Some y -> (
+          Reader.ws t;
+          match Reader.option read_length t with
+          | Some z -> (XYZ (x, y, z) : transform_origin)
+          | None -> XY (x, y))
+      | None -> XY (x, x))
     t
 
 (* Full CSS background shorthand parser *)
@@ -5001,18 +4970,12 @@ let read_background_shorthand t : background_shorthand =
   acc
 
 let rec read_background t : background =
-  Reader.ws t;
-  if Reader.looking_at t "inherit" then (
-    ignore (Reader.ident t);
-    Inherit)
-  else if Reader.looking_at t "initial" then (
-    ignore (Reader.ident t);
-    Initial)
-  else if Reader.looking_at t "none" then (
-    ignore (Reader.ident t);
-    None)
-  else if Reader.looking_at t "var(" then Var (read_var read_background t)
-  else Shorthand (read_background_shorthand t)
+  let read_var_call t : background = Var (read_var read_background t) in
+  Reader.enum_or_calls "background"
+    [ ("inherit", Inherit); ("initial", Initial); ("none", None) ]
+    ~calls:[ ("var", read_var_call) ]
+    ~default:(fun t -> Shorthand (read_background_shorthand t))
+    t
 
 let read_backgrounds t : background list =
   Reader.list ~sep:Reader.comma read_background t
@@ -5025,3 +4988,18 @@ let read_gap t : gap =
   match second_length with
   | Some col_gap -> { row_gap = Some first_length; column_gap = Some col_gap }
   | None -> { row_gap = Some first_length; column_gap = Some first_length }
+(* Missing pp_ and read_ functions for API consistency *)
+
+(* any_property *)
+(* TODO: Implement pp_any_property correctly for existential type *)
+let pp_any_property : any_property Pp.t =
+ fun ctx (Prop _prop) -> Pp.string ctx "any-property"
+
+let pp_safe : bool Pp.t =
+ fun ctx -> function
+  | true -> Pp.string ctx "safe"
+  | false -> Pp.string ctx "unsafe"
+
+let read_any_property t : any_property =
+  (* TODO: Implement read_any_property correctly for existential type *)
+  Reader.err t "any_property parsing not implemented"

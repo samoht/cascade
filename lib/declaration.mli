@@ -464,69 +464,32 @@ val order : int -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/order} order} property.
 *)
 
-val align_items :
-  ?v:Properties_intf.align_items ->
-  ?safe:bool ->
-  ?position:Properties_intf.self_position_items ->
-  ?baseline:Properties_intf.baseline ->
-  unit ->
-  declaration
-(** [align_items ?safe ?position ?baseline ()] is the
+val align_items : Properties.align_items -> declaration
+(** [align_items v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-items}
      align-items} property. *)
 
-val align_content :
-  ?v:Properties_intf.align_content ->
-  ?distribution:Properties_intf.content_distribution ->
-  ?safe:bool ->
-  ?position:Properties_intf.content_position ->
-  ?baseline:Properties_intf.baseline ->
-  unit ->
-  declaration
-(** [align_content ?distribution ?safe ?position ?baseline ()] is the
+val align_content : Properties.align_content -> declaration
+(** [align_content v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-content}
      align-content} property. *)
 
-val align_self :
-  ?v:Properties_intf.align_self ->
-  ?safe:bool ->
-  ?position:Properties_intf.self_position_items ->
-  ?baseline:Properties_intf.baseline ->
-  unit ->
-  declaration
-(** [align_self ?safe ?position ?baseline ()] is the
+val align_self : Properties.align_self -> declaration
+(** [align_self v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-self} align-self}
     property. *)
 
-val justify_content :
-  ?v:Properties_intf.justify_content ->
-  ?distribution:Properties_intf.content_distribution ->
-  ?safe:bool ->
-  ?position:Properties_intf.content_position ->
-  unit ->
-  declaration
-(** [justify_content ?distribution ?safe ?position ()] is the
+val justify_content : Properties.justify_content -> declaration
+(** [justify_content v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-content}
      justify-content} property. *)
 
-val justify_items :
-  ?v:Properties_intf.justify_items ->
-  ?safe:bool ->
-  ?position:Properties_intf.self_position_justify ->
-  ?baseline:Properties_intf.baseline ->
-  unit ->
-  declaration
-(** [justify_items ?safe ?position ?baseline ()] is the
+val justify_items : Properties.justify_items -> declaration
+(** [justify_items v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-items}
      justify-items} property. *)
 
-val justify_self :
-  ?v:Properties_intf.justify_self ->
-  ?safe:bool ->
-  ?position:Properties_intf.self_position_justify ->
-  ?baseline:Properties_intf.baseline ->
-  unit ->
-  declaration
+val justify_self : Properties.justify_self -> declaration
 (** [justify_self ?safe ?position ?baseline ()] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-self}
      justify-self} property. *)

@@ -459,3 +459,53 @@ let extract_custom_declarations (decls : declaration list) : declaration list =
 (* Extract the variable name from a custom declaration *)
 let custom_declaration_name (decl : declaration) : string option =
   match decl with Custom_declaration { name; _ } -> Some name | _ -> None
+
+(* Pretty-printer for any_syntax *)
+let pp_any_syntax : any_syntax Pp.t = fun ctx (Syntax syn) -> pp_syntax ctx syn
+
+(* Reader for any_syntax *)
+let read_any_syntax (r : Reader.t) : any_syntax =
+  let s = Reader.until r ' ' in
+  match String.trim s with
+  | "<length>" -> Syntax Length
+  | "<color>" -> Syntax Color
+  | "<number>" -> Syntax Number
+  | "<integer>" -> Syntax Integer
+  | "<percentage>" -> Syntax Percentage
+  | "<length-percentage>" -> Syntax Length_percentage
+  | "<angle>" -> Syntax Angle
+  | "<time>" -> Syntax Time
+  | "<custom-ident>" -> Syntax Custom_ident
+  | "<string>" -> Syntax String
+  | "<url>" -> Syntax Url
+  | "<image>" -> Syntax Image
+  | "<transform-function>" -> Syntax Transform_function
+  | "*" -> Syntax Universal
+  | s when String.contains s '|' ->
+      (* Simple parsing for Or types - this is a simplified version *)
+      Syntax Universal
+  | _ -> Syntax Universal (* Default to universal for unknown syntax *)
+
+(* Pretty-printer for any_var *)
+let pp_any_var : any_var Pp.t = fun ctx (V v) -> pp_var (fun _ _ -> ()) ctx v
+
+(* Reader for any_var - this is complex as it needs type information *)
+let read_any_var (r : Reader.t) : any_var =
+  if Reader.looking_at r "var(" then (
+    for _ = 1 to 4 do
+      Reader.skip r
+    done;
+    (* skip "var(" *)
+    Reader.expect '-' r;
+    Reader.expect '-' r;
+    let name = Reader.until r ')' in
+    let name =
+      match String.index_opt name ',' with
+      | Some i -> String.sub name 0 i |> String.trim
+      | None -> String.trim name
+    in
+    Reader.expect ')' r;
+    (* Return a dummy variable - in practice this function would need more
+       context *)
+    V { name; fallback = None; default = None; layer = None; meta = None })
+  else failwith "Expected var() function"
