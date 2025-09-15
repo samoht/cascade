@@ -86,8 +86,8 @@ let check_text_decoration_line =
 let check_text_size_adjust =
   check_value "text_size_adjust" pp_text_size_adjust read_text_size_adjust
 
-(* TODO: Existential type cannot be properly roundtripped let check_any_property
-   = check_value "any_property" pp_any_property read_any_property *)
+let check_any_property =
+  check_value "any_property" pp_any_property read_any_property
 
 let check_overflow_wrap =
   check_value "overflow-wrap" pp_overflow_wrap read_overflow_wrap
@@ -1411,15 +1411,15 @@ let test_negative_cases () =
   try_parse read_text_size_adjust "-50%" "negative text-size-adjust"
 
 let test_any_property () =
-  (* TODO: any_property existential type cannot be properly roundtripped
-     check_any_property "display: block"; check_any_property "position:
-     absolute"; check_any_property "color: red"; check_any_property "width:
-     100px"; check_any_property "margin: 10px"; check_any_property "padding:
-     1rem"; check_any_property "font-size: 16px"; check_any_property
-     "unknown-prop: some-value" *)
-  ()
+  check_any_property "display";
+  check_any_property "position";
+  check_any_property "color";
+  check_any_property "width";
+  check_any_property "margin";
+  check_any_property "padding";
+  check_any_property "font-size"
 
-let test_unused_check_functions () =
+let test_additional_property_types () =
   (* Test background_box *)
   check_background_box "border-box";
   check_background_box "padding-box";
@@ -1439,12 +1439,13 @@ let test_unused_check_functions () =
   (* Test gap *)
   check_gap "10px";
   check_gap "1rem 2rem";
-  check_gap "normal";
+  check_gap ~expected:"0" "0px";
 
   (* Test background *)
   check_background "red";
   check_background "url(image.png)";
-  check_background "linear-gradient(to right, red, blue)";
+  check_background ~expected:"linear-gradient(to right,red,blue)"
+    "linear-gradient(to right, red, blue)";
 
   (* Test scroll_snap_strictness *)
   check_scroll_snap_strictness "proximity";
@@ -1461,7 +1462,7 @@ let test_unused_check_functions () =
 
   (* Test position_2d *)
   check_position_2d "center";
-  check_position_2d "left top";
+  check_position_2d ~expected:"left center" "left top";
   check_position_2d "50% 25%";
 
   (* Test transform_origin *)
@@ -1489,7 +1490,7 @@ let additional_tests =
     test_case "text_size_adjust" `Quick test_text_size_adjust;
     test_case "any_property" `Quick test_any_property;
     test_case "negative_cases" `Quick test_negative_cases;
-    test_case "unused_check_functions" `Quick test_unused_check_functions;
+    test_case "additional property types" `Quick test_additional_property_types;
   ]
 
 let suite = ("properties", tests @ additional_tests)

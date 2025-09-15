@@ -458,6 +458,46 @@ let test_selector_component_parsing () =
   check_ns "xml|";
   check_ns "*|"
 
+let test_attribute_match () =
+  (* Test attribute matching types - these parse just the operator part *)
+  let check_attr_match operator expected_output =
+    let t = Css.Reader.of_string operator in
+    let result = read_attribute_match t in
+    let pp_str = Css.Pp.to_string ~minify:true pp_attribute_match result in
+    check string (Fmt.str "attribute_match %s" operator) expected_output pp_str
+  in
+
+  (* Presence match - empty string yields Presence *)
+  check_attr_match "" "";
+  (* Exact match *)
+  check_attr_match "=test" "=test";
+  (* Whitespace list match *)
+  check_attr_match "~=word" "~=word";
+  (* Hyphen list match *)
+  check_attr_match "|=lang" "|=lang";
+  (* Prefix match *)
+  check_attr_match "^=prefix" "^=prefix";
+  (* Suffix match *)
+  check_attr_match "$=suffix" "$=suffix";
+  (* Substring match *)
+  check_attr_match "*=substring" "*=substring"
+
+let test_attr_flag () =
+  (* Test attribute selector flags - returns option type *)
+  let check_flag input expected_output =
+    let t = Css.Reader.of_string input in
+    let result = read_attr_flag t in
+    let pp_str = Css.Pp.to_string ~minify:true pp_attr_flag result in
+    check string (Fmt.str "attr_flag %s" input) expected_output pp_str
+  in
+
+  (* Case insensitive flag *)
+  check_flag "i" " i";
+  (* Case sensitive flag *)
+  check_flag "s" " s";
+  (* No flag / empty should return None *)
+  check_flag "" ""
+
 (* Test negative cases for unused functions *)
 let test_selector_component_parsing_failures () =
   let open Css.Reader in
@@ -544,6 +584,8 @@ let suite =
       test_case "roundtrip" `Quick roundtrip;
       test_case "selector component parsing" `Quick
         test_selector_component_parsing;
+      test_case "attribute match" `Quick test_attribute_match;
+      test_case "attr flag" `Quick test_attr_flag;
       test_case "selector component failures" `Quick
         test_selector_component_parsing_failures;
       (* Error cases *)
