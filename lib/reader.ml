@@ -30,9 +30,25 @@ let pp_parse_error (err : parse_error) =
   let context_str =
     if err.context_window = "" then ""
     else
-      let marker = String.make err.marker_pos ' ' ^ "^" in
-      let context_clean = String.trim err.context_window in
-      "\n" ^ context_clean ^ "\n" ^ marker
+      (* Don't trim the context - show it as-is to preserve position accuracy *)
+      let context_lines = String.split_on_char '\n' err.context_window in
+      let context_display =
+        match context_lines with
+        | [] -> err.context_window
+        | _ ->
+            (* If multi-line, show each line *)
+            String.concat "\n" context_lines
+      in
+      let marker =
+        if
+          err.marker_pos > 0
+          && err.marker_pos <= String.length err.context_window
+        then String.make err.marker_pos ' ' ^ "^"
+        else
+          (* Fallback if marker position is out of bounds *)
+          String.make 20 ' ' ^ "^"
+      in
+      "\n" ^ context_display ^ "\n" ^ marker
   in
   err.message ^ " at " ^ err.filename ^ ":" ^ string_of_int err.position
   ^ callstack_str ^ context_str

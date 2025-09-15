@@ -215,6 +215,22 @@ let read_grid_template_areas t =
   in
   read_strings []
 
+(* Custom parser for grid-template-columns/rows: handles both single values and
+   lists *)
+let read_grid_template_list t =
+  let first_value = read_grid_template t in
+  Reader.ws t;
+  if Reader.is_done t then
+    (* Single value (e.g., "none", "repeat(3, 1fr)", "1fr") *)
+    first_value
+  else
+    (* Multiple values (e.g., "100px 200px", "1fr 2fr") *)
+    let remaining_values =
+      Reader.list ~sep:(fun t -> Reader.ws t) ~at_least:0 read_grid_template t
+    in
+    let all_values = first_value :: remaining_values in
+    Tracks all_values
+
 (* Helper to read animation-name: none | <custom-ident> *)
 let read_animation_name t =
   if Reader.looking_at t "none" then (
@@ -355,8 +371,8 @@ let read_value (type a) (prop_type : a property) t : declaration =
   | Background -> v Background (read_backgrounds t)
   | Border -> v Border (read_border t)
   (* Grid properties *)
-  | Grid_template_columns -> v Grid_template_columns (read_grid_template t)
-  | Grid_template_rows -> v Grid_template_rows (read_grid_template t)
+  | Grid_template_columns -> v Grid_template_columns (read_grid_template_list t)
+  | Grid_template_rows -> v Grid_template_rows (read_grid_template_list t)
   | Grid_row_start -> v Grid_row_start (read_grid_line t)
   | Grid_row_end -> v Grid_row_end (read_grid_line t)
   | Grid_column_start -> v Grid_column_start (read_grid_line t)

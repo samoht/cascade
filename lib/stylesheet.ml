@@ -458,6 +458,7 @@ and read_block (r : Reader.t) : block =
   let rec read_statements acc =
     Reader.ws r;
     if Reader.peek r = Some '}' then List.rev acc
+    else if Reader.is_done r then List.rev acc
     else
       let stmt = read_statement r in
       read_statements (stmt :: acc)
@@ -535,8 +536,11 @@ and read_layer (r : Reader.t) : statement =
         Reader.skip r;
         Layer_decl [ first ]
     | Some ',' ->
+        Reader.skip r;
+        (* Consume the comma *)
+        Reader.ws r;
         let rest =
-          Reader.list ~sep:Reader.comma
+          Reader.list ~sep:Reader.comma ~at_least:1
             (fun r ->
               Reader.ws r;
               Reader.ident ~keep_case:true r)
@@ -566,6 +570,10 @@ and read_rule (r : Reader.t) : rule =
     | Some '@' ->
         let stmt = read_statement r in
         loop decls (stmt :: nested)
+    | Some ';' ->
+        (* Skip empty statements/extra semicolons *)
+        Reader.skip r;
+        loop decls nested
     | _ -> (
         match Declaration.read_declaration r with
         | Some d ->
@@ -573,8 +581,24 @@ and read_rule (r : Reader.t) : rule =
             (match Reader.peek r with Some ';' -> Reader.skip r | _ -> ());
             loop (d :: decls) nested
         | None ->
-            let nr = read_rule r in
-            loop decls (Rule nr :: nested))
+            (* Check if we're at the end of file or end of block *)
+            if Reader.is_done r then
+              {
+                selector;
+                declarations = List.rev decls;
+                nested = List.rev nested;
+              }
+            else if Reader.peek r = Some '}' then
+              (* We've reached the end of this rule block *)
+              {
+                selector;
+                declarations = List.rev decls;
+                nested = List.rev nested;
+              }
+            else
+              (* Try to parse as a nested rule - CSS nesting is valid *)
+              let nr = read_rule r in
+              loop decls (Rule nr :: nested))
   in
   loop [] []
 
@@ -646,8 +670,13 @@ let read_stylesheet (r : Reader.t) : stylesheet =
         Reader.ws r;
         if Reader.is_done r then List.rev acc
         else
-          let stmt = read_statement r in
-          read_statements (stmt :: acc)
+          match Reader.peek r with
+          | Some '}' ->
+              (* Unexpected closing brace at stylesheet level is an error *)
+              Reader.err_invalid r "unexpected '}' at stylesheet level"
+          | _ ->
+              let stmt = read_statement r in
+              read_statements (stmt :: acc)
       in
       read_statements [])
 

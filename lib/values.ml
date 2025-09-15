@@ -45,22 +45,6 @@ let color_mix ?in_space ?(hue = Default) ?percent1 ?percent2 color1 color2 =
 
 (** Pretty-printing functions *)
 
-let pp_op ctx = function
-  | Add ->
-      (* CSS spec requires spaces around + and - in calc() *)
-      Pp.space ctx ();
-      Pp.char ctx '+';
-      Pp.space ctx ()
-  | Sub ->
-      (* CSS spec requires spaces around + and - in calc() *)
-      Pp.space ctx ();
-      Pp.char ctx '-';
-      Pp.space ctx ()
-  | Mul ->
-      Pp.op_char ctx '*' (* CSS spec: spaces optional, omit when minified *)
-  | Div ->
-      Pp.op_char ctx '/' (* CSS spec: spaces optional, omit when minified *)
-
 let pp_var : type a. a Pp.t -> a var Pp.t =
  fun pp_value ctx v ->
   (* When inlining is enabled, output the default value if available *)
@@ -85,6 +69,21 @@ let pp_var : type a. a Pp.t -> a var Pp.t =
 
 (* Function call formatting now provided by Pp.call and Pp.call_list *)
 
+(** Pretty print calc_op *)
+let pp_calc_op : calc_op Pp.t =
+ fun ctx op ->
+  match op with
+  | Add -> Pp.string ctx " + "
+  | Sub -> Pp.string ctx " - "
+  | Mul ->
+      Pp.space_if_pretty ctx ();
+      Pp.string ctx "*";
+      Pp.space_if_pretty ctx ()
+  | Div ->
+      Pp.space_if_pretty ctx ();
+      Pp.string ctx "/";
+      Pp.space_if_pretty ctx ()
+
 let pp_calc : type a. a Pp.t -> a calc Pp.t =
  fun pp_value ctx calc ->
   Pp.call "calc"
@@ -99,7 +98,7 @@ let pp_calc : type a. a Pp.t -> a calc Pp.t =
             let needs_parens = op_prec < parent_prec in
             if needs_parens then Pp.char ctx '(';
             pp_calc_inner ~parent_prec:op_prec ctx left;
-            pp_op ctx op;
+            pp_calc_op ctx op;
             pp_calc_inner ~parent_prec:op_prec ctx right;
             if needs_parens then Pp.char ctx ')'
       in
@@ -901,8 +900,10 @@ let rec read_channel t : channel =
         (* Clamp percentage to 0-100 per CSS spec *)
         Pct (max 0. (min 100. n))
     | "" ->
-        (* Clamp integer RGB values to 0-255 per CSS spec *)
-        Int (int_of_float (max 0. (min 255. n)))
+        (* For unitless numbers: - If it's a decimal between 0 and 1, treat as
+           Num (for alpha values) - Otherwise treat as Int (RGB 0-255 values) *)
+        if n <= 1.0 && n <> floor n then Num n
+        else Int (int_of_float (max 0. (min 255. n)))
     | _ -> Reader.err_invalid t "channel value"
 
 let read_rgb_space_separated t : color =
@@ -1544,6 +1545,7 @@ let read_color_name t : color_name =
   | "navy" -> Navy
   | "teal" -> Teal
   | "aqua" -> Aqua
+  | "rebeccapurple" -> Rebecca_purple
   | _ -> Reader.err_invalid t ("color name: " ^ s)
 
 (** Pretty print and read meta values *)
@@ -1568,15 +1570,6 @@ let read_hue_interpolation t : hue_interpolation =
       ("default", Default);
     ]
     t
-
-(** Pretty print calc_op *)
-let pp_calc_op : calc_op Pp.t =
- fun ctx op ->
-  match op with
-  | Add -> Pp.string ctx " + "
-  | Sub -> Pp.string ctx " - "
-  | Mul -> Pp.string ctx " * "
-  | Div -> Pp.string ctx " / "
 
 (** Read calc_op *)
 let read_calc_op t : calc_op =

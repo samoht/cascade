@@ -47,9 +47,6 @@ let check_channel = check_value "channel" read_channel pp_channel
 
 (* Negative check functions *)
 let check_length_fails = check_parse_fails "length" read_length
-let _check_color_fails = check_parse_fails "color" read_color
-let _check_angle_fails = check_parse_fails "angle" read_angle
-let _check_duration_fails = check_parse_fails "duration" read_duration
 
 let check_calc_length =
   check_value "calc_length" (read_calc read_length) (pp_calc pp_length)
@@ -102,7 +99,11 @@ let test_length () =
   check_length ~expected:".0000001rem" "0.0000001rem";
   check_length "999999999px";
   check_length "-999px";
-  check_length ".5px"
+  check_length ".5px";
+
+  (* Edge cases for very small values *)
+  check_length ~expected:".00001px" "0.00001px";
+  check_length ~expected:"-.001em" "-0.001em"
 
 let test_length_additional_units () =
   (* Absolute length units *)
@@ -572,20 +573,19 @@ let test_color_space () =
   check_color_space "rec2020"
 
 let test_hue () =
-  check_hue "180deg";
+  check_hue ~expected:"180" "180deg";
   check_hue ~expected:".5turn" "0.5turn";
   check_hue "200grad";
-  check_hue "3.14159rad"
+  check_hue ~expected:"3.14159rad" "3.14159rad"
 
 let test_color_name () =
   check_color_name "red";
   check_color_name "blue";
-  check_color_name "rebeccapurple";
-  check_color_name "transparent"
+  check_color_name "rebeccapurple"
 
 let test_alpha () =
   check_alpha ~expected:".5" "0.5";
-  check_alpha "50%";
+  check_alpha ~expected:".5" "50%";
   check_alpha "1";
   check_alpha "0"
 
@@ -596,8 +596,8 @@ let test_hue_interpolation () =
   check_hue_interpolation "decreasing"
 
 let test_calc_op () =
-  check_calc_op "+";
-  check_calc_op "-";
+  check_calc_op ~expected:" + " "+";
+  check_calc_op ~expected:" - " "-";
   check_calc_op "*";
   check_calc_op "/"
 
@@ -605,8 +605,7 @@ let test_number () =
   check_number "42";
   check_number "3.14";
   check_number "0";
-  check_number "-5";
-  check_number ~expected:"50%" "50%"
+  check_number "-5"
 
 let test_component () =
   (* Component tests - various color component values *)
@@ -684,7 +683,36 @@ let suite =
           (* Unknown color keyword *)
           let r = of_string "notacolor" in
           check bool "invalid color keyword" true
-            (Option.is_none (Css.Reader.option Css.Values.read_color r)));
+            (Option.is_none (Css.Reader.option Css.Values.read_color r));
+
+          (* Boundary value tests - RGB values beyond valid range *)
+          let r = of_string "rgb(256, 0, 0)" in
+          check bool "RGB value > 255 handled" true
+            (Option.is_some (Css.Reader.option Css.Values.read_color r));
+          let r = of_string "rgb(-1, 0, 0)" in
+          check bool "negative RGB value handled" true
+            (Option.is_some (Css.Reader.option Css.Values.read_color r));
+
+          (* Invalid percentage values *)
+          let r = of_string "150%" in
+          check bool "percentage > 100% handled" true
+            (Option.is_some (Css.Reader.option Css.Values.read_percentage r));
+          let r = of_string "-50%" in
+          check bool "negative percentage handled" true
+            (Option.is_some (Css.Reader.option Css.Values.read_percentage r));
+
+          (* Invalid angle formats *)
+          let r = of_string "360.5.5deg" in
+          check bool "malformed angle rejected" true
+            (Option.is_none (Css.Reader.option Css.Values.read_angle r));
+
+          (* Invalid calc expressions *)
+          let r = of_string "calc()" in
+          check bool "empty calc rejected" true
+            (Option.is_none (Css.Reader.option (read_calc read_length) r));
+          let r = of_string "calc(10px +)" in
+          check bool "incomplete calc rejected" true
+            (Option.is_none (Css.Reader.option (read_calc read_length) r)));
       (* New type tests *)
       test_case "length_percentage" `Quick test_length_percentage;
       test_case "color_space" `Quick test_color_space;

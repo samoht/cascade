@@ -1902,6 +1902,10 @@ let pp_transform_origin : transform_origin Pp.t =
   | Right_bottom -> Pp.string ctx "right bottom"
   | Center_top -> Pp.string ctx "center top"
   | Center_bottom -> Pp.string ctx "center bottom"
+  | Top_left -> Pp.string ctx "top left"
+  | Top_right -> Pp.string ctx "top right"
+  | Bottom_left -> Pp.string ctx "bottom left"
+  | Bottom_right -> Pp.string ctx "bottom right"
   | XY (a, b) ->
       pp_length ctx a;
       Pp.space ctx ();
@@ -2548,7 +2552,7 @@ let pp_transition_shorthand : transition_shorthand Pp.t =
       Pp.space ctx ();
       pp_duration ctx d);
   (match timing_function with
-  | Some Ease | None -> ()
+  | None -> ()
   | Some tf ->
       Pp.space ctx ();
       pp_timing_function ctx tf);
@@ -3222,23 +3226,36 @@ let read_grid_line t : grid_line =
 
 let rec read_grid_template t : grid_template =
   let read_minmax t : grid_template =
+    Reader.expect_string "minmax" t;
+    Reader.expect '(' t;
+    Reader.ws t;
+    (* For now, we only support length values in minmax, not fr units or
+       keywords This is a limitation of the current type definition *)
     let min = read_length t in
     Reader.ws t;
     Reader.expect ',' t;
     Reader.ws t;
     let max = read_length t in
+    Reader.ws t;
+    Reader.expect ')' t;
     Min_max (min, max)
   in
   let read_fit_content t : grid_template =
+    Reader.expect_string "fit-content" t;
+    Reader.expect '(' t;
     let len = read_length t in
+    Reader.expect ')' t;
     Fit_content len
   in
   let read_repeat t : grid_template =
+    Reader.expect_string "repeat" t;
+    Reader.expect '(' t;
     let count = Reader.int t in
     Reader.ws t;
     Reader.expect ',' t;
     Reader.ws t;
     let tracks = Reader.list ~sep:(fun t -> Reader.ws t) read_grid_template t in
+    Reader.expect ')' t;
     Repeat (count, tracks)
   in
   let read_length_value t : grid_template =
@@ -3272,7 +3289,7 @@ let rec read_grid_template t : grid_template =
         ("fit-content", read_fit_content);
         ("repeat", read_repeat);
       ]
-    ~default:(fun t -> Reader.one_of [ read_fr; read_length_value ] t)
+    ~default:(fun t -> Reader.one_of [ read_length_value; read_fr ] t)
     t
 
 let read_aspect_ratio t : aspect_ratio =
@@ -4887,34 +4904,67 @@ let read_position_2d t : position_2d =
     t
 
 let read_transform_origin t : transform_origin =
+  let read_keyword_combination t =
+    let read_keyword t =
+      Reader.enum "transform-origin-keyword"
+        [
+          ("center", `Center);
+          ("left", `Left);
+          ("right", `Right);
+          ("top", `Top);
+          ("bottom", `Bottom);
+        ]
+        t
+    in
+    let keywords = Reader.list ~at_least:1 ~at_most:2 read_keyword t in
+    match keywords with
+    | [ `Center ] -> Center
+    | [ `Left ] ->
+        Left_center (* left is horizontal, default to center vertical *)
+    | [ `Right ] ->
+        Right_center (* right is horizontal, default to center vertical *)
+    | [ `Top ] -> Center_top (* top is vertical, default to center horizontal *)
+    | [ `Bottom ] ->
+        Center_bottom (* bottom is vertical, default to center horizontal *)
+    (* Two keyword combinations - order matters for output *)
+    | [ `Left; `Top ] -> Left_top
+    | [ `Top; `Left ] -> Top_left
+    | [ `Left; `Center ] -> Left_center
+    | [ `Left; `Bottom ] -> Left_bottom
+    | [ `Bottom; `Left ] -> Bottom_left
+    | [ `Right; `Top ] -> Right_top
+    | [ `Top; `Right ] -> Top_right
+    | [ `Right; `Center ] -> Right_center
+    | [ `Right; `Bottom ] -> Right_bottom
+    | [ `Bottom; `Right ] -> Bottom_right
+    | [ `Center; `Top ] -> Center_top
+    | [ `Top; `Center ] ->
+        Center_top (* center can be horizontal, top is vertical *)
+    | [ `Center; `Bottom ] -> Center_bottom
+    | [ `Bottom; `Center ] ->
+        Center_bottom (* center can be horizontal, bottom is vertical *)
+    | _ -> err_invalid_value t "transform-origin" "invalid keyword combination"
+  in
   Reader.enum "transform-origin"
-    [
-      ("inherit", (Inherit : transform_origin));
-      ("center", Center);
-      ("left", Left_center);
-      ("right", Right_center);
-      ("top", Center_top);
-      ("bottom", Center_bottom);
-      ("left top", Left_top);
-      ("left center", Left_center);
-      ("left bottom", Left_bottom);
-      ("right top", Right_top);
-      ("right center", Right_center);
-      ("right bottom", Right_bottom);
-      ("center top", Center_top);
-      ("center bottom", Center_bottom);
-    ]
+    [ ("inherit", (Inherit : transform_origin)) ]
     ~default:(fun t ->
-      (* Try to read lengths for XY or XYZ *)
-      let x = read_length t in
-      Reader.ws t;
-      match Reader.option read_length t with
-      | Some y -> (
-          Reader.ws t;
-          match Reader.option read_length t with
-          | Some z -> (XYZ (x, y, z) : transform_origin)
-          | None -> XY (x, y))
-      | None -> XY (x, x))
+      (* Try keyword combination first, then fallback to lengths *)
+      Reader.one_of
+        [
+          read_keyword_combination;
+          (fun t ->
+            (* Try to read lengths for XY or XYZ *)
+            let x = read_length t in
+            Reader.ws t;
+            match Reader.option read_length t with
+            | Some y -> (
+                Reader.ws t;
+                match Reader.option read_length t with
+                | Some z -> (XYZ (x, y, z) : transform_origin)
+                | None -> XY (x, y))
+            | None -> XY (x, x));
+        ]
+        t)
     t
 
 (* Full CSS background shorthand parser *)
