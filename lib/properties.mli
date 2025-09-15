@@ -6,9 +6,6 @@ include module type of Properties_intf
 val pp_property : 'a property Pp.t
 (** [pp_property] is the pretty-printer for property names. *)
 
-val read_property : Reader.t -> any_property
-(** [read_property t] reads one property and returns an existential wrapper. *)
-
 val pp_property_value : ('a property * 'a) Pp.t
 (** [pp_property_value] is the pretty-printer for a property and its typed
     value. *)
