@@ -37,7 +37,6 @@ let check_color_space =
 let check_hue = check_value "hue" read_hue pp_hue
 let check_color_name = check_value "color_name" read_color_name pp_color_name
 let check_alpha = check_value "alpha" read_alpha pp_alpha
-let check_meta = check_value "meta" read_meta pp_meta
 
 let check_hue_interpolation =
   check_value "hue_interpolation" read_hue_interpolation pp_hue_interpolation
@@ -590,10 +589,6 @@ let test_alpha () =
   check_alpha "1";
   check_alpha "0"
 
-let test_meta () =
-  (* Meta is an extensible type - test basic cases *)
-  ()
-
 let test_hue_interpolation () =
   check_hue_interpolation "shorter";
   check_hue_interpolation "longer";
@@ -696,7 +691,6 @@ let suite =
       test_case "hue" `Quick test_hue;
       test_case "color_name" `Quick test_color_name;
       test_case "alpha" `Quick test_alpha;
-      test_case "meta" `Quick test_meta;
       test_case "hue_interpolation" `Quick test_hue_interpolation;
       test_case "calc_op" `Quick test_calc_op;
       test_case "number" `Quick test_number;
