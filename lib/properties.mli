@@ -200,12 +200,6 @@ val pp_align_content : align_content Pp.t
 val read_align_content : Reader.t -> align_content
 (** [read_align_content t] is the [align_content] parsed from [t]. *)
 
-val pp_safe : bool Pp.t
-(** [pp_safe] is the pretty-printer for safe/unsafe overflow alignment. *)
-
-val read_safe : Reader.t -> bool
-(** [read_safe t] is the safe/unsafe flag parsed from [t]. *)
-
 val pp_justify_items : justify_items Pp.t
 (** [pp_justify_items] is the pretty-printer for [justify_items]. *)
 

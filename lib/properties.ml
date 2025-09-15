@@ -1959,13 +1959,6 @@ let pp_animation_play_state : animation_play_state Pp.t =
 
 let pp_animation_shorthand : animation_shorthand Pp.t =
  fun ctx anim ->
-  let opt pp f =
-    Pp.option
-      (fun ctx v ->
-        Pp.char ctx ' ';
-        pp ctx v)
-      ctx f
-  in
   let pp_iter_count ctx = function
     | Infinite -> Pp.string ctx "infinite"
     | Num n -> Pp.float ctx n
@@ -3210,6 +3203,22 @@ let read_grid_auto_flow t : grid_auto_flow =
   | _ -> err_invalid_value t "grid-auto-flow" v
 
 (* CSS Grid template - flattened type with direct constructors *)
+
+let read_grid_line t : grid_line =
+  let read_span_num t =
+    let span_word = Reader.ident t in
+    if span_word = "span" then (
+      Reader.ws t;
+      Span (Reader.int t))
+    else Reader.err t ("Expected 'span' but got " ^ span_word)
+  in
+  let read_number t : grid_line = Num (Reader.int t) in
+  let read_name t : grid_line = Name (Reader.ident t) in
+  Reader.enum "grid-line"
+    [ ("auto", (Auto : grid_line)) ]
+    ~default:(fun t ->
+      Reader.one_of [ read_span_num; read_number; read_name ] t)
+    t
 
 let rec read_grid_template t : grid_template =
   let read_minmax t : grid_template =
@@ -4994,11 +5003,6 @@ let read_gap t : gap =
 (* TODO: Implement pp_any_property correctly for existential type *)
 let pp_any_property : any_property Pp.t =
  fun ctx (Prop _prop) -> Pp.string ctx "any-property"
-
-let pp_safe : bool Pp.t =
- fun ctx -> function
-  | true -> Pp.string ctx "safe"
-  | false -> Pp.string ctx "unsafe"
 
 let read_any_property t : any_property =
   (* TODO: Implement read_any_property correctly for existential type *)
