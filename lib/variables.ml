@@ -107,8 +107,30 @@ let read_syntax (r : Reader.t) : any_syntax =
       Syntax (Brackets (String.sub s 1 (String.length s - 2)))
   | s -> failwith ("Unsupported CSS syntax: " ^ s)
 
-(** Placeholder for reading values - needs proper implementation *)
-let read_value _reader _syntax = () (* FIXME: implement proper value parsing *)
+(** Read a value according to its syntax type - placeholder implementation *)
+let read_value (reader : Reader.t) (syntax : 'a syntax) : 'a =
+  (* For now, use a simplified approach that works with the type system *)
+  (* This is a placeholder that needs proper implementation for each syntax type *)
+  match syntax with
+  | Universal -> Reader.string ~trim:true reader
+  | String -> Reader.string ~trim:true reader
+  | Custom_ident -> Reader.string ~trim:true reader
+  | Url -> Reader.string ~trim:true reader
+  | Image -> Reader.string ~trim:true reader
+  | Transform_function -> Reader.string ~trim:true reader
+  | Brackets _desc -> Reader.string ~trim:true reader
+  | Length -> failwith "Length parsing not implemented"
+  | Color -> failwith "Color parsing not implemented"
+  | Number -> failwith "Number parsing not implemented"
+  | Integer -> failwith "Integer parsing not implemented"
+  | Percentage -> failwith "Percentage parsing not implemented"
+  | Length_percentage -> failwith "Length_percentage parsing not implemented"
+  | Angle -> failwith "Angle parsing not implemented"
+  | Time -> failwith "Time parsing not implemented"
+  | Or (_, _) -> failwith "Or syntax parsing not implemented"
+  | Plus _ -> failwith "Plus syntax parsing not implemented"
+  | Hash _ -> failwith "Hash syntax parsing not implemented"
+  | Question _ -> failwith "Question syntax parsing not implemented"
 
 (** {1 Meta handling} *)
 
