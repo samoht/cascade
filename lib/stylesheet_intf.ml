@@ -51,7 +51,7 @@ and statement =
   | Scope of string option * string option * block
       (** [@scope (start)? to (end)? { ... }] *)
   | Keyframes of string * keyframe list  (** [@keyframes name { ... }] *)
-  | Font_face of Declaration.declaration list  (** [@font-face { ... }] *)
+  | Font_face of font_face_descriptor list  (** [@font-face { ... }] *)
   | Page of string option * Declaration.declaration list
       (** [@page :first { ... }] *)
 
@@ -63,6 +63,29 @@ and keyframe = {
   keyframe_declarations : Declaration.declaration list;
 }
 (** A single keyframe within [@keyframes] *)
+
+(** Font-face descriptors per CSS Fonts spec *)
+and font_face_descriptor =
+  | Font_family of Properties.font_family list  (** Font family name *)
+  | Src of string  (** Font source (url(), local(), etc.) - TODO: proper type *)
+  | Font_style of Properties.font_style  (** normal, italic, oblique *)
+  | Font_weight of Properties.font_weight  (** normal, bold, 100-900 *)
+  | Font_stretch of Properties.font_stretch
+      (** normal, condensed, expanded, etc. *)
+  | Font_display of string
+      (** auto, block, swap, fallback, optional - TODO: proper type *)
+  | Unicode_range of string  (** Unicode range - TODO: proper type *)
+  | Font_variant of string  (** Font variant settings - TODO: proper type *)
+  | Font_feature_settings of string
+      (** OpenType feature settings - TODO: proper type *)
+  | Font_variation_settings of string
+      (** Variable font settings - TODO: proper type *)
+  | Size_adjust of string  (** Size adjustment percentage - TODO: proper type *)
+  | Ascent_override of string  (** Ascent metric override - TODO: proper type *)
+  | Descent_override of string
+      (** Descent metric override - TODO: proper type *)
+  | Line_gap_override of string
+      (** Line gap metric override - TODO: proper type *)
 
 (** {1 Stylesheet Structure} *)
 

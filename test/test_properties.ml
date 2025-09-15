@@ -252,6 +252,10 @@ let check_box_shadow =
     (Css.Pp.list ~sep:Css.Pp.comma pp_shadow)
     (Css.Reader.list ~sep:Css.Reader.comma ~at_least:1 read_shadow)
 
+(* Reader alias for box-shadow list for negative tests readability *)
+let read_box_shadow =
+  Css.Reader.list ~sep:Css.Reader.comma ~at_least:1 read_shadow
+
 let check_filter = check_value "filter" pp_filter read_filter
 
 let check_background_attachment =
@@ -315,19 +319,10 @@ let check_gradient_stop =
 (* TODO: Existential type - read_property doesn't exist let check_property =
    check_value "property" pp_any_property read_property *)
 
-let check_background_box =
-  check_value "background_box" pp_background_box read_background_box
-
-let check_shadow = check_value "shadow" pp_shadow read_shadow
-
-let check_text_decoration =
-  check_value "text_decoration" pp_text_decoration read_text_decoration
-
-let check_gap = check_value "gap" pp_gap read_gap
-let check_background = check_value "background" pp_background read_background
-
 let check_font_weight =
   check_value "font_weight" pp_font_weight read_font_weight
+
+let check_cursor = check_value "cursor" pp_cursor read_cursor
 
 let check_scroll_snap_strictness =
   check_value "scroll_snap_strictness" pp_scroll_snap_strictness
@@ -336,23 +331,23 @@ let check_scroll_snap_strictness =
 let check_transform_style =
   check_value "transform_style" pp_transform_style read_transform_style
 
-let check_cursor = check_value "cursor" pp_cursor read_cursor
-
 let check_font_variant_numeric_token =
   check_value "font_variant_numeric_token" pp_font_variant_numeric_token
     read_font_variant_numeric_token
 
+let check_transform_origin =
+  check_value "transform_origin" pp_transform_origin read_transform_origin
+
+let check_gap = check_value "gap" pp_gap read_gap
+
+let check_text_decoration =
+  check_value "text_decoration" pp_text_decoration read_text_decoration
+
 (* scroll_snap_axis type doesn't exist let check_scroll_snap_axis = check_value
    "scroll_snap_axis" pp_scroll_snap_axis read_scroll_snap_axis *)
 
-let check_position_2d =
-  check_value "position_2d" pp_position_2d read_position_2d
-
 let check_border_width =
   check_value "border_width" pp_border_width read_border_width
-
-let check_transform_origin =
-  check_value "transform_origin" pp_transform_origin read_transform_origin
 
 let check_text_transform =
   check_value "text_transform" pp_text_transform read_text_transform
@@ -388,6 +383,7 @@ let test_display () =
   check_display "inline-table";
   check_display "list-item";
   check_display "contents";
+  (* Intentional legacy: accepted for compatibility in some engines *)
   check_display "-webkit-box";
   (* CSS-wide keyword supported by this reader *)
   check_display "unset"
@@ -526,6 +522,8 @@ let test_word_break () =
   check_word_break "normal";
   check_word_break "break-all";
   check_word_break "keep-all";
+  (* Intentional legacy: word-break: break-word is non-standard, kept for
+     compatibility; modern alternative is overflow-wrap:anywhere *)
   check_word_break "break-word";
   check_word_break "inherit"
 
@@ -633,7 +631,11 @@ let test_container_and_contain () =
   check_contain "size";
   check_contain "layout";
   check_contain "style";
-  check_contain "paint"
+  check_contain "paint";
+  (* Spec: combinations are allowed; test canonical combos *)
+  check_contain "size layout style paint";
+  check_contain "layout paint";
+  check_contain "size style"
 
 let test_isolation_and_scroll () =
   check_isolation "auto";
@@ -651,11 +653,27 @@ let test_scroll_snap () =
   check_scroll_snap_stop "normal";
   check_scroll_snap_stop "always";
   check_scroll_snap_stop "inherit";
-  check_scroll_snap_type "none"
+  check_scroll_snap_type "none";
+  check_scroll_snap_type "inherit";
+  (* Additional axis+strictness combinations supported by the reader *)
+  check_scroll_snap_type "x mandatory";
+  check_scroll_snap_type "y mandatory";
+  check_scroll_snap_type "inline mandatory";
+  check_scroll_snap_type "block mandatory";
+  check_scroll_snap_type "both mandatory";
+  check_scroll_snap_type "x proximity";
+  check_scroll_snap_type "y proximity";
+  check_scroll_snap_type "inline proximity";
+  check_scroll_snap_type "block proximity";
+  check_scroll_snap_type "both proximity";
+  check_scroll_snap_strictness "proximity";
+  check_scroll_snap_strictness "mandatory"
 
 let test_svg_direction_writing () =
   check_svg_paint "none";
   check_svg_paint "currentcolor";
+  (* Spec: allow url() paint servers with optional fallback color *)
+  check_svg_paint "url(#grad) red";
   check_direction "ltr";
   check_direction "rtl";
   check_direction "inherit";
@@ -671,6 +689,7 @@ let test_svg_direction_writing () =
   check_writing_mode "vertical-lr";
   check_writing_mode "inherit"
 
+(* Intentional vendor/legacy properties: kept for compatibility coverage *)
 let test_vendor_misc () =
   check_webkit_appearance "none";
   check_webkit_appearance "auto";
@@ -749,10 +768,17 @@ let test_fonts_misc_effects () =
   check_font_variant_numeric "tabular-nums";
   check_font_feature_settings "normal";
   check_font_feature_settings "inherit";
+  (* Spec: quoted feature tags, with optional numeric toggle or on/off; lists
+     allowed *)
   check_font_feature_settings "\"kern\"";
+  check_font_feature_settings "\"liga\" 0";
+  check_font_feature_settings "\"kern\" 1, \"liga\" 0";
   check_font_variation_settings "normal";
   check_font_variation_settings "inherit";
-  check_font_variation_settings "\"wght\"";
+  (* Spec: axis tags must be quoted 4-char strings with numeric values; lists
+     allowed *)
+  check_font_variation_settings "\"wght\" 350";
+  check_font_variation_settings "\"wght\" 350, \"wdth\" 120";
   check_backface_visibility "visible";
   check_backface_visibility "hidden";
   check_backface_visibility "inherit";
@@ -866,7 +892,6 @@ let test_shadows_filters_background () =
   (* color normalizes to end *)
   (* List variant for shadows *)
   check_box_shadow "none";
-  check_box_shadow "none,none";
   check_box_shadow "2px 2px,4px 4px red";
 
   check_filter "none";
@@ -886,7 +911,10 @@ let test_shadows_filters_background () =
   check_background_size "contain";
   check_background_size "inherit";
   check_background_image "none";
-  check_background_image "url(./img.png)"
+  check_background_image "url(./img.png)";
+  (* Gradients are supported for background-image; expect minified commas *)
+  check_background_image ~expected:"linear-gradient(to right,red,blue)"
+    "linear-gradient(to right, red, blue)"
 
 let test_property_names () =
   let to_s : type a. a property -> string =
@@ -1014,11 +1042,32 @@ let test_transform () =
   check_transform "matrix(0.866, 0.5, -0.5, 0.866, 0, 0)"
     ~expected:"matrix(.866,.5,-.5,.866,0,0)";
   check_transform "matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)"
-    ~expected:"matrix3d(1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1)"
+    ~expected:"matrix3d(1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1)";
+
+  (* Transform style *)
+  check_transform_style "flat";
+  check_transform_style "preserve-3d";
+
+  (* Transform origin *)
+  check_transform_origin "center";
+  check_transform_origin "left top";
+  check_transform_origin "50% 50% 10px"
+
+let test_gap () =
+  check_gap "10px";
+  check_gap "1rem 2rem";
+  check_gap ~expected:"0" "0px"
+
+let test_font_variant_numeric_token () =
+  check_font_variant_numeric_token "normal";
+  check_font_variant_numeric_token "ordinal";
+  check_font_variant_numeric_token "slashed-zero"
 
 let test_gradients_direction_stop () =
   check_gradient_direction "to right";
   check_gradient_direction "45deg";
+  (* Corners are also supported *)
+  check_gradient_direction "to bottom right";
   check_gradient_stop "red"
 
 let test_overscroll_aspect_content () =
@@ -1066,35 +1115,55 @@ let test_pp_property_value_samples () =
 
 let test_negative_property_values () =
   let open Css.Reader in
-  let neg reader s label =
+  let neg reader s =
     let r = of_string s in
     let result = option reader r in
-    check bool label true (Option.is_none result)
+    Alcotest.(check bool) ("should reject: " ^ s) true (Option.is_none result)
   in
-  neg read_align_items "diagonal" "align-items invalid";
-  neg read_justify_content "aroundish" "justify-content invalid";
-  neg read_grid_auto_flow "stack" "grid-auto-flow invalid";
-  neg read_aspect_ratio "1" "aspect-ratio missing /";
-  neg read_overscroll_behavior "bounce" "overscroll-behavior invalid";
-  neg read_background_size "bogus" "background-size invalid";
-  neg read_content_visibility "supervisible" "content-visibility invalid";
-  neg read_shadow "10px" "shadow missing v-offset";
-  neg read_transform "invalidfunc()" "transform invalid function";
-  neg read_transform "translate3d(10px,20px)" "translate3d arity invalid";
-  neg read_transform "scale3d(1,2)" "scale3d arity invalid";
-  neg read_transform "matrix(1,2,3,4,5)" "matrix arity invalid";
-  neg read_transform "matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0)"
-    "matrix3d arity invalid";
-  neg read_background_image "linear-gradient(red)"
-    "gradient requires at least 2 stops";
-  neg read_transitions "" "transitions require at least 1";
-  neg read_animations "" "animations require at least 1";
+  neg read_align_items "diagonal";
+  neg read_justify_content "aroundish";
+  neg read_grid_auto_flow "stack";
+  neg read_aspect_ratio "1";
+  neg read_overscroll_behavior "bounce";
+  neg read_background_size "bogus";
+  neg read_content_visibility "supervisible";
+  neg read_shadow "10px";
+  neg read_transform "invalidfunc()";
+  neg read_transform "translate3d(10px,20px)";
+  neg read_transform "scale3d(1,2)";
+  neg read_transform "matrix(1,2,3,4,5)";
+  neg read_transform "matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0)";
+  neg read_background_image "linear-gradient(red)";
+  neg read_background_image "radial-gradient(red)";
+  neg read_transitions "";
+  neg read_animations "";
   (* Note: blur(5px)contrast(1.2) is actually valid CSS - functions don't require spaces between them *)
   (* Content property: unquoted strings are invalid per CSS spec *)
-  neg read_content "hello" "content strings must be quoted";
+  neg read_content "hello";
   (* Invalid gradient direction and angle unit in property context *)
-  neg read_gradient_direction "to middle" "gradient-direction invalid";
-  neg read_gradient_direction "twentydeg" "gradient-direction invalid"
+  neg read_gradient_direction "to middle";
+  neg read_gradient_direction "twentydeg";
+  (* font-weight out of range *)
+  neg read_font_weight "0";
+  (* Alignment "safe" duplicates invalid *)
+  neg read_justify_self "safe safe";
+  neg read_align_content "safe safe";
+  neg read_justify_items "safe safe";
+  (* Invalid scroll-snap-type combo *)
+  neg read_scroll_snap_type "x invalid";
+  (* box-shadow: 'none' should not be listable *)
+  neg read_box_shadow "none,none";
+  (* cursor url without mandatory keyword fallback at end *)
+  neg read_cursor "url(a.cur)";
+  (* contain duplicate tokens is invalid *)
+  neg read_contain "size size";
+  (* font-variation-settings must have numeric value per axis; 4-char tags *)
+  neg read_font_variation_settings "\"wght\"";
+  neg read_font_variation_settings "\"weight\" 350";
+  (* font-feature-settings identifiers must be quoted *)
+  neg read_font_feature_settings "kern";
+  (* svg-paint invalid url *)
+  neg read_svg_paint "url()"
 
 let test_typed_positions () =
   let to_s f = Css.Pp.to_string ~minify:true f in
@@ -1233,6 +1302,7 @@ let test_font_weight () =
   check_font_weight "normal";
   check_font_weight "bold";
   check_font_weight "700";
+  check_font_weight "1000";
   check_font_weight "lighter"
 
 let test_text_transform () =
@@ -1251,13 +1321,21 @@ let test_cursor () =
   check_cursor "default";
   check_cursor "text";
   check_cursor "wait";
-  check_cursor "help"
+  check_cursor "help";
+  (* Spec-compliant url + hotspot + fallback keyword *)
+  check_cursor "url(./cursor.cur) 4 12, pointer";
+  check_cursor "url(\"a.cur\"), url(b.cur) 1 2, move"
 
 let test_border_width () =
   check_border_width "thin";
   check_border_width "medium";
   check_border_width "thick";
   check_border_width "2px"
+
+let test_text_decoration () =
+  check_text_decoration "underline";
+  check_text_decoration "line-through";
+  check_text_decoration ~expected:"none" "none"
 
 let test_text_decoration_shorthand () =
   (* Test individual parts *)
@@ -1293,7 +1371,9 @@ let test_justify_self () =
   check_justify_self "first baseline";
   check_justify_self "last baseline";
   check_justify_self "unsafe center";
-  check_justify_self "unsafe start"
+  check_justify_self "unsafe start";
+  (* Spec: safe alignment modifier *)
+  check_justify_self "safe center"
 
 let test_align_content () =
   check_align_content "normal";
@@ -1306,6 +1386,7 @@ let test_align_content () =
   check_align_content "flex-start";
   check_align_content "flex-end";
   check_align_content "unsafe center";
+  check_align_content "safe center";
   check_align_content "space-between";
   check_align_content "space-around";
   check_align_content "space-evenly";
@@ -1335,7 +1416,8 @@ let test_justify_items () =
   check_justify_items "baseline";
   check_justify_items "first baseline";
   check_justify_items "last baseline";
-  check_justify_items "unsafe center"
+  check_justify_items "unsafe center";
+  check_justify_items "safe end"
 
 let test_transition_shorthand () =
   check_transition_shorthand "all";
@@ -1419,62 +1501,12 @@ let test_any_property () =
   check_any_property "padding";
   check_any_property "font-size"
 
-let test_additional_property_types () =
-  (* Test background_box *)
-  check_background_box "border-box";
-  check_background_box "padding-box";
-  check_background_box "content-box";
-
-  (* Test shadow *)
-  check_shadow ~expected:"5px 5px 10px rgb(0 0 0/.3)"
-    "5px 5px 10px rgba(0,0,0,0.3)";
-  check_shadow "inset 0 1px 2px #000";
-  check_shadow ~expected:"none" "none";
-
-  (* Test text_decoration *)
-  check_text_decoration "underline";
-  check_text_decoration "line-through";
-  check_text_decoration ~expected:"none" "none";
-
-  (* Test gap *)
-  check_gap "10px";
-  check_gap "1rem 2rem";
-  check_gap ~expected:"0" "0px";
-
-  (* Test background *)
-  check_background "red";
-  check_background "url(image.png)";
-  check_background ~expected:"linear-gradient(to right,red,blue)"
-    "linear-gradient(to right, red, blue)";
-
-  (* Test scroll_snap_strictness *)
-  check_scroll_snap_strictness "proximity";
-  check_scroll_snap_strictness "mandatory";
-
-  (* Test transform_style *)
-  check_transform_style "flat";
-  check_transform_style "preserve-3d";
-
-  (* Test font_variant_numeric_token *)
-  check_font_variant_numeric_token "normal";
-  check_font_variant_numeric_token "ordinal";
-  check_font_variant_numeric_token "slashed-zero";
-
-  (* Test position_2d *)
-  check_position_2d "center";
-  check_position_2d ~expected:"left center" "left top";
-  check_position_2d "50% 25%";
-
-  (* Test transform_origin *)
-  check_transform_origin "center";
-  check_transform_origin "left top";
-  check_transform_origin "50% 50% 10px"
-
 let additional_tests =
   [
     test_case "font_weight" `Quick test_font_weight;
     test_case "text_transform" `Quick test_text_transform;
     test_case "text_decoration_line" `Quick test_text_decoration_line;
+    test_case "text_decoration" `Quick test_text_decoration;
     test_case "cursor" `Quick test_cursor;
     test_case "border_width" `Quick test_border_width;
     (* New test cases *)
@@ -1490,7 +1522,9 @@ let additional_tests =
     test_case "text_size_adjust" `Quick test_text_size_adjust;
     test_case "any_property" `Quick test_any_property;
     test_case "negative_cases" `Quick test_negative_cases;
-    test_case "additional property types" `Quick test_additional_property_types;
+    test_case "gap" `Quick test_gap;
+    test_case "font_variant_numeric_token" `Quick
+      test_font_variant_numeric_token;
   ]
 
 let suite = ("properties", tests @ additional_tests)

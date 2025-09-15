@@ -8,40 +8,47 @@ include Variables_intf
 (** {1 Custom Property Support} *)
 
 (** Pretty-print a syntax descriptor to CSS syntax string *)
-let rec pp_syntax : type a. a syntax Pp.t =
+let rec pp_syntax_inner : type a. a syntax Pp.t =
  fun ctx syn ->
   match syn with
-  | Length -> Pp.string ctx "\"<length>\""
-  | Color -> Pp.string ctx "\"<color>\""
-  | Number -> Pp.string ctx "\"<number>\""
-  | Integer -> Pp.string ctx "\"<integer>\""
-  | Percentage -> Pp.string ctx "\"<percentage>\""
-  | Length_percentage -> Pp.string ctx "\"<length-percentage>\""
-  | Angle -> Pp.string ctx "\"<angle>\""
-  | Time -> Pp.string ctx "\"<time>\""
-  | Custom_ident -> Pp.string ctx "\"<custom-ident>\""
-  | String -> Pp.string ctx "\"<string>\""
-  | Url -> Pp.string ctx "\"<url>\""
-  | Image -> Pp.string ctx "\"<image>\""
-  | Transform_function -> Pp.string ctx "\"<transform-function>\""
-  | Universal -> Pp.string ctx "\"*\""
+  | Length -> Pp.string ctx "<length>"
+  | Color -> Pp.string ctx "<color>"
+  | Number -> Pp.string ctx "<number>"
+  | Integer -> Pp.string ctx "<integer>"
+  | Percentage -> Pp.string ctx "<percentage>"
+  | Length_percentage -> Pp.string ctx "<length-percentage>"
+  | Angle -> Pp.string ctx "<angle>"
+  | Time -> Pp.string ctx "<time>"
+  | Custom_ident -> Pp.string ctx "<custom-ident>"
+  | String -> Pp.string ctx "<string>"
+  | Url -> Pp.string ctx "<url>"
+  | Image -> Pp.string ctx "<image>"
+  | Transform_function -> Pp.string ctx "<transform-function>"
+  | Universal -> Pp.string ctx "*"
   | Or (syn1, syn2) ->
-      pp_syntax ctx syn1;
+      pp_syntax_inner ctx syn1;
       Pp.string ctx " | ";
-      pp_syntax ctx syn2
+      pp_syntax_inner ctx syn2
   | Plus syn ->
-      pp_syntax ctx syn;
+      pp_syntax_inner ctx syn;
       Pp.string ctx "+"
   | Hash syn ->
-      pp_syntax ctx syn;
+      pp_syntax_inner ctx syn;
       Pp.string ctx "#"
   | Question syn ->
-      pp_syntax ctx syn;
+      pp_syntax_inner ctx syn;
       Pp.string ctx "?"
   | Brackets s ->
       Pp.string ctx "[";
       Pp.string ctx s;
       Pp.string ctx "]"
+
+and pp_syntax : type a. a syntax Pp.t =
+ fun ctx syn ->
+  (* Wrap the whole syntax in quotes *)
+  Pp.string ctx "\"";
+  pp_syntax_inner ctx syn;
+  Pp.string ctx "\""
 
 (** Pretty-print a value according to its syntax type *)
 let rec pp_value : type a. a syntax -> a Pp.t =
@@ -112,10 +119,13 @@ let read_syntax (r : Reader.t) : any_syntax =
   | s when String.length s > 2 && s.[0] = '[' && s.[String.length s - 1] = ']'
     ->
       Syntax (Brackets (String.sub s 1 (String.length s - 2)))
-  | s -> (
+  | s when String.contains s '|' -> (
+      (* Handle composite syntax like "<length> | <percentage>" *)
       match List.map String.trim (String.split_on_char '|' s) with
-      | [ "<length>"; "<percentage>" ] -> Syntax (Or (Length, Percentage))
-      | _ -> Reader.err_invalid r ("Unsupported CSS syntax: " ^ s))
+      | [ "<length>"; "<percentage>" ] | [ "<percentage>"; "<length>" ] ->
+          Syntax (Or (Length, Percentage))
+      | _ -> Reader.err_invalid r ("Unsupported CSS composite syntax: " ^ s))
+  | s -> Reader.err_invalid r ("Unsupported CSS syntax: " ^ s)
 
 (** Read a value according to its syntax type *)
 let rec read_value : type a. Reader.t -> a syntax -> a =

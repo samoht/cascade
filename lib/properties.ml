@@ -4890,21 +4890,39 @@ let read_background_box t : background_box =
     ]
     t
 
-let read_position_2d t : position_2d =
-  Reader.enum "position-2d"
+let read_position_2d (t : Reader.t) : position_2d =
+  let default_fn (t : Reader.t) : position_2d =
+    let x = read_length t in
+    Reader.ws t;
+    let y = Reader.option read_length t |> Option.value ~default:x in
+    XY (x, y)
+  in
+  Reader.enum ~default:default_fn "position-2d"
     [
-      ("center", (Center : position_2d));
+      ("center", Center);
+      ("inherit", Inherit);
+      ("left top", Left_top);
+      ("top left", Left_top);
+      ("left center", Left_center);
+      ("center left", Left_center);
+      ("left bottom", Left_bottom);
+      ("bottom left", Left_bottom);
+      ("right top", Right_top);
+      ("top right", Right_top);
+      ("right center", Right_center);
+      ("center right", Right_center);
+      ("right bottom", Right_bottom);
+      ("bottom right", Right_bottom);
+      ("center top", Center_top);
+      ("top center", Center_top);
+      ("center bottom", Center_bottom);
+      ("bottom center", Center_bottom);
+      ("center center", Center);
       ("left", Left_center);
       ("right", Right_center);
       ("top", Center_top);
       ("bottom", Center_bottom);
-      ("inherit", Inherit);
     ]
-    ~default:(fun t ->
-      let x = read_length t in
-      Reader.ws t;
-      let y = Reader.option read_length t |> Option.value ~default:x in
-      (XY (x, y) : position_2d))
     t
 
 let read_transform_origin t : transform_origin =

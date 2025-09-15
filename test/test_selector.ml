@@ -501,20 +501,20 @@ let test_attr_flag () =
 (* Test negative cases for unused functions *)
 let test_selector_component_parsing_failures () =
   let open Css.Reader in
-  let neg name reader s =
+  let neg reader s =
     let r = of_string s in
     let result = option reader r in
-    Alcotest.(check bool) (name ^ " should fail") true (Option.is_none result)
+    Alcotest.(check bool) ("should reject: " ^ s) true (Option.is_none result)
   in
 
   (* Invalid nth values *)
-  neg "invalid nth" read_nth "invalid";
-  neg "empty nth" read_nth "";
-  neg "nth with space" read_nth "2 n";
+  neg read_nth "invalid";
+  neg read_nth "";
+  neg read_nth "2 n";
 
   (* Invalid combinators *)
-  neg "invalid combinator" read_combinator "!";
-  neg "empty combinator" read_combinator "";
+  neg read_combinator "!";
+  neg read_combinator "";
 
   (* Invalid namespace syntax *)
   let test_invalid_ns () =
