@@ -352,7 +352,7 @@ type grid_template =
   | Min_content
   | Max_content
   (* Complex track values *)
-  | Min_max of length * length
+  | Min_max of grid_template * grid_template
   | Fit_content of length
   | Repeat of int * grid_template list
   | Tracks of grid_template list
@@ -1018,7 +1018,12 @@ type scroll_snap_type =
 type overscroll_behavior = Auto | Contain | None | Inherit
 
 (* SVG Types *)
-type svg_paint = None | Current_color | Color of color
+(* SVG paint servers allow url(#id) with optional fallback (none/currentcolor/color). *)
+type svg_paint =
+  | None
+  | Current_color
+  | Color of color
+  | Url of string * svg_paint option
 
 (* Direction Types *)
 type direction = Ltr | Rtl | Inherit

@@ -695,8 +695,7 @@ let test_svg_direction_writing () =
   check_svg_paint "none";
   check_svg_paint "currentcolor";
   (* Spec: allow url() paint servers with optional fallback color *)
-  (* TODO: svg_paint type doesn't support URL values yet
-  check_svg_paint "url(#grad) red"; *)
+  check_svg_paint "url(#grad) red";
   check_direction "ltr";
   check_direction "rtl";
   check_direction "inherit";

@@ -27,10 +27,6 @@ val attribute : ?ns:ns -> ?flag:attr_flag -> string -> attribute_match -> t
 (** [attribute ?ns ?flag name match] attribute selector. Validates identifiers;
     raises [Invalid_argument] on invalid. *)
 
-val pseudo_class : string -> t
-(** [pseudo_class name] pseudo-class selector (e.g., ":hover"). Validates
-    identifiers where applicable. *)
-
 val pseudo_element : string -> t
 (** [pseudo_element name] pseudo-element selector (e.g., "::before"). Validates
     identifiers. *)
@@ -49,9 +45,6 @@ val where : t list -> t
 
 val not : t list -> t
 (** [not selectors] [:not(...)] pseudo-class. *)
-
-val fun_ : string -> t list -> t
-(** [fun_ name args] functional pseudo-class (e.g., [:is], [:has]). *)
 
 val list : t list -> t
 (** [list selectors] comma-separated selector list. *)
@@ -134,9 +127,27 @@ val nth_last_of_type : ?of_:t list -> nth -> t
 (** [nth_last_of_type ?of_ nth] builds [:nth-last-of-type] with optional [:of].
 *)
 
-val pseudo_element_fun : string -> t list -> t
-(** [pseudo_element_fun name args] builds a functional pseudo-element (e.g.,
-    ::slotted). *)
+val dir : string -> t
+(** [dir direction] [:dir(ltr|rtl)] pseudo-class. *)
+
+val lang : string list -> t
+(** [lang languages] [:lang(...)] pseudo-class. *)
+
+val host : ?selectors:t list -> unit -> t
+(** [host ?selectors ()] [:host] or [:host(selector)] pseudo-class. *)
+
+val host_context : t list -> t
+(** [host_context selectors] [:host-context(selector)] pseudo-class. *)
+
+val state : string -> t
+(** [state name] [:state(custom-state)] pseudo-class. *)
+
+val heading : unit -> t
+(** [heading ()] [:heading()] pseudo-class (experimental). *)
+
+val active_view_transition_type : ?types:string list -> unit -> t
+(** [active_view_transition_type ?types ()] [:active-view-transition-type()]
+    pseudo-class. *)
 
 val part : string list -> t
 (** [part names] builds a ::part(...) pseudo-element. *)

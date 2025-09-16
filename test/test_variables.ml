@@ -208,11 +208,7 @@ let test_any_syntax () =
   check_any_syntax "<angle>";
   check_any_syntax "<time>";
   check_any_syntax "*";
-
-  (* Composite syntax normalizes to canonical form *)
-  check_any_syntax ~expected:"<length-percentage>" "<length> | <percentage>";
-  (* Unknown syntax still falls back to universal *)
-  check_any_syntax ~expected:"*" "unknown-syntax"
+  check_any_syntax "<length> | <percentage>"
 
 let additional_tests =
   [

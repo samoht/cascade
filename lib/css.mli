@@ -1653,7 +1653,7 @@ type grid_template =
   | Auto
   | Min_content
   | Max_content
-  | Min_max of length * length
+  | Min_max of grid_template * grid_template
   | Fit_content of length
   | Repeat of int * grid_template list
   | Tracks of grid_template list
@@ -3135,6 +3135,7 @@ type svg_paint =
   | None  (** No paint *)
   | Current_color  (** Current color value *)
   | Color of color  (** Specific color value *)
+  | Url of string * svg_paint option  (** url(#id) with optional fallback *)
 
 val fill : svg_paint -> declaration
 (** [fill value] is the SVG fill property. *)

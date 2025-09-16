@@ -98,11 +98,11 @@ let id_cases () =
 
 (* Test pseudo-class selectors *)
 let pseudo_class_cases () =
-  check_construct "hover" ":hover" (pseudo_class "hover");
-  check_construct "active" ":active" (pseudo_class "active");
-  check_construct "focus" ":focus" (pseudo_class "focus");
-  check_construct "first-child" ":first-child" (pseudo_class "first-child");
-  check_construct "last-child" ":last-child" (pseudo_class "last-child");
+  check_construct "hover" ":hover" Hover;
+  check_construct "active" ":active" Active;
+  check_construct "focus" ":focus" Focus;
+  check_construct "first-child" ":first-child" First_child;
+  check_construct "last-child" ":last-child" Last_child;
   check_construct "nth-child(2)" ":nth-child(2)" (nth_child (An_plus_b (0, 2)));
   check_construct "nth-child(odd)" ":nth-child(odd)" (nth_child Odd);
   check_construct "nth-child(even)" ":nth-child(even)" (nth_child Even);
@@ -163,7 +163,7 @@ let compound_cases () =
     (element "div" && class_ "container");
   check_construct "element#id" "div#main" (element "div" && id "main");
   check_construct "class.class" ".btn.primary" (class_ "btn" && class_ "primary");
-  check_construct "element:hover" "a:hover" (element "a" && pseudo_class "hover");
+  check_construct "element:hover" "a:hover" (element "a" && Hover);
   check_construct "class[attr]" ".link[href]"
     (class_ "link" && attribute "href" Presence)
 

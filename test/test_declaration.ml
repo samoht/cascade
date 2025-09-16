@@ -705,21 +705,19 @@ let grid () =
     "grid-template-columns: 100px 200px";
   check_declaration ~expected:"grid-template-columns:1fr 2fr"
     "grid-template-columns: 1fr 2fr";
-  check_declaration ~expected:"grid-template-columns:repeat(3, 1fr)"
+  check_declaration ~expected:"grid-template-columns:repeat(3,1fr)"
     "grid-template-columns: repeat(3, 1fr)";
 
-  (* TODO: minmax with fr units requires type change - Min_max should accept
-     grid_template, not just length check_declaration
-     ~expected:"grid-template-columns:minmax(100px,1fr) 200px"
-     "grid-template-columns: minmax(100px, 1fr) 200px"; *)
+  (* minmax with fr units *)
+  check_declaration ~expected:"grid-template-columns:minmax(100px,1fr) 200px"
+    "grid-template-columns: minmax(100px, 1fr) 200px";
   check_declaration ~expected:"grid-template-rows:none"
     "grid-template-rows: none";
   check_declaration ~expected:"grid-template-rows:100px auto"
     "grid-template-rows: 100px auto";
 
-  (* TODO: minmax with fr units requires type change check_declaration
-     ~expected:"grid-template-rows:repeat(2, minmax(0,1fr))"
-     "grid-template-rows: repeat(2, minmax(0, 1fr))"; *)
+  check_declaration ~expected:"grid-template-rows:repeat(2,minmax(0,1fr))"
+    "grid-template-rows: repeat(2, minmax(0, 1fr))";
 
   (* Grid areas *)
   check_declaration

@@ -132,11 +132,22 @@ val vars_of_stylesheet : stylesheet -> Variables.any_var list
 (** {1 Rendering} *)
 
 val to_string :
-  ?minify:bool -> ?mode:mode -> ?newline:bool -> stylesheet -> string
+  ?minify:bool ->
+  ?mode:mode ->
+  ?newline:bool ->
+  ?header:bool ->
+  stylesheet ->
+  string
 (** [to_string ?minify ?mode ?newline stylesheet] renders a stylesheet to CSS.
 *)
 
-val pp : ?minify:bool -> ?mode:mode -> ?newline:bool -> stylesheet -> string
+val pp :
+  ?minify:bool ->
+  ?mode:mode ->
+  ?newline:bool ->
+  ?header:bool ->
+  stylesheet ->
+  string
 (** [pp] is {!to_string}. *)
 
 val inline_style_of_declarations :

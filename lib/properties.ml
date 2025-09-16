@@ -2331,14 +2331,14 @@ let rec pp_grid_template : grid_template Pp.t =
   | Auto -> Pp.string ctx "auto"
   | Min_content -> Pp.string ctx "min-content"
   | Max_content -> Pp.string ctx "max-content"
-  | Min_max (min, max) -> Pp.call_2 "minmax" pp_length pp_length ctx (min, max)
+  | Min_max (min, max) ->
+      Pp.call_2 "minmax" pp_grid_template pp_grid_template ctx (min, max)
   | Fit_content l -> Pp.call "fit-content" pp_length ctx l
   | Repeat (count, sizes) ->
       Pp.call "repeat"
         (fun ctx (count, sizes) ->
           Pp.int ctx count;
           Pp.comma ctx ();
-          Pp.space ctx ();
           Pp.list ~sep:Pp.space pp_grid_template ctx sizes)
         ctx (count, sizes)
   | Tracks sizes -> Pp.list ~sep:Pp.space pp_grid_template ctx sizes
@@ -2532,11 +2532,18 @@ let pp_timing_function : timing_function Pp.t =
   | Steps (n, jump_term_opt) -> pp_steps ctx (n, jump_term_opt)
   | Cubic_bezier (x1, y1, x2, y2) -> pp_cubic_bezier ctx (x1, y1, x2, y2)
 
-let pp_svg_paint : svg_paint Pp.t =
+let rec pp_svg_paint : svg_paint Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
   | Current_color -> Pp.string ctx "currentcolor"
   | Color c -> pp_color ctx c
+  | Url (u, fallback) -> (
+      Pp.url ctx u;
+      match fallback with
+      | None -> ()
+      | Some fb ->
+          Pp.space ctx ();
+          pp_svg_paint ctx fb)
 
 let pp_transition_property : transition_property Pp.t =
  fun ctx -> function
@@ -3229,20 +3236,53 @@ let read_grid_line t : grid_line =
     t
 
 let rec read_grid_template t : grid_template =
+  let read_length_as_grid t : grid_template =
+    match read_length t with
+    | Px n -> (Px n : grid_template)
+    | Rem n -> Rem n
+    | Em n -> Em n
+    | Vw n -> Vw n
+    | Vh n -> Vh n
+    | Vmin n -> Vmin n
+    | Vmax n -> Vmax n
+    | Pct n -> Pct n
+    | Zero -> Zero
+    | _ -> Auto
+  in
+  let read_fr t : grid_template =
+    let n = Reader.number t in
+    Reader.expect_string "fr" t;
+    Fr n
+  in
   let read_minmax t : grid_template =
+    let read_track_breadth t : grid_template =
+      (* Accept a single breadth: length, fr, or keywords *)
+      Reader.one_of
+        [
+          read_length_as_grid;
+          read_fr;
+          (fun t ->
+            Reader.enum "grid-breadth"
+              [
+                ("auto", (Auto : grid_template));
+                ("min-content", (Min_content : grid_template));
+                ("max-content", (Max_content : grid_template));
+              ]
+              t);
+        ]
+        t
+    in
     Reader.expect_string "minmax" t;
     Reader.expect '(' t;
     Reader.ws t;
-    (* For now, we only support length values in minmax, not fr units or
-       keywords This is a limitation of the current type definition *)
-    let min = read_length t in
+    let minv = Reader.one_of [ read_track_breadth ] t in
     Reader.ws t;
     Reader.expect ',' t;
     Reader.ws t;
-    let max = read_length t in
+    let maxv = Reader.one_of [ read_track_breadth ] t in
     Reader.ws t;
     Reader.expect ')' t;
-    Min_max (min, max)
+    Min_max (minv, maxv)
   in
   let read_fit_content t : grid_template =
     Reader.expect_string "fit-content" t;
@@ -3262,24 +3302,7 @@ let rec read_grid_template t : grid_template =
     Reader.expect ')' t;
     Repeat (count, tracks)
   in
-  let read_length_value t : grid_template =
-    match read_length t with
-    | Px n -> (Px n : grid_template)
-    | Rem n -> Rem n
-    | Em n -> Em n
-    | Vw n -> Vw n
-    | Vh n -> Vh n
-    | Vmin n -> Vmin n
-    | Vmax n -> Vmax n
-    | Pct n -> Pct n
-    | Zero -> Zero
-    | _ -> Auto
-  in
-  let read_fr t : grid_template =
-    let n = Reader.number t in
-    Reader.expect_string "fr" t;
-    Fr n
-  in
+  let read_length_value = read_length_as_grid in
   Reader.enum_or_calls "grid-template"
     [
       ("none", (None : grid_template));
@@ -3671,8 +3694,25 @@ let read_overscroll_behavior t : overscroll_behavior =
     t
 
 let read_svg_paint t : svg_paint =
-  Reader.enum "svg-paint"
+  let read_url_with_fallback t =
+    let u = Reader.url t in
+    (* Empty URLs are invalid in SVG paint context *)
+    if u = "" then Reader.err t "svg-paint url() must have a non-empty URL";
+    Reader.ws t;
+    let fb =
+      Reader.option
+        (fun t ->
+          Reader.enum "svg-paint-fallback"
+            [ ("none", (None : svg_paint)); ("currentcolor", Current_color) ]
+            ~default:(fun t -> (Color (read_color t) : svg_paint))
+            t)
+        t
+    in
+    Url (u, fb)
+  in
+  Reader.enum_or_calls "svg-paint"
     [ ("none", (None : svg_paint)); ("currentcolor", Current_color) ]
+    ~calls:[ ("url", read_url_with_fallback) ]
     ~default:(fun t -> (Color (read_color t) : svg_paint))
     t
 
@@ -4081,6 +4121,18 @@ let rec read_font_variation_settings t : font_variation_settings =
     (* Read comma-separated list of axis tags with values *)
     let rec read_axes acc =
       let tag_content = Reader.string t in
+      (* Validate that axis tag is exactly 4 ASCII characters (U+20 - U+7E) *)
+      if String.length tag_content <> 4 then
+        Reader.err t
+          "font-variation-settings axis tag must be exactly 4 characters";
+      String.iter
+        (fun c ->
+          let code = Char.code c in
+          if code < 0x20 || code > 0x7E then
+            Reader.err t
+              "font-variation-settings axis tag must contain only ASCII \
+               characters (U+20 - U+7E)")
+        tag_content;
       (* Keep the quotes around the tag *)
       let tag = "\"" ^ tag_content ^ "\"" in
       Reader.ws t;
