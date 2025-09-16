@@ -173,43 +173,110 @@ let rules (rules : rule list) : rule list =
 
 (** {1 Statement Optimization} *)
 
-let rec statements (stmts : statement list) : statement list =
-  (* Process rules in batches separated by non-Rule items *)
-  let rec process_statements (acc : statement list) (remaining : statement list)
-      : statement list =
-    match remaining with
+(* Check if a layer block contains only empty rules or no statements *)
+let is_layer_empty (block : statement list) : bool =
+  List.for_all
+    (function Rule { declarations = []; _ } -> true | _ -> false)
+    block
+  || block = []
+
+(* Collect consecutive empty named layers and merge them into a Layer_decl *)
+let rec collect_empty_layer_names names remaining =
+  match remaining with
+  | Layer (Some layer_name, layer_block) :: rest when is_layer_empty layer_block
+    ->
+      collect_empty_layer_names (layer_name :: names) rest
+  | Layer_decl existing_names :: rest ->
+      (* Merge with existing layer declaration *)
+      (List.rev names @ existing_names, rest)
+  | _ -> (List.rev names, remaining)
+
+(* Merge consecutive Layer_decl statements *)
+let merge_layer_declarations (stmts : statement list) : statement list =
+  let rec merge acc = function
     | [] -> List.rev acc
-    | Rule r :: rest ->
-        (* Collect consecutive Rule items *)
-        let rec collect_rules (rules_acc : rule list) :
-            statement list -> rule list * statement list = function
-          | Rule r :: rest -> collect_rules (r :: rules_acc) rest
-          | rest -> (List.rev rules_acc, rest)
-        in
-        let plain_rules, rest = collect_rules [ r ] rest in
-        (* Optimize this batch of consecutive rules *)
-        let optimized = rules plain_rules in
-        let as_statements = List.map (fun r -> Rule r) optimized in
-        process_statements (List.rev_append as_statements acc) rest
-    | Media (cond, block) :: rest ->
-        let optimized = Media (cond, statements block) in
-        process_statements (optimized :: acc) rest
-    | Container (name, cond, block) :: rest ->
-        let optimized = Container (name, cond, statements block) in
-        process_statements (optimized :: acc) rest
-    | Supports (cond, block) :: rest ->
-        let optimized = Supports (cond, statements block) in
-        process_statements (optimized :: acc) rest
-    | Layer (name, block) :: rest ->
-        let optimized = Layer (name, statements block) in
-        process_statements (optimized :: acc) rest
-    | hd :: rest ->
-        (* Other statement types - keep as-is *)
-        process_statements (hd :: acc) rest
+    | Layer_decl names1 :: Layer_decl names2 :: rest ->
+        (* Merge consecutive layer declarations *)
+        merge acc (Layer_decl (names1 @ names2) :: rest)
+    | stmt :: rest -> merge (stmt :: acc) rest
   in
-  process_statements [] stmts
+  merge [] stmts
+
+(* Main statement processing function with layer optimization *)
+let rec statements (stmts : statement list) : statement list =
+  process_statements [] stmts |> merge_layer_declarations
+
+and process_statements (acc : statement list) (remaining : statement list) :
+    statement list =
+  match remaining with
+  | [] -> List.rev acc
+  | Rule r :: rest ->
+      (* Collect consecutive Rule items *)
+      let rec collect_rules (rules_acc : rule list) :
+          statement list -> rule list * statement list = function
+        | Rule r :: rest -> collect_rules (r :: rules_acc) rest
+        | rest -> (List.rev rules_acc, rest)
+      in
+      let plain_rules, rest = collect_rules [ r ] rest in
+      (* Optimize this batch of consecutive rules *)
+      let optimized = rules plain_rules in
+      let as_statements = List.map (fun r -> Rule r) optimized in
+      process_statements (List.rev_append as_statements acc) rest
+  | Media (cond, block) :: rest ->
+      let optimized = Media (cond, statements block) in
+      process_statements (optimized :: acc) rest
+  | Container (name, cond, block) :: rest ->
+      let optimized = Container (name, cond, statements block) in
+      process_statements (optimized :: acc) rest
+  | Supports (cond, block) :: rest ->
+      let optimized = Supports (cond, statements block) in
+      process_statements (optimized :: acc) rest
+  | Layer (name, block) :: rest ->
+      let optimized_block = statements block in
+      if is_layer_empty optimized_block then
+        (* Handle empty layer optimization *)
+        match name with
+        | Some layer_name ->
+            let all_names, remaining =
+              collect_empty_layer_names [ layer_name ] rest
+            in
+            let layer_decl = Layer_decl all_names in
+            process_statements (layer_decl :: acc) remaining
+        | None ->
+            (* Anonymous empty layer - just remove it *)
+            process_statements acc rest
+      else
+        let optimized = Layer (name, optimized_block) in
+        process_statements (optimized :: acc) rest
+  | hd :: rest ->
+      (* Other statement types - keep as-is *)
+      process_statements (hd :: acc) rest
 
 (** {1 Stylesheet Optimization} *)
+
+let apply_property_duplication (stylesheet : t) : t =
+  (* Apply only property duplication without other optimizations *)
+  let rec apply_to_statements stmts =
+    List.map
+      (function
+        | Rule rule ->
+            Rule
+              {
+                rule with
+                declarations = duplicate_buggy_properties rule.declarations;
+              }
+        | Media (cond, inner_stmts) ->
+            Media (cond, apply_to_statements inner_stmts)
+        | Layer (name, inner_stmts) ->
+            Layer (name, apply_to_statements inner_stmts)
+        | Container (name, cond, inner_stmts) ->
+            Container (name, cond, apply_to_statements inner_stmts)
+        | Supports (cond, inner_stmts) ->
+            Supports (cond, apply_to_statements inner_stmts)
+        | other -> other)
+      stmts
+  in
+  apply_to_statements stylesheet
 
 let stylesheet (stylesheet : t) : t =
   (* Apply CSS optimizations while preserving cascade semantics *)

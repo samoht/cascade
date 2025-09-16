@@ -36,6 +36,10 @@ val rules : rule list -> rule list
 
 (** {1 Stylesheet Optimization} *)
 
+val apply_property_duplication : t -> t
+(** [apply_property_duplication ss] applies only property duplication for
+    browser compatibility without other optimizations. *)
+
 val stylesheet : t -> t
 (** [stylesheet ss] optimizes an entire stylesheet while preserving cascade
     semantics. When [@supports] blocks are present alongside top-level rules,
