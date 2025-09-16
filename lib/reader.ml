@@ -126,6 +126,10 @@ let with_filename error filename = { error with filename }
 
 let peek t = if t.pos >= t.len then None else Some t.input.[t.pos]
 
+let peek2 t =
+  let n = min 2 (t.len - t.pos) in
+  String.sub t.input t.pos n
+
 let peek_string t n =
   let n = min n (t.len - t.pos) in
   String.sub t.input t.pos n
@@ -152,13 +156,16 @@ let char t =
 
 let expect c t =
   let actual_pos = t.pos in
-  let actual = char t in
-  if actual <> c then (
-    (* Go back one position for better context display *)
-    t.pos <- actual_pos;
-    err t
-      ("Expected '" ^ String.make 1 c ^ "' but got '" ^ String.make 1 actual
-     ^ "'"))
+  if t.pos >= t.len then
+    err t ("Expected '" ^ String.make 1 c ^ "' but reached end of input")
+  else
+    let actual = char t in
+    if actual <> c then (
+      (* Go back one position for better context display *)
+      t.pos <- actual_pos;
+      err t
+        ("Expected '" ^ String.make 1 c ^ "' but got '" ^ String.make 1 actual
+       ^ "'"))
 
 let expect_string s t =
   let slen = String.length s in

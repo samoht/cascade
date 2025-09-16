@@ -86,6 +86,10 @@ val with_filename : parse_error -> string -> parse_error
 val peek : t -> char option
 (** [peek t] returns the current character without consuming it. *)
 
+val peek2 : t -> string
+(** [peek2 t] returns the next two characters without consuming them, or a
+    shorter string if at end. *)
+
 val peek_string : t -> int -> string
 (** [peek_string t n] returns next [n] chars without consuming them. *)
 

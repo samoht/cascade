@@ -291,7 +291,7 @@ let error_unclosed_block () =
   check_raises "missing closing brace"
     (Css.Reader.Parse_error
        {
-         message = "unexpected end of input";
+         message = "Expected '}' but reached end of input";
          got = None;
          position = 13;
          filename = "<string>";
