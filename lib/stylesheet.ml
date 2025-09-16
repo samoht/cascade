@@ -665,6 +665,8 @@ and read_media (r : Reader.t) : statement =
   Reader.expect_string "@media" r;
   Reader.ws r;
   let condition = String.trim (Reader.until r '{') in
+  if String.length condition = 0 then
+    Reader.err r "@media rule requires a media query condition";
   Reader.expect '{' r;
   let content = read_block r in
   Reader.expect '}' r;
@@ -674,6 +676,8 @@ and read_supports (r : Reader.t) : statement =
   Reader.expect_string "@supports" r;
   Reader.ws r;
   let condition = String.trim (Reader.until r '{') in
+  if String.length condition = 0 then
+    Reader.err r "@supports rule requires a condition";
   Reader.expect '{' r;
   let content = read_block r in
   Reader.expect '}' r;
