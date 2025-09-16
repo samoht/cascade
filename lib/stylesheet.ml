@@ -401,22 +401,17 @@ let read_import (r : Reader.t) : statement =
 let read_namespace (r : Reader.t) : statement =
   Reader.expect_string "@namespace" r;
   Reader.ws r;
-  let content = String.trim (Reader.until r ';') in
-  Reader.expect ';' r;
-  (* Parse namespace - handle url() wrapper *)
-  let extract_url s =
-    let s = String.trim s in
-    if String.starts_with ~prefix:"url(" s && String.ends_with ~suffix:")" s
-    then String.sub s 4 (String.length s - 5) |> String.trim
-    else s
+  (* Check for optional prefix *)
+  let prefix =
+    if Reader.looking_at r "url(" then None
+    else Some (Reader.ident ~keep_case:true r)
   in
-  let parts = String.split_on_char ' ' content in
-  match parts with
-  | [ uri ] -> Namespace (None, extract_url uri)
-  | prefix :: rest ->
-      let uri = String.concat " " rest in
-      Namespace (Some prefix, extract_url uri)
-  | [] -> Namespace (None, "")
+  Reader.ws r;
+  (* Read the URL *)
+  let uri = Reader.url r in
+  Reader.ws r;
+  Reader.expect ';' r;
+  Namespace (prefix, uri)
 
 let read_keyframes (r : Reader.t) : statement =
   Reader.with_context r "@keyframes" @@ fun () ->
@@ -858,11 +853,8 @@ and read_rule (r : Reader.t) : rule =
         | None ->
             (* Check if we're at the end of file or end of block *)
             if Reader.is_done r then
-              {
-                selector;
-                declarations = List.rev decls;
-                nested = List.rev nested;
-              }
+              (* Hit EOF without closing brace - this is an error *)
+              Reader.err r "unexpected end of input, expected '}'"
             else if Reader.peek r = Some '}' then
               (* We've reached the end of this rule block *)
               {
