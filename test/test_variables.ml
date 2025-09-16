@@ -54,16 +54,38 @@ let test_var_with_fallback () =
 
 (** Test variable extraction from calc *)
 let test_vars_of_calc () =
-  (* For now, skip testing calc with variables until type system is resolved *)
-  (* Just test that vars_of_calc doesn't crash on simple calc *)
+  (* Test calc without variables *)
   let simple_calc : length calc = Expr (Num 100., Add, Num 8.) in
   let vars = vars_of_calc simple_calc in
   Alcotest.(check int) "no variables in numeric calc" 0 (List.length vars);
 
-  (* Calc without variable *)
-  let simple_calc : length calc = Expr (Num 100., Mul, Num 2.) in
-  let no_vars = vars_of_calc simple_calc in
-  Alcotest.(check int) "no variables in numeric calc" 0 (List.length no_vars)
+  (* Another calc without variables *)
+  let mul_calc : length calc = Expr (Num 100., Mul, Num 2.) in
+  let no_vars = vars_of_calc mul_calc in
+  Alcotest.(check int) "no variables in numeric calc" 0 (List.length no_vars);
+
+  (* Calc with a variable *)
+  let _, gap_var = var "gap" Length (Px 16.) in
+  let calc_with_var : length calc = Expr (Var gap_var, Add, Val (Px 10.)) in
+  let with_vars = vars_of_calc calc_with_var in
+  Alcotest.(check int) "one variable in calc" 1 (List.length with_vars);
+
+  (* Nested calc with multiple variables *)
+  let _, width_var = var "width" Length (Pct 100.) in
+  let nested : length calc =
+    Expr (Var gap_var, Add, Expr (Var width_var, Div, Num 2.))
+  in
+  let nested_vars = vars_of_calc nested in
+  Alcotest.(check int)
+    "two variables in nested calc" 2 (List.length nested_vars);
+
+  (* Complex calc expression *)
+  let complex : length calc =
+    Expr (Expr (Var gap_var, Mul, Num 2.), Sub, Val (Rem 1.))
+  in
+  let complex_vars = vars_of_calc complex in
+  Alcotest.(check int)
+    "one variable in complex calc" 1 (List.length complex_vars)
 
 (** Test variable extraction from properties *)
 let test_vars_of_property () =
@@ -200,15 +222,16 @@ let test_any_var () =
 let test_any_syntax () =
   (* Test syntax parsing according to CSS @property spec
      https://developer.mozilla.org/en-US/docs/Web/CSS/@property/syntax *)
-  check_any_syntax "<length>";
-  check_any_syntax "<color>";
-  check_any_syntax "<number>";
-  check_any_syntax "<integer>";
-  check_any_syntax "<percentage>";
-  check_any_syntax "<angle>";
-  check_any_syntax "<time>";
-  check_any_syntax "*";
-  check_any_syntax "<length> | <percentage>"
+  (* Syntax values must be quoted strings per CSS spec *)
+  check_any_syntax "\"<length>\"";
+  check_any_syntax "\"<color>\"";
+  check_any_syntax "\"<number>\"";
+  check_any_syntax "\"<integer>\"";
+  check_any_syntax "\"<percentage>\"";
+  check_any_syntax "\"<angle>\"";
+  check_any_syntax "\"<time>\"";
+  check_any_syntax "\"*\"";
+  check_any_syntax "\"<length> | <percentage>\""
 
 let additional_tests =
   [

@@ -85,6 +85,14 @@ type align_content =
   | Flex_end
   | Left
   | Right
+  (* Safe content position values *)
+  | Safe_center
+  | Safe_start
+  | Safe_end
+  | Safe_flex_start
+  | Safe_flex_end
+  | Safe_left
+  | Safe_right
   (* Unsafe content position values *)
   | Unsafe_center
   | Unsafe_start
@@ -187,6 +195,16 @@ type justify_items =
   | Flex_end
   | Left
   | Right
+  (* Safe self position values *)
+  | Safe_center
+  | Safe_start
+  | Safe_end
+  | Safe_self_start
+  | Safe_self_end
+  | Safe_flex_start
+  | Safe_flex_end
+  | Safe_left
+  | Safe_right
   (* Unsafe self position values *)
   | Unsafe_center
   | Unsafe_start
@@ -217,6 +235,16 @@ type justify_self =
   | Flex_end
   | Left
   | Right
+  (* Safe self position values *)
+  | Safe_center
+  | Safe_start
+  | Safe_end
+  | Safe_self_start
+  | Safe_self_end
+  | Safe_flex_start
+  | Safe_flex_end
+  | Safe_left
+  | Safe_right
   (* Unsafe self position values *)
   | Unsafe_center
   | Unsafe_start
@@ -929,7 +957,7 @@ type cursor =
   | All_scroll
   | Zoom_in
   | Zoom_out
-  | Url of string * (float * float) option
+  | Url of string * (float * float) option * cursor
   | Inherit
 
 type user_select = None | Auto | Text | All | Contain

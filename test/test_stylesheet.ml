@@ -249,7 +249,10 @@ let test_default_decl_of_property_rule () =
     property ~syntax:Css.Variables.Color
       ~initial_value:(Css.Values.hex "#ff0000") "--my-color"
   in
-  let prop_no_initial = property ~syntax:Css.Variables.Color "--other-color" in
+  (* Universal syntax can omit initial-value *)
+  let prop_no_initial =
+    property ~syntax:Css.Variables.Universal "--other-var"
+  in
 
   (* Test these generate valid statements *)
   let sheet = Css.Stylesheet.v [ prop_with_initial; prop_no_initial ] in
@@ -280,13 +283,19 @@ let test_media_roundtrip () =
 
 (** Test property rule read/pp roundtrip *)
 let test_property_roundtrip () =
-  let input = "@property --color { syntax: \"<color>\"; inherits: true; }" in
+  let input =
+    "@property --color { syntax: \"<color>\"; inherits: true; initial-value: \
+     red }"
+  in
   check_stylesheet input
 
 let test_property_composite_syntax () =
   (* Typed composite syntax: <length> | <percentage> *)
   let syn = Css.Variables.Or (Css.Variables.Length, Css.Variables.Percentage) in
-  let prop = property ~syntax:syn "--size" in
+  let prop =
+    property ~syntax:syn ~initial_value:(Either.Left (Css.Values.Px 0.))
+      "--size"
+  in
   let sheet = Css.Stylesheet.v [ prop ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
   check_stylesheet output
@@ -314,7 +323,52 @@ let test_supports_parsing () =
     "@supports (display: grid){.grid{display:grid}@supports (color: \
      red){.x{color:red}}}"
 
-let test_property_permutations () = ()
+let test_property_permutations () =
+  (* Test that @property descriptors can appear in any order but print
+     canonically According to CSS spec, the canonical order should be: 1. syntax
+     (required) 2. inherits (required) 3. initial-value (optional) *)
+
+  (* Different permutations of the same property should all produce the same
+     output *)
+  let canonical =
+    "@property --x{syntax:\"<length>\";inherits:true;initial-value:0px}"
+  in
+
+  (* Permutation 1: syntax, inherits, initial-value (canonical order) *)
+  case
+    "@property --x { syntax: \"<length>\"; inherits: true; initial-value: 0px }"
+    canonical;
+
+  (* Permutation 2: inherits, syntax, initial-value *)
+  case
+    "@property --x { inherits: true; syntax: \"<length>\"; initial-value: 0px }"
+    canonical;
+
+  (* Permutation 3: initial-value, inherits, syntax *)
+  case
+    "@property --x { initial-value: 0px; inherits: true; syntax: \"<length>\" }"
+    canonical;
+
+  (* Permutation 4: syntax, initial-value, inherits *)
+  case
+    "@property --x { syntax: \"<length>\"; initial-value: 0px; inherits: true }"
+    canonical;
+
+  (* Permutation 5: inherits, initial-value, syntax *)
+  case
+    "@property --x { inherits: true; initial-value: 0px; syntax: \"<length>\" }"
+    canonical;
+
+  (* Permutation 6: initial-value, syntax, inherits *)
+  case
+    "@property --x { initial-value: 0px; syntax: \"<length>\"; inherits: true }"
+    canonical;
+
+  (* Test with only required descriptors in different orders *)
+  let minimal = "@property --y{syntax:\"*\";inherits:false}" in
+
+  case "@property --y { syntax: \"*\"; inherits: false }" minimal;
+  case "@property --y { inherits: false; syntax: \"*\" }" minimal
 
 (** Negative helper for [@property] parsing errors *)
 let expect_property_error name input =
@@ -328,7 +382,13 @@ let expect_property_error name input =
 let test_property_missing_descriptors () =
   expect_property_error "missing syntax" "@property --x { inherits: true }";
   expect_property_error "missing inherits"
-    "@property --x { syntax: \"<color>\" }"
+    "@property --x { syntax: \"<color>\" }";
+  (* initial-value is required for non-universal syntax *)
+  expect_property_error "missing initial-value for <length>"
+    "@property --x { syntax: \"<length>\"; inherits: true }";
+  (* But initial-value is optional for universal syntax "*" *)
+  case "@property --x { syntax: \"*\"; inherits: false }"
+    "@property --x{syntax:\"*\";inherits:false}"
 
 (** Test [@property] invalid inherits values *)
 let test_property_invalid_inherits () =
@@ -407,7 +467,10 @@ let pp_case () =
   in
   let r = rule ~selector:(Selector.class_ "red") [ decl ] in
   let media_stmt = media ~condition:"screen" [ Rule r ] in
-  let prop = property ~syntax:Css.Variables.Color "--primary" in
+  let prop =
+    property ~syntax:Css.Variables.Color
+      ~initial_value:(Css.Values.Named Css.Values.Blue) "--primary"
+  in
 
   let sheet = Css.Stylesheet.v [ Rule r; media_stmt; prop ] in
 
@@ -610,10 +673,6 @@ let test_of_string_negative () =
   test_invalid_css ".btn { : red; }" "missing property name";
 
   (* Invalid color formats *)
-  (* According to CSS spec, rgb(300, 300, 300) should be clamped to rgb(255, 255, 255), NOT rejected.
-     Out-of-range values are valid CSS and should be clamped. *)
-  (* test_invalid_css ".btn { color: rgb(300, 300, 300); }"
-    "invalid RGB values (out of range)"; -- REMOVED: Valid per CSS spec *)
   test_invalid_css ".btn { color: #gggggg; }" "invalid hex color";
 
   (* Invalid length/size values *)
@@ -681,9 +740,6 @@ let test_of_string_negative () =
 
   (* Specificity and cascade errors *)
   test_invalid_css "btn.#id { color: red; }" "invalid selector combination";
-
-  (* NOTE: .btn .btn is valid CSS - it selects nested elements with same class *)
-  (* Removed: test_invalid_css ".btn .btn { color: red; }" - this is valid CSS *)
 
   (* Unicode and encoding errors *)
   test_invalid_css ".btn { content: '\\'; }" "incomplete escape sequence";

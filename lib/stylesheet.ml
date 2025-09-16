@@ -606,12 +606,11 @@ let read_page (r : Reader.t) : statement =
   Reader.expect '}' r;
   Page (selector, declarations)
 
-type property_reader_state =
-  | Init : property_reader_state
-  | Syntax : 'a Variables.syntax -> property_reader_state
-  | Final :
-      'a Variables.syntax * bool option * 'a option
-      -> property_reader_state
+type property_reader_state = {
+  syntax : Variables.any_syntax option;
+  inherits : bool option;
+  initial_value : string option;
+}
 
 let rec read_statement (r : Reader.t) : statement =
   Reader.ws r;
@@ -880,59 +879,67 @@ and read_property_rule (r : Reader.t) : statement =
   let name = Reader.ident ~keep_case:true r in
   Reader.ws r;
   Reader.expect '{' r;
-  match read_property_descriptors r with
-  | Final (syntax, inherits, initial_value) ->
-      Property
-        {
-          name;
-          syntax;
-          inherits = Option.value inherits ~default:false;
-          initial_value;
-        }
-  | _ -> Reader.err_invalid r "read_property_rule"
+  let state = read_property_descriptors r in
+  match (state.syntax, state.inherits) with
+  | None, _ ->
+      Reader.err_invalid r "@property: missing required 'syntax' descriptor"
+  | _, None ->
+      Reader.err_invalid r "@property: missing required 'inherits' descriptor"
+  | Some (Variables.Syntax syntax), Some inherits ->
+      (* Check if initial-value is required (when syntax is not "*") *)
+      let is_universal_syntax =
+        match syntax with Universal -> true | _ -> false
+      in
+      let initial_value =
+        match state.initial_value with
+        | None when not is_universal_syntax ->
+            Reader.err_invalid r
+              "@property: initial-value is required for non-universal syntax"
+        | None -> None
+        | Some str ->
+            let value_reader = Reader.of_string str in
+            Some (Variables.read_value value_reader syntax)
+      in
+      Property { name; syntax; inherits; initial_value }
 
 and read_property_descriptors (r : Reader.t) : property_reader_state =
-  let rec loop (state : property_reader_state) =
+  (* CSS spec allows descriptors in any order. Since initial-value must conform
+     to the syntax type, we store it as a string and parse it after we know the
+     syntax. *)
+  let state = ref { syntax = None; inherits = None; initial_value = None } in
+
+  let rec loop () =
     Reader.ws r;
     if Reader.peek r = Some '}' then (
       Reader.skip r;
-      state)
+      !state)
     else if Reader.looking_at r "syntax:" then (
       Reader.expect_string "syntax:" r;
       Reader.ws r;
-      let (Variables.Syntax syntax) = Variables.read_syntax r in
+      let syn = Variables.read_syntax r in
+      state := { !state with syntax = Some syn };
       Reader.ws r;
       if Reader.peek r = Some ';' then Reader.skip r;
-      loop (Syntax syntax))
+      loop ())
     else if Reader.looking_at r "inherits:" then (
       Reader.expect_string "inherits:" r;
       let inherits_value = Reader.bool r in
+      state := { !state with inherits = Some inherits_value };
       Reader.ws r;
       if Reader.peek r = Some ';' then Reader.skip r;
-      match state with
-      | Init -> loop Init (* Need syntax first *)
-      | Syntax syntax -> loop (Final (syntax, Some inherits_value, None))
-      | Final (syntax, _, initial) ->
-          loop (Final (syntax, Some inherits_value, initial)))
+      loop ())
     else if Reader.looking_at r "initial-value:" then (
       Reader.expect_string "initial-value:" r;
       Reader.ws r;
-      match state with
-      | Syntax syntax ->
-          let initial_value = Variables.read_value r syntax in
-          Reader.ws r;
-          if Reader.peek r = Some ';' then Reader.skip r;
-          loop (Final (syntax, None, Some initial_value))
-      | Final (syntax, inherits, _) ->
-          let initial_value = Variables.read_value r syntax in
-          Reader.ws r;
-          if Reader.peek r = Some ';' then Reader.skip r;
-          loop (Final (syntax, inherits, Some initial_value))
-      | Init ->
-          Reader.err_invalid r "syntax must be specified before initial-value")
+      (* Store raw value string - will parse once we know the syntax type *)
+      let value_str = Reader.css_value ~stops:[ ';'; '}' ] r in
+      state := { !state with initial_value = Some value_str };
+      Reader.ws r;
+      if Reader.peek r = Some ';' then Reader.skip r;
+      loop ())
     else Reader.err_invalid r "unknown property descriptor"
   in
-  loop Init
+  loop ()
 
 let read_stylesheet (r : Reader.t) : stylesheet =
   Reader.with_context r "stylesheet" (fun () ->

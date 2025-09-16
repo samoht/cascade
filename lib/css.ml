@@ -27,28 +27,70 @@ include Variables
 include Optimize
 include Stylesheet
 
-let v rules = List.map (fun r -> Rule r) rules
+(* Override rule function to return statement directly *)
+let rule ~selector ?nested declarations =
+  Rule (Stylesheet.rule ~selector ?nested declarations)
+
+(* Query functions for statements *)
+let statement_selector = function
+  | Rule r -> Some (Stylesheet.selector r)
+  | _ -> None
+
+let statement_declarations = function
+  | Rule r -> Some (Stylesheet.declarations r)
+  | _ -> None
+
+let statement_nested = function
+  | Rule r -> Some (Stylesheet.nested r)
+  | _ -> None
+
+let is_rule = function Rule _ -> true | _ -> false
+
+let as_rule = function
+  | Rule r ->
+      Some
+        (Stylesheet.selector r, Stylesheet.declarations r, Stylesheet.nested r)
+  | _ -> None
+
 let concat = List.concat
 let empty = []
 let of_statements = Stylesheet.v
+let v statements = of_statements statements
 
-let media ~condition rules =
-  [ Media (condition, List.map (fun r -> Rule r) rules) ]
+(* Override to return statements instead of rules *)
+let rules t =
+  let raw_rules = Stylesheet.rules t in
+  List.map (fun r -> Rule r) raw_rules
 
-let layer ?name rules = [ Layer (name, List.map (fun r -> Rule r) rules) ]
+let media_queries t =
+  let raw_media = Stylesheet.media_queries t in
+  List.map
+    (fun (condition, rules) -> (condition, List.map (fun r -> Rule r) rules))
+    raw_media
 
-let container ?name ~condition rules =
-  [ Container (name, condition, List.map (fun r -> Rule r) rules) ]
+let media ~condition statements = Media (condition, statements)
+let layer ?name statements = Layer (name, statements)
+let layer_decl names = Layer_decl names
 
-let supports ~condition rules =
-  [ Supports (condition, List.map (fun r -> Rule r) rules) ]
+let layer_of ?name stylesheet =
+  (* Wrap the stylesheet statements in a layer *)
+  [ Layer (name, stylesheet) ]
+
+let container ?name ~condition statements =
+  Container (name, condition, statements)
+
+let supports ~condition statements = Supports (condition, statements)
 
 let property ~name syntax ?initial_value ?(inherits = false) () =
   [ property ~syntax ?initial_value ~inherits name ]
 
-let vars_of_rules rules =
-  Variables.vars_of_declarations
-    (List.concat_map (fun r -> r.declarations) rules)
+let vars_of_rules statements =
+  let decls =
+    List.concat_map
+      (fun stmt -> match stmt with Rule r -> r.declarations | _ -> [])
+      statements
+  in
+  Variables.vars_of_declarations decls
 
 let of_string ?(filename = "<string>") css =
   let reader = Reader.of_string css in
