@@ -52,6 +52,22 @@ let as_rule = function
         (Stylesheet.selector r, Stylesheet.declarations r, Stylesheet.nested r)
   | _ -> None
 
+let as_layer = function
+  | Layer (name, content) -> Some (name, content)
+  | _ -> None
+
+let as_media = function
+  | Media (condition, content) -> Some (condition, content)
+  | _ -> None
+
+let as_container = function
+  | Container (name, condition, content) -> Some (name, condition, content)
+  | _ -> None
+
+let as_supports = function
+  | Supports (condition, content) -> Some (condition, content)
+  | _ -> None
+
 let concat = List.concat
 let empty = []
 let of_statements = Stylesheet.v
@@ -84,6 +100,8 @@ let supports ~condition statements = Supports (condition, statements)
 let property ~name syntax ?initial_value ?(inherits = false) () =
   [ property ~syntax ?initial_value ~inherits name ]
 
+(* Top-level convenience helpers for non-calc values *)
+
 let vars_of_rules statements =
   let decls =
     List.concat_map
@@ -100,7 +118,9 @@ let of_string ?(filename = "<string>") css =
 let to_string ?(minify = false) ?(optimize = false) ?(mode = Variables)
     ?(newline = true) stylesheet =
   let stylesheet =
-    if optimize then Optimize.stylesheet stylesheet else stylesheet
+    if optimize then Optimize.stylesheet stylesheet
+    else if minify then Optimize.apply_property_duplication stylesheet
+    else stylesheet
   in
   Stylesheet.to_string ~minify ~mode ~newline stylesheet
 
