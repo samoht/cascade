@@ -277,88 +277,75 @@ let invalid () =
 
 (* Test broken selectors with Parse_error exceptions *)
 let parse_errors () =
-  let check_parse_error name input expected_msg =
+  let check_parse_error input expected_msg =
     let t = Css.Reader.of_string input in
     try
       let _ = read t in
-      Alcotest.failf "%s: expected Parse_error but parsing succeeded" name
+      Alcotest.failf "expected Parse_error for '%s' but parsing succeeded" input
     with
     | Css.Reader.Parse_error err ->
-        let contains_substring haystack needle =
-          let len_h = String.length haystack in
-          let len_n = String.length needle in
-          let rec search i =
-            if i > len_h - len_n then false
-            else if String.sub haystack i len_n = needle then true
-            else search (i + 1)
-          in
-          if len_n = 0 then true else search 0
-        in
-        if Bool.not @@ contains_substring err.message expected_msg then
-          Alcotest.failf "%s: expected message containing '%s' but got '%s'"
-            name expected_msg err.message
+        if err.message <> expected_msg then
+          Alcotest.failf "For input '%s':\n  expected: '%s'\n  got: '%s'" input
+            expected_msg err.message
     | exn ->
-        Alcotest.failf "%s: expected Parse_error but got %s" name
+        Alcotest.failf "For '%s': expected Parse_error but got %s" input
           (Printexc.to_string exn)
   in
 
   (* Unclosed attribute selectors - check for common error patterns *)
-  check_parse_error "unclosed_attr" "[class=\"test\"" "Expected";
-  check_parse_error "missing_bracket" ".test[data-id=\"123\"" "Expected";
+  check_parse_error "[class=\"test\"" "Expected ']' but reached end of input";
+  check_parse_error ".test[data-id=\"123\""
+    "Expected ']' but reached end of input";
 
   (* Empty attribute selector *)
-  check_parse_error "empty_attr" ".test[]" "expected identifier";
+  check_parse_error ".test[]" "expected identifier";
 
   (* Invalid combinators *)
-  check_parse_error "invalid_combinator" ".test >> .child"
-    "expected at least one selector";
-  check_parse_error "multiple_combinators" ".parent + + .child"
-    "expected at least one selector";
-  check_parse_error "missing_after_combinator" ".parent >"
-    "expected at least one selector";
-  check_parse_error "just_combinator" ">" "expected at least one selector";
+  check_parse_error ".test >> .child" "expected at least one selector";
+  check_parse_error ".parent + + .child" "expected at least one selector";
+  check_parse_error ".parent >" "expected at least one selector";
+  check_parse_error ">" "expected at least one selector";
 
   (* Invalid selector starts *)
-  check_parse_error "invalid_class_start" ".123test" "expected identifier";
-  check_parse_error "invalid_id_start" "#123" "expected identifier";
+  check_parse_error ".123test" "expected identifier";
+  check_parse_error "#123" "expected identifier";
 
   (* Nested brackets *)
-  check_parse_error "nested_brackets" ".test[[attr]]" "expected identifier";
+  check_parse_error ".test[[attr]]" "expected identifier";
 
   (* Space in attribute name *)
-  check_parse_error "space_in_attr" ".test[data id=\"value\"]" "Expected ']'";
+  check_parse_error ".test[data id=\"value\"]" "Expected ']' but got 'd'";
 
   (* Unquoted spaces in attribute value *)
-  check_parse_error "unquoted_spaces" ".test[data-id=value with spaces]"
-    "Expected ']'";
+  check_parse_error ".test[data-id=value with spaces]"
+    "Expected ']' but got 'w'";
 
   (* Invalid pseudo-function calls *)
-  check_parse_error "invalid_not" ".test:not()" "expected at least one selector";
-  check_parse_error "unclosed_not" ".test:not(.other" "unexpected end of input";
-  check_parse_error "invalid_is" ":is()" "expected at least one selector";
-  check_parse_error "invalid_has" ".test:has()" "expected at least one selector";
+  check_parse_error ".test:not()" "expected at least one selector";
+  check_parse_error ".test:not(.other" "Expected ')' but reached end of input";
+  check_parse_error ":is()" "expected at least one selector";
+  check_parse_error ".test:has()" "expected at least one selector";
 
   (* Mixed up combinators *)
-  check_parse_error "mixed_combinators" ".parent ~> .child"
-    "expected at least one selector";
+  check_parse_error ".parent ~> .child" "expected at least one selector";
 
   (* Empty selector list *)
-  check_parse_error "empty_list" ", ," "expected at least one selector";
-  check_parse_error "leading_comma" ", h1, h2" "expected at least one selector";
-  check_parse_error "trailing_comma" "h1, h2," "expected at least one selector";
+  check_parse_error ", ," "expected at least one selector";
+  check_parse_error ", h1, h2" "expected at least one selector";
+  check_parse_error "h1, h2," "expected at least one selector";
 
   (* Invalid universal selector combinations *)
-  check_parse_error "invalid_universal" "*.*" "expected identifier";
+  check_parse_error "*.*" "expected identifier";
 
   (* Complex broken selectors *)
-  check_parse_error "complex_broken" ".parent > [data-id=\"test\" .child:hover"
-    "Expected ']'";
-  check_parse_error "long_chain_broken" "body > main > section[data-tooltip"
-    "expected one of";
-  check_parse_error "multi_attr_broken" ".test[attr1=\"val1\"][attr4$="
-    "expected one of";
-  check_parse_error "sibling_chain_broken" ".first ~ .second ~ [invalid"
-    "expected one of"
+  check_parse_error ".parent > [data-id=\"test\" .child:hover"
+    "Expected ']' but got '.'";
+  check_parse_error "body > main > section[data-tooltip"
+    "Expected ']' but reached end of input";
+  check_parse_error ".test[attr1=\"val1\"][attr4$="
+    "Expected ']' but reached end of input";
+  check_parse_error ".first ~ .second ~ [invalid"
+    "Expected ']' but reached end of input"
 
 (* Test callstack accuracy for selector errors *)
 let callstack_accuracy () =

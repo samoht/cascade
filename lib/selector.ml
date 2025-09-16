@@ -685,23 +685,18 @@ and read_pseudo_element t =
 
 (** Parse a simple selector (one part) *)
 and read_simple t =
-  let read_class_sel t = read_class t in
-  let read_id_sel t = read_id t in
-  let read_attr_sel t = read_attribute t in
-  let read_pseudo_element_sel t = read_pseudo_element t in
-  let read_pseudo_class_sel t = read_pseudo_class t in
-  let read_type_sel t = read_type_or_universal t in
-
-  Reader.one_of
-    [
-      read_class_sel;
-      read_id_sel;
-      read_attr_sel;
-      read_pseudo_element_sel;
-      read_pseudo_class_sel;
-      read_type_sel;
-    ]
-    t
+  Reader.ws t;
+  match Reader.peek t with
+  | Some '.' -> read_class t
+  | Some '#' -> read_id t
+  | Some '[' -> read_attribute t
+  | Some ':' ->
+      (* Use peek2 to check for :: vs : *)
+      if Reader.peek2 t = "::" then read_pseudo_element t
+      else read_pseudo_class t
+  | Some '*' -> read_type_or_universal t
+  | Some c when Reader.is_ident_start c -> read_type_or_universal t
+  | _ -> err_expected t "selector"
 
 (** Parse a compound selector (multiple simple selectors without spaces) *)
 and read_compound t =
