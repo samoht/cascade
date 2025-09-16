@@ -1642,7 +1642,9 @@ let pp_property : type a. a property Pp.t =
 let rec pp_font_feature_settings : font_feature_settings Pp.t =
  fun ctx -> function
   | Normal -> Pp.string ctx "normal"
-  | Feature_list s -> Pp.string ctx s
+  | Feature_list s ->
+      (* Feature list contains quoted tags already in the stored string *)
+      Pp.string ctx s
   | Inherit -> Pp.string ctx "inherit"
   | String s -> Pp.quoted_string ctx s
   | Var v -> pp_var pp_font_feature_settings ctx v
@@ -3545,17 +3547,28 @@ let read_container_type t : container_type =
     t
 
 let read_contain t : contain =
+  let read_contain_list t =
+    let values =
+      Reader.list ~sep:Reader.ws
+        (fun t ->
+          Reader.enum "contain-value"
+            [
+              ("size", Size);
+              ("layout", Layout);
+              ("style", Style);
+              ("paint", Paint);
+            ]
+            t)
+        t
+    in
+    match values with
+    | [] -> err_invalid_value t "contain" "expected contain value(s)"
+    | [ v ] -> v
+    | vs -> List vs
+  in
   Reader.enum "contain"
-    [
-      ("none", (None : contain));
-      ("strict", Strict);
-      ("content", Content);
-      ("size", Size);
-      ("layout", Layout);
-      ("style", Style);
-      ("paint", Paint);
-    ]
-    t
+    [ ("none", (None : contain)); ("strict", Strict); ("content", Content) ]
+    ~default:read_contain_list t
 
 let read_isolation t : isolation =
   Reader.enum "isolation"
@@ -3601,36 +3614,43 @@ let rec read_scroll_snap_strictness t : scroll_snap_strictness =
     t
 
 let read_scroll_snap_type t : scroll_snap_type =
-  Reader.enum "scroll-snap-type"
-    [
-      ("none", (None : scroll_snap_type));
-      ("x", X);
-      ("y", Y);
-      ("block", Block);
-      ("inline", Inline);
-      ("both", Both);
-      ("inherit", Inherit);
-    ]
-    ~default:(fun t : scroll_snap_type ->
-      (* Read compound values like "x mandatory" *)
-      let axis = Reader.ident t in
+  (* First read the axis *)
+  let axis = Reader.ident t in
+  match axis with
+  | "none" -> (None : scroll_snap_type)
+  | "inherit" -> Inherit
+  | "x" | "y" | "block" | "inline" | "both" -> (
+      (* Check if there's a strictness value *)
       Reader.ws t;
-      let strictness = Reader.ident t in
-      match (axis, strictness) with
-      | "x", "mandatory" -> X_mandatory
-      | "y", "mandatory" -> Y_mandatory
-      | "block", "mandatory" -> Block_mandatory
-      | "inline", "mandatory" -> Inline_mandatory
-      | "both", "mandatory" -> Both_mandatory
-      | "x", "proximity" -> X_proximity
-      | "y", "proximity" -> Y_proximity
-      | "block", "proximity" -> Block_proximity
-      | "inline", "proximity" -> Inline_proximity
-      | "both", "proximity" -> Both_proximity
-      | _ ->
-          Reader.err_invalid t
-            ("invalid scroll-snap-type: " ^ axis ^ " " ^ strictness))
-    t
+      match Reader.option Reader.ident t with
+      | Some "mandatory" -> (
+          match axis with
+          | "x" -> X_mandatory
+          | "y" -> Y_mandatory
+          | "block" -> Block_mandatory
+          | "inline" -> Inline_mandatory
+          | "both" -> Both_mandatory
+          | _ -> Reader.err_invalid t ("invalid axis for mandatory: " ^ axis))
+      | Some "proximity" -> (
+          match axis with
+          | "x" -> X_proximity
+          | "y" -> Y_proximity
+          | "block" -> Block_proximity
+          | "inline" -> Inline_proximity
+          | "both" -> Both_proximity
+          | _ -> Reader.err_invalid t ("invalid axis for proximity: " ^ axis))
+      | Some other ->
+          Reader.err_invalid t ("invalid scroll-snap strictness: " ^ other)
+      | None -> (
+          (* No strictness specified, return plain axis *)
+          match axis with
+          | "x" -> X
+          | "y" -> Y
+          | "block" -> Block
+          | "inline" -> Inline
+          | "both" -> Both
+          | _ -> Reader.err_invalid t ("invalid scroll-snap-type: " ^ axis)))
+  | _ -> Reader.err_invalid t ("invalid scroll-snap-type: " ^ axis)
 
 let read_overscroll_behavior t : overscroll_behavior =
   Reader.enum "overscroll-behavior"
@@ -4012,25 +4032,67 @@ let rec read_font_feature_settings t : font_feature_settings =
   let read_var t : font_feature_settings =
     Var (read_var read_font_feature_settings t)
   in
-  let read_string t : font_feature_settings = String (Reader.string t) in
-  let read_feature_list t = Feature_list (Reader.ident t) in
+  let read_feature_list t =
+    (* Read comma-separated list of feature tags with optional values *)
+    let rec read_features acc =
+      let tag_content = Reader.string t in
+      (* Keep the quotes around the tag *)
+      let tag = "\"" ^ tag_content ^ "\"" in
+      Reader.ws t;
+      (* Check for optional numeric value or on/off *)
+      let full_feature =
+        match Reader.option Reader.number t with
+        | Some n -> tag ^ " " ^ string_of_int (int_of_float n)
+        | None -> (
+            match Reader.option Reader.ident t with
+            | Some "on" -> tag ^ " on"
+            | Some "off" -> tag ^ " off"
+            | Some v -> tag ^ " " ^ v
+            | None -> tag)
+      in
+      let acc = full_feature :: acc in
+      Reader.ws t;
+      if Reader.peek t = Some ',' then (
+        Reader.skip t;
+        Reader.ws t;
+        read_features acc)
+      else List.rev acc
+    in
+    Feature_list (String.concat ", " (read_features []))
+  in
   Reader.enum_or_calls "font-feature-settings"
     [ ("normal", (Normal : font_feature_settings)); ("inherit", Inherit) ]
     ~calls:[ ("var", read_var) ]
-    ~default:(fun t -> Reader.one_of [ read_string; read_feature_list ] t)
-    t
+    ~default:read_feature_list t
 
 let rec read_font_variation_settings t : font_variation_settings =
   let read_var t : font_variation_settings =
     Var (read_var read_font_variation_settings t)
   in
-  let read_string t : font_variation_settings = String (Reader.string t) in
-  let read_axis_list t = Axis_list (Reader.ident t) in
+  let read_axis_list t =
+    (* Read comma-separated list of axis tags with values *)
+    let rec read_axes acc =
+      let tag_content = Reader.string t in
+      (* Keep the quotes around the tag *)
+      let tag = "\"" ^ tag_content ^ "\"" in
+      Reader.ws t;
+      (* Axis values are required for variation settings *)
+      let value = Reader.number t in
+      let full_axis = tag ^ " " ^ string_of_int (int_of_float value) in
+      let acc = full_axis :: acc in
+      Reader.ws t;
+      if Reader.peek t = Some ',' then (
+        Reader.skip t;
+        Reader.ws t;
+        read_axes acc)
+      else List.rev acc
+    in
+    Axis_list (String.concat ", " (read_axes []))
+  in
   Reader.enum_or_calls "font-variation-settings"
     [ ("normal", (Normal : font_variation_settings)); ("inherit", Inherit) ]
     ~calls:[ ("var", read_var) ]
-    ~default:(fun t -> Reader.one_of [ read_string; read_axis_list ] t)
-    t
+    ~default:read_axis_list t
 
 let read_transform_style t : transform_style =
   Reader.enum "transform-style"
