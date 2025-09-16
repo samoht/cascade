@@ -68,6 +68,7 @@ type length =
   | Max_content
   | Min_content
   | From_font
+  | Function of string
   | Var of length var
   | Calc of length calc
 

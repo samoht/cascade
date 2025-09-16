@@ -3561,10 +3561,18 @@ let read_contain t : contain =
             t)
         t
     in
-    match values with
-    | [] -> err_invalid_value t "contain" "expected contain value(s)"
-    | [ v ] -> v
-    | vs -> List vs
+    (* Check for duplicates *)
+    let rec has_duplicates = function
+      | [] -> false
+      | h :: t -> List.mem h t || has_duplicates t
+    in
+    if has_duplicates values then
+      err_invalid_value t "contain" "duplicate values not allowed"
+    else
+      match values with
+      | [] -> err_invalid_value t "contain" "expected contain value(s)"
+      | [ v ] -> v
+      | vs -> List vs
   in
   Reader.enum "contain"
     [ ("none", (None : contain)); ("strict", Strict); ("content", Content) ]
