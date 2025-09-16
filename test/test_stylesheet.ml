@@ -302,12 +302,17 @@ let test_rule_parsing () =
   check_rule ~expected:"h1{font-size:2rem}" "h1 { font-size: 2rem; }"
 
 let test_media_parsing () =
-  (* TODO: Update to use new statement API *)
-  ()
+  (* Parse a few media forms and assert roundtrip via check_stylesheet *)
+  check_stylesheet "@media (min-width: 768px) { .a { display: block } }";
+  check_stylesheet
+    "@media screen and (max-width: 640px){.btn{font-size:.875rem}}"
 
 let test_supports_parsing () =
-  (* TODO: Update to use new statement API *)
-  ()
+  (* Parse basic and nested @supports constructs *)
+  check_stylesheet "@supports (display: grid) { .grid { display: grid } }";
+  check_stylesheet
+    "@supports (display: grid){.grid{display:grid}@supports (color: \
+     red){.x{color:red}}}"
 
 let test_property_permutations () = ()
 
@@ -852,6 +857,23 @@ let test_invalid_functions () =
   expect_parse_error ".btn { width: calc(100% +); }";
   expect_parse_error ".btn { background: url(; }"
 
+(* Test layer parsing roundtrip stability *)
+let test_layer_roundtrip () =
+  let test_css input =
+    let r = Css.Reader.of_string input in
+    try
+      let stylesheet = Css.Stylesheet.read r in
+      let roundtrip =
+        String.trim
+          (Css.Stylesheet.to_string ~minify:true ~header:false stylesheet)
+      in
+      Alcotest.(check string) ("layer roundtrip for " ^ input) input roundtrip
+    with Css.Reader.Parse_error err ->
+      Alcotest.fail ("Failed to parse " ^ input ^ ": " ^ Css.pp_parse_error err)
+  in
+  test_css "@layer components,utilities;";
+  test_css "@layer components{}@layer utilities{}"
+
 let additional_tests =
   [
     ("check function", `Quick, test_check);
@@ -868,6 +890,7 @@ let additional_tests =
     ("invalid syntax", `Quick, test_invalid_syntax);
     ("invalid at-rules", `Quick, test_invalid_at_rules);
     ("invalid functions", `Quick, test_invalid_functions);
+    ("layer roundtrip", `Quick, test_layer_roundtrip);
   ]
 
 let suite = ("stylesheet", stylesheet_tests @ additional_tests)

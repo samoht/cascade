@@ -157,10 +157,32 @@ let attribute ?ns ?flag name match_type =
   validate_css_identifier name;
   Attribute (ns, name, match_type, flag)
 
-let pseudo_class name =
-  (* Skip validation for functional pseudo-classes that contain parentheses *)
-  if not (String.contains name '(') then validate_css_identifier name;
-  Pseudo_class name
+(* Simple readers that don't need recursion *)
+let read_lang_content t =
+  Lang (Reader.list ~sep:Reader.comma ~at_least:1 Reader.ident t)
+
+let read_dir_content t = Dir (Reader.ident t)
+let read_state_content t = State (Reader.ident t)
+let read_heading_content _t = Heading
+
+let read_active_view_transition_type_content t =
+  Active_view_transition_type
+    (Reader.option (Reader.list ~sep:Reader.comma ~at_least:1 Reader.ident) t)
+
+let read_lang t = Reader.call "lang" t read_lang_content
+let read_dir t = Reader.call "dir" t read_dir_content
+let read_state t = Reader.call "state" t read_state_content
+let read_heading t = Reader.call "heading" t read_heading_content
+
+let read_active_view_transition_type t =
+  Reader.call "active-view-transition-type" t
+    read_active_view_transition_type_content
+
+let read_part_content t =
+  let idents = Reader.list ~sep:Reader.comma ~at_least:1 Reader.ident t in
+  Part idents
+
+let read_part t = Reader.call "part" t read_part_content
 
 let pseudo_element name =
   validate_css_identifier name;
@@ -179,7 +201,6 @@ let rec combine s1 comb s2 =
 let ( ++ ) s1 s2 = combine s1 Descendant s2
 let ( >> ) s1 s2 = combine s1 Child s2
 let where selectors = Where selectors
-let fun_ name selectors = Fun (name, selectors)
 
 let list selectors =
   match selectors with
@@ -449,8 +470,19 @@ let pp_nth : nth Pp.t =
           Pp.int ctx b)
         else if b < 0 then Pp.int ctx b (* b = 0: print nothing *))
 
+(* Forward declarations for mutually recursive functions *)
+let rec read_complex_list t =
+  Reader.ws t;
+  (* Check if we have empty content right away *)
+  match Reader.peek t with
+  | Some ')' -> Reader.err t "expected at least one selector"
+  | _ -> (
+      try Reader.list ~sep:Reader.comma ~at_least:1 read_complex t
+      with Reader.Parse_error _ ->
+        Reader.err t "expected at least one selector")
+
 (** Read nth selector with optional "of S" clause *)
-let rec read_nth_selector t : nth * t list option =
+and read_nth_selector t : nth * t list option =
   let expr = read_nth t in
   Reader.ws t;
 
@@ -465,54 +497,168 @@ let rec read_nth_selector t : nth * t list option =
   in
   (expr, of_clause)
 
+(* Helper readers for functional pseudo-class content *)
+and read_is_content t = Is (read_complex_list t)
+and read_has_content t = Has (read_complex_list t)
+and read_not_content t = Not (read_complex_list t)
+and read_where_content t = Where (read_complex_list t)
+
+and read_nth_child_content t =
+  let expr, of_sel = read_nth_selector t in
+  Nth_child (expr, of_sel)
+
+and read_nth_last_child_content t =
+  let expr, of_sel = read_nth_selector t in
+  Nth_last_child (expr, of_sel)
+
+and read_nth_of_type_content t =
+  let expr, of_sel = read_nth_selector t in
+  Nth_of_type (expr, of_sel)
+
+and read_nth_last_of_type_content t =
+  let expr, of_sel = read_nth_selector t in
+  Nth_last_of_type (expr, of_sel)
+
+and read_host_content t = Host (Reader.option read_complex_list t)
+and read_host_context_content t = Host_context (read_complex_list t)
+
+(* Read helper functions for functional pseudo-classes *)
+and read_is t = Reader.call "is" t read_is_content
+and read_has t = Reader.call "has" t read_has_content
+and read_not t = Reader.call "not" t read_not_content
+and read_where t = Reader.call "where" t read_where_content
+and read_nth_child t = Reader.call "nth-child" t read_nth_child_content
+
+and read_nth_last_child t =
+  Reader.call "nth-last-child" t read_nth_last_child_content
+
+and read_nth_of_type t = Reader.call "nth-of-type" t read_nth_of_type_content
+
+and read_nth_last_of_type t =
+  Reader.call "nth-last-of-type" t read_nth_last_of_type_content
+
+and read_host t = Reader.call "host" t read_host_content
+and read_host_context t = Reader.call "host-context" t read_host_context_content
+
+(* Helper readers for pseudo-element functions that need recursion *)
+and read_slotted_content t =
+  let sels = read_complex_list t in
+  Slotted sels
+
+and read_cue_content t =
+  let sels = read_complex_list t in
+  Cue sels
+
+and read_cue_region_content t =
+  let sels = read_complex_list t in
+  Cue_region sels
+
+and read_slotted t = Reader.call "slotted" t read_slotted_content
+and read_cue t = Reader.call "cue" t read_cue_content
+and read_cue_region t = Reader.call "cue-region" t read_cue_region_content
+
 (** Parse pseudo-class (:hover, :nth-child(2n+1), etc.) *)
 and read_pseudo_class t =
   Reader.expect ':' t;
-  (* Dispatch on functional pseudo-classes via enum_calls; default handles both
-     unknown functional and non-functional cases. *)
-  let default t =
-    let name = Reader.ident t in
-    match Reader.peek t with
-    | Some '(' ->
-        Reader.expect '(' t;
-        let inner = Reader.until t ')' in
-        Reader.expect ')' t;
-        pseudo_class (name ^ "(" ^ inner ^ ")")
-    | _ -> pseudo_class name
-  in
-  let read_selector_list name constructor t =
-    Reader.call name t (fun t ->
-        let sels = read_complex_list t in
-        constructor sels)
-  in
-  Reader.enum_calls
+  (* Use enum_or_calls to handle both simple and functional pseudo-classes *)
+  Reader.enum_or_calls "pseudo-class"
     [
-      ("is", read_selector_list "is" (fun_ "is"));
-      ("has", read_selector_list "has" (fun_ "has"));
-      ("not", read_selector_list "not" (fun_ "not"));
-      ("where", read_selector_list "where" where);
-      ( "nth-child",
-        fun t ->
-          Reader.call "nth-child" t (fun t ->
-              let expr, of_sel = read_nth_selector t in
-              Nth_child (expr, of_sel)) );
-      ( "nth-last-child",
-        fun t ->
-          Reader.call "nth-last-child" t (fun t ->
-              let expr, of_sel = read_nth_selector t in
-              Nth_last_child (expr, of_sel)) );
-      ( "nth-of-type",
-        fun t ->
-          Reader.call "nth-of-type" t (fun t ->
-              let expr, of_sel = read_nth_selector t in
-              Nth_of_type (expr, of_sel)) );
-      ( "nth-last-of-type",
-        fun t ->
-          Reader.call "nth-last-of-type" t (fun t ->
-              let expr, of_sel = read_nth_selector t in
-              Nth_last_of_type (expr, of_sel)) );
+      (* Simple pseudo-classes *)
+      ("hover", Hover);
+      ("active", Active);
+      ("focus", Focus);
+      ("focus-visible", Focus_visible);
+      ("focus-within", Focus_within);
+      ("target", Target);
+      ("link", Link);
+      ("visited", Visited);
+      ("any-link", Any_link);
+      ("local-link", Local_link);
+      ("target-within", Target_within);
+      ("scope", Scope);
+      ("root", Root);
+      ("empty", Empty);
+      ("first-child", First_child);
+      ("last-child", Last_child);
+      ("only-child", Only_child);
+      ("first-of-type", First_of_type);
+      ("last-of-type", Last_of_type);
+      ("only-of-type", Only_of_type);
+      ("enabled", Enabled);
+      ("disabled", Disabled);
+      ("read-only", Read_only);
+      ("read-write", Read_write);
+      ("placeholder-shown", Placeholder_shown);
+      ("default", Default);
+      ("checked", Checked);
+      ("indeterminate", Indeterminate);
+      ("blank", Blank);
+      ("valid", Valid);
+      ("invalid", Invalid);
+      ("in-range", In_range);
+      ("out-of-range", Out_of_range);
+      ("required", Required);
+      ("optional", Optional);
+      ("user-invalid", User_invalid);
+      ("user-valid", User_valid);
+      ("autofill", Autofill);
+      ("fullscreen", Fullscreen);
+      ("modal", Modal);
+      ("picture-in-picture", Picture_in_picture);
+      ("left", Left);
+      ("right", Right);
+      ("first", First);
+      ("defined", Defined);
+      ("playing", Playing);
+      ("paused", Paused);
+      ("seeking", Seeking);
+      ("buffering", Buffering);
+      ("stalled", Stalled);
+      ("muted", Muted);
+      ("volume-locked", Volume_locked);
+      ("future", Future);
+      ("past", Past);
+      ("current", Current);
+      ("popover-open", Popover_open);
+      (* :host can be used without arguments *)
+      ("host", Host None);
+      (* Legacy single-colon pseudo-elements *)
+      ("before", Before);
+      ("after", After);
+      ("first-letter", First_letter);
+      ("first-line", First_line);
+      (* Vendor-specific *)
+      ("-moz-focusring", Moz_focusring);
+      ("-webkit-any", Webkit_any);
+      ("-webkit-autofill", Webkit_autofill);
+      ("-moz-placeholder", Moz_placeholder);
+      ("-webkit-input-placeholder", Webkit_input_placeholder);
+      ("-ms-input-placeholder", Ms_input_placeholder);
+      ("-moz-ui-invalid", Moz_ui_invalid);
+      ("-moz-ui-valid", Moz_ui_valid);
+      ("-webkit-scrollbar", Webkit_scrollbar);
+      ("-webkit-search-cancel-button", Webkit_search_cancel_button);
+      ("-webkit-search-decoration", Webkit_search_decoration);
     ]
-    ~default t
+    ~calls:
+      [
+        ("is", read_is);
+        ("has", read_has);
+        ("not", read_not);
+        ("where", read_where);
+        ("nth-child", read_nth_child);
+        ("nth-last-child", read_nth_last_child);
+        ("nth-of-type", read_nth_of_type);
+        ("nth-last-of-type", read_nth_last_of_type);
+        ("lang", read_lang);
+        ("dir", read_dir);
+        ("state", read_state);
+        ("host", read_host);
+        ("host-context", read_host_context);
+        ("heading", read_heading);
+        ("active-view-transition-type", read_active_view_transition_type);
+      ]
+    t
 
 (** Parse pseudo-element (::before, ::after, etc.) *)
 and read_pseudo_element t =
@@ -530,41 +676,12 @@ and read_pseudo_element t =
   in
   Reader.enum_calls
     [
-      ( "part",
-        fun t ->
-          Reader.call "part" t (fun t ->
-              let idents =
-                Reader.list ~sep:Reader.comma ~at_least:1 Reader.ident t
-              in
-              Pseudo_element_fun_idents ("part", idents)) );
-      ( "slotted",
-        fun t ->
-          Reader.call "slotted" t (fun t ->
-              let sels = read_complex_list t in
-              Pseudo_element_fun ("slotted", sels)) );
-      ( "cue",
-        fun t ->
-          Reader.call "cue" t (fun t ->
-              let sels = read_complex_list t in
-              Pseudo_element_fun ("cue", sels)) );
-      ( "cue-region",
-        fun t ->
-          Reader.call "cue-region" t (fun t ->
-              let sels = read_complex_list t in
-              Pseudo_element_fun ("cue-region", sels)) );
+      ("part", read_part);
+      ("slotted", read_slotted);
+      ("cue", read_cue);
+      ("cue-region", read_cue_region);
     ]
     ~default t
-
-(* Parse a comma-separated list of complex selectors *)
-and read_complex_list t =
-  Reader.ws t;
-  (* Check if we have empty content right away *)
-  match Reader.peek t with
-  | Some ')' -> Reader.err t "expected at least one selector"
-  | _ -> (
-      try Reader.list ~sep:Reader.comma ~at_least:1 read_complex t
-      with Reader.Parse_error _ ->
-        Reader.err t "expected at least one selector")
 
 (** Parse a simple selector (one part) *)
 and read_simple t =
@@ -709,29 +826,141 @@ and pp : t Pp.t =
       pp_attribute_match ctx match_type;
       pp_attr_flag ctx flag;
       Pp.char ctx ']'
-  | Pseudo_class name ->
-      Pp.char ctx ':';
-      Pp.string ctx name
+  (* Simple pseudo-classes *)
+  | Hover -> Pp.string ctx ":hover"
+  | Active -> Pp.string ctx ":active"
+  | Focus -> Pp.string ctx ":focus"
+  | Focus_visible -> Pp.string ctx ":focus-visible"
+  | Focus_within -> Pp.string ctx ":focus-within"
+  | Target -> Pp.string ctx ":target"
+  | Link -> Pp.string ctx ":link"
+  | Visited -> Pp.string ctx ":visited"
+  | Any_link -> Pp.string ctx ":any-link"
+  | Local_link -> Pp.string ctx ":local-link"
+  | Target_within -> Pp.string ctx ":target-within"
+  | Scope -> Pp.string ctx ":scope"
+  | Root -> Pp.string ctx ":root"
+  | Empty -> Pp.string ctx ":empty"
+  | First_child -> Pp.string ctx ":first-child"
+  | Last_child -> Pp.string ctx ":last-child"
+  | Only_child -> Pp.string ctx ":only-child"
+  | First_of_type -> Pp.string ctx ":first-of-type"
+  | Last_of_type -> Pp.string ctx ":last-of-type"
+  | Only_of_type -> Pp.string ctx ":only-of-type"
+  | Enabled -> Pp.string ctx ":enabled"
+  | Disabled -> Pp.string ctx ":disabled"
+  | Read_only -> Pp.string ctx ":read-only"
+  | Read_write -> Pp.string ctx ":read-write"
+  | Placeholder_shown -> Pp.string ctx ":placeholder-shown"
+  | Default -> Pp.string ctx ":default"
+  | Checked -> Pp.string ctx ":checked"
+  | Indeterminate -> Pp.string ctx ":indeterminate"
+  | Blank -> Pp.string ctx ":blank"
+  | Valid -> Pp.string ctx ":valid"
+  | Invalid -> Pp.string ctx ":invalid"
+  | In_range -> Pp.string ctx ":in-range"
+  | Out_of_range -> Pp.string ctx ":out-of-range"
+  | Required -> Pp.string ctx ":required"
+  | Optional -> Pp.string ctx ":optional"
+  | User_invalid -> Pp.string ctx ":user-invalid"
+  | User_valid -> Pp.string ctx ":user-valid"
+  | Autofill -> Pp.string ctx ":autofill"
+  | Fullscreen -> Pp.string ctx ":fullscreen"
+  | Modal -> Pp.string ctx ":modal"
+  | Picture_in_picture -> Pp.string ctx ":picture-in-picture"
+  | Left -> Pp.string ctx ":left"
+  | Right -> Pp.string ctx ":right"
+  | First -> Pp.string ctx ":first"
+  | Defined -> Pp.string ctx ":defined"
+  | Playing -> Pp.string ctx ":playing"
+  | Paused -> Pp.string ctx ":paused"
+  | Seeking -> Pp.string ctx ":seeking"
+  | Buffering -> Pp.string ctx ":buffering"
+  | Stalled -> Pp.string ctx ":stalled"
+  | Muted -> Pp.string ctx ":muted"
+  | Volume_locked -> Pp.string ctx ":volume-locked"
+  | Future -> Pp.string ctx ":future"
+  | Past -> Pp.string ctx ":past"
+  | Current -> Pp.string ctx ":current"
+  | Popover_open -> Pp.string ctx ":popover-open"
+  (* Legacy single-colon pseudo-elements *)
+  | Before -> Pp.string ctx ":before"
+  | After -> Pp.string ctx ":after"
+  | First_letter -> Pp.string ctx ":first-letter"
+  | First_line -> Pp.string ctx ":first-line"
+  (* Vendor-specific *)
+  | Moz_focusring -> Pp.string ctx ":-moz-focusring"
+  | Webkit_any -> Pp.string ctx ":-webkit-any"
+  | Webkit_autofill -> Pp.string ctx ":-webkit-autofill"
+  | Moz_placeholder -> Pp.string ctx ":-moz-placeholder"
+  | Webkit_input_placeholder -> Pp.string ctx ":-webkit-input-placeholder"
+  | Ms_input_placeholder -> Pp.string ctx ":-ms-input-placeholder"
+  | Moz_ui_invalid -> Pp.string ctx ":-moz-ui-invalid"
+  | Moz_ui_valid -> Pp.string ctx ":-moz-ui-valid"
+  | Webkit_scrollbar -> Pp.string ctx ":-webkit-scrollbar"
+  | Webkit_search_cancel_button -> Pp.string ctx ":-webkit-search-cancel-button"
+  | Webkit_search_decoration -> Pp.string ctx ":-webkit-search-decoration"
   | Pseudo_element name ->
       Pp.string ctx "::";
       Pp.string ctx name
-  | Pseudo_element_fun (name, selectors) ->
-      pp_func ctx ~prefix:"::" name (Pp.list ~sep:Pp.comma pp) selectors
-  | Pseudo_element_fun_idents (name, idents) ->
+  | Part idents ->
       let strict_comma ctx () = Pp.char ctx ',' in
-      pp_func ctx ~prefix:"::" name (Pp.list ~sep:strict_comma Pp.string) idents
+      pp_func ctx ~prefix:"::" "part"
+        (Pp.list ~sep:strict_comma Pp.string)
+        idents
+  | Slotted selectors ->
+      pp_func ctx ~prefix:"::" "slotted" (Pp.list ~sep:Pp.comma pp) selectors
+  | Cue selectors ->
+      pp_func ctx ~prefix:"::" "cue" (Pp.list ~sep:Pp.comma pp) selectors
+  | Cue_region selectors ->
+      pp_func ctx ~prefix:"::" "cue-region" (Pp.list ~sep:Pp.comma pp) selectors
+  (* Functional pseudo-classes *)
+  | Is selectors ->
+      pp_func ctx ~prefix:":" "is" (Pp.list ~sep:Pp.comma pp) selectors
   | Where selectors ->
       pp_func ctx ~prefix:":" "where" (Pp.list ~sep:Pp.comma pp) selectors
   | Not selectors ->
       pp_func ctx ~prefix:":" "not" (Pp.list ~sep:Pp.comma pp) selectors
-  | Fun (name, selectors) ->
-      pp_func ctx ~prefix:":" name (Pp.list ~sep:Pp.comma pp) selectors
+  | Has selectors ->
+      pp_func ctx ~prefix:":" "has" (Pp.list ~sep:Pp.comma pp) selectors
   | Nth_child (expr, of_sel) -> pp_nth_func ctx "nth-child" expr of_sel
   | Nth_last_child (expr, of_sel) ->
       pp_nth_func ctx "nth-last-child" expr of_sel
   | Nth_of_type (expr, of_sel) -> pp_nth_func ctx "nth-of-type" expr of_sel
   | Nth_last_of_type (expr, of_sel) ->
       pp_nth_func ctx "nth-last-of-type" expr of_sel
+  | Dir dir -> pp_func ctx ~prefix:":" "dir" Pp.string dir
+  | Lang langs ->
+      pp_func ctx ~prefix:":" "lang" (Pp.list ~sep:Pp.comma Pp.string) langs
+  | Host sels -> (
+      match sels with
+      | None -> Pp.string ctx ":host"
+      | Some selectors ->
+          pp_func ctx ~prefix:":" "host" (Pp.list ~sep:Pp.comma pp) selectors)
+  | Host_context selectors ->
+      pp_func ctx ~prefix:":" "host-context" (Pp.list ~sep:Pp.comma pp)
+        selectors
+  | State name -> pp_func ctx ~prefix:":" "state" Pp.string name
+  | Heading -> Pp.string ctx ":heading()"
+  | Active_view_transition_type types -> (
+      match types with
+      | None -> Pp.string ctx ":active-view-transition-type()"
+      | Some t ->
+          pp_func ctx ~prefix:":" "active-view-transition-type"
+            (Pp.list ~sep:Pp.comma Pp.string)
+            t)
+  | Highlight names ->
+      pp_func ctx ~prefix:"::" "highlight"
+        (Pp.list ~sep:Pp.comma Pp.string)
+        names
+  | View_transition_group name ->
+      pp_func ctx ~prefix:"::" "view-transition-group" Pp.string name
+  | View_transition_image_pair name ->
+      pp_func ctx ~prefix:"::" "view-transition-image-pair" Pp.string name
+  | View_transition_old name ->
+      pp_func ctx ~prefix:"::" "view-transition-old" Pp.string name
+  | View_transition_new name ->
+      pp_func ctx ~prefix:"::" "view-transition-new" Pp.string name
   | Compound selectors -> List.iter (pp ctx) selectors
   | Combined (left, comb, right) ->
       pp ctx left;
@@ -740,29 +969,23 @@ and pp : t Pp.t =
   | List selectors -> Pp.list ~sep:Pp.comma pp ctx selectors
 
 let to_string ?minify t = Pp.to_string ?minify pp t
-
-(* Simple helpers, reusing the pp_nth defined above *)
-let is_ sels = Fun ("is", sels)
-let has sels = Fun ("has", sels)
-let nth_to_string nth = Pp.to_string pp_nth nth
-
-let nth_fun name ?of_ nth =
-  let nth_str = nth_to_string nth in
-  match of_ with
-  | None -> Pseudo_class (name ^ "(" ^ nth_str ^ ")")
-  | Some sels ->
-      let sels_str = Pp.to_string (Pp.list ~sep:Pp.comma pp) sels in
-      Pseudo_class (name ^ "(" ^ nth_str ^ " of " ^ sels_str ^ ")")
-
-let nth_child ?of_ nth = nth_fun "nth-child" ?of_ nth
-let nth_last_child ?of_ nth = nth_fun "nth-last-child" ?of_ nth
-let nth_of_type ?of_ nth = nth_fun "nth-of-type" ?of_ nth
-let nth_last_of_type ?of_ nth = nth_fun "nth-last-of-type" ?of_ nth
-let pseudo_element_fun name sels = Pseudo_element_fun (name, sels)
-let part idents = Pseudo_element_fun_idents ("part", idents)
-let slotted sels = pseudo_element_fun "slotted" sels
-let cue sels = pseudo_element_fun "cue" sels
-let cue_region sels = pseudo_element_fun "cue-region" sels
+let is_ sels = Is sels
+let has sels = Has sels
+let not selectors = Not selectors
+let nth_child ?of_ nth = Nth_child (nth, of_)
+let nth_last_child ?of_ nth = Nth_last_child (nth, of_)
+let nth_of_type ?of_ nth = Nth_of_type (nth, of_)
+let nth_last_of_type ?of_ nth = Nth_last_of_type (nth, of_)
+let dir direction = Dir direction
+let lang languages = Lang languages
+let host ?selectors () = Host selectors
+let host_context selectors = Host_context selectors
+let state name = State name
+let heading () = Heading
+let active_view_transition_type ?types () = Active_view_transition_type types
+let part idents = Part idents
+let slotted sels = Slotted sels
+let cue sels = Cue sels
+let cue_region sels = Cue_region sels
 let ( && ) sel1 sel2 = compound [ sel1; sel2 ]
 let ( || ) s1 s2 = combine s1 Column s2
-let not selectors = Not selectors
