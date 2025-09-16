@@ -45,8 +45,10 @@ let rec pp_syntax_inner : type a. a syntax Pp.t =
 
 and pp_syntax : type a. a syntax Pp.t =
  fun ctx syn ->
-  (* Syntax descriptors should be printed without quotes *)
-  pp_syntax_inner ctx syn
+  (* Syntax descriptors should be printed with quotes per CSS spec *)
+  Pp.char ctx '"';
+  pp_syntax_inner ctx syn;
+  Pp.char ctx '"'
 
 (** Pretty-print a value according to its syntax type *)
 let rec pp_value : type a. a syntax -> a Pp.t =

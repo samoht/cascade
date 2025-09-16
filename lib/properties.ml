@@ -157,6 +157,21 @@ let read_align_content t : align_content =
       ~last:(Last_baseline : align_content)
       t
   in
+  let read_safe t : align_content =
+    Reader.expect_string "safe" t;
+    Reader.ws t;
+    Reader.enum "align-content safe"
+      [
+        ("center", (Safe_center : align_content));
+        ("start", Safe_start);
+        ("end", Safe_end);
+        ("flex-start", Safe_flex_start);
+        ("flex-end", Safe_flex_end);
+        ("left", Safe_left);
+        ("right", Safe_right);
+      ]
+      t
+  in
   let read_unsafe t : align_content =
     Reader.expect_string "unsafe" t;
     Reader.ws t;
@@ -187,7 +202,7 @@ let read_align_content t : align_content =
       ("space-evenly", Space_evenly);
       ("stretch", Stretch);
     ]
-    ~default:(Reader.one_of [ read_flat_baseline; read_unsafe ])
+    ~default:(Reader.one_of [ read_flat_baseline; read_safe; read_unsafe ])
     t
 
 let read_justify_content t : justify_content =
@@ -270,6 +285,23 @@ let read_justify_items t : justify_items =
       ~last:(Last_baseline : justify_items)
       t
   in
+  let read_safe t : justify_items =
+    Reader.expect_string "safe" t;
+    Reader.ws t;
+    Reader.enum "justify-items safe"
+      [
+        ("center", (Safe_center : justify_items));
+        ("start", Safe_start);
+        ("end", Safe_end);
+        ("self-start", Safe_self_start);
+        ("self-end", Safe_self_end);
+        ("flex-start", Safe_flex_start);
+        ("flex-end", Safe_flex_end);
+        ("left", Safe_left);
+        ("right", Safe_right);
+      ]
+      t
+  in
   let read_unsafe t : justify_items =
     Reader.expect_string "unsafe" t;
     Reader.ws t;
@@ -303,7 +335,7 @@ let read_justify_items t : justify_items =
       ("left", Left);
       ("right", Right);
     ]
-    ~default:(Reader.one_of [ read_flat_baseline; read_unsafe ])
+    ~default:(Reader.one_of [ read_flat_baseline; read_safe; read_unsafe ])
     t
 
 let read_justify_self t : justify_self =
@@ -331,6 +363,23 @@ let read_justify_self t : justify_self =
       ]
       t
   in
+  let read_safe t : justify_self =
+    Reader.expect_string "safe" t;
+    Reader.ws t;
+    Reader.enum "justify-self safe"
+      [
+        ("center", (Safe_center : justify_self));
+        ("start", Safe_start);
+        ("end", Safe_end);
+        ("self-start", Safe_self_start);
+        ("self-end", Safe_self_end);
+        ("flex-start", Safe_flex_start);
+        ("flex-end", Safe_flex_end);
+        ("left", Safe_left);
+        ("right", Safe_right);
+      ]
+      t
+  in
   Reader.enum "justify-self"
     [
       ("auto", Auto);
@@ -348,7 +397,7 @@ let read_justify_self t : justify_self =
       ("left", Left);
       ("right", Right);
     ]
-    ~default:(Reader.one_of [ read_flat_baseline; read_unsafe ])
+    ~default:(Reader.one_of [ read_flat_baseline; read_unsafe; read_safe ])
     t
 
 let rec read_font_weight t : font_weight =
@@ -476,46 +525,100 @@ let read_overflow t : overflow =
     t
 
 let read_cursor t : cursor =
-  Reader.enum "cursor"
-    [
-      ("auto", (Auto : cursor));
-      ("default", Default);
-      ("none", None);
-      ("context-menu", Context_menu);
-      ("help", Help);
-      ("pointer", Pointer);
-      ("progress", Progress);
-      ("wait", Wait);
-      ("cell", Cell);
-      ("crosshair", Crosshair);
-      ("text", Text);
-      ("vertical-text", Vertical_text);
-      ("alias", Alias);
-      ("copy", Copy);
-      ("move", Move);
-      ("no-drop", No_drop);
-      ("not-allowed", Not_allowed);
-      ("grab", Grab);
-      ("grabbing", Grabbing);
-      ("all-scroll", All_scroll);
-      ("col-resize", Col_resize);
-      ("row-resize", Row_resize);
-      ("n-resize", N_resize);
-      ("e-resize", E_resize);
-      ("s-resize", S_resize);
-      ("w-resize", W_resize);
-      ("ne-resize", Ne_resize);
-      ("nw-resize", Nw_resize);
-      ("se-resize", Se_resize);
-      ("sw-resize", Sw_resize);
-      ("ew-resize", Ew_resize);
-      ("ns-resize", Ns_resize);
-      ("nesw-resize", Nesw_resize);
-      ("nwse-resize", Nwse_resize);
-      ("zoom-in", Zoom_in);
-      ("zoom-out", Zoom_out);
-    ]
-    t
+  (* Helper to parse cursor keyword *)
+  let read_cursor_keyword (t : Reader.t) : cursor =
+    Reader.enum "cursor"
+      [
+        ("auto", (Auto : cursor));
+        ("default", Default);
+        ("none", None);
+        ("context-menu", Context_menu);
+        ("help", Help);
+        ("pointer", Pointer);
+        ("progress", Progress);
+        ("wait", Wait);
+        ("cell", Cell);
+        ("crosshair", Crosshair);
+        ("text", Text);
+        ("vertical-text", Vertical_text);
+        ("alias", Alias);
+        ("copy", Copy);
+        ("move", Move);
+        ("no-drop", No_drop);
+        ("not-allowed", Not_allowed);
+        ("grab", Grab);
+        ("grabbing", Grabbing);
+        ("all-scroll", All_scroll);
+        ("col-resize", Col_resize);
+        ("row-resize", Row_resize);
+        ("n-resize", N_resize);
+        ("e-resize", E_resize);
+        ("s-resize", S_resize);
+        ("w-resize", W_resize);
+        ("ne-resize", Ne_resize);
+        ("nw-resize", Nw_resize);
+        ("se-resize", Se_resize);
+        ("sw-resize", Sw_resize);
+        ("ew-resize", Ew_resize);
+        ("ns-resize", Ns_resize);
+        ("nesw-resize", Nesw_resize);
+        ("nwse-resize", Nwse_resize);
+        ("zoom-in", Zoom_in);
+        ("zoom-out", Zoom_out);
+      ]
+      t
+  in
+
+  (* Helper to parse URL with optional hotspot *)
+  let read_url_with_hotspot (t : Reader.t) : string * (float * float) option =
+    Reader.ws t;
+    let url =
+      match Reader.peek t with
+      | Some ('"' | '\'') -> Reader.string ~trim:true t
+      | _ -> String.trim (Reader.until t ')')
+    in
+    Reader.ws t;
+    let hotspot =
+      if Reader.peek t <> Some ')' then (
+        let x = Reader.number t in
+        Reader.ws t;
+        let y = Reader.number t in
+        Some (x, y))
+      else None
+    in
+    (url, hotspot)
+  in
+
+  (* Recursive helper to parse cursor specification *)
+  let rec parse_cursor_spec (t : Reader.t) : cursor =
+    Reader.ws t;
+    if Reader.looking_at t "url(" then (
+      Reader.expect_string "url(" t;
+      let url, hotspot = read_url_with_hotspot t in
+      Reader.expect ')' t;
+      Reader.ws t;
+
+      (* Parse optional hotspot coordinates outside url() *)
+      let hotspot =
+        try
+          let x = Reader.number t in
+          Reader.ws t;
+          let y = Reader.number t in
+          Reader.ws t;
+          Some (x, y)
+        with _ -> hotspot
+      in
+
+      (* Must have comma for fallback *)
+      if Reader.peek t = Some ',' then (
+        Reader.skip t;
+        let fallback = parse_cursor_spec t in
+        (Url (url, hotspot, fallback) : cursor))
+      else err_invalid_value t "cursor" "url without fallback keyword")
+    else read_cursor_keyword t
+  in
+
+  parse_cursor_spec t
 
 let read_shadow_component t =
   Reader.one_of
@@ -1163,6 +1266,15 @@ let pp_justify_items : justify_items Pp.t =
   | Flex_end -> Pp.string ctx "flex-end"
   | Left -> Pp.string ctx "left"
   | Right -> Pp.string ctx "right"
+  | Safe_center -> Pp.string ctx "safe center"
+  | Safe_start -> Pp.string ctx "safe start"
+  | Safe_end -> Pp.string ctx "safe end"
+  | Safe_self_start -> Pp.string ctx "safe self-start"
+  | Safe_self_end -> Pp.string ctx "safe self-end"
+  | Safe_flex_start -> Pp.string ctx "safe flex-start"
+  | Safe_flex_end -> Pp.string ctx "safe flex-end"
+  | Safe_left -> Pp.string ctx "safe left"
+  | Safe_right -> Pp.string ctx "safe right"
   | Unsafe_center -> Pp.string ctx "unsafe center"
   | Unsafe_start -> Pp.string ctx "unsafe start"
   | Unsafe_end -> Pp.string ctx "unsafe end"
@@ -1192,6 +1304,15 @@ let pp_justify_self : justify_self Pp.t =
   | Flex_end -> Pp.string ctx "flex-end"
   | Left -> Pp.string ctx "left"
   | Right -> Pp.string ctx "right"
+  | Safe_center -> Pp.string ctx "safe center"
+  | Safe_start -> Pp.string ctx "safe start"
+  | Safe_end -> Pp.string ctx "safe end"
+  | Safe_self_start -> Pp.string ctx "safe self-start"
+  | Safe_self_end -> Pp.string ctx "safe self-end"
+  | Safe_flex_start -> Pp.string ctx "safe flex-start"
+  | Safe_flex_end -> Pp.string ctx "safe flex-end"
+  | Safe_left -> Pp.string ctx "safe left"
+  | Safe_right -> Pp.string ctx "safe right"
   | Unsafe_center -> Pp.string ctx "unsafe center"
   | Unsafe_start -> Pp.string ctx "unsafe start"
   | Unsafe_end -> Pp.string ctx "unsafe end"
@@ -2120,7 +2241,7 @@ let rec pp_content_visibility : content_visibility Pp.t =
   | Inherit -> Pp.string ctx "inherit"
   | Var v -> pp_var pp_content_visibility ctx v
 
-let pp_cursor : cursor Pp.t =
+let rec pp_cursor : cursor Pp.t =
  fun ctx -> function
   | Auto -> Pp.string ctx "auto"
   | Default -> Pp.string ctx "default"
@@ -2158,15 +2279,17 @@ let pp_cursor : cursor Pp.t =
   | Nwse_resize -> Pp.string ctx "nwse-resize"
   | Zoom_in -> Pp.string ctx "zoom-in"
   | Zoom_out -> Pp.string ctx "zoom-out"
-  | Url (url, coords) -> (
+  | Url (url, coords, fallback) ->
       Pp.url ctx url;
-      match coords with
+      (match coords with
       | Some (x, y) ->
           Pp.char ctx ' ';
           Pp.float ctx x;
           Pp.char ctx ' ';
           Pp.float ctx y
-      | None -> ())
+      | None -> ());
+      Pp.comma ctx ();
+      pp_cursor ctx fallback
   | Inherit -> Pp.string ctx "inherit"
 
 let pp_direction : direction Pp.t =
@@ -2439,6 +2562,13 @@ let pp_align_content : align_content Pp.t =
   | Flex_end -> Pp.string ctx "flex-end"
   | Left -> Pp.string ctx "left"
   | Right -> Pp.string ctx "right"
+  | Safe_center -> Pp.string ctx "safe center"
+  | Safe_start -> Pp.string ctx "safe start"
+  | Safe_end -> Pp.string ctx "safe end"
+  | Safe_flex_start -> Pp.string ctx "safe flex-start"
+  | Safe_flex_end -> Pp.string ctx "safe flex-end"
+  | Safe_left -> Pp.string ctx "safe left"
+  | Safe_right -> Pp.string ctx "safe right"
   | Unsafe_center -> Pp.string ctx "unsafe center"
   | Unsafe_start -> Pp.string ctx "unsafe start"
   | Unsafe_end -> Pp.string ctx "unsafe end"

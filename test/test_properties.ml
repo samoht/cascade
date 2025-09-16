@@ -338,9 +338,6 @@ let check_gradient_stop =
 (* Helper for any_property type let pp_any_property : any_property Css.Pp.t =
    fun ctx (Prop p) -> pp_property ctx p *)
 
-(* TODO: Existential type - read_property doesn't exist let check_property =
-   check_value "property" pp_any_property read_property *)
-
 let check_font_weight =
   check_value "font_weight" pp_font_weight read_font_weight
 
@@ -964,16 +961,6 @@ let test_property_names () =
   check string "property name" "transform" (to_s Transform);
   check string "property name" "cursor" (to_s Cursor)
 
-(* Roundtrip tests for property names via read_property/pp_property *)
-let test_property_read_pp_roundtrip () =
-  (* TODO: Cannot test without read_property which can't exist due to
-     existential type check_property "width"; check_property "height";
-     check_property "color"; check_property "background-color"; check_property
-     "display"; check_property "position"; check_property "overflow";
-     check_property "margin"; check_property "padding"; check_property
-     "border-width"; check_property "font-size" *)
-  ()
-
 let test_pp_property_value () =
   check_property_value "10px" (Width, Css.Values.Px 10.);
   check_property_value "red" (Color, Css.Values.Named Css.Values.Red);
@@ -1295,8 +1282,6 @@ let tests =
     test_case "shadows/filters/background" `Quick
       test_shadows_filters_background;
     test_case "property names" `Quick test_property_names;
-    test_case "read_property/pp_property roundtrip" `Quick
-      test_property_read_pp_roundtrip;
     (* Negative property tokens via try_parse to assert failure behavior *)
     test_case "negative property values" `Quick test_negative_property_values;
     test_case "pp_property_value samples" `Quick test_pp_property_value_samples;
@@ -1345,8 +1330,10 @@ let test_cursor () =
   check_cursor "wait";
   check_cursor "help";
   (* Spec-compliant url + hotspot + fallback keyword *)
-  check_cursor "url(./cursor.cur) 4 12, pointer";
-  check_cursor "url(\"a.cur\"), url(b.cur) 1 2, move"
+  check_cursor ~expected:"url(./cursor.cur) 4 12,pointer"
+    "url(./cursor.cur) 4 12, pointer";
+  check_cursor ~expected:"url(a.cur),url(b.cur) 1 2,move"
+    "url(\"a.cur\"), url(b.cur) 1 2, move"
 
 let test_border_width () =
   check_border_width "thin";

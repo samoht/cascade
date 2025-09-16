@@ -98,43 +98,37 @@ module Selector = Selector
 
     See {:https://www.w3.org/TR/css-syntax-3/ CSS Syntax Module Level 3}. *)
 
-type rule
-(** Abstract type for CSS rules (selector + declarations). *)
-
-type 'a property_rule
-(** Abstract type for CSS property rules with typed syntax. *)
-
 type declaration
 (** Abstract type for CSS declarations (property-value pairs). *)
 
-type statement =
-  | Rule of rule
-  | Charset of string
-  | Import of Stylesheet.import_rule
-  | Namespace of string option * string
-  | Property : 'a property_rule -> statement
-  | Layer_decl of string list
-  | Layer of string option * Stylesheet.block
-  | Media of string * Stylesheet.block
-  | Container of string option * string * Stylesheet.block
-  | Supports of string * Stylesheet.block
-  | Starting_style of Stylesheet.block
-  | Scope of string option * string option * Stylesheet.block
-  | Keyframes of string * Stylesheet.keyframe list
-  | Font_face of Stylesheet.font_face_descriptor list
-  | Page of string option * declaration list
-      (** CSS statement type - either a rule or an at-rule *)
+type statement
+(** The type for CSS statements. *)
 
 val rule :
-  selector:Selector.t -> ?nested:statement list -> declaration list -> rule
-(** [rule ~selector declarations] is a CSS rule with the given selector and
-    declarations. *)
+  selector:Selector.t -> ?nested:statement list -> declaration list -> statement
+(** [rule ~selector declarations] creates a CSS rule statement with the given
+    selector and declarations. *)
 
-val selector : rule -> Selector.t
-(** [selector rule] is the selector of [rule]. *)
+val statement_selector : statement -> Selector.t option
+(** [statement_selector stmt] returns [Some selector] if the statement is a
+    rule, [None] otherwise. *)
 
-val declarations : rule -> declaration list
-(** [declarations rule] is the list of declarations in [rule]. *)
+val statement_declarations : statement -> declaration list option
+(** [statement_declarations stmt] returns [Some declarations] if the statement
+    is a rule, [None] otherwise. *)
+
+val statement_nested : statement -> statement list option
+(** [statement_nested stmt] returns [Some nested] if the statement is a rule
+    with nested statements, [None] otherwise. *)
+
+val is_rule : statement -> bool
+(** [is_rule stmt] returns [true] if the statement is a rule, [false] otherwise.
+*)
+
+val as_rule :
+  statement -> (Selector.t * declaration list * statement list) option
+(** [as_rule stmt] returns [Some (selector, declarations, nested)] if the
+    statement is a rule, [None] otherwise. *)
 
 (** {2:at_rules At-Rules}
 
@@ -159,39 +153,81 @@ val empty : t
 val concat : t list -> t
 (** [concat stylesheets] concatenates multiple stylesheets into one. *)
 
-val v : rule list -> t
-(** [v rules] creates a stylesheet from a list of rules. *)
+val v : statement list -> t
+(** [v statements] creates a stylesheet from a list of statements. *)
 
 val of_statements : statement list -> t
 (** [of_statements statements] creates a stylesheet from a list of statements.
 *)
 
-val rules : t -> rule list
-(** [rules t] returns the top-level rules from the stylesheet. *)
+val rules : t -> statement list
+(** [rules t] returns the top-level rule statements from the stylesheet. *)
 
-val media_queries : t -> (string * rule list) list
-(** [media_queries t] returns media queries and their rules. *)
+val media_queries : t -> (string * statement list) list
+(** [media_queries t] returns media queries and their rule statements. *)
 
 val layers : t -> string list
 (** [layers t] returns the layer names from the stylesheet. *)
 
-val media : condition:string -> rule list -> t
-(** [media ~condition rules] creates a stylesheet with rules wrapped in @media. *)
+val media : condition:string -> statement list -> statement
+(** [media ~condition statements] creates a @media statement with the given condition. *)
 
-val layer : ?name:string -> rule list -> t
-(** [layer ?name rules] creates a stylesheet with rules wrapped in [@layer]. *)
+val layer : ?name:string -> statement list -> statement
+(** [layer ?name statements] creates a [@layer] statement with the given
+    statements. *)
 
-val container : ?name:string -> condition:string -> rule list -> t
-(** [container ?name ~condition rules] creates a stylesheet with rules wrapped
-    in [@container]. *)
+val layer_decl : string list -> statement
+(** [layer_decl names] creates a [@layer] declaration statement that declares
+    layer names without any content (e.g.,
+    [@layer theme, base, components, utilities;]). *)
 
-val supports : condition:string -> rule list -> t
-(** [supports ~condition rules] creates a stylesheet with rules wrapped in
-    [@supports]. *)
+val layer_of : ?name:string -> t -> t
+(** [layer_of ?name stylesheet] wraps an entire stylesheet in [@layer],
+    preserving @supports and other at-rules within it. *)
+
+val container : ?name:string -> condition:string -> statement list -> statement
+(** [container ?name ~condition statements] creates a [@container] statement
+    with the given statements. *)
+
+val supports : condition:string -> statement list -> statement
+(** [supports ~condition statements] creates a [@supports] statement with the
+    given condition. *)
 
 (** {1 Declarations}
 
     Core value types and declaration building blocks. *)
+
+(** {2:variables Custom Properties (Variables) *)
+
+type 'a var
+(** The type of CSS variable holding values of type ['a]. *)
+
+val var_name : 'a var -> string
+(** [var_name v] is [v]'s variable name (without --). *)
+
+val var_layer : 'a var -> string option
+(** [var_layer v] is the optional layer where [v] is defined. *)
+
+type any_var = V : 'a var -> any_var  (** The type of CSS variables. *)
+
+val vars_of_rules : statement list -> any_var list
+(** [vars_of_rules statements] extracts all CSS variables referenced in rule
+    statements' declarations, returning them sorted and deduplicated. *)
+
+val vars_of_stylesheet : t -> any_var list
+(** [vars_of_stylesheet stylesheet] extracts all CSS variables referenced in the
+    entire stylesheet, returning them sorted and deduplicated. *)
+
+val any_var_name : any_var -> string
+(** [any_var_name v] is the name of a CSS variable (with [--] prefix). *)
+
+val analyze_declarations : declaration list -> any_var list
+(** [analyze_declarations declarations] is the typed CSS variables extracted
+    from [declarations]. *)
+
+val extract_custom_declarations : declaration list -> declaration list
+(** [extract_custom_declarations decls] is only the custom property declarations
+    from [decls]. *)
 
 (** {2:core_types Core Types & Calculations}
 
@@ -202,15 +238,6 @@ val supports : condition:string -> rule list -> t
     Cascading Variables Module Level 1} and
     {:https://www.w3.org/TR/css-values-3/ CSS Values and Units Module Level 3}.
 *)
-
-type 'a var
-(** The type of CSS variable holding values of type ['a]. *)
-
-val var_name : 'a var -> string
-(** [var_name v] is [v]'s variable name (without --). *)
-
-val var_layer : 'a var -> string option
-(** [var_layer v] is the optional layer where [v] is defined. *)
 
 (** CSS calc operations. *)
 type calc_op = Add | Sub | Mul | Div
@@ -1391,6 +1418,15 @@ type align_content =
   | Flex_end
   | Left
   | Right
+  (* Safe content position values *)
+  | Safe_center
+  | Safe_start
+  | Safe_end
+  | Safe_flex_start
+  | Safe_flex_end
+  | Safe_left
+  | Safe_right
+  (* Unsafe content position values *)
   | Unsafe_center
   | Unsafe_start
   | Unsafe_end
@@ -1495,6 +1531,15 @@ type justify_items =
   | Flex_end
   | Left
   | Right
+  | Safe_center
+  | Safe_start
+  | Safe_end
+  | Safe_self_start
+  | Safe_self_end
+  | Safe_flex_start
+  | Safe_flex_end
+  | Safe_left
+  | Safe_right
   | Unsafe_center
   | Unsafe_start
   | Unsafe_end
@@ -1526,6 +1571,17 @@ type justify_self =
   | Flex_end
   | Left
   | Right
+  (* Safe self position values *)
+  | Safe_center
+  | Safe_start
+  | Safe_end
+  | Safe_self_start
+  | Safe_self_end
+  | Safe_flex_start
+  | Safe_flex_end
+  | Safe_left
+  | Safe_right
+  (* Unsafe self position values *)
   | Unsafe_center
   | Unsafe_start
   | Unsafe_end
@@ -2880,7 +2936,7 @@ type cursor =
   | All_scroll
   | Zoom_in
   | Zoom_out
-  | Url of string * (float * float) option
+  | Url of string * (float * float) option * cursor
   | Inherit
 
 (** CSS user-select values. *)
@@ -3491,26 +3547,16 @@ val pp :
   ?minify:bool -> ?optimize:bool -> ?mode:mode -> ?newline:bool -> t -> string
 (** [pp] is {!to_string}. *)
 
-type any_var = V : 'a var -> any_var
+type parse_error = Reader.parse_error
 
-val vars_of_rules : rule list -> any_var list
-(** [vars_of_rules rules] extracts all CSS variables referenced in the rules'
-    declarations, returning them sorted and deduplicated. *)
+val pp_parse_error : parse_error -> string
+(** [pp_parse_error error] formats a parse error as a string, including call
+    stack if available. *)
 
-val vars_of_stylesheet : t -> any_var list
-(** [vars_of_stylesheet stylesheet] extracts all CSS variables referenced in the
-    entire stylesheet, returning them sorted and deduplicated. *)
-
-val any_var_name : any_var -> string
-(** [any_var_name v] is the name of a CSS variable (with [--] prefix). *)
-
-val analyze_declarations : declaration list -> any_var list
-(** [analyze_declarations declarations] is the typed CSS variables extracted
-    from [declarations]. *)
-
-val extract_custom_declarations : declaration list -> declaration list
-(** [extract_custom_declarations decls] is only the custom property declarations
-    from [decls]. *)
+val of_string : ?filename:string -> string -> (t, parse_error) result
+(** [of_string ?filename css] parses a CSS string into a stylesheet. Returns
+    [Error error] on invalid CSS. The optional [filename] parameter is used for
+    error reporting (defaults to "<string>"). *)
 
 (** {2:optimization Optimization}
 
@@ -3600,24 +3646,10 @@ val pp_justify_content : justify_content Pp.t
 module Pp = Pp
 (** {1 CSS Parsing} *)
 
-type parse_error = Reader.parse_error
-
-val pp_parse_error : parse_error -> string
-(** [pp_parse_error error] formats a parse error as a string, including call
-    stack if available. *)
-
-val of_string : ?filename:string -> string -> (t, parse_error) result
-(** [of_string ?filename css] parses a CSS string into a stylesheet. Returns
-    [Error error] on invalid CSS. The optional [filename] parameter is used for
-    error reporting (defaults to "<string>"). *)
-
 module Reader = Reader
 module Values = Values
 module Properties = Properties
 module Declaration = Declaration
 module Variables = Variables
 module Optimize = Optimize
-
-(* Expose the internal Stylesheet module for test access only. Public callers
-   should use the abstract Css API above. *)
 module Stylesheet = Stylesheet
