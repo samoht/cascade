@@ -285,6 +285,8 @@ type length =
   | Max_content  (** max-content keyword *)
   | Min_content  (** min-content keyword *)
   | From_font  (** from-font keyword for text-decoration-thickness *)
+  | Function of string
+      (** CSS functions like clamp(), minmax(), min(), max() *)
   | Var of length var  (** CSS variable reference *)
   | Calc of length calc  (** Calculated expressions *)
 

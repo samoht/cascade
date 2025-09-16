@@ -253,9 +253,30 @@ let check_box_shadow =
     (Css.Reader.list ~sep:Css.Reader.comma ~at_least:1 read_shadow)
 
 (* Reader alias for box-shadow list for negative tests readability *)
-(* TODO: Implement box-shadow properly
-let read_box_shadow =
-  Css.Reader.list ~sep:Css.Reader.comma ~at_least:1 read_shadow *)
+let read_box_shadow t : shadow list =
+  (* box-shadow is either 'none' or a comma-separated list of shadows *)
+  (* It cannot be "none,none" or mix none with other shadows *)
+  match Css.Reader.option read_shadow t with
+  | Some None ->
+      (* Check if there's a comma after 'none' *)
+      Css.Reader.ws t;
+      if Css.Reader.peek t = Some ',' then
+        failwith "box-shadow 'none' cannot be part of a list"
+      else [ None ]
+  | Some shadow ->
+      (* Read remaining shadows if any *)
+      let shadows = ref [ shadow ] in
+      Css.Reader.ws t;
+      while Css.Reader.peek t = Some ',' do
+        Css.Reader.skip t;
+        Css.Reader.ws t;
+        let s = read_shadow t in
+        if s = None then failwith "box-shadow 'none' cannot be part of a list"
+        else shadows := s :: !shadows;
+        Css.Reader.ws t
+      done;
+      List.rev !shadows
+  | None -> failwith "invalid box-shadow"
 
 let check_filter = check_value "filter" pp_filter read_filter
 
@@ -1154,8 +1175,7 @@ let test_negative_property_values () =
   (* Invalid scroll-snap-type combo *)
   neg read_scroll_snap_type "x invalid";
   (* box-shadow: 'none' should not be listable *)
-  (* TODO: read_box_shadow not implemented yet
-  neg read_box_shadow "none,none"; *)
+  neg read_box_shadow "none,none";
   (* cursor url without mandatory keyword fallback at end *)
   neg read_cursor "url(a.cur)";
   (* contain duplicate tokens is invalid *)

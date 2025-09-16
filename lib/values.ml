@@ -157,6 +157,7 @@ let rec pp_length : length Pp.t =
   | Max_content -> Pp.string ctx "max-content"
   | Min_content -> Pp.string ctx "min-content"
   | From_font -> Pp.string ctx "from-font"
+  | Function s -> Pp.string ctx s
   | Var v -> pp_var pp_length ctx v
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -836,8 +837,61 @@ let rec read_length t : length =
   Reader.ws t;
   let read_var_length t : length = Var (read_var read_length t) in
   let read_calc_length t : length = Calc (read_calc read_length t) in
+  let read_function_length t : length =
+    (* Handle clamp(), minmax(), and other CSS functions *)
+    let read_function_content t =
+      (* Read content with proper parenthesis balancing *)
+      let buf = Buffer.create 64 in
+      let rec read_balanced depth =
+        match Reader.peek t with
+        | None -> Reader.err t "unexpected end of input in function"
+        | Some ')' when depth = 0 -> ()
+        | Some ')' ->
+            Buffer.add_char buf ')';
+            Reader.skip t;
+            read_balanced (depth - 1)
+        | Some '(' ->
+            Buffer.add_char buf '(';
+            Reader.skip t;
+            read_balanced (depth + 1)
+        | Some c ->
+            Buffer.add_char buf c;
+            Reader.skip t;
+            read_balanced depth
+      in
+      read_balanced 0;
+      Buffer.contents buf
+    in
+    if Reader.looking_at t "clamp(" then (
+      Reader.expect_string "clamp(" t;
+      let content = read_function_content t in
+      Reader.expect ')' t;
+      Function ("clamp(" ^ content ^ ")"))
+    else if Reader.looking_at t "minmax(" then (
+      Reader.expect_string "minmax(" t;
+      let content = read_function_content t in
+      Reader.expect ')' t;
+      Function ("minmax(" ^ content ^ ")"))
+    else if Reader.looking_at t "min(" then (
+      Reader.expect_string "min(" t;
+      let content = read_function_content t in
+      Reader.expect ')' t;
+      Function ("min(" ^ content ^ ")"))
+    else if Reader.looking_at t "max(" then (
+      Reader.expect_string "max(" t;
+      let content = read_function_content t in
+      Reader.expect ')' t;
+      Function ("max(" ^ content ^ ")"))
+    else Reader.err t "unknown function"
+  in
   Reader.one_of
-    [ read_var_length; read_calc_length; read_length_unit; read_length_keyword ]
+    [
+      read_var_length;
+      read_calc_length;
+      read_function_length;
+      read_length_unit;
+      read_length_keyword;
+    ]
     t
 
 (** Read a non-negative length value (for padding properties) *)
