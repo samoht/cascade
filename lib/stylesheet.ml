@@ -769,7 +769,7 @@ and read_declarations_block (r : Reader.t) : Declaration.declaration list =
   loop []
 
 (* Helper: Read nested at-rule with declarations content *)
-and read_nested_at_rule_with_decls (r : Reader.t) (at_rule : string)
+and read_nested_at_rule (r : Reader.t) (at_rule : string)
     (selector : Selector.t) : statement =
   Reader.with_context r at_rule @@ fun () ->
   Reader.expect_string at_rule r;
@@ -802,7 +802,20 @@ and read_rule (r : Reader.t) : rule =
   let selector = Selector.read_selector_list r in
   Reader.ws r;
   Reader.expect '{' r;
-  let rec loop decls nested =
+  (* Helper to handle cases where no declaration is parsed *)
+  let rec handle_no_declaration decls nested =
+    (* Check if we're at the end of file or end of block *)
+    if Reader.is_done r then
+      (* Hit EOF without closing brace - this is an error *)
+      Reader.err r "unexpected end of input, expected '}'"
+    else if Reader.peek r = Some '}' then
+      (* We've reached the end of this rule block *)
+      { selector; declarations = List.rev decls; nested = List.rev nested }
+    else
+      (* Try to parse as a nested rule - CSS nesting is valid *)
+      let nr = read_rule r in
+      loop decls (Rule nr :: nested)
+  and loop decls nested =
     Reader.ws r;
     match Reader.peek r with
     | Some '}' ->
@@ -816,7 +829,7 @@ and read_rule (r : Reader.t) : rule =
             || Reader.looking_at r "@media"
             || Reader.looking_at r "@container"
           then
-            read_nested_at_rule_with_decls r
+            read_nested_at_rule r
               (if Reader.looking_at r "@supports" then "@supports"
                else if Reader.looking_at r "@media" then "@media"
                else "@container")
@@ -857,22 +870,7 @@ and read_rule (r : Reader.t) : rule =
             Reader.ws r;
             (match Reader.peek r with Some ';' -> Reader.skip r | _ -> ());
             loop (d :: decls) nested
-        | None ->
-            (* Check if we're at the end of file or end of block *)
-            if Reader.is_done r then
-              (* Hit EOF without closing brace - this is an error *)
-              Reader.err r "unexpected end of input, expected '}'"
-            else if Reader.peek r = Some '}' then
-              (* We've reached the end of this rule block *)
-              {
-                selector;
-                declarations = List.rev decls;
-                nested = List.rev nested;
-              }
-            else
-              (* Try to parse as a nested rule - CSS nesting is valid *)
-              let nr = read_rule r in
-              loop decls (Rule nr :: nested))
+        | None -> handle_no_declaration decls nested)
   in
   loop [] []
 
@@ -907,42 +905,31 @@ and read_property_rule (r : Reader.t) : statement =
       Property { name; syntax; inherits; initial_value }
 
 and read_property_descriptors (r : Reader.t) : property_reader_state =
-  (* CSS spec allows descriptors in any order. Since initial-value must conform
-     to the syntax type, we store it as a string and parse it after we know the
-     syntax. *)
   let state = ref { syntax = None; inherits = None; initial_value = None } in
-
   let rec loop () =
     Reader.ws r;
     if Reader.peek r = Some '}' then (
       Reader.skip r;
       !state)
-    else if Reader.looking_at r "syntax:" then (
-      Reader.expect_string "syntax:" r;
+    else
+      let key = Reader.ident ~keep_case:false r in
       Reader.ws r;
-      let syn = Variables.read_syntax r in
-      state := { !state with syntax = Some syn };
+      Reader.expect ':' r;
       Reader.ws r;
-      if Reader.peek r = Some ';' then Reader.skip r;
-      loop ())
-    else if Reader.looking_at r "inherits:" then (
-      Reader.expect_string "inherits:" r;
-      Reader.ws r;
-      let inherits_value = Reader.bool r in
-      state := { !state with inherits = Some inherits_value };
-      Reader.ws r;
-      if Reader.peek r = Some ';' then Reader.skip r;
-      loop ())
-    else if Reader.looking_at r "initial-value:" then (
-      Reader.expect_string "initial-value:" r;
-      Reader.ws r;
-      (* Store raw value string - will parse once we know the syntax type *)
-      let value_str = Reader.css_value ~stops:[ ';'; '}' ] r in
-      state := { !state with initial_value = Some value_str };
+      (match key with
+      | "syntax" ->
+          let syn = Variables.read_syntax r in
+          state := { !state with syntax = Some syn }
+      | "inherits" ->
+          let inherits_value = Reader.bool r in
+          state := { !state with inherits = Some inherits_value }
+      | "initial-value" ->
+          let value_str = Reader.css_value ~stops:[ ';'; '}' ] r in
+          state := { !state with initial_value = Some value_str }
+      | _ -> Reader.err_invalid r "unknown property descriptor");
       Reader.ws r;
       if Reader.peek r = Some ';' then Reader.skip r;
-      loop ())
-    else Reader.err_invalid r "unknown property descriptor"
+      loop ()
   in
   loop ()
 

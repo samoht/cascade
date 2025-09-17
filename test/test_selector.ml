@@ -1,16 +1,6 @@
 (** Tests for CSS Selector module *)
 
-open Alcotest
 open Css.Selector
-
-(* Generic check function for selectors - handles parse/print roundtrip
-   testing *)
-let check_selector ?expected input =
-  let expected = Option.value ~default:input expected in
-  let t = Css.Reader.of_string input in
-  let selector = read t in
-  let output = to_string ~minify:true selector in
-  check string (Fmt.str "selector %s" input) expected output
 
 (* Generic check function for selector types *)
 let check_value name pp reader ?expected input =
@@ -18,10 +8,11 @@ let check_value name pp reader ?expected input =
   let t = Css.Reader.of_string input in
   let result = reader t in
   let pp_str = Css.Pp.to_string ~minify:true pp result in
-  check string (Fmt.str "%s %s" name input) expected pp_str
+  Alcotest.(check string) (Fmt.str "%s %s" name input) expected pp_str
 
 let check_nth = check_value "nth" pp_nth read_nth
 let check_combinator = check_value "combinator" pp_combinator read_combinator
+let check = check_value "selector" pp read
 
 let check_ns input =
   let t = Css.Reader.of_string input in
@@ -70,158 +61,144 @@ let check_invalid name exn_msg f =
   check_raises name (Invalid_argument exn_msg) f
 
 (* Helper for testing selector construction *)
-let check_construct name expected selector =
+let check_construct expected selector =
   let actual = to_string ~minify:true selector in
-  Alcotest.(check string) name expected actual
+  Alcotest.(check string) expected expected actual
 
 (* Test element selectors *)
 let element_cases () =
-  check_construct "div" "div" (element "div");
-  check_construct "span" "span" (element "span");
-  check_construct "h1" "h1" (element "h1");
-  check_construct "article" "article" (element "article");
-  check_construct "custom-element" "custom-element" (element "custom-element")
+  check_construct "div" (element "div");
+  check_construct "span" (element "span");
+  check_construct "h1" (element "h1");
+  check_construct "article" (element "article");
+  check_construct "custom-element" (element "custom-element")
 
 (* Test class selectors *)
 let class_cases () =
-  check_construct "class" ".test" (class_ "test");
-  check_construct "class with dash" ".test-class" (class_ "test-class");
-  check_construct "class with underscore" ".test_class" (class_ "test_class");
-  check_construct "class with number" ".test123" (class_ "test123")
+  check_construct ".test" (class_ "test");
+  check_construct ".test-class" (class_ "test-class");
+  check_construct ".test_class" (class_ "test_class");
+  check_construct ".test123" (class_ "test123")
 
 (* Test ID selectors *)
 let id_cases () =
-  check_construct "id" "#myid" (id "myid");
-  check_construct "id with dash" "#my-id" (id "my-id");
-  check_construct "id with underscore" "#my_id" (id "my_id");
-  check_construct "id with number" "#id123" (id "id123")
+  check_construct "#myid" (id "myid");
+  check_construct "#my-id" (id "my-id");
+  check_construct "#my_id" (id "my_id");
+  check_construct "#id123" (id "id123")
 
 (* Test pseudo-class selectors *)
 let pseudo_class_cases () =
-  check_construct "hover" ":hover" Hover;
-  check_construct "active" ":active" Active;
-  check_construct "focus" ":focus" Focus;
-  check_construct "first-child" ":first-child" First_child;
-  check_construct "last-child" ":last-child" Last_child;
-  check_construct "nth-child(2)" ":nth-child(2)" (nth_child (An_plus_b (0, 2)));
-  check_construct "nth-child(odd)" ":nth-child(odd)" (nth_child Odd);
-  check_construct "nth-child(even)" ":nth-child(even)" (nth_child Even);
-  check_construct "nth-child(2n+1)" ":nth-child(2n+1)"
-    (nth_child (An_plus_b (2, 1)));
+  check_construct ":hover" Hover;
+  check_construct ":active" Active;
+  check_construct ":focus" Focus;
+  check_construct ":first-child" First_child;
+  check_construct ":last-child" Last_child;
+  check_construct ":nth-child(2)" (nth_child (An_plus_b (0, 2)));
+  check_construct ":nth-child(odd)" (nth_child Odd);
+  check_construct ":nth-child(even)" (nth_child Even);
+  check_construct ":nth-child(2n+1)" (nth_child (An_plus_b (2, 1)));
   (* nth with Index and of clause *)
-  check_selector ":nth-child(5)";
-  check_selector ~expected:":nth-child(odd of .item)"
-    ":nth-child( odd of .item )";
-  check_selector ~expected:":nth-child(2n-1 of a,b)"
-    ":nth-child( 2n-1 of a , b )";
-  check_selector ":nth-of-type(3)";
-  check_selector ~expected:":nth-last-child(2 of .x,.y)"
-    ":nth-last-child(2 of .x , .y)";
-  check_selector ~expected:":nth-last-of-type(2n+2 of h1,.a)"
+  check ":nth-child(5)";
+  check ~expected:":nth-child(odd of .item)" ":nth-child( odd of .item )";
+  check ~expected:":nth-child(2n-1 of a,b)" ":nth-child( 2n-1 of a , b )";
+  check ":nth-of-type(3)";
+  check ~expected:":nth-last-child(2 of .x,.y)" ":nth-last-child(2 of .x , .y)";
+  check ~expected:":nth-last-of-type(2n+2 of h1,.a)"
     ":nth-last-of-type(2n+2 of h1 , .a)"
 
 (* Test pseudo-element selectors *)
 let pseudo_element_cases () =
-  check_construct "before" "::before" Before;
-  check_construct "after" "::after" After;
-  check_construct "first-line" "::first-line" First_line;
-  check_construct "first-letter" "::first-letter" First_letter;
-  check_construct "marker" "::marker" Marker;
+  check_construct ":before" Before;
+  check_construct ":after" After;
+  check_construct ":first-line" First_line;
+  check_construct ":first-letter" First_letter;
+  check_construct "::marker" Marker;
   ()
 
 (* Test attribute selectors *)
 let attribute_cases () =
-  check_construct "has attribute" "[href]" (attribute "href" Presence);
-  check_construct "exact match" "[type=text]" (attribute "type" (Exact "text"));
-  check_construct "contains word" "[class~=active]"
+  check_construct "[href]" (attribute "href" Presence);
+  check_construct "[type=text]" (attribute "type" (Exact "text"));
+  check_construct "[class~=active]"
     (attribute "class" (Whitespace_list "active"));
-  check_construct "starts with" "[href^=https]"
-    (attribute "href" (Prefix "https"));
-  check_construct "ends with" "[href$=\".pdf\"]"
-    (attribute "href" (Suffix ".pdf"));
-  check_construct "contains substring" "[title*=hello]"
-    (attribute "title" (Substring "hello"));
-  check_construct "dash match" "[lang|=en]"
-    (attribute "lang" (Hyphen_list "en"))
+  check_construct "[href^=https]" (attribute "href" (Prefix "https"));
+  check_construct "[href$=\".pdf\"]" (attribute "href" (Suffix ".pdf"));
+  check_construct "[title*=hello]" (attribute "title" (Substring "hello"));
+  check_construct "[lang|=en]" (attribute "lang" (Hyphen_list "en"))
 
 (* Test combinators *)
 let combinator_cases () =
-  check_construct "descendant" ".parent .child"
-    (class_ "parent" ++ class_ "child");
-  check_construct "child" ".parent>.child" (class_ "parent" >> class_ "child");
-  check_construct "next sibling" ".prev+.next"
+  check_construct ".parent .child" (class_ "parent" ++ class_ "child");
+  check_construct ".parent>.child" (class_ "parent" >> class_ "child");
+  check_construct ".prev+.next"
     (combine (class_ "prev") Next_sibling (class_ "next"));
-  check_construct "subsequent sibling" ".first~.later"
+  check_construct ".first~.later"
     (combine (class_ "first") Subsequent_sibling (class_ "later"));
-  check_construct "column" ".col1||.col2"
+  check_construct ".col1||.col2"
     (combine (class_ "col1") Column (class_ "col2"))
 
 (* Test compound selectors *)
 let compound_cases () =
-  check_construct "element.class" "div.container"
-    (element "div" && class_ "container");
-  check_construct "element#id" "div#main" (element "div" && id "main");
-  check_construct "class.class" ".btn.primary" (class_ "btn" && class_ "primary");
-  check_construct "element:hover" "a:hover" (element "a" && Hover);
-  check_construct "class[attr]" ".link[href]"
-    (class_ "link" && attribute "href" Presence)
+  check_construct "div.container" (element "div" && class_ "container");
+  check_construct "div#main" (element "div" && id "main");
+  check_construct ".btn.primary" (class_ "btn" && class_ "primary");
+  check_construct "a:hover" (element "a" && Hover);
+  check_construct ".link[href]" (class_ "link" && attribute "href" Presence)
 
 (* Test selector lists *)
 let list_cases () =
-  check_construct "list of classes" ".a,.b,.c"
-    (list [ class_ "a"; class_ "b"; class_ "c" ]);
-  check_construct "list of elements" "h1,h2,h3"
-    (list [ element "h1"; element "h2"; element "h3" ]);
-  check_construct "mixed list" "div,.class,#id"
+  check_construct ".a,.b,.c" (list [ class_ "a"; class_ "b"; class_ "c" ]);
+  check_construct "h1,h2,h3" (list [ element "h1"; element "h2"; element "h3" ]);
+  check_construct "div,.class,#id"
     (list [ element "div"; class_ "class"; id "id" ])
 
 (* Test :where() and :is() *)
 let where_is_cases () =
-  check_construct ":where(div)" ":where(div)" (where [ element "div" ]);
-  check_construct ":where(.a,.b)" ":where(.a,.b)"
-    (where [ class_ "a"; class_ "b" ]);
-  check_construct ":is(h1,h2)" ":is(h1,h2)" (is_ [ element "h1"; element "h2" ]);
-  check_construct ":not(.active)" ":not(.active)" (not [ class_ "active" ])
+  check_construct ":where(div)" (where [ element "div" ]);
+  check_construct ":where(.a,.b)" (where [ class_ "a"; class_ "b" ]);
+  check_construct ":is(h1,h2)" (is_ [ element "h1"; element "h2" ]);
+  check_construct ":not(.active)" (not [ class_ "active" ])
 
 (* Test parsing roundtrips *)
 let roundtrip () =
   (* Basic selectors *)
-  check_selector "div";
-  check_selector ".class";
-  check_selector "#id";
-  check_selector "*";
+  check "div";
+  check ".class";
+  check "#id";
+  check "*";
 
   (* Pseudo-classes *)
-  check_selector ":hover";
-  check_selector ":nth-child(2)";
-  check_selector ":nth-child(2n+1)";
-  check_selector ":nth-child(odd)";
-  check_selector ":nth-child(even)";
+  check ":hover";
+  check ":nth-child(2)";
+  check ":nth-child(2n+1)";
+  check ":nth-child(odd)";
+  check ":nth-child(even)";
 
   (* Pseudo-elements *)
-  check_selector "::before";
-  check_selector "::after";
-  check_selector "::part(foo)";
-  check_selector "::slotted(.class)";
+  check "::before";
+  check "::after";
+  check "::part(foo)";
+  check "::slotted(.class)";
 
   (* Attributes *)
-  check_selector "[href]";
-  check_selector ~expected:"[type=text]" "[type=\"text\"]";
-  check_selector ~expected:"[class~=active]" "[class~=\"active\"]";
-  check_selector ~expected:"[href^=https]" "[href^=\"https\"]";
+  check "[href]";
+  check ~expected:"[type=text]" "[type=\"text\"]";
+  check ~expected:"[class~=active]" "[class~=\"active\"]";
+  check ~expected:"[href^=https]" "[href^=\"https\"]";
 
   (* Combinators *)
-  check_selector ".parent .child";
-  check_selector ~expected:".parent>.child" ".parent > .child";
-  check_selector ~expected:".prev+.next" ".prev + .next";
-  check_selector ~expected:".first~.later" ".first ~ .later";
+  check ".parent .child";
+  check ~expected:".parent>.child" ".parent > .child";
+  check ~expected:".prev+.next" ".prev + .next";
+  check ~expected:".first~.later" ".first ~ .later";
 
   (* Complex selectors *)
-  check_selector "div.class#id[href]:hover::after";
-  check_selector ~expected:".a,.b,.c" ".a, .b, .c";
-  check_selector ":where(.a,.b)";
-  check_selector ":is(h1,h2,h3)";
-  check_selector ":not(.active)"
+  check "div.class#id[href]:hover::after";
+  check ~expected:".a,.b,.c" ".a, .b, .c";
+  check ":where(.a,.b)";
+  check ":is(h1,h2,h3)";
+  check ":not(.active)"
 
 (* Test invalid selectors *)
 let invalid () =
@@ -275,68 +252,54 @@ let invalid () =
   neg_parse "[attr=value" "unterminated attribute value"
 
 (* Test broken selectors with Parse_error exceptions *)
-let parse_errors () =
-  let check_parse_error input expected_msg =
-    let t = Css.Reader.of_string input in
-    try
-      let _ = read t in
-      Alcotest.failf "expected Parse_error for '%s' but parsing succeeded" input
-    with
-    | Css.Reader.Parse_error err ->
-        if err.message <> expected_msg then
-          Alcotest.failf "For input '%s':\n  expected: '%s'\n  got: '%s'" input
-            expected_msg err.message
-    | exn ->
-        Alcotest.failf "For '%s': expected Parse_error but got %s" input
-          (Printexc.to_string exn)
-  in
+let check_parse_error input expected_msg =
+  let t = Css.Reader.of_string input in
+  try
+    let _ = read t in
+    Alcotest.failf "expected Parse_error for '%s' but parsing succeeded" input
+  with
+  | Css.Reader.Parse_error err ->
+      if err.message <> expected_msg then
+        Alcotest.failf "For input '%s':\n  expected: '%s'\n  got: '%s'" input
+          expected_msg err.message
+  | exn ->
+      Alcotest.failf "For '%s': expected Parse_error but got %s" input
+        (Printexc.to_string exn)
 
-  (* Unclosed attribute selectors - check for common error patterns *)
+let parse_errors_attributes () =
   check_parse_error "[class=\"test\"" "Expected ']' but reached end of input";
   check_parse_error ".test[data-id=\"123\""
     "Expected ']' but reached end of input";
-
-  (* Empty attribute selector *)
   check_parse_error ".test[]" "expected identifier";
+  check_parse_error ".test[[attr]]" "expected identifier";
+  check_parse_error ".test[data id=\"value\"]" "Expected ']' but got 'd'";
+  check_parse_error ".test[data-id=value with spaces]"
+    "Expected ']' but got 'w'"
 
-  (* Invalid combinators *)
+let parse_errors_combinators () =
   check_parse_error ".test >> .child" "expected at least one selector";
   check_parse_error ".parent + + .child" "expected at least one selector";
   check_parse_error ".parent >" "expected at least one selector";
   check_parse_error ">" "expected at least one selector";
+  check_parse_error ".parent ~> .child" "expected at least one selector"
 
-  (* Invalid selector starts *)
+let parse_errors_starts () =
   check_parse_error ".123test" "expected identifier";
   check_parse_error "#123" "expected identifier";
+  check_parse_error "*.*" "expected identifier"
 
-  (* Nested brackets *)
-  check_parse_error ".test[[attr]]" "expected identifier";
-
-  (* Space in attribute name *)
-  check_parse_error ".test[data id=\"value\"]" "Expected ']' but got 'd'";
-
-  (* Unquoted spaces in attribute value *)
-  check_parse_error ".test[data-id=value with spaces]"
-    "Expected ']' but got 'w'";
-
-  (* Invalid pseudo-function calls *)
+let parse_errors_pseudo () =
   check_parse_error ".test:not()" "expected at least one selector";
   check_parse_error ".test:not(.other" "Expected ')' but reached end of input";
   check_parse_error ":is()" "expected at least one selector";
-  check_parse_error ".test:has()" "expected at least one selector";
+  check_parse_error ".test:has()" "expected at least one selector"
 
-  (* Mixed up combinators *)
-  check_parse_error ".parent ~> .child" "expected at least one selector";
-
-  (* Empty selector list *)
+let parse_errors_empty_list () =
   check_parse_error ", ," "expected at least one selector";
   check_parse_error ", h1, h2" "expected at least one selector";
-  check_parse_error "h1, h2," "expected at least one selector";
+  check_parse_error "h1, h2," "expected at least one selector"
 
-  (* Invalid universal selector combinations *)
-  check_parse_error "*.*" "expected identifier";
-
-  (* Complex broken selectors *)
+let parse_errors_complex () =
   check_parse_error ".parent > [data-id=\"test\" .child:hover"
     "Expected ']' but got '.'";
   check_parse_error "body > main > section[data-tooltip"
@@ -346,44 +309,56 @@ let parse_errors () =
   check_parse_error ".first ~ .second ~ [invalid"
     "Expected ']' but reached end of input"
 
-(* Test callstack accuracy for selector errors *)
-let callstack_accuracy () =
-  let contains_substring haystack needle =
-    let len_h = String.length haystack in
-    let len_n = String.length needle in
-    let rec search i =
+(* Helpers for callstack accuracy checks to reduce nesting *)
+let contains_substring haystack needle =
+  let len_h = String.length haystack in
+  let len_n = String.length needle in
+  if len_n = 0 then true
+  else
+    let rec loop i =
       if i > len_h - len_n then false
       else if String.sub haystack i len_n = needle then true
-      else search (i + 1)
+      else loop (i + 1)
     in
-    if len_n = 0 then true else search 0
-  in
-  let check_callstack name input expected_stack_parts =
-    let t = Css.Reader.of_string input in
-    try
-      let _ = read t in
-      Alcotest.failf "%s: expected Parse_error but parsing succeeded" name
-    with
-    | Css.Reader.Parse_error err ->
-        let callstack_str = String.concat " -> " err.callstack in
-        List.iter
-          (fun stack_item ->
-            if Bool.not @@ contains_substring callstack_str stack_item then
-              Alcotest.failf
-                "%s: expected callstack containing '%s' but got '%s'" name
-                stack_item callstack_str)
-          expected_stack_parts;
-        (* Also verify position and context window are set *)
-        if err.position < 0 then
-          Alcotest.failf "%s: position should be >= 0 but got %d" name
-            err.position;
-        if String.length err.context_window = 0 then
-          Alcotest.failf "%s: context_window should not be empty" name
-    | exn ->
-        Alcotest.failf "%s: expected Parse_error but got %s" name
-          (Printexc.to_string exn)
-  in
+    loop 0
 
+let check_callstack name input expected_stack_parts =
+  let t = Css.Reader.of_string input in
+  try
+    let _ = read t in
+    Alcotest.failf "%s: expected Parse_error but parsing succeeded" name
+  with
+  | Css.Reader.Parse_error err ->
+      let callstack_str = String.concat " -> " err.callstack in
+      List.iter
+        (fun stack_item ->
+          if Bool.not @@ contains_substring callstack_str stack_item then
+            Alcotest.failf "%s: expected callstack containing '%s' but got '%s'"
+              name stack_item callstack_str)
+        expected_stack_parts;
+      if err.position < 0 then
+        Alcotest.failf "%s: position should be >= 0 but got %d" name
+          err.position;
+      if String.length err.context_window = 0 then
+        Alcotest.failf "%s: context_window should not be empty" name
+  | exn ->
+      Alcotest.failf "%s: expected Parse_error but got %s" name
+        (Printexc.to_string exn)
+
+let check_full_css_callstack name css_input expected_stack_parts =
+  match Css.of_string css_input with
+  | Ok _ -> Alcotest.failf "%s: expected Parse_error but parsing succeeded" name
+  | Error err ->
+      let callstack_str = String.concat " -> " err.callstack in
+      List.iter
+        (fun stack_item ->
+          if Bool.not @@ contains_substring callstack_str stack_item then
+            Alcotest.failf "%s: expected callstack containing '%s' but got '%s'"
+              name stack_item callstack_str)
+        expected_stack_parts
+
+(* Test callstack accuracy for selector errors *)
+let callstack_accuracy () =
   (* When parsing selectors directly (not through full CSS), callstack is
      shallower *)
   check_callstack "selector_list_error" ".test[[attr]]" [ "list" ];
@@ -394,22 +369,6 @@ let callstack_accuracy () =
   check_callstack "pseudo_function_error" ".test:not()" [];
   (* No specific context when selector fails early *)
   check_callstack "invalid_pseudo" ":is()" [];
-
-  (* Test full CSS parsing to get complete callstack like cascade binary *)
-  let check_full_css_callstack name css_input expected_stack_parts =
-    match Css.of_string css_input with
-    | Ok _ ->
-        Alcotest.failf "%s: expected Parse_error but parsing succeeded" name
-    | Error err ->
-        let callstack_str = String.concat " -> " err.callstack in
-        List.iter
-          (fun stack_item ->
-            if Bool.not @@ contains_substring callstack_str stack_item then
-              Alcotest.failf
-                "%s: expected callstack containing '%s' but got '%s'" name
-                stack_item callstack_str)
-          expected_stack_parts
-  in
 
   (* Full CSS parsing should show complete callstack *)
   check_full_css_callstack "full_css_selector_error"
@@ -425,7 +384,7 @@ let callstack_accuracy () =
     [ "stylesheet"; "rule"; "list" ]
 
 (* Test check functions for selector components *)
-let test_selector_component_parsing () =
+let component_parsing () =
   (* Test nth values *)
   check_nth "2n+1";
   check_nth "odd";
@@ -446,46 +405,38 @@ let test_selector_component_parsing () =
 
 let test_attribute_match () =
   (* Test attribute matching types - these parse just the operator part *)
-  let check_attr_match operator expected_output =
-    let t = Css.Reader.of_string operator in
-    let result = read_attribute_match t in
-    let pp_str = Css.Pp.to_string ~minify:true pp_attribute_match result in
-    check string (Fmt.str "attribute_match %s" operator) expected_output pp_str
+  let check_attribute_match =
+    check_value "attribute_match" pp_attribute_match read_attribute_match
   in
 
   (* Presence match - empty string yields Presence *)
-  check_attr_match "" "";
+  check_attribute_match "";
   (* Exact match *)
-  check_attr_match "=test" "=test";
+  check_attribute_match "=test";
   (* Whitespace list match *)
-  check_attr_match "~=word" "~=word";
+  check_attribute_match "~=word";
   (* Hyphen list match *)
-  check_attr_match "|=lang" "|=lang";
+  check_attribute_match "|=lang";
   (* Prefix match *)
-  check_attr_match "^=prefix" "^=prefix";
+  check_attribute_match "^=prefix";
   (* Suffix match *)
-  check_attr_match "$=suffix" "$=suffix";
+  check_attribute_match "$=suffix";
   (* Substring match *)
-  check_attr_match "*=substring" "*=substring"
+  check_attribute_match "*=substring"
 
 let test_attr_flag () =
   (* Test attribute selector flags - returns option type *)
-  let check_flag input expected_output =
-    let t = Css.Reader.of_string input in
-    let result = read_attr_flag t in
-    let pp_str = Css.Pp.to_string ~minify:true pp_attr_flag result in
-    check string (Fmt.str "attr_flag %s" input) expected_output pp_str
-  in
+  let check_attr_flag = check_value "attr_flag" pp_attr_flag read_attr_flag in
 
   (* Case insensitive flag *)
-  check_flag "i" " i";
+  check_attr_flag ~expected:" i" "i";
   (* Case sensitive flag *)
-  check_flag "s" " s";
+  check_attr_flag ~expected:" s" "s";
   (* No flag / empty should return None *)
-  check_flag "" ""
+  check_attr_flag ""
 
 (* Test negative cases for unused functions *)
-let test_selector_component_parsing_failures () =
+let component_parsing_failures () =
   let open Css.Reader in
   let neg reader s =
     let r = of_string s in
@@ -514,15 +465,15 @@ let test_selector_component_parsing_failures () =
 (* Test special cases *)
 let special_cases () =
   (* Universal selector *)
-  check_construct "universal" "*" universal;
+  check_construct "*" universal;
 
   (* Complex :where with descendants *)
   let s = class_ "prose" ++ where [ element "a" ++ element "strong" ] in
-  check_construct "prose :where descendant" ".prose :where(a strong)" s;
+  check_construct ".prose :where(a strong)" s;
 
   (* Nested :where *)
   let nested = where [ where [ class_ "a" ] ] in
-  check_construct "nested where" ":where(:where(.a))" nested;
+  check_construct ":where(:where(.a))" nested;
 
   (* Empty list should be invalid per spec *)
   check_invalid "empty list" "CSS selector list cannot be empty" (fun () ->
@@ -532,26 +483,27 @@ let special_cases () =
 let distribution () =
   (* Child combinator distributes over list *)
   let s = class_ "parent" >> list [ class_ "a"; class_ "b" ] in
-  check_construct "child distribution" ".parent>.a,.parent>.b" s;
+  check_construct ".parent>.a,.parent>.b" s;
 
   (* Descendant distributes *)
   let s = class_ "parent" ++ list [ class_ "x"; class_ "y" ] in
-  check_construct "descendant distribution" ".parent .x,.parent .y" s;
+  check_construct ".parent .x,.parent .y" s;
 
   (* Next sibling distributes *)
   let s =
     combine (class_ "prev") Next_sibling (list [ class_ "a"; class_ "b" ])
   in
-  check_construct "next sibling distribution" ".prev+.a,.prev+.b" s;
+  check_construct ".prev+.a,.prev+.b" s;
 
   (* Subsequent sibling distributes *)
   let s =
     combine (class_ "first") Subsequent_sibling
       (list [ class_ "x"; class_ "y" ])
   in
-  check_construct "subsequent sibling distribution" ".first~.x,.first~.y" s
+  check_construct ".first~.x,.first~.y" s
 
 let suite =
+  let open Alcotest in
   ( "selector",
     [
       (* Basic selector types *)
@@ -568,15 +520,18 @@ let suite =
       test_case "where is" `Quick where_is_cases;
       (* Parsing *)
       test_case "roundtrip" `Quick roundtrip;
-      test_case "selector component parsing" `Quick
-        test_selector_component_parsing;
+      test_case "selector component parsing" `Quick component_parsing;
       test_case "attribute match" `Quick test_attribute_match;
       test_case "attr flag" `Quick test_attr_flag;
-      test_case "selector component failures" `Quick
-        test_selector_component_parsing_failures;
+      test_case "selector component failures" `Quick component_parsing_failures;
       (* Error cases *)
       test_case "invalid" `Quick invalid;
-      test_case "parse errors" `Quick parse_errors;
+      test_case "parse errors - attributes" `Quick parse_errors_attributes;
+      test_case "parse errors - combinators" `Quick parse_errors_combinators;
+      test_case "parse errors - starts" `Quick parse_errors_starts;
+      test_case "parse errors - pseudo" `Quick parse_errors_pseudo;
+      test_case "parse errors - empty list" `Quick parse_errors_empty_list;
+      test_case "parse errors - complex" `Quick parse_errors_complex;
       test_case "callstack accuracy" `Quick callstack_accuracy;
       (* Special cases *)
       test_case "special cases" `Quick special_cases;

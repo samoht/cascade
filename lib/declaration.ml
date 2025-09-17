@@ -92,27 +92,11 @@ let read_property_value t =
     | Some c when depth = 0 && (c = ';' || c = '}' || c = '!') ->
         Buffer.contents buf
     | Some c when depth = 0 && Reader.is_ident_start c ->
-        (* Check if this could be start of a new property declaration *)
-        let potential_prop =
-          Reader.while_ t (fun ch ->
-              Reader.is_ident_start ch || (ch >= '0' && ch <= '9') || ch = '-')
-        in
-        (* Save the next character before consuming whitespace *)
-        let next_char_before_ws = Reader.peek t in
-        Reader.ws t;
-        if Reader.peek t = Some ':' then
-          (* This looks like "property:" pattern - missing semicolon *)
-          Reader.err_invalid t "missing semicolon before property declaration"
-        else (
-          (* Not a property, add to buffer and continue *)
-          Buffer.add_string buf potential_prop;
-          (* Add a space if we consumed whitespace *)
-          let next_char_after_ws = Reader.peek t in
-          if
-            next_char_before_ws <> next_char_after_ws
-            && next_char_after_ws <> None
-          then Buffer.add_char buf ' ';
-          parse_tokens depth in_quote quote_char)
+        (* Continue parsing as normal character - don't check for property
+           declarations within values *)
+        Buffer.add_char buf c;
+        Reader.skip t;
+        parse_tokens depth in_quote quote_char
     | Some c ->
         Buffer.add_char buf c;
         Reader.skip t;
@@ -263,15 +247,50 @@ let read_raw_value t =
   loop ()
 
 (* Parse value directly based on property type *)
-let read_value (type a) (prop_type : a property) t : declaration =
-  let prop_name =
-    let buf = Buffer.create 32 in
-    let ctx = { Pp.minify = true; indent = 0; buf; inline = false } in
-    pp_property ctx prop_type;
-    Buffer.contents buf
+(* Helper functions for complex property reading *)
+let read_font_family_value t =
+  v Font_family (Reader.list ~sep:Reader.comma read_font_family t)
+
+let read_transform_value t =
+  let transforms, error_opt = Reader.many read_transform t in
+  if List.length transforms = 0 then
+    match error_opt with
+    | Some msg -> Reader.err_invalid t ("transform: " ^ msg)
+    | None -> Reader.err_invalid t "transform value"
+  else v Transform transforms
+
+let read_webkit_transform_value t =
+  let transforms, error_opt =
+    Reader.fold_many read_transform ~init:[] ~f:(fun acc t -> t :: acc) t
   in
-  Reader.with_context t prop_name @@ fun () ->
-  match prop_type with
+  let transforms = List.rev transforms in
+  if transforms = [] then
+    match error_opt with
+    | Some msg -> Reader.err_invalid t ("webkit-transform: " ^ msg)
+    | None -> Reader.err_invalid t "webkit-transform value"
+  else v Webkit_transform transforms
+
+let read_place_self_value t =
+  let a = read_align_self t in
+  Reader.ws t;
+  let j = Reader.option read_justify_self t in
+  let pair =
+    match j with None -> (a, (Center : justify_self)) | Some jj -> (a, jj)
+  in
+  v Place_self pair
+
+let read_background_blend_mode_value t =
+  v Background_blend_mode (Reader.list ~sep:Reader.comma read_blend_mode t)
+
+let prop_name (type a) (prop_type : a property) =
+  let buf = Buffer.create 32 in
+  let ctx = { Pp.minify = true; indent = 0; buf; inline = false } in
+  pp_property ctx prop_type;
+  Buffer.contents buf
+
+let read_value (type a) (prop : a property) t : declaration =
+  Reader.with_context t (prop_name prop) @@ fun () ->
+  match prop with
   | Color -> v Color (read_color t)
   | Background_color -> v Background_color (read_color t)
   | Border_color -> v Border_color (read_color t)
@@ -313,9 +332,7 @@ let read_value (type a) (prop_type : a property) t : declaration =
   | Line_height -> v Line_height (read_line_height t)
   | Font_weight -> v Font_weight (read_font_weight t)
   | Font_style -> v Font_style (read_font_style t)
-  | Font_family ->
-      (* Font-family accepts a comma-separated list *)
-      v Font_family (Reader.list ~sep:Reader.comma read_font_family t)
+  | Font_family -> read_font_family_value t
   | Font -> v Font (read_raw_value t)
   | Text_align -> v Text_align (read_text_align t)
   | Text_transform -> v Text_transform (read_text_transform t)
@@ -332,24 +349,9 @@ let read_value (type a) (prop_type : a property) t : declaration =
   | Align_items -> v Align_items (read_align_items t)
   | Justify_content -> v Justify_content (read_justify_content t)
   (* Transform property *)
-  | Transform ->
-      let transforms, error_opt = Reader.many read_transform t in
-      if List.length transforms = 0 then
-        match error_opt with
-        | Some msg -> Reader.err_invalid t ("transform: " ^ msg)
-        | None -> Reader.err_invalid t "transform value"
-      else v Transform transforms
+  | Transform -> read_transform_value t
   (* Webkit Transform *)
-  | Webkit_transform ->
-      let transforms, error_opt =
-        Reader.fold_many read_transform ~init:[] ~f:(fun acc t -> t :: acc) t
-      in
-      let transforms = List.rev transforms in
-      if transforms = [] then
-        match error_opt with
-        | Some msg -> Reader.err_invalid t ("webkit-transform: " ^ msg)
-        | None -> Reader.err_invalid t "webkit-transform value"
-      else v Webkit_transform transforms
+  | Webkit_transform -> read_webkit_transform_value t
   (* Webkit Transition *)
   | Webkit_transition -> v Webkit_transition (read_transitions t)
   (* Webkit Filter *)
@@ -442,14 +444,7 @@ let read_value (type a) (prop_type : a property) t : declaration =
   (* Place properties *)
   | Place_content -> v Place_content (read_place_content t)
   | Place_items -> v Place_items (read_place_items t)
-  | Place_self ->
-      let a = read_align_self t in
-      Reader.ws t;
-      let j = Reader.option read_justify_self t in
-      let pair =
-        match j with None -> (a, (Center : justify_self)) | Some jj -> (a, jj)
-      in
-      v Place_self pair
+  | Place_self -> read_place_self_value t
   (* Additional grid properties *)
   | Grid_template -> v Grid_template (read_grid_template t)
   | Grid_area -> v Grid_area (read_raw_value t)
@@ -542,8 +537,7 @@ let read_value (type a) (prop_type : a property) t : declaration =
       v Background_position (Reader.list ~sep:Reader.comma read_position_2d t)
   | Background_repeat -> v Background_repeat (read_background_repeat t)
   | Background_size -> v Background_size (read_background_size t)
-  | Background_blend_mode ->
-      v Background_blend_mode (Reader.list ~sep:Reader.comma read_blend_mode t)
+  | Background_blend_mode -> read_background_blend_mode_value t
   (* Border shorthands *)
   | Border_top -> v Border_top (read_string t)
   | Border_right -> v Border_right (read_string t)

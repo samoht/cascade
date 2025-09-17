@@ -211,8 +211,8 @@ let test_any_var () =
     try
       let r = Css.Reader.of_string s in
       let _ = read_any_var r in
-      Alcotest.fail (Fmt.str "Should have failed parsing: %s" s)
-    with _ -> ()
+      Alcotest.failf "Should have failed parsing: %s" s
+    with Css.Reader.Parse_error _ -> ()
   in
   try_parse "not-a-var";
   try_parse "var(color)";

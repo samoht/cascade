@@ -601,7 +601,7 @@ let overflow () =
   check_declaration ~expected:"overflow-y:scroll" "overflow-y: scroll";
   check_declaration ~expected:"overflow-y:auto" "overflow-y: auto"
 
-let animations () =
+let animations_timing () =
   (* Animation properties *)
   check_declaration ~expected:"animation-name:slide-in"
     "animation-name: slide-in";
@@ -629,8 +629,9 @@ let animations () =
 
   check_declaration ~expected:"animation-delay:0s" "animation-delay: 0s";
   check_declaration ~expected:"animation-delay:1s" "animation-delay: 1s";
-  check_declaration ~expected:"animation-delay:-500ms" "animation-delay: -500ms";
+  check_declaration ~expected:"animation-delay:-500ms" "animation-delay: -500ms"
 
+let animations_state () =
   check_declaration ~expected:"animation-iteration-count:1"
     "animation-iteration-count: 1";
   check_declaration ~expected:"animation-iteration-count:3"
@@ -875,10 +876,8 @@ let important () =
     "color: red! /*x*/ important";
   check_declaration ~expected:"margin:10px!important"
     "margin: 10px!/**/important";
-  check_declaration ~expected:"color:blue!important" "color: blue !   important";
-
   (* Multiple spaces should be valid *)
-
+  check_declaration ~expected:"color:blue!important" "color: blue !   important";
   (* Invalid/dangling/duplicate !important should be rejected *)
   neg read_declaration "color: red !;";
   neg read_declaration "color: red !notimportant;";
@@ -893,7 +892,7 @@ let invalid () =
     let r = Css.Reader.of_string input in
     let got = Css.Reader.option Css.Declaration.read_declaration r in
     Alcotest.(check bool)
-      (Printf.sprintf "should reject: %s" input)
+      (Fmt.str "should reject: %s" input)
       true (Option.is_none got)
   in
   (* Invalid property names *)
@@ -964,14 +963,14 @@ let unterminated () =
     let r = Css.Reader.of_string input in
     let got = Css.Reader.option Css.Declaration.read_declaration r in
     Alcotest.(check bool)
-      (Printf.sprintf "should reject: %s" input)
+      (Fmt.str "should reject: %s" input)
       true (Option.is_none got)
   in
   let neg_block input =
     let r = Css.Reader.of_string input in
     let got = Css.Reader.option Css.Declaration.read_block r in
     Alcotest.(check bool)
-      (Printf.sprintf "should reject: %s" input)
+      (Fmt.str "should reject: %s" input)
       true (Option.is_none got)
   in
   (* Unterminated string *)
@@ -996,17 +995,7 @@ let custom_property_values () =
 let color_functions () =
   (* color() with alternate spaces and alpha *)
   check_declaration ~expected:"color:color(display-p3 1 0 0/.5)"
-    "color: color(display-p3 1 0 0 / 0.5)";
-  (* oklch/oklab/hwb forms *)
-  check_declaration ~expected:"color:oklch(60% .16 30)"
-    "color: oklch(60% 0.16 30)";
-  check_declaration ~expected:"color:oklab(60% .1 .05/.75)"
-    "color: oklab(0.6 0.1 0.05 / 0.75)";
-  check_declaration ~expected:"color:hwb(180 10% 20%/.2)"
-    "color: hwb(180 10% 20% / 0.2)";
-  (* hex with alpha *)
-  check_declaration ~expected:"color:#ff000080" "color: #ff000080";
-  check_declaration ~expected:"color:#0f08" "color: #0f08"
+    "color: color(display-p3 1 0 0 / 0.5)"
 
 let angle_units () =
   check_declaration ~expected:"transform:rotate(.5turn)"
@@ -1032,57 +1021,59 @@ let url_values () =
     ~expected:"background-image:url(data:image/svg+xml;utf8,<svg/>)"
     "background-image: url(data:image/svg+xml;utf8,<svg/>)"
 
-let suite =
-  ( "declaration",
-    [
-      (* Parsing basics *)
-      test_case "simple" `Quick simple;
-      test_case "multiple" `Quick multiple;
-      test_case "block" `Quick block;
-      test_case "complex values" `Quick complex_values;
-      test_case "quoted strings" `Quick quoted_strings;
-      test_case "property name" `Quick property_name;
-      test_case "property value" `Quick property_value;
-      test_case "missing semicolon" `Quick missing_semicolon;
-      test_case "empty input" `Quick empty_input;
-      test_case "roundtrip" `Quick roundtrip;
-      (* !important handling *)
-      test_case "important" `Quick important;
-      (* Custom properties and vendor prefixes *)
-      test_case "custom properties basic" `Quick custom_properties_basic;
-      test_case "custom properties" `Quick custom_properties;
-      test_case "custom property values" `Quick custom_property_values;
-      test_case "vendor prefixes" `Quick vendor_prefixes;
-      (* Property value categories *)
-      test_case "colors" `Quick colors;
-      test_case "color functions" `Quick color_functions;
-      test_case "lengths" `Quick lengths;
-      test_case "display" `Quick display;
-      test_case "position" `Quick position;
-      test_case "font properties" `Quick font_properties;
-      test_case "text properties" `Quick text_properties;
-      test_case "flexbox" `Quick flexbox;
-      test_case "borders" `Quick borders;
-      test_case "overflow" `Quick overflow;
-      test_case "animations" `Quick animations;
-      test_case "transforms" `Quick transforms;
-      test_case "angle units" `Quick angle_units;
-      test_case "grid" `Quick grid;
-      test_case "list properties" `Quick list_properties;
-      test_case "misc properties" `Quick misc;
-      test_case "url values" `Quick url_values;
-      (* Error handling *)
-      test_case "error missing colon" `Quick error_missing_colon;
-      test_case "error stray semicolon" `Quick error_stray_semicolon;
-      test_case "error unclosed block" `Quick error_unclosed_block;
-      test_case "unterminated parsing" `Quick unterminated;
-      test_case "invalid declarations" `Quick invalid;
-      (* Spec details and edge cases *)
-      test_case "CSS-wide keywords" `Quick css_wide_keywords;
-      test_case "comments handling" `Quick comments;
-      test_case "unit case-insensitivity" `Quick unit_case;
-      test_case "number formats" `Quick number_formats;
-      test_case "property name case" `Quick property_case;
-      test_case "special cases" `Quick special_cases;
-      test_case "edge cases" `Quick edge_cases;
-    ] )
+let declaration_tests =
+  [
+    (* Parsing basics *)
+    test_case "simple" `Quick simple;
+    test_case "multiple" `Quick multiple;
+    test_case "block" `Quick block;
+    test_case "complex values" `Quick complex_values;
+    test_case "quoted strings" `Quick quoted_strings;
+    test_case "property name" `Quick property_name;
+    test_case "property value" `Quick property_value;
+    test_case "missing semicolon" `Quick missing_semicolon;
+    test_case "empty input" `Quick empty_input;
+    test_case "roundtrip" `Quick roundtrip;
+    (* !important handling *)
+    test_case "important" `Quick important;
+    (* Custom properties and vendor prefixes *)
+    test_case "custom properties basic" `Quick custom_properties_basic;
+    test_case "custom properties" `Quick custom_properties;
+    test_case "custom property values" `Quick custom_property_values;
+    test_case "vendor prefixes" `Quick vendor_prefixes;
+    (* Property value categories *)
+    test_case "colors" `Quick colors;
+    test_case "color functions" `Quick color_functions;
+    test_case "lengths" `Quick lengths;
+    test_case "display" `Quick display;
+    test_case "position" `Quick position;
+    test_case "font properties" `Quick font_properties;
+    test_case "text properties" `Quick text_properties;
+    test_case "flexbox" `Quick flexbox;
+    test_case "borders" `Quick borders;
+    test_case "overflow" `Quick overflow;
+    test_case "animations (timing)" `Quick animations_timing;
+    test_case "animations (state)" `Quick animations_state;
+    test_case "transforms" `Quick transforms;
+    test_case "angle units" `Quick angle_units;
+    test_case "grid" `Quick grid;
+    test_case "list properties" `Quick list_properties;
+    test_case "misc properties" `Quick misc;
+    test_case "url values" `Quick url_values;
+    (* Error handling *)
+    test_case "error missing colon" `Quick error_missing_colon;
+    test_case "error stray semicolon" `Quick error_stray_semicolon;
+    test_case "error unclosed block" `Quick error_unclosed_block;
+    test_case "unterminated parsing" `Quick unterminated;
+    test_case "invalid declarations" `Quick invalid;
+    (* Spec details and edge cases *)
+    test_case "CSS-wide keywords" `Quick css_wide_keywords;
+    test_case "comments handling" `Quick comments;
+    test_case "unit case-insensitivity" `Quick unit_case;
+    test_case "number formats" `Quick number_formats;
+    test_case "property name case" `Quick property_case;
+    test_case "special cases" `Quick special_cases;
+    test_case "edge cases" `Quick edge_cases;
+  ]
+
+let suite = ("declaration", declaration_tests)

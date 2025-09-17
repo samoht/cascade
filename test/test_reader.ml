@@ -513,24 +513,22 @@ let take_case () =
   Alcotest.(check (list (float 0.001)))
     "parse stops at !important" [ 5.0; 10.0 ] numbers
 
+(* Helper to parse specific keywords *)
+let parse_keyword kw r =
+  let id = ident r in
+  if id = kw then id else err ~got:id r kw
+
+(* Helper to parse number as string *)
+let number_as_string r =
+  try
+    let n = number r in
+    Fmt.str "%.0f" n
+  with Parse_error _ ->
+    let found = ident r in
+    err ~got:found r "number"
+
 (* Test one_of helper *)
 let one_of_case () =
-  (* Helper to parse specific keywords *)
-  let parse_keyword kw r =
-    let id = ident r in
-    if id = kw then id else err ~got:id r kw
-  in
-
-  (* Helper to parse number as string *)
-  let number_as_string r =
-    try
-      let n = number r in
-      Fmt.str "%.0f" n
-    with Parse_error _ ->
-      let found = ident r in
-      err ~got:found r "number"
-  in
-
   let parsers =
     [
       (fun r -> parse_keyword "red" r);
@@ -588,8 +586,7 @@ let enum_case () =
       in
       ())
 
-let enum_with_default () =
-  (* Test enum with default handler for identifiers *)
+let enum_with_default_ident () =
   let r = of_string "bold" in
   let result =
     enum "test"
@@ -597,9 +594,9 @@ let enum_with_default () =
       r
       ~default:(fun _ -> "default")
   in
-  Alcotest.(check string) "enum bold" "b" result;
+  Alcotest.(check string) "enum bold" "b" result
 
-  (* Test enum with default handler for unknown identifier *)
+let enum_with_default_unknown () =
   let r = of_string "unknown" in
   let result =
     enum "test"
@@ -607,9 +604,9 @@ let enum_with_default () =
       r
       ~default:(fun _ -> "default")
   in
-  Alcotest.(check string) "enum unknown uses default" "default" result;
+  Alcotest.(check string) "enum unknown uses default" "default" result
 
-  (* Test enum with default handler for numeric value *)
+let enum_with_default_numeric () =
   let r = of_string "123" in
   let result =
     enum "font-weight"
@@ -617,16 +614,16 @@ let enum_with_default () =
       r
       ~default:(fun t -> int_of_float (number t))
   in
-  Alcotest.(check int) "enum numeric with default" 123 result;
+  Alcotest.(check int) "enum numeric with default" 123 result
 
-  (* Test enum with default handler for float value *)
+let enum_with_default_float () =
   let r = of_string "1.5" in
   let result =
     enum "line-height" [ ("normal", 0.0) ] r ~default:(fun t -> number t)
   in
-  check (float 0.01) "enum float with default" 1.5 result;
+  check (float 0.01) "enum float with default" 1.5 result
 
-  (* Test that default is called first for non-identifier start *)
+let enum_default_number_first () =
   let r = of_string "400" in
   let result =
     enum "font-weight"
@@ -634,9 +631,9 @@ let enum_with_default () =
       r
       ~default:(fun t -> int_of_float (number t))
   in
-  Alcotest.(check int) "enum calls default first for number" 400 result;
+  Alcotest.(check int) "enum calls default first for number" 400 result
 
-  (* Test that default is NOT called when identifier matches an enum value *)
+let enum_with_default_matching_identifier () =
   let r = of_string "normal" in
   let result =
     enum "font-weight"
@@ -733,56 +730,48 @@ let enum_or_calls_stack () =
     [ "enum_or_calls:test-property" ]
     !call_stack_during_error
 
+(* Helper to read a var() function for testing *)
+let read_var_function_for_test r vars_found =
+  expect_string "var" r;
+  expect '(' r;
+  ws r;
+  expect_string "--" r;
+  let name = ident ~keep_case:true r in
+  ws r;
+  if peek r = Some ',' then (
+    comma r;
+    ws r);
+  expect ')' r;
+  vars_found := name :: !vars_found;
+  `Var name
+
+(* Helper to parse concatenated var functions from input *)
+let parse_concatenated_vars input =
+  let r = of_string input in
+  let vars_found = ref [] in
+  let rec loop acc =
+    ws r;
+    if is_done r then List.rev acc
+    else if looking_at r "var(" then
+      let v = read_var_function_for_test r vars_found in
+      loop (v :: acc)
+    else List.rev acc
+  in
+  let tokens = loop [] in
+  (List.rev !vars_found, tokens)
+
+(* Helper to test concatenated var functions *)
+let test_concatenated_vars input expected_vars desc =
+  let found, tokens = parse_concatenated_vars input in
+  Alcotest.(check (list string)) (desc ^ " - var names") expected_vars found;
+  Alcotest.(check int)
+    (desc ^ " - token count")
+    (List.length expected_vars)
+    (List.length tokens)
+
 let concatenated_var_functions () =
   (* Test that the CSS parser can handle concatenated var() functions. The
      handler must actually consume the input to avoid infinite loops. *)
-  let test_concatenated_vars input expected_vars desc =
-    let r = of_string input in
-    let vars_found = ref [] in
-
-    (* Proper var parser that actually consumes the function *)
-    let read_var_function r =
-      (* Parse "var(" *)
-      expect_string "var" r;
-      expect '(' r;
-      ws r;
-
-      (* Parse the variable name *)
-      expect_string "--" r;
-      let name = ident ~keep_case:true r in
-      ws r;
-
-      (* Parse optional fallback *)
-      if peek r = Some ',' then (
-        comma r;
-        ws r (* For empty fallback, just skip to closing paren *));
-
-      (* Parse closing paren *)
-      expect ')' r;
-
-      vars_found := name :: !vars_found;
-      `Var name
-    in
-
-    (* Parse concatenated var functions without spaces between them *)
-    let rec parse_vars acc =
-      ws r;
-      if is_done r then List.rev acc
-      else if looking_at r "var(" then
-        let var = read_var_function r in
-        parse_vars (var :: acc)
-      else List.rev acc
-    in
-
-    let tokens = parse_vars [] in
-    let found = List.rev !vars_found in
-
-    Alcotest.(check (list string)) (desc ^ " - var names") expected_vars found;
-    Alcotest.(check int)
-      (desc ^ " - token count")
-      (List.length expected_vars)
-      (List.length tokens)
-  in
 
   (* Test cases *)
   test_concatenated_vars "var(--a)" [ "a" ] "single var";
@@ -910,6 +899,12 @@ let triple_call_stack () =
       "triple preserves context" true
       (List.mem "triple-context" error.callstack)
 
+(* Helper to skip to a specific pattern in reader *)
+let rec skip_to_pattern r pattern =
+  if (not (is_done r)) && not (looking_at r pattern) then (
+    skip r;
+    skip_to_pattern r pattern)
+
 (* Test error message formatting for different input types *)
 let error_formatting_multiline () =
   (* Test error on multi-line CSS with previous line context *)
@@ -919,12 +914,7 @@ let error_formatting_multiline () =
   let r = of_string multiline_css in
 
   (* Navigate to the error position (around "invalid-prop") *)
-  let rec skip_to_pattern pattern =
-    if (not (is_done r)) && not (looking_at r pattern) then (
-      skip r;
-      skip_to_pattern pattern)
-  in
-  skip_to_pattern "invalid";
+  skip_to_pattern r "invalid";
 
   try
     expect 'x' r;
@@ -1066,7 +1056,14 @@ let suite =
         test_case "take" `Quick take_case;
         (* enum combinator tests *)
         test_case "enum" `Quick enum_case;
-        test_case "enum with default" `Quick enum_with_default;
+        test_case "enum with default (ident)" `Quick enum_with_default_ident;
+        test_case "enum with default (unknown)" `Quick enum_with_default_unknown;
+        test_case "enum with default (numeric)" `Quick enum_with_default_numeric;
+        test_case "enum with default (float)" `Quick enum_with_default_float;
+        test_case "enum with default (number priority)" `Quick
+          enum_default_number_first;
+        test_case "enum with default (matching ident)" `Quick
+          enum_with_default_matching_identifier;
         (* call stack tests *)
         test_case "call stack" `Quick callstack_case;
         test_case "with context" `Quick with_context_case;

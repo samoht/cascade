@@ -165,7 +165,7 @@ let read_dir_content t = Dir (Reader.ident t)
 let read_state_content t = State (Reader.ident t)
 let read_heading_content _t = Heading
 
-let read_active_view_transition_type_content t =
+let read_active_view_transition_content t =
   Active_view_transition_type
     (Reader.option (Reader.list ~sep:Reader.comma ~at_least:1 Reader.ident) t)
 
@@ -176,7 +176,7 @@ let read_heading t = Reader.call "heading" t read_heading_content
 
 let read_active_view_transition_type t =
   Reader.call "active-view-transition-type" t
-    read_active_view_transition_type_content
+    read_active_view_transition_content
 
 let read_part_content t =
   let idents = Reader.list ~sep:Reader.comma ~at_least:1 Reader.ident t in
@@ -511,7 +511,7 @@ and read_nth_of_type_content t =
   let expr, of_sel = read_nth_selector t in
   Nth_of_type (expr, of_sel)
 
-and read_nth_last_of_type_content t =
+and read_nth_last_type_content t =
   let expr, of_sel = read_nth_selector t in
   Nth_last_of_type (expr, of_sel)
 
@@ -531,7 +531,7 @@ and read_nth_last_child t =
 and read_nth_of_type t = Reader.call "nth-of-type" t read_nth_of_type_content
 
 and read_nth_last_of_type t =
-  Reader.call "nth-last-of-type" t read_nth_last_of_type_content
+  Reader.call "nth-last-of-type" t read_nth_last_type_content
 
 and read_host t = Reader.call "host" t read_host_content
 and read_host_context t = Reader.call "host-context" t read_host_context_content

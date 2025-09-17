@@ -110,14 +110,12 @@ let read_flat_baseline ~what ~baseline ~first ~last t =
       | s -> err_invalid_value t what s)
     t
 
-let read_align_items t : align_items =
+module Align_items = struct
   let read_flat_baseline t : align_items =
     read_flat_baseline ~what:"align-items"
       ~baseline:(Baseline : align_items)
-      ~first:(First_baseline : align_items)
-      ~last:(Last_baseline : align_items)
-      t
-  in
+      ~first:First_baseline ~last:Last_baseline t
+
   let read_unsafe t : align_items =
     Reader.expect_string "unsafe" t;
     Reader.ws t;
@@ -132,7 +130,9 @@ let read_align_items t : align_items =
         ("flex-end", Unsafe_flex_end);
       ]
       t
-  in
+end
+
+let read_align_items t : align_items =
   Reader.enum "align-items"
     [
       ("normal", Normal);
@@ -146,17 +146,17 @@ let read_align_items t : align_items =
       ("flex-start", Flex_start);
       ("flex-end", Flex_end);
     ]
-    ~default:(Reader.one_of [ read_flat_baseline; read_unsafe ])
+    ~default:
+      (Reader.one_of
+         [ Align_items.read_flat_baseline; Align_items.read_unsafe ])
     t
 
-let read_align_content t : align_content =
+module Align_content = struct
   let read_flat_baseline t : align_content =
     read_flat_baseline ~what:"align-content"
       ~baseline:(Baseline : align_content)
-      ~first:(First_baseline : align_content)
-      ~last:(Last_baseline : align_content)
-      t
-  in
+      ~first:First_baseline ~last:Last_baseline t
+
   let read_safe t : align_content =
     Reader.expect_string "safe" t;
     Reader.ws t;
@@ -171,7 +171,7 @@ let read_align_content t : align_content =
         ("right", Safe_right);
       ]
       t
-  in
+
   let read_unsafe t : align_content =
     Reader.expect_string "unsafe" t;
     Reader.ws t;
@@ -186,7 +186,9 @@ let read_align_content t : align_content =
         ("right", Unsafe_right);
       ]
       t
-  in
+end
+
+let read_align_content t : align_content =
   Reader.enum "align-content"
     [
       ("normal", Normal);
@@ -202,10 +204,16 @@ let read_align_content t : align_content =
       ("space-evenly", Space_evenly);
       ("stretch", Stretch);
     ]
-    ~default:(Reader.one_of [ read_flat_baseline; read_safe; read_unsafe ])
+    ~default:
+      (Reader.one_of
+         [
+           Align_content.read_flat_baseline;
+           Align_content.read_safe;
+           Align_content.read_unsafe;
+         ])
     t
 
-let read_justify_content t : justify_content =
+module Justify_content = struct
   let read_unsafe t : justify_content =
     Reader.expect_string "unsafe" t;
     Reader.ws t;
@@ -220,7 +228,9 @@ let read_justify_content t : justify_content =
         ("right", Unsafe_right);
       ]
       t
-  in
+end
+
+let read_justify_content t : justify_content =
   Reader.enum "justify-content"
     [
       ("normal", Normal);
@@ -236,16 +246,16 @@ let read_justify_content t : justify_content =
       ("space-evenly", Space_evenly);
       ("stretch", Stretch);
     ]
-    ~default:read_unsafe t
+    ~default:Justify_content.read_unsafe t
 
-let read_align_self t : align_self =
+module Align_self = struct
   let read_flat_baseline t : align_self =
     read_flat_baseline ~what:"align-self"
       ~baseline:(Baseline : align_self)
       ~first:(First_baseline : align_self)
       ~last:(Last_baseline : align_self)
       t
-  in
+
   let read_unsafe t : align_self =
     Reader.expect_string "unsafe" t;
     Reader.ws t;
@@ -260,7 +270,9 @@ let read_align_self t : align_self =
         ("flex-end", Unsafe_flex_end);
       ]
       t
-  in
+end
+
+let read_align_self t : align_self =
   Reader.enum "align-self"
     [
       ("auto", Auto);
@@ -274,17 +286,16 @@ let read_align_self t : align_self =
       ("flex-start", Flex_start);
       ("flex-end", Flex_end);
     ]
-    ~default:(Reader.one_of [ read_flat_baseline; read_unsafe ])
+    ~default:
+      (Reader.one_of [ Align_self.read_flat_baseline; Align_self.read_unsafe ])
     t
 
-let read_justify_items t : justify_items =
+module Justify_items = struct
   let read_flat_baseline t : justify_items =
     read_flat_baseline ~what:"justify-items"
       ~baseline:(Baseline : justify_items)
-      ~first:(First_baseline : justify_items)
-      ~last:(Last_baseline : justify_items)
-      t
-  in
+      ~first:First_baseline ~last:Last_baseline t
+
   let read_safe t : justify_items =
     Reader.expect_string "safe" t;
     Reader.ws t;
@@ -301,7 +312,7 @@ let read_justify_items t : justify_items =
         ("right", Safe_right);
       ]
       t
-  in
+
   let read_unsafe t : justify_items =
     Reader.expect_string "unsafe" t;
     Reader.ws t;
@@ -318,7 +329,9 @@ let read_justify_items t : justify_items =
         ("right", Unsafe_right);
       ]
       t
-  in
+end
+
+let read_justify_items t : justify_items =
   Reader.enum "justify-items"
     [
       ("normal", Normal);
@@ -335,17 +348,21 @@ let read_justify_items t : justify_items =
       ("left", Left);
       ("right", Right);
     ]
-    ~default:(Reader.one_of [ read_flat_baseline; read_safe; read_unsafe ])
+    ~default:
+      (Reader.one_of
+         [
+           Justify_items.read_flat_baseline;
+           Justify_items.read_safe;
+           Justify_items.read_unsafe;
+         ])
     t
 
-let read_justify_self t : justify_self =
+module Justify_self = struct
   let read_flat_baseline t : justify_self =
     read_flat_baseline ~what:"justify-self"
       ~baseline:(Baseline : justify_self)
-      ~first:(First_baseline : justify_self)
-      ~last:(Last_baseline : justify_self)
-      t
-  in
+      ~first:First_baseline ~last:Last_baseline t
+
   let read_unsafe t : justify_self =
     Reader.expect_string "unsafe" t;
     Reader.ws t;
@@ -362,7 +379,7 @@ let read_justify_self t : justify_self =
         ("right", Unsafe_right);
       ]
       t
-  in
+
   let read_safe t : justify_self =
     Reader.expect_string "safe" t;
     Reader.ws t;
@@ -379,7 +396,9 @@ let read_justify_self t : justify_self =
         ("right", Safe_right);
       ]
       t
-  in
+end
+
+let read_justify_self t : justify_self =
   Reader.enum "justify-self"
     [
       ("auto", Auto);
@@ -397,7 +416,13 @@ let read_justify_self t : justify_self =
       ("left", Left);
       ("right", Right);
     ]
-    ~default:(Reader.one_of [ read_flat_baseline; read_unsafe; read_safe ])
+    ~default:
+      (Reader.one_of
+         [
+           Justify_self.read_flat_baseline;
+           Justify_self.read_unsafe;
+           Justify_self.read_safe;
+         ])
     t
 
 let rec read_font_weight t : font_weight =
@@ -524,9 +549,8 @@ let read_overflow t : overflow =
     ]
     t
 
-let read_cursor t : cursor =
-  (* Helper to parse cursor keyword *)
-  let read_cursor_keyword (t : Reader.t) : cursor =
+module Cursor = struct
+  let read_keyword (t : Reader.t) : cursor =
     Reader.enum "cursor"
       [
         ("auto", (Auto : cursor));
@@ -567,9 +591,7 @@ let read_cursor t : cursor =
         ("zoom-out", Zoom_out);
       ]
       t
-  in
 
-  (* Helper to parse URL with optional hotspot *)
   let read_url_with_hotspot (t : Reader.t) : string * (float * float) option =
     Reader.ws t;
     let url =
@@ -587,96 +609,99 @@ let read_cursor t : cursor =
       else None
     in
     (url, hotspot)
-  in
 
-  (* Recursive helper to parse cursor specification *)
-  let rec parse_cursor_spec (t : Reader.t) : cursor =
-    Reader.ws t;
-    if Reader.looking_at t "url(" then (
-      Reader.expect_string "url(" t;
-      let url, hotspot = read_url_with_hotspot t in
-      Reader.expect ')' t;
+  let read_optional_hotspot (t : Reader.t) : (float * float) option =
+    try
+      let x = Reader.number t in
       Reader.ws t;
+      let y = Reader.number t in
+      Reader.ws t;
+      Some (x, y)
+    with Reader.Parse_error _ -> None
 
-      (* Parse optional hotspot coordinates outside url() *)
-      let hotspot =
-        try
-          let x = Reader.number t in
-          Reader.ws t;
-          let y = Reader.number t in
-          Reader.ws t;
-          Some (x, y)
-        with _ -> hotspot
-      in
+  let or_else a b = match a with Some _ -> a | None -> b
 
-      (* Must have comma for fallback *)
-      if Reader.peek t = Some ',' then (
-        Reader.skip t;
-        let fallback = parse_cursor_spec t in
-        (Url (url, hotspot, fallback) : cursor))
-      else err_invalid_value t "cursor" "url without fallback keyword")
-    else read_cursor_keyword t
-  in
+  let rec read_url_cursor (t : Reader.t) : cursor =
+    Reader.expect_string "url(" t;
+    let url, hotspot = read_url_with_hotspot t in
+    Reader.expect ')' t;
+    Reader.ws t;
+    let hotspot = or_else (read_optional_hotspot t) hotspot in
+    if Reader.peek t <> Some ',' then
+      err_invalid_value t "cursor" "url without fallback keyword"
+    else (
+      Reader.skip t;
+      let fallback = read t in
+      (Url (url, hotspot, fallback) : cursor))
 
-  parse_cursor_spec t
+  and read (t : Reader.t) : cursor =
+    Reader.ws t;
+    if Reader.looking_at t "url(" then read_url_cursor t else read_keyword t
+end
 
-let read_shadow_component t =
-  Reader.one_of
-    [
-      (fun t ->
-        Reader.expect_string "inset" t;
-        `Inset);
-      (fun t -> `Color (read_color t));
-      (fun t -> `Length (read_length t));
-    ]
-    t
+let read_cursor t : cursor =
+  Reader.ws t;
+  Reader.one_of [ Cursor.read_url_cursor; Cursor.read_keyword ] t
 
-let read_shadow_lengths lengths =
-  match lengths with
-  | h_offset :: v_offset :: rest ->
-      let blur, spread =
-        match rest with
-        | b :: s :: _ -> (Some b, Some s)
-        | b :: [] -> (Some b, None)
-        | [] -> (None, None)
-      in
-      Some (h_offset, v_offset, blur, spread)
-  | _ -> None
+module Shadow = struct
+  let read_shadow_component t =
+    Reader.one_of
+      [
+        (fun t ->
+          Reader.expect_string "inset" t;
+          `Inset);
+        (fun t -> `Color (read_color t));
+        (fun t -> `Length (read_length t));
+      ]
+      t
 
-(* Helper type for accumulating box shadow components *)
-type shadow_accumulator = {
-  inset : bool;
-  lengths : length list;
-  color : color option;
-}
+  let read_shadow_lengths lengths =
+    match lengths with
+    | h_offset :: v_offset :: rest ->
+        let blur, spread =
+          match rest with
+          | b :: s :: _ -> (Some b, Some s)
+          | b :: [] -> (Some b, None)
+          | [] -> (None, None)
+        in
+        Some (h_offset, v_offset, blur, spread)
+    | _ -> None
 
-let fold_shadow_components components =
-  List.fold_left
-    (fun (acc : shadow_accumulator) comp ->
-      match comp with
-      | `Inset -> { acc with inset = true }
-      | `Color c ->
-          if acc.color = None then { acc with color = Some c } else acc
-      | `Length l -> { acc with lengths = l :: acc.lengths })
-    { inset = false; lengths = []; color = None }
-    components
+  (* Helper type for accumulating box shadow components *)
+  type shadow_accumulator = {
+    inset : bool;
+    lengths : length list;
+    color : color option;
+  }
 
-let read_shadow_custom t =
-  let components, _ = Reader.many read_shadow_component t in
-  let parts = fold_shadow_components components in
-  let lengths = List.rev parts.lengths in
-  match read_shadow_lengths lengths with
-  | Some (h_offset, v_offset, blur, spread) ->
-      Shadow
-        {
-          inset = parts.inset;
-          h_offset;
-          v_offset;
-          blur;
-          spread;
-          color = parts.color;
-        }
-  | None -> err_invalid_value t "shadow" "at least two lengths are required"
+  let fold_shadow_components components =
+    List.fold_left
+      (fun (acc : shadow_accumulator) comp ->
+        match comp with
+        | `Inset -> { acc with inset = true }
+        | `Color c ->
+            if acc.color = None then { acc with color = Some c } else acc
+        | `Length l -> { acc with lengths = l :: acc.lengths })
+      { inset = false; lengths = []; color = None }
+      components
+
+  let read_shadow_custom t =
+    let components, _ = Reader.many read_shadow_component t in
+    let parts = fold_shadow_components components in
+    let lengths = List.rev parts.lengths in
+    match read_shadow_lengths lengths with
+    | Some (h_offset, v_offset, blur, spread) ->
+        Shadow
+          {
+            inset = parts.inset;
+            h_offset;
+            v_offset;
+            blur;
+            spread;
+            color = parts.color;
+          }
+    | None -> err_invalid_value t "shadow" "at least two lengths are required"
+end
 
 let rec read_shadow t : shadow =
   let read_var t : shadow = Var (read_var read_shadow t) in
@@ -691,161 +716,172 @@ let rec read_shadow t : shadow =
       ("revert-layer", Revert_layer);
     ]
     ~calls:[ ("var", read_var) ]
-    ~default:read_shadow_custom t
+    ~default:Shadow.read_shadow_custom t
 
-(* Named helpers for transform function bodies to keep the call table tidy *)
-let read_translate_x t =
-  Reader.call "translatex" t (fun t -> Translate_x (read_length t))
+module Transform = struct
+  let read_translate_x t =
+    Reader.call "translatex" t (fun t -> Translate_x (read_length t))
 
-let read_translate_y t =
-  Reader.call "translatey" t (fun t -> Translate_y (read_length t))
+  let read_translate_y t =
+    Reader.call "translatey" t (fun t -> Translate_y (read_length t))
 
-let read_translate_z t =
-  Reader.call "translatez" t (fun t -> Translate_z (read_length t))
+  let read_translate_z t =
+    Reader.call "translatez" t (fun t -> Translate_z (read_length t))
 
-let read_translate3d t =
-  Reader.call "translate3d" t (fun t ->
-      let x, y, z =
-        Reader.(triple ~sep:comma read_length read_length read_length) t
-      in
-      Translate_3d (x, y, z))
+  let read_translate3d t =
+    Reader.call "translate3d" t (fun t ->
+        let x, y, z =
+          Reader.(triple ~sep:comma read_length read_length read_length) t
+        in
+        Translate_3d (x, y, z))
 
-let read_translate t =
-  Reader.call "translate" t (fun t ->
-      let x = read_length t in
-      let y =
-        Reader.option
-          (fun t ->
-            Reader.comma t;
-            read_length t)
-          t
-      in
-      Translate (x, y))
+  let read_translate t =
+    Reader.call "translate" t (fun t ->
+        let x = read_length t in
+        let y =
+          Reader.option
+            (fun t ->
+              Reader.comma t;
+              read_length t)
+            t
+        in
+        Translate (x, y))
 
-let read_rotate_x t = Reader.call "rotatex" t (fun t -> Rotate_x (read_angle t))
-let read_rotate_y t = Reader.call "rotatey" t (fun t -> Rotate_y (read_angle t))
-let read_rotate_z t = Reader.call "rotatez" t (fun t -> Rotate_z (read_angle t))
+  let read_rotate_x t =
+    Reader.call "rotatex" t (fun t -> Rotate_x (read_angle t))
 
-let read_rotate t : transform =
-  Reader.call "rotate" t (fun t -> (Rotate (read_angle t) : transform))
+  let read_rotate_y t =
+    Reader.call "rotatey" t (fun t -> Rotate_y (read_angle t))
 
-let read_scale_x t = Reader.call "scalex" t (fun t -> Scale_x (Reader.number t))
-let read_scale_y t = Reader.call "scaley" t (fun t -> Scale_y (Reader.number t))
-let read_scale_z t = Reader.call "scalez" t (fun t -> Scale_z (Reader.number t))
+  let read_rotate_z t =
+    Reader.call "rotatez" t (fun t -> Rotate_z (read_angle t))
 
-let read_rotate3d t =
-  Reader.call "rotate3d" t (fun t ->
-      let x, y, z = Reader.(triple ~sep:comma number number number) t in
-      Reader.comma t;
-      let angle = read_angle t in
-      Rotate_3d (x, y, z, angle))
+  let read_rotate t : transform =
+    Reader.call "rotate" t (fun t -> (Rotate (read_angle t) : transform))
 
-let read_scale3d t =
-  Reader.call "scale3d" t (fun t ->
-      let x, y, z = Reader.(triple ~sep:comma number number number) t in
-      Scale_3d (x, y, z))
+  let read_scale_x t =
+    Reader.call "scalex" t (fun t -> Scale_x (Reader.number t))
 
-let read_scale t : transform =
-  Reader.call "scale" t (fun t ->
-      let x = Reader.number t in
-      let y =
-        Reader.option
-          (fun t ->
-            Reader.comma t;
-            Reader.number t)
-          t
-      in
-      (Scale (x, y) : transform))
+  let read_scale_y t =
+    Reader.call "scaley" t (fun t -> Scale_y (Reader.number t))
 
-let read_skew_x t = Reader.call "skewx" t (fun t -> Skew_x (read_angle t))
-let read_skew_y t = Reader.call "skewy" t (fun t -> Skew_y (read_angle t))
+  let read_scale_z t =
+    Reader.call "scalez" t (fun t -> Scale_z (Reader.number t))
 
-let read_skew t =
-  Reader.call "skew" t (fun t ->
-      let x = read_angle t in
-      let y =
-        Reader.option
-          (fun t ->
-            Reader.comma t;
-            read_angle t)
-          t
-      in
-      Skew (x, y))
+  let read_rotate3d t =
+    Reader.call "rotate3d" t (fun t ->
+        let x, y, z = Reader.(triple ~sep:comma number number number) t in
+        Reader.comma t;
+        let angle = read_angle t in
+        Rotate_3d (x, y, z, angle))
 
-let read_matrix t =
-  Reader.call "matrix" t (fun t ->
-      match Reader.list ~sep:Reader.comma Reader.number t with
-      | [ a; b; c; d; e; f ] -> Matrix (a, b, c, d, e, f)
-      | _ -> err_invalid_value t "matrix" "expected 6 arguments")
+  let read_scale3d t =
+    Reader.call "scale3d" t (fun t ->
+        let x, y, z = Reader.(triple ~sep:comma number number number) t in
+        Scale_3d (x, y, z))
 
-let read_matrix3d t =
-  Reader.call "matrix3d" t (fun t ->
-      match Reader.list ~sep:Reader.comma Reader.number t with
-      | [
-       m11;
-       m12;
-       m13;
-       m14;
-       m21;
-       m22;
-       m23;
-       m24;
-       m31;
-       m32;
-       m33;
-       m34;
-       m41;
-       m42;
-       m43;
-       m44;
-      ] ->
-          Matrix_3d
-            ( m11,
-              m12,
-              m13,
-              m14,
-              m21,
-              m22,
-              m23,
-              m24,
-              m31,
-              m32,
-              m33,
-              m34,
-              m41,
-              m42,
-              m43,
-              m44 )
-      | _ -> err_invalid_value t "matrix3d" "expected 16 arguments")
+  let read_scale t : transform =
+    Reader.call "scale" t (fun t ->
+        let x = Reader.number t in
+        let y =
+          Reader.option
+            (fun t ->
+              Reader.comma t;
+              Reader.number t)
+            t
+        in
+        (Scale (x, y) : transform))
 
-let transform_parsers =
-  [
-    ("translatex", read_translate_x);
-    ("translatey", read_translate_y);
-    ("translatez", read_translate_z);
-    ("translate3d", read_translate3d);
-    ("translate", read_translate);
-    ("rotatex", read_rotate_x);
-    ("rotatey", read_rotate_y);
-    ("rotatez", read_rotate_z);
-    ("rotate3d", read_rotate3d);
-    ("rotate", read_rotate);
-    ("scalex", read_scale_x);
-    ("scaley", read_scale_y);
-    ("scalez", read_scale_z);
-    ("scale3d", read_scale3d);
-    ("scale", read_scale);
-    ("skewx", read_skew_x);
-    ("skewy", read_skew_y);
-    ("skew", read_skew);
-    ("matrix", read_matrix);
-    ("matrix3d", read_matrix3d);
-  ]
+  let read_skew_x t = Reader.call "skewx" t (fun t -> Skew_x (read_angle t))
+  let read_skew_y t = Reader.call "skewy" t (fun t -> Skew_y (read_angle t))
+
+  let read_skew t =
+    Reader.call "skew" t (fun t ->
+        let x = read_angle t in
+        let y =
+          Reader.option
+            (fun t ->
+              Reader.comma t;
+              read_angle t)
+            t
+        in
+        Skew (x, y))
+
+  let read_matrix t =
+    Reader.call "matrix" t (fun t ->
+        match Reader.list ~sep:Reader.comma Reader.number t with
+        | [ a; b; c; d; e; f ] -> Matrix (a, b, c, d, e, f)
+        | _ -> err_invalid_value t "matrix" "expected 6 arguments")
+
+  let read_matrix3d t =
+    Reader.call "matrix3d" t (fun t ->
+        match Reader.list ~sep:Reader.comma Reader.number t with
+        | [
+         m11;
+         m12;
+         m13;
+         m14;
+         m21;
+         m22;
+         m23;
+         m24;
+         m31;
+         m32;
+         m33;
+         m34;
+         m41;
+         m42;
+         m43;
+         m44;
+        ] ->
+            Matrix_3d
+              ( m11,
+                m12,
+                m13,
+                m14,
+                m21,
+                m22,
+                m23,
+                m24,
+                m31,
+                m32,
+                m33,
+                m34,
+                m41,
+                m42,
+                m43,
+                m44 )
+        | _ -> err_invalid_value t "matrix3d" "expected 16 arguments")
+
+  let parsers =
+    [
+      ("translatex", read_translate_x);
+      ("translatey", read_translate_y);
+      ("translatez", read_translate_z);
+      ("translate3d", read_translate3d);
+      ("translate", read_translate);
+      ("rotatex", read_rotate_x);
+      ("rotatey", read_rotate_y);
+      ("rotatez", read_rotate_z);
+      ("rotate3d", read_rotate3d);
+      ("rotate", read_rotate);
+      ("scalex", read_scale_x);
+      ("scaley", read_scale_y);
+      ("scalez", read_scale_z);
+      ("scale3d", read_scale3d);
+      ("scale", read_scale);
+      ("skewx", read_skew_x);
+      ("skewy", read_skew_y);
+      ("skew", read_skew);
+      ("matrix", read_matrix);
+      ("matrix3d", read_matrix3d);
+    ]
+end
 
 let read_transform t : transform =
   Reader.enum_or_calls "transform"
     [ ("none", (None : transform)) ]
-    ~calls:transform_parsers t
+    ~calls:Transform.parsers t
 
 let pp_opt_space pp ctx = function
   | Some v ->
@@ -4247,33 +4283,22 @@ let rec read_font_feature_settings t : font_feature_settings =
   let read_var t : font_feature_settings =
     Var (read_var read_font_feature_settings t)
   in
+  let read_feature t =
+    let tag_content = Reader.string t in
+    let tag = "\"" ^ tag_content ^ "\"" in
+    Reader.ws t;
+    match Reader.option Reader.number t with
+    | Some n -> tag ^ " " ^ string_of_int (int_of_float n)
+    | None -> (
+        match Reader.option Reader.ident t with
+        | Some "on" -> tag ^ " on"
+        | Some "off" -> tag ^ " off"
+        | Some v -> tag ^ " " ^ v
+        | None -> tag)
+  in
   let read_feature_list t =
-    (* Read comma-separated list of feature tags with optional values *)
-    let rec read_features acc =
-      let tag_content = Reader.string t in
-      (* Keep the quotes around the tag *)
-      let tag = "\"" ^ tag_content ^ "\"" in
-      Reader.ws t;
-      (* Check for optional numeric value or on/off *)
-      let full_feature =
-        match Reader.option Reader.number t with
-        | Some n -> tag ^ " " ^ string_of_int (int_of_float n)
-        | None -> (
-            match Reader.option Reader.ident t with
-            | Some "on" -> tag ^ " on"
-            | Some "off" -> tag ^ " off"
-            | Some v -> tag ^ " " ^ v
-            | None -> tag)
-      in
-      let acc = full_feature :: acc in
-      Reader.ws t;
-      if Reader.peek t = Some ',' then (
-        Reader.skip t;
-        Reader.ws t;
-        read_features acc)
-      else List.rev acc
-    in
-    Feature_list (String.concat ", " (read_features []))
+    let items = Reader.list ~sep:Reader.comma ~at_least:1 read_feature t in
+    Feature_list (String.concat ", " items)
   in
   Reader.enum_or_calls "font-feature-settings"
     [ ("normal", (Normal : font_feature_settings)); ("inherit", Inherit) ]
@@ -4284,37 +4309,27 @@ let rec read_font_variation_settings t : font_variation_settings =
   let read_var t : font_variation_settings =
     Var (read_var read_font_variation_settings t)
   in
+  let read_axis t =
+    let tag_content = Reader.string t in
+    if String.length tag_content <> 4 then
+      Reader.err t
+        "font-variation-settings axis tag must be exactly 4 characters";
+    String.iter
+      (fun c ->
+        let code = Char.code c in
+        if code < 0x20 || code > 0x7E then
+          Reader.err t
+            "font-variation-settings axis tag must contain only ASCII \
+             characters (U+20 - U+7E)")
+      tag_content;
+    let tag = "\"" ^ tag_content ^ "\"" in
+    Reader.ws t;
+    let value = Reader.number t in
+    tag ^ " " ^ string_of_int (int_of_float value)
+  in
   let read_axis_list t =
-    (* Read comma-separated list of axis tags with values *)
-    let rec read_axes acc =
-      let tag_content = Reader.string t in
-      (* Validate that axis tag is exactly 4 ASCII characters (U+20 - U+7E) *)
-      if String.length tag_content <> 4 then
-        Reader.err t
-          "font-variation-settings axis tag must be exactly 4 characters";
-      String.iter
-        (fun c ->
-          let code = Char.code c in
-          if code < 0x20 || code > 0x7E then
-            Reader.err t
-              "font-variation-settings axis tag must contain only ASCII \
-               characters (U+20 - U+7E)")
-        tag_content;
-      (* Keep the quotes around the tag *)
-      let tag = "\"" ^ tag_content ^ "\"" in
-      Reader.ws t;
-      (* Axis values are required for variation settings *)
-      let value = Reader.number t in
-      let full_axis = tag ^ " " ^ string_of_int (int_of_float value) in
-      let acc = full_axis :: acc in
-      Reader.ws t;
-      if Reader.peek t = Some ',' then (
-        Reader.skip t;
-        Reader.ws t;
-        read_axes acc)
-      else List.rev acc
-    in
-    Axis_list (String.concat ", " (read_axes []))
+    let items = Reader.list ~sep:Reader.comma ~at_least:1 read_axis t in
+    Axis_list (String.concat ", " items)
   in
   Reader.enum_or_calls "font-variation-settings"
     [ ("normal", (Normal : font_variation_settings)); ("inherit", Inherit) ]
@@ -4621,97 +4636,96 @@ let read_text_shadows t : text_shadow list =
 
 let read_blur t : filter = Reader.call "blur" t (fun t -> Blur (read_length t))
 
-let read_brightness t : filter =
-  Reader.call "brightness" t (fun t -> Brightness (read_number t))
+module Filter = struct
+  let read_brightness t : filter =
+    Reader.call "brightness" t (fun t -> Brightness (read_number t))
 
-let read_contrast t : filter =
-  Reader.call "contrast" t (fun t -> Contrast (read_number t))
+  let read_contrast t : filter =
+    Reader.call "contrast" t (fun t -> Contrast (read_number t))
 
-let read_grayscale t : filter =
-  Reader.call "grayscale" t (fun t : filter -> Grayscale (read_number t))
+  let read_grayscale t : filter =
+    Reader.call "grayscale" t (fun t : filter -> Grayscale (read_number t))
 
-let read_hue_rotate t : filter =
-  Reader.call "hue-rotate" t (fun t -> Hue_rotate (read_angle t))
+  let read_hue_rotate t : filter =
+    Reader.call "hue-rotate" t (fun t -> Hue_rotate (read_angle t))
 
-let read_invert t : filter =
-  Reader.call "invert" t (fun t -> Invert (read_number t))
+  let read_invert t : filter =
+    Reader.call "invert" t (fun t -> Invert (read_number t))
 
-let read_opacity t : filter =
-  Reader.call "opacity" t (fun t : filter -> Opacity (read_number t))
+  let read_opacity t : filter =
+    Reader.call "opacity" t (fun t : filter -> Opacity (read_number t))
 
-let read_saturate t : filter =
-  Reader.call "saturate" t (fun t -> Saturate (read_number t))
+  let read_saturate t : filter =
+    Reader.call "saturate" t (fun t -> Saturate (read_number t))
 
-let read_sepia t : filter =
-  Reader.call "sepia" t (fun t -> Sepia (read_number t))
+  let read_sepia t : filter =
+    Reader.call "sepia" t (fun t -> Sepia (read_number t))
 
-let read_drop_shadow t : filter =
-  Reader.call "drop-shadow" t (fun t ->
-      (* Allow var() to produce a shadow via fallback parser *)
-      if Reader.looking_at t "var" then
-        let read_shadow t =
-          let components, _ = Reader.many read_shadow_component t in
-          let parts = fold_shadow_components components in
+  let read_drop_shadow t : filter =
+    Reader.call "drop-shadow" t (fun t ->
+        (* Allow var() to produce a shadow via fallback parser *)
+        if Reader.looking_at t "var" then
+          let read_shadow t =
+            let components, _ = Reader.many Shadow.read_shadow_component t in
+            let parts = Shadow.fold_shadow_components components in
+            let lengths = List.rev parts.lengths in
+            match Shadow.read_shadow_lengths lengths with
+            | Some (h, v, blur, spread) ->
+                Shadow
+                  {
+                    inset = parts.inset;
+                    h_offset = h;
+                    v_offset = v;
+                    blur;
+                    spread;
+                    color = parts.color;
+                  }
+            | None ->
+                err_invalid_value t "drop-shadow"
+                  "at least two lengths are required"
+          in
+          let v = read_var read_shadow t in
+          Drop_shadow (Var v)
+        else
+          let components, _ = Reader.many Shadow.read_shadow_component t in
+          let parts = Shadow.fold_shadow_components components in
           let lengths = List.rev parts.lengths in
-          match read_shadow_lengths lengths with
+          match Shadow.read_shadow_lengths lengths with
           | Some (h, v, blur, spread) ->
-              Shadow
-                {
-                  inset = parts.inset;
-                  h_offset = h;
-                  v_offset = v;
-                  blur;
-                  spread;
-                  color = parts.color;
-                }
+              let s =
+                Shadow
+                  {
+                    inset = parts.inset;
+                    h_offset = h;
+                    v_offset = v;
+                    blur;
+                    spread;
+                    color = parts.color;
+                  }
+              in
+              Drop_shadow s
           | None ->
               err_invalid_value t "drop-shadow"
-                "at least two lengths are required"
-        in
-        let v = read_var read_shadow t in
-        Drop_shadow (Var v)
-      else
-        let components, _ = Reader.many read_shadow_component t in
-        let parts = fold_shadow_components components in
-        let lengths = List.rev parts.lengths in
-        match read_shadow_lengths lengths with
-        | Some (h, v, blur, spread) ->
-            let s =
-              Shadow
-                {
-                  inset = parts.inset;
-                  h_offset = h;
-                  v_offset = v;
-                  blur;
-                  spread;
-                  color = parts.color;
-                }
-            in
-            Drop_shadow s
-        | None ->
-            err_invalid_value t "drop-shadow"
-              "at least two lengths are required")
+                "at least two lengths are required")
+end
 
 let rec read_filter_item t : filter =
-  let read_var t : filter =
-    let v = read_var read_filter t in
-    Var v
-  in
+  let read_var t : filter = Var (read_var read_filter t) in
   let read_url t = (Url (read_url_arg t) : filter) in
   Reader.enum_or_calls "filter"
     [ ("none", (None : filter)) ]
     ~calls:
       [
         ("blur", read_blur);
-        ("brightness", read_brightness);
-        ("contrast", read_contrast);
-        ("grayscale", read_grayscale);
-        ("hue-rotate", read_hue_rotate);
-        ("invert", read_invert);
-        ("opacity", read_opacity);
-        ("saturate", read_saturate);
-        ("sepia", read_sepia);
-        ("drop-shadow", read_drop_shadow);
+        ("brightness", Filter.read_brightness);
+        ("contrast", Filter.read_contrast);
+        ("grayscale", Filter.read_grayscale);
+        ("hue-rotate", Filter.read_hue_rotate);
+        ("invert", Filter.read_invert);
+        ("opacity", Filter.read_opacity);
+        ("saturate", Filter.read_saturate);
+        ("sepia", Filter.read_sepia);
+        ("drop-shadow", Filter.read_drop_shadow);
         ("url", read_url);
         ("var", read_var);
       ]
