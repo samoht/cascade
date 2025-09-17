@@ -146,8 +146,9 @@ val string : ?trim:bool -> t -> string
 (** [string ?trim t] reads a quoted string (handles escapes). If [trim] is true
     (default: false), trims whitespace from the result. *)
 
-val number : t -> float
-(** [number t] reads a number. *)
+val number : ?allow_negative:bool -> t -> float
+(** [number ?allow_negative t] reads a number. If [allow_negative] is false,
+    rejects negative numbers. Default: true. *)
 
 val int : t -> int
 (** [int t] reads an integer. *)
@@ -246,14 +247,23 @@ val fold_many :
 (** [fold_many parser ~init ~f t] like [many] but folds into an accumulator as
     it parses. Returns the final accumulator and the last error (if any). *)
 
-val number_with_unit : t -> float * string
+val number_with_unit : t -> float * string option
 (** [number_with_unit t] parses a number followed by a unit identifier (e.g.,
-    "12px", "3.5rem"). Returns [(number, unit_string)]. *)
+    "12px", "3.5rem"). Returns [(number, Some unit_string)] or [(number, None)]
+    if no unit. *)
 
 val unit : string -> t -> float
 (** [unit expected t] parses a number followed by the expected unit identifier.
     Returns just the number if the unit matches, raises Parse_error otherwise.
 *)
+
+val pct : ?clamp:bool -> t -> float
+(** [pct ?clamp t] parses a percentage value (e.g., "50%") and returns it as a
+    float. If [clamp] is true (default: false), clamps the value to 0-100 range.
+
+    Note: Most CSS properties allow percentages outside 0-100 (e.g., margin:
+    200%). Only specific contexts like alpha values require clamping. Ref:
+    https://www.w3.org/TR/css-values-4/#percentages *)
 
 val bool : t -> bool
 (** [bool t] parses a boolean value ("true" or "false"). Raises Parse_error if

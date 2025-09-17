@@ -373,9 +373,7 @@ let pp_opt_alpha ctx = function
 (** Pretty printer for percentage types *)
 let rec pp_percentage : percentage Pp.t =
  fun ctx -> function
-  | Pct f ->
-      Pp.float ctx f;
-      Pp.char ctx '%'
+  | Pct f -> Pp.pct ctx f
   | Var v -> pp_var pp_percentage ctx v
   | Calc c -> pp_calc pp_percentage ctx c
 
@@ -667,8 +665,8 @@ let read_var : type a. (Reader.t -> a) -> Reader.t -> a var =
   Reader.expect ')' t;
   var_ref ~fallback var_name
 
-let read_length_unit t =
-  let n = Reader.number t in
+let read_length_unit ?(allow_negative = true) t =
+  let n = Reader.number ~allow_negative t in
   let unit_raw = Reader.while_ t (fun c -> Reader.is_alpha c || c = '%') in
   let unit = String.lowercase_ascii unit_raw in
   match unit with
@@ -856,10 +854,14 @@ let read_balanced_function_content t =
   read_balanced 0;
   Buffer.contents buf
 
-let rec read_length t : length =
+let rec read_length ?(allow_negative = true) t : length =
   Reader.ws t;
-  let read_var_length t : length = Var (read_var read_length t) in
-  let read_calc_length t : length = Calc (read_calc read_length t) in
+  let read_var_length t : length =
+    Var (read_var (read_length ~allow_negative) t)
+  in
+  let read_calc_length t : length =
+    Calc (read_calc (read_length ~allow_negative) t)
+  in
   let read_function_length t : length =
     (* Parse a generic function name followed by '(' ... ')' *)
     let name = Reader.ident t in
@@ -871,57 +873,41 @@ let rec read_length t : length =
     | "clamp" | "minmax" | "min" | "max" -> Function (name ^ "(" ^ content ^ ")")
     | _ -> Reader.err t "unknown function"
   in
-  Reader.one_of
-    [
-      read_var_length;
-      read_calc_length;
-      read_function_length;
-      read_length_unit;
-      read_length_keyword;
-    ]
-    t
+  let length =
+    Reader.one_of
+      [
+        read_var_length;
+        read_calc_length;
+        read_function_length;
+        read_length_unit ~allow_negative;
+        read_length_keyword;
+      ]
+      t
+  in
+  length
 
 (** Read a non-negative length value (for padding properties) *)
-let read_non_negative_length t : length =
-  let length = read_length t in
-  (* Check if the length represents a negative value *)
-  match length with
-  | Px n when n < 0. -> Reader.err_invalid t "padding values cannot be negative"
-  | Rem n when n < 0. ->
-      Reader.err_invalid t "padding values cannot be negative"
-  | Em n when n < 0. -> Reader.err_invalid t "padding values cannot be negative"
-  | Vw n when n < 0. -> Reader.err_invalid t "padding values cannot be negative"
-  | Vh n when n < 0. -> Reader.err_invalid t "padding values cannot be negative"
-  | Cm n when n < 0. -> Reader.err_invalid t "padding values cannot be negative"
-  | Mm n when n < 0. -> Reader.err_invalid t "padding values cannot be negative"
-  | In n when n < 0. -> Reader.err_invalid t "padding values cannot be negative"
-  | Pt n when n < 0. -> Reader.err_invalid t "padding values cannot be negative"
-  | Pc n when n < 0. -> Reader.err_invalid t "padding values cannot be negative"
-  | _ -> length
+let read_non_negative_length t : length = read_length ~allow_negative:false t
 
-(** Read a percentage value as float (number followed by %) *)
-let read_percentage_float t : float =
-  Reader.ws t;
-  let n = Reader.number t in
-  Reader.expect '%' t;
-  n
+(** Read a percentage value as float (number followed by %) Used for color
+    components where 0-100% clamping is required *)
+let read_percentage_float t : float = Reader.pct ~clamp:true t
 
 (** Read an alpha value *)
 let rec read_alpha t : alpha =
   Reader.ws t;
-  (* Check for var() first *)
-  if Reader.looking_at t "var(" then Var (read_var read_alpha t)
-  else
-    (* Check if it's a percentage by looking ahead after the number *)
+  let read_var_alpha t : alpha = Var (read_var read_alpha t) in
+  let read_pct t : alpha =
+    (* Alpha percentages are clamped to 0-100 per CSS spec *)
+    Pct (Reader.pct ~clamp:true t)
+  in
+  let read_num t : alpha =
+    (* Fall back to reading as numeric alpha *)
     let n = Reader.number t in
-    if Reader.peek t = Some '%' then (
-      Reader.expect '%' t;
-      (* Clamp percentage to 0-100 range per CSS spec *)
-      Pct (max 0. (min 100. n)))
-    else
-      (* Clamp numeric alpha to 0-1 range per CSS spec *)
-      Num (max 0. (min 1. n))
-(* Fall back to number *)
+    (* Clamp numeric alpha to 0-1 range per CSS spec *)
+    Num (max 0. (min 1. n))
+  in
+  Reader.one_of [ read_var_alpha; read_pct; read_num ] t
 
 (** Read optional alpha component *)
 and read_optional_alpha t : alpha =
@@ -1569,10 +1555,7 @@ let rec read_percentage t : percentage =
   Reader.ws t;
   if Reader.looking_at t "var(" then Var (read_var read_percentage t)
   else if Reader.looking_at t "calc(" then Calc (read_calc read_percentage t)
-  else
-    let n = Reader.number t in
-    Reader.expect '%' t;
-    Pct n
+  else Pct (Reader.pct t)
 
 (** Read length_percentage value *)
 let rec read_length_percentage t : length_percentage =

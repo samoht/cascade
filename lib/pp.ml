@@ -193,6 +193,15 @@ let unit ctx f suffix =
     float ctx f;
     string ctx suffix)
 
+let pct ctx f =
+  (* CSS spec allows "0" without "%" for zero percentage values. This is a
+     minification optimization used by cssnano and other tools. Ref:
+     https://www.w3.org/TR/css-values-4/#zero-value *)
+  if f = 0. then char ctx '0'
+  else (
+    float ctx f;
+    string ctx "%")
+
 let colon ctx () = Buffer.add_char ctx.buf ':'
 
 let sep ctx s =

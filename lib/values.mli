@@ -158,7 +158,7 @@ end
 
 (** {1 Parsing Functions} *)
 
-val read_length : Reader.t -> length
+val read_length : ?allow_negative:bool -> Reader.t -> length
 (** [read_length t] parses a CSS length. *)
 
 val read_non_negative_length : Reader.t -> length

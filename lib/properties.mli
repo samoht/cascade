@@ -468,8 +468,14 @@ val pp_scale : scale Pp.t
 val read_scale : Reader.t -> scale
 (** [read_scale t] is the [scale] parsed from [t]. *)
 
+val pp_steps_direction : steps_direction Pp.t
+(** [pp_steps_direction] is the pretty-printer for [steps_direction]. *)
+
 val pp_timing_function : timing_function Pp.t
 (** [pp_timing_function] is the pretty-printer for [timing_function]. *)
+
+val read_steps_direction : Reader.t -> steps_direction
+(** [read_steps_direction t] is the [steps_direction] parsed from [t]. *)
 
 val read_timing_function : Reader.t -> timing_function
 (** [read_timing_function t] is the [timing_function] parsed from [t]. *)

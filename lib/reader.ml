@@ -217,10 +217,32 @@ let until t c =
   done;
   String.sub t.input start (t.pos - start)
 
+(* CSS Syntax Module Level 3:
+   https://www.w3.org/TR/css-syntax-3/#ident-start-code-point "An ident-start
+   code point is a letter, a non-ASCII code point, or U+005F LOW LINE (_)." *)
 let is_ident_start c =
-  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_' || c = '-'
+  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_'
 
-let is_ident_char c = is_ident_start c || (c >= '0' && c <= '9')
+(* Check if a hyphen can start an identifier: valid unless followed by digit *)
+let hyphen_can_start_ident t =
+  if t.pos + 1 < t.len then
+    let next_char = t.input.[t.pos + 1] in
+    not (next_char >= '0' && next_char <= '9')
+  else true (* Single dash at end is valid *)
+
+(* CSS Syntax Module Level 3:
+   https://www.w3.org/TR/css-syntax-3/#would-start-an-identifier Check if the
+   current position would start a valid CSS identifier. *)
+let would_start_identifier t =
+  if t.pos >= t.len then false
+  else
+    match peek t with
+    | Some c when is_ident_start c -> true
+    | Some '\\' -> true (* Escape sequence *)
+    | Some '-' -> hyphen_can_start_ident t
+    | _ -> false
+
+let is_ident_char c = is_ident_start c || (c >= '0' && c <= '9') || c = '-'
 
 let is_hex c =
   (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
@@ -295,6 +317,12 @@ let ident ?(keep_case = false) t =
       ignore (char t);
       let escaped = read_escape t in
       String.iter (fun c -> chars := (c, true) :: !chars) escaped
+  | Some '-' ->
+      (* Use shared logic for hyphen validation *)
+      if hyphen_can_start_ident t then (
+        chars := ('-', false) :: !chars;
+        ignore (char t))
+      else err_invalid t "identifier cannot start with dash followed by digit"
   | Some c when is_ident_start c ->
       chars := (c, false) :: !chars;
       ignore (char t)
@@ -321,7 +349,14 @@ let ident ?(keep_case = false) t =
       let c' = if keep_case || is_escaped then c else Char.lowercase_ascii c in
       Buffer.add_char buf c')
     (List.rev !chars);
-  Buffer.contents buf
+  let result = Buffer.contents buf in
+  (* CSS spec: Invalid identifier patterns *)
+  if result = "--" then err_invalid t "CSS identifier cannot be '--' alone"
+  else if result = "-" then
+    err_invalid t "CSS identifier cannot be single dash '-'"
+  else if String.length result >= 3 && String.sub result 0 3 = "---" then
+    err_invalid t "CSS identifier cannot start with triple dash '---'"
+  else result
 
 let is_digit c = c >= '0' && c <= '9'
 let is_alpha c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
@@ -399,7 +434,7 @@ let string ?(trim = false) t =
   in
   loop ()
 
-let number t =
+let number ?(allow_negative = true) t =
   let negative = peek t = Some '-' in
   let sign = peek t = Some '-' || peek t = Some '+' in
   if sign then skip t;
@@ -448,7 +483,10 @@ let number t =
   if String.length num_str = 0 || num_str = "." then err_invalid_number t;
 
   let value = float_of_string num_str in
-  if negative then -.value else value
+  let result = if negative then -.value else value in
+  if (not allow_negative) && result < 0.0 then
+    err_invalid t "negative values not allowed"
+  else result
 
 let int t = int_of_float (number t)
 
@@ -556,7 +594,7 @@ let one_of parsers t =
     | [] ->
         let msg =
           if errors = [] then "no parsers provided"
-          else "expected one of: " ^ String.concat ", " errors
+          else "expected one of: " ^ String.concat ", " (List.rev errors)
         in
         err ?got:got_value t msg
     | parser :: rest -> (
@@ -661,7 +699,7 @@ let css_value ~stops t =
 
 let enum_impl ?default label mapping t =
   ws t;
-  let starts_with_ident = is_ident_start (Option.value (peek t) ~default:' ') in
+  let starts_with_ident = would_start_identifier t in
   if not starts_with_ident then
     match default with
     | Some f -> f t
@@ -776,9 +814,13 @@ let call name t p =
 
 let quoted_or_unquoted_url t =
   ws t;
-  match peek t with
-  | Some ('"' | '\'') -> string t
-  | _ -> String.trim (until t ')')
+  let url_content =
+    match peek t with
+    | Some ('"' | '\'') -> string t
+    | _ -> String.trim (until t ')')
+  in
+  (* Per CSS spec, empty URLs are invalid *)
+  if url_content = "" then err t "empty URL is not allowed" else url_content
 
 let url t = call "url" t quoted_or_unquoted_url
 
@@ -836,8 +878,8 @@ let number_with_unit t =
   let u =
     if looking_at t "%" then (
       ignore (char t);
-      "%")
-    else Option.value ~default:"" (option ident t)
+      Some "%")
+    else option ident t
   in
   (n, u)
 
@@ -847,6 +889,15 @@ let unit expected t =
   let u = ident t in
   if String.equal u expected then n
   else err t ("expected unit '" ^ expected ^ "', got '" ^ u ^ "'")
+
+let pct ?(clamp = false) t =
+  ws t;
+  let n = number t in
+  expect '%' t;
+  (* CSS percentages are NOT clamped by default. Properties like width, margin,
+     font-size can exceed 100%. Only specific contexts like alpha values require
+     clamping. Ref: https://www.w3.org/TR/css-values-4/#percentages *)
+  if clamp then max 0. (min 100. n) else n
 
 let bool t =
   ws t;

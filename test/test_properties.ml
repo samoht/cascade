@@ -234,6 +234,9 @@ let check_background_box =
 
 let check_background = check_value "background" pp_background read_background
 
+let check_steps_direction =
+  check_value "steps-direction" pp_steps_direction read_steps_direction
+
 let check_timing_function =
   check_value "timing-function" pp_timing_function read_timing_function
 
@@ -969,7 +972,8 @@ let test_text_decoration () =
   check_text_decoration ~expected:"none" "none";
   neg read_text_decoration "invalid-decoration";
   neg read_text_decoration "underline line-through underline";
-  (* duplicate *)
+  (* duplicate - per CSS spec, || combinator means each component at most
+     once *)
   neg read_text_decoration "solid";
   (* that's a style *)
   (* that's a color *)
@@ -1083,7 +1087,7 @@ let test_transition_shorthand () =
     "opacity 1s ease-in 0.5s";
   check_transition_shorthand "width 2s";
   check_transition_shorthand ~expected:"all .3s linear" "all 0.3s linear";
-  neg read_transition_shorthand "invalid-transition";
+  neg read_transition_shorthand "2invalid";
   neg read_transition_shorthand "-1s";
   (* negative duration *)
   neg read_transition_shorthand "opacity";
@@ -1120,7 +1124,11 @@ let test_background_shorthand () =
   neg read_background_shorthand "center/"
 
 let test_animation_shorthand () =
-  check_animation_shorthand "none";
+  (* Valid CSS per spec - all components optional *)
+  (* duration only, name defaults to none *)
+  check_animation_shorthand "1s";
+  (* name only, duration defaults to 0s *)
+  check_animation_shorthand "slide";
   check_animation_shorthand "slide 1s";
   check_animation_shorthand "slide 1s ease-in";
   check_animation_shorthand ~expected:"slide 1s ease-in .5s infinite"
@@ -1129,12 +1137,13 @@ let test_animation_shorthand () =
   check_animation_shorthand "slide 1s reverse";
   check_animation_shorthand "slide 1s forwards";
   check_animation_shorthand "slide 1s paused";
-  neg read_animation_shorthand "invalid-animation";
-  neg read_animation_shorthand "1s";
-  (* missing animation name *)
-  neg read_animation_shorthand "slide -1s";
+
+  (* Invalid cases *)
+  (* invalid time unit *)
+  neg read_animation_shorthand "2invalid";
   (* negative duration *)
-  (* too many times *)
+  neg read_animation_shorthand "slide -1s";
+  (* too many time values *)
   neg read_animation_shorthand "slide 1s 2s 3s 4s 5s"
 
 let test_any_property () =
@@ -1198,7 +1207,15 @@ let test_font_family () =
   check_font_family "cursive";
   check_font_family "fantasy";
   check_font_family "system-ui";
-  neg read_font_family "invalid-font"
+  (* Per CSS spec, arbitrary font family names are valid (both quoted and
+     unquoted identifiers) *)
+  check_font_family "invalid-font";
+  check_font_family "\"Times New Roman\"";
+  check_font_family "Arial";
+  (* Test actual invalid cases *)
+  neg read_font_family "123invalid";
+  (* identifier can't start with number *)
+  neg read_font_family ""
 
 let test_font_stretch () =
   check_font_stretch "normal";
@@ -1243,9 +1260,20 @@ let test_scale () =
   check_scale "none";
   check_scale "1";
   check_scale ~expected:".5" "0.5";
-  check_scale "1.5 2.0";
-  check_scale "0.8 0.8 1.2";
-  neg read_scale "invalid-scale"
+  check_scale ~expected:"1.5 2" "1.5 2.0";
+  check_scale ~expected:".8 .8 1.2" "0.8 0.8 1.2";
+  neg read_scale "2scale"
+
+let test_steps_direction () =
+  check_steps_direction "jump-start";
+  check_steps_direction "jump-end";
+  check_steps_direction "jump-none";
+  check_steps_direction "jump-both";
+  check_steps_direction "start";
+  check_steps_direction "end";
+  neg read_steps_direction "invalid-direction";
+  neg read_steps_direction "jump";
+  neg read_steps_direction "middle"
 
 let test_timing_function () =
   check_timing_function "ease";
@@ -1255,21 +1283,24 @@ let test_timing_function () =
   check_timing_function "ease-in-out";
   check_timing_function "step-start";
   check_timing_function "step-end";
-  check_timing_function "cubic-bezier(0.1, 0.7, 1.0, 0.1)";
-  neg read_timing_function "invalid-timing"
+  check_timing_function ~expected:"cubic-bezier(.1,.7,1,.1)"
+    "cubic-bezier(0.1, 0.7, 1.0, 0.1)";
+  neg read_timing_function "cubic-bezier()"
 
 let test_transition_property () =
   check_transition_property "all";
   check_transition_property "none";
   check_transition_property "opacity";
   check_transition_property "transform";
+  (* Arbitrary identifier should be accepted (inert if non-animatable) *)
+  check_transition_property "invalid-transition";
   neg read_transition_property ""
 
 let test_transition () =
   check_transition "inherit";
   check_transition "initial";
   check_transition "none";
-  neg read_transition "invalid-transition"
+  neg read_transition "2invalid"
 
 let test_animation_direction () =
   check_animation_direction "normal";
@@ -1300,7 +1331,14 @@ let test_animation () =
   check_animation "inherit";
   check_animation "initial";
   check_animation "none";
-  neg read_animation "invalid-animation"
+  check_animation "slide-in 1s";
+  check_animation "my-animation 2s ease-in 1s infinite alternate";
+  (* Test invalid animation shorthand according to CSS spec *)
+  neg read_animation "1s 2s 3s";
+  (* More than 2 time values *)
+  neg read_animation "-2s";
+  (* Negative duration is invalid *)
+  neg read_animation "2s -1" (* Negative iteration count is invalid *)
 
 let test_blend_mode () =
   check_blend_mode "normal";
@@ -1362,7 +1400,8 @@ let test_gradient_stop () =
 let test_background_image () =
   check_background_image "none";
   check_background_image "url(image.jpg)";
-  check_background_image "linear-gradient(to right, red, blue)";
+  check_background_image ~expected:"linear-gradient(to right,red,blue)"
+    "linear-gradient(to right, red, blue)";
   neg read_background_image "invalid-image"
 
 let test_position_2d () =
@@ -1686,9 +1725,9 @@ let test_aspect_ratio () =
   check_aspect_ratio "auto";
   check_aspect_ratio "16/9";
   check_aspect_ratio "1.5";
+  check_aspect_ratio "1";
   check_aspect_ratio "inherit";
-  neg read_aspect_ratio "invalid-ratio";
-  neg read_aspect_ratio "1"
+  neg read_aspect_ratio "invalid-ratio"
 
 let test_flex () =
   check_flex "1";
@@ -1703,8 +1742,9 @@ let test_grid_line () =
   check_grid_line "1";
   check_grid_line "span 2";
   check_grid_line "main-start";
+  check_grid_line "content-end";
   check_grid_line "inherit";
-  neg read_grid_line "invalid-line"
+  neg read_grid_line "span"
 
 let test_grid_template () =
   check_grid_template "none";
@@ -1853,6 +1893,7 @@ let additional_tests =
     test_case "transform_style" `Quick test_transform_style;
     test_case "backface_visibility" `Quick test_backface_visibility;
     test_case "scale" `Quick test_scale;
+    test_case "steps_direction" `Quick test_steps_direction;
     test_case "timing_function" `Quick test_timing_function;
     test_case "transition_property" `Quick test_transition_property;
     test_case "transition" `Quick test_transition;
