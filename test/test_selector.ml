@@ -122,12 +122,11 @@ let pseudo_class_cases () =
 
 (* Test pseudo-element selectors *)
 let pseudo_element_cases () =
-  check_construct "before" "::before" (pseudo_element "before");
-  check_construct "after" "::after" (pseudo_element "after");
-  check_construct "first-line" "::first-line" (pseudo_element "first-line");
-  check_construct "first-letter" "::first-letter"
-    (pseudo_element "first-letter");
-  check_construct "marker" "::marker" (pseudo_element "marker");
+  check_construct "before" "::before" Before;
+  check_construct "after" "::after" After;
+  check_construct "first-line" "::first-line" First_line;
+  check_construct "first-letter" "::first-letter" First_letter;
+  check_construct "marker" "::marker" Marker;
   ()
 
 (* Test attribute selectors *)

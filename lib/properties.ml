@@ -2344,9 +2344,7 @@ let pp_object_fit : object_fit Pp.t =
 
 let pp_font_stretch : font_stretch Pp.t =
  fun ctx -> function
-  | Pct f ->
-      Pp.float ctx (f *. 100.);
-      Pp.char ctx '%'
+  | Pct f -> Pp.unit ctx f "%"
   | Ultra_condensed -> Pp.string ctx "ultra-condensed"
   | Extra_condensed -> Pp.string ctx "extra-condensed"
   | Condensed -> Pp.string ctx "condensed"
@@ -4201,7 +4199,22 @@ let rec read_font_variant_numeric t : font_variant_numeric =
     [ ("normal", (Normal : font_variant_numeric)) ]
     ~calls:[ ("var", read_var) ]
     ~default:(fun t ->
-      let tokens, _ = Reader.many read_font_variant_numeric_token t in
+      (* Special handling for concatenated var() functions and regular tokens *)
+      let rec read_tokens acc =
+        Reader.ws t;
+        if Reader.is_done t then List.rev acc
+        else
+          (* Try to read a token - this handles both regular tokens and var()
+             calls *)
+          match Reader.option read_font_variant_numeric_token t with
+          | Some token ->
+              (* Don't require whitespace between var() functions *)
+              read_tokens (token :: acc)
+          | None ->
+              (* If we can't read more tokens, we're done *)
+              List.rev acc
+      in
+      let tokens = read_tokens [] in
       if tokens = [] then err_invalid_value t "font-variant-numeric" "<empty>"
       else Tokens tokens)
     t

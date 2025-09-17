@@ -184,10 +184,6 @@ let read_part_content t =
 
 let read_part t = Reader.call "part" t read_part_content
 
-let pseudo_element name =
-  validate_css_identifier name;
-  Pseudo_element name
-
 let rec combine s1 comb s2 =
   match s2 with
   | List selectors ->
@@ -627,6 +623,12 @@ and read_pseudo_class t =
       ("after", After);
       ("first-letter", First_letter);
       ("first-line", First_line);
+      (* Modern double-colon pseudo-elements *)
+      ("backdrop", Backdrop);
+      ("marker", Marker);
+      ("placeholder", Placeholder);
+      ("selection", Selection);
+      ("file-selector-button", File_selector_button);
       (* Vendor-specific *)
       ("-moz-focusring", Moz_focusring);
       ("-webkit-any", Webkit_any);
@@ -780,12 +782,29 @@ let pp_func : 'a. Pp.ctx -> prefix:string -> string -> 'a Pp.t -> 'a -> unit =
   content_pp ctx value;
   Pp.char ctx ')'
 
+(** Helper functions for common patterns *)
+let pseudo ctx name = Pp.string ctx (":" ^ name)
+
+let elem ctx name = Pp.string ctx ("::" ^ name)
+let vendor ctx name = Pp.string ctx (":-" ^ name)
+
+let legacy_elem (ctx : Pp.ctx) name =
+  if ctx.minify then Pp.string ctx (":" ^ name) else Pp.string ctx ("::" ^ name)
+
+let func ctx name pp_content value =
+  pp_func ctx ~prefix:":" name pp_content value
+
+let elem_func ctx name pp_content value =
+  pp_func ctx ~prefix:"::" name pp_content value
+
 let pp_combinator ctx = function
   | Descendant -> Pp.space ctx ()
   | Child -> pp_token ctx ">"
   | Next_sibling -> pp_token ctx "+"
   | Subsequent_sibling -> pp_token ctx "~"
   | Column -> pp_token ctx "||"
+
+let strs ctx strings = Pp.list ~sep:Pp.comma Pp.string ctx strings
 
 (** Pretty print nth function with optional "of" clause *)
 let rec pp_nth_func ctx name expr of_sel =
@@ -799,6 +818,8 @@ let rec pp_nth_func ctx name expr of_sel =
       Pp.list ~sep:Pp.comma pp ctx sels
   | None -> ());
   Pp.char ctx ')'
+
+and sels ctx selectors = Pp.list ~sep:Pp.comma pp ctx selectors
 
 and pp : t Pp.t =
  fun ctx -> function
@@ -822,136 +843,119 @@ and pp : t Pp.t =
       pp_attr_flag ctx flag;
       Pp.char ctx ']'
   (* Simple pseudo-classes *)
-  | Hover -> Pp.string ctx ":hover"
-  | Active -> Pp.string ctx ":active"
-  | Focus -> Pp.string ctx ":focus"
-  | Focus_visible -> Pp.string ctx ":focus-visible"
-  | Focus_within -> Pp.string ctx ":focus-within"
-  | Target -> Pp.string ctx ":target"
-  | Link -> Pp.string ctx ":link"
-  | Visited -> Pp.string ctx ":visited"
-  | Any_link -> Pp.string ctx ":any-link"
-  | Local_link -> Pp.string ctx ":local-link"
-  | Target_within -> Pp.string ctx ":target-within"
-  | Scope -> Pp.string ctx ":scope"
-  | Root -> Pp.string ctx ":root"
-  | Empty -> Pp.string ctx ":empty"
-  | First_child -> Pp.string ctx ":first-child"
-  | Last_child -> Pp.string ctx ":last-child"
-  | Only_child -> Pp.string ctx ":only-child"
-  | First_of_type -> Pp.string ctx ":first-of-type"
-  | Last_of_type -> Pp.string ctx ":last-of-type"
-  | Only_of_type -> Pp.string ctx ":only-of-type"
-  | Enabled -> Pp.string ctx ":enabled"
-  | Disabled -> Pp.string ctx ":disabled"
-  | Read_only -> Pp.string ctx ":read-only"
-  | Read_write -> Pp.string ctx ":read-write"
-  | Placeholder_shown -> Pp.string ctx ":placeholder-shown"
-  | Default -> Pp.string ctx ":default"
-  | Checked -> Pp.string ctx ":checked"
-  | Indeterminate -> Pp.string ctx ":indeterminate"
-  | Blank -> Pp.string ctx ":blank"
-  | Valid -> Pp.string ctx ":valid"
-  | Invalid -> Pp.string ctx ":invalid"
-  | In_range -> Pp.string ctx ":in-range"
-  | Out_of_range -> Pp.string ctx ":out-of-range"
-  | Required -> Pp.string ctx ":required"
-  | Optional -> Pp.string ctx ":optional"
-  | User_invalid -> Pp.string ctx ":user-invalid"
-  | User_valid -> Pp.string ctx ":user-valid"
-  | Autofill -> Pp.string ctx ":autofill"
-  | Fullscreen -> Pp.string ctx ":fullscreen"
-  | Modal -> Pp.string ctx ":modal"
-  | Picture_in_picture -> Pp.string ctx ":picture-in-picture"
-  | Left -> Pp.string ctx ":left"
-  | Right -> Pp.string ctx ":right"
-  | First -> Pp.string ctx ":first"
-  | Defined -> Pp.string ctx ":defined"
-  | Playing -> Pp.string ctx ":playing"
-  | Paused -> Pp.string ctx ":paused"
-  | Seeking -> Pp.string ctx ":seeking"
-  | Buffering -> Pp.string ctx ":buffering"
-  | Stalled -> Pp.string ctx ":stalled"
-  | Muted -> Pp.string ctx ":muted"
-  | Volume_locked -> Pp.string ctx ":volume-locked"
-  | Future -> Pp.string ctx ":future"
-  | Past -> Pp.string ctx ":past"
-  | Current -> Pp.string ctx ":current"
-  | Popover_open -> Pp.string ctx ":popover-open"
-  (* Legacy single-colon pseudo-elements *)
-  | Before -> Pp.string ctx ":before"
-  | After -> Pp.string ctx ":after"
-  | First_letter -> Pp.string ctx ":first-letter"
-  | First_line -> Pp.string ctx ":first-line"
-  (* Vendor-specific *)
-  | Moz_focusring -> Pp.string ctx ":-moz-focusring"
-  | Webkit_any -> Pp.string ctx ":-webkit-any"
-  | Webkit_autofill -> Pp.string ctx ":-webkit-autofill"
-  | Moz_placeholder -> Pp.string ctx ":-moz-placeholder"
-  | Webkit_input_placeholder -> Pp.string ctx ":-webkit-input-placeholder"
-  | Ms_input_placeholder -> Pp.string ctx ":-ms-input-placeholder"
-  | Moz_ui_invalid -> Pp.string ctx ":-moz-ui-invalid"
-  | Moz_ui_valid -> Pp.string ctx ":-moz-ui-valid"
-  | Webkit_scrollbar -> Pp.string ctx ":-webkit-scrollbar"
-  | Webkit_search_cancel_button -> Pp.string ctx ":-webkit-search-cancel-button"
-  | Webkit_search_decoration -> Pp.string ctx ":-webkit-search-decoration"
-  | Pseudo_element name ->
-      Pp.string ctx "::";
-      Pp.string ctx name
-  | Part idents ->
-      let strict_comma ctx () = Pp.char ctx ',' in
-      pp_func ctx ~prefix:"::" "part"
-        (Pp.list ~sep:strict_comma Pp.string)
-        idents
-  | Slotted selectors ->
-      pp_func ctx ~prefix:"::" "slotted" (Pp.list ~sep:Pp.comma pp) selectors
-  | Cue selectors ->
-      pp_func ctx ~prefix:"::" "cue" (Pp.list ~sep:Pp.comma pp) selectors
-  | Cue_region selectors ->
-      pp_func ctx ~prefix:"::" "cue-region" (Pp.list ~sep:Pp.comma pp) selectors
+  | Hover -> pseudo ctx "hover"
+  | Active -> pseudo ctx "active"
+  | Focus -> pseudo ctx "focus"
+  | Focus_visible -> pseudo ctx "focus-visible"
+  | Focus_within -> pseudo ctx "focus-within"
+  | Target -> pseudo ctx "target"
+  | Link -> pseudo ctx "link"
+  | Visited -> pseudo ctx "visited"
+  | Any_link -> pseudo ctx "any-link"
+  | Local_link -> pseudo ctx "local-link"
+  | Target_within -> pseudo ctx "target-within"
+  | Scope -> pseudo ctx "scope"
+  | Root -> pseudo ctx "root"
+  | Empty -> pseudo ctx "empty"
+  | First_child -> pseudo ctx "first-child"
+  | Last_child -> pseudo ctx "last-child"
+  | Only_child -> pseudo ctx "only-child"
+  | First_of_type -> pseudo ctx "first-of-type"
+  | Last_of_type -> pseudo ctx "last-of-type"
+  | Only_of_type -> pseudo ctx "only-of-type"
+  | Enabled -> pseudo ctx "enabled"
+  | Disabled -> pseudo ctx "disabled"
+  | Read_only -> pseudo ctx "read-only"
+  | Read_write -> pseudo ctx "read-write"
+  | Placeholder_shown -> pseudo ctx "placeholder-shown"
+  | Default -> pseudo ctx "default"
+  | Checked -> pseudo ctx "checked"
+  | Indeterminate -> pseudo ctx "indeterminate"
+  | Blank -> pseudo ctx "blank"
+  | Valid -> pseudo ctx "valid"
+  | Invalid -> pseudo ctx "invalid"
+  | In_range -> pseudo ctx "in-range"
+  | Out_of_range -> pseudo ctx "out-of-range"
+  | Required -> pseudo ctx "required"
+  | Optional -> pseudo ctx "optional"
+  | User_invalid -> pseudo ctx "user-invalid"
+  | User_valid -> pseudo ctx "user-valid"
+  | Autofill -> pseudo ctx "autofill"
+  | Fullscreen -> pseudo ctx "fullscreen"
+  | Modal -> pseudo ctx "modal"
+  | Picture_in_picture -> pseudo ctx "picture-in-picture"
+  | Left -> pseudo ctx "left"
+  | Right -> pseudo ctx "right"
+  | First -> pseudo ctx "first"
+  | Defined -> pseudo ctx "defined"
+  | Playing -> pseudo ctx "playing"
+  | Paused -> pseudo ctx "paused"
+  | Seeking -> pseudo ctx "seeking"
+  | Buffering -> pseudo ctx "buffering"
+  | Stalled -> pseudo ctx "stalled"
+  | Muted -> pseudo ctx "muted"
+  | Volume_locked -> pseudo ctx "volume-locked"
+  | Future -> pseudo ctx "future"
+  | Past -> pseudo ctx "past"
+  | Current -> pseudo ctx "current"
+  | Popover_open -> pseudo ctx "popover-open"
+  (* Legacy pseudo-elements (use single colon in minified mode) *)
+  | Before -> legacy_elem ctx "before"
+  | After -> legacy_elem ctx "after"
+  | First_letter -> pseudo ctx "first-letter"
+  | First_line -> pseudo ctx "first-line"
+  (* Modern double-colon pseudo-elements *)
+  | Backdrop -> elem ctx "backdrop"
+  | Marker -> elem ctx "marker"
+  | Placeholder -> elem ctx "placeholder"
+  | Selection -> elem ctx "selection"
+  | File_selector_button -> elem ctx "file-selector-button"
+  (* Vendor-specific pseudo-classes *)
+  | Moz_focusring -> vendor ctx "moz-focusring"
+  | Webkit_any -> vendor ctx "webkit-any"
+  | Webkit_autofill -> vendor ctx "webkit-autofill"
+  | Moz_placeholder -> vendor ctx "moz-placeholder"
+  | Webkit_input_placeholder -> vendor ctx "webkit-input-placeholder"
+  | Ms_input_placeholder -> vendor ctx "ms-input-placeholder"
+  | Moz_ui_invalid -> vendor ctx "moz-ui-invalid"
+  | Moz_ui_valid -> vendor ctx "moz-ui-valid"
+  | Webkit_scrollbar -> vendor ctx "webkit-scrollbar"
+  | Webkit_search_cancel_button -> vendor ctx "webkit-search-cancel-button"
+  | Webkit_search_decoration -> vendor ctx "webkit-search-decoration"
+  (* Custom pseudo-elements *)
+  | Pseudo_element n -> elem ctx n
+  (* Functional pseudo-elements *)
+  | Part idents -> elem_func ctx "part" (Pp.list ~sep:Pp.comma Pp.string) idents
+  | Slotted selectors -> elem_func ctx "slotted" sels selectors
+  | Cue selectors -> elem_func ctx "cue" sels selectors
+  | Cue_region selectors -> elem_func ctx "cue-region" sels selectors
   (* Functional pseudo-classes *)
-  | Is selectors ->
-      pp_func ctx ~prefix:":" "is" (Pp.list ~sep:Pp.comma pp) selectors
-  | Where selectors ->
-      pp_func ctx ~prefix:":" "where" (Pp.list ~sep:Pp.comma pp) selectors
-  | Not selectors ->
-      pp_func ctx ~prefix:":" "not" (Pp.list ~sep:Pp.comma pp) selectors
-  | Has selectors ->
-      pp_func ctx ~prefix:":" "has" (Pp.list ~sep:Pp.comma pp) selectors
+  | Is selectors -> func ctx "is" sels selectors
+  | Where selectors -> func ctx "where" sels selectors
+  | Not selectors -> func ctx "not" sels selectors
+  | Has selectors -> func ctx "has" sels selectors
   | Nth_child (expr, of_sel) -> pp_nth_func ctx "nth-child" expr of_sel
   | Nth_last_child (expr, of_sel) ->
       pp_nth_func ctx "nth-last-child" expr of_sel
   | Nth_of_type (expr, of_sel) -> pp_nth_func ctx "nth-of-type" expr of_sel
   | Nth_last_of_type (expr, of_sel) ->
       pp_nth_func ctx "nth-last-of-type" expr of_sel
-  | Dir dir -> pp_func ctx ~prefix:":" "dir" Pp.string dir
-  | Lang langs ->
-      pp_func ctx ~prefix:":" "lang" (Pp.list ~sep:Pp.comma Pp.string) langs
-  | Host sels -> (
-      match sels with
-      | None -> Pp.string ctx ":host"
-      | Some selectors ->
-          pp_func ctx ~prefix:":" "host" (Pp.list ~sep:Pp.comma pp) selectors)
-  | Host_context selectors ->
-      pp_func ctx ~prefix:":" "host-context" (Pp.list ~sep:Pp.comma pp)
-        selectors
-  | State name -> pp_func ctx ~prefix:":" "state" Pp.string name
+  | Dir dir -> func ctx "dir" Pp.string dir
+  | Lang langs -> func ctx "lang" strs langs
+  | State name -> func ctx "state" Pp.string name
+  | Host None -> pseudo ctx "host"
+  | Host (Some selectors) -> func ctx "host" sels selectors
+  | Host_context selectors -> func ctx "host-context" sels selectors
   | Heading -> Pp.string ctx ":heading()"
-  | Active_view_transition_type types -> (
-      match types with
-      | None -> Pp.string ctx ":active-view-transition-type()"
-      | Some t ->
-          pp_func ctx ~prefix:":" "active-view-transition-type"
-            (Pp.list ~sep:Pp.comma Pp.string)
-            t)
-  | Highlight names ->
-      pp_func ctx ~prefix:"::" "highlight"
-        (Pp.list ~sep:Pp.comma Pp.string)
-        names
+  | Active_view_transition_type None ->
+      Pp.string ctx ":active-view-transition-type()"
+  | Active_view_transition_type (Some t) ->
+      func ctx "active-view-transition-type" strs t
+  | Highlight names -> elem_func ctx "highlight" strs names
   | View_transition_group name ->
-      pp_func ctx ~prefix:"::" "view-transition-group" Pp.string name
+      elem_func ctx "view-transition-group" Pp.string name
   | View_transition_image_pair name ->
-      pp_func ctx ~prefix:"::" "view-transition-image-pair" Pp.string name
+      elem_func ctx "view-transition-image-pair" Pp.string name
   | View_transition_old name ->
       pp_func ctx ~prefix:"::" "view-transition-old" Pp.string name
   | View_transition_new name ->

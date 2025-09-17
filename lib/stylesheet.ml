@@ -181,18 +181,21 @@ and pp_statement : statement Pp.t =
           Pp.cut ctx ();
           Pp.nest 2
             (fun ctx () ->
-              Pp.string ctx "syntax: ";
+              Pp.string ctx "syntax:";
+              Pp.space_if_pretty ctx ();
               Variables.pp_syntax ctx syntax;
               Pp.string ctx ";";
               Pp.cut ctx ();
-              Pp.string ctx "inherits: ";
+              Pp.string ctx "inherits:";
+              Pp.space_if_pretty ctx ();
               Pp.string ctx (if inherits then "true" else "false");
               match initial_value with
               | None -> ()
               | Some v ->
                   Pp.semicolon ctx ();
                   Pp.cut ctx ();
-                  Pp.string ctx "initial-value: ";
+                  Pp.string ctx "initial-value:";
+                  Pp.space_if_pretty ctx ();
                   Variables.pp_value syntax ctx v)
             ctx ();
           Pp.cut ctx ())
@@ -208,6 +211,7 @@ and pp_statement : statement Pp.t =
           Pp.string ctx " ";
           Pp.string ctx n
       | None -> Pp.string ctx " ");
+      Pp.sp ctx ();
       Pp.braces pp_block ctx content
   | Media (condition, content) ->
       Pp.string ctx "@media ";
@@ -923,6 +927,7 @@ and read_property_descriptors (r : Reader.t) : property_reader_state =
       loop ())
     else if Reader.looking_at r "inherits:" then (
       Reader.expect_string "inherits:" r;
+      Reader.ws r;
       let inherits_value = Reader.bool r in
       state := { !state with inherits = Some inherits_value };
       Reader.ws r;

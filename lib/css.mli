@@ -179,6 +179,9 @@ val of_statements : statement list -> t
 val rules : t -> statement list
 (** [rules t] returns the top-level rule statements from the stylesheet. *)
 
+val statements : t -> statement list
+(** [statements t] returns all top-level statements from the stylesheet. *)
+
 val media_queries : t -> (string * statement list) list
 (** [media_queries t] returns media queries and their rule statements. *)
 
@@ -230,6 +233,10 @@ type any_var = V : 'a var -> any_var  (** The type of CSS variables. *)
 val vars_of_rules : statement list -> any_var list
 (** [vars_of_rules statements] extracts all CSS variables referenced in rule
     statements' declarations, returning them sorted and deduplicated. *)
+
+val vars_of_declarations : declaration list -> any_var list
+(** [vars_of_declarations decls] extracts all CSS variables referenced in the
+    declarations list. *)
 
 val vars_of_stylesheet : t -> any_var list
 (** [vars_of_stylesheet stylesheet] extracts all CSS variables referenced in the
@@ -754,6 +761,22 @@ type font_variation_settings =
 
 val important : declaration -> declaration
 (** [important decl] is [decl] marked as [!important]. *)
+
+val declaration_is_important : declaration -> bool
+(** [declaration_is_important decl] returns [true] if [decl] has the
+    [!important] flag. *)
+
+val declaration_name : declaration -> string
+(** [declaration_name decl] returns the property name of [decl]. *)
+
+val declaration_value : ?minify:bool -> declaration -> string
+(** [declaration_value ~minify decl] returns the value of [decl] as a string. If
+    [minify] is [true] (default: [false]), the output is minified. *)
+
+val string_of_declaration : ?minify:bool -> declaration -> string
+(** [string_of_declaration ~minify decl] converts a declaration to its string
+    representation. If [minify] is [true] (default: [false]), the output is
+    minified. *)
 
 (** {1 Property Categories}
 
@@ -3441,6 +3464,9 @@ type _ kind =
 
 type meta
 (** The type for CSS variable metadata. *)
+
+val var_meta : 'a var -> meta option
+(** [var_meta v] is the optional metadata associated with [v]. *)
 
 val meta : unit -> ('a -> meta) * (meta -> 'a option)
 (** [meta ()] is an injection/projection pair for metadata. The injection
