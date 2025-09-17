@@ -126,6 +126,9 @@ val float_n : int -> float t
 val int : int t
 (** [int] formats integers. *)
 
+val hex : int t
+(** [hex] formats integers as uppercase hexadecimal. *)
+
 val unit : ctx -> float -> string -> unit
 (** [unit ctx f suffix] formats a number with a unit suffix, e.g. "3.5px" or "0"
     for zero. *)

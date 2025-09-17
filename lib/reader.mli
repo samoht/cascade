@@ -148,6 +148,9 @@ val number : t -> float
 val int : t -> int
 (** [int t] reads an integer. *)
 
+val hex : t -> int
+(** [hex t] reads a hexadecimal number (without 0x prefix). *)
+
 val ws : t -> unit
 (** [ws t] skips whitespace and CSS comments. *)
 

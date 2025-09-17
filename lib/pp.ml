@@ -170,6 +170,23 @@ let float_n n ctx f =
 
 let int ctx i = Buffer.add_string ctx.buf (string_of_int i)
 
+let hex ctx i =
+  let rec to_hex n =
+    if n = 0 then "0"
+    else if n < 16 then
+      String.make 1
+        (match n with
+        | 10 -> 'A'
+        | 11 -> 'B'
+        | 12 -> 'C'
+        | 13 -> 'D'
+        | 14 -> 'E'
+        | 15 -> 'F'
+        | n -> char_of_int (n + int_of_char '0'))
+    else to_hex (n / 16) ^ to_hex (n mod 16)
+  in
+  Buffer.add_string ctx.buf (to_hex i)
+
 let unit ctx f suffix =
   if f = 0. then char ctx '0'
   else (

@@ -33,6 +33,13 @@ let check_flex_direction =
 let check_flex_wrap = check_value "flex-wrap" pp_flex_wrap read_flex_wrap
 let check_align_self = check_value "align-self" pp_align_self read_align_self
 let check_font_style = check_value "font-style" pp_font_style read_font_style
+
+let check_font_display =
+  check_value "font-display" pp_font_display read_font_display
+
+let check_unicode_range =
+  check_value "unicode-range" pp_unicode_range read_unicode_range
+
 let check_text_align = check_value "text-align" pp_text_align read_text_align
 
 let check_text_decoration_style =
@@ -491,6 +498,31 @@ let test_font_style () =
   check_font_style "italic";
   check_font_style "oblique";
   check_font_style "inherit"
+
+let test_font_display () =
+  check_font_display "auto";
+  check_font_display "block";
+  check_font_display "swap";
+  check_font_display "fallback";
+  check_font_display "optional"
+
+let test_unicode_range () =
+  (* Single code points per CSS spec *)
+  check_unicode_range ~expected:"U+0" "U+0000";
+  check_unicode_range ~expected:"U+26" "U+26";
+  (* ampersand example from MDN *)
+  check_unicode_range ~expected:"U+FF" "U+00FF";
+  check_unicode_range ~expected:"U+ABCD" "U+abcd";
+
+  (* case insensitive *)
+
+  (* Code point ranges per CSS spec *)
+  check_unicode_range ~expected:"U+0-FF" "U+0000-00FF";
+  check_unicode_range ~expected:"U+25-FF" "U+0025-00FF";
+  (* MDN example format *)
+  check_unicode_range ~expected:"U+20-7F" "U+0020-007F";
+  (* ASCII printable range *)
+  check_unicode_range ~expected:"U+A0-A0FF" "U+A0-A0FF"
 
 let test_css_wide_keywords_subset () =
   (* A small subset where readers support CSS-wide keywords beyond
@@ -1254,6 +1286,8 @@ let tests =
     test_case "flex-wrap" `Quick test_flex_wrap;
     test_case "align-self" `Quick test_align_self;
     test_case "font-style" `Quick test_font_style;
+    test_case "font-display" `Quick test_font_display;
+    test_case "unicode-range" `Quick test_unicode_range;
     test_case "css-wide subset" `Quick test_css_wide_keywords_subset;
     test_case "text-align" `Quick test_text_align;
     test_case "text-decoration-style" `Quick test_text_decoration_style;
@@ -1499,7 +1533,23 @@ let test_negative_cases () =
 
   (* Invalid text-size-adjust *)
   try_parse read_text_size_adjust "invalid" "invalid text-size-adjust";
-  try_parse read_text_size_adjust "-50%" "negative text-size-adjust"
+  try_parse read_text_size_adjust "-50%" "negative text-size-adjust";
+
+  (* Invalid font-display values *)
+  try_parse read_font_display "invalid" "invalid font-display";
+  try_parse read_font_display "inline" "non-existent font-display value";
+  try_parse read_font_display "auto block" "multiple font-display values";
+
+  (* Invalid unicode-range values *)
+  try_parse read_unicode_range "invalid" "invalid unicode-range";
+  try_parse read_unicode_range "U+" "unicode-range missing hex digits";
+  try_parse read_unicode_range "U+GGGG" "unicode-range invalid hex chars";
+  try_parse read_unicode_range "U+1234-" "unicode-range incomplete range";
+  try_parse read_unicode_range "U+1234-GGGG" "unicode-range invalid end hex";
+  try_parse read_unicode_range "1234" "unicode-range missing U+ prefix";
+  try_parse read_unicode_range "+1234" "unicode-range missing U";
+  try_parse read_unicode_range "U1234" "unicode-range missing +";
+  try_parse read_unicode_range "U+12345-1234" "unicode-range end < start"
 
 let test_any_property () =
   check_any_property "display";

@@ -2356,6 +2356,25 @@ let pp_font_stretch : font_stretch Pp.t =
   | Ultra_expanded -> Pp.string ctx "ultra-expanded"
   | Inherit -> Pp.string ctx "inherit"
 
+let pp_font_display : font_display Pp.t =
+ fun ctx -> function
+  | Auto -> Pp.string ctx "auto"
+  | Block -> Pp.string ctx "block"
+  | Swap -> Pp.string ctx "swap"
+  | Fallback -> Pp.string ctx "fallback"
+  | Optional -> Pp.string ctx "optional"
+
+let pp_unicode_range : unicode_range Pp.t =
+ fun ctx -> function
+  | Single hex ->
+      Pp.string ctx "U+";
+      Pp.hex ctx hex
+  | Range (start, end_) ->
+      Pp.string ctx "U+";
+      Pp.hex ctx start;
+      Pp.char ctx '-';
+      Pp.hex ctx end_
+
 let rec pp_font_variant_numeric_token : font_variant_numeric_token Pp.t =
  fun ctx -> function
   | Normal -> Pp.string ctx "normal"
@@ -4155,7 +4174,7 @@ let read_font_stretch t : font_stretch =
   let read_percentage t : font_stretch =
     let n = Reader.number t in
     Reader.expect '%' t;
-    Pct (n /. 100.)
+    Pct n
   in
   Reader.enum "font-stretch"
     [
@@ -4171,6 +4190,29 @@ let read_font_stretch t : font_stretch =
       ("inherit", Inherit);
     ]
     ~default:read_percentage t
+
+let read_font_display t : font_display =
+  Reader.enum "font-display"
+    [
+      ("auto", (Auto : font_display));
+      ("block", Block);
+      ("swap", Swap);
+      ("fallback", Fallback);
+      ("optional", Optional);
+    ]
+    t
+
+let read_unicode_range t : unicode_range =
+  Reader.with_context t "unicode-range" @@ fun () ->
+  Reader.expect 'U' t;
+  Reader.expect '+' t;
+  let start = Reader.hex t in
+  Reader.ws t;
+  if Reader.peek t = Some '-' then (
+    Reader.expect '-' t;
+    let end_ = Reader.hex t in
+    Range (start, end_))
+  else Single start
 
 let rec read_font_variant_numeric_token t : font_variant_numeric_token =
   let read_var t : font_variant_numeric_token =
@@ -4191,32 +4233,14 @@ let rec read_font_variant_numeric_token t : font_variant_numeric_token =
     ~calls:[ ("var", read_var) ]
     t
 
-let rec read_font_variant_numeric t : font_variant_numeric =
-  let read_var t : font_variant_numeric =
-    Var (read_var read_font_variant_numeric t)
-  in
-  Reader.enum_or_calls "font-variant-numeric"
+let read_font_variant_numeric t : font_variant_numeric =
+  Reader.enum "font-variant-numeric"
     [ ("normal", (Normal : font_variant_numeric)) ]
-    ~calls:[ ("var", read_var) ]
     ~default:(fun t ->
-      (* Special handling for concatenated var() functions and regular tokens *)
-      let rec read_tokens acc =
-        Reader.ws t;
-        if Reader.is_done t then List.rev acc
-        else
-          (* Try to read a token - this handles both regular tokens and var()
-             calls *)
-          match Reader.option read_font_variant_numeric_token t with
-          | Some token ->
-              (* Don't require whitespace between var() functions *)
-              read_tokens (token :: acc)
-          | None ->
-              (* If we can't read more tokens, we're done *)
-              List.rev acc
-      in
-      let tokens = read_tokens [] in
-      if tokens = [] then err_invalid_value t "font-variant-numeric" "<empty>"
-      else Tokens tokens)
+      let tokens, _ = Reader.many read_font_variant_numeric_token t in
+      match tokens with
+      | [] -> err_invalid_value t "font-variant-numeric" "<empty>"
+      | tokens -> Tokens tokens) (* All non-normal cases become Tokens *)
     t
 
 let rec read_font_feature_settings t : font_feature_settings =

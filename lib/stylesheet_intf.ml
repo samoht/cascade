@@ -72,9 +72,9 @@ and font_face_descriptor =
   | Font_weight of Properties.font_weight  (** normal, bold, 100-900 *)
   | Font_stretch of Properties.font_stretch
       (** normal, condensed, expanded, etc. *)
-  | Font_display of string
-      (** auto, block, swap, fallback, optional - TODO: proper type *)
-  | Unicode_range of string  (** Unicode range - TODO: proper type *)
+  | Font_display of Properties.font_display
+      (** auto, block, swap, fallback, optional *)
+  | Unicode_range of Properties.unicode_range  (** Unicode range *)
   | Font_variant of string  (** Font variant settings - TODO: proper type *)
   | Font_feature_settings of string
       (** OpenType feature settings - TODO: proper type *)
