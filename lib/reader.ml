@@ -112,7 +112,9 @@ let err ?got t expected =
     in
     count_lines (t.pos - 1) 1 1
   in
-  let better_filename = Printf.sprintf "<CSS input>:%d:%d" line col in
+  let better_filename =
+    "<CSS input>:" ^ string_of_int line ^ ":" ^ string_of_int col
+  in
   raise
     (Parse_error
        {

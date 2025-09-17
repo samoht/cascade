@@ -18,6 +18,7 @@ val read_syntax : Reader.t -> any_syntax
 (** [read_syntax r] reads a CSS syntax descriptor from input. *)
 
 val read_value : Reader.t -> 'a syntax -> 'a
+(** [read_value r syntax] reads a value according to the given [syntax]. *)
 
 (** {1 Meta handling} *)
 

@@ -833,56 +833,43 @@ and read_calc : type a. (Reader.t -> a) -> Reader.t -> a calc =
     (* Not a calc() or var(), so this is not a valid calc expression *)
     Reader.err t "calc() or var()"
 
+(* Helper to read balanced parentheses in function content *)
+let read_balanced_function_content t =
+  let buf = Buffer.create 64 in
+  let rec read_balanced depth =
+    match Reader.peek t with
+    | None -> Reader.err t "unexpected end of input in function"
+    | Some ')' when depth = 0 -> ()
+    | Some ')' ->
+        Buffer.add_char buf ')';
+        Reader.skip t;
+        read_balanced (depth - 1)
+    | Some '(' ->
+        Buffer.add_char buf '(';
+        Reader.skip t;
+        read_balanced (depth + 1)
+    | Some c ->
+        Buffer.add_char buf c;
+        Reader.skip t;
+        read_balanced depth
+  in
+  read_balanced 0;
+  Buffer.contents buf
+
 let rec read_length t : length =
   Reader.ws t;
   let read_var_length t : length = Var (read_var read_length t) in
   let read_calc_length t : length = Calc (read_calc read_length t) in
   let read_function_length t : length =
-    (* Handle clamp(), minmax(), and other CSS functions *)
-    let read_function_content t =
-      (* Read content with proper parenthesis balancing *)
-      let buf = Buffer.create 64 in
-      let rec read_balanced depth =
-        match Reader.peek t with
-        | None -> Reader.err t "unexpected end of input in function"
-        | Some ')' when depth = 0 -> ()
-        | Some ')' ->
-            Buffer.add_char buf ')';
-            Reader.skip t;
-            read_balanced (depth - 1)
-        | Some '(' ->
-            Buffer.add_char buf '(';
-            Reader.skip t;
-            read_balanced (depth + 1)
-        | Some c ->
-            Buffer.add_char buf c;
-            Reader.skip t;
-            read_balanced depth
-      in
-      read_balanced 0;
-      Buffer.contents buf
-    in
-    if Reader.looking_at t "clamp(" then (
-      Reader.expect_string "clamp(" t;
-      let content = read_function_content t in
-      Reader.expect ')' t;
-      Function ("clamp(" ^ content ^ ")"))
-    else if Reader.looking_at t "minmax(" then (
-      Reader.expect_string "minmax(" t;
-      let content = read_function_content t in
-      Reader.expect ')' t;
-      Function ("minmax(" ^ content ^ ")"))
-    else if Reader.looking_at t "min(" then (
-      Reader.expect_string "min(" t;
-      let content = read_function_content t in
-      Reader.expect ')' t;
-      Function ("min(" ^ content ^ ")"))
-    else if Reader.looking_at t "max(" then (
-      Reader.expect_string "max(" t;
-      let content = read_function_content t in
-      Reader.expect ')' t;
-      Function ("max(" ^ content ^ ")"))
-    else Reader.err t "unknown function"
+    (* Parse a generic function name followed by '(' ... ')' *)
+    let name = Reader.ident t in
+    Reader.expect '(' t;
+    let content = read_balanced_function_content t in
+    Reader.expect ')' t;
+    (* Only allow known length-producing functions here *)
+    match String.lowercase_ascii name with
+    | "clamp" | "minmax" | "min" | "max" -> Function (name ^ "(" ^ content ^ ")")
+    | _ -> Reader.err t "unknown function"
   in
   Reader.one_of
     [
@@ -929,8 +916,11 @@ let rec read_alpha t : alpha =
     let n = Reader.number t in
     if Reader.peek t = Some '%' then (
       Reader.expect '%' t;
-      Pct n)
-    else Num n
+      (* Clamp percentage to 0-100 range per CSS spec *)
+      Pct (max 0. (min 100. n)))
+    else
+      (* Clamp numeric alpha to 0-1 range per CSS spec *)
+      Num (max 0. (min 1. n))
 (* Fall back to number *)
 
 (** Read optional alpha component *)
@@ -1074,6 +1064,11 @@ let rec read_angle t : angle =
           "angle values must have units (deg, rad, turn, or grad)"
     | _ -> Reader.err_invalid t ("invalid angle unit: " ^ unit)
 
+(** Normalize hue value to 0-360 range *)
+let normalize_hue (degrees : float) : float =
+  let normalized = mod_float degrees 360.0 in
+  if normalized < 0.0 then normalized +. 360.0 else normalized
+
 (** Read a hue value (preserves unitless vs explicit angle) *)
 let rec read_hue t : hue =
   Reader.ws t;
@@ -1086,8 +1081,9 @@ let rec read_hue t : hue =
       String.lowercase_ascii u
     in
     match unit with
-    | "" -> Unitless n (* Unitless number, defaults to degrees *)
-    | "deg" -> Angle (Deg n)
+    | "" ->
+        Unitless (normalize_hue n) (* Unitless number, defaults to degrees *)
+    | "deg" -> Angle (Deg (normalize_hue n))
     | "rad" -> Angle (Rad n)
     | "turn" -> Angle (Turn n)
     | "grad" -> Angle (Grad n)
@@ -1524,14 +1520,16 @@ let rec read_duration t : duration =
   if Reader.looking_at t "var(" then Var (read_var read_duration t)
   else
     let n = Reader.number t in
-    let unit =
-      let u = Reader.while_ t Reader.is_alpha in
-      String.lowercase_ascii u
-    in
-    match unit with
-    | "s" -> S n
-    | "ms" -> Ms n
-    | _ -> Reader.err_invalid t ("duration unit: " ^ unit)
+    if n < 0.0 then Reader.err_invalid t "negative durations are not allowed"
+    else
+      let unit =
+        let u = Reader.while_ t Reader.is_alpha in
+        String.lowercase_ascii u
+      in
+      match unit with
+      | "s" -> S n
+      | "ms" -> Ms n
+      | _ -> Reader.err_invalid t ("duration unit: " ^ unit)
 
 (** Read a dimension (number with unit) - returns value and unit separately *)
 let read_dimension t : float * string =

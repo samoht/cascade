@@ -534,4 +534,4 @@ let read_any_var (r : Reader.t) : any_var =
     (* Return a dummy variable - in practice this function would need more
        context *)
     V { name; fallback = None; default = None; layer = None; meta = None })
-  else failwith "Expected var() function"
+  else Reader.err_invalid r "Expected var() function"

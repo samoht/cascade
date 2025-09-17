@@ -243,7 +243,7 @@ let test_concat_stylesheets () =
     "combined rules count" 2
     (List.length (Css.Stylesheet.rules combined))
 
-let test_default_decl_of_property_rule () =
+let test_default_property_rule () =
   (* Test that property rules can be created with and without initial values *)
   let prop_with_initial =
     property ~syntax:Css.Variables.Color
@@ -775,7 +775,7 @@ let stylesheet_tests =
     ("stylesheet construction", `Quick, construction);
     ("stylesheet items conversion", `Quick, items_conversion);
     ("concat stylesheets", `Quick, test_concat_stylesheets);
-    ("default decl of property rule", `Quick, test_default_decl_of_property_rule);
+    ("default decl of property rule", `Quick, test_default_property_rule);
     ("property composite syntax", `Quick, test_property_composite_syntax);
     (* Roundtrip tests *)
     ("rule roundtrip", `Quick, test_rule_roundtrip);
