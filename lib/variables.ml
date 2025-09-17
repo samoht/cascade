@@ -93,14 +93,8 @@ let rec pp_value : type a. a syntax -> a Pp.t =
 
 (** Read a CSS syntax descriptor from input *)
 let read_syntax (r : Reader.t) : any_syntax =
-  let s = Reader.css_value ~stops:[ ';'; '}' ] r in
-  let s = String.trim s in
-  (* Remove quotes if present *)
-  let s =
-    if String.length s >= 2 && s.[0] = '"' && s.[String.length s - 1] = '"' then
-      String.sub s 1 (String.length s - 2)
-    else s
-  in
+  (* CSS @property syntax values must be quoted strings per spec *)
+  let s = Reader.string r in
   match s with
   | "<length>" -> Syntax Length
   | "<color>" -> Syntax Color
@@ -530,6 +524,9 @@ let read_any_var (r : Reader.t) : any_var =
       | Some i -> String.sub name 0 i |> String.trim
       | None -> String.trim name
     in
+    (* CSS spec requires variable names to have at least one character after
+       -- *)
+    if name = "" then Reader.err_invalid r "CSS variable name";
     Reader.expect ')' r;
     (* Return a dummy variable - in practice this function would need more
        context *)

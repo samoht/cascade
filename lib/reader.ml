@@ -129,6 +129,10 @@ let err ?got t expected =
 
 let err_eof t = err t "unexpected end of input"
 let err_expected t what = err t ("expected " ^ what)
+
+let err_expected_but_eof t what =
+  err t ("Expected " ^ what ^ " but reached end of input")
+
 let err_invalid_number t = err t "invalid number"
 let err_invalid t what = err t ("invalid " ^ what)
 
@@ -170,8 +174,7 @@ let char t =
 
 let expect c t =
   let actual_pos = t.pos in
-  if t.pos >= t.len then
-    err t ("Expected '" ^ String.make 1 c ^ "' but reached end of input")
+  if t.pos >= t.len then err_expected_but_eof t ("'" ^ String.make 1 c ^ "'")
   else
     let actual = char t in
     if actual <> c then (

@@ -16,7 +16,18 @@ let check_value type_name pp reader ?expected input =
 let check_any_var = check_value "any_var" pp_any_var read_any_var
 let check_any_syntax = check_value "any_syntax" pp_any_syntax read_any_syntax
 
-(** Test variable creation *)
+(* Helper for negative tests - shadows Alcotest.neg *)
+let neg reader input =
+  let r = Css.Reader.of_string input in
+  try
+    let _ = reader r in
+    (* Check if there's unparsed content remaining *)
+    if not (Css.Reader.is_done r) then ()
+      (* Success - parser didn't consume everything *)
+    else Alcotest.failf "Expected '%s' to fail parsing" input
+  with Css.Reader.Parse_error _ -> ()
+
+(* Not a roundtrip test *)
 let test_var_creation () =
   (* Basic variable creation *)
   let decl, var_handle =
@@ -34,7 +45,7 @@ let test_var_creation () =
   Alcotest.(check string) "var handle name" "primary-color" var_handle.name;
   Alcotest.(check bool) "var has default value" true (var_handle.default <> None)
 
-(** Test variable with fallback *)
+(* Not a roundtrip test *)
 let test_var_with_fallback () =
   let fallback_color = Hex { hash = true; value = "0000ff" } in
   let decl, var_handle =
@@ -52,7 +63,7 @@ let test_var_with_fallback () =
         (String.starts_with ~prefix:"--" name)
   | _ -> Alcotest.fail "Expected Custom_declaration"
 
-(** Test variable extraction from calc *)
+(* Not a roundtrip test *)
 let test_vars_of_calc () =
   (* Test calc without variables *)
   let simple_calc : length calc = Expr (Num 100., Add, Num 8.) in
@@ -87,7 +98,7 @@ let test_vars_of_calc () =
   Alcotest.(check int)
     "one variable in complex calc" 1 (List.length complex_vars)
 
-(** Test variable extraction from properties *)
+(* Not a roundtrip test *)
 let test_vars_of_property () =
   let _, width_var = var "container-width" Length (Px 1024.) in
 
@@ -104,7 +115,7 @@ let test_vars_of_property () =
   let no_vars = vars_of_property Width (Px 100.) in
   Alcotest.(check int) "no variables in px value" 0 (List.length no_vars)
 
-(** Test variable extraction from declarations *)
+(* Not a roundtrip test *)
 let test_vars_of_declarations () =
   let decl1, color_var =
     var "text-color" Color (Hex { hash = true; value = "333333" })
@@ -120,7 +131,7 @@ let test_vars_of_declarations () =
   (* Should find the two variables used in declarations (not definitions) *)
   Alcotest.(check bool) "found variables" true (List.length vars >= 2)
 
-(** Test any_var_name utility *)
+(* Not a roundtrip test *)
 let test_any_var_name () =
   let _, var_handle = var "spacing" Length (Rem 1.5) in
   let any_var = V var_handle in
@@ -128,7 +139,7 @@ let test_any_var_name () =
   let name = any_var_name any_var in
   Alcotest.(check string) "variable name with prefix" "--spacing" name
 
-(** Test custom declaration extraction *)
+(* Not a roundtrip test *)
 let test_extract_custom_declarations () =
   let custom1, _ = var "color1" Color (Hex { hash = true; value = "ff0000" }) in
   let custom2, _ = var "size1" Length (Px 16.) in
@@ -139,7 +150,7 @@ let test_extract_custom_declarations () =
 
   Alcotest.(check int) "extracted custom declarations" 2 (List.length customs)
 
-(** Test custom declaration name extraction *)
+(* Not a roundtrip test *)
 let test_custom_declaration_name () =
   let custom, _ = var "my-var" Length (Px 20.) in
   let regular = v Height (Px 50.) in
@@ -151,7 +162,7 @@ let test_custom_declaration_name () =
     "custom has name" (Some "--my-var") custom_name;
   Alcotest.(check (option string)) "regular has no name" None regular_name
 
-(** Test variable comparison *)
+(* Not a roundtrip test *)
 let test_compare_vars_by_name () =
   let _, var1 = var "aaa" Length (Px 1.) in
   let _, var2 = var "bbb" Length (Px 2.) in
@@ -164,7 +175,7 @@ let test_compare_vars_by_name () =
   Alcotest.(check bool) "aaa < bbb" true (cmp1 < 0);
   Alcotest.(check int) "aaa = aaa" 0 cmp2
 
-(** Test pp/to_string roundtrip for custom properties *)
+(* Not a roundtrip test *)
 let test_custom_property_roundtrip () =
   (* Create a custom property *)
   let custom, _var_handle =
@@ -195,7 +206,7 @@ let variables_tests =
     ("custom property roundtrip", `Quick, test_custom_property_roundtrip);
   ]
 
-(* Tests for newly added check functions *)
+(* Not a roundtrip test *)
 let test_syntax () =
   (* Syntax checking is not available in current implementation *)
   ()
@@ -206,18 +217,15 @@ let test_any_var () =
   check_any_var ~expected:"var(--primary)" "var(--primary)";
   check_any_var ~expected:"var(--theme-bg)" "var(--theme-bg)";
 
-  (* Test invalid cases *)
-  let try_parse s =
-    try
-      let r = Css.Reader.of_string s in
-      let _ = read_any_var r in
-      Alcotest.failf "Should have failed parsing: %s" s
-    with Css.Reader.Parse_error _ -> ()
-  in
-  try_parse "not-a-var";
-  try_parse "var(color)";
+  (* Test invalid cases using standard neg pattern *)
+  neg read_any_var "not-a-var";
+  neg read_any_var "var(color)";
   (* Missing -- prefix *)
-  try_parse "var()"
+  neg read_any_var "var()";
+  (* Empty variable name *)
+  neg read_any_var "variable(--color)";
+  (* Wrong function name *)
+  neg read_any_var "var(--)"
 
 let test_any_syntax () =
   (* Test syntax parsing according to CSS @property spec
@@ -231,7 +239,18 @@ let test_any_syntax () =
   check_any_syntax "\"<angle>\"";
   check_any_syntax "\"<time>\"";
   check_any_syntax "\"*\"";
-  check_any_syntax "\"<length> | <percentage>\""
+  check_any_syntax "\"<length> | <percentage>\"";
+
+  (* Test invalid syntax values *)
+  neg read_any_syntax "<length>";
+  (* Missing quotes *)
+  neg read_any_syntax "length";
+  (* No angle brackets or quotes *)
+  neg read_any_syntax "\"<invalid-type>\"";
+  (* Invalid type name *)
+  neg read_any_syntax "\"\"";
+  (* Empty syntax *)
+  neg read_any_syntax "unquoted"
 
 let additional_tests =
   [

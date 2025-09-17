@@ -70,6 +70,10 @@ val err_eof : t -> 'a
 val err_expected : t -> string -> 'a
 (** [err_expected t what] raises an "expected [what]" error. *)
 
+val err_expected_but_eof : t -> string -> 'a
+(** [err_expected_but_eof t what] raises an "Expected [what] but reached end of
+    input" error. *)
+
 val err_invalid_number : t -> 'a
 (** [err_invalid_number t] raises an "invalid number" error. *)
 

@@ -210,11 +210,19 @@ let err_expected t what = Reader.err_expected t what
 (** Parse attribute value (quoted or unquoted) *)
 let read_attribute_value t =
   (* Try quoted string first, fallback to unquoted identifier *)
-  Reader.option Reader.string t
-  |> Option.value
-       ~default:
-         (Reader.while_ t (fun c ->
-              c <> ']' && c <> ' ' && c <> '\t' && c <> '\n'))
+  let value =
+    Reader.option Reader.string t
+    |> Option.value
+         ~default:
+           (Reader.while_ t (fun c ->
+                c <> ']' && c <> ' ' && c <> '\t' && c <> '\n'))
+  in
+  (* CSS spec requires attribute values to be non-empty, but check for end of
+     input first to give better error messages *)
+  if value = "" then
+    if Reader.is_done t then Reader.err_expected_but_eof t "']'"
+    else Reader.err_invalid t "attribute value"
+  else value
 
 (** Validate CSS identifier with proper reader error context *)
 let validate_css_identifier_with_reader t name =

@@ -226,6 +226,9 @@ val read_angle : Reader.t -> angle
 val read_duration : Reader.t -> duration
 (** [read_duration t] parses a CSS duration. *)
 
+val read_time : Reader.t -> duration
+(** [read_time t] parses a CSS time value (can be negative). *)
+
 val read_dimension : Reader.t -> float * string
 (** [read_dimension t] parses a dimension (number + unit) returning
     [(value, unit)]. *)

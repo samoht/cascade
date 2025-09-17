@@ -973,14 +973,21 @@ let pp_decl_inline config pp_ctx decl =
 let inline_style_of_declarations ?(minify = false) ?(mode : mode = Inline)
     ?(newline = false) props =
   let config = { mode; minify; optimize = false; newline } in
-  let pp ctx () =
-    let sep ctx () =
-      Pp.semicolon ctx ();
-      if not config.minify then Pp.space ctx ()
-    in
-    Pp.list ~sep (pp_decl_inline config) ctx props
+  (* Build the inline style string with minimal nesting to satisfy linter *)
+  let buf = Buffer.create 128 in
+  let pp_ctx =
+    { Pp.minify = config.minify; indent = 0; buf; inline = mode = Inline }
   in
-  Pp.to_string ~minify ~inline:(mode = Inline) pp ()
+  let first = ref true in
+  List.iter
+    (fun decl ->
+      if !first then first := false
+      else (
+        Pp.semicolon pp_ctx ();
+        if not config.minify then Pp.space pp_ctx ());
+      pp_decl_inline config pp_ctx decl)
+    props;
+  Buffer.contents buf
 
 (** {1 Variable extraction from stylesheets} *)
 
