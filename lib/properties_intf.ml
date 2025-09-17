@@ -612,6 +612,12 @@ type font_stretch =
   | Ultra_expanded
   | Inherit
 
+type font_display = Auto | Block | Swap | Fallback | Optional
+
+type unicode_range =
+  | Single of int  (** U+xxxx *)
+  | Range of int * int  (** U+xxxx-yyyy *)
+
 type font_variant_numeric_token =
   | Normal
   | Lining_nums

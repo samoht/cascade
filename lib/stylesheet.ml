@@ -122,8 +122,10 @@ and pp_font_face_descriptor : font_face_descriptor Pp.t =
       pp_descriptor "font-weight" Properties.pp_font_weight weight
   | Font_stretch stretch ->
       pp_descriptor "font-stretch" Properties.pp_font_stretch stretch
-  | Font_display value -> pp_descriptor "font-display" Pp.string value
-  | Unicode_range value -> pp_descriptor "unicode-range" Pp.string value
+  | Font_display value ->
+      pp_descriptor "font-display" Properties.pp_font_display value
+  | Unicode_range value ->
+      pp_descriptor "unicode-range" Properties.pp_unicode_range value
   | Font_variant value -> pp_descriptor "font-variant" Pp.string value
   | Font_feature_settings value ->
       pp_descriptor "font-feature-settings" Pp.string value
@@ -487,17 +489,15 @@ let read_font_face_descriptor (r : Reader.t) : font_face_descriptor option =
       Reader.ws r;
       Reader.expect ':' r;
       Reader.ws r;
-      (* TODO: Define proper font-display type *)
-      let value = Declaration.read_property_value r in
-      Font_display value
+      let display = Properties.read_font_display r in
+      Font_display display
     in
     let read_unicode_range r =
       Reader.ws r;
       Reader.expect ':' r;
       Reader.ws r;
-      (* TODO: Proper unicode-range parsing *)
-      let value = Declaration.read_property_value r in
-      Unicode_range value
+      let range = Properties.read_unicode_range r in
+      Unicode_range range
     in
     let read_font_variant r =
       Reader.ws r;

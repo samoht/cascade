@@ -396,6 +396,18 @@ val pp_font_stretch : font_stretch Pp.t
 val read_font_stretch : Reader.t -> font_stretch
 (** [read_font_stretch t] is the [font_stretch] parsed from [t]. *)
 
+val pp_font_display : font_display Pp.t
+(** [pp_font_display] is the pretty-printer for [font_display]. *)
+
+val read_font_display : Reader.t -> font_display
+(** [read_font_display t] is the [font_display] parsed from [t]. *)
+
+val pp_unicode_range : unicode_range Pp.t
+(** [pp_unicode_range] is the pretty-printer for [unicode_range]. *)
+
+val read_unicode_range : Reader.t -> unicode_range
+(** [read_unicode_range t] is the [unicode_range] parsed from [t]. *)
+
 val pp_font_variant_numeric_token : font_variant_numeric_token Pp.t
 (** [pp_font_variant_numeric_token] is the pretty-printer for
     [font_variant_numeric_token]. *)

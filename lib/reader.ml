@@ -447,6 +447,23 @@ let number t =
 
 let int t = int_of_float (number t)
 
+let hex t =
+  let buf = Buffer.create 6 in
+  let rec loop () =
+    match peek t with
+    | Some c
+      when (c >= '0' && c <= '9')
+           || (c >= 'A' && c <= 'F')
+           || (c >= 'a' && c <= 'f') ->
+        Buffer.add_char buf c;
+        skip t;
+        loop ()
+    | _ -> Buffer.contents buf
+  in
+  let hex_str = loop () in
+  if String.length hex_str = 0 then err_invalid t "expected hex digits"
+  else int_of_string ("0x" ^ hex_str)
+
 (** {1 Whitespace} *)
 
 let rec skip_ws t =
