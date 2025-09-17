@@ -351,6 +351,7 @@ type place_content =
   | Space_around
   | Space_evenly
   | Align_justify of align_content * justify_content
+  | Inherit
 
 type place_items =
   | Normal
@@ -359,6 +360,7 @@ type place_items =
   | Center
   | Stretch
   | Align_justify of align_items * justify_items
+  | Inherit
 
 (* Grid Types *)
 type grid_auto_flow = Row | Column | Dense | Row_dense | Column_dense
@@ -379,6 +381,7 @@ type grid_template =
   | Auto
   | Min_content
   | Max_content
+  | Inherit
   (* Complex track values *)
   | Min_max of grid_template * grid_template
   | Fit_content of length
@@ -500,6 +503,7 @@ type outline_style =
   | Inset
   | Outset
   | Auto
+  | Inherit
 
 (* Font Types *)
 type font_family =
@@ -709,6 +713,14 @@ type scale =
   | None
   | Var of scale var
 
+type steps_direction =
+  | Jump_start
+  | Jump_end
+  | Jump_none
+  | Jump_both
+  | Start
+  | End
+
 type timing_function =
   | Ease
   | Linear
@@ -717,10 +729,7 @@ type timing_function =
   | Ease_in_out
   | Step_start
   | Step_end
-  | Steps of
-      int
-      * [ `Jump_start | `Jump_end | `Jump_none | `Jump_both | `Start | `End ]
-        option
+  | Steps of int * steps_direction option
   | Cubic_bezier of float * float * float * float
 
 type transition_property = All | None | Property of string
@@ -745,7 +754,7 @@ type animation_iteration_count = Num of float | Infinite
 type animation_play_state = Running | Paused
 
 type animation_shorthand = {
-  name : string option;
+  name : string option; (* Optional animation name, defaults to None *)
   duration : duration option;
   timing_function : timing_function option;
   delay : duration option;
@@ -758,9 +767,9 @@ type animation_shorthand = {
 type animation =
   | Inherit
   | Initial
-  | None
+  | None (* Special case for "animation: none" *)
   | Var of animation var
-  | Shorthand of animation_shorthand
+  | Shorthand of animation_shorthand (* Requires a name *)
 
 (* Visual Effects Types *)
 type blend_mode =

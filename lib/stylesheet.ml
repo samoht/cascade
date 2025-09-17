@@ -1050,7 +1050,7 @@ let pp_import_rule : import_rule Pp.t =
 (* Reader for import_rule *)
 let read_import_rule (r : Reader.t) : import_rule =
   Reader.ws r;
-  if Reader.looking_at r "@import" then Reader.skip r;
+  Reader.expect_string "@import" r;
   Reader.ws r;
   let url =
     if Reader.looking_at r "url(" then (

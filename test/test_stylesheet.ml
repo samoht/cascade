@@ -68,7 +68,7 @@ let test_rule () =
   (* Unclosed brace *)
   neg read_stylesheet ".btn{color}";
   (* Missing value *)
-  neg read_stylesheet "" (* Empty rule *)
+  neg read_rule "" (* Empty rule *)
 
 let test_stylesheet () =
   (* Test basic stylesheet parsing *)
@@ -433,8 +433,6 @@ let expect_property_error name input =
   with Css.Reader.Parse_error _ -> ()
 
 (* Not a roundtrip test *)
-
-(** Test [@property] missing required descriptors *)
 let test_property_missing_descriptors () =
   expect_property_error "missing syntax" "@property --x { inherits: true }";
   expect_property_error "missing inherits"
@@ -447,23 +445,16 @@ let test_property_missing_descriptors () =
     "@property --x{syntax:\"*\";inherits:false}"
 
 (* Not a roundtrip test *)
-
-(** Test [@property] invalid inherits values *)
 let test_property_invalid_inherits () =
   expect_property_error "invalid inherits value"
     "@property --x { syntax: \"*\"; inherits: maybe }"
 
 (* Not a roundtrip test *)
-
-(** Test [@property] unknown descriptor handling *)
 let test_property_unknown_descriptor () =
   expect_property_error "unknown descriptor"
     "@property --x { syntax: \"*\"; inherits: true; unknown: 1 }"
 
 (* Not a roundtrip test *)
-
-(** Test [@property] duplicate descriptors: last one wins and prints canonically
-*)
 let test_property_duplicate_descriptors () =
   (* Test duplicate descriptors *)
   check_stylesheet ~expected:"@property --dup{syntax:\"*\";inherits:false}"
@@ -475,8 +466,6 @@ let test_property_duplicate_descriptors () =
      true; initial-value: red }"
 
 (* Not a roundtrip test *)
-
-(** Test [@property] with comments/whitespace inside the block *)
 let test_property_comments_whitespace () =
   (* Test property with comments *)
   check_stylesheet ~expected:"@property --gap{syntax:\"*\";inherits:true}"
@@ -484,8 +473,6 @@ let test_property_comments_whitespace () =
      }"
 
 (* Not a roundtrip test *)
-
-(** Test layer pp *)
 let test_layer_pp () =
   let decl =
     Css.Declaration.color (Css.Values.Hex { hash = true; value = "0000ff" })
@@ -906,8 +893,6 @@ let test_config () =
 (* Incomplete import *)
 
 (* Not a roundtrip test *)
-
-(** Additional positive tests *)
 let test_advanced_selectors () =
   check_stylesheet ".btn:hover { color: blue; }";
   check_stylesheet ".btn::before { content: 'icon'; }";

@@ -24,6 +24,9 @@ let check_read name reader ?expected input =
   let result = reader r in
   Alcotest.(check string) name expected result
 
+(* One-liner check function for identifiers *)
+let check_ident = check_read "ident" ident
+
 let check_read_char name ?expected input =
   let r = of_string input in
   let result = char r in
@@ -41,6 +44,16 @@ let check_looking_at name expected input pattern =
   let r = of_string input in
   let result = looking_at r pattern in
   Alcotest.(check bool) name expected result
+
+(* Negative test helper - expects parsing to fail *)
+let neg reader input =
+  let r = of_string input in
+  try
+    let _ = reader r in
+    (* Check if there's unparsed content remaining *)
+    if not (is_done r) then () (* Success - parser didn't consume everything *)
+    else Alcotest.failf "Expected '%s' to fail parsing" input
+  with Parse_error _ -> () (* Expected failure *)
 
 (* Helper to check Parse_error fields match *)
 let check_parse_error_fields name expected actual =
@@ -329,16 +342,42 @@ let units () =
 (* Test identifier parsing *)
 let ident_case () =
   (* Simple ident *)
-  check_read "simple ident" ident ~expected:"hello" "hello";
-  check_read "with dash" ident ~expected:"my-class" "my-class";
-  check_read "with underscore" ident ~expected:"my_var" "my_var";
-  check_read "with number" ident ~expected:"h1" "h1";
+  check_ident "hello";
+  check_ident "my-class";
+  check_ident "my_var";
+  check_ident "h1";
 
-  (* Starting with dash *)
-  check_read "dash prefix" ident ~expected:"-webkit" "-webkit";
+  (* CSS spec-compliant dash prefixes - VALID cases *)
+  check_ident "-webkit-transform";
+  check_ident "-moz-border-radius";
+  check_ident "-ms-filter";
+  check_ident "-webkit";
+  check_ident "-_foo";
+  check_ident "--my-variable";
+  check_ident "--primary-color";
 
-  (* Custom property *)
-  check_read "custom prop" ident ~expected:"--my-var" "--my-var"
+  (* Additional valid edge cases *)
+  check_ident "-a-b";
+  check_ident "-_-foo";
+
+  (* CSS spec-compliant dash prefixes - INVALID cases *)
+  neg ident "--";
+  (* Double dash alone *)
+  neg ident "-";
+  (* Single dash alone *)
+  neg ident "---webkit";
+  (* Triple dash - questionable identifier *)
+  neg ident "-2s";
+  neg ident "-123abc";
+  neg ident "-0webkit";
+  neg ident "-9px";
+  neg ident "-1";
+  neg ident "-2px";
+  neg ident "-3em";
+  neg ident "-4rem";
+  neg ident "-0a";
+  neg ident "-1a";
+  neg ident "-9z"
 
 (* Test string parsing *)
 let string_literals () =
@@ -522,7 +561,9 @@ let parse_keyword kw r =
 let number_as_string r =
   try
     let n = number r in
-    Fmt.str "%.0f" n
+    (* Use proper integer formatting for whole numbers *)
+    if Float.is_integer n then string_of_int (int_of_float n)
+    else string_of_float n
   with Parse_error _ ->
     let found = ident r in
     err ~got:found r "number"
@@ -557,7 +598,7 @@ let one_of_case () =
   let r = of_string "yellow" in
   check_raises "no match"
     (parse_error_expected ~got:(Some "yellow")
-       "expected one of: number, green, blue, red" r) (fun () ->
+       "expected one of: red, blue, green, number" r) (fun () ->
       ignore (one_of parsers r))
 
 let enum_case () =

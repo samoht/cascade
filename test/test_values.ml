@@ -146,6 +146,13 @@ let test_length () =
   check_length ~expected:"0" "0cm";
   check_length ~expected:"0" "0vi";
   check_length ~expected:"0" "0svh";
+
+  (* Calc boundary test for minified printing - expressions should remain
+     unchanged *)
+  check_length "calc(100% - 0)";
+  check_length "calc(10px + 0)";
+  check_length "calc(0 + 10px)";
+
   neg read_length "invalid";
   neg read_length "abc";
   neg read_length "10";
@@ -246,6 +253,12 @@ let test_color () =
 
   (* Var with empty fallback *)
   check_color ~expected:"var(--color,)" "var(--color,)";
+
+  (* Custom properties inline mode tests with complex color fallbacks *)
+  check_color ~expected:"var(--theme-primary,hsl(210 75% 50%))"
+    "var(--theme-primary, hsl(210deg 75% 50%))";
+  check_color ~expected:"var(--accent,rgb(255 0 128/.8))"
+    "var(--accent, rgb(255 0 128 / 80%))";
 
   (* RGB functions - various formats *)
   check_color ~expected:"rgb(255 0 0)" "rgb(255, 0, 0)";
@@ -355,7 +368,8 @@ let test_duration () =
 let test_percentage () =
   check_percentage "50%";
   check_percentage "100%";
-  check_percentage "0%";
+  (* Per CSS spec, 0% can be written as just "0" (CSS Values Level 4) *)
+  check_percentage ~expected:"0" "0%";
   check_percentage "12.5%";
   check_percentage "99.99%";
   check_percentage "200%";

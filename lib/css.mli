@@ -1756,6 +1756,7 @@ type grid_template =
   | Auto
   | Min_content
   | Max_content
+  | Inherit
   | Min_max of grid_template * grid_template
   | Fit_content of length
   | Repeat of int * grid_template list
@@ -1852,6 +1853,7 @@ type place_items =
   | Center
   | Stretch
   | Align_justify of align_items * justify_items
+  | Inherit
 
 val place_items : place_items -> declaration
 (** [place_items items] is the
@@ -1869,6 +1871,7 @@ type place_content =
   | Space_around
   | Space_evenly
   | Align_justify of align_content * justify_content
+  | Inherit
 
 val place_content : place_content -> declaration
 (** [place_content content] is the
@@ -2414,6 +2417,7 @@ type outline_style =
   | Inset
   | Outset
   | Auto
+  | Inherit
 
 val border_shorthand :
   ?width:border_width -> ?style:border_style -> ?color:color -> unit -> border
@@ -2687,6 +2691,15 @@ val transform_style : transform_style -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transform-style}
      transform-style} property (3D transforms). *)
 
+(** CSS steps direction values. *)
+type steps_direction =
+  | Jump_start
+  | Jump_end
+  | Jump_none
+  | Jump_both
+  | Start
+  | End
+
 (** CSS animation timing function values. *)
 type timing_function =
   | Ease
@@ -2696,10 +2709,7 @@ type timing_function =
   | Ease_in_out
   | Step_start
   | Step_end
-  | Steps of
-      int
-      * [ `End | `Jump_both | `Jump_end | `Jump_none | `Jump_start | `Start ]
-        option
+  | Steps of int * steps_direction option
   | Cubic_bezier of float * float * float * float
 
 (** CSS duration values. *)
@@ -2778,7 +2788,7 @@ type animation_play_state = Running | Paused
 type animation_iteration_count = Num of float | Infinite
 
 type animation_shorthand = {
-  name : string option;
+  name : string option; (* Optional animation name, defaults to None *)
   duration : duration option;
   timing_function : timing_function option;
   delay : duration option;
