@@ -524,7 +524,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Transition_duration -> v Transition_duration (read_duration t)
   | Transition_timing_function ->
       v Transition_timing_function (read_timing_function t)
-  | Transition_delay -> v Transition_delay (read_duration t)
+  | Transition_delay -> v Transition_delay (read_time t)
   (* Will change *)
   | Will_change -> v Will_change (read_string t)
   (* Contain and isolation *)
@@ -599,7 +599,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Animation_duration -> v Animation_duration (read_duration t)
   | Animation_timing_function ->
       v Animation_timing_function (read_timing_function t)
-  | Animation_delay -> v Animation_delay (read_duration t)
+  | Animation_delay -> v Animation_delay (read_time t)
   | Animation_iteration_count ->
       v Animation_iteration_count (read_animation_iteration_count t)
   | Animation_direction -> v Animation_direction (read_animation_direction t)

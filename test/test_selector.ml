@@ -2,6 +2,19 @@
 
 open Css.Selector
 
+(* Helper for negative tests *)
+let neg reader input =
+  let r = Css.Reader.of_string input in
+  try
+    let _ = reader r in
+    (* If parsing succeeded, check if all input was consumed *)
+    if Css.Reader.is_done r then
+      Alcotest.failf "Expected '%s' to fail parsing" input
+    else ()
+    (* Success - parser didn't consume everything, so it's effectively a
+       failure *)
+  with Css.Reader.Parse_error _ -> () (* Expected failure *)
+
 (* Generic check function for selector types *)
 let check_value name pp reader ?expected input =
   let expected = Option.value ~default:input expected in
@@ -65,30 +78,42 @@ let check_construct expected selector =
   let actual = to_string ~minify:true selector in
   Alcotest.(check string) expected expected actual
 
-(* Test element selectors *)
+(* Helper to check that a function returning an option returns None *)
+let none : type a. (Css.Reader.t -> a option) -> string -> unit =
+ fun reader input ->
+  let t = Css.Reader.of_string input in
+  match reader t with
+  | None -> ()
+  | Some _ -> Alcotest.failf "Expected no value for '%s' but found one" input
+
+(* Not a roundtrip test *)
 let element_cases () =
+  (* Test element selectors *)
   check_construct "div" (element "div");
   check_construct "span" (element "span");
   check_construct "h1" (element "h1");
   check_construct "article" (element "article");
   check_construct "custom-element" (element "custom-element")
 
-(* Test class selectors *)
+(* Not a roundtrip test *)
 let class_cases () =
+  (* Test class selectors *)
   check_construct ".test" (class_ "test");
   check_construct ".test-class" (class_ "test-class");
   check_construct ".test_class" (class_ "test_class");
   check_construct ".test123" (class_ "test123")
 
-(* Test ID selectors *)
+(* Not a roundtrip test *)
 let id_cases () =
+  (* Test ID selectors *)
   check_construct "#myid" (id "myid");
   check_construct "#my-id" (id "my-id");
   check_construct "#my_id" (id "my_id");
   check_construct "#id123" (id "id123")
 
-(* Test pseudo-class selectors *)
+(* Not a roundtrip test *)
 let pseudo_class_cases () =
+  (* Test pseudo-class selectors *)
   check_construct ":hover" Hover;
   check_construct ":active" Active;
   check_construct ":focus" Focus;
@@ -107,8 +132,9 @@ let pseudo_class_cases () =
   check ~expected:":nth-last-of-type(2n+2 of h1,.a)"
     ":nth-last-of-type(2n+2 of h1 , .a)"
 
-(* Test pseudo-element selectors *)
+(* Not a roundtrip test *)
 let pseudo_element_cases () =
+  (* Test pseudo-element selectors *)
   check_construct ":before" Before;
   check_construct ":after" After;
   check_construct ":first-line" First_line;
@@ -116,8 +142,9 @@ let pseudo_element_cases () =
   check_construct "::marker" Marker;
   ()
 
-(* Test attribute selectors *)
+(* Not a roundtrip test *)
 let attribute_cases () =
+  (* Test attribute selectors *)
   check_construct "[href]" (attribute "href" Presence);
   check_construct "[type=text]" (attribute "type" (Exact "text"));
   check_construct "[class~=active]"
@@ -127,8 +154,9 @@ let attribute_cases () =
   check_construct "[title*=hello]" (attribute "title" (Substring "hello"));
   check_construct "[lang|=en]" (attribute "lang" (Hyphen_list "en"))
 
-(* Test combinators *)
+(* Not a roundtrip test *)
 let combinator_cases () =
+  (* Test combinators *)
   check_construct ".parent .child" (class_ "parent" ++ class_ "child");
   check_construct ".parent>.child" (class_ "parent" >> class_ "child");
   check_construct ".prev+.next"
@@ -138,23 +166,26 @@ let combinator_cases () =
   check_construct ".col1||.col2"
     (combine (class_ "col1") Column (class_ "col2"))
 
-(* Test compound selectors *)
+(* Not a roundtrip test *)
 let compound_cases () =
+  (* Test compound selectors *)
   check_construct "div.container" (element "div" && class_ "container");
   check_construct "div#main" (element "div" && id "main");
   check_construct ".btn.primary" (class_ "btn" && class_ "primary");
   check_construct "a:hover" (element "a" && Hover);
   check_construct ".link[href]" (class_ "link" && attribute "href" Presence)
 
-(* Test selector lists *)
+(* Not a roundtrip test *)
 let list_cases () =
+  (* Test selector lists *)
   check_construct ".a,.b,.c" (list [ class_ "a"; class_ "b"; class_ "c" ]);
   check_construct "h1,h2,h3" (list [ element "h1"; element "h2"; element "h3" ]);
   check_construct "div,.class,#id"
     (list [ element "div"; class_ "class"; id "id" ])
 
-(* Test :where() and :is() *)
+(* Not a roundtrip test *)
 let where_is_cases () =
+  (* Test :where() and :is() *)
   check_construct ":where(div)" (where [ element "div" ]);
   check_construct ":where(.a,.b)" (where [ class_ "a"; class_ "b" ]);
   check_construct ":is(h1,h2)" (is_ [ element "h1"; element "h2" ]);
@@ -200,6 +231,7 @@ let roundtrip () =
   check ":is(h1,h2,h3)";
   check ":not(.active)"
 
+(* Not a roundtrip test *)
 (* Test invalid selectors *)
 let invalid () =
   (* Empty identifier *)
@@ -422,7 +454,16 @@ let test_attribute_match () =
   (* Suffix match *)
   check_attribute_match "$=suffix";
   (* Substring match *)
-  check_attribute_match "*=substring"
+  check_attribute_match "*=substring";
+
+  (* Test invalid attribute matches *)
+  neg read_attribute_match "%=invalid";
+  (* Invalid operator *)
+  neg read_attribute_match "!=not-equal";
+  (* Not supported *)
+  neg read_attribute_match "=";
+  (* Missing value *)
+  neg read_attribute_match "~=" (* Missing value *)
 
 let test_attr_flag () =
   (* Test attribute selector flags - returns option type *)
@@ -433,37 +474,101 @@ let test_attr_flag () =
   (* Case sensitive flag *)
   check_attr_flag ~expected:" s" "s";
   (* No flag / empty should return None *)
-  check_attr_flag ""
+  check_attr_flag "";
 
-(* Test negative cases for unused functions *)
-let component_parsing_failures () =
-  let open Css.Reader in
-  let neg reader s =
-    let r = of_string s in
-    let result = option reader r in
-    Alcotest.(check bool) ("should reject: " ^ s) true (Option.is_none result)
-  in
+  (* Test invalid flags using neg *)
+  neg read_attr_flag "x";
+  (* Invalid flag *)
+  neg read_attr_flag "I";
+  (* Wrong case *)
+  neg read_attr_flag "S";
+  (* Wrong case *)
+  neg read_attr_flag "is" (* Multiple characters *)
 
-  (* Invalid nth values *)
+let test_combinator () =
+  (* Test combinator type *)
+  check_combinator ">";
+  check_combinator "+";
+  check_combinator "~";
+  check_combinator "||";
+
+  (* Test invalid combinators using neg *)
+  neg read_combinator "!";
+  neg read_combinator "&";
+  neg read_combinator "#";
+  neg read_combinator ""
+
+let test_ns () =
+  (* Test namespace type *)
+  check_ns "svg|";
+  check_ns "xml|";
+  check_ns "*|";
+
+  (* Test invalid namespace syntax *)
+  neg read_ns "|";
+  (* Just pipe without namespace *)
+  neg read_ns "||";
+  neg read_ns "svg";
+  (* Missing pipe *)
+  neg read_ns "svg||";
+
+  (* Double pipe *)
+
+  (* Test cases that should return None (no namespace found) *)
+  none read_ns "notanamespace";
+  none read_ns "incomplete";
+  none read_ns ""
+
+let test_nth () =
+  (* Test nth type *)
+  check_nth "2n+1";
+  check_nth "odd";
+  check_nth "even";
+  check_nth "3n";
+  check_nth "5";
+
+  (* Test invalid nth values *)
   neg read_nth "invalid";
   neg read_nth "";
   neg read_nth "2 n";
+  neg read_nth "n+"
 
-  (* Invalid combinators *)
-  neg read_combinator "!";
-  neg read_combinator "";
+let test_selector () =
+  (* Test main selector type *)
+  check "div";
+  check ".class";
+  check "#id";
+  check "*";
+  check ":hover";
+  check "[href]";
+  check "div.class";
+  check ".parent .child";
 
-  (* Invalid namespace syntax *)
-  let test_invalid_ns () =
-    let r = of_string "notanamespace" in
-    let result = read_ns r in
-    Alcotest.(check bool)
-      "invalid namespace should fail" true (Option.is_none result)
-  in
-  test_invalid_ns ()
+  (* Test invalid selectors *)
+  neg read "123invalid";
+  (* Can't start with digit *)
+  neg read "";
+  (* Empty selector *)
+  neg read ".";
+  (* Incomplete class *)
+  neg read "#";
+  (* Incomplete id *)
+  neg read "[";
+  (* Incomplete attribute *)
+  neg read ":";
+  (* Incomplete pseudo *)
+  neg read "::";
+  (* Incomplete pseudo-element *)
+  neg read "...invalid" (* Multiple dots *)
 
-(* Test special cases *)
-let special_cases () =
+(* Test negative cases for unused functions *)
+let component_parsing_failures () =
+  (* All negative tests are now properly distributed to their respective test_x
+     functions *)
+  ()
+
+(* Not a roundtrip test *)
+let test_complex_construction () =
   (* Universal selector *)
   check_construct "*" universal;
 
@@ -479,8 +584,8 @@ let special_cases () =
   check_invalid "empty list" "CSS selector list cannot be empty" (fun () ->
       ignore (list []))
 
-(* Test distribution semantics *)
-let distribution () =
+(* Not a roundtrip test *)
+let test_combinator_distribution () =
   (* Child combinator distributes over list *)
   let s = class_ "parent" >> list [ class_ "a"; class_ "b" ] in
   check_construct ".parent>.a,.parent>.b" s;
@@ -506,6 +611,11 @@ let suite =
   let open Alcotest in
   ( "selector",
     [
+      (* Core type tests *)
+      test_case "combinator" `Quick test_combinator;
+      test_case "ns" `Quick test_ns;
+      test_case "nth" `Quick test_nth;
+      test_case "selector" `Quick test_selector;
       (* Basic selector types *)
       test_case "element" `Quick element_cases;
       test_case "class" `Quick class_cases;
@@ -514,7 +624,7 @@ let suite =
       test_case "pseudo element" `Quick pseudo_element_cases;
       test_case "attribute" `Quick attribute_cases;
       (* Combinations *)
-      test_case "combinator" `Quick combinator_cases;
+      test_case "combinator cases" `Quick combinator_cases;
       test_case "compound" `Quick compound_cases;
       test_case "list" `Quick list_cases;
       test_case "where is" `Quick where_is_cases;
@@ -534,6 +644,6 @@ let suite =
       test_case "parse errors - complex" `Quick parse_errors_complex;
       test_case "callstack accuracy" `Quick callstack_accuracy;
       (* Special cases *)
-      test_case "special cases" `Quick special_cases;
-      test_case "distribution" `Quick distribution;
+      test_case "complex construction" `Quick test_complex_construction;
+      test_case "combinator distribution" `Quick test_combinator_distribution;
     ] )

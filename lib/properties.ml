@@ -9,13 +9,15 @@ let err_invalid_value ?got t prop_name value =
 (* Generic length parsing helpers *)
 let read_line_height_length t : line_height =
   let n, unit = Reader.number_with_unit t in
-  match unit with
-  | "px" -> Px n
-  | "rem" -> Rem n
-  | "em" -> Em n
-  | "%" -> Pct n
-  | "" -> Num n (* unitless number *)
-  | _ -> Reader.err t ("unsupported line-height unit: " ^ unit)
+  if n < 0. then Reader.err_invalid t "line-height cannot be negative"
+  else
+    match unit with
+    | "px" -> Px n
+    | "rem" -> Rem n
+    | "em" -> Em n
+    | "%" -> Pct n
+    | "" -> Num n (* unitless number *)
+    | _ -> Reader.err t ("unsupported line-height unit: " ^ unit)
 
 let read_vertical_align_length t : vertical_align =
   let n, unit = Reader.number_with_unit t in
@@ -279,8 +281,6 @@ let read_align_self t : align_self =
       ("normal", Normal);
       ("stretch", Stretch);
       ("center", Center);
-      ("start", Start);
-      ("end", End);
       ("self-start", Self_start);
       ("self-end", Self_end);
       ("flex-start", Flex_start);
@@ -3220,7 +3220,9 @@ let read_border_shorthand t : border_shorthand =
     | `Width w when acc.width = None -> { acc with width = Some w }
     | `Style s when acc.style = None -> { acc with style = Some s }
     | `Color c when acc.color = None -> { acc with color = Some c }
-    | `Width _ | `Style _ | `Color _ -> acc (* Already set, ignore *)
+    | `Width _ -> Reader.err_invalid t "duplicate border width"
+    | `Style _ -> Reader.err_invalid t "duplicate border style"
+    | `Color _ -> Reader.err_invalid t "duplicate border color"
   in
   let acc, _ =
     Reader.fold_many read_border_component
@@ -3249,7 +3251,8 @@ let read_z_index t : z_index =
     [ ("auto", (Auto : z_index)) ]
     ~default:(fun t ->
       let n = Reader.number t in
-      Index (int_of_float n))
+      if Float.is_integer n then Index (int_of_float n)
+      else Reader.err_invalid t "z-index must be integer")
     t
 
 let read_flex_wrap t : flex_wrap =
@@ -4247,7 +4250,9 @@ let read_unicode_range t : unicode_range =
   if Reader.peek t = Some '-' then (
     Reader.expect '-' t;
     let end_ = Reader.hex t in
-    Range (start, end_))
+    if start > end_ then
+      Reader.err_invalid t "invalid unicode range: start > end"
+    else Range (start, end_))
   else Single start
 
 let rec read_font_variant_numeric_token t : font_variant_numeric_token =

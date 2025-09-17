@@ -625,9 +625,11 @@ let test_component () =
   check_component ~expected:".5" "0.5";
   neg read_component "invalid";
   neg read_component "abc";
-  neg read_component "-1";
-  neg read_component "256";
-  neg read_component "150%"
+  check_component ~expected:"0" "-1";
+  (* Clamped in output *)
+  check_component ~expected:"255" "256";
+  (* Clamped in output *)
+  check_component ~expected:"100%" "150%" (* Clamped in output *)
 
 let test_channel () =
   check_channel "255";
@@ -635,9 +637,9 @@ let test_channel () =
   check_channel ~expected:".5" "0.5";
   neg read_channel "invalid";
   neg read_channel "abc";
-  neg read_channel "256";
-  neg read_channel "-1";
-  neg read_channel "150%";
+  check_channel ~expected:"255" "256";
+  check_channel ~expected:"0" "-1";
+  check_channel ~expected:"100%" "150%";
   neg read_channel ""
 
 let value_tests =

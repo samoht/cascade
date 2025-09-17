@@ -4,35 +4,129 @@ open Alcotest
 module Selector = Css.Selector
 open Css.Stylesheet
 
-(* Stylesheet-specific check function *)
-let check_stylesheet ?expected input =
-  let expected = Option.value ~default:input expected in
-  let r = Css.Reader.of_string input in
-  let sheet = read_stylesheet r in
-  let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
-  (* Normalize expected for comparison *)
-  let r_exp = Css.Reader.of_string expected in
-  let sheet_exp = read_stylesheet r_exp in
-  let normalized_expected =
-    Css.Stylesheet.pp ~minify:true ~newline:false sheet_exp
+(* Generic check function for stylesheet types - handles parse/print roundtrip
+   testing *)
+let check_value type_name reader pp_func ?expected input =
+  let t = Css.Reader.of_string input in
+  let result = reader t in
+  let pp_str = Css.Pp.to_string ~minify:true pp_func result in
+  let expected =
+    match expected with
+    | None -> pp_str (* If no expected, use the output itself *)
+    | Some exp ->
+        (* Parse and minify the expected value *)
+        let r_exp = Css.Reader.of_string exp in
+        let result_exp = reader r_exp in
+        Css.Pp.to_string ~minify:true pp_func result_exp
   in
-  check string
-    (Fmt.str "stylesheet roundtrip %s" input)
-    normalized_expected output;
-  (* Roundtrip stability *)
-  let r2 = Css.Reader.of_string output in
-  let sheet2 = read_stylesheet r2 in
-  let output2 = Css.Stylesheet.pp ~minify:true ~newline:false sheet2 in
-  check string (Fmt.str "stylesheet double roundtrip %s" input) output output2
+  check string (Fmt.str "%s %s" type_name input) expected pp_str
 
-(* One-liner check functions for specific statement types *)
-let check_rule ?expected input = check_stylesheet ?expected input
-let check_import_rule ?expected input = check_stylesheet ?expected input
-let check_config ?expected input = check_stylesheet ?expected input
+(* Helper for negative tests *)
+let neg reader input =
+  let r = Css.Reader.of_string input in
+  try
+    let _ = reader r in
+    if not (Css.Reader.is_done r) then ()
+    else Alcotest.failf "Expected '%s' to fail parsing" input
+  with Css.Reader.Parse_error _ -> ()
 
-(* Legacy aliases *)
+let check_rule = check_value "rule" read_rule pp_rule
+
+let check_import_rule =
+  check_value "import_rule" read_import_rule pp_import_rule
+
+let check_config = check_value "config" read_config pp_config
+let check_stylesheet = check_value "stylesheet" read_stylesheet pp_stylesheet
+
+(* Legacy alias *)
 let check = check_stylesheet
-let case input expected = check_stylesheet ~expected input
+
+(* Not a roundtrip test *)
+let test_rule () =
+  (* Basic rules *)
+  check_rule ".btn{color:red}";
+  check_rule "h1{font-size:2rem}";
+  check_rule "#main{display:flex}";
+  check_rule "div.container{margin:auto}";
+
+  (* Multiple declarations *)
+  check_rule ".card{padding:1rem;border:1px solid #ccc}";
+  check_rule "body{margin:0;font-family:Arial,sans-serif}";
+
+  (* Multiple selectors *)
+  check_rule ".a,.b{display:block}";
+
+  (* Universal selector *)
+  check_rule ~expected:"*{box-sizing:border-box}" "* { box-sizing: border-box }";
+
+  (* Test invalid rule syntax *)
+  neg read_stylesheet "{color:red}";
+  (* Missing selector *)
+  neg read_stylesheet ".btn";
+  (* Missing declarations *)
+  neg read_stylesheet ".btn{";
+  (* Unclosed brace *)
+  neg read_stylesheet ".btn{color}";
+  (* Missing value *)
+  neg read_stylesheet "" (* Empty rule *)
+
+let test_stylesheet () =
+  (* Test basic stylesheet parsing *)
+  check_stylesheet ".btn{color:red}";
+  check_stylesheet "body{margin:0}.btn{color:blue}";
+
+  (* Test stylesheet with at-rules *)
+  check_stylesheet "@media screen{.btn{color:green}}";
+  check_stylesheet "@layer base{body{margin:0}}";
+
+  (* Test empty stylesheet *)
+  check_stylesheet "";
+
+  (* Test stylesheet with comments *)
+  check_stylesheet "/*comment*/.btn{color:red}";
+
+  (* Tests from test_media_parsing *)
+  check_stylesheet "@media (min-width: 768px) { .a { display: block } }";
+  check_stylesheet
+    "@media screen and (max-width: 640px){.btn{font-size:.875rem}}";
+
+  (* Tests from test_media_roundtrip *)
+  check_stylesheet "@media screen { .test { color: blue } }";
+
+  (* Tests from test_supports_parsing *)
+  check_stylesheet "@supports (display: grid) { .grid { display: grid } }";
+  check_stylesheet
+    "@supports (display: grid){.grid{display:grid}@supports (color: \
+     red){.x{color:red}}}";
+
+  (* Tests from test_supports_roundtrip *)
+  check_stylesheet "@supports (display: grid) { .grid { display: grid } }";
+
+  (* Tests from test_property_roundtrip *)
+  check_stylesheet
+    "@property --color { syntax: \"<color>\"; inherits: true; initial-value: \
+     red }";
+
+  (* Tests from test_keyframes_roundtrip *)
+  check_stylesheet "@keyframes slide { 0% { opacity: 0 } 100% { opacity: 1 } }";
+
+  (* Tests from test_font_face_roundtrip *)
+  check_stylesheet "@font-face { font-family: MyFont; src: url(font.woff2); }";
+
+  (* Tests from test_page_roundtrip *)
+  check_stylesheet "@page :first { margin: 1in }";
+
+  (* Tests from test_rule_roundtrip - full stylesheet *)
+  check_stylesheet ".test { color: red }";
+
+  (* Test invalid stylesheet syntax *)
+  neg read_stylesheet "@invalid-rule { }";
+  (* Unknown at-rule *)
+  neg read_stylesheet ".btn { invalid-property: value }";
+  (* Invalid property *)
+  neg read_stylesheet "@media { }";
+  (* Media without condition *)
+  neg read_stylesheet "@charset 'UTF-8'" (* Wrong charset quotes *)
 
 let of_string css =
   try
@@ -41,7 +135,6 @@ let of_string css =
     (* Internal API *)
   with Css.Reader.Parse_error _ -> Error "boom"
 
-let _string_of_rule r = Css.Pp.to_string ~minify:true pp_rule r
 let string_of_stylesheet s = Css.Stylesheet.pp ~minify:true ~newline:false s
 
 (* Helper for testing rule construction *)
@@ -54,6 +147,7 @@ let check_stylesheet_helper name expected sheet =
   let actual = string_of_stylesheet sheet in
   Alcotest.check Alcotest.string name expected actual
 
+(* Not a roundtrip test *)
 let test_rule_creation () =
   let decl =
     Css.Declaration.background_color
@@ -69,6 +163,7 @@ let test_rule_creation () =
     "rule declarations count" 1
     (List.length (declarations rule))
 
+(* Not a roundtrip test *)
 let test_media_rule_creation () =
   let decl =
     Css.Declaration.background_color
@@ -82,6 +177,7 @@ let test_media_rule_creation () =
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
   check_stylesheet output
 
+(* Not a roundtrip test *)
 let test_container_rule_creation () =
   let decl =
     Css.Declaration.background_color
@@ -95,6 +191,7 @@ let test_container_rule_creation () =
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
   check_stylesheet output
 
+(* Not a roundtrip test *)
 let test_supports_rule_creation () =
   let decl = Css.Declaration.display Css.Properties.Grid in
   let r = rule ~selector:(Selector.class_ "grid") [ decl ] in
@@ -105,6 +202,7 @@ let test_supports_rule_creation () =
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
   check_stylesheet output
 
+(* Not a roundtrip test *)
 let test_supports_nested_creation () =
   let decl = Css.Declaration.display Css.Properties.Grid in
   let r = rule ~selector:(Selector.class_ "grid") [ decl ] in
@@ -118,6 +216,7 @@ let test_supports_nested_creation () =
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
   check_stylesheet output
 
+(* Not a roundtrip test *)
 let test_property_rule_creation () =
   let prop : Css.Values.color property_rule =
     {
@@ -131,6 +230,7 @@ let test_property_rule_creation () =
   (* Property has typed syntax field *)
   Alcotest.(check bool) "property inherits" true prop.inherits
 
+(* Not a roundtrip test *)
 let test_layer_rule_creation () =
   let decl =
     Css.Declaration.background_color
@@ -142,6 +242,7 @@ let test_layer_rule_creation () =
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
   check_stylesheet output
 
+(* Not a roundtrip test *)
 let test_construct_rule_helper () =
   (* Test rule construction and string representation *)
   let decl =
@@ -161,6 +262,7 @@ let test_construct_rule_helper () =
   check_construct_rule "multiple declarations"
     "#test{color:#000000;margin:10px}" rule2
 
+(* Not a roundtrip test *)
 let helper () =
   (* Test complete stylesheet construction and string representation *)
   let decl = Css.Declaration.display Css.Properties.Block in
@@ -173,6 +275,7 @@ let helper () =
   check_stylesheet_helper "media stylesheet" "@media print{div{display:block}}"
     sheet2
 
+(* Not a roundtrip test *)
 let test_empty_stylesheet () =
   let empty = empty_stylesheet in
   Alcotest.(check int) "empty layers" 0 (List.length (layers empty));
@@ -182,6 +285,7 @@ let test_empty_stylesheet () =
     "empty container" 0
     (List.length (container_queries empty))
 
+(* Not a roundtrip test *)
 let construction () =
   let decl =
     Css.Declaration.background_color
@@ -224,6 +328,7 @@ let items_conversion () =
     "reconstructed media" 1
     (List.length (media_queries reconstructed))
 
+(* Not a roundtrip test *)
 let test_concat_stylesheets () =
   let decl1 =
     Css.Declaration.background_color
@@ -243,6 +348,7 @@ let test_concat_stylesheets () =
     "combined rules count" 2
     (List.length (Css.Stylesheet.rules combined))
 
+(* Not a roundtrip test *)
 let test_default_property_rule () =
   (* Test that property rules can be created with and without initial values *)
   let prop_with_initial =
@@ -260,35 +366,7 @@ let test_default_property_rule () =
 
   check_stylesheet output
 
-(** Test rule read/pp roundtrip *)
-let test_rule_roundtrip () =
-  (* Test basic rule using stylesheet parsing since read_rule not exposed *)
-  let input = ".test { color: red }" in
-  check_stylesheet input;
-
-  (* Test rule construction and pp *)
-  let decl =
-    Css.Declaration.background_color
-      (Css.Values.Hex { hash = true; value = "0000ff" })
-  in
-  let constructed = rule ~selector:(Selector.id "main") [ decl ] in
-  let pp_output = Css.Pp.to_string ~minify:true pp_rule constructed in
-  Alcotest.(check string)
-    "constructed rule" "#main{background-color:#0000ff}" pp_output
-
-(** Test media rule read/pp roundtrip *)
-let test_media_roundtrip () =
-  let input = "@media screen { .test { color: blue } }" in
-  check_stylesheet input
-
-(** Test property rule read/pp roundtrip *)
-let test_property_roundtrip () =
-  let input =
-    "@property --color { syntax: \"<color>\"; inherits: true; initial-value: \
-     red }"
-  in
-  check_stylesheet input
-
+(* Not a roundtrip test *)
 let test_property_composite_syntax () =
   (* Typed composite syntax: <length> | <percentage> *)
   let syn = Css.Variables.Or (Css.Variables.Length, Css.Variables.Percentage) in
@@ -301,28 +379,8 @@ let test_property_composite_syntax () =
   check_stylesheet output
 
 (** Test [@property] descriptor permutations and minified canonical order *)
-let test_rule_parsing () =
-  (* Test basic rule parsing and pretty-printing *)
-  check_rule ".class{color:red}";
-  check_rule "#id{margin:10px}";
-  check_rule "div{padding:5px 10px}";
-  check_rule ".a,.b{display:block}";
-  check_rule ~expected:"*{box-sizing:border-box}" "* { box-sizing: border-box }";
-  check_rule ~expected:"h1{font-size:2rem}" "h1 { font-size: 2rem; }"
 
-let test_media_parsing () =
-  (* Parse a few media forms and assert roundtrip via check_stylesheet *)
-  check_stylesheet "@media (min-width: 768px) { .a { display: block } }";
-  check_stylesheet
-    "@media screen and (max-width: 640px){.btn{font-size:.875rem}}"
-
-let test_supports_parsing () =
-  (* Parse basic and nested @supports constructs *)
-  check_stylesheet "@supports (display: grid) { .grid { display: grid } }";
-  check_stylesheet
-    "@supports (display: grid){.grid{display:grid}@supports (color: \
-     red){.x{color:red}}}"
-
+(* Not a roundtrip test *)
 let test_property_permutations () =
   (* Test that @property descriptors can appear in any order but print
      canonically According to CSS spec, the canonical order should be: 1. syntax
@@ -335,40 +393,36 @@ let test_property_permutations () =
   in
 
   (* Permutation 1: syntax, inherits, initial-value (canonical order) *)
-  case
-    "@property --x { syntax: \"<length>\"; inherits: true; initial-value: 0px }"
-    canonical;
+  check_stylesheet ~expected:canonical
+    "@property --x { syntax: \"<length>\"; inherits: true; initial-value: 0px }";
 
   (* Permutation 2: inherits, syntax, initial-value *)
-  case
-    "@property --x { inherits: true; syntax: \"<length>\"; initial-value: 0px }"
-    canonical;
+  check_stylesheet ~expected:canonical
+    "@property --x { inherits: true; syntax: \"<length>\"; initial-value: 0px }";
 
   (* Permutation 3: initial-value, inherits, syntax *)
-  case
-    "@property --x { initial-value: 0px; inherits: true; syntax: \"<length>\" }"
-    canonical;
+  check_stylesheet ~expected:canonical
+    "@property --x { initial-value: 0px; inherits: true; syntax: \"<length>\" }";
 
   (* Permutation 4: syntax, initial-value, inherits *)
-  case
-    "@property --x { syntax: \"<length>\"; initial-value: 0px; inherits: true }"
-    canonical;
+  check_stylesheet ~expected:canonical
+    "@property --x { syntax: \"<length>\"; initial-value: 0px; inherits: true }";
 
   (* Permutation 5: inherits, initial-value, syntax *)
-  case
-    "@property --x { inherits: true; initial-value: 0px; syntax: \"<length>\" }"
-    canonical;
+  check_stylesheet ~expected:canonical
+    "@property --x { inherits: true; initial-value: 0px; syntax: \"<length>\" }";
 
   (* Permutation 6: initial-value, syntax, inherits *)
-  case
-    "@property --x { initial-value: 0px; syntax: \"<length>\"; inherits: true }"
-    canonical;
+  check_stylesheet ~expected:canonical
+    "@property --x { initial-value: 0px; syntax: \"<length>\"; inherits: true }";
 
   (* Test with only required descriptors in different orders *)
   let minimal = "@property --y{syntax:\"*\";inherits:false}" in
 
-  case "@property --y { syntax: \"*\"; inherits: false }" minimal;
-  case "@property --y { inherits: false; syntax: \"*\" }" minimal
+  check_stylesheet ~expected:minimal
+    "@property --y { syntax: \"*\"; inherits: false }";
+  check_stylesheet ~expected:minimal
+    "@property --y { inherits: false; syntax: \"*\" }"
 
 (** Negative helper for [@property] parsing errors *)
 let expect_property_error name input =
@@ -377,6 +431,8 @@ let expect_property_error name input =
     let _ = read_stylesheet r in
     Alcotest.failf "%s: expected parse error" name
   with Css.Reader.Parse_error _ -> ()
+
+(* Not a roundtrip test *)
 
 (** Test [@property] missing required descriptors *)
 let test_property_missing_descriptors () =
@@ -387,42 +443,47 @@ let test_property_missing_descriptors () =
   expect_property_error "missing initial-value for <length>"
     "@property --x { syntax: \"<length>\"; inherits: true }";
   (* But initial-value is optional for universal syntax "*" *)
-  case "@property --x { syntax: \"*\"; inherits: false }"
+  check_stylesheet ~expected:"@property --x { syntax: \"*\"; inherits: false }"
     "@property --x{syntax:\"*\";inherits:false}"
+
+(* Not a roundtrip test *)
 
 (** Test [@property] invalid inherits values *)
 let test_property_invalid_inherits () =
   expect_property_error "invalid inherits value"
     "@property --x { syntax: \"*\"; inherits: maybe }"
 
+(* Not a roundtrip test *)
+
 (** Test [@property] unknown descriptor handling *)
 let test_property_unknown_descriptor () =
   expect_property_error "unknown descriptor"
     "@property --x { syntax: \"*\"; inherits: true; unknown: 1 }"
 
+(* Not a roundtrip test *)
+
 (** Test [@property] duplicate descriptors: last one wins and prints canonically
 *)
 let test_property_duplicate_descriptors () =
   (* Test duplicate descriptors *)
-  case "@property --dup { inherits: true; syntax: \"*\"; inherits: false; }"
-    "@property --dup{syntax:\"*\";inherits:false}";
-  case
+  check_stylesheet ~expected:"@property --dup{syntax:\"*\";inherits:false}"
+    "@property --dup { inherits: true; syntax: \"*\"; inherits: false; }";
+  check_stylesheet
+    ~expected:
+      "@property --color{syntax:\"<color>\";inherits:true;initial-value:red}"
     "@property --color { syntax: \"<color>\"; initial-value: blue; inherits: \
      true; initial-value: red }"
-    "@property --color{syntax:\"<color>\";inherits:true;initial-value:red}"
+
+(* Not a roundtrip test *)
 
 (** Test [@property] with comments/whitespace inside the block *)
 let test_property_comments_whitespace () =
   (* Test property with comments *)
-  case
+  check_stylesheet ~expected:"@property --gap{syntax:\"*\";inherits:true}"
     "@property --gap { /* allow any */ syntax: \"*\"; /* ws */  inherits: true \
      }"
-    "@property --gap{syntax:\"*\";inherits:true}"
 
-(** Test supports rule read/pp roundtrip *)
-let test_supports_roundtrip () =
-  let input = "@supports (display: grid) { .grid { display: grid } }" in
-  check_stylesheet input
+(* Not a roundtrip test *)
 
 (** Test layer pp *)
 let test_layer_pp () =
@@ -443,21 +504,6 @@ let test_layer_pp () =
     Css.Stylesheet.pp ~minify:true ~newline:false empty_sheet
   in
   check_stylesheet empty_output
-
-(** Test keyframes read/pp roundtrip *)
-let test_keyframes_roundtrip () =
-  let input = "@keyframes slide { 0% { opacity: 0 } 100% { opacity: 1 } }" in
-  check_stylesheet input
-
-(** Test font-face read/pp roundtrip *)
-let test_font_face_roundtrip () =
-  let input = "@font-face { font-family: MyFont; src: url(font.woff2); }" in
-  check_stylesheet input
-
-(** Test page read/pp roundtrip *)
-let test_page_roundtrip () =
-  let input = "@page :first { margin: 1in }" in
-  check_stylesheet input
 
 (** Test complete stylesheet pp *)
 let pp_case () =
@@ -537,6 +583,7 @@ let ordering () =
   in
   check_stylesheet input
 
+(* Not a roundtrip test *)
 let test_read_stylesheet_basic () =
   let css = ".btn { color: red; padding: 10px; }" in
   let reader = Css.Reader.of_string css in
@@ -547,6 +594,7 @@ let test_read_stylesheet_basic () =
   let decls = declarations rule in
   Alcotest.(check int) "rule has two declarations" 2 (List.length decls)
 
+(* Not a roundtrip test *)
 let test_read_stylesheet_multiple_rules () =
   let css = ".btn { color: red; } .card { margin: 5px; }" in
   let reader = Css.Reader.of_string css in
@@ -554,6 +602,7 @@ let test_read_stylesheet_multiple_rules () =
   let rules = rules sheet in
   Alcotest.(check int) "has two rules" 2 (List.length rules)
 
+(* Not a roundtrip test *)
 let test_read_stylesheet_empty () =
   let css = "" in
   let reader = Css.Reader.of_string css in
@@ -561,6 +610,7 @@ let test_read_stylesheet_empty () =
   let rules = rules sheet in
   Alcotest.(check int) "empty stylesheet has no rules" 0 (List.length rules)
 
+(* Not a roundtrip test *)
 let test_read_stylesheet_whitespace_only () =
   let css = "   \n\t  " in
   let reader = Css.Reader.of_string css in
@@ -569,6 +619,7 @@ let test_read_stylesheet_whitespace_only () =
   Alcotest.(check int)
     "whitespace-only stylesheet has no rules" 0 (List.length rules)
 
+(* Not a roundtrip test *)
 let test_read_stylesheet_with_comments () =
   let css = "/* comment */ .btn { color: red; } /* another comment */" in
   let reader = Css.Reader.of_string css in
@@ -576,6 +627,7 @@ let test_read_stylesheet_with_comments () =
   let rules = rules sheet in
   Alcotest.(check int) "has one rule despite comments" 1 (List.length rules)
 
+(* Not a roundtrip test *)
 let test_read_stylesheet_error_recovery () =
   (* According to CSS spec, element selectors can be any valid identifier.
      "invalid-css-here .card" is valid CSS (element selector + descendant
@@ -592,6 +644,7 @@ let test_read_stylesheet_error_recovery () =
     (* This is expected - parsing should fail *)
     ()
 
+(* Not a roundtrip test *)
 let test_of_string () =
   let css = ".btn { color: red; }" in
   match of_string css with
@@ -600,6 +653,7 @@ let test_of_string () =
       Alcotest.(check int) "of_string works" 1 (List.length rules)
   | Error msg -> Alcotest.fail ("of_string failed: " ^ msg)
 
+(* Not a roundtrip test *)
 let test_of_string_positive () =
   (* Test valid CSS - simple rule *)
   let css1 = ".btn { color: red; }" in
@@ -639,6 +693,7 @@ let test_of_string_positive () =
 
   check_stylesheet ".btn { color: rgb(50%, 100, 50%); }"
 
+(* Not a roundtrip test *)
 let test_of_string_negative () =
   (* Helper function to test invalid CSS *)
   let test_invalid_css css expected_error =
@@ -759,6 +814,9 @@ let test_of_string_negative () =
 
 let stylesheet_tests =
   [
+    (* Core type tests *)
+    ("rule", `Quick, test_rule);
+    ("stylesheet", `Quick, test_stylesheet);
     ("rule creation", `Quick, test_rule_creation);
     ("media rule creation", `Quick, test_media_rule_creation);
     ("container rule creation", `Quick, test_container_rule_creation);
@@ -768,19 +826,13 @@ let stylesheet_tests =
     ("layer rule creation", `Quick, test_layer_rule_creation);
     ("construct rule helper", `Quick, test_construct_rule_helper);
     ("stylesheet helper", `Quick, helper);
-    ("rule parsing", `Quick, test_rule_parsing);
-    ("media parsing", `Quick, test_media_parsing);
-    ("supports parsing", `Quick, test_supports_parsing);
     ("empty stylesheet", `Quick, test_empty_stylesheet);
     ("stylesheet construction", `Quick, construction);
     ("stylesheet items conversion", `Quick, items_conversion);
     ("concat stylesheets", `Quick, test_concat_stylesheets);
     ("default decl of property rule", `Quick, test_default_property_rule);
     ("property composite syntax", `Quick, test_property_composite_syntax);
-    (* Roundtrip tests *)
-    ("rule roundtrip", `Quick, test_rule_roundtrip);
-    ("media roundtrip", `Quick, test_media_roundtrip);
-    ("property roundtrip", `Quick, test_property_roundtrip);
+    (* Additional property tests *)
     ("property permutations", `Quick, test_property_permutations);
     ("property missing descriptors", `Quick, test_property_missing_descriptors);
     ("property invalid inherits", `Quick, test_property_invalid_inherits);
@@ -789,11 +841,7 @@ let stylesheet_tests =
       `Quick,
       test_property_duplicate_descriptors );
     ("property comments/whitespace", `Quick, test_property_comments_whitespace);
-    ("supports roundtrip", `Quick, test_supports_roundtrip);
     ("layer pp", `Quick, test_layer_pp);
-    ("keyframes roundtrip", `Quick, test_keyframes_roundtrip);
-    ("font-face roundtrip", `Quick, test_font_face_roundtrip);
-    ("page roundtrip", `Quick, test_page_roundtrip);
     ("stylesheet pp", `Quick, pp_case);
     (* New CSS/MDN spec compliance tests *)
     ("charset", `Quick, charset_case);
@@ -823,6 +871,7 @@ let stylesheet_tests =
   ]
 
 (* Tests for newly added check functions *)
+(* Not a roundtrip test *)
 let test_check () =
   (* Test basic stylesheet parsing using check function *)
   check ".test { color: red }";
@@ -830,12 +879,33 @@ let test_check () =
 
 let test_import_rule () =
   check_import_rule "@import 'test.css';";
-  check_import_rule "@import url('styles.css') screen;"
+  check_import_rule "@import url('styles.css') screen;";
+
+  (* Test invalid import rules *)
+  neg read_import_rule "@import";
+  (* Missing URL *)
+  neg read_import_rule "@import test.css";
+  (* Missing quotes *)
+  neg read_import_rule "import 'test.css'";
+  (* Missing @ *)
+  neg read_import_rule "@import 'test.css" (* Unclosed quote *)
 
 let test_config () =
   (* Test config parsing - basic cases *)
   check_config "@charset \"UTF-8\";";
-  check_config "@import 'test.css';"
+  check_config "@import 'test.css';";
+
+  (* Test invalid config syntax *)
+  neg read_config "@unknown-rule";
+  (* Unknown at-rule *)
+  neg read_config "charset \"UTF-8\"";
+  (* Missing @ *)
+  neg read_config "@charset UTF-8";
+  (* Missing quotes *)
+  neg read_config "@import"
+(* Incomplete import *)
+
+(* Not a roundtrip test *)
 
 (** Additional positive tests *)
 let test_advanced_selectors () =
@@ -846,6 +916,7 @@ let test_advanced_selectors () =
   check_stylesheet ".sibling + .next { padding: 10px; }";
   check_stylesheet ".element ~ .general-sibling { color: red; }"
 
+(* Not a roundtrip test *)
 let test_advanced_properties () =
   check_stylesheet ".box { transform: rotate(45deg) scale(1.2); }";
   check_stylesheet ".grid { display: grid; grid-template-columns: 1fr 2fr; }";
@@ -854,6 +925,7 @@ let test_advanced_properties () =
   check_stylesheet
     ".gradient { background: linear-gradient(to right, red, blue); }"
 
+(* Not a roundtrip test *)
 let test_complex_values () =
   check_stylesheet ".calc { width: calc(100% - 20px); }";
   check_stylesheet ".multi { margin: 10px 20px 30px 40px; }";
@@ -861,6 +933,7 @@ let test_complex_values () =
   check_stylesheet ".clamp { font-size: clamp(1rem, 2vw, 2rem); }";
   check_stylesheet ".minmax { width: minmax(200px, 1fr); }"
 
+(* Not a roundtrip test *)
 let test_nested_rules () =
   check_stylesheet
     "@media (min-width: 768px) { @supports (display: grid) { .grid { display: \
@@ -879,6 +952,7 @@ let expect_parse_error input =
     Alcotest.failf "Expected parse error for: %s" input
   with Css.Reader.Parse_error _ -> ()
 
+(* Not a roundtrip test *)
 let test_invalid_selectors () =
   expect_parse_error "..double-class { color: red; }";
   expect_parse_error "# { color: red; }";
@@ -886,6 +960,7 @@ let test_invalid_selectors () =
   expect_parse_error "[invalid-attr { color: red; }";
   expect_parse_error ".class:invalid-pseudo { color: red; }"
 
+(* Not a roundtrip test *)
 let test_invalid_properties () =
   expect_parse_error ".btn { unknown-property: value; }";
   expect_parse_error ".btn { color: invalid-color; }";
@@ -893,6 +968,7 @@ let test_invalid_properties () =
   expect_parse_error ".btn { width: 100invalid; }";
   expect_parse_error ".btn { margin: px; }"
 
+(* Not a roundtrip test *)
 let test_invalid_syntax () =
   expect_parse_error ".btn { color: red ";
   expect_parse_error ".btn color: red; }";
@@ -900,6 +976,7 @@ let test_invalid_syntax () =
   expect_parse_error ".btn { : red; }";
   expect_parse_error ".btn { color red; }"
 
+(* Not a roundtrip test *)
 let test_invalid_at_rules () =
   expect_parse_error "@unknown-rule { .btn { color: red; } }";
   expect_parse_error "@media { .btn { color: red; } }";
@@ -907,13 +984,14 @@ let test_invalid_at_rules () =
   expect_parse_error "@property --var { invalid-descriptor: value; }";
   expect_parse_error "@keyframes { 0% { opacity: 0; } }"
 
+(* Not a roundtrip test *)
 let test_invalid_functions () =
   expect_parse_error ".btn { color: rgb(300); }";
   expect_parse_error ".btn { transform: rotate(); }";
   expect_parse_error ".btn { width: calc(100% +); }";
   expect_parse_error ".btn { background: url(; }"
 
-(* Test layer parsing roundtrip stability *)
+(* Not a roundtrip test *)
 let test_layer_roundtrip () =
   let test_css input =
     let r = Css.Reader.of_string input in

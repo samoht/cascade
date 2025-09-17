@@ -3,27 +3,6 @@
 open Alcotest
 open Css.Declaration
 
-(* Generic check function for declaration types - handles parse/print roundtrip
-   testing *)
-let check_value name pp reader ?expected input =
-  let expected = Option.value ~default:input expected in
-  let r = Css.Reader.of_string input in
-  let value = reader r in
-  match value with
-  | Some v ->
-      let printed = Css.Pp.to_string ~minify:true pp v in
-      (* Test roundtrip stability *)
-      let r2 = Css.Reader.of_string printed in
-      let value2 = reader r2 in
-      (match value2 with
-      | Some v2 ->
-          let printed2 = Css.Pp.to_string ~minify:true pp v2 in
-          check string (Fmt.str "roundtrip %s %s" name input) printed printed2
-      | None -> Alcotest.failf "Failed to re-parse %s: %s" name printed);
-      (* Check against expected *)
-      check string (Fmt.str "%s %s" name input) expected printed
-  | None -> Alcotest.failf "Failed to parse %s: %s" name input
-
 (* Generic negative test combinator - tests that parsing should fail *)
 let neg reader input =
   let r = Css.Reader.of_string input in
@@ -65,8 +44,15 @@ let check_raises name expected_exn f =
         (Printexc.to_string exn)
 
 (* One-liner check functions for each type *)
-let check_declaration =
-  check_value "declaration" pp_declaration read_declaration
+let check_declaration ?expected input =
+  let expected = Option.value ~default:input expected in
+  let t = Css.Reader.of_string input in
+  let result_opt = read_declaration t in
+  match result_opt with
+  | Some result ->
+      let pp_str = Css.Pp.to_string ~minify:true pp_declaration result in
+      check string (Fmt.str "declaration %s" input) expected pp_str
+  | None -> Alcotest.failf "Failed to parse declaration: %s" input
 
 let check_declarations input expected_count =
   let r = Css.Reader.of_string input in
@@ -313,15 +299,6 @@ let special_cases () =
   check_declaration ~expected:"background:url(x.png),linear-gradient(red,blue)"
     "background: url(x.png), linear-gradient(red, blue);"
 
-(* Helper for round-trip declaration testing *)
-let check_declaration ~expected input =
-  let reader = Css.Reader.of_string input in
-  match read_declaration reader with
-  | Some decl ->
-      let output = Css.Pp.to_string ~minify:true pp_declaration decl in
-      check string input expected output
-  | None -> Alcotest.failf "Failed to parse declaration: %s" input
-
 let colors () =
   (* Named colors *)
   check_declaration ~expected:"color:red" "color: red";
@@ -482,20 +459,21 @@ let text_properties () =
   check_declaration ~expected:"white-space:break-spaces"
     "white-space: break-spaces"
 
-let flexbox () =
+let flexbox_direction () =
   (* Flex direction *)
   check_declaration ~expected:"flex-direction:row" "flex-direction: row";
   check_declaration ~expected:"flex-direction:row-reverse"
     "flex-direction: row-reverse";
   check_declaration ~expected:"flex-direction:column" "flex-direction: column";
   check_declaration ~expected:"flex-direction:column-reverse"
-    "flex-direction: column-reverse";
+    "flex-direction: column-reverse"
 
-  (* Flex wrap *)
+let flexbox_wrap () =
   check_declaration ~expected:"flex-wrap:nowrap" "flex-wrap: nowrap";
   check_declaration ~expected:"flex-wrap:wrap" "flex-wrap: wrap";
-  check_declaration ~expected:"flex-wrap:wrap-reverse" "flex-wrap: wrap-reverse";
+  check_declaration ~expected:"flex-wrap:wrap-reverse" "flex-wrap: wrap-reverse"
 
+let flexbox_flex_and_basis () =
   (* Flex shorthand *)
   check_declaration ~expected:"flex:1" "flex: 1";
   check_declaration ~expected:"flex:1 1 auto" "flex: 1 1 auto";
@@ -503,26 +481,24 @@ let flexbox () =
   check_declaration ~expected:"flex:initial" "flex: initial";
   check_declaration ~expected:"flex:none" "flex: none";
   check_declaration ~expected:"flex:auto" "flex: auto";
-
   (* Flex grow/shrink *)
   check_declaration ~expected:"flex-grow:0" "flex-grow: 0";
   check_declaration ~expected:"flex-grow:1" "flex-grow: 1";
   check_declaration ~expected:"flex-grow:2" "flex-grow: 2";
   check_declaration ~expected:"flex-shrink:0" "flex-shrink: 0";
   check_declaration ~expected:"flex-shrink:1" "flex-shrink: 1";
-
   (* Flex basis *)
   check_declaration ~expected:"flex-basis:auto" "flex-basis: auto";
   check_declaration ~expected:"flex-basis:100px" "flex-basis: 100px";
-  check_declaration ~expected:"flex-basis:50%" "flex-basis: 50%";
+  check_declaration ~expected:"flex-basis:50%" "flex-basis: 50%"
 
+let flexbox_alignment () =
   (* Align items *)
   check_declaration ~expected:"align-items:stretch" "align-items: stretch";
   check_declaration ~expected:"align-items:flex-start" "align-items: flex-start";
   check_declaration ~expected:"align-items:flex-end" "align-items: flex-end";
   check_declaration ~expected:"align-items:center" "align-items: center";
   check_declaration ~expected:"align-items:baseline" "align-items: baseline";
-
   (* Justify content *)
   check_declaration ~expected:"justify-content:flex-start"
     "justify-content: flex-start";
@@ -1021,8 +997,44 @@ let url_values () =
     ~expected:"background-image:url(data:image/svg+xml;utf8,<svg/>)"
     "background-image: url(data:image/svg+xml;utf8,<svg/>)"
 
+let test_declaration () =
+  (* Basic declarations - test the declaration type itself *)
+  check_declaration "color:red";
+  check_declaration "margin:10px";
+  check_declaration "display:block";
+
+  (* Custom properties *)
+  check_declaration "--custom:value";
+  check_declaration "--color:red";
+
+  (* Important declarations *)
+  check_declaration "color:red!important";
+  check_declaration "--custom:value!important";
+
+  (* Complex values *)
+  check_declaration "background:linear-gradient(to right,red,blue)";
+  check_declaration "transform:translateX(10px) rotate(45deg)";
+  check_declaration "font-family:Arial,sans-serif";
+
+  (* Vendor prefixes *)
+  check_declaration "-webkit-transform:rotate(45deg)";
+  check_declaration "-moz-appearance:none";
+
+  (* Test invalid declarations using neg *)
+  neg read_declaration "color red";
+  (* Missing colon *)
+  neg read_declaration "color:";
+  (* Missing value *)
+  neg read_declaration ":red";
+  (* Missing property *)
+  neg read_declaration "123invalid:value";
+  (* Invalid property name *)
+  neg read_declaration "color:not-a-color" (* Invalid value *)
+
 let declaration_tests =
   [
+    (* Core declaration type testing *)
+    test_case "declaration" `Quick test_declaration;
     (* Parsing basics *)
     test_case "simple" `Quick simple;
     test_case "multiple" `Quick multiple;
@@ -1049,7 +1061,10 @@ let declaration_tests =
     test_case "position" `Quick position;
     test_case "font properties" `Quick font_properties;
     test_case "text properties" `Quick text_properties;
-    test_case "flexbox" `Quick flexbox;
+    test_case "flexbox direction" `Quick flexbox_direction;
+    test_case "flexbox wrap" `Quick flexbox_wrap;
+    test_case "flexbox flex+basis" `Quick flexbox_flex_and_basis;
+    test_case "flexbox alignment" `Quick flexbox_alignment;
     test_case "borders" `Quick borders;
     test_case "overflow" `Quick overflow;
     test_case "animations (timing)" `Quick animations_timing;

@@ -1538,6 +1538,23 @@ let read_dimension t : float * string =
   let unit = Reader.while_ t (fun c -> (c >= 'a' && c <= 'z') || c = '%') in
   (n, unit)
 
+(** Read a time value that can be negative (for animation-delay,
+    transition-delay) *)
+let rec read_time t : duration =
+  Reader.ws t;
+  (* Check for var() *)
+  if Reader.looking_at t "var(" then Var (read_var read_time t)
+  else
+    let n = Reader.number t in
+    let unit =
+      let u = Reader.while_ t Reader.is_alpha in
+      String.lowercase_ascii u
+    in
+    match unit with
+    | "s" -> S n
+    | "ms" -> Ms n
+    | _ -> Reader.err_invalid t ("time unit: " ^ unit)
+
 (** Read a number value *)
 let rec read_number t : number =
   Reader.ws t;
@@ -1651,8 +1668,11 @@ let rec read_component t : component =
     match Reader.peek t with
     | Some '%' ->
         Reader.skip t;
-        Pct n
-    | _ -> Num n
+        (* Clamp percentage to 0-100 range per CSS spec *)
+        Pct (max 0. (min 100. n))
+    | _ ->
+        (* Clamp numeric component to 0-255 range for RGB values per CSS spec *)
+        Num (max 0. (min 255. n))
 
 (* Var helper functions *)
 let var_name v = v.name
