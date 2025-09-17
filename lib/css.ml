@@ -27,6 +27,13 @@ include Variables
 include Optimize
 include Stylesheet
 
+(* Declaration accessor functions *)
+let declaration_is_important = Declaration.is_important
+let declaration_name = Declaration.property_name
+
+let declaration_value ?(minify = false) decl =
+  Declaration.string_of_value ~minify decl
+
 (* Override rule function to return statement directly *)
 let rule ~selector ?nested declarations =
   Rule (Stylesheet.rule ~selector ?nested declarations)
@@ -78,6 +85,9 @@ let rules t =
   let raw_rules = Stylesheet.rules t in
   List.map (fun r -> Rule r) raw_rules
 
+(* Function to extract all statements, not just rules *)
+let statements t = t
+
 let media_queries t =
   let raw_media = Stylesheet.media_queries t in
   List.map
@@ -102,13 +112,15 @@ let property ~name syntax ?initial_value ?(inherits = false) () =
 
 (* Top-level convenience helpers for non-calc values *)
 
+let vars_of_declarations = Variables.vars_of_declarations
+
 let vars_of_rules statements =
   let decls =
     List.concat_map
       (fun stmt -> match stmt with Rule r -> r.declarations | _ -> [])
       statements
   in
-  Variables.vars_of_declarations decls
+  vars_of_declarations decls
 
 let of_string ?(filename = "<string>") css =
   let reader = Reader.of_string css in

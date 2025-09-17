@@ -733,6 +733,68 @@ let enum_or_calls_stack () =
     [ "enum_or_calls:test-property" ]
     !call_stack_during_error
 
+let concatenated_var_functions () =
+  (* Test that the CSS parser can handle concatenated var() functions. The
+     handler must actually consume the input to avoid infinite loops. *)
+  let test_concatenated_vars input expected_vars desc =
+    let r = of_string input in
+    let vars_found = ref [] in
+
+    (* Proper var parser that actually consumes the function *)
+    let read_var_function r =
+      (* Parse "var(" *)
+      expect_string "var" r;
+      expect '(' r;
+      ws r;
+
+      (* Parse the variable name *)
+      expect_string "--" r;
+      let name = ident ~keep_case:true r in
+      ws r;
+
+      (* Parse optional fallback *)
+      if peek r = Some ',' then (
+        comma r;
+        ws r (* For empty fallback, just skip to closing paren *));
+
+      (* Parse closing paren *)
+      expect ')' r;
+
+      vars_found := name :: !vars_found;
+      `Var name
+    in
+
+    (* Parse concatenated var functions without spaces between them *)
+    let rec parse_vars acc =
+      ws r;
+      if is_done r then List.rev acc
+      else if looking_at r "var(" then
+        let var = read_var_function r in
+        parse_vars (var :: acc)
+      else List.rev acc
+    in
+
+    let tokens = parse_vars [] in
+    let found = List.rev !vars_found in
+
+    Alcotest.(check (list string)) (desc ^ " - var names") expected_vars found;
+    Alcotest.(check int)
+      (desc ^ " - token count")
+      (List.length expected_vars)
+      (List.length tokens)
+  in
+
+  (* Test cases *)
+  test_concatenated_vars "var(--a)" [ "a" ] "single var";
+  test_concatenated_vars "var(--a) var(--b)" [ "a"; "b" ] "spaced vars";
+  test_concatenated_vars "var(--a,)var(--b,)" [ "a"; "b" ]
+    "concatenated vars with empty fallback";
+  test_concatenated_vars "var(--a,)var(--b,)var(--c,)" [ "a"; "b"; "c" ]
+    "three concatenated vars";
+  test_concatenated_vars "var(--tw-ordinal,)var(--tw-slashed-zero,)"
+    [ "tw-ordinal"; "tw-slashed-zero" ]
+    "tailwind-like vars"
+
 let list_call_stack () =
   let r = of_string "invalid" in
   let call_stack_during_error = ref [] in
@@ -848,6 +910,126 @@ let triple_call_stack () =
       "triple preserves context" true
       (List.mem "triple-context" error.callstack)
 
+(* Test error message formatting for different input types *)
+let error_formatting_multiline () =
+  (* Test error on multi-line CSS with previous line context *)
+  let multiline_css =
+    ".class1 {\n  color: red;\n}\n.class2 {\n  invalid-prop: value;\n}"
+  in
+  let r = of_string multiline_css in
+
+  (* Navigate to the error position (around "invalid-prop") *)
+  let rec skip_to_pattern pattern =
+    if (not (is_done r)) && not (looking_at r pattern) then (
+      skip r;
+      skip_to_pattern pattern)
+  in
+  skip_to_pattern "invalid";
+
+  try
+    expect 'x' r;
+    (* This will fail *)
+    Alcotest.fail "Should have raised Parse_error"
+  with Parse_error error ->
+    (* Check that context includes previous line *)
+    Alcotest.(check bool)
+      "has newline in context" true
+      (String.contains error.context_window '\n');
+    (* Check that the context isn't too long (should be around 80 chars) *)
+    Alcotest.(check bool)
+      "context reasonable length" true
+      (String.length error.context_window < 120);
+    (* Check that filename includes line:col info *)
+    Alcotest.(check bool)
+      "filename has line info" true
+      (String.contains error.filename ':')
+
+let error_formatting_long_line () =
+  (* Test error on very long single line (minified CSS) *)
+  let long_css = String.make 200 'x' ^ "invalid" ^ String.make 200 'y' in
+  let r = of_string long_css in
+
+  (* Navigate to around the middle *)
+  for _ = 1 to 205 do
+    skip r
+  done;
+
+  try
+    expect 'z' r;
+    (* This will fail *)
+    Alcotest.fail "Should have raised Parse_error"
+  with Parse_error error ->
+    (* Check that context is around 80 characters *)
+    let context_len = String.length error.context_window in
+    Alcotest.(check bool)
+      "context around 80 chars" true
+      (context_len >= 70 && context_len <= 90);
+    (* Check that marker position is roughly in the middle *)
+    Alcotest.(check bool)
+      "marker near middle" true
+      (error.marker_pos >= 30 && error.marker_pos <= 50);
+    (* Should not have newlines for single line *)
+    Alcotest.(check bool)
+      "no newlines in single line" false
+      (String.contains error.context_window '\n')
+
+let error_formatting_short_input () =
+  (* Test error on very short input *)
+  let short_css = "ab" in
+  let r = of_string short_css in
+
+  try
+    expect 'x' r;
+    (* This will fail *)
+    Alcotest.fail "Should have raised Parse_error"
+  with Parse_error error ->
+    (* Check that context is the entire short string *)
+    Alcotest.(check string)
+      "context is full short string" short_css error.context_window;
+    (* Check marker position *)
+    Alcotest.(check int) "marker at start" 0 error.marker_pos
+
+let error_formatting_at_start () =
+  (* Test error at very beginning of input *)
+  let css = "invalid syntax here" in
+  let r = of_string css in
+
+  try
+    expect 'x' r;
+    (* This will fail immediately *)
+    Alcotest.fail "Should have raised Parse_error"
+  with Parse_error error ->
+    (* Check that context starts from beginning *)
+    Alcotest.(check int) "marker at start" 0 error.marker_pos;
+    (* Check that we get reasonable context from the start *)
+    Alcotest.(check bool)
+      "has some context" true
+      (String.length error.context_window > 0)
+
+let error_formatting_at_end () =
+  (* Test error near end of input *)
+  let css = "some valid css syntax" in
+  let r = of_string css in
+
+  (* Navigate to near the end *)
+  while not (is_done r) do
+    skip r
+  done;
+
+  try
+    expect 'x' r;
+    (* This will fail at EOF *)
+    Alcotest.fail "Should have raised Parse_error"
+  with Parse_error error ->
+    (* Should have context leading up to the end *)
+    Alcotest.(check bool)
+      "has leading context" true
+      (String.length error.context_window > 0);
+    (* Marker should be at end of context *)
+    Alcotest.(check bool)
+      "marker near end" true
+      (error.marker_pos >= String.length error.context_window - 5)
+
 let suite =
   [
     ( "reader",
@@ -891,11 +1073,19 @@ let suite =
         test_case "with context exception" `Quick with_context_exception;
         test_case "enum call stack" `Quick enum_call_stack;
         test_case "enum_or_calls call stack" `Quick enum_or_calls_stack;
+        test_case "concatenated var functions" `Quick concatenated_var_functions;
         test_case "list call stack" `Quick list_call_stack;
         test_case "fold_many call stack" `Quick fold_many_call_stack;
         test_case "fold_many with enum context" `Quick
           fold_many_with_enum_context;
         test_case "many call stack" `Quick many_call_stack;
         test_case "triple call stack" `Quick triple_call_stack;
+        (* Error formatting tests *)
+        test_case "error formatting multiline" `Quick error_formatting_multiline;
+        test_case "error formatting long line" `Quick error_formatting_long_line;
+        test_case "error formatting short input" `Quick
+          error_formatting_short_input;
+        test_case "error formatting at start" `Quick error_formatting_at_start;
+        test_case "error formatting at end" `Quick error_formatting_at_end;
       ] );
   ]

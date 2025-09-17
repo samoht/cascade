@@ -1659,6 +1659,7 @@ let rec read_component t : component =
 (* Var helper functions *)
 let var_name v = v.name
 let var_layer v = v.layer
+let var_meta v = v.meta
 
 (** Read padding shorthand property (1-4 values) *)
 let read_padding_shorthand t : length list =

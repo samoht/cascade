@@ -17,6 +17,11 @@ val meta_of_declaration : declaration -> Values.meta option
 val important : declaration -> declaration
 (** [important d] is [d] marked as [!important]. *)
 
+val string_of_declaration : ?minify:bool -> declaration -> string
+(** [string_of_declaration ~minify decl] converts a declaration to its string
+    representation. If [minify] is [true] (default: [false]), the output is
+    minified. *)
+
 val custom_property : ?layer:string -> string -> string -> declaration
 (** [custom_property ?layer name value] is a raw custom property declaration. *)
 

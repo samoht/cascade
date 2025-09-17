@@ -739,6 +739,13 @@ let pp_declaration : declaration Pp.t =
       if important then
         Pp.string ctx (if ctx.minify then "!important" else " !important")
 
+(* Convert a declaration to its string representation *)
+let string_of_declaration ?(minify = false) decl =
+  let buf = Buffer.create 32 in
+  let ctx = { Pp.minify; indent = 0; buf; inline = false } in
+  pp_declaration ctx decl;
+  Buffer.contents buf
+
 (* Single-to-list property helpers *)
 let background_image value = v Background_image [ value ]
 let text_shadow value = v Text_shadow [ value ]

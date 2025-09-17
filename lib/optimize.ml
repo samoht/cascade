@@ -280,4 +280,13 @@ let apply_property_duplication (stylesheet : t) : t =
 
 let stylesheet (stylesheet : t) : t =
   (* Apply CSS optimizations while preserving cascade semantics *)
-  statements stylesheet
+  (* Also remove the initial layer declaration list (@layer theme,base,components,utilities;)
+     as Tailwind v4 doesn't include it in minified+optimized output *)
+  let remove_initial_layer_decl = function
+    | Layer_decl names :: rest
+      when List.mem "theme" names && List.mem "utilities" names ->
+        (* This is the full layer declaration list - remove it *)
+        rest
+    | stmts -> stmts
+  in
+  stylesheet |> remove_initial_layer_decl |> statements

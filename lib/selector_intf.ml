@@ -91,6 +91,12 @@ type t =
   | After
   | First_letter
   | First_line
+  (* Modern double-colon pseudo-elements *)
+  | Backdrop
+  | Marker
+  | Placeholder
+  | Selection
+  | File_selector_button
   (* Known vendor-specific pseudo-classes *)
   | Moz_focusring
   | Webkit_any

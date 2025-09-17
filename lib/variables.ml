@@ -131,7 +131,11 @@ let read_syntax (r : Reader.t) : any_syntax =
 let rec read_value : type a. Reader.t -> a syntax -> a =
  fun reader syntax ->
   match syntax with
-  | Universal -> Reader.string ~trim:true reader
+  | Universal ->
+      (* For universal syntax "*", accept any CSS value - not just quoted
+         strings *)
+      Reader.ws reader;
+      Reader.token reader
   | String -> Reader.string ~trim:true reader
   | Custom_ident -> Reader.string ~trim:true reader
   | Url -> Reader.string ~trim:true reader
@@ -364,6 +368,7 @@ let rec vars_of_value : type a. a kind -> a -> any_var list =
   | Float, _ -> []
   | Aspect_ratio, _ -> []
   | Border_style, _ -> []
+  | Font_weight, Var v -> [ V v ]
   | Font_weight, _ -> []
   | String, _ -> []
   | Font_variant_numeric, Var v -> [ V v ]
@@ -403,7 +408,26 @@ let vars_of_declarations properties =
   List.concat_map
     (function
       | Declaration { property; value; _ } -> vars_of_property property value
-      | Custom_declaration { kind; value; _ } -> vars_of_value kind value)
+      | Custom_declaration { name; kind; value; meta; _ } -> (
+          (* Extract variables being referenced in the value *)
+          let referenced_vars = vars_of_value kind value in
+          (* Also include the variable being defined if it has metadata *)
+          match meta with
+          | Some m ->
+              (* Create a synthetic var for the variable being defined *)
+              let defined_var =
+                V
+                  {
+                    name = String.sub name 2 (String.length name - 2);
+                    (* Remove -- prefix *)
+                    fallback = Empty;
+                    default = None;
+                    layer = None;
+                    meta = Some m;
+                  }
+              in
+              defined_var :: referenced_vars
+          | None -> referenced_vars))
     properties
   |> List.sort_uniq compare_vars_by_name
 

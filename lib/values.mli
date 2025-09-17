@@ -244,3 +244,6 @@ val var_name : 'a var -> string
 
 val var_layer : 'a var -> string option
 (** [var_layer v] is [v]'s optional layer name. *)
+
+val var_meta : 'a var -> meta option
+(** [var_meta v] is [v]'s optional metadata. *)

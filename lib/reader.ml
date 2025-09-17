@@ -25,7 +25,7 @@ exception Parse_error of parse_error
 let pp_parse_error (err : parse_error) =
   let callstack_str =
     if err.callstack = [] then ""
-    else " [stack: " ^ String.concat " -> " err.callstack ^ "]"
+    else "\n    [stack: " ^ String.concat " -> " err.callstack ^ "]"
   in
   let context_str =
     if err.context_window = "" then ""
@@ -35,6 +35,7 @@ let pp_parse_error (err : parse_error) =
       let context_display =
         match context_lines with
         | [] -> err.context_window
+        | [ line ] -> line (* Single line - show it all *)
         | _ ->
             (* If multi-line, show each line *)
             String.concat "\n" context_lines
@@ -88,26 +89,37 @@ let with_context t context f =
 
 let callstack t = List.rev t.call_stack
 
-let context_window ?(before = 20) ?(after = 20) t =
+let context_window ?(before = 40) ?(after = 40) t =
   let pos = t.pos in
   let start_pos = max 0 (pos - before) in
   let end_pos = min t.len (pos + after) in
   let before_text = String.sub t.input start_pos (pos - start_pos) in
   let after_text = String.sub t.input pos (end_pos - pos) in
-  let marker_pos = String.length before_text in
   let context = before_text ^ after_text in
+  let marker_pos = String.length before_text in
   (context, marker_pos)
 
 (** Error helpers *)
 let err ?got t expected =
   let context, marker_pos = context_window t in
+  (* Calculate line and column numbers for better error reporting *)
+  let line, col =
+    let rec count_lines pos line col =
+      if pos <= 0 then (line, col)
+      else if pos >= String.length t.input then (line, col)
+      else if t.input.[pos] = '\n' then count_lines (pos - 1) (line + 1) 1
+      else count_lines (pos - 1) line (col + 1)
+    in
+    count_lines (t.pos - 1) 1 1
+  in
+  let better_filename = Printf.sprintf "<CSS input>:%d:%d" line col in
   raise
     (Parse_error
        {
          message = expected;
          got;
          position = t.pos;
-         filename = "<string>";
+         filename = better_filename;
          context_window = context;
          marker_pos;
          callstack = callstack t;

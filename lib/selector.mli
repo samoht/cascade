@@ -21,15 +21,9 @@ val universal : t
 val universal_ns : ns -> t
 (** [universal_ns ns] namespaced universal selector (e.g., [*|*], [svg|*]). *)
 
-(* Typed attribute selector helpers *)
-
 val attribute : ?ns:ns -> ?flag:attr_flag -> string -> attribute_match -> t
 (** [attribute ?ns ?flag name match] attribute selector. Validates identifiers;
     raises [Invalid_argument] on invalid. *)
-
-val pseudo_element : string -> t
-(** [pseudo_element name] pseudo-element selector (e.g., "::before"). Validates
-    identifiers. *)
 
 val combine : t -> combinator -> t -> t
 (** [combine a comb b] combines selectors with a combinator. *)
