@@ -1,362 +1,348 @@
 open Alcotest
 open Css.Properties
+open Test_helpers
 
-(* Helper for negative tests - shadows Alcotest.neg *)
-let neg reader input =
-  let r = Css.Reader.of_string input in
-  try
-    let _ = reader r in
-    (* Check if there's unparsed content remaining *)
-    if not (Css.Reader.is_done r) then ()
-      (* Success - parser didn't consume everything *)
-    else Alcotest.failf "Expected '%s' to fail parsing" input
-  with Css.Reader.Parse_error _ -> ()
+let check_display =
+  check_value "display" read_display pp_display ~roundtrip:true
 
-(* Generic check function for property values *)
-let check_value name pp reader ?(minify = true) ?expected input =
-  let expected = Option.value ~default:input expected in
-  (* First pass: parse + print equals expected (minified) *)
-  let t = Css.Reader.of_string input in
-  let v = reader t in
-  let s = Css.Pp.to_string ~minify pp v in
-  check string (Fmt.str "%s %s" name input) expected s;
-  (* Roundtrip stability: read printed output and ensure idempotent printing *)
-  let t2 = Css.Reader.of_string s in
-  let v2 = reader t2 in
-  let s2 = Css.Pp.to_string ~minify pp v2 in
-  check string (Fmt.str "roundtrip %s %s" name input) s s2
+let check_position =
+  check_value "position" read_position pp_position ~roundtrip:true
 
-let check_display = check_value "display" pp_display read_display
-let check_position = check_value "position" pp_position read_position
-let check_overflow = check_value "overflow" pp_overflow read_overflow
+let check_overflow =
+  check_value "overflow" read_overflow pp_overflow ~roundtrip:true
 
 let check_border_style =
-  check_value "border-style" pp_border_style read_border_style
+  check_value "border-style" read_border_style pp_border_style ~roundtrip:true
 
-let check_border = check_value "border" pp_border read_border
-let check_visibility = check_value "visibility" pp_visibility read_visibility
-let check_z_index = check_value "z-index" pp_z_index read_z_index
+let check_border = check_value "border" read_border pp_border ~roundtrip:true
+
+let check_visibility =
+  check_value "visibility" read_visibility pp_visibility ~roundtrip:true
+
+let check_z_index =
+  check_value "z-index" read_z_index pp_z_index ~roundtrip:true
 
 let check_flex_direction =
-  check_value "flex-direction" pp_flex_direction read_flex_direction
+  check_value "flex-direction" read_flex_direction pp_flex_direction
+    ~roundtrip:true
 
-let check_flex_wrap = check_value "flex-wrap" pp_flex_wrap read_flex_wrap
-let check_align_self = check_value "align-self" pp_align_self read_align_self
-let check_font_style = check_value "font-style" pp_font_style read_font_style
+let check_flex_wrap = check_value "flex-wrap" read_flex_wrap pp_flex_wrap
+let check_align_self = check_value "align-self" read_align_self pp_align_self
+let check_font_style = check_value "font-style" read_font_style pp_font_style
 
 let check_font_display =
-  check_value "font-display" pp_font_display read_font_display
+  check_value "font-display" read_font_display pp_font_display
 
 let check_unicode_range =
-  check_value "unicode-range" pp_unicode_range read_unicode_range
+  check_value "unicode-range" read_unicode_range pp_unicode_range
 
-let check_text_align = check_value "text-align" pp_text_align read_text_align
+let check_text_align = check_value "text-align" read_text_align pp_text_align
 
 let check_text_decoration_style =
-  check_value "text-decoration-style" pp_text_decoration_style
-    read_text_decoration_style
+  check_value "text-decoration-style" read_text_decoration_style
+    pp_text_decoration_style
 
 let check_text_overflow =
-  check_value "text-overflow" pp_text_overflow read_text_overflow
+  check_value "text-overflow" read_text_overflow pp_text_overflow
 
-let check_text_wrap = check_value "text-wrap" pp_text_wrap read_text_wrap
+let check_text_wrap = check_value "text-wrap" read_text_wrap pp_text_wrap
 
 let check_white_space =
-  check_value "white-space" pp_white_space read_white_space
+  check_value "white-space" read_white_space pp_white_space
 
-let check_word_break = check_value "word-break" pp_word_break read_word_break
+let check_word_break = check_value "word-break" read_word_break pp_word_break
 
 let check_text_decoration_shorthand =
-  check_value "text_decoration_shorthand" pp_text_decoration_shorthand
-    read_text_decoration_shorthand
+  check_value "text_decoration_shorthand" read_text_decoration_shorthand
+    pp_text_decoration_shorthand
 
 let check_justify_self =
-  check_value "justify_self" pp_justify_self read_justify_self
+  check_value "justify_self" read_justify_self pp_justify_self
 
 let check_align_content =
-  check_value "align_content" pp_align_content read_align_content
+  check_value "align_content" read_align_content pp_align_content
 
 let check_border_shorthand =
-  check_value "border_shorthand" pp_border_shorthand read_border_shorthand
+  check_value "border_shorthand" read_border_shorthand pp_border_shorthand
 
 let check_justify_items =
-  check_value "justify_items" pp_justify_items read_justify_items
+  check_value "justify_items" read_justify_items pp_justify_items
 
 let check_transition_shorthand =
-  check_value "transition_shorthand" pp_transition_shorthand
-    read_transition_shorthand
+  check_value "transition_shorthand" read_transition_shorthand
+    pp_transition_shorthand
 
-let check_flex_basis = check_value "flex_basis" pp_flex_basis read_flex_basis
+let check_flex_basis = check_value "flex_basis" read_flex_basis pp_flex_basis
 
 let check_background_shorthand =
-  check_value "background_shorthand" pp_background_shorthand
-    read_background_shorthand
+  check_value "background_shorthand" read_background_shorthand
+    pp_background_shorthand
 
 let check_animation_shorthand =
-  check_value "animation_shorthand" pp_animation_shorthand
-    read_animation_shorthand
+  check_value "animation_shorthand" read_animation_shorthand
+    pp_animation_shorthand
 
 let check_text_decoration_line =
-  check_value "text_decoration_line" pp_text_decoration_line
-    read_text_decoration_line
+  check_value "text_decoration_line" read_text_decoration_line
+    pp_text_decoration_line
 
 let check_text_size_adjust =
-  check_value "text_size_adjust" pp_text_size_adjust read_text_size_adjust
+  check_value "text_size_adjust" read_text_size_adjust pp_text_size_adjust
 
 let check_any_property =
-  check_value "any_property" pp_any_property read_any_property
+  check_value "any_property" read_any_property pp_any_property
 
 let check_overflow_wrap =
-  check_value "overflow-wrap" pp_overflow_wrap read_overflow_wrap
+  check_value "overflow-wrap" read_overflow_wrap pp_overflow_wrap
 
-let check_hyphens = check_value "hyphens" pp_hyphens read_hyphens
+let check_hyphens = check_value "hyphens" read_hyphens pp_hyphens
 
 let check_line_height =
-  check_value "line-height" pp_line_height read_line_height
+  check_value "line-height" read_line_height pp_line_height
 
 let check_list_style_type =
-  check_value "list-style-type" pp_list_style_type read_list_style_type
+  check_value "list-style-type" read_list_style_type pp_list_style_type
 
 let check_list_style_position =
-  check_value "list-style-position" pp_list_style_position
-    read_list_style_position
+  check_value "list-style-position" read_list_style_position
+    pp_list_style_position
 
 let check_list_style_image =
-  check_value "list-style-image" pp_list_style_image read_list_style_image
+  check_value "list-style-image" read_list_style_image pp_list_style_image
 
 let check_table_layout =
-  check_value "table-layout" pp_table_layout read_table_layout
+  check_value "table-layout" read_table_layout pp_table_layout
 
 let check_border_collapse =
-  check_value "border-collapse" pp_border_collapse read_border_collapse
+  check_value "border-collapse" read_border_collapse pp_border_collapse
 
 let check_user_select =
-  check_value "user-select" pp_user_select read_user_select
+  check_value "user-select" read_user_select pp_user_select
 
 let check_pointer_events =
-  check_value "pointer-events" pp_pointer_events read_pointer_events
+  check_value "pointer-events" read_pointer_events pp_pointer_events
 
 let check_touch_action =
-  check_value "touch-action" pp_touch_action read_touch_action
+  check_value "touch-action" read_touch_action pp_touch_action
 
-let check_resize = check_value "resize" pp_resize read_resize
-let check_box_sizing = check_value "box-sizing" pp_box_sizing read_box_sizing
-let check_object_fit = check_value "object-fit" pp_object_fit read_object_fit
+let check_resize = check_value "resize" read_resize pp_resize
+let check_box_sizing = check_value "box-sizing" read_box_sizing pp_box_sizing
+let check_object_fit = check_value "object-fit" read_object_fit pp_object_fit
 
 let check_content_visibility =
-  check_value "content-visibility" pp_content_visibility read_content_visibility
+  check_value "content-visibility" read_content_visibility pp_content_visibility
 
 let check_container_type =
-  check_value "container-type" pp_container_type read_container_type
+  check_value "container-type" read_container_type pp_container_type
 
-let check_contain = check_value "contain" pp_contain read_contain
-let check_isolation = check_value "isolation" pp_isolation read_isolation
+let check_contain = check_value "contain" read_contain pp_contain
+let check_isolation = check_value "isolation" read_isolation pp_isolation
 
 let check_scroll_behavior =
-  check_value "scroll-behavior" pp_scroll_behavior read_scroll_behavior
+  check_value "scroll-behavior" read_scroll_behavior pp_scroll_behavior
 
 let check_scroll_snap_align =
-  check_value "scroll-snap-align" pp_scroll_snap_align read_scroll_snap_align
+  check_value "scroll-snap-align" read_scroll_snap_align pp_scroll_snap_align
 
 let check_scroll_snap_stop =
-  check_value "scroll-snap-stop" pp_scroll_snap_stop read_scroll_snap_stop
+  check_value "scroll-snap-stop" read_scroll_snap_stop pp_scroll_snap_stop
 
 let check_scroll_snap_type =
-  check_value "scroll-snap-type" pp_scroll_snap_type read_scroll_snap_type
+  check_value "scroll-snap-type" read_scroll_snap_type pp_scroll_snap_type
 
-let check_svg_paint = check_value "svg-paint" pp_svg_paint read_svg_paint
-let check_direction = check_value "direction" pp_direction read_direction
+let check_svg_paint = check_value "svg-paint" read_svg_paint pp_svg_paint
+let check_direction = check_value "direction" read_direction pp_direction
 
 let check_unicode_bidi =
-  check_value "unicode-bidi" pp_unicode_bidi read_unicode_bidi
+  check_value "unicode-bidi" read_unicode_bidi pp_unicode_bidi
 
 let check_writing_mode =
-  check_value "writing-mode" pp_writing_mode read_writing_mode
+  check_value "writing-mode" read_writing_mode pp_writing_mode
 
 let check_webkit_appearance =
-  check_value "-webkit-appearance" pp_webkit_appearance read_webkit_appearance
+  check_value "-webkit-appearance" read_webkit_appearance pp_webkit_appearance
 
 let check_webkit_font_smoothing =
-  check_value "-webkit-font-smoothing" pp_webkit_font_smoothing
-    read_webkit_font_smoothing
+  check_value "-webkit-font-smoothing" read_webkit_font_smoothing
+    pp_webkit_font_smoothing
 
 let check_moz_osx_font_smoothing =
-  check_value "-moz-osx-font-smoothing" pp_moz_osx_font_smoothing
-    read_moz_osx_font_smoothing
+  check_value "-moz-osx-font-smoothing" read_moz_osx_font_smoothing
+    pp_moz_osx_font_smoothing
 
 let check_webkit_box_orient =
-  check_value "-webkit-box-orient" pp_webkit_box_orient read_webkit_box_orient
+  check_value "-webkit-box-orient" read_webkit_box_orient pp_webkit_box_orient
 
 let check_forced_color_adjust =
-  check_value "forced-color-adjust" pp_forced_color_adjust
-    read_forced_color_adjust
+  check_value "forced-color-adjust" read_forced_color_adjust
+    pp_forced_color_adjust
 
-let check_appearance = check_value "appearance" pp_appearance read_appearance
-let check_clear = check_value "clear" pp_clear read_clear
-let check_float_side = check_value "float" pp_float_side read_float_side
+let check_appearance = check_value "appearance" read_appearance pp_appearance
+let check_clear = check_value "clear" read_clear pp_clear
+let check_float_side = check_value "float" read_float_side pp_float_side
 
 let check_text_decoration_skip_ink =
-  check_value "text-decoration-skip-ink" pp_text_decoration_skip_ink
-    read_text_decoration_skip_ink
+  check_value "text-decoration-skip-ink" read_text_decoration_skip_ink
+    pp_text_decoration_skip_ink
 
 let check_vertical_align =
-  check_value "vertical-align" pp_vertical_align read_vertical_align
+  check_value "vertical-align" read_vertical_align pp_vertical_align
 
 let check_outline_style =
-  check_value "outline-style" pp_outline_style read_outline_style
+  check_value "outline-style" read_outline_style pp_outline_style
 
 let check_font_family =
-  check_value "font-family" pp_font_family read_font_family
+  check_value "font-family" read_font_family pp_font_family
 
 let check_font_stretch =
-  check_value "font-stretch" pp_font_stretch read_font_stretch
+  check_value "font-stretch" read_font_stretch pp_font_stretch
 
 let check_font_variant_numeric =
-  check_value "font-variant-numeric" pp_font_variant_numeric
-    read_font_variant_numeric
+  check_value "font-variant-numeric" read_font_variant_numeric
+    pp_font_variant_numeric
 
 let check_font_feature_settings =
-  check_value "font-feature-settings" pp_font_feature_settings
-    read_font_feature_settings
+  check_value "font-feature-settings" read_font_feature_settings
+    pp_font_feature_settings
 
 let check_font_variation_settings =
-  check_value "font-variation-settings" pp_font_variation_settings
-    read_font_variation_settings
+  check_value "font-variation-settings" read_font_variation_settings
+    pp_font_variation_settings
 
 let check_backface_visibility =
-  check_value "backface-visibility" pp_backface_visibility
-    read_backface_visibility
+  check_value "backface-visibility" read_backface_visibility
+    pp_backface_visibility
 
-let check_scale = check_value "scale" pp_scale read_scale
+let check_scale = check_value "scale" read_scale pp_scale
 
 let check_background_box =
-  check_value "background_box" pp_background_box read_background_box
+  check_value "background_box" read_background_box pp_background_box
 
-let check_background = check_value "background" pp_background read_background
+let check_background = check_value "background" read_background pp_background
 
 let check_steps_direction =
-  check_value "steps-direction" pp_steps_direction read_steps_direction
+  check_value "steps-direction" read_steps_direction pp_steps_direction
 
 let check_timing_function =
-  check_value "timing-function" pp_timing_function read_timing_function
+  check_value "timing-function" read_timing_function pp_timing_function
 
 let check_transition_property =
-  check_value "transition-property" pp_transition_property
-    read_transition_property
+  check_value "transition-property" read_transition_property
+    pp_transition_property
 
-let check_transition = check_value "transition" pp_transition read_transition
+let check_transition = check_value "transition" read_transition pp_transition
 
 let check_animation_direction =
-  check_value "animation-direction" pp_animation_direction
-    read_animation_direction
+  check_value "animation-direction" read_animation_direction
+    pp_animation_direction
 
 let check_animation_fill_mode =
-  check_value "animation-fill-mode" pp_animation_fill_mode
-    read_animation_fill_mode
+  check_value "animation-fill-mode" read_animation_fill_mode
+    pp_animation_fill_mode
 
 let check_animation_iteration_count =
-  check_value "animation-iteration-count" pp_animation_iteration_count
-    read_animation_iteration_count
+  check_value "animation-iteration-count" read_animation_iteration_count
+    pp_animation_iteration_count
 
 let check_animation_play_state =
-  check_value "animation-play-state" pp_animation_play_state
-    read_animation_play_state
+  check_value "animation-play-state" read_animation_play_state
+    pp_animation_play_state
 
-let check_animation = check_value "animation" pp_animation read_animation
+let check_animation = check_value "animation" read_animation pp_animation
 
 let check_blend_mode =
-  check_value "mix-blend-mode" pp_blend_mode read_blend_mode
+  check_value "mix-blend-mode" read_blend_mode pp_blend_mode
 
 let check_text_shadow =
-  check_value "text-shadow" pp_text_shadow read_text_shadow
+  check_value "text-shadow" read_text_shadow pp_text_shadow
 
-let check_shadow = check_value "shadow" pp_shadow read_shadow
-let check_filter = check_value "filter" pp_filter read_filter
+let check_shadow = check_value "shadow" read_shadow pp_shadow
+let check_filter = check_value "filter" read_filter pp_filter
 
 let check_background_attachment =
-  check_value "background-attachment" pp_background_attachment
-    read_background_attachment
+  check_value "background-attachment" read_background_attachment
+    pp_background_attachment
 
 let check_background_repeat =
-  check_value "background-repeat" pp_background_repeat read_background_repeat
+  check_value "background-repeat" read_background_repeat pp_background_repeat
 
 let check_background_size =
-  check_value "background-size" pp_background_size read_background_size
+  check_value "background-size" read_background_size pp_background_size
 
 let check_background_image =
-  check_value "background-image" pp_background_image read_background_image
+  check_value "background-image" read_background_image pp_background_image
 
 let check_overscroll_behavior =
-  check_value "overscroll-behavior" pp_overscroll_behavior
-    read_overscroll_behavior
+  check_value "overscroll-behavior" read_overscroll_behavior
+    pp_overscroll_behavior
 
 let check_aspect_ratio =
-  check_value "aspect-ratio" pp_aspect_ratio read_aspect_ratio
+  check_value "aspect-ratio" read_aspect_ratio pp_aspect_ratio
 
-let check_content = check_value "content" pp_content read_content
+let check_content = check_value "content" read_content pp_content
 
 let check_grid_auto_flow =
-  check_value "grid-auto-flow" pp_grid_auto_flow read_grid_auto_flow
+  check_value "grid-auto-flow" read_grid_auto_flow pp_grid_auto_flow
 
 let check_grid_template =
-  check_value "grid-template" pp_grid_template read_grid_template
+  check_value "grid-template" read_grid_template pp_grid_template
 
-let check_grid_line = check_value "grid-line" pp_grid_line read_grid_line
+let check_grid_line = check_value "grid-line" read_grid_line pp_grid_line
 
 let check_align_items =
-  check_value "align-items" pp_align_items read_align_items
+  check_value "align-items" read_align_items pp_align_items
 
 let check_justify_content =
-  check_value "justify-content" pp_justify_content read_justify_content
+  check_value "justify-content" read_justify_content pp_justify_content
 
-let check_flex = check_value "flex" pp_flex read_flex
+let check_flex = check_value "flex" read_flex pp_flex
 
 let check_place_items =
-  check_value "place-items" pp_place_items read_place_items
+  check_value "place-items" read_place_items pp_place_items
 
 let check_place_content =
-  check_value "place-content" pp_place_content read_place_content
+  check_value "place-content" read_place_content pp_place_content
 
-let check_transform = check_value "transform" pp_transform read_transform
+let check_transform = check_value "transform" read_transform pp_transform
 
 let check_gradient_direction =
-  check_value "gradient-direction" pp_gradient_direction read_gradient_direction
+  check_value "gradient-direction" read_gradient_direction pp_gradient_direction
 
 let check_gradient_stop =
-  check_value "gradient-stop" pp_gradient_stop read_gradient_stop
+  check_value "gradient-stop" read_gradient_stop pp_gradient_stop
 
 let check_position_2d =
-  check_value "position_2d" pp_position_2d read_position_2d
+  check_value "position_2d" read_position_2d pp_position_2d
 
 let check_font_weight =
-  check_value "font_weight" pp_font_weight read_font_weight
+  check_value "font_weight" read_font_weight pp_font_weight
 
-let check_cursor = check_value "cursor" pp_cursor read_cursor
+let check_cursor = check_value "cursor" read_cursor pp_cursor
 
 let check_scroll_snap_strictness =
-  check_value "scroll_snap_strictness" pp_scroll_snap_strictness
-    read_scroll_snap_strictness
+  check_value "scroll_snap_strictness" read_scroll_snap_strictness
+    pp_scroll_snap_strictness
 
 let check_transform_style =
-  check_value "transform_style" pp_transform_style read_transform_style
+  check_value "transform_style" read_transform_style pp_transform_style
 
 let check_font_variant_numeric_token =
-  check_value "font_variant_numeric_token" pp_font_variant_numeric_token
-    read_font_variant_numeric_token
+  check_value "font_variant_numeric_token" read_font_variant_numeric_token
+    pp_font_variant_numeric_token
 
 let check_transform_origin =
-  check_value "transform_origin" pp_transform_origin read_transform_origin
+  check_value "transform_origin" read_transform_origin pp_transform_origin
 
-let check_gap = check_value "gap" pp_gap read_gap
+let check_gap = check_value "gap" read_gap pp_gap
 
 let check_text_decoration =
-  check_value "text_decoration" pp_text_decoration read_text_decoration
+  check_value "text_decoration" read_text_decoration pp_text_decoration
 
 let check_border_width =
-  check_value "border_width" pp_border_width read_border_width
+  check_value "border_width" read_border_width pp_border_width
 
 let check_text_transform =
-  check_value "text_transform" pp_text_transform read_text_transform
+  check_value "text_transform" read_text_transform pp_text_transform
 
 (* Helper for property-value pairs printing *)
 let check_property_value expected (prop, value) =

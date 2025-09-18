@@ -2,26 +2,7 @@
 
 open Alcotest
 open Css.Values
-
-(* Generic check function for CSS value types - handles parse/print roundtrip
-   testing *)
-let check_value type_name reader pp_func ?(minify = true) ?expected input =
-  let expected = Option.value ~default:input expected in
-  let t = Css.Reader.of_string input in
-  let result = reader t in
-  let pp_str = Css.Pp.to_string ~minify pp_func result in
-  check string (Fmt.str "%s %s" type_name input) expected pp_str
-
-(* Helper for negative tests - shadows Alcotest.neg *)
-let neg reader input =
-  let r = Css.Reader.of_string input in
-  try
-    let _ = reader r in
-    (* Check if there's unparsed content remaining *)
-    if not (Css.Reader.is_done r) then ()
-      (* Success - parser didn't consume everything *)
-    else Alcotest.failf "Expected '%s' to fail parsing" input
-  with Css.Reader.Parse_error _ -> ()
+open Test_helpers
 
 (* One-liner check functions for each CSS value type *)
 let check_length = check_value "length" read_length pp_length

@@ -1,34 +1,8 @@
 (** Tests for CSS stylesheet interface types - CSS/MDN spec compliance *)
 
-open Alcotest
 module Selector = Css.Selector
 open Css.Stylesheet
-
-(* Generic check function for stylesheet types - handles parse/print roundtrip
-   testing *)
-let check_value type_name reader pp_func ?expected input =
-  let t = Css.Reader.of_string input in
-  let result = reader t in
-  let pp_str = Css.Pp.to_string ~minify:true pp_func result in
-  let expected =
-    match expected with
-    | None -> pp_str (* If no expected, use the output itself *)
-    | Some exp ->
-        (* Parse and minify the expected value *)
-        let r_exp = Css.Reader.of_string exp in
-        let result_exp = reader r_exp in
-        Css.Pp.to_string ~minify:true pp_func result_exp
-  in
-  check string (Fmt.str "%s %s" type_name input) expected pp_str
-
-(* Helper for negative tests *)
-let neg reader input =
-  let r = Css.Reader.of_string input in
-  try
-    let _ = reader r in
-    if not (Css.Reader.is_done r) then ()
-    else Alcotest.failf "Expected '%s' to fail parsing" input
-  with Css.Reader.Parse_error _ -> ()
+open Test_helpers
 
 let check_rule = check_value "rule" read_rule pp_rule
 
@@ -139,13 +113,11 @@ let string_of_stylesheet s = Css.Stylesheet.pp ~minify:true ~newline:false s
 
 (* Helper for testing rule construction *)
 let check_construct_rule name expected rule =
-  let actual = Css.Pp.to_string ~minify:true pp_rule rule in
-  Alcotest.check Alcotest.string name expected actual
+  check_construct name (Css.Pp.to_string ~minify:true pp_rule) expected rule
 
 (* Helper for testing complete stylesheet *)
 let check_stylesheet_helper name expected sheet =
-  let actual = string_of_stylesheet sheet in
-  Alcotest.check Alcotest.string name expected actual
+  check_construct name string_of_stylesheet expected sheet
 
 (* Not a roundtrip test *)
 let test_rule_creation () =
@@ -903,29 +875,46 @@ let test_advanced_selectors () =
 
 (* Not a roundtrip test *)
 let test_advanced_properties () =
-  check_stylesheet ".box { transform: rotate(45deg) scale(1.2); }";
-  check_stylesheet ".grid { display: grid; grid-template-columns: 1fr 2fr; }";
-  check_stylesheet ".flex { display: flex; justify-content: space-between; }";
-  check_stylesheet ".shadow { box-shadow: 0 4px 8px rgba(0,0,0,0.2); }";
+  check_stylesheet ~expected:".box{transform:rotate(45deg) scale(1.2)}"
+    ".box { transform: rotate(45deg) scale(1.2); }";
+  check_stylesheet ~expected:".grid{display:grid;grid-template-columns:1fr 2fr}"
+    ".grid { display: grid; grid-template-columns: 1fr 2fr; }";
+  check_stylesheet ~expected:".flex{display:flex;justify-content:space-between}"
+    ".flex { display: flex; justify-content: space-between; }";
+  check_stylesheet ~expected:".shadow{box-shadow:0 4px 8px rgb(0 0 0/.2)}"
+    ".shadow { box-shadow: 0 4px 8px rgba(0,0,0,0.2); }";
   check_stylesheet
+    ~expected:".gradient{background:linear-gradient(to right,red,blue)}"
     ".gradient { background: linear-gradient(to right, red, blue); }"
 
 (* Not a roundtrip test *)
 let test_complex_values () =
-  check_stylesheet ".calc { width: calc(100% - 20px); }";
-  check_stylesheet ".multi { margin: 10px 20px 30px 40px; }";
-  check_stylesheet ".var { color: var(--primary-color, blue); }";
-  check_stylesheet ".clamp { font-size: clamp(1rem, 2vw, 2rem); }";
-  check_stylesheet ".minmax { width: minmax(200px, 1fr); }"
+  check_stylesheet ~expected:".calc{width:calc(100% - 20px)}"
+    ".calc { width: calc(100% - 20px); }";
+  check_stylesheet ~expected:".multi{margin:10px 20px 30px 40px}"
+    ".multi { margin: 10px 20px 30px 40px; }";
+  check_stylesheet ~expected:".var{color:var(--primary-color,blue)}"
+    ".var { color: var(--primary-color, blue); }";
+  check_stylesheet ~expected:".clamp{font-size:clamp(1rem, 2vw, 2rem)}"
+    ".clamp { font-size: clamp(1rem, 2vw, 2rem); }";
+  check_stylesheet ~expected:".minmax{width:minmax(200px, 1fr)}"
+    ".minmax { width: minmax(200px, 1fr); }"
 
 (* Not a roundtrip test *)
 let test_nested_rules () =
   check_stylesheet
+    ~expected:
+      "@media (min-width: 768px){@supports (display: \
+       grid){.grid{display:grid}}}"
     "@media (min-width: 768px) { @supports (display: grid) { .grid { display: \
      grid; } } }";
   check_stylesheet
+    ~expected:"@layer base{@media print{.print-only{display:block}}}"
     "@layer base { @media print { .print-only { display: block; } } }";
   check_stylesheet
+    ~expected:
+      "@container(width > 400px){@media (orientation: \
+       landscape){.landscape{color:green}}}"
     "@container (width > 400px) { @media (orientation: landscape) { .landscape \
      { color: green; } } }"
 

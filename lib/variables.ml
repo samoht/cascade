@@ -149,32 +149,23 @@ let rec read_value : type a. Reader.t -> a syntax -> a =
          a seekable reader *)
       Either.Left (read_value reader syn1)
   | Plus syn ->
-      (* Read space-separated list *)
-      let values = ref [] in
-      let rec read_all () =
-        if not (Reader.is_done reader) then (
-          values := read_value reader syn :: !values;
-          Reader.ws reader;
-          read_all ())
-      in
-      read_all ();
-      List.rev !values
+      (* Read space-separated list - use Reader.many for proper error
+         handling *)
+      let values, _error_opt = Reader.many (fun r -> read_value r syn) reader in
+      if values = [] then
+        Reader.err_invalid reader "expected at least one value for '+' syntax"
+      else values
   | Hash syn ->
-      (* Read comma-separated list *)
-      let values = ref [] in
-      let rec read_all () =
-        if not (Reader.is_done reader) then (
-          values := read_value reader syn :: !values;
-          if Reader.peek reader = Some ',' then (
-            Reader.skip reader;
-            Reader.ws reader;
-            read_all ()))
+      (* Read comma-separated list - use Reader.list for proper parsing *)
+      let values =
+        Reader.list ~sep:Reader.comma ~at_least:1
+          (fun r -> read_value r syn)
+          reader
       in
-      read_all ();
-      List.rev !values
+      values
   | Question syn ->
-      (* Optional value *)
-      if Reader.is_done reader then None else Some (read_value reader syn)
+      (* Optional value - use Reader.option for safe parsing *)
+      Reader.option (fun r -> read_value r syn) reader
 
 (** {1 Meta handling} *)
 

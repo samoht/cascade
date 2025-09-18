@@ -2,6 +2,7 @@
 
 open Alcotest
 open Css.Reader
+open Test_helpers
 
 (* Helper to create parse_error for test expectations *)
 let parse_error_expected ?(got = None) ?(filename = "<string>") message reader =
@@ -45,48 +46,7 @@ let check_looking_at name expected input pattern =
   let result = looking_at r pattern in
   Alcotest.(check bool) name expected result
 
-(* Negative test helper - expects parsing to fail *)
-let neg reader input =
-  let r = of_string input in
-  try
-    let _ = reader r in
-    (* Check if there's unparsed content remaining *)
-    if not (is_done r) then () (* Success - parser didn't consume everything *)
-    else Alcotest.failf "Expected '%s' to fail parsing" input
-  with Parse_error _ -> () (* Expected failure *)
-
-(* Helper to check Parse_error fields match *)
-let check_parse_error_fields name expected actual =
-  if actual.message <> expected.message then
-    Alcotest.failf "%s: expected message '%s' but got '%s'" name
-      expected.message actual.message
-  else if actual.got <> expected.got then
-    Alcotest.failf "%s: expected got=%a but got=%a" name
-      Fmt.(option string)
-      expected.got
-      Fmt.(option string)
-      actual.got
-
-(* Helper to check that a function raises a specific exception *)
-let check_raises name expected_exn f =
-  try
-    f ();
-    Alcotest.failf "%s: expected exception but none was raised" name
-  with
-  | Parse_error actual
-    when match expected_exn with
-         | Parse_error expected ->
-             check_parse_error_fields name expected actual;
-             true
-         | _ -> false ->
-      ()
-  | exn when exn = expected_exn ->
-      (* For other exceptions, use structural equality *)
-      ()
-  | exn ->
-      Alcotest.failf "%s: expected %s but got %s" name
-        (Printexc.to_string expected_exn)
-        (Printexc.to_string exn)
+(* Uses Test_helpers for check_parse_error_fields and check_raises *)
 
 (* Test basic operations *)
 let basic () =

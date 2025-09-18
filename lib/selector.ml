@@ -209,19 +209,23 @@ let err_expected t what = Reader.err_expected t what
 
 (** Parse attribute value (quoted or unquoted) *)
 let read_attribute_value t =
-  (* Try quoted string first, fallback to unquoted identifier *)
+  (* Check if we start with a quote - if so, we MUST parse as quoted string *)
   let value =
-    Reader.option Reader.string t
-    |> Option.value
-         ~default:
-           (Reader.while_ t (fun c ->
-                c <> ']' && c <> ' ' && c <> '\t' && c <> '\n'))
+    match Reader.peek t with
+    | Some ('"' | '\'') ->
+        (* If we see a quote, we must parse a valid quoted string - no
+           fallback *)
+        Reader.string t
+    | _ ->
+        (* Otherwise parse as unquoted identifier *)
+        Reader.while_ t (fun c ->
+            c <> ']' && c <> ' ' && c <> '\t' && c <> '\n')
   in
-  (* CSS spec requires attribute values to be non-empty, but check for end of
-     input first to give better error messages *)
+  (* CSS spec requires attribute values to be non-empty *)
   if value = "" then
-    if Reader.is_done t then Reader.err_expected_but_eof t "']'"
-    else Reader.err_invalid t "attribute value"
+    match Reader.peek t with
+    | None -> Reader.err_expected_but_eof t "']'"
+    | Some _ -> Reader.err_invalid t "attribute value"
   else value
 
 (** Validate CSS identifier with proper reader error context *)
@@ -299,8 +303,9 @@ let read_combinator t =
   | Some '!' ->
       (* Invalid combinator character *)
       Reader.err t "invalid combinator character"
-  | None when Reader.is_done t ->
-      (* Empty input should fail in isolation *)
+  | None ->
+      (* Empty input should fail in isolation - but in context it's
+         descendant *)
       Reader.err t "empty combinator"
   | _ -> Descendant
 
@@ -336,9 +341,7 @@ let read_ns t : ns option =
         let p = Reader.ident ~keep_case:true t in
         (* Avoid treating '|=' as a namespace separator *)
         if Reader.peek_string t 2 = "|=" then Reader.err t "not a namespace";
-        (* Check if we're at end of input - this should fail *)
-        if Reader.is_done t then
-          Reader.err t "expected | after namespace prefix";
+        (* Expect the namespace separator *)
         Reader.expect '|' t;
         Prefix p)
     t

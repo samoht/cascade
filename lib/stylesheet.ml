@@ -649,7 +649,6 @@ and read_block (r : Reader.t) : block =
   let rec read_statements acc =
     Reader.ws r;
     if Reader.peek r = Some '}' then List.rev acc
-    else if Reader.is_done r then List.rev acc
     else
       let stmt = read_statement r in
       read_statements (stmt :: acc)
@@ -805,10 +804,8 @@ and read_rule (r : Reader.t) : rule =
   (* Helper to handle cases where no declaration is parsed *)
   let rec handle_no_declaration decls nested =
     (* Check if we're at the end of file or end of block *)
-    if Reader.is_done r then
-      (* Hit EOF without closing brace - this is an error *)
-      Reader.err r "unexpected end of input, expected '}'"
-    else if Reader.peek r = Some '}' then
+    (* If no declaration was parsed, check why *)
+    if Reader.peek r = Some '}' then
       (* We've reached the end of this rule block *)
       { selector; declarations = List.rev decls; nested = List.rev nested }
     else
