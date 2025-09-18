@@ -2,12 +2,7 @@
 
 open Alcotest
 open Css.Declaration
-
-(* Generic negative test combinator - tests that parsing should fail *)
-let neg reader input =
-  let r = Css.Reader.of_string input in
-  let got = Css.Reader.option reader r in
-  Alcotest.(check bool) ("should reject: " ^ input) true (Option.is_none got)
+open Test_helpers
 
 (* Helper to check Parse_error fields match *)
 let check_parse_error_fields name (expected : Css.Reader.parse_error)
@@ -805,6 +800,10 @@ let list_properties () =
   check_declaration ~expected:"transition:none" "transition: none";
   check_declaration ~expected:"transition:all .3s ease"
     "transition: all 0.3s ease";
+  check_declaration ~expected:"transition:all .3s linear"
+    "transition: all .3s linear";
+  check_declaration ~expected:"transition:opacity 1s ease-in .5s"
+    "transition: opacity 1s ease-in .5s";
   check_declaration ~expected:"transition:opacity .3s,transform .3s"
     "transition: opacity 0.3s, transform 0.3s";
 
@@ -828,7 +827,11 @@ let custom_properties () =
   check_declaration ~expected:"--size:calc(var(--base) * 2)"
     "--size: calc(var(--base) * 2)";
   check_declaration ~expected:"--fallback:var(--undefined, 10px)"
-    "--fallback: var(--undefined, 10px)"
+    "--fallback: var(--undefined, 10px)";
+
+  (* var() with empty fallback - declaration level coverage *)
+  check_declaration ~expected:"color:var(--x,)" "color: var(--x,)";
+  check_declaration ~expected:"background:var(--bg,)" "background: var(--bg,)"
 
 let important () =
   (* Standard properties with !important *)
@@ -855,22 +858,17 @@ let important () =
   (* Multiple spaces should be valid *)
   check_declaration ~expected:"color:blue!important" "color: blue !   important";
   (* Invalid/dangling/duplicate !important should be rejected *)
-  neg read_declaration "color: red !;";
-  neg read_declaration "color: red !notimportant;";
-  neg read_declaration "color: red !important !important;";
-  neg read_declaration "color: red !importent;";
+  none read_declaration "color: red !;";
+  none read_declaration "color: red !notimportant;";
+  none read_declaration "color: red !important !important;";
+  none read_declaration "color: red !importent;";
   check_declaration ~expected:"color:red!important" "color: red! important";
   (* Valid per CSS spec *)
-  neg read_declaration "color: red !IMPORTANT!;"
+  none read_declaration "color: red !IMPORTANT!;"
 
 let invalid () =
-  let neg input =
-    let r = Css.Reader.of_string input in
-    let got = Css.Reader.option Css.Declaration.read_declaration r in
-    Alcotest.(check bool)
-      (Fmt.str "should reject: %s" input)
-      true (Option.is_none got)
-  in
+  (* Use common helper instead of local duplicate *)
+  let neg = none read_declaration in
   (* Invalid property names *)
   neg "not-a-property: value";
   neg "123invalid: value";
@@ -883,7 +881,15 @@ let invalid () =
   (* Type mismatches *)
   neg "opacity: red";
   neg "z-index: blue";
-  neg "font-weight: green"
+  neg "font-weight: green";
+
+  (* CSS-wide keywords mixing - should fail when mixed with other values *)
+  neg "margin: inherit 10px";
+  neg "padding: 10px inherit";
+  neg "color: red inherit";
+  neg "font-size: unset 12px";
+  neg "opacity: revert 0.5";
+  neg "z-index: revert-layer 10"
 
 let edge_cases () =
   (* Empty/whitespace values where valid *)
@@ -896,6 +902,14 @@ let edge_cases () =
     "width: calc((100% - 20px) / 2)";
   check_declaration ~expected:"height:calc(100vh - calc(50px + 1em))"
     "height: calc(100vh - calc(50px + 1em))";
+
+  (* Nested operations mixing + and * to confirm only + and - get spaces *)
+  check_declaration ~expected:"width:calc((10px + 5px)*2)"
+    "width: calc((10px + 5px) * 2)";
+  check_declaration ~expected:"height:calc(100% - 10px*2)"
+    "height: calc(100% - 10px * 2)";
+  check_declaration ~expected:"top:calc(50% - (20px + 10px)*1.5)"
+    "top: calc(50% - (20px + 10px) * 1.5)";
 
   (* Very long values *)
   let long_shadow =
@@ -935,13 +949,8 @@ let number_formats () =
   check_declaration ~expected:"opacity:100" "opacity: 1e2"
 
 let unterminated () =
-  let neg input =
-    let r = Css.Reader.of_string input in
-    let got = Css.Reader.option Css.Declaration.read_declaration r in
-    Alcotest.(check bool)
-      (Fmt.str "should reject: %s" input)
-      true (Option.is_none got)
-  in
+  (* Use common helper for consistency *)
+  let neg = none read_declaration in
   let neg_block input =
     let r = Css.Reader.of_string input in
     let got = Css.Reader.option Css.Declaration.read_block r in
@@ -1020,16 +1029,16 @@ let test_declaration () =
   check_declaration "-webkit-transform:rotate(45deg)";
   check_declaration "-moz-appearance:none";
 
-  (* Test invalid declarations using neg *)
-  neg read_declaration "color red";
+  (* Test invalid declarations using none *)
+  none read_declaration "color red";
   (* Missing colon *)
-  neg read_declaration "color:";
+  none read_declaration "color:";
   (* Missing value *)
-  neg read_declaration ":red";
+  none read_declaration ":red";
   (* Missing property *)
-  neg read_declaration "123invalid:value";
+  none read_declaration "123invalid:value";
   (* Invalid property name *)
-  neg read_declaration "color:not-a-color" (* Invalid value *)
+  none read_declaration "color:not-a-color" (* Invalid value *)
 
 let declaration_tests =
   [
