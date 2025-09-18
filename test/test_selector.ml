@@ -144,7 +144,7 @@ let pseudo_element_cases () =
 
 (* Not a roundtrip test *)
 let attribute_cases () =
-  (* Test attribute selectors *)
+  (* Basic attribute selectors *)
   check_construct "[href]" (attribute "href" Presence);
   check_construct "[type=text]" (attribute "type" (Exact "text"));
   check_construct "[class~=active]"
@@ -152,7 +152,39 @@ let attribute_cases () =
   check_construct "[href^=https]" (attribute "href" (Prefix "https"));
   check_construct "[href$=\".pdf\"]" (attribute "href" (Suffix ".pdf"));
   check_construct "[title*=hello]" (attribute "title" (Substring "hello"));
-  check_construct "[lang|=en]" (attribute "lang" (Hyphen_list "en"))
+  check_construct "[lang|=en]" (attribute "lang" (Hyphen_list "en"));
+
+  (* Additional positive cases *)
+  check_construct "[data-x=\"v\"]" (attribute "data-x" (Exact "v"));
+  check_construct "[title^=\"Pre\"]" (attribute "title" (Prefix "Pre"));
+  check_construct "[name$=\"end\"]" (attribute "name" (Suffix "end"));
+  check_construct "[cls*=\"part\"]" (attribute "cls" (Substring "part"));
+  check_construct "[role~=\"button\"]"
+    (attribute "role" (Whitespace_list "button"));
+  check_construct "[lang|=\"en\"]" (attribute "lang" (Hyphen_list "en"));
+
+  (* Case modifiers *)
+  check_construct "[attr=\"v\" i]"
+    (attribute ~flag:Case_insensitive "attr" (Exact "v"));
+  check_construct "[attr=\"v\" s]"
+    (attribute ~flag:Case_sensitive "attr" (Exact "v"));
+
+  (* Namespaced attributes *)
+  check_construct "[ns|attr]" (attribute ~ns:(Prefix "ns") "attr" Presence);
+  check_construct "[*|attr]" (attribute ~ns:Any "attr" Presence);
+
+  (* Negative cases *)
+  neg read "[";
+  (* Missing closing ] *)
+  neg read "[attr=]";
+  (* Missing value *)
+  neg read "[=value]";
+  (* Empty attribute name *)
+  neg read "[attr&=value]";
+  (* Invalid operator *)
+  neg read "[attr=\"value]";
+  (* Unterminated string *)
+  neg read "[]" (* Empty attribute *)
 
 (* Not a roundtrip test *)
 let combinator_cases () =
