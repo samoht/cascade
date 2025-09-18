@@ -158,10 +158,11 @@ end
 
 (** {1 Parsing Functions} *)
 
-val read_length : ?allow_negative:bool -> Reader.t -> length
+val read_length :
+  ?allow_negative:bool -> ?with_keywords:bool -> Reader.t -> length
 (** [read_length t] parses a CSS length. *)
 
-val read_non_negative_length : Reader.t -> length
+val read_non_negative_length : ?with_keywords:bool -> Reader.t -> length
 (** [read_non_negative_length reader] parses a length value that must be
     non-negative. Used for padding properties which cannot have negative values
     per CSS specification. *)

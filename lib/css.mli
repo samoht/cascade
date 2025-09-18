@@ -2275,6 +2275,9 @@ type shadow =
   | Revert
   | Revert_layer
   | Var of shadow var
+  | Var_list of box_shadow var
+
+and box_shadow = shadow list
 
 val shadow :
   ?inset:bool ->

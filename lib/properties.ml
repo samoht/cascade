@@ -761,6 +761,9 @@ let rec read_shadow t : shadow =
     ~calls:[ ("var", read_var) ]
     ~default:Shadow.read t
 
+let read_box_shadow t : box_shadow =
+  Reader.list ~sep:Reader.comma ~at_least:1 read_shadow t
+
 module Transform = struct
   let read_translate_x t =
     Reader.call "translatex" t (fun t -> Translate_x (read_length t))
@@ -964,6 +967,10 @@ let rec pp_shadow : shadow Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_shadow ctx v
+  | Var_list v -> pp_var pp_box_shadow ctx v
+
+and pp_box_shadow : box_shadow Pp.t =
+ fun ctx shadows -> Pp.list ~sep:Pp.comma pp_shadow ctx shadows
 
 let pp_gradient_direction : gradient_direction Pp.t =
  fun ctx -> function
@@ -3160,7 +3167,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Aspect_ratio -> pp pp_aspect_ratio
   | Content -> pp pp_content
   | Quotes -> pp Pp.string
-  | Box_shadow -> pp (Pp.list ~sep:Pp.comma pp_shadow)
+  | Box_shadow -> pp pp_box_shadow
   | Fill -> pp pp_svg_paint
   | Stroke -> pp pp_svg_paint
   | Stroke_width -> pp pp_length
