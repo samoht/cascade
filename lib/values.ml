@@ -1662,8 +1662,37 @@ let var_name v = v.name
 let var_layer v = v.layer
 let var_meta v = v.meta
 
+(* CSS-wide keyword validation helpers *)
+let css_wide_keywords =
+  [ "inherit"; "initial"; "unset"; "revert"; "revert-layer" ]
+
+let is_css_wide_keyword token =
+  List.mem (String.lowercase_ascii token) css_wide_keywords
+
+let validate_no_mixed_css_keywords t =
+  (* Read the entire value using css_value *)
+  let value_str = Reader.css_value ~stops:[ ';'; '}' ] t in
+
+  (* Split on whitespace to get tokens *)
+  let tokens =
+    String.split_on_char ' ' value_str
+    |> List.map String.trim
+    |> List.filter (fun s -> s <> "")
+  in
+
+  let has_css_keyword = List.exists is_css_wide_keyword tokens in
+  let has_non_keyword =
+    List.exists (fun token -> not (is_css_wide_keyword token)) tokens
+  in
+
+  if has_css_keyword && has_non_keyword && List.length tokens > 1 then
+    Reader.err_invalid t "CSS-wide keywords cannot be mixed with other values"
+
 (** Read padding shorthand property (1-4 values) *)
 let read_padding_shorthand t : length list =
+  (* First validate that CSS-wide keywords aren't mixed with other values *)
+  validate_no_mixed_css_keywords t;
+
   (* CSS padding accepts 1-4 space-separated non-negative values *)
   let rec read_values acc count =
     if count >= 4 then List.rev acc
@@ -1680,6 +1709,9 @@ let read_padding_shorthand t : length list =
     https://www.w3.org/TR/CSS21/box.html#margin-properties CSS margin accepts
     1-4 space-separated values *)
 let read_margin_shorthand t : length list =
+  (* First validate that CSS-wide keywords aren't mixed with other values *)
+  validate_no_mixed_css_keywords t;
+
   (* CSS margin accepts 1-4 space-separated values *)
   let rec read_values acc count =
     if count >= 4 then List.rev acc

@@ -187,15 +187,28 @@ let string_of_value ?(minify = true) ?(inline = false) decl =
 (* Helper to read a trimmed string *)
 let read_string t = Reader.string ~trim:true t
 
+(* Helper to validate no extra tokens remain *)
+let validate_no_extra_tokens t =
+  Reader.ws t;
+  match Reader.peek t with
+  | Some '!' | Some ';' | Some '}' | None -> ()
+  | Some _ ->
+      let remaining = Reader.css_value ~stops:[ ';'; '}'; '!' ] t in
+      let trimmed = String.trim remaining in
+      if trimmed <> "" then
+        Reader.err_invalid t
+          ("unexpected tokens after property value: " ^ trimmed)
+
 (* Custom parser for grid-template-areas: reads multiple quoted strings *)
 let read_grid_template_areas t =
   let rec read_strings acc =
     Reader.ws t;
-    if Reader.is_done t then String.concat " " (List.rev acc)
-    else
-      let s = Reader.string t in
-      let quoted_s = "\"" ^ s ^ "\"" in
-      read_strings (quoted_s :: acc)
+    match Reader.peek t with
+    | Some (';' | '}' | '!') | None -> String.concat " " (List.rev acc)
+    | _ ->
+        let s = Reader.string t in
+        let quoted_s = "\"" ^ s ^ "\"" in
+        read_strings (quoted_s :: acc)
   in
   read_strings []
 
@@ -204,14 +217,15 @@ let read_grid_template_areas t =
 let read_grid_template_list t =
   let first_value = read_grid_template t in
   Reader.ws t;
-  if Reader.is_done t then
+  (* Try to read more values - if none, it's a single value *)
+  let remaining_values =
+    Reader.list ~sep:(fun t -> Reader.ws t) ~at_least:0 read_grid_template t
+  in
+  if remaining_values = [] then
     (* Single value (e.g., "none", "repeat(3, 1fr)", "1fr") *)
     first_value
   else
     (* Multiple values (e.g., "100px 200px", "1fr 2fr") *)
-    let remaining_values =
-      Reader.list ~sep:(fun t -> Reader.ws t) ~at_least:0 read_grid_template t
-    in
     let all_values = first_value :: remaining_values in
     Tracks all_values
 
@@ -389,7 +403,7 @@ let read_value (type a) (prop : a property) t : declaration =
   (* Content *)
   | Content -> v Content (read_content t)
   (* Other properties *)
-  | Z_index -> v Z_index (read_z_index t)
+  | Z_index -> v Z_index (Properties.read_z_index t)
   | Opacity ->
       let n = Reader.number t in
       v Opacity n
@@ -617,7 +631,8 @@ let read_value (type a) (prop : a property) t : declaration =
 let read_declaration t : declaration option =
   Reader.ws t;
   match Reader.peek t with
-  | Some '}' | None -> None
+  | Some '}' -> None (* End of block - no more declarations *)
+  | None -> None (* EOF is acceptable at top-level parsing *)
   | _ -> (
       Reader.with_context t "read_declaration" @@ fun () ->
       try
@@ -638,8 +653,9 @@ let read_declaration t : declaration option =
           Reader.ws t;
 
           let decl = read_value prop_type t in
+          validate_no_extra_tokens t;
           let is_important = read_importance t in
-          Reader.ws t;
+          validate_no_extra_tokens t;
           (match Reader.peek t with
           | Some '!' -> Reader.err_invalid t "duplicate !important"
           | _ -> ());
