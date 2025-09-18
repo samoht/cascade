@@ -186,6 +186,12 @@ val slash_opt : t -> bool
 
 (** {1 High-Level Combinators} *)
 
+val with_progress : (t -> 'a) -> t -> 'a
+(** [with_progress parser t] runs [parser] and ensures it consumes at least one
+    character. Raises [Parse_error] if the parser succeeds without making
+    progress, which would cause infinite loops in combinators like [many] or
+    [list]. *)
+
 val take : int -> (t -> 'a) -> t -> 'a list
 (** [take n parser t] parses up to [n] items. Requires at least 1. *)
 

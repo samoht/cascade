@@ -4500,14 +4500,13 @@ let rec read_scale t : scale =
   let read_numbers t : scale =
     let x = Reader.number t in
     Reader.ws t;
-    if Reader.is_done t then X x
-    else
-      let y = Reader.number t in
-      Reader.ws t;
-      if Reader.is_done t then XY (x, y)
-      else
-        let z = Reader.number t in
-        XYZ (x, y, z)
+    match Reader.option Reader.number t with
+    | None -> X x
+    | Some y -> (
+        Reader.ws t;
+        match Reader.option Reader.number t with
+        | None -> XY (x, y)
+        | Some z -> XYZ (x, y, z))
   in
   Reader.enum_or_calls "scale"
     [ ("none", (None : scale)) ]
@@ -5024,8 +5023,7 @@ let read_gradient_stop t : gradient_stop =
   let color = read_color t in
   Reader.ws t;
   (* Check if there's a position (percentage or length) after the color *)
-  if Reader.is_done t || Reader.peek t = Some ',' || Reader.peek t = Some ')'
-  then Color_stop color
+  if Reader.peek t = Some ',' || Reader.peek t = Some ')' then Color_stop color
   else
     match Reader.option read_length t with
     | Some position -> Color_position (color, position)

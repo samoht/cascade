@@ -1,82 +1,19 @@
 (** Tests for CSS Selector module *)
 
 open Css.Selector
+open Test_helpers
 
-(* Helper for negative tests *)
-let neg reader input =
-  let r = Css.Reader.of_string input in
-  try
-    let _ = reader r in
-    (* If parsing succeeded, check if all input was consumed *)
-    if Css.Reader.is_done r then
-      Alcotest.failf "Expected '%s' to fail parsing" input
-    else ()
-    (* Success - parser didn't consume everything, so it's effectively a
-       failure *)
-  with Css.Reader.Parse_error _ -> () (* Expected failure *)
-
-(* Generic check function for selector types *)
-let check_value name pp reader ?expected input =
-  let expected = Option.value ~default:input expected in
-  let t = Css.Reader.of_string input in
-  let result = reader t in
-  let pp_str = Css.Pp.to_string ~minify:true pp result in
-  Alcotest.(check string) (Fmt.str "%s %s" name input) expected pp_str
-
-let check_nth = check_value "nth" pp_nth read_nth
-let check_combinator = check_value "combinator" pp_combinator read_combinator
-let check = check_value "selector" pp read
-
-let check_ns input =
-  let t = Css.Reader.of_string input in
-  match read_ns t with
-  | Some ns ->
-      let output = Css.Pp.to_string ~minify:true pp_ns ns in
-      Alcotest.(check string) (Fmt.str "ns %s" input) input output
-  | None -> Fmt.failwith "Failed to parse ns: %s" input
-
-(* Helper to check Parse_error fields match *)
-let check_parse_error_fields name (expected : Css.Reader.parse_error)
-    (actual : Css.Reader.parse_error) =
-  if actual.message <> expected.message then
-    Alcotest.failf "%s: expected message '%s' but got '%s'" name
-      expected.message actual.message
-  else if actual.got <> expected.got then
-    Alcotest.failf "%s: expected got=%a but got=%a" name
-      Fmt.(option string)
-      expected.got
-      Fmt.(option string)
-      actual.got
-
-(* Helper to check that a function raises a specific exception *)
-let check_raises name expected_exn f =
-  try
-    f ();
-    Alcotest.failf "%s: expected exception but none was raised" name
-  with
-  | Css.Reader.Parse_error actual
-    when match expected_exn with
-         | Css.Reader.Parse_error expected ->
-             check_parse_error_fields name expected actual;
-             true
-         | _ -> false ->
-      ()
-  | exn when exn = expected_exn ->
-      (* For other exceptions, use structural equality *)
-      ()
-  | exn ->
-      Alcotest.failf "%s: expected %s but got %s" name
-        (Printexc.to_string expected_exn)
-        (Printexc.to_string exn)
+let check_nth = check_value "nth" read_nth pp_nth
+let check_combinator = check_value "combinator" read_combinator pp_combinator
+let check = check_value "selector" read pp
+let check_ns = check_value "ns" read_ns (Css.Pp.option pp_ns)
 
 (* Helper for checking invalid selectors *)
 let check_invalid name exn_msg f =
   check_raises name (Invalid_argument exn_msg) f
 
-(* Helper for testing selector construction *)
 let check_construct expected selector =
-  let actual = to_string ~minify:true selector in
-  Alcotest.(check string) expected expected actual
+  check_construct expected (to_string ~minify:true) expected selector
 
 (* Helper to check that a function returning an option returns None *)
 let none : type a. (Css.Reader.t -> a option) -> string -> unit =
@@ -130,7 +67,41 @@ let pseudo_class_cases () =
   check ":nth-of-type(3)";
   check ~expected:":nth-last-child(2 of .x,.y)" ":nth-last-child(2 of .x , .y)";
   check ~expected:":nth-last-of-type(2n+2 of h1,.a)"
-    ":nth-last-of-type(2n+2 of h1 , .a)"
+    ":nth-last-of-type(2n+2 of h1 , .a)";
+
+  (* Additional link-related pseudo-classes *)
+  check ":link";
+  check ":visited";
+
+  (* Form-related pseudo-classes *)
+  check ":enabled";
+  check ":disabled";
+  check ":checked";
+  check ":required";
+  check ":optional";
+  check ":valid";
+  check ":invalid";
+  check ":in-range";
+  check ":out-of-range";
+  check ":read-only";
+  check ":read-write";
+
+  (* Structural pseudo-classes *)
+  check ":first-of-type";
+  check ":last-of-type";
+  check ":only-child";
+  check ":only-of-type";
+  check ":empty";
+
+  (* Target and state pseudo-classes *)
+  check ":target";
+  check ":focus-visible";
+  check ":focus-within";
+
+  (* Language and direction pseudo-classes *)
+  check ":lang(en)";
+  check ":dir(ltr)";
+  check ":dir(rtl)"
 
 (* Not a roundtrip test *)
 let pseudo_element_cases () =
@@ -140,7 +111,30 @@ let pseudo_element_cases () =
   check_construct ":first-line" First_line;
   check_construct ":first-letter" First_letter;
   check_construct "::marker" Marker;
-  ()
+
+  (* Double-colon syntax (preferred in CSS3+) *)
+  check "::before";
+  check "::after";
+  check "::first-line";
+  check "::first-letter";
+
+  (* Additional modern pseudo-elements *)
+  check "::placeholder";
+  check "::selection";
+  check "::backdrop";
+  check "::file-selector-button";
+
+  (* Functional pseudo-elements *)
+  check "::part(tab)";
+  check "::slotted(p)";
+  check "::slotted(.highlight)";
+
+  (* Shadow DOM pseudo-elements (vendor-prefixed) *)
+  check "::-webkit-input-placeholder";
+  check "::-moz-placeholder";
+  check "::-webkit-search-cancel-button";
+  check "::-webkit-scrollbar";
+  check "::-webkit-scrollbar-thumb"
 
 (* Not a roundtrip test *)
 let attribute_cases () =
@@ -155,18 +149,17 @@ let attribute_cases () =
   check_construct "[lang|=en]" (attribute "lang" (Hyphen_list "en"));
 
   (* Additional positive cases *)
-  check_construct "[data-x=\"v\"]" (attribute "data-x" (Exact "v"));
-  check_construct "[title^=\"Pre\"]" (attribute "title" (Prefix "Pre"));
-  check_construct "[name$=\"end\"]" (attribute "name" (Suffix "end"));
-  check_construct "[cls*=\"part\"]" (attribute "cls" (Substring "part"));
-  check_construct "[role~=\"button\"]"
-    (attribute "role" (Whitespace_list "button"));
-  check_construct "[lang|=\"en\"]" (attribute "lang" (Hyphen_list "en"));
+  check_construct "[data-x=v]" (attribute "data-x" (Exact "v"));
+  check_construct "[title^=Pre]" (attribute "title" (Prefix "Pre"));
+  check_construct "[name$=end]" (attribute "name" (Suffix "end"));
+  check_construct "[cls*=part]" (attribute "cls" (Substring "part"));
+  check_construct "[role~=button]" (attribute "role" (Whitespace_list "button"));
+  check_construct "[lang|=en]" (attribute "lang" (Hyphen_list "en"));
 
   (* Case modifiers *)
-  check_construct "[attr=\"v\" i]"
+  check_construct "[attr=v i]"
     (attribute ~flag:Case_insensitive "attr" (Exact "v"));
-  check_construct "[attr=\"v\" s]"
+  check_construct "[attr=v s]"
     (attribute ~flag:Case_sensitive "attr" (Exact "v"));
 
   (* Namespaced attributes *)
@@ -213,7 +206,61 @@ let list_cases () =
   check_construct ".a,.b,.c" (list [ class_ "a"; class_ "b"; class_ "c" ]);
   check_construct "h1,h2,h3" (list [ element "h1"; element "h2"; element "h3" ]);
   check_construct "div,.class,#id"
-    (list [ element "div"; class_ "class"; id "id" ])
+    (list [ element "div"; class_ "class"; id "id" ]);
+
+  (* Complex grouped selectors *)
+  check ~expected:".parent>.child,.other-parent .descendant"
+    ".parent > .child, .other-parent .descendant";
+  check ~expected:"h1:hover,h2:focus,h3:active" "h1:hover, h2:focus, h3:active";
+  check ~expected:"[data-attr],[aria-label],[role=button]"
+    "[data-attr], [aria-label], [role=button]";
+  check ~expected:"::before,::after,::first-letter"
+    "::before, ::after, ::first-letter";
+
+  (* Mixed complexity grouped selectors *)
+  check ~expected:"div.container>p:first-child,section#main .highlight"
+    "div.container > p:first-child, section#main .highlight";
+  check ~expected:"input[type=text]:focus,textarea:focus,select:focus"
+    "input[type=text]:focus, textarea:focus, select:focus";
+  check ~expected:".nav li:hover,.nav li.active,.nav li:focus-within"
+    ".nav li:hover, .nav li.active, .nav li:focus-within";
+
+  (* Whitespace variations in grouped selectors *)
+  check ~expected:"a,b,c" "a, b, c";
+  check ~expected:"a,b,c" "a , b , c";
+  check ~expected:".class1,.class2" ".class1,.class2";
+  check ~expected:".class1,.class2" ".class1 , .class2";
+
+  (* Many grouped selectors *)
+  check ~expected:"p,div,span,section,article,aside,nav,header,footer,main"
+    "p, div, span, section, article, aside, nav, header, footer, main";
+
+  (* Grouped selectors with pseudo-elements and classes *)
+  check ~expected:"button:hover,a:hover,input[type=submit]:hover"
+    "button:hover, a:hover, input[type=submit]:hover";
+  check ~expected:"h1::before,h2::before,h3::before,h4::before"
+    "h1::before, h2::before, h3::before, h4::before";
+
+  (* Deeply nested grouped selectors *)
+  check ~expected:".level1 .level2 .level3,#id1>#id2>#id3"
+    ".level1 .level2 .level3, #id1 > #id2 > #id3";
+  check ~expected:".sidebar .widget .title,.main .article .header"
+    ".sidebar .widget .title, .main .article .header";
+
+  (* Edge cases *)
+  (* Note: Trailing/leading commas are invalid CSS and should fail parsing *)
+  check ".a,.b,.c,.d,.e,.f,.g,.h,.i,.j";
+
+  (* Many items *)
+
+  (* Negative tests for malformed lists - should fail parsing *)
+  neg read ".a,";
+  (* Trailing comma is invalid *)
+  neg read ",.b";
+  (* Leading comma is invalid *)
+  neg read ".a,,b";
+  (* Double comma is invalid *)
+  ()
 
 (* Not a roundtrip test *)
 let where_is_cases () =
@@ -221,7 +268,8 @@ let where_is_cases () =
   check_construct ":where(div)" (where [ element "div" ]);
   check_construct ":where(.a,.b)" (where [ class_ "a"; class_ "b" ]);
   check_construct ":is(h1,h2)" (is_ [ element "h1"; element "h2" ]);
-  check_construct ":not(.active)" (not [ class_ "active" ])
+  check_construct ":not(.active)" (not [ class_ "active" ]);
+  ()
 
 (* Test parsing roundtrips *)
 let roundtrip () =
@@ -470,7 +518,7 @@ let component_parsing () =
 let test_attribute_match () =
   (* Test attribute matching types - these parse just the operator part *)
   let check_attribute_match =
-    check_value "attribute_match" pp_attribute_match read_attribute_match
+    check_value "attribute_match" read_attribute_match pp_attribute_match
   in
 
   (* Presence match - empty string yields Presence *)
@@ -499,7 +547,7 @@ let test_attribute_match () =
 
 let test_attr_flag () =
   (* Test attribute selector flags - returns option type *)
-  let check_attr_flag = check_value "attr_flag" pp_attr_flag read_attr_flag in
+  let check_attr_flag = check_value "attr_flag" read_attr_flag pp_attr_flag in
 
   (* Case insensitive flag *)
   check_attr_flag ~expected:" i" "i";
@@ -549,7 +597,44 @@ let test_ns () =
   (* Test cases that should return None (no namespace found) *)
   none read_ns "notanamespace";
   none read_ns "incomplete";
-  none read_ns ""
+  none read_ns "";
+
+  (* Test namespaced element selectors *)
+  check "svg|rect";
+  check "svg|*";
+  check "*|div";
+  check "*|*";
+  check "math|mrow";
+  check "xhtml|p";
+
+  (* Namespaced selectors with other combinators *)
+  check "svg|g svg|rect";
+  check ~expected:"svg|g>svg|path" "svg|g > svg|path";
+  check ~expected:"html|div+svg|svg" "html|div + svg|svg";
+  check ~expected:"xml|root~xml|child" "xml|root ~ xml|child";
+
+  (* Namespaced selectors with pseudo-classes *)
+  check "svg|rect:hover";
+  check "xml|element:first-child";
+  check "*|*:not(svg|*)";
+
+  (* Namespaced attributes in regular selectors *)
+  check "div[xml|lang]";
+  check "span[xlink|href]";
+  check ~expected:"rect[svg|width=\"100\"]" "rect[svg|width=100]";
+
+  (* Complex namespaced selectors *)
+  check ~expected:"svg|g.highlight>svg|rect[fill=red]"
+    "svg|g.highlight > svg|rect[fill=red]";
+  check "*|div#main[*|attr]";
+
+  (* Edge cases with namespace *)
+  (* Note: Explicit no-namespace syntax (|element) may not be supported *)
+  (* check "|div"; *)
+  (* No namespace (explicitly) *)
+  (* check "|*"; *)
+  (* No namespace universal selector *)
+  ()
 
 let test_nth () =
   (* Test nth type *)
@@ -563,7 +648,8 @@ let test_nth () =
   neg read_nth "invalid";
   neg read_nth "";
   neg read_nth "2 n";
-  neg read_nth "n+"
+  neg read_nth "n+";
+  ()
 
 let test_selector () =
   (* Test main selector type *)
@@ -591,7 +677,9 @@ let test_selector () =
   (* Incomplete pseudo *)
   neg read "::";
   (* Incomplete pseudo-element *)
-  neg read "...invalid" (* Multiple dots *)
+  neg read "...invalid";
+  (* Multiple dots *)
+  ()
 
 (* Test negative cases for unused functions *)
 let component_parsing_failures () =

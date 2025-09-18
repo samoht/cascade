@@ -515,10 +515,16 @@ let rec skip_ws t =
   (* Skip comments *)
   if looking_at t "/*" then (
     skip_n t 2;
-    while (not (looking_at t "*/")) && not (is_done t) do
-      skip t
-    done;
-    if not (is_done t) then skip_n t 2;
+    let rec skip_until_close () =
+      if looking_at t "*/" then skip_n t 2
+      else
+        match peek t with
+        | None -> err_expected_but_eof t "*/ to close comment"
+        | Some _ ->
+            skip t;
+            skip_until_close ()
+    in
+    skip_until_close ();
     skip_ws t)
 
 let ws = skip_ws
@@ -575,18 +581,40 @@ let try_parse_err f t =
     restore t;
     Error error.message
 
+(** Ensure a parser makes progress (consumes at least one character) *)
+let with_progress f t =
+  let pos_before = t.pos in
+  let result = f t in
+  if t.pos = pos_before then
+    err t "parser made no progress (potential infinite loop)"
+  else result
+
 let many f t =
-  let rec loop acc last_error =
+  let rec loop acc =
     ws t;
-    if is_done t then (List.rev acc, last_error)
-    else
-      match try_parse_err f t with
-      | Ok item -> loop (item :: acc) None
-      | Error msg ->
-          (* If we haven't parsed anything yet, this is a fatal error *)
-          if acc = [] then ([], Some msg) else (List.rev acc, Some msg)
+    (* Try to parse another item *)
+    let pos_before = t.pos in
+    match try_parse_err f t with
+    | Ok item ->
+        if t.pos = pos_before then
+          (* Parser succeeded but made no progress - abort to prevent infinite
+             loop *)
+          if acc = [] then ([], Some "parser made no progress")
+          else (List.rev acc, Some "parser made no progress")
+        else loop (item :: acc)
+    | Error msg ->
+        (* If we haven't parsed anything yet, this might be a fatal error *)
+        (* But if we've already parsed some items, it's just the end of the sequence *)
+        if acc = [] then
+          (* No items parsed - check if it's just empty input *)
+          if is_done t then ([], None) else ([], Some msg)
+        else if
+          (* We parsed some items - only report error if not at end *)
+          is_done t
+        then (List.rev acc, None)
+        else (List.rev acc, Some msg)
   in
-  loop [] None
+  loop []
 
 let one_of parsers t =
   let rec try_parsers parsers_list errors got_value =
@@ -614,7 +642,10 @@ let one_of parsers t =
   in
   try_parsers parsers [] None
 
-let should_stop_reading t = is_done t || looking_at t "!" || looking_at t ";"
+let should_stop_reading t =
+  match peek t with
+  | None -> true (* End of input *)
+  | Some _ -> looking_at t "!" || looking_at t ";"
 
 let try_read_item parser items t =
   save t;
@@ -777,11 +808,17 @@ let triple ?(sep = fun (_ : t) -> ()) p1 p2 p3 t =
 
 let list_impl ?(sep = fun (_ : t) -> ()) ?(at_least = 0) ?at_most item t =
   let rec loop acc =
+    let pos_before = t.pos in
     match option item t with
     | None -> List.rev acc
-    | Some item ->
-        let acc = item :: acc in
-        if option sep t = Some () then loop acc else List.rev acc
+    | Some parsed_item ->
+        if t.pos = pos_before then
+          (* Parser succeeded but made no progress - abort to prevent infinite
+             loop *)
+          err t "parser made no progress in list"
+        else
+          let acc = parsed_item :: acc in
+          if option sep t = Some () then loop acc else List.rev acc
   in
   let items = loop [] in
   if List.length items < at_least then
@@ -857,20 +894,31 @@ let enum_or_calls_impl ?default label idents ~calls t =
 
 let fold_many parser ~init ~f t =
   with_context t "fold_many" @@ fun () ->
-  let rec loop acc consumed last_error =
+  let rec loop acc consumed =
     ws t;
-    if is_done t then (acc, last_error)
-    else
-      match try_parse_err parser t with
-      | Ok item -> loop (f acc item) true None
-      | Error msg ->
-          if consumed then (acc, Some msg)
-          else
-            (* No items parsed at all - this is an error that should propagate *)
-            (* Simplify the error message - just say it's invalid *)
-            err_invalid t "value"
+    let pos_before = t.pos in
+    match try_parse_err parser t with
+    | Ok item ->
+        if t.pos = pos_before then
+          (* Parser succeeded but made no progress - abort to prevent infinite
+             loop *)
+          if consumed then (acc, Some "parser made no progress")
+          else err_invalid t "parser made no progress (potential infinite loop)"
+        else loop (f acc item) true
+    | Error msg ->
+        if consumed then
+          (* End of sequence, return what we have - only report error if not at
+             end *)
+          if is_done t then (acc, None) else (acc, Some msg)
+        else if
+          (* No items parsed at all - check if just empty input *)
+          is_done t
+        then (init, None)
+        else
+          (* Real error that should propagate *)
+          err_invalid t "value"
   in
-  loop init false None
+  loop init false
 
 let number_with_unit t =
   ws t;

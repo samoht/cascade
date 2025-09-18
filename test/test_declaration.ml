@@ -4,50 +4,9 @@ open Alcotest
 open Css.Declaration
 open Test_helpers
 
-(* Helper to check Parse_error fields match *)
-let check_parse_error_fields name (expected : Css.Reader.parse_error)
-    (actual : Css.Reader.parse_error) =
-  if actual.message <> expected.message then
-    Alcotest.failf "%s: expected message '%s' but got '%s'" name
-      expected.message actual.message
-  else if actual.got <> expected.got then
-    Alcotest.failf "%s: expected got=%a but got=%a" name
-      Fmt.(option string)
-      expected.got
-      Fmt.(option string)
-      actual.got
-
-(* Helper to check that a function raises a specific exception *)
-let check_raises name expected_exn f =
-  try
-    f ();
-    Alcotest.failf "%s: expected exception but none was raised" name
-  with
-  | Css.Reader.Parse_error actual
-    when match expected_exn with
-         | Css.Reader.Parse_error expected ->
-             check_parse_error_fields name expected actual;
-             true
-         | _ -> false ->
-      ()
-  | exn when exn = expected_exn ->
-      (* For other exceptions, use structural equality *)
-      ()
-  | exn ->
-      Alcotest.failf "%s: expected %s but got %s" name
-        (Printexc.to_string expected_exn)
-        (Printexc.to_string exn)
-
-(* One-liner check functions for each type *)
-let check_declaration ?expected input =
-  let expected = Option.value ~default:input expected in
-  let t = Css.Reader.of_string input in
-  let result_opt = read_declaration t in
-  match result_opt with
-  | Some result ->
-      let pp_str = Css.Pp.to_string ~minify:true pp_declaration result in
-      check string (Fmt.str "declaration %s" input) expected pp_str
-  | None -> Alcotest.failf "Failed to parse declaration: %s" input
+(* One-liyesner check functions for each type *)
+let check_declaration =
+  check_value "declaration" read_declaration (Css.Pp.option pp_declaration)
 
 let check_declarations input expected_count =
   let r = Css.Reader.of_string input in
@@ -867,14 +826,13 @@ let important () =
   none read_declaration "color: red !IMPORTANT!;"
 
 let invalid () =
-  (* Use common helper instead of local duplicate *)
   let neg = none read_declaration in
   (* Invalid property names *)
   neg "not-a-property: value";
   neg "123invalid: value";
   neg ": value";
   (* Invalid values for known properties *)
-  neg "color: not-a-color";
+  none read_declaration "color: not-a-color";
   neg "display: not-a-display";
   neg "position: nowhere";
   neg "width: invalid";
@@ -951,13 +909,6 @@ let number_formats () =
 let unterminated () =
   (* Use common helper for consistency *)
   let neg = none read_declaration in
-  let neg_block input =
-    let r = Css.Reader.of_string input in
-    let got = Css.Reader.option Css.Declaration.read_block r in
-    Alcotest.(check bool)
-      (Fmt.str "should reject: %s" input)
-      true (Option.is_none got)
-  in
   (* Unterminated string *)
   neg "content: \"abc";
   (* Unterminated calc *)
@@ -965,7 +916,7 @@ let unterminated () =
   (* Unterminated rgb() *)
   neg "color: rgb(0, 0, 0;";
   (* Missing semicolon between decls in block *)
-  neg_block "{ color:red margin:10px; }"
+  Test_helpers.neg Css.Declaration.read_block "{ color:red margin:10px; }"
 
 let custom_property_values () =
   (* Balanced braces in custom property values *)
@@ -1038,7 +989,12 @@ let test_declaration () =
   (* Missing property *)
   none read_declaration "123invalid:value";
   (* Invalid property name *)
-  none read_declaration "color:not-a-color" (* Invalid value *)
+  none read_declaration "color:not-a-color";
+
+  (* Invalid value *)
+
+  (* Duplicate !important should fail *)
+  neg read_declaration "color: red blue !important !important"
 
 let declaration_tests =
   [

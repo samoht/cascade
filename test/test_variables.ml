@@ -3,29 +3,11 @@
 open Css.Variables
 open Css.Declaration
 open Css.Values
+open Test_helpers
 (* open Alcotest - Used via qualified access *)
 
-(* Generic check function for variable types *)
-let check_value type_name pp reader ?expected input =
-  let expected = Option.value ~default:input expected in
-  let t = Css.Reader.of_string input in
-  let result = reader t in
-  let pp_str = Css.Pp.to_string ~minify:true pp result in
-  Alcotest.(check string) (Fmt.str "%s %s" type_name input) expected pp_str
-
-let check_any_var = check_value "any_var" pp_any_var read_any_var
-let check_any_syntax = check_value "any_syntax" pp_any_syntax read_any_syntax
-
-(* Helper for negative tests - shadows Alcotest.neg *)
-let neg reader input =
-  let r = Css.Reader.of_string input in
-  try
-    let _ = reader r in
-    (* Check if there's unparsed content remaining *)
-    if not (Css.Reader.is_done r) then ()
-      (* Success - parser didn't consume everything *)
-    else Alcotest.failf "Expected '%s' to fail parsing" input
-  with Css.Reader.Parse_error _ -> ()
+let check_any_var = check_value "any_var" read_any_var pp_any_var
+let check_any_syntax = check_value "any_syntax" read_any_syntax pp_any_syntax
 
 (* Not a roundtrip test *)
 let test_var_creation () =
