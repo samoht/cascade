@@ -854,13 +854,14 @@ let read_balanced_function_content t =
   read_balanced 0;
   Buffer.contents buf
 
-let rec read_length ?(allow_negative = true) t : length =
+let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
+    =
   Reader.ws t;
   let read_var_length t : length =
-    Var (read_var (read_length ~allow_negative) t)
+    Var (read_var (read_length ~allow_negative ~with_keywords) t)
   in
   let read_calc_length t : length =
-    Calc (read_calc (read_length ~allow_negative) t)
+    Calc (read_calc (read_length ~allow_negative ~with_keywords) t)
   in
   let read_function_length t : length =
     (* Parse a generic function name followed by '(' ... ')' *)
@@ -873,21 +874,23 @@ let rec read_length ?(allow_negative = true) t : length =
     | "clamp" | "minmax" | "min" | "max" -> Function (name ^ "(" ^ content ^ ")")
     | _ -> Reader.err t "unknown function"
   in
-  let length =
-    Reader.one_of
-      [
-        read_var_length;
-        read_calc_length;
-        read_function_length;
-        read_length_unit ~allow_negative;
-        read_length_keyword;
-      ]
-      t
+  let parsers =
+    [
+      read_var_length;
+      read_calc_length;
+      read_function_length;
+      read_length_unit ~allow_negative;
+    ]
   in
+  let parsers =
+    if with_keywords then read_length_keyword :: parsers else parsers
+  in
+  let length = Reader.one_of parsers t in
   length
 
 (** Read a non-negative length value (for padding properties) *)
-let read_non_negative_length t : length = read_length ~allow_negative:false t
+let read_non_negative_length ?(with_keywords = true) t : length =
+  read_length ~allow_negative:false ~with_keywords t
 
 (** Read a percentage value as float (number followed by %) Used for color
     components where 0-100% clamping is required *)
@@ -1662,64 +1665,41 @@ let var_name v = v.name
 let var_layer v = v.layer
 let var_meta v = v.meta
 
-(* CSS-wide keyword validation helpers *)
-let css_wide_keywords =
-  [ "inherit"; "initial"; "unset"; "revert"; "revert-layer" ]
-
-let is_css_wide_keyword token =
-  List.mem (String.lowercase_ascii token) css_wide_keywords
-
-let validate_no_mixed_css_keywords t =
-  (* Read the entire value using css_value *)
-  let value_str = Reader.css_value ~stops:[ ';'; '}' ] t in
-
-  (* Split on whitespace to get tokens *)
-  let tokens =
-    String.split_on_char ' ' value_str
-    |> List.map String.trim
-    |> List.filter (fun s -> s <> "")
-  in
-
-  let has_css_keyword = List.exists is_css_wide_keyword tokens in
-  let has_non_keyword =
-    List.exists (fun token -> not (is_css_wide_keyword token)) tokens
-  in
-
-  if has_css_keyword && has_non_keyword && List.length tokens > 1 then
-    Reader.err_invalid t "CSS-wide keywords cannot be mixed with other values"
-
 (** Read padding shorthand property (1-4 values) *)
 let read_padding_shorthand t : length list =
-  (* First validate that CSS-wide keywords aren't mixed with other values *)
-  validate_no_mixed_css_keywords t;
-
   (* CSS padding accepts 1-4 space-separated non-negative values *)
-  let rec read_values acc count =
-    if count >= 4 then List.rev acc
-    else
-      match Reader.option read_non_negative_length t with
-      | Some v -> read_values (v :: acc) (count + 1)
-      | None -> List.rev acc
-  in
-  let values = read_values [] 0 in
-  if values = [] then Reader.err_invalid t "padding requires at least one value"
-  else values
+  (* CSS-wide keywords must be the only value when present *)
+  Reader.enum "padding"
+    [
+      ("inherit", [ Inherit ]);
+      ("initial", [ Initial ]);
+      ("unset", [ Unset ]);
+      ("revert", [ Revert ]);
+      ("revert-layer", [ Revert_layer ]);
+    ]
+    ~default:(fun t ->
+      Reader.list ~sep:Reader.ws ~at_least:1 ~at_most:4
+        (read_non_negative_length ~with_keywords:false)
+        t)
+    t
 
 (** Read margin shorthand property (1-4 values) Source:
     https://www.w3.org/TR/CSS21/box.html#margin-properties CSS margin accepts
     1-4 space-separated values *)
 let read_margin_shorthand t : length list =
-  (* First validate that CSS-wide keywords aren't mixed with other values *)
-  validate_no_mixed_css_keywords t;
-
   (* CSS margin accepts 1-4 space-separated values *)
-  let rec read_values acc count =
-    if count >= 4 then List.rev acc
-    else
-      match Reader.option read_length t with
-      | Some v -> read_values (v :: acc) (count + 1)
-      | None -> List.rev acc
-  in
-  let values = read_values [] 0 in
-  if values = [] then Reader.err_invalid t "margin requires at least one value"
-  else values
+  (* CSS-wide keywords must be the only value when present *)
+  Reader.enum "margin"
+    [
+      ("auto", [ Auto ]);
+      ("inherit", [ Inherit ]);
+      ("initial", [ Initial ]);
+      ("unset", [ Unset ]);
+      ("revert", [ Revert ]);
+      ("revert-layer", [ Revert_layer ]);
+    ]
+    ~default:(fun t ->
+      Reader.list ~sep:Reader.ws ~at_least:1 ~at_most:4
+        (read_length ~with_keywords:false)
+        t)
+    t

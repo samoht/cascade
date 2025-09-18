@@ -807,6 +807,9 @@ type shadow =
   | Revert
   | Revert_layer
   | Var of shadow var
+  | Var_list of box_shadow var
+
+and box_shadow = shadow list
 
 type text_shadow =
   | None
@@ -1343,7 +1346,7 @@ type 'a property =
   | Float : float_side property
   | Scale : scale property
   | Transition : transition list property
-  | Box_shadow : shadow list property
+  | Box_shadow : box_shadow property
   | Fill : svg_paint property
   | Stroke : svg_paint property
   | Stroke_width : length property

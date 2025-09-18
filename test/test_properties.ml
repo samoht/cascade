@@ -257,6 +257,7 @@ let check_text_shadow =
   check_value "text-shadow" read_text_shadow pp_text_shadow
 
 let check_shadow = check_value "shadow" read_shadow pp_shadow
+let check_box_shadow = check_value "box-shadow" read_box_shadow pp_box_shadow
 let check_filter = check_value "filter" read_filter pp_filter
 
 let check_background_attachment =
@@ -1698,6 +1699,17 @@ let test_shadow () =
   neg read_shadow "invalid-shadow";
   neg read_shadow "10px"
 
+let test_box_shadow () =
+  check_box_shadow "none";
+  check_box_shadow "2px 2px";
+  check_box_shadow "2px 2px 4px";
+  check_box_shadow ~expected:"2px 2px,4px 4px" "2px 2px, 4px 4px";
+  check_box_shadow ~expected:"inset 2px 2px,4px 4px 8px red"
+    "inset 2px 2px, 4px 4px 8px red";
+  check_box_shadow ~expected:"2px 2px red,inset -2px -2px blue"
+    "2px 2px red, inset -2px -2px blue";
+  neg read_box_shadow "invalid-shadow"
+
 let test_align_items () =
   check_align_items "stretch";
   check_align_items "flex-start";
@@ -1928,6 +1940,7 @@ let additional_tests =
     test_case "text_decoration_skip_ink" `Quick test_text_decoration_skip_ink;
     test_case "transform_origin" `Quick test_transform_origin;
     test_case "shadow" `Quick test_shadow;
+    test_case "box_shadow" `Quick test_box_shadow;
     test_case "align_items" `Quick test_align_items;
     test_case "aspect_ratio" `Quick test_aspect_ratio;
     test_case "flex" `Quick test_flex;

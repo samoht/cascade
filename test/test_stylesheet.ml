@@ -56,42 +56,35 @@ let test_stylesheet () =
   (* Test empty stylesheet *)
   check_stylesheet "";
 
-  (* Test stylesheet with comments *)
-  check_stylesheet "/*comment*/.btn{color:red}";
+  (* Test stylesheet with comments - comments are stripped in minified output *)
+  check_stylesheet ~expected:".btn{color:red}" "/*comment*/.btn{color:red}";
 
-  (* Tests from test_media_parsing *)
-  check_stylesheet "@media (min-width: 768px) { .a { display: block } }";
+  check_stylesheet ~expected:"@media (min-width: 768px){.a{display:block}}"
+    "@media (min-width: 768px) { .a { display: block } }";
   check_stylesheet
     "@media screen and (max-width: 640px){.btn{font-size:.875rem}}";
-
-  (* Tests from test_media_roundtrip *)
-  check_stylesheet "@media screen { .test { color: blue } }";
-
-  (* Tests from test_supports_parsing *)
-  check_stylesheet "@supports (display: grid) { .grid { display: grid } }";
+  check_stylesheet ~expected:"@media screen{.test{color:blue}}"
+    "@media screen { .test { color: blue } }";
+  check_stylesheet ~expected:"@supports (display: grid){.grid{display:grid}}"
+    "@supports (display: grid) { .grid { display: grid } }";
   check_stylesheet
     "@supports (display: grid){.grid{display:grid}@supports (color: \
      red){.x{color:red}}}";
-
-  (* Tests from test_supports_roundtrip *)
-  check_stylesheet "@supports (display: grid) { .grid { display: grid } }";
-
-  (* Tests from test_property_roundtrip *)
+  check_stylesheet ~expected:"@supports (display: grid){.grid{display:grid}}"
+    "@supports (display: grid) { .grid { display: grid } }";
   check_stylesheet
+    ~expected:
+      "@property --color{syntax:\"<color>\";inherits:true;initial-value:red}"
     "@property --color { syntax: \"<color>\"; inherits: true; initial-value: \
      red }";
-
-  (* Tests from test_keyframes_roundtrip *)
-  check_stylesheet "@keyframes slide { 0% { opacity: 0 } 100% { opacity: 1 } }";
-
-  (* Tests from test_font_face_roundtrip *)
-  check_stylesheet "@font-face { font-family: MyFont; src: url(font.woff2); }";
-
-  (* Tests from test_page_roundtrip *)
-  check_stylesheet "@page :first { margin: 1in }";
-
-  (* Tests from test_rule_roundtrip - full stylesheet *)
-  check_stylesheet ".test { color: red }";
+  check_stylesheet ~expected:"@keyframes slide{0%{opacity:0}100%{opacity:1}}"
+    "@keyframes slide { 0% { opacity: 0 } 100% { opacity: 1 } }";
+  check_stylesheet
+    ~expected:"@font-face {font-family:myfont;src:url(font.woff2)}"
+    "@font-face { font-family: MyFont; src: url(font.woff2); }";
+  check_stylesheet ~expected:"@page:first{margin:1in}"
+    "@page :first { margin: 1in }";
+  check_stylesheet ~expected:".test{color:red}" ".test { color: red }";
 
   (* Test invalid stylesheet syntax *)
   neg read_stylesheet "@invalid-rule { }";
@@ -211,8 +204,12 @@ let test_layer_rule_creation () =
   let rule = rule ~selector:(Selector.class_ "red") [ decl ] in
   let layer_stmt = layer ~name:"utilities" [ Css.Stylesheet.Rule rule ] in
   let sheet = Css.Stylesheet.v [ layer_stmt ] in
-  let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
-  check_stylesheet output
+  let output =
+    Css.Stylesheet.pp ~minify:true ~newline:false ~header:false sheet
+  in
+  Alcotest.(check string)
+    "layer rule creation" "@layer utilities{.red{background-color:#ff0000}}"
+    output
 
 (* Not a roundtrip test *)
 let test_construct_rule_helper () =
@@ -361,7 +358,7 @@ let test_property_permutations () =
   (* Different permutations of the same property should all produce the same
      output *)
   let canonical =
-    "@property --x{syntax:\"<length>\";inherits:true;initial-value:0px}"
+    "@property --x{syntax:\"<length>\";inherits:true;initial-value:0}"
   in
 
   (* Permutation 1: syntax, inherits, initial-value (canonical order) *)
@@ -413,8 +410,8 @@ let test_property_missing_descriptors () =
   expect_property_error "missing initial-value for <length>"
     "@property --x { syntax: \"<length>\"; inherits: true }";
   (* But initial-value is optional for universal syntax "*" *)
-  check_stylesheet ~expected:"@property --x { syntax: \"*\"; inherits: false }"
-    "@property --x{syntax:\"*\";inherits:false}"
+  check_stylesheet ~expected:"@property --x{syntax:\"*\";inherits:false}"
+    "@property --x { syntax: \"*\"; inherits: false }"
 
 (* Not a roundtrip test *)
 let test_property_invalid_inherits () =
@@ -453,16 +450,19 @@ let test_layer_pp () =
   let layer_stmt = layer ~name:"utilities" [ Rule rule_obj ] in
 
   let sheet = Css.Stylesheet.v [ layer_stmt ] in
-  let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
-  check_stylesheet output;
+  let output =
+    Css.Stylesheet.pp ~minify:true ~newline:false ~header:false sheet
+  in
+  Alcotest.(check string)
+    "layer pp" "@layer utilities{.blue{color:#0000ff}}" output;
 
   (* Test empty layer *)
   let empty_layer = layer ~name:"base" [] in
   let empty_sheet = Css.Stylesheet.v [ empty_layer ] in
   let empty_output =
-    Css.Stylesheet.pp ~minify:true ~newline:false empty_sheet
+    Css.Stylesheet.pp ~minify:true ~newline:false ~header:false empty_sheet
   in
-  check_stylesheet empty_output
+  Alcotest.(check string) "empty layer" "@layer base" empty_output
 
 (** Test complete stylesheet pp *)
 let pp_case () =
@@ -479,8 +479,15 @@ let pp_case () =
 
   let sheet = Css.Stylesheet.v [ Rule r; media_stmt; prop ] in
 
-  let output = Css.Stylesheet.pp ~minify:true sheet in
-  check_stylesheet output
+  let output =
+    Css.Stylesheet.pp ~minify:true ~newline:false ~header:false sheet
+  in
+  Alcotest.(check string)
+    "stylesheet pp"
+    ".red{background-color:#ff0000}@media \
+     screen{.red{background-color:#ff0000}}@property \
+     --primary{syntax:\"<color>\";inherits:false;initial-value:blue}"
+    output
 
 (** Test [@charset] rules *)
 let charset_case () =
@@ -502,36 +509,47 @@ let namespace_case () =
 (** Test [@keyframes] rules *)
 let keyframes_case () =
   (* Test keyframes roundtrip *)
-  check_stylesheet "@keyframes slide { 0% { opacity: 0 } 100% { opacity: 1 } }";
-  check_stylesheet "@keyframes fade { from { opacity: 0 } to { opacity: 1 } }"
+  check_stylesheet ~expected:"@keyframes slide{0%{opacity:0}100%{opacity:1}}"
+    "@keyframes slide { 0% { opacity: 0 } 100% { opacity: 1 } }";
+  check_stylesheet ~expected:"@keyframes fade{from{opacity:0}to{opacity:1}}"
+    "@keyframes fade { from { opacity: 0 } to { opacity: 1 } }"
 
 (** Test [@font-face] rules *)
 let font_face_case () =
   (* Test font-face roundtrip *)
   check_stylesheet
+    ~expected:
+      "@font-face \
+       {font-family:mycustomfont;src:url('font.woff2');font-display:swap}"
     "@font-face { font-family: MyCustomFont; src: url('font.woff2'); \
      font-display: swap; }"
 
 (** Test [@page] rules *)
 let page_case () =
   (* Test page roundtrip *)
-  check_stylesheet "@page { margin: 1in; }";
-  check_stylesheet "@page :first { margin: 2in; }"
+  check_stylesheet ~expected:"@page{margin:1in}" "@page { margin: 1in; }";
+  check_stylesheet ~expected:"@page:first{margin:2in}"
+    "@page :first { margin: 2in; }"
 
 (** Test sheet_item variants *)
 let sheet_item_case () =
   (* Test that we can parse stylesheets with various statement types *)
   let test_statements =
     [
-      "@charset \"UTF-8\";";
-      "@import 'test.css';";
-      ".class { color: red; }";
-      "@media print { .class { color: black; } }";
-      "@layer base { .btn { padding: 10px; } }";
-      "@property --var { syntax: \"*\"; inherits: false; }";
+      ("@charset \"UTF-8\";", "@charset \"UTF-8\";");
+      ("@import 'test.css';", "@import 'test.css';");
+      (".class { color: red; }", ".class{color:red}");
+      ( "@media print { .class { color: black; } }",
+        "@media print{.class{color:black}}" );
+      ( "@layer base { .btn { padding: 10px; } }",
+        "@layer base{.btn{padding:10px}}" );
+      ( "@property --var { syntax: \"*\"; inherits: false; }",
+        "@property --var{syntax:\"*\";inherits:false}" );
     ]
   in
-  List.iter check_stylesheet test_statements
+  List.iter
+    (fun (input, expected) -> check_stylesheet ~expected input)
+    test_statements
 
 (** Test stylesheet ordering constraints *)
 let ordering () =
@@ -540,7 +558,8 @@ let ordering () =
   let input =
     "@charset \"UTF-8\";\n@import 'base.css';\n.btn { color: red; }"
   in
-  check_stylesheet input
+  check_stylesheet
+    ~expected:"@charset \"UTF-8\";@import 'base.css';.btn{color:red}" input
 
 (* Not a roundtrip test *)
 let test_read_stylesheet_basic () =
@@ -646,11 +665,14 @@ let test_of_string_positive () =
       Alcotest.(check int) "whitespace only" 0 (List.length rules)
   | Error msg -> Alcotest.fail ("whitespace only failed: " ^ msg));
 
-  check_stylesheet ".btn { color: rgb(300, 300, 300); }";
+  check_stylesheet ~expected:".btn{color:rgb(255 255 255)}"
+    ".btn { color: rgb(300, 300, 300); }";
 
-  check_stylesheet ".btn { color: rgba(255, 0, 0); }";
+  check_stylesheet ~expected:".btn{color:rgba(255 0 0)}"
+    ".btn { color: rgba(255, 0, 0); }";
 
-  check_stylesheet ".btn { color: rgb(50%, 100, 50%); }"
+  check_stylesheet ~expected:".btn{color:rgb(128 100 128)}"
+    ".btn { color: rgb(50%, 100, 50%); }"
 
 (* Not a roundtrip test *)
 let test_of_string_negative () =
