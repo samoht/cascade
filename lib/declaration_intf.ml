@@ -8,6 +8,7 @@ type _ kind =
   | Color : color kind
   | Int : int kind
   | Float : float kind
+  | Percentage : percentage kind
   | String : string kind
   | Duration : duration kind
   | Aspect_ratio : aspect_ratio kind

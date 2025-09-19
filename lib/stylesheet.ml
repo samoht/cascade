@@ -212,9 +212,13 @@ and pp_statement : statement Pp.t =
       | Some n ->
           Pp.string ctx " ";
           Pp.string ctx n
-      | None -> Pp.string ctx " ");
-      Pp.sp ctx ();
-      Pp.braces pp_block ctx content
+      | None -> ());
+      (* For empty layers: use statement form when minifying (more concise), but
+         preserve block form otherwise for roundtrip fidelity *)
+      if content = [] && Pp.minified ctx then Pp.semicolon ctx ()
+      else (
+        Pp.sp ctx ();
+        Pp.braces pp_block ctx content)
   | Media (condition, content) ->
       Pp.string ctx "@media ";
       Pp.string ctx condition;
@@ -1017,14 +1021,10 @@ let read = read_stylesheet
 let pp_import_rule : import_rule Pp.t =
  fun ctx { url; layer; supports; media } ->
   Pp.string ctx "@import ";
-  if String.contains url ' ' then (
-    Pp.char ctx '"';
-    Pp.string ctx url;
-    Pp.char ctx '"')
-  else (
-    Pp.string ctx "url(";
-    Pp.string ctx url;
-    Pp.char ctx ')');
+  (* Always use string form - it's valid CSS and shorter than url() *)
+  Pp.char ctx '"';
+  Pp.string ctx url;
+  Pp.char ctx '"';
   Option.iter
     (fun l ->
       Pp.string ctx " layer(";
@@ -1049,14 +1049,7 @@ let read_import_rule (r : Reader.t) : import_rule =
   Reader.ws r;
   Reader.expect_string "@import" r;
   Reader.ws r;
-  let url =
-    if Reader.looking_at r "url(" then (
-      Reader.skip r;
-      let u = Reader.until r ')' in
-      Reader.expect ')' r;
-      u)
-    else Reader.string r
-  in
+  let url = Reader.one_of [ Reader.url; Reader.string ] r in
   Reader.ws r;
   let layer =
     if Reader.looking_at r "layer(" then (
@@ -1101,6 +1094,33 @@ let pp_config : config Pp.t =
   Pp.string ctx " }"
 
 (* Reader for config *)
-let read_config (_ : Reader.t) : config =
-  (* Simple default config reader *)
-  { minify = false; mode = Variables; optimize = false; newline = false }
+let read_config (r : Reader.t) : config =
+  Reader.ws r;
+  Reader.expect_string "{" r;
+  Reader.ws r;
+
+  let minify = ref false in
+  let mode = ref Variables in
+  let optimize = ref false in
+  let newline = ref false in
+
+  while not (Reader.looking_at r "}") do
+    let field_name = Reader.ident r in
+    Reader.ws r;
+    Reader.expect_string "=" r;
+    Reader.ws r;
+    let value = Reader.ident r in
+    (match field_name with
+    | "minify" -> minify := value = "true"
+    | "mode" -> mode := if value = "Inline" then Inline else Variables
+    | "optimize" -> optimize := value = "true"
+    | "newline" -> newline := value = "true"
+    | _ -> () (* ignore unknown fields *));
+    Reader.ws r;
+    (* Skip semicolon if present *)
+    if Reader.looking_at r ";" then (
+      Reader.skip r;
+      Reader.ws r)
+  done;
+  Reader.expect_string "}" r;
+  { minify = !minify; mode = !mode; optimize = !optimize; newline = !newline }

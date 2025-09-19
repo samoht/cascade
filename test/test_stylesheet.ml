@@ -456,13 +456,14 @@ let test_layer_pp () =
   Alcotest.(check string)
     "layer pp" "@layer utilities{.blue{color:#0000ff}}" output;
 
-  (* Test empty layer *)
+  (* Test empty layer - per CSS spec, empty @layer statements end with
+     semicolon *)
   let empty_layer = layer ~name:"base" [] in
   let empty_sheet = Css.Stylesheet.v [ empty_layer ] in
   let empty_output =
     Css.Stylesheet.pp ~minify:true ~newline:false ~header:false empty_sheet
   in
-  Alcotest.(check string) "empty layer" "@layer base" empty_output
+  Alcotest.(check string) "empty layer" "@layer base;" empty_output
 
 (** Test complete stylesheet pp *)
 let pp_case () =
@@ -668,10 +669,10 @@ let test_of_string_positive () =
   check_stylesheet ~expected:".btn{color:rgb(255 255 255)}"
     ".btn { color: rgb(300, 300, 300); }";
 
-  check_stylesheet ~expected:".btn{color:rgba(255 0 0)}"
+  check_stylesheet ~expected:".btn{color:rgb(255 0 0)}"
     ".btn { color: rgba(255, 0, 0); }";
 
-  check_stylesheet ~expected:".btn{color:rgb(128 100 128)}"
+  check_stylesheet ~expected:".btn{color:rgb(50% 100 50%)}"
     ".btn { color: rgb(50%, 100, 50%); }"
 
 (* Not a roundtrip test *)
@@ -855,12 +856,14 @@ let stylesheet_tests =
 (* Not a roundtrip test *)
 let test_check () =
   (* Test basic stylesheet parsing using check function *)
-  check ".test { color: red }";
-  check "@media screen { .test { color: blue } }"
+  check ~expected:".test{color:red}" ".test { color: red }";
+  check ~expected:"@media screen{.test{color:blue}}"
+    "@media screen { .test { color: blue } }"
 
 let test_import_rule () =
-  check_import_rule "@import 'test.css';";
-  check_import_rule "@import url('styles.css') screen;";
+  check_import_rule ~expected:"@import \"test.css\";" "@import 'test.css';";
+  check_import_rule ~expected:"@import \"styles.css\" screen;"
+    "@import url('styles.css') screen;";
 
   (* Test invalid import rules *)
   neg read_import_rule "@import";
@@ -872,28 +875,35 @@ let test_import_rule () =
   neg read_import_rule "@import 'test.css" (* Unclosed quote *)
 
 let test_config () =
-  (* Test config parsing - basic cases *)
-  check_config "@charset \"UTF-8\";";
-  check_config "@import 'test.css';";
-
-  (* Test invalid config syntax *)
-  neg read_config "@unknown-rule";
-  (* Unknown at-rule *)
-  neg read_config "charset \"UTF-8\"";
-  (* Missing @ *)
-  neg read_config "@charset UTF-8";
-  (* Missing quotes *)
+  (* Test config parsing - configs are rendering configuration objects, not CSS
+     at-rules *)
+  check_config
+    ~expected:
+      "{ minify = true; mode = Variables; optimize = false; newline = true }"
+    "{ minify = true; mode = Variables; optimize = false; newline = true }";
+  check_config
+    ~expected:
+      "{ minify = false; mode = Variables; optimize = true; newline = false }"
+    "{ minify = false; mode = Variables; optimize = true; newline = false }";
   neg read_config "@import"
 (* Incomplete import *)
 
 (* Not a roundtrip test *)
 let test_advanced_selectors () =
-  check_stylesheet ".btn:hover { color: blue; }";
-  check_stylesheet ".btn::before { content: 'icon'; }";
-  check_stylesheet ".btn[data-type='primary'] { background: blue; }";
-  check_stylesheet ".parent > .child { margin: 0; }";
-  check_stylesheet ".sibling + .next { padding: 10px; }";
-  check_stylesheet ".element ~ .general-sibling { color: red; }"
+  check_stylesheet ~expected:".btn:hover{color:blue}"
+    ".btn:hover { color: blue; }";
+  check_stylesheet ~expected:".btn::before{content:\"icon\"}"
+    ".btn::before { content: 'icon'; }";
+  (* Attribute values that are valid identifiers get normalized to unquoted
+     form *)
+  check_stylesheet ~expected:".btn[data-type=primary]{background:blue}"
+    ".btn[data-type='primary'] { background: blue; }";
+  check_stylesheet ~expected:".parent>.child{margin:0}"
+    ".parent > .child { margin: 0; }";
+  check_stylesheet ~expected:".sibling+.next{padding:10px}"
+    ".sibling + .next { padding: 10px; }";
+  check_stylesheet ~expected:".element~.general-sibling{color:red}"
+    ".element ~ .general-sibling { color: red; }"
 
 (* Not a roundtrip test *)
 let test_advanced_properties () =
@@ -989,7 +999,7 @@ let test_invalid_functions () =
 
 (* Not a roundtrip test *)
 let test_layer_roundtrip () =
-  let test_css input =
+  let test_css ~expected input =
     let r = Css.Reader.of_string input in
     try
       let stylesheet = Css.Stylesheet.read r in
@@ -997,12 +1007,18 @@ let test_layer_roundtrip () =
         String.trim
           (Css.Stylesheet.to_string ~minify:true ~header:false stylesheet)
       in
-      Alcotest.(check string) ("layer roundtrip for " ^ input) input roundtrip
+      Alcotest.(check string)
+        ("layer roundtrip for " ^ input)
+        expected roundtrip
     with Css.Reader.Parse_error err ->
       Alcotest.fail ("Failed to parse " ^ input ^ ": " ^ Css.pp_parse_error err)
   in
-  test_css "@layer components,utilities;";
-  test_css "@layer components{}@layer utilities{}"
+  (* Layer statement form should roundtrip as-is *)
+  test_css ~expected:"@layer components,utilities;"
+    "@layer components,utilities;";
+  (* Empty layer blocks should be minified to statement form *)
+  test_css ~expected:"@layer components;@layer utilities;"
+    "@layer components{}@layer utilities{}"
 
 let additional_tests =
   [

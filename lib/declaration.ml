@@ -155,6 +155,7 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Color -> pp pp_color
   | Int -> pp Pp.int
   | Float -> pp Pp.float
+  | Percentage -> pp pp_percentage
   | String -> pp Pp.string
   | Shadow -> pp pp_shadow
   | Duration -> pp pp_duration
@@ -722,30 +723,7 @@ let pp_declaration : declaration Pp.t =
       Pp.string ctx name;
       Pp.string ctx ":";
       Pp.space_if_pretty ctx ();
-      (* Pretty-print custom property value by kind *)
-      (match kind with
-      | String -> Pp.string ctx value
-      | Length -> pp_length ctx value
-      | Color -> pp_color ctx value
-      | Int -> Pp.int ctx value
-      | Float -> Pp.float ctx value
-      | Duration -> pp_duration ctx value
-      | Angle -> pp_angle ctx value
-      | Shadow -> pp_shadow ctx value
-      | Box_shadow -> Pp.list ~sep:Pp.comma pp_shadow ctx value
-      | Content -> pp_content ctx value
-      | Font_family -> Pp.list ~sep:Pp.comma pp_font_family ctx value
-      | Font_weight -> pp_font_weight ctx value
-      | Line_height -> pp_line_height ctx value
-      | Font_feature_settings -> pp_font_feature_settings ctx value
-      | Font_variation_settings -> pp_font_variation_settings ctx value
-      | Font_variant_numeric -> pp_font_variant_numeric ctx value
-      | Font_variant_numeric_token -> pp_font_variant_numeric_token ctx value
-      | Border_style -> pp_border_style ctx value
-      | Border -> pp_border ctx value
-      | Blend_mode -> pp_blend_mode ctx value
-      | Scroll_snap_strictness -> pp_scroll_snap_strictness ctx value
-      | Aspect_ratio -> pp_aspect_ratio ctx value);
+      pp_value ctx (kind, value);
       if important then
         Pp.string ctx (if ctx.minify then "!important" else " !important")
 
