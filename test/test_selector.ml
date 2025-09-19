@@ -156,6 +156,76 @@ let attribute_cases () =
   check_construct "[role~=button]" (attribute "role" (Whitespace_list "button"));
   check_construct "[lang|=en]" (attribute "lang" (Hyphen_list "en"));
 
+  (* Test attribute value quoting according to CSS spec *)
+  (* Test cases where quotes are REQUIRED per CSS spec *)
+  (* Values with spaces always require quotes *)
+  check "[class=\"my class\"]";
+  check "[data-value=\"hello world\"]";
+
+  (* Values starting with digits require quotes *)
+  check "[data-id=\"123\"]";
+  check "[data-version=\"2.0\"]";
+
+  (* Values with special characters require quotes *)
+  check "[href=\"http://example.com\"]";
+  check "[data-path=\"/home/user\"]";
+  check "[content=\"Hello, World!\"]";
+
+  (* Values starting with double hyphen require quotes *)
+  check "[id=\"--custom\"]";
+  check "[class=\"--modifier\"]";
+
+  (* Test cases where quotes are OPTIONAL per CSS spec *)
+  (* Simple identifiers don't need quotes - test both forms are accepted and normalized *)
+  check "[type=button]";
+  check ~expected:"[type=button]" "[type=\"button\"]";
+  (* Normalizes to unquoted *)
+  check "[data-foo=bar]";
+  check ~expected:"[data-foo=bar]" "[data-foo=\"bar\"]";
+
+  (* Normalizes to unquoted *)
+
+  (* Values with hyphens and underscores (valid identifiers) *)
+  check "[data-name=foo-bar_123]";
+  check ~expected:"[data-name=foo-bar_123]" "[data-name=\"foo-bar_123\"]";
+
+  (* Normalizes *)
+
+  (* Test roundtrip normalization *)
+  (* Values that don't need quotes should remain unquoted *)
+  check ~expected:"[type=button]" "[type=button]";
+  check ~expected:"[type=button]" "[type=\"button\"]";
+  (* Normalizes to unquoted *)
+  check ~expected:"[data-foo=bar_baz]" "[data-foo=bar_baz]";
+
+  (* Values that need quotes should remain quoted *)
+  check ~expected:"[class=\"my class\"]" "[class=\"my class\"]";
+  check ~expected:"[data-id=\"123\"]" "[data-id=\"123\"]";
+  check ~expected:"[href=\"http://example.com\"]"
+    "[href=\"http://example.com\"]";
+
+  (* Test in complex selectors like :where() *)
+  check "input:where([type=button],[type=reset])";
+  check ~expected:"input:where([type=button],[type=reset])"
+    "input:where([type=\"button\"],[type=\"reset\"])";
+
+  (* Test different matching operators with quoting *)
+  check "[class~=foo]";
+  check "[class~=\"foo bar\"]";
+  (* Needs quotes due to space *)
+  check "[lang|=en]";
+  check "[href^=\"http://\"]";
+  (* Needs quotes due to special chars *)
+  check "[href$=\".pdf\"]";
+  (* Needs quotes due to dot *)
+  check "[href*=example]";
+
+  (* Test case sensitivity flags with different quoting *)
+  check "[type=button i]";
+  check ~expected:"[type=button i]" "[type=\"button\" i]";
+  (* Normalizes to unquoted *)
+  check "[class=\"My Class\" s]";
+
   (* Case modifiers *)
   check_construct "[attr=v i]"
     (attribute ~flag:Case_insensitive "attr" (Exact "v"));

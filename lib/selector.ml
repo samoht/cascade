@@ -16,11 +16,6 @@ let is_valid_nmstart c =
 
 let is_valid_nmchar c = is_valid_nmstart c || (c >= '0' && c <= '9') || c = '-'
 
-let needs_quotes value =
-  String.length value = 0
-  || (not (is_valid_nmstart value.[0]))
-  || not (String.for_all is_valid_nmchar value)
-
 let pp_ns ctx = function
   | Any -> Pp.string ctx "*|"
   | None -> ()
@@ -37,11 +32,34 @@ let pp_attr_flag ctx = function
       Pp.char ctx 's'
   | None -> ()
 
-(* Helper to pretty-print attribute values with minify-aware quoting. *)
+(* Check if an attribute value needs quoting according to CSS specs *)
+let attr_value_needs_quoting value =
+  if value = "" then true
+  else
+    let first = value.[0] in
+    (* Must quote if starts with digit or two hyphens *)
+    if
+      (first >= '0' && first <= '9')
+      || (first = '-' && String.length value > 1 && value.[1] = '-')
+    then true
+    else
+      (* Must quote if contains non-identifier characters *)
+      not
+        (String.for_all
+           (function
+             | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' | '_' -> true
+             | c when Char.code c >= 0xA0 ->
+                 true (* Unicode chars U+00A0 and higher *)
+             | _ -> false)
+           value)
+
+(* Helper to pretty-print attribute values with smart quoting. *)
 let pp_attr_value : string Pp.t =
  fun ctx value ->
-  if Pp.minified ctx && not (needs_quotes value) then Pp.string ctx value
-  else Pp.quoted_string ctx value
+  (* Only quote attribute values when necessary per CSS specs. This preserves
+     the original format when possible. *)
+  if attr_value_needs_quoting value then Pp.quoted_string ctx value
+  else Pp.string ctx value
 
 (* Helper to print a token with pretty spacing when not minifying. *)
 let pp_token : string Pp.t =

@@ -146,6 +146,10 @@ val as_supports : statement -> (string * statement list) option
 (** [as_supports stmt] returns [Some (condition, statements)] if the statement
     is a supports query, [None] otherwise. *)
 
+val as_property : statement -> (string * string * bool * string option) option
+(** [as_property stmt] returns [Some (name, syntax, inherits, initial_value)] if
+    the statement is a [@property] declaration, [None] otherwise. *)
+
 (** {2:at_rules At-Rules}
 
     At-rules are CSS statements that instruct CSS how to behave. They begin with
@@ -3456,6 +3460,7 @@ type _ kind =
   | Color : color kind
   | Int : int kind
   | Float : float kind
+  | Percentage : percentage kind
   | String : string kind
   | Duration : duration kind
   | Aspect_ratio : aspect_ratio kind
@@ -3474,6 +3479,10 @@ type _ kind =
   | Shadow : shadow kind
   | Box_shadow : shadow list kind
   | Content : content kind
+
+val pp_kind_value : ('a kind * 'a) Pp.t
+(** [pp_kind_value ctx (kind, value)] pretty-prints a typed value using the
+    appropriate printer for its kind. *)
 
 type meta
 (** The type for CSS variable metadata. *)
@@ -3725,10 +3734,10 @@ val pp_align_items : align_items Pp.t
 val pp_justify_content : justify_content Pp.t
 (** [pp_justify_content] is the pretty printer for justify-content values. *)
 
-(**/**)
-
 module Pp = Pp
-(** {1 CSS Parsing} *)
+(** Printer *)
+
+(**/**)
 
 module Reader = Reader
 module Values = Values

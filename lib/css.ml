@@ -22,6 +22,10 @@ let pp_parse_error = Reader.pp_parse_error
 
 include Values
 include Declaration
+
+(* Export pp_value from Declaration as pp_kind_value *)
+let pp_kind_value = Declaration.pp_value
+
 include Properties
 include Variables
 include Optimize
@@ -73,6 +77,15 @@ let as_container = function
 
 let as_supports = function
   | Supports (condition, content) -> Some (condition, content)
+  | _ -> None
+
+let as_property = function
+  | Property { name; syntax; inherits; initial_value } ->
+      let syntax_str = Pp.to_string Variables.pp_syntax syntax in
+      let initial_str =
+        Option.map (Pp.to_string (Variables.pp_value syntax)) initial_value
+      in
+      Some (name, syntax_str, inherits, initial_str)
   | _ -> None
 
 let concat = List.concat
