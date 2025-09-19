@@ -54,7 +54,7 @@ and pp_syntax : type a. a syntax Pp.t =
 let rec pp_value : type a. a syntax -> a Pp.t =
  fun syntax ctx value ->
   match syntax with
-  | Length -> Values.pp_length ctx value
+  | Length -> Values.pp_length ~always:true ctx value
   | Color -> Values.pp_color ctx value
   | Number -> Pp.float ctx value
   | Integer -> Pp.int ctx value

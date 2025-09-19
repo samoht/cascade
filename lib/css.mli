@@ -3683,8 +3683,9 @@ val pp_display : display Pp.t
 val pp_position : position Pp.t
 (** [pp_position] is the pretty printer for position values. *)
 
-val pp_length : length Pp.t
-(** [pp_length] is the pretty printer for length values. *)
+val pp_length : ?always:bool -> length Pp.t
+(** [pp_length ?always] is the pretty printer for length values. When [always]
+    is true, units are always included even for zero values. *)
 
 val pp_color : color Pp.t
 (** [pp_color] is the pretty printer for color values. *)
