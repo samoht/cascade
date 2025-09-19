@@ -83,8 +83,8 @@ val color_mix :
 
 (** {1 Pretty-printing Functions} *)
 
-val pp_length : length Pp.t
-(** [pp_length] pretty-prints {!length} values. *)
+val pp_length : ?always:bool -> length Pp.t
+(** [pp_length ?always] pretty-prints {!length} values. When [always] is true, units are always included even for zero values (required for @property initial-value). *)
 
 val pp_color : color Pp.t
 (** [pp_color] pretty-prints {!color} values. *)

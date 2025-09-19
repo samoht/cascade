@@ -112,46 +112,45 @@ let pp_unit ?(always = true) ctx f suffix =
     Pp.float ctx f;
     Pp.string ctx suffix)
 
-let rec pp_length : length Pp.t =
+let rec pp_length ?(always = false) : length Pp.t =
  fun ctx v ->
-  let pp_unit_always = pp_unit ~always:true ctx in
-  let pp_unit = pp_unit ~always:false ctx in
+  let pp_unit_fn = pp_unit ~always ctx in
   match v with
   | Zero -> Pp.char ctx '0'
-  | Px f -> pp_unit_always f "px"
-  | Cm f -> pp_unit f "cm"
-  | Mm f -> pp_unit f "mm"
-  | Q f -> pp_unit f "q"
-  | In f -> pp_unit f "in"
-  | Pt f -> pp_unit f "pt"
-  | Pc f -> pp_unit f "pc"
-  | Rem f -> pp_unit f "rem"
-  | Em f -> pp_unit f "em"
-  | Ex f -> pp_unit f "ex"
-  | Cap f -> pp_unit f "cap"
-  | Ic f -> pp_unit f "ic"
-  | Rlh f -> pp_unit f "rlh"
-  | Pct f -> pp_unit f "%"
-  | Vw f -> pp_unit f "vw"
-  | Vh f -> pp_unit f "vh"
-  | Vmin f -> pp_unit f "vmin"
-  | Vmax f -> pp_unit f "vmax"
-  | Vi f -> pp_unit f "vi"
-  | Vb f -> pp_unit f "vb"
-  | Dvh f -> pp_unit f "dvh"
-  | Dvw f -> pp_unit f "dvw"
-  | Dvmin f -> pp_unit f "dvmin"
-  | Dvmax f -> pp_unit f "dvmax"
-  | Lvh f -> pp_unit f "lvh"
-  | Lvw f -> pp_unit f "lvw"
-  | Lvmin f -> pp_unit f "lvmin"
-  | Lvmax f -> pp_unit f "lvmax"
-  | Svh f -> pp_unit f "svh"
-  | Svw f -> pp_unit f "svw"
-  | Svmin f -> pp_unit f "svmin"
-  | Svmax f -> pp_unit f "svmax"
-  | Ch f -> pp_unit f "ch"
-  | Lh f -> pp_unit f "lh"
+  | Px f -> pp_unit_fn f "px"
+  | Cm f -> pp_unit_fn f "cm"
+  | Mm f -> pp_unit_fn f "mm"
+  | Q f -> pp_unit_fn f "q"
+  | In f -> pp_unit_fn f "in"
+  | Pt f -> pp_unit_fn f "pt"
+  | Pc f -> pp_unit_fn f "pc"
+  | Rem f -> pp_unit_fn f "rem"
+  | Em f -> pp_unit_fn f "em"
+  | Ex f -> pp_unit_fn f "ex"
+  | Cap f -> pp_unit_fn f "cap"
+  | Ic f -> pp_unit_fn f "ic"
+  | Rlh f -> pp_unit_fn f "rlh"
+  | Pct f -> pp_unit_fn f "%"
+  | Vw f -> pp_unit_fn f "vw"
+  | Vh f -> pp_unit_fn f "vh"
+  | Vmin f -> pp_unit_fn f "vmin"
+  | Vmax f -> pp_unit_fn f "vmax"
+  | Vi f -> pp_unit_fn f "vi"
+  | Vb f -> pp_unit_fn f "vb"
+  | Dvh f -> pp_unit_fn f "dvh"
+  | Dvw f -> pp_unit_fn f "dvw"
+  | Dvmin f -> pp_unit_fn f "dvmin"
+  | Dvmax f -> pp_unit_fn f "dvmax"
+  | Lvh f -> pp_unit_fn f "lvh"
+  | Lvw f -> pp_unit_fn f "lvw"
+  | Lvmin f -> pp_unit_fn f "lvmin"
+  | Lvmax f -> pp_unit_fn f "lvmax"
+  | Svh f -> pp_unit_fn f "svh"
+  | Svw f -> pp_unit_fn f "svw"
+  | Svmin f -> pp_unit_fn f "svmin"
+  | Svmax f -> pp_unit_fn f "svmax"
+  | Ch f -> pp_unit_fn f "ch"
+  | Lh f -> pp_unit_fn f "lh"
   | Auto -> Pp.string ctx "auto"
   | Inherit -> Pp.string ctx "inherit"
   | Fit_content -> Pp.string ctx "fit-content"
@@ -159,7 +158,7 @@ let rec pp_length : length Pp.t =
   | Min_content -> Pp.string ctx "min-content"
   | From_font -> Pp.string ctx "from-font"
   | Function s -> Pp.string ctx s
-  | Var v -> pp_var pp_length ctx v
+  | Var v -> pp_var (pp_length ~always) ctx v
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
@@ -172,7 +171,7 @@ let rec pp_length : length Pp.t =
           Pp.string ctx "3.40282e38px"
       | Expr (Val _, Mul, Num f) when ctx.minify && f = infinity ->
           Pp.string ctx "3.40282e38px"
-      | _ -> pp_calc pp_length ctx cv)
+      | _ -> pp_calc (pp_length ~always) ctx cv)
 
 let pp_color_name : color_name Pp.t =
  fun ctx -> function

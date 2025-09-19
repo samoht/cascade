@@ -53,6 +53,36 @@ let default_decl_of_property_rule (type a) (r : a property_rule) =
 
 (** {1 Pretty Printing} *)
 
+let pp_property_rule : 'a property_rule Pp.t =
+ fun ctx { name; syntax; inherits; initial_value } ->
+  Pp.string ctx "@property ";
+  Pp.string ctx name;
+  Pp.sp ctx ();
+  Pp.braces
+    (fun ctx () ->
+      Pp.cut ctx ();
+      Pp.nest 2
+        (fun ctx () ->
+          Pp.string ctx "syntax:";
+          Pp.space_if_pretty ctx ();
+          Variables.pp_syntax ctx syntax;
+          Pp.string ctx ";";
+          Pp.cut ctx ();
+          Pp.string ctx "inherits:";
+          Pp.space_if_pretty ctx ();
+          Pp.string ctx (if inherits then "true" else "false");
+          match initial_value with
+          | None -> ()
+          | Some v ->
+              Pp.semicolon ctx ();
+              Pp.cut ctx ();
+              Pp.string ctx "initial-value:";
+              Pp.space_if_pretty ctx ();
+              Variables.pp_value syntax ctx v)
+        ctx ();
+      Pp.cut ctx ())
+    ctx ()
+
 let rec pp_rule : rule Pp.t =
  fun ctx rule ->
   Selector.pp ctx rule.selector;
@@ -174,34 +204,7 @@ and pp_statement : statement Pp.t =
       Pp.string ctx "url(";
       Pp.string ctx uri;
       Pp.string ctx ");"
-  | Property { name; syntax; inherits; initial_value } ->
-      Pp.string ctx "@property ";
-      Pp.string ctx name;
-      Pp.sp ctx ();
-      Pp.braces
-        (fun ctx () ->
-          Pp.cut ctx ();
-          Pp.nest 2
-            (fun ctx () ->
-              Pp.string ctx "syntax:";
-              Pp.space_if_pretty ctx ();
-              Variables.pp_syntax ctx syntax;
-              Pp.string ctx ";";
-              Pp.cut ctx ();
-              Pp.string ctx "inherits:";
-              Pp.space_if_pretty ctx ();
-              Pp.string ctx (if inherits then "true" else "false");
-              match initial_value with
-              | None -> ()
-              | Some v ->
-                  Pp.semicolon ctx ();
-                  Pp.cut ctx ();
-                  Pp.string ctx "initial-value:";
-                  Pp.space_if_pretty ctx ();
-                  Variables.pp_value syntax ctx v)
-            ctx ();
-          Pp.cut ctx ())
-        ctx ()
+  | Property r -> pp_property_rule ctx r
   | Layer_decl names ->
       Pp.string ctx "@layer ";
       Pp.list ~sep:Pp.comma Pp.string ctx names;
