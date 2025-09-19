@@ -5328,8 +5328,8 @@ let shadow ?(inset = false) ?(h_offset : length option)
       inset;
       h_offset = Option.value h_offset ~default:(Px 0.);
       v_offset = Option.value v_offset ~default:(Px 0.);
-      blur = Some (Option.value blur ~default:(Px 0.));
-      spread = Some (Option.value spread ~default:(Px 0.));
+      blur;
+      spread;
       color = Some (Option.value color ~default:default_color);
     }
 
