@@ -1695,6 +1695,11 @@ let test_shadow () =
   check_shadow "red inset 2px 2px" ~expected:"inset 2px 2px red";
   check_shadow "red inset 2px 2px 4px" ~expected:"inset 2px 2px 4px red";
   check_shadow "red inset 2px 2px 4px 1px" ~expected:"inset 2px 2px 4px 1px red";
+  (* Test compact printing - when blur and spread are not provided, should print
+     compactly *)
+  check_shadow "0 0 #0000" ~expected:"0 0 #0000";
+  (* Ensure we don't get verbose 4-value format for simple cases *)
+  check_shadow "0 0 rgba(0,0,0,0)" ~expected:"0 0 rgb(0 0 0/0)";
   check_shadow "inherit";
   neg read_shadow "invalid-shadow";
   neg read_shadow "10px"
