@@ -228,19 +228,22 @@ let err_expected t what = Reader.err_expected t what
 (** Parse attribute value (quoted or unquoted) *)
 let read_attribute_value t =
   (* Check if we start with a quote - if so, we MUST parse as quoted string *)
-  let value =
+  let value, was_quoted =
     match Reader.peek t with
     | Some ('"' | '\'') ->
-        (* If we see a quote, we must parse a valid quoted string - no
-           fallback *)
-        Reader.string t
+        (* If we see a quote, we must parse a valid quoted string - no fallback.
+           Quoted strings can be empty per CSS spec. *)
+        (Reader.string t, true)
     | _ ->
         (* Otherwise parse as unquoted identifier *)
-        Reader.while_ t (fun c ->
-            c <> ']' && c <> ' ' && c <> '\t' && c <> '\n')
+        let v =
+          Reader.while_ t (fun c ->
+              c <> ']' && c <> ' ' && c <> '\t' && c <> '\n')
+        in
+        (v, false)
   in
-  (* CSS spec requires attribute values to be non-empty *)
-  if value = "" then
+  (* CSS spec allows empty quoted strings but not empty unquoted values *)
+  if value = "" && not was_quoted then
     match Reader.peek t with
     | None -> Reader.err_expected_but_eof t "']'"
     | Some _ -> Reader.err_invalid t "attribute value"
