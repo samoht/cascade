@@ -114,10 +114,11 @@ let pp_unit ?(always = true) ctx f suffix =
 
 let rec pp_length : length Pp.t =
  fun ctx v ->
+  let pp_unit_always = pp_unit ~always:true ctx in
   let pp_unit = pp_unit ~always:false ctx in
   match v with
   | Zero -> Pp.char ctx '0'
-  | Px f -> pp_unit f "px"
+  | Px f -> pp_unit_always f "px"
   | Cm f -> pp_unit f "cm"
   | Mm f -> pp_unit f "mm"
   | Q f -> pp_unit f "q"
