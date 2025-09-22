@@ -100,11 +100,13 @@ val pp_duration : duration Pp.t
 val pp_number : number Pp.t
 (** [pp_number] pretty-prints {!number} values. *)
 
-val pp_percentage : percentage Pp.t
-(** [pp_percentage] pretty-prints {!percentage} values. *)
+val pp_percentage : ?always:bool -> percentage Pp.t
+(** [pp_percentage ?always] pretty-prints {!percentage} values. When [always] is
+    true, always includes the % unit even for 0. *)
 
-val pp_length_percentage : length_percentage Pp.t
-(** [pp_length_percentage] pretty-prints {!length_percentage} values. *)
+val pp_length_percentage : ?always:bool -> length_percentage Pp.t
+(** [pp_length_percentage ?always] pretty-prints {!length_percentage} values.
+    When [always] is true, always includes units even for 0. *)
 
 val read_length_percentage : Reader.t -> length_percentage
 (** [read_length_percentage] reads a {!length_percentage} value. *)

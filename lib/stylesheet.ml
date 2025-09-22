@@ -234,7 +234,7 @@ and pp_statement : statement Pp.t =
           Pp.sp ctx ();
           Pp.string ctx n
       | None -> ());
-      Pp.sp ctx ();
+      Pp.string ctx " ";
       Pp.string ctx condition;
       Pp.sp ctx ();
       Pp.braces pp_block ctx content
