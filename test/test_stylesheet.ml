@@ -358,7 +358,7 @@ let test_property_permutations () =
   (* Different permutations of the same property should all produce the same
      output *)
   let canonical =
-    "@property --x{syntax:\"<length>\";inherits:true;initial-value:0}"
+    "@property --x{syntax:\"<length>\";inherits:true;initial-value:0px}"
   in
 
   (* Permutation 1: syntax, inherits, initial-value (canonical order) *)
