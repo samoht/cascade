@@ -945,7 +945,7 @@ let test_nested_rules () =
     "@layer base { @media print { .print-only { display: block; } } }";
   check_stylesheet
     ~expected:
-      "@container(width > 400px){@media (orientation: \
+      "@container (width > 400px){@media (orientation: \
        landscape){.landscape{color:green}}}"
     "@container (width > 400px) { @media (orientation: landscape) { .landscape \
      { color: green; } } }"

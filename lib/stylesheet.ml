@@ -231,7 +231,7 @@ and pp_statement : statement Pp.t =
       Pp.string ctx "@container";
       (match name with
       | Some n ->
-          Pp.sp ctx ();
+          Pp.char ctx ' ';
           Pp.string ctx n
       | None -> ());
       Pp.string ctx " ";
