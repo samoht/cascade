@@ -79,7 +79,23 @@ let as_supports = function
   | Supports (condition, content) -> Some (condition, content)
   | _ -> None
 
+(* Existential type for property information *)
+type property_info =
+  | Property_info : {
+      name : string;
+      syntax : 'a Variables.syntax;
+      inherits : bool;
+      initial_value : 'a option;
+    }
+      -> property_info
+
 let as_property = function
+  | Property { name; syntax; inherits; initial_value } ->
+      Some (Property_info { name; syntax; inherits; initial_value })
+  | _ -> None
+
+(* Legacy version for compatibility *)
+let as_property_legacy = function
   | Property { name; syntax; inherits; initial_value } ->
       let syntax_str = Pp.to_string Variables.pp_syntax syntax in
       let initial_str =
