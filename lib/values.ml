@@ -672,7 +672,6 @@ let read_length_unit ?(allow_negative = true) t =
   match unit with
   | "" when n = 0.0 -> Zero
   | "" -> Reader.err t "length values must have units (except for zero)"
-  | _ when n = 0.0 -> Zero
   | "px" -> Px n
   | "cm" -> Cm n
   | "mm" -> Mm n
