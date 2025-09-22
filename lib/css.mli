@@ -146,9 +146,25 @@ val as_supports : statement -> (string * statement list) option
 (** [as_supports stmt] returns [Some (condition, statements)] if the statement
     is a supports query, [None] otherwise. *)
 
-val as_property : statement -> (string * string * bool * string option) option
-(** [as_property stmt] returns [Some (name, syntax, inherits, initial_value)] if
-    the statement is a [@property] declaration, [None] otherwise. *)
+(** Existential type for property information that preserves type safety *)
+type property_info =
+  | Property_info : {
+      name : string;
+      syntax : 'a Variables.syntax;
+      inherits : bool;
+      initial_value : 'a option;
+    }
+      -> property_info
+
+val as_property : statement -> property_info option
+(** [as_property stmt] returns [Some (Property_info {...})] if the statement is
+    a [@property] declaration, [None] otherwise. The existential type preserves
+    the relationship between syntax type and initial value type. *)
+
+val as_property_legacy :
+  statement -> (string * string * bool * string option) option
+(** Legacy version that returns strings. Deprecated: use [as_property] instead.
+*)
 
 (** {2:at_rules At-Rules}
 
