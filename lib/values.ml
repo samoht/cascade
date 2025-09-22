@@ -371,18 +371,18 @@ let pp_opt_alpha ctx = function
       pp_alpha ctx a
 
 (** Pretty printer for percentage types *)
-let rec pp_percentage : percentage Pp.t =
+let rec pp_percentage ?(always = false) : percentage Pp.t =
  fun ctx -> function
-  | Pct f -> Pp.pct ctx f
-  | Var v -> pp_var pp_percentage ctx v
-  | Calc c -> pp_calc pp_percentage ctx c
+  | Pct f -> Pp.pct ~always ctx f
+  | Var v -> pp_var (pp_percentage ~always) ctx v
+  | Calc c -> pp_calc (pp_percentage ~always) ctx c
 
-and pp_length_percentage : length_percentage Pp.t =
+and pp_length_percentage ?(always = false) : length_percentage Pp.t =
  fun ctx -> function
-  | Length l -> pp_length ctx l
-  | Percentage p -> pp_percentage ctx p
-  | Var v -> pp_var pp_length_percentage ctx v
-  | Calc c -> pp_calc pp_length_percentage ctx c
+  | Length l -> pp_length ~always ctx l
+  | Percentage p -> pp_percentage ~always ctx p
+  | Var v -> pp_var (pp_length_percentage ~always) ctx v
+  | Calc c -> pp_calc (pp_length_percentage ~always) ctx c
 
 and pp_component : component Pp.t =
  fun ctx -> function

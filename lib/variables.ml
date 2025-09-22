@@ -58,8 +58,8 @@ let rec pp_value : type a. a syntax -> a Pp.t =
   | Color -> Values.pp_color ctx value
   | Number -> Pp.float ctx value
   | Integer -> Pp.int ctx value
-  | Percentage -> Values.pp_percentage ctx value
-  | Length_percentage -> Values.pp_length_percentage ctx value
+  | Percentage -> Values.pp_percentage ~always:true ctx value
+  | Length_percentage -> Values.pp_length_percentage ~always:true ctx value
   | Angle -> Values.pp_angle ctx value
   | Time -> Values.pp_duration ctx value
   | Custom_ident -> Pp.string ctx value
