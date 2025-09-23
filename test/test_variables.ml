@@ -6,7 +6,6 @@ open Css.Values
 open Test_helpers
 (* open Alcotest - Used via qualified access *)
 
-let check_any_var = check_value "any_var" read_any_var pp_any_var
 let check_any_syntax = check_value "any_syntax" read_any_syntax pp_any_syntax
 
 (* Not a roundtrip test *)
@@ -193,21 +192,42 @@ let test_syntax () =
   (* Syntax checking is not available in current implementation *)
   ()
 
-let test_any_var () =
-  (* Test any_var parsing *)
-  check_any_var ~expected:"var(--color)" "var(--color)";
-  check_any_var ~expected:"var(--primary)" "var(--primary)";
-  check_any_var ~expected:"var(--theme-bg)" "var(--theme-bg)";
+(* ignore-test: parse_var_reference is a function, not a type *)
+let test_parse_var_reference () =
+  (* Test parsing CSS var() references - just extracts name and fallback *)
+  let check_var_ref input expected_name expected_fallback =
+    let r = Css.Reader.of_string input in
+    let name, fallback = parse_var_reference r in
+    Alcotest.(check string) "variable name" expected_name name;
+    Alcotest.(check (option string)) "fallback" expected_fallback fallback
+  in
 
-  (* Test invalid cases using standard neg pattern *)
-  neg read_any_var "not-a-var";
-  neg read_any_var "var(color)";
+  (* Basic var() references *)
+  check_var_ref "var(--color)" "color" None;
+  check_var_ref "var(--primary)" "primary" None;
+  check_var_ref "var(--theme-bg)" "theme-bg" None;
+
+  (* With fallbacks *)
+  check_var_ref "var(--color, red)" "color" (Some "red");
+  check_var_ref "var(--size, 10px)" "size" (Some "10px");
+
+  (* Test invalid cases *)
+  let neg input =
+    let r = Css.Reader.of_string input in
+    try
+      let _ = parse_var_reference r in
+      Alcotest.fail (Printf.sprintf "Expected failure for: %s" input)
+    with _ -> ()
+  in
+
+  neg "not-a-var";
+  neg "var(color)";
   (* Missing -- prefix *)
-  neg read_any_var "var()";
+  neg "var()";
   (* Empty variable name *)
-  neg read_any_var "variable(--color)";
+  neg "variable(--color)";
   (* Wrong function name *)
-  neg read_any_var "var(--)"
+  neg "var(--)" (* No name after -- *)
 
 let test_any_syntax () =
   (* Test syntax parsing according to CSS @property spec
@@ -237,7 +257,7 @@ let test_any_syntax () =
 let additional_tests =
   [
     ("syntax", `Quick, test_syntax);
-    ("any_var", `Quick, test_any_var);
+    ("parse_var_reference", `Quick, test_parse_var_reference);
     ("any_syntax", `Quick, test_any_syntax);
   ]
 
