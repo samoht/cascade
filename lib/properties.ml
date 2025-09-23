@@ -746,8 +746,8 @@ module Shadow = struct
     | None -> err_invalid_value t "shadow" "at least two lengths are required"
 end
 
-let rec read_shadow t : shadow =
-  let read_var t : shadow = Var (read_var read_shadow t) in
+let rec read_shadow_single t : shadow =
+  let read_var t : shadow = Var (read_var read_shadow_single t) in
   Reader.ws t;
   Reader.enum_or_calls "shadow"
     [
@@ -761,8 +761,10 @@ let rec read_shadow t : shadow =
     ~calls:[ ("var", read_var) ]
     ~default:Shadow.read t
 
-let read_box_shadow t : box_shadow =
-  Reader.list ~sep:Reader.comma ~at_least:1 read_shadow t
+and read_shadow t : shadow =
+  match Reader.list ~sep:Reader.comma ~at_least:1 read_shadow_single t with
+  | [ x ] -> x
+  | l -> List l
 
 module Transform = struct
   let read_translate_x t =
@@ -967,10 +969,9 @@ let rec pp_shadow : shadow Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_shadow ctx v
-  | Var_list v -> pp_var pp_box_shadow ctx v
+  | List shadows -> Pp.list ~sep:Pp.comma pp_shadow ctx shadows
 
-and pp_box_shadow : box_shadow Pp.t =
- fun ctx shadows -> Pp.list ~sep:Pp.comma pp_shadow ctx shadows
+(* pp_box_shadow removed - use pp_shadow with List constructor *)
 
 let pp_gradient_direction : gradient_direction Pp.t =
  fun ctx -> function
@@ -1133,7 +1134,11 @@ let rec pp_font_family : font_family Pp.t =
   | Name s ->
       (* Font names with spaces must be quoted per CSS spec *)
       if String.contains s ' ' then Pp.quoted_string ctx s else Pp.string ctx s
-  | Var v -> pp_var (Pp.list ~sep:Pp.comma pp_font_family) ctx v
+  | Var v -> pp_var pp_font_family ctx v
+  | List fonts -> Pp.list ~sep:Pp.comma pp_font_family ctx fonts
+
+(* pp_font_families is no longer needed since Fonts is now part of
+   font_family *)
 
 let rec pp_border_style : border_style Pp.t =
  fun ctx -> function
@@ -1929,7 +1934,8 @@ let rec pp_transform : transform Pp.t =
   | Matrix_3d m -> pp_matrix_3d ctx m
   | Perspective p -> Pp.call "perspective" pp_length ctx p
   | Inherit -> pp_keyword "inherit" ctx
-  | Var v -> pp_var (Pp.list ~sep:Pp.space pp_transform) ctx v
+  | Var v -> pp_var pp_transform ctx v
+  | List transforms -> Pp.list ~sep:Pp.space pp_transform ctx transforms
 
 let pp_transform_style : transform_style Pp.t =
  fun ctx -> function
@@ -3167,7 +3173,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Aspect_ratio -> pp pp_aspect_ratio
   | Content -> pp pp_content
   | Quotes -> pp Pp.string
-  | Box_shadow -> pp pp_box_shadow
+  | Box_shadow -> pp pp_shadow
   | Fill -> pp pp_svg_paint
   | Stroke -> pp pp_svg_paint
   | Stroke_width -> pp pp_length
@@ -3231,7 +3237,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Moz_appearance -> pp pp_appearance
   | Ms_filter -> pp pp_filter
   | O_transition -> pp (Pp.list ~sep:Pp.comma pp_transition)
-  | Font_family -> pp (Pp.list ~sep:Pp.comma pp_font_family)
+  | Font_family -> pp pp_font_family
 
 let rec read_border_style t : border_style =
   let read_var t : border_style = Var (read_var read_border_style t) in
@@ -4333,24 +4339,25 @@ let font_family_all_enums : (string * font_family) list =
   font_family_generic_css @ font_family_css_keywords @ font_family_popular_web
   @ font_family_platform @ font_family_developer
 
-let rec read_font_family t : font_family =
-  let read_var t : font_family =
-    let v = read_var (Reader.list ~sep:Reader.comma read_font_family) t in
-    Var v
+let rec read_font_family_single t : font_family =
+  let read_var t : font_family = Var (read_var read_font_family t) in
+  let read_raw t : font_family =
+    match Reader.peek t with
+    | Some ('"' | '\'') ->
+        let name = Reader.string t in
+        Name name
+    | _ ->
+        let name = Reader.ident t in
+        Name name
   in
   Reader.enum_or_calls "font-family" font_family_all_enums
     ~calls:[ ("var", read_var) ]
-    ~default:(fun t ->
-      (* Handle quoted strings and arbitrary identifiers *)
-      Reader.ws t;
-      match Reader.peek t with
-      | Some ('"' | '\'') ->
-          let name = Reader.string t in
-          Name name
-      | _ ->
-          let name = Reader.ident t in
-          Name name)
-    t
+    ~default:read_raw t
+
+and read_font_family t : font_family =
+  match Reader.list ~sep:Reader.comma ~at_least:1 read_font_family_single t with
+  | [ x ] -> x
+  | l -> List l
 
 let read_font_stretch t : font_stretch =
   let read_percentage t : font_stretch =

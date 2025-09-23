@@ -92,5 +92,7 @@ val read_any_syntax : Reader.t -> any_syntax
 val pp_any_var : any_var Pp.t
 (** [pp_any_var] pretty-prints any CSS variable. *)
 
-val read_any_var : Reader.t -> any_var
-(** [read_any_var t] parses a CSS variable reference. *)
+val parse_var_reference : Reader.t -> string * string option
+(** [parse_var_reference t] parses a CSS var() function and returns the variable
+    name (without -- prefix) and optional fallback string. This is a lower-level
+    function that doesn't create a variable handle. *)

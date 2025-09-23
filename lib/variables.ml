@@ -500,8 +500,11 @@ let read_any_syntax (r : Reader.t) : any_syntax =
 (* Pretty-printer for any_var *)
 let pp_any_var : any_var Pp.t = fun ctx (V v) -> pp_var (fun _ _ -> ()) ctx v
 
-(* Reader for any_var - this is complex as it needs type information *)
-let read_any_var (r : Reader.t) : any_var =
+(** Parse a CSS variable reference with optional fallback value. This creates a
+    variable handle for parsing purposes only - it doesn't have type or layer
+    information which would need to be resolved from a variable registry or
+    context. *)
+let parse_var_reference (r : Reader.t) : string * string option =
   if Reader.looking_at r "var(" then (
     for _ = 1 to 4 do
       Reader.skip r
@@ -509,17 +512,21 @@ let read_any_var (r : Reader.t) : any_var =
     (* skip "var(" *)
     Reader.expect '-' r;
     Reader.expect '-' r;
-    let name = Reader.until r ')' in
-    let name =
-      match String.index_opt name ',' with
-      | Some i -> String.sub name 0 i |> String.trim
-      | None -> String.trim name
+    let content = Reader.until r ')' in
+    let name, fallback =
+      match String.index_opt content ',' with
+      | Some i ->
+          let name = String.sub content 0 i |> String.trim in
+          let fallback =
+            String.sub content (i + 1) (String.length content - i - 1)
+            |> String.trim
+          in
+          (name, Some fallback)
+      | None -> (String.trim content, None)
     in
     (* CSS spec requires variable names to have at least one character after
        -- *)
     if name = "" then Reader.err_invalid r "CSS variable name";
     Reader.expect ')' r;
-    (* Return a dummy variable - in practice this function would need more
-       context *)
-    V { name; fallback = None; default = None; layer = None; meta = None })
+    (name, fallback))
   else Reader.err_invalid r "Expected var() function"

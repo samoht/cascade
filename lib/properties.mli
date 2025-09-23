@@ -13,14 +13,8 @@ val pp_property_value : ('a property * 'a) Pp.t
 val pp_shadow : shadow Pp.t
 (** [pp_shadow] is the pretty-printer for [shadow] values. *)
 
-val pp_box_shadow : box_shadow Pp.t
-(** [pp_box_shadow] is the pretty-printer for [box_shadow] values. *)
-
 val read_shadow : Reader.t -> shadow
 (** [read_shadow t] parses a [shadow] value from [t]. *)
-
-val read_box_shadow : Reader.t -> box_shadow
-(** [read_box_shadow t] parses a [box_shadow] value from [t]. *)
 
 (* Background and animation helpers moved from Css *)
 
