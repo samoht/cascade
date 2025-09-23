@@ -111,8 +111,8 @@ val box_shadow : shadow -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/box-shadow} box-shadow}
     property. *)
 
-val box_shadow_list : shadow list -> declaration
-(** [box_shadow_list values] is the
+val box_shadows : shadow list -> declaration
+(** [box_shadows values] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/box-shadow} box-shadow}
     property from a comma-separated list. *)
 
@@ -803,10 +803,15 @@ val box_sizing : box_sizing -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/box-sizing} box-sizing}
     property. *)
 
-val font_family : font_family list -> declaration
+val font_family : font_family -> declaration
 (** [font_family v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-family}
      font-family} property. *)
+
+val font_families : font_family list -> declaration
+(** [font_families fonts] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-family}
+     font-family} property from a comma-separated list. *)
 
 val word_spacing : length -> declaration
 (** [word_spacing v] is the

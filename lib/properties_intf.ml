@@ -601,7 +601,9 @@ type font_family =
   (* Arbitrary font family name *)
   | Name of string
   (* CSS variables *)
-  | Var of font_family list var
+  | Var of font_family var
+  (* List of fonts for composition *)
+  | List of font_family list
 
 type font_stretch =
   | Pct of float
@@ -701,7 +703,8 @@ type transform =
   | Perspective of length
   | None
   | Inherit
-  | Var of transform list var
+  | Var of transform var
+  | List of transform list
 
 type transform_style = Flat | Preserve_3d | Inherit
 type backface_visibility = Visible | Hidden | Inherit
@@ -807,9 +810,7 @@ type shadow =
   | Revert
   | Revert_layer
   | Var of shadow var
-  | Var_list of box_shadow var
-
-and box_shadow = shadow list
+  | List of shadow list
 
 type text_shadow =
   | None
@@ -1312,7 +1313,7 @@ type 'a property =
   | Overflow_x : overflow property
   | Overflow_y : overflow property
   | Vertical_align : vertical_align property
-  | Font_family : font_family list property
+  | Font_family : font_family property
   | Background_position : position_2d list property
   | Background_repeat : background_repeat property
   | Background_size : background_size property
@@ -1346,7 +1347,7 @@ type 'a property =
   | Float : float_side property
   | Scale : scale property
   | Transition : transition list property
-  | Box_shadow : box_shadow property
+  | Box_shadow : shadow property
   | Fill : svg_paint property
   | Stroke : svg_paint property
   | Stroke_width : length property

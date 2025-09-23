@@ -16,7 +16,7 @@ type _ kind =
   | Border : border kind
   | Font_weight : font_weight kind
   | Line_height : line_height kind
-  | Font_family : font_family list kind
+  | Font_family : font_family kind
   | Font_feature_settings : font_feature_settings kind
   | Font_variation_settings : font_variation_settings kind
   | Font_variant_numeric : font_variant_numeric kind
@@ -25,7 +25,7 @@ type _ kind =
   | Scroll_snap_strictness : scroll_snap_strictness kind
   | Angle : angle kind
   | Shadow : shadow kind
-  | Box_shadow : shadow list kind
+  | Box_shadow : shadow kind
   | Content : content kind
 
 type declaration =

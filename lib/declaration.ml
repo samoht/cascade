@@ -164,7 +164,7 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Border -> pp pp_border
   | Font_weight -> pp pp_font_weight
   | Line_height -> pp pp_line_height
-  | Font_family -> pp (Pp.list ~sep:Pp.comma pp_font_family)
+  | Font_family -> pp pp_font_family
   | Font_feature_settings -> pp pp_font_feature_settings
   | Font_variation_settings -> pp pp_font_variation_settings
   | Font_variant_numeric -> pp pp_font_variant_numeric
@@ -172,7 +172,7 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Blend_mode -> pp pp_blend_mode
   | Scroll_snap_strictness -> pp pp_scroll_snap_strictness
   | Angle -> pp pp_angle
-  | Box_shadow -> pp (Pp.list ~sep:Pp.comma pp_shadow)
+  | Box_shadow -> pp pp_shadow
   | Content -> pp pp_content
 
 let string_of_value ?(minify = true) ?(inline = false) decl =
@@ -261,11 +261,6 @@ let read_raw_value t =
   in
   loop ()
 
-(* Parse value directly based on property type *)
-(* Helper functions for complex property reading *)
-let read_font_family_value t =
-  v Font_family (Reader.list ~sep:Reader.comma read_font_family t)
-
 let read_transform_value t =
   let transforms, error_opt = Reader.many read_transform t in
   if List.length transforms = 0 then
@@ -347,7 +342,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Line_height -> v Line_height (read_line_height t)
   | Font_weight -> v Font_weight (read_font_weight t)
   | Font_style -> v Font_style (read_font_style t)
-  | Font_family -> read_font_family_value t
+  | Font_family -> v Font_family (read_font_family t)
   | Font -> v Font (read_raw_value t)
   | Text_align -> v Text_align (read_text_align t)
   | Text_transform -> v Text_transform (read_text_transform t)
@@ -397,9 +392,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Grid_auto_flow -> v Grid_auto_flow (read_grid_auto_flow t)
   | Grid_template_areas -> v Grid_template_areas (read_grid_template_areas t)
   (* Shadows *)
-  | Box_shadow ->
-      v Box_shadow
-        (Reader.list ~sep:Reader.comma ~at_least:1 Properties.read_shadow t)
+  | Box_shadow -> v Box_shadow (read_shadow t)
   | Text_shadow -> v Text_shadow (read_text_shadows t)
   (* Content *)
   | Content -> v Content (read_content t)
@@ -740,8 +733,11 @@ let text_shadow value = v Text_shadow [ value ]
 let transition value = v Transition [ value ]
 let transitions values = v Transition values
 let animation value = v Animation [ value ]
-let box_shadow value = v Box_shadow [ value ]
-let box_shadow_list values = v Box_shadow values
+let box_shadow value = v Box_shadow value
+
+let box_shadows = function
+  | [] -> failwith "empty box_shadows"
+  | values -> v Box_shadow (List values)
 
 (* Special helpers *)
 let z_index_auto = v Z_index Auto
@@ -948,6 +944,11 @@ let resize value = v Resize value
 let vertical_align value = v Vertical_align value
 let box_sizing value = v Box_sizing value
 let font_family value = v Font_family value
+
+let font_families = function
+  | [] -> failwith "empty font_families"
+  | fonts -> v Font_family (List fonts)
+
 let background_attachment value = v Background_attachment value
 let border_top value = v Border_top value
 let border_right value = v Border_right value

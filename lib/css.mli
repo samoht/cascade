@@ -2075,12 +2075,19 @@ type font_family =
   (* Arbitrary font family name *)
   | Name of string
   (* CSS variables *)
-  | Var of font_family list var
+  | Var of font_family var
+  (* List of fonts for composition *)
+  | List of font_family list
 
-val font_family : font_family list -> declaration
+val font_family : font_family -> declaration
 (** [font_family fonts] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-family}
      font-family} property. *)
+
+val font_families : font_family list -> declaration
+(** [font_families fonts] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-family}
+     font-family} property from a comma-separated list. *)
 
 val font_size : length -> declaration
 (** [font_size size] is the
@@ -2295,9 +2302,7 @@ type shadow =
   | Revert
   | Revert_layer
   | Var of shadow var
-  | Var_list of box_shadow var
-
-and box_shadow = shadow list
+  | List of shadow list
 
 val shadow :
   ?inset:bool ->
@@ -2642,7 +2647,8 @@ type transform =
   | Perspective of length
   | None
   | Inherit
-  | Var of transform list var
+  | Var of transform var
+  | List of transform list
 
 val transform : transform list -> declaration
 (** [transform values] is the
@@ -2910,8 +2916,8 @@ val box_shadow : shadow -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/box-shadow} box-shadow}
     property. *)
 
-val box_shadow_list : shadow list -> declaration
-(** [box_shadow_list values] is the
+val box_shadows : shadow list -> declaration
+(** [box_shadows values] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/box-shadow} box-shadow}
     property. *)
 
@@ -3484,7 +3490,7 @@ type _ kind =
   | Border : border kind
   | Font_weight : font_weight kind
   | Line_height : line_height kind
-  | Font_family : font_family list kind
+  | Font_family : font_family kind
   | Font_feature_settings : font_feature_settings kind
   | Font_variation_settings : font_variation_settings kind
   | Font_variant_numeric : font_variant_numeric kind
@@ -3493,7 +3499,7 @@ type _ kind =
   | Scroll_snap_strictness : scroll_snap_strictness kind
   | Angle : angle kind
   | Shadow : shadow kind
-  | Box_shadow : shadow list kind
+  | Box_shadow : shadow kind
   | Content : content kind
 
 val pp_kind_value : ('a kind * 'a) Pp.t
