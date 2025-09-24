@@ -43,6 +43,8 @@ let color_mix ?in_space ?(hue = Default) ?percent1 ?percent2 color1 color2 =
   in
   Mix { in_space; hue; color1; percent1; color2; percent2 }
 
+(** Comparison functions *)
+
 (** Pretty-printing functions *)
 
 let pp_var : type a. a Pp.t -> a var Pp.t =
