@@ -399,26 +399,10 @@ let vars_of_declarations properties =
   List.concat_map
     (function
       | Declaration { property; value; _ } -> vars_of_property property value
-      | Custom_declaration { name; kind; value; meta; _ } -> (
-          (* Extract variables being referenced in the value *)
-          let referenced_vars = vars_of_value kind value in
-          (* Also include the variable being defined if it has metadata *)
-          match meta with
-          | Some m ->
-              (* Create a synthetic var for the variable being defined *)
-              let defined_var =
-                V
-                  {
-                    name = String.sub name 2 (String.length name - 2);
-                    (* Remove -- prefix *)
-                    fallback = Empty;
-                    default = None;
-                    layer = None;
-                    meta = Some m;
-                  }
-              in
-              defined_var :: referenced_vars
-          | None -> referenced_vars))
+      | Custom_declaration { kind; value; _ } ->
+          (* Only extract variables being referenced in the value, not the
+             variable being defined *)
+          vars_of_value kind value)
     properties
   |> List.sort_uniq compare_vars_by_name
 
