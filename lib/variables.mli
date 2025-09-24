@@ -28,6 +28,7 @@ val meta : unit -> ('a -> meta) * (meta -> 'a option)
 (** {1 Variable creation} *)
 
 val var :
+  ?default:'a ->
   ?fallback:'a fallback ->
   ?layer:string ->
   ?meta:meta ->
@@ -35,8 +36,10 @@ val var :
   'a kind ->
   'a ->
   declaration * 'a var
-(** [var ?fallback ?layer ?meta name kind value] creates a CSS variable
-    declaration and a typed variable handle. *)
+(** [var ?default ?fallback ?layer ?meta name kind value] creates a CSS variable
+    declaration with the given value and a typed variable handle. The value is
+    used both for the declaration and as the default for inline mode (unless
+    overridden by [?default]). *)
 
 (** {1 Variable extraction} *)
 
