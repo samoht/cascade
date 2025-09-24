@@ -1667,7 +1667,7 @@ let var_layer v = v.layer
 let var_meta v = v.meta
 
 let with_fallback v fallback_value =
-  { v with fallback = Some (Fallback fallback_value) }
+  { v with fallback = Fallback fallback_value }
 
 (** Read padding shorthand property (1-4 values) *)
 let read_padding_shorthand t : length list =
