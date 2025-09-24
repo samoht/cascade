@@ -3573,6 +3573,7 @@ val property :
     @property}. *)
 
 val var :
+  ?default:'a ->
   ?fallback:'a fallback ->
   ?layer:string ->
   ?meta:meta ->
@@ -3580,13 +3581,13 @@ val var :
   'a kind ->
   'a ->
   declaration * 'a var
-(** [var ?fallback ?layer name kind value] is a CSS custom property declaration
-    and returns a variable handle.
+(** [var ?default ?fallback ?layer name kind value] returns a declaration and a
+    variable handle.
 
     - [name] is the variable name without the [--] prefix
     - [kind] specifies the value type (Length, Color, Angle, Float, etc.)
-    - [value] becomes both the CSS custom property value and the variable's
-      default
+    - [default] specifies the value to use in inline mode instead of var()
+      reference
     - [fallback] is used inside [var(--name, fallback)] in CSS output
     - [layer] is an optional CSS layer name where the variable should be placed
 

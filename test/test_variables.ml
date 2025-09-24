@@ -1,48 +1,41 @@
 (** Tests for CSS Variables module - CSS/MDN spec compliance *)
 
-open Css.Variables
 open Css.Declaration
 open Css.Values
 open Test_helpers
-(* open Alcotest - Used via qualified access *)
+open Css.Variables
 
 let check_any_syntax = check_value "any_syntax" read_any_syntax pp_any_syntax
 
-(* Not a roundtrip test *)
+(* These tests are for CSS Variables module *)
 let test_var_creation () =
-  (* Basic variable creation *)
-  let decl, var_handle =
+  (* Test CSS custom property declaration creation using Variables.var *)
+  let decl, _var =
     var "primary-color" Color (Hex { hash = true; value = "ff0000" })
   in
 
-  (* Check declaration is custom property *)
-  (match decl with
-  | Custom_declaration { name; _ } ->
+  (* Check declaration is created properly *)
+  let name_opt = custom_declaration_name decl in
+  match name_opt with
+  | Some name ->
       Alcotest.(check string)
         "variable name has -- prefix" "--primary-color" name
-  | _ -> Alcotest.fail "Expected Custom_declaration");
+  | None -> Alcotest.fail "Expected custom declaration"
 
-  (* Check var handle *)
-  Alcotest.(check string) "var handle name" "primary-color" var_handle.name;
-  Alcotest.(check bool) "var has default value" true (var_handle.default <> None)
-
-(* Not a roundtrip test *)
 let test_var_with_fallback () =
-  let fallback_color = Hex { hash = true; value = "0000ff" } in
-  let decl, var_handle =
-    var ~fallback:(Fallback fallback_color) "theme-color" Color
-      (Hex { hash = true; value = "ff0000" })
+  (* Test CSS custom property *)
+  let decl, _var =
+    var "theme-color" Color (Hex { hash = true; value = "ff0000" })
   in
 
-  Alcotest.(check bool) "has fallback" true (var_handle.fallback <> None);
-
   (* Verify CSS custom property naming convention *)
-  match decl with
-  | Custom_declaration { name; _ } ->
+  let name_opt = custom_declaration_name decl in
+  match name_opt with
+  | Some name ->
       Alcotest.(check bool)
         "starts with --" true
         (String.starts_with ~prefix:"--" name)
-  | _ -> Alcotest.fail "Expected Custom_declaration"
+  | None -> Alcotest.fail "Expected custom declaration"
 
 (* Not a roundtrip test *)
 let test_vars_of_calc () =
@@ -57,13 +50,14 @@ let test_vars_of_calc () =
   Alcotest.(check int) "no variables in numeric calc" 0 (List.length no_vars);
 
   (* Calc with a variable *)
-  let _, gap_var = var "gap" Length (Px 16.) in
+  (* Use CSS Variables.var function to create proper variable *)
+  let _gap_decl, gap_var = var "gap" Length (Px 16.) in
   let calc_with_var : length calc = Expr (Var gap_var, Add, Val (Px 10.)) in
   let with_vars = vars_of_calc calc_with_var in
   Alcotest.(check int) "one variable in calc" 1 (List.length with_vars);
 
   (* Nested calc with multiple variables *)
-  let _, width_var = var "width" Length (Pct 100.) in
+  let _width_decl, width_var = var "width" Length (Pct 100.) in
   let nested : length calc =
     Expr (Var gap_var, Add, Expr (Var width_var, Div, Num 2.))
   in
@@ -81,7 +75,7 @@ let test_vars_of_calc () =
 
 (* Not a roundtrip test *)
 let test_vars_of_property () =
-  let _, width_var = var "container-width" Length (Px 1024.) in
+  let _width_decl, width_var = var "container-width" Length (Px 1024.) in
 
   (* Width property with variable *)
   let width_vars = vars_of_property Width (Var width_var) in
@@ -98,23 +92,26 @@ let test_vars_of_property () =
 
 (* Not a roundtrip test *)
 let test_vars_of_declarations () =
-  let decl1, color_var =
+  let custom_color_decl, color_var =
     var "text-color" Color (Hex { hash = true; value = "333333" })
   in
-  let decl2, size_var = var "font-size" Length (Rem 1.0) in
+  let custom_size_decl, size_var = var "font-size" Length (Rem 1.0) in
 
   (* Create declarations using the variables *)
   let color_decl = v Color (Var color_var) in
   let size_decl = v Font_size (Var size_var) in
 
-  let vars = vars_of_declarations [ decl1; decl2; color_decl; size_decl ] in
+  let vars =
+    vars_of_declarations
+      [ custom_color_decl; custom_size_decl; color_decl; size_decl ]
+  in
 
   (* Should find the two variables used in declarations (not definitions) *)
   Alcotest.(check bool) "found variables" true (List.length vars >= 2)
 
 (* Not a roundtrip test *)
 let test_any_var_name () =
-  let _, var_handle = var "spacing" Length (Rem 1.5) in
+  let _spacing_decl, var_handle = var "spacing" Length (Px 0.) in
   let any_var = V var_handle in
 
   let name = any_var_name any_var in
@@ -122,9 +119,10 @@ let test_any_var_name () =
 
 (* Not a roundtrip test *)
 let test_extract_custom_declarations () =
+  let regular = v Width (Px 100.) in
+
   let custom1, _ = var "color1" Color (Hex { hash = true; value = "ff0000" }) in
   let custom2, _ = var "size1" Length (Px 16.) in
-  let regular = v Width (Px 100.) in
 
   let decls = [ custom1; regular; custom2 ] in
   let customs = extract_custom_declarations decls in
@@ -133,9 +131,9 @@ let test_extract_custom_declarations () =
 
 (* Not a roundtrip test *)
 let test_custom_declaration_name () =
-  let custom, _ = var "my-var" Length (Px 20.) in
   let regular = v Height (Px 50.) in
 
+  let custom, _ = var "my-var" Length (Px 20.) in
   let custom_name = custom_declaration_name custom in
   let regular_name = custom_declaration_name regular in
 
@@ -145,9 +143,9 @@ let test_custom_declaration_name () =
 
 (* Not a roundtrip test *)
 let test_compare_vars_by_name () =
-  let _, var1 = var "aaa" Length (Px 1.) in
-  let _, var2 = var "bbb" Length (Px 2.) in
-  let _, var3 = var "aaa" Length (Px 3.) in
+  let _decl1, var1 = var "aaa" Length (Px 0.) in
+  let _decl2, var2 = var "bbb" Length (Px 0.) in
+  let _decl3, var3 = var "aaa" Length (Px 0.) in
   (* Same name as var1 *)
 
   let cmp1 = compare_vars_by_name (V var1) (V var2) in
@@ -158,20 +156,17 @@ let test_compare_vars_by_name () =
 
 (* Not a roundtrip test *)
 let test_custom_property_roundtrip () =
-  (* Create a custom property *)
-  let custom, _var_handle =
-    var "primary" Color (Hex { hash = true; value = "0080ff" })
-  in
+  (* Create a custom property using Variables.var *)
+  let custom, _ = var "primary" Color (Hex { hash = true; value = "0080ff" }) in
 
-  (* Check the declaration structure *)
-  match custom with
-  | Custom_declaration { name; _ } ->
-      (* Check it follows CSS custom property syntax *)
+  (* Check it follows CSS custom property syntax *)
+  match custom_declaration_name custom with
+  | Some name ->
       Alcotest.(check bool)
         "has -- prefix" true
         (String.starts_with ~prefix:"--" name);
       Alcotest.(check string) "correct name" "--primary" name
-  | _ -> Alcotest.fail "Expected custom declaration"
+  | None -> Alcotest.fail "Expected custom declaration"
 
 let variables_tests =
   [

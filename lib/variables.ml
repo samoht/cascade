@@ -180,6 +180,7 @@ let meta (type t) () =
 (** {1 Variable creation} *)
 
 let var : type a.
+    ?default:a ->
     ?fallback:a fallback ->
     ?layer:string ->
     ?meta:meta ->
@@ -187,8 +188,9 @@ let var : type a.
     a kind ->
     a ->
     declaration * a var =
- fun ?fallback ?layer ?meta name kind value ->
-  let declaration =
+ fun ?default ?fallback ?layer ?meta name kind value ->
+  (* Create the declaration directly with the value *)
+  let decl =
     Declaration.custom_declaration ?layer ?meta
       (String.concat "" [ "--"; name ])
       kind value
@@ -196,8 +198,12 @@ let var : type a.
   let fallback : a fallback =
     match fallback with None -> None | Some v -> v
   in
-  let var_handle = { name; fallback; default = Some value; layer; meta } in
-  (declaration, var_handle)
+  (* Use the value as default if no explicit default provided *)
+  let default_value =
+    match default with Some d -> Some d | None -> Some value
+  in
+  let var_handle = { name; fallback; default = default_value; layer; meta } in
+  (decl, var_handle)
 
 (** {1 Variable extraction} *)
 
