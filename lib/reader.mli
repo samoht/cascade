@@ -269,7 +269,7 @@ val pct : ?clamp:bool -> t -> float
 
     Note: Most CSS properties allow percentages outside 0-100 (e.g., margin:
     200%). Only specific contexts like alpha values require clamping. Ref:
-    https://www.w3.org/TR/css-values-4/#percentages *)
+    https://www.w3.org/TR/css-values-4/#percentages. *)
 
 val bool : t -> bool
 (** [bool t] parses a boolean value ("true" or "false"). Raises Parse_error if

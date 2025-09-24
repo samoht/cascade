@@ -161,11 +161,6 @@ val as_property : statement -> property_info option
     a [@property] declaration, [None] otherwise. The existential type preserves
     the relationship between syntax type and initial value type. *)
 
-val as_property_legacy :
-  statement -> (string * string * bool * string option) option
-(** Legacy version that returns strings. Deprecated: use [as_property] instead.
-*)
-
 (** {2:at_rules At-Rules}
 
     At-rules are CSS statements that instruct CSS how to behave. They begin with
@@ -3503,8 +3498,8 @@ type _ kind =
   | Content : content kind
 
 val pp_kind_value : ('a kind * 'a) Pp.t
-(** [pp_kind_value ctx (kind, value)] pretty-prints a typed value using the
-    appropriate printer for its kind. *)
+(** [pp_kind_value] pretty-prints a typed value using the appropriate printer
+    for its kind. *)
 
 type meta
 (** The type for CSS variable metadata. *)
