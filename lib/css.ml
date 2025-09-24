@@ -94,16 +94,6 @@ let as_property = function
       Some (Property_info { name; syntax; inherits; initial_value })
   | _ -> None
 
-(* Legacy version for compatibility *)
-let as_property_legacy = function
-  | Property { name; syntax; inherits; initial_value } ->
-      let syntax_str = Pp.to_string Variables.pp_syntax syntax in
-      let initial_str =
-        Option.map (Pp.to_string (Variables.pp_value syntax)) initial_value
-      in
-      Some (name, syntax_str, inherits, initial_str)
-  | _ -> None
-
 let concat = List.concat
 let empty = []
 let of_statements = Stylesheet.v
