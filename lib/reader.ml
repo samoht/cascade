@@ -509,22 +509,28 @@ let hex t =
 
 (** {1 Whitespace} *)
 
+(* Helper: skip comment content until finding the closing */ *)
+let skip_comment_content t =
+  let rec loop () =
+    if looking_at t "*/" then skip_n t 2
+    else
+      match peek t with
+      | None -> err_expected_but_eof t "*/ to close comment"
+      | Some _ ->
+          skip t;
+          loop ()
+  in
+  loop ()
+
+(* Skip whitespace and comments *)
 let rec skip_ws t =
   (* Skip spaces *)
   let _ = while_ t (fun c -> c = ' ' || c = '\t' || c = '\n' || c = '\r') in
-  (* Skip comments *)
-  if looking_at t "/*" then (
+  (* Skip comments if present *)
+  if not (looking_at t "/*") then ()
+  else (
     skip_n t 2;
-    let rec skip_until_close () =
-      if looking_at t "*/" then skip_n t 2
-      else
-        match peek t with
-        | None -> err_expected_but_eof t "*/ to close comment"
-        | Some _ ->
-            skip t;
-            skip_until_close ()
-    in
-    skip_until_close ();
+    skip_comment_content t;
     skip_ws t)
 
 let ws = skip_ws

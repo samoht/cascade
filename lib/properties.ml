@@ -2189,123 +2189,6 @@ let pp_steps_direction : steps_direction Pp.t =
   | Start -> Pp.string ctx "start"
   | End -> Pp.string ctx "end"
 
-let pp_animation_shorthand : animation_shorthand Pp.t =
- fun ctx anim ->
-  let pp_iter_count ctx = function
-    | Infinite -> Pp.string ctx "infinite"
-    | Num n -> Pp.float ctx n
-  in
-  let pp_timing ctx = function
-    | Linear -> Pp.string ctx "linear"
-    | Ease -> Pp.string ctx "ease"
-    | Ease_in -> Pp.string ctx "ease-in"
-    | Ease_out -> Pp.string ctx "ease-out"
-    | Ease_in_out -> Pp.string ctx "ease-in-out"
-    | Step_start -> Pp.string ctx "step-start"
-    | Step_end -> Pp.string ctx "step-end"
-    | Cubic_bezier (x1, y1, x2, y2) ->
-        Pp.string ctx "cubic-bezier(";
-        Pp.float ctx x1;
-        Pp.char ctx ',';
-        Pp.float ctx y1;
-        Pp.char ctx ',';
-        Pp.float ctx x2;
-        Pp.char ctx ',';
-        Pp.float ctx y2;
-        Pp.char ctx ')'
-    | Steps (steps, direction) ->
-        Pp.string ctx "steps(";
-        Pp.int ctx steps;
-        (match direction with
-        | Some d ->
-            Pp.comma ctx ();
-            pp_steps_direction ctx d
-        | None -> ());
-        Pp.char ctx ')'
-  in
-  let is_zero_duration = function S 0. | Ms 0. -> true | _ -> false in
-  let first = ref true in
-  let space_before pp ctx x =
-    if !first then first := false else Pp.char ctx ' ';
-    pp ctx x
-  in
-  let has_any_non_default =
-    (match anim.duration with
-    | Some d when not (is_zero_duration d) -> true
-    | _ -> false)
-    || (match anim.timing_function with
-       | Some Ease | None -> false
-       | Some _ -> true)
-    || (match anim.delay with
-       | Some d when not (is_zero_duration d) -> true
-       | _ -> false)
-    || (match anim.iteration_count with
-       | Some (Num 1.) | None -> false
-       | Some _ -> true)
-    || (match anim.direction with
-       | Some Normal | None -> false
-       | Some _ -> true)
-    || (match anim.fill_mode with Some None | None -> false | Some _ -> true)
-    ||
-    match anim.play_state with Some Running | None -> false | Some _ -> true
-  in
-  (* Name: output if Some, or "none" if None and no other components *)
-  (match (anim.name, has_any_non_default) with
-  | None, false -> Pp.string ctx "none"
-  | None, true -> ()
-  | Some name, _ -> space_before Pp.string ctx name);
-  (* Duration: skip if default (0s) *)
-  let non_default_duration : duration option =
-    match anim.duration with
-    | Some d when not (is_zero_duration d) -> Some d
-    | _ -> None
-  in
-  Pp.option (space_before pp_duration) ctx non_default_duration;
-  (* Timing function: skip if default (ease) *)
-  let non_default_timing : timing_function option =
-    match anim.timing_function with
-    | Some Ease | None -> None
-    | Some t -> Some t
-  in
-  Pp.option (space_before pp_timing) ctx non_default_timing;
-  (* Delay: skip if default (0s) *)
-  let non_default_delay : duration option =
-    match anim.delay with
-    | Some d when not (is_zero_duration d) -> Some d
-    | _ -> None
-  in
-  Pp.option (space_before pp_duration) ctx non_default_delay;
-  (* Iteration count: skip if default (1) *)
-  let non_default_iteration : animation_iteration_count option =
-    match anim.iteration_count with
-    | Some (Num 1.) | None -> None
-    | Some c -> Some c
-  in
-  Pp.option (space_before pp_iter_count) ctx non_default_iteration;
-  (* Direction: skip if default (normal) *)
-  let non_default_direction : animation_direction option =
-    match anim.direction with Some Normal | None -> None | Some d -> Some d
-  in
-  Pp.option (space_before pp_animation_direction) ctx non_default_direction;
-  (* Fill mode: skip if default (none) *)
-  let non_default_fill_mode : animation_fill_mode option =
-    match anim.fill_mode with Some None | None -> None | Some m -> Some m
-  in
-  Pp.option (space_before pp_animation_fill_mode) ctx non_default_fill_mode;
-  (* Play state: skip if default (running) *)
-  let non_default_play_state : animation_play_state option =
-    match anim.play_state with Some Running | None -> None | Some s -> Some s
-  in
-  Pp.option (space_before pp_animation_play_state) ctx non_default_play_state
-
-let rec pp_animation : animation Pp.t =
- fun ctx -> function
-  | Inherit -> Pp.string ctx "inherit"
-  | Initial -> Pp.string ctx "initial"
-  | None -> Pp.string ctx "none"
-  | Var v -> pp_var pp_animation ctx v
-  | Shorthand s -> pp_animation_shorthand ctx s
-
 let pp_appearance : appearance Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
@@ -2995,250 +2878,6 @@ let pp_webkit_box_orient : webkit_box_orient Pp.t =
   | Vertical -> Pp.string ctx "vertical"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_property_value : type a. (a property * a) Pp.t =
- fun ctx (prop, value) ->
-  let pp pp_a = pp_a ctx value in
-  match prop with
-  | Background_color -> pp pp_color
-  | Color -> pp pp_color
-  | Border_color -> pp pp_color
-  | Border_style -> pp pp_border_style
-  | Border_top_style -> pp pp_border_style
-  | Border_right_style -> pp pp_border_style
-  | Border_bottom_style -> pp pp_border_style
-  | Border_left_style -> pp pp_border_style
-  | Padding -> pp (Pp.list ~sep:Pp.space pp_length)
-  | Padding_left -> pp pp_length
-  | Padding_right -> pp pp_length
-  | Padding_bottom -> pp pp_length
-  | Padding_top -> pp pp_length
-  | Padding_inline -> pp pp_length
-  | Padding_inline_start -> pp pp_length
-  | Padding_inline_end -> pp pp_length
-  | Padding_block -> pp pp_length
-  | Margin -> pp (Pp.list ~sep:Pp.space pp_length)
-  | Margin_inline_end -> pp pp_length
-  | Margin_left -> pp pp_length
-  | Margin_right -> pp pp_length
-  | Margin_top -> pp pp_length
-  | Margin_bottom -> pp pp_length
-  | Margin_inline -> pp pp_length
-  | Margin_block -> pp pp_length
-  | Gap -> pp pp_gap
-  | Column_gap -> pp pp_length
-  | Row_gap -> pp pp_length
-  | Width -> pp pp_length
-  | Height -> pp pp_length
-  | Min_width -> pp pp_length
-  | Min_height -> pp pp_length
-  | Max_width -> pp pp_length
-  | Max_height -> pp pp_length
-  | Font_size -> pp pp_length
-  | Line_height -> pp pp_line_height
-  | Font_weight -> pp pp_font_weight
-  | Display -> pp pp_display
-  | Position -> pp pp_position
-  | Visibility -> pp pp_visibility
-  | Align_items -> pp pp_align_items
-  | Justify_content -> pp pp_justify_content
-  | Justify_items -> pp pp_justify_items
-  | Align_self -> pp pp_align_self
-  | Border_collapse -> pp pp_border_collapse
-  | Table_layout -> pp pp_table_layout
-  | Grid_auto_flow -> pp pp_grid_auto_flow
-  | Opacity -> pp Pp.float
-  | Mix_blend_mode -> pp pp_blend_mode
-  | Z_index -> pp pp_z_index
-  | Tab_size -> pp Pp.int
-  | Webkit_line_clamp -> pp Pp.int
-  | Webkit_box_orient -> pp pp_webkit_box_orient
-  | Top -> pp pp_length
-  | Right -> pp pp_length
-  | Bottom -> pp pp_length
-  | Left -> pp pp_length
-  | Border_width -> pp pp_border_width
-  | Border_top_width -> pp pp_border_width
-  | Border_right_width -> pp pp_border_width
-  | Border_bottom_width -> pp pp_border_width
-  | Border_left_width -> pp pp_border_width
-  | Border_inline_start_width -> pp pp_border_width
-  | Border_inline_end_width -> pp pp_border_width
-  | Border_radius -> pp pp_length
-  | Border_top_color -> pp pp_color
-  | Border_right_color -> pp pp_color
-  | Border_bottom_color -> pp pp_color
-  | Border_left_color -> pp pp_color
-  | Border_inline_start_color -> pp pp_color
-  | Border_inline_end_color -> pp pp_color
-  | Text_decoration_color -> pp pp_color
-  | Webkit_text_decoration_color -> pp pp_color
-  | Webkit_tap_highlight_color -> pp pp_color
-  | Text_indent -> pp pp_length
-  | Border_spacing -> pp pp_length
-  | Outline_offset -> pp pp_length
-  | Perspective -> pp pp_length
-  | Transform -> pp (Pp.list ~sep:Pp.space pp_transform)
-  | Isolation -> pp pp_isolation
-  | Transform_style -> pp pp_transform_style
-  | Backface_visibility -> pp pp_backface_visibility
-  | Scroll_snap_align -> pp pp_scroll_snap_align
-  | Scroll_snap_stop -> pp pp_scroll_snap_stop
-  | Scroll_behavior -> pp pp_scroll_behavior
-  | Box_sizing -> pp pp_box_sizing
-  | Resize -> pp pp_resize
-  | Object_fit -> pp pp_object_fit
-  | Appearance -> pp pp_appearance
-  | Flex_grow -> pp Pp.float
-  | Flex_shrink -> pp Pp.float
-  | Order -> pp Pp.int
-  | Flex_direction -> pp pp_flex_direction
-  | Flex_wrap -> pp pp_flex_wrap
-  | Font_style -> pp pp_font_style
-  | Text_align -> pp pp_text_align
-  | Text_decoration -> pp pp_text_decoration
-  | Text_decoration_style -> pp pp_text_decoration_style
-  | Text_transform -> pp pp_text_transform
-  | List_style_type -> pp pp_list_style_type
-  | List_style_position -> pp pp_list_style_position
-  | List_style_image -> pp pp_list_style_image
-  | Overflow -> pp pp_overflow
-  | Overflow_x -> pp pp_overflow
-  | Overflow_y -> pp pp_overflow
-  | Vertical_align -> pp pp_vertical_align
-  | Text_overflow -> pp pp_text_overflow
-  | Text_wrap -> pp pp_text_wrap
-  | Word_break -> pp pp_word_break
-  | Overflow_wrap -> pp pp_overflow_wrap
-  | Hyphens -> pp pp_hyphens
-  | Webkit_hyphens -> pp pp_hyphens
-  | Font_stretch -> pp pp_font_stretch
-  | Font_variant_numeric -> pp pp_font_variant_numeric
-  | Webkit_font_smoothing -> pp pp_webkit_font_smoothing
-  | Scroll_snap_type -> pp pp_scroll_snap_type
-  | Container_type -> pp pp_container_type
-  | White_space -> pp pp_white_space
-  | Grid_template_columns -> pp pp_grid_template
-  | Grid_template_rows -> pp pp_grid_template
-  | Grid_template_areas -> pp Pp.string
-  | Grid_template -> pp pp_grid_template
-  | Grid_area -> pp Pp.string
-  | Grid_auto_columns -> pp pp_grid_template
-  | Grid_auto_rows -> pp pp_grid_template
-  | Flex -> pp pp_flex
-  | Flex_basis -> pp pp_length
-  | Align_content -> pp pp_align_content
-  | Justify_self -> pp pp_justify_self
-  | Place_content -> pp pp_place_content
-  | Place_items -> pp pp_place_items
-  | Place_self ->
-      pp (fun ctx (a, j) ->
-          pp_align_self ctx a;
-          Pp.space ctx ();
-          pp_justify_self ctx j)
-  | Grid_column -> pp Pp.string
-  | Grid_row -> pp Pp.string
-  | Grid_column_start -> pp pp_grid_line
-  | Grid_column_end -> pp pp_grid_line
-  | Grid_row_start -> pp pp_grid_line
-  | Grid_row_end -> pp pp_grid_line
-  | Text_underline_offset -> pp Pp.string
-  | Background_position -> pp (Pp.list ~sep:Pp.comma pp_position_2d)
-  | Background_repeat -> pp pp_background_repeat
-  | Background_size -> pp pp_background_size
-  | Moz_osx_font_smoothing -> pp pp_moz_osx_font_smoothing
-  | Backdrop_filter -> pp pp_filter
-  | Container_name -> pp Pp.string
-  | Perspective_origin -> pp Pp.string
-  | Object_position -> pp pp_position_2d
-  | Rotate -> pp pp_angle
-  | Transition_duration -> pp pp_duration
-  | Transition_timing_function -> pp pp_timing_function
-  | Transition_delay -> pp pp_duration
-  | Will_change -> pp Pp.string
-  | Contain -> pp pp_contain
-  | Word_spacing -> pp pp_length
-  | Background_attachment -> pp pp_background_attachment
-  | Border_top -> pp Pp.string
-  | Border_right -> pp Pp.string
-  | Border_bottom -> pp Pp.string
-  | Border_left -> pp Pp.string
-  | Transform_origin -> pp pp_transform_origin
-  | Text_shadow -> pp (Pp.list ~sep:Pp.comma pp_text_shadow)
-  | Clip_path -> pp Pp.string
-  | Mask -> pp Pp.string
-  | Content_visibility -> pp pp_content_visibility
-  | Filter -> pp pp_filter
-  | Background_image -> pp (Pp.list ~sep:Pp.comma pp_background_image)
-  | Animation -> pp (Pp.list ~sep:Pp.comma pp_animation)
-  | Aspect_ratio -> pp pp_aspect_ratio
-  | Content -> pp pp_content
-  | Quotes -> pp Pp.string
-  | Box_shadow -> pp pp_shadow
-  | Fill -> pp pp_svg_paint
-  | Stroke -> pp pp_svg_paint
-  | Stroke_width -> pp pp_length
-  | Transition -> pp (Pp.list ~sep:Pp.comma pp_transition)
-  | Scale -> pp pp_scale
-  | Outline -> pp Pp.string
-  | Outline_style -> pp pp_outline_style
-  | Outline_width -> pp pp_length
-  | Outline_color -> pp pp_color
-  | Forced_color_adjust -> pp pp_forced_color_adjust
-  | Clip -> pp pp_clip
-  | Clear -> pp pp_clear
-  | Float -> pp pp_float_side
-  | Border -> pp pp_border
-  | Background -> pp (Pp.list ~sep:Pp.comma pp_background)
-  | Text_decoration_thickness -> pp pp_length
-  | Text_size_adjust -> pp Pp.string
-  | Touch_action -> pp pp_touch_action
-  | Direction -> pp pp_direction
-  | Unicode_bidi -> pp pp_unicode_bidi
-  | Writing_mode -> pp pp_writing_mode
-  | Text_decoration_skip_ink -> pp pp_text_decoration_skip_ink
-  | Animation_name -> pp Pp.string
-  | Animation_duration -> pp pp_duration
-  | Animation_timing_function -> pp pp_timing_function
-  | Animation_delay -> pp pp_duration
-  | Animation_iteration_count -> pp pp_animation_iteration_count
-  | Animation_direction -> pp pp_animation_direction
-  | Animation_fill_mode -> pp pp_animation_fill_mode
-  | Animation_play_state -> pp pp_animation_play_state
-  | Background_blend_mode -> pp (Pp.list ~sep:Pp.comma pp_blend_mode)
-  | Scroll_margin -> pp pp_length
-  | Scroll_margin_top -> pp pp_length
-  | Scroll_margin_right -> pp pp_length
-  | Scroll_margin_bottom -> pp pp_length
-  | Scroll_margin_left -> pp pp_length
-  | Scroll_padding -> pp pp_length
-  | Scroll_padding_top -> pp pp_length
-  | Scroll_padding_right -> pp pp_length
-  | Scroll_padding_bottom -> pp pp_length
-  | Scroll_padding_left -> pp pp_length
-  | Overscroll_behavior -> pp pp_overscroll_behavior
-  | Overscroll_behavior_x -> pp pp_overscroll_behavior
-  | Overscroll_behavior_y -> pp pp_overscroll_behavior
-  | Accent_color -> pp pp_color
-  | Caret_color -> pp pp_color
-  | List_style -> pp Pp.string
-  | Font -> pp Pp.string
-  | Webkit_appearance -> pp pp_webkit_appearance
-  | Letter_spacing -> pp pp_length
-  | Cursor -> pp pp_cursor
-  | Pointer_events -> pp pp_pointer_events
-  | User_select -> pp pp_user_select
-  | Font_feature_settings -> pp pp_font_feature_settings
-  | Font_variation_settings -> pp pp_font_variation_settings
-  | Webkit_text_decoration -> pp pp_text_decoration
-  | Webkit_text_size_adjust -> pp pp_text_size_adjust
-  | Webkit_transform -> pp (Pp.list ~sep:Pp.space pp_transform)
-  | Webkit_transition -> pp (Pp.list ~sep:Pp.comma pp_transition)
-  | Webkit_filter -> pp pp_filter
-  | Moz_appearance -> pp pp_appearance
-  | Ms_filter -> pp pp_filter
-  | O_transition -> pp (Pp.list ~sep:Pp.comma pp_transition)
-  | Font_family -> pp pp_font_family
-
 let rec read_border_style t : border_style =
   let read_var t : border_style = Var (read_var read_border_style t) in
   Reader.enum_or_calls "border-style"
@@ -3257,28 +2896,33 @@ let rec read_border_style t : border_style =
     ~calls:[ ("var", read_var) ]
     t
 
+(* Helper: ensure border-width values are non-negative per CSS spec *)
+let ensure_non_negative_border_width t value =
+  if value < 0.0 then
+    err_invalid_value t "border-width" "negative values not allowed"
+  else value
+
+(* Helper: convert length to border_width, ensuring non-negative values *)
+let length_to_border_width t (length : length) : border_width =
+  let non_neg = ensure_non_negative_border_width t in
+  match length with
+  | Zero -> Zero
+  | Px n -> Px (non_neg n)
+  | Rem n -> Rem (non_neg n)
+  | Em n -> Em (non_neg n)
+  | Ch n -> Ch (non_neg n)
+  | Vh n -> Vh (non_neg n)
+  | Vw n -> Vw (non_neg n)
+  | Vmin n -> Vmin (non_neg n)
+  | Vmax n -> Vmax (non_neg n)
+  | Pct n -> Pct (non_neg n)
+  | _ -> err_invalid_value t "border-width" "unsupported length type"
+
 let rec read_border_width t : border_width =
   let read_var t : border_width = Var (read_var read_border_width t) in
   let read_length_as_border_width t =
     let length = read_length t in
-    (* CSS spec: border-width cannot be negative *)
-    let non_negative value =
-      if value < 0.0 then
-        err_invalid_value t "border-width" "negative values not allowed"
-      else value
-    in
-    match length with
-    | Zero -> (Zero : border_width)
-    | Px n -> Px (non_negative n)
-    | Rem n -> Rem (non_negative n)
-    | Em n -> Em (non_negative n)
-    | Ch n -> Ch (non_negative n)
-    | Vh n -> Vh (non_negative n)
-    | Vw n -> Vw (non_negative n)
-    | Vmin n -> Vmin (non_negative n)
-    | Vmax n -> Vmax (non_negative n)
-    | Pct n -> Pct (non_negative n)
-    | _ -> err_invalid_value t "border-width" "unsupported length type"
+    length_to_border_width t length
   in
 
   Reader.enum_or_calls "border-width"
@@ -4796,10 +4440,140 @@ module Animation = struct
     if acc = init then
       Reader.err t "animation shorthand requires at least one component"
     else acc
+
+  let is_zero_duration = function S 0. | Ms 0. -> true | _ -> false
+
+  let pp_iter_count ctx = function
+    | Infinite -> Pp.string ctx "infinite"
+    | Num n -> Pp.float ctx n
+
+  let pp_timing ctx = function
+    | Linear -> Pp.string ctx "linear"
+    | Ease -> Pp.string ctx "ease"
+    | Ease_in -> Pp.string ctx "ease-in"
+    | Ease_out -> Pp.string ctx "ease-out"
+    | Ease_in_out -> Pp.string ctx "ease-in-out"
+    | Step_start -> Pp.string ctx "step-start"
+    | Step_end -> Pp.string ctx "step-end"
+    | Cubic_bezier (x1, y1, x2, y2) ->
+        Pp.string ctx "cubic-bezier(";
+        Pp.float ctx x1;
+        Pp.char ctx ',';
+        Pp.float ctx y1;
+        Pp.char ctx ',';
+        Pp.float ctx x2;
+        Pp.char ctx ',';
+        Pp.float ctx y2;
+        Pp.char ctx ')'
+    | Steps (steps, direction) ->
+        Pp.string ctx "steps(";
+        Pp.int ctx steps;
+        (match direction with
+        | Some d ->
+            Pp.comma ctx ();
+            pp_steps_direction ctx d
+        | None -> ());
+        Pp.char ctx ')'
+
+  let is_duration : duration option -> bool = function
+    | Some d when not (is_zero_duration d) -> true
+    | _ -> false
+
+  let is_timing : timing_function option -> bool = function
+    | Some Ease | None -> false
+    | Some _ -> true
+
+  let is_iteration : animation_iteration_count option -> bool = function
+    | Some (Num 1.) | None -> false
+    | Some _ -> true
+
+  let is_direction : animation_direction option -> bool = function
+    | Some Normal | None -> false
+    | Some _ -> true
+
+  let is_fill_mode : animation_fill_mode option -> bool = function
+    | Some None | None -> false
+    | Some _ -> true
+
+  let is_play_state : animation_play_state option -> bool = function
+    | Some Running | None -> false
+    | Some _ -> true
+
+  let has_non_defaults (anim : animation_shorthand) =
+    is_duration anim.duration
+    || is_timing anim.timing_function
+    || is_duration anim.delay
+    || is_iteration anim.iteration_count
+    || is_direction anim.direction
+    || is_fill_mode anim.fill_mode
+    || is_play_state anim.play_state
+
+  let duration (anim : animation_shorthand) : duration option =
+    match anim.duration with
+    | Some d when not (is_zero_duration d) -> Some d
+    | _ -> None
+
+  let timing (anim : animation_shorthand) : timing_function option =
+    match anim.timing_function with
+    | Some Ease | None -> None
+    | Some t -> Some t
+
+  let delay (anim : animation_shorthand) : duration option =
+    match anim.delay with
+    | Some d when not (is_zero_duration d) -> Some d
+    | _ -> None
+
+  let iteration (anim : animation_shorthand) : animation_iteration_count option
+      =
+    match anim.iteration_count with
+    | Some (Num 1.) | None -> None
+    | Some c -> Some c
+
+  let direction (anim : animation_shorthand) : animation_direction option =
+    match anim.direction with Some Normal | None -> None | Some d -> Some d
+
+  let fill_mode (anim : animation_shorthand) : animation_fill_mode option =
+    match anim.fill_mode with Some None | None -> None | Some m -> Some m
+
+  let play_state (anim : animation_shorthand) : animation_play_state option =
+    match anim.play_state with Some Running | None -> None | Some s -> Some s
 end
 
 let read_animation_shorthand t : animation_shorthand =
   Animation.read_shorthand t
+
+let rec pp_animation_shorthand : animation_shorthand Pp.t =
+ fun ctx anim ->
+  let first = ref true in
+  let space_before pp ctx x =
+    if !first then first := false else Pp.char ctx ' ';
+    pp ctx x
+  in
+  let has_any_non_default = Animation.has_non_defaults anim in
+  (match (anim.name, has_any_non_default) with
+  | None, false -> Pp.string ctx "none"
+  | None, true -> ()
+  | Some name, _ -> space_before Pp.string ctx name);
+  Pp.option (space_before pp_duration) ctx (Animation.duration anim);
+  Pp.option (space_before Animation.pp_timing) ctx (Animation.timing anim);
+  Pp.option (space_before pp_duration) ctx (Animation.delay anim);
+  Pp.option
+    (space_before Animation.pp_iter_count)
+    ctx (Animation.iteration anim);
+  Pp.option (space_before pp_animation_direction) ctx (Animation.direction anim);
+  Pp.option (space_before pp_animation_fill_mode) ctx (Animation.fill_mode anim);
+  Pp.option
+    (space_before pp_animation_play_state)
+    ctx
+    (Animation.play_state anim)
+
+and pp_animation : animation Pp.t =
+ fun ctx -> function
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | None -> Pp.string ctx "none"
+  | Var v -> pp_var pp_animation ctx v
+  | Shorthand s -> pp_animation_shorthand ctx s
 
 let rec read_animation t : animation =
   let read_var_call t : animation = Var (read_var read_animation t) in
@@ -5632,3 +5406,247 @@ let read_gap t : gap =
   | None -> { row_gap = Some first_length; column_gap = Some first_length }
 
 let pp_any_property ctx (Prop p) = pp_property ctx p
+
+let pp_property_value : type a. (a property * a) Pp.t =
+ fun ctx (prop, value) ->
+  let pp pp_a = pp_a ctx value in
+  match prop with
+  | Background_color -> pp pp_color
+  | Color -> pp pp_color
+  | Border_color -> pp pp_color
+  | Border_style -> pp pp_border_style
+  | Border_top_style -> pp pp_border_style
+  | Border_right_style -> pp pp_border_style
+  | Border_bottom_style -> pp pp_border_style
+  | Border_left_style -> pp pp_border_style
+  | Padding -> pp (Pp.list ~sep:Pp.space pp_length)
+  | Padding_left -> pp pp_length
+  | Padding_right -> pp pp_length
+  | Padding_bottom -> pp pp_length
+  | Padding_top -> pp pp_length
+  | Padding_inline -> pp pp_length
+  | Padding_inline_start -> pp pp_length
+  | Padding_inline_end -> pp pp_length
+  | Padding_block -> pp pp_length
+  | Margin -> pp (Pp.list ~sep:Pp.space pp_length)
+  | Margin_inline_end -> pp pp_length
+  | Margin_left -> pp pp_length
+  | Margin_right -> pp pp_length
+  | Margin_top -> pp pp_length
+  | Margin_bottom -> pp pp_length
+  | Margin_inline -> pp pp_length
+  | Margin_block -> pp pp_length
+  | Gap -> pp pp_gap
+  | Column_gap -> pp pp_length
+  | Row_gap -> pp pp_length
+  | Width -> pp pp_length
+  | Height -> pp pp_length
+  | Min_width -> pp pp_length
+  | Min_height -> pp pp_length
+  | Max_width -> pp pp_length
+  | Max_height -> pp pp_length
+  | Font_size -> pp pp_length
+  | Line_height -> pp pp_line_height
+  | Font_weight -> pp pp_font_weight
+  | Display -> pp pp_display
+  | Position -> pp pp_position
+  | Visibility -> pp pp_visibility
+  | Align_items -> pp pp_align_items
+  | Justify_content -> pp pp_justify_content
+  | Justify_items -> pp pp_justify_items
+  | Align_self -> pp pp_align_self
+  | Border_collapse -> pp pp_border_collapse
+  | Table_layout -> pp pp_table_layout
+  | Grid_auto_flow -> pp pp_grid_auto_flow
+  | Opacity -> pp Pp.float
+  | Mix_blend_mode -> pp pp_blend_mode
+  | Z_index -> pp pp_z_index
+  | Tab_size -> pp Pp.int
+  | Webkit_line_clamp -> pp Pp.int
+  | Webkit_box_orient -> pp pp_webkit_box_orient
+  | Top -> pp pp_length
+  | Right -> pp pp_length
+  | Bottom -> pp pp_length
+  | Left -> pp pp_length
+  | Border_width -> pp pp_border_width
+  | Border_top_width -> pp pp_border_width
+  | Border_right_width -> pp pp_border_width
+  | Border_bottom_width -> pp pp_border_width
+  | Border_left_width -> pp pp_border_width
+  | Border_inline_start_width -> pp pp_border_width
+  | Border_inline_end_width -> pp pp_border_width
+  | Border_radius -> pp pp_length
+  | Border_top_color -> pp pp_color
+  | Border_right_color -> pp pp_color
+  | Border_bottom_color -> pp pp_color
+  | Border_left_color -> pp pp_color
+  | Border_inline_start_color -> pp pp_color
+  | Border_inline_end_color -> pp pp_color
+  | Text_decoration_color -> pp pp_color
+  | Webkit_text_decoration_color -> pp pp_color
+  | Webkit_tap_highlight_color -> pp pp_color
+  | Text_indent -> pp pp_length
+  | Border_spacing -> pp pp_length
+  | Outline_offset -> pp pp_length
+  | Perspective -> pp pp_length
+  | Transform -> pp (Pp.list ~sep:Pp.space pp_transform)
+  | Isolation -> pp pp_isolation
+  | Transform_style -> pp pp_transform_style
+  | Backface_visibility -> pp pp_backface_visibility
+  | Scroll_snap_align -> pp pp_scroll_snap_align
+  | Scroll_snap_stop -> pp pp_scroll_snap_stop
+  | Scroll_behavior -> pp pp_scroll_behavior
+  | Box_sizing -> pp pp_box_sizing
+  | Resize -> pp pp_resize
+  | Object_fit -> pp pp_object_fit
+  | Appearance -> pp pp_appearance
+  | Flex_grow -> pp Pp.float
+  | Flex_shrink -> pp Pp.float
+  | Order -> pp Pp.int
+  | Flex_direction -> pp pp_flex_direction
+  | Flex_wrap -> pp pp_flex_wrap
+  | Font_style -> pp pp_font_style
+  | Text_align -> pp pp_text_align
+  | Text_decoration -> pp pp_text_decoration
+  | Text_decoration_style -> pp pp_text_decoration_style
+  | Text_transform -> pp pp_text_transform
+  | List_style_type -> pp pp_list_style_type
+  | List_style_position -> pp pp_list_style_position
+  | List_style_image -> pp pp_list_style_image
+  | Overflow -> pp pp_overflow
+  | Overflow_x -> pp pp_overflow
+  | Overflow_y -> pp pp_overflow
+  | Vertical_align -> pp pp_vertical_align
+  | Text_overflow -> pp pp_text_overflow
+  | Text_wrap -> pp pp_text_wrap
+  | Word_break -> pp pp_word_break
+  | Overflow_wrap -> pp pp_overflow_wrap
+  | Hyphens -> pp pp_hyphens
+  | Webkit_hyphens -> pp pp_hyphens
+  | Font_stretch -> pp pp_font_stretch
+  | Font_variant_numeric -> pp pp_font_variant_numeric
+  | Webkit_font_smoothing -> pp pp_webkit_font_smoothing
+  | Scroll_snap_type -> pp pp_scroll_snap_type
+  | Container_type -> pp pp_container_type
+  | White_space -> pp pp_white_space
+  | Grid_template_columns -> pp pp_grid_template
+  | Grid_template_rows -> pp pp_grid_template
+  | Grid_template_areas -> pp Pp.string
+  | Grid_template -> pp pp_grid_template
+  | Grid_area -> pp Pp.string
+  | Grid_auto_columns -> pp pp_grid_template
+  | Grid_auto_rows -> pp pp_grid_template
+  | Flex -> pp pp_flex
+  | Flex_basis -> pp pp_length
+  | Align_content -> pp pp_align_content
+  | Justify_self -> pp pp_justify_self
+  | Place_content -> pp pp_place_content
+  | Place_items -> pp pp_place_items
+  | Place_self ->
+      pp (fun ctx (a, j) ->
+          pp_align_self ctx a;
+          Pp.space ctx ();
+          pp_justify_self ctx j)
+  | Grid_column -> pp Pp.string
+  | Grid_row -> pp Pp.string
+  | Grid_column_start -> pp pp_grid_line
+  | Grid_column_end -> pp pp_grid_line
+  | Grid_row_start -> pp pp_grid_line
+  | Grid_row_end -> pp pp_grid_line
+  | Text_underline_offset -> pp Pp.string
+  | Background_position -> pp (Pp.list ~sep:Pp.comma pp_position_2d)
+  | Background_repeat -> pp pp_background_repeat
+  | Background_size -> pp pp_background_size
+  | Moz_osx_font_smoothing -> pp pp_moz_osx_font_smoothing
+  | Backdrop_filter -> pp pp_filter
+  | Container_name -> pp Pp.string
+  | Perspective_origin -> pp Pp.string
+  | Object_position -> pp pp_position_2d
+  | Rotate -> pp pp_angle
+  | Transition_duration -> pp pp_duration
+  | Transition_timing_function -> pp pp_timing_function
+  | Transition_delay -> pp pp_duration
+  | Will_change -> pp Pp.string
+  | Contain -> pp pp_contain
+  | Word_spacing -> pp pp_length
+  | Background_attachment -> pp pp_background_attachment
+  | Border_top -> pp Pp.string
+  | Border_right -> pp Pp.string
+  | Border_bottom -> pp Pp.string
+  | Border_left -> pp Pp.string
+  | Transform_origin -> pp pp_transform_origin
+  | Text_shadow -> pp (Pp.list ~sep:Pp.comma pp_text_shadow)
+  | Clip_path -> pp Pp.string
+  | Mask -> pp Pp.string
+  | Content_visibility -> pp pp_content_visibility
+  | Filter -> pp pp_filter
+  | Background_image -> pp (Pp.list ~sep:Pp.comma pp_background_image)
+  | Animation -> pp (Pp.list ~sep:Pp.comma pp_animation)
+  | Aspect_ratio -> pp pp_aspect_ratio
+  | Content -> pp pp_content
+  | Quotes -> pp Pp.string
+  | Box_shadow -> pp pp_shadow
+  | Fill -> pp pp_svg_paint
+  | Stroke -> pp pp_svg_paint
+  | Stroke_width -> pp pp_length
+  | Transition -> pp (Pp.list ~sep:Pp.comma pp_transition)
+  | Scale -> pp pp_scale
+  | Outline -> pp Pp.string
+  | Outline_style -> pp pp_outline_style
+  | Outline_width -> pp pp_length
+  | Outline_color -> pp pp_color
+  | Forced_color_adjust -> pp pp_forced_color_adjust
+  | Clip -> pp pp_clip
+  | Clear -> pp pp_clear
+  | Float -> pp pp_float_side
+  | Border -> pp pp_border
+  | Background -> pp (Pp.list ~sep:Pp.comma pp_background)
+  | Text_decoration_thickness -> pp pp_length
+  | Text_size_adjust -> pp Pp.string
+  | Touch_action -> pp pp_touch_action
+  | Direction -> pp pp_direction
+  | Unicode_bidi -> pp pp_unicode_bidi
+  | Writing_mode -> pp pp_writing_mode
+  | Text_decoration_skip_ink -> pp pp_text_decoration_skip_ink
+  | Animation_name -> pp Pp.string
+  | Animation_duration -> pp pp_duration
+  | Animation_timing_function -> pp pp_timing_function
+  | Animation_delay -> pp pp_duration
+  | Animation_iteration_count -> pp pp_animation_iteration_count
+  | Animation_direction -> pp pp_animation_direction
+  | Animation_fill_mode -> pp pp_animation_fill_mode
+  | Animation_play_state -> pp pp_animation_play_state
+  | Background_blend_mode -> pp (Pp.list ~sep:Pp.comma pp_blend_mode)
+  | Scroll_margin -> pp pp_length
+  | Scroll_margin_top -> pp pp_length
+  | Scroll_margin_right -> pp pp_length
+  | Scroll_margin_bottom -> pp pp_length
+  | Scroll_margin_left -> pp pp_length
+  | Scroll_padding -> pp pp_length
+  | Scroll_padding_top -> pp pp_length
+  | Scroll_padding_right -> pp pp_length
+  | Scroll_padding_bottom -> pp pp_length
+  | Scroll_padding_left -> pp pp_length
+  | Overscroll_behavior -> pp pp_overscroll_behavior
+  | Overscroll_behavior_x -> pp pp_overscroll_behavior
+  | Overscroll_behavior_y -> pp pp_overscroll_behavior
+  | Accent_color -> pp pp_color
+  | Caret_color -> pp pp_color
+  | List_style -> pp Pp.string
+  | Font -> pp Pp.string
+  | Webkit_appearance -> pp pp_webkit_appearance
+  | Letter_spacing -> pp pp_length
+  | Cursor -> pp pp_cursor
+  | Pointer_events -> pp pp_pointer_events
+  | User_select -> pp pp_user_select
+  | Font_feature_settings -> pp pp_font_feature_settings
+  | Font_variation_settings -> pp pp_font_variation_settings
+  | Webkit_text_decoration -> pp pp_text_decoration
+  | Webkit_text_size_adjust -> pp pp_text_size_adjust
+  | Webkit_transform -> pp (Pp.list ~sep:Pp.space pp_transform)
+  | Webkit_transition -> pp (Pp.list ~sep:Pp.comma pp_transition)
+  | Webkit_filter -> pp pp_filter
+  | Moz_appearance -> pp pp_appearance
+  | Ms_filter -> pp pp_filter
+  | O_transition -> pp (Pp.list ~sep:Pp.comma pp_transition)
+  | Font_family -> pp pp_font_family
