@@ -1666,6 +1666,9 @@ let var_name v = v.name
 let var_layer v = v.layer
 let var_meta v = v.meta
 
+let with_fallback v fallback_value =
+  { v with fallback = Some (Fallback fallback_value) }
+
 (** Read padding shorthand property (1-4 values) *)
 let read_padding_shorthand t : length list =
   (* CSS padding accepts 1-4 space-separated non-negative values *)

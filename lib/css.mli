@@ -243,6 +243,12 @@ val var_name : 'a var -> string
 val var_layer : 'a var -> string option
 (** [var_layer v] is the optional layer where [v] is defined. *)
 
+val with_fallback : 'a var -> 'a -> 'a var
+(** [with_fallback var_ref fallback_value] creates a new variable reference
+    with the same variable name but a different fallback value. This is useful
+    when you need to reference a variable from another module with a specific
+    fallback, without creating a declaration. *)
+
 type any_var = V : 'a var -> any_var  (** The type of CSS variables. *)
 
 val vars_of_rules : statement list -> any_var list
