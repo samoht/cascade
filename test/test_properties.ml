@@ -345,13 +345,6 @@ let check_text_transform =
   check_value "text_transform" read_text_transform pp_text_transform
 
 (* Length-percentage tests for width/height using the value reader/printer *)
-let check_width =
-  check_value "width" Css.Values.read_length_percentage
-    Css.Values.pp_length_percentage
-
-let check_height =
-  check_value "height" Css.Values.read_length_percentage
-    Css.Values.pp_length_percentage
 
 (* Helper for property-value pairs printing *)
 let check_property_value expected (prop, value) =
