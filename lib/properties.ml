@@ -985,15 +985,46 @@ let pp_gradient_direction : gradient_direction Pp.t =
   | To_top_left -> Pp.string ctx "to top left"
   | Angle a -> pp_angle ctx a
 
-let pp_gradient_stop : gradient_stop Pp.t =
+let rec pp_gradient_stop : gradient_stop Pp.t =
  fun ctx -> function
-  | Color_stop c -> pp_color ctx c
-  | Color_position (c, len) ->
+  | Var v -> pp_var pp_gradient_stop ctx v
+  | Color_percentage (c, pct1_opt, pct2_opt) -> (
       pp_color ctx c;
-      Pp.space ctx ();
-      pp_length ctx len
-  | Var v -> pp_var pp_color ctx v
-  | Computed_stops s -> Pp.string ctx s
+      match pct1_opt with
+      | None -> () (* No positions *)
+      | Some pct1 -> (
+          (* No space for variables to allow concatenation like
+             var(--color)var(--pos) *)
+          (match (c, pct1) with
+          | Var _, Var _ -> () (* No space between variables *)
+          | _ -> Pp.space ctx ());
+          pp_percentage ctx pct1;
+          match pct2_opt with
+          | None -> ()
+          | Some pct2 ->
+              Pp.space ctx ();
+              pp_percentage ctx pct2))
+  | Color_length (c, len1_opt, len2_opt) -> (
+      pp_color ctx c;
+      match len1_opt with
+      | None -> () (* No positions *)
+      | Some len1 -> (
+          (* No space for variables to allow concatenation like
+             var(--color)var(--pos) *)
+          (match (c, len1) with
+          | Var _, Var _ -> () (* No space between variables *)
+          | _ -> Pp.space ctx ());
+          pp_length ctx len1;
+          match len2_opt with
+          | None -> ()
+          | Some len2 ->
+              Pp.space ctx ();
+              pp_length ctx len2))
+  | Length len -> pp_length ctx len
+  | Percentage pct -> pp_percentage ctx pct
+  | List stops ->
+      (* Pretty-print multiple gradient stops separated by commas *)
+      Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops
 
 let rec pp_filter : filter Pp.t =
  fun ctx -> function
@@ -4807,15 +4838,84 @@ end
 
 let read_gradient_direction t : gradient_direction = Gradient_direction.read t
 
-let read_gradient_stop t : gradient_stop =
-  let color = read_color t in
+module Gradient_stop = struct
+  (* Parse specific combinations *)
+  let read_color_pct_pct t =
+    let color, pct1, pct2 =
+      Reader.triple ~sep:Reader.ws read_color read_percentage read_percentage t
+    in
+    Color_percentage (color, Some pct1, Some pct2)
+
+  let read_color_pct t =
+    let color, pct = Reader.pair ~sep:Reader.ws read_color read_percentage t in
+    Color_percentage (color, Some pct, None)
+
+  let read_color_len_len t =
+    let color, len1, len2 =
+      Reader.triple ~sep:Reader.ws read_color read_length read_length t
+    in
+    Color_length (color, Some len1, Some len2)
+
+  let read_color_len t =
+    Printf.eprintf "DEBUG read_color_len: starting\n";
+    let color = read_color t in
+    Printf.eprintf "DEBUG read_color_len: got color, now at pos %d\n"
+      (Reader.position t);
+    Reader.ws t;
+    Printf.eprintf "DEBUG read_color_len: after ws, now at pos %d\n"
+      (Reader.position t);
+    let len = read_length t in
+    Printf.eprintf "DEBUG read_color_len: got length, now at pos %d\n"
+      (Reader.position t);
+    Color_length (color, Some len, None)
+
+  let read_color_only t =
+    Printf.eprintf "DEBUG read_color_only: starting at pos %d\n"
+      (Reader.position t);
+    let color = read_color t in
+    Printf.eprintf "DEBUG read_color_only: got color, now at pos %d\n"
+      (Reader.position t);
+    Color_percentage (color, None, None)
+
+  let read_pct t : gradient_stop = Percentage (read_percentage t)
+  let read_len t : gradient_stop = Length (read_length t)
+end
+
+let rec read_gradient_stop_single t : gradient_stop =
+  let read_var t : gradient_stop = Var (read_var read_gradient_stop_list t) in
   Reader.ws t;
-  (* Check if there's a position (percentage or length) after the color *)
-  if Reader.peek t = Some ',' || Reader.peek t = Some ')' then Color_stop color
-  else
-    match Reader.option read_length t with
-    | Some position -> Color_position (color, position)
-    | None -> Color_stop color
+  (* Try from most specific to most general, letting individual parsers handle
+     their own variables *)
+  Reader.one_of
+    [
+      (* 3 elements: color + two percentages/lengths (most specific) *)
+      Gradient_stop.read_color_pct_pct;
+      Gradient_stop.read_color_len_len;
+      (* 2 elements: color + percentage/length *)
+      Gradient_stop.read_color_pct;
+      Gradient_stop.read_color_len;
+      (* 1 element: single values *)
+      Gradient_stop.read_color_only;
+      Gradient_stop.read_pct;
+      Gradient_stop.read_len;
+      (* Full gradient_stop variables (e.g., var(--tw-gradient-stops)) - last
+         resort *)
+      read_var;
+    ]
+    t
+
+and read_gradient_stop_list t : gradient_stop =
+  (* Parse a list of gradient stops - used only for var fallbacks *)
+  match
+    Reader.list ~sep:Reader.comma ~at_least:1 read_gradient_stop_single t
+  with
+  | [ x ] -> x
+  | l -> List l
+
+and read_gradient_stop t : gradient_stop =
+  (* Only parse single gradient stops - lists are created by var fallback
+     parsing *)
+  read_gradient_stop_single t
 
 let read_background_image t : background_image =
   let read_linear_body t =
@@ -5124,8 +5224,8 @@ let inset_ring_shadow ?(h_offset : length option) ?(v_offset : length option)
 let url path : background_image = Url path
 let linear_gradient dir stops = Linear_gradient (dir, stops)
 let radial_gradient stops = Radial_gradient stops
-let color_stop c = Color_stop c
-let color_position c pos = Color_position (c, pos)
+let color_stop c = (Color_percentage (c, None, None) : gradient_stop)
+let color_position c pos = (Color_length (c, Some pos, None) : gradient_stop)
 
 let animation_shorthand ?name ?duration ?timing_function ?delay ?iteration_count
     ?direction ?fill_mode ?play_state () : animation =

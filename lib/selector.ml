@@ -392,88 +392,68 @@ let read_attribute t =
 (** Read An+B microsyntax for nth expressions *)
 let read_nth t : nth =
   Reader.ws t;
-  (* Use enum with default case for An+B or integer fallback *)
-  Reader.enum "nth expression"
-    [ ("odd", Odd); ("even", Even) ]
-    ~default:(fun t ->
-      (* Try to parse An+B expression or fall back to integer *)
-      match
-        Reader.option
-          (fun t ->
-            (* Try to read what could be an An+B expression *)
-            let rec read_an_plus_b_chars acc =
-              match Reader.peek t with
-              | Some ('0' .. '9' | 'n' | '+' | '-') as c ->
-                  Reader.skip t;
-                  read_an_plus_b_chars (acc ^ String.make 1 (Option.get c))
-              | Some ('a' .. 'z' | 'A' .. 'Z')
-                when acc <> "" && String.contains acc 'n' = false ->
-                  (* Letter after digit sequence - might be 'n' *)
-                  let c = Reader.char t in
-                  if c = 'n' then read_an_plus_b_chars (acc ^ "n")
-                  else Reader.err t "not an nth expression"
-              | Some ' ' when acc <> "" && not (String.contains acc 'n') ->
-                  (* Look ahead past spaces to see if there's an 'n' *)
-                  let lookahead = Reader.peek_string t 5 in
-                  let has_n_after_space =
-                    let rec check i =
-                      if i >= String.length lookahead then false
-                      else
-                        match lookahead.[i] with
-                        | ' ' -> check (i + 1)
-                        | 'n' | 'N' -> true
-                        | _ -> false
-                    in
-                    check 1 (* skip current space *)
-                  in
-                  if has_n_after_space then
-                    Reader.err t "invalid spacing in nth expression"
-                  else acc
-              | _ -> acc
-            in
-            let expr_str = read_an_plus_b_chars "" in
+  Reader.one_of
+    [
+      (* "odd" or "even" *)
+      (fun t ->
+        let ident = Reader.ident t in
+        match ident with
+        | "odd" -> Odd
+        | "even" -> Even
+        | _ ->
+            Reader.err t
+              ("expected 'odd', 'even', or An+B expression, got '" ^ ident ^ "'"));
+      (* An+B forms: "2n+1", "3n", "-n+2", "+n", "n", etc. *)
+      (fun t ->
+        (* Parse optional sign or coefficient *)
+        let a =
+          match Reader.peek t with
+          | Some '+' ->
+              Reader.skip t;
+              if Reader.peek t = Some 'n' then 1 else Reader.int t
+          | Some '-' ->
+              Reader.skip t;
+              if Reader.peek t = Some 'n' then -1 else -Reader.int t
+          | Some 'n' -> 1
+          | Some _ -> Reader.int t
+          | None -> Reader.err_eof t
+        in
 
-            if String.contains expr_str 'n' then
-              (* Parse An+B form from the string we collected *)
-              let len = String.length expr_str in
-              let n_pos = String.index expr_str 'n' in
-
-              (* Parse coefficient before 'n' *)
-              let a =
-                if n_pos = 0 then 1 (* just "n" *)
-                else
-                  let coef_str = String.sub expr_str 0 n_pos in
-                  if coef_str = "" || coef_str = "+" then 1
-                  else if coef_str = "-" then -1
-                  else int_of_string coef_str
-              in
-
-              (* Parse offset after 'n' *)
-              let b =
-                if n_pos + 1 >= len then 0 (* no offset like "2n" *)
-                else
-                  let rest =
-                    String.sub expr_str (n_pos + 1) (len - n_pos - 1)
-                  in
-                  if rest = "" then 0
-                  else int_of_string rest (* Handles +/- automatically *)
-              in
-
-              An_plus_b (a, b)
-            else if expr_str <> "" then
-              (* Just a number without 'n' *)
-              Index (int_of_string expr_str)
-            else Reader.err t "empty expression")
-          t
-      with
-      | Some result -> result
-      | None ->
-          (* If An+B parsing failed, check if there's suspicious remaining
-             input *)
-          let remaining = Reader.peek_string t 5 in
-          if String.contains remaining 'n' then
-            Reader.err t "malformed nth expression"
-          else Index (Reader.int t))
+        (* Check for 'n' *)
+        if Reader.peek t = Some 'n' then (
+          Reader.skip t;
+          (* Parse optional offset *)
+          let b =
+            match Reader.peek t with
+            | Some '+' ->
+                Reader.skip t;
+                Reader.int t
+            | Some '-' ->
+                Reader.skip t;
+                -Reader.int t
+            | _ -> 0
+          in
+          An_plus_b (a, b))
+        else
+          (* Just a number *)
+          Index a);
+      (* Plain "n" followed by offset *)
+      (fun t ->
+        Reader.expect 'n' t;
+        let b =
+          match Reader.peek t with
+          | Some '+' ->
+              Reader.skip t;
+              Reader.int t
+          | Some '-' ->
+              Reader.skip t;
+              -Reader.int t
+          | _ -> 0
+        in
+        An_plus_b (1, b));
+      (* Just an integer *)
+      (fun t -> Index (Reader.int t));
+    ]
     t
 
 (** Pretty print nth expression *)

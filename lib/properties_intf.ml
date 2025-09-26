@@ -892,10 +892,20 @@ type gradient_direction =
   | Angle of angle
 
 type gradient_stop =
-  | Color_stop of color
-  | Color_position of color * length
-  | Var of color var
-  | Computed_stops of string
+  | Var of gradient_stop var
+  | Color_percentage of
+      color
+      * percentage option
+      * percentage option (* Color with optional percentage position *)
+  | Color_length of
+      color
+      * length option
+      * length option (* Color with optional length position *)
+  | Length of length (* Interpolation hint with length, e.g., "50px" *)
+  | List of
+      gradient_stop list (* Multiple gradient stops - used for var fallbacks *)
+  | Percentage of
+      percentage (* Interpolation hint with percentage, e.g., "50%" *)
 
 type background_image =
   | Url of string

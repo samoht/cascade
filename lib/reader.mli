@@ -186,6 +186,17 @@ val slash_opt : t -> bool
 
 (** {1 High-Level Combinators} *)
 
+val atomic : t -> (unit -> 'a) -> 'a
+(** [atomic t f] runs [f ()] atomically. If [f] succeeds, position advances are
+    kept. If [f] raises an exception, the position is restored to where it was
+    before calling [atomic]. This is similar to Parsec's [try] combinator. *)
+
+val lookahead : (t -> 'a) -> t -> 'a
+(** [lookahead f t] runs [f t] and returns its result, but ALWAYS restores the
+    position afterwards, regardless of success or failure. This allows peeking
+    ahead without consuming input. Similar to Parsec's [lookAhead] combinator.
+*)
+
 val with_progress : (t -> 'a) -> t -> 'a
 (** [with_progress parser t] runs [parser] and ensures it consumes at least one
     character. Raises [Parse_error] if the parser succeeds without making
@@ -274,3 +285,5 @@ val pct : ?clamp:bool -> t -> float
 val bool : t -> bool
 (** [bool t] parses a boolean value ("true" or "false"). Raises Parse_error if
     the value is not a valid boolean. *)
+
+(** Debug helpers for parser tracing *)
