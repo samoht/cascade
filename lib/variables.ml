@@ -213,132 +213,159 @@ let rec vars_of_calc : type a. a calc -> any_var list = function
   | Num _ -> []
   | Expr (left, _, right) -> vars_of_calc left @ vars_of_calc right
 
+let vars_of_length (value : Values.length) : any_var list =
+  match value with Var v -> [ V v ] | Calc calc -> vars_of_calc calc | _ -> []
+
 let vars_of_length_list (values : Values.length list) : any_var list =
-  List.concat_map
-    (fun (value : Values.length) ->
-      match value with
-      | Values.Var v -> [ V v ]
-      | Values.Calc calc -> vars_of_calc calc
-      | _ -> [])
-    values
+  List.concat_map vars_of_length values
+
+let vars_of_length_percentage (value : Values.length_percentage) : any_var list
+    =
+  match value with
+  | Length l -> vars_of_length l
+  | Var v -> [ V v ]
+  | Calc calc -> vars_of_calc calc
+  | _ -> []
+
+let vars_of_angle (value : Values.angle) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_channel (value : Values.channel) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_alpha (value : Values.alpha) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_hue (value : Values.hue) : any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | Angle angle -> vars_of_angle angle
+  | _ -> []
+
+let vars_of_component (value : Values.component) : any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | Calc calc -> vars_of_calc calc
+  | Angle hue -> vars_of_hue hue
+  | _ -> []
+
+let vars_of_percentage (value : Values.percentage) : any_var list =
+  match value with Var v -> [ V v ] | Calc calc -> vars_of_calc calc | _ -> []
+
+let vars_of_number (value : Values.number) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_number_percentage (value : Values.number_percentage) : any_var list
+    =
+  match value with Var v -> [ V v ] | Calc calc -> vars_of_calc calc | _ -> []
+
+let rec vars_of_color (value : Values.color) : any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | Rgb { r; g; b } -> vars_of_channel r @ vars_of_channel g @ vars_of_channel b
+  | Rgba { r; g; b; a } ->
+      vars_of_channel r @ vars_of_channel g @ vars_of_channel b
+      @ vars_of_alpha a
+  | Hsl { h; s; l; a } ->
+      vars_of_hue h @ vars_of_percentage s @ vars_of_percentage l
+      @ vars_of_alpha a
+  | Hwb { h; w; b; a } ->
+      vars_of_hue h @ vars_of_percentage w @ vars_of_percentage b
+      @ vars_of_alpha a
+  | Color { components; alpha; _ } ->
+      List.concat_map vars_of_component components @ vars_of_alpha alpha
+  | Oklch { l; h; alpha; _ } ->
+      vars_of_percentage l @ vars_of_hue h @ vars_of_alpha alpha
+  | Oklab { l; alpha; _ } -> vars_of_percentage l @ vars_of_alpha alpha
+  | Lch { l; h; alpha; _ } ->
+      vars_of_percentage l @ vars_of_hue h @ vars_of_alpha alpha
+  | Mix { color1; percent1; color2; percent2; _ } ->
+      let c1_vars = vars_of_color color1 in
+      let c2_vars = vars_of_color color2 in
+      let p1_vars =
+        match percent1 with Some p -> vars_of_percentage p | None -> []
+      in
+      let p2_vars =
+        match percent2 with Some p -> vars_of_percentage p | None -> []
+      in
+      c1_vars @ c2_vars @ p1_vars @ p2_vars
+  | _ -> []
+
+let vars_of_duration (value : Values.duration) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_border_width (value : Properties.border_width) : any_var list =
+  match value with Var v -> [ V v ] | Calc calc -> vars_of_calc calc | _ -> []
+
+let vars_of_line_height (value : Properties.line_height) : any_var list =
+  match value with Var v -> [ V v ] | Calc calc -> vars_of_calc calc | _ -> []
+
+(* Helper for optional length properties in Gap *)
+let vars_of_optional_length : Values.length option -> any_var list = function
+  | Some (Var v) -> [ V v ]
+  | Some (Calc calc) -> vars_of_calc calc
+  | _ -> []
 
 let vars_of_property : type a. a property -> a -> any_var list =
  fun prop value ->
   match (prop, value) with
-  | Width, Var v -> [ V v ]
-  | Width, Calc calc -> vars_of_calc calc
-  | Height, Var v -> [ V v ]
-  | Height, Calc calc -> vars_of_calc calc
-  | Min_width, Var v -> [ V v ]
-  | Min_width, Calc calc -> vars_of_calc calc
-  | Min_height, Var v -> [ V v ]
-  | Min_height, Calc calc -> vars_of_calc calc
-  | Max_width, Var v -> [ V v ]
-  | Max_width, Calc calc -> vars_of_calc calc
-  | Max_height, Var v -> [ V v ]
-  | Max_height, Calc calc -> vars_of_calc calc
+  | Width, value -> vars_of_length_percentage value
+  | Height, value -> vars_of_length_percentage value
+  | Min_width, value -> vars_of_length_percentage value
+  | Min_height, value -> vars_of_length_percentage value
+  | Max_width, value -> vars_of_length_percentage value
+  | Max_height, value -> vars_of_length_percentage value
   | Padding, values -> vars_of_length_list values
-  | Padding_top, Var v -> [ V v ]
-  | Padding_top, Calc calc -> vars_of_calc calc
-  | Padding_right, Var v -> [ V v ]
-  | Padding_right, Calc calc -> vars_of_calc calc
-  | Padding_bottom, Var v -> [ V v ]
-  | Padding_bottom, Calc calc -> vars_of_calc calc
-  | Padding_left, Var v -> [ V v ]
-  | Padding_left, Calc calc -> vars_of_calc calc
-  | Padding_inline, Var v -> [ V v ]
-  | Padding_inline, Calc calc -> vars_of_calc calc
-  | Padding_inline_start, Var v -> [ V v ]
-  | Padding_inline_start, Calc calc -> vars_of_calc calc
-  | Padding_inline_end, Var v -> [ V v ]
-  | Padding_inline_end, Calc calc -> vars_of_calc calc
-  | Padding_block, Var v -> [ V v ]
-  | Padding_block, Calc calc -> vars_of_calc calc
+  | Padding_top, value -> vars_of_length value
+  | Padding_right, value -> vars_of_length value
+  | Padding_bottom, value -> vars_of_length value
+  | Padding_left, value -> vars_of_length value
+  | Padding_inline, value -> vars_of_length value
+  | Padding_inline_start, value -> vars_of_length value
+  | Padding_inline_end, value -> vars_of_length value
+  | Padding_block, value -> vars_of_length value
   | Margin, values -> vars_of_length_list values
-  | Margin_top, Var v -> [ V v ]
-  | Margin_top, Calc calc -> vars_of_calc calc
-  | Margin_right, Var v -> [ V v ]
-  | Margin_right, Calc calc -> vars_of_calc calc
-  | Margin_bottom, Var v -> [ V v ]
-  | Margin_bottom, Calc calc -> vars_of_calc calc
-  | Margin_left, Var v -> [ V v ]
-  | Margin_left, Calc calc -> vars_of_calc calc
-  | Margin_inline, Var v -> [ V v ]
-  | Margin_inline, Calc calc -> vars_of_calc calc
-  | Margin_block, Var v -> [ V v ]
-  | Margin_block, Calc calc -> vars_of_calc calc
-  | Top, Var v -> [ V v ]
-  | Top, Calc calc -> vars_of_calc calc
-  | Right, Var v -> [ V v ]
-  | Right, Calc calc -> vars_of_calc calc
-  | Bottom, Var v -> [ V v ]
-  | Bottom, Calc calc -> vars_of_calc calc
-  | Left, Var v -> [ V v ]
-  | Left, Calc calc -> vars_of_calc calc
-  | Font_size, Var v -> [ V v ]
-  | Font_size, Calc calc -> vars_of_calc calc
-  | Letter_spacing, Var v -> [ V v ]
-  | Letter_spacing, Calc calc -> vars_of_calc calc
-  | Line_height, Normal -> []
-  | Line_height, Px _ -> []
-  | Line_height, Rem _ -> []
-  | Line_height, Em _ -> []
-  | Line_height, Pct _ -> []
-  | Line_height, Num _ -> []
-  | Line_height, Inherit -> []
-  | Line_height, Var v -> [ V v ]
-  | Border_width, Var v -> [ V v ]
-  | Border_width, Calc calc -> vars_of_calc calc
-  | Border_top_width, Var v -> [ V v ]
-  | Border_top_width, Calc calc -> vars_of_calc calc
-  | Border_right_width, Var v -> [ V v ]
-  | Border_right_width, Calc calc -> vars_of_calc calc
-  | Border_bottom_width, Var v -> [ V v ]
-  | Border_bottom_width, Calc calc -> vars_of_calc calc
-  | Border_left_width, Var v -> [ V v ]
-  | Border_left_width, Calc calc -> vars_of_calc calc
-  | Border_inline_start_width, Var v -> [ V v ]
-  | Border_inline_start_width, Calc calc -> vars_of_calc calc
-  | Border_inline_end_width, Var v -> [ V v ]
-  | Border_inline_end_width, Calc calc -> vars_of_calc calc
-  | Outline_width, Var v -> [ V v ]
-  | Outline_width, Calc calc -> vars_of_calc calc
-  | Column_gap, Var v -> [ V v ]
-  | Column_gap, Calc calc -> vars_of_calc calc
-  | Row_gap, Var v -> [ V v ]
-  | Row_gap, Calc calc -> vars_of_calc calc
+  | Margin_top, value -> vars_of_length value
+  | Margin_right, value -> vars_of_length value
+  | Margin_bottom, value -> vars_of_length value
+  | Margin_left, value -> vars_of_length value
+  | Margin_inline, value -> vars_of_length value
+  | Margin_block, value -> vars_of_length value
+  | Top, value -> vars_of_length value
+  | Right, value -> vars_of_length value
+  | Bottom, value -> vars_of_length value
+  | Left, value -> vars_of_length value
+  | Font_size, value -> vars_of_length_percentage value
+  | Letter_spacing, value -> vars_of_length value
+  | Line_height, value -> vars_of_line_height value
+  | Border_width, value -> vars_of_border_width value
+  | Border_top_width, value -> vars_of_border_width value
+  | Border_right_width, value -> vars_of_border_width value
+  | Border_bottom_width, value -> vars_of_border_width value
+  | Border_left_width, value -> vars_of_border_width value
+  | Border_inline_start_width, value -> vars_of_border_width value
+  | Border_inline_end_width, value -> vars_of_border_width value
+  | Outline_width, value -> vars_of_length value
+  | Column_gap, value -> vars_of_length value
+  | Row_gap, value -> vars_of_length value
   | Gap, { row_gap; column_gap } ->
-      let row_vars =
-        match row_gap with
-        | Some (Var v) -> [ V v ]
-        | Some (Calc calc) -> vars_of_calc calc
-        | _ -> []
-      in
-      let col_vars =
-        match column_gap with
-        | Some (Var v) -> [ V v ]
-        | Some (Calc calc) -> vars_of_calc calc
-        | _ -> []
-      in
-      row_vars @ col_vars
+      vars_of_optional_length row_gap @ vars_of_optional_length column_gap
   (* Color properties *)
-  | Background_color, Var v -> [ V v ]
-  | Color, Var v -> [ V v ]
-  | Border_color, Var v -> [ V v ]
-  | Border_top_color, Var v -> [ V v ]
-  | Border_right_color, Var v -> [ V v ]
-  | Border_bottom_color, Var v -> [ V v ]
-  | Border_left_color, Var v -> [ V v ]
-  | Border_inline_start_color, Var v -> [ V v ]
-  | Border_inline_end_color, Var v -> [ V v ]
-  | Text_decoration_color, Var v -> [ V v ]
-  | Outline_color, Var v -> [ V v ]
+  | Background_color, value -> vars_of_color value
+  | Color, value -> vars_of_color value
+  | Border_color, value -> vars_of_color value
+  | Border_top_color, value -> vars_of_color value
+  | Border_right_color, value -> vars_of_color value
+  | Border_bottom_color, value -> vars_of_color value
+  | Border_left_color, value -> vars_of_color value
+  | Border_inline_start_color, value -> vars_of_color value
+  | Border_inline_end_color, value -> vars_of_color value
+  | Text_decoration_color, value -> vars_of_color value
+  | Outline_color, value -> vars_of_color value
   (* Border radius *)
-  | Border_radius, Var v -> [ V v ]
-  | Border_radius, Calc calc -> vars_of_calc calc
+  | Border_radius, value -> vars_of_length value
   (* Outline offset *)
-  | Outline_offset, Var v -> [ V v ]
-  | Outline_offset, Calc calc -> vars_of_calc calc
+  | Outline_offset, value -> vars_of_length value
   (* Other properties don't support Var *)
   (* All other cases *)
   | _ -> []
