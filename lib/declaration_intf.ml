@@ -27,7 +27,7 @@ type _ kind =
   | Shadow : shadow kind
   | Box_shadow : shadow kind
   | Content : content kind
-  | Gradient_stops : gradient_stop list kind
+  | Gradient_stop : gradient_stop kind
 
 type declaration =
   | Declaration : {

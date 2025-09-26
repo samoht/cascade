@@ -4,7 +4,7 @@ open Values
 
 (** {1 Custom Property Syntax} *)
 
-(** Type-safe CSS @property syntax descriptors following CSS/MDN spec *)
+(** Type-safe CSS [@property] syntax descriptors following CSS/MDN spec *)
 type 'a syntax =
   | Length : length syntax
   | Color : color syntax
