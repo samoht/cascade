@@ -1280,11 +1280,17 @@ type gradient_direction =
 
 (** Gradient stop values *)
 type gradient_stop =
-  | Color_stop of color
-  | Color_position of color * length
-  | Var of color var  (** Reference to a color variable *)
-  | Computed_stops of string
-      (** For complex computed values like --tw-gradient-stops *)
+  | Var of gradient_stop var
+      (** Single complex variable like var(--complex, fallback) *)
+  | Color_percentage of color * percentage option * percentage option
+      (** Color with optional percentage positions *)
+  | Color_length of color * length option * length option
+      (** Color with optional length positions *)
+  | Length of length  (** Interpolation hint with length, e.g., "50px" *)
+  | List of gradient_stop list
+      (** Multiple gradient stops - used for var fallbacks *)
+  | Percentage of percentage
+      (** Interpolation hint with percentage, e.g., "50%" *)
 
 (** Background image values *)
 type background_image =
@@ -3502,6 +3508,7 @@ type _ kind =
   | Shadow : shadow kind
   | Box_shadow : shadow kind
   | Content : content kind
+  | Gradient_stops : gradient_stop list kind
 
 val pp_kind_value : ('a kind * 'a) Pp.t
 (** [pp_kind_value] pretty-prints a typed value using the appropriate printer

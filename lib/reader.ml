@@ -361,9 +361,6 @@ let ident ?(keep_case = false) t =
 let is_digit c = c >= '0' && c <= '9'
 let is_alpha c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 
-let is_hex_digit c =
-  (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
-
 let string ?(trim = false) t =
   let quote = char t in
   if quote <> '"' && quote <> '\'' then err_expected t "string quote";
@@ -377,13 +374,13 @@ let string ?(trim = false) t =
         (* Handle CSS escape sequences *)
         match peek t with
         | None -> err t "incomplete escape sequence"
-        | Some c when is_hex_digit c ->
+        | Some c when is_hex c ->
             (* Unicode escape: read up to 6 hex digits *)
             let hex_buf = Buffer.create 6 in
             let rec read_hex count =
               if count < 6 then
                 match peek t with
-                | Some h when is_hex_digit h ->
+                | Some h when is_hex h ->
                     skip t;
                     Buffer.add_char hex_buf h;
                     read_hex (count + 1)
@@ -482,7 +479,11 @@ let number ?(allow_negative = true) t =
   let num_str = whole ^ decimal ^ exponent in
   if String.length num_str = 0 || num_str = "." then err_invalid_number t;
 
-  let value = float_of_string num_str in
+  let value =
+    match float_of_string_opt num_str with
+    | Some v -> v
+    | None -> err_invalid t ("invalid number: " ^ num_str)
+  in
   let result = if negative then -.value else value in
   if (not allow_negative) && result < 0.0 then
     err_invalid t "negative values not allowed"
@@ -505,7 +506,10 @@ let hex t =
   in
   let hex_str = loop () in
   if String.length hex_str = 0 then err_invalid t "expected hex digits"
-  else int_of_string ("0x" ^ hex_str)
+  else
+    match int_of_string_opt ("0x" ^ hex_str) with
+    | Some n -> n
+    | None -> err_invalid t "invalid hex value"
 
 (** {1 Whitespace} *)
 
@@ -563,29 +567,46 @@ let commit t =
   | [] -> err t "no saved position to commit"
   | _ :: rest -> t.saved <- rest
 
-let option f t =
+(* Atomic parsing: consume on success, rollback on failure. Like Parsec's 'try':
+   if parser succeeds, keep position advances; if it fails, restore to original
+   position. *)
+let atomic t f =
+  let saved_count_before = List.length t.saved in
   save t;
   try
-    let result = f t in
+    let result = f () in
     commit t;
-    Some result
-  with
-  | Parse_error _ ->
-      restore t;
-      None
-  | _ ->
-      restore t;
-      None
+    (* Invariant: save stack should be same size as before *)
+    assert (List.length t.saved = saved_count_before);
+    result
+  with exn ->
+    restore t;
+    (* Invariant: save stack should be same size as before *)
+    assert (List.length t.saved = saved_count_before);
+    raise exn
+
+(* Lookahead: run [f t] and ALWAYS restore the position, regardless of success
+   or failure. On success, returns [f]'s result without consuming input. On
+   failure, re-raises after restoring. *)
+let lookahead f t =
+  let saved_count_before = List.length t.saved in
+  save t;
+  try
+    let v = f t in
+    restore t;
+    assert (List.length t.saved = saved_count_before);
+    v
+  with exn ->
+    restore t;
+    assert (List.length t.saved = saved_count_before);
+    raise exn
+
+let option f t =
+  try Some (atomic t (fun () -> f t)) with Parse_error _ -> None
 
 let try_parse_err f t =
-  save t;
-  try
-    let result = f t in
-    commit t;
-    Ok result
-  with Parse_error error ->
-    restore t;
-    Error error.message
+  try Ok (atomic t (fun () -> f t))
+  with Parse_error error -> Error error.message
 
 (** Ensure a parser makes progress (consumes at least one character) *)
 let with_progress f t =
@@ -623,7 +644,7 @@ let many f t =
   loop []
 
 let one_of parsers t =
-  let rec try_parsers parsers_list errors got_value =
+  let rec try_parsers parsers_list errors got_value parser_idx =
     match parsers_list with
     | [] ->
         let msg =
@@ -632,21 +653,16 @@ let one_of parsers t =
         in
         err ?got:got_value t msg
     | parser :: rest -> (
-        save t;
-        try
-          let result = parser t in
-          commit t;
-          result
+        try atomic t (fun () -> parser t)
         with Parse_error error ->
-          restore t;
           let new_got =
             match got_value with
             | None -> error.got (* Use the first 'got' value we encounter *)
             | some -> some (* Keep the existing got value *)
           in
-          try_parsers rest (error.message :: errors) new_got)
+          try_parsers rest (error.message :: errors) new_got (parser_idx + 1))
   in
-  try_parsers parsers [] None
+  try_parsers parsers [] None 1
 
 let should_stop_reading t =
   match peek t with
@@ -654,15 +670,11 @@ let should_stop_reading t =
   | Some _ -> looking_at t "!" || looking_at t ";"
 
 let try_read_item parser items t =
-  save t;
   try
-    let item = parser t in
-    commit t;
+    let item = atomic t (fun () -> parser t) in
     items := item :: !items;
     true
-  with Parse_error _ ->
-    restore t;
-    false
+  with Parse_error _ -> false
 
 let take max_count parser t =
   if max_count < 1 then invalid_arg "take: max_count must be >= 1";
@@ -685,7 +697,7 @@ let take max_count parser t =
   (* Now check if there are more valid items that would exceed max_count *)
   ws t;
   (if (not (should_stop_reading t)) && List.length !items >= max_count then
-     match option parser t with
+     match option (fun t -> lookahead parser t) t with
      | Some _ ->
          err t
            ("too many values (maximum " ^ string_of_int max_count ^ " allowed)")
@@ -735,30 +747,36 @@ let css_value ~stops t =
   String.trim (parse_until [] 0 false '\000')
 
 let enum_impl ?default label mapping t =
+  (* Try to match enum value first using option combinator *)
   ws t;
-  let starts_with_ident = would_start_identifier t in
-  if not starts_with_ident then
-    match default with
-    | Some f -> f t
-    | None -> err t (label ^ ": expected " ^ label)
-  else (
-    (* Try identifier; on failure, restore and delegate to default if present *)
-    save t;
-    let value = ident t in
-    match
-      List.find_opt (fun (k, _) -> String.lowercase_ascii k = value) mapping
-    with
-    | Some (_, result) ->
-        commit t;
-        result
-    | None -> (
-        match default with
-        | Some default_fn ->
-            restore t;
-            default_fn t
-        | None ->
+  let matched =
+    if would_start_identifier t then
+      (* Try to parse and match an identifier *)
+      option
+        (fun t ->
+          let value = ident t in
+          match
+            List.find_opt
+              (fun (k, _) -> String.lowercase_ascii k = value)
+              mapping
+          with
+          | Some (_, result) -> result
+          | None -> err t "not in enum")
+        t
+    else None
+  in
+  match matched with
+  | Some result -> result
+  | None -> (
+      (* No match, try default if available *)
+      match default with
+      | Some f -> f t
+      | None ->
+          if would_start_identifier t then
+            let value = ident t in
             let options = List.map fst mapping |> String.concat ", " in
-            err t (label ^ ": expected one of: " ^ options ^ ", got: " ^ value)))
+            err t (label ^ ": expected one of: " ^ options ^ ", got: " ^ value)
+          else err t (label ^ ": expected " ^ label))
 
 (** {1 Structured Parsing} *)
 
@@ -799,18 +817,20 @@ let slash_opt t =
   else false
 
 let pair ?(sep = fun (_ : t) -> ()) p1 p2 t =
-  let a = p1 t in
-  sep t;
-  let b = p2 t in
-  (a, b)
+  atomic t (fun () ->
+      let a = p1 t in
+      sep t;
+      let b = p2 t in
+      (a, b))
 
 let triple ?(sep = fun (_ : t) -> ()) p1 p2 p3 t =
-  let a = p1 t in
-  sep t;
-  let b = p2 t in
-  sep t;
-  let c = p3 t in
-  (a, b, c)
+  atomic t (fun () ->
+      let a = p1 t in
+      sep t;
+      let b = p2 t in
+      sep t;
+      let c = p3 t in
+      (a, b, c))
 
 let list_impl ?(sep = fun (_ : t) -> ()) ?(at_least = 0) ?at_most item t =
   let rec loop acc =
@@ -869,34 +889,82 @@ let url t = call "url" t quoted_or_unquoted_url
 
 let enum_calls_impl ?default cases t =
   ws t;
-  let starts_with_ident = is_ident_start (Option.value (peek t) ~default:' ') in
-  if not starts_with_ident then
+  if not (would_start_identifier t) then
     match default with
     | Some f -> f t
     | None ->
         let options = List.map fst cases |> String.concat ", " in
         err t ("expected one of functions: " ^ options)
-  else (
-    save t;
-    let got = ident t in
+  else
+    let got = lookahead ident t in
     match
       List.find_opt (fun (n, _) -> String.lowercase_ascii n = got) cases
     with
     | None -> (
         match default with
-        | Some f ->
-            restore t;
-            f t
+        | Some f -> f t
         | None ->
             let options = List.map fst cases |> String.concat ", " in
             err t ("expected one of functions: " ^ options))
-    | Some (_, p) ->
-        (* Restore position so the handler can parse the full function call *)
-        restore t;
-        p t)
+    | Some (_, p) -> p t
 
 let enum_or_calls_impl ?default label idents ~calls t =
-  enum_impl ~default:(enum_calls_impl ?default calls) label idents t
+  (* Atomic and simple: name( means call (no whitespace allowed); name means
+     ident. *)
+  let find_assoc_ci name lst =
+    List.find_map
+      (fun (k, v) -> if String.lowercase_ascii k = name then Some v else None)
+      lst
+  in
+  let err_expected_ident name =
+    let options = List.map fst idents |> String.concat ", " in
+    err t (label ^ ": expected one of: " ^ options ^ ", got: " ^ name)
+  in
+  atomic t (fun () ->
+      ws t;
+      if not (would_start_identifier t) then
+        match default with
+        | Some f -> f t
+        | None -> err t (label ^ ": expected " ^ label)
+      else
+        (* Peek identifier and '(' without consuming input *)
+        let name, has_paren =
+          lookahead
+            (fun t ->
+              let n = ident t in
+              (n, peek t = Some '('))
+            t
+        in
+        if has_paren then
+          (* Has parenthesis - try as function call *)
+          match find_assoc_ci name calls with
+          | Some p -> p t (* Parser consumes identifier and parens *)
+          | None -> (
+              (* Not a valid call: do NOT consume; fall back appropriately *)
+              match find_assoc_ci name idents with
+              | Some v ->
+                  (* Consume the ident now that we know it's a plain ident *)
+                  let consumed_name = ident t in
+                  assert (consumed_name = name);
+                  v
+              | None -> (
+                  match default with
+                  | Some f -> f t
+                  | None ->
+                      let options = List.map fst calls |> String.concat ", " in
+                      err t ("expected one of functions: " ^ options)))
+        else
+          (* No parenthesis: only consume if it matches an ident; else
+             default *)
+          match find_assoc_ci name idents with
+          | Some v ->
+              let consumed_name = ident t in
+              assert (consumed_name = name);
+              v
+          | None -> (
+              match default with
+              | Some f -> f t
+              | None -> err_expected_ident name))
 
 let fold_many parser ~init ~f t =
   with_context t "fold_many" @@ fun () ->
@@ -967,7 +1035,8 @@ let bool t =
 
 let enum ?default label mapping t =
   with_context t ("enum:" ^ label) @@ fun () ->
-  enum_impl ?default label mapping t
+  (* Make enum atomic: if it fails, restore position *)
+  atomic t (fun () -> enum_impl ?default label mapping t)
 
 let list ?sep ?at_least ?at_most item t =
   with_context t "list" @@ fun () -> list_impl ?sep ?at_least ?at_most item t

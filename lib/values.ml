@@ -64,8 +64,7 @@ let pp_var : type a. a Pp.t -> a var Pp.t =
         Pp.char ctx ',';
         Pp.char ctx ')'
     | Fallback value ->
-        Pp.char ctx ',';
-        Pp.space_if_pretty ctx ();
+        Pp.comma ctx ();
         pp_value ctx value;
         Pp.char ctx ')')
 
@@ -611,23 +610,27 @@ let read_var_after_ident : type a. (Reader.t -> a) -> Reader.t -> a var =
   let var_name =
     if Reader.looking_at t "--" then (
       Reader.expect_string "--" t;
-      Reader.ident ~keep_case:true t)
+      let name = Reader.ident ~keep_case:true t in
+      name)
     else Reader.ident ~keep_case:true t
   in
   Reader.ws t;
   let fallback : _ fallback =
-    if Reader.peek t = Some ',' then (
-      Reader.comma t;
-      Reader.ws t;
-      (* Check if we have an empty fallback (nothing before ')') *)
-      if Reader.peek t = Some ')' then Empty
-      else
-        (* For fallback, we need to capture everything until the closing paren,
-           respecting nested parens and quotes. Then parse that as the value. *)
-        let fallback_str = Reader.css_value ~stops:[ ')' ] t in
-        let fallback_reader = Reader.of_string fallback_str in
-        Fallback (read_value fallback_reader))
-    else None
+    match
+      Reader.option
+        (fun t ->
+          Reader.comma t;
+          Reader.ws t;
+          (* Check if we have an empty fallback (nothing before ')') *)
+          if Reader.peek t = Some ')' then Empty
+          else
+            (* Parse the fallback using the passed parser function *)
+            let fallback_value = read_value t in
+            Fallback fallback_value)
+        t
+    with
+    | Some fb -> fb
+    | None -> None
   in
   Reader.ws t;
   Reader.expect ')' t;
@@ -640,32 +643,7 @@ let read_var : type a. (Reader.t -> a) -> Reader.t -> a var =
  fun read_value t ->
   Reader.ws t;
   Reader.expect_string "var" t;
-  Reader.expect '(' t;
-  Reader.ws t;
-  let var_name =
-    if Reader.looking_at t "--" then (
-      Reader.expect_string "--" t;
-      Reader.ident ~keep_case:true t)
-    else Reader.ident ~keep_case:true t
-  in
-  Reader.ws t;
-  let fallback : _ fallback =
-    if Reader.peek t = Some ',' then (
-      Reader.comma t;
-      Reader.ws t;
-      (* Check if we have an empty fallback (nothing before ')') *)
-      if Reader.peek t = Some ')' then Empty
-      else
-        (* For fallback, we need to capture everything until the closing paren,
-           respecting nested parens and quotes. Then parse that as the value. *)
-        let fallback_str = Reader.css_value ~stops:[ ')' ] t in
-        let fallback_reader = Reader.of_string fallback_str in
-        Fallback (read_value fallback_reader))
-    else None
-  in
-  Reader.ws t;
-  Reader.expect ')' t;
-  var_ref ~fallback var_name
+  read_var_after_ident read_value t
 
 let read_length_unit ?(allow_negative = true) t =
   let n = Reader.number ~allow_negative t in
@@ -710,7 +688,7 @@ let read_length_unit ?(allow_negative = true) t =
   | "%" -> Pct n
   | _ -> Reader.err_invalid t ("length unit: " ^ unit)
 
-let read_length_keyword =
+let read_length_keyword t =
   Reader.enum "length"
     [
       ("auto", Auto);
@@ -724,6 +702,7 @@ let read_length_keyword =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
+    t
 
 let rec read_calc_expr : type a. (Reader.t -> a) -> Reader.t -> a calc =
  fun read_a t ->
@@ -732,11 +711,15 @@ let rec read_calc_expr : type a. (Reader.t -> a) -> Reader.t -> a calc =
   Reader.ws t;
   match Reader.peek t with
   | Some '+' ->
-      Reader.skip t;
-      Expr (left, Add, read_calc_expr read_a t)
+      (* Use atomic to ensure we either parse the full addition or nothing *)
+      Reader.atomic t (fun () ->
+          Reader.skip t;
+          Expr (left, Add, read_calc_expr read_a t))
   | Some '-' ->
-      Reader.skip t;
-      Expr (left, Sub, read_calc_expr read_a t)
+      (* Use atomic to ensure we either parse the full subtraction or nothing *)
+      Reader.atomic t (fun () ->
+          Reader.skip t;
+          Expr (left, Sub, read_calc_expr read_a t))
   | _ -> left
 
 and read_calc_term : type a. (Reader.t -> a) -> Reader.t -> a calc =
@@ -746,29 +729,35 @@ and read_calc_term : type a. (Reader.t -> a) -> Reader.t -> a calc =
   Reader.ws t;
   match Reader.peek t with
   | Some '*' ->
-      Reader.skip t;
-      let right = read_calc_term read_a t in
-      (* Validate multiplication: can't multiply two raw dimensions (but
-         expressions are OK) *)
-      let is_dimension : type a. a calc -> bool = function
-        | Val _ -> true
-        | _ -> false
-      in
-      if is_dimension left && is_dimension right then
-        Reader.err t "invalid calc: cannot multiply two dimensions";
-      Expr (left, Mul, right)
+      (* Use atomic to ensure we either parse the full multiplication or
+         nothing *)
+      Reader.atomic t (fun () ->
+          Reader.skip t;
+          let right = read_calc_term read_a t in
+          (* Validate multiplication: can't multiply two raw dimensions (but
+             expressions are OK) *)
+          let is_dimension : type a. a calc -> bool = function
+            | Val _ -> true
+            | _ -> false
+          in
+          if is_dimension left && is_dimension right then
+            Reader.err t "invalid calc: cannot multiply two dimensions";
+          Expr (left, Mul, right))
   | Some '/' ->
-      Reader.skip t;
-      let right = read_calc_term read_a t in
-      (* Validate division: right operand must be a number (not a dimension) *)
-      let is_not_number : type a. a calc -> bool = function
-        | Val _ -> true (* definitely not a number *)
-        | Num _ -> false (* is a number *)
-        | _ -> false (* expressions could evaluate to numbers *)
-      in
-      if is_not_number right then
-        Reader.err t "invalid calc: division requires a number on the right";
-      Expr (left, Div, right)
+      (* Use atomic to ensure we either parse the full division or nothing *)
+      Reader.atomic t (fun () ->
+          Reader.skip t;
+          let right = read_calc_term read_a t in
+          (* Validate division: right operand must be a number (not a
+             dimension) *)
+          let is_not_number : type a. a calc -> bool = function
+            | Val _ -> true (* definitely not a number *)
+            | Num _ -> false (* is a number *)
+            | _ -> false (* expressions could evaluate to numbers *)
+          in
+          if is_not_number right then
+            Reader.err t "invalid calc: division requires a number on the right";
+          Expr (left, Div, right))
   | _ -> left
 
 and read_calc_parenthesized : type a. (Reader.t -> a) -> Reader.t -> a calc =
@@ -859,7 +848,10 @@ let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
     =
   Reader.ws t;
   let read_var_length t : length =
-    Var (read_var (read_length ~allow_negative ~with_keywords) t)
+    let result : length =
+      Var (read_var (read_length ~allow_negative ~with_keywords) t)
+    in
+    result
   in
   let read_calc_length t : length =
     Calc (read_calc (read_length ~allow_negative ~with_keywords) t)
@@ -886,8 +878,7 @@ let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
   let parsers =
     if with_keywords then read_length_keyword :: parsers else parsers
   in
-  let length = Reader.one_of parsers t in
-  length
+  Reader.one_of parsers t
 
 (** Read a non-negative length value (for padding properties) *)
 let read_non_negative_length ?(with_keywords = true) t : length =
@@ -1341,167 +1332,170 @@ and read_color t : color =
     | None -> (
         match ident with
         | "var" -> Var (read_var_after_ident read_color t)
-        | _ -> read_color_keyword (Reader.of_string ident))
+        | _ -> (
+            (* Check if ident is a valid color keyword *)
+            match read_color_keyword_from_string ident with
+            | Some color -> color
+            | None -> Reader.err t ("unknown color: " ^ ident)))
 
-and read_color_keyword t : color =
-  let keyword = Reader.ident t in
+and read_color_keyword_from_string keyword : color option =
   match keyword with
-  | "transparent" -> Transparent
-  | "currentcolor" -> Current
-  | "inherit" -> Inherit
-  | "red" -> Named Red
-  | "green" -> Named Green
-  | "blue" -> Named Blue
-  | "white" -> Named White
-  | "black" -> Named Black
-  | "gray" -> Named Gray
-  | "grey" -> Named Grey
-  | "silver" -> Named Silver
-  | "maroon" -> Named Maroon
-  | "yellow" -> Named Yellow
-  | "olive" -> Named Olive
-  | "lime" -> Named Lime
-  | "aqua" -> Named Aqua
-  | "cyan" -> Named Cyan
-  | "teal" -> Named Teal
-  | "navy" -> Named Navy
-  | "fuchsia" -> Named Fuchsia
-  | "magenta" -> Named Magenta
-  | "purple" -> Named Purple
-  | "orange" -> Named Orange
-  | "pink" -> Named Pink
-  | "aliceblue" -> Named Alice_blue
-  | "antiquewhite" -> Named Antique_white
-  | "aquamarine" -> Named Aquamarine
-  | "azure" -> Named Azure
-  | "beige" -> Named Beige
-  | "bisque" -> Named Bisque
-  | "blanchedalmond" -> Named Blanched_almond
-  | "blueviolet" -> Named Blue_violet
-  | "brown" -> Named Brown
-  | "burlywood" -> Named Burlywood
-  | "cadetblue" -> Named Cadet_blue
-  | "chartreuse" -> Named Chartreuse
-  | "chocolate" -> Named Chocolate
-  | "coral" -> Named Coral
-  | "cornflowerblue" -> Named Cornflower_blue
-  | "cornsilk" -> Named Cornsilk
-  | "crimson" -> Named Crimson
-  | "darkblue" -> Named Dark_blue
-  | "darkcyan" -> Named Dark_cyan
-  | "darkgoldenrod" -> Named Dark_goldenrod
-  | "darkgray" -> Named Dark_gray
-  | "darkgreen" -> Named Dark_green
-  | "darkgrey" -> Named Dark_grey
-  | "darkkhaki" -> Named Dark_khaki
-  | "darkmagenta" -> Named Dark_magenta
-  | "darkolivegreen" -> Named Dark_olive_green
-  | "darkorange" -> Named Dark_orange
-  | "darkorchid" -> Named Dark_orchid
-  | "darkred" -> Named Dark_red
-  | "darksalmon" -> Named Dark_salmon
-  | "darkseagreen" -> Named Dark_sea_green
-  | "darkslateblue" -> Named Dark_slate_blue
-  | "darkslategray" -> Named Dark_slate_gray
-  | "darkslategrey" -> Named Dark_slate_grey
-  | "darkturquoise" -> Named Dark_turquoise
-  | "darkviolet" -> Named Dark_violet
-  | "deeppink" -> Named Deep_pink
-  | "deepskyblue" -> Named Deep_sky_blue
-  | "dimgray" -> Named Dim_gray
-  | "dimgrey" -> Named Dim_grey
-  | "dodgerblue" -> Named Dodger_blue
-  | "firebrick" -> Named Firebrick
-  | "floralwhite" -> Named Floral_white
-  | "forestgreen" -> Named Forest_green
-  | "gainsboro" -> Named Gainsboro
-  | "ghostwhite" -> Named Ghost_white
-  | "gold" -> Named Gold
-  | "goldenrod" -> Named Goldenrod
-  | "greenyellow" -> Named Green_yellow
-  | "honeydew" -> Named Honeydew
-  | "hotpink" -> Named Hot_pink
-  | "indianred" -> Named Indian_red
-  | "indigo" -> Named Indigo
-  | "ivory" -> Named Ivory
-  | "khaki" -> Named Khaki
-  | "lavender" -> Named Lavender
-  | "lavenderblush" -> Named Lavender_blush
-  | "lawngreen" -> Named Lawn_green
-  | "lemonchiffon" -> Named Lemon_chiffon
-  | "lightblue" -> Named Light_blue
-  | "lightcoral" -> Named Light_coral
-  | "lightcyan" -> Named Light_cyan
-  | "lightgoldenrodyellow" -> Named Light_goldenrod_yellow
-  | "lightgray" -> Named Light_gray
-  | "lightgreen" -> Named Light_green
-  | "lightgrey" -> Named Light_grey
-  | "lightpink" -> Named Light_pink
-  | "lightsalmon" -> Named Light_salmon
-  | "lightseagreen" -> Named Light_sea_green
-  | "lightskyblue" -> Named Light_sky_blue
-  | "lightslategray" -> Named Light_slate_gray
-  | "lightslategrey" -> Named Light_slate_grey
-  | "lightsteelblue" -> Named Light_steel_blue
-  | "lightyellow" -> Named Light_yellow
-  | "limegreen" -> Named Lime_green
-  | "linen" -> Named Linen
-  | "mediumaquamarine" -> Named Medium_aquamarine
-  | "mediumblue" -> Named Medium_blue
-  | "mediumorchid" -> Named Medium_orchid
-  | "mediumpurple" -> Named Medium_purple
-  | "mediumseagreen" -> Named Medium_sea_green
-  | "mediumslateblue" -> Named Medium_slate_blue
-  | "mediumspringgreen" -> Named Medium_spring_green
-  | "mediumturquoise" -> Named Medium_turquoise
-  | "mediumvioletred" -> Named Medium_violet_red
-  | "midnightblue" -> Named Midnight_blue
-  | "mintcream" -> Named Mint_cream
-  | "mistyrose" -> Named Misty_rose
-  | "moccasin" -> Named Moccasin
-  | "navajowhite" -> Named Navajo_white
-  | "oldlace" -> Named Old_lace
-  | "olivedrab" -> Named Olive_drab
-  | "orangered" -> Named Orange_red
-  | "orchid" -> Named Orchid
-  | "palegoldenrod" -> Named Pale_goldenrod
-  | "palegreen" -> Named Pale_green
-  | "paleturquoise" -> Named Pale_turquoise
-  | "palevioletred" -> Named Pale_violet_red
-  | "papayawhip" -> Named Papaya_whip
-  | "peachpuff" -> Named Peach_puff
-  | "peru" -> Named Peru
-  | "plum" -> Named Plum
-  | "powderblue" -> Named Powder_blue
-  | "rebeccapurple" -> Named Rebecca_purple
-  | "rosybrown" -> Named Rosy_brown
-  | "royalblue" -> Named Royal_blue
-  | "saddlebrown" -> Named Saddle_brown
-  | "salmon" -> Named Salmon
-  | "sandybrown" -> Named Sandy_brown
-  | "seagreen" -> Named Sea_green
-  | "seashell" -> Named Sea_shell
-  | "sienna" -> Named Sienna
-  | "skyblue" -> Named Sky_blue
-  | "slateblue" -> Named Slate_blue
-  | "slategray" -> Named Slate_gray
-  | "slategrey" -> Named Slate_grey
-  | "snow" -> Named Snow
-  | "springgreen" -> Named Spring_green
-  | "steelblue" -> Named Steel_blue
-  | "tan" -> Named Tan
-  | "thistle" -> Named Thistle
-  | "tomato" -> Named Tomato
-  | "turquoise" -> Named Turquoise
-  | "violet" -> Named Violet
-  | "wheat" -> Named Wheat
-  | "whitesmoke" -> Named White_smoke
-  | "yellowgreen" -> Named Yellow_green
-  | "initial" -> Initial
-  | "unset" -> Unset
-  | "revert" -> Revert
-  | "revert-layer" -> Revert_layer
-  | _ -> Reader.err_invalid t ("color: " ^ keyword)
+  | "transparent" -> Some Transparent
+  | "currentcolor" -> Some Current
+  | "inherit" -> Some Inherit
+  | "red" -> Some (Named Red)
+  | "green" -> Some (Named Green)
+  | "blue" -> Some (Named Blue)
+  | "white" -> Some (Named White)
+  | "black" -> Some (Named Black)
+  | "gray" -> Some (Named Gray)
+  | "grey" -> Some (Named Grey)
+  | "silver" -> Some (Named Silver)
+  | "maroon" -> Some (Named Maroon)
+  | "yellow" -> Some (Named Yellow)
+  | "olive" -> Some (Named Olive)
+  | "lime" -> Some (Named Lime)
+  | "aqua" -> Some (Named Aqua)
+  | "cyan" -> Some (Named Cyan)
+  | "teal" -> Some (Named Teal)
+  | "navy" -> Some (Named Navy)
+  | "fuchsia" -> Some (Named Fuchsia)
+  | "magenta" -> Some (Named Magenta)
+  | "purple" -> Some (Named Purple)
+  | "orange" -> Some (Named Orange)
+  | "pink" -> Some (Named Pink)
+  | "aliceblue" -> Some (Named Alice_blue)
+  | "antiquewhite" -> Some (Named Antique_white)
+  | "aquamarine" -> Some (Named Aquamarine)
+  | "azure" -> Some (Named Azure)
+  | "beige" -> Some (Named Beige)
+  | "bisque" -> Some (Named Bisque)
+  | "blanchedalmond" -> Some (Named Blanched_almond)
+  | "blueviolet" -> Some (Named Blue_violet)
+  | "brown" -> Some (Named Brown)
+  | "burlywood" -> Some (Named Burlywood)
+  | "cadetblue" -> Some (Named Cadet_blue)
+  | "chartreuse" -> Some (Named Chartreuse)
+  | "chocolate" -> Some (Named Chocolate)
+  | "coral" -> Some (Named Coral)
+  | "cornflowerblue" -> Some (Named Cornflower_blue)
+  | "cornsilk" -> Some (Named Cornsilk)
+  | "crimson" -> Some (Named Crimson)
+  | "darkblue" -> Some (Named Dark_blue)
+  | "darkcyan" -> Some (Named Dark_cyan)
+  | "darkgoldenrod" -> Some (Named Dark_goldenrod)
+  | "darkgray" -> Some (Named Dark_gray)
+  | "darkgreen" -> Some (Named Dark_green)
+  | "darkgrey" -> Some (Named Dark_grey)
+  | "darkkhaki" -> Some (Named Dark_khaki)
+  | "darkmagenta" -> Some (Named Dark_magenta)
+  | "darkolivegreen" -> Some (Named Dark_olive_green)
+  | "darkorange" -> Some (Named Dark_orange)
+  | "darkorchid" -> Some (Named Dark_orchid)
+  | "darkred" -> Some (Named Dark_red)
+  | "darksalmon" -> Some (Named Dark_salmon)
+  | "darkseagreen" -> Some (Named Dark_sea_green)
+  | "darkslateblue" -> Some (Named Dark_slate_blue)
+  | "darkslategray" -> Some (Named Dark_slate_gray)
+  | "darkslategrey" -> Some (Named Dark_slate_grey)
+  | "darkturquoise" -> Some (Named Dark_turquoise)
+  | "darkviolet" -> Some (Named Dark_violet)
+  | "deeppink" -> Some (Named Deep_pink)
+  | "deepskyblue" -> Some (Named Deep_sky_blue)
+  | "dimgray" -> Some (Named Dim_gray)
+  | "dimgrey" -> Some (Named Dim_grey)
+  | "dodgerblue" -> Some (Named Dodger_blue)
+  | "firebrick" -> Some (Named Firebrick)
+  | "floralwhite" -> Some (Named Floral_white)
+  | "forestgreen" -> Some (Named Forest_green)
+  | "gainsboro" -> Some (Named Gainsboro)
+  | "ghostwhite" -> Some (Named Ghost_white)
+  | "gold" -> Some (Named Gold)
+  | "goldenrod" -> Some (Named Goldenrod)
+  | "greenyellow" -> Some (Named Green_yellow)
+  | "honeydew" -> Some (Named Honeydew)
+  | "hotpink" -> Some (Named Hot_pink)
+  | "indianred" -> Some (Named Indian_red)
+  | "indigo" -> Some (Named Indigo)
+  | "ivory" -> Some (Named Ivory)
+  | "khaki" -> Some (Named Khaki)
+  | "lavender" -> Some (Named Lavender)
+  | "lavenderblush" -> Some (Named Lavender_blush)
+  | "lawngreen" -> Some (Named Lawn_green)
+  | "lemonchiffon" -> Some (Named Lemon_chiffon)
+  | "lightblue" -> Some (Named Light_blue)
+  | "lightcoral" -> Some (Named Light_coral)
+  | "lightcyan" -> Some (Named Light_cyan)
+  | "lightgoldenrodyellow" -> Some (Named Light_goldenrod_yellow)
+  | "lightgray" -> Some (Named Light_gray)
+  | "lightgreen" -> Some (Named Light_green)
+  | "lightgrey" -> Some (Named Light_grey)
+  | "lightpink" -> Some (Named Light_pink)
+  | "lightsalmon" -> Some (Named Light_salmon)
+  | "lightseagreen" -> Some (Named Light_sea_green)
+  | "lightskyblue" -> Some (Named Light_sky_blue)
+  | "lightslategray" -> Some (Named Light_slate_gray)
+  | "lightslategrey" -> Some (Named Light_slate_grey)
+  | "lightsteelblue" -> Some (Named Light_steel_blue)
+  | "lightyellow" -> Some (Named Light_yellow)
+  | "limegreen" -> Some (Named Lime_green)
+  | "linen" -> Some (Named Linen)
+  | "mediumaquamarine" -> Some (Named Medium_aquamarine)
+  | "mediumblue" -> Some (Named Medium_blue)
+  | "mediumorchid" -> Some (Named Medium_orchid)
+  | "mediumpurple" -> Some (Named Medium_purple)
+  | "mediumseagreen" -> Some (Named Medium_sea_green)
+  | "mediumslateblue" -> Some (Named Medium_slate_blue)
+  | "mediumspringgreen" -> Some (Named Medium_spring_green)
+  | "mediumturquoise" -> Some (Named Medium_turquoise)
+  | "mediumvioletred" -> Some (Named Medium_violet_red)
+  | "midnightblue" -> Some (Named Midnight_blue)
+  | "mintcream" -> Some (Named Mint_cream)
+  | "mistyrose" -> Some (Named Misty_rose)
+  | "moccasin" -> Some (Named Moccasin)
+  | "navajowhite" -> Some (Named Navajo_white)
+  | "oldlace" -> Some (Named Old_lace)
+  | "olivedrab" -> Some (Named Olive_drab)
+  | "orangered" -> Some (Named Orange_red)
+  | "orchid" -> Some (Named Orchid)
+  | "palegoldenrod" -> Some (Named Pale_goldenrod)
+  | "palegreen" -> Some (Named Pale_green)
+  | "paleturquoise" -> Some (Named Pale_turquoise)
+  | "palevioletred" -> Some (Named Pale_violet_red)
+  | "papayawhip" -> Some (Named Papaya_whip)
+  | "peachpuff" -> Some (Named Peach_puff)
+  | "peru" -> Some (Named Peru)
+  | "plum" -> Some (Named Plum)
+  | "powderblue" -> Some (Named Powder_blue)
+  | "rebeccapurple" -> Some (Named Rebecca_purple)
+  | "rosybrown" -> Some (Named Rosy_brown)
+  | "royalblue" -> Some (Named Royal_blue)
+  | "saddlebrown" -> Some (Named Saddle_brown)
+  | "salmon" -> Some (Named Salmon)
+  | "sandybrown" -> Some (Named Sandy_brown)
+  | "seagreen" -> Some (Named Sea_green)
+  | "seashell" -> Some (Named Sea_shell)
+  | "sienna" -> Some (Named Sienna)
+  | "skyblue" -> Some (Named Sky_blue)
+  | "slateblue" -> Some (Named Slate_blue)
+  | "slategray" -> Some (Named Slate_gray)
+  | "slategrey" -> Some (Named Slate_grey)
+  | "snow" -> Some (Named Snow)
+  | "springgreen" -> Some (Named Spring_green)
+  | "steelblue" -> Some (Named Steel_blue)
+  | "tan" -> Some (Named Tan)
+  | "thistle" -> Some (Named Thistle)
+  | "tomato" -> Some (Named Tomato)
+  | "turquoise" -> Some (Named Turquoise)
+  | "violet" -> Some (Named Violet)
+  | "wheat" -> Some (Named Wheat)
+  | "whitesmoke" -> Some (Named White_smoke)
+  | "yellowgreen" -> Some (Named Yellow_green)
+  | "initial" -> Some Initial
+  | "unset" -> Some Unset
+  | "revert" -> Some Revert
+  | "revert-layer" -> Some Revert_layer
+  | _ -> None
 
 (** Read a duration value *)
 let rec read_duration t : duration =

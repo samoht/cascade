@@ -705,16 +705,11 @@ and read_scope (r : Reader.t) : statement =
 and read_container (r : Reader.t) : statement =
   Reader.expect_string "@container" r;
   Reader.ws r;
-  let header = String.trim (Reader.until r '{') in
-  let (container_name : string option), condition =
-    let rr = Reader.of_string header in
-    try
-      let nm = Reader.ident ~keep_case:true rr in
-      Reader.ws rr;
-      if Reader.is_done rr then (None, header)
-      else (Some nm, Reader.string ~trim:true rr)
-    with Reader.Parse_error _ -> (None, header)
-  in
+  (* Parse container name directly from the main reader *)
+  let container_name = Reader.option Reader.ident r in
+  Reader.ws r;
+  (* Read the condition up to the '{' *)
+  let condition = String.trim (Reader.until r '{') in
   Reader.expect '{' r;
   let content = read_block r in
   Reader.expect '}' r;
@@ -780,27 +775,32 @@ and read_nested_at_rule (r : Reader.t) (at_rule : string)
   Reader.with_context r at_rule @@ fun () ->
   Reader.expect_string at_rule r;
   Reader.ws r;
-  let condition = String.trim (Reader.until r '{') in
-  Reader.expect '{' r;
-  let decls = read_declarations_block r in
-  Reader.expect '}' r;
-  (* Wrap declarations in a rule with the parent selector *)
-  let content = [ Rule { selector; declarations = decls; nested = [] } ] in
+  (* Handle different at-rules differently *)
   match at_rule with
-  | "@supports" -> Supports (condition, content)
-  | "@media" -> Media (condition, content)
   | "@container" ->
-      (* Parse container name if present *)
-      let container_name, cond =
-        let rr = Reader.of_string condition in
-        try
-          let nm = Reader.ident ~keep_case:true rr in
-          Reader.ws rr;
-          if Reader.is_done rr then (None, condition)
-          else (Some nm, Reader.string ~trim:true rr)
-        with Reader.Parse_error _ -> (None, condition)
-      in
-      Container (container_name, cond, content)
+      (* Parse container name directly, then condition *)
+      let container_name = Reader.option Reader.ident r in
+      Reader.ws r;
+      let condition = String.trim (Reader.until r '{') in
+      Reader.expect '{' r;
+      let decls = read_declarations_block r in
+      Reader.expect '}' r;
+      let content = [ Rule { selector; declarations = decls; nested = [] } ] in
+      Container (container_name, condition, content)
+  | "@supports" ->
+      let condition = String.trim (Reader.until r '{') in
+      Reader.expect '{' r;
+      let decls = read_declarations_block r in
+      Reader.expect '}' r;
+      let content = [ Rule { selector; declarations = decls; nested = [] } ] in
+      Supports (condition, content)
+  | "@media" ->
+      let condition = String.trim (Reader.until r '{') in
+      Reader.expect '{' r;
+      let decls = read_declarations_block r in
+      Reader.expect '}' r;
+      let content = [ Rule { selector; declarations = decls; nested = [] } ] in
+      Media (condition, content)
   | _ -> Reader.err_invalid r ("Unexpected nested at-rule: " ^ at_rule)
 
 and read_rule (r : Reader.t) : rule =
