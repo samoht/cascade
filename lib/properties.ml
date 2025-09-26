@@ -2760,40 +2760,40 @@ let rec pp_transition : transition Pp.t =
 
 let rec pp_scale : scale Pp.t =
  fun ctx -> function
-  | X n -> pp_percentage ctx n
+  | X n -> pp_number_percentage ctx n
   | XY (Var x, Var y) ->
       (* Special case: when both values are variables, concatenate without
          space *)
-      pp_percentage ctx (Var x);
-      pp_percentage ctx (Var y)
+      pp_number_percentage ctx (Var x);
+      pp_number_percentage ctx (Var y)
   | XY (x, y) ->
-      pp_percentage ctx x;
+      pp_number_percentage ctx x;
       Pp.space ctx ();
-      pp_percentage ctx y
+      pp_number_percentage ctx y
   | XYZ (Var x, Var y, Var z) ->
       (* Special case: when all values are variables, concatenate without
          spaces *)
-      pp_percentage ctx (Var x);
-      pp_percentage ctx (Var y);
-      pp_percentage ctx (Var z)
+      pp_number_percentage ctx (Var x);
+      pp_number_percentage ctx (Var y);
+      pp_number_percentage ctx (Var z)
   | XYZ (Var x, Var y, z) ->
       (* Mixed case: concatenate first two vars, then space before non-var *)
-      pp_percentage ctx (Var x);
-      pp_percentage ctx (Var y);
+      pp_number_percentage ctx (Var x);
+      pp_number_percentage ctx (Var y);
       Pp.space ctx ();
-      pp_percentage ctx z
+      pp_number_percentage ctx z
   | XYZ (x, Var y, Var z) ->
       (* Mixed case: non-var, space, then concatenate vars *)
-      pp_percentage ctx x;
+      pp_number_percentage ctx x;
       Pp.space ctx ();
-      pp_percentage ctx (Var y);
-      pp_percentage ctx (Var z)
+      pp_number_percentage ctx (Var y);
+      pp_number_percentage ctx (Var z)
   | XYZ (x, y, z) ->
-      pp_percentage ctx x;
+      pp_number_percentage ctx x;
       Pp.space ctx ();
-      pp_percentage ctx y;
+      pp_number_percentage ctx y;
       Pp.space ctx ();
-      pp_percentage ctx z
+      pp_number_percentage ctx z
   | None -> Pp.string ctx "none"
   | Var v -> pp_var pp_scale ctx v
 
@@ -4210,13 +4210,13 @@ let read_backface_visibility t : backface_visibility =
 let rec read_scale t : scale =
   let read_var t : scale = Var (read_var read_scale t) in
   let read_numbers t : scale =
-    let x = read_percentage t in
+    let x = Values.read_number_percentage t in
     Reader.ws t;
-    match Reader.option read_percentage t with
+    match Reader.option Values.read_number_percentage t with
     | None -> X x
     | Some y -> (
         Reader.ws t;
-        match Reader.option read_percentage t with
+        match Reader.option Values.read_number_percentage t with
         | None -> XY (x, y)
         | Some z -> XYZ (x, y, z))
   in
@@ -5562,13 +5562,13 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Gap -> pp pp_gap
   | Column_gap -> pp pp_length
   | Row_gap -> pp pp_length
-  | Width -> pp pp_length
-  | Height -> pp pp_length
-  | Min_width -> pp pp_length
-  | Min_height -> pp pp_length
-  | Max_width -> pp pp_length
-  | Max_height -> pp pp_length
-  | Font_size -> pp pp_length
+  | Width -> pp pp_length_percentage
+  | Height -> pp pp_length_percentage
+  | Min_width -> pp pp_length_percentage
+  | Min_height -> pp pp_length_percentage
+  | Max_width -> pp pp_length_percentage
+  | Max_height -> pp pp_length_percentage
+  | Font_size -> pp pp_length_percentage
   | Line_height -> pp pp_line_height
   | Font_weight -> pp pp_font_weight
   | Display -> pp pp_display

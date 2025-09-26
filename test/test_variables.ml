@@ -78,16 +78,16 @@ let test_vars_of_property () =
   let _width_decl, width_var = var "container-width" Length (Px 1024.) in
 
   (* Width property with variable *)
-  let width_vars = vars_of_property Width (Var width_var) in
+  let width_vars = vars_of_property Width (Length (Var width_var)) in
   Alcotest.(check int) "found width variable" 1 (List.length width_vars);
 
   (* Width property with calc containing variable *)
   let calc_with_var : length = Calc (Expr (Var width_var, Sub, Num 32.)) in
-  let calc_vars = vars_of_property Width calc_with_var in
+  let calc_vars = vars_of_property Width (Length calc_with_var) in
   Alcotest.(check int) "found variable in calc" 1 (List.length calc_vars);
 
   (* Width property without variable *)
-  let no_vars = vars_of_property Width (Px 100.) in
+  let no_vars = vars_of_property Width (Length (Px 100.)) in
   Alcotest.(check int) "no variables in px value" 0 (List.length no_vars)
 
 (* Not a roundtrip test *)
@@ -99,7 +99,7 @@ let test_vars_of_declarations () =
 
   (* Create declarations using the variables *)
   let color_decl = v Color (Var color_var) in
-  let size_decl = v Font_size (Var size_var) in
+  let size_decl = v Font_size (Length (Var size_var)) in
 
   let vars =
     vars_of_declarations
@@ -119,7 +119,7 @@ let test_any_var_name () =
 
 (* Not a roundtrip test *)
 let test_extract_custom_declarations () =
-  let regular = v Width (Px 100.) in
+  let regular = v Width (Length (Px 100.)) in
 
   let custom1, _ = var "color1" Color (Hex { hash = true; value = "ff0000" }) in
   let custom2, _ = var "size1" Length (Px 16.) in
@@ -131,7 +131,7 @@ let test_extract_custom_declarations () =
 
 (* Not a roundtrip test *)
 let test_custom_declaration_name () =
-  let regular = v Height (Px 50.) in
+  let regular = v Height (Length (Px 50.)) in
 
   let custom, _ = var "my-var" Length (Px 20.) in
   let custom_name = custom_declaration_name custom in

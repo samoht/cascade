@@ -113,6 +113,30 @@ let media_queries t =
     (fun (condition, rules) -> (condition, List.map (fun r -> Rule r) rules))
     raw_media
 
+let layers t = Stylesheet.layers t
+
+(* AST Introspection Helpers *)
+let layer_block name sheet =
+  List.find_map
+    (fun s ->
+      match as_layer s with
+      | Some (Some n, inner) when n = name -> Some inner
+      | _ -> None)
+    sheet
+
+let rules_from_statements stmts =
+  List.filter_map
+    (fun stmt ->
+      match as_rule stmt with
+      | Some (sel, decls, _) -> Some (sel, decls)
+      | None -> None)
+    stmts
+
+let custom_prop_names decls = List.filter_map custom_declaration_name decls
+
+let custom_props_from_rules rules =
+  List.concat_map (fun (_, decls) -> custom_prop_names decls) rules
+
 let media ~condition statements = Media (condition, statements)
 let layer ?name statements = Layer (name, statements)
 let layer_decl names = Layer_decl names

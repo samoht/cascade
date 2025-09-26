@@ -344,6 +344,25 @@ let check_border_width =
 let check_text_transform =
   check_value "text_transform" read_text_transform pp_text_transform
 
+(* Length-percentage tests for width/height using the value reader/printer *)
+let check_width =
+  check_value "width" Css.Values.read_length_percentage
+    Css.Values.pp_length_percentage
+
+let check_height =
+  check_value "height" Css.Values.read_length_percentage
+    Css.Values.pp_length_percentage
+
+let test_width () =
+  check_width "10px";
+  check_width "50%";
+  check_width ~expected:"0" "0px"
+
+let test_height () =
+  check_height "10px";
+  check_height "50%";
+  check_height ~expected:"0" "0px"
+
 (* Helper for property-value pairs printing *)
 let check_property_value expected (prop, value) =
   let pp = pp_property_value in
@@ -751,7 +770,7 @@ let test_property_names () =
 (* Verifies property-value pairs print correctly *)
 (* Not a roundtrip test *)
 let test_pp_property_value () =
-  check_property_value "10px" (Width, Css.Values.Px 10.);
+  check_property_value "10px" (Width, Css.Values.Length (Css.Values.Px 10.));
   check_property_value "red" (Color, Css.Values.Named Css.Values.Red);
   check_property_value "url(./x.png),none"
     (Background_image, [ Url "./x.png"; None ]);
@@ -1826,6 +1845,8 @@ let tests =
     test_case "position" `Quick test_position;
     test_case "overflow" `Quick test_overflow;
     test_case "border-style" `Quick test_border_style;
+    test_case "width" `Quick test_width;
+    test_case "height" `Quick test_height;
     test_case "border" `Quick test_border;
     test_case "visibility" `Quick test_visibility;
     test_case "z-index" `Quick test_z_index;

@@ -265,9 +265,15 @@ type percentage =
 
 type length_percentage =
   | Length of length
-  | Percentage of percentage
+  | Pct of float
   | Var of length_percentage var
   | Calc of length_percentage calc
+
+type number_percentage =
+  | Num of float
+  | Pct of float
+  | Var of number_percentage var
+  | Calc of number_percentage calc
 
 type hue_interpolation = Shorter | Longer | Increasing | Decreasing | Default
 
@@ -300,4 +306,4 @@ type color =
     }
 
 type duration = Ms of float | S of float | Var of duration var
-type number = Float of float | Int of int | Pct of float | Var of number var
+type number = Num of float | Var of number var

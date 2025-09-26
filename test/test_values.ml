@@ -15,6 +15,9 @@ let check_number = check_value "number" read_number pp_number
 let check_length_percentage =
   check_value "length_percentage" read_length_percentage pp_length_percentage
 
+let check_number_percentage =
+  check_value "number_percentage" read_number_percentage pp_number_percentage
+
 let check_color_space =
   check_value "color_space" read_color_space pp_color_space
 
@@ -439,7 +442,7 @@ let test_minified_value_formatting () =
   (* Leading zero drop in minified output for values *)
   let s = Css.Pp.to_string ~minify:true pp_length (Rem 0.5) in
   check string "minified rem" ".5rem" s;
-  let s = Css.Pp.to_string ~minify:true pp_number (Float 0.5) in
+  let s = Css.Pp.to_string ~minify:true pp_number (Num 0.5) in
   check string "minified number" ".5" s;
   (* Duration formatting remains stable in minified mode *)
   let s = Css.Pp.to_string ~minify:true pp_duration (Ms 500.) in
@@ -452,9 +455,9 @@ let test_minified_value_formatting () =
 let test_regular_value_formatting () =
   let s = Css.Pp.to_string pp_length (Rem 0.5) in
   check string "regular rem keeps 0" "0.5rem" s;
-  let s = Css.Pp.to_string pp_number (Float 0.5) in
+  let s = Css.Pp.to_string pp_number (Num 0.5) in
   check string "regular number keeps 0" "0.5" s;
-  let s = Css.Pp.to_string pp_number (Int 10) in
+  let s = Css.Pp.to_string pp_number (Num 10.) in
   check string "regular int" "10" s
 
 (* Not a roundtrip test *)
@@ -543,6 +546,24 @@ let test_length_percentage () =
   neg read_length_percentage "invalid";
   neg read_length_percentage "abc";
   neg read_length_percentage ""
+
+let test_number_percentage () =
+  check_number_percentage "1.5";
+  check_number_percentage "50%";
+  check_number_percentage "0";
+  check_number_percentage "100%";
+  (* Variable references *)
+  check_number_percentage "var(--my-number)";
+  check_number_percentage ~expected:"var(--my-pct,75%)" "var(--my-pct, 75%)";
+  check_number_percentage ~expected:"var(--fallback,2)" "var(--fallback, 2.0)";
+  (* Calc expressions *)
+  check_number_percentage "calc(50% + 25%)";
+  check_number_percentage ~expected:"calc(1.5*100%)" "calc(1.5 * 100%)";
+  check_number_percentage "calc(100% - 25%)";
+  (* Invalid inputs *)
+  neg read_number_percentage "invalid";
+  neg read_number_percentage "abc";
+  neg read_number_percentage ""
 
 let test_color_space () =
   check_color_space "srgb";
@@ -663,6 +684,7 @@ let value_tests =
     test_case "var() with empty fallback" `Quick test_var_empty_fallback;
     (* New type tests *)
     test_case "length_percentage" `Quick test_length_percentage;
+    test_case "number_percentage" `Quick test_number_percentage;
     test_case "color_space" `Quick test_color_space;
     test_case "hue" `Quick test_hue;
     test_case "color_name" `Quick test_color_name;
