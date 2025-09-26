@@ -38,9 +38,9 @@ let test_any_var () =
 
 let test_any_syntax () =
   (* Test CSS syntax parsing *)
-  check_any_syntax "<length>";
-  check_any_syntax "<color>";
-  check_any_syntax "<number>";
+  check_any_syntax "\"<length>\"";
+  check_any_syntax "\"<color>\"";
+  check_any_syntax "\"<number>\"";
   (* Test negative cases *)
   neg read_any_syntax "invalid-syntax"
 
