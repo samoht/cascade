@@ -6,7 +6,7 @@
 
     The main notions are:
     - A {!type:declaration} is a property/value pair.
-    - A {!type:rule} couples a selector with declarations.
+    - A rule couples a selector with declarations.
     - A {!type:t} is a stylesheet (sequence of rules and at-rules; internal
       representation is not exposed).
     - Values are typed (e.g., {!type:length}, {!type:color}); invalid constructs
@@ -49,7 +49,6 @@
     - {!section:css_rules} - CSS Rules and Stylesheets
     - {!section:at_rules} - At-Rules
     - {!section:stylesheet_construction} - Stylesheet Construction
-    - {!section:nesting_helpers} - Nesting Helpers
 
     {b Declarations} - Core value types and declaration building:
     - {!section:core_types} - Core Types & Calculations
@@ -218,7 +217,7 @@ val layer_decl : string list -> statement
 
 val layer_of : ?name:string -> t -> t
 (** [layer_of ?name stylesheet] wraps an entire stylesheet in [@layer],
-    preserving @supports and other at-rules within it. *)
+    preserving [@supports] and other at-rules within it. *)
 
 val container : ?name:string -> condition:string -> statement list -> statement
 (** [container ?name ~condition statements] creates a [@container] statement
@@ -232,7 +231,7 @@ val supports : condition:string -> statement list -> statement
 
     Core value types and declaration building blocks. *)
 
-(** {2:variables Custom Properties (Variables) *)
+(** {2:variables Custom Properties (Variables)} *)
 
 type 'a var
 (** The type of CSS variable holding values of type ['a]. *)
@@ -2696,19 +2695,6 @@ val rotate : angle -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/rotate} rotate}
     property. *)
 
-(** CSS scale property values *)
-type scale =
-  | X of float
-  | XY of float * float
-  | XYZ of float * float * float
-  | None
-  | Var of scale var
-
-val scale : scale -> declaration
-(** [scale scale] is the
-    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scale} scale} property.
-*)
-
 val perspective : length -> declaration
 (** [perspective perspective] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/perspective}
@@ -2934,6 +2920,19 @@ type number =
   | Int of int  (** Integer number *)
   | Pct of float  (** Percentage value *)
   | Var of number var  (** CSS variable reference *)
+
+(** CSS scale property values *)
+type scale =
+  | X of percentage
+  | XY of percentage * percentage
+  | XYZ of percentage * percentage * percentage
+  | None
+  | Var of scale var
+
+val scale : scale -> declaration
+(** [scale scale] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scale} scale} property.
+*)
 
 (** CSS filter values *)
 type filter =
@@ -3508,7 +3507,7 @@ type _ kind =
   | Shadow : shadow kind
   | Box_shadow : shadow kind
   | Content : content kind
-  | Gradient_stops : gradient_stop list kind
+  | Gradient_stop : gradient_stop kind
 
 val pp_kind_value : ('a kind * 'a) Pp.t
 (** [pp_kind_value] pretty-prints a typed value using the appropriate printer
@@ -3541,7 +3540,7 @@ val var_ref :
     - [layer] is an optional CSS layer name
     - [meta] is optional metadata. *)
 
-(** {2 CSS @property Support} *)
+(** {2 CSS [@property] Support} *)
 
 type 'a syntax =
   | Length : length syntax
@@ -3577,8 +3576,9 @@ val property :
        "#ff0000") ()]
     - [property ~name:"--my-size" Variables.Length ~initial_value:(Px 10.) ()]
 
-    See {:https://developer.mozilla.org/en-US/docs/Web/CSS/@property MDN
-    @property}. *)
+    See
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/@property} MDN
+     \@property}. *)
 
 val var :
   ?default:'a ->

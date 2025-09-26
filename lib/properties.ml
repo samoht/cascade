@@ -2760,17 +2760,40 @@ let rec pp_transition : transition Pp.t =
 
 let rec pp_scale : scale Pp.t =
  fun ctx -> function
-  | X f -> Pp.float ctx f
+  | X n -> pp_percentage ctx n
+  | XY (Var x, Var y) ->
+      (* Special case: when both values are variables, concatenate without
+         space *)
+      pp_percentage ctx (Var x);
+      pp_percentage ctx (Var y)
   | XY (x, y) ->
-      Pp.float ctx x;
+      pp_percentage ctx x;
       Pp.space ctx ();
-      Pp.float ctx y
+      pp_percentage ctx y
+  | XYZ (Var x, Var y, Var z) ->
+      (* Special case: when all values are variables, concatenate without
+         spaces *)
+      pp_percentage ctx (Var x);
+      pp_percentage ctx (Var y);
+      pp_percentage ctx (Var z)
+  | XYZ (Var x, Var y, z) ->
+      (* Mixed case: concatenate first two vars, then space before non-var *)
+      pp_percentage ctx (Var x);
+      pp_percentage ctx (Var y);
+      Pp.space ctx ();
+      pp_percentage ctx z
+  | XYZ (x, Var y, Var z) ->
+      (* Mixed case: non-var, space, then concatenate vars *)
+      pp_percentage ctx x;
+      Pp.space ctx ();
+      pp_percentage ctx (Var y);
+      pp_percentage ctx (Var z)
   | XYZ (x, y, z) ->
-      Pp.float ctx x;
+      pp_percentage ctx x;
       Pp.space ctx ();
-      Pp.float ctx y;
+      pp_percentage ctx y;
       Pp.space ctx ();
-      Pp.float ctx z
+      pp_percentage ctx z
   | None -> Pp.string ctx "none"
   | Var v -> pp_var pp_scale ctx v
 
@@ -4187,13 +4210,13 @@ let read_backface_visibility t : backface_visibility =
 let rec read_scale t : scale =
   let read_var t : scale = Var (read_var read_scale t) in
   let read_numbers t : scale =
-    let x = Reader.number t in
+    let x = read_percentage t in
     Reader.ws t;
-    match Reader.option Reader.number t with
+    match Reader.option read_percentage t with
     | None -> X x
     | Some y -> (
         Reader.ws t;
-        match Reader.option Reader.number t with
+        match Reader.option read_percentage t with
         | None -> XY (x, y)
         | Some z -> XYZ (x, y, z))
   in

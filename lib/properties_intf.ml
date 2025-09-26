@@ -710,9 +710,9 @@ type transform_style = Flat | Preserve_3d | Inherit
 type backface_visibility = Visible | Hidden | Inherit
 
 type scale =
-  | X of float
-  | XY of float * float
-  | XYZ of float * float * float
+  | X of percentage
+  | XY of percentage * percentage
+  | XYZ of percentage * percentage * percentage
   | None
   | Var of scale var
 

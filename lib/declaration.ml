@@ -174,7 +174,7 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Angle -> pp pp_angle
   | Box_shadow -> pp pp_shadow
   | Content -> pp pp_content
-  | Gradient_stops -> pp (Pp.list ~sep:Pp.comma pp_gradient_stop)
+  | Gradient_stop -> pp pp_gradient_stop
 
 let string_of_value ?(minify = true) ?(inline = false) decl =
   let ctx = { Pp.minify; indent = 0; buf = Buffer.create 16; inline } in
