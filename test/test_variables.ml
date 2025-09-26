@@ -36,14 +36,6 @@ let test_any_var () =
   (* Test negative cases *)
   neg parse_var_reference "not-a-var()"
 
-let test_any_syntax () =
-  (* Test CSS syntax parsing *)
-  check_any_syntax "\"<length>\"";
-  check_any_syntax "\"<color>\"";
-  check_any_syntax "\"<number>\"";
-  (* Test negative cases *)
-  neg read_any_syntax "invalid-syntax"
-
 (* Not a roundtrip test *)
 let test_vars_of_calc () =
   (* Test calc without variables *)
@@ -175,19 +167,30 @@ let test_custom_property_roundtrip () =
       Alcotest.(check string) "correct name" "--primary" name
   | None -> Alcotest.fail "Expected custom declaration"
 
-let variables_tests =
-  [
-    ("any_var", `Quick, test_any_var);
-    ("any_syntax", `Quick, test_any_syntax);
-    ("vars of calc", `Quick, test_vars_of_calc);
-    ("vars of property", `Quick, test_vars_of_property);
-    ("vars of declarations", `Quick, test_vars_of_declarations);
-    ("any_var_name", `Quick, test_any_var_name);
-    ("extract custom declarations", `Quick, test_extract_custom_declarations);
-    ("custom declaration name", `Quick, test_custom_declaration_name);
-    ("compare vars by name", `Quick, test_compare_vars_by_name);
-    ("custom property roundtrip", `Quick, test_custom_property_roundtrip);
-  ]
+let test_any_syntax () =
+  (* Test syntax parsing according to CSS @property spec
+     https://developer.mozilla.org/en-US/docs/Web/CSS/@property/syntax *)
+  (* Syntax values must be quoted strings per CSS spec *)
+  check_any_syntax "\"<length>\"";
+  check_any_syntax "\"<color>\"";
+  check_any_syntax "\"<number>\"";
+  check_any_syntax "\"<integer>\"";
+  check_any_syntax "\"<percentage>\"";
+  check_any_syntax "\"<angle>\"";
+  check_any_syntax "\"<time>\"";
+  check_any_syntax "\"*\"";
+  check_any_syntax "\"<length> | <percentage>\"";
+
+  (* Test invalid syntax values *)
+  neg read_any_syntax "<length>";
+  (* Missing quotes *)
+  neg read_any_syntax "length";
+  (* No angle brackets or quotes *)
+  neg read_any_syntax "\"<invalid-type>\"";
+  (* Invalid type name *)
+  neg read_any_syntax "\"\"";
+  (* Empty syntax *)
+  neg read_any_syntax "unquoted"
 
 (* Not a roundtrip test *)
 let test_syntax () =
@@ -235,36 +238,20 @@ let test_parse_var_reference () =
   (* Wrong function name *)
   neg "var(--)" (* No name after -- *)
 
-let test_any_syntax () =
-  (* Test syntax parsing according to CSS @property spec
-     https://developer.mozilla.org/en-US/docs/Web/CSS/@property/syntax *)
-  (* Syntax values must be quoted strings per CSS spec *)
-  check_any_syntax "\"<length>\"";
-  check_any_syntax "\"<color>\"";
-  check_any_syntax "\"<number>\"";
-  check_any_syntax "\"<integer>\"";
-  check_any_syntax "\"<percentage>\"";
-  check_any_syntax "\"<angle>\"";
-  check_any_syntax "\"<time>\"";
-  check_any_syntax "\"*\"";
-  check_any_syntax "\"<length> | <percentage>\"";
-
-  (* Test invalid syntax values *)
-  neg read_any_syntax "<length>";
-  (* Missing quotes *)
-  neg read_any_syntax "length";
-  (* No angle brackets or quotes *)
-  neg read_any_syntax "\"<invalid-type>\"";
-  (* Invalid type name *)
-  neg read_any_syntax "\"\"";
-  (* Empty syntax *)
-  neg read_any_syntax "unquoted"
-
-let additional_tests =
+let tests =
   [
+    ("any_var", `Quick, test_any_var);
+    ("any_syntax", `Quick, test_any_syntax);
+    ("vars of calc", `Quick, test_vars_of_calc);
+    ("vars of property", `Quick, test_vars_of_property);
+    ("vars of declarations", `Quick, test_vars_of_declarations);
+    ("any_var_name", `Quick, test_any_var_name);
+    ("extract custom declarations", `Quick, test_extract_custom_declarations);
+    ("custom declaration name", `Quick, test_custom_declaration_name);
+    ("compare vars by name", `Quick, test_compare_vars_by_name);
+    ("custom property roundtrip", `Quick, test_custom_property_roundtrip);
     ("syntax", `Quick, test_syntax);
     ("parse_var_reference", `Quick, test_parse_var_reference);
-    ("any_syntax", `Quick, test_any_syntax);
   ]
 
-let suite = ("variables", variables_tests @ additional_tests)
+let suite = ("variables", tests)
