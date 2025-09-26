@@ -1379,9 +1379,45 @@ let test_gradient_direction () =
   neg read_gradient_direction "invalid-direction"
 
 let test_gradient_stop () =
+  (* Basic color stops *)
   check_gradient_stop "red";
   check_gradient_stop "blue 50%";
-  neg read_gradient_stop "invalid-stop"
+  check_gradient_stop "#ff5733 25%";
+  check_gradient_stop ~expected:"rgb(255 0 0) 10px" "rgb(255,0,0) 10px";
+
+  (* Double position stops *)
+  check_gradient_stop "green 20% 40%";
+
+  (* Hint positions *)
+  check_gradient_stop "50%";
+  check_gradient_stop "10px";
+
+  (* CSS variables in gradient stops *)
+  check_gradient_stop "var(--tw-gradient-from)";
+  check_gradient_stop "var(--color-blue-500) 50%";
+
+  (* Complex var with fallback *)
+  check_gradient_stop
+    ~expected:"var(--tw-gradient-from)var(--tw-gradient-from-position)"
+    "var(--tw-gradient-from) var(--tw-gradient-from-position)";
+
+  (* Multiple vars in sequence (as used in Tailwind gradients) *)
+  check_gradient_stop ~expected:"var(--tw-gradient-position)"
+    "var(--tw-gradient-position)";
+
+  (* Nested var with complex fallback *)
+  check_gradient_stop
+    ~expected:
+      "var(--tw-gradient-via-stops,var(--tw-gradient-position),var(--tw-gradient-from)var(--tw-gradient-from-position),var(--tw-gradient-to)var(--tw-gradient-to-position))"
+    "var(--tw-gradient-via-stops, var(--tw-gradient-position), \
+     var(--tw-gradient-from) var(--tw-gradient-from-position), \
+     var(--tw-gradient-to) var(--tw-gradient-to-position))";
+
+  (* Invalid stops *)
+  neg read_gradient_stop "invalid-stop";
+  neg read_gradient_stop "red blue";
+  (* Two colors without position *)
+  neg read_gradient_stop "50% 25%" (* Two percentages without color *)
 
 let test_background_image () =
   check_background_image "none";

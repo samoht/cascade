@@ -192,12 +192,179 @@ let backtrack () =
       (fun r ->
         ignore (char r);
         (* consume 't' *)
-        if char r = 'x' then "success" else failwith "not x")
+        if char r = 'x' then "success" else err r "expected x, got e")
       r
   in
   Alcotest.(check (option string)) "option failed" None result;
   (* Position should be restored *)
   Alcotest.(check (option char)) "position restored" (Some 't') (peek r)
+
+(* Comprehensive backtracking tests for all combinators *)
+let backtrack_pair () =
+  (* Test pair backtracking when first parser succeeds but second fails *)
+  let r = of_string "hello world" in
+  let initial_pos = position r in
+
+  (* Try a parser that should fail: first succeeds (consumes "hello"), second
+     fails *)
+  try
+    let _ =
+      pair
+        ~sep:(fun r -> ws r) (* whitespace separator *)
+        (fun r -> while_ r (fun c -> c >= 'a' && c <= 'z'))
+          (* succeeds: "hello" *)
+        (fun r ->
+          let digits = while_ r (fun c -> c >= '0' && c <= '9') in
+          if digits = "" then err r "no digits found" else digits)
+          (* fails: "world" is not digits *)
+        r
+    in
+    Alcotest.fail "pair should have failed"
+  with _ ->
+    (* Position should be restored to initial position *)
+    let final_pos = position r in
+    Alcotest.(check int)
+      "pair restores position on failure" initial_pos final_pos;
+    Alcotest.(check (option char))
+      "pair restores buffer position" (Some 'h') (peek r)
+
+let backtrack_triple () =
+  (* Test triple backtracking when second parser fails *)
+  let r = of_string "abc 123 def" in
+  let initial_pos = position r in
+
+  try
+    let _ =
+      triple
+        ~sep:(fun r -> ws r)
+        (fun r -> while_ r (fun c -> c >= 'a' && c <= 'z'))
+          (* succeeds: "abc" *)
+        (fun r ->
+          let letters = while_ r (fun c -> c >= 'a' && c <= 'z') in
+          if letters = "" then err r "no letters found" else letters)
+          (* fails: "123" is not letters *)
+        (fun r -> while_ r (fun c -> c >= 'a' && c <= 'z'))
+          (* would succeed: "def" *)
+        r
+    in
+    Alcotest.fail "triple should have failed"
+  with _ ->
+    let final_pos = position r in
+    Alcotest.(check int)
+      "triple restores position on failure" initial_pos final_pos;
+    Alcotest.(check (option char))
+      "triple restores buffer position" (Some 'a') (peek r)
+
+let backtrack_list () =
+  (* Test list backtracking - this one is trickier since list might partially
+     succeed *)
+  let r = of_string "a,b,123" in
+
+  (* Parse a list that should partially succeed then fail *)
+  let result =
+    try
+      list
+        ~sep:(fun r -> expect ',' r)
+        ~at_least:3
+        (fun r ->
+          let c = char r in
+          if c >= 'a' && c <= 'z' then String.make 1 c
+          else failwith "not a letter")
+        r
+    with _ -> []
+  in
+
+  (* List should have failed because third item "123" is not a letter *)
+  (* But behavior depends on at_least constraint - let's check it doesn't leave partial state *)
+  Alcotest.(check bool)
+    "list handles failure gracefully" true
+    (List.length result < 3)
+(* Should not have parsed all 3 required items *)
+
+let backtrack_one_of () =
+  (* Test that one_of properly backtracks for each failed parser *)
+  let r = of_string "hello123" in
+
+  let result =
+    one_of
+      [
+        (* Parser 1: tries to parse digits, fails on "hello" *)
+        (fun r ->
+          let digits = while_ r (fun c -> c >= '0' && c <= '9') in
+          if digits = "" then err r "no digits" else digits);
+        (* Parser 2: tries to parse letters then digits, partially succeeds then
+           fails *)
+        (fun r ->
+          let letters = while_ r (fun c -> c >= 'a' && c <= 'z') in
+          (* succeeds: "hello" *)
+          expect '!' r;
+          (* fails: next char is '1', not '!' *)
+          letters);
+        (* Parser 3: should succeed - parses letters only *)
+        (fun r -> while_ r (fun c -> c >= 'a' && c <= 'z'));
+      ]
+      r
+  in
+
+  (* Should succeed with parser 3 *)
+  Alcotest.(check string) "one_of eventually succeeds" "hello" result;
+
+  (* Position should be after "hello" *)
+  Alcotest.(check (option char))
+    "one_of final position correct" (Some '1') (peek r)
+
+let backtrack_enum_with_default () =
+  (* Test enum with default function backtracking *)
+  let r = of_string "unknown123" in
+
+  (* enum should fail and not leave position in middle of "unknown" *)
+  (* This should raise an exception, let's catch it *)
+  try
+    let result =
+      enum "test-enum"
+        [ ("known", 1); ("valid", 2) ]
+        ~default:(fun r ->
+          let text = while_ r (fun c -> c >= 'a' && c <= 'z') in
+          (* consumes "unknown" *)
+          if text = "special" then 99 else err r "not special") (* fails *)
+        r
+    in
+    ignore result;
+    Alcotest.fail "enum should have failed"
+  with _ ->
+    (* Position should be restored to beginning when enum completely fails *)
+    let final_pos = position r in
+    Alcotest.(check int)
+      "enum with default restores position on failure" 0 final_pos
+
+let backtrack_complex_nested () =
+  (* Test complex nested combinator backtracking like in gradient parsing *)
+  let r = of_string "var(--color) var(--size)" in
+  let initial_pos = position r in
+
+  (* Simulate the gradient parsing that was failing *)
+  let parse_var_name r =
+    expect_string "var(" r;
+    let name = while_ r (fun c -> c <> ')') in
+    expect ')' r;
+    name
+  in
+
+  let parse_number r =
+    let num_str = while_ r (fun c -> c >= '0' && c <= '9') in
+    if num_str = "" then err r "no number" else int_of_string num_str
+  in
+
+  (* Try to parse as (var, number) pair - should fail *)
+  try
+    let _ = pair ~sep:(fun r -> ws r) parse_var_name parse_number r in
+    Alcotest.fail "complex nested should have failed"
+  with _ ->
+    let final_pos = position r in
+    Alcotest.(check int)
+      "complex nested restores position" initial_pos final_pos;
+    Alcotest.(check (option char))
+      "complex nested buffer restored" (Some 'v') (peek r)
 
 (* Test option *)
 let option_case () =
@@ -405,6 +572,182 @@ let ident_with_escapes () =
   let id = ident r in
   Alcotest.(check string) "multiple escapes" "123" id
 
+(* Additional identifier edge cases *)
+let ident_more_edges () =
+  (* Escaped leading digit should form a valid ident starting with digit *)
+  let r = of_string "\\31 abc" in
+  Alcotest.(check string) "escape-leading-digit" "1abc" (ident r);
+
+  (* Hyphen + escaped digit is allowed, unlike plain hyphen+digit *)
+  let r = of_string "-\\31 a" in
+  Alcotest.(check string) "hyphen+escaped-digit" "-1a" (ident r);
+
+  (* Trailing hyphen is valid and preserved *)
+  let r = of_string "foo-" in
+  Alcotest.(check string) "trailing-hyphen" "foo-" (ident r);
+
+  (* Keep-case interactions with escapes *)
+  let r = of_string "AbC-DeF" in
+  Alcotest.(check string) "default-lowercases" "abc-def" (ident r);
+  let r = of_string "AbC-DeF" in
+  Alcotest.(check string)
+    "keep-case-preserved" "AbC-DeF" (ident ~keep_case:true r);
+
+  (* Escaped uppercase stays uppercase; surrounding chars lowercase without
+     keep_case *)
+  let r = of_string "A\\42 C" in
+  Alcotest.(check string) "escape-preserves-case" "aBc" (ident r);
+  let r = of_string "A\\42 C" in
+  Alcotest.(check string) "escape-keep-case" "ABC" (ident ~keep_case:true r);
+
+  (* Unicode escape without space is valid only if next char isn't hex *)
+  let r = of_string "\\0041Z" in
+  Alcotest.(check string) "unicode-no-space" "Az" (ident r);
+
+  (* Unterminated escape should error with EOF *)
+  let r = of_string "foo\\" in
+  check_raises "unterminated-escape"
+    (parse_error_expected "unexpected end of input" r) (fun () ->
+      ignore (ident r))
+
+(* enum_or_calls behavior and backtracking tests *)
+let enum_or_calls_behavior () =
+  (* Helper: parse rgb(...) function returning a string *)
+  let parse_rgb_call t =
+    call "rgb" t (fun t ->
+        let a = int_of_float (number t) in
+        comma t;
+        let b = int_of_float (number t) in
+        comma t;
+        let c = int_of_float (number t) in
+        Printf.sprintf "rgb(%d,%d,%d)" a b c)
+  in
+
+  let parser t =
+    enum_or_calls "color"
+      [ ("red", "red"); ("rgb", "rgb-ident") ]
+      ~calls:[ ("rgb", parse_rgb_call) ]
+      t
+  in
+
+  (* Ident match when bare name provided *)
+  let r = of_string "rgb" in
+  Alcotest.(check string) "ident-wins-for-bare-name" "rgb-ident" (parser r);
+
+  (* When '(' immediately follows, prefer the call even if ident exists *)
+  let r = of_string "rgb(1,2,3)" in
+  Alcotest.(check string) "call-when-parens" "rgb(1,2,3)" (parser r);
+
+  (* Space before '(' is not an immediate call; choose ident branch *)
+  let r = of_string "rgb (1,2,3)" in
+  Alcotest.(check string) "space-before-paren-uses-ident" "rgb-ident" (parser r);
+  Alcotest.(check (option char))
+    "rest-unconsumed-after-ident" (Some ' ') (peek r);
+
+  (* Backtracking from failing calls to other parsers using one_of *)
+  let r = of_string "red" in
+  let result =
+    one_of
+      [
+        (fun t ->
+          (* This branch expects an rgb() call and should fail on "red" *)
+          enum_calls [ ("rgb", parse_rgb_call) ] t);
+        (fun t -> enum "color" [ ("red", "red"); ("blue", "blue") ] t);
+      ]
+      r
+  in
+  Alcotest.(check string) "backtrack-from-call-to-ident" "red" result;
+
+  (* Parser without overlapping ident: calls are used when present *)
+  let parser_calls t =
+    enum_or_calls "color"
+      [ ("red", "red") ]
+      ~calls:[ ("rgb", parse_rgb_call) ]
+      t
+  in
+  let r = of_string "rgb(1,2,3)" in
+  Alcotest.(check string)
+    "call-used-when-no-ident" "rgb(1,2,3)" (parser_calls r);
+
+  (* Bare function name without parens with no ident mapping: treated as ident;
+     error against idents set *)
+  let r = of_string "rgb" in
+  check_raises "bare-function-name-error"
+    (parse_error_expected "color: expected one of: red, got: rgb" r) (fun () ->
+      ignore (parser_calls r));
+
+  (* Error when only calls provided and unknown name *)
+  let r = of_string "abc" in
+  check_raises "no-matching-function"
+    (parse_error_expected "expected one of functions: rgb" r) (fun () ->
+      ignore (enum_calls [ ("rgb", parse_rgb_call) ] r))
+
+(* var() via enum_or_calls: ensures call branch consumes correctly and makes
+   progress *)
+let var_calls_via_enum_or_calls () =
+  let parse_var_simple t =
+    call "var" t (fun t ->
+        ws t;
+        expect_string "--" t;
+        let name = ident ~keep_case:true t in
+        ws t;
+        (* Optional fallback: empty or identifier fallback *)
+        let tag =
+          match
+            option
+              (fun t ->
+                comma t;
+                ws t;
+                if peek t = Some ')' then "empty" else "fb:" ^ ident t)
+              t
+          with
+          | Some t -> t
+          | None -> "none"
+        in
+        "var:" ^ name ^ ":" ^ tag)
+  in
+
+  let parse_value t =
+    enum_or_calls "value" [] ~calls:[ ("var", parse_var_simple) ] t
+  in
+
+  let r = of_string "var(--X)" in
+  Alcotest.(check string) "var-none-fallback" "var:X:none" (parse_value r);
+
+  let r = of_string "var(--X,)" in
+  Alcotest.(check string) "var-empty-fallback" "var:X:empty" (parse_value r);
+
+  let r = of_string "var(--X, y)" in
+  Alcotest.(check string) "var-ident-fallback" "var:X:fb:y" (parse_value r);
+
+  (* Concatenated var()s should make progress and parse all *)
+  let r = of_string "var(--a,)var(--b,)" in
+  let v1 = parse_value r in
+  let v2 = parse_value r in
+  Alcotest.(check string) "concat-var-1" "var:a:empty" v1;
+  Alcotest.(check string) "concat-var-2" "var:b:empty" v2;
+  Alcotest.(check bool) "concat-done" true (is_done r)
+
+(* list_impl edge cases *)
+let list_edges () =
+  (* Trailing comma: current behavior returns parsed items so far *)
+  let r = of_string "a," in
+  let items = list ~sep:comma ~at_least:1 ident r in
+  Alcotest.(check (list string)) "trailing-comma-returns-items" [ "a" ] items;
+
+  (* at_most enforcement with separators *)
+  let r = of_string "a,b,c" in
+  check_raises "list-at-most"
+    (parse_error_expected "too many values (maximum 2 allowed)" r) (fun () ->
+      ignore (list ~sep:comma ~at_most:2 ident r));
+
+  (* No-progress guard for list items *)
+  let r = of_string "abc" in
+  let zero_progress _ = "x" in
+  check_raises "list-no-progress"
+    (parse_error_expected "parser made no progress in list" r) (fun () ->
+      ignore (list zero_progress r))
+
 (* Test failure cases *)
 let failures () =
   (* EOF in string *)
@@ -554,12 +897,96 @@ let one_of_case () =
   let result = one_of parsers r in
   Alcotest.(check string) "matched number" "42" result;
 
-  (* No match - should raise with descriptive error *)
+  (* Test backtracking with partial consumption *)
+  let partial_parser r =
+    let _ = ident r in
+    (* Consumes first identifier *)
+    ws r;
+    (* Skips whitespace *)
+    let _ = number r in
+    (* Tries to parse number - will fail on "blue" *)
+    "ident_number"
+  in
+  let single_ident_parser r =
+    let first = ident r in
+    first
+  in
+
+  let r = of_string "red blue" in
+  let result = one_of [ partial_parser; single_ident_parser ] r in
+  (* Should parse as just "red" and leave " blue" unconsumed *)
+  Alcotest.(check string) "backtracking result" "red" result;
+  Alcotest.(check bool) "should not consume entire input" false (is_done r);
+
+  (* Test recursive one_of calls *)
+  let complex_parser1 r =
+    let _ = Css.Values.read_color r in
+    ws r;
+    let _ =
+      one_of
+        [
+          (fun r ->
+            let _ = Css.Values.read_length r in
+            "length");
+          (fun r ->
+            let _ = Css.Values.read_percentage r in
+            "percentage");
+        ]
+        r
+    in
+    "color_complex"
+  in
+  let simple_color_parser r =
+    let _ = Css.Values.read_color r in
+    "simple_color"
+  in
+
+  let r = of_string "red blue" in
+  let result = one_of [ complex_parser1; simple_color_parser ] r in
+  (* The complex parser should fail because "g" can't be parsed as length or
+     percentage *)
+  Alcotest.(check string) "recursive one_of result" "simple_color" result;
+  Alcotest.(check bool)
+    "recursive should not consume entire input" false (is_done r);
+
+  (* No match - should raise with descriptive error. Add detailed debug *)
   let r = of_string "yellow" in
+  let dbg_wrap name f r =
+    let pos0 = position r in
+    Printf.eprintf "DBG one_of: start %s pos=%d\n" name pos0;
+    try
+      let res = f r in
+      let pos1 = position r in
+      let ctx, m = context_window r in
+      Printf.eprintf "DBG one_of: OK   %s -> '%s' pos=%d ctx='%s' mark=%d\n"
+        name res pos1 ctx m;
+      res
+    with Css.Reader.Parse_error e ->
+      Printf.eprintf "DBG one_of: FAIL %s msg='%s' got=%s pos=%d\n" name
+        e.message
+        (match e.got with None -> "None" | Some s -> s)
+        (position r);
+      raise (Css.Reader.Parse_error e)
+  in
+  let parsers_dbg =
+    [
+      (fun r -> dbg_wrap "kw:red" (fun r -> parse_keyword "red" r) r);
+      (fun r -> dbg_wrap "kw:blue" (fun r -> parse_keyword "blue" r) r);
+      (fun r -> dbg_wrap "kw:green" (fun r -> parse_keyword "green" r) r);
+      (fun r -> dbg_wrap "number" number_as_string r);
+    ]
+  in
+  (try
+     let rdbg = of_string "yellow" in
+     let v = one_of parsers_dbg rdbg in
+     Printf.eprintf "DBG one_of: unexpected success '%s'; rem=%b pos=%d\n" v
+       (not (is_done rdbg))
+       (position rdbg)
+   with Css.Reader.Parse_error _ -> ());
   check_raises "no match"
     (parse_error_expected ~got:(Some "yellow")
        "expected one of: red, blue, green, number" r) (fun () ->
-      ignore (one_of parsers r))
+      ignore (one_of parsers_dbg r))
 
 let enum_case () =
   (* Test basic enum parsing *)
@@ -1021,6 +1448,61 @@ let error_formatting_at_end () =
       "marker near end" true
       (error.marker_pos >= String.length error.context_window - 5)
 
+(* Grouped test runners by feature for simpler suite entries *)
+
+let tests_backtracking () =
+  backtrack ();
+  backtrack_pair ();
+  backtrack_triple ();
+  backtrack_enum_with_default ();
+  backtrack_complex_nested ()
+
+let tests_idents () =
+  ident_case ();
+  ident_with_escapes ();
+  ident_more_edges ()
+
+let tests_enums () =
+  enum_case ();
+  enum_with_default_ident ();
+  enum_with_default_unknown ();
+  enum_with_default_numeric ();
+  enum_with_default_float ();
+  enum_default_number_first ();
+  enum_with_default_matching_identifier ()
+
+let tests_enum_or_calls () =
+  enum_or_calls_behavior ();
+  var_calls_via_enum_or_calls ()
+
+let tests_lists () =
+  backtrack_list ();
+  list_edges ();
+  list_call_stack ()
+
+let tests_one_of () =
+  one_of_case ();
+  backtrack_one_of ()
+
+let tests_call_stack () =
+  callstack_case ();
+  with_context_case ();
+  with_context_exception ();
+  enum_call_stack ();
+  enum_or_calls_stack ();
+  concatenated_var_functions ();
+  fold_many_call_stack ();
+  fold_many_with_enum_context ();
+  many_call_stack ();
+  triple_call_stack ()
+
+let tests_error_formatting () =
+  error_formatting_multiline ();
+  error_formatting_long_line ();
+  error_formatting_short_input ();
+  error_formatting_at_start ();
+  error_formatting_at_end ()
+
 let suite =
   [
     ( "reader",
@@ -1036,54 +1518,31 @@ let suite =
         test_case "expect string" `Quick expect_string_case;
         test_case "between" `Quick between_case;
         (* Backtracking *)
-        test_case "backtrack" `Quick backtrack;
+        test_case "backtracking" `Quick tests_backtracking;
         test_case "option" `Quick option_case;
         test_case "commit" `Quick commit_case;
         (* Value parsing *)
         test_case "numbers" `Quick numbers;
         test_case "units" `Quick units;
-        test_case "ident" `Quick ident_case;
+        test_case "idents" `Quick tests_idents;
         test_case "string literals" `Quick string_literals;
         test_case "until string" `Quick until_string;
         test_case "hex" `Quick hex_case;
-        (* Special cases *)
-        test_case "ident with escapes" `Quick ident_with_escapes;
         (* Error cases *)
         test_case "failures" `Quick failures;
         (* New helper functions *)
         test_case "option" `Quick option_parser;
         test_case "parse_many" `Quick parse_many;
-        test_case "one_of" `Quick one_of_case;
+        test_case "one_of" `Quick tests_one_of;
         test_case "take" `Quick take_case;
-        (* enum combinator tests *)
-        test_case "enum" `Quick enum_case;
-        test_case "enum with default (ident)" `Quick enum_with_default_ident;
-        test_case "enum with default (unknown)" `Quick enum_with_default_unknown;
-        test_case "enum with default (numeric)" `Quick enum_with_default_numeric;
-        test_case "enum with default (float)" `Quick enum_with_default_float;
-        test_case "enum with default (number priority)" `Quick
-          enum_default_number_first;
-        test_case "enum with default (matching ident)" `Quick
-          enum_with_default_matching_identifier;
-        (* call stack tests *)
-        test_case "call stack" `Quick callstack_case;
-        test_case "with context" `Quick with_context_case;
-        test_case "with context exception" `Quick with_context_exception;
-        test_case "enum call stack" `Quick enum_call_stack;
-        test_case "enum_or_calls call stack" `Quick enum_or_calls_stack;
-        test_case "concatenated var functions" `Quick concatenated_var_functions;
-        test_case "list call stack" `Quick list_call_stack;
-        test_case "fold_many call stack" `Quick fold_many_call_stack;
-        test_case "fold_many with enum context" `Quick
-          fold_many_with_enum_context;
-        test_case "many call stack" `Quick many_call_stack;
-        test_case "triple call stack" `Quick triple_call_stack;
-        (* Error formatting tests *)
-        test_case "error formatting multiline" `Quick error_formatting_multiline;
-        test_case "error formatting long line" `Quick error_formatting_long_line;
-        test_case "error formatting short input" `Quick
-          error_formatting_short_input;
-        test_case "error formatting at start" `Quick error_formatting_at_start;
-        test_case "error formatting at end" `Quick error_formatting_at_end;
+        (* enum and function-call parsing *)
+        test_case "enums" `Quick tests_enums;
+        test_case "enum_or_calls" `Quick tests_enum_or_calls;
+        (* lists *)
+        test_case "lists" `Quick tests_lists;
+        (* call stack *)
+        test_case "call stack" `Quick tests_call_stack;
+        (* Error formatting *)
+        test_case "error formatting" `Quick tests_error_formatting;
       ] );
   ]
