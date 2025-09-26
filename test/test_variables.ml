@@ -8,7 +8,7 @@ open Css.Variables
 let check_any_syntax = check_value "any_syntax" read_any_syntax pp_any_syntax
 
 (* These tests are for CSS Variables module *)
-let test_var_creation () =
+let test_any_var () =
   (* Test CSS custom property declaration creation using Variables.var *)
   let decl, _var =
     var "primary-color" Color (Hex { hash = true; value = "ff0000" })
@@ -16,26 +16,33 @@ let test_var_creation () =
 
   (* Check declaration is created properly *)
   let name_opt = custom_declaration_name decl in
-  match name_opt with
+  (match name_opt with
   | Some name ->
       Alcotest.(check string)
         "variable name has -- prefix" "--primary-color" name
-  | None -> Alcotest.fail "Expected custom declaration"
+  | None -> Alcotest.fail "Expected custom declaration");
 
-let test_var_with_fallback () =
-  (* Test CSS custom property *)
-  let decl, _var =
+  (* Test var with fallback *)
+  let decl2, _var2 =
     var "theme-color" Color (Hex { hash = true; value = "ff0000" })
   in
 
-  (* Verify CSS custom property naming convention *)
-  let name_opt = custom_declaration_name decl in
-  match name_opt with
+  let name_opt2 = custom_declaration_name decl2 in
+  (match name_opt2 with
   | Some name ->
-      Alcotest.(check bool)
-        "starts with --" true
-        (String.starts_with ~prefix:"--" name)
-  | None -> Alcotest.fail "Expected custom declaration"
+      Alcotest.(check string) "theme color variable" "--theme-color" name
+  | None -> Alcotest.fail "Expected custom declaration for theme color");
+
+  (* Test negative cases *)
+  neg parse_var_reference "not-a-var()"
+
+let test_any_syntax () =
+  (* Test CSS syntax parsing *)
+  check_any_syntax "<length>";
+  check_any_syntax "<color>";
+  check_any_syntax "<number>";
+  (* Test negative cases *)
+  neg read_any_syntax "invalid-syntax"
 
 (* Not a roundtrip test *)
 let test_vars_of_calc () =
@@ -170,8 +177,8 @@ let test_custom_property_roundtrip () =
 
 let variables_tests =
   [
-    ("var creation", `Quick, test_var_creation);
-    ("var with fallback", `Quick, test_var_with_fallback);
+    ("any_var", `Quick, test_any_var);
+    ("any_syntax", `Quick, test_any_syntax);
     ("vars of calc", `Quick, test_vars_of_calc);
     ("vars of property", `Quick, test_vars_of_property);
     ("vars of declarations", `Quick, test_vars_of_declarations);

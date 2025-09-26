@@ -252,13 +252,6 @@ let vars_of_component (value : Values.component) : any_var list =
 let vars_of_percentage (value : Values.percentage) : any_var list =
   match value with Var v -> [ V v ] | Calc calc -> vars_of_calc calc | _ -> []
 
-let vars_of_number (value : Values.number) : any_var list =
-  match value with Var v -> [ V v ] | _ -> []
-
-let vars_of_number_percentage (value : Values.number_percentage) : any_var list
-    =
-  match value with Var v -> [ V v ] | Calc calc -> vars_of_calc calc | _ -> []
-
 let rec vars_of_color (value : Values.color) : any_var list =
   match value with
   | Var v -> [ V v ]
@@ -306,51 +299,133 @@ let vars_of_optional_length : Values.length option -> any_var list = function
   | Some (Calc calc) -> vars_of_calc calc
   | _ -> []
 
-(* moved below, after [extract_vars_from_prop_value] definition *)
-(* vars_of_property definition moved below to avoid forward reference *)
+(* Complex type extractors *)
+let vars_of_font_weight (value : Properties.font_weight) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_font_family (value : Properties.font_family) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_transform (value : Properties.transform) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_transform_list (value : Properties.transform list) : any_var list =
+  List.concat_map vars_of_transform value
+
+let vars_of_shadow (value : Properties.shadow) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_content (value : Properties.content) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_blend_mode (value : Properties.blend_mode) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_border_style (value : Properties.border_style) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_text_decoration (value : Properties.text_decoration) : any_var list
+    =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_text_transform (value : Properties.text_transform) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_scale (value : Properties.scale) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_animation (value : Properties.animation) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_transition (value : Properties.transition) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_filter (value : Properties.filter) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_background (value : Properties.background) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_content_visibility (value : Properties.content_visibility) :
+    any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_font_feature_settings (value : Properties.font_feature_settings) :
+    any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_font_variation_settings (value : Properties.font_variation_settings)
+    : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_font_variant_numeric (value : Properties.font_variant_numeric) :
+    any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let rec vars_of_gradient_stop (value : Properties.gradient_stop) : any_var list
+    =
+  match value with
+  | Var v -> [ V v ]
+  | Color_percentage (color, pos1, pos2) -> (
+      vars_of_color color
+      @ (match pos1 with Some p -> vars_of_percentage p | None -> [])
+      @ match pos2 with Some p -> vars_of_percentage p | None -> [])
+  | Color_length (color, pos1, pos2) -> (
+      vars_of_color color
+      @ (match pos1 with Some l -> vars_of_length l | None -> [])
+      @ match pos2 with Some l -> vars_of_length l | None -> [])
+  | Length l -> vars_of_length l
+  | Percentage p -> vars_of_percentage p
+  | List stops -> List.concat_map vars_of_gradient_stop stops
 
 let rec vars_of_value : type a. a kind -> a -> any_var list =
  fun kind value ->
-  match (kind, value) with
-  | Length, Var v -> [ V v ]
-  | Color, Var v -> [ V v ]
-  | Duration, Var v -> [ V v ]
-  | Blend_mode, _ -> []
-  | Scroll_snap_strictness, _ -> []
-  | Angle, Var v -> [ V v ]
-  | Angle, _ -> []
-  | Length, Calc calc -> vars_of_calc calc
-  | Color, Mix _ -> [] (* TODO: extend to extract from color mix *)
-  | Int, _ -> []
-  | Float, _ -> []
-  | Aspect_ratio, _ -> []
-  | Border_style, _ -> []
-  | Font_weight, Var v -> [ V v ]
-  | Font_weight, _ -> []
-  | String, _ -> []
-  | Font_variant_numeric, Var v -> [ V v ]
-  | ( Font_variant_numeric,
-      Composed
-        {
-          ordinal;
-          slashed_zero;
-          numeric_figure;
-          numeric_spacing;
-          numeric_fraction;
-        } ) ->
-      vars_of_values_opt
-        [
-          ordinal;
-          slashed_zero;
-          numeric_figure;
-          numeric_spacing;
-          numeric_fraction;
-        ]
-  | Font_variant_numeric, _ -> []
-  | Font_variant_numeric_token, Var v -> [ V v ]
-  | Font_variant_numeric_token, _ -> []
-  | Box_shadow, _ -> []
-  | _ -> []
+  match kind with
+  | Length -> vars_of_length value
+  | Color -> vars_of_color value
+  | Percentage -> vars_of_percentage value
+  | Int -> []
+  | Float -> []
+  | String -> []
+  | Duration -> vars_of_duration value
+  | Angle -> vars_of_angle value
+  | Line_height -> vars_of_line_height value
+  | Font_weight -> vars_of_font_weight value
+  | Font_variant_numeric_token -> (
+      match value with Var v -> [ V v ] | _ -> [])
+  | Font_variant_numeric -> (
+      match value with
+      | Var v -> [ V v ]
+      | Composed
+          {
+            ordinal;
+            slashed_zero;
+            numeric_figure;
+            numeric_spacing;
+            numeric_fraction;
+          } ->
+          vars_of_values_opt
+            [
+              ordinal;
+              slashed_zero;
+              numeric_figure;
+              numeric_spacing;
+              numeric_fraction;
+            ]
+      | _ -> [])
+  (* Kinds that don't contain nested vars or are not modeled with calc/var *)
+  | Aspect_ratio -> []
+  | Border_style -> []
+  | Blend_mode -> vars_of_blend_mode value
+  | Scroll_snap_strictness -> []
+  | Shadow -> vars_of_shadow value
+  | Box_shadow -> vars_of_shadow value
+  | Content -> vars_of_content value
+  | Gradient_stop -> vars_of_gradient_stop value
+  | Border -> []
+  | Font_family -> vars_of_font_family value
+  | Font_feature_settings -> []
+  | Font_variation_settings -> []
 
 and vars_of_values_opt values =
   let collect_vars (opt_fv : font_variant_numeric_token option) =
@@ -360,78 +435,162 @@ and vars_of_values_opt values =
 
 let compare_vars_by_name (V x) (V y) = String.compare x.name y.name
 
-(** Extract all CSS variables referenced in properties (for theme layer) *)
-let vars_of_declarations properties =
-  List.concat_map
-    (function
-      | Declaration { property; value; _ } -> vars_of_property property value
-      | Custom_declaration { kind; value; _ } ->
-          (* Only extract variables being referenced in the value, not the
-             variable being defined *)
-          vars_of_value kind value)
-    properties
-  |> List.sort_uniq compare_vars_by_name
-
 (** {1 Variable name utilities} *)
 
 let any_var_name (V v) = String.concat "" [ "--"; v.name ]
 
 (** {1 Advanced variable extraction} *)
 
-(* Extract variables from a typed value - needs to handle each property type *)
-let extract_vars_from_prop_value : type a. a property -> a -> any_var list =
+(* Extract variables from CSS property values using type-specific extraction
+   functions *)
+let vars_of_property : type a. a property -> a -> any_var list =
  fun prop value ->
   match (prop, value) with
-  | Background_color, Var v -> [ V v ]
-  | Color, Var v -> [ V v ]
-  | Border_color, Var v -> [ V v ]
-  | Border_top_color, Var v -> [ V v ]
-  | Border_right_color, Var v -> [ V v ]
-  | Border_bottom_color, Var v -> [ V v ]
-  | Border_left_color, Var v -> [ V v ]
-  | Border_inline_start_color, Var v -> [ V v ]
-  | Border_inline_end_color, Var v -> [ V v ]
-  | Text_decoration_color, Var v -> [ V v ]
-  | Webkit_text_decoration_color, Var v -> [ V v ]
-  | Webkit_tap_highlight_color, Var v -> [ V v ]
+  | Width, value -> vars_of_length_percentage value
+  | Height, value -> vars_of_length_percentage value
+  | Min_width, value -> vars_of_length_percentage value
+  | Min_height, value -> vars_of_length_percentage value
+  | Max_width, value -> vars_of_length_percentage value
+  | Max_height, value -> vars_of_length_percentage value
+  | Padding, values -> vars_of_length_list values
+  | Padding_top, value -> vars_of_length value
+  | Padding_right, value -> vars_of_length value
+  | Padding_bottom, value -> vars_of_length value
+  | Padding_left, value -> vars_of_length value
+  | Padding_inline, value -> vars_of_length value
+  | Padding_inline_start, value -> vars_of_length value
+  | Padding_inline_end, value -> vars_of_length value
+  | Padding_block, value -> vars_of_length value
+  | Margin, values -> vars_of_length_list values
+  | Margin_top, value -> vars_of_length value
+  | Margin_right, value -> vars_of_length value
+  | Margin_bottom, value -> vars_of_length value
+  | Margin_left, value -> vars_of_length value
+  | Margin_inline, value -> vars_of_length value
+  | Margin_inline_end, value -> vars_of_length value
+  | Margin_block, value -> vars_of_length value
+  | Top, value -> vars_of_length value
+  | Right, value -> vars_of_length value
+  | Bottom, value -> vars_of_length value
+  | Left, value -> vars_of_length value
+  | Font_size, value -> vars_of_length_percentage value
+  | Letter_spacing, value -> vars_of_length value
+  | Line_height, value -> vars_of_line_height value
+  | Border_width, value -> vars_of_border_width value
+  | Border_top_width, value -> vars_of_border_width value
+  | Border_right_width, value -> vars_of_border_width value
+  | Border_bottom_width, value -> vars_of_border_width value
+  | Border_left_width, value -> vars_of_border_width value
+  | Border_inline_start_width, value -> vars_of_border_width value
+  | Border_inline_end_width, value -> vars_of_border_width value
+  | Outline_width, value -> vars_of_length value
+  | Column_gap, value -> vars_of_length value
+  | Row_gap, value -> vars_of_length value
   | Gap, { row_gap; column_gap } ->
-      let row_vars =
-        match row_gap with
-        | Some (Var v) -> [ V v ]
-        | Some (Calc calc) -> vars_of_calc calc
-        | _ -> []
-      in
-      let col_vars =
-        match column_gap with
-        | Some (Var v) -> [ V v ]
-        | Some (Calc calc) -> vars_of_calc calc
-        | _ -> []
-      in
-      row_vars @ col_vars
-  | Column_gap, Var v -> [ V v ]
-  | Row_gap, Var v -> [ V v ]
-  | Width, Var v -> [ V v ]
-  | Height, Var v -> [ V v ]
-  | Min_width, Var v -> [ V v ]
-  | Min_height, Var v -> [ V v ]
-  | Max_width, Var v -> [ V v ]
-  | Max_height, Var v -> [ V v ]
-  | Font_size, Var v -> [ V v ]
-  | Line_height, Var v -> [ V v ]
-  | Letter_spacing, Var v -> [ V v ]
-  | Top, Var v -> [ V v ]
-  | Right, Var v -> [ V v ]
-  | Bottom, Var v -> [ V v ]
-  | Left, Var v -> [ V v ]
-  | Border_radius, Var v -> [ V v ]
-  | Border_width, Var v -> [ V v ]
-  | Outline_offset, Var v -> [ V v ]
-  | _ -> [] (* No variables in this value *)
+      vars_of_optional_length row_gap @ vars_of_optional_length column_gap
+  (* Color properties *)
+  | Background_color, value -> vars_of_color value
+  | Color, value -> vars_of_color value
+  | Border_color, value -> vars_of_color value
+  | Border_top_color, value -> vars_of_color value
+  | Border_right_color, value -> vars_of_color value
+  | Border_bottom_color, value -> vars_of_color value
+  | Border_left_color, value -> vars_of_color value
+  | Border_inline_start_color, value -> vars_of_color value
+  | Border_inline_end_color, value -> vars_of_color value
+  | Text_decoration_color, value -> vars_of_color value
+  | Webkit_text_decoration_color, value -> vars_of_color value
+  | Webkit_tap_highlight_color, value -> vars_of_color value
+  | Outline_color, value -> vars_of_color value
+  (* Border radius *)
+  | Border_radius, value -> vars_of_length value
+  (* Outline offset *)
+  | Outline_offset, value -> vars_of_length value
+  | Flex_basis, value -> vars_of_length value
+  (* Text and font properties *)
+  | Text_indent, value -> vars_of_length value
+  | Text_decoration_thickness, value -> vars_of_length value
+  | Word_spacing, value -> vars_of_length value
+  (* Other length properties *)
+  | Border_spacing, value -> vars_of_length value
+  | Perspective, value -> vars_of_length value
+  | Stroke_width, value -> vars_of_length value
+  | Scroll_margin, value -> vars_of_length value
+  | Scroll_margin_top, value -> vars_of_length value
+  | Scroll_margin_right, value -> vars_of_length value
+  | Scroll_margin_bottom, value -> vars_of_length value
+  | Scroll_margin_left, value -> vars_of_length value
+  | Scroll_padding, value -> vars_of_length value
+  | Scroll_padding_top, value -> vars_of_length value
+  | Scroll_padding_right, value -> vars_of_length value
+  | Scroll_padding_bottom, value -> vars_of_length value
+  | Scroll_padding_left, value -> vars_of_length value
+  (* Color properties *)
+  | Accent_color, value -> vars_of_color value
+  | Caret_color, value -> vars_of_color value
+  (* Angle properties *)
+  | Rotate, value -> vars_of_angle value
+  (* Duration properties *)
+  | Transition_duration, value -> vars_of_duration value
+  | Transition_delay, value -> vars_of_duration value
+  | Animation_duration, value -> vars_of_duration value
+  | Animation_delay, value -> vars_of_duration value
+  (* Transform properties *)
+  | Transform, value -> vars_of_transform_list value
+  | Webkit_transform, value -> vars_of_transform_list value
+  (* Border style properties *)
+  | Border_style, value -> vars_of_border_style value
+  | Border_top_style, value -> vars_of_border_style value
+  | Border_right_style, value -> vars_of_border_style value
+  | Border_bottom_style, value -> vars_of_border_style value
+  | Border_left_style, value -> vars_of_border_style value
+  (* Font properties *)
+  | Font_weight, value -> vars_of_font_weight value
+  | Font_family, value -> vars_of_font_family value
+  | Font_feature_settings, value -> vars_of_font_feature_settings value
+  | Font_variation_settings, value -> vars_of_font_variation_settings value
+  | Font_variant_numeric, value -> vars_of_font_variant_numeric value
+  (* Text properties *)
+  | Text_decoration, value -> vars_of_text_decoration value
+  | Webkit_text_decoration, value -> vars_of_text_decoration value
+  | Text_transform, value -> vars_of_text_transform value
+  (* Content and visibility *)
+  | Content, value -> vars_of_content value
+  | Content_visibility, value -> vars_of_content_visibility value
+  (* Blend mode properties *)
+  | Mix_blend_mode, value -> vars_of_blend_mode value
+  | Background_blend_mode, values -> List.concat_map vars_of_blend_mode values
+  (* Filter properties *)
+  | Filter, value -> vars_of_filter value
+  | Backdrop_filter, value -> vars_of_filter value
+  | Webkit_filter, value -> vars_of_filter value
+  | Ms_filter, value -> vars_of_filter value
+  (* Transition properties *)
+  | Transition, values -> List.concat_map vars_of_transition values
+  | Webkit_transition, values -> List.concat_map vars_of_transition values
+  | O_transition, values -> List.concat_map vars_of_transition values
+  (* Animation properties *)
+  | Animation, values -> List.concat_map vars_of_animation values
+  (* Background properties *)
+  | Background, values -> List.concat_map vars_of_background values
+  (* Shadow properties *)
+  | Box_shadow, value -> vars_of_shadow value
+  (* Scale properties *)
+  | Scale, value -> vars_of_scale value
+  (* Default case for all other properties *)
+  | _ -> []
+
+(* Backward compatibility alias *)
+let extract_vars_from_prop_value : type a. a property -> a -> any_var list =
+  vars_of_property
 
 let extract_vars_from_declaration : declaration -> any_var list = function
   | Custom_declaration _ -> [] (* Custom properties don't have typed vars *)
-  | Declaration { property; value; _ } ->
-      extract_vars_from_prop_value property value
+  | Declaration { property; value; _ } -> vars_of_property property value
+
+let vars_of_declarations properties =
+  List.concat_map extract_vars_from_declaration properties
+  |> List.sort_uniq compare_vars_by_name
 
 (* Analyze declarations to find all variable references *)
 let analyze_declarations (decls : declaration list) : any_var list =
