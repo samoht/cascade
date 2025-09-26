@@ -202,6 +202,28 @@ val media_queries : t -> (string * statement list) list
 val layers : t -> string list
 (** [layers t] returns the layer names from the stylesheet. *)
 
+(** {3 AST Introspection Helpers} *)
+
+val layer_block : string -> t -> statement list option
+(** [layer_block name sheet] extracts the statements from the named layer
+    [@layer name] in the stylesheet. Returns [None] if the layer is not found.
+*)
+
+val rules_from_statements :
+  statement list -> (Selector.t * declaration list) list
+(** [rules_from_statements stmts] extracts all CSS rules (selector +
+    declarations) from a list of statements, filtering out at-rules and other
+    non-rule statements. *)
+
+val custom_prop_names : declaration list -> string list
+(** [custom_prop_names decls] extracts all custom property names from a list of
+    declarations. *)
+
+val custom_props_from_rules :
+  (Selector.t * declaration list) list -> string list
+(** [custom_props_from_rules rules] extracts all custom property names from the
+    declarations in the rules. *)
+
 val media : condition:string -> statement list -> statement
 (** [media ~condition statements] creates a [@media] statement with the given
     condition. *)
@@ -622,9 +644,16 @@ type percentage =
 
 type length_percentage =
   | Length of length
-  | Percentage of percentage
+  | Pct of float
   | Var of length_percentage var
   | Calc of length_percentage calc
+
+(** CSS number or percentage values (for properties like scale, brightness) *)
+type number_percentage =
+  | Num of float
+  | Pct of float
+  | Var of number_percentage var
+  | Calc of number_percentage calc
 
 (** CSS hue interpolation options *)
 type hue_interpolation = Shorter | Longer | Increasing | Decreasing | Default
@@ -2916,16 +2945,14 @@ val box_shadows : shadow list -> declaration
 
 (** CSS number values (unitless numbers for filters, transforms, etc.) *)
 type number =
-  | Float of float  (** Floating point number *)
-  | Int of int  (** Integer number *)
-  | Pct of float  (** Percentage value *)
+  | Num of float  (** Number value *)
   | Var of number var  (** CSS variable reference *)
 
 (** CSS scale property values *)
 type scale =
-  | X of percentage
-  | XY of percentage * percentage
-  | XYZ of percentage * percentage * percentage
+  | X of number_percentage
+  | XY of number_percentage * number_percentage
+  | XYZ of number_percentage * number_percentage * number_percentage
   | None
   | Var of scale var
 

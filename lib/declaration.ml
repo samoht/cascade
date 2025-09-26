@@ -310,14 +310,14 @@ let read_value (type a) (prop : a property) t : declaration =
   | Border_right_color -> v Border_right_color (read_color t)
   | Border_bottom_color -> v Border_bottom_color (read_color t)
   | Border_left_color -> v Border_left_color (read_color t)
-  (* Length properties *)
-  | Width -> v Width (read_length t)
-  | Height -> v Height (read_length t)
-  | Min_width -> v Min_width (read_length t)
-  | Min_height -> v Min_height (read_length t)
-  | Max_width -> v Max_width (read_length t)
-  | Max_height -> v Max_height (read_length t)
-  | Font_size -> v Font_size (read_length t)
+  (* Length/percentage properties *)
+  | Width -> v Width (read_length_percentage t)
+  | Height -> v Height (read_length_percentage t)
+  | Min_width -> v Min_width (read_length_percentage t)
+  | Min_height -> v Min_height (read_length_percentage t)
+  | Max_width -> v Max_width (read_length_percentage t)
+  | Max_height -> v Max_height (read_length_percentage t)
+  | Font_size -> v Font_size (read_length_percentage t)
   | Border_radius -> v Border_radius (read_length t)
   | Gap -> v Gap (Properties.read_gap t)
   | Column_gap -> v Column_gap (read_length t)
@@ -808,15 +808,15 @@ let grid_column (start, end_) =
   v Grid_column (Pp.to_string pp ())
 
 let grid_area value = v Grid_area value
-let width len = v Width len
-let height len = v Height len
+let width len = v Width (Length len)
+let height len = v Height (Length len)
 
 (* Remove deprecated string-based versions *)
-let min_width len = v Min_width len
-let min_height len = v Min_height len
-let max_width len = v Max_width len
-let max_height len = v Max_height len
-let font_size len = v Font_size len
+let min_width len = v Min_width (Length len)
+let min_height len = v Min_height (Length len)
+let max_width len = v Max_width (Length len)
+let max_height len = v Max_height (Length len)
+let font_size len = v Font_size (Length len)
 let line_height len = v Line_height len
 let font_weight w = v Font_weight w
 let text_align a = v Text_align a

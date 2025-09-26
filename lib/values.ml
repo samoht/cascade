@@ -381,9 +381,16 @@ let rec pp_percentage ?(always = false) : percentage Pp.t =
 and pp_length_percentage ?(always = false) : length_percentage Pp.t =
  fun ctx -> function
   | Length l -> pp_length ~always ctx l
-  | Percentage p -> pp_percentage ~always ctx p
+  | Pct f -> Pp.pct ~always ctx f
   | Var v -> pp_var (pp_length_percentage ~always) ctx v
   | Calc c -> pp_calc (pp_length_percentage ~always) ctx c
+
+and pp_number_percentage ?(always = false) : number_percentage Pp.t =
+ fun ctx -> function
+  | Num f -> Pp.float ctx f
+  | Pct f -> Pp.pct ~always ctx f
+  | Var v -> pp_var (pp_number_percentage ~always) ctx v
+  | Calc c -> pp_calc (pp_number_percentage ~always) ctx c
 
 and pp_component : component Pp.t =
  fun ctx -> function
@@ -565,13 +572,7 @@ let rec pp_duration : duration Pp.t =
   | Var v -> pp_var pp_duration ctx v
 
 let rec pp_number : number Pp.t =
- fun ctx -> function
-  | Float f -> Pp.float ctx f
-  | Int i -> Pp.int ctx i
-  | Pct p ->
-      Pp.float ctx p;
-      Pp.char ctx '%'
-  | Var v -> pp_var pp_number ctx v
+ fun ctx -> function Num f -> Pp.float ctx f | Var v -> pp_var pp_number ctx v
 
 (* Print a raw float as a percentage value *)
 
@@ -740,6 +741,8 @@ and read_calc_term : type a. (Reader.t -> a) -> Reader.t -> a calc =
             | Val _ -> true
             | _ -> false
           in
+          (* Allow number × dimension or dimension × number, but not dimension ×
+             dimension *)
           if is_dimension left && is_dimension right then
             Reader.err t "invalid calc: cannot multiply two dimensions";
           Expr (left, Mul, right))
@@ -785,8 +788,17 @@ and read_calc_factor : type a. (Reader.t -> a) -> Reader.t -> a calc =
   | _ when Reader.looking_at t "var(" -> Var (read_var read_a t)
   | _ ->
       let read_val t = Val (read_a t) in
-      let read_num t : a calc = Num (Reader.number t) in
-      Reader.one_of [ read_calc_zero; read_val; read_num ] t
+      let read_num : Reader.t -> a calc =
+       fun t ->
+        (* Try to read as plain number, but fail if followed by a unit *)
+        Reader.atomic t (fun () ->
+            let n = Reader.number t in
+            match Reader.peek t with
+            | Some c when Reader.is_alpha c || c = '%' ->
+                Reader.err t "number with unit, should use read_val"
+            | _ -> (Num n : a calc))
+      in
+      Reader.one_of [ read_calc_zero; read_num; read_val ] t
 
 and read_calc : type a. (Reader.t -> a) -> Reader.t -> a calc =
  fun read_a t ->
@@ -1544,9 +1556,7 @@ let rec read_number t : number =
   Reader.ws t;
   (* Check for var() *)
   if Reader.looking_at t "var(" then Var (read_var read_number t)
-  else
-    let n = Reader.number t in
-    if n = float_of_int (int_of_float n) then Int (int_of_float n) else Float n
+  else Num (Reader.number t)
 
 (** Read a percentage type with var() and calc() support *)
 let rec read_percentage t : percentage =
@@ -1562,13 +1572,22 @@ let rec read_length_percentage t : length_percentage =
   else if Reader.looking_at t "calc(" then
     Calc (read_calc read_length_percentage t)
   else
-    (* Try to read as percentage first *)
-    match Reader.option read_percentage t with
-    | Some p -> Percentage p
-    | None -> (
-        (* Otherwise try to read as length *)
-        match read_length t with
-        | l -> Length l)
+    (* Try to read as percentage or length *)
+    let read_pct t : length_percentage = Pct (Reader.pct t) in
+    let read_length_as_lp t : length_percentage = Length (read_length t) in
+    Reader.one_of [ read_pct; read_length_as_lp ] t
+
+(** Read number_percentage value *)
+let rec read_number_percentage t : number_percentage =
+  Reader.ws t;
+  if Reader.looking_at t "var(" then Var (read_var read_number_percentage t)
+  else if Reader.looking_at t "calc(" then
+    Calc (read_calc read_number_percentage t)
+  else
+    (* Try to read as percentage or number *)
+    Reader.one_of
+      [ (fun t -> Pct (Reader.pct t)); (fun t -> Num (Reader.number t)) ]
+      t
 
 (** Read color_name value *)
 let read_color_name t : color_name =

@@ -108,8 +108,9 @@ val pp_length_percentage : ?always:bool -> length_percentage Pp.t
 (** [pp_length_percentage ?always] pretty-prints {!length_percentage} values.
     When [always] is true, always includes units even for 0. *)
 
-val read_length_percentage : Reader.t -> length_percentage
-(** [read_length_percentage] reads a {!length_percentage} value. *)
+val pp_number_percentage : ?always:bool -> number_percentage Pp.t
+(** [pp_number_percentage ?always] pretty-prints {!number_percentage} values.
+    When [always] is true, always includes units even for 0. *)
 
 val pp_calc : 'a Pp.t -> 'a calc Pp.t
 (** [pp_calc pp] pretty-prints [calc] expressions using [pp] for leaf values. *)
@@ -243,6 +244,12 @@ val read_number : Reader.t -> number
 
 val read_percentage : Reader.t -> percentage
 (** [read_percentage t] parses a CSS percentage. *)
+
+val read_length_percentage : Reader.t -> length_percentage
+(** [read_length_percentage t] parses a CSS length or percentage. *)
+
+val read_number_percentage : Reader.t -> number_percentage
+(** [read_number_percentage t] parses a CSS number or percentage. *)
 
 val read_calc : (Reader.t -> 'a) -> Reader.t -> 'a calc
 (** [read_calc read t] parses a [calc(...)] expression or a promotable value. *)

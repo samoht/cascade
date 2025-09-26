@@ -710,9 +710,9 @@ type transform_style = Flat | Preserve_3d | Inherit
 type backface_visibility = Visible | Hidden | Inherit
 
 type scale =
-  | X of percentage
-  | XY of percentage * percentage
-  | XYZ of percentage * percentage * percentage
+  | X of number_percentage
+  | XY of number_percentage * number_percentage
+  | XYZ of number_percentage * number_percentage * number_percentage
   | None
   | Var of scale var
 
@@ -1182,13 +1182,13 @@ type 'a property =
   | Gap : gap property
   | Column_gap : length property
   | Row_gap : length property
-  | Width : length property
-  | Height : length property
-  | Min_width : length property
-  | Min_height : length property
-  | Max_width : length property
-  | Max_height : length property
-  | Font_size : length property
+  | Width : length_percentage property
+  | Height : length_percentage property
+  | Min_width : length_percentage property
+  | Min_height : length_percentage property
+  | Max_width : length_percentage property
+  | Max_height : length_percentage property
+  | Font_size : length_percentage property
   | Line_height : line_height property
   | Font_weight : font_weight property
   | Font_style : font_style property

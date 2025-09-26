@@ -157,6 +157,88 @@ let roundtrip () =
     Alcotest.(check string)
       "CSS roundtrip should be identical" original_css roundtrip_css
 
+(* Test AST introspection helpers *)
+let test_layer_block () =
+  let stylesheet =
+    v
+      [
+        layer ~name:"theme" [ rule ~selector:btn [ color (hex "#ff0000") ] ];
+        layer ~name:"utilities" [ rule ~selector:card [ padding [ Px 10. ] ] ];
+        rule ~selector:(Selector.class_ "base") [ margin [ Px 5. ] ];
+      ]
+  in
+
+  (* Test extracting theme layer *)
+  let theme_stmts = layer_block "theme" stylesheet in
+  Alcotest.(check bool) "theme layer found" true (Option.is_some theme_stmts);
+
+  let theme_rules = theme_stmts |> Option.get |> rules_from_statements in
+  Alcotest.(check int) "theme has one rule" 1 (List.length theme_rules);
+
+  (* Test extracting non-existent layer *)
+  let missing = layer_block "missing" stylesheet in
+  Alcotest.(check bool) "missing layer not found" true (Option.is_none missing)
+
+let test_rules_from_statements () =
+  let stmts =
+    [
+      rule ~selector:btn [ color (hex "#ff0000") ];
+      media ~condition:"(min-width: 768px)"
+        [ rule ~selector:card [ padding [ Px 5. ] ] ];
+      rule ~selector:card [ margin [ Px 10. ] ];
+    ]
+  in
+
+  let rules = rules_from_statements stmts in
+  Alcotest.(check int) "extracts 2 rules from statements" 2 (List.length rules);
+
+  let selectors = List.map (fun (sel, _) -> Selector.to_string sel) rules in
+  Alcotest.(check bool) "contains btn selector" true (List.mem ".btn" selectors);
+  Alcotest.(check bool)
+    "contains card selector" true
+    (List.mem ".card" selectors)
+
+let test_custom_prop_names () =
+  let color_def, _color_var = var "primary-color" Color (hex "#3b82f6") in
+  let margin_def, _margin_var = var "spacing" Length (Px 8.) in
+
+  let decls = [ color_def; margin_def; padding [ Px 10. ] ] in
+  let prop_names = custom_prop_names decls in
+
+  Alcotest.(check int) "finds 2 custom properties" 2 (List.length prop_names);
+  Alcotest.(check bool)
+    "contains primary-color" true
+    (List.mem "--primary-color" prop_names);
+  Alcotest.(check bool)
+    "contains spacing" true
+    (List.mem "--spacing" prop_names)
+
+let test_custom_props_from_rules () =
+  let color_def, _color_var = var "primary-color" Color (hex "#3b82f6") in
+  let margin_def, _margin_var = var "spacing" Length (Px 8.) in
+
+  let rules =
+    [
+      (btn, [ color_def; padding [ Px 10. ] ]);
+      (card, [ margin_def; background_color (hex "#ffffff") ]);
+    ]
+  in
+
+  let prop_names = custom_props_from_rules rules in
+
+  Alcotest.(check int)
+    "finds 2 custom properties total" 2 (List.length prop_names);
+  Alcotest.(check bool)
+    "contains primary-color" true
+    (List.mem "--primary-color" prop_names);
+  Alcotest.(check bool)
+    "contains spacing" true
+    (List.mem "--spacing" prop_names);
+
+  (* Test order preservation *)
+  Alcotest.(check string)
+    "first property is primary-color" "--primary-color" (List.hd prop_names)
+
 let suite =
   [
     ( "css",
@@ -171,5 +253,12 @@ let suite =
         Alcotest.test_case "custom properties" `Quick
           custom_properties_integration;
         Alcotest.test_case "CSS roundtrip parsing" `Quick roundtrip;
+        (* AST introspection helpers *)
+        Alcotest.test_case "layer_block extraction" `Quick test_layer_block;
+        Alcotest.test_case "rules_from_statements" `Quick
+          test_rules_from_statements;
+        Alcotest.test_case "custom_prop_names" `Quick test_custom_prop_names;
+        Alcotest.test_case "custom_props_from_rules" `Quick
+          test_custom_props_from_rules;
       ] );
   ]
