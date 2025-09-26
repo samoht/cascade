@@ -306,69 +306,8 @@ let vars_of_optional_length : Values.length option -> any_var list = function
   | Some (Calc calc) -> vars_of_calc calc
   | _ -> []
 
-let vars_of_property : type a. a property -> a -> any_var list =
- fun prop value ->
-  match (prop, value) with
-  | Width, value -> vars_of_length_percentage value
-  | Height, value -> vars_of_length_percentage value
-  | Min_width, value -> vars_of_length_percentage value
-  | Min_height, value -> vars_of_length_percentage value
-  | Max_width, value -> vars_of_length_percentage value
-  | Max_height, value -> vars_of_length_percentage value
-  | Padding, values -> vars_of_length_list values
-  | Padding_top, value -> vars_of_length value
-  | Padding_right, value -> vars_of_length value
-  | Padding_bottom, value -> vars_of_length value
-  | Padding_left, value -> vars_of_length value
-  | Padding_inline, value -> vars_of_length value
-  | Padding_inline_start, value -> vars_of_length value
-  | Padding_inline_end, value -> vars_of_length value
-  | Padding_block, value -> vars_of_length value
-  | Margin, values -> vars_of_length_list values
-  | Margin_top, value -> vars_of_length value
-  | Margin_right, value -> vars_of_length value
-  | Margin_bottom, value -> vars_of_length value
-  | Margin_left, value -> vars_of_length value
-  | Margin_inline, value -> vars_of_length value
-  | Margin_block, value -> vars_of_length value
-  | Top, value -> vars_of_length value
-  | Right, value -> vars_of_length value
-  | Bottom, value -> vars_of_length value
-  | Left, value -> vars_of_length value
-  | Font_size, value -> vars_of_length_percentage value
-  | Letter_spacing, value -> vars_of_length value
-  | Line_height, value -> vars_of_line_height value
-  | Border_width, value -> vars_of_border_width value
-  | Border_top_width, value -> vars_of_border_width value
-  | Border_right_width, value -> vars_of_border_width value
-  | Border_bottom_width, value -> vars_of_border_width value
-  | Border_left_width, value -> vars_of_border_width value
-  | Border_inline_start_width, value -> vars_of_border_width value
-  | Border_inline_end_width, value -> vars_of_border_width value
-  | Outline_width, value -> vars_of_length value
-  | Column_gap, value -> vars_of_length value
-  | Row_gap, value -> vars_of_length value
-  | Gap, { row_gap; column_gap } ->
-      vars_of_optional_length row_gap @ vars_of_optional_length column_gap
-  (* Color properties *)
-  | Background_color, value -> vars_of_color value
-  | Color, value -> vars_of_color value
-  | Border_color, value -> vars_of_color value
-  | Border_top_color, value -> vars_of_color value
-  | Border_right_color, value -> vars_of_color value
-  | Border_bottom_color, value -> vars_of_color value
-  | Border_left_color, value -> vars_of_color value
-  | Border_inline_start_color, value -> vars_of_color value
-  | Border_inline_end_color, value -> vars_of_color value
-  | Text_decoration_color, value -> vars_of_color value
-  | Outline_color, value -> vars_of_color value
-  (* Border radius *)
-  | Border_radius, value -> vars_of_length value
-  (* Outline offset *)
-  | Outline_offset, value -> vars_of_length value
-  (* Other properties don't support Var *)
-  (* All other cases *)
-  | _ -> []
+(* moved below, after [extract_vars_from_prop_value] definition *)
+(* vars_of_property definition moved below to avoid forward reference *)
 
 let rec vars_of_value : type a. a kind -> a -> any_var list =
  fun kind value ->
