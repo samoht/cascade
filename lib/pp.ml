@@ -34,16 +34,15 @@ let quoted_string ctx s =
 let sp ctx () = if not ctx.minify then Buffer.add_char ctx.buf ' '
 let cut ctx () = if not ctx.minify then Buffer.add_string ctx.buf "\n" else ()
 
-let indent pp ctx a =
-  (* Output indentation spaces when not minifying *)
-  if not ctx.minify then
-    Buffer.add_string ctx.buf (String.make (2 * (ctx.indent + 1)) ' ');
-  let new_ctx = { ctx with indent = ctx.indent + 1 } in
-  pp new_ctx a
-
 let nest n pp ctx a =
   let new_ctx = { ctx with indent = ctx.indent + n } in
   pp new_ctx a
+
+let indent pp ctx a =
+  (* Output indentation spaces when not minifying *)
+  if not ctx.minify then
+    Buffer.add_string ctx.buf (String.make (2 * ctx.indent) ' ');
+  pp ctx a
 
 let ( ++ ) pp1 pp2 ctx a =
   pp1 ctx a;
@@ -234,10 +233,12 @@ let braces pp =
     if not ctx.minify then cut ctx ()
   in
   let close_ ctx () =
-    if not ctx.minify then cut ctx ();
+    if not ctx.minify then (
+      cut ctx ();
+      indent nop ctx ());
     block_close ctx ()
   in
-  surround ~left:open_ ~right:close_ (indent pp)
+  surround ~left:open_ ~right:close_ (nest 1 pp)
 
 let call name pp_args ctx args =
   string ctx name;

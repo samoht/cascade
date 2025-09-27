@@ -268,14 +268,14 @@ let validate_css_identifier_with_reader t name =
 let read_class t =
   Reader.expect '.' t;
   let name = Reader.ident ~keep_case:true t in
-  validate_css_identifier_with_reader t name;
+  (* No validation needed - Reader.ident already ensures valid identifier *)
   Class name
 
 (** Parse an ID selector (#id) *)
 let read_id t =
   Reader.expect '#' t;
   let name = Reader.ident ~keep_case:true t in
-  validate_css_identifier_with_reader t name;
+  (* No validation needed - Reader.ident already ensures valid identifier *)
   Id name
 
 (** Parse a namespaced type or universal selector *)

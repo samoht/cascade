@@ -3705,8 +3705,7 @@ let rec read_scroll_snap_type t : scroll_snap_type =
   Reader.enum_or_calls "scroll-snap-type"
     [ ("inherit", (Inherit : scroll_snap_type)) ]
     ~calls:[ ("var", fun t -> Var (read_var read_scroll_snap_type t)) ]
-    ~default:read_axis_with_optional_strictness
-    t
+    ~default:read_axis_with_optional_strictness t
 
 let read_overscroll_behavior t : overscroll_behavior =
   Reader.enum "overscroll-behavior"
