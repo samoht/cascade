@@ -9,6 +9,7 @@ type _ kind =
   | Int : int kind
   | Float : float kind
   | Percentage : percentage kind
+  | Number_percentage : number_percentage kind
   | String : string kind
   | Duration : duration kind
   | Aspect_ratio : aspect_ratio kind

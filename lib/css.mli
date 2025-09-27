@@ -3341,25 +3341,24 @@ type scroll_snap_strictness =
   | Proximity
   | Var of scroll_snap_strictness var
 
-(** CSS scroll-snap-type values *)
-type scroll_snap_type =
+(** CSS scroll-snap axis values *)
+type scroll_snap_axis =
   | None
   | X
   | Y
   | Block
   | Inline
   | Both
-  | X_mandatory
-  | Y_mandatory
-  | Block_mandatory
-  | Inline_mandatory
-  | Both_mandatory
-  | X_proximity
-  | Y_proximity
-  | Block_proximity
-  | Inline_proximity
-  | Both_proximity
+  | Var of scroll_snap_axis var
+
+(** CSS scroll-snap-type values *)
+type scroll_snap_type =
+  | Axis of scroll_snap_axis (* Just the axis, no strictness *)
+  | Axis_with_strictness of
+      scroll_snap_axis
+      * scroll_snap_strictness (* Axis with explicit strictness or var *)
   | Inherit
+  | Var of scroll_snap_type var
 
 (** CSS scroll-snap-align values *)
 type scroll_snap_align = None | Start | End | Center
@@ -3516,6 +3515,7 @@ type _ kind =
   | Int : int kind
   | Float : float kind
   | Percentage : percentage kind
+  | Number_percentage : number_percentage kind
   | String : string kind
   | Duration : duration kind
   | Aspect_ratio : aspect_ratio kind
@@ -3783,6 +3783,10 @@ val pp_overflow : overflow Pp.t
 
 val pp_border_style : border_style Pp.t
 (** [pp_border_style] is the pretty printer for border-style values. *)
+
+val pp_scroll_snap_strictness : scroll_snap_strictness Pp.t
+(** [pp_scroll_snap_strictness] is the pretty printer for scroll-snap-strictness
+    values. *)
 
 val pp_flex_direction : flex_direction Pp.t
 (** [pp_flex_direction] is the pretty printer for flex-direction values. *)

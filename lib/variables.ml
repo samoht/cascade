@@ -252,6 +252,10 @@ let vars_of_component (value : Values.component) : any_var list =
 let vars_of_percentage (value : Values.percentage) : any_var list =
   match value with Var v -> [ V v ] | Calc calc -> vars_of_calc calc | _ -> []
 
+let vars_of_number_percentage (value : Values.number_percentage) : any_var list
+    =
+  match value with Var v -> [ V v ] | Calc calc -> vars_of_calc calc | _ -> []
+
 let rec vars_of_color (value : Values.color) : any_var list =
   match value with
   | Var v -> [ V v ]
@@ -384,6 +388,7 @@ let rec vars_of_value : type a. a kind -> a -> any_var list =
   | Length -> vars_of_length value
   | Color -> vars_of_color value
   | Percentage -> vars_of_percentage value
+  | Number_percentage -> vars_of_number_percentage value
   | Int -> []
   | Float -> []
   | String -> []
