@@ -3689,31 +3689,23 @@ let rec read_scroll_snap_axis t : scroll_snap_axis =
     t
 
 let rec read_scroll_snap_type t : scroll_snap_type =
-  (* Use one_of to try different parsing strategies *)
-  Reader.one_of
-    [
-      (fun t ->
-        match Reader.ident t with
-        | "inherit" -> (Inherit : scroll_snap_type)
-        | _ -> raise Not_found);
-      (fun t ->
-        (* Try to read a var() *)
-        (Var (read_var read_scroll_snap_type t) : scroll_snap_type));
-      (fun t ->
-        (* Read axis and optional strictness *)
-        let axis = read_scroll_snap_axis t in
-        Reader.ws t;
-        match axis with
-        | None | Var _ ->
-            (Axis axis : scroll_snap_type)
-            (* "none" and vars don't take strictness *)
-        | _ -> (
-            (* Try to read strictness *)
-            match Reader.option read_scroll_snap_strictness t with
-            | Some strictness ->
-                (Axis_with_strictness (axis, strictness) : scroll_snap_type)
-            | None -> (Axis axis : scroll_snap_type)));
-    ]
+  let read_axis_with_optional_strictness t =
+    let axis = read_scroll_snap_axis t in
+    Reader.ws t;
+    match axis with
+    | None | Var _ ->
+        (* "none" and vars don't take strictness *)
+        Axis axis
+    | _ -> (
+        (* Try to read strictness *)
+        match Reader.option read_scroll_snap_strictness t with
+        | Some strictness -> Axis_with_strictness (axis, strictness)
+        | None -> Axis axis)
+  in
+  Reader.enum_or_calls "scroll-snap-type"
+    [ ("inherit", (Inherit : scroll_snap_type)) ]
+    ~calls:[ ("var", fun t -> Var (read_var read_scroll_snap_type t)) ]
+    ~default:read_axis_with_optional_strictness
     t
 
 let read_overscroll_behavior t : overscroll_behavior =
@@ -5711,7 +5703,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Animation -> pp (Pp.list ~sep:Pp.comma pp_animation)
   | Aspect_ratio -> pp pp_aspect_ratio
   | Content -> pp pp_content
-  | Quotes -> pp Pp.string
+  | Quotes -> pp Pp.quoted_string
   | Box_shadow -> pp pp_shadow
   | Fill -> pp pp_svg_paint
   | Stroke -> pp pp_svg_paint
