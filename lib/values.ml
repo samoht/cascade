@@ -18,8 +18,12 @@ let hex s =
     Hex { hash = true; value = String.sub s 1 (len - 1) }
   else Hex { hash = false; value = s }
 
-let rgb r g b = Rgb { r = Int r; g = Int g; b = Int b }
-let rgba r g b a = Rgba { r = Int r; g = Int g; b = Int b; a = Num a }
+let rgb ?alpha r g b =
+  match alpha with
+  | None -> Rgb (Channels { r = Int r; g = Int g; b = Int b })
+  | Some a ->
+      Rgba { rgb = Channels { r = Int r; g = Int g; b = Int b }; a = Num a }
+
 let hsl h s l = Hsl { h = Unitless h; s = Pct s; l = Pct l; a = None }
 let hsla h s l a = Hsl { h = Unitless h; s = Pct s; l = Pct l; a = Num a }
 let hwb h w b = Hwb { h = Unitless h; w = Pct w; b = Pct b; a = None }
@@ -416,7 +420,12 @@ let pp_rgb_args : (channel * channel * channel * alpha) Pp.t =
   Pp.list ~sep:Pp.space pp_channel ctx [ r; g; b ];
   pp_opt_alpha ctx alpha
 
-let pp_rgb = Pp.call "rgb" pp_rgb_args
+let pp_rgb_func = Pp.call "rgb" pp_rgb_args
+
+let rec pp_rgb : rgb Pp.t =
+ fun ctx -> function
+  | Channels { r; g; b } -> pp_rgb_func ctx (r, g, b, None)
+  | Var v -> pp_var pp_rgb ctx v
 
 let pp_oklch_args : (percentage * float * hue * alpha) Pp.t =
  fun ctx (l, c, h, alpha) ->
@@ -545,8 +554,34 @@ and pp_color : color Pp.t =
   | Hex { hash = _; value } ->
       Pp.char ctx '#';
       Pp.string ctx value
-  | Rgb { r; g; b } -> pp_rgb ctx (r, g, b, None)
-  | Rgba { r; g; b; a } -> pp_rgb ctx (r, g, b, a)
+  | Rgb rgb -> (
+      match rgb with
+      | Channels { r; g; b } -> pp_rgb_func ctx (r, g, b, None)
+      | Var v ->
+          (* Print as a var that expands to a color *)
+          let rec pp_rgb_as_color : rgb Pp.t =
+           fun ctx rgb ->
+            match rgb with
+            | Channels { r; g; b } -> pp_rgb_func ctx (r, g, b, None)
+            | Var v -> pp_var pp_rgb_as_color ctx v
+          in
+          pp_rgb_as_color ctx (Var v))
+  | Rgba { rgb; a } -> (
+      match rgb with
+      | Channels { r; g; b } -> pp_rgb_func ctx (r, g, b, a)
+      | Var v ->
+          (* Output as rgb(var(--color)/alpha) *)
+          let rec pp_rgb_var : rgb Pp.t =
+           fun ctx rgb ->
+            match rgb with
+            | Channels { r; g; b } -> pp_rgb_func ctx (r, g, b, None)
+            | Var v -> pp_var pp_rgb_var ctx v
+          in
+          Pp.call "rgb"
+            (fun ctx (v, a) ->
+              pp_rgb_var ctx (Var v);
+              pp_opt_alpha ctx a)
+            ctx (v, a))
   | Hsl { h; s; l; a } -> pp_hsl ctx (h, s, l, a)
   | Hwb { h; w; b; a } -> pp_hwb ctx (h, w, b, a)
   | Color { space; components; alpha } -> pp_color' ctx space components alpha
@@ -943,21 +978,61 @@ let rec read_channel t : channel =
         else Int (int_of_float (max 0. (min 255. n)))
     | _ -> Reader.err_invalid t "channel value"
 
-let read_rgb_space_separated t : color =
-  let r, g, b =
-    Reader.triple ~sep:Reader.ws read_channel read_channel read_channel t
-  in
-  (* CSS4 allows mixing percentages and numbers in RGB functions. This is a
-     change from CSS3 which required all values to be the same type. Since we
-     target CSS4 (supported by all major browsers), we allow mixing. *)
-  let alpha = read_optional_alpha t in
+let rec read_rgb_var t : rgb var =
   Reader.ws t;
-  Reader.expect ')' t;
-  match alpha with
-  | None -> Rgb { r; g; b }
-  | Num _ | Pct _ | Var _ -> Rgba { r; g; b; a = alpha }
+  Reader.expect_string "var" t;
+  read_var_after_ident read_rgb t
 
-let read_rgb_comma_separated t : color =
+and read_rgb t : rgb =
+  Reader.ws t;
+  if Reader.looking_at t "var(" then Var (read_rgb_var t)
+  else
+    let r = read_channel t in
+    Reader.ws t;
+    let g = read_channel t in
+    Reader.ws t;
+    let b = read_channel t in
+    Channels { r; g; b }
+
+and read_rgb_space_separated t : color =
+  (* First, check if we have var() at the beginning for the special case *)
+  Reader.ws t;
+  if Reader.looking_at t "var(" then (
+    (* Read the rgb var *)
+    let rgb_var = read_rgb_var t in
+    Reader.ws t;
+
+    (* Check if followed by /alpha *)
+    if Reader.peek t = Some '/' then (
+      (* We have rgb(var(--color)/alpha) *)
+      let alpha = read_optional_alpha t in
+      Reader.ws t;
+      Reader.expect ')' t;
+      match alpha with
+      | None -> Reader.err t "expected alpha value after '/'"
+      | _ -> Rgba { rgb = Var rgb_var; a = alpha })
+    else (
+      (* Just var() without alpha - expect closing paren *)
+      Reader.expect ')' t;
+      Rgb (Var rgb_var)))
+  else
+    (* Normal case: read three channels *)
+    let r = read_channel t in
+    Reader.ws t;
+    let g = read_channel t in
+    Reader.ws t;
+    let b = read_channel t in
+    (* CSS4 allows mixing percentages and numbers in RGB functions. This is a
+       change from CSS3 which required all values to be the same type. Since we
+       target CSS4 (supported by all major browsers), we allow mixing. *)
+    let alpha = read_optional_alpha t in
+    Reader.ws t;
+    Reader.expect ')' t;
+    match alpha with
+    | None -> Rgb (Channels { r; g; b })
+    | Num _ | Pct _ | Var _ -> Rgba { rgb = Channels { r; g; b }; a = alpha }
+
+and read_rgb_comma_separated t : color =
   let r, g, b =
     Reader.triple ~sep:Reader.comma read_channel read_channel read_channel t
   in
@@ -972,7 +1047,9 @@ let read_rgb_comma_separated t : color =
   in
   Reader.ws t;
   Reader.expect ')' t;
-  match alpha with None -> Rgb { r; g; b } | a -> Rgba { r; g; b; a }
+  match alpha with
+  | None -> Rgb (Channels { r; g; b })
+  | a -> Rgba { rgb = Channels { r; g; b }; a }
 
 (** Read color space identifier *)
 let read_color_space t : color_space =

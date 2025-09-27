@@ -150,7 +150,7 @@ let float_to_string ?(drop_leading_zero = false) ?(max_decimals = 8) f =
   (* Handle special cases first *)
   match classify_float f with
   | FP_zero -> "0"
-  | FP_nan -> "0"
+  | FP_nan -> "NaN"
   | FP_infinite when f > 0.0 -> "3.40282e38"
   | FP_infinite -> "-3.40282e38"
   | FP_normal | FP_subnormal ->

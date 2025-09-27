@@ -31,6 +31,7 @@ let check_hue_interpolation =
 let check_calc_op = check_value "calc_op" read_calc_op pp_calc_op
 let check_component = check_value "component" read_component pp_component
 let check_channel = check_value "channel" read_channel pp_channel
+let check_rgb = check_value "rgb" read_rgb pp_rgb
 
 let test_length () =
   (* Basic units *)
@@ -658,6 +659,21 @@ let test_channel () =
   check_channel ~expected:"100%" "150%";
   neg read_channel ""
 
+let test_rgb () =
+  (* RGB channel values *)
+  check_rgb "255 0 0";
+  check_rgb "128 128 128";
+  check_rgb "0 255 0";
+  check_rgb "50% 0% 100%";
+  check_rgb "255 50% 0";
+  (* RGB with variables *)
+  check_rgb "var(--r) 0 0";
+  check_rgb "var(--rgb-channels)";
+  neg read_rgb "invalid";
+  neg read_rgb "abc";
+  neg read_rgb "";
+  neg read_rgb "255"
+
 let value_tests =
   [
     test_case "length" `Quick test_length;
@@ -694,6 +710,7 @@ let value_tests =
     test_case "number" `Quick test_number;
     test_case "component" `Quick test_component;
     test_case "channel" `Quick test_channel;
+    test_case "rgb" `Quick test_rgb;
   ]
 
 let suite = ("values", value_tests)

@@ -153,6 +153,20 @@ let pp_value : type a. (a kind * a) Pp.t =
   match kind with
   | Length -> pp pp_length
   | Color -> pp pp_color
+  | Rgb ->
+      let rec pp_rgb_type : rgb Pp.t =
+       fun ctx rgb ->
+        match rgb with
+        | Channels { r; g; b } ->
+            (* Just output the RGB values without wrapper *)
+            pp_channel ctx r;
+            Pp.space ctx ();
+            pp_channel ctx g;
+            Pp.space ctx ();
+            pp_channel ctx b
+        | Var v -> pp_var pp_rgb_type ctx v
+      in
+      pp pp_rgb_type
   | Int -> pp Pp.int
   | Float -> pp Pp.float
   | Percentage -> pp pp_percentage

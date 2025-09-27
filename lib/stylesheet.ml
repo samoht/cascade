@@ -97,7 +97,8 @@ let rec pp_rule : rule Pp.t =
           ~sep:(fun ctx () ->
             Pp.semicolon ctx ();
             Pp.cut ctx ())
-          Declaration.pp_declaration ctx decls
+          (Pp.indent Declaration.pp_declaration)
+          ctx decls
       in
       let pp_nested ctx () = Pp.list ~sep:Pp.cut pp_statement ctx nested in
       Pp.cut ctx ();

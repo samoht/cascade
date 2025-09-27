@@ -319,6 +319,9 @@ let check_font_weight =
 
 let check_cursor = check_value "cursor" read_cursor pp_cursor
 
+let check_scroll_snap_axis =
+  check_value "scroll_snap_axis" read_scroll_snap_axis pp_scroll_snap_axis
+
 let check_scroll_snap_strictness =
   check_value "scroll_snap_strictness" read_scroll_snap_strictness
     pp_scroll_snap_strictness
@@ -1551,6 +1554,15 @@ let test_scroll_snap_stop () =
   check_scroll_snap_stop "inherit";
   neg read_scroll_snap_stop "invalid-stop"
 
+let test_scroll_snap_axis () =
+  check_scroll_snap_axis "x";
+  check_scroll_snap_axis "y";
+  check_scroll_snap_axis "inline";
+  check_scroll_snap_axis "block";
+  check_scroll_snap_axis "both";
+  check_scroll_snap_axis "none";
+  neg read_scroll_snap_axis "invalid-axis"
+
 let test_scroll_snap_strictness () =
   check_scroll_snap_strictness "proximity";
   check_scroll_snap_strictness "mandatory";
@@ -1857,6 +1869,7 @@ let tests =
     test_case "scroll-behavior" `Quick test_scroll_behavior;
     test_case "scroll-snap-align" `Quick test_scroll_snap_align;
     test_case "scroll-snap-stop" `Quick test_scroll_snap_stop;
+    test_case "scroll-snap-axis" `Quick test_scroll_snap_axis;
     test_case "scroll-snap-strictness" `Quick test_scroll_snap_strictness;
     test_case "scroll-snap-type" `Quick test_scroll_snap_type;
     test_case "property names" `Quick test_property_names;

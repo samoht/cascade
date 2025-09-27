@@ -25,11 +25,8 @@ val var_ref_empty :
 val hex : string -> color
 (** [hex s] creates a hex color value. *)
 
-val rgb : int -> int -> int -> color
-(** [rgb r g b] creates an RGB color. *)
-
-val rgba : int -> int -> int -> float -> color
-(** [rgba r g b a] creates an RGBA color with alpha. *)
+val rgb : ?alpha:float -> int -> int -> int -> color
+(** [rgb ?alpha r g b] creates an RGB color with optional alpha. *)
 
 val hsl : float -> float -> float -> color
 (** [hsl h s l] creates an HSL color. *)
@@ -225,6 +222,12 @@ val pp_channel : channel Pp.t
 
 val read_channel : Reader.t -> channel
 (** [read_channel t] parses a channel value. *)
+
+val pp_rgb : rgb Pp.t
+(** [pp_rgb] pretty-prints {!rgb} values. *)
+
+val read_rgb : Reader.t -> rgb
+(** [read_rgb t] parses an RGB value. *)
 
 val read_angle : Reader.t -> angle
 (** [read_angle t] parses a CSS angle. *)

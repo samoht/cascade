@@ -233,6 +233,12 @@ let vars_of_angle (value : Values.angle) : any_var list =
 let vars_of_channel (value : Values.channel) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_rgb (value : Values.rgb) : any_var list =
+  match value with
+  | Channels { r; g; b } ->
+      vars_of_channel r @ vars_of_channel g @ vars_of_channel b
+  | Var v -> [ V v ]
+
 let vars_of_alpha (value : Values.alpha) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -259,10 +265,8 @@ let vars_of_number_percentage (value : Values.number_percentage) : any_var list
 let rec vars_of_color (value : Values.color) : any_var list =
   match value with
   | Var v -> [ V v ]
-  | Rgb { r; g; b } -> vars_of_channel r @ vars_of_channel g @ vars_of_channel b
-  | Rgba { r; g; b; a } ->
-      vars_of_channel r @ vars_of_channel g @ vars_of_channel b
-      @ vars_of_alpha a
+  | Rgb rgb -> vars_of_rgb rgb
+  | Rgba { rgb; a } -> vars_of_rgb rgb @ vars_of_alpha a
   | Hsl { h; s; l; a } ->
       vars_of_hue h @ vars_of_percentage s @ vars_of_percentage l
       @ vars_of_alpha a
@@ -387,6 +391,7 @@ let rec vars_of_value : type a. a kind -> a -> any_var list =
   match kind with
   | Length -> vars_of_length value
   | Color -> vars_of_color value
+  | Rgb -> vars_of_rgb value
   | Percentage -> vars_of_percentage value
   | Number_percentage -> vars_of_number_percentage value
   | Int -> []

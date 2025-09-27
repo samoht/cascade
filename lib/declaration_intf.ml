@@ -6,6 +6,7 @@ open Properties_intf
 type _ kind =
   | Length : length kind
   | Color : color kind
+  | Rgb : rgb kind
   | Int : int kind
   | Float : float kind
   | Percentage : percentage kind
