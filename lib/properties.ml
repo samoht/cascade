@@ -5702,7 +5702,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Animation -> pp (Pp.list ~sep:Pp.comma pp_animation)
   | Aspect_ratio -> pp pp_aspect_ratio
   | Content -> pp pp_content
-  | Quotes -> pp Pp.quoted_string
+  | Quotes -> pp Pp.string
   | Box_shadow -> pp pp_shadow
   | Fill -> pp pp_svg_paint
   | Stroke -> pp pp_svg_paint
