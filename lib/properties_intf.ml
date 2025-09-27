@@ -1053,24 +1053,22 @@ type scroll_snap_strictness =
   | Proximity
   | Var of scroll_snap_strictness var
 
-type scroll_snap_type =
+type scroll_snap_axis =
   | None
   | X
   | Y
   | Block
   | Inline
   | Both
-  | X_mandatory
-  | Y_mandatory
-  | Block_mandatory
-  | Inline_mandatory
-  | Both_mandatory
-  | X_proximity
-  | Y_proximity
-  | Block_proximity
-  | Inline_proximity
-  | Both_proximity
+  | Var of scroll_snap_axis var
+
+type scroll_snap_type =
+  | Axis of scroll_snap_axis (* Just the axis, no strictness *)
+  | Axis_with_strictness of
+      scroll_snap_axis
+      * scroll_snap_strictness (* Axis with explicit strictness or var *)
   | Inherit
+  | Var of scroll_snap_type var
 
 type overscroll_behavior = Auto | Contain | None | Inherit
 

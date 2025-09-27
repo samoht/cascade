@@ -2485,7 +2485,7 @@ let rec pp_scroll_snap_strictness : scroll_snap_strictness Pp.t =
   | Mandatory -> Pp.string ctx "mandatory"
   | Var v -> pp_var pp_scroll_snap_strictness ctx v
 
-let pp_scroll_snap_type : scroll_snap_type Pp.t =
+let rec pp_scroll_snap_axis : scroll_snap_axis Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
   | X -> Pp.string ctx "x"
@@ -2493,17 +2493,20 @@ let pp_scroll_snap_type : scroll_snap_type Pp.t =
   | Block -> Pp.string ctx "block"
   | Inline -> Pp.string ctx "inline"
   | Both -> Pp.string ctx "both"
-  | X_mandatory -> Pp.string ctx "x mandatory"
-  | Y_mandatory -> Pp.string ctx "y mandatory"
-  | Block_mandatory -> Pp.string ctx "block mandatory"
-  | Inline_mandatory -> Pp.string ctx "inline mandatory"
-  | Both_mandatory -> Pp.string ctx "both mandatory"
-  | X_proximity -> Pp.string ctx "x proximity"
-  | Y_proximity -> Pp.string ctx "y proximity"
-  | Block_proximity -> Pp.string ctx "block proximity"
-  | Inline_proximity -> Pp.string ctx "inline proximity"
-  | Both_proximity -> Pp.string ctx "both proximity"
+  | Var v -> pp_var pp_scroll_snap_axis ctx v
+
+let rec pp_scroll_snap_type : scroll_snap_type Pp.t =
+ fun ctx -> function
+  | Axis axis -> pp_scroll_snap_axis ctx axis
+  | Axis_with_strictness (axis, strictness) -> (
+      pp_scroll_snap_axis ctx axis;
+      match axis with
+      | None | Var _ -> () (* "none" and vars don't take strictness *)
+      | _ ->
+          Pp.space ctx ();
+          pp_scroll_snap_strictness ctx strictness)
   | Inherit -> Pp.string ctx "inherit"
+  | Var v -> pp_var pp_scroll_snap_type ctx v
 
 let rec pp_grid_template : grid_template Pp.t =
  fun ctx -> function
@@ -3664,53 +3667,54 @@ let read_scroll_snap_stop t : scroll_snap_stop =
     t
 
 let rec read_scroll_snap_strictness t : scroll_snap_strictness =
-  let read_var t = Var (read_var read_scroll_snap_strictness t) in
   Reader.enum_or_calls "scroll-snap-strictness"
     [
       ("proximity", (Proximity : scroll_snap_strictness));
       ("mandatory", Mandatory);
     ]
-    ~calls:[ ("var", read_var) ]
+    ~calls:[ ("var", fun t -> Var (read_var read_scroll_snap_strictness t)) ]
     t
 
-let read_scroll_snap_type t : scroll_snap_type =
-  (* First read the axis *)
-  let axis = Reader.ident t in
-  match axis with
-  | "none" -> (None : scroll_snap_type)
-  | "inherit" -> Inherit
-  | "x" | "y" | "block" | "inline" | "both" -> (
-      (* Check if there's a strictness value *)
-      Reader.ws t;
-      match Reader.option Reader.ident t with
-      | Some "mandatory" -> (
-          match axis with
-          | "x" -> X_mandatory
-          | "y" -> Y_mandatory
-          | "block" -> Block_mandatory
-          | "inline" -> Inline_mandatory
-          | "both" -> Both_mandatory
-          | _ -> Reader.err_invalid t ("invalid axis for mandatory: " ^ axis))
-      | Some "proximity" -> (
-          match axis with
-          | "x" -> X_proximity
-          | "y" -> Y_proximity
-          | "block" -> Block_proximity
-          | "inline" -> Inline_proximity
-          | "both" -> Both_proximity
-          | _ -> Reader.err_invalid t ("invalid axis for proximity: " ^ axis))
-      | Some other ->
-          Reader.err_invalid t ("invalid scroll-snap strictness: " ^ other)
-      | None -> (
-          (* No strictness specified, return plain axis *)
-          match axis with
-          | "x" -> X
-          | "y" -> Y
-          | "block" -> Block
-          | "inline" -> Inline
-          | "both" -> Both
-          | _ -> Reader.err_invalid t ("invalid scroll-snap-type: " ^ axis)))
-  | _ -> Reader.err_invalid t ("invalid scroll-snap-type: " ^ axis)
+let rec read_scroll_snap_axis t : scroll_snap_axis =
+  Reader.enum_or_calls "scroll-snap axis"
+    [
+      ("none", (None : scroll_snap_axis));
+      ("x", X);
+      ("y", Y);
+      ("block", Block);
+      ("inline", Inline);
+      ("both", Both);
+    ]
+    ~calls:[ ("var", fun t -> Var (read_var read_scroll_snap_axis t)) ]
+    t
+
+let rec read_scroll_snap_type t : scroll_snap_type =
+  (* Use one_of to try different parsing strategies *)
+  Reader.one_of
+    [
+      (fun t ->
+        match Reader.ident t with
+        | "inherit" -> (Inherit : scroll_snap_type)
+        | _ -> raise Not_found);
+      (fun t ->
+        (* Try to read a var() *)
+        (Var (read_var read_scroll_snap_type t) : scroll_snap_type));
+      (fun t ->
+        (* Read axis and optional strictness *)
+        let axis = read_scroll_snap_axis t in
+        Reader.ws t;
+        match axis with
+        | None | Var _ ->
+            (Axis axis : scroll_snap_type)
+            (* "none" and vars don't take strictness *)
+        | _ -> (
+            (* Try to read strictness *)
+            match Reader.option read_scroll_snap_strictness t with
+            | Some strictness ->
+                (Axis_with_strictness (axis, strictness) : scroll_snap_type)
+            | None -> (Axis axis : scroll_snap_type)));
+    ]
+    t
 
 let read_overscroll_behavior t : overscroll_behavior =
   Reader.enum "overscroll-behavior"

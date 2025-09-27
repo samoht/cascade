@@ -776,6 +776,12 @@ val read_scroll_snap_strictness : Reader.t -> scroll_snap_strictness
 (** [read_scroll_snap_strictness t] is the [scroll_snap_strictness] parsed from
     [t]. *)
 
+val pp_scroll_snap_axis : scroll_snap_axis Pp.t
+(** [pp_scroll_snap_axis] is the pretty-printer for [scroll_snap_axis]. *)
+
+val read_scroll_snap_axis : Reader.t -> scroll_snap_axis
+(** [read_scroll_snap_axis t] is the [scroll_snap_axis] parsed from [t]. *)
+
 val pp_scroll_snap_type : scroll_snap_type Pp.t
 (** [pp_scroll_snap_type] is the pretty-printer for [scroll_snap_type]. *)
 
