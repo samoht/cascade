@@ -241,6 +241,10 @@ type color_name =
 
 type channel = Int of int | Num of float | Pct of float | Var of channel var
 
+type rgb =
+  | Channels of { r : channel; g : channel; b : channel }
+  | Var of rgb var
+
 type angle =
   | Deg of float
   | Rad of float
@@ -279,8 +283,8 @@ type hue_interpolation = Shorter | Longer | Increasing | Decreasing | Default
 
 type color =
   | Hex of { hash : bool; value : string }
-  | Rgb of { r : channel; g : channel; b : channel }
-  | Rgba of { r : channel; g : channel; b : channel; a : alpha }
+  | Rgb of rgb
+  | Rgba of { rgb : rgb; a : alpha }
   | Hsl of { h : hue; s : percentage; l : percentage; a : alpha }
   | Hwb of { h : hue; w : percentage; b : percentage; a : alpha }
   | Color of { space : color_space; components : component list; alpha : alpha }

@@ -4875,24 +4875,13 @@ module Gradient_stop = struct
     Color_length (color, Some len1, Some len2)
 
   let read_color_len t =
-    Printf.eprintf "DEBUG read_color_len: starting\n";
     let color = read_color t in
-    Printf.eprintf "DEBUG read_color_len: got color, now at pos %d\n"
-      (Reader.position t);
     Reader.ws t;
-    Printf.eprintf "DEBUG read_color_len: after ws, now at pos %d\n"
-      (Reader.position t);
     let len = read_length t in
-    Printf.eprintf "DEBUG read_color_len: got length, now at pos %d\n"
-      (Reader.position t);
     Color_length (color, Some len, None)
 
   let read_color_only t =
-    Printf.eprintf "DEBUG read_color_only: starting at pos %d\n"
-      (Reader.position t);
     let color = read_color t in
-    Printf.eprintf "DEBUG read_color_only: got color, now at pos %d\n"
-      (Reader.position t);
     Color_percentage (color, None, None)
 
   let read_pct t : gradient_stop = Percentage (read_percentage t)
@@ -5218,10 +5207,14 @@ let read_any_property t =
   | _ -> Reader.err_invalid t ("read_property: unknown property " ^ prop_name)
 
 (* Helper functions for property types *)
+
+(* RGB color helpers *)
+let rgb_black = Rgb (Channels { r = Int 0; g = Int 0; b = Int 0 })
+
 let shadow ?(inset = false) ?(h_offset : length option)
     ?(v_offset : length option) ?(blur : length option)
     ?(spread : length option) ?(color : color option) () : shadow =
-  let default_color = Rgb { r = Int 0; g = Int 0; b = Int 0 } in
+  let default_color = rgb_black in
   Shadow
     {
       inset;

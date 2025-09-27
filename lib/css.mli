@@ -615,6 +615,10 @@ type channel =
   | Pct of float (* 0%–100% *)
   | Var of channel var
 
+type rgb =
+  | Channels of { r : channel; g : channel; b : channel }
+  | Var of rgb var
+
 (** CSS alpha values (for HSL/HWB/etc) *)
 type alpha =
   | None
@@ -662,8 +666,8 @@ type hue_interpolation = Shorter | Longer | Increasing | Decreasing | Default
 type color =
   | Hex of { hash : bool; value : string }
       (** hash indicates if # was present *)
-  | Rgb of { r : channel; g : channel; b : channel }
-  | Rgba of { r : channel; g : channel; b : channel; a : alpha }
+  | Rgb of rgb
+  | Rgba of { rgb : rgb; a : alpha }
   | Hsl of { h : hue; s : percentage; l : percentage; a : alpha }
   | Hwb of { h : hue; w : percentage; b : percentage; a : alpha }
   | Color of { space : color_space; components : component list; alpha : alpha }
@@ -695,11 +699,9 @@ val hex : string -> color
 (** [hex s] is a hexadecimal color. Accepts with or without leading [#].
     Examples: [hex "#3b82f6"], [hex "ffffff"]. *)
 
-val rgb : int -> int -> int -> color
-(** [rgb r g b] is an RGB color (0–255 components). *)
-
-val rgba : int -> int -> int -> float -> color
-(** [rgba r g b a] is an RGBA color with alpha in [0., 1.]. *)
+val rgb : ?alpha:float -> int -> int -> int -> color
+(** [rgb ?alpha r g b] is an RGB color (0–255 components) with optional alpha.
+*)
 
 val hsl : float -> float -> float -> color
 (** [hsl h s l] is an HSL color with h in degrees, s and l in percentages
@@ -3512,6 +3514,7 @@ val font_variation_settings : font_variation_settings -> declaration
 type _ kind =
   | Length : length kind
   | Color : color kind
+  | Rgb : rgb kind
   | Int : int kind
   | Float : float kind
   | Percentage : percentage kind

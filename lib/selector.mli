@@ -74,6 +74,15 @@ val pp_ns : ns Pp.t
 val pp_attr_flag : attr_flag option Pp.t
 (** [pp_attr_flag] pretty-prints optional attribute flags. *)
 
+val attr_value_needs_quoting : string -> bool
+(** [attr_value_needs_quoting value] returns [true] if the given attribute value
+    requires quoting according to CSS specifications. Values need quotes if:
+    - They are empty
+    - They start with a digit
+    - They start with double hyphen (--)
+    - They contain characters that are not valid in CSS identifiers (anything
+      other than letters, digits, hyphens, underscores, or non-ASCII) *)
+
 val pp_nth : nth Pp.t
 (** [pp_nth] pretty-prints nth expressions. *)
 

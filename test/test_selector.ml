@@ -168,6 +168,22 @@ let attribute_cases () =
 
   (* Values with special characters require quotes *)
   check "[href=\"http://example.com\"]";
+
+  (* Test attribute values for prose type selectors that need quoting *)
+  (* Values with spaces like "A s", "a s", "I s", "i s" require quotes *)
+  check_construct "[type=\"A s\"]" (attribute "type" (Exact "A s"));
+  check_construct "[type=\"a s\"]" (attribute "type" (Exact "a s"));
+  check_construct "[type=\"I s\"]" (attribute "type" (Exact "I s"));
+  check_construct "[type=\"i s\"]" (attribute "type" (Exact "i s"));
+
+  (* Single letter values don't need quotes *)
+  check_construct "[type=A]" (attribute "type" (Exact "A"));
+  check_construct "[type=a]" (attribute "type" (Exact "a"));
+  check_construct "[type=I]" (attribute "type" (Exact "I"));
+  check_construct "[type=i]" (attribute "type" (Exact "i"));
+
+  (* Numeric values need quotes *)
+  check_construct "[type=\"1\"]" (attribute "type" (Exact "1"));
   check "[data-path=\"/home/user\"]";
   check "[content=\"Hello, World!\"]";
 
@@ -615,6 +631,65 @@ let test_attribute_match () =
   (* Missing value *)
   neg read_attribute_match "~=" (* Missing value *)
 
+let test_attr_value_quoting () =
+  (* Test the attr_value_needs_quoting function behavior *)
+  let module S = Css.Selector in
+  (* Helper to check if a value needs quoting *)
+  let check_needs_quoting value expected =
+    let actual = S.attr_value_needs_quoting value in
+    Alcotest.(check bool)
+      (Printf.sprintf "attr_value_needs_quoting %S" value)
+      expected actual
+  in
+
+  (* Values that need quotes *)
+  check_needs_quoting "" true;
+  (* Empty string *)
+  check_needs_quoting "A s" true;
+  (* Contains space *)
+  check_needs_quoting "a s" true;
+  (* Contains space *)
+  check_needs_quoting "I s" true;
+  (* Contains space *)
+  check_needs_quoting "i s" true;
+  (* Contains space *)
+  check_needs_quoting "hello world" true;
+  (* Contains space *)
+  check_needs_quoting "1" true;
+  (* Starts with digit *)
+  check_needs_quoting "123" true;
+  (* Starts with digit *)
+  check_needs_quoting "2.0" true;
+  (* Starts with digit *)
+  check_needs_quoting "--custom" true;
+  (* Starts with double hyphen *)
+  check_needs_quoting "a!b" true;
+  (* Contains special character *)
+  check_needs_quoting "a@b" true;
+  (* Contains special character *)
+  check_needs_quoting "a#b" true;
+
+  (* Contains special character *)
+
+  (* Values that don't need quotes *)
+  check_needs_quoting "A" false;
+  (* Single letter *)
+  check_needs_quoting "a" false;
+  (* Single letter *)
+  check_needs_quoting "I" false;
+  (* Single letter *)
+  check_needs_quoting "i" false;
+  (* Single letter *)
+  check_needs_quoting "text" false;
+  (* Simple identifier *)
+  check_needs_quoting "my-class" false;
+  (* With hyphen *)
+  check_needs_quoting "my_id" false;
+  (* With underscore *)
+  check_needs_quoting "value123" false;
+  (* Letters then digits *)
+  check_needs_quoting "-webkit" false (* Single hyphen prefix *)
+
 let test_attr_flag () =
   (* Test attribute selector flags - returns option type *)
   let check_attr_flag = check_value "attr_flag" read_attr_flag pp_attr_flag in
@@ -634,6 +709,52 @@ let test_attr_flag () =
   neg read_attr_flag "S";
   (* Wrong case *)
   neg read_attr_flag "is" (* Multiple characters *)
+
+let test_attr_case_sensitivity_flags () =
+  (* Test CSS Level 4 case-sensitivity flags (i and s) in attribute selectors *)
+  let module S = Css.Selector in
+  (* Test selector output with case-sensitivity flags *)
+  let check_selector_with_flag value flag expected =
+    let sel = S.attribute ?flag "type" (Exact value) in
+    let output = Css.Pp.to_string ~minify:true S.pp sel in
+    Alcotest.(check string)
+      (Printf.sprintf "selector for type=%S with flag %s" value
+         (match flag with
+         | None -> "none"
+         | Some Case_insensitive -> "i"
+         | Some Case_sensitive -> "s"))
+      expected output
+  in
+
+  (* Without flag *)
+  check_selector_with_flag "A" None "[type=A]";
+  check_selector_with_flag "a" None "[type=a]";
+  check_selector_with_flag "I" None "[type=I]";
+  check_selector_with_flag "i" None "[type=i]";
+
+  (* With case-insensitive flag (i) *)
+  check_selector_with_flag "A" (Some Case_insensitive) "[type=A i]";
+  check_selector_with_flag "a" (Some Case_insensitive) "[type=a i]";
+  check_selector_with_flag "foo" (Some Case_insensitive) "[type=foo i]";
+
+  (* With case-sensitive flag (s) *)
+  check_selector_with_flag "A" (Some Case_sensitive) "[type=A s]";
+  check_selector_with_flag "a" (Some Case_sensitive) "[type=a s]";
+  check_selector_with_flag "I" (Some Case_sensitive) "[type=I s]";
+  check_selector_with_flag "i" (Some Case_sensitive) "[type=i s]";
+  check_selector_with_flag "foo" (Some Case_sensitive) "[type=foo s]";
+
+  (* Values with spaces should be quoted regardless of flag *)
+  let sel = S.attribute ~flag:Case_sensitive "type" (Exact "A B") in
+  let output = Css.Pp.to_string ~minify:true S.pp sel in
+  Alcotest.(check string)
+    "value with space and s flag" "[type=\"A B\" s]" output;
+
+  let sel = S.attribute ~flag:Case_insensitive "type" (Exact "foo bar") in
+  let output = Css.Pp.to_string ~minify:true S.pp sel in
+  Alcotest.(check string)
+    "value with space and i flag" "[type=\"foo bar\" i]" output;
+  ()
 
 let test_combinator () =
   (* Test combinator type *)
@@ -822,7 +943,10 @@ let suite =
       test_case "roundtrip" `Quick roundtrip;
       test_case "selector component parsing" `Quick component_parsing;
       test_case "attribute match" `Quick test_attribute_match;
+      test_case "attr value quoting" `Quick test_attr_value_quoting;
       test_case "attr flag" `Quick test_attr_flag;
+      test_case "attr case sensitivity flags" `Quick
+        test_attr_case_sensitivity_flags;
       test_case "selector component failures" `Quick component_parsing_failures;
       (* Error cases *)
       test_case "invalid" `Quick invalid;
