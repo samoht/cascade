@@ -55,7 +55,10 @@ let duplicate_buggy_properties decls =
 let deduplicate_declarations props =
   (* CSS cascade rules: 1. !important declarations always win over normal
      declarations 2. Among declarations of same importance, last one wins We
-     need to track normal and important separately *)
+     need to track normal and important separately
+
+     Special case: Don't deduplicate content properties as they may be
+     intentionally duplicated for fallback patterns *)
   let normal_seen = Hashtbl.create 16 in
   let important_seen = Hashtbl.create 16 in
 
@@ -63,8 +66,10 @@ let deduplicate_declarations props =
   List.iter
     (fun decl ->
       let prop_name = property_name decl in
-      if is_important decl then Hashtbl.replace important_seen prop_name decl
-      else Hashtbl.replace normal_seen prop_name decl)
+      (* Skip deduplication tracking for content property *)
+      if prop_name <> "content" then
+        if is_important decl then Hashtbl.replace important_seen prop_name decl
+        else Hashtbl.replace normal_seen prop_name decl)
     props;
 
   (* Second pass: build result, important wins over normal for same property *)
@@ -76,7 +81,9 @@ let deduplicate_declarations props =
     (fun decl ->
       let prop_name = property_name decl in
 
-      if not (Hashtbl.mem processed prop_name) then (
+      (* Always keep content properties (no deduplication) *)
+      if prop_name = "content" then deduped := decl :: !deduped
+      else if not (Hashtbl.mem processed prop_name) then (
         Hashtbl.add processed prop_name ();
         (* If there's an important version, use it; otherwise use normal *)
         let final_decl =

@@ -59,60 +59,46 @@ let pp_property_rule : 'a property_rule Pp.t =
   Pp.string ctx name;
   Pp.sp ctx ();
   Pp.braces
-    (fun ctx () ->
-      Pp.cut ctx ();
-      Pp.nest 2
-        (fun ctx () ->
-          Pp.string ctx "syntax:";
-          Pp.space_if_pretty ctx ();
-          Variables.pp_syntax ctx syntax;
-          Pp.string ctx ";";
-          Pp.cut ctx ();
-          Pp.string ctx "inherits:";
-          Pp.space_if_pretty ctx ();
-          Pp.string ctx (if inherits then "true" else "false");
-          match initial_value with
-          | None -> ()
-          | Some v ->
-              Pp.semicolon ctx ();
-              Pp.cut ctx ();
-              Pp.string ctx "initial-value:";
-              Pp.space_if_pretty ctx ();
-              Variables.pp_value syntax ctx v)
-        ctx ();
-      Pp.cut ctx ())
-    ctx ()
+    (Pp.list
+       ~sep:(fun ctx () ->
+         Pp.semicolon ctx ();
+         Pp.cut ctx ())
+       (fun ctx (key, pp_value) ->
+         Pp.indent
+           (fun ctx () ->
+             Pp.string ctx key;
+             Pp.string ctx ":";
+             Pp.space_if_pretty ctx ();
+             pp_value ctx ())
+           ctx ()))
+    ctx
+    ([
+       ("syntax", fun ctx () -> Variables.pp_syntax ctx syntax);
+       ( "inherits",
+         fun ctx () -> Pp.string ctx (if inherits then "true" else "false") );
+     ]
+    @
+    match initial_value with
+    | None -> []
+    | Some v ->
+        [ ("initial-value", fun ctx () -> Variables.pp_value syntax ctx v) ])
 
 let rec pp_rule : rule Pp.t =
  fun ctx rule ->
   Selector.pp ctx rule.selector;
   Pp.sp ctx ();
-  let pp_body ctx () =
-    match (rule.declarations, rule.nested) with
-    | [], [] -> ()
-    | decls, nested ->
-        Pp.cut ctx ();
-        let pp_declarations ctx () =
-          Pp.nest 2
-            (Pp.list
-               ~sep:(fun ctx () ->
-                 Pp.semicolon ctx ();
-                 Pp.cut ctx ())
-               Declaration.pp_declaration)
-            ctx decls
-        in
-        let pp_nested ctx () = Pp.list ~sep:Pp.cut pp_statement ctx nested in
-        (match (decls, nested) with
-        | [], _ -> pp_nested ctx ()
-        | _, [] -> pp_declarations ctx ()
-        | _, _ ->
-            pp_declarations ctx ();
-            Pp.semicolon ctx ();
-            Pp.cut ctx ();
-            pp_nested ctx ());
-        Pp.cut ctx ()
-  in
-  Pp.surround ~left:Pp.block_open ~right:Pp.block_close pp_body ctx ()
+  Pp.braces
+    (Pp.list
+       ~sep:(fun ctx () ->
+         Pp.semicolon ctx ();
+         Pp.cut ctx ())
+       (fun ctx item ->
+         match item with
+         | `Decl decl -> Pp.indent Declaration.pp_declaration ctx decl
+         | `Nested stmt -> Pp.indent pp_statement ctx stmt))
+    ctx
+    (List.map (fun d -> `Decl d) rule.declarations
+    @ List.map (fun n -> `Nested n) rule.nested)
 
 and pp_keyframe : keyframe Pp.t =
  fun ctx kf ->
@@ -310,9 +296,7 @@ and pp_statement : statement Pp.t =
 
 and pp_block : block Pp.t =
  fun ctx statements ->
-  Pp.cut ctx ();
-  Pp.nest 2 (Pp.list ~sep:Pp.cut pp_statement) ctx statements;
-  Pp.cut ctx ()
+  Pp.list ~sep:Pp.cut (Pp.indent pp_statement) ctx statements
 
 let pp_stylesheet : stylesheet Pp.t =
  fun ctx statements -> Pp.list ~sep:Pp.cut pp_statement ctx statements
