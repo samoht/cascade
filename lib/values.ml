@@ -360,12 +360,9 @@ and pp_alpha : alpha Pp.t =
   | None -> ()
   | Num f -> Pp.float ctx f
   | Pct f ->
-      if ctx.minify then
-        (* During minification, convert percentage to decimal [0,1] *)
-        Pp.float ctx (f /. 100.0)
-      else (
-        Pp.float ctx f;
-        Pp.char ctx '%')
+      (* Always output percentage with % sign to match modern CSS syntax *)
+      Pp.float ctx f;
+      Pp.char ctx '%'
   | Var v -> pp_var pp_alpha ctx v
 
 (* Helper to print optional alpha with the correct leading separator *)
