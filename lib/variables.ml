@@ -366,6 +366,23 @@ let vars_of_font_variant_numeric (value : Properties.font_variant_numeric) :
     any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_scroll_snap_strictness (value : Properties.scroll_snap_strictness) :
+    any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_scroll_snap_axis (value : Properties.scroll_snap_axis) :
+    any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_scroll_snap_type (value : Properties.scroll_snap_type) :
+    any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | Axis axis -> vars_of_scroll_snap_axis axis
+  | Axis_with_strictness (axis, strictness) ->
+      vars_of_scroll_snap_axis axis @ vars_of_scroll_snap_strictness strictness
+  | Inherit -> []
+
 let compare_vars_by_name (V x) (V y) = String.compare x.name y.name
 
 (** {1 Variable name utilities} *)
@@ -510,6 +527,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Box_shadow, value -> vars_of_shadow value
   (* Scale properties *)
   | Scale, value -> vars_of_scale value
+  (* Scroll snap properties *)
+  | Scroll_snap_type, value -> vars_of_scroll_snap_type value
   (* Default case for all other properties *)
   | _ -> []
 
