@@ -148,11 +148,13 @@ let roundtrip () =
   let roundtrip_css = Css.to_string ~minify:true parsed_stylesheet in
 
   (* Compare - they should be identical *)
-  if original_css <> roundtrip_css then (
-    (* Show a helpful diff around the first mismatch to ease debugging *)
-    Tw_tools.Diff_format.eprintf_diff ~original:original_css
-      ~actual:roundtrip_css;
-    Alcotest.fail "CSS roundtrip should be identical")
+  if original_css <> roundtrip_css then
+    (* Show where the difference occurs *)
+    match Tw_tools.Diff_format.first_diff_pos original_css roundtrip_css with
+    | Some pos ->
+        Fmt.epr "CSS roundtrip differs at position %d@." pos;
+        Alcotest.fail "CSS roundtrip should be identical"
+    | None -> Alcotest.fail "CSS roundtrip should be identical"
   else
     Alcotest.(check string)
       "CSS roundtrip should be identical" original_css roundtrip_css
