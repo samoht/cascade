@@ -360,7 +360,10 @@ and pp_alpha : alpha Pp.t =
   | None -> ()
   | Num f -> Pp.float ctx f
   | Pct f ->
-      (* Always output percentage with % sign to match modern CSS syntax *)
+      (* Keep percentage with % sign. CSS spec allows both decimal and
+         percentage for alpha values. Tailwind doesn't optimize alpha
+         percentages to decimals, so we follow the same approach for
+         consistency. *)
       Pp.float ctx f;
       Pp.char ctx '%'
   | Var v -> pp_var pp_alpha ctx v
@@ -421,7 +424,7 @@ let pp_rgb_func = Pp.call "rgb" pp_rgb_args
 
 let rec pp_rgb : rgb Pp.t =
  fun ctx -> function
-  | Channels { r; g; b } -> pp_rgb_func ctx (r, g, b, None)
+  | Channels { r; g; b } -> Pp.list ~sep:Pp.space pp_channel ctx [ r; g; b ]
   | Var v -> pp_var pp_rgb ctx v
 
 let pp_oklch_args : (percentage * float * hue * alpha) Pp.t =
@@ -982,14 +985,16 @@ let rec read_rgb_var t : rgb var =
 
 and read_rgb t : rgb =
   Reader.ws t;
-  if Reader.looking_at t "var(" then Var (read_rgb_var t)
-  else
-    let r = read_channel t in
-    Reader.ws t;
-    let g = read_channel t in
-    Reader.ws t;
-    let b = read_channel t in
-    Channels { r; g; b }
+  (* Try to parse as three channels first (any could be a variable) *)
+  Reader.one_of
+    [
+      (fun t ->
+        let r, g, b = Reader.triple read_channel read_channel read_channel t in
+        Channels { r; g; b });
+      (* Fall back to a single var representing all channels *)
+      (fun t -> Var (read_rgb_var t));
+    ]
+    t
 
 and read_rgb_space_separated t : color =
   (* First, check if we have var() at the beginning for the special case *)
