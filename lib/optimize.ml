@@ -147,7 +147,6 @@ let should_not_combine selector =
   let s = Pp.to_string Selector.pp selector in
   String.starts_with ~prefix:"::file-selector-button" s
   || String.starts_with ~prefix:"::-webkit-" s
-  (* Don't prevent combining :where() selectors - they can be safely combined *)
   || false
 
 (* Convert group of selectors to a rule *)
