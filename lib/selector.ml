@@ -92,6 +92,27 @@ let pp_attribute_match : attribute_match Pp.t =
       Pp.string ctx "*=";
       pp_attr_value ctx value
 
+let skip_css_escape name i =
+  (* Skip escaped sequence: either next char or up to 6 hex digits + optional
+     space *)
+  let len = String.length name in
+  incr i;
+  if !i < len then (
+    let is_hex c =
+      (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+    in
+    let start = !i in
+    let rec consume_hex n =
+      if n = 6 || !i >= len then ()
+      else if is_hex name.[!i] then (
+        incr i;
+        consume_hex (n + 1))
+      else ()
+    in
+    consume_hex 0;
+    if !i = start then incr i (* single escaped char *)
+    else if !i < len && name.[!i] = ' ' then incr i)
+
 let validate_css_identifier name =
   if String.length name = 0 then err_invalid_identifier name "cannot be empty";
 
@@ -113,38 +134,13 @@ let validate_css_identifier name =
   let i = ref 0 in
   while !i < len do
     let c = name.[!i] in
-    if c = '\\' then (
-      (* Skip escaped sequence payload: either next char or up to 6 hex digits
-         optionally followed by a space *)
-      incr i;
-      if !i < len then (
-        let is_hex c =
-          (c >= '0' && c <= '9')
-          || (c >= 'a' && c <= 'f')
-          || (c >= 'A' && c <= 'F')
-        in
-        let start = !i in
-        let rec consume_hex n =
-          if n = 6 || !i >= len then ()
-          else if is_hex name.[!i] then (
-            incr i;
-            consume_hex (n + 1))
-          else ()
-        in
-        consume_hex 0;
-        if !i = start then incr i (* single escaped char *)
-        else if !i < len && name.[!i] = ' ' then incr i))
+    if c = '\\' then skip_css_escape name i
     else
       let idx = !i in
       let is_valid =
-        if idx = 0 then
-          (* Allow - at start for vendor prefixes, but other rules still
-             apply *)
-          is_valid_nmstart c || c = '-'
-        else is_valid_nmchar c
+        if idx = 0 then is_valid_nmstart c || c = '-' else is_valid_nmchar c
       in
       if (not is_valid) && Char.code c <= 127 then
-        (* Only validate ASCII, allow non-ASCII *)
         err_invalid_identifier name
           (String.concat ""
              [
@@ -390,6 +386,17 @@ let read_attribute t =
   attribute ?ns attr matcher ?flag
 
 (** Read An+B microsyntax for nth expressions *)
+let read_offset t =
+  (* Parse optional offset: +b, -b, or nothing *)
+  match Reader.peek t with
+  | Some '+' ->
+      Reader.skip t;
+      Reader.int t
+  | Some '-' ->
+      Reader.skip t;
+      -Reader.int t
+  | _ -> 0
+
 let read_nth t : nth =
   Reader.ws t;
   Reader.one_of
@@ -418,38 +425,16 @@ let read_nth t : nth =
           | Some _ -> Reader.int t
           | None -> Reader.err_eof t
         in
-
         (* Check for 'n' *)
         if Reader.peek t = Some 'n' then (
           Reader.skip t;
-          (* Parse optional offset *)
-          let b =
-            match Reader.peek t with
-            | Some '+' ->
-                Reader.skip t;
-                Reader.int t
-            | Some '-' ->
-                Reader.skip t;
-                -Reader.int t
-            | _ -> 0
-          in
+          let b = read_offset t in
           An_plus_b (a, b))
-        else
-          (* Just a number *)
-          Index a);
+        else Index a);
       (* Plain "n" followed by offset *)
       (fun t ->
         Reader.expect 'n' t;
-        let b =
-          match Reader.peek t with
-          | Some '+' ->
-              Reader.skip t;
-              Reader.int t
-          | Some '-' ->
-              Reader.skip t;
-              -Reader.int t
-          | _ -> 0
-        in
+        let b = read_offset t in
         An_plus_b (1, b));
       (* Just an integer *)
       (fun t -> Index (Reader.int t));

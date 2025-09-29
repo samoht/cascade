@@ -361,6 +361,50 @@ let ident ?(keep_case = false) t =
 let is_digit c = c >= '0' && c <= '9'
 let is_alpha c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 
+let read_unicode_escape t buf =
+  (* Unicode escape: read up to 6 hex digits *)
+  let hex_buf = Buffer.create 6 in
+  let rec read_hex count =
+    if count < 6 then
+      match peek t with
+      | Some h when is_hex h ->
+          skip t;
+          Buffer.add_char hex_buf h;
+          read_hex (count + 1)
+      | _ -> ()
+    else ()
+  in
+  read_hex 0;
+  let hex = Buffer.contents hex_buf in
+  (if String.length hex = 0 then err_invalid t "empty unicode escape"
+   else
+     (* Validate that it forms valid unicode *)
+     try
+       let code = int_of_string ("0x" ^ hex) in
+       if code > 0x10FFFF then err_invalid t "unicode escape out of range";
+       (* Add the unicode character as a backslash followed by hex *)
+       Buffer.add_char buf '\\';
+       Buffer.add_string buf hex
+     with
+     | Invalid_argument _ -> err_invalid t "invalid unicode escape"
+     | Failure _ -> err_invalid t "invalid unicode escape");
+  (* Optional whitespace after unicode escape *)
+  match peek t with
+  | Some (' ' | '\t' | '\n' | '\r') -> skip t
+  | _ -> ()
+
+let read_single_char_escape t buf c =
+  (* Single character escape or invalid *)
+  skip t;
+  if
+    (not (is_alpha c || is_digit c))
+    && c <> '"' && c <> '\'' && c <> '\\' && c <> '/' && c <> ' ' && c <> '\n'
+    && c <> '\r' && c <> '\t'
+  then
+    (* For CSS, only certain characters can be escaped directly *)
+    err_invalid t ("invalid escape sequence '" ^ "\\" ^ String.make 1 c ^ "'");
+  Buffer.add_char buf c
+
 let string ?(trim = false) t =
   let quote = char t in
   if quote <> '"' && quote <> '\'' then err_expected t "string quote";
@@ -370,55 +414,13 @@ let string ?(trim = false) t =
     | None -> err t "unclosed string"
     | Some '\\' -> (
         skip t;
-        (* skip backslash *)
-        (* Handle CSS escape sequences *)
         match peek t with
         | None -> err t "incomplete escape sequence"
         | Some c when is_hex c ->
-            (* Unicode escape: read up to 6 hex digits *)
-            let hex_buf = Buffer.create 6 in
-            let rec read_hex count =
-              if count < 6 then
-                match peek t with
-                | Some h when is_hex h ->
-                    skip t;
-                    Buffer.add_char hex_buf h;
-                    read_hex (count + 1)
-                | _ -> ()
-              else ()
-            in
-            read_hex 0;
-            let hex = Buffer.contents hex_buf in
-            (if String.length hex = 0 then err_invalid t "empty unicode escape"
-             else
-               (* Validate that it forms valid unicode *)
-               try
-                 let code = int_of_string ("0x" ^ hex) in
-                 if code > 0x10FFFF then
-                   err_invalid t "unicode escape out of range";
-                 (* Add the unicode character as a backslash followed by hex *)
-                 Buffer.add_char buf '\\';
-                 Buffer.add_string buf hex
-               with
-               | Invalid_argument _ -> err_invalid t "invalid unicode escape"
-               | Failure _ -> err_invalid t "invalid unicode escape");
-            (* Optional whitespace after unicode escape *)
-            (match peek t with
-            | Some (' ' | '\t' | '\n' | '\r') -> skip t
-            | _ -> ());
+            read_unicode_escape t buf;
             loop ()
         | Some c ->
-            (* Single character escape or invalid *)
-            skip t;
-            if
-              (not (is_alpha c || is_digit c))
-              && c <> '"' && c <> '\'' && c <> '\\' && c <> '/' && c <> ' '
-              && c <> '\n' && c <> '\r' && c <> '\t'
-            then
-              (* For CSS, only certain characters can be escaped directly *)
-              err_invalid t
-                ("invalid escape sequence '" ^ "\\" ^ String.make 1 c ^ "'");
-            Buffer.add_char buf c;
+            read_single_char_escape t buf c;
             loop ())
     | Some c when c = quote ->
         skip t;

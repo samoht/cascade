@@ -1301,6 +1301,15 @@ let read_color_space t : color_space =
   | _ -> Reader.err_invalid t ("color space: " ^ ident)
 
 (** Parse color-mix() function - forward declaration needed *)
+let read_optional_percentage t : percentage option =
+  (* Parse optional percentage immediately after a value *)
+  try
+    let n = Reader.number t in
+    Reader.expect '%' t;
+    Reader.ws t;
+    Some (Pct n)
+  with Reader.Parse_error _ | End_of_file | Failure _ -> None
+
 let rec read_color_mix t : color =
   Reader.ws t;
 
@@ -1312,10 +1321,8 @@ let rec read_color_mix t : color =
       Reader.ws t;
       let space = read_color_space t in
       Reader.ws t;
-
       (* For cylindrical color spaces, check for hue interpolation *)
       let hue = Default in
-      (* Simplified for now *)
       (Some space, hue))
     else (None, Default)
   in
@@ -1327,17 +1334,7 @@ let rec read_color_mix t : color =
   (* Parse first color and optional percentage *)
   let color1 = read_color t in
   Reader.ws t;
-
-  (* Parse optional percentage for first color - immediately after color *)
-  let percent1 : percentage option =
-    try
-      let n = Reader.number t in
-      Reader.expect '%' t;
-      Reader.ws t;
-      Some (Pct n)
-      (* Don't divide by 100 - keep the raw percentage value *)
-    with Reader.Parse_error _ | End_of_file | Failure _ -> None
-  in
+  let percent1 = read_optional_percentage t in
 
   Reader.expect ',' t;
   Reader.ws t;
@@ -1345,17 +1342,7 @@ let rec read_color_mix t : color =
   (* Parse second color and optional percentage *)
   let color2 = read_color t in
   Reader.ws t;
-
-  (* Parse optional percentage for second color - immediately after color *)
-  let percent2 : percentage option =
-    try
-      let n = Reader.number t in
-      Reader.expect '%' t;
-      Reader.ws t;
-      Some (Pct n)
-      (* Don't divide by 100 - keep the raw percentage value *)
-    with Reader.Parse_error _ | End_of_file | Failure _ -> None
-  in
+  let percent2 = read_optional_percentage t in
 
   Reader.ws t;
   Reader.expect ')' t;
