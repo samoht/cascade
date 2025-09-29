@@ -448,6 +448,14 @@ let read_keyframes (r : Reader.t) : statement =
   Keyframes (name, frames)
 
 (* Read a font-face descriptor *)
+(* Helper to parse descriptor value after colon *)
+let read_descriptor_value parse_fn constructor r =
+  Reader.ws r;
+  Reader.expect ':' r;
+  Reader.ws r;
+  let value = parse_fn r in
+  constructor value
+
 let read_font_face_descriptor (r : Reader.t) : font_face_descriptor option =
   Reader.ws r;
   if Reader.peek r = Some '}' then None
@@ -455,133 +463,67 @@ let read_font_face_descriptor (r : Reader.t) : font_face_descriptor option =
     Reader.skip r;
     None)
   else
-    (* Define local readers for each descriptor type *)
-    let read_font_family r =
-      Reader.ws r;
-      Reader.expect ':' r;
-      Reader.ws r;
-      let families =
-        Reader.list ~sep:Reader.comma Properties.read_font_family r
-      in
-      Font_family families
-    in
-    let read_src r =
-      Reader.ws r;
-      Reader.expect ':' r;
-      Reader.ws r;
-      (* TODO: Proper src parsing with url() and local() *)
-      let value = Declaration.read_property_value r in
-      Src value
-    in
-    let read_font_style r =
-      Reader.ws r;
-      Reader.expect ':' r;
-      Reader.ws r;
-      let style = Properties.read_font_style r in
-      Font_style style
-    in
-    let read_font_weight r =
-      Reader.ws r;
-      Reader.expect ':' r;
-      Reader.ws r;
-      let weight = Properties.read_font_weight r in
-      Font_weight weight
-    in
-    let read_font_stretch r =
-      Reader.ws r;
-      Reader.expect ':' r;
-      Reader.ws r;
-      let stretch = Properties.read_font_stretch r in
-      Font_stretch stretch
-    in
-    let read_font_display r =
-      Reader.ws r;
-      Reader.expect ':' r;
-      Reader.ws r;
-      let display = Properties.read_font_display r in
-      Font_display display
-    in
-    let read_unicode_range r =
-      Reader.ws r;
-      Reader.expect ':' r;
-      Reader.ws r;
-      let range = Properties.read_unicode_range r in
-      Unicode_range range
-    in
-    let read_font_variant r =
-      Reader.ws r;
-      Reader.expect ':' r;
-      Reader.ws r;
-      (* TODO: Proper font-variant parsing *)
-      let value = Declaration.read_property_value r in
-      Font_variant value
-    in
-    let read_font_feature_settings r =
-      Reader.ws r;
-      Reader.expect ':' r;
-      Reader.ws r;
-      (* TODO: Proper font-feature-settings parsing *)
-      let value = Declaration.read_property_value r in
-      Font_feature_settings value
-    in
-    let read_font_variation_settings r =
-      Reader.ws r;
-      Reader.expect ':' r;
-      Reader.ws r;
-      (* TODO: Proper font-variation-settings parsing *)
-      let value = Declaration.read_property_value r in
-      Font_variation_settings value
-    in
-    let read_size_adjust r =
-      Reader.ws r;
-      Reader.expect ':' r;
-      Reader.ws r;
-      (* TODO: Proper percentage parsing *)
-      let value = Declaration.read_property_value r in
-      Size_adjust value
-    in
-    let read_ascent_override r =
-      Reader.ws r;
-      Reader.expect ':' r;
-      Reader.ws r;
-      (* TODO: Proper percentage or normal parsing *)
-      let value = Declaration.read_property_value r in
-      Ascent_override value
-    in
-    let read_descent_override r =
-      Reader.ws r;
-      Reader.expect ':' r;
-      Reader.ws r;
-      (* TODO: Proper percentage or normal parsing *)
-      let value = Declaration.read_property_value r in
-      Descent_override value
-    in
-    let read_line_gap_override r =
-      Reader.ws r;
-      Reader.expect ':' r;
-      Reader.ws r;
-      (* TODO: Proper percentage or normal parsing *)
-      let value = Declaration.read_property_value r in
-      Line_gap_override value
-    in
-    (* Use Reader.enum to get the descriptor name, then parse its value *)
     let name = Reader.ident ~keep_case:false r in
     let descriptor =
       match name with
-      | "font-family" -> read_font_family r
-      | "src" -> read_src r
-      | "font-style" -> read_font_style r
-      | "font-weight" -> read_font_weight r
-      | "font-stretch" -> read_font_stretch r
-      | "font-display" -> read_font_display r
-      | "unicode-range" -> read_unicode_range r
-      | "font-variant" -> read_font_variant r
-      | "font-feature-settings" -> read_font_feature_settings r
-      | "font-variation-settings" -> read_font_variation_settings r
-      | "size-adjust" -> read_size_adjust r
-      | "ascent-override" -> read_ascent_override r
-      | "descent-override" -> read_descent_override r
-      | "line-gap-override" -> read_line_gap_override r
+      | "font-family" ->
+          read_descriptor_value
+            (fun r ->
+              Reader.list ~sep:Reader.comma Properties.read_font_family r)
+            (fun v -> Font_family v)
+            r
+      | "src" ->
+          read_descriptor_value Declaration.read_property_value
+            (fun v -> Src v)
+            r
+      | "font-style" ->
+          read_descriptor_value Properties.read_font_style
+            (fun v -> Font_style v)
+            r
+      | "font-weight" ->
+          read_descriptor_value Properties.read_font_weight
+            (fun v -> Font_weight v)
+            r
+      | "font-stretch" ->
+          read_descriptor_value Properties.read_font_stretch
+            (fun v -> Font_stretch v)
+            r
+      | "font-display" ->
+          read_descriptor_value Properties.read_font_display
+            (fun v -> Font_display v)
+            r
+      | "unicode-range" ->
+          read_descriptor_value Properties.read_unicode_range
+            (fun v -> Unicode_range v)
+            r
+      | "font-variant" ->
+          read_descriptor_value Declaration.read_property_value
+            (fun v -> Font_variant v)
+            r
+      | "font-feature-settings" ->
+          read_descriptor_value Declaration.read_property_value
+            (fun v -> Font_feature_settings v)
+            r
+      | "font-variation-settings" ->
+          read_descriptor_value Declaration.read_property_value
+            (fun v -> Font_variation_settings v)
+            r
+      | "size-adjust" ->
+          read_descriptor_value Declaration.read_property_value
+            (fun v -> Size_adjust v)
+            r
+      | "ascent-override" ->
+          read_descriptor_value Declaration.read_property_value
+            (fun v -> Ascent_override v)
+            r
+      | "descent-override" ->
+          read_descriptor_value Declaration.read_property_value
+            (fun v -> Descent_override v)
+            r
+      | "line-gap-override" ->
+          read_descriptor_value Declaration.read_property_value
+            (fun v -> Line_gap_override v)
+            r
       | _ -> Reader.err_invalid r ("unknown font-face descriptor: " ^ name)
     in
     Reader.ws r;
@@ -805,6 +747,40 @@ and read_nested_at_rule (r : Reader.t) (at_rule : string)
       Media (condition, content)
   | _ -> Reader.err_invalid r ("Unexpected nested at-rule: " ^ at_rule)
 
+and read_nested_at_within_rule (r : Reader.t) (selector : Selector.t) :
+    statement =
+  (* Helper to handle at-rules nested within rule blocks *)
+  if
+    Reader.looking_at r "@supports"
+    || Reader.looking_at r "@media"
+    || Reader.looking_at r "@container"
+  then
+    read_nested_at_rule r
+      (if Reader.looking_at r "@supports" then "@supports"
+       else if Reader.looking_at r "@media" then "@media"
+       else "@container")
+      selector
+  else if Reader.looking_at r "@layer" then (
+    Reader.expect_string "@layer" r;
+    Reader.ws r;
+    if Reader.peek r = Some '{' then (
+      Reader.expect '{' r;
+      let decls = read_declarations_block r in
+      Reader.expect '}' r;
+      let content = [ Rule { selector; declarations = decls; nested = [] } ] in
+      Layer (None, content))
+    else
+      let name = Reader.ident ~keep_case:true r in
+      Reader.ws r;
+      Reader.expect '{' r;
+      let decls = read_declarations_block r in
+      Reader.expect '}' r;
+      let content = [ Rule { selector; declarations = decls; nested = [] } ] in
+      Layer (Some name, content))
+  else
+    (* For other at-rules, use the standard read_statement *)
+    read_statement r
+
 and read_rule (r : Reader.t) : rule =
   Reader.with_context r "rule" @@ fun () ->
   let selector = Selector.read_selector_list r in
@@ -828,43 +804,7 @@ and read_rule (r : Reader.t) : rule =
         Reader.skip r;
         { selector; declarations = List.rev decls; nested = List.rev nested }
     | Some '@' ->
-        (* Handle nested at-rules within rule blocks *)
-        let stmt =
-          if
-            Reader.looking_at r "@supports"
-            || Reader.looking_at r "@media"
-            || Reader.looking_at r "@container"
-          then
-            read_nested_at_rule r
-              (if Reader.looking_at r "@supports" then "@supports"
-               else if Reader.looking_at r "@media" then "@media"
-               else "@container")
-              selector
-          else if Reader.looking_at r "@layer" then (
-            Reader.expect_string "@layer" r;
-            Reader.ws r;
-            if Reader.peek r = Some '{' then (
-              Reader.expect '{' r;
-              let decls = read_declarations_block r in
-              Reader.expect '}' r;
-              let content =
-                [ Rule { selector; declarations = decls; nested = [] } ]
-              in
-              Layer (None, content))
-            else
-              let name = Reader.ident ~keep_case:true r in
-              Reader.ws r;
-              Reader.expect '{' r;
-              let decls = read_declarations_block r in
-              Reader.expect '}' r;
-              let content =
-                [ Rule { selector; declarations = decls; nested = [] } ]
-              in
-              Layer (Some name, content))
-          else
-            (* For other at-rules, use the standard read_statement *)
-            read_statement r
-        in
+        let stmt = read_nested_at_within_rule r selector in
         loop decls (stmt :: nested)
     | Some ';' ->
         (* Skip empty statements/extra semicolons *)
