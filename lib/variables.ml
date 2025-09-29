@@ -258,10 +258,6 @@ let vars_of_component (value : Values.component) : any_var list =
 let vars_of_percentage (value : Values.percentage) : any_var list =
   match value with Var v -> [ V v ] | Calc calc -> vars_of_calc calc | _ -> []
 
-let vars_of_number_percentage (value : Values.number_percentage) : any_var list
-    =
-  match value with Var v -> [ V v ] | Calc calc -> vars_of_calc calc | _ -> []
-
 let rec vars_of_color (value : Values.color) : any_var list =
   match value with
   | Var v -> [ V v ]
@@ -369,79 +365,6 @@ let vars_of_font_variation_settings (value : Properties.font_variation_settings)
 let vars_of_font_variant_numeric (value : Properties.font_variant_numeric) :
     any_var list =
   match value with Var v -> [ V v ] | _ -> []
-
-let rec vars_of_gradient_stop (value : Properties.gradient_stop) : any_var list
-    =
-  match value with
-  | Var v -> [ V v ]
-  | Color_percentage (color, pos1, pos2) -> (
-      vars_of_color color
-      @ (match pos1 with Some p -> vars_of_percentage p | None -> [])
-      @ match pos2 with Some p -> vars_of_percentage p | None -> [])
-  | Color_length (color, pos1, pos2) -> (
-      vars_of_color color
-      @ (match pos1 with Some l -> vars_of_length l | None -> [])
-      @ match pos2 with Some l -> vars_of_length l | None -> [])
-  | Length l -> vars_of_length l
-  | Percentage p -> vars_of_percentage p
-  | List stops -> List.concat_map vars_of_gradient_stop stops
-
-let rec vars_of_value : type a. a kind -> a -> any_var list =
- fun kind value ->
-  match kind with
-  | Length -> vars_of_length value
-  | Color -> vars_of_color value
-  | Rgb -> vars_of_rgb value
-  | Percentage -> vars_of_percentage value
-  | Number_percentage -> vars_of_number_percentage value
-  | Int -> []
-  | Float -> []
-  | String -> []
-  | Duration -> vars_of_duration value
-  | Angle -> vars_of_angle value
-  | Line_height -> vars_of_line_height value
-  | Font_weight -> vars_of_font_weight value
-  | Font_variant_numeric_token -> (
-      match value with Var v -> [ V v ] | _ -> [])
-  | Font_variant_numeric -> (
-      match value with
-      | Var v -> [ V v ]
-      | Composed
-          {
-            ordinal;
-            slashed_zero;
-            numeric_figure;
-            numeric_spacing;
-            numeric_fraction;
-          } ->
-          vars_of_values_opt
-            [
-              ordinal;
-              slashed_zero;
-              numeric_figure;
-              numeric_spacing;
-              numeric_fraction;
-            ]
-      | _ -> [])
-  (* Kinds that don't contain nested vars or are not modeled with calc/var *)
-  | Aspect_ratio -> []
-  | Border_style -> []
-  | Blend_mode -> vars_of_blend_mode value
-  | Scroll_snap_strictness -> []
-  | Shadow -> vars_of_shadow value
-  | Box_shadow -> vars_of_shadow value
-  | Content -> vars_of_content value
-  | Gradient_stop -> vars_of_gradient_stop value
-  | Border -> []
-  | Font_family -> vars_of_font_family value
-  | Font_feature_settings -> []
-  | Font_variation_settings -> []
-
-and vars_of_values_opt values =
-  let collect_vars (opt_fv : font_variant_numeric_token option) =
-    match opt_fv with None -> [] | Some (Var v) -> [ V v ] | Some _token -> []
-  in
-  List.concat_map collect_vars values
 
 let compare_vars_by_name (V x) (V y) = String.compare x.name y.name
 
@@ -590,10 +513,6 @@ let vars_of_property : type a. a property -> a -> any_var list =
   (* Default case for all other properties *)
   | _ -> []
 
-(* Backward compatibility alias *)
-let extract_vars_from_prop_value : type a. a property -> a -> any_var list =
-  vars_of_property
-
 let extract_vars_from_declaration : declaration -> any_var list = function
   | Custom_declaration _ -> [] (* Custom properties don't have typed vars *)
   | Declaration { property; value; _ } -> vars_of_property property value
@@ -621,9 +540,6 @@ let pp_any_syntax : any_syntax Pp.t = fun ctx (Syntax syn) -> pp_syntax ctx syn
 let read_any_syntax (r : Reader.t) : any_syntax =
   (* Reuse the main read_syntax function *)
   read_syntax r
-
-(* Pretty-printer for any_var *)
-let pp_any_var : any_var Pp.t = fun ctx (V v) -> pp_var (fun _ _ -> ()) ctx v
 
 (** Parse a CSS variable reference with optional fallback value. This creates a
     variable handle for parsing purposes only - it doesn't have type or layer

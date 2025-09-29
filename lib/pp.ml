@@ -7,12 +7,7 @@ let to_string ?(minify = false) ?(inline = false) pp a =
   pp ctx a;
   Buffer.contents buf
 
-let to_buffer ?(minify = false) ?(inline = false) buf pp a =
-  let ctx = { minify; indent = 0; buf; inline } in
-  pp ctx a
-
 let nop _ _ = ()
-let str s ctx _ = Buffer.add_string ctx.buf s
 let string ctx s = Buffer.add_string ctx.buf s
 
 let quoted ctx s =
@@ -72,22 +67,9 @@ let list ?sep pp ctx l =
           pp ctx x)
         t
 
-let list_with_last ?sep pp ctx l =
-  let rec go = function
-    | [] -> ()
-    | [ x ] -> pp ~is_last:true ctx x
-    | h :: t ->
-        pp ~is_last:false ctx h;
-        (match sep with Some s -> s ctx () | None -> ());
-        go t
-  in
-  go l
-
 let option ?(none = nop) pp ctx = function
   | None -> none ctx ()
   | Some x -> pp ctx x
-
-let using f pp ctx a = pp ctx (f a)
 
 let surround ~left ~right pp ctx a =
   left ctx ();
@@ -202,8 +184,6 @@ let pct ?(always = false) ctx f =
     string ctx "%")
   else char ctx '0'
 
-let colon ctx () = Buffer.add_char ctx.buf ':'
-
 let sep ctx s =
   Buffer.add_string ctx.buf s;
   if not ctx.minify then Buffer.add_char ctx.buf ' '
@@ -214,9 +194,6 @@ let slash ctx () = Buffer.add_char ctx.buf '/'
 let space ctx () = Buffer.add_char ctx.buf ' '
 let block_open ctx () = Buffer.add_char ctx.buf '{'
 let block_close ctx () = Buffer.add_char ctx.buf '}'
-
-type sep = unit t
-
 let minified ctx = ctx.minify
 let cond p a b ctx x = if p ctx then a ctx x else b ctx x
 let space_if_pretty = sp

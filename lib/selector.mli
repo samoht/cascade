@@ -18,9 +18,6 @@ val id : string -> t
 val universal : t
 (** [universal] universal selector "*" (no namespace). *)
 
-val universal_ns : ns -> t
-(** [universal_ns ns] namespaced universal selector (e.g., [*|*], [svg|*]). *)
-
 val attribute : ?ns:ns -> ?flag:attr_flag -> string -> attribute_match -> t
 (** [attribute ?ns ?flag name match] attribute selector. Validates identifiers;
     raises [Invalid_argument] on invalid. *)
@@ -99,9 +96,6 @@ val read_selector_list : Reader.t -> t
 val read : Reader.t -> t
 (** [read r] parses a CSS selector. *)
 
-val read_opt : Reader.t -> t option
-(** [read_opt r] parses a CSS selector; returns [None] on failure. *)
-
 val read_combinator : Reader.t -> combinator
 (** [read_combinator r] parses a combinator. *)
 
@@ -126,46 +120,5 @@ val has : t list -> t
 val nth_child : ?of_:t list -> nth -> t
 (** [nth_child ?of_ nth] builds [:nth-child] with optional [:of]. *)
 
-val nth_last_child : ?of_:t list -> nth -> t
-(** [nth_last_child ?of_ nth] builds [:nth-last-child] with optional [:of]. *)
-
-val nth_of_type : ?of_:t list -> nth -> t
-(** [nth_of_type ?of_ nth] builds [:nth-of-type] with optional [:of]. *)
-
-val nth_last_of_type : ?of_:t list -> nth -> t
-(** [nth_last_of_type ?of_ nth] builds [:nth-last-of-type] with optional [:of].
-*)
-
-val dir : string -> t
-(** [dir direction] [:dir(ltr|rtl)] pseudo-class. *)
-
-val lang : string list -> t
-(** [lang languages] [:lang(...)] pseudo-class. *)
-
 val host : ?selectors:t list -> unit -> t
 (** [host ?selectors ()] [:host] or [:host(selector)] pseudo-class. *)
-
-val host_context : t list -> t
-(** [host_context selectors] [:host-context(selector)] pseudo-class. *)
-
-val state : string -> t
-(** [state name] [:state(custom-state)] pseudo-class. *)
-
-val heading : unit -> t
-(** [heading ()] [:heading()] pseudo-class (experimental). *)
-
-val active_view_transition_type : ?types:string list -> unit -> t
-(** [active_view_transition_type ?types ()] [:active-view-transition-type()]
-    pseudo-class. *)
-
-val part : string list -> t
-(** [part names] builds a ::part(...) pseudo-element. *)
-
-val slotted : t list -> t
-(** [slotted selectors] builds a ::slotted(...) pseudo-element. *)
-
-val cue : t list -> t
-(** [cue selectors] builds a ::cue(...) pseudo-element. *)
-
-val cue_region : t list -> t
-(** [cue_region selectors] builds a ::cue-region(...) pseudo-element. *)

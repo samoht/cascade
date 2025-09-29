@@ -2175,12 +2175,6 @@ let rec pp_background : background Pp.t =
   | Var v -> pp_var pp_background ctx v
   | Shorthand s -> pp_background_shorthand ctx s
 
-(* Helpers for typed positions (shorter than direct constructors) *)
-let pos_left : position_2d = Left_center
-let pos_right : position_2d = Right_center
-let pos_top : position_2d = Center_top
-let pos_bottom : position_2d = Center_bottom
-
 (* Helpers for transform-origin *)
 let origin (a : length) (b : length) : transform_origin = XY (a, b)
 
@@ -4658,9 +4652,6 @@ let rec read_blend_mode t : blend_mode =
     ]
     ~calls:[ ("var", read_var) ]
     t
-
-let read_blend_modes t : blend_mode list =
-  Reader.list ~sep:Reader.comma read_blend_mode t
 
 module Text_shadow = struct
   type component = Color of color | Length of length

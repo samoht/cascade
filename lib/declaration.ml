@@ -45,10 +45,6 @@ let custom_declaration_layer = function
   | Custom_declaration { layer; _ } -> layer
   | Declaration _ -> None
 
-(* Check if a property name is a custom property (starts with --) *)
-let is_custom_property name =
-  String.length name > 2 && String.sub name 0 2 = "--"
-
 (* Parser functions *)
 
 (** Parse a property name *)

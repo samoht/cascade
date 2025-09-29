@@ -28,10 +28,6 @@ val custom_property : ?layer:string -> string -> string -> declaration
 val custom_declaration_layer : declaration -> string option
 (** [custom_declaration_layer d] is the layer of [d], if any. *)
 
-val is_custom_property : string -> bool
-(** [is_custom_property name] is [true] if [name] is a CSS custom property name.
-*)
-
 val read_property_name : Reader.t -> string
 (** [read_property_name t] is the property name read from [t]. *)
 

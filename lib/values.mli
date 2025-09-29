@@ -15,11 +15,6 @@ val var_ref :
 (** [var_ref ?fallback ?default ?layer ?meta name] creates a CSS variable
     reference to [--name]. *)
 
-val var_ref_empty :
-  ?default:'a -> ?layer:string -> ?meta:meta -> string -> 'a var
-(** [var_ref_empty ?default ?layer ?meta name] creates a CSS variable reference
-    with an empty fallback, i.e. [var(--name,)]. *)
-
 (** {1 Constructor Functions} *)
 
 val hex : string -> color
@@ -134,10 +129,6 @@ val read_var : (Reader.t -> 'a) -> Reader.t -> 'a var
     for the payload. Expects to be positioned at [var(] and parses the full
     expression. *)
 
-val read_var_after_ident : (Reader.t -> 'a) -> Reader.t -> 'a var
-(** [read_var_after_ident read t] parses a CSS variable after the [var]
-    identifier has been consumed. Used in [enum_or_calls ~calls]. *)
-
 (** {1 Calc Module} *)
 module Calc : sig
   val add : 'a calc -> 'a calc -> 'a calc
@@ -193,12 +184,6 @@ val pp_alpha : alpha Pp.t
 val read_alpha : Reader.t -> alpha
 (** [read_alpha t] parses a CSS alpha value. *)
 
-val pp_meta : meta Pp.t
-(** [pp_meta] pretty-prints {!meta} values. *)
-
-val read_meta : Reader.t -> meta
-(** [read_meta t] parses metadata. *)
-
 val pp_hue_interpolation : hue_interpolation Pp.t
 (** [pp_hue_interpolation] pretty-prints {!hue_interpolation} values. *)
 
@@ -237,10 +222,6 @@ val read_duration : Reader.t -> duration
 
 val read_time : Reader.t -> duration
 (** [read_time t] parses a CSS time value (can be negative). *)
-
-val read_dimension : Reader.t -> float * string
-(** [read_dimension t] parses a dimension (number + unit) returning
-    [(value, unit)]. *)
 
 val read_number : Reader.t -> number
 (** [read_number t] parses a CSS number (int/float). *)

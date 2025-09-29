@@ -7,13 +7,6 @@ include Stylesheet_intf
 let rule ~selector ?(nested = []) declarations : rule =
   { selector; declarations; nested }
 
-let charset encoding = Charset encoding
-
-let import ~url ?layer ?supports ?media () =
-  Import { url; layer; supports; media }
-
-let namespace ?prefix uri = Namespace (prefix, uri)
-
 let property ~syntax ?initial_value ?(inherits = false) name =
   Property { name; syntax; inherits; initial_value }
 
@@ -22,11 +15,6 @@ let layer ?name content = Layer (name, content)
 let media ~condition content = Media (condition, content)
 let container ?name ~condition content = Container (name, condition, content)
 let supports ~condition content = Supports (condition, content)
-let starting_style content = Starting_style content
-let scope ?start ?end_ content = Scope (start, end_, content)
-let keyframes name frames = Keyframes (name, frames)
-let font_face descriptors = Font_face descriptors
-let page ?selector declarations = Page (selector, declarations)
 let v statements : stylesheet = statements
 let empty_stylesheet : stylesheet = []
 
@@ -35,21 +23,6 @@ let empty_stylesheet : stylesheet = []
 let selector (rule : rule) = rule.selector
 let declarations (rule : rule) = rule.declarations
 let nested (rule : rule) = rule.nested
-
-let property_rule_initial (type a) (r : a property_rule) =
-  match r.initial_value with
-  | None -> None
-  | Some v ->
-      let ctx =
-        { Pp.minify = true; indent = 0; buf = Buffer.create 16; inline = false }
-      in
-      Variables.pp_value r.syntax ctx v;
-      Some (Buffer.contents ctx.buf)
-
-let default_decl_of_property_rule (type a) (r : a property_rule) =
-  match property_rule_initial r with
-  | Some s -> Declaration.custom_property r.name s
-  | None -> Declaration.custom_property r.name ""
 
 (** {1 Pretty Printing} *)
 

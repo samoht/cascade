@@ -10,21 +10,6 @@ val rule :
 (** [rule ~selector ?nested declarations] creates a CSS rule with optional
     nested rules/at-rules. *)
 
-val charset : string -> statement
-(** [charset encoding] creates a [@charset] rule. *)
-
-val import :
-  url:string ->
-  ?layer:string ->
-  ?supports:string ->
-  ?media:string ->
-  unit ->
-  statement
-(** [import ~url ?layer ?supports ?media ()] creates an [@import] rule. *)
-
-val namespace : ?prefix:string -> string -> statement
-(** [namespace ?prefix uri] creates a [@namespace] rule. *)
-
 val property :
   syntax:'a Variables.syntax ->
   ?initial_value:'a ->
@@ -49,21 +34,6 @@ val container : ?name:string -> condition:string -> block -> statement
 val supports : condition:string -> block -> statement
 (** [supports ~condition content] creates a [@supports] rule. *)
 
-val starting_style : block -> statement
-(** [starting_style content] creates a [@starting-style] rule. *)
-
-val scope : ?start:string -> ?end_:string -> block -> statement
-(** [scope ?start ?end_ content] creates a [@scope] rule. *)
-
-val keyframes : string -> keyframe list -> statement
-(** [keyframes name frames] creates a [@keyframes] rule. *)
-
-val font_face : font_face_descriptor list -> statement
-(** [font_face descriptors] creates a [@font-face] rule. *)
-
-val page : ?selector:string -> declaration list -> statement
-(** [page ?selector declarations] creates a [@page] rule. *)
-
 val v : statement list -> stylesheet
 (** [v statements] creates a stylesheet from a list of statements. *)
 
@@ -81,24 +51,10 @@ val declarations : rule -> declaration list
 val nested : rule -> statement list
 (** [nested rule] returns the nested statements of a rule. *)
 
-val property_rule_initial : 'a property_rule -> string option
-(** [property_rule_initial r] returns the initial value of a property rule as a
-    string. *)
-
-val default_decl_of_property_rule : 'a property_rule -> declaration
-(** [default_decl_of_property_rule r] creates a declaration with the property's
-    default value. *)
-
 (** {1 Reading/Parsing} *)
 
 val read_rule : Reader.t -> rule
 (** [read_rule r] reads a CSS rule from the reader. *)
-
-val read_keyframe : Reader.t -> keyframe
-(** [read_keyframe r] reads a keyframe from the reader. *)
-
-val read_statement : Reader.t -> statement
-(** [read_statement r] reads a CSS statement from the reader. *)
 
 val read_block : Reader.t -> block
 (** [read_block r] reads a CSS block from the reader. *)
@@ -110,15 +66,6 @@ val read_stylesheet : Reader.t -> stylesheet
 
 val pp_rule : rule Pp.t
 (** [pp_rule] pretty-prints CSS rules. *)
-
-val pp_keyframe : keyframe Pp.t
-(** [pp_keyframe] pretty-prints keyframes. *)
-
-val pp_statement : statement Pp.t
-(** [pp_statement] pretty-prints CSS statements. *)
-
-val pp_block : block Pp.t
-(** [pp_block] pretty-prints CSS blocks. *)
 
 val pp_stylesheet : stylesheet Pp.t
 (** [pp_stylesheet] pretty-prints CSS stylesheets. *)
