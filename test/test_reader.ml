@@ -620,7 +620,7 @@ let enum_or_calls_behavior () =
         let b = int_of_float (number t) in
         comma t;
         let c = int_of_float (number t) in
-        Printf.sprintf "rgb(%d,%d,%d)" a b c)
+        Fmt.str "rgb(%d,%d,%d)" a b c)
   in
 
   let parser t =
@@ -949,44 +949,12 @@ let one_of_case () =
   Alcotest.(check bool)
     "recursive should not consume entire input" false (is_done r);
 
-  (* No match - should raise with descriptive error. Add detailed debug *)
+  (* No match - should raise with descriptive error *)
   let r = of_string "yellow" in
-  let dbg_wrap name f r =
-    let pos0 = position r in
-    Printf.eprintf "DBG one_of: start %s pos=%d\n" name pos0;
-    try
-      let res = f r in
-      let pos1 = position r in
-      let ctx, m = context_window r in
-      Printf.eprintf "DBG one_of: OK   %s -> '%s' pos=%d ctx='%s' mark=%d\n"
-        name res pos1 ctx m;
-      res
-    with Css.Reader.Parse_error e ->
-      Printf.eprintf "DBG one_of: FAIL %s msg='%s' got=%s pos=%d\n" name
-        e.message
-        (match e.got with None -> "None" | Some s -> s)
-        (position r);
-      raise (Css.Reader.Parse_error e)
-  in
-  let parsers_dbg =
-    [
-      (fun r -> dbg_wrap "kw:red" (fun r -> parse_keyword "red" r) r);
-      (fun r -> dbg_wrap "kw:blue" (fun r -> parse_keyword "blue" r) r);
-      (fun r -> dbg_wrap "kw:green" (fun r -> parse_keyword "green" r) r);
-      (fun r -> dbg_wrap "number" number_as_string r);
-    ]
-  in
-  (try
-     let rdbg = of_string "yellow" in
-     let v = one_of parsers_dbg rdbg in
-     Printf.eprintf "DBG one_of: unexpected success '%s'; rem=%b pos=%d\n" v
-       (not (is_done rdbg))
-       (position rdbg)
-   with Css.Reader.Parse_error _ -> ());
   check_raises "no match"
     (parse_error_expected ~got:(Some "yellow")
        "expected one of: red, blue, green, number" r) (fun () ->
-      ignore (one_of parsers_dbg r))
+      ignore (one_of parsers r))
 
 let enum_case () =
   (* Test basic enum parsing *)

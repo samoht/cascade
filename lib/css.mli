@@ -160,6 +160,17 @@ val as_property : statement -> property_info option
     a [@property] declaration, [None] otherwise. The existential type preserves
     the relationship between syntax type and initial value type. *)
 
+type keyframe = Stylesheet.keyframe
+(** Type for keyframe selectors and their declarations *)
+
+val as_keyframes : statement -> (string * keyframe list) option
+(** [as_keyframes stmt] returns [Some (name, frames)] if the statement is a
+    [@keyframes] animation, [None] otherwise. *)
+
+val as_font_face : statement -> Stylesheet.font_face_descriptor list option
+(** [as_font_face stmt] returns [Some descriptors] if the statement is a
+    [@font-face] rule, [None] otherwise. *)
+
 (** {2:at_rules At-Rules}
 
     At-rules are CSS statements that instruct CSS how to behave. They begin with

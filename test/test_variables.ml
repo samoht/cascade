@@ -221,7 +221,7 @@ let test_parse_var_reference () =
     let r = Css.Reader.of_string input in
     try
       let _ = parse_var_reference r in
-      Alcotest.fail (Printf.sprintf "Expected failure for: %s" input)
+      Alcotest.fail (Fmt.str "Expected failure for: %s" input)
     with
     | Css.Reader.Parse_error _ -> ()
     | exn ->
