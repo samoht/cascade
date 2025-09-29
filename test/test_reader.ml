@@ -684,7 +684,7 @@ let enum_or_calls_behavior () =
 
 (* var() via enum_or_calls: ensures call branch consumes correctly and makes
    progress *)
-let var_calls_via_enum_or_calls () =
+let var_via_enum_or_calls () =
   let parse_var_simple t =
     call "var" t (fun t ->
         ws t;
@@ -1441,7 +1441,7 @@ let tests_enums () =
 
 let tests_enum_or_calls () =
   enum_or_calls_behavior ();
-  var_calls_via_enum_or_calls ()
+  var_via_enum_or_calls ()
 
 let tests_lists () =
   backtrack_list ();
