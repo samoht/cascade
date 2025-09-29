@@ -220,7 +220,7 @@ let backtrack_pair () =
         r
     in
     Alcotest.fail "pair should have failed"
-  with _ ->
+  with Parse_error _ ->
     (* Position should be restored to initial position *)
     let final_pos = position r in
     Alcotest.(check int)
@@ -248,7 +248,7 @@ let backtrack_triple () =
         r
     in
     Alcotest.fail "triple should have failed"
-  with _ ->
+  with Parse_error _ ->
     let final_pos = position r in
     Alcotest.(check int)
       "triple restores position on failure" initial_pos final_pos;
@@ -271,7 +271,7 @@ let backtrack_list () =
           if c >= 'a' && c <= 'z' then String.make 1 c
           else failwith "not a letter")
         r
-    with _ -> []
+    with Parse_error _ | Failure _ -> []
   in
 
   (* List should have failed because third item "123" is not a letter *)
@@ -331,7 +331,7 @@ let backtrack_enum_with_default () =
     in
     ignore result;
     Alcotest.fail "enum should have failed"
-  with _ ->
+  with Parse_error _ ->
     (* Position should be restored to beginning when enum completely fails *)
     let final_pos = position r in
     Alcotest.(check int)
@@ -359,7 +359,7 @@ let backtrack_complex_nested () =
   try
     let _ = pair ~sep:(fun r -> ws r) parse_var_name parse_number r in
     Alcotest.fail "complex nested should have failed"
-  with _ ->
+  with Parse_error _ ->
     let final_pos = position r in
     Alcotest.(check int)
       "complex nested restores position" initial_pos final_pos;
