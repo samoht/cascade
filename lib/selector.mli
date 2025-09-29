@@ -62,6 +62,12 @@ val pp : t Pp.t
 val to_string : ?minify:bool -> t -> string
 (** [to_string ?minify sel] renders a selector to a string. *)
 
+val map : (t -> t) -> t -> t
+(** [map f selector] recursively applies [f] to all selectors in the tree. The
+    function [f] is applied bottom-up: first to descendants, then to the current
+    node. This is useful for transforming class names throughout a complex
+    selector structure. *)
+
 val pp_combinator : combinator Pp.t
 (** [pp_combinator] pretty-prints selector combinators. *)
 

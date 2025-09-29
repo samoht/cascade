@@ -980,6 +980,60 @@ and pp : t Pp.t =
   | List selectors -> Pp.list ~sep:Pp.comma pp ctx selectors
 
 let to_string ?minify t = Pp.to_string ?minify pp t
+
+(** Recursively map over all selectors in the tree *)
+let rec map f = function
+  | Combined (left, combinator, right) ->
+      let left' = map f left in
+      let right' = map f right in
+      f (Combined (left', combinator, right'))
+  | Compound selectors ->
+      let selectors' = List.map (map f) selectors in
+      f (Compound selectors')
+  | Where selectors ->
+      let selectors' = List.map (map f) selectors in
+      f (Where selectors')
+  | Is selectors ->
+      let selectors' = List.map (map f) selectors in
+      f (Is selectors')
+  | Not selectors ->
+      let selectors' = List.map (map f) selectors in
+      f (Not selectors')
+  | Has selectors ->
+      let selectors' = List.map (map f) selectors in
+      f (Has selectors')
+  | List selectors ->
+      let selectors' = List.map (map f) selectors in
+      f (List selectors')
+  | Nth_child (nth, Some selectors) ->
+      let selectors' = List.map (map f) selectors in
+      f (Nth_child (nth, Some selectors'))
+  | Nth_last_child (nth, Some selectors) ->
+      let selectors' = List.map (map f) selectors in
+      f (Nth_last_child (nth, Some selectors'))
+  | Nth_of_type (nth, Some selectors) ->
+      let selectors' = List.map (map f) selectors in
+      f (Nth_of_type (nth, Some selectors'))
+  | Nth_last_of_type (nth, Some selectors) ->
+      let selectors' = List.map (map f) selectors in
+      f (Nth_last_of_type (nth, Some selectors'))
+  | Host (Some selectors) ->
+      let selectors' = List.map (map f) selectors in
+      f (Host (Some selectors'))
+  | Host_context selectors ->
+      let selectors' = List.map (map f) selectors in
+      f (Host_context selectors')
+  | Slotted selectors ->
+      let selectors' = List.map (map f) selectors in
+      f (Slotted selectors')
+  | Cue selectors ->
+      let selectors' = List.map (map f) selectors in
+      f (Cue selectors')
+  | Cue_region selectors ->
+      let selectors' = List.map (map f) selectors in
+      f (Cue_region selectors')
+  | other -> f other
+
 let is_ sels = Is sels
 let has sels = Has sels
 let not selectors = Not selectors
