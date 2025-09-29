@@ -92,8 +92,8 @@ let float_zero_and_nan_inf () =
   check_float infinity ~expected:"3.40282e38";
   check_float neg_infinity ~expected:"-3.40282e38";
 
-  (* NaN becomes 0 *)
-  check_float nan ~expected:"0"
+  (* NaN stays as NaN per CSS spec *)
+  check_float nan ~expected:"NaN"
 
 let float_rounding_and_trim () =
   (* Rounding with float_n *)
@@ -131,12 +131,14 @@ let space_if_pretty_case () =
 
 let combinations () =
   (* Combined formatters *)
-  let pp_indented_braces = Pp.indent (Pp.braces Pp.string) in
+  let pp_indented_braces = Pp.nest 1 (Pp.indent (Pp.braces Pp.string)) in
   check_pp_pretty "indented braces" pp_indented_braces
-    ~expected:"  {\n    content\n}" "content";
+    ~expected:"  {\n    content\n  }" "content";
 
-  (* List with indent *)
-  let pp_indented_list = Pp.indent (Pp.list ~sep:Pp.comma Pp.string) in
+  (* List with indent - need to nest first to increase indent level *)
+  let pp_indented_list =
+    Pp.nest 1 (Pp.indent (Pp.list ~sep:Pp.comma Pp.string))
+  in
   let result = Pp.to_string ~minify:false pp_indented_list [ "a"; "b"; "c" ] in
   check string "indented list" "  a, b, c" result;
 

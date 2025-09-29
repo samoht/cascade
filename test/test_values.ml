@@ -175,8 +175,8 @@ let test_color () =
   check_color ~expected:"hsl(180 50% 25%/.5)" "hsl(180 50% 25% / 0.5)";
   check_color "hwb(90 10% 20%)";
   check_color ~expected:"hwb(90 10% 20%/.25)" "hwb(90 10% 20% / 0.25)";
-  (* Alpha in percent should minify to number [0;1] form *)
-  check_color ~expected:"hsl(180 50% 25%/.3)" "hsl(180deg 50% 25% / 30%)";
+  (* Alpha in percent preserves the % format *)
+  check_color ~expected:"hsl(180 50% 25%/30%)" "hsl(180deg 50% 25% / 30%)";
   check_color "color(srgb 1 0 0)";
   check_color ~expected:"color(display-p3 .8 .2 .1/.5)"
     "color(display-p3 0.8 0.2 0.1 / 0.5)";
@@ -188,7 +188,7 @@ let test_color () =
   check_color "rgb(100% 0% 0%)";
   check_color ~expected:"oklab(50% .1 -.05)" "oklab(50% 0.1 -0.05)";
   check_color "lch(50% 40 120)";
-  check_color ~expected:"rgb(255 0 0/.5)" "rgb(255 0 0 / 50%)";
+  check_color ~expected:"rgb(255 0 0/50%)" "rgb(255 0 0 / 50%)";
 
   (* Mixed channel formats in modern rgb() syntax *)
   (* Mix percentage and absolute values across channels *)
@@ -242,7 +242,7 @@ let test_color () =
   (* Custom properties inline mode tests with complex color fallbacks *)
   check_color ~expected:"var(--theme-primary,hsl(210 75% 50%))"
     "var(--theme-primary, hsl(210deg 75% 50%))";
-  check_color ~expected:"var(--accent,rgb(255 0 128/.8))"
+  check_color ~expected:"var(--accent,rgb(255 0 128/80%))"
     "var(--accent, rgb(255 0 128 / 80%))";
 
   (* RGB functions - various formats *)
@@ -595,14 +595,14 @@ let test_color_name () =
 
 let test_alpha () =
   check_alpha ~expected:".5" "0.5";
-  check_alpha ~expected:".5" "50%";
+  check_alpha "50%";
   check_alpha "1";
   check_alpha "0";
   neg read_alpha "invalid";
   neg read_alpha "abc";
   check_alpha ~expected:"1" "1.5";
   check_alpha ~expected:"0" "-0.5";
-  check_alpha ~expected:"1" "150%";
+  check_alpha ~expected:"100%" "150%";
   neg read_alpha "1px"
 
 let test_hue_interpolation () =

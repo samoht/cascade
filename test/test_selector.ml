@@ -575,10 +575,11 @@ let callstack_accuracy () =
   check_full_css_callstack "full_css_pseudo_error" ".test:not() { color: red; }"
     [ "stylesheet"; "rule" ];
 
-  (* Test that escaped characters now give proper Parse_error instead of
-     Invalid_argument *)
-  check_full_css_callstack "escaped_character_error"
-    ".test\\!class { color: red; }"
+  (* Escaped characters like \! are valid in CSS - they represent the literal
+     character. So .test\!class is equivalent to .test!class which is a valid
+     class selector. Testing an actually invalid selector instead: *)
+  check_full_css_callstack "invalid_selector_error"
+    ".test[[attr]] { color: red; }"
     [ "stylesheet"; "rule"; "list" ]
 
 (* Test check functions for selector components *)

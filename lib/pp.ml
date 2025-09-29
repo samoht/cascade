@@ -238,7 +238,7 @@ let braces pp =
       indent nop ctx ());
     block_close ctx ()
   in
-  surround ~left:open_ ~right:close_ (nest 1 pp)
+  surround ~left:open_ ~right:close_ (nest 1 (indent pp))
 
 let call name pp_args ctx args =
   string ctx name;
