@@ -29,8 +29,10 @@ let minified () = check_pp_minified "string output" Pp.string "test"
 let pretty () = check_pp_pretty "string output" Pp.string "test"
 
 let indent_case () =
-  check_pp_pretty "indented string" (Pp.indent Pp.string) ~expected:"  test"
-    "test"
+  (* indent only outputs spaces when ctx.indent > 0, so we need to nest first *)
+  check_pp_pretty "indented string"
+    (Pp.nest 1 (Pp.indent Pp.string))
+    ~expected:"  test" "test"
 
 let block_case () =
   check_pp_minified "braces" (Pp.braces Pp.string) ~expected:"{content}"
