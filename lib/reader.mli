@@ -74,9 +74,6 @@ val err_expected_but_eof : t -> string -> 'a
 (** [err_expected_but_eof t what] raises an "Expected [what] but reached end of
     input" error. *)
 
-val err_invalid_number : t -> 'a
-(** [err_invalid_number t] raises an "invalid number" error. *)
-
 val err_invalid : t -> string -> 'a
 (** [err_invalid t what] raises a parse error for an invalid [what]. *)
 
@@ -190,18 +187,6 @@ val atomic : t -> (unit -> 'a) -> 'a
 (** [atomic t f] runs [f ()] atomically. If [f] succeeds, position advances are
     kept. If [f] raises an exception, the position is restored to where it was
     before calling [atomic]. This is similar to Parsec's [try] combinator. *)
-
-val lookahead : (t -> 'a) -> t -> 'a
-(** [lookahead f t] runs [f t] and returns its result, but ALWAYS restores the
-    position afterwards, regardless of success or failure. This allows peeking
-    ahead without consuming input. Similar to Parsec's [lookAhead] combinator.
-*)
-
-val with_progress : (t -> 'a) -> t -> 'a
-(** [with_progress parser t] runs [parser] and ensures it consumes at least one
-    character. Raises [Parse_error] if the parser succeeds without making
-    progress, which would cause infinite loops in combinators like [many] or
-    [list]. *)
 
 val take : int -> (t -> 'a) -> t -> 'a list
 (** [take n parser t] parses up to [n] items. Requires at least 1. *)

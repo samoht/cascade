@@ -610,14 +610,6 @@ let try_parse_err f t =
   try Ok (atomic t (fun () -> f t))
   with Parse_error error -> Error error.message
 
-(** Ensure a parser makes progress (consumes at least one character) *)
-let with_progress f t =
-  let pos_before = t.pos in
-  let result = f t in
-  if t.pos = pos_before then
-    err t "parser made no progress (potential infinite loop)"
-  else result
-
 let many f t =
   let rec loop acc =
     ws t;

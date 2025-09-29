@@ -556,28 +556,12 @@ val pp_blend_mode : blend_mode Pp.t
 val read_blend_mode : Reader.t -> blend_mode
 (** [read_blend_mode t] is the [blend_mode] parsed from [t]. *)
 
-val read_blend_modes : Reader.t -> blend_mode list
-(** [read_blend_modes t] parses a comma-separated list of [blend_mode] values.
-*)
-
 val pp_position_2d : position_2d Pp.t
 (** [pp_position_2d] pretty-prints a 2D position. Special case: [Center, Center]
     prints as "center". *)
 
 val pp_transform_origin : transform_origin Pp.t
 (** [pp_transform_origin] pretty-prints a transform-origin value. *)
-
-val pos_left : position_2d
-(** [pos_left] position helper for [XY (Left, Center)]. *)
-
-val pos_right : position_2d
-(** [pos_right] position helper for [XY (Right, Center)]. *)
-
-val pos_top : position_2d
-(** [pos_top] position helper for [XY (Center, Top)]. *)
-
-val pos_bottom : position_2d
-(** [pos_bottom] position helper for [XY (Center, Bottom)]. *)
 
 val origin : length -> length -> transform_origin
 (** [origin x y] transform-origin helper for 2D positions. *)
@@ -596,9 +580,6 @@ val read_text_shadows : Reader.t -> text_shadow list
 
 val pp_filter : filter Pp.t
 (** [pp_filter] is the pretty-printer for [filter]. *)
-
-val read_filter_item : Reader.t -> filter
-(** [read_filter_item t] reads a single filter function. *)
 
 val read_filter : Reader.t -> filter
 (** [read_filter t] is the [filter] parsed from [t]. *)

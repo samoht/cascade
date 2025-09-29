@@ -116,14 +116,6 @@ val statement_declarations : statement -> declaration list option
 (** [statement_declarations stmt] returns [Some declarations] if the statement
     is a rule, [None] otherwise. *)
 
-val statement_nested : statement -> statement list option
-(** [statement_nested stmt] returns [Some nested] if the statement is a rule
-    with nested statements, [None] otherwise. *)
-
-val is_rule : statement -> bool
-(** [is_rule stmt] returns [true] if the statement is a rule, [false] otherwise.
-*)
-
 val as_rule :
   statement -> (Selector.t * declaration list * statement list) option
 (** [as_rule stmt] returns [Some (selector, declarations, nested)] if the
@@ -3549,10 +3541,6 @@ type _ kind =
   | Box_shadow : shadow kind
   | Content : content kind
   | Gradient_stop : gradient_stop kind
-
-val pp_kind_value : ('a kind * 'a) Pp.t
-(** [pp_kind_value] pretty-prints a typed value using the appropriate printer
-    for its kind. *)
 
 type meta
 (** The type for CSS variable metadata. *)

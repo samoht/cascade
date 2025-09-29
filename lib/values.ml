@@ -8,9 +8,6 @@ let var_ref ?fallback ?default ?layer ?meta name =
   in
   { name; fallback; default; layer; meta }
 
-let var_ref_empty ?default ?layer ?meta name =
-  { name; fallback = Empty; default; layer; meta }
-
 (** Color constructors *)
 let hex s =
   let len = String.length s in
@@ -1593,13 +1590,6 @@ let rec read_duration t : duration =
       | "ms" -> Ms n
       | _ -> Reader.err_invalid t ("duration unit: " ^ unit)
 
-(** Read a dimension (number with unit) - returns value and unit separately *)
-let read_dimension t : float * string =
-  Reader.ws t;
-  let n = Reader.number t in
-  let unit = Reader.while_ t (fun c -> (c >= 'a' && c <= 'z') || c = '%') in
-  (n, unit)
-
 (** Read a time value that can be negative (for animation-delay,
     transition-delay) *)
 let rec read_time t : duration =
@@ -1682,16 +1672,6 @@ let read_color_name t : color_name =
   | "aqua" -> Aqua
   | "rebeccapurple" -> Rebecca_purple
   | _ -> Reader.err_invalid t ("color name: " ^ s)
-
-(** Pretty print and read meta values *)
-let pp_meta : meta Pp.t =
- fun _ctx _v ->
-  (* Meta is an abstract type - cannot pattern match on it *)
-  failwith "pp_meta: not implemented for abstract meta type"
-
-let read_meta _t : meta =
-  (* Meta is an abstract type - cannot construct values of it *)
-  failwith "read_meta: not implemented for abstract meta type"
 
 (** Read hue_interpolation *)
 let read_hue_interpolation t : hue_interpolation =

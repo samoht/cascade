@@ -49,9 +49,6 @@ val vars_of_calc : 'a calc -> any_var list
 val vars_of_property : 'a property -> 'a -> any_var list
 (** [vars_of_property prop value] extracts variables from a property value. *)
 
-val vars_of_value : 'a kind -> 'a -> any_var list
-(** [vars_of_value kind value] extracts variables from a typed value. *)
-
 val vars_of_declarations : declaration list -> any_var list
 (** [vars_of_declarations decls] extracts all unique variables from declarations
     . *)
@@ -65,14 +62,6 @@ val any_var_name : any_var -> string
 (** [any_var_name v] returns the CSS variable name with [--] prefix. *)
 
 (** {1 Advanced variable extraction} *)
-
-val extract_vars_from_prop_value : 'a property -> 'a -> any_var list
-(** [extract_vars_from_prop_value prop value] extracts variables from property
-    values. *)
-
-val extract_vars_from_declaration : declaration -> any_var list
-(** [extract_vars_from_declaration decl] extracts variables from a declaration .
-*)
 
 val analyze_declarations : declaration list -> any_var list
 (** [analyze_declarations decls] finds all variable references in declarations .
@@ -91,9 +80,6 @@ val pp_any_syntax : any_syntax Pp.t
 
 val read_any_syntax : Reader.t -> any_syntax
 (** [read_any_syntax t] parses a CSS syntax descriptor. *)
-
-val pp_any_var : any_var Pp.t
-(** [pp_any_var] pretty-prints any CSS variable. *)
 
 val parse_var_reference : Reader.t -> string * string option
 (** [parse_var_reference t] parses a CSS var() function and returns the variable

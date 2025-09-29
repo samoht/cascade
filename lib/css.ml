@@ -22,10 +22,6 @@ let pp_parse_error = Reader.pp_parse_error
 
 include Values
 include Declaration
-
-(* Export pp_value from Declaration as pp_kind_value *)
-let pp_kind_value = Declaration.pp_value
-
 include Properties
 include Variables
 include Optimize
@@ -50,12 +46,6 @@ let statement_selector = function
 let statement_declarations = function
   | Rule r -> Some (Stylesheet.declarations r)
   | _ -> None
-
-let statement_nested = function
-  | Rule r -> Some (Stylesheet.nested r)
-  | _ -> None
-
-let is_rule = function Rule _ -> true | _ -> false
 
 let as_rule = function
   | Rule r ->

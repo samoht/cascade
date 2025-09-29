@@ -32,17 +32,10 @@ val to_string : ?minify:bool -> ?inline:bool -> 'a t -> 'a -> string
     string. Creates a fresh buffer internally. Defaults: minify=false,
     inline=false. *)
 
-val to_buffer : ?minify:bool -> ?inline:bool -> Buffer.t -> 'a t -> 'a -> unit
-(** [to_buffer ~minify ~inline buffer formatter value] runs the formatter
-    writing to the provided buffer. Defaults: minify=false, inline=false. *)
-
 (** {2 Primitive Formatters} *)
 
 val nop : 'a t
 (** [nop] is a no-op formatter that writes nothing and ignores its input. *)
-
-val str : string -> 'a t
-(** [str str] always writes the constant string, ignoring input. *)
 
 val string : string t
 (** [string] writes a string value to the buffer. *)
@@ -93,20 +86,9 @@ val triple : ?sep:unit t -> 'a t -> 'b t -> 'c t -> ('a * 'b * 'c) t
 val list : ?sep:unit t -> 'a t -> 'a list t
 (** [list ~sep formatter] formats a list with separator between elements. *)
 
-val list_with_last : ?sep:unit t -> (is_last:bool -> 'a t) -> 'a list t
-(** [list_with_last ~sep formatter] formats list where formatter receives a flag
-    indicating if this is the last element. *)
-
 val option : ?none:unit t -> 'a t -> 'a option t
 (** [option ~none formatter] formats an option, using none formatter for None.
 *)
-
-val using : ('b -> 'a) -> 'a t -> 'b t
-(** [using f formatter] transforms input with f before formatting (contramap).
-*)
-
-val surround : left:unit t -> right:unit t -> 'a t -> 'a t
-(** [surround ~left ~right formatter] wraps formatter with left and right. *)
 
 (** {2 Number Formatting}
 
@@ -138,14 +120,8 @@ val pct : ?always:bool -> ctx -> float -> unit
     is expected to be in the range 0-100. When [always] is true, always includes
     the unit even for zero values (required for CSS property initial-value). *)
 
-val colon : unit t
-(** [colon] always outputs ":". *)
-
 val comma : unit t
 (** [comma] outputs "," when minifying, ", " when formatting. *)
-
-val sep : string t
-(** [sep] prints a string and, when not minifying, appends a single space. *)
 
 val semicolon : unit t
 (** [semicolon] always outputs ";". *)
@@ -163,9 +139,6 @@ val block_close : unit t
 (** [block_close] outputs "\}" (block formatting controlled elsewhere). *)
 
 (** {2 Helper Types and Functions} *)
-
-type sep = unit t
-(** Type alias for separator formatters *)
 
 val minified : ctx -> bool
 (** [minified ctx] queries whether context is in minification mode. *)

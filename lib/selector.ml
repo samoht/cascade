@@ -767,9 +767,6 @@ let read t =
     Reader.err t "unexpected characters after selector";
   selector
 
-(** Parse selector, return [None] on failure. *)
-let read_opt t = Reader.option read t
-
 (** Pretty print a function-like pseudo-class or pseudo-element *)
 let pp_func : 'a. Pp.ctx -> prefix:string -> string -> 'a Pp.t -> 'a -> unit =
  fun ctx ~prefix name content_pp value ->
@@ -1023,19 +1020,6 @@ let is_ sels = Is sels
 let has sels = Has sels
 let not selectors = Not selectors
 let nth_child ?of_ nth = Nth_child (nth, of_)
-let nth_last_child ?of_ nth = Nth_last_child (nth, of_)
-let nth_of_type ?of_ nth = Nth_of_type (nth, of_)
-let nth_last_of_type ?of_ nth = Nth_last_of_type (nth, of_)
-let dir direction = Dir direction
-let lang languages = Lang languages
 let host ?selectors () = Host selectors
-let host_context selectors = Host_context selectors
-let state name = State name
-let heading () = Heading
-let active_view_transition_type ?types () = Active_view_transition_type types
-let part idents = Part idents
-let slotted sels = Slotted sels
-let cue sels = Cue sels
-let cue_region sels = Cue_region sels
 let ( && ) sel1 sel2 = compound [ sel1; sel2 ]
 let ( || ) s1 s2 = combine s1 Column s2
