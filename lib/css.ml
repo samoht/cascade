@@ -94,6 +94,14 @@ let as_property = function
       Some (Property_info { name; syntax; inherits; initial_value })
   | _ -> None
 
+let as_keyframes = function
+  | Keyframes (name, frames) -> Some (name, frames)
+  | _ -> None
+
+let as_font_face = function
+  | Font_face descriptors -> Some descriptors
+  | _ -> None
+
 let concat = List.concat
 let empty = []
 let of_statements = Stylesheet.v

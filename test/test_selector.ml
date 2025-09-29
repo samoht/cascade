@@ -639,7 +639,7 @@ let test_attr_value_quoting () =
   let check_needs_quoting value expected =
     let actual = S.attr_value_needs_quoting value in
     Alcotest.(check bool)
-      (Printf.sprintf "attr_value_needs_quoting %S" value)
+      (Fmt.str "attr_value_needs_quoting %S" value)
       expected actual
   in
 
@@ -719,7 +719,7 @@ let test_attr_case_sensitivity_flags () =
     let sel = S.attribute ?flag "type" (Exact value) in
     let output = Css.Pp.to_string ~minify:true S.pp sel in
     Alcotest.(check string)
-      (Printf.sprintf "selector for type=%S with flag %s" value
+      (Fmt.str "selector for type=%S with flag %s" value
          (match flag with
          | None -> "none"
          | Some Case_insensitive -> "i"

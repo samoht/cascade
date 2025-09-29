@@ -7,8 +7,7 @@ let () =
       ->
         let callstack_str = String.concat " -> " callstack in
         Some
-          (Printf.sprintf
-             "Parse_error: %s at position %d\nContext: %s\nCallstack: %s"
+          (Fmt.str "Parse_error: %s at position %d\nContext: %s\nCallstack: %s"
              message position context_window callstack_str)
     | _ -> None)
 
