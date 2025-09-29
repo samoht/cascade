@@ -150,7 +150,7 @@ let roundtrip () =
   (* Compare - they should be identical *)
   if original_css <> roundtrip_css then
     (* Show where the difference occurs *)
-    match Tw_tools.Diff_format.first_diff_pos original_css roundtrip_css with
+    match Tw_tools.String_diff.first_diff_pos original_css roundtrip_css with
     | Some pos ->
         Fmt.epr "CSS roundtrip differs at position %d@." pos;
         Alcotest.fail "CSS roundtrip should be identical"
