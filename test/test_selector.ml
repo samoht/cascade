@@ -632,6 +632,7 @@ let test_attribute_match () =
   (* Missing value *)
   neg read_attribute_match "~=" (* Missing value *)
 
+(* Not a roundtrip test *)
 let test_attr_value_quoting () =
   (* Test the attr_value_needs_quoting function behavior *)
   let module S = Css.Selector in
@@ -711,6 +712,7 @@ let test_attr_flag () =
   (* Wrong case *)
   neg read_attr_flag "is" (* Multiple characters *)
 
+(* Not a roundtrip test *)
 let test_attr_case_sensitivity_flags () =
   (* Test CSS Level 4 case-sensitivity flags (i and s) in attribute selectors *)
   let module S = Css.Selector in
@@ -944,9 +946,9 @@ let suite =
       test_case "roundtrip" `Quick roundtrip;
       test_case "selector component parsing" `Quick component_parsing;
       test_case "attribute match" `Quick test_attribute_match;
-      test_case "attr value quoting" `Quick test_attr_value_quoting;
+      test_case "attr_value_quoting" `Quick test_attr_value_quoting;
       test_case "attr flag" `Quick test_attr_flag;
-      test_case "attr case sensitivity flags" `Quick
+      test_case "attr_case_sensitivity_flags" `Quick
         test_attr_case_sensitivity_flags;
       test_case "selector component failures" `Quick component_parsing_failures;
       (* Error cases *)
