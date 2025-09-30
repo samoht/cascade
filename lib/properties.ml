@@ -936,6 +936,14 @@ let rec read_transform t : transform =
     ~calls:(("var", read_var_transform) :: Transform.parsers)
     t
 
+let read_transforms t : transform list =
+  let transforms, error_opt = Reader.many read_transform t in
+  if List.length transforms = 0 then
+    match error_opt with
+    | Some msg -> Reader.err_invalid t ("transform: " ^ msg)
+    | None -> Reader.err_invalid t "transform value"
+  else transforms
+
 let pp_opt_space pp ctx = function
   | Some v ->
       Pp.space ctx ();
@@ -1974,6 +1982,8 @@ let rec pp_transform : transform Pp.t =
   | Var v -> pp_var pp_transform ctx v
   | List transforms -> Pp.list ~sep:Pp.space pp_transform ctx transforms
 
+let pp_transforms : transform list Pp.t = Pp.list ~sep:Pp.space pp_transform
+
 let pp_transform_style : transform_style Pp.t =
  fun ctx -> function
   | Flat -> Pp.string ctx "flat"
@@ -2694,7 +2704,7 @@ let pp_cubic_bezier_args : (float * float * float * float) Pp.t =
 
 let pp_cubic_bezier = Pp.call "cubic-bezier" pp_cubic_bezier_args
 
-let pp_timing_function : timing_function Pp.t =
+let rec pp_timing_function : timing_function Pp.t =
  fun ctx -> function
   | Ease -> Pp.string ctx "ease"
   | Linear -> Pp.string ctx "linear"
@@ -2713,6 +2723,7 @@ let pp_timing_function : timing_function Pp.t =
       | None -> ());
       Pp.char ctx ')'
   | Cubic_bezier (x1, y1, x2, y2) -> pp_cubic_bezier ctx (x1, y1, x2, y2)
+  | Var v -> pp_var pp_timing_function ctx v
 
 let rec pp_svg_paint : svg_paint Pp.t =
  fun ctx -> function
@@ -4259,7 +4270,8 @@ module Timing_function = struct
         let d = Reader.number t in
         Cubic_bezier (a, b, c, d))
 
-  let read t : timing_function =
+  let rec read t : timing_function =
+    let read_var_timing t : timing_function = Var (Values.read_var read t) in
     Reader.enum_or_calls "timing-function"
       [
         ("ease", (Ease : timing_function));
@@ -4270,7 +4282,12 @@ module Timing_function = struct
         ("step-start", Step_start);
         ("step-end", Step_end);
       ]
-      ~calls:[ ("steps", read_steps); ("cubic-bezier", read_cubic_bezier) ]
+      ~calls:
+        [
+          ("steps", read_steps);
+          ("cubic-bezier", read_cubic_bezier);
+          ("var", read_var_timing);
+        ]
       t
 end
 
@@ -4496,7 +4513,7 @@ module Animation = struct
     | Infinite -> Pp.string ctx "infinite"
     | Num n -> Pp.float ctx n
 
-  let pp_timing ctx = function
+  let rec pp_timing ctx = function
     | Linear -> Pp.string ctx "linear"
     | Ease -> Pp.string ctx "ease"
     | Ease_in -> Pp.string ctx "ease-in"
@@ -4523,6 +4540,7 @@ module Animation = struct
             pp_steps_direction ctx d
         | None -> ());
         Pp.char ctx ')'
+    | Var v -> pp_var pp_timing ctx v
 
   let is_duration : duration option -> bool = function
     | Some d when not (is_zero_duration d) -> true

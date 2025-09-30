@@ -734,6 +734,7 @@ type timing_function =
   | Step_end
   | Steps of int * steps_direction option
   | Cubic_bezier of float * float * float * float
+  | Var of timing_function var
 
 type transition_property = All | None | Property of string
 

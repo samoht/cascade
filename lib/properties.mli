@@ -443,8 +443,14 @@ val read_font_variation_settings : Reader.t -> font_variation_settings
 val pp_transform : transform Pp.t
 (** [pp_transform] is the pretty-printer for [transform]. *)
 
+val pp_transforms : transform list Pp.t
+(** [pp_transforms] is the pretty-printer for [transform list]. *)
+
 val read_transform : Reader.t -> transform
 (** [read_transform t] is the [transform] parsed from [t]. *)
+
+val read_transforms : Reader.t -> transform list
+(** [read_transforms t] is the [transform list] parsed from [t]. *)
 
 val read_transform_origin : Reader.t -> transform_origin
 (** [read_transform_origin t] is the [transform_origin] parsed from [t]. *)
