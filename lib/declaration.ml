@@ -644,75 +644,76 @@ let read_value (type a) (prop : a property) t : declaration =
   (* Table layout *)
   | Table_layout -> v Table_layout (read_table_layout t)
 
-(** Parse a single v directly from stream - no string roundtrips *)
+(** Parse a custom property (--name: value) *)
+let read_custom_property_declaration t : declaration =
+  let name = read_property_name t in
+  Reader.ws t;
+  Reader.expect ':' t;
+  Reader.ws t;
+  let value_str = read_property_value t in
+  let is_important = read_importance t in
+  (* custom_property may raise Failure for invalid names like "--" *)
+  try
+    let decl = custom_property name value_str in
+    if is_important then important decl else decl
+  with Failure msg -> Reader.err_invalid t msg
+
+(** Parse a regular property (name: value) *)
+let read_regular_property_declaration t : declaration =
+  let (Prop prop_type) = read_any_property t in
+  Reader.ws t;
+  Reader.expect ':' t;
+  Reader.ws t;
+  let decl = read_value prop_type t in
+  validate_no_extra_tokens t;
+  let is_important = read_importance t in
+  validate_no_extra_tokens t;
+  (match Reader.peek t with
+  | Some '!' -> Reader.err_invalid t "duplicate !important"
+  | _ -> ());
+  if is_important then important decl else decl
+
+(** Parse a single declaration directly from stream - no string roundtrips *)
 let read_declaration t : declaration option =
   Reader.ws t;
   match Reader.peek t with
   | Some '}' -> None (* End of block - no more declarations *)
   | None -> None (* EOF is acceptable at top-level parsing *)
-  | _ -> (
+  | _ ->
       Reader.with_context t "read_declaration" @@ fun () ->
-      try
-        (* Check if this is a custom property (starts with --) *)
-        if Reader.looking_at t "--" then (
-          let name = read_property_name t in
-          Reader.ws t;
-          Reader.expect ':' t;
-          Reader.ws t;
-          let value_str = read_property_value t in
-          let is_important = read_importance t in
-          let decl = custom_property name value_str in
-          Some (if is_important then important decl else decl))
-        else
-          let (Prop prop_type) = read_any_property t in
-          Reader.ws t;
-          Reader.expect ':' t;
-          Reader.ws t;
-
-          let decl = read_value prop_type t in
-          validate_no_extra_tokens t;
-          let is_important = read_importance t in
-          validate_no_extra_tokens t;
-          (match Reader.peek t with
-          | Some '!' -> Reader.err_invalid t "duplicate !important"
-          | _ -> ());
-          Some (if is_important then important decl else decl)
-      with
-      | Failure msg ->
-          (* Handle property parsing errors *)
-          Reader.err_invalid t msg
-      | Invalid_argument msg ->
-          (* Normalize invalid_arg into a structured parse error with context *)
-          Reader.err_invalid t msg)
+      (* Check if this is a custom property (starts with --) *)
+      Some
+        (if Reader.looking_at t "--" then read_custom_property_declaration t
+         else read_regular_property_declaration t)
 
 let read_declarations t =
   Reader.with_context t "declarations" @@ fun () ->
-  let rec loop acc =
+  let rec check_separator acc =
+    Reader.ws t;
+    match Reader.peek t with
+    | Some '}' -> List.rev acc (* End of block, no semicolon needed *)
+    | Some ';' ->
+        Reader.expect ';' t;
+        loop acc
+    | None -> List.rev acc (* End of input *)
+    | _ ->
+        (* Check if we have more tokens that look like a new v *)
+        if Reader.is_ident_start (Option.value (Reader.peek t) ~default:' ')
+        then Reader.err t "missing semicolon between declarations"
+        else
+          (* Some other character - let the next iteration handle it *)
+          List.rev acc
+  and loop acc =
     Reader.ws t;
     match Reader.peek t with
     | Some '}' | None -> List.rev acc
     | _ -> (
         match read_declaration t with
         | None -> List.rev acc
-        | Some decl -> (
+        | Some decl ->
             let acc = decl :: acc in
             (* After reading a declaration, check for proper separation *)
-            Reader.ws t;
-            match Reader.peek t with
-            | Some '}' -> List.rev acc (* End of block, no semicolon needed *)
-            | Some ';' ->
-                Reader.expect ';' t;
-                loop acc
-            | None -> List.rev acc (* End of input *)
-            | _ ->
-                (* Check if we have more tokens that look like a new v *)
-                if
-                  Reader.is_ident_start
-                    (Option.value (Reader.peek t) ~default:' ')
-                then Reader.err t "missing semicolon between declarations"
-                else
-                  (* Some other character - let the next iteration handle it *)
-                  List.rev acc))
+            check_separator acc)
   in
   loop []
 

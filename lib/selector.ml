@@ -463,6 +463,111 @@ let pp_nth : nth Pp.t =
           Pp.int ctx b)
         else if b < 0 then Pp.int ctx b (* b = 0: print nothing *))
 
+(* Pseudo-class and pseudo-element identifier mappings *)
+let pseudo_class_base_idents =
+  [
+    (* Interactive *)
+    ("hover", Hover);
+    ("active", Active);
+    ("focus", Focus);
+    ("focus-visible", Focus_visible);
+    ("focus-within", Focus_within);
+    ("target", Target);
+    ("target-within", Target_within);
+    (* Link *)
+    ("link", Link);
+    ("visited", Visited);
+    ("any-link", Any_link);
+    ("local-link", Local_link);
+    (* Structural *)
+    ("root", Root);
+    ("empty", Empty);
+    ("first-child", First_child);
+    ("last-child", Last_child);
+    ("only-child", Only_child);
+    ("first-of-type", First_of_type);
+    ("last-of-type", Last_of_type);
+    ("only-of-type", Only_of_type);
+    (* Input *)
+    ("enabled", Enabled);
+    ("disabled", Disabled);
+    ("read-only", Read_only);
+    ("read-write", Read_write);
+    ("placeholder-shown", Placeholder_shown);
+    ("default", Default);
+    ("checked", Checked);
+    ("indeterminate", Indeterminate);
+    ("blank", Blank);
+    ("valid", Valid);
+    ("invalid", Invalid);
+    ("in-range", In_range);
+    ("out-of-range", Out_of_range);
+    ("required", Required);
+    ("optional", Optional);
+    ("user-invalid", User_invalid);
+    ("user-valid", User_valid);
+    ("autofill", Autofill);
+    (* Display *)
+    ("fullscreen", Fullscreen);
+    ("modal", Modal);
+    ("picture-in-picture", Picture_in_picture);
+    ("popover-open", Popover_open);
+    (* Paged *)
+    ("left", Left);
+    ("right", Right);
+    ("first", First);
+    (* Component *)
+    ("defined", Defined);
+    ("scope", Scope);
+    ("host", Host None);
+    (* Media *)
+    ("playing", Playing);
+    ("paused", Paused);
+    ("seeking", Seeking);
+    ("buffering", Buffering);
+    ("stalled", Stalled);
+    ("muted", Muted);
+    ("volume-locked", Volume_locked);
+    ("current", Current);
+    ("past", Past);
+    ("future", Future);
+  ]
+
+let pseudo_element_legacy_idents =
+  [
+    (* Legacy pseudo-elements *)
+    ("before", Before);
+    ("after", After);
+    ("first-letter", First_letter);
+    ("first-line", First_line);
+  ]
+
+let pseudo_element_modern_idents =
+  [
+    (* Modern pseudo-elements *)
+    ("backdrop", Backdrop);
+    ("marker", Marker);
+    ("placeholder", Placeholder);
+    ("selection", Selection);
+    ("file-selector-button", File_selector_button);
+  ]
+
+let pseudo_vendor_idents =
+  [
+    (* Vendor-specific *)
+    ("-moz-focusring", Moz_focusring);
+    ("-webkit-any", Webkit_any);
+    ("-webkit-autofill", Webkit_autofill);
+    ("-moz-placeholder", Moz_placeholder);
+    ("-webkit-input-placeholder", Webkit_input_placeholder);
+    ("-ms-input-placeholder", Ms_input_placeholder);
+    ("-moz-ui-invalid", Moz_ui_invalid);
+    ("-moz-ui-valid", Moz_ui_valid);
+    ("-webkit-scrollbar", Webkit_scrollbar);
+    ("-webkit-search-cancel-button", Webkit_search_cancel_button);
+    ("-webkit-search-decoration", Webkit_search_decoration);
+  ]
+
 (* Forward declarations for mutually recursive functions *)
 let rec read_complex_list t =
   Reader.ws t;
@@ -553,103 +658,11 @@ and read_cue_region t = Reader.call "cue-region" t read_cue_region_content
 (** Parse pseudo-class (:hover, :nth-child(2n+1), etc.) *)
 and read_pseudo_class t =
   Reader.expect ':' t;
-  Reader.enum_or_calls "pseudo-class"
-    ([
-       (* Interactive *)
-       ("hover", Hover);
-       ("active", Active);
-       ("focus", Focus);
-       ("focus-visible", Focus_visible);
-       ("focus-within", Focus_within);
-       ("target", Target);
-       ("target-within", Target_within);
-       (* Link *)
-       ("link", Link);
-       ("visited", Visited);
-       ("any-link", Any_link);
-       ("local-link", Local_link);
-       (* Structural *)
-       ("root", Root);
-       ("empty", Empty);
-       ("first-child", First_child);
-       ("last-child", Last_child);
-       ("only-child", Only_child);
-       ("first-of-type", First_of_type);
-       ("last-of-type", Last_of_type);
-       ("only-of-type", Only_of_type);
-       (* Input *)
-       ("enabled", Enabled);
-       ("disabled", Disabled);
-       ("read-only", Read_only);
-       ("read-write", Read_write);
-       ("placeholder-shown", Placeholder_shown);
-       ("default", Default);
-       ("checked", Checked);
-       ("indeterminate", Indeterminate);
-       ("blank", Blank);
-       ("valid", Valid);
-       ("invalid", Invalid);
-       ("in-range", In_range);
-       ("out-of-range", Out_of_range);
-       ("required", Required);
-       ("optional", Optional);
-       ("user-invalid", User_invalid);
-       ("user-valid", User_valid);
-       ("autofill", Autofill);
-       (* Display *)
-       ("fullscreen", Fullscreen);
-       ("modal", Modal);
-       ("picture-in-picture", Picture_in_picture);
-       ("popover-open", Popover_open);
-       (* Paged *)
-       ("left", Left);
-       ("right", Right);
-       ("first", First);
-       (* Component *)
-       ("defined", Defined);
-       ("scope", Scope);
-       ("host", Host None);
-       (* Media *)
-       ("playing", Playing);
-       ("paused", Paused);
-       ("seeking", Seeking);
-       ("buffering", Buffering);
-       ("stalled", Stalled);
-       ("muted", Muted);
-       ("volume-locked", Volume_locked);
-       ("current", Current);
-       ("past", Past);
-       ("future", Future);
-     ]
-    @ [
-        (* Legacy pseudo-elements *)
-        ("before", Before);
-        ("after", After);
-        ("first-letter", First_letter);
-        ("first-line", First_line);
-      ]
-    @ [
-        (* Modern pseudo-elements *)
-        ("backdrop", Backdrop);
-        ("marker", Marker);
-        ("placeholder", Placeholder);
-        ("selection", Selection);
-        ("file-selector-button", File_selector_button);
-      ]
-    @ [
-        (* Vendor-specific *)
-        ("-moz-focusring", Moz_focusring);
-        ("-webkit-any", Webkit_any);
-        ("-webkit-autofill", Webkit_autofill);
-        ("-moz-placeholder", Moz_placeholder);
-        ("-webkit-input-placeholder", Webkit_input_placeholder);
-        ("-ms-input-placeholder", Ms_input_placeholder);
-        ("-moz-ui-invalid", Moz_ui_invalid);
-        ("-moz-ui-valid", Moz_ui_valid);
-        ("-webkit-scrollbar", Webkit_scrollbar);
-        ("-webkit-search-cancel-button", Webkit_search_cancel_button);
-        ("-webkit-search-decoration", Webkit_search_decoration);
-      ])
+  let all_idents =
+    pseudo_class_base_idents @ pseudo_element_legacy_idents
+    @ pseudo_element_modern_idents @ pseudo_vendor_idents
+  in
+  Reader.enum_or_calls "pseudo-class" all_idents
     ~calls:
       [
         ("is", read_is);
