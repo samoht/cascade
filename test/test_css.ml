@@ -241,6 +241,115 @@ let test_custom_props_from_rules () =
   Alcotest.(check string)
     "first property is primary-color" "--primary-color" (List.hd prop_names)
 
+(* Test Css.map - transforms rules in statements *)
+let test_map () =
+  let sel1 = Selector.class_ "foo" in
+  let sel2 = Selector.class_ "bar" in
+  let stmts =
+    [
+      rule ~selector:sel1 [ color (Hex { hash = true; value = "ff0000" }) ];
+      rule ~selector:sel2 [ color (Hex { hash = true; value = "00ff00" }) ];
+    ]
+  in
+
+  (* Map that changes all colors to blue *)
+  let mapped =
+    Css.map
+      (fun sel _decls ->
+        let new_decls = [ color (Hex { hash = true; value = "0000ff" }) ] in
+        rule ~selector:sel new_decls)
+      stmts
+  in
+
+  let css = Css.to_string ~minify:true (v mapped) in
+  Alcotest.(check string)
+    "map changes all rules" ".foo{color:#0000ff}.bar{color:#0000ff}\n" css
+
+(* Test Css.map with nested media queries *)
+let test_map_nested () =
+  let sel1 = Selector.class_ "foo" in
+  let stmts =
+    [
+      media ~condition:"(min-width:768px)"
+        [
+          rule ~selector:sel1 [ color (Hex { hash = true; value = "ff0000" }) ];
+        ];
+    ]
+  in
+
+  (* Map should descend into media query *)
+  let mapped =
+    Css.map
+      (fun sel _decls ->
+        let new_decls = [ color (Hex { hash = true; value = "0000ff" }) ] in
+        rule ~selector:sel new_decls)
+      stmts
+  in
+
+  let css = Css.to_string ~minify:true (v mapped) in
+  Alcotest.(check bool)
+    "map descends into media" true
+    (String.contains css '0' && String.contains css 'f')
+
+(* Test Css.sort - sorts rules by custom comparison *)
+let test_sort () =
+  let sel1 = Selector.class_ "zzz" in
+  let sel2 = Selector.class_ "aaa" in
+  let sel3 = Selector.class_ "mmm" in
+  let stmts =
+    [
+      rule ~selector:sel1 [ color (Hex { hash = true; value = "ff0000" }) ];
+      rule ~selector:sel2 [ color (Hex { hash = true; value = "00ff00" }) ];
+      rule ~selector:sel3 [ color (Hex { hash = true; value = "0000ff" }) ];
+    ]
+  in
+
+  (* Sort alphabetically by selector *)
+  let sorted =
+    Css.sort
+      (fun (sel1, _) (sel2, _) ->
+        String.compare (Selector.to_string sel1) (Selector.to_string sel2))
+      stmts
+  in
+
+  let css = Css.to_string ~minify:true (v sorted) in
+  (* Should be .aaa, .mmm, .zzz order *)
+  let aaa_pos = String.index css 'a' in
+  let mmm_pos = String.index_from css (aaa_pos + 1) 'm' in
+  let zzz_pos = String.index_from css (mmm_pos + 1) 'z' in
+  Alcotest.(check bool)
+    "sort orders rules alphabetically" true
+    (aaa_pos < mmm_pos && mmm_pos < zzz_pos)
+
+(* Test Css.sort with nested media queries *)
+let test_sort_nested () =
+  let sel1 = Selector.class_ "zzz" in
+  let sel2 = Selector.class_ "aaa" in
+  let stmts =
+    [
+      media ~condition:"(min-width:768px)"
+        [
+          rule ~selector:sel1 [ color (Hex { hash = true; value = "ff0000" }) ];
+          rule ~selector:sel2 [ color (Hex { hash = true; value = "00ff00" }) ];
+        ];
+    ]
+  in
+
+  (* Sort should descend into media query and reorder *)
+  let sorted =
+    Css.sort
+      (fun (sel1, _) (sel2, _) ->
+        String.compare (Selector.to_string sel1) (Selector.to_string sel2))
+      stmts
+  in
+
+  let css = Css.to_string ~minify:true (v sorted) in
+  (* Inside media, should be .aaa before .zzz *)
+  let media_start = String.index css '@' in
+  let aaa_pos = String.index_from css media_start 'a' in
+  let zzz_pos = String.index_from css aaa_pos 'z' in
+  Alcotest.(check bool) "sort descends into media" true (aaa_pos < zzz_pos)
+
 let suite =
   [
     ( "css",
@@ -262,5 +371,10 @@ let suite =
         Alcotest.test_case "custom_prop_names" `Quick test_custom_prop_names;
         Alcotest.test_case "custom_props_from_rules" `Quick
           test_custom_props_from_rules;
+        (* Statement transformation helpers *)
+        Alcotest.test_case "map transforms rules" `Quick test_map;
+        Alcotest.test_case "map nested in media" `Quick test_map_nested;
+        Alcotest.test_case "sort orders rules" `Quick test_sort;
+        Alcotest.test_case "sort nested in media" `Quick test_sort_nested;
       ] );
   ]

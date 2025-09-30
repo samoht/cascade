@@ -124,7 +124,7 @@ let test_extract_custom_declarations () =
   let custom2, _ = var "size1" Length (Px 16.) in
 
   let decls = [ custom1; regular; custom2 ] in
-  let customs = extract_custom_declarations decls in
+  let customs = custom_declarations decls in
 
   Alcotest.(check int) "extracted custom declarations" 2 (List.length customs)
 
