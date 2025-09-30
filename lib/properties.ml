@@ -901,6 +901,8 @@ module Transform = struct
                 m44 )
         | _ -> err_invalid_value t "matrix3d" "expected 16 arguments")
 
+  let rec read_var t : transform = Var (Values.read_var read_transform t)
+
   let parsers =
     [
       ("translatex", read_translate_x);
@@ -923,6 +925,7 @@ module Transform = struct
       ("skew", read_skew);
       ("matrix", read_matrix);
       ("matrix3d", read_matrix3d);
+      ("var", read_var);
     ]
 end
 
@@ -4197,22 +4200,22 @@ let read_backface_visibility t : backface_visibility =
     t
 
 let rec read_scale t : scale =
-  let read_var t : scale = Var (read_var read_scale t) in
+  let _read_scale_var t : scale = Var (read_var read_scale t) in
   let read_numbers t : scale =
     let x = Values.read_number_percentage t in
-    Reader.ws t;
+    (* Don't require whitespace between values to handle var()var() *)
     match Reader.option Values.read_number_percentage t with
     | None -> X x
     | Some y -> (
-        Reader.ws t;
         match Reader.option Values.read_number_percentage t with
         | None -> XY (x, y)
         | Some z -> XYZ (x, y, z))
   in
   Reader.enum_or_calls "scale"
     [ ("none", (None : scale)) ]
-    ~calls:[ ("var", read_var) ]
-    ~default:read_numbers t
+    (* Remove var from calls to let read_numbers handle it via
+       number_percentage *)
+    ~calls:[] ~default:read_numbers t
 
 let read_steps_direction t : steps_direction =
   Reader.enum "steps direction"
