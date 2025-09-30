@@ -1028,8 +1028,13 @@ val container_type : container_type -> declaration
 val container_name : string -> declaration
 (** [container_name v] is the CSS [container-name] property. *)
 
-val transform : transform list -> declaration
-(** [transform v] is the CSS [transform] property. *)
+val transform : transform -> declaration
+(** [transform t] is the CSS [transform] property with a single transformation.
+*)
+
+val transforms : transform list -> declaration
+(** [transforms ts] is the CSS [transform] property with multiple
+    transformations. *)
 
 val rotate : angle -> declaration
 (** [rotate v] is the CSS [rotate] property. *)

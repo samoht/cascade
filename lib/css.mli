@@ -2712,10 +2712,15 @@ type transform =
   | Var of transform var
   | List of transform list
 
-val transform : transform list -> declaration
-(** [transform values] is the
+val transform : transform -> declaration
+(** [transform t] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transform} transform}
-    property with a list of transformations. *)
+    property with a single transformation. *)
+
+val transforms : transform list -> declaration
+(** [transforms ts] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transform} transform}
+    property with multiple transformations. *)
 
 type transform_origin =
   | Center
@@ -2789,6 +2794,7 @@ type timing_function =
   | Step_end
   | Steps of int * steps_direction option
   | Cubic_bezier of float * float * float * float
+  | Var of timing_function var
 
 (** CSS duration values. *)
 type duration =

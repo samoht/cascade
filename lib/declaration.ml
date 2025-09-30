@@ -274,24 +274,8 @@ let read_raw_value t =
   in
   loop ()
 
-let read_transform_value t =
-  let transforms, error_opt = Reader.many read_transform t in
-  if List.length transforms = 0 then
-    match error_opt with
-    | Some msg -> Reader.err_invalid t ("transform: " ^ msg)
-    | None -> Reader.err_invalid t "transform value"
-  else v Transform transforms
-
-let read_webkit_transform_value t =
-  let transforms, error_opt =
-    Reader.fold_many read_transform ~init:[] ~f:(fun acc t -> t :: acc) t
-  in
-  let transforms = List.rev transforms in
-  if transforms = [] then
-    match error_opt with
-    | Some msg -> Reader.err_invalid t ("webkit-transform: " ^ msg)
-    | None -> Reader.err_invalid t "webkit-transform value"
-  else v Webkit_transform transforms
+let read_transform_value t = v Transform (read_transforms t)
+let read_webkit_transform_value t = v Webkit_transform (read_transforms t)
 
 let read_place_self_value t =
   let a = read_align_self t in
@@ -955,7 +939,6 @@ let object_position value = v Object_position value
 let transition_duration value = v Transition_duration value
 let transition_timing_function value = v Transition_timing_function value
 let transition_delay value = v Transition_delay value
-let transition_property value = v Transition_property value
 
 (* Additional v constructors to match the interface *)
 let mix_blend_mode value = v Mix_blend_mode value
@@ -1018,7 +1001,8 @@ let cursor value = v Cursor value
 let user_select value = v User_select value
 let container_type value = v Container_type value
 let container_name value = v Container_name value
-let transform value = v Transform value
+let transform value = v Transform [ value ]
+let transforms value = v Transform value
 let rotate value = v Rotate value
 let scale (value : Properties_intf.scale) = v Scale value
 let perspective value = v Perspective value

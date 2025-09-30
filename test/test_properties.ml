@@ -304,6 +304,7 @@ let check_place_content =
   check_value "place-content" read_place_content pp_place_content
 
 let check_transform = check_value "transform" read_transform pp_transform
+let check_transforms = check_value "transforms" read_transforms pp_transforms
 
 let check_gradient_direction =
   check_value "gradient-direction" read_gradient_direction pp_gradient_direction
@@ -770,8 +771,7 @@ let test_pp_property_value () =
   let imgs : background_image list = [ Url "./x.png"; None ] in
   check string "background-image list" "url(./x.png),none"
     (to_s ppv (Background_image, imgs));
-  check string "transform none" "none"
-    (to_s ppv (Transform, ([ None ] : transform list)));
+  check string "transform none" "none" (to_s ppv (Transform, [ None ]));
   check string "content hello" "\"hello\""
     (to_s ppv (Content, (String "hello" : content)))
 
@@ -815,30 +815,22 @@ let test_transform () =
   check_transform "var(--my-transform,none)";
   check_transform "var(--tw-rotate-x,)";
   check_transform "var(--tw-scale,scale(1))";
-  (* Transform declaration with multiple transforms (Tailwind concatenated
-     vars) *)
-  let check_decl decl expected =
-    let t = Css.Reader.of_string decl in
-    match Css.Declaration.read_declaration t with
-    | Some d ->
-        Alcotest.(check string)
-          decl expected
-          (Css.Declaration.string_of_declaration ~minify:true d)
-    | None -> Alcotest.fail ("Failed to parse: " ^ decl)
-  in
-  check_decl "transform:var(--tw-rotate-x,) var(--tw-rotate-y,)"
-    "transform:var(--tw-rotate-x,) var(--tw-rotate-y,)";
-  check_decl
-    "transform:var(--tw-rotate-x,)var(--tw-rotate-y,)var(--tw-rotate-z,)"
-    "transform:var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,)";
-  check_decl
-    "transform:var(--tw-rotate-x,)var(--tw-rotate-y,)var(--tw-rotate-z,)var(--tw-skew-x,)var(--tw-skew-y,)"
-    "transform:var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,) \
-     var(--tw-skew-x,) var(--tw-skew-y,)";
-  check_decl "transform:translateX(10px) var(--my-rotate)"
-    "transform:translateX(10px) var(--my-rotate)";
-  check_decl "transform:var(--translate) scale(2)"
-    "transform:var(--translate) scale(2)";
+  (* Test transforms (transform list) with multiple values and vars *)
+  check_transforms "var(--tw-rotate-x,) var(--tw-rotate-y,)";
+  check_transforms "var(--tw-rotate-x,)var(--tw-rotate-y,)var(--tw-rotate-z,)"
+    ~expected:"var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,)";
+  check_transforms
+    "var(--tw-rotate-x,)var(--tw-rotate-y,)var(--tw-rotate-z,)var(--tw-skew-x,)var(--tw-skew-y,)"
+    ~expected:
+      "var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,) \
+       var(--tw-skew-x,) var(--tw-skew-y,)";
+  check_transforms "translateX(10px) var(--my-rotate)";
+  check_transforms "var(--translate) scale(2)";
+  check_transforms "rotate(45deg) scale(1.5)";
+  check_transforms "none";
+  (* Test transforms variable reference (whole list as var) *)
+  check_transforms "var(--my-transforms)";
+  check_transforms "var(--my-transforms,none)";
   neg read_transform "invalidfunc()";
   neg read_transform "translate3d(10px,20px)";
   neg read_transform "scale3d(1,2)";
