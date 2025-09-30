@@ -810,11 +810,41 @@ let test_transform () =
     ~expected:"matrix(.866,.5,-.5,.866,0,0)";
   check_transform "matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)"
     ~expected:"matrix3d(1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1)";
+  (* var() tests - single transform functions can be variables *)
+  check_transform "var(--my-transform)";
+  check_transform "var(--my-transform,none)";
+  check_transform "var(--tw-rotate-x,)";
+  check_transform "var(--tw-scale,scale(1))";
   neg read_transform "invalidfunc()";
   neg read_transform "translate3d(10px,20px)";
   neg read_transform "scale3d(1,2)";
   neg read_transform "matrix(1,2,3,4,5)";
   neg read_transform "matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0)"
+
+let test_transform_multiple_vars () =
+  (* Test Transform declaration property with multiple transforms - Tailwind
+     pattern *)
+  let check_declaration input expected =
+    let t = Css.Reader.of_string input in
+    match Css.Declaration.read_declaration t with
+    | Some decl ->
+        let output = Css.Declaration.string_of_declaration ~minify:true decl in
+        Alcotest.(check string) ("declaration " ^ input) expected output
+    | None -> Alcotest.fail "Failed to parse declaration"
+  in
+  check_declaration "transform:var(--tw-rotate-x,) var(--tw-rotate-y,)"
+    "transform:var(--tw-rotate-x,) var(--tw-rotate-y,)";
+  check_declaration
+    "transform:var(--tw-rotate-x,)var(--tw-rotate-y,)var(--tw-rotate-z,)"
+    "transform:var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,)";
+  check_declaration
+    "transform:var(--tw-rotate-x,)var(--tw-rotate-y,)var(--tw-rotate-z,)var(--tw-skew-x,)var(--tw-skew-y,)"
+    "transform:var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,) \
+     var(--tw-skew-x,) var(--tw-skew-y,)";
+  check_declaration "transform:translateX(10px) var(--my-rotate)"
+    "transform:translateX(10px) var(--my-rotate)";
+  check_declaration "transform:var(--translate) scale(2)"
+    "transform:var(--translate) scale(2)"
 
 let test_gap () =
   check_gap "10px";
@@ -1253,6 +1283,17 @@ let test_scale () =
   check_scale ~expected:".5" "0.5";
   check_scale ~expected:"1.5 2" "1.5 2.0";
   check_scale ~expected:".8 .8 1.2" "0.8 0.8 1.2";
+  (* var() tests - when all values are vars, they're concatenated without
+     spaces *)
+  check_scale "var(--my-scale)";
+  check_scale "var(--my-scale,1)";
+  check_scale "var(--my-scale-x) var(--my-scale-y)"
+    ~expected:"var(--my-scale-x)var(--my-scale-y)";
+  check_scale "var(--tw-scale-x)var(--tw-scale-y)";
+  check_scale "var(--tw-scale-x,1)var(--tw-scale-y,1)";
+  check_scale "var(--x,) var(--y,)" ~expected:"var(--x,)var(--y,)";
+  check_scale "var(--x,1) var(--y,1) var(--z,1)"
+    ~expected:"var(--x,1)var(--y,1)var(--z,1)";
   neg read_scale "2scale"
 
 let test_steps_direction () =
@@ -1883,6 +1924,7 @@ let tests =
     test_case "place-content" `Quick test_place_content;
     test_case "flex" `Quick test_flex;
     test_case "transform" `Quick test_transform;
+    test_case "transform multiple vars" `Quick test_transform_multiple_vars;
     test_case "gradient direction" `Quick test_gradient_direction;
     test_case "gradient stop" `Quick test_gradient_stop;
     test_case "overscroll-behavior" `Quick test_overscroll_behavior;
