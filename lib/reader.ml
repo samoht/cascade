@@ -903,16 +903,10 @@ let enum_calls_impl ?default cases t =
     | Some (_, p) -> p t
 
 let enum_or_calls_impl ?default label idents ~calls t =
-  (* Atomic and simple: name( means call (no whitespace allowed); name means
-     ident. *)
   let find_assoc_ci name lst =
     List.find_map
       (fun (k, v) -> if String.lowercase_ascii k = name then Some v else None)
       lst
-  in
-  let err_expected_ident name =
-    let options = List.map fst idents |> String.concat ", " in
-    err t (label ^ ": expected one of: " ^ options ^ ", got: " ^ name)
   in
   atomic t (fun () ->
       ws t;
@@ -921,7 +915,6 @@ let enum_or_calls_impl ?default label idents ~calls t =
         | Some f -> f t
         | None -> err t (label ^ ": expected " ^ label)
       else
-        (* Peek identifier and '(' without consuming input *)
         let name, has_paren =
           lookahead
             (fun t ->
@@ -930,17 +923,14 @@ let enum_or_calls_impl ?default label idents ~calls t =
             t
         in
         if has_paren then
-          (* Has parenthesis - try as function call *)
           match find_assoc_ci name calls with
-          | Some p -> p t (* Parser consumes identifier and parens *)
+          | Some p -> p t
           | None -> (
-              (* Not a valid call: do NOT consume; fall back appropriately *)
               match find_assoc_ci name idents with
-              | Some v ->
-                  (* Consume the ident now that we know it's a plain ident *)
+              | Some result ->
                   let consumed_name = ident t in
                   assert (consumed_name = name);
-                  v
+                  result
               | None -> (
                   match default with
                   | Some f -> f t
@@ -948,17 +938,19 @@ let enum_or_calls_impl ?default label idents ~calls t =
                       let options = List.map fst calls |> String.concat ", " in
                       err t ("expected one of functions: " ^ options)))
         else
-          (* No parenthesis: only consume if it matches an ident; else
-             default *)
           match find_assoc_ci name idents with
-          | Some v ->
+          | Some result ->
               let consumed_name = ident t in
               assert (consumed_name = name);
-              v
+              result
           | None -> (
               match default with
               | Some f -> f t
-              | None -> err_expected_ident name))
+              | None ->
+                  let options = List.map fst idents |> String.concat ", " in
+                  err t
+                    (label ^ ": expected one of: " ^ options ^ ", got: " ^ name)
+              ))
 
 let fold_many parser ~init ~f t =
   with_context t "fold_many" @@ fun () ->
