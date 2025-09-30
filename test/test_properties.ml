@@ -815,36 +815,35 @@ let test_transform () =
   check_transform "var(--my-transform,none)";
   check_transform "var(--tw-rotate-x,)";
   check_transform "var(--tw-scale,scale(1))";
+  (* Transform declaration with multiple transforms (Tailwind concatenated
+     vars) *)
+  let check_decl decl expected =
+    let t = Css.Reader.of_string decl in
+    match Css.Declaration.read_declaration t with
+    | Some d ->
+        Alcotest.(check string)
+          decl expected
+          (Css.Declaration.string_of_declaration ~minify:true d)
+    | None -> Alcotest.fail ("Failed to parse: " ^ decl)
+  in
+  check_decl "transform:var(--tw-rotate-x,) var(--tw-rotate-y,)"
+    "transform:var(--tw-rotate-x,) var(--tw-rotate-y,)";
+  check_decl
+    "transform:var(--tw-rotate-x,)var(--tw-rotate-y,)var(--tw-rotate-z,)"
+    "transform:var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,)";
+  check_decl
+    "transform:var(--tw-rotate-x,)var(--tw-rotate-y,)var(--tw-rotate-z,)var(--tw-skew-x,)var(--tw-skew-y,)"
+    "transform:var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,) \
+     var(--tw-skew-x,) var(--tw-skew-y,)";
+  check_decl "transform:translateX(10px) var(--my-rotate)"
+    "transform:translateX(10px) var(--my-rotate)";
+  check_decl "transform:var(--translate) scale(2)"
+    "transform:var(--translate) scale(2)";
   neg read_transform "invalidfunc()";
   neg read_transform "translate3d(10px,20px)";
   neg read_transform "scale3d(1,2)";
   neg read_transform "matrix(1,2,3,4,5)";
   neg read_transform "matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0)"
-
-let test_transform_multiple_vars () =
-  (* Test Transform declaration property with multiple transforms - Tailwind
-     pattern *)
-  let check_declaration input expected =
-    let t = Css.Reader.of_string input in
-    match Css.Declaration.read_declaration t with
-    | Some decl ->
-        let output = Css.Declaration.string_of_declaration ~minify:true decl in
-        Alcotest.(check string) ("declaration " ^ input) expected output
-    | None -> Alcotest.fail "Failed to parse declaration"
-  in
-  check_declaration "transform:var(--tw-rotate-x,) var(--tw-rotate-y,)"
-    "transform:var(--tw-rotate-x,) var(--tw-rotate-y,)";
-  check_declaration
-    "transform:var(--tw-rotate-x,)var(--tw-rotate-y,)var(--tw-rotate-z,)"
-    "transform:var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,)";
-  check_declaration
-    "transform:var(--tw-rotate-x,)var(--tw-rotate-y,)var(--tw-rotate-z,)var(--tw-skew-x,)var(--tw-skew-y,)"
-    "transform:var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,) \
-     var(--tw-skew-x,) var(--tw-skew-y,)";
-  check_declaration "transform:translateX(10px) var(--my-rotate)"
-    "transform:translateX(10px) var(--my-rotate)";
-  check_declaration "transform:var(--translate) scale(2)"
-    "transform:var(--translate) scale(2)"
 
 let test_gap () =
   check_gap "10px";
@@ -1924,7 +1923,6 @@ let tests =
     test_case "place-content" `Quick test_place_content;
     test_case "flex" `Quick test_flex;
     test_case "transform" `Quick test_transform;
-    test_case "transform multiple vars" `Quick test_transform_multiple_vars;
     test_case "gradient direction" `Quick test_gradient_direction;
     test_case "gradient stop" `Quick test_gradient_stop;
     test_case "overscroll-behavior" `Quick test_overscroll_behavior;
