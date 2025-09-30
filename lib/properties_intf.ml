@@ -1300,6 +1300,7 @@ type 'a property =
   | Transition_duration : duration property
   | Transition_timing_function : timing_function property
   | Transition_delay : duration property
+  | Transition_property : transition_property property
   | Will_change : string property
   | Contain : contain property
   | Isolation : isolation property

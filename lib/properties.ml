@@ -901,8 +901,6 @@ module Transform = struct
                 m44 )
         | _ -> err_invalid_value t "matrix3d" "expected 16 arguments")
 
-  let rec read_var t : transform = Var (Values.read_var read_transform t)
-
   let parsers =
     [
       ("translatex", read_translate_x);
@@ -925,14 +923,18 @@ module Transform = struct
       ("skew", read_skew);
       ("matrix", read_matrix);
       ("matrix3d", read_matrix3d);
-      ("var", read_var);
     ]
 end
 
-let read_transform t : transform =
+let rec read_transform t : transform =
+  (* Add var support to the parsers list *)
+  let read_var_transform t : transform =
+    Var (Values.read_var read_transform t)
+  in
   Reader.enum_or_calls "transform"
     [ ("none", (None : transform)) ]
-    ~calls:Transform.parsers t
+    ~calls:(("var", read_var_transform) :: Transform.parsers)
+    t
 
 let pp_opt_space pp ctx = function
   | Some v ->
@@ -1805,6 +1807,7 @@ let pp_property : type a. a property Pp.t =
   | Transition_duration -> Pp.string ctx "transition-duration"
   | Transition_timing_function -> Pp.string ctx "transition-timing-function"
   | Transition_delay -> Pp.string ctx "transition-delay"
+  | Transition_property -> Pp.string ctx "transition-property"
   | Will_change -> Pp.string ctx "will-change"
   | Contain -> Pp.string ctx "contain"
   | Isolation -> Pp.string ctx "isolation"
@@ -5672,6 +5675,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Transition_duration -> pp pp_duration
   | Transition_timing_function -> pp pp_timing_function
   | Transition_delay -> pp pp_duration
+  | Transition_property -> pp pp_transition_property
   | Will_change -> pp Pp.string
   | Contain -> pp pp_contain
   | Word_spacing -> pp pp_length
