@@ -92,26 +92,26 @@ let pp_attribute_match : attribute_match Pp.t =
       Pp.string ctx "*=";
       pp_attr_value ctx value
 
+let is_hex_char c =
+  (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+
 let skip_css_escape name i =
   (* Skip escaped sequence: either next char or up to 6 hex digits + optional
      space *)
   let len = String.length name in
   incr i;
-  if !i < len then (
-    let is_hex c =
-      (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
-    in
+  if !i >= len then ()
+  else
     let start = !i in
     let rec consume_hex n =
       if n = 6 || !i >= len then ()
-      else if is_hex name.[!i] then (
+      else if is_hex_char name.[!i] then (
         incr i;
         consume_hex (n + 1))
-      else ()
     in
     consume_hex 0;
     if !i = start then incr i (* single escaped char *)
-    else if !i < len && name.[!i] = ' ' then incr i)
+    else if !i < len && name.[!i] = ' ' then incr i
 
 let validate_css_identifier name =
   if String.length name = 0 then err_invalid_identifier name "cannot be empty";

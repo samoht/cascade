@@ -1232,18 +1232,17 @@ let fold_many_with_enum_context () =
   (* Test that fold_many inside enum preserves both contexts *)
   let r = of_string "invalid" in
 
-  (* This simulates what happens with border parsing *)
-  let parser r =
-    enum "outer-enum" []
-      ~default:(fun r ->
-        let acc, _ =
-          Css.Reader.fold_many parse_fold_component ~init:[]
-            ~f:(fun acc x -> x :: acc)
-            r
-        in
-        acc)
-      r
+  let fold_default r =
+    let acc, _ =
+      Css.Reader.fold_many parse_fold_component ~init:[]
+        ~f:(fun acc x -> x :: acc)
+        r
+    in
+    acc
   in
+
+  (* This simulates what happens with border parsing *)
+  let parser r = enum "outer-enum" [] ~default:fold_default r in
 
   try
     let _ = parser r in
