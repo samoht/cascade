@@ -675,16 +675,17 @@ let read_regular_property_declaration t : declaration =
 
 (** Parse a single declaration directly from stream - no string roundtrips *)
 let read_declaration t : declaration option =
+  let read_one () =
+    Reader.with_context t "read_declaration" @@ fun () ->
+    (* Check if this is a custom property (starts with --) *)
+    if Reader.looking_at t "--" then read_custom_property_declaration t
+    else read_regular_property_declaration t
+  in
   Reader.ws t;
   match Reader.peek t with
   | Some '}' -> None (* End of block - no more declarations *)
   | None -> None (* EOF is acceptable at top-level parsing *)
-  | _ ->
-      Reader.with_context t "read_declaration" @@ fun () ->
-      (* Check if this is a custom property (starts with --) *)
-      Some
-        (if Reader.looking_at t "--" then read_custom_property_declaration t
-         else read_regular_property_declaration t)
+  | _ -> Some (read_one ())
 
 let read_declarations t =
   Reader.with_context t "declarations" @@ fun () ->

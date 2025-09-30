@@ -137,6 +137,22 @@ val as_supports : statement -> (string * statement list) option
 (** [as_supports stmt] returns [Some (condition, statements)] if the statement
     is a supports query, [None] otherwise. *)
 
+val map :
+  (Selector.t -> declaration list -> statement) ->
+  statement list ->
+  statement list
+(** [map f stmts] applies [f] to all rules in [stmts], recursively descending
+    into nested containers (media, supports, layers, etc.). Rules are
+    transformed while non-rule statements are preserved. *)
+
+val sort :
+  (Selector.t * declaration list -> Selector.t * declaration list -> int) ->
+  statement list ->
+  statement list
+(** [sort cmp stmts] sorts rules within [stmts] using the comparison function
+    [cmp], recursively descending into nested containers. Non-rule statements
+    are preserved in their original positions. *)
+
 (** Existential type for property information that preserves type safety *)
 type property_info =
   | Property_info : {
@@ -294,9 +310,15 @@ val analyze_declarations : declaration list -> any_var list
 (** [analyze_declarations declarations] is the typed CSS variables extracted
     from [declarations]. *)
 
-val extract_custom_declarations : declaration list -> declaration list
-(** [extract_custom_declarations decls] is only the custom property declarations
-    from [decls]. *)
+val custom_declarations : ?layer:string -> declaration list -> declaration list
+(** [custom_declarations ?layer decls] is only the custom property declarations
+    from [decls]. If [layer] is provided, only declarations from that layer are
+    returned. *)
+
+val extract_custom_declarations :
+  ?layer:string -> declaration list -> declaration list
+[@@deprecated "Use custom_declarations instead"]
+(** @deprecated Use {!custom_declarations} instead. *)
 
 (** {2:core_types Core Types & Calculations}
 

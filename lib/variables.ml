@@ -545,8 +545,15 @@ let analyze_declarations (decls : declaration list) : any_var list =
   List.concat_map extract_vars_from_declaration decls
 
 (* Extract only custom property declarations (variable definitions) *)
-let extract_custom_declarations (decls : declaration list) : declaration list =
-  List.filter (function Custom_declaration _ -> true | _ -> false) decls
+let custom_declarations ?layer (decls : declaration list) : declaration list =
+  List.filter
+    (function
+      | Custom_declaration { layer = decl_layer; _ } -> (
+          match layer with None -> true | Some l -> decl_layer = Some l)
+      | _ -> false)
+    decls
+
+let extract_custom_declarations = custom_declarations
 
 (* Extract the variable name from a custom declaration *)
 let custom_declaration_name (decl : declaration) : string option =

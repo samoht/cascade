@@ -69,6 +69,60 @@ let as_supports = function
   | Supports (condition, content) -> Some (condition, content)
   | _ -> None
 
+let rec map f stmts =
+  List.map
+    (fun stmt ->
+      match as_rule stmt with
+      | Some (sel, decls, _nested) -> f sel decls
+      | None -> (
+          match as_media stmt with
+          | Some (condition, content) -> media ~condition (map f content)
+          | None -> (
+              match as_supports stmt with
+              | Some (condition, content) -> supports ~condition (map f content)
+              | None -> (
+                  match as_layer stmt with
+                  | Some (name, content) -> layer ?name (map f content)
+                  | None -> (
+                      match as_container stmt with
+                      | Some (name, condition, content) ->
+                          container ?name ~condition (map f content)
+                      | None -> stmt)))))
+    stmts
+
+let rec sort cmp stmts =
+  (* First, recursively sort within containers *)
+  let stmts_with_sorted_contents =
+    List.map
+      (fun stmt ->
+        match as_media stmt with
+        | Some (condition, content) -> media ~condition (sort cmp content)
+        | None -> (
+            match as_supports stmt with
+            | Some (condition, content) ->
+                supports ~condition (sort cmp content)
+            | None -> (
+                match as_layer stmt with
+                | Some (name, content) -> layer ?name (sort cmp content)
+                | None -> (
+                    match as_container stmt with
+                    | Some (name, condition, content) ->
+                        container ?name ~condition (sort cmp content)
+                    | None -> stmt))))
+      stmts
+  in
+
+  (* Now sort the rules at this level *)
+  List.sort
+    (fun stmt1 stmt2 ->
+      match (as_rule stmt1, as_rule stmt2) with
+      | Some (sel1, decls1, _), Some (sel2, decls2, _) ->
+          cmp (sel1, decls1) (sel2, decls2)
+      | Some _, None -> -1 (* Rules before non-rules *)
+      | None, Some _ -> 1 (* Non-rules after rules *)
+      | None, None -> 0 (* Preserve order of non-rules *))
+    stmts_with_sorted_contents
+
 (* Existential type for property information *)
 type property_info =
   | Property_info : {
