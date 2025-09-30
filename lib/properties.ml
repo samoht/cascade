@@ -5190,6 +5190,7 @@ let read_any_property t =
   | "-webkit-line-clamp" -> Prop Webkit_line_clamp
   | "-webkit-box-orient" -> Prop Webkit_box_orient
   | "-webkit-hyphens" -> Prop Webkit_hyphens
+  | "-webkit-user-select" -> Prop User_select
   | "-moz-appearance" -> Prop Moz_appearance
   | "-moz-osx-font-smoothing" -> Prop Moz_osx_font_smoothing
   | "-ms-filter" -> Prop Ms_filter
