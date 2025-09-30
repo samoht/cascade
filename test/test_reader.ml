@@ -685,27 +685,24 @@ let enum_or_calls_behavior () =
 (* var() via enum_or_calls: ensures call branch consumes correctly and makes
    progress *)
 let var_via_enum_or_calls () =
-  let parse_var_simple t =
-    call "var" t (fun t ->
-        ws t;
-        expect_string "--" t;
-        let name = ident ~keep_case:true t in
-        ws t;
-        (* Optional fallback: empty or identifier fallback *)
-        let tag =
-          match
-            option
-              (fun t ->
-                comma t;
-                ws t;
-                if peek t = Some ')' then "empty" else "fb:" ^ ident t)
-              t
-          with
-          | Some t -> t
-          | None -> "none"
-        in
-        "var:" ^ name ^ ":" ^ tag)
+  let parse_fallback t =
+    comma t;
+    ws t;
+    if peek t = Some ')' then "empty" else "fb:" ^ ident t
   in
+
+  let parse_var_content t =
+    ws t;
+    expect_string "--" t;
+    let name = ident ~keep_case:true t in
+    ws t;
+    let tag =
+      match option parse_fallback t with Some t -> t | None -> "none"
+    in
+    "var:" ^ name ^ ":" ^ tag
+  in
+
+  let parse_var_simple t = call "var" t parse_var_content in
 
   let parse_value t =
     enum_or_calls "value" [] ~calls:[ ("var", parse_var_simple) ] t
@@ -1223,6 +1220,14 @@ let fold_many_call_stack () =
       "fold_many preserves context" true
       (List.mem "fold-context" error.callstack)
 
+let parse_fold_component r =
+  one_of
+    [
+      (fun r -> enum "inner1" [ ("valid1", 1) ] r);
+      (fun r -> enum "inner2" [ ("valid2", 2) ] r);
+    ]
+    r
+
 let fold_many_with_enum_context () =
   (* Test that fold_many inside enum preserves both contexts *)
   let r = of_string "invalid" in
@@ -1231,16 +1236,8 @@ let fold_many_with_enum_context () =
   let parser r =
     enum "outer-enum" []
       ~default:(fun r ->
-        let parse_component r =
-          one_of
-            [
-              (fun r -> enum "inner1" [ ("valid1", 1) ] r);
-              (fun r -> enum "inner2" [ ("valid2", 2) ] r);
-            ]
-            r
-        in
         let acc, _ =
-          Css.Reader.fold_many parse_component ~init:[]
+          Css.Reader.fold_many parse_fold_component ~init:[]
             ~f:(fun acc x -> x :: acc)
             r
         in

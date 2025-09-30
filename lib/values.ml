@@ -86,6 +86,15 @@ let pp_calc_op : calc_op Pp.t =
       Pp.string ctx "/";
       Pp.space_if_pretty ctx ()
 
+let pp_calc_expr ~precedence ~parent_prec pp_calc_inner ctx left op right =
+  let op_prec = precedence op in
+  let needs_parens = op_prec < parent_prec in
+  if needs_parens then Pp.char ctx '(';
+  pp_calc_inner ~parent_prec:op_prec ctx left;
+  pp_calc_op ctx op;
+  pp_calc_inner ~parent_prec:op_prec ctx right;
+  if needs_parens then Pp.char ctx ')'
+
 let pp_calc : type a. a Pp.t -> a calc Pp.t =
  fun pp_value ctx calc ->
   Pp.call "calc"
@@ -96,13 +105,8 @@ let pp_calc : type a. a Pp.t -> a calc Pp.t =
         | Var v -> pp_var pp_value ctx v
         | Num n -> Pp.float ctx n
         | Expr (left, op, right) ->
-            let op_prec = precedence op in
-            let needs_parens = op_prec < parent_prec in
-            if needs_parens then Pp.char ctx '(';
-            pp_calc_inner ~parent_prec:op_prec ctx left;
-            pp_calc_op ctx op;
-            pp_calc_inner ~parent_prec:op_prec ctx right;
-            if needs_parens then Pp.char ctx ')'
+            pp_calc_expr ~precedence ~parent_prec pp_calc_inner ctx left op
+              right
       in
       pp_calc_inner ~parent_prec:0 ctx calc)
     ctx calc
