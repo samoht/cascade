@@ -5176,6 +5176,7 @@ let read_any_property t =
   | "transform-style" -> Prop Transform_style
   | "transition-delay" -> Prop Transition_delay
   | "transition-duration" -> Prop Transition_duration
+  | "transition-property" -> Prop Transition_property
   | "transition-timing-function" -> Prop Transition_timing_function
   | "unicode-bidi" -> Prop Unicode_bidi
   | "white-space" -> Prop White_space
