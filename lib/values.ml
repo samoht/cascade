@@ -1304,12 +1304,13 @@ let read_color_space t : color_space =
 (** Parse color-mix() function - forward declaration needed *)
 let read_optional_percentage t : percentage option =
   (* Parse optional percentage immediately after a value *)
-  try
-    let n = Reader.number t in
-    Reader.expect '%' t;
-    Reader.ws t;
-    Some (Pct n)
-  with Reader.Parse_error _ | End_of_file | Failure _ -> None
+  Reader.option
+    (fun t ->
+      let n = Reader.number t in
+      Reader.expect '%' t;
+      Reader.ws t;
+      (Pct n : percentage))
+    t
 
 let rec read_color_mix t : color =
   Reader.ws t;
