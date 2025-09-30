@@ -58,33 +58,34 @@ let read_property_value t =
   Reader.with_context t "property-value" @@ fun () ->
   (* Read value token by token, detecting property-like patterns early *)
   let buf = Buffer.create 64 in
-  let rec parse_tokens depth in_quote quote_char =
+  let rec handle_escape buf t depth in_quote quote_char =
+    match Reader.peek t with
+    | None -> Buffer.contents buf
+    | Some next_c ->
+        Buffer.add_char buf next_c;
+        Reader.skip t;
+        parse_tokens buf t depth in_quote quote_char
+  and parse_tokens buf t depth in_quote quote_char =
     match Reader.peek t with
     | None -> Buffer.contents buf
     | Some c when in_quote ->
         Buffer.add_char buf c;
         Reader.skip t;
-        if c = quote_char then parse_tokens depth false '\000'
-        else if c = '\\' then (
-          match Reader.peek t with
-          | None -> Buffer.contents buf
-          | Some next_c ->
-              Buffer.add_char buf next_c;
-              Reader.skip t;
-              parse_tokens depth in_quote quote_char)
-        else parse_tokens depth in_quote quote_char
+        if c = quote_char then parse_tokens buf t depth false '\000'
+        else if c = '\\' then handle_escape buf t depth in_quote quote_char
+        else parse_tokens buf t depth in_quote quote_char
     | Some (('"' | '\'') as q) ->
         Buffer.add_char buf q;
         Reader.skip t;
-        parse_tokens depth true q
+        parse_tokens buf t depth true q
     | Some (('(' | '[' | '{') as c) ->
         Buffer.add_char buf c;
         Reader.skip t;
-        parse_tokens (depth + 1) in_quote quote_char
+        parse_tokens buf t (depth + 1) in_quote quote_char
     | Some ((')' | ']' | '}') as c) when depth > 0 ->
         Buffer.add_char buf c;
         Reader.skip t;
-        parse_tokens (depth - 1) in_quote quote_char
+        parse_tokens buf t (depth - 1) in_quote quote_char
     | Some c when depth = 0 && (c = ';' || c = '}' || c = '!') ->
         Buffer.contents buf
     | Some c when depth = 0 && Reader.is_ident_start c ->
@@ -92,13 +93,13 @@ let read_property_value t =
            declarations within values *)
         Buffer.add_char buf c;
         Reader.skip t;
-        parse_tokens depth in_quote quote_char
+        parse_tokens buf t depth in_quote quote_char
     | Some c ->
         Buffer.add_char buf c;
         Reader.skip t;
-        parse_tokens depth in_quote quote_char
+        parse_tokens buf t depth in_quote quote_char
   in
-  let value = parse_tokens 0 false '\000' in
+  let value = parse_tokens buf t 0 false '\000' in
   let trimmed = String.trim value in
   if String.length trimmed = 0 then
     Reader.err_invalid t "property value (cannot be empty)";
