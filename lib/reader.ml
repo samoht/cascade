@@ -361,33 +361,33 @@ let ident ?(keep_case = false) t =
 let is_digit c = c >= '0' && c <= '9'
 let is_alpha c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 
+let validate_unicode_code t hex =
+  try
+    let code = int_of_string ("0x" ^ hex) in
+    if code > 0x10FFFF then err_invalid t "unicode escape out of range"
+  with
+  | Invalid_argument _ -> err_invalid t "invalid unicode escape"
+  | Failure _ -> err_invalid t "invalid unicode escape"
+
 let read_unicode_escape t buf =
   (* Unicode escape: read up to 6 hex digits *)
   let hex_buf = Buffer.create 6 in
   let rec read_hex count =
-    if count < 6 then
+    if count >= 6 then ()
+    else
       match peek t with
       | Some h when is_hex h ->
           skip t;
           Buffer.add_char hex_buf h;
           read_hex (count + 1)
       | _ -> ()
-    else ()
   in
   read_hex 0;
   let hex = Buffer.contents hex_buf in
-  (if String.length hex = 0 then err_invalid t "empty unicode escape"
-   else
-     (* Validate that it forms valid unicode *)
-     try
-       let code = int_of_string ("0x" ^ hex) in
-       if code > 0x10FFFF then err_invalid t "unicode escape out of range";
-       (* Add the unicode character as a backslash followed by hex *)
-       Buffer.add_char buf '\\';
-       Buffer.add_string buf hex
-     with
-     | Invalid_argument _ -> err_invalid t "invalid unicode escape"
-     | Failure _ -> err_invalid t "invalid unicode escape");
+  if String.length hex = 0 then err_invalid t "empty unicode escape";
+  validate_unicode_code t hex;
+  Buffer.add_char buf '\\';
+  Buffer.add_string buf hex;
   (* Optional whitespace after unicode escape *)
   match peek t with
   | Some (' ' | '\t' | '\n' | '\r') -> skip t
