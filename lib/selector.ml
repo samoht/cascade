@@ -553,92 +553,103 @@ and read_cue_region t = Reader.call "cue-region" t read_cue_region_content
 (** Parse pseudo-class (:hover, :nth-child(2n+1), etc.) *)
 and read_pseudo_class t =
   Reader.expect ':' t;
-  (* Use enum_or_calls to handle both simple and functional pseudo-classes *)
   Reader.enum_or_calls "pseudo-class"
-    [
-      (* Simple pseudo-classes *)
-      ("hover", Hover);
-      ("active", Active);
-      ("focus", Focus);
-      ("focus-visible", Focus_visible);
-      ("focus-within", Focus_within);
-      ("target", Target);
-      ("link", Link);
-      ("visited", Visited);
-      ("any-link", Any_link);
-      ("local-link", Local_link);
-      ("target-within", Target_within);
-      ("scope", Scope);
-      ("root", Root);
-      ("empty", Empty);
-      ("first-child", First_child);
-      ("last-child", Last_child);
-      ("only-child", Only_child);
-      ("first-of-type", First_of_type);
-      ("last-of-type", Last_of_type);
-      ("only-of-type", Only_of_type);
-      ("enabled", Enabled);
-      ("disabled", Disabled);
-      ("read-only", Read_only);
-      ("read-write", Read_write);
-      ("placeholder-shown", Placeholder_shown);
-      ("default", Default);
-      ("checked", Checked);
-      ("indeterminate", Indeterminate);
-      ("blank", Blank);
-      ("valid", Valid);
-      ("invalid", Invalid);
-      ("in-range", In_range);
-      ("out-of-range", Out_of_range);
-      ("required", Required);
-      ("optional", Optional);
-      ("user-invalid", User_invalid);
-      ("user-valid", User_valid);
-      ("autofill", Autofill);
-      ("fullscreen", Fullscreen);
-      ("modal", Modal);
-      ("picture-in-picture", Picture_in_picture);
-      ("left", Left);
-      ("right", Right);
-      ("first", First);
-      ("defined", Defined);
-      ("playing", Playing);
-      ("paused", Paused);
-      ("seeking", Seeking);
-      ("buffering", Buffering);
-      ("stalled", Stalled);
-      ("muted", Muted);
-      ("volume-locked", Volume_locked);
-      ("future", Future);
-      ("past", Past);
-      ("current", Current);
-      ("popover-open", Popover_open);
-      (* :host can be used without arguments *)
-      ("host", Host None);
-      (* Legacy single-colon pseudo-elements *)
-      ("before", Before);
-      ("after", After);
-      ("first-letter", First_letter);
-      ("first-line", First_line);
-      (* Modern double-colon pseudo-elements *)
-      ("backdrop", Backdrop);
-      ("marker", Marker);
-      ("placeholder", Placeholder);
-      ("selection", Selection);
-      ("file-selector-button", File_selector_button);
-      (* Vendor-specific *)
-      ("-moz-focusring", Moz_focusring);
-      ("-webkit-any", Webkit_any);
-      ("-webkit-autofill", Webkit_autofill);
-      ("-moz-placeholder", Moz_placeholder);
-      ("-webkit-input-placeholder", Webkit_input_placeholder);
-      ("-ms-input-placeholder", Ms_input_placeholder);
-      ("-moz-ui-invalid", Moz_ui_invalid);
-      ("-moz-ui-valid", Moz_ui_valid);
-      ("-webkit-scrollbar", Webkit_scrollbar);
-      ("-webkit-search-cancel-button", Webkit_search_cancel_button);
-      ("-webkit-search-decoration", Webkit_search_decoration);
-    ]
+    ([
+       (* Interactive *)
+       ("hover", Hover);
+       ("active", Active);
+       ("focus", Focus);
+       ("focus-visible", Focus_visible);
+       ("focus-within", Focus_within);
+       ("target", Target);
+       ("target-within", Target_within);
+       (* Link *)
+       ("link", Link);
+       ("visited", Visited);
+       ("any-link", Any_link);
+       ("local-link", Local_link);
+       (* Structural *)
+       ("root", Root);
+       ("empty", Empty);
+       ("first-child", First_child);
+       ("last-child", Last_child);
+       ("only-child", Only_child);
+       ("first-of-type", First_of_type);
+       ("last-of-type", Last_of_type);
+       ("only-of-type", Only_of_type);
+       (* Input *)
+       ("enabled", Enabled);
+       ("disabled", Disabled);
+       ("read-only", Read_only);
+       ("read-write", Read_write);
+       ("placeholder-shown", Placeholder_shown);
+       ("default", Default);
+       ("checked", Checked);
+       ("indeterminate", Indeterminate);
+       ("blank", Blank);
+       ("valid", Valid);
+       ("invalid", Invalid);
+       ("in-range", In_range);
+       ("out-of-range", Out_of_range);
+       ("required", Required);
+       ("optional", Optional);
+       ("user-invalid", User_invalid);
+       ("user-valid", User_valid);
+       ("autofill", Autofill);
+       (* Display *)
+       ("fullscreen", Fullscreen);
+       ("modal", Modal);
+       ("picture-in-picture", Picture_in_picture);
+       ("popover-open", Popover_open);
+       (* Paged *)
+       ("left", Left);
+       ("right", Right);
+       ("first", First);
+       (* Component *)
+       ("defined", Defined);
+       ("scope", Scope);
+       ("host", Host None);
+       (* Media *)
+       ("playing", Playing);
+       ("paused", Paused);
+       ("seeking", Seeking);
+       ("buffering", Buffering);
+       ("stalled", Stalled);
+       ("muted", Muted);
+       ("volume-locked", Volume_locked);
+       ("current", Current);
+       ("past", Past);
+       ("future", Future);
+     ]
+    @ [
+        (* Legacy pseudo-elements *)
+        ("before", Before);
+        ("after", After);
+        ("first-letter", First_letter);
+        ("first-line", First_line);
+      ]
+    @ [
+        (* Modern pseudo-elements *)
+        ("backdrop", Backdrop);
+        ("marker", Marker);
+        ("placeholder", Placeholder);
+        ("selection", Selection);
+        ("file-selector-button", File_selector_button);
+      ]
+    @ [
+        (* Vendor-specific *)
+        ("-moz-focusring", Moz_focusring);
+        ("-webkit-any", Webkit_any);
+        ("-webkit-autofill", Webkit_autofill);
+        ("-moz-placeholder", Moz_placeholder);
+        ("-webkit-input-placeholder", Webkit_input_placeholder);
+        ("-ms-input-placeholder", Ms_input_placeholder);
+        ("-moz-ui-invalid", Moz_ui_invalid);
+        ("-moz-ui-valid", Moz_ui_valid);
+        ("-webkit-scrollbar", Webkit_scrollbar);
+        ("-webkit-search-cancel-button", Webkit_search_cancel_button);
+        ("-webkit-search-decoration", Webkit_search_decoration);
+      ])
     ~calls:
       [
         ("is", read_is);

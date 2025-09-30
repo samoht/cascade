@@ -134,6 +134,12 @@ let test_group_selectors () =
     (Css.Selector.is_compound_list grouped_rule.selector)
 
 (** Test complete stylesheet optimization *)
+let count_rules stmts =
+  List.fold_left
+    (fun acc stmt ->
+      match stmt with Css.Stylesheet.Rule _ -> acc + 1 | _ -> acc)
+    0 stmts
+
 let optimize_all () =
   let selector1 = Css.Selector.class_ "test" in
   let selector2 = Css.Selector.class_ "other" in
@@ -172,14 +178,8 @@ let optimize_all () =
   let optimized = Css.Optimize.stylesheet stylesheet in
 
   (* Should merge rule1 and rule2 since they have same selector *)
-  let rule_count stmts =
-    List.fold_left
-      (fun acc stmt ->
-        match stmt with Css.Stylesheet.Rule _ -> acc + 1 | _ -> acc)
-      0 stmts
-  in
   check bool "optimization reduces rule count" true
-    (rule_count optimized < rule_count stylesheet)
+    (count_rules optimized < count_rules stylesheet)
 
 (** Test media query optimization *)
 let media_queries () =
