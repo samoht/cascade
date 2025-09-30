@@ -133,6 +133,50 @@ let test_group_selectors () =
   check bool "grouped selector is a list" true
     (Css.Selector.is_compound_list grouped_rule.selector)
 
+(** Test selector grouping with complex prose-like selectors *)
+let test_group_complex_selectors () =
+  (* Mimics prose selectors: .prose :where(a strong), .prose :where(blockquote
+     strong) *)
+  let decls = [ v Color Inherit ] in
+
+  (* Parse complex selectors from strings to match real-world prose selectors *)
+  let sel1_str =
+    ".prose :where(a strong):not(:where([class~=not-prose], [class~=not-prose] \
+     *))"
+  in
+  let sel2_str =
+    ".prose :where(blockquote strong):not(:where([class~=not-prose], \
+     [class~=not-prose] *))"
+  in
+  let sel3_str =
+    ".prose :where(thead th strong):not(:where([class~=not-prose], \
+     [class~=not-prose] *))"
+  in
+
+  let sel1 = Css.Selector.read (Css.Reader.of_string sel1_str) in
+  let sel2 = Css.Selector.read (Css.Reader.of_string sel2_str) in
+  let sel3 = Css.Selector.read (Css.Reader.of_string sel3_str) in
+
+  let rule1 : Css.Stylesheet.rule =
+    { selector = sel1; declarations = decls; nested = [] }
+  in
+  let rule2 : Css.Stylesheet.rule =
+    { selector = sel2; declarations = decls; nested = [] }
+  in
+  let rule3 : Css.Stylesheet.rule =
+    { selector = sel3; declarations = decls; nested = [] }
+  in
+
+  (* Test combine_identical_rules function *)
+  let grouped = combine_identical_rules [ rule1; rule2; rule3 ] in
+  check int "complex selectors with same declarations are grouped" 1
+    (List.length grouped);
+
+  (* Check that selector is a list *)
+  let grouped_rule = List.hd grouped in
+  check bool "grouped complex selector is a list" true
+    (Css.Selector.is_compound_list grouped_rule.selector)
+
 (** Test complete stylesheet optimization *)
 let count_rules stmts =
   List.fold_left
@@ -258,6 +302,7 @@ let optimize_tests =
     ("optimize single rule", `Quick, single_rule);
     ("merge rules", `Quick, test_merge_rules);
     ("group selectors", `Quick, test_group_selectors);
+    ("group complex selectors", `Quick, test_group_complex_selectors);
     ("optimize stylesheet", `Quick, optimize_all);
     ("optimize media queries", `Quick, media_queries);
     ("optimize layers", `Quick, layers);
