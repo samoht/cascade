@@ -540,10 +540,6 @@ let vars_of_declarations properties =
   List.concat_map extract_vars_from_declaration properties
   |> List.sort_uniq compare_vars_by_name
 
-(* Analyze declarations to find all variable references *)
-let analyze_declarations (decls : declaration list) : any_var list =
-  List.concat_map extract_vars_from_declaration decls
-
 (* Extract only custom property declarations (variable definitions) *)
 let custom_declarations ?layer (decls : declaration list) : declaration list =
   List.filter
@@ -552,8 +548,6 @@ let custom_declarations ?layer (decls : declaration list) : declaration list =
           match layer with None -> true | Some l -> decl_layer = Some l)
       | _ -> false)
     decls
-
-let extract_custom_declarations = custom_declarations
 
 (* Extract the variable name from a custom declaration *)
 let custom_declaration_name (decl : declaration) : string option =

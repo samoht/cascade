@@ -62,7 +62,7 @@ let optimization_flag () =
 let layers_integration () =
   let utility_rule = rule ~selector:btn [ padding [ Px 10. ] ] in
   let stylesheet =
-    Css.of_statements [ layer ~name:"utilities" [ utility_rule ] ]
+    Css.v [ layer ~name:"utilities" [ utility_rule ] ]
   in
 
   let css = Css.to_string ~minify:true stylesheet in
@@ -79,7 +79,7 @@ let layers_integration () =
 let media_integration () =
   let mobile_rule = rule ~selector:btn [ font_size (Rem 0.875) ] in
   let stylesheet =
-    Css.of_statements [ media ~condition:"(max-width: 640px)" [ mobile_rule ] ]
+    Css.v [ media ~condition:"(max-width: 640px)" [ mobile_rule ] ]
   in
 
   let css = Css.to_string ~minify:true stylesheet in

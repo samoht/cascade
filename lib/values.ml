@@ -163,7 +163,10 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Max_content -> Pp.string ctx "max-content"
   | Min_content -> Pp.string ctx "min-content"
   | From_font -> Pp.string ctx "from-font"
-  | Function s -> Pp.string ctx s
+  | Clamp s -> Pp.string ctx ("clamp(" ^ s ^ ")")
+  | Min s -> Pp.string ctx ("min(" ^ s ^ ")")
+  | Max s -> Pp.string ctx ("max(" ^ s ^ ")")
+  | Minmax s -> Pp.string ctx ("minmax(" ^ s ^ ")")
   | Var v -> pp_var (pp_length ~always) ctx v
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -912,7 +915,10 @@ let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
     Reader.expect ')' t;
     (* Only allow known length-producing functions here *)
     match String.lowercase_ascii name with
-    | "clamp" | "minmax" | "min" | "max" -> Function (name ^ "(" ^ content ^ ")")
+    | "clamp" -> Clamp content
+    | "minmax" -> Minmax content
+    | "min" -> Min content
+    | "max" -> Max content
     | _ -> Reader.err t "unknown function"
   in
   let parsers =

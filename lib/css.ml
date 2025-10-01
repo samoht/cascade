@@ -148,16 +148,38 @@ let as_font_face = function
 
 let concat = List.concat
 let empty = []
-let of_statements = Stylesheet.v
-let v statements = of_statements statements
+let v = Stylesheet.v
 
 (* Override to return statements instead of rules *)
-let rules t =
+let rule_statements t =
   let raw_rules = Stylesheet.rules t in
   List.map (fun r -> Rule r) raw_rules
 
 (* Function to extract all statements, not just rules *)
 let statements t = t
+
+(* Fold over all statements recursively, descending into nested structures *)
+let rec fold f acc t =
+  List.fold_left
+    (fun acc stmt ->
+      let acc' = f acc stmt in
+      (* Recursively fold over nested statements *)
+      let nested =
+        match as_layer stmt with
+        | Some (_, nested) -> nested
+        | None -> (
+            match as_media stmt with
+            | Some (_, nested) -> nested
+            | None -> (
+                match as_container stmt with
+                | Some (_, _, nested) -> nested
+                | None -> (
+                    match as_supports stmt with
+                    | Some (_, nested) -> nested
+                    | None -> [])))
+      in
+      fold f acc' nested)
+    acc t
 
 let media_queries t =
   let raw_media = Stylesheet.media_queries t in
