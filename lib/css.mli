@@ -867,9 +867,11 @@ val declaration_is_important : declaration -> bool
 val declaration_name : declaration -> string
 (** [declaration_name decl] returns the property name of [decl]. *)
 
-val declaration_value : ?minify:bool -> declaration -> string
-(** [declaration_value ~minify decl] returns the value of [decl] as a string. If
-    [minify] is [true] (default: [false]), the output is minified. *)
+val declaration_value : ?minify:bool -> ?inline:bool -> declaration -> string
+(** [declaration_value ~minify ~inline decl] returns the value of [decl] as a
+    string. If [minify] is [true] (default: [false]), the output is minified. If
+    [inline] is [true] (default: [false]), variables are resolved to their
+    default values. *)
 
 val string_of_declaration : ?minify:bool -> declaration -> string
 (** [string_of_declaration ~minify decl] converts a declaration to its string
