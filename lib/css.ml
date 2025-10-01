@@ -31,8 +31,8 @@ include Stylesheet
 let declaration_is_important = Declaration.is_important
 let declaration_name = Declaration.property_name
 
-let declaration_value ?(minify = false) decl =
-  Declaration.string_of_value ~minify decl
+let declaration_value ?(minify = false) ?(inline = false) decl =
+  Declaration.string_of_value ~minify ~inline decl
 
 (* Override rule function to return statement directly *)
 let rule ~selector ?nested declarations =

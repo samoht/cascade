@@ -9,6 +9,20 @@ open Css.Properties
 let hex_color s = Hex { hash = true; value = s }
 let to_string pp v = Css.Pp.to_string ~minify:true pp v
 
+(* Helper to check if a declaration is !important *)
+let is_important = Css.Declaration.is_important
+
+(* Helper to extract color hex value from declaration string like
+   "color:#ff0000" *)
+let color_value_of_decl decl =
+  let s = Css.Declaration.string_of_declaration ~minify:true decl in
+  (* Extract just the hex value after the colon and before any !important *)
+  let after_colon =
+    String.split_on_char ':' s |> List.tl |> String.concat ":"
+  in
+  let before_important = String.split_on_char '!' after_colon |> List.hd in
+  String.trim before_important
+
 (* Generic check function for optimize types *)
 let _check_value name pp reader ?expected input =
   let expected = Option.value ~default:input expected in
@@ -40,9 +54,37 @@ let test_deduplicate_declarations () =
   in
   let deduped_important = deduplicate_declarations decls_important in
   check int "single color property remains" 1 (List.length deduped_important);
-  (match List.hd deduped_important with
-  | Declaration { important = true; _ } -> ()
-  | _ -> fail "Expected !important declaration to win");
+  let result = List.hd deduped_important in
+  check bool "!important wins" true (is_important result);
+  check string "green color wins" "#00ff00" (color_value_of_decl result);
+
+  (* Test case: last !important wins when multiple !important *)
+  let decls_multi_important =
+    [
+      v ~important:true Color (hex_color "ff0000");
+      v Color (hex_color "00ff00");
+      v ~important:true Color (hex_color "0000ff");
+    ]
+  in
+  let deduped_multi = deduplicate_declarations decls_multi_important in
+  check int "single color remains" 1 (List.length deduped_multi);
+  let result = List.hd deduped_multi in
+  check bool "last !important wins" true (is_important result);
+  check string "blue color wins" "#0000ff" (color_value_of_decl result);
+
+  (* Test case: normal after !important doesn't override *)
+  let decls_normal_after =
+    [
+      v ~important:true Color (hex_color "ff0000");
+      v Color (hex_color "00ff00");
+      v Color (hex_color "0000ff");
+    ]
+  in
+  let deduped_normal_after = deduplicate_declarations decls_normal_after in
+  check int "single color remains" 1 (List.length deduped_normal_after);
+  let result = List.hd deduped_normal_after in
+  check bool "!important not overridden by normal" true (is_important result);
+  check string "red !important wins" "#ff0000" (color_value_of_decl result);
 
   (* Test case: custom properties *)
   let custom_decls =
