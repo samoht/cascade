@@ -63,19 +63,10 @@ val any_var_name : any_var -> string
 
 (** {1 Advanced variable extraction} *)
 
-val analyze_declarations : declaration list -> any_var list
-(** [analyze_declarations decls] finds all variable references in declarations .
-*)
-
 val custom_declarations : ?layer:string -> declaration list -> declaration list
 (** [custom_declarations ?layer decls] filters only custom property
     declarations. If [layer] is provided, only declarations from that layer are
     returned. *)
-
-val extract_custom_declarations :
-  ?layer:string -> declaration list -> declaration list
-[@@deprecated "Use custom_declarations instead"]
-(** @deprecated Use {!custom_declarations} instead. *)
 
 val custom_declaration_name : declaration -> string option
 (** [custom_declaration_name decl] returns the variable name if it's a custom

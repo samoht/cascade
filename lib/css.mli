@@ -142,16 +142,26 @@ val map :
   statement list ->
   statement list
 (** [map f stmts] applies [f] to all rules in [stmts], recursively descending
-    into nested containers (media, supports, layers, etc.). Rules are
-    transformed while non-rule statements are preserved. *)
+    into nested containers (media, supports, layers, etc.).
+
+    - Rules are transformed while non-rule statements are preserved
+    - Traversal is depth-first, processing nested containers recursively
+    - Transformation is applied to all rules at all nesting levels
+    - Non-rule statements (at-rules without rule content) maintain their
+      relative order *)
 
 val sort :
   (Selector.t * declaration list -> Selector.t * declaration list -> int) ->
   statement list ->
   statement list
 (** [sort cmp stmts] sorts rules within [stmts] using the comparison function
-    [cmp], recursively descending into nested containers. Non-rule statements
-    are preserved in their original positions. *)
+    [cmp], recursively descending into nested containers.
+
+    - Sort is stable: equal elements maintain their relative order
+    - Non-rule statements are preserved in their original positions
+    - Sorting occurs independently within each container level
+    - Nested containers (media, supports, layers) have their rules sorted
+      recursively *)
 
 (** Existential type for property information that preserves type safety *)
 type property_info =
@@ -205,15 +215,28 @@ val concat : t list -> t
 val v : statement list -> t
 (** [v statements] creates a stylesheet from a list of statements. *)
 
-val of_statements : statement list -> t
-(** [of_statements statements] creates a stylesheet from a list of statements.
-*)
-
-val rules : t -> statement list
-(** [rules t] returns the top-level rule statements from the stylesheet. *)
+val rule_statements : t -> statement list
+(** [rule_statements t] returns the top-level rule statements from the
+    stylesheet. *)
 
 val statements : t -> statement list
 (** [statements t] returns all top-level statements from the stylesheet. *)
+
+val fold : ('a -> statement -> 'a) -> 'a -> t -> 'a
+(** [fold f acc css] folds over all statements in [css], recursively descending
+    into nested structures (layers, media queries, containers, and supports
+    rules). The function [f] is called for each statement in depth-first order.
+
+    Example: Collect all selectors from all rules (including nested ones):
+    {[
+      let selectors =
+        Css.fold
+          (fun acc stmt ->
+            match Css.as_rule stmt with
+            | Some (sel, _, _) -> Css.Selector.to_string sel :: acc
+            | None -> acc)
+          [] css
+    ]} *)
 
 val media_queries : t -> (string * statement list) list
 (** [media_queries t] returns media queries and their rule statements. *)
@@ -306,19 +329,10 @@ val vars_of_stylesheet : t -> any_var list
 val any_var_name : any_var -> string
 (** [any_var_name v] is the name of a CSS variable (with [--] prefix). *)
 
-val analyze_declarations : declaration list -> any_var list
-(** [analyze_declarations declarations] is the typed CSS variables extracted
-    from [declarations]. *)
-
 val custom_declarations : ?layer:string -> declaration list -> declaration list
 (** [custom_declarations ?layer decls] is only the custom property declarations
     from [decls]. If [layer] is provided, only declarations from that layer are
     returned. *)
-
-val extract_custom_declarations :
-  ?layer:string -> declaration list -> declaration list
-[@@deprecated "Use custom_declarations instead"]
-(** @deprecated Use {!custom_declarations} instead. *)
 
 (** {2:core_types Core Types & Calculations}
 
@@ -403,8 +417,10 @@ type length =
   | Max_content  (** max-content keyword *)
   | Min_content  (** min-content keyword *)
   | From_font  (** from-font keyword for text-decoration-thickness *)
-  | Function of string
-      (** CSS functions like clamp(), minmax(), min(), max() *)
+  | Clamp of string  (** clamp() function *)
+  | Min of string  (** min() function *)
+  | Max of string  (** max() function *)
+  | Minmax of string  (** minmax() function for grid *)
   | Var of length var  (** CSS variable reference *)
   | Calc of length calc  (** Calculated expressions *)
 
