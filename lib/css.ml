@@ -211,6 +211,30 @@ let custom_prop_names decls = List.filter_map custom_declaration_name decls
 let custom_props_from_rules rules =
   List.concat_map (fun (_, decls) -> custom_prop_names decls) rules
 
+let custom_props ?layer sheet =
+  (* Use fold to recursively traverse all statements *)
+  let in_target_layer = ref (layer = None) in
+  let props =
+    fold
+      (fun acc stmt ->
+        (* Track if we're inside the target layer *)
+        (match (layer, as_layer stmt) with
+        | Some target, Some (Some name, _) when name = target ->
+            in_target_layer := true
+        | Some _, Some (Some _, _) ->
+            (* Entering a different layer *)
+            in_target_layer := false
+        | _ -> ());
+        (* Extract custom props from rules if we're in the right context *)
+        if !in_target_layer then
+          match as_rule stmt with
+          | Some (_, decls, _) -> custom_prop_names decls @ acc
+          | None -> acc
+        else acc)
+      [] sheet
+  in
+  List.rev props
+
 let media ~condition statements = Media (condition, statements)
 let layer ?name statements = Layer (name, statements)
 let layer_decl names = Layer_decl names
