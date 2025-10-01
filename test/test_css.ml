@@ -61,9 +61,7 @@ let optimization_flag () =
 (* Test layers work end-to-end *)
 let layers_integration () =
   let utility_rule = rule ~selector:btn [ padding [ Px 10. ] ] in
-  let stylesheet =
-    Css.v [ layer ~name:"utilities" [ utility_rule ] ]
-  in
+  let stylesheet = Css.v [ layer ~name:"utilities" [ utility_rule ] ] in
 
   let css = Css.to_string ~minify:true stylesheet in
 
