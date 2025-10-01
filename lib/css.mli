@@ -266,6 +266,12 @@ val custom_props_from_rules :
 (** [custom_props_from_rules rules] extracts all custom property names from the
     declarations in the rules. *)
 
+val custom_props : ?layer:string -> t -> string list
+(** [custom_props ?layer sheet] recursively extracts all custom property names
+    from the stylesheet. If [layer] is provided, only properties from that layer
+    are extracted. Traverses nested [@supports], [@media], and other conditional
+    blocks. *)
+
 val media : condition:string -> statement list -> statement
 (** [media ~condition statements] creates a [@media] statement with the given
     condition. *)
