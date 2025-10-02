@@ -1816,6 +1816,7 @@ let pp_property : type a. a property Pp.t =
   | Transition_timing_function -> Pp.string ctx "transition-timing-function"
   | Transition_delay -> Pp.string ctx "transition-delay"
   | Transition_property -> Pp.string ctx "transition-property"
+  | Transition_behavior -> Pp.string ctx "transition-behavior"
   | Will_change -> Pp.string ctx "will-change"
   | Contain -> Pp.string ctx "contain"
   | Isolation -> Pp.string ctx "isolation"
@@ -2743,6 +2744,12 @@ let pp_transition_property : transition_property Pp.t =
   | All -> Pp.string ctx "all"
   | None -> Pp.string ctx "none"
   | Property s -> Pp.string ctx s
+
+let pp_transition_behavior : transition_behavior Pp.t =
+ fun ctx -> function
+  | Normal -> Pp.string ctx "normal"
+  | Allow_discrete -> Pp.string ctx "allow-discrete"
+  | Inherit -> Pp.string ctx "inherit"
 
 let pp_transition_shorthand : transition_shorthand Pp.t =
  fun ctx { property; duration; timing_function; delay } ->
@@ -4350,6 +4357,15 @@ let rec read_transition t : transition =
     ~default:(fun t : transition -> Shorthand (read_transition_shorthand t))
     t
 
+let read_transition_behavior t : transition_behavior =
+  Reader.enum "transition-behavior"
+    [
+      ("normal", (Normal : transition_behavior));
+      ("allow-discrete", (Allow_discrete : transition_behavior));
+      ("inherit", (Inherit : transition_behavior));
+    ]
+    t
+
 let read_transitions t : transition list =
   Reader.list ~at_least:1 ~sep:Reader.comma read_transition t
 
@@ -5068,6 +5084,7 @@ let read_any_property t =
   | "filter" -> Prop Filter
   | "transition" -> Prop Transition
   | "animation" -> Prop Animation
+  | "transition-behavior" -> Prop Transition_behavior
   | "text-shadow" -> Prop Text_shadow
   | "font" -> Prop Font
   | "outline" -> Prop Outline
@@ -5695,6 +5712,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Transition_timing_function -> pp pp_timing_function
   | Transition_delay -> pp pp_duration
   | Transition_property -> pp pp_transition_property
+  | Transition_behavior -> pp pp_transition_behavior
   | Will_change -> pp Pp.string
   | Contain -> pp pp_contain
   | Word_spacing -> pp pp_length

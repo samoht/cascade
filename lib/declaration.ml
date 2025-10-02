@@ -531,6 +531,7 @@ let read_value (type a) (prop : a property) t : declaration =
       v Transition_timing_function (read_timing_function t)
   | Transition_delay -> v Transition_delay (read_time t)
   | Transition_property -> v Transition_property (read_transition_property t)
+  | Transition_behavior -> v Transition_behavior (read_transition_behavior t)
   (* Will change *)
   | Will_change -> v Will_change (read_string t)
   (* Contain and isolation *)
@@ -939,6 +940,7 @@ let object_position value = v Object_position value
 let transition_duration value = v Transition_duration value
 let transition_timing_function value = v Transition_timing_function value
 let transition_delay value = v Transition_delay value
+let transition_behavior value = v Transition_behavior value
 
 (* Additional v constructors to match the interface *)
 let mix_blend_mode value = v Mix_blend_mode value

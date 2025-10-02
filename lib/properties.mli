@@ -493,6 +493,13 @@ val read_transition_property : Reader.t -> transition_property
 (** [read_transition_property t] is the [transition_property] parsed from [t].
 *)
 
+val pp_transition_behavior : transition_behavior Pp.t
+(** [pp_transition_behavior] is the pretty-printer for [transition_behavior]. *)
+
+val read_transition_behavior : Reader.t -> transition_behavior
+(** [read_transition_behavior t] is the [transition_behavior] parsed from [t].
+*)
+
 val pp_transition_shorthand : transition_shorthand Pp.t
 (** [pp_transition_shorthand] is the pretty-printer for [transition_shorthand].
 *)
