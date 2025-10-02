@@ -314,3 +314,4 @@ type color =
 
 type duration = Ms of float | S of float | Var of duration var
 type number = Num of float | Var of number var
+type transition_behavior = Normal | Allow_discrete

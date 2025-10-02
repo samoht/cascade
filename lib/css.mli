@@ -2883,6 +2883,11 @@ val transition_delay : duration -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transition-delay}
      transition-delay} property. *)
 
+val transition_behavior : Properties.transition_behavior -> declaration
+(** [transition_behavior v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transition-behavior}
+     transition-behavior} property. *)
+
 (** CSS animation fill mode values *)
 type animation_fill_mode = None | Forwards | Backwards | Both
 

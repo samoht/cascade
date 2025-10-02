@@ -97,6 +97,9 @@ val transitions : transition list -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transition} transition}
     property from a comma-separated list. *)
 
+val transition_behavior : transition_behavior -> declaration
+(** [transition_behavior v] is the CSS [transition-behavior] property. *)
+
 val animation : animation -> declaration
 (** [animation value] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/animation} animation}

@@ -739,6 +739,9 @@ type timing_function =
 
 type transition_property = All | None | Property of string
 
+(* Transition behavior for discrete transitions (CSS Transitions Level 2) *)
+type transition_behavior = Normal | Allow_discrete | Inherit
+
 type transition_shorthand = {
   property : transition_property;
   duration : duration option;
@@ -1303,6 +1306,7 @@ type 'a property =
   | Transition_timing_function : timing_function property
   | Transition_delay : duration property
   | Transition_property : transition_property property
+  | Transition_behavior : transition_behavior property
   | Will_change : string property
   | Contain : contain property
   | Isolation : isolation property
