@@ -706,6 +706,7 @@ type transform =
   | Var of transform var
   | List of transform list
 
+type transforms = transform list
 type transform_style = Flat | Preserve_3d | Inherit
 type backface_visibility = Visible | Hidden | Inherit
 
