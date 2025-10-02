@@ -389,6 +389,13 @@ let compare_vars_by_name (V x) (V y) = String.compare x.name y.name
 
 let any_var_name (V v) = String.concat "" [ "--"; v.name ]
 
+(** Extract variables from timing function *)
+let vars_of_timing_function = function
+  | Ease | Linear | Ease_in | Ease_out | Ease_in_out | Step_start | Step_end
+  | Steps _ | Cubic_bezier _ ->
+      []
+  | Var v -> [ V v ]
+
 (** {1 Advanced variable extraction} *)
 
 (* Extract variables from CSS property values using type-specific extraction
@@ -529,6 +536,9 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Scale, value -> vars_of_scale value
   (* Scroll snap properties *)
   | Scroll_snap_type, value -> vars_of_scroll_snap_type value
+  (* Timing function properties *)
+  | Animation_timing_function, value -> vars_of_timing_function value
+  | Transition_timing_function, value -> vars_of_timing_function value
   (* Default case for all other properties *)
   | _ -> []
 

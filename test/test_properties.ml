@@ -815,6 +815,13 @@ let test_transform () =
   check_transform "var(--my-transform,none)";
   check_transform "var(--tw-rotate-x,)";
   check_transform "var(--tw-scale,scale(1))";
+  neg read_transform "invalidfunc()";
+  neg read_transform "translate3d(10px,20px)";
+  neg read_transform "scale3d(1,2)";
+  neg read_transform "matrix(1,2,3,4,5)";
+  neg read_transform "matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0)"
+
+let test_transforms () =
   (* Test transforms (transform list) with multiple values and vars *)
   check_transforms "var(--tw-rotate-x,) var(--tw-rotate-y,)";
   check_transforms "var(--tw-rotate-x,)var(--tw-rotate-y,)var(--tw-rotate-z,)"
@@ -831,11 +838,8 @@ let test_transform () =
   (* Test transforms variable reference (whole list as var) *)
   check_transforms "var(--my-transforms)";
   check_transforms "var(--my-transforms,none)";
-  neg read_transform "invalidfunc()";
-  neg read_transform "translate3d(10px,20px)";
-  neg read_transform "scale3d(1,2)";
-  neg read_transform "matrix(1,2,3,4,5)";
-  neg read_transform "matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0)"
+  neg read_transforms "invalidfunc()";
+  neg read_transforms "translate3d(10px,20px) scale(2)"
 
 let test_gap () =
   check_gap "10px";
@@ -1915,6 +1919,7 @@ let tests =
     test_case "place-content" `Quick test_place_content;
     test_case "flex" `Quick test_flex;
     test_case "transform" `Quick test_transform;
+    test_case "transforms" `Quick test_transforms;
     test_case "gradient direction" `Quick test_gradient_direction;
     test_case "gradient stop" `Quick test_gradient_stop;
     test_case "overscroll-behavior" `Quick test_overscroll_behavior;
