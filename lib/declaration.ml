@@ -556,7 +556,7 @@ let read_value (type a) (prop : a property) t : declaration =
   (* Clip and mask *)
   | Clip_path -> v Clip_path (read_string t)
   | Mask -> v Mask (read_string t)
-  | Clip -> v Clip (read_string t)
+  | Clip -> v Clip (Reader.css_value ~stops:[ ';'; '}' ] t)
   (* Content visibility *)
   | Content_visibility -> v Content_visibility (read_content_visibility t)
   (* Aspect ratio *)
