@@ -357,6 +357,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Justify_content -> v Justify_content (read_justify_content t)
   (* Transform property *)
   | Transform -> read_transform_value t
+  | Translate -> v Translate (read_raw_value t)
   (* Webkit Transform *)
   | Webkit_transform -> read_webkit_transform_value t
   (* Webkit Transition *)
