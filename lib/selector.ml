@@ -160,9 +160,18 @@ let class_ name =
   validate_css_identifier name;
   Class name
 
+(** Create a class selector without validation. Use this for Tailwind class
+    names that contain special characters which will be escaped during
+    serialization. *)
+let class_raw name = Class name
+
 let id name =
   validate_css_identifier name;
   Id name
+
+(** Create an ID selector without validation. Use this for IDs that contain
+    special characters which will be escaped during serialization. *)
+let id_raw name = Id name
 
 let universal = Universal None
 let universal_ns ns = Universal (Some ns)
@@ -824,6 +833,32 @@ let pp_combinator ctx = function
 
 let strs ctx strings = Pp.list ~sep:Pp.comma Pp.string ctx strings
 
+(** Escape special CSS selector characters for class and ID names. This handles
+    characters commonly found in Tailwind utilities like fractions (w-1/2),
+    arbitrary values (p-[10px]), etc. *)
+let escape_selector_name name =
+  let buf = Buffer.create (String.length name * 2) in
+  String.iter
+    (function
+      | '[' -> Buffer.add_string buf "\\["
+      | ']' -> Buffer.add_string buf "\\]"
+      | '(' -> Buffer.add_string buf "\\("
+      | ')' -> Buffer.add_string buf "\\)"
+      | ',' -> Buffer.add_string buf "\\,"
+      | '/' -> Buffer.add_string buf "\\/"
+      | ':' -> Buffer.add_string buf "\\:"
+      | '%' -> Buffer.add_string buf "\\%"
+      | '.' -> Buffer.add_string buf "\\."
+      | '#' -> Buffer.add_string buf "\\#"
+      | ' ' -> Buffer.add_string buf "\\ "
+      | '"' -> Buffer.add_string buf "\\\""
+      | '\'' -> Buffer.add_string buf "\\'"
+      | '@' -> Buffer.add_string buf "\\@"
+      | '*' -> Buffer.add_string buf "\\*"
+      | c -> Buffer.add_char buf c)
+    name;
+  Buffer.contents buf
+
 (** Pretty print nth function with optional "of" clause *)
 let rec pp_nth_func ctx name expr of_sel =
   Pp.char ctx ':';
@@ -846,10 +881,10 @@ and pp : t Pp.t =
       Pp.string ctx name
   | Class name ->
       Pp.char ctx '.';
-      Pp.string ctx name
+      Pp.string ctx (escape_selector_name name)
   | Id name ->
       Pp.char ctx '#';
-      Pp.string ctx name
+      Pp.string ctx (escape_selector_name name)
   | Universal ns ->
       Pp.option pp_ns ctx ns;
       Pp.char ctx '*'
