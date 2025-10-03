@@ -230,6 +230,10 @@ let check_transition_property =
   check_value "transition-property" read_transition_property
     pp_transition_property
 
+let check_transition_behavior =
+  check_value "transition-behavior" read_transition_behavior
+    pp_transition_behavior
+
 let check_transition = check_value "transition" read_transition pp_transition
 
 let check_animation_direction =
@@ -1323,6 +1327,13 @@ let test_transition_property () =
   check_transition_property "invalid-transition";
   neg read_transition_property ""
 
+let test_transition_behavior () =
+  check_transition_behavior "normal";
+  check_transition_behavior "allow-discrete";
+  check_transition_behavior "inherit";
+  neg read_transition_behavior "invalid";
+  neg read_transition_behavior ""
+
 let test_transition () =
   check_transition "inherit";
   check_transition "initial";
@@ -1975,6 +1986,7 @@ let additional_tests =
     test_case "steps_direction" `Quick test_steps_direction;
     test_case "timing_function" `Quick test_timing_function;
     test_case "transition_property" `Quick test_transition_property;
+    test_case "transition_behavior" `Quick test_transition_behavior;
     test_case "transition" `Quick test_transition;
     test_case "animation_direction" `Quick test_animation_direction;
     test_case "animation_fill_mode" `Quick test_animation_fill_mode;

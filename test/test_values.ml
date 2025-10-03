@@ -12,6 +12,10 @@ let check_duration = check_value "duration" read_duration pp_duration
 let check_percentage = check_value "percentage" read_percentage pp_percentage
 let check_number = check_value "number" read_number pp_number
 
+let check_transition_behavior =
+  check_value "transition_behavior" read_transition_behavior
+    pp_transition_behavior
+
 let check_length_percentage =
   check_value "length_percentage" read_length_percentage pp_length_percentage
 
@@ -635,6 +639,13 @@ let test_number () =
   neg read_number "";
   neg read_number "1px"
 
+let test_transition_behavior () =
+  check_transition_behavior "normal";
+  check_transition_behavior "allow-discrete";
+  neg read_transition_behavior "inherit";
+  neg read_transition_behavior "invalid";
+  neg read_transition_behavior ""
+
 let test_component () =
   (* Component tests - various color component values *)
   check_component "50%";
@@ -708,6 +719,7 @@ let value_tests =
     test_case "hue_interpolation" `Quick test_hue_interpolation;
     test_case "calc_op" `Quick test_calc_op;
     test_case "number" `Quick test_number;
+    test_case "transition_behavior" `Quick test_transition_behavior;
     test_case "component" `Quick test_component;
     test_case "channel" `Quick test_channel;
     test_case "rgb" `Quick test_rgb;

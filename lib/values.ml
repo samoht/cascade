@@ -614,6 +614,11 @@ let rec pp_duration : duration Pp.t =
 let rec pp_number : number Pp.t =
  fun ctx -> function Num f -> Pp.float ctx f | Var v -> pp_var pp_number ctx v
 
+let pp_transition_behavior : transition_behavior Pp.t =
+ fun ctx -> function
+  | Normal -> Pp.string ctx "normal"
+  | Allow_discrete -> Pp.string ctx "allow-discrete"
+
 (* Print a raw float as a percentage value *)
 
 (* Calc module for building calc() expressions *)
@@ -1626,6 +1631,12 @@ let rec read_number t : number =
   (* Check for var() *)
   if Reader.looking_at t "var(" then Var (read_var read_number t)
   else Num (Reader.number t)
+
+(** Read transition_behavior value *)
+let read_transition_behavior t : transition_behavior =
+  Reader.enum "transition-behavior"
+    [ ("normal", Normal); ("allow-discrete", Allow_discrete) ]
+    t
 
 (** Read a percentage type with var() and calc() support *)
 let rec read_percentage t : percentage =
