@@ -793,7 +793,7 @@ module Transform = struct
               read_length t)
             t
         in
-        Translate (x, y))
+        (Translate (x, y) : transform))
 
   let read_rotate_x t =
     Reader.call "rotatex" t (fun t -> Rotate_x (read_angle t))
@@ -1766,7 +1766,7 @@ let pp_property : type a. a property Pp.t =
   | Mix_blend_mode -> Pp.string ctx "mix-blend-mode"
   | Transition -> Pp.string ctx "transition"
   | Transform -> Pp.string ctx "transform"
-  | Scale -> Pp.string ctx "scale"
+  | Translate -> Pp.string ctx "translate"
   | Cursor -> Pp.string ctx "cursor"
   | Table_layout -> Pp.string ctx "table-layout"
   | Border_collapse -> Pp.string ctx "border-collapse"
@@ -1812,6 +1812,7 @@ let pp_property : type a. a property Pp.t =
   | Backface_visibility -> Pp.string ctx "backface-visibility"
   | Object_position -> Pp.string ctx "object-position"
   | Rotate -> Pp.string ctx "rotate"
+  | Scale -> Pp.string ctx "scale"
   | Transition_duration -> Pp.string ctx "transition-duration"
   | Transition_timing_function -> Pp.string ctx "transition-timing-function"
   | Transition_delay -> Pp.string ctx "transition-delay"
@@ -5067,6 +5068,7 @@ let read_any_property t =
   | "animation-name" -> Prop Animation_name
   | "transform" -> Prop Transform
   | "transform-origin" -> Prop Transform_origin
+  | "translate" -> Prop Translate
   | "box-sizing" -> Prop Box_sizing
   | "grid-template-columns" -> Prop Grid_template_columns
   | "grid-template-rows" -> Prop Grid_template_rows
@@ -5635,6 +5637,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Outline_offset -> pp pp_length
   | Perspective -> pp pp_length
   | Transform -> pp (Pp.list ~sep:Pp.space pp_transform)
+  | Translate -> pp Pp.string
   | Isolation -> pp pp_isolation
   | Transform_style -> pp pp_transform_style
   | Backface_visibility -> pp pp_backface_visibility

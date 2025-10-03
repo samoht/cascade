@@ -1255,6 +1255,7 @@ type 'a property =
   | Opacity : float property
   | Mix_blend_mode : blend_mode property
   | Transform : transform list property
+  | Translate : string property
   | Cursor : cursor property
   | Table_layout : table_layout property
   | Border_collapse : border_collapse property
