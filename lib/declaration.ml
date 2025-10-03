@@ -531,7 +531,8 @@ let read_value (type a) (prop : a property) t : declaration =
       v Transition_timing_function (read_timing_function t)
   | Transition_delay -> v Transition_delay (read_time t)
   | Transition_property -> v Transition_property (read_transition_property t)
-  | Transition_behavior -> v Transition_behavior (read_transition_behavior t)
+  | Transition_behavior ->
+      v Transition_behavior (Properties.read_transition_behavior t)
   (* Will change *)
   | Will_change -> v Will_change (read_string t)
   (* Contain and isolation *)

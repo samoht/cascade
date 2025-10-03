@@ -92,6 +92,9 @@ val pp_duration : duration Pp.t
 val pp_number : number Pp.t
 (** [pp_number] pretty-prints {!number} values. *)
 
+val pp_transition_behavior : transition_behavior Pp.t
+(** [pp_transition_behavior] pretty-prints {!transition_behavior} values. *)
+
 val pp_percentage : ?always:bool -> percentage Pp.t
 (** [pp_percentage ?always] pretty-prints {!percentage} values. When [always] is
     true, always includes the % unit even for 0. *)
@@ -225,6 +228,9 @@ val read_time : Reader.t -> duration
 
 val read_number : Reader.t -> number
 (** [read_number t] parses a CSS number (int/float). *)
+
+val read_transition_behavior : Reader.t -> transition_behavior
+(** [read_transition_behavior t] parses a CSS transition-behavior value. *)
 
 val read_percentage : Reader.t -> percentage
 (** [read_percentage t] parses a CSS percentage. *)
