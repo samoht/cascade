@@ -11,9 +11,18 @@ val class_ : string -> t
 (** [class_ name] class selector (e.g., ".prose"). Validates identifiers; raises
     [Invalid_argument] on invalid. *)
 
+val class_raw : string -> t
+(** [class_raw name] class selector without validation. Use for Tailwind class
+    names with special characters that will be escaped during serialization
+    (e.g., "h-0.5", "hover:prose"). *)
+
 val id : string -> t
 (** [id name] ID selector (e.g., "#header"). Validates identifiers; raises
     [Invalid_argument] on invalid. *)
+
+val id_raw : string -> t
+(** [id_raw name] ID selector without validation. Use for IDs with special
+    characters that will be escaped during serialization. *)
 
 val universal : t
 (** [universal] universal selector "*" (no namespace). *)
