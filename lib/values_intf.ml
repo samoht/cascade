@@ -57,6 +57,7 @@ type length =
   | Ch of float
   | Lh of float
   | Auto
+  | None
   | Zero
   | Inherit
   | Initial
