@@ -412,6 +412,7 @@ type length =
   | Ch of float  (** Character units *)
   | Lh of float  (** Line height units *)
   | Auto
+  | None  (** none keyword (e.g., for max-width) *)
   | Zero
   | Inherit
   | Initial

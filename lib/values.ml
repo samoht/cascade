@@ -158,6 +158,7 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Ch f -> pp_unit_fn f "ch"
   | Lh f -> pp_unit_fn f "lh"
   | Auto -> Pp.string ctx "auto"
+  | None -> Pp.string ctx "none"
   | Inherit -> Pp.string ctx "inherit"
   | Fit_content -> Pp.string ctx "fit-content"
   | Max_content -> Pp.string ctx "max-content"
@@ -732,6 +733,7 @@ let read_length_keyword t =
   Reader.enum "length"
     [
       ("auto", Auto);
+      ("none", None);
       ("max-content", Max_content);
       ("min-content", Min_content);
       ("fit-content", Fit_content);
