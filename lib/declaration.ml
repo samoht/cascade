@@ -465,6 +465,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Border_inline_start_color -> v Border_inline_start_color (read_color t)
   | Border_inline_end_color -> v Border_inline_end_color (read_color t)
   (* Position properties *)
+  | Inset -> v Inset (read_length t)
   | Top -> v Top (read_length t)
   | Right -> v Right (read_length t)
   | Bottom -> v Bottom (read_length t)

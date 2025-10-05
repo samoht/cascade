@@ -1263,6 +1263,7 @@ type 'a property =
   | User_select : user_select property
   | Pointer_events : pointer_events property
   | Overflow : overflow property
+  | Inset : length property
   | Top : length property
   | Right : length property
   | Bottom : length property

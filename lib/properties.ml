@@ -1774,6 +1774,7 @@ let pp_property : type a. a property Pp.t =
   | User_select -> Pp.string ctx "user-select"
   | Pointer_events -> Pp.string ctx "pointer-events"
   | Overflow -> Pp.string ctx "overflow"
+  | Inset -> Pp.string ctx "inset"
   | Top -> Pp.string ctx "top"
   | Right -> Pp.string ctx "right"
   | Bottom -> Pp.string ctx "bottom"
@@ -5091,6 +5092,7 @@ let read_any_property t =
   | "font" -> Prop Font
   | "outline" -> Prop Outline
   | "z-index" -> Prop Z_index
+  | "inset" -> Prop Inset
   | "top" -> Prop Top
   | "right" -> Prop Right
   | "bottom" -> Prop Bottom
@@ -5611,6 +5613,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Tab_size -> pp Pp.int
   | Webkit_line_clamp -> pp Pp.int
   | Webkit_box_orient -> pp pp_webkit_box_orient
+  | Inset -> pp pp_length
   | Top -> pp pp_length
   | Right -> pp pp_length
   | Bottom -> pp pp_length
