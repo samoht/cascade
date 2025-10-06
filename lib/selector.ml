@@ -663,6 +663,8 @@ let pseudo_vendor_idents =
     ( "-webkit-datetime-edit-millisecond-field",
       Webkit_datetime_edit_millisecond_field );
     ("-webkit-datetime-edit-meridiem-field", Webkit_datetime_edit_meridiem_field);
+    ("-webkit-inner-spin-button", Webkit_inner_spin_button);
+    ("-webkit-outer-spin-button", Webkit_outer_spin_button);
   ]
 
 (* Forward declarations for mutually recursive functions *)
@@ -1108,6 +1110,8 @@ and pp : t Pp.t =
       vendor_elem ctx "webkit-datetime-edit-millisecond-field"
   | Webkit_datetime_edit_meridiem_field ->
       vendor_elem ctx "webkit-datetime-edit-meridiem-field"
+  | Webkit_inner_spin_button -> vendor_elem ctx "webkit-inner-spin-button"
+  | Webkit_outer_spin_button -> vendor_elem ctx "webkit-outer-spin-button"
   (* Custom pseudo-elements *)
   | Pseudo_element n -> elem ctx n
   (* Functional pseudo-elements *)
