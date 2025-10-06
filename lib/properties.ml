@@ -1081,6 +1081,8 @@ let pp_background_image : background_image Pp.t =
           | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
         ctx stops
   | None -> Pp.string ctx "none"
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
 
 let rec pp_font_family : font_family Pp.t =
  fun ctx -> function
@@ -2067,6 +2069,8 @@ let pp_background_repeat : background_repeat Pp.t =
   | No_repeat_round -> Pp.string ctx "no-repeat round"
   | No_repeat_no_repeat -> Pp.string ctx "no-repeat no-repeat"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
 
 let pp_background_box : background_box Pp.t =
  fun ctx -> function
@@ -2124,6 +2128,8 @@ let pp_background_size : background_size Pp.t =
       Pp.char ctx ' ';
       pp_length ctx h
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
 
 let pp_background_position : background_position Pp.t =
  fun ctx positions -> Pp.list ~sep:Pp.space pp_position_value ctx positions
@@ -2267,6 +2273,9 @@ let pp_print_color_adjust : print_color_adjust Pp.t =
  fun ctx -> function
   | Economy -> Pp.string ctx "economy"
   | Exact -> Pp.string ctx "exact"
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
 
 let pp_backface_visibility : backface_visibility Pp.t =
  fun ctx -> function
@@ -3936,7 +3945,15 @@ let read_appearance t : appearance =
     t
 
 let read_print_color_adjust t : print_color_adjust =
-  Reader.enum "print-color-adjust" [ ("economy", Economy); ("exact", Exact) ] t
+  Reader.enum "print-color-adjust"
+    [
+      ("economy", Economy);
+      ("exact", Exact);
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+    ]
+    t
 
 let read_clear t : clear =
   Reader.enum "clear"
@@ -4893,6 +4910,8 @@ let read_background_repeat t : background_repeat =
       ("no-repeat round", No_repeat_round);
       ("no-repeat no-repeat", No_repeat_no_repeat);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
     ]
     t
 
@@ -4909,6 +4928,8 @@ let read_background_size t : background_size =
       ("cover", Cover);
       ("contain", Contain);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
     ]
     ~default:(fun t ->
       Reader.one_of [ read_pair; read_length_value; read_pct ] t)
@@ -5040,7 +5061,11 @@ let read_background_image t : background_image =
     Radial_gradient stops
   in
   Reader.enum_or_calls "background-image"
-    [ ("none", (None : background_image)) ]
+    [
+      ("none", (None : background_image));
+      ("initial", Initial);
+      ("inherit", Inherit);
+    ]
     ~calls:
       [
         ("url", fun t -> Url (Reader.url t));
@@ -5390,6 +5415,11 @@ module Position_value = struct
 
   let read_xy (t : Reader.t) : position_value =
     let x = read_length t in
+    (* Reject global keywords - they should be parsed by read_1_value *)
+    (match x with
+    | Inherit | Initial | Unset | Revert | Revert_layer ->
+        Reader.err_invalid t "global keywords must be used alone"
+    | _ -> ());
     Reader.ws t;
     let y = Reader.option read_length t |> Option.value ~default:x in
     XY (x, y)
@@ -5407,32 +5437,41 @@ module Position_value = struct
       ]
       t
 
-  let merge_keywords t (keywords : keyword list) : position_value =
-    match keywords with
-    | [ Center ] -> Center
-    | [ Inherit ] -> Inherit
-    | [ Initial ] -> Initial
-    | [ Left ] -> Left_center
-    | [ Right ] -> Right_center
-    | [ Top ] -> Center_top
-    | [ Bottom ] -> Center_bottom
-    (* Two keyword combinations *)
-    | [ Left; Top ] | [ Top; Left ] -> Left_top
-    | [ Left; Center ] | [ Center; Left ] -> Left_center
-    | [ Left; Bottom ] | [ Bottom; Left ] -> Left_bottom
-    | [ Right; Top ] | [ Top; Right ] -> Right_top
-    | [ Right; Center ] | [ Center; Right ] -> Right_center
-    | [ Right; Bottom ] | [ Bottom; Right ] -> Right_bottom
-    | [ Center; Top ] | [ Top; Center ] -> Center_top
-    | [ Center; Bottom ] | [ Bottom; Center ] -> Center_bottom
-    | [ Center; Center ] -> Center
+  (* Read single keyword value *)
+  let read_1_value t : position_value =
+    let kw = read_keyword t in
+    match kw with
+    | Center -> Center
+    | Inherit -> Inherit
+    | Initial -> Initial
+    | Left -> Left_center
+    | Right -> Right_center
+    | Top -> Center_top
+    | Bottom -> Center_bottom
+
+  (* Read two keyword values *)
+  let read_2_value t : position_value =
+    let first = read_keyword t in
+    (* Global keywords cannot be combined with other keywords *)
+    (match first with
+    | Inherit | Initial ->
+        Reader.err_invalid t "global keywords cannot be combined"
+    | _ -> ());
+    Reader.ws t;
+    let second = read_keyword t in
+    match (first, second) with
+    | Left, Top | Top, Left -> Left_top
+    | Left, Center | Center, Left -> Left_center
+    | Left, Bottom | Bottom, Left -> Left_bottom
+    | Right, Top | Top, Right -> Right_top
+    | Right, Center | Center, Right -> Right_center
+    | Right, Bottom | Bottom, Right -> Right_bottom
+    | Center, Top | Top, Center -> Center_top
+    | Center, Bottom | Bottom, Center -> Center_bottom
+    | Center, Center -> Center
     | _ -> Reader.err_invalid t "invalid position keyword combination"
 
-  let read_keywords t =
-    let keywords = Reader.list ~at_least:1 ~at_most:2 read_keyword t in
-    merge_keywords t keywords
-
-  (* Try to read 3-value syntax: keyword offset keyword *)
+  (* Read 3-value syntax: keyword offset keyword *)
   let read_3_value t : position_value =
     let edge1 = Reader.ident t in
     Reader.ws t;
@@ -5441,7 +5480,7 @@ module Position_value = struct
     let axis = Reader.ident t in
     Edge_offset_axis (edge1, offset, axis)
 
-  (* Try to read 4-value syntax: keyword offset keyword offset *)
+  (* Read 4-value syntax: keyword offset keyword offset *)
   let read_4_value t : position_value =
     let edge1 = Reader.ident t in
     Reader.ws t;
@@ -5459,7 +5498,8 @@ let read_position_value t : position_value =
       Position_value.read_4_value;
       Position_value.read_3_value;
       Position_value.read_xy;
-      Position_value.read_keywords;
+      Position_value.read_2_value;
+      Position_value.read_1_value;
     ]
     t
 

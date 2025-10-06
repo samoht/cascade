@@ -1331,6 +1331,8 @@ type background_repeat =
   | No_repeat_round
   | No_repeat_no_repeat
   | Inherit
+  | Initial
+  | Unset
 
 (** CSS background-size values. *)
 type background_size =
@@ -1345,6 +1347,8 @@ type background_size =
   | Vh of float
   | Size of length * length
   | Inherit
+  | Initial
+  | Unset
 
 (** CSS background-attachment values. *)
 type background_attachment = Scroll | Fixed | Local | Inherit
@@ -1381,6 +1385,8 @@ type background_image =
   | Linear_gradient of gradient_direction * gradient_stop list
   | Radial_gradient of gradient_stop list
   | None
+  | Initial
+  | Inherit
 
 type background_box = Border_box | Padding_box | Content_box | Text | Inherit
 
