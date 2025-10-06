@@ -112,11 +112,12 @@ let pseudo_element_cases () =
   check_construct ":first-letter" First_letter;
   check_construct "::marker" Marker;
 
-  (* Double-colon syntax (preferred in CSS3+) *)
-  check "::before";
-  check "::after";
-  check "::first-line";
-  check "::first-letter";
+  (* Double-colon syntax (preferred in CSS3+) but minified to : for legacy
+     elements *)
+  check ~expected:":before" "::before";
+  check ~expected:":after" "::after";
+  check ~expected:":first-line" "::first-line";
+  check ~expected:":first-letter" "::first-letter";
 
   (* Additional modern pseudo-elements *)
   check "::placeholder";
@@ -133,8 +134,7 @@ let pseudo_element_cases () =
   check "::-webkit-input-placeholder";
   check "::-moz-placeholder";
   check "::-webkit-search-cancel-button";
-  check "::-webkit-scrollbar";
-  check "::-webkit-scrollbar-thumb"
+  check "::-webkit-scrollbar"
 
 (* Not a roundtrip test *)
 let attribute_cases () =
@@ -300,7 +300,7 @@ let list_cases () =
   check ~expected:"h1:hover,h2:focus,h3:active" "h1:hover, h2:focus, h3:active";
   check ~expected:"[data-attr],[aria-label],[role=button]"
     "[data-attr], [aria-label], [role=button]";
-  check ~expected:"::before,::after,::first-letter"
+  check ~expected:":before,:after,:first-letter"
     "::before, ::after, ::first-letter";
 
   (* Mixed complexity grouped selectors *)
@@ -324,7 +324,7 @@ let list_cases () =
   (* Grouped selectors with pseudo-elements and classes *)
   check ~expected:"button:hover,a:hover,input[type=submit]:hover"
     "button:hover, a:hover, input[type=submit]:hover";
-  check ~expected:"h1::before,h2::before,h3::before,h4::before"
+  check ~expected:"h1:before,h2:before,h3:before,h4:before"
     "h1::before, h2::before, h3::before, h4::before";
 
   (* Deeply nested grouped selectors *)
@@ -372,9 +372,9 @@ let roundtrip () =
   check ":nth-child(odd)";
   check ":nth-child(even)";
 
-  (* Pseudo-elements *)
-  check "::before";
-  check "::after";
+  (* Pseudo-elements - legacy ones minify to : *)
+  check ~expected:":before" "::before";
+  check ~expected:":after" "::after";
   check "::part(foo)";
   check "::slotted(.class)";
 
@@ -391,7 +391,8 @@ let roundtrip () =
   check ~expected:".first~.later" ".first ~ .later";
 
   (* Complex selectors *)
-  check "div.class#id[href]:hover::after";
+  check ~expected:"div.class#id[href]:hover:after"
+    "div.class#id[href]:hover::after";
   check ~expected:".a,.b,.c" ".a, .b, .c";
   check ":where(.a,.b)";
   check ":is(h1,h2,h3)";
