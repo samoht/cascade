@@ -137,7 +137,6 @@ let check_container_type =
 
 let check_container_shorthand =
   check_value "container" read_container_shorthand pp_container_shorthand
-[@@warning "-32"]
 
 let check_contain = check_value "contain" read_contain pp_contain
 let check_isolation = check_value "isolation" read_isolation pp_isolation
@@ -183,7 +182,6 @@ let check_forced_color_adjust =
 
 let check_print_color_adjust =
   check_value "print-color-adjust" read_print_color_adjust pp_print_color_adjust
-[@@warning "-32"]
 
 let check_appearance = check_value "appearance" read_appearance pp_appearance
 let check_clear = check_value "clear" read_clear pp_clear
@@ -287,7 +285,6 @@ let check_background_image =
 let check_background_position =
   check_value "background-position" read_background_position
     pp_background_position
-[@@warning "-32"]
 
 let check_overscroll_behavior =
   check_value "overscroll-behavior" read_overscroll_behavior
@@ -2038,6 +2035,7 @@ let additional_tests =
     test_case "gradient_direction" `Quick test_gradient_direction;
     test_case "gradient_stop" `Quick test_gradient_stop;
     test_case "background_image" `Quick test_background_image;
+    test_case "background_position" `Quick test_background_position;
     test_case "position_value" `Quick test_position_value;
     test_case "user_select" `Quick test_user_select;
     test_case "pointer_events" `Quick test_pointer_events;
@@ -2048,6 +2046,7 @@ let additional_tests =
     test_case "content" `Quick test_content;
     test_case "content_visibility" `Quick test_content_visibility;
     test_case "container_type" `Quick test_container_type;
+    test_case "container_shorthand" `Quick test_container_shorthand;
     test_case "contain" `Quick test_contain;
     test_case "isolation" `Quick test_isolation;
     test_case "scroll_behavior" `Quick test_scroll_behavior;
@@ -2065,6 +2064,7 @@ let additional_tests =
     test_case "moz_osx_font_smoothing" `Quick test_moz_osx_font_smoothing;
     test_case "webkit_box_orient" `Quick test_webkit_box_orient;
     test_case "forced_color_adjust" `Quick test_forced_color_adjust;
+    test_case "print_color_adjust" `Quick test_print_color_adjust;
     test_case "appearance" `Quick test_appearance;
     test_case "clear" `Quick test_clear;
     test_case "float_side" `Quick test_float_side;
