@@ -750,9 +750,43 @@ and read_cue_region_content t =
   let sels = read_complex_list t in
   Cue_region sels
 
+and read_highlight_content t =
+  let names = Reader.list ~sep:Reader.comma ~at_least:1 Reader.ident t in
+  Highlight names
+
+and read_view_transition_group_content t =
+  let name = Reader.ident t in
+  View_transition_group name
+
+and read_view_transition_image_pair_content t =
+  let name = Reader.ident t in
+  View_transition_image_pair name
+
+and read_view_transition_old_content t =
+  let name = Reader.ident t in
+  View_transition_old name
+
+and read_view_transition_new_content t =
+  let name = Reader.ident t in
+  View_transition_new name
+
 and read_slotted t = Reader.call "slotted" t read_slotted_content
 and read_cue t = Reader.call "cue" t read_cue_content
 and read_cue_region t = Reader.call "cue-region" t read_cue_region_content
+and read_highlight t = Reader.call "highlight" t read_highlight_content
+
+and read_view_transition_group t =
+  Reader.call "view-transition-group" t read_view_transition_group_content
+
+and read_view_transition_image_pair t =
+  Reader.call "view-transition-image-pair" t
+    read_view_transition_image_pair_content
+
+and read_view_transition_old t =
+  Reader.call "view-transition-old" t read_view_transition_old_content
+
+and read_view_transition_new t =
+  Reader.call "view-transition-new" t read_view_transition_new_content
 
 (** Parse pseudo-class (:hover, :nth-child(2n+1), etc.) *)
 and read_pseudo_class t =
@@ -785,25 +819,24 @@ and read_pseudo_class t =
 (** Parse pseudo-element (::before, ::after, etc.) *)
 and read_pseudo_element t =
   Reader.expect_string "::" t;
-  let default t =
-    let name = Reader.ident t in
-    validate_css_identifier_with_reader t name;
-    match Reader.peek t with
-    | Some '(' ->
-        Reader.expect '(' t;
-        let inner = Reader.until t ')' in
-        Reader.expect ')' t;
-        Pseudo_element (name ^ "(" ^ inner ^ ")")
-    | _ -> Pseudo_element name
-  in
   Reader.enum_calls
     [
       ("part", read_part);
       ("slotted", read_slotted);
       ("cue", read_cue);
       ("cue-region", read_cue_region);
+      ("highlight", read_highlight);
+      ("view-transition-group", read_view_transition_group);
+      ("view-transition-image-pair", read_view_transition_image_pair);
+      ("view-transition-old", read_view_transition_old);
+      ("view-transition-new", read_view_transition_new);
     ]
-    ~default t
+    ~default:(fun t ->
+      Reader.enum "pseudo-element"
+        (pseudo_element_modern_idents @ pseudo_vendor_idents
+       @ pseudo_element_legacy_idents)
+        t)
+    t
 
 (** Parse a simple selector (one part) *)
 and read_simple t =
@@ -1069,8 +1102,8 @@ and pp : t Pp.t =
   (* Legacy pseudo-elements (use single colon in minified mode) *)
   | Before -> legacy_elem ctx "before"
   | After -> legacy_elem ctx "after"
-  | First_letter -> pseudo ctx "first-letter"
-  | First_line -> pseudo ctx "first-line"
+  | First_letter -> legacy_elem ctx "first-letter"
+  | First_line -> legacy_elem ctx "first-line"
   (* Modern double-colon pseudo-elements *)
   | Backdrop -> elem ctx "backdrop"
   | Marker -> elem ctx "marker"
@@ -1081,11 +1114,12 @@ and pp : t Pp.t =
   | Moz_focusring -> vendor ctx "moz-focusring"
   | Webkit_any -> vendor ctx "webkit-any"
   | Webkit_autofill -> vendor ctx "webkit-autofill"
-  | Moz_placeholder -> vendor ctx "moz-placeholder"
-  | Webkit_input_placeholder -> vendor ctx "webkit-input-placeholder"
-  | Ms_input_placeholder -> vendor ctx "ms-input-placeholder"
   | Moz_ui_invalid -> vendor ctx "moz-ui-invalid"
   | Moz_ui_valid -> vendor ctx "moz-ui-valid"
+  (* Vendor-specific pseudo-elements *)
+  | Moz_placeholder -> vendor_elem ctx "moz-placeholder"
+  | Webkit_input_placeholder -> vendor_elem ctx "webkit-input-placeholder"
+  | Ms_input_placeholder -> vendor_elem ctx "ms-input-placeholder"
   | Webkit_scrollbar -> vendor_elem ctx "webkit-scrollbar"
   | Webkit_search_cancel_button -> vendor_elem ctx "webkit-search-cancel-button"
   | Webkit_search_decoration -> vendor_elem ctx "webkit-search-decoration"
@@ -1112,8 +1146,6 @@ and pp : t Pp.t =
       vendor_elem ctx "webkit-datetime-edit-meridiem-field"
   | Webkit_inner_spin_button -> vendor_elem ctx "webkit-inner-spin-button"
   | Webkit_outer_spin_button -> vendor_elem ctx "webkit-outer-spin-button"
-  (* Custom pseudo-elements *)
-  | Pseudo_element n -> elem ctx n
   (* Functional pseudo-elements *)
   | Part idents -> elem_func ctx "part" (Pp.list ~sep:Pp.comma Pp.string) idents
   | Slotted selectors -> elem_func ctx "slotted" sels selectors

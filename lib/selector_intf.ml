@@ -141,8 +141,6 @@ type t =
       string list option (* :active-view-transition-type() *)
   | Heading (* :heading() - matches h1-h6 *)
   (* Pseudo-elements *)
-  | Pseudo_element of
-      string (* Simple pseudo-elements like ::before, ::after, etc *)
   | Part of string list (* ::part(...) - takes list of part names *)
   | Slotted of t list (* ::slotted(...) - takes selectors *)
   | Cue of t list (* ::cue(...) - takes selectors *)

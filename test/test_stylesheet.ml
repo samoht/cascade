@@ -892,7 +892,7 @@ let test_config () =
 let test_advanced_selectors () =
   check_stylesheet ~expected:".btn:hover{color:blue}"
     ".btn:hover { color: blue; }";
-  check_stylesheet ~expected:".btn::before{content:\"icon\"}"
+  check_stylesheet ~expected:".btn:before{content:\"icon\"}"
     ".btn::before { content: 'icon'; }";
   (* Attribute values that are valid identifiers get normalized to unquoted
      form *)
