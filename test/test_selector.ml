@@ -38,7 +38,37 @@ let class_cases () =
   check_construct ".test" (class_ "test");
   check_construct ".test-class" (class_ "test-class");
   check_construct ".test_class" (class_ "test_class");
-  check_construct ".test123" (class_ "test123")
+  check_construct ".test123" (class_ "test123");
+
+  (* Test that raw class name gets properly escaped *)
+  let check_class_escaping raw expected_escaped =
+    let sel = class_ raw in
+    let output = to_string ~minify:true sel in
+    Alcotest.(check string)
+      (Fmt.str "class escaping for %S" raw)
+      expected_escaped output
+  in
+
+  (* Characters that need escaping *)
+  check_class_escaping "w-1/2" ".w-1\\/2";
+  check_class_escaping "sm:p-4" ".sm\\:p-4";
+  check_class_escaping "p-[10px]" ".p-\\[10px\\]";
+  check_class_escaping "text-#ff0000" ".text-\\#ff0000";
+  check_class_escaping "content-\"hello\"" ".content-\\\"hello\\\"";
+  check_class_escaping "my class" ".my\\ class";
+  check_class_escaping "data-@value" ".data-\\@value";
+  check_class_escaping "grid-*-auto" ".grid-\\*-auto";
+  check_class_escaping "has,comma" ".has\\,comma";
+  check_class_escaping "has.dot" ".has\\.dot";
+  check_class_escaping "has(paren)" ".has\\(paren\\)";
+  check_class_escaping "has%percent" ".has\\%percent";
+  check_class_escaping "has'quote" ".has\\'quote";
+
+  (* Characters that don't need escaping *)
+  check_class_escaping "normal-class" ".normal-class";
+  check_class_escaping "with-hyphen" ".with-hyphen";
+  check_class_escaping "with_underscore" ".with_underscore";
+  check_class_escaping "CamelCase123" ".CamelCase123"
 
 (* Not a roundtrip test *)
 let id_cases () =
@@ -46,7 +76,33 @@ let id_cases () =
   check_construct "#myid" (id "myid");
   check_construct "#my-id" (id "my-id");
   check_construct "#my_id" (id "my_id");
-  check_construct "#id123" (id "id123")
+  check_construct "#id123" (id "id123");
+
+  (* Test that raw ID gets properly escaped *)
+  let check_id_escaping raw expected_escaped =
+    let sel = id raw in
+    let output = to_string ~minify:true sel in
+    Alcotest.(check string)
+      (Fmt.str "id escaping for %S" raw)
+      expected_escaped output
+  in
+
+  (* Characters that need escaping *)
+  check_id_escaping "item:1" "#item\\:1";
+  check_id_escaping "user@domain" "#user\\@domain";
+  check_id_escaping "ref#123" "#ref\\#123";
+  check_id_escaping "item[0]" "#item\\[0\\]";
+  check_id_escaping "my.id" "#my\\.id";
+  check_id_escaping "has space" "#has\\ space";
+
+  (* Identifiers starting with digits need hex escaping *)
+  check_id_escaping "9section" "#\\39 section";
+  check_id_escaping "0item" "#\\30 item";
+
+  (* Characters that don't need escaping *)
+  check_id_escaping "normal-id" "#normal-id";
+  check_id_escaping "with_underscore" "#with_underscore";
+  check_id_escaping "CamelCase" "#CamelCase"
 
 (* Not a roundtrip test *)
 let pseudo_class_cases () =
@@ -396,7 +452,82 @@ let roundtrip () =
   check ~expected:".a,.b,.c" ".a, .b, .c";
   check ":where(.a,.b)";
   check ":is(h1,h2,h3)";
-  check ":not(.active)"
+  check ":not(.active)";
+
+  (* Escaping roundtrip tests *)
+  (* Helper to test roundtrip for class selectors *)
+  let check_class_roundtrip escaped =
+    let sel = of_string ("." ^ escaped) in
+    let output = to_string ~minify:true sel in
+    Alcotest.(check string)
+      (Fmt.str "class roundtrip for %S" escaped)
+      ("." ^ escaped) output
+  in
+
+  (* Helper to test roundtrip for ID selectors *)
+  let check_id_roundtrip escaped =
+    let sel = of_string ("#" ^ escaped) in
+    let output = to_string ~minify:true sel in
+    Alcotest.(check string)
+      (Fmt.str "id roundtrip for %S" escaped)
+      ("#" ^ escaped) output
+  in
+
+  (* Helper to test roundtrip for element selectors *)
+  let check_element_roundtrip escaped =
+    let sel = of_string escaped in
+    let output = to_string ~minify:true sel in
+    Alcotest.(check string)
+      (Fmt.str "element roundtrip for %S" escaped)
+      escaped output
+  in
+
+  (* Class selectors - simple escapes *)
+  check_class_roundtrip "w-1\\/2";
+  check_class_roundtrip "sm\\:p-4";
+  check_class_roundtrip "p-\\[10px\\]";
+  check_class_roundtrip "text-\\#ff0000";
+  check_class_roundtrip "content-\\\"hello\\\"";
+  check_class_roundtrip "my\\ class";
+  check_class_roundtrip "data-\\@value";
+  check_class_roundtrip "grid-\\*-auto";
+
+  (* ID selectors - simple escapes *)
+  check_id_roundtrip "my-id";
+  check_id_roundtrip "header\\:main";
+  check_id_roundtrip "item-\\#1";
+  check_id_roundtrip "user\\@domain";
+
+  (* Element selectors - no escaping needed *)
+  check_element_roundtrip "div";
+  check_element_roundtrip "custom-element";
+  check_element_roundtrip "my-component";
+
+  (* Hex escapes - these get normalized to simpler escape forms *)
+  let sel = of_string ".\\3A hover" in
+  let output = to_string ~minify:true sel in
+  (* \3A (hex for ':') + "hover" -> unescapes to ":hover" -> escapes to
+     "\:hover" *)
+  Alcotest.(check string) "class hex escape normalizes" ".\\:hover" output;
+
+  let sel = of_string "#\\2F value" in
+  let output = to_string ~minify:true sel in
+  (* \2F (hex for '/') + "value" -> unescapes to "/value" -> escapes to
+     "\/value" *)
+  Alcotest.(check string) "id hex escape normalizes" "#\\/value" output;
+
+  let sel = of_string ".\\5B test\\5D" in
+  let output = to_string ~minify:true sel in
+  (* \5B = '[', \5D = ']' - note: trailing space after hex escape is consumed *)
+  Alcotest.(check string) "class hex escape normalizes" ".\\[test\\]" output;
+
+  (* Mixed escapes *)
+  check_class_roundtrip "sm\\:hover\\:bg-\\[\\#ff0000\\]";
+
+  (* Unescaped parts remain unescaped *)
+  check_class_roundtrip "normal-class";
+  check_class_roundtrip "with-hyphen";
+  check_class_roundtrip "with_underscore"
 
 (* Not a roundtrip test *)
 (* Test invalid selectors *)
@@ -926,145 +1057,6 @@ let test_combinator_distribution () =
   in
   check_construct ".first~.x,.first~.y" s
 
-(* Test of_string/pp roundtrip: escaped -> unescape -> escape = original *)
-let test_escape_roundtrip () =
-  (* Helper to test roundtrip for class selectors *)
-  let check_class_roundtrip escaped =
-    let sel = of_string ("." ^ escaped) in
-    let output = to_string ~minify:true sel in
-    Alcotest.(check string)
-      (Fmt.str "class roundtrip for %S" escaped)
-      ("." ^ escaped) output
-  in
-
-  (* Helper to test roundtrip for ID selectors *)
-  let check_id_roundtrip escaped =
-    let sel = of_string ("#" ^ escaped) in
-    let output = to_string ~minify:true sel in
-    Alcotest.(check string)
-      (Fmt.str "id roundtrip for %S" escaped)
-      ("#" ^ escaped) output
-  in
-
-  (* Helper to test roundtrip for element selectors *)
-  let check_element_roundtrip escaped =
-    let sel = of_string escaped in
-    let output = to_string ~minify:true sel in
-    Alcotest.(check string)
-      (Fmt.str "element roundtrip for %S" escaped)
-      escaped output
-  in
-
-  (* Class selectors - simple escapes *)
-  check_class_roundtrip "w-1\\/2";
-  check_class_roundtrip "sm\\:p-4";
-  check_class_roundtrip "p-\\[10px\\]";
-  check_class_roundtrip "text-\\#ff0000";
-  check_class_roundtrip "content-\\\"hello\\\"";
-  check_class_roundtrip "my\\ class";
-  check_class_roundtrip "data-\\@value";
-  check_class_roundtrip "grid-\\*-auto";
-
-  (* ID selectors - simple escapes *)
-  check_id_roundtrip "my-id";
-  check_id_roundtrip "header\\:main";
-  check_id_roundtrip "item-\\#1";
-  check_id_roundtrip "user\\@domain";
-
-  (* Element selectors - no escaping needed *)
-  check_element_roundtrip "div";
-  check_element_roundtrip "custom-element";
-  check_element_roundtrip "my-component";
-
-  (* Hex escapes - these get normalized to simpler escape forms *)
-  let sel = of_string ".\\3A hover" in
-  let output = to_string ~minify:true sel in
-  (* \3A (hex for ':') + "hover" -> unescapes to ":hover" -> escapes to
-     "\:hover" *)
-  Alcotest.(check string) "class hex escape normalizes" ".\\:hover" output;
-
-  let sel = of_string "#\\2F value" in
-  let output = to_string ~minify:true sel in
-  (* \2F (hex for '/') + "value" -> unescapes to "/value" -> escapes to
-     "\/value" *)
-  Alcotest.(check string) "id hex escape normalizes" "#\\/value" output;
-
-  let sel = of_string ".\\5B test\\5D" in
-  let output = to_string ~minify:true sel in
-  (* \5B = '[', \5D = ']' - note: trailing space after hex escape is consumed *)
-  Alcotest.(check string) "class hex escape normalizes" ".\\[test\\]" output;
-
-  (* Mixed escapes *)
-  check_class_roundtrip "sm\\:hover\\:bg-\\[\\#ff0000\\]";
-
-  (* Unescaped parts remain unescaped *)
-  check_class_roundtrip "normal-class";
-  check_class_roundtrip "with-hyphen";
-  check_class_roundtrip "with_underscore";
-  ()
-
-(* Test class_/pp escaping: raw -> class_ -> pp should escape properly *)
-let test_class_escaping () =
-  (* Helper to test that raw class name gets properly escaped *)
-  let check_class_escaping raw expected_escaped =
-    let sel = class_ raw in
-    let output = to_string ~minify:true sel in
-    Alcotest.(check string)
-      (Fmt.str "class escaping for %S" raw)
-      expected_escaped output
-  in
-
-  (* Characters that need escaping *)
-  check_class_escaping "w-1/2" ".w-1\\/2";
-  check_class_escaping "sm:p-4" ".sm\\:p-4";
-  check_class_escaping "p-[10px]" ".p-\\[10px\\]";
-  check_class_escaping "text-#ff0000" ".text-\\#ff0000";
-  check_class_escaping "content-\"hello\"" ".content-\\\"hello\\\"";
-  check_class_escaping "my class" ".my\\ class";
-  check_class_escaping "data-@value" ".data-\\@value";
-  check_class_escaping "grid-*-auto" ".grid-\\*-auto";
-  check_class_escaping "has,comma" ".has\\,comma";
-  check_class_escaping "has.dot" ".has\\.dot";
-  check_class_escaping "has(paren)" ".has\\(paren\\)";
-  check_class_escaping "has%percent" ".has\\%percent";
-  check_class_escaping "has'quote" ".has\\'quote";
-
-  (* Characters that don't need escaping *)
-  check_class_escaping "normal-class" ".normal-class";
-  check_class_escaping "with-hyphen" ".with-hyphen";
-  check_class_escaping "with_underscore" ".with_underscore";
-  check_class_escaping "CamelCase123" ".CamelCase123";
-  ()
-
-(* Test id/pp escaping: raw -> id -> pp should escape properly *)
-let test_id_escaping () =
-  (* Helper to test that raw ID gets properly escaped *)
-  let check_id_escaping raw expected_escaped =
-    let sel = id raw in
-    let output = to_string ~minify:true sel in
-    Alcotest.(check string)
-      (Fmt.str "id escaping for %S" raw)
-      expected_escaped output
-  in
-
-  (* Characters that need escaping *)
-  check_id_escaping "item:1" "#item\\:1";
-  check_id_escaping "user@domain" "#user\\@domain";
-  check_id_escaping "ref#123" "#ref\\#123";
-  check_id_escaping "item[0]" "#item\\[0\\]";
-  check_id_escaping "my.id" "#my\\.id";
-  check_id_escaping "has space" "#has\\ space";
-
-  (* Identifiers starting with digits need hex escaping *)
-  check_id_escaping "9section" "#\\39 section";
-  check_id_escaping "0item" "#\\30 item";
-
-  (* Characters that don't need escaping *)
-  check_id_escaping "normal-id" "#normal-id";
-  check_id_escaping "with_underscore" "#with_underscore";
-  check_id_escaping "CamelCase" "#CamelCase";
-  ()
-
 let suite =
   let open Alcotest in
   ( "selector",
@@ -1095,10 +1087,6 @@ let suite =
       test_case "attr_case_sensitivity_flags" `Quick
         test_attr_case_sensitivity_flags;
       test_case "selector component failures" `Quick component_parsing_failures;
-      (* Escaping and roundtrip tests *)
-      test_case "escape roundtrip" `Quick test_escape_roundtrip;
-      test_case "class escaping" `Quick test_class_escaping;
-      test_case "id escaping" `Quick test_id_escaping;
       (* Error cases *)
       test_case "invalid" `Quick invalid;
       test_case "parse errors - attributes" `Quick parse_errors_attributes;
