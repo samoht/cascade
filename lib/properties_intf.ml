@@ -871,6 +871,8 @@ type background_repeat =
   | No_repeat_round
   | No_repeat_no_repeat
   | Inherit
+  | Initial
+  | Unset
 
 type background_size =
   | Auto
@@ -884,6 +886,8 @@ type background_size =
   | Vh of float
   | Size of length * length
   | Inherit
+  | Initial
+  | Unset
 
 type gradient_direction =
   | To_top
@@ -917,6 +921,8 @@ type background_image =
   | Linear_gradient of gradient_direction * gradient_stop list
   | Radial_gradient of gradient_stop list
   | None
+  | Initial
+  | Inherit
 
 type position_value =
   | Center
@@ -1148,7 +1154,7 @@ type text_size_adjust = None | Auto | Pct of float | Inherit
 (* Other Types *)
 type forced_color_adjust = Auto | None | Inherit
 type appearance = None | Auto | Button | Textfield | Menulist | Inherit
-type print_color_adjust = Economy | Exact
+type print_color_adjust = Economy | Exact | Initial | Inherit | Unset
 type clear = None | Left | Right | Both | Inline_start | Inline_end
 type float_side = None | Left | Right | Inline_start | Inline_end | Inherit
 type text_decoration_skip_ink = Auto | None | All | Inherit

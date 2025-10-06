@@ -188,6 +188,11 @@ val atomic : t -> (unit -> 'a) -> 'a
     kept. If [f] raises an exception, the position is restored to where it was
     before calling [atomic]. This is similar to Parsec's [try] combinator. *)
 
+val lookahead : (t -> 'a) -> t -> 'a
+(** [lookahead f t] saves the current position, executes [f t], and ALWAYS
+    restores the position regardless of success or failure. Useful for peeking
+    ahead without consuming tokens. *)
+
 val take : int -> (t -> 'a) -> t -> 'a list
 (** [take n parser t] parses up to [n] items. Requires at least 1. *)
 
