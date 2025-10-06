@@ -409,32 +409,36 @@ let invalid () =
     "CSS identifier '9div' cannot start with digit" (fun () ->
       ignore (element "9div"));
 
-  check_invalid "digit start class"
-    "CSS identifier '9class' cannot start with digit" (fun () ->
-      ignore (class_ "9class"));
+  (* class_ accepts raw strings including those starting with digits, as they
+     will be escaped during output. This is by design for Tailwind-style
+     classes. *)
+  let sel = class_ "9class" in
+  let output = to_string ~minify:true sel in
+  Alcotest.(check string)
+    "class starting with digit gets escaped" ".\\39 class" output;
 
   (* Double dash reserved for custom properties *)
   check_invalid "double dash class"
     "CSS identifier '--var' cannot start with '--' (reserved for custom \
      properties)" (fun () -> ignore (class_ "--var"));
 
-  (* Dash followed by digit *)
-  check_invalid "dash digit"
-    "CSS identifier '-9' cannot start with '-' followed by digit" (fun () ->
-      ignore (id "-9"));
+  check_invalid "double dash id"
+    "CSS identifier '--id' cannot start with '--' (reserved for custom \
+     properties)" (fun () -> ignore (id "--id"));
 
-  (* Invalid characters *)
-  check_invalid "space in class"
-    "CSS identifier 'my class' contains invalid character ' ' at position 2"
-    (fun () -> ignore (class_ "my class"));
+  (* class_ and id accept dash-digit, but escape it properly *)
+  let sel = class_ "-9test" in
+  let output = to_string ~minify:true sel in
+  Alcotest.(check string)
+    "class starting with dash-digit gets escaped" ".\\2d 9test" output;
 
-  check_invalid "dot in class"
-    "CSS identifier 'my.class' contains invalid character '.' at position 2"
-    (fun () -> ignore (class_ "my.class"));
+  let sel = id "-9test" in
+  let output = to_string ~minify:true sel in
+  Alcotest.(check string)
+    "id starting with dash-digit gets escaped" "#\\2d 9test" output;
 
-  check_invalid "hash in id"
-    "CSS identifier 'my#id' contains invalid character '#' at position 2"
-    (fun () -> ignore (id "my#id"));
+  (* Both class_ and id now accept special characters and escape them during output *)
+  (* These are tested in test_class_escaping and test_id_escaping *)
 
   (* Parsing invalid selector strings via Reader.option to avoid exceptions *)
   let open Css.Reader in
@@ -921,6 +925,145 @@ let test_combinator_distribution () =
   in
   check_construct ".first~.x,.first~.y" s
 
+(* Test of_string/pp roundtrip: escaped -> unescape -> escape = original *)
+let test_escape_roundtrip () =
+  (* Helper to test roundtrip for class selectors *)
+  let check_class_roundtrip escaped =
+    let sel = of_string ("." ^ escaped) in
+    let output = to_string ~minify:true sel in
+    Alcotest.(check string)
+      (Fmt.str "class roundtrip for %S" escaped)
+      ("." ^ escaped) output
+  in
+
+  (* Helper to test roundtrip for ID selectors *)
+  let check_id_roundtrip escaped =
+    let sel = of_string ("#" ^ escaped) in
+    let output = to_string ~minify:true sel in
+    Alcotest.(check string)
+      (Fmt.str "id roundtrip for %S" escaped)
+      ("#" ^ escaped) output
+  in
+
+  (* Helper to test roundtrip for element selectors *)
+  let check_element_roundtrip escaped =
+    let sel = of_string escaped in
+    let output = to_string ~minify:true sel in
+    Alcotest.(check string)
+      (Fmt.str "element roundtrip for %S" escaped)
+      escaped output
+  in
+
+  (* Class selectors - simple escapes *)
+  check_class_roundtrip "w-1\\/2";
+  check_class_roundtrip "sm\\:p-4";
+  check_class_roundtrip "p-\\[10px\\]";
+  check_class_roundtrip "text-\\#ff0000";
+  check_class_roundtrip "content-\\\"hello\\\"";
+  check_class_roundtrip "my\\ class";
+  check_class_roundtrip "data-\\@value";
+  check_class_roundtrip "grid-\\*-auto";
+
+  (* ID selectors - simple escapes *)
+  check_id_roundtrip "my-id";
+  check_id_roundtrip "header\\:main";
+  check_id_roundtrip "item-\\#1";
+  check_id_roundtrip "user\\@domain";
+
+  (* Element selectors - no escaping needed *)
+  check_element_roundtrip "div";
+  check_element_roundtrip "custom-element";
+  check_element_roundtrip "my-component";
+
+  (* Hex escapes - these get normalized to simpler escape forms *)
+  let sel = of_string ".\\3A hover" in
+  let output = to_string ~minify:true sel in
+  (* \3A (hex for ':') + "hover" -> unescapes to ":hover" -> escapes to
+     "\:hover" *)
+  Alcotest.(check string) "class hex escape normalizes" ".\\:hover" output;
+
+  let sel = of_string "#\\2F value" in
+  let output = to_string ~minify:true sel in
+  (* \2F (hex for '/') + "value" -> unescapes to "/value" -> escapes to
+     "\/value" *)
+  Alcotest.(check string) "id hex escape normalizes" "#\\/value" output;
+
+  let sel = of_string ".\\5B test\\5D" in
+  let output = to_string ~minify:true sel in
+  (* \5B = '[', \5D = ']' - note: trailing space after hex escape is consumed *)
+  Alcotest.(check string) "class hex escape normalizes" ".\\[test\\]" output;
+
+  (* Mixed escapes *)
+  check_class_roundtrip "sm\\:hover\\:bg-\\[\\#ff0000\\]";
+
+  (* Unescaped parts remain unescaped *)
+  check_class_roundtrip "normal-class";
+  check_class_roundtrip "with-hyphen";
+  check_class_roundtrip "with_underscore";
+  ()
+
+(* Test class_/pp escaping: raw -> class_ -> pp should escape properly *)
+let test_class_escaping () =
+  (* Helper to test that raw class name gets properly escaped *)
+  let check_class_escaping raw expected_escaped =
+    let sel = class_ raw in
+    let output = to_string ~minify:true sel in
+    Alcotest.(check string)
+      (Fmt.str "class escaping for %S" raw)
+      expected_escaped output
+  in
+
+  (* Characters that need escaping *)
+  check_class_escaping "w-1/2" ".w-1\\/2";
+  check_class_escaping "sm:p-4" ".sm\\:p-4";
+  check_class_escaping "p-[10px]" ".p-\\[10px\\]";
+  check_class_escaping "text-#ff0000" ".text-\\#ff0000";
+  check_class_escaping "content-\"hello\"" ".content-\\\"hello\\\"";
+  check_class_escaping "my class" ".my\\ class";
+  check_class_escaping "data-@value" ".data-\\@value";
+  check_class_escaping "grid-*-auto" ".grid-\\*-auto";
+  check_class_escaping "has,comma" ".has\\,comma";
+  check_class_escaping "has.dot" ".has\\.dot";
+  check_class_escaping "has(paren)" ".has\\(paren\\)";
+  check_class_escaping "has%percent" ".has\\%percent";
+  check_class_escaping "has'quote" ".has\\'quote";
+
+  (* Characters that don't need escaping *)
+  check_class_escaping "normal-class" ".normal-class";
+  check_class_escaping "with-hyphen" ".with-hyphen";
+  check_class_escaping "with_underscore" ".with_underscore";
+  check_class_escaping "CamelCase123" ".CamelCase123";
+  ()
+
+(* Test id/pp escaping: raw -> id -> pp should escape properly *)
+let test_id_escaping () =
+  (* Helper to test that raw ID gets properly escaped *)
+  let check_id_escaping raw expected_escaped =
+    let sel = id raw in
+    let output = to_string ~minify:true sel in
+    Alcotest.(check string)
+      (Fmt.str "id escaping for %S" raw)
+      expected_escaped output
+  in
+
+  (* Characters that need escaping *)
+  check_id_escaping "item:1" "#item\\:1";
+  check_id_escaping "user@domain" "#user\\@domain";
+  check_id_escaping "ref#123" "#ref\\#123";
+  check_id_escaping "item[0]" "#item\\[0\\]";
+  check_id_escaping "my.id" "#my\\.id";
+  check_id_escaping "has space" "#has\\ space";
+
+  (* Identifiers starting with digits need hex escaping *)
+  check_id_escaping "9section" "#\\39 section";
+  check_id_escaping "0item" "#\\30 item";
+
+  (* Characters that don't need escaping *)
+  check_id_escaping "normal-id" "#normal-id";
+  check_id_escaping "with_underscore" "#with_underscore";
+  check_id_escaping "CamelCase" "#CamelCase";
+  ()
+
 let suite =
   let open Alcotest in
   ( "selector",
@@ -951,6 +1094,10 @@ let suite =
       test_case "attr_case_sensitivity_flags" `Quick
         test_attr_case_sensitivity_flags;
       test_case "selector component failures" `Quick component_parsing_failures;
+      (* Escaping and roundtrip tests *)
+      test_case "escape roundtrip" `Quick test_escape_roundtrip;
+      test_case "class escaping" `Quick test_class_escaping;
+      test_case "id escaping" `Quick test_id_escaping;
       (* Error cases *)
       test_case "invalid" `Quick invalid;
       test_case "parse errors - attributes" `Quick parse_errors_attributes;
