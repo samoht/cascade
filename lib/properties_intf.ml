@@ -918,7 +918,7 @@ type background_image =
   | Radial_gradient of gradient_stop list
   | None
 
-type position_2d =
+type position_value =
   | Center
   | Left_top
   | Left_center
@@ -930,12 +930,21 @@ type position_2d =
   | Center_bottom
   | XY of length * length
   | Inherit
+  | Initial
+  (* 3-value syntax: edge offset axis (e.g., "right 0.5rem center") *)
+  | Edge_offset_axis of string * length * string
+  (* 4-value syntax: edge1 offset1 edge2 offset2 *)
+  | Edge_offset_edge_offset of string * length * string * length
+
+(* Background position can be complex with 1-4 values mixing keywords and
+   lengths *)
+type background_position = position_value list
 
 (* Structured background type for the shorthand property *)
 type background_shorthand = {
   color : color option;
   image : background_image option;
-  position : position_2d option;
+  position : position_value option;
   size : background_size option;
   repeat : background_repeat option;
   attachment : background_attachment option;
@@ -1035,6 +1044,12 @@ type content_visibility =
 (* Container Types *)
 type container_type = Size | Inline_size | Scroll_state | Normal
 
+(* Container shorthand: name / type *)
+type container_shorthand = {
+  name : string option;
+  ctype : container_type option;
+}
+
 (* Containment Types *)
 type contain =
   | None
@@ -1133,6 +1148,7 @@ type text_size_adjust = None | Auto | Pct of float | Inherit
 (* Other Types *)
 type forced_color_adjust = Auto | None | Inherit
 type appearance = None | Auto | Button | Textfield | Menulist | Inherit
+type print_color_adjust = Economy | Exact
 type clear = None | Left | Right | Both | Inline_start | Inline_end
 type float_side = None | Left | Right | Inline_start | Inline_end | Inherit
 type text_decoration_skip_ink = Auto | None | All | Inherit
@@ -1298,11 +1314,12 @@ type 'a property =
   | O_transition : transition list property
   | Container_type : container_type property
   | Container_name : string property
+  | Container : container_shorthand property
   | Perspective : length property
   | Perspective_origin : string property
   | Transform_style : transform_style property
   | Backface_visibility : backface_visibility property
-  | Object_position : position_2d property
+  | Object_position : position_value property
   | Rotate : angle property
   | Transition_duration : duration property
   | Transition_timing_function : timing_function property
@@ -1331,7 +1348,7 @@ type 'a property =
   | Overflow_y : overflow property
   | Vertical_align : vertical_align property
   | Font_family : font_family property
-  | Background_position : position_2d list property
+  | Background_position : background_position property
   | Background_repeat : background_repeat property
   | Background_size : background_size property
   | Webkit_font_smoothing : webkit_font_smoothing property
@@ -1347,6 +1364,7 @@ type 'a property =
   | Font_stretch : font_stretch property
   | Font_variant_numeric : font_variant_numeric property
   | Backdrop_filter : filter property
+  | Webkit_backdrop_filter : filter property
   | Scroll_snap_align : scroll_snap_align property
   | Scroll_snap_stop : scroll_snap_stop property
   | Scroll_behavior : scroll_behavior property
@@ -1354,6 +1372,7 @@ type 'a property =
   | Resize : resize property
   | Object_fit : object_fit property
   | Appearance : appearance property
+  | Print_color_adjust : print_color_adjust property
   | Content : content property
   | Quotes : string property
   | Text_decoration_thickness : length property

@@ -842,7 +842,7 @@ val border_left : string -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-left}
      border-left} shorthand. *)
 
-val object_position : position_2d -> declaration
+val object_position : position_value -> declaration
 (** [object_position v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/object-position}
      object-position} property. *)
@@ -903,7 +903,7 @@ val font_variant_numeric : font_variant_numeric -> declaration
 val backdrop_filter : filter -> declaration
 (** [backdrop_filter v] is the CSS [backdrop-filter] property. *)
 
-val background_position : position_2d list -> declaration
+val background_position : position_value list -> declaration
 (** [background_position v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background-position}
      background-position} property. *)
