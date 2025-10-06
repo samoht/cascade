@@ -520,6 +520,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   (* Filter properties *)
   | Filter, value -> vars_of_filter value
   | Backdrop_filter, value -> vars_of_filter value
+  | Webkit_backdrop_filter, value -> vars_of_filter value
   | Webkit_filter, value -> vars_of_filter value
   | Ms_filter, value -> vars_of_filter value
   (* Transition properties *)
