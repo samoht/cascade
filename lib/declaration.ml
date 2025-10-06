@@ -544,6 +544,7 @@ let read_value (type a) (prop : a property) t : declaration =
   (* Background properties *)
   | Background_attachment ->
       v Background_attachment (read_background_attachment t)
+  | Background_origin -> v Background_origin (read_background_box t)
   | Background_position -> v Background_position (read_background_position t)
   | Background_repeat -> v Background_repeat (read_background_repeat t)
   | Background_size -> v Background_size (read_background_size t)
