@@ -137,6 +137,7 @@ let check_container_type =
 
 let check_container_shorthand =
   check_value "container" read_container_shorthand pp_container_shorthand
+[@@warning "-32"]
 
 let check_contain = check_value "contain" read_contain pp_contain
 let check_isolation = check_value "isolation" read_isolation pp_isolation
@@ -182,6 +183,7 @@ let check_forced_color_adjust =
 
 let check_print_color_adjust =
   check_value "print-color-adjust" read_print_color_adjust pp_print_color_adjust
+[@@warning "-32"]
 
 let check_appearance = check_value "appearance" read_appearance pp_appearance
 let check_clear = check_value "clear" read_clear pp_clear
@@ -285,6 +287,7 @@ let check_background_image =
 let check_background_position =
   check_value "background-position" read_background_position
     pp_background_position
+[@@warning "-32"]
 
 let check_overscroll_behavior =
   check_value "overscroll-behavior" read_overscroll_behavior
@@ -1488,6 +1491,14 @@ let test_background_image () =
     "linear-gradient(to right, red, blue)";
   neg read_background_image "invalid-image"
 
+let test_background_position () =
+  check_background_position "center";
+  check_background_position "left top";
+  check_background_position "right .5rem center";
+  check_background_position "50% 25%";
+  check_background_position "inherit";
+  neg read_background_position "invalid-position"
+
 let test_position_value () =
   check_position_value "center";
   check_position_value "left top";
@@ -1571,6 +1582,18 @@ let test_container_type () =
   check_container_type "inline-size";
   check_container_type "size";
   neg read_container_type "invalid-type"
+
+let test_container_shorthand () =
+  check_container_shorthand "normal";
+  check_container_shorthand "inline-size";
+  check_container_shorthand "size";
+  check_container_shorthand "sidebar";
+  check_container_shorthand "sidebar / inline-size";
+  check_container_shorthand "header / size";
+  neg read_container_shorthand "/ size";
+  (* Missing name before / *)
+  neg read_container_shorthand "sidebar / invalid"
+(* Invalid type *)
 
 let test_contain () =
   check_contain "none";
@@ -1717,6 +1740,11 @@ let test_forced_color_adjust () =
   check_forced_color_adjust "auto";
   check_forced_color_adjust "inherit";
   neg read_forced_color_adjust "invalid-adjust"
+
+let test_print_color_adjust () =
+  check_print_color_adjust "economy";
+  check_print_color_adjust "exact";
+  neg read_print_color_adjust "invalid-adjust"
 
 let test_appearance () =
   check_appearance "none";

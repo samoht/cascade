@@ -5456,10 +5456,10 @@ end
 let read_position_value t : position_value =
   Reader.one_of
     [
-      Position_value.read_keywords;
       Position_value.read_4_value;
       Position_value.read_3_value;
       Position_value.read_xy;
+      Position_value.read_keywords;
     ]
     t
 
