@@ -8,20 +8,26 @@ val element : ?ns:ns -> string -> t
     identifiers; raises [Invalid_argument] on invalid. *)
 
 val class_ : string -> t
-(** [class_ name] class selector (e.g., ".prose"). Accepts Tailwind-style class
-    tokens and rejects only unprintable/control characters; escaping of special
-    characters happens during pretty-printing. Raises [Invalid_argument] only
-    when [name] contains characters that cannot be serialized (control chars).
-*)
+(** [class_ name] class selector from raw (unescaped) string. Accepts any
+    serializable characters including special chars that will be escaped during
+    pretty-printing. Only rejects control characters and '--' prefix. Raises
+    [Invalid_argument] on invalid. *)
 
 val id : string -> t
-(** [id name] ID selector (e.g., "#header"). Validates identifiers; raises
+(** [id name] ID selector from raw (unescaped) string. Accepts any serializable
+    characters including special chars that will be escaped during
+    pretty-printing. Only rejects control characters and '--' prefix. Raises
     [Invalid_argument] on invalid. *)
 
 val of_string : string -> t
-(** [of_string s] builds a class selector from a CSS-escaped class token [s]
-    (e.g., "sm\\:p-4"). It unescapes simple backslash escapes to normalize the
-    internal representation, and escaping is applied when pretty-printing. *)
+(** [of_string s] parses a CSS-escaped selector string:
+    - [".classname"] → class selector
+    - ["#idname"] → id selector
+    - ["element"] → element selector
+
+    Unescapes both simple escapes (e.g., ["\:"]) and hex escapes (e.g.,
+    ["\3A"]). Example: [of_string ".sm\\:p-4"] creates a class selector for
+    "sm:p-4". *)
 
 val universal : t
 (** [universal] universal selector "*" (no namespace). *)

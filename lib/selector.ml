@@ -157,9 +157,13 @@ let element ?ns name =
   Element (ns, name)
 
 (* Looser validation for class names: allow Tailwind-style tokens and escape at
-   print time. Only reject control/unprintable characters. *)
+   print time. Only reject control/unprintable characters and double-dash
+   prefix. *)
 let validate_serializable_class name =
   if String.length name = 0 then err_invalid_identifier name "cannot be empty";
+  if String.length name >= 2 && name.[0] = '-' && name.[1] = '-' then
+    err_invalid_identifier name
+      "cannot start with '--' (reserved for custom properties)";
   String.iter
     (fun c ->
       let code = Char.code c in
@@ -172,7 +176,7 @@ let class_ name =
   Class name
 
 let id name =
-  validate_css_identifier name;
+  validate_serializable_class name;
   Id name
 
 let universal = Universal None
@@ -184,21 +188,45 @@ let attribute ?ns ?flag name match_type =
 
 (* Convenience: build a class selector from a raw class token. Escaping happens
    in [pp]/[to_string]. Equivalent to [class_]. *)
-(* Unescape simple CSS escapes (\\X -> X). Tailwind class names primarily use
-   single-character escapes (e.g., \\: \\/ \\.) rather than hex escapes. We
-   support the common pattern by consuming a single following character. *)
+(* Convert a hex digit character to its integer value *)
+let hex_to_int c =
+  match c with
+  | '0' .. '9' -> Char.code c - Char.code '0'
+  | 'a' .. 'f' -> Char.code c - Char.code 'a' + 10
+  | 'A' .. 'F' -> Char.code c - Char.code 'A' + 10
+  | _ -> invalid_arg "not a hex digit"
+
+(* Unescape CSS escapes per spec: \XX...XX (1-6 hex) or \X (any char). Handles
+   both hex escapes (e.g., \3A for ':') and simple escapes (e.g., \:). *)
 let unescape_selector_name s =
   let len = String.length s in
   let buf = Buffer.create len in
   let rec loop i =
     if i >= len then ()
     else if s.[i] = '\\' then
-      if i + 1 < len then (
+      if i + 1 >= len then
+        (* Trailing backslash - ignore *)
+        ()
+      else if is_hex_char s.[i + 1] then (
+        (* Hex escape: consume up to 6 hex digits *)
+        let rec consume_hex acc n idx =
+          if n = 6 || idx >= len || not (is_hex_char s.[idx]) then (acc, idx)
+          else consume_hex ((acc * 16) + hex_to_int s.[idx]) (n + 1) (idx + 1)
+        in
+        let codepoint, next_idx = consume_hex 0 0 (i + 1) in
+        (* Skip optional whitespace after hex escape *)
+        let final_idx =
+          if next_idx < len && s.[next_idx] = ' ' then next_idx + 1
+          else next_idx
+        in
+        (* Add the unescaped character if it's valid *)
+        if codepoint > 0 && codepoint <= 0x10FFFF then
+          Buffer.add_utf_8_uchar buf (Uchar.of_int codepoint);
+        loop final_idx)
+      else (
+        (* Simple escape: just take the next character literally *)
         Buffer.add_char buf s.[i + 1];
         loop (i + 2))
-      else
-        (* trailing backslash - ignore *)
-        ()
     else (
       Buffer.add_char buf s.[i];
       loop (i + 1))
@@ -207,8 +235,25 @@ let unescape_selector_name s =
   Buffer.contents buf
 
 let of_string s =
-  let raw = unescape_selector_name s in
-  class_ raw
+  if String.length s = 0 then invalid_arg "of_string: empty selector string";
+  let first_char = s.[0] in
+  match first_char with
+  | '.' ->
+      (* Class selector: .classname *)
+      if String.length s = 1 then
+        invalid_arg "of_string: incomplete class selector";
+      let raw = unescape_selector_name (String.sub s 1 (String.length s - 1)) in
+      class_ raw
+  | '#' ->
+      (* ID selector: #idname *)
+      if String.length s = 1 then
+        invalid_arg "of_string: incomplete id selector";
+      let raw = unescape_selector_name (String.sub s 1 (String.length s - 1)) in
+      id raw
+  | _ ->
+      (* Element selector (no prefix) *)
+      let raw = unescape_selector_name s in
+      element raw
 
 (* Simple readers that don't need recursion *)
 let read_lang_content t =
@@ -879,29 +924,52 @@ let strs ctx strings = Pp.list ~sep:Pp.comma Pp.string ctx strings
 
 (** Escape special CSS selector characters for class and ID names. This handles
     characters commonly found in Tailwind utilities like fractions (w-1/2),
-    arbitrary values (p-[10px]), etc. *)
+    arbitrary values (p-[10px]), etc. Also handles identifiers starting with
+    digits or other invalid start characters using hex escapes. *)
 let escape_selector_name name =
-  let buf = Buffer.create (String.length name * 2) in
-  String.iter
-    (function
-      | '[' -> Buffer.add_string buf "\\["
-      | ']' -> Buffer.add_string buf "\\]"
-      | '(' -> Buffer.add_string buf "\\("
-      | ')' -> Buffer.add_string buf "\\)"
-      | ',' -> Buffer.add_string buf "\\,"
-      | '/' -> Buffer.add_string buf "\\/"
-      | ':' -> Buffer.add_string buf "\\:"
-      | '%' -> Buffer.add_string buf "\\%"
-      | '.' -> Buffer.add_string buf "\\."
-      | '#' -> Buffer.add_string buf "\\#"
-      | ' ' -> Buffer.add_string buf "\\ "
-      | '"' -> Buffer.add_string buf "\\\""
-      | '\'' -> Buffer.add_string buf "\\'"
-      | '@' -> Buffer.add_string buf "\\@"
-      | '*' -> Buffer.add_string buf "\\*"
-      | c -> Buffer.add_char buf c)
-    name;
-  Buffer.contents buf
+  if String.length name = 0 then ""
+  else
+    let buf = Buffer.create (String.length name * 2) in
+    (* Helper to convert char to hex escape *)
+    let hex_escape c =
+      let code = Char.code c in
+      Printf.sprintf "\\%x " code
+    in
+    (* Check if first character needs special hex escaping *)
+    let first_char = name.[0] in
+    let first_needs_hex_escape =
+      (first_char >= '0' && first_char <= '9')
+      || first_char = '-'
+         && String.length name > 1
+         && name.[1] >= '0'
+         && name.[1] <= '9'
+    in
+
+    String.iteri
+      (fun i c ->
+        (* First character gets hex escape if it's a digit or dash-digit *)
+        if i = 0 && first_needs_hex_escape then
+          Buffer.add_string buf (hex_escape c)
+        else
+          match c with
+          | '[' -> Buffer.add_string buf "\\["
+          | ']' -> Buffer.add_string buf "\\]"
+          | '(' -> Buffer.add_string buf "\\("
+          | ')' -> Buffer.add_string buf "\\)"
+          | ',' -> Buffer.add_string buf "\\,"
+          | '/' -> Buffer.add_string buf "\\/"
+          | ':' -> Buffer.add_string buf "\\:"
+          | '%' -> Buffer.add_string buf "\\%"
+          | '.' -> Buffer.add_string buf "\\."
+          | '#' -> Buffer.add_string buf "\\#"
+          | ' ' -> Buffer.add_string buf "\\ "
+          | '"' -> Buffer.add_string buf "\\\""
+          | '\'' -> Buffer.add_string buf "\\'"
+          | '@' -> Buffer.add_string buf "\\@"
+          | '*' -> Buffer.add_string buf "\\*"
+          | c -> Buffer.add_char buf c)
+      name;
+    Buffer.contents buf
 
 (** Pretty print nth function with optional "of" clause *)
 let rec pp_nth_func ctx name expr of_sel =
