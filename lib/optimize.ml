@@ -101,31 +101,34 @@ let deduplicate_declarations props =
 
 (** {1 Rule Optimization} *)
 
-(* Check if a selector contains vendor-specific pseudo-elements *)
-let rec contains_vendor_pseudo_element = function
-  | Selector.File_selector_button -> true
-  | Selector.Webkit_scrollbar | Selector.Webkit_search_cancel_button
-  | Selector.Webkit_search_decoration
-  | Selector.Webkit_datetime_edit_fields_wrapper
-  | Selector.Webkit_date_and_time_value | Selector.Webkit_datetime_edit
-  | Selector.Webkit_datetime_edit_year_field
-  | Selector.Webkit_datetime_edit_month_field
-  | Selector.Webkit_datetime_edit_day_field
-  | Selector.Webkit_datetime_edit_hour_field
-  | Selector.Webkit_datetime_edit_minute_field
-  | Selector.Webkit_datetime_edit_second_field
-  | Selector.Webkit_datetime_edit_millisecond_field
-  | Selector.Webkit_datetime_edit_meridiem_field ->
+(* Check if a selector contains vendor-specific pseudo-elements. These should
+   not be grouped because if one selector in a group is invalid in a browser,
+   the entire rule fails. Keeping them separate ensures maximum
+   compatibility. *)
+let rec contains_vendor_pseudo_element : Selector.t -> bool = function
+  | File_selector_button -> true
+  | Webkit_scrollbar | Webkit_search_cancel_button | Webkit_search_decoration
+  | Webkit_datetime_edit_fields_wrapper | Webkit_date_and_time_value
+  | Webkit_datetime_edit | Webkit_datetime_edit_year_field
+  | Webkit_datetime_edit_month_field | Webkit_datetime_edit_day_field
+  | Webkit_datetime_edit_hour_field | Webkit_datetime_edit_minute_field
+  | Webkit_datetime_edit_second_field | Webkit_datetime_edit_millisecond_field
+  | Webkit_datetime_edit_meridiem_field ->
       true
-  | Selector.Compound sels -> List.exists contains_vendor_pseudo_element sels
-  | Selector.Combined (left, _, right) ->
+  | Pseudo_element name ->
+      (* Check for string-based vendor pseudo-elements *)
+      String.starts_with ~prefix:"-webkit-" name
+      || String.starts_with ~prefix:"-moz-" name
+      || String.starts_with ~prefix:"-ms-" name
+  | Compound sels -> List.exists contains_vendor_pseudo_element sels
+  | Combined (left, _, right) ->
       contains_vendor_pseudo_element left
       || contains_vendor_pseudo_element right
-  | Selector.List sels -> List.exists contains_vendor_pseudo_element sels
-  | Selector.Not sels -> List.exists contains_vendor_pseudo_element sels
-  | Selector.Is sels -> List.exists contains_vendor_pseudo_element sels
-  | Selector.Where sels -> List.exists contains_vendor_pseudo_element sels
-  | Selector.Has sels -> List.exists contains_vendor_pseudo_element sels
+  | List sels -> List.exists contains_vendor_pseudo_element sels
+  | Not sels -> List.exists contains_vendor_pseudo_element sels
+  | Is sels -> List.exists contains_vendor_pseudo_element sels
+  | Where sels -> List.exists contains_vendor_pseudo_element sels
+  | Has sels -> List.exists contains_vendor_pseudo_element sels
   | _ -> false
 
 let single_rule (rule : rule) : rule =
