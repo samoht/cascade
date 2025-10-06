@@ -121,6 +121,8 @@ type t =
   | Webkit_datetime_edit_second_field
   | Webkit_datetime_edit_millisecond_field
   | Webkit_datetime_edit_meridiem_field
+  | Webkit_inner_spin_button
+  | Webkit_outer_spin_button
   (* Functional pseudo-classes *)
   | Is of t list (* :is() - matches any selector in list *)
   | Where of t list (* :where() - like :is() but 0 specificity *)

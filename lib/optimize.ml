@@ -113,13 +113,9 @@ let rec contains_vendor_pseudo_element : Selector.t -> bool = function
   | Webkit_datetime_edit_month_field | Webkit_datetime_edit_day_field
   | Webkit_datetime_edit_hour_field | Webkit_datetime_edit_minute_field
   | Webkit_datetime_edit_second_field | Webkit_datetime_edit_millisecond_field
-  | Webkit_datetime_edit_meridiem_field ->
+  | Webkit_datetime_edit_meridiem_field | Webkit_inner_spin_button
+  | Webkit_outer_spin_button ->
       true
-  | Pseudo_element name ->
-      (* Check for string-based vendor pseudo-elements *)
-      String.starts_with ~prefix:"-webkit-" name
-      || String.starts_with ~prefix:"-moz-" name
-      || String.starts_with ~prefix:"-ms-" name
   | Compound sels -> List.exists contains_vendor_pseudo_element sels
   | Combined (left, _, right) ->
       contains_vendor_pseudo_element left
