@@ -101,6 +101,33 @@ let deduplicate_declarations props =
 
 (** {1 Rule Optimization} *)
 
+(* Check if a selector contains vendor-specific pseudo-elements *)
+let rec contains_vendor_pseudo_element = function
+  | Selector.File_selector_button -> true
+  | Selector.Webkit_scrollbar | Selector.Webkit_search_cancel_button
+  | Selector.Webkit_search_decoration
+  | Selector.Webkit_datetime_edit_fields_wrapper
+  | Selector.Webkit_date_and_time_value | Selector.Webkit_datetime_edit
+  | Selector.Webkit_datetime_edit_year_field
+  | Selector.Webkit_datetime_edit_month_field
+  | Selector.Webkit_datetime_edit_day_field
+  | Selector.Webkit_datetime_edit_hour_field
+  | Selector.Webkit_datetime_edit_minute_field
+  | Selector.Webkit_datetime_edit_second_field
+  | Selector.Webkit_datetime_edit_millisecond_field
+  | Selector.Webkit_datetime_edit_meridiem_field ->
+      true
+  | Selector.Compound sels -> List.exists contains_vendor_pseudo_element sels
+  | Selector.Combined (left, _, right) ->
+      contains_vendor_pseudo_element left
+      || contains_vendor_pseudo_element right
+  | Selector.List sels -> List.exists contains_vendor_pseudo_element sels
+  | Selector.Not sels -> List.exists contains_vendor_pseudo_element sels
+  | Selector.Is sels -> List.exists contains_vendor_pseudo_element sels
+  | Selector.Where sels -> List.exists contains_vendor_pseudo_element sels
+  | Selector.Has sels -> List.exists contains_vendor_pseudo_element sels
+  | _ -> false
+
 let single_rule (rule : rule) : rule =
   { rule with declarations = deduplicate_declarations rule.declarations }
 
@@ -108,7 +135,10 @@ let merge_rules (rules : Stylesheet.rule list) : Stylesheet.rule list =
   (* Only merge truly adjacent rules with the same selector to preserve cascade
      order. This is safe because we don't reorder rules - we only combine
      immediately adjacent rules with identical selectors, which maintains
-     cascade semantics. *)
+     cascade semantics.
+
+     However, we don't merge vendor-specific pseudo-elements to match Tailwind's
+     behavior and ensure browser compatibility. *)
   let rec merge_adjacent (acc : Stylesheet.rule list)
       (prev_rule : Stylesheet.rule option) :
       Stylesheet.rule list -> Stylesheet.rule list = function
@@ -119,8 +149,12 @@ let merge_rules (rules : Stylesheet.rule list) : Stylesheet.rule list =
             (* First rule - just store it *)
             merge_adjacent acc (Some rule) rest
         | Some prev ->
-            if prev.selector = rule.selector then
-              (* Same selector immediately following - safe to merge *)
+            if
+              prev.selector = rule.selector
+              && not (contains_vendor_pseudo_element rule.selector)
+            then
+              (* Same selector immediately following and not vendor-specific -
+                 safe to merge *)
               let merged : Stylesheet.rule =
                 {
                   selector = prev.selector;
@@ -132,8 +166,8 @@ let merge_rules (rules : Stylesheet.rule list) : Stylesheet.rule list =
               in
               merge_adjacent acc (Some merged) rest
             else
-              (* Different selector - emit previous rule and continue with
-                 current *)
+              (* Different selector or vendor-specific - emit previous rule and
+                 continue *)
               merge_adjacent (prev :: acc) (Some rule) rest)
   in
   merge_adjacent [] None rules
@@ -143,11 +177,11 @@ let should_not_combine selector =
   (* Already a list selector - don't combine *)
   Selector.is_compound_list selector
   ||
-  (* Check string representation for specific prefixes *)
-  let s = Pp.to_string Selector.pp selector in
-  String.starts_with ~prefix:"::file-selector-button" s
-  || String.starts_with ~prefix:"::-webkit-" s
-  || false
+  (* Check if selector contains vendor-specific pseudo-elements These should not
+     be grouped because: - If one selector in a group is invalid in a browser,
+     the entire rule fails - Keeping them separate ensures maximum browser
+     compatibility *)
+  contains_vendor_pseudo_element selector
 
 (* Convert group of selectors to a rule *)
 let group_to_rule :

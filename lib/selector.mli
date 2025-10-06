@@ -8,21 +8,20 @@ val element : ?ns:ns -> string -> t
     identifiers; raises [Invalid_argument] on invalid. *)
 
 val class_ : string -> t
-(** [class_ name] class selector (e.g., ".prose"). Validates identifiers; raises
-    [Invalid_argument] on invalid. *)
-
-val class_raw : string -> t
-(** [class_raw name] class selector without validation. Use for Tailwind class
-    names with special characters that will be escaped during serialization
-    (e.g., "h-0.5", "hover:prose"). *)
+(** [class_ name] class selector (e.g., ".prose"). Accepts Tailwind-style class
+    tokens and rejects only unprintable/control characters; escaping of special
+    characters happens during pretty-printing. Raises [Invalid_argument] only
+    when [name] contains characters that cannot be serialized (control chars).
+*)
 
 val id : string -> t
 (** [id name] ID selector (e.g., "#header"). Validates identifiers; raises
     [Invalid_argument] on invalid. *)
 
-val id_raw : string -> t
-(** [id_raw name] ID selector without validation. Use for IDs with special
-    characters that will be escaped during serialization. *)
+val of_string : string -> t
+(** [of_string s] builds a class selector from a CSS-escaped class token [s]
+    (e.g., "sm\\:p-4"). It unescapes simple backslash escapes to normalize the
+    internal representation, and escaping is applied when pretty-printing. *)
 
 val universal : t
 (** [universal] universal selector "*" (no namespace). *)

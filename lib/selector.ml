@@ -156,22 +156,24 @@ let element ?ns name =
   validate_css_identifier name;
   Element (ns, name)
 
-let class_ name =
-  validate_css_identifier name;
-  Class name
+(* Looser validation for class names: allow Tailwind-style tokens and escape at
+   print time. Only reject control/unprintable characters. *)
+let validate_serializable_class name =
+  if String.length name = 0 then err_invalid_identifier name "cannot be empty";
+  String.iter
+    (fun c ->
+      let code = Char.code c in
+      if code < 0x20 || code = 0x7F then
+        err_invalid_identifier name "contains control character")
+    name
 
-(** Create a class selector without validation. Use this for Tailwind class
-    names that contain special characters which will be escaped during
-    serialization. *)
-let class_raw name = Class name
+let class_ name =
+  validate_serializable_class name;
+  Class name
 
 let id name =
   validate_css_identifier name;
   Id name
-
-(** Create an ID selector without validation. Use this for IDs that contain
-    special characters which will be escaped during serialization. *)
-let id_raw name = Id name
 
 let universal = Universal None
 let universal_ns ns = Universal (Some ns)
@@ -179,6 +181,34 @@ let universal_ns ns = Universal (Some ns)
 let attribute ?ns ?flag name match_type =
   validate_css_identifier name;
   Attribute (ns, name, match_type, flag)
+
+(* Convenience: build a class selector from a raw class token. Escaping happens
+   in [pp]/[to_string]. Equivalent to [class_]. *)
+(* Unescape simple CSS escapes (\\X -> X). Tailwind class names primarily use
+   single-character escapes (e.g., \\: \\/ \\.) rather than hex escapes. We
+   support the common pattern by consuming a single following character. *)
+let unescape_selector_name s =
+  let len = String.length s in
+  let buf = Buffer.create len in
+  let rec loop i =
+    if i >= len then ()
+    else if s.[i] = '\\' then
+      if i + 1 < len then (
+        Buffer.add_char buf s.[i + 1];
+        loop (i + 2))
+      else
+        (* trailing backslash - ignore *)
+        ()
+    else (
+      Buffer.add_char buf s.[i];
+      loop (i + 1))
+  in
+  loop 0;
+  Buffer.contents buf
+
+let of_string s =
+  let raw = unescape_selector_name s in
+  class_ raw
 
 (* Simple readers that don't need recursion *)
 let read_lang_content t =
@@ -575,6 +605,19 @@ let pseudo_vendor_idents =
     ("-webkit-scrollbar", Webkit_scrollbar);
     ("-webkit-search-cancel-button", Webkit_search_cancel_button);
     ("-webkit-search-decoration", Webkit_search_decoration);
+    (* Webkit datetime pseudo-elements *)
+    ("-webkit-datetime-edit-fields-wrapper", Webkit_datetime_edit_fields_wrapper);
+    ("-webkit-date-and-time-value", Webkit_date_and_time_value);
+    ("-webkit-datetime-edit", Webkit_datetime_edit);
+    ("-webkit-datetime-edit-year-field", Webkit_datetime_edit_year_field);
+    ("-webkit-datetime-edit-month-field", Webkit_datetime_edit_month_field);
+    ("-webkit-datetime-edit-day-field", Webkit_datetime_edit_day_field);
+    ("-webkit-datetime-edit-hour-field", Webkit_datetime_edit_hour_field);
+    ("-webkit-datetime-edit-minute-field", Webkit_datetime_edit_minute_field);
+    ("-webkit-datetime-edit-second-field", Webkit_datetime_edit_second_field);
+    ( "-webkit-datetime-edit-millisecond-field",
+      Webkit_datetime_edit_millisecond_field );
+    ("-webkit-datetime-edit-meridiem-field", Webkit_datetime_edit_meridiem_field);
   ]
 
 (* Forward declarations for mutually recursive functions *)
@@ -814,6 +857,7 @@ let pseudo ctx name = Pp.string ctx (":" ^ name)
 
 let elem ctx name = Pp.string ctx ("::" ^ name)
 let vendor ctx name = Pp.string ctx (":-" ^ name)
+let vendor_elem ctx name = Pp.string ctx ("::-" ^ name)
 
 let legacy_elem (ctx : Pp.ctx) name =
   if ctx.minify then Pp.string ctx (":" ^ name) else Pp.string ctx ("::" ^ name)
@@ -972,9 +1016,30 @@ and pp : t Pp.t =
   | Ms_input_placeholder -> vendor ctx "ms-input-placeholder"
   | Moz_ui_invalid -> vendor ctx "moz-ui-invalid"
   | Moz_ui_valid -> vendor ctx "moz-ui-valid"
-  | Webkit_scrollbar -> vendor ctx "webkit-scrollbar"
-  | Webkit_search_cancel_button -> vendor ctx "webkit-search-cancel-button"
-  | Webkit_search_decoration -> vendor ctx "webkit-search-decoration"
+  | Webkit_scrollbar -> vendor_elem ctx "webkit-scrollbar"
+  | Webkit_search_cancel_button -> vendor_elem ctx "webkit-search-cancel-button"
+  | Webkit_search_decoration -> vendor_elem ctx "webkit-search-decoration"
+  (* Webkit datetime pseudo-elements *)
+  | Webkit_datetime_edit_fields_wrapper ->
+      vendor_elem ctx "webkit-datetime-edit-fields-wrapper"
+  | Webkit_date_and_time_value -> vendor_elem ctx "webkit-date-and-time-value"
+  | Webkit_datetime_edit -> vendor_elem ctx "webkit-datetime-edit"
+  | Webkit_datetime_edit_year_field ->
+      vendor_elem ctx "webkit-datetime-edit-year-field"
+  | Webkit_datetime_edit_month_field ->
+      vendor_elem ctx "webkit-datetime-edit-month-field"
+  | Webkit_datetime_edit_day_field ->
+      vendor_elem ctx "webkit-datetime-edit-day-field"
+  | Webkit_datetime_edit_hour_field ->
+      vendor_elem ctx "webkit-datetime-edit-hour-field"
+  | Webkit_datetime_edit_minute_field ->
+      vendor_elem ctx "webkit-datetime-edit-minute-field"
+  | Webkit_datetime_edit_second_field ->
+      vendor_elem ctx "webkit-datetime-edit-second-field"
+  | Webkit_datetime_edit_millisecond_field ->
+      vendor_elem ctx "webkit-datetime-edit-millisecond-field"
+  | Webkit_datetime_edit_meridiem_field ->
+      vendor_elem ctx "webkit-datetime-edit-meridiem-field"
   (* Custom pseudo-elements *)
   | Pseudo_element n -> elem ctx n
   (* Functional pseudo-elements *)

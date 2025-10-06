@@ -109,6 +109,18 @@ type t =
   | Webkit_scrollbar
   | Webkit_search_cancel_button
   | Webkit_search_decoration
+  (* Webkit datetime pseudo-elements *)
+  | Webkit_datetime_edit_fields_wrapper
+  | Webkit_date_and_time_value
+  | Webkit_datetime_edit
+  | Webkit_datetime_edit_year_field
+  | Webkit_datetime_edit_month_field
+  | Webkit_datetime_edit_day_field
+  | Webkit_datetime_edit_hour_field
+  | Webkit_datetime_edit_minute_field
+  | Webkit_datetime_edit_second_field
+  | Webkit_datetime_edit_millisecond_field
+  | Webkit_datetime_edit_meridiem_field
   (* Functional pseudo-classes *)
   | Is of t list (* :is() - matches any selector in list *)
   | Where of t list (* :where() - like :is() but 0 specificity *)
