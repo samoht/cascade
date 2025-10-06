@@ -517,6 +517,7 @@ let read_value (type a) (prop : a property) t : declaration =
   (* Container properties *)
   | Container_type -> v Container_type (read_container_type t)
   | Container_name -> v Container_name (read_raw_value t)
+  | Container -> v Container (read_container_shorthand t)
   (* Transform properties *)
   | Perspective -> v Perspective (read_length t)
   | Perspective_origin -> v Perspective_origin (read_string t)
@@ -525,7 +526,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Rotate -> v Rotate (read_angle t)
   | Scale -> v Scale (read_scale t)
   (* Object properties *)
-  | Object_position -> v Object_position (read_position_2d t)
+  | Object_position -> v Object_position (read_position_value t)
   | Object_fit -> v Object_fit (read_object_fit t)
   (* Transition properties *)
   | Transition_duration -> v Transition_duration (read_duration t)
@@ -543,8 +544,7 @@ let read_value (type a) (prop : a property) t : declaration =
   (* Background properties *)
   | Background_attachment ->
       v Background_attachment (read_background_attachment t)
-  | Background_position ->
-      v Background_position (Reader.list ~sep:Reader.comma read_position_2d t)
+  | Background_position -> v Background_position (read_background_position t)
   | Background_repeat -> v Background_repeat (read_background_repeat t)
   | Background_size -> v Background_size (read_background_size t)
   | Background_blend_mode -> read_background_blend_mode_value t
@@ -570,6 +570,7 @@ let read_value (type a) (prop : a property) t : declaration =
       v Moz_osx_font_smoothing (read_moz_osx_font_smoothing t)
   (* Backdrop filter *)
   | Backdrop_filter -> v Backdrop_filter (read_filter t)
+  | Webkit_backdrop_filter -> v Webkit_backdrop_filter (read_filter t)
   (* Scroll properties *)
   | Scroll_snap_align -> v Scroll_snap_align (read_scroll_snap_align t)
   | Scroll_snap_stop -> v Scroll_snap_stop (read_scroll_snap_stop t)
@@ -632,6 +633,8 @@ let read_value (type a) (prop : a property) t : declaration =
   | Mix_blend_mode -> v Mix_blend_mode (read_blend_mode t)
   (* Table layout *)
   | Table_layout -> v Table_layout (read_table_layout t)
+  (* Print color adjust *)
+  | Print_color_adjust -> v Print_color_adjust (read_print_color_adjust t)
 
 (** Parse a custom property (--name: value) *)
 let read_custom_property_declaration t : declaration =

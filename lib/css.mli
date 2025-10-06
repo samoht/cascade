@@ -1228,7 +1228,7 @@ val object_fit : object_fit -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/object-fit} object-fit}
     property. *)
 
-type position_2d =
+type position_value =
   | Center
   | Left_top
   | Left_center
@@ -1240,8 +1240,11 @@ type position_2d =
   | Center_bottom
   | XY of length * length
   | Inherit
+  | Initial
+  | Edge_offset_axis of string * length * string
+  | Edge_offset_edge_offset of string * length * string * length
 
-val object_position : position_2d -> declaration
+val object_position : position_value -> declaration
 (** [object_position pos] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/object-position}
      object-position} property. *)
@@ -1384,7 +1387,7 @@ type background_box = Border_box | Padding_box | Content_box | Text | Inherit
 type background_shorthand = {
   color : color option;
   image : background_image option;
-  position : position_2d option;
+  position : position_value option;
   size : background_size option;
   repeat : background_repeat option;
   attachment : background_attachment option;
@@ -1403,7 +1406,7 @@ type background =
 val background_shorthand :
   ?color:color ->
   ?image:background_image ->
-  ?position:position_2d ->
+  ?position:position_value ->
   ?size:background_size ->
   ?repeat:background_repeat ->
   ?attachment:background_attachment ->
@@ -1437,7 +1440,7 @@ val background_image : background_image -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background-image}
      background-image} property. *)
 
-val background_position : position_2d list -> declaration
+val background_position : position_value list -> declaration
 (** [background_position pos] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background-position}
      background-position} property. *)

@@ -1807,6 +1807,7 @@ let pp_property : type a. a property Pp.t =
   | Webkit_appearance -> Pp.string ctx "-webkit-appearance"
   | Container_type -> Pp.string ctx "container-type"
   | Container_name -> Pp.string ctx "container-name"
+  | Container -> Pp.string ctx "container"
   | Perspective -> Pp.string ctx "perspective"
   | Perspective_origin -> Pp.string ctx "perspective-origin"
   | Transform_style -> Pp.string ctx "transform-style"
@@ -1857,6 +1858,7 @@ let pp_property : type a. a property Pp.t =
   | Font_stretch -> Pp.string ctx "font-stretch"
   | Font_variant_numeric -> Pp.string ctx "font-variant-numeric"
   | Backdrop_filter -> Pp.string ctx "backdrop-filter"
+  | Webkit_backdrop_filter -> Pp.string ctx "-webkit-backdrop-filter"
   | Scroll_snap_align -> Pp.string ctx "scroll-snap-align"
   | Scroll_snap_stop -> Pp.string ctx "scroll-snap-stop"
   | Scroll_behavior -> Pp.string ctx "scroll-behavior"
@@ -1864,6 +1866,7 @@ let pp_property : type a. a property Pp.t =
   | Resize -> Pp.string ctx "resize"
   | Object_fit -> Pp.string ctx "object-fit"
   | Appearance -> Pp.string ctx "appearance"
+  | Print_color_adjust -> Pp.string ctx "print-color-adjust"
   | Content -> Pp.string ctx "content"
   | Quotes -> Pp.string ctx "quotes"
   | Text_size_adjust -> Pp.string ctx "text-size-adjust"
@@ -2073,9 +2076,10 @@ let pp_background_box : background_box Pp.t =
   | Text -> Pp.string ctx "text"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_position_2d : position_2d Pp.t =
+let pp_position_value : position_value Pp.t =
  fun ctx -> function
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
   | Center -> Pp.string ctx "center"
   | Left_top -> Pp.string ctx "left top"
   | Left_center -> Pp.string ctx "left center"
@@ -2089,6 +2093,20 @@ let pp_position_2d : position_2d Pp.t =
       pp_length ctx a;
       Pp.space ctx ();
       pp_length ctx b
+  | Edge_offset_axis (edge, offset, axis) ->
+      Pp.string ctx edge;
+      Pp.space ctx ();
+      pp_length ctx offset;
+      Pp.space ctx ();
+      Pp.string ctx axis
+  | Edge_offset_edge_offset (edge1, offset1, edge2, offset2) ->
+      Pp.string ctx edge1;
+      Pp.space ctx ();
+      pp_length ctx offset1;
+      Pp.space ctx ();
+      Pp.string ctx edge2;
+      Pp.space ctx ();
+      pp_length ctx offset2
 
 let pp_background_size : background_size Pp.t =
  fun ctx -> function
@@ -2106,6 +2124,9 @@ let pp_background_size : background_size Pp.t =
       Pp.char ctx ' ';
       pp_length ctx h
   | Inherit -> Pp.string ctx "inherit"
+
+let pp_background_position : background_position Pp.t =
+ fun ctx positions -> Pp.list ~sep:Pp.space pp_position_value ctx positions
 
 let pp_bg_prop maybe_space pp_func ctx = function
   | Some value ->
@@ -2130,7 +2151,7 @@ let pp_background_shorthand : background_shorthand Pp.t =
 
   (* Add all properties in order *)
   pp_bg_prop maybe_space pp_background_image ctx bg.image;
-  pp_bg_prop maybe_space pp_position_2d ctx bg.position;
+  pp_bg_prop maybe_space pp_position_value ctx bg.position;
   pp_bg_size_with_position maybe_space bg ctx;
   pp_bg_prop maybe_space pp_background_repeat ctx bg.repeat;
   pp_bg_prop maybe_space pp_background_attachment ctx bg.attachment;
@@ -2242,6 +2263,11 @@ let pp_appearance : appearance Pp.t =
   | Menulist -> Pp.string ctx "menulist"
   | Inherit -> Pp.string ctx "inherit"
 
+let pp_print_color_adjust : print_color_adjust Pp.t =
+ fun ctx -> function
+  | Economy -> Pp.string ctx "economy"
+  | Exact -> Pp.string ctx "exact"
+
 let pp_backface_visibility : backface_visibility Pp.t =
  fun ctx -> function
   | Visible -> Pp.string ctx "visible"
@@ -2286,6 +2312,17 @@ let pp_container_type : container_type Pp.t =
   | Size -> Pp.string ctx "size"
   | Inline_size -> Pp.string ctx "inline-size"
   | Scroll_state -> Pp.string ctx "scroll-state"
+
+let pp_container_shorthand : container_shorthand Pp.t =
+ fun ctx { name; ctype } ->
+  match (name, ctype) with
+  | None, None -> () (* Should not happen, but emit nothing *)
+  | Some n, None -> Pp.string ctx n
+  | None, Some t -> pp_container_type ctx t
+  | Some n, Some t ->
+      Pp.string ctx n;
+      Pp.string ctx " / ";
+      pp_container_type ctx t
 
 let rec pp_content : content Pp.t =
  fun ctx -> function
@@ -3621,6 +3658,26 @@ let read_container_type t : container_type =
     ]
     t
 
+let read_container_shorthand t : container_shorthand =
+  (* Syntax: container: [<custom-ident>] [ / <container-type> ]? *)
+  let first = Reader.ident t in
+  Reader.ws t;
+  match Reader.peek t with
+  | Some '/' ->
+      (* We have: name / type *)
+      Reader.expect '/' t;
+      Reader.ws t;
+      let ctype = read_container_type t in
+      { name = Some first; ctype = Some ctype }
+  | _ -> (
+      (* Just a name, or just a type? Check if it's a valid container-type *)
+      match first with
+      | "normal" -> { name = None; ctype = Some Normal }
+      | "inline-size" -> { name = None; ctype = Some Inline_size }
+      | "size" -> { name = None; ctype = Some Size }
+      | "scroll-state" -> { name = None; ctype = Some Scroll_state }
+      | _ -> { name = Some first; ctype = None })
+
 let read_contain t : contain =
   let read_contain_list t =
     let values =
@@ -3877,6 +3934,9 @@ let read_appearance t : appearance =
       ("inherit", Inherit);
     ]
     t
+
+let read_print_color_adjust t : print_color_adjust =
+  Reader.enum "print-color-adjust" [ ("economy", Economy); ("exact", Exact) ] t
 
 let read_clear t : clear =
   Reader.enum "clear"
@@ -4477,7 +4537,7 @@ module Animation = struct
 
   let read_shorthand t =
     let duration_count = ref 0 in
-    let apply acc = function
+    let apply (acc : animation_shorthand) = function
       | Name name ->
           (* Only set name if we don't already have one *)
           if acc.name = None then { acc with name } else acc
@@ -5084,6 +5144,7 @@ let read_any_property t =
   | "pointer-events" -> Prop Pointer_events
   | "cursor" -> Prop Cursor
   | "appearance" -> Prop Appearance
+  | "print-color-adjust" -> Prop Print_color_adjust
   | "filter" -> Prop Filter
   | "transition" -> Prop Transition
   | "animation" -> Prop Animation
@@ -5118,6 +5179,7 @@ let read_any_property t =
   | "animation-timing-function" -> Prop Animation_timing_function
   | "aspect-ratio" -> Prop Aspect_ratio
   | "backdrop-filter" -> Prop Backdrop_filter
+  | "-webkit-backdrop-filter" -> Prop Webkit_backdrop_filter
   | "backface-visibility" -> Prop Backface_visibility
   | "background-attachment" -> Prop Background_attachment
   | "background-blend-mode" -> Prop Background_blend_mode
@@ -5136,6 +5198,7 @@ let read_any_property t =
   | "contain" -> Prop Contain
   | "container-name" -> Prop Container_name
   | "container-type" -> Prop Container_type
+  | "container" -> Prop Container
   | "content-visibility" -> Prop Content_visibility
   | "direction" -> Prop Direction
   | "fill" -> Prop Fill
@@ -5322,10 +5385,10 @@ let read_background_box t : background_box =
     ]
     t
 
-module Position_2d = struct
-  type keyword = Center | Left | Right | Top | Bottom | Inherit
+module Position_value = struct
+  type keyword = Center | Left | Right | Top | Bottom | Inherit | Initial
 
-  let read_xy (t : Reader.t) : position_2d =
+  let read_xy (t : Reader.t) : position_value =
     let x = read_length t in
     Reader.ws t;
     let y = Reader.option read_length t |> Option.value ~default:x in
@@ -5340,13 +5403,15 @@ module Position_2d = struct
         ("top", Top);
         ("bottom", Bottom);
         ("inherit", Inherit);
+        ("initial", Initial);
       ]
       t
 
-  let merge_keywords t (keywords : keyword list) : position_2d =
+  let merge_keywords t (keywords : keyword list) : position_value =
     match keywords with
     | [ Center ] -> Center
     | [ Inherit ] -> Inherit
+    | [ Initial ] -> Initial
     | [ Left ] -> Left_center
     | [ Right ] -> Right_center
     | [ Top ] -> Center_top
@@ -5366,10 +5431,40 @@ module Position_2d = struct
   let read_keywords t =
     let keywords = Reader.list ~at_least:1 ~at_most:2 read_keyword t in
     merge_keywords t keywords
+
+  (* Try to read 3-value syntax: keyword offset keyword *)
+  let read_3_value t : position_value =
+    let edge1 = Reader.ident t in
+    Reader.ws t;
+    let offset = read_length t in
+    Reader.ws t;
+    let axis = Reader.ident t in
+    Edge_offset_axis (edge1, offset, axis)
+
+  (* Try to read 4-value syntax: keyword offset keyword offset *)
+  let read_4_value t : position_value =
+    let edge1 = Reader.ident t in
+    Reader.ws t;
+    let offset1 = read_length t in
+    Reader.ws t;
+    let edge2 = Reader.ident t in
+    Reader.ws t;
+    let offset2 = read_length t in
+    Edge_offset_edge_offset (edge1, offset1, edge2, offset2)
 end
 
-let read_position_2d t : position_2d =
-  Reader.one_of [ Position_2d.read_keywords; Position_2d.read_xy ] t
+let read_position_value t : position_value =
+  Reader.one_of
+    [
+      Position_value.read_keywords;
+      Position_value.read_4_value;
+      Position_value.read_3_value;
+      Position_value.read_xy;
+    ]
+    t
+
+let read_background_position t : background_position =
+  Reader.list ~at_least:1 ~sep:Reader.comma read_position_value t
 
 module Transform_origin = struct
   type keyword = Center | Left | Right | Top | Bottom
@@ -5446,7 +5541,7 @@ module Background_shorthand = struct
       if bg.image = None then { bg with image = Some img } else bg
 
   let read_position_size_item t =
-    let pos = read_position_2d t in
+    let pos = read_position_value t in
     Reader.ws t;
     let size_opt =
       if Reader.slash_opt t then Some (read_background_size t) else None
@@ -5651,6 +5746,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Resize -> pp pp_resize
   | Object_fit -> pp pp_object_fit
   | Appearance -> pp pp_appearance
+  | Print_color_adjust -> pp pp_print_color_adjust
   | Flex_grow -> pp Pp.float
   | Flex_shrink -> pp Pp.float
   | Order -> pp Pp.int
@@ -5679,6 +5775,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Webkit_font_smoothing -> pp pp_webkit_font_smoothing
   | Scroll_snap_type -> pp pp_scroll_snap_type
   | Container_type -> pp pp_container_type
+  | Container -> pp pp_container_shorthand
   | White_space -> pp pp_white_space
   | Grid_template_columns -> pp pp_grid_template
   | Grid_template_rows -> pp pp_grid_template
@@ -5705,14 +5802,15 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Grid_row_start -> pp pp_grid_line
   | Grid_row_end -> pp pp_grid_line
   | Text_underline_offset -> pp Pp.string
-  | Background_position -> pp (Pp.list ~sep:Pp.comma pp_position_2d)
+  | Background_position -> pp pp_background_position
   | Background_repeat -> pp pp_background_repeat
   | Background_size -> pp pp_background_size
   | Moz_osx_font_smoothing -> pp pp_moz_osx_font_smoothing
   | Backdrop_filter -> pp pp_filter
+  | Webkit_backdrop_filter -> pp pp_filter
   | Container_name -> pp Pp.string
   | Perspective_origin -> pp Pp.string
-  | Object_position -> pp pp_position_2d
+  | Object_position -> pp pp_position_value
   | Rotate -> pp pp_angle
   | Transition_duration -> pp pp_duration
   | Transition_timing_function -> pp pp_timing_function

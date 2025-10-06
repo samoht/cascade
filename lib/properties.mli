@@ -80,7 +80,7 @@ val text_decoration_shorthand :
 val background_shorthand :
   ?color:Values.color ->
   ?image:background_image ->
-  ?position:position_2d ->
+  ?position:position_value ->
   ?size:background_size ->
   ?repeat:background_repeat ->
   ?attachment:background_attachment ->
@@ -569,9 +569,9 @@ val pp_blend_mode : blend_mode Pp.t
 val read_blend_mode : Reader.t -> blend_mode
 (** [read_blend_mode t] is the [blend_mode] parsed from [t]. *)
 
-val pp_position_2d : position_2d Pp.t
-(** [pp_position_2d] pretty-prints a 2D position. Special case: [Center, Center]
-    prints as "center". *)
+val pp_position_value : position_value Pp.t
+(** [pp_position_value] pretty-prints a 2D position. Special case:
+    [Center, Center] prints as "center". *)
 
 val pp_transform_origin : transform_origin Pp.t
 (** [pp_transform_origin] pretty-prints a transform-origin value. *)
@@ -711,8 +711,15 @@ val pp_object_fit : object_fit Pp.t
 val read_object_fit : Reader.t -> object_fit
 (** [read_object_fit t] is the [object_fit] parsed from [t]. *)
 
-val read_position_2d : Reader.t -> position_2d
-(** [read_position_2d t] is the [position_2d] parsed from [t]. *)
+val read_position_value : Reader.t -> position_value
+(** [read_position_value t] is the [position_value] parsed from [t]. *)
+
+val pp_background_position : background_position Pp.t
+(** [pp_background_position] is the pretty-printer for [background_position]. *)
+
+val read_background_position : Reader.t -> background_position
+(** [read_background_position t] is the [background_position] parsed from [t].
+*)
 
 val pp_content : content Pp.t
 (** [pp_content] is the pretty-printer for [content]. *)
@@ -731,6 +738,13 @@ val pp_container_type : container_type Pp.t
 
 val read_container_type : Reader.t -> container_type
 (** [read_container_type t] is the [container_type] parsed from [t]. *)
+
+val pp_container_shorthand : container_shorthand Pp.t
+(** [pp_container_shorthand] is the pretty-printer for [container_shorthand]. *)
+
+val read_container_shorthand : Reader.t -> container_shorthand
+(** [read_container_shorthand t] is the [container_shorthand] parsed from [t].
+*)
 
 val pp_contain : contain Pp.t
 (** [pp_contain] is the pretty-printer for [contain]. *)
@@ -857,6 +871,12 @@ val pp_appearance : appearance Pp.t
 val read_appearance : Reader.t -> appearance
 (** [read_appearance t] is the [appearance] parsed from [t]. *)
 
+val pp_print_color_adjust : print_color_adjust Pp.t
+(** [pp_print_color_adjust] is the pretty-printer for [print_color_adjust]. *)
+
+val read_print_color_adjust : Reader.t -> print_color_adjust
+(** [read_print_color_adjust t] is the [print_color_adjust] parsed from [t]. *)
+
 val pp_clear : clear Pp.t
 (** [pp_clear] is the pretty-printer for [clear]. *)
 
@@ -906,7 +926,7 @@ val inset_ring_shadow :
 val background :
   ?color:color ->
   ?image:background_image ->
-  ?position:position_2d ->
+  ?position:position_value ->
   ?size:background_size ->
   ?repeat:background_repeat ->
   ?attachment:background_attachment ->
