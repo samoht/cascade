@@ -135,6 +135,9 @@ let check_content_visibility =
 let check_container_type =
   check_value "container-type" read_container_type pp_container_type
 
+let check_container_shorthand =
+  check_value "container" read_container_shorthand pp_container_shorthand
+
 let check_contain = check_value "contain" read_contain pp_contain
 let check_isolation = check_value "isolation" read_isolation pp_isolation
 
@@ -176,6 +179,9 @@ let check_webkit_box_orient =
 let check_forced_color_adjust =
   check_value "forced-color-adjust" read_forced_color_adjust
     pp_forced_color_adjust
+
+let check_print_color_adjust =
+  check_value "print-color-adjust" read_print_color_adjust pp_print_color_adjust
 
 let check_appearance = check_value "appearance" read_appearance pp_appearance
 let check_clear = check_value "clear" read_clear pp_clear
@@ -275,6 +281,10 @@ let check_background_size =
 
 let check_background_image =
   check_value "background-image" read_background_image pp_background_image
+
+let check_background_position =
+  check_value "background-position" read_background_position
+    pp_background_position
 
 let check_overscroll_behavior =
   check_value "overscroll-behavior" read_overscroll_behavior
