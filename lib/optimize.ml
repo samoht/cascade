@@ -127,7 +127,7 @@ let rec contains_vendor_pseudo_element : Selector.t -> bool = function
   | Has sels -> List.exists contains_vendor_pseudo_element sels
   | _ -> false
 
-let single_rule (rule : rule) : rule =
+let single_rule_without_nested (rule : rule) : rule =
   { rule with declarations = deduplicate_declarations rule.declarations }
 
 let merge_rules (rules : Stylesheet.rule list) : Stylesheet.rule list =
@@ -239,11 +239,6 @@ let combine_identical_rules (rules : Stylesheet.rule list) :
   in
   combine_consecutive [] [] rules
 
-let rules (rules : rule list) : rule list =
-  let deduped = List.map single_rule rules in
-  let merged = merge_rules deduped in
-  combine_identical_rules merged
-
 (** {1 Statement Optimization} *)
 
 (* Check if a layer block contains only empty rules or no statements *)
@@ -291,8 +286,9 @@ and process_statements (acc : statement list) (remaining : statement list) :
         | rest -> (List.rev rules_acc, rest)
       in
       let plain_rules, rest = collect_rules [ r ] rest in
-      (* Optimize this batch of consecutive rules *)
-      let optimized = rules plain_rules in
+      (* Optimize this batch of consecutive rules, including their nested
+         statements *)
+      let optimized = optimize_rules plain_rules in
       let as_statements = List.map (fun r -> Rule r) optimized in
       process_statements (List.rev_append as_statements acc) rest
   | Media (cond, block) :: rest ->
@@ -327,6 +323,25 @@ and process_statements (acc : statement list) (remaining : statement list) :
   | hd :: rest ->
       (* Other statement types - keep as-is *)
       process_statements (hd :: acc) rest
+
+and optimize_rules (rules : rule list) : rule list =
+  (* First optimize each rule's nested statements recursively *)
+  let with_optimized_nested =
+    List.map (fun rule -> { rule with nested = statements rule.nested }) rules
+  in
+  (* Then apply standard rule optimizations *)
+  let deduped = List.map single_rule_without_nested with_optimized_nested in
+  let merged = merge_rules deduped in
+  combine_identical_rules merged
+
+let single_rule (rule : rule) : rule =
+  {
+    rule with
+    declarations = deduplicate_declarations rule.declarations;
+    nested = statements rule.nested;
+  }
+
+let rules (rules : rule list) : rule list = optimize_rules rules
 
 (** {1 Stylesheet Optimization} *)
 
