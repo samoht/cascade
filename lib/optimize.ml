@@ -208,7 +208,11 @@ let combine_identical_rules (rules : Stylesheet.rule list) :
   let rec combine_consecutive acc current_group = function
     | [] -> List.rev (flush_group acc current_group)
     | (rule : Stylesheet.rule) :: rest -> (
-        if should_not_combine rule.selector then
+        if
+          (* Don't combine rules with nested statements - they have different
+             semantics *)
+          should_not_combine rule.selector || rule.nested <> []
+        then
           (* Don't combine this selector, flush current group and start fresh *)
           let acc' = rule :: flush_group acc current_group in
           combine_consecutive acc' [] rest
@@ -242,6 +246,40 @@ let rules (rules : rule list) : rule list =
 
 (** {1 Statement Optimization} *)
 
+(* Merge consecutive media queries with the same condition. This is safe because
+   we only merge adjacent media queries, preserving cascade order. If two media
+   queries with the same condition are separated by other statements, they will
+   not be merged, which maintains correct cascade semantics. *)
+let merge_consecutive_media (stmts : statement list) : statement list =
+  let rec merge result prev_media = function
+    | [] -> (
+        match prev_media with
+        | Some (cond, block) -> result @ [ Media (cond, block) ]
+        | None -> result)
+    | Media (cond, block) :: rest -> (
+        match prev_media with
+        | Some (prev_cond, prev_block) when prev_cond = cond ->
+            (* Same condition as previous - merge the blocks *)
+            merge result (Some (cond, prev_block @ block)) rest
+        | Some (prev_cond, prev_block) ->
+            (* Different condition - emit previous, store new one *)
+            merge
+              (result @ [ Media (prev_cond, prev_block) ])
+              (Some (cond, block))
+              rest
+        | None ->
+            (* First media query - store it *)
+            merge result (Some (cond, block)) rest)
+    | stmt :: rest -> (
+        (* Non-media statement - flush any pending media query *)
+        match prev_media with
+        | Some (cond, block) ->
+            (* Emit media query then the statement *)
+            merge (result @ [ Media (cond, block); stmt ]) None rest
+        | None -> merge (result @ [ stmt ]) None rest)
+  in
+  merge [] None stmts
+
 (* Check if a layer block contains only empty rules or no statements *)
 let is_layer_empty (block : statement list) : bool =
   List.for_all
@@ -273,7 +311,8 @@ let merge_layer_declarations (stmts : statement list) : statement list =
 
 (* Main statement processing function with layer optimization *)
 let rec statements (stmts : statement list) : statement list =
-  process_statements [] stmts |> merge_layer_declarations
+  process_statements [] stmts
+  |> merge_consecutive_media |> merge_layer_declarations
 
 and process_statements (acc : statement list) (remaining : statement list) :
     statement list =
@@ -292,12 +331,15 @@ and process_statements (acc : statement list) (remaining : statement list) :
       let as_statements = List.map (fun r -> Rule r) optimized in
       process_statements (List.rev_append as_statements acc) rest
   | Media (cond, block) :: rest ->
+      (* Recursively optimize media query content *)
       let optimized = Media (cond, statements block) in
       process_statements (optimized :: acc) rest
   | Container (name, cond, block) :: rest ->
+      (* Recursively optimize container query content *)
       let optimized = Container (name, cond, statements block) in
       process_statements (optimized :: acc) rest
   | Supports (cond, block) :: rest ->
+      (* Recursively optimize supports block content *)
       let optimized = Supports (cond, statements block) in
       process_statements (optimized :: acc) rest
   | Layer (name, block) :: rest ->

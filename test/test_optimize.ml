@@ -337,6 +337,218 @@ let layers () =
       check int "layer rule declarations are deduplicated" 1 color_count
   | _ -> fail "Expected Rule in layer"
 
+(** Test consecutive media query merging *)
+let test_consecutive_media_merge () =
+  (* Two consecutive media queries with same condition should merge *)
+  let selector1 = Css.Selector.class_ "a" in
+  let selector2 = Css.Selector.class_ "b" in
+  let rule1 : Css.Stylesheet.rule =
+    {
+      selector = selector1;
+      declarations = [ v Color (hex_color "ff0000") ];
+      nested = [];
+    }
+  in
+  let rule2 : Css.Stylesheet.rule =
+    {
+      selector = selector2;
+      declarations = [ v Color (hex_color "0000ff") ];
+      nested = [];
+    }
+  in
+
+  let stylesheet =
+    [
+      Css.Stylesheet.Media ("(min-width:48rem)", [ Css.Stylesheet.Rule rule1 ]);
+      Css.Stylesheet.Media ("(min-width:48rem)", [ Css.Stylesheet.Rule rule2 ]);
+    ]
+  in
+
+  let optimized = Css.Optimize.stylesheet stylesheet in
+
+  (* Should merge into single media query *)
+  check int "consecutive media queries are merged" 1 (List.length optimized);
+
+  (* Verify both rules are in the merged media query *)
+  match List.hd optimized with
+  | Css.Stylesheet.Media (_, rules) ->
+      check int "merged media contains both rules" 2 (List.length rules)
+  | _ -> fail "Expected Media statement"
+
+(** Test non-consecutive media queries are NOT merged *)
+let test_non_consecutive_media_not_merged () =
+  (* Media queries separated by other statements should NOT merge *)
+  let selector1 = Css.Selector.class_ "a" in
+  let selector2 = Css.Selector.class_ "b" in
+  let selector3 = Css.Selector.class_ "c" in
+
+  let rule1 : Css.Stylesheet.rule =
+    {
+      selector = selector1;
+      declarations = [ v Color (hex_color "ff0000") ];
+      nested = [];
+    }
+  in
+  let rule2 : Css.Stylesheet.rule =
+    {
+      selector = selector2;
+      declarations = [ v Color (hex_color "00ff00") ];
+      nested = [];
+    }
+  in
+  let rule3 : Css.Stylesheet.rule =
+    {
+      selector = selector3;
+      declarations = [ v Color (hex_color "0000ff") ];
+      nested = [];
+    }
+  in
+
+  let stylesheet =
+    [
+      Css.Stylesheet.Media ("(min-width:48rem)", [ Css.Stylesheet.Rule rule1 ]);
+      Css.Stylesheet.Rule rule2;
+      (* Separator *)
+      Css.Stylesheet.Media ("(min-width:48rem)", [ Css.Stylesheet.Rule rule3 ]);
+    ]
+  in
+
+  let optimized = Css.Optimize.stylesheet stylesheet in
+
+  (* Should have 3 statements: media, rule, media *)
+  check int "non-consecutive media queries stay separate" 3
+    (List.length optimized);
+
+  (* Verify structure *)
+  match optimized with
+  | [ Css.Stylesheet.Media _; Css.Stylesheet.Rule _; Css.Stylesheet.Media _ ] ->
+      ()
+  | _ -> fail "Expected Media, Rule, Media pattern"
+
+(** Test media queries with different conditions are NOT merged *)
+let test_different_media_conditions_not_merged () =
+  let selector1 = Css.Selector.class_ "a" in
+  let selector2 = Css.Selector.class_ "b" in
+
+  let rule1 : Css.Stylesheet.rule =
+    {
+      selector = selector1;
+      declarations = [ v Color (hex_color "ff0000") ];
+      nested = [];
+    }
+  in
+  let rule2 : Css.Stylesheet.rule =
+    {
+      selector = selector2;
+      declarations = [ v Color (hex_color "0000ff") ];
+      nested = [];
+    }
+  in
+
+  let stylesheet =
+    [
+      Css.Stylesheet.Media ("(min-width:48rem)", [ Css.Stylesheet.Rule rule1 ]);
+      Css.Stylesheet.Media ("(min-width:64rem)", [ Css.Stylesheet.Rule rule2 ]);
+    ]
+  in
+
+  let optimized = Css.Optimize.stylesheet stylesheet in
+
+  (* Should have 2 separate media queries *)
+  check int "different media conditions stay separate" 2 (List.length optimized)
+
+(** Test multiple consecutive media queries merge together *)
+let test_multiple_consecutive_media_merge () =
+  let selector1 = Css.Selector.class_ "a" in
+  let selector2 = Css.Selector.class_ "b" in
+  let selector3 = Css.Selector.class_ "c" in
+
+  let rule1 : Css.Stylesheet.rule =
+    {
+      selector = selector1;
+      declarations = [ v Color (hex_color "ff0000") ];
+      nested = [];
+    }
+  in
+  let rule2 : Css.Stylesheet.rule =
+    {
+      selector = selector2;
+      declarations = [ v Color (hex_color "00ff00") ];
+      nested = [];
+    }
+  in
+  let rule3 : Css.Stylesheet.rule =
+    {
+      selector = selector3;
+      declarations = [ v Color (hex_color "0000ff") ];
+      nested = [];
+    }
+  in
+
+  let stylesheet =
+    [
+      Css.Stylesheet.Media ("(min-width:48rem)", [ Css.Stylesheet.Rule rule1 ]);
+      Css.Stylesheet.Media ("(min-width:48rem)", [ Css.Stylesheet.Rule rule2 ]);
+      Css.Stylesheet.Media ("(min-width:48rem)", [ Css.Stylesheet.Rule rule3 ]);
+    ]
+  in
+
+  let optimized = Css.Optimize.stylesheet stylesheet in
+
+  (* Should merge all three into single media query *)
+  check int "three consecutive media queries merge into one" 1
+    (List.length optimized);
+
+  (* Verify all three rules are in the merged media query *)
+  match List.hd optimized with
+  | Css.Stylesheet.Media (_, rules) ->
+      check int "merged media contains all three rules" 3 (List.length rules)
+  | _ -> fail "Expected Media statement"
+
+(** Test media query merging inside layers *)
+let test_media_merge_in_layers () =
+  (* Media queries inside layers should also be merged *)
+  let selector1 = Css.Selector.class_ "a" in
+  let selector2 = Css.Selector.class_ "b" in
+
+  let rule1 : Css.Stylesheet.rule =
+    {
+      selector = selector1;
+      declarations = [ v Color (hex_color "ff0000") ];
+      nested = [];
+    }
+  in
+  let rule2 : Css.Stylesheet.rule =
+    {
+      selector = selector2;
+      declarations = [ v Color (hex_color "0000ff") ];
+      nested = [];
+    }
+  in
+
+  let layer_content =
+    [
+      Css.Stylesheet.Media ("(min-width:48rem)", [ Css.Stylesheet.Rule rule1 ]);
+      Css.Stylesheet.Media ("(min-width:48rem)", [ Css.Stylesheet.Rule rule2 ]);
+    ]
+  in
+
+  let stylesheet = [ Css.Stylesheet.Layer (Some "utilities", layer_content) ] in
+
+  let optimized = Css.Optimize.stylesheet stylesheet in
+
+  (* Check that media queries inside layer are merged *)
+  match List.hd optimized with
+  | Css.Stylesheet.Layer (_, layer_stmts) -> (
+      check int "media queries inside layer are merged" 1
+        (List.length layer_stmts);
+      match List.hd layer_stmts with
+      | Css.Stylesheet.Media (_, rules) ->
+          check int "merged media in layer contains both rules" 2
+            (List.length rules)
+      | _ -> fail "Expected Media inside layer")
+  | _ -> fail "Expected Layer statement"
+
 let optimize_tests =
   [
     ("deduplicate declarations", `Quick, test_deduplicate_declarations);
@@ -348,6 +560,17 @@ let optimize_tests =
     ("optimize stylesheet", `Quick, optimize_all);
     ("optimize media queries", `Quick, media_queries);
     ("optimize layers", `Quick, layers);
+    ("merge consecutive media queries", `Quick, test_consecutive_media_merge);
+    ( "preserve non-consecutive media queries",
+      `Quick,
+      test_non_consecutive_media_not_merged );
+    ( "different media conditions not merged",
+      `Quick,
+      test_different_media_conditions_not_merged );
+    ( "multiple consecutive media merge",
+      `Quick,
+      test_multiple_consecutive_media_merge );
+    ("media merge in layers", `Quick, test_media_merge_in_layers);
   ]
 
 let suite = ("optimize", optimize_tests)
