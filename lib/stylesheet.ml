@@ -670,7 +670,7 @@ and read_layer (r : Reader.t) : statement =
     | _ -> Reader.err_invalid r "expected ';' or '{' after @layer name"
 
 (* Helper: Read declarations until closing brace *)
-and read_declarations_block (r : Reader.t) : Declaration.declaration list =
+and _read_declarations_block (r : Reader.t) : Declaration.declaration list =
   let rec loop acc =
     Reader.ws r;
     if Reader.peek r = Some '}' then List.rev acc
@@ -688,7 +688,7 @@ and read_declarations_block (r : Reader.t) : Declaration.declaration list =
 
 (* Helper: Read nested at-rule with declarations content *)
 and read_nested_at_rule (r : Reader.t) (at_rule : string)
-    (selector : Selector.t) : statement =
+    (_selector : Selector.t) : statement =
   Reader.with_context r at_rule @@ fun () ->
   Reader.expect_string at_rule r;
   Reader.ws r;
@@ -700,23 +700,23 @@ and read_nested_at_rule (r : Reader.t) (at_rule : string)
       Reader.ws r;
       let condition = String.trim (Reader.until r '{') in
       Reader.expect '{' r;
-      let decls = read_declarations_block r in
+      (* Read the block content - could be declarations or nested rules *)
+      let content = read_block r in
       Reader.expect '}' r;
-      let content = [ Rule { selector; declarations = decls; nested = [] } ] in
       Container (container_name, condition, content)
   | "@supports" ->
       let condition = String.trim (Reader.until r '{') in
       Reader.expect '{' r;
-      let decls = read_declarations_block r in
+      (* Read the block content - could be declarations or nested rules *)
+      let content = read_block r in
       Reader.expect '}' r;
-      let content = [ Rule { selector; declarations = decls; nested = [] } ] in
       Supports (condition, content)
   | "@media" ->
       let condition = String.trim (Reader.until r '{') in
       Reader.expect '{' r;
-      let decls = read_declarations_block r in
+      (* Read the block content - could be declarations or nested rules *)
+      let content = read_block r in
       Reader.expect '}' r;
-      let content = [ Rule { selector; declarations = decls; nested = [] } ] in
       Media (condition, content)
   | _ -> Reader.err_invalid r ("Unexpected nested at-rule: " ^ at_rule)
 
@@ -738,17 +738,17 @@ and read_nested_at_within_rule (r : Reader.t) (selector : Selector.t) :
     Reader.ws r;
     if Reader.peek r = Some '{' then (
       Reader.expect '{' r;
-      let decls = read_declarations_block r in
+      (* Read the block content - could be declarations or nested rules *)
+      let content = read_block r in
       Reader.expect '}' r;
-      let content = [ Rule { selector; declarations = decls; nested = [] } ] in
       Layer (None, content))
     else
       let name = Reader.ident ~keep_case:true r in
       Reader.ws r;
       Reader.expect '{' r;
-      let decls = read_declarations_block r in
+      (* Read the block content - could be declarations or nested rules *)
+      let content = read_block r in
       Reader.expect '}' r;
-      let content = [ Rule { selector; declarations = decls; nested = [] } ] in
       Layer (Some name, content))
   else
     (* For other at-rules, use the standard read_statement *)
