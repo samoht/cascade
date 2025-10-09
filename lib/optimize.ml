@@ -241,38 +241,6 @@ let combine_identical_rules (rules : Stylesheet.rule list) :
 
 (** {1 Statement Optimization} *)
 
-(* Merge consecutive media queries with the same condition. This only merges
-   immediately adjacent media queries to preserve cascade order. *)
-let merge_consecutive_media (stmts : statement list) : statement list =
-  let rec merge result prev_media = function
-    | [] -> (
-        match prev_media with
-        | Some (cond, block) -> result @ [ Media (cond, block) ]
-        | None -> result)
-    | Media (cond, block) :: rest -> (
-        match prev_media with
-        | Some (prev_cond, prev_block) when prev_cond = cond ->
-            (* Same condition as previous - merge the blocks *)
-            merge result (Some (cond, prev_block @ block)) rest
-        | Some (prev_cond, prev_block) ->
-            (* Different condition - emit previous, store new one *)
-            merge
-              (result @ [ Media (prev_cond, prev_block) ])
-              (Some (cond, block))
-              rest
-        | None ->
-            (* First media query - store it *)
-            merge result (Some (cond, block)) rest)
-    | stmt :: rest -> (
-        (* Non-media statement - flush any pending media query *)
-        match prev_media with
-        | Some (cond, block) ->
-            (* Emit media query then the statement *)
-            merge (result @ [ Media (cond, block); stmt ]) None rest
-        | None -> merge (result @ [ stmt ]) None rest)
-  in
-  merge [] None stmts
-
 (* Check if a layer block contains only empty rules or no statements *)
 let is_layer_empty (block : statement list) : bool =
   List.for_all
@@ -304,8 +272,7 @@ let merge_layer_declarations (stmts : statement list) : statement list =
 
 (* Main statement processing function with layer optimization *)
 let rec statements (stmts : statement list) : statement list =
-  process_statements [] stmts
-  |> merge_consecutive_media |> merge_layer_declarations
+  process_statements [] stmts |> merge_layer_declarations
 
 and process_statements (acc : statement list) (remaining : statement list) :
     statement list =
