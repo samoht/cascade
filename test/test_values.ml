@@ -328,17 +328,24 @@ let test_duration () =
   check_duration "10s";
   check_duration "999s";
 
-  (* Milliseconds *)
-  check_duration "500ms";
-  check_duration "0ms";
+  (* Milliseconds - normalize to seconds when shorter *)
+  check_duration ~expected:".5s" "500ms";
+  (* 500ms -> .5s is shorter *)
+  check_duration ~expected:"0s" "0ms";
+  (* 0ms -> 0s is shorter *)
   check_duration "1ms";
-  check_duration "1000ms";
+  (* 1ms is shorter than .001s *)
+  check_duration ~expected:"1s" "1000ms";
+  (* 1000ms -> 1s is shorter *)
   check_duration "50.5ms";
-  check_duration "999999ms";
+  (* 50.5ms is shorter than .0505s *)
+  check_duration ~expected:"999.999s" "999999ms";
+  (* 999999ms -> 999.999s *)
   check_duration ".1s";
 
   (* Durations must have units in CSS *)
-  check_duration "150ms";
+  check_duration ~expected:".15s" "150ms";
+  (* 150ms -> .15s is shorter *)
   check_duration "1.5s";
 
   (* Var with duration fallback *)
@@ -449,9 +456,10 @@ let test_minified_value_formatting () =
   check string "minified rem" ".5rem" s;
   let s = Css.Pp.to_string ~minify:true pp_number (Num 0.5) in
   check string "minified number" ".5" s;
-  (* Duration formatting remains stable in minified mode *)
+  (* Duration normalizes to shorter form in minified mode *)
   let s = Css.Pp.to_string ~minify:true pp_duration (Ms 500.) in
-  check string "minified ms" "500ms" s;
+  check string "minified ms" ".5s" s;
+  (* 500ms -> .5s is shorter *)
   (* Zero stays zero without unit *)
   let s = Css.Pp.to_string ~minify:true pp_length Zero in
   check string "minified zero" "0" s
@@ -539,7 +547,8 @@ let test_var_empty_fallback () =
           let output = Css.Pp.to_string pp_color color in
           check string "empty fallback output" "var(--test,)" output
       | None -> fail "Expected Empty fallback, got None"
-      | Fallback _ -> fail "Expected Empty fallback, got Fallback")
+      | Fallback _ -> fail "Expected Empty fallback, got Fallback"
+      | Var_fallback _ -> fail "Expected Empty fallback, got Var_fallback")
   | _ -> fail "Expected Var variant"
 
 (* Tests for newly added check functions *)

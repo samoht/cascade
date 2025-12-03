@@ -30,6 +30,8 @@ type _ kind =
   | Box_shadow : shadow kind
   | Content : content kind
   | Gradient_stop : gradient_stop kind
+  | Animation : animation kind
+  | Timing_function : timing_function kind
 
 type declaration =
   | Declaration : {

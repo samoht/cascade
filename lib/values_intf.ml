@@ -4,6 +4,8 @@ type 'a fallback =
   | Empty (* Empty fallback: var(--name,) *)
   | None (* No fallback: var(--name) *)
   | Fallback of 'a (* Value fallback: var(--name, value) *)
+  | Var_fallback of
+      string (* Nested var fallback: var(--name, var(--fallback)) *)
 
 type 'a var = {
   name : string;

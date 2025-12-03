@@ -538,7 +538,7 @@ let animations_timing () =
   check_declaration ~expected:"animation-name:none" "animation-name: none";
 
   check_declaration ~expected:"animation-duration:1s" "animation-duration: 1s";
-  check_declaration ~expected:"animation-duration:500ms"
+  check_declaration ~expected:"animation-duration:.5s" (* 500ms -> .5s *)
     "animation-duration: 500ms";
   check_declaration ~expected:"animation-duration:2.5s"
     "animation-duration: 2.5s";
@@ -559,7 +559,7 @@ let animations_timing () =
 
   check_declaration ~expected:"animation-delay:0s" "animation-delay: 0s";
   check_declaration ~expected:"animation-delay:1s" "animation-delay: 1s";
-  check_declaration ~expected:"animation-delay:-500ms" "animation-delay: -500ms"
+  check_declaration ~expected:"animation-delay:-.5s" "animation-delay: -500ms"
 
 let animations_state () =
   check_declaration ~expected:"animation-iteration-count:1"

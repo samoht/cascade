@@ -13,8 +13,18 @@ let property ~syntax ?initial_value ?(inherits = false) name =
 let layer_decl names = Layer_decl names
 let layer ?name content = Layer (name, content)
 let media ~condition content = Media (condition, content)
+
+let media_nested ~condition declarations =
+  Media (condition, [ Declarations declarations ])
+
 let container ?name ~condition content = Container (name, condition, content)
 let supports ~condition content = Supports (condition, content)
+let starting_style content = Starting_style content
+
+let starting_style_nested declarations =
+  Starting_style [ Declarations declarations ]
+
+let keyframes name frames = Keyframes (name, frames)
 let v statements : stylesheet = statements
 let empty_stylesheet : stylesheet = []
 
@@ -144,6 +154,15 @@ and pp_font_face_descriptor : font_face_descriptor Pp.t =
 and pp_statement : statement Pp.t =
  fun ctx -> function
   | Rule rule -> pp_rule ctx rule
+  | Declarations decls ->
+      (* Bare declarations for CSS nesting - no selector/braces, just
+         declarations *)
+      Pp.list
+        ~sep:(fun ctx () ->
+          Pp.semicolon ctx ();
+          Pp.cut ctx ())
+        (Pp.indent Declaration.pp_declaration)
+        ctx decls
   | Charset encoding ->
       Pp.string ctx "@charset \"";
       Pp.string ctx encoding;
@@ -219,7 +238,7 @@ and pp_statement : statement Pp.t =
       Pp.sp ctx ();
       Pp.braces pp_block ctx content
   | Starting_style content ->
-      Pp.string ctx "@starting-style ";
+      Pp.string ctx "@starting-style";
       Pp.braces pp_block ctx content
   | Scope (start, end_, content) ->
       Pp.string ctx "@scope";
@@ -583,7 +602,9 @@ and read_starting_style (r : Reader.t) : statement =
   Reader.expect_string "@starting-style" r;
   Reader.ws r;
   Reader.expect '{' r;
-  let content = read_block r in
+  (* Use read_nesting_block since @starting-style can contain bare declarations
+     when nested inside a rule, not just full rules with selectors *)
+  let content = read_nesting_block r in
   Reader.expect '}' r;
   Starting_style content
 
@@ -686,6 +707,57 @@ and _read_declarations_block (r : Reader.t) : Declaration.declaration list =
   in
   loop []
 
+(* Helper: Read a block that can contain either bare declarations or statements.
+   Used for CSS nesting contexts where content inside @media/@supports/etc can
+   be either bare declarations (inheriting the parent selector) or nested
+   rules. *)
+and read_nesting_block (r : Reader.t) : block =
+  let rec read_items acc =
+    Reader.ws r;
+    match Reader.peek r with
+    | Some '}' -> List.rev acc
+    | Some '@' ->
+        (* At-rule - read as statement *)
+        let stmt = read_statement r in
+        read_items (stmt :: acc)
+    | Some ';' ->
+        (* Skip empty statements *)
+        Reader.skip r;
+        read_items acc
+    | _ -> (
+        (* Could be a declaration or a nested rule. Try declaration first.
+           Declaration.read_declaration returns None if it can't parse a
+           declaration. *)
+        match Declaration.read_declaration r with
+        | Some decl ->
+            Reader.ws r;
+            (* Read more declarations that follow *)
+            let rec read_more_decls acc =
+              match Reader.peek r with
+              | Some ';' -> (
+                  Reader.skip r;
+                  Reader.ws r;
+                  match Reader.peek r with
+                  | Some '}' -> List.rev acc
+                  | Some '@' -> List.rev acc (* at-rule follows *)
+                  | _ -> (
+                      match Declaration.read_declaration r with
+                      | Some d ->
+                          Reader.ws r;
+                          read_more_decls (d :: acc)
+                      | None -> List.rev acc))
+              | _ -> List.rev acc
+            in
+            let all_decls = read_more_decls [ decl ] in
+            let stmt = Declarations all_decls in
+            read_items (stmt :: acc)
+        | None ->
+            (* Not a declaration - try as rule *)
+            let stmt = read_statement r in
+            read_items (stmt :: acc))
+  in
+  read_items []
+
 (* Helper: Read nested at-rule with declarations content *)
 and read_nested_at_rule (r : Reader.t) (at_rule : string)
     (_selector : Selector.t) : statement =
@@ -700,22 +772,22 @@ and read_nested_at_rule (r : Reader.t) (at_rule : string)
       Reader.ws r;
       let condition = String.trim (Reader.until r '{') in
       Reader.expect '{' r;
-      (* Read the block content - could be declarations or nested rules *)
-      let content = read_block r in
+      (* Read with nesting support - could be declarations or rules *)
+      let content = read_nesting_block r in
       Reader.expect '}' r;
       Container (container_name, condition, content)
   | "@supports" ->
       let condition = String.trim (Reader.until r '{') in
       Reader.expect '{' r;
-      (* Read the block content - could be declarations or nested rules *)
-      let content = read_block r in
+      (* Read with nesting support - could be declarations or rules *)
+      let content = read_nesting_block r in
       Reader.expect '}' r;
       Supports (condition, content)
   | "@media" ->
       let condition = String.trim (Reader.until r '{') in
       Reader.expect '{' r;
-      (* Read the block content - could be declarations or nested rules *)
-      let content = read_block r in
+      (* Read with nesting support - could be declarations or rules *)
+      let content = read_nesting_block r in
       Reader.expect '}' r;
       Media (condition, content)
   | _ -> Reader.err_invalid r ("Unexpected nested at-rule: " ^ at_rule)
@@ -913,6 +985,7 @@ let inline_style_of_declarations ?(minify = false) ?(mode : mode = Inline)
 let rec vars_of_statement (stmt : statement) : Variables.any_var list =
   match stmt with
   | Rule rule -> Variables.vars_of_declarations rule.declarations
+  | Declarations decls -> Variables.vars_of_declarations decls
   | Media (_, block)
   | Container (_, _, block)
   | Supports (_, block)

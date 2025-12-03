@@ -38,6 +38,9 @@ let declaration_value ?(minify = false) ?(inline = false) decl =
 let rule ~selector ?nested declarations =
   Rule (Stylesheet.rule ~selector ?nested declarations)
 
+(* Re-export keyframes from Stylesheet *)
+let keyframes = Stylesheet.keyframes
+
 (* Query functions for statements *)
 let statement_selector = function
   | Rule r -> Some (Stylesheet.selector r)
@@ -68,6 +71,10 @@ let as_container = function
 let as_supports = function
   | Supports (condition, content) -> Some (condition, content)
   | _ -> None
+
+let is_nested_media = function
+  | Media (_, [ Declarations _ ]) -> true
+  | _ -> false
 
 let rec map f stmts =
   List.map
@@ -236,6 +243,10 @@ let custom_props ?layer sheet =
   List.rev props
 
 let media ~condition statements = Media (condition, statements)
+
+let media_nested ~condition declarations =
+  Stylesheet.media_nested ~condition declarations
+
 let layer ?name statements = Layer (name, statements)
 let layer_decl names = Layer_decl names
 

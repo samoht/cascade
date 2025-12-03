@@ -67,7 +67,12 @@ let pp_var : type a. a Pp.t -> a var Pp.t =
     | Fallback value ->
         Pp.comma ctx ();
         pp_value ctx value;
-        Pp.char ctx ')')
+        Pp.char ctx ')'
+    | Var_fallback fallback_name ->
+        Pp.comma ctx ();
+        Pp.string ctx "var(--";
+        Pp.string ctx fallback_name;
+        Pp.string ctx "))")
 
 (* Function call formatting now provided by Pp.call and Pp.call_list *)
 
@@ -605,9 +610,30 @@ and pp_color : color Pp.t =
   | Mix { in_space; hue; color1; percent1; color2; percent2 } ->
       pp_color_mix ctx in_space hue color1 percent1 color2 percent2
 
+(* Helper to estimate the string length of a duration value. Used for deciding
+   whether to output milliseconds or seconds. *)
+let duration_str_len f unit_suffix =
+  (* Simple estimation: format the number and add unit length *)
+  let num_str =
+    if f = floor f then string_of_int (int_of_float f)
+    else
+      (* Format with enough precision, strip trailing zeros *)
+      let s = Printf.sprintf "%.6g" f in
+      s
+  in
+  String.length num_str + String.length unit_suffix
+
 let rec pp_duration : duration Pp.t =
  fun ctx -> function
-  | Ms f -> pp_unit ctx f "ms"
+  | Ms f ->
+      (* Normalize to seconds if result is shorter (like Tailwind's minifier)
+         e.g., 150ms -> .15s (4 chars vs 5 chars - seconds is shorter) 1500ms ->
+         1.5s (4 chars vs 6 chars - seconds is shorter) 50ms -> 50ms (4 chars vs
+         5 chars - keep ms) *)
+      let seconds = f /. 1000. in
+      let ms_len = duration_str_len f "ms" in
+      let s_len = duration_str_len seconds "s" in
+      if s_len <= ms_len then pp_unit ctx seconds "s" else pp_unit ctx f "ms"
   | S f -> pp_unit ctx f "s"
   | Var v -> pp_var pp_duration ctx v
 

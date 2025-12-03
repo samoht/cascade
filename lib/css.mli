@@ -137,6 +137,10 @@ val as_supports : statement -> (string * statement list) option
 (** [as_supports stmt] returns [Some (condition, statements)] if the statement
     is a supports query, [None] otherwise. *)
 
+val is_nested_media : statement -> bool
+(** [is_nested_media stmt] returns [true] if the statement is a media query
+    containing bare declarations (CSS nesting style), [false] otherwise. *)
+
 val map :
   (Selector.t -> declaration list -> statement) ->
   statement list ->
@@ -180,6 +184,21 @@ val as_property : statement -> property_info option
 
 type keyframe = Stylesheet.keyframe
 (** Type for keyframe selectors and their declarations *)
+
+val keyframes : string -> keyframe list -> statement
+(** [keyframes name frames] creates a [@keyframes] rule.
+
+    Example:
+    {[
+      keyframes "pulse"
+        [
+          {
+            keyframe_selector = "50%";
+            keyframe_declarations = [ opacity (Float 0.5) ];
+          };
+        ]
+    ]}
+    produces [@keyframes pulse { 50% { opacity: 0.5 } }] *)
 
 val as_keyframes : statement -> (string * keyframe list) option
 (** [as_keyframes stmt] returns [Some (name, frames)] if the statement is a
@@ -276,6 +295,11 @@ val media : condition:string -> statement list -> statement
 (** [media ~condition statements] creates a [@media] statement with the given
     condition. *)
 
+val media_nested : condition:string -> declaration list -> statement
+(** [media_nested ~condition declarations] creates a [@media] statement for CSS
+    nesting, containing bare declarations (no selector). Used inside rules where
+    the selector is inherited from the parent. *)
+
 val layer : ?name:string -> statement list -> statement
 (** [layer ?name statements] creates a [@layer] statement with the given
     statements. *)
@@ -296,6 +320,15 @@ val container : ?name:string -> condition:string -> statement list -> statement
 val supports : condition:string -> statement list -> statement
 (** [supports ~condition statements] creates a [@supports] statement with the
     given condition. *)
+
+val starting_style : statement list -> statement
+(** [starting_style statements] creates a [@starting-style] statement with the
+    given statements. Used for CSS entry animations. *)
+
+val starting_style_nested : declaration list -> statement
+(** [starting_style_nested declarations] creates a [@starting-style] statement
+    for CSS nesting, containing bare declarations (no selector). Used inside
+    rules where the selector is inherited from the parent. *)
 
 (** {1 Declarations}
 
@@ -364,6 +397,8 @@ type 'a fallback =
   | Empty  (** Empty fallback: var(--name,) *)
   | None  (** No fallback: var(--name) *)
   | Fallback of 'a  (** Value fallback: var(--name, value) *)
+  | Var_fallback of string
+      (** Nested var fallback: var(--name, var(--fallback)) *)
 
 (** {2:values CSS Values & Units}
 
@@ -1378,11 +1413,15 @@ type gradient_stop =
       (** Multiple gradient stops - used for var fallbacks *)
   | Percentage of percentage
       (** Interpolation hint with percentage, e.g., "50%" *)
+  | Raw of string  (** Raw CSS string for complex gradient stop expressions. *)
 
 (** Background image values *)
 type background_image =
   | Url of string
   | Linear_gradient of gradient_direction * gradient_stop list
+  | Linear_gradient_var of gradient_stop var
+      (** Linear gradient using a single variable for all stops including
+          position. Outputs: linear-gradient(var(--tw-gradient-stops)) *)
   | Radial_gradient of gradient_stop list
   | None
   | Initial
@@ -2893,6 +2932,11 @@ val transition_delay : duration -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transition-delay}
      transition-delay} property. *)
 
+val transition_property : transition_property -> declaration
+(** [transition_property v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transition-property}
+     transition-property} property. *)
+
 val transition_behavior : Properties.transition_behavior -> declaration
 (** [transition_behavior v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transition-behavior}
@@ -3608,6 +3652,8 @@ type _ kind =
   | Box_shadow : shadow kind
   | Content : content kind
   | Gradient_stop : gradient_stop kind
+  | Animation : animation kind
+  | Timing_function : timing_function kind
 
 type meta
 (** The type for CSS variable metadata. *)
@@ -3828,6 +3874,9 @@ val pp_font_weight : font_weight Pp.t
 
 val pp_cursor : cursor Pp.t
 (** [pp_cursor] is the pretty printer for cursor values. *)
+
+val pp_animation : animation Pp.t
+(** [pp_animation] is the pretty printer for animation values. *)
 
 val pp_transform : transform Pp.t
 (** [pp_transform] is the pretty printer for transform values. *)

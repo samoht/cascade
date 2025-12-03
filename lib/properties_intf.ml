@@ -915,10 +915,16 @@ type gradient_stop =
       gradient_stop list (* Multiple gradient stops - used for var fallbacks *)
   | Percentage of
       percentage (* Interpolation hint with percentage, e.g., "50%" *)
+  | Raw of string
+      (** Raw CSS string for complex gradient stop expressions that don't fit
+          typed variants. Used for Tailwind v4's nested var() patterns. *)
 
 type background_image =
   | Url of string
   | Linear_gradient of gradient_direction * gradient_stop list
+  | Linear_gradient_var of gradient_stop var
+      (** Linear gradient using a single variable for all stops including
+          position. Outputs: linear-gradient(var(--tw-gradient-stops)) *)
   | Radial_gradient of gradient_stop list
   | None
   | Initial
