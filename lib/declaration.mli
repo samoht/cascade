@@ -1078,6 +1078,11 @@ val transition_delay : duration -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transition-delay}
      transition-delay} property. *)
 
+val transition_property : transition_property -> declaration
+(** [transition_property v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transition-property}
+     transition-property} property. *)
+
 val will_change : string -> declaration
 (** [will_change v] is the CSS [will-change] property. *)
 

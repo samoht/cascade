@@ -187,6 +187,8 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Box_shadow -> pp pp_shadow
   | Content -> pp pp_content
   | Gradient_stop -> pp pp_gradient_stop
+  | Animation -> pp pp_animation
+  | Timing_function -> pp pp_timing_function
 
 let string_of_value ?(minify = true) ?(inline = false) decl =
   let ctx = { Pp.minify; indent = 0; buf = Buffer.create 16; inline } in
@@ -250,6 +252,19 @@ let read_animation_name t =
     Reader.ws t;
     "none")
   else Reader.ident t
+
+(* Helper to read opacity: accepts either <number> (0-1) or <percentage>
+   (0%-100%) Both formats are valid per CSS spec. Tailwind v4 outputs
+   percentages. *)
+let read_opacity t =
+  Reader.ws t;
+  let n = Reader.number t in
+  (* Check if followed by %, indicating percentage *)
+  match Reader.peek t with
+  | Some '%' ->
+      Reader.expect '%' t;
+      n /. 100.0 (* Convert 100% -> 1.0, 0% -> 0.0 *)
+  | _ -> n (* Already in 0-1 range *)
 
 (* Helper to read raw property value - for properties that accept any text *)
 let read_raw_value t =
@@ -396,9 +411,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Content -> v Content (read_content t)
   (* Other properties *)
   | Z_index -> v Z_index (Properties.read_z_index t)
-  | Opacity ->
-      let n = Reader.number t in
-      v Opacity n
+  | Opacity -> v Opacity (read_opacity t)
   | Cursor -> v Cursor (read_cursor t)
   | Box_sizing -> v Box_sizing (read_box_sizing t)
   | User_select -> v User_select (read_user_select t)
@@ -678,7 +691,12 @@ let read_declaration t : declaration option =
   match Reader.peek t with
   | Some '}' -> None (* End of block - no more declarations *)
   | None -> None (* EOF is acceptable at top-level parsing *)
-  | _ -> Some (read_one ())
+  | Some c ->
+      (* Check if content looks like a selector rather than a declaration.
+         Selector-like characters (., #, [, *, :, &) indicate nested rules. *)
+      if c = '.' || c = '#' || c = '[' || c = '*' || c = ':' || c = '&' then
+        None
+      else Some (read_one ())
 
 let read_declarations t =
   Reader.with_context t "declarations" @@ fun () ->
@@ -948,6 +966,7 @@ let transition_duration value = v Transition_duration value
 let transition_timing_function value = v Transition_timing_function value
 let transition_delay value = v Transition_delay value
 let transition_behavior value = v Transition_behavior value
+let transition_property value = v Transition_property value
 
 (* Additional v constructors to match the interface *)
 let mix_blend_mode value = v Mix_blend_mode value

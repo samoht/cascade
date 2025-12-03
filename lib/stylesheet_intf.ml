@@ -37,6 +37,8 @@ type rule = {
 (** A CSS statement - either a rule or an at-rule *)
 and statement =
   | Rule of rule
+  | Declarations of Declaration.declaration list
+      (** Bare declarations for CSS nesting (no selector) *)
   | Charset of string  (** [@charset "UTF-8";] *)
   | Import of import_rule  (** [@import url(...) layer(...) supports(...);] *)
   | Namespace of string option * string  (** [@namespace prefix? url;] *)

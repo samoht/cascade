@@ -1038,6 +1038,7 @@ let rec pp_gradient_stop : gradient_stop Pp.t =
   | List stops ->
       (* Pretty-print multiple gradient stops separated by commas *)
       Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops
+  | Raw s -> Pp.string ctx s
 
 let rec pp_filter : filter Pp.t =
  fun ctx -> function
@@ -1073,6 +1074,11 @@ let pp_background_image : background_image Pp.t =
           | [] -> ()
           | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
         ctx (dir, stops)
+  | Linear_gradient_var var_ref ->
+      (* Output: linear-gradient(var(--tw-gradient-stops)) *)
+      Pp.call "linear-gradient"
+        (fun ctx v -> pp_var pp_gradient_stop ctx v)
+        ctx var_ref
   | Radial_gradient stops ->
       Pp.call "radial-gradient"
         (fun ctx stops ->
@@ -1297,6 +1303,11 @@ let pp_visibility : visibility Pp.t =
 
 let pp_z_index : z_index Pp.t =
  fun ctx -> function Auto -> Pp.string ctx "auto" | Index i -> Pp.int ctx i
+
+(* Opacity as float (0.0-1.0). While CSS accepts both number and percentage
+   formats, Tailwind's minifier converts percentages to decimals (50% → .5), so
+   we output decimals directly for minified output compatibility. *)
+let pp_opacity : float Pp.t = Pp.float
 
 let pp_overflow : overflow Pp.t =
  fun ctx -> function
@@ -4609,6 +4620,13 @@ module Animation = struct
     | Infinite -> Pp.string ctx "infinite"
     | Num n -> Pp.float ctx n
 
+  (* Check if a timing function ends with ')' - only cubic-bezier/steps do *)
+  let ends_with_paren = function
+    | Cubic_bezier _ | Steps _ | Var _ -> true
+    | Linear | Ease | Ease_in | Ease_out | Ease_in_out | Step_start | Step_end
+      ->
+        false
+
   let rec pp_timing ctx = function
     | Linear -> Pp.string ctx "linear"
     | Ease -> Pp.string ctx "ease"
@@ -4708,8 +4726,16 @@ let read_animation_shorthand t : animation_shorthand =
 let rec pp_animation_shorthand : animation_shorthand Pp.t =
  fun ctx anim ->
   let first = ref true in
-  let space_before pp ctx x =
-    if !first then first := false else Pp.char ctx ' ';
+  (* Track if the previous value ends with ')' - timing functions end with
+     ')' *)
+  let prev_ends_with_paren = ref false in
+  let space_before ?(ends_with_paren = false) pp ctx x =
+    if !first then first := false
+    else if Pp.minified ctx && !prev_ends_with_paren then
+      (* In minified mode, no space needed after ')' before an identifier *)
+      ()
+    else Pp.char ctx ' ';
+    prev_ends_with_paren := ends_with_paren;
     pp ctx x
   in
   let has_any_non_default = Animation.has_non_defaults anim in
@@ -4718,7 +4744,11 @@ let rec pp_animation_shorthand : animation_shorthand Pp.t =
   | None, true -> ()
   | Some name, _ -> space_before Pp.string ctx name);
   Pp.option (space_before pp_duration) ctx (Animation.duration anim);
-  Pp.option (space_before Animation.pp_timing) ctx (Animation.timing anim);
+  (match Animation.timing anim with
+  | Some tf ->
+      let ends = Animation.ends_with_paren tf in
+      space_before ~ends_with_paren:ends Animation.pp_timing ctx tf
+  | None -> ());
   Pp.option (space_before pp_duration) ctx (Animation.delay anim);
   Pp.option
     (space_before Animation.pp_iter_count)
@@ -5049,15 +5079,31 @@ let read_background_image t : background_image =
           d
       | None -> To_bottom
     in
+    (* Allow 0 stops for gradients like linear-gradient(to right) or
+       linear-gradient(var(--tw-gradient-stops)) *)
     let stops =
-      Reader.list ~at_least:2 ~sep:Reader.comma read_gradient_stop t
+      match
+        Reader.option
+          (Reader.list ~at_least:1 ~sep:Reader.comma read_gradient_stop)
+          t
+      with
+      | Some stops -> stops
+      | None -> []
     in
     Linear_gradient (direction, stops)
   in
   let read_radial_body t =
     Reader.ws t;
+    (* Allow 0 stops for gradients like
+       radial-gradient(var(--tw-gradient-stops)) *)
     let stops =
-      Reader.list ~at_least:2 ~sep:Reader.comma read_gradient_stop t
+      match
+        Reader.option
+          (Reader.list ~at_least:1 ~sep:Reader.comma read_gradient_stop)
+          t
+      with
+      | Some stops -> stops
+      | None -> []
     in
     Radial_gradient stops
   in
@@ -5744,7 +5790,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_collapse -> pp pp_border_collapse
   | Table_layout -> pp pp_table_layout
   | Grid_auto_flow -> pp pp_grid_auto_flow
-  | Opacity -> pp Pp.float
+  | Opacity -> pp pp_opacity
   | Mix_blend_mode -> pp pp_blend_mode
   | Z_index -> pp pp_z_index
   | Tab_size -> pp Pp.int

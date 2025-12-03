@@ -28,11 +28,27 @@ val layer : ?name:string -> block -> statement
 val media : condition:string -> block -> statement
 (** [media ~condition content] creates a [@media] rule. *)
 
+val media_nested : condition:string -> Declaration.declaration list -> statement
+(** [media_nested ~condition declarations] creates a [@media] rule for CSS
+    nesting, containing bare declarations (no selector). Used inside rules where
+    the selector is inherited from the parent. *)
+
 val container : ?name:string -> condition:string -> block -> statement
 (** [container ?name ~condition content] creates a [@container] rule. *)
 
 val supports : condition:string -> block -> statement
 (** [supports ~condition content] creates a [@supports] rule. *)
+
+val starting_style : block -> statement
+(** [starting_style content] creates a [@starting-style] rule. *)
+
+val starting_style_nested : Declaration.declaration list -> statement
+(** [starting_style_nested declarations] creates a [@starting-style] rule for
+    CSS nesting, containing bare declarations (no selector). Used inside rules
+    where the selector is inherited from the parent. *)
+
+val keyframes : string -> keyframe list -> statement
+(** [keyframes name frames] creates a [@keyframes] animation rule. *)
 
 val v : statement list -> stylesheet
 (** [v statements] creates a stylesheet from a list of statements. *)
