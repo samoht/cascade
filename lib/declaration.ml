@@ -189,6 +189,7 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Gradient_stop -> pp pp_gradient_stop
   | Animation -> pp pp_animation
   | Timing_function -> pp pp_timing_function
+  | Transform -> pp pp_transform
 
 let string_of_value ?(minify = true) ?(inline = false) decl =
   let ctx = { Pp.minify; indent = 0; buf = Buffer.create 16; inline } in

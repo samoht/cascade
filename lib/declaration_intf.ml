@@ -32,6 +32,7 @@ type _ kind =
   | Gradient_stop : gradient_stop kind
   | Animation : animation kind
   | Timing_function : timing_function kind
+  | Transform : transform kind
 
 type declaration =
   | Declaration : {
