@@ -705,6 +705,8 @@ type transform =
   | Inherit
   | Var of transform var
   | List of transform list
+  | Raw of
+      string (* Raw transform value for complex patterns like Tailwind v4 *)
 
 type transforms = transform list
 type transform_style = Flat | Preserve_3d | Inherit
