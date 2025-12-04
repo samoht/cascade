@@ -705,8 +705,6 @@ type transform =
   | Inherit
   | Var of transform var
   | List of transform list
-  | Raw of
-      string (* Raw transform value for complex patterns like Tailwind v4 *)
 
 type transforms = transform list
 type transform_style = Flat | Preserve_3d | Inherit
@@ -917,9 +915,6 @@ type gradient_stop =
       gradient_stop list (* Multiple gradient stops - used for var fallbacks *)
   | Percentage of
       percentage (* Interpolation hint with percentage, e.g., "50%" *)
-  | Raw of string
-      (** Raw CSS string for complex gradient stop expressions that don't fit
-          typed variants. Used for Tailwind v4's nested var() patterns. *)
 
 type background_image =
   | Url of string

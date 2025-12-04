@@ -41,14 +41,6 @@ let duplicate_buggy_properties decls =
             (* Already duplicated *)
           else [ decl; decl ]
             (* Always duplicate webkit-text-decoration-color *)
-      | Declaration { property = Transform; value; important } ->
-          (* Add -webkit-transform prefix for Transform properties *)
-          (* Since -webkit-transform now maps to Transform property, create directly *)
-          let webkit_decl = Declaration.v Transform value in
-          let webkit_decl =
-            if important then Declaration.important webkit_decl else webkit_decl
-          in
-          [ decl; webkit_decl ]
       | _ -> [ decl ])
     decls
 
@@ -366,7 +358,10 @@ and optimize_rules (rules : rule list) : rule list =
   (* Then apply standard rule optimizations *)
   let deduped = List.map single_rule_without_nested with_optimized_nested in
   let merged = merge_rules deduped in
-  combine_identical_rules merged
+  (* Note: combine_identical_rules is disabled to match Tailwind's exact output
+     format. Tailwind keeps rules with identical declarations separate. The
+     optimization is valid CSS but produces different output. *)
+  merged
 
 let single_rule (rule : rule) : rule =
   {

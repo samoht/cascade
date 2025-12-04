@@ -1413,7 +1413,6 @@ type gradient_stop =
       (** Multiple gradient stops - used for var fallbacks *)
   | Percentage of percentage
       (** Interpolation hint with percentage, e.g., "50%" *)
-  | Raw of string  (** Raw CSS string for complex gradient stop expressions. *)
 
 (** Background image values *)
 type background_image =
@@ -2784,7 +2783,6 @@ type transform =
   | Inherit
   | Var of transform var
   | List of transform list
-  | Raw of string
 
 val transform : transform -> declaration
 (** [transform t] is the
@@ -3655,6 +3653,7 @@ type _ kind =
   | Gradient_stop : gradient_stop kind
   | Animation : animation kind
   | Timing_function : timing_function kind
+  | Transform : transform kind
 
 type meta
 (** The type for CSS variable metadata. *)

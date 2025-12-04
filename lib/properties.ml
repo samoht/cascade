@@ -1038,7 +1038,6 @@ let rec pp_gradient_stop : gradient_stop Pp.t =
   | List stops ->
       (* Pretty-print multiple gradient stops separated by commas *)
       Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops
-  | Raw s -> Pp.string ctx s
 
 let rec pp_filter : filter Pp.t =
  fun ctx -> function
@@ -1969,6 +1968,10 @@ let pp_matrix_3d : _ Pp.t =
   Pp.list ~sep:Pp.comma Pp.float ctx values;
   Pp.char ctx ')'
 
+(* Tailwind concatenates var() calls without spaces, but uses spaces between
+   normal transform functions. This helper determines if a transform is a Var *)
+let is_transform_var : transform -> bool = function Var _ -> true | _ -> false
+
 let rec pp_transform : transform Pp.t =
  fun ctx -> function
   | None -> pp_keyword "none" ctx
@@ -2000,10 +2003,25 @@ let rec pp_transform : transform Pp.t =
   | Perspective p -> Pp.call "perspective" pp_length ctx p
   | Inherit -> pp_keyword "inherit" ctx
   | Var v -> pp_var pp_transform ctx v
-  | List transforms -> Pp.list ~sep:Pp.space pp_transform ctx transforms
-  | Raw s -> Pp.string ctx s
+  | List transforms -> pp_transforms ctx transforms
 
-let pp_transforms : transform list Pp.t = Pp.list ~sep:Pp.space pp_transform
+and pp_transforms : transform list Pp.t =
+ fun ctx transforms ->
+  let rec loop prev = function
+    | [] -> ()
+    | x :: rest ->
+        (* Only skip space when both prev and current are Var *)
+        if not (is_transform_var prev && is_transform_var x) then
+          Pp.space ctx ();
+        pp_transform ctx x;
+        loop x rest
+  in
+  match transforms with
+  | [] -> ()
+  | [ x ] -> pp_transform ctx x
+  | h :: t ->
+      pp_transform ctx h;
+      loop h t
 
 let pp_transform_style : transform_style Pp.t =
  fun ctx -> function
@@ -2844,8 +2862,7 @@ let rec pp_scale : scale Pp.t =
  fun ctx -> function
   | X n -> pp_number_percentage ctx n
   | XY (Var x, Var y) ->
-      (* Special case: when both values are variables, concatenate without
-         space *)
+      (* Tailwind concatenates var() calls without spaces *)
       pp_number_percentage ctx (Var x);
       pp_number_percentage ctx (Var y)
   | XY (x, y) ->
@@ -2853,21 +2870,8 @@ let rec pp_scale : scale Pp.t =
       Pp.space ctx ();
       pp_number_percentage ctx y
   | XYZ (Var x, Var y, Var z) ->
-      (* Special case: when all values are variables, concatenate without
-         spaces *)
+      (* Tailwind concatenates var() calls without spaces *)
       pp_number_percentage ctx (Var x);
-      pp_number_percentage ctx (Var y);
-      pp_number_percentage ctx (Var z)
-  | XYZ (Var x, Var y, z) ->
-      (* Mixed case: concatenate first two vars, then space before non-var *)
-      pp_number_percentage ctx (Var x);
-      pp_number_percentage ctx (Var y);
-      Pp.space ctx ();
-      pp_number_percentage ctx z
-  | XYZ (x, Var y, Var z) ->
-      (* Mixed case: non-var, space, then concatenate vars *)
-      pp_number_percentage ctx x;
-      Pp.space ctx ();
       pp_number_percentage ctx (Var y);
       pp_number_percentage ctx (Var z)
   | XYZ (x, y, z) ->
@@ -5823,7 +5827,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_spacing -> pp pp_length
   | Outline_offset -> pp pp_length
   | Perspective -> pp pp_length
-  | Transform -> pp (Pp.list ~sep:Pp.space pp_transform)
+  | Transform -> pp pp_transforms
   | Translate -> pp Pp.string
   | Isolation -> pp pp_isolation
   | Transform_style -> pp pp_transform_style
