@@ -2784,6 +2784,7 @@ type transform =
   | Inherit
   | Var of transform var
   | List of transform list
+  | Raw of string
 
 val transform : transform -> declaration
 (** [transform t] is the

@@ -2001,6 +2001,7 @@ let rec pp_transform : transform Pp.t =
   | Inherit -> pp_keyword "inherit" ctx
   | Var v -> pp_var pp_transform ctx v
   | List transforms -> Pp.list ~sep:Pp.space pp_transform ctx transforms
+  | Raw s -> Pp.string ctx s
 
 let pp_transforms : transform list Pp.t = Pp.list ~sep:Pp.space pp_transform
 
