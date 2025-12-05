@@ -1388,6 +1388,15 @@ type background_size =
 (** CSS background-attachment values. *)
 type background_attachment = Scroll | Fixed | Local | Inherit
 
+(** Color interpolation for gradients *)
+type color_interpolation =
+  | In_oklab
+  | In_oklch
+  | In_srgb
+  | In_hsl
+  | In_lab
+  | In_lch
+
 (** Gradient direction values *)
 type gradient_direction =
   | To_top
@@ -1399,6 +1408,8 @@ type gradient_direction =
   | To_left
   | To_top_left
   | Angle of angle
+  | With_interpolation of gradient_direction * color_interpolation
+  | Var of gradient_direction var
 
 (** Gradient stop values *)
 type gradient_stop =
@@ -1413,6 +1424,8 @@ type gradient_stop =
       (** Multiple gradient stops - used for var fallbacks *)
   | Percentage of percentage
       (** Interpolation hint with percentage, e.g., "50%" *)
+  | Direction of gradient_direction
+      (** Gradient direction for stops, e.g., "to right" or Var *)
 
 (** Background image values *)
 type background_image =
@@ -3651,6 +3664,7 @@ type _ kind =
   | Box_shadow : shadow kind
   | Content : content kind
   | Gradient_stop : gradient_stop kind
+  | Gradient_direction : gradient_direction kind
   | Animation : animation kind
   | Timing_function : timing_function kind
   | Transform : transform kind
@@ -3877,6 +3891,9 @@ val pp_cursor : cursor Pp.t
 
 val pp_animation : animation Pp.t
 (** [pp_animation] is the pretty printer for animation values. *)
+
+val pp_gradient_direction : gradient_direction Pp.t
+(** [pp_gradient_direction] is the pretty printer for gradient directions. *)
 
 val pp_transform : transform Pp.t
 (** [pp_transform] is the pretty printer for transform values. *)
