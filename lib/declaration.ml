@@ -187,6 +187,7 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Box_shadow -> pp pp_shadow
   | Content -> pp pp_content
   | Gradient_stop -> pp pp_gradient_stop
+  | Gradient_direction -> pp pp_gradient_direction
   | Animation -> pp pp_animation
   | Timing_function -> pp pp_timing_function
   | Transform -> pp pp_transform

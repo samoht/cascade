@@ -986,7 +986,16 @@ let rec pp_shadow : shadow Pp.t =
 
 (* pp_box_shadow removed - use pp_shadow with List constructor *)
 
-let pp_gradient_direction : gradient_direction Pp.t =
+let pp_color_interpolation : color_interpolation Pp.t =
+ fun ctx -> function
+  | In_oklab -> Pp.string ctx "in oklab"
+  | In_oklch -> Pp.string ctx "in oklch"
+  | In_srgb -> Pp.string ctx "in srgb"
+  | In_hsl -> Pp.string ctx "in hsl"
+  | In_lab -> Pp.string ctx "in lab"
+  | In_lch -> Pp.string ctx "in lch"
+
+let rec pp_gradient_direction : gradient_direction Pp.t =
  fun ctx -> function
   | To_top -> Pp.string ctx "to top"
   | To_top_right -> Pp.string ctx "to top right"
@@ -997,6 +1006,11 @@ let pp_gradient_direction : gradient_direction Pp.t =
   | To_left -> Pp.string ctx "to left"
   | To_top_left -> Pp.string ctx "to top left"
   | Angle a -> pp_angle ctx a
+  | With_interpolation (dir, interp) ->
+      pp_gradient_direction ctx dir;
+      Pp.space ctx ();
+      pp_color_interpolation ctx interp
+  | Var v -> pp_var pp_gradient_direction ctx v
 
 let rec pp_gradient_stop : gradient_stop Pp.t =
  fun ctx -> function
@@ -1038,6 +1052,7 @@ let rec pp_gradient_stop : gradient_stop Pp.t =
   | List stops ->
       (* Pretty-print multiple gradient stops separated by commas *)
       Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops
+  | Direction dir -> pp_gradient_direction ctx dir
 
 let rec pp_filter : filter Pp.t =
  fun ctx -> function

@@ -889,6 +889,14 @@ type background_size =
   | Initial
   | Unset
 
+type color_interpolation =
+  | In_oklab
+  | In_oklch
+  | In_srgb
+  | In_hsl
+  | In_lab
+  | In_lch
+
 type gradient_direction =
   | To_top
   | To_top_right
@@ -899,6 +907,8 @@ type gradient_direction =
   | To_left
   | To_top_left
   | Angle of angle
+  | With_interpolation of gradient_direction * color_interpolation
+  | Var of gradient_direction var
 
 type gradient_stop =
   | Var of gradient_stop var
@@ -915,6 +925,8 @@ type gradient_stop =
       gradient_stop list (* Multiple gradient stops - used for var fallbacks *)
   | Percentage of
       percentage (* Interpolation hint with percentage, e.g., "50%" *)
+  | Direction of gradient_direction
+(* Gradient direction for stops, e.g., "to right" or Var *)
 
 type background_image =
   | Url of string
