@@ -17,13 +17,6 @@ let duplicate_buggy_properties decls =
         | _ -> count)
       0 decls
   in
-  (* Check if -webkit-transform already present *)
-  let has_webkit_transform =
-    List.exists
-      (function
-        | Declaration { property = Webkit_transform; _ } -> true | _ -> false)
-      decls
-  in
 
   (* Check if webkit-text-decoration-color is already duplicated *)
   let webkit_text_decoration_color_count =
@@ -48,14 +41,11 @@ let duplicate_buggy_properties decls =
             (* Already duplicated *)
           else [ decl; decl ]
             (* Always duplicate webkit-text-decoration-color *)
-      | Declaration { property = Transform; value; important } ->
-          (* Duplicate transform to -webkit-transform for older Safari bugs *)
-          if has_webkit_transform then [ decl ]
-          else
-            [
-              Declaration { property = Webkit_transform; value; important };
-              decl;
-            ]
+      | Declaration { property = Transform; _ } ->
+          (* Do not duplicate transform to -webkit-transform. Tailwind v4 does
+             not emit vendor-prefixed transform here, and tests expect a single
+             canonical property. *)
+          [ decl ]
       | _ -> [ decl ])
     decls
 
