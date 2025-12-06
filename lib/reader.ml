@@ -221,7 +221,11 @@ let until t c =
    https://www.w3.org/TR/css-syntax-3/#ident-start-code-point "An ident-start
    code point is a letter, a non-ASCII code point, or U+005F LOW LINE (_)." *)
 let is_ident_start c =
-  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_'
+  (* Allow ASCII letters and underscore, plus any non-ASCII byte (UTF-8). *)
+  (c >= 'a' && c <= 'z')
+  || (c >= 'A' && c <= 'Z')
+  || c = '_'
+  || Char.code c >= 0x80
 
 (* Check if a hyphen can start an identifier: valid unless followed by digit *)
 let hyphen_can_start_ident t =
@@ -394,15 +398,9 @@ let read_unicode_escape t buf =
   | _ -> ()
 
 let read_single_char_escape t buf c =
-  (* Single character escape or invalid *)
+  (* Single-character escape: per CSS, any character can be escaped. Be liberal
+     and accept all simple escapes by consuming the next character literally. *)
   skip t;
-  if
-    (not (is_alpha c || is_digit c))
-    && c <> '"' && c <> '\'' && c <> '\\' && c <> '/' && c <> ' ' && c <> '\n'
-    && c <> '\r' && c <> '\t'
-  then
-    (* For CSS, only certain characters can be escaped directly *)
-    err_invalid t ("invalid escape sequence '" ^ "\\" ^ String.make 1 c ^ "'");
   Buffer.add_char buf c
 
 let string ?(trim = false) t =
