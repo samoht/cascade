@@ -1249,5 +1249,47 @@ let has sels = Has sels
 let not selectors = Not selectors
 let nth_child ?of_ nth = Nth_child (nth, of_)
 let host ?selectors () = Host selectors
+
+(* ========================= *)
+(* Analysis helpers          *)
+(* ========================= *)
+
+let rec any p = function
+  | Compound xs -> List.exists (any p) xs || p (Compound xs)
+  | Combined (a, comb, b) -> any p a || any p b || p (Combined (a, comb, b))
+  | List xs -> List.exists (any p) xs || p (List xs)
+  | Is xs | Where xs | Not xs | Has xs | Slotted xs | Cue xs | Cue_region xs ->
+      List.exists (any p) xs || p (List xs)
+  | Part xs -> p (Part xs)
+  | Nth_child (_, Some xs)
+  | Nth_last_child (_, Some xs)
+  | Nth_of_type (_, Some xs)
+  | Nth_last_of_type (_, Some xs) ->
+      List.exists (any p) xs || p (List xs)
+  | s -> p s
+
+let has_focus_within sel =
+  any (function Focus_within -> true | _ -> false) sel
+
+let has_focus_visible sel =
+  any (function Focus_visible -> true | _ -> false) sel
+
+let exists_class pred sel =
+  any (function Class name -> pred name | _ -> false) sel
+
+let rec first_class = function
+  | Class n -> Some n
+  | Compound xs -> List.find_map (function Class n -> Some n | _ -> None) xs
+  | Combined (a, _, _) -> first_class a
+  | List (h :: _) -> first_class h
+  | Is xs | Where xs | Not xs | Has xs | Slotted xs | Cue xs | Cue_region xs
+    -> (
+      match xs with [] -> None | h :: _ -> first_class h)
+  | Part _ -> None
+  | _ -> None
+
+let contains_modifier_colon sel =
+  exists_class (fun name -> String.contains name ':') sel
+
 let ( && ) sel1 sel2 = compound [ sel1; sel2 ]
 let ( || ) s1 s2 = combine s1 Column s2

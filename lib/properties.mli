@@ -623,6 +623,14 @@ val pp_gradient_direction : gradient_direction Pp.t
 val read_gradient_direction : Reader.t -> gradient_direction
 (** [read_gradient_direction t] is the [gradient_direction] parsed from [t]. *)
 
+val pp_color_interpolation : color_interpolation Pp.t
+(** [pp_color_interpolation] pretty-prints a color interpolation space (e.g.,
+    "in oklab"). *)
+
+val read_color_interpolation : Reader.t -> color_interpolation
+(** [read_color_interpolation t] parses a color interpolation space starting
+    with the keyword "in" (e.g., "in oklab"). *)
+
 val pp_gradient_stop : gradient_stop Pp.t
 (** [pp_gradient_stop] is the pretty-printer for [gradient_stop]. *)
 

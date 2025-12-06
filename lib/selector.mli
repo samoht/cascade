@@ -136,3 +136,25 @@ val nth_child : ?of_:t list -> nth -> t
 
 val host : ?selectors:t list -> unit -> t
 (** [host ?selectors ()] [:host] or [:host(selector)] pseudo-class. *)
+
+(** Analysis helpers (structure-based, no string scanning) *)
+val any : (t -> bool) -> t -> bool
+(** [any p sel] returns [true] if any node in [sel] satisfies [p]. *)
+
+val has_focus_within : t -> bool
+
+val has_focus_visible : t -> bool
+(** Check presence of focus-related pseudo-classes in the selector. *)
+
+val exists_class : (string -> bool) -> t -> bool
+(** [exists_class pred sel] returns [true] if any class node satisfies [pred].
+*)
+
+val first_class : t -> string option
+(** [first_class sel] returns the first class name found along the leftmost path
+    (Compound > Class, then left side of Combined, or first in List), or [None]
+    if no class is found. *)
+
+val contains_modifier_colon : t -> bool
+(** [contains_modifier_colon sel] returns [true] if any class name contains a
+    modifier colon (e.g., "md:...", "hover:..."). *)

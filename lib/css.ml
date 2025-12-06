@@ -11,6 +11,7 @@ module Selector = Selector
 module Stylesheet = Stylesheet
 module Variables = Variables
 module Optimize = Optimize
+module Media = Media
 
 (* CSS Parsing *)
 
