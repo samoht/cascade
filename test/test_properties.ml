@@ -326,6 +326,10 @@ let check_gradient_direction =
 let check_gradient_stop =
   check_value "gradient-stop" read_gradient_stop pp_gradient_stop
 
+let check_color_interpolation =
+  check_value "color_interpolation" read_color_interpolation
+    pp_color_interpolation
+
 let check_position_value =
   check_value "position_value" read_position_value pp_position_value
 
@@ -837,14 +841,16 @@ let test_transform () =
 
 let test_transforms () =
   (* Test transforms (transform list) with multiple values and vars *)
-  check_transforms "var(--tw-rotate-x,) var(--tw-rotate-y,)";
-  check_transforms "var(--tw-rotate-x,)var(--tw-rotate-y,)var(--tw-rotate-z,)"
-    ~expected:"var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,)";
+  (* Tailwind concatenates adjacent var() transform functions without spaces *)
+  check_transforms ~expected:"var(--tw-rotate-x,)var(--tw-rotate-y,)"
+    "var(--tw-rotate-x,) var(--tw-rotate-y,)";
   check_transforms
-    "var(--tw-rotate-x,)var(--tw-rotate-y,)var(--tw-rotate-z,)var(--tw-skew-x,)var(--tw-skew-y,)"
+    ~expected:"var(--tw-rotate-x,)var(--tw-rotate-y,)var(--tw-rotate-z,)"
+    "var(--tw-rotate-x,)var(--tw-rotate-y,)var(--tw-rotate-z,)";
+  check_transforms
     ~expected:
-      "var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,) \
-       var(--tw-skew-x,) var(--tw-skew-y,)";
+      "var(--tw-rotate-x,)var(--tw-rotate-y,)var(--tw-rotate-z,)var(--tw-skew-x,)var(--tw-skew-y,)"
+    "var(--tw-rotate-x,)var(--tw-rotate-y,)var(--tw-rotate-z,)var(--tw-skew-x,)var(--tw-skew-y,)";
   check_transforms "translateX(10px) var(--my-rotate)";
   check_transforms "var(--translate) scale(2)";
   check_transforms "rotate(45deg) scale(1.5)";
@@ -1481,6 +1487,17 @@ let test_gradient_stop () =
   (* Two colors without position *)
   neg read_gradient_stop "50% 25%" (* Two percentages without color *)
 
+let test_color_interpolation () =
+  check_color_interpolation "in oklab";
+  check_color_interpolation "in oklch";
+  check_color_interpolation "in srgb";
+  check_color_interpolation "in hsl";
+  check_color_interpolation "in lab";
+  check_color_interpolation "in lch";
+  neg read_color_interpolation "oklab";
+  neg read_color_interpolation "in unknown";
+  neg read_color_interpolation "in"
+
 let test_background_image () =
   check_background_image "none";
   check_background_image "url(image.jpg)";
@@ -1968,6 +1985,7 @@ let tests =
     test_case "transforms" `Quick test_transforms;
     test_case "gradient direction" `Quick test_gradient_direction;
     test_case "gradient stop" `Quick test_gradient_stop;
+    test_case "color interpolation" `Quick test_color_interpolation;
     test_case "overscroll-behavior" `Quick test_overscroll_behavior;
     test_case "aspect-ratio" `Quick test_aspect_ratio;
     test_case "content" `Quick test_content;

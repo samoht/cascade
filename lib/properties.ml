@@ -995,6 +995,21 @@ let pp_color_interpolation : color_interpolation Pp.t =
   | In_lab -> Pp.string ctx "in lab"
   | In_lch -> Pp.string ctx "in lch"
 
+let read_color_interpolation (t : Reader.t) : color_interpolation =
+  Reader.with_context t "color-interpolation" (fun () ->
+      Reader.expect_string "in" t;
+      (* Require at least one space after 'in' to avoid 'inoklab' *)
+      Reader.expect ' ' t;
+      let space = Reader.ident t in
+      match space with
+      | "oklab" -> In_oklab
+      | "oklch" -> In_oklch
+      | "srgb" -> In_srgb
+      | "hsl" -> In_hsl
+      | "lab" -> In_lab
+      | "lch" -> In_lch
+      | _ -> Reader.err_invalid t "color-interpolation")
+
 let rec pp_gradient_direction : gradient_direction Pp.t =
  fun ctx -> function
   | To_top -> Pp.string ctx "to top"

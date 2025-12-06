@@ -3944,3 +3944,4 @@ module Declaration = Declaration
 module Variables = Variables
 module Optimize = Optimize
 module Stylesheet = Stylesheet
+module Media = Media
