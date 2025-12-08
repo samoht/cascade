@@ -802,6 +802,9 @@ type blend_mode =
 type shadow =
   | Shadow of {
       inset : bool;
+      inset_var : string option;
+          (** If set, outputs var(--<name>) before shadow values. Used by
+              Tailwind's ring system for dynamic inset toggle. *)
       h_offset : length;
       v_offset : length;
       blur : length option;

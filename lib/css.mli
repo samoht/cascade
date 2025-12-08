@@ -2436,6 +2436,9 @@ val font_feature_settings : font_feature_settings -> declaration
 type shadow =
   | Shadow of {
       inset : bool;
+      inset_var : string option;
+          (** If set, outputs var(--<name>) before shadow values. Used by
+              Tailwind's ring system for dynamic inset toggle. *)
       h_offset : length;
       v_offset : length;
       blur : length option;
@@ -2453,6 +2456,7 @@ type shadow =
 
 val shadow :
   ?inset:bool ->
+  ?inset_var:string ->
   ?h_offset:length ->
   ?v_offset:length ->
   ?blur:length ->
@@ -2460,9 +2464,11 @@ val shadow :
   ?color:color ->
   unit ->
   shadow
-(** [shadow ?inset ?h_offset ?v_offset ?blur ?spread ?color ()] is a shadow
-    value with optional parameters. Defaults: inset=false, h_offset=0px,
-    v_offset=0px, blur=0px, spread=0px, color=Transparent. *)
+(** [shadow ?inset ?inset_var ?h_offset ?v_offset ?blur ?spread ?color ()] is a
+    shadow value with optional parameters. When [inset_var] is set, outputs
+    [var(--<name>)] before the shadow values (used by Tailwind's ring system).
+    Defaults: inset=false, inset_var=None, h_offset=0px, v_offset=0px, blur=0px,
+    spread=0px, color=Transparent. *)
 
 val inset_ring_shadow :
   ?h_offset:length ->

@@ -909,6 +909,7 @@ val read_text_decoration_skip_ink : Reader.t -> text_decoration_skip_ink
 
 val shadow :
   ?inset:bool ->
+  ?inset_var:string ->
   ?h_offset:length ->
   ?v_offset:length ->
   ?blur:length ->
@@ -916,9 +917,11 @@ val shadow :
   ?color:color ->
   unit ->
   shadow
-(** [shadow ?inset ?h_offset ?v_offset ?blur ?spread ?color ()] is a shadow
-    value with optional parameters. Defaults: inset=false, h_offset=0px,
-    v_offset=0px, blur=0px, spread=0px, color=Rgb(0,0,0). *)
+(** [shadow ?inset ?inset_var ?h_offset ?v_offset ?blur ?spread ?color ()] is a
+    shadow value with optional parameters. If [inset_var] is set, outputs
+    [var(--<name>)] before shadow values (used for Tailwind's ring system).
+    Defaults: inset=false, h_offset=0px, v_offset=0px, blur=0px, spread=0px,
+    color=Rgb(0,0,0). *)
 
 val inset_ring_shadow :
   ?h_offset:length ->

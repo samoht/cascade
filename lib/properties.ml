@@ -737,6 +737,7 @@ module Shadow = struct
         Shadow
           {
             inset = parts.inset;
+            inset_var = None;
             h_offset;
             v_offset;
             blur;
@@ -960,21 +961,39 @@ let read_url_arg t =
   | Some ('"' | '\'') -> Reader.string ~trim:true t
   | _ -> String.trim (Reader.until t ')')
 
-let pp_shadow_parts ctx ~inset h v blur spread color =
-  if inset then (
-    Pp.string ctx "inset";
-    Pp.space ctx ());
+let pp_shadow_parts ctx ~inset ~inset_var h v blur spread color =
+  (* If inset_var is set, output var(--<name>) without trailing space. The
+     variable value includes trailing space when set to "inset ". Otherwise use
+     the bool inset flag. *)
+  (match inset_var with
+  | Some var_name -> Pp.string ctx (Printf.sprintf "var(--%s)" var_name)
+  | None ->
+      if inset then (
+        Pp.string ctx "inset";
+        Pp.space ctx ()));
   pp_length ctx h;
   Pp.space ctx ();
   pp_length ctx v;
   pp_opt_space pp_length ctx blur;
   pp_opt_space pp_length ctx spread;
-  pp_opt_space pp_color ctx color
+  (* Color is output without preceding space when the preceding value (spread)
+     ends with ) - i.e., is a function like var(), calc(), etc. CSS allows
+     func(...)func(...) without space, and Tailwind minifies this way. *)
+  match color with
+  | Some c ->
+      let needs_space =
+        match spread with
+        | Some (Var _ | Calc _ | Clamp _ | Min _ | Max _ | Minmax _) -> false
+        | _ -> true
+      in
+      if needs_space then Pp.space ctx ();
+      pp_color ctx c
+  | None -> ()
 
 let rec pp_shadow : shadow Pp.t =
  fun ctx -> function
-  | Shadow { inset; h_offset; v_offset; blur; spread; color } ->
-      pp_shadow_parts ctx ~inset h_offset v_offset blur spread color
+  | Shadow { inset; inset_var; h_offset; v_offset; blur; spread; color } ->
+      pp_shadow_parts ctx ~inset ~inset_var h_offset v_offset blur spread color
   | None -> Pp.string ctx "none"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
@@ -5420,13 +5439,15 @@ let read_any_property t =
 (* RGB color helpers *)
 let rgb_black = Rgb (Channels { r = Int 0; g = Int 0; b = Int 0 })
 
-let shadow ?(inset = false) ?(h_offset : length option)
-    ?(v_offset : length option) ?(blur : length option)
-    ?(spread : length option) ?(color : color option) () : shadow =
+let shadow ?(inset = false) ?(inset_var : string option)
+    ?(h_offset : length option) ?(v_offset : length option)
+    ?(blur : length option) ?(spread : length option) ?(color : color option) ()
+    : shadow =
   let default_color = rgb_black in
   Shadow
     {
       inset;
+      inset_var;
       h_offset = Option.value h_offset ~default:(Px 0.);
       v_offset = Option.value v_offset ~default:(Px 0.);
       blur;
@@ -5439,7 +5460,8 @@ let inset_ring_shadow ?(h_offset : length option) ?(v_offset : length option)
     : shadow =
   let h_offset = Option.value h_offset ~default:(Zero : length) in
   let v_offset = Option.value v_offset ~default:(Zero : length) in
-  Shadow { inset = true; h_offset; v_offset; blur; spread; color }
+  Shadow
+    { inset = true; inset_var = None; h_offset; v_offset; blur; spread; color }
 
 let url path : background_image = Url path
 let linear_gradient dir stops = Linear_gradient (dir, stops)
