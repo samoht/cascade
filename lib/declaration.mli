@@ -807,6 +807,16 @@ val font_family : font_family -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-family}
      font-family} property. *)
 
+val print_color_adjust : print_color_adjust -> declaration
+(** [print_color_adjust v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/print-color-adjust}
+     print-color-adjust} property. *)
+
+val background_origin : background_box -> declaration
+(** [background_origin v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background-origin}
+     background-origin} property. *)
+
 val font_families : font_family list -> declaration
 (** [font_families fonts] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-family}

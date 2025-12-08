@@ -984,6 +984,8 @@ let resize value = v Resize value
 let vertical_align value = v Vertical_align value
 let box_sizing value = v Box_sizing value
 let font_family value = v Font_family value
+let print_color_adjust value = v Print_color_adjust value
+let background_origin value = v Background_origin value
 
 let font_families = function
   | [] -> failwith "empty font_families"

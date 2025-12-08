@@ -3195,6 +3195,9 @@ type user_select = None | Auto | Text | All | Contain
 (** CSS resize values. *)
 type resize = None | Both | Horizontal | Vertical | Block | Inline | Inherit
 
+(** CSS print-color-adjust values. *)
+type print_color_adjust = Economy | Exact | Initial | Inherit | Unset
+
 val cursor : cursor -> declaration
 (** [cursor cursor] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/cursor} cursor}
@@ -3228,6 +3231,16 @@ val resize : resize -> declaration
 (** [resize resize] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/resize} resize}
     property. *)
+
+val print_color_adjust : print_color_adjust -> declaration
+(** [print_color_adjust v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/print-color-adjust}
+     print-color-adjust} property. *)
+
+val background_origin : background_box -> declaration
+(** [background_origin v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background-origin}
+     background-origin} property. *)
 
 (** {2:container_containment Container Queries & Containment}
 
