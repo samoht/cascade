@@ -99,12 +99,13 @@ let test_deduplicate_declarations () =
 
 (** Test buggy property duplication *)
 let test_duplicate_buggy_properties () =
-  (* Test -webkit-transform duplication *)
-  let decls = [ v Transform [ Rotate (Deg 45.) ] ] in
+  (* Test -webkit-text-decoration:inherit triplication. Note: Transform is NOT
+     duplicated in Tailwind v4 - they don't emit vendor-prefixed transform. *)
+  let decls = [ v Webkit_text_decoration Inherit ] in
   let duplicated = duplicate_buggy_properties decls in
-  (* Should add -webkit-transform *)
-  check bool "adds webkit prefix" true
-    (List.length duplicated > List.length decls)
+  (* Should triplicate webkit-text-decoration:inherit *)
+  check bool "triplicates webkit-text-decoration inherit" true
+    (List.length duplicated = 3)
 
 (** Test rule optimization *)
 let single_rule () =
