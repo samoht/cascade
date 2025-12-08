@@ -1324,6 +1324,7 @@ type 'a property =
   | Font_feature_settings : font_feature_settings property
   | Font_variation_settings : font_variation_settings property
   | Webkit_tap_highlight_color : color property
+  | Webkit_user_select : user_select property
   | Webkit_text_decoration : text_decoration property
   | Webkit_text_decoration_color : color property
   | Text_indent : length property
