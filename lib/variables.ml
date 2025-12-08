@@ -316,8 +316,13 @@ let vars_of_transform (value : Properties.transform) : any_var list =
 let vars_of_transform_list (value : Properties.transform list) : any_var list =
   List.concat_map vars_of_transform value
 
-let vars_of_shadow (value : Properties.shadow) : any_var list =
-  match value with Var v -> [ V v ] | _ -> []
+let rec vars_of_shadow (value : Properties.shadow) : any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | List shadows -> List.concat_map vars_of_shadow shadows
+  | Shadow { color; _ } -> (
+      match color with Some c -> vars_of_color c | None -> [])
+  | _ -> []
 
 let vars_of_content (value : Properties.content) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
@@ -547,9 +552,20 @@ let extract_vars_from_declaration : declaration -> any_var list = function
   | Custom_declaration _ -> [] (* Custom properties don't have typed vars *)
   | Declaration { property; value; _ } -> vars_of_property property value
 
+(* Stable dedup: preserves first occurrence of each var, removes later
+   duplicates *)
+let stable_dedup_vars vars =
+  let seen = Hashtbl.create 16 in
+  List.filter
+    (fun (V v) ->
+      if Hashtbl.mem seen v.name then false
+      else (
+        Hashtbl.add seen v.name ();
+        true))
+    vars
+
 let vars_of_declarations properties =
-  List.concat_map extract_vars_from_declaration properties
-  |> List.sort_uniq compare_vars_by_name
+  List.concat_map extract_vars_from_declaration properties |> stable_dedup_vars
 
 (* Extract only custom property declarations (variable definitions) *)
 let custom_declarations ?layer (decls : declaration list) : declaration list =
