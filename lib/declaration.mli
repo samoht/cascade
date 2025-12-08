@@ -1035,6 +1035,9 @@ val cursor : cursor -> declaration
 val user_select : user_select -> declaration
 (** [user_select v] is the CSS [user-select] property. *)
 
+val webkit_user_select : user_select -> declaration
+(** [webkit_user_select v] is the CSS [-webkit-user-select] property. *)
+
 val container_type : container_type -> declaration
 (** [container_type v] is the CSS [container-type] property. *)
 

@@ -148,7 +148,7 @@ let pp_value : type a. (a kind * a) Pp.t =
  fun ctx (kind, value) ->
   let pp pp_a = pp_a ctx value in
   match kind with
-  | Length -> pp pp_length
+  | Length -> pp (pp_length ~always:true)
   | Color -> pp pp_color
   | Rgb ->
       let rec pp_rgb_type : rgb Pp.t =
@@ -417,6 +417,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Cursor -> v Cursor (read_cursor t)
   | Box_sizing -> v Box_sizing (read_box_sizing t)
   | User_select -> v User_select (read_user_select t)
+  | Webkit_user_select -> v Webkit_user_select (read_user_select t)
   | Pointer_events -> v Pointer_events (read_pointer_events t)
   | Resize -> v Resize (read_resize t)
   | Transition -> v Transition (read_transitions t)
@@ -1031,6 +1032,7 @@ let border_inline_end_color value = v Border_inline_end_color value
 let webkit_font_smoothing value = v Webkit_font_smoothing value
 let cursor value = v Cursor value
 let user_select value = v User_select value
+let webkit_user_select value = v Webkit_user_select value
 let container_type value = v Container_type value
 let container_name value = v Container_name value
 let transform value = v Transform [ value ]

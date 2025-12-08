@@ -3233,6 +3233,9 @@ val user_select : user_select -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/user-select}
      user-select} property. *)
 
+val webkit_user_select : user_select -> declaration
+(** [webkit_user_select select] is the [-webkit-user-select] property. *)
+
 val resize : resize -> declaration
 (** [resize resize] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/resize} resize}
