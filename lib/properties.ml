@@ -2175,9 +2175,13 @@ let pp_position_value : position_value Pp.t =
   | Center_top -> Pp.string ctx "center top"
   | Center_bottom -> Pp.string ctx "center bottom"
   | XY (a, b) ->
-      pp_length ctx a;
-      Pp.space ctx ();
-      pp_length ctx b
+      (* When both values are identical, use single-value shorthand (matches
+         Tailwind) *)
+      if a = b then pp_length ctx a
+      else (
+        pp_length ctx a;
+        Pp.space ctx ();
+        pp_length ctx b)
   | Edge_offset_axis (edge, offset, axis) ->
       Pp.string ctx edge;
       Pp.space ctx ();
