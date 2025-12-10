@@ -339,6 +339,29 @@ let pp_color_name : color_name Pp.t =
   | White_smoke -> Pp.string ctx "whitesmoke"
   | Yellow_green -> Pp.string ctx "yellowgreen"
 
+let pp_system_color : system_color Pp.t =
+ fun ctx -> function
+  | AccentColor -> Pp.string ctx "AccentColor"
+  | AccentColorText -> Pp.string ctx "AccentColorText"
+  | ActiveText -> Pp.string ctx "ActiveText"
+  | ButtonBorder -> Pp.string ctx "ButtonBorder"
+  | ButtonFace -> Pp.string ctx "ButtonFace"
+  | ButtonText -> Pp.string ctx "ButtonText"
+  | Canvas -> Pp.string ctx "Canvas"
+  | CanvasText -> Pp.string ctx "CanvasText"
+  | Field -> Pp.string ctx "Field"
+  | FieldText -> Pp.string ctx "FieldText"
+  | GrayText -> Pp.string ctx "GrayText"
+  | Highlight -> Pp.string ctx "Highlight"
+  | HighlightText -> Pp.string ctx "HighlightText"
+  | LinkText -> Pp.string ctx "LinkText"
+  | Mark -> Pp.string ctx "Mark"
+  | MarkText -> Pp.string ctx "MarkText"
+  | SelectedItem -> Pp.string ctx "SelectedItem"
+  | SelectedItemText -> Pp.string ctx "SelectedItemText"
+  | VisitedText -> Pp.string ctx "VisitedText"
+  | Webkit_focus_ring_color -> Pp.string ctx "-webkit-focus-ring-color"
+
 let rec pp_channel : channel Pp.t =
  fun ctx -> function
   | Int i -> Pp.int ctx i
@@ -599,6 +622,7 @@ and pp_color : color Pp.t =
   | Oklab { l; a; b; alpha } -> pp_oklab ctx (l, a, b, alpha)
   | Lch { l; c; h; alpha } -> pp_lch ctx (l, c, h, alpha)
   | Named name -> pp_color_name ctx name
+  | System sc -> pp_system_color ctx sc
   | Var v -> pp_var pp_color ctx v
   | Current -> Pp.string ctx "currentColor"
   | Transparent -> Pp.string ctx "transparent"
@@ -1614,6 +1638,33 @@ and read_color_keyword_from_string keyword : color option =
   | "unset" -> Some Unset
   | "revert" -> Some Revert
   | "revert-layer" -> Some Revert_layer
+  (* CSS system colors - case-insensitive matching *)
+  | _ -> read_system_color_from_string keyword
+
+and read_system_color_from_string keyword : color option =
+  (* System colors are case-insensitive per CSS spec *)
+  match String.lowercase_ascii keyword with
+  | "accentcolor" -> Some (System AccentColor)
+  | "accentcolortext" -> Some (System AccentColorText)
+  | "activetext" -> Some (System ActiveText)
+  | "buttonborder" -> Some (System ButtonBorder)
+  | "buttonface" -> Some (System ButtonFace)
+  | "buttontext" -> Some (System ButtonText)
+  | "canvas" -> Some (System Canvas)
+  | "canvastext" -> Some (System CanvasText)
+  | "field" -> Some (System Field)
+  | "fieldtext" -> Some (System FieldText)
+  | "graytext" -> Some (System GrayText)
+  | "highlight" -> Some (System Highlight)
+  | "highlighttext" -> Some (System HighlightText)
+  | "linktext" -> Some (System LinkText)
+  | "mark" -> Some (System Mark)
+  | "marktext" -> Some (System MarkText)
+  | "selecteditem" -> Some (System SelectedItem)
+  | "selecteditemtext" -> Some (System SelectedItemText)
+  | "visitedtext" -> Some (System VisitedText)
+  (* WebKit-specific system colors *)
+  | "-webkit-focus-ring-color" -> Some (System Webkit_focus_ring_color)
   | _ -> None
 
 (** Read a duration value *)
