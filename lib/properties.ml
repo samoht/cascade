@@ -1305,8 +1305,6 @@ let pp_border : border Pp.t =
   | None -> Pp.string ctx "none"
   | Shorthand shorthand -> pp_border_shorthand ctx shorthand
 
-let pp_clip : string Pp.t = Pp.string
-
 let pp_display : display Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
@@ -1720,6 +1718,86 @@ let pp_aspect_ratio : aspect_ratio Pp.t =
         Pp.float ctx a;
         Pp.char ctx '/';
         Pp.float ctx b)
+
+let pp_will_change : will_change Pp.t =
+ fun ctx -> function
+  | Will_change_auto -> Pp.string ctx "auto"
+  | Scroll_position -> Pp.string ctx "scroll-position"
+  | Contents -> Pp.string ctx "contents"
+  | Transform -> Pp.string ctx "transform"
+  | Opacity -> Pp.string ctx "opacity"
+  | Properties props -> Pp.list ~sep:Pp.comma Pp.string ctx props
+
+let pp_perspective_origin : perspective_origin Pp.t =
+ fun ctx -> function
+  | Perspective_center -> Pp.string ctx "center"
+  | Perspective_top -> Pp.string ctx "top"
+  | Perspective_bottom -> Pp.string ctx "bottom"
+  | Perspective_left -> Pp.string ctx "left"
+  | Perspective_right -> Pp.string ctx "right"
+  | Perspective_top_left -> Pp.string ctx "top left"
+  | Perspective_top_right -> Pp.string ctx "top right"
+  | Perspective_bottom_left -> Pp.string ctx "bottom left"
+  | Perspective_bottom_right -> Pp.string ctx "bottom right"
+  | Perspective_xy (x, y) ->
+      pp_length ctx x;
+      Pp.space ctx ();
+      pp_length ctx y
+
+let pp_clip : clip Pp.t =
+ fun ctx -> function
+  | Clip_auto -> Pp.string ctx "auto"
+  | Clip_rect (top, right, bottom, left) ->
+      Pp.string ctx "rect(";
+      pp_length ctx top;
+      Pp.string ctx ", ";
+      pp_length ctx right;
+      Pp.string ctx ", ";
+      pp_length ctx bottom;
+      Pp.string ctx ", ";
+      pp_length ctx left;
+      Pp.char ctx ')'
+
+let pp_clip_path : clip_path Pp.t =
+ fun ctx -> function
+  | Clip_path_none -> Pp.string ctx "none"
+  | Clip_path_url url ->
+      Pp.string ctx "url(";
+      Pp.string ctx url;
+      Pp.char ctx ')'
+  | Clip_path_inset (top, right, bottom, left) ->
+      Pp.string ctx "inset(";
+      pp_length ctx top;
+      Pp.space ctx ();
+      pp_length ctx right;
+      Pp.space ctx ();
+      pp_length ctx bottom;
+      Pp.space ctx ();
+      pp_length ctx left;
+      Pp.char ctx ')'
+  | Clip_path_circle radius ->
+      Pp.string ctx "circle(";
+      pp_length ctx radius;
+      Pp.char ctx ')'
+  | Clip_path_ellipse (rx, ry) ->
+      Pp.string ctx "ellipse(";
+      pp_length ctx rx;
+      Pp.space ctx ();
+      pp_length ctx ry;
+      Pp.char ctx ')'
+  | Clip_path_polygon points ->
+      Pp.string ctx "polygon(";
+      Pp.list ~sep:Pp.comma
+        (fun ctx (x, y) ->
+          pp_length ctx x;
+          Pp.space ctx ();
+          pp_length ctx y)
+        ctx points;
+      Pp.char ctx ')'
+  | Clip_path_path d ->
+      Pp.string ctx "path(\"";
+      Pp.string ctx d;
+      Pp.string ctx "\")"
 
 let pp_property : type a. a property Pp.t =
  fun ctx -> function
@@ -5959,7 +6037,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Backdrop_filter -> pp pp_filter
   | Webkit_backdrop_filter -> pp pp_filter
   | Container_name -> pp Pp.string
-  | Perspective_origin -> pp Pp.string
+  | Perspective_origin -> pp pp_perspective_origin
   | Object_position -> pp pp_position_value
   | Rotate -> pp pp_angle
   | Transition_duration -> pp pp_duration
@@ -5967,7 +6045,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Transition_delay -> pp pp_duration
   | Transition_property -> pp pp_transition_property
   | Transition_behavior -> pp pp_transition_behavior
-  | Will_change -> pp Pp.string
+  | Will_change -> pp pp_will_change
   | Contain -> pp pp_contain
   | Word_spacing -> pp pp_length
   | Background_attachment -> pp pp_background_attachment
@@ -5977,7 +6055,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_left -> pp Pp.string
   | Transform_origin -> pp pp_transform_origin
   | Text_shadow -> pp (Pp.list ~sep:Pp.comma pp_text_shadow)
-  | Clip_path -> pp Pp.string
+  | Clip_path -> pp pp_clip_path
   | Mask -> pp Pp.string
   | Content_visibility -> pp pp_content_visibility
   | Filter -> pp pp_filter

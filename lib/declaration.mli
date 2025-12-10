@@ -578,7 +578,7 @@ val object_fit : object_fit -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/object-fit} object-fit}
     property. *)
 
-val clip : string -> declaration
+val clip : clip -> declaration
 (** [clip v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/clip} clip} property
     (deprecated in favor of [clip-path]). *)
@@ -862,7 +862,7 @@ val transform_origin : transform_origin -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transform-origin}
      transform-origin} property. *)
 
-val clip_path : string -> declaration
+val clip_path : clip_path -> declaration
 (** [clip_path v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/clip-path} clip-path}
     property. *)
@@ -1061,7 +1061,7 @@ val scale : scale -> declaration
 val perspective : length -> declaration
 (** [perspective v] is the CSS [perspective] property. *)
 
-val perspective_origin : string -> declaration
+val perspective_origin : perspective_origin -> declaration
 (** [perspective_origin v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/perspective-origin}
      perspective-origin} property. *)
@@ -1096,7 +1096,7 @@ val transition_property : transition_property -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transition-property}
      transition-property} property. *)
 
-val will_change : string -> declaration
+val will_change : will_change -> declaration
 (** [will_change v] is the CSS [will-change] property. *)
 
 val contain : contain -> declaration
