@@ -6029,7 +6029,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Grid_column_end -> pp pp_grid_line
   | Grid_row_start -> pp pp_grid_line
   | Grid_row_end -> pp pp_grid_line
-  | Text_underline_offset -> pp Pp.string
+  | Text_underline_offset -> pp pp_length
   | Background_position -> pp pp_background_position
   | Background_repeat -> pp pp_background_repeat
   | Background_size -> pp pp_background_size

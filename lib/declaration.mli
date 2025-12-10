@@ -376,7 +376,7 @@ val text_decoration_style : text_decoration_style -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration-style}
      text-decoration-style} property. *)
 
-val text_underline_offset : string -> declaration
+val text_underline_offset : length -> declaration
 (** [text_underline_offset v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-underline-offset}
      text-underline-offset} property. *)
