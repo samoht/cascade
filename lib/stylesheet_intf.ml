@@ -61,10 +61,11 @@ and block = statement list
 (** A block contains a list of statements *)
 
 and keyframe = {
-  keyframe_selector : string;  (** e.g., "0%", "from", "50%", "to" *)
+  keyframe_selector : Keyframe.selector;
+      (** e.g., [From], [To], [Percent 50.] *)
   keyframe_declarations : Declaration.declaration list;
 }
-(** A single keyframe within [@keyframes] *)
+(** A single keyframe within [\@keyframes] *)
 
 (** Font-face descriptors per CSS Fonts spec *)
 and font_face_descriptor =

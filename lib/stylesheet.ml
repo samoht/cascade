@@ -101,7 +101,7 @@ let rec pp_rule : rule Pp.t =
 
 and pp_keyframe : keyframe Pp.t =
  fun ctx kf ->
-  Pp.string ctx kf.keyframe_selector;
+  Pp.string ctx (Keyframe.selector_to_string kf.keyframe_selector);
   Pp.sp ctx ();
   Pp.braces
     (fun ctx () ->
@@ -378,12 +378,15 @@ let container_queries t = extract_container_queries t
 
 let read_keyframe (r : Reader.t) : keyframe =
   Reader.ws r;
-  let selector = String.trim (Reader.until r '{') in
+  let selector_str = String.trim (Reader.until r '{') in
   Reader.expect '{' r;
   let declarations = Declaration.read_declarations r in
   Reader.ws r;
   Reader.expect '}' r;
-  { keyframe_selector = selector; keyframe_declarations = declarations }
+  {
+    keyframe_selector = Keyframe.selector_of_string selector_str;
+    keyframe_declarations = declarations;
+  }
 
 (* Helper functions for reading specific at-rules *)
 let read_charset (r : Reader.t) : statement =

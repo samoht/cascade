@@ -3971,3 +3971,4 @@ module Stylesheet = Stylesheet
 module Media = Media
 module Container = Container
 module Supports = Supports
+module Keyframe = Keyframe

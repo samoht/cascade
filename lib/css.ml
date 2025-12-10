@@ -14,6 +14,7 @@ module Optimize = Optimize
 module Media = Media
 module Container = Container
 module Supports = Supports
+module Keyframe = Keyframe
 
 (* CSS Parsing *)
 
