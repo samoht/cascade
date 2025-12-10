@@ -384,6 +384,12 @@ val pp_outline_style : outline_style Pp.t
 val read_outline_style : Reader.t -> outline_style
 (** [read_outline_style t] is the [outline_style] parsed from [t]. *)
 
+val pp_outline : outline Pp.t
+(** [pp_outline] is the pretty-printer for [outline]. *)
+
+val read_outline : Reader.t -> outline
+(** [read_outline t] is the [outline] parsed from [t]. *)
+
 val pp_font_family : font_family Pp.t
 (** [pp_font_family] is the pretty-printer for [font_family]. *)
 

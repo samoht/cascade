@@ -1126,7 +1126,7 @@ val margin_block : length -> declaration
 val margin_inline_end : length -> declaration
 (** [margin_inline_end v] is the CSS [margin-inline-end] property. *)
 
-val outline : string -> declaration
+val outline : outline -> declaration
 (** [outline v] is the CSS [outline] shorthand. *)
 
 val outline_offset : length -> declaration
