@@ -45,8 +45,8 @@ and statement =
   | Property : 'a property_rule -> statement  (** [@property --name { ... }] *)
   | Layer_decl of string list  (** [@layer theme, base, utilities;] *)
   | Layer of string option * block  (** [@layer name? { ... }] *)
-  | Media of string * block  (** [@media (...) { ... }] *)
-  | Container of string option * string * block
+  | Media of Media.t * block  (** [@media (...) { ... }] *)
+  | Container of string option * Container.t * block
       (** [@container name? (...) { ... }] *)
   | Supports of string * block  (** [@supports (...) { ... }] *)
   | Starting_style of block  (** [@starting-style { ... }] *)
