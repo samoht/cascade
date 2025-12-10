@@ -136,7 +136,7 @@ let test_media_rule_creation () =
   in
   let r = rule ~selector:(Selector.class_ "red") [ decl ] in
   let media_stmt =
-    media ~condition:"screen and (min-width: 768px)" [ Rule r ]
+    media ~condition:(Css.Media.Raw "screen and (min-width: 768px)") [ Rule r ]
   in
   let sheet = Css.Stylesheet.v [ media_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
@@ -150,7 +150,8 @@ let test_container_rule_creation () =
   in
   let r = rule ~selector:(Selector.class_ "red") [ decl ] in
   let container_stmt =
-    container ~name:"sidebar" ~condition:"(min-width: 400px)" [ Rule r ]
+    container ~name:"sidebar"
+      ~condition:(Css.Container.Raw "(min-width: 400px)") [ Rule r ]
   in
   let sheet = Css.Stylesheet.v [ container_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
@@ -239,7 +240,9 @@ let helper () =
   let sheet = Css.Stylesheet.v [ Css.Stylesheet.Rule rule ] in
   check_stylesheet_helper "simple stylesheet" "div{display:block}" sheet;
 
-  let media_stmt = media ~condition:"print" [ Css.Stylesheet.Rule rule ] in
+  let media_stmt =
+    media ~condition:(Css.Media.Raw "print") [ Css.Stylesheet.Rule rule ]
+  in
   let sheet2 = Css.Stylesheet.v [ media_stmt ] in
   check_stylesheet_helper "media stylesheet" "@media print{div{display:block}}"
     sheet2
@@ -261,7 +264,9 @@ let construction () =
       (Css.Values.Hex { hash = true; value = "ff0000" })
   in
   let rule = rule ~selector:(Selector.class_ "red") [ decl ] in
-  let media_stmt = media ~condition:"screen" [ Css.Stylesheet.Rule rule ] in
+  let media_stmt =
+    media ~condition:(Css.Media.Raw "screen") [ Css.Stylesheet.Rule rule ]
+  in
   let prop = property ~syntax:Css.Variables.Color "--my-color" in
 
   let sheet = Css.Stylesheet.v [ Css.Stylesheet.Rule rule; media_stmt; prop ] in
@@ -281,7 +286,9 @@ let items_conversion () =
       (Css.Values.Hex { hash = true; value = "ff0000" })
   in
   let rule = rule ~selector:(Selector.class_ "red") [ decl ] in
-  let media_stmt = media ~condition:"screen" [ Css.Stylesheet.Rule rule ] in
+  let media_stmt =
+    media ~condition:(Css.Media.Raw "screen") [ Css.Stylesheet.Rule rule ]
+  in
 
   let sheet = Css.Stylesheet.v [ Css.Stylesheet.Rule rule; media_stmt ] in
 
@@ -472,7 +479,7 @@ let pp_case () =
       (Css.Values.Hex { hash = true; value = "ff0000" })
   in
   let r = rule ~selector:(Selector.class_ "red") [ decl ] in
-  let media_stmt = media ~condition:"screen" [ Rule r ] in
+  let media_stmt = media ~condition:(Css.Media.Raw "screen") [ Rule r ] in
   let prop =
     property ~syntax:Css.Variables.Color
       ~initial_value:(Css.Values.Named Css.Values.Blue) "--primary"
