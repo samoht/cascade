@@ -1277,7 +1277,7 @@ type 'a property =
   | Text_decoration : text_decoration property
   | Text_decoration_style : text_decoration_style property
   | Text_decoration_color : color property
-  | Text_underline_offset : string property
+  | Text_underline_offset : length property
   | Text_transform : text_transform property
   | Letter_spacing : length property
   | List_style_type : list_style_type property
