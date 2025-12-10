@@ -15,6 +15,7 @@ module Media = Media
 module Container = Container
 module Supports = Supports
 module Keyframe = Keyframe
+module Font_face = Font_face
 
 (* CSS Parsing *)
 

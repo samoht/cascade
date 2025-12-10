@@ -130,7 +130,10 @@ and pp_font_face_descriptor : font_face_descriptor Pp.t =
         (fun ctx fams ->
           Pp.list ~sep:Pp.comma Properties.pp_font_family ctx fams)
         families
-  | Src value -> pp_descriptor "src" Pp.string value
+  | Src value ->
+      pp_descriptor "src"
+        (fun ctx v -> Pp.string ctx (Font_face.src_to_string v))
+        value
   | Font_style style ->
       pp_descriptor "font-style" Properties.pp_font_style style
   | Font_weight weight ->
@@ -146,10 +149,22 @@ and pp_font_face_descriptor : font_face_descriptor Pp.t =
       pp_descriptor "font-feature-settings" Pp.string value
   | Font_variation_settings value ->
       pp_descriptor "font-variation-settings" Pp.string value
-  | Size_adjust value -> pp_descriptor "size-adjust" Pp.string value
-  | Ascent_override value -> pp_descriptor "ascent-override" Pp.string value
-  | Descent_override value -> pp_descriptor "descent-override" Pp.string value
-  | Line_gap_override value -> pp_descriptor "line-gap-override" Pp.string value
+  | Size_adjust value ->
+      pp_descriptor "size-adjust"
+        (fun ctx v -> Pp.string ctx (Font_face.size_adjust_to_string v))
+        value
+  | Ascent_override value ->
+      pp_descriptor "ascent-override"
+        (fun ctx v -> Pp.string ctx (Font_face.metric_override_to_string v))
+        value
+  | Descent_override value ->
+      pp_descriptor "descent-override"
+        (fun ctx v -> Pp.string ctx (Font_face.metric_override_to_string v))
+        value
+  | Line_gap_override value ->
+      pp_descriptor "line-gap-override"
+        (fun ctx v -> Pp.string ctx (Font_face.metric_override_to_string v))
+        value
 
 and pp_statement : statement Pp.t =
  fun ctx -> function
@@ -469,7 +484,7 @@ let read_font_face_descriptor (r : Reader.t) : font_face_descriptor option =
             r
       | "src" ->
           read_descriptor_value Declaration.read_property_value
-            (fun v -> Src v)
+            (fun v -> Src (Font_face.src_of_string v))
             r
       | "font-style" ->
           read_descriptor_value Properties.read_font_style
@@ -505,19 +520,19 @@ let read_font_face_descriptor (r : Reader.t) : font_face_descriptor option =
             r
       | "size-adjust" ->
           read_descriptor_value Declaration.read_property_value
-            (fun v -> Size_adjust v)
+            (fun v -> Size_adjust (Font_face.size_adjust_of_string v))
             r
       | "ascent-override" ->
           read_descriptor_value Declaration.read_property_value
-            (fun v -> Ascent_override v)
+            (fun v -> Ascent_override (Font_face.metric_override_of_string v))
             r
       | "descent-override" ->
           read_descriptor_value Declaration.read_property_value
-            (fun v -> Descent_override v)
+            (fun v -> Descent_override (Font_face.metric_override_of_string v))
             r
       | "line-gap-override" ->
           read_descriptor_value Declaration.read_property_value
-            (fun v -> Line_gap_override v)
+            (fun v -> Line_gap_override (Font_face.metric_override_of_string v))
             r
       | _ -> Reader.err_invalid r ("unknown font-face descriptor: " ^ name)
     in
