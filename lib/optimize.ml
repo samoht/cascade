@@ -363,10 +363,9 @@ and optimize_rules (rules : rule list) : rule list =
   (* Then apply standard rule optimizations *)
   let deduped = List.map single_rule_without_nested with_optimized_nested in
   let merged = merge_rules deduped in
-  (* Note: combine_identical_rules is disabled to match Tailwind's exact output
-     format. Tailwind keeps rules with identical declarations separate. The
-     optimization is valid CSS but produces different output. *)
-  merged
+  (* Combine consecutive rules with identical declarations into selector
+     lists *)
+  combine_identical_rules merged
 
 let single_rule (rule : rule) : rule =
   {
