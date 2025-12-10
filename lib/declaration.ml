@@ -776,17 +776,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Overscroll_behavior_y ->
       v Overscroll_behavior_y (read_overscroll_behavior t)
   (* Quotes *)
-  | Quotes ->
-      (* Read multiple consecutive strings for quotes property *)
-      let rec read_quotes_strings acc =
-        Reader.ws t;
-        match Reader.peek t with
-        | Some '"' | Some '\'' ->
-            let str = Reader.string t in
-            read_quotes_strings (acc ^ str)
-        | _ -> acc
-      in
-      v Quotes (read_quotes_strings "")
+  | Quotes -> v Quotes (read_quotes t)
   (* Touch action *)
   | Touch_action -> v Touch_action (read_touch_action t)
   (* Clear and float *)

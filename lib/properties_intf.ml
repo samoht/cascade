@@ -1074,6 +1074,18 @@ type content_visibility =
   | Inherit
   | Var of content_visibility var
 
+(** The CSS quotes property - defines quotation marks *)
+type quotes =
+  | Auto  (** Browser default based on language *)
+  | None  (** No quotation marks *)
+  | Pairs of (string * string) list  (** One or more open/close pairs *)
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of quotes var
+
 (* Container Types *)
 type container_type = Size | Inline_size | Scroll_state | Normal
 
@@ -1447,7 +1459,7 @@ type 'a property =
   | Appearance : appearance property
   | Print_color_adjust : print_color_adjust property
   | Content : content property
-  | Quotes : string property
+  | Quotes : quotes property
   | Text_decoration_thickness : length property
   | Text_size_adjust : text_size_adjust property
   | Touch_action : touch_action property

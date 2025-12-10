@@ -747,6 +747,12 @@ val pp_content_visibility : content_visibility Pp.t
 val read_content_visibility : Reader.t -> content_visibility
 (** [read_content_visibility t] is the [content_visibility] parsed from [t]. *)
 
+val pp_quotes : quotes Pp.t
+(** [pp_quotes] is the pretty-printer for [quotes]. *)
+
+val read_quotes : Reader.t -> quotes
+(** [read_quotes t] is the [quotes] parsed from [t]. *)
+
 val pp_container_type : container_type Pp.t
 (** [pp_container_type] is the pretty-printer for [container_type]. *)
 

@@ -971,7 +971,7 @@ val border_inline_end_color : color -> declaration
 (** [border_inline_end_color v] is the CSS [border-inline-end-color] property.
 *)
 
-val quotes : string -> declaration
+val quotes : Properties.quotes -> declaration
 (** [quotes v] is the CSS [quotes] property. *)
 
 val border :

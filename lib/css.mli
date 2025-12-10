@@ -1350,6 +1350,24 @@ val content_visibility : content_visibility -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/content-visibility}
      content-visibility} property. *)
 
+(** CSS quotes property values - defines quotation marks for q and blockquote.
+*)
+type quotes =
+  | Auto  (** Browser default based on language *)
+  | None  (** No quotation marks *)
+  | Pairs of (string * string) list  (** One or more open/close quote pairs *)
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of quotes var
+
+val quotes : quotes -> declaration
+(** [quotes q] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/quotes} quotes}
+    property. *)
+
 (** CSS list-style-position values *)
 type list_style_position = Inside | Outside | Inherit
 
@@ -3698,11 +3716,6 @@ val forced_color_adjust : forced_color_adjust -> declaration
 (** [forced_color_adjust adjust] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/forced-color-adjust}
      forced-color-adjust} property. *)
-
-val quotes : string -> declaration
-(** [quotes quotes] is the
-    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/quotes} quotes}
-    property. *)
 
 type appearance = None | Auto | Button | Textfield | Menulist | Inherit
 
