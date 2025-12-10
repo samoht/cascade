@@ -2513,6 +2513,27 @@ let rec pp_content_visibility : content_visibility Pp.t =
   | Inherit -> Pp.string ctx "inherit"
   | Var v -> pp_var pp_content_visibility ctx v
 
+let rec pp_quotes : quotes Pp.t =
+ fun ctx -> function
+  | Auto -> Pp.string ctx "auto"
+  | None -> Pp.string ctx "none"
+  | Pairs pairs ->
+      List.iter
+        (fun (open_q, close_q) ->
+          Pp.char ctx '"';
+          Pp.string ctx open_q;
+          Pp.char ctx '"';
+          Pp.char ctx '"';
+          Pp.string ctx close_q;
+          Pp.char ctx '"')
+        pairs
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_quotes ctx v
+
 let rec pp_cursor : cursor Pp.t =
  fun ctx -> function
   | Auto -> Pp.string ctx "auto"
@@ -3832,6 +3853,35 @@ let rec read_content_visibility t : content_visibility =
     ]
     ~calls:[ ("var", read_var) ]
     t
+
+let rec read_quotes t : quotes =
+  let read_var' t : quotes = Var (read_var read_quotes t) in
+  (* Read pairs of strings for quotes property *)
+  let read_pairs t =
+    let rec read_quotes_pairs acc =
+      Reader.ws t;
+      match Reader.peek t with
+      | Some ('"' | '\'') ->
+          let open_q = Reader.string t in
+          Reader.ws t;
+          let close_q = Reader.string t in
+          read_quotes_pairs ((open_q, close_q) :: acc)
+      | _ -> List.rev acc
+    in
+    Pairs (read_quotes_pairs [])
+  in
+  Reader.enum_or_calls "quotes"
+    [
+      ("auto", (Auto : quotes));
+      ("none", None);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert-layer", Revert_layer);
+      ("revert", Revert);
+    ]
+    ~calls:[ ("var", read_var') ]
+    ~default:read_pairs t
 
 let read_container_type t : container_type =
   Reader.enum "container-type"
@@ -6158,7 +6208,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Animation -> pp (Pp.list ~sep:Pp.comma pp_animation)
   | Aspect_ratio -> pp pp_aspect_ratio
   | Content -> pp pp_content
-  | Quotes -> pp Pp.string
+  | Quotes -> pp pp_quotes
   | Box_shadow -> pp pp_shadow
   | Fill -> pp pp_svg_paint
   | Stroke -> pp pp_svg_paint
