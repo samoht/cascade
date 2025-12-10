@@ -291,11 +291,11 @@ val custom_props : ?layer:string -> t -> string list
     are extracted. Traverses nested [@supports], [@media], and other conditional
     blocks. *)
 
-val media : condition:string -> statement list -> statement
+val media : condition:Media.t -> statement list -> statement
 (** [media ~condition statements] creates a [@media] statement with the given
     condition. *)
 
-val media_nested : condition:string -> declaration list -> statement
+val media_nested : condition:Media.t -> declaration list -> statement
 (** [media_nested ~condition declarations] creates a [@media] statement for CSS
     nesting, containing bare declarations (no selector). Used inside rules where
     the selector is inherited from the parent. *)
@@ -313,7 +313,8 @@ val layer_of : ?name:string -> t -> t
 (** [layer_of ?name stylesheet] wraps an entire stylesheet in [@layer],
     preserving [@supports] and other at-rules within it. *)
 
-val container : ?name:string -> condition:string -> statement list -> statement
+val container :
+  ?name:string -> condition:Container.t -> statement list -> statement
 (** [container ?name ~condition statements] creates a [@container] statement
     with the given statements. *)
 
@@ -3967,3 +3968,4 @@ module Variables = Variables
 module Optimize = Optimize
 module Stylesheet = Stylesheet
 module Media = Media
+module Container = Container

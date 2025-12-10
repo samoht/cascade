@@ -25,15 +25,16 @@ val layer_decl : string list -> statement
 val layer : ?name:string -> block -> statement
 (** [layer ?name content] creates a [@layer] rule. *)
 
-val media : condition:string -> block -> statement
+val media : condition:Media.t -> block -> statement
 (** [media ~condition content] creates a [@media] rule. *)
 
-val media_nested : condition:string -> Declaration.declaration list -> statement
+val media_nested :
+  condition:Media.t -> Declaration.declaration list -> statement
 (** [media_nested ~condition declarations] creates a [@media] rule for CSS
     nesting, containing bare declarations (no selector). Used inside rules where
     the selector is inherited from the parent. *)
 
-val container : ?name:string -> condition:string -> block -> statement
+val container : ?name:string -> condition:Container.t -> block -> statement
 (** [container ?name ~condition content] creates a [@container] rule. *)
 
 val supports : condition:string -> block -> statement

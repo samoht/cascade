@@ -12,6 +12,7 @@ module Stylesheet = Stylesheet
 module Variables = Variables
 module Optimize = Optimize
 module Media = Media
+module Container = Container
 
 (* CSS Parsing *)
 
@@ -84,7 +85,8 @@ let rec map f stmts =
       | Some (sel, decls, _nested) -> f sel decls
       | None -> (
           match as_media stmt with
-          | Some (condition, content) -> media ~condition (map f content)
+          | Some (condition, content) ->
+              media ~condition:(Media.Raw condition) (map f content)
           | None -> (
               match as_supports stmt with
               | Some (condition, content) -> supports ~condition (map f content)
@@ -94,7 +96,8 @@ let rec map f stmts =
                   | None -> (
                       match as_container stmt with
                       | Some (name, condition, content) ->
-                          container ?name ~condition (map f content)
+                          container ?name ~condition:(Container.Raw condition)
+                            (map f content)
                       | None -> stmt)))))
     stmts
 
@@ -104,7 +107,8 @@ let rec sort cmp stmts =
     List.map
       (fun stmt ->
         match as_media stmt with
-        | Some (condition, content) -> media ~condition (sort cmp content)
+        | Some (condition, content) ->
+            media ~condition:(Media.Raw condition) (sort cmp content)
         | None -> (
             match as_supports stmt with
             | Some (condition, content) ->
@@ -115,7 +119,8 @@ let rec sort cmp stmts =
                 | None -> (
                     match as_container stmt with
                     | Some (name, condition, content) ->
-                        container ?name ~condition (sort cmp content)
+                        container ?name ~condition:(Container.Raw condition)
+                          (sort cmp content)
                     | None -> stmt))))
       stmts
   in
@@ -243,7 +248,7 @@ let custom_props ?layer sheet =
   in
   List.rev props
 
-let media ~condition statements = Media (condition, statements)
+let media ~condition statements = Media (Media.to_string condition, statements)
 
 let media_nested ~condition declarations =
   Stylesheet.media_nested ~condition declarations
@@ -256,7 +261,7 @@ let layer_of ?name stylesheet =
   [ Layer (name, stylesheet) ]
 
 let container ?name ~condition statements =
-  Container (name, condition, statements)
+  Container (name, Container.to_string condition, statements)
 
 let supports ~condition statements = Supports (condition, statements)
 

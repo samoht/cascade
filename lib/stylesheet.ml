@@ -12,12 +12,14 @@ let property ~syntax ?initial_value ?(inherits = false) name =
 
 let layer_decl names = Layer_decl names
 let layer ?name content = Layer (name, content)
-let media ~condition content = Media (condition, content)
+let media ~condition content = Media (Media.to_string condition, content)
 
 let media_nested ~condition declarations =
-  Media (condition, [ Declarations declarations ])
+  Media (Media.to_string condition, [ Declarations declarations ])
 
-let container ?name ~condition content = Container (name, condition, content)
+let container ?name ~condition content =
+  Container (name, Container.to_string condition, content)
+
 let supports ~condition content = Supports (condition, content)
 let starting_style content = Starting_style content
 
