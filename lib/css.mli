@@ -2605,6 +2605,16 @@ type outline_style =
   | Auto
   | Inherit
 
+type outline_shorthand = {
+  width : length option;
+  style : outline_style option;
+  color : color option;
+}
+(** CSS outline shorthand components. *)
+
+(** CSS outline property values. *)
+type outline = Inherit | Initial | None | Shorthand of outline_shorthand
+
 val border_shorthand :
   ?width:border_width -> ?style:border_style -> ?color:color -> unit -> border
 (** [border_shorthand ?width ?style ?color ()] is the border shorthand.
@@ -2662,7 +2672,7 @@ val border_left : string -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-left}
      border-left} property. *)
 
-val outline : string -> declaration
+val outline : outline -> declaration
 (** [outline outline] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/outline} outline}
     property. *)

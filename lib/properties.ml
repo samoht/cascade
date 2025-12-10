@@ -3029,6 +3029,33 @@ let pp_outline_style : outline_style Pp.t =
   | Auto -> Pp.string ctx "auto"
   | Inherit -> Pp.string ctx "inherit"
 
+let pp_outline_shorthand : outline_shorthand Pp.t =
+ fun ctx { width; style; color } ->
+  let first = ref true in
+  let add_space () = if !first then first := false else Pp.space ctx () in
+  Option.iter
+    (fun w ->
+      add_space ();
+      pp_length ctx w)
+    width;
+  Option.iter
+    (fun s ->
+      add_space ();
+      pp_outline_style ctx s)
+    style;
+  Option.iter
+    (fun c ->
+      add_space ();
+      pp_color ctx c)
+    color
+
+let pp_outline : outline Pp.t =
+ fun ctx -> function
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | None -> Pp.string ctx "none"
+  | Shorthand shorthand -> pp_outline_shorthand ctx shorthand
+
 let pp_forced_color_adjust : forced_color_adjust Pp.t =
  fun ctx -> function
   | Auto -> Pp.string ctx "auto"
@@ -4171,6 +4198,73 @@ let read_outline_style t : outline_style =
       ("inherit", Inherit);
     ]
     t
+
+let read_outline t : outline =
+  Reader.ws t;
+  if Reader.looking_at t "inherit" then (
+    Reader.expect_string "inherit" t;
+    Inherit)
+  else if Reader.looking_at t "initial" then (
+    Reader.expect_string "initial" t;
+    Initial)
+  else
+    (* For shorthand, parse parts separated by spaces *)
+    let width = ref Option.None in
+    let style = ref Option.None in
+    let color = ref Option.None in
+    (* Include "none" in outline_style_keywords since it's a valid style *)
+    let outline_style_keywords =
+      [
+        "none";
+        "solid";
+        "dashed";
+        "dotted";
+        "double";
+        "groove";
+        "ridge";
+        "inset";
+        "outset";
+        "auto";
+      ]
+    in
+    let at_end () =
+      Reader.is_done t
+      || match Reader.peek t with Some (';' | '}' | ')') -> true | _ -> false
+    in
+    let rec parse_parts () =
+      Reader.ws t;
+      if at_end () then ()
+      else
+        let found_style =
+          Option.is_none !style
+          && List.exists
+               (fun kw -> Reader.looking_at t kw)
+               outline_style_keywords
+        in
+        if found_style then (
+          style := Some (read_outline_style t);
+          parse_parts ())
+        else
+          (* Try length - look for digit or unit *)
+          let c = Reader.peek t in
+          let is_length_start =
+            match c with
+            | Some c ->
+                Char.code c >= Char.code '0' && Char.code c <= Char.code '9'
+            | None -> false
+          in
+          if Option.is_none !width && is_length_start then (
+            width := Some (read_length t);
+            parse_parts ())
+          else if Option.is_none !color && not (at_end ()) then (
+            color := Some (read_color t);
+            parse_parts ())
+    in
+    parse_parts ();
+    (* If only style is "none" and nothing else, return None *)
+    match (!width, !style, !color) with
+    | Option.None, Some (None : outline_style), Option.None -> None
+    | _ -> Shorthand { width = !width; style = !style; color = !color }
 
 let font_family_generic_css =
   [
@@ -6071,7 +6165,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Stroke_width -> pp pp_length
   | Transition -> pp (Pp.list ~sep:Pp.comma pp_transition)
   | Scale -> pp pp_scale
-  | Outline -> pp Pp.string
+  | Outline -> pp pp_outline
   | Outline_style -> pp pp_outline_style
   | Outline_width -> pp pp_length
   | Outline_color -> pp pp_color

@@ -655,7 +655,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Bottom -> v Bottom (read_length t)
   | Left -> v Left (read_length t)
   (* Outline properties *)
-  | Outline -> v Outline (read_raw_value t)
+  | Outline -> v Outline (read_outline t)
   | Outline_style -> v Outline_style (read_outline_style t)
   | Outline_width -> v Outline_width (read_length t)
   | Outline_offset -> v Outline_offset (read_length t)

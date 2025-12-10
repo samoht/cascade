@@ -505,6 +505,15 @@ type outline_style =
   | Auto
   | Inherit
 
+(* Outline shorthand type *)
+type outline_shorthand = {
+  width : length option;
+  style : outline_style option;
+  color : color option;
+}
+
+type outline = Inherit | Initial | None | Shorthand of outline_shorthand
+
 (* Font Types *)
 type font_family =
   (* Generic CSS font families *)
@@ -1347,7 +1356,7 @@ type 'a property =
   | Bottom : length property
   | Left : length property
   | Z_index : z_index property
-  | Outline : string property
+  | Outline : outline property
   | Outline_style : outline_style property
   | Outline_width : length property
   | Outline_color : color property
