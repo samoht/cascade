@@ -48,7 +48,7 @@ and statement =
   | Media of Media.t * block  (** [@media (...) { ... }] *)
   | Container of string option * Container.t * block
       (** [@container name? (...) { ... }] *)
-  | Supports of string * block  (** [@supports (...) { ... }] *)
+  | Supports of Supports.t * block  (** [@supports (...) { ... }] *)
   | Starting_style of block  (** [@starting-style { ... }] *)
   | Scope of string option * string option * block
       (** [@scope (start)? to (end)? { ... }] *)

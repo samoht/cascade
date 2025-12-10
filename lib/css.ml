@@ -13,6 +13,7 @@ module Variables = Variables
 module Optimize = Optimize
 module Media = Media
 module Container = Container
+module Supports = Supports
 
 (* CSS Parsing *)
 
