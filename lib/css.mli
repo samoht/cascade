@@ -125,11 +125,12 @@ val as_layer : statement -> (string option * statement list) option
 (** [as_layer stmt] returns [Some (name, statements)] if the statement is a
     layer, [None] otherwise. *)
 
-val as_media : statement -> (string * statement list) option
+val as_media : statement -> (Media.t * statement list) option
 (** [as_media stmt] returns [Some (condition, statements)] if the statement is a
     media query, [None] otherwise. *)
 
-val as_container : statement -> (string option * string * statement list) option
+val as_container :
+  statement -> (string option * Container.t * statement list) option
 (** [as_container stmt] returns [Some (name, condition, statements)] if the
     statement is a container query, [None] otherwise. *)
 
@@ -257,7 +258,7 @@ val fold : ('a -> statement -> 'a) -> 'a -> t -> 'a
           [] css
     ]} *)
 
-val media_queries : t -> (string * statement list) list
+val media_queries : t -> (Media.t * statement list) list
 (** [media_queries t] returns media queries and their rule statements. *)
 
 val layers : t -> string list

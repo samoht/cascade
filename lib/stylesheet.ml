@@ -12,14 +12,12 @@ let property ~syntax ?initial_value ?(inherits = false) name =
 
 let layer_decl names = Layer_decl names
 let layer ?name content = Layer (name, content)
-let media ~condition content = Media (Media.to_string condition, content)
+let media ~condition content = Media (condition, content)
 
 let media_nested ~condition declarations =
-  Media (Media.to_string condition, [ Declarations declarations ])
+  Media (condition, [ Declarations declarations ])
 
-let container ?name ~condition content =
-  Container (name, Container.to_string condition, content)
-
+let container ?name ~condition content = Container (name, condition, content)
 let supports ~condition content = Supports (condition, content)
 let starting_style content = Starting_style content
 
@@ -220,7 +218,7 @@ and pp_statement : statement Pp.t =
         Pp.braces pp_block ctx content)
   | Media (condition, content) ->
       Pp.string ctx "@media ";
-      Pp.string ctx condition;
+      Pp.string ctx (Media.to_string condition);
       Pp.sp ctx ();
       Pp.braces pp_block ctx content
   | Container (name, condition, content) ->
@@ -231,7 +229,7 @@ and pp_statement : statement Pp.t =
           Pp.string ctx n
       | None -> ());
       Pp.string ctx " ";
-      Pp.string ctx condition;
+      Pp.string ctx (Container.to_string condition);
       Pp.sp ctx ();
       Pp.braces pp_block ctx content
   | Supports (condition, content) ->
@@ -613,13 +611,13 @@ and read_starting_style (r : Reader.t) : statement =
 and read_media (r : Reader.t) : statement =
   Reader.expect_string "@media" r;
   Reader.ws r;
-  let condition = String.trim (Reader.until r '{') in
-  if String.length condition = 0 then
+  let condition_str = String.trim (Reader.until r '{') in
+  if String.length condition_str = 0 then
     Reader.err r "@media rule requires a media query condition";
   Reader.expect '{' r;
   let content = read_block r in
   Reader.expect '}' r;
-  Media (condition, content)
+  Media (Media.Raw condition_str, content)
 
 and read_supports (r : Reader.t) : statement =
   Reader.expect_string "@supports" r;
@@ -649,11 +647,11 @@ and read_container (r : Reader.t) : statement =
   let container_name = Reader.option Reader.ident r in
   Reader.ws r;
   (* Read the condition up to the '{' *)
-  let condition = String.trim (Reader.until r '{') in
+  let condition_str = String.trim (Reader.until r '{') in
   Reader.expect '{' r;
   let content = read_block r in
   Reader.expect '}' r;
-  Container (container_name, condition, content)
+  Container (container_name, Container.Raw condition_str, content)
 
 and read_layer (r : Reader.t) : statement =
   Reader.expect_string "@layer" r;
@@ -772,12 +770,12 @@ and read_nested_at_rule (r : Reader.t) (at_rule : string)
       (* Parse container name directly, then condition *)
       let container_name = Reader.option Reader.ident r in
       Reader.ws r;
-      let condition = String.trim (Reader.until r '{') in
+      let condition_str = String.trim (Reader.until r '{') in
       Reader.expect '{' r;
       (* Read with nesting support - could be declarations or rules *)
       let content = read_nesting_block r in
       Reader.expect '}' r;
-      Container (container_name, condition, content)
+      Container (container_name, Container.Raw condition_str, content)
   | "@supports" ->
       let condition = String.trim (Reader.until r '{') in
       Reader.expect '{' r;
@@ -786,12 +784,12 @@ and read_nested_at_rule (r : Reader.t) (at_rule : string)
       Reader.expect '}' r;
       Supports (condition, content)
   | "@media" ->
-      let condition = String.trim (Reader.until r '{') in
+      let condition_str = String.trim (Reader.until r '{') in
       Reader.expect '{' r;
       (* Read with nesting support - could be declarations or rules *)
       let content = read_nesting_block r in
       Reader.expect '}' r;
-      Media (condition, content)
+      Media (Media.Raw condition_str, content)
   | _ -> Reader.err_invalid r ("Unexpected nested at-rule: " ^ at_rule)
 
 and read_nested_at_within_rule (r : Reader.t) (selector : Selector.t) :

@@ -281,7 +281,7 @@ let media_queries () =
   in
 
   let media_stmt =
-    Css.Stylesheet.Media ("screen", [ Css.Stylesheet.Rule rule ])
+    Css.Stylesheet.Media (Css.Media.Raw "screen", [ Css.Stylesheet.Rule rule ])
   in
 
   let stylesheet = [ media_stmt ] in
@@ -360,8 +360,10 @@ let test_consecutive_media_merge () =
 
   let stylesheet =
     [
-      Css.Stylesheet.Media ("(min-width:48rem)", [ Css.Stylesheet.Rule rule1 ]);
-      Css.Stylesheet.Media ("(min-width:48rem)", [ Css.Stylesheet.Rule rule2 ]);
+      Css.Stylesheet.Media
+        (Css.Media.Min_width 48., [ Css.Stylesheet.Rule rule1 ]);
+      Css.Stylesheet.Media
+        (Css.Media.Min_width 48., [ Css.Stylesheet.Rule rule2 ]);
     ]
   in
 
@@ -407,10 +409,12 @@ let test_non_consecutive_media_not_merged () =
 
   let stylesheet =
     [
-      Css.Stylesheet.Media ("(min-width:48rem)", [ Css.Stylesheet.Rule rule1 ]);
+      Css.Stylesheet.Media
+        (Css.Media.Min_width 48., [ Css.Stylesheet.Rule rule1 ]);
       Css.Stylesheet.Rule rule2;
       (* Separator *)
-      Css.Stylesheet.Media ("(min-width:48rem)", [ Css.Stylesheet.Rule rule3 ]);
+      Css.Stylesheet.Media
+        (Css.Media.Min_width 48., [ Css.Stylesheet.Rule rule3 ]);
     ]
   in
 
@@ -448,8 +452,10 @@ let test_different_media_conditions_not_merged () =
 
   let stylesheet =
     [
-      Css.Stylesheet.Media ("(min-width:48rem)", [ Css.Stylesheet.Rule rule1 ]);
-      Css.Stylesheet.Media ("(min-width:64rem)", [ Css.Stylesheet.Rule rule2 ]);
+      Css.Stylesheet.Media
+        (Css.Media.Min_width 48., [ Css.Stylesheet.Rule rule1 ]);
+      Css.Stylesheet.Media
+        (Css.Media.Min_width 64., [ Css.Stylesheet.Rule rule2 ]);
     ]
   in
 
@@ -488,9 +494,12 @@ let test_multiple_consecutive_media_merge () =
 
   let stylesheet =
     [
-      Css.Stylesheet.Media ("(min-width:48rem)", [ Css.Stylesheet.Rule rule1 ]);
-      Css.Stylesheet.Media ("(min-width:48rem)", [ Css.Stylesheet.Rule rule2 ]);
-      Css.Stylesheet.Media ("(min-width:48rem)", [ Css.Stylesheet.Rule rule3 ]);
+      Css.Stylesheet.Media
+        (Css.Media.Min_width 48., [ Css.Stylesheet.Rule rule1 ]);
+      Css.Stylesheet.Media
+        (Css.Media.Min_width 48., [ Css.Stylesheet.Rule rule2 ]);
+      Css.Stylesheet.Media
+        (Css.Media.Min_width 48., [ Css.Stylesheet.Rule rule3 ]);
     ]
   in
 
@@ -529,8 +538,10 @@ let test_media_merge_in_layers () =
 
   let layer_content =
     [
-      Css.Stylesheet.Media ("(min-width:48rem)", [ Css.Stylesheet.Rule rule1 ]);
-      Css.Stylesheet.Media ("(min-width:48rem)", [ Css.Stylesheet.Rule rule2 ]);
+      Css.Stylesheet.Media
+        (Css.Media.Min_width 48., [ Css.Stylesheet.Rule rule1 ]);
+      Css.Stylesheet.Media
+        (Css.Media.Min_width 48., [ Css.Stylesheet.Rule rule2 ]);
     ]
   in
 

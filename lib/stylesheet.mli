@@ -130,10 +130,10 @@ val rules : t -> rule list
 val layers : t -> string list
 (** [layers t] returns the layer names from the stylesheet. *)
 
-val media_queries : t -> (string * rule list) list
+val media_queries : t -> (Media.t * rule list) list
 (** [media_queries t] returns the media queries from the stylesheet. *)
 
-val container_queries : t -> (string option * string * rule list) list
+val container_queries : t -> (string option * Container.t * rule list) list
 (** [container_queries t] returns the container queries from the stylesheet. *)
 
 (** {1 Parsing and Pretty-printing} *)

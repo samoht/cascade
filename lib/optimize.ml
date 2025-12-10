@@ -248,7 +248,7 @@ let merge_consecutive_media (stmts : statement list) : statement list =
         | None -> result)
     | Media (cond, block) :: rest -> (
         match prev_media with
-        | Some (prev_cond, prev_block) when prev_cond = cond ->
+        | Some (prev_cond, prev_block) when Media.equal prev_cond cond ->
             (* Same condition as previous - merge the blocks *)
             merge result (Some (cond, prev_block @ block)) rest
         | Some (prev_cond, prev_block) ->
