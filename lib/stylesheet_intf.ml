@@ -7,10 +7,10 @@
 type import_rule = {
   url : string;  (** URL or string to import *)
   layer : string option;  (** Optional layer name *)
-  supports : string option;  (** Optional supports condition *)
-  media : string option;  (** Optional media query *)
+  supports : Supports.t option;  (** Optional supports condition *)
+  media : Media.t option;  (** Optional media query *)
 }
-(** A CSS [@import] rule *)
+(** A CSS [\@import] rule *)
 
 (** {2 Property Rule} *)
 
