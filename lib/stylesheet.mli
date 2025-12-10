@@ -37,7 +37,7 @@ val media_nested :
 val container : ?name:string -> condition:Container.t -> block -> statement
 (** [container ?name ~condition content] creates a [@container] rule. *)
 
-val supports : condition:string -> block -> statement
+val supports : condition:Supports.t -> block -> statement
 (** [supports ~condition content] creates a [@supports] rule. *)
 
 val starting_style : block -> statement

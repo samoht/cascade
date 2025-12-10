@@ -162,7 +162,8 @@ let test_supports_rule_creation () =
   let decl = Css.Declaration.display Css.Properties.Grid in
   let r = rule ~selector:(Selector.class_ "grid") [ decl ] in
   let supports_stmt =
-    supports ~condition:"(display: grid)" [ Css.Stylesheet.Rule r ]
+    supports ~condition:(Css.Supports.Raw "(display: grid)")
+      [ Css.Stylesheet.Rule r ]
   in
   let sheet = Css.Stylesheet.v [ supports_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
@@ -173,10 +174,12 @@ let test_supports_nested_creation () =
   let decl = Css.Declaration.display Css.Properties.Grid in
   let r = rule ~selector:(Selector.class_ "grid") [ decl ] in
   let nested_supports =
-    supports ~condition:"(color: red)" [ Css.Stylesheet.Rule r ]
+    supports ~condition:(Css.Supports.Raw "(color: red)")
+      [ Css.Stylesheet.Rule r ]
   in
   let supports_stmt =
-    supports ~condition:"(display: grid)" [ Rule r; nested_supports ]
+    supports ~condition:(Css.Supports.Raw "(display: grid)")
+      [ Rule r; nested_supports ]
   in
   let sheet = Css.Stylesheet.v [ supports_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in

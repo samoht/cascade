@@ -134,7 +134,7 @@ val as_container :
 (** [as_container stmt] returns [Some (name, condition, statements)] if the
     statement is a container query, [None] otherwise. *)
 
-val as_supports : statement -> (string * statement list) option
+val as_supports : statement -> (Supports.t * statement list) option
 (** [as_supports stmt] returns [Some (condition, statements)] if the statement
     is a supports query, [None] otherwise. *)
 
@@ -319,7 +319,7 @@ val container :
 (** [container ?name ~condition statements] creates a [@container] statement
     with the given statements. *)
 
-val supports : condition:string -> statement list -> statement
+val supports : condition:Supports.t -> statement list -> statement
 (** [supports ~condition statements] creates a [@supports] statement with the
     given condition. *)
 
@@ -3970,3 +3970,4 @@ module Optimize = Optimize
 module Stylesheet = Stylesheet
 module Media = Media
 module Container = Container
+module Supports = Supports

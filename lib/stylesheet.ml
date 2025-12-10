@@ -234,7 +234,7 @@ and pp_statement : statement Pp.t =
       Pp.braces pp_block ctx content
   | Supports (condition, content) ->
       Pp.string ctx "@supports ";
-      Pp.string ctx condition;
+      Pp.string ctx (Supports.to_string condition);
       Pp.sp ctx ();
       Pp.braces pp_block ctx content
   | Starting_style content ->
@@ -628,7 +628,7 @@ and read_supports (r : Reader.t) : statement =
   Reader.expect '{' r;
   let content = read_block r in
   Reader.expect '}' r;
-  Supports (condition, content)
+  Supports (Supports.Raw condition, content)
 
 and read_scope (r : Reader.t) : statement =
   Reader.expect_string "@scope" r;
@@ -782,7 +782,7 @@ and read_nested_at_rule (r : Reader.t) (at_rule : string)
       (* Read with nesting support - could be declarations or rules *)
       let content = read_nesting_block r in
       Reader.expect '}' r;
-      Supports (condition, content)
+      Supports (Supports.Raw condition, content)
   | "@media" ->
       let condition_str = String.trim (Reader.until r '{') in
       Reader.expect '{' r;
