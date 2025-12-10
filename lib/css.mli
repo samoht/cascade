@@ -747,6 +747,31 @@ type number_percentage =
 (** CSS hue interpolation options *)
 type hue_interpolation = Shorter | Longer | Increasing | Decreasing | Default
 
+(** CSS system colors - case-insensitive keywords that map to OS/browser colors.
+    These are semantic colors that adapt to user preferences and system
+    settings. *)
+type system_color =
+  | AccentColor  (** Background of accented user interface controls *)
+  | AccentColorText  (** Text of accented user interface controls *)
+  | ActiveText  (** Text of active links *)
+  | ButtonBorder  (** Base border color of controls *)
+  | ButtonFace  (** Background color of controls *)
+  | ButtonText  (** Text color of controls *)
+  | Canvas  (** Background of application content or documents *)
+  | CanvasText  (** Text color in application content or documents *)
+  | Field  (** Background of input fields *)
+  | FieldText  (** Text in input fields *)
+  | GrayText  (** Text color for disabled items *)
+  | Highlight  (** Background of selected items *)
+  | HighlightText  (** Text color of selected items *)
+  | LinkText  (** Text of non-active, non-visited links *)
+  | Mark  (** Background of specially marked text *)
+  | MarkText  (** Text that has been specially marked *)
+  | SelectedItem  (** Background of selected items (e.g., selected checkbox) *)
+  | SelectedItemText  (** Text of selected items *)
+  | VisitedText  (** Text of visited links *)
+  | Webkit_focus_ring_color  (** WebKit-specific focus ring color *)
+
 (** CSS color values. *)
 type color =
   | Hex of { hash : bool; value : string }
@@ -763,6 +788,8 @@ type color =
   | Lch of { l : percentage; c : float; h : hue; alpha : alpha }
       (** LCH color space *)
   | Named of color_name  (** Named colors like Red, Blue, etc. *)
+  | System of system_color
+      (** CSS system colors like ButtonText, Canvas, etc. *)
   | Var of color var
   | Current
   | Transparent

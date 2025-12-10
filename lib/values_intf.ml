@@ -287,6 +287,31 @@ type number_percentage =
 
 type hue_interpolation = Shorter | Longer | Increasing | Decreasing | Default
 
+(** CSS system colors - case-insensitive keywords that map to OS/browser colors
+*)
+type system_color =
+  | AccentColor
+  | AccentColorText
+  | ActiveText
+  | ButtonBorder
+  | ButtonFace
+  | ButtonText
+  | Canvas
+  | CanvasText
+  | Field
+  | FieldText
+  | GrayText
+  | Highlight
+  | HighlightText
+  | LinkText
+  | Mark
+  | MarkText
+  | SelectedItem
+  | SelectedItemText
+  | VisitedText
+  (* WebKit-specific system colors *)
+  | Webkit_focus_ring_color
+
 type color =
   | Hex of { hash : bool; value : string }
   | Rgb of rgb
@@ -298,6 +323,7 @@ type color =
   | Oklab of { l : percentage; a : float; b : float; alpha : alpha }
   | Lch of { l : percentage; c : float; h : hue; alpha : alpha }
   | Named of color_name
+  | System of system_color
   | Var of color var
   | Current
   | Transparent
