@@ -77,7 +77,8 @@ let layers_integration () =
 let media_integration () =
   let mobile_rule = rule ~selector:btn [ font_size (Rem 0.875) ] in
   let stylesheet =
-    Css.v [ media ~condition:"(max-width: 640px)" [ mobile_rule ] ]
+    Css.v
+      [ media ~condition:(Css.Media.Raw "(max-width: 640px)") [ mobile_rule ] ]
   in
 
   let css = Css.to_string ~minify:true stylesheet in
@@ -183,7 +184,7 @@ let test_rules_from_statements () =
   let stmts =
     [
       rule ~selector:btn [ color (hex "#ff0000") ];
-      media ~condition:"(min-width: 768px)"
+      media ~condition:(Css.Media.Raw "(min-width: 768px)")
         [ rule ~selector:card [ padding [ Px 5. ] ] ];
       rule ~selector:card [ margin [ Px 10. ] ];
     ]
@@ -268,7 +269,7 @@ let test_map_nested () =
   let sel1 = Selector.class_ "foo" in
   let stmts =
     [
-      media ~condition:"(min-width:768px)"
+      media ~condition:(Css.Media.Raw "(min-width:768px)")
         [
           rule ~selector:sel1 [ color (Hex { hash = true; value = "ff0000" }) ];
         ];
@@ -325,7 +326,7 @@ let test_sort_nested () =
   let sel2 = Selector.class_ "aaa" in
   let stmts =
     [
-      media ~condition:"(min-width:768px)"
+      media ~condition:(Css.Media.Raw "(min-width:768px)")
         [
           rule ~selector:sel1 [ color (Hex { hash = true; value = "ff0000" }) ];
           rule ~selector:sel2 [ color (Hex { hash = true; value = "00ff00" }) ];
