@@ -194,13 +194,13 @@ and pp_statement : statement Pp.t =
       (match supports with
       | Some s ->
           Pp.string ctx " supports(";
-          Pp.string ctx s;
+          Pp.string ctx (Supports.to_string s);
           Pp.string ctx ")"
       | None -> ());
       (match media with
       | Some m ->
           Pp.sp ctx ();
-          Pp.string ctx m
+          Pp.string ctx (Media.to_string m)
       | None -> ());
       Pp.semicolon ctx ()
   | Namespace (prefix, uri) ->
@@ -1043,13 +1043,13 @@ let pp_import_rule : import_rule Pp.t =
   Option.iter
     (fun s ->
       Pp.string ctx " supports(";
-      Pp.string ctx s;
+      Pp.string ctx (Supports.to_string s);
       Pp.char ctx ')')
     supports;
   Option.iter
     (fun m ->
       Pp.space ctx ();
-      Pp.string ctx m)
+      Pp.string ctx (Media.to_string m))
     media;
   Pp.string ctx ";"
 
@@ -1078,12 +1078,15 @@ let read_import_rule (r : Reader.t) : import_rule =
       done;
       let s = Reader.until r ')' in
       Reader.expect ')' r;
-      Some s)
+      Some (Supports.Raw s))
     else None
   in
   Reader.ws r;
   let media =
-    if Reader.looking_at r ";" then None else Some (Reader.until r ';')
+    if Reader.looking_at r ";" then None
+    else
+      let m = String.trim (Reader.until r ';') in
+      Some (Media.Raw m)
   in
   if Reader.looking_at r ";" then Reader.expect ';' r;
   { url; layer; supports; media }
