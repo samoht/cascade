@@ -6082,7 +6082,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border -> pp pp_border
   | Background -> pp (Pp.list ~sep:Pp.comma pp_background)
   | Text_decoration_thickness -> pp pp_length
-  | Text_size_adjust -> pp Pp.string
+  | Text_size_adjust -> pp pp_text_size_adjust
   | Touch_action -> pp pp_touch_action
   | Direction -> pp pp_direction
   | Unicode_bidi -> pp pp_unicode_bidi

@@ -741,7 +741,7 @@ val text_decoration_thickness : length -> declaration
 (** [text_decoration_thickness v] is the CSS [text-decoration-thickness]
     property. *)
 
-val text_size_adjust : string -> declaration
+val text_size_adjust : text_size_adjust -> declaration
 (** [text_size_adjust v] is the CSS [text-size-adjust] property. *)
 
 val aspect_ratio : aspect_ratio -> declaration

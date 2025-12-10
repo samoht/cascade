@@ -2128,6 +2128,9 @@ type text_transform =
   | Inherit
   | Var of text_transform var
 
+(** CSS text-size-adjust values (including vendor prefixes). *)
+type text_size_adjust = None | Auto | Pct of float | Inherit
+
 (** CSS font-family values *)
 type font_family =
   (* Generic CSS font families *)
@@ -2329,7 +2332,7 @@ val text_decoration_color : color -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration-color}
      text-decoration-color} property. *)
 
-val text_size_adjust : string -> declaration
+val text_size_adjust : text_size_adjust -> declaration
 (** [text_size_adjust adjust] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-size-adjust}
      text-size-adjust} property. *)
@@ -3364,9 +3367,6 @@ type webkit_font_smoothing =
 
 (** CSS -moz-osx-font-smoothing values. *)
 type moz_osx_font_smoothing = Auto | Grayscale | Inherit
-
-(** CSS text-size-adjust values (including vendor prefixes). *)
-type text_size_adjust = None | Auto | Pct of float | Inherit
 
 val webkit_appearance : webkit_appearance -> declaration
 (** [webkit_appearance app] is the

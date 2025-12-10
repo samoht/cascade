@@ -690,7 +690,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Text_overflow -> v Text_overflow (read_text_overflow t)
   | Text_wrap -> v Text_wrap (read_text_wrap t)
   | Text_decoration_thickness -> v Text_decoration_thickness (read_length t)
-  | Text_size_adjust -> v Text_size_adjust (read_string t)
+  | Text_size_adjust -> v Text_size_adjust (read_text_size_adjust t)
   | Text_decoration_skip_ink ->
       v Text_decoration_skip_ink (read_text_decoration_skip_ink t)
   (* Word/text breaking *)
