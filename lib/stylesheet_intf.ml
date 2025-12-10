@@ -70,7 +70,7 @@ and keyframe = {
 (** Font-face descriptors per CSS Fonts spec *)
 and font_face_descriptor =
   | Font_family of Properties.font_family list  (** Font family name *)
-  | Src of string  (** Font source (url(), local(), etc.) - TODO: proper type *)
+  | Src of Font_face.src  (** Font source (url(), local(), etc.) *)
   | Font_style of Properties.font_style  (** normal, italic, oblique *)
   | Font_weight of Properties.font_weight  (** normal, bold, 100-900 *)
   | Font_stretch of Properties.font_stretch
@@ -83,12 +83,12 @@ and font_face_descriptor =
       (** OpenType feature settings - TODO: proper type *)
   | Font_variation_settings of string
       (** Variable font settings - TODO: proper type *)
-  | Size_adjust of string  (** Size adjustment percentage - TODO: proper type *)
-  | Ascent_override of string  (** Ascent metric override - TODO: proper type *)
-  | Descent_override of string
-      (** Descent metric override - TODO: proper type *)
-  | Line_gap_override of string
-      (** Line gap metric override - TODO: proper type *)
+  | Size_adjust of Font_face.size_adjust  (** Size adjustment percentage *)
+  | Ascent_override of Font_face.metric_override  (** Ascent metric override *)
+  | Descent_override of Font_face.metric_override
+      (** Descent metric override *)
+  | Line_gap_override of Font_face.metric_override
+      (** Line gap metric override *)
 
 (** {1 Stylesheet Structure} *)
 
