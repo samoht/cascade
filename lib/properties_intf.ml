@@ -1440,7 +1440,7 @@ type 'a property =
   | Content : content property
   | Quotes : string property
   | Text_decoration_thickness : length property
-  | Text_size_adjust : string property
+  | Text_size_adjust : text_size_adjust property
   | Touch_action : touch_action property
   | Clip : clip property
   | Clear : clear property
