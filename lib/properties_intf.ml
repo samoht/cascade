@@ -1195,6 +1195,44 @@ type transform_origin =
   | XYZ of length * length * length
   | Inherit
 
+(* will-change property: which properties will animate *)
+type will_change =
+  | Will_change_auto
+  | Scroll_position
+  | Contents
+  | Transform
+  | Opacity
+  | Properties of string list  (** Custom CSS property names *)
+
+(* perspective-origin: origin point for 3D perspective *)
+type perspective_origin =
+  | Perspective_center
+  | Perspective_top
+  | Perspective_bottom
+  | Perspective_left
+  | Perspective_right
+  | Perspective_top_left
+  | Perspective_top_right
+  | Perspective_bottom_left
+  | Perspective_bottom_right
+  | Perspective_xy of length * length
+
+(* clip property (deprecated, but needed for sr-only) *)
+type clip =
+  | Clip_auto
+  | Clip_rect of length * length * length * length
+      (** top, right, bottom, left *)
+
+(* clip-path property for clipping regions *)
+type clip_path =
+  | Clip_path_none
+  | Clip_path_url of string
+  | Clip_path_inset of length * length * length * length
+  | Clip_path_circle of length  (** Circle with radius *)
+  | Clip_path_ellipse of length * length  (** Ellipse with rx, ry *)
+  | Clip_path_polygon of (length * length) list
+  | Clip_path_path of string  (** SVG path data *)
+
 (* Property type definition *)
 type 'a property =
   | Background_color : color property
@@ -1341,7 +1379,7 @@ type 'a property =
   | Container_name : string property
   | Container : container_shorthand property
   | Perspective : length property
-  | Perspective_origin : string property
+  | Perspective_origin : perspective_origin property
   | Transform_style : transform_style property
   | Backface_visibility : backface_visibility property
   | Object_position : position_value property
@@ -1351,7 +1389,7 @@ type 'a property =
   | Transition_delay : duration property
   | Transition_property : transition_property property
   | Transition_behavior : transition_behavior property
-  | Will_change : string property
+  | Will_change : will_change property
   | Contain : contain property
   | Isolation : isolation property
   | Word_spacing : length property
@@ -1362,7 +1400,7 @@ type 'a property =
   | Border_left : string property
   | Transform_origin : transform_origin property
   | Text_shadow : text_shadow list property
-  | Clip_path : string property
+  | Clip_path : clip_path property
   | Mask : string property
   | Content_visibility : content_visibility property
   | Filter : filter property
@@ -1404,7 +1442,7 @@ type 'a property =
   | Text_decoration_thickness : length property
   | Text_size_adjust : string property
   | Touch_action : touch_action property
-  | Clip : string property
+  | Clip : clip property
   | Clear : clear property
   | Float : float_side property
   | Scale : scale property

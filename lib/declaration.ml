@@ -268,6 +268,174 @@ let read_opacity t =
       n /. 100.0 (* Convert 100% -> 1.0, 0% -> 0.0 *)
   | _ -> n (* Already in 0-1 range *)
 
+(* Reader for will-change property *)
+let read_will_change t : will_change =
+  Reader.ws t;
+  if Reader.looking_at t "auto" then (
+    Reader.expect_string "auto" t;
+    Will_change_auto)
+  else if Reader.looking_at t "scroll-position" then (
+    Reader.expect_string "scroll-position" t;
+    Scroll_position)
+  else if Reader.looking_at t "contents" then (
+    Reader.expect_string "contents" t;
+    Contents)
+  else if Reader.looking_at t "transform" then (
+    Reader.expect_string "transform" t;
+    Transform)
+  else if Reader.looking_at t "opacity" then (
+    Reader.expect_string "opacity" t;
+    Opacity)
+  else
+    (* Read comma-separated list of property names *)
+    let props = Reader.list ~sep:Reader.comma Reader.ident t in
+    Properties props
+
+(* Reader for perspective-origin property *)
+let read_perspective_origin t : perspective_origin =
+  Reader.ws t;
+  if Reader.looking_at t "center" then (
+    Reader.expect_string "center" t;
+    Perspective_center)
+  else if Reader.looking_at t "top left" || Reader.looking_at t "left top" then (
+    Reader.expect_string
+      (if Reader.looking_at t "top left" then "top left" else "left top")
+      t;
+    Perspective_top_left)
+  else if Reader.looking_at t "top right" || Reader.looking_at t "right top"
+  then (
+    Reader.expect_string
+      (if Reader.looking_at t "top right" then "top right" else "right top")
+      t;
+    Perspective_top_right)
+  else if Reader.looking_at t "bottom left" || Reader.looking_at t "left bottom"
+  then (
+    Reader.expect_string
+      (if Reader.looking_at t "bottom left" then "bottom left"
+       else "left bottom")
+      t;
+    Perspective_bottom_left)
+  else if
+    Reader.looking_at t "bottom right" || Reader.looking_at t "right bottom"
+  then (
+    Reader.expect_string
+      (if Reader.looking_at t "bottom right" then "bottom right"
+       else "right bottom")
+      t;
+    Perspective_bottom_right)
+  else if Reader.looking_at t "top" then (
+    Reader.expect_string "top" t;
+    Perspective_top)
+  else if Reader.looking_at t "bottom" then (
+    Reader.expect_string "bottom" t;
+    Perspective_bottom)
+  else if Reader.looking_at t "left" then (
+    Reader.expect_string "left" t;
+    Perspective_left)
+  else if Reader.looking_at t "right" then (
+    Reader.expect_string "right" t;
+    Perspective_right)
+  else
+    let x = read_length t in
+    Reader.ws t;
+    let y = read_length t in
+    Perspective_xy (x, y)
+
+(* Reader for clip property (deprecated) *)
+let read_clip t : clip =
+  Reader.ws t;
+  if Reader.looking_at t "auto" then (
+    Reader.expect_string "auto" t;
+    Clip_auto)
+  else if Reader.looking_at t "rect(" then (
+    Reader.expect_string "rect(" t;
+    Reader.ws t;
+    let top = read_length t in
+    Reader.ws t;
+    Reader.option (fun t -> Reader.expect ',' t) t |> ignore;
+    Reader.ws t;
+    let right = read_length t in
+    Reader.ws t;
+    Reader.option (fun t -> Reader.expect ',' t) t |> ignore;
+    Reader.ws t;
+    let bottom = read_length t in
+    Reader.ws t;
+    Reader.option (fun t -> Reader.expect ',' t) t |> ignore;
+    Reader.ws t;
+    let left = read_length t in
+    Reader.ws t;
+    Reader.expect ')' t;
+    Clip_rect (top, right, bottom, left))
+  else Reader.err_invalid t "clip value (expected auto or rect(...))"
+
+(* Reader for clip-path property *)
+let read_clip_path t : clip_path =
+  Reader.ws t;
+  if Reader.looking_at t "none" then (
+    Reader.expect_string "none" t;
+    Clip_path_none)
+  else if Reader.looking_at t "url(" then (
+    Reader.expect_string "url(" t;
+    Reader.ws t;
+    let url =
+      match Reader.peek t with
+      | Some ('"' | '\'') -> Reader.string ~trim:true t
+      | _ -> Reader.until t ')'
+    in
+    Reader.ws t;
+    Reader.expect ')' t;
+    Clip_path_url url)
+  else if Reader.looking_at t "inset(" then (
+    Reader.expect_string "inset(" t;
+    Reader.ws t;
+    let top = read_length t in
+    Reader.ws t;
+    let right = read_length t in
+    Reader.ws t;
+    let bottom = read_length t in
+    Reader.ws t;
+    let left = read_length t in
+    Reader.ws t;
+    Reader.expect ')' t;
+    Clip_path_inset (top, right, bottom, left))
+  else if Reader.looking_at t "circle(" then (
+    Reader.expect_string "circle(" t;
+    Reader.ws t;
+    let r = read_length t in
+    Reader.ws t;
+    Reader.expect ')' t;
+    Clip_path_circle r)
+  else if Reader.looking_at t "ellipse(" then (
+    Reader.expect_string "ellipse(" t;
+    Reader.ws t;
+    let rx = read_length t in
+    Reader.ws t;
+    let ry = read_length t in
+    Reader.ws t;
+    Reader.expect ')' t;
+    Clip_path_ellipse (rx, ry))
+  else if Reader.looking_at t "polygon(" then (
+    Reader.expect_string "polygon(" t;
+    Reader.ws t;
+    let read_point t =
+      let x = read_length t in
+      Reader.ws t;
+      let y = read_length t in
+      (x, y)
+    in
+    let points = Reader.list ~sep:Reader.comma read_point t in
+    Reader.ws t;
+    Reader.expect ')' t;
+    Clip_path_polygon points)
+  else if Reader.looking_at t "path(" then (
+    Reader.expect_string "path(" t;
+    Reader.ws t;
+    let d = Reader.string ~trim:true t in
+    Reader.ws t;
+    Reader.expect ')' t;
+    Clip_path_path d)
+  else Reader.err_invalid t "clip-path value"
+
 (* Helper to read raw property value - for properties that accept any text *)
 let read_raw_value t =
   (* Read characters until we hit a semicolon, closing brace, or !important *)
@@ -536,7 +704,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Container -> v Container (read_container_shorthand t)
   (* Transform properties *)
   | Perspective -> v Perspective (read_length t)
-  | Perspective_origin -> v Perspective_origin (read_string t)
+  | Perspective_origin -> v Perspective_origin (read_perspective_origin t)
   | Transform_style -> v Transform_style (read_transform_style t)
   | Backface_visibility -> v Backface_visibility (read_backface_visibility t)
   | Rotate -> v Rotate (read_angle t)
@@ -553,7 +721,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Transition_behavior ->
       v Transition_behavior (Properties.read_transition_behavior t)
   (* Will change *)
-  | Will_change -> v Will_change (read_string t)
+  | Will_change -> v Will_change (read_will_change t)
   (* Contain and isolation *)
   | Contain -> v Contain (read_contain t)
   | Isolation -> v Isolation (read_isolation t)
@@ -573,9 +741,9 @@ let read_value (type a) (prop : a property) t : declaration =
   | Border_spacing -> v Border_spacing (read_length t)
   | Border_collapse -> v Border_collapse (read_border_collapse t)
   (* Clip and mask *)
-  | Clip_path -> v Clip_path (read_string t)
+  | Clip_path -> v Clip_path (read_clip_path t)
   | Mask -> v Mask (read_string t)
-  | Clip -> v Clip (Reader.css_value ~stops:[ ';'; '}' ] t)
+  | Clip -> v Clip (read_clip t)
   (* Content visibility *)
   | Content_visibility -> v Content_visibility (read_content_visibility t)
   (* Aspect ratio *)

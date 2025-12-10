@@ -2854,7 +2854,20 @@ val perspective : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/perspective}
      perspective} property (3D transforms). *)
 
-val perspective_origin : string -> declaration
+(** CSS perspective-origin values for 3D transforms. *)
+type perspective_origin =
+  | Perspective_center
+  | Perspective_top
+  | Perspective_bottom
+  | Perspective_left
+  | Perspective_right
+  | Perspective_top_left
+  | Perspective_top_right
+  | Perspective_bottom_left
+  | Perspective_bottom_right
+  | Perspective_xy of length * length  (** Custom x, y coordinates *)
+
+val perspective_origin : perspective_origin -> declaration
 (** [perspective_origin origin] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/perspective-origin}
      perspective-origin} property. *)
@@ -3124,12 +3137,28 @@ val backdrop_filter : filter -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/backdrop-filter}
      backdrop-filter} property. *)
 
-val clip : string -> declaration
+(** CSS clip property values (deprecated, but needed for sr-only). *)
+type clip =
+  | Clip_auto
+  | Clip_rect of length * length * length * length
+      (** top, right, bottom, left *)
+
+(** CSS clip-path property values for clipping regions. *)
+type clip_path =
+  | Clip_path_none
+  | Clip_path_url of string
+  | Clip_path_inset of length * length * length * length
+  | Clip_path_circle of length  (** Circle with radius *)
+  | Clip_path_ellipse of length * length  (** Ellipse with rx, ry *)
+  | Clip_path_polygon of (length * length) list
+  | Clip_path_path of string  (** SVG path data *)
+
+val clip : clip -> declaration
 (** [clip clip] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/clip} clip} property
     (deprecated). *)
 
-val clip_path : string -> declaration
+val clip_path : clip_path -> declaration
 (** [clip_path path] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/clip-path} clip-path}
     property. *)
@@ -3871,7 +3900,16 @@ val optimize : t -> t
     merging consecutive identical selectors and combining rules with identical
     properties. Preserves CSS cascade semantics. *)
 
-val will_change : string -> declaration
+(** CSS will-change property values for performance optimization hints. *)
+type will_change =
+  | Will_change_auto
+  | Scroll_position
+  | Contents
+  | Transform
+  | Opacity
+  | Properties of string list  (** Custom CSS property names *)
+
+val will_change : will_change -> declaration
 (** [will_change value] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/will-change}
      will-change} property for performance optimization. *)
