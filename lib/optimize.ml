@@ -51,7 +51,9 @@ let duplicate_buggy_properties decls =
 
 let track_last_occurrence normal_seen important_seen decl =
   let prop_name = property_name decl in
-  if prop_name = "content" then ()
+  (* Skip tracking for content and outline - these properties use duplicate
+     declarations intentionally (content counters, outline webkit fallbacks) *)
+  if prop_name = "content" || prop_name = "outline" then ()
   else if is_important decl then Hashtbl.replace important_seen prop_name decl
   else Hashtbl.replace normal_seen prop_name decl
 
@@ -83,8 +85,9 @@ let deduplicate_declarations props =
   List.iter
     (fun decl ->
       let prop_name = property_name decl in
-      (* Always keep content properties (no deduplication) *)
-      if prop_name = "content" then deduped := decl :: !deduped
+      (* Always keep content and outline properties (no deduplication) *)
+      if prop_name = "content" || prop_name = "outline" then
+        deduped := decl :: !deduped
       else if not (Hashtbl.mem processed prop_name) then (
         Hashtbl.add processed prop_name ();
         let final_decl =

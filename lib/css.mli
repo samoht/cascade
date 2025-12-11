@@ -1503,6 +1503,7 @@ type background_shorthand = {
 type background =
   | Inherit
   | Initial
+  | Unset
   | None
   | Var of background var
   | Shorthand of background_shorthand  (** CSS background values. *)
@@ -1533,6 +1534,11 @@ val color : color -> declaration
 (** [color c] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/color} color} property.
 *)
+
+val background : background -> declaration
+(** [background bg] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background} background}
+    shorthand property. *)
 
 val background_color : color -> declaration
 (** [background_color c] is the

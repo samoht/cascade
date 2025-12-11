@@ -137,6 +137,11 @@ val font_variant_numeric_composed :
      ?numeric_spacing ?numeric_fraction ()] composes optional numeric
     font-variant tokens into a [font_variant_numeric] value. *)
 
+val background : background -> declaration
+(** [background bg] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background} background}
+    shorthand property. *)
+
 val background_color : color -> declaration
 (** [background_color c] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background-color}

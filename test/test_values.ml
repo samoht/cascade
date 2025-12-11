@@ -37,6 +37,9 @@ let check_component = check_value "component" read_component pp_component
 let check_channel = check_value "channel" read_channel pp_channel
 let check_rgb = check_value "rgb" read_rgb pp_rgb
 
+let check_system_color =
+  check_value "system_color" read_system_color pp_system_color
+
 let test_length () =
   (* Basic units *)
   check_length "10px";
@@ -694,8 +697,18 @@ let test_rgb () =
   neg read_rgb "";
   neg read_rgb "255"
 
+let test_system_color () =
+  check_system_color "AccentColor";
+  check_system_color "CanvasText";
+  check_system_color "Highlight";
+  check_system_color "ButtonFace";
+  check_system_color "Field";
+  neg read_system_color "";
+  neg read_system_color "invalid-color"
+
 let value_tests =
   [
+    test_case "system_color" `Quick test_system_color;
     test_case "length" `Quick test_length;
     test_case "color" `Quick test_color;
     test_case "angle" `Quick test_angle;

@@ -988,6 +988,7 @@ type background_shorthand = {
 type background =
   | Inherit
   | Initial
+  | Unset
   | None
   | Var of background var
   | Shorthand of background_shorthand

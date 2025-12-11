@@ -917,6 +917,36 @@ val read_text_decoration_skip_ink : Reader.t -> text_decoration_skip_ink
 (** [read_text_decoration_skip_ink t] is the [text_decoration_skip_ink] parsed
     from [t]. *)
 
+val pp_will_change : will_change Pp.t
+(** [pp_will_change] is the pretty-printer for [will_change]. *)
+
+val read_will_change : Reader.t -> will_change
+(** [read_will_change t] is the [will_change] parsed from [t]. *)
+
+val pp_clip : clip Pp.t
+(** [pp_clip] is the pretty-printer for [clip]. *)
+
+val read_clip : Reader.t -> clip
+(** [read_clip t] is the [clip] parsed from [t]. *)
+
+val pp_clip_path : clip_path Pp.t
+(** [pp_clip_path] is the pretty-printer for [clip_path]. *)
+
+val read_clip_path : Reader.t -> clip_path
+(** [read_clip_path t] is the [clip_path] parsed from [t]. *)
+
+val pp_perspective_origin : perspective_origin Pp.t
+(** [pp_perspective_origin] is the pretty-printer for [perspective_origin]. *)
+
+val read_perspective_origin : Reader.t -> perspective_origin
+(** [read_perspective_origin t] is the [perspective_origin] parsed from [t]. *)
+
+val pp_outline_shorthand : outline_shorthand Pp.t
+(** [pp_outline_shorthand] is the pretty-printer for [outline_shorthand]. *)
+
+val read_outline_shorthand : Reader.t -> outline_shorthand
+(** [read_outline_shorthand t] is the [outline_shorthand] parsed from [t]. *)
+
 (** {2 Helper functions for property types} *)
 
 val shadow :
@@ -945,20 +975,6 @@ val inset_ring_shadow :
   shadow
 (** [inset_ring_shadow ~h_offset ~v_offset ~blur ~spread ~color] is an inset
     shadow with the given parameters. *)
-
-val background :
-  ?color:color ->
-  ?image:background_image ->
-  ?position:position_value ->
-  ?size:background_size ->
-  ?repeat:background_repeat ->
-  ?attachment:background_attachment ->
-  ?clip:background_box ->
-  ?origin:background_box ->
-  unit ->
-  background_shorthand
-(** [background ?color ?image ?position ?size ?repeat ?attachment ?clip ?origin
-     ()] constructs a background_shorthand value with optional components. *)
 
 (** {2 Generic property handling} *)
 

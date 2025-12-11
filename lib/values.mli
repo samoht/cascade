@@ -258,3 +258,9 @@ val with_fallback : 'a var -> 'a -> 'a var
 
 val var_meta : 'a var -> meta option
 (** [var_meta v] is [v]'s optional metadata. *)
+
+val pp_system_color : system_color Pp.t
+(** [pp_system_color] is the pretty-printer for [system_color]. *)
+
+val read_system_color : Reader.t -> system_color
+(** [read_system_color t] is the [system_color] parsed from [t]. *)
