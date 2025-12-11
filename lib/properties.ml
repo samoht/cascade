@@ -2380,6 +2380,7 @@ let rec pp_background : background Pp.t =
  fun ctx -> function
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
   | None -> Pp.string ctx "none"
   | Var v -> pp_var pp_background ctx v
   | Shorthand s -> pp_background_shorthand ctx s
@@ -4316,6 +4317,12 @@ let read_outline t : outline =
     | Option.None, Some (None : outline_style), Option.None -> None
     | _ -> Shorthand { width = !width; style = !style; color = !color }
 
+let read_outline_shorthand t : outline_shorthand =
+  match read_outline t with
+  | Shorthand s -> s
+  | Inherit | Initial | None ->
+      { width = Option.None; style = Option.None; color = Option.None }
+
 let font_family_generic_css =
   [
     ("sans-serif", Sans_serif);
@@ -5725,11 +5732,6 @@ let background_shorthand ?color ?image ?position ?size ?repeat ?attachment ?clip
     ?origin () : background =
   Shorthand { color; image; position; size; repeat; attachment; clip; origin }
 
-(* Background constructor with optional arguments *)
-let background ?color ?image ?position ?size ?repeat ?attachment ?clip ?origin
-    () =
-  { color; image; position; size; repeat; attachment; clip; origin }
-
 (* Parser for background_box values *)
 let read_background_box t : background_box =
   Reader.enum "background-box"
@@ -5963,7 +5965,18 @@ end
 
 let read_background_shorthand t : background_shorthand =
   Reader.ws t;
-  let init = background () in
+  let init =
+    {
+      color = None;
+      image = None;
+      position = None;
+      size = None;
+      repeat = None;
+      attachment = None;
+      clip = None;
+      origin = None;
+    }
+  in
   let apply acc upd =
     let new_acc = upd acc in
     (* Check if the update actually changed anything *)
@@ -5980,7 +5993,12 @@ let read_background_shorthand t : background_shorthand =
 let rec read_background t : background =
   let read_var_call t : background = Var (read_var read_background t) in
   Reader.enum_or_calls "background"
-    [ ("inherit", Inherit); ("initial", Initial); ("none", None) ]
+    [
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("none", None);
+    ]
     ~calls:[ ("var", read_var_call) ]
     ~default:(fun t -> Shorthand (read_background_shorthand t))
     t
@@ -6020,6 +6038,169 @@ let read_gap t : gap =
   match second_length with
   | Some col_gap -> { row_gap = Some first_length; column_gap = Some col_gap }
   | None -> { row_gap = Some first_length; column_gap = Some first_length }
+
+(* Reader for will-change property *)
+let read_will_change t : will_change =
+  Reader.ws t;
+  if Reader.looking_at t "auto" then (
+    Reader.expect_string "auto" t;
+    Will_change_auto)
+  else if Reader.looking_at t "scroll-position" then (
+    Reader.expect_string "scroll-position" t;
+    Scroll_position)
+  else if Reader.looking_at t "contents" then (
+    Reader.expect_string "contents" t;
+    Contents)
+  else if Reader.looking_at t "transform" then (
+    Reader.expect_string "transform" t;
+    Transform)
+  else if Reader.looking_at t "opacity" then (
+    Reader.expect_string "opacity" t;
+    Opacity)
+  else
+    (* Read comma-separated list of property names *)
+    let props = Reader.list ~sep:Reader.comma Reader.ident t in
+    Properties props
+
+(* Reader for perspective-origin property *)
+let read_perspective_origin t : perspective_origin =
+  Reader.ws t;
+  if Reader.looking_at t "center" then (
+    Reader.expect_string "center" t;
+    Perspective_center)
+  else if Reader.looking_at t "top left" || Reader.looking_at t "left top" then (
+    Reader.expect_string
+      (if Reader.looking_at t "top left" then "top left" else "left top")
+      t;
+    Perspective_top_left)
+  else if Reader.looking_at t "top right" || Reader.looking_at t "right top"
+  then (
+    Reader.expect_string
+      (if Reader.looking_at t "top right" then "top right" else "right top")
+      t;
+    Perspective_top_right)
+  else if Reader.looking_at t "bottom left" || Reader.looking_at t "left bottom"
+  then (
+    Reader.expect_string
+      (if Reader.looking_at t "bottom left" then "bottom left"
+       else "left bottom")
+      t;
+    Perspective_bottom_left)
+  else if
+    Reader.looking_at t "bottom right" || Reader.looking_at t "right bottom"
+  then (
+    Reader.expect_string
+      (if Reader.looking_at t "bottom right" then "bottom right"
+       else "right bottom")
+      t;
+    Perspective_bottom_right)
+  else if Reader.looking_at t "top" then (
+    Reader.expect_string "top" t;
+    Perspective_top)
+  else if Reader.looking_at t "bottom" then (
+    Reader.expect_string "bottom" t;
+    Perspective_bottom)
+  else if Reader.looking_at t "left" then (
+    Reader.expect_string "left" t;
+    Perspective_left)
+  else if Reader.looking_at t "right" then (
+    Reader.expect_string "right" t;
+    Perspective_right)
+  else
+    let x = read_length t in
+    Reader.ws t;
+    let y = read_length t in
+    Perspective_xy (x, y)
+
+(* Reader for clip property (deprecated) *)
+let read_clip t : clip =
+  Reader.ws t;
+  if Reader.looking_at t "auto" then (
+    Reader.expect_string "auto" t;
+    Clip_auto)
+  else if Reader.looking_at t "rect(" then (
+    Reader.expect_string "rect(" t;
+    Reader.ws t;
+    let top = read_length t in
+    Reader.ws t;
+    Reader.option (fun t -> Reader.expect ',' t) t |> ignore;
+    Reader.ws t;
+    let right = read_length t in
+    Reader.ws t;
+    Reader.option (fun t -> Reader.expect ',' t) t |> ignore;
+    Reader.ws t;
+    let bottom = read_length t in
+    Reader.ws t;
+    Reader.option (fun t -> Reader.expect ',' t) t |> ignore;
+    Reader.ws t;
+    let left = read_length t in
+    Reader.ws t;
+    Reader.expect ')' t;
+    Clip_rect (top, right, bottom, left))
+  else Reader.err_invalid t "clip value (expected auto or rect(...))"
+
+(* Reader for clip-path property *)
+let read_clip_path t : clip_path =
+  Reader.ws t;
+  if Reader.looking_at t "none" then (
+    Reader.expect_string "none" t;
+    Clip_path_none)
+  else if Reader.looking_at t "url(" then (
+    Reader.expect_string "url(" t;
+    Reader.ws t;
+    let url =
+      match Reader.peek t with
+      | Some ('"' | '\'') -> Reader.string ~trim:true t
+      | _ -> Reader.until t ')'
+    in
+    Reader.ws t;
+    Reader.expect ')' t;
+    Clip_path_url url)
+  else if Reader.looking_at t "inset(" then (
+    Reader.expect_string "inset(" t;
+    Reader.ws t;
+    let top = read_length t in
+    Reader.ws t;
+    let right = read_length t in
+    Reader.ws t;
+    let bottom = read_length t in
+    Reader.ws t;
+    let left = read_length t in
+    Reader.ws t;
+    Reader.expect ')' t;
+    Clip_path_inset (top, right, bottom, left))
+  else if Reader.looking_at t "circle(" then (
+    Reader.expect_string "circle(" t;
+    Reader.ws t;
+    let radius = read_length t in
+    Reader.ws t;
+    Reader.expect ')' t;
+    Clip_path_circle radius)
+  else if Reader.looking_at t "ellipse(" then (
+    Reader.expect_string "ellipse(" t;
+    Reader.ws t;
+    let rx = read_length t in
+    Reader.ws t;
+    let ry = read_length t in
+    Reader.ws t;
+    Reader.expect ')' t;
+    Clip_path_ellipse (rx, ry))
+  else if Reader.looking_at t "polygon(" then (
+    Reader.expect_string "polygon(" t;
+    Reader.ws t;
+    let points =
+      Reader.list ~sep:Reader.comma
+        (fun t ->
+          let x = read_length t in
+          Reader.ws t;
+          let y = read_length t in
+          (x, y))
+        t
+    in
+    Reader.ws t;
+    Reader.expect ')' t;
+    Clip_path_polygon points)
+  else Reader.err_invalid t "clip-path value"
 
 let pp_any_property ctx (Prop p) = pp_property ctx p
 

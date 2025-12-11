@@ -366,6 +366,21 @@ let check_border_width =
 let check_text_transform =
   check_value "text_transform" read_text_transform pp_text_transform
 
+let check_will_change =
+  check_value "will_change" read_will_change pp_will_change
+
+let check_clip = check_value "clip" read_clip pp_clip
+let check_clip_path = check_value "clip_path" read_clip_path pp_clip_path
+
+let check_perspective_origin =
+  check_value "perspective_origin" read_perspective_origin pp_perspective_origin
+
+let check_quotes = check_value "quotes" read_quotes pp_quotes
+let check_outline = check_value "outline" read_outline pp_outline
+
+let check_outline_shorthand =
+  check_value "outline_shorthand" read_outline_shorthand pp_outline_shorthand
+
 (* Length-percentage tests for width/height using the value reader/printer *)
 
 (* Helper for property-value pairs printing *)
@@ -1999,8 +2014,68 @@ let tests =
     test_case "pp property value" `Quick test_pp_property_value;
   ]
 
+let test_will_change () =
+  check_will_change "auto";
+  check_will_change "scroll-position";
+  check_will_change "contents";
+  check_will_change "transform";
+  check_will_change "opacity";
+  neg read_will_change "123invalid"
+
+let test_clip () =
+  check_clip "auto";
+  check_clip ~expected:"rect(0, 10px, 20px, 30px)" "rect(0px,10px,20px,30px)";
+  neg read_clip "invalid-clip"
+
+let test_clip_path () =
+  check_clip_path "none";
+  check_clip_path "url(clip.svg)";
+  check_clip_path ~expected:"inset(0 10px 20px 30px)"
+    "inset(0px 10px 20px 30px)";
+  check_clip_path "circle(50px)";
+  check_clip_path "ellipse(25px 50px)";
+  check_clip_path ~expected:"polygon(0 0,100px 0,50px 100px)"
+    "polygon(0px 0px,100px 0px,50px 100px)";
+  neg read_clip_path "";
+  neg read_clip_path "invalid"
+
+let test_perspective_origin () =
+  check_perspective_origin "center";
+  check_perspective_origin "top";
+  check_perspective_origin "bottom";
+  check_perspective_origin "left";
+  check_perspective_origin "right";
+  check_perspective_origin "50px 100px";
+  neg read_perspective_origin ""
+
+let test_quotes () =
+  check_quotes "auto";
+  check_quotes "none";
+  neg read_quotes "invalid-quotes-value"
+
+let test_outline () =
+  check_outline "none";
+  check_outline "inherit";
+  check_outline "initial";
+  check_outline "solid";
+  check_outline "2px solid red";
+  neg read_outline "invalid-outline-value"
+
+let test_outline_shorthand () =
+  check_outline_shorthand "solid";
+  check_outline_shorthand "2px solid";
+  check_outline_shorthand "2px solid red";
+  neg read_outline_shorthand "invalid-outline-value"
+
 let additional_tests =
   [
+    test_case "will_change" `Quick test_will_change;
+    test_case "clip" `Quick test_clip;
+    test_case "clip_path" `Quick test_clip_path;
+    test_case "perspective_origin" `Quick test_perspective_origin;
+    test_case "quotes" `Quick test_quotes;
+    test_case "outline" `Quick test_outline;
+    test_case "outline_shorthand" `Quick test_outline_shorthand;
     test_case "background" `Quick test_background;
     test_case "font_family" `Quick test_font_family;
     test_case "text_shadow" `Quick test_text_shadow;

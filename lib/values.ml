@@ -346,7 +346,7 @@ let pp_system_color : system_color Pp.t =
   | ActiveText -> Pp.string ctx "ActiveText"
   | ButtonBorder -> Pp.string ctx "ButtonBorder"
   | ButtonFace -> Pp.string ctx "ButtonFace"
-  | ButtonText -> Pp.string ctx "ButtonText"
+  | ButtonText -> Pp.string ctx "buttontext"
   | Canvas -> Pp.string ctx "Canvas"
   | CanvasText -> Pp.string ctx "CanvasText"
   | Field -> Pp.string ctx "Field"
@@ -1666,6 +1666,32 @@ and read_system_color_from_string keyword : color option =
   (* WebKit-specific system colors *)
   | "-webkit-focus-ring-color" -> Some (System Webkit_focus_ring_color)
   | _ -> None
+
+let read_system_color t : system_color =
+  Reader.ws t;
+  let keyword = Reader.ident t in
+  match String.lowercase_ascii keyword with
+  | "accentcolor" -> AccentColor
+  | "accentcolortext" -> AccentColorText
+  | "activetext" -> ActiveText
+  | "buttonborder" -> ButtonBorder
+  | "buttonface" -> ButtonFace
+  | "buttontext" -> ButtonText
+  | "canvas" -> Canvas
+  | "canvastext" -> CanvasText
+  | "field" -> Field
+  | "fieldtext" -> FieldText
+  | "graytext" -> GrayText
+  | "highlight" -> Highlight
+  | "highlighttext" -> HighlightText
+  | "linktext" -> LinkText
+  | "mark" -> Mark
+  | "marktext" -> MarkText
+  | "selecteditem" -> SelectedItem
+  | "selecteditemtext" -> SelectedItemText
+  | "visitedtext" -> VisitedText
+  | "-webkit-focus-ring-color" -> Webkit_focus_ring_color
+  | _ -> Reader.err_invalid t ("system color: " ^ keyword)
 
 (** Read a duration value *)
 let rec read_duration t : duration =

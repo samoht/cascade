@@ -343,6 +343,9 @@ let vars_of_text_transform (value : Properties.text_transform) : any_var list =
 let vars_of_scale (value : Properties.scale) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_quotes (value : Properties.quotes) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_animation (value : Properties.animation) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -545,6 +548,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   (* Timing function properties *)
   | Animation_timing_function, value -> vars_of_timing_function value
   | Transition_timing_function, value -> vars_of_timing_function value
+  (* Quotes property *)
+  | Quotes, value -> vars_of_quotes value
   (* Default case for all other properties *)
   | _ -> []
 
