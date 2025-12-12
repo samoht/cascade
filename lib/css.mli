@@ -2162,7 +2162,7 @@ type text_align =
   | Inherit
 
 (** CSS text decoration values. *)
-type text_decoration_line = Underline | Overline | Line_through
+type text_decoration_line = None | Underline | Overline | Line_through
 
 type text_decoration_style = Solid | Double | Dotted | Dashed | Wavy | Inherit
 
@@ -2422,6 +2422,11 @@ val text_decoration_style : text_decoration_style -> declaration
 (** [text_decoration_style style] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration-style}
      text-decoration-style} property. *)
+
+val text_decoration_line : text_decoration_line -> declaration
+(** [text_decoration_line line] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration-line}
+     text-decoration-line} property. *)
 
 val text_underline_offset : length -> declaration
 (** [text_underline_offset offset] is the

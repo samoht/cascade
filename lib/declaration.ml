@@ -452,7 +452,8 @@ let read_value (type a) (prop : a property) t : declaration =
   | Margin_block_end -> v Margin_block_end (read_length t)
   (* Additional color properties *)
   | Text_decoration_color -> v Text_decoration_color (read_color t)
-  (* Text decoration style *)
+  (* Text decoration line and style *)
+  | Text_decoration_line -> v Text_decoration_line (read_text_decoration_line t)
   | Text_decoration_style ->
       v Text_decoration_style (read_text_decoration_style t)
   | Text_underline_offset -> v Text_underline_offset (read_length t)
@@ -857,6 +858,7 @@ let line_height len = v Line_height len
 let font_weight w = v Font_weight w
 let text_align a = v Text_align a
 let text_decoration_style value = v Text_decoration_style value
+let text_decoration_line value = v Text_decoration_line value
 let text_underline_offset value = v Text_underline_offset value
 let text_transform value = v Text_transform value
 let letter_spacing len = v Letter_spacing len

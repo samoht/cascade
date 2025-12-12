@@ -405,7 +405,7 @@ type text_align =
   | Match_parent
   | Inherit
 
-type text_decoration_line = Underline | Overline | Line_through
+type text_decoration_line = None | Underline | Overline | Line_through
 type text_decoration_style = Solid | Double | Dotted | Dashed | Wavy | Inherit
 
 type text_decoration_shorthand = {
@@ -1301,6 +1301,7 @@ type 'a property =
   | Font_style : font_style property
   | Text_align : text_align property
   | Text_decoration : text_decoration property
+  | Text_decoration_line : text_decoration_line property
   | Text_decoration_style : text_decoration_style property
   | Text_decoration_color : color property
   | Text_underline_offset : length property

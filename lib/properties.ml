@@ -469,7 +469,8 @@ let read_text_align t : text_align =
 let read_text_decoration_line t : text_decoration_line =
   Reader.enum "text-decoration-line"
     [
-      ("underline", (Underline : text_decoration_line));
+      ("none", (None : text_decoration_line));
+      ("underline", Underline);
       ("overline", Overline);
       ("line-through", Line_through);
     ]
@@ -522,6 +523,7 @@ module Text_decoration = struct
             ("duplicate text-decoration-line: "
             ^
             match l with
+            | None -> "none"
             | Underline -> "underline"
             | Overline -> "overline"
             | Line_through -> "line-through")
@@ -1539,6 +1541,7 @@ let pp_text_align : text_align Pp.t =
 
 let pp_text_decoration_line : text_decoration_line Pp.t =
  fun ctx -> function
+  | None -> Pp.string ctx "none"
   | Underline -> Pp.string ctx "underline"
   | Overline -> Pp.string ctx "overline"
   | Line_through -> Pp.string ctx "line-through"
@@ -1844,6 +1847,7 @@ let pp_property : type a. a property Pp.t =
   | Font_style -> Pp.string ctx "font-style"
   | Text_align -> Pp.string ctx "text-align"
   | Text_decoration -> Pp.string ctx "text-decoration"
+  | Text_decoration_line -> Pp.string ctx "text-decoration-line"
   | Text_decoration_style -> Pp.string ctx "text-decoration-style"
   | Text_decoration_color -> Pp.string ctx "text-decoration-color"
   | Text_decoration_thickness -> Pp.string ctx "text-decoration-thickness"
@@ -5503,6 +5507,7 @@ let read_any_property t =
   | "font-variation-settings" -> Prop Font_variation_settings
   | "text-align" -> Prop Text_align
   | "text-decoration" -> Prop Text_decoration
+  | "text-decoration-line" -> Prop Text_decoration_line
   | "text-transform" -> Prop Text_transform
   | "text-indent" -> Prop Text_indent
   | "letter-spacing" -> Prop Letter_spacing
@@ -6341,6 +6346,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Font_style -> pp pp_font_style
   | Text_align -> pp pp_text_align
   | Text_decoration -> pp pp_text_decoration
+  | Text_decoration_line -> pp pp_text_decoration_line
   | Text_decoration_style -> pp pp_text_decoration_style
   | Text_transform -> pp pp_text_transform
   | List_style_type -> pp pp_list_style_type
