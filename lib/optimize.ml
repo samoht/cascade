@@ -242,22 +242,29 @@ let combine_identical_rules (rules : Stylesheet.rule list) :
 (** {1 Statement Optimization} *)
 
 (* Merge consecutive media queries with the same condition. This only merges
-   immediately adjacent media queries to preserve cascade order. *)
-let merge_consecutive_media (stmts : statement list) : statement list =
+   immediately adjacent media queries to preserve cascade order. When blocks are
+   merged, we recursively call merge_consecutive_media on the combined content
+   to merge any inner consecutive media queries. *)
+let rec merge_consecutive_media (stmts : statement list) : statement list =
   let rec merge result prev_media = function
     | [] -> (
         match prev_media with
-        | Some (cond, block) -> result @ [ Media (cond, block) ]
+        | Some (cond, block) ->
+            (* Re-merge the block content in case it contains consecutive
+               media *)
+            result @ [ Media (cond, merge_consecutive_media block) ]
         | None -> result)
     | Media (cond, block) :: rest -> (
         match prev_media with
         | Some (prev_cond, prev_block) when Media.equal prev_cond cond ->
-            (* Same condition as previous - merge the blocks *)
+            (* Same condition as previous - merge the blocks and re-optimize *)
             merge result (Some (cond, prev_block @ block)) rest
         | Some (prev_cond, prev_block) ->
-            (* Different condition - emit previous, store new one *)
+            (* Different condition - emit previous (with merged content), store
+               new one *)
             merge
-              (result @ [ Media (prev_cond, prev_block) ])
+              (result
+              @ [ Media (prev_cond, merge_consecutive_media prev_block) ])
               (Some (cond, block))
               rest
         | None ->
@@ -267,8 +274,10 @@ let merge_consecutive_media (stmts : statement list) : statement list =
         (* Non-media statement - flush any pending media query *)
         match prev_media with
         | Some (cond, block) ->
-            (* Emit media query then the statement *)
-            merge (result @ [ Media (cond, block); stmt ]) None rest
+            (* Emit media query (with merged content) then the statement *)
+            merge
+              (result @ [ Media (cond, merge_consecutive_media block); stmt ])
+              None rest
         | None -> merge (result @ [ stmt ]) None rest)
   in
   merge [] None stmts

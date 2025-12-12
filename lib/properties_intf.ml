@@ -746,13 +746,14 @@ type timing_function =
   | Cubic_bezier of float * float * float * float
   | Var of timing_function var
 
-type transition_property = All | None | Property of string
+type transition_property_value = All | None | Property of string
+type transition_property = transition_property_value list
 
 (* Transition behavior for discrete transitions (CSS Transitions Level 2) *)
 type transition_behavior = Normal | Allow_discrete | Inherit
 
 type transition_shorthand = {
-  property : transition_property;
+  property : transition_property_value;
   duration : duration option;
   timing_function : timing_function option;
   delay : duration option;
@@ -1276,12 +1277,15 @@ type 'a property =
   | Padding_block : length property
   | Margin : length list property
   | Margin_inline_end : length property
+  | Margin_inline_start : length property
   | Margin_left : length property
   | Margin_right : length property
   | Margin_top : length property
   | Margin_bottom : length property
   | Margin_inline : length property
   | Margin_block : length property
+  | Margin_block_start : length property
+  | Margin_block_end : length property
   | Gap : gap property
   | Column_gap : length property
   | Row_gap : length property
@@ -1346,6 +1350,10 @@ type 'a property =
   | Border_inline_start_width : border_width property
   | Border_inline_end_width : border_width property
   | Border_radius : length property
+  | Border_top_left_radius : length property
+  | Border_top_right_radius : length property
+  | Border_bottom_left_radius : length property
+  | Border_bottom_right_radius : length property
   | Border_top_color : color property
   | Border_right_color : color property
   | Border_bottom_color : color property

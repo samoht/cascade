@@ -50,7 +50,7 @@ val animation_shorthand :
     shorthand. *)
 
 val transition_shorthand :
-  ?property:transition_property ->
+  ?property:transition_property_value ->
   ?duration:Values.duration ->
   ?timing_function:timing_function ->
   ?delay:Values.duration ->
@@ -491,6 +491,14 @@ val read_steps_direction : Reader.t -> steps_direction
 
 val read_timing_function : Reader.t -> timing_function
 (** [read_timing_function t] is the [timing_function] parsed from [t]. *)
+
+val pp_transition_property_value : transition_property_value Pp.t
+(** [pp_transition_property_value] is the pretty-printer for
+    [transition_property_value]. *)
+
+val read_transition_property_value : Reader.t -> transition_property_value
+(** [read_transition_property_value t] is the [transition_property_value] parsed
+    from [t]. *)
 
 val pp_transition_property : transition_property Pp.t
 (** [pp_transition_property] is the pretty-printer for [transition_property]. *)

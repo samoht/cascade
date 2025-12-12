@@ -150,6 +150,9 @@ module Calc : sig
   val rem : float -> length calc
   val em : float -> length calc
   val pct : float -> length calc
+
+  val nested : 'a calc -> 'a calc
+  (** [nested inner] wraps [inner] in an explicit nested [calc()] call. *)
 end
 
 (** {1 Parsing Functions} *)

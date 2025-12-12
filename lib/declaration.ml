@@ -332,6 +332,10 @@ let read_value (type a) (prop : a property) t : declaration =
   | Max_height -> v Max_height (read_length_percentage t)
   | Font_size -> v Font_size (read_length_percentage t)
   | Border_radius -> v Border_radius (read_length t)
+  | Border_top_left_radius -> v Border_top_left_radius (read_length t)
+  | Border_top_right_radius -> v Border_top_right_radius (read_length t)
+  | Border_bottom_left_radius -> v Border_bottom_left_radius (read_length t)
+  | Border_bottom_right_radius -> v Border_bottom_right_radius (read_length t)
   | Gap -> v Gap (Properties.read_gap t)
   | Column_gap -> v Column_gap (read_length t)
   | Row_gap -> v Row_gap (read_length t)
@@ -441,8 +445,11 @@ let read_value (type a) (prop : a property) t : declaration =
   | Margin_top -> v Margin_top (read_length t)
   | Margin_bottom -> v Margin_bottom (read_length t)
   | Margin_inline -> v Margin_inline (read_length t)
+  | Margin_inline_start -> v Margin_inline_start (read_length t)
   | Margin_inline_end -> v Margin_inline_end (read_length t)
   | Margin_block -> v Margin_block (read_length t)
+  | Margin_block_start -> v Margin_block_start (read_length t)
+  | Margin_block_end -> v Margin_block_end (read_length t)
   (* Additional color properties *)
   | Text_decoration_color -> v Text_decoration_color (read_color t)
   (* Text decoration style *)
@@ -823,18 +830,18 @@ let grid_column_end value = v Grid_column_end value
 let grid_row (start, end_) =
   let pp ctx () =
     pp_grid_line ctx start;
-    Pp.op_char ctx '/';
+    Pp.char ctx '/';
     pp_grid_line ctx end_
   in
-  v Grid_row (Pp.to_string pp ())
+  v Grid_row (Pp.to_string ~minify:true pp ())
 
 let grid_column (start, end_) =
   let pp ctx () =
     pp_grid_line ctx start;
-    Pp.op_char ctx '/';
+    Pp.char ctx '/';
     pp_grid_line ctx end_
   in
-  v Grid_column (Pp.to_string pp ())
+  v Grid_column (Pp.to_string ~minify:true pp ())
 
 let grid_area value = v Grid_area value
 let width len = v Width (Length len)
@@ -882,6 +889,10 @@ let place_items value = v Place_items value
 let place_self value = v Place_self value
 let border_width len = v Border_width len
 let border_radius len = v Border_radius len
+let border_top_left_radius len = v Border_top_left_radius len
+let border_top_right_radius len = v Border_top_right_radius len
+let border_bottom_left_radius len = v Border_bottom_left_radius len
+let border_bottom_right_radius len = v Border_bottom_right_radius len
 let fill value = v Fill value
 let stroke value = v Stroke value
 let stroke_width value = v Stroke_width value
@@ -1037,8 +1048,11 @@ let padding_inline_start value = v Padding_inline_start value
 let padding_inline_end value = v Padding_inline_end value
 let padding_block value = v Padding_block value
 let margin_inline value = v Margin_inline value
-let margin_block value = v Margin_block value
+let margin_inline_start value = v Margin_inline_start value
 let margin_inline_end value = v Margin_inline_end value
+let margin_block value = v Margin_block value
+let margin_block_start value = v Margin_block_start value
+let margin_block_end value = v Margin_block_end value
 let will_change value = v Will_change value
 let contain value = v Contain value
 let isolation value = v Isolation value

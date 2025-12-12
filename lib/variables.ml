@@ -212,6 +212,7 @@ let rec vars_of_calc : type a. a calc -> any_var list = function
   | Var v -> [ V v ]
   | Num _ -> []
   | Expr (left, _, right) -> vars_of_calc left @ vars_of_calc right
+  | Nested inner -> vars_of_calc inner
 
 let vars_of_length (value : Values.length) : any_var list =
   match value with Var v -> [ V v ] | Calc calc -> vars_of_calc calc | _ -> []
@@ -432,8 +433,11 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Margin_bottom, value -> vars_of_length value
   | Margin_left, value -> vars_of_length value
   | Margin_inline, value -> vars_of_length value
+  | Margin_inline_start, value -> vars_of_length value
   | Margin_inline_end, value -> vars_of_length value
   | Margin_block, value -> vars_of_length value
+  | Margin_block_start, value -> vars_of_length value
+  | Margin_block_end, value -> vars_of_length value
   | Top, value -> vars_of_length value
   | Right, value -> vars_of_length value
   | Bottom, value -> vars_of_length value
@@ -469,6 +473,10 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Outline_color, value -> vars_of_color value
   (* Border radius *)
   | Border_radius, value -> vars_of_length value
+  | Border_top_left_radius, value -> vars_of_length value
+  | Border_top_right_radius, value -> vars_of_length value
+  | Border_bottom_left_radius, value -> vars_of_length value
+  | Border_bottom_right_radius, value -> vars_of_length value
   (* Outline offset *)
   | Outline_offset, value -> vars_of_length value
   | Flex_basis, value -> vars_of_length value
