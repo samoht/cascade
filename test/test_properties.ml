@@ -232,6 +232,10 @@ let check_steps_direction =
 let check_timing_function =
   check_value "timing-function" read_timing_function pp_timing_function
 
+let check_transition_property_value =
+  check_value "transition-property-value" read_transition_property_value
+    pp_transition_property_value
+
 let check_transition_property =
   check_value "transition-property" read_transition_property
     pp_transition_property
@@ -1349,6 +1353,15 @@ let test_timing_function () =
     "cubic-bezier(0.1, 0.7, 1.0, 0.1)";
   neg read_timing_function "cubic-bezier()"
 
+let test_transition_property_value () =
+  check_transition_property_value "all";
+  check_transition_property_value "none";
+  check_transition_property_value "opacity";
+  check_transition_property_value "transform";
+  (* Arbitrary identifier should be accepted (inert if non-animatable) *)
+  check_transition_property_value "invalid-transition";
+  neg read_transition_property_value ""
+
 let test_transition_property () =
   check_transition_property "all";
   check_transition_property "none";
@@ -2113,6 +2126,7 @@ let additional_tests =
     test_case "scale" `Quick test_scale;
     test_case "steps_direction" `Quick test_steps_direction;
     test_case "timing_function" `Quick test_timing_function;
+    test_case "transition_property_value" `Quick test_transition_property_value;
     test_case "transition_property" `Quick test_transition_property;
     test_case "transition_behavior" `Quick test_transition_behavior;
     test_case "transition" `Quick test_transition;

@@ -1820,12 +1820,15 @@ let pp_property : type a. a property Pp.t =
   | Padding_block -> Pp.string ctx "padding-block"
   | Margin -> Pp.string ctx "margin"
   | Margin_inline_end -> Pp.string ctx "margin-inline-end"
+  | Margin_inline_start -> Pp.string ctx "margin-inline-start"
   | Margin_left -> Pp.string ctx "margin-left"
   | Margin_right -> Pp.string ctx "margin-right"
   | Margin_top -> Pp.string ctx "margin-top"
   | Margin_bottom -> Pp.string ctx "margin-bottom"
   | Margin_inline -> Pp.string ctx "margin-inline"
   | Margin_block -> Pp.string ctx "margin-block"
+  | Margin_block_start -> Pp.string ctx "margin-block-start"
+  | Margin_block_end -> Pp.string ctx "margin-block-end"
   | Gap -> Pp.string ctx "gap"
   | Column_gap -> Pp.string ctx "column-gap"
   | Row_gap -> Pp.string ctx "row-gap"
@@ -1891,6 +1894,10 @@ let pp_property : type a. a property Pp.t =
   | Border_inline_start_width -> Pp.string ctx "border-inline-start-width"
   | Border_inline_end_width -> Pp.string ctx "border-inline-end-width"
   | Border_radius -> Pp.string ctx "border-radius"
+  | Border_top_left_radius -> Pp.string ctx "border-top-left-radius"
+  | Border_top_right_radius -> Pp.string ctx "border-top-right-radius"
+  | Border_bottom_left_radius -> Pp.string ctx "border-bottom-left-radius"
+  | Border_bottom_right_radius -> Pp.string ctx "border-bottom-right-radius"
   | Border_top_color -> Pp.string ctx "border-top-color"
   | Border_right_color -> Pp.string ctx "border-right-color"
   | Border_bottom_color -> Pp.string ctx "border-bottom-color"
@@ -2972,11 +2979,14 @@ let rec pp_svg_paint : svg_paint Pp.t =
           Pp.space ctx ();
           pp_svg_paint ctx fb)
 
-let pp_transition_property : transition_property Pp.t =
+let pp_transition_property_value : transition_property_value Pp.t =
  fun ctx -> function
   | All -> Pp.string ctx "all"
   | None -> Pp.string ctx "none"
   | Property s -> Pp.string ctx s
+
+let pp_transition_property : transition_property Pp.t =
+ fun ctx -> Pp.list ~sep:Pp.comma pp_transition_property_value ctx
 
 let pp_transition_behavior : transition_behavior Pp.t =
  fun ctx -> function
@@ -2986,7 +2996,7 @@ let pp_transition_behavior : transition_behavior Pp.t =
 
 let pp_transition_shorthand : transition_shorthand Pp.t =
  fun ctx { property; duration; timing_function; delay } ->
-  pp_transition_property ctx property;
+  pp_transition_property_value ctx property;
   (* Only output non-default values: defaults are 0s, ease, 0s *)
   (match duration with
   | Some (S 0.) | Some (Ms 0.) | None -> ()
@@ -4679,18 +4689,27 @@ end
 
 let read_timing_function t : timing_function = Timing_function.read t
 
-let read_transition_property t : transition_property =
-  Reader.enum "transition-property"
+let read_transition_property_value t : transition_property_value =
+  Reader.enum "transition-property-value"
     [
-      ("all", (All : transition_property));
-      ("none", (None : transition_property));
+      ("all", (All : transition_property_value));
+      ("none", (None : transition_property_value));
     ]
-    ~default:(fun t -> Property (Reader.ident t))
+    ~default:(fun t -> Property (Reader.ident ~keep_case:true t))
     t
+
+let read_transition_property t : transition_property =
+  (* Parse comma-separated list of transition properties *)
+  let rec loop acc =
+    let v = read_transition_property_value t in
+    Reader.ws t;
+    if Reader.comma_opt t then loop (v :: acc) else List.rev (v :: acc)
+  in
+  loop []
 
 let read_transition_shorthand t : transition_shorthand =
   (* Parse transition shorthand: property duration timing-function delay *)
-  let property = read_transition_property t in
+  let property = read_transition_property_value t in
 
   (* Duration: required for regular properties, optional for 'all' and 'none' *)
   let duration =
@@ -5444,6 +5463,10 @@ let read_any_property t =
   | "border-bottom-width" -> Prop Border_bottom_width
   | "border-left-width" -> Prop Border_left_width
   | "border-radius" -> Prop Border_radius
+  | "border-top-left-radius" -> Prop Border_top_left_radius
+  | "border-top-right-radius" -> Prop Border_top_right_radius
+  | "border-bottom-left-radius" -> Prop Border_bottom_left_radius
+  | "border-bottom-right-radius" -> Prop Border_bottom_right_radius
   | "outline-color" -> Prop Outline_color
   | "text-decoration-color" -> Prop Text_decoration_color
   | "display" -> Prop Display
@@ -5458,8 +5481,11 @@ let read_any_property t =
   | "margin-top" -> Prop Margin_top
   | "margin-bottom" -> Prop Margin_bottom
   | "margin-inline" -> Prop Margin_inline
+  | "margin-inline-start" -> Prop Margin_inline_start
   | "margin-inline-end" -> Prop Margin_inline_end
   | "margin-block" -> Prop Margin_block
+  | "margin-block-start" -> Prop Margin_block_start
+  | "margin-block-end" -> Prop Margin_block_end
   | "padding" -> Prop Padding
   | "padding-left" -> Prop Padding_left
   | "padding-right" -> Prop Padding_right
@@ -5717,8 +5743,8 @@ let animation_shorthand ?name ?duration ?timing_function ?delay ?iteration_count
       play_state;
     }
 
-let transition_shorthand ?(property = (All : transition_property)) ?duration
-    ?timing_function ?delay () : transition =
+let transition_shorthand ?(property = (All : transition_property_value))
+    ?duration ?timing_function ?delay () : transition =
   Shorthand { property; duration; timing_function; delay }
 
 let border_shorthand ?width ?style ?color () : border =
@@ -6227,12 +6253,15 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Padding_block -> pp pp_length
   | Margin -> pp (Pp.list ~sep:Pp.space pp_length)
   | Margin_inline_end -> pp pp_length
+  | Margin_inline_start -> pp pp_length
   | Margin_left -> pp pp_length
   | Margin_right -> pp pp_length
   | Margin_top -> pp pp_length
   | Margin_bottom -> pp pp_length
   | Margin_inline -> pp pp_length
   | Margin_block -> pp pp_length
+  | Margin_block_start -> pp pp_length
+  | Margin_block_end -> pp pp_length
   | Gap -> pp pp_gap
   | Column_gap -> pp pp_length
   | Row_gap -> pp pp_length
@@ -6274,6 +6303,10 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_inline_start_width -> pp pp_border_width
   | Border_inline_end_width -> pp pp_border_width
   | Border_radius -> pp pp_length
+  | Border_top_left_radius -> pp pp_length
+  | Border_top_right_radius -> pp pp_length
+  | Border_bottom_left_radius -> pp pp_length
+  | Border_bottom_right_radius -> pp pp_length
   | Border_top_color -> pp pp_color
   | Border_right_color -> pp pp_color
   | Border_bottom_color -> pp pp_color

@@ -528,6 +528,26 @@ val border_radius : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-radius}
      border-radius} property. *)
 
+val border_top_left_radius : length -> declaration
+(** [border_top_left_radius v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-top-left-radius}
+     border-top-left-radius} property. *)
+
+val border_top_right_radius : length -> declaration
+(** [border_top_right_radius v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-top-right-radius}
+     border-top-right-radius} property. *)
+
+val border_bottom_left_radius : length -> declaration
+(** [border_bottom_left_radius v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-bottom-left-radius}
+     border-bottom-left-radius} property. *)
+
+val border_bottom_right_radius : length -> declaration
+(** [border_bottom_right_radius v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-bottom-right-radius}
+     border-bottom-right-radius} property. *)
+
 val fill : svg_paint -> declaration
 (** [fill v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/fill} fill}
@@ -1125,11 +1145,20 @@ val padding_block : length -> declaration
 val margin_inline : length -> declaration
 (** [margin_inline v] is the CSS [margin-inline] property. *)
 
-val margin_block : length -> declaration
-(** [margin_block v] is the CSS [margin-block] property. *)
+val margin_inline_start : length -> declaration
+(** [margin_inline_start v] is the CSS [margin-inline-start] property. *)
 
 val margin_inline_end : length -> declaration
 (** [margin_inline_end v] is the CSS [margin-inline-end] property. *)
+
+val margin_block : length -> declaration
+(** [margin_block v] is the CSS [margin-block] property. *)
+
+val margin_block_start : length -> declaration
+(** [margin_block_start v] is the CSS [margin-block-start] property. *)
+
+val margin_block_end : length -> declaration
+(** [margin_block_end v] is the CSS [margin-block-end] property. *)
 
 val outline : outline -> declaration
 (** [outline v] is the CSS [outline] shorthand. *)

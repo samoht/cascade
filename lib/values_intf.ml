@@ -22,6 +22,7 @@ type 'a calc =
   | Val of 'a
   | Num of float
   | Expr of 'a calc * calc_op * 'a calc
+  | Nested of 'a calc (* Explicitly nested calc(), rendered as calc(inner) *)
 
 type length =
   | Px of float

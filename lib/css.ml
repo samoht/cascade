@@ -53,6 +53,7 @@ let statement_selector = function
 
 let statement_declarations = function
   | Rule r -> Some (Stylesheet.declarations r)
+  | Declarations decls -> Some decls
   | _ -> None
 
 let as_rule = function
@@ -80,6 +81,8 @@ let as_supports = function
 let is_nested_media = function
   | Media (_, [ Declarations _ ]) -> true
   | _ -> false
+
+let as_declarations = function Declarations decls -> Some decls | _ -> None
 
 let rec map f stmts =
   List.map
@@ -252,6 +255,7 @@ let media ~condition statements = Media (condition, statements)
 let media_nested ~condition declarations =
   Stylesheet.media_nested ~condition declarations
 
+let declarations decls = Declarations decls
 let layer ?name statements = Layer (name, statements)
 let layer_decl names = Layer_decl names
 

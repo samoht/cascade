@@ -50,9 +50,30 @@ let complex_values () =
   check_declaration ~expected:"background:linear-gradient(to right,red,blue)"
     "background: linear-gradient(to right, red, blue);";
 
-  (* Complex nested functions *)
-  check_declaration ~expected:"width:calc(100% - calc(50px + 10px))"
-    "width: calc(100% - calc(50px + 10px));"
+  (* Complex nested functions - nested calc() normalized to parentheses *)
+  check_declaration ~expected:"width:calc(100% - (50px + 10px))"
+    "width: calc(100% - calc(50px + 10px));";
+
+  (* Multiple nested calc() - tests Tailwind v4 space-y pattern *)
+  (* Note: multiplication/division operators don't need spaces in minified output *)
+  check_declaration
+    ~expected:
+      "margin-block-end:calc(var(--spacing)*2*(1 - var(--tw-space-y-reverse)))"
+    "margin-block-end: calc(calc(var(--spacing) * 2) * calc(1 - \
+     var(--tw-space-y-reverse)));";
+
+  (* Nested calc with multiplication on both sides *)
+  check_declaration ~expected:"width:calc(var(--x)*2*(var(--y) + 1))"
+    "width: calc(calc(var(--x) * 2) * calc(var(--y) + 1));";
+
+  (* Nested calc on left side of subtraction - no parens needed
+     (left-associative) *)
+  check_declaration ~expected:"height:calc(50px + 10px - 100%)"
+    "height: calc(calc(50px + 10px) - 100%);";
+
+  (* Double nesting - right side of subtraction needs parens *)
+  check_declaration ~expected:"width:calc(100% - (10px - (5px + 2px)))"
+    "width: calc(100% - calc(10px - calc(5px + 2px)));"
 
 let quoted_strings () =
   (* Simple quoted strings *)
@@ -242,8 +263,8 @@ let error_unclosed_block () =
     (fun () -> ignore (read_block r))
 
 let special_cases () =
-  (* Nested parentheses *)
-  check_declaration ~expected:"width:calc(100% - calc(50px + 10px))"
+  (* Nested calc() - parsed and normalized to use parentheses *)
+  check_declaration ~expected:"width:calc(100% - (50px + 10px))"
     "width: calc(100% - calc(50px + 10px));";
 
   (* Custom property with var() value *)
@@ -858,7 +879,7 @@ let edge_cases () =
   (* Cases with / operator - should be minified without spaces per CSS spec *)
   check_declaration ~expected:"width:calc((100% - 20px)/2)"
     "width: calc((100% - 20px) / 2)";
-  check_declaration ~expected:"height:calc(100vh - calc(50px + 1em))"
+  check_declaration ~expected:"height:calc(100vh - (50px + 1em))"
     "height: calc(100vh - calc(50px + 1em))";
 
   (* Nested operations mixing + and * to confirm only + and - get spaces *)

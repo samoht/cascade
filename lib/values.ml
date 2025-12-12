@@ -91,29 +91,43 @@ let pp_calc_op : calc_op Pp.t =
       Pp.string ctx "/";
       Pp.space_if_pretty ctx ()
 
-let pp_calc_expr ~precedence ~parent_prec pp_calc_inner ctx left op right =
-  let op_prec = precedence op in
-  let needs_parens = op_prec < parent_prec in
-  if needs_parens then Pp.char ctx '(';
-  pp_calc_inner ~parent_prec:op_prec ctx left;
-  pp_calc_op ctx op;
-  pp_calc_inner ~parent_prec:op_prec ctx right;
-  if needs_parens then Pp.char ctx ')'
-
 let pp_calc : type a. a Pp.t -> a calc Pp.t =
  fun pp_value ctx calc ->
   Pp.call "calc"
     (fun ctx calc ->
       let precedence = function Add | Sub -> 1 | Mul | Div -> 2 in
-      let rec pp_calc_inner ~parent_prec ctx = function
+      (* Print a calc expression, tracking parent precedence and whether we're
+         on the right side of a non-commutative operator (Sub/Div) *)
+      let rec pp_calc_inner ~parent_prec ~right_of_noncommut ctx = function
         | Val v -> pp_value ctx v
         | Var v -> pp_var pp_value ctx v
         | Num n -> Pp.float ctx n
+        | Nested inner ->
+            (* Explicitly nested calc() - render as calc(inner) *)
+            Pp.call "calc"
+              (fun ctx inner ->
+                pp_calc_inner ~parent_prec:0 ~right_of_noncommut:false ctx inner)
+              ctx inner
         | Expr (left, op, right) ->
-            pp_calc_expr ~precedence ~parent_prec pp_calc_inner ctx left op
-              right
+            let op_prec = precedence op in
+            (* Need parens if: - Our precedence is lower than parent (standard)
+               - OR we're on the right of a non-commutative op (Sub/Div) and our
+               op has same or lower precedence *)
+            let needs_parens =
+              op_prec < parent_prec
+              || (right_of_noncommut && op_prec <= parent_prec)
+            in
+            if needs_parens then Pp.char ctx '(';
+            pp_calc_inner ~parent_prec:op_prec ~right_of_noncommut:false ctx
+              left;
+            pp_calc_op ctx op;
+            (* Right side of Sub/Div needs special handling *)
+            let is_noncommut = match op with Sub | Div -> true | _ -> false in
+            pp_calc_inner ~parent_prec:op_prec ~right_of_noncommut:is_noncommut
+              ctx right;
+            if needs_parens then Pp.char ctx ')'
       in
-      pp_calc_inner ~parent_prec:0 ctx calc)
+      pp_calc_inner ~parent_prec:0 ~right_of_noncommut:false ctx calc)
     ctx calc
 
 (* Small helpers *)
@@ -696,6 +710,9 @@ module Calc = struct
   let rem f = Val (Rem f)
   let em f = Val (Em f)
   let pct f : length calc = Val (Pct f)
+
+  (* Wrap an expression in an explicit nested calc() *)
+  let nested inner = Nested inner
 end
 
 (** var() parser after "var" ident has been consumed *)
@@ -881,6 +898,12 @@ and read_calc_factor : type a. (Reader.t -> a) -> Reader.t -> a calc =
   Reader.ws t;
   match Reader.peek t with
   | Some '(' -> read_calc_parenthesized read_a t
+  | _ when Reader.looking_at t "calc(" ->
+      (* Handle nested calc() expressions *)
+      Reader.expect_string "calc(" t;
+      let expr = read_calc_expr read_a t in
+      Reader.expect ')' t;
+      expr
   | _ when Reader.looking_at t "var(" -> Var (read_var read_a t)
   | _ ->
       let read_val t = Val (read_a t) in

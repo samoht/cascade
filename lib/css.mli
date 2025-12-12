@@ -142,6 +142,10 @@ val is_nested_media : statement -> bool
 (** [is_nested_media stmt] returns [true] if the statement is a media query
     containing bare declarations (CSS nesting style), [false] otherwise. *)
 
+val as_declarations : statement -> declaration list option
+(** [as_declarations stmt] returns [Some decls] if the statement is a bare
+    declarations block (used in CSS nesting), [None] otherwise. *)
+
 val map :
   (Selector.t -> declaration list -> statement) ->
   statement list ->
@@ -301,6 +305,10 @@ val media_nested : condition:Media.t -> declaration list -> statement
     nesting, containing bare declarations (no selector). Used inside rules where
     the selector is inherited from the parent. *)
 
+val declarations : declaration list -> statement
+(** [declarations decls] creates a bare declarations block (used in CSS
+    nesting). *)
+
 val layer : ?name:string -> statement list -> statement
 (** [layer ?name statements] creates a [@layer] statement with the given
     statements. *)
@@ -394,6 +402,7 @@ type 'a calc =
   | Val of 'a
   | Num of float  (** Unitless number *)
   | Expr of 'a calc * calc_op * 'a calc
+  | Nested of 'a calc  (** Explicitly nested calc() *)
 
 type 'a fallback =
   | Empty  (** Empty fallback: var(--name,) *)
@@ -519,6 +528,10 @@ module Calc : sig
 
   val pct : float -> length calc
   (** [pct f] is a percentage value for [calc] expressions. *)
+
+  val nested : 'a calc -> 'a calc
+  (** [nested inner] wraps [inner] in an explicit nested [calc()] call. This
+      produces output like [calc(calc(...)*...)] instead of [calc(...*...)]. *)
 end
 
 type _ property
@@ -1127,15 +1140,30 @@ val margin_inline : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/margin-inline}
      margin-inline} property with a length value. *)
 
-val margin_block : length -> declaration
-(** [margin_block len] is the
-    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/margin-block}
-     margin-block} property with a length value. *)
+val margin_inline_start : length -> declaration
+(** [margin_inline_start len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/margin-inline-start}
+     margin-inline-start} property. *)
 
 val margin_inline_end : length -> declaration
 (** [margin_inline_end len] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/margin-inline-end}
      margin-inline-end} property. *)
+
+val margin_block : length -> declaration
+(** [margin_block len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/margin-block}
+     margin-block} property with a length value. *)
+
+val margin_block_start : length -> declaration
+(** [margin_block_start len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/margin-block-start}
+     margin-block-start} property. *)
+
+val margin_block_end : length -> declaration
+(** [margin_block_end len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/margin-block-end}
+     margin-block-end} property. *)
 
 (** {2:display_positioning Display & Positioning}
 
@@ -2703,6 +2731,26 @@ val border_radius : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-radius}
      border-radius} property. *)
 
+val border_top_left_radius : length -> declaration
+(** [border_top_left_radius radius] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-top-left-radius}
+     border-top-left-radius} property. *)
+
+val border_top_right_radius : length -> declaration
+(** [border_top_right_radius radius] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-top-right-radius}
+     border-top-right-radius} property. *)
+
+val border_bottom_left_radius : length -> declaration
+(** [border_bottom_left_radius radius] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-bottom-left-radius}
+     border-bottom-left-radius} property. *)
+
+val border_bottom_right_radius : length -> declaration
+(** [border_bottom_right_radius radius] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-bottom-right-radius}
+     border-bottom-right-radius} property. *)
+
 val border_top : string -> declaration
 (** [border_top border] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-top} border-top}
@@ -2972,11 +3020,14 @@ type duration =
   | S of float  (** seconds *)
   | Var of duration var  (** CSS variable reference *)
 
-(** CSS transition property values. *)
-type transition_property = All | None | Property of string
+(** CSS transition property value. *)
+type transition_property_value = All | None | Property of string
+
+type transition_property = transition_property_value list
+(** CSS transition property (list of property values). *)
 
 type transition_shorthand = {
-  property : transition_property;
+  property : transition_property_value;
   duration : duration option;
   timing_function : timing_function option;
   delay : duration option;
@@ -2991,7 +3042,7 @@ type transition =
   | Shorthand of transition_shorthand  (** CSS transition values. *)
 
 val transition_shorthand :
-  ?property:transition_property ->
+  ?property:transition_property_value ->
   ?duration:duration ->
   ?timing_function:timing_function ->
   ?delay:duration ->

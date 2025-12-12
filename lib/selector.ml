@@ -850,6 +850,10 @@ and read_simple t =
       if Reader.peek2 t = "::" then read_pseudo_element t
       else read_pseudo_class t
   | Some '*' -> read_type_or_universal t
+  | Some '&' ->
+      (* CSS nesting selector *)
+      Reader.skip t;
+      Nesting
   | Some c when Reader.is_ident_start c -> read_type_or_universal t
   | _ -> err_expected t "selector"
 
@@ -858,7 +862,7 @@ and read_compound t =
   let rec loop acc =
     (* Check if we can parse another simple selector *)
     match Reader.peek t with
-    | Some ('.' | '#' | '[' | ':' | '*') ->
+    | Some ('.' | '#' | '[' | ':' | '*' | '&') ->
         let s = read_simple t in
         loop (s :: acc)
     | Some c when Reader.is_ident_start c ->
@@ -889,7 +893,7 @@ and read_complex t =
       (* Could be descendant combinator - check if next chars form a selector *)
       let can_parse_selector =
         match Reader.peek t with
-        | Some ('.' | '#' | '[' | ':' | '*') -> true
+        | Some ('.' | '#' | '[' | ':' | '*' | '&') -> true
         | Some c when Reader.is_ident_start c -> true
         | _ -> false
       in
@@ -1188,6 +1192,7 @@ and pp : t Pp.t =
       pp_combinator ctx comb;
       pp ctx right
   | List selectors -> Pp.list ~sep:Pp.comma pp ctx selectors
+  | Nesting -> Pp.char ctx '&'
 
 let to_string ?minify t = Pp.to_string ?minify pp t
 

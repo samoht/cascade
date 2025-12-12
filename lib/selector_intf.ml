@@ -155,3 +155,4 @@ type t =
   | Compound of t list
   | Combined of t * combinator * t
   | List of t list
+  | Nesting (* & - CSS nesting selector *)
