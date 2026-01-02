@@ -3814,6 +3814,7 @@ type _ kind =
   | Duration : duration kind
   | Aspect_ratio : aspect_ratio kind
   | Border_style : border_style kind
+  | Outline_style : outline_style kind
   | Border : border kind
   | Font_weight : font_weight kind
   | Line_height : line_height kind

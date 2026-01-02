@@ -173,6 +173,7 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Duration -> pp pp_duration
   | Aspect_ratio -> pp pp_aspect_ratio
   | Border_style -> pp pp_border_style
+  | Outline_style -> pp pp_outline_style
   | Border -> pp pp_border
   | Font_weight -> pp pp_font_weight
   | Line_height -> pp pp_line_height
