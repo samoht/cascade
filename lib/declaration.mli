@@ -1093,6 +1093,9 @@ val rotate : angle -> declaration
 val scale : scale -> declaration
 (** [scale v] is the CSS [scale] property. *)
 
+val translate : translate_value -> declaration
+(** [translate v] is the CSS [translate] property. *)
+
 val perspective : length -> declaration
 (** [perspective v] is the CSS [perspective] property. *)
 

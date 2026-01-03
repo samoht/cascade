@@ -726,6 +726,13 @@ type scale =
   | None
   | Var of scale var
 
+type translate_value =
+  | X of length
+  | XY of length * length
+  | XYZ of length * length * length
+  | None
+  | Var of translate_value var
+
 type steps_direction =
   | Jump_start
   | Jump_end
@@ -1364,7 +1371,7 @@ type 'a property =
   | Opacity : float property
   | Mix_blend_mode : blend_mode property
   | Transform : transform list property
-  | Translate : string property
+  | Translate : translate_value property
   | Cursor : cursor property
   | Table_layout : table_layout property
   | Border_collapse : border_collapse property

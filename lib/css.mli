@@ -3235,6 +3235,18 @@ val scale : scale -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scale} scale} property.
 *)
 
+type translate_value =
+  | X of length
+  | XY of length * length
+  | XYZ of length * length * length
+  | None
+  | Var of translate_value var
+
+val translate : translate_value -> declaration
+(** [translate v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/translate} translate}
+    property. *)
+
 (** CSS filter values *)
 type filter =
   | None  (** No filter *)
