@@ -1753,11 +1753,11 @@ let pp_clip : clip Pp.t =
   | Clip_rect (top, right, bottom, left) ->
       Pp.string ctx "rect(";
       pp_length ctx top;
-      Pp.string ctx ", ";
+      Pp.char ctx ',';
       pp_length ctx right;
-      Pp.string ctx ", ";
+      Pp.char ctx ',';
       pp_length ctx bottom;
-      Pp.string ctx ", ";
+      Pp.char ctx ',';
       pp_length ctx left;
       Pp.char ctx ')'
 
