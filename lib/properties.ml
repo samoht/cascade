@@ -3051,6 +3051,30 @@ let rec pp_scale : scale Pp.t =
   | None -> Pp.string ctx "none"
   | Var v -> pp_var pp_scale ctx v
 
+let rec pp_translate_value : translate_value Pp.t =
+ fun ctx -> function
+  | X len -> pp_length ctx len
+  | XY (Var x, Var y) ->
+      (* Tailwind concatenates var() calls without spaces *)
+      pp_length ctx (Var x);
+      pp_length ctx (Var y)
+  | XY (x, y) ->
+      pp_length ctx x;
+      Pp.space ctx ();
+      pp_length ctx y
+  | XYZ (Var x, Var y, Var z) ->
+      pp_length ctx (Var x);
+      pp_length ctx (Var y);
+      pp_length ctx (Var z)
+  | XYZ (x, y, z) ->
+      pp_length ctx x;
+      Pp.space ctx ();
+      pp_length ctx y;
+      Pp.space ctx ();
+      pp_length ctx z
+  | None -> Pp.string ctx "none"
+  | Var v -> pp_var pp_translate_value ctx v
+
 let pp_outline_style : outline_style Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
@@ -6326,7 +6350,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Outline_offset -> pp pp_length
   | Perspective -> pp pp_length
   | Transform -> pp pp_transforms
-  | Translate -> pp Pp.string
+  | Translate -> pp pp_translate_value
   | Isolation -> pp pp_isolation
   | Transform_style -> pp pp_transform_style
   | Backface_visibility -> pp pp_backface_visibility

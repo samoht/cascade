@@ -292,6 +292,12 @@ let read_raw_value t =
   in
   loop ()
 
+(* Stub reader for translate_value - we primarily generate CSS, not parse it *)
+let read_translate_value t : Properties_intf.translate_value =
+  (* For now, just consume the value and return a None placeholder *)
+  ignore (read_raw_value t);
+  None
+
 let read_transform_value t = v Transform (read_transforms t)
 let read_webkit_transform_value t = v Webkit_transform (read_transforms t)
 
@@ -379,7 +385,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Justify_content -> v Justify_content (read_justify_content t)
   (* Transform property *)
   | Transform -> read_transform_value t
-  | Translate -> v Translate (read_raw_value t)
+  | Translate -> v Translate (read_translate_value t)
   (* Webkit Transform *)
   | Webkit_transform -> read_webkit_transform_value t
   (* Webkit Transition *)
@@ -1045,6 +1051,7 @@ let transform value = v Transform [ value ]
 let transforms value = v Transform value
 let rotate value = v Rotate value
 let scale (value : Properties_intf.scale) = v Scale value
+let translate (value : Properties_intf.translate_value) = v Translate value
 let perspective value = v Perspective value
 let perspective_origin value = v Perspective_origin value
 let padding_inline value = v Padding_inline value
