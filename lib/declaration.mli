@@ -421,6 +421,11 @@ val visibility : visibility -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/visibility} visibility}
     property. *)
 
+val inset : length -> declaration
+(** [inset v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/inset} inset} property.
+*)
+
 val top : length -> declaration
 (** [top v] is the {{:https://developer.mozilla.org/en-US/docs/Web/CSS/top} top}
     property. *)

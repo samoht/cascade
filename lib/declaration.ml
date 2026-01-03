@@ -867,6 +867,7 @@ let white_space value = v White_space value
 let display d = v Display d
 let position p = v Position p
 let visibility p = v Visibility p
+let inset len = v Inset len
 let top len = v Top len
 let right len = v Right len
 let bottom len = v Bottom len

@@ -1224,6 +1224,11 @@ val position : position -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/position} position}
     property. *)
 
+val inset : length -> declaration
+(** [inset len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/inset} inset} property
+    for positioned elements. *)
+
 val top : length -> declaration
 (** [top len] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/top} top} property for
