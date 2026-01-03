@@ -141,6 +141,9 @@ val host : ?selectors:t list -> unit -> t
 val any : (t -> bool) -> t -> bool
 (** [any p sel] returns [true] if any node in [sel] satisfies [p]. *)
 
+val has_focus : t -> bool
+(** Check presence of [:focus] pseudo-class in the selector. *)
+
 val has_focus_within : t -> bool
 
 val has_focus_visible : t -> bool

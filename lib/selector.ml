@@ -1273,6 +1273,8 @@ let rec any p = function
       List.exists (any p) xs || p (List xs)
   | s -> p s
 
+let has_focus sel = any (function Focus -> true | _ -> false) sel
+
 let has_focus_within sel =
   any (function Focus_within -> true | _ -> false) sel
 
