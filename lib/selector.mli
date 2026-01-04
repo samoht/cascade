@@ -58,6 +58,10 @@ val is_compound_list : t -> bool
 (** [is_compound_list selector] returns [true] if already a list of selectors.
 *)
 
+val as_list : t -> t list option
+(** [as_list selector] returns [Some selectors] if [selector] is a list, [None]
+    otherwise. Useful for pattern matching on merged selectors. *)
+
 val compound : t list -> t
 (** [compound selectors] compound selector (concatenates simple selectors). *)
 

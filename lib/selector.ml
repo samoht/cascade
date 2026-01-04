@@ -302,6 +302,7 @@ let list selectors =
   | _ -> List selectors
 
 let is_compound_list = function List _ -> true | _ -> false
+let as_list = function List sels -> Some sels | _ -> None
 let compound selectors = Compound selectors
 let err_expected t what = Reader.err_expected t what
 
@@ -1006,6 +1007,9 @@ let escape_selector_name name =
           | '\'' -> Buffer.add_string buf "\\'"
           | '@' -> Buffer.add_string buf "\\@"
           | '*' -> Buffer.add_string buf "\\*"
+          | '>' -> Buffer.add_string buf "\\>"
+          | '+' -> Buffer.add_string buf "\\+"
+          | '~' -> Buffer.add_string buf "\\~"
           | c -> Buffer.add_char buf c)
       name;
     Buffer.contents buf
