@@ -3075,6 +3075,27 @@ let rec pp_translate_value : translate_value Pp.t =
   | None -> Pp.string ctx "none"
   | Var v -> pp_var pp_translate_value ctx v
 
+let rec read_translate_value t : translate_value =
+  let _read_translate_var t : translate_value =
+    Var (read_var read_translate_value t)
+  in
+  let read_lengths t : translate_value =
+    let x = read_length t in
+    Reader.ws t;
+    (* Try to read second length *)
+    match Reader.option read_length t with
+    | Some y -> (
+        Reader.ws t;
+        (* Try to read third length *)
+        match Reader.option read_length t with
+        | Some z -> XYZ (x, y, z)
+        | None -> XY (x, y))
+    | None -> X x
+  in
+  Reader.enum_or_calls "translate"
+    [ ("none", (None : translate_value)) ]
+    ~calls:[] ~default:read_lengths t
+
 let pp_outline_style : outline_style Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"

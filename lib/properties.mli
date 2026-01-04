@@ -605,6 +605,12 @@ val read_text_shadow : Reader.t -> text_shadow
 val read_text_shadows : Reader.t -> text_shadow list
 (** [read_text_shadows t] parses a comma-separated list of [text_shadow]s. *)
 
+val pp_translate_value : translate_value Pp.t
+(** [pp_translate_value] is the pretty-printer for [translate_value]. *)
+
+val read_translate_value : Reader.t -> translate_value
+(** [read_translate_value t] is the [translate_value] parsed from [t]. *)
+
 val pp_filter : filter Pp.t
 (** [pp_filter] is the pretty-printer for [filter]. *)
 

@@ -344,6 +344,16 @@ let vars_of_text_transform (value : Properties.text_transform) : any_var list =
 let vars_of_scale (value : Properties.scale) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_translate_value (value : Properties.translate_value) : any_var list
+    =
+  match value with
+  | Var v -> [ V v ]
+  | X len -> vars_of_length len
+  | XY (len1, len2) -> vars_of_length len1 @ vars_of_length len2
+  | XYZ (len1, len2, len3) ->
+      vars_of_length len1 @ vars_of_length len2 @ vars_of_length len3
+  | None -> []
+
 let vars_of_quotes (value : Properties.quotes) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -511,6 +521,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   (* Transform properties *)
   | Transform, value -> vars_of_transform_list value
   | Webkit_transform, value -> vars_of_transform_list value
+  | Translate, value -> vars_of_translate_value value
   (* Border style properties *)
   | Border_style, value -> vars_of_border_style value
   | Border_top_style, value -> vars_of_border_style value
