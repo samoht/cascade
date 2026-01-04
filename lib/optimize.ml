@@ -182,6 +182,34 @@ let should_not_combine selector =
      compatibility *)
   contains_vendor_pseudo_element selector
 
+(** Extract modifier prefix from a class name (e.g., "before:" from
+    "before:absolute"). Returns None if no prefix. *)
+let extract_modifier_prefix class_name =
+  match String.index_opt class_name ':' with
+  | Some idx -> Some (String.sub class_name 0 (idx + 1))
+  | None -> None
+
+(** Check if two selectors can be combined. Following CSS cascade semantics,
+    selectors with different modifier prefixes should remain separate rules even
+    if they share identical declarations. For example, .before\:absolute::before
+    and .after\:absolute::after have different prefixes (before: vs after:) and
+    must not be merged to preserve cascade order. Selectors without modifier
+    prefixes (like .shadow and .shadow-sm) can be merged. *)
+let can_combine_selectors sel1 sel2 =
+  (* Get first class name from each selector *)
+  let first_class1 = Selector.first_class sel1 in
+  let first_class2 = Selector.first_class sel2 in
+  match (first_class1, first_class2) with
+  | Some c1, Some c2 ->
+      let prefix1 = extract_modifier_prefix c1 in
+      let prefix2 = extract_modifier_prefix c2 in
+      (* Can combine if both have the same prefix (or both have no prefix) *)
+      prefix1 = prefix2
+  | _ ->
+      (* If either has no class (unusual), allow combining to preserve existing
+         behavior *)
+      true
+
 (* Convert group of selectors to a rule *)
 let group_to_rule :
     (Selector.t * declaration list) list -> Stylesheet.rule option = function
@@ -223,15 +251,19 @@ let combine_identical_rules (rules : Stylesheet.rule list) :
               combine_consecutive acc
                 [ (rule.selector, rule.declarations) ]
                 rest
-          | (_prev_sel, prev_decls) :: _ ->
-              if prev_decls = rule.declarations then
-                (* Same declarations, add to current group *)
+          | (prev_sel, prev_decls) :: _ ->
+              if
+                prev_decls = rule.declarations
+                && can_combine_selectors prev_sel rule.selector
+              then
+                (* Same declarations and compatible selectors, add to current
+                   group *)
                 combine_consecutive acc
                   ((rule.selector, rule.declarations) :: current_group)
                   rest
               else
-                (* Different declarations, flush current group and start new
-                   one *)
+                (* Different declarations or incompatible selectors, flush
+                   current group and start new one *)
                 let acc' = flush_group acc current_group in
                 combine_consecutive acc'
                   [ (rule.selector, rule.declarations) ]
