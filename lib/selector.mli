@@ -165,3 +165,13 @@ val first_class : t -> string option
 val contains_modifier_colon : t -> bool
 (** [contains_modifier_colon sel] returns [true] if any class name contains a
     modifier colon (e.g., "md:...", "hover:..."). *)
+
+val modifier_prefix : t -> string option
+(** [modifier_prefix sel] extracts the modifier prefix from the first class in
+    the selector. Returns [Some "before:"] for ".before:absolute",
+    [Some "hover:"] for ".hover:bg-blue-500", [None] for ".shadow" or
+    ".shadow-sm".
+
+    This is used by the CSS optimizer to determine if selectors can be safely
+    merged while preserving cascade semantics. Selectors with different modifier
+    prefixes target different elements and must remain separate. *)

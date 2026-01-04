@@ -182,13 +182,6 @@ let should_not_combine selector =
      compatibility *)
   contains_vendor_pseudo_element selector
 
-(** Extract modifier prefix from a class name (e.g., "before:" from
-    "before:absolute"). Returns None if no prefix. *)
-let extract_modifier_prefix class_name =
-  match String.index_opt class_name ':' with
-  | Some idx -> Some (String.sub class_name 0 (idx + 1))
-  | None -> None
-
 (** Check if two selectors can be combined. Following CSS cascade semantics,
     selectors with different modifier prefixes should remain separate rules even
     if they share identical declarations. For example, .before\:absolute::before
@@ -196,19 +189,11 @@ let extract_modifier_prefix class_name =
     must not be merged to preserve cascade order. Selectors without modifier
     prefixes (like .shadow and .shadow-sm) can be merged. *)
 let can_combine_selectors sel1 sel2 =
-  (* Get first class name from each selector *)
-  let first_class1 = Selector.first_class sel1 in
-  let first_class2 = Selector.first_class sel2 in
-  match (first_class1, first_class2) with
-  | Some c1, Some c2 ->
-      let prefix1 = extract_modifier_prefix c1 in
-      let prefix2 = extract_modifier_prefix c2 in
-      (* Can combine if both have the same prefix (or both have no prefix) *)
-      prefix1 = prefix2
-  | _ ->
-      (* If either has no class (unusual), allow combining to preserve existing
-         behavior *)
-      true
+  (* Use Selector.modifier_prefix API to extract prefixes structurally *)
+  let prefix1 = Selector.modifier_prefix sel1 in
+  let prefix2 = Selector.modifier_prefix sel2 in
+  (* Can combine if both have the same prefix (or both have no prefix) *)
+  prefix1 = prefix2
 
 (* Convert group of selectors to a rule *)
 let group_to_rule :

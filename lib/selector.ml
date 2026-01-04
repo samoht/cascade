@@ -1302,5 +1302,13 @@ let rec first_class = function
 let contains_modifier_colon sel =
   exists_class (fun name -> String.contains name ':') sel
 
+let modifier_prefix sel =
+  match first_class sel with
+  | Option.None -> Option.None
+  | Option.Some class_name -> (
+      match String.index_opt class_name ':' with
+      | Option.Some idx -> Option.Some (String.sub class_name 0 (idx + 1))
+      | Option.None -> Option.None)
+
 let ( && ) sel1 sel2 = compound [ sel1; sel2 ]
 let ( || ) s1 s2 = combine s1 Column s2
