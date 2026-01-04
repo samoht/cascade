@@ -337,6 +337,9 @@ let check_color_interpolation =
 let check_position_value =
   check_value "position_value" read_position_value pp_position_value
 
+let check_translate_value =
+  check_value "translate_value" read_translate_value pp_translate_value
+
 let check_font_weight =
   check_value "font_weight" read_font_weight pp_font_weight
 
@@ -1548,6 +1551,16 @@ let test_position_value () =
   check_position_value "inherit";
   neg read_position_value "invalid-position"
 
+let test_translate_value () =
+  check_translate_value "none";
+  check_translate_value "10px";
+  check_translate_value "10px 20px";
+  check_translate_value "10px 20px 30px";
+  check_translate_value "50% 100%";
+  check_translate_value "var(--my-translate)";
+  check_translate_value "var(--x) var(--y)";
+  neg read_translate_value "invalid-translate"
+
 let test_user_select () =
   check_user_select "none";
   check_user_select "auto";
@@ -2144,6 +2157,7 @@ let additional_tests =
     test_case "background_image" `Quick test_background_image;
     test_case "background_position" `Quick test_background_position;
     test_case "position_value" `Quick test_position_value;
+    test_case "translate_value" `Quick test_translate_value;
     test_case "user_select" `Quick test_user_select;
     test_case "pointer_events" `Quick test_pointer_events;
     test_case "touch_action" `Quick test_touch_action;
