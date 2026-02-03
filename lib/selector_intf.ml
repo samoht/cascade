@@ -17,6 +17,25 @@ type combinator =
 type ns = Any | None | Prefix of string
 type attr_flag = Case_insensitive | Case_sensitive
 
+(** ARIA attribute names for type-safe handling *)
+type aria_attr =
+  | Busy
+  | Checked
+  | Disabled
+  | Expanded
+  | Hidden
+  | Pressed
+  | Readonly
+  | Required
+  | Selected
+  | Custom of string  (** For aria-[custom] arbitrary values *)
+
+(** Structured attribute names *)
+type attr_name =
+  | Aria of aria_attr  (** aria-* attributes *)
+  | Data of string  (** data-* attributes *)
+  | Regular of string  (** All other attributes (class, type, etc.) *)
+
 type nth =
   | Odd (* 2n+1 *)
   | Even (* 2n *)
@@ -28,7 +47,7 @@ type t =
   | Class of string
   | Id of string
   | Universal of ns option
-  | Attribute of ns option * string * attribute_match * attr_flag option
+  | Attribute of ns option * attr_name * attribute_match * attr_flag option
   (* Simple pseudo-classes *)
   | Hover
   | Active

@@ -2056,8 +2056,17 @@ let test_clip () =
 let test_clip_path () =
   check_clip_path "none";
   check_clip_path "url(clip.svg)";
+  (* inset() with 1-4 values like margin/padding shorthand *)
+  check_clip_path "inset(50%)";
+  (* 1 value: all sides *)
+  check_clip_path "inset(10px)";
+  check_clip_path "inset(10% 20%)";
+  (* 2 values: top/bottom, left/right *)
+  check_clip_path "inset(10% 20% 30%)";
+  (* 3 values: top, left/right, bottom *)
   check_clip_path ~expected:"inset(0 10px 20px 30px)"
     "inset(0px 10px 20px 30px)";
+  (* 4 values *)
   check_clip_path "circle(50px)";
   check_clip_path "ellipse(25px 50px)";
   check_clip_path ~expected:"polygon(0 0,100px 0,50px 100px)"

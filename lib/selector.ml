@@ -182,9 +182,53 @@ let id name =
 let universal = Universal None
 let universal_ns ns = Universal (Some ns)
 
+(** Parse an ARIA attribute name into its structured type *)
+let aria_attr_of_string s : aria_attr =
+  match s with
+  | "aria-busy" -> Busy
+  | "aria-checked" -> Checked
+  | "aria-disabled" -> Disabled
+  | "aria-expanded" -> Expanded
+  | "aria-hidden" -> Hidden
+  | "aria-pressed" -> Pressed
+  | "aria-readonly" -> Readonly
+  | "aria-required" -> Required
+  | "aria-selected" -> Selected
+  | s when String.length s > 5 && String.sub s 0 5 = "aria-" ->
+      Custom (String.sub s 5 (String.length s - 5))
+  | _ -> invalid_arg ("not an aria attribute: " ^ s)
+
+(** Categorize an attribute name into its structured type *)
+let attr_name_of_string name =
+  let len = String.length name in
+  if len > 5 && String.sub name 0 5 = "aria-" then
+    Aria (aria_attr_of_string name)
+  else if len > 5 && String.sub name 0 5 = "data-" then
+    Data (String.sub name 5 (len - 5))
+  else Regular name
+
+(** Convert attr_name back to string for printing *)
+let string_of_aria_attr : aria_attr -> string = function
+  | Busy -> "aria-busy"
+  | Checked -> "aria-checked"
+  | Disabled -> "aria-disabled"
+  | Expanded -> "aria-expanded"
+  | Hidden -> "aria-hidden"
+  | Pressed -> "aria-pressed"
+  | Readonly -> "aria-readonly"
+  | Required -> "aria-required"
+  | Selected -> "aria-selected"
+  | Custom s -> "aria-" ^ s
+
+let string_of_attr_name = function
+  | Aria a -> string_of_aria_attr a
+  | Data s -> "data-" ^ s
+  | Regular s -> s
+
 let attribute ?ns ?flag name match_type =
   validate_css_identifier name;
-  Attribute (ns, name, match_type, flag)
+  let attr_name = attr_name_of_string name in
+  Attribute (ns, attr_name, match_type, flag)
 
 (* Convenience: build a class selector from a raw class token. Escaping happens
    in [pp]/[to_string]. Equivalent to [class_]. *)
@@ -1044,10 +1088,10 @@ and pp : t Pp.t =
   | Universal ns ->
       Pp.option pp_ns ctx ns;
       Pp.char ctx '*'
-  | Attribute (ns, name, match_type, flag) ->
+  | Attribute (ns, attr_name, match_type, flag) ->
       Pp.char ctx '[';
       Pp.option pp_ns ctx ns;
-      Pp.string ctx name;
+      Pp.string ctx (string_of_attr_name attr_name);
       pp_attribute_match ctx match_type;
       pp_attr_flag ctx flag;
       Pp.char ctx ']'
@@ -1287,6 +1331,15 @@ let has_focus_within sel =
 
 let has_focus_visible sel =
   any (function Focus_visible -> true | _ -> false) sel
+
+let has_pseudo_element sel =
+  any
+    (function
+      | Before | After | First_letter | First_line | Backdrop | Marker
+      | Placeholder | Selection | File_selector_button ->
+          true
+      | _ -> false)
+    sel
 
 let exists_class pred sel =
   any (function Class name -> pred name | _ -> false) sel

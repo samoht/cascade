@@ -3284,7 +3284,8 @@ type clip =
 type clip_path =
   | Clip_path_none
   | Clip_path_url of string
-  | Clip_path_inset of length * length * length * length
+  | Clip_path_inset of length * length option * length option * length option
+      (** inset(top, right?, bottom?, left?) - supports 1-4 values *)
   | Clip_path_circle of length  (** Circle with radius *)
   | Clip_path_ellipse of length * length  (** Ellipse with rx, ry *)
   | Clip_path_polygon of (length * length) list

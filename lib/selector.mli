@@ -174,6 +174,10 @@ val has_peer_marker : t -> bool
 (** [has_peer_marker sel] returns [true] if selector contains [:where(.peer)],
     indicating a peer-* modifier like peer-checked, peer-focus, peer-has. *)
 
+val has_pseudo_element : t -> bool
+(** [has_pseudo_element sel] returns [true] if selector contains a
+    pseudo-element like ::before, ::after, ::marker, etc. *)
+
 val modifier_prefix : t -> string option
 (** [modifier_prefix sel] extracts the modifier prefix from the first class in
     the selector. Returns [Some "before:"] for ".before:absolute",
