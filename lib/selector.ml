@@ -666,6 +666,7 @@ let pseudo_vendor_idents =
     ("-webkit-datetime-edit-meridiem-field", Webkit_datetime_edit_meridiem_field);
     ("-webkit-inner-spin-button", Webkit_inner_spin_button);
     ("-webkit-outer-spin-button", Webkit_outer_spin_button);
+    ("-webkit-calendar-picker-indicator", Webkit_calendar_picker_indicator);
   ]
 
 (* Forward declarations for mutually recursive functions *)
@@ -1154,6 +1155,8 @@ and pp : t Pp.t =
       vendor_elem ctx "webkit-datetime-edit-meridiem-field"
   | Webkit_inner_spin_button -> vendor_elem ctx "webkit-inner-spin-button"
   | Webkit_outer_spin_button -> vendor_elem ctx "webkit-outer-spin-button"
+  | Webkit_calendar_picker_indicator ->
+      vendor_elem ctx "webkit-calendar-picker-indicator"
   (* Functional pseudo-elements *)
   | Part idents -> elem_func ctx "part" (Pp.list ~sep:Pp.comma Pp.string) idents
   | Slotted selectors -> elem_func ctx "slotted" sels selectors
@@ -1301,6 +1304,42 @@ let rec first_class = function
 
 let contains_modifier_colon sel =
   exists_class (fun name -> String.contains name ':') sel
+
+(** Check if selector contains :where(.group) - used for group-* modifiers.
+    Note: can't use 'any' because it transforms Where to List before calling p.
+*)
+let rec has_group_marker = function
+  | Where xs ->
+      List.exists
+        (function
+          | Class "group" -> true
+          | Compound cs ->
+              List.exists (function Class "group" -> true | _ -> false) cs
+          | other -> has_group_marker other)
+        xs
+  | Compound xs -> List.exists has_group_marker xs
+  | Combined (a, _, b) -> has_group_marker a || has_group_marker b
+  | List xs -> List.exists has_group_marker xs
+  | Is xs | Not xs | Has xs | Slotted xs | Cue xs | Cue_region xs ->
+      List.exists has_group_marker xs
+  | _ -> false
+
+(** Check if selector contains :where(.peer) - used for peer-* modifiers *)
+let rec has_peer_marker = function
+  | Where xs ->
+      List.exists
+        (function
+          | Class "peer" -> true
+          | Compound cs ->
+              List.exists (function Class "peer" -> true | _ -> false) cs
+          | other -> has_peer_marker other)
+        xs
+  | Compound xs -> List.exists has_peer_marker xs
+  | Combined (a, _, b) -> has_peer_marker a || has_peer_marker b
+  | List xs -> List.exists has_peer_marker xs
+  | Is xs | Not xs | Has xs | Slotted xs | Cue xs | Cue_region xs ->
+      List.exists has_peer_marker xs
+  | _ -> false
 
 let modifier_prefix sel =
   match first_class sel with
