@@ -1771,12 +1771,21 @@ let pp_clip_path : clip_path Pp.t =
   | Clip_path_inset (top, right, bottom, left) ->
       Pp.string ctx "inset(";
       pp_length ctx top;
-      Pp.space ctx ();
-      pp_length ctx right;
-      Pp.space ctx ();
-      pp_length ctx bottom;
-      Pp.space ctx ();
-      pp_length ctx left;
+      (match right with
+      | None -> ()
+      | Some r -> (
+          Pp.space ctx ();
+          pp_length ctx r;
+          match bottom with
+          | None -> ()
+          | Some b -> (
+              Pp.space ctx ();
+              pp_length ctx b;
+              match left with
+              | None -> ()
+              | Some l ->
+                  Pp.space ctx ();
+                  pp_length ctx l)));
       Pp.char ctx ')'
   | Clip_path_circle radius ->
       Pp.string ctx "circle(";
@@ -6238,11 +6247,23 @@ let read_clip_path t : clip_path =
     Reader.ws t;
     let top = read_length t in
     Reader.ws t;
-    let right = read_length t in
+    let right : length option =
+      if Reader.peek t = Some ')' then None else Some (read_length t)
+    in
     Reader.ws t;
-    let bottom = read_length t in
+    let bottom : length option =
+      match right with
+      | None -> None
+      | Some _ ->
+          if Reader.peek t = Some ')' then None else Some (read_length t)
+    in
     Reader.ws t;
-    let left = read_length t in
+    let left : length option =
+      match bottom with
+      | None -> None
+      | Some _ ->
+          if Reader.peek t = Some ')' then None else Some (read_length t)
+    in
     Reader.ws t;
     Reader.expect ')' t;
     Clip_path_inset (top, right, bottom, left))
