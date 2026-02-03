@@ -166,6 +166,14 @@ val contains_modifier_colon : t -> bool
 (** [contains_modifier_colon sel] returns [true] if any class name contains a
     modifier colon (e.g., "md:...", "hover:..."). *)
 
+val has_group_marker : t -> bool
+(** [has_group_marker sel] returns [true] if selector contains [:where(.group)],
+    indicating a group-* modifier like group-hover, group-focus, group-has. *)
+
+val has_peer_marker : t -> bool
+(** [has_peer_marker sel] returns [true] if selector contains [:where(.peer)],
+    indicating a peer-* modifier like peer-checked, peer-focus, peer-has. *)
+
 val modifier_prefix : t -> string option
 (** [modifier_prefix sel] extracts the modifier prefix from the first class in
     the selector. Returns [Some "before:"] for ".before:absolute",

@@ -101,6 +101,32 @@ let deduplicate_declarations props =
 
 (** {1 Rule Optimization} *)
 
+(* Extract the pseudo-element from a selector (::before, ::after, etc.). Returns
+   None if no pseudo-element is present. Used to prevent combining selectors
+   with different pseudo-elements which would change semantics. *)
+let rec extract_pseudo_element : Selector.t -> Selector.t option = function
+  | Before -> Some Before
+  | After -> Some After
+  | First_letter -> Some First_letter
+  | First_line -> Some First_line
+  | Marker -> Some Marker
+  | Placeholder -> Some Placeholder
+  | Selection -> Some Selection
+  | File_selector_button -> Some File_selector_button
+  | Backdrop -> Some Backdrop
+  | Compound sels ->
+      (* For compound selectors, look for pseudo-element at the end *)
+      List.fold_left
+        (fun acc sel ->
+          match extract_pseudo_element sel with
+          | Some _ as pe -> pe
+          | None -> acc)
+        None sels
+  | Combined (_, _, right) ->
+      (* Pseudo-element is always at the end of a combined selector *)
+      extract_pseudo_element right
+  | _ -> None
+
 (* Check if a selector contains vendor-specific pseudo-elements. These should
    not be grouped because if one selector in a group is invalid in a browser,
    the entire rule fails. Keeping them separate ensures maximum
@@ -182,18 +208,27 @@ let should_not_combine selector =
      compatibility *)
   contains_vendor_pseudo_element selector
 
-(** Check if two selectors can be combined. Following CSS cascade semantics,
-    selectors with different modifier prefixes should remain separate rules even
-    if they share identical declarations. For example, .before\:absolute::before
-    and .after\:absolute::after have different prefixes (before: vs after:) and
-    must not be merged to preserve cascade order. Selectors without modifier
-    prefixes (like .shadow and .shadow-sm) can be merged. *)
+(** Check if two selectors can be combined. This is only called when the
+    declarations are already verified to be identical. Following Tailwind v4's
+    behavior:
+    - Don't combine if the selectors have different pseudo-elements (::before vs
+      ::after) since they target different generated content
+    - Don't combine if one has modifiers and one doesn't (e.g., .bg-blue-500 and
+      .aria-selected:bg-blue-500) to preserve ordering semantics
+    - Otherwise, can combine since both rules set the same values *)
 let can_combine_selectors sel1 sel2 =
-  (* Use Selector.modifier_prefix API to extract prefixes structurally *)
-  let prefix1 = Selector.modifier_prefix sel1 in
-  let prefix2 = Selector.modifier_prefix sel2 in
-  (* Can combine if both have the same prefix (or both have no prefix) *)
-  prefix1 = prefix2
+  (* Check if pseudo-elements match (both None, or both the same) *)
+  let pe1 = extract_pseudo_element sel1 in
+  let pe2 = extract_pseudo_element sel2 in
+  if pe1 <> pe2 then false
+  else
+    (* Compare modifier prefixes. Selectors can only be combined if they have
+       the same modifier prefix (or both have none). This ensures that: -
+       .before:... and .after:... stay separate (different prefixes) -
+       .group-focus:... and .group-has-[:checked]:... stay separate -
+       .dark:group-has-[:checked]:... and .dark:peer-checked:... CAN combine
+       (same outer prefix "dark:") *)
+    Selector.modifier_prefix sel1 = Selector.modifier_prefix sel2
 
 (* Convert group of selectors to a rule *)
 let group_to_rule :
@@ -262,26 +297,35 @@ let combine_identical_rules (rules : Stylesheet.rule list) :
    immediately adjacent media queries to preserve cascade order. When blocks are
    merged, we recursively call merge_consecutive_media on the combined content
    to merge any inner consecutive media queries. *)
-let rec merge_consecutive_media (stmts : statement list) : statement list =
+(* Forward declaration to allow merge_consecutive_media to call statements *)
+let statements_ref : (statement list -> statement list) ref =
+  ref (fun stmts -> stmts)
+
+let merge_consecutive_media (stmts : statement list) : statement list =
+  let optimize_merged_block block =
+    (* When we merge media blocks, the resulting block may have consecutive
+       rules with identical declarations that should be combined. We need to
+       re-run the full optimization pipeline on the merged content. *)
+    !statements_ref block
+  in
   let rec merge result prev_media = function
     | [] -> (
         match prev_media with
         | Some (cond, block) ->
-            (* Re-merge the block content in case it contains consecutive
-               media *)
-            result @ [ Media (cond, merge_consecutive_media block) ]
+            (* Emit pending media block with re-optimized content *)
+            result @ [ Media (cond, optimize_merged_block block) ]
         | None -> result)
     | Media (cond, block) :: rest -> (
         match prev_media with
         | Some (prev_cond, prev_block) when Media.equal prev_cond cond ->
-            (* Same condition as previous - merge the blocks and re-optimize *)
-            merge result (Some (cond, prev_block @ block)) rest
+            (* Same condition as previous - merge the blocks *)
+            let merged_block = prev_block @ block in
+            merge result (Some (cond, merged_block)) rest
         | Some (prev_cond, prev_block) ->
-            (* Different condition - emit previous (with merged content), store
-               new one *)
+            (* Different condition - emit previous (with optimized content),
+               store new one *)
             merge
-              (result
-              @ [ Media (prev_cond, merge_consecutive_media prev_block) ])
+              (result @ [ Media (prev_cond, optimize_merged_block prev_block) ])
               (Some (cond, block))
               rest
         | None ->
@@ -291,9 +335,9 @@ let rec merge_consecutive_media (stmts : statement list) : statement list =
         (* Non-media statement - flush any pending media query *)
         match prev_media with
         | Some (cond, block) ->
-            (* Emit media query (with merged content) then the statement *)
+            (* Emit media query (with optimized content) then the statement *)
             merge
-              (result @ [ Media (cond, merge_consecutive_media block); stmt ])
+              (result @ [ Media (cond, optimize_merged_block block); stmt ])
               None rest
         | None -> merge (result @ [ stmt ]) None rest)
   in
@@ -404,6 +448,9 @@ let single_rule (rule : rule) : rule =
   }
 
 let rules (rules : rule list) : rule list = optimize_rules rules
+
+(* Initialize the forward reference for merge_consecutive_media *)
+let () = statements_ref := statements
 
 (** {1 Stylesheet Optimization} *)
 
