@@ -99,9 +99,18 @@ let rec pp_rule : rule Pp.t =
           Pp.string ctx (String.make (2 * (ctx.indent - 1)) ' ')));
   Pp.block_close ctx ()
 
+and pp_keyframe_selector : Keyframe.selector Pp.t =
+ fun ctx sel ->
+  match sel with
+  | Keyframe.Positions positions ->
+      Pp.list ~sep:Pp.comma
+        (fun ctx pos -> Pp.string ctx (Keyframe.position_to_string pos))
+        ctx positions
+  | Keyframe.Raw s -> Pp.string ctx s
+
 and pp_keyframe : keyframe Pp.t =
  fun ctx kf ->
-  Pp.string ctx (Keyframe.selector_to_string kf.keyframe_selector);
+  pp_keyframe_selector ctx kf.keyframe_selector;
   Pp.sp ctx ();
   Pp.braces
     (fun ctx () ->
