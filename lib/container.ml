@@ -6,8 +6,14 @@ type t =
   | Named of string * t
   | Raw of string
 
+(* Format float without trailing period (24. -> 24, 24.5 -> 24.5) *)
+let format_rem f =
+  let s = string_of_float f in
+  if String.ends_with ~suffix:"." s then String.sub s 0 (String.length s - 1)
+  else s
+
 let rec to_string = function
-  | Min_width_rem rem -> "(min-width:" ^ Float.to_string rem ^ "rem)"
+  | Min_width_rem rem -> "(min-width:" ^ format_rem rem ^ "rem)"
   | Min_width_px px -> "(min-width:" ^ Int.to_string px ^ "px)"
   | Named (name, cond) -> name ^ " " ^ to_string cond
   | Raw s -> s
