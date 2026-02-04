@@ -9,7 +9,7 @@ type position =
 let position_to_string = function
   | From -> "from"
   | To -> "to"
-  | Percent p -> Printf.sprintf "%g%%" p
+  | Percent p -> Float.to_string p ^ "%"
 
 (** A keyframe selector (one or more positions, or raw string). *)
 type selector = Positions of position list | Raw of string
@@ -38,7 +38,7 @@ let position_of_string s =
     try
       let p = float_of_string (String.sub s 0 (String.length s - 1)) in
       Some (Percent p)
-    with _ -> None
+    with Failure _ | Invalid_argument _ -> None
   else None
 
 (** Parse a selector string like "from", "50%", or "from, 50%". Always succeeds

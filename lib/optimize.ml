@@ -222,13 +222,26 @@ let can_combine_selectors sel1 sel2 =
   let pe2 = extract_pseudo_element sel2 in
   if pe1 <> pe2 then false
   else
-    (* Compare modifier prefixes. Selectors can only be combined if they have
-       the same modifier prefix (or both have none). This ensures that: -
-       .before:... and .after:... stay separate (different prefixes) -
-       .group-focus:... and .group-has-[:checked]:... stay separate -
-       .dark:group-has-[:checked]:... and .dark:peer-checked:... CAN combine
-       (same outer prefix "dark:") *)
-    Selector.modifier_prefix sel1 = Selector.modifier_prefix sel2
+    (* If both have pseudo-elements, check if they have the same base class.
+       This prevents merging .form-input::placeholder and
+       .form-textarea::placeholder which are different utilities that happen to
+       share a pseudo-element. *)
+    let base_class_matches =
+      match (pe1, pe2) with
+      | Some _, Some _ ->
+          (* Both have pseudo-elements - check base classes *)
+          Selector.first_class sel1 = Selector.first_class sel2
+      | _ -> true (* No pseudo-elements, can combine if modifiers match *)
+    in
+    if not base_class_matches then false
+    else
+      (* Compare modifier prefixes. Selectors can only be combined if they have
+         the same modifier prefix (or both have none). This ensures that: -
+         .before:... and .after:... stay separate (different prefixes) -
+         .group-focus:... and .group-has-[:checked]:... stay separate -
+         .dark:group-has-[:checked]:... and .dark:peer-checked:... CAN combine
+         (same outer prefix "dark:") *)
+      Selector.modifier_prefix sel1 = Selector.modifier_prefix sel2
 
 (* Convert group of selectors to a rule *)
 let group_to_rule :
@@ -308,6 +321,40 @@ let merge_consecutive_media (stmts : statement list) : statement list =
        re-run the full optimization pipeline on the merged content. *)
     !statements_ref block
   in
+  (* Check if a block contains nested preference-based media queries. Preference
+     media (contrast, reduced-motion, color-scheme) inside another preference
+     media should not be merged to preserve Tailwind's structure for stacked
+     modifiers like contrast-more:dark. *)
+  let has_nested_preference_media block =
+    List.exists
+      (function
+        | Media (cond, _) -> (
+            match cond with
+            | Prefers_contrast _ | Prefers_reduced_motion _
+            | Prefers_color_scheme _ ->
+                true
+            | _ -> false)
+        | _ -> false)
+      block
+  in
+  (* Check if a block contains group/peer selectors (complex relational
+     selectors). These use :is() or :where() pseudo-classes. For hover media,
+     Tailwind keeps group-hover/peer-hover separate from regular hover
+     utilities. *)
+  let has_group_or_peer_selectors block =
+    let rec selector_has_is_or_where = function
+      | Selector.Is _ | Selector.Where _ -> true
+      | Selector.Combined (left, _, right) ->
+          selector_has_is_or_where left || selector_has_is_or_where right
+      | Selector.Compound sels -> List.exists selector_has_is_or_where sels
+      | Selector.List sels -> List.exists selector_has_is_or_where sels
+      | _ -> false
+    in
+    List.exists
+      (function
+        | Rule { selector; _ } -> selector_has_is_or_where selector | _ -> false)
+      block
+  in
   let rec merge result prev_media = function
     | [] -> (
         match prev_media with
@@ -317,8 +364,26 @@ let merge_consecutive_media (stmts : statement list) : statement list =
         | None -> result)
     | Media (cond, block) :: rest -> (
         match prev_media with
-        | Some (prev_cond, prev_block) when Media.equal prev_cond cond ->
-            (* Same condition as previous - merge the blocks *)
+        | Some (prev_cond, prev_block)
+          when Media.equal prev_cond cond
+               (* Don't merge if either block contains nested preference media.
+                  This keeps stacked preference modifiers separate while
+                  allowing other nested media (like hover inside dark) to be
+                  merged. *)
+               && (not
+                     (has_nested_preference_media prev_block
+                     || has_nested_preference_media block))
+               (* For hover media, don't merge if one block has group/peer
+                  selectors and the other doesn't. This matches Tailwind's
+                  strategy of keeping group-hover utilities separate from
+                  regular hover utilities. *)
+               &&
+               match cond with
+               | Hover ->
+                   has_group_or_peer_selectors prev_block
+                   = has_group_or_peer_selectors block
+               | _ -> true ->
+            (* Same condition and compatible structure - merge the blocks *)
             let merged_block = prev_block @ block in
             merge result (Some (cond, merged_block)) rest
         | Some (prev_cond, prev_block) ->

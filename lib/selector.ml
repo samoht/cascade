@@ -242,38 +242,43 @@ let hex_to_int c =
 
 (* Unescape CSS escapes per spec: \XX...XX (1-6 hex) or \X (any char). Handles
    both hex escapes (e.g., \3A for ':') and simple escapes (e.g., \:). *)
+(* Helper to process hex escape sequences. Returns (codepoint, next_index) *)
+let process_hex_escape s i len =
+  let rec consume_hex acc n idx =
+    if n = 6 || idx >= len || not (is_hex_char s.[idx]) then (acc, idx)
+    else consume_hex ((acc * 16) + hex_to_int s.[idx]) (n + 1) (idx + 1)
+  in
+  let codepoint, next_idx = consume_hex 0 0 (i + 1) in
+  (* Skip optional whitespace after hex escape *)
+  let final_idx =
+    if next_idx < len && s.[next_idx] = ' ' then next_idx + 1 else next_idx
+  in
+  (codepoint, final_idx)
+
 let unescape_selector_name s =
   let len = String.length s in
   let buf = Buffer.create len in
+  let process_escape i =
+    if i + 1 >= len then
+      (* Trailing backslash - ignore *)
+      len
+    else if is_hex_char s.[i + 1] then (
+      let codepoint, final_idx = process_hex_escape s i len in
+      (* Add the unescaped character if it's valid *)
+      if codepoint > 0 && codepoint <= 0x10FFFF then
+        Buffer.add_utf_8_uchar buf (Uchar.of_int codepoint);
+      final_idx)
+    else (
+      (* Simple escape: just take the next character literally *)
+      Buffer.add_char buf s.[i + 1];
+      i + 2)
+  in
   let rec loop i =
     if i >= len then ()
-    else if s.[i] = '\\' then
-      if i + 1 >= len then
-        (* Trailing backslash - ignore *)
-        ()
-      else if is_hex_char s.[i + 1] then (
-        (* Hex escape: consume up to 6 hex digits *)
-        let rec consume_hex acc n idx =
-          if n = 6 || idx >= len || not (is_hex_char s.[idx]) then (acc, idx)
-          else consume_hex ((acc * 16) + hex_to_int s.[idx]) (n + 1) (idx + 1)
-        in
-        let codepoint, next_idx = consume_hex 0 0 (i + 1) in
-        (* Skip optional whitespace after hex escape *)
-        let final_idx =
-          if next_idx < len && s.[next_idx] = ' ' then next_idx + 1
-          else next_idx
-        in
-        (* Add the unescaped character if it's valid *)
-        if codepoint > 0 && codepoint <= 0x10FFFF then
-          Buffer.add_utf_8_uchar buf (Uchar.of_int codepoint);
-        loop final_idx)
-      else (
-        (* Simple escape: just take the next character literally *)
-        Buffer.add_char buf s.[i + 1];
-        loop (i + 2))
-    else (
+    else if s.[i] <> '\\' then (
       Buffer.add_char buf s.[i];
       loop (i + 1))
+    else loop (process_escape i)
   in
   loop 0;
   Buffer.contents buf
