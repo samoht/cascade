@@ -653,11 +653,7 @@ and pp_color : color Pp.t =
 let duration_str_len f unit_suffix =
   (* Simple estimation: format the number and add unit length *)
   let num_str =
-    if f = floor f then string_of_int (int_of_float f)
-    else
-      (* Format with enough precision, strip trailing zeros *)
-      let s = Printf.sprintf "%.6g" f in
-      s
+    if f = floor f then string_of_int (int_of_float f) else Float.to_string f
   in
   String.length num_str + String.length unit_suffix
 

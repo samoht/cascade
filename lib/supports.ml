@@ -10,11 +10,11 @@ type t =
   | Raw of string  (** Escape hatch for unparsed conditions *)
 
 let rec to_string = function
-  | Property (prop, value) -> Printf.sprintf "(%s:%s)" prop value
-  | Selector sel -> Printf.sprintf "selector(%s)" (Selector.to_string sel)
-  | Not cond -> Printf.sprintf "not %s" (to_string cond)
-  | And (a, b) -> Printf.sprintf "%s and %s" (to_string a) (to_string b)
-  | Or (a, b) -> Printf.sprintf "%s or %s" (to_string a) (to_string b)
+  | Property (prop, value) -> "(" ^ prop ^ ":" ^ value ^ ")"
+  | Selector sel -> "selector(" ^ Selector.to_string sel ^ ")"
+  | Not cond -> "not " ^ to_string cond
+  | And (a, b) -> to_string a ^ " and " ^ to_string b
+  | Or (a, b) -> to_string a ^ " or " ^ to_string b
   | Raw s -> s
 
 let rec compare t1 t2 =

@@ -12,9 +12,7 @@ type t =
 
 val to_string : t -> string
 (** [to_string t] converts a container condition to its CSS string
-    representation. Does NOT include the [@container] prefix - just the
-    condition part. Example: [Min_width_rem 24.] becomes ["(min-width:24rem)"]
-*)
+    representation. *)
 
 val compare : t -> t -> int
 (** [compare t1 t2] compares two container conditions. *)
