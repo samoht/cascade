@@ -1381,6 +1381,12 @@ type 'a property =
   | Pointer_events : pointer_events property
   | Overflow : overflow property
   | Inset : length property
+  | Inset_inline : length property
+  | Inset_inline_start : length property
+  | Inset_inline_end : length property
+  | Inset_block : length property
+  | Inset_block_start : length property
+  | Inset_block_end : length property
   | Top : length property
   | Right : length property
   | Bottom : length property

@@ -1229,6 +1229,28 @@ val inset : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/inset} inset} property
     for positioned elements. *)
 
+val inset_inline : length -> declaration
+(** [inset_inline len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/inset-inline}
+     inset-inline} logical property. *)
+
+val inset_inline_start : length -> declaration
+(** [inset_inline_start len] is the inset-inline-start logical property. *)
+
+val inset_inline_end : length -> declaration
+(** [inset_inline_end len] is the inset-inline-end logical property. *)
+
+val inset_block : length -> declaration
+(** [inset_block len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/inset-block}
+     inset-block} logical property. *)
+
+val inset_block_start : length -> declaration
+(** [inset_block_start len] is the inset-block-start logical property. *)
+
+val inset_block_end : length -> declaration
+(** [inset_block_end len] is the inset-block-end logical property. *)
+
 val top : length -> declaration
 (** [top len] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/top} top} property for

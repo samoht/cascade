@@ -426,6 +426,28 @@ val inset : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/inset} inset} property.
 *)
 
+val inset_inline : length -> declaration
+(** [inset_inline v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/inset-inline}
+     inset-inline} property. *)
+
+val inset_inline_start : length -> declaration
+(** [inset_inline_start v] is the inset-inline-start property. *)
+
+val inset_inline_end : length -> declaration
+(** [inset_inline_end v] is the inset-inline-end property. *)
+
+val inset_block : length -> declaration
+(** [inset_block v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/inset-block}
+     inset-block} property. *)
+
+val inset_block_start : length -> declaration
+(** [inset_block_start v] is the inset-block-start property. *)
+
+val inset_block_end : length -> declaration
+(** [inset_block_end v] is the inset-block-end property. *)
+
 val top : length -> declaration
 (** [top v] is the {{:https://developer.mozilla.org/en-US/docs/Web/CSS/top} top}
     property. *)
