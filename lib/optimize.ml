@@ -337,24 +337,6 @@ let merge_consecutive_media (stmts : statement list) : statement list =
         | _ -> false)
       block
   in
-  (* Check if a block contains group/peer selectors (complex relational
-     selectors). These use :is() or :where() pseudo-classes. For hover media,
-     Tailwind keeps group-hover/peer-hover separate from regular hover
-     utilities. *)
-  let has_group_or_peer_selectors block =
-    let rec selector_has_is_or_where = function
-      | Selector.Is _ | Selector.Where _ -> true
-      | Selector.Combined (left, _, right) ->
-          selector_has_is_or_where left || selector_has_is_or_where right
-      | Selector.Compound sels -> List.exists selector_has_is_or_where sels
-      | Selector.List sels -> List.exists selector_has_is_or_where sels
-      | _ -> false
-    in
-    List.exists
-      (function
-        | Rule { selector; _ } -> selector_has_is_or_where selector | _ -> false)
-      block
-  in
   let rec merge result prev_media = function
     | [] -> (
         match prev_media with
@@ -370,19 +352,9 @@ let merge_consecutive_media (stmts : statement list) : statement list =
                   This keeps stacked preference modifiers separate while
                   allowing other nested media (like hover inside dark) to be
                   merged. *)
-               && (not
-                     (has_nested_preference_media prev_block
-                     || has_nested_preference_media block))
-               (* For hover media, don't merge if one block has group/peer
-                  selectors and the other doesn't. This matches Tailwind's
-                  strategy of keeping group-hover utilities separate from
-                  regular hover utilities. *)
-               &&
-               match cond with
-               | Hover ->
-                   has_group_or_peer_selectors prev_block
-                   = has_group_or_peer_selectors block
-               | _ -> true ->
+               && not
+                    (has_nested_preference_media prev_block
+                    || has_nested_preference_media block) ->
             (* Same condition and compatible structure - merge the blocks *)
             let merged_block = prev_block @ block in
             merge result (Some (cond, merged_block)) rest

@@ -141,17 +141,20 @@ val nth_child : ?of_:t list -> nth -> t
 val host : ?selectors:t list -> unit -> t
 (** [host ?selectors ()] [:host] or [:host(selector)] pseudo-class. *)
 
-(** Analysis helpers (structure-based, no string scanning) *)
 val any : (t -> bool) -> t -> bool
-(** [any p sel] returns [true] if any node in [sel] satisfies [p]. *)
+(** [any predicate selector] returns [true] if any node in [selector] satisfies
+    [predicate]. Analysis helper (structure-based, no string scanning). *)
 
 val has_focus : t -> bool
-(** Check presence of [:focus] pseudo-class in the selector. *)
+(** [has_focus sel] checks presence of [:focus] pseudo-class in the selector. *)
 
 val has_focus_within : t -> bool
+(** [has_focus_within sel] checks presence of [:focus-within] pseudo-class in
+    the selector. *)
 
 val has_focus_visible : t -> bool
-(** Check presence of focus-related pseudo-classes in the selector. *)
+(** [has_focus_visible sel] checks presence of [:focus-visible] pseudo-class in
+    the selector. *)
 
 val exists_class : (string -> bool) -> t -> bool
 (** [exists_class pred sel] returns [true] if any class node satisfies [pred].

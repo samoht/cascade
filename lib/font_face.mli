@@ -7,6 +7,8 @@
 type metric_override = Normal | Percent of float
 
 val metric_override_to_string : metric_override -> string
+(** [metric_override_to_string m] converts a metric override to its CSS string
+    representation. *)
 
 (** {1 Size Adjust} *)
 
@@ -14,6 +16,7 @@ type size_adjust = float
 (** Size adjustment percentage. *)
 
 val size_adjust_to_string : size_adjust -> string
+(** [size_adjust_to_string s] converts size adjust to string. *)
 
 (** {1 Font Source} *)
 
@@ -27,7 +30,11 @@ type src = src_entry list
 (** Font source list. *)
 
 val src_entry_to_string : src_entry -> string
+(** [src_entry_to_string e] converts source entry to string. *)
+
 val src_to_string : src -> string
+(** [src_to_string entries] converts a font source list to its CSS string
+    representation. *)
 
 (** {1 Parsing} *)
 
