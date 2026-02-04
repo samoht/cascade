@@ -11,8 +11,8 @@ type t =
   | Raw of string
 
 let to_string = function
-  | Min_width rem -> Printf.sprintf "(min-width:%grem)" rem
-  | Max_width rem -> Printf.sprintf "(max-width:%grem)" rem
+  | Min_width rem -> "(min-width:" ^ Float.to_string rem ^ "rem)"
+  | Max_width rem -> "(max-width:" ^ Float.to_string rem ^ "rem)"
   | Prefers_reduced_motion `No_preference ->
       "(prefers-reduced-motion:no-preference)"
   | Prefers_reduced_motion `Reduce -> "(prefers-reduced-motion:reduce)"
@@ -57,7 +57,7 @@ let kind_of_string cond =
       let end_pos = String.index_from cond start 'r' in
       let value_str = String.sub cond start (end_pos - start) |> String.trim in
       Kind_responsive (float_of_string value_str)
-    with _ -> Kind_responsive 0.
+    with Not_found | Failure _ | Invalid_argument _ -> Kind_responsive 0.
   else if String.length cond > 8 && String.sub cond 1 7 = "prefers" then
     if contains cond "color-scheme" then Kind_preference_appearance
     else Kind_preference_accessibility
