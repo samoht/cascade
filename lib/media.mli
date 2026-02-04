@@ -16,7 +16,7 @@ val to_string : t -> string
 
 val compare : t -> t -> int
 (** [compare a b] compares conditions for sorting. Order: Hover < Other/Raw <
-    Preference_accessibility < Responsive < Preference_appearance *)
+    Preference_accessibility < Responsive < Preference_appearance. *)
 
 val equal : t -> t -> bool
 (** [equal a b] tests structural equality. *)

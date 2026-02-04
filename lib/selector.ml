@@ -1023,7 +1023,13 @@ let escape_selector_name name =
     (* Helper to convert char to hex escape *)
     let hex_escape c =
       let code = Char.code c in
-      Printf.sprintf "\\%x " code
+      let hex_digits = "0123456789abcdef" in
+      let rec to_hex n acc =
+        if n = 0 then acc
+        else to_hex (n / 16) (String.make 1 hex_digits.[n mod 16] ^ acc)
+      in
+      let hex_str = if code = 0 then "0" else to_hex code "" in
+      "\\" ^ hex_str ^ " "
     in
     (* Check if first character needs special hex escaping *)
     let first_char = name.[0] in

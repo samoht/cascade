@@ -10,9 +10,13 @@ type t =
   | Hover
   | Raw of string
 
+let format_rem rem =
+  if Float.is_integer rem then Int.to_string (Float.to_int rem)
+  else Float.to_string rem
+
 let to_string = function
-  | Min_width rem -> "(min-width:" ^ Float.to_string rem ^ "rem)"
-  | Max_width rem -> "(max-width:" ^ Float.to_string rem ^ "rem)"
+  | Min_width rem -> "(min-width:" ^ format_rem rem ^ "rem)"
+  | Max_width rem -> "(max-width:" ^ format_rem rem ^ "rem)"
   | Prefers_reduced_motion `No_preference ->
       "(prefers-reduced-motion:no-preference)"
   | Prefers_reduced_motion `Reduce -> "(prefers-reduced-motion:reduce)"

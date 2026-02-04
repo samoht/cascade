@@ -7,8 +7,8 @@ type t =
   | Raw of string
 
 let rec to_string = function
-  | Min_width_rem rem -> Printf.sprintf "(min-width:%grem)" rem
-  | Min_width_px px -> Printf.sprintf "(min-width:%dpx)" px
+  | Min_width_rem rem -> "(min-width:" ^ Float.to_string rem ^ "rem)"
+  | Min_width_px px -> "(min-width:" ^ Int.to_string px ^ "px)"
   | Named (name, cond) -> name ^ " " ^ to_string cond
   | Raw s -> s
 

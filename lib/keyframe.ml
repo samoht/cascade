@@ -9,7 +9,12 @@ type position =
 let position_to_string = function
   | From -> "from"
   | To -> "to"
-  | Percent p -> Float.to_string p ^ "%"
+  | Percent p ->
+      let p_str =
+        if Float.is_integer p then Int.to_string (Float.to_int p)
+        else Float.to_string p
+      in
+      p_str ^ "%"
 
 (** A keyframe selector (one or more positions, or raw string). *)
 type selector = Positions of position list | Raw of string
