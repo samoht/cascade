@@ -314,6 +314,241 @@ let combine_identical_rules (rules : Stylesheet.rule list) :
 let statements_ref : (statement list -> statement list) ref =
   ref (fun stmts -> stmts)
 
+(* Group all media blocks with the same condition and selector complexity
+   together, but only for specific media types (Hover, Min_width, Max_width).
+   This allows @media (hover:hover) blocks to be consolidated while keeping
+   simple hover and group-hover separate, matching Tailwind's behavior.
+
+   For @media (hover:hover), the consolidated block is placed after all Regular
+   utilities but before responsive media queries (@media (min-width:...)). For
+   responsive media, the consolidated block is placed at the last occurrence. *)
+let consolidate_media_blocks (stmts : statement list) : statement list =
+  let optimize_merged_block block = !statements_ref block in
+
+  (* Check if a media condition should be consolidated *)
+  let should_consolidate cond =
+    match cond with
+    | Media.Hover | Media.Min_width _ | Media.Max_width _
+    | Media.Prefers_reduced_motion _ ->
+        true
+    | _ -> false
+  in
+
+  (* Check if a statement is a responsive media query *)
+  let is_responsive_media = function
+    | Media (cond, _) -> (
+        match cond with
+        | Media.Min_width _ | Media.Max_width _ -> true
+        | _ -> false)
+    | _ -> false
+  in
+
+  (* Classify selector complexity for grouping *)
+  let classify_complexity selector =
+    let sel_str = Selector.to_string selector in
+    (* Complex selectors contain group-, peer-, has-, or :is(:where patterns *)
+    let has_pattern str pattern =
+      try
+        let _ = String.index str (String.get pattern 0) in
+        let len = String.length pattern in
+        let rec check_at pos =
+          if pos + len > String.length str then false
+          else if String.sub str pos len = pattern then true
+          else check_at (pos + 1)
+        in
+        check_at 0
+      with Not_found -> false
+    in
+    if
+      has_pattern sel_str "group-"
+      || has_pattern sel_str "peer-"
+      || has_pattern sel_str "has-"
+      || has_pattern sel_str ":is(:where"
+    then "complex"
+    else "simple"
+  in
+
+  (* Get the dominant complexity of a block (most common selector type) *)
+  let block_complexity block =
+    let complexities =
+      List.filter_map
+        (function
+          | Rule { selector; _ } -> Some (classify_complexity selector)
+          | _ -> None)
+        block
+    in
+    if List.length complexities = 0 then "simple"
+    else if
+      List.length (List.filter (( = ) "complex") complexities)
+      > List.length (List.filter (( = ) "simple") complexities)
+    then "complex"
+    else "simple"
+  in
+
+  (* Check if a block contains nested preference-based media queries *)
+  let has_nested_preference_media block =
+    List.exists
+      (function
+        | Media (cond, _) -> (
+            match cond with
+            | Prefers_contrast _ | Prefers_reduced_motion _
+            | Prefers_color_scheme _ ->
+                true
+            | _ -> false)
+        | _ -> false)
+      block
+  in
+
+  (* Check if a block is for container utilities (has .container selector).
+     Container media queries should not be consolidated with responsive media to
+     preserve their positioning near the base container utility. *)
+  let is_container_block block =
+    List.exists
+      (function
+        | Rule { selector; _ } ->
+            let sel_str = Selector.to_string selector in
+            (* Check if selector contains .container without any modifiers *)
+            sel_str = ".container"
+        | _ -> false)
+      block
+  in
+
+  (* First pass: collect all media blocks by condition AND complexity *)
+  let media_map = Hashtbl.create 16 in
+  let last_pos = Hashtbl.create 16 in
+  let first_responsive_pos = ref None in
+  let has_responsive = ref false in
+  let has_preference_media = ref false in
+
+  List.iteri
+    (fun i stmt ->
+      match stmt with
+      | Media (cond, block)
+        when should_consolidate cond
+             && (not (has_nested_preference_media block))
+             && not (is_container_block block) ->
+          let complexity = block_complexity block in
+          let key = Media.to_string cond ^ ":" ^ complexity in
+          (* Track the LAST position for this media condition + complexity *)
+          Hashtbl.replace last_pos key i;
+          let existing =
+            try Hashtbl.find media_map key with Not_found -> (cond, [])
+          in
+          let _, blocks = existing in
+          Hashtbl.replace media_map key (cond, blocks @ [ block ]);
+          (* Track first responsive media position for hover placement *)
+          if is_responsive_media stmt then (
+            has_responsive := true;
+            if !first_responsive_pos = None then first_responsive_pos := Some i)
+      | Media (cond, _) -> (
+          (* Check for preference-based media (indicates top-level context) *)
+          match cond with
+          | Media.Prefers_color_scheme _ | Media.Prefers_reduced_motion _
+          | Media.Prefers_contrast _ ->
+              has_preference_media := true
+          | _ -> ())
+      | _ when is_responsive_media stmt ->
+          has_responsive := true;
+          if !first_responsive_pos = None then first_responsive_pos := Some i
+      | _ -> ())
+    stmts;
+
+  (* Determine insertion position for hover media blocks. At top-level
+     (indicated by responsive or preference media, or many statements), place
+     hover: - Before responsive media if present, OR - At end of list if no
+     responsive media In nested contexts (no responsive, no preference media,
+     few statements), use last occurrence. *)
+  let regular_stmt_count =
+    List.fold_left
+      (fun acc stmt -> match stmt with Rule _ -> acc + 1 | _ -> acc)
+      0 stmts
+  in
+  let is_top_level =
+    !has_responsive || !has_preference_media || regular_stmt_count > 10
+  in
+  let hover_insert_pos =
+    match (!first_responsive_pos, is_top_level) with
+    | Some pos, _ -> pos (* Before responsive media *)
+    | None, true ->
+        List.length stmts (* At end for top-level without responsive *)
+    | None, false -> -1 (* Nested context - use last occurrence *)
+  in
+
+  (* Second pass: emit statements, consolidating media blocks *)
+  let emitted_media = Hashtbl.create 16 in
+  let pending_hover_blocks = ref [] in
+  let pending_motion_blocks = ref [] in
+  let should_reposition_hover = hover_insert_pos >= 0 in
+
+  let rec filter_with_index i acc = function
+    | [] ->
+        (* At the end, emit any pending blocks: first hover, then motion-reduce.
+           This happens when hover_insert_pos = List.length stmts (at end). We
+           want hover first, then motion-reduce, so append in that order. *)
+        List.rev_append acc (!pending_hover_blocks @ !pending_motion_blocks)
+    | stmt :: rest ->
+        let new_acc =
+          (* Check if we've reached the hover insertion point *)
+          let acc_with_hover =
+            if i = hover_insert_pos && List.length !pending_hover_blocks > 0
+            then (
+              (* Emit hover blocks, then motion blocks *)
+              let all_pending =
+                !pending_hover_blocks @ !pending_motion_blocks
+              in
+              let hover_acc = List.rev_append all_pending acc in
+              pending_hover_blocks := [];
+              pending_motion_blocks := [];
+              hover_acc)
+            else acc
+          in
+
+          match stmt with
+          | Media (cond, block)
+            when should_consolidate cond
+                 && (not (has_nested_preference_media block))
+                 && not (is_container_block block) ->
+              let complexity = block_complexity block in
+              let key = Media.to_string cond ^ ":" ^ complexity in
+              if Hashtbl.mem last_pos key then
+                let is_last_pos = Hashtbl.find last_pos key = i in
+                if is_last_pos && not (Hashtbl.mem emitted_media key) then (
+                  (* This is the last occurrence - consolidate *)
+                  Hashtbl.add emitted_media key true;
+                  let _, all_blocks = Hashtbl.find media_map key in
+                  let merged = List.concat all_blocks in
+                  let consolidated =
+                    Media (cond, optimize_merged_block merged)
+                  in
+
+                  match cond with
+                  | Media.Hover when should_reposition_hover ->
+                      (* For hover at top-level, add to pending list for
+                         repositioning. Append to maintain order (first
+                         occurrence stays first). *)
+                      pending_hover_blocks :=
+                        !pending_hover_blocks @ [ consolidated ];
+                      acc_with_hover
+                  | Media.Prefers_reduced_motion _ when is_top_level ->
+                      (* For motion-reduce at top-level, add to pending list
+                         (after hover). Append to maintain order. *)
+                      pending_motion_blocks :=
+                        !pending_motion_blocks @ [ consolidated ];
+                      acc_with_hover
+                  | _ ->
+                      (* For responsive media, or hover in nested context, emit
+                         at last position *)
+                      consolidated :: acc_with_hover)
+                else acc_with_hover (* Skip non-last occurrences *)
+              else
+                (* Not in map - keep as-is *)
+                stmt :: acc_with_hover
+          | _ -> stmt :: acc_with_hover
+        in
+        filter_with_index (i + 1) new_acc rest
+  in
+  filter_with_index 0 [] stmts
+
 let merge_consecutive_media (stmts : statement list) : statement list =
   let optimize_merged_block block =
     (* When we merge media blocks, the resulting block may have consecutive
@@ -412,7 +647,8 @@ let merge_layer_declarations (stmts : statement list) : statement list =
 (* Main statement processing function with layer optimization *)
 let rec statements (stmts : statement list) : statement list =
   process_statements [] stmts
-  |> merge_consecutive_media |> merge_layer_declarations
+  |> consolidate_media_blocks |> merge_consecutive_media
+  |> merge_layer_declarations
 
 and process_statements (acc : statement list) (remaining : statement list) :
     statement list =
