@@ -2880,8 +2880,10 @@ let pp_flex : flex Pp.t =
   | Full (grow, shrink, basis) ->
       Pp.float ctx grow;
       Pp.space ctx ();
-      Pp.float ctx shrink;
-      Pp.space ctx ();
+      (* Omit shrink when it's 1 (the default) to match Tailwind v4 output *)
+      if shrink <> 1.0 then (
+        Pp.float ctx shrink;
+        Pp.space ctx ());
       pp_flex_basis ctx basis
 
 let pp_align_content : align_content Pp.t =
