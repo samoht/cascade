@@ -157,7 +157,7 @@ val map :
     - Traversal is depth-first, processing nested containers recursively
     - Transformation is applied to all rules at all nesting levels
     - Non-rule statements (at-rules without rule content) maintain their
-      relative order *)
+      relative order. *)
 
 val sort :
   (Selector.t * declaration list -> Selector.t * declaration list -> int) ->
@@ -170,7 +170,7 @@ val sort :
     - Non-rule statements are preserved in their original positions
     - Sorting occurs independently within each container level
     - Nested containers (media, supports, layers) have their rules sorted
-      recursively *)
+      recursively. *)
 
 (** Existential type for property information that preserves type safety *)
 type property_info =
@@ -203,7 +203,7 @@ val keyframes : string -> keyframe list -> statement
           };
         ]
     ]}
-    produces [@keyframes pulse { 50% { opacity: 0.5 } }] *)
+    produces [@keyframes pulse { 50% { opacity: 0.5 } }]. *)
 
 val as_keyframes : statement -> (string * keyframe list) option
 (** [as_keyframes stmt] returns [Some (name, frames)] if the statement is a
