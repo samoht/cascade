@@ -497,6 +497,12 @@ let read_value (type a) (prop : a property) t : declaration =
   | Border_inline_end_color -> v Border_inline_end_color (read_color t)
   (* Position properties *)
   | Inset -> v Inset (read_length t)
+  | Inset_inline -> v Inset_inline (read_length t)
+  | Inset_inline_start -> v Inset_inline_start (read_length t)
+  | Inset_inline_end -> v Inset_inline_end (read_length t)
+  | Inset_block -> v Inset_block (read_length t)
+  | Inset_block_start -> v Inset_block_start (read_length t)
+  | Inset_block_end -> v Inset_block_end (read_length t)
   | Top -> v Top (read_length t)
   | Right -> v Right (read_length t)
   | Bottom -> v Bottom (read_length t)
@@ -835,19 +841,25 @@ let grid_row_end value = v Grid_row_end value
 let grid_column_start value = v Grid_column_start value
 let grid_column_end value = v Grid_column_end value
 
-let grid_row (start, end_) =
+let grid_row ((start, end_) : grid_line * grid_line) =
   let pp ctx () =
     pp_grid_line ctx start;
-    Pp.char ctx '/';
-    pp_grid_line ctx end_
+    match end_ with
+    | Auto -> ()
+    | _ ->
+        Pp.char ctx '/';
+        pp_grid_line ctx end_
   in
   v Grid_row (Pp.to_string ~minify:true pp ())
 
-let grid_column (start, end_) =
+let grid_column ((start, end_) : grid_line * grid_line) =
   let pp ctx () =
     pp_grid_line ctx start;
-    Pp.char ctx '/';
-    pp_grid_line ctx end_
+    match end_ with
+    | Auto -> ()
+    | _ ->
+        Pp.char ctx '/';
+        pp_grid_line ctx end_
   in
   v Grid_column (Pp.to_string ~minify:true pp ())
 
@@ -874,6 +886,12 @@ let display d = v Display d
 let position p = v Position p
 let visibility p = v Visibility p
 let inset len = v Inset len
+let inset_inline len = v Inset_inline len
+let inset_inline_start len = v Inset_inline_start len
+let inset_inline_end len = v Inset_inline_end len
+let inset_block len = v Inset_block len
+let inset_block_start len = v Inset_block_start len
+let inset_block_end len = v Inset_block_end len
 let top len = v Top len
 let right len = v Right len
 let bottom len = v Bottom len

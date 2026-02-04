@@ -1934,6 +1934,12 @@ let pp_property : type a. a property Pp.t =
   | Pointer_events -> Pp.string ctx "pointer-events"
   | Overflow -> Pp.string ctx "overflow"
   | Inset -> Pp.string ctx "inset"
+  | Inset_inline -> Pp.string ctx "inset-inline"
+  | Inset_inline_start -> Pp.string ctx "inset-inline-start"
+  | Inset_inline_end -> Pp.string ctx "inset-inline-end"
+  | Inset_block -> Pp.string ctx "inset-block"
+  | Inset_block_start -> Pp.string ctx "inset-block-start"
+  | Inset_block_end -> Pp.string ctx "inset-block-end"
   | Top -> Pp.string ctx "top"
   | Right -> Pp.string ctx "right"
   | Bottom -> Pp.string ctx "bottom"
@@ -5602,6 +5608,12 @@ let read_any_property t =
   | "outline" -> Prop Outline
   | "z-index" -> Prop Z_index
   | "inset" -> Prop Inset
+  | "inset-inline" -> Prop Inset_inline
+  | "inset-inline-start" -> Prop Inset_inline_start
+  | "inset-inline-end" -> Prop Inset_inline_end
+  | "inset-block" -> Prop Inset_block
+  | "inset-block-start" -> Prop Inset_block_start
+  | "inset-block-end" -> Prop Inset_block_end
   | "top" -> Prop Top
   | "right" -> Prop Right
   | "bottom" -> Prop Bottom
@@ -6359,6 +6371,12 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Webkit_line_clamp -> pp Pp.int
   | Webkit_box_orient -> pp pp_webkit_box_orient
   | Inset -> pp pp_length
+  | Inset_inline -> pp pp_length
+  | Inset_inline_start -> pp pp_length
+  | Inset_inline_end -> pp pp_length
+  | Inset_block -> pp pp_length
+  | Inset_block_start -> pp pp_length
+  | Inset_block_end -> pp pp_length
   | Top -> pp pp_length
   | Right -> pp pp_length
   | Bottom -> pp pp_length

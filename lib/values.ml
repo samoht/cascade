@@ -835,42 +835,48 @@ let rec read_calc_expr : type a. (Reader.t -> a) -> Reader.t -> a calc =
 and read_calc_term : type a. (Reader.t -> a) -> Reader.t -> a calc =
  fun read_a t ->
   Reader.ws t;
+  let rec loop left =
+    Reader.ws t;
+    match Reader.peek t with
+    | Some '*' ->
+        (* Use atomic to ensure we either parse the full multiplication or
+           nothing *)
+        Reader.atomic t (fun () ->
+            Reader.skip t;
+            Reader.ws t;
+            let right = read_calc_factor read_a t in
+            (* Validate multiplication: can't multiply two raw dimensions (but
+               expressions are OK) *)
+            let is_dimension : type a. a calc -> bool = function
+              | Val _ -> true
+              | _ -> false
+            in
+            (* Allow number × dimension or dimension × number, but not dimension
+               × dimension *)
+            if is_dimension left && is_dimension right then
+              Reader.err t "invalid calc: cannot multiply two dimensions";
+            loop (Expr (left, Mul, right)))
+    | Some '/' ->
+        (* Use atomic to ensure we either parse the full division or nothing *)
+        Reader.atomic t (fun () ->
+            Reader.skip t;
+            Reader.ws t;
+            let right = read_calc_factor read_a t in
+            (* Validate division: right operand must be a number (not a
+               dimension) *)
+            let is_not_number : type a. a calc -> bool = function
+              | Val _ -> true (* definitely not a number *)
+              | Num _ -> false (* is a number *)
+              | _ -> false (* expressions could evaluate to numbers *)
+            in
+            if is_not_number right then
+              Reader.err t
+                "invalid calc: division requires a number on the right";
+            loop (Expr (left, Div, right)))
+    | _ -> left
+  in
   let left = read_calc_factor read_a t in
-  Reader.ws t;
-  match Reader.peek t with
-  | Some '*' ->
-      (* Use atomic to ensure we either parse the full multiplication or
-         nothing *)
-      Reader.atomic t (fun () ->
-          Reader.skip t;
-          let right = read_calc_term read_a t in
-          (* Validate multiplication: can't multiply two raw dimensions (but
-             expressions are OK) *)
-          let is_dimension : type a. a calc -> bool = function
-            | Val _ -> true
-            | _ -> false
-          in
-          (* Allow number × dimension or dimension × number, but not dimension ×
-             dimension *)
-          if is_dimension left && is_dimension right then
-            Reader.err t "invalid calc: cannot multiply two dimensions";
-          Expr (left, Mul, right))
-  | Some '/' ->
-      (* Use atomic to ensure we either parse the full division or nothing *)
-      Reader.atomic t (fun () ->
-          Reader.skip t;
-          let right = read_calc_term read_a t in
-          (* Validate division: right operand must be a number (not a
-             dimension) *)
-          let is_not_number : type a. a calc -> bool = function
-            | Val _ -> true (* definitely not a number *)
-            | Num _ -> false (* is a number *)
-            | _ -> false (* expressions could evaluate to numbers *)
-          in
-          if is_not_number right then
-            Reader.err t "invalid calc: division requires a number on the right";
-          Expr (left, Div, right))
-  | _ -> left
+  loop left
 
 and read_calc_parenthesized : type a. (Reader.t -> a) -> Reader.t -> a calc =
  fun read_a t ->
