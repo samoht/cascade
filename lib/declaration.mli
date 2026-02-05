@@ -937,7 +937,7 @@ val moz_osx_font_smoothing : moz_osx_font_smoothing -> declaration
 (** [moz_osx_font_smoothing v] is the Mozilla-only [-moz-osx-font-smoothing]
     property. *)
 
-val webkit_line_clamp : int -> declaration
+val webkit_line_clamp : webkit_line_clamp -> declaration
 (** [webkit_line_clamp v] is the WebKit-only [-webkit-line-clamp] property. *)
 
 val webkit_box_orient : webkit_box_orient -> declaration

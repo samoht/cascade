@@ -3500,6 +3500,9 @@ val contain : contain -> declaration
 (** CSS webkit-box-orient values. *)
 type webkit_box_orient = Horizontal | Vertical | Inherit
 
+(** CSS -webkit-line-clamp values. *)
+type webkit_line_clamp = Lines of int | Unset
+
 (** CSS -webkit-appearance values. *)
 type webkit_appearance =
   | None  (** No appearance styling *)
@@ -3555,7 +3558,7 @@ val webkit_text_decoration_color : color -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration-color}
      -webkit-text-decoration-color} property. *)
 
-val webkit_line_clamp : int -> declaration
+val webkit_line_clamp : webkit_line_clamp -> declaration
 (** [webkit_line_clamp clamp] is the WebKit-only
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/-webkit-line-clamp}
      -webkit-line-clamp} property. *)
