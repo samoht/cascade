@@ -3276,6 +3276,9 @@ let pp_webkit_box_orient : webkit_box_orient Pp.t =
   | Vertical -> Pp.string ctx "vertical"
   | Inherit -> Pp.string ctx "inherit"
 
+let pp_webkit_line_clamp : webkit_line_clamp Pp.t =
+ fun ctx -> function Lines n -> Pp.int ctx n | Unset -> Pp.string ctx "unset"
+
 let rec read_border_style t : border_style =
   let read_var t : border_style = Var (read_var read_border_style t) in
   Reader.enum_or_calls "border-style"
@@ -3399,13 +3402,46 @@ let read_visibility t : visibility =
     t
 
 let read_z_index t : z_index =
-  Reader.enum "z-index"
+  let read_calc_int t =
+    Reader.expect_string "calc(" t;
+    let expr =
+      read_calc (fun _ -> Reader.err t "unexpected value in z-index calc") t
+    in
+    Reader.ws t;
+    Reader.expect ')' t;
+    match eval_numeric_calc expr with
+    | Some f when Float.is_integer f -> Index (int_of_float f)
+    | Some _ -> Reader.err_invalid t "z-index calc must evaluate to integer"
+    | None -> Reader.err_invalid t "z-index calc contains non-numeric values"
+  in
+  Reader.enum_or_calls "z-index"
     [ ("auto", (Auto : z_index)) ]
+    ~calls:[ ("calc", read_calc_int) ]
     ~default:(fun t ->
       let n = Reader.number t in
       if Float.is_integer n then Index (int_of_float n)
       else Reader.err_invalid t "z-index must be integer")
     t
+
+let read_order t : int =
+  let read_calc_int t =
+    Reader.expect_string "calc(" t;
+    let expr =
+      read_calc (fun _ -> Reader.err t "unexpected value in order calc") t
+    in
+    Reader.ws t;
+    Reader.expect ')' t;
+    match eval_numeric_calc expr with
+    | Some f when Float.is_integer f -> int_of_float f
+    | Some _ -> Reader.err_invalid t "order calc must evaluate to integer"
+    | None -> Reader.err_invalid t "order calc contains non-numeric values"
+  in
+  Reader.ws t;
+  if Reader.looking_at t "calc(" then read_calc_int t
+  else
+    let n = Reader.number t in
+    if Float.is_integer n then int_of_float n
+    else Reader.err_invalid t "order must be integer"
 
 let read_flex_wrap t : flex_wrap =
   Reader.enum "flex-wrap"
@@ -3579,8 +3615,21 @@ let read_grid_line t : grid_line =
       Reader.err t "Invalid grid line: 'span' must be followed by a number"
     else Name name
   in
-  Reader.enum "grid-line"
+  let read_calc_int t : grid_line =
+    Reader.expect_string "calc(" t;
+    let expr =
+      read_calc (fun _ -> Reader.err t "unexpected value in grid-line calc") t
+    in
+    Reader.ws t;
+    Reader.expect ')' t;
+    match eval_numeric_calc expr with
+    | Some f when Float.is_integer f -> Num (int_of_float f)
+    | Some _ -> Reader.err_invalid t "grid-line calc must evaluate to integer"
+    | None -> Reader.err_invalid t "grid-line calc contains non-numeric values"
+  in
+  Reader.enum_or_calls "grid-line"
     [ ("auto", (Auto : grid_line)) ]
+    ~calls:[ ("calc", read_calc_int) ]
     ~default:(fun t ->
       Reader.one_of [ read_number; read_span_num; read_name ] t)
     t
@@ -4225,6 +4274,12 @@ let read_webkit_box_orient t : webkit_box_orient =
       ("vertical", Vertical);
       ("inherit", Inherit);
     ]
+    t
+
+let read_webkit_line_clamp t : webkit_line_clamp =
+  Reader.enum "-webkit-line-clamp"
+    [ ("unset", (Unset : webkit_line_clamp)) ]
+    ~default:(fun t -> Lines (int_of_float (Reader.number t)))
     t
 
 let read_forced_color_adjust t : forced_color_adjust =
@@ -6368,7 +6423,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Mix_blend_mode -> pp pp_blend_mode
   | Z_index -> pp pp_z_index
   | Tab_size -> pp Pp.int
-  | Webkit_line_clamp -> pp Pp.int
+  | Webkit_line_clamp -> pp pp_webkit_line_clamp
   | Webkit_box_orient -> pp pp_webkit_box_orient
   | Inset -> pp pp_length
   | Inset_inline -> pp pp_length

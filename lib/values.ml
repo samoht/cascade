@@ -137,62 +137,23 @@ let pp_unit ?(always = true) ctx f suffix =
     Pp.float ctx f;
     Pp.string ctx suffix)
 
-(** Simplify constant calc expressions to their evaluated values. Only
-    simplifies expressions that contain no variables. *)
-let rec simplify_calc : type a. a calc -> a calc = function
-  | Num _ as n -> n
-  | Val _ as v -> v
-  | Var _ as v -> v (* Can't simplify variables *)
-  | Nested inner -> (
-      match simplify_calc inner with
-      | Num _ as n -> n
-      | Val _ as v -> v
-      | simplified -> Nested simplified)
+(** Try to evaluate a calc expression containing only numbers to a float.
+    Returns None if the expression contains variables or non-numeric values. *)
+let rec eval_numeric_calc : type a. a calc -> float option = function
+  | Num f -> Some f
+  | Val _ -> None (* Can't evaluate typed values *)
+  | Var _ -> None (* Can't evaluate variables *)
+  | Nested inner -> eval_numeric_calc inner
   | Expr (left, op, right) -> (
-      let left' = simplify_calc left in
-      let right' = simplify_calc right in
-      match (left', op, right') with
-      (* Numeric operations *)
-      | Num l, Add, Num r -> Num (l +. r)
-      | Num l, Sub, Num r -> Num (l -. r)
-      | Num l, Mul, Num r -> Num (l *. r)
-      | Num l, Div, Num r when r <> 0.0 -> Num (l /. r)
-      (* Return simplified subexpressions if we couldn't fully evaluate *)
-      | _ when left' != left || right' != right -> Expr (left', op, right')
-      | _ -> Expr (left', op, right'))
-
-(** Simplify length calc expressions, including percentage patterns like 3/4 *
-    100% -> 75% *)
-let simplify_length_calc (cv : length calc) : length calc =
-  let rec simplify : length calc -> length calc = function
-    | Num _ as n -> n
-    | Val _ as v -> v
-    | Var _ as v -> v
-    | Nested inner -> (
-        match simplify inner with
-        | Num _ as n -> n
-        | Val _ as v -> v
-        | simplified -> Nested simplified)
-    | Expr (left, op, right) -> (
-        let left' = simplify left in
-        let right' = simplify right in
-        match (left', op, right') with
-        (* Numeric operations *)
-        | Num l, Add, Num r -> Num (l +. r)
-        | Num l, Sub, Num r -> Num (l -. r)
-        | Num l, Mul, Num r -> Num (l *. r)
-        | Num l, Div, Num r when r <> 0.0 -> Num (l /. r)
-        (* Simplify (N / M) * Pct 100.0 -> Pct (N/M*100) *)
-        | Expr (Num l, Div, Num r), Mul, Val (Pct 100.0) when r <> 0.0 ->
-            Val (Pct (l /. r *. 100.0))
-        (* Simplify N * Pct P -> Pct (N*P) *)
-        | Num l, Mul, Val (Pct r) -> Val (Pct (l *. r))
-        | Val (Pct l), Mul, Num r -> Val (Pct (l *. r))
-        (* Return simplified subexpressions *)
-        | _ when left' != left || right' != right -> Expr (left', op, right')
-        | _ -> Expr (left', op, right'))
-  in
-  simplify cv
+      match (eval_numeric_calc left, eval_numeric_calc right) with
+      | Some l, Some r -> (
+          match op with
+          | Add -> Some (l +. r)
+          | Sub -> Some (l -. r)
+          | Mul -> Some (l *. r)
+          | Div when r <> 0.0 -> Some (l /. r)
+          | Div -> None)
+      | _ -> None)
 
 let rec pp_length ?(always = false) : length Pp.t =
  fun ctx v ->
@@ -766,9 +727,6 @@ module Calc = struct
 
   (* Wrap an expression in an explicit nested calc() *)
   let nested inner = Nested inner
-
-  (* Expose simplify function *)
-  let simplify = simplify_calc
 end
 
 (** var() parser after "var" ident has been consumed *)

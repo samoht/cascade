@@ -247,6 +247,11 @@ val read_number_percentage : Reader.t -> number_percentage
 val read_calc : (Reader.t -> 'a) -> Reader.t -> 'a calc
 (** [read_calc read t] parses a [calc(...)] expression or a promotable value. *)
 
+val eval_numeric_calc : 'a calc -> float option
+(** [eval_numeric_calc calc] tries to evaluate a calc expression containing only
+    numbers to a float. Returns [None] if the expression contains variables or
+    non-numeric values. *)
+
 val var_name : 'a var -> string
 (** [var_name v] is [v]'s variable name (without --). *)
 

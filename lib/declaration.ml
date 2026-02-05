@@ -471,7 +471,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | List_style_image -> v List_style_image (read_list_style_image t)
   | List_style -> v List_style (read_raw_value t)
   (* Flexbox order *)
-  | Order -> v Order (int_of_float (Reader.number t))
+  | Order -> v Order (Properties.read_order t)
   (* Justify properties *)
   | Justify_items -> v Justify_items (read_justify_items t)
   | Justify_self -> v Justify_self (read_justify_self t)
@@ -528,7 +528,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Webkit_appearance -> v Webkit_appearance (read_webkit_appearance t)
   | Webkit_font_smoothing ->
       v Webkit_font_smoothing (read_webkit_font_smoothing t)
-  | Webkit_line_clamp -> v Webkit_line_clamp (int_of_float (Reader.number t))
+  | Webkit_line_clamp -> v Webkit_line_clamp (read_webkit_line_clamp t)
   | Webkit_box_orient -> v Webkit_box_orient (read_webkit_box_orient t)
   | Webkit_hyphens -> v Webkit_hyphens (read_hyphens t)
   (* Font properties *)

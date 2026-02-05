@@ -153,6 +153,9 @@ val pp_z_index : z_index Pp.t
 val read_z_index : Reader.t -> z_index
 (** [read_z_index t] is the [z_index] parsed from [t]. *)
 
+val read_order : Reader.t -> int
+(** [read_order t] parses an order value (integer or calc expression). *)
+
 val pp_overflow : overflow Pp.t
 (** [pp_overflow] is the pretty-printer for [overflow]. *)
 
@@ -888,6 +891,12 @@ val pp_webkit_box_orient : webkit_box_orient Pp.t
 
 val read_webkit_box_orient : Reader.t -> webkit_box_orient
 (** [read_webkit_box_orient t] is the [webkit_box_orient] parsed from [t]. *)
+
+val pp_webkit_line_clamp : webkit_line_clamp Pp.t
+(** [pp_webkit_line_clamp] is the pretty-printer for [webkit_line_clamp]. *)
+
+val read_webkit_line_clamp : Reader.t -> webkit_line_clamp
+(** [read_webkit_line_clamp t] is the [webkit_line_clamp] parsed from [t]. *)
 
 val read_text_size_adjust : Reader.t -> text_size_adjust
 (** [read_text_size_adjust t] is the text size adjust value parsed from [t]. *)
