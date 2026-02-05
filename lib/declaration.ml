@@ -427,6 +427,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Opacity -> v Opacity (read_opacity t)
   | Cursor -> v Cursor (read_cursor t)
   | Box_sizing -> v Box_sizing (read_box_sizing t)
+  | Field_sizing -> v Field_sizing (read_field_sizing t)
   | User_select -> v User_select (read_user_select t)
   | Webkit_user_select -> v Webkit_user_select (read_user_select t)
   | Pointer_events -> v Pointer_events (read_pointer_events t)
@@ -1014,6 +1015,7 @@ let overflow_y value = v Overflow_y value
 let resize value = v Resize value
 let vertical_align value = v Vertical_align value
 let box_sizing value = v Box_sizing value
+let field_sizing value = v Field_sizing value
 let font_family value = v Font_family value
 let print_color_adjust value = v Print_color_adjust value
 let background_origin value = v Background_origin value

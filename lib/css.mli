@@ -973,6 +973,9 @@ val string_of_declaration : ?minify:bool -> declaration -> string
 (** CSS box sizing values. *)
 type box_sizing = Border_box | Content_box | Inherit
 
+(** CSS field sizing values. *)
+type field_sizing = Content | Fixed | Inherit
+
 val width : length -> declaration
 (** [width len] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/width} width} property.
@@ -1057,6 +1060,11 @@ val box_sizing : box_sizing -> declaration
 (** [box_sizing sizing] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/box-sizing} box-sizing}
     property. *)
+
+val field_sizing : field_sizing -> declaration
+(** [field_sizing sizing] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/field-sizing}
+     field-sizing} property. *)
 
 val aspect_ratio : aspect_ratio -> declaration
 (** [aspect_ratio ratio] is the

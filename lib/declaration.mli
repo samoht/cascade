@@ -859,6 +859,11 @@ val box_sizing : box_sizing -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/box-sizing} box-sizing}
     property. *)
 
+val field_sizing : field_sizing -> declaration
+(** [field_sizing v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/field-sizing}
+     field-sizing} property. *)
+
 val font_family : font_family -> declaration
 (** [font_family v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-family}

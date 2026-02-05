@@ -736,6 +736,12 @@ val pp_box_sizing : box_sizing Pp.t
 val read_box_sizing : Reader.t -> box_sizing
 (** [read_box_sizing t] is the [box_sizing] parsed from [t]. *)
 
+val pp_field_sizing : field_sizing Pp.t
+(** [pp_field_sizing] is the pretty-printer for [field_sizing]. *)
+
+val read_field_sizing : Reader.t -> field_sizing
+(** [read_field_sizing t] is the [field_sizing] parsed from [t]. *)
+
 val pp_object_fit : object_fit Pp.t
 (** [pp_object_fit] is the pretty-printer for [object_fit]. *)
 

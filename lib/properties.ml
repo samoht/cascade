@@ -2030,6 +2030,7 @@ let pp_property : type a. a property Pp.t =
   | Scroll_snap_stop -> Pp.string ctx "scroll-snap-stop"
   | Scroll_behavior -> Pp.string ctx "scroll-behavior"
   | Box_sizing -> Pp.string ctx "box-sizing"
+  | Field_sizing -> Pp.string ctx "field-sizing"
   | Resize -> Pp.string ctx "resize"
   | Object_fit -> Pp.string ctx "object-fit"
   | Appearance -> Pp.string ctx "appearance"
@@ -2483,6 +2484,12 @@ let pp_box_sizing : box_sizing Pp.t =
  fun ctx -> function
   | Border_box -> Pp.string ctx "border-box"
   | Content_box -> Pp.string ctx "content-box"
+  | Inherit -> Pp.string ctx "inherit"
+
+let pp_field_sizing : field_sizing Pp.t =
+ fun ctx -> function
+  | Content -> Pp.string ctx "content"
+  | Fixed -> Pp.string ctx "fixed"
   | Inherit -> Pp.string ctx "inherit"
 
 let pp_clear : clear Pp.t =
@@ -3938,6 +3945,15 @@ let read_box_sizing t : box_sizing =
     [
       ("border-box", (Border_box : box_sizing));
       ("content-box", Content_box);
+      ("inherit", Inherit);
+    ]
+    t
+
+let read_field_sizing t : field_sizing =
+  Reader.enum "field-sizing"
+    [
+      ("content", (Content : field_sizing));
+      ("fixed", Fixed);
       ("inherit", Inherit);
     ]
     t
@@ -5640,6 +5656,7 @@ let read_any_property t =
   | "transform-origin" -> Prop Transform_origin
   | "translate" -> Prop Translate
   | "box-sizing" -> Prop Box_sizing
+  | "field-sizing" -> Prop Field_sizing
   | "grid-template-columns" -> Prop Grid_template_columns
   | "grid-template-rows" -> Prop Grid_template_rows
   | "box-shadow" -> Prop Box_shadow
@@ -6470,6 +6487,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Scroll_snap_stop -> pp pp_scroll_snap_stop
   | Scroll_behavior -> pp pp_scroll_behavior
   | Box_sizing -> pp pp_box_sizing
+  | Field_sizing -> pp pp_field_sizing
   | Resize -> pp pp_resize
   | Object_fit -> pp pp_object_fit
   | Appearance -> pp pp_appearance
