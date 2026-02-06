@@ -2003,6 +2003,7 @@ let pp_property : type a. a property Pp.t =
   | Filter -> Pp.string ctx "filter"
   | Background_image -> Pp.string ctx "background-image"
   | Background_origin -> Pp.string ctx "background-origin"
+  | Background_clip -> Pp.string ctx "background-clip"
   | Animation -> Pp.string ctx "animation"
   | Aspect_ratio -> Pp.string ctx "aspect-ratio"
   | Overflow_x -> Pp.string ctx "overflow-x"
@@ -5738,6 +5739,7 @@ let read_any_property t =
   | "background-attachment" -> Prop Background_attachment
   | "background-blend-mode" -> Prop Background_blend_mode
   | "background-origin" -> Prop Background_origin
+  | "background-clip" -> Prop Background_clip
   | "background-position" -> Prop Background_position
   | "background-repeat" -> Prop Background_repeat
   | "background-size" -> Prop Background_size
@@ -6599,6 +6601,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Filter -> pp pp_filter
   | Background_image -> pp (Pp.list ~sep:Pp.comma pp_background_image)
   | Background_origin -> pp pp_background_box
+  | Background_clip -> pp pp_background_box
   | Animation -> pp (Pp.list ~sep:Pp.comma pp_animation)
   | Aspect_ratio -> pp pp_aspect_ratio
   | Content -> pp pp_content

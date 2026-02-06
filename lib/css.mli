@@ -3465,6 +3465,11 @@ val background_origin : background_box -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background-origin}
      background-origin} property. *)
 
+val background_clip : background_box -> declaration
+(** [background_clip v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background-clip}
+     background-clip} property. *)
+
 (** {2:container_containment Container Queries & Containment}
 
     CSS container queries and containment features for component-based
