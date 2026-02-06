@@ -2203,6 +2203,8 @@ let rec pp_blend_mode : blend_mode Pp.t =
   | Saturation -> Pp.string ctx "saturation"
   | Color -> Pp.string ctx "color"
   | Luminosity -> Pp.string ctx "luminosity"
+  | Plus_darker -> Pp.string ctx "plus-darker"
+  | Plus_lighter -> Pp.string ctx "plus-lighter"
   | Var v -> pp_var pp_blend_mode ctx v
 
 let pp_text_shadow : text_shadow Pp.t =
@@ -5261,6 +5263,8 @@ let rec read_blend_mode t : blend_mode =
       ("saturation", Saturation);
       ("color", Color);
       ("luminosity", Luminosity);
+      ("plus-darker", Plus_darker);
+      ("plus-lighter", Plus_lighter);
     ]
     ~calls:[ ("var", read_var) ]
     t
