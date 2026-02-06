@@ -5741,7 +5741,7 @@ let read_any_property t =
   | "background-attachment" -> Prop Background_attachment
   | "background-blend-mode" -> Prop Background_blend_mode
   | "background-origin" -> Prop Background_origin
-  | "background-clip" -> Prop Background_clip
+  | "background-clip" | "-webkit-background-clip" -> Prop Background_clip
   | "background-position" -> Prop Background_position
   | "background-repeat" -> Prop Background_repeat
   | "background-size" -> Prop Background_size
