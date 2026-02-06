@@ -3094,8 +3094,8 @@ let rec pp_translate_value : translate_value Pp.t =
  fun ctx -> function
   | X len -> pp_length ctx len
   | XY (Var x, Var y) ->
-      (* Tailwind concatenates var() calls without spaces *)
       pp_length ctx (Var x);
+      Pp.space ctx ();
       pp_length ctx (Var y)
   | XY (x, y) ->
       pp_length ctx x;
@@ -3103,7 +3103,9 @@ let rec pp_translate_value : translate_value Pp.t =
       pp_length ctx y
   | XYZ (Var x, Var y, Var z) ->
       pp_length ctx (Var x);
+      Pp.space ctx ();
       pp_length ctx (Var y);
+      Pp.space ctx ();
       pp_length ctx (Var z)
   | XYZ (x, y, z) ->
       pp_length ctx x;
