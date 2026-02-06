@@ -2977,6 +2977,10 @@ val transforms : transform list -> declaration
 
 type transform_origin =
   | Center
+  | Left
+  | Right
+  | Top
+  | Bottom
   | Left_top
   | Left_center
   | Left_bottom
@@ -2989,6 +2993,7 @@ type transform_origin =
   | Top_right
   | Bottom_left
   | Bottom_right
+  | X of length  (** Single x-offset, y defaults to 50%. *)
   | XY of length * length
   | XYZ of length * length * length
   | Inherit  (** Transform origin (2D or 3D). *)
