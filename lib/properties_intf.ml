@@ -1066,6 +1066,7 @@ type resize = None | Both | Horizontal | Vertical | Block | Inline | Inherit
 (* Box Model Types *)
 type box_sizing = Border_box | Content_box | Inherit
 type field_sizing = Content | Fixed | Inherit
+type caption_side = Top | Bottom | Inherit
 type object_fit = Fill | Contain | Cover | None | Scale_down | Inherit
 
 (* Content Types *)
@@ -1481,6 +1482,7 @@ type 'a property =
   | Scroll_behavior : scroll_behavior property
   | Box_sizing : box_sizing property
   | Field_sizing : field_sizing property
+  | Caption_side : caption_side property
   | Resize : resize property
   | Object_fit : object_fit property
   | Appearance : appearance property

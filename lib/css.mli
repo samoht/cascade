@@ -976,6 +976,9 @@ type box_sizing = Border_box | Content_box | Inherit
 (** CSS field sizing values. *)
 type field_sizing = Content | Fixed | Inherit
 
+(** CSS caption side values. *)
+type caption_side = Top | Bottom | Inherit
+
 val width : length -> declaration
 (** [width len] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/width} width} property.
@@ -1065,6 +1068,11 @@ val field_sizing : field_sizing -> declaration
 (** [field_sizing sizing] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/field-sizing}
      field-sizing} property. *)
+
+val caption_side : caption_side -> declaration
+(** [caption_side side] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/caption-side}
+     caption-side} property. *)
 
 val aspect_ratio : aspect_ratio -> declaration
 (** [aspect_ratio ratio] is the
