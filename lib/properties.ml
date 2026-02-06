@@ -2381,6 +2381,10 @@ let pp_transform_origin : transform_origin Pp.t =
  fun ctx -> function
   | Inherit -> Pp.string ctx "inherit"
   | Center -> Pp.string ctx "center"
+  | Left -> Pp.string ctx "left"
+  | Right -> Pp.string ctx "right"
+  | Top -> Pp.string ctx "top"
+  | Bottom -> Pp.string ctx "bottom"
   | Left_top -> Pp.string ctx "left top"
   | Left_center -> Pp.string ctx "left center"
   | Left_bottom -> Pp.string ctx "left bottom"
@@ -2393,6 +2397,7 @@ let pp_transform_origin : transform_origin Pp.t =
   | Top_right -> Pp.string ctx "top right"
   | Bottom_left -> Pp.string ctx "bottom left"
   | Bottom_right -> Pp.string ctx "bottom right"
+  | X a -> pp_length ctx a
   | XY (a, b) ->
       pp_length ctx a;
       Pp.space ctx ();
@@ -6053,13 +6058,10 @@ module Transform_origin = struct
   let merge_keywords t (keywords : keyword list) : transform_origin =
     match keywords with
     | [ Center ] -> Center
-    | [ Left ] ->
-        Left_center (* left is horizontal, default to center vertical *)
-    | [ Right ] ->
-        Right_center (* right is horizontal, default to center vertical *)
-    | [ Top ] -> Center_top (* top is vertical, default to center horizontal *)
-    | [ Bottom ] ->
-        Center_bottom (* bottom is vertical, default to center horizontal *)
+    | [ Left ] -> Left
+    | [ Right ] -> Right
+    | [ Top ] -> Top
+    | [ Bottom ] -> Bottom
     (* Two keyword combinations - order matters for output *)
     | [ Left; Top ] -> Left_top
     | [ Top; Left ] -> Top_left
