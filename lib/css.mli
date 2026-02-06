@@ -917,6 +917,8 @@ type blend_mode =
   | Saturation
   | Color
   | Luminosity
+  | Plus_darker
+  | Plus_lighter
   | Var of blend_mode var
 
 (** CSS font-feature-settings values *)
