@@ -2031,6 +2031,7 @@ let pp_property : type a. a property Pp.t =
   | Scroll_behavior -> Pp.string ctx "scroll-behavior"
   | Box_sizing -> Pp.string ctx "box-sizing"
   | Field_sizing -> Pp.string ctx "field-sizing"
+  | Caption_side -> Pp.string ctx "caption-side"
   | Resize -> Pp.string ctx "resize"
   | Object_fit -> Pp.string ctx "object-fit"
   | Appearance -> Pp.string ctx "appearance"
@@ -2490,6 +2491,12 @@ let pp_field_sizing : field_sizing Pp.t =
  fun ctx -> function
   | Content -> Pp.string ctx "content"
   | Fixed -> Pp.string ctx "fixed"
+  | Inherit -> Pp.string ctx "inherit"
+
+let pp_caption_side : caption_side Pp.t =
+ fun ctx -> function
+  | Top -> Pp.string ctx "top"
+  | Bottom -> Pp.string ctx "bottom"
   | Inherit -> Pp.string ctx "inherit"
 
 let pp_clear : clear Pp.t =
@@ -3956,6 +3963,11 @@ let read_field_sizing t : field_sizing =
       ("fixed", Fixed);
       ("inherit", Inherit);
     ]
+    t
+
+let read_caption_side t : caption_side =
+  Reader.enum "caption-side"
+    [ ("top", (Top : caption_side)); ("bottom", Bottom); ("inherit", Inherit) ]
     t
 
 let read_object_fit t : object_fit =
@@ -5657,6 +5669,7 @@ let read_any_property t =
   | "translate" -> Prop Translate
   | "box-sizing" -> Prop Box_sizing
   | "field-sizing" -> Prop Field_sizing
+  | "caption-side" -> Prop Caption_side
   | "grid-template-columns" -> Prop Grid_template_columns
   | "grid-template-rows" -> Prop Grid_template_rows
   | "box-shadow" -> Prop Box_shadow
@@ -6488,6 +6501,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Scroll_behavior -> pp pp_scroll_behavior
   | Box_sizing -> pp pp_box_sizing
   | Field_sizing -> pp pp_field_sizing
+  | Caption_side -> pp pp_caption_side
   | Resize -> pp pp_resize
   | Object_fit -> pp pp_object_fit
   | Appearance -> pp pp_appearance

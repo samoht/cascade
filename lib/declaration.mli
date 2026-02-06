@@ -864,6 +864,11 @@ val field_sizing : field_sizing -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/field-sizing}
      field-sizing} property. *)
 
+val caption_side : caption_side -> declaration
+(** [caption_side v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/caption-side}
+     caption-side} property. *)
+
 val font_family : font_family -> declaration
 (** [font_family v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-family}

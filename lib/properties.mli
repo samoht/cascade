@@ -742,6 +742,12 @@ val pp_field_sizing : field_sizing Pp.t
 val read_field_sizing : Reader.t -> field_sizing
 (** [read_field_sizing t] is the [field_sizing] parsed from [t]. *)
 
+val pp_caption_side : caption_side Pp.t
+(** [pp_caption_side] is the pretty-printer for [caption_side]. *)
+
+val read_caption_side : Reader.t -> caption_side
+(** [read_caption_side t] is the [caption_side] parsed from [t]. *)
+
 val pp_object_fit : object_fit Pp.t
 (** [pp_object_fit] is the pretty-printer for [object_fit]. *)
 
