@@ -1227,3 +1227,6 @@ val scroll_snap_stop : scroll_snap_stop -> declaration
 
 val scroll_behavior : scroll_behavior -> declaration
 (** [scroll_behavior v] is the CSS [scroll-behavior] property. *)
+
+val color_scheme : color_scheme -> declaration
+(** [color_scheme v] is the CSS [color-scheme] property. *)
