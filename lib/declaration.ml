@@ -587,6 +587,7 @@ let read_value (type a) (prop : a property) t : declaration =
       v Background_attachment (read_background_attachment t)
   | Background_origin -> v Background_origin (read_background_box t)
   | Background_clip -> v Background_clip (read_background_box t)
+  | Webkit_background_clip -> v Webkit_background_clip (read_background_box t)
   | Background_position -> v Background_position (read_background_position t)
   | Background_repeat -> v Background_repeat (read_background_repeat t)
   | Background_size -> v Background_size (read_background_size t)
@@ -1025,6 +1026,7 @@ let font_family value = v Font_family value
 let print_color_adjust value = v Print_color_adjust value
 let background_origin value = v Background_origin value
 let background_clip value = v Background_clip value
+let webkit_background_clip value = v Webkit_background_clip value
 
 let font_families = function
   | [] -> failwith "empty font_families"
