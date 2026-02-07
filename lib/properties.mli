@@ -938,6 +938,14 @@ val pp_print_color_adjust : print_color_adjust Pp.t
 val read_print_color_adjust : Reader.t -> print_color_adjust
 (** [read_print_color_adjust t] is the [print_color_adjust] parsed from [t]. *)
 
+val pp_box_decoration_break : box_decoration_break Pp.t
+(** [pp_box_decoration_break] is the pretty-printer for [box_decoration_break].
+*)
+
+val read_box_decoration_break : Reader.t -> box_decoration_break
+(** [read_box_decoration_break t] is the [box_decoration_break] parsed from [t].
+*)
+
 val pp_clear : clear Pp.t
 (** [pp_clear] is the pretty-printer for [clear]. *)
 

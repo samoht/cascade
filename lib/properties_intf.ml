@@ -1217,6 +1217,7 @@ type color_scheme =
 
 type appearance = None | Auto | Button | Textfield | Menulist | Inherit
 type print_color_adjust = Economy | Exact | Initial | Inherit | Unset
+type box_decoration_break = Clone | Slice
 type clear = None | Left | Right | Both | Inline_start | Inline_end
 type float_side = None | Left | Right | Inline_start | Inline_end | Inherit
 type text_decoration_skip_ink = Auto | None | All | Inherit
@@ -1506,6 +1507,8 @@ type 'a property =
   | Appearance : appearance property
   | Color_scheme : color_scheme property
   | Print_color_adjust : print_color_adjust property
+  | Box_decoration_break : box_decoration_break property
+  | Webkit_box_decoration_break : box_decoration_break property
   | Content : content property
   | Quotes : quotes property
   | Text_decoration_thickness : length property

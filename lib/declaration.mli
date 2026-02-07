@@ -879,6 +879,15 @@ val print_color_adjust : print_color_adjust -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/print-color-adjust}
      print-color-adjust} property. *)
 
+val box_decoration_break : box_decoration_break -> declaration
+(** [box_decoration_break v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/box-decoration-break}
+     box-decoration-break} property. *)
+
+val webkit_box_decoration_break : box_decoration_break -> declaration
+(** [webkit_box_decoration_break v] is the [-webkit-box-decoration-break]
+    property. *)
+
 val background_origin : background_box -> declaration
 (** [background_origin v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background-origin}

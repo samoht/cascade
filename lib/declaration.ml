@@ -669,6 +669,10 @@ let read_value (type a) (prop : a property) t : declaration =
   | Table_layout -> v Table_layout (read_table_layout t)
   (* Print color adjust *)
   | Print_color_adjust -> v Print_color_adjust (read_print_color_adjust t)
+  (* Box decoration break *)
+  | Box_decoration_break -> v Box_decoration_break (read_box_decoration_break t)
+  | Webkit_box_decoration_break ->
+      v Webkit_box_decoration_break (read_box_decoration_break t)
 
 (** Parse a custom property (--name: value) *)
 let read_custom_property_declaration t : declaration =
@@ -1024,6 +1028,8 @@ let field_sizing value = v Field_sizing value
 let caption_side value = v Caption_side value
 let font_family value = v Font_family value
 let print_color_adjust value = v Print_color_adjust value
+let box_decoration_break value = v Box_decoration_break value
+let webkit_box_decoration_break value = v Webkit_box_decoration_break value
 let background_origin value = v Background_origin value
 let background_clip value = v Background_clip value
 let webkit_background_clip value = v Webkit_background_clip value

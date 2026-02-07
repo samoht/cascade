@@ -2039,6 +2039,8 @@ let pp_property : type a. a property Pp.t =
   | Appearance -> Pp.string ctx "appearance"
   | Color_scheme -> Pp.string ctx "color-scheme"
   | Print_color_adjust -> Pp.string ctx "print-color-adjust"
+  | Box_decoration_break -> Pp.string ctx "box-decoration-break"
+  | Webkit_box_decoration_break -> Pp.string ctx "-webkit-box-decoration-break"
   | Content -> Pp.string ctx "content"
   | Quotes -> Pp.string ctx "quotes"
   | Text_size_adjust -> Pp.string ctx "text-size-adjust"
@@ -2496,6 +2498,11 @@ let pp_print_color_adjust : print_color_adjust Pp.t =
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
+
+let pp_box_decoration_break : box_decoration_break Pp.t =
+ fun ctx -> function
+  | Clone -> Pp.string ctx "clone"
+  | Slice -> Pp.string ctx "slice"
 
 let pp_backface_visibility : backface_visibility Pp.t =
  fun ctx -> function
@@ -4389,6 +4396,9 @@ let read_print_color_adjust t : print_color_adjust =
     ]
     t
 
+let read_box_decoration_break t : box_decoration_break =
+  Reader.enum "box-decoration-break" [ ("clone", Clone); ("slice", Slice) ] t
+
 let read_clear t : clear =
   Reader.enum "clear"
     [
@@ -5734,6 +5744,8 @@ let read_any_property t =
   | "appearance" -> Prop Appearance
   | "color-scheme" -> Prop Color_scheme
   | "print-color-adjust" -> Prop Print_color_adjust
+  | "box-decoration-break" -> Prop Box_decoration_break
+  | "-webkit-box-decoration-break" -> Prop Webkit_box_decoration_break
   | "filter" -> Prop Filter
   | "transition" -> Prop Transition
   | "animation" -> Prop Animation
@@ -6556,6 +6568,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Appearance -> pp pp_appearance
   | Color_scheme -> pp pp_color_scheme
   | Print_color_adjust -> pp pp_print_color_adjust
+  | Box_decoration_break -> pp pp_box_decoration_break
+  | Webkit_box_decoration_break -> pp pp_box_decoration_break
   | Flex_grow -> pp Pp.float
   | Flex_shrink -> pp Pp.float
   | Order -> pp Pp.int
