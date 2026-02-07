@@ -1989,6 +1989,9 @@ let pp_property : type a. a property Pp.t =
   | Will_change -> Pp.string ctx "will-change"
   | Contain -> Pp.string ctx "contain"
   | Isolation -> Pp.string ctx "isolation"
+  | Break_before -> Pp.string ctx "break-before"
+  | Break_after -> Pp.string ctx "break-after"
+  | Break_inside -> Pp.string ctx "break-inside"
   | Word_spacing -> Pp.string ctx "word-spacing"
   | Background_attachment -> Pp.string ctx "background-attachment"
   | Border_top -> Pp.string ctx "border-top"
@@ -2679,6 +2682,31 @@ let pp_isolation : isolation Pp.t =
  fun ctx -> function
   | Auto -> Pp.string ctx "auto"
   | Isolate -> Pp.string ctx "isolate"
+  | Inherit -> Pp.string ctx "inherit"
+
+let pp_break_value : break_value Pp.t =
+ fun ctx -> function
+  | Auto -> Pp.string ctx "auto"
+  | Avoid -> Pp.string ctx "avoid"
+  | All -> Pp.string ctx "all"
+  | Avoid_page -> Pp.string ctx "avoid-page"
+  | Page -> Pp.string ctx "page"
+  | Left -> Pp.string ctx "left"
+  | Right -> Pp.string ctx "right"
+  | Recto -> Pp.string ctx "recto"
+  | Verso -> Pp.string ctx "verso"
+  | Avoid_column -> Pp.string ctx "avoid-column"
+  | Column -> Pp.string ctx "column"
+  | Avoid_region -> Pp.string ctx "avoid-region"
+  | Region -> Pp.string ctx "region"
+  | Inherit -> Pp.string ctx "inherit"
+
+let pp_break_inside_value : break_inside_value Pp.t =
+ fun ctx -> function
+  | Auto -> Pp.string ctx "auto"
+  | Avoid -> Pp.string ctx "avoid"
+  | Avoid_page -> Pp.string ctx "avoid-page"
+  | Avoid_column -> Pp.string ctx "avoid-column"
   | Inherit -> Pp.string ctx "inherit"
 
 let pp_scroll_snap_align : scroll_snap_align Pp.t =
@@ -4150,6 +4178,37 @@ let read_contain t : contain =
 let read_isolation t : isolation =
   Reader.enum "isolation"
     [ ("auto", (Auto : isolation)); ("isolate", Isolate); ("inherit", Inherit) ]
+    t
+
+let read_break_value t : break_value =
+  Reader.enum "break"
+    [
+      ("auto", (Auto : break_value));
+      ("avoid", Avoid);
+      ("all", All);
+      ("avoid-page", Avoid_page);
+      ("page", Page);
+      ("left", Left);
+      ("right", Right);
+      ("recto", Recto);
+      ("verso", Verso);
+      ("avoid-column", Avoid_column);
+      ("column", Column);
+      ("avoid-region", Avoid_region);
+      ("region", Region);
+      ("inherit", Inherit);
+    ]
+    t
+
+let read_break_inside_value t : break_inside_value =
+  Reader.enum "break-inside"
+    [
+      ("auto", (Auto : break_inside_value));
+      ("avoid", Avoid);
+      ("avoid-page", Avoid_page);
+      ("avoid-column", Avoid_column);
+      ("inherit", Inherit);
+    ]
     t
 
 let read_scroll_behavior t : scroll_behavior =
@@ -5811,6 +5870,9 @@ let read_any_property t =
   | "border-inline-start-color" -> Prop Border_inline_start_color
   | "border-inline-start-width" -> Prop Border_inline_start_width
   | "border-spacing" -> Prop Border_spacing
+  | "break-before" -> Prop Break_before
+  | "break-after" -> Prop Break_after
+  | "break-inside" -> Prop Break_inside
   | "clear" -> Prop Clear
   | "clip" -> Prop Clip
   | "clip-path" -> Prop Clip_path
@@ -6565,6 +6627,9 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Transform -> pp pp_transforms
   | Translate -> pp pp_translate_value
   | Isolation -> pp pp_isolation
+  | Break_before -> pp pp_break_value
+  | Break_after -> pp pp_break_value
+  | Break_inside -> pp pp_break_inside_value
   | Transform_style -> pp pp_transform_style
   | Backface_visibility -> pp pp_backface_visibility
   | Scroll_snap_align -> pp pp_scroll_snap_align

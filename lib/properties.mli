@@ -807,6 +807,18 @@ val pp_isolation : isolation Pp.t
 val read_isolation : Reader.t -> isolation
 (** [read_isolation t] is the [isolation] parsed from [t]. *)
 
+val pp_break_value : break_value Pp.t
+(** [pp_break_value] is the pretty-printer for [break_value]. *)
+
+val read_break_value : Reader.t -> break_value
+(** [read_break_value t] is the break value parsed from [t]. *)
+
+val pp_break_inside_value : break_inside_value Pp.t
+(** [pp_break_inside_value] is the pretty-printer for [break_inside_value]. *)
+
+val read_break_inside_value : Reader.t -> break_inside_value
+(** [read_break_inside_value t] is the break-inside value parsed from [t]. *)
+
 val pp_scroll_behavior : scroll_behavior Pp.t
 (** [pp_scroll_behavior] is the pretty-printer for [scroll_behavior]. *)
 

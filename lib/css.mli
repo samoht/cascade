@@ -1307,6 +1307,35 @@ val isolation : isolation -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/isolation} isolation}
     property for stacking context control. *)
 
+(** CSS break-before/break-after values for page/column/region breaks. *)
+type break_value =
+  | Auto
+  | Avoid
+  | All
+  | Avoid_page
+  | Page
+  | Left
+  | Right
+  | Recto
+  | Verso
+  | Avoid_column
+  | Column
+  | Avoid_region
+  | Region
+  | Inherit
+
+val break_before : break_value -> declaration
+(** [break_before v] is the break-before property. *)
+
+val break_after : break_value -> declaration
+(** [break_after v] is the break-after property. *)
+
+(** CSS break-inside values. *)
+type break_inside_value = Auto | Avoid | Avoid_page | Avoid_column | Inherit
+
+val break_inside : break_inside_value -> declaration
+(** [break_inside v] is the break-inside property. *)
+
 val visibility : visibility -> declaration
 (** [visibility v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/visibility} visibility}
