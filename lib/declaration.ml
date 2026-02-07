@@ -861,7 +861,7 @@ let grid_row ((start, end_) : grid_line * grid_line) =
     match end_ with
     | Auto -> ()
     | _ ->
-        Pp.char ctx '/';
+        Pp.string ctx " / ";
         pp_grid_line ctx end_
   in
   v Grid_row (Pp.to_string ~minify:true pp ())
@@ -872,7 +872,7 @@ let grid_column ((start, end_) : grid_line * grid_line) =
     match end_ with
     | Auto -> ()
     | _ ->
-        Pp.char ctx '/';
+        Pp.string ctx " / ";
         pp_grid_line ctx end_
   in
   v Grid_column (Pp.to_string ~minify:true pp ())
