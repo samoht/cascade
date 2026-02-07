@@ -256,6 +256,23 @@ module Align_self = struct
       ~baseline:(Baseline : align_self)
       ~first:First_baseline ~last:Last_baseline t
 
+  let read_safe t : align_self =
+    (* CSS 'safe' keyword - safe values are the default, so map to plain
+       variants *)
+    Reader.expect_string "safe" t;
+    Reader.ws t;
+    Reader.enum "align-self safe"
+      [
+        ("center", (Center : align_self));
+        ("start", Start);
+        ("end", End);
+        ("self-start", Self_start);
+        ("self-end", Self_end);
+        ("flex-start", Flex_start);
+        ("flex-end", Flex_end);
+      ]
+      t
+
   let read_unsafe t : align_self =
     Reader.expect_string "unsafe" t;
     Reader.ws t;
@@ -279,13 +296,20 @@ let read_align_self t : align_self =
       ("normal", Normal);
       ("stretch", Stretch);
       ("center", Center);
+      ("start", Start);
+      ("end", End);
       ("self-start", Self_start);
       ("self-end", Self_end);
       ("flex-start", Flex_start);
       ("flex-end", Flex_end);
     ]
     ~default:
-      (Reader.one_of [ Align_self.read_flat_baseline; Align_self.read_unsafe ])
+      (Reader.one_of
+         [
+           Align_self.read_flat_baseline;
+           Align_self.read_safe;
+           Align_self.read_unsafe;
+         ])
     t
 
 module Justify_items = struct
