@@ -1192,6 +1192,18 @@ val contain : contain -> declaration
 val isolation : isolation -> declaration
 (** [isolation v] is the CSS [isolation] property. *)
 
+val break_before : break_value -> declaration
+(** [break_before v] is the CSS [break-before] property for page/column/region
+    breaks. *)
+
+val break_after : break_value -> declaration
+(** [break_after v] is the CSS [break-after] property for page/column/region
+    breaks. *)
+
+val break_inside : break_inside_value -> declaration
+(** [break_inside v] is the CSS [break-inside] property for page/column/region
+    breaks. *)
+
 val padding_inline : length -> declaration
 (** [padding_inline v] is the CSS [padding-inline] property. *)
 

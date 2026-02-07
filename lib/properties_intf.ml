@@ -1129,6 +1129,25 @@ type contain =
 
 type isolation = Auto | Isolate | Inherit
 
+(* Break Types - for page/column/region breaks *)
+type break_value =
+  | Auto
+  | Avoid
+  | All
+  | Avoid_page
+  | Page
+  | Left
+  | Right
+  | Recto
+  | Verso
+  | Avoid_column
+  | Column
+  | Avoid_region
+  | Region
+  | Inherit
+
+type break_inside_value = Auto | Avoid | Avoid_page | Avoid_column | Inherit
+
 (* Scroll Types *)
 type scroll_behavior = Auto | Smooth | Inherit
 type scroll_snap_align = None | Start | End | Center
@@ -1465,6 +1484,9 @@ type 'a property =
   | Will_change : will_change property
   | Contain : contain property
   | Isolation : isolation property
+  | Break_before : break_value property
+  | Break_after : break_value property
+  | Break_inside : break_inside_value property
   | Word_spacing : length property
   | Background_attachment : background_attachment property
   | Border_top : string property

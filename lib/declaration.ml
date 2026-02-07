@@ -582,6 +582,10 @@ let read_value (type a) (prop : a property) t : declaration =
   (* Contain and isolation *)
   | Contain -> v Contain (read_contain t)
   | Isolation -> v Isolation (read_isolation t)
+  (* Break properties *)
+  | Break_before -> v Break_before (read_break_value t)
+  | Break_after -> v Break_after (read_break_value t)
+  | Break_inside -> v Break_inside (read_break_inside_value t)
   (* Background properties *)
   | Background_attachment ->
       v Background_attachment (read_background_attachment t)
@@ -1101,6 +1105,9 @@ let margin_block_end value = v Margin_block_end value
 let will_change value = v Will_change value
 let contain value = v Contain value
 let isolation value = v Isolation value
+let break_before value = v Break_before value
+let break_after value = v Break_after value
+let break_inside value = v Break_inside value
 let outline value = v Outline value
 let outline_offset len = v Outline_offset len
 let scroll_snap_type value = v Scroll_snap_type value
