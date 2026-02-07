@@ -964,11 +964,11 @@ let read_url_arg t =
   | _ -> String.trim (Reader.until t ')')
 
 let pp_shadow_parts ctx ~inset ~inset_var h v blur spread color =
-  (* If inset_var is set, output var(--<name>) without trailing space. The
+  (* If inset_var is set, output var(--<name>,) with empty fallback. The
      variable value includes trailing space when set to "inset ". Otherwise use
      the bool inset flag. *)
   (match inset_var with
-  | Some var_name -> Pp.string ctx ("var(--" ^ var_name ^ ")")
+  | Some var_name -> Pp.string ctx ("var(--" ^ var_name ^ ",)")
   | None ->
       if inset then (
         Pp.string ctx "inset";
@@ -2279,6 +2279,10 @@ let pp_position_value : position_value Pp.t =
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Center -> Pp.string ctx "center"
+  | Top -> Pp.string ctx "top"
+  | Bottom -> Pp.string ctx "bottom"
+  | Left -> Pp.string ctx "left"
+  | Right -> Pp.string ctx "right"
   | Left_top -> Pp.string ctx "left top"
   | Left_center -> Pp.string ctx "left center"
   | Left_bottom -> Pp.string ctx "left bottom"
@@ -2287,6 +2291,10 @@ let pp_position_value : position_value Pp.t =
   | Right_bottom -> Pp.string ctx "right bottom"
   | Center_top -> Pp.string ctx "center top"
   | Center_bottom -> Pp.string ctx "center bottom"
+  | Top_left -> Pp.string ctx "left top"
+  | Top_right -> Pp.string ctx "right top"
+  | Bottom_left -> Pp.string ctx "left bottom"
+  | Bottom_right -> Pp.string ctx "right bottom"
   | XY (a, b) ->
       (* When both values are identical, use single-value shorthand (matches
          Tailwind) *)
@@ -3503,36 +3511,38 @@ let read_flex_wrap t : flex_wrap =
     ]
     t
 
-let read_flex_basis t : flex_basis =
-  (* Read flex-basis: auto | content | inherit | <length> *)
-  Reader.enum "flex-basis"
-    [
-      ("auto", (Auto : flex_basis)); ("content", Content); ("inherit", Inherit);
-    ]
-    ~default:(fun t ->
-      (* Parse as length and convert to flex_basis - must be non-negative *)
-      match read_length ~allow_negative:false t with
-      | Px n -> (Px n : flex_basis)
-      | Rem n -> Rem n
-      | Em n -> Em n
-      | Ex n -> Ex n
-      | Pct n -> Pct n
-      | Cm n -> Cm n
-      | Mm n -> Mm n
-      | Q n -> Q n
-      | In n -> In n
-      | Pt n -> Pt n
-      | Pc n -> Pc n
-      | Cap n -> Cap n
-      | Ic n -> Ic n
-      | Rlh n -> Rlh n
-      | Vw n -> Vw n
-      | Vh n -> Vh n
-      | Vmin n -> Vmin n
-      | Vmax n -> Vmax n
-      | Zero -> Px 0.0 (* Convert Zero to Px 0 *)
-      | _ -> Reader.err_invalid t "unsupported flex-basis value")
-    t
+let rec read_flex_basis t : flex_basis =
+  (* Read flex-basis: auto | content | inherit | calc(...) | <length> *)
+  if Reader.looking_at t "calc(" then Calc (read_calc read_flex_basis t)
+  else
+    Reader.enum "flex-basis"
+      [
+        ("auto", (Auto : flex_basis)); ("content", Content); ("inherit", Inherit);
+      ]
+      ~default:(fun t ->
+        (* Parse as length and convert to flex_basis - must be non-negative *)
+        match read_length ~allow_negative:false t with
+        | Px n -> (Px n : flex_basis)
+        | Rem n -> Rem n
+        | Em n -> Em n
+        | Ex n -> Ex n
+        | Pct n -> Pct n
+        | Cm n -> Cm n
+        | Mm n -> Mm n
+        | Q n -> Q n
+        | In n -> In n
+        | Pt n -> Pt n
+        | Pc n -> Pc n
+        | Cap n -> Cap n
+        | Ic n -> Ic n
+        | Rlh n -> Rlh n
+        | Vw n -> Vw n
+        | Vh n -> Vh n
+        | Vmin n -> Vmin n
+        | Vmax n -> Vmax n
+        | Zero -> Px 0.0 (* Convert Zero to Px 0 *)
+        | _ -> Reader.err_invalid t "unsupported flex-basis value")
+      t
 
 module Flex = struct
   (* Helper functions for flex parsing *)
