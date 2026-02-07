@@ -1471,6 +1471,7 @@ type 'a property =
   | Background_image : background_image list property
   | Background_origin : background_box property
   | Background_clip : background_box property
+  | Webkit_background_clip : background_box property
   | Animation : animation list property
   | Aspect_ratio : aspect_ratio property
   | Overflow_x : overflow property

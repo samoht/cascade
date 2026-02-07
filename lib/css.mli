@@ -3470,6 +3470,9 @@ val background_clip : background_box -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background-clip}
      background-clip} property. *)
 
+val webkit_background_clip : background_box -> declaration
+(** [webkit_background_clip v] is the [-webkit-background-clip] property. *)
+
 (** {2:container_containment Container Queries & Containment}
 
     CSS container queries and containment features for component-based

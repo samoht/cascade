@@ -889,6 +889,9 @@ val background_clip : background_box -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background-clip}
      background-clip} property. *)
 
+val webkit_background_clip : background_box -> declaration
+(** [webkit_background_clip v] is the [-webkit-background-clip] property. *)
+
 val font_families : font_family list -> declaration
 (** [font_families fonts] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-family}
