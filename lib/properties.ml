@@ -118,6 +118,22 @@ module Align_items = struct
       ~baseline:(Baseline : align_items)
       ~first:First_baseline ~last:Last_baseline t
 
+  let read_safe t : align_items =
+    (* CSS 'safe' keyword - safe is the default, so map to regular variants *)
+    Reader.expect_string "safe" t;
+    Reader.ws t;
+    Reader.enum "align-items safe"
+      [
+        ("center", (Center : align_items));
+        ("start", Start);
+        ("end", End);
+        ("self-start", Self_start);
+        ("self-end", Self_end);
+        ("flex-start", Flex_start);
+        ("flex-end", Flex_end);
+      ]
+      t
+
   let read_unsafe t : align_items =
     Reader.expect_string "unsafe" t;
     Reader.ws t;
@@ -150,7 +166,11 @@ let read_align_items t : align_items =
     ]
     ~default:
       (Reader.one_of
-         [ Align_items.read_flat_baseline; Align_items.read_unsafe ])
+         [
+           Align_items.read_flat_baseline;
+           Align_items.read_safe;
+           Align_items.read_unsafe;
+         ])
     t
 
 module Align_content = struct
@@ -216,6 +236,22 @@ let read_align_content t : align_content =
     t
 
 module Justify_content = struct
+  let read_safe t : justify_content =
+    (* CSS 'safe' keyword - safe is the default, so map to regular variants *)
+    Reader.expect_string "safe" t;
+    Reader.ws t;
+    Reader.enum "justify-content safe"
+      [
+        ("center", (Center : justify_content));
+        ("start", Start);
+        ("end", End);
+        ("flex-start", Flex_start);
+        ("flex-end", Flex_end);
+        ("left", Left);
+        ("right", Right);
+      ]
+      t
+
   let read_unsafe t : justify_content =
     Reader.expect_string "unsafe" t;
     Reader.ws t;
@@ -248,7 +284,9 @@ let read_justify_content t : justify_content =
       ("space-evenly", Space_evenly);
       ("stretch", Stretch);
     ]
-    ~default:Justify_content.read_unsafe t
+    ~default:
+      (Reader.one_of [ Justify_content.read_safe; Justify_content.read_unsafe ])
+    t
 
 module Align_self = struct
   let read_flat_baseline t : align_self =
