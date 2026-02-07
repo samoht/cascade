@@ -3763,6 +3763,19 @@ val scroll_behavior : scroll_behavior -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-behavior}
      scroll-behavior} property for smooth scrolling. *)
 
+type color_scheme =
+  | Normal
+  | Light
+  | Dark
+  | Light_dark
+  | Only_light
+  | Only_dark
+
+val color_scheme : color_scheme -> declaration
+(** [color_scheme scheme] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/color-scheme}
+     color-scheme} property for light/dark mode preference. *)
+
 val scroll_margin : length -> declaration
 (** [scroll_margin margin] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin}

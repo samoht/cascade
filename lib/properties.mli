@@ -926,6 +926,12 @@ val pp_appearance : appearance Pp.t
 val read_appearance : Reader.t -> appearance
 (** [read_appearance t] is the [appearance] parsed from [t]. *)
 
+val pp_color_scheme : color_scheme Pp.t
+(** [pp_color_scheme] is the pretty-printer for [color_scheme]. *)
+
+val read_color_scheme : Reader.t -> color_scheme
+(** [read_color_scheme t] is the [color_scheme] parsed from [t]. *)
+
 val pp_print_color_adjust : print_color_adjust Pp.t
 (** [pp_print_color_adjust] is the pretty-printer for [print_color_adjust]. *)
 

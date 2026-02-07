@@ -1206,6 +1206,15 @@ type text_size_adjust = None | Auto | Pct of float | Inherit
 
 (* Other Types *)
 type forced_color_adjust = Auto | None | Inherit
+
+type color_scheme =
+  | Normal
+  | Light
+  | Dark
+  | Light_dark
+  | Only_light
+  | Only_dark
+
 type appearance = None | Auto | Button | Textfield | Menulist | Inherit
 type print_color_adjust = Economy | Exact | Initial | Inherit | Unset
 type clear = None | Left | Right | Both | Inline_start | Inline_end
@@ -1494,6 +1503,7 @@ type 'a property =
   | Resize : resize property
   | Object_fit : object_fit property
   | Appearance : appearance property
+  | Color_scheme : color_scheme property
   | Print_color_adjust : print_color_adjust property
   | Content : content property
   | Quotes : quotes property

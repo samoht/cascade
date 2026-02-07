@@ -402,6 +402,8 @@ let read_value (type a) (prop : a property) t : declaration =
   | Filter -> v Filter (read_filter t)
   (* Appearance *)
   | Appearance -> v Appearance (read_appearance t)
+  (* Color scheme *)
+  | Color_scheme -> v Color_scheme (read_color_scheme t)
   (* Background *)
   | Background_image ->
       let images = read_background_images t in
@@ -1097,5 +1099,6 @@ let scroll_snap_type value = v Scroll_snap_type value
 let scroll_snap_align value = v Scroll_snap_align value
 let scroll_snap_stop value = v Scroll_snap_stop value
 let scroll_behavior value = v Scroll_behavior value
+let color_scheme value = v Color_scheme value
 
 (* Alignment constructor helpers (declarations) *)

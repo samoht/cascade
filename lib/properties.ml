@@ -2036,6 +2036,7 @@ let pp_property : type a. a property Pp.t =
   | Resize -> Pp.string ctx "resize"
   | Object_fit -> Pp.string ctx "object-fit"
   | Appearance -> Pp.string ctx "appearance"
+  | Color_scheme -> Pp.string ctx "color-scheme"
   | Print_color_adjust -> Pp.string ctx "print-color-adjust"
   | Content -> Pp.string ctx "content"
   | Quotes -> Pp.string ctx "quotes"
@@ -2468,6 +2469,24 @@ let pp_appearance : appearance Pp.t =
   | Textfield -> Pp.string ctx "textfield"
   | Menulist -> Pp.string ctx "menulist"
   | Inherit -> Pp.string ctx "inherit"
+
+let pp_color_scheme : color_scheme Pp.t =
+ fun ctx -> function
+  | Normal -> Pp.string ctx "normal"
+  | Light -> Pp.string ctx "light"
+  | Dark -> Pp.string ctx "dark"
+  | Light_dark ->
+      Pp.string ctx "light";
+      Pp.space ctx ();
+      Pp.string ctx "dark"
+  | Only_light ->
+      Pp.string ctx "light";
+      Pp.space ctx ();
+      Pp.string ctx "only"
+  | Only_dark ->
+      Pp.string ctx "dark";
+      Pp.space ctx ();
+      Pp.string ctx "only"
 
 let pp_print_color_adjust : print_color_adjust Pp.t =
  fun ctx -> function
@@ -4341,6 +4360,23 @@ let read_appearance t : appearance =
     ]
     t
 
+let read_color_scheme t : color_scheme =
+  let first = Reader.ident t in
+  match first with
+  | "normal" -> Normal
+  | "light" -> (
+      Reader.ws t;
+      match Reader.option Reader.ident t with
+      | Some "dark" -> Light_dark
+      | Some "only" -> Only_light
+      | _ -> Light)
+  | "dark" -> (
+      Reader.ws t;
+      match Reader.option Reader.ident t with
+      | Some "only" -> Only_dark
+      | _ -> Dark)
+  | _ -> Reader.err t ("invalid color-scheme value: " ^ first)
+
 let read_print_color_adjust t : print_color_adjust =
   Reader.enum "print-color-adjust"
     [
@@ -5695,6 +5731,7 @@ let read_any_property t =
   | "pointer-events" -> Prop Pointer_events
   | "cursor" -> Prop Cursor
   | "appearance" -> Prop Appearance
+  | "color-scheme" -> Prop Color_scheme
   | "print-color-adjust" -> Prop Print_color_adjust
   | "filter" -> Prop Filter
   | "transition" -> Prop Transition
@@ -6515,6 +6552,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Resize -> pp pp_resize
   | Object_fit -> pp pp_object_fit
   | Appearance -> pp pp_appearance
+  | Color_scheme -> pp pp_color_scheme
   | Print_color_adjust -> pp pp_print_color_adjust
   | Flex_grow -> pp Pp.float
   | Flex_shrink -> pp Pp.float
