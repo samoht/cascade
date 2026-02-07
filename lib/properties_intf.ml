@@ -963,6 +963,10 @@ type background_image =
 
 type position_value =
   | Center
+  | Top
+  | Bottom
+  | Left
+  | Right
   | Left_top
   | Left_center
   | Left_bottom
@@ -971,6 +975,10 @@ type position_value =
   | Right_bottom
   | Center_top
   | Center_bottom
+  | Top_left
+  | Top_right
+  | Bottom_left
+  | Bottom_right
   | XY of length * length
   | Inherit
   | Initial
