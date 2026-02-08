@@ -1422,6 +1422,12 @@ let pp_z_index : z_index Pp.t =
   | Calc s -> Pp.string ctx s
   | Var s -> Pp.string ctx ("var(" ^ s ^ ")")
 
+let pp_order : order Pp.t =
+ fun ctx -> function
+  | Order_int i -> Pp.int ctx i
+  | Order_calc s -> Pp.string ctx s
+  | Order_var s -> Pp.string ctx ("var(" ^ s ^ ")")
+
 (* Opacity as float (0.0-1.0). While CSS accepts both number and percentage
    formats, Tailwind's minifier converts percentages to decimals (50% → .5), so
    we output decimals directly for minified output compatibility. *)
@@ -3564,16 +3570,49 @@ let read_visibility t : visibility =
 
 let read_z_index t : z_index =
   let read_calc_z t =
-    Reader.expect_string "calc(" t;
+    (* read_calc handles the calc(...) wrapper itself *)
     let expr =
       read_calc (fun _ -> Reader.err t "unexpected value in z-index calc") t
     in
-    Reader.ws t;
-    Reader.expect ')' t;
     match eval_numeric_calc expr with
     | Some f when Float.is_integer f -> Index (int_of_float f)
     | Some _ -> Reader.err_invalid t "z-index calc must evaluate to integer"
-    | None -> Reader.err_invalid t "z-index calc contains non-numeric values"
+    | None ->
+        (* calc contains vars - preserve as Calc string *)
+        let buf = Buffer.create 32 in
+        let fmt = Format.formatter_of_buffer buf in
+        let rec pp_expr : type a. a calc -> unit = function
+          | Num n ->
+              if Float.is_integer n then
+                Format.fprintf fmt "%d" (int_of_float n)
+              else Format.fprintf fmt "%g" n
+          | Var v ->
+              Format.fprintf fmt "var(--%s" v.name;
+              (match v.fallback with
+              | Fallback _ -> Format.fprintf fmt ", <fallback>"
+              | Var_fallback name -> Format.fprintf fmt ", var(--%s)" name
+              | Empty -> Format.fprintf fmt ","
+              | None -> ());
+              Format.fprintf fmt ")"
+          | Val _ -> Format.fprintf fmt "<val>"
+          | Nested inner ->
+              Format.fprintf fmt "calc(";
+              pp_expr inner;
+              Format.fprintf fmt ")"
+          | Expr (left, op, right) ->
+              pp_expr left;
+              (match op with
+              | Add -> Format.fprintf fmt " + "
+              | Sub -> Format.fprintf fmt " - "
+              | Mul -> Format.fprintf fmt " * "
+              | Div -> Format.fprintf fmt " / ");
+              pp_expr right
+        in
+        Format.fprintf fmt "calc(";
+        pp_expr expr;
+        Format.fprintf fmt ")";
+        Format.pp_print_flush fmt ();
+        Calc (Buffer.contents buf)
   in
   let read_var t : z_index = Var (read_var_body t) in
   Reader.enum_or_calls "z-index"
@@ -3585,24 +3624,57 @@ let read_z_index t : z_index =
       else Reader.err_invalid t "z-index must be integer")
     t
 
-let read_order t : int =
-  let read_calc_int t =
-    Reader.expect_string "calc(" t;
+let read_order t : order =
+  let read_calc_order t =
+    (* read_calc handles the calc(...) wrapper itself *)
     let expr =
       read_calc (fun _ -> Reader.err t "unexpected value in order calc") t
     in
-    Reader.ws t;
-    Reader.expect ')' t;
     match eval_numeric_calc expr with
-    | Some f when Float.is_integer f -> int_of_float f
+    | Some f when Float.is_integer f -> Order_int (int_of_float f)
     | Some _ -> Reader.err_invalid t "order calc must evaluate to integer"
-    | None -> Reader.err_invalid t "order calc contains non-numeric values"
+    | None ->
+        (* calc contains vars - preserve as Order_calc string *)
+        let buf = Buffer.create 32 in
+        let fmt = Format.formatter_of_buffer buf in
+        let rec pp_expr : type a. a calc -> unit = function
+          | Num n ->
+              if Float.is_integer n then
+                Format.fprintf fmt "%d" (int_of_float n)
+              else Format.fprintf fmt "%g" n
+          | Var v ->
+              Format.fprintf fmt "var(--%s" v.name;
+              (match v.fallback with
+              | Fallback _ -> Format.fprintf fmt ", <fallback>"
+              | Var_fallback name -> Format.fprintf fmt ", var(--%s)" name
+              | Empty -> Format.fprintf fmt ","
+              | None -> ());
+              Format.fprintf fmt ")"
+          | Val _ -> Format.fprintf fmt "<val>"
+          | Nested inner ->
+              Format.fprintf fmt "calc(";
+              pp_expr inner;
+              Format.fprintf fmt ")"
+          | Expr (left, op, right) ->
+              pp_expr left;
+              (match op with
+              | Add -> Format.fprintf fmt " + "
+              | Sub -> Format.fprintf fmt " - "
+              | Mul -> Format.fprintf fmt " * "
+              | Div -> Format.fprintf fmt " / ");
+              pp_expr right
+        in
+        Format.fprintf fmt "calc(";
+        pp_expr expr;
+        Format.fprintf fmt ")";
+        Format.pp_print_flush fmt ();
+        Order_calc (Buffer.contents buf)
   in
   Reader.ws t;
-  if Reader.looking_at t "calc(" then read_calc_int t
+  if Reader.looking_at t "calc(" then read_calc_order t
   else
     let n = Reader.number t in
-    if Float.is_integer n then int_of_float n
+    if Float.is_integer n then Order_int (int_of_float n)
     else Reader.err_invalid t "order must be integer"
 
 let read_flex_wrap t : flex_wrap =
@@ -3780,12 +3852,10 @@ let read_grid_line t : grid_line =
     else Name name
   in
   let read_calc_int t : grid_line =
-    Reader.expect_string "calc(" t;
+    (* read_calc handles the calc(...) wrapper itself *)
     let expr =
       read_calc (fun _ -> Reader.err t "unexpected value in grid-line calc") t
     in
-    Reader.ws t;
-    Reader.expect ')' t;
     match eval_numeric_calc expr with
     | Some f when Float.is_integer f -> Num (int_of_float f)
     | Some _ -> Reader.err_invalid t "grid-line calc must evaluate to integer"
@@ -6727,7 +6797,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Webkit_box_decoration_break -> pp pp_box_decoration_break
   | Flex_grow -> pp Pp.float
   | Flex_shrink -> pp Pp.float
-  | Order -> pp Pp.int
+  | Order -> pp pp_order
   | Flex_direction -> pp pp_flex_direction
   | Flex_wrap -> pp pp_flex_wrap
   | Font_style -> pp pp_font_style

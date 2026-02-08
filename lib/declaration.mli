@@ -500,7 +500,7 @@ val flex_wrap : flex_wrap -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/flex-wrap} flex-wrap}
     property. *)
 
-val order : int -> declaration
+val order : Properties.order -> declaration
 (** [order v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/order} order} property.
 *)
