@@ -1778,14 +1778,34 @@ let pp_grid_auto_flow : grid_auto_flow Pp.t =
   | Column_dense -> Pp.string ctx "column dense"
 
 let pp_grid_line : grid_line Pp.t =
- fun ctx -> function
-  | Auto -> Pp.string ctx "auto"
-  | Num n -> Pp.int ctx n
-  | Name s -> Pp.string ctx s
-  | Span n ->
-      Pp.string ctx "span";
-      Pp.char ctx ' ';
-      Pp.int ctx n
+  let normalize_slashes s =
+    (* Ensure spaces around "/" in grid values: "N/M" -> "N / M" *)
+    let buf = Buffer.create (String.length s + 4) in
+    String.iteri
+      (fun i c ->
+        if c = '/' then (
+          (* Add space before if not already there *)
+          (if Buffer.length buf > 0 then
+             let last = Buffer.nth buf (Buffer.length buf - 1) in
+             if last <> ' ' then Buffer.add_char buf ' ');
+          Buffer.add_char buf '/';
+          (* Add space after if not at end and next char isn't space *)
+          if i < String.length s - 1 && s.[i + 1] <> ' ' then
+            Buffer.add_char buf ' ')
+        else Buffer.add_char buf c)
+      s;
+    Buffer.contents buf
+  in
+  fun ctx -> function
+    | Auto -> Pp.string ctx "auto"
+    | Num n -> Pp.int ctx n
+    | Name s -> Pp.string ctx s
+    | Span n ->
+        Pp.string ctx "span";
+        Pp.char ctx ' ';
+        Pp.int ctx n
+    | Calc s -> Pp.string ctx s
+    | Arbitrary s -> Pp.string ctx (normalize_slashes s)
 
 let pp_aspect_ratio : aspect_ratio Pp.t =
  fun ctx -> function
@@ -3670,12 +3690,14 @@ let read_order t : order =
         Format.pp_print_flush fmt ();
         Order_calc (Buffer.contents buf)
   in
-  Reader.ws t;
-  if Reader.looking_at t "calc(" then read_calc_order t
-  else
-    let n = Reader.number t in
-    if Float.is_integer n then Order_int (int_of_float n)
-    else Reader.err_invalid t "order must be integer"
+  let read_var t : order = Order_var (read_var_body t) in
+  Reader.enum_or_calls "order" []
+    ~calls:[ ("calc", read_calc_order); ("var", read_var) ]
+    ~default:(fun t ->
+      let n = Reader.number t in
+      if Float.is_integer n then Order_int (int_of_float n)
+      else Reader.err_invalid t "order must be integer")
+    t
 
 let read_flex_wrap t : flex_wrap =
   Reader.enum "flex-wrap"
@@ -3859,11 +3881,47 @@ let read_grid_line t : grid_line =
     match eval_numeric_calc expr with
     | Some f when Float.is_integer f -> Num (int_of_float f)
     | Some _ -> Reader.err_invalid t "grid-line calc must evaluate to integer"
-    | None -> Reader.err_invalid t "grid-line calc contains non-numeric values"
+    | None ->
+        (* calc contains vars - preserve as Calc string *)
+        let buf = Buffer.create 32 in
+        let fmt = Format.formatter_of_buffer buf in
+        let rec pp_expr : type a. a calc -> unit = function
+          | Num n ->
+              if Float.is_integer n then
+                Format.fprintf fmt "%d" (int_of_float n)
+              else Format.fprintf fmt "%g" n
+          | Var v ->
+              Format.fprintf fmt "var(--%s" v.name;
+              (match v.fallback with
+              | Fallback _ -> Format.fprintf fmt ", <fallback>"
+              | Var_fallback name -> Format.fprintf fmt ", var(--%s)" name
+              | Empty -> Format.fprintf fmt ","
+              | None -> ());
+              Format.fprintf fmt ")"
+          | Val _ -> Format.fprintf fmt "<val>"
+          | Nested inner ->
+              Format.fprintf fmt "calc(";
+              pp_expr inner;
+              Format.fprintf fmt ")"
+          | Expr (left, op, right) ->
+              pp_expr left;
+              (match op with
+              | Add -> Format.fprintf fmt " + "
+              | Sub -> Format.fprintf fmt " - "
+              | Mul -> Format.fprintf fmt " * "
+              | Div -> Format.fprintf fmt " / ");
+              pp_expr right
+        in
+        Format.fprintf fmt "calc(";
+        pp_expr expr;
+        Format.fprintf fmt ")";
+        Format.pp_print_flush fmt ();
+        Calc (Buffer.contents buf)
   in
+  let read_var t : grid_line = Arbitrary ("var(" ^ read_var_body t ^ ")") in
   Reader.enum_or_calls "grid-line"
     [ ("auto", (Auto : grid_line)) ]
-    ~calls:[ ("calc", read_calc_int) ]
+    ~calls:[ ("calc", read_calc_int); ("var", read_var) ]
     ~default:(fun t ->
       Reader.one_of [ read_number; read_span_num; read_name ] t)
     t
