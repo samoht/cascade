@@ -4,7 +4,11 @@ include Properties_intf
 let err_invalid_value ?got t prop_name value =
   Reader.err ?got t ("invalid " ^ prop_name ^ " value: " ^ value)
 
-(* Parse a var(...) body and build a typed Var value *)
+(* Helper to read var(...) body as string *)
+let read_var_body t : string =
+  Reader.call "var" t (fun t ->
+      let body = Reader.css_value ~stops:[ ')' ] t in
+      body)
 
 (* Generic length parsing helpers *)
 let read_line_height_length t : line_height =
@@ -1412,7 +1416,11 @@ let pp_visibility : visibility Pp.t =
   | Collapse -> Pp.string ctx "collapse"
 
 let pp_z_index : z_index Pp.t =
- fun ctx -> function Auto -> Pp.string ctx "auto" | Index i -> Pp.int ctx i
+ fun ctx -> function
+  | Auto -> Pp.string ctx "auto"
+  | Index i -> Pp.int ctx i
+  | Calc s -> Pp.string ctx s
+  | Var s -> Pp.string ctx ("var(" ^ s ^ ")")
 
 (* Opacity as float (0.0-1.0). While CSS accepts both number and percentage
    formats, Tailwind's minifier converts percentages to decimals (50% → .5), so
@@ -1718,6 +1726,7 @@ let pp_list_style_type : list_style_type Pp.t =
   | Upper_alpha -> Pp.string ctx "upper-alpha"
   | Lower_roman -> Pp.string ctx "lower-roman"
   | Upper_roman -> Pp.string ctx "upper-roman"
+  | Var s -> Pp.string ctx ("var(" ^ s ^ ")")
 
 let pp_list_style_position : list_style_position Pp.t =
  fun ctx -> function
@@ -1752,6 +1761,7 @@ let pp_vertical_align : vertical_align Pp.t =
   | Em f -> Pp.unit ctx f "em"
   | Pct p -> Pp.pct ctx p
   | Inherit -> Pp.string ctx "inherit"
+  | Var s -> Pp.string ctx ("var(" ^ s ^ ")")
 
 let pp_grid_auto_flow : grid_auto_flow Pp.t =
  fun ctx -> function
@@ -1792,6 +1802,7 @@ let pp_will_change : will_change Pp.t =
   | Transform -> Pp.string ctx "transform"
   | Opacity -> Pp.string ctx "opacity"
   | Properties props -> Pp.list ~sep:Pp.comma Pp.string ctx props
+  | Var s -> Pp.string ctx ("var(" ^ s ^ ")")
 
 let pp_perspective_origin : perspective_origin Pp.t =
  fun ctx -> function
@@ -3276,6 +3287,7 @@ let pp_outline_style : outline_style Pp.t =
   | Outset -> Pp.string ctx "outset"
   | Auto -> Pp.string ctx "auto"
   | Inherit -> Pp.string ctx "inherit"
+  | Var s -> Pp.string ctx ("var(" ^ s ^ ")")
 
 let pp_outline_shorthand : outline_shorthand Pp.t =
  fun ctx { width; style; color } ->
@@ -3551,7 +3563,7 @@ let read_visibility t : visibility =
     t
 
 let read_z_index t : z_index =
-  let read_calc_int t =
+  let read_calc_z t =
     Reader.expect_string "calc(" t;
     let expr =
       read_calc (fun _ -> Reader.err t "unexpected value in z-index calc") t
@@ -3563,9 +3575,10 @@ let read_z_index t : z_index =
     | Some _ -> Reader.err_invalid t "z-index calc must evaluate to integer"
     | None -> Reader.err_invalid t "z-index calc contains non-numeric values"
   in
+  let read_var t : z_index = Var (read_var_body t) in
   Reader.enum_or_calls "z-index"
     [ ("auto", (Auto : z_index)) ]
-    ~calls:[ ("calc", read_calc_int) ]
+    ~calls:[ ("calc", read_calc_z); ("var", read_var) ]
     ~default:(fun t ->
       let n = Reader.number t in
       if Float.is_integer n then Index (int_of_float n)
@@ -3985,7 +3998,8 @@ let rec read_line_height t : line_height =
     ~default:read_line_height_length t
 
 let read_list_style_type t : list_style_type =
-  Reader.enum "list-style-type"
+  let read_var t : list_style_type = Var (read_var_body t) in
+  Reader.enum_or_calls "list-style-type"
     [
       ("none", (None : list_style_type));
       ("disc", Disc);
@@ -3997,6 +4011,7 @@ let read_list_style_type t : list_style_type =
       ("lower-roman", Lower_roman);
       ("upper-roman", Upper_roman);
     ]
+    ~calls:[ ("var", read_var) ]
     t
 
 let read_list_style_position t : list_style_position =
@@ -4564,10 +4579,9 @@ let read_text_decoration_skip_ink t : text_decoration_skip_ink =
     ]
     t
 
-(* TODO: Fix vertical_align function let read_vertical_align t : vertical_align
-   = *)
 let read_vertical_align t : vertical_align =
-  Reader.enum "vertical-align"
+  let read_var t : vertical_align = Var (read_var_body t) in
+  Reader.enum_or_calls "vertical-align"
     [
       ("baseline", (Baseline : vertical_align));
       ("top", Top);
@@ -4579,10 +4593,12 @@ let read_vertical_align t : vertical_align =
       ("super", Super);
       ("inherit", Inherit);
     ]
+    ~calls:[ ("var", read_var) ]
     ~default:read_vertical_align_length t
 
 let read_outline_style t : outline_style =
-  Reader.enum "outline-style"
+  let read_var t : outline_style = Var (read_var_body t) in
+  Reader.enum_or_calls "outline-style"
     [
       ("none", (None : outline_style));
       ("solid", Solid);
@@ -4596,6 +4612,7 @@ let read_outline_style t : outline_style =
       ("auto", Auto);
       ("inherit", Inherit);
     ]
+    ~calls:[ ("var", read_var) ]
     t
 
 let read_outline t : outline =
@@ -6437,6 +6454,7 @@ let read_will_change t : will_change =
   else if Reader.looking_at t "opacity" then (
     Reader.expect_string "opacity" t;
     Opacity)
+  else if Reader.looking_at t "var(" then Var (read_var_body t)
   else
     (* Read comma-separated list of property names *)
     let props = Reader.list ~sep:Reader.comma Reader.ident t in

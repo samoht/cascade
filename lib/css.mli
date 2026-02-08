@@ -1227,7 +1227,7 @@ type position = Static | Relative | Absolute | Fixed | Sticky
 type visibility = Visible | Hidden | Collapse
 
 (** CSS z-index values. *)
-type z_index = Auto | Index of int
+type z_index = Auto | Index of int | Calc of string | Var of string
 
 (** CSS overflow values. *)
 type overflow = Visible | Hidden | Scroll | Auto | Clip
@@ -2770,6 +2770,7 @@ type outline_style =
   | Outset
   | Auto
   | Inherit
+  | Var of string
 
 type outline_shorthand = {
   width : length option;
@@ -3676,6 +3677,7 @@ type list_style_type =
   | Upper_alpha
   | Lower_roman
   | Upper_roman
+  | Var of string
 
 (** CSS list-style-image values *)
 type list_style_image = None | Url of string | Inherit
@@ -3707,6 +3709,7 @@ type vertical_align =
   | Em of float
   | Pct of float
   | Inherit
+  | Var of string
 
 val table_layout : table_layout -> declaration
 (** [table_layout value] is the
@@ -4156,6 +4159,7 @@ type will_change =
   | Transform
   | Opacity
   | Properties of string list  (** Custom CSS property names *)
+  | Var of string
 
 val will_change : will_change -> declaration
 (** [will_change value] is the
