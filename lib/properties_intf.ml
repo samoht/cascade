@@ -65,7 +65,7 @@ type display =
 
 type position = Static | Relative | Absolute | Fixed | Sticky
 type visibility = Visible | Hidden | Collapse
-type z_index = Auto | Index of int
+type z_index = Auto | Index of int | Calc of string | Var of string
 type overflow = Visible | Hidden | Scroll | Auto | Clip
 
 (* Flexbox Types *)
@@ -458,6 +458,7 @@ type list_style_type =
   | Upper_alpha
   | Lower_roman
   | Upper_roman
+  | Var of string
 
 type list_style_position = Inside | Outside | Inherit
 type list_style_image = None | Url of string | Inherit
@@ -479,6 +480,7 @@ type vertical_align =
   | Em of float
   | Pct of float
   | Inherit
+  | Var of string
 
 (* Border Types *)
 type border_collapse = Collapse | Separate | Inherit
@@ -504,6 +506,7 @@ type outline_style =
   | Outset
   | Auto
   | Inherit
+  | Var of string
 
 (* Outline shorthand type *)
 type outline_shorthand = {
@@ -1280,6 +1283,7 @@ type will_change =
   | Transform
   | Opacity
   | Properties of string list  (** Custom CSS property names *)
+  | Var of string
 
 (* perspective-origin: origin point for 3D perspective *)
 type perspective_origin =
