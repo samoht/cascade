@@ -2104,6 +2104,8 @@ type grid_line =
   | Num of int  (** 1, 2, 3, ... or -1, -2, ... *)
   | Name of string  (** "header-start", "main-end", etc. *)
   | Span of int  (** span 2, span 3, etc. *)
+  | Calc of string  (** calc(12 * -1), etc. *)
+  | Arbitrary of string  (** Arbitrary values like "span 123 / span 123" *)
 
 val grid_template_columns : grid_template -> declaration
 (** [grid_template_columns cols] is the

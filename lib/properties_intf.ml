@@ -392,7 +392,14 @@ type grid_template =
   | Subgrid
   | Masonry
 
-type grid_line = Auto | Num of int | Name of string | Span of int
+type grid_line =
+  | Auto
+  | Num of int
+  | Name of string
+  | Span of int
+  | Calc of string
+  | Arbitrary of string
+
 type aspect_ratio = Auto | Ratio of float * float | Inherit
 type font_style = Normal | Italic | Oblique | Inherit
 
