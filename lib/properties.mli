@@ -153,7 +153,10 @@ val pp_z_index : z_index Pp.t
 val read_z_index : Reader.t -> z_index
 (** [read_z_index t] is the [z_index] parsed from [t]. *)
 
-val read_order : Reader.t -> int
+val pp_order : order Pp.t
+(** [pp_order] is the pretty-printer for [order]. *)
+
+val read_order : Reader.t -> order
 (** [read_order t] parses an order value (integer or calc expression). *)
 
 val pp_overflow : overflow Pp.t

@@ -1229,6 +1229,9 @@ type visibility = Visible | Hidden | Collapse
 (** CSS z-index values. *)
 type z_index = Auto | Index of int | Calc of string | Var of string
 
+(** CSS order values (flexbox order). *)
+type order = Order_int of int | Order_calc of string | Order_var of string
+
 (** CSS overflow values. *)
 type overflow = Visible | Hidden | Scroll | Auto | Clip
 
@@ -2039,7 +2042,7 @@ val flex_basis : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/flex-basis} flex-basis}
     property. *)
 
-val order : int -> declaration
+val order : order -> declaration
 (** [order order] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/order} order} property.
 *)

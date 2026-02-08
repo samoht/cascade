@@ -66,6 +66,7 @@ type display =
 type position = Static | Relative | Absolute | Fixed | Sticky
 type visibility = Visible | Hidden | Collapse
 type z_index = Auto | Index of int | Calc of string | Var of string
+type order = Order_int of int | Order_calc of string | Order_var of string
 type overflow = Visible | Hidden | Scroll | Auto | Clip
 
 (* Flexbox Types *)
@@ -1378,7 +1379,7 @@ type 'a property =
   | Flex_grow : float property
   | Flex_shrink : float property
   | Flex_basis : length property
-  | Order : int property
+  | Order : order property
   | Align_items : align_items property
   | Justify_content : justify_content property
   | Justify_items : justify_items property
