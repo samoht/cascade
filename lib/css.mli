@@ -3586,7 +3586,7 @@ val contain : contain -> declaration
 type webkit_box_orient = Horizontal | Vertical | Inherit
 
 (** CSS -webkit-line-clamp values. *)
-type webkit_line_clamp = Lines of int | Unset
+type webkit_line_clamp = Lines of int | Unset | Clamp_var of string
 
 (** CSS -webkit-appearance values. *)
 type webkit_appearance =

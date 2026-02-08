@@ -1239,7 +1239,7 @@ type webkit_font_smoothing =
 
 type moz_osx_font_smoothing = Auto | Grayscale | Inherit
 type webkit_box_orient = Horizontal | Vertical | Inherit
-type webkit_line_clamp = Lines of int | Unset
+type webkit_line_clamp = Lines of int | Unset | Clamp_var of string
 type text_size_adjust = None | Auto | Pct of float | Inherit
 
 (* Other Types *)

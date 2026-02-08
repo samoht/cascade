@@ -3464,7 +3464,10 @@ let pp_webkit_box_orient : webkit_box_orient Pp.t =
   | Inherit -> Pp.string ctx "inherit"
 
 let pp_webkit_line_clamp : webkit_line_clamp Pp.t =
- fun ctx -> function Lines n -> Pp.int ctx n | Unset -> Pp.string ctx "unset"
+ fun ctx -> function
+  | Lines n -> Pp.int ctx n
+  | Unset -> Pp.string ctx "unset"
+  | Clamp_var v -> Pp.string ctx ("var(" ^ v ^ ")")
 
 let rec read_border_style t : border_style =
   let read_var t : border_style = Var (read_var read_border_style t) in
@@ -4616,8 +4619,10 @@ let read_webkit_box_orient t : webkit_box_orient =
     t
 
 let read_webkit_line_clamp t : webkit_line_clamp =
-  Reader.enum "-webkit-line-clamp"
+  let read_var t : webkit_line_clamp = Clamp_var (read_var_body t) in
+  Reader.enum_or_calls "-webkit-line-clamp"
     [ ("unset", (Unset : webkit_line_clamp)) ]
+    ~calls:[ ("var", read_var) ]
     ~default:(fun t -> Lines (int_of_float (Reader.number t)))
     t
 
