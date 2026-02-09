@@ -1165,6 +1165,15 @@ type break_value =
 
 type break_inside_value = Auto | Avoid | Avoid_page | Avoid_column | Inherit
 
+(* Multi-column Layout Types *)
+type columns_value =
+  | Auto
+  | Count of int
+  | Width of length
+  | Both of int * length
+  | Var of columns_value var
+  | Inherit
+
 (* Scroll Types *)
 type scroll_behavior = Auto | Smooth | Inherit
 type scroll_snap_align = None | Start | End | Center
@@ -1511,6 +1520,7 @@ type 'a property =
   | Break_before : break_value property
   | Break_after : break_value property
   | Break_inside : break_inside_value property
+  | Columns : columns_value property
   | Word_spacing : length property
   | Background_attachment : background_attachment property
   | Border_top : string property

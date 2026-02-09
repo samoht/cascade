@@ -822,6 +822,12 @@ val pp_break_inside_value : break_inside_value Pp.t
 val read_break_inside_value : Reader.t -> break_inside_value
 (** [read_break_inside_value t] is the break-inside value parsed from [t]. *)
 
+val pp_columns_value : columns_value Pp.t
+(** [pp_columns_value] is the pretty-printer for [columns_value]. *)
+
+val read_columns_value : Reader.t -> columns_value
+(** [read_columns_value t] is the [columns_value] parsed from [t]. *)
+
 val pp_scroll_behavior : scroll_behavior Pp.t
 (** [pp_scroll_behavior] is the pretty-printer for [scroll_behavior]. *)
 

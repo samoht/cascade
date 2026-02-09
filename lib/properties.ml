@@ -2100,6 +2100,7 @@ let pp_property : type a. a property Pp.t =
   | Break_before -> Pp.string ctx "break-before"
   | Break_after -> Pp.string ctx "break-after"
   | Break_inside -> Pp.string ctx "break-inside"
+  | Columns -> Pp.string ctx "columns"
   | Word_spacing -> Pp.string ctx "word-spacing"
   | Background_attachment -> Pp.string ctx "background-attachment"
   | Border_top -> Pp.string ctx "border-top"
@@ -2816,6 +2817,18 @@ let pp_break_inside_value : break_inside_value Pp.t =
   | Avoid -> Pp.string ctx "avoid"
   | Avoid_page -> Pp.string ctx "avoid-page"
   | Avoid_column -> Pp.string ctx "avoid-column"
+  | Inherit -> Pp.string ctx "inherit"
+
+let rec pp_columns_value : columns_value Pp.t =
+ fun ctx -> function
+  | Auto -> Pp.string ctx "auto"
+  | Count n -> Pp.int ctx n
+  | Width len -> pp_length ctx len
+  | Both (n, len) ->
+      Pp.int ctx n;
+      Pp.space ctx ();
+      pp_length ctx len
+  | Var v -> pp_var pp_columns_value ctx v
   | Inherit -> Pp.string ctx "inherit"
 
 let pp_scroll_snap_align : scroll_snap_align Pp.t =
@@ -4428,6 +4441,26 @@ let read_break_inside_value t : break_inside_value =
       ("avoid-column", Avoid_column);
       ("inherit", Inherit);
     ]
+    t
+
+let read_columns_value t : columns_value =
+  (* columns can be: auto | <integer> | <length> | var(...) *)
+  Reader.enum_or_calls "columns"
+    [ ("auto", (Auto : columns_value)); ("inherit", Inherit) ]
+    ~calls:[]
+    ~default:(fun t ->
+      (* Try to read an integer for column-count, or a length for
+         column-width *)
+      Reader.one_of
+        [
+          (fun t ->
+            let n = Reader.int t in
+            Count n);
+          (fun t ->
+            let len = read_length t in
+            Width len);
+        ]
+        t)
     t
 
 let read_scroll_behavior t : scroll_behavior =
@@ -6102,6 +6135,7 @@ let read_any_property t =
   | "break-before" -> Prop Break_before
   | "break-after" -> Prop Break_after
   | "break-inside" -> Prop Break_inside
+  | "columns" -> Prop Columns
   | "clear" -> Prop Clear
   | "clip" -> Prop Clip
   | "clip-path" -> Prop Clip_path
@@ -6866,6 +6900,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Break_before -> pp pp_break_value
   | Break_after -> pp pp_break_value
   | Break_inside -> pp pp_break_inside_value
+  | Columns -> pp pp_columns_value
   | Transform_style -> pp pp_transform_style
   | Backface_visibility -> pp pp_backface_visibility
   | Scroll_snap_align -> pp pp_scroll_snap_align
