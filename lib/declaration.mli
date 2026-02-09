@@ -356,6 +356,36 @@ val max_height : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/max-height} max-height}
     property. *)
 
+val inline_size : length -> declaration
+(** [inline_size len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/inline-size}
+     inline-size} logical property. *)
+
+val min_inline_size : length -> declaration
+(** [min_inline_size len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/min-inline-size}
+     min-inline-size} logical property. *)
+
+val max_inline_size : length -> declaration
+(** [max_inline_size len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/max-inline-size}
+     max-inline-size} logical property. *)
+
+val block_size : length -> declaration
+(** [block_size len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/block-size} block-size}
+    logical property. *)
+
+val min_block_size : length -> declaration
+(** [min_block_size len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/min-block-size}
+     min-block-size} logical property. *)
+
+val max_block_size : length -> declaration
+(** [max_block_size len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/max-block-size}
+     max-block-size} logical property. *)
+
 val font_size : length -> declaration
 (** [font_size v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-size} font-size}
