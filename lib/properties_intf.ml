@@ -122,6 +122,12 @@ type align_items =
   | Self_end
   | Flex_start
   | Flex_end
+  (* Safe self position values (explicit safe keyword) *)
+  | Safe_center
+  | Safe_start
+  | Safe_end
+  | Safe_flex_start
+  | Safe_flex_end
   (* Unsafe self position values *)
   | Unsafe_center
   | Unsafe_start
@@ -147,6 +153,12 @@ type align_self =
   | Self_end
   | Flex_start
   | Flex_end
+  (* Safe self position values (explicit safe keyword) *)
+  | Safe_center
+  | Safe_start
+  | Safe_end
+  | Safe_flex_start
+  | Safe_flex_end
   (* Unsafe self position values *)
   | Unsafe_center
   | Unsafe_start
@@ -166,6 +178,12 @@ type justify_content =
   | Flex_end
   | Left
   | Right
+  (* Safe content position values (explicit safe keyword) *)
+  | Safe_center
+  | Safe_start
+  | Safe_end
+  | Safe_flex_start
+  | Safe_flex_end
   (* Unsafe content position values *)
   | Unsafe_center
   | Unsafe_start
