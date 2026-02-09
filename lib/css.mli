@@ -1876,6 +1876,11 @@ type align_items =
   | Self_end
   | Flex_start
   | Flex_end
+  | Safe_center
+  | Safe_start
+  | Safe_end
+  | Safe_flex_start
+  | Safe_flex_end
   | Unsafe_center
   | Unsafe_start
   | Unsafe_end
@@ -1897,6 +1902,11 @@ type justify_content =
   | Flex_end
   | Left
   | Right
+  | Safe_center
+  | Safe_start
+  | Safe_end
+  | Safe_flex_start
+  | Safe_flex_end
   | Unsafe_center
   | Unsafe_start
   | Unsafe_end
@@ -1926,6 +1936,11 @@ type align_self =
   | Self_end
   | Flex_start
   | Flex_end
+  | Safe_center
+  | Safe_start
+  | Safe_end
+  | Safe_flex_start
+  | Safe_flex_end
   | Unsafe_center
   | Unsafe_start
   | Unsafe_end
