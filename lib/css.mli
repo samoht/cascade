@@ -3093,6 +3093,7 @@ type transform_origin =
   | X of length  (** Single x-offset, y defaults to 50%. *)
   | XY of length * length
   | XYZ of length * length * length
+  | Arbitrary of string
   | Inherit  (** Transform origin (2D or 3D). *)
 
 val origin : length -> length -> transform_origin
