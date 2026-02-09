@@ -469,7 +469,12 @@ type list_style_type =
   | Var of string
 
 type list_style_position = Inside | Outside | Inherit
-type list_style_image = None | Url of string | Inherit
+
+type list_style_image =
+  | None
+  | Url of string
+  | List_image_var of string
+  | Inherit
 
 (* Table Types *)
 type table_layout = Auto | Fixed | Inherit
@@ -1064,6 +1069,7 @@ type cursor =
   | Zoom_in
   | Zoom_out
   | Url of string * (float * float) option * cursor
+  | Cursor_var of string
   | Inherit
 
 type user_select = None | Auto | Text | All | Contain

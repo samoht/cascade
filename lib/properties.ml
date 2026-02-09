@@ -746,9 +746,11 @@ module Cursor = struct
       let fallback = read t in
       (Url (url, hotspot, fallback) : cursor))
 
+  and read_var (t : Reader.t) : cursor = Cursor_var (read_var_body t)
+
   and read (t : Reader.t) : cursor =
     Reader.ws t;
-    Reader.one_of [ read_url_cursor; read_keyword ] t
+    Reader.one_of [ read_url_cursor; read_var; read_keyword ] t
 end
 
 let read_cursor t : cursor = Cursor.read t
@@ -1744,6 +1746,7 @@ let pp_list_style_image : list_style_image Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
   | Url u -> Pp.url ctx u
+  | List_image_var v -> Pp.string ctx ("var(" ^ v ^ ")")
   | Inherit -> Pp.string ctx "inherit"
 
 let pp_table_layout : table_layout Pp.t =
@@ -2769,6 +2772,7 @@ let rec pp_cursor : cursor Pp.t =
       | None -> ());
       Pp.comma ctx ();
       pp_cursor ctx fallback
+  | Cursor_var v -> Pp.string ctx ("var(" ^ v ^ ")")
   | Inherit -> Pp.string ctx "inherit"
 
 let pp_direction : direction Pp.t =
@@ -4158,9 +4162,10 @@ let read_list_style_image t : list_style_image =
   let read_url t =
     Reader.call "url" t (fun t -> (Url (read_url_arg t) : list_style_image))
   in
+  let read_var t : list_style_image = List_image_var (read_var_body t) in
   Reader.enum_or_calls "list-style-image"
     [ ("none", (None : list_style_image)); ("inherit", Inherit) ]
-    ~calls:[ ("url", read_url) ]
+    ~calls:[ ("url", read_url); ("var", read_var) ]
     t
 
 let read_table_layout t : table_layout =
