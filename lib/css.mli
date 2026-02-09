@@ -3450,6 +3450,7 @@ type cursor =
   | Zoom_in
   | Zoom_out
   | Url of string * (float * float) option * cursor
+  | Cursor_var of string
   | Inherit
 
 (** CSS user-select values. *)
@@ -3685,7 +3686,11 @@ type list_style_type =
   | Var of string
 
 (** CSS list-style-image values *)
-type list_style_image = None | Url of string | Inherit
+type list_style_image =
+  | None
+  | Url of string
+  | List_image_var of string
+  | Inherit
 
 val list_style_type : list_style_type -> declaration
 (** [list_style_type lst] is the
