@@ -592,6 +592,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Break_before -> v Break_before (read_break_value t)
   | Break_after -> v Break_after (read_break_value t)
   | Break_inside -> v Break_inside (read_break_inside_value t)
+  | Columns -> v Columns (read_columns_value t)
   (* Background properties *)
   | Background_attachment ->
       v Background_attachment (read_background_attachment t)
@@ -1120,6 +1121,7 @@ let isolation value = v Isolation value
 let break_before value = v Break_before value
 let break_after value = v Break_after value
 let break_inside value = v Break_inside value
+let columns value = v Columns value
 let outline value = v Outline value
 let outline_offset len = v Outline_offset len
 let scroll_snap_type value = v Scroll_snap_type value

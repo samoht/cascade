@@ -1234,6 +1234,9 @@ val break_inside : break_inside_value -> declaration
 (** [break_inside v] is the CSS [break-inside] property for page/column/region
     breaks. *)
 
+val columns : columns_value -> declaration
+(** [columns v] is the CSS [columns] property for multi-column layout. *)
+
 val padding_inline : length -> declaration
 (** [padding_inline v] is the CSS [padding-inline] property. *)
 

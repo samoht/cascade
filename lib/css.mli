@@ -1369,6 +1369,20 @@ type break_inside_value = Auto | Avoid | Avoid_page | Avoid_column | Inherit
 val break_inside : break_inside_value -> declaration
 (** [break_inside v] is the break-inside property. *)
 
+(** CSS columns values for multi-column layout. *)
+type columns_value =
+  | Auto
+  | Count of int
+  | Width of length
+  | Both of int * length
+  | Var of columns_value var
+  | Inherit
+
+val columns : columns_value -> declaration
+(** [columns v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/columns} columns}
+    property for multi-column layout. *)
+
 val visibility : visibility -> declaration
 (** [visibility v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/visibility} visibility}
