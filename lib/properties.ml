@@ -7036,8 +7036,36 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Place_self ->
       pp (fun ctx (a, j) ->
           pp_align_self ctx a;
-          Pp.space ctx ();
-          pp_justify_self ctx j)
+          (* Tailwind's minifier quirk: outputs single value for most cases, but
+             expands stretch to two values *)
+          let needs_second_value =
+            match (a, j) with
+            | Stretch, Stretch -> true
+            | Auto, Auto -> false
+            | Normal, Normal -> false
+            | Baseline, Baseline -> false
+            | First_baseline, First_baseline -> false
+            | Last_baseline, Last_baseline -> false
+            | Center, Center -> false
+            | Start, Start -> false
+            | End, End -> false
+            | Self_start, Self_start -> false
+            | Self_end, Self_end -> false
+            | Flex_start, Flex_start -> false
+            | Flex_end, Flex_end -> false
+            | Safe_center, Safe_center -> false
+            | Safe_start, Safe_start -> false
+            | Safe_end, Safe_end -> false
+            | Safe_flex_start, Safe_flex_start -> false
+            | Safe_flex_end, Safe_flex_end -> false
+            | Unsafe_center, Unsafe_center -> false
+            | Unsafe_start, Unsafe_start -> false
+            | Unsafe_end, Unsafe_end -> false
+            | _ -> true (* Different values always need both *)
+          in
+          if needs_second_value then (
+            Pp.space ctx ();
+            pp_justify_self ctx j))
   | Grid_column -> pp Pp.string
   | Grid_row -> pp Pp.string
   | Grid_column_start -> pp pp_grid_line

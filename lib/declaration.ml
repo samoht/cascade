@@ -305,8 +305,37 @@ let read_place_self_value t =
   let a = read_align_self t in
   Reader.ws t;
   let j = Reader.option read_justify_self t in
+  (* Per CSS spec, when only one value is given, both values are set to it *)
+  let align_to_justify (a : align_self) : justify_self =
+    match a with
+    | Auto -> Auto
+    | Normal -> Normal
+    | Stretch -> Stretch
+    | Baseline -> Baseline
+    | First_baseline -> First_baseline
+    | Last_baseline -> Last_baseline
+    | Center -> Center
+    | Start -> Start
+    | End -> End
+    | Self_start -> Self_start
+    | Self_end -> Self_end
+    | Flex_start -> Flex_start
+    | Flex_end -> Flex_end
+    | Safe_center -> Safe_center
+    | Safe_start -> Safe_start
+    | Safe_end -> Safe_end
+    | Safe_flex_start -> Safe_flex_start
+    | Safe_flex_end -> Safe_flex_end
+    | Unsafe_center -> Unsafe_center
+    | Unsafe_start -> Unsafe_start
+    | Unsafe_end -> Unsafe_end
+    | Unsafe_self_start -> Unsafe_self_start
+    | Unsafe_self_end -> Unsafe_self_end
+    | Unsafe_flex_start -> Unsafe_flex_start
+    | Unsafe_flex_end -> Unsafe_flex_end
+  in
   let pair =
-    match j with None -> (a, (Center : justify_self)) | Some jj -> (a, jj)
+    match j with None -> (a, align_to_justify a) | Some jj -> (a, jj)
   in
   v Place_self pair
 
