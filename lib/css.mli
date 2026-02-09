@@ -3129,6 +3129,7 @@ type perspective_origin =
   | Perspective_bottom_left
   | Perspective_bottom_right
   | Perspective_xy of length * length  (** Custom x, y coordinates *)
+  | Perspective_var of perspective_origin var  (** CSS variable reference *)
 
 val perspective_origin : perspective_origin -> declaration
 (** [perspective_origin origin] is the
