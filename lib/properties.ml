@@ -1833,7 +1833,7 @@ let pp_will_change : will_change Pp.t =
   | Properties props -> Pp.list ~sep:Pp.comma Pp.string ctx props
   | Var s -> Pp.string ctx ("var(" ^ s ^ ")")
 
-let pp_perspective_origin : perspective_origin Pp.t =
+let rec pp_perspective_origin : perspective_origin Pp.t =
  fun ctx -> function
   | Perspective_center -> Pp.string ctx "center"
   | Perspective_top -> Pp.string ctx "top"
@@ -1848,6 +1848,7 @@ let pp_perspective_origin : perspective_origin Pp.t =
       pp_length ctx x;
       Pp.space ctx ();
       pp_length ctx y
+  | Perspective_var v -> pp_var pp_perspective_origin ctx v
 
 let pp_clip : clip Pp.t =
  fun ctx -> function
@@ -6704,15 +6705,18 @@ let read_perspective_origin_keyword t =
         keywords)
     keyword_pairs
 
-let read_perspective_origin t : perspective_origin =
+let rec read_perspective_origin t : perspective_origin =
   Reader.ws t;
-  match read_perspective_origin_keyword t with
-  | Some result -> result
-  | None ->
-      let x = read_length t in
-      Reader.ws t;
-      let y = read_length t in
-      Perspective_xy (x, y)
+  if Reader.looking_at t "var(" then
+    Perspective_var (Values.read_var read_perspective_origin t)
+  else
+    match read_perspective_origin_keyword t with
+    | Some result -> result
+    | None ->
+        let x = read_length t in
+        Reader.ws t;
+        let y = read_length t in
+        Perspective_xy (x, y)
 
 (* Reader for clip property (deprecated) *)
 let read_clip t : clip =
