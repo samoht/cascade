@@ -1952,6 +1952,12 @@ let pp_property : type a. a property Pp.t =
   | Min_height -> Pp.string ctx "min-height"
   | Max_width -> Pp.string ctx "max-width"
   | Max_height -> Pp.string ctx "max-height"
+  | Inline_size -> Pp.string ctx "inline-size"
+  | Min_inline_size -> Pp.string ctx "min-inline-size"
+  | Max_inline_size -> Pp.string ctx "max-inline-size"
+  | Block_size -> Pp.string ctx "block-size"
+  | Min_block_size -> Pp.string ctx "min-block-size"
+  | Max_block_size -> Pp.string ctx "max-block-size"
   | Font_size -> Pp.string ctx "font-size"
   | Line_height -> Pp.string ctx "line-height"
   | Font_weight -> Pp.string ctx "font-weight"
@@ -5938,6 +5944,12 @@ let read_any_property t =
   | "min-height" -> Prop Min_height
   | "max-width" -> Prop Max_width
   | "max-height" -> Prop Max_height
+  | "inline-size" -> Prop Inline_size
+  | "min-inline-size" -> Prop Min_inline_size
+  | "max-inline-size" -> Prop Max_inline_size
+  | "block-size" -> Prop Block_size
+  | "min-block-size" -> Prop Min_block_size
+  | "max-block-size" -> Prop Max_block_size
   | "color" -> Prop Color
   | "background-color" -> Prop Background_color
   | "background" -> Prop Background (* Shorthand property *)
@@ -6787,6 +6799,12 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Min_height -> pp pp_length_percentage
   | Max_width -> pp pp_length_percentage
   | Max_height -> pp pp_length_percentage
+  | Inline_size -> pp pp_length_percentage
+  | Min_inline_size -> pp pp_length_percentage
+  | Max_inline_size -> pp pp_length_percentage
+  | Block_size -> pp pp_length_percentage
+  | Min_block_size -> pp pp_length_percentage
+  | Max_block_size -> pp pp_length_percentage
   | Font_size -> pp pp_length_percentage
   | Line_height -> pp pp_line_height
   | Font_weight -> pp pp_font_weight

@@ -1368,6 +1368,12 @@ type 'a property =
   | Min_height : length_percentage property
   | Max_width : length_percentage property
   | Max_height : length_percentage property
+  | Inline_size : length_percentage property
+  | Min_inline_size : length_percentage property
+  | Max_inline_size : length_percentage property
+  | Block_size : length_percentage property
+  | Min_block_size : length_percentage property
+  | Max_block_size : length_percentage property
   | Font_size : length_percentage property
   | Line_height : line_height property
   | Font_weight : font_weight property
