@@ -1304,6 +1304,7 @@ type transform_origin =
   | X of length  (** Single x-offset, y defaults to 50% *)
   | XY of length * length
   | XYZ of length * length * length
+  | Arbitrary of string
   | Inherit
 
 (* will-change property: which properties will animate *)
@@ -1328,6 +1329,7 @@ type perspective_origin =
   | Perspective_bottom_left
   | Perspective_bottom_right
   | Perspective_xy of length * length
+  | Perspective_var of perspective_origin var
 
 (* clip property (deprecated, but needed for sr-only) *)
 type clip =

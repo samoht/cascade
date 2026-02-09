@@ -2535,6 +2535,7 @@ let pp_transform_origin : transform_origin Pp.t =
       pp_length ctx b;
       Pp.space ctx ();
       pp_length ctx z
+  | Arbitrary s -> Pp.string ctx s
 
 let rec pp_background : background Pp.t =
  fun ctx -> function
