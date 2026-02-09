@@ -3141,6 +3141,14 @@ let pp_place_content : place_content Pp.t =
   | Space_between -> Pp.string ctx "space-between"
   | Space_around -> Pp.string ctx "space-around"
   | Space_evenly -> Pp.string ctx "space-evenly"
+  | Safe_center -> Pp.string ctx "safe center"
+  | Safe_start -> Pp.string ctx "safe start"
+  | Safe_end -> Pp.string ctx "safe end"
+  | Safe_stretch -> Pp.string ctx "safe stretch"
+  | Unsafe_center -> Pp.string ctx "unsafe center"
+  | Unsafe_start -> Pp.string ctx "unsafe start"
+  | Unsafe_end -> Pp.string ctx "unsafe end"
+  | Unsafe_stretch -> Pp.string ctx "unsafe stretch"
   | Align_justify (a, j) ->
       pp_align_content ctx a;
       Pp.space ctx ();
@@ -3827,6 +3835,30 @@ let read_place_content t : place_content =
     let a, j = Reader.pair read_align_content read_justify_content t in
     (Align_justify (a, j) : place_content)
   in
+  let read_safe t =
+    Reader.expect_string "safe" t;
+    Reader.ws t;
+    Reader.enum "place-content safe"
+      [
+        ("center", (Safe_center : place_content));
+        ("start", Safe_start);
+        ("end", Safe_end);
+        ("stretch", Safe_stretch);
+      ]
+      t
+  in
+  let read_unsafe t =
+    Reader.expect_string "unsafe" t;
+    Reader.ws t;
+    Reader.enum "place-content unsafe"
+      [
+        ("center", (Unsafe_center : place_content));
+        ("start", Unsafe_start);
+        ("end", Unsafe_end);
+        ("stretch", Unsafe_stretch);
+      ]
+      t
+  in
   let read_single t =
     Reader.enum "place-content"
       [
@@ -3842,7 +3874,7 @@ let read_place_content t : place_content =
       ]
       t
   in
-  Reader.one_of [ read_pair; read_single ] t
+  Reader.one_of [ read_pair; read_safe; read_unsafe; read_single ] t
 
 let read_place_items t : place_items =
   (* Pair path: align-items then justify (whitespace-separated) *)
@@ -4443,11 +4475,12 @@ let read_break_inside_value t : break_inside_value =
     ]
     t
 
-let read_columns_value t : columns_value =
+let rec read_columns_value t : columns_value =
   (* columns can be: auto | <integer> | <length> | var(...) *)
+  let read_var t : columns_value = Var (read_var read_columns_value t) in
   Reader.enum_or_calls "columns"
     [ ("auto", (Auto : columns_value)); ("inherit", Inherit) ]
-    ~calls:[]
+    ~calls:[ ("var", read_var) ]
     ~default:(fun t ->
       (* Try to read an integer for column-count, or a length for
          column-width *)
