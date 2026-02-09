@@ -368,6 +368,11 @@ type place_items =
   | End
   | Center
   | Stretch
+  | Baseline
+  | Start_safe
+  | End_safe
+  | Center_safe
+  | Stretch_stretch  (** Explicit stretch on both axes *)
   | Align_justify of align_items * justify_items
   | Inherit
 

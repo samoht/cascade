@@ -3166,6 +3166,11 @@ let pp_place_items : place_items Pp.t =
   | End -> Pp.string ctx "end"
   | Center -> Pp.string ctx "center"
   | Stretch -> Pp.string ctx "stretch"
+  | Baseline -> Pp.string ctx "baseline"
+  | Start_safe -> Pp.string ctx "safe start"
+  | End_safe -> Pp.string ctx "safe end"
+  | Center_safe -> Pp.string ctx "safe center"
+  | Stretch_stretch -> Pp.string ctx "stretch stretch"
   | Align_justify (a, j) ->
       pp_align_items ctx a;
       Pp.space ctx ();
@@ -3881,25 +3886,36 @@ let read_place_content t : place_content =
   Reader.one_of [ read_pair; read_safe; read_unsafe; read_single ] t
 
 let read_place_items t : place_items =
-  (* Pair path: align-items then justify (whitespace-separated) *)
-  let read_pair t =
-    let a, j = Reader.pair read_align_items read_justify_items t in
-    Align_justify (a, j)
-  in
-  (* Single keyword path *)
-  let read_single t =
+  Reader.ws t;
+  (* Check for "safe" prefix *)
+  if Reader.looking_at t "safe" then (
+    Reader.expect_string "safe" t;
+    Reader.ws t;
+    let kw = Reader.ident t in
+    match kw with
+    | "start" -> Start_safe
+    | "end" -> End_safe
+    | "center" -> Center_safe
+    | _ -> Reader.err_invalid t ("place-items safe " ^ kw))
+  else if Reader.looking_at t "stretch" then (
+    Reader.expect_string "stretch" t;
+    Reader.ws t;
+    if
+      Reader.option (fun t -> Reader.expect_string "stretch" t) t
+      |> Option.is_some
+    then Stretch_stretch
+    else Stretch)
+  else
     Reader.enum "place-items"
       [
         ("normal", (Normal : place_items));
         ("start", Start);
         ("end", End);
         ("center", Center);
-        ("stretch", Stretch);
+        ("baseline", Baseline);
         ("inherit", Inherit);
       ]
       t
-  in
-  Reader.one_of [ read_pair; read_single ] t
 
 let read_grid_auto_flow t : grid_auto_flow =
   let v = Reader.ident t in
