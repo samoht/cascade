@@ -2249,6 +2249,14 @@ type place_content =
   | Space_between
   | Space_around
   | Space_evenly
+  | Safe_center
+  | Safe_start
+  | Safe_end
+  | Safe_stretch
+  | Unsafe_center
+  | Unsafe_start
+  | Unsafe_end
+  | Unsafe_stretch
   | Align_justify of align_content * justify_content
   | Inherit
 
