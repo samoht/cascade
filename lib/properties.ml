@@ -1844,10 +1844,12 @@ let rec pp_perspective_origin : perspective_origin Pp.t =
   | Perspective_top_right -> Pp.string ctx "top right"
   | Perspective_bottom_left -> Pp.string ctx "bottom left"
   | Perspective_bottom_right -> Pp.string ctx "bottom right"
+  | Perspective_x x -> pp_length ctx x
   | Perspective_xy (x, y) ->
       pp_length ctx x;
       Pp.space ctx ();
       pp_length ctx y
+  | Perspective_arbitrary s -> Pp.string ctx s
   | Perspective_var v -> pp_var pp_perspective_origin ctx v
 
 let pp_clip : clip Pp.t =
@@ -6712,11 +6714,13 @@ let rec read_perspective_origin t : perspective_origin =
   else
     match read_perspective_origin_keyword t with
     | Some result -> result
-    | None ->
+    | None -> (
         let x = read_length t in
         Reader.ws t;
-        let y = read_length t in
-        Perspective_xy (x, y)
+        (* Second length is optional - y defaults to center *)
+        match Reader.option read_length t with
+        | Some y -> Perspective_xy (x, y)
+        | None -> Perspective_x x)
 
 (* Reader for clip property (deprecated) *)
 let read_clip t : clip =

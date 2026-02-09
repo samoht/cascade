@@ -1328,7 +1328,9 @@ type perspective_origin =
   | Perspective_top_right
   | Perspective_bottom_left
   | Perspective_bottom_right
+  | Perspective_x of length  (** Single x-offset, y defaults to center *)
   | Perspective_xy of length * length
+  | Perspective_arbitrary of string  (** Raw CSS value for arbitrary origins *)
   | Perspective_var of perspective_origin var
 
 (* clip property (deprecated, but needed for sr-only) *)
