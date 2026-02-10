@@ -894,6 +894,7 @@ type angle =
   | Rad of float
   | Turn of float
   | Grad of float
+  | Calc of angle calc  (** Calculated angle expressions *)
   | Var of angle var  (** CSS variable reference *)
 
 (** CSS aspect-ratio values *)
@@ -3127,8 +3128,18 @@ val transform_origin : transform_origin -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transform-origin}
      transform-origin} property. *)
 
-val rotate : angle -> declaration
-(** [rotate angle] is the
+(** CSS rotate property values *)
+type rotate_value =
+  | Angle of angle  (** z-axis rotation *)
+  | X of angle  (** x-axis rotation *)
+  | Y of angle  (** y-axis rotation *)
+  | Z of angle  (** z-axis rotation (explicit) *)
+  | Axis of float * float * float * angle  (** custom axis rotation *)
+  | None
+  | Var of rotate_value var
+
+val rotate : rotate_value -> declaration
+(** [rotate v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/rotate} rotate}
     property. *)
 

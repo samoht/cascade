@@ -1166,7 +1166,7 @@ val transforms : transform list -> declaration
 (** [transforms ts] is the CSS [transform] property with multiple
     transformations. *)
 
-val rotate : angle -> declaration
+val rotate : rotate_value -> declaration
 (** [rotate v] is the CSS [rotate] property. *)
 
 val scale : scale -> declaration

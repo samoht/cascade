@@ -257,6 +257,7 @@ type angle =
   | Rad of float
   | Turn of float
   | Grad of float
+  | Calc of angle calc
   | Var of angle var
 
 type alpha = None | Num of float | Pct of float | Var of alpha var

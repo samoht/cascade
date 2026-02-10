@@ -780,6 +780,15 @@ type translate_value =
   | None
   | Var of translate_value var
 
+type rotate_value =
+  | Angle of angle  (** z-axis rotation *)
+  | X of angle  (** x-axis rotation *)
+  | Y of angle  (** y-axis rotation *)
+  | Z of angle  (** z-axis rotation (explicit) *)
+  | Axis of float * float * float * angle  (** custom axis rotation *)
+  | None
+  | Var of rotate_value var
+
 type steps_direction =
   | Jump_start
   | Jump_end
@@ -1543,7 +1552,7 @@ type 'a property =
   | Transform_style : transform_style property
   | Backface_visibility : backface_visibility property
   | Object_position : position_value property
-  | Rotate : angle property
+  | Rotate : rotate_value property
   | Transition_duration : duration property
   | Transition_timing_function : timing_function property
   | Transition_delay : duration property

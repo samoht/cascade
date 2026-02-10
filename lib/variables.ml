@@ -229,7 +229,14 @@ let vars_of_length_percentage (value : Values.length_percentage) : any_var list
   | _ -> []
 
 let vars_of_angle (value : Values.angle) : any_var list =
-  match value with Var v -> [ V v ] | _ -> []
+  match value with Var v -> [ V v ] | Calc c -> vars_of_calc c | _ -> []
+
+let vars_of_rotate_value (value : Properties.rotate_value) : any_var list =
+  match value with
+  | Angle a | X a | Y a | Z a -> vars_of_angle a
+  | Axis (_, _, _, a) -> vars_of_angle a
+  | Var v -> [ V v ]
+  | None -> []
 
 let vars_of_channel (value : Values.channel) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
@@ -511,8 +518,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   (* Color properties *)
   | Accent_color, value -> vars_of_color value
   | Caret_color, value -> vars_of_color value
-  (* Angle properties *)
-  | Rotate, value -> vars_of_angle value
+  (* Rotate property *)
+  | Rotate, value -> vars_of_rotate_value value
   (* Duration properties *)
   | Transition_duration, value -> vars_of_duration value
   | Transition_delay, value -> vars_of_duration value
