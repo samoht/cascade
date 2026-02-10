@@ -2126,6 +2126,7 @@ let pp_property : type a. a property Pp.t =
   | Border_bottom -> Pp.string ctx "border-bottom"
   | Border_left -> Pp.string ctx "border-left"
   | Transform_origin -> Pp.string ctx "transform-origin"
+  | Transform_box -> Pp.string ctx "transform-box"
   | Text_shadow -> Pp.string ctx "text-shadow"
   | Clip_path -> Pp.string ctx "clip-path"
   | Mask -> Pp.string ctx "mask"
@@ -2554,6 +2555,15 @@ let pp_transform_origin : transform_origin Pp.t =
       Pp.space ctx ();
       pp_length ctx z
   | Arbitrary s -> Pp.string ctx s
+
+let pp_transform_box : transform_box Pp.t =
+ fun ctx -> function
+  | Content_box -> Pp.string ctx "content-box"
+  | Border_box -> Pp.string ctx "border-box"
+  | Fill_box -> Pp.string ctx "fill-box"
+  | Stroke_box -> Pp.string ctx "stroke-box"
+  | View_box -> Pp.string ctx "view-box"
+  | Inherit -> Pp.string ctx "inherit"
 
 let rec pp_background : background Pp.t =
  fun ctx -> function
@@ -6198,6 +6208,7 @@ let read_any_property t =
   | "animation-name" -> Prop Animation_name
   | "transform" -> Prop Transform
   | "transform-origin" -> Prop Transform_origin
+  | "transform-box" -> Prop Transform_box
   | "translate" -> Prop Translate
   | "box-sizing" -> Prop Box_sizing
   | "field-sizing" -> Prop Field_sizing
@@ -6629,6 +6640,18 @@ let read_transform_origin (t : Reader.t) : transform_origin =
       Reader.one_of
         [ Transform_origin.read_keywords; Transform_origin.read_xyz ]
         t)
+    t
+
+let read_transform_box (t : Reader.t) : transform_box =
+  Reader.enum "transform-box"
+    [
+      ("content-box", Content_box);
+      ("border-box", Border_box);
+      ("fill-box", Fill_box);
+      ("stroke-box", Stroke_box);
+      ("view-box", View_box);
+      ("inherit", Inherit);
+    ]
     t
 
 module Background_shorthand = struct
@@ -7171,6 +7194,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_bottom -> pp Pp.string
   | Border_left -> pp Pp.string
   | Transform_origin -> pp pp_transform_origin
+  | Transform_box -> pp pp_transform_box
   | Text_shadow -> pp (Pp.list ~sep:Pp.comma pp_text_shadow)
   | Clip_path -> pp pp_clip_path
   | Mask -> pp Pp.string

@@ -976,6 +976,11 @@ val transform_origin : transform_origin -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transform-origin}
      transform-origin} property. *)
 
+val transform_box : transform_box -> declaration
+(** [transform_box v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transform-box}
+     transform-box} property. *)
+
 val clip_path : clip_path -> declaration
 (** [clip_path v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/clip-path} clip-path}
