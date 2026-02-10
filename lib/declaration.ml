@@ -198,6 +198,7 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Timing_function -> pp pp_timing_function
   | Transform -> pp pp_transform
   | Touch_action -> pp pp_touch_action
+  | Transition_property_value -> pp pp_transition_property_value
 
 let string_of_value ?(minify = true) ?(inline = false) decl =
   let ctx = { Pp.minify; indent = 0; buf = Buffer.create 16; inline } in
