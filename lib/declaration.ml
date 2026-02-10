@@ -100,10 +100,9 @@ let read_property_value t =
         parse_tokens buf t depth in_quote quote_char
   in
   let value = parse_tokens buf t 0 false '\000' in
-  let trimmed = String.trim value in
-  if String.length trimmed = 0 then
-    Reader.err_invalid t "property value (cannot be empty)";
-  trimmed
+  (* Allow empty values - CSS custom properties can have empty values like
+     "--tw-blur: ;" *)
+  String.trim value
 
 (** Check for and consume !important *)
 let read_importance t =

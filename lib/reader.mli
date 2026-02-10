@@ -205,6 +205,10 @@ val one_of : (t -> 'a) list -> t -> 'a
 val option : (t -> 'a) -> t -> 'a option
 (** [option parser t] tries [parser], returning [None] if it fails. *)
 
+val try_parse_err : (t -> 'a) -> t -> ('a, string) result
+(** [try_parse_err parser t] tries [parser], returning Ok value or Error
+    message. *)
+
 val enum : ?default:(t -> 'a) -> string -> (string * 'a) list -> t -> 'a
 (** [enum ?default label cases t] reads identifier and matches against cases. If
     no match is found and [~default] is provided, the input position is not

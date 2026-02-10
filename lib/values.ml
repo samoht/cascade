@@ -72,7 +72,11 @@ let pp_var : type a. a Pp.t -> a var Pp.t =
         Pp.comma ctx ();
         Pp.string ctx "var(--";
         Pp.string ctx fallback_name;
-        Pp.string ctx "))")
+        Pp.string ctx "))"
+    | Raw_fallback raw ->
+        Pp.comma ctx ();
+        Pp.string ctx raw;
+        Pp.char ctx ')')
 
 (* Function call formatting now provided by Pp.call and Pp.call_list *)
 
@@ -747,6 +751,28 @@ module Calc = struct
   let nested inner = Nested inner
 end
 
+(** Read raw fallback content as a string, handling nested parentheses *)
+let read_raw_fallback_content t =
+  let buf = Buffer.create 32 in
+  let rec loop depth =
+    match Reader.peek t with
+    | Some ')' when depth = 0 -> Buffer.contents buf
+    | Some ')' ->
+        Buffer.add_char buf ')';
+        Reader.skip t;
+        loop (depth - 1)
+    | Some '(' ->
+        Buffer.add_char buf '(';
+        Reader.skip t;
+        loop (depth + 1)
+    | Some c ->
+        Buffer.add_char buf c;
+        Reader.skip t;
+        loop depth
+    | None -> Reader.err t "unexpected end of input in var() fallback"
+  in
+  loop 0
+
 (** var() parser after "var" ident has been consumed *)
 let read_var_after_ident : type a. (Reader.t -> a) -> Reader.t -> a var =
  fun read_value t ->
@@ -769,9 +795,14 @@ let read_var_after_ident : type a. (Reader.t -> a) -> Reader.t -> a var =
           (* Check if we have an empty fallback (nothing before ')') *)
           if Reader.peek t = Some ')' then Empty
           else
-            (* Parse the fallback using the passed parser function *)
-            let fallback_value = read_value t in
-            Fallback fallback_value)
+            (* Try to parse the fallback using the typed parser first. If that
+               fails, fall back to raw string parsing. *)
+            match Reader.try_parse_err read_value t with
+            | Ok fallback_value -> Fallback fallback_value
+            | Error _ ->
+                (* Typed parsing failed - read as raw string *)
+                let raw = read_raw_fallback_content t in
+                Raw_fallback (String.trim raw))
         t
     with
     | Some fb -> fb
@@ -1426,16 +1457,31 @@ let read_color_space t : color_space =
   | "hwb" -> Hwb
   | _ -> Reader.err_invalid t ("color space: " ^ ident)
 
-(** Parse color-mix() function - forward declaration needed *)
+(** Forward declaration for percentage reader used in color-mix *)
+let rec read_percentage_in_color_mix t : percentage =
+  Reader.ws t;
+  if Reader.looking_at t "var(" then
+    Var (read_var read_percentage_in_color_mix t)
+  else
+    let n = Reader.number t in
+    Reader.expect '%' t;
+    (Pct n : percentage)
+
 let read_optional_percentage t : percentage option =
-  (* Parse optional percentage immediately after a value *)
-  Reader.option
-    (fun t ->
-      let n = Reader.number t in
-      Reader.expect '%' t;
-      Reader.ws t;
-      (Pct n : percentage))
-    t
+  (* Parse optional percentage immediately after a value. In color-mix(), this
+     can be a numeric percentage OR var(). *)
+  Reader.ws t;
+  if Reader.looking_at t "var(" then
+    (* var() percentage like var(--bg-opacity) *)
+    Some (Var (read_var read_percentage_in_color_mix t))
+  else
+    Reader.option
+      (fun t ->
+        let n = Reader.number t in
+        Reader.expect '%' t;
+        Reader.ws t;
+        (Pct n : percentage))
+      t
 
 let rec read_color_mix t : color =
   Reader.ws t;

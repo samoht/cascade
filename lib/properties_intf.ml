@@ -809,7 +809,12 @@ type timing_function =
   | Cubic_bezier of float * float * float * float
   | Var of timing_function var
 
-type transition_property_value = All | None | Property of string
+type transition_property_value =
+  | All
+  | None
+  | Property of string
+  | Var of transition_property_value var
+
 type transition_property = transition_property_value list
 
 (* Transition behavior for discrete transitions (CSS Transitions Level 2) *)
@@ -1013,6 +1018,9 @@ type background_image =
       (** Linear gradient using a single variable for all stops including
           position. Outputs: linear-gradient(var(--tw-gradient-stops)) *)
   | Radial_gradient of gradient_stop list
+  | Conic_gradient of gradient_stop list
+  | Var of background_image var
+      (** CSS variable reference: var(--my-gradient) *)
   | None
   | Initial
   | Inherit

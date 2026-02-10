@@ -132,6 +132,10 @@ val read_var : (Reader.t -> 'a) -> Reader.t -> 'a var
     for the payload. Expects to be positioned at [var(] and parses the full
     expression. *)
 
+val read_var_after_ident : (Reader.t -> 'a) -> Reader.t -> 'a var
+(** [read_var_after_ident read t] parses after "var" has been consumed. Expects
+    to be positioned at [(] after "var". *)
+
 (** {1 Calc Module} *)
 module Calc : sig
   val add : 'a calc -> 'a calc -> 'a calc
