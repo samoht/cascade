@@ -1127,7 +1127,21 @@ type pointer_events =
   | All
   | Inherit
 
-type touch_action = Auto | None | Pan_x | Pan_y | Manipulation | Inherit
+type touch_action =
+  | Auto
+  | None
+  | Pan_x
+  | Pan_y
+  | Pan_left
+  | Pan_right
+  | Pan_up
+  | Pan_down
+  | Pinch_zoom
+  | Manipulation
+  | Inherit
+  | Vars of touch_action var list
+      (** Variable references like var(--tw-pan-x,) var(--tw-pan-y,) *)
+
 type resize = None | Both | Horizontal | Vertical | Block | Inline | Inherit
 
 (* Box Model Types *)

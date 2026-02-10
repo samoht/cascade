@@ -35,6 +35,7 @@ type _ kind =
   | Animation : animation kind
   | Timing_function : timing_function kind
   | Transform : transform kind
+  | Touch_action : touch_action kind
 
 type declaration =
   | Declaration : {

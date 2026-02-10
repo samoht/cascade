@@ -3496,14 +3496,20 @@ let pp_float_side : float_side Pp.t =
   | Inline_end -> Pp.string ctx "inline-end"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_touch_action : touch_action Pp.t =
+let rec pp_touch_action : touch_action Pp.t =
  fun ctx -> function
   | Auto -> Pp.string ctx "auto"
   | None -> Pp.string ctx "none"
   | Pan_x -> Pp.string ctx "pan-x"
   | Pan_y -> Pp.string ctx "pan-y"
+  | Pan_left -> Pp.string ctx "pan-left"
+  | Pan_right -> Pp.string ctx "pan-right"
+  | Pan_up -> Pp.string ctx "pan-up"
+  | Pan_down -> Pp.string ctx "pan-down"
+  | Pinch_zoom -> Pp.string ctx "pinch-zoom"
   | Manipulation -> Pp.string ctx "manipulation"
   | Inherit -> Pp.string ctx "inherit"
+  | Vars vars -> Pp.list ~sep:Pp.space (pp_var pp_touch_action) ctx vars
 
 let pp_unicode_bidi : unicode_bidi Pp.t =
  fun ctx -> function
@@ -4380,17 +4386,55 @@ let read_pointer_events t : pointer_events =
     ]
     t
 
-let read_touch_action t : touch_action =
-  Reader.enum "touch-action"
-    [
-      ("auto", (Auto : touch_action));
-      ("none", None);
-      ("pan-x", Pan_x);
-      ("pan-y", Pan_y);
-      ("manipulation", Manipulation);
-      ("inherit", Inherit);
-    ]
-    t
+let rec read_touch_action_var t : touch_action var =
+  Reader.expect_string "var(" t;
+  Reader.ws t;
+  let name =
+    if Reader.looking_at t "--" then (
+      Reader.expect_string "--" t;
+      Reader.ident ~keep_case:true t)
+    else Reader.ident ~keep_case:true t
+  in
+  Reader.ws t;
+  (* Touch action vars use Empty fallback (trailing comma) or value fallback *)
+  let fallback : touch_action fallback =
+    if Reader.comma_opt t then (
+      Reader.ws t;
+      if Reader.looking_at t ")" then Empty else Fallback (read_touch_action t))
+    else None
+  in
+  Reader.expect ')' t;
+  Values.var_ref ~fallback name
+
+and read_touch_action t : touch_action =
+  if Reader.looking_at t "var(" then
+    (* Parse sequence of var() references *)
+    let rec read_vars acc =
+      Reader.ws t;
+      if Reader.looking_at t "var(" then
+        let v = read_touch_action_var t in
+        read_vars (v :: acc)
+      else List.rev acc
+    in
+    let first = read_touch_action_var t in
+    let rest = read_vars [] in
+    Vars (first :: rest)
+  else
+    Reader.enum "touch-action"
+      [
+        ("auto", (Auto : touch_action));
+        ("none", None);
+        ("pan-x", Pan_x);
+        ("pan-y", Pan_y);
+        ("pan-left", Pan_left);
+        ("pan-right", Pan_right);
+        ("pan-up", Pan_up);
+        ("pan-down", Pan_down);
+        ("pinch-zoom", Pinch_zoom);
+        ("manipulation", Manipulation);
+        ("inherit", Inherit);
+      ]
+      t
 
 let read_resize t : resize =
   Reader.enum "resize"
