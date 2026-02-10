@@ -3286,17 +3286,20 @@ let rec pp_scale : scale Pp.t =
  fun ctx -> function
   | X n -> pp_number_percentage ctx n
   | XY (Var x, Var y) ->
-      (* Tailwind concatenates var() calls without spaces *)
+      (* In minified mode, Tailwind omits spaces between var() values *)
       pp_number_percentage ctx (Var x);
+      Pp.space_if_pretty ctx ();
       pp_number_percentage ctx (Var y)
   | XY (x, y) ->
       pp_number_percentage ctx x;
       Pp.space ctx ();
       pp_number_percentage ctx y
   | XYZ (Var x, Var y, Var z) ->
-      (* Tailwind concatenates var() calls without spaces *)
+      (* In minified mode, Tailwind omits spaces between var() values *)
       pp_number_percentage ctx (Var x);
+      Pp.space_if_pretty ctx ();
       pp_number_percentage ctx (Var y);
+      Pp.space_if_pretty ctx ();
       pp_number_percentage ctx (Var z)
   | XYZ (x, y, z) ->
       pp_number_percentage ctx x;
@@ -3311,18 +3314,20 @@ let rec pp_translate_value : translate_value Pp.t =
  fun ctx -> function
   | X len -> pp_length ctx len
   | XY (Var x, Var y) ->
+      (* In minified mode, Tailwind omits spaces between var() values *)
       pp_length ctx (Var x);
-      Pp.space ctx ();
+      Pp.space_if_pretty ctx ();
       pp_length ctx (Var y)
   | XY (x, y) ->
       pp_length ctx x;
       Pp.space ctx ();
       pp_length ctx y
   | XYZ (Var x, Var y, Var z) ->
+      (* In minified mode, Tailwind omits spaces between var() values *)
       pp_length ctx (Var x);
-      Pp.space ctx ();
+      Pp.space_if_pretty ctx ();
       pp_length ctx (Var y);
-      Pp.space ctx ();
+      Pp.space_if_pretty ctx ();
       pp_length ctx (Var z)
   | XYZ (x, y, z) ->
       pp_length ctx x;
