@@ -10,12 +10,56 @@ type t =
   | Raw of string  (** Escape hatch for unparsed conditions *)
 
 let rec to_string = function
-  | Property (prop, value) -> "(" ^ prop ^ ":" ^ value ^ ")"
+  | Property (prop, value) -> "(" ^ prop ^ ": " ^ value ^ ")"
   | Selector sel -> "selector(" ^ Selector.to_string sel ^ ")"
   | Not cond -> "not " ^ to_string cond
   | And (a, b) -> to_string a ^ " and " ^ to_string b
   | Or (a, b) -> to_string a ^ " or " ^ to_string b
   | Raw s -> s
+
+let rec pp ctx = function
+  | Property (prop, value) ->
+      Pp.char ctx '(';
+      Pp.string ctx prop;
+      Pp.char ctx ':';
+      Pp.space_if_pretty ctx ();
+      Pp.string ctx value;
+      Pp.char ctx ')'
+  | Selector sel ->
+      Pp.string ctx "selector(";
+      Pp.string ctx (Selector.to_string sel);
+      Pp.char ctx ')'
+  | Not cond ->
+      Pp.string ctx "not ";
+      pp ctx cond
+  | And (a, b) ->
+      pp ctx a;
+      Pp.string ctx " and ";
+      pp ctx b
+  | Or (a, b) ->
+      pp ctx a;
+      Pp.string ctx " or ";
+      pp ctx b
+  | Raw s ->
+      (* For Raw strings, adjust spacing based on minify mode. Replace ": " with
+         ":" when minifying. *)
+      let s =
+        if Pp.minified ctx then (
+          (* Remove space after colon in property declarations *)
+          let buf = Buffer.create (String.length s) in
+          let i = ref 0 in
+          while !i < String.length s do
+            let c = s.[!i] in
+            if c = ':' && !i + 1 < String.length s && s.[!i + 1] = ' ' then (
+              Buffer.add_char buf ':';
+              incr i (* skip the space *))
+            else Buffer.add_char buf c;
+            incr i
+          done;
+          Buffer.contents buf)
+        else s
+      in
+      Pp.string ctx s
 
 let rec compare t1 t2 =
   match (t1, t2) with

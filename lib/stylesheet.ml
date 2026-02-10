@@ -258,7 +258,7 @@ and pp_statement : statement Pp.t =
       Pp.braces pp_block ctx content
   | Supports (condition, content) ->
       Pp.string ctx "@supports ";
-      Pp.string ctx (Supports.to_string condition);
+      Supports.pp ctx condition;
       Pp.sp ctx ();
       Pp.braces pp_block ctx content
   | Starting_style content ->
