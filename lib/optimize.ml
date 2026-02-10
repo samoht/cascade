@@ -222,16 +222,11 @@ let can_combine_selectors sel1 sel2 =
   let pe2 = extract_pseudo_element sel2 in
   if pe1 <> pe2 then false
   else
-    (* If both have pseudo-elements, check if they have the same base class.
-       This prevents merging .form-input::placeholder and
-       .form-textarea::placeholder which are different utilities that happen to
-       share a pseudo-element. *)
+    (* Check if selectors have the same base class. This prevents merging
+       different utilities that happen to have the same CSS output, like
+       .transform and .transform-cpu. Tailwind keeps these separate. *)
     let base_class_matches =
-      match (pe1, pe2) with
-      | Some _, Some _ ->
-          (* Both have pseudo-elements - check base classes *)
-          Selector.first_class sel1 = Selector.first_class sel2
-      | _ -> true (* No pseudo-elements, can combine if modifiers match *)
+      Selector.first_class sel1 = Selector.first_class sel2
     in
     if not base_class_matches then false
     else
