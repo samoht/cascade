@@ -36,6 +36,7 @@ type _ kind =
   | Timing_function : timing_function kind
   | Transform : transform kind
   | Touch_action : touch_action kind
+  | Transition_property_value : transition_property_value kind
 
 type declaration =
   | Declaration : {
