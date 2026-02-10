@@ -3867,7 +3867,19 @@ val stroke_width : length -> declaration
     Properties for scroll behavior and touch interaction. *)
 
 (** CSS touch-action values *)
-type touch_action = Auto | None | Pan_x | Pan_y | Manipulation | Inherit
+type touch_action =
+  | Auto
+  | None
+  | Pan_x
+  | Pan_y
+  | Pan_left
+  | Pan_right
+  | Pan_up
+  | Pan_down
+  | Pinch_zoom
+  | Manipulation
+  | Inherit
+  | Vars of touch_action var list
 
 (** CSS scroll-snap-strictness values *)
 type scroll_snap_strictness =
@@ -4083,6 +4095,7 @@ type _ kind =
   | Animation : animation kind
   | Timing_function : timing_function kind
   | Transform : transform kind
+  | Touch_action : touch_action kind
 
 type meta
 (** The type for CSS variable metadata. *)
