@@ -66,6 +66,7 @@ type display =
 type position = Static | Relative | Absolute | Fixed | Sticky
 type visibility = Visible | Hidden | Collapse
 type z_index = Auto | Index of int | Calc of string | Var of string
+type opacity = Opacity_number of float | Opacity_var of string
 type order = Order_int of int | Order_calc of string | Order_var of string
 type overflow = Visible | Hidden | Scroll | Auto | Clip
 
@@ -1230,7 +1231,14 @@ type contain =
   | Layout
   | Style
   | Paint
+  | Inline_size
   | List of contain list
+  | Var of string
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
 
 type isolation = Auto | Isolate | Inherit
 
@@ -1550,7 +1558,7 @@ type 'a property =
   | Border_left_color : color property
   | Border_inline_start_color : color property
   | Border_inline_end_color : color property
-  | Opacity : float property
+  | Opacity : opacity property
   | Mix_blend_mode : blend_mode property
   | Transform : transform list property
   | Translate : translate_value property

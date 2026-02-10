@@ -1478,7 +1478,10 @@ let pp_order : order Pp.t =
 (* Opacity as float (0.0-1.0). While CSS accepts both number and percentage
    formats, Tailwind's minifier converts percentages to decimals (50% → .5), so
    we output decimals directly for minified output compatibility. *)
-let pp_opacity : float Pp.t = Pp.float
+let pp_opacity : opacity Pp.t =
+ fun ctx -> function
+  | Opacity_number f -> Pp.float ctx f
+  | Opacity_var s -> Pp.string ctx ("var(" ^ s ^ ")")
 
 let pp_overflow : overflow Pp.t =
  fun ctx -> function
@@ -2746,7 +2749,14 @@ let rec pp_contain : contain Pp.t =
   | Layout -> Pp.string ctx "layout"
   | Style -> Pp.string ctx "style"
   | Paint -> Pp.string ctx "paint"
+  | Inline_size -> Pp.string ctx "inline-size"
   | List items -> Pp.list ~sep:Pp.space pp_contain ctx items
+  | Var s -> Pp.string ctx ("var(" ^ s ^ ")")
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let pp_container_type : container_type Pp.t =
  fun ctx -> function
@@ -4643,35 +4653,37 @@ let read_container_shorthand t : container_shorthand =
       | _ -> { name = Some first; ctype = None })
 
 let read_contain t : contain =
-  let read_contain_list t =
-    let values =
-      Reader.list ~sep:Reader.ws
-        (fun t ->
-          Reader.enum "contain-value"
-            [
-              ("size", Size);
-              ("layout", Layout);
-              ("style", Style);
-              ("paint", Paint);
-            ]
-            t)
-        t
-    in
-    (* Check for duplicates *)
-    let rec has_duplicates = function
-      | [] -> false
-      | h :: t -> List.mem h t || has_duplicates t
-    in
-    if has_duplicates values then
-      err_invalid_value t "contain" "duplicate values not allowed"
+  let read_contain_value t : contain =
+    if Reader.looking_at t "var(" then Var (read_var_body t)
     else
-      match values with
-      | [] -> err_invalid_value t "contain" "expected contain value(s)"
-      | [ v ] -> v
-      | vs -> List vs
+      Reader.enum "contain-value"
+        [
+          ("size", Size);
+          ("inline-size", Inline_size);
+          ("layout", Layout);
+          ("style", Style);
+          ("paint", Paint);
+        ]
+        t
+  in
+  let read_contain_list t =
+    let values = Reader.list ~sep:Reader.ws read_contain_value t in
+    match values with
+    | [] -> err_invalid_value t "contain" "expected contain value(s)"
+    | [ v ] -> v
+    | vs -> List vs
   in
   Reader.enum "contain"
-    [ ("none", (None : contain)); ("strict", Strict); ("content", Content) ]
+    [
+      ("none", (None : contain));
+      ("strict", Strict);
+      ("content", Content);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
     ~default:read_contain_list t
 
 let read_isolation t : isolation =
