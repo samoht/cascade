@@ -137,6 +137,14 @@ let pp_unit ?(always = true) ctx f suffix =
     Pp.float ctx f;
     Pp.string ctx suffix)
 
+(* Like pp_unit but always drops leading zeros (e.g., 0.5 -> .5) Used for
+   durations which always use compact format in Tailwind *)
+let pp_unit_compact ctx f suffix =
+  if f = 0. then Pp.char ctx '0'
+  else (
+    Pp.string ctx (Pp.float_to_string ~drop_leading_zero:true f);
+    Pp.string ctx suffix)
+
 (** Try to evaluate a calc expression containing only numbers to a float.
     Returns None if the expression contains variables or non-numeric values. *)
 let rec eval_numeric_calc : type a. a calc -> float option = function
@@ -667,27 +675,36 @@ and pp_color : color Pp.t =
   | Mix { in_space; hue; color1; percent1; color2; percent2 } ->
       pp_color_mix ctx in_space hue color1 percent1 color2 percent2
 
-(* Helper to estimate the string length of a duration value. Used for deciding
-   whether to output milliseconds or seconds. *)
+(* Helper to estimate the string length of a duration value in minified format.
+   Used for deciding whether to output milliseconds or seconds. *)
 let duration_str_len f unit_suffix =
-  (* Simple estimation: format the number and add unit length *)
+  (* Simple estimation: format the number and add unit length. In minified
+     format, leading zeros before decimal are dropped: 0.123 -> .123 *)
   let num_str =
-    if f = floor f then string_of_int (int_of_float f) else Float.to_string f
+    if f = floor f then string_of_int (int_of_float f)
+    else
+      let s = Float.to_string f in
+      (* Check if it starts with "0." and drop the leading zero *)
+      if String.length s >= 2 && s.[0] = '0' && s.[1] = '.' then
+        String.sub s 1 (String.length s - 1)
+      else s
   in
   String.length num_str + String.length unit_suffix
 
 let rec pp_duration : duration Pp.t =
  fun ctx -> function
   | Ms f ->
-      (* Normalize to seconds if result is shorter (like Tailwind's minifier)
+      (* Normalize to seconds if result is shorter or equal (like Tailwind)
          e.g., 150ms -> .15s (4 chars vs 5 chars - seconds is shorter) 1500ms ->
-         1.5s (4 chars vs 6 chars - seconds is shorter) 50ms -> 50ms (4 chars vs
-         5 chars - keep ms) *)
+         1.5s (4 chars vs 6 chars - seconds is shorter) 123ms -> .123s (5 chars
+         each - prefer seconds like Tailwind) 50ms -> 50ms (4 chars vs 5 chars -
+         keep ms) *)
       let seconds = f /. 1000. in
       let ms_len = duration_str_len f "ms" in
       let s_len = duration_str_len seconds "s" in
-      if s_len <= ms_len then pp_unit ctx seconds "s" else pp_unit ctx f "ms"
-  | S f -> pp_unit ctx f "s"
+      if s_len <= ms_len then pp_unit_compact ctx seconds "s"
+      else pp_unit_compact ctx f "ms"
+  | S f -> pp_unit_compact ctx f "s"
   | Var v -> pp_var pp_duration ctx v
 
 let rec pp_number : number Pp.t =
