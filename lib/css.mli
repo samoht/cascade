@@ -1261,6 +1261,9 @@ type visibility = Visible | Hidden | Collapse
 (** CSS z-index values. *)
 type z_index = Auto | Index of int | Calc of string | Var of string
 
+(** CSS opacity values. *)
+type opacity = Opacity_number of float | Opacity_var of string
+
 (** CSS order values (flexbox order). *)
 type order = Order_int of int | Order_calc of string | Order_var of string
 
@@ -1732,7 +1735,7 @@ val background_attachment : background_attachment -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background-attachment}
      background-attachment} property. *)
 
-val opacity : float -> declaration
+val opacity : opacity -> declaration
 (** [opacity op] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/opacity} opacity}
     property. *)
@@ -3695,7 +3698,14 @@ type contain =
   | Layout
   | Style
   | Paint
+  | Inline_size
   | List of contain list
+  | Var of string
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
 
 val contain : contain -> declaration
 (** [contain contain] is the

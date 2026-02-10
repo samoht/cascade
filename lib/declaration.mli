@@ -496,7 +496,7 @@ val left : length -> declaration
 (** [left v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/left} left} property. *)
 
-val opacity : float -> declaration
+val opacity : opacity -> declaration
 (** [opacity v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/opacity} opacity}
     property. *)
