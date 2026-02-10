@@ -617,6 +617,12 @@ val pp_translate_value : translate_value Pp.t
 val read_translate_value : Reader.t -> translate_value
 (** [read_translate_value t] is the [translate_value] parsed from [t]. *)
 
+val pp_rotate_value : rotate_value Pp.t
+(** [pp_rotate_value] is the pretty-printer for [rotate_value]. *)
+
+val read_rotate_value : Reader.t -> rotate_value
+(** [read_rotate_value t] is the [rotate_value] parsed from [t]. *)
+
 val pp_filter : filter Pp.t
 (** [pp_filter] is the pretty-printer for [filter]. *)
 

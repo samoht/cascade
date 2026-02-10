@@ -3360,6 +3360,75 @@ let rec read_translate_value t : translate_value =
     ~calls:[ ("var", read_translate_var) ]
     ~default:read_lengths t
 
+let rec pp_rotate_value : rotate_value Pp.t =
+ fun ctx -> function
+  | Angle a -> pp_angle ctx a
+  | X a ->
+      Pp.string ctx "x";
+      Pp.space ctx ();
+      pp_angle ctx a
+  | Y a ->
+      Pp.string ctx "y";
+      Pp.space ctx ();
+      pp_angle ctx a
+  | Z a ->
+      Pp.string ctx "z";
+      Pp.space ctx ();
+      pp_angle ctx a
+  | Axis (x, y, z, a) ->
+      Pp.float ctx x;
+      Pp.space ctx ();
+      Pp.float ctx y;
+      Pp.space ctx ();
+      Pp.float ctx z;
+      Pp.space ctx ();
+      pp_angle ctx a
+  | None -> Pp.string ctx "none"
+  | Var v -> pp_var pp_rotate_value ctx v
+
+let rec read_rotate_value t : rotate_value =
+  let read_rotate_var t : rotate_value = Var (read_var read_rotate_value t) in
+  let read_x t : rotate_value =
+    Reader.expect_string "x" t;
+    Reader.ws t;
+    X (read_angle t)
+  in
+  let read_y t : rotate_value =
+    Reader.expect_string "y" t;
+    Reader.ws t;
+    Y (read_angle t)
+  in
+  let read_z t : rotate_value =
+    Reader.expect_string "z" t;
+    Reader.ws t;
+    Z (read_angle t)
+  in
+  (* Read custom axis: x y z angle *)
+  let read_axis_angle t : rotate_value =
+    let first = Reader.number t in
+    Reader.ws t;
+    let second = Reader.number t in
+    Reader.ws t;
+    let third = Reader.number t in
+    Reader.ws t;
+    let angle = read_angle t in
+    Axis (first, second, third, angle)
+  in
+  (* Read a simple angle (z-axis rotation) *)
+  let read_simple_angle t : rotate_value = Angle (read_angle t) in
+  Reader.enum_or_calls "rotate"
+    [ ("none", (None : rotate_value)) ]
+    ~calls:
+      [
+        ("var", read_rotate_var);
+        ("calc", fun t -> Angle (Calc (read_calc read_angle t)));
+      ]
+    ~default:(fun t ->
+      Reader.one_of
+        [ read_x; read_y; read_z; read_axis_angle; read_simple_angle ]
+        t)
+    t
+
 let pp_outline_style : outline_style Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
@@ -7087,7 +7156,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Container_name -> pp Pp.string
   | Perspective_origin -> pp pp_perspective_origin
   | Object_position -> pp pp_position_value
-  | Rotate -> pp pp_angle
+  | Rotate -> pp pp_rotate_value
   | Transition_duration -> pp pp_duration
   | Transition_timing_function -> pp pp_timing_function
   | Transition_delay -> pp pp_duration

@@ -599,7 +599,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Perspective_origin -> v Perspective_origin (read_perspective_origin t)
   | Transform_style -> v Transform_style (read_transform_style t)
   | Backface_visibility -> v Backface_visibility (read_backface_visibility t)
-  | Rotate -> v Rotate (read_angle t)
+  | Rotate -> v Rotate (read_rotate_value t)
   | Scale -> v Scale (read_scale t)
   (* Object properties *)
   | Object_position -> v Object_position (read_position_value t)
@@ -1129,7 +1129,7 @@ let container_type value = v Container_type value
 let container_name value = v Container_name value
 let transform value = v Transform [ value ]
 let transforms value = v Transform value
-let rotate value = v Rotate value
+let rotate (value : Properties_intf.rotate_value) = v Rotate value
 let scale (value : Properties_intf.scale) = v Scale value
 let translate (value : Properties_intf.translate_value) = v Translate value
 let perspective value = v Perspective value

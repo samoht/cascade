@@ -409,6 +409,7 @@ let rec pp_angle : angle Pp.t =
   | Rad f -> pp_unit ctx f "rad"
   | Turn f -> pp_unit ctx f "turn"
   | Grad f -> pp_unit ctx f "grad"
+  | Calc c -> pp_calc pp_angle ctx c
   | Var v -> pp_var pp_angle ctx v
 
 let rec pp_hue : hue Pp.t =
@@ -1227,6 +1228,7 @@ let rec read_angle t : angle =
   Reader.ws t;
   (* Check for var() *)
   if Reader.looking_at t "var(" then Var (read_var read_angle t)
+  else if Reader.looking_at t "calc(" then Calc (read_calc read_angle t)
   else
     let n = Reader.number t in
     let unit =
