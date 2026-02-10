@@ -13,6 +13,9 @@ type t =
 val to_string : t -> string
 (** [to_string cond] renders the condition as a CSS [\@supports] string. *)
 
+val pp : t Pp.t
+(** [pp ctx cond] prints the condition with context-aware spacing. *)
+
 val compare : t -> t -> int
 (** [compare a b] compares conditions for sorting. *)
 
