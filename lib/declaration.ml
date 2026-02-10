@@ -372,7 +372,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Block_size -> v Block_size (read_length_percentage t)
   | Min_block_size -> v Min_block_size (read_length_percentage t)
   | Max_block_size -> v Max_block_size (read_length_percentage t)
-  | Font_size -> v Font_size (read_length_percentage t)
+  | Font_size -> v Font_size (Properties.read_font_size t)
   | Border_radius -> v Border_radius (read_length t)
   | Border_top_left_radius -> v Border_top_left_radius (read_length t)
   | Border_top_right_radius -> v Border_top_right_radius (read_length t)

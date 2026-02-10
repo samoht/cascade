@@ -1829,6 +1829,29 @@ type flex =
   | Grow_shrink of float * float  (** grow shrink 0% *)
   | Full of float * float * flex_basis  (** grow shrink basis *)
 
+(** Font-size values including relative keywords *)
+type font_size =
+  | Length of length
+  | Pct of float
+  | Var of font_size var
+  | Calc of font_size calc
+  | Xx_small
+  | X_small
+  | Small
+  | Medium
+  | Large
+  | X_large
+  | Xx_large
+  | Xxx_large
+  | Larger
+  | Smaller
+  | Math
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+
 (** CSS align-content values.
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-content} MDN:
      align-content} *)
