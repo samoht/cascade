@@ -323,7 +323,12 @@ type color =
   | Hwb of { h : hue; w : percentage; b : percentage; a : alpha }
   | Color of { space : color_space; components : component list; alpha : alpha }
   | Oklch of { l : percentage; c : float; h : hue; alpha : alpha }
-  | Oklab of { l : percentage; a : float; b : float; alpha : alpha }
+  | Oklab of {
+      l : percentage;
+      a : float option;
+      b : float option;
+      alpha : alpha;
+    }
   | Lch of { l : percentage; c : float; h : hue; alpha : alpha }
   | Named of color_name
   | System of system_color

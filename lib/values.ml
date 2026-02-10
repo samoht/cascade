@@ -27,8 +27,11 @@ let hwb h w b = Hwb { h = Unitless h; w = Pct w; b = Pct b; a = None }
 let hwba h w b a = Hwb { h = Unitless h; w = Pct w; b = Pct b; a = Num a }
 let oklch l c h = Oklch { l = Pct l; c; h = Unitless h; alpha = None }
 let oklcha l c h a = Oklch { l = Pct l; c; h = Unitless h; alpha = Num a }
-let oklab l a b = Oklab { l = Pct l; a; b; alpha = None }
-let oklaba l a b alpha = Oklab { l = Pct l; a; b; alpha = Num alpha }
+let oklab l a b = Oklab { l = Pct l; a = Some a; b = Some b; alpha = None }
+
+let oklaba l a b alpha =
+  Oklab { l = Pct l; a = Some a; b = Some b; alpha = Num alpha }
+
 let lch l c h = Lch { l = Pct l; c; h = Unitless h; alpha = None }
 let lcha l c h a = Lch { l = Pct l; c; h = Unitless h; alpha = Num a }
 let color_name n = Named n
@@ -538,14 +541,17 @@ let pp_hwb_args : (hue * percentage * percentage * alpha) Pp.t =
 
 let pp_hwb = Pp.call "hwb" pp_hwb_args
 
-let pp_oklab_args : (percentage * float * float * alpha) Pp.t =
+let pp_number_or_none : float option Pp.t =
+ fun ctx -> function Some f -> Pp.float ctx f | None -> Pp.string ctx "none"
+
+let pp_oklab_args : (percentage * float option * float option * alpha) Pp.t =
  fun ctx (l, a, b, alpha) ->
   (* Oklab L must always be output as percentage per CSS spec *)
   pp_percentage ctx l;
   Pp.space ctx ();
-  Pp.float ctx a;
+  pp_number_or_none ctx a;
   Pp.space ctx ();
-  Pp.float ctx b;
+  pp_number_or_none ctx b;
   pp_opt_alpha ctx alpha
 
 let pp_oklab = Pp.call "oklab" pp_oklab_args
@@ -1394,6 +1400,13 @@ let read_oklch t : color =
   Reader.expect ')' t;
   Oklch { l = Pct l; c; h = Unitless h; alpha }
 
+let read_number_or_none t : float option =
+  Reader.ws t;
+  if Reader.looking_at t "none" then (
+    Reader.expect_string "none" t;
+    None)
+  else Some (Reader.number t)
+
 let read_oklab t : color =
   Reader.ws t;
   (* L can be 0-1 or 0%-100% per CSS spec *)
@@ -1407,10 +1420,8 @@ let read_oklab t : color =
       Reader.err_invalid t
         ("oklab() L value must be 0-1 or 0%-100%, got " ^ string_of_float n)
   in
-  Reader.ws t;
-  let a = Reader.number t in
-  Reader.ws t;
-  let b = Reader.number t in
+  let a = read_number_or_none t in
+  let b = read_number_or_none t in
   let alpha = read_optional_alpha t in
   Reader.ws t;
   Reader.expect ')' t;

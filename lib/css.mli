@@ -797,8 +797,14 @@ type color =
   | Color of { space : color_space; components : component list; alpha : alpha }
   | Oklch of { l : percentage; c : float; h : hue; alpha : alpha }
       (** OKLCH color space *)
-  | Oklab of { l : percentage; a : float; b : float; alpha : alpha }
-      (** Oklab color space *)
+  | Oklab of {
+      l : percentage;
+      a : float option;
+      b : float option;
+      alpha : alpha;
+    }
+      (** Oklab color space. a and b can be [None] to represent CSS 'none'
+          keyword. *)
   | Lch of { l : percentage; c : float; h : hue; alpha : alpha }
       (** LCH color space *)
   | Named of color_name  (** Named colors like Red, Blue, etc. *)
