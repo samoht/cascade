@@ -95,6 +95,14 @@ val option : ?none:unit t -> 'a t -> 'a option t
     CSS number formatters that handle minification rules like dropping leading
     zeros and avoiding scientific notation *)
 
+val float_to_string :
+  ?drop_leading_zero:bool -> ?max_decimals:int -> float -> string
+(** [float_to_string ?drop_leading_zero ?max_decimals f] converts a float to a
+    string.
+    - [drop_leading_zero]: if true, omits leading zero for 0 < |n| < 1 (.5
+      instead of 0.5)
+    - [max_decimals]: maximum decimal precision (default 8) *)
+
 val float : float t
 (** [float] formats floating point numbers with CSS rules:
     - Always drops leading zero for 0 < |n| < 1 (outputs .5 not 0.5)
