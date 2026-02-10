@@ -409,6 +409,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | White_space -> v White_space (read_white_space t)
   | Text_decoration -> v Text_decoration (read_text_decoration t)
   | Transform_origin -> v Transform_origin (read_transform_origin t)
+  | Transform_box -> v Transform_box (read_transform_box t)
   (* Flexbox *)
   | Flex_direction -> v Flex_direction (read_flex_direction t)
   | Flex_wrap -> v Flex_wrap (read_flex_wrap t)
@@ -1090,6 +1091,7 @@ let border_right value = v Border_right value
 let border_bottom value = v Border_bottom value
 let border_left value = v Border_left value
 let transform_origin value = v Transform_origin value
+let transform_box value = v Transform_box value
 let clip_path value = v Clip_path value
 let mask value = v Mask value
 let content_visibility value = v Content_visibility value

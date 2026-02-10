@@ -3128,6 +3128,20 @@ val transform_origin : transform_origin -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transform-origin}
      transform-origin} property. *)
 
+(** CSS transform-box property values *)
+type transform_box =
+  | Content_box
+  | Border_box
+  | Fill_box
+  | Stroke_box
+  | View_box
+  | Inherit
+
+val transform_box : transform_box -> declaration
+(** [transform_box value] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transform-box}
+     transform-box} property. *)
+
 (** CSS rotate property values *)
 type rotate_value =
   | Angle of angle  (** z-axis rotation *)

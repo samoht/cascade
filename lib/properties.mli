@@ -467,6 +467,12 @@ val read_transforms : Reader.t -> transform list
 val read_transform_origin : Reader.t -> transform_origin
 (** [read_transform_origin t] is the [transform_origin] parsed from [t]. *)
 
+val pp_transform_box : transform_box Pp.t
+(** [pp_transform_box] is the pretty-printer for [transform_box]. *)
+
+val read_transform_box : Reader.t -> transform_box
+(** [read_transform_box t] is the [transform_box] parsed from [t]. *)
+
 val pp_transform_style : transform_style Pp.t
 (** [pp_transform_style] is the pretty-printer for [transform_style]. *)
 

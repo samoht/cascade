@@ -1339,6 +1339,15 @@ type transform_origin =
   | Arbitrary of string
   | Inherit
 
+(* transform-box property: establishes the reference box for transform *)
+type transform_box =
+  | Content_box
+  | Border_box
+  | Fill_box
+  | Stroke_box
+  | View_box
+  | Inherit
+
 (* will-change property: which properties will animate *)
 type will_change =
   | Will_change_auto
@@ -1572,6 +1581,7 @@ type 'a property =
   | Border_bottom : string property
   | Border_left : string property
   | Transform_origin : transform_origin property
+  | Transform_box : transform_box property
   | Text_shadow : text_shadow list property
   | Clip_path : clip_path property
   | Mask : string property
