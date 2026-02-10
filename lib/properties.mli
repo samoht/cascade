@@ -269,6 +269,12 @@ val pp_font_style : font_style Pp.t
 val read_font_style : Reader.t -> font_style
 (** [read_font_style t] is the [font_style] parsed from [t]. *)
 
+val pp_font_size : font_size Pp.t
+(** [pp_font_size] is the pretty-printer for [font_size]. *)
+
+val read_font_size : Reader.t -> font_size
+(** [read_font_size t] is the [font_size] parsed from [t]. *)
+
 val pp_text_align : text_align Pp.t
 (** [pp_text_align] is the pretty-printer for [text_align]. *)
 

@@ -228,6 +228,13 @@ let vars_of_length_percentage (value : Values.length_percentage) : any_var list
   | Calc calc -> vars_of_calc calc
   | _ -> []
 
+let vars_of_font_size (value : Properties.font_size) : any_var list =
+  match value with
+  | Length l -> vars_of_length l
+  | Var v -> [ V v ]
+  | Calc calc -> vars_of_calc calc
+  | _ -> []
+
 let vars_of_angle (value : Values.angle) : any_var list =
   match value with Var v -> [ V v ] | Calc c -> vars_of_calc c | _ -> []
 
@@ -459,7 +466,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Right, value -> vars_of_length value
   | Bottom, value -> vars_of_length value
   | Left, value -> vars_of_length value
-  | Font_size, value -> vars_of_length_percentage value
+  | Font_size, value -> vars_of_font_size value
   | Letter_spacing, value -> vars_of_length value
   | Line_height, value -> vars_of_line_height value
   | Border_width, value -> vars_of_border_width value

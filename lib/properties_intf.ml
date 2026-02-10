@@ -360,6 +360,32 @@ type flex =
   | Grow_shrink of float * float (* grow shrink 0% *)
   | Full of float * float * flex_basis (* grow shrink basis *)
 
+(** Font-size values including relative keywords *)
+type font_size =
+  | Length of length
+  | Pct of float
+  | Var of font_size var
+  | Calc of font_size calc
+  (* Absolute size keywords *)
+  | Xx_small
+  | X_small
+  | Small
+  | Medium
+  | Large
+  | X_large
+  | Xx_large
+  | Xxx_large
+  (* Relative size keywords *)
+  | Larger
+  | Smaller
+  (* Math keyword *)
+  | Math
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+
 type place_content =
   | Normal
   | Start
@@ -1458,7 +1484,7 @@ type 'a property =
   | Block_size : length_percentage property
   | Min_block_size : length_percentage property
   | Max_block_size : length_percentage property
-  | Font_size : length_percentage property
+  | Font_size : font_size property
   | Line_height : line_height property
   | Font_weight : font_weight property
   | Font_style : font_style property

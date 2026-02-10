@@ -518,6 +518,43 @@ let read_font_style t : font_style =
     ]
     t
 
+let rec read_font_size t : font_size =
+  let read_var t : font_size = Var (read_var read_font_size t) in
+  let read_calc t : font_size = Calc (read_calc read_font_size t) in
+  let read_length t : font_size =
+    let len = read_length t in
+    Length len
+  in
+  let read_pct t : font_size =
+    let n = Reader.number t in
+    Reader.expect '%' t;
+    Pct n
+  in
+  Reader.enum_or_calls "font-size"
+    [
+      ("xx-small", (Xx_small : font_size));
+      ("x-small", X_small);
+      ("small", Small);
+      ("medium", Medium);
+      ("large", Large);
+      ("x-large", X_large);
+      ("xx-large", Xx_large);
+      ("xxx-large", Xxx_large);
+      ("larger", Larger);
+      ("smaller", Smaller);
+      ("math", Math);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:[ ("var", read_var); ("calc", read_calc) ]
+    ~default:(fun t ->
+      (* Try percentage first, then length *)
+      Reader.one_of [ read_pct; read_length ] t)
+    t
+
 let read_text_align t : text_align =
   Reader.enum "text-align"
     [
@@ -3135,6 +3172,29 @@ let pp_flex : flex Pp.t =
         Pp.float ctx shrink;
         Pp.space ctx ());
       pp_flex_basis ctx basis
+
+let rec pp_font_size : font_size Pp.t =
+ fun ctx -> function
+  | Length l -> pp_length ctx l
+  | Pct f -> Pp.pct ctx f
+  | Var v -> pp_var pp_font_size ctx v
+  | Calc c -> pp_calc pp_font_size ctx c
+  | Xx_small -> Pp.string ctx "xx-small"
+  | X_small -> Pp.string ctx "x-small"
+  | Small -> Pp.string ctx "small"
+  | Medium -> Pp.string ctx "medium"
+  | Large -> Pp.string ctx "large"
+  | X_large -> Pp.string ctx "x-large"
+  | Xx_large -> Pp.string ctx "xx-large"
+  | Xxx_large -> Pp.string ctx "xxx-large"
+  | Larger -> Pp.string ctx "larger"
+  | Smaller -> Pp.string ctx "smaller"
+  | Math -> Pp.string ctx "math"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let pp_align_content : align_content Pp.t =
  fun ctx -> function
@@ -7124,7 +7184,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Block_size -> pp pp_length_percentage
   | Min_block_size -> pp pp_length_percentage
   | Max_block_size -> pp pp_length_percentage
-  | Font_size -> pp pp_length_percentage
+  | Font_size -> pp pp_font_size
   | Line_height -> pp pp_line_height
   | Font_weight -> pp pp_font_weight
   | Display -> pp pp_display
