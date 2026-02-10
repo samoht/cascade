@@ -1175,7 +1175,7 @@ let rec pp_filter : filter Pp.t =
   | List filters -> Pp.list ~sep:Pp.space pp_filter ctx filters
   | Var v -> pp_var pp_filter ctx v
 
-let pp_background_image : background_image Pp.t =
+let rec pp_background_image : background_image Pp.t =
  fun ctx -> function
   | Url url -> Pp.url ctx url
   | Linear_gradient (dir, stops) ->
@@ -1204,6 +1204,14 @@ let pp_background_image : background_image Pp.t =
           | [] -> ()
           | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
         ctx stops
+  | Conic_gradient stops ->
+      Pp.call "conic-gradient"
+        (fun ctx stops ->
+          match stops with
+          | [] -> ()
+          | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
+        ctx stops
+  | Var v -> pp_var pp_background_image ctx v
   | None -> Pp.string ctx "none"
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
@@ -3249,11 +3257,12 @@ let rec pp_svg_paint : svg_paint Pp.t =
           Pp.space ctx ();
           pp_svg_paint ctx fb)
 
-let pp_transition_property_value : transition_property_value Pp.t =
+let rec pp_transition_property_value : transition_property_value Pp.t =
  fun ctx -> function
   | All -> Pp.string ctx "all"
   | None -> Pp.string ctx "none"
   | Property s -> Pp.string ctx s
+  | Var v -> pp_var pp_transition_property_value ctx v
 
 let pp_transition_property : transition_property Pp.t =
  fun ctx -> Pp.list ~sep:Pp.comma pp_transition_property_value ctx
@@ -3759,6 +3768,7 @@ let read_z_index t : z_index =
               (match v.fallback with
               | Fallback _ -> Format.fprintf fmt ", <fallback>"
               | Var_fallback name -> Format.fprintf fmt ", var(--%s)" name
+              | Raw_fallback raw -> Format.fprintf fmt ", %s" raw
               | Empty -> Format.fprintf fmt ","
               | None -> ());
               Format.fprintf fmt ")"
@@ -3815,6 +3825,7 @@ let read_order t : order =
               (match v.fallback with
               | Fallback _ -> Format.fprintf fmt ", <fallback>"
               | Var_fallback name -> Format.fprintf fmt ", var(--%s)" name
+              | Raw_fallback raw -> Format.fprintf fmt ", %s" raw
               | Empty -> Format.fprintf fmt ","
               | None -> ());
               Format.fprintf fmt ")"
@@ -4078,6 +4089,7 @@ let read_grid_line t : grid_line =
               (match v.fallback with
               | Fallback _ -> Format.fprintf fmt ", <fallback>"
               | Var_fallback name -> Format.fprintf fmt ", var(--%s)" name
+              | Raw_fallback raw -> Format.fprintf fmt ", %s" raw
               | Empty -> Format.fprintf fmt ","
               | None -> ());
               Format.fprintf fmt ")"
@@ -5169,18 +5181,47 @@ let font_family_all_enums : (string * font_family) list =
 
 let rec read_font_family_single t : font_family =
   let read_var t : font_family = Var (read_var read_font_family t) in
-  let read_raw t : font_family =
+  (* Read unquoted multi-word font names, e.g., "arial rounded" *)
+  let rec read_unquoted_name_words acc =
+    let word = Reader.ident ~keep_case:true t in
+    let acc = word :: acc in
+    Reader.ws t;
     match Reader.peek t with
-    | Some ('"' | '\'') ->
-        let name = Reader.string t in
-        Name name
-    | _ ->
-        let name = Reader.ident t in
-        Name name
+    | Some (',' | ';' | '}' | '!') | None -> String.concat " " (List.rev acc)
+    | Some c when Reader.is_ident_start c -> read_unquoted_name_words acc
+    | _ -> String.concat " " (List.rev acc)
   in
-  Reader.enum_or_calls "font-family" font_family_all_enums
-    ~calls:[ ("var", read_var) ]
-    ~default:read_raw t
+  let read_single_word t : font_family =
+    (* For single-word names, try enum match first *)
+    Reader.enum_or_calls "font-family" font_family_all_enums
+      ~calls:[ ("var", read_var) ]
+      ~default:(fun t -> Name (Reader.ident ~keep_case:true t))
+      t
+  in
+  Reader.ws t;
+  match Reader.peek t with
+  | Some ('"' | '\'') ->
+      (* Quoted string *)
+      Name (Reader.string t)
+  | Some c when Reader.is_ident_start c ->
+      (* Peek ahead to see if this is multi-word or single-word *)
+      let is_multi_word =
+        Reader.lookahead
+          (fun t ->
+            let _ = Reader.ident t in
+            Reader.ws t;
+            match Reader.peek t with
+            | Some c when Reader.is_ident_start c -> true
+            | _ -> false)
+          t
+      in
+      if is_multi_word then
+        (* Multi-word unquoted name - read all words *)
+        Name (read_unquoted_name_words [])
+      else
+        (* Single word - try enum match *)
+        read_single_word t
+  | _ -> Reader.err t "expected font-family value"
 
 and read_font_family t : font_family =
   match Reader.list ~sep:Reader.comma ~at_least:1 read_font_family_single t with
@@ -5417,12 +5458,16 @@ end
 
 let read_timing_function t : timing_function = Timing_function.read t
 
-let read_transition_property_value t : transition_property_value =
-  Reader.enum "transition-property-value"
+let rec read_transition_property_value t : transition_property_value =
+  let read_var t : transition_property_value =
+    Var (read_var read_transition_property_value t)
+  in
+  Reader.enum_or_calls "transition-property-value"
     [
       ("all", (All : transition_property_value));
       ("none", (None : transition_property_value));
     ]
+    ~calls:[ ("var", read_var) ]
     ~default:(fun t -> Property (Reader.ident ~keep_case:true t))
     t
 
@@ -5439,11 +5484,12 @@ let read_transition_shorthand t : transition_shorthand =
   (* Parse transition shorthand: property duration timing-function delay *)
   let property = read_transition_property_value t in
 
-  (* Duration: required for regular properties, optional for 'all' and 'none' *)
+  (* Duration: required for regular properties, optional for 'all', 'none', and
+     var() *)
   let duration =
     match property with
-    | All | None ->
-        (* For 'all' and 'none', duration is optional *)
+    | All | None | Var _ ->
+        (* For 'all', 'none', and var(), duration is optional *)
         Reader.option
           (fun t ->
             Reader.ws t;
@@ -6144,21 +6190,46 @@ let read_background_image t : background_image =
     in
     Radial_gradient stops
   in
-  Reader.enum_or_calls "background-image"
-    [
-      ("none", (None : background_image));
-      ("initial", Initial);
-      ("inherit", Inherit);
-    ]
-    ~calls:
+  let read_conic_body t =
+    Reader.ws t;
+    (* Allow 0 stops for gradients like
+       conic-gradient(var(--tw-gradient-stops)) *)
+    let stops =
+      match
+        Reader.option
+          (Reader.list ~at_least:1 ~sep:Reader.comma read_gradient_stop)
+          t
+      with
+      | Some stops -> stops
+      | None -> []
+    in
+    Conic_gradient stops
+  in
+  let rec read_bg_image t =
+    Reader.enum_or_calls "background-image"
       [
-        ("url", fun t -> Url (Reader.url t));
-        ( "linear-gradient",
-          fun t -> Reader.call "linear-gradient" t read_linear_body );
-        ( "radial-gradient",
-          fun t -> Reader.call "radial-gradient" t read_radial_body );
+        ("none", (None : background_image));
+        ("initial", Initial);
+        ("inherit", Inherit);
       ]
-    t
+      ~calls:
+        [
+          ("url", fun t -> Url (Reader.url t));
+          ( "linear-gradient",
+            fun t -> Reader.call "linear-gradient" t read_linear_body );
+          ( "radial-gradient",
+            fun t -> Reader.call "radial-gradient" t read_radial_body );
+          ( "conic-gradient",
+            fun t -> Reader.call "conic-gradient" t read_conic_body );
+          ( "var",
+            fun t ->
+              let _ = Reader.ident t in
+              (* consume "var" *)
+              Var (Values.read_var_after_ident read_bg_image t) );
+        ]
+      t
+  in
+  read_bg_image t
 
 let read_background_images t : background_image list =
   Reader.list ~sep:Reader.comma read_background_image t
