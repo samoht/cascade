@@ -40,10 +40,10 @@ let transparent = Transparent
 
 let color_mix ?in_space ?(hue = Default) ?percent1 ?percent2 color1 color2 =
   let percent1 : percentage option =
-    match percent1 with Some p -> Some (Pct (float_of_int p)) | None -> None
+    match percent1 with Some p -> Some (Pct p) | None -> None
   in
   let percent2 : percentage option =
-    match percent2 with Some p -> Some (Pct (float_of_int p)) | None -> None
+    match percent2 with Some p -> Some (Pct p) | None -> None
   in
   Mix { in_space; hue; color1; percent1; color2; percent2 }
 
@@ -585,6 +585,11 @@ let pp_color_space : color_space Pp.t =
   | Hsl -> Pp.string ctx "hsl"
   | Hwb -> Pp.string ctx "hwb"
 
+(** Check if a color value ends with a letter (needs space before percentage) *)
+let color_needs_space_before_percent = function
+  | Current | Inherit | Transparent -> true
+  | _ -> false (* All other colors end with ) or a non-letter *)
+
 let rec pp_color_in_mix : color Pp.t =
  fun ctx -> function
   | Current -> Pp.string ctx "currentcolor" (* lowercase in color-mix *)
@@ -608,14 +613,18 @@ and pp_color_mix ctx in_space hue color1 percent1 color2 percent2 =
       pp_color_in_mix ctx color1;
       (match percent1 with
       | Some p ->
-          Pp.space ctx ();
+          (* Space needed after keyword colors like currentcolor, but not after
+             function-ending colors like var() *)
+          if color_needs_space_before_percent color1 then Pp.space ctx ()
+          else Pp.space_if_pretty ctx ();
           pp_percentage ctx p
       | None -> ());
       Pp.comma ctx ();
       pp_color_in_mix ctx color2;
       match percent2 with
       | Some p ->
-          Pp.space ctx ();
+          if color_needs_space_before_percent color2 then Pp.space ctx ()
+          else Pp.space_if_pretty ctx ();
           pp_percentage ctx p
       | None -> ())
     ctx

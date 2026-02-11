@@ -890,8 +890,8 @@ val transparent : color
 val color_mix :
   ?in_space:color_space ->
   ?hue:hue_interpolation ->
-  ?percent1:int ->
-  ?percent2:int ->
+  ?percent1:float ->
+  ?percent2:float ->
   color ->
   color ->
   color
