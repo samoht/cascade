@@ -142,6 +142,11 @@ val is_nested_media : statement -> bool
 (** [is_nested_media stmt] returns [true] if the statement is a media query
     containing bare declarations (CSS nesting style), [false] otherwise. *)
 
+val is_nested_supports : statement -> bool
+(** [is_nested_supports stmt] returns [true] if the statement is a supports
+    query containing bare declarations (CSS nesting style), [false] otherwise.
+*)
+
 val as_declarations : statement -> declaration list option
 (** [as_declarations stmt] returns [Some decls] if the statement is a bare
     declarations block (used in CSS nesting), [None] otherwise. *)

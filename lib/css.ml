@@ -82,6 +82,10 @@ let is_nested_media = function
   | Media (_, [ Declarations _ ]) -> true
   | _ -> false
 
+let is_nested_supports = function
+  | Supports (_, [ Declarations _ ]) -> true
+  | _ -> false
+
 let as_declarations = function Declarations decls -> Some decls | _ -> None
 
 let rec map f stmts =

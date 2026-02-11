@@ -83,7 +83,9 @@ let rec pp_rule : rule Pp.t =
           (Pp.indent Declaration.pp_declaration)
           ctx decls
       in
-      let pp_nested ctx () = Pp.list ~sep:Pp.cut pp_statement ctx nested in
+      let pp_nested ctx () =
+        Pp.list ~sep:Pp.cut (Pp.indent pp_statement) ctx nested
+      in
       Pp.cut ctx ();
       (match (decls, nested) with
       | [], _ -> pp_nested ctx ()
@@ -180,13 +182,13 @@ and pp_statement : statement Pp.t =
   | Rule rule -> pp_rule ctx rule
   | Declarations decls ->
       (* Bare declarations for CSS nesting - no selector/braces, just
-         declarations *)
+         declarations. No extra indent since the containing block handles it *)
       Pp.list
         ~sep:(fun ctx () ->
           Pp.semicolon ctx ();
           Pp.cut ctx ())
-        (Pp.indent Declaration.pp_declaration)
-        ctx decls
+        Declaration.pp_declaration ctx decls;
+      if decls <> [] then Pp.semicolon ctx ()
   | Charset encoding ->
       Pp.string ctx "@charset \"";
       Pp.string ctx encoding;
@@ -328,9 +330,10 @@ and pp_statement : statement Pp.t =
 
 and pp_block : block Pp.t =
  fun ctx statements ->
-  Pp.cut ctx ();
-  Pp.nest 2 (Pp.list ~sep:Pp.cut pp_statement) ctx statements;
-  Pp.cut ctx ()
+  (* Block printing for at-rules (@media, @supports, etc.) The braces helper
+     already adds nest 1 and indent for the first item, so we just print each
+     statement with proper indentation *)
+  Pp.list ~sep:Pp.cut pp_statement ctx statements
 
 let pp_stylesheet : stylesheet Pp.t =
  fun ctx statements -> Pp.list ~sep:Pp.cut pp_statement ctx statements
