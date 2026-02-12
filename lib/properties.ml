@@ -1161,11 +1161,8 @@ let rec pp_gradient_stop : gradient_stop Pp.t =
       match pct1_opt with
       | None -> () (* No positions *)
       | Some pct1 -> (
-          (* No space for variables to allow concatenation like
-             var(--color)var(--pos) *)
-          (match (c, pct1) with
-          | Var _, Var _ -> () (* No space between variables *)
-          | _ -> Pp.space ctx ());
+          (* Space between color and position, even for variables *)
+          Pp.space ctx ();
           pp_percentage ctx pct1;
           match pct2_opt with
           | None -> ()
@@ -1177,11 +1174,8 @@ let rec pp_gradient_stop : gradient_stop Pp.t =
       match len1_opt with
       | None -> () (* No positions *)
       | Some len1 -> (
-          (* No space for variables to allow concatenation like
-             var(--color)var(--pos) *)
-          (match (c, len1) with
-          | Var _, Var _ -> () (* No space between variables *)
-          | _ -> Pp.space ctx ());
+          (* Space between color and length, even for variables *)
+          Pp.space ctx ();
           pp_length ctx len1;
           match len2_opt with
           | None -> ()

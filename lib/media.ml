@@ -24,8 +24,8 @@ let to_string = function
   | Prefers_contrast `Less -> "(prefers-contrast:less)"
   | Prefers_color_scheme `Dark -> "(prefers-color-scheme:dark)"
   | Prefers_color_scheme `Light -> "(prefers-color-scheme:light)"
-  | Forced_colors `Active -> "(forced-colors:active)"
-  | Forced_colors `None -> "(forced-colors:none)"
+  | Forced_colors `Active -> "(forced-colors: active)"
+  | Forced_colors `None -> "(forced-colors: none)"
   | Hover -> "(hover:hover)"
   | Raw s -> s
 
