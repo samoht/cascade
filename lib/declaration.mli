@@ -837,6 +837,10 @@ val aspect_ratio : aspect_ratio -> declaration
 val filter : filter -> declaration
 (** [filter v] is the CSS [filter] property. *)
 
+val filter_var_empty : string -> filter
+(** [filter_var_empty name] creates a filter var reference with empty fallback,
+    i.e., [var(--name, )]. Used for composable filter utilities. *)
+
 val mix_blend_mode : blend_mode -> declaration
 (** [mix_blend_mode v] is the CSS [mix-blend-mode] property. *)
 
@@ -990,6 +994,45 @@ val mask : string -> declaration
 (** [mask v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/mask} mask} property. *)
 
+val webkit_mask_image : background_image -> declaration
+(** [-webkit-mask-image] property. *)
+
+val mask_image : background_image -> declaration
+(** [mask-image] property. *)
+
+val webkit_mask_composite : webkit_mask_composite -> declaration
+(** [-webkit-mask-composite] property. *)
+
+val mask_composite : mask_composite -> declaration
+(** [mask-composite] property. *)
+
+val webkit_mask_source_type : webkit_mask_source_type -> declaration
+(** [-webkit-mask-source-type] property. *)
+
+val mask_mode : mask_mode -> declaration
+(** [mask-mode] property. *)
+
+val mask_type : mask_type -> declaration
+(** [mask-type] property. *)
+
+val webkit_mask_size : background_size -> declaration
+(** [-webkit-mask-size] property. *)
+
+val mask_size : background_size -> declaration
+(** [mask-size] property. *)
+
+val webkit_mask_clip : mask_box -> declaration
+(** [-webkit-mask-clip] property. *)
+
+val mask_clip : mask_box -> declaration
+(** [mask-clip] property. *)
+
+val webkit_mask_origin : mask_box -> declaration
+(** [-webkit-mask-origin] property. *)
+
+val mask_origin : mask_box -> declaration
+(** [mask-origin] property. *)
+
 val content_visibility : content_visibility -> declaration
 (** [content_visibility v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/content-visibility}
@@ -1031,6 +1074,9 @@ val font_variant_numeric : font_variant_numeric -> declaration
 
 val backdrop_filter : filter -> declaration
 (** [backdrop_filter v] is the CSS [backdrop-filter] property. *)
+
+val webkit_backdrop_filter : filter -> declaration
+(** [webkit_backdrop_filter v] is the CSS [-webkit-backdrop-filter] property. *)
 
 val background_position : position_value list -> declaration
 (** [background_position v] is the
