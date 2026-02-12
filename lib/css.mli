@@ -2806,6 +2806,7 @@ type text_shadow =
       color : color option;
     }
   | Inherit
+  | Var of text_shadow var
 
 val text_shadow : text_shadow -> declaration
 (** [text_shadow shadow] is the

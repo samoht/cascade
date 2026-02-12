@@ -2402,10 +2402,11 @@ let rec pp_blend_mode : blend_mode Pp.t =
   | Plus_lighter -> Pp.string ctx "plus-lighter"
   | Var v -> pp_var pp_blend_mode ctx v
 
-let pp_text_shadow : text_shadow Pp.t =
+let rec pp_text_shadow : text_shadow Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
   | Inherit -> Pp.string ctx "inherit"
+  | Var v -> pp_var pp_text_shadow ctx v
   | Text_shadow { h_offset; v_offset; blur; color } -> (
       pp_length ctx h_offset;
       Pp.space ctx ();
@@ -6034,10 +6035,11 @@ module Text_shadow = struct
     (lengths, color)
 end
 
-let read_text_shadow t : text_shadow =
-  Reader.enum "text-shadow"
+let rec read_text_shadow t : text_shadow =
+  let read_var t : text_shadow = Var (read_var read_text_shadow t) in
+  Reader.enum_or_calls "text-shadow"
     [ ("none", None); ("inherit", Inherit) ]
-    t
+    ~calls:[ ("var", read_var) ]
     ~default:(fun t ->
       let components, _ = Reader.many Text_shadow.read_component t in
       let lengths, color = Text_shadow.fold_components components in
@@ -6047,6 +6049,7 @@ let read_text_shadow t : text_shadow =
           (Text_shadow { h_offset = h; v_offset = v; blur; color }
             : text_shadow)
       | _ -> err_invalid_value t "text-shadow" "expected at least two lengths")
+    t
 
 let read_text_shadows t : text_shadow list =
   Reader.list ~sep:Reader.comma ~at_least:1 read_text_shadow t
