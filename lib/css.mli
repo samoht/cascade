@@ -1664,6 +1664,30 @@ type background_image =
 
 type background_box = Border_box | Padding_box | Content_box | Text | Inherit
 
+(** Mask-related types *)
+
+type webkit_mask_composite =
+  | Source_over
+  | Xor
+  | Source_in
+  | Source_out
+  | Inherit
+
+type mask_composite = Add | Subtract | Intersect | Exclude | Inherit
+type webkit_mask_source_type = Alpha | Luminance | Auto | Inherit
+type mask_mode = Alpha | Luminance | Match_source | Inherit
+type mask_type = Alpha | Luminance | Inherit
+
+type mask_box =
+  | Border_box
+  | Content_box
+  | Fill_box
+  | Padding_box
+  | Stroke_box
+  | View_box
+  | No_clip  (** Only valid for mask-clip *)
+  | Inherit
+
 type background_shorthand = {
   color : color option;
   image : background_image option;
@@ -3503,10 +3527,18 @@ val filter : filter -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/filter} filter}
     property. *)
 
+val filter_var_empty : string -> filter
+(** [filter_var_empty name] creates a filter var reference with empty fallback,
+    i.e., [var(--name, )]. Used for composable filter utilities. *)
+
 val backdrop_filter : filter -> declaration
 (** [backdrop_filter values] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/backdrop-filter}
      backdrop-filter} property. *)
+
+val webkit_backdrop_filter : filter -> declaration
+(** [webkit_backdrop_filter values] is the [-webkit-backdrop-filter] property.
+*)
 
 (** CSS clip property values (deprecated, but needed for sr-only). *)
 type clip =
@@ -3538,6 +3570,45 @@ val clip_path : clip_path -> declaration
 val mask : string -> declaration
 (** [mask mask] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/mask} mask} property. *)
+
+val webkit_mask_image : background_image -> declaration
+(** [-webkit-mask-image] property. *)
+
+val mask_image : background_image -> declaration
+(** [mask-image] property. *)
+
+val webkit_mask_composite : webkit_mask_composite -> declaration
+(** [-webkit-mask-composite] property. *)
+
+val mask_composite : mask_composite -> declaration
+(** [mask-composite] property. *)
+
+val webkit_mask_source_type : webkit_mask_source_type -> declaration
+(** [-webkit-mask-source-type] property. *)
+
+val mask_mode : mask_mode -> declaration
+(** [mask-mode] property. *)
+
+val mask_type : mask_type -> declaration
+(** [mask-type] property. *)
+
+val webkit_mask_size : background_size -> declaration
+(** [-webkit-mask-size] property. *)
+
+val mask_size : background_size -> declaration
+(** [mask-size] property. *)
+
+val webkit_mask_clip : mask_box -> declaration
+(** [-webkit-mask-clip] property. *)
+
+val mask_clip : mask_box -> declaration
+(** [mask-clip] property. *)
+
+val webkit_mask_origin : mask_box -> declaration
+(** [-webkit-mask-origin] property. *)
+
+val mask_origin : mask_box -> declaration
+(** [mask-origin] property. *)
 
 val mix_blend_mode : blend_mode -> declaration
 (** [mix_blend_mode mode] is the

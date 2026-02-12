@@ -1056,6 +1056,10 @@ let text_decoration_thickness value = v Text_decoration_thickness value
 let text_size_adjust value = v Text_size_adjust value
 let aspect_ratio a = v Aspect_ratio a
 let filter value = v Filter value
+
+let filter_var_empty name : filter =
+  Var { name; fallback = Empty; default = None; layer = None; meta = None }
+
 let word_spacing value = v Word_spacing value
 let quotes value = v Quotes value
 
@@ -1124,6 +1128,19 @@ let transform_origin value = v Transform_origin value
 let transform_box value = v Transform_box value
 let clip_path value = v Clip_path value
 let mask value = v Mask value
+let webkit_mask_image value = v Webkit_mask_image value
+let mask_image value = v Mask_image value
+let webkit_mask_composite value = v Webkit_mask_composite value
+let mask_composite value = v Mask_composite value
+let webkit_mask_source_type value = v Webkit_mask_source_type value
+let mask_mode value = v Mask_mode value
+let mask_type value = v Mask_type value
+let webkit_mask_size value = v Webkit_mask_size value
+let mask_size value = v Mask_size value
+let webkit_mask_clip value = v Webkit_mask_clip value
+let mask_clip value = v Mask_clip value
+let webkit_mask_origin value = v Webkit_mask_origin value
+let mask_origin value = v Mask_origin value
 let content_visibility value = v Content_visibility value
 let moz_osx_font_smoothing value = v Moz_osx_font_smoothing value
 let webkit_line_clamp value = v Webkit_line_clamp value
@@ -1137,6 +1154,7 @@ let webkit_hyphens value = v Webkit_hyphens value
 let font_stretch value = v Font_stretch value
 let font_variant_numeric value = v Font_variant_numeric value
 let backdrop_filter value = v Backdrop_filter value
+let webkit_backdrop_filter value = v Webkit_backdrop_filter value
 let background_position value = v Background_position value
 let background_repeat value = v Background_repeat value
 let background_size value = v Background_size value
