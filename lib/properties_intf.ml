@@ -936,6 +936,7 @@ type text_shadow =
       color : color option;
     }
   | Inherit
+  | Var of text_shadow var
 
 type filter =
   | None
