@@ -699,6 +699,43 @@ val pp_background_box : background_box Pp.t
 (** [pp_background_box] pretty-prints a background-clip or background-origin
     value. *)
 
+val read_webkit_mask_composite : Reader.t -> webkit_mask_composite
+(** [read_webkit_mask_composite t] parses a webkit-mask-composite value. *)
+
+val pp_webkit_mask_composite : webkit_mask_composite Pp.t
+(** [pp_webkit_mask_composite] pretty-prints a webkit-mask-composite value. *)
+
+val read_mask_composite : Reader.t -> mask_composite
+(** [read_mask_composite t] parses a standard mask-composite value. *)
+
+val pp_mask_composite : mask_composite Pp.t
+(** [pp_mask_composite] pretty-prints a standard mask-composite value. *)
+
+val read_webkit_mask_source_type : Reader.t -> webkit_mask_source_type
+(** [read_webkit_mask_source_type t] parses a webkit-mask-source-type value. *)
+
+val pp_webkit_mask_source_type : webkit_mask_source_type Pp.t
+(** [pp_webkit_mask_source_type] pretty-prints a webkit-mask-source-type value.
+*)
+
+val read_mask_mode : Reader.t -> mask_mode
+(** [read_mask_mode t] parses a standard mask-mode value. *)
+
+val pp_mask_mode : mask_mode Pp.t
+(** [pp_mask_mode] pretty-prints a standard mask-mode value. *)
+
+val read_mask_type : Reader.t -> mask_type
+(** [read_mask_type t] parses a mask-type value (alpha/luminance). *)
+
+val pp_mask_type : mask_type Pp.t
+(** [pp_mask_type] pretty-prints a mask-type value. *)
+
+val read_mask_box : Reader.t -> mask_box
+(** [read_mask_box t] parses a mask-clip or mask-origin value. *)
+
+val pp_mask_box : mask_box Pp.t
+(** [pp_mask_box] pretty-prints a mask-clip or mask-origin value. *)
+
 val read_background_shorthand : Reader.t -> background_shorthand
 (** [read_background_shorthand t] parses a background shorthand property. *)
 
