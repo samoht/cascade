@@ -1049,6 +1049,8 @@ type background_image =
   | Conic_gradient of gradient_stop list
   | Var of background_image var
       (** CSS variable reference: var(--my-gradient) *)
+  | List of background_image list
+      (** Comma-separated list of background images *)
   | None
   | Initial
   | Inherit

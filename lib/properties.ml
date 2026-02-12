@@ -1243,6 +1243,7 @@ let rec pp_background_image : background_image Pp.t =
           | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
         ctx stops
   | Var v -> pp_var pp_background_image ctx v
+  | List images -> Pp.list ~sep:Pp.comma pp_background_image ctx images
   | None -> Pp.string ctx "none"
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
@@ -6362,7 +6363,14 @@ let read_background_image t : background_image =
         ]
       t
   in
-  read_bg_image t
+  (* Read first image, then check for comma-separated list *)
+  let first = read_bg_image t in
+  Reader.ws t;
+  if Reader.comma_opt t then
+    (* There are more images - read as list *)
+    let rest = Reader.list ~sep:Reader.comma ~at_least:1 read_bg_image t in
+    List (first :: rest)
+  else first
 
 let read_background_images t : background_image list =
   Reader.list ~sep:Reader.comma read_background_image t
