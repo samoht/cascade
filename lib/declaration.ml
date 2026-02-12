@@ -723,6 +723,27 @@ let read_value (type a) (prop : a property) t : declaration =
   | Box_decoration_break -> v Box_decoration_break (read_box_decoration_break t)
   | Webkit_box_decoration_break ->
       v Webkit_box_decoration_break (read_box_decoration_break t)
+  (* Webkit mask properties *)
+  | Webkit_mask_image -> v Webkit_mask_image (read_background_image t)
+  | Webkit_mask_composite ->
+      v Webkit_mask_composite (read_webkit_mask_composite t)
+  | Webkit_mask_source_type ->
+      v Webkit_mask_source_type (read_webkit_mask_source_type t)
+  | Webkit_mask_size -> v Webkit_mask_size (read_background_size t)
+  | Webkit_mask_position -> v Webkit_mask_position (read_background_position t)
+  | Webkit_mask_repeat -> v Webkit_mask_repeat (read_background_repeat t)
+  | Webkit_mask_clip -> v Webkit_mask_clip (read_mask_box t)
+  | Webkit_mask_origin -> v Webkit_mask_origin (read_mask_box t)
+  (* Unprefixed mask properties *)
+  | Mask_image -> v Mask_image (read_background_image t)
+  | Mask_composite -> v Mask_composite (read_mask_composite t)
+  | Mask_mode -> v Mask_mode (read_mask_mode t)
+  | Mask_size -> v Mask_size (read_background_size t)
+  | Mask_position -> v Mask_position (read_background_position t)
+  | Mask_repeat -> v Mask_repeat (read_background_repeat t)
+  | Mask_clip -> v Mask_clip (read_mask_box t)
+  | Mask_origin -> v Mask_origin (read_mask_box t)
+  | Mask_type -> v Mask_type (read_mask_type t)
 
 (** Parse a custom property (--name: value) *)
 let read_custom_property_declaration t : declaration =

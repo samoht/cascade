@@ -2201,6 +2201,23 @@ let pp_property : type a. a property Pp.t =
   | Font_variant_numeric -> Pp.string ctx "font-variant-numeric"
   | Backdrop_filter -> Pp.string ctx "backdrop-filter"
   | Webkit_backdrop_filter -> Pp.string ctx "-webkit-backdrop-filter"
+  | Webkit_mask_image -> Pp.string ctx "-webkit-mask-image"
+  | Webkit_mask_composite -> Pp.string ctx "-webkit-mask-composite"
+  | Webkit_mask_source_type -> Pp.string ctx "-webkit-mask-source-type"
+  | Webkit_mask_size -> Pp.string ctx "-webkit-mask-size"
+  | Webkit_mask_position -> Pp.string ctx "-webkit-mask-position"
+  | Webkit_mask_repeat -> Pp.string ctx "-webkit-mask-repeat"
+  | Webkit_mask_clip -> Pp.string ctx "-webkit-mask-clip"
+  | Webkit_mask_origin -> Pp.string ctx "-webkit-mask-origin"
+  | Mask_image -> Pp.string ctx "mask-image"
+  | Mask_composite -> Pp.string ctx "mask-composite"
+  | Mask_mode -> Pp.string ctx "mask-mode"
+  | Mask_size -> Pp.string ctx "mask-size"
+  | Mask_position -> Pp.string ctx "mask-position"
+  | Mask_repeat -> Pp.string ctx "mask-repeat"
+  | Mask_clip -> Pp.string ctx "mask-clip"
+  | Mask_origin -> Pp.string ctx "mask-origin"
+  | Mask_type -> Pp.string ctx "mask-type"
   | Scroll_snap_align -> Pp.string ctx "scroll-snap-align"
   | Scroll_snap_stop -> Pp.string ctx "scroll-snap-stop"
   | Scroll_behavior -> Pp.string ctx "scroll-behavior"
@@ -2445,6 +2462,53 @@ let pp_background_box : background_box Pp.t =
   | Padding_box -> Pp.string ctx "padding-box"
   | Content_box -> Pp.string ctx "content-box"
   | Text -> Pp.string ctx "text"
+  | Inherit -> Pp.string ctx "inherit"
+
+let pp_webkit_mask_composite : webkit_mask_composite Pp.t =
+ fun ctx -> function
+  | Source_over -> Pp.string ctx "source-over"
+  | Xor -> Pp.string ctx "xor"
+  | Source_in -> Pp.string ctx "source-in"
+  | Source_out -> Pp.string ctx "source-out"
+  | Inherit -> Pp.string ctx "inherit"
+
+let pp_mask_composite : mask_composite Pp.t =
+ fun ctx -> function
+  | Add -> Pp.string ctx "add"
+  | Subtract -> Pp.string ctx "subtract"
+  | Intersect -> Pp.string ctx "intersect"
+  | Exclude -> Pp.string ctx "exclude"
+  | Inherit -> Pp.string ctx "inherit"
+
+let pp_webkit_mask_source_type : webkit_mask_source_type Pp.t =
+ fun ctx -> function
+  | Alpha -> Pp.string ctx "alpha"
+  | Luminance -> Pp.string ctx "luminance"
+  | Auto -> Pp.string ctx "auto"
+  | Inherit -> Pp.string ctx "inherit"
+
+let pp_mask_mode : mask_mode Pp.t =
+ fun ctx -> function
+  | Alpha -> Pp.string ctx "alpha"
+  | Luminance -> Pp.string ctx "luminance"
+  | Match_source -> Pp.string ctx "match-source"
+  | Inherit -> Pp.string ctx "inherit"
+
+let pp_mask_type : mask_type Pp.t =
+ fun ctx -> function
+  | Alpha -> Pp.string ctx "alpha"
+  | Luminance -> Pp.string ctx "luminance"
+  | Inherit -> Pp.string ctx "inherit"
+
+let pp_mask_box : mask_box Pp.t =
+ fun ctx -> function
+  | Border_box -> Pp.string ctx "border-box"
+  | Content_box -> Pp.string ctx "content-box"
+  | Fill_box -> Pp.string ctx "fill-box"
+  | Padding_box -> Pp.string ctx "padding-box"
+  | Stroke_box -> Pp.string ctx "stroke-box"
+  | View_box -> Pp.string ctx "view-box"
+  | No_clip -> Pp.string ctx "no-clip"
   | Inherit -> Pp.string ctx "inherit"
 
 let pp_position_value : position_value Pp.t =
@@ -6452,6 +6516,23 @@ let read_any_property t =
   | "aspect-ratio" -> Prop Aspect_ratio
   | "backdrop-filter" -> Prop Backdrop_filter
   | "-webkit-backdrop-filter" -> Prop Webkit_backdrop_filter
+  | "-webkit-mask-image" -> Prop Webkit_mask_image
+  | "-webkit-mask-composite" -> Prop Webkit_mask_composite
+  | "-webkit-mask-source-type" -> Prop Webkit_mask_source_type
+  | "-webkit-mask-size" -> Prop Webkit_mask_size
+  | "-webkit-mask-position" -> Prop Webkit_mask_position
+  | "-webkit-mask-repeat" -> Prop Webkit_mask_repeat
+  | "-webkit-mask-clip" -> Prop Webkit_mask_clip
+  | "-webkit-mask-origin" -> Prop Webkit_mask_origin
+  | "mask-image" -> Prop Mask_image
+  | "mask-composite" -> Prop Mask_composite
+  | "mask-mode" -> Prop Mask_mode
+  | "mask-size" -> Prop Mask_size
+  | "mask-position" -> Prop Mask_position
+  | "mask-repeat" -> Prop Mask_repeat
+  | "mask-clip" -> Prop Mask_clip
+  | "mask-origin" -> Prop Mask_origin
+  | "mask-type" -> Prop Mask_type
   | "backface-visibility" -> Prop Backface_visibility
   | "background-attachment" -> Prop Background_attachment
   | "background-blend-mode" -> Prop Background_blend_mode
@@ -6658,6 +6739,77 @@ let read_background_box t : background_box =
       ("padding-box", Padding_box);
       ("content-box", Content_box);
       ("text", Text);
+      ("inherit", Inherit);
+    ]
+    t
+
+(* Parser for webkit_mask_composite values *)
+let read_webkit_mask_composite t : webkit_mask_composite =
+  Reader.enum "webkit-mask-composite"
+    [
+      ("source-over", (Source_over : webkit_mask_composite));
+      ("xor", Xor);
+      ("source-in", Source_in);
+      ("source-out", Source_out);
+      ("inherit", Inherit);
+    ]
+    t
+
+(* Parser for mask_composite values (standard, not webkit) *)
+let read_mask_composite t : mask_composite =
+  Reader.enum "mask-composite"
+    [
+      ("add", (Add : mask_composite));
+      ("subtract", Subtract);
+      ("intersect", Intersect);
+      ("exclude", Exclude);
+      ("inherit", Inherit);
+    ]
+    t
+
+(* Parser for webkit_mask_source_type values *)
+let read_webkit_mask_source_type t : webkit_mask_source_type =
+  Reader.enum "webkit-mask-source-type"
+    [
+      ("alpha", (Alpha : webkit_mask_source_type));
+      ("luminance", Luminance);
+      ("auto", Auto);
+      ("inherit", Inherit);
+    ]
+    t
+
+(* Parser for mask_mode values (standard) *)
+let read_mask_mode t : mask_mode =
+  Reader.enum "mask-mode"
+    [
+      ("alpha", (Alpha : mask_mode));
+      ("luminance", Luminance);
+      ("match-source", Match_source);
+      ("inherit", Inherit);
+    ]
+    t
+
+(* Parser for mask_type values *)
+let read_mask_type t : mask_type =
+  Reader.enum "mask-type"
+    [
+      ("alpha", (Alpha : mask_type));
+      ("luminance", Luminance);
+      ("inherit", Inherit);
+    ]
+    t
+
+(* Parser for mask_box values (mask-clip and mask-origin) *)
+let read_mask_box t : mask_box =
+  Reader.enum "mask-box"
+    [
+      ("border-box", (Border_box : mask_box));
+      ("content-box", Content_box);
+      ("fill-box", Fill_box);
+      ("padding-box", Padding_box);
+      ("stroke-box", Stroke_box);
+      ("view-box", View_box);
+      ("no-clip", No_clip);
       ("inherit", Inherit);
     ]
     t
@@ -7357,6 +7509,23 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Moz_osx_font_smoothing -> pp pp_moz_osx_font_smoothing
   | Backdrop_filter -> pp pp_filter
   | Webkit_backdrop_filter -> pp pp_filter
+  | Webkit_mask_image -> pp pp_background_image
+  | Webkit_mask_composite -> pp pp_webkit_mask_composite
+  | Webkit_mask_source_type -> pp pp_webkit_mask_source_type
+  | Webkit_mask_size -> pp pp_background_size
+  | Webkit_mask_position -> pp pp_background_position
+  | Webkit_mask_repeat -> pp pp_background_repeat
+  | Webkit_mask_clip -> pp pp_mask_box
+  | Webkit_mask_origin -> pp pp_mask_box
+  | Mask_image -> pp pp_background_image
+  | Mask_composite -> pp pp_mask_composite
+  | Mask_mode -> pp pp_mask_mode
+  | Mask_size -> pp pp_background_size
+  | Mask_position -> pp pp_background_position
+  | Mask_repeat -> pp pp_background_repeat
+  | Mask_clip -> pp pp_mask_box
+  | Mask_origin -> pp pp_mask_box
+  | Mask_type -> pp pp_mask_type
   | Container_name -> pp Pp.string
   | Perspective_origin -> pp pp_perspective_origin
   | Object_position -> pp pp_position_value

@@ -1102,6 +1102,38 @@ type background =
   | Var of background var
   | Shorthand of background_shorthand
 
+(* Mask Types *)
+
+(** Webkit-prefixed mask-composite values *)
+type webkit_mask_composite =
+  | Source_over
+  | Xor
+  | Source_in
+  | Source_out
+  | Inherit
+
+(** Standard mask-composite values (different from webkit) *)
+type mask_composite = Add | Subtract | Intersect | Exclude | Inherit
+
+(** Webkit mask-source-type values *)
+type webkit_mask_source_type = Alpha | Luminance | Auto | Inherit
+
+(** Standard mask-mode values (different from webkit) *)
+type mask_mode = Alpha | Luminance | Match_source | Inherit
+
+(** mask-type property values (only alpha and luminance) *)
+type mask_type = Alpha | Luminance | Inherit
+
+type mask_box =
+  | Border_box
+  | Content_box
+  | Fill_box
+  | Padding_box
+  | Stroke_box
+  | View_box
+  | No_clip  (** Only valid for mask-clip *)
+  | Inherit
+
 (* Gap shorthand type *)
 type gap = { row_gap : length option; column_gap : length option }
 
@@ -1670,6 +1702,23 @@ type 'a property =
   | Font_variant_numeric : font_variant_numeric property
   | Backdrop_filter : filter property
   | Webkit_backdrop_filter : filter property
+  | Webkit_mask_image : background_image property
+  | Webkit_mask_composite : webkit_mask_composite property
+  | Webkit_mask_source_type : webkit_mask_source_type property
+  | Webkit_mask_size : background_size property
+  | Webkit_mask_position : background_position property
+  | Webkit_mask_repeat : background_repeat property
+  | Webkit_mask_clip : mask_box property
+  | Webkit_mask_origin : mask_box property
+  | Mask_image : background_image property
+  | Mask_composite : mask_composite property
+  | Mask_mode : mask_mode property
+  | Mask_size : background_size property
+  | Mask_position : background_position property
+  | Mask_repeat : background_repeat property
+  | Mask_clip : mask_box property
+  | Mask_origin : mask_box property
+  | Mask_type : mask_type property
   | Scroll_snap_align : scroll_snap_align property
   | Scroll_snap_stop : scroll_snap_stop property
   | Scroll_behavior : scroll_behavior property
