@@ -778,6 +778,36 @@ val scroll_margin_left : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-left}
      scroll-margin-left} property. *)
 
+val scroll_margin_inline : length -> declaration
+(** [scroll_margin_inline v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-inline}
+     scroll-margin-inline} property. *)
+
+val scroll_margin_inline_start : length -> declaration
+(** [scroll_margin_inline_start v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-inline-start}
+     scroll-margin-inline-start} property. *)
+
+val scroll_margin_inline_end : length -> declaration
+(** [scroll_margin_inline_end v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-inline-end}
+     scroll-margin-inline-end} property. *)
+
+val scroll_margin_block : length -> declaration
+(** [scroll_margin_block v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-block}
+     scroll-margin-block} property. *)
+
+val scroll_margin_block_start : length -> declaration
+(** [scroll_margin_block_start v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-block-start}
+     scroll-margin-block-start} property. *)
+
+val scroll_margin_block_end : length -> declaration
+(** [scroll_margin_block_end v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-block-end}
+     scroll-margin-block-end} property. *)
+
 val scroll_padding : length -> declaration
 (** [scroll_padding v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding}
@@ -802,6 +832,36 @@ val scroll_padding_left : length -> declaration
 (** [scroll_padding_left v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-left}
      scroll-padding-left} property. *)
+
+val scroll_padding_inline : length -> declaration
+(** [scroll_padding_inline v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-inline}
+     scroll-padding-inline} property. *)
+
+val scroll_padding_inline_start : length -> declaration
+(** [scroll_padding_inline_start v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-inline-start}
+     scroll-padding-inline-start} property. *)
+
+val scroll_padding_inline_end : length -> declaration
+(** [scroll_padding_inline_end v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-inline-end}
+     scroll-padding-inline-end} property. *)
+
+val scroll_padding_block : length -> declaration
+(** [scroll_padding_block v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-block}
+     scroll-padding-block} property. *)
+
+val scroll_padding_block_start : length -> declaration
+(** [scroll_padding_block_start v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-block-start}
+     scroll-padding-block-start} property. *)
+
+val scroll_padding_block_end : length -> declaration
+(** [scroll_padding_block_end v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-block-end}
+     scroll-padding-block-end} property. *)
 
 val overscroll_behavior : overscroll_behavior -> declaration
 (** [overscroll_behavior v] is the

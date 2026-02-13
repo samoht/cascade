@@ -2254,11 +2254,23 @@ let pp_property : type a. a property Pp.t =
   | Scroll_margin_right -> Pp.string ctx "scroll-margin-right"
   | Scroll_margin_bottom -> Pp.string ctx "scroll-margin-bottom"
   | Scroll_margin_left -> Pp.string ctx "scroll-margin-left"
+  | Scroll_margin_inline -> Pp.string ctx "scroll-margin-inline"
+  | Scroll_margin_inline_start -> Pp.string ctx "scroll-margin-inline-start"
+  | Scroll_margin_inline_end -> Pp.string ctx "scroll-margin-inline-end"
+  | Scroll_margin_block -> Pp.string ctx "scroll-margin-block"
+  | Scroll_margin_block_start -> Pp.string ctx "scroll-margin-block-start"
+  | Scroll_margin_block_end -> Pp.string ctx "scroll-margin-block-end"
   | Scroll_padding -> Pp.string ctx "scroll-padding"
   | Scroll_padding_top -> Pp.string ctx "scroll-padding-top"
   | Scroll_padding_right -> Pp.string ctx "scroll-padding-right"
   | Scroll_padding_bottom -> Pp.string ctx "scroll-padding-bottom"
   | Scroll_padding_left -> Pp.string ctx "scroll-padding-left"
+  | Scroll_padding_inline -> Pp.string ctx "scroll-padding-inline"
+  | Scroll_padding_inline_start -> Pp.string ctx "scroll-padding-inline-start"
+  | Scroll_padding_inline_end -> Pp.string ctx "scroll-padding-inline-end"
+  | Scroll_padding_block -> Pp.string ctx "scroll-padding-block"
+  | Scroll_padding_block_start -> Pp.string ctx "scroll-padding-block-start"
+  | Scroll_padding_block_end -> Pp.string ctx "scroll-padding-block-end"
   | Overscroll_behavior -> Pp.string ctx "overscroll-behavior"
   | Overscroll_behavior_x -> Pp.string ctx "overscroll-behavior-x"
   | Overscroll_behavior_y -> Pp.string ctx "overscroll-behavior-y"
@@ -6627,11 +6639,23 @@ let read_any_property t =
   | "scroll-margin-left" -> Prop Scroll_margin_left
   | "scroll-margin-right" -> Prop Scroll_margin_right
   | "scroll-margin-top" -> Prop Scroll_margin_top
+  | "scroll-margin-inline" -> Prop Scroll_margin_inline
+  | "scroll-margin-inline-start" -> Prop Scroll_margin_inline_start
+  | "scroll-margin-inline-end" -> Prop Scroll_margin_inline_end
+  | "scroll-margin-block" -> Prop Scroll_margin_block
+  | "scroll-margin-block-start" -> Prop Scroll_margin_block_start
+  | "scroll-margin-block-end" -> Prop Scroll_margin_block_end
   | "scroll-padding" -> Prop Scroll_padding
   | "scroll-padding-bottom" -> Prop Scroll_padding_bottom
   | "scroll-padding-left" -> Prop Scroll_padding_left
   | "scroll-padding-right" -> Prop Scroll_padding_right
   | "scroll-padding-top" -> Prop Scroll_padding_top
+  | "scroll-padding-inline" -> Prop Scroll_padding_inline
+  | "scroll-padding-inline-start" -> Prop Scroll_padding_inline_start
+  | "scroll-padding-inline-end" -> Prop Scroll_padding_inline_end
+  | "scroll-padding-block" -> Prop Scroll_padding_block
+  | "scroll-padding-block-start" -> Prop Scroll_padding_block_start
+  | "scroll-padding-block-end" -> Prop Scroll_padding_block_end
   | "scroll-snap-align" -> Prop Scroll_snap_align
   | "scroll-snap-stop" -> Prop Scroll_snap_stop
   | "scroll-snap-type" -> Prop Scroll_snap_type
@@ -7606,11 +7630,23 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Scroll_margin_right -> pp pp_length
   | Scroll_margin_bottom -> pp pp_length
   | Scroll_margin_left -> pp pp_length
+  | Scroll_margin_inline -> pp pp_length
+  | Scroll_margin_inline_start -> pp pp_length
+  | Scroll_margin_inline_end -> pp pp_length
+  | Scroll_margin_block -> pp pp_length
+  | Scroll_margin_block_start -> pp pp_length
+  | Scroll_margin_block_end -> pp pp_length
   | Scroll_padding -> pp pp_length
   | Scroll_padding_top -> pp pp_length
   | Scroll_padding_right -> pp pp_length
   | Scroll_padding_bottom -> pp pp_length
   | Scroll_padding_left -> pp pp_length
+  | Scroll_padding_inline -> pp pp_length
+  | Scroll_padding_inline_start -> pp pp_length
+  | Scroll_padding_inline_end -> pp pp_length
+  | Scroll_padding_block -> pp pp_length
+  | Scroll_padding_block_start -> pp pp_length
+  | Scroll_padding_block_end -> pp pp_length
   | Overscroll_behavior -> pp pp_overscroll_behavior
   | Overscroll_behavior_x -> pp pp_overscroll_behavior
   | Overscroll_behavior_y -> pp pp_overscroll_behavior

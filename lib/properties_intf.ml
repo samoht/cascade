@@ -1767,11 +1767,23 @@ type 'a property =
   | Scroll_margin_right : length property
   | Scroll_margin_bottom : length property
   | Scroll_margin_left : length property
+  | Scroll_margin_inline : length property
+  | Scroll_margin_inline_start : length property
+  | Scroll_margin_inline_end : length property
+  | Scroll_margin_block : length property
+  | Scroll_margin_block_start : length property
+  | Scroll_margin_block_end : length property
   | Scroll_padding : length property
   | Scroll_padding_top : length property
   | Scroll_padding_right : length property
   | Scroll_padding_bottom : length property
   | Scroll_padding_left : length property
+  | Scroll_padding_inline : length property
+  | Scroll_padding_inline_start : length property
+  | Scroll_padding_inline_end : length property
+  | Scroll_padding_block : length property
+  | Scroll_padding_block_start : length property
+  | Scroll_padding_block_end : length property
   | Overscroll_behavior : overscroll_behavior property
   | Overscroll_behavior_x : overscroll_behavior property
   | Overscroll_behavior_y : overscroll_behavior property
