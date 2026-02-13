@@ -3537,6 +3537,10 @@ val filter_var_empty : string -> filter
 (** [filter_var_empty name] creates a filter var reference with empty fallback,
     i.e., [var(--name, )]. Used for composable filter utilities. *)
 
+val background_image_var_none : string -> background_image
+(** [background_image_var_none name] creates a background_image var reference
+    with no fallback, i.e., [var(--name)]. Used for mask gradient utilities. *)
+
 val backdrop_filter : filter -> declaration
 (** [backdrop_filter values] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/backdrop-filter}
@@ -4226,6 +4230,7 @@ type _ kind =
   | Transform : transform kind
   | Touch_action : touch_action kind
   | Transition_property_value : transition_property_value kind
+  | Background_image : background_image kind
 
 type meta
 (** The type for CSS variable metadata. *)

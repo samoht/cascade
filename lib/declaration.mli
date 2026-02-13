@@ -844,6 +844,10 @@ val filter_var_empty : string -> filter
 (** [filter_var_empty name] creates a filter var reference with empty fallback,
     i.e., [var(--name, )]. Used for composable filter utilities. *)
 
+val background_image_var_none : string -> background_image
+(** [background_image_var_none name] creates a background_image var reference
+    with no fallback, i.e., [var(--name)]. Used for mask gradient utilities. *)
+
 val mix_blend_mode : blend_mode -> declaration
 (** [mix_blend_mode v] is the CSS [mix-blend-mode] property. *)
 

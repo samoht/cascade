@@ -199,6 +199,7 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Transform -> pp pp_transform
   | Touch_action -> pp pp_touch_action
   | Transition_property_value -> pp pp_transition_property_value
+  | Background_image -> pp pp_background_image
 
 let string_of_value ?(minify = true) ?(inline = false) decl =
   let ctx = { Pp.minify; indent = 0; buf = Buffer.create 16; inline } in
@@ -1060,6 +1061,9 @@ let filter value = v Filter value
 
 let filter_var_empty name : filter =
   Var { name; fallback = Empty; default = None; layer = None; meta = None }
+
+let background_image_var_none name : background_image =
+  Var { name; fallback = None; default = None; layer = None; meta = None }
 
 let word_spacing value = v Word_spacing value
 let quotes value = v Quotes value
