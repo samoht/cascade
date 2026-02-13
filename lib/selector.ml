@@ -640,6 +640,7 @@ let pseudo_class_base_idents =
     ("optional", Optional);
     ("user-invalid", User_invalid);
     ("user-valid", User_valid);
+    ("inert", Inert);
     ("autofill", Autofill);
     (* Display *)
     ("fullscreen", Fullscreen);
@@ -1146,6 +1147,7 @@ and pp : t Pp.t =
   | Optional -> pseudo ctx "optional"
   | User_invalid -> pseudo ctx "user-invalid"
   | User_valid -> pseudo ctx "user-valid"
+  | Inert -> pseudo ctx "inert"
   | Autofill -> pseudo ctx "autofill"
   | Fullscreen -> pseudo ctx "fullscreen"
   | Modal -> pseudo ctx "modal"
