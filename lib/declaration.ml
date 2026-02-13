@@ -675,11 +675,23 @@ let read_value (type a) (prop : a property) t : declaration =
   | Scroll_margin_right -> v Scroll_margin_right (read_length t)
   | Scroll_margin_bottom -> v Scroll_margin_bottom (read_length t)
   | Scroll_margin_left -> v Scroll_margin_left (read_length t)
+  | Scroll_margin_inline -> v Scroll_margin_inline (read_length t)
+  | Scroll_margin_inline_start -> v Scroll_margin_inline_start (read_length t)
+  | Scroll_margin_inline_end -> v Scroll_margin_inline_end (read_length t)
+  | Scroll_margin_block -> v Scroll_margin_block (read_length t)
+  | Scroll_margin_block_start -> v Scroll_margin_block_start (read_length t)
+  | Scroll_margin_block_end -> v Scroll_margin_block_end (read_length t)
   | Scroll_padding -> v Scroll_padding (read_length t)
   | Scroll_padding_top -> v Scroll_padding_top (read_length t)
   | Scroll_padding_right -> v Scroll_padding_right (read_length t)
   | Scroll_padding_bottom -> v Scroll_padding_bottom (read_length t)
   | Scroll_padding_left -> v Scroll_padding_left (read_length t)
+  | Scroll_padding_inline -> v Scroll_padding_inline (read_length t)
+  | Scroll_padding_inline_start -> v Scroll_padding_inline_start (read_length t)
+  | Scroll_padding_inline_end -> v Scroll_padding_inline_end (read_length t)
+  | Scroll_padding_block -> v Scroll_padding_block (read_length t)
+  | Scroll_padding_block_start -> v Scroll_padding_block_start (read_length t)
+  | Scroll_padding_block_end -> v Scroll_padding_block_end (read_length t)
   | Overscroll_behavior -> v Overscroll_behavior (read_overscroll_behavior t)
   | Overscroll_behavior_x ->
       v Overscroll_behavior_x (read_overscroll_behavior t)
@@ -1043,11 +1055,23 @@ let scroll_margin_top value = v Scroll_margin_top value
 let scroll_margin_right value = v Scroll_margin_right value
 let scroll_margin_bottom value = v Scroll_margin_bottom value
 let scroll_margin_left value = v Scroll_margin_left value
+let scroll_margin_inline value = v Scroll_margin_inline value
+let scroll_margin_inline_start value = v Scroll_margin_inline_start value
+let scroll_margin_inline_end value = v Scroll_margin_inline_end value
+let scroll_margin_block value = v Scroll_margin_block value
+let scroll_margin_block_start value = v Scroll_margin_block_start value
+let scroll_margin_block_end value = v Scroll_margin_block_end value
 let scroll_padding value = v Scroll_padding value
 let scroll_padding_top value = v Scroll_padding_top value
 let scroll_padding_right value = v Scroll_padding_right value
 let scroll_padding_bottom value = v Scroll_padding_bottom value
 let scroll_padding_left value = v Scroll_padding_left value
+let scroll_padding_inline value = v Scroll_padding_inline value
+let scroll_padding_inline_start value = v Scroll_padding_inline_start value
+let scroll_padding_inline_end value = v Scroll_padding_inline_end value
+let scroll_padding_block value = v Scroll_padding_block value
+let scroll_padding_block_start value = v Scroll_padding_block_start value
+let scroll_padding_block_end value = v Scroll_padding_block_end value
 let overscroll_behavior value = v Overscroll_behavior value
 let overscroll_behavior_x value = v Overscroll_behavior_x value
 let overscroll_behavior_y value = v Overscroll_behavior_y value
