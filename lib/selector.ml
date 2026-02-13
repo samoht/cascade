@@ -717,6 +717,7 @@ let pseudo_vendor_idents =
     ("-webkit-outer-spin-button", Webkit_outer_spin_button);
     ("-webkit-calendar-picker-indicator", Webkit_calendar_picker_indicator);
     ("-webkit-details-marker", Webkit_details_marker);
+    ("details-content", Details_content);
   ]
 
 (* Forward declarations for mutually recursive functions *)
@@ -1214,6 +1215,7 @@ and pp : t Pp.t =
   | Webkit_calendar_picker_indicator ->
       vendor_elem ctx "webkit-calendar-picker-indicator"
   | Webkit_details_marker -> vendor_elem ctx "webkit-details-marker"
+  | Details_content -> elem ctx "details-content"
   (* Functional pseudo-elements *)
   | Part idents -> elem_func ctx "part" (Pp.list ~sep:Pp.comma Pp.string) idents
   | Slotted selectors -> elem_func ctx "slotted" sels selectors
