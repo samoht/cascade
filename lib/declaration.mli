@@ -87,6 +87,9 @@ val text_shadow : text_shadow -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-shadow}
      text-shadow} property. *)
 
+val text_shadows : text_shadow list -> declaration
+(** [text_shadows values] is the text-shadow property with multiple shadows. *)
+
 val transition : transition -> declaration
 (** [transition value] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/transition} transition}

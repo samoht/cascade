@@ -861,6 +861,7 @@ let string_of_declaration ?(minify = false) decl =
 (* Single-to-list property helpers *)
 let background_image value = v Background_image [ value ]
 let text_shadow value = v Text_shadow [ value ]
+let text_shadows values = v Text_shadow values
 let transition value = v Transition [ value ]
 let transitions values = v Transition values
 let animation value = v Animation [ value ]
