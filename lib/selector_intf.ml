@@ -86,6 +86,7 @@ type t =
   | Optional
   | User_invalid
   | User_valid
+  | Inert
   | Autofill
   | Fullscreen
   | Modal
