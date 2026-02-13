@@ -216,27 +216,30 @@ let should_not_combine selector =
     - Don't combine if one has modifiers and one doesn't (e.g., .bg-blue-500 and
       .aria-selected:bg-blue-500) to preserve ordering semantics
     - Otherwise, can combine since both rules set the same values *)
+let extract_utility_name class_name =
+  (* Extract the utility name from a class name. For variant prefixed classes
+     like "group-optional:flex" or "peer-hover:bg-blue-500", extract just the
+     utility part ("flex" or "bg-blue-500"). For non-variant classes like
+     "transform", return the full name. *)
+  match String.rindex_opt class_name ':' with
+  | Some idx ->
+      String.sub class_name (idx + 1) (String.length class_name - idx - 1)
+  | None -> class_name
+
 let can_combine_selectors sel1 sel2 =
   (* Check if pseudo-elements match (both None, or both the same) *)
   let pe1 = extract_pseudo_element sel1 in
   let pe2 = extract_pseudo_element sel2 in
   if pe1 <> pe2 then false
   else
-    (* Check if selectors have the same base class. This prevents merging
-       different utilities that happen to have the same CSS output, like
-       .transform and .transform-cpu. Tailwind keeps these separate. *)
-    let base_class_matches =
-      Selector.first_class sel1 = Selector.first_class sel2
-    in
-    if not base_class_matches then false
-    else
-      (* Compare modifier prefixes. Selectors can only be combined if they have
-         the same modifier prefix (or both have none). This ensures that: -
-         .before:... and .after:... stay separate (different prefixes) -
-         .group-focus:... and .group-has-[:checked]:... stay separate -
-         .dark:group-has-[:checked]:... and .dark:peer-checked:... CAN combine
-         (same outer prefix "dark:") *)
-      Selector.modifier_prefix sel1 = Selector.modifier_prefix sel2
+    (* Tailwind v4 combines consecutive rules with identical declarations if
+       they use the same underlying utility. This allows variant combinations
+       like group-X:flex, peer-X:flex, X:flex to merge (all use "flex"). But
+       different utilities like .transform and .transform-cpu stay separate even
+       if they have identical CSS output. *)
+    match (Selector.first_class sel1, Selector.first_class sel2) with
+    | Some c1, Some c2 -> extract_utility_name c1 = extract_utility_name c2
+    | _ -> false
 
 (* Convert group of selectors to a rule *)
 let group_to_rule :
