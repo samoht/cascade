@@ -144,6 +144,7 @@ type t =
   | Webkit_outer_spin_button
   | Webkit_calendar_picker_indicator
   | Webkit_details_marker
+  | Details_content
   (* Functional pseudo-classes *)
   | Is of t list (* :is() - matches any selector in list *)
   | Where of t list (* :where() - like :is() but 0 specificity *)
