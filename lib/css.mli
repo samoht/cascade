@@ -2815,6 +2815,9 @@ val text_shadow : text_shadow -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-shadow}
      text-shadow} property. *)
 
+val text_shadows : text_shadow list -> declaration
+(** [text_shadows shadows] is the text-shadow property with multiple shadows. *)
+
 val font : string -> declaration
 (** [font spec] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font} font} shorthand
