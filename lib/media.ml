@@ -9,6 +9,7 @@ type t =
   | Forced_colors of [ `Active | `None ]
   | Hover
   | Print
+  | Orientation of [ `Portrait | `Landscape ]
   | Raw of string
 
 let format_rem rem =
@@ -29,6 +30,8 @@ let to_string = function
   | Forced_colors `None -> "(forced-colors: none)"
   | Hover -> "(hover: hover)"
   | Print -> "print"
+  | Orientation `Portrait -> "(orientation: portrait)"
+  | Orientation `Landscape -> "(orientation: landscape)"
   | Raw s -> s
 
 type kind =
@@ -44,7 +47,7 @@ let kind = function
   | Prefers_reduced_motion _ | Prefers_contrast _ | Forced_colors _ ->
       Kind_preference_accessibility
   | Prefers_color_scheme _ -> Kind_preference_appearance
-  | Print -> Kind_other
+  | Print | Orientation _ -> Kind_other
   | Raw _ -> Kind_other
 
 (* For backward compatibility with string-based code *)
