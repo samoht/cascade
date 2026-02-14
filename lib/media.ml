@@ -15,18 +15,18 @@ let format_rem rem =
   else Float.to_string rem
 
 let to_string = function
-  | Min_width rem -> "(min-width:" ^ format_rem rem ^ "rem)"
-  | Max_width rem -> "(max-width:" ^ format_rem rem ^ "rem)"
+  | Min_width rem -> "(min-width: " ^ format_rem rem ^ "rem)"
+  | Max_width rem -> "(max-width: " ^ format_rem rem ^ "rem)"
   | Prefers_reduced_motion `No_preference ->
-      "(prefers-reduced-motion:no-preference)"
-  | Prefers_reduced_motion `Reduce -> "(prefers-reduced-motion:reduce)"
-  | Prefers_contrast `More -> "(prefers-contrast:more)"
-  | Prefers_contrast `Less -> "(prefers-contrast:less)"
-  | Prefers_color_scheme `Dark -> "(prefers-color-scheme:dark)"
-  | Prefers_color_scheme `Light -> "(prefers-color-scheme:light)"
+      "(prefers-reduced-motion: no-preference)"
+  | Prefers_reduced_motion `Reduce -> "(prefers-reduced-motion: reduce)"
+  | Prefers_contrast `More -> "(prefers-contrast: more)"
+  | Prefers_contrast `Less -> "(prefers-contrast: less)"
+  | Prefers_color_scheme `Dark -> "(prefers-color-scheme: dark)"
+  | Prefers_color_scheme `Light -> "(prefers-color-scheme: light)"
   | Forced_colors `Active -> "(forced-colors: active)"
   | Forced_colors `None -> "(forced-colors: none)"
-  | Hover -> "(hover:hover)"
+  | Hover -> "(hover: hover)"
   | Raw s -> s
 
 type kind =
@@ -65,7 +65,9 @@ let kind_of_string cond =
   else if String.length cond > 8 && String.sub cond 1 7 = "prefers" then
     if contains cond "color-scheme" then Kind_preference_appearance
     else Kind_preference_accessibility
-  else if String.equal cond "(hover:hover)" then Kind_hover
+  else if
+    String.equal cond "(hover: hover)" || String.equal cond "(hover:hover)"
+  then Kind_hover
   else Kind_other
 
 let group_order = function
@@ -84,10 +86,10 @@ let preference_order = function
   | Forced_colors _ -> 5
   | Raw s ->
       (* Fallback to string matching for Raw conditions *)
-      if contains s "reduced-motion:no-preference" then 0
-      else if contains s "reduced-motion:reduce" then 1
-      else if contains s "contrast:more" then 2
-      else if contains s "contrast:less" then 3
+      if contains s "reduced-motion" && contains s "no-preference" then 0
+      else if contains s "reduced-motion" && contains s "reduce" then 1
+      else if contains s "contrast" && contains s "more" then 2
+      else if contains s "contrast" && contains s "less" then 3
       else if contains s "color-scheme" then 4
       else 10
   | _ -> 10
