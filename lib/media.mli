@@ -10,6 +10,7 @@ type t =
   | Forced_colors of [ `Active | `None ]
   | Hover  (** [(hover:hover)] *)
   | Print  (** [print] media type *)
+  | Orientation of [ `Portrait | `Landscape ]  (** [(orientation:...)] *)
   | Raw of string  (** Escape hatch for complex/unknown conditions *)
 
 val to_string : t -> string
