@@ -8,6 +8,7 @@ type t =
   | Prefers_color_scheme of [ `Dark | `Light ]
   | Forced_colors of [ `Active | `None ]
   | Hover
+  | Print
   | Raw of string
 
 let format_rem rem =
@@ -27,6 +28,7 @@ let to_string = function
   | Forced_colors `Active -> "(forced-colors: active)"
   | Forced_colors `None -> "(forced-colors: none)"
   | Hover -> "(hover: hover)"
+  | Print -> "print"
   | Raw s -> s
 
 type kind =
@@ -42,6 +44,7 @@ let kind = function
   | Prefers_reduced_motion _ | Prefers_contrast _ | Forced_colors _ ->
       Kind_preference_accessibility
   | Prefers_color_scheme _ -> Kind_preference_appearance
+  | Print -> Kind_other
   | Raw _ -> Kind_other
 
 (* For backward compatibility with string-based code *)
