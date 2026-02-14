@@ -578,8 +578,9 @@ let read_nth t : nth =
 (** Pretty print nth expression *)
 let pp_nth : nth Pp.t =
  fun ctx -> function
-  | Odd -> Pp.string ctx "odd"
-  | Even -> Pp.string ctx "even"
+  (* Tailwind uses 2n+1 and 2n instead of odd/even keywords *)
+  | Odd -> Pp.string ctx "2n+1"
+  | Even -> Pp.string ctx "2n"
   | Index n -> Pp.int ctx n
   | An_plus_b (a, b) ->
       if a = 0 then Pp.int ctx b

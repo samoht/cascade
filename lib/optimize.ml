@@ -241,6 +241,18 @@ let can_combine_selectors sel1 sel2 =
     | Some c1, Some c2 -> extract_utility_name c1 = extract_utility_name c2
     | _ -> false
 
+(* Sort selectors for merging: group-* first, peer-* second, base last *)
+let selector_sort_key sel =
+  match Selector.first_class sel with
+  | Some name ->
+      if String.length name > 6 && String.sub name 0 6 = "group-" then 0
+      else if String.length name > 5 && String.sub name 0 5 = "peer-" then 1
+      else 2
+  | None -> 2
+
+let compare_selectors_for_merge sel1 sel2 =
+  compare (selector_sort_key sel1) (selector_sort_key sel2)
+
 (* Convert group of selectors to a rule *)
 let group_to_rule :
     (Selector.t * declaration list) list -> Stylesheet.rule option = function
@@ -249,11 +261,15 @@ let group_to_rule :
   | [] -> None
   | group ->
       let selector_list = List.map fst (List.rev group) in
+      (* Sort selectors: group-* first, peer-* second, base last *)
+      let sorted_selectors =
+        List.sort compare_selectors_for_merge selector_list
+      in
       let decls = snd (List.hd group) in
       (* Create a List selector from all the selectors *)
       let combined_selector =
-        if List.length selector_list = 1 then List.hd selector_list
-        else Selector.list selector_list
+        if List.length sorted_selectors = 1 then List.hd sorted_selectors
+        else Selector.list sorted_selectors
       in
       Some { selector = combined_selector; declarations = decls; nested = [] }
 
