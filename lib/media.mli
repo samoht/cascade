@@ -2,8 +2,10 @@
 
 (** Media condition type. Provides type safety and consistent formatting. *)
 type t =
-  | Min_width of float  (** Responsive breakpoint: [(min-width:Xrem)] *)
-  | Max_width of float  (** Max-width query: [(max-width:Xrem)] *)
+  | Min_width of float  (** Responsive breakpoint: [(min-width:Xpx)] *)
+  | Max_width of float  (** Max-width query: [(max-width:Xpx)] *)
+  | Not_min_width of float
+      (** Negated breakpoint: [not all and (min-width:Xpx)] *)
   | Prefers_reduced_motion of [ `No_preference | `Reduce ]
   | Prefers_contrast of [ `More | `Less ]
   | Prefers_color_scheme of [ `Dark | `Light ]

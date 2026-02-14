@@ -3,6 +3,7 @@
 type t =
   | Min_width of float
   | Max_width of float
+  | Not_min_width of float (* @media not all and (min-width: Xpx) *)
   | Prefers_reduced_motion of [ `No_preference | `Reduce ]
   | Prefers_contrast of [ `More | `Less ]
   | Prefers_color_scheme of [ `Dark | `Light ]
@@ -19,6 +20,7 @@ let format_px px =
 let to_string = function
   | Min_width px -> "(min-width: " ^ format_px px ^ "px)"
   | Max_width px -> "(max-width: " ^ format_px px ^ "px)"
+  | Not_min_width px -> "not all and (min-width: " ^ format_px px ^ "px)"
   | Prefers_reduced_motion `No_preference ->
       "(prefers-reduced-motion: no-preference)"
   | Prefers_reduced_motion `Reduce -> "(prefers-reduced-motion: reduce)"
@@ -43,7 +45,7 @@ type kind =
 
 let kind = function
   | Hover -> Kind_hover
-  | Min_width rem | Max_width rem -> Kind_responsive rem
+  | Min_width px | Max_width px | Not_min_width px -> Kind_responsive px
   | Prefers_reduced_motion _ | Prefers_contrast _ | Forced_colors _ ->
       Kind_preference_accessibility
   | Prefers_color_scheme _ -> Kind_preference_appearance
