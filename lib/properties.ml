@@ -3815,6 +3815,7 @@ let length_to_border_width t (length : length) : border_width =
 
 let rec read_border_width t : border_width =
   let read_var t : border_width = Var (read_var read_border_width t) in
+  let read_calc t : border_width = Calc (read_calc read_border_width t) in
   let read_length_as_border_width t =
     let length = read_length t in
     length_to_border_width t length
@@ -3831,7 +3832,7 @@ let rec read_border_width t : border_width =
       ("fit-content", Fit_content);
       ("from-font", From_font);
     ]
-    ~calls:[ ("var", read_var) ]
+    ~calls:[ ("var", read_var); ("calc", read_calc) ]
     ~default:read_length_as_border_width t
 
 module Border = struct
