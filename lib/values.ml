@@ -227,12 +227,13 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Content -> Pp.string ctx "content"
   | Calc cv -> (
-      (* Optimize calc(infinity * dimension) to large value for minification *)
+      (* Optimize calc(infinity * dimension) to large value - Tailwind always
+         outputs this optimized form regardless of minification *)
       match cv with
-      | Expr (Num f, Mul, Val _) when ctx.minify && f = infinity ->
-          Pp.string ctx "3.40282e38px"
-      | Expr (Val _, Mul, Num f) when ctx.minify && f = infinity ->
-          Pp.string ctx "3.40282e38px"
+      | Expr (Num f, Mul, Val _) when f = infinity ->
+          Pp.string ctx "3.40282e+38px"
+      | Expr (Val _, Mul, Num f) when f = infinity ->
+          Pp.string ctx "3.40282e+38px"
       | _ -> pp_calc (pp_length ~always) ctx cv)
 
 let pp_color_name : color_name Pp.t =
