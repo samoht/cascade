@@ -655,7 +655,12 @@ let read_value (type a) (prop : a property) t : declaration =
   | Border_right -> v Border_right (read_string t)
   | Border_bottom -> v Border_bottom (read_string t)
   | Border_left -> v Border_left (read_string t)
-  | Border_spacing -> v Border_spacing (read_length t)
+  | Border_spacing ->
+      (* border-spacing accepts 1 or 2 length values *)
+      let lengths =
+        Reader.list ~sep:Reader.ws ~at_least:1 ~at_most:2 read_length t
+      in
+      v Border_spacing lengths
   | Border_collapse -> v Border_collapse (read_border_collapse t)
   (* Clip and mask *)
   | Clip_path -> v Clip_path (read_clip_path t)
@@ -1037,7 +1042,7 @@ let outline_width len = v Outline_width len
 let outline_color c = v Outline_color c
 let forced_color_adjust c = v Forced_color_adjust c
 let table_layout value = v Table_layout value
-let border_spacing len = v Border_spacing len
+let border_spacing lens = v Border_spacing lens
 let overflow o = v Overflow o
 let object_fit value = v Object_fit value
 let clip value = v Clip value

@@ -7454,7 +7454,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Webkit_text_decoration_color -> pp pp_color
   | Webkit_tap_highlight_color -> pp pp_color
   | Text_indent -> pp pp_length
-  | Border_spacing -> pp pp_length
+  | Border_spacing -> pp (Pp.list ~sep:Pp.space pp_length)
   | Outline_offset -> pp pp_length
   | Perspective -> pp pp_length
   | Transform -> pp pp_transforms
