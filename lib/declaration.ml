@@ -545,6 +545,11 @@ let read_value (type a) (prop : a property) t : declaration =
   | Border_inline_end_width -> v Border_inline_end_width (read_border_width t)
   | Border_inline_start_color -> v Border_inline_start_color (read_color t)
   | Border_inline_end_color -> v Border_inline_end_color (read_color t)
+  | Border_inline_style -> v Border_inline_style (read_border_style t)
+  | Border_start_start_radius -> v Border_start_start_radius (read_length t)
+  | Border_start_end_radius -> v Border_start_end_radius (read_length t)
+  | Border_end_start_radius -> v Border_end_start_radius (read_length t)
+  | Border_end_end_radius -> v Border_end_end_radius (read_length t)
   (* Position properties *)
   | Inset -> v Inset (read_length t)
   | Inset_inline -> v Inset_inline (read_length t)
@@ -1200,6 +1205,11 @@ let border_bottom_color value = v Border_bottom_color value
 let border_left_color value = v Border_left_color value
 let border_inline_start_color value = v Border_inline_start_color value
 let border_inline_end_color value = v Border_inline_end_color value
+let border_inline_style value = v Border_inline_style value
+let border_start_start_radius value = v Border_start_start_radius value
+let border_start_end_radius value = v Border_start_end_radius value
+let border_end_start_radius value = v Border_end_start_radius value
+let border_end_end_radius value = v Border_end_end_radius value
 let webkit_font_smoothing value = v Webkit_font_smoothing value
 let cursor value = v Cursor value
 let user_select value = v User_select value

@@ -1489,19 +1489,32 @@ let rec read_percentage_in_color_mix t : percentage =
 
 let read_optional_percentage t : percentage option =
   (* Parse optional percentage immediately after a value. In color-mix(), this
-     can be a numeric percentage OR var(). *)
+     can be a numeric percentage, a decimal (0-1), or var(). *)
   Reader.ws t;
   if Reader.looking_at t "var(" then
     (* var() percentage like var(--bg-opacity) *)
     Some (Var (read_var read_percentage_in_color_mix t))
   else
-    Reader.option
-      (fun t ->
-        let n = Reader.number t in
-        Reader.expect '%' t;
-        Reader.ws t;
-        (Pct n : percentage))
-      t
+    (* Try reading number with % first, then without *)
+    match
+      Reader.option
+        (fun t ->
+          let n = Reader.number t in
+          Reader.expect '%' t;
+          Reader.ws t;
+          (Pct n : percentage))
+        t
+    with
+    | Some _ as result -> result
+    | None ->
+        (* Try reading a decimal number without % (e.g., .5 for 50%) *)
+        Reader.option
+          (fun t ->
+            let n = Reader.number t in
+            Reader.ws t;
+            (* Convert decimal to percentage: .5 -> 50% stored as Pct 50.0 *)
+            (Pct (n *. 100.0) : percentage))
+          t
 
 let rec read_color_mix t : color =
   Reader.ws t;
