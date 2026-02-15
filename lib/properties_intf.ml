@@ -65,7 +65,7 @@ type display =
 
 type position = Static | Relative | Absolute | Fixed | Sticky
 type visibility = Visible | Hidden | Collapse
-type z_index = Auto | Index of int | Calc of string | Var of string
+type z_index = Auto | Index of int | Calc of string | Var of z_index var
 type opacity = Opacity_number of float | Opacity_var of string
 type order = Order_int of int | Order_calc of string | Order_var of string
 type overflow = Visible | Hidden | Scroll | Auto | Clip

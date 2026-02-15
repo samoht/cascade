@@ -38,6 +38,7 @@ type _ kind =
   | Touch_action : touch_action kind
   | Transition_property_value : transition_property_value kind
   | Background_image : background_image kind
+  | Z_index : z_index kind
 
 type declaration =
   | Declaration : {
