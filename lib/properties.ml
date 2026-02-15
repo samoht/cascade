@@ -1457,12 +1457,12 @@ let pp_visibility : visibility Pp.t =
   | Hidden -> Pp.string ctx "hidden"
   | Collapse -> Pp.string ctx "collapse"
 
-let pp_z_index : z_index Pp.t =
+let rec pp_z_index : z_index Pp.t =
  fun ctx -> function
   | Auto -> Pp.string ctx "auto"
   | Index i -> Pp.int ctx i
   | Calc s -> Pp.string ctx s
-  | Var s -> Pp.string ctx ("var(" ^ s ^ ")")
+  | Var v -> pp_var pp_z_index ctx v
 
 let pp_order : order Pp.t =
  fun ctx -> function
@@ -3896,7 +3896,7 @@ let read_visibility t : visibility =
     ]
     t
 
-let read_z_index t : z_index =
+let rec read_z_index t : z_index =
   let read_calc_z t =
     (* read_calc handles the calc(...) wrapper itself *)
     let expr =
@@ -3943,10 +3943,10 @@ let read_z_index t : z_index =
         Format.pp_print_flush fmt ();
         Calc (Buffer.contents buf)
   in
-  let read_var t : z_index = Var (read_var_body t) in
+  let read_var_z t : z_index = Var (read_var read_z_index t) in
   Reader.enum_or_calls "z-index"
     [ ("auto", (Auto : z_index)) ]
-    ~calls:[ ("calc", read_calc_z); ("var", read_var) ]
+    ~calls:[ ("calc", read_calc_z); ("var", read_var_z) ]
     ~default:(fun t ->
       let n = Reader.number t in
       if Float.is_integer n then Index (int_of_float n)

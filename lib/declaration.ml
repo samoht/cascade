@@ -200,6 +200,7 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Touch_action -> pp pp_touch_action
   | Transition_property_value -> pp pp_transition_property_value
   | Background_image -> pp pp_background_image
+  | Z_index -> pp pp_z_index
 
 let string_of_value ?(minify = true) ?(inline = false) decl =
   let ctx = { Pp.minify; indent = 0; buf = Buffer.create 16; inline } in

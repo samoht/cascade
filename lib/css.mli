@@ -1280,7 +1280,7 @@ type position = Static | Relative | Absolute | Fixed | Sticky
 type visibility = Visible | Hidden | Collapse
 
 (** CSS z-index values. *)
-type z_index = Auto | Index of int | Calc of string | Var of string
+type z_index = Auto | Index of int | Calc of string | Var of z_index var
 
 (** CSS opacity values. *)
 type opacity = Opacity_number of float | Opacity_var of string
@@ -4326,6 +4326,7 @@ type _ kind =
   | Touch_action : touch_action kind
   | Transition_property_value : transition_property_value kind
   | Background_image : background_image kind
+  | Z_index : z_index kind
 
 type meta
 (** The type for CSS variable metadata. *)
