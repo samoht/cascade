@@ -1872,6 +1872,7 @@ let pp_aspect_ratio : aspect_ratio Pp.t =
  fun ctx -> function
   | Auto -> Pp.string ctx "auto"
   | Inherit -> Pp.string ctx "inherit"
+  | Var s -> Pp.string ctx ("var(" ^ s ^ ")")
   | Ratio (a, b) ->
       if b = 1.0 then
         (* Single number case - don't show "/1" *)
@@ -2086,6 +2087,11 @@ let pp_property : type a. a property Pp.t =
   | Border_left_color -> Pp.string ctx "border-left-color"
   | Border_inline_start_color -> Pp.string ctx "border-inline-start-color"
   | Border_inline_end_color -> Pp.string ctx "border-inline-end-color"
+  | Border_inline_style -> Pp.string ctx "border-inline-style"
+  | Border_start_start_radius -> Pp.string ctx "border-start-start-radius"
+  | Border_start_end_radius -> Pp.string ctx "border-start-end-radius"
+  | Border_end_start_radius -> Pp.string ctx "border-end-start-radius"
+  | Border_end_end_radius -> Pp.string ctx "border-end-end-radius"
   | Box_shadow -> Pp.string ctx "box-shadow"
   | Fill -> Pp.string ctx "fill"
   | Stroke -> Pp.string ctx "stroke"
@@ -4367,6 +4373,7 @@ let read_grid_template t : grid_template =
   | multiple -> Tracks multiple (* Multiple tracks *)
 
 let read_aspect_ratio t : aspect_ratio =
+  let read_var t : aspect_ratio = Var (read_var_body t) in
   let read_number_or_ratio t =
     let w = Reader.number t in
     Reader.ws t;
@@ -4379,8 +4386,9 @@ let read_aspect_ratio t : aspect_ratio =
       (* Single number case - treat as width/1 *)
       Ratio (w, 1.0)
   in
-  Reader.enum "aspect-ratio"
+  Reader.enum_or_calls "aspect-ratio"
     [ ("auto", (Auto : aspect_ratio)); ("inherit", Inherit) ]
+    ~calls:[ ("var", read_var) ]
     ~default:read_number_or_ratio t
 
 let read_text_overflow t : text_overflow =
@@ -6565,11 +6573,16 @@ let read_any_property t =
   | "background-position" -> Prop Background_position
   | "background-repeat" -> Prop Background_repeat
   | "background-size" -> Prop Background_size
+  | "border-end-end-radius" -> Prop Border_end_end_radius
+  | "border-end-start-radius" -> Prop Border_end_start_radius
   | "border-inline-end-color" -> Prop Border_inline_end_color
   | "border-inline-end-width" -> Prop Border_inline_end_width
   | "border-inline-start-color" -> Prop Border_inline_start_color
   | "border-inline-start-width" -> Prop Border_inline_start_width
+  | "border-inline-style" -> Prop Border_inline_style
   | "border-spacing" -> Prop Border_spacing
+  | "border-start-end-radius" -> Prop Border_start_end_radius
+  | "border-start-start-radius" -> Prop Border_start_start_radius
   | "break-before" -> Prop Break_before
   | "break-after" -> Prop Break_after
   | "break-inside" -> Prop Break_inside
@@ -7425,6 +7438,11 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_left_color -> pp pp_color
   | Border_inline_start_color -> pp pp_color
   | Border_inline_end_color -> pp pp_color
+  | Border_inline_style -> pp pp_border_style
+  | Border_start_start_radius -> pp pp_length
+  | Border_start_end_radius -> pp pp_length
+  | Border_end_start_radius -> pp pp_length
+  | Border_end_end_radius -> pp pp_length
   | Text_decoration_color -> pp pp_color
   | Webkit_text_decoration_color -> pp pp_color
   | Webkit_tap_highlight_color -> pp pp_color

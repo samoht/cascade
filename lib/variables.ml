@@ -491,6 +491,11 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Border_left_color, value -> vars_of_color value
   | Border_inline_start_color, value -> vars_of_color value
   | Border_inline_end_color, value -> vars_of_color value
+  | Border_inline_style, value -> vars_of_border_style value
+  | Border_start_start_radius, value -> vars_of_length value
+  | Border_start_end_radius, value -> vars_of_length value
+  | Border_end_start_radius, value -> vars_of_length value
+  | Border_end_end_radius, value -> vars_of_length value
   | Text_decoration_color, value -> vars_of_color value
   | Webkit_text_decoration_color, value -> vars_of_color value
   | Webkit_tap_highlight_color, value -> vars_of_color value

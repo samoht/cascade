@@ -185,6 +185,31 @@ val border_left_style : border_style -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-left-style}
      border-left-style} property. *)
 
+val border_inline_style : border_style -> declaration
+(** [border_inline_style v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-inline-style}
+     border-inline-style} property. *)
+
+val border_start_start_radius : length -> declaration
+(** [border_start_start_radius len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-start-start-radius}
+     border-start-start-radius} property. *)
+
+val border_start_end_radius : length -> declaration
+(** [border_start_end_radius len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-start-end-radius}
+     border-start-end-radius} property. *)
+
+val border_end_start_radius : length -> declaration
+(** [border_end_start_radius len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-end-start-radius}
+     border-end-start-radius} property. *)
+
+val border_end_end_radius : length -> declaration
+(** [border_end_end_radius len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-end-end-radius}
+     border-end-end-radius} property. *)
+
 val text_decoration : text_decoration -> declaration
 (** [text_decoration v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration}

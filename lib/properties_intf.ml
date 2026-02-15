@@ -458,7 +458,7 @@ type grid_line =
   | Calc of string
   | Arbitrary of string
 
-type aspect_ratio = Auto | Ratio of float * float | Inherit
+type aspect_ratio = Auto | Ratio of float * float | Inherit | Var of string
 type font_style = Normal | Italic | Oblique | Inherit
 
 type text_align =
@@ -1593,6 +1593,11 @@ type 'a property =
   | Border_left_color : color property
   | Border_inline_start_color : color property
   | Border_inline_end_color : color property
+  | Border_inline_style : border_style property
+  | Border_start_start_radius : length property
+  | Border_start_end_radius : length property
+  | Border_end_start_radius : length property
+  | Border_end_end_radius : length property
   | Opacity : opacity property
   | Mix_blend_mode : blend_mode property
   | Transform : transform list property
