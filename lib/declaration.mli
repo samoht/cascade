@@ -1392,6 +1392,12 @@ val padding_inline_end : length -> declaration
 val padding_block : length -> declaration
 (** [padding_block v] is the CSS [padding-block] property. *)
 
+val padding_block_start : length -> declaration
+(** [padding_block_start v] is the CSS [padding-block-start] property. *)
+
+val padding_block_end : length -> declaration
+(** [padding_block_end v] is the CSS [padding-block-end] property. *)
+
 val margin_inline : length -> declaration
 (** [margin_inline v] is the CSS [margin-inline] property. *)
 

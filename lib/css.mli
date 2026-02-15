@@ -1196,6 +1196,16 @@ val padding_block : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/padding-block}
      padding-block} shorthand property. *)
 
+val padding_block_start : length -> declaration
+(** [padding_block_start len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/padding-block-start}
+     padding-block-start} property. *)
+
+val padding_block_end : length -> declaration
+(** [padding_block_end len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/padding-block-end}
+     padding-block-end} property. *)
+
 val margin_inline : length -> declaration
 (** [margin_inline len] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/margin-inline}

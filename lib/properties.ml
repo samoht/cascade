@@ -1994,6 +1994,8 @@ let pp_property : type a. a property Pp.t =
   | Padding_inline_start -> Pp.string ctx "padding-inline-start"
   | Padding_inline_end -> Pp.string ctx "padding-inline-end"
   | Padding_block -> Pp.string ctx "padding-block"
+  | Padding_block_start -> Pp.string ctx "padding-block-start"
+  | Padding_block_end -> Pp.string ctx "padding-block-end"
   | Margin -> Pp.string ctx "margin"
   | Margin_inline_end -> Pp.string ctx "margin-inline-end"
   | Margin_inline_start -> Pp.string ctx "margin-inline-start"
@@ -6463,6 +6465,8 @@ let read_any_property t =
   | "padding-inline-start" -> Prop Padding_inline_start
   | "padding-inline-end" -> Prop Padding_inline_end
   | "padding-block" -> Prop Padding_block
+  | "padding-block-start" -> Prop Padding_block_start
+  | "padding-block-end" -> Prop Padding_block_end
   | "font-size" -> Prop Font_size
   | "font-weight" -> Prop Font_weight
   | "font-style" -> Prop Font_style
@@ -7364,6 +7368,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Padding_inline_start -> pp pp_length
   | Padding_inline_end -> pp pp_length
   | Padding_block -> pp pp_length
+  | Padding_block_start -> pp pp_length
+  | Padding_block_end -> pp pp_length
   | Margin -> pp (Pp.list ~sep:Pp.space pp_length)
   | Margin_inline_end -> pp pp_length
   | Margin_inline_start -> pp pp_length
