@@ -458,7 +458,12 @@ type grid_line =
   | Calc of string
   | Arbitrary of string
 
-type aspect_ratio = Auto | Ratio of float * float | Inherit | Var of string
+type aspect_ratio =
+  | Auto
+  | Ratio of float * float
+  | Inherit
+  | Var of aspect_ratio var
+
 type font_style = Normal | Italic | Oblique | Inherit
 
 type text_align =

@@ -910,7 +910,11 @@ type angle =
   | Var of angle var  (** CSS variable reference *)
 
 (** CSS aspect-ratio values *)
-type aspect_ratio = Auto | Ratio of float * float | Inherit | Var of string
+type aspect_ratio =
+  | Auto
+  | Ratio of float * float
+  | Inherit
+  | Var of aspect_ratio var
 
 (** CSS blend-mode values *)
 type blend_mode =
