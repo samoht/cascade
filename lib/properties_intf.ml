@@ -1501,6 +1501,8 @@ type 'a property =
   | Padding_inline_start : length property
   | Padding_inline_end : length property
   | Padding_block : length property
+  | Padding_block_start : length property
+  | Padding_block_end : length property
   | Margin : length list property
   | Margin_inline_end : length property
   | Margin_inline_start : length property

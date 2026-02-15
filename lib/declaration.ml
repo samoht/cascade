@@ -497,6 +497,8 @@ let read_value (type a) (prop : a property) t : declaration =
   | Padding_inline_start -> v Padding_inline_start (read_non_negative_length t)
   | Padding_inline_end -> v Padding_inline_end (read_non_negative_length t)
   | Padding_block -> v Padding_block (read_non_negative_length t)
+  | Padding_block_start -> v Padding_block_start (read_non_negative_length t)
+  | Padding_block_end -> v Padding_block_end (read_non_negative_length t)
   | Margin_left -> v Margin_left (read_length t)
   | Margin_right -> v Margin_right (read_length t)
   | Margin_top -> v Margin_top (read_length t)
@@ -1227,6 +1229,8 @@ let padding_inline value = v Padding_inline value
 let padding_inline_start value = v Padding_inline_start value
 let padding_inline_end value = v Padding_inline_end value
 let padding_block value = v Padding_block value
+let padding_block_start value = v Padding_block_start value
+let padding_block_end value = v Padding_block_end value
 let margin_inline value = v Margin_inline value
 let margin_inline_start value = v Margin_inline_start value
 let margin_inline_end value = v Margin_inline_end value
