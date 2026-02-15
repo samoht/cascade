@@ -1868,11 +1868,11 @@ let pp_grid_line : grid_line Pp.t =
     | Calc s -> Pp.string ctx s
     | Arbitrary s -> Pp.string ctx (normalize_slashes s)
 
-let pp_aspect_ratio : aspect_ratio Pp.t =
+let rec pp_aspect_ratio : aspect_ratio Pp.t =
  fun ctx -> function
   | Auto -> Pp.string ctx "auto"
   | Inherit -> Pp.string ctx "inherit"
-  | Var s -> Pp.string ctx ("var(" ^ s ^ ")")
+  | Var v -> pp_var pp_aspect_ratio ctx v
   | Ratio (a, b) ->
       if b = 1.0 then
         (* Single number case - don't show "/1" *)
@@ -4375,8 +4375,8 @@ let read_grid_template t : grid_template =
   | [ single ] -> single (* Single track *)
   | multiple -> Tracks multiple (* Multiple tracks *)
 
-let read_aspect_ratio t : aspect_ratio =
-  let read_var t : aspect_ratio = Var (read_var_body t) in
+let rec read_aspect_ratio t : aspect_ratio =
+  let read_var_ar t : aspect_ratio = Var (read_var read_aspect_ratio t) in
   let read_number_or_ratio t =
     let w = Reader.number t in
     Reader.ws t;
@@ -4391,7 +4391,7 @@ let read_aspect_ratio t : aspect_ratio =
   in
   Reader.enum_or_calls "aspect-ratio"
     [ ("auto", (Auto : aspect_ratio)); ("inherit", Inherit) ]
-    ~calls:[ ("var", read_var) ]
+    ~calls:[ ("var", read_var_ar) ]
     ~default:read_number_or_ratio t
 
 let read_text_overflow t : text_overflow =
