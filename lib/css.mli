@@ -4005,10 +4005,10 @@ val list_style : string -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/list-style} list-style}
     shorthand property. *)
 
-val border_spacing : length -> declaration
-(** [border_spacing value] is the
+val border_spacing : length list -> declaration
+(** [border_spacing values] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-spacing}
-     border-spacing} property. *)
+     border-spacing} property. Accepts 1 or 2 length values. *)
 
 (** {2:svg_properties SVG Properties}
 

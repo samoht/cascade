@@ -1607,7 +1607,7 @@ type 'a property =
   | Cursor : cursor property
   | Table_layout : table_layout property
   | Border_collapse : border_collapse property
-  | Border_spacing : length property
+  | Border_spacing : length list property
   | User_select : user_select property
   | Pointer_events : pointer_events property
   | Overflow : overflow property

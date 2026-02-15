@@ -516,7 +516,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Text_decoration_thickness, value -> vars_of_length value
   | Word_spacing, value -> vars_of_length value
   (* Other length properties *)
-  | Border_spacing, value -> vars_of_length value
+  | Border_spacing, values -> List.concat_map vars_of_length values
   | Perspective, value -> vars_of_length value
   | Stroke_width, value -> vars_of_length value
   | Scroll_margin, value -> vars_of_length value

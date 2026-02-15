@@ -678,10 +678,10 @@ val table_layout : table_layout -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/table-layout}
      table-layout} property. *)
 
-val border_spacing : length -> declaration
-(** [border_spacing v] is the
+val border_spacing : length list -> declaration
+(** [border_spacing values] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-spacing}
-     border-spacing} property. *)
+     border-spacing} property. Accepts 1 or 2 length values. *)
 
 val overflow : overflow -> declaration
 (** [overflow v] is the
