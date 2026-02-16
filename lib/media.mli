@@ -6,6 +6,9 @@ type t =
   | Max_width of float  (** Max-width query: [(max-width:Xpx)] *)
   | Not_min_width of float
       (** Negated breakpoint: [not all and (min-width:Xpx)] *)
+  | Min_width_rem of float  (** Responsive breakpoint: [(min-width:Xrem)] *)
+  | Not_min_width_rem of float
+      (** Negated breakpoint: [not all and (min-width:Xrem)] *)
   | Prefers_reduced_motion of [ `No_preference | `Reduce ]
   | Prefers_contrast of [ `More | `Less ]
   | Prefers_color_scheme of [ `Dark | `Light ]
