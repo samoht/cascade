@@ -106,6 +106,7 @@ type t =
   | Past
   | Current
   | Popover_open
+  | Open
   (* Legacy single-colon pseudo-elements for backwards compatibility *)
   | Before
   | After
