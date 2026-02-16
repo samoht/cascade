@@ -10,6 +10,10 @@ type t =
   | Prefers_contrast of [ `More | `Less ]
   | Prefers_color_scheme of [ `Dark | `Light ]
   | Forced_colors of [ `Active | `None ]
+  | Inverted_colors of [ `Inverted | `None ]  (** [(inverted-colors:...)] *)
+  | Pointer of [ `None | `Coarse | `Fine ]  (** [(pointer:...)] *)
+  | Any_pointer of [ `None | `Coarse | `Fine ]  (** [(any-pointer:...)] *)
+  | Scripting of [ `None | `Initial_only | `Enabled ]  (** [(scripting:...)] *)
   | Hover  (** [(hover:hover)] *)
   | Print  (** [print] media type *)
   | Orientation of [ `Portrait | `Landscape ]  (** [(orientation:...)] *)
