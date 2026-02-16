@@ -648,6 +648,7 @@ let pseudo_class_base_idents =
     ("modal", Modal);
     ("picture-in-picture", Picture_in_picture);
     ("popover-open", Popover_open);
+    ("open", Open);
     (* Paged *)
     ("left", Left);
     ("right", Right);
@@ -1168,6 +1169,7 @@ and pp : t Pp.t =
   | Past -> pseudo ctx "past"
   | Current -> pseudo ctx "current"
   | Popover_open -> pseudo ctx "popover-open"
+  | Open -> pseudo ctx "open"
   (* Legacy pseudo-elements (use single colon in minified mode) *)
   | Before -> legacy_elem ctx "before"
   | After -> legacy_elem ctx "after"
