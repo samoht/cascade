@@ -1085,6 +1085,7 @@ type position_value =
   | Edge_offset_axis of string * length * string
   (* 4-value syntax: edge1 offset1 edge2 offset2 *)
   | Edge_offset_edge_offset of string * length * string * length
+  | Arbitrary of string  (** Raw CSS value for arbitrary positions *)
 
 (* Background position can be complex with 1-4 values mixing keywords and
    lengths *)

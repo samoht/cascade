@@ -1494,6 +1494,7 @@ type position_value =
   | Initial
   | Edge_offset_axis of string * length * string
   | Edge_offset_edge_offset of string * length * string * length
+  | Arbitrary of string  (** Raw CSS value for arbitrary positions *)
 
 val object_position : position_value -> declaration
 (** [object_position pos] is the

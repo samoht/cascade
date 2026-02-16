@@ -2576,6 +2576,7 @@ let pp_position_value : position_value Pp.t =
       Pp.string ctx edge2;
       Pp.space ctx ();
       pp_length ctx offset2
+  | Arbitrary s -> Pp.string ctx s
 
 let pp_background_size : background_size Pp.t =
  fun ctx -> function
@@ -6950,6 +6951,9 @@ module Position_value = struct
 end
 
 let read_position_value t : position_value =
+  let read_var t : position_value =
+    Arbitrary ("var(" ^ read_var_body t ^ ")")
+  in
   Reader.one_of
     [
       Position_value.read_4_value;
@@ -6957,6 +6961,7 @@ let read_position_value t : position_value =
       Position_value.read_xy;
       Position_value.read_2_value;
       Position_value.read_1_value;
+      read_var;
     ]
     t
 
