@@ -1838,35 +1838,36 @@ let pp_grid_auto_flow : grid_auto_flow Pp.t =
   | Row_dense -> Pp.string ctx "row dense"
   | Column_dense -> Pp.string ctx "column dense"
 
-let pp_grid_line : grid_line Pp.t =
-  let normalize_slashes s =
-    (* Ensure spaces around "/" in grid values: "N/M" -> "N / M" *)
-    let buf = Buffer.create (String.length s + 4) in
-    String.iteri
-      (fun i c ->
-        if c = '/' then (
-          (* Add space before if not already there *)
-          (if Buffer.length buf > 0 then
-             let last = Buffer.nth buf (Buffer.length buf - 1) in
-             if last <> ' ' then Buffer.add_char buf ' ');
-          Buffer.add_char buf '/';
-          (* Add space after if not at end and next char isn't space *)
-          if i < String.length s - 1 && s.[i + 1] <> ' ' then
-            Buffer.add_char buf ' ')
-        else Buffer.add_char buf c)
-      s;
-    Buffer.contents buf
-  in
-  fun ctx -> function
-    | Auto -> Pp.string ctx "auto"
-    | Num n -> Pp.int ctx n
-    | Name s -> Pp.string ctx s
-    | Span n ->
-        Pp.string ctx "span";
-        Pp.char ctx ' ';
-        Pp.int ctx n
-    | Calc s -> Pp.string ctx s
-    | Arbitrary s -> Pp.string ctx (normalize_slashes s)
+let normalize_slashes s =
+  (* Ensure spaces around "/" in grid values: "N/M" -> "N / M" *)
+  let buf = Buffer.create (String.length s + 4) in
+  String.iteri
+    (fun i c ->
+      if c = '/' then (
+        (* Add space before if not already there *)
+        (if Buffer.length buf > 0 then
+           let last = Buffer.nth buf (Buffer.length buf - 1) in
+           if last <> ' ' then Buffer.add_char buf ' ');
+        Buffer.add_char buf '/';
+        (* Add space after if not at end and next char isn't space *)
+        if i < String.length s - 1 && s.[i + 1] <> ' ' then
+          Buffer.add_char buf ' ')
+      else Buffer.add_char buf c)
+    s;
+  Buffer.contents buf
+
+let rec pp_grid_line : grid_line Pp.t =
+ fun ctx -> function
+  | Auto -> Pp.string ctx "auto"
+  | Num n -> Pp.int ctx n
+  | Name s -> Pp.string ctx s
+  | Span n ->
+      Pp.string ctx "span";
+      Pp.char ctx ' ';
+      Pp.int ctx n
+  | Calc s -> Pp.string ctx s
+  | Arbitrary s -> Pp.string ctx (normalize_slashes s)
+  | Var v -> pp_var pp_grid_line ctx v
 
 let rec pp_aspect_ratio : aspect_ratio Pp.t =
  fun ctx -> function
@@ -2533,7 +2534,7 @@ let pp_mask_box : mask_box Pp.t =
   | No_clip -> Pp.string ctx "no-clip"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_position_value : position_value Pp.t =
+let rec pp_position_value : position_value Pp.t =
  fun ctx -> function
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
@@ -2576,7 +2577,7 @@ let pp_position_value : position_value Pp.t =
       Pp.string ctx edge2;
       Pp.space ctx ();
       pp_length ctx offset2
-  | Arbitrary s -> Pp.string ctx s
+  | Var v -> pp_var pp_position_value ctx v
 
 let pp_background_size : background_size Pp.t =
  fun ctx -> function
@@ -2652,7 +2653,7 @@ let pp_gap : gap Pp.t =
       (* Fallback - shouldn't happen with proper parsing *)
       Pp.string ctx "0"
 
-let pp_transform_origin : transform_origin Pp.t =
+let rec pp_transform_origin : transform_origin Pp.t =
  fun ctx -> function
   | Inherit -> Pp.string ctx "inherit"
   | Center -> Pp.string ctx "center"
@@ -2684,6 +2685,7 @@ let pp_transform_origin : transform_origin Pp.t =
       Pp.space ctx ();
       pp_length ctx z
   | Arbitrary s -> Pp.string ctx s
+  | Var v -> pp_var pp_transform_origin ctx v
 
 let pp_transform_box : transform_box Pp.t =
  fun ctx -> function
@@ -3191,6 +3193,7 @@ let rec pp_grid_template : grid_template Pp.t =
       Pp.list ~sep:Pp.space pp_named_track ctx tracks
   | Subgrid -> Pp.string ctx "subgrid"
   | Masonry -> Pp.string ctx "masonry"
+  | Var v -> pp_var pp_grid_template ctx v
 
 let rec pp_flex_basis : flex_basis Pp.t =
  fun ctx -> function
@@ -6952,7 +6955,14 @@ end
 
 let read_position_value t : position_value =
   let read_var t : position_value =
-    Arbitrary ("var(" ^ read_var_body t ^ ")")
+    let body = read_var_body t in
+    (* Strip leading -- if present *)
+    let name =
+      if String.length body >= 2 && String.sub body 0 2 = "--" then
+        String.sub body 2 (String.length body - 2)
+      else body
+    in
+    Var (var_ref name)
   in
   Reader.one_of
     [

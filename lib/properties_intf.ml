@@ -449,6 +449,7 @@ type grid_template =
   | Named_tracks of (string option * grid_template) list
   | Subgrid
   | Masonry
+  | Var of grid_template var  (** CSS variable reference *)
 
 type grid_line =
   | Auto
@@ -456,7 +457,8 @@ type grid_line =
   | Name of string
   | Span of int
   | Calc of string
-  | Arbitrary of string
+  | Arbitrary of string  (** Raw CSS value for user arbitrary input *)
+  | Var of grid_line var  (** CSS variable reference *)
 
 type aspect_ratio =
   | Auto
@@ -1085,7 +1087,7 @@ type position_value =
   | Edge_offset_axis of string * length * string
   (* 4-value syntax: edge1 offset1 edge2 offset2 *)
   | Edge_offset_edge_offset of string * length * string * length
-  | Arbitrary of string  (** Raw CSS value for arbitrary positions *)
+  | Var of position_value var  (** CSS variable reference *)
 
 (* Background position can be complex with 1-4 values mixing keywords and
    lengths *)
@@ -1433,7 +1435,8 @@ type transform_origin =
   | X of length  (** Single x-offset, y defaults to 50% *)
   | XY of length * length
   | XYZ of length * length * length
-  | Arbitrary of string
+  | Arbitrary of string  (** Raw CSS value for user arbitrary input *)
+  | Var of transform_origin var  (** CSS variable reference *)
   | Inherit
 
 (* transform-box property: establishes the reference box for transform *)
