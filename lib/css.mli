@@ -1494,7 +1494,7 @@ type position_value =
   | Initial
   | Edge_offset_axis of string * length * string
   | Edge_offset_edge_offset of string * length * string * length
-  | Arbitrary of string  (** Raw CSS value for arbitrary positions *)
+  | Var of position_value var  (** CSS variable reference *)
 
 val object_position : position_value -> declaration
 (** [object_position pos] is the
@@ -2239,6 +2239,7 @@ type grid_template =
   | Named_tracks of (string option * grid_template) list
   | Subgrid
   | Masonry
+  | Var of grid_template var  (** CSS variable reference *)
 
 (** CSS grid line values *)
 type grid_line =
@@ -2247,7 +2248,8 @@ type grid_line =
   | Name of string  (** "header-start", "main-end", etc. *)
   | Span of int  (** span 2, span 3, etc. *)
   | Calc of string  (** calc(12 * -1), etc. *)
-  | Arbitrary of string  (** Arbitrary values like "span 123 / span 123" *)
+  | Arbitrary of string  (** User arbitrary values like "span 123 / span 123" *)
+  | Var of grid_line var  (** CSS variable reference *)
 
 val grid_template_columns : grid_template -> declaration
 (** [grid_template_columns cols] is the
@@ -3225,7 +3227,8 @@ type transform_origin =
   | X of length  (** Single x-offset, y defaults to 50%. *)
   | XY of length * length
   | XYZ of length * length * length
-  | Arbitrary of string
+  | Arbitrary of string  (** User arbitrary values *)
+  | Var of transform_origin var  (** CSS variable reference *)
   | Inherit  (** Transform origin (2D or 3D). *)
 
 val origin : length -> length -> transform_origin
