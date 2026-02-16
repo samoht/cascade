@@ -8,6 +8,10 @@ type t =
   | Prefers_contrast of [ `More | `Less ]
   | Prefers_color_scheme of [ `Dark | `Light ]
   | Forced_colors of [ `Active | `None ]
+  | Inverted_colors of [ `Inverted | `None ]
+  | Pointer of [ `None | `Coarse | `Fine ]
+  | Any_pointer of [ `None | `Coarse | `Fine ]
+  | Scripting of [ `None | `Initial_only | `Enabled ]
   | Hover
   | Print
   | Orientation of [ `Portrait | `Landscape ]
@@ -30,6 +34,17 @@ let to_string = function
   | Prefers_color_scheme `Light -> "(prefers-color-scheme: light)"
   | Forced_colors `Active -> "(forced-colors: active)"
   | Forced_colors `None -> "(forced-colors: none)"
+  | Inverted_colors `Inverted -> "(inverted-colors: inverted)"
+  | Inverted_colors `None -> "(inverted-colors: none)"
+  | Pointer `None -> "(pointer: none)"
+  | Pointer `Coarse -> "(pointer: coarse)"
+  | Pointer `Fine -> "(pointer: fine)"
+  | Any_pointer `None -> "(any-pointer: none)"
+  | Any_pointer `Coarse -> "(any-pointer: coarse)"
+  | Any_pointer `Fine -> "(any-pointer: fine)"
+  | Scripting `None -> "(scripting: none)"
+  | Scripting `Initial_only -> "(scripting: initial-only)"
+  | Scripting `Enabled -> "(scripting: enabled)"
   | Hover -> "(hover: hover)"
   | Print -> "print"
   | Orientation `Portrait -> "(orientation: portrait)"
@@ -46,7 +61,8 @@ type kind =
 let kind = function
   | Hover -> Kind_hover
   | Min_width px | Max_width px | Not_min_width px -> Kind_responsive px
-  | Prefers_reduced_motion _ | Prefers_contrast _ | Forced_colors _ ->
+  | Prefers_reduced_motion _ | Prefers_contrast _ | Forced_colors _
+  | Inverted_colors _ | Pointer _ | Any_pointer _ | Scripting _ ->
       Kind_preference_accessibility
   | Prefers_color_scheme _ -> Kind_preference_appearance
   | Print | Orientation _ -> Kind_other
@@ -92,6 +108,16 @@ let preference_order = function
   | Prefers_contrast `Less -> 3
   | Prefers_color_scheme _ -> 4
   | Forced_colors _ -> 5
+  | Inverted_colors _ -> 6
+  | Pointer `None -> 7
+  | Pointer `Coarse -> 8
+  | Pointer `Fine -> 9
+  | Any_pointer `None -> 10
+  | Any_pointer `Coarse -> 11
+  | Any_pointer `Fine -> 12
+  | Scripting `None -> 13
+  | Scripting `Initial_only -> 14
+  | Scripting `Enabled -> 15
   | Raw s ->
       (* Fallback to string matching for Raw conditions *)
       if contains s "reduced-motion" && contains s "no-preference" then 0
@@ -99,8 +125,8 @@ let preference_order = function
       else if contains s "contrast" && contains s "more" then 2
       else if contains s "contrast" && contains s "less" then 3
       else if contains s "color-scheme" then 4
-      else 10
-  | _ -> 10
+      else 20
+  | _ -> 20
 
 let compare a b =
   let ka = kind a and kb = kind b in
