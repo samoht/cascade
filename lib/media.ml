@@ -4,6 +4,8 @@ type t =
   | Min_width of float
   | Max_width of float
   | Not_min_width of float (* @media not all and (min-width: Xpx) *)
+  | Min_width_rem of float (* @media (min-width: Xrem) *)
+  | Not_min_width_rem of float (* @media not all and (min-width: Xrem) *)
   | Prefers_reduced_motion of [ `No_preference | `Reduce ]
   | Prefers_contrast of [ `More | `Less ]
   | Prefers_color_scheme of [ `Dark | `Light ]
@@ -21,10 +23,16 @@ let format_px px =
   if Float.is_integer px then Int.to_string (Float.to_int px)
   else Float.to_string px
 
+let format_rem rem =
+  if Float.is_integer rem then Int.to_string (Float.to_int rem)
+  else Float.to_string rem
+
 let to_string = function
   | Min_width px -> "(min-width: " ^ format_px px ^ "px)"
   | Max_width px -> "(max-width: " ^ format_px px ^ "px)"
   | Not_min_width px -> "not all and (min-width: " ^ format_px px ^ "px)"
+  | Min_width_rem rem -> "(min-width:" ^ format_rem rem ^ "rem)"
+  | Not_min_width_rem rem -> "not all and (min-width:" ^ format_rem rem ^ "rem)"
   | Prefers_reduced_motion `No_preference ->
       "(prefers-reduced-motion: no-preference)"
   | Prefers_reduced_motion `Reduce -> "(prefers-reduced-motion: reduce)"
@@ -61,6 +69,7 @@ type kind =
 let kind = function
   | Hover -> Kind_hover
   | Min_width px | Max_width px | Not_min_width px -> Kind_responsive px
+  | Min_width_rem rem | Not_min_width_rem rem -> Kind_responsive (rem *. 16.)
   | Prefers_reduced_motion _ | Prefers_contrast _ | Forced_colors _
   | Inverted_colors _ | Pointer _ | Any_pointer _ | Scripting _ ->
       Kind_preference_accessibility
