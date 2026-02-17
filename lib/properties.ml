@@ -1073,7 +1073,9 @@ let pp_shadow_parts ctx ~inset ~inset_var h v blur spread color =
      variable value includes trailing space when set to "inset ". Otherwise use
      the bool inset flag. *)
   (match inset_var with
-  | Some var_name -> Pp.string ctx ("var(--" ^ var_name ^ ",)")
+  | Some var_name ->
+      Pp.string ctx ("var(--" ^ var_name ^ ",)");
+      Pp.space ctx ()
   | None ->
       if inset then (
         Pp.string ctx "inset";
@@ -1083,17 +1085,9 @@ let pp_shadow_parts ctx ~inset ~inset_var h v blur spread color =
   pp_length ctx v;
   pp_opt_space pp_length ctx blur;
   pp_opt_space pp_length ctx spread;
-  (* Color is output without preceding space when the preceding value (spread)
-     ends with ) - i.e., is a function like var(), calc(), etc. CSS allows
-     func(...)func(...) without space, and Tailwind minifies this way. *)
   match color with
   | Some c ->
-      let needs_space =
-        match spread with
-        | Some (Var _ | Calc _ | Clamp _ | Min _ | Max _ | Minmax _) -> false
-        | _ -> true
-      in
-      if needs_space then Pp.space ctx ();
+      Pp.space ctx ();
       pp_color ctx c
   | None -> ()
 
