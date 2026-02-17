@@ -8,9 +8,10 @@ open Values
 let pp_property = pp_property
 
 (* Extract metadata from a declaration *)
-let meta_of_declaration : declaration -> meta option = function
+let rec meta_of_declaration : declaration -> meta option = function
   | Custom_declaration { meta; _ } -> meta
   | Declaration _ -> None
+  | Theme_guarded { decl; _ } -> meta_of_declaration decl
 
 (* Smart constructor for declarations *)
 let v ?(important = false) property value =
@@ -21,10 +22,11 @@ let custom_declaration ?(important = false) ?layer ?meta name kind value =
   Custom_declaration { name; kind; value; layer; meta; important }
 
 (* Helper to mark a declaration as important *)
-let important = function
+let rec important = function
   | Declaration { property; value; _ } ->
       Declaration { property; value; important = true }
   | Custom_declaration d -> Custom_declaration { d with important = true }
+  | Theme_guarded g -> Theme_guarded { g with decl = important g.decl }
 
 (* Helper for raw custom properties - primarily for internal use *)
 
@@ -41,9 +43,10 @@ let custom_property ?layer name value =
   custom_declaration ?layer name String value
 
 (* Access the layer associated with a custom declaration, if any *)
-let custom_declaration_layer = function
+let rec custom_declaration_layer = function
   | Custom_declaration { layer; _ } -> layer
   | Declaration _ -> None
+  | Theme_guarded { decl; _ } -> custom_declaration_layer decl
 
 (* Parser functions *)
 
@@ -127,12 +130,13 @@ let read_importance t =
   | _ -> false
 
 (** Check if a declaration is marked as important *)
-let is_important = function
+let rec is_important = function
   | Declaration { important; _ } -> important
   | Custom_declaration { important; _ } -> important
+  | Theme_guarded { decl; _ } -> is_important decl
 
 (** Get the property name as a string from a declaration *)
-let property_name decl =
+let rec property_name decl =
   let ctx =
     {
       Pp.minify = true;
@@ -148,6 +152,7 @@ let property_name decl =
       pp_property ctx property;
       Buffer.contents ctx.buf
   | Custom_declaration { name; _ } -> name
+  | Theme_guarded { decl; _ } -> property_name decl
 
 (* Pretty printer for values based on their kind *)
 let pp_value : type a. (a kind * a) Pp.t =
@@ -203,7 +208,7 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Background_image -> pp pp_background_image
   | Z_index -> pp pp_z_index
 
-let string_of_value ?(minify = true) ?(inline = false) decl =
+let rec string_of_value ?(minify = true) ?(inline = false) decl =
   let ctx =
     {
       Pp.minify;
@@ -221,6 +226,7 @@ let string_of_value ?(minify = true) ?(inline = false) decl =
   | Custom_declaration { kind; value; _ } ->
       pp_value ctx (kind, value);
       Buffer.contents ctx.buf
+  | Theme_guarded { decl; _ } -> string_of_value ~minify ~inline decl
 
 (* Helper to read a trimmed string *)
 let read_string t = Reader.string ~trim:true t
@@ -879,7 +885,7 @@ let read_block t =
   decls
 
 (* Pretty printer for declarations *)
-let pp_declaration : declaration Pp.t =
+let rec pp_declaration : declaration Pp.t =
  fun ctx -> function
   | Declaration { property; value; important } ->
       pp_property ctx property;
@@ -895,6 +901,8 @@ let pp_declaration : declaration Pp.t =
       pp_value ctx (kind, value);
       if important then
         Pp.string ctx (if ctx.minify then "!important" else " !important")
+  | Theme_guarded { var_name; decl } ->
+      if Pp.in_theme ctx var_name then pp_declaration ctx decl
 
 (* Convert a declaration to its string representation *)
 let string_of_declaration ?(minify = false) decl =
@@ -911,6 +919,17 @@ let string_of_declaration ?(minify = false) decl =
   in
   pp_declaration ctx decl;
   Buffer.contents buf
+
+(* Resolve theme guards: filter out Theme_guarded declarations whose var_name is
+   not in the theme, and unwrap those that are *)
+let resolve_theme_guards ctx decls =
+  List.filter_map
+    (fun decl ->
+      match decl with
+      | Theme_guarded { var_name; decl } ->
+          if Pp.in_theme ctx var_name then Some decl else None
+      | d -> Some d)
+    decls
 
 (* Single-to-list property helpers *)
 let background_image value = v Background_image [ value ]
