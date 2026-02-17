@@ -1,19 +1,25 @@
+module StringSet = Set.Make (String)
+
 type ctx = {
   minify : bool;
   indent : int;
   buf : Buffer.t;
   inline : bool;
-  resolve_var : string -> string option;
+  theme : StringSet.t option;
+  theme_defaults : string -> string option;
 }
 
 type 'a t = ctx -> 'a -> unit
 
-let no_resolve _ = None
+let no_theme_defaults _ = None
 
-let to_string ?(minify = false) ?(inline = false) ?(resolve_var = no_resolve) pp
-    a =
+let in_theme ctx name =
+  match ctx.theme with None -> true | Some set -> StringSet.mem name set
+
+let to_string ?(minify = false) ?(inline = false) ?theme
+    ?(theme_defaults = no_theme_defaults) pp a =
   let buf = Buffer.create 1024 in
-  let ctx = { minify; indent = 0; buf; inline; resolve_var } in
+  let ctx = { minify; indent = 0; buf; inline; theme; theme_defaults } in
   pp ctx a;
   Buffer.contents buf
 

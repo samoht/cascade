@@ -100,19 +100,21 @@ val to_string :
   ?mode:mode ->
   ?newline:bool ->
   ?header:bool ->
-  ?resolve_var:(string -> string option) ->
+  ?theme:Pp.StringSet.t ->
+  ?theme_defaults:(string -> string option) ->
   stylesheet ->
   string
-(** [to_string ?minify ?mode ?newline ?resolve_var stylesheet] renders a
-    stylesheet to CSS. [resolve_var] maps [Var_fallback] variable names to
-    concrete values for theme-dependent emission. *)
+(** [to_string ?minify ?mode ?newline ?theme ?theme_defaults stylesheet] renders
+    a stylesheet to CSS. [theme] is the set of theme-defined variable names;
+    [theme_defaults] maps variable names to concrete CSS default values. *)
 
 val pp :
   ?minify:bool ->
   ?mode:mode ->
   ?newline:bool ->
   ?header:bool ->
-  ?resolve_var:(string -> string option) ->
+  ?theme:Pp.StringSet.t ->
+  ?theme_defaults:(string -> string option) ->
   stylesheet ->
   string
 (** [pp] is {!to_string}. *)

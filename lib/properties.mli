@@ -257,6 +257,11 @@ val pp_grid_line : grid_line Pp.t
 val read_grid_line : Reader.t -> grid_line
 (** [read_grid_line t] is the [grid_line] parsed from [t]. *)
 
+val read_grid_line_pair : Reader.t -> grid_line * grid_line
+(** [read_grid_line_pair t] parses a grid column/row shorthand value:
+    [<grid-line> [ / <grid-line> ]?]. If no slash is present, the second value
+    defaults to [Auto]. *)
+
 val pp_aspect_ratio : aspect_ratio Pp.t
 (** [pp_aspect_ratio] is the pretty-printer for [aspect_ratio]. *)
 

@@ -51,40 +51,78 @@ let color_mix ?in_space ?(hue = Default) ?percent1 ?percent2 color1 color2 =
 
 (** Pretty-printing functions *)
 
+let is_theme_var v = v.layer = Some "theme"
+let in_theme = Pp.in_theme
+
 let pp_var : type a. a Pp.t -> a var Pp.t =
  fun pp_value ctx v ->
-  (* When inlining is enabled, output the default value if available *)
-  if ctx.inline && v.default <> Option.None then
-    match v.default with
-    | Some value -> pp_value ctx value
-    | Option.None -> assert false (* unreachable due to condition above *)
-  else (
-    (* Standard var() reference output *)
+  let emit_var_ref () =
     Pp.string ctx "var(--";
     Pp.string ctx v.name;
+    Pp.char ctx ')'
+  in
+  if ctx.inline then
+    (* Inline mode: resolve ALL vars to concrete values. Inline CSS can't use
+       custom properties, so we resolve typed defaults first, then fallbacks. *)
+    match v.default with
+    | Some value -> pp_value ctx value
+    | Option.None -> (
+        match v.fallback with
+        | Fallback value -> pp_value ctx value
+        | Var_fallback fallback_name -> (
+            match ctx.theme_defaults fallback_name with
+            | Some resolved -> Pp.string ctx resolved
+            | Option.None -> emit_var_ref ())
+        | Raw_fallback raw -> Pp.string ctx raw
+        | None | Empty -> emit_var_ref ())
+  else
+    (* Normal mode: theme-based resolution for theme vars only. *)
     match v.fallback with
-    | None -> Pp.char ctx ')'
+    | None -> (
+        if
+          (* Bare var refs: only theme vars check the theme set. Non-theme vars
+             (property_default, channel) always emit var(--name). When theme is
+             None, all vars emit as var(--name). *)
+          (not (is_theme_var v)) || in_theme ctx v.name
+        then emit_var_ref ()
+        else
+          match v.default with
+          | Some value -> pp_value ctx value
+          | Option.None -> emit_var_ref ())
     | Empty ->
+        Pp.string ctx "var(--";
+        Pp.string ctx v.name;
         Pp.char ctx ',';
         Pp.char ctx ')'
     | Fallback value ->
+        Pp.string ctx "var(--";
+        Pp.string ctx v.name;
         Pp.comma ctx ();
         pp_value ctx value;
         Pp.char ctx ')'
     | Var_fallback fallback_name -> (
+        Pp.string ctx "var(--";
+        Pp.string ctx v.name;
         Pp.comma ctx ();
-        match ctx.resolve_var fallback_name with
-        | Some resolved ->
-            Pp.string ctx resolved;
-            Pp.char ctx ')'
-        | None ->
-            Pp.string ctx "var(--";
-            Pp.string ctx fallback_name;
-            Pp.string ctx "))")
+        if in_theme ctx fallback_name then (
+          Pp.string ctx "var(--";
+          Pp.string ctx fallback_name;
+          Pp.string ctx "))")
+        else
+          match ctx.theme_defaults fallback_name with
+          | Some resolved ->
+              Pp.string ctx resolved;
+              Pp.char ctx ')'
+          | Option.None ->
+              Pp.string ctx "var(--";
+              Pp.string ctx fallback_name;
+              Pp.string ctx "))")
     | Raw_fallback raw ->
+        Pp.string ctx "var(--";
+        Pp.string ctx v.name;
         Pp.comma ctx ();
         Pp.string ctx raw;
-        Pp.char ctx ')')
+        Pp.char ctx ')'
 
 (* Function call formatting now provided by Pp.call and Pp.call_list *)
 

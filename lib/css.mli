@@ -4481,11 +4481,12 @@ val to_string :
   ?optimize:bool ->
   ?mode:mode ->
   ?newline:bool ->
-  ?resolve_var:(string -> string option) ->
+  ?theme:Pp.StringSet.t ->
+  ?theme_defaults:(string -> string option) ->
   t ->
   string
-(** [to_string ?minify ?optimize ?mode ?newline ?resolve_var stylesheet] renders
-    a complete stylesheet to CSS.
+(** [to_string ?minify ?optimize ?mode ?newline ?theme ?theme_defaults
+     stylesheet] renders a complete stylesheet to CSS.
     - If [minify] is [true], the output will be compact (no unnecessary
       whitespace).
     - If [optimize] is [true], rule-level optimizations are applied
@@ -4493,10 +4494,11 @@ val to_string :
     - [mode] controls variable layer emission behavior.
     - If [newline] is [true] (default), adds a trailing newline for POSIX
       compliance.
-    - [resolve_var] maps [Var_fallback] variable names to concrete values. When
-      [resolve_var name] returns [Some value], nested [var(--name)] fallbacks
-      are replaced with the value. Used for theme-dependent CSS where theme
-      variables may or may not exist.
+    - [theme] is the set of theme-defined variable names. When a variable name
+      is in this set, [var(--name)] is emitted; otherwise the concrete default
+      value is used.
+    - [theme_defaults] maps variable names to concrete CSS default values for
+      variables not in the theme set.
 
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS> "MDN: CSS". *)
 
@@ -4505,7 +4507,8 @@ val pp :
   ?optimize:bool ->
   ?mode:mode ->
   ?newline:bool ->
-  ?resolve_var:(string -> string option) ->
+  ?theme:Pp.StringSet.t ->
+  ?theme_defaults:(string -> string option) ->
   t ->
   string
 (** [pp] is {!to_string}. *)

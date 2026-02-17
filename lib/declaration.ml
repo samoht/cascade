@@ -145,7 +145,8 @@ let property_name decl =
       indent = 0;
       buf = Buffer.create 16;
       inline = false;
-      resolve_var = Pp.no_resolve;
+      theme = None;
+      theme_defaults = Pp.no_theme_defaults;
     }
   in
   match decl with
@@ -215,7 +216,8 @@ let string_of_value ?(minify = true) ?(inline = false) decl =
       indent = 0;
       buf = Buffer.create 16;
       inline;
-      resolve_var = Pp.no_resolve;
+      theme = None;
+      theme_defaults = Pp.no_theme_defaults;
     }
   in
   match decl with
@@ -375,7 +377,8 @@ let prop_name (type a) (prop_type : a property) =
       indent = 0;
       buf;
       inline = false;
-      resolve_var = Pp.no_resolve;
+      theme = None;
+      theme_defaults = Pp.no_theme_defaults;
     }
   in
   pp_property ctx prop_type;
@@ -562,8 +565,8 @@ let read_value (type a) (prop : a property) t : declaration =
   | Grid_area -> v Grid_area (read_raw_value t)
   | Grid_auto_columns -> v Grid_auto_columns (read_grid_template t)
   | Grid_auto_rows -> v Grid_auto_rows (read_grid_template t)
-  | Grid_column -> v Grid_column (read_raw_value t)
-  | Grid_row -> v Grid_row (read_raw_value t)
+  | Grid_column -> v Grid_column (read_grid_line_pair t)
+  | Grid_row -> v Grid_row (read_grid_line_pair t)
   (* Border inline/block properties *)
   | Border_inline_start_width ->
       v Border_inline_start_width (read_border_width t)
@@ -903,7 +906,14 @@ let pp_declaration : declaration Pp.t =
 let string_of_declaration ?(minify = false) decl =
   let buf = Buffer.create 32 in
   let ctx =
-    { Pp.minify; indent = 0; buf; inline = false; resolve_var = Pp.no_resolve }
+    {
+      Pp.minify;
+      indent = 0;
+      buf;
+      inline = false;
+      theme = None;
+      theme_defaults = Pp.no_theme_defaults;
+    }
   in
   pp_declaration ctx decl;
   Buffer.contents buf
@@ -972,29 +982,8 @@ let grid_row_start value = v Grid_row_start value
 let grid_row_end value = v Grid_row_end value
 let grid_column_start value = v Grid_column_start value
 let grid_column_end value = v Grid_column_end value
-
-let grid_row ((start, end_) : grid_line * grid_line) =
-  let pp ctx () =
-    pp_grid_line ctx start;
-    match end_ with
-    | Auto -> ()
-    | _ ->
-        Pp.string ctx " / ";
-        pp_grid_line ctx end_
-  in
-  v Grid_row (Pp.to_string ~minify:true pp ())
-
-let grid_column ((start, end_) : grid_line * grid_line) =
-  let pp ctx () =
-    pp_grid_line ctx start;
-    match end_ with
-    | Auto -> ()
-    | _ ->
-        Pp.string ctx " / ";
-        pp_grid_line ctx end_
-  in
-  v Grid_column (Pp.to_string ~minify:true pp ())
-
+let grid_row (pair : grid_line * grid_line) = v Grid_row pair
+let grid_column (pair : grid_line * grid_line) = v Grid_column pair
 let grid_area value = v Grid_area value
 let width len = v Width (Length len)
 let height len = v Height (Length len)
