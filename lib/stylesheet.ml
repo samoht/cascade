@@ -211,7 +211,7 @@ and pp_statement : statement Pp.t =
       (match media with
       | Some m ->
           Pp.sp ctx ();
-          Pp.string ctx (Media.to_string m)
+          Media.pp ctx m
       | None -> ());
       Pp.semicolon ctx ()
   | Namespace (prefix, uri) ->
@@ -244,7 +244,7 @@ and pp_statement : statement Pp.t =
         Pp.braces pp_block ctx content)
   | Media (condition, content) ->
       Pp.string ctx "@media ";
-      Pp.string ctx (Media.to_string condition);
+      Media.pp ctx condition;
       Pp.sp ctx ();
       Pp.braces pp_block ctx content
   | Container (name, condition, content) ->
@@ -350,7 +350,7 @@ let header_string =
     [ "/*! tw v"; version; " | MIT License | https://github.com/samoht/tw */" ]
 
 let to_string ?(minify = false) ?(mode = Variables) ?(newline = true)
-    ?(header = true) statements =
+    ?(header = true) ?(resolve_var = Pp.no_resolve) statements =
   let pp ctx () =
     (* Add header if enabled and there are any layer statements *)
     let has_layers =
@@ -364,7 +364,7 @@ let to_string ?(minify = false) ?(mode = Variables) ?(newline = true)
     pp_stylesheet ctx statements;
     if newline && mode <> Inline then Pp.char ctx '\n'
   in
-  Pp.to_string ~minify ~inline:(mode = Inline) pp ()
+  Pp.to_string ~minify ~inline:(mode = Inline) ~resolve_var pp ()
 
 let pp = to_string
 
@@ -997,7 +997,13 @@ let inline_style_of_declarations ?(minify = false) ?(mode : mode = Inline)
   (* Build the inline style string with minimal nesting to satisfy linter *)
   let buf = Buffer.create 128 in
   let pp_ctx =
-    { Pp.minify = config.minify; indent = 0; buf; inline = mode = Inline }
+    {
+      Pp.minify = config.minify;
+      indent = 0;
+      buf;
+      inline = mode = Inline;
+      resolve_var = Pp.no_resolve;
+    }
   in
   let first = ref true in
   List.iter
@@ -1061,7 +1067,7 @@ let pp_import_rule : import_rule Pp.t =
   Option.iter
     (fun m ->
       Pp.space ctx ();
-      Pp.string ctx (Media.to_string m))
+      Media.pp ctx m)
     media;
   Pp.string ctx ";"
 

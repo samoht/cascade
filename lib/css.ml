@@ -293,13 +293,13 @@ let of_string ?(filename = "<string>") css =
   with Reader.Parse_error error -> Error (Reader.with_filename error filename)
 
 let to_string ?(minify = false) ?(optimize = false) ?(mode = Variables)
-    ?(newline = true) stylesheet =
+    ?(newline = true) ?(resolve_var = Pp.no_resolve) stylesheet =
   let stylesheet =
     if optimize then Optimize.stylesheet stylesheet
     else if minify then Optimize.apply_property_duplication stylesheet
     else stylesheet
   in
-  Stylesheet.to_string ~minify ~mode ~newline stylesheet
+  Stylesheet.to_string ~minify ~mode ~newline ~resolve_var stylesheet
 
 let pp = to_string
 

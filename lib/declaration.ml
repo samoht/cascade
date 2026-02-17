@@ -140,7 +140,13 @@ let is_important = function
 (** Get the property name as a string from a declaration *)
 let property_name decl =
   let ctx =
-    { Pp.minify = true; indent = 0; buf = Buffer.create 16; inline = false }
+    {
+      Pp.minify = true;
+      indent = 0;
+      buf = Buffer.create 16;
+      inline = false;
+      resolve_var = Pp.no_resolve;
+    }
   in
   match decl with
   | Declaration { property; _ } ->
@@ -203,7 +209,15 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Z_index -> pp pp_z_index
 
 let string_of_value ?(minify = true) ?(inline = false) decl =
-  let ctx = { Pp.minify; indent = 0; buf = Buffer.create 16; inline } in
+  let ctx =
+    {
+      Pp.minify;
+      indent = 0;
+      buf = Buffer.create 16;
+      inline;
+      resolve_var = Pp.no_resolve;
+    }
+  in
   match decl with
   | Declaration { property; value; _ } ->
       pp_property_value ctx (property, value);
@@ -355,7 +369,15 @@ let read_background_blend_mode_value t =
 
 let prop_name (type a) (prop_type : a property) =
   let buf = Buffer.create 32 in
-  let ctx = { Pp.minify = true; indent = 0; buf; inline = false } in
+  let ctx =
+    {
+      Pp.minify = true;
+      indent = 0;
+      buf;
+      inline = false;
+      resolve_var = Pp.no_resolve;
+    }
+  in
   pp_property ctx prop_type;
   Buffer.contents buf
 
@@ -880,7 +902,9 @@ let pp_declaration : declaration Pp.t =
 (* Convert a declaration to its string representation *)
 let string_of_declaration ?(minify = false) decl =
   let buf = Buffer.create 32 in
-  let ctx = { Pp.minify; indent = 0; buf; inline = false } in
+  let ctx =
+    { Pp.minify; indent = 0; buf; inline = false; resolve_var = Pp.no_resolve }
+  in
   pp_declaration ctx decl;
   Buffer.contents buf
 

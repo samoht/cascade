@@ -1,9 +1,19 @@
-type ctx = { minify : bool; indent : int; buf : Buffer.t; inline : bool }
+type ctx = {
+  minify : bool;
+  indent : int;
+  buf : Buffer.t;
+  inline : bool;
+  resolve_var : string -> string option;
+}
+
 type 'a t = ctx -> 'a -> unit
 
-let to_string ?(minify = false) ?(inline = false) pp a =
+let no_resolve _ = None
+
+let to_string ?(minify = false) ?(inline = false) ?(resolve_var = no_resolve) pp
+    a =
   let buf = Buffer.create 1024 in
-  let ctx = { minify; indent = 0; buf; inline } in
+  let ctx = { minify; indent = 0; buf; inline; resolve_var } in
   pp ctx a;
   Buffer.contents buf
 

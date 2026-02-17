@@ -19,6 +19,12 @@ type ctx = {
   indent : int;  (** Current indentation level *)
   buf : Buffer.t;  (** Output buffer *)
   inline : bool;  (** Whether to inline variables or not *)
+  resolve_var : string -> string option;
+      (** Resolve a [Var_fallback] variable name to a concrete value. When
+          [resolve_var name] returns [Some value], [var(--channel, var(--name))]
+          is emitted as [var(--channel, value)] instead. Used for
+          theme-dependent CSS emission where theme variables may or may not
+          exist. *)
 }
 (** Formatter context containing output configuration *)
 
@@ -27,10 +33,19 @@ type 'a t = ctx -> 'a -> unit
 
 (** {2 Running Formatters} *)
 
-val to_string : ?minify:bool -> ?inline:bool -> 'a t -> 'a -> string
-(** [to_string ~minify ~inline formatter value] runs the formatter and returns a
-    string. Creates a fresh buffer internally. Defaults: minify=false,
-    inline=false. *)
+val no_resolve : string -> string option
+(** Default resolver that never resolves (always returns [None]). *)
+
+val to_string :
+  ?minify:bool ->
+  ?inline:bool ->
+  ?resolve_var:(string -> string option) ->
+  'a t ->
+  'a ->
+  string
+(** [to_string ~minify ~inline ~resolve_var formatter value] runs the formatter
+    and returns a string. Creates a fresh buffer internally. Defaults:
+    minify=false, inline=false, resolve_var=no_resolve. *)
 
 (** {2 Primitive Formatters} *)
 
