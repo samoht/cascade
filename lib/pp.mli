@@ -14,17 +14,26 @@
     - CSS-specific token handling
     - No Printf dependency (js_of_ocaml friendly) *)
 
+module StringSet : Set.S with type elt = string
+(** Set of strings, used for theme variable names. *)
+
 type ctx = {
   minify : bool;  (** Whether to produce minified output *)
   indent : int;  (** Current indentation level *)
   buf : Buffer.t;  (** Output buffer *)
   inline : bool;  (** Whether to inline variables or not *)
-  resolve_var : string -> string option;
-      (** Resolve a [Var_fallback] variable name to a concrete value. When
-          [resolve_var name] returns [Some value], [var(--channel, var(--name))]
-          is emitted as [var(--channel, value)] instead. Used for
-          theme-dependent CSS emission where theme variables may or may not
-          exist. *)
+  theme : StringSet.t option;
+      (** Optional set of theme-defined variable names. When [None] (default),
+          no theme-based resolution is performed — all vars emit as
+          [var(--name)]. When [Some set], bare theme var refs check the set:
+          names in the set emit [var(--name)], names not in the set resolve to
+          their typed defaults. For [Var_fallback], the fallback name is checked
+          similarly. *)
+  theme_defaults : string -> string option;
+      (** Lookup function for concrete CSS defaults of theme variable names.
+          Used when a [Var_fallback] name is not in the theme set: the fallback
+          name is looked up to get its concrete CSS string value. Defaults to
+          [fun _ -> None]. *)
 }
 (** Formatter context containing output configuration *)
 
@@ -33,19 +42,27 @@ type 'a t = ctx -> 'a -> unit
 
 (** {2 Running Formatters} *)
 
-val no_resolve : string -> string option
-(** Default resolver that never resolves (always returns [None]). *)
+val no_theme_defaults : string -> string option
+(** Default [theme_defaults] function that always returns [None]. *)
+
+val in_theme : ctx -> string -> bool
+(** [in_theme ctx name] checks if [name] is in the theme set. When [theme] is
+    [None] (no theme resolution), returns [true] — all vars are treated as if
+    they're in the theme. When [theme] is [Some set], returns
+    [StringSet.mem name set]. *)
 
 val to_string :
   ?minify:bool ->
   ?inline:bool ->
-  ?resolve_var:(string -> string option) ->
+  ?theme:StringSet.t ->
+  ?theme_defaults:(string -> string option) ->
   'a t ->
   'a ->
   string
-(** [to_string ~minify ~inline ~resolve_var formatter value] runs the formatter
-    and returns a string. Creates a fresh buffer internally. Defaults:
-    minify=false, inline=false, resolve_var=no_resolve. *)
+(** [to_string ~minify ~inline ~theme ~theme_defaults formatter value] runs the
+    formatter and returns a string. Creates a fresh buffer internally. Defaults:
+    minify=false, inline=false, theme=StringSet.empty, theme_defaults=(fun _ ->
+    None). *)
 
 (** {2 Primitive Formatters} *)
 

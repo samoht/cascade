@@ -1792,7 +1792,17 @@ let pp_list_style_type : list_style_type Pp.t =
   | Upper_alpha -> Pp.string ctx "upper-alpha"
   | Lower_roman -> Pp.string ctx "lower-roman"
   | Upper_roman -> Pp.string ctx "upper-roman"
-  | Var s -> Pp.string ctx ("var(" ^ s ^ ")")
+  | Var s -> (
+      let name =
+        if String.length s > 2 && s.[0] = '-' && s.[1] = '-' then
+          String.sub s 2 (String.length s - 2)
+        else s
+      in
+      if Pp.in_theme ctx name then Pp.string ctx ("var(--" ^ name ^ ")")
+      else
+        match ctx.theme_defaults name with
+        | Some resolved -> Pp.string ctx resolved
+        | None -> Pp.string ctx ("var(" ^ s ^ ")"))
 
 let pp_list_style_position : list_style_position Pp.t =
  fun ctx -> function
@@ -1804,7 +1814,17 @@ let pp_list_style_image : list_style_image Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
   | Url u -> Pp.url ctx u
-  | List_image_var v -> Pp.string ctx ("var(" ^ v ^ ")")
+  | List_image_var v -> (
+      let name =
+        if String.length v > 2 && v.[0] = '-' && v.[1] = '-' then
+          String.sub v 2 (String.length v - 2)
+        else v
+      in
+      if Pp.in_theme ctx name then Pp.string ctx ("var(--" ^ name ^ ")")
+      else
+        match ctx.theme_defaults name with
+        | Some resolved -> Pp.string ctx resolved
+        | None -> Pp.string ctx ("var(" ^ v ^ ")"))
   | Inherit -> Pp.string ctx "inherit"
 
 let pp_table_layout : table_layout Pp.t =
@@ -4212,14 +4232,63 @@ let read_grid_line t : grid_line =
     let span_word = Reader.ident t in
     if span_word = "span" then (
       Reader.ws t;
-      Span (Reader.int t))
+      match Reader.peek t with
+      | Some c when c >= '0' && c <= '9' -> Span (Reader.int t)
+      | _ ->
+          (* span followed by non-number (e.g., span var(...)) - read as
+             arbitrary *)
+          let buf = Buffer.create 32 in
+          Buffer.add_string buf "span ";
+          let depth = ref 0 in
+          let rec loop () =
+            match Reader.peek t with
+            | Some '(' ->
+                Buffer.add_char buf (Reader.char t);
+                incr depth;
+                loop ()
+            | Some ')' ->
+                Buffer.add_char buf (Reader.char t);
+                decr depth;
+                loop ()
+            | Some '/' when !depth = 0 -> ()
+            | Some ';' | Some '}' | None -> ()
+            | Some _ ->
+                Buffer.add_char buf (Reader.char t);
+                loop ()
+          in
+          loop ();
+          Arbitrary (String.trim (Buffer.contents buf)))
     else Reader.err t ("Expected 'span' but got " ^ span_word)
   in
   let read_number t : grid_line = Num (Reader.int t) in
   let read_name t : grid_line =
     let name = Reader.ident t in
-    if name = "span" then
-      Reader.err t "Invalid grid line: 'span' must be followed by a number"
+    if name = "span" then (
+      Reader.ws t;
+      match Reader.peek t with
+      | Some c when c >= '0' && c <= '9' -> Span (Reader.int t)
+      | _ ->
+          let buf = Buffer.create 32 in
+          Buffer.add_string buf "span ";
+          let depth = ref 0 in
+          let rec loop () =
+            match Reader.peek t with
+            | Some '(' ->
+                Buffer.add_char buf (Reader.char t);
+                incr depth;
+                loop ()
+            | Some ')' ->
+                Buffer.add_char buf (Reader.char t);
+                decr depth;
+                loop ()
+            | Some '/' when !depth = 0 -> ()
+            | Some ';' | Some '}' | None -> ()
+            | Some _ ->
+                Buffer.add_char buf (Reader.char t);
+                loop ()
+          in
+          loop ();
+          Arbitrary (String.trim (Buffer.contents buf)))
     else Name name
   in
   let read_calc_int t : grid_line =
@@ -4275,6 +4344,13 @@ let read_grid_line t : grid_line =
     ~default:(fun t ->
       Reader.one_of [ read_number; read_span_num; read_name ] t)
     t
+
+let read_grid_line_pair t : grid_line * grid_line =
+  let start = read_grid_line t in
+  if Reader.slash_opt t then
+    let end_ = read_grid_line t in
+    (start, end_)
+  else (start, Auto)
 
 module Grid_template = struct
   let read_length_as_grid t : grid_template =
@@ -7571,8 +7647,22 @@ let pp_property_value : type a. (a property * a) Pp.t =
           if needs_second_value then (
             Pp.space ctx ();
             pp_justify_self ctx j))
-  | Grid_column -> pp Pp.string
-  | Grid_row -> pp Pp.string
+  | Grid_column ->
+      pp (fun ctx (start, end_) ->
+          pp_grid_line ctx start;
+          match end_ with
+          | Auto -> ()
+          | _ ->
+              Pp.string ctx " / ";
+              pp_grid_line ctx end_)
+  | Grid_row ->
+      pp (fun ctx (start, end_) ->
+          pp_grid_line ctx start;
+          match end_ with
+          | Auto -> ()
+          | _ ->
+              Pp.string ctx " / ";
+              pp_grid_line ctx end_)
   | Grid_column_start -> pp pp_grid_line
   | Grid_column_end -> pp pp_grid_line
   | Grid_row_start -> pp pp_grid_line

@@ -350,7 +350,8 @@ let header_string =
     [ "/*! tw v"; version; " | MIT License | https://github.com/samoht/tw */" ]
 
 let to_string ?(minify = false) ?(mode = Variables) ?(newline = true)
-    ?(header = true) ?(resolve_var = Pp.no_resolve) statements =
+    ?(header = true) ?theme ?(theme_defaults = Pp.no_theme_defaults) statements
+    =
   let pp ctx () =
     (* Add header if enabled and there are any layer statements *)
     let has_layers =
@@ -364,7 +365,7 @@ let to_string ?(minify = false) ?(mode = Variables) ?(newline = true)
     pp_stylesheet ctx statements;
     if newline && mode <> Inline then Pp.char ctx '\n'
   in
-  Pp.to_string ~minify ~inline:(mode = Inline) ~resolve_var pp ()
+  Pp.to_string ~minify ~inline:(mode = Inline) ?theme ~theme_defaults pp ()
 
 let pp = to_string
 
@@ -1002,7 +1003,8 @@ let inline_style_of_declarations ?(minify = false) ?(mode : mode = Inline)
       indent = 0;
       buf;
       inline = mode = Inline;
-      resolve_var = Pp.no_resolve;
+      theme = None;
+      theme_defaults = Pp.no_theme_defaults;
     }
   in
   let first = ref true in

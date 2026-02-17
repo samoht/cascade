@@ -1580,8 +1580,8 @@ type 'a property =
   | Grid_auto_flow : grid_auto_flow property
   | Grid_auto_columns : grid_template property
   | Grid_auto_rows : grid_template property
-  | Grid_column : string property
-  | Grid_row : string property
+  | Grid_column : (grid_line * grid_line) property
+  | Grid_row : (grid_line * grid_line) property
   | Grid_column_start : grid_line property
   | Grid_column_end : grid_line property
   | Grid_row_start : grid_line property
