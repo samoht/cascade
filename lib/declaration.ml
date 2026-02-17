@@ -12,12 +12,6 @@ let meta_of_declaration : declaration -> meta option = function
   | Custom_declaration { meta; _ } -> meta
   | Declaration _ -> None
 
-(* Helper to read var(...) body as string *)
-let read_var_body t : string =
-  Reader.call "var" t (fun t ->
-      let body = Reader.css_value ~stops:[ ')' ] t in
-      body)
-
 (* Smart constructor for declarations *)
 let v ?(important = false) property value =
   Declaration { property; value; important }
@@ -284,9 +278,9 @@ let read_animation_name t =
 (* Helper to read opacity: accepts either <number> (0-1), <percentage>
    (0%-100%), or var(...). Both formats are valid per CSS spec. Tailwind v4
    outputs percentages. *)
-let read_opacity t : opacity =
+let rec read_opacity t : opacity =
   Reader.ws t;
-  if Reader.looking_at t "var(" then Opacity_var (read_var_body t)
+  if Reader.looking_at t "var(" then Var (Values.read_var read_opacity t)
   else
     let n = Reader.number t in
     (* Check if followed by %, indicating percentage *)

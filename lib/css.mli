@@ -1287,10 +1287,10 @@ type visibility = Visible | Hidden | Collapse
 type z_index = Auto | Index of int | Calc of string | Var of z_index var
 
 (** CSS opacity values. *)
-type opacity = Opacity_number of float | Opacity_var of string
+type opacity = Opacity_number of float | Var of opacity var
 
 (** CSS order values (flexbox order). *)
-type order = Order_int of int | Order_calc of string | Order_var of string
+type order = Order_int of int | Order_calc of string | Var of order var
 
 (** CSS overflow values. *)
 type overflow = Visible | Hidden | Scroll | Auto | Clip
@@ -2936,7 +2936,7 @@ type outline_style =
   | Outset
   | Auto
   | Inherit
-  | Var of string
+  | Var of outline_style var
 
 type outline_shorthand = {
   width : length option;
@@ -3720,7 +3720,7 @@ type cursor =
   | Zoom_in
   | Zoom_out
   | Url of string * (float * float) option * cursor
-  | Cursor_var of string
+  | Var of cursor var
   | Inherit
 
 (** CSS user-select values. *)
@@ -3835,7 +3835,7 @@ type contain =
   | Paint
   | Inline_size
   | List of contain list
-  | Var of string
+  | Var of contain var
   | Inherit
   | Initial
   | Unset
@@ -3864,7 +3864,7 @@ val contain : contain -> declaration
 type webkit_box_orient = Horizontal | Vertical | Inherit
 
 (** CSS -webkit-line-clamp values. *)
-type webkit_line_clamp = Lines of int | Unset | Clamp_var of string
+type webkit_line_clamp = Lines of int | Unset | Var of webkit_line_clamp var
 
 (** CSS -webkit-appearance values. *)
 type webkit_appearance =
@@ -3960,13 +3960,13 @@ type list_style_type =
   | Upper_alpha
   | Lower_roman
   | Upper_roman
-  | Var of string
+  | Var of list_style_type var
 
 (** CSS list-style-image values *)
 type list_style_image =
   | None
   | Url of string
-  | List_image_var of string
+  | Var of list_style_image var
   | Inherit
 
 val list_style_type : list_style_type -> declaration
@@ -3996,7 +3996,7 @@ type vertical_align =
   | Em of float
   | Pct of float
   | Inherit
-  | Var of string
+  | Var of vertical_align var
 
 val table_layout : table_layout -> declaration
 (** [table_layout value] is the
@@ -4541,7 +4541,7 @@ type will_change =
   | Transform
   | Opacity
   | Properties of string list  (** Custom CSS property names *)
-  | Var of string
+  | Var of will_change var
 
 val will_change : will_change -> declaration
 (** [will_change value] is the
