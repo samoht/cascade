@@ -66,8 +66,8 @@ type display =
 type position = Static | Relative | Absolute | Fixed | Sticky
 type visibility = Visible | Hidden | Collapse
 type z_index = Auto | Index of int | Calc of string | Var of z_index var
-type opacity = Opacity_number of float | Opacity_var of string
-type order = Order_int of int | Order_calc of string | Order_var of string
+type opacity = Opacity_number of float | Var of opacity var
+type order = Order_int of int | Order_calc of string | Var of order var
 type overflow = Visible | Hidden | Scroll | Auto | Clip
 
 (* Flexbox Types *)
@@ -531,14 +531,14 @@ type list_style_type =
   | Upper_alpha
   | Lower_roman
   | Upper_roman
-  | Var of string
+  | Var of list_style_type var
 
 type list_style_position = Inside | Outside | Inherit
 
 type list_style_image =
   | None
   | Url of string
-  | List_image_var of string
+  | Var of list_style_image var
   | Inherit
 
 (* Table Types *)
@@ -558,7 +558,7 @@ type vertical_align =
   | Em of float
   | Pct of float
   | Inherit
-  | Var of string
+  | Var of vertical_align var
 
 (* Border Types *)
 type border_collapse = Collapse | Separate | Inherit
@@ -584,7 +584,7 @@ type outline_style =
   | Outset
   | Auto
   | Inherit
-  | Var of string
+  | Var of outline_style var
 
 (* Outline shorthand type *)
 type outline_shorthand = {
@@ -1187,7 +1187,7 @@ type cursor =
   | Zoom_in
   | Zoom_out
   | Url of string * (float * float) option * cursor
-  | Cursor_var of string
+  | Var of cursor var
   | Inherit
 
 type user_select = None | Auto | Text | All | Contain
@@ -1276,7 +1276,7 @@ type contain =
   | Paint
   | Inline_size
   | List of contain list
-  | Var of string
+  | Var of contain var
   | Inherit
   | Initial
   | Unset
@@ -1393,7 +1393,7 @@ type webkit_font_smoothing =
 
 type moz_osx_font_smoothing = Auto | Grayscale | Inherit
 type webkit_box_orient = Horizontal | Vertical | Inherit
-type webkit_line_clamp = Lines of int | Unset | Clamp_var of string
+type webkit_line_clamp = Lines of int | Unset | Var of webkit_line_clamp var
 type text_size_adjust = None | Auto | Pct of float | Inherit
 
 (* Other Types *)
@@ -1456,7 +1456,7 @@ type will_change =
   | Transform
   | Opacity
   | Properties of string list  (** Custom CSS property names *)
-  | Var of string
+  | Var of will_change var
 
 (* perspective-origin: origin point for 3D perspective *)
 type perspective_origin =

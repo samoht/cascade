@@ -783,7 +783,7 @@ module Cursor = struct
       let fallback = read t in
       (Url (url, hotspot, fallback) : cursor))
 
-  and read_var (t : Reader.t) : cursor = Cursor_var (read_var_body t)
+  and read_var (t : Reader.t) : cursor = Var (Values.read_var read t)
 
   and read (t : Reader.t) : cursor =
     Reader.ws t;
@@ -1464,19 +1464,19 @@ let rec pp_z_index : z_index Pp.t =
   | Calc s -> Pp.string ctx s
   | Var v -> pp_var pp_z_index ctx v
 
-let pp_order : order Pp.t =
+let rec pp_order : order Pp.t =
  fun ctx -> function
   | Order_int i -> Pp.int ctx i
   | Order_calc s -> Pp.string ctx s
-  | Order_var s -> Pp.string ctx ("var(" ^ s ^ ")")
+  | Var v -> pp_var pp_order ctx v
 
 (* Opacity as float (0.0-1.0). While CSS accepts both number and percentage
    formats, Tailwind's minifier converts percentages to decimals (50% → .5), so
    we output decimals directly for minified output compatibility. *)
-let pp_opacity : opacity Pp.t =
+let rec pp_opacity : opacity Pp.t =
  fun ctx -> function
   | Opacity_number f -> Pp.float ctx f
-  | Opacity_var s -> Pp.string ctx ("var(" ^ s ^ ")")
+  | Var v -> pp_var pp_opacity ctx v
 
 let pp_overflow : overflow Pp.t =
  fun ctx -> function
@@ -1781,7 +1781,7 @@ let pp_hyphens : hyphens Pp.t =
   | Auto -> Pp.string ctx "auto"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_list_style_type : list_style_type Pp.t =
+let rec pp_list_style_type : list_style_type Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
   | Disc -> Pp.string ctx "disc"
@@ -1792,17 +1792,7 @@ let pp_list_style_type : list_style_type Pp.t =
   | Upper_alpha -> Pp.string ctx "upper-alpha"
   | Lower_roman -> Pp.string ctx "lower-roman"
   | Upper_roman -> Pp.string ctx "upper-roman"
-  | Var s -> (
-      let name =
-        if String.length s > 2 && s.[0] = '-' && s.[1] = '-' then
-          String.sub s 2 (String.length s - 2)
-        else s
-      in
-      if Pp.in_theme ctx name then Pp.string ctx ("var(--" ^ name ^ ")")
-      else
-        match ctx.theme_defaults name with
-        | Some resolved -> Pp.string ctx resolved
-        | None -> Pp.string ctx ("var(" ^ s ^ ")"))
+  | Var v -> pp_var pp_list_style_type ctx v
 
 let pp_list_style_position : list_style_position Pp.t =
  fun ctx -> function
@@ -1810,21 +1800,11 @@ let pp_list_style_position : list_style_position Pp.t =
   | Outside -> Pp.string ctx "outside"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_list_style_image : list_style_image Pp.t =
+let rec pp_list_style_image : list_style_image Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
   | Url u -> Pp.url ctx u
-  | List_image_var v -> (
-      let name =
-        if String.length v > 2 && v.[0] = '-' && v.[1] = '-' then
-          String.sub v 2 (String.length v - 2)
-        else v
-      in
-      if Pp.in_theme ctx name then Pp.string ctx ("var(--" ^ name ^ ")")
-      else
-        match ctx.theme_defaults name with
-        | Some resolved -> Pp.string ctx resolved
-        | None -> Pp.string ctx ("var(" ^ v ^ ")"))
+  | Var v -> pp_var pp_list_style_image ctx v
   | Inherit -> Pp.string ctx "inherit"
 
 let pp_table_layout : table_layout Pp.t =
@@ -1833,7 +1813,7 @@ let pp_table_layout : table_layout Pp.t =
   | Fixed -> Pp.string ctx "fixed"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_vertical_align : vertical_align Pp.t =
+let rec pp_vertical_align : vertical_align Pp.t =
  fun ctx -> function
   | Baseline -> Pp.string ctx "baseline"
   | Top -> Pp.string ctx "top"
@@ -1848,7 +1828,7 @@ let pp_vertical_align : vertical_align Pp.t =
   | Em f -> Pp.unit ctx f "em"
   | Pct p -> Pp.pct ctx p
   | Inherit -> Pp.string ctx "inherit"
-  | Var s -> Pp.string ctx ("var(" ^ s ^ ")")
+  | Var v -> pp_var pp_vertical_align ctx v
 
 let pp_grid_auto_flow : grid_auto_flow Pp.t =
  fun ctx -> function
@@ -1903,7 +1883,7 @@ let rec pp_aspect_ratio : aspect_ratio Pp.t =
         Pp.char ctx '/';
         Pp.float ctx b)
 
-let pp_will_change : will_change Pp.t =
+let rec pp_will_change : will_change Pp.t =
  fun ctx -> function
   | Will_change_auto -> Pp.string ctx "auto"
   | Scroll_position -> Pp.string ctx "scroll-position"
@@ -1911,7 +1891,7 @@ let pp_will_change : will_change Pp.t =
   | Transform -> Pp.string ctx "transform"
   | Opacity -> Pp.string ctx "opacity"
   | Properties props -> Pp.list ~sep:Pp.comma Pp.string ctx props
-  | Var s -> Pp.string ctx ("var(" ^ s ^ ")")
+  | Var v -> pp_var pp_will_change ctx v
 
 let rec pp_perspective_origin : perspective_origin Pp.t =
  fun ctx -> function
@@ -2854,7 +2834,7 @@ let rec pp_contain : contain Pp.t =
   | Paint -> Pp.string ctx "paint"
   | Inline_size -> Pp.string ctx "inline-size"
   | List items -> Pp.list ~sep:Pp.space pp_contain ctx items
-  | Var s -> Pp.string ctx ("var(" ^ s ^ ")")
+  | Var v -> pp_var pp_contain ctx v
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -2966,7 +2946,7 @@ let rec pp_cursor : cursor Pp.t =
       | None -> ());
       Pp.comma ctx ();
       pp_cursor ctx fallback
-  | Cursor_var v -> Pp.string ctx ("var(" ^ v ^ ")")
+  | Var v -> pp_var pp_cursor ctx v
   | Inherit -> Pp.string ctx "inherit"
 
 let pp_direction : direction Pp.t =
@@ -3622,7 +3602,7 @@ let rec read_rotate_value t : rotate_value =
         t)
     t
 
-let pp_outline_style : outline_style Pp.t =
+let rec pp_outline_style : outline_style Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
   | Solid -> Pp.string ctx "solid"
@@ -3635,7 +3615,7 @@ let pp_outline_style : outline_style Pp.t =
   | Outset -> Pp.string ctx "outset"
   | Auto -> Pp.string ctx "auto"
   | Inherit -> Pp.string ctx "inherit"
-  | Var s -> Pp.string ctx ("var(" ^ s ^ ")")
+  | Var v -> pp_var pp_outline_style ctx v
 
 let pp_outline_shorthand : outline_shorthand Pp.t =
  fun ctx { width; style; color } ->
@@ -3791,11 +3771,11 @@ let pp_webkit_box_orient : webkit_box_orient Pp.t =
   | Vertical -> Pp.string ctx "vertical"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_webkit_line_clamp : webkit_line_clamp Pp.t =
+let rec pp_webkit_line_clamp : webkit_line_clamp Pp.t =
  fun ctx -> function
   | Lines n -> Pp.int ctx n
   | Unset -> Pp.string ctx "unset"
-  | Clamp_var v -> Pp.string ctx ("var(" ^ v ^ ")")
+  | Var v -> pp_var pp_webkit_line_clamp ctx v
 
 let rec read_border_style t : border_style =
   let read_var t : border_style = Var (read_var read_border_style t) in
@@ -3977,7 +3957,7 @@ let rec read_z_index t : z_index =
       else Reader.err_invalid t "z-index must be integer")
     t
 
-let read_order t : order =
+let rec read_order t : order =
   let read_calc_order t =
     (* read_calc handles the calc(...) wrapper itself *)
     let expr =
@@ -4024,7 +4004,7 @@ let read_order t : order =
         Format.pp_print_flush fmt ();
         Order_calc (Buffer.contents buf)
   in
-  let read_var t : order = Order_var (read_var_body t) in
+  let read_var t : order = Var (read_var read_order t) in
   Reader.enum_or_calls "order" []
     ~calls:[ ("calc", read_calc_order); ("var", read_var) ]
     ~default:(fun t ->
@@ -4553,8 +4533,8 @@ let rec read_line_height t : line_height =
     ~calls:[ ("var", read_var); ("calc", read_calc) ]
     ~default:read_line_height_length t
 
-let read_list_style_type t : list_style_type =
-  let read_var t : list_style_type = Var (read_var_body t) in
+let rec read_list_style_type t : list_style_type =
+  let read_var t : list_style_type = Var (read_var read_list_style_type t) in
   Reader.enum_or_calls "list-style-type"
     [
       ("none", (None : list_style_type));
@@ -4579,11 +4559,11 @@ let read_list_style_position t : list_style_position =
     ]
     t
 
-let read_list_style_image t : list_style_image =
+let rec read_list_style_image t : list_style_image =
   let read_url t =
     Reader.call "url" t (fun t -> (Url (read_url_arg t) : list_style_image))
   in
-  let read_var t : list_style_image = List_image_var (read_var_body t) in
+  let read_var t : list_style_image = Var (read_var read_list_style_image t) in
   Reader.enum_or_calls "list-style-image"
     [ ("none", (None : list_style_image)); ("inherit", Inherit) ]
     ~calls:[ ("url", read_url); ("var", read_var) ]
@@ -4815,9 +4795,9 @@ let read_container_shorthand t : container_shorthand =
       | "scroll-state" -> { name = None; ctype = Some Scroll_state }
       | _ -> { name = Some first; ctype = None })
 
-let read_contain t : contain =
+let rec read_contain t : contain =
   let read_contain_value t : contain =
-    if Reader.looking_at t "var(" then Var (read_var_body t)
+    if Reader.looking_at t "var(" then Var (read_var read_contain t)
     else
       Reader.enum "contain-value"
         [
@@ -5105,8 +5085,10 @@ let read_webkit_box_orient t : webkit_box_orient =
     ]
     t
 
-let read_webkit_line_clamp t : webkit_line_clamp =
-  let read_var t : webkit_line_clamp = Clamp_var (read_var_body t) in
+let rec read_webkit_line_clamp t : webkit_line_clamp =
+  let read_var t : webkit_line_clamp =
+    Var (read_var read_webkit_line_clamp t)
+  in
   Reader.enum_or_calls "-webkit-line-clamp"
     [ ("unset", (Unset : webkit_line_clamp)) ]
     ~calls:[ ("var", read_var) ]
@@ -5199,8 +5181,8 @@ let read_text_decoration_skip_ink t : text_decoration_skip_ink =
     ]
     t
 
-let read_vertical_align t : vertical_align =
-  let read_var t : vertical_align = Var (read_var_body t) in
+let rec read_vertical_align t : vertical_align =
+  let read_var t : vertical_align = Var (read_var read_vertical_align t) in
   Reader.enum_or_calls "vertical-align"
     [
       ("baseline", (Baseline : vertical_align));
@@ -5216,8 +5198,8 @@ let read_vertical_align t : vertical_align =
     ~calls:[ ("var", read_var) ]
     ~default:read_vertical_align_length t
 
-let read_outline_style t : outline_style =
-  let read_var t : outline_style = Var (read_var_body t) in
+let rec read_outline_style t : outline_style =
+  let read_var t : outline_style = Var (read_var read_outline_style t) in
   Reader.enum_or_calls "outline-style"
     [
       ("none", (None : outline_style));
@@ -7263,7 +7245,7 @@ let read_gap t : gap =
   | None -> { row_gap = Some first_length; column_gap = Some first_length }
 
 (* Reader for will-change property *)
-let read_will_change t : will_change =
+let rec read_will_change t : will_change =
   Reader.ws t;
   if Reader.looking_at t "auto" then (
     Reader.expect_string "auto" t;
@@ -7280,7 +7262,7 @@ let read_will_change t : will_change =
   else if Reader.looking_at t "opacity" then (
     Reader.expect_string "opacity" t;
     Opacity)
-  else if Reader.looking_at t "var(" then Var (read_var_body t)
+  else if Reader.looking_at t "var(" then Var (read_var read_will_change t)
   else
     (* Read comma-separated list of property names *)
     let props = Reader.list ~sep:Reader.comma Reader.ident t in
