@@ -71,11 +71,16 @@ let pp_var : type a. a Pp.t -> a var Pp.t =
         Pp.comma ctx ();
         pp_value ctx value;
         Pp.char ctx ')'
-    | Var_fallback fallback_name ->
+    | Var_fallback fallback_name -> (
         Pp.comma ctx ();
-        Pp.string ctx "var(--";
-        Pp.string ctx fallback_name;
-        Pp.string ctx "))"
+        match ctx.resolve_var fallback_name with
+        | Some resolved ->
+            Pp.string ctx resolved;
+            Pp.char ctx ')'
+        | None ->
+            Pp.string ctx "var(--";
+            Pp.string ctx fallback_name;
+            Pp.string ctx "))")
     | Raw_fallback raw ->
         Pp.comma ctx ();
         Pp.string ctx raw;

@@ -59,6 +59,51 @@ let to_string = function
   | Orientation `Landscape -> "(orientation:landscape)"
   | Raw s -> s
 
+let pp_feature ctx name value =
+  Pp.char ctx '(';
+  Pp.string ctx name;
+  Pp.char ctx ':';
+  Pp.sp ctx ();
+  Pp.string ctx value;
+  Pp.char ctx ')'
+
+let pp ctx = function
+  | Min_width px -> pp_feature ctx "min-width" (format_px px ^ "px")
+  | Max_width px -> pp_feature ctx "max-width" (format_px px ^ "px")
+  | Not_min_width px ->
+      Pp.string ctx "not all and ";
+      pp_feature ctx "min-width" (format_px px ^ "px")
+  | Min_width_rem rem -> pp_feature ctx "min-width" (format_rem rem ^ "rem")
+  | Not_min_width_rem rem ->
+      Pp.string ctx "not all and ";
+      pp_feature ctx "min-width" (format_rem rem ^ "rem")
+  | Prefers_reduced_motion `No_preference ->
+      pp_feature ctx "prefers-reduced-motion" "no-preference"
+  | Prefers_reduced_motion `Reduce ->
+      pp_feature ctx "prefers-reduced-motion" "reduce"
+  | Prefers_contrast `More -> pp_feature ctx "prefers-contrast" "more"
+  | Prefers_contrast `Less -> pp_feature ctx "prefers-contrast" "less"
+  | Prefers_color_scheme `Dark -> pp_feature ctx "prefers-color-scheme" "dark"
+  | Prefers_color_scheme `Light -> pp_feature ctx "prefers-color-scheme" "light"
+  | Forced_colors `Active -> pp_feature ctx "forced-colors" "active"
+  | Forced_colors `None -> pp_feature ctx "forced-colors" "none"
+  | Inverted_colors `Inverted -> pp_feature ctx "inverted-colors" "inverted"
+  | Inverted_colors `None -> pp_feature ctx "inverted-colors" "none"
+  | Pointer `None -> pp_feature ctx "pointer" "none"
+  | Pointer `Coarse -> pp_feature ctx "pointer" "coarse"
+  | Pointer `Fine -> pp_feature ctx "pointer" "fine"
+  | Any_pointer `None -> pp_feature ctx "any-pointer" "none"
+  | Any_pointer `Coarse -> pp_feature ctx "any-pointer" "coarse"
+  | Any_pointer `Fine -> pp_feature ctx "any-pointer" "fine"
+  | Scripting `None -> pp_feature ctx "scripting" "none"
+  | Scripting `Initial_only -> pp_feature ctx "scripting" "initial-only"
+  | Scripting `Enabled -> pp_feature ctx "scripting" "enabled"
+  | Hover -> pp_feature ctx "hover" "hover"
+  | Print -> Pp.string ctx "print"
+  | Orientation `Portrait -> pp_feature ctx "orientation" "portrait"
+  | Orientation `Landscape -> pp_feature ctx "orientation" "landscape"
+  | Raw s -> Pp.string ctx s
+
 type kind =
   | Kind_hover
   | Kind_responsive of float

@@ -4477,9 +4477,15 @@ type mode =
             their values) *)
 
 val to_string :
-  ?minify:bool -> ?optimize:bool -> ?mode:mode -> ?newline:bool -> t -> string
-(** [to_string ?minify ?optimize ?mode ?newline stylesheet] renders a complete
-    stylesheet to CSS.
+  ?minify:bool ->
+  ?optimize:bool ->
+  ?mode:mode ->
+  ?newline:bool ->
+  ?resolve_var:(string -> string option) ->
+  t ->
+  string
+(** [to_string ?minify ?optimize ?mode ?newline ?resolve_var stylesheet] renders
+    a complete stylesheet to CSS.
     - If [minify] is [true], the output will be compact (no unnecessary
       whitespace).
     - If [optimize] is [true], rule-level optimizations are applied
@@ -4487,11 +4493,21 @@ val to_string :
     - [mode] controls variable layer emission behavior.
     - If [newline] is [true] (default), adds a trailing newline for POSIX
       compliance.
+    - [resolve_var] maps [Var_fallback] variable names to concrete values. When
+      [resolve_var name] returns [Some value], nested [var(--name)] fallbacks
+      are replaced with the value. Used for theme-dependent CSS where theme
+      variables may or may not exist.
 
     @see <https://developer.mozilla.org/en-US/docs/Web/CSS> "MDN: CSS". *)
 
 val pp :
-  ?minify:bool -> ?optimize:bool -> ?mode:mode -> ?newline:bool -> t -> string
+  ?minify:bool ->
+  ?optimize:bool ->
+  ?mode:mode ->
+  ?newline:bool ->
+  ?resolve_var:(string -> string option) ->
+  t ->
+  string
 (** [pp] is {!to_string}. *)
 
 type parse_error = Reader.parse_error
@@ -4595,6 +4611,9 @@ val pp_overflow : overflow Pp.t
 
 val pp_border_style : border_style Pp.t
 (** [pp_border_style] is the pretty printer for border-style values. *)
+
+val pp_outline_style : outline_style Pp.t
+(** [pp_outline_style] is the pretty printer for outline-style values. *)
 
 val pp_scroll_snap_strictness : scroll_snap_strictness Pp.t
 (** [pp_scroll_snap_strictness] is the pretty printer for scroll-snap-strictness
