@@ -56,3 +56,4 @@ type declaration =
       important : bool;
     }
       -> declaration
+  | Theme_guarded : { var_name : string; decl : declaration } -> declaration

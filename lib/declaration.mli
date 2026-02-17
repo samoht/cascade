@@ -67,6 +67,10 @@ val is_important : declaration -> bool
 val property_name : declaration -> string
 (** [property_name decl] returns the property name as a string. *)
 
+val resolve_theme_guards : Pp.ctx -> declaration list -> declaration list
+(** [resolve_theme_guards ctx decls] filters out [Theme_guarded] declarations
+    whose [var_name] is not in the theme, and unwraps those that are. *)
+
 val string_of_value : ?minify:bool -> ?inline:bool -> declaration -> string
 (** [string_of_value ?minify decl] returns the value as a string. *)
 

@@ -71,7 +71,8 @@ let rec pp_rule : rule Pp.t =
   Selector.pp ctx rule.selector;
   Pp.sp ctx ();
   Pp.block_open ctx ();
-  (match (rule.declarations, rule.nested) with
+  let decls = Declaration.resolve_theme_guards ctx rule.declarations in
+  (match (decls, rule.nested) with
   | [], [] -> ()
   | decls, nested ->
       let ctx = { ctx with indent = ctx.indent + 1 } in
@@ -180,9 +181,10 @@ and pp_font_face_descriptor : font_face_descriptor Pp.t =
 and pp_statement : statement Pp.t =
  fun ctx -> function
   | Rule rule -> pp_rule ctx rule
-  | Declarations decls ->
+  | Declarations raw_decls ->
       (* Bare declarations for CSS nesting - no selector/braces, just
          declarations. No extra indent since the containing block handles it *)
+      let decls = Declaration.resolve_theme_guards ctx raw_decls in
       Pp.list
         ~sep:(fun ctx () ->
           Pp.semicolon ctx ();
@@ -307,7 +309,7 @@ and pp_statement : statement Pp.t =
             ctx descriptors;
           Pp.cut ctx ())
         ctx ()
-  | Page (selector, declarations) ->
+  | Page (selector, raw_declarations) ->
       Pp.string ctx "@page";
       (match selector with
       | Some s ->
@@ -315,6 +317,9 @@ and pp_statement : statement Pp.t =
           Pp.string ctx s
       | None -> ());
       Pp.sp ctx ();
+      let declarations =
+        Declaration.resolve_theme_guards ctx raw_declarations
+      in
       Pp.braces
         (fun ctx () ->
           Pp.cut ctx ();

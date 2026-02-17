@@ -593,9 +593,10 @@ let vars_of_property : type a. a property -> a -> any_var list =
   (* Default case for all other properties *)
   | _ -> []
 
-let extract_vars_from_declaration : declaration -> any_var list = function
+let rec extract_vars_from_declaration : declaration -> any_var list = function
   | Custom_declaration _ -> [] (* Custom properties don't have typed vars *)
   | Declaration { property; value; _ } -> vars_of_property property value
+  | Theme_guarded { decl; _ } -> extract_vars_from_declaration decl
 
 (* Stable dedup: preserves first occurrence of each var, removes later
    duplicates *)
@@ -622,8 +623,11 @@ let custom_declarations ?layer (decls : declaration list) : declaration list =
     decls
 
 (* Extract the variable name from a custom declaration *)
-let custom_declaration_name (decl : declaration) : string option =
-  match decl with Custom_declaration { name; _ } -> Some name | _ -> None
+let rec custom_declaration_name (decl : declaration) : string option =
+  match decl with
+  | Custom_declaration { name; _ } -> Some name
+  | Theme_guarded { decl; _ } -> custom_declaration_name decl
+  | _ -> None
 
 (* Pretty-printer for any_syntax *)
 let pp_any_syntax : any_syntax Pp.t = fun ctx (Syntax syn) -> pp_syntax ctx syn

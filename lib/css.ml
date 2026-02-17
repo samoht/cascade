@@ -168,6 +168,11 @@ let as_font_face = function
 let concat = List.concat
 let empty = []
 let v = Stylesheet.v
+let theme_guarded ~var_name decl = Theme_guarded { var_name; decl }
+
+let as_theme_guarded = function
+  | Theme_guarded { var_name; decl } -> Some (var_name, decl)
+  | _ -> None
 
 (* Override to return statements instead of rules *)
 let rule_statements t =
