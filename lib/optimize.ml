@@ -122,7 +122,7 @@ let rec extract_pseudo_element : Selector.t -> Selector.t option = function
           | Some _ as pe -> pe
           | None -> acc)
         None sels
-  | Combined (_, _, right) ->
+  | Combined (_, _, right) | Relative (_, right) ->
       (* Pseudo-element is always at the end of a combined selector *)
       extract_pseudo_element right
   | _ -> None
@@ -146,6 +146,7 @@ let rec contains_vendor_pseudo_element : Selector.t -> bool = function
   | Combined (left, _, right) ->
       contains_vendor_pseudo_element left
       || contains_vendor_pseudo_element right
+  | Relative (_, right) -> contains_vendor_pseudo_element right
   | List sels -> List.exists contains_vendor_pseudo_element sels
   | Not sels -> List.exists contains_vendor_pseudo_element sels
   | Is sels -> List.exists contains_vendor_pseudo_element sels
