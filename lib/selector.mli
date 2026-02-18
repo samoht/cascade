@@ -177,6 +177,20 @@ val has_peer_marker : t -> bool
 (** [has_peer_marker sel] returns [true] if selector contains [:where(.peer)],
     indicating a peer-* modifier like peer-checked, peer-focus, peer-has. *)
 
+val has_is_where_pattern : t -> bool
+(** [has_is_where_pattern sel] returns [true] if the selector uses the
+    [:is(:where(...))] pattern typical of group-* and peer-* variants. *)
+
+val is_newer_pseudo_class : t -> bool
+(** [is_newer_pseudo_class sel] returns [true] if [sel] is a newer pseudo-class
+    with limited browser support ([:user-valid], [:user-invalid]). *)
+
+val has_newer_pseudo_class : t -> bool
+(** [has_newer_pseudo_class sel] returns [true] if the selector directly uses a
+    newer pseudo-class (not nested inside [:is()]/[:where()] which provides
+    forgiving parsing). Newer pseudo-classes should not be combined in selector
+    lists with group/peer variants to preserve browser compatibility. *)
+
 val has_pseudo_element : t -> bool
 (** [has_pseudo_element sel] returns [true] if selector contains a
     pseudo-element like ::before, ::after, ::marker, etc. *)

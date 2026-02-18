@@ -1414,6 +1414,33 @@ let rec has_peer_marker = function
       List.exists has_peer_marker xs
   | _ -> false
 
+(** Check if selector uses the :is(:where(...)) pattern used by group-* and
+    peer-* variants. *)
+let has_is_where_pattern sel = has_group_marker sel || has_peer_marker sel
+
+(** Check if a pseudo-class is a "newer" one with limited browser support. These
+    should not be combined in selector lists with :is(:where()) variants because
+    if the browser doesn't support the pseudo-class, the entire rule would be
+    dropped — whereas the :is(:where()) variant would survive on its own due to
+    forgiving selector parsing. *)
+let is_newer_pseudo_class = function
+  | User_valid | User_invalid -> true
+  | _ -> false
+
+(** Check if a selector directly uses a newer pseudo-class (not nested inside
+    :is()/:where() which provides forgiving parsing). *)
+let rec has_newer_pseudo_class = function
+  | User_valid | User_invalid -> true
+  | Compound xs -> List.exists has_newer_pseudo_class xs
+  | Combined (a, _, b) -> has_newer_pseudo_class a || has_newer_pseudo_class b
+  | List xs -> List.exists has_newer_pseudo_class xs
+  (* Stop recursion at forgiving selectors — :is()/:where() have forgiving
+     parsing, so newer pseudo-classes inside them don't cause the whole rule to
+     fail *)
+  | Is _ | Where _ -> false
+  | Not xs | Has xs -> List.exists has_newer_pseudo_class xs
+  | _ -> false
+
 let modifier_prefix sel =
   match first_class sel with
   | Option.None -> Option.None
