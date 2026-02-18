@@ -22,6 +22,9 @@ type ctx = {
   indent : int;  (** Current indentation level *)
   buf : Buffer.t;  (** Output buffer *)
   inline : bool;  (** Whether to inline variables or not *)
+  in_function : bool;
+      (** Whether inside a CSS function (var fallback, color-mix). Affects
+          keyword casing: [currentColor] becomes [currentcolor]. *)
   theme : StringSet.t option;
       (** Optional set of theme-defined variable names. When [None] (default),
           no theme-based resolution is performed — all vars emit as

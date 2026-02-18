@@ -1008,6 +1008,7 @@ let inline_style_of_declarations ?(minify = false) ?(mode : mode = Inline)
       indent = 0;
       buf;
       inline = mode = Inline;
+      in_function = false;
       theme = None;
       theme_defaults = Pp.no_theme_defaults;
     }

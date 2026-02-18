@@ -1074,7 +1074,9 @@ let pp_shadow_parts ctx ~inset ~inset_var h v blur spread color =
      the bool inset flag. *)
   (match inset_var with
   | Some var_name ->
-      Pp.string ctx ("var(--" ^ var_name ^ ",)");
+      (* Empty2 fallback: var(--name, ) — matches tailwindcss output, likely a
+         bug in tailwindcss *)
+      Pp.string ctx ("var(--" ^ var_name ^ ",  )");
       Pp.space ctx ()
   | None ->
       if inset then (
@@ -3919,6 +3921,7 @@ let rec read_z_index t : z_index =
               | Var_fallback name -> Format.fprintf fmt ", var(--%s)" name
               | Raw_fallback raw -> Format.fprintf fmt ", %s" raw
               | Empty -> Format.fprintf fmt ","
+              | Empty2 -> Format.fprintf fmt ",  "
               | None -> ());
               Format.fprintf fmt ")"
           | Val _ -> Format.fprintf fmt "<val>"
@@ -3976,6 +3979,7 @@ let rec read_order t : order =
               | Var_fallback name -> Format.fprintf fmt ", var(--%s)" name
               | Raw_fallback raw -> Format.fprintf fmt ", %s" raw
               | Empty -> Format.fprintf fmt ","
+              | Empty2 -> Format.fprintf fmt ",  "
               | None -> ());
               Format.fprintf fmt ")"
           | Val _ -> Format.fprintf fmt "<val>"
@@ -4289,6 +4293,7 @@ let read_grid_line t : grid_line =
               | Var_fallback name -> Format.fprintf fmt ", var(--%s)" name
               | Raw_fallback raw -> Format.fprintf fmt ", %s" raw
               | Empty -> Format.fprintf fmt ","
+              | Empty2 -> Format.fprintf fmt ",  "
               | None -> ());
               Format.fprintf fmt ")"
           | Val _ -> Format.fprintf fmt "<val>"
