@@ -226,6 +226,12 @@ let extract_utility_name class_name =
       String.sub class_name (idx + 1) (String.length class_name - idx - 1)
   | None -> class_name
 
+(* Count the modifier depth (number of ':' separators) in a class name. E.g.,
+   "group-focus:flex" has depth 1, "group-focus:group-hover:flex" has depth 2.
+   Only selectors with the same modifier depth should be combined. *)
+let modifier_depth class_name =
+  String.fold_left (fun acc c -> if c = ':' then acc + 1 else acc) 0 class_name
+
 let can_combine_selectors sel1 sel2 =
   (* Check if pseudo-elements match (both None, or both the same) *)
   let pe1 = extract_pseudo_element sel1 in
@@ -238,17 +244,32 @@ let can_combine_selectors sel1 sel2 =
        different utilities like .transform and .transform-cpu stay separate even
        if they have identical CSS output. *)
     match (Selector.first_class sel1, Selector.first_class sel2) with
-    | Some c1, Some c2 -> extract_utility_name c1 = extract_utility_name c2
+    | Some c1, Some c2 ->
+        extract_utility_name c1 = extract_utility_name c2
+        (* Only combine selectors with the same modifier depth. E.g.,
+           group-focus:flex (depth 1) should not combine with
+           group-focus:group-hover:flex (depth 2). *)
+        && modifier_depth c1 = modifier_depth c2
+        &&
+        (* Don't combine selectors when one uses :is(:where()) (group/peer) and
+           the other uses a newer pseudo-class directly. In a selector list, if
+           the newer pseudo-class is unsupported, the entire rule is dropped —
+           but the :is(:where()) variant would have survived on its own due to
+           forgiving selector parsing. *)
+        let sel1_complex = Selector.has_is_where_pattern sel1 in
+        let sel2_complex = Selector.has_is_where_pattern sel2 in
+        if sel1_complex <> sel2_complex then
+          let plain_sel = if sel1_complex then sel2 else sel1 in
+          not (Selector.has_newer_pseudo_class plain_sel)
+        else true
     | _ -> false
 
-(* Sort selectors for merging: group-* first, peer-* second, base last *)
+(* Sort selectors for merging: group-* first, peer-* second, base last. Uses
+   structured selector analysis via has_group_marker/has_peer_marker. *)
 let selector_sort_key sel =
-  match Selector.first_class sel with
-  | Some name ->
-      if String.length name > 6 && String.sub name 0 6 = "group-" then 0
-      else if String.length name > 5 && String.sub name 0 5 = "peer-" then 1
-      else 2
-  | None -> 2
+  if Selector.has_group_marker sel then 0
+  else if Selector.has_peer_marker sel then 1
+  else 2
 
 let compare_selectors_for_merge sel1 sel2 =
   compare (selector_sort_key sel1) (selector_sort_key sel2)
@@ -328,10 +349,10 @@ let combine_identical_rules (rules : Stylesheet.rule list) :
 let statements_ref : (statement list -> statement list) ref =
   ref (fun stmts -> stmts)
 
-(* Group all media blocks with the same condition and selector complexity
-   together, but only for specific media types (Hover, Min_width, Max_width).
-   This allows @media (hover:hover) blocks to be consolidated while keeping
-   simple hover and group-hover separate, matching Tailwind's behavior.
+(* Group all media blocks with the same condition together, for specific media
+   types (Hover, Min_width, Max_width, Prefers_reduced_motion). This allows
+   @media (hover:hover) blocks to be consolidated into a single block matching
+   Tailwind's behavior.
 
    For @media (hover:hover), the consolidated block is placed after all Regular
    utilities but before responsive media queries (@media (min-width:...)). For
@@ -355,48 +376,6 @@ let consolidate_media_blocks (stmts : statement list) : statement list =
         | Media.Min_width _ | Media.Max_width _ -> true
         | _ -> false)
     | _ -> false
-  in
-
-  (* Classify selector complexity for grouping *)
-  let classify_complexity selector =
-    let sel_str = Selector.to_string selector in
-    (* Complex selectors contain group-, peer-, has-, or :is(:where patterns *)
-    let has_pattern str pattern =
-      try
-        let _ = String.index str (String.get pattern 0) in
-        let len = String.length pattern in
-        let rec check_at pos =
-          if pos + len > String.length str then false
-          else if String.sub str pos len = pattern then true
-          else check_at (pos + 1)
-        in
-        check_at 0
-      with Not_found -> false
-    in
-    if
-      has_pattern sel_str "group-"
-      || has_pattern sel_str "peer-"
-      || has_pattern sel_str "has-"
-      || has_pattern sel_str ":is(:where"
-    then "complex"
-    else "simple"
-  in
-
-  (* Get the dominant complexity of a block (most common selector type) *)
-  let block_complexity block =
-    let complexities =
-      List.filter_map
-        (function
-          | Rule { selector; _ } -> Some (classify_complexity selector)
-          | _ -> None)
-        block
-    in
-    if List.length complexities = 0 then "simple"
-    else if
-      List.length (List.filter (( = ) "complex") complexities)
-      > List.length (List.filter (( = ) "simple") complexities)
-    then "complex"
-    else "simple"
   in
 
   (* Check if a block contains nested preference-based media queries *)
@@ -441,9 +420,8 @@ let consolidate_media_blocks (stmts : statement list) : statement list =
         when should_consolidate cond
              && (not (has_nested_preference_media block))
              && not (is_container_block block) ->
-          let complexity = block_complexity block in
-          let key = Media.to_string cond ^ ":" ^ complexity in
-          (* Track the LAST position for this media condition + complexity *)
+          let key = Media.to_string cond in
+          (* Track the LAST position for this media condition *)
           Hashtbl.replace last_pos key i;
           let existing =
             try Hashtbl.find media_map key with Not_found -> (cond, [])
@@ -522,8 +500,7 @@ let consolidate_media_blocks (stmts : statement list) : statement list =
             when should_consolidate cond
                  && (not (has_nested_preference_media block))
                  && not (is_container_block block) ->
-              let complexity = block_complexity block in
-              let key = Media.to_string cond ^ ":" ^ complexity in
+              let key = Media.to_string cond in
               if Hashtbl.mem last_pos key then
                 let is_last_pos = Hashtbl.find last_pos key = i in
                 if is_last_pos && not (Hashtbl.mem emitted_media key) then (
