@@ -208,6 +208,7 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Transition_property_value -> pp pp_transition_property_value
   | Background_image -> pp pp_background_image
   | Z_index -> pp pp_z_index
+  | Filter -> pp pp_filter
 
 let rec string_of_value ?(minify = true) ?(inline = false) decl =
   let ctx =

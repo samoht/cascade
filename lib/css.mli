@@ -4350,6 +4350,7 @@ type _ kind =
   | Transition_property_value : transition_property_value kind
   | Background_image : background_image kind
   | Z_index : z_index kind
+  | Filter : filter kind
 
 type meta
 (** The type for CSS variable metadata. *)
@@ -4465,6 +4466,18 @@ val custom_property : ?layer:string -> string -> string -> declaration
     Example: [custom_property "--primary-color" "#3b82f6"]
 
     See also {!val:var} (type-safe CSS variable API). *)
+
+val custom_declaration :
+  ?important:bool ->
+  ?layer:string ->
+  ?meta:meta ->
+  string ->
+  'a kind ->
+  'a ->
+  declaration
+(** [custom_declaration name kind value] is a typed CSS custom property
+    declaration. Unlike {!val:custom_property}, the value is typed according to
+    [kind] and participates in theme resolution during printing. *)
 
 val custom_declaration_name : declaration -> string option
 (** [custom_declaration_name decl] is the variable name if [decl] is a custom
