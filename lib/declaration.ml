@@ -143,6 +143,7 @@ let rec property_name decl =
       indent = 0;
       buf = Buffer.create 16;
       inline = false;
+      in_function = false;
       theme = None;
       theme_defaults = Pp.no_theme_defaults;
     }
@@ -215,6 +216,7 @@ let rec string_of_value ?(minify = true) ?(inline = false) decl =
       indent = 0;
       buf = Buffer.create 16;
       inline;
+      in_function = false;
       theme = None;
       theme_defaults = Pp.no_theme_defaults;
     }
@@ -377,6 +379,7 @@ let prop_name (type a) (prop_type : a property) =
       indent = 0;
       buf;
       inline = false;
+      in_function = false;
       theme = None;
       theme_defaults = Pp.no_theme_defaults;
     }
@@ -913,6 +916,7 @@ let string_of_declaration ?(minify = false) decl =
       indent = 0;
       buf;
       inline = false;
+      in_function = false;
       theme = None;
       theme_defaults = Pp.no_theme_defaults;
     }

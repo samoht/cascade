@@ -5,6 +5,7 @@ type ctx = {
   indent : int;
   buf : Buffer.t;
   inline : bool;
+  in_function : bool;
   theme : StringSet.t option;
   theme_defaults : string -> string option;
 }
@@ -19,7 +20,17 @@ let in_theme ctx name =
 let to_string ?(minify = false) ?(inline = false) ?theme
     ?(theme_defaults = no_theme_defaults) pp a =
   let buf = Buffer.create 1024 in
-  let ctx = { minify; indent = 0; buf; inline; theme; theme_defaults } in
+  let ctx =
+    {
+      minify;
+      indent = 0;
+      buf;
+      inline;
+      in_function = false;
+      theme;
+      theme_defaults;
+    }
+  in
   pp ctx a;
   Buffer.contents buf
 

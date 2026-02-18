@@ -74,7 +74,7 @@ let pp_var : type a. a Pp.t -> a var Pp.t =
             | Some resolved -> Pp.string ctx resolved
             | Option.None -> emit_var_ref ())
         | Raw_fallback raw -> Pp.string ctx raw
-        | None | Empty -> emit_var_ref ())
+        | None | Empty | Empty2 -> emit_var_ref ())
   else
     (* Normal mode: theme-based resolution for theme vars only. *)
     match v.fallback with
@@ -94,11 +94,16 @@ let pp_var : type a. a Pp.t -> a var Pp.t =
         Pp.string ctx v.name;
         Pp.char ctx ',';
         Pp.char ctx ')'
+    | Empty2 ->
+        (* 2-char empty: var(--name, ) — matches tailwindcss output *)
+        Pp.string ctx "var(--";
+        Pp.string ctx v.name;
+        Pp.string ctx ",  )"
     | Fallback value ->
         Pp.string ctx "var(--";
         Pp.string ctx v.name;
         Pp.comma ctx ();
-        pp_value ctx value;
+        pp_value { ctx with in_function = true } value;
         Pp.char ctx ')'
     | Var_fallback fallback_name -> (
         Pp.string ctx "var(--";
@@ -728,7 +733,8 @@ and pp_color : color Pp.t =
   | Named name -> pp_color_name ctx name
   | System sc -> pp_system_color ctx sc
   | Var v -> pp_var pp_color ctx v
-  | Current -> Pp.string ctx "currentColor"
+  | Current ->
+      Pp.string ctx (if ctx.in_function then "currentcolor" else "currentColor")
   | Transparent -> Pp.string ctx "transparent"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"

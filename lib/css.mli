@@ -423,6 +423,9 @@ type 'a calc =
 
 type 'a fallback =
   | Empty  (** Empty fallback: var(--name,) *)
+  | Empty2
+      (** 2-char empty fallback: var(--name, ) — matches tailwindcss output,
+          likely a bug in tailwindcss *)
   | None  (** No fallback: var(--name) *)
   | Fallback of 'a  (** Value fallback: var(--name, value) *)
   | Var_fallback of string
