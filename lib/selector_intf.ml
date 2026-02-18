@@ -178,5 +178,8 @@ type t =
   | View_transition_new of string (* ::view-transition-new(name) *)
   | Compound of t list
   | Combined of t * combinator * t
+  | Relative of combinator * t
+    (* relative selector: combinator without left operand, e.g. + img inside
+       :has() *)
   | List of t list
   | Nesting (* & - CSS nesting selector *)

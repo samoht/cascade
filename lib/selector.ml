@@ -750,9 +750,30 @@ and read_nth_selector t : nth * t list option =
   in
   (expr, of_clause)
 
+(** Parse a relative selector (used inside :has()). A relative selector can
+    start with a combinator (+, >, ~) without a left operand. *)
+and read_relative_selector t =
+  Reader.ws t;
+  match Reader.peek t with
+  | Some ('+' | '>' | '~') ->
+      let comb = read_combinator t in
+      Reader.ws t;
+      let right = read_complex t in
+      Relative (comb, right)
+  | _ -> read_complex t
+
+and read_relative_selector_list t =
+  Reader.ws t;
+  match Reader.peek t with
+  | Some ')' -> Reader.err t "expected at least one selector"
+  | _ -> (
+      try Reader.list ~sep:Reader.comma ~at_least:1 read_relative_selector t
+      with Reader.Parse_error _ ->
+        Reader.err t "expected at least one selector")
+
 (* Helper readers for functional pseudo-class content *)
 and read_is_content t = Is (read_complex_list t)
-and read_has_content t = Has (read_complex_list t)
+and read_has_content t = Has (read_relative_selector_list t)
 and read_not_content t = Not (read_complex_list t)
 and read_where_content t = Where (read_complex_list t)
 
@@ -1262,6 +1283,9 @@ and pp : t Pp.t =
       pp ctx left;
       pp_combinator ctx comb;
       pp ctx right
+  | Relative (comb, right) ->
+      pp_combinator ctx comb;
+      pp ctx right
   | List selectors -> Pp.list ~sep:Pp.comma pp ctx selectors
   | Nesting -> Pp.char ctx '&'
 
@@ -1273,6 +1297,9 @@ let rec map f = function
       let left' = map f left in
       let right' = map f right in
       f (Combined (left', combinator, right'))
+  | Relative (combinator, right) ->
+      let right' = map f right in
+      f (Relative (combinator, right'))
   | Compound selectors ->
       let selectors' = List.map (map f) selectors in
       f (Compound selectors')
@@ -1333,6 +1360,7 @@ let host ?selectors () = Host selectors
 let rec any p = function
   | Compound xs -> List.exists (any p) xs || p (Compound xs)
   | Combined (a, comb, b) -> any p a || any p b || p (Combined (a, comb, b))
+  | Relative (comb, b) -> any p b || p (Relative (comb, b))
   | List xs -> List.exists (any p) xs || p (List xs)
   | Is xs | Where xs | Not xs | Has xs | Slotted xs | Cue xs | Cue_region xs ->
       List.exists (any p) xs || p (List xs)
@@ -1392,6 +1420,7 @@ let rec has_group_marker = function
         xs
   | Compound xs -> List.exists has_group_marker xs
   | Combined (a, _, b) -> has_group_marker a || has_group_marker b
+  | Relative (_, b) -> has_group_marker b
   | List xs -> List.exists has_group_marker xs
   | Is xs | Not xs | Has xs | Slotted xs | Cue xs | Cue_region xs ->
       List.exists has_group_marker xs
@@ -1409,6 +1438,7 @@ let rec has_peer_marker = function
         xs
   | Compound xs -> List.exists has_peer_marker xs
   | Combined (a, _, b) -> has_peer_marker a || has_peer_marker b
+  | Relative (_, b) -> has_peer_marker b
   | List xs -> List.exists has_peer_marker xs
   | Is xs | Not xs | Has xs | Slotted xs | Cue xs | Cue_region xs ->
       List.exists has_peer_marker xs
@@ -1433,6 +1463,7 @@ let rec has_newer_pseudo_class = function
   | User_valid | User_invalid -> true
   | Compound xs -> List.exists has_newer_pseudo_class xs
   | Combined (a, _, b) -> has_newer_pseudo_class a || has_newer_pseudo_class b
+  | Relative (_, b) -> has_newer_pseudo_class b
   | List xs -> List.exists has_newer_pseudo_class xs
   (* Stop recursion at forgiving selectors — :is()/:where() have forgiving
      parsing, so newer pseudo-classes inside them don't cause the whole rule to

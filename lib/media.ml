@@ -182,6 +182,14 @@ let preference_order = function
       else 20
   | _ -> 20
 
+(* Distinguish responsive sub-types: not-min-width comes before min-width at the
+   same breakpoint value. *)
+let responsive_subkind = function
+  | Not_min_width _ | Not_min_width_rem _ -> 0
+  | Max_width _ -> 1
+  | Min_width _ | Min_width_rem _ -> 2
+  | _ -> 2
+
 let compare a b =
   let ka = kind a and kb = kind b in
   let ga, va = group_order ka and gb, vb = group_order kb in
@@ -191,7 +199,10 @@ let compare a b =
     let value_cmp = Float.compare va vb in
     if value_cmp <> 0 then value_cmp
     else
-      (* Within same group, use preference_order for fine-grained sorting *)
-      Int.compare (preference_order a) (preference_order b)
+      let sub_cmp = Int.compare (responsive_subkind a) (responsive_subkind b) in
+      if sub_cmp <> 0 then sub_cmp
+      else
+        (* Within same group, use preference_order for fine-grained sorting *)
+        Int.compare (preference_order a) (preference_order b)
 
 let equal a b = compare a b = 0
