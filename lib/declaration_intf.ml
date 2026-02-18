@@ -39,6 +39,7 @@ type _ kind =
   | Transition_property_value : transition_property_value kind
   | Background_image : background_image kind
   | Z_index : z_index kind
+  | Filter : filter kind
 
 type declaration =
   | Declaration : {
