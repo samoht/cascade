@@ -189,7 +189,9 @@ let pp_calc : type a. a Pp.t -> a calc Pp.t =
 let pp_unit ?(always = true) ctx f suffix =
   if f = 0. && not always then Pp.char ctx '0'
   else (
-    Pp.float ctx f;
+    (* Always drop leading zeros for CSS unit values (e.g., .25rem not 0.25rem)
+       to match Tailwind's output format *)
+    Pp.string ctx (Pp.float_to_string ~drop_leading_zero:true f);
     Pp.string ctx suffix)
 
 (* Like pp_unit but always drops leading zeros (e.g., 0.5 -> .5) Used for
