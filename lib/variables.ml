@@ -126,10 +126,10 @@ let rec read_value : type a. Reader.t -> a syntax -> a =
  fun reader syntax ->
   match syntax with
   | Universal ->
-      (* For universal syntax "*", accept any CSS value - not just quoted
-         strings *)
+      (* For universal syntax "*", accept any CSS value - read all remaining
+         text (e.g. "0 0 #0000" for shadow initial-values) *)
       Reader.ws reader;
-      Reader.token reader
+      String.trim (Reader.while_ reader (fun _ -> true))
   | String -> Reader.string ~trim:true reader
   | Custom_ident -> Reader.string ~trim:true reader
   | Url -> Reader.string ~trim:true reader
