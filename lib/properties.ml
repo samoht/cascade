@@ -2373,6 +2373,7 @@ let rec pp_transform : transform Pp.t =
   | Inherit -> pp_keyword "inherit" ctx
   | Var v -> pp_var pp_transform ctx v
   | List transforms -> pp_transforms ctx transforms
+  | Arbitrary s -> Pp.string ctx s
 
 and pp_transforms : transform list Pp.t =
  fun ctx transforms ->

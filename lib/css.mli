@@ -3210,6 +3210,7 @@ type transform =
   | Inherit
   | Var of transform var
   | List of transform list
+  | Arbitrary of string  (** Raw CSS value for user arbitrary input. *)
 
 val transform : transform -> declaration
 (** [transform t] is the
