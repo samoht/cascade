@@ -1876,7 +1876,7 @@ let rec pp_aspect_ratio : aspect_ratio Pp.t =
         Pp.float ctx a
       else (
         Pp.float ctx a;
-        Pp.char ctx '/';
+        Pp.op_char ctx '/';
         Pp.float ctx b)
 
 let rec pp_will_change : will_change Pp.t =
