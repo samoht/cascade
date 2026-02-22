@@ -795,6 +795,7 @@ type transform =
   | Inherit
   | Var of transform var
   | List of transform list
+  | Arbitrary of string
 
 type transforms = transform list
 type transform_style = Flat | Preserve_3d | Inherit
