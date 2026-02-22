@@ -322,11 +322,9 @@ let read_raw_value t =
   in
   loop ()
 
-(* Stub reader for translate_value - we primarily generate CSS, not parse it *)
+(* Delegate to the proper reader in Properties *)
 let read_translate_value t : Properties_intf.translate_value =
-  (* For now, just consume the value and return a None placeholder *)
-  ignore (read_raw_value t);
-  None
+  Properties.read_translate_value t
 
 let read_transform_value t = v Transform (read_transforms t)
 let read_webkit_transform_value t = v Webkit_transform (read_transforms t)
