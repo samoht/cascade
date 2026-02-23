@@ -11,12 +11,14 @@ let test_merge_consecutive_identical () =
           selector = Selector.class_ "foo";
           declarations = [ Declaration.padding [ Px 10. ] ];
           nested = [];
+          merge_key = None;
         };
       Stylesheet.Rule
         {
           selector = Selector.class_ "bar";
           declarations = [ Declaration.padding [ Px 10. ] ];
           nested = [];
+          merge_key = None;
         };
     ]
   in
@@ -36,12 +38,14 @@ let test_no_merge_different_declarations () =
           selector = Selector.class_ "foo";
           declarations = [ Declaration.padding [ Px 10. ] ];
           nested = [];
+          merge_key = None;
         };
       Stylesheet.Rule
         {
           selector = Selector.class_ "bar";
           declarations = [ Declaration.padding [ Px 20. ] ];
           nested = [];
+          merge_key = None;
         };
     ]
   in
@@ -63,18 +67,21 @@ let test_no_merge_non_consecutive () =
           selector = Selector.class_ "foo";
           declarations = [ Declaration.margin [ Px 5. ] ];
           nested = [];
+          merge_key = None;
         };
       Stylesheet.Rule
         {
           selector = Selector.class_ "baz";
           declarations = [ Declaration.padding [ Px 10. ] ];
           nested = [];
+          merge_key = None;
         };
       Stylesheet.Rule
         {
           selector = Selector.class_ "bar";
           declarations = [ Declaration.margin [ Px 5. ] ];
           nested = [];
+          merge_key = None;
         };
     ]
   in
@@ -98,12 +105,14 @@ let test_no_merge_vendor_pseudo () =
           selector = Selector.File_selector_button;
           declarations = [ Declaration.margin [ Px 4. ] ];
           nested = [];
+          merge_key = None;
         };
       Stylesheet.Rule
         {
           selector = Selector.class_ "foo";
           declarations = [ Declaration.margin [ Px 4. ] ];
           nested = [];
+          merge_key = None;
         };
     ]
   in
@@ -134,14 +143,17 @@ let test_no_merge_with_nested () =
                   selector = Selector.Hover;
                   declarations = [ Declaration.padding [ Px 20. ] ];
                   nested = [];
+                  merge_key = None;
                 };
             ];
+          merge_key = None;
         };
       Stylesheet.Rule
         {
           selector = Selector.class_ "bar";
           declarations = [ Declaration.padding [ Px 10. ] ];
           nested = [];
+          merge_key = None;
         };
     ]
   in

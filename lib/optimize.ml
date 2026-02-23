@@ -188,6 +188,7 @@ let merge_rules (rules : Stylesheet.rule list) : Stylesheet.rule list =
                     deduplicate_declarations
                       (prev.declarations @ rule.declarations);
                   nested = prev.nested @ rule.nested;
+                  merge_key = prev.merge_key;
                 }
               in
               merge_adjacent acc (Some merged) rest
@@ -277,27 +278,48 @@ let compare_selectors_for_merge sel1 sel2 =
 
 (* Convert group of selectors to a rule *)
 let group_to_rule :
-    (Selector.t * declaration list) list -> Stylesheet.rule option = function
-  | [ (sel, decls) ] ->
-      Some { selector = sel; declarations = decls; nested = [] }
+    (Selector.t * declaration list * string option) list ->
+    Stylesheet.rule option = function
+  | [ (sel, decls, _) ] ->
+      Some
+        { selector = sel; declarations = decls; nested = []; merge_key = None }
   | [] -> None
   | group ->
-      let selector_list = List.map fst (List.rev group) in
+      let selector_list = List.map (fun (s, _, _) -> s) (List.rev group) in
       (* Sort selectors: group-* first, peer-* second, base last *)
       let sorted_selectors =
         List.sort compare_selectors_for_merge selector_list
       in
-      let decls = snd (List.hd group) in
+      let _, decls, _ = List.hd group in
       (* Create a List selector from all the selectors *)
       let combined_selector =
         if List.length sorted_selectors = 1 then List.hd sorted_selectors
         else Selector.list sorted_selectors
       in
-      Some { selector = combined_selector; declarations = decls; nested = [] }
+      Some
+        {
+          selector = combined_selector;
+          declarations = decls;
+          nested = [];
+          merge_key = None;
+        }
 
 (* Flush current group to accumulator *)
 let flush_group acc group =
   match group_to_rule group with Some rule -> rule :: acc | None -> acc
+
+let can_combine_rules (prev : Stylesheet.rule) (rule : Stylesheet.rule) =
+  prev.declarations = rule.declarations
+  &&
+  match (prev.merge_key, rule.merge_key) with
+  | Some k1, Some k2 ->
+      (* When both rules have a merge_key, use it to determine combinability.
+         This allows rules like accent-current and accent-current/50 to be
+         combined when they produce identical declarations. *)
+      k1 = k2
+  | _ ->
+      (* Fall back to selector-based heuristic *)
+      can_combine_selectors prev.selector rule.selector
 
 let combine_identical_rules (rules : Stylesheet.rule list) :
     Stylesheet.rule list =
@@ -318,24 +340,30 @@ let combine_identical_rules (rules : Stylesheet.rule list) :
           | [] ->
               (* Start a new group *)
               combine_consecutive acc
-                [ (rule.selector, rule.declarations) ]
+                [ (rule.selector, rule.declarations, rule.merge_key) ]
                 rest
-          | (prev_sel, prev_decls) :: _ ->
-              if
-                prev_decls = rule.declarations
-                && can_combine_selectors prev_sel rule.selector
-              then
+          | (prev_sel, prev_decls, prev_merge_key) :: _ ->
+              let prev_rule =
+                {
+                  Stylesheet_intf.selector = prev_sel;
+                  declarations = prev_decls;
+                  nested = [];
+                  merge_key = prev_merge_key;
+                }
+              in
+              if can_combine_rules prev_rule rule then
                 (* Same declarations and compatible selectors, add to current
                    group *)
                 combine_consecutive acc
-                  ((rule.selector, rule.declarations) :: current_group)
+                  ((rule.selector, rule.declarations, rule.merge_key)
+                  :: current_group)
                   rest
               else
                 (* Different declarations or incompatible selectors, flush
                    current group and start new one *)
                 let acc' = flush_group acc current_group in
                 combine_consecutive acc'
-                  [ (rule.selector, rule.declarations) ]
+                  [ (rule.selector, rule.declarations, rule.merge_key) ]
                   rest)
   in
   combine_consecutive [] [] rules

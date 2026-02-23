@@ -118,7 +118,7 @@ let single_rule () =
     ]
   in
   let rule : Css.Stylesheet.rule =
-    { selector; declarations = decls; nested = [] }
+    { selector; declarations = decls; nested = []; merge_key = None }
   in
   let optimized = single_rule rule in
 
@@ -137,13 +137,19 @@ let single_rule () =
 let test_merge_rules () =
   let selector = Css.Selector.class_ "test" in
   let rule1 : Css.Stylesheet.rule =
-    { selector; declarations = [ v Color (hex_color "ff0000") ]; nested = [] }
+    {
+      selector;
+      declarations = [ v Color (hex_color "ff0000") ];
+      nested = [];
+      merge_key = None;
+    }
   in
   let rule2 : Css.Stylesheet.rule =
     {
       selector;
       declarations = [ v Background_color (hex_color "0000ff") ];
       nested = [];
+      merge_key = None;
     }
   in
 
@@ -158,13 +164,28 @@ let test_merge_rules () =
 let test_group_selectors () =
   let decls = [ v Color (hex_color "ff0000") ] in
   let rule1 : Css.Stylesheet.rule =
-    { selector = Css.Selector.class_ "a"; declarations = decls; nested = [] }
+    {
+      selector = Css.Selector.class_ "a";
+      declarations = decls;
+      nested = [];
+      merge_key = None;
+    }
   in
   let rule2 : Css.Stylesheet.rule =
-    { selector = Css.Selector.class_ "b"; declarations = decls; nested = [] }
+    {
+      selector = Css.Selector.class_ "b";
+      declarations = decls;
+      nested = [];
+      merge_key = None;
+    }
   in
   let rule3 : Css.Stylesheet.rule =
-    { selector = Css.Selector.class_ "c"; declarations = decls; nested = [] }
+    {
+      selector = Css.Selector.class_ "c";
+      declarations = decls;
+      nested = [];
+      merge_key = None;
+    }
   in
 
   (* Test combine_identical_rules function *)
@@ -201,13 +222,13 @@ let test_group_complex_selectors () =
   let sel3 = Css.Selector.read (Css.Reader.of_string sel3_str) in
 
   let rule1 : Css.Stylesheet.rule =
-    { selector = sel1; declarations = decls; nested = [] }
+    { selector = sel1; declarations = decls; nested = []; merge_key = None }
   in
   let rule2 : Css.Stylesheet.rule =
-    { selector = sel2; declarations = decls; nested = [] }
+    { selector = sel2; declarations = decls; nested = []; merge_key = None }
   in
   let rule3 : Css.Stylesheet.rule =
-    { selector = sel3; declarations = decls; nested = [] }
+    { selector = sel3; declarations = decls; nested = []; merge_key = None }
   in
 
   (* Test combine_identical_rules function *)
@@ -237,6 +258,7 @@ let optimize_all () =
       declarations =
         [ v Color (hex_color "ff0000"); v Color (hex_color "0000ff") ];
       nested = [];
+      merge_key = None;
     }
   in
   let rule2 : Css.Stylesheet.rule =
@@ -244,6 +266,7 @@ let optimize_all () =
       selector = selector1;
       declarations = [ v Background_color (hex_color "ffffff") ];
       nested = [];
+      merge_key = None;
     }
   in
   let rule3 : Css.Stylesheet.rule =
@@ -251,6 +274,7 @@ let optimize_all () =
       selector = selector2;
       declarations = [ v Color (hex_color "0000ff") ];
       nested = [];
+      merge_key = None;
     }
   in
 
@@ -277,6 +301,7 @@ let media_queries () =
       declarations =
         [ v Color (hex_color "ff0000"); v Color (hex_color "0000ff") ];
       nested = [];
+      merge_key = None;
     }
   in
 
@@ -313,6 +338,7 @@ let layers () =
       declarations =
         [ v Color (hex_color "ff0000"); v Color (hex_color "0000ff") ];
       nested = [];
+      merge_key = None;
     }
   in
 
@@ -348,6 +374,7 @@ let test_consecutive_media_merge () =
       selector = selector1;
       declarations = [ v Color (hex_color "ff0000") ];
       nested = [];
+      merge_key = None;
     }
   in
   let rule2 : Css.Stylesheet.rule =
@@ -355,6 +382,7 @@ let test_consecutive_media_merge () =
       selector = selector2;
       declarations = [ v Color (hex_color "0000ff") ];
       nested = [];
+      merge_key = None;
     }
   in
 
@@ -390,6 +418,7 @@ let test_non_consecutive_media_not_merged () =
       selector = selector1;
       declarations = [ v Color (hex_color "ff0000") ];
       nested = [];
+      merge_key = None;
     }
   in
   let rule2 : Css.Stylesheet.rule =
@@ -397,6 +426,7 @@ let test_non_consecutive_media_not_merged () =
       selector = selector2;
       declarations = [ v Color (hex_color "00ff00") ];
       nested = [];
+      merge_key = None;
     }
   in
   let rule3 : Css.Stylesheet.rule =
@@ -404,6 +434,7 @@ let test_non_consecutive_media_not_merged () =
       selector = selector3;
       declarations = [ v Color (hex_color "0000ff") ];
       nested = [];
+      merge_key = None;
     }
   in
 
@@ -440,6 +471,7 @@ let test_different_media_conditions_not_merged () =
       selector = selector1;
       declarations = [ v Color (hex_color "ff0000") ];
       nested = [];
+      merge_key = None;
     }
   in
   let rule2 : Css.Stylesheet.rule =
@@ -447,6 +479,7 @@ let test_different_media_conditions_not_merged () =
       selector = selector2;
       declarations = [ v Color (hex_color "0000ff") ];
       nested = [];
+      merge_key = None;
     }
   in
 
@@ -475,6 +508,7 @@ let test_multiple_consecutive_media_merge () =
       selector = selector1;
       declarations = [ v Color (hex_color "ff0000") ];
       nested = [];
+      merge_key = None;
     }
   in
   let rule2 : Css.Stylesheet.rule =
@@ -482,6 +516,7 @@ let test_multiple_consecutive_media_merge () =
       selector = selector2;
       declarations = [ v Color (hex_color "00ff00") ];
       nested = [];
+      merge_key = None;
     }
   in
   let rule3 : Css.Stylesheet.rule =
@@ -489,6 +524,7 @@ let test_multiple_consecutive_media_merge () =
       selector = selector3;
       declarations = [ v Color (hex_color "0000ff") ];
       nested = [];
+      merge_key = None;
     }
   in
 
@@ -526,6 +562,7 @@ let test_media_merge_in_layers () =
       selector = selector1;
       declarations = [ v Color (hex_color "ff0000") ];
       nested = [];
+      merge_key = None;
     }
   in
   let rule2 : Css.Stylesheet.rule =
@@ -533,6 +570,7 @@ let test_media_merge_in_layers () =
       selector = selector2;
       declarations = [ v Color (hex_color "0000ff") ];
       nested = [];
+      merge_key = None;
     }
   in
 

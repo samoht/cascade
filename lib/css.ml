@@ -40,8 +40,8 @@ let declaration_value ?(minify = false) ?(inline = false) decl =
   Declaration.string_of_value ~minify ~inline decl
 
 (* Override rule function to return statement directly *)
-let rule ~selector ?nested declarations =
-  Rule (Stylesheet.rule ~selector ?nested declarations)
+let rule ~selector ?nested ?merge_key declarations =
+  Rule (Stylesheet.rule ~selector ?nested ?merge_key declarations)
 
 (* Re-export keyframes from Stylesheet *)
 let keyframes = Stylesheet.keyframes

@@ -6,9 +6,14 @@ include module type of Stylesheet_intf
 (** {1 Construction Functions} *)
 
 val rule :
-  selector:Selector.t -> ?nested:statement list -> declaration list -> rule
-(** [rule ~selector ?nested declarations] creates a CSS rule with optional
-    nested rules/at-rules. *)
+  selector:Selector.t ->
+  ?nested:statement list ->
+  ?merge_key:string ->
+  declaration list ->
+  rule
+(** [rule ~selector ?nested ?merge_key declarations] creates a CSS rule with
+    optional nested rules/at-rules and an optional merge key for combining rules
+    with identical declarations. *)
 
 val property :
   syntax:'a Variables.syntax ->
