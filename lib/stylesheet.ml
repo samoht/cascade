@@ -4,8 +4,8 @@ include Stylesheet_intf
 
 (** {1 Construction Functions} *)
 
-let rule ~selector ?(nested = []) declarations : rule =
-  { selector; declarations; nested }
+let rule ~selector ?(nested = []) ?merge_key declarations : rule =
+  { selector; declarations; nested; merge_key }
 
 let property ~syntax ?initial_value ?(inherits = false) name =
   Property { name; syntax; inherits; initial_value }
@@ -873,7 +873,12 @@ and read_rule (r : Reader.t) : rule =
     (* If no declaration was parsed, check why *)
     if Reader.peek r = Some '}' then
       (* We've reached the end of this rule block *)
-      { selector; declarations = List.rev decls; nested = List.rev nested }
+      {
+        selector;
+        declarations = List.rev decls;
+        nested = List.rev nested;
+        merge_key = None;
+      }
     else
       (* Try to parse as a nested rule - CSS nesting is valid *)
       let nr = read_rule r in
@@ -883,7 +888,12 @@ and read_rule (r : Reader.t) : rule =
     match Reader.peek r with
     | Some '}' ->
         Reader.skip r;
-        { selector; declarations = List.rev decls; nested = List.rev nested }
+        {
+          selector;
+          declarations = List.rev decls;
+          nested = List.rev nested;
+          merge_key = None;
+        }
     | Some '@' ->
         let stmt = read_nested_at_within_rule r selector in
         loop decls (stmt :: nested)

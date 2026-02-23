@@ -104,9 +104,15 @@ type statement
 (** The type for CSS statements. *)
 
 val rule :
-  selector:Selector.t -> ?nested:statement list -> declaration list -> statement
-(** [rule ~selector declarations] creates a CSS rule statement with the given
-    selector and declarations. *)
+  selector:Selector.t ->
+  ?nested:statement list ->
+  ?merge_key:string ->
+  declaration list ->
+  statement
+(** [rule ~selector ?nested ?merge_key declarations] creates a CSS rule
+    statement with the given selector and declarations. When [merge_key] is
+    provided, the optimizer can combine this rule with other rules sharing the
+    same key and identical declarations. *)
 
 val statement_selector : statement -> Selector.t option
 (** [statement_selector stmt] returns [Some selector] if the statement is a

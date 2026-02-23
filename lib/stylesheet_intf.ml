@@ -28,9 +28,12 @@ type rule = {
   selector : Selector.t;
   declarations : Declaration.declaration list;
   nested : statement list;
+  merge_key : string option;
 }
-(** A CSS rule with a selector, declarations, and optional nested rules/at-rules
-*)
+(** A CSS rule with a selector, declarations, optional nested rules/at-rules,
+    and an optional merge key for combining rules with identical declarations.
+    When [merge_key] is [Some key], rules with the same key and identical
+    declarations can be combined into a single rule with a selector list. *)
 
 (** {2 Statements and Blocks} *)
 
