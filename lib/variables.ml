@@ -213,6 +213,7 @@ let rec vars_of_calc : type a. a calc -> any_var list = function
   | Num _ -> []
   | Expr (left, _, right) -> vars_of_calc left @ vars_of_calc right
   | Nested inner -> vars_of_calc inner
+  | Parens inner -> vars_of_calc inner
 
 let vars_of_length (value : Values.length) : any_var list =
   match value with Var v -> [ V v ] | Calc calc -> vars_of_calc calc | _ -> []
