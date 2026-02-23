@@ -2075,6 +2075,8 @@ let pp_property : type a. a property Pp.t =
   | Border_left_width -> Pp.string ctx "border-left-width"
   | Border_inline_start_width -> Pp.string ctx "border-inline-start-width"
   | Border_inline_end_width -> Pp.string ctx "border-inline-end-width"
+  | Border_block_start_width -> Pp.string ctx "border-block-start-width"
+  | Border_block_end_width -> Pp.string ctx "border-block-end-width"
   | Border_radius -> Pp.string ctx "border-radius"
   | Border_top_left_radius -> Pp.string ctx "border-top-left-radius"
   | Border_top_right_radius -> Pp.string ctx "border-top-right-radius"
@@ -2087,6 +2089,7 @@ let pp_property : type a. a property Pp.t =
   | Border_inline_start_color -> Pp.string ctx "border-inline-start-color"
   | Border_inline_end_color -> Pp.string ctx "border-inline-end-color"
   | Border_inline_style -> Pp.string ctx "border-inline-style"
+  | Border_block_style -> Pp.string ctx "border-block-style"
   | Border_start_start_radius -> Pp.string ctx "border-start-start-radius"
   | Border_start_end_radius -> Pp.string ctx "border-start-end-radius"
   | Border_end_start_radius -> Pp.string ctx "border-end-start-radius"
@@ -6651,6 +6654,9 @@ let read_any_property t =
   | "border-end-end-radius" -> Prop Border_end_end_radius
   | "border-end-start-radius" -> Prop Border_end_start_radius
   | "border-inline-end-color" -> Prop Border_inline_end_color
+  | "border-block-end-width" -> Prop Border_block_end_width
+  | "border-block-start-width" -> Prop Border_block_start_width
+  | "border-block-style" -> Prop Border_block_style
   | "border-inline-end-width" -> Prop Border_inline_end_width
   | "border-inline-start-color" -> Prop Border_inline_start_color
   | "border-inline-start-width" -> Prop Border_inline_start_width
@@ -7515,6 +7521,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_left_width -> pp pp_border_width
   | Border_inline_start_width -> pp pp_border_width
   | Border_inline_end_width -> pp pp_border_width
+  | Border_block_start_width -> pp pp_border_width
+  | Border_block_end_width -> pp pp_border_width
   | Border_radius -> pp pp_length
   | Border_top_left_radius -> pp pp_length
   | Border_top_right_radius -> pp pp_length
@@ -7527,6 +7535,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_inline_start_color -> pp pp_color
   | Border_inline_end_color -> pp pp_color
   | Border_inline_style -> pp pp_border_style
+  | Border_block_style -> pp pp_border_style
   | Border_start_start_radius -> pp pp_length
   | Border_start_end_radius -> pp pp_length
   | Border_end_start_radius -> pp pp_length

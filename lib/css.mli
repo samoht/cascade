@@ -1190,6 +1190,16 @@ val border_inline_end_width : border_width -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-inline-end-width}
      border-inline-end-width} property. *)
 
+val border_block_start_width : border_width -> declaration
+(** [border_block_start_width len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-block-start-width}
+     border-block-start-width} property. *)
+
+val border_block_end_width : border_width -> declaration
+(** [border_block_end_width len] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-block-end-width}
+     border-block-end-width} property. *)
+
 val border_inline_start_color : color -> declaration
 (** [border_inline_start_color c] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-inline-start-color}
@@ -3094,6 +3104,11 @@ val border_inline_style : border_style -> declaration
 (** [border_inline_style s] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-inline-style}
      border-inline-style} property. *)
+
+val border_block_style : border_style -> declaration
+(** [border_block_style s] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-block-style}
+     border-block-style} property. *)
 
 val border_start_start_radius : length -> declaration
 (** [border_start_start_radius len] is the
