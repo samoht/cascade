@@ -3926,6 +3926,10 @@ let rec read_z_index t : z_index =
               Format.fprintf fmt "calc(";
               pp_expr inner;
               Format.fprintf fmt ")"
+          | Parens inner ->
+              Format.fprintf fmt "(";
+              pp_expr inner;
+              Format.fprintf fmt ")"
           | Expr (left, op, right) ->
               pp_expr left;
               (match op with
@@ -3982,6 +3986,10 @@ let rec read_order t : order =
           | Val _ -> Format.fprintf fmt "<val>"
           | Nested inner ->
               Format.fprintf fmt "calc(";
+              pp_expr inner;
+              Format.fprintf fmt ")"
+          | Parens inner ->
+              Format.fprintf fmt "(";
               pp_expr inner;
               Format.fprintf fmt ")"
           | Expr (left, op, right) ->
@@ -4296,6 +4304,10 @@ let read_grid_line t : grid_line =
           | Val _ -> Format.fprintf fmt "<val>"
           | Nested inner ->
               Format.fprintf fmt "calc(";
+              pp_expr inner;
+              Format.fprintf fmt ")"
+          | Parens inner ->
+              Format.fprintf fmt "(";
               pp_expr inner;
               Format.fprintf fmt ")"
           | Expr (left, op, right) ->

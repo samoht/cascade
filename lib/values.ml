@@ -163,6 +163,11 @@ let pp_calc : type a. a Pp.t -> a calc Pp.t =
               (fun ctx inner ->
                 pp_calc_inner ~parent_prec:0 ~right_of_noncommut:false ctx inner)
               ctx inner
+        | Parens inner ->
+            (* Parenthesized expression - render as (inner) *)
+            Pp.char ctx '(';
+            pp_calc_inner ~parent_prec:0 ~right_of_noncommut:false ctx inner;
+            Pp.char ctx ')'
         | Expr (left, op, right) ->
             let op_prec = precedence op in
             (* Need parens if: - Our precedence is lower than parent (standard)
@@ -209,6 +214,7 @@ let rec eval_numeric_calc : type a. a calc -> float option = function
   | Val _ -> None (* Can't evaluate typed values *)
   | Var _ -> None (* Can't evaluate variables *)
   | Nested inner -> eval_numeric_calc inner
+  | Parens inner -> eval_numeric_calc inner
   | Expr (left, op, right) -> (
       match (eval_numeric_calc left, eval_numeric_calc right) with
       | Some l, Some r -> (
@@ -816,6 +822,9 @@ module Calc = struct
 
   (* Wrap an expression in an explicit nested calc() *)
   let nested inner = Nested inner
+
+  (* Wrap an expression in parentheses only *)
+  let parens inner = Parens inner [@@warning "-32"]
 end
 
 (** Read raw fallback content as a string, handling nested parentheses *)

@@ -420,6 +420,7 @@ type 'a calc =
   | Num of float  (** Unitless number *)
   | Expr of 'a calc * calc_op * 'a calc
   | Nested of 'a calc  (** Explicitly nested calc() *)
+  | Parens of 'a calc  (** Parenthesized expression *)
 
 type 'a fallback =
   | Empty  (** Empty fallback: var(--name,) *)
@@ -553,6 +554,10 @@ module Calc : sig
   val nested : 'a calc -> 'a calc
   (** [nested inner] wraps [inner] in an explicit nested [calc()] call. This
       produces output like [calc(calc(...)*...)] instead of [calc(...*...)]. *)
+
+  val parens : 'a calc -> 'a calc
+  (** [parens inner] wraps [inner] in parentheses only. This produces output
+      like [calc(...*(...))] instead of [calc(...*calc(...))]. *)
 end
 
 type _ property

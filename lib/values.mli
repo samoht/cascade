@@ -157,6 +157,9 @@ module Calc : sig
 
   val nested : 'a calc -> 'a calc
   (** [nested inner] wraps [inner] in an explicit nested [calc()] call. *)
+
+  val parens : 'a calc -> 'a calc
+  (** [parens inner] wraps [inner] in parentheses only. *)
 end
 
 (** {1 Parsing Functions} *)
