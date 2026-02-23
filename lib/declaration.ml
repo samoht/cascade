@@ -573,9 +573,12 @@ let read_value (type a) (prop : a property) t : declaration =
   | Border_inline_start_width ->
       v Border_inline_start_width (read_border_width t)
   | Border_inline_end_width -> v Border_inline_end_width (read_border_width t)
+  | Border_block_start_width -> v Border_block_start_width (read_border_width t)
+  | Border_block_end_width -> v Border_block_end_width (read_border_width t)
   | Border_inline_start_color -> v Border_inline_start_color (read_color t)
   | Border_inline_end_color -> v Border_inline_end_color (read_color t)
   | Border_inline_style -> v Border_inline_style (read_border_style t)
+  | Border_block_style -> v Border_block_style (read_border_style t)
   | Border_start_start_radius -> v Border_start_start_radius (read_length t)
   | Border_start_end_radius -> v Border_start_end_radius (read_length t)
   | Border_end_start_radius -> v Border_end_start_radius (read_length t)
@@ -1233,6 +1236,8 @@ let content value = v Content value
 let border_left_width value = v Border_left_width value
 let border_inline_start_width value = v Border_inline_start_width value
 let border_inline_end_width value = v Border_inline_end_width value
+let border_block_start_width value = v Border_block_start_width value
+let border_block_end_width value = v Border_block_end_width value
 let border_bottom_width value = v Border_bottom_width value
 let border_top_width value = v Border_top_width value
 let border_right_width value = v Border_right_width value
@@ -1243,6 +1248,7 @@ let border_left_color value = v Border_left_color value
 let border_inline_start_color value = v Border_inline_start_color value
 let border_inline_end_color value = v Border_inline_end_color value
 let border_inline_style value = v Border_inline_style value
+let border_block_style value = v Border_block_style value
 let border_start_start_radius value = v Border_start_start_radius value
 let border_start_end_radius value = v Border_start_end_radius value
 let border_end_start_radius value = v Border_end_start_radius value

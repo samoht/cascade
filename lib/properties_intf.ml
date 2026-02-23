@@ -1594,6 +1594,8 @@ type 'a property =
   | Border_left_width : border_width property
   | Border_inline_start_width : border_width property
   | Border_inline_end_width : border_width property
+  | Border_block_start_width : border_width property
+  | Border_block_end_width : border_width property
   | Border_radius : length property
   | Border_top_left_radius : length property
   | Border_top_right_radius : length property
@@ -1606,6 +1608,7 @@ type 'a property =
   | Border_inline_start_color : color property
   | Border_inline_end_color : color property
   | Border_inline_style : border_style property
+  | Border_block_style : border_style property
   | Border_start_start_radius : length property
   | Border_start_end_radius : length property
   | Border_end_start_radius : length property

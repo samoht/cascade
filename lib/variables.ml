@@ -479,6 +479,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Border_left_width, value -> vars_of_border_width value
   | Border_inline_start_width, value -> vars_of_border_width value
   | Border_inline_end_width, value -> vars_of_border_width value
+  | Border_block_start_width, value -> vars_of_border_width value
+  | Border_block_end_width, value -> vars_of_border_width value
   | Outline_width, value -> vars_of_length value
   | Column_gap, value -> vars_of_length value
   | Row_gap, value -> vars_of_length value
@@ -495,6 +497,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Border_inline_start_color, value -> vars_of_color value
   | Border_inline_end_color, value -> vars_of_color value
   | Border_inline_style, value -> vars_of_border_style value
+  | Border_block_style, value -> vars_of_border_style value
   | Border_start_start_radius, value -> vars_of_length value
   | Border_start_end_radius, value -> vars_of_length value
   | Border_end_start_radius, value -> vars_of_length value
