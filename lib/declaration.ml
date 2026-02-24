@@ -899,11 +899,20 @@ let rec pp_declaration : declaration Pp.t =
       pp_property_value ctx (property, value);
       if important then
         Pp.string ctx (if ctx.minify then "!important" else " !important")
-  | Custom_declaration { name; kind; value; important; _ } ->
+  | Custom_declaration { name; kind; value; layer; important; _ } ->
       Pp.string ctx name;
       Pp.string ctx ":";
       Pp.space_if_pretty ctx ();
-      pp_value ctx (kind, value);
+      (* For theme layer declarations, check if theme_defaults provides an
+         override value (e.g., --font-weight-bold: 650 from theme config) *)
+      let bare_name =
+        if String.length name > 2 && String.sub name 0 2 = "--" then
+          String.sub name 2 (String.length name - 2)
+        else name
+      in
+      (match (layer, ctx.theme_defaults bare_name) with
+      | Some "theme", Some override_value -> Pp.string ctx override_value
+      | _ -> pp_value ctx (kind, value));
       if important then
         Pp.string ctx (if ctx.minify then "!important" else " !important")
   | Theme_guarded { var_name; decl } ->
