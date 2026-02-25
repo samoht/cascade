@@ -3098,15 +3098,17 @@ and pp_font_variant_numeric : font_variant_numeric Pp.t =
       } ->
       (* Print all 5 variables, including None values The Empty fallback in vars
          will produce var(--name,) *)
-      let pp_opt_token = function
-        | Some token -> pp_font_variant_numeric_token ctx token
-        | None -> ()
+      let tokens =
+        List.filter_map Fun.id
+          [
+            ordinal;
+            slashed_zero;
+            numeric_figure;
+            numeric_spacing;
+            numeric_fraction;
+          ]
       in
-      pp_opt_token ordinal;
-      pp_opt_token slashed_zero;
-      pp_opt_token numeric_figure;
-      pp_opt_token numeric_spacing;
-      pp_opt_token numeric_fraction
+      Pp.list ~sep:Pp.space pp_font_variant_numeric_token ctx tokens
 
 let pp_text_size_adjust : text_size_adjust Pp.t =
  fun ctx -> function
