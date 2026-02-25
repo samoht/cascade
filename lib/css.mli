@@ -892,6 +892,9 @@ val oklab : float -> float -> float -> color
 val oklaba : float -> float -> float -> float -> color
 (** [oklaba l a b alpha] is an OKLAB color with alpha in [0., 1.]. *)
 
+val oklaba_none_zeros : float -> float -> float -> float -> color
+(** Like [oklaba] but uses [none] for zero a/b components. *)
+
 val lch : float -> float -> float -> color
 (** [lch l c h] is an LCH color. L in percentage (0-100), h in degrees. *)
 

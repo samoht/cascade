@@ -32,6 +32,11 @@ let oklab l a b = Oklab { l = Pct l; a = Some a; b = Some b; alpha = None }
 let oklaba l a b alpha =
   Oklab { l = Pct l; a = Some a; b = Some b; alpha = Num alpha }
 
+let oklaba_none_zeros l a b alpha =
+  let a = if a = 0.0 then Stdlib.Option.None else Stdlib.Option.Some a in
+  let b = if b = 0.0 then Stdlib.Option.None else Stdlib.Option.Some b in
+  Oklab { l = Pct l; a; b; alpha = Num alpha }
+
 let lch l c h = Lch { l = Pct l; c; h = Unitless h; alpha = None }
 let lcha l c h a = Lch { l = Pct l; c; h = Unitless h; alpha = Num a }
 let color_name n = Named n
