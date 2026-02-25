@@ -47,6 +47,9 @@ val oklab : float -> float -> float -> color
 val oklaba : float -> float -> float -> float -> color
 (** [oklaba l a b alpha] creates an OKLAB color with alpha. *)
 
+val oklaba_none_zeros : float -> float -> float -> float -> color
+(** Like [oklaba] but uses [none] for zero a/b components. *)
+
 val lch : float -> float -> float -> color
 (** [lch l c h] creates an LCH color. *)
 
