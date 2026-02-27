@@ -1054,7 +1054,13 @@ type background_image =
       (** Linear gradient using a single variable for all stops including
           position. Outputs: linear-gradient(var(--tw-gradient-stops)) *)
   | Radial_gradient of gradient_stop list
+  | Radial_gradient_var of gradient_stop var
+      (** Radial gradient using a single variable for all stops. Outputs:
+          radial-gradient(var(--tw-gradient-stops)) *)
   | Conic_gradient of gradient_stop list
+  | Conic_gradient_var of gradient_stop var
+      (** Conic gradient using a single variable for all stops. Outputs:
+          conic-gradient(var(--tw-gradient-stops)) *)
   | Var of background_image var
       (** CSS variable reference: var(--my-gradient) *)
   | List of background_image list
@@ -1082,6 +1088,8 @@ type position_value =
   | Bottom_left
   | Bottom_right
   | XY of length * length
+  | Single of length
+      (** Single length/percentage value for background-position *)
   | Inherit
   | Initial
   (* 3-value syntax: edge offset axis (e.g., "right 0.5rem center") *)
