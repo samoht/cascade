@@ -1220,7 +1220,6 @@ let rec pp_background_image : background_image Pp.t =
           | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
         ctx (dir, stops)
   | Linear_gradient_var var_ref ->
-      (* Output: linear-gradient(var(--tw-gradient-stops)) *)
       Pp.call "linear-gradient"
         (fun ctx v -> pp_var pp_gradient_stop ctx v)
         ctx var_ref
@@ -1231,6 +1230,10 @@ let rec pp_background_image : background_image Pp.t =
           | [] -> ()
           | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
         ctx stops
+  | Radial_gradient_var var_ref ->
+      Pp.call "radial-gradient"
+        (fun ctx v -> pp_var pp_gradient_stop ctx v)
+        ctx var_ref
   | Conic_gradient stops ->
       Pp.call "conic-gradient"
         (fun ctx stops ->
@@ -1238,6 +1241,10 @@ let rec pp_background_image : background_image Pp.t =
           | [] -> ()
           | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
         ctx stops
+  | Conic_gradient_var var_ref ->
+      Pp.call "conic-gradient"
+        (fun ctx v -> pp_var pp_gradient_stop ctx v)
+        ctx var_ref
   | Var v -> pp_var pp_background_image ctx v
   | List images -> Pp.list ~sep:Pp.comma pp_background_image ctx images
   | None -> Pp.string ctx "none"
@@ -2556,13 +2563,10 @@ let rec pp_position_value : position_value Pp.t =
   | Bottom_left -> Pp.string ctx "left bottom"
   | Bottom_right -> Pp.string ctx "right bottom"
   | XY (a, b) ->
-      (* When both values are identical, use single-value shorthand (matches
-         Tailwind) *)
-      if a = b then pp_length ctx a
-      else (
-        pp_length ctx a;
-        Pp.space ctx ();
-        pp_length ctx b)
+      pp_length ctx a;
+      Pp.space ctx ();
+      pp_length ctx b
+  | Single l -> pp_length ctx l
   | Edge_offset_axis (edge, offset, axis) ->
       Pp.string ctx edge;
       Pp.space ctx ();
