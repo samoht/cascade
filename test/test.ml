@@ -22,4 +22,5 @@ let () =
         Test_stylesheet.suite;
         Test_variables.suite;
         Test_optimize.suite;
+        Test_optimizer.suite;
       ])

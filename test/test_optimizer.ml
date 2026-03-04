@@ -166,19 +166,15 @@ let test_no_merge_with_nested () =
   Alcotest.(check bool)
     "doesn't merge rules with nested statements" true (has_foo && has_bar)
 
-let () =
+let suite =
   let open Alcotest in
-  run "CSS Optimizer"
+  ( "selector_merging",
     [
-      ( "selector_merging",
-        [
-          test_case "merge consecutive identical" `Quick
-            test_merge_consecutive_identical;
-          test_case "no merge different declarations" `Quick
-            test_no_merge_different_declarations;
-          test_case "no merge non-consecutive" `Quick
-            test_no_merge_non_consecutive;
-          test_case "no merge vendor pseudo" `Quick test_no_merge_vendor_pseudo;
-          test_case "no merge with nested" `Quick test_no_merge_with_nested;
-        ] );
-    ]
+      test_case "merge consecutive identical" `Quick
+        test_merge_consecutive_identical;
+      test_case "no merge different declarations" `Quick
+        test_no_merge_different_declarations;
+      test_case "no merge non-consecutive" `Quick test_no_merge_non_consecutive;
+      test_case "no merge vendor pseudo" `Quick test_no_merge_vendor_pseudo;
+      test_case "no merge with nested" `Quick test_no_merge_with_nested;
+    ] )
