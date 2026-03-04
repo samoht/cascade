@@ -497,7 +497,7 @@ let test_color_mix_printing () =
   let open Css.Values in
   let c1 = rgb 255 0 0 in
   let c2 = rgb 0 0 255 in
-  let mix = color_mix ~in_space:Display_p3 ~percent1:30 ~percent2:70 c1 c2 in
+  let mix = color_mix ~in_space:Display_p3 ~percent1:30. ~percent2:70. c1 c2 in
   let s = Css.Pp.to_string pp_color mix in
   Alcotest.(check string)
     "color-mix printing"
@@ -551,7 +551,8 @@ let test_var_empty_fallback () =
           check string "empty fallback output" "var(--test,)" output
       | None -> fail "Expected Empty fallback, got None"
       | Fallback _ -> fail "Expected Empty fallback, got Fallback"
-      | Var_fallback _ -> fail "Expected Empty fallback, got Var_fallback")
+      | Var_fallback _ -> fail "Expected Empty fallback, got Var_fallback"
+      | _ -> fail "Expected Empty fallback, got other")
   | _ -> fail "Expected Var variant"
 
 (* Tests for newly added check functions *)
