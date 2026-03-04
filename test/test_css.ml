@@ -350,30 +350,28 @@ let test_sort_nested () =
   Alcotest.(check bool) "sort descends into media" true (aaa_pos < zzz_pos)
 
 let suite =
-  [
-    ( "css",
-      [
-        (* Integration tests using public Css interface only *)
-        Alcotest.test_case "CSS generation end-to-end" `Quick generation;
-        Alcotest.test_case "optimization flag works" `Quick optimization_flag;
-        Alcotest.test_case "layers integration" `Quick layers_integration;
-        Alcotest.test_case "media queries integration" `Quick media_integration;
-        Alcotest.test_case "minify flag" `Quick minify_flag;
-        Alcotest.test_case "important declarations" `Quick important_integration;
-        Alcotest.test_case "custom properties" `Quick
-          custom_properties_integration;
-        Alcotest.test_case "CSS roundtrip parsing" `Quick roundtrip;
-        (* AST introspection helpers *)
-        Alcotest.test_case "layer_block extraction" `Quick test_layer_block;
-        Alcotest.test_case "rules_from_statements" `Quick
-          test_rules_from_statements;
-        Alcotest.test_case "custom_prop_names" `Quick test_custom_prop_names;
-        Alcotest.test_case "custom_props_from_rules" `Quick
-          test_custom_props_from_rules;
-        (* Statement transformation helpers *)
-        Alcotest.test_case "map transforms rules" `Quick test_map;
-        Alcotest.test_case "map nested in media" `Quick test_map_nested;
-        Alcotest.test_case "sort orders rules" `Quick test_sort;
-        Alcotest.test_case "sort nested in media" `Quick test_sort_nested;
-      ] );
-  ]
+  ( "css",
+    [
+      (* Integration tests using public Css interface only *)
+      Alcotest.test_case "CSS generation end-to-end" `Quick generation;
+      Alcotest.test_case "optimization flag works" `Quick optimization_flag;
+      Alcotest.test_case "layers integration" `Quick layers_integration;
+      Alcotest.test_case "media queries integration" `Quick media_integration;
+      Alcotest.test_case "minify flag" `Quick minify_flag;
+      Alcotest.test_case "important declarations" `Quick important_integration;
+      Alcotest.test_case "custom properties" `Quick
+        custom_properties_integration;
+      Alcotest.test_case "CSS roundtrip parsing" `Quick roundtrip;
+      (* AST introspection helpers *)
+      Alcotest.test_case "layer_block extraction" `Quick test_layer_block;
+      Alcotest.test_case "rules_from_statements" `Quick
+        test_rules_from_statements;
+      Alcotest.test_case "custom_prop_names" `Quick test_custom_prop_names;
+      Alcotest.test_case "custom_props_from_rules" `Quick
+        test_custom_props_from_rules;
+      (* Statement transformation helpers *)
+      Alcotest.test_case "map transforms rules" `Quick test_map;
+      Alcotest.test_case "map nested in media" `Quick test_map_nested;
+      Alcotest.test_case "sort orders rules" `Quick test_sort;
+      Alcotest.test_case "sort nested in media" `Quick test_sort_nested;
+    ] )

@@ -1468,45 +1468,43 @@ let tests_error_formatting () =
   error_formatting_at_end ()
 
 let suite =
-  [
-    ( "reader",
-      [
-        (* Basic operations *)
-        test_case "basic" `Quick basic;
-        test_case "string" `Quick string_ops;
-        test_case "whitespace" `Quick whitespace;
-        test_case "comments" `Quick comments;
-        (* Parsing helpers *)
-        test_case "take while" `Quick take_while_case;
-        test_case "expect" `Quick expect_case;
-        test_case "expect string" `Quick expect_string_case;
-        test_case "between" `Quick between_case;
-        (* Backtracking *)
-        test_case "backtracking" `Quick tests_backtracking;
-        test_case "option" `Quick option_case;
-        test_case "commit" `Quick commit_case;
-        (* Value parsing *)
-        test_case "numbers" `Quick numbers;
-        test_case "units" `Quick units;
-        test_case "idents" `Quick tests_idents;
-        test_case "string literals" `Quick string_literals;
-        test_case "until string" `Quick until_string;
-        test_case "hex" `Quick hex_case;
-        (* Error cases *)
-        test_case "failures" `Quick failures;
-        (* New helper functions *)
-        test_case "option" `Quick option_parser;
-        test_case "parse_many" `Quick parse_many;
-        test_case "one_of" `Quick tests_one_of;
-        test_case "take" `Quick take_case;
-        (* enum and function-call parsing *)
-        test_case "enums" `Quick tests_enums;
-        test_case "enum_or_calls" `Quick tests_enum_or_calls;
-        (* lists *)
-        test_case "lists" `Quick tests_lists;
-        (* call stack *)
-        test_case "call stack" `Quick tests_call_stack;
-        (* Error formatting *)
-        test_case "error formatting" `Quick tests_error_formatting;
-      ] );
-  ]
+  ( "reader",
+    [
+      (* Basic operations *)
+      test_case "basic" `Quick basic;
+      test_case "string" `Quick string_ops;
+      test_case "whitespace" `Quick whitespace;
+      test_case "comments" `Quick comments;
+      (* Parsing helpers *)
+      test_case "take while" `Quick take_while_case;
+      test_case "expect" `Quick expect_case;
+      test_case "expect string" `Quick expect_string_case;
+      test_case "between" `Quick between_case;
+      (* Backtracking *)
+      test_case "backtracking" `Quick tests_backtracking;
+      test_case "option" `Quick option_case;
+      test_case "commit" `Quick commit_case;
+      (* Value parsing *)
+      test_case "numbers" `Quick numbers;
+      test_case "units" `Quick units;
+      test_case "idents" `Quick tests_idents;
+      test_case "string literals" `Quick string_literals;
+      test_case "until string" `Quick until_string;
+      test_case "hex" `Quick hex_case;
+      (* Error cases *)
+      test_case "failures" `Quick failures;
+      (* New helper functions *)
+      test_case "option" `Quick option_parser;
+      test_case "parse_many" `Quick parse_many;
+      test_case "one_of" `Quick tests_one_of;
+      test_case "take" `Quick take_case;
+      (* enum and function-call parsing *)
+      test_case "enums" `Quick tests_enums;
+      test_case "enum_or_calls" `Quick tests_enum_or_calls;
+      (* lists *)
+      test_case "lists" `Quick tests_lists;
+      (* call stack *)
+      test_case "call stack" `Quick tests_call_stack;
+      (* Error formatting *)
+      test_case "error formatting" `Quick tests_error_formatting;
+    ] )

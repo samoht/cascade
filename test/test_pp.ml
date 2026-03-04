@@ -147,23 +147,21 @@ let combinations () =
   check_pp_minified "nested braces" pp_nested ~expected:"{{inner}}" "inner"
 
 let suite =
-  [
-    ( "pp",
-      [
-        Alcotest.test_case "minified" `Quick minified;
-        Alcotest.test_case "pretty" `Quick pretty;
-        Alcotest.test_case "indent" `Quick indent_case;
-        Alcotest.test_case "block" `Quick block_case;
-        Alcotest.test_case "list" `Quick list_case;
-        Alcotest.test_case "float" `Quick float_case;
-        Alcotest.test_case "float leading zero" `Quick float_leading_zero;
-        Alcotest.test_case "float negative leading zero" `Quick
-          float_negative_leading_zero;
-        Alcotest.test_case "float zero nan inf" `Quick float_zero_and_nan_inf;
-        Alcotest.test_case "float rounding and trim" `Quick
-          float_rounding_and_trim;
-        Alcotest.test_case "cond" `Quick cond_case;
-        Alcotest.test_case "space if pretty" `Quick space_if_pretty_case;
-        Alcotest.test_case "combinations" `Quick combinations;
-      ] );
-  ]
+  ( "pp",
+    [
+      Alcotest.test_case "minified" `Quick minified;
+      Alcotest.test_case "pretty" `Quick pretty;
+      Alcotest.test_case "indent" `Quick indent_case;
+      Alcotest.test_case "block" `Quick block_case;
+      Alcotest.test_case "list" `Quick list_case;
+      Alcotest.test_case "float" `Quick float_case;
+      Alcotest.test_case "float leading zero" `Quick float_leading_zero;
+      Alcotest.test_case "float negative leading zero" `Quick
+        float_negative_leading_zero;
+      Alcotest.test_case "float zero nan inf" `Quick float_zero_and_nan_inf;
+      Alcotest.test_case "float rounding and trim" `Quick
+        float_rounding_and_trim;
+      Alcotest.test_case "cond" `Quick cond_case;
+      Alcotest.test_case "space if pretty" `Quick space_if_pretty_case;
+      Alcotest.test_case "combinations" `Quick combinations;
+    ] )
