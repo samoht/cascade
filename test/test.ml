@@ -23,4 +23,8 @@ let () =
         Test_variables.suite;
         Test_optimize.suite;
         Test_optimizer.suite;
+        Test_font_face.suite;
+        Test_keyframe.suite;
+        Test_media.suite;
+        Test_supports.suite;
       ])
