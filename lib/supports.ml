@@ -10,7 +10,7 @@ type t =
   | Raw of string  (** Escape hatch for unparsed conditions *)
 
 let rec to_string = function
-  | Property (prop, value) -> "(" ^ prop ^ ": " ^ value ^ ")"
+  | Property (prop, value) -> "(" ^ prop ^ ":" ^ value ^ ")"
   | Selector sel -> "selector(" ^ Selector.to_string sel ^ ")"
   | Not cond -> "not " ^ to_string cond
   | And (a, b) -> to_string a ^ " and " ^ to_string b

@@ -3,8 +3,8 @@ open Css.Supports
 let test_to_string () =
   let cases =
     [
-      (Property ("display", "grid"), "(display: grid)");
-      (Not (Property ("display", "grid")), "not (display: grid)");
+      (Property ("display", "grid"), "(display:grid)");
+      (Not (Property ("display", "grid")), "not (display:grid)");
     ]
   in
   List.iter
