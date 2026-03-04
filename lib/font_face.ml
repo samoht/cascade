@@ -8,14 +8,14 @@ type metric_override = Normal | Percent of float
 
 let metric_override_to_string = function
   | Normal -> "normal"
-  | Percent p -> Float.to_string p ^ "%"
+  | Percent p -> Pp.float_to_string p ^ "%"
 
 (** {1 Size Adjust} *)
 
 type size_adjust = float
 (** Size adjustment percentage. *)
 
-let size_adjust_to_string p = Float.to_string p ^ "%"
+let size_adjust_to_string p = Pp.float_to_string p ^ "%"
 
 (** {1 Font Source} *)
 
