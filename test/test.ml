@@ -28,4 +28,5 @@ let () =
       Test_keyframe.suite;
       Test_media.suite;
       Test_supports.suite;
+      Test_container.suite;
     ]
