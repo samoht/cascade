@@ -52,6 +52,20 @@ let color_mix ?in_space ?(hue = Default) ?percent1 ?percent2 color1 color2 =
   in
   Mix { in_space; hue; color1; percent1; color2; percent2 }
 
+let color_mix_var_percent ?in_space ?(hue = Default) ~var_name color1 color2 =
+  let percent1 : percentage option =
+    Some
+      (Var
+         {
+           name = var_name;
+           fallback = None;
+           default = None;
+           layer = None;
+           meta = None;
+         })
+  in
+  Mix { in_space; hue; color1; percent1; color2; percent2 = None }
+
 (** Comparison functions *)
 
 (** Pretty-printing functions *)
@@ -450,25 +464,25 @@ let pp_color_name : color_name Pp.t =
 
 let pp_system_color : system_color Pp.t =
  fun ctx -> function
-  | AccentColor -> Pp.string ctx "AccentColor"
-  | AccentColorText -> Pp.string ctx "AccentColorText"
-  | ActiveText -> Pp.string ctx "ActiveText"
-  | ButtonBorder -> Pp.string ctx "ButtonBorder"
-  | ButtonFace -> Pp.string ctx "ButtonFace"
-  | ButtonText -> Pp.string ctx "buttontext"
+  | Accent_color -> Pp.string ctx "AccentColor"
+  | Accent_color_text -> Pp.string ctx "AccentColorText"
+  | Active_text -> Pp.string ctx "ActiveText"
+  | Button_border -> Pp.string ctx "ButtonBorder"
+  | Button_face -> Pp.string ctx "ButtonFace"
+  | Button_text -> Pp.string ctx "buttontext"
   | Canvas -> Pp.string ctx "Canvas"
-  | CanvasText -> Pp.string ctx "CanvasText"
+  | Canvas_text -> Pp.string ctx "CanvasText"
   | Field -> Pp.string ctx "Field"
-  | FieldText -> Pp.string ctx "FieldText"
-  | GrayText -> Pp.string ctx "GrayText"
+  | Field_text -> Pp.string ctx "FieldText"
+  | Gray_text -> Pp.string ctx "GrayText"
   | Highlight -> Pp.string ctx "Highlight"
-  | HighlightText -> Pp.string ctx "HighlightText"
-  | LinkText -> Pp.string ctx "LinkText"
+  | Highlight_text -> Pp.string ctx "HighlightText"
+  | Link_text -> Pp.string ctx "LinkText"
   | Mark -> Pp.string ctx "Mark"
-  | MarkText -> Pp.string ctx "MarkText"
-  | SelectedItem -> Pp.string ctx "SelectedItem"
-  | SelectedItemText -> Pp.string ctx "SelectedItemText"
-  | VisitedText -> Pp.string ctx "VisitedText"
+  | Mark_text -> Pp.string ctx "MarkText"
+  | Selected_item -> Pp.string ctx "SelectedItem"
+  | Selected_item_text -> Pp.string ctx "SelectedItemText"
+  | Visited_text -> Pp.string ctx "VisitedText"
   | Webkit_focus_ring_color -> Pp.string ctx "-webkit-focus-ring-color"
 
 let rec pp_channel : channel Pp.t =
@@ -1851,25 +1865,25 @@ and read_color_keyword_from_string keyword : color option =
 and read_system_color_from_string keyword : color option =
   (* System colors are case-insensitive per CSS spec *)
   match String.lowercase_ascii keyword with
-  | "accentcolor" -> Some (System AccentColor)
-  | "accentcolortext" -> Some (System AccentColorText)
-  | "activetext" -> Some (System ActiveText)
-  | "buttonborder" -> Some (System ButtonBorder)
-  | "buttonface" -> Some (System ButtonFace)
-  | "buttontext" -> Some (System ButtonText)
+  | "accentcolor" -> Some (System Accent_color)
+  | "accentcolortext" -> Some (System Accent_color_text)
+  | "activetext" -> Some (System Active_text)
+  | "buttonborder" -> Some (System Button_border)
+  | "buttonface" -> Some (System Button_face)
+  | "buttontext" -> Some (System Button_text)
   | "canvas" -> Some (System Canvas)
-  | "canvastext" -> Some (System CanvasText)
+  | "canvastext" -> Some (System Canvas_text)
   | "field" -> Some (System Field)
-  | "fieldtext" -> Some (System FieldText)
-  | "graytext" -> Some (System GrayText)
+  | "fieldtext" -> Some (System Field_text)
+  | "graytext" -> Some (System Gray_text)
   | "highlight" -> Some (System Highlight)
-  | "highlighttext" -> Some (System HighlightText)
-  | "linktext" -> Some (System LinkText)
+  | "highlighttext" -> Some (System Highlight_text)
+  | "linktext" -> Some (System Link_text)
   | "mark" -> Some (System Mark)
-  | "marktext" -> Some (System MarkText)
-  | "selecteditem" -> Some (System SelectedItem)
-  | "selecteditemtext" -> Some (System SelectedItemText)
-  | "visitedtext" -> Some (System VisitedText)
+  | "marktext" -> Some (System Mark_text)
+  | "selecteditem" -> Some (System Selected_item)
+  | "selecteditemtext" -> Some (System Selected_item_text)
+  | "visitedtext" -> Some (System Visited_text)
   (* WebKit-specific system colors *)
   | "-webkit-focus-ring-color" -> Some (System Webkit_focus_ring_color)
   | _ -> None
@@ -1878,25 +1892,25 @@ let read_system_color t : system_color =
   Reader.ws t;
   let keyword = Reader.ident t in
   match String.lowercase_ascii keyword with
-  | "accentcolor" -> AccentColor
-  | "accentcolortext" -> AccentColorText
-  | "activetext" -> ActiveText
-  | "buttonborder" -> ButtonBorder
-  | "buttonface" -> ButtonFace
-  | "buttontext" -> ButtonText
+  | "accentcolor" -> Accent_color
+  | "accentcolortext" -> Accent_color_text
+  | "activetext" -> Active_text
+  | "buttonborder" -> Button_border
+  | "buttonface" -> Button_face
+  | "buttontext" -> Button_text
   | "canvas" -> Canvas
-  | "canvastext" -> CanvasText
+  | "canvastext" -> Canvas_text
   | "field" -> Field
-  | "fieldtext" -> FieldText
-  | "graytext" -> GrayText
+  | "fieldtext" -> Field_text
+  | "graytext" -> Gray_text
   | "highlight" -> Highlight
-  | "highlighttext" -> HighlightText
-  | "linktext" -> LinkText
+  | "highlighttext" -> Highlight_text
+  | "linktext" -> Link_text
   | "mark" -> Mark
-  | "marktext" -> MarkText
-  | "selecteditem" -> SelectedItem
-  | "selecteditemtext" -> SelectedItemText
-  | "visitedtext" -> VisitedText
+  | "marktext" -> Mark_text
+  | "selecteditem" -> Selected_item
+  | "selecteditemtext" -> Selected_item_text
+  | "visitedtext" -> Visited_text
   | "-webkit-focus-ring-color" -> Webkit_focus_ring_color
   | _ -> Reader.err_invalid t ("system color: " ^ keyword)
 

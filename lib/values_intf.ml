@@ -297,25 +297,25 @@ type hue_interpolation = Shorter | Longer | Increasing | Decreasing | Default
 (** CSS system colors - case-insensitive keywords that map to OS/browser colors
 *)
 type system_color =
-  | AccentColor
-  | AccentColorText
-  | ActiveText
-  | ButtonBorder
-  | ButtonFace
-  | ButtonText
+  | Accent_color
+  | Accent_color_text
+  | Active_text
+  | Button_border
+  | Button_face
+  | Button_text
   | Canvas
-  | CanvasText
+  | Canvas_text
   | Field
-  | FieldText
-  | GrayText
+  | Field_text
+  | Gray_text
   | Highlight
-  | HighlightText
-  | LinkText
+  | Highlight_text
+  | Link_text
   | Mark
-  | MarkText
-  | SelectedItem
-  | SelectedItemText
-  | VisitedText
+  | Mark_text
+  | Selected_item
+  | Selected_item_text
+  | Visited_text
   (* WebKit-specific system colors *)
   | Webkit_focus_ring_color
 
