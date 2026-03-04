@@ -623,4 +623,170 @@ let optimize_tests =
     ("media merge in layers", `Quick, test_media_merge_in_layers);
   ]
 
-let suite = ("optimize", optimize_tests)
+(** {1 Selector merging tests (cascade semantics)} *)
+
+let test_merge_consecutive_identical () =
+  let input =
+    [
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "foo";
+          declarations = [ Css.Declaration.padding [ Px 10. ] ];
+          nested = [];
+          merge_key = None;
+        };
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "bar";
+          declarations = [ Css.Declaration.padding [ Px 10. ] ];
+          nested = [];
+          merge_key = None;
+        };
+    ]
+  in
+  let optimized = stylesheet input in
+  let output_str = Css.Stylesheet.to_string ~minify:true optimized in
+  Alcotest.(check bool)
+    "merges consecutive identical rules" true
+    (String.contains output_str ',')
+
+let test_no_merge_different_declarations () =
+  let input =
+    [
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "foo";
+          declarations = [ Css.Declaration.padding [ Px 10. ] ];
+          nested = [];
+          merge_key = None;
+        };
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "bar";
+          declarations = [ Css.Declaration.padding [ Px 20. ] ];
+          nested = [];
+          merge_key = None;
+        };
+    ]
+  in
+  let optimized = stylesheet input in
+  let output_str = Css.Stylesheet.to_string ~minify:true optimized in
+  let module Str = Re.Str in
+  let has_foo = Str.string_match (Str.regexp ".*\\.foo{") output_str 0 in
+  let has_bar = Str.string_match (Str.regexp ".*\\.bar{") output_str 0 in
+  Alcotest.(check bool)
+    "keeps rules with different declarations separate" true (has_foo && has_bar)
+
+let test_no_merge_non_consecutive () =
+  let input =
+    [
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "foo";
+          declarations = [ Css.Declaration.margin [ Px 5. ] ];
+          nested = [];
+          merge_key = None;
+        };
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "baz";
+          declarations = [ Css.Declaration.padding [ Px 10. ] ];
+          nested = [];
+          merge_key = None;
+        };
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "bar";
+          declarations = [ Css.Declaration.margin [ Px 5. ] ];
+          nested = [];
+          merge_key = None;
+        };
+    ]
+  in
+  let optimized = stylesheet input in
+  let output_str = Css.Stylesheet.to_string ~minify:true optimized in
+  let module Str = Re.Str in
+  let foo_separate = Str.string_match (Str.regexp ".*\\.foo{") output_str 0 in
+  let bar_separate = Str.string_match (Str.regexp ".*\\.bar{") output_str 0 in
+  Alcotest.(check bool)
+    "keeps non-consecutive rules separate" true
+    (foo_separate && bar_separate)
+
+let test_no_merge_vendor_pseudo () =
+  let input =
+    [
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.File_selector_button;
+          declarations = [ Css.Declaration.margin [ Px 4. ] ];
+          nested = [];
+          merge_key = None;
+        };
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "foo";
+          declarations = [ Css.Declaration.margin [ Px 4. ] ];
+          nested = [];
+          merge_key = None;
+        };
+    ]
+  in
+  let optimized = stylesheet input in
+  let output_str = Css.Stylesheet.to_string ~minify:true optimized in
+  let module Str = Re.Str in
+  let has_file_selector =
+    Str.string_match (Str.regexp ".*::file-selector-button{") output_str 0
+  in
+  let has_foo = Str.string_match (Str.regexp ".*\\.foo{") output_str 0 in
+  Alcotest.(check bool)
+    "doesn't merge vendor pseudo-elements" true
+    (has_file_selector && has_foo)
+
+let test_no_merge_with_nested () =
+  let input =
+    [
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "foo";
+          declarations = [ Css.Declaration.padding [ Px 10. ] ];
+          nested =
+            [
+              Css.Stylesheet.Rule
+                {
+                  selector = Css.Selector.Hover;
+                  declarations = [ Css.Declaration.padding [ Px 20. ] ];
+                  nested = [];
+                  merge_key = None;
+                };
+            ];
+          merge_key = None;
+        };
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "bar";
+          declarations = [ Css.Declaration.padding [ Px 10. ] ];
+          nested = [];
+          merge_key = None;
+        };
+    ]
+  in
+  let optimized = stylesheet input in
+  let output_str = Css.Stylesheet.to_string ~minify:true optimized in
+  let module Str = Re.Str in
+  let has_foo = Str.string_match (Str.regexp ".*\\.foo{") output_str 0 in
+  let has_bar = Str.string_match (Str.regexp ".*\\.bar{") output_str 0 in
+  Alcotest.(check bool)
+    "doesn't merge rules with nested statements" true (has_foo && has_bar)
+
+let selector_merging_tests =
+  [
+    ("merge consecutive identical", `Quick, test_merge_consecutive_identical);
+    ( "no merge different declarations",
+      `Quick,
+      test_no_merge_different_declarations );
+    ("no merge non-consecutive", `Quick, test_no_merge_non_consecutive);
+    ("no merge vendor pseudo", `Quick, test_no_merge_vendor_pseudo);
+    ("no merge with nested", `Quick, test_no_merge_with_nested);
+  ]
+
+let suite = ("optimize", optimize_tests @ selector_merging_tests)
