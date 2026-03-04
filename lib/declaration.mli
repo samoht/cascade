@@ -349,12 +349,12 @@ val grid_column_end : grid_line -> declaration
      grid-column-end} property. *)
 
 val grid_row : grid_line * grid_line -> declaration
-(** [grid_row (start, stop)] is the
+(** [grid_row v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-row} grid-row}
     property. *)
 
 val grid_column : grid_line * grid_line -> declaration
-(** [grid_column (start, stop)] is the
+(** [grid_column v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-column}
      grid-column} property. *)
 
@@ -598,7 +598,7 @@ val justify_items : Properties.justify_items -> declaration
      justify-items} property. *)
 
 val justify_self : Properties.justify_self -> declaration
-(** [justify_self ?safe ?position ?baseline ()] is the
+(** [justify_self v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-self}
      justify-self} property. *)
 
@@ -1096,43 +1096,43 @@ val mask : string -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/mask} mask} property. *)
 
 val webkit_mask_image : background_image -> declaration
-(** [-webkit-mask-image] property. *)
+(** [webkit_mask_image img] is the [-webkit-mask-image] property. *)
 
 val mask_image : background_image -> declaration
-(** [mask-image] property. *)
+(** [mask_image img] is the [mask-image] property. *)
 
 val webkit_mask_composite : webkit_mask_composite -> declaration
-(** [-webkit-mask-composite] property. *)
+(** [webkit_mask_composite v] is the [-webkit-mask-composite] property. *)
 
 val mask_composite : mask_composite -> declaration
-(** [mask-composite] property. *)
+(** [mask_composite v] is the [mask-composite] property. *)
 
 val webkit_mask_source_type : webkit_mask_source_type -> declaration
-(** [-webkit-mask-source-type] property. *)
+(** [webkit_mask_source_type v] is the [-webkit-mask-source-type] property. *)
 
 val mask_mode : mask_mode -> declaration
-(** [mask-mode] property. *)
+(** [mask_mode v] is the [mask-mode] property. *)
 
 val mask_type : mask_type -> declaration
-(** [mask-type] property. *)
+(** [mask_type v] is the [mask-type] property. *)
 
 val webkit_mask_size : background_size -> declaration
-(** [-webkit-mask-size] property. *)
+(** [webkit_mask_size v] is the [-webkit-mask-size] property. *)
 
 val mask_size : background_size -> declaration
-(** [mask-size] property. *)
+(** [mask_size v] is the [mask-size] property. *)
 
 val webkit_mask_clip : mask_box -> declaration
-(** [-webkit-mask-clip] property. *)
+(** [webkit_mask_clip v] is the [-webkit-mask-clip] property. *)
 
 val mask_clip : mask_box -> declaration
-(** [mask-clip] property. *)
+(** [mask_clip v] is the [mask-clip] property. *)
 
 val webkit_mask_origin : mask_box -> declaration
-(** [-webkit-mask-origin] property. *)
+(** [webkit_mask_origin v] is the [-webkit-mask-origin] property. *)
 
 val mask_origin : mask_box -> declaration
-(** [mask-origin] property. *)
+(** [mask_origin v] is the [mask-origin] property. *)
 
 val content_visibility : content_visibility -> declaration
 (** [content_visibility v] is the
@@ -1303,7 +1303,7 @@ val webkit_font_smoothing : webkit_font_smoothing -> declaration
     property. *)
 
 val cursor : cursor -> declaration
-(** [cu rsor v] is the CSS [cursor] property. *)
+(** [cursor v] is the CSS [cursor] property. *)
 
 val user_select : user_select -> declaration
 (** [user_select v] is the CSS [user-select] property. *)

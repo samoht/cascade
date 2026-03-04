@@ -48,7 +48,8 @@ val oklaba : float -> float -> float -> float -> color
 (** [oklaba l a b alpha] creates an OKLAB color with alpha. *)
 
 val oklaba_none_zeros : float -> float -> float -> float -> color
-(** Like [oklaba] but uses [none] for zero a/b components. *)
+(** [oklaba_none_zeros l a b alpha] is like [oklaba] but uses [none] for zero
+    a/b components. *)
 
 val lch : float -> float -> float -> color
 (** [lch l c h] creates an LCH color. *)
@@ -75,6 +76,16 @@ val color_mix :
   color
 (** [color_mix ?in_space ?percent1 ?percent2 color1 color2] creates a
     color-mix() value. *)
+
+val color_mix_var_percent :
+  ?in_space:color_space ->
+  ?hue:hue_interpolation ->
+  var_name:string ->
+  color ->
+  color ->
+  color
+(** [color_mix_var_percent ?in_space ?hue ~var_name c1 c2] is like [color_mix]
+    but uses a CSS var reference for the first percentage. *)
 
 (** {1 Pretty-printing Functions} *)
 
@@ -142,21 +153,52 @@ val read_var_after_ident : (Reader.t -> 'a) -> Reader.t -> 'a var
 (** {1 Calc Module} *)
 module Calc : sig
   val add : 'a calc -> 'a calc -> 'a calc
+  (** [add a b] is the calc addition [a + b]. *)
+
   val sub : 'a calc -> 'a calc -> 'a calc
+  (** [sub a b] is the calc subtraction [a - b]. *)
+
   val mul : 'a calc -> 'a calc -> 'a calc
+  (** [mul a b] is the calc multiplication [a * b]. *)
+
   val div : 'a calc -> 'a calc -> 'a calc
+  (** [div a b] is the calc division [a / b]. *)
+
   val ( + ) : 'a calc -> 'a calc -> 'a calc
+  (** [a + b] is the calc addition. *)
+
   val ( - ) : 'a calc -> 'a calc -> 'a calc
+  (** [a - b] is the calc subtraction. *)
+
   val ( * ) : 'a calc -> 'a calc -> 'a calc
+  (** [a * b] is the calc multiplication. *)
+
   val ( / ) : 'a calc -> 'a calc -> 'a calc
+  (** [a / b] is the calc division. *)
+
   val length : 'a -> 'a calc
+  (** [length v] wraps a value as a calc leaf. *)
+
   val var : ?default:'a -> ?fallback:'a fallback -> string -> 'a calc
+  (** [var ?default ?fallback name] is a CSS variable reference in calc. *)
+
   val float : float -> length calc
+  (** [float f] is a numeric literal in calc. *)
+
   val infinity : length calc
+  (** [infinity] is the CSS infinity value in calc. *)
+
   val px : float -> length calc
+  (** [px f] is a pixel length in calc. *)
+
   val rem : float -> length calc
+  (** [rem f] is a rem length in calc. *)
+
   val em : float -> length calc
+  (** [em f] is an em length in calc. *)
+
   val pct : float -> length calc
+  (** [pct f] is a percentage value in calc. *)
 
   val nested : 'a calc -> 'a calc
   (** [nested inner] wraps [inner] in an explicit nested [calc()] call. *)

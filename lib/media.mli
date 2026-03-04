@@ -26,8 +26,8 @@ val to_string : t -> string
 (** [to_string cond] renders the condition as a CSS media query string. *)
 
 val pp : t Pp.t
-(** [pp ctx cond] pretty-prints the condition. Uses [Pp.sp] for the space after
-    colons, so it is omitted in minified mode. *)
+(** [pp] pretty-prints the condition. Uses [Pp.sp] for the space after colons,
+    so it is omitted in minified mode. *)
 
 val compare : t -> t -> int
 (** [compare a b] compares conditions for sorting. Order: Hover < Other/Raw <

@@ -46,7 +46,8 @@ type 'a t = ctx -> 'a -> unit
 (** {2 Running Formatters} *)
 
 val no_theme_defaults : string -> string option
-(** Default [theme_defaults] function that always returns [None]. *)
+(** [no_theme_defaults s] is the default [theme_defaults] function that always
+    returns [None]. *)
 
 val in_theme : ctx -> string -> bool
 (** [in_theme ctx name] checks if [name] is in the theme set. When [theme] is
