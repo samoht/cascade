@@ -893,7 +893,8 @@ val oklaba : float -> float -> float -> float -> color
 (** [oklaba l a b alpha] is an OKLAB color with alpha in [0., 1.]. *)
 
 val oklaba_none_zeros : float -> float -> float -> float -> color
-(** Like [oklaba] but uses [none] for zero a/b components. *)
+(** [oklaba_none_zeros l a b alpha] is like [oklaba] but uses [none] for zero
+    a/b components. *)
 
 val lch : float -> float -> float -> color
 (** [lch l c h] is an LCH color. L in percentage (0-100), h in degrees. *)
@@ -928,6 +929,16 @@ val color_mix :
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/color-mix}
      color-mix} value. Defaults: [in_space = Srgb], [percent1 = None],
     [percent2 = None]. *)
+
+val color_mix_var_percent :
+  ?in_space:color_space ->
+  ?hue:hue_interpolation ->
+  var_name:string ->
+  color ->
+  color ->
+  color
+(** [color_mix_var_percent ?in_space ?hue ~var_name c1 c2] is like [color_mix]
+    but uses a CSS var reference for the first percentage. *)
 
 (** CSS angle values *)
 type angle =
@@ -2357,12 +2368,12 @@ val grid_column_end : grid_line -> declaration
      grid-column-end} property. *)
 
 val grid_row : grid_line * grid_line -> declaration
-(** [grid_row (start, end)] is the
+(** [grid_row v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-row} grid-row}
     shorthand property. *)
 
 val grid_column : grid_line * grid_line -> declaration
-(** [grid_column (start, end)] is the
+(** [grid_column v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-column}
      grid-column} shorthand property. *)
 
@@ -3678,43 +3689,43 @@ val mask : string -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/mask} mask} property. *)
 
 val webkit_mask_image : background_image -> declaration
-(** [-webkit-mask-image] property. *)
+(** [webkit_mask_image img] is the [-webkit-mask-image] property. *)
 
 val mask_image : background_image -> declaration
-(** [mask-image] property. *)
+(** [mask_image img] is the [mask-image] property. *)
 
 val webkit_mask_composite : webkit_mask_composite -> declaration
-(** [-webkit-mask-composite] property. *)
+(** [webkit_mask_composite v] is the [-webkit-mask-composite] property. *)
 
 val mask_composite : mask_composite -> declaration
-(** [mask-composite] property. *)
+(** [mask_composite v] is the [mask-composite] property. *)
 
 val webkit_mask_source_type : webkit_mask_source_type -> declaration
-(** [-webkit-mask-source-type] property. *)
+(** [webkit_mask_source_type v] is the [-webkit-mask-source-type] property. *)
 
 val mask_mode : mask_mode -> declaration
-(** [mask-mode] property. *)
+(** [mask_mode v] is the [mask-mode] property. *)
 
 val mask_type : mask_type -> declaration
-(** [mask-type] property. *)
+(** [mask_type v] is the [mask-type] property. *)
 
 val webkit_mask_size : background_size -> declaration
-(** [-webkit-mask-size] property. *)
+(** [webkit_mask_size v] is the [-webkit-mask-size] property. *)
 
 val mask_size : background_size -> declaration
-(** [mask-size] property. *)
+(** [mask_size v] is the [mask-size] property. *)
 
 val webkit_mask_clip : mask_box -> declaration
-(** [-webkit-mask-clip] property. *)
+(** [webkit_mask_clip v] is the [-webkit-mask-clip] property. *)
 
 val mask_clip : mask_box -> declaration
-(** [mask-clip] property. *)
+(** [mask_clip v] is the [mask-clip] property. *)
 
 val webkit_mask_origin : mask_box -> declaration
-(** [-webkit-mask-origin] property. *)
+(** [webkit_mask_origin v] is the [-webkit-mask-origin] property. *)
 
 val mask_origin : mask_box -> declaration
-(** [mask-origin] property. *)
+(** [mask_origin v] is the [mask-origin] property. *)
 
 val mix_blend_mode : blend_mode -> declaration
 (** [mix_blend_mode mode] is the
@@ -4397,9 +4408,7 @@ val var_meta : 'a var -> meta option
 (** [var_meta v] is the optional metadata associated with [v]. *)
 
 val meta : unit -> ('a -> meta) * (meta -> 'a option)
-(** [meta ()] is an injection/projection pair for metadata. The injection
-    function converts a value to metadata, the projection function attempts to
-    extract the value back. *)
+(** [meta ()] returns an [(inject, project)] pair for metadata. *)
 
 val var_ref :
   ?fallback:'a fallback ->

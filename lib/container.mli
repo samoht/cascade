@@ -14,6 +14,9 @@ val to_string : t -> string
 (** [to_string t] converts a container condition to its CSS string
     representation. *)
 
+val pp : Format.formatter -> t -> unit
+(** [pp fmt t] pretty-prints a container condition. *)
+
 val compare : t -> t -> int
 (** [compare t1 t2] compares two container conditions. *)
 

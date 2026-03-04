@@ -18,6 +18,8 @@ let rec to_string = function
   | Named (name, cond) -> name ^ " " ^ to_string cond
   | Raw s -> s
 
+let pp fmt t = Format.pp_print_string fmt (to_string t)
+
 let rec compare t1 t2 =
   match (t1, t2) with
   | Min_width_rem r1, Min_width_rem r2 -> Float.compare r1 r2

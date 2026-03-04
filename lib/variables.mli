@@ -11,8 +11,7 @@ val pp_syntax : 'a syntax Pp.t
 (** [pp_syntax] pretty-prints a syntax descriptor to a CSS syntax string. *)
 
 val pp_value : 'a syntax -> 'a Pp.t
-(** [pp_value syntax value] pretty-prints a value according to its syntax type.
-*)
+(** [pp_value syntax] pretty-prints a value according to its syntax type. *)
 
 val read_syntax : Reader.t -> any_syntax
 (** [read_syntax r] reads a CSS syntax descriptor from input. *)
@@ -23,7 +22,7 @@ val read_value : Reader.t -> 'a syntax -> 'a
 (** {1 Meta handling} *)
 
 val meta : unit -> ('a -> meta) * (meta -> 'a option)
-(** [meta ()] creates injection and projection functions for metadata. *)
+(** [meta ()] returns an [(inject, project)] pair for metadata. *)
 
 (** {1 Variable creation} *)
 
