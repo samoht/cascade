@@ -407,7 +407,7 @@ let test_consecutive_media_merge () =
   | _ -> fail "Expected Media statement"
 
 (** Test non-consecutive media queries are NOT merged *)
-let test_non_consecutive_media_not_merged () =
+let test_nonconsecutive_media_unmerged () =
   (* Media queries separated by other statements should NOT merge *)
   let selector1 = Css.Selector.class_ "a" in
   let selector2 = Css.Selector.class_ "b" in
@@ -462,7 +462,7 @@ let test_non_consecutive_media_not_merged () =
   | _ -> fail "Expected Media, Rule, Media pattern"
 
 (** Test media queries with different conditions are NOT merged *)
-let test_different_media_conditions_not_merged () =
+let test_different_conditions_unmerged () =
   let selector1 = Css.Selector.class_ "a" in
   let selector2 = Css.Selector.class_ "b" in
 
@@ -613,10 +613,10 @@ let optimize_tests =
     ("merge consecutive media queries", `Quick, test_consecutive_media_merge);
     ( "preserve non-consecutive media queries",
       `Quick,
-      test_non_consecutive_media_not_merged );
+      test_nonconsecutive_media_unmerged );
     ( "different media conditions not merged",
       `Quick,
-      test_different_media_conditions_not_merged );
+      test_different_conditions_unmerged );
     ( "multiple consecutive media merge",
       `Quick,
       test_multiple_consecutive_media_merge );

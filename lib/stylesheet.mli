@@ -105,7 +105,7 @@ val to_string :
   ?mode:mode ->
   ?newline:bool ->
   ?header:bool ->
-  ?theme:Pp.StringSet.t ->
+  ?theme:Pp.String_set.t ->
   ?theme_defaults:(string -> string option) ->
   stylesheet ->
   string
@@ -118,7 +118,7 @@ val pp :
   ?mode:mode ->
   ?newline:bool ->
   ?header:bool ->
-  ?theme:Pp.StringSet.t ->
+  ?theme:Pp.String_set.t ->
   ?theme_defaults:(string -> string option) ->
   stylesheet ->
   string

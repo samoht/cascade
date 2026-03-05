@@ -835,7 +835,7 @@ and read_view_transition_group_content t =
   let name = Reader.ident t in
   View_transition_group name
 
-and read_view_transition_image_pair_content t =
+and read_vt_image_pair_content t =
   let name = Reader.ident t in
   View_transition_image_pair name
 
@@ -856,8 +856,7 @@ and read_view_transition_group t =
   Reader.call "view-transition-group" t read_view_transition_group_content
 
 and read_view_transition_image_pair t =
-  Reader.call "view-transition-image-pair" t
-    read_view_transition_image_pair_content
+  Reader.call "view-transition-image-pair" t read_vt_image_pair_content
 
 and read_view_transition_old t =
   Reader.call "view-transition-old" t read_view_transition_old_content

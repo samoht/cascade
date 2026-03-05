@@ -14,7 +14,7 @@
     - CSS-specific token handling
     - No Printf dependency (js_of_ocaml friendly) *)
 
-module StringSet : Set.S with type elt = string
+module String_set : Set.S with type elt = string
 (** Set of strings, used for theme variable names. *)
 
 type ctx = {
@@ -25,7 +25,7 @@ type ctx = {
   in_function : bool;
       (** Whether inside a CSS function (var fallback, color-mix). Affects
           keyword casing: [currentColor] becomes [currentcolor]. *)
-  theme : StringSet.t option;
+  theme : String_set.t option;
       (** Optional set of theme-defined variable names. When [None] (default),
           no theme-based resolution is performed — all vars emit as
           [var(--name)]. When [Some set], bare theme var refs check the set:
@@ -53,19 +53,19 @@ val in_theme : ctx -> string -> bool
 (** [in_theme ctx name] checks if [name] is in the theme set. When [theme] is
     [None] (no theme resolution), returns [true] — all vars are treated as if
     they're in the theme. When [theme] is [Some set], returns
-    [StringSet.mem name set]. *)
+    [String_set.mem name set]. *)
 
 val to_string :
   ?minify:bool ->
   ?inline:bool ->
-  ?theme:StringSet.t ->
+  ?theme:String_set.t ->
   ?theme_defaults:(string -> string option) ->
   'a t ->
   'a ->
   string
 (** [to_string ~minify ~inline ~theme ~theme_defaults formatter value] runs the
     formatter and returns a string. Creates a fresh buffer internally. Defaults:
-    minify=false, inline=false, theme=StringSet.empty, theme_defaults=(fun _ ->
+    minify=false, inline=false, theme=String_set.empty, theme_defaults=(fun _ ->
     None). *)
 
 (** {2 Primitive Formatters} *)
