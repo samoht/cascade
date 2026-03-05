@@ -4,7 +4,9 @@
 (** Supports condition type. Provides type safety and consistent formatting. *)
 type t =
   | Property of string * string  (** [(property: value)] feature test *)
-  | Selector of Selector.t  (** [selector(sel)] selector test *)
+  | Func of string * string
+      (** [name(args)] function test: [selector()], [font-format()],
+          [font-tech()], [var()], etc. *)
   | Not of t  (** [not (condition)] negation *)
   | And of t * t  (** [(cond1) and (cond2)] conjunction *)
   | Or of t * t  (** [(cond1) or (cond2)] disjunction *)
