@@ -179,6 +179,7 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Int -> pp Pp.int
   | Float -> pp Pp.float
   | Percentage -> pp pp_percentage
+  | Length_percentage -> pp (pp_length_percentage ~always:true)
   | Number_percentage -> pp pp_number_percentage
   | String -> pp Pp.string
   | Shadow -> pp pp_shadow

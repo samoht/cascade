@@ -493,6 +493,35 @@ let color_name_hex : color_name -> string * string = function
 
 (** Minify a color value by converting named colors to hex when shorter,
     matching Lightning CSS behavior. *)
+let shorten_hex value =
+  let len = String.length value in
+  (* #RRGGBB → #RGB when R=R, G=G, B=B *)
+  if
+    len = 6
+    && value.[0] = value.[1]
+    && value.[2] = value.[3]
+    && value.[4] = value.[5]
+  then (
+    let s = Bytes.create 3 in
+    Bytes.set s 0 value.[0];
+    Bytes.set s 1 value.[2];
+    Bytes.set s 2 value.[4];
+    Bytes.to_string s (* #RRGGBBAA → #RGBA when R=R, G=G, B=B, A=A *))
+  else if
+    len = 8
+    && value.[0] = value.[1]
+    && value.[2] = value.[3]
+    && value.[4] = value.[5]
+    && value.[6] = value.[7]
+  then (
+    let s = Bytes.create 4 in
+    Bytes.set s 0 value.[0];
+    Bytes.set s 1 value.[2];
+    Bytes.set s 2 value.[4];
+    Bytes.set s 3 value.[6];
+    Bytes.to_string s)
+  else value
+
 let minify_color : color -> color = function
   | Named n ->
       let name, hex = color_name_hex n in
@@ -501,8 +530,9 @@ let minify_color : color -> color = function
         (* # prefix *)
       in
       if hex <> "" && hex_len <= String.length name then
-        Hex { hash = true; value = hex }
+        Hex { hash = true; value = shorten_hex hex }
       else Named n
+  | Hex h -> Hex { h with value = shorten_hex h.value }
   | c -> c
 
 let pp_system_color : system_color Pp.t =

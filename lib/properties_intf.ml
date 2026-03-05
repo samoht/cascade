@@ -1033,9 +1033,8 @@ type gradient_direction =
 type gradient_stop =
   | Var of gradient_stop var
   | Color_percentage of
-      color
-      * percentage option
-      * percentage option (* Color with optional percentage position *)
+      color * length_percentage option * length_percentage option
+    (* Color with optional length-percentage position *)
   | Color_length of
       color
       * length option
