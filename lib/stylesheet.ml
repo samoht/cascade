@@ -90,7 +90,10 @@ let rec pp_rule : rule Pp.t =
       Pp.cut ctx ();
       (match (decls, nested) with
       | [], _ -> pp_nested ctx ()
-      | _, [] -> pp_declarations ctx ()
+      | _, [] ->
+          pp_declarations ctx ();
+          (* Trailing semicolon after last declaration to match Tailwind *)
+          if not ctx.minify then Pp.semicolon ctx ()
       | _, _ ->
           pp_declarations ctx ();
           Pp.semicolon ctx ();
@@ -664,7 +667,7 @@ and read_supports (r : Reader.t) : statement =
   Reader.expect '{' r;
   let content = read_block r in
   Reader.expect '}' r;
-  Supports (Supports.Raw condition, content)
+  Supports (Supports.of_string condition, content)
 
 and read_scope (r : Reader.t) : statement =
   Reader.expect_string "@scope" r;
@@ -818,7 +821,7 @@ and read_nested_at_rule (r : Reader.t) (at_rule : string)
       (* Read with nesting support - could be declarations or rules *)
       let content = read_nesting_block r in
       Reader.expect '}' r;
-      Supports (Supports.Raw condition, content)
+      Supports (Supports.of_string condition, content)
   | "@media" ->
       let condition_str = String.trim (Reader.until r '{') in
       Reader.expect '{' r;
@@ -1114,7 +1117,7 @@ let read_import_rule (r : Reader.t) : import_rule =
       done;
       let s = Reader.until r ')' in
       Reader.expect ')' r;
-      Some (Supports.Raw s))
+      Some (Supports.of_string s))
     else None
   in
   Reader.ws r;
