@@ -462,6 +462,49 @@ let pp_color_name : color_name Pp.t =
   | White_smoke -> Pp.string ctx "whitesmoke"
   | Yellow_green -> Pp.string ctx "yellowgreen"
 
+(** Convert a named color to its hex equivalent (name, hex_value). Returns the
+    shortest representation matching Lightning CSS behavior. *)
+let color_name_hex : color_name -> string * string = function
+  | Red -> ("red", "f00")
+  | Blue -> ("blue", "00f")
+  | Green -> ("green", "008000")
+  | White -> ("white", "fff")
+  | Black -> ("black", "000")
+  | Yellow -> ("yellow", "ff0")
+  | Cyan -> ("cyan", "0ff")
+  | Magenta -> ("magenta", "f0f")
+  | Gray -> ("gray", "808080")
+  | Grey -> ("grey", "808080")
+  | Orange -> ("orange", "ffa500")
+  | Purple -> ("purple", "800080")
+  | Pink -> ("pink", "ffc0cb")
+  | Silver -> ("silver", "c0c0c0")
+  | Maroon -> ("maroon", "800000")
+  | Fuchsia -> ("fuchsia", "f0f")
+  | Lime -> ("lime", "0f0")
+  | Olive -> ("olive", "808000")
+  | Navy -> ("navy", "000080")
+  | Teal -> ("teal", "008080")
+  | Aqua -> ("aqua", "0ff")
+  | _ ->
+      (* Extended named colors are always longer than 4 chars, so hex form
+         (#rrggbb = 7 chars) is never shorter. Keep name. *)
+      ("extended", "")
+
+(** Minify a color value by converting named colors to hex when shorter,
+    matching Lightning CSS behavior. *)
+let minify_color : color -> color = function
+  | Named n ->
+      let name, hex = color_name_hex n in
+      let hex_len =
+        String.length hex + 1
+        (* # prefix *)
+      in
+      if hex <> "" && hex_len <= String.length name then
+        Hex { hash = true; value = hex }
+      else Named n
+  | c -> c
+
 let pp_system_color : system_color Pp.t =
  fun ctx -> function
   | Accent_color -> Pp.string ctx "AccentColor"

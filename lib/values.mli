@@ -60,6 +60,10 @@ val lcha : float -> float -> float -> float -> color
 val color_name : color_name -> color
 (** [color_name n] creates a named color. *)
 
+val minify_color : color -> color
+(** [minify_color c] converts named colors to hex when the hex form is shorter
+    or equal length, matching Lightning CSS behavior. *)
+
 val current_color : color
 (** [current_color] is the CSS currentcolor value. *)
 

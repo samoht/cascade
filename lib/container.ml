@@ -18,7 +18,7 @@ let rec to_string = function
   | Named (name, cond) -> name ^ " " ^ to_string cond
   | Raw s -> s
 
-let pp fmt t = Format.pp_print_string fmt (to_string t)
+let pp = to_string
 
 let rec compare t1 t2 =
   match (t1, t2) with

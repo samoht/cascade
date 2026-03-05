@@ -1007,6 +1007,7 @@ type background_size =
   | Inherit
   | Initial
   | Unset
+  | Var of background_size var
 
 type color_interpolation =
   | In_oklab
