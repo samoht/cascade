@@ -8,13 +8,16 @@ type t =
   | Not of t  (** [not (condition)] negation *)
   | And of t * t  (** [(cond1) and (cond2)] conjunction *)
   | Or of t * t  (** [(cond1) or (cond2)] disjunction *)
-  | Raw of string  (** Escape hatch for unparsed conditions *)
 
 val to_string : t -> string
 (** [to_string cond] renders the condition as a CSS [\@supports] string. *)
 
 val pp : t Pp.t
 (** [pp ctx cond] prints the condition with context-aware spacing. *)
+
+val of_string : string -> t
+(** [of_string s] parses a [\@supports] condition string into a structured type.
+    Fails if the condition cannot be parsed. *)
 
 val compare : t -> t -> int
 (** [compare a b] compares conditions for sorting. *)
