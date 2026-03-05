@@ -1152,19 +1152,18 @@ let rec pp_gradient_direction : gradient_direction Pp.t =
 let rec pp_gradient_stop : gradient_stop Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_gradient_stop ctx v
-  | Color_percentage (c, pct1_opt, pct2_opt) -> (
+  | Color_percentage (c, pos1_opt, pos2_opt) -> (
       pp_color ctx c;
-      match pct1_opt with
+      match pos1_opt with
       | None -> () (* No positions *)
-      | Some pct1 -> (
-          (* Space between color and position, even for variables *)
+      | Some pos1 -> (
           Pp.space ctx ();
-          pp_percentage ctx pct1;
-          match pct2_opt with
+          pp_length_percentage ~always:true ctx pos1;
+          match pos2_opt with
           | None -> ()
-          | Some pct2 ->
+          | Some pos2 ->
               Pp.space ctx ();
-              pp_percentage ctx pct2))
+              pp_length_percentage ~always:true ctx pos2))
   | Color_length (c, len1_opt, len2_opt) -> (
       pp_color ctx c;
       match len1_opt with
@@ -6250,15 +6249,18 @@ let read_gradient_direction t : gradient_direction = Gradient_direction.read t
 
 module Gradient_stop = struct
   (* Parse specific combinations *)
-  let read_color_pct_pct t =
-    let color, pct1, pct2 =
-      Reader.triple ~sep:Reader.ws read_color read_percentage read_percentage t
+  let read_color_lp_lp t =
+    let color, lp1, lp2 =
+      Reader.triple ~sep:Reader.ws read_color read_length_percentage
+        read_length_percentage t
     in
-    Color_percentage (color, Some pct1, Some pct2)
+    Color_percentage (color, Some lp1, Some lp2)
 
-  let read_color_pct t =
-    let color, pct = Reader.pair ~sep:Reader.ws read_color read_percentage t in
-    Color_percentage (color, Some pct, None)
+  let read_color_lp t =
+    let color, lp =
+      Reader.pair ~sep:Reader.ws read_color read_length_percentage t
+    in
+    Color_percentage (color, Some lp, None)
 
   let read_color_len_len t =
     let color, len1, len2 =
@@ -6287,11 +6289,11 @@ let rec read_gradient_stop_single t : gradient_stop =
      their own variables *)
   Reader.one_of
     [
-      (* 3 elements: color + two percentages/lengths (most specific) *)
-      Gradient_stop.read_color_pct_pct;
+      (* 3 elements: color + two length-percentages/lengths (most specific) *)
+      Gradient_stop.read_color_lp_lp;
       Gradient_stop.read_color_len_len;
-      (* 2 elements: color + percentage/length *)
-      Gradient_stop.read_color_pct;
+      (* 2 elements: color + length-percentage/length *)
+      Gradient_stop.read_color_lp;
       Gradient_stop.read_color_len;
       (* 1 element: single values *)
       Gradient_stop.read_color_only;

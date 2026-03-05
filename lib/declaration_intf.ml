@@ -10,6 +10,7 @@ type _ kind =
   | Int : int kind
   | Float : float kind
   | Percentage : percentage kind
+  | Length_percentage : length_percentage kind
   | Number_percentage : number_percentage kind
   | String : string kind
   | Duration : duration kind

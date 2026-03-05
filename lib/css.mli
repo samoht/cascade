@@ -1703,7 +1703,8 @@ type gradient_direction =
 type gradient_stop =
   | Var of gradient_stop var
       (** Single complex variable like var(--complex, fallback) *)
-  | Color_percentage of color * percentage option * percentage option
+  | Color_percentage of
+      color * length_percentage option * length_percentage option
       (** Color with optional percentage positions *)
   | Color_length of color * length option * length option
       (** Color with optional length positions *)
@@ -3652,6 +3653,10 @@ val background_image_var_none : string -> background_image
 val read_background_image : Reader.t -> background_image
 (** [read_background_image t] parses a background-image value from [t]. *)
 
+val minify_color : color -> color
+(** [minify_color c] shortens hex colors (e.g., [#0088cc] to [#08c]) and
+    converts named colors to shorter hex equivalents when possible. *)
+
 val minify_background_image : background_image -> background_image
 (** [minify_background_image img] converts named colors in gradient stops to
     their shortest hex form, matching Lightning CSS behavior. *)
@@ -4378,6 +4383,7 @@ type _ kind =
   | Int : int kind
   | Float : float kind
   | Percentage : percentage kind
+  | Length_percentage : length_percentage kind
   | Number_percentage : number_percentage kind
   | String : string kind
   | Duration : duration kind
