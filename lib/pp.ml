@@ -172,6 +172,9 @@ let float_to_string ?(drop_leading_zero = false) ?(max_decimals = 8) f =
 let float ctx f =
   Buffer.add_string ctx.buf (float_to_string ~drop_leading_zero:ctx.minify f)
 
+let float_compact ctx f =
+  Buffer.add_string ctx.buf (float_to_string ~drop_leading_zero:true f)
+
 let float_n n ctx f =
   let s = float_to_string ~drop_leading_zero:ctx.minify ~max_decimals:n f in
   Buffer.add_string ctx.buf s
