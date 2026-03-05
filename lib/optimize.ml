@@ -684,7 +684,7 @@ and process_statements (acc : statement list) (remaining : statement list) :
       let plain_rules, rest = collect_rules [ r ] rest in
       (* Optimize this batch of consecutive rules, including their nested
          statements *)
-      let optimized = optimize_rules plain_rules in
+      let optimized = rules_aux plain_rules in
       let as_statements = List.map (fun r -> Rule r) optimized in
       process_statements (List.rev_append as_statements acc) rest
   | Media (cond, block) :: rest ->
@@ -721,7 +721,7 @@ and process_statements (acc : statement list) (remaining : statement list) :
       (* Other statement types - keep as-is *)
       process_statements (hd :: acc) rest
 
-and optimize_rules (rules : rule list) : rule list =
+and rules_aux (rules : rule list) : rule list =
   (* First optimize each rule's nested statements recursively *)
   let with_optimized_nested =
     List.map (fun rule -> { rule with nested = statements rule.nested }) rules
@@ -740,7 +740,7 @@ let single_rule (rule : rule) : rule =
     nested = statements rule.nested;
   }
 
-let rules (rules : rule list) : rule list = optimize_rules rules
+let rules (rules : rule list) : rule list = rules_aux rules
 
 (* Initialize the forward reference for merge_consecutive_media *)
 let () = statements_ref := statements

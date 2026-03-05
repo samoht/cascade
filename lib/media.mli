@@ -23,11 +23,11 @@ type t =
   | Raw of string  (** Escape hatch for complex/unknown conditions *)
 
 val to_string : t -> string
-(** [to_string cond] renders the condition as a CSS media query string. *)
+(** [to_string cond] renders the condition as a CSS media query string. Always
+    includes spaces after colons (non-minified form). *)
 
 val pp : t Pp.t
-(** [pp] pretty-prints the condition. Uses [Pp.sp] for the space after colons,
-    so it is omitted in minified mode. *)
+(** [pp] pretty-prints the condition. *)
 
 val compare : t -> t -> int
 (** [compare a b] compares conditions for sorting. Order: Hover < Other/Raw <

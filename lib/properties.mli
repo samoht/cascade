@@ -696,6 +696,10 @@ val read_background_images : Reader.t -> background_image list
 (** [read_background_images t] parses a comma-separated list of
     [background_image]s. *)
 
+val minify_background_image : background_image -> background_image
+(** [minify_background_image img] converts named colors in gradient stops to
+    their shortest hex form, matching Lightning CSS behavior. *)
+
 val read_background_box : Reader.t -> background_box
 (** [read_background_box t] parses a background-clip or background-origin value.
 *)

@@ -2583,7 +2583,7 @@ let rec pp_position_value : position_value Pp.t =
       pp_length ctx offset2
   | Var v -> pp_var pp_position_value ctx v
 
-let pp_background_size : background_size Pp.t =
+let rec pp_background_size : background_size Pp.t =
  fun ctx -> function
   | Auto -> Pp.string ctx "auto"
   | Cover -> Pp.string ctx "cover"
@@ -2601,6 +2601,7 @@ let pp_background_size : background_size Pp.t =
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
+  | Var v -> pp_var pp_background_size ctx v
 
 let pp_background_position : background_position Pp.t =
  fun ctx positions -> Pp.list ~sep:Pp.space pp_position_value ctx positions
@@ -3902,6 +3903,52 @@ let read_visibility t : visibility =
     ]
     t
 
+let calc_to_string (type a) (expr : a calc) : string =
+  let buf = Buffer.create 32 in
+  let add = Buffer.add_string buf in
+  let rec pp_expr : type a. a calc -> unit = function
+    | Num n ->
+        if Float.is_integer n then add (string_of_int (int_of_float n))
+        else add (string_of_float n)
+    | Var v ->
+        add "var(--";
+        add v.name;
+        (match v.fallback with
+        | Fallback _ -> add ", <fallback>"
+        | Var_fallback name ->
+            add ", var(--";
+            add name;
+            add ")"
+        | Raw_fallback raw ->
+            add ", ";
+            add raw
+        | Empty -> add ","
+        | Empty2 -> add ",  "
+        | None -> ());
+        add ")"
+    | Val _ -> add "<val>"
+    | Nested inner ->
+        add "calc(";
+        pp_expr inner;
+        add ")"
+    | Parens inner ->
+        add "(";
+        pp_expr inner;
+        add ")"
+    | Expr (left, op, right) ->
+        pp_expr left;
+        (match op with
+        | Add -> add " + "
+        | Sub -> add " - "
+        | Mul -> add " * "
+        | Div -> add " / ");
+        pp_expr right
+  in
+  add "calc(";
+  pp_expr expr;
+  add ")";
+  Buffer.contents buf
+
 let rec read_z_index t : z_index =
   let read_calc_z t =
     (* read_calc handles the calc(...) wrapper itself *)
@@ -3911,48 +3958,7 @@ let rec read_z_index t : z_index =
     match eval_numeric_calc expr with
     | Some f when Float.is_integer f -> Index (int_of_float f)
     | Some _ -> Reader.err_invalid t "z-index calc must evaluate to integer"
-    | None ->
-        (* calc contains vars - preserve as Calc string *)
-        let buf = Buffer.create 32 in
-        let fmt = Format.formatter_of_buffer buf in
-        let rec pp_expr : type a. a calc -> unit = function
-          | Num n ->
-              if Float.is_integer n then
-                Format.fprintf fmt "%d" (int_of_float n)
-              else Format.fprintf fmt "%g" n
-          | Var v ->
-              Format.fprintf fmt "var(--%s" v.name;
-              (match v.fallback with
-              | Fallback _ -> Format.fprintf fmt ", <fallback>"
-              | Var_fallback name -> Format.fprintf fmt ", var(--%s)" name
-              | Raw_fallback raw -> Format.fprintf fmt ", %s" raw
-              | Empty -> Format.fprintf fmt ","
-              | Empty2 -> Format.fprintf fmt ",  "
-              | None -> ());
-              Format.fprintf fmt ")"
-          | Val _ -> Format.fprintf fmt "<val>"
-          | Nested inner ->
-              Format.fprintf fmt "calc(";
-              pp_expr inner;
-              Format.fprintf fmt ")"
-          | Parens inner ->
-              Format.fprintf fmt "(";
-              pp_expr inner;
-              Format.fprintf fmt ")"
-          | Expr (left, op, right) ->
-              pp_expr left;
-              (match op with
-              | Add -> Format.fprintf fmt " + "
-              | Sub -> Format.fprintf fmt " - "
-              | Mul -> Format.fprintf fmt " * "
-              | Div -> Format.fprintf fmt " / ");
-              pp_expr right
-        in
-        Format.fprintf fmt "calc(";
-        pp_expr expr;
-        Format.fprintf fmt ")";
-        Format.pp_print_flush fmt ();
-        Calc (Buffer.contents buf)
+    | None -> Calc (calc_to_string expr)
   in
   let read_var_z t : z_index = Var (read_var read_z_index t) in
   Reader.enum_or_calls "z-index"
@@ -3973,48 +3979,7 @@ let rec read_order t : order =
     match eval_numeric_calc expr with
     | Some f when Float.is_integer f -> Order_int (int_of_float f)
     | Some _ -> Reader.err_invalid t "order calc must evaluate to integer"
-    | None ->
-        (* calc contains vars - preserve as Order_calc string *)
-        let buf = Buffer.create 32 in
-        let fmt = Format.formatter_of_buffer buf in
-        let rec pp_expr : type a. a calc -> unit = function
-          | Num n ->
-              if Float.is_integer n then
-                Format.fprintf fmt "%d" (int_of_float n)
-              else Format.fprintf fmt "%g" n
-          | Var v ->
-              Format.fprintf fmt "var(--%s" v.name;
-              (match v.fallback with
-              | Fallback _ -> Format.fprintf fmt ", <fallback>"
-              | Var_fallback name -> Format.fprintf fmt ", var(--%s)" name
-              | Raw_fallback raw -> Format.fprintf fmt ", %s" raw
-              | Empty -> Format.fprintf fmt ","
-              | Empty2 -> Format.fprintf fmt ",  "
-              | None -> ());
-              Format.fprintf fmt ")"
-          | Val _ -> Format.fprintf fmt "<val>"
-          | Nested inner ->
-              Format.fprintf fmt "calc(";
-              pp_expr inner;
-              Format.fprintf fmt ")"
-          | Parens inner ->
-              Format.fprintf fmt "(";
-              pp_expr inner;
-              Format.fprintf fmt ")"
-          | Expr (left, op, right) ->
-              pp_expr left;
-              (match op with
-              | Add -> Format.fprintf fmt " + "
-              | Sub -> Format.fprintf fmt " - "
-              | Mul -> Format.fprintf fmt " * "
-              | Div -> Format.fprintf fmt " / ");
-              pp_expr right
-        in
-        Format.fprintf fmt "calc(";
-        pp_expr expr;
-        Format.fprintf fmt ")";
-        Format.pp_print_flush fmt ();
-        Order_calc (Buffer.contents buf)
+    | None -> Order_calc (calc_to_string expr)
   in
   let read_var t : order = Var (read_var read_order t) in
   Reader.enum_or_calls "order" []
@@ -4291,48 +4256,7 @@ let read_grid_line t : grid_line =
     match eval_numeric_calc expr with
     | Some f when Float.is_integer f -> Num (int_of_float f)
     | Some _ -> Reader.err_invalid t "grid-line calc must evaluate to integer"
-    | None ->
-        (* calc contains vars - preserve as Calc string *)
-        let buf = Buffer.create 32 in
-        let fmt = Format.formatter_of_buffer buf in
-        let rec pp_expr : type a. a calc -> unit = function
-          | Num n ->
-              if Float.is_integer n then
-                Format.fprintf fmt "%d" (int_of_float n)
-              else Format.fprintf fmt "%g" n
-          | Var v ->
-              Format.fprintf fmt "var(--%s" v.name;
-              (match v.fallback with
-              | Fallback _ -> Format.fprintf fmt ", <fallback>"
-              | Var_fallback name -> Format.fprintf fmt ", var(--%s)" name
-              | Raw_fallback raw -> Format.fprintf fmt ", %s" raw
-              | Empty -> Format.fprintf fmt ","
-              | Empty2 -> Format.fprintf fmt ",  "
-              | None -> ());
-              Format.fprintf fmt ")"
-          | Val _ -> Format.fprintf fmt "<val>"
-          | Nested inner ->
-              Format.fprintf fmt "calc(";
-              pp_expr inner;
-              Format.fprintf fmt ")"
-          | Parens inner ->
-              Format.fprintf fmt "(";
-              pp_expr inner;
-              Format.fprintf fmt ")"
-          | Expr (left, op, right) ->
-              pp_expr left;
-              (match op with
-              | Add -> Format.fprintf fmt " + "
-              | Sub -> Format.fprintf fmt " - "
-              | Mul -> Format.fprintf fmt " * "
-              | Div -> Format.fprintf fmt " / ");
-              pp_expr right
-        in
-        Format.fprintf fmt "calc(";
-        pp_expr expr;
-        Format.fprintf fmt ")";
-        Format.pp_print_flush fmt ();
-        Calc (Buffer.contents buf)
+    | None -> Calc (calc_to_string expr)
   in
   let read_var t : grid_line = Arbitrary ("var(" ^ read_var_body t ^ ")") in
   Reader.enum_or_calls "grid-line"
@@ -6477,6 +6401,18 @@ let read_background_image t : background_image =
 let read_background_images t : background_image list =
   Reader.list ~sep:Reader.comma read_background_image t
 
+let minify_gradient_stop : gradient_stop -> gradient_stop = function
+  | Color_percentage (c, p1, p2) -> Color_percentage (minify_color c, p1, p2)
+  | s -> s
+
+let minify_background_image : background_image -> background_image = function
+  | Linear_gradient (dir, stops) ->
+      Linear_gradient (dir, List.map minify_gradient_stop stops)
+  | Radial_gradient stops ->
+      Radial_gradient (List.map minify_gradient_stop stops)
+  | Conic_gradient stops -> Conic_gradient (List.map minify_gradient_stop stops)
+  | img -> img
+
 let read_any_property t =
   let prop_name = Reader.ident t in
   (* PROPERTY_MATCHING_START - Used by scripts/check_properties.ml *)
@@ -6960,8 +6896,9 @@ module Position_value = struct
         Reader.err_invalid t "global keywords must be used alone"
     | _ -> ());
     Reader.ws t;
-    let y = Reader.option read_length t |> Option.value ~default:x in
-    XY (x, y)
+    match Reader.option read_length t with
+    | Some y -> XY (x, y)
+    | None -> Single x
 
   let read_keyword t : keyword =
     Reader.enum "position-keyword"

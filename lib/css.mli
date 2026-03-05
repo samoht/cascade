@@ -1671,6 +1671,7 @@ type background_size =
   | Inherit
   | Initial
   | Unset
+  | Var of background_size var
 
 (** CSS background-attachment values. *)
 type background_attachment = Scroll | Fixed | Local | Inherit
@@ -3650,6 +3651,10 @@ val background_image_var_none : string -> background_image
 
 val read_background_image : Reader.t -> background_image
 (** [read_background_image t] parses a background-image value from [t]. *)
+
+val minify_background_image : background_image -> background_image
+(** [minify_background_image img] converts named colors in gradient stops to
+    their shortest hex form, matching Lightning CSS behavior. *)
 
 val backdrop_filter : filter -> declaration
 (** [backdrop_filter values] is the
