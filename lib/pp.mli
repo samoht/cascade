@@ -145,6 +145,11 @@ val float : float t
     - No scientific notation (uses bounded precision)
     - Trims trailing zeros. *)
 
+val float_compact : float t
+(** [float_compact] like [float] but always drops leading zeros regardless of
+    minification mode. Used for oklch chroma values where Tailwind always uses
+    compact format (e.g. [.034] not [0.034]). *)
+
 val float_n : int -> float t
 (** [float_n n] formats float to exactly n decimal places using round-half-up.
     Used for CSS color channels and opacity where precision matters. *)

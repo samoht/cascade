@@ -661,7 +661,7 @@ let pp_oklch_args : (percentage * float * hue * alpha) Pp.t =
  fun ctx (l, c, h, alpha) ->
   pp_percentage ctx l;
   Pp.space ctx ();
-  Pp.float ctx c;
+  Pp.float_compact ctx c;
   Pp.space ctx ();
   pp_hue ctx h;
   pp_opt_alpha ctx alpha
