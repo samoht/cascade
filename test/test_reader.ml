@@ -2,7 +2,7 @@
 
 open Alcotest
 open Css.Reader
-open Test_helpers
+open Css_test_helpers
 
 (* Helper to create parse_error for test expectations *)
 let parse_error_expected ?(got = None) ?(filename = "<string>") message reader =
@@ -46,7 +46,7 @@ let check_looking_at name expected input pattern =
   let result = looking_at r pattern in
   Alcotest.(check bool) name expected result
 
-(* Uses Test_helpers for check_parse_error_fields and check_raises *)
+(* Uses Css_test_helpers for check_parse_error_fields and check_raises *)
 
 (* Test basic operations *)
 let basic () =

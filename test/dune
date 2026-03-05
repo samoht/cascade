@@ -1,3 +1,12 @@
 (test
  (name test)
- (libraries tw css alcotest re astring fmt tw_tools examples))
+ (libraries
+  tw
+  css
+  alcotest
+  re
+  astring
+  fmt
+  tw_tools
+  examples
+  css_test_helpers))
