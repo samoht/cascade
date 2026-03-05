@@ -6189,14 +6189,17 @@ let read_background_repeat t : background_repeat =
     ]
     t
 
-let read_background_size t : background_size =
+let rec read_background_size t : background_size =
   let read_pair t : background_size =
     let a, b = Reader.pair read_length read_length t in
     Size (a, b)
   in
   let read_pct t : background_size = Pct (Reader.pct t) in
   let read_length_value t : background_size = read_background_size_length t in
-  Reader.enum "background-size"
+  let read_var_call t : background_size =
+    Var (read_var read_background_size t)
+  in
+  Reader.enum_or_calls "background-size"
     [
       ("auto", (Auto : background_size));
       ("cover", Cover);
@@ -6205,6 +6208,7 @@ let read_background_size t : background_size =
       ("initial", Initial);
       ("unset", Unset);
     ]
+    ~calls:[ ("var", read_var_call) ]
     ~default:(fun t ->
       Reader.one_of [ read_pair; read_length_value; read_pct ] t)
     t
