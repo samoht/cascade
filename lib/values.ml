@@ -690,18 +690,37 @@ let pp_hwb_args : (hue * percentage * percentage * alpha) Pp.t =
 
 let pp_hwb = Pp.call "hwb" pp_hwb_args
 
-let pp_number_or_none : float option Pp.t =
- fun ctx -> function Some f -> Pp.float ctx f | None -> Pp.string ctx "none"
+(** Print a float always dropping leading zeros (for oklab a/b values) *)
+let pp_float_drop_zero ctx f =
+  Buffer.add_string ctx.Pp.buf (Pp.float_to_string ~drop_leading_zero:true f)
+
+let pp_number_or_none_drop_zero : float option Pp.t =
+ fun ctx -> function
+  | Some f -> pp_float_drop_zero ctx f
+  | None -> Pp.string ctx "none"
+
+let pp_alpha_drop_zero : alpha Pp.t =
+ fun ctx -> function
+  | None -> ()
+  | Num f -> pp_float_drop_zero ctx f
+  | Pct f ->
+      pp_float_drop_zero ctx f;
+      Pp.char ctx '%'
+  | Var v -> pp_var pp_alpha ctx v
 
 let pp_oklab_args : (percentage * float option * float option * alpha) Pp.t =
  fun ctx (l, a, b, alpha) ->
   (* Oklab L must always be output as percentage per CSS spec *)
   pp_percentage ctx l;
   Pp.space ctx ();
-  pp_number_or_none ctx a;
+  pp_number_or_none_drop_zero ctx a;
   Pp.space ctx ();
-  pp_number_or_none ctx b;
-  pp_opt_alpha ctx alpha
+  pp_number_or_none_drop_zero ctx b;
+  match alpha with
+  | None -> ()
+  | a ->
+      Pp.op_char ctx '/';
+      pp_alpha_drop_zero ctx a
 
 let pp_oklab = Pp.call "oklab" pp_oklab_args
 
@@ -833,8 +852,7 @@ and pp_color : color Pp.t =
   | Named name -> pp_color_name ctx name
   | System sc -> pp_system_color ctx sc
   | Var v -> pp_var pp_color ctx v
-  | Current ->
-      Pp.string ctx (if ctx.in_function then "currentcolor" else "currentColor")
+  | Current -> Pp.string ctx "currentcolor"
   | Transparent -> Pp.string ctx "transparent"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
