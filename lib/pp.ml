@@ -1,4 +1,4 @@
-module StringSet = Set.Make (String)
+module String_set = Set.Make (String)
 
 type ctx = {
   minify : bool;
@@ -6,7 +6,7 @@ type ctx = {
   buf : Buffer.t;
   inline : bool;
   in_function : bool;
-  theme : StringSet.t option;
+  theme : String_set.t option;
   theme_defaults : string -> string option;
 }
 
@@ -15,7 +15,7 @@ type 'a t = ctx -> 'a -> unit
 let no_theme_defaults _ = None
 
 let in_theme ctx name =
-  match ctx.theme with None -> true | Some set -> StringSet.mem name set
+  match ctx.theme with None -> true | Some set -> String_set.mem name set
 
 let to_string ?(minify = false) ?(inline = false) ?theme
     ?(theme_defaults = no_theme_defaults) pp a =

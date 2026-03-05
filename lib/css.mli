@@ -3648,6 +3648,9 @@ val background_image_var_none : string -> background_image
 (** [background_image_var_none name] creates a background_image var reference
     with no fallback, i.e., [var(--name)]. Used for mask gradient utilities. *)
 
+val read_background_image : Reader.t -> background_image
+(** [read_background_image t] parses a background-image value from [t]. *)
+
 val backdrop_filter : filter -> declaration
 (** [backdrop_filter values] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/backdrop-filter}
@@ -4557,7 +4560,7 @@ val to_string :
   ?optimize:bool ->
   ?mode:mode ->
   ?newline:bool ->
-  ?theme:Pp.StringSet.t ->
+  ?theme:Pp.String_set.t ->
   ?theme_defaults:(string -> string option) ->
   t ->
   string
@@ -4583,7 +4586,7 @@ val pp :
   ?optimize:bool ->
   ?mode:mode ->
   ?newline:bool ->
-  ?theme:Pp.StringSet.t ->
+  ?theme:Pp.String_set.t ->
   ?theme_defaults:(string -> string option) ->
   t ->
   string
