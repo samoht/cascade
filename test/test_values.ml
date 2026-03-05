@@ -2,7 +2,7 @@
 
 open Alcotest
 open Css.Values
-open Test_helpers
+open Css_test_helpers
 
 (* One-liner check functions for each CSS value type *)
 let check_length = check_value "length" read_length pp_length

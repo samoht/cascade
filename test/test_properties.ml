@@ -1,6 +1,6 @@
 open Alcotest
 open Css.Properties
-open Test_helpers
+open Css_test_helpers
 
 let check_display =
   check_value "display" read_display pp_display ~roundtrip:true

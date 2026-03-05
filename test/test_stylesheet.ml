@@ -2,7 +2,7 @@
 
 module Selector = Css.Selector
 open Css.Stylesheet
-open Test_helpers
+open Css_test_helpers
 
 let check_rule = check_value "rule" read_rule pp_rule
 

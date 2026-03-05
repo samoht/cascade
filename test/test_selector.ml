@@ -1,7 +1,7 @@
 (** Tests for CSS Selector module *)
 
 open Css.Selector
-open Test_helpers
+open Css_test_helpers
 
 let check_nth = check_value "nth" read_nth pp_nth
 let check_combinator = check_value "combinator" read_combinator pp_combinator

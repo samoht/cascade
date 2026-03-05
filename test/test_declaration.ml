@@ -2,7 +2,7 @@
 
 open Alcotest
 open Css.Declaration
-open Test_helpers
+open Css_test_helpers
 
 (* One-liyesner check functions for each type *)
 let check_declaration =
@@ -937,7 +937,7 @@ let unterminated () =
   (* Unterminated rgb() *)
   neg "color: rgb(0, 0, 0;";
   (* Missing semicolon between decls in block *)
-  Test_helpers.neg Css.Declaration.read_block "{ color:red margin:10px; }"
+  Css_test_helpers.neg Css.Declaration.read_block "{ color:red margin:10px; }"
 
 let custom_property_values () =
   (* Balanced braces in custom property values *)

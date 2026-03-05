@@ -2,7 +2,7 @@
 
 open Css.Declaration
 open Css.Values
-open Test_helpers
+open Css_test_helpers
 open Css.Variables
 
 let check_any_syntax = check_value "any_syntax" read_any_syntax pp_any_syntax
