@@ -67,13 +67,13 @@ let color_mix_var_percent ?in_space ?(hue = Default) ~var_name color1 color2 =
   Mix { in_space; hue; color1; percent1; color2; percent2 = None }
 
 let color_mix_var_percent_with_fallback ?in_space ?(hue = Default) ~var_name
-    ~fallback_name color1 color2 =
+    ~fallback color1 color2 =
   let percent1 : percentage option =
     Some
       (Var
          {
            name = var_name;
-           fallback = Var_fallback fallback_name;
+           fallback;
            default = None;
            layer = None;
            meta = None;
@@ -624,6 +624,7 @@ let pp_opt_alpha ctx = function
 let rec pp_percentage ?(always = false) : percentage Pp.t =
  fun ctx -> function
   | Pct f -> Pp.pct ~always ctx f
+  | Num f -> Pp.float_compact ctx f
   | Var v -> pp_var (pp_percentage ~always) ctx v
   | Calc c -> pp_calc (pp_percentage ~always) ctx c
 

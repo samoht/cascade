@@ -95,13 +95,14 @@ val color_mix_var_percent_with_fallback :
   ?in_space:color_space ->
   ?hue:hue_interpolation ->
   var_name:string ->
-  fallback_name:string ->
+  fallback:percentage fallback ->
   color ->
   color ->
   color
-(** Like [color_mix_var_percent] but with a [Var_fallback] on the percentage
-    variable. Used for named opacity modifiers:
-    [var(--opacity-half, var(--half-opacity))]. *)
+(** Like [color_mix_var_percent] but with an explicit fallback on the percentage
+    variable. Used for named opacity modifiers where the fallback is either a
+    concrete number ([Fallback (Num 0.5)]) or a theme variable reference
+    ([Var_fallback "custom-opacity"]). *)
 
 (** {1 Pretty-printing Functions} *)
 
