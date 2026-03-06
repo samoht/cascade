@@ -91,6 +91,18 @@ val color_mix_var_percent :
 (** [color_mix_var_percent ?in_space ?hue ~var_name c1 c2] is like [color_mix]
     but uses a CSS var reference for the first percentage. *)
 
+val color_mix_var_percent_with_fallback :
+  ?in_space:color_space ->
+  ?hue:hue_interpolation ->
+  var_name:string ->
+  fallback_name:string ->
+  color ->
+  color ->
+  color
+(** Like [color_mix_var_percent] but with a [Var_fallback] on the percentage
+    variable. Used for named opacity modifiers:
+    [var(--opacity-half, var(--half-opacity))]. *)
+
 (** {1 Pretty-printing Functions} *)
 
 val pp_length : ?always:bool -> length Pp.t
