@@ -1157,12 +1157,15 @@ let rec pp_gradient_stop : gradient_stop Pp.t =
       match pos1_opt with
       | None -> () (* No positions *)
       | Some pos1 -> (
-          Pp.space ctx ();
+          (* In minified mode, omit space between color and position to match
+             tailwindcss output exactly (gradient stops live inside var()
+             fallbacks where spacing is cosmetic). *)
+          Pp.space_if_pretty ctx ();
           pp_length_percentage ~always:true ctx pos1;
           match pos2_opt with
           | None -> ()
           | Some pos2 ->
-              Pp.space ctx ();
+              Pp.space_if_pretty ctx ();
               pp_length_percentage ~always:true ctx pos2))
   | Color_length (c, len1_opt, len2_opt) -> (
       pp_color ctx c;
