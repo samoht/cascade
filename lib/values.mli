@@ -99,10 +99,11 @@ val color_mix_var_percent_with_fallback :
   color ->
   color ->
   color
-(** Like [color_mix_var_percent] but with an explicit fallback on the percentage
-    variable. Used for named opacity modifiers where the fallback is either a
-    concrete number ([Fallback (Num 0.5)]) or a theme variable reference
-    ([Var_fallback "custom-opacity"]). *)
+(** [color_mix_var_percent_with_fallback ?in_space ?hue ~var_name ~fallback c1
+     c2] is like [color_mix_var_percent] but with an explicit fallback on the
+    percentage variable. Used for named opacity modifiers where the fallback is
+    either a concrete number ([Fallback (Num 0.5)]) or a theme variable
+    reference ([Var_fallback "custom-opacity"]). *)
 
 (** {1 Pretty-printing Functions} *)
 
@@ -113,6 +114,10 @@ val pp_length : ?always:bool -> length Pp.t
 
 val pp_color : color Pp.t
 (** [pp_color] pretty-prints {!color} values. *)
+
+val pp_color_in_mix : color Pp.t
+(** [pp_color_in_mix c] pretty-prints color values for use inside color-mix
+    functions, using lowercase [currentcolor]. *)
 
 val pp_angle : angle Pp.t
 (** [pp_angle] pretty-prints {!angle} values. *)

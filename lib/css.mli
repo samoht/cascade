@@ -950,8 +950,9 @@ val color_mix_var_percent_with_fallback :
   color ->
   color ->
   color
-(** Like [color_mix_var_percent] but with an explicit fallback on the percentage
-    variable. Used for named opacity modifiers. *)
+(** [color_mix_var_percent_with_fallback ?in_space ?hue ~var_name ~fallback c1
+     c2] is like [color_mix_var_percent] but with an explicit fallback on the
+    percentage variable. Used for named opacity modifiers. *)
 
 (** CSS angle values *)
 type angle =
@@ -3740,6 +3741,18 @@ val webkit_mask_size : background_size -> declaration
 
 val mask_size : background_size -> declaration
 (** [mask_size v] is the [mask-size] property. *)
+
+val webkit_mask_position : position_value list -> declaration
+(** [webkit_mask_position v] is the [-webkit-mask-position] property. *)
+
+val mask_position : position_value list -> declaration
+(** [mask_position v] is the [mask-position] property. *)
+
+val webkit_mask_repeat : background_repeat -> declaration
+(** [webkit_mask_repeat v] is the [-webkit-mask-repeat] property. *)
+
+val mask_repeat : background_repeat -> declaration
+(** [mask_repeat v] is the [mask-repeat] property. *)
 
 val webkit_mask_clip : mask_box -> declaration
 (** [webkit_mask_clip v] is the [-webkit-mask-clip] property. *)

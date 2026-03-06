@@ -161,7 +161,7 @@ let pp_value : type a. (a kind * a) Pp.t =
   let pp pp_a = pp_a ctx value in
   match kind with
   | Length -> pp (pp_length ~always:true)
-  | Color -> pp pp_color
+  | Color -> pp pp_color_in_mix (* custom props use lowercase currentcolor *)
   | Rgb ->
       let rec pp_rgb_type : rgb Pp.t =
        fun ctx rgb ->
@@ -1221,6 +1221,10 @@ let mask_mode value = v Mask_mode value
 let mask_type value = v Mask_type value
 let webkit_mask_size value = v Webkit_mask_size value
 let mask_size value = v Mask_size value
+let webkit_mask_position value = v Webkit_mask_position value
+let mask_position value = v Mask_position value
+let webkit_mask_repeat value = v Webkit_mask_repeat value
+let mask_repeat value = v Mask_repeat value
 let webkit_mask_clip value = v Webkit_mask_clip value
 let mask_clip value = v Mask_clip value
 let webkit_mask_origin value = v Webkit_mask_origin value
