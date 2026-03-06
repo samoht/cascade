@@ -140,7 +140,7 @@ let rec contains_vendor_pseudo_element : Selector.t -> bool = function
   | Webkit_datetime_edit_hour_field | Webkit_datetime_edit_minute_field
   | Webkit_datetime_edit_second_field | Webkit_datetime_edit_millisecond_field
   | Webkit_datetime_edit_meridiem_field | Webkit_inner_spin_button
-  | Webkit_outer_spin_button ->
+  | Webkit_outer_spin_button | Webkit_details_marker ->
       true
   | Compound sels -> List.exists contains_vendor_pseudo_element sels
   | Combined (left, _, right) ->
@@ -199,16 +199,29 @@ let merge_rules (rules : Stylesheet.rule list) : Stylesheet.rule list =
   in
   merge_adjacent [] None rules
 
+(** Check if a selector uses a descendant combinator with a pseudo-element (e.g.
+    [.marker:flex ::marker]). These must not be combined with direct
+    pseudo-element selectors (e.g. [.marker:flex::marker]) because they target
+    different elements. *)
+let rec has_descendant_pseudo_element : Selector.t -> bool = function
+  | Combined (_, Descendant, right) -> extract_pseudo_element right <> None
+  | Compound sels -> List.exists has_descendant_pseudo_element sels
+  | List sels -> List.exists has_descendant_pseudo_element sels
+  | _ -> false
+
 (* Check if a selector should not be combined with others *)
 let should_not_combine selector =
   (* Already a list selector - don't combine *)
   Selector.is_compound_list selector
-  ||
   (* Check if selector contains vendor-specific pseudo-elements These should not
      be grouped because: - If one selector in a group is invalid in a browser,
      the entire rule fails - Keeping them separate ensures maximum browser
      compatibility *)
-  contains_vendor_pseudo_element selector
+  || contains_vendor_pseudo_element selector
+  ||
+  (* Descendant pseudo-element selectors (.x ::marker) must not be combined with
+     direct ones (.x::marker) — they target different elements *)
+  has_descendant_pseudo_element selector
 
 (** Check if two selectors can be combined. This is only called when the
     declarations are already verified to be identical. Following Tailwind v4's
