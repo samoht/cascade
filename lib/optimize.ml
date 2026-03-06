@@ -279,10 +279,17 @@ let can_combine_selectors sel1 sel2 =
         else true
     | _ -> false
 
-(* Sort selectors for merging: group-* first, peer-* second, base last. Uses
-   structured selector analysis via has_group_marker/has_peer_marker. *)
+(* Check if a selector contains a :not() pseudo-class at the top level *)
+let rec has_not_pseudo = function
+  | Selector.Not _ -> true
+  | Selector.Compound sels -> List.exists has_not_pseudo sels
+  | _ -> false
+
+(* Sort selectors for merging: not-* first, group-* second, peer-* third, base
+   last. Uses structured selector analysis. *)
 let selector_sort_key sel =
-  if Selector.has_group_marker sel then 0
+  if has_not_pseudo sel then -1
+  else if Selector.has_group_marker sel then 0
   else if Selector.has_peer_marker sel then 1
   else 2
 
