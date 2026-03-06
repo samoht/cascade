@@ -277,6 +277,7 @@ type component =
 
 type percentage =
   | Pct of float
+  | Num of float
   | Var of percentage var
   | Calc of percentage calc
 

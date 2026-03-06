@@ -773,6 +773,8 @@ type component =
 (** CSS percentage values *)
 type percentage =
   | Pct of float (* 0%–100% as a % token *)
+  | Num of
+      float (* Raw numeric value in percentage context, e.g., opacity 0.5 *)
   | Var of percentage var
   | Calc of percentage calc (* calc(...) that resolves to a % *)
 
@@ -944,12 +946,12 @@ val color_mix_var_percent_with_fallback :
   ?in_space:color_space ->
   ?hue:hue_interpolation ->
   var_name:string ->
-  fallback_name:string ->
+  fallback:percentage fallback ->
   color ->
   color ->
   color
-(** Like [color_mix_var_percent] but with a [Var_fallback] on the percentage
-    variable. *)
+(** Like [color_mix_var_percent] but with an explicit fallback on the percentage
+    variable. Used for named opacity modifiers. *)
 
 (** CSS angle values *)
 type angle =
