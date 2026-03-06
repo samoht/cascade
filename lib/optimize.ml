@@ -49,11 +49,16 @@ let duplicate_buggy_properties decls =
       | _ -> [ decl ])
     decls
 
+let is_intentionally_duplicated prop_name =
+  prop_name = "content" || prop_name = "outline"
+  || (String.length prop_name > 12 && String.sub prop_name 0 12 = "-webkit-mask")
+
 let track_last_occurrence normal_seen important_seen decl =
   let prop_name = property_name decl in
-  (* Skip tracking for content and outline - these properties use duplicate
-     declarations intentionally (content counters, outline webkit fallbacks) *)
-  if prop_name = "content" || prop_name = "outline" then ()
+  (* Skip tracking for properties that use intentional duplication: - content:
+     counter fallbacks - outline: webkit fallbacks - -webkit-mask-*: vendor
+     prefix fallback patterns *)
+  if is_intentionally_duplicated prop_name then ()
   else if is_important decl then Hashtbl.replace important_seen prop_name decl
   else Hashtbl.replace normal_seen prop_name decl
 
@@ -85,9 +90,8 @@ let deduplicate_declarations props =
   List.iter
     (fun decl ->
       let prop_name = property_name decl in
-      (* Always keep content and outline properties (no deduplication) *)
-      if prop_name = "content" || prop_name = "outline" then
-        deduped := decl :: !deduped
+      (* Always keep intentionally duplicated properties (no deduplication) *)
+      if is_intentionally_duplicated prop_name then deduped := decl :: !deduped
       else if not (Hashtbl.mem processed prop_name) then (
         Hashtbl.add processed prop_name ();
         let final_decl =

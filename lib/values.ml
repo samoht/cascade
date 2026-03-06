@@ -529,12 +529,32 @@ let shorten_hex value =
     && value.[4] = value.[5]
     && value.[6] = value.[7]
   then (
-    let s = Bytes.create 4 in
-    Bytes.set s 0 value.[0];
-    Bytes.set s 1 value.[2];
-    Bytes.set s 2 value.[4];
-    Bytes.set s 3 value.[6];
-    Bytes.to_string s)
+    if
+      (* Further shorten #RGBA → #RGB when A=f (fully opaque) *)
+      value.[6] = 'f' || value.[6] = 'F'
+    then (
+      let s = Bytes.create 3 in
+      Bytes.set s 0 value.[0];
+      Bytes.set s 1 value.[2];
+      Bytes.set s 2 value.[4];
+      Bytes.to_string s)
+    else
+      let s = Bytes.create 4 in
+      Bytes.set s 0 value.[0];
+      Bytes.set s 1 value.[2];
+      Bytes.set s 2 value.[4];
+      Bytes.set s 3 value.[6];
+      Bytes.to_string s)
+  else if
+    (* #RRGGBBFF → #RRGGBB when fully opaque *)
+    len = 8
+    && (value.[6] = 'f' || value.[6] = 'F')
+    && (value.[7] = 'f' || value.[7] = 'F')
+  then String.sub value 0 6
+  else if
+    (* #RGBA → #RGB when A=f (fully opaque) *)
+    len = 4 && (value.[3] = 'f' || value.[3] = 'F')
+  then String.sub value 0 3
   else value
 
 let minify_color : color -> color = function
