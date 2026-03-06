@@ -66,6 +66,21 @@ let color_mix_var_percent ?in_space ?(hue = Default) ~var_name color1 color2 =
   in
   Mix { in_space; hue; color1; percent1; color2; percent2 = None }
 
+let color_mix_var_percent_with_fallback ?in_space ?(hue = Default) ~var_name
+    ~fallback_name color1 color2 =
+  let percent1 : percentage option =
+    Some
+      (Var
+         {
+           name = var_name;
+           fallback = Var_fallback fallback_name;
+           default = None;
+           layer = None;
+           meta = None;
+         })
+  in
+  Mix { in_space; hue; color1; percent1; color2; percent2 = None }
+
 (** Comparison functions *)
 
 (** Pretty-printing functions *)

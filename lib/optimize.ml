@@ -210,6 +210,12 @@ let rec has_descendant_pseudo_element : Selector.t -> bool = function
   | _ -> false
 
 (* Check if a selector should not be combined with others *)
+let rec has_descendant_combinator : Selector.t -> bool = function
+  | Combined (_, Descendant, _) -> true
+  | Compound sels -> List.exists has_descendant_combinator sels
+  | List sels -> List.exists has_descendant_combinator sels
+  | _ -> false
+
 let should_not_combine selector =
   (* Already a list selector - don't combine *)
   Selector.is_compound_list selector
@@ -218,10 +224,14 @@ let should_not_combine selector =
      the entire rule fails - Keeping them separate ensures maximum browser
      compatibility *)
   || contains_vendor_pseudo_element selector
-  ||
   (* Descendant pseudo-element selectors (.x ::marker) must not be combined with
      direct ones (.x::marker) — they target different elements *)
-  has_descendant_pseudo_element selector
+  || has_descendant_pseudo_element selector
+  ||
+  (* Descendant combinator selectors (e.g., .prose :where(ol[type=i
+     s]):not(...)) should not be combined — Tailwind keeps them separate even
+     with identical declarations, to match tailwindcss output exactly. *)
+  has_descendant_combinator selector
 
 (** Check if two selectors can be combined. This is only called when the
     declarations are already verified to be identical. Following Tailwind v4's
