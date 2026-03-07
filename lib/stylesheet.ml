@@ -343,9 +343,7 @@ and pp_block : block Pp.t =
      statement with proper indentation *)
   Pp.list ~sep:Pp.cut pp_statement ctx statements
 
-let is_layer_or_layer_decl = function
-  | Layer _ | Layer_decl _ -> true
-  | _ -> false
+let is_layer_block = function Layer _ -> true | _ -> false
 
 let pp_stylesheet : stylesheet Pp.t =
  fun ctx statements ->
@@ -355,9 +353,9 @@ let pp_stylesheet : stylesheet Pp.t =
     | s :: (next :: _ as rest) ->
         pp_statement ctx s;
         Pp.cut ctx ();
-        (* Add blank line between layer blocks in non-minified mode *)
-        if (not (Pp.minified ctx)) && is_layer_or_layer_decl next then
-          Pp.cut ctx ();
+        (* Add blank line between consecutive @layer { } blocks *)
+        if (not (Pp.minified ctx)) && is_layer_block s && is_layer_block next
+        then Pp.cut ctx ();
         loop rest
   in
   loop statements
