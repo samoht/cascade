@@ -1356,6 +1356,7 @@ type overscroll_behavior = Auto | Contain | None | Inherit
 (* SVG paint servers allow url(#id) with optional fallback (none/currentcolor/color). *)
 type svg_paint =
   | None
+  | Inherit
   | Current_color
   | Color of color
   | Url of string * svg_paint option

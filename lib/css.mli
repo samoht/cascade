@@ -4129,6 +4129,7 @@ val border_spacing : length list -> declaration
 (** SVG paint values for fill and stroke properties *)
 type svg_paint =
   | None  (** No paint *)
+  | Inherit  (** Inherited value *)
   | Current_color  (** Current color value *)
   | Color of color  (** Specific color value *)
   | Url of string * svg_paint option  (** url(#id) with optional fallback *)
