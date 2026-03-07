@@ -339,9 +339,19 @@ and pp_statement : statement Pp.t =
 and pp_block : block Pp.t =
  fun ctx statements ->
   (* Block printing for at-rules (@media, @supports, etc.) The braces helper
-     already adds nest 1 and indent for the first item, so we just print each
-     statement with proper indentation *)
-  Pp.list ~sep:Pp.cut pp_statement ctx statements
+     adds nest 1 and indent for the first item only. Subsequent items need
+     explicit indentation and blank line separation to match Tailwind format. *)
+  match statements with
+  | [] -> ()
+  | [ s ] -> pp_statement ctx s
+  | s :: rest ->
+      pp_statement ctx s;
+      List.iter
+        (fun stmt ->
+          Pp.cut ctx ();
+          if not ctx.Pp.minify then Pp.cut ctx ();
+          Pp.indent pp_statement ctx stmt)
+        rest
 
 let is_layer_block = function Layer _ -> true | _ -> false
 
