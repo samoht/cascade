@@ -882,7 +882,7 @@ and pp_color : color Pp.t =
   | Named name -> pp_color_name ctx name
   | System sc -> pp_system_color ctx sc
   | Var v -> pp_var pp_color ctx v
-  | Current -> Pp.string ctx "currentcolor"
+  | Current -> Pp.string ctx "currentColor"
   | Transparent -> Pp.string ctx "transparent"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
