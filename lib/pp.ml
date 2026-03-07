@@ -94,6 +94,44 @@ let list ?sep pp ctx l =
           pp ctx x)
         t
 
+let column ctx =
+  let buf = ctx.buf in
+  let len = Buffer.length buf in
+  let rec find_newline i =
+    if i < 0 then len
+    else if Buffer.nth buf i = '\n' then len - i - 1
+    else find_newline (i - 1)
+  in
+  find_newline (len - 1)
+
+let list_wrap ?(threshold = 80) ~sep ~wrap_indent pp ctx l =
+  if ctx.minify then list ~sep pp ctx l
+  else
+    let measure_item x =
+      let tmp = Buffer.create 64 in
+      let tmp_ctx = { ctx with buf = tmp } in
+      pp tmp_ctx x;
+      Buffer.contents tmp
+    in
+    let wrap_sep = String.make wrap_indent ' ' in
+    match l with
+    | [] -> ()
+    | [ x ] -> pp ctx x
+    | h :: t ->
+        pp ctx h;
+        List.iter
+          (fun x ->
+            ignore sep;
+            (* Always emit comma *)
+            Buffer.add_char ctx.buf ',';
+            let s = measure_item x in
+            if column ctx + 1 + String.length s > threshold then (
+              Buffer.add_char ctx.buf '\n';
+              Buffer.add_string ctx.buf wrap_sep)
+            else Buffer.add_char ctx.buf ' ';
+            Buffer.add_string ctx.buf s)
+          t
+
 let option ?(none = nop) pp ctx = function
   | None -> none ctx ()
   | Some x -> pp ctx x
