@@ -88,6 +88,21 @@ let color_mix_var_pct_fallback ?in_space ?(hue = Default) ~var_name ~fallback
 let is_theme_var v = v.layer = Some "theme"
 let in_theme = Pp.in_theme
 
+let pp_var_fallback ctx fallback_name =
+  if in_theme ctx fallback_name then (
+    Pp.string ctx "var(--";
+    Pp.string ctx fallback_name;
+    Pp.string ctx "))")
+  else
+    match ctx.theme_defaults fallback_name with
+    | Some resolved ->
+        Pp.string ctx resolved;
+        Pp.char ctx ')'
+    | Option.None ->
+        Pp.string ctx "var(--";
+        Pp.string ctx fallback_name;
+        Pp.string ctx "))"
+
 let pp_var : type a. a Pp.t -> a var Pp.t =
  fun pp_value ctx v ->
   let emit_var_ref () =
@@ -96,8 +111,6 @@ let pp_var : type a. a Pp.t -> a var Pp.t =
     Pp.char ctx ')'
   in
   if ctx.inline then
-    (* Inline mode: resolve ALL vars to concrete values. Inline CSS can't use
-       custom properties, so we resolve typed defaults first, then fallbacks. *)
     match v.default with
     | Some value -> pp_value ctx value
     | Option.None -> (
@@ -110,15 +123,9 @@ let pp_var : type a. a Pp.t -> a var Pp.t =
         | Raw_fallback raw -> Pp.string ctx raw
         | None | Empty | Empty2 -> emit_var_ref ())
   else
-    (* Normal mode: theme-based resolution for theme vars only. *)
     match v.fallback with
     | None -> (
-        if
-          (* Bare var refs: only theme vars check the theme set. Non-theme vars
-             (property_default, channel) always emit var(--name). When theme is
-             None, all vars emit as var(--name). *)
-          (not (is_theme_var v)) || in_theme ctx v.name
-        then emit_var_ref ()
+        if (not (is_theme_var v)) || in_theme ctx v.name then emit_var_ref ()
         else
           match v.default with
           | Some value -> pp_value ctx value
@@ -129,7 +136,6 @@ let pp_var : type a. a Pp.t -> a var Pp.t =
         Pp.char ctx ',';
         Pp.char ctx ')'
     | Empty2 ->
-        (* 2-char empty: var(--name, ) — matches tailwindcss output *)
         Pp.string ctx "var(--";
         Pp.string ctx v.name;
         Pp.string ctx ",  )"
@@ -139,23 +145,11 @@ let pp_var : type a. a Pp.t -> a var Pp.t =
         Pp.comma ctx ();
         pp_value { ctx with in_function = true } value;
         Pp.char ctx ')'
-    | Var_fallback fallback_name -> (
+    | Var_fallback fallback_name ->
         Pp.string ctx "var(--";
         Pp.string ctx v.name;
         Pp.comma ctx ();
-        if in_theme ctx fallback_name then (
-          Pp.string ctx "var(--";
-          Pp.string ctx fallback_name;
-          Pp.string ctx "))")
-        else
-          match ctx.theme_defaults fallback_name with
-          | Some resolved ->
-              Pp.string ctx resolved;
-              Pp.char ctx ')'
-          | Option.None ->
-              Pp.string ctx "var(--";
-              Pp.string ctx fallback_name;
-              Pp.string ctx "))")
+        pp_var_fallback ctx fallback_name
     | Raw_fallback raw ->
         Pp.string ctx "var(--";
         Pp.string ctx v.name;
@@ -888,7 +882,7 @@ and pp_color : color Pp.t =
   | Named name -> pp_color_name ctx name
   | System sc -> pp_system_color ctx sc
   | Var v -> pp_var pp_color ctx v
-  | Current -> Pp.string ctx "currentColor"
+  | Current -> Pp.string ctx "currentcolor"
   | Transparent -> Pp.string ctx "transparent"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"

@@ -3412,6 +3412,7 @@ let rec pp_timing_function : timing_function Pp.t =
 let rec pp_svg_paint : svg_paint Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
+  | Inherit -> Pp.string ctx "inherit"
   | Current_color -> Pp.string ctx "currentcolor"
   | Color c -> pp_color ctx c
   | Url (u, fallback) -> (
@@ -4188,6 +4189,29 @@ let read_grid_auto_flow t : grid_auto_flow =
 
 (* CSS Grid template - flattened type with direct constructors *)
 
+let read_span_arbitrary t : grid_line =
+  let buf = Buffer.create 32 in
+  Buffer.add_string buf "span ";
+  let depth = ref 0 in
+  let rec loop () =
+    match Reader.peek t with
+    | Some '(' ->
+        Buffer.add_char buf (Reader.char t);
+        incr depth;
+        loop ()
+    | Some ')' ->
+        Buffer.add_char buf (Reader.char t);
+        decr depth;
+        loop ()
+    | Some '/' when !depth = 0 -> ()
+    | Some ';' | Some '}' | None -> ()
+    | Some _ ->
+        Buffer.add_char buf (Reader.char t);
+        loop ()
+  in
+  loop ();
+  Arbitrary (String.trim (Buffer.contents buf))
+
 let read_grid_line t : grid_line =
   let read_span_num t =
     let span_word = Reader.ident t in
@@ -4195,30 +4219,7 @@ let read_grid_line t : grid_line =
       Reader.ws t;
       match Reader.peek t with
       | Some c when c >= '0' && c <= '9' -> Span (Reader.int t)
-      | _ ->
-          (* span followed by non-number (e.g., span var(...)) - read as
-             arbitrary *)
-          let buf = Buffer.create 32 in
-          Buffer.add_string buf "span ";
-          let depth = ref 0 in
-          let rec loop () =
-            match Reader.peek t with
-            | Some '(' ->
-                Buffer.add_char buf (Reader.char t);
-                incr depth;
-                loop ()
-            | Some ')' ->
-                Buffer.add_char buf (Reader.char t);
-                decr depth;
-                loop ()
-            | Some '/' when !depth = 0 -> ()
-            | Some ';' | Some '}' | None -> ()
-            | Some _ ->
-                Buffer.add_char buf (Reader.char t);
-                loop ()
-          in
-          loop ();
-          Arbitrary (String.trim (Buffer.contents buf)))
+      | _ -> read_span_arbitrary t)
     else Reader.err t ("Expected 'span' but got " ^ span_word)
   in
   let read_number t : grid_line = Num (Reader.int t) in
@@ -4228,28 +4229,7 @@ let read_grid_line t : grid_line =
       Reader.ws t;
       match Reader.peek t with
       | Some c when c >= '0' && c <= '9' -> Span (Reader.int t)
-      | _ ->
-          let buf = Buffer.create 32 in
-          Buffer.add_string buf "span ";
-          let depth = ref 0 in
-          let rec loop () =
-            match Reader.peek t with
-            | Some '(' ->
-                Buffer.add_char buf (Reader.char t);
-                incr depth;
-                loop ()
-            | Some ')' ->
-                Buffer.add_char buf (Reader.char t);
-                decr depth;
-                loop ()
-            | Some '/' when !depth = 0 -> ()
-            | Some ';' | Some '}' | None -> ()
-            | Some _ ->
-                Buffer.add_char buf (Reader.char t);
-                loop ()
-          in
-          loop ();
-          Arbitrary (String.trim (Buffer.contents buf)))
+      | _ -> read_span_arbitrary t)
     else Name name
   in
   let read_calc_int t : grid_line =
@@ -4928,7 +4908,11 @@ let read_svg_paint t : svg_paint =
     Url (u, fb)
   in
   Reader.enum_or_calls "svg-paint"
-    [ ("none", (None : svg_paint)); ("currentcolor", Current_color) ]
+    [
+      ("none", (None : svg_paint));
+      ("inherit", Inherit);
+      ("currentcolor", Current_color);
+    ]
     ~calls:[ ("url", read_url_with_fallback) ]
     ~default:(fun t -> (Color (read_color t) : svg_paint))
     t
@@ -5162,6 +5146,20 @@ let rec read_outline_style t : outline_style =
     ~calls:[ ("var", read_var) ]
     t
 
+let outline_style_keywords =
+  [
+    "none";
+    "solid";
+    "dashed";
+    "dotted";
+    "double";
+    "groove";
+    "ridge";
+    "inset";
+    "outset";
+    "auto";
+  ]
+
 let read_outline t : outline =
   Reader.ws t;
   if Reader.looking_at t "inherit" then (
@@ -5175,21 +5173,6 @@ let read_outline t : outline =
     let width = ref Option.None in
     let style = ref Option.None in
     let color = ref Option.None in
-    (* Include "none" in outline_style_keywords since it's a valid style *)
-    let outline_style_keywords =
-      [
-        "none";
-        "solid";
-        "dashed";
-        "dotted";
-        "double";
-        "groove";
-        "ridge";
-        "inset";
-        "outset";
-        "auto";
-      ]
-    in
     let at_end () =
       Reader.is_done t
       || match Reader.peek t with Some (';' | '}' | ')') -> true | _ -> false
@@ -6324,6 +6307,15 @@ and read_gradient_stop t : gradient_stop =
      parsing *)
   read_gradient_stop_single t
 
+let read_gradient_stops t =
+  match
+    Reader.option
+      (Reader.list ~at_least:1 ~sep:Reader.comma read_gradient_stop)
+      t
+  with
+  | Some stops -> stops
+  | None -> []
+
 let read_background_image t : background_image =
   let read_linear_body t =
     Reader.ws t;
@@ -6334,48 +6326,15 @@ let read_background_image t : background_image =
           d
       | None -> To_bottom
     in
-    (* Allow 0 stops for gradients like linear-gradient(to right) or
-       linear-gradient(var(--tw-gradient-stops)) *)
-    let stops =
-      match
-        Reader.option
-          (Reader.list ~at_least:1 ~sep:Reader.comma read_gradient_stop)
-          t
-      with
-      | Some stops -> stops
-      | None -> []
-    in
-    Linear_gradient (direction, stops)
+    Linear_gradient (direction, read_gradient_stops t)
   in
   let read_radial_body t =
     Reader.ws t;
-    (* Allow 0 stops for gradients like
-       radial-gradient(var(--tw-gradient-stops)) *)
-    let stops =
-      match
-        Reader.option
-          (Reader.list ~at_least:1 ~sep:Reader.comma read_gradient_stop)
-          t
-      with
-      | Some stops -> stops
-      | None -> []
-    in
-    Radial_gradient stops
+    Radial_gradient (read_gradient_stops t)
   in
   let read_conic_body t =
     Reader.ws t;
-    (* Allow 0 stops for gradients like
-       conic-gradient(var(--tw-gradient-stops)) *)
-    let stops =
-      match
-        Reader.option
-          (Reader.list ~at_least:1 ~sep:Reader.comma read_gradient_stop)
-          t
-      with
-      | Some stops -> stops
-      | None -> []
-    in
-    Conic_gradient stops
+    Conic_gradient (read_gradient_stops t)
   in
   let rec read_bg_image t =
     Reader.enum_or_calls "background-image"

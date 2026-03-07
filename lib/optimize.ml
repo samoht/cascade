@@ -412,70 +412,46 @@ let combine_identical_rules (rules : Stylesheet.rule list) :
 let statements_ref : (statement list -> statement list) ref =
   ref (fun stmts -> stmts)
 
-(* Group all media blocks with the same condition together, for specific media
-   types (Hover, Min_width, Max_width, Prefers_reduced_motion). This allows
-   @media (hover:hover) blocks to be consolidated into a single block matching
-   Tailwind's behavior.
+(* Shared predicates for media block optimization *)
+let should_consolidate cond =
+  match cond with
+  | Media.Hover | Media.Min_width _ | Media.Max_width _
+  | Media.Prefers_reduced_motion _ ->
+      true
+  | _ -> false
 
-   For @media (hover:hover), the consolidated block is placed after all Regular
-   utilities but before responsive media queries (@media (min-width:...)). For
-   responsive media, the consolidated block is placed at the last occurrence. *)
-let consolidate_media_blocks (stmts : statement list) : statement list =
-  let optimize_merged_block block = !statements_ref block in
+let is_responsive_media = function
+  | Media (cond, _) -> (
+      match cond with
+      | Media.Min_width _ | Media.Max_width _ -> true
+      | _ -> false)
+  | _ -> false
 
-  (* Check if a media condition should be consolidated *)
-  let should_consolidate cond =
-    match cond with
-    | Media.Hover | Media.Min_width _ | Media.Max_width _
-    | Media.Prefers_reduced_motion _ ->
-        true
-    | _ -> false
-  in
+let has_nested_preference_media block =
+  List.exists
+    (function
+      | Media (cond, _) -> (
+          match cond with
+          | Prefers_contrast _ | Prefers_reduced_motion _
+          | Prefers_color_scheme _ ->
+              true
+          | _ -> false)
+      | _ -> false)
+    block
 
-  (* Check if a statement is a responsive media query *)
-  let is_responsive_media = function
-    | Media (cond, _) -> (
-        match cond with
-        | Media.Min_width _ | Media.Max_width _ -> true
-        | _ -> false)
-    | _ -> false
-  in
+let is_container_block block =
+  List.exists
+    (function
+      | Rule { selector; _ } -> Selector.to_string selector = ".container"
+      | _ -> false)
+    block
 
-  (* Check if a block contains nested preference-based media queries *)
-  let has_nested_preference_media block =
-    List.exists
-      (function
-        | Media (cond, _) -> (
-            match cond with
-            | Prefers_contrast _ | Prefers_reduced_motion _
-            | Prefers_color_scheme _ ->
-                true
-            | _ -> false)
-        | _ -> false)
-      block
-  in
-
-  (* Check if a block is for container utilities (has .container selector).
-     Container media queries should not be consolidated with responsive media to
-     preserve their positioning near the base container utility. *)
-  let is_container_block block =
-    List.exists
-      (function
-        | Rule { selector; _ } ->
-            let sel_str = Selector.to_string selector in
-            (* Check if selector contains .container without any modifiers *)
-            sel_str = ".container"
-        | _ -> false)
-      block
-  in
-
-  (* First pass: collect all media blocks by condition AND complexity *)
+let collect_media_data stmts =
   let media_map = Hashtbl.create 16 in
   let last_pos = Hashtbl.create 16 in
   let first_responsive_pos = ref None in
   let has_responsive = ref false in
   let has_preference_media = ref false in
-
   List.iteri
     (fun i stmt ->
       match stmt with
@@ -484,19 +460,16 @@ let consolidate_media_blocks (stmts : statement list) : statement list =
              && (not (has_nested_preference_media block))
              && not (is_container_block block) ->
           let key = Media.to_string cond in
-          (* Track the LAST position for this media condition *)
           Hashtbl.replace last_pos key i;
           let existing =
             try Hashtbl.find media_map key with Not_found -> (cond, [])
           in
           let _, blocks = existing in
           Hashtbl.replace media_map key (cond, blocks @ [ block ]);
-          (* Track first responsive media position for hover placement *)
           if is_responsive_media stmt then (
             has_responsive := true;
             if !first_responsive_pos = None then first_responsive_pos := Some i)
       | Media (cond, _) -> (
-          (* Check for preference-based media (indicates top-level context) *)
           match cond with
           | Media.Prefers_color_scheme _ | Media.Prefers_reduced_motion _
           | Media.Prefers_contrast _ ->
@@ -507,26 +480,50 @@ let consolidate_media_blocks (stmts : statement list) : statement list =
           if !first_responsive_pos = None then first_responsive_pos := Some i
       | _ -> ())
     stmts;
+  ( media_map,
+    last_pos,
+    !first_responsive_pos,
+    !has_responsive,
+    !has_preference_media )
 
-  (* Determine insertion position for hover media blocks. At top-level
-     (indicated by responsive or preference media, or many statements), place
-     hover: - Before responsive media if present, OR - At end of list if no
-     responsive media In nested contexts (no responsive, no preference media,
-     few statements), use last occurrence. *)
+let compute_hover_insert_pos stmts ~first_responsive_pos ~has_responsive
+    ~has_preference_media =
   let regular_stmt_count =
     List.fold_left
       (fun acc stmt -> match stmt with Rule _ -> acc + 1 | _ -> acc)
       0 stmts
   in
   let is_top_level =
-    !has_responsive || !has_preference_media || regular_stmt_count > 10
+    has_responsive || has_preference_media || regular_stmt_count > 10
   in
   let hover_insert_pos =
-    match (!first_responsive_pos, is_top_level) with
-    | Some pos, _ -> pos (* Before responsive media *)
-    | None, true ->
-        List.length stmts (* At end for top-level without responsive *)
-    | None, false -> -1 (* Nested context - use last occurrence *)
+    match (first_responsive_pos, is_top_level) with
+    | Some pos, _ -> pos
+    | None, true -> List.length stmts
+    | None, false -> -1
+  in
+  (hover_insert_pos, is_top_level)
+
+(* Group all media blocks with the same condition together, for specific media
+   types (Hover, Min_width, Max_width, Prefers_reduced_motion). This allows
+   @media (hover:hover) blocks to be consolidated into a single block matching
+   Tailwind's behavior.
+
+   For @media (hover:hover), the consolidated block is placed after all Regular
+   utilities but before responsive media queries (@media (min-width:...)). For
+   responsive media, the consolidated block is placed at the last occurrence. *)
+let consolidate_media_blocks (stmts : statement list) : statement list =
+  let optimize_merged_block block = !statements_ref block in
+  let ( media_map,
+        last_pos,
+        first_responsive_pos,
+        has_responsive,
+        has_preference_media ) =
+    collect_media_data stmts
+  in
+  let hover_insert_pos, is_top_level =
+    compute_hover_insert_pos stmts ~first_responsive_pos ~has_responsive
+      ~has_preference_media
   in
 
   (* Second pass: emit statements, consolidating media blocks *)
@@ -609,22 +606,6 @@ let merge_consecutive_media (stmts : statement list) : statement list =
        rules with identical declarations that should be combined. We need to
        re-run the full optimization pipeline on the merged content. *)
     !statements_ref block
-  in
-  (* Check if a block contains nested preference-based media queries. Preference
-     media (contrast, reduced-motion, color-scheme) inside another preference
-     media should not be merged to preserve Tailwind's structure for stacked
-     modifiers like contrast-more:dark. *)
-  let has_nested_preference_media block =
-    List.exists
-      (function
-        | Media (cond, _) -> (
-            match cond with
-            | Prefers_contrast _ | Prefers_reduced_motion _
-            | Prefers_color_scheme _ ->
-                true
-            | _ -> false)
-        | _ -> false)
-      block
   in
   let rec merge result prev_media = function
     | [] -> (
