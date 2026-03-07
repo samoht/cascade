@@ -66,8 +66,8 @@ let color_mix_var_percent ?in_space ?(hue = Default) ~var_name color1 color2 =
   in
   Mix { in_space; hue; color1; percent1; color2; percent2 = None }
 
-let color_mix_var_percent_with_fallback ?in_space ?(hue = Default) ~var_name
-    ~fallback color1 color2 =
+let color_mix_var_pct_fallback ?in_space ?(hue = Default) ~var_name ~fallback
+    color1 color2 =
   let percent1 : percentage option =
     Some
       (Var
@@ -730,7 +730,7 @@ let pp_hwb = Pp.call "hwb" pp_hwb_args
 let pp_float_drop_zero ctx f =
   Buffer.add_string ctx.Pp.buf (Pp.float_to_string ~drop_leading_zero:true f)
 
-let pp_number_or_none_drop_zero : float option Pp.t =
+let pp_compact_number : float option Pp.t =
  fun ctx -> function
   | Some f -> pp_float_drop_zero ctx f
   | None -> Pp.string ctx "none"
@@ -749,9 +749,9 @@ let pp_oklab_args : (percentage * float option * float option * alpha) Pp.t =
   (* Oklab L must always be output as percentage per CSS spec *)
   pp_percentage ctx l;
   Pp.space ctx ();
-  pp_number_or_none_drop_zero ctx a;
+  pp_compact_number ctx a;
   Pp.space ctx ();
-  pp_number_or_none_drop_zero ctx b;
+  pp_compact_number ctx b;
   match alpha with
   | None -> ()
   | a ->
