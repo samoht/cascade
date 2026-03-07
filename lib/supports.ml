@@ -247,7 +247,8 @@ and parse_function sc =
   let name = read_ident sc in
   if name = "" then
     failwith
-      (Printf.sprintf "Expected identifier at position %d in @supports" sc.pos);
+      ("Expected identifier at position " ^ string_of_int sc.pos
+     ^ " in @supports");
   skip_ws sc;
   match peek sc with
   | Some '(' ->
@@ -256,8 +257,8 @@ and parse_function sc =
       Func (name, String.trim args)
   | _ ->
       failwith
-        (Printf.sprintf "Expected '(' after '%s' at position %d in @supports"
-           name sc.pos)
+        ("Expected '(' after '" ^ name ^ "' at position " ^ string_of_int sc.pos
+       ^ " in @supports")
 
 (** Parse <supports-condition>:
     - not <supports-in-parens>
@@ -309,8 +310,9 @@ let of_string s =
   skip_ws sc;
   if not (at_end sc) then
     failwith
-      (Printf.sprintf "Trailing content at position %d in @supports: %s" sc.pos
-         (String.sub sc.s sc.pos (String.length sc.s - sc.pos)));
+      ("Trailing content at position " ^ string_of_int sc.pos
+     ^ " in @supports: "
+      ^ String.sub sc.s sc.pos (String.length sc.s - sc.pos));
   cond
 
 (* ===== Comparison ===== *)
