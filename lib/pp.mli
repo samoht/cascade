@@ -122,6 +122,16 @@ val triple : ?sep:unit t -> 'a t -> 'b t -> 'c t -> ('a * 'b * 'c) t
 val list : ?sep:unit t -> 'a t -> 'a list t
 (** [list ~sep formatter] formats a list with separator between elements. *)
 
+val column : ctx -> int
+(** [column ctx] returns the current column position (chars since last newline).
+*)
+
+val list_wrap :
+  ?threshold:int -> sep:unit t -> wrap_indent:int -> 'a t -> 'a list t
+(** [list_wrap ?threshold ~sep ~wrap_indent formatter] formats a list like
+    [list] but wraps to a new line (indented by [wrap_indent] spaces) when the
+    current column exceeds [threshold] (default 80). No-op when minifying. *)
+
 val option : ?none:unit t -> 'a t -> 'a option t
 (** [option ~none formatter] formats an option, using none formatter for None.
 *)

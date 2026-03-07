@@ -802,7 +802,23 @@ let read_value (type a) (prop : a property) t : declaration =
   | Mask_origin -> v Mask_origin (read_mask_box t)
   | Mask_type -> v Mask_type (read_mask_type t)
 
+(* Check if a custom property name is a font-family variable *)
+
 (** Parse a custom property (--name: value) *)
+let is_font_family_var name =
+  let bare =
+    if String.length name > 2 && String.sub name 0 2 = "--" then
+      String.sub name 2 (String.length name - 2)
+    else name
+  in
+  let starts_with prefix s =
+    String.length s >= String.length prefix
+    && String.sub s 0 (String.length prefix) = prefix
+  in
+  starts_with "font-" bare
+  || starts_with "default-font-family" bare
+  || starts_with "default-mono-font-family" bare
+
 let read_custom_property_declaration t : declaration =
   let name = read_property_name t in
   Reader.ws t;
@@ -812,7 +828,17 @@ let read_custom_property_declaration t : declaration =
   let is_important = read_importance t in
   (* custom_property may raise Failure for invalid names like "--" *)
   try
-    let decl = custom_property name value_str in
+    let decl =
+      if is_font_family_var name then
+        let trimmed = String.trim value_str in
+        if String.length trimmed >= 4 && String.sub trimmed 0 4 = "var(" then
+          custom_property name value_str
+        else
+          match Reader.of_string value_str |> read_font_family with
+          | ff -> custom_declaration name Font_family ff
+          | exception _ -> custom_property name value_str
+      else custom_property name value_str
+    in
     if is_important then important decl else decl
   with Failure msg -> Reader.err_invalid t msg
 

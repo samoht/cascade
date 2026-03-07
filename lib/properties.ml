@@ -1350,7 +1350,10 @@ let rec pp_font_family : font_family Pp.t =
       (* Font names with spaces must be quoted per CSS spec *)
       if String.contains s ' ' then Pp.quoted_string ctx s else Pp.string ctx s
   | Var v -> pp_var pp_font_family ctx v
-  | List fonts -> Pp.list ~sep:Pp.comma pp_font_family ctx fonts
+  | List fonts ->
+      Pp.list_wrap ~threshold:90 ~sep:Pp.comma
+        ~wrap_indent:((2 * ctx.Pp.indent) + 2)
+        pp_font_family ctx fonts
 
 (* pp_font_families is no longer needed since Fonts is now part of
    font_family *)
