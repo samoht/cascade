@@ -891,6 +891,7 @@ type animation =
   | None (* Special case for "animation: none" *)
   | Var of animation var
   | Shorthand of animation_shorthand (* Requires a name *)
+  | Arbitrary of string (* Bracket notation: animate-[bounce_1s_infinite] *)
 
 (* Visual Effects Types *)
 type blend_mode =

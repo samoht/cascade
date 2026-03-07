@@ -3516,7 +3516,8 @@ type animation =
   | Initial
   | None
   | Var of animation var
-  | Shorthand of animation_shorthand  (** CSS animation values *)
+  | Shorthand of animation_shorthand
+  | Arbitrary of string  (** CSS animation values *)
 
 val animation_shorthand :
   ?name:string ->
