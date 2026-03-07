@@ -187,7 +187,7 @@ let read_ident sc =
 (** Find the first ':' at parenthesis depth 0 in [s]. Returns [Some pos] if
     found. This distinguishes property tests [(prop: value)] from grouped
     conditions containing function calls with colons. *)
-let find_top_level_colon s =
+let top_level_colon s =
   let len = String.length s in
   let depth = ref 0 in
   let result = ref None in
@@ -227,7 +227,7 @@ and parse_paren_content sc =
     let sub = { s = trimmed; pos = 0 } in
     parse_supports_condition sub
   else
-    match find_top_level_colon trimmed with
+    match top_level_colon trimmed with
     | Some colon_pos ->
         (* <supports-decl>: property: value *)
         let prop = String.sub trimmed 0 colon_pos |> String.trim in
