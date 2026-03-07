@@ -1849,17 +1849,16 @@ let pp_grid_auto_flow : grid_auto_flow Pp.t =
 let normalize_slashes s =
   (* Ensure spaces around "/" in grid values: "N/M" -> "N / M" *)
   let buf = Buffer.create (String.length s + 4) in
+  let needs_space_before () =
+    Buffer.length buf > 0 && Buffer.nth buf (Buffer.length buf - 1) <> ' '
+  in
+  let needs_space_after i = i < String.length s - 1 && s.[i + 1] <> ' ' in
   String.iteri
     (fun i c ->
       if c = '/' then (
-        (* Add space before if not already there *)
-        (if Buffer.length buf > 0 then
-           let last = Buffer.nth buf (Buffer.length buf - 1) in
-           if last <> ' ' then Buffer.add_char buf ' ');
+        if needs_space_before () then Buffer.add_char buf ' ';
         Buffer.add_char buf '/';
-        (* Add space after if not at end and next char isn't space *)
-        if i < String.length s - 1 && s.[i + 1] <> ' ' then
-          Buffer.add_char buf ' ')
+        if needs_space_after i then Buffer.add_char buf ' ')
       else Buffer.add_char buf c)
     s;
   Buffer.contents buf
@@ -6011,6 +6010,7 @@ and pp_animation : animation Pp.t =
   | None -> Pp.string ctx "none"
   | Var v -> pp_var pp_animation ctx v
   | Shorthand s -> pp_animation_shorthand ctx s
+  | Arbitrary s -> Pp.string ctx s
 
 let rec read_animation t : animation =
   let read_var_call t : animation = Var (read_var read_animation t) in
