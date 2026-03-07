@@ -970,7 +970,7 @@ module Calc = struct
   let nested inner = Nested inner
 
   (* Wrap an expression in parentheses only *)
-  let parens inner = Parens inner [@@warning "-32"]
+  let parens inner = Parens inner
 end
 
 (** Read raw fallback content as a string, handling nested parentheses *)
