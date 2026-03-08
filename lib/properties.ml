@@ -1074,9 +1074,9 @@ let pp_shadow_parts ctx ~inset ~inset_var h v blur spread color =
      the bool inset flag. *)
   (match inset_var with
   | Some var_name ->
-      (* Empty2 fallback: var(--name, ) — matches tailwindcss output, likely a
-         bug in tailwindcss *)
-      Pp.string ctx ("var(--" ^ var_name ^ ",  )");
+      (* Empty fallback: var(--name,) — matches tailwindcss v4 minified
+         output *)
+      Pp.string ctx ("var(--" ^ var_name ^ ",)");
       Pp.space ctx ()
   | None ->
       if inset then (
