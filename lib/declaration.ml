@@ -937,8 +937,12 @@ let rec pp_declaration : declaration Pp.t =
           String.sub name 2 (String.length name - 2)
         else name
       in
-      (match (layer, ctx.theme_defaults bare_name) with
-      | Some "theme", Some override_value -> Pp.string ctx override_value
+      (match (layer, kind, ctx.theme_defaults bare_name) with
+      | Some "theme", Font_family, _ ->
+          (* Font_family values must go through pp_font_family for proper line
+             wrapping; raw theme_defaults strings have wrong indent *)
+          pp_value ctx (kind, value)
+      | Some "theme", _, Some override_value -> Pp.string ctx override_value
       | _ -> pp_value ctx (kind, value));
       if important then
         Pp.string ctx (if ctx.minify then "!important" else " !important")
