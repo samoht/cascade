@@ -315,9 +315,9 @@ let rec pp_length ?(always = false) : length Pp.t =
          outputs this optimized form regardless of minification *)
       match cv with
       | Expr (Num f, Mul, Val _) when f = infinity ->
-          Pp.string ctx "3.40282e+38px"
+          Pp.string ctx "3.40282e38px"
       | Expr (Val _, Mul, Num f) when f = infinity ->
-          Pp.string ctx "3.40282e+38px"
+          Pp.string ctx "3.40282e38px"
       | _ -> pp_calc (pp_length ~always) ctx cv)
 
 let pp_color_name : color_name Pp.t =
@@ -882,7 +882,7 @@ and pp_color : color Pp.t =
   | Named name -> pp_color_name ctx name
   | System sc -> pp_system_color ctx sc
   | Var v -> pp_var pp_color ctx v
-  | Current -> Pp.string ctx "currentColor"
+  | Current -> Pp.string ctx "currentcolor"
   | Transparent -> Pp.string ctx "transparent"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"

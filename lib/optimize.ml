@@ -279,18 +279,6 @@ let can_combine_selectors sel1 sel2 =
            group-focus:flex (depth 1) should not combine with
            group-focus:group-hover:flex (depth 2). *)
         && modifier_depth c1 = modifier_depth c2
-        &&
-        (* Don't combine selectors when one uses :is(:where()) (group/peer) and
-           the other uses a newer pseudo-class directly. In a selector list, if
-           the newer pseudo-class is unsupported, the entire rule is dropped —
-           but the :is(:where()) variant would have survived on its own due to
-           forgiving selector parsing. *)
-        let sel1_complex = Selector.has_is_where_pattern sel1 in
-        let sel2_complex = Selector.has_is_where_pattern sel2 in
-        if sel1_complex <> sel2_complex then
-          let plain_sel = if sel1_complex then sel2 else sel1 in
-          not (Selector.has_newer_pseudo_class plain_sel)
-        else true
     | _ -> false
 
 (* Check if a selector contains a :not() pseudo-class at the top level *)
@@ -342,8 +330,22 @@ let group_to_rule :
 let flush_group acc group =
   match group_to_rule group with Some rule -> rule :: acc | None -> acc
 
+(* Don't combine selectors when one uses :is(:where()) (group/peer) and the
+   other uses a newer pseudo-class directly. In a selector list, if the newer
+   pseudo-class is unsupported, the entire rule is dropped — but the
+   :is(:where()) variant would have survived on its own due to forgiving
+   selector parsing. *)
+let newer_pseudo_class_compatible sel1 sel2 =
+  let sel1_complex = Selector.has_is_where_pattern sel1 in
+  let sel2_complex = Selector.has_is_where_pattern sel2 in
+  if sel1_complex <> sel2_complex then
+    let plain_sel = if sel1_complex then sel2 else sel1 in
+    not (Selector.has_newer_pseudo_class plain_sel)
+  else true
+
 let can_combine_rules (prev : Stylesheet.rule) (rule : Stylesheet.rule) =
   prev.declarations = rule.declarations
+  && newer_pseudo_class_compatible prev.selector rule.selector
   &&
   match (prev.merge_key, rule.merge_key) with
   | Some k1, Some k2 ->
@@ -415,7 +417,7 @@ let statements_ref : (statement list -> statement list) ref =
 (* Shared predicates for media block optimization *)
 let should_consolidate cond =
   match cond with
-  | Media.Hover | Media.Min_width _ | Media.Max_width _
+  | Media.Hover | Media.Min_width _ | Media.Min_width_rem _ | Media.Max_width _
   | Media.Prefers_reduced_motion _ ->
       true
   | _ -> false
@@ -423,7 +425,7 @@ let should_consolidate cond =
 let is_responsive_media = function
   | Media (cond, _) -> (
       match cond with
-      | Media.Min_width _ | Media.Max_width _ -> true
+      | Media.Min_width _ | Media.Min_width_rem _ | Media.Max_width _ -> true
       | _ -> false)
   | _ -> false
 
