@@ -512,6 +512,60 @@ let compute_hover_insert_pos stmts ~first_responsive_pos ~has_responsive
    For @media (hover:hover), the consolidated block is placed after all Regular
    utilities but before responsive media queries (@media (min-width:...)). For
    responsive media, the consolidated block is placed at the last occurrence. *)
+(* Flush pending hover/motion blocks at the insertion point. Returns the
+   updated accumulator with pending blocks prepended (in reverse order). *)
+let emit_pending_hover ~hover_insert_pos ~pending_hover_blocks
+    ~pending_motion_blocks i acc =
+  if i = hover_insert_pos && List.length !pending_hover_blocks > 0 then (
+    let all_pending = !pending_hover_blocks @ !pending_motion_blocks in
+    let hover_acc = List.rev_append all_pending acc in
+    pending_hover_blocks := [];
+    pending_motion_blocks := [];
+    hover_acc)
+  else acc
+
+(* Route a consolidated media block: either defer it to a pending list for later
+   repositioning, or emit it directly at the current position. *)
+let route_consolidated ~should_reposition_hover ~is_top_level
+    ~pending_hover_blocks ~pending_motion_blocks consolidated cond acc =
+  match cond with
+  | Media.Hover when should_reposition_hover ->
+      (* For hover at top-level, add to pending list for repositioning. Append
+         to maintain order (first occurrence stays first). *)
+      pending_hover_blocks := !pending_hover_blocks @ [ consolidated ];
+      acc
+  | Media.Prefers_reduced_motion _ when is_top_level ->
+      (* For motion-reduce at top-level, add to pending list (after hover).
+         Append to maintain order. *)
+      pending_motion_blocks := !pending_motion_blocks @ [ consolidated ];
+      acc
+  | _ ->
+      (* For responsive media, or hover in nested context, emit at last
+         position *)
+      consolidated :: acc
+
+let try_consolidate_media ~optimize_merged_block ~media_map ~last_pos
+    ~emitted_media ~should_reposition_hover ~is_top_level ~pending_hover_blocks
+    ~pending_motion_blocks i stmt acc =
+  match stmt with
+  | Media (cond, block)
+    when should_consolidate cond
+         && (not (has_nested_preference_media block))
+         && not (is_container_block block) ->
+      let key = Media.to_string cond in
+      if Hashtbl.mem last_pos key then
+        let is_last_pos = Hashtbl.find last_pos key = i in
+        if is_last_pos && not (Hashtbl.mem emitted_media key) then (
+          Hashtbl.add emitted_media key true;
+          let _, all_blocks = Hashtbl.find media_map key in
+          let merged = List.concat all_blocks in
+          let consolidated = Media (cond, optimize_merged_block merged) in
+          route_consolidated ~should_reposition_hover ~is_top_level
+            ~pending_hover_blocks ~pending_motion_blocks consolidated cond acc)
+        else acc
+      else stmt :: acc
+  | _ -> stmt :: acc
+
 let consolidate_media_blocks (stmts : statement list) : statement list =
   let optimize_merged_block block = !statements_ref block in
   let ( media_map,
@@ -525,76 +579,22 @@ let consolidate_media_blocks (stmts : statement list) : statement list =
     compute_hover_insert_pos stmts ~first_responsive_pos ~has_responsive
       ~has_preference_media
   in
-
-  (* Second pass: emit statements, consolidating media blocks *)
   let emitted_media = Hashtbl.create 16 in
   let pending_hover_blocks = ref [] in
   let pending_motion_blocks = ref [] in
   let should_reposition_hover = hover_insert_pos >= 0 in
 
   let rec filter_with_index i acc = function
-    | [] ->
-        (* At the end, emit any pending blocks: first hover, then motion-reduce.
-           This happens when hover_insert_pos = List.length stmts (at end). We
-           want hover first, then motion-reduce, so append in that order. *)
-        List.rev_append acc (!pending_hover_blocks @ !pending_motion_blocks)
+    | [] -> List.rev_append acc (!pending_hover_blocks @ !pending_motion_blocks)
     | stmt :: rest ->
+        let acc_with_hover =
+          emit_pending_hover ~hover_insert_pos ~pending_hover_blocks
+            ~pending_motion_blocks i acc
+        in
         let new_acc =
-          (* Check if we've reached the hover insertion point *)
-          let acc_with_hover =
-            if i = hover_insert_pos && List.length !pending_hover_blocks > 0
-            then (
-              (* Emit hover blocks, then motion blocks *)
-              let all_pending =
-                !pending_hover_blocks @ !pending_motion_blocks
-              in
-              let hover_acc = List.rev_append all_pending acc in
-              pending_hover_blocks := [];
-              pending_motion_blocks := [];
-              hover_acc)
-            else acc
-          in
-
-          match stmt with
-          | Media (cond, block)
-            when should_consolidate cond
-                 && (not (has_nested_preference_media block))
-                 && not (is_container_block block) ->
-              let key = Media.to_string cond in
-              if Hashtbl.mem last_pos key then
-                let is_last_pos = Hashtbl.find last_pos key = i in
-                if is_last_pos && not (Hashtbl.mem emitted_media key) then (
-                  (* This is the last occurrence - consolidate *)
-                  Hashtbl.add emitted_media key true;
-                  let _, all_blocks = Hashtbl.find media_map key in
-                  let merged = List.concat all_blocks in
-                  let consolidated =
-                    Media (cond, optimize_merged_block merged)
-                  in
-
-                  match cond with
-                  | Media.Hover when should_reposition_hover ->
-                      (* For hover at top-level, add to pending list for
-                         repositioning. Append to maintain order (first
-                         occurrence stays first). *)
-                      pending_hover_blocks :=
-                        !pending_hover_blocks @ [ consolidated ];
-                      acc_with_hover
-                  | Media.Prefers_reduced_motion _ when is_top_level ->
-                      (* For motion-reduce at top-level, add to pending list
-                         (after hover). Append to maintain order. *)
-                      pending_motion_blocks :=
-                        !pending_motion_blocks @ [ consolidated ];
-                      acc_with_hover
-                  | _ ->
-                      (* For responsive media, or hover in nested context, emit
-                         at last position *)
-                      consolidated :: acc_with_hover)
-                else acc_with_hover (* Skip non-last occurrences *)
-              else
-                (* Not in map - keep as-is *)
-                stmt :: acc_with_hover
-          | _ -> stmt :: acc_with_hover
+          try_consolidate_media ~optimize_merged_block ~media_map ~last_pos
+            ~emitted_media ~should_reposition_hover ~is_top_level
+            ~pending_hover_blocks ~pending_motion_blocks i stmt acc_with_hover
         in
         filter_with_index (i + 1) new_acc rest
   in
