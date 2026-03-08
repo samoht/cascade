@@ -316,18 +316,31 @@ and looking_at_sub s kw =
 
 let of_string s =
   let sc = { s = String.trim s; pos = 0 } in
-  let cond = parse_supports_condition sc in
-  skip_ws sc;
-  if not (at_end sc) then
-    failwith
-      (String.concat ""
-         [
-           "Trailing content at position ";
-           string_of_int sc.pos;
-           " in @supports: ";
-           String.sub sc.s sc.pos (String.length sc.s - sc.pos);
-         ]);
-  cond
+  try
+    let cond = parse_supports_condition sc in
+    skip_ws sc;
+    if not (at_end sc) then
+      failwith
+        (String.concat ""
+           [
+             "Trailing content at position ";
+             string_of_int sc.pos;
+             " in @supports: ";
+             String.sub sc.s sc.pos (String.length sc.s - sc.pos);
+           ]);
+    cond
+  with Failure msg ->
+    raise
+      (Reader.Parse_error
+         {
+           message = msg;
+           got = None;
+           position = sc.pos;
+           filename = "@supports";
+           context_window = s;
+           marker_pos = sc.pos;
+           callstack = [];
+         })
 
 (* ===== Comparison ===== *)
 
