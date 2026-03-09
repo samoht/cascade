@@ -651,7 +651,7 @@ and pp_length_percentage ?(always = false) : length_percentage Pp.t =
 
 and pp_number_percentage ?(always = false) : number_percentage Pp.t =
  fun ctx -> function
-  | Num f -> Pp.float ctx f
+  | Num f -> Pp.float_compact ctx f
   | Pct f -> Pp.pct ~always ctx f
   | Var v -> pp_var (pp_number_percentage ~always) ctx v
   | Calc c -> pp_calc (pp_number_percentage ~always) ctx c

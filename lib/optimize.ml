@@ -325,17 +325,11 @@ let group_to_rule :
   | [] -> None
   | group ->
       let selector_list = List.rev group |> List.map (fun (s, _, _) -> s) in
-      (* When merge_key is set, preserve original order (the caller already
-         sorted correctly). Otherwise sort: group-* first, peer-* second, base
-         last with stable index tiebreaker. *)
-      let has_merge_key =
-        List.exists (fun (_, _, mk) -> Option.is_some mk) group
-      in
+      (* Always sort: group-* first, peer-* second, base last with stable index
+         tiebreaker. This matches Tailwind's selector list ordering. *)
       let sorted_selectors =
-        if has_merge_key then selector_list
-        else
-          let indexed = List.mapi (fun i s -> (s, i)) selector_list in
-          List.sort compare_selectors_for_merge indexed |> List.map fst
+        let indexed = List.mapi (fun i s -> (s, i)) selector_list in
+        List.sort compare_selectors_for_merge indexed |> List.map fst
       in
       let _, decls, _ = List.hd group in
       (* Create a List selector from all the selectors *)
@@ -391,11 +385,13 @@ let combine_identical_rules (rules : Stylesheet.rule list) :
     | [] -> List.rev (flush_group acc current_group)
     | (rule : Stylesheet.rule) :: rest -> (
         if
-          (* Don't combine rules with nested statements - they have different
-             semantics. Rules with merge_key bypass should_not_combine since
-             their combinability was explicitly determined by the caller. *)
-          rule.nested <> []
-          || (Option.is_none rule.merge_key && should_not_combine rule.selector)
+          (* Don't combine rules with nested statements or rules whose selectors
+             are structurally incompatible with combining (e.g., vendor
+             pseudo-elements, descendant pseudo-elements). Always check
+             should_not_combine regardless of merge_key — merge_key controls
+             whether identical-declaration rules CAN combine, but structural
+             selector constraints still apply. *)
+          rule.nested <> [] || should_not_combine rule.selector
         then
           (* Don't combine this selector, flush current group and start fresh *)
           let acc' = rule :: flush_group acc current_group in
