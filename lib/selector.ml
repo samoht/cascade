@@ -1003,6 +1003,13 @@ let read t =
     Reader.err t "unexpected characters after selector";
   selector
 
+let read_relative t =
+  let selectors = read_relative_selector_list t in
+  Reader.ws t;
+  if not (Reader.is_done t) then
+    Reader.err t "unexpected characters after selector";
+  match selectors with [ s ] -> s | _ -> List selectors
+
 (** Pretty print a function-like pseudo-class or pseudo-element *)
 let pp_func : 'a. Pp.ctx -> prefix:string -> string -> 'a Pp.t -> 'a -> unit =
  fun ctx ~prefix name content_pp value ->

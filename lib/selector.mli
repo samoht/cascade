@@ -114,6 +114,10 @@ val read_selector_list : Reader.t -> t
 val read : Reader.t -> t
 (** [read r] parses a CSS selector. *)
 
+val read_relative : Reader.t -> t
+(** [read_relative r] parses a CSS relative selector (may start with a
+    combinator like [+], [>], or [~]). Used for :has() arguments. *)
+
 val read_combinator : Reader.t -> combinator
 (** [read_combinator r] parses a combinator. *)
 
