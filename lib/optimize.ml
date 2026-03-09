@@ -213,8 +213,12 @@ let rec has_descendant_pseudo_element : Selector.t -> bool = function
   | List sels -> List.exists has_descendant_pseudo_element sels
   | _ -> false
 
-(* Check if a selector should not be combined with others *)
+(* Check if a selector has a descendant combinator that would make combining
+   unsafe. Descendant combinators where the ancestor is :where() are safe
+   because :where() has zero specificity and is always valid in selector lists
+   (e.g., :where(.group) .in-[.group]:flex). *)
 let rec has_descendant_combinator : Selector.t -> bool = function
+  | Combined (Where _, Descendant, _) -> false
   | Combined (_, Descendant, _) -> true
   | Compound sels -> List.exists has_descendant_combinator sels
   | List sels -> List.exists has_descendant_combinator sels
@@ -292,8 +296,17 @@ let rec has_not_pseudo = function
    group-* second, peer-* third, base last. Uses structured selector
    analysis. *)
 let selector_sort_key sel =
+  (* Ancestor-context selectors (:where(...) .class) use group/peer markers as
+     ancestor conditions, not as the main selector's class. These should not be
+     classified as group/peer selectors for merge ordering. *)
+  let is_ancestor_context =
+    match sel with
+    | Selector.Combined (Selector.Where _, Selector.Descendant, _) -> true
+    | _ -> false
+  in
   let base =
-    if has_not_pseudo sel then
+    if is_ancestor_context then 2
+    else if has_not_pseudo sel then
       (* Sub-classify not-* selectors by group/peer/plain *)
       if Selector.has_group_marker sel then -3
       else if Selector.has_peer_marker sel then -2
