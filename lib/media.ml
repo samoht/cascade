@@ -108,14 +108,17 @@ let pp ctx = function
 type kind =
   | Kind_hover
   | Kind_responsive of float
+  | Kind_responsive_max of float
   | Kind_preference_accessibility
   | Kind_preference_appearance
   | Kind_other
 
 let kind = function
   | Hover -> Kind_hover
-  | Min_width px | Max_width px | Not_min_width px -> Kind_responsive px
-  | Min_width_rem rem | Not_min_width_rem rem -> Kind_responsive (rem *. 16.)
+  | Min_width px | Max_width px -> Kind_responsive px
+  | Not_min_width px -> Kind_responsive_max px
+  | Min_width_rem rem -> Kind_responsive (rem *. 16.)
+  | Not_min_width_rem rem -> Kind_responsive_max (rem *. 16.)
   | Prefers_reduced_motion _ | Prefers_contrast _ | Forced_colors _
   | Inverted_colors _ | Pointer _ | Any_pointer _ | Scripting _ ->
       Kind_preference_accessibility
@@ -151,6 +154,7 @@ let group_order = function
   | Kind_hover -> (0, 0.)
   | Kind_other -> (500, 0.)
   | Kind_preference_accessibility -> (1000, 0.)
+  | Kind_responsive_max rem -> (1999, -.rem)
   | Kind_responsive rem -> (2000, rem)
   | Kind_preference_appearance -> (3000, 0.)
 

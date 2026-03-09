@@ -950,15 +950,15 @@ type text_shadow =
 type filter =
   | None
   | Blur of length
-  | Brightness of number
-  | Contrast of number
+  | Brightness of number_percentage
+  | Contrast of number_percentage
   | Drop_shadow of shadow
-  | Grayscale of number
+  | Grayscale of number_percentage
   | Hue_rotate of angle
-  | Invert of number
-  | Opacity of number
-  | Saturate of number
-  | Sepia of number
+  | Invert of number_percentage
+  | Opacity of number_percentage
+  | Saturate of number_percentage
+  | Sepia of number_percentage
   | Url of string
   | List of filter list
   | Var of filter var
