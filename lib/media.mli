@@ -9,6 +9,11 @@ type t =
   | Min_width_rem of float  (** Responsive breakpoint: [(min-width:Xrem)] *)
   | Not_min_width_rem of float
       (** Negated breakpoint: [not all and (min-width:Xrem)] *)
+  | Min_width_length of Values.length
+      (** Arbitrary length breakpoint: [(min-width:<length>)] *)
+  | Not_min_width_length of Values.length
+      (** Negated arbitrary length breakpoint:
+          [not all and (min-width:<length>)] *)
   | Prefers_reduced_motion of [ `No_preference | `Reduce ]
   | Prefers_contrast of [ `More | `Less ]
   | Prefers_color_scheme of [ `Dark | `Light ]
@@ -39,8 +44,9 @@ val equal : t -> t -> bool
 (** Classification for sorting/grouping. *)
 type kind =
   | Kind_hover
-  | Kind_responsive of float
-  | Kind_responsive_max of float
+  | Kind_responsive of int * float
+      (** (unit_order, value) — unit_order: -2=calc, -1=em, 0=px, 1=rem, 2=vh *)
+  | Kind_responsive_max of int * float
   | Kind_preference_accessibility
   | Kind_preference_appearance
   | Kind_other
