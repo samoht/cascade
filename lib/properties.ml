@@ -7566,7 +7566,9 @@ let pp_property_value : type a. (a property * a) Pp.t =
           match end_ with
           | Auto -> ()
           | _ ->
-              Pp.string ctx " / ";
+              if not (Pp.minified ctx) then Pp.space ctx ();
+              Pp.slash ctx ();
+              if not (Pp.minified ctx) then Pp.space ctx ();
               pp_grid_line ctx end_)
   | Grid_row ->
       pp (fun ctx (start, end_) ->
@@ -7574,7 +7576,9 @@ let pp_property_value : type a. (a property * a) Pp.t =
           match end_ with
           | Auto -> ()
           | _ ->
-              Pp.string ctx " / ";
+              if not (Pp.minified ctx) then Pp.space ctx ();
+              Pp.slash ctx ();
+              if not (Pp.minified ctx) then Pp.space ctx ();
               pp_grid_line ctx end_)
   | Grid_column_start -> pp pp_grid_line
   | Grid_column_end -> pp pp_grid_line
