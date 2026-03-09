@@ -4762,6 +4762,20 @@ module Variables = Variables
 module Optimize = Optimize
 module Stylesheet = Stylesheet
 module Media = Media
+
+val media_min_width_length : length -> Media.t
+(** [media_min_width_length l] creates a [Min_width_length] media condition from
+    a CSS length. Bridges the type gap between [Css.length] and [Media]'s
+    internal length type. *)
+
+val media_not_min_width_length : length -> Media.t
+(** [media_not_min_width_length l] creates a [Not_min_width_length] media
+    condition from a CSS length. *)
+
+val parse_length : string -> length option
+(** [parse_length s] parses a CSS length string (including [calc()] expressions)
+    using the CSS reader. Returns [None] if parsing fails. *)
+
 module Container = Container
 module Supports = Supports
 module Keyframe = Keyframe

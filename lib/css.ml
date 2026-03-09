@@ -62,6 +62,16 @@ let as_rule = function
         (Stylesheet.selector r, Stylesheet.declarations r, Stylesheet.nested r)
   | _ -> None
 
+let media_min_width_length l = Media.Min_width_length l
+let media_not_min_width_length l = Media.Not_min_width_length l
+
+let parse_length s =
+  try
+    let r = Reader.of_string s in
+    let l = Values.read_length r in
+    if Reader.is_done r then Some l else None
+  with _ -> None
+
 let as_layer = function
   | Layer (name, content) -> Some (name, content)
   | _ -> None

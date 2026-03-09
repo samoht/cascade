@@ -6,6 +6,10 @@ type t =
   | Not_min_width of float (* @media not all and (min-width: Xpx) *)
   | Min_width_rem of float (* @media (min-width: Xrem) *)
   | Not_min_width_rem of float (* @media not all and (min-width: Xrem) *)
+  | Min_width_length of Values_intf.length
+    (* [@media (min-width: <length>)] for arbitrary CSS lengths *)
+  | Not_min_width_length of Values_intf.length
+    (* [@media not all and (min-width: <length>)] *)
   | Prefers_reduced_motion of [ `No_preference | `Reduce ]
   | Prefers_contrast of [ `More | `Less ]
   | Prefers_color_scheme of [ `Dark | `Light ]
@@ -27,6 +31,8 @@ let format_rem rem =
   if Float.is_integer rem then Int.to_string (Float.to_int rem)
   else Float.to_string rem
 
+let render_length l = Pp.to_string (Values.pp_length ~always:true) l
+
 let to_string = function
   | Min_width px -> "(min-width: " ^ format_px px ^ "px)"
   | Max_width px -> "(max-width: " ^ format_px px ^ "px)"
@@ -34,6 +40,8 @@ let to_string = function
   | Min_width_rem rem -> "(min-width: " ^ format_rem rem ^ "rem)"
   | Not_min_width_rem rem ->
       "not all and (min-width: " ^ format_rem rem ^ "rem)"
+  | Min_width_length l -> "(min-width: " ^ render_length l ^ ")"
+  | Not_min_width_length l -> "not all and (min-width: " ^ render_length l ^ ")"
   | Prefers_reduced_motion `No_preference ->
       "(prefers-reduced-motion: no-preference)"
   | Prefers_reduced_motion `Reduce -> "(prefers-reduced-motion: reduce)"
@@ -68,6 +76,14 @@ let pp_feature ctx name value =
   Pp.string ctx value;
   Pp.char ctx ')'
 
+let pp_length_value ctx l =
+  Pp.char ctx '(';
+  Pp.string ctx "min-width";
+  Pp.char ctx ':';
+  Pp.sp ctx ();
+  Values.pp_length ~always:true ctx l;
+  Pp.char ctx ')'
+
 let pp ctx = function
   | Min_width px -> pp_feature ctx "min-width" (format_px px ^ "px")
   | Max_width px -> pp_feature ctx "max-width" (format_px px ^ "px")
@@ -78,6 +94,10 @@ let pp ctx = function
   | Not_min_width_rem rem ->
       Pp.string ctx "not all and ";
       pp_feature ctx "min-width" (format_rem rem ^ "rem")
+  | Min_width_length l -> pp_length_value ctx l
+  | Not_min_width_length l ->
+      Pp.string ctx "not all and ";
+      pp_length_value ctx l
   | Prefers_reduced_motion `No_preference ->
       pp_feature ctx "prefers-reduced-motion" "no-preference"
   | Prefers_reduced_motion `Reduce ->
@@ -107,18 +127,41 @@ let pp ctx = function
 
 type kind =
   | Kind_hover
-  | Kind_responsive of float
-  | Kind_responsive_max of float
+  | Kind_responsive of int * float
+      (** (unit_order, value) — unit_order: -2=calc, -1=em, 0=px, 1=rem, 2=vh *)
+  | Kind_responsive_max of int * float
   | Kind_preference_accessibility
   | Kind_preference_appearance
   | Kind_other
 
+(** Map a CSS length to (unit_order, numeric_value) for sorting. Unit order
+    follows alphabetical unit names: calc, em, px, rem, vh. *)
+let length_sort_key (l : Values_intf.length) =
+  match l with
+  | Calc _ -> (-2, 0.)
+  | Em v -> (-1, v)
+  | Px v -> (0, v)
+  | Rem v -> (1, v)
+  | Vh v -> (2, v)
+  | Vw v -> (3, v)
+  | Cm v -> (4, v)
+  | Mm v -> (5, v)
+  | In v -> (6, v)
+  | Pt v -> (7, v)
+  | _ -> (100, 0.)
+
 let kind = function
   | Hover -> Kind_hover
-  | Min_width px | Max_width px -> Kind_responsive px
-  | Not_min_width px -> Kind_responsive_max px
-  | Min_width_rem rem -> Kind_responsive (rem *. 16.)
-  | Not_min_width_rem rem -> Kind_responsive_max (rem *. 16.)
+  | Min_width px | Max_width px -> Kind_responsive (0, px)
+  | Not_min_width px -> Kind_responsive_max (0, px)
+  | Min_width_rem rem -> Kind_responsive (0, rem *. 16.)
+  | Not_min_width_rem rem -> Kind_responsive_max (0, rem *. 16.)
+  | Min_width_length l ->
+      let u, v = length_sort_key l in
+      Kind_responsive (u, v)
+  | Not_min_width_length l ->
+      let u, v = length_sort_key l in
+      Kind_responsive_max (u, v)
   | Prefers_reduced_motion _ | Prefers_contrast _ | Forced_colors _
   | Inverted_colors _ | Pointer _ | Any_pointer _ | Scripting _ ->
       Kind_preference_accessibility
@@ -142,8 +185,8 @@ let kind_of_string cond =
       let start = String.index cond ':' + 1 in
       let end_pos = String.index_from cond start 'r' in
       let value_str = String.sub cond start (end_pos - start) |> String.trim in
-      Kind_responsive (float_of_string value_str)
-    with Not_found | Failure _ | Invalid_argument _ -> Kind_responsive 0.
+      Kind_responsive (0, float_of_string value_str)
+    with Not_found | Failure _ | Invalid_argument _ -> Kind_responsive (0, 0.)
   else if String.length cond > 8 && String.sub cond 1 7 = "prefers" then
     if contains cond "color-scheme" then Kind_preference_appearance
     else Kind_preference_accessibility
@@ -154,8 +197,10 @@ let group_order = function
   | Kind_hover -> (0, 0.)
   | Kind_other -> (500, 0.)
   | Kind_preference_accessibility -> (1000, 0.)
-  | Kind_responsive_max rem -> (1999, -.rem)
-  | Kind_responsive rem -> (2000, rem)
+  | Kind_responsive_max (unit_ord, value) ->
+      (1999, (Float.of_int unit_ord *. 1e9) +. (1e6 -. value))
+  | Kind_responsive (unit_ord, value) ->
+      (2000, (Float.of_int unit_ord *. 1e9) +. value)
   | Kind_preference_appearance -> (3000, 0.)
 
 let preference_order = function
@@ -188,9 +233,9 @@ let preference_order = function
 (* Distinguish responsive sub-types: not-min-width comes before min-width at the
    same breakpoint value. *)
 let responsive_subkind = function
-  | Not_min_width _ | Not_min_width_rem _ -> 0
+  | Not_min_width _ | Not_min_width_rem _ | Not_min_width_length _ -> 0
   | Max_width _ -> 1
-  | Min_width _ | Min_width_rem _ -> 2
+  | Min_width _ | Min_width_rem _ | Min_width_length _ -> 2
   | _ -> 2
 
 let compare a b =
@@ -205,7 +250,11 @@ let compare a b =
       let sub_cmp = Int.compare (responsive_subkind a) (responsive_subkind b) in
       if sub_cmp <> 0 then sub_cmp
       else
-        (* Within same group, use preference_order for fine-grained sorting *)
-        Int.compare (preference_order a) (preference_order b)
+        let pref_cmp = Int.compare (preference_order a) (preference_order b) in
+        if pref_cmp <> 0 then pref_cmp
+        else
+          (* Final tiebreaker: string comparison for calc expressions or other
+             conditions that have the same sort key but different content *)
+          String.compare (to_string a) (to_string b)
 
 let equal a b = compare a b = 0

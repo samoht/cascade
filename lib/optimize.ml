@@ -429,6 +429,7 @@ let statements_ref : (statement list -> statement list) ref =
 let should_consolidate cond =
   match cond with
   | Media.Min_width _ | Media.Min_width_rem _ | Media.Max_width _
+  | Media.Min_width_length _ | Media.Not_min_width_length _
   | Media.Prefers_reduced_motion _ ->
       true
   | _ -> false
@@ -436,7 +437,9 @@ let should_consolidate cond =
 let is_responsive_media = function
   | Media (cond, _) -> (
       match cond with
-      | Media.Min_width _ | Media.Min_width_rem _ | Media.Max_width _ -> true
+      | Media.Min_width _ | Media.Min_width_rem _ | Media.Max_width _
+      | Media.Min_width_length _ | Media.Not_min_width_length _ ->
+          true
       | _ -> false)
   | _ -> false
 
