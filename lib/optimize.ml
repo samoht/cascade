@@ -426,12 +426,13 @@ let statements_ref : (statement list -> statement list) ref =
   ref (fun stmts -> stmts)
 
 (* Shared predicates for media block optimization *)
-let should_consolidate cond =
+let rec should_consolidate cond =
   match cond with
   | Media.Min_width _ | Media.Min_width_rem _ | Media.Max_width _
   | Media.Min_width_length _ | Media.Not_min_width_length _
   | Media.Prefers_reduced_motion _ ->
       true
+  | Media.Negated inner -> should_consolidate inner
   | _ -> false
 
 let is_responsive_media = function
@@ -440,6 +441,12 @@ let is_responsive_media = function
       | Media.Min_width _ | Media.Min_width_rem _ | Media.Max_width _
       | Media.Min_width_length _ | Media.Not_min_width_length _ ->
           true
+      | Media.Negated inner -> (
+          match inner with
+          | Media.Min_width _ | Media.Min_width_rem _ | Media.Max_width _
+          | Media.Min_width_length _ | Media.Not_min_width_length _ ->
+              true
+          | _ -> false)
       | _ -> false)
   | _ -> false
 

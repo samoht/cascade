@@ -26,6 +26,8 @@ type t =
   | Print  (** [print] media type *)
   | Orientation of [ `Portrait | `Landscape ]  (** [(orientation:...)] *)
   | Raw of string  (** Escape hatch for complex/unknown conditions *)
+  | Negated of t
+      (** [not all and (condition)] or [not print] for media type negation *)
 
 val to_string : t -> string
 (** [to_string cond] renders the condition as a CSS media query string. Always

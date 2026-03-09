@@ -22,6 +22,7 @@ type t =
   | Print
   | Orientation of [ `Portrait | `Landscape ]
   | Raw of string
+  | Negated of t
 
 let format_px px =
   if Float.is_integer px then Int.to_string (Float.to_int px)
@@ -33,7 +34,7 @@ let format_rem rem =
 
 let render_length l = Pp.to_string (Values.pp_length ~always:true) l
 
-let to_string = function
+let rec to_string = function
   | Min_width px -> "(min-width: " ^ format_px px ^ "px)"
   | Max_width px -> "(max-width: " ^ format_px px ^ "px)"
   | Not_min_width px -> "not all and (min-width: " ^ format_px px ^ "px)"
@@ -67,6 +68,8 @@ let to_string = function
   | Orientation `Portrait -> "(orientation: portrait)"
   | Orientation `Landscape -> "(orientation: landscape)"
   | Raw s -> s
+  | Negated Print -> "not print"
+  | Negated inner -> "not all and " ^ to_string inner
 
 let pp_feature ctx name value =
   Pp.char ctx '(';
@@ -84,7 +87,7 @@ let pp_length_value ctx l =
   Values.pp_length ~always:true ctx l;
   Pp.char ctx ')'
 
-let pp ctx = function
+let rec pp ctx = function
   | Min_width px -> pp_feature ctx "min-width" (format_px px ^ "px")
   | Max_width px -> pp_feature ctx "max-width" (format_px px ^ "px")
   | Not_min_width px ->
@@ -124,6 +127,10 @@ let pp ctx = function
   | Orientation `Portrait -> pp_feature ctx "orientation" "portrait"
   | Orientation `Landscape -> pp_feature ctx "orientation" "landscape"
   | Raw s -> Pp.string ctx s
+  | Negated Print -> Pp.string ctx "not print"
+  | Negated inner ->
+      Pp.string ctx "not all and ";
+      pp ctx inner
 
 type kind =
   | Kind_hover
@@ -150,7 +157,7 @@ let length_sort_key (l : Values_intf.length) =
   | Pt v -> (7, v)
   | _ -> (100, 0.)
 
-let kind = function
+let rec kind = function
   | Hover -> Kind_hover
   | Min_width px | Max_width px -> Kind_responsive (0, px)
   | Not_min_width px -> Kind_responsive_max (0, px)
@@ -168,6 +175,7 @@ let kind = function
   | Prefers_color_scheme _ -> Kind_preference_appearance
   | Print | Orientation _ -> Kind_other
   | Raw _ -> Kind_other
+  | Negated inner -> kind inner
 
 (* For backward compatibility with string-based code *)
 let contains s sub =
@@ -203,7 +211,7 @@ let group_order = function
       (2000, (Float.of_int unit_ord *. 1e9) +. value)
   | Kind_preference_appearance -> (3000, 0.)
 
-let preference_order = function
+let rec preference_order = function
   | Prefers_reduced_motion `No_preference -> 0
   | Prefers_reduced_motion `Reduce -> 1
   | Prefers_contrast `More -> 2
@@ -228,14 +236,16 @@ let preference_order = function
       else if contains s "contrast" && contains s "less" then 3
       else if contains s "color-scheme" then 4
       else 20
+  | Negated inner -> preference_order inner
   | _ -> 20
 
 (* Distinguish responsive sub-types: not-min-width comes before min-width at the
    same breakpoint value. *)
-let responsive_subkind = function
+let rec responsive_subkind = function
   | Not_min_width _ | Not_min_width_rem _ | Not_min_width_length _ -> 0
   | Max_width _ -> 1
   | Min_width _ | Min_width_rem _ | Min_width_length _ -> 2
+  | Negated inner -> responsive_subkind inner
   | _ -> 2
 
 let compare a b =
