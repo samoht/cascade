@@ -263,7 +263,13 @@ let can_combine_selectors sel1 sel2 =
        the same modifier depth to avoid combining different nesting levels.
        Simple class selectors always combine. *)
     match (Selector.first_class sel1, Selector.first_class sel2) with
-    | Some c1, Some c2 -> modifier_depth c1 = modifier_depth c2
+    | Some c1, Some c2 ->
+        (* Don't combine unmodified (depth 0) with modified (depth > 0)
+           selectors as they have different cascade semantics. But selectors
+           with any modifiers can combine regardless of exact depth. *)
+        let d1 = modifier_depth c1 in
+        let d2 = modifier_depth c2 in
+        (d1 > 0 && d2 > 0) || d1 = d2
     | _ -> false
 
 (* Check if a selector contains a :not() pseudo-class at the top level *)
@@ -275,10 +281,18 @@ let rec has_not_pseudo = function
 (* Sort selectors for merging: not-* first, group-* second, peer-* third, base
    last. Uses structured selector analysis. *)
 let selector_sort_key sel =
-  if has_not_pseudo sel then -1
-  else if Selector.has_group_marker sel then 0
-  else if Selector.has_peer_marker sel then 1
-  else 2
+  let base =
+    if has_not_pseudo sel then -1
+    else if Selector.has_group_marker sel then 0
+    else if Selector.has_peer_marker sel then 1
+    else 2
+  in
+  let depth =
+    match Selector.first_class sel with
+    | Some cls -> modifier_depth cls
+    | None -> 0
+  in
+  (base, depth)
 
 let compare_selectors_for_merge sel1 sel2 =
   compare (selector_sort_key sel1) (selector_sort_key sel2)
@@ -341,14 +355,8 @@ let can_combine_rules (prev : Stylesheet.rule) (rule : Stylesheet.rule) =
   && newer_pseudo_class_compatible prev.selector rule.selector
   &&
   match (prev.merge_key, rule.merge_key) with
-  | Some k1, Some k2 ->
-      (* When both rules have a merge_key, use it to determine combinability.
-         This allows rules like accent-current and accent-current/50 to be
-         combined when they produce identical declarations. *)
-      k1 = k2
-  | _ ->
-      (* Fall back to selector-based heuristic *)
-      can_combine_selectors prev.selector rule.selector
+  | Some k1, Some k2 -> k1 = k2
+  | _ -> can_combine_selectors prev.selector rule.selector
 
 let combine_identical_rules (rules : Stylesheet.rule list) :
     Stylesheet.rule list =
@@ -410,7 +418,7 @@ let statements_ref : (statement list -> statement list) ref =
 (* Shared predicates for media block optimization *)
 let should_consolidate cond =
   match cond with
-  | Media.Hover | Media.Min_width _ | Media.Min_width_rem _ | Media.Max_width _
+  | Media.Min_width _ | Media.Min_width_rem _ | Media.Max_width _
   | Media.Prefers_reduced_motion _ ->
       true
   | _ -> false

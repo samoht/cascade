@@ -1393,7 +1393,7 @@ let exists_class pred sel =
 
 let rec first_class = function
   | Class n -> Some n
-  | Compound xs -> List.find_map (function Class n -> Some n | _ -> None) xs
+  | Compound xs -> List.find_map first_class xs
   | Combined (a, _, _) -> first_class a
   | List (h :: _) -> first_class h
   | Is xs | Where xs | Not xs | Has xs | Slotted xs | Cue xs | Cue_region xs
