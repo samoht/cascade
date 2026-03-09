@@ -250,7 +250,17 @@ let should_not_combine selector =
       .aria-selected:bg-blue-500) to preserve ordering semantics
     - Otherwise, can combine since both rules set the same values *)
 let modifier_depth class_name =
-  String.fold_left (fun acc c -> if c = ':' then acc + 1 else acc) 0 class_name
+  let len = String.length class_name in
+  let rec loop i depth bracket_depth =
+    if i >= len then depth
+    else
+      match class_name.[i] with
+      | '[' -> loop (i + 1) depth (bracket_depth + 1)
+      | ']' -> loop (i + 1) depth (max 0 (bracket_depth - 1))
+      | ':' when bracket_depth = 0 -> loop (i + 1) (depth + 1) bracket_depth
+      | _ -> loop (i + 1) depth bracket_depth
+  in
+  loop 0 0 0
 
 let can_combine_selectors sel1 sel2 =
   (* Check if pseudo-elements match (both None, or both the same) *)
