@@ -1145,7 +1145,12 @@ let rec pp_gradient_direction : gradient_direction Pp.t =
   | Angle a -> pp_angle ctx a
   | With_interpolation (dir, interp) ->
       pp_gradient_direction ctx dir;
-      Pp.space ctx ();
+      (* After calc() or var(), the closing ) is a delimiter token so no space
+         is needed before "in oklab" in minified mode. After keywords like "to
+         right", a space is always needed to separate tokens. *)
+      (match dir with
+      | Angle (Calc _) | Var _ -> Pp.sp ctx ()
+      | _ -> Pp.space ctx ());
       pp_color_interpolation ctx interp
   | Var v -> pp_var pp_gradient_direction ctx v
 
