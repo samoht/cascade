@@ -40,6 +40,7 @@ val equal : t -> t -> bool
 type kind =
   | Kind_hover
   | Kind_responsive of float
+  | Kind_responsive_max of float
   | Kind_preference_accessibility
   | Kind_preference_appearance
   | Kind_other

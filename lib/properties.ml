@@ -1191,15 +1191,16 @@ let rec pp_filter : filter Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
   | Blur l -> Pp.call "blur" pp_length ctx l
-  | Brightness n -> Pp.call "brightness" pp_number ctx n
-  | Contrast n -> Pp.call "contrast" pp_number ctx n
+  | Brightness n ->
+      Pp.call "brightness" (pp_number_percentage ~always:true) ctx n
+  | Contrast n -> Pp.call "contrast" (pp_number_percentage ~always:true) ctx n
   | Drop_shadow s -> Pp.call "drop-shadow" pp_shadow ctx s
-  | Grayscale n -> Pp.call "grayscale" pp_number ctx n
+  | Grayscale n -> Pp.call "grayscale" (pp_number_percentage ~always:true) ctx n
   | Hue_rotate a -> Pp.call "hue-rotate" pp_angle ctx a
-  | Invert n -> Pp.call "invert" pp_number ctx n
-  | Opacity n -> Pp.call "opacity" pp_number ctx n
-  | Saturate n -> Pp.call "saturate" pp_number ctx n
-  | Sepia n -> Pp.call "sepia" pp_number ctx n
+  | Invert n -> Pp.call "invert" (pp_number_percentage ~always:true) ctx n
+  | Opacity n -> Pp.call "opacity" (pp_number_percentage ~always:true) ctx n
+  | Saturate n -> Pp.call "saturate" (pp_number_percentage ~always:true) ctx n
+  | Sepia n -> Pp.call "sepia" (pp_number_percentage ~always:true) ctx n
   | Url url -> Pp.url ctx url
   | List filters -> Pp.list ~sep:Pp.space pp_filter ctx filters
   | Var v -> pp_var pp_filter ctx v
@@ -6073,28 +6074,33 @@ let read_blur t : filter = Reader.call "blur" t (fun t -> Blur (read_length t))
 
 module Filter = struct
   let read_brightness t : filter =
-    Reader.call "brightness" t (fun t -> Brightness (read_number t))
+    Reader.call "brightness" t (fun t ->
+        Brightness (Values.read_number_percentage t))
 
   let read_contrast t : filter =
-    Reader.call "contrast" t (fun t -> Contrast (read_number t))
+    Reader.call "contrast" t (fun t ->
+        Contrast (Values.read_number_percentage t))
 
   let read_grayscale t : filter =
-    Reader.call "grayscale" t (fun t : filter -> Grayscale (read_number t))
+    Reader.call "grayscale" t (fun t : filter ->
+        Grayscale (Values.read_number_percentage t))
 
   let read_hue_rotate t : filter =
     Reader.call "hue-rotate" t (fun t -> Hue_rotate (read_angle t))
 
   let read_invert t : filter =
-    Reader.call "invert" t (fun t -> Invert (read_number t))
+    Reader.call "invert" t (fun t -> Invert (Values.read_number_percentage t))
 
   let read_opacity t : filter =
-    Reader.call "opacity" t (fun t : filter -> Opacity (read_number t))
+    Reader.call "opacity" t (fun t : filter ->
+        Opacity (Values.read_number_percentage t))
 
   let read_saturate t : filter =
-    Reader.call "saturate" t (fun t -> Saturate (read_number t))
+    Reader.call "saturate" t (fun t ->
+        Saturate (Values.read_number_percentage t))
 
   let read_sepia t : filter =
-    Reader.call "sepia" t (fun t -> Sepia (read_number t))
+    Reader.call "sepia" t (fun t -> Sepia (Values.read_number_percentage t))
 
   let read_drop_shadow t : filter =
     Reader.call "drop-shadow" t (fun t ->
