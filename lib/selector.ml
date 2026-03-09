@@ -1408,13 +1408,17 @@ let contains_modifier_colon sel =
 (** Check if selector contains :where(.group) - used for group-* modifiers.
     Note: can't use 'any' because it transforms Where to List before calling p.
 *)
+let is_group_class = function
+  | Class s ->
+      s = "group" || (String.length s > 6 && String.sub s 0 6 = "group/")
+  | _ -> false
+
 let rec has_group_marker = function
   | Where xs ->
       List.exists
         (function
-          | Class "group" -> true
-          | Compound cs ->
-              List.exists (function Class "group" -> true | _ -> false) cs
+          | sel when is_group_class sel -> true
+          | Compound cs -> List.exists is_group_class cs
           | other -> has_group_marker other)
         xs
   | Compound xs -> List.exists has_group_marker xs
@@ -1426,13 +1430,16 @@ let rec has_group_marker = function
   | _ -> false
 
 (** Check if selector contains :where(.peer) - used for peer-* modifiers *)
+let is_peer_class = function
+  | Class s -> s = "peer" || (String.length s > 5 && String.sub s 0 5 = "peer/")
+  | _ -> false
+
 let rec has_peer_marker = function
   | Where xs ->
       List.exists
         (function
-          | Class "peer" -> true
-          | Compound cs ->
-              List.exists (function Class "peer" -> true | _ -> false) cs
+          | sel when is_peer_class sel -> true
+          | Compound cs -> List.exists is_peer_class cs
           | other -> has_peer_marker other)
         xs
   | Compound xs -> List.exists has_peer_marker xs

@@ -288,11 +288,16 @@ let rec has_not_pseudo = function
   | Selector.Compound sels -> List.exists has_not_pseudo sels
   | _ -> false
 
-(* Sort selectors for merging: not-* first, group-* second, peer-* third, base
-   last. Uses structured selector analysis. *)
+(* Sort selectors for merging: not-* first (sub-sorted by group/peer/plain),
+   group-* second, peer-* third, base last. Uses structured selector
+   analysis. *)
 let selector_sort_key sel =
   let base =
-    if has_not_pseudo sel then -1
+    if has_not_pseudo sel then
+      (* Sub-classify not-* selectors by group/peer/plain *)
+      if Selector.has_group_marker sel then -3
+      else if Selector.has_peer_marker sel then -2
+      else -1
     else if Selector.has_group_marker sel then 0
     else if Selector.has_peer_marker sel then 1
     else 2
@@ -304,8 +309,11 @@ let selector_sort_key sel =
   in
   (base, depth)
 
-let compare_selectors_for_merge sel1 sel2 =
-  compare (selector_sort_key sel1) (selector_sort_key sel2)
+let compare_selectors_for_merge (sel1, i1) (sel2, i2) =
+  let k1 = selector_sort_key sel1 and k2 = selector_sort_key sel2 in
+  let c = compare k1 k2 in
+  (* Stable sort: preserve original order when keys are equal *)
+  if c <> 0 then c else Int.compare i1 i2
 
 (* Convert group of selectors to a rule *)
 let group_to_rule :
@@ -316,10 +324,12 @@ let group_to_rule :
         { selector = sel; declarations = decls; nested = []; merge_key = None }
   | [] -> None
   | group ->
-      let selector_list = List.map (fun (s, _, _) -> s) (List.rev group) in
-      (* Sort selectors: group-* first, peer-* second, base last *)
+      let selector_list = List.rev group |> List.map (fun (s, _, _) -> s) in
+      (* Sort selectors: group-* first, peer-* second, base last. Uses index for
+         stable sort to preserve pre-optimization order. *)
+      let indexed = List.mapi (fun i s -> (s, i)) selector_list in
       let sorted_selectors =
-        List.sort compare_selectors_for_merge selector_list
+        List.sort compare_selectors_for_merge indexed |> List.map fst
       in
       let _, decls, _ = List.hd group in
       (* Create a List selector from all the selectors *)
