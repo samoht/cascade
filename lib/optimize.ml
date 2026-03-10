@@ -327,7 +327,19 @@ let selector_sort_key sel =
     | Some cls -> modifier_depth cls
     | None -> 0
   in
-  (base, depth)
+  (* Sort nth variants: nth-child < nth-last-child < nth-of-type <
+     nth-last-of-type, matching Tailwind v4 ordering where "last" follows its
+     non-last counterpart *)
+  let nth_order =
+    match Selector.first_class sel with
+    | Some cls ->
+        if String.starts_with ~prefix:"nth-last-of-type-" cls then 3
+        else if String.starts_with ~prefix:"nth-of-type-" cls then 2
+        else if String.starts_with ~prefix:"nth-last-" cls then 1
+        else 0
+    | None -> 0
+  in
+  (base, nth_order, depth)
 
 let compare_selectors_for_merge (sel1, i1) (sel2, i2) =
   let k1 = selector_sort_key sel1 and k2 = selector_sort_key sel2 in
