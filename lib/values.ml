@@ -300,7 +300,33 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Max_content -> Pp.string ctx "max-content"
   | Min_content -> Pp.string ctx "min-content"
   | From_font -> Pp.string ctx "from-font"
-  | Clamp s -> Pp.string ctx ("clamp(" ^ s ^ ")")
+  | Clamp s ->
+      let args =
+        if ctx.Pp.minify then s
+        else
+          (* Normalize top-level commas: "a,b,c" -> "a, b, c" *)
+          let buf = Buffer.create (String.length s + 4) in
+          let depth = ref 0 in
+          String.iter
+            (fun c ->
+              match c with
+              | '(' ->
+                  incr depth;
+                  Buffer.add_char buf c
+              | ')' ->
+                  decr depth;
+                  Buffer.add_char buf c
+              | ',' when !depth = 0 -> Buffer.add_string buf ", "
+              | ' '
+                when Buffer.length buf > 0
+                     && Buffer.contents buf |> fun s ->
+                        s.[String.length s - 1] = ',' && !depth = 0 ->
+                  () (* skip space after comma we already added *)
+              | _ -> Buffer.add_char buf c)
+            s;
+          Buffer.contents buf
+      in
+      Pp.string ctx ("clamp(" ^ args ^ ")")
   | Min s -> Pp.string ctx ("min(" ^ s ^ ")")
   | Max s -> Pp.string ctx ("max(" ^ s ^ ")")
   | Minmax s -> Pp.string ctx ("minmax(" ^ s ^ ")")
