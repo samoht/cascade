@@ -292,9 +292,15 @@ let rec has_not_pseudo = function
   | Selector.Compound sels -> List.exists has_not_pseudo sels
   | _ -> false
 
+(* Check if a selector contains a :has() pseudo-class at the top level *)
+let rec has_has_pseudo = function
+  | Selector.Has _ -> true
+  | Selector.Compound sels -> List.exists has_has_pseudo sels
+  | _ -> false
+
 (* Sort selectors for merging: not-* first (sub-sorted by group/peer/plain),
-   group-* second, peer-* third, base last. Uses structured selector
-   analysis. *)
+   group-* second, peer-* third, ancestor-context fourth, has-* last. Uses
+   structured selector analysis. *)
 let selector_sort_key sel =
   (* Ancestor-context selectors (:where(...) .class) use group/peer markers as
      ancestor conditions, not as the main selector's class. These should not be
@@ -311,6 +317,7 @@ let selector_sort_key sel =
       if Selector.has_group_marker sel then -3
       else if Selector.has_peer_marker sel then -2
       else -1
+    else if has_has_pseudo sel then 3
     else if Selector.has_group_marker sel then 0
     else if Selector.has_peer_marker sel then 1
     else 2
