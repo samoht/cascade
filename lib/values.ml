@@ -307,22 +307,25 @@ let rec pp_length ?(always = false) : length Pp.t =
           (* Normalize top-level commas: "a,b,c" -> "a, b, c" *)
           let buf = Buffer.create (String.length s + 4) in
           let depth = ref 0 in
+          let after_comma = ref false in
           String.iter
             (fun c ->
               match c with
               | '(' ->
+                  after_comma := false;
                   incr depth;
                   Buffer.add_char buf c
               | ')' ->
+                  after_comma := false;
                   decr depth;
                   Buffer.add_char buf c
-              | ',' when !depth = 0 -> Buffer.add_string buf ", "
-              | ' '
-                when Buffer.length buf > 0
-                     && Buffer.contents buf |> fun s ->
-                        s.[String.length s - 1] = ',' && !depth = 0 ->
-                  () (* skip space after comma we already added *)
-              | _ -> Buffer.add_char buf c)
+              | ',' when !depth = 0 ->
+                  after_comma := true;
+                  Buffer.add_string buf ", "
+              | ' ' when !after_comma -> ()
+              | _ ->
+                  after_comma := false;
+                  Buffer.add_char buf c)
             s;
           Buffer.contents buf
       in
