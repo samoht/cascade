@@ -428,6 +428,10 @@ val font_size : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-size} font-size}
     property. *)
 
+val font_size_kw : font_size -> declaration
+(** [font_size_kw fs] is the font-size property accepting the full [font_size]
+    type including absolute/relative size keywords. *)
+
 val line_height : line_height -> declaration
 (** [line_height v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/line-height}

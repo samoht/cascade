@@ -1059,6 +1059,7 @@ let block_size len = v Block_size (Length len)
 let min_block_size len = v Min_block_size (Length len)
 let max_block_size len = v Max_block_size (Length len)
 let font_size len = v Font_size (Length len)
+let font_size_kw fs = v Font_size fs
 let line_height len = v Line_height len
 let font_weight w = v Font_weight w
 let text_align a = v Text_align a

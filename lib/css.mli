@@ -2643,6 +2643,11 @@ val font_size : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-size} font-size}
     property. *)
 
+val font_size_kw : font_size -> declaration
+(** [font_size_kw fs] is the font-size property accepting the full [font_size]
+    type including absolute/relative size keywords like [Larger] and [Xx_large].
+*)
+
 val font_weight : font_weight -> declaration
 (** [font_weight weight] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-weight}
