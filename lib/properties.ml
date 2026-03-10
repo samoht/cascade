@@ -1087,7 +1087,7 @@ let pp_shadow_parts ctx ~inset ~inset_var h v blur spread color =
   Pp.space ctx ();
   pp_length ctx v;
   pp_opt_space pp_length ctx blur;
-  pp_opt_space pp_length ctx spread;
+  pp_opt_space (pp_length ~always:true) ctx spread;
   match color with
   | Some c ->
       Pp.space ctx ();
