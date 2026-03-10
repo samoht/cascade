@@ -133,6 +133,9 @@ val read_attr_flag : Reader.t -> attr_flag option
 val read_nth : Reader.t -> nth
 (** [read_nth r] parses an An+B nth expression. *)
 
+val read_nth_selector : Reader.t -> nth * t list option
+(** [read_nth_selector r] parses an An+B expression with optional [of S]. *)
+
 val is_ : t list -> t
 (** [is_ selectors] [:is(...)] pseudo-class. *)
 
