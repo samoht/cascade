@@ -327,17 +327,19 @@ let selector_sort_key sel =
     | Some cls -> modifier_depth cls
     | None -> 0
   in
-  (* Sort nth variants: nth-child < nth-last-child < nth-of-type <
-     nth-last-of-type, matching Tailwind v4 ordering where "last" follows its
-     non-last counterpart *)
+  (* Sort nth variants by selector AST type: nth-child < nth-last-child <
+     nth-of-type < nth-last-of-type, matching Tailwind v4 ordering where "last"
+     follows its non-last counterpart *)
   let nth_order =
-    match Selector.first_class sel with
-    | Some cls ->
-        if String.starts_with ~prefix:"nth-last-of-type-" cls then 3
-        else if String.starts_with ~prefix:"nth-of-type-" cls then 2
-        else if String.starts_with ~prefix:"nth-last-" cls then 1
-        else 0
-    | None -> 0
+    let rec find_nth = function
+      | Selector.Nth_last_of_type _ -> 3
+      | Selector.Nth_of_type _ -> 2
+      | Selector.Nth_last_child _ -> 1
+      | Selector.Compound sels ->
+          List.fold_left (fun acc s -> max acc (find_nth s)) 0 sels
+      | _ -> 0
+    in
+    find_nth sel
   in
   (base, nth_order, depth)
 
