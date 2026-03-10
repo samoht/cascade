@@ -164,6 +164,9 @@ val float_n : int -> float t
 (** [float_n n] formats float to exactly n decimal places using round-half-up.
     Used for CSS color channels and opacity where precision matters. *)
 
+val round_sig : int -> float -> float
+(** [round_sig n f] rounds [f] to [n] significant digits. *)
+
 val int : int t
 (** [int] formats integers. *)
 

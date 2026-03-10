@@ -724,11 +724,6 @@ let pp_hwb = Pp.call "hwb" pp_hwb_args
 let pp_float_drop_zero ctx f =
   Buffer.add_string ctx.Pp.buf (Pp.float_to_string ~drop_leading_zero:true f)
 
-let pp_compact_number : float option Pp.t =
- fun ctx -> function
-  | Some f -> pp_float_drop_zero ctx f
-  | None -> Pp.string ctx "none"
-
 let pp_alpha_drop_zero : alpha Pp.t =
  fun ctx -> function
   | None -> ()
@@ -738,14 +733,31 @@ let pp_alpha_drop_zero : alpha Pp.t =
       Pp.char ctx '%'
   | Var v -> pp_var pp_alpha ctx v
 
+(** Oklab-specific float printer with precision control. Non-minified: fixed
+    decimal places (matching upstream Tailwind test expectations). Minified: 6
+    significant digits (matching Tailwind's minified output). *)
+let pp_oklab_float ~max_decimals ctx f =
+  if ctx.Pp.minify then pp_float_drop_zero ctx (Pp.round_sig 6 f)
+  else
+    Buffer.add_string ctx.Pp.buf
+      (Pp.float_to_string ~drop_leading_zero:true ~max_decimals f)
+
+let pp_oklab_ab ctx = function
+  | Some f -> pp_oklab_float ~max_decimals:3 ctx f
+  | None -> Pp.string ctx "none"
+
 let pp_oklab_args : (percentage * float option * float option * alpha) Pp.t =
  fun ctx (l, a, b, alpha) ->
-  (* Oklab L must always be output as percentage per CSS spec *)
-  pp_percentage ctx l;
+  (* Oklab L: percentage with controlled precision *)
+  (match l with
+  | Pct f ->
+      pp_oklab_float ~max_decimals:4 ctx f;
+      Pp.char ctx '%'
+  | _ -> pp_percentage ctx l);
   Pp.space ctx ();
-  pp_compact_number ctx a;
+  pp_oklab_ab ctx a;
   Pp.space ctx ();
-  pp_compact_number ctx b;
+  pp_oklab_ab ctx b;
   match alpha with
   | None -> ()
   | a ->

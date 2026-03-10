@@ -214,6 +214,15 @@ let float_to_string ?(drop_leading_zero = false) ?(max_decimals = 8) f =
       if abs_f = floor abs_f then format_integer is_neg abs_f f
       else format_decimal_value ~drop_leading_zero max_decimals is_neg abs_f
 
+let round_sig n f =
+  if f = 0.0 then 0.0
+  else
+    let d =
+      Float.of_int (int_of_float (Float.ceil (Float.log10 (Float.abs f))))
+    in
+    let factor = 10.0 ** (Float.of_int n -. d) in
+    Float.round (f *. factor) /. factor
+
 let float ctx f =
   Buffer.add_string ctx.buf (float_to_string ~drop_leading_zero:ctx.minify f)
 
