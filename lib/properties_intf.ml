@@ -921,6 +921,10 @@ type shadow =
       inset_var : string option;
           (** If set, outputs var(--<name>) before shadow values. Used by
               Tailwind's ring system for dynamic inset toggle. *)
+      inset_var_no_fallback : bool;
+          (** When true, emits [var(--name)] without fallback instead of
+              [var(--name,)] with empty fallback. Used by the forms plugin where
+              the variable is always set in the same rule. *)
       h_offset : length;
       v_offset : length;
       blur : length option;

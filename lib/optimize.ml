@@ -262,10 +262,22 @@ let modifier_depth class_name =
       match class_name.[i] with
       | '[' -> loop (i + 1) depth (bracket_depth + 1)
       | ']' -> loop (i + 1) depth (max 0 (bracket_depth - 1))
+      | '\\' when i + 1 < len && class_name.[i + 1] = ':' ->
+          (* Skip escaped colon \: — not a modifier separator *)
+          loop (i + 2) depth bracket_depth
       | ':' when bracket_depth = 0 -> loop (i + 1) (depth + 1) bracket_depth
       | _ -> loop (i + 1) depth bracket_depth
   in
   loop 0 0 0
+
+let has_escaped_colon class_name =
+  let len = String.length class_name in
+  let rec check i =
+    if i >= len - 1 then false
+    else if class_name.[i] = '\\' && class_name.[i + 1] = ':' then true
+    else check (i + 1)
+  in
+  check 0
 
 let can_combine_selectors sel1 sel2 =
   (* Check if pseudo-elements match (both None, or both the same) *)
@@ -279,12 +291,13 @@ let can_combine_selectors sel1 sel2 =
        Simple class selectors always combine. *)
     match (Selector.first_class sel1, Selector.first_class sel2) with
     | Some c1, Some c2 ->
-        (* Don't combine unmodified (depth 0) with modified (depth > 0)
-           selectors as they have different cascade semantics. But selectors
-           with any modifiers can combine regardless of exact depth. *)
-        let d1 = modifier_depth c1 in
-        let d2 = modifier_depth c2 in
-        (d1 > 0 && d2 > 0) || d1 = d2
+        (* Don't combine if one has escaped colon (variant-prefixed like
+           peer-checked\:font-semibold) and the other doesn't *)
+        if has_escaped_colon c1 <> has_escaped_colon c2 then false
+        else
+          let d1 = modifier_depth c1 in
+          let d2 = modifier_depth c2 in
+          (d1 > 0 && d2 > 0) || d1 = d2
     | _ -> false
 
 (* Check if a selector contains a :not() pseudo-class at the top level *)
@@ -500,7 +513,7 @@ let rec should_consolidate cond =
   match cond with
   | Media.Min_width _ | Media.Min_width_rem _ | Media.Max_width _
   | Media.Min_width_length _ | Media.Not_min_width_length _
-  | Media.Prefers_reduced_motion _ ->
+  | Media.Prefers_reduced_motion _ | Media.Prefers_color_scheme _ ->
       true
   | Media.Negated inner -> should_consolidate inner
   | _ -> false

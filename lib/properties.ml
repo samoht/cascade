@@ -845,6 +845,7 @@ module Shadow = struct
           {
             inset = parts.inset;
             inset_var = None;
+            inset_var_no_fallback = false;
             h_offset;
             v_offset;
             blur;
@@ -1068,21 +1069,30 @@ let read_url_arg t =
   | Some ('"' | '\'') -> Reader.string ~trim:true t
   | _ -> String.trim (Reader.until t ')')
 
-let pp_shadow_parts ctx ~inset ~inset_var h v blur spread color =
-  (* If inset_var is set, output var(--<name>,) with empty fallback. The
-     variable value includes trailing space when set to "inset ". Otherwise use
-     the bool inset flag. *)
-  (match inset_var with
-  | Some var_name ->
-      (* Empty fallback with space: var(--name, ) — matches tailwindcss v4
-         non-minified output. The two spaces are: comma + space + fallback
-         space. *)
-      Pp.string ctx ("var(--" ^ var_name ^ ",  )");
-      Pp.space ctx ()
-  | None ->
-      if inset then (
-        Pp.string ctx "inset";
-        Pp.space ctx ()));
+let pp_shadow_parts ctx ~inset ~inset_var ~inset_var_no_fallback h v blur spread
+    color =
+  (* If inset_var is set, output var(--<name>,) or var(--<name>) before shadow
+     values. The variable value includes trailing space when set to "inset ".
+     Otherwise use the bool inset flag. *)
+  let has_inset_var =
+    match inset_var with
+    | Some var_name ->
+        if inset_var_no_fallback then Pp.string ctx ("var(--" ^ var_name ^ ")")
+        else (
+          (* Empty fallback: var(--name, ) in pretty, var(--name,) in minified.
+             The two pretty-mode spaces are: comma-space + fallback-space. *)
+          Pp.string ctx ("var(--" ^ var_name ^ ",");
+          Pp.space_if_pretty ctx ();
+          Pp.space_if_pretty ctx ();
+          Pp.string ctx ")");
+        true
+    | None ->
+        if inset then (
+          Pp.string ctx "inset";
+          Pp.space ctx ());
+        false
+  in
+  if has_inset_var then Pp.space_if_pretty ctx ();
   pp_length ctx h;
   Pp.space ctx ();
   pp_length ctx v;
@@ -1090,14 +1100,29 @@ let pp_shadow_parts ctx ~inset ~inset_var h v blur spread color =
   pp_opt_space (pp_length ~always:true) ctx spread;
   match color with
   | Some c ->
-      Pp.space ctx ();
+      (* Space before color can be omitted in minified mode when the previous
+         token ends with ')' (e.g., calc(...)var(...)), since ')' is a token
+         delimiter. When spread is present it always ends with ')' in ring
+         shadows. Use space_if_pretty for safety in the inset_var case. *)
+      if has_inset_var then Pp.space_if_pretty ctx () else Pp.space ctx ();
       pp_color ctx c
   | None -> ()
 
 let rec pp_shadow : shadow Pp.t =
  fun ctx -> function
-  | Shadow { inset; inset_var; h_offset; v_offset; blur; spread; color } ->
-      pp_shadow_parts ctx ~inset ~inset_var h_offset v_offset blur spread color
+  | Shadow
+      {
+        inset;
+        inset_var;
+        inset_var_no_fallback;
+        h_offset;
+        v_offset;
+        blur;
+        spread;
+        color;
+      } ->
+      pp_shadow_parts ctx ~inset ~inset_var ~inset_var_no_fallback h_offset
+        v_offset blur spread color
   | None -> Pp.string ctx "none"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
@@ -6744,14 +6769,15 @@ let read_any_property t =
 let rgb_black = Rgb (Channels { r = Int 0; g = Int 0; b = Int 0 })
 
 let shadow ?(inset = false) ?(inset_var : string option)
-    ?(h_offset : length option) ?(v_offset : length option)
-    ?(blur : length option) ?(spread : length option) ?(color : color option) ()
-    : shadow =
+    ?(inset_var_no_fallback = false) ?(h_offset : length option)
+    ?(v_offset : length option) ?(blur : length option)
+    ?(spread : length option) ?(color : color option) () : shadow =
   let default_color = rgb_black in
   Shadow
     {
       inset;
       inset_var;
+      inset_var_no_fallback;
       h_offset = Option.value h_offset ~default:(Px 0.);
       v_offset = Option.value v_offset ~default:(Px 0.);
       blur;
@@ -6765,7 +6791,16 @@ let inset_ring_shadow ?(h_offset : length option) ?(v_offset : length option)
   let h_offset = Option.value h_offset ~default:(Zero : length) in
   let v_offset = Option.value v_offset ~default:(Zero : length) in
   Shadow
-    { inset = true; inset_var = None; h_offset; v_offset; blur; spread; color }
+    {
+      inset = true;
+      inset_var = None;
+      inset_var_no_fallback = false;
+      h_offset;
+      v_offset;
+      blur;
+      spread;
+      color;
+    }
 
 let url path : background_image = Url path
 let linear_gradient dir stops = Linear_gradient (dir, stops)

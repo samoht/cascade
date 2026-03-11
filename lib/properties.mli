@@ -1086,6 +1086,7 @@ val read_outline_shorthand : Reader.t -> outline_shorthand
 val shadow :
   ?inset:bool ->
   ?inset_var:string ->
+  ?inset_var_no_fallback:bool ->
   ?h_offset:length ->
   ?v_offset:length ->
   ?blur:length ->
@@ -1093,11 +1094,11 @@ val shadow :
   ?color:color ->
   unit ->
   shadow
-(** [shadow ?inset ?inset_var ?h_offset ?v_offset ?blur ?spread ?color ()] is a
-    shadow value with optional parameters. If [inset_var] is set, outputs
-    [var(--<name>)] before shadow values (used for Tailwind's ring system).
-    Defaults: inset=false, h_offset=0px, v_offset=0px, blur=0px, spread=0px,
-    color=Rgb(0,0,0). *)
+(** [shadow ?inset ?inset_var ?inset_var_no_fallback ?h_offset ?v_offset ?blur
+     ?spread ?color ()] is a shadow value. When [inset_var] is set, outputs
+    [var(--<name>,)] (empty fallback) or [var(--<name>)] (when
+    [inset_var_no_fallback] is true). Defaults: inset=false, h_offset=0px,
+    v_offset=0px, blur=0px, spread=0px, color=Rgb(0,0,0). *)
 
 val inset_ring_shadow :
   ?h_offset:length ->
