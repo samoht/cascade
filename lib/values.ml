@@ -1226,11 +1226,11 @@ and read_calc_factor : type a. (Reader.t -> a) -> Reader.t -> a calc =
   match Reader.peek t with
   | Some '(' -> read_calc_parenthesized read_a t
   | _ when Reader.looking_at t "calc(" ->
-      (* Handle nested calc() expressions *)
+      (* Handle nested calc() expressions - preserve as Nested node *)
       Reader.expect_string "calc(" t;
       let expr = read_calc_expr read_a t in
       Reader.expect ')' t;
-      expr
+      Nested expr
   | _ when Reader.looking_at t "var(" -> Var (read_var read_a t)
   | _ ->
       let read_val t = Val (read_a t) in
