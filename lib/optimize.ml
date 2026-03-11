@@ -302,33 +302,28 @@ let rec has_has_pseudo = function
 (* Sort selectors for merging: not-* first (sub-sorted by group/peer/plain),
    group-* second, peer-* third, ancestor-context fourth, has-* last. Uses
    structured selector analysis. *)
-let selector_sort_key sel =
-  (* Ancestor-context selectors (:where(...) .class) use group/peer markers as
-     ancestor conditions, not as the main selector's class. These should not be
-     classified as group/peer selectors for merge ordering. *)
-  let is_ancestor_context =
-    match sel with
-    | Selector.Combined (Selector.Where _, Selector.Descendant, _) -> true
-    | _ -> false
-  in
-  let base =
-    if is_ancestor_context then 2
-    else if has_not_pseudo sel then
-      (* Sub-classify not-* selectors by group/peer/plain *)
-      if Selector.has_group_marker sel then -3
-      else if Selector.has_peer_marker sel then -2
-      else -1
-    else if has_has_pseudo sel then
-      (* Only give :has() a distinct sort key when combined with group/peer
-         markers, so group-has-* sorts after group-* and peer-has-* after
-         peer-*. Plain has-* selectors sort among regular selectors. *)
-      if Selector.has_group_marker sel then 3
-      else if Selector.has_peer_marker sel then 3
-      else 2
-    else if Selector.has_group_marker sel then 0
-    else if Selector.has_peer_marker sel then 1
+let base_sort_key sel =
+  if has_not_pseudo sel then
+    (* Sub-classify not-* selectors by group/peer/plain *)
+    if Selector.has_group_marker sel then -3
+    else if Selector.has_peer_marker sel then -2
+    else -1
+  else if has_has_pseudo sel then
+    (* Only give :has() a distinct sort key when combined with group/peer
+       markers, so group-has-* sorts after group-* and peer-has-* after peer-*.
+       Plain has-* selectors sort among regular selectors. *)
+    if Selector.has_group_marker sel || Selector.has_peer_marker sel then 3
     else 2
-  in
+  else if Selector.has_group_marker sel then 0
+  else if Selector.has_peer_marker sel then 1
+  else 2
+
+let is_ancestor_context = function
+  | Selector.Combined (Selector.Where _, Selector.Descendant, _) -> true
+  | _ -> false
+
+let selector_sort_key sel =
+  let base = if is_ancestor_context sel then 2 else base_sort_key sel in
   let depth =
     match Selector.first_class sel with
     | Some cls -> modifier_depth cls
