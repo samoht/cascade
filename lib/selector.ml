@@ -512,12 +512,14 @@ let read_attribute t =
   Reader.ws t;
   let ns = read_ns t in
   let attr = Reader.ident ~keep_case:true t in
+  validate_css_identifier_with_reader t attr;
   Reader.ws t;
   let matcher = read_attribute_match t in
   Reader.ws t;
   let flag = read_attr_flag t in
   Reader.expect ']' t;
-  attribute ?ns attr matcher ?flag
+  let attr_name = attr_name_of_string attr in
+  Attribute (ns, attr_name, matcher, flag)
 
 (** Read An+B microsyntax for nth expressions *)
 let read_offset t =

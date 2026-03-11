@@ -2,16 +2,16 @@ open Css.Media
 
 let test_to_string () =
   Alcotest.(check string)
-    "min-width" "(min-width:640px)"
+    "min-width" "(min-width: 640px)"
     (to_string (Min_width 640.));
   Alcotest.(check string)
-    "max-width" "(max-width:768px)"
+    "max-width" "(max-width: 768px)"
     (to_string (Max_width 768.));
   Alcotest.(check string)
-    "prefers-color-scheme" "(prefers-color-scheme:dark)"
+    "prefers-color-scheme" "(prefers-color-scheme: dark)"
     (to_string (Prefers_color_scheme `Dark));
   Alcotest.(check string)
-    "prefers-reduced-motion" "(prefers-reduced-motion:reduce)"
+    "prefers-reduced-motion" "(prefers-reduced-motion: reduce)"
     (to_string (Prefers_reduced_motion `Reduce));
   Alcotest.(check string) "print" "print" (to_string Print)
 

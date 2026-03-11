@@ -4166,16 +4166,33 @@ let read_place_items t : place_items =
     then Stretch_stretch
     else Stretch)
   else
-    Reader.enum "place-items"
-      [
-        ("normal", (Normal : place_items));
-        ("start", Start);
-        ("end", End);
-        ("center", Center);
-        ("baseline", Baseline);
-        ("inherit", Inherit);
-      ]
-      t
+    let first =
+      Reader.enum "place-items"
+        [
+          ("normal", (Normal : place_items));
+          ("start", Start);
+          ("end", End);
+          ("center", Center);
+          ("baseline", Baseline);
+          ("inherit", Inherit);
+        ]
+        t
+    in
+    Reader.ws t;
+    match Reader.option read_justify_items t with
+    | None -> first
+    | Some justify ->
+        let align : align_items =
+          match first with
+          | Normal -> Normal
+          | Start -> Start
+          | End -> End
+          | Center -> Center
+          | Baseline -> Baseline
+          | Stretch -> Stretch
+          | _ -> Reader.err_invalid t "place-items two-value"
+        in
+        Align_justify (align, justify)
 
 let read_grid_auto_flow t : grid_auto_flow =
   let v = Reader.ident t in

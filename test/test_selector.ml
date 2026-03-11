@@ -113,12 +113,12 @@ let pseudo_class_cases () =
   check_construct ":first-child" First_child;
   check_construct ":last-child" Last_child;
   check_construct ":nth-child(2)" (nth_child (An_plus_b (0, 2)));
-  check_construct ":nth-child(odd)" (nth_child Odd);
-  check_construct ":nth-child(even)" (nth_child Even);
+  check_construct ":nth-child(2n+1)" (nth_child Odd);
+  check_construct ":nth-child(2n)" (nth_child Even);
   check_construct ":nth-child(2n+1)" (nth_child (An_plus_b (2, 1)));
   (* nth with Index and of clause *)
   check ":nth-child(5)";
-  check ~expected:":nth-child(odd of .item)" ":nth-child( odd of .item )";
+  check ~expected:":nth-child(2n+1 of .item)" ":nth-child( odd of .item )";
   check ~expected:":nth-child(2n-1 of a,b)" ":nth-child( 2n-1 of a , b )";
   check ":nth-of-type(3)";
   check ~expected:":nth-last-child(2 of .x,.y)" ":nth-last-child(2 of .x , .y)";
@@ -425,8 +425,8 @@ let roundtrip () =
   check ":hover";
   check ":nth-child(2)";
   check ":nth-child(2n+1)";
-  check ":nth-child(odd)";
-  check ":nth-child(even)";
+  check ~expected:":nth-child(2n+1)" ":nth-child(odd)";
+  check ~expected:":nth-child(2n)" ":nth-child(even)";
 
   (* Pseudo-elements - legacy ones minify to : *)
   check ~expected:":before" "::before";
@@ -720,10 +720,10 @@ let callstack_accuracy () =
 
 (* Test check functions for selector components *)
 let component_parsing () =
-  (* Test nth values *)
+  (* Test nth values — odd/even are canonicalized to 2n+1/2n *)
   check_nth "2n+1";
-  check_nth "odd";
-  check_nth "even";
+  check_nth ~expected:"2n+1" "odd";
+  check_nth ~expected:"2n" "even";
   check_nth "3n";
   check_nth "5";
 
@@ -967,10 +967,10 @@ let test_ns () =
   ()
 
 let test_nth () =
-  (* Test nth type *)
+  (* Test nth type — odd/even are canonicalized to 2n+1/2n *)
   check_nth "2n+1";
-  check_nth "odd";
-  check_nth "even";
+  check_nth ~expected:"2n+1" "odd";
+  check_nth ~expected:"2n" "even";
   check_nth "3n";
   check_nth "5";
 

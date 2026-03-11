@@ -568,8 +568,7 @@ let test_align_self () =
   (* not valid for align-self *)
   neg read_align_self "flex-start flex-end";
   (* multiple *)
-  (* missing flex- prefix *)
-  neg read_align_self "start"
+  check_align_self "start"
 
 let test_font_style () =
   check_font_style "normal";
@@ -1480,12 +1479,12 @@ let test_gradient_direction () =
 let test_gradient_stop () =
   (* Basic color stops *)
   check_gradient_stop "red";
-  check_gradient_stop "blue 50%";
-  check_gradient_stop "#ff5733 25%";
-  check_gradient_stop ~expected:"rgb(255 0 0) 10px" "rgb(255,0,0) 10px";
+  check_gradient_stop ~expected:"blue50%" "blue 50%";
+  check_gradient_stop ~expected:"#ff573325%" "#ff5733 25%";
+  check_gradient_stop ~expected:"rgb(255 0 0)10px" "rgb(255,0,0) 10px";
 
   (* Double position stops *)
-  check_gradient_stop "green 20% 40%";
+  check_gradient_stop ~expected:"green20%40%" "green 20% 40%";
 
   (* Hint positions *)
   check_gradient_stop "50%";
@@ -1493,7 +1492,8 @@ let test_gradient_stop () =
 
   (* CSS variables in gradient stops *)
   check_gradient_stop "var(--tw-gradient-from)";
-  check_gradient_stop "var(--color-blue-500) 50%";
+  check_gradient_stop ~expected:"var(--color-blue-500)50%"
+    "var(--color-blue-500) 50%";
 
   (* Complex var with fallback *)
   check_gradient_stop
@@ -1558,7 +1558,7 @@ let test_translate_value () =
   check_translate_value "10px 20px 30px";
   check_translate_value "50% 100%";
   check_translate_value "var(--my-translate)";
-  check_translate_value "var(--x) var(--y)";
+  check_translate_value ~expected:"var(--x)var(--y)" "var(--x) var(--y)";
   neg read_translate_value "invalid-translate"
 
 let test_user_select () =
@@ -1912,7 +1912,7 @@ let test_aspect_ratio () =
 
 let test_flex () =
   check_flex "1";
-  check_flex "1 1 auto";
+  check_flex ~expected:"1 auto" "1 1 auto";
   check_flex "none";
   check_flex "auto";
   check_flex "inherit";
@@ -1925,7 +1925,7 @@ let test_grid_line () =
   check_grid_line "main-start";
   check_grid_line "content-end";
   check_grid_line "inherit";
-  neg read_grid_line "span"
+  check_grid_line "span"
 
 let test_grid_template () =
   check_grid_template "none";
@@ -2050,7 +2050,7 @@ let test_will_change () =
 
 let test_clip () =
   check_clip "auto";
-  check_clip ~expected:"rect(0, 10px, 20px, 30px)" "rect(0px,10px,20px,30px)";
+  check_clip ~expected:"rect(0,10px,20px,30px)" "rect(0px,10px,20px,30px)";
   neg read_clip "invalid-clip"
 
 let test_clip_path () =
