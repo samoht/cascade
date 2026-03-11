@@ -70,7 +70,7 @@ let parse_length s =
     let r = Reader.of_string s in
     let l = Values.read_length r in
     if Reader.is_done r then Some l else None
-  with _ -> None
+  with Reader.Parse_error _ | Invalid_argument _ -> None
 
 let as_layer = function
   | Layer (name, content) -> Some (name, content)
