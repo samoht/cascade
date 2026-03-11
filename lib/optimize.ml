@@ -118,6 +118,7 @@ let rec extract_pseudo_element : Selector.t -> Selector.t option = function
   | Selection -> Some Selection
   | File_selector_button -> Some File_selector_button
   | Backdrop -> Some Backdrop
+  | Details_content -> Some Details_content
   | Compound sels ->
       (* For compound selectors, look for pseudo-element at the end *)
       List.fold_left
@@ -317,7 +318,13 @@ let selector_sort_key sel =
       if Selector.has_group_marker sel then -3
       else if Selector.has_peer_marker sel then -2
       else -1
-    else if has_has_pseudo sel then 3
+    else if has_has_pseudo sel then
+      (* Only give :has() a distinct sort key when combined with group/peer
+         markers, so group-has-* sorts after group-* and peer-has-* after
+         peer-*. Plain has-* selectors sort among regular selectors. *)
+      if Selector.has_group_marker sel then 3
+      else if Selector.has_peer_marker sel then 3
+      else 2
     else if Selector.has_group_marker sel then 0
     else if Selector.has_peer_marker sel then 1
     else 2
@@ -409,7 +416,27 @@ let can_combine_rules (prev : Stylesheet.rule) (rule : Stylesheet.rule) =
   && newer_pseudo_class_compatible prev.selector rule.selector
   &&
   match (prev.merge_key, rule.merge_key) with
-  | Some k1, Some k2 -> k1 = k2
+  | Some k1, Some k2 ->
+      if k1 <> k2 then false
+      else
+        (* When both have merge_keys, allow combining unless they have
+           incompatible pseudo-elements. Pseudo-elements in the same "tier" can
+           combine (e.g. ::placeholder + ::backdrop), but pseudo-elements from
+           different tiers cannot (e.g. ::backdrop + ::details-content). *)
+        let pe1 = extract_pseudo_element prev.selector in
+        let pe2 = extract_pseudo_element rule.selector in
+        let pseudo_tier = function
+          | None -> 0
+          | Some Selector.Before | Some After -> 1
+          | Some First_letter | Some First_line -> 2
+          | Some Placeholder | Some Backdrop -> 3
+          | Some Details_content -> 4
+          | Some Marker -> 5
+          | Some Selection -> 6
+          | Some File_selector_button -> 7
+          | Some _ -> 8
+        in
+        pseudo_tier pe1 = pseudo_tier pe2
   | _ -> can_combine_selectors prev.selector rule.selector
 
 let combine_identical_rules (rules : Stylesheet.rule list) :
@@ -598,7 +625,7 @@ let emit_pending_hover ~hover_insert_pos ~pending_hover_blocks
 (* Route a consolidated media block: either defer it to a pending list for later
    repositioning, or emit it directly at the current position. *)
 let route_consolidated ~should_reposition_hover ~is_top_level
-    ~pending_hover_blocks ~pending_motion_blocks consolidated cond acc =
+    ~pending_hover_blocks ~pending_motion_blocks:_ consolidated cond acc =
   match cond with
   | Media.Hover when should_reposition_hover ->
       (* For hover at top-level, add to pending list for repositioning. Append
@@ -606,10 +633,9 @@ let route_consolidated ~should_reposition_hover ~is_top_level
       pending_hover_blocks := !pending_hover_blocks @ [ consolidated ];
       acc
   | Media.Prefers_reduced_motion _ when is_top_level ->
-      (* For motion-reduce at top-level, add to pending list (after hover).
-         Append to maintain order. *)
-      pending_motion_blocks := !pending_motion_blocks @ [ consolidated ];
-      acc
+      (* Motion blocks are positioned correctly by variant_order sorting. Emit
+         directly at their sorted position. *)
+      consolidated :: acc
   | _ ->
       (* For responsive media, or hover in nested context, emit at last
          position *)
