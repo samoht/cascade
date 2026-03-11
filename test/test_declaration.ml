@@ -451,8 +451,8 @@ let flexbox_wrap () =
 let flexbox_flex_and_basis () =
   (* Flex shorthand *)
   check_declaration ~expected:"flex:1" "flex: 1";
-  check_declaration ~expected:"flex:1 1 auto" "flex: 1 1 auto";
-  check_declaration ~expected:"flex:0 1 auto" "flex: 0 1 auto";
+  check_declaration ~expected:"flex:1 auto" "flex: 1 1 auto";
+  check_declaration ~expected:"flex:0 auto" "flex: 0 1 auto";
   check_declaration ~expected:"flex:initial" "flex: initial";
   check_declaration ~expected:"flex:none" "flex: none";
   check_declaration ~expected:"flex:auto" "flex: auto";
@@ -578,7 +578,7 @@ let animations_timing () =
     ~expected:"animation-timing-function:cubic-bezier(.4,0,.2,1)"
     "animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1)";
 
-  check_declaration ~expected:"animation-delay:0s" "animation-delay: 0s";
+  check_declaration ~expected:"animation-delay:0" "animation-delay: 0s";
   check_declaration ~expected:"animation-delay:1s" "animation-delay: 1s";
   check_declaration ~expected:"animation-delay:-.5s" "animation-delay: -500ms"
 

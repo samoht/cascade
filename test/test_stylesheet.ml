@@ -65,12 +65,12 @@ let test_stylesheet () =
     "@media screen and (max-width: 640px){.btn{font-size:.875rem}}";
   check_stylesheet ~expected:"@media screen{.test{color:blue}}"
     "@media screen { .test { color: blue } }";
-  check_stylesheet ~expected:"@supports (display: grid){.grid{display:grid}}"
+  check_stylesheet ~expected:"@supports (display:grid){.grid{display:grid}}"
     "@supports (display: grid) { .grid { display: grid } }";
   check_stylesheet
-    "@supports (display: grid){.grid{display:grid}@supports (color: \
-     red){.x{color:red}}}";
-  check_stylesheet ~expected:"@supports (display: grid){.grid{display:grid}}"
+    "@supports (display:grid){.grid{display:grid}@supports \
+     (color:red){.x{color:red}}}";
+  check_stylesheet ~expected:"@supports (display:grid){.grid{display:grid}}"
     "@supports (display: grid) { .grid { display: grid } }";
   check_stylesheet
     ~expected:
@@ -80,7 +80,7 @@ let test_stylesheet () =
   check_stylesheet ~expected:"@keyframes slide{0%{opacity:0}100%{opacity:1}}"
     "@keyframes slide { 0% { opacity: 0 } 100% { opacity: 1 } }";
   check_stylesheet
-    ~expected:"@font-face {font-family:myfont;src:url(font.woff2)}"
+    ~expected:"@font-face {font-family:MyFont;src:url(font.woff2)}"
     "@font-face { font-family: MyFont; src: url(font.woff2); }";
   check_stylesheet ~expected:"@page:first{margin:1in}"
     "@page :first { margin: 1in }";
@@ -534,7 +534,7 @@ let font_face_case () =
   check_stylesheet
     ~expected:
       "@font-face \
-       {font-family:mycustomfont;src:url('font.woff2');font-display:swap}"
+       {font-family:MyCustomFont;src:url('font.woff2');font-display:swap}"
     "@font-face { font-family: MyCustomFont; src: url('font.woff2'); \
      font-display: swap; }"
 
@@ -949,8 +949,7 @@ let test_complex_values () =
 let test_nested_rules () =
   check_stylesheet
     ~expected:
-      "@media (min-width: 768px){@supports (display: \
-       grid){.grid{display:grid}}}"
+      "@media (min-width: 768px){@supports (display:grid){.grid{display:grid}}}"
     "@media (min-width: 768px) { @supports (display: grid) { .grid { display: \
      grid; } } }";
   check_stylesheet

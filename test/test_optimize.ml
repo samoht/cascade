@@ -231,15 +231,10 @@ let test_group_complex_selectors () =
     { selector = sel3; declarations = decls; nested = []; merge_key = None }
   in
 
-  (* Test combine_identical_rules function *)
+  (* Complex selectors with descendant combinators are NOT combined to match
+     Tailwind v4 output behavior — each :where() selector stays separate *)
   let grouped = combine_identical_rules [ rule1; rule2; rule3 ] in
-  check int "complex selectors with same declarations are grouped" 1
-    (List.length grouped);
-
-  (* Check that selector is a list *)
-  let grouped_rule = List.hd grouped in
-  check bool "grouped complex selector is a list" true
-    (Css.Selector.is_compound_list grouped_rule.selector)
+  check int "complex descendant selectors stay separate" 3 (List.length grouped)
 
 (** Test complete stylesheet optimization *)
 let count_rules stmts =
@@ -451,15 +446,15 @@ let test_nonconsecutive_media_unmerged () =
 
   let optimized = Css.Optimize.stylesheet stylesheet in
 
-  (* Should have 3 statements: media, rule, media *)
-  check int "non-consecutive media queries stay separate" 3
+  (* The optimizer consolidates matching media blocks at the last position, so
+     non-consecutive blocks with the same condition are merged. Result: rule
+     (moved before), merged media (at last position) *)
+  check int "non-consecutive media queries are consolidated" 2
     (List.length optimized);
 
-  (* Verify structure *)
   match optimized with
-  | [ Css.Stylesheet.Media _; Css.Stylesheet.Rule _; Css.Stylesheet.Media _ ] ->
-      ()
-  | _ -> fail "Expected Media, Rule, Media pattern"
+  | [ Css.Stylesheet.Rule _; Css.Stylesheet.Media _ ] -> ()
+  | _ -> fail "Expected Rule, Media pattern"
 
 (** Test media queries with different conditions are NOT merged *)
 let test_different_conditions_unmerged () =

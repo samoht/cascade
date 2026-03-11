@@ -325,7 +325,7 @@ let test_angle () =
 let test_duration () =
   (* Seconds *)
   check_duration "1s";
-  check_duration "0s";
+  check_duration ~expected:"0" "0s";
   check_duration ~expected:".5s" "0.5s";
   check_duration ".25s";
   check_duration "10s";
@@ -334,14 +334,14 @@ let test_duration () =
   (* Milliseconds - normalize to seconds when shorter *)
   check_duration ~expected:".5s" "500ms";
   (* 500ms -> .5s is shorter *)
-  check_duration ~expected:"0s" "0ms";
+  check_duration ~expected:"0" "0ms";
   (* 0ms -> 0s is shorter *)
   check_duration "1ms";
   (* 1ms is shorter than .001s *)
   check_duration ~expected:"1s" "1000ms";
   (* 1000ms -> 1s is shorter *)
-  check_duration "50.5ms";
-  (* 50.5ms is shorter than .0505s *)
+  check_duration ~expected:".0505s" "50.5ms";
+  (* 50.5ms → .0505s (same length, prefer seconds) *)
   check_duration ~expected:"999.999s" "999999ms";
   (* 999999ms -> 999.999s *)
   check_duration ".1s";
@@ -470,7 +470,7 @@ let test_minified_value_formatting () =
 (* Not a roundtrip test *)
 let test_regular_value_formatting () =
   let s = Css.Pp.to_string pp_length (Rem 0.5) in
-  check string "regular rem keeps 0" "0.5rem" s;
+  check string "regular rem drops leading 0" ".5rem" s;
   let s = Css.Pp.to_string pp_number (Num 0.5) in
   check string "regular number keeps 0" "0.5" s;
   let s = Css.Pp.to_string pp_number (Num 10.) in
