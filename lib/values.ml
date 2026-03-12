@@ -186,11 +186,11 @@ let pp_calc : type a. a Pp.t -> a calc Pp.t =
         | Var v -> pp_var pp_value ctx v
         | Num n -> Pp.float ctx n
         | Nested inner ->
-            (* Explicitly nested calc() - render as calc(inner) *)
-            Pp.call "calc"
-              (fun ctx inner ->
-                pp_calc_inner ~parent_prec:0 ~right_of_noncommut:false ctx inner)
-              ctx inner
+            (* Nested calc() is transparent - pass context through so precedence
+               rules decide whether parentheses are needed, just like any other
+               subexpression. This normalizes calc(a - calc(b + c)) to calc(a -
+               (b + c)). *)
+            pp_calc_inner ~parent_prec ~right_of_noncommut ctx inner
         | Parens inner ->
             (* Parenthesized expression - render as (inner) *)
             Pp.char ctx '(';
