@@ -424,28 +424,31 @@ let can_combine_rules (prev : Stylesheet.rule) (rule : Stylesheet.rule) =
   && newer_pseudo_class_compatible prev.selector rule.selector
   &&
   match (prev.merge_key, rule.merge_key) with
-  | Some k1, Some k2 ->
-      if k1 <> k2 then false
-      else
-        (* When both have merge_keys, allow combining unless they have
-           incompatible pseudo-elements. Pseudo-elements in the same "tier" can
-           combine (e.g. ::placeholder + ::backdrop), but pseudo-elements from
-           different tiers cannot (e.g. ::backdrop + ::details-content). *)
-        let pe1 = extract_pseudo_element prev.selector in
-        let pe2 = extract_pseudo_element rule.selector in
-        let pseudo_tier = function
-          | None -> 0
-          | Some Selector.Before | Some After -> 1
-          | Some First_letter | Some First_line -> 2
-          | Some Placeholder | Some Backdrop -> 3
-          | Some Details_content -> 4
-          | Some Marker -> 5
-          | Some Selection -> 6
-          | Some File_selector_button -> 7
-          | Some _ -> 8
-        in
-        pseudo_tier pe1 = pseudo_tier pe2
-  | _ -> can_combine_selectors prev.selector rule.selector
+  | Some k1, Some k2 when k1 = k2 ->
+      (* When both have the same merge_key, allow combining unless they have
+         incompatible pseudo-elements. Pseudo-elements in the same "tier" can
+         combine (e.g. ::placeholder + ::backdrop), but pseudo-elements from
+         different tiers cannot (e.g. ::backdrop + ::details-content). *)
+      let pe1 = extract_pseudo_element prev.selector in
+      let pe2 = extract_pseudo_element rule.selector in
+      let pseudo_tier = function
+        | None -> 0
+        | Some Selector.Before | Some After -> 1
+        | Some First_letter | Some First_line -> 2
+        | Some Placeholder | Some Backdrop -> 3
+        | Some Details_content -> 4
+        | Some Marker -> 5
+        | Some Selection -> 6
+        | Some File_selector_button -> 7
+        | Some _ -> 8
+      in
+      pseudo_tier pe1 = pseudo_tier pe2
+  | _ ->
+      (* Different or missing merge_keys: fall through to selector compatibility
+         check. Declarations are already verified identical at call site, so two
+         utilities with the same CSS content (e.g. shadow and shadow-sm in v4)
+         can combine when their selectors are compatible. *)
+      can_combine_selectors prev.selector rule.selector
 
 let combine_identical_rules (rules : Stylesheet.rule list) :
     Stylesheet.rule list =
