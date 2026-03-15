@@ -411,13 +411,47 @@ let newer_pseudo_class_compatible sel1 sel2 =
     not (Selector.has_newer_pseudo_class plain_sel)
   else true
 
+(* Lightning CSS does not merge rules when values contain the 'none' keyword in
+   color functions like oklab(). Check if a CSS string contains this pattern. *)
+let has_oklab_none s =
+  (* Search for "oklab(" then check if "none" appears before the closing ")" *)
+  let len = String.length s in
+  let rec find_oklab i =
+    if i > len - 6 then false
+    else if
+      s.[i] = 'o'
+      && s.[i + 1] = 'k'
+      && s.[i + 2] = 'l'
+      && s.[i + 3] = 'a'
+      && s.[i + 4] = 'b'
+      && s.[i + 5] = '('
+    then check_none (i + 6)
+    else find_oklab (i + 1)
+  and check_none i =
+    if i > len - 4 then false
+    else if s.[i] = ')' then find_oklab (i + 1)
+    else if
+      s.[i] = 'n'
+      && s.[i + 1] = 'o'
+      && s.[i + 2] = 'n'
+      && s.[i + 3] = 'e'
+      && (i + 4 >= len || s.[i + 4] = ' ' || s.[i + 4] = ')' || s.[i + 4] = '/')
+    then true
+    else check_none (i + 1)
+  in
+  find_oklab 0
+
 let declarations_css_equal d1 d2 =
-  d1 = d2
+  (d1 = d2
   ||
   let pp_decls ctx ds = List.iter (Declaration.pp_declaration ctx) ds in
   let s1 = Pp.to_string ~minify:true pp_decls d1 in
   let s2 = Pp.to_string ~minify:true pp_decls d2 in
-  s1 = s2
+  s1 = s2)
+  &&
+  let pp_decls ctx ds = List.iter (Declaration.pp_declaration ctx) ds in
+  let s = Pp.to_string ~minify:true pp_decls d1 in
+  not (has_oklab_none s)
 
 let can_combine_rules (prev : Stylesheet.rule) (rule : Stylesheet.rule) =
   declarations_css_equal prev.declarations rule.declarations
