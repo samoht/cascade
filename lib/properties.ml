@@ -123,18 +123,17 @@ module Align_items = struct
       ~first:First_baseline ~last:Last_baseline t
 
   let read_safe t : align_items =
-    (* CSS 'safe' keyword - safe is the default, so map to regular variants *)
     Reader.expect_string "safe" t;
     Reader.ws t;
     Reader.enum "align-items safe"
       [
-        ("center", (Center : align_items));
-        ("start", Start);
-        ("end", End);
+        ("center", (Safe_center : align_items));
+        ("start", Safe_start);
+        ("end", Safe_end);
         ("self-start", Self_start);
         ("self-end", Self_end);
-        ("flex-start", Flex_start);
-        ("flex-end", Flex_end);
+        ("flex-start", Safe_flex_start);
+        ("flex-end", Safe_flex_end);
       ]
       t
 
@@ -241,16 +240,15 @@ let read_align_content t : align_content =
 
 module Justify_content = struct
   let read_safe t : justify_content =
-    (* CSS 'safe' keyword - safe is the default, so map to regular variants *)
     Reader.expect_string "safe" t;
     Reader.ws t;
     Reader.enum "justify-content safe"
       [
-        ("center", (Center : justify_content));
-        ("start", Start);
-        ("end", End);
-        ("flex-start", Flex_start);
-        ("flex-end", Flex_end);
+        ("center", (Safe_center : justify_content));
+        ("start", Safe_start);
+        ("end", Safe_end);
+        ("flex-start", Safe_flex_start);
+        ("flex-end", Safe_flex_end);
         ("left", Left);
         ("right", Right);
       ]
@@ -299,19 +297,17 @@ module Align_self = struct
       ~first:First_baseline ~last:Last_baseline t
 
   let read_safe t : align_self =
-    (* CSS 'safe' keyword - safe values are the default, so map to plain
-       variants *)
     Reader.expect_string "safe" t;
     Reader.ws t;
     Reader.enum "align-self safe"
       [
-        ("center", (Center : align_self));
-        ("start", Start);
-        ("end", End);
+        ("center", (Safe_center : align_self));
+        ("start", Safe_start);
+        ("end", Safe_end);
         ("self-start", Self_start);
         ("self-end", Self_end);
-        ("flex-start", Flex_start);
-        ("flex-end", Flex_end);
+        ("flex-start", Safe_flex_start);
+        ("flex-end", Safe_flex_end);
       ]
       t
 
