@@ -7,6 +7,8 @@ let check_nth = check_value "nth" read_nth pp_nth
 let check_combinator = check_value "combinator" read_combinator pp_combinator
 let check = check_value "selector" read pp
 let check_ns = check_value "ns" read_ns (Css.Pp.option pp_ns)
+let check_aria_attr = check_value "aria_attr" read_aria_attr pp_aria_attr
+let check_attr_name = check_value "attr_name" read_attr_name pp_attr_name
 
 (* Helper for checking invalid selectors *)
 let check_invalid name exn_msg f =
@@ -1057,6 +1059,24 @@ let test_combinator_distribution () =
   in
   check_construct ".first~.x,.first~.y" s
 
+let test_aria_attr () =
+  check_aria_attr "aria-busy";
+  check_aria_attr "aria-checked";
+  check_aria_attr "aria-disabled";
+  check_aria_attr "aria-expanded";
+  check_aria_attr "aria-hidden";
+  check_aria_attr "aria-pressed";
+  check_aria_attr "aria-readonly";
+  check_aria_attr "aria-required";
+  check_aria_attr "aria-selected";
+  check_aria_attr "aria-custom";
+  neg read_aria_attr "not-aria"
+
+let test_attr_name () =
+  check_attr_name "aria-busy";
+  check_attr_name "data-testid";
+  check_attr_name "href"
+
 let suite =
   let open Alcotest in
   ( "selector",
@@ -1066,6 +1086,8 @@ let suite =
       test_case "ns" `Quick test_ns;
       test_case "nth" `Quick test_nth;
       test_case "selector" `Quick test_selector;
+      test_case "aria_attr" `Quick test_aria_attr;
+      test_case "attr_name" `Quick test_attr_name;
       (* Basic selector types *)
       test_case "element" `Quick element_cases;
       test_case "class" `Quick class_cases;

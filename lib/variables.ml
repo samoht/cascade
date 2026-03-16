@@ -417,6 +417,98 @@ let vars_of_scroll_snap_type (value : Properties.scroll_snap_type) :
       vars_of_scroll_snap_axis axis @ vars_of_scroll_snap_strictness strictness
   | Inherit -> []
 
+let vars_of_aspect_ratio (value : Properties.aspect_ratio) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_background_image (value : Properties.background_image) :
+    any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_background_size (value : Properties.background_size) : any_var list
+    =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_columns_value (value : Properties.columns_value) : any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | Width l -> vars_of_length l
+  | Both (_, l) -> vars_of_length l
+  | _ -> []
+
+let vars_of_contain (value : Properties.contain) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let rec vars_of_cursor (value : Properties.cursor) : any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | Url (_, _, fallback) -> vars_of_cursor fallback
+  | _ -> []
+
+let rec vars_of_grid_template (value : Properties.grid_template) : any_var list
+    =
+  match value with
+  | Var v -> [ V v ]
+  | Fit_content l -> vars_of_length l
+  | Min_max (a, b) -> vars_of_grid_template a @ vars_of_grid_template b
+  | Repeat (_, ts) -> List.concat_map vars_of_grid_template ts
+  | Tracks ts -> List.concat_map vars_of_grid_template ts
+  | Named_tracks ts ->
+      List.concat_map (fun (_, t) -> vars_of_grid_template t) ts
+  | _ -> []
+
+let vars_of_grid_line (value : Properties.grid_line) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_list_style_image (value : Properties.list_style_image) :
+    any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_list_style_type (value : Properties.list_style_type) : any_var list
+    =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_position_value (value : Properties.position_value) : any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | Single l -> vars_of_length l
+  | XY (l1, l2) -> vars_of_length l1 @ vars_of_length l2
+  | Edge_offset_axis (_, l, _) -> vars_of_length l
+  | Edge_offset_edge_offset (_, l1, _, l2) ->
+      vars_of_length l1 @ vars_of_length l2
+  | _ -> []
+
+let vars_of_outline_style (value : Properties.outline_style) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_text_shadow (value : Properties.text_shadow) : any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | Text_shadow { h_offset; v_offset; blur; color; _ } -> (
+      vars_of_length h_offset @ vars_of_length v_offset
+      @ (match blur with Some l -> vars_of_length l | None -> [])
+      @ match color with Some c -> vars_of_color c | None -> [])
+  | _ -> []
+
+let vars_of_text_shadow_list (values : Properties.text_shadow list) :
+    any_var list =
+  List.concat_map vars_of_text_shadow values
+
+let vars_of_transform_origin (value : Properties.transform_origin) :
+    any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | X l -> vars_of_length l
+  | XY (l1, l2) -> vars_of_length l1 @ vars_of_length l2
+  | XYZ (l1, l2, l3) ->
+      vars_of_length l1 @ vars_of_length l2 @ vars_of_length l3
+  | _ -> []
+
+let vars_of_vertical_align (value : Properties.vertical_align) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_will_change (value : Properties.will_change) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
 let compare_vars_by_name (V x) (V y) = String.compare x.name y.name
 
 (** {1 Variable name utilities} *)
@@ -594,6 +686,48 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Transition_timing_function, value -> vars_of_timing_function value
   (* Quotes property *)
   | Quotes, value -> vars_of_quotes value
+  (* Aspect ratio *)
+  | Aspect_ratio, value -> vars_of_aspect_ratio value
+  (* Background image/size *)
+  | Background_image, values -> List.concat_map vars_of_background_image values
+  | Background_size, value -> vars_of_background_size value
+  (* Columns *)
+  | Columns, value -> vars_of_columns_value value
+  (* Contain *)
+  | Contain, value -> vars_of_contain value
+  (* Cursor *)
+  | Cursor, value -> vars_of_cursor value
+  (* Grid template *)
+  | Grid_auto_columns, value -> vars_of_grid_template value
+  | Grid_auto_rows, value -> vars_of_grid_template value
+  | Grid_template, value -> vars_of_grid_template value
+  | Grid_template_columns, value -> vars_of_grid_template value
+  | Grid_template_rows, value -> vars_of_grid_template value
+  (* Grid line *)
+  | Grid_column_end, value -> vars_of_grid_line value
+  | Grid_column_start, value -> vars_of_grid_line value
+  | Grid_row_end, value -> vars_of_grid_line value
+  | Grid_row_start, value -> vars_of_grid_line value
+  (* List style *)
+  | List_style_image, value -> vars_of_list_style_image value
+  | List_style_type, value -> vars_of_list_style_type value
+  (* Mask image/size *)
+  | Mask_image, value -> vars_of_background_image value
+  | Mask_size, value -> vars_of_background_size value
+  | Webkit_mask_image, value -> vars_of_background_image value
+  | Webkit_mask_size, value -> vars_of_background_size value
+  (* Object position *)
+  | Object_position, value -> vars_of_position_value value
+  (* Outline style *)
+  | Outline_style, value -> vars_of_outline_style value
+  (* Text shadow *)
+  | Text_shadow, value -> vars_of_text_shadow_list value
+  (* Transform origin *)
+  | Transform_origin, value -> vars_of_transform_origin value
+  (* Vertical align *)
+  | Vertical_align, value -> vars_of_vertical_align value
+  (* Will change *)
+  | Will_change, value -> vars_of_will_change value
   (* Default case for all other properties *)
   | _ -> []
 

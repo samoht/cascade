@@ -646,6 +646,12 @@ val pp_filter : filter Pp.t
 val read_filter : Reader.t -> filter
 (** [read_filter t] is the [filter] parsed from [t]. *)
 
+val pp_opacity : opacity Pp.t
+(** [pp_opacity] is the pretty-printer for [opacity]. *)
+
+val read_opacity : Reader.t -> opacity
+(** [read_opacity t] is the [opacity] parsed from [t]. *)
+
 val pp_background_attachment : background_attachment Pp.t
 (** [pp_background_attachment] is the pretty-printer for
     [background_attachment]. *)

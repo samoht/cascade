@@ -225,6 +225,22 @@ let string_of_attr_name = function
   | Data s -> "data-" ^ s
   | Regular s -> s
 
+let pp_aria_attr : aria_attr Pp.t =
+ fun ctx a -> Pp.string ctx (string_of_aria_attr a)
+
+let read_aria_attr t : aria_attr =
+  let s = Reader.ident t in
+  match aria_attr_of_string s with
+  | v -> v
+  | exception Invalid_argument msg -> Reader.err t msg
+
+let pp_attr_name : attr_name Pp.t =
+ fun ctx a -> Pp.string ctx (string_of_attr_name a)
+
+let read_attr_name t : attr_name =
+  let s = Reader.ident t in
+  attr_name_of_string s
+
 let attribute ?ns ?flag name match_type =
   validate_css_identifier name;
   let attr_name = attr_name_of_string name in

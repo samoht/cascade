@@ -1514,6 +1514,13 @@ let rec pp_opacity : opacity Pp.t =
   | Opacity_number f -> Pp.float ctx f
   | Var v -> pp_var pp_opacity ctx v
 
+let rec read_opacity t : opacity =
+  let read_var t : opacity = Var (read_var read_opacity t) in
+  Reader.enum_or_calls "opacity" []
+    ~calls:[ ("var", read_var) ]
+    ~default:(fun t -> Opacity_number (Reader.number t))
+    t
+
 let pp_overflow : overflow Pp.t =
  fun ctx -> function
   | Visible -> Pp.string ctx "visible"
