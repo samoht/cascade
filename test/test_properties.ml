@@ -388,6 +388,56 @@ let check_outline = check_value "outline" read_outline pp_outline
 let check_outline_shorthand =
   check_value "outline_shorthand" read_outline_shorthand pp_outline_shorthand
 
+let check_box_decoration_break =
+  check_value "box_decoration_break" read_box_decoration_break
+    pp_box_decoration_break
+
+let check_break_value =
+  check_value "break_value" read_break_value pp_break_value
+
+let check_break_inside_value =
+  check_value "break_inside_value" read_break_inside_value pp_break_inside_value
+
+let check_caption_side =
+  check_value "caption_side" read_caption_side pp_caption_side
+
+let check_color_scheme =
+  check_value "color_scheme" read_color_scheme pp_color_scheme
+
+let check_columns_value =
+  check_value "columns_value" read_columns_value pp_columns_value
+
+let check_field_sizing =
+  check_value "field_sizing" read_field_sizing pp_field_sizing
+
+let check_font_size = check_value "font_size" read_font_size pp_font_size
+let check_mask_box = check_value "mask_box" read_mask_box pp_mask_box
+
+let check_mask_composite =
+  check_value "mask_composite" read_mask_composite pp_mask_composite
+
+let check_mask_mode = check_value "mask_mode" read_mask_mode pp_mask_mode
+let check_mask_type = check_value "mask_type" read_mask_type pp_mask_type
+let check_opacity = check_value "opacity" read_opacity pp_opacity
+let check_order = check_value "order" read_order pp_order
+
+let check_rotate_value =
+  check_value "rotate_value" read_rotate_value pp_rotate_value
+
+let check_transform_box =
+  check_value "transform_box" read_transform_box pp_transform_box
+
+let check_webkit_line_clamp =
+  check_value "webkit_line_clamp" read_webkit_line_clamp pp_webkit_line_clamp
+
+let check_webkit_mask_composite =
+  check_value "webkit_mask_composite" read_webkit_mask_composite
+    pp_webkit_mask_composite
+
+let check_webkit_mask_source_type =
+  check_value "webkit_mask_source_type" read_webkit_mask_source_type
+    pp_webkit_mask_source_type
+
 (* Length-percentage tests for width/height using the value reader/printer *)
 
 (* Helper for property-value pairs printing *)
@@ -1974,6 +2024,138 @@ let test_place_items () =
   check_place_items "inherit";
   neg read_place_items "invalid-place"
 
+let test_box_decoration_break () =
+  check_box_decoration_break "clone";
+  check_box_decoration_break "slice";
+  neg read_box_decoration_break "invalid-value"
+
+let test_break_value () =
+  check_break_value "auto";
+  check_break_value "avoid";
+  check_break_value "page";
+  check_break_value "column";
+  check_break_value "inherit";
+  neg read_break_value "invalid-break"
+
+let test_break_inside_value () =
+  check_break_inside_value "auto";
+  check_break_inside_value "avoid";
+  check_break_inside_value "avoid-page";
+  check_break_inside_value "avoid-column";
+  check_break_inside_value "inherit";
+  neg read_break_inside_value "invalid-break-inside"
+
+let test_caption_side () =
+  check_caption_side "top";
+  check_caption_side "bottom";
+  check_caption_side "inherit";
+  neg read_caption_side "invalid-caption"
+
+let test_color_scheme () =
+  check_color_scheme "normal";
+  check_color_scheme "light";
+  check_color_scheme "dark";
+  check_color_scheme "light dark";
+  neg read_color_scheme "invalid-scheme"
+
+let test_columns_value () =
+  check_columns_value "auto";
+  check_columns_value "2";
+  check_columns_value "inherit";
+  neg read_columns_value "invalid-columns"
+
+let test_field_sizing () =
+  check_field_sizing "content";
+  check_field_sizing "fixed";
+  check_field_sizing "inherit";
+  neg read_field_sizing "invalid-field-sizing"
+
+let test_font_size () =
+  check_font_size "16px";
+  check_font_size "small";
+  check_font_size "medium";
+  check_font_size "large";
+  check_font_size "inherit";
+  neg read_font_size "invalid-font-size"
+
+let test_mask_box () =
+  check_mask_box "border-box";
+  check_mask_box "content-box";
+  check_mask_box "padding-box";
+  check_mask_box "fill-box";
+  check_mask_box "inherit";
+  neg read_mask_box "invalid-mask-box"
+
+let test_mask_composite () =
+  check_mask_composite "add";
+  check_mask_composite "subtract";
+  check_mask_composite "intersect";
+  check_mask_composite "exclude";
+  check_mask_composite "inherit";
+  neg read_mask_composite "invalid-composite"
+
+let test_mask_mode () =
+  check_mask_mode "alpha";
+  check_mask_mode "luminance";
+  check_mask_mode "match-source";
+  check_mask_mode "inherit";
+  neg read_mask_mode "invalid-mode"
+
+let test_mask_type () =
+  check_mask_type "alpha";
+  check_mask_type "luminance";
+  check_mask_type "inherit";
+  neg read_mask_type "invalid-mask-type"
+
+let test_opacity () =
+  check_opacity ~expected:".5" "0.5";
+  check_opacity "1";
+  check_opacity "0";
+  neg read_opacity "invalid-opacity"
+
+let test_order () =
+  check_order "1";
+  check_order "-2";
+  check_order "100";
+  neg read_order "invalid-order"
+
+let test_rotate_value () =
+  check_rotate_value "45deg";
+  check_rotate_value "none";
+  check_rotate_value "x 45deg";
+  check_rotate_value "y 90deg";
+  neg read_rotate_value "invalid-rotate"
+
+let test_transform_box () =
+  check_transform_box "content-box";
+  check_transform_box "border-box";
+  check_transform_box "fill-box";
+  check_transform_box "stroke-box";
+  check_transform_box "view-box";
+  check_transform_box "inherit";
+  neg read_transform_box "invalid-transform-box"
+
+let test_webkit_line_clamp () =
+  check_webkit_line_clamp "2";
+  check_webkit_line_clamp "1";
+  check_webkit_line_clamp "unset";
+  neg read_webkit_line_clamp "invalid-clamp"
+
+let test_webkit_mask_composite () =
+  check_webkit_mask_composite "source-over";
+  check_webkit_mask_composite "xor";
+  check_webkit_mask_composite "source-in";
+  check_webkit_mask_composite "source-out";
+  check_webkit_mask_composite "inherit";
+  neg read_webkit_mask_composite "invalid-composite"
+
+let test_webkit_mask_source_type () =
+  check_webkit_mask_source_type "alpha";
+  check_webkit_mask_source_type "luminance";
+  check_webkit_mask_source_type "auto";
+  check_webkit_mask_source_type "inherit";
+  neg read_webkit_mask_source_type "invalid-source-type"
+
 let tests =
   [
     test_case "display" `Quick test_display;
@@ -2211,6 +2393,25 @@ let additional_tests =
     test_case "outline_style" `Quick test_outline_style;
     test_case "place_content" `Quick test_place_content;
     test_case "place_items" `Quick test_place_items;
+    test_case "box_decoration_break" `Quick test_box_decoration_break;
+    test_case "break_value" `Quick test_break_value;
+    test_case "break_inside_value" `Quick test_break_inside_value;
+    test_case "caption_side" `Quick test_caption_side;
+    test_case "color_scheme" `Quick test_color_scheme;
+    test_case "columns_value" `Quick test_columns_value;
+    test_case "field_sizing" `Quick test_field_sizing;
+    test_case "font_size" `Quick test_font_size;
+    test_case "mask_box" `Quick test_mask_box;
+    test_case "mask_composite" `Quick test_mask_composite;
+    test_case "mask_mode" `Quick test_mask_mode;
+    test_case "mask_type" `Quick test_mask_type;
+    test_case "opacity" `Quick test_opacity;
+    test_case "order" `Quick test_order;
+    test_case "rotate_value" `Quick test_rotate_value;
+    test_case "transform_box" `Quick test_transform_box;
+    test_case "webkit_line_clamp" `Quick test_webkit_line_clamp;
+    test_case "webkit_mask_composite" `Quick test_webkit_mask_composite;
+    test_case "webkit_mask_source_type" `Quick test_webkit_mask_source_type;
   ]
 
 let suite = ("properties", tests @ additional_tests)
