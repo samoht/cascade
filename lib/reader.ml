@@ -331,15 +331,23 @@ let ident ?(keep_case = false) t =
       chars := (c, false) :: !chars;
       ignore (char t)
   | _ -> err_expected t "identifier");
-  (* Rest: ident-char or escape sequences *)
+  (* Rest: ident-char or escape sequences. bracket_depth tracks escaped brackets
+     \[...\] so we accept any character inside them (Tailwind bracket notation
+     like \[&_p\] contains characters not valid in CSS identifiers). *)
+  let bracket_depth = ref 0 in
   let rec loop () =
     match peek t with
     | Some '\\' ->
         ignore (char t);
         let escaped = read_escape t in
-        String.iter (fun c -> chars := (c, true) :: !chars) escaped;
+        String.iter
+          (fun c ->
+            if c = '[' then incr bracket_depth
+            else if c = ']' then bracket_depth := max 0 (!bracket_depth - 1);
+            chars := (c, true) :: !chars)
+          escaped;
         loop ()
-    | Some c when is_ident_char c ->
+    | Some c when is_ident_char c || !bracket_depth > 0 ->
         chars := (c, false) :: !chars;
         ignore (char t);
         loop ()
