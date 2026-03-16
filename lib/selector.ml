@@ -1116,6 +1116,12 @@ let escape_selector_name name =
           | '>' -> Buffer.add_string buf "\\>"
           | '+' -> Buffer.add_string buf "\\+"
           | '~' -> Buffer.add_string buf "\\~"
+          | '&' -> Buffer.add_string buf "\\&"
+          | '^' -> Buffer.add_string buf "\\^"
+          | '$' -> Buffer.add_string buf "\\$"
+          | '=' -> Buffer.add_string buf "\\="
+          | '!' -> Buffer.add_string buf "\\!"
+          | '|' -> Buffer.add_string buf "\\|"
           | c -> Buffer.add_char buf c)
       name;
     Buffer.contents buf
