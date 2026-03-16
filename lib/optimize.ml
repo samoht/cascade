@@ -386,6 +386,77 @@ let class_base_and_slash cls =
   in
   find_end 0 0
 
+(** Extract variant family prefix (e.g., "group-has-" from
+    "group-has-[:checked]:flex" or "group-has-checked:flex"). Used to group
+    named and bracket variants of the same family. *)
+let variant_family cls =
+  let bracket_pos = String.index_opt cls '[' in
+  let colon_pos =
+    (* Find first : outside brackets *)
+    let len = String.length cls in
+    let rec find i depth =
+      if i >= len then None
+      else
+        match cls.[i] with
+        | '[' -> find (i + 1) (depth + 1)
+        | ']' -> find (i + 1) (max 0 (depth - 1))
+        | ':' when depth = 0 -> Some i
+        | _ -> find (i + 1) depth
+    in
+    find 0 0
+  in
+  match (bracket_pos, colon_pos) with
+  | Some bi, _ -> String.sub cls 0 bi (* prefix before bracket *)
+  | _, Some ci -> String.sub cls 0 ci (* prefix before colon *)
+  | _ -> cls
+
+(** Compare two bracket selectors within the same variant family. Sorts by
+    bracket content type (pseudo-class before combinator), then by normalized
+    base name, then by slash presence, then by index. *)
+let compare_bracket_selectors c1 c2 i1 i2 =
+  let bracket_content_type cls =
+    match String.index_opt cls '[' with
+    | Some i when i + 1 < String.length cls && cls.[i + 1] = ':' -> 0
+    | _ -> 1
+  in
+  let bt_cmp =
+    Int.compare (bracket_content_type c1) (bracket_content_type c2)
+  in
+  if bt_cmp <> 0 then bt_cmp
+  else
+    let base1, slash1 = class_base_and_slash c1 in
+    let base2, slash2 = class_base_and_slash c2 in
+    let starts_with s p =
+      String.length s >= String.length p && String.sub s 0 (String.length p) = p
+    in
+    let is_attr_variant b =
+      starts_with b "aria-[" || starts_with b "data-["
+      || starts_with b "group-aria-["
+      || starts_with b "group-data-["
+      || starts_with b "peer-aria-["
+      || starts_with b "peer-data-["
+    in
+    let norm b =
+      if is_attr_variant b then
+        String.map (fun c -> if c = '_' then ' ' else c) b
+      else b
+    in
+    let base_cmp = String.compare (norm base1) (norm base2) in
+    if base_cmp <> 0 then base_cmp
+    else
+      let slash_cmp = Bool.compare slash1 slash2 in
+      if slash_cmp <> 0 then slash_cmp else Int.compare i1 i2
+
+(** Compare two selectors within the same variant family. Named variants sort
+    before bracket variants; within each group, bracket variants use
+    [compare_bracket_selectors] and non-bracket variants preserve original
+    insertion order. *)
+let compare_same_family_selectors b1 b2 c1 c2 i1 i2 =
+  if b1 <> b2 then Bool.compare b1 b2
+  else if b1 then compare_bracket_selectors c1 c2 i1 i2
+  else (* Both non-bracket, same family: preserve original order *)
+    Int.compare i1 i2
+
 let compare_selectors_for_merge (sel1, i1) (sel2, i2) =
   let k1 = selector_sort_key sel1 and k2 = selector_sort_key sel2 in
   let c = compare k1 k2 in
@@ -397,73 +468,9 @@ let compare_selectors_for_merge (sel1, i1) (sel2, i2) =
     let c2 = match cls2 with Some c -> c | None -> "" in
     let b1 = class_has_bracket c1 in
     let b2 = class_has_bracket c2 in
-    (* Extract variant family prefix (e.g., "group-has-" from
-       "group-has-[:checked]:flex" or "group-has-checked:flex"). Used to group
-       named and bracket variants of the same family. *)
-    let variant_family cls =
-      let bracket_pos = String.index_opt cls '[' in
-      let colon_pos =
-        (* Find first : outside brackets *)
-        let len = String.length cls in
-        let rec find i depth =
-          if i >= len then None
-          else
-            match cls.[i] with
-            | '[' -> find (i + 1) (depth + 1)
-            | ']' -> find (i + 1) (max 0 (depth - 1))
-            | ':' when depth = 0 -> Some i
-            | _ -> find (i + 1) depth
-        in
-        find 0 0
-      in
-      match (bracket_pos, colon_pos) with
-      | Some bi, _ -> String.sub cls 0 bi (* prefix before bracket *)
-      | _, Some ci -> String.sub cls 0 ci (* prefix before colon *)
-      | _ -> cls
-    in
     let fam1 = variant_family c1 in
     let fam2 = variant_family c2 in
-    if fam1 = fam2 then
-      (* Same family: named before bracket, then sort within *)
-      if b1 <> b2 then Bool.compare b1 b2
-      else if b1 then
-        (* Both bracket, same family *)
-        let bracket_content_type cls =
-          match String.index_opt cls '[' with
-          | Some i when i + 1 < String.length cls && cls.[i + 1] = ':' -> 0
-          | _ -> 1
-        in
-        let bt_cmp =
-          Int.compare (bracket_content_type c1) (bracket_content_type c2)
-        in
-        if bt_cmp <> 0 then bt_cmp
-        else
-          let base1, slash1 = class_base_and_slash c1 in
-          let base2, slash2 = class_base_and_slash c2 in
-          let starts_with s p =
-            String.length s >= String.length p
-            && String.sub s 0 (String.length p) = p
-          in
-          let is_attr_variant b =
-            starts_with b "aria-[" || starts_with b "data-["
-            || starts_with b "group-aria-["
-            || starts_with b "group-data-["
-            || starts_with b "peer-aria-["
-            || starts_with b "peer-data-["
-          in
-          let norm b =
-            if is_attr_variant b then
-              String.map (fun c -> if c = '_' then ' ' else c) b
-            else b
-          in
-          let base_cmp = String.compare (norm base1) (norm base2) in
-          if base_cmp <> 0 then base_cmp
-          else
-            let slash_cmp = Bool.compare slash1 slash2 in
-            if slash_cmp <> 0 then slash_cmp else Int.compare i1 i2
-      else
-        (* Both non-bracket, same family: preserve original order *)
-        Int.compare i1 i2
+    if fam1 = fam2 then compare_same_family_selectors b1 b2 c1 c2 i1 i2
     else if b1 && b2 then
       (* Different families, both bracket: compare by class name so that e.g.
          hover:peer-[&_p] sorts before peer-[&_p]:hover *)
