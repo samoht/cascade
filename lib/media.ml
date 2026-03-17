@@ -24,14 +24,14 @@ type t =
   | Raw of string
   | Negated of t
 
-let format_px px =
-  if Float.is_integer px then Int.to_string (Float.to_int px)
-  else Float.to_string px
+(** Format a float as a compact string: integer form when possible, otherwise
+    the standard float representation. Used for media query values. *)
+let format_float f =
+  if Float.is_integer f then Int.to_string (Float.to_int f)
+  else Float.to_string f
 
-let format_rem rem =
-  if Float.is_integer rem then Int.to_string (Float.to_int rem)
-  else Float.to_string rem
-
+let format_px = format_float
+let format_rem = format_float
 let render_length l = Pp.to_string (Values.pp_length ~always:true) l
 
 let rec to_string = function

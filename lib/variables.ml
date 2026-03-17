@@ -221,20 +221,31 @@ let vars_of_length (value : Values.length) : any_var list =
 let vars_of_length_list (values : Values.length list) : any_var list =
   List.concat_map vars_of_length values
 
+(** Helper for types that share Length/Var/Calc constructors with a wildcard
+    fallback (e.g., length_percentage, font_size). The caller decomposes the
+    value into one of three cases. *)
+let vars_of_length_or_var_or_calc = function
+  | `Length l -> vars_of_length l
+  | `Var v -> [ v ]
+  | `Calc calc -> vars_of_calc calc
+  | `Other -> []
+
 let vars_of_length_percentage (value : Values.length_percentage) : any_var list
     =
-  match value with
-  | Length l -> vars_of_length l
-  | Var v -> [ V v ]
-  | Calc calc -> vars_of_calc calc
-  | _ -> []
+  vars_of_length_or_var_or_calc
+    (match value with
+    | Length l -> `Length l
+    | Var v -> `Var (V v)
+    | Calc calc -> `Calc calc
+    | _ -> `Other)
 
 let vars_of_font_size (value : Properties.font_size) : any_var list =
-  match value with
-  | Length l -> vars_of_length l
-  | Var v -> [ V v ]
-  | Calc calc -> vars_of_calc calc
-  | _ -> []
+  vars_of_length_or_var_or_calc
+    (match value with
+    | Length l -> `Length l
+    | Var v -> `Var (V v)
+    | Calc calc -> `Calc calc
+    | _ -> `Other)
 
 let vars_of_angle (value : Values.angle) : any_var list =
   match value with Var v -> [ V v ] | Calc c -> vars_of_calc c | _ -> []
