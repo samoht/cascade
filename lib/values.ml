@@ -717,7 +717,7 @@ let rec pp_rgb : rgb Pp.t =
   | Channels { r; g; b } -> Pp.list ~sep:Pp.space pp_channel ctx [ r; g; b ]
   | Var v -> pp_var pp_rgb ctx v
 
-let pp_oklch_args : (percentage * float * hue * alpha) Pp.t =
+let pp_pct_num_hue_alpha : (percentage * float * hue * alpha) Pp.t =
  fun ctx (l, c, h, alpha) ->
   pp_percentage ctx l;
   Pp.space ctx ();
@@ -726,9 +726,9 @@ let pp_oklch_args : (percentage * float * hue * alpha) Pp.t =
   pp_hue ctx h;
   pp_opt_alpha ctx alpha
 
-let pp_oklch = Pp.call "oklch" pp_oklch_args
+let pp_oklch = Pp.call "oklch" pp_pct_num_hue_alpha
 
-let pp_hsl_args : (hue * percentage * percentage * alpha) Pp.t =
+let pp_hue_pct_pct_alpha : (hue * percentage * percentage * alpha) Pp.t =
  fun ctx (h, s, l, a) ->
   pp_hue ctx h;
   Pp.space ctx ();
@@ -737,18 +737,8 @@ let pp_hsl_args : (hue * percentage * percentage * alpha) Pp.t =
   pp_percentage ctx l;
   pp_opt_alpha ctx a
 
-let pp_hsl = Pp.call "hsl" pp_hsl_args
-
-let pp_hwb_args : (hue * percentage * percentage * alpha) Pp.t =
- fun ctx (h, w, b, a) ->
-  pp_hue ctx h;
-  Pp.space ctx ();
-  pp_percentage ctx w;
-  Pp.space ctx ();
-  pp_percentage ctx b;
-  pp_opt_alpha ctx a
-
-let pp_hwb = Pp.call "hwb" pp_hwb_args
+let pp_hsl = Pp.call "hsl" pp_hue_pct_pct_alpha
+let pp_hwb = Pp.call "hwb" pp_hue_pct_pct_alpha
 
 (** Print a float always dropping leading zeros (for oklab a/b values) *)
 let pp_float_drop_zero ctx f =
@@ -795,17 +785,7 @@ let pp_oklab_args : (percentage * float option * float option * alpha) Pp.t =
       pp_alpha_drop_zero ctx a
 
 let pp_oklab = Pp.call "oklab" pp_oklab_args
-
-let pp_lch_args : (percentage * float * hue * alpha) Pp.t =
- fun ctx (l, c, h, alpha) ->
-  pp_percentage ctx l;
-  Pp.space ctx ();
-  Pp.float ctx c;
-  Pp.space ctx ();
-  pp_hue ctx h;
-  pp_opt_alpha ctx alpha
-
-let pp_lch = Pp.call "lch" pp_lch_args
+let pp_lch = Pp.call "lch" pp_pct_num_hue_alpha
 
 let pp_color_space : color_space Pp.t =
  fun ctx -> function
@@ -1699,27 +1679,6 @@ let read_color_function t : color =
   let alpha = read_optional_alpha t in
   Reader.expect ')' t;
   Color { space; components; alpha }
-
-(** Parse color space for color-mix - moved before color_parsers *)
-let read_color_space t : color_space =
-  let ident = Reader.ident t in
-  match ident with
-  | "srgb" -> Srgb
-  | "srgb-linear" -> Srgb_linear
-  | "display-p3" -> Display_p3
-  | "a98-rgb" -> A98_rgb
-  | "prophoto-rgb" -> Prophoto_rgb
-  | "rec2020" -> Rec2020
-  | "lab" -> Lab
-  | "oklab" -> Oklab
-  | "xyz" -> Xyz
-  | "xyz-d50" -> Xyz_d50
-  | "xyz-d65" -> Xyz_d65
-  | "lch" -> Lch
-  | "oklch" -> Oklch
-  | "hsl" -> Hsl
-  | "hwb" -> Hwb
-  | _ -> Reader.err_invalid t ("color space: " ^ ident)
 
 (** Forward declaration for percentage reader used in color-mix *)
 let rec read_percentage_in_color_mix t : percentage =

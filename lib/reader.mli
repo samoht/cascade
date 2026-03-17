@@ -128,6 +128,9 @@ val is_ident_start : char -> bool
 val is_digit : char -> bool
 (** [is_digit c] returns true if [c] is a digit (0-9). *)
 
+val is_hex : char -> bool
+(** [is_hex c] returns true if [c] is a hexadecimal digit (0-9, a-f, A-F). *)
+
 (** {1 CSS Tokens} *)
 
 val ident : ?keep_case:bool -> t -> string

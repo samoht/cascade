@@ -92,8 +92,7 @@ let pp_attribute_match : attribute_match Pp.t =
       Pp.string ctx "*=";
       pp_attr_value ctx value
 
-let is_hex_char c =
-  (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+let is_hex_char = Reader.is_hex
 
 let skip_css_escape name i =
   (* Skip escaped sequence: either next char or up to 6 hex digits + optional
