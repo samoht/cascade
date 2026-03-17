@@ -410,15 +410,28 @@ let variant_family cls =
   | _, Some ci -> String.sub cls 0 ci (* prefix before colon *)
   | _ -> cls
 
+let bracket_content_type cls =
+  match String.index_opt cls '[' with
+  | Some i when i + 1 < String.length cls && cls.[i + 1] = ':' -> 0
+  | _ -> 1
+
+let normalize_attr_base b =
+  let starts_with s p =
+    String.length s >= String.length p && String.sub s 0 (String.length p) = p
+  in
+  if
+    starts_with b "aria-[" || starts_with b "data-["
+    || starts_with b "group-aria-["
+    || starts_with b "group-data-["
+    || starts_with b "peer-aria-["
+    || starts_with b "peer-data-["
+  then String.map (fun c -> if c = '_' then ' ' else c) b
+  else b
+
 (** Compare two bracket selectors within the same variant family. Sorts by
     bracket content type (pseudo-class before combinator), then by normalized
     base name, then by slash presence, then by index. *)
 let compare_bracket_selectors c1 c2 i1 i2 =
-  let bracket_content_type cls =
-    match String.index_opt cls '[' with
-    | Some i when i + 1 < String.length cls && cls.[i + 1] = ':' -> 0
-    | _ -> 1
-  in
   let bt_cmp =
     Int.compare (bracket_content_type c1) (bracket_content_type c2)
   in
@@ -426,36 +439,26 @@ let compare_bracket_selectors c1 c2 i1 i2 =
   else
     let base1, slash1 = class_base_and_slash c1 in
     let base2, slash2 = class_base_and_slash c2 in
-    let starts_with s p =
-      String.length s >= String.length p && String.sub s 0 (String.length p) = p
+    let base_cmp =
+      String.compare (normalize_attr_base base1) (normalize_attr_base base2)
     in
-    let is_attr_variant b =
-      starts_with b "aria-[" || starts_with b "data-["
-      || starts_with b "group-aria-["
-      || starts_with b "group-data-["
-      || starts_with b "peer-aria-["
-      || starts_with b "peer-data-["
-    in
-    let norm b =
-      if is_attr_variant b then
-        String.map (fun c -> if c = '_' then ' ' else c) b
-      else b
-    in
-    let base_cmp = String.compare (norm base1) (norm base2) in
     if base_cmp <> 0 then base_cmp
     else
       let slash_cmp = Bool.compare slash1 slash2 in
       if slash_cmp <> 0 then slash_cmp else Int.compare i1 i2
 
+type selector_kind = Named | Bracket
+
 (** Compare two selectors within the same variant family. Named variants sort
     before bracket variants; within each group, bracket variants use
     [compare_bracket_selectors] and non-bracket variants preserve original
     insertion order. *)
-let compare_same_family_selectors b1 b2 c1 c2 i1 i2 =
-  if b1 <> b2 then Bool.compare b1 b2
-  else if b1 then compare_bracket_selectors c1 c2 i1 i2
-  else (* Both non-bracket, same family: preserve original order *)
-    Int.compare i1 i2
+let compare_same_family_selectors kind1 kind2 c1 c2 i1 i2 =
+  match (kind1, kind2) with
+  | Named, Bracket -> -1
+  | Bracket, Named -> 1
+  | Bracket, Bracket -> compare_bracket_selectors c1 c2 i1 i2
+  | Named, Named -> Int.compare i1 i2
 
 let compare_selectors_for_merge (sel1, i1) (sel2, i2) =
   let k1 = selector_sort_key sel1 and k2 = selector_sort_key sel2 in
@@ -466,12 +469,13 @@ let compare_selectors_for_merge (sel1, i1) (sel2, i2) =
     let cls2 = Selector.first_class sel2 in
     let c1 = match cls1 with Some c -> c | None -> "" in
     let c2 = match cls2 with Some c -> c | None -> "" in
-    let b1 = class_has_bracket c1 in
-    let b2 = class_has_bracket c2 in
+    let kind_of b = if b then Bracket else Named in
+    let k1 = kind_of (class_has_bracket c1) in
+    let k2 = kind_of (class_has_bracket c2) in
     let fam1 = variant_family c1 in
     let fam2 = variant_family c2 in
-    if fam1 = fam2 then compare_same_family_selectors b1 b2 c1 c2 i1 i2
-    else if b1 && b2 then
+    if fam1 = fam2 then compare_same_family_selectors k1 k2 c1 c2 i1 i2
+    else if k1 = Bracket && k2 = Bracket then
       (* Different families, both bracket: compare by class name so that e.g.
          hover:peer-[&_p] sorts before peer-[&_p]:hover *)
       let cls_cmp = String.compare c1 c2 in
