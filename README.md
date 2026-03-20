@@ -1,17 +1,52 @@
-# Cascade -- CSS generation and manipulation for OCaml
+# Cascade
 
-Cascade is a typed CSS library providing:
+CSS tooling for OCaml -- a typed AST, parser, pretty-printer, and optimiser
+for modern CSS.
 
-- **CSS AST**: Selectors, properties, values, declarations, rules, stylesheets
-- **Parser**: Read CSS from strings with error recovery
-- **Pretty-printer**: Emit CSS with minification support
-- **Optimizer**: Deduplicate, merge rules, combine selectors
-- **CSS variables**: Custom properties with `@property` registration
-- **At-rules**: `@media`, `@supports`, `@layer`, `@keyframes`, `@font-face`,
-  `@container`, `@property`, `@starting-style`
-- **Tools**: CSS diff, tree diff for structural comparison
+Most CSS toolchains target JavaScript runtimes. Cascade provides the same
+core capabilities -- parsing, rendering, and structural comparison -- as a
+native OCaml library with no runtime dependencies beyond `fmt` and `cmdliner`.
+Properties, values, and selectors are represented as OCaml types rather than
+strings, so invalid constructs are caught at compile time.
 
-Extracted from [tw](https://github.com/samoht/tw) (Tailwind CSS v4 in OCaml).
+## CSS specification coverage
+
+Cascade targets **CSS Level 3 and Level 4** modules. The parser handles the
+full syntax defined in [CSS Syntax Level 3](https://www.w3.org/TR/css-syntax-3/)
+and the printer produces spec-conformant output with optional minification.
+
+Supported specifications:
+
+- **Selectors Level 4** -- class, ID, element, universal, attribute selectors,
+  pseudo-classes (`:hover`, `:focus`, `:nth-child()`, `:where()`, `:not()`,
+  `:is()`, `:has()`), pseudo-elements (`::before`, `::after`,
+  `::placeholder`, `::file-selector-button`), combinators (descendant, child
+  `>`, adjacent `+`, sibling `~`), and the `&` nesting selector.
+- **Values and Units Level 4** -- all absolute and relative length units
+  (`px`, `rem`, `em`, `%`, `vw`, `vh`, `dvh`, `svh`, `lvh`, `ch`, `lh`,
+  `cm`, `mm`, `in`, `pt`, `pc`, `q`, and approximately 30 others), `calc()`,
+  `clamp()`, `min()`, `max()`, `minmax()`, angles (`deg`, `rad`, `turn`,
+  `grad`), and durations (`s`, `ms`).
+- **Color Level 4** -- hex (3/4/6/8 digit), `rgb()`, `hsl()`, `hwb()`,
+  `oklch()`, `oklab()`, `lch()`, `color()`, `color-mix()`, 148 named colours,
+  system colours, `currentcolor`, `transparent`, and 15 colour spaces
+  including sRGB, display-p3, oklch, and oklab.
+- **Conditional Rules Level 3** -- `@media` with feature queries, `@supports`
+  with property and selector checks.
+- **Cascade Level 5** -- `@layer` declarations and blocks, CSS-wide keywords
+  (`inherit`, `initial`, `unset`, `revert`, `revert-layer`).
+- **Nesting Module** -- nested rules with `&` selector, nested `@media` and
+  `@supports` inside rules.
+- **Container Queries Level 1** -- `@container` with size queries.
+- **Custom Properties Level 1** -- `var()` references with typed fallbacks,
+  `@property` registration with syntax, inheritance, and initial values.
+- **Fonts Level 4** -- `@font-face` descriptors.
+- **Animations Level 1** -- `@keyframes` with named animations.
+- **Starting Style** -- `@starting-style` for entry animations.
+
+Over 100 CSS properties are typed, covering box model, display, positioning,
+flexbox, grid, logical properties, typography, borders, backgrounds, gradients,
+transforms, transitions, animations, filters, and vendor-prefixed properties.
 
 ## Installation
 
@@ -48,130 +83,59 @@ Output:
 }
 ```
 
-## CSS support
-
-### Selectors
-
-Class, ID, element, universal, attribute selectors, pseudo-classes (`:hover`,
-`:focus`, `:first-child`, `:nth-child()`, `:where()`, `:not()`, `:is()`,
-`:has()`, etc.), pseudo-elements (`::before`, `::after`, `::placeholder`,
-`::file-selector-button`, etc.), and combinators (descendant, child `>`,
-adjacent `+`, sibling `~`).
-
-### Values and units
-
-- **Lengths**: `px`, `rem`, `em`, `%`, `vw`, `vh`, `vmin`, `vmax`, `dvh`,
-  `dvw`, `lvh`, `lvw`, `svh`, `svw`, `ch`, `lh`, `ex`, `cap`, `ic`, `rlh`,
-  `cm`, `mm`, `in`, `pt`, `pc`, `q`
-- **Keywords**: `auto`, `none`, `inherit`, `initial`, `unset`, `revert`,
-  `revert-layer`, `fit-content`, `min-content`, `max-content`
-- **Functions**: `calc()`, `clamp()`, `min()`, `max()`, `minmax()`
-- **Colors**: `hex`, `rgb()`, `rgba()`, `hsl()`, `hsla()`, `hwb()`,
-  `oklch()`, `oklab()`, `lch()`, `color()`, `color-mix()`, named colors (148),
-  system colors, `currentcolor`, `transparent`
-- **Color spaces**: sRGB, sRGB-linear, display-p3, a98-rgb, prophoto-rgb,
-  rec2020, lab, oklab, xyz, xyz-d50, xyz-d65, lch, oklch, hsl, hwb
-- **Angles**: `deg`, `rad`, `turn`, `grad`
-- **Durations**: `s`, `ms`
-
-### Properties (100+)
-
-- **Box model**: `width`, `height`, `min-*`, `max-*`, `padding`, `margin`,
-  `box-sizing`, `aspect-ratio`
-- **Display and positioning**: `display`, `position`, `top`/`right`/`bottom`/`left`,
-  `inset`, `z-index`, `float`, `clear`, `overflow`, `visibility`
-- **Flexbox**: `flex-direction`, `flex-wrap`, `justify-content`, `align-items`,
-  `align-self`, `flex-grow`, `flex-shrink`, `flex-basis`, `gap`, `order`
-- **Grid**: `grid-template-columns`/`rows`, `grid-column`/`row`,
-  `grid-auto-flow`, `grid-auto-columns`/`rows`, `place-items`, `place-content`
-- **Typography**: `font-family`, `font-size`, `font-weight`, `font-style`,
-  `line-height`, `letter-spacing`, `text-align`, `text-decoration`,
-  `text-transform`, `text-indent`, `white-space`, `word-break`, `word-spacing`,
-  `text-wrap`, `hyphens`
-- **Borders and outlines**: `border`, `border-radius`, `border-color`,
-  `border-style`, `border-width`, `outline`, `outline-offset`
-- **Backgrounds**: `background`, `background-color`, `background-image`,
-  `background-position`, `background-size`, `background-repeat`, gradients
-  (linear, radial, conic) with color interpolation
-- **Colors and effects**: `color`, `opacity`, `box-shadow`, `text-shadow`,
-  `filter`, `backdrop-filter`, `mix-blend-mode`
-- **Transforms and animations**: `transform`, `translate`, `rotate`, `scale`,
-  `transition`, `animation`, `@keyframes`
-- **Logical properties**: `margin-inline`/`block`, `padding-inline`/`block`,
-  `border-inline`/`block`, `inset-inline`/`block` (start/end variants)
-- **Interaction**: `cursor`, `pointer-events`, `user-select`, `touch-action`,
-  `scroll-behavior`, `scroll-snap-type`/`align`, `accent-color`, `caret-color`
-- **Vendor prefixes**: `-webkit-*` and `-moz-*` properties for
-  `appearance`, `text-fill-color`, `background-clip`, etc.
-
-### At-rules
-
-- `@media` with feature queries (`min-width`, `prefers-color-scheme`, etc.)
-- `@supports` with property and selector checks
-- `@container` with container queries
-- `@layer` with ordering and nesting
-- `@keyframes` with named animations
-- `@font-face` with font descriptors
-- `@property` with typed custom property registration
-- `@starting-style` for entry animations
-
-### CSS variables
-
-Custom properties with typed syntax, fallback values, and `@property`
-registration for inheritance and initial values.
-
 ## CLI tools
 
 ### `cascade` -- CSS formatter
 
 ```
-cascade [--minify] [--optimize] [--pretty] [FILE]
+cascade [--minify] [--optimise] [--pretty] [FILE]
 ```
 
-Reads a CSS file (or stdin with `-`) and outputs formatted CSS.
+Reads a CSS file (or stdin with `-`) and outputs formatted CSS. The
+`--optimise` flag merges duplicate rules and removes redundant declarations.
 
 ```bash
-# Pretty-print
-cascade style.css
-
-# Minify
-cascade --minify style.css
-
-# Optimize and minify
-cascade --optimize --minify style.css
-
-# Pipe from stdin
-cat style.css | cascade --minify -
+cascade style.css                        # pretty-print
+cascade --minify style.css               # minify
+cascade --optimise --minify style.css    # optimise and minify
+cat style.css | cascade --minify -       # read from stdin
 ```
 
-### `cssdiff` -- Structural CSS diff
+### `cssdiff` -- structural CSS diff
 
 ```
-cssdiff [--color=WHEN] [--diff=MODE] FILE1 FILE2
+cssdiff [--colour=WHEN] [--diff=MODE] FILE1 FILE2
 ```
 
-Compares two CSS files using structural parsing, detecting added/removed/modified
-rules, property changes, and reordered rules.
+Compares two CSS files using structural parsing, detecting added, removed,
+and modified rules, property value changes, and reordered rules. Three diff
+modes are available: `auto` (default -- uses tree diff for structural changes,
+string diff otherwise), `tree` (force structural comparison), and `string`
+(character-level comparison).
 
 ```bash
-# Compare two files
 cssdiff reference.css output.css
-
-# Force tree-based structural diff
 cssdiff --diff=tree reference.css output.css
-
-# Disable colors
 NO_COLOR=1 cssdiff reference.css output.css
 ```
 
-Diff modes: `auto` (default, smart detection), `tree` (structural), `string`
-(character-level).
-
 ## Libraries
 
-- **`cascade`** -- Main library. Typed CSS AST, parser, printer, optimizer.
-- **`cascade.tools`** -- CSS comparison tools for structural diffing.
+- **`cascade`** -- typed CSS AST, parser, pretty-printer, and optimiser.
+  The main module is `Cascade.Css`.
+- **`cascade.tools`** -- structural CSS comparison (`Css_tools.Css_compare`,
+  `Css_tools.Tree_diff`, `Css_tools.String_diff`).
 
-## License
+## Limitations
+
+- CSS nesting is parsed and printed but the optimiser does not flatten nested
+  rules. A round-trip through the parser preserves nesting structure.
+- The parser uses error recovery for declarations but does not yet implement
+  the full error recovery algorithm from CSS Syntax Level 3 section 9.
+- `@import` rules are preserved as-is; Cascade does not resolve or inline
+  imported stylesheets.
+- No source-map support.
+
+## Licence
 
 [ISC](LICENSE)

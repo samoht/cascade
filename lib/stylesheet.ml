@@ -375,15 +375,15 @@ let pp_stylesheet : stylesheet Pp.t =
 let to_string ?(minify = false) ?(mode = Variables) ?(newline = true)
     ?(header = "") ?theme ?(theme_defaults = Pp.no_theme_defaults) statements =
   let pp ctx () =
-    if header <> "" then (
-      let has_layers =
-        List.exists
-          (function Layer _ | Layer_decl _ -> true | _ -> false)
-          statements
-      in
-      if has_layers then (
-        Pp.string ctx header;
-        Pp.cut ctx ()));
+    (if header <> "" then
+       let has_layers =
+         List.exists
+           (function Layer _ | Layer_decl _ -> true | _ -> false)
+           statements
+       in
+       if has_layers then (
+         Pp.string ctx header;
+         Pp.cut ctx ()));
     pp_stylesheet ctx statements;
     if newline && mode <> Inline then Pp.char ctx '\n'
   in

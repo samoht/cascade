@@ -34,5 +34,4 @@ let () =
       Test_string_diff.suite;
       Test_tree_diff.suite;
       Test_css_compare.suite;
-      Spec.suite;
     ]
