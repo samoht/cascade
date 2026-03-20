@@ -31,10 +31,10 @@
 
     Custom properties:
     {[
-      let def, v = var "primary-color" Color (hex "#3b82f6") in
-      let root = rule ~selector:(Selector.pseudo_class "root") [ def ] in
-      let card = rule ~selector:(Selector.class_ "card") [ color (Var v) ] in
-      to_string (v [ root; card ])
+    let def, v = var "primary-color" Color (hex "#3b82f6") in
+    let root = rule ~selector:(Selector.pseudo_class "root") [ def ] in
+    let card = rule ~selector:(Selector.class_ "card") [ color (Var v) ] in
+    to_string (v [ root; card ])
     ]}
 
     Interface
@@ -206,13 +206,13 @@ val keyframes : string -> keyframe list -> statement
 
     Example:
     {[
-      keyframes "pulse"
-        [
-          {
-            keyframe_selector = "50%";
-            keyframe_declarations = [ opacity (Float 0.5) ];
-          };
-        ]
+    keyframes "pulse"
+      [
+        {
+          keyframe_selector = "50%";
+          keyframe_declarations = [ opacity (Float 0.5) ];
+        };
+      ]
     ]}
     produces [@keyframes pulse { 50% { opacity: 0.5 } }]. *)
 
@@ -264,13 +264,13 @@ val fold : ('a -> statement -> 'a) -> 'a -> t -> 'a
 
     Example: Collect all selectors from all rules (including nested ones):
     {[
-      let selectors =
-        Css.fold
-          (fun acc stmt ->
-            match Css.as_rule stmt with
-            | Some (sel, _, _) -> Css.Selector.to_string sel :: acc
-            | None -> acc)
-          [] css
+    let selectors =
+      Css.fold
+        (fun acc stmt ->
+          match Css.as_rule stmt with
+          | Some (sel, _, _) -> Css.Selector.to_string sel :: acc
+          | None -> acc)
+        [] css
     ]} *)
 
 val media_queries : t -> (Media.t * statement list) list
@@ -4541,8 +4541,8 @@ val var :
 
     Example:
     {[
-      let def_radius, radius_var = var "radius-md" Length (Rem 0.5) in
-      rule ~selector:".card" [ def_radius; border_radius (Var radius_var) ]
+    let def_radius, radius_var = var "radius-md" Length (Rem 0.5) in
+    rule ~selector:".card" [ def_radius; border_radius (Var radius_var) ]
     ]}
 
     The returned [radius_var] must be wrapped with [Var] when used in CSS

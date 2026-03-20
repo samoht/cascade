@@ -110,9 +110,9 @@ val to_string :
   stylesheet ->
   string
 (** [to_string ?minify ?mode ?newline ?header ?theme ?theme_defaults stylesheet]
-    renders a stylesheet to CSS. When [header] is non-empty (default: [""])
-    and the stylesheet contains [@layer] statements, the header string is
-    prepended as a comment. [theme] is the set of theme-defined variable names;
+    renders a stylesheet to CSS. When [header] is non-empty (default: [""]) and
+    the stylesheet contains [@layer] statements, the header string is prepended
+    as a comment. [theme] is the set of theme-defined variable names;
     [theme_defaults] maps variable names to concrete CSS default values. *)
 
 val pp :
