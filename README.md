@@ -12,41 +12,26 @@ strings, so invalid constructs are caught at compile time.
 ## CSS specification coverage
 
 Cascade targets **CSS Level 3 and Level 4** modules. The parser handles the
-full syntax defined in [CSS Syntax Level 3](https://www.w3.org/TR/css-syntax-3/)
-and the printer produces spec-conformant output with optional minification.
+full syntax defined in
+[CSS Syntax Level 3](https://www.w3.org/TR/css-syntax-3/) and the printer
+produces spec-conformant output with optional minification.
 
-Supported specifications:
+| Specification | Coverage |
+|---|---|
+| [Selectors Level 4](https://www.w3.org/TR/selectors-4/) | Class, ID, element, universal, attribute, pseudo-classes (`:hover`, `:nth-child()`, `:where()`, `:not()`, `:is()`, `:has()`), pseudo-elements, combinators, `&` nesting |
+| [Values and Units Level 4](https://www.w3.org/TR/css-values-4/) | ~30 length units, `calc()`, `clamp()`, `min()`, `max()`, `minmax()`, angles, durations |
+| [Color Level 4](https://www.w3.org/TR/css-color-4/) | Hex, `rgb()`, `hsl()`, `hwb()`, `oklch()`, `oklab()`, `color-mix()`, 148 named colours, 15 colour spaces |
+| [Conditional Rules Level 3](https://www.w3.org/TR/css-conditional-3/) | `@media` feature queries, `@supports` property and selector checks |
+| [Cascade Level 5](https://www.w3.org/TR/css-cascade-5/) | `@layer` declarations and blocks, CSS-wide keywords |
+| [Nesting Module](https://www.w3.org/TR/css-nesting-1/) | Nested rules with `&`, nested `@media` and `@supports` |
+| [Container Queries Level 1](https://www.w3.org/TR/css-contain-3/) | `@container` with size queries |
+| [Custom Properties Level 1](https://www.w3.org/TR/css-variables-1/) | `var()` with typed fallbacks, `@property` registration |
+| [Fonts Level 4](https://www.w3.org/TR/css-fonts-4/) | `@font-face` descriptors |
+| [Animations Level 1](https://www.w3.org/TR/css-animations-1/) | `@keyframes`, `@starting-style` |
 
-- **Selectors Level 4** -- class, ID, element, universal, attribute selectors,
-  pseudo-classes (`:hover`, `:focus`, `:nth-child()`, `:where()`, `:not()`,
-  `:is()`, `:has()`), pseudo-elements (`::before`, `::after`,
-  `::placeholder`, `::file-selector-button`), combinators (descendant, child
-  `>`, adjacent `+`, sibling `~`), and the `&` nesting selector.
-- **Values and Units Level 4** -- all absolute and relative length units
-  (`px`, `rem`, `em`, `%`, `vw`, `vh`, `dvh`, `svh`, `lvh`, `ch`, `lh`,
-  `cm`, `mm`, `in`, `pt`, `pc`, `q`, and approximately 30 others), `calc()`,
-  `clamp()`, `min()`, `max()`, `minmax()`, angles (`deg`, `rad`, `turn`,
-  `grad`), and durations (`s`, `ms`).
-- **Color Level 4** -- hex (3/4/6/8 digit), `rgb()`, `hsl()`, `hwb()`,
-  `oklch()`, `oklab()`, `lch()`, `color()`, `color-mix()`, 148 named colours,
-  system colours, `currentcolor`, `transparent`, and 15 colour spaces
-  including sRGB, display-p3, oklch, and oklab.
-- **Conditional Rules Level 3** -- `@media` with feature queries, `@supports`
-  with property and selector checks.
-- **Cascade Level 5** -- `@layer` declarations and blocks, CSS-wide keywords
-  (`inherit`, `initial`, `unset`, `revert`, `revert-layer`).
-- **Nesting Module** -- nested rules with `&` selector, nested `@media` and
-  `@supports` inside rules.
-- **Container Queries Level 1** -- `@container` with size queries.
-- **Custom Properties Level 1** -- `var()` references with typed fallbacks,
-  `@property` registration with syntax, inheritance, and initial values.
-- **Fonts Level 4** -- `@font-face` descriptors.
-- **Animations Level 1** -- `@keyframes` with named animations.
-- **Starting Style** -- `@starting-style` for entry animations.
-
-Over 100 CSS properties are typed, covering box model, display, positioning,
-flexbox, grid, logical properties, typography, borders, backgrounds, gradients,
-transforms, transitions, animations, filters, and vendor-prefixed properties.
+Over 100 typed CSS properties cover box model, flexbox, grid, logical
+properties, typography, borders, backgrounds, gradients, transforms,
+transitions, animations, filters, and vendor-prefixed properties.
 
 ## Installation
 
