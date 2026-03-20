@@ -13,6 +13,7 @@
     - test_variables.ml - CSS variables
     - test_pp.ml - Pretty printing *)
 
+open Cascade
 open Css
 
 (* Helper selectors for tests *)
@@ -128,7 +129,7 @@ let custom_properties_integration () =
 (* CSS Roundtrip Test: Parse generated CSS and compare roundtrip *)
 let roundtrip () =
   let original_css =
-    match Examples.read "empty_tailwind.css" with
+    let ic = open_in "examples/empty_tailwind.css" in let css = Fun.protect ~finally:(fun () -> close_in ic) (fun () -> really_input_string ic (in_channel_length ic)) in match Some css with
     | Some css -> css
     | None -> Alcotest.fail "Could not read empty_tailwind.css from examples"
   in

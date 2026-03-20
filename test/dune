@@ -1,12 +1,10 @@
 (test
  (name test)
+ (deps (source_tree examples))
  (libraries
-  tw
-  css
+  cascade
   alcotest
-  re
   astring
   fmt
   css_tools
-  examples
   css_test_helpers))

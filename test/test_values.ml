@@ -1,6 +1,7 @@
 (** Tests for CSS Values parsing *)
 
 open Alcotest
+open Cascade
 open Css.Values
 open Css_test_helpers
 

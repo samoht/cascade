@@ -1,5 +1,6 @@
 (** Tests for CSS Selector module *)
 
+open Cascade
 open Css.Selector
 open Css_test_helpers
 
@@ -1077,6 +1078,42 @@ let test_attr_name () =
   check_attr_name "data-testid";
   check_attr_name "href"
 
+(** {2 CSS Nesting Selector Tests} *)
+
+let test_nesting_selector () =
+  (* Basic & nesting selector *)
+  check "&";
+  check_construct "&" Nesting;
+
+  (* & with descendant: & .child *)
+  check "& .child";
+  check_construct "& .child" (combine Nesting Descendant (class_ "child"));
+
+  (* & with pseudo-class: &:hover *)
+  check "&:hover";
+  check_construct "&:hover" (compound [ Nesting; Hover ]);
+
+  (* & with pseudo-class: &:focus *)
+  check "&:focus";
+  check_construct "&:focus" (compound [ Nesting; Focus ]);
+
+  (* & with child combinator: & > .child *)
+  check ~expected:"&>.child" "& > .child";
+  check_construct "&>.child" (combine Nesting Child (class_ "child"));
+
+  (* & with class: &.active *)
+  check "&.active";
+  check_construct "&.active" (compound [ Nesting; class_ "active" ]);
+
+  (* & with attribute: &[data-active] *)
+  check "&[data-active]";
+  check_construct "&[data-active]"
+    (compound [ Nesting; attribute "data-active" Presence ]);
+
+  (* & in selector list: &:hover, &:focus *)
+  check "&:hover,&:focus";
+  check ~expected:"&:hover,&:focus" "&:hover, &:focus"
+
 let suite =
   let open Alcotest in
   ( "selector",
@@ -1121,4 +1158,6 @@ let suite =
       (* Special cases *)
       test_case "complex construction" `Quick test_complex_construction;
       test_case "combinator distribution" `Quick test_combinator_distribution;
+      (* CSS nesting *)
+      test_case "nesting selector" `Quick test_nesting_selector;
     ] )

@@ -1,3 +1,5 @@
+open Cascade
+
 let test_to_string () =
   let open Css.Container in
   Alcotest.(check string)

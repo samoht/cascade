@@ -1,5 +1,6 @@
 (** Tests for CSS stylesheet interface types - CSS/MDN spec compliance *)
 
+open Cascade
 module Selector = Css.Selector
 open Css.Stylesheet
 open Css_test_helpers
@@ -212,7 +213,7 @@ let test_layer_rule_creation () =
   let layer_stmt = layer ~name:"utilities" [ Css.Stylesheet.Rule rule ] in
   let sheet = Css.Stylesheet.v [ layer_stmt ] in
   let output =
-    Css.Stylesheet.pp ~minify:true ~newline:false ~header:false sheet
+    Css.Stylesheet.pp ~minify:true ~newline:false sheet
   in
   Alcotest.(check string)
     "layer rule creation" "@layer utilities{.red{background-color:#ff0000}}"
@@ -464,7 +465,7 @@ let test_layer_pp () =
 
   let sheet = Css.Stylesheet.v [ layer_stmt ] in
   let output =
-    Css.Stylesheet.pp ~minify:true ~newline:false ~header:false sheet
+    Css.Stylesheet.pp ~minify:true ~newline:false sheet
   in
   Alcotest.(check string)
     "layer pp" "@layer utilities{.blue{color:#0000ff}}" output;
@@ -474,7 +475,7 @@ let test_layer_pp () =
   let empty_layer = layer ~name:"base" [] in
   let empty_sheet = Css.Stylesheet.v [ empty_layer ] in
   let empty_output =
-    Css.Stylesheet.pp ~minify:true ~newline:false ~header:false empty_sheet
+    Css.Stylesheet.pp ~minify:true ~newline:false empty_sheet
   in
   Alcotest.(check string) "empty layer" "@layer base;" empty_output
 
@@ -494,7 +495,7 @@ let pp_case () =
   let sheet = Css.Stylesheet.v [ Rule r; media_stmt; prop ] in
 
   let output =
-    Css.Stylesheet.pp ~minify:true ~newline:false ~header:false sheet
+    Css.Stylesheet.pp ~minify:true ~newline:false sheet
   in
   Alcotest.(check string)
     "stylesheet pp"
@@ -1017,7 +1018,7 @@ let test_layer_roundtrip () =
       let stylesheet = Css.Stylesheet.read r in
       let roundtrip =
         String.trim
-          (Css.Stylesheet.to_string ~minify:true ~header:false stylesheet)
+          (Css.Stylesheet.to_string ~minify:true stylesheet)
       in
       Alcotest.(check string)
         ("layer roundtrip for " ^ input)
@@ -1032,6 +1033,102 @@ let test_layer_roundtrip () =
   test_css ~expected:"@layer components;@layer utilities;"
     "@layer components{}@layer utilities{}"
 
+(** {2 CSS Nesting Round-trip Tests} *)
+
+(** Helper: parse CSS, print minified, compare to expected *)
+let test_nesting_roundtrip ~expected input =
+  let r = Css.Reader.of_string input in
+  try
+    let stylesheet = Css.Stylesheet.read r in
+    let roundtrip =
+      String.trim
+        (Css.Stylesheet.to_string ~minify:true stylesheet)
+    in
+    Alcotest.(check string) ("nesting roundtrip for " ^ input) expected roundtrip
+  with Css.Reader.Parse_error err ->
+    Alcotest.fail ("Failed to parse " ^ input ^ ": " ^ Css.pp_parse_error err)
+
+(** Helper: parse CSS, print minified, parse again, print again --
+    verify idempotent *)
+let test_nesting_idempotent input =
+  let r = Css.Reader.of_string input in
+  try
+    let sheet1 = Css.Stylesheet.read r in
+    let printed1 =
+      String.trim
+        (Css.Stylesheet.to_string ~minify:true sheet1)
+    in
+    let r2 = Css.Reader.of_string printed1 in
+    let sheet2 = Css.Stylesheet.read r2 in
+    let printed2 =
+      String.trim
+        (Css.Stylesheet.to_string ~minify:true sheet2)
+    in
+    Alcotest.(check string)
+      ("nesting idempotent for " ^ input)
+      printed1 printed2
+  with Css.Reader.Parse_error err ->
+    Alcotest.fail
+      ("Failed to parse " ^ input ^ ": " ^ Css.pp_parse_error err)
+
+let test_nesting_basic () =
+  (* Basic nesting with & descendant combinator *)
+  test_nesting_roundtrip
+    ~expected:".parent{color:red;& .child{color:blue}}"
+    ".parent { color: red; & .child { color: blue; } }";
+  test_nesting_idempotent
+    ".parent { color: red; & .child { color: blue; } }"
+
+let test_nesting_ampersand_hover () =
+  (* Ampersand with pseudo-class *)
+  test_nesting_roundtrip
+    ~expected:".btn{color:red;&:hover{color:blue}}"
+    ".btn { color: red; &:hover { color: blue; } }";
+  test_nesting_idempotent ".btn { color: red; &:hover { color: blue; } }"
+
+let test_nesting_multiple () =
+  (* Multiple nested rules *)
+  test_nesting_roundtrip
+    ~expected:".card{padding:1rem;& .title{font-size:1.5rem}& .body{font-size:1rem}}"
+    ".card { padding: 1rem; & .title { font-size: 1.5rem; } & .body { font-size: 1rem; } }";
+  test_nesting_idempotent
+    ".card { padding: 1rem; & .title { font-size: 1.5rem; } & .body { font-size: 1rem; } }"
+
+let test_nesting_media () =
+  (* Nested @media query inside a rule *)
+  test_nesting_roundtrip
+    ~expected:".foo{color:red;@media (min-width: 768px){color:blue;}}"
+    ".foo { color: red; @media (min-width: 768px) { color: blue; } }";
+  test_nesting_idempotent
+    ".foo { color: red; @media (min-width: 768px) { color: blue; } }"
+
+let test_nesting_deep () =
+  (* Deeply nested rules *)
+  test_nesting_roundtrip
+    ~expected:".a{& .b{& .c{color:red}}}"
+    ".a { & .b { & .c { color: red; } } }";
+  test_nesting_idempotent ".a { & .b { & .c { color: red; } } }"
+
+let test_nesting_with_declarations () =
+  (* Nested rule after multiple declarations *)
+  test_nesting_roundtrip
+    ~expected:".parent{color:red;padding:1rem;&:focus{outline:none}}"
+    ".parent { color: red; padding: 1rem; &:focus { outline: none; } }";
+  test_nesting_idempotent
+    ".parent { color: red; padding: 1rem; &:focus { outline: none; } }"
+
+let test_nesting_check_stylesheet () =
+  (* Also test via check_stylesheet for consistency *)
+  check_stylesheet
+    ~expected:".parent{color:red;& .child{color:blue}}"
+    ".parent { color: red; & .child { color: blue; } }";
+  check_stylesheet
+    ~expected:".btn{color:red;&:hover{color:blue}}"
+    ".btn { color: red; &:hover { color: blue; } }";
+  check_stylesheet
+    ~expected:".a{& .b{& .c{color:red}}}"
+    ".a { & .b { & .c { color: red; } } }"
+
 let additional_tests =
   [
     ("check function", `Quick, test_check);
@@ -1042,6 +1139,14 @@ let additional_tests =
     ("advanced properties", `Quick, test_advanced_properties);
     ("complex values", `Quick, test_complex_values);
     ("nested rules", `Quick, test_nested_rules);
+    (* CSS nesting round-trip tests *)
+    ("nesting basic", `Quick, test_nesting_basic);
+    ("nesting ampersand hover", `Quick, test_nesting_ampersand_hover);
+    ("nesting multiple nested rules", `Quick, test_nesting_multiple);
+    ("nesting nested media query", `Quick, test_nesting_media);
+    ("nesting deeply nested", `Quick, test_nesting_deep);
+    ("nesting with declarations", `Quick, test_nesting_with_declarations);
+    ("nesting check_stylesheet", `Quick, test_nesting_check_stylesheet);
     (* Negative tests *)
     ("invalid selectors", `Quick, test_invalid_selectors);
     ("invalid properties", `Quick, test_invalid_properties);

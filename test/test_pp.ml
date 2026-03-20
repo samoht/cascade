@@ -1,6 +1,7 @@
 (** Tests for CSS pretty-printing module *)
 
 open Alcotest
+open Cascade
 open Css
 
 (* Helper function for checking pp output *)

@@ -1,3 +1,4 @@
+open Cascade
 open Css.Media
 
 let test_to_string () =

@@ -1,4 +1,5 @@
 open Alcotest
+open Cascade
 open Css.Properties
 open Css_test_helpers
 

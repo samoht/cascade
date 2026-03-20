@@ -1,6 +1,7 @@
 (** Tests for CSS Declaration parsing *)
 
 open Alcotest
+open Cascade
 open Css.Declaration
 open Css_test_helpers
 

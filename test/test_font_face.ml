@@ -1,3 +1,4 @@
+open Cascade
 open Css.Font_face
 
 let test_metric_override_to_string () =

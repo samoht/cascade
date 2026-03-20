@@ -1,5 +1,7 @@
 (** CSS library tests *)
 
+open Cascade
+
 (* Register exception printer for better Parse_error messages *)
 let () =
   Printexc.register_printer (function
@@ -29,4 +31,8 @@ let () =
       Test_media.suite;
       Test_supports.suite;
       Test_container.suite;
+      Test_string_diff.suite;
+      Test_tree_diff.suite;
+      Test_css_compare.suite;
+      Spec.suite;
     ]

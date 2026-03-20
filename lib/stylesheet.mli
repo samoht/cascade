@@ -104,20 +104,22 @@ val to_string :
   ?minify:bool ->
   ?mode:mode ->
   ?newline:bool ->
-  ?header:bool ->
+  ?header:string ->
   ?theme:Pp.String_set.t ->
   ?theme_defaults:(string -> string option) ->
   stylesheet ->
   string
-(** [to_string ?minify ?mode ?newline ?theme ?theme_defaults stylesheet] renders
-    a stylesheet to CSS. [theme] is the set of theme-defined variable names;
+(** [to_string ?minify ?mode ?newline ?header ?theme ?theme_defaults stylesheet]
+    renders a stylesheet to CSS. When [header] is non-empty (default: [""])
+    and the stylesheet contains [@layer] statements, the header string is
+    prepended as a comment. [theme] is the set of theme-defined variable names;
     [theme_defaults] maps variable names to concrete CSS default values. *)
 
 val pp :
   ?minify:bool ->
   ?mode:mode ->
   ?newline:bool ->
-  ?header:bool ->
+  ?header:string ->
   ?theme:Pp.String_set.t ->
   ?theme_defaults:(string -> string option) ->
   stylesheet ->

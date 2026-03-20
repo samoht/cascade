@@ -224,7 +224,7 @@ let vars_of_length_list (values : Values.length list) : any_var list =
 (** Helper for types that share Length/Var/Calc constructors with a wildcard
     fallback (e.g., length_percentage, font_size). The caller decomposes the
     value into one of three cases. *)
-let vars_of_length_or_var_or_calc = function
+let vars_of_lvc = function
   | `Length l -> vars_of_length l
   | `Var v -> [ v ]
   | `Calc calc -> vars_of_calc calc
@@ -232,7 +232,7 @@ let vars_of_length_or_var_or_calc = function
 
 let vars_of_length_percentage (value : Values.length_percentage) : any_var list
     =
-  vars_of_length_or_var_or_calc
+  vars_of_lvc
     (match value with
     | Length l -> `Length l
     | Var v -> `Var (V v)
@@ -240,7 +240,7 @@ let vars_of_length_percentage (value : Values.length_percentage) : any_var list
     | _ -> `Other)
 
 let vars_of_font_size (value : Properties.font_size) : any_var list =
-  vars_of_length_or_var_or_calc
+  vars_of_lvc
     (match value with
     | Length l -> `Length l
     | Var v -> `Var (V v)

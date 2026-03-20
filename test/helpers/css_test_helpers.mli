@@ -1,5 +1,7 @@
 (** Common helpers for CSS tests to reduce duplication and inconsistencies *)
 
+open Cascade
+
 val neg : (Css.Reader.t -> 'a) -> string -> unit
 (** [neg reader input] tests that parsing should fail by attempting to parse the
     input and expecting either a Parse_error exception or incomplete consumption

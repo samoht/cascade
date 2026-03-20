@@ -1,3 +1,4 @@
+open Cascade
 open Cmdliner
 
 (* Always record backtraces so unexpected exceptions include full stacks *)
@@ -113,7 +114,12 @@ let info =
       `Pre "  cat style.css | $(tname) --minify -";
     ]
   in
-  Cmd.info "cascade" ~version:"0.1.0" ~doc ~man
+  let version =
+    match Build_info.V1.version () with
+    | None -> "dev"
+    | Some v -> Build_info.V1.Version.to_string v
+  in
+  Cmd.info "cascade" ~version ~doc ~man
 
 let cmd = Cmd.v info term
 let () = exit (Cmd.eval cmd)
