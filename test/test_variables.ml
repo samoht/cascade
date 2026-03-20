@@ -1,5 +1,6 @@
 (** Tests for CSS Variables module - CSS/MDN spec compliance *)
 
+open Cascade
 open Css.Declaration
 open Css.Values
 open Css_test_helpers

@@ -14,7 +14,7 @@
 
     Minimal example:
     {[
-      open Css
+      open Cascade.Css
 
       (* Build a ".btn" rule and render a stylesheet from it. *)
       let button =

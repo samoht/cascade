@@ -11,6 +11,8 @@
     distinguish between different types of changes: additions, removals, content
     modifications, and reorderings. *)
 
+open Cascade
+
 (** {1:diffs Difference types}
 
     Tree difference types are defined in the {!Tree_diff} module. *)

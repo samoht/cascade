@@ -1,3 +1,4 @@
+open Cascade
 open Css.Supports
 
 let test_to_string () =

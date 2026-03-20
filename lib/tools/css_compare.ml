@@ -1,5 +1,7 @@
 (** CSS comparison utilities for testing using the proper CSS parser *)
 
+open Cascade
+
 (* ===== Constants ===== *)
 
 let header_comment_start = 3 (* Position after "/*" *)

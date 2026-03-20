@@ -1,4 +1,3 @@
 (library
- (public_name tw.css)
- (name css)
- (libraries dune-build-info))
+ (public_name cascade)
+ (name cascade))

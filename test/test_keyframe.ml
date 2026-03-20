@@ -1,3 +1,4 @@
+open Cascade
 open Css.Keyframe
 
 let test_position_roundtrip () =

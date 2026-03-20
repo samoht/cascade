@@ -1,5 +1,7 @@
 (** CSS tree difference analysis for structural comparison. *)
 
+open Cascade
+
 (* ===== Type Definitions ===== *)
 
 type declaration = {

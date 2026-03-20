@@ -372,28 +372,18 @@ let pp_stylesheet : stylesheet Pp.t =
 
 (** {1 Rendering} *)
 
-let version =
-  match Build_info.V1.version () with
-  | None -> "dev"
-  | Some v -> Build_info.V1.Version.to_string v
-
-let header_string =
-  String.concat ""
-    [ "/*! tw v"; version; " | MIT License | https://github.com/samoht/tw */" ]
-
 let to_string ?(minify = false) ?(mode = Variables) ?(newline = true)
-    ?(header = true) ?theme ?(theme_defaults = Pp.no_theme_defaults) statements
-    =
+    ?(header = "") ?theme ?(theme_defaults = Pp.no_theme_defaults) statements =
   let pp ctx () =
-    (* Add header if enabled and there are any layer statements *)
-    let has_layers =
-      List.exists
-        (function Layer _ | Layer_decl _ -> true | _ -> false)
-        statements
-    in
-    if header && has_layers then (
-      Pp.string ctx header_string;
-      Pp.cut ctx ());
+    if header <> "" then (
+      let has_layers =
+        List.exists
+          (function Layer _ | Layer_decl _ -> true | _ -> false)
+          statements
+      in
+      if has_layers then (
+        Pp.string ctx header;
+        Pp.cut ctx ()));
     pp_stylesheet ctx statements;
     if newline && mode <> Inline then Pp.char ctx '\n'
   in

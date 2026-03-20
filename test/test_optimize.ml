@@ -1,6 +1,7 @@
 (** Tests for CSS Optimize module *)
 
 open Alcotest
+open Cascade
 open Css.Optimize
 open Css.Declaration
 open Css.Values
@@ -666,9 +667,8 @@ let test_no_merge_different_declarations () =
   in
   let optimized = stylesheet input in
   let output_str = Css.Stylesheet.to_string ~minify:true optimized in
-  let module Str = Re.Str in
-  let has_foo = Str.string_match (Str.regexp ".*\\.foo{") output_str 0 in
-  let has_bar = Str.string_match (Str.regexp ".*\\.bar{") output_str 0 in
+  let has_foo = Astring.String.is_infix ~affix:".foo{" output_str in
+  let has_bar = Astring.String.is_infix ~affix:".bar{" output_str in
   Alcotest.(check bool)
     "keeps rules with different declarations separate" true (has_foo && has_bar)
 
@@ -700,9 +700,8 @@ let test_no_merge_non_consecutive () =
   in
   let optimized = stylesheet input in
   let output_str = Css.Stylesheet.to_string ~minify:true optimized in
-  let module Str = Re.Str in
-  let foo_separate = Str.string_match (Str.regexp ".*\\.foo{") output_str 0 in
-  let bar_separate = Str.string_match (Str.regexp ".*\\.bar{") output_str 0 in
+  let foo_separate = Astring.String.is_infix ~affix:".foo{" output_str in
+  let bar_separate = Astring.String.is_infix ~affix:".bar{" output_str in
   Alcotest.(check bool)
     "keeps non-consecutive rules separate" true
     (foo_separate && bar_separate)
@@ -728,11 +727,10 @@ let test_no_merge_vendor_pseudo () =
   in
   let optimized = stylesheet input in
   let output_str = Css.Stylesheet.to_string ~minify:true optimized in
-  let module Str = Re.Str in
   let has_file_selector =
-    Str.string_match (Str.regexp ".*::file-selector-button{") output_str 0
+    Astring.String.is_infix ~affix:"::file-selector-button{" output_str
   in
-  let has_foo = Str.string_match (Str.regexp ".*\\.foo{") output_str 0 in
+  let has_foo = Astring.String.is_infix ~affix:".foo{" output_str in
   Alcotest.(check bool)
     "doesn't merge vendor pseudo-elements" true
     (has_file_selector && has_foo)
@@ -767,9 +765,8 @@ let test_no_merge_with_nested () =
   in
   let optimized = stylesheet input in
   let output_str = Css.Stylesheet.to_string ~minify:true optimized in
-  let module Str = Re.Str in
-  let has_foo = Str.string_match (Str.regexp ".*\\.foo{") output_str 0 in
-  let has_bar = Str.string_match (Str.regexp ".*\\.bar{") output_str 0 in
+  let has_foo = Astring.String.is_infix ~affix:".foo{" output_str in
+  let has_bar = Astring.String.is_infix ~affix:".bar{" output_str in
   Alcotest.(check bool)
     "doesn't merge rules with nested statements" true (has_foo && has_bar)
 

@@ -1,5 +1,7 @@
 (** Common helpers for CSS tests to reduce duplication and inconsistencies *)
 
+open Cascade
+
 (** Generic negative test combinator - tests that parsing should fail Use this
     for parsers that raise Parse_error on failure *)
 let neg reader input =

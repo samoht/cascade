@@ -1,0 +1,26 @@
+(executables
+ (names fuzz)
+ (libraries cascade alcobar fmt)
+ (modules
+  fuzz
+  fuzz_reader
+  fuzz_selector
+  fuzz_values
+  fuzz_stylesheet
+  fuzz_supports
+  fuzz_font_face
+  fuzz_keyframe))
+
+(rule
+ (alias runtest)
+ (deps fuzz.exe)
+ (action
+  (run %{exe:fuzz.exe})))
+
+(rule
+ (alias fuzz)
+ (deps
+  (source_tree corpus)
+  fuzz.exe)
+ (action
+  (run %{exe:fuzz.exe} --fuzz)))

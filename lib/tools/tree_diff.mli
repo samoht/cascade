@@ -1,5 +1,7 @@
 (** CSS tree difference analysis for structural comparison. *)
 
+open Cascade
+
 type declaration = {
   property_name : string;
   expected_value : string;

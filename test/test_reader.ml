@@ -1,6 +1,7 @@
 (** Tests for CSS Reader module *)
 
 open Alcotest
+open Cascade
 open Css.Reader
 open Css_test_helpers
 
