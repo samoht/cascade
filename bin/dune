@@ -1,0 +1,4 @@
+(executables
+ (public_names cascade cssdiff)
+ (names cascade cssdiff)
+ (libraries css css_tools cmdliner fmt fmt.cli fmt.tty))
