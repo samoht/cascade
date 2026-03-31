@@ -1,0 +1,5 @@
+version = 0.29.0
+profile = conventional
+parse-docstrings = true
+wrap-comments = true
+comment-check = true
