@@ -25,8 +25,10 @@ val linear_gradient :
   gradient_direction -> gradient_stop list -> background_image
 (** [linear_gradient dir stops] builds a linear-gradient background image. *)
 
-val radial_gradient : gradient_stop list -> background_image
-(** [radial_gradient stops] builds a radial-gradient background image. *)
+val radial_gradient :
+  ?config:radial_gradient_config -> gradient_stop list -> background_image
+(** [radial_gradient ?config stops] builds a radial-gradient background image.
+*)
 
 val color_stop : Values.color -> gradient_stop
 (** [color_stop c] is a gradient stop with just a color. *)

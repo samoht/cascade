@@ -1730,6 +1730,25 @@ type gradient_stop =
   | Direction of gradient_direction
       (** Gradient direction for stops, e.g., "to right" or Var *)
 
+(** Shape of a radial gradient *)
+type radial_shape = Circle | Ellipse
+
+(** Size of a radial gradient *)
+type radial_size =
+  | Closest_side
+  | Farthest_side
+  | Closest_corner
+  | Farthest_corner
+  | Circle_radius of length
+  | Ellipse_radii of length_percentage * length_percentage
+
+type radial_gradient_config = {
+  shape : radial_shape option;
+  size : radial_size option;
+  position : position_value option;
+}
+(** Configuration for radial-gradient prefix: shape, size, and position *)
+
 (** Background image values *)
 type background_image =
   | Url of string
@@ -1737,7 +1756,7 @@ type background_image =
   | Linear_gradient_var of gradient_stop var
       (** Linear gradient using a single variable for all stops including
           position. Outputs: linear-gradient(var(--tw-gradient-stops)) *)
-  | Radial_gradient of gradient_stop list
+  | Radial_gradient of radial_gradient_config * gradient_stop list
   | Radial_gradient_var of gradient_stop var
       (** Radial gradient using a single variable for all stops. Outputs:
           radial-gradient(var(--tw-gradient-stops)) *)
@@ -1873,8 +1892,9 @@ val linear_gradient :
   gradient_direction -> gradient_stop list -> background_image
 (** [linear_gradient dir stops] is a linear gradient background. *)
 
-val radial_gradient : gradient_stop list -> background_image
-(** [radial_gradient stops] is a radial gradient background. *)
+val radial_gradient :
+  ?config:radial_gradient_config -> gradient_stop list -> background_image
+(** [radial_gradient ?config stops] is a radial gradient background. *)
 
 val color_stop : color -> gradient_stop
 (** [color_stop c] is a simple color stop. *)
