@@ -17,21 +17,25 @@ let no_theme_defaults _ = None
 let in_theme ctx name =
   match ctx.theme with None -> true | Some set -> String_set.mem name set
 
-let to_string ?(minify = false) ?(inline = false) ?theme
-    ?(theme_defaults = no_theme_defaults) pp a =
+let ctx ?(minify = false) ?(inline = false) ?theme
+    ?(theme_defaults = no_theme_defaults) buf =
+  {
+    minify;
+    indent = 0;
+    buf;
+    inline;
+    in_function = false;
+    theme;
+    theme_defaults;
+  }
+
+let to_buffer ?minify ?inline ?theme ?theme_defaults buf pp a =
+  let ctx = ctx ?minify ?inline ?theme ?theme_defaults buf in
+  pp ctx a
+
+let to_string ?minify ?inline ?theme ?theme_defaults pp a =
   let buf = Buffer.create 1024 in
-  let ctx =
-    {
-      minify;
-      indent = 0;
-      buf;
-      inline;
-      in_function = false;
-      theme;
-      theme_defaults;
-    }
-  in
-  pp ctx a;
+  to_buffer ?minify ?inline ?theme ?theme_defaults buf pp a;
   Buffer.contents buf
 
 let nop _ _ = ()

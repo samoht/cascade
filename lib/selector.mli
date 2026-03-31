@@ -77,6 +77,9 @@ val pp : t Pp.t
 val to_string : ?minify:bool -> t -> string
 (** [to_string ?minify sel] renders a selector to a string. *)
 
+val to_buffer : ?minify:bool -> Buffer.t -> t -> unit
+(** [to_buffer ?minify buf sel] renders a selector into [buf]. *)
+
 val map : (t -> t) -> t -> t
 (** [map f selector] recursively applies [f] to all selectors in the tree. The
     function [f] is applied bottom-up: first to descendants, then to the current
