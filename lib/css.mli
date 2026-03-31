@@ -4807,6 +4807,19 @@ val parse_length : string -> length option
 (** [parse_length s] parses a CSS length string (including [calc()] expressions)
     using the CSS reader. Returns [None] if parsing fails. *)
 
+val parse_color : string -> color option
+(** [parse_color s] parses a CSS color string (e.g., ["rgba(48,163,0,0.14)"],
+    ["oklch(0.5 0.2 240)"]) using the CSS reader. Returns [None] if parsing
+    fails. *)
+
+val parse_shadow : string -> shadow option
+(** [parse_shadow s] parses a CSS shadow string, including comma-separated
+    multi-shadow values. Returns [None] if parsing fails. *)
+
+val parse_background_image : string -> background_image list option
+(** [parse_background_image s] parses a CSS background-image value, including
+    comma-separated multiple images. Returns [None] if parsing fails. *)
+
 module Container = Container
 module Supports = Supports
 module Keyframe = Keyframe
