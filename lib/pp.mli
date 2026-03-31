@@ -75,8 +75,8 @@ val to_string :
   'a t ->
   'a ->
   string
-(** [to_string formatter value] runs the formatter and returns a string.
-    Creates a fresh buffer internally. *)
+(** [to_string formatter value] runs the formatter and returns a string. Creates
+    a fresh buffer internally. *)
 
 (** {2 Primitive Formatters} *)
 
