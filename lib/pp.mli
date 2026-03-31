@@ -55,6 +55,18 @@ val in_theme : ctx -> string -> bool
     they're in the theme. When [theme] is [Some set], returns
     [String_set.mem name set]. *)
 
+val to_buffer :
+  ?minify:bool ->
+  ?inline:bool ->
+  ?theme:String_set.t ->
+  ?theme_defaults:(string -> string option) ->
+  Buffer.t ->
+  'a t ->
+  'a ->
+  unit
+(** [to_buffer buf formatter value] runs the formatter writing into [buf].
+    Avoids allocating a fresh buffer. *)
+
 val to_string :
   ?minify:bool ->
   ?inline:bool ->
@@ -63,10 +75,8 @@ val to_string :
   'a t ->
   'a ->
   string
-(** [to_string ~minify ~inline ~theme ~theme_defaults formatter value] runs the
-    formatter and returns a string. Creates a fresh buffer internally. Defaults:
-    minify=false, inline=false, theme=String_set.empty, theme_defaults=(fun _ ->
-    None). *)
+(** [to_string formatter value] runs the formatter and returns a string.
+    Creates a fresh buffer internally. *)
 
 (** {2 Primitive Formatters} *)
 

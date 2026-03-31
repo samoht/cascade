@@ -1319,6 +1319,7 @@ and pp : t Pp.t =
   | Nesting -> Pp.char ctx '&'
 
 let to_string ?minify t = Pp.to_string ?minify pp t
+let to_buffer ?minify buf t = Pp.to_buffer ?minify buf pp t
 
 (** Recursively map over all selectors in the tree *)
 let rec map f = function
