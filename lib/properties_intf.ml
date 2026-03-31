@@ -1052,27 +1052,15 @@ type gradient_stop =
   | Direction of gradient_direction
 (* Gradient direction for stops, e.g., "to right" or Var *)
 
-type background_image =
-  | Url of string
-  | Linear_gradient of gradient_direction * gradient_stop list
-  | Linear_gradient_var of gradient_stop var
-      (** Linear gradient using a single variable for all stops including
-          position. Outputs: linear-gradient(var(--tw-gradient-stops)) *)
-  | Radial_gradient of gradient_stop list
-  | Radial_gradient_var of gradient_stop var
-      (** Radial gradient using a single variable for all stops. Outputs:
-          radial-gradient(var(--tw-gradient-stops)) *)
-  | Conic_gradient of gradient_stop list
-  | Conic_gradient_var of gradient_stop var
-      (** Conic gradient using a single variable for all stops. Outputs:
-          conic-gradient(var(--tw-gradient-stops)) *)
-  | Var of background_image var
-      (** CSS variable reference: var(--my-gradient) *)
-  | List of background_image list
-      (** Comma-separated list of background images *)
-  | None
-  | Initial
-  | Inherit
+type radial_shape = Circle | Ellipse
+
+type radial_size =
+  | Closest_side
+  | Farthest_side
+  | Closest_corner
+  | Farthest_corner
+  | Circle_radius of length
+  | Ellipse_radii of length_percentage * length_percentage
 
 type position_value =
   | Center
@@ -1102,6 +1090,34 @@ type position_value =
   (* 4-value syntax: edge1 offset1 edge2 offset2 *)
   | Edge_offset_edge_offset of string * length * string * length
   | Var of position_value var  (** CSS variable reference *)
+
+type radial_gradient_config = {
+  shape : radial_shape option;
+  size : radial_size option;
+  position : position_value option;
+}
+
+type background_image =
+  | Url of string
+  | Linear_gradient of gradient_direction * gradient_stop list
+  | Linear_gradient_var of gradient_stop var
+      (** Linear gradient using a single variable for all stops including
+          position. Outputs: linear-gradient(var(--tw-gradient-stops)) *)
+  | Radial_gradient of radial_gradient_config * gradient_stop list
+  | Radial_gradient_var of gradient_stop var
+      (** Radial gradient using a single variable for all stops. Outputs:
+          radial-gradient(var(--tw-gradient-stops)) *)
+  | Conic_gradient of gradient_stop list
+  | Conic_gradient_var of gradient_stop var
+      (** Conic gradient using a single variable for all stops. Outputs:
+          conic-gradient(var(--tw-gradient-stops)) *)
+  | Var of background_image var
+      (** CSS variable reference: var(--my-gradient) *)
+  | List of background_image list
+      (** Comma-separated list of background images *)
+  | None
+  | Initial
+  | Inherit
 
 (* Background position can be complex with 1-4 values mixing keywords and
    lengths *)

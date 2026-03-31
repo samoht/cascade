@@ -1176,6 +1176,23 @@ let rec pp_gradient_direction : gradient_direction Pp.t =
       pp_color_interpolation ctx interp
   | Var v -> pp_var pp_gradient_direction ctx v
 
+let pp_radial_shape : radial_shape Pp.t =
+ fun ctx -> function
+  | Circle -> Pp.string ctx "circle"
+  | Ellipse -> Pp.string ctx "ellipse"
+
+let pp_radial_size : radial_size Pp.t =
+ fun ctx -> function
+  | Closest_side -> Pp.string ctx "closest-side"
+  | Farthest_side -> Pp.string ctx "farthest-side"
+  | Closest_corner -> Pp.string ctx "closest-corner"
+  | Farthest_corner -> Pp.string ctx "farthest-corner"
+  | Circle_radius l -> pp_length ctx l
+  | Ellipse_radii (a, b) ->
+      pp_length_percentage ~always:true ctx a;
+      Pp.space ctx ();
+      pp_length_percentage ~always:true ctx b
+
 let rec pp_gradient_stop : gradient_stop Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_gradient_stop ctx v
@@ -1232,6 +1249,70 @@ let rec pp_filter : filter Pp.t =
   | List filters -> Pp.list ~sep:Pp.space pp_filter ctx filters
   | Var v -> pp_var pp_filter ctx v
 
+let rec pp_position_value : position_value Pp.t =
+ fun ctx -> function
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Center -> Pp.string ctx "center"
+  | Top -> Pp.string ctx "top"
+  | Bottom -> Pp.string ctx "bottom"
+  | Left -> Pp.string ctx "left"
+  | Right -> Pp.string ctx "right"
+  | Left_top -> Pp.string ctx "left top"
+  | Left_center -> Pp.string ctx "left center"
+  | Left_bottom -> Pp.string ctx "left bottom"
+  | Right_top -> Pp.string ctx "right top"
+  | Right_center -> Pp.string ctx "right center"
+  | Right_bottom -> Pp.string ctx "right bottom"
+  | Center_top -> Pp.string ctx "center top"
+  | Center_bottom -> Pp.string ctx "center bottom"
+  | Top_left -> Pp.string ctx "left top"
+  | Top_right -> Pp.string ctx "right top"
+  | Bottom_left -> Pp.string ctx "left bottom"
+  | Bottom_right -> Pp.string ctx "right bottom"
+  | XY (a, b) ->
+      pp_length ctx a;
+      Pp.space ctx ();
+      pp_length ctx b
+  | Single l -> pp_length ctx l
+  | Edge_offset_axis (edge, offset, axis) ->
+      Pp.string ctx edge;
+      Pp.space ctx ();
+      pp_length ctx offset;
+      Pp.space ctx ();
+      Pp.string ctx axis
+  | Edge_offset_edge_offset (edge1, offset1, edge2, offset2) ->
+      Pp.string ctx edge1;
+      Pp.space ctx ();
+      pp_length ctx offset1;
+      Pp.space ctx ();
+      Pp.string ctx edge2;
+      Pp.space ctx ();
+      pp_length ctx offset2
+  | Var v -> pp_var pp_position_value ctx v
+
+let pp_radial_gradient_config : radial_gradient_config Pp.t =
+ fun ctx config ->
+  let has_output = ref false in
+  (match config.shape with
+  | Some s ->
+      pp_radial_shape ctx s;
+      has_output := true
+  | None -> ());
+  (match config.size with
+  | Some s ->
+      if !has_output then Pp.space ctx ();
+      pp_radial_size ctx s;
+      has_output := true
+  | None -> ());
+  match config.position with
+  | Some p ->
+      if !has_output then Pp.space ctx ();
+      Pp.string ctx "at";
+      Pp.space ctx ();
+      pp_position_value ctx p
+  | None -> ()
+
 let rec pp_background_image : background_image Pp.t =
  fun ctx -> function
   | Url url -> Pp.url ctx url
@@ -1253,13 +1334,20 @@ let rec pp_background_image : background_image Pp.t =
       Pp.call "linear-gradient"
         (fun ctx v -> pp_var pp_gradient_stop ctx v)
         ctx var_ref
-  | Radial_gradient stops ->
+  | Radial_gradient (config, stops) ->
       Pp.call "radial-gradient"
-        (fun ctx stops ->
+        (fun ctx (config, stops) ->
+          let has_config =
+            config.shape <> None || config.size <> None
+            || config.position <> None
+          in
+          if has_config then (
+            pp_radial_gradient_config ctx config;
+            match stops with [] -> () | _ -> Pp.comma ctx ());
           match stops with
           | [] -> ()
           | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
-        ctx stops
+        ctx (config, stops)
   | Radial_gradient_var var_ref ->
       Pp.call "radial-gradient"
         (fun ctx v -> pp_var pp_gradient_stop ctx v)
@@ -2579,48 +2667,6 @@ let pp_mask_box : mask_box Pp.t =
   | View_box -> Pp.string ctx "view-box"
   | No_clip -> Pp.string ctx "no-clip"
   | Inherit -> Pp.string ctx "inherit"
-
-let rec pp_position_value : position_value Pp.t =
- fun ctx -> function
-  | Inherit -> Pp.string ctx "inherit"
-  | Initial -> Pp.string ctx "initial"
-  | Center -> Pp.string ctx "center"
-  | Top -> Pp.string ctx "top"
-  | Bottom -> Pp.string ctx "bottom"
-  | Left -> Pp.string ctx "left"
-  | Right -> Pp.string ctx "right"
-  | Left_top -> Pp.string ctx "left top"
-  | Left_center -> Pp.string ctx "left center"
-  | Left_bottom -> Pp.string ctx "left bottom"
-  | Right_top -> Pp.string ctx "right top"
-  | Right_center -> Pp.string ctx "right center"
-  | Right_bottom -> Pp.string ctx "right bottom"
-  | Center_top -> Pp.string ctx "center top"
-  | Center_bottom -> Pp.string ctx "center bottom"
-  | Top_left -> Pp.string ctx "left top"
-  | Top_right -> Pp.string ctx "right top"
-  | Bottom_left -> Pp.string ctx "left bottom"
-  | Bottom_right -> Pp.string ctx "right bottom"
-  | XY (a, b) ->
-      pp_length ctx a;
-      Pp.space ctx ();
-      pp_length ctx b
-  | Single l -> pp_length ctx l
-  | Edge_offset_axis (edge, offset, axis) ->
-      Pp.string ctx edge;
-      Pp.space ctx ();
-      pp_length ctx offset;
-      Pp.space ctx ();
-      Pp.string ctx axis
-  | Edge_offset_edge_offset (edge1, offset1, edge2, offset2) ->
-      Pp.string ctx edge1;
-      Pp.space ctx ();
-      pp_length ctx offset1;
-      Pp.space ctx ();
-      Pp.string ctx edge2;
-      Pp.space ctx ();
-      pp_length ctx offset2
-  | Var v -> pp_var pp_position_value ctx v
 
 let rec pp_background_size : background_size Pp.t =
  fun ctx -> function
@@ -6373,6 +6419,160 @@ let read_gradient_stops t =
   | Some stops -> stops
   | None -> []
 
+module Position_value = struct
+  type keyword = Center | Left | Right | Top | Bottom | Inherit | Initial
+
+  let read_xy (t : Reader.t) : position_value =
+    let x = read_length t in
+    (* Reject global keywords - they should be parsed by read_1_value *)
+    (match x with
+    | Inherit | Initial | Unset | Revert | Revert_layer ->
+        Reader.err_invalid t "global keywords must be used alone"
+    | _ -> ());
+    Reader.ws t;
+    match Reader.option read_length t with
+    | Some y -> XY (x, y)
+    | None -> Single x
+
+  let read_keyword t : keyword =
+    Reader.enum "position-keyword"
+      [
+        ("center", Center);
+        ("left", Left);
+        ("right", Right);
+        ("top", Top);
+        ("bottom", Bottom);
+        ("inherit", Inherit);
+        ("initial", Initial);
+      ]
+      t
+
+  (* Read single keyword value *)
+  let read_1_value t : position_value =
+    let kw = read_keyword t in
+    match kw with
+    | Center -> Center
+    | Inherit -> Inherit
+    | Initial -> Initial
+    | Left -> Left_center
+    | Right -> Right_center
+    | Top -> Center_top
+    | Bottom -> Center_bottom
+
+  (* Read two keyword values *)
+  let read_2_value t : position_value =
+    let first = read_keyword t in
+    (* Global keywords cannot be combined with other keywords *)
+    (match first with
+    | Inherit | Initial ->
+        Reader.err_invalid t "global keywords cannot be combined"
+    | _ -> ());
+    Reader.ws t;
+    let second = read_keyword t in
+    match (first, second) with
+    | Left, Top | Top, Left -> Left_top
+    | Left, Center | Center, Left -> Left_center
+    | Left, Bottom | Bottom, Left -> Left_bottom
+    | Right, Top | Top, Right -> Right_top
+    | Right, Center | Center, Right -> Right_center
+    | Right, Bottom | Bottom, Right -> Right_bottom
+    | Center, Top | Top, Center -> Center_top
+    | Center, Bottom | Bottom, Center -> Center_bottom
+    | Center, Center -> Center
+    | _ -> Reader.err_invalid t "invalid position keyword combination"
+
+  (* Read 3-value syntax: keyword offset keyword *)
+  let read_3_value t : position_value =
+    let edge1 = Reader.ident t in
+    Reader.ws t;
+    let offset = read_length t in
+    Reader.ws t;
+    let axis = Reader.ident t in
+    Edge_offset_axis (edge1, offset, axis)
+
+  (* Read 4-value syntax: keyword offset keyword offset *)
+  let read_4_value t : position_value =
+    let edge1 = Reader.ident t in
+    Reader.ws t;
+    let offset1 = read_length t in
+    Reader.ws t;
+    let edge2 = Reader.ident t in
+    Reader.ws t;
+    let offset2 = read_length t in
+    Edge_offset_edge_offset (edge1, offset1, edge2, offset2)
+end
+
+let read_position_value t : position_value =
+  let read_var t : position_value =
+    let body = read_var_body t in
+    (* Strip leading -- if present *)
+    let name =
+      if String.length body >= 2 && String.sub body 0 2 = "--" then
+        String.sub body 2 (String.length body - 2)
+      else body
+    in
+    Var (var_ref name)
+  in
+  Reader.one_of
+    [
+      Position_value.read_4_value;
+      Position_value.read_3_value;
+      Position_value.read_xy;
+      Position_value.read_2_value;
+      Position_value.read_1_value;
+      read_var;
+    ]
+    t
+
+module Radial_config = struct
+  let read_shape t : radial_shape =
+    Reader.enum "radial-shape" [ ("circle", Circle); ("ellipse", Ellipse) ] t
+
+  let read_size_keyword t : radial_size =
+    Reader.enum "radial-size"
+      [
+        ("closest-side", Closest_side);
+        ("farthest-side", Farthest_side);
+        ("closest-corner", Closest_corner);
+        ("farthest-corner", Farthest_corner);
+      ]
+      t
+
+  let read_explicit_size t : radial_size =
+    let first = read_length_percentage t in
+    Reader.ws t;
+    match Reader.option read_length_percentage t with
+    | Some second -> Ellipse_radii (first, second)
+    | None -> (
+        match first with
+        | Length l -> Circle_radius l
+        | _ ->
+            Reader.err_invalid t
+              "circle radius must be a length, not a percentage")
+
+  let read_at_position t : position_value =
+    Reader.expect_string "at" t;
+    Reader.ws t;
+    read_position_value t
+
+  let read t : radial_gradient_config =
+    let shape = Reader.option read_shape t in
+    Reader.ws t;
+    let size =
+      Reader.option
+        (fun t -> Reader.one_of [ read_size_keyword; read_explicit_size ] t)
+        t
+    in
+    Reader.ws t;
+    (* If no shape was found before size, try after *)
+    let shape =
+      match shape with Some _ -> shape | None -> Reader.option read_shape t
+    in
+    Reader.ws t;
+    let position = Reader.option read_at_position t in
+    { shape; size; position }
+end
+
 let read_background_image t : background_image =
   let read_linear_body t =
     Reader.ws t;
@@ -6387,7 +6587,22 @@ let read_background_image t : background_image =
   in
   let read_radial_body t =
     Reader.ws t;
-    Radial_gradient (read_gradient_stops t)
+    let config =
+      match
+        Reader.option
+          (fun t ->
+            let cfg = Radial_config.read t in
+            if cfg.shape = None && cfg.size = None && cfg.position = None then
+              Reader.err_invalid t "no radial config";
+            Reader.ws t;
+            ignore (Reader.comma_opt t);
+            cfg)
+          t
+      with
+      | Some cfg -> cfg
+      | None -> { shape = None; size = None; position = None }
+    in
+    Radial_gradient (config, read_gradient_stops t)
   in
   let read_conic_body t =
     Reader.ws t;
@@ -6436,8 +6651,8 @@ let minify_gradient_stop : gradient_stop -> gradient_stop = function
 let minify_background_image : background_image -> background_image = function
   | Linear_gradient (dir, stops) ->
       Linear_gradient (dir, List.map minify_gradient_stop stops)
-  | Radial_gradient stops ->
-      Radial_gradient (List.map minify_gradient_stop stops)
+  | Radial_gradient (config, stops) ->
+      Radial_gradient (config, List.map minify_gradient_stop stops)
   | Conic_gradient stops -> Conic_gradient (List.map minify_gradient_stop stops)
   | img -> img
 
@@ -6807,7 +7022,11 @@ let inset_ring_shadow ?(h_offset : length option) ?(v_offset : length option)
 
 let url path : background_image = Url path
 let linear_gradient dir stops = Linear_gradient (dir, stops)
-let radial_gradient stops = Radial_gradient stops
+
+let radial_gradient ?(config = { shape = None; size = None; position = None })
+    stops =
+  Radial_gradient (config, stops)
+
 let color_stop c = (Color_percentage (c, None, None) : gradient_stop)
 let color_position c pos = (Color_length (c, Some pos, None) : gradient_stop)
 
@@ -6920,111 +7139,6 @@ let read_mask_box t : mask_box =
       ("view-box", View_box);
       ("no-clip", No_clip);
       ("inherit", Inherit);
-    ]
-    t
-
-module Position_value = struct
-  type keyword = Center | Left | Right | Top | Bottom | Inherit | Initial
-
-  let read_xy (t : Reader.t) : position_value =
-    let x = read_length t in
-    (* Reject global keywords - they should be parsed by read_1_value *)
-    (match x with
-    | Inherit | Initial | Unset | Revert | Revert_layer ->
-        Reader.err_invalid t "global keywords must be used alone"
-    | _ -> ());
-    Reader.ws t;
-    match Reader.option read_length t with
-    | Some y -> XY (x, y)
-    | None -> Single x
-
-  let read_keyword t : keyword =
-    Reader.enum "position-keyword"
-      [
-        ("center", Center);
-        ("left", Left);
-        ("right", Right);
-        ("top", Top);
-        ("bottom", Bottom);
-        ("inherit", Inherit);
-        ("initial", Initial);
-      ]
-      t
-
-  (* Read single keyword value *)
-  let read_1_value t : position_value =
-    let kw = read_keyword t in
-    match kw with
-    | Center -> Center
-    | Inherit -> Inherit
-    | Initial -> Initial
-    | Left -> Left_center
-    | Right -> Right_center
-    | Top -> Center_top
-    | Bottom -> Center_bottom
-
-  (* Read two keyword values *)
-  let read_2_value t : position_value =
-    let first = read_keyword t in
-    (* Global keywords cannot be combined with other keywords *)
-    (match first with
-    | Inherit | Initial ->
-        Reader.err_invalid t "global keywords cannot be combined"
-    | _ -> ());
-    Reader.ws t;
-    let second = read_keyword t in
-    match (first, second) with
-    | Left, Top | Top, Left -> Left_top
-    | Left, Center | Center, Left -> Left_center
-    | Left, Bottom | Bottom, Left -> Left_bottom
-    | Right, Top | Top, Right -> Right_top
-    | Right, Center | Center, Right -> Right_center
-    | Right, Bottom | Bottom, Right -> Right_bottom
-    | Center, Top | Top, Center -> Center_top
-    | Center, Bottom | Bottom, Center -> Center_bottom
-    | Center, Center -> Center
-    | _ -> Reader.err_invalid t "invalid position keyword combination"
-
-  (* Read 3-value syntax: keyword offset keyword *)
-  let read_3_value t : position_value =
-    let edge1 = Reader.ident t in
-    Reader.ws t;
-    let offset = read_length t in
-    Reader.ws t;
-    let axis = Reader.ident t in
-    Edge_offset_axis (edge1, offset, axis)
-
-  (* Read 4-value syntax: keyword offset keyword offset *)
-  let read_4_value t : position_value =
-    let edge1 = Reader.ident t in
-    Reader.ws t;
-    let offset1 = read_length t in
-    Reader.ws t;
-    let edge2 = Reader.ident t in
-    Reader.ws t;
-    let offset2 = read_length t in
-    Edge_offset_edge_offset (edge1, offset1, edge2, offset2)
-end
-
-let read_position_value t : position_value =
-  let read_var t : position_value =
-    let body = read_var_body t in
-    (* Strip leading -- if present *)
-    let name =
-      if String.length body >= 2 && String.sub body 0 2 = "--" then
-        String.sub body 2 (String.length body - 2)
-      else body
-    in
-    Var (var_ref name)
-  in
-  Reader.one_of
-    [
-      Position_value.read_4_value;
-      Position_value.read_3_value;
-      Position_value.read_xy;
-      Position_value.read_2_value;
-      Position_value.read_1_value;
-      read_var;
     ]
     t
 
