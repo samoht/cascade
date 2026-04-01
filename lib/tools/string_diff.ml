@@ -143,15 +143,25 @@ let diff ?(context_size = 3) ~expected actual =
 
 (* ===== Pretty-printing ===== *)
 
-let pp_caret ?(indent = 0) fmt pos =
-  Fmt.pf fmt "%s^@," (String.make (pos + indent) ' ')
+let pp_caret ?(indent = 0) buf pos =
+  Buffer.add_string buf (String.make (pos + indent) ' ');
+  Buffer.add_string buf "^\n"
 
 (* Pretty-print a line pair in unified diff format *)
-let pp_line_pair fmt (exp, act) =
-  if exp = act then Fmt.pf fmt " %s@," exp
+let pp_line_pair buf (exp, act) =
+  if exp = act then (
+    Buffer.add_string buf " ";
+    Buffer.add_string buf exp;
+    Buffer.add_char buf '\n')
   else (
-    if exp <> "" then Fmt.pf fmt "-%s@," exp;
-    if act <> "" then Fmt.pf fmt "+%s@," act)
+    if exp <> "" then (
+      Buffer.add_char buf '-';
+      Buffer.add_string buf exp;
+      Buffer.add_char buf '\n');
+    if act <> "" then (
+      Buffer.add_char buf '+';
+      Buffer.add_string buf act;
+      Buffer.add_char buf '\n'))
 
 (* Helper to format diff lines based on their length *)
 let format_diff_line ?(config = default_config) expected actual =
@@ -201,34 +211,35 @@ let format_diff_line ?(config = default_config) expected actual =
         `Long (s1_display, s2_display, adjusted_pos)
 
 let pp ?(config = default_config) ?(expected_label = "Expected")
-    ?(actual_label = "Actual") fmt t =
-  Fmt.pf fmt "@[<v>Strings differ at position %d (line %d, col %d)@,@,"
-    t.position t.line_expected t.column_expected;
+    ?(actual_label = "Actual") buf t =
+  Buffer.add_string buf
+    ("Strings differ at position " ^ string_of_int t.position ^ " (line "
+   ^ string_of_int t.line_expected ^ ", col "
+   ^ string_of_int t.column_expected ^ ")\n\n");
 
   (* Git-style diff header *)
-  Fmt.pf fmt "--- %s@," expected_label;
-  Fmt.pf fmt "+++ %s@," actual_label;
-  Fmt.pf fmt "@@ position %d @@@," t.position;
+  Buffer.add_string buf ("--- " ^ expected_label ^ "\n");
+  Buffer.add_string buf ("+++ " ^ actual_label ^ "\n");
+  Buffer.add_string buf ("@@ position " ^ string_of_int t.position ^ " @@\n");
 
   (* Print context before *)
-  List.iter (pp_line_pair fmt) t.context_before;
+  List.iter (pp_line_pair buf) t.context_before;
 
   (* Print the diff lines with appropriate formatting *)
   let diff_exp, diff_act = t.diff_lines in
   match format_diff_line ~config diff_exp diff_act with
   | `Equal ->
-      Fmt.pf fmt "-%s@," diff_exp;
-      Fmt.pf fmt "+%s@," diff_act
+      Buffer.add_string buf ("-" ^ diff_exp ^ "\n");
+      Buffer.add_string buf ("+" ^ diff_act ^ "\n")
   | `Short (exp, act) ->
-      Fmt.pf fmt "-%s@," exp;
-      Fmt.pf fmt "+%s@," act;
+      Buffer.add_string buf ("-" ^ exp ^ "\n");
+      Buffer.add_string buf ("+" ^ act ^ "\n");
       if t.line_expected = t.line_actual then
-        pp_caret ~indent:1 fmt t.column_expected
+        pp_caret ~indent:1 buf t.column_expected
   | `Medium (exp, act, pos) | `Long (exp, act, pos) ->
-      Fmt.pf fmt "-%s@," exp;
-      Fmt.pf fmt "+%s@," act;
-      if t.line_expected = t.line_actual then pp_caret ~indent:1 fmt pos;
+      Buffer.add_string buf ("-" ^ exp ^ "\n");
+      Buffer.add_string buf ("+" ^ act ^ "\n");
+      if t.line_expected = t.line_actual then pp_caret ~indent:1 buf pos;
 
       (* Print context after *)
-      List.iter (pp_line_pair fmt) t.context_after;
-      Fmt.pf fmt "@]"
+      List.iter (pp_line_pair buf) t.context_after

@@ -321,11 +321,11 @@ let compute_stats ~expected_str ~actual_str diff_result =
 let stats = compute_stats
 
 (* Format the result of diff with optional labels *)
-let pp ?(expected = "Expected") ?(actual = "Actual") fmt = function
+let pp ?(expected = "Expected") ?(actual = "Actual") buf = function
   | Tree_diff d ->
       (* Show structural differences *)
-      D.pp ~expected ~actual fmt d
-  | String_diff sdiff -> String_diff.pp fmt sdiff
+      D.pp ~expected ~actual buf d
+  | String_diff sdiff -> String_diff.pp buf sdiff
   | No_diff ->
       (* No output for identical files *)
       ()
@@ -333,15 +333,19 @@ let pp ?(expected = "Expected") ?(actual = "Actual") fmt = function
       let err1 = Css.pp_parse_error e1 in
       let err2 = Css.pp_parse_error e2 in
       if String.equal err1 err2 then
-        Fmt.pf fmt "Both CSS have same parse error: %s" err1
+        Buffer.add_string buf ("Both CSS have same parse error: " ^ err1)
       else
-        Fmt.pf fmt "Parse errors:\n  %s: %s\n  %s: %s" expected err1 actual err2
+        Buffer.add_string buf
+          ("Parse errors:\n  " ^ expected ^ ": " ^ err1 ^ "\n  " ^ actual
+         ^ ": " ^ err2)
   | Expected_error e ->
-      Fmt.pf fmt "%s CSS parse error: %s" expected (Css.pp_parse_error e)
+      Buffer.add_string buf
+        (expected ^ " CSS parse error: " ^ Css.pp_parse_error e)
   | Actual_error e ->
-      Fmt.pf fmt "%s CSS parse error: %s" actual (Css.pp_parse_error e)
+      Buffer.add_string buf
+        (actual ^ " CSS parse error: " ^ Css.pp_parse_error e)
 
-let pp_stats fmt stats =
+let pp_stats buf stats =
   let char_diff = abs (stats.actual_chars - stats.expected_chars) in
   let char_diff_pct =
     if stats.expected_chars > 0 then
@@ -349,14 +353,30 @@ let pp_stats fmt stats =
     else 0.0
   in
 
-  Fmt.pf fmt "@[<v>CSS: %d chars vs %d chars (%.1f%% diff)@," stats.actual_chars
-    stats.expected_chars char_diff_pct;
+  let pct_str =
+    (* Round to 1 decimal place: multiply by 10, round, divide by 10 *)
+    let rounded = Float.round (char_diff_pct *. 10.0) /. 10.0 in
+    let s = string_of_float rounded in
+    (* Ensure we always have one decimal place *)
+    if String.contains s '.' then
+      let parts = String.split_on_char '.' s in
+      match parts with
+      | [ i; d ] ->
+          if String.length d >= 1 then i ^ "." ^ String.sub d 0 1
+          else i ^ "." ^ d ^ "0"
+      | _ -> s
+    else s ^ ".0"
+  in
+
+  Buffer.add_string buf
+    ("CSS: " ^ string_of_int stats.actual_chars ^ " chars vs "
+   ^ string_of_int stats.expected_chars ^ " chars (" ^ pct_str ^ "% diff)\n");
 
   (* Helper to add change description if count > 0 *)
   let add_change count action singular changes =
     if count > 0 then
-      Fmt.str "%d %s %s" count action
-        (if count = 1 then singular else singular ^ "s")
+      (string_of_int count ^ " " ^ action ^ " "
+      ^ (if count = 1 then singular else singular ^ "s"))
       :: changes
     else changes
   in
@@ -374,13 +394,11 @@ let pp_stats fmt stats =
   (* Add container changes *)
   let container_changes =
     if stats.container_changes > 0 then
-      [ Fmt.str "%d containers" stats.container_changes ]
+      [ string_of_int stats.container_changes ^ " containers" ]
     else []
   in
   let all_changes = changes @ container_changes in
 
   if all_changes <> [] then
-    Fmt.pf fmt "Changes: %s@," (String.concat ", " all_changes)
-  else Fmt.pf fmt "No structural differences@,";
-
-  Fmt.pf fmt "@]"
+    Buffer.add_string buf ("Changes: " ^ String.concat ", " all_changes ^ "\n")
+  else Buffer.add_string buf "No structural differences\n"

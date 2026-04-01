@@ -55,8 +55,8 @@ val as_tree_diff : t -> Tree_diff.t option
 (** [as_tree_diff result] extracts [Tree_diff.t] from a diff result, returning
     [None] for other result types. *)
 
-val pp : ?expected:string -> ?actual:string -> t Fmt.t
-(** [pp ?expected ?actual] formats a diff_result with optional labels.
+val pp : ?expected:string -> ?actual:string -> Buffer.t -> t -> unit
+(** [pp ?expected ?actual buf result] formats a diff_result with optional labels.
     @param expected Label for expected CSS (default: "Expected").
     @param actual Label for actual CSS (default: "Actual"). *)
 
@@ -77,5 +77,5 @@ val stats : expected_str:string -> actual_str:string -> t -> stats
 (** [stats ~expected_str ~actual_str result] computes statistics from a diff
     result (alias for [compute_stats]). *)
 
-val pp_stats : stats Fmt.t
-(** [pp_stats] formats a stats record. *)
+val pp_stats : Buffer.t -> stats -> unit
+(** [pp_stats buf stats] formats a stats record. *)

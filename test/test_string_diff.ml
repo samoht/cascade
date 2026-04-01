@@ -108,9 +108,7 @@ let pp_does_not_crash () =
   | None -> Alcotest.fail "expected Some"
   | Some d ->
       let buf = Buffer.create 256 in
-      let fmt = Format.formatter_of_buffer buf in
-      Css_tools.String_diff.pp fmt d;
-      Format.pp_print_flush fmt ();
+      Css_tools.String_diff.pp buf d;
       let output = Buffer.contents buf in
       Alcotest.(check bool) "pp produces output" true (String.length output > 0)
 
@@ -120,9 +118,7 @@ let pp_with_labels () =
   | None -> Alcotest.fail "expected Some"
   | Some d ->
       let buf = Buffer.create 256 in
-      let fmt = Format.formatter_of_buffer buf in
-      Css_tools.String_diff.pp ~expected_label:"Old" ~actual_label:"New" fmt d;
-      Format.pp_print_flush fmt ();
+      Css_tools.String_diff.pp ~expected_label:"Old" ~actual_label:"New" buf d;
       let output = Buffer.contents buf in
       Alcotest.(check bool)
         "pp with labels produces output" true

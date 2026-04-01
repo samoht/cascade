@@ -1,0 +1,25 @@
+(executables
+ (names check_properties check_api_consistency)
+ (libraries re unix))
+
+(rule
+ (alias runtest)
+ (deps
+  (:properties %{project_root}/lib/properties.ml)
+  (:properties_intf %{project_root}/lib/properties_intf.ml)
+  (:script check_properties.exe))
+ (action
+  (run %{script})))
+
+;; Run API consistency check and fail if issues are found
+;; This ensures CSS API test consistency is maintained
+
+(rule
+ (alias runtest)
+ (deps
+  (glob_files %{project_root}/lib/*_intf.ml)
+  (glob_files %{project_root}/lib/*.mli)
+  (glob_files %{project_root}/test/test_*.ml)
+  (:script check_api_consistency.exe))
+ (action
+  (run %{script})))
