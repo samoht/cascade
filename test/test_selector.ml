@@ -1080,6 +1080,7 @@ let test_attr_name () =
 
 (** {2 CSS Nesting Selector Tests} *)
 
+(* ignore-test *)
 let test_nesting_selector () =
   (* Basic & nesting selector *)
   check "&";

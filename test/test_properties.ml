@@ -331,6 +331,16 @@ let check_gradient_direction =
 let check_gradient_stop =
   check_value "gradient-stop" read_gradient_stop pp_gradient_stop
 
+let check_radial_shape =
+  check_value "radial_shape" read_radial_shape pp_radial_shape
+
+let check_radial_size =
+  check_value "radial_size" read_radial_size pp_radial_size
+
+let check_radial_gradient_config =
+  check_value "radial_gradient_config" read_radial_gradient_config
+    pp_radial_gradient_config
+
 let check_color_interpolation =
   check_value "color_interpolation" read_color_interpolation
     pp_color_interpolation
@@ -1587,6 +1597,27 @@ let test_background_image () =
     "linear-gradient(to right, red, blue)";
   neg read_background_image "invalid-image"
 
+let test_radial_shape () =
+  check_radial_shape "circle";
+  check_radial_shape "ellipse";
+  neg read_radial_shape "square"
+
+let test_radial_size () =
+  check_radial_size "closest-side";
+  check_radial_size "farthest-side";
+  check_radial_size "closest-corner";
+  check_radial_size "farthest-corner";
+  check_radial_size "10px";
+  check_radial_size ~expected:"50% 25%" "50% 25%";
+  neg read_radial_size "invalid-size"
+
+let test_radial_gradient_config () =
+  check_radial_gradient_config "circle";
+  check_radial_gradient_config "ellipse";
+  check_radial_gradient_config "circle closest-side";
+  check_radial_gradient_config ~expected:"circle at center" "circle at center";
+  neg read_radial_gradient_config "invalid-config"
+
 let test_background_position () =
   check_background_position "center";
   check_background_position "left top";
@@ -2346,6 +2377,9 @@ let additional_tests =
     test_case "background_size" `Quick test_background_size;
     test_case "gradient_direction" `Quick test_gradient_direction;
     test_case "gradient_stop" `Quick test_gradient_stop;
+    test_case "radial_shape" `Quick test_radial_shape;
+    test_case "radial_size" `Quick test_radial_size;
+    test_case "radial_gradient_config" `Quick test_radial_gradient_config;
     test_case "background_image" `Quick test_background_image;
     test_case "background_position" `Quick test_background_position;
     test_case "position_value" `Quick test_position_value;

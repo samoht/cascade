@@ -688,6 +688,26 @@ val read_color_interpolation : Reader.t -> color_interpolation
 (** [read_color_interpolation t] parses a color interpolation space starting
     with the keyword "in" (e.g., "in oklab"). *)
 
+val pp_radial_shape : radial_shape Pp.t
+(** [pp_radial_shape] is the pretty-printer for [radial_shape]. *)
+
+val read_radial_shape : Reader.t -> radial_shape
+(** [read_radial_shape t] is the [radial_shape] parsed from [t]. *)
+
+val pp_radial_size : radial_size Pp.t
+(** [pp_radial_size] is the pretty-printer for [radial_size]. *)
+
+val read_radial_size : Reader.t -> radial_size
+(** [read_radial_size t] is the [radial_size] parsed from [t]. *)
+
+val pp_radial_gradient_config : radial_gradient_config Pp.t
+(** [pp_radial_gradient_config] is the pretty-printer for
+    [radial_gradient_config]. *)
+
+val read_radial_gradient_config : Reader.t -> radial_gradient_config
+(** [read_radial_gradient_config t] is the [radial_gradient_config] parsed from
+    [t]. *)
+
 val pp_gradient_stop : gradient_stop Pp.t
 (** [pp_gradient_stop] is the pretty-printer for [gradient_stop]. *)
 

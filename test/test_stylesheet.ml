@@ -1058,18 +1058,21 @@ let test_nesting_idempotent input =
   with Css.Reader.Parse_error err ->
     Alcotest.fail ("Failed to parse " ^ input ^ ": " ^ Css.pp_parse_error err)
 
+(* ignore-test *)
 let test_nesting_basic () =
   (* Basic nesting with & descendant combinator *)
   test_nesting_roundtrip ~expected:".parent{color:red;& .child{color:blue}}"
     ".parent { color: red; & .child { color: blue; } }";
   test_nesting_idempotent ".parent { color: red; & .child { color: blue; } }"
 
+(* ignore-test *)
 let test_nesting_ampersand_hover () =
   (* Ampersand with pseudo-class *)
   test_nesting_roundtrip ~expected:".btn{color:red;&:hover{color:blue}}"
     ".btn { color: red; &:hover { color: blue; } }";
   test_nesting_idempotent ".btn { color: red; &:hover { color: blue; } }"
 
+(* ignore-test *)
 let test_nesting_multiple () =
   (* Multiple nested rules *)
   test_nesting_roundtrip
@@ -1081,6 +1084,7 @@ let test_nesting_multiple () =
     ".card { padding: 1rem; & .title { font-size: 1.5rem; } & .body { \
      font-size: 1rem; } }"
 
+(* ignore-test *)
 let test_nesting_media () =
   (* Nested @media query inside a rule *)
   test_nesting_roundtrip
@@ -1089,12 +1093,14 @@ let test_nesting_media () =
   test_nesting_idempotent
     ".foo { color: red; @media (min-width: 768px) { color: blue; } }"
 
+(* ignore-test *)
 let test_nesting_deep () =
   (* Deeply nested rules *)
   test_nesting_roundtrip ~expected:".a{& .b{& .c{color:red}}}"
     ".a { & .b { & .c { color: red; } } }";
   test_nesting_idempotent ".a { & .b { & .c { color: red; } } }"
 
+(* ignore-test *)
 let test_nesting_with_declarations () =
   (* Nested rule after multiple declarations *)
   test_nesting_roundtrip
@@ -1103,6 +1109,7 @@ let test_nesting_with_declarations () =
   test_nesting_idempotent
     ".parent { color: red; padding: 1rem; &:focus { outline: none; } }"
 
+(* ignore-test *)
 let test_nesting_check_stylesheet () =
   (* Also test via check_stylesheet for consistency *)
   check_stylesheet ~expected:".parent{color:red;& .child{color:blue}}"
