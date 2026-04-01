@@ -137,6 +137,80 @@ let diff_layer_added () =
     "has layer added" true
     (Css_tools.Tree_diff.has_container_added_of_type `Layer d)
 
+(* ===== CSS nesting ===== *)
+
+let diff_nesting_modified () =
+  let expected =
+    parse
+      ".card { padding: 1rem; & .title { font-size: 1.5rem; color: #111 } & \
+       .body { color: #333 } }"
+  in
+  let actual =
+    parse
+      ".card { padding: 1.5rem; & .title { font-size: 1.25rem; color: #000; \
+       font-weight: 600 } }"
+  in
+  let d = Css_tools.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check bool) "nesting diff not empty" false (d.rules = [] && d.containers = []);
+  (* Should detect nested rule changes *)
+  let has_nesting =
+    Css_tools.Tree_diff.count_containers_by_type `Nesting d > 0
+  in
+  Alcotest.(check bool) "has nesting container diff" true has_nesting
+
+let diff_nesting_identical () =
+  let css =
+    parse ".card { padding: 1rem; & .title { font-size: 1.5rem } }"
+  in
+  let d = Css_tools.Tree_diff.diff ~expected:css ~actual:css in
+  Alcotest.(check bool) "identical nesting is empty" true
+    (Css_tools.Tree_diff.is_empty d)
+
+let diff_nesting_child_added () =
+  let expected = parse ".card { padding: 1rem }" in
+  let actual =
+    parse ".card { padding: 1rem; & .title { font-size: 1.5rem } }"
+  in
+  let d = Css_tools.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check bool) "nested child added not empty" false
+    (Css_tools.Tree_diff.is_empty d)
+
+let diff_nesting_child_removed () =
+  let expected =
+    parse ".card { padding: 1rem; & .title { font-size: 1.5rem } }"
+  in
+  let actual = parse ".card { padding: 1rem }" in
+  let d = Css_tools.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check bool) "nested child removed not empty" false
+    (Css_tools.Tree_diff.is_empty d)
+
+let diff_nesting_deep () =
+  let expected =
+    parse ".a { & .b { & .c { color: red } } }"
+  in
+  let actual =
+    parse ".a { & .b { & .c { color: blue } } }"
+  in
+  let d = Css_tools.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check bool) "deep nesting diff not empty" false
+    (Css_tools.Tree_diff.is_empty d)
+
+let diff_nesting_only_parent_props_changed () =
+  let expected =
+    parse ".card { padding: 1rem; & .title { font-size: 1rem } }"
+  in
+  let actual =
+    parse ".card { padding: 2rem; & .title { font-size: 1rem } }"
+  in
+  let d = Css_tools.Tree_diff.diff ~expected ~actual in
+  Alcotest.(check bool) "parent-only change not empty" false
+    (Css_tools.Tree_diff.is_empty d);
+  (* Nested rules are identical, so no nesting container diff *)
+  let nesting_count =
+    Css_tools.Tree_diff.count_containers_by_type `Nesting d
+  in
+  Alcotest.(check int) "no nesting container diff" 0 nesting_count
+
 (* ===== Query functions ===== *)
 
 let single_rule_diff_one_change () =
@@ -233,6 +307,14 @@ let suite =
         single_rule_diff_multiple_changes;
       Alcotest.test_case "count containers media" `Quick count_containers_media;
       Alcotest.test_case "count containers zero" `Quick count_containers_zero;
+      Alcotest.test_case "nesting modified" `Quick diff_nesting_modified;
+      Alcotest.test_case "nesting identical" `Quick diff_nesting_identical;
+      Alcotest.test_case "nesting child added" `Quick diff_nesting_child_added;
+      Alcotest.test_case "nesting child removed" `Quick
+        diff_nesting_child_removed;
+      Alcotest.test_case "nesting deep" `Quick diff_nesting_deep;
+      Alcotest.test_case "nesting only parent props changed" `Quick
+        diff_nesting_only_parent_props_changed;
       Alcotest.test_case "pp does not crash" `Quick pp_does_not_crash;
       Alcotest.test_case "pp_rule_diff_simple does not crash" `Quick
         pp_rule_diff_simple_ok;

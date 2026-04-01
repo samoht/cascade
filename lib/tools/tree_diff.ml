@@ -39,7 +39,8 @@ type rule_diff =
     }
 
 type container_info = {
-  container_type : [ `Media | `Layer | `Supports | `Container | `Property ];
+  container_type :
+    [ `Media | `Layer | `Supports | `Container | `Property | `Nesting ];
   condition : string;
   rules : Css.statement list;
 }
@@ -59,7 +60,8 @@ type container_diff =
       actual_pos : int;
     }
   | Container_block_structure_changed of {
-      container_type : [ `Media | `Layer | `Supports | `Container | `Property ];
+      container_type :
+        [ `Media | `Layer | `Supports | `Container | `Property | `Nesting ];
       condition : string;
       expected_blocks : (int * Css.statement list) list;
           (** (position, rules) for each block in expected *)
@@ -431,6 +433,7 @@ let container_prefix = function
   | `Supports -> "@supports"
   | `Container -> "@container"
   | `Property -> "@property"
+  | `Nesting -> "&"
 
 let pp_container_rules ~style ~parent_prefix ~label buf rules =
   if rules <> [] then
@@ -690,6 +693,9 @@ let selector_key_of_stmt stmt = selector_key_of_selector (rule_selector stmt)
 let rule_declarations stmt =
   match Css.statement_declarations stmt with Some d -> d | None -> []
 
+let rule_nested stmt =
+  match Css.as_rule stmt with Some (_, _, nested) -> nested | None -> []
+
 (* Generic helper for finding added/removed/modified items between two lists.
    Works with any item type that has a key for comparison. *)
 let diffs ~(key_of : 'item -> 'key) ~(key_equal : 'key -> 'key -> bool)
@@ -784,7 +790,10 @@ let try_exact_match rules2_by_key used_rules r1 key1 d1 =
   let candidates = try Hashtbl.find rules2_by_key key1 with Not_found -> [] in
   match
     List.find_opt
-      (fun r -> (not (Hashtbl.mem used_rules r)) && rule_declarations r = d1)
+      (fun r ->
+        (not (Hashtbl.mem used_rules r))
+        && rule_declarations r = d1
+        && rule_nested r = rule_nested r1)
       candidates
   with
   | Some exact ->
@@ -1787,15 +1796,62 @@ and extract_supports_as_string stmt =
   | Some (cond, rules) -> Some (Css.Supports.to_string cond, rules)
   | None -> None
 
+(* Process CSS nesting: rules with nested child rules (& .foo { ... }) *)
+and process_nested_rules ~depth stmts1 stmts2 =
+  (* Extract (selector_key, nested_statements) for all rules, including those
+     with empty nesting. This allows detecting when nesting is added/removed. *)
+  let extract_nesting stmts =
+    List.filter_map
+      (fun stmt ->
+        match Css.as_rule stmt with
+        | Some (sel, _decls, nested) ->
+            Some (Css.Selector.to_string sel, nested)
+        | None -> None)
+      stmts
+  in
+  let items1 = extract_nesting stmts1 in
+  let items2 = extract_nesting stmts2 in
+  (* Match by selector key and diff nested statements *)
+  let diffs = ref [] in
+  List.iter
+    (fun (sel1, nested1) ->
+      match List.find_opt (fun (s, _) -> s = sel1) items2 with
+      | Some (_, nested2) when nested1 <> nested2 ->
+          let rule_changes = to_rule_changes nested1 nested2 in
+          let nested_containers =
+            nested_differences ~depth:(depth + 1) nested1 nested2
+          in
+          if rule_changes <> [] || nested_containers <> [] then
+            diffs :=
+              Container_modified
+                {
+                  info =
+                    {
+                      container_type = `Nesting;
+                      condition = sel1;
+                      rules = nested1;
+                    };
+                  actual_rules = nested2;
+                  rule_changes;
+                  container_changes = nested_containers;
+                }
+              :: !diffs
+      | Some _ -> () (* Same nesting *)
+      | None -> ())
+    items1;
+  !diffs
+
 (* Main recursive function for nested differences *)
 and nested_differences ?(depth = 0) (stmts1 : Css.statement list)
     (stmts2 : Css.statement list) : container_diff list =
   if depth > 3 then [] (* Prevent infinite recursion *)
   else
+    (* Process CSS nesting (& .foo { ... } inside rules) *)
+    process_nested_rules ~depth stmts1 stmts2
     (* Process media queries *)
-    process_nested_containers ~container_type:`Media
-      ~extract_fn:extract_media_as_string ~diff_fn:media_diff ~depth stmts1
-      stmts2
+    @ process_nested_containers ~container_type:`Media
+        ~extract_fn:extract_media_as_string ~diff_fn:media_diff ~depth stmts1
+        stmts2
     (* Process layers - different type signature *)
     @ process_nested_layers ~depth stmts1 stmts2
     (* Process supports - reuses media_diff since they have the same
