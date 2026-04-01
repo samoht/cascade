@@ -1,4 +1,4 @@
 (executables
  (public_names cascade cssdiff)
  (names cascade_main cssdiff)
- (libraries cascade css_tools cmdliner dune-build-info fmt fmt.cli fmt.tty))
+ (libraries cascade cascade.info css_tools cmdliner fmt fmt.cli fmt.tty))

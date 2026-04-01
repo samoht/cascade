@@ -114,12 +114,7 @@ let info =
       `Pre "  cat style.css | $(tname) --minify -";
     ]
   in
-  let version =
-    match Build_info.V1.version () with
-    | None -> "dev"
-    | Some v -> Build_info.V1.Version.to_string v
-  in
-  Cmd.info "cascade" ~version ~doc ~man
+  Cmd.info "cascade" ~version:Cascade_info.version ~doc ~man
 
 let cmd = Cmd.v info term
 let () = exit (Cmd.eval cmd)
