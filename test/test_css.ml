@@ -128,16 +128,25 @@ let custom_properties_integration () =
 
 (* CSS Roundtrip Test: Parse generated CSS and compare roundtrip *)
 let roundtrip () =
+  let read_file path =
+    let ic = open_in path in
+    Fun.protect
+      ~finally:(fun () -> close_in ic)
+      (fun () -> really_input_string ic (in_channel_length ic))
+  in
   let original_css =
-    let ic = open_in "examples/empty_tailwind.css" in
-    let css =
-      Fun.protect
-        ~finally:(fun () -> close_in ic)
-        (fun () -> really_input_string ic (in_channel_length ic))
+    let candidates =
+      [
+        "examples/empty_tailwind.css";
+        "test/examples/empty_tailwind.css";
+      ]
     in
-    match Some css with
-    | Some css -> css
-    | None -> Alcotest.fail "Could not read empty_tailwind.css from examples"
+    match List.find_opt Sys.file_exists candidates with
+    | Some path -> read_file path
+    | None ->
+        Alcotest.fail
+          "Could not find empty_tailwind.css (tried examples/ and \
+           test/examples/)"
   in
 
   (* Parse the CSS with context on failure *)
