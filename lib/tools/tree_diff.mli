@@ -80,12 +80,12 @@ val diff : expected:Css.t -> actual:Css.t -> t
 (** [diff ~expected ~actual] computes structural differences between two CSS
     ASTs. *)
 
-val pp : ?expected:string -> ?actual:string -> Format.formatter -> t -> unit
-(** [pp ?expected ?actual fmt t] pretty-prints a tree diff with optional labels.
+val pp : ?expected:string -> ?actual:string -> Buffer.t -> t -> unit
+(** [pp ?expected ?actual buf t] pretty-prints a tree diff with optional labels.
     Default labels are "Expected" and "Actual". *)
 
-val pp_rule_diff_simple : Format.formatter -> rule_diff -> unit
-(** [pp_rule_diff_simple fmt rule] pretty-prints a rule diff in a simple format
+val pp_rule_diff_simple : Buffer.t -> rule_diff -> unit
+(** [pp_rule_diff_simple buf rule] pretty-prints a rule diff in a simple format
     suitable for tests. *)
 
 (** {1 Query functions} *)

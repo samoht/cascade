@@ -171,9 +171,7 @@ let pp_stats_does_not_crash () =
     Css_tools.Css_compare.stats ~expected_str:css ~actual_str:css result
   in
   let buf = Buffer.create 256 in
-  let fmt = Format.formatter_of_buffer buf in
-  Css_tools.Css_compare.pp_stats fmt s;
-  Format.pp_print_flush fmt ();
+  Css_tools.Css_compare.pp_stats buf s;
   let output = Buffer.contents buf in
   Alcotest.(check bool)
     "pp_stats produces output" true
@@ -245,9 +243,7 @@ let pp_does_not_crash () =
   let actual = ".a { color: blue }" in
   let result = Css_tools.Css_compare.diff ~expected ~actual in
   let buf = Buffer.create 256 in
-  let fmt = Format.formatter_of_buffer buf in
-  Css_tools.Css_compare.pp fmt result;
-  Format.pp_print_flush fmt ();
+  Css_tools.Css_compare.pp buf result;
   (* Just verify it doesn't crash *)
   ignore (Buffer.contents buf)
 

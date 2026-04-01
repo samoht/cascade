@@ -53,20 +53,24 @@ let compare_files file1 file2 style_renderer diff_mode =
               Css_tools.Css_compare.stats ~expected_str:css1 ~actual_str:css2
                 result
             in
-            Fmt.pr "%a@,@," Css_tools.Css_compare.pp_stats stats;
-            Fmt.pr "%a@."
-              (Css_tools.Css_compare.pp ~expected:file1 ~actual:file2)
-              result;
+            let buf = Buffer.create 1024 in
+            Css_tools.Css_compare.pp_stats buf stats;
+            Buffer.add_char buf '\n';
+            Css_tools.Css_compare.pp ~expected:file1 ~actual:file2 buf result;
+            Buffer.add_char buf '\n';
+            print_string (Buffer.contents buf);
             Error (`Msg "CSS files differ (string diff)")
         | Tree_diff _ | Both_errors _ | Expected_error _ | Actual_error _ ->
             let stats =
               Css_tools.Css_compare.stats ~expected_str:css1 ~actual_str:css2
                 result
             in
-            Fmt.pr "%a@,@," Css_tools.Css_compare.pp_stats stats;
-            Fmt.pr "%a@."
-              (Css_tools.Css_compare.pp ~expected:file1 ~actual:file2)
-              result;
+            let buf = Buffer.create 1024 in
+            Css_tools.Css_compare.pp_stats buf stats;
+            Buffer.add_char buf '\n';
+            Css_tools.Css_compare.pp ~expected:file1 ~actual:file2 buf result;
+            Buffer.add_char buf '\n';
+            print_string (Buffer.contents buf);
             Error (`Msg "CSS files differ"))
   | Error e, _ | _, Error e -> Error e
 

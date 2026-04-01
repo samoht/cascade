@@ -34,10 +34,10 @@ val pp :
   ?config:config ->
   ?expected_label:string ->
   ?actual_label:string ->
-  Format.formatter ->
+  Buffer.t ->
   t ->
   unit
-(** [pp ?config ?expected_label ?actual_label fmt t] pretty-prints a string diff
+(** [pp ?config ?expected_label ?actual_label buf t] pretty-prints a string diff
     in unified diff format with adaptive line formatting. Default labels are
     "Expected" and "Actual". *)
 
