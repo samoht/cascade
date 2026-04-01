@@ -1,0 +1,28 @@
+(library
+ (name cascade_info)
+ (public_name cascade.info)
+ (libraries dune-build-info))
+
+; In release mode, compute YYYYMMDD-HASH version (uses universe dep to always refresh)
+
+(rule
+ (target git_hash.ml)
+ (deps (universe))
+ (enabled_if
+  (= %{profile} release))
+ (action
+  (with-stdout-to
+   %{target}
+   (bash
+    "echo 'let hash = \"'$(date +%Y%m%d)-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)'\"'"))))
+
+; In dev mode, just use "dev" to avoid rebuilds on every commit
+
+(rule
+ (target git_hash.ml)
+ (enabled_if
+  (<> %{profile} release))
+ (action
+  (with-stdout-to
+   %{target}
+   (echo "let hash = \"dev\""))))

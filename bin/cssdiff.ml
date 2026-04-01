@@ -154,12 +154,7 @@ let man =
 
 let cmd =
   let doc = "Compare two CSS files with structural analysis" in
-  let version =
-    match Build_info.V1.version () with
-    | None -> "dev"
-    | Some v -> Build_info.V1.Version.to_string v
-  in
-  let info = Cmd.info "cssdiff" ~version ~doc ~man in
+  let info = Cmd.info "cssdiff" ~version:Cascade_info.version ~doc ~man in
   Cmd.v info term
 
 let () = exit (Cmd.eval cmd)
