@@ -3,6 +3,8 @@
 (generate_opam_files true)
 (source (github samoht/cascade))
 (license ISC)
+(maintainers "Thomas Gazagnaire")
+(authors "Thomas Gazagnaire")
 
 (package
  (name cascade)

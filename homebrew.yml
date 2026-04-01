@@ -1,0 +1,19 @@
+handle: samoht
+
+storage:
+  bucket: homebrew-bottles
+  region: fr-par
+  profile: homebrew-samoht
+
+tap:
+  clone_url: https://github.com/samoht/homebrew-tap.git
+  push_url: git@github.com:samoht/homebrew-tap
+
+binaries:
+  - name: cascade
+    target: bin/cascade_main.exe
+    description: "CSS generation and manipulation tool"
+
+  - name: cssdiff
+    target: bin/cssdiff.exe
+    description: "Compare CSS files with structural analysis"

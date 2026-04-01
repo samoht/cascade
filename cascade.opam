@@ -5,6 +5,8 @@ description: """
 Cascade provides a typed CSS AST, parser, pretty-printer, and optimizer.
    Supports selectors, properties, values, media queries, container queries,
    @supports, @property, @layer, @keyframes, @font-face, and CSS variables."""
+maintainer: ["Thomas Gazagnaire"]
+authors: ["Thomas Gazagnaire"]
 license: "ISC"
 homepage: "https://github.com/samoht/cascade"
 bug-reports: "https://github.com/samoht/cascade/issues"
