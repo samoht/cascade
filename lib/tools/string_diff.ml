@@ -214,8 +214,10 @@ let pp ?(config = default_config) ?(expected_label = "Expected")
     ?(actual_label = "Actual") buf t =
   Buffer.add_string buf
     ("Strings differ at position " ^ string_of_int t.position ^ " (line "
-   ^ string_of_int t.line_expected ^ ", col "
-   ^ string_of_int t.column_expected ^ ")\n\n");
+    ^ string_of_int t.line_expected
+    ^ ", col "
+    ^ string_of_int t.column_expected
+    ^ ")\n\n");
 
   (* Git-style diff header *)
   Buffer.add_string buf ("--- " ^ expected_label ^ "\n");

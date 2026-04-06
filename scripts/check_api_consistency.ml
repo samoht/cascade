@@ -448,8 +448,8 @@ let () =
   in
   if intf_files = [] then (
     print_string
-      (colored yellow "Warning:"
-      ^ " No interface files found under " ^ lib_dir ^ "/*_intf.ml\n");
+      (colored yellow "Warning:" ^ " No interface files found under " ^ lib_dir
+     ^ "/*_intf.ml\n");
     exit 0);
 
   let all_missing = ref [] in
@@ -579,8 +579,7 @@ let () =
                     print_string "    val read : Reader.t -> t\n"
                   else if f = "pp" then print_string "    val pp : t Pp.t\n"
                   else if String.starts_with ~prefix:"read" f then
-                    print_string
-                      ("    val " ^ f ^ " : Reader.t -> " ^ t ^ "\n")
+                    print_string ("    val " ^ f ^ " : Reader.t -> " ^ t ^ "\n")
                   else if String.starts_with ~prefix:"pp" f then
                     print_string ("    val " ^ f ^ " : " ^ t ^ " Pp.t\n")
                   else print_string ("    val " ^ f ^ "\n"))
@@ -610,8 +609,7 @@ let () =
               List.iter
                 (fun (_m, f) ->
                   if f = "check" then
-                    print_string
-                      "    let check = check_value \"t\" pp read\n"
+                    print_string "    let check = check_value \"t\" pp read\n"
                   else
                     print_string
                       ("    let " ^ f ^ " = check_value \"" ^ t ^ "\" pp_" ^ t
@@ -755,11 +753,13 @@ let () =
 
   if exit_code = 1 then
     print_string
-      ("\n" ^ colored red "Action Required:"
-     ^ " Critical issues must be fixed before proceeding.\n")
+      ("\n"
+      ^ colored red "Action Required:"
+      ^ " Critical issues must be fixed before proceeding.\n")
   else if test_missing > 0 then
     print_string
-      ("\n" ^ colored yellow "Recommendation:"
-     ^ " Consider adding test functions for complete coverage.\n");
+      ("\n"
+      ^ colored yellow "Recommendation:"
+      ^ " Consider adding test functions for complete coverage.\n");
 
   exit exit_code

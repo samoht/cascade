@@ -97,16 +97,22 @@ val single_rule_diff : t -> rule_diff option
     rule change, [None] otherwise. *)
 
 val count_containers_by_type :
-  [ `Container | `Layer | `Media | `Nesting | `Property | `Supports ] -> t -> int
+  [ `Container | `Layer | `Media | `Nesting | `Property | `Supports ] ->
+  t ->
+  int
 (** [count_containers_by_type container_type diff] counts containers of the
     given type in [diff]. *)
 
 val has_container_added_of_type :
-  [ `Container | `Layer | `Media | `Nesting | `Property | `Supports ] -> t -> bool
+  [ `Container | `Layer | `Media | `Nesting | `Property | `Supports ] ->
+  t ->
+  bool
 (** [has_container_added_of_type container_type diff] returns [true] if [diff]
     contains added containers of the given type. *)
 
 val has_container_removed_of_type :
-  [ `Container | `Layer | `Media | `Nesting | `Property | `Supports ] -> t -> bool
+  [ `Container | `Layer | `Media | `Nesting | `Property | `Supports ] ->
+  t ->
+  bool
 (** [has_container_removed_of_type container_type diff] returns [true] if [diff]
     contains removed containers of the given type. *)

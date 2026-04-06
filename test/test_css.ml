@@ -136,10 +136,7 @@ let roundtrip () =
   in
   let original_css =
     let candidates =
-      [
-        "examples/empty_tailwind.css";
-        "test/examples/empty_tailwind.css";
-      ]
+      [ "examples/empty_tailwind.css"; "test/examples/empty_tailwind.css" ]
     in
     match List.find_opt Sys.file_exists candidates with
     | Some path -> read_file path

@@ -336,8 +336,8 @@ let pp ?(expected = "Expected") ?(actual = "Actual") buf = function
         Buffer.add_string buf ("Both CSS have same parse error: " ^ err1)
       else
         Buffer.add_string buf
-          ("Parse errors:\n  " ^ expected ^ ": " ^ err1 ^ "\n  " ^ actual
-         ^ ": " ^ err2)
+          ("Parse errors:\n  " ^ expected ^ ": " ^ err1 ^ "\n  " ^ actual ^ ": "
+         ^ err2)
   | Expected_error e ->
       Buffer.add_string buf
         (expected ^ " CSS parse error: " ^ Css.pp_parse_error e)
@@ -369,14 +369,17 @@ let pp_stats buf stats =
   in
 
   Buffer.add_string buf
-    ("CSS: " ^ string_of_int stats.actual_chars ^ " chars vs "
-   ^ string_of_int stats.expected_chars ^ " chars (" ^ pct_str ^ "% diff)\n");
+    ("CSS: "
+    ^ string_of_int stats.actual_chars
+    ^ " chars vs "
+    ^ string_of_int stats.expected_chars
+    ^ " chars (" ^ pct_str ^ "% diff)\n");
 
   (* Helper to add change description if count > 0 *)
   let add_change count action singular changes =
     if count > 0 then
       (string_of_int count ^ " " ^ action ^ " "
-      ^ (if count = 1 then singular else singular ^ "s"))
+      ^ if count = 1 then singular else singular ^ "s")
       :: changes
     else changes
   in
