@@ -6574,9 +6574,14 @@ module Radial_config = struct
 end
 
 let read_radial_shape t : radial_shape = Radial_config.read_shape t
+
 let read_radial_size t : radial_size =
-  Reader.one_of [ Radial_config.read_size_keyword; Radial_config.read_explicit_size ] t
-let read_radial_gradient_config t : radial_gradient_config = Radial_config.read t
+  Reader.one_of
+    [ Radial_config.read_size_keyword; Radial_config.read_explicit_size ]
+    t
+
+let read_radial_gradient_config t : radial_gradient_config =
+  Radial_config.read t
 
 let read_background_image t : background_image =
   let read_linear_body t =

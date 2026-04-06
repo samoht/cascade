@@ -56,7 +56,8 @@ val as_tree_diff : t -> Tree_diff.t option
     [None] for other result types. *)
 
 val pp : ?expected:string -> ?actual:string -> Buffer.t -> t -> unit
-(** [pp ?expected ?actual buf result] formats a diff_result with optional labels.
+(** [pp ?expected ?actual buf result] formats a diff_result with optional
+    labels.
     @param expected Label for expected CSS (default: "Expected").
     @param actual Label for actual CSS (default: "Actual"). *)
 

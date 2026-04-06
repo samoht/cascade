@@ -95,10 +95,7 @@ let ansi_red s = "\027[31m" ^ s ^ "\027[0m"
 let ansi_yellow s = "\027[33m" ^ s ^ "\027[0m"
 
 let style_text action s =
-  match action with
-  | "add" -> ansi_green s
-  | "remove" -> ansi_red s
-  | _ -> s
+  match action with "add" -> ansi_green s | "remove" -> ansi_red s | _ -> s
 
 (* Get the appropriate prefix for tree-style formatting *)
 let tree_prefix ~style ~is_last ~parent_prefix =
@@ -150,16 +147,16 @@ let pp_property_diff ?(style = default_style) ?(parent_prefix = "") buf
   match String_diff.first_diff_pos expected_value actual_value with
   | None ->
       (* Shouldn't happen but handle gracefully *)
-      Buffer.add_string buf (indent ^ "* " ^ property_name ^ ": (no diff detected)\n")
+      Buffer.add_string buf
+        (indent ^ "* " ^ property_name ^ ": (no diff detected)\n")
   | Some _ ->
       let len1 = String.length expected_value in
       let len2 = String.length actual_value in
       if len1 <= 30 && len2 <= 30 then
         (* Short values: show inline with red for old, green for new *)
         Buffer.add_string buf
-          (indent ^ "* " ^ property_name ^ ": "
-          ^ ansi_red expected_value ^ " -> "
-          ^ ansi_green actual_value ^ "\n")
+          (indent ^ "* " ^ property_name ^ ": " ^ ansi_red expected_value
+         ^ " -> " ^ ansi_green actual_value ^ "\n")
       else
         (* Long values: truncate and show as separate lines *)
         let exp_truncated =
@@ -241,7 +238,8 @@ let pp_reorder ?(style = default_style) ?(parent_prefix = "") decls1 decls2 buf
     | Some (prop1, prop2) ->
         let truncate s = String_diff.truncate_middle 20 s in
         Buffer.add_string buf
-          (indent ^ "* " ^ truncate prop1 ^ " \xe2\x86\x94 " ^ truncate prop2 ^ "\n")
+          (indent ^ "* " ^ truncate prop1 ^ " \xe2\x86\x94 " ^ truncate prop2
+         ^ "\n")
     | None ->
         let moves = property_moves ~max_count:3 prop_names1 prop_names2 in
         if moves <> [] then
@@ -283,8 +281,7 @@ let pp_content_changed ~style ~prefix ~child_prefix buf ~selector
           (indent ^ "(declaration count: " ^ string_of_int old_count ^ " -> "
          ^ string_of_int new_count ^ ")\n")
       else
-        Buffer.add_string buf
-          (indent ^ "(declarations differ in subtle ways)\n"))
+        Buffer.add_string buf (indent ^ "(declarations differ in subtle ways)\n"))
 
 let pp_position_reorder ~prefix buf ~selector ~expected_pos ~actual_pos
     ~swapped_with =
@@ -296,14 +293,13 @@ let pp_position_reorder ~prefix buf ~selector ~expected_pos ~actual_pos
         (prefix ^ truncate selector ^ " \xe2\x86\x94  " ^ truncate other ^ "\n")
   | Some other ->
       Buffer.add_string buf
-        (prefix ^ truncate selector ^ " (position "
-       ^ string_of_int actual_pos ^ ") \xe2\x86\x94  " ^ truncate other
-       ^ " (position " ^ string_of_int expected_pos ^ ")\n")
+        (prefix ^ truncate selector ^ " (position " ^ string_of_int actual_pos
+       ^ ") \xe2\x86\x94  " ^ truncate other ^ " (position "
+       ^ string_of_int expected_pos ^ ")\n")
   | None ->
       Buffer.add_string buf
-        (prefix ^ truncate selector ^ " (position "
-       ^ string_of_int expected_pos ^ " \xe2\x86\x92 "
-       ^ string_of_int actual_pos ^ ")\n")
+        (prefix ^ truncate selector ^ " (position " ^ string_of_int expected_pos
+       ^ " \xe2\x86\x92 " ^ string_of_int actual_pos ^ ")\n")
 
 let pp_rule_diff ?(style = default_style) ?(is_last = false)
     ?(parent_prefix = "") buf = function
@@ -446,8 +442,9 @@ let pp_container_rules ~style ~parent_prefix ~label buf rules =
               tree_prefix ~style ~is_last:(i = rule_count - 1) ~parent_prefix
             in
             Buffer.add_string buf
-              (rule_prefix ^ Css.Selector.to_string selector ^ " (" ^ label
-             ^ ")\n")
+              (rule_prefix
+              ^ Css.Selector.to_string selector
+              ^ " (" ^ label ^ ")\n")
         | None -> ())
       rules
 
@@ -499,19 +496,17 @@ let pp_block_structure_changed ~style ~is_last ~parent_prefix buf
      selectors are identical *)
   if exp_count > act_count then
     Buffer.add_string buf
-      (prefix ^ cont_prefix ^ " " ^ condition ^ " ("
-     ^ string_of_int exp_count ^ " blocks merged into "
-     ^ string_of_int act_count ^ ")\n")
+      (prefix ^ cont_prefix ^ " " ^ condition ^ " (" ^ string_of_int exp_count
+     ^ " blocks merged into " ^ string_of_int act_count ^ ")\n")
   else if exp_count < act_count then
     Buffer.add_string buf
-      (prefix ^ cont_prefix ^ " " ^ condition ^ " ("
-     ^ string_of_int exp_count ^ " block split into "
-     ^ string_of_int act_count ^ ")\n")
+      (prefix ^ cont_prefix ^ " " ^ condition ^ " (" ^ string_of_int exp_count
+     ^ " block split into " ^ string_of_int act_count ^ ")\n")
   else
     (* Same count but different positions *)
     Buffer.add_string buf
-      (prefix ^ cont_prefix ^ " " ^ condition ^ " ("
-     ^ string_of_int exp_count ^ " blocks at different positions)\n");
+      (prefix ^ cont_prefix ^ " " ^ condition ^ " (" ^ string_of_int exp_count
+     ^ " blocks at different positions)\n");
 
   let pp_blocks sign style_fn blocks =
     List.iter
@@ -522,7 +517,7 @@ let pp_block_structure_changed ~style ~is_last ~parent_prefix buf
             (indent
             ^ style_fn
                 (sign ^ " Block at position " ^ string_of_int pos ^ ": "
-               ^ String.concat ", " selectors)
+                ^ String.concat ", " selectors)
             ^ "\n"))
       blocks
   in
@@ -534,8 +529,9 @@ let pp_container_add_remove ~style ~is_last ~parent_prefix ~label buf
   let prefix = tree_prefix ~style ~is_last ~parent_prefix in
   let child_prefix = tree_continuation ~style ~is_last ~parent_prefix in
   Buffer.add_string buf
-    (prefix ^ container_prefix container_type ^ " " ^ condition ^ " (" ^ label
-   ^ ")\n");
+    (prefix
+    ^ container_prefix container_type
+    ^ " " ^ condition ^ " (" ^ label ^ ")\n");
   pp_container_rules ~style ~parent_prefix:child_prefix ~label buf rules
 
 let rec pp_container_diff ?(style = default_style) ?(is_last = false)
@@ -595,10 +591,8 @@ let rec pp_container_diff ?(style = default_style) ?(is_last = false)
         ~container_type ~condition ~expected_blocks ~actual_blocks
 
 let pp_diff_headers buf expected actual =
-  Buffer.add_string buf
-    (ansi_yellow "---" ^ " " ^ ansi_yellow expected ^ "\n");
-  Buffer.add_string buf
-    (ansi_yellow "+++" ^ " " ^ ansi_yellow actual ^ "\n")
+  Buffer.add_string buf (ansi_yellow "---" ^ " " ^ ansi_yellow expected ^ "\n");
+  Buffer.add_string buf (ansi_yellow "+++" ^ " " ^ ansi_yellow actual ^ "\n")
 
 let pp_rule_list ~style ~container_count buf rule_list =
   let rule_count = List.length rule_list in
@@ -1804,8 +1798,7 @@ and process_nested_rules ~depth stmts1 stmts2 =
     List.filter_map
       (fun stmt ->
         match Css.as_rule stmt with
-        | Some (sel, _decls, nested) ->
-            Some (Css.Selector.to_string sel, nested)
+        | Some (sel, _decls, nested) -> Some (Css.Selector.to_string sel, nested)
         | None -> None)
       stmts
   in
