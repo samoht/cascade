@@ -6583,70 +6583,67 @@ let read_radial_size t : radial_size =
 let read_radial_gradient_config t : radial_gradient_config =
   Radial_config.read t
 
-let read_background_image t : background_image =
-  let read_linear_body t =
-    Reader.ws t;
-    let direction =
-      match Reader.option read_gradient_direction t with
-      | Some d ->
+let read_linear_gradient_body t =
+  Reader.ws t;
+  let direction =
+    match Reader.option read_gradient_direction t with
+    | Some d ->
+        ignore (Reader.comma_opt t);
+        d
+    | None -> To_bottom
+  in
+  Linear_gradient (direction, read_gradient_stops t)
+
+let read_radial_gradient_body t =
+  Reader.ws t;
+  let config =
+    match
+      Reader.option
+        (fun t ->
+          let cfg = Radial_config.read t in
+          if cfg.shape = None && cfg.size = None && cfg.position = None then
+            Reader.err_invalid t "no radial config";
+          Reader.ws t;
           ignore (Reader.comma_opt t);
-          d
-      | None -> To_bottom
-    in
-    Linear_gradient (direction, read_gradient_stops t)
+          cfg)
+        t
+    with
+    | Some cfg -> cfg
+    | None -> { shape = None; size = None; position = None }
   in
-  let read_radial_body t =
-    Reader.ws t;
-    let config =
-      match
-        Reader.option
-          (fun t ->
-            let cfg = Radial_config.read t in
-            if cfg.shape = None && cfg.size = None && cfg.position = None then
-              Reader.err_invalid t "no radial config";
-            Reader.ws t;
-            ignore (Reader.comma_opt t);
-            cfg)
-          t
-      with
-      | Some cfg -> cfg
-      | None -> { shape = None; size = None; position = None }
-    in
-    Radial_gradient (config, read_gradient_stops t)
-  in
-  let read_conic_body t =
-    Reader.ws t;
-    Conic_gradient (read_gradient_stops t)
-  in
-  let rec read_bg_image t =
-    Reader.enum_or_calls "background-image"
+  Radial_gradient (config, read_gradient_stops t)
+
+let read_conic_gradient_body t =
+  Reader.ws t;
+  Conic_gradient (read_gradient_stops t)
+
+let rec read_bg_image t =
+  Reader.enum_or_calls "background-image"
+    [
+      ("none", (None : background_image));
+      ("initial", Initial);
+      ("inherit", Inherit);
+    ]
+    ~calls:
       [
-        ("none", (None : background_image));
-        ("initial", Initial);
-        ("inherit", Inherit);
+        ("url", fun t -> Url (Reader.url t));
+        ( "linear-gradient",
+          fun t -> Reader.call "linear-gradient" t read_linear_gradient_body );
+        ( "radial-gradient",
+          fun t -> Reader.call "radial-gradient" t read_radial_gradient_body );
+        ( "conic-gradient",
+          fun t -> Reader.call "conic-gradient" t read_conic_gradient_body );
+        ( "var",
+          fun t ->
+            let _ = Reader.ident t in
+            Var (Values.read_var_after_ident read_bg_image t) );
       ]
-      ~calls:
-        [
-          ("url", fun t -> Url (Reader.url t));
-          ( "linear-gradient",
-            fun t -> Reader.call "linear-gradient" t read_linear_body );
-          ( "radial-gradient",
-            fun t -> Reader.call "radial-gradient" t read_radial_body );
-          ( "conic-gradient",
-            fun t -> Reader.call "conic-gradient" t read_conic_body );
-          ( "var",
-            fun t ->
-              let _ = Reader.ident t in
-              (* consume "var" *)
-              Var (Values.read_var_after_ident read_bg_image t) );
-        ]
-      t
-  in
-  (* Read first image, then check for comma-separated list *)
+    t
+
+let read_background_image t : background_image =
   let first = read_bg_image t in
   Reader.ws t;
   if Reader.comma_opt t then
-    (* There are more images - read as list *)
     let rest = Reader.list ~sep:Reader.comma ~at_least:1 read_bg_image t in
     List (first :: rest)
   else first
