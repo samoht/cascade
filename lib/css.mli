@@ -4481,8 +4481,8 @@ val var_meta : 'a var -> meta option
 (** [var_meta v] is the optional metadata associated with [v]. *)
 
 val meta : unit -> ('a -> meta) * (meta -> 'a option)
-(** [meta () inject project] returns an injection/projection pair for metadata.
-*)
+(** [meta ()] returns a fresh injection/projection pair for storing values of
+    type ['a] inside {!type-meta}. *)
 
 val var_ref :
   ?fallback:'a fallback ->

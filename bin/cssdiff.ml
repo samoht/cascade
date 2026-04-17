@@ -14,63 +14,52 @@ let read_file path =
 
 type diff_mode = Auto | Tree | String
 
-let compare_files file1 file2 style_renderer diff_mode =
-  (* Check NO_COLOR environment variable (https://no-color.org/) When present
-     and not empty, disable colors regardless of other settings *)
-  let style_renderer =
-    match Sys.getenv_opt "NO_COLOR" with
-    | Some s when s <> "" -> Some `None (* NO_COLOR is set and non-empty *)
-    | _ -> style_renderer (* Use command line option *)
-  in
-  (* Setup Fmt with the style renderer from command line/env *)
-  Fmt_tty.setup_std_outputs ?style_renderer ();
+let resolve_style_renderer style_renderer =
+  match Sys.getenv_opt "NO_COLOR" with
+  | Some s when s <> "" -> Some `None
+  | _ -> style_renderer
 
+let run_diff diff_mode ~css1 ~css2 =
+  match diff_mode with
+  | Auto -> Css_tools.Css_compare.diff ~expected:css1 ~actual:css2
+  | Tree ->
+      Css_tools.Css_compare.diff_with_mode ~mode:`Tree ~expected:css1
+        ~actual:css2
+  | String ->
+      Css_tools.Css_compare.diff_with_mode ~mode:`String ~expected:css1
+        ~actual:css2
+
+let print_diff_report ~file1 ~file2 ~css1 ~css2 result =
+  let stats =
+    Css_tools.Css_compare.stats ~expected_str:css1 ~actual_str:css2 result
+  in
+  let buf = Buffer.create 1024 in
+  Css_tools.Css_compare.pp_stats buf stats;
+  Buffer.add_char buf '\n';
+  Css_tools.Css_compare.pp ~expected:file1 ~actual:file2 buf result;
+  Buffer.add_char buf '\n';
+  print_string (Buffer.contents buf)
+
+let compare_files file1 file2 style_renderer diff_mode =
+  Fmt_tty.setup_std_outputs
+    ?style_renderer:(resolve_style_renderer style_renderer)
+    ();
   match (read_file file1, read_file file2) with
   | Ok css1, Ok css2 -> (
       if css1 = css2 then (
         Fmt.pr "✓ CSS files are identical@.";
         Ok ())
       else
-        (* Use css_compare for detailed structural comparison *)
-        let result =
-          match diff_mode with
-          | Auto -> Css_tools.Css_compare.diff ~expected:css1 ~actual:css2
-          | Tree ->
-              Css_tools.Css_compare.diff_with_mode ~mode:`Tree ~expected:css1
-                ~actual:css2
-          | String ->
-              Css_tools.Css_compare.diff_with_mode ~mode:`String ~expected:css1
-                ~actual:css2
-        in
-        match result with
+        match run_diff diff_mode ~css1 ~css2 with
         | No_diff ->
             Fmt.pr "✓ CSS files are identical@.";
             Ok ()
-        | String_diff _ ->
-            (* Treat pure string differences as failures so tests catch ordering
-               changes. Encourage --diff=tree for more detail. *)
-            let stats =
-              Css_tools.Css_compare.stats ~expected_str:css1 ~actual_str:css2
-                result
-            in
-            let buf = Buffer.create 1024 in
-            Css_tools.Css_compare.pp_stats buf stats;
-            Buffer.add_char buf '\n';
-            Css_tools.Css_compare.pp ~expected:file1 ~actual:file2 buf result;
-            Buffer.add_char buf '\n';
-            print_string (Buffer.contents buf);
+        | String_diff _ as result ->
+            print_diff_report ~file1 ~file2 ~css1 ~css2 result;
             Error (`Msg "CSS files differ (string diff)")
-        | Tree_diff _ | Both_errors _ | Expected_error _ | Actual_error _ ->
-            let stats =
-              Css_tools.Css_compare.stats ~expected_str:css1 ~actual_str:css2
-                result
-            in
-            let buf = Buffer.create 1024 in
-            Css_tools.Css_compare.pp_stats buf stats;
-            Buffer.add_char buf '\n';
-            Css_tools.Css_compare.pp ~expected:file1 ~actual:file2 buf result;
-            Buffer.add_char buf '\n';
-            print_string (Buffer.contents buf);
+        | (Tree_diff _ | Both_errors _ | Expected_error _ | Actual_error _) as
+          result ->
+            print_diff_report ~file1 ~file2 ~css1 ~css2 result;
             Error (`Msg "CSS files differ"))
   | Error e, _ | _, Error e -> Error e
 

@@ -22,8 +22,8 @@ val read_value : Reader.t -> 'a syntax -> 'a
 (** {1 Meta handling} *)
 
 val meta : unit -> ('a -> meta) * (meta -> 'a option)
-(** [meta () inject project] returns an injection/projection pair for metadata.
-*)
+(** [meta ()] returns a fresh injection/projection pair for storing values of
+    type ['a] inside {!type-meta}. *)
 
 (** {1 Variable creation} *)
 
