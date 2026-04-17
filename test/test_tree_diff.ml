@@ -195,7 +195,7 @@ let diff_nesting_deep () =
     "deep nesting diff not empty" false
     (Css_tools.Tree_diff.is_empty d)
 
-let diff_nesting_only_parent_props_changed () =
+let diff_nesting_parent_props_only () =
   let expected =
     parse ".card { padding: 1rem; & .title { font-size: 1rem } }"
   in
@@ -311,7 +311,7 @@ let suite =
         diff_nesting_child_removed;
       Alcotest.test_case "nesting deep" `Quick diff_nesting_deep;
       Alcotest.test_case "nesting only parent props changed" `Quick
-        diff_nesting_only_parent_props_changed;
+        diff_nesting_parent_props_only;
       Alcotest.test_case "pp does not crash" `Quick pp_does_not_crash;
       Alcotest.test_case "pp_rule_diff_simple does not crash" `Quick
         pp_rule_diff_simple_ok;
