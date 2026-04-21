@@ -1018,10 +1018,13 @@ let read_var_after_ident : type a. (Reader.t -> a) -> Reader.t -> a var =
   Reader.expect '(' t;
   Reader.ws t;
   let var_name =
-    if Reader.looking_at t "--" then (
-      Reader.expect_string "--" t;
-      let name = Reader.ident ~keep_case:true t in
-      name)
+    if Reader.looking_at t "--" then
+      (* Parse the full dashed-ident (-- plus the rest) and strip the leading
+         --. Reader.ident accepts -- as a valid start, and any ident-code-point
+         (including digits) afterwards, so this correctly handles names like
+         --1A202C that start with a digit after the two dashes. *)
+      let full = Reader.ident ~keep_case:true t in
+      String.sub full 2 (String.length full - 2)
     else Reader.ident ~keep_case:true t
   in
   Reader.ws t;
