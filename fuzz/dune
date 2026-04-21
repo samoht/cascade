@@ -1,15 +1,6 @@
 (executables
  (names fuzz)
- (libraries cascade alcobar fmt)
- (modules
-  fuzz
-  fuzz_reader
-  fuzz_selector
-  fuzz_values
-  fuzz_stylesheet
-  fuzz_supports
-  fuzz_font_face
-  fuzz_keyframe))
+ (libraries cascade alcobar fmt))
 
 ; Property-based testing — runs with dune test
 
