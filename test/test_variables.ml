@@ -213,6 +213,12 @@ let test_parse_var_reference () =
   check_var_ref "var(--primary)" "primary" None;
   check_var_ref "var(--theme-bg)" "theme-bg" None;
 
+  (* Custom property names starting with a digit after -- are valid per the CSS
+     Syntax spec (the two dashes are the ident-start). Tailwind arbitrary values
+     like text-[1A202C] emit var(--1A202C). *)
+  check_var_ref "var(--1A202C)" "1A202C" None;
+  check_var_ref "var(--42, 10px)" "42" (Some "10px");
+
   (* With fallbacks *)
   check_var_ref "var(--color, red)" "color" (Some "red");
   check_var_ref "var(--size, 10px)" "size" (Some "10px");
