@@ -22,7 +22,7 @@
           [ display Inline_block
           ; background_color (hex "#3b82f6")
           ; color (hex "#ffffff")
-          ; padding (Rem 0.5)
+          ; padding [ Rem 0.5 ]
           ; border_radius (Rem 0.375)
           ]
       in

@@ -1,11 +1,11 @@
 # Cascade
 
-CSS tooling for OCaml -- a typed AST, parser, pretty-printer, and optimiser
+CSS tooling for OCaml -- a typed AST, parser, pretty-printer, and optimizer
 for modern CSS.
 
 Most CSS toolchains target JavaScript runtimes. Cascade provides the same
 core capabilities -- parsing, rendering, and structural comparison -- as a
-native OCaml library with no runtime dependencies beyond `fmt` and `cmdliner`.
+native OCaml library with zero runtime dependencies beyond the stdlib.
 Properties, values, and selectors are represented as OCaml types rather than
 strings, so invalid constructs are caught at compile time.
 
@@ -20,7 +20,7 @@ produces spec-conformant output with optional minification.
 |---|---|
 | [Selectors Level 4](https://www.w3.org/TR/selectors-4/) | Class, ID, element, universal, attribute, pseudo-classes (`:hover`, `:nth-child()`, `:where()`, `:not()`, `:is()`, `:has()`), pseudo-elements, combinators, `&` nesting |
 | [Values and Units Level 4](https://www.w3.org/TR/css-values-4/) | ~30 length units, `calc()`, `clamp()`, `min()`, `max()`, `minmax()`, angles, durations |
-| [Color Level 4](https://www.w3.org/TR/css-color-4/) | Hex, `rgb()`, `hsl()`, `hwb()`, `oklch()`, `oklab()`, `color-mix()`, 148 named colours, 15 colour spaces |
+| [Color Level 4](https://www.w3.org/TR/css-color-4/) | Hex, `rgb()`, `hsl()`, `hwb()`, `oklch()`, `oklab()`, `color-mix()`, 148 named colors, 15 color spaces |
 | [Conditional Rules Level 3](https://www.w3.org/TR/css-conditional-3/) | `@media` feature queries, `@supports` property and selector checks |
 | [Cascade Level 5](https://www.w3.org/TR/css-cascade-5/) | `@layer` declarations and blocks, CSS-wide keywords |
 | [Nesting Module](https://www.w3.org/TR/css-nesting-1/) | Nested rules with `&`, nested `@media` and `@supports` |
@@ -49,7 +49,7 @@ let button =
     [ display Inline_block
     ; background_color (hex "#3b82f6")
     ; color (hex "#ffffff")
-    ; padding (Rem 0.5)
+    ; padding [ Rem 0.5 ]
     ; border_radius (Rem 0.375)
     ]
 
@@ -73,23 +73,23 @@ Output:
 ### `cascade` -- CSS formatter
 
 ```
-cascade [--minify] [--optimise] [--pretty] [FILE]
+cascade [--minify] [--optimize] [--pretty] [FILE]
 ```
 
 Reads a CSS file (or stdin with `-`) and outputs formatted CSS. The
-`--optimise` flag merges duplicate rules and removes redundant declarations.
+`--optimize` flag merges duplicate rules and removes redundant declarations.
 
 ```bash
 cascade style.css                        # pretty-print
 cascade --minify style.css               # minify
-cascade --optimise --minify style.css    # optimise and minify
+cascade --optimize --minify style.css    # optimize and minify
 cat style.css | cascade --minify -       # read from stdin
 ```
 
 ### `cssdiff` -- structural CSS diff
 
 ```
-cssdiff [--colour=WHEN] [--diff=MODE] FILE1 FILE2
+cssdiff [--color=WHEN] [--diff=MODE] FILE1 FILE2
 ```
 
 Compares two CSS files using structural parsing, detecting added, removed,
@@ -106,14 +106,14 @@ NO_COLOR=1 cssdiff reference.css output.css
 
 ## Libraries
 
-- **`cascade`** -- typed CSS AST, parser, pretty-printer, and optimiser.
+- **`cascade`** -- typed CSS AST, parser, pretty-printer, and optimizer.
   The main module is `Cascade.Css`.
 - **`cascade.tools`** -- structural CSS comparison (`Css_tools.Css_compare`,
   `Css_tools.Tree_diff`, `Css_tools.String_diff`).
 
 ## Limitations
 
-- CSS nesting is parsed and printed but the optimiser does not flatten nested
+- CSS nesting is parsed and printed but the optimizer does not flatten nested
   rules. A round-trip through the parser preserves nesting structure.
 - The parser uses error recovery for declarations but does not yet implement
   the full error recovery algorithm from CSS Syntax Level 3 section 9.
