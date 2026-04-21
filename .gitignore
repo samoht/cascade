@@ -1,1 +1,5 @@
 _build/
+_opam/
+_homebrew_build/
+*~
+.DS_Store
