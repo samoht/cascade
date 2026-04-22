@@ -69,7 +69,7 @@ let bad_string () = check "\"oops\n" "<bad-string> <ws>"
 let bad_url () = check "url(a b)" "<bad-url>"
 
 let suite =
-  ( "token",
+  ( "lexer",
     [
       Alcotest.test_case "idents" `Quick idents;
       Alcotest.test_case "functions" `Quick functions;
