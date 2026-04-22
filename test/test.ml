@@ -35,4 +35,5 @@ let () =
       Test_tree_diff.suite;
       Test_css_compare.suite;
       Test_token.suite;
+      Test_parser.suite;
     ]
