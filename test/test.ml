@@ -34,4 +34,5 @@ let () =
       Test_string_diff.suite;
       Test_tree_diff.suite;
       Test_css_compare.suite;
+      Test_token.suite;
     ]

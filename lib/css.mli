@@ -4786,6 +4786,7 @@ module Pp = Pp
 (**/**)
 
 module Reader = Reader
+module Token = Token
 module Values = Values
 module Properties = Properties
 module Declaration = Declaration
