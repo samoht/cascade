@@ -5,7 +5,7 @@ open Cascade
 let tokens_of css =
   let r = Css.Reader.of_string css in
   let rec loop acc =
-    match Css.Token.next r with
+    match Css.Lexer.next (Css.Lexer.of_reader r) with
     | Css.Token.Eof -> List.rev acc
     | t -> loop (t :: acc)
   in
