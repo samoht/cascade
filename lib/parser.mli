@@ -9,8 +9,13 @@ type t
 (** A component-value stream: a {!Lexer.t} plus one-component pushback. *)
 
 val of_lexer : Lexer.t -> t
+(** [of_lexer l] wraps an existing lexer stream. *)
+
 val of_reader : Reader.t -> t
+(** [of_reader r] builds a lexer from [r] and wraps it. *)
+
 val of_string : string -> t
+(** [of_string s] builds a fresh reader and lexer from [s]. *)
 
 (** {1 Stream API} *)
 
@@ -19,7 +24,12 @@ val next : t -> Component.t
     [Preserved Token.Eof]. Honours a component pushed back by {!reconsume}. *)
 
 val peek : t -> Component.t
+(** [peek t] is the next component value without consuming it. A subsequent
+    {!peek} or {!next} returns the same value. *)
+
 val reconsume : t -> Component.t -> unit
+(** [reconsume t cv] pushes [cv] back so the next {!next} returns it. At most
+    one component can be pushed back. *)
 
 (** {1 Reserialization} *)
 

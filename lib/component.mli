@@ -11,3 +11,9 @@ type at_rule = { name : string; prelude : t list; block : block option }
 type qualified_rule = { prelude : t list; block : block }
 type rule = Qualified of qualified_rule | At of at_rule
 type declaration = { name : string; value : t list; important : bool }
+
+val pp : t Pp.t
+(** [pp] renders a component value back to source-like text. *)
+
+val to_string : t -> string
+(** [to_string t] is the string rendering of {!pp}. *)
