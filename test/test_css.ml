@@ -126,6 +126,17 @@ let custom_properties_integration () =
   Alcotest.(check string)
     "custom properties exact" ".btn{--primary-color:blue;color:blue}\n" css
 
+(* Regression: a custom property name starting with a digit after the -- is a
+   valid dashed-ident per CSS Syntax §4.3.11. Tailwind emits these for
+   arbitrary-value classes like text-[1A202C]. *)
+let var_digit_after_dashes () =
+  let css = ".x{font-size:var(--1A202C)}" in
+  match Css.of_string css with
+  | Error err -> Alcotest.fail ("parse failed: " ^ Css.pp_parse_error err)
+  | Ok stylesheet ->
+      let out = Css.to_string ~minify:true stylesheet in
+      Alcotest.(check string) "var(--1A202C) roundtrip" (css ^ "\n") out
+
 (* CSS Roundtrip Test: Parse generated CSS and compare roundtrip *)
 let roundtrip () =
   let read_file path =
@@ -374,6 +385,7 @@ let suite =
       Alcotest.test_case "important declarations" `Quick important_integration;
       Alcotest.test_case "custom properties" `Quick
         custom_properties_integration;
+      Alcotest.test_case "var(--1A202C) parses" `Quick var_digit_after_dashes;
       Alcotest.test_case "CSS roundtrip parsing" `Quick roundtrip;
       (* AST introspection helpers *)
       Alcotest.test_case "layer_block extraction" `Quick test_layer_block;
