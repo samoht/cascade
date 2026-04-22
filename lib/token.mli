@@ -59,10 +59,3 @@ val pp : t Pp.t
 
 val to_string : t -> string
 (** [to_string t] is the string rendering of {!pp}. *)
-
-(** {1 Tokenization} *)
-
-val next : Reader.t -> t
-(** [next r] consumes the next CSS token from [r], advancing the reader. Returns
-    {!Eof} when the input is exhausted. Implements the algorithm in CSS Syntax
-    Level 3 section 4.3.1. *)

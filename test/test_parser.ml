@@ -5,17 +5,17 @@ open Cascade
 (* Shorthand constructors mirroring Parser.component_value so test data is
    readable. *)
 
-let pv t = Css.Parser.Preserved t
-let block op vs = Css.Parser.Block { opening = op; value = vs }
-let func name args = Css.Parser.Func { name; arguments = args }
+let pv t = Css.Component.Preserved t
+let block op vs = Css.Component.Block { opening = op; value = vs }
+let func name args = Css.Component.Func { name; arguments = args }
 
 (* Pretty-print a component value for assertion diffing. *)
 
-let rec pp_cv : Css.Parser.component_value Css.Pp.t =
+let rec pp_cv : Css.Component.t Css.Pp.t =
  fun ctx cv ->
   match cv with
-  | Css.Parser.Preserved t -> Css.Token.pp ctx t
-  | Css.Parser.Block { opening; value } ->
+  | Css.Component.Preserved t -> Css.Token.pp ctx t
+  | Css.Component.Block { opening; value } ->
       let open_c, close_c =
         match opening with
         | Css.Token.Curly -> ('{', '}')
@@ -25,7 +25,7 @@ let rec pp_cv : Css.Parser.component_value Css.Pp.t =
       Css.Pp.char ctx open_c;
       Css.Pp.list ~sep:Css.Pp.sp pp_cv ctx value;
       Css.Pp.char ctx close_c
-  | Css.Parser.Func { name; arguments } ->
+  | Css.Component.Func { name; arguments } ->
       Css.Pp.string ctx name;
       Css.Pp.char ctx '(';
       Css.Pp.list ~sep:Css.Pp.sp pp_cv ctx arguments;
@@ -33,15 +33,15 @@ let rec pp_cv : Css.Parser.component_value Css.Pp.t =
 
 let pp_cvs ctx cvs = Css.Pp.list ~sep:Css.Pp.sp pp_cv ctx cvs
 
-let pp_rule : Css.Parser.rule Css.Pp.t =
+let pp_rule : Css.Component.rule Css.Pp.t =
  fun ctx -> function
-  | Css.Parser.Qualified { prelude; block = { opening = _; value } } ->
+  | Css.Component.Qualified { prelude; block = { opening = _; value } } ->
       Css.Pp.string ctx "qualified{prelude=";
       pp_cvs ctx prelude;
       Css.Pp.string ctx "; block=";
       pp_cvs ctx value;
       Css.Pp.char ctx '}'
-  | Css.Parser.At { name; prelude; block } ->
+  | Css.Component.At { name; prelude; block } ->
       Css.Pp.string ctx "at[";
       Css.Pp.string ctx name;
       Css.Pp.string ctx "]{prelude=";
@@ -64,7 +64,7 @@ let simple_rule () =
   let rs = parse_ss ".a { color: red }" in
   Alcotest.(check int) "one rule" 1 (List.length rs);
   match rs with
-  | [ Css.Parser.Qualified { prelude = _; block = { value; _ } } ] ->
+  | [ Css.Component.Qualified { prelude = _; block = { value; _ } } ] ->
       (* block contains: ws, ident color, colon, ws, ident red, ws *)
       Alcotest.(check bool) "block non-empty" true (value <> [])
   | _ -> Alcotest.fail "expected one qualified rule"
@@ -76,14 +76,14 @@ let multiple_rules () =
 let at_rule_with_block () =
   let rs = parse_ss "@media screen { .btn { color: red } }" in
   match rs with
-  | [ Css.Parser.At { name; block = Some _; _ } ] ->
+  | [ Css.Component.At { name; block = Some _; _ } ] ->
       Alcotest.(check string) "name" "media" name
   | _ -> Alcotest.fail "expected one @media at-rule with block"
 
 let at_rule_semi_terminated () =
   let rs = parse_ss "@charset \"utf-8\";" in
   match rs with
-  | [ Css.Parser.At { name; block = None; _ } ] ->
+  | [ Css.Component.At { name; block = None; _ } ] ->
       Alcotest.(check string) "name" "charset" name
   | _ -> Alcotest.fail "expected @charset without block"
 
@@ -103,11 +103,11 @@ let unterminated_qualified_rule_dropped () =
 let component_value_block () =
   let rs = parse_ss "@x (a b c);" in
   match rs with
-  | [ Css.Parser.At { prelude; _ } ] ->
+  | [ Css.Component.At { prelude; _ } ] ->
       let has_paren =
         List.exists
           (function
-            | Css.Parser.Block { opening = Css.Token.Paren; _ } -> true
+            | Css.Component.Block { opening = Css.Token.Paren; _ } -> true
             | _ -> false)
           prelude
       in
@@ -117,10 +117,11 @@ let component_value_block () =
 let component_value_function () =
   let rs = parse_ss "@x rgb(1, 2, 3);" in
   match rs with
-  | [ Css.Parser.At { prelude; _ } ] ->
+  | [ Css.Component.At { prelude; _ } ] ->
       let has_func =
         List.exists
-          (function Css.Parser.Func { name = "rgb"; _ } -> true | _ -> false)
+          (function
+            | Css.Component.Func { name = "rgb"; _ } -> true | _ -> false)
           prelude
       in
       Alcotest.(check bool) "prelude contains rgb(...)" true has_func

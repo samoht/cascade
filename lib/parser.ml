@@ -1,78 +1,79 @@
-(** CSS Syntax Module Level 3 section 5: parser algorithms.
+(** Stage 3 stream: Token.t -> Component.t.
 
     Ports the "consume a ..." algorithms from
-    https://www.w3.org/TR/css-syntax-3/#parser-algorithms onto a token stream
-    sourced from {!Token.next}. Produces the generic intermediate representation
-    (component values, simple blocks, functions, rules, declarations) defined in
-    section 5.1; higher-level typed parsing runs afterwards as validation on
-    those component values. *)
+    https://www.w3.org/TR/css-syntax-3/#parser-algorithms onto a {!Lexer.t}
+    token stream, producing the IR defined in {!Component}. Downstream typed-AST
+    validators consume lists of {!Component.t}. *)
 
-(** {1 Intermediate representation (section 5.1)} *)
+open Component
 
-type component_value =
-  | Preserved of Token.t
-      (** Any token except function/[{]/[(]/[[]: passed through. *)
-  | Block of simple_block
-  | Func of function_cv
+type t = { lexer : Lexer.t; mutable lookback : Component.t option }
 
-and simple_block = { opening : Token.bracket; value : component_value list }
-(** A balanced [{...\}], [(...)] or [[...]] group. *)
+let of_lexer lexer = { lexer; lookback = None }
+let of_reader r = of_lexer (Lexer.of_reader r)
+let of_string s = of_reader (Reader.of_string s)
 
-and function_cv = { name : string; arguments : component_value list }
-(** A [name(...)] group, where the arguments are a list of component values. *)
+(** {1 §5.3 algorithms operating on a {!Lexer.t}} *)
 
-type at_rule = {
-  name : string;
-  prelude : component_value list;
-  block : simple_block option;
-}
-(** An at-rule: name, prelude (component values between [@name] and the block or
-    terminating [;]), and optional block. *)
+let rec consume_component_value lexer : Component.t =
+  match Lexer.next lexer with
+  | Token.Open bracket -> Block (consume_simple_block lexer bracket)
+  | Token.Function name -> Func (consume_function lexer ~name)
+  | t -> Preserved t
 
-type qualified_rule = { prelude : component_value list; block : simple_block }
-(** A qualified rule (style rule): prelude (typically a selector list) followed
-    by a block. *)
+and consume_simple_block lexer opening : Component.block =
+  let ending = Token.Close opening in
+  let rec loop acc =
+    match Lexer.next lexer with
+    | Token.Eof -> { opening; value = List.rev acc }
+    | t when t = ending -> { opening; value = List.rev acc }
+    | t ->
+        Lexer.reconsume lexer t;
+        let cv = consume_component_value lexer in
+        loop (cv :: acc)
+  in
+  loop []
 
-type rule = Qualified of qualified_rule | At of at_rule
+and consume_function lexer ~name : Component.func =
+  let rec loop acc =
+    match Lexer.next lexer with
+    | Token.Eof | Token.Close Paren -> { name; arguments = List.rev acc }
+    | t ->
+        Lexer.reconsume lexer t;
+        let cv = consume_component_value lexer in
+        loop (cv :: acc)
+  in
+  loop []
 
-type declaration = {
-  name : string;
-  value : component_value list;
-  important : bool;
-}
-(** A declaration extracted by section 5.3.7. [value] has trailing whitespace
-    and the [!important] marker stripped. *)
+(** {1 Stream API (uniform with Reader/Lexer)} *)
 
-(** {1 Token stream with one-token pushback} *)
+let next t =
+  match t.lookback with
+  | Some cv ->
+      t.lookback <- None;
+      cv
+  | None -> consume_component_value t.lexer
 
-type stream = { reader : Reader.t; mutable lookback : Token.t option }
+let peek t =
+  match t.lookback with
+  | Some cv -> cv
+  | None ->
+      let cv = consume_component_value t.lexer in
+      t.lookback <- Some cv;
+      cv
 
-let of_reader reader = { reader; lookback = None }
-
-(** [next s] consumes the next token, honouring any pushed-back token. *)
-let next s =
-  match s.lookback with
-  | Some t ->
-      s.lookback <- None;
-      t
-  | None -> Token.next s.reader
-
-(** [reconsume s t] pushes [t] back so the next call to {!next} returns it. At
-    most one token can be pushed back. *)
-let reconsume s t =
-  assert (s.lookback = None);
-  s.lookback <- Some t
+let reconsume t cv =
+  assert (t.lookback = None);
+  t.lookback <- Some cv
 
 (** {1 Reserialization} *)
 
-(* Turn a token back into its source form. *)
 let token_to_string : Token.t -> string = function
   | Token.Ident s -> s
   | Token.Function s -> s ^ "("
   | Token.At_keyword s -> "@" ^ s
   | Token.Hash { value; _ } -> "#" ^ value
   | Token.String s ->
-      (* Double-quote and escape embedded double-quotes and backslashes. *)
       let buf = Buffer.create (String.length s + 2) in
       Buffer.add_char buf '"';
       String.iter
@@ -113,7 +114,7 @@ let closing_char : Token.bracket -> char = function
   | Paren -> ')'
   | Square -> ']'
 
-let rec cv_to_buffer buf = function
+let rec cv_to_buffer buf : Component.t -> unit = function
   | Preserved t -> Buffer.add_string buf (token_to_string t)
   | Block { opening; value } ->
       Buffer.add_char buf (opening_char opening);
@@ -125,137 +126,85 @@ let rec cv_to_buffer buf = function
       List.iter (cv_to_buffer buf) arguments;
       Buffer.add_char buf ')'
 
-(** [to_string cvs] reconstitutes the source text for a component-value list.
-    Whitespace tokens are serialized as a single space; the output is not
-    byte-identical to the input but is parse-equivalent. *)
 let to_string cvs =
   let buf = Buffer.create 64 in
   List.iter (cv_to_buffer buf) cvs;
   Buffer.contents buf
 
-(** {1 Parser algorithms (section 5.3)} *)
+(** {1 Rule / declaration consumers (section 5.3)} *)
 
-(* Forward-declared so the recursive algorithms can call each other. *)
-
-let rec consume_component_value s =
-  match next s with
-  | Token.Open bracket -> Block (consume_simple_block s bracket)
-  | Token.Function name -> Func (consume_function s ~name)
-  | t -> Preserved t
-
-(* section 5.3.9 Consume a simple block. The opening token has been consumed; we
-   scan until the matching close. *)
-and consume_simple_block s opening =
-  let ending = Token.Close opening in
-  let rec loop acc =
-    match next s with
-    | Token.Eof ->
-        (* Parse error; return what we have. *)
-        { opening; value = List.rev acc }
-    | t when t = ending -> { opening; value = List.rev acc }
-    | t ->
-        reconsume s t;
-        let cv = consume_component_value s in
-        loop (cv :: acc)
-  in
-  loop []
-
-(* section 5.3.10 Consume a function. The <function-token> has been consumed;
-   its name is passed in. Scan until <)-token>. *)
-and consume_function s ~name =
-  let rec loop acc =
-    match next s with
-    | Token.Eof | Token.Close Paren -> { name; arguments = List.rev acc }
-    | t ->
-        reconsume s t;
-        let cv = consume_component_value s in
-        loop (cv :: acc)
-  in
-  loop []
-
-(* section 5.3.3 Consume an at-rule. Assumes the <at-keyword-token> has been
-   consumed; its name is passed in. *)
-let consume_at_rule s ~name =
+(* section 5.3.3 Consume an at-rule. *)
+let consume_at_rule lexer ~name : Component.at_rule =
   let rec loop prelude =
-    match next s with
+    match Lexer.next lexer with
     | Token.Semicolon -> { name; prelude = List.rev prelude; block = None }
-    | Token.Eof ->
-        (* Parse error. *)
-        { name; prelude = List.rev prelude; block = None }
+    | Token.Eof -> { name; prelude = List.rev prelude; block = None }
     | Token.Open Curly ->
-        let block = consume_simple_block s Curly in
+        let block = consume_simple_block lexer Curly in
         { name; prelude = List.rev prelude; block = Some block }
     | t ->
-        reconsume s t;
-        let cv = consume_component_value s in
+        Lexer.reconsume lexer t;
+        let cv = consume_component_value lexer in
         loop (cv :: prelude)
   in
   loop []
 
 (* section 5.3.4 Consume a qualified rule. *)
-let consume_qualified_rule s =
+let consume_qualified_rule lexer : Component.qualified_rule option =
   let rec loop prelude =
-    match next s with
-    | Token.Eof -> None (* Parse error: drop the rule. *)
+    match Lexer.next lexer with
+    | Token.Eof -> None
     | Token.Open Curly ->
-        let block = consume_simple_block s Curly in
-        Some { prelude = List.rev prelude; block }
+        let block = consume_simple_block lexer Curly in
+        Some Component.{ prelude = List.rev prelude; block }
     | t ->
-        reconsume s t;
-        let cv = consume_component_value s in
+        Lexer.reconsume lexer t;
+        let cv = consume_component_value lexer in
         loop (cv :: prelude)
   in
   loop []
 
-(* section 5.3.2 Consume a list of rules. [top_level] controls CDO/CDC handling:
-   at the stylesheet's top level, CDO and CDC are skipped; inside nested rule
-   lists (e.g. @media bodies) they reconsume into qualified rules. *)
-let consume_list_of_rules s ~top_level =
+(* section 5.3.2 Consume a list of rules. *)
+let consume_list_of_rules lexer ~top_level : Component.rule list =
   let rec loop acc =
-    match next s with
+    match Lexer.next lexer with
     | Token.Eof -> List.rev acc
     | Token.Whitespace -> loop acc
     | (Token.Cdo | Token.Cdc) when top_level -> loop acc
     | (Token.Cdo | Token.Cdc) as t -> (
-        reconsume s t;
-        match consume_qualified_rule s with
+        Lexer.reconsume lexer t;
+        match consume_qualified_rule lexer with
         | Some qr -> loop (Qualified qr :: acc)
         | None -> loop acc)
     | Token.At_keyword name ->
-        let ar = consume_at_rule s ~name in
+        let ar = consume_at_rule lexer ~name in
         loop (At ar :: acc)
     | t -> (
-        reconsume s t;
-        match consume_qualified_rule s with
+        Lexer.reconsume lexer t;
+        match consume_qualified_rule lexer with
         | Some qr -> loop (Qualified qr :: acc)
         | None -> loop acc)
   in
   loop []
 
-(* Given a buffered list of component values (and the ident that started the
-   declaration), parse it as a declaration per section 5.3.7. Returns None if
-   the buffer doesn't form a valid declaration header. *)
-let parse_declaration_from_buffer ~name cvs =
-  (* cvs is in order. Skip leading whitespace. *)
+(* 5.3.7 Parse a declaration from a buffered component-value list. *)
+let parse_declaration_from_buffer ~name cvs : Component.declaration option =
   let rec skip_leading_ws = function
     | Preserved Token.Whitespace :: rest -> skip_leading_ws rest
     | other -> other
   in
-  let after_name = skip_leading_ws cvs in
-  match after_name with
+  match skip_leading_ws cvs with
   | Preserved Token.Colon :: rest ->
       let value0 = skip_leading_ws rest in
-      (* Trim trailing whitespace. *)
       let rec rtrim = function
         | [] -> []
         | lst -> (
             let rev = List.rev lst in
             match rev with
-            | Preserved Token.Whitespace :: rest -> rtrim (List.rev rest)
+            | Preserved Token.Whitespace :: rest' -> rtrim (List.rev rest')
             | _ -> lst)
       in
       let value1 = rtrim value0 in
-      (* Detect and strip trailing "!important". *)
       let value, important =
         let rev = List.rev value1 in
         match rev with
@@ -271,25 +220,23 @@ let parse_declaration_from_buffer ~name cvs =
       Some { name; value; important }
   | _ -> None
 
-(* section 5.3.6 Consume a list of declarations. Invalid tokens are skipped to
-   the next <semicolon-token> or <EOF-token>. *)
-let consume_list_of_declarations s =
+(* section 5.3.6 Consume a list of declarations. *)
+let consume_list_of_declarations lexer :
+    [ `Decl of Component.declaration | `At of Component.at_rule ] list =
   let rec loop acc =
-    match next s with
+    match Lexer.next lexer with
     | Token.Eof -> List.rev acc
     | Token.Whitespace | Token.Semicolon -> loop acc
     | Token.At_keyword name ->
-        let ar = consume_at_rule s ~name in
+        let ar = consume_at_rule lexer ~name in
         loop (`At ar :: acc)
     | Token.Ident name -> (
-        (* Buffer tokens up to the next ; or EOF, then parse as a
-           declaration. *)
         let rec buffer acc =
-          match next s with
+          match Lexer.next lexer with
           | Token.Semicolon | Token.Eof -> List.rev acc
           | t ->
-              reconsume s t;
-              let cv = consume_component_value s in
+              Lexer.reconsume lexer t;
+              let cv = consume_component_value lexer in
               buffer (cv :: acc)
         in
         let body = buffer [] in
@@ -297,14 +244,13 @@ let consume_list_of_declarations s =
         | Some d -> loop (`Decl d :: acc)
         | None -> loop acc)
     | t ->
-        (* Parse error: skip to next ; or EOF. *)
-        reconsume s t;
+        Lexer.reconsume lexer t;
         let rec skip () =
-          match next s with
+          match Lexer.next lexer with
           | Token.Semicolon | Token.Eof -> ()
           | t ->
-              reconsume s t;
-              let _ = consume_component_value s in
+              Lexer.reconsume lexer t;
+              let _ = consume_component_value lexer in
               skip ()
         in
         skip ();
@@ -314,21 +260,14 @@ let consume_list_of_declarations s =
 
 (** {1 Entry points (section 5.4)} *)
 
-(** [parse_stylesheet r] parses an entire stylesheet from [r] per section 5.4.3.
-    Equivalent to [consume_list_of_rules ~top_level:true]. *)
 let parse_stylesheet r =
-  let s = of_reader r in
-  consume_list_of_rules s ~top_level:true
+  let lexer = Lexer.of_reader r in
+  consume_list_of_rules lexer ~top_level:true
 
-(** [parse_list_of_declarations r] parses the contents of a declaration block
-    per section 5.4.8. The input should be the body (without the surrounding
-    braces). *)
 let parse_list_of_declarations r =
-  let s = of_reader r in
-  consume_list_of_declarations s
+  let lexer = Lexer.of_reader r in
+  consume_list_of_declarations lexer
 
-(** [parse_list_of_rules r] is section 5.4.4; used for nested rule bodies where
-    CDO/CDC should NOT be discarded. *)
 let parse_list_of_rules r =
-  let s = of_reader r in
-  consume_list_of_rules s ~top_level:false
+  let lexer = Lexer.of_reader r in
+  consume_list_of_rules lexer ~top_level:false

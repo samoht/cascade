@@ -4787,6 +4787,8 @@ module Pp = Pp
 
 module Reader = Reader
 module Token = Token
+module Lexer = Lexer
+module Component = Component
 module Parser = Parser
 module Values = Values
 module Properties = Properties
