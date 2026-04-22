@@ -4,52 +4,68 @@
 
 open Cascade
 
+let tok k = Css.Token.synthetic k
+
+let wrap_block (node : Css.Component.block) :
+    Css.Component.block Css.Component.node =
+  { node; loc = Css.Loc.dummy }
+
+let wrap_func (node : Css.Component.func) :
+    Css.Component.func Css.Component.node =
+  { node; loc = Css.Loc.dummy }
+
 let check name cv expected =
   Alcotest.(check string) name expected (Css.Component.to_string cv)
 
 let preserved_ident () =
-  check "preserved ident" (Css.Component.Preserved (Css.Token.Ident "foo"))
-    "<ident foo>"
+  check "preserved ident"
+    (Css.Component.Preserved (tok (Css.Token.Ident "foo")))
+    "<ident foo>@[0-0]"
 
 let preserved_delim () =
-  check "preserved delim" (Css.Component.Preserved (Css.Token.Delim '+'))
-    "<delim '+'>"
+  check "preserved delim"
+    (Css.Component.Preserved (tok (Css.Token.Delim '+')))
+    "<delim '+'>@[0-0]"
 
 let block_curly () =
   check "curly block"
     (Css.Component.Block
-       {
-         opening = Css.Token.Curly;
-         value = [ Css.Component.Preserved (Css.Token.Ident "red") ];
-       })
-    "{<ident red>}"
+       (wrap_block
+          {
+            opening = Css.Token.Curly;
+            value = [ Css.Component.Preserved (tok (Css.Token.Ident "red")) ];
+          }))
+    "{<ident red>@[0-0]}"
 
 let block_paren () =
   check "paren block"
     (Css.Component.Block
-       {
-         opening = Css.Token.Paren;
-         value = [ Css.Component.Preserved (Css.Token.Ident "ok") ];
-       })
-    "(<ident ok>)"
+       (wrap_block
+          {
+            opening = Css.Token.Paren;
+            value = [ Css.Component.Preserved (tok (Css.Token.Ident "ok")) ];
+          }))
+    "(<ident ok>@[0-0])"
 
 let block_square () =
   check "square block"
     (Css.Component.Block
-       {
-         opening = Css.Token.Square;
-         value = [ Css.Component.Preserved (Css.Token.Ident "attr") ];
-       })
-    "[<ident attr>]"
+       (wrap_block
+          {
+            opening = Css.Token.Square;
+            value = [ Css.Component.Preserved (tok (Css.Token.Ident "attr")) ];
+          }))
+    "[<ident attr>@[0-0]]"
 
 let func_call () =
   check "function call"
     (Css.Component.Func
-       {
-         name = "rgb";
-         arguments = [ Css.Component.Preserved (Css.Token.Ident "x") ];
-       })
-    "rgb(<ident x>)"
+       (wrap_func
+          {
+            name = "rgb";
+            arguments = [ Css.Component.Preserved (tok (Css.Token.Ident "x")) ];
+          }))
+    "rgb(<ident x>@[0-0])"
 
 let suite =
   ( "component",

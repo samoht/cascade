@@ -40,14 +40,20 @@ val to_string : Component.t list -> string
 
 (** {1 Entry points (section 5.4)} *)
 
-val parse_stylesheet : Reader.t -> Component.rule list
+type 'a output = { value : 'a; warnings : Error.t list }
+(** Parser entry-point result: the produced AST plus any non-fatal warnings
+    collected during error recovery. The CSS spec mandates declaration- and
+    rule-level skip-on-error; the dropped material surfaces here. *)
+
+val parse_stylesheet : Reader.t -> Component.rule list output
 (** [parse_stylesheet r] runs section 5.4.3: consume a list of rules with the
     top-level flag set. CDO and CDC are skipped. *)
 
-val parse_list_of_rules : Reader.t -> Component.rule list
+val parse_list_of_rules : Reader.t -> Component.rule list output
 (** [parse_list_of_rules r] runs section 5.4.4. CDO/CDC are not discarded;
     suitable for nested rule bodies. *)
 
 val parse_list_of_declarations :
-  Reader.t -> [ `Decl of Component.declaration | `At of Component.at_rule ] list
+  Reader.t ->
+  [ `Decl of Component.declaration | `At of Component.at_rule ] list output
 (** [parse_list_of_declarations r] runs section 5.4.8. *)

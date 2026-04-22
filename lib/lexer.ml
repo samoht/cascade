@@ -470,18 +470,25 @@ let next_token r =
 
 (** {1 Stream API (uniform with other stages)} *)
 
+(* Wrap a tokenizer step with source-location capture. *)
+let tokenize_with_loc reader =
+  let start_pos = Reader.position reader in
+  let kind = next_token reader in
+  let end_pos = Reader.position reader in
+  Token.v ~kind ~loc:(Loc.v ~start_pos ~end_pos)
+
 let next t =
   match t.lookback with
   | Some tok ->
       t.lookback <- None;
       tok
-  | None -> next_token t.reader
+  | None -> tokenize_with_loc t.reader
 
 let peek t =
   match t.lookback with
   | Some tok -> tok
   | None ->
-      let tok = next_token t.reader in
+      let tok = tokenize_with_loc t.reader in
       t.lookback <- Some tok;
       tok
 

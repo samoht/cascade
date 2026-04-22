@@ -3,6 +3,9 @@
 (* Module re-exports *)
 
 module Pp = Pp
+module Loc = Loc
+module Sort = Sort
+module Error = Error
 module Reader = Reader
 module Token = Token
 module Lexer = Lexer

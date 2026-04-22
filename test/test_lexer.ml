@@ -3,15 +3,17 @@
 open Cascade
 
 let tokens_of css =
-  let r = Css.Reader.of_string css in
+  let lexer = Css.Lexer.of_string css in
   let rec loop acc =
-    match Css.Lexer.next (Css.Lexer.of_reader r) with
+    let tok = Css.Lexer.next lexer in
+    match tok.Css.Token.kind with
     | Css.Token.Eof -> List.rev acc
-    | t -> loop (t :: acc)
+    | _ -> loop (tok.Css.Token.kind :: acc)
   in
   loop []
 
-let pp_tokens toks = String.concat " " (List.map Css.Token.to_string toks)
+let pp_tokens kinds =
+  String.concat " " (List.map (Css.Pp.to_string Css.Token.pp_kind) kinds)
 
 let check input expected_summary =
   let got = pp_tokens (tokens_of input) in
