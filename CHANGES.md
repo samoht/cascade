@@ -1,3 +1,12 @@
+## 1.1.0
+
+### Fixed
+
+- Accept custom property names starting with a digit after `--` in `var()`
+  references (e.g. `var(--1A202C)`). Per CSS Syntax Level 3 §4.3.11, `--`
+  itself is a valid ident-start, and any ident code point (including digits)
+  can follow.
+
 ## 1.0.0
 
 ### Added
