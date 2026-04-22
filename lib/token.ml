@@ -1,53 +1,28 @@
-(** CSS Syntax Module Level 3 4.2/4.3: tokens and tokenization.
+(** CSS Syntax Module Level 3 section 4.2: token taxonomy.
 
-    This module defines the CSS token taxonomy and ports the tokenization
-    algorithm from https://www.w3.org/TR/css-syntax-3/#tokenization, including
-    bad-string and bad-url recovery variants. Comments are stripped during
-    tokenization and do not produce tokens.
+    Types only; the §4.3 tokenization algorithm lives in {!Lexer}. *)
 
-    The parser algorithms in {!Parser} consume this stream. *)
-
-(** {1 Token taxonomy} *)
-
-type hash_flag =
-  | Id
-      (** The hash value would start an identifier (e.g. [#abc]). Only id-flag
-          hashes are valid as ID selectors. *)
-  | Unrestricted  (** Any other hash, e.g. [#123]. *)
-
-type number_flag =
-  | Integer  (** Written as a whole number with no decimal or exponent. *)
-  | Number  (** Otherwise. *)
-
-type number = {
-  value : float;  (** The numeric value. *)
-  repr : string;  (** The original textual representation. *)
-  number_flag : number_flag;
-}
-
+type hash_flag = Id | Unrestricted
+type number_flag = Integer | Number
+type number = { value : float; repr : string; number_flag : number_flag }
 type bracket = Curly | Paren | Square
 
-type t =
+type kind =
   | Ident of string
-  | Function of string  (** Ident immediately followed by [(]. *)
-  | At_keyword of string  (** [@] followed by an ident. *)
+  | Function of string
+  | At_keyword of string
   | Hash of { value : string; hash_flag : hash_flag }
   | String of string
   | Bad_string
-      (** Unterminated string (newline or EOF before the closing quote). *)
   | Url of string
   | Bad_url
-      (** Malformed [url(...)] body (unquoted content with invalid chars). *)
   | Delim of char
-      (** Any single code point not consumed by another token rule. *)
   | Number_tok of number
   | Percentage of number
   | Dimension of { number : number; unit_ : string }
   | Whitespace
-      (** Any run of whitespace characters. Comments are skipped; they do not
-          produce tokens. *)
-  | Cdo  (** [<!--] at top level. *)
-  | Cdc  (** [-->] at top level. *)
+  | Cdo
+  | Cdc
   | Colon
   | Semicolon
   | Comma
@@ -55,7 +30,12 @@ type t =
   | Close of bracket
   | Eof
 
-let pp : t Pp.t =
+type t = { kind : kind; loc : Loc.t }
+
+let v ~kind ~loc = { kind; loc }
+let synthetic kind = { kind; loc = Loc.dummy }
+
+let pp_kind : kind Pp.t =
  fun ctx -> function
   | Ident s ->
       Pp.string ctx "<ident ";
@@ -113,5 +93,11 @@ let pp : t Pp.t =
   | Open Curly -> Pp.string ctx "<{>"
   | Close Curly -> Pp.string ctx "<}>"
   | Eof -> Pp.string ctx "<eof>"
+
+let pp : t Pp.t =
+ fun ctx { kind; loc } ->
+  pp_kind ctx kind;
+  Pp.char ctx '@';
+  Loc.pp ctx loc
 
 let to_string t = Pp.to_string pp t

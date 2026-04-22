@@ -1,35 +1,30 @@
-(** Stage 3 IR: CSS Syntax section 5.1 component values and rules.
+(** Stage 3 IR: CSS Syntax section 5.1 component values and rules. *)
 
-    A component value is the grouped output of the §5 parser. Where a {!Token.t}
-    is a flat lexer-stream atom, a {!Component.t} is either a preserved token or
-    a nested group: a balanced block ({!Block}) or a named function call
-    ({!Func}). The grammar-specific validators in {!Selector}, {!Values},
-    {!Properties}, etc. consume lists of these. *)
+type 'a node = { node : 'a; loc : Loc.t }
 
-type t =
-  | Preserved of Token.t
-      (** Any {!Token.t} except [Function], [Open _], [Close _]: passed through
-          from the lexer stream. *)
-  | Block of block
-  | Func of func
-
+type t = Preserved of Token.t | Block of block node | Func of func node
 and block = { opening : Token.bracket; value : t list }
-(** A balanced [\{...\}], [(...)] or [[...]] group (section 5.1.5). *)
-
 and func = { name : string; arguments : t list }
-(** A [name(...)] call, section 5.1.4. *)
 
-type at_rule = { name : string; prelude : t list; block : block option }
-(** An at-rule (section 5.1.7): name, prelude, optional block. *)
+type at_rule_body = {
+  name : string;
+  prelude : t list;
+  block : block node option;
+}
 
-type qualified_rule = { prelude : t list; block : block }
-(** A qualified (style) rule (section 5.1.6). *)
-
+type at_rule = at_rule_body node
+type qualified_rule_body = { prelude : t list; block : block node }
+type qualified_rule = qualified_rule_body node
 type rule = Qualified of qualified_rule | At of at_rule
+type declaration_body = { name : string; value : t list; important : bool }
+type declaration = declaration_body node
 
-type declaration = { name : string; value : t list; important : bool }
-(** A declaration extracted by section 5.3.7: name, value (with trailing
-    whitespace and [!important] marker stripped), and the flag. *)
+let source_loc : t -> Loc.t = function
+  | Preserved tok -> tok.Token.loc
+  | Block b -> b.loc
+  | Func f -> f.loc
+
+let rule_loc : rule -> Loc.t = function Qualified r -> r.loc | At r -> r.loc
 
 let opening_char : Token.bracket -> char = function
   | Curly -> '{'
@@ -45,11 +40,11 @@ let rec pp : t Pp.t =
  fun ctx cv ->
   match cv with
   | Preserved tok -> Token.pp ctx tok
-  | Block { opening; value } ->
+  | Block { node = { opening; value }; _ } ->
       Pp.char ctx (opening_char opening);
       Pp.list ~sep:Pp.sp pp ctx value;
       Pp.char ctx (closing_char opening)
-  | Func { name; arguments } ->
+  | Func { node = { name; arguments }; _ } ->
       Pp.string ctx name;
       Pp.char ctx '(';
       Pp.list ~sep:Pp.sp pp ctx arguments;

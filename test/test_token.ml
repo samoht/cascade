@@ -1,11 +1,13 @@
 (** Token type module tests. The Token module is pure data: these tests exercise
-    [pp] / [to_string] for the variants. End-to-end tokenization is tested in
-    test_lexer.ml. *)
+    [pp_kind] for the payload variants. End-to-end tokenization (with source
+    locations) is tested in test_lexer.ml. *)
 
 open Cascade
 
-let check name tok expected =
-  Alcotest.(check string) name expected (Css.Token.to_string tok)
+let check name kind expected =
+  Alcotest.(check string)
+    name expected
+    (Css.Pp.to_string Css.Token.pp_kind kind)
 
 let idents () = check "ident" (Css.Token.Ident "foo") "<ident foo>"
 

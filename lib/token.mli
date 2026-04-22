@@ -1,13 +1,7 @@
-(** CSS Syntax Module Level 3 section 4: tokens and tokenization.
+(** CSS Syntax Module Level 3 section 4.2: token taxonomy.
 
-    Defines the CSS token taxonomy (section 4.2) and tokenizes a character
-    stream from a {!Reader.t} into tokens (section 4.3). Comments are stripped
-    during tokenization and do not produce tokens.
-
-    The parser algorithms in {!Parser} consume the token stream produced by
-    {!next}. *)
-
-(** {1 Token taxonomy} *)
+    Types only; the §4.3 tokenization algorithm lives in {!Lexer}. Every token
+    carries the source {!Loc.t} it was read from. *)
 
 (** Whether a {!Hash} starts an identifier ([#abc]) or is unrestricted ([#123]).
     Only id-flag hashes are valid as ID selectors. *)
@@ -17,8 +11,8 @@ type hash_flag = Id | Unrestricted
 type number_flag = Integer | Number
 
 type number = { value : float; repr : string; number_flag : number_flag }
-(** The parsed value, the original textual representation, and the
-    integer-vs-number flag for a numeric token payload. *)
+(** The parsed numeric value, its original textual representation, and the
+    integer-vs-number flag. *)
 
 (** The three kinds of balanced bracket character used in CSS blocks. *)
 type bracket =
@@ -26,8 +20,8 @@ type bracket =
   | Paren  (** [( ... )] *)
   | Square  (** [[ ... ]] *)
 
-(** A CSS token, one variant per terminal defined in CSS Syntax section 4.2. *)
-type t =
+(** Token payload: the §4.2 variants without the location wrapper. *)
+type kind =
   | Ident of string
   | Function of string  (** Ident immediately followed by [(]. *)
   | At_keyword of string  (** [@] followed by an ident. *)
@@ -53,9 +47,20 @@ type t =
   | Close of bracket  (** Closing bracket of a balanced group. *)
   | Eof
 
+type t = { kind : kind; loc : Loc.t }
+(** A located token: the §4.2 payload plus the source range it covers. *)
+
+val v : kind:kind -> loc:Loc.t -> t
+(** [v ~kind ~loc] is a token with the given payload and location. *)
+
+val synthetic : kind -> t
+(** [synthetic k] is a token with payload [k] and {!Loc.dummy} — for test
+    fixtures and synthetic values that don't come from a real input. *)
+
+val pp_kind : kind Pp.t
+(** [pp_kind] renders just the payload, e.g. [<ident foo>]. *)
+
 val pp : t Pp.t
-(** [pp] pretty-prints a token for debugging, e.g. [<ident foo>], [<number 10>].
-*)
+(** [pp] renders a located token, e.g. [<ident foo>@[3-6\]]. *)
 
 val to_string : t -> string
-(** [to_string t] is the string rendering of {!pp}. *)

@@ -6,8 +6,14 @@ open Cascade
    readable. *)
 
 let pv t = Css.Component.Preserved t
-let block op vs = Css.Component.Block { opening = op; value = vs }
-let func name args = Css.Component.Func { name; arguments = args }
+
+let block op vs : Css.Component.t =
+  let body : Css.Component.block = { opening = op; value = vs } in
+  Css.Component.Block { node = body; loc = Css.Loc.dummy }
+
+let func name args : Css.Component.t =
+  let body : Css.Component.func = { name; arguments = args } in
+  Css.Component.Func { node = body; loc = Css.Loc.dummy }
 
 (* Pretty-print a component value for assertion diffing. *)
 
@@ -15,7 +21,7 @@ let rec pp_cv : Css.Component.t Css.Pp.t =
  fun ctx cv ->
   match cv with
   | Css.Component.Preserved t -> Css.Token.pp ctx t
-  | Css.Component.Block { opening; value } ->
+  | Css.Component.Block { node = { opening; value }; _ } ->
       let open_c, close_c =
         match opening with
         | Css.Token.Curly -> ('{', '}')
@@ -25,7 +31,7 @@ let rec pp_cv : Css.Component.t Css.Pp.t =
       Css.Pp.char ctx open_c;
       Css.Pp.list ~sep:Css.Pp.sp pp_cv ctx value;
       Css.Pp.char ctx close_c
-  | Css.Component.Func { name; arguments } ->
+  | Css.Component.Func { node = { name; arguments }; _ } ->
       Css.Pp.string ctx name;
       Css.Pp.char ctx '(';
       Css.Pp.list ~sep:Css.Pp.sp pp_cv ctx arguments;
@@ -35,13 +41,14 @@ let pp_cvs ctx cvs = Css.Pp.list ~sep:Css.Pp.sp pp_cv ctx cvs
 
 let pp_rule : Css.Component.rule Css.Pp.t =
  fun ctx -> function
-  | Css.Component.Qualified { prelude; block = { opening = _; value } } ->
+  | Css.Component.Qualified
+      { node = { prelude; block = { node = { opening = _; value }; _ } }; _ } ->
       Css.Pp.string ctx "qualified{prelude=";
       pp_cvs ctx prelude;
       Css.Pp.string ctx "; block=";
       pp_cvs ctx value;
       Css.Pp.char ctx '}'
-  | Css.Component.At { name; prelude; block } ->
+  | Css.Component.At { node = { name; prelude; block }; _ } ->
       Css.Pp.string ctx "at[";
       Css.Pp.string ctx name;
       Css.Pp.string ctx "]{prelude=";
@@ -49,14 +56,14 @@ let pp_rule : Css.Component.rule Css.Pp.t =
       Css.Pp.string ctx "; block=";
       (match block with
       | None -> Css.Pp.string ctx "<none>"
-      | Some { value; _ } -> pp_cvs ctx value);
+      | Some { node = { value; _ }; _ } -> pp_cvs ctx value);
       Css.Pp.char ctx '}'
 
 let pp_rules ctx rules = Css.Pp.list ~sep:Css.Pp.sp pp_rule ctx rules
 
 let parse_ss css =
   let r = Css.Reader.of_string css in
-  Css.Parser.parse_stylesheet r
+  (Css.Parser.parse_stylesheet r).value
 
 (* ----- Basic shape tests ----- *)
 
@@ -64,7 +71,10 @@ let simple_rule () =
   let rs = parse_ss ".a { color: red }" in
   Alcotest.(check int) "one rule" 1 (List.length rs);
   match rs with
-  | [ Css.Component.Qualified { prelude = _; block = { value; _ } } ] ->
+  | [
+   Css.Component.Qualified
+     { node = { prelude = _; block = { node = { value; _ }; _ } }; _ };
+  ] ->
       (* block contains: ws, ident color, colon, ws, ident red, ws *)
       Alcotest.(check bool) "block non-empty" true (value <> [])
   | _ -> Alcotest.fail "expected one qualified rule"
@@ -76,14 +86,14 @@ let multiple_rules () =
 let at_rule_with_block () =
   let rs = parse_ss "@media screen { .btn { color: red } }" in
   match rs with
-  | [ Css.Component.At { name; block = Some _; _ } ] ->
+  | [ Css.Component.At { node = { name; block = Some _; _ }; _ } ] ->
       Alcotest.(check string) "name" "media" name
   | _ -> Alcotest.fail "expected one @media at-rule with block"
 
 let at_rule_semi_terminated () =
   let rs = parse_ss "@charset \"utf-8\";" in
   match rs with
-  | [ Css.Component.At { name; block = None; _ } ] ->
+  | [ Css.Component.At { node = { name; block = None; _ }; _ } ] ->
       Alcotest.(check string) "name" "charset" name
   | _ -> Alcotest.fail "expected @charset without block"
 
@@ -103,11 +113,13 @@ let unterminated_qualified_rule_dropped () =
 let component_value_block () =
   let rs = parse_ss "@x (a b c);" in
   match rs with
-  | [ Css.Component.At { prelude; _ } ] ->
+  | [ Css.Component.At { node = { prelude; _ }; _ } ] ->
       let has_paren =
         List.exists
           (function
-            | Css.Component.Block { opening = Css.Token.Paren; _ } -> true
+            | Css.Component.Block { node = { opening = Css.Token.Paren; _ }; _ }
+              ->
+                true
             | _ -> false)
           prelude
       in
@@ -117,11 +129,12 @@ let component_value_block () =
 let component_value_function () =
   let rs = parse_ss "@x rgb(1, 2, 3);" in
   match rs with
-  | [ Css.Component.At { prelude; _ } ] ->
+  | [ Css.Component.At { node = { prelude; _ }; _ } ] ->
       let has_func =
         List.exists
           (function
-            | Css.Component.Func { name = "rgb"; _ } -> true | _ -> false)
+            | Css.Component.Func { node = { name = "rgb"; _ }; _ } -> true
+            | _ -> false)
           prelude
       in
       Alcotest.(check bool) "prelude contains rgb(...)" true has_func
@@ -131,18 +144,18 @@ let component_value_function () =
 
 let parse_decls input =
   let r = Css.Reader.of_string input in
-  Css.Parser.parse_list_of_declarations r
+  (Css.Parser.parse_list_of_declarations r).value
 
 let basic_declaration () =
   match parse_decls "color: red" with
-  | [ `Decl { name; value = _; important } ] ->
+  | [ `Decl { node = { name; value = _; important }; _ } ] ->
       Alcotest.(check string) "name" "color" name;
       Alcotest.(check bool) "not important" false important
   | _ -> Alcotest.fail "expected one declaration"
 
 let declaration_important () =
   match parse_decls "color: red !important" with
-  | [ `Decl { name; important; _ } ] ->
+  | [ `Decl { node = { name; important; _ }; _ } ] ->
       Alcotest.(check string) "name" "color" name;
       Alcotest.(check bool) "important" true important
   | _ -> Alcotest.fail "expected one important declaration"
@@ -156,7 +169,8 @@ let declaration_missing_colon_dropped () =
   let ds = parse_decls "color red; width: 10px" in
   Alcotest.(check int) "one declaration" 1 (List.length ds);
   match ds with
-  | [ `Decl { name; _ } ] -> Alcotest.(check string) "survivor" "width" name
+  | [ `Decl { node = { name; _ }; _ } ] ->
+      Alcotest.(check string) "survivor" "width" name
   | _ -> Alcotest.fail "expected 1 decl"
 
 let declaration_bad_token_dropped () =
@@ -164,8 +178,42 @@ let declaration_bad_token_dropped () =
   let ds = parse_decls ": red; color: blue" in
   Alcotest.(check int) "one declaration" 1 (List.length ds);
   match ds with
-  | [ `Decl { name; _ } ] -> Alcotest.(check string) "survivor" "color" name
+  | [ `Decl { node = { name; _ }; _ } ] ->
+      Alcotest.(check string) "survivor" "color" name
   | _ -> Alcotest.fail "expected 1 decl"
+
+(* ----- Warnings (Error.t emitted during recovery) ----- *)
+
+let unterminated_rule_warns () =
+  let r = Css.Reader.of_string "h1" in
+  let out = Css.Parser.parse_stylesheet r in
+  Alcotest.(check int) "no rules" 0 (List.length out.value);
+  Alcotest.(check int) "one warning" 1 (List.length out.warnings);
+  match out.warnings with
+  | [ { sort = Css.Sort.Qualified_rule; kind = Css.Error.Unterminated _; _ } ]
+    ->
+      ()
+  | _ -> Alcotest.fail "expected an Unterminated qualified-rule warning"
+
+let missing_colon_warns () =
+  let r = Css.Reader.of_string "color red" in
+  let out = Css.Parser.parse_list_of_declarations r in
+  Alcotest.(check int) "no decls" 0 (List.length out.value);
+  match out.warnings with
+  | [ { sort = Css.Sort.Declaration; kind = Css.Error.Missing_token "':'"; _ } ]
+    ->
+      ()
+  | _ -> Alcotest.fail "expected a Missing_token ':' warning"
+
+let unexpected_token_warns () =
+  let r = Css.Reader.of_string ": red; color: blue" in
+  let out = Css.Parser.parse_list_of_declarations r in
+  Alcotest.(check int) "one survivor" 1 (List.length out.value);
+  match out.warnings with
+  | [ { sort = Css.Sort.Declaration; kind = Css.Error.Unexpected_token _; _ } ]
+    ->
+      ()
+  | _ -> Alcotest.fail "expected an Unexpected_token warning"
 
 let declaration_at_rule_mixed () =
   (* 5.3.6 permits at-rules in declaration lists. *)
@@ -201,6 +249,11 @@ let suite =
         declaration_missing_colon_dropped;
       Alcotest.test_case "declaration bad token dropped" `Quick
         declaration_bad_token_dropped;
+      Alcotest.test_case "warning: unterminated qualified rule" `Quick
+        unterminated_rule_warns;
+      Alcotest.test_case "warning: missing colon" `Quick missing_colon_warns;
+      Alcotest.test_case "warning: unexpected token" `Quick
+        unexpected_token_warns;
       Alcotest.test_case "declaration at-rule in list" `Quick
         declaration_at_rule_mixed;
     ] )
