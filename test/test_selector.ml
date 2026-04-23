@@ -8,8 +8,8 @@ let check_nth = check_value "nth" read_nth pp_nth
 let check_combinator = check_value "combinator" read_combinator pp_combinator
 let check = check_value "selector" read pp
 let check_ns = check_value "ns" read_ns (Css.Pp.option pp_ns)
-let check_aria_attr = check_value "aria_attr" read_aria_attr pp_aria_attr
-let check_attr_name = check_value "attr_name" read_attr_name pp_attr_name
+let check_aria_attr = check_value_cursor "aria_attr" read_aria_attr pp_aria_attr
+let check_attr_name = check_value_cursor "attr_name" read_attr_name pp_attr_name
 
 (* Helper for checking invalid selectors *)
 let check_invalid name exn_msg f =
@@ -1071,7 +1071,7 @@ let test_aria_attr () =
   check_aria_attr "aria-required";
   check_aria_attr "aria-selected";
   check_aria_attr "aria-custom";
-  neg read_aria_attr "not-aria"
+  neg_cursor read_aria_attr "not-aria"
 
 let test_attr_name () =
   check_attr_name "aria-busy";
