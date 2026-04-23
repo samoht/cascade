@@ -75,13 +75,13 @@ val nested : rule -> statement list
 
 (** {1 Reading/Parsing} *)
 
-val read_rule : Reader.t -> rule
+val read_rule : Cursor.t -> rule
 (** [read_rule r] reads a CSS rule from the reader. *)
 
-val read_block : Reader.t -> block
+val read_block : Cursor.t -> block
 (** [read_block r] reads a CSS block from the reader. *)
 
-val read_stylesheet : Reader.t -> stylesheet
+val read_stylesheet : Cursor.t -> stylesheet
 (** [read_stylesheet r] reads a complete CSS stylesheet from the reader. *)
 
 (** {1 Pretty Printing} *)
@@ -150,17 +150,17 @@ val container_queries : t -> (string option * Container.t * rule list) list
 
 (** {1 Parsing and Pretty-printing} *)
 
-val read : Reader.t -> t
+val read : Cursor.t -> t
 (** [read r] parses a stylesheet from the reader. *)
 
 val pp_import_rule : import_rule Pp.t
 (** [pp_import_rule] pretty-prints an import rule. *)
 
-val read_import_rule : Reader.t -> import_rule
+val read_import_rule : Cursor.t -> import_rule
 (** [read_import_rule r] parses an import rule. *)
 
 val pp_config : config Pp.t
 (** [pp_config] pretty-prints a config. *)
 
-val read_config : Reader.t -> config
+val read_config : Cursor.t -> config
 (** [read_config r] parses a config. *)

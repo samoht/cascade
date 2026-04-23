@@ -5,13 +5,15 @@ module Selector = Css.Selector
 open Css.Stylesheet
 open Css_test_helpers
 
-let check_rule = check_value "rule" read_rule pp_rule
+let check_rule = check_value_cursor "rule" read_rule pp_rule
 
 let check_import_rule =
-  check_value "import_rule" read_import_rule pp_import_rule
+  check_value_cursor "import_rule" read_import_rule pp_import_rule
 
-let check_config = check_value "config" read_config pp_config
-let check_stylesheet = check_value "stylesheet" read_stylesheet pp_stylesheet
+let check_config = check_value_cursor "config" read_config pp_config
+
+let check_stylesheet =
+  check_value_cursor "stylesheet" read_stylesheet pp_stylesheet
 
 (* Legacy alias *)
 let check = check_stylesheet
@@ -35,15 +37,15 @@ let test_rule () =
   check_rule ~expected:"*{box-sizing:border-box}" "* { box-sizing: border-box }";
 
   (* Test invalid rule syntax *)
-  neg read_stylesheet "{color:red}";
+  neg_cursor read_stylesheet "{color:red}";
   (* Missing selector *)
-  neg read_stylesheet ".btn";
+  neg_cursor read_stylesheet ".btn";
   (* Missing declarations *)
-  neg read_stylesheet ".btn{";
+  neg_cursor read_stylesheet ".btn{";
   (* Unclosed brace *)
-  neg read_stylesheet ".btn{color}";
+  neg_cursor read_stylesheet ".btn{color}";
   (* Missing value *)
-  neg read_rule "" (* Empty rule *)
+  neg_cursor read_rule "" (* Empty rule *)
 
 let test_stylesheet () =
   (* Test basic stylesheet parsing *)
@@ -88,20 +90,20 @@ let test_stylesheet () =
   check_stylesheet ~expected:".test{color:red}" ".test { color: red }";
 
   (* Test invalid stylesheet syntax *)
-  neg read_stylesheet "@invalid-rule { }";
+  neg_cursor read_stylesheet "@invalid-rule { }";
   (* Unknown at-rule *)
-  neg read_stylesheet ".btn { invalid-property: value }";
+  neg_cursor read_stylesheet ".btn { invalid-property: value }";
   (* Invalid property *)
-  neg read_stylesheet "@media { }";
+  neg_cursor read_stylesheet "@media { }";
   (* Media without condition *)
-  neg read_stylesheet "@charset 'UTF-8'" (* Wrong charset quotes *)
+  neg_cursor read_stylesheet "@charset 'UTF-8'" (* Wrong charset quotes *)
 
 let of_string css =
   try
-    let r = Css.Reader.of_string css in
+    let r = Css.Cursor.of_string css in
     Ok (read_stylesheet r)
     (* Internal API *)
-  with Css.Reader.Parse_error _ -> Error "boom"
+  with Css.Cursor.Parse_error _ -> Error "boom"
 
 let string_of_stylesheet s = Css.Stylesheet.pp ~minify:true ~newline:false s
 
@@ -407,11 +409,11 @@ let test_property_permutations () =
 
 (** Negative helper for [@property] parsing errors *)
 let expect_property_error name input =
-  let r = Css.Reader.of_string input in
+  let r = Css.Cursor.of_string input in
   try
     let _ = read_stylesheet r in
     Alcotest.failf "%s: expected parse error" name
-  with Css.Reader.Parse_error _ -> ()
+  with Css.Cursor.Parse_error _ -> ()
 
 (* Not a roundtrip test *)
 let test_property_missing_descriptors () =
@@ -573,7 +575,7 @@ let ordering () =
 (* Not a roundtrip test *)
 let test_read_stylesheet_basic () =
   let css = ".btn { color: red; padding: 10px; }" in
-  let reader = Css.Reader.of_string css in
+  let reader = Css.Cursor.of_string css in
   let sheet = read_stylesheet reader in
   let rules = rules sheet in
   Alcotest.(check int) "has one rule" 1 (List.length rules);
@@ -584,7 +586,7 @@ let test_read_stylesheet_basic () =
 (* Not a roundtrip test *)
 let test_read_stylesheet_multiple_rules () =
   let css = ".btn { color: red; } .card { margin: 5px; }" in
-  let reader = Css.Reader.of_string css in
+  let reader = Css.Cursor.of_string css in
   let sheet = read_stylesheet reader in
   let rules = rules sheet in
   Alcotest.(check int) "has two rules" 2 (List.length rules)
@@ -592,7 +594,7 @@ let test_read_stylesheet_multiple_rules () =
 (* Not a roundtrip test *)
 let test_read_stylesheet_empty () =
   let css = "" in
-  let reader = Css.Reader.of_string css in
+  let reader = Css.Cursor.of_string css in
   let sheet = read_stylesheet reader in
   let rules = rules sheet in
   Alcotest.(check int) "empty stylesheet has no rules" 0 (List.length rules)
@@ -600,7 +602,7 @@ let test_read_stylesheet_empty () =
 (* Not a roundtrip test *)
 let test_read_stylesheet_whitespace_only () =
   let css = "   \n\t  " in
-  let reader = Css.Reader.of_string css in
+  let reader = Css.Cursor.of_string css in
   let sheet = read_stylesheet reader in
   let rules = rules sheet in
   Alcotest.(check int)
@@ -609,7 +611,7 @@ let test_read_stylesheet_whitespace_only () =
 (* Not a roundtrip test *)
 let test_read_stylesheet_with_comments () =
   let css = "/* comment */ .btn { color: red; } /* another comment */" in
-  let reader = Css.Reader.of_string css in
+  let reader = Css.Cursor.of_string css in
   let sheet = read_stylesheet reader in
   let rules = rules sheet in
   Alcotest.(check int) "has one rule despite comments" 1 (List.length rules)
@@ -622,12 +624,12 @@ let test_read_stylesheet_error_recovery () =
      handling. *)
   let css = ".btn { color: red; } { margin: 5px; }" in
   (* Missing selector before { *)
-  let reader = Css.Reader.of_string css in
+  let reader = Css.Cursor.of_string css in
   (* Should fail on invalid CSS without recovery *)
   try
     let _sheet = read_stylesheet reader in
     Alcotest.fail "Expected parsing to fail on invalid CSS"
-  with Css.Reader.Parse_error _ ->
+  with Css.Cursor.Parse_error _ ->
     (* This is expected - parsing should fail *)
     ()
 
@@ -874,13 +876,13 @@ let test_import_rule () =
     "@import url('styles.css') screen;";
 
   (* Test invalid import rules *)
-  neg read_import_rule "@import";
+  neg_cursor read_import_rule "@import";
   (* Missing URL *)
-  neg read_import_rule "@import test.css";
+  neg_cursor read_import_rule "@import test.css";
   (* Missing quotes *)
-  neg read_import_rule "import 'test.css'";
+  neg_cursor read_import_rule "import 'test.css'";
   (* Missing @ *)
-  neg read_import_rule "@import 'test.css" (* Unclosed quote *)
+  neg_cursor read_import_rule "@import 'test.css" (* Unclosed quote *)
 
 let test_config () =
   (* Test config parsing - configs are rendering configuration objects, not CSS
@@ -893,7 +895,7 @@ let test_config () =
     ~expected:
       "{ minify = false; mode = Variables; optimize = true; newline = false }"
     "{ minify = false; mode = Variables; optimize = true; newline = false }";
-  neg read_config "@import"
+  neg_cursor read_config "@import"
 (* Incomplete import *)
 
 (* Not a roundtrip test *)
@@ -959,11 +961,11 @@ let test_nested_rules () =
 
 (** Negative tests for invalid CSS *)
 let expect_parse_error input =
-  let r = Css.Reader.of_string input in
+  let r = Css.Cursor.of_string input in
   try
     let _ = read_stylesheet r in
     Alcotest.failf "Expected parse error for: %s" input
-  with Css.Reader.Parse_error _ -> ()
+  with Css.Cursor.Parse_error _ -> ()
 
 (* Not a roundtrip test *)
 let test_invalid_selectors () =
@@ -1007,7 +1009,7 @@ let test_invalid_functions () =
 (* Not a roundtrip test *)
 let test_layer_roundtrip () =
   let test_css ~expected input =
-    let r = Css.Reader.of_string input in
+    let r = Css.Cursor.of_string input in
     try
       let stylesheet = Css.Stylesheet.read r in
       let roundtrip =
@@ -1016,8 +1018,8 @@ let test_layer_roundtrip () =
       Alcotest.(check string)
         ("layer roundtrip for " ^ input)
         expected roundtrip
-    with Css.Reader.Parse_error err ->
-      Alcotest.fail ("Failed to parse " ^ input ^ ": " ^ Css.pp_parse_error err)
+    with Css.Cursor.Parse_error err ->
+      Alcotest.fail ("Failed to parse " ^ input ^ ": " ^ Css.Error.to_string err)
   in
   (* Layer statement form should roundtrip as-is *)
   test_css ~expected:"@layer components,utilities;"
@@ -1030,7 +1032,7 @@ let test_layer_roundtrip () =
 
 (** Helper: parse CSS, print minified, compare to expected *)
 let test_nesting_roundtrip ~expected input =
-  let r = Css.Reader.of_string input in
+  let r = Css.Cursor.of_string input in
   try
     let stylesheet = Css.Stylesheet.read r in
     let roundtrip =
@@ -1039,24 +1041,24 @@ let test_nesting_roundtrip ~expected input =
     Alcotest.(check string)
       ("nesting roundtrip for " ^ input)
       expected roundtrip
-  with Css.Reader.Parse_error err ->
-    Alcotest.fail ("Failed to parse " ^ input ^ ": " ^ Css.pp_parse_error err)
+  with Css.Cursor.Parse_error err ->
+    Alcotest.fail ("Failed to parse " ^ input ^ ": " ^ Css.Error.to_string err)
 
 (** Helper: parse CSS, print minified, parse again, print again -- verify
     idempotent *)
 let test_nesting_idempotent input =
-  let r = Css.Reader.of_string input in
+  let r = Css.Cursor.of_string input in
   try
     let sheet1 = Css.Stylesheet.read r in
     let printed1 = String.trim (Css.Stylesheet.to_string ~minify:true sheet1) in
-    let r2 = Css.Reader.of_string printed1 in
+    let r2 = Css.Cursor.of_string printed1 in
     let sheet2 = Css.Stylesheet.read r2 in
     let printed2 = String.trim (Css.Stylesheet.to_string ~minify:true sheet2) in
     Alcotest.(check string)
       ("nesting idempotent for " ^ input)
       printed1 printed2
-  with Css.Reader.Parse_error err ->
-    Alcotest.fail ("Failed to parse " ^ input ^ ": " ^ Css.pp_parse_error err)
+  with Css.Cursor.Parse_error err ->
+    Alcotest.fail ("Failed to parse " ^ input ^ ": " ^ Css.Error.to_string err)
 
 (* ignore-test *)
 let test_nesting_basic () =

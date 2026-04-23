@@ -7,10 +7,11 @@ open Css_test_helpers
 
 (* One-liyesner check functions for each type *)
 let check_declaration =
-  check_value "declaration" read_declaration (Css.Pp.option pp_declaration)
+  check_value_cursor "declaration" read_declaration
+    (Css.Pp.option pp_declaration)
 
 let check_declarations input expected_count =
-  let r = Css.Reader.of_string input in
+  let r = Css.Cursor.of_string input in
   let decls = read_declarations r in
   check int
     (Fmt.str "declarations count %s" input)
@@ -18,7 +19,7 @@ let check_declarations input expected_count =
   decls
 
 let check_block input expected_count =
-  let r = Css.Reader.of_string input in
+  let r = Css.Cursor.of_string input in
   let decls = read_block r in
   check int (Fmt.str "block count %s" input) expected_count (List.length decls);
   decls
@@ -161,18 +162,18 @@ let missing_semicolon () =
     "width: calc(100% - 10px)"
 
 let empty_input () =
-  let r = Css.Reader.of_string "" in
+  let r = Css.Cursor.of_string "" in
   let decls = read_declarations r in
   check int "empty input" 0 (List.length decls);
 
-  let r = Css.Reader.of_string "   " in
+  let r = Css.Cursor.of_string "   " in
   let decls = read_declarations r in
   check int "whitespace only" 0 (List.length decls)
 
 let property_name () =
   (* Test read_property_name directly *)
   let test_prop_name input expected =
-    let r = Css.Reader.of_string input in
+    let r = Css.Cursor.of_string input in
     let name = read_property_name r in
     check string (Fmt.str "property name %s" input) expected (String.trim name)
   in
@@ -186,7 +187,7 @@ let property_name () =
 let property_value () =
   (* Test read_property_value directly *)
   let test_prop_value input expected =
-    let r = Css.Reader.of_string input in
+    let r = Css.Cursor.of_string input in
     let value = read_property_value r in
     check string (Fmt.str "property value %s" input) expected value
   in
@@ -217,7 +218,7 @@ let roundtrip () =
 
 let error_missing_colon () =
   let css = "color red;" in
-  let r = Css.Reader.of_string css in
+  let r = Css.Cursor.of_string css in
   check_raises "missing colon"
     (Css.Reader.Parse_error
        {
@@ -233,7 +234,7 @@ let error_missing_colon () =
 
 let error_stray_semicolon () =
   let css = "; color: red;" in
-  let r = Css.Reader.of_string css in
+  let r = Css.Cursor.of_string css in
   check_raises "stray semicolon"
     (Css.Reader.Parse_error
        {
@@ -249,7 +250,7 @@ let error_stray_semicolon () =
 
 let error_unclosed_block () =
   let css = "{ color: red;" in
-  let r = Css.Reader.of_string css in
+  let r = Css.Cursor.of_string css in
   check_raises "missing closing brace"
     (Css.Reader.Parse_error
        {
@@ -839,22 +840,22 @@ let important () =
   (* Multiple spaces should be valid *)
   check_declaration ~expected:"color:blue!important" "color: blue !   important";
   (* Invalid/dangling/duplicate !important should be rejected *)
-  none read_declaration "color: red !;";
-  none read_declaration "color: red !notimportant;";
-  none read_declaration "color: red !important !important;";
-  none read_declaration "color: red !importent;";
+  none_cursor read_declaration "color: red !;";
+  none_cursor read_declaration "color: red !notimportant;";
+  none_cursor read_declaration "color: red !important !important;";
+  none_cursor read_declaration "color: red !importent;";
   check_declaration ~expected:"color:red!important" "color: red! important";
   (* Valid per CSS spec *)
-  none read_declaration "color: red !IMPORTANT!;"
+  none_cursor read_declaration "color: red !IMPORTANT!;"
 
 let invalid () =
-  let neg = none read_declaration in
+  let neg = none_cursor read_declaration in
   (* Invalid property names *)
   neg "not-a-property: value";
   neg "123invalid: value";
   neg ": value";
   (* Invalid values for known properties *)
-  none read_declaration "color: not-a-color";
+  none_cursor read_declaration "color: not-a-color";
   neg "display: not-a-display";
   neg "position: nowhere";
   neg "width: invalid";
@@ -930,7 +931,7 @@ let number_formats () =
 
 let unterminated () =
   (* Use common helper for consistency *)
-  let neg = none read_declaration in
+  let neg = none_cursor read_declaration in
   (* Unterminated string *)
   neg "content: \"abc";
   (* Unterminated calc *)
@@ -938,7 +939,8 @@ let unterminated () =
   (* Unterminated rgb() *)
   neg "color: rgb(0, 0, 0;";
   (* Missing semicolon between decls in block *)
-  Css_test_helpers.neg Css.Declaration.read_block "{ color:red margin:10px; }"
+  Css_test_helpers.neg_cursor Css.Declaration.read_block
+    "{ color:red margin:10px; }"
 
 let custom_property_values () =
   (* Balanced braces in custom property values *)
@@ -1003,20 +1005,20 @@ let test_declaration () =
   check_declaration "-moz-appearance:none";
 
   (* Test invalid declarations using none *)
-  none read_declaration "color red";
+  none_cursor read_declaration "color red";
   (* Missing colon *)
-  none read_declaration "color:";
+  none_cursor read_declaration "color:";
   (* Missing value *)
-  none read_declaration ":red";
+  none_cursor read_declaration ":red";
   (* Missing property *)
-  none read_declaration "123invalid:value";
+  none_cursor read_declaration "123invalid:value";
   (* Invalid property name *)
-  none read_declaration "color:not-a-color";
+  none_cursor read_declaration "color:not-a-color";
 
   (* Invalid value *)
 
   (* Duplicate !important should fail *)
-  neg read_declaration "color: red blue !important !important"
+  neg_cursor read_declaration "color: red blue !important !important"
 
 let declaration_tests =
   [

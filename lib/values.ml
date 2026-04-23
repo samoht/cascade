@@ -990,86 +990,61 @@ module Calc = struct
   let parens inner = Parens inner
 end
 
-(** Read raw fallback content as a string, handling nested parentheses *)
+(** Read raw fallback content as a string. In a component stream, parens are
+    already balanced by the parser; drain the remaining components and serialize
+    them back to source text. *)
 let read_raw_fallback_content t =
-  let buf = Buffer.create 32 in
-  let rec loop depth =
-    match Reader.peek t with
-    | Some ')' when depth = 0 -> Buffer.contents buf
-    | Some ')' ->
-        Buffer.add_char buf ')';
-        Reader.skip t;
-        loop (depth - 1)
-    | Some '(' ->
-        Buffer.add_char buf '(';
-        Reader.skip t;
-        loop (depth + 1)
-    | Some c ->
-        Buffer.add_char buf c;
-        Reader.skip t;
-        loop depth
-    | None -> Reader.err t "unexpected end of input in var() fallback"
+  let rec drain acc =
+    match Cursor.next_raw t with
+    | None -> List.rev acc
+    | Some cv -> drain (cv :: acc)
   in
-  loop 0
+  Parser.to_string (drain [])
 
-(** var() parser after "var" ident has been consumed *)
-let read_var_after_ident : type a. (Reader.t -> a) -> Reader.t -> a var =
+(** Read the body of a var(name[, fallback]) call, given a cursor over the
+    function arguments. *)
+let read_var_body : type a. (Cursor.t -> a) -> Cursor.t -> a var =
  fun read_value t ->
-  Reader.expect '(' t;
-  Reader.ws t;
+  Cursor.ws t;
+  let name = Cursor.ident ~keep_case:true t in
+  (* Strip the leading [--] from the dashed-ident per css-variables-1. *)
   let var_name =
-    if Reader.looking_at t "--" then
-      (* Parse the full dashed-ident (-- plus the rest) and strip the leading
-         --. Reader.ident accepts -- as a valid start, and any ident-code-point
-         (including digits) afterwards, so this correctly handles names like
-         --1A202C that start with a digit after the two dashes. *)
-      let full = Reader.ident ~keep_case:true t in
-      String.sub full 2 (String.length full - 2)
-    else Reader.ident ~keep_case:true t
+    if String.length name >= 2 && name.[0] = '-' && name.[1] = '-' then
+      String.sub name 2 (String.length name - 2)
+    else name
   in
-  Reader.ws t;
+  Cursor.ws t;
   let fallback : _ fallback =
-    match
-      Reader.option
-        (fun t ->
-          Reader.comma t;
-          Reader.ws t;
-          (* Check if we have an empty fallback (nothing before ')') *)
-          if Reader.peek t = Some ')' then Empty
-          else
-            (* Try to parse the fallback using the typed parser first. If that
-               fails, fall back to raw string parsing. *)
-            match Reader.try_parse_err read_value t with
-            | Ok fallback_value -> Fallback fallback_value
-            | Error _ ->
-                (* Typed parsing failed - read as raw string *)
-                let raw = read_raw_fallback_content t in
-                Raw_fallback (String.trim raw))
-        t
-    with
-    | Some fb -> fb
-    | None -> None
+    if not (Cursor.comma_opt t) then None
+    else (
+      Cursor.ws t;
+      if Cursor.is_done t then Empty
+      else
+        match Cursor.try_parse_err read_value t with
+        | Ok fb when Cursor.is_done t -> Fallback fb
+        | _ ->
+            let raw = read_raw_fallback_content t in
+            Raw_fallback (String.trim raw))
   in
-  Reader.ws t;
-  Reader.expect ')' t;
   var_ref ~fallback var_name
 
-(** Generic var() parser that returns a var reference. This works when called
-    from enum_calls/enum_or_calls context where "var" has been consumed and
-    we're inside parens *)
-let read_var : type a. (Reader.t -> a) -> Reader.t -> a var =
+(** Generic [var(...)] parser. Consumes the [var(...)] [Func] and applies
+    [read_value] to the fallback, if any. *)
+let read_var : type a. (Cursor.t -> a) -> Cursor.t -> a var =
  fun read_value t ->
-  Reader.ws t;
-  Reader.expect_string "var" t;
-  read_var_after_ident read_value t
+  Cursor.call "var" t (fun inner -> read_var_body read_value inner)
+
+(** [read_var] consumes the [var(...)] [Func]; this alias matches the pre-port
+    entry point and is kept so call sites stay source-compatible. *)
+let read_var_after_ident = read_var
 
 let read_length_unit ?(allow_negative = true) t =
-  let n = Reader.number ~allow_negative t in
-  let unit_raw = Reader.while_ t (fun c -> Reader.is_alpha c || c = '%') in
-  let unit = String.lowercase_ascii unit_raw in
+  let n, unit_raw = Cursor.number_with_unit t in
+  if (not allow_negative) && n < 0.0 then Cursor.err_invalid t "negative";
+  let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
   match unit with
   | "" when n = 0.0 -> Zero
-  | "" -> Reader.err t "length values must have units (except for zero)"
+  | "" -> Cursor.err t "length values must have units (except for zero)"
   | "px" -> Px n
   | "cm" -> Cm n
   | "mm" -> Mm n
@@ -1104,10 +1079,10 @@ let read_length_unit ?(allow_negative = true) t =
   | "ch" -> Ch n
   | "lh" -> Lh n
   | "%" -> Pct n
-  | _ -> Reader.err_invalid t ("length unit: " ^ unit)
+  | _ -> Cursor.err_invalid t ("length unit: " ^ unit)
 
 let read_length_keyword t =
-  Reader.enum "length"
+  Cursor.enum "length"
     [
       ("auto", Auto);
       ("none", None);
@@ -1123,36 +1098,36 @@ let read_length_keyword t =
     ]
     t
 
-let rec read_calc_expr : type a. (Reader.t -> a) -> Reader.t -> a calc =
+let rec read_calc_expr : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
-  Reader.ws t;
+  Cursor.ws t;
   let left = read_calc_term read_a t in
-  Reader.ws t;
-  match Reader.peek t with
+  Cursor.ws t;
+  match Cursor.peek_delim t with
   | Some '+' ->
       (* Use atomic to ensure we either parse the full addition or nothing *)
-      Reader.atomic t (fun () ->
-          Reader.skip t;
+      Cursor.atomic t (fun () ->
+          Cursor.skip t;
           Expr (left, Add, read_calc_expr read_a t))
   | Some '-' ->
       (* Use atomic to ensure we either parse the full subtraction or nothing *)
-      Reader.atomic t (fun () ->
-          Reader.skip t;
+      Cursor.atomic t (fun () ->
+          Cursor.skip t;
           Expr (left, Sub, read_calc_expr read_a t))
   | _ -> left
 
-and read_calc_term : type a. (Reader.t -> a) -> Reader.t -> a calc =
+and read_calc_term : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
-  Reader.ws t;
+  Cursor.ws t;
   let rec loop left =
-    Reader.ws t;
-    match Reader.peek t with
+    Cursor.ws t;
+    match Cursor.peek_delim t with
     | Some '*' ->
         (* Use atomic to ensure we either parse the full multiplication or
            nothing *)
-        Reader.atomic t (fun () ->
-            Reader.skip t;
-            Reader.ws t;
+        Cursor.atomic t (fun () ->
+            Cursor.skip t;
+            Cursor.ws t;
             let right = read_calc_factor read_a t in
             (* Validate multiplication: can't multiply two raw dimensions (but
                expressions are OK) *)
@@ -1163,13 +1138,13 @@ and read_calc_term : type a. (Reader.t -> a) -> Reader.t -> a calc =
             (* Allow number × dimension or dimension × number, but not dimension
                × dimension *)
             if is_dimension left && is_dimension right then
-              Reader.err t "invalid calc: cannot multiply two dimensions";
+              Cursor.err t "invalid calc: cannot multiply two dimensions";
             loop (Expr (left, Mul, right)))
     | Some '/' ->
         (* Use atomic to ensure we either parse the full division or nothing *)
-        Reader.atomic t (fun () ->
-            Reader.skip t;
-            Reader.ws t;
+        Cursor.atomic t (fun () ->
+            Cursor.skip t;
+            Cursor.ws t;
             let right = read_calc_factor read_a t in
             (* Validate division: right operand must be a number (not a
                dimension) *)
@@ -1179,7 +1154,7 @@ and read_calc_term : type a. (Reader.t -> a) -> Reader.t -> a calc =
               | _ -> false (* expressions could evaluate to numbers *)
             in
             if is_not_number right then
-              Reader.err t
+              Cursor.err t
                 "invalid calc: division requires a number on the right";
             loop (Expr (left, Div, right)))
     | _ -> left
@@ -1187,108 +1162,67 @@ and read_calc_term : type a. (Reader.t -> a) -> Reader.t -> a calc =
   let left = read_calc_factor read_a t in
   loop left
 
-and read_calc_parenthesized : type a. (Reader.t -> a) -> Reader.t -> a calc =
- fun read_a t ->
-  Reader.skip t;
-  let expr = read_calc_expr read_a t in
-  Reader.ws t;
-  Reader.expect ')' t;
-  expr
+and read_calc_parenthesized : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
+ fun read_a t -> Cursor.parens (fun inner -> read_calc_expr read_a inner) t
 
-and read_calc_zero : type a. Reader.t -> a calc =
+and read_calc_zero : type a. Cursor.t -> a calc =
  fun t ->
-  let n = Reader.number t in
-  if n <> 0. then Reader.err t "expected zero"
-  else
-    match Reader.peek t with
-    | Some c when Reader.is_alpha c || c = '%' -> Reader.err t "zero with unit"
-    | _ -> Num 0.
+  (* A zero in calc is a plain Number_tok with value 0 (not a Dimension). *)
+  match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Number_tok { value = 0.; _ }; _ })
+    ->
+      Cursor.skip t;
+      Num 0.
+  | _ -> Cursor.err t "expected zero"
 
-and read_calc_factor : type a. (Reader.t -> a) -> Reader.t -> a calc =
+and read_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
-  Reader.ws t;
-  match Reader.peek t with
-  | Some '(' -> read_calc_parenthesized read_a t
-  | _ when Reader.looking_at t "calc(" ->
+  Cursor.ws t;
+  match Cursor.peek t with
+  | Some (Component.Block { node = { opening = Token.Paren; _ }; _ }) ->
+      read_calc_parenthesized read_a t
+  | Some (Component.Func { node = { name = "calc"; _ }; _ }) ->
       (* Handle nested calc() expressions - preserve as Nested node *)
-      Reader.expect_string "calc(" t;
-      let expr = read_calc_expr read_a t in
-      Reader.expect ')' t;
-      Nested expr
-  | _ when Reader.looking_at t "var(" -> Var (read_var read_a t)
+      Nested (Cursor.call "calc" t (fun inner -> read_calc_expr read_a inner))
+  | Some (Component.Func { node = { name = "var"; _ }; _ }) ->
+      Var (read_var read_a t)
   | _ ->
       let read_val t = Val (read_a t) in
-      let read_num : Reader.t -> a calc =
+      let read_num : Cursor.t -> a calc =
        fun t ->
-        (* Try to read as plain number, but fail if followed by a unit *)
-        Reader.atomic t (fun () ->
-            let n = Reader.number t in
-            match Reader.peek t with
-            | Some c when Reader.is_alpha c || c = '%' ->
-                Reader.err t "number with unit, should use read_val"
-            | _ -> (Num n : a calc))
+        (* Plain [Number_tok] only — dimensions are not numbers here. *)
+        match Cursor.peek t with
+        | Some (Component.Preserved { kind = Token.Number_tok { value; _ }; _ })
+          ->
+            Cursor.skip t;
+            (Num value : a calc)
+        | _ -> Cursor.err t "number"
       in
-      Reader.one_of [ read_calc_zero; read_num; read_val ] t
+      Cursor.one_of [ read_calc_zero; read_num; read_val ] t
 
-and read_calc : type a. (Reader.t -> a) -> Reader.t -> a calc =
+and read_calc : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
-  Reader.ws t;
-  if Reader.looking_at t "calc(" then (
-    Reader.expect_string "calc(" t;
-    let expr = read_calc_expr read_a t in
-    Reader.expect ')' t;
-    expr)
-  else if Reader.looking_at t "var(" then (
-    Reader.expect_string "var(" t;
-    Reader.ws t;
-    let var_name =
-      if Reader.looking_at t "--" then (
-        Reader.expect_string "--" t;
-        Reader.ident ~keep_case:true t (* var_name should be without -- *))
-      else Reader.ident ~keep_case:true t
-    in
-    Reader.ws t;
-    let fallback =
-      if Reader.peek t = Some ',' then (
-        Reader.comma t;
-        (* Parse the fallback length value *)
-        Some (Fallback (read_a t)))
-      else None
-    in
-    Reader.expect ')' t;
-    (* Create a length var with fallback *)
-    let v = var_ref ?fallback var_name in
-    Var v)
-  else
-    (* Not a calc() or var(), so this is not a valid calc expression *)
-    Reader.err t "calc() or var()"
+  Cursor.ws t;
+  match Cursor.peek t with
+  | Some (Component.Func { node = { name = "calc"; _ }; _ }) ->
+      Cursor.call "calc" t (fun inner -> read_calc_expr read_a inner)
+  | Some (Component.Func { node = { name = "var"; _ }; _ }) ->
+      Var (read_var read_a t)
+  | _ -> Cursor.err t "calc() or var()"
 
-(* Helper to read balanced parentheses in function content *)
+(* In a component stream the function arguments are already balanced; drain the
+   remaining components and re-serialize them back to source text. *)
 let read_balanced_function_content t =
-  let buf = Buffer.create 64 in
-  let rec read_balanced depth =
-    match Reader.peek t with
-    | None -> Reader.err t "unexpected end of input in function"
-    | Some ')' when depth = 0 -> ()
-    | Some ')' ->
-        Buffer.add_char buf ')';
-        Reader.skip t;
-        read_balanced (depth - 1)
-    | Some '(' ->
-        Buffer.add_char buf '(';
-        Reader.skip t;
-        read_balanced (depth + 1)
-    | Some c ->
-        Buffer.add_char buf c;
-        Reader.skip t;
-        read_balanced depth
+  let rec drain acc =
+    match Cursor.next_raw t with
+    | None -> List.rev acc
+    | Some cv -> drain (cv :: acc)
   in
-  read_balanced 0;
-  Buffer.contents buf
+  Parser.to_string (drain [])
 
 let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
     =
-  Reader.ws t;
+  Cursor.ws t;
   let read_var_length t : length =
     let result : length =
       Var (read_var (read_length ~allow_negative ~with_keywords) t)
@@ -1300,17 +1234,17 @@ let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
   in
   let read_function_length t : length =
     (* Parse a generic function name followed by '(' ... ')' *)
-    let name = Reader.ident t in
-    Reader.expect '(' t;
+    let name = Cursor.ident t in
+    Cursor.expect '(' t;
     let content = read_balanced_function_content t in
-    Reader.expect ')' t;
+    Cursor.expect ')' t;
     (* Only allow known length-producing functions here *)
     match String.lowercase_ascii name with
     | "clamp" -> Clamp content
     | "minmax" -> Minmax content
     | "min" -> Min content
     | "max" -> Max content
-    | _ -> Reader.err t "unknown function"
+    | _ -> Cursor.err t "unknown function"
   in
   let parsers =
     [
@@ -1323,7 +1257,7 @@ let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
   let parsers =
     if with_keywords then read_length_keyword :: parsers else parsers
   in
-  Reader.one_of parsers t
+  Cursor.one_of parsers t
 
 (** Read a non-negative length value (for padding properties) *)
 let read_non_negative_length ?(with_keywords = true) t : length =
@@ -1331,63 +1265,62 @@ let read_non_negative_length ?(with_keywords = true) t : length =
 
 (** Read a percentage value as float (number followed by %) Used for color
     components where 0-100% clamping is required *)
-let read_percentage_float t : float = Reader.pct ~clamp:true t
+let read_percentage_float t : float = Cursor.pct ~clamp:true t
 
 (** Read an alpha value *)
 let rec read_alpha t : alpha =
-  Reader.ws t;
+  Cursor.ws t;
   let read_var_alpha t : alpha = Var (read_var read_alpha t) in
   let read_pct t : alpha =
     (* Alpha percentages are clamped to 0-100 per CSS spec *)
-    Pct (Reader.pct ~clamp:true t)
+    Pct (Cursor.pct ~clamp:true t)
   in
   let read_num t : alpha =
     (* Fall back to reading as numeric alpha *)
-    let n = Reader.number t in
+    let n = Cursor.number t in
     (* Clamp numeric alpha to 0-1 range per CSS spec *)
     Num (max 0. (min 1. n))
   in
-  Reader.one_of [ read_var_alpha; read_pct; read_num ] t
+  Cursor.one_of [ read_var_alpha; read_pct; read_num ] t
 
 (** Read optional alpha component *)
 and read_optional_alpha t : alpha =
-  Reader.ws t;
-  if Reader.peek t = Some '/' then (
-    Reader.slash t;
+  Cursor.ws t;
+  if Cursor.peek_delim t = Some '/' then (
+    Cursor.slash t;
     read_alpha t)
   else None
 
 (** Read a channel value (RGB) *)
 let rec read_channel t : channel =
-  Reader.ws t;
+  Cursor.ws t;
   (* Check for var() *)
-  if Reader.looking_at t "var(" then Var (read_var read_channel t)
+  if Cursor.looking_at t "var(" then Var (read_var read_channel t)
   else
-    let n = Reader.number t in
-    let unit = Reader.while_ t (fun c -> c = '%') in
+    let n, unit = Cursor.number_with_unit t in
     match unit with
-    | "%" ->
+    | Some "%" ->
         (* Clamp percentage to 0-100 per CSS spec *)
         Pct (max 0. (min 100. n))
-    | "" ->
+    | None ->
         (* For unitless numbers: - If it's a decimal between 0 and 1, treat as
            Num (for alpha values) - Otherwise treat as Int (RGB 0-255 values) *)
         if n <= 1.0 && n <> floor n then Num n
         else Int (int_of_float (max 0. (min 255. n)))
-    | _ -> Reader.err_invalid t "channel value"
+    | Some _ -> Cursor.err_invalid t "channel value"
 
 let rec read_rgb_var t : rgb var =
-  Reader.ws t;
-  Reader.expect_string "var" t;
+  Cursor.ws t;
+  Cursor.expect_string "var" t;
   read_var_after_ident read_rgb t
 
 and read_rgb t : rgb =
-  Reader.ws t;
+  Cursor.ws t;
   (* Try to parse as three channels first (any could be a variable) *)
-  Reader.one_of
+  Cursor.one_of
     [
       (fun t ->
-        let r, g, b = Reader.triple read_channel read_channel read_channel t in
+        let r, g, b = Cursor.triple read_channel read_channel read_channel t in
         Channels { r; g; b });
       (* Fall back to a single var representing all channels *)
       (fun t -> Var (read_rgb_var t));
@@ -1396,64 +1329,58 @@ and read_rgb t : rgb =
 
 and read_rgb_space_separated t : color =
   (* First, check if we have var() at the beginning for the special case *)
-  Reader.ws t;
-  if Reader.looking_at t "var(" then (
+  Cursor.ws t;
+  if Cursor.looking_at t "var(" then (
     (* Read the rgb var *)
     let rgb_var = read_rgb_var t in
-    Reader.ws t;
+    Cursor.ws t;
 
     (* Check if followed by /alpha *)
-    if Reader.peek t = Some '/' then (
+    if Cursor.peek_delim t = Some '/' then (
       (* We have rgb(var(--color)/alpha) *)
       let alpha = read_optional_alpha t in
-      Reader.ws t;
-      Reader.expect ')' t;
+      Cursor.ws t;
+      Cursor.expect ')' t;
       match alpha with
-      | None -> Reader.err t "expected alpha value after '/'"
+      | None -> Cursor.err t "expected alpha value after '/'"
       | _ -> Rgba { rgb = Var rgb_var; a = alpha })
     else (
       (* Just var() without alpha - expect closing paren *)
-      Reader.expect ')' t;
+      Cursor.expect ')' t;
       Rgb (Var rgb_var)))
   else
     (* Normal case: read three channels *)
     let r = read_channel t in
-    Reader.ws t;
+    Cursor.ws t;
     let g = read_channel t in
-    Reader.ws t;
+    Cursor.ws t;
     let b = read_channel t in
     (* CSS4 allows mixing percentages and numbers in RGB functions. This is a
        change from CSS3 which required all values to be the same type. Since we
        target CSS4 (supported by all major browsers), we allow mixing. *)
     let alpha = read_optional_alpha t in
-    Reader.ws t;
-    Reader.expect ')' t;
+    Cursor.ws t;
+    Cursor.expect ')' t;
     match alpha with
     | None -> Rgb (Channels { r; g; b })
     | Num _ | Pct _ | Var _ -> Rgba { rgb = Channels { r; g; b }; a = alpha }
 
 and read_rgb_comma_separated t : color =
   let r, g, b =
-    Reader.triple ~sep:Reader.comma read_channel read_channel read_channel t
+    Cursor.triple ~sep:Cursor.comma read_channel read_channel read_channel t
   in
   (* CSS4 allows mixing percentages and numbers in RGB functions. This is a
      change from CSS3 which required all values to be the same type. Since we
      target CSS4 (supported by all major browsers), we allow mixing. *)
-  let alpha =
-    if Reader.peek t = Some ',' then (
-      Reader.comma t;
-      read_alpha t)
-    else None
-  in
-  Reader.ws t;
-  Reader.expect ')' t;
+  let alpha = if Cursor.comma_opt t then read_alpha t else None in
+  Cursor.ws t;
   match alpha with
   | None -> Rgb (Channels { r; g; b })
   | a -> Rgba { rgb = Channels { r; g; b }; a }
 
 (** Read color space identifier *)
 let read_color_space t : color_space =
-  let space_ident = Reader.ident t in
+  let space_ident = Cursor.ident t in
   match space_ident with
   | "srgb" -> Srgb
   | "srgb-linear" -> Srgb_linear
@@ -1470,70 +1397,58 @@ let read_color_space t : color_space =
   | "oklch" -> Oklch
   | "hsl" -> Hsl
   | "hwb" -> Hwb
-  | _ -> Reader.err_invalid t ("color space: " ^ space_ident)
+  | _ -> Cursor.err_invalid t ("color space: " ^ space_ident)
 
-(** Read color components until ')' or '/' *)
+(** Read color components until the alpha separator ['/'] or end of input. *)
 let rec read_color_components space t acc =
-  Reader.ws t;
-  match Reader.peek t with
-  | Some ')' | Some '/' -> List.rev acc
-  | Some _ ->
-      (* Check if this component should be a percentage based on color space and
-         position *)
-      let component_count = List.length acc in
-      let component =
-        match space with
-        | (Lab | Oklab | Lch | Oklch) when component_count = 0 ->
-            (* L component must be percentage for these spaces in color()
-               syntax *)
-            let n = Reader.number t in
-            Reader.expect '%' t;
-            (Pct n : component)
-        | _ ->
-            (* Check if it's a percentage by looking ahead after the number *)
-            let n = Reader.number t in
-            if Reader.peek t = Some '%' then (
-              Reader.expect '%' t;
-              Pct (n /. 100.))
-            else Num n
-      in
-      read_color_components space t (component :: acc)
-  | None -> Reader.err_invalid t "color()"
+  Cursor.ws t;
+  if Cursor.is_done t || Cursor.peek_delim t = Some '/' then List.rev acc
+  else
+    let component_count = List.length acc in
+    let n, unit = Cursor.number_with_unit t in
+    let component : component =
+      match (space, component_count, unit) with
+      | (Lab | Oklab | Lch | Oklch), 0, Some "%" -> Pct n
+      | (Lab | Oklab | Lch | Oklch), 0, _ ->
+          Cursor.err_invalid t "L component must be percentage"
+      | _, _, Some "%" -> Pct (n /. 100.)
+      | _, _, None -> Num n
+      | _, _, Some u -> Cursor.err_invalid t ("unit: " ^ u)
+    in
+    read_color_components space t (component :: acc)
 
-(** Read hex color digits *)
-let read_hex_color t =
+(** Read hex color digits. The tokenizer represents [#deadbeef] as a single
+    [Hash] token with the digits as value. Kept for parity with callers outside
+    this module. *)
+let _read_hex_color t =
   let hex =
-    Reader.while_ t (fun c ->
-        (c >= '0' && c <= '9')
-        || (c >= 'a' && c <= 'f')
-        || (c >= 'A' && c <= 'F'))
+    match Cursor.hash_opt t with
+    | Some s -> s
+    | None -> Cursor.err_invalid t "expected hex color"
   in
   let len = String.length hex in
-  if len = 0 then Reader.err_invalid t "empty hex color"
+  if len = 0 then Cursor.err_invalid t "empty hex color"
   else if len = 3 || len = 4 || len = 6 || len = 8 then hex
-  else Reader.err_invalid t ("invalid hex color length: " ^ string_of_int len)
+  else Cursor.err_invalid t ("invalid hex color length: " ^ string_of_int len)
 
 (** Read an angle value *)
 let rec read_angle t : angle =
-  Reader.ws t;
+  Cursor.ws t;
   (* Check for var() *)
-  if Reader.looking_at t "var(" then Var (read_var read_angle t)
-  else if Reader.looking_at t "calc(" then Calc (read_calc read_angle t)
+  if Cursor.looking_at t "var(" then Var (read_var read_angle t)
+  else if Cursor.looking_at t "calc(" then Calc (read_calc read_angle t)
   else
-    let n = Reader.number t in
-    let unit =
-      let u = Reader.while_ t Reader.is_alpha in
-      String.lowercase_ascii u
-    in
+    let n, unit_raw = Cursor.number_with_unit t in
+    let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
     match unit with
     | "deg" -> Deg n
     | "rad" -> Rad n
     | "turn" -> Turn n
     | "grad" -> Grad n
     | "" ->
-        Reader.err_invalid t
+        Cursor.err_invalid t
           "angle values must have units (deg, rad, turn, or grad)"
-    | _ -> Reader.err_invalid t ("invalid angle unit: " ^ unit)
+    | _ -> Cursor.err_invalid t ("invalid angle unit: " ^ unit)
 
 (** Normalize hue value to 0-360 range *)
 let normalize_hue (degrees : float) : float =
@@ -1542,15 +1457,12 @@ let normalize_hue (degrees : float) : float =
 
 (** Read a hue value (preserves unitless vs explicit angle) *)
 let rec read_hue t : hue =
-  Reader.ws t;
+  Cursor.ws t;
   (* Check for var() *)
-  if Reader.looking_at t "var(" then Var (read_var read_hue t)
+  if Cursor.looking_at t "var(" then Var (read_var read_hue t)
   else
-    let n = Reader.number t in
-    let unit =
-      let u = Reader.while_ t Reader.is_alpha in
-      String.lowercase_ascii u
-    in
+    let n, unit_raw = Cursor.number_with_unit t in
+    let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
     match unit with
     | "" ->
         Unitless (normalize_hue n) (* Unitless number, defaults to degrees *)
@@ -1558,206 +1470,193 @@ let rec read_hue t : hue =
     | "rad" -> Angle (Rad n)
     | "turn" -> Angle (Turn n)
     | "grad" -> Angle (Grad n)
-    | _ -> Reader.err_invalid t ("hue unit: " ^ unit)
+    | _ -> Cursor.err_invalid t ("hue unit: " ^ unit)
 
 let read_separated_values t p1 p2 =
   let v1 = p1 t in
-  Reader.ws t;
-  let separator = Reader.peek t in
-  if separator = Some ',' then Reader.comma t;
-  Reader.ws t;
+  Cursor.ws t;
+  ignore (Cursor.comma_opt t : bool);
+  Cursor.ws t;
   (* Need whitespace after comma *)
   let v2 = p2 t in
   (v1, v2)
 
 let read_hsl t : color =
-  Reader.ws t;
+  Cursor.ws t;
   let h = read_hue t in
-  Reader.ws t;
+  Cursor.ws t;
   (* Handle comma or space separator after hue *)
-  if Reader.peek t = Some ',' then Reader.comma t;
-  Reader.ws t;
+  ignore (Cursor.comma_opt t : bool);
+  Cursor.ws t;
   let s = read_percentage_float t in
-  Reader.ws t;
-  if Reader.peek t = Some ',' then Reader.comma t;
-  Reader.ws t;
+  Cursor.ws t;
+  ignore (Cursor.comma_opt t : bool);
+  Cursor.ws t;
   let l = read_percentage_float t in
   let a =
-    Reader.ws t;
-    let next_char = Reader.peek t in
-    if next_char = Some ',' then (
-      Reader.comma t;
-      read_alpha t)
-    else if next_char = Some '/' then read_optional_alpha t
+    Cursor.ws t;
+    if Cursor.comma_opt t then read_alpha t
+    else if Cursor.peek_delim t = Some '/' then read_optional_alpha t
     else None
   in
-  Reader.ws t;
-  Reader.expect ')' t;
+  Cursor.ws t;
   Hsl { h; s = Pct s; l = Pct l; a }
 
 let read_hwb t : color =
-  Reader.ws t;
+  Cursor.ws t;
   let h = read_hue t in
   let w, b =
     read_separated_values t read_percentage_float read_percentage_float
   in
   let a =
-    Reader.ws t;
-    let next_char = Reader.peek t in
-    if next_char = Some ',' then (
-      Reader.comma t;
-      read_alpha t)
-    else if next_char = Some '/' then read_optional_alpha t
+    Cursor.ws t;
+    if Cursor.comma_opt t then read_alpha t
+    else if Cursor.peek_delim t = Some '/' then read_optional_alpha t
     else None
   in
-  Reader.ws t;
-  Reader.expect ')' t;
+  Cursor.ws t;
   Hwb { h; w = Pct w; b = Pct b; a }
 
 let read_oklch t : color =
-  Reader.ws t;
+  Cursor.ws t;
   (* L can be 0-1 or 0%-100% per CSS spec *)
   let l =
-    let n = Reader.number t in
-    if Reader.peek t = Some '%' then (
-      Reader.expect '%' t;
-      n (* Already a percentage value *))
-    else if n >= 0. && n <= 1. then n *. 100. (* Convert 0-1 to percentage *)
-    else
-      Reader.err_invalid t
-        ("oklch() L value must be 0-1 or 0%-100%, got " ^ string_of_float n)
+    let n, unit = Cursor.number_with_unit t in
+    match unit with
+    | Some "%" -> n (* Already a percentage value *)
+    | None when n >= 0. && n <= 1. -> n *. 100. (* Convert 0-1 *)
+    | _ ->
+        Cursor.err_invalid t
+          ("oklch() L value must be 0-1 or 0%-100%, got " ^ string_of_float n)
   in
-  Reader.ws t;
-  let c = Reader.number t in
-  Reader.ws t;
-  let h = Reader.number t in
+  Cursor.ws t;
+  let c = Cursor.number t in
+  Cursor.ws t;
+  let h = Cursor.number t in
   let alpha = read_optional_alpha t in
-  Reader.ws t;
-  Reader.expect ')' t;
+  Cursor.ws t;
   Oklch { l = Pct l; c; h = Unitless h; alpha }
 
 let read_number_or_none t : float option =
-  Reader.ws t;
-  if Reader.looking_at t "none" then (
-    Reader.expect_string "none" t;
+  Cursor.ws t;
+  if Cursor.looking_at t "none" then (
+    Cursor.expect_string "none" t;
     None)
-  else Some (Reader.number t)
+  else Some (Cursor.number t)
 
 let read_oklab t : color =
-  Reader.ws t;
+  Cursor.ws t;
   (* L can be 0-1 or 0%-100% per CSS spec *)
   let l =
-    let n = Reader.number t in
-    if Reader.peek t = Some '%' then (
-      Reader.expect '%' t;
-      n (* Already a percentage value *))
-    else if n >= 0. && n <= 1. then n *. 100. (* Convert 0-1 to percentage *)
-    else
-      Reader.err_invalid t
-        ("oklab() L value must be 0-1 or 0%-100%, got " ^ string_of_float n)
+    let n, unit = Cursor.number_with_unit t in
+    match unit with
+    | Some "%" -> n (* Already a percentage value *)
+    | None when n >= 0. && n <= 1. -> n *. 100. (* Convert 0-1 *)
+    | _ ->
+        Cursor.err_invalid t
+          ("oklab() L value must be 0-1 or 0%-100%, got " ^ string_of_float n)
   in
   let a = read_number_or_none t in
   let b = read_number_or_none t in
   let alpha = read_optional_alpha t in
-  Reader.ws t;
-  Reader.expect ')' t;
+  Cursor.ws t;
   Oklab { l = Pct l; a; b; alpha }
 
 let read_lch t : color =
-  Reader.ws t;
+  Cursor.ws t;
   let l, c, h =
-    Reader.triple ~sep:Reader.ws read_percentage_float Reader.number
-      Reader.number t
+    Cursor.triple ~sep:Cursor.ws read_percentage_float Cursor.number
+      Cursor.number t
   in
   let alpha = read_optional_alpha t in
-  Reader.ws t;
-  Reader.expect ')' t;
+  Cursor.ws t;
+  Cursor.expect ')' t;
   Lch { l = Pct l; c; h = Unitless h; alpha }
 
 let read_color_function t : color =
-  Reader.ws t;
+  Cursor.ws t;
   let space = read_color_space t in
-  Reader.ws t;
+  Cursor.ws t;
   let components = read_color_components space t [] in
   let alpha = read_optional_alpha t in
-  Reader.expect ')' t;
+  Cursor.expect ')' t;
   Color { space; components; alpha }
 
 (** Forward declaration for percentage reader used in color-mix *)
 let rec read_percentage_in_color_mix t : percentage =
-  Reader.ws t;
-  if Reader.looking_at t "var(" then
+  Cursor.ws t;
+  if Cursor.looking_at t "var(" then
     Var (read_var read_percentage_in_color_mix t)
   else
-    let n = Reader.number t in
-    Reader.expect '%' t;
+    let n = Cursor.number t in
+    Cursor.expect '%' t;
     (Pct n : percentage)
 
 let read_optional_percentage t : percentage option =
   (* Parse optional percentage immediately after a value. In color-mix(), this
      can be a numeric percentage, a decimal (0-1), or var(). *)
-  Reader.ws t;
-  if Reader.looking_at t "var(" then
+  Cursor.ws t;
+  if Cursor.looking_at t "var(" then
     (* var() percentage like var(--bg-opacity) *)
     Some (Var (read_var read_percentage_in_color_mix t))
   else
     (* Try reading number with % first, then without *)
     match
-      Reader.option
+      Cursor.option
         (fun t ->
-          let n = Reader.number t in
-          Reader.expect '%' t;
-          Reader.ws t;
+          let n = Cursor.number t in
+          Cursor.expect '%' t;
+          Cursor.ws t;
           (Pct n : percentage))
         t
     with
     | Some _ as result -> result
     | None ->
         (* Try reading a decimal number without % (e.g., .5 for 50%) *)
-        Reader.option
+        Cursor.option
           (fun t ->
-            let n = Reader.number t in
-            Reader.ws t;
+            let n = Cursor.number t in
+            Cursor.ws t;
             (* Convert decimal to percentage: .5 -> 50% stored as Pct 50.0 *)
             (Pct (n *. 100.0) : percentage))
           t
 
 let rec read_color_mix t : color =
-  Reader.ws t;
+  Cursor.ws t;
 
   (* Parse "in <color-space> [<hue-interpolation-method>]" if present *)
   let in_space, hue =
     (* Check if next word is "in" without consuming it *)
-    if Reader.looking_at t "in " || Reader.looking_at t "in," then (
-      Reader.expect_string "in" t;
-      Reader.ws t;
+    if Cursor.looking_at t "in " || Cursor.looking_at t "in," then (
+      Cursor.expect_string "in" t;
+      Cursor.ws t;
       let space = read_color_space t in
-      Reader.ws t;
+      Cursor.ws t;
       (* For cylindrical color spaces, check for hue interpolation *)
       let hue = Default in
       (Some space, hue))
     else (None, Default)
   in
 
-  Reader.ws t;
-  Reader.expect ',' t;
-  Reader.ws t;
+  Cursor.ws t;
+  Cursor.expect ',' t;
+  Cursor.ws t;
 
   (* Parse first color and optional percentage *)
   let color1 = read_color t in
-  Reader.ws t;
+  Cursor.ws t;
   let percent1 = read_optional_percentage t in
 
-  Reader.expect ',' t;
-  Reader.ws t;
+  Cursor.expect ',' t;
+  Cursor.ws t;
 
   (* Parse second color and optional percentage *)
   let color2 = read_color t in
-  Reader.ws t;
+  Cursor.ws t;
   let percent2 = read_optional_percentage t in
 
-  Reader.ws t;
-  Reader.expect ')' t;
+  Cursor.ws t;
+  Cursor.expect ')' t;
 
   Mix { in_space; hue; color1; percent1; color2; percent2 }
 
@@ -1765,68 +1664,46 @@ and color_parsers =
   [
     ( "rgb",
       fun t ->
-        Reader.expect '(' t;
-        Reader.ws t;
-        Reader.one_of [ read_rgb_space_separated; read_rgb_comma_separated ] t
+        Cursor.ws t;
+        Cursor.one_of [ read_rgb_space_separated; read_rgb_comma_separated ] t
     );
     ( "rgba",
       fun t ->
-        Reader.expect '(' t;
-        Reader.ws t;
-        Reader.one_of [ read_rgb_space_separated; read_rgb_comma_separated ] t
+        Cursor.ws t;
+        Cursor.one_of [ read_rgb_space_separated; read_rgb_comma_separated ] t
     );
-    ( "hsl",
-      fun t ->
-        Reader.expect '(' t;
-        read_hsl t );
-    ( "hsla",
-      fun t ->
-        Reader.expect '(' t;
-        read_hsl t );
-    ( "hwb",
-      fun t ->
-        Reader.expect '(' t;
-        read_hwb t );
-    ( "oklch",
-      fun t ->
-        Reader.expect '(' t;
-        read_oklch t );
-    ( "oklab",
-      fun t ->
-        Reader.expect '(' t;
-        read_oklab t );
-    ( "lch",
-      fun t ->
-        Reader.expect '(' t;
-        read_lch t );
-    ( "color",
-      fun t ->
-        Reader.expect '(' t;
-        read_color_function t );
-    ( "color-mix",
-      fun t ->
-        Reader.expect '(' t;
-        read_color_mix t );
+    ("hsl", read_hsl);
+    ("hsla", read_hsl);
+    ("hwb", read_hwb);
+    ("oklch", read_oklch);
+    ("oklab", read_oklab);
+    ("lch", read_lch);
+    ("color", read_color_function);
+    ("color-mix", read_color_mix);
   ]
 
 and read_color t : color =
-  Reader.ws t;
-  if Reader.peek t = Some '#' then (
-    Reader.expect '#' t;
-    let hex = read_hex_color t in
-    Hex { hash = true; value = hex })
-  else
-    let ident = Reader.ident t in
-    match List.assoc_opt ident color_parsers with
-    | Some parser -> parser t
-    | None -> (
-        match ident with
-        | "var" -> Var (read_var_after_ident read_color t)
-        | _ -> (
-            (* Check if ident is a valid color keyword *)
-            match read_color_keyword_from_string ident with
-            | Some color -> color
-            | None -> Reader.err t ("unknown color: " ^ ident)))
+  Cursor.ws t;
+  match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Hash { value; _ }; _ }) ->
+      Cursor.skip t;
+      let len = String.length value in
+      if len = 3 || len = 4 || len = 6 || len = 8 then
+        Hex { hash = true; value }
+      else Cursor.err_invalid t ("hex color length: " ^ string_of_int len)
+  | Some (Component.Func { node = { name; arguments }; _ }) -> (
+      match List.assoc_opt name color_parsers with
+      | Some parser ->
+          Cursor.skip t;
+          parser (Cursor.of_components arguments)
+      | None when name = "var" -> Var (read_var read_color t)
+      | None -> Cursor.err t ("unknown color function: " ^ name))
+  | Some (Component.Preserved { kind = Token.Ident ident; _ }) -> (
+      Cursor.skip t;
+      match read_color_keyword_from_string ident with
+      | Some color -> color
+      | None -> Cursor.err t ("unknown color: " ^ ident))
+  | _ -> Cursor.err t "color"
 
 and read_color_keyword_from_string keyword : color option =
   match keyword with
@@ -2015,8 +1892,8 @@ and read_system_color_from_string keyword : color option =
   | _ -> None
 
 let read_system_color t : system_color =
-  Reader.ws t;
-  let keyword = Reader.ident t in
+  Cursor.ws t;
+  let keyword = Cursor.ident t in
   match String.lowercase_ascii keyword with
   | "accentcolor" -> Accent_color
   | "accentcolortext" -> Accent_color_text
@@ -2038,91 +1915,85 @@ let read_system_color t : system_color =
   | "selecteditemtext" -> Selected_item_text
   | "visitedtext" -> Visited_text
   | "-webkit-focus-ring-color" -> Webkit_focus_ring_color
-  | _ -> Reader.err_invalid t ("system color: " ^ keyword)
+  | _ -> Cursor.err_invalid t ("system color: " ^ keyword)
 
 (** Read a duration value *)
 let rec read_duration t : duration =
-  Reader.ws t;
+  Cursor.ws t;
   (* Check for var() *)
-  if Reader.looking_at t "var(" then Var (read_var read_duration t)
+  if Cursor.looking_at t "var(" then Var (read_var read_duration t)
   else
-    let n = Reader.number t in
-    if n < 0.0 then Reader.err_invalid t "negative durations are not allowed"
+    let n, unit_raw = Cursor.number_with_unit t in
+    if n < 0.0 then Cursor.err_invalid t "negative durations are not allowed"
     else
-      let unit =
-        let u = Reader.while_ t Reader.is_alpha in
-        String.lowercase_ascii u
-      in
+      let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
       match unit with
       | "s" -> S n
       | "ms" -> Ms n
-      | _ -> Reader.err_invalid t ("duration unit: " ^ unit)
+      | _ -> Cursor.err_invalid t ("duration unit: " ^ unit)
 
 (** Read a time value that can be negative (for animation-delay,
     transition-delay) *)
 let rec read_time t : duration =
-  Reader.ws t;
+  Cursor.ws t;
   (* Check for var() *)
-  if Reader.looking_at t "var(" then Var (read_var read_time t)
+  if Cursor.looking_at t "var(" then Var (read_var read_time t)
   else
-    let n = Reader.number t in
-    let unit =
-      let u = Reader.while_ t Reader.is_alpha in
-      String.lowercase_ascii u
-    in
+    let n, unit_raw = Cursor.number_with_unit t in
+    let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
     match unit with
     | "s" -> S n
     | "ms" -> Ms n
-    | _ -> Reader.err_invalid t ("time unit: " ^ unit)
+    | _ -> Cursor.err_invalid t ("time unit: " ^ unit)
 
 (** Read a number value *)
 let rec read_number t : number =
-  Reader.ws t;
+  Cursor.ws t;
   (* Check for var() *)
-  if Reader.looking_at t "var(" then Var (read_var read_number t)
-  else Num (Reader.number t)
+  if Cursor.looking_at t "var(" then Var (read_var read_number t)
+  else Num (Cursor.number t)
 
 (** Read transition_behavior value *)
 let read_transition_behavior t : transition_behavior =
-  Reader.enum "transition-behavior"
+  Cursor.enum "transition-behavior"
     [ ("normal", Normal); ("allow-discrete", Allow_discrete) ]
     t
 
 (** Read a percentage type with var() and calc() support *)
 let rec read_percentage t : percentage =
-  Reader.ws t;
-  if Reader.looking_at t "var(" then Var (read_var read_percentage t)
-  else if Reader.looking_at t "calc(" then Calc (read_calc read_percentage t)
-  else Pct (Reader.pct t)
+  Cursor.ws t;
+  if Cursor.looking_at t "var(" then Var (read_var read_percentage t)
+  else if Cursor.looking_at t "calc(" then Calc (read_calc read_percentage t)
+  else Pct (Cursor.pct t)
 
 (** Read length_percentage value *)
 let rec read_length_percentage t : length_percentage =
-  Reader.ws t;
-  if Reader.looking_at t "var(" then Var (read_var read_length_percentage t)
-  else if Reader.looking_at t "calc(" then
+  Cursor.ws t;
+  if Cursor.looking_at t "var(" then Var (read_var read_length_percentage t)
+  else if Cursor.looking_at t "calc(" then
     Calc (read_calc read_length_percentage t)
   else
     (* Try to read as percentage or length *)
-    let read_pct t : length_percentage = Pct (Reader.pct t) in
+    let read_pct t : length_percentage = Pct (Cursor.pct t) in
     let read_length_as_lp t : length_percentage = Length (read_length t) in
-    Reader.one_of [ read_pct; read_length_as_lp ] t
+    Cursor.one_of [ read_pct; read_length_as_lp ] t
 
 (** Read number_percentage value *)
 let rec read_number_percentage t : number_percentage =
-  Reader.ws t;
-  if Reader.looking_at t "var(" then Var (read_var read_number_percentage t)
-  else if Reader.looking_at t "calc(" then
+  Cursor.ws t;
+  if Cursor.looking_at t "var(" then Var (read_var read_number_percentage t)
+  else if Cursor.looking_at t "calc(" then
     Calc (read_calc read_number_percentage t)
   else
     (* Try to read as percentage or number *)
-    Reader.one_of
-      [ (fun t -> Pct (Reader.pct t)); (fun t -> Num (Reader.number t)) ]
+    Cursor.one_of
+      [ (fun t -> Pct (Cursor.pct t)); (fun t -> Num (Cursor.number t)) ]
       t
 
 (** Read color_name value *)
 let read_color_name t : color_name =
-  Reader.ws t;
-  let s = Reader.ident t in
+  Cursor.ws t;
+  let s = Cursor.ident t in
   match String.lowercase_ascii s with
   | "red" -> Red
   | "blue" -> Blue
@@ -2145,12 +2016,12 @@ let read_color_name t : color_name =
   | "teal" -> Teal
   | "aqua" -> Aqua
   | "rebeccapurple" -> Rebecca_purple
-  | _ -> Reader.err_invalid t ("color name: " ^ s)
+  | _ -> Cursor.err_invalid t ("color name: " ^ s)
 
 (** Read hue_interpolation *)
 let read_hue_interpolation t : hue_interpolation =
-  Reader.ws t;
-  Reader.enum "hue-interpolation"
+  Cursor.ws t;
+  Cursor.enum "hue-interpolation"
     [
       ("shorter", Shorter);
       ("longer", Longer);
@@ -2162,32 +2033,31 @@ let read_hue_interpolation t : hue_interpolation =
 
 (** Read calc_op *)
 let read_calc_op t : calc_op =
-  Reader.ws t;
-  match Reader.peek t with
+  Cursor.ws t;
+  match Cursor.peek_delim t with
   | Some '+' ->
-      Reader.skip t;
+      Cursor.skip t;
       Add
   | Some '-' ->
-      Reader.skip t;
+      Cursor.skip t;
       Sub
   | Some '*' ->
-      Reader.skip t;
+      Cursor.skip t;
       Mul
   | Some '/' ->
-      Reader.skip t;
+      Cursor.skip t;
       Div
-  | _ -> Reader.err_invalid t "calc operator"
+  | _ -> Cursor.err_invalid t "calc operator"
 
 (** Read component value *)
 let rec read_component t : component =
-  Reader.ws t;
-  if Reader.looking_at t "var(" then Var (read_var read_component t)
-  else if Reader.looking_at t "calc(" then Calc (read_calc read_component t)
+  Cursor.ws t;
+  if Cursor.looking_at t "var(" then Var (read_var read_component t)
+  else if Cursor.looking_at t "calc(" then Calc (read_calc read_component t)
   else
-    let n = Reader.number t in
-    match Reader.peek t with
-    | Some '%' ->
-        Reader.skip t;
+    let n, unit = Cursor.number_with_unit t in
+    match unit with
+    | Some "%" ->
         (* Clamp percentage to 0-100 range per CSS spec *)
         Pct (max 0. (min 100. n))
     | _ ->
@@ -2206,7 +2076,7 @@ let with_fallback v fallback_value =
 let read_padding_shorthand t : length list =
   (* CSS padding accepts 1-4 space-separated non-negative values *)
   (* CSS-wide keywords must be the only value when present *)
-  Reader.enum "padding"
+  Cursor.enum "padding"
     [
       ("inherit", [ Inherit ]);
       ("initial", [ Initial ]);
@@ -2215,7 +2085,7 @@ let read_padding_shorthand t : length list =
       ("revert-layer", [ Revert_layer ]);
     ]
     ~default:(fun t ->
-      Reader.list ~sep:Reader.ws ~at_least:1 ~at_most:4
+      Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:4
         (read_non_negative_length ~with_keywords:false)
         t)
     t
@@ -2226,7 +2096,7 @@ let read_padding_shorthand t : length list =
 let read_margin_shorthand t : length list =
   (* CSS margin accepts 1-4 space-separated values *)
   (* CSS-wide keywords must be the only value when present *)
-  Reader.enum "margin"
+  Cursor.enum "margin"
     [
       ("auto", [ Auto ]);
       ("inherit", [ Inherit ]);
@@ -2236,7 +2106,7 @@ let read_margin_shorthand t : length list =
       ("revert-layer", [ Revert_layer ]);
     ]
     ~default:(fun t ->
-      Reader.list ~sep:Reader.ws ~at_least:1 ~at_most:4
+      Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:4
         (read_length ~with_keywords:false)
         t)
     t

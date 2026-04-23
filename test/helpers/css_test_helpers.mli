@@ -47,6 +47,7 @@ val check_value_cursor :
   (Css.Cursor.t -> 'a) ->
   'a Css.Pp.t ->
   ?minify:bool ->
+  ?roundtrip:bool ->
   ?expected:string ->
   string ->
   unit

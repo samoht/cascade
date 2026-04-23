@@ -163,6 +163,28 @@ val string_opt : t -> string option
 val url_opt : t -> string option
 val delim_opt : t -> char option
 
+val peek_delim : t -> char option
+(** [peek_delim t] is the char of the next component if it is a [Delim] token,
+    without advancing the cursor. *)
+
+val peek_comma : t -> bool
+(** [peek_comma t] is [true] iff the next component is a comma token. *)
+
+val peek_semicolon : t -> bool
+(** [peek_semicolon t] is [true] iff the next component is a semicolon token. *)
+
+val at_keyword_opt : t -> string option
+(** [at_keyword_opt t] consumes the next component if it is an [At_keyword]
+    token, returning the keyword name without the leading [@]. *)
+
+val expect_at_keyword : string -> t -> unit
+(** [expect_at_keyword name t] consumes the [@name] token or raises. *)
+
+val drain_until_block : t -> Component.t list
+(** [drain_until_block t] consumes components up to (but not including) the next
+    block or semicolon, returning the drained components. Used for at-rule
+    preludes. *)
+
 val colon : t -> bool
 (** [colon t] consumes a [':'] if next; [true] iff consumed. *)
 
@@ -269,7 +291,10 @@ val list :
 (** [list ?sep ?at_least ?at_most item t] parses items separated by [sep]
     (default: no separator). Enforces cardinality bounds. *)
 
-val fold_many : (t -> 'a) -> init:'b -> f:('b -> 'a -> 'b) -> t -> 'b
+val fold_many :
+  (t -> 'a) -> init:'s -> f:('s -> 'a -> 's) -> t -> 's * string option
+(** Like {!many} but folds into an accumulator. Returns the final accumulator
+    and the last error (if any). *)
 
 val many : (t -> 'a) -> t -> 'a list * string option
 (** [many p t] runs [p] repeatedly while it succeeds; returns the list of

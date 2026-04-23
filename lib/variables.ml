@@ -92,9 +92,9 @@ let rec pp_value : type a. a syntax -> a Pp.t =
   | Brackets _ -> Pp.string ctx value
 
 (** Read a CSS syntax descriptor from input *)
-let read_syntax (r : Reader.t) : any_syntax =
+let read_syntax (r : Cursor.t) : any_syntax =
   (* CSS @property syntax values must be quoted strings per spec *)
-  let s = Reader.string r in
+  let s = Cursor.string r in
   match s with
   | "<length>" -> Syntax Length
   | "<color>" -> Syntax Color
@@ -118,28 +118,28 @@ let read_syntax (r : Reader.t) : any_syntax =
       match List.map String.trim (String.split_on_char '|' s) with
       | [ "<length>"; "<percentage>" ] | [ "<percentage>"; "<length>" ] ->
           Syntax (Or (Length, Percentage))
-      | _ -> Reader.err_invalid r ("Unsupported CSS composite syntax: " ^ s))
-  | s -> Reader.err_invalid r ("Unsupported CSS syntax: " ^ s)
+      | _ -> Cursor.err_invalid r ("Unsupported CSS composite syntax: " ^ s))
+  | s -> Cursor.err_invalid r ("Unsupported CSS syntax: " ^ s)
 
 (** Read a value according to its syntax type *)
-let rec read_value : type a. Reader.t -> a syntax -> a =
+let rec read_value : type a. Cursor.t -> a syntax -> a =
  fun reader syntax ->
   match syntax with
   | Universal ->
-      (* For universal syntax "*", accept any CSS value - read all remaining
-         text (e.g. "0 0 #0000" for shadow initial-values) *)
-      Reader.ws reader;
-      String.trim (Reader.while_ reader (fun _ -> true))
-  | String -> Reader.string ~trim:true reader
-  | Custom_ident -> Reader.string ~trim:true reader
-  | Url -> Reader.string ~trim:true reader
-  | Image -> Reader.string ~trim:true reader
-  | Transform_function -> Reader.string ~trim:true reader
-  | Brackets _desc -> Reader.string ~trim:true reader
+      (* For universal syntax "*", accept any CSS value — serialise the
+         remaining components back to source text. *)
+      String.trim (Parser.to_string (Cursor.remaining reader))
+  | String -> Cursor.string ~trim:true reader
+  | Custom_ident -> Cursor.ident ~keep_case:true reader
+  | Url -> Cursor.url reader
+  | Image -> String.trim (Parser.to_string (Cursor.remaining reader))
+  | Transform_function ->
+      String.trim (Parser.to_string (Cursor.remaining reader))
+  | Brackets _desc -> String.trim (Parser.to_string (Cursor.remaining reader))
   | Length -> Values.read_length reader
   | Color -> Values.read_color reader
-  | Number -> Reader.number reader
-  | Integer -> int_of_float (Reader.number reader)
+  | Number -> Cursor.number reader
+  | Integer -> int_of_float (Cursor.number reader)
   | Percentage -> Values.read_percentage reader
   | Length_percentage -> Values.read_length_percentage reader
   | Angle -> Values.read_angle reader
@@ -149,23 +149,23 @@ let rec read_value : type a. Reader.t -> a syntax -> a =
          a seekable reader *)
       Either.Left (read_value reader syn1)
   | Plus syn ->
-      (* Read space-separated list - use Reader.many for proper error
+      (* Read space-separated list - use Cursor.many for proper error
          handling *)
-      let values, _error_opt = Reader.many (fun r -> read_value r syn) reader in
+      let values, _error_opt = Cursor.many (fun r -> read_value r syn) reader in
       if values = [] then
-        Reader.err_invalid reader "expected at least one value for '+' syntax"
+        Cursor.err_invalid reader "expected at least one value for '+' syntax"
       else values
   | Hash syn ->
-      (* Read comma-separated list - use Reader.list for proper parsing *)
+      (* Read comma-separated list - use Cursor.list for proper parsing *)
       let values =
-        Reader.list ~sep:Reader.comma ~at_least:1
+        Cursor.list ~sep:Cursor.comma ~at_least:1
           (fun r -> read_value r syn)
           reader
       in
       values
   | Question syn ->
-      (* Optional value - use Reader.option for safe parsing *)
-      Reader.option (fun r -> read_value r syn) reader
+      (* Optional value - use Cursor.option for safe parsing *)
+      Cursor.option (fun r -> read_value r syn) reader
 
 (** {1 Meta handling} *)
 
@@ -782,7 +782,7 @@ let rec custom_declaration_name (decl : declaration) : string option =
 let pp_any_syntax : any_syntax Pp.t = fun ctx (Syntax syn) -> pp_syntax ctx syn
 
 (* Reader for any_syntax *)
-let read_any_syntax (r : Reader.t) : any_syntax =
+let read_any_syntax (r : Cursor.t) : any_syntax =
   (* Reuse the main read_syntax function *)
   read_syntax r
 
@@ -790,29 +790,19 @@ let read_any_syntax (r : Reader.t) : any_syntax =
     variable handle for parsing purposes only - it doesn't have type or layer
     information which would need to be resolved from a variable registry or
     context. *)
-let parse_var_reference (r : Reader.t) : string * string option =
-  if Reader.looking_at r "var(" then (
-    for _ = 1 to 4 do
-      Reader.skip r
-    done;
-    (* skip "var(" *)
-    Reader.expect '-' r;
-    Reader.expect '-' r;
-    let content = Reader.until r ')' in
-    let name, fallback =
-      match String.index_opt content ',' with
-      | Some i ->
-          let name = String.sub content 0 i |> String.trim in
-          let fallback =
-            String.sub content (i + 1) (String.length content - i - 1)
-            |> String.trim
-          in
-          (name, Some fallback)
-      | None -> (String.trim content, None)
-    in
-    (* CSS spec requires variable names to have at least one character after
-       -- *)
-    if name = "" then Reader.err_invalid r "CSS variable name";
-    Reader.expect ')' r;
-    (name, fallback))
-  else Reader.err_invalid r "Expected var() function"
+let parse_var_reference (r : Cursor.t) : string * string option =
+  Cursor.call "var" r (fun inner ->
+      let raw_name = Cursor.ident ~keep_case:true inner in
+      let name =
+        if String.length raw_name >= 2 && String.sub raw_name 0 2 = "--" then
+          String.sub raw_name 2 (String.length raw_name - 2)
+        else raw_name
+      in
+      if name = "" then Cursor.err_invalid inner "CSS variable name";
+      Cursor.ws inner;
+      let fallback =
+        if Cursor.comma_opt inner then
+          Some (String.trim (Parser.to_string (Cursor.remaining inner)))
+        else None
+      in
+      (name, fallback))

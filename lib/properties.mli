@@ -13,7 +13,7 @@ val pp_property_value : ('a property * 'a) Pp.t
 val pp_shadow : shadow Pp.t
 (** [pp_shadow] is the pretty-printer for [shadow] values. *)
 
-val read_shadow : Reader.t -> shadow
+val read_shadow : Cursor.t -> shadow
 (** [read_shadow t] parses a [shadow] value from [t]. *)
 
 (* Background and animation helpers moved from Css *)
@@ -98,85 +98,85 @@ val background_shorthand :
 val pp_border_style : border_style Pp.t
 (** [pp_border_style] is the pretty-printer for [border_style]. *)
 
-val read_border_style : Reader.t -> border_style
+val read_border_style : Cursor.t -> border_style
 (** [read_border_style t] is the [border_style] parsed from [t]. *)
 
 val pp_border_width : border_width Pp.t
 (** [pp_border_width] is the pretty-printer for [border_width]. *)
 
-val read_border_width : Reader.t -> border_width
+val read_border_width : Cursor.t -> border_width
 (** [read_border_width t] is the [border_width] parsed from [t]. *)
 
 val pp_border : border Pp.t
 (** [pp_border] is the pretty-printer for [border]. *)
 
-val read_border : Reader.t -> border
+val read_border : Cursor.t -> border
 (** [read_border t] is the [border] shorthand parsed from [t]. *)
 
 val pp_border_shorthand : border_shorthand Pp.t
 (** [pp_border_shorthand] pretty-prints a border shorthand value. *)
 
-val read_border_shorthand : Reader.t -> border_shorthand
+val read_border_shorthand : Cursor.t -> border_shorthand
 (** [read_border_shorthand t] parses a border shorthand value. *)
 
 val pp_line_height : line_height Pp.t
 (** [pp_line_height] is the pretty-printer for [line_height]. *)
 
-val read_line_height : Reader.t -> line_height
+val read_line_height : Cursor.t -> line_height
 (** [read_line_height t] is the [line_height] parsed from [t]. *)
 
 val pp_font_weight : font_weight Pp.t
 (** [pp_font_weight] is the pretty-printer for [font_weight]. *)
 
-val read_font_weight : Reader.t -> font_weight
+val read_font_weight : Cursor.t -> font_weight
 (** [read_font_weight t] is the [font_weight] parsed from [t]. *)
 
 val pp_display : display Pp.t
 (** [pp_display] is the pretty-printer for [display]. *)
 
-val read_display : Reader.t -> display
+val read_display : Cursor.t -> display
 (** [read_display t] is the [display] parsed from [t]. *)
 
 val pp_position : position Pp.t
 (** [pp_position] is the pretty-printer for [position]. *)
 
-val read_position : Reader.t -> position
+val read_position : Cursor.t -> position
 (** [read_position t] is the [position] parsed from [t]. *)
 
 val pp_visibility : visibility Pp.t
 (** [pp_visibility] is the pretty-printer for [visibility]. *)
 
-val read_visibility : Reader.t -> visibility
+val read_visibility : Cursor.t -> visibility
 (** [read_visibility t] is the [visibility] parsed from [t]. *)
 
 val pp_z_index : z_index Pp.t
 (** [pp_z_index] is the pretty-printer for [z_index]. *)
 
-val read_z_index : Reader.t -> z_index
+val read_z_index : Cursor.t -> z_index
 (** [read_z_index t] is the [z_index] parsed from [t]. *)
 
 val pp_order : order Pp.t
 (** [pp_order] is the pretty-printer for [order]. *)
 
-val read_order : Reader.t -> order
+val read_order : Cursor.t -> order
 (** [read_order t] parses an order value (integer or calc expression). *)
 
 val pp_overflow : overflow Pp.t
 (** [pp_overflow] is the pretty-printer for [overflow]. *)
 
-val read_overflow : Reader.t -> overflow
+val read_overflow : Cursor.t -> overflow
 (** [read_overflow t] is the [overflow] parsed from [t]. *)
 
 val pp_flex_direction : flex_direction Pp.t
 (** [pp_flex_direction] is the pretty-printer for [flex_direction]. *)
 
-val read_flex_direction : Reader.t -> flex_direction
+val read_flex_direction : Cursor.t -> flex_direction
 (** [read_flex_direction t] is the [flex_direction] parsed from [t]. *)
 
 val pp_flex_wrap : flex_wrap Pp.t
 (** [pp_flex_wrap] is the pretty-printer for [flex_wrap]. *)
 
-val read_flex_wrap : Reader.t -> flex_wrap
+val read_flex_wrap : Cursor.t -> flex_wrap
 (** [read_flex_wrap t] is the [flex_wrap] parsed from [t]. *)
 
 (* align type removed; use align_content/justify_* instead *)
@@ -184,82 +184,82 @@ val read_flex_wrap : Reader.t -> flex_wrap
 val pp_align_items : align_items Pp.t
 (** [pp_align_items] is the pretty-printer for [align_items]. *)
 
-val read_align_items : Reader.t -> align_items
+val read_align_items : Cursor.t -> align_items
 (** [read_align_items t] is the [align_items] parsed from [t]. *)
 
 val pp_align_self : align_self Pp.t
 (** [pp_align_self] is the pretty-printer for [align_self]. *)
 
-val read_align_self : Reader.t -> align_self
+val read_align_self : Cursor.t -> align_self
 (** [read_align_self t] is the [align_self] parsed from [t]. *)
 
 val pp_justify_content : justify_content Pp.t
 (** [pp_justify_content] is the pretty-printer for [justify_content]. *)
 
-val read_justify_content : Reader.t -> justify_content
+val read_justify_content : Cursor.t -> justify_content
 (** [read_justify_content t] is the [justify_content] parsed from [t]. *)
 
 val pp_align_content : align_content Pp.t
 (** [pp_align_content] is the pretty-printer for [align_content]. *)
 
-val read_align_content : Reader.t -> align_content
+val read_align_content : Cursor.t -> align_content
 (** [read_align_content t] is the [align_content] parsed from [t]. *)
 
 val pp_justify_items : justify_items Pp.t
 (** [pp_justify_items] is the pretty-printer for [justify_items]. *)
 
-val read_justify_items : Reader.t -> justify_items
+val read_justify_items : Cursor.t -> justify_items
 (** [read_justify_items t] is the [justify_items] parsed from [t]. *)
 
 val pp_justify_self : justify_self Pp.t
 (** [pp_justify_self] is the pretty-printer for [justify_self]. *)
 
-val read_justify_self : Reader.t -> justify_self
+val read_justify_self : Cursor.t -> justify_self
 (** [read_justify_self t] is the [justify_self] parsed from [t]. *)
 
 val pp_flex : flex Pp.t
 (** [pp_flex] is the pretty-printer for [flex]. *)
 
-val read_flex : Reader.t -> flex
+val read_flex : Cursor.t -> flex
 (** [read_flex t] is the [flex] parsed from [t]. *)
 
 val pp_flex_basis : flex_basis Pp.t
 (** [pp_flex_basis] pretty-prints a flex-basis value. *)
 
-val read_flex_basis : Reader.t -> flex_basis
+val read_flex_basis : Cursor.t -> flex_basis
 (** [read_flex_basis t] parses a flex-basis value. *)
 
 val pp_place_content : place_content Pp.t
 (** [pp_place_content] is the pretty-printer for [place_content]. *)
 
-val read_place_content : Reader.t -> place_content
+val read_place_content : Cursor.t -> place_content
 (** [read_place_content t] is the [place_content] parsed from [t]. *)
 
 val pp_place_items : place_items Pp.t
 (** [pp_place_items] is the pretty-printer for [place_items]. *)
 
-val read_place_items : Reader.t -> place_items
+val read_place_items : Cursor.t -> place_items
 (** [read_place_items t] is the [place_items] parsed from [t]. *)
 
 val pp_grid_auto_flow : grid_auto_flow Pp.t
 (** [pp_grid_auto_flow] is the pretty-printer for [grid_auto_flow]. *)
 
-val read_grid_auto_flow : Reader.t -> grid_auto_flow
+val read_grid_auto_flow : Cursor.t -> grid_auto_flow
 (** [read_grid_auto_flow t] is the [grid_auto_flow] parsed from [t]. *)
 
 val pp_grid_template : grid_template Pp.t
 (** [pp_grid_template] is the pretty-printer for [grid_template]. *)
 
-val read_grid_template : Reader.t -> grid_template
+val read_grid_template : Cursor.t -> grid_template
 (** [read_grid_template t] is the [grid_template] parsed from [t]. *)
 
 val pp_grid_line : grid_line Pp.t
 (** [pp_grid_line] is the pretty-printer for [grid_line]. *)
 
-val read_grid_line : Reader.t -> grid_line
+val read_grid_line : Cursor.t -> grid_line
 (** [read_grid_line t] is the [grid_line] parsed from [t]. *)
 
-val read_grid_line_pair : Reader.t -> grid_line * grid_line
+val read_grid_line_pair : Cursor.t -> grid_line * grid_line
 (** [read_grid_line_pair t] parses a grid column/row shorthand value:
     [<grid-line> [ / <grid-line> ]?]. If no slash is present, the second value
     defaults to [Auto]. *)
@@ -267,70 +267,70 @@ val read_grid_line_pair : Reader.t -> grid_line * grid_line
 val pp_aspect_ratio : aspect_ratio Pp.t
 (** [pp_aspect_ratio] is the pretty-printer for [aspect_ratio]. *)
 
-val read_aspect_ratio : Reader.t -> aspect_ratio
+val read_aspect_ratio : Cursor.t -> aspect_ratio
 (** [read_aspect_ratio t] is the [aspect_ratio] parsed from [t]. *)
 
 val pp_font_style : font_style Pp.t
 (** [pp_font_style] is the pretty-printer for [font_style]. *)
 
-val read_font_style : Reader.t -> font_style
+val read_font_style : Cursor.t -> font_style
 (** [read_font_style t] is the [font_style] parsed from [t]. *)
 
 val pp_font_size : font_size Pp.t
 (** [pp_font_size] is the pretty-printer for [font_size]. *)
 
-val read_font_size : Reader.t -> font_size
+val read_font_size : Cursor.t -> font_size
 (** [read_font_size t] is the [font_size] parsed from [t]. *)
 
 val pp_text_align : text_align Pp.t
 (** [pp_text_align] is the pretty-printer for [text_align]. *)
 
-val read_text_align : Reader.t -> text_align
+val read_text_align : Cursor.t -> text_align
 (** [read_text_align t] is the [text_align] parsed from [t]. *)
 
 val pp_text_decoration : text_decoration Pp.t
 (** [pp_text_decoration] is the pretty-printer for [text_decoration]. *)
 
-val read_text_decoration : Reader.t -> text_decoration
+val read_text_decoration : Cursor.t -> text_decoration
 (** [read_text_decoration t] is the [text_decoration] parsed from [t]. *)
 
 val pp_text_decoration_line : text_decoration_line Pp.t
 (** [pp_text_decoration_line] pretty-prints a text-decoration-line value. *)
 
-val read_text_decoration_line : Reader.t -> text_decoration_line
+val read_text_decoration_line : Cursor.t -> text_decoration_line
 (** [read_text_decoration_line t] parses a text-decoration-line value. *)
 
 val pp_text_decoration_shorthand : text_decoration_shorthand Pp.t
 (** [pp_text_decoration_shorthand] pretty-prints a text-decoration shorthand
     value. *)
 
-val read_text_decoration_shorthand : Reader.t -> text_decoration_shorthand
+val read_text_decoration_shorthand : Cursor.t -> text_decoration_shorthand
 (** [read_text_decoration_shorthand t] parses a text-decoration shorthand. *)
 
 val pp_text_decoration_style : text_decoration_style Pp.t
 (** [pp_text_decoration_style] is the pretty-printer for
     [text_decoration_style]. *)
 
-val read_text_decoration_style : Reader.t -> text_decoration_style
+val read_text_decoration_style : Cursor.t -> text_decoration_style
 (** [read_text_decoration_style t] is the [text_decoration_style] parsed from
     [t]. *)
 
 val pp_text_transform : text_transform Pp.t
 (** [pp_text_transform] is the pretty-printer for [text_transform]. *)
 
-val read_text_transform : Reader.t -> text_transform
+val read_text_transform : Cursor.t -> text_transform
 (** [read_text_transform t] is the [text_transform] parsed from [t]. *)
 
 val pp_text_overflow : text_overflow Pp.t
 (** [pp_text_overflow] is the pretty-printer for [text_overflow]. *)
 
-val read_text_overflow : Reader.t -> text_overflow
+val read_text_overflow : Cursor.t -> text_overflow
 (** [read_text_overflow t] is the [text_overflow] parsed from [t]. *)
 
 val pp_text_wrap : text_wrap Pp.t
 (** [pp_text_wrap] is the pretty-printer for [text_wrap]. *)
 
-val read_text_wrap : Reader.t -> text_wrap
+val read_text_wrap : Cursor.t -> text_wrap
 (** [read_text_wrap t] is the [text_wrap] parsed from [t]. *)
 
 val pp_text_size_adjust : text_size_adjust Pp.t
@@ -339,105 +339,105 @@ val pp_text_size_adjust : text_size_adjust Pp.t
 val pp_white_space : white_space Pp.t
 (** [pp_white_space] is the pretty-printer for [white_space]. *)
 
-val read_white_space : Reader.t -> white_space
+val read_white_space : Cursor.t -> white_space
 (** [read_white_space t] is the [white_space] parsed from [t]. *)
 
 val pp_word_break : word_break Pp.t
 (** [pp_word_break] is the pretty-printer for [word_break]. *)
 
-val read_word_break : Reader.t -> word_break
+val read_word_break : Cursor.t -> word_break
 (** [read_word_break t] is the [word_break] parsed from [t]. *)
 
 val pp_overflow_wrap : overflow_wrap Pp.t
 (** [pp_overflow_wrap] is the pretty-printer for [overflow_wrap]. *)
 
-val read_overflow_wrap : Reader.t -> overflow_wrap
+val read_overflow_wrap : Cursor.t -> overflow_wrap
 (** [read_overflow_wrap t] is the [overflow_wrap] parsed from [t]. *)
 
 val pp_hyphens : hyphens Pp.t
 (** [pp_hyphens] is the pretty-printer for [hyphens]. *)
 
-val read_hyphens : Reader.t -> hyphens
+val read_hyphens : Cursor.t -> hyphens
 (** [read_hyphens t] is the [hyphens] parsed from [t]. *)
 
 val pp_list_style_type : list_style_type Pp.t
 (** [pp_list_style_type] is the pretty-printer for [list_style_type]. *)
 
-val read_list_style_type : Reader.t -> list_style_type
+val read_list_style_type : Cursor.t -> list_style_type
 (** [read_list_style_type t] is the [list_style_type] parsed from [t]. *)
 
 val pp_list_style_position : list_style_position Pp.t
 (** [pp_list_style_position] is the pretty-printer for [list_style_position]. *)
 
-val read_list_style_position : Reader.t -> list_style_position
+val read_list_style_position : Cursor.t -> list_style_position
 (** [read_list_style_position t] is the [list_style_position] parsed from [t].
 *)
 
 val pp_list_style_image : list_style_image Pp.t
 (** [pp_list_style_image] is the pretty-printer for [list_style_image]. *)
 
-val read_list_style_image : Reader.t -> list_style_image
+val read_list_style_image : Cursor.t -> list_style_image
 (** [read_list_style_image t] is the [list_style_image] parsed from [t]. *)
 
 val pp_table_layout : table_layout Pp.t
 (** [pp_table_layout] is the pretty-printer for [table_layout]. *)
 
-val read_table_layout : Reader.t -> table_layout
+val read_table_layout : Cursor.t -> table_layout
 (** [read_table_layout t] is the [table_layout] parsed from [t]. *)
 
 val pp_vertical_align : vertical_align Pp.t
 (** [pp_vertical_align] is the pretty-printer for [vertical_align]. *)
 
-val read_vertical_align : Reader.t -> vertical_align
+val read_vertical_align : Cursor.t -> vertical_align
 (** [read_vertical_align t] is the [vertical_align] parsed from [t]. *)
 
 val pp_border_collapse : border_collapse Pp.t
 (** [pp_border_collapse] is the pretty-printer for [border_collapse]. *)
 
-val read_border_collapse : Reader.t -> border_collapse
+val read_border_collapse : Cursor.t -> border_collapse
 (** [read_border_collapse t] is the [border_collapse] parsed from [t]. *)
 
 val pp_outline_style : outline_style Pp.t
 (** [pp_outline_style] is the pretty-printer for [outline_style]. *)
 
-val read_outline_style : Reader.t -> outline_style
+val read_outline_style : Cursor.t -> outline_style
 (** [read_outline_style t] is the [outline_style] parsed from [t]. *)
 
 val pp_outline : outline Pp.t
 (** [pp_outline] is the pretty-printer for [outline]. *)
 
-val read_outline : Reader.t -> outline
+val read_outline : Cursor.t -> outline
 (** [read_outline t] is the [outline] parsed from [t]. *)
 
 val pp_font_family : font_family Pp.t
 (** [pp_font_family] is the pretty-printer for [font_family]. *)
 
-val read_font_family : Reader.t -> font_family
+val read_font_family : Cursor.t -> font_family
 (** [read_font_family t] is the [font_family] parsed from [t]. *)
 
 val pp_font_stretch : font_stretch Pp.t
 (** [pp_font_stretch] is the pretty-printer for [font_stretch]. *)
 
-val read_font_stretch : Reader.t -> font_stretch
+val read_font_stretch : Cursor.t -> font_stretch
 (** [read_font_stretch t] is the [font_stretch] parsed from [t]. *)
 
 val pp_font_display : font_display Pp.t
 (** [pp_font_display] is the pretty-printer for [font_display]. *)
 
-val read_font_display : Reader.t -> font_display
+val read_font_display : Cursor.t -> font_display
 (** [read_font_display t] is the [font_display] parsed from [t]. *)
 
 val pp_unicode_range : unicode_range Pp.t
 (** [pp_unicode_range] is the pretty-printer for [unicode_range]. *)
 
-val read_unicode_range : Reader.t -> unicode_range
+val read_unicode_range : Cursor.t -> unicode_range
 (** [read_unicode_range t] is the [unicode_range] parsed from [t]. *)
 
 val pp_font_variant_numeric_token : font_variant_numeric_token Pp.t
 (** [pp_font_variant_numeric_token] is the pretty-printer for
     [font_variant_numeric_token]. *)
 
-val read_font_variant_numeric_token : Reader.t -> font_variant_numeric_token
+val read_font_variant_numeric_token : Cursor.t -> font_variant_numeric_token
 (** [read_font_variant_numeric_token t] is the [font_variant_numeric_token]
     parsed from [t]. *)
 
@@ -445,7 +445,7 @@ val pp_font_variant_numeric : font_variant_numeric Pp.t
 (** [pp_font_variant_numeric] is the pretty-printer for [font_variant_numeric].
 *)
 
-val read_font_variant_numeric : Reader.t -> font_variant_numeric
+val read_font_variant_numeric : Cursor.t -> font_variant_numeric
 (** [read_font_variant_numeric t] is the [font_variant_numeric] parsed from [t].
 *)
 
@@ -453,7 +453,7 @@ val pp_font_feature_settings : font_feature_settings Pp.t
 (** [pp_font_feature_settings] is the pretty-printer for
     [font_feature_settings]. *)
 
-val read_font_feature_settings : Reader.t -> font_feature_settings
+val read_font_feature_settings : Cursor.t -> font_feature_settings
 (** [read_font_feature_settings t] is the [font_feature_settings] parsed from
     [t]. *)
 
@@ -461,7 +461,7 @@ val pp_font_variation_settings : font_variation_settings Pp.t
 (** [pp_font_variation_settings] is the pretty-printer for
     [font_variation_settings]. *)
 
-val read_font_variation_settings : Reader.t -> font_variation_settings
+val read_font_variation_settings : Cursor.t -> font_variation_settings
 (** [read_font_variation_settings t] is the [font_variation_settings] parsed
     from [t]. *)
 
@@ -471,38 +471,38 @@ val pp_transform : transform Pp.t
 val pp_transforms : transform list Pp.t
 (** [pp_transforms] is the pretty-printer for [transform list]. *)
 
-val read_transform : Reader.t -> transform
+val read_transform : Cursor.t -> transform
 (** [read_transform t] is the [transform] parsed from [t]. *)
 
-val read_transforms : Reader.t -> transform list
+val read_transforms : Cursor.t -> transform list
 (** [read_transforms t] is the [transform list] parsed from [t]. *)
 
-val read_transform_origin : Reader.t -> transform_origin
+val read_transform_origin : Cursor.t -> transform_origin
 (** [read_transform_origin t] is the [transform_origin] parsed from [t]. *)
 
 val pp_transform_box : transform_box Pp.t
 (** [pp_transform_box] is the pretty-printer for [transform_box]. *)
 
-val read_transform_box : Reader.t -> transform_box
+val read_transform_box : Cursor.t -> transform_box
 (** [read_transform_box t] is the [transform_box] parsed from [t]. *)
 
 val pp_transform_style : transform_style Pp.t
 (** [pp_transform_style] is the pretty-printer for [transform_style]. *)
 
-val read_transform_style : Reader.t -> transform_style
+val read_transform_style : Cursor.t -> transform_style
 (** [read_transform_style t] is the [transform_style] parsed from [t]. *)
 
 val pp_backface_visibility : backface_visibility Pp.t
 (** [pp_backface_visibility] is the pretty-printer for [backface_visibility]. *)
 
-val read_backface_visibility : Reader.t -> backface_visibility
+val read_backface_visibility : Cursor.t -> backface_visibility
 (** [read_backface_visibility t] is the [backface_visibility] parsed from [t].
 *)
 
 val pp_scale : scale Pp.t
 (** [pp_scale] is the pretty-printer for [scale]. *)
 
-val read_scale : Reader.t -> scale
+val read_scale : Cursor.t -> scale
 (** [read_scale t] is the [scale] parsed from [t]. *)
 
 val pp_steps_direction : steps_direction Pp.t
@@ -511,31 +511,31 @@ val pp_steps_direction : steps_direction Pp.t
 val pp_timing_function : timing_function Pp.t
 (** [pp_timing_function] is the pretty-printer for [timing_function]. *)
 
-val read_steps_direction : Reader.t -> steps_direction
+val read_steps_direction : Cursor.t -> steps_direction
 (** [read_steps_direction t] is the [steps_direction] parsed from [t]. *)
 
-val read_timing_function : Reader.t -> timing_function
+val read_timing_function : Cursor.t -> timing_function
 (** [read_timing_function t] is the [timing_function] parsed from [t]. *)
 
 val pp_transition_property_value : transition_property_value Pp.t
 (** [pp_transition_property_value] is the pretty-printer for
     [transition_property_value]. *)
 
-val read_transition_property_value : Reader.t -> transition_property_value
+val read_transition_property_value : Cursor.t -> transition_property_value
 (** [read_transition_property_value t] is the [transition_property_value] parsed
     from [t]. *)
 
 val pp_transition_property : transition_property Pp.t
 (** [pp_transition_property] is the pretty-printer for [transition_property]. *)
 
-val read_transition_property : Reader.t -> transition_property
+val read_transition_property : Cursor.t -> transition_property
 (** [read_transition_property t] is the [transition_property] parsed from [t].
 *)
 
 val pp_transition_behavior : transition_behavior Pp.t
 (** [pp_transition_behavior] is the pretty-printer for [transition_behavior]. *)
 
-val read_transition_behavior : Reader.t -> transition_behavior
+val read_transition_behavior : Cursor.t -> transition_behavior
 (** [read_transition_behavior t] is the [transition_behavior] parsed from [t].
 *)
 
@@ -543,30 +543,30 @@ val pp_transition_shorthand : transition_shorthand Pp.t
 (** [pp_transition_shorthand] is the pretty-printer for [transition_shorthand].
 *)
 
-val read_transition_shorthand : Reader.t -> transition_shorthand
+val read_transition_shorthand : Cursor.t -> transition_shorthand
 (** [read_transition_shorthand t] is the [transition_shorthand] parsed from [t].
 *)
 
 val pp_transition : transition Pp.t
 (** [pp_transition] is the pretty-printer for [transition]. *)
 
-val read_transition : Reader.t -> transition
+val read_transition : Cursor.t -> transition
 (** [read_transition t] is the [transition] parsed from [t]. *)
 
-val read_transitions : Reader.t -> transition list
+val read_transitions : Cursor.t -> transition list
 (** [read_transitions t] parses a comma-separated list of [transition]s. *)
 
 val pp_animation_direction : animation_direction Pp.t
 (** [pp_animation_direction] is the pretty-printer for [animation_direction]. *)
 
-val read_animation_direction : Reader.t -> animation_direction
+val read_animation_direction : Cursor.t -> animation_direction
 (** [read_animation_direction t] is the [animation_direction] parsed from [t].
 *)
 
 val pp_animation_fill_mode : animation_fill_mode Pp.t
 (** [pp_animation_fill_mode] is the pretty-printer for [animation_fill_mode]. *)
 
-val read_animation_fill_mode : Reader.t -> animation_fill_mode
+val read_animation_fill_mode : Cursor.t -> animation_fill_mode
 (** [read_animation_fill_mode t] is the [animation_fill_mode] parsed from [t].
 *)
 
@@ -574,7 +574,7 @@ val pp_animation_iteration_count : animation_iteration_count Pp.t
 (** [pp_animation_iteration_count] is the pretty-printer for
     [animation_iteration_count]. *)
 
-val read_animation_iteration_count : Reader.t -> animation_iteration_count
+val read_animation_iteration_count : Cursor.t -> animation_iteration_count
 (** [read_animation_iteration_count t] is the [animation_iteration_count] parsed
     from [t]. *)
 
@@ -582,30 +582,30 @@ val pp_animation_play_state : animation_play_state Pp.t
 (** [pp_animation_play_state] is the pretty-printer for [animation_play_state].
 *)
 
-val read_animation_play_state : Reader.t -> animation_play_state
+val read_animation_play_state : Cursor.t -> animation_play_state
 (** [read_animation_play_state t] is the [animation_play_state] parsed from [t].
 *)
 
 val pp_animation_shorthand : animation_shorthand Pp.t
 (** [pp_animation_shorthand] is the pretty-printer for [animation_shorthand]. *)
 
-val read_animation_shorthand : Reader.t -> animation_shorthand
+val read_animation_shorthand : Cursor.t -> animation_shorthand
 (** [read_animation_shorthand t] is the [animation_shorthand] parsed from [t].
 *)
 
 val pp_animation : animation Pp.t
 (** [pp_animation] is the pretty-printer for [animation]. *)
 
-val read_animation : Reader.t -> animation
+val read_animation : Cursor.t -> animation
 (** [read_animation t] is the [animation] parsed from [t]. *)
 
-val read_animations : Reader.t -> animation list
+val read_animations : Cursor.t -> animation list
 (** [read_animations t] parses a comma-separated list of [animation]s. *)
 
 val pp_blend_mode : blend_mode Pp.t
 (** [pp_blend_mode] is the pretty-printer for [blend_mode]. *)
 
-val read_blend_mode : Reader.t -> blend_mode
+val read_blend_mode : Cursor.t -> blend_mode
 (** [read_blend_mode t] is the [blend_mode] parsed from [t]. *)
 
 val pp_position_value : position_value Pp.t
@@ -624,103 +624,103 @@ val origin3d : length -> length -> length -> transform_origin
 val pp_text_shadow : text_shadow Pp.t
 (** [pp_text_shadow] is the pretty-printer for [text_shadow]. *)
 
-val read_text_shadow : Reader.t -> text_shadow
+val read_text_shadow : Cursor.t -> text_shadow
 (** [read_text_shadow t] is the [text_shadow] parsed from [t]. *)
 
-val read_text_shadows : Reader.t -> text_shadow list
+val read_text_shadows : Cursor.t -> text_shadow list
 (** [read_text_shadows t] parses a comma-separated list of [text_shadow]s. *)
 
 val pp_translate_value : translate_value Pp.t
 (** [pp_translate_value] is the pretty-printer for [translate_value]. *)
 
-val read_translate_value : Reader.t -> translate_value
+val read_translate_value : Cursor.t -> translate_value
 (** [read_translate_value t] is the [translate_value] parsed from [t]. *)
 
 val pp_rotate_value : rotate_value Pp.t
 (** [pp_rotate_value] is the pretty-printer for [rotate_value]. *)
 
-val read_rotate_value : Reader.t -> rotate_value
+val read_rotate_value : Cursor.t -> rotate_value
 (** [read_rotate_value t] is the [rotate_value] parsed from [t]. *)
 
 val pp_filter : filter Pp.t
 (** [pp_filter] is the pretty-printer for [filter]. *)
 
-val read_filter : Reader.t -> filter
+val read_filter : Cursor.t -> filter
 (** [read_filter t] is the [filter] parsed from [t]. *)
 
 val pp_opacity : opacity Pp.t
 (** [pp_opacity] is the pretty-printer for [opacity]. *)
 
-val read_opacity : Reader.t -> opacity
+val read_opacity : Cursor.t -> opacity
 (** [read_opacity t] is the [opacity] parsed from [t]. *)
 
 val pp_background_attachment : background_attachment Pp.t
 (** [pp_background_attachment] is the pretty-printer for
     [background_attachment]. *)
 
-val read_background_attachment : Reader.t -> background_attachment
+val read_background_attachment : Cursor.t -> background_attachment
 (** [read_background_attachment t] is the [background_attachment] parsed from
     [t]. *)
 
 val pp_background_repeat : background_repeat Pp.t
 (** [pp_background_repeat] is the pretty-printer for [background_repeat]. *)
 
-val read_background_repeat : Reader.t -> background_repeat
+val read_background_repeat : Cursor.t -> background_repeat
 (** [read_background_repeat t] is the [background_repeat] parsed from [t]. *)
 
 val pp_background_size : background_size Pp.t
 (** [pp_background_size] is the pretty-printer for [background_size]. *)
 
-val read_background_size : Reader.t -> background_size
+val read_background_size : Cursor.t -> background_size
 (** [read_background_size t] is the [background_size] parsed from [t]. *)
 
 val pp_gradient_direction : gradient_direction Pp.t
 (** [pp_gradient_direction] is the pretty-printer for [gradient_direction]. *)
 
-val read_gradient_direction : Reader.t -> gradient_direction
+val read_gradient_direction : Cursor.t -> gradient_direction
 (** [read_gradient_direction t] is the [gradient_direction] parsed from [t]. *)
 
 val pp_color_interpolation : color_interpolation Pp.t
 (** [pp_color_interpolation] pretty-prints a color interpolation space (e.g.,
     "in oklab"). *)
 
-val read_color_interpolation : Reader.t -> color_interpolation
+val read_color_interpolation : Cursor.t -> color_interpolation
 (** [read_color_interpolation t] parses a color interpolation space starting
     with the keyword "in" (e.g., "in oklab"). *)
 
 val pp_radial_shape : radial_shape Pp.t
 (** [pp_radial_shape] is the pretty-printer for [radial_shape]. *)
 
-val read_radial_shape : Reader.t -> radial_shape
+val read_radial_shape : Cursor.t -> radial_shape
 (** [read_radial_shape t] is the [radial_shape] parsed from [t]. *)
 
 val pp_radial_size : radial_size Pp.t
 (** [pp_radial_size] is the pretty-printer for [radial_size]. *)
 
-val read_radial_size : Reader.t -> radial_size
+val read_radial_size : Cursor.t -> radial_size
 (** [read_radial_size t] is the [radial_size] parsed from [t]. *)
 
 val pp_radial_gradient_config : radial_gradient_config Pp.t
 (** [pp_radial_gradient_config] is the pretty-printer for
     [radial_gradient_config]. *)
 
-val read_radial_gradient_config : Reader.t -> radial_gradient_config
+val read_radial_gradient_config : Cursor.t -> radial_gradient_config
 (** [read_radial_gradient_config t] is the [radial_gradient_config] parsed from
     [t]. *)
 
 val pp_gradient_stop : gradient_stop Pp.t
 (** [pp_gradient_stop] is the pretty-printer for [gradient_stop]. *)
 
-val read_gradient_stop : Reader.t -> gradient_stop
+val read_gradient_stop : Cursor.t -> gradient_stop
 (** [read_gradient_stop t] is the [gradient_stop] parsed from [t]. *)
 
 val pp_background_image : background_image Pp.t
 (** [pp_background_image] is the pretty-printer for [background_image]. *)
 
-val read_background_image : Reader.t -> background_image
+val read_background_image : Cursor.t -> background_image
 (** [read_background_image t] is the [background_image] parsed from [t]. *)
 
-val read_background_images : Reader.t -> background_image list
+val read_background_images : Cursor.t -> background_image list
 (** [read_background_images t] parses a comma-separated list of
     [background_image]s. *)
 
@@ -728,7 +728,7 @@ val minify_background_image : background_image -> background_image
 (** [minify_background_image img] converts named colors in gradient stops to
     their shortest hex form, matching Lightning CSS behavior. *)
 
-val read_background_box : Reader.t -> background_box
+val read_background_box : Cursor.t -> background_box
 (** [read_background_box t] parses a background-clip or background-origin value.
 *)
 
@@ -736,60 +736,60 @@ val pp_background_box : background_box Pp.t
 (** [pp_background_box] pretty-prints a background-clip or background-origin
     value. *)
 
-val read_webkit_mask_composite : Reader.t -> webkit_mask_composite
+val read_webkit_mask_composite : Cursor.t -> webkit_mask_composite
 (** [read_webkit_mask_composite t] parses a webkit-mask-composite value. *)
 
 val pp_webkit_mask_composite : webkit_mask_composite Pp.t
 (** [pp_webkit_mask_composite] pretty-prints a webkit-mask-composite value. *)
 
-val read_mask_composite : Reader.t -> mask_composite
+val read_mask_composite : Cursor.t -> mask_composite
 (** [read_mask_composite t] parses a standard mask-composite value. *)
 
 val pp_mask_composite : mask_composite Pp.t
 (** [pp_mask_composite] pretty-prints a standard mask-composite value. *)
 
-val read_webkit_mask_source_type : Reader.t -> webkit_mask_source_type
+val read_webkit_mask_source_type : Cursor.t -> webkit_mask_source_type
 (** [read_webkit_mask_source_type t] parses a webkit-mask-source-type value. *)
 
 val pp_webkit_mask_source_type : webkit_mask_source_type Pp.t
 (** [pp_webkit_mask_source_type] pretty-prints a webkit-mask-source-type value.
 *)
 
-val read_mask_mode : Reader.t -> mask_mode
+val read_mask_mode : Cursor.t -> mask_mode
 (** [read_mask_mode t] parses a standard mask-mode value. *)
 
 val pp_mask_mode : mask_mode Pp.t
 (** [pp_mask_mode] pretty-prints a standard mask-mode value. *)
 
-val read_mask_type : Reader.t -> mask_type
+val read_mask_type : Cursor.t -> mask_type
 (** [read_mask_type t] parses a mask-type value (alpha/luminance). *)
 
 val pp_mask_type : mask_type Pp.t
 (** [pp_mask_type] pretty-prints a mask-type value. *)
 
-val read_mask_box : Reader.t -> mask_box
+val read_mask_box : Cursor.t -> mask_box
 (** [read_mask_box t] parses a mask-clip or mask-origin value. *)
 
 val pp_mask_box : mask_box Pp.t
 (** [pp_mask_box] pretty-prints a mask-clip or mask-origin value. *)
 
-val read_background_shorthand : Reader.t -> background_shorthand
+val read_background_shorthand : Cursor.t -> background_shorthand
 (** [read_background_shorthand t] parses a background shorthand property. *)
 
 val pp_background_shorthand : background_shorthand Pp.t
 (** [pp_background_shorthand] pretty-prints a background shorthand value. *)
 
-val read_background : Reader.t -> background
+val read_background : Cursor.t -> background
 (** [read_background t] parses a background property. *)
 
-val read_backgrounds : Reader.t -> background list
+val read_backgrounds : Cursor.t -> background list
 (** [read_backgrounds t] parses a comma-separated list of background properties.
 *)
 
 val pp_background : background Pp.t
 (** [pp_background] pretty-prints a background value. *)
 
-val read_gap : Reader.t -> gap
+val read_gap : Cursor.t -> gap
 (** [read_gap t] parses a gap shorthand property (one or two length values). *)
 
 val pp_gap : gap Pp.t
@@ -798,208 +798,208 @@ val pp_gap : gap Pp.t
 val pp_cursor : cursor Pp.t
 (** [pp_cursor] is the pretty-printer for [cursor]. *)
 
-val read_cursor : Reader.t -> cursor
+val read_cursor : Cursor.t -> cursor
 (** [read_cursor t] is the [cursor] parsed from [t]. *)
 
 val pp_user_select : user_select Pp.t
 (** [pp_user_select] is the pretty-printer for [user_select]. *)
 
-val read_user_select : Reader.t -> user_select
+val read_user_select : Cursor.t -> user_select
 (** [read_user_select t] is the [user_select] parsed from [t]. *)
 
 val pp_pointer_events : pointer_events Pp.t
 (** [pp_pointer_events] is the pretty-printer for [pointer_events]. *)
 
-val read_pointer_events : Reader.t -> pointer_events
+val read_pointer_events : Cursor.t -> pointer_events
 (** [read_pointer_events t] is the [pointer_events] parsed from [t]. *)
 
 val pp_touch_action : touch_action Pp.t
 (** [pp_touch_action] is the pretty-printer for [touch_action]. *)
 
-val read_touch_action : Reader.t -> touch_action
+val read_touch_action : Cursor.t -> touch_action
 (** [read_touch_action t] is the [touch_action] parsed from [t]. *)
 
 val pp_resize : resize Pp.t
 (** [pp_resize] is the pretty-printer for [resize]. *)
 
-val read_resize : Reader.t -> resize
+val read_resize : Cursor.t -> resize
 (** [read_resize t] is the [resize] parsed from [t]. *)
 
 val pp_box_sizing : box_sizing Pp.t
 (** [pp_box_sizing] is the pretty-printer for [box_sizing]. *)
 
-val read_box_sizing : Reader.t -> box_sizing
+val read_box_sizing : Cursor.t -> box_sizing
 (** [read_box_sizing t] is the [box_sizing] parsed from [t]. *)
 
 val pp_field_sizing : field_sizing Pp.t
 (** [pp_field_sizing] is the pretty-printer for [field_sizing]. *)
 
-val read_field_sizing : Reader.t -> field_sizing
+val read_field_sizing : Cursor.t -> field_sizing
 (** [read_field_sizing t] is the [field_sizing] parsed from [t]. *)
 
 val pp_caption_side : caption_side Pp.t
 (** [pp_caption_side] is the pretty-printer for [caption_side]. *)
 
-val read_caption_side : Reader.t -> caption_side
+val read_caption_side : Cursor.t -> caption_side
 (** [read_caption_side t] is the [caption_side] parsed from [t]. *)
 
 val pp_object_fit : object_fit Pp.t
 (** [pp_object_fit] is the pretty-printer for [object_fit]. *)
 
-val read_object_fit : Reader.t -> object_fit
+val read_object_fit : Cursor.t -> object_fit
 (** [read_object_fit t] is the [object_fit] parsed from [t]. *)
 
-val read_position_value : Reader.t -> position_value
+val read_position_value : Cursor.t -> position_value
 (** [read_position_value t] is the [position_value] parsed from [t]. *)
 
 val pp_background_position : background_position Pp.t
 (** [pp_background_position] is the pretty-printer for [background_position]. *)
 
-val read_background_position : Reader.t -> background_position
+val read_background_position : Cursor.t -> background_position
 (** [read_background_position t] is the [background_position] parsed from [t].
 *)
 
 val pp_content : content Pp.t
 (** [pp_content] is the pretty-printer for [content]. *)
 
-val read_content : Reader.t -> content
+val read_content : Cursor.t -> content
 (** [read_content t] is the [content] parsed from [t]. *)
 
 val pp_content_visibility : content_visibility Pp.t
 (** [pp_content_visibility] is the pretty-printer for [content_visibility]. *)
 
-val read_content_visibility : Reader.t -> content_visibility
+val read_content_visibility : Cursor.t -> content_visibility
 (** [read_content_visibility t] is the [content_visibility] parsed from [t]. *)
 
 val pp_quotes : quotes Pp.t
 (** [pp_quotes] is the pretty-printer for [quotes]. *)
 
-val read_quotes : Reader.t -> quotes
+val read_quotes : Cursor.t -> quotes
 (** [read_quotes t] is the [quotes] parsed from [t]. *)
 
 val pp_container_type : container_type Pp.t
 (** [pp_container_type] is the pretty-printer for [container_type]. *)
 
-val read_container_type : Reader.t -> container_type
+val read_container_type : Cursor.t -> container_type
 (** [read_container_type t] is the [container_type] parsed from [t]. *)
 
 val pp_container_shorthand : container_shorthand Pp.t
 (** [pp_container_shorthand] is the pretty-printer for [container_shorthand]. *)
 
-val read_container_shorthand : Reader.t -> container_shorthand
+val read_container_shorthand : Cursor.t -> container_shorthand
 (** [read_container_shorthand t] is the [container_shorthand] parsed from [t].
 *)
 
 val pp_contain : contain Pp.t
 (** [pp_contain] is the pretty-printer for [contain]. *)
 
-val read_contain : Reader.t -> contain
+val read_contain : Cursor.t -> contain
 (** [read_contain t] is the [contain] parsed from [t]. *)
 
 val pp_isolation : isolation Pp.t
 (** [pp_isolation] is the pretty-printer for [isolation]. *)
 
-val read_isolation : Reader.t -> isolation
+val read_isolation : Cursor.t -> isolation
 (** [read_isolation t] is the [isolation] parsed from [t]. *)
 
 val pp_break_value : break_value Pp.t
 (** [pp_break_value] is the pretty-printer for [break_value]. *)
 
-val read_break_value : Reader.t -> break_value
+val read_break_value : Cursor.t -> break_value
 (** [read_break_value t] is the break value parsed from [t]. *)
 
 val pp_break_inside_value : break_inside_value Pp.t
 (** [pp_break_inside_value] is the pretty-printer for [break_inside_value]. *)
 
-val read_break_inside_value : Reader.t -> break_inside_value
+val read_break_inside_value : Cursor.t -> break_inside_value
 (** [read_break_inside_value t] is the break-inside value parsed from [t]. *)
 
 val pp_columns_value : columns_value Pp.t
 (** [pp_columns_value] is the pretty-printer for [columns_value]. *)
 
-val read_columns_value : Reader.t -> columns_value
+val read_columns_value : Cursor.t -> columns_value
 (** [read_columns_value t] is the [columns_value] parsed from [t]. *)
 
 val pp_scroll_behavior : scroll_behavior Pp.t
 (** [pp_scroll_behavior] is the pretty-printer for [scroll_behavior]. *)
 
-val read_scroll_behavior : Reader.t -> scroll_behavior
+val read_scroll_behavior : Cursor.t -> scroll_behavior
 (** [read_scroll_behavior t] is the [scroll_behavior] parsed from [t]. *)
 
 val pp_scroll_snap_align : scroll_snap_align Pp.t
 (** [pp_scroll_snap_align] is the pretty-printer for [scroll_snap_align]. *)
 
-val read_scroll_snap_align : Reader.t -> scroll_snap_align
+val read_scroll_snap_align : Cursor.t -> scroll_snap_align
 (** [read_scroll_snap_align t] is the [scroll_snap_align] parsed from [t]. *)
 
 val pp_scroll_snap_stop : scroll_snap_stop Pp.t
 (** [pp_scroll_snap_stop] is the pretty-printer for [scroll_snap_stop]. *)
 
-val read_scroll_snap_stop : Reader.t -> scroll_snap_stop
+val read_scroll_snap_stop : Cursor.t -> scroll_snap_stop
 (** [read_scroll_snap_stop t] is the [scroll_snap_stop] parsed from [t]. *)
 
 val pp_scroll_snap_strictness : scroll_snap_strictness Pp.t
 (** [pp_scroll_snap_strictness] is the pretty-printer for
     [scroll_snap_strictness]. *)
 
-val read_scroll_snap_strictness : Reader.t -> scroll_snap_strictness
+val read_scroll_snap_strictness : Cursor.t -> scroll_snap_strictness
 (** [read_scroll_snap_strictness t] is the [scroll_snap_strictness] parsed from
     [t]. *)
 
 val pp_scroll_snap_axis : scroll_snap_axis Pp.t
 (** [pp_scroll_snap_axis] is the pretty-printer for [scroll_snap_axis]. *)
 
-val read_scroll_snap_axis : Reader.t -> scroll_snap_axis
+val read_scroll_snap_axis : Cursor.t -> scroll_snap_axis
 (** [read_scroll_snap_axis t] is the [scroll_snap_axis] parsed from [t]. *)
 
 val pp_scroll_snap_type : scroll_snap_type Pp.t
 (** [pp_scroll_snap_type] is the pretty-printer for [scroll_snap_type]. *)
 
-val read_scroll_snap_type : Reader.t -> scroll_snap_type
+val read_scroll_snap_type : Cursor.t -> scroll_snap_type
 (** [read_scroll_snap_type t] is the [scroll_snap_type] parsed from [t]. *)
 
 val pp_overscroll_behavior : overscroll_behavior Pp.t
 (** [pp_overscroll_behavior] is the pretty-printer for [overscroll_behavior]. *)
 
-val read_overscroll_behavior : Reader.t -> overscroll_behavior
+val read_overscroll_behavior : Cursor.t -> overscroll_behavior
 (** [read_overscroll_behavior t] is the [overscroll_behavior] parsed from [t].
 *)
 
 val pp_svg_paint : svg_paint Pp.t
 (** [pp_svg_paint] is the pretty-printer for [svg_paint]. *)
 
-val read_svg_paint : Reader.t -> svg_paint
+val read_svg_paint : Cursor.t -> svg_paint
 (** [read_svg_paint t] is the [svg_paint] parsed from [t]. *)
 
 val pp_direction : direction Pp.t
 (** [pp_direction] is the pretty-printer for [direction]. *)
 
-val read_direction : Reader.t -> direction
+val read_direction : Cursor.t -> direction
 (** [read_direction t] is the [direction] parsed from [t]. *)
 
 val pp_unicode_bidi : unicode_bidi Pp.t
 (** [pp_unicode_bidi] is the pretty-printer for [unicode_bidi]. *)
 
-val read_unicode_bidi : Reader.t -> unicode_bidi
+val read_unicode_bidi : Cursor.t -> unicode_bidi
 (** [read_unicode_bidi t] is the [unicode_bidi] parsed from [t]. *)
 
 val pp_writing_mode : writing_mode Pp.t
 (** [pp_writing_mode] is the pretty-printer for [writing_mode]. *)
 
-val read_writing_mode : Reader.t -> writing_mode
+val read_writing_mode : Cursor.t -> writing_mode
 (** [read_writing_mode t] is the [writing_mode] parsed from [t]. *)
 
 val pp_webkit_appearance : webkit_appearance Pp.t
 (** [pp_webkit_appearance] is the pretty-printer for [webkit_appearance]. *)
 
-val read_webkit_appearance : Reader.t -> webkit_appearance
+val read_webkit_appearance : Cursor.t -> webkit_appearance
 (** [read_webkit_appearance t] is the [webkit_appearance] parsed from [t]. *)
 
 val pp_webkit_font_smoothing : webkit_font_smoothing Pp.t
 (** [pp_webkit_font_smoothing] is the pretty-printer for
     [webkit_font_smoothing]. *)
 
-val read_webkit_font_smoothing : Reader.t -> webkit_font_smoothing
+val read_webkit_font_smoothing : Cursor.t -> webkit_font_smoothing
 (** [read_webkit_font_smoothing t] is the [webkit_font_smoothing] parsed from
     [t]. *)
 
@@ -1007,106 +1007,106 @@ val pp_moz_osx_font_smoothing : moz_osx_font_smoothing Pp.t
 (** [pp_moz_osx_font_smoothing] is the pretty-printer for
     [moz_osx_font_smoothing]. *)
 
-val read_moz_osx_font_smoothing : Reader.t -> moz_osx_font_smoothing
+val read_moz_osx_font_smoothing : Cursor.t -> moz_osx_font_smoothing
 (** [read_moz_osx_font_smoothing t] is the [moz_osx_font_smoothing] parsed from
     [t]. *)
 
 val pp_webkit_box_orient : webkit_box_orient Pp.t
 (** [pp_webkit_box_orient] is the pretty-printer for [webkit_box_orient]. *)
 
-val read_webkit_box_orient : Reader.t -> webkit_box_orient
+val read_webkit_box_orient : Cursor.t -> webkit_box_orient
 (** [read_webkit_box_orient t] is the [webkit_box_orient] parsed from [t]. *)
 
 val pp_webkit_line_clamp : webkit_line_clamp Pp.t
 (** [pp_webkit_line_clamp] is the pretty-printer for [webkit_line_clamp]. *)
 
-val read_webkit_line_clamp : Reader.t -> webkit_line_clamp
+val read_webkit_line_clamp : Cursor.t -> webkit_line_clamp
 (** [read_webkit_line_clamp t] is the [webkit_line_clamp] parsed from [t]. *)
 
-val read_text_size_adjust : Reader.t -> text_size_adjust
+val read_text_size_adjust : Cursor.t -> text_size_adjust
 (** [read_text_size_adjust t] is the text size adjust value parsed from [t]. *)
 
 val pp_forced_color_adjust : forced_color_adjust Pp.t
 (** [pp_forced_color_adjust] is the pretty-printer for [forced_color_adjust]. *)
 
-val read_forced_color_adjust : Reader.t -> forced_color_adjust
+val read_forced_color_adjust : Cursor.t -> forced_color_adjust
 (** [read_forced_color_adjust t] is the [forced_color_adjust] parsed from [t].
 *)
 
 val pp_appearance : appearance Pp.t
 (** [pp_appearance] is the pretty-printer for [appearance]. *)
 
-val read_appearance : Reader.t -> appearance
+val read_appearance : Cursor.t -> appearance
 (** [read_appearance t] is the [appearance] parsed from [t]. *)
 
 val pp_color_scheme : color_scheme Pp.t
 (** [pp_color_scheme] is the pretty-printer for [color_scheme]. *)
 
-val read_color_scheme : Reader.t -> color_scheme
+val read_color_scheme : Cursor.t -> color_scheme
 (** [read_color_scheme t] is the [color_scheme] parsed from [t]. *)
 
 val pp_print_color_adjust : print_color_adjust Pp.t
 (** [pp_print_color_adjust] is the pretty-printer for [print_color_adjust]. *)
 
-val read_print_color_adjust : Reader.t -> print_color_adjust
+val read_print_color_adjust : Cursor.t -> print_color_adjust
 (** [read_print_color_adjust t] is the [print_color_adjust] parsed from [t]. *)
 
 val pp_box_decoration_break : box_decoration_break Pp.t
 (** [pp_box_decoration_break] is the pretty-printer for [box_decoration_break].
 *)
 
-val read_box_decoration_break : Reader.t -> box_decoration_break
+val read_box_decoration_break : Cursor.t -> box_decoration_break
 (** [read_box_decoration_break t] is the [box_decoration_break] parsed from [t].
 *)
 
 val pp_clear : clear Pp.t
 (** [pp_clear] is the pretty-printer for [clear]. *)
 
-val read_clear : Reader.t -> clear
+val read_clear : Cursor.t -> clear
 (** [read_clear t] is the [clear] parsed from [t]. *)
 
 val pp_float_side : float_side Pp.t
 (** [pp_float_side] is the pretty-printer for [float_side]. *)
 
-val read_float_side : Reader.t -> float_side
+val read_float_side : Cursor.t -> float_side
 (** [read_float_side t] is the [float_side] parsed from [t]. *)
 
 val pp_text_decoration_skip_ink : text_decoration_skip_ink Pp.t
 (** [pp_text_decoration_skip_ink] is the pretty-printer for
     [text_decoration_skip_ink]. *)
 
-val read_text_decoration_skip_ink : Reader.t -> text_decoration_skip_ink
+val read_text_decoration_skip_ink : Cursor.t -> text_decoration_skip_ink
 (** [read_text_decoration_skip_ink t] is the [text_decoration_skip_ink] parsed
     from [t]. *)
 
 val pp_will_change : will_change Pp.t
 (** [pp_will_change] is the pretty-printer for [will_change]. *)
 
-val read_will_change : Reader.t -> will_change
+val read_will_change : Cursor.t -> will_change
 (** [read_will_change t] is the [will_change] parsed from [t]. *)
 
 val pp_clip : clip Pp.t
 (** [pp_clip] is the pretty-printer for [clip]. *)
 
-val read_clip : Reader.t -> clip
+val read_clip : Cursor.t -> clip
 (** [read_clip t] is the [clip] parsed from [t]. *)
 
 val pp_clip_path : clip_path Pp.t
 (** [pp_clip_path] is the pretty-printer for [clip_path]. *)
 
-val read_clip_path : Reader.t -> clip_path
+val read_clip_path : Cursor.t -> clip_path
 (** [read_clip_path t] is the [clip_path] parsed from [t]. *)
 
 val pp_perspective_origin : perspective_origin Pp.t
 (** [pp_perspective_origin] is the pretty-printer for [perspective_origin]. *)
 
-val read_perspective_origin : Reader.t -> perspective_origin
+val read_perspective_origin : Cursor.t -> perspective_origin
 (** [read_perspective_origin t] is the [perspective_origin] parsed from [t]. *)
 
 val pp_outline_shorthand : outline_shorthand Pp.t
 (** [pp_outline_shorthand] is the pretty-printer for [outline_shorthand]. *)
 
-val read_outline_shorthand : Reader.t -> outline_shorthand
+val read_outline_shorthand : Cursor.t -> outline_shorthand
 (** [read_outline_shorthand t] is the [outline_shorthand] parsed from [t]. *)
 
 (** {2 Helper functions for property types} *)
@@ -1144,5 +1144,5 @@ val inset_ring_shadow :
 val pp_any_property : any_property Pp.t
 (** [pp_any_property] pretty-prints any CSS property. *)
 
-val read_any_property : Reader.t -> any_property
+val read_any_property : Cursor.t -> any_property
 (** [read_any_property t] parses any CSS property. *)

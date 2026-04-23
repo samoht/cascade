@@ -681,8 +681,8 @@ let check_callstack name input expected_stack_parts =
 let check_full_css_callstack name css_input expected_stack_parts =
   match Css.of_string css_input with
   | Ok _ -> Alcotest.failf "%s: expected Parse_error but parsing succeeded" name
-  | Error err ->
-      let callstack_str = String.concat " -> " err.callstack in
+  | Error (err, _filename) ->
+      let callstack_str = String.concat " -> " err.path in
       List.iter
         (fun stack_item ->
           if Bool.not @@ contains_substring callstack_str stack_item then
