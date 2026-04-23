@@ -1212,7 +1212,7 @@ and read_calc : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
 
 (* In a component stream the function arguments are already balanced; drain the
    remaining components and re-serialize them back to source text. *)
-let read_balanced_function_content t =
+let _read_balanced_function_content t =
   let rec drain acc =
     match Cursor.next_raw t with
     | None -> List.rev acc
@@ -1233,18 +1233,19 @@ let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
     Calc (read_calc (read_length ~allow_negative ~with_keywords) t)
   in
   let read_function_length t : length =
-    (* Parse a generic function name followed by '(' ... ')' *)
-    let name = Cursor.ident t in
-    Cursor.expect '(' t;
-    let content = read_balanced_function_content t in
-    Cursor.expect ')' t;
-    (* Only allow known length-producing functions here *)
-    match String.lowercase_ascii name with
-    | "clamp" -> Clamp content
-    | "minmax" -> Minmax content
-    | "min" -> Min content
-    | "max" -> Max content
-    | _ -> Cursor.err t "unknown function"
+    (* [clamp(...)], [min(...)], [max(...)], [minmax(...)] arrive as a single
+       [Func] component; consume the whole call and serialise the arguments. *)
+    match Cursor.peek t with
+    | Some (Component.Func { node = { name; arguments }; _ }) -> (
+        Cursor.skip t;
+        let content = Parser.to_string arguments in
+        match String.lowercase_ascii name with
+        | "clamp" -> Clamp content
+        | "minmax" -> Minmax content
+        | "min" -> Min content
+        | "max" -> Max content
+        | _ -> Cursor.err t ("unknown function " ^ name))
+    | _ -> Cursor.err_expected t "function call"
   in
   let parsers =
     [
@@ -1328,39 +1329,28 @@ and read_rgb t : rgb =
     t
 
 and read_rgb_space_separated t : color =
-  (* First, check if we have var() at the beginning for the special case *)
+  (* The cursor wraps the [rgb(...)] [Func] arguments, so there is no closing
+     [)] to consume — it's the block boundary. *)
   Cursor.ws t;
   if Cursor.looking_at t "var(" then (
-    (* Read the rgb var *)
     let rgb_var = read_rgb_var t in
     Cursor.ws t;
-
-    (* Check if followed by /alpha *)
     if Cursor.peek_delim t = Some '/' then (
-      (* We have rgb(var(--color)/alpha) *)
       let alpha = read_optional_alpha t in
       Cursor.ws t;
-      Cursor.expect ')' t;
       match alpha with
       | None -> Cursor.err t "expected alpha value after '/'"
       | _ -> Rgba { rgb = Var rgb_var; a = alpha })
-    else (
-      (* Just var() without alpha - expect closing paren *)
-      Cursor.expect ')' t;
-      Rgb (Var rgb_var)))
+    else Rgb (Var rgb_var))
   else
-    (* Normal case: read three channels *)
     let r = read_channel t in
     Cursor.ws t;
     let g = read_channel t in
     Cursor.ws t;
     let b = read_channel t in
-    (* CSS4 allows mixing percentages and numbers in RGB functions. This is a
-       change from CSS3 which required all values to be the same type. Since we
-       target CSS4 (supported by all major browsers), we allow mixing. *)
     let alpha = read_optional_alpha t in
     Cursor.ws t;
-    Cursor.expect ')' t;
+    if not (Cursor.is_done t) then Cursor.err t "unexpected tokens after rgb()";
     match alpha with
     | None -> Rgb (Channels { r; g; b })
     | Num _ | Pct _ | Var _ -> Rgba { rgb = Channels { r; g; b }; a = alpha }
@@ -1570,7 +1560,6 @@ let read_lch t : color =
   in
   let alpha = read_optional_alpha t in
   Cursor.ws t;
-  Cursor.expect ')' t;
   Lch { l = Pct l; c; h = Unitless h; alpha }
 
 let read_color_function t : color =
@@ -1579,7 +1568,6 @@ let read_color_function t : color =
   Cursor.ws t;
   let components = read_color_components space t [] in
   let alpha = read_optional_alpha t in
-  Cursor.expect ')' t;
   Color { space; components; alpha }
 
 (** Forward declaration for percentage reader used in color-mix *)
@@ -1600,19 +1588,12 @@ let read_optional_percentage t : percentage option =
     (* var() percentage like var(--bg-opacity) *)
     Some (Var (read_var read_percentage_in_color_mix t))
   else
-    (* Try reading number with % first, then without *)
-    match
-      Cursor.option
-        (fun t ->
-          let n = Cursor.number t in
-          Cursor.expect '%' t;
-          Cursor.ws t;
-          (Pct n : percentage))
-        t
-    with
-    | Some _ as result -> result
+    (* [50%] is a single [Percentage] token; a plain decimal is a [Number]. *)
+    match Cursor.percentage_opt t with
+    | Some n ->
+        Cursor.ws t;
+        Some (Pct n : percentage)
     | None ->
-        (* Try reading a decimal number without % (e.g., .5 for 50%) *)
         Cursor.option
           (fun t ->
             let n = Cursor.number t in
@@ -1626,8 +1607,7 @@ let rec read_color_mix t : color =
 
   (* Parse "in <color-space> [<hue-interpolation-method>]" if present *)
   let in_space, hue =
-    (* Check if next word is "in" without consuming it *)
-    if Cursor.looking_at t "in " || Cursor.looking_at t "in," then (
+    if Cursor.peek_ident t = Some "in" then (
       Cursor.expect_string "in" t;
       Cursor.ws t;
       let space = read_color_space t in
@@ -1639,7 +1619,7 @@ let rec read_color_mix t : color =
   in
 
   Cursor.ws t;
-  Cursor.expect ',' t;
+  Cursor.comma t;
   Cursor.ws t;
 
   (* Parse first color and optional percentage *)
@@ -1647,7 +1627,7 @@ let rec read_color_mix t : color =
   Cursor.ws t;
   let percent1 = read_optional_percentage t in
 
-  Cursor.expect ',' t;
+  Cursor.comma t;
   Cursor.ws t;
 
   (* Parse second color and optional percentage *)
@@ -1656,8 +1636,6 @@ let rec read_color_mix t : color =
   let percent2 = read_optional_percentage t in
 
   Cursor.ws t;
-  Cursor.expect ')' t;
-
   Mix { in_space; hue; color1; percent1; color2; percent2 }
 
 and color_parsers =
@@ -1700,7 +1678,8 @@ and read_color t : color =
       | None -> Cursor.err t ("unknown color function: " ^ name))
   | Some (Component.Preserved { kind = Token.Ident ident; _ }) -> (
       Cursor.skip t;
-      match read_color_keyword_from_string ident with
+      (* CSS color keywords are case-insensitive. *)
+      match read_color_keyword_from_string (String.lowercase_ascii ident) with
       | Some color -> color
       | None -> Cursor.err t ("unknown color: " ^ ident))
   | _ -> Cursor.err t "color"

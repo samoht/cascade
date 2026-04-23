@@ -959,8 +959,12 @@ and read_simple t =
         | Some _ -> read_type_or_universal t
         | None -> err_expected t "selector")
 
-(** Parse a compound selector (multiple simple selectors without spaces) *)
+(** Parse a compound selector (multiple simple selectors without spaces).
+    Leading whitespace is skipped; whitespace {e between} simple selectors stops
+    the compound (it marks the descendant combinator at the enclosing
+    complex-selector level). *)
 and read_compound t =
+  Cursor.ws t;
   let can_start () =
     match Cursor.peek_raw t with
     | Some (Component.Preserved { kind = Token.Whitespace; _ }) -> false
@@ -974,17 +978,9 @@ and read_compound t =
         || Cursor.peek_ident t <> None
   in
   let rec loop acc =
-    if can_start () then (
-      Printf.eprintf "COMPOUND raw=%s\n"
-        (match Cursor.peek_raw t with
-        | Some cv -> Component.to_string cv
-        | None -> "EOF");
+    if can_start () then
       let s = read_simple t in
-      Printf.eprintf "COMPOUND-AFTER raw=%s\n"
-        (match Cursor.peek_raw t with
-        | Some cv -> Component.to_string cv
-        | None -> "EOF");
-      loop (s :: acc))
+      loop (s :: acc)
     else acc
   in
   match loop [] with
