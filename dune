@@ -1,0 +1,3 @@
+(executable
+ (name test_sel)
+ (libraries cascade))
