@@ -7,7 +7,7 @@ type kind =
   | Unknown_at_rule of string
   | Unterminated of Sort.t
 
-type t = { loc : Loc.t; sort : Sort.t; kind : kind }
+type t = { loc : Loc.t; sort : Sort.t; path : string list; kind : kind }
 
 let pp_kind : kind Pp.t =
  fun ctx -> function
@@ -38,7 +38,12 @@ let pp_kind : kind Pp.t =
       Sort.pp ctx s
 
 let pp : t Pp.t =
- fun ctx { loc; sort; kind } ->
+ fun ctx { loc; sort; path; kind } ->
+  (match path with
+  | [] -> ()
+  | _ ->
+      Pp.string ctx (String.concat "/" path);
+      Pp.string ctx ": ");
   pp_kind ctx kind;
   Pp.string ctx " at ";
   Loc.pp ctx loc;
@@ -48,19 +53,50 @@ let pp : t Pp.t =
 
 let to_string t = Pp.to_string pp t
 
-let sort_mismatch loc ~sort ~expected ~found =
-  { loc; sort; kind = Sort_mismatch { expected; found } }
+exception Parse_error of t
 
-let unexpected_token loc ~sort k = { loc; sort; kind = Unexpected_token k }
-let missing_token loc ~sort what = { loc; sort; kind = Missing_token what }
+let v ~loc ~sort kind = { loc; sort; path = []; kind }
+let fail e = Stdlib.raise (Parse_error e)
+
+let with_context label f =
+  try f ()
+  with Parse_error e ->
+    Stdlib.raise (Parse_error { e with path = label :: e.path })
+
+let sort_mismatch loc ~sort ~expected ~found =
+  { loc; sort; path = []; kind = Sort_mismatch { expected; found } }
+
+let unexpected_token loc ~sort k =
+  { loc; sort; path = []; kind = Unexpected_token k }
+
+let missing_token loc ~sort what =
+  { loc; sort; path = []; kind = Missing_token what }
 
 let bad_selector loc reason =
-  { loc; sort = Sort.Selector; kind = Bad_selector reason }
+  { loc; sort = Sort.Selector; path = []; kind = Bad_selector reason }
 
 let bad_value loc ~property ~reason =
-  { loc; sort = Sort.Property_value; kind = Bad_value { property; reason } }
+  {
+    loc;
+    sort = Sort.Property_value;
+    path = [];
+    kind = Bad_value { property; reason };
+  }
 
 let unknown_at_rule loc name =
-  { loc; sort = Sort.At_rule; kind = Unknown_at_rule name }
+  { loc; sort = Sort.At_rule; path = []; kind = Unknown_at_rule name }
 
-let unterminated loc s = { loc; sort = s; kind = Unterminated s }
+let unterminated loc s = { loc; sort = s; path = []; kind = Unterminated s }
+
+let fail_sort_mismatch loc ~sort ~expected ~found =
+  fail (sort_mismatch loc ~sort ~expected ~found)
+
+let fail_unexpected_token loc ~sort k = fail (unexpected_token loc ~sort k)
+let fail_missing_token loc ~sort what = fail (missing_token loc ~sort what)
+let fail_bad_selector loc reason = fail (bad_selector loc reason)
+
+let fail_bad_value loc ~property ~reason =
+  fail (bad_value loc ~property ~reason)
+
+let fail_unknown_at_rule loc name = fail (unknown_at_rule loc name)
+let fail_unterminated loc s = fail (unterminated loc s)
