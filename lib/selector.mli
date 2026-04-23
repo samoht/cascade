@@ -101,13 +101,13 @@ val pp_attr_flag : attr_flag option Pp.t
 val pp_aria_attr : aria_attr Pp.t
 (** [pp_aria_attr] pretty-prints aria attributes. *)
 
-val read_aria_attr : Reader.t -> aria_attr
+val read_aria_attr : Cursor.t -> aria_attr
 (** [read_aria_attr t] parses an [aria_attr] from [t]. *)
 
 val pp_attr_name : attr_name Pp.t
 (** [pp_attr_name] pretty-prints attribute names. *)
 
-val read_attr_name : Reader.t -> attr_name
+val read_attr_name : Cursor.t -> attr_name
 (** [read_attr_name t] parses an [attr_name] from [t]. *)
 
 val attr_value_needs_quoting : string -> bool
