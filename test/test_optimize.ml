@@ -218,9 +218,9 @@ let test_group_complex_selectors () =
      [class~=not-prose] *))"
   in
 
-  let sel1 = Css.Selector.read (Css.Reader.of_string sel1_str) in
-  let sel2 = Css.Selector.read (Css.Reader.of_string sel2_str) in
-  let sel3 = Css.Selector.read (Css.Reader.of_string sel3_str) in
+  let sel1 = Css.Selector.read (Css.Cursor.of_string sel1_str) in
+  let sel2 = Css.Selector.read (Css.Cursor.of_string sel2_str) in
+  let sel3 = Css.Selector.read (Css.Cursor.of_string sel3_str) in
 
   let rule1 : Css.Stylesheet.rule =
     { selector = sel1; declarations = decls; nested = []; merge_key = None }

@@ -2,6 +2,9 @@
 
 include Selector_intf
 
+(* Sort tag passed to {!Cursor} helpers for typed errors. *)
+let sort = Sort.Selector
+
 (** Helper function for invalid identifiers *)
 let err_invalid_identifier name reason =
   invalid_arg (String.concat "" [ "CSS identifier '"; name; "' "; reason ])
@@ -227,18 +230,17 @@ let string_of_attr_name = function
 let pp_aria_attr : aria_attr Pp.t =
  fun ctx a -> Pp.string ctx (string_of_aria_attr a)
 
-let read_aria_attr t : aria_attr =
-  let s = Cursor.ident t in
-  match aria_attr_of_string s with
-  | v -> v
-  | exception Invalid_argument msg -> Cursor.err t msg
+let read_aria_attr (c : Cursor.t) : aria_attr =
+  let loc = Cursor.position c in
+  let s = Cursor.ident c in
+  try aria_attr_of_string s
+  with Invalid_argument msg -> Error.fail_bad_selector loc msg
 
 let pp_attr_name : attr_name Pp.t =
  fun ctx a -> Pp.string ctx (string_of_attr_name a)
 
-let read_attr_name t : attr_name =
-  let s = Cursor.ident t in
-  attr_name_of_string s
+let read_attr_name (c : Cursor.t) : attr_name =
+  attr_name_of_string (Cursor.ident c)
 
 let attribute ?ns ?flag name match_type =
   validate_css_identifier name;
@@ -319,33 +321,6 @@ let of_string s =
       let raw = unescape_selector_name s in
       element raw
 
-(* Simple readers that don't need recursion *)
-let read_lang_content t =
-  Lang (Reader.list ~sep:Reader.comma ~at_least:1 Reader.ident t)
-
-let read_dir_content t = Dir (Reader.ident t)
-let read_state_content t = State (Reader.ident t)
-let read_heading_content _t = Heading
-
-let read_active_view_transition_content t =
-  Active_view_transition_type
-    (Reader.option (Reader.list ~sep:Reader.comma ~at_least:1 Reader.ident) t)
-
-let read_lang t = Reader.call "lang" t read_lang_content
-let read_dir t = Reader.call "dir" t read_dir_content
-let read_state t = Reader.call "state" t read_state_content
-let read_heading t = Reader.call "heading" t read_heading_content
-
-let read_active_view_transition_type t =
-  Reader.call "active-view-transition-type" t
-    read_active_view_transition_content
-
-let read_part_content t =
-  let idents = Reader.list ~sep:Reader.comma ~at_least:1 Reader.ident t in
-  Part idents
-
-let read_part t = Reader.call "part" t read_part_content
-
 let rec combine s1 comb s2 =
   match s2 with
   | List selectors ->
@@ -368,229 +343,8 @@ let list selectors =
 let is_compound_list = function List _ -> true | _ -> false
 let as_list = function List sels -> Some sels | _ -> None
 let compound selectors = Compound selectors
-let err_expected t what = Reader.err_expected t what
 
 (** Parse attribute value (quoted or unquoted) *)
-let read_attribute_value t =
-  (* Check if we start with a quote - if so, we MUST parse as quoted string *)
-  let value, was_quoted =
-    match Reader.peek t with
-    | Some ('"' | '\'') ->
-        (* If we see a quote, we must parse a valid quoted string - no fallback.
-           Quoted strings can be empty per CSS spec. *)
-        (Reader.string t, true)
-    | _ ->
-        (* Otherwise parse as unquoted identifier *)
-        let v =
-          Reader.while_ t (fun c ->
-              c <> ']' && c <> ' ' && c <> '\t' && c <> '\n')
-        in
-        (v, false)
-  in
-  (* CSS spec allows empty quoted strings but not empty unquoted values *)
-  if value = "" && not was_quoted then
-    match Reader.peek t with
-    | None -> Reader.err_expected_but_eof t "']'"
-    | Some _ -> Reader.err_invalid t "attribute value"
-  else value
-
-(** Validate CSS identifier with proper reader error context *)
-let validate_css_identifier_with_reader t name =
-  try validate_css_identifier name
-  with Invalid_argument msg ->
-    (* Extract just the validation reason from the message *)
-    let clean_msg =
-      if String.contains msg '\'' then
-        let parts = String.split_on_char '\'' msg in
-        match parts with
-        | _ :: _ :: reason :: _ -> "invalid identifier: " ^ String.trim reason
-        | _ -> msg
-      else msg
-    in
-    Reader.err t clean_msg
-
-(** Parse a class selector (.classname) *)
-let read_class t =
-  Reader.expect '.' t;
-  let name = Reader.ident ~keep_case:true t in
-  (* No validation needed - Reader.ident already ensures valid identifier *)
-  Class name
-
-(** Parse an ID selector (#id) *)
-let read_id t =
-  Reader.expect '#' t;
-  let name = Reader.ident ~keep_case:true t in
-  (* No validation needed - Reader.ident already ensures valid identifier *)
-  Id name
-
-(** Parse a namespaced type or universal selector *)
-let read_type_or_universal t =
-  (* Try to read namespace prefix first *)
-  let ns =
-    Reader.option
-      (fun t ->
-        if Reader.looking_at t "*|" then (
-          Reader.expect_string "*|" t;
-          Any)
-        else
-          let p = Reader.ident ~keep_case:true t in
-          Reader.expect '|' t;
-          Prefix p)
-      t
-  in
-
-  (* Now read the selector itself *)
-  match Reader.peek t with
-  | Some '*' -> (
-      Reader.skip t;
-      match ns with None -> universal | Some ns -> universal_ns ns)
-  | _ -> (
-      let name = Reader.ident ~keep_case:true t in
-      validate_css_identifier_with_reader t name;
-      match ns with
-      | None -> Element (None, name)
-      | Some ns -> Element (Some ns, name))
-
-(** Parse attribute selector [attr] or [attr=value] *)
-let read_combinator t =
-  match Reader.peek t with
-  | Some '>' ->
-      Reader.skip t;
-      Child
-  | Some '+' ->
-      Reader.skip t;
-      Next_sibling
-  | Some '~' ->
-      Reader.skip t;
-      Subsequent_sibling
-  | Some '|' when Reader.looking_at t "||" ->
-      Reader.expect_string "||" t;
-      Column
-  | Some '!' ->
-      (* Invalid combinator character *)
-      Reader.err t "invalid combinator character"
-  | None ->
-      (* Empty input should fail in isolation - but in context it's
-         descendant *)
-      Reader.err t "empty combinator"
-  | _ -> Descendant
-
-let read_attribute_match t : attribute_match =
-  let two_chars = Reader.peek_string t 2 in
-  if two_chars = "~=" then (
-    Reader.expect_string "~=" t;
-    Whitespace_list (read_attribute_value t))
-  else if two_chars = "|=" then (
-    Reader.expect_string "|=" t;
-    Hyphen_list (read_attribute_value t))
-  else if two_chars = "^=" then (
-    Reader.expect_string "^=" t;
-    Prefix (read_attribute_value t))
-  else if two_chars = "$=" then (
-    Reader.expect_string "$=" t;
-    Suffix (read_attribute_value t))
-  else if two_chars = "*=" then (
-    Reader.expect_string "*=" t;
-    Substring (read_attribute_value t))
-  else if Reader.peek t = Some '=' then (
-    Reader.skip t;
-    Exact (read_attribute_value t))
-  else Presence
-
-let read_ns t : ns option =
-  Reader.option
-    (fun t ->
-      if Reader.looking_at t "*|" then (
-        Reader.expect_string "*|" t;
-        Any)
-      else
-        let p = Reader.ident ~keep_case:true t in
-        (* Avoid treating '|=' as a namespace separator *)
-        if Reader.peek_string t 2 = "|=" then Reader.err t "not a namespace";
-        (* Expect the namespace separator *)
-        Reader.expect '|' t;
-        Prefix p)
-    t
-
-let read_attr_flag t : attr_flag option =
-  Reader.ws t;
-  Reader.option
-    (fun t ->
-      match Reader.char t with
-      | 'i' -> Case_insensitive
-      | 's' -> Case_sensitive
-      | c -> Reader.err t ~got:(String.make 1 c) "'i' or 's'")
-    t
-
-let read_attribute t =
-  Reader.expect '[' t;
-  Reader.ws t;
-  let ns = read_ns t in
-  let attr = Reader.ident ~keep_case:true t in
-  validate_css_identifier_with_reader t attr;
-  Reader.ws t;
-  let matcher = read_attribute_match t in
-  Reader.ws t;
-  let flag = read_attr_flag t in
-  Reader.expect ']' t;
-  let attr_name = attr_name_of_string attr in
-  Attribute (ns, attr_name, matcher, flag)
-
-(** Read An+B microsyntax for nth expressions *)
-let read_offset t =
-  (* Parse optional offset: +b, -b, or nothing *)
-  match Reader.peek t with
-  | Some '+' ->
-      Reader.skip t;
-      Reader.int t
-  | Some '-' ->
-      Reader.skip t;
-      -Reader.int t
-  | _ -> 0
-
-let read_nth t : nth =
-  Reader.ws t;
-  Reader.one_of
-    [
-      (* "odd" or "even" *)
-      (fun t ->
-        let ident = Reader.ident t in
-        match ident with
-        | "odd" -> Odd
-        | "even" -> Even
-        | _ ->
-            Reader.err t
-              ("expected 'odd', 'even', or An+B expression, got '" ^ ident ^ "'"));
-      (* An+B forms: "2n+1", "3n", "-n+2", "+n", "n", etc. *)
-      (fun t ->
-        (* Parse optional sign or coefficient *)
-        let a =
-          match Reader.peek t with
-          | Some '+' ->
-              Reader.skip t;
-              if Reader.peek t = Some 'n' then 1 else Reader.int t
-          | Some '-' ->
-              Reader.skip t;
-              if Reader.peek t = Some 'n' then -1 else -Reader.int t
-          | Some 'n' -> 1
-          | Some _ -> Reader.int t
-          | None -> Reader.err_eof t
-        in
-        (* Check for 'n' *)
-        if Reader.peek t = Some 'n' then (
-          Reader.skip t;
-          let b = read_offset t in
-          An_plus_b (a, b))
-        else Index a);
-      (* Plain "n" followed by offset *)
-      (fun t ->
-        Reader.expect 'n' t;
-        let b = read_offset t in
-        An_plus_b (1, b));
-      (* Just an integer *)
-      (fun t -> Index (Reader.int t));
-    ]
-    t
 
 (** Pretty print nth expression *)
 let pp_nth : nth Pp.t =
@@ -740,292 +494,441 @@ let pseudo_vendor_idents =
     ("details-content", Details_content);
   ]
 
-(* Forward declarations for mutually recursive functions *)
-let rec read_complex_list t =
-  Reader.ws t;
-  (* Check if we have empty content right away *)
-  match Reader.peek t with
-  | Some ')' -> Reader.err t "expected at least one selector"
+(* ----- Cursor-based selector parser (Stage 1: internals only) -----
+
+   All functions below take {!Cursor.t} and consume {!Component.t} values. They
+   are not yet wired in; the existing [read_*] family below is still the active
+   parser. Subsequent commits will route public entry points through these. *)
+
+let pseudo_ident_table =
+  pseudo_class_base_idents @ pseudo_element_legacy_idents
+  @ pseudo_element_modern_idents @ pseudo_vendor_idents
+
+(* Convenience helpers used in dispatchers. *)
+let is_simple_start_kind : Token.kind -> bool = function
+  | Token.Delim ('.' | '*' | '&') | Token.Hash _ | Token.Colon | Token.Ident _
+    ->
+      true
+  | _ -> false
+
+let starts_simple_selector (c : Cursor.t) : bool =
+  match Cursor.peek_raw c with
+  | Some (Component.Preserved tok) -> is_simple_start_kind tok.kind
+  | Some (Component.Block { node = { opening = Token.Square; _ }; _ }) -> true
+  | _ -> false
+
+let parse_class (c : Cursor.t) : t =
+  Cursor.expect '.' c;
+  Class (Cursor.ident c)
+
+let parse_id (c : Cursor.t) : t =
+  match Cursor.hash_opt c with
+  | Some name -> Id name
+  | None -> Cursor.err_unexpected c
+
+(* Per Selectors 4: the explicit combinators are [>], [+], [~], [||]; whitespace
+   by itself is the descendant combinator. Empty input has no combinator at all
+   and is an error. *)
+let read_combinator (c : Cursor.t) : combinator =
+  let had_ws = Cursor.skip_ws c in
+  if Cursor.try_kind_pair (Token.Delim '|') (Token.Delim '|') c then Column
+  else if Cursor.try_kind (Token.Delim '>') c then Child
+  else if Cursor.try_kind (Token.Delim '+') c then Next_sibling
+  else if Cursor.try_kind (Token.Delim '~') c then Subsequent_sibling
+  else
+    match Cursor.peek_raw c with
+    | Some (Component.Preserved { kind = Token.Delim d; loc }) ->
+        Error.fail_unexpected_token loc ~sort (Token.Delim d)
+    | None when had_ws -> Descendant
+    | None -> Error.fail_missing_token (Cursor.position c) ~sort "combinator"
+    | Some cv ->
+        Error.fail_missing_token (Component.source_loc cv) ~sort "combinator"
+
+(* Inside a [attr ... ] block. The value is one Preserved component: ident,
+   string, number, hash, dimension, etc. *)
+let parse_attribute_value (c : Cursor.t) : string =
+  match Cursor.peek c with
+  | Some (Component.Preserved { kind = Token.String s; _ }) ->
+      Cursor.skip c;
+      s
+  | Some (Component.Preserved { kind = Token.Ident s; _ }) ->
+      Cursor.skip c;
+      s
+  | Some (Component.Preserved { kind = Token.Number_tok { repr; _ }; _ }) ->
+      Cursor.skip c;
+      repr
+  | Some (Component.Preserved { kind = Token.Hash { value; _ }; _ }) ->
+      Cursor.skip c;
+      "#" ^ value
+  | _ -> Cursor.err_unexpected c
+
+let read_attribute_match (c : Cursor.t) : attribute_match =
+  match Cursor.peek c with
+  | Some (Component.Preserved { kind = Token.Delim '='; _ }) ->
+      Cursor.skip c;
+      Exact (parse_attribute_value c)
+  | Some
+      (Component.Preserved
+         { kind = Token.Delim (('~' | '|' | '^' | '$' | '*') as op); _ }) -> (
+      let snap = Cursor.save c in
+      Cursor.skip c;
+      match Cursor.peek_raw c with
+      | Some (Component.Preserved { kind = Token.Delim '='; _ }) -> (
+          let (_ : Component.t option) = Cursor.next_raw c in
+          let v = parse_attribute_value c in
+          match op with
+          | '~' -> Whitespace_list v
+          | '|' -> Hyphen_list v
+          | '^' -> Prefix v
+          | '$' -> Suffix v
+          | '*' -> Substring v
+          | _ -> assert false)
+      | _ ->
+          Cursor.restore c snap;
+          Presence)
+  | _ -> Presence
+
+let read_attr_flag (c : Cursor.t) : attr_flag option =
+  let snap = Cursor.save c in
+  match Cursor.ident_opt c with
+  | Some "i" -> Some Case_insensitive
+  | Some "s" -> Some Case_sensitive
+  | Some _ ->
+      Cursor.restore c snap;
+      None
+  | None -> None
+
+(* `prefix|name`, `*|name`, or no prefix. Disambiguates from `name|=...`
+   (attribute match) using snapshot/restore. *)
+let read_ns (c : Cursor.t) : ns option =
+  let snap = Cursor.save c in
+  match Cursor.peek c with
+  | Some (Component.Preserved { kind = Token.Delim '*'; _ }) -> (
+      Cursor.skip c;
+      match Cursor.peek_raw c with
+      | Some (Component.Preserved { kind = Token.Delim '|'; _ }) ->
+          let (_ : Component.t option) = Cursor.next_raw c in
+          Some Any
+      | _ ->
+          Cursor.restore c snap;
+          None)
+  | Some (Component.Preserved { kind = Token.Ident name; _ }) -> (
+      Cursor.skip c;
+      match Cursor.peek_raw c with
+      | Some (Component.Preserved { kind = Token.Delim '|'; _ }) -> (
+          let mid_snap = Cursor.save c in
+          let (_ : Component.t option) = Cursor.next_raw c in
+          match Cursor.peek_raw c with
+          | Some (Component.Preserved { kind = Token.Delim '='; _ }) ->
+              (* It was [name|=value], not a namespace. *)
+              Cursor.restore c snap;
+              ignore mid_snap;
+              None
+          | _ -> Some (Prefix name))
+      | _ ->
+          Cursor.restore c snap;
+          None)
+  | _ -> None
+
+let parse_attribute (c : Cursor.t) : t =
+  match Cursor.peek c with
+  | Some (Component.Block { node = { opening = Token.Square; value }; _ }) ->
+      Cursor.skip c;
+      let inner = Cursor.of_components value in
+      Error.with_context "[]" @@ fun () ->
+      let ns = read_ns inner in
+      let attr = Cursor.ident inner in
+      let matcher = read_attribute_match inner in
+      let flag = read_attr_flag inner in
+      Cursor.expect_eof inner;
+      Attribute (ns, attr_name_of_string attr, matcher, flag)
+  | _ -> Cursor.err_unexpected c
+
+let parse_type_or_universal (c : Cursor.t) : t =
+  let ns = read_ns c in
+  match Cursor.peek c with
+  | Some (Component.Preserved { kind = Token.Delim '*'; _ }) -> (
+      Cursor.skip c;
+      match ns with None -> universal | Some ns -> universal_ns ns)
   | _ -> (
-      try Reader.list ~sep:Reader.comma ~at_least:1 read_complex t
-      with Reader.Parse_error _ ->
-        Reader.err t "expected at least one selector")
+      let name = Cursor.ident c in
+      match ns with
+      | None -> Element (None, name)
+      | Some ns -> Element (Some ns, name))
 
-(** Read nth selector with optional "of S" clause *)
-and read_nth_selector t : nth * t list option =
-  let expr = read_nth t in
-  Reader.ws t;
+(* An+B microsyntax. At the component level, "2n+1" is [Dimension {value=2;
+   unit_="n"}, Delim '+', Number 1]; "n" alone is an Ident; "+n" is Delim '+'
+   then Ident "n", etc. *)
+let parse_offset (c : Cursor.t) : int =
+  match Cursor.peek c with
+  | Some (Component.Preserved { kind = Token.Delim '+'; _ }) -> (
+      Cursor.skip c;
+      match Cursor.integer_opt c with
+      | Some n -> n
+      | None -> Cursor.err_unexpected c)
+  | Some (Component.Preserved { kind = Token.Delim '-'; _ }) -> (
+      Cursor.skip c;
+      match Cursor.integer_opt c with
+      | Some n -> -n
+      | None -> Cursor.err_unexpected c)
+  | Some (Component.Preserved { kind = Token.Number_tok _; _ }) -> (
+      match Cursor.integer_opt c with
+      | Some n -> n
+      | None -> Cursor.err_unexpected c)
+  | _ -> 0
 
-  (* Check for "of S" clause *)
-  let of_clause =
-    Reader.option
-      (fun t ->
-        Reader.expect_string "of" t;
-        Reader.ws t;
-        Reader.list ~sep:Reader.comma ~at_least:1 read_complex t)
-      t
-  in
-  (expr, of_clause)
+(* CSS lexer treats `-` as part of an ident, so `2n-1` is one
+   [Dimension{value=2; unit_="n-1"}] token. Parse the trailing "-N" as a
+   negative offset baked into the unit. *)
+let split_n_unit unit_ : (int option, unit) result =
+  if unit_ = "n" then Ok None
+  else if String.length unit_ > 2 && unit_.[0] = 'n' && unit_.[1] = '-' then
+    let tail = String.sub unit_ 2 (String.length unit_ - 2) in
+    match int_of_string_opt tail with
+    | Some n -> Ok (Some (-n))
+    | None -> Error ()
+  else Error ()
 
-(** Parse a relative selector (used inside :has()). A relative selector can
-    start with a combinator (+, >, ~) without a left operand. *)
-and read_relative_selector t =
-  Reader.ws t;
-  match Reader.peek t with
-  | Some ('+' | '>' | '~') ->
-      let comb = read_combinator t in
-      Reader.ws t;
-      let right = read_complex t in
-      Relative (comb, right)
-  | _ -> read_complex t
+let read_nth (c : Cursor.t) : nth =
+  let (_ : bool) = Cursor.skip_ws c in
+  match Cursor.peek c with
+  | Some (Component.Preserved { kind = Token.Ident "odd"; _ }) ->
+      Cursor.skip c;
+      Odd
+  | Some (Component.Preserved { kind = Token.Ident "even"; _ }) ->
+      Cursor.skip c;
+      Even
+  | Some (Component.Preserved { kind = Token.Ident "n"; _ }) ->
+      Cursor.skip c;
+      An_plus_b (1, parse_offset c)
+  | Some (Component.Preserved { kind = Token.Ident "-n"; _ }) ->
+      Cursor.skip c;
+      An_plus_b (-1, parse_offset c)
+  | Some (Component.Preserved { kind = Token.Dimension { number; unit_ }; loc })
+    -> (
+      let a = int_of_float number.value in
+      match split_n_unit unit_ with
+      | Ok None ->
+          Cursor.skip c;
+          An_plus_b (a, parse_offset c)
+      | Ok (Some b) ->
+          Cursor.skip c;
+          An_plus_b (a, b)
+      | Error () -> Error.fail_bad_selector loc ("unexpected An+B unit " ^ unit_)
+      )
+  | Some (Component.Preserved { kind = Token.Number_tok { value; _ }; _ }) ->
+      Cursor.skip c;
+      Index (int_of_float value)
+  | _ -> Cursor.err_unexpected c
 
-and read_relative_selector_list t =
-  Reader.ws t;
-  match Reader.peek t with
-  | Some ')' -> Reader.err t "expected at least one selector"
-  | _ -> (
-      try Reader.list ~sep:Reader.comma ~at_least:1 read_relative_selector t
-      with Reader.Parse_error _ ->
-        Reader.err t "expected at least one selector")
+(* Forward refs: parse_complex_list and parse_relative_selector_list below are
+   mutually recursive with the pseudo-class handlers. *)
+let rec read_nth_selector (c : Cursor.t) : nth * t list option =
+  let n = read_nth c in
+  (n, parse_optional_of c)
 
-(* Helper readers for functional pseudo-class content *)
-and read_is_content t = Is (read_complex_list t)
-and read_has_content t = Has (read_relative_selector_list t)
-and read_not_content t = Not (read_complex_list t)
-and read_where_content t = Where (read_complex_list t)
-
-and read_nth_child_content t =
-  let expr, of_sel = read_nth_selector t in
-  Nth_child (expr, of_sel)
-
-and read_nth_last_child_content t =
-  let expr, of_sel = read_nth_selector t in
-  Nth_last_child (expr, of_sel)
-
-and read_nth_of_type_content t =
-  let expr, of_sel = read_nth_selector t in
-  Nth_of_type (expr, of_sel)
-
-and read_nth_last_type_content t =
-  let expr, of_sel = read_nth_selector t in
-  Nth_last_of_type (expr, of_sel)
-
-and read_host_content t = Host (Reader.option read_complex_list t)
-and read_host_context_content t = Host_context (read_complex_list t)
-
-(* Read helper functions for functional pseudo-classes *)
-and read_is t = Reader.call "is" t read_is_content
-and read_has t = Reader.call "has" t read_has_content
-and read_not t = Reader.call "not" t read_not_content
-and read_where t = Reader.call "where" t read_where_content
-and read_nth_child t = Reader.call "nth-child" t read_nth_child_content
-
-and read_nth_last_child t =
-  Reader.call "nth-last-child" t read_nth_last_child_content
-
-and read_nth_of_type t = Reader.call "nth-of-type" t read_nth_of_type_content
-
-and read_nth_last_of_type t =
-  Reader.call "nth-last-of-type" t read_nth_last_type_content
-
-and read_host t = Reader.call "host" t read_host_content
-and read_host_context t = Reader.call "host-context" t read_host_context_content
-
-(* Helper readers for pseudo-element functions that need recursion *)
-and read_slotted_content t =
-  let sels = read_complex_list t in
-  Slotted sels
-
-and read_cue_content t =
-  let sels = read_complex_list t in
-  Cue sels
-
-and read_cue_region_content t =
-  let sels = read_complex_list t in
-  Cue_region sels
-
-and read_highlight_content t =
-  let names = Reader.list ~sep:Reader.comma ~at_least:1 Reader.ident t in
-  Highlight names
-
-and read_view_transition_group_content t =
-  let name = Reader.ident t in
-  View_transition_group name
-
-and read_vt_image_pair_content t =
-  let name = Reader.ident t in
-  View_transition_image_pair name
-
-and read_view_transition_old_content t =
-  let name = Reader.ident t in
-  View_transition_old name
-
-and read_view_transition_new_content t =
-  let name = Reader.ident t in
-  View_transition_new name
-
-and read_slotted t = Reader.call "slotted" t read_slotted_content
-and read_cue t = Reader.call "cue" t read_cue_content
-and read_cue_region t = Reader.call "cue-region" t read_cue_region_content
-and read_highlight t = Reader.call "highlight" t read_highlight_content
-
-and read_view_transition_group t =
-  Reader.call "view-transition-group" t read_view_transition_group_content
-
-and read_view_transition_image_pair t =
-  Reader.call "view-transition-image-pair" t read_vt_image_pair_content
-
-and read_view_transition_old t =
-  Reader.call "view-transition-old" t read_view_transition_old_content
-
-and read_view_transition_new t =
-  Reader.call "view-transition-new" t read_view_transition_new_content
-
-(** Parse pseudo-class (:hover, :nth-child(2n+1), etc.) *)
-and read_pseudo_class t =
-  Reader.expect ':' t;
-  let all_idents =
-    pseudo_class_base_idents @ pseudo_element_legacy_idents
-    @ pseudo_element_modern_idents @ pseudo_vendor_idents
-  in
-  Reader.enum_or_calls "pseudo-class" all_idents
-    ~calls:
-      [
-        ("is", read_is);
-        ("has", read_has);
-        ("not", read_not);
-        ("where", read_where);
-        ("nth-child", read_nth_child);
-        ("nth-last-child", read_nth_last_child);
-        ("nth-of-type", read_nth_of_type);
-        ("nth-last-of-type", read_nth_last_of_type);
-        ("lang", read_lang);
-        ("dir", read_dir);
-        ("state", read_state);
-        ("host", read_host);
-        ("host-context", read_host_context);
-        ("heading", read_heading);
-        ("active-view-transition-type", read_active_view_transition_type);
-      ]
-    t
-
-(** Parse pseudo-element (::before, ::after, etc.) *)
-and read_pseudo_element t =
-  Reader.expect_string "::" t;
-  Reader.enum_calls
-    [
-      ("part", read_part);
-      ("slotted", read_slotted);
-      ("cue", read_cue);
-      ("cue-region", read_cue_region);
-      ("highlight", read_highlight);
-      ("view-transition-group", read_view_transition_group);
-      ("view-transition-image-pair", read_view_transition_image_pair);
-      ("view-transition-old", read_view_transition_old);
-      ("view-transition-new", read_view_transition_new);
-    ]
-    ~default:(fun t ->
-      Reader.enum "pseudo-element"
-        (pseudo_element_modern_idents @ pseudo_vendor_idents
-       @ pseudo_element_legacy_idents)
-        t)
-    t
-
-(** Parse a simple selector (one part) *)
-and read_simple t =
-  Reader.ws t;
-  match Reader.peek t with
-  | Some '.' -> read_class t
-  | Some '#' -> read_id t
-  | Some '[' -> read_attribute t
-  | Some ':' ->
-      (* Use peek2 to check for :: vs : *)
-      if Reader.peek2 t = "::" then read_pseudo_element t
-      else read_pseudo_class t
-  | Some '*' -> read_type_or_universal t
-  | Some '&' ->
-      (* CSS nesting selector *)
-      Reader.skip t;
-      Nesting
-  | Some c when Reader.is_ident_start c -> read_type_or_universal t
-  | _ -> err_expected t "selector"
-
-(** Parse a compound selector (multiple simple selectors without spaces) *)
-and read_compound t =
+and parse_complex_list (c : Cursor.t) : t list =
+  let (_ : bool) = Cursor.skip_ws c in
+  let first = parse_complex c in
   let rec loop acc =
-    (* Check if we can parse another simple selector *)
-    match Reader.peek t with
-    | Some ('.' | '#' | '[' | ':' | '*' | '&') ->
-        let s = read_simple t in
-        loop (s :: acc)
-    | Some c when Reader.is_ident_start c ->
-        let s = read_simple t in
-        loop (s :: acc)
-    | _ -> acc
-  in
-  match loop [] with
-  | [] -> err_expected t "at least one selector"
-  | [ s ] -> s
-  | selectors -> compound (List.rev selectors)
-
-(** Parse a complex selector (with combinators) *)
-and read_complex t =
-  let left = read_compound t in
-  Reader.ws t;
-  match Reader.peek t with
-  | Some '|' when Reader.looking_at t "||" ->
-      let comb = read_combinator t in
-      Reader.ws t;
-      combine left comb (read_complex t)
-  | Some ('>' | '+' | '~') ->
-      let comb = read_combinator t in
-      Reader.ws t;
-      combine left comb (read_complex t)
-  | Some ',' | Some '{' | Some ')' | Some ']' | None -> left
-  | _ ->
-      (* Could be descendant combinator - check if next chars form a selector *)
-      let can_parse_selector =
-        match Reader.peek t with
-        | Some ('.' | '#' | '[' | ':' | '*' | '&') -> true
-        | Some c when Reader.is_ident_start c -> true
-        | _ -> false
-      in
-      if can_parse_selector then combine left Descendant (read_complex t)
-      else left
-
-let read_selector_list t =
-  Reader.with_context t "list" @@ fun () ->
-  Reader.ws t;
-  (* Parse the selector list manually to properly handle trailing commas *)
-  let rec parse_list acc =
-    let sel = read_complex t in
-    let acc = sel :: acc in
-    Reader.ws t;
-    if Reader.consume_if ',' t then (
-      Reader.ws t;
-      (* After a comma, we must have another selector - trailing commas are
-         invalid *)
-      parse_list acc)
+    let (_ : bool) = Cursor.skip_ws c in
+    if Cursor.comma_opt c then
+      let (_ : bool) = Cursor.skip_ws c in
+      loop (parse_complex c :: acc)
     else List.rev acc
   in
-  let selectors = parse_list [] in
-  match selectors with [ s ] -> s | selectors -> List selectors
+  first :: loop []
 
-let read t =
-  let selector = read_selector_list t in
-  (* Ensure we've consumed all input - any remaining non-whitespace is an
-     error *)
-  Reader.ws t;
-  if not (Reader.is_done t) then
-    Reader.err t "unexpected characters after selector";
-  selector
+and parse_complex (c : Cursor.t) : t =
+  let left = parse_compound c in
+  let had_ws = Cursor.skip_ws c in
+  match Cursor.peek_raw c with
+  | Some (Component.Preserved { kind = Token.Delim ('>' | '+' | '~' | '|'); _ })
+    ->
+      let comb = read_combinator c in
+      let (_ : bool) = Cursor.skip_ws c in
+      combine left comb (parse_complex c)
+  | Some (Component.Preserved { kind = Token.Comma; _ }) | None -> left
+  | Some _ when had_ws && starts_simple_selector c ->
+      combine left Descendant (parse_complex c)
+  | Some _ -> left
 
-let read_relative t =
-  let selectors = read_relative_selector_list t in
-  Reader.ws t;
-  if not (Reader.is_done t) then
-    Reader.err t "unexpected characters after selector";
-  match selectors with [ s ] -> s | _ -> List selectors
+and parse_compound (c : Cursor.t) : t =
+  let (_ : bool) = Cursor.skip_ws c in
+  let first = parse_simple c in
+  let rec loop acc =
+    if starts_simple_selector c then
+      let s = parse_simple c in
+      loop (s :: acc)
+    else List.rev acc
+  in
+  match loop [] with [] -> first | rest -> compound (first :: rest)
+
+and parse_simple (c : Cursor.t) : t =
+  match Cursor.peek_raw c with
+  | Some (Component.Preserved { kind = Token.Delim '.'; _ }) -> parse_class c
+  | Some (Component.Preserved { kind = Token.Hash _; _ }) -> parse_id c
+  | Some (Component.Block { node = { opening = Token.Square; _ }; _ }) ->
+      parse_attribute c
+  | Some (Component.Preserved { kind = Token.Colon; _ }) -> (
+      (* `::` -> pseudo-element, `:` -> pseudo-class. *)
+      let snap = Cursor.save c in
+      let (_ : Component.t option) = Cursor.next_raw c in
+      match Cursor.peek_raw c with
+      | Some (Component.Preserved { kind = Token.Colon; _ }) ->
+          Cursor.restore c snap;
+          parse_pseudo_element c
+      | _ ->
+          Cursor.restore c snap;
+          parse_pseudo_class c)
+  | Some (Component.Preserved { kind = Token.Delim '*'; _ }) ->
+      parse_type_or_universal c
+  | Some (Component.Preserved { kind = Token.Delim '&'; _ }) ->
+      let (_ : Component.t option) = Cursor.next_raw c in
+      Nesting
+  | Some (Component.Preserved { kind = Token.Ident _; _ }) ->
+      parse_type_or_universal c
+  | _ -> Cursor.err_unexpected c
+
+and parse_relative_selector (c : Cursor.t) : t =
+  let (_ : bool) = Cursor.skip_ws c in
+  match Cursor.peek c with
+  | Some (Component.Preserved { kind = Token.Delim ('+' | '>' | '~'); _ }) ->
+      let comb = read_combinator c in
+      let (_ : bool) = Cursor.skip_ws c in
+      Relative (comb, parse_complex c)
+  | _ -> parse_complex c
+
+and parse_relative_selector_list (c : Cursor.t) : t list =
+  let (_ : bool) = Cursor.skip_ws c in
+  let first = parse_relative_selector c in
+  let rec loop acc =
+    let (_ : bool) = Cursor.skip_ws c in
+    if Cursor.comma_opt c then
+      let (_ : bool) = Cursor.skip_ws c in
+      loop (parse_relative_selector c :: acc)
+    else List.rev acc
+  in
+  first :: loop []
+
+and parse_pseudo_class (c : Cursor.t) : t =
+  let (_ : bool) = Cursor.colon c in
+  match Cursor.peek_raw c with
+  | Some (Component.Func { node = { name; arguments }; loc }) -> (
+      let (_ : Component.t option) = Cursor.next_raw c in
+      let inner = Cursor.of_components arguments in
+      Error.with_context (":" ^ name ^ "()") @@ fun () ->
+      match name with
+      | "is" -> Is (parse_complex_list inner)
+      | "where" -> Where (parse_complex_list inner)
+      | "not" -> Not (parse_complex_list inner)
+      | "has" -> Has (parse_relative_selector_list inner)
+      | "nth-child" ->
+          let n = read_nth inner in
+          Nth_child (n, parse_optional_of inner)
+      | "nth-last-child" ->
+          let n = read_nth inner in
+          Nth_last_child (n, parse_optional_of inner)
+      | "nth-of-type" ->
+          let n = read_nth inner in
+          Nth_of_type (n, parse_optional_of inner)
+      | "nth-last-of-type" ->
+          let n = read_nth inner in
+          Nth_last_of_type (n, parse_optional_of inner)
+      | "lang" -> Lang (parse_ident_list inner)
+      | "dir" -> Dir (Cursor.ident inner)
+      | "state" -> State (Cursor.ident inner)
+      | "host" ->
+          if Cursor.is_done inner then Host None
+          else Host (Some (parse_complex_list inner))
+      | "host-context" -> Host_context (parse_complex_list inner)
+      | "heading" -> Heading
+      | "active-view-transition-type" ->
+          if Cursor.is_done inner then Active_view_transition_type None
+          else Active_view_transition_type (Some (parse_ident_list inner))
+      | _ ->
+          Error.fail_bad_selector loc
+            ("unknown functional pseudo-class :" ^ name))
+  | Some (Component.Preserved { kind = Token.Ident name; loc }) -> (
+      let (_ : Component.t option) = Cursor.next_raw c in
+      match List.assoc_opt name pseudo_ident_table with
+      | Some sel -> sel
+      | None -> Error.fail_bad_selector loc ("unknown pseudo-class :" ^ name))
+  | _ -> Cursor.err_unexpected c
+
+and parse_pseudo_element (c : Cursor.t) : t =
+  let (_ : bool) = Cursor.colon c in
+  let (_ : bool) = Cursor.colon c in
+  match Cursor.peek_raw c with
+  | Some (Component.Func { node = { name; arguments }; loc }) -> (
+      let (_ : Component.t option) = Cursor.next_raw c in
+      let inner = Cursor.of_components arguments in
+      Error.with_context ("::" ^ name ^ "()") @@ fun () ->
+      match name with
+      | "part" -> Part (parse_ident_list inner)
+      | "slotted" -> Slotted (parse_complex_list inner)
+      | "cue" -> Cue (parse_complex_list inner)
+      | "cue-region" -> Cue_region (parse_complex_list inner)
+      | "highlight" -> Highlight (parse_ident_list inner)
+      | "view-transition-group" -> View_transition_group (Cursor.ident inner)
+      | "view-transition-image-pair" ->
+          View_transition_image_pair (Cursor.ident inner)
+      | "view-transition-old" -> View_transition_old (Cursor.ident inner)
+      | "view-transition-new" -> View_transition_new (Cursor.ident inner)
+      | _ ->
+          Error.fail_bad_selector loc
+            ("unknown functional pseudo-element ::" ^ name))
+  | Some (Component.Preserved { kind = Token.Ident name; loc }) -> (
+      let (_ : Component.t option) = Cursor.next_raw c in
+      match List.assoc_opt name pseudo_ident_table with
+      | Some sel -> sel
+      | None -> Error.fail_bad_selector loc ("unknown pseudo-element ::" ^ name)
+      )
+  | _ -> Cursor.err_unexpected c
+
+and parse_optional_of (c : Cursor.t) : t list option =
+  let (_ : bool) = Cursor.skip_ws c in
+  let snap = Cursor.save c in
+  match Cursor.ident_opt c with
+  | Some "of" ->
+      let (_ : bool) = Cursor.skip_ws c in
+      Some (parse_complex_list c)
+  | _ ->
+      Cursor.restore c snap;
+      None
+
+and parse_ident_list (c : Cursor.t) : string list =
+  let (_ : bool) = Cursor.skip_ws c in
+  let first = Cursor.ident c in
+  let rec loop acc =
+    let (_ : bool) = Cursor.skip_ws c in
+    if Cursor.comma_opt c then
+      let (_ : bool) = Cursor.skip_ws c in
+      loop (Cursor.ident c :: acc)
+    else List.rev acc
+  in
+  first :: loop []
+
+(* ----- End cursor-based parser internals ----- *)
+
+(* Collect the rule prelude by driving {!Parser} over the Reader and stopping
+   when the next raw char is the rule-body [{]. [Parser] does all the
+   token/block grouping (quotes, attribute brackets, function calls);
+   [Reader.peek] is only used as a single-char lookahead for the stop condition,
+   never to re-tokenise anything. *)
+let read_selector_list (c : Cursor.t) : t =
+  let sels = parse_complex_list c in
+  match sels with [ s ] -> s | sels -> List sels
+
+let read (c : Cursor.t) : t =
+  let sels = parse_complex_list c in
+  Cursor.expect_eof c;
+  match sels with [ s ] -> s | sels -> List sels
+
+let read_relative (c : Cursor.t) : t =
+  let sels = parse_relative_selector_list c in
+  Cursor.expect_eof c;
+  match sels with [ s ] -> s | sels -> List sels
 
 (** Pretty print a function-like pseudo-class or pseudo-element *)
 let pp_func : 'a. Pp.ctx -> prefix:string -> string -> 'a Pp.t -> 'a -> unit =

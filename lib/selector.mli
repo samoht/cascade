@@ -102,13 +102,13 @@ val pp_aria_attr : aria_attr Pp.t
 (** [pp_aria_attr] pretty-prints aria attributes. *)
 
 val read_aria_attr : Cursor.t -> aria_attr
-(** [read_aria_attr t] parses an [aria_attr] from [t]. *)
+(** [read_aria_attr c] parses an [aria_attr] from the cursor. *)
 
 val pp_attr_name : attr_name Pp.t
 (** [pp_attr_name] pretty-prints attribute names. *)
 
 val read_attr_name : Cursor.t -> attr_name
-(** [read_attr_name t] parses an [attr_name] from [t]. *)
+(** [read_attr_name c] parses an [attr_name] from the cursor. *)
 
 val attr_value_needs_quoting : string -> bool
 (** [attr_value_needs_quoting value] returns [true] if the given attribute value
@@ -122,33 +122,33 @@ val attr_value_needs_quoting : string -> bool
 val pp_nth : nth Pp.t
 (** [pp_nth] pretty-prints nth expressions. *)
 
-val read_selector_list : Reader.t -> t
+val read_selector_list : Cursor.t -> t
 (** [read_selector_list r] reads a selector list without checking for end of
     input. Used when parsing selectors as part of a larger CSS structure. *)
 
-val read : Reader.t -> t
+val read : Cursor.t -> t
 (** [read r] parses a CSS selector. *)
 
-val read_relative : Reader.t -> t
+val read_relative : Cursor.t -> t
 (** [read_relative r] parses a CSS relative selector (may start with a
     combinator like [+], [>], or [~]). Used for :has() arguments. *)
 
-val read_combinator : Reader.t -> combinator
+val read_combinator : Cursor.t -> combinator
 (** [read_combinator r] parses a combinator. *)
 
-val read_attribute_match : Reader.t -> attribute_match
+val read_attribute_match : Cursor.t -> attribute_match
 (** [read_attribute_match r] parses an attribute matcher. *)
 
-val read_ns : Reader.t -> ns option
+val read_ns : Cursor.t -> ns option
 (** [read_ns r] parses an optional attribute/selector namespace. *)
 
-val read_attr_flag : Reader.t -> attr_flag option
+val read_attr_flag : Cursor.t -> attr_flag option
 (** [read_attr_flag r] parses an attribute selector flag ([i] or [s]). *)
 
-val read_nth : Reader.t -> nth
+val read_nth : Cursor.t -> nth
 (** [read_nth r] parses an An+B nth expression. *)
 
-val read_nth_selector : Reader.t -> nth * t list option
+val read_nth_selector : Cursor.t -> nth * t list option
 (** [read_nth_selector r] parses an An+B expression with optional [of S]. *)
 
 val is_ : t list -> t
