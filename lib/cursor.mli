@@ -173,6 +173,23 @@ val peek_comma : t -> bool
 val peek_semicolon : t -> bool
 (** [peek_semicolon t] is [true] iff the next component is a semicolon token. *)
 
+val peek_colon : t -> bool
+(** [peek_colon t] is [true] iff the next component is a colon token. *)
+
+val peek_ident : t -> string option
+(** [peek_ident t] is [Some s] when the next component is [Ident s]. *)
+
+val peek_hash : t -> string option
+(** [peek_hash t] is [Some s] when the next component is [Hash s]. *)
+
+val peek_at_keyword : t -> string option
+(** [peek_at_keyword t] is [Some s] when the next component is [At_keyword s].
+*)
+
+val peek_block : t -> Token.bracket option
+(** [peek_block t] is [Some bracket] when the next component is a balanced
+    block, returning its opening bracket kind. *)
+
 val at_keyword_opt : t -> string option
 (** [at_keyword_opt t] consumes the next component if it is an [At_keyword]
     token, returning the keyword name without the leading [@]. *)
@@ -231,15 +248,15 @@ val expect_eof : t -> unit
 
 (** {1 Group / function helpers} *)
 
-val parens : (t -> 'a) -> t -> 'a
-(** [parens f t] consumes a [(...)] block and calls [f] with a fresh cursor over
+val parens : t -> (t -> 'a) -> 'a
+(** [parens t f] consumes a [(...)] block and calls [f] with a fresh cursor over
     its contents. Raises if the next component is not a parenthesised block. *)
 
-val brackets : (t -> 'a) -> t -> 'a
-(** [brackets f t] consumes a [[...]] block similarly. *)
+val brackets : t -> (t -> 'a) -> 'a
+(** [brackets t f] consumes a [[...]] block similarly. *)
 
-val braces : (t -> 'a) -> t -> 'a
-(** [braces f t] consumes a [{...}] block similarly. *)
+val braces : t -> (t -> 'a) -> 'a
+(** [braces t f] consumes a [{...}] block similarly. *)
 
 val call : string -> t -> (t -> 'a) -> 'a
 (** [call name t f] consumes a [name(...)] function call and applies [f] to a

@@ -1163,7 +1163,7 @@ and read_calc_term : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
   loop left
 
 and read_calc_parenthesized : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
- fun read_a t -> Cursor.parens (fun inner -> read_calc_expr read_a inner) t
+ fun read_a t -> Cursor.parens t (fun inner -> read_calc_expr read_a inner)
 
 and read_calc_zero : type a. Cursor.t -> a calc =
  fun t ->

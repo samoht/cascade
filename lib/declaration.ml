@@ -776,7 +776,7 @@ let is_font_family_var name =
 let read_custom_property_declaration t : declaration =
   let name = read_property_name t in
   Cursor.ws t;
-  Cursor.expect ':' t;
+  if not (Cursor.colon t) then Cursor.err_expected t "':'";
   Cursor.ws t;
   let value_str = read_property_value t in
   let is_important = read_importance t in
@@ -815,8 +815,14 @@ let read_regular_property_declaration t : declaration =
 let read_declaration t : declaration option =
   let read_one () =
     Cursor.with_context t "read_declaration" @@ fun () ->
-    (* Check if this is a custom property (starts with --) *)
-    if Cursor.looking_at t "--" then read_custom_property_declaration t
+    (* Custom properties are idents starting with [--]. *)
+    let is_custom =
+      match Cursor.peek t with
+      | Some (Component.Preserved { kind = Token.Ident s; _ }) ->
+          String.length s >= 2 && s.[0] = '-' && s.[1] = '-'
+      | _ -> false
+    in
+    if is_custom then read_custom_property_declaration t
     else read_regular_property_declaration t
   in
   Cursor.ws t;

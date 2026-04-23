@@ -428,12 +428,12 @@ let read_class t =
   (* No validation needed - Cursor.ident already ensures valid identifier *)
   Class name
 
-(** Parse an ID selector (#id) *)
+(** Parse an ID selector (#id). [#id] is a single [Hash] token, not a [#] delim
+    followed by an ident. *)
 let read_id t =
-  Cursor.expect '#' t;
-  let name = Cursor.ident ~keep_case:true t in
-  (* No validation needed - Cursor.ident already ensures valid identifier *)
-  Id name
+  match Cursor.hash_opt t with
+  | Some name -> Id name
+  | None -> Cursor.err_expected t "'#'"
 
 (** Parse a namespaced type or universal selector *)
 let read_type_or_universal t =
@@ -538,30 +538,34 @@ let read_attr_flag t : attr_flag option =
     t
 
 let read_attribute t =
-  Cursor.expect '[' t;
-  Cursor.ws t;
-  let ns = read_ns t in
-  let attr = Cursor.ident ~keep_case:true t in
-  validate_css_identifier_with_reader t attr;
-  Cursor.ws t;
-  let matcher = read_attribute_match t in
-  Cursor.ws t;
-  let flag = read_attr_flag t in
-  Cursor.expect ']' t;
+  Cursor.brackets t @@ fun inner ->
+  Cursor.ws inner;
+  let ns = read_ns inner in
+  let attr = Cursor.ident ~keep_case:true inner in
+  validate_css_identifier_with_reader inner attr;
+  Cursor.ws inner;
+  let matcher = read_attribute_match inner in
+  Cursor.ws inner;
+  let flag = read_attr_flag inner in
   let attr_name = attr_name_of_string attr in
   Attribute (ns, attr_name, matcher, flag)
 
-(** Read the [+b] / [-b] suffix of an An+B expression. The sign is a [Delim]
-    token, the integer a [Number_tok]. *)
+(** Read the [+b] / [-b] suffix of an An+B expression. In CSS a signed number
+    [+1] or [-1] tokenises as a single [Number_tok]; in contexts where the
+    tokenizer already split the sign (e.g. inside [calc()]) we also handle a
+    leading [Delim '+' / '-']. *)
 let read_offset t =
-  match Cursor.peek_delim t with
-  | Some '+' ->
-      Cursor.skip t;
-      Cursor.int t
-  | Some '-' ->
-      Cursor.skip t;
-      -Cursor.int t
-  | _ -> 0
+  match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Number_tok _; _ }) -> Cursor.int t
+  | _ -> (
+      match Cursor.peek_delim t with
+      | Some '+' ->
+          Cursor.skip t;
+          Cursor.int t
+      | Some '-' ->
+          Cursor.skip t;
+          -Cursor.int t
+      | _ -> 0)
 
 let read_nth t : nth =
   Cursor.ws t;
@@ -930,46 +934,57 @@ and read_pseudo_element t =
         t)
     t
 
-(** Parse a simple selector (one part) *)
+(** Parse a simple selector (one part). Does not skip leading whitespace — the
+    caller (read_compound) uses whitespace as a compound / descendant boundary
+    marker. *)
 and read_simple t =
-  Cursor.ws t;
-  match Cursor.peek t with
-  | Some (Component.Preserved { kind = Token.Delim '.'; _ }) -> read_class t
-  | Some (Component.Preserved { kind = Token.Hash _; _ }) -> read_id t
-  | Some (Component.Block { node = { opening = Token.Square; _ }; _ }) ->
-      read_attribute t
-  | Some (Component.Preserved { kind = Token.Colon; _ }) ->
-      (* [::] for pseudo-element, [:] for pseudo-class. *)
-      let snap = Cursor.save t in
-      if Cursor.try_kind_pair Token.Colon Token.Colon t then (
-        Cursor.restore t snap;
-        read_pseudo_element t)
-      else read_pseudo_class t
-  | Some (Component.Preserved { kind = Token.Delim '*'; _ }) ->
-      read_type_or_universal t
-  | Some (Component.Preserved { kind = Token.Delim '&'; _ }) ->
+  match Cursor.peek_delim t with
+  | Some '.' -> read_class t
+  | Some '*' -> read_type_or_universal t
+  | Some '&' ->
       Cursor.skip t;
       Nesting
-  | Some (Component.Preserved { kind = Token.Ident _; _ }) ->
-      read_type_or_universal t
-  | _ -> err_expected t "selector"
+  | _ -> (
+      if Cursor.peek_hash t <> None then read_id t
+      else if Cursor.peek_block t = Some Token.Square then read_attribute t
+      else if Cursor.peek_colon t then
+        (* [::] for pseudo-element, [:] for pseudo-class. *)
+        let snap = Cursor.save t in
+        if Cursor.try_kind_pair Token.Colon Token.Colon t then (
+          Cursor.restore t snap;
+          read_pseudo_element t)
+        else read_pseudo_class t
+      else
+        match Cursor.peek_ident t with
+        | Some _ -> read_type_or_universal t
+        | None -> err_expected t "selector")
 
 (** Parse a compound selector (multiple simple selectors without spaces) *)
 and read_compound t =
   let can_start () =
     match Cursor.peek_raw t with
-    | Some (Component.Preserved { kind = Token.Delim ('.' | '*' | '&'); _ })
-    | Some (Component.Preserved { kind = Token.Hash _; _ })
-    | Some (Component.Preserved { kind = Token.Colon; _ })
-    | Some (Component.Block { node = { opening = Token.Square; _ }; _ })
-    | Some (Component.Preserved { kind = Token.Ident _; _ }) ->
-        true
-    | _ -> false
+    | Some (Component.Preserved { kind = Token.Whitespace; _ }) -> false
+    | _ ->
+        (match Cursor.peek_delim t with
+          | Some ('.' | '*' | '&') -> true
+          | _ -> false)
+        || Cursor.peek_hash t <> None
+        || Cursor.peek_colon t
+        || Cursor.peek_block t = Some Token.Square
+        || Cursor.peek_ident t <> None
   in
   let rec loop acc =
-    if can_start () then
+    if can_start () then (
+      Printf.eprintf "COMPOUND raw=%s\n"
+        (match Cursor.peek_raw t with
+        | Some cv -> Component.to_string cv
+        | None -> "EOF");
       let s = read_simple t in
-      loop (s :: acc)
+      Printf.eprintf "COMPOUND-AFTER raw=%s\n"
+        (match Cursor.peek_raw t with
+        | Some cv -> Component.to_string cv
+        | None -> "EOF");
+      loop (s :: acc))
     else acc
   in
   match loop [] with
@@ -982,14 +997,13 @@ and read_complex t =
   let left = read_compound t in
   Cursor.ws t;
   let can_start_selector () =
-    match Cursor.peek t with
-    | Some (Component.Preserved { kind = Token.Delim ('.' | '*' | '&'); _ })
-    | Some (Component.Preserved { kind = Token.Hash _; _ })
-    | Some (Component.Preserved { kind = Token.Colon; _ })
-    | Some (Component.Block { node = { opening = Token.Square; _ }; _ })
-    | Some (Component.Preserved { kind = Token.Ident _; _ }) ->
-        true
-    | _ -> false
+    (match Cursor.peek_delim t with
+      | Some ('.' | '*' | '&') -> true
+      | _ -> false)
+    || Cursor.peek_hash t <> None
+    || Cursor.peek_colon t
+    || Cursor.peek_block t = Some Token.Square
+    || Cursor.peek_ident t <> None
   in
   match Cursor.peek_delim t with
   | Some '|'

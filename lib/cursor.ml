@@ -176,6 +176,32 @@ let peek_semicolon t =
   | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> true
   | _ -> false
 
+let peek_colon t =
+  match peek t with
+  | Some (Component.Preserved { kind = Token.Colon; _ }) -> true
+  | _ -> false
+
+let peek_ident t =
+  match peek t with
+  | Some (Component.Preserved { kind = Token.Ident s; _ }) -> Some s
+  | _ -> None
+
+let peek_hash t =
+  match peek t with
+  | Some (Component.Preserved { kind = Token.Hash { value; _ }; _ }) ->
+      Some value
+  | _ -> None
+
+let peek_at_keyword t =
+  match peek t with
+  | Some (Component.Preserved { kind = Token.At_keyword s; _ }) -> Some s
+  | _ -> None
+
+let peek_block t =
+  match peek t with
+  | Some (Component.Block b) -> Some b.node.opening
+  | _ -> None
+
 let at_keyword_opt t =
   match peek t with
   | Some (Component.Preserved { kind = Token.At_keyword s; _ }) ->
@@ -189,13 +215,18 @@ let expect_at_keyword name t =
   | _ -> err_expected t ("@" ^ name)
 
 let drain_until_block t =
+  (* Used for at-rule / qualified-rule preludes: drain until the curly block
+     body, not any block (selectors can contain [Square] blocks for attribute
+     matchers). Whitespace is preserved so the selector parser can recognise the
+     descendant combinator. *)
   let rec loop acc =
-    match peek t with
+    match peek_raw t with
     | None -> List.rev acc
-    | Some (Component.Block _) -> List.rev acc
+    | Some (Component.Block { node = { opening = Token.Curly; _ }; _ }) ->
+        List.rev acc
     | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> List.rev acc
     | Some cv ->
-        skip t;
+        ignore (next_raw t : Component.t option);
         loop (cv :: acc)
   in
   loop []
@@ -351,17 +382,17 @@ let take_block_if pred t : Component.block Component.node option =
       Some b
   | _ -> None
 
-let parens f t =
+let parens t f =
   match take_block_if (fun b -> b = Token.Paren) t with
   | Some b -> f (of_components b.node.value)
   | None -> err_expected t "'('"
 
-let brackets f t =
+let brackets t f =
   match take_block_if (fun b -> b = Token.Square) t with
   | Some b -> f (of_components b.node.value)
   | None -> err_expected t "'['"
 
-let braces f t =
+let braces t f =
   match take_block_if (fun b -> b = Token.Curly) t with
   | Some b -> f (of_components b.node.value)
   | None -> err_expected t "'{'"
