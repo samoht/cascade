@@ -6,40 +6,49 @@ open Css.Values
 open Css_test_helpers
 
 (* One-liner check functions for each CSS value type *)
-let check_length = check_value "length" read_length pp_length
-let check_color = check_value "color" read_color pp_color
-let check_angle = check_value "angle" read_angle pp_angle
-let check_duration = check_value "duration" read_duration pp_duration
-let check_percentage = check_value "percentage" read_percentage pp_percentage
-let check_number = check_value "number" read_number pp_number
+let check_length = check_value_cursor "length" read_length pp_length
+let check_color = check_value_cursor "color" read_color pp_color
+let check_angle = check_value_cursor "angle" read_angle pp_angle
+let check_duration = check_value_cursor "duration" read_duration pp_duration
+
+let check_percentage =
+  check_value_cursor "percentage" read_percentage pp_percentage
+
+let check_number = check_value_cursor "number" read_number pp_number
 
 let check_transition_behavior =
-  check_value "transition_behavior" read_transition_behavior
+  check_value_cursor "transition_behavior" read_transition_behavior
     pp_transition_behavior
 
 let check_length_percentage =
-  check_value "length_percentage" read_length_percentage pp_length_percentage
+  check_value_cursor "length_percentage" read_length_percentage
+    pp_length_percentage
 
 let check_number_percentage =
-  check_value "number_percentage" read_number_percentage pp_number_percentage
+  check_value_cursor "number_percentage" read_number_percentage
+    pp_number_percentage
 
 let check_color_space =
-  check_value "color_space" read_color_space pp_color_space
+  check_value_cursor "color_space" read_color_space pp_color_space
 
-let check_hue = check_value "hue" read_hue pp_hue
-let check_color_name = check_value "color_name" read_color_name pp_color_name
-let check_alpha = check_value "alpha" read_alpha pp_alpha
+let check_hue = check_value_cursor "hue" read_hue pp_hue
+
+let check_color_name =
+  check_value_cursor "color_name" read_color_name pp_color_name
+
+let check_alpha = check_value_cursor "alpha" read_alpha pp_alpha
 
 let check_hue_interpolation =
-  check_value "hue_interpolation" read_hue_interpolation pp_hue_interpolation
+  check_value_cursor "hue_interpolation" read_hue_interpolation
+    pp_hue_interpolation
 
-let check_calc_op = check_value "calc_op" read_calc_op pp_calc_op
-let check_component = check_value "component" read_component pp_component
-let check_channel = check_value "channel" read_channel pp_channel
-let check_rgb = check_value "rgb" read_rgb pp_rgb
+let check_calc_op = check_value_cursor "calc_op" read_calc_op pp_calc_op
+let check_component = check_value_cursor "component" read_component pp_component
+let check_channel = check_value_cursor "channel" read_channel pp_channel
+let check_rgb = check_value_cursor "rgb" read_rgb pp_rgb
 
 let check_system_color =
-  check_value "system_color" read_system_color pp_system_color
+  check_value_cursor "system_color" read_system_color pp_system_color
 
 let test_length () =
   (* Basic units *)
@@ -146,16 +155,16 @@ let test_length () =
   check_length "calc(10px + 0)";
   check_length "calc(0 + 10px)";
 
-  neg read_length "invalid";
-  neg read_length "abc";
-  neg read_length "10";
-  neg read_length "10pp";
-  neg read_length "";
+  neg_cursor read_length "invalid";
+  neg_cursor read_length "abc";
+  neg_cursor read_length "10";
+  neg_cursor read_length "10pp";
+  neg_cursor read_length "";
   (* Non-negative length contexts *)
-  neg read_non_negative_length "-5px";
+  neg_cursor read_non_negative_length "-5px";
   (* Invalid calc expressions *)
-  neg (read_calc read_length) "calc()";
-  neg (read_calc read_length) "calc(10px +)"
+  neg_cursor (read_calc read_length) "calc()";
+  neg_cursor (read_calc read_length) "calc(10px +)"
 
 let test_color () =
   (* Hex colors with # *)
@@ -265,14 +274,14 @@ let test_color () =
   check_color ~expected:"rgb(255 0 0/1)" "rgba(255, 0, 0, 1)";
   check_color ~expected:"rgb(0 0 0/.25)" "rgba(0, 0, 0, 0.25)";
   check_color ~expected:"rgb(128 128 128/.75)" "rgba(128, 128, 128, 0.75)";
-  neg read_color "invalid";
-  neg read_color "abc";
-  neg read_color "#gg";
+  neg_cursor read_color "invalid";
+  neg_cursor read_color "abc";
+  neg_cursor read_color "#gg";
   check_color ~expected:"rgb(255 0 0)" "rgb(256, 0, 0)";
   check_color ~expected:"hsl(1 50% 50%)" "hsl(361, 50%, 50%)";
-  neg read_color "";
+  neg_cursor read_color "";
   (* Unknown color keyword *)
-  neg read_color "notacolor"
+  neg_cursor read_color "notacolor"
 
 let test_angle () =
   (* Degrees *)
@@ -315,13 +324,13 @@ let test_angle () =
 
   (* Var with empty fallback *)
   check_angle ~expected:"var(--angle,)" "var(--angle,)";
-  neg read_angle "invalid";
-  neg read_angle "45";
-  neg read_angle "90";
-  neg read_angle "45px";
-  neg read_angle "abc";
-  neg read_angle "";
-  neg read_angle "360.5.5deg"
+  neg_cursor read_angle "invalid";
+  neg_cursor read_angle "45";
+  neg_cursor read_angle "90";
+  neg_cursor read_angle "45px";
+  neg_cursor read_angle "abc";
+  neg_cursor read_angle "";
+  neg_cursor read_angle "360.5.5deg"
 
 let test_duration () =
   (* Seconds *)
@@ -357,13 +366,13 @@ let test_duration () =
 
   (* Var with empty fallback *)
   check_duration ~expected:"var(--time,)" "var(--time,)";
-  neg read_duration "invalid";
-  neg read_duration "1";
-  neg read_duration "1px";
-  neg read_duration "abc";
-  neg read_duration "";
-  neg read_duration "-1s";
-  neg read_duration "10xs"
+  neg_cursor read_duration "invalid";
+  neg_cursor read_duration "1";
+  neg_cursor read_duration "1px";
+  neg_cursor read_duration "abc";
+  neg_cursor read_duration "";
+  neg_cursor read_duration "-1s";
+  neg_cursor read_duration "10xs"
 
 let test_percentage () =
   check_percentage "50%";
@@ -380,16 +389,16 @@ let test_percentage () =
   check_percentage ".01%";
   (* Variables in percentages *)
   check_percentage ~expected:"var(--percentage,50%)" "var(--percentage, 50%)";
-  neg read_percentage "invalid";
-  neg read_percentage "50";
-  neg read_percentage "10";
-  neg read_percentage "abc";
-  neg read_percentage "";
-  neg read_percentage "50px"
+  neg_cursor read_percentage "invalid";
+  neg_cursor read_percentage "50";
+  neg_cursor read_percentage "10";
+  neg_cursor read_percentage "abc";
+  neg_cursor read_percentage "";
+  neg_cursor read_percentage "50px"
 
 (* Not a roundtrip test *)
 let test_var_in_color () =
-  let t = Css.Reader.of_string "var(--primary-color)" in
+  let t = Css.Cursor.of_string "var(--primary-color)" in
   let color = read_color t in
   match color with
   | Var var -> check string "var name" "primary-color" var.name
@@ -397,7 +406,7 @@ let test_var_in_color () =
 
 (* Not a roundtrip test *)
 let test_var_with_fallback () =
-  let t = Css.Reader.of_string "var(--theme-color, #007bff)" in
+  let t = Css.Cursor.of_string "var(--theme-color, #007bff)" in
   let color = read_color t in
   match color with
   | Var var -> check string "var name" "theme-color" var.name
@@ -405,7 +414,7 @@ let test_var_with_fallback () =
 
 (* Not a roundtrip test *)
 let test_var_color_keyword_fallback () =
-  let t = Css.Reader.of_string "var(--custom-color, red)" in
+  let t = Css.Cursor.of_string "var(--custom-color, red)" in
   let color = read_color t in
   match color with
   | Var var -> check string "var name" "custom-color" var.name
@@ -413,7 +422,7 @@ let test_var_color_keyword_fallback () =
 
 (* Not a roundtrip test *)
 let test_var_with_rgb_fallback () =
-  let t = Css.Reader.of_string "var(--brand-color, rgb(255, 0, 0))" in
+  let t = Css.Cursor.of_string "var(--brand-color, rgb(255, 0, 0))" in
   let color = read_color t in
   match color with
   | Var var -> check string "var name" "brand-color" var.name
@@ -421,14 +430,14 @@ let test_var_with_rgb_fallback () =
 
 (* Not a roundtrip test *)
 let test_var_fallback_in_output () =
-  let t = Css.Reader.of_string "var(--theme-color, #007bff)" in
+  let t = Css.Cursor.of_string "var(--theme-color, #007bff)" in
   let color = read_color t in
   let output = Css.Pp.to_string pp_color color in
   check string "var with fallback output" "var(--theme-color, #007bff)" output
 
 (* Not a roundtrip test *)
 let test_var_in_calc_fallback () =
-  let t = Css.Reader.of_string "calc(100% - var(--gap, 20px))" in
+  let t = Css.Cursor.of_string "calc(100% - var(--gap, 20px))" in
   let calc_expr = read_calc read_length t in
   match calc_expr with
   | Expr (left, Sub, right) -> (
@@ -441,7 +450,7 @@ let test_var_in_calc_fallback () =
 
 (* Not a roundtrip test *)
 let test_var_in_calc () =
-  let t = Css.Reader.of_string "calc(100% - var(--spacing))" in
+  let t = Css.Cursor.of_string "calc(100% - var(--spacing))" in
   let calc_expr = read_calc read_length t in
   match calc_expr with
   | Expr (left, Sub, right) -> (
@@ -508,21 +517,21 @@ let test_color_mix_printing () =
 let test_var_in_calc_types () =
   let open Css.Values in
   (* Angle var in calc *)
-  let t = Css.Reader.of_string "calc(90deg + var(--angle, 0.5turn))" in
+  let t = Css.Cursor.of_string "calc(90deg + var(--angle, 0.5turn))" in
   let calc_expr = read_calc read_angle t in
   (match calc_expr with
   | Expr (Val (Deg 90.), Add, Var v) ->
       Alcotest.(check string) "var name" "angle" v.name
   | _ -> Alcotest.fail "Expected angle var in calc");
   (* Duration var in calc *)
-  let t = Css.Reader.of_string "calc(1s + var(--dur, 500ms))" in
+  let t = Css.Cursor.of_string "calc(1s + var(--dur, 500ms))" in
   let calc_expr = read_calc read_duration t in
   (match calc_expr with
   | Expr (Val (S 1.), Add, Var v) ->
       Alcotest.(check string) "var name" "dur" v.name
   | _ -> Alcotest.fail "Expected duration var in calc");
   (* Percentage var in calc *)
-  let t = Css.Reader.of_string "calc(50% + var(--p, 25%))" in
+  let t = Css.Cursor.of_string "calc(50% + var(--p, 25%))" in
   let calc_expr = read_calc read_percentage t in
   match calc_expr with
   | Expr (Val (Pct 50.), Add, Var v) ->
@@ -541,7 +550,7 @@ let test_number_var_printing () =
 let test_var_empty_fallback () =
   let open Css.Values in
   (* Test parsing empty fallback - check it's recognized as Empty *)
-  let t = Css.Reader.of_string "var(--test,)" in
+  let t = Css.Cursor.of_string "var(--test,)" in
   let color = read_color t in
   match color with
   | Var var -> (
@@ -562,9 +571,9 @@ let test_length_percentage () =
   check_length_percentage "10px";
   check_length_percentage "50%";
   check_length_percentage "0";
-  neg read_length_percentage "invalid";
-  neg read_length_percentage "abc";
-  neg read_length_percentage ""
+  neg_cursor read_length_percentage "invalid";
+  neg_cursor read_length_percentage "abc";
+  neg_cursor read_length_percentage ""
 
 let test_number_percentage () =
   check_number_percentage "1.5";
@@ -580,93 +589,93 @@ let test_number_percentage () =
   check_number_percentage ~expected:"calc(1.5*100%)" "calc(1.5 * 100%)";
   check_number_percentage "calc(100% - 25%)";
   (* Invalid inputs *)
-  neg read_number_percentage "invalid";
-  neg read_number_percentage "abc";
-  neg read_number_percentage ""
+  neg_cursor read_number_percentage "invalid";
+  neg_cursor read_number_percentage "abc";
+  neg_cursor read_number_percentage ""
 
 let test_color_space () =
   check_color_space "srgb";
   check_color_space "display-p3";
   check_color_space "rec2020";
-  neg read_color_space "invalid";
-  neg read_color_space "abc";
-  neg read_color_space ""
+  neg_cursor read_color_space "invalid";
+  neg_cursor read_color_space "abc";
+  neg_cursor read_color_space ""
 
 let test_hue () =
   check_hue ~expected:"180" "180deg";
   check_hue ~expected:".5turn" "0.5turn";
   check_hue "200grad";
   check_hue ~expected:"3.14159rad" "3.14159rad";
-  neg read_hue "invalid";
-  neg read_hue "abc";
+  neg_cursor read_hue "invalid";
+  neg_cursor read_hue "abc";
   check_hue "180";
-  neg read_hue ""
+  neg_cursor read_hue ""
 
 let test_color_name () =
   check_color_name "red";
   check_color_name "blue";
   check_color_name "rebeccapurple";
-  neg read_color_name "invalid";
-  neg read_color_name "notacolor";
-  neg read_color_name "123";
-  neg read_color_name ""
+  neg_cursor read_color_name "invalid";
+  neg_cursor read_color_name "notacolor";
+  neg_cursor read_color_name "123";
+  neg_cursor read_color_name ""
 
 let test_alpha () =
   check_alpha ~expected:".5" "0.5";
   check_alpha "50%";
   check_alpha "1";
   check_alpha "0";
-  neg read_alpha "invalid";
-  neg read_alpha "abc";
+  neg_cursor read_alpha "invalid";
+  neg_cursor read_alpha "abc";
   check_alpha ~expected:"1" "1.5";
   check_alpha ~expected:"0" "-0.5";
   check_alpha ~expected:"100%" "150%";
-  neg read_alpha "1px"
+  neg_cursor read_alpha "1px"
 
 let test_hue_interpolation () =
   check_hue_interpolation "shorter";
   check_hue_interpolation "longer";
   check_hue_interpolation "increasing";
   check_hue_interpolation "decreasing";
-  neg read_hue_interpolation "invalid";
-  neg read_hue_interpolation "abc";
-  neg read_hue_interpolation ""
+  neg_cursor read_hue_interpolation "invalid";
+  neg_cursor read_hue_interpolation "abc";
+  neg_cursor read_hue_interpolation ""
 
 let test_calc_op () =
   check_calc_op ~expected:" + " "+";
   check_calc_op ~expected:" - " "-";
   check_calc_op "*";
   check_calc_op "/";
-  neg read_calc_op "invalid";
-  neg read_calc_op "abc";
-  neg read_calc_op "++";
-  neg read_calc_op "";
-  neg read_calc_op "="
+  neg_cursor read_calc_op "invalid";
+  neg_cursor read_calc_op "abc";
+  neg_cursor read_calc_op "++";
+  neg_cursor read_calc_op "";
+  neg_cursor read_calc_op "="
 
 let test_number () =
   check_number "42";
   check_number "3.14";
   check_number "0";
   check_number "-5";
-  neg read_number "invalid";
-  neg read_number "abc";
-  neg read_number "";
-  neg read_number "1px"
+  neg_cursor read_number "invalid";
+  neg_cursor read_number "abc";
+  neg_cursor read_number "";
+  neg_cursor read_number "1px"
 
 let test_transition_behavior () =
   check_transition_behavior "normal";
   check_transition_behavior "allow-discrete";
-  neg read_transition_behavior "inherit";
-  neg read_transition_behavior "invalid";
-  neg read_transition_behavior ""
+  neg_cursor read_transition_behavior "inherit";
+  neg_cursor read_transition_behavior "invalid";
+  neg_cursor read_transition_behavior ""
 
 let test_component () =
   (* Component tests - various color component values *)
   check_component "50%";
   check_component "128";
   check_component ~expected:".5" "0.5";
-  neg read_component "invalid";
-  neg read_component "abc";
+  neg_cursor read_component "invalid";
+  neg_cursor read_component "abc";
   check_component ~expected:"0" "-1";
   (* Clamped in output *)
   check_component ~expected:"255" "256";
@@ -677,12 +686,12 @@ let test_channel () =
   check_channel "255";
   check_channel "50%";
   check_channel ~expected:".5" "0.5";
-  neg read_channel "invalid";
-  neg read_channel "abc";
+  neg_cursor read_channel "invalid";
+  neg_cursor read_channel "abc";
   check_channel ~expected:"255" "256";
   check_channel ~expected:"0" "-1";
   check_channel ~expected:"100%" "150%";
-  neg read_channel ""
+  neg_cursor read_channel ""
 
 let test_rgb () =
   (* RGB channel values *)
@@ -694,10 +703,10 @@ let test_rgb () =
   (* RGB with variables *)
   check_rgb "var(--r) 0 0";
   check_rgb "var(--rgb-channels)";
-  neg read_rgb "invalid";
-  neg read_rgb "abc";
-  neg read_rgb "";
-  neg read_rgb "255"
+  neg_cursor read_rgb "invalid";
+  neg_cursor read_rgb "abc";
+  neg_cursor read_rgb "";
+  neg_cursor read_rgb "255"
 
 let test_system_color () =
   check_system_color "AccentColor";
@@ -705,8 +714,8 @@ let test_system_color () =
   check_system_color "Highlight";
   check_system_color "ButtonFace";
   check_system_color "Field";
-  neg read_system_color "";
-  neg read_system_color "invalid-color"
+  neg_cursor read_system_color "";
+  neg_cursor read_system_color "invalid-color"
 
 let value_tests =
   [

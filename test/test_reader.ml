@@ -916,18 +916,18 @@ let one_of_case () =
   Alcotest.(check string) "backtracking result" "red" result;
   Alcotest.(check bool) "should not consume entire input" false (is_done r);
 
-  (* Test recursive one_of calls *)
+  (* Test recursive one_of calls using only Reader-level primitives. *)
   let complex_parser1 r =
-    let _ = Css.Values.read_color r in
+    let _ = ident r in
     ws r;
     let _ =
       one_of
         [
           (fun r ->
-            let _ = Css.Values.read_length r in
+            let _ = number r in
             "length");
           (fun r ->
-            let _ = Css.Values.read_percentage r in
+            let _ = pct r in
             "percentage");
         ]
         r
@@ -935,7 +935,7 @@ let one_of_case () =
     "color_complex"
   in
   let simple_color_parser r =
-    let _ = Css.Values.read_color r in
+    let _ = ident r in
     "simple_color"
   in
 

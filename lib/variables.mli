@@ -13,10 +13,10 @@ val pp_syntax : 'a syntax Pp.t
 val pp_value : 'a syntax -> 'a Pp.t
 (** [pp_value syntax] pretty-prints a value according to its syntax type. *)
 
-val read_syntax : Reader.t -> any_syntax
+val read_syntax : Cursor.t -> any_syntax
 (** [read_syntax r] reads a CSS syntax descriptor from input. *)
 
-val read_value : Reader.t -> 'a syntax -> 'a
+val read_value : Cursor.t -> 'a syntax -> 'a
 (** [read_value r syntax] reads a value according to the given [syntax]. *)
 
 (** {1 Meta handling} *)
@@ -75,10 +75,10 @@ val custom_declaration_name : declaration -> string option
 val pp_any_syntax : any_syntax Pp.t
 (** [pp_any_syntax] pretty-prints any CSS syntax descriptor. *)
 
-val read_any_syntax : Reader.t -> any_syntax
+val read_any_syntax : Cursor.t -> any_syntax
 (** [read_any_syntax t] parses a CSS syntax descriptor. *)
 
-val parse_var_reference : Reader.t -> string * string option
+val parse_var_reference : Cursor.t -> string * string option
 (** [parse_var_reference t] parses a CSS var() function and returns the variable
     name (without -- prefix) and optional fallback string. This is a lower-level
     function that doesn't create a variable handle. *)

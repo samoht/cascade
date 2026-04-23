@@ -149,13 +149,13 @@ val pp_calc : 'a Pp.t -> 'a calc Pp.t
 val pp_color_name : color_name Pp.t
 (** [pp_color_name] pretty-prints {!color_name} values. *)
 
-val read_color_name : Reader.t -> color_name
+val read_color_name : Cursor.t -> color_name
 (** [read_color_name] reads a {!color_name} value. *)
 
 val pp_color_space : color_space Pp.t
 (** [pp_color_space] pretty-prints {!color_space} values. *)
 
-val read_color_space : Reader.t -> color_space
+val read_color_space : Cursor.t -> color_space
 (** [read_color_space] reads a {!color_space} value. *)
 
 (** {2 Helper Functions} *)
@@ -163,12 +163,12 @@ val read_color_space : Reader.t -> color_space
 val pp_var : 'a Pp.t -> 'a var Pp.t
 (** [pp_var pp] pretty-prints CSS variables using [pp] for the payload. *)
 
-val read_var : (Reader.t -> 'a) -> Reader.t -> 'a var
+val read_var : (Cursor.t -> 'a) -> Cursor.t -> 'a var
 (** [read_var read t] parses a CSS variable with [var(...)] syntax using [read]
     for the payload. Expects to be positioned at [var(] and parses the full
     expression. *)
 
-val read_var_after_ident : (Reader.t -> 'a) -> Reader.t -> 'a var
+val read_var_after_ident : (Cursor.t -> 'a) -> Cursor.t -> 'a var
 (** [read_var_after_ident read t] parses after "var" has been consumed. Expects
     to be positioned at [(] after "var". *)
 
@@ -232,93 +232,93 @@ end
 (** {1 Parsing Functions} *)
 
 val read_length :
-  ?allow_negative:bool -> ?with_keywords:bool -> Reader.t -> length
+  ?allow_negative:bool -> ?with_keywords:bool -> Cursor.t -> length
 (** [read_length t] parses a CSS length. *)
 
-val read_non_negative_length : ?with_keywords:bool -> Reader.t -> length
+val read_non_negative_length : ?with_keywords:bool -> Cursor.t -> length
 (** [read_non_negative_length reader] parses a length value that must be
     non-negative. Used for padding properties which cannot have negative values
     per CSS specification. *)
 
-val read_padding_shorthand : Reader.t -> length list
+val read_padding_shorthand : Cursor.t -> length list
 (** [read_padding_shorthand reader] parses a padding shorthand property
     accepting 1-4 space-separated non-negative length values according to CSS
     specification. *)
 
-val read_margin_shorthand : Reader.t -> length list
+val read_margin_shorthand : Cursor.t -> length list
 (** [read_margin_shorthand reader] parses a margin shorthand property accepting
     1-4 space-separated length values according to CSS specification. *)
 
-val read_color : Reader.t -> color
+val read_color : Cursor.t -> color
 (** [read_color t] parses a CSS color (hex, rgb/rgba, keywords, etc.). *)
 
 val pp_hue : hue Pp.t
 (** [pp_hue] pretty-prints {!hue} values. *)
 
-val read_hue : Reader.t -> hue
+val read_hue : Cursor.t -> hue
 (** [read_hue t] parses a CSS hue value. *)
 
 val pp_alpha : alpha Pp.t
 (** [pp_alpha] pretty-prints {!alpha} values. *)
 
-val read_alpha : Reader.t -> alpha
+val read_alpha : Cursor.t -> alpha
 (** [read_alpha t] parses a CSS alpha value. *)
 
 val pp_hue_interpolation : hue_interpolation Pp.t
 (** [pp_hue_interpolation] pretty-prints {!hue_interpolation} values. *)
 
-val read_hue_interpolation : Reader.t -> hue_interpolation
+val read_hue_interpolation : Cursor.t -> hue_interpolation
 (** [read_hue_interpolation t] parses a hue interpolation method. *)
 
 val pp_calc_op : calc_op Pp.t
 (** [pp_calc_op] pretty-prints {!calc_op} values. *)
 
-val read_calc_op : Reader.t -> calc_op
+val read_calc_op : Cursor.t -> calc_op
 (** [read_calc_op t] parses a calc operation. *)
 
 val pp_component : component Pp.t
 (** [pp_component] pretty-prints {!component} values. *)
 
-val read_component : Reader.t -> component
+val read_component : Cursor.t -> component
 (** [read_component t] parses a component value. *)
 
 val pp_channel : channel Pp.t
 (** [pp_channel] pretty-prints {!channel} values. *)
 
-val read_channel : Reader.t -> channel
+val read_channel : Cursor.t -> channel
 (** [read_channel t] parses a channel value. *)
 
 val pp_rgb : rgb Pp.t
 (** [pp_rgb] pretty-prints {!rgb} values. *)
 
-val read_rgb : Reader.t -> rgb
+val read_rgb : Cursor.t -> rgb
 (** [read_rgb t] parses an RGB value. *)
 
-val read_angle : Reader.t -> angle
+val read_angle : Cursor.t -> angle
 (** [read_angle t] parses a CSS angle. *)
 
-val read_duration : Reader.t -> duration
+val read_duration : Cursor.t -> duration
 (** [read_duration t] parses a CSS duration. *)
 
-val read_time : Reader.t -> duration
+val read_time : Cursor.t -> duration
 (** [read_time t] parses a CSS time value (can be negative). *)
 
-val read_number : Reader.t -> number
+val read_number : Cursor.t -> number
 (** [read_number t] parses a CSS number (int/float). *)
 
-val read_transition_behavior : Reader.t -> transition_behavior
+val read_transition_behavior : Cursor.t -> transition_behavior
 (** [read_transition_behavior t] parses a CSS transition-behavior value. *)
 
-val read_percentage : Reader.t -> percentage
+val read_percentage : Cursor.t -> percentage
 (** [read_percentage t] parses a CSS percentage. *)
 
-val read_length_percentage : Reader.t -> length_percentage
+val read_length_percentage : Cursor.t -> length_percentage
 (** [read_length_percentage t] parses a CSS length or percentage. *)
 
-val read_number_percentage : Reader.t -> number_percentage
+val read_number_percentage : Cursor.t -> number_percentage
 (** [read_number_percentage t] parses a CSS number or percentage. *)
 
-val read_calc : (Reader.t -> 'a) -> Reader.t -> 'a calc
+val read_calc : (Cursor.t -> 'a) -> Cursor.t -> 'a calc
 (** [read_calc read t] parses a [calc(...)] expression or a promotable value. *)
 
 val eval_numeric_calc : 'a calc -> float option
@@ -344,5 +344,5 @@ val var_meta : 'a var -> meta option
 val pp_system_color : system_color Pp.t
 (** [pp_system_color] is the pretty-printer for [system_color]. *)
 
-val read_system_color : Reader.t -> system_color
+val read_system_color : Cursor.t -> system_color
 (** [read_system_color t] is the [system_color] parsed from [t]. *)

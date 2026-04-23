@@ -3696,7 +3696,7 @@ val background_image_var_none : string -> background_image
 (** [background_image_var_none name] creates a background_image var reference
     with no fallback, i.e., [var(--name)]. Used for mask gradient utilities. *)
 
-val read_background_image : Reader.t -> background_image
+val read_background_image : Cursor.t -> background_image
 (** [read_background_image t] parses a background-image value from [t]. *)
 
 val minify_color : color -> color
@@ -4662,11 +4662,10 @@ val pp :
   string
 (** [pp] is {!to_string}. *)
 
-type parse_error = Reader.parse_error
+type parse_error = Error.t * string
 
 val pp_parse_error : parse_error -> string
-(** [pp_parse_error error] formats a parse error as a string, including call
-    stack if available. *)
+(** [pp_parse_error error] formats a parse error as a string. *)
 
 val of_string : ?filename:string -> string -> (t, parse_error) result
 (** [of_string ?filename css] parses a CSS string into a stylesheet. Returns

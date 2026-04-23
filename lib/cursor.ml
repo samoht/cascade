@@ -161,6 +161,45 @@ let url_opt t = take_token_if (function Token.Url s -> Some s | _ -> None) t
 let delim_opt t =
   take_token_if (function Token.Delim c -> Some c | _ -> None) t
 
+let peek_delim t =
+  match peek t with
+  | Some (Component.Preserved { kind = Token.Delim c; _ }) -> Some c
+  | _ -> None
+
+let peek_comma t =
+  match peek t with
+  | Some (Component.Preserved { kind = Token.Comma; _ }) -> true
+  | _ -> false
+
+let peek_semicolon t =
+  match peek t with
+  | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> true
+  | _ -> false
+
+let at_keyword_opt t =
+  match peek t with
+  | Some (Component.Preserved { kind = Token.At_keyword s; _ }) ->
+      skip t;
+      Some s
+  | _ -> None
+
+let expect_at_keyword name t =
+  match at_keyword_opt t with
+  | Some s when s = name -> ()
+  | _ -> err_expected t ("@" ^ name)
+
+let drain_until_block t =
+  let rec loop acc =
+    match peek t with
+    | None -> List.rev acc
+    | Some (Component.Block _) -> List.rev acc
+    | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> List.rev acc
+    | Some cv ->
+        skip t;
+        loop (cv :: acc)
+  in
+  loop []
+
 (** {1 Token-shape helpers — raising variants} *)
 
 let ident ?keep_case:_ t =
@@ -451,7 +490,7 @@ let triple ?sep p1 p2 p3 t =
 
 let fold_many p ~init ~f t =
   let rec loop acc =
-    match option p t with None -> acc | Some v -> loop (f acc v)
+    match option p t with None -> (acc, None) | Some v -> loop (f acc v)
   in
   loop init
 

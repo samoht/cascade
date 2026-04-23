@@ -28,21 +28,21 @@ val custom_property : ?layer:string -> string -> string -> declaration
 val custom_declaration_layer : declaration -> string option
 (** [custom_declaration_layer d] is the layer of [d], if any. *)
 
-val read_property_name : Reader.t -> string
+val read_property_name : Cursor.t -> string
 (** [read_property_name t] is the property name read from [t]. *)
 
-val read_property_value : Reader.t -> string
+val read_property_value : Cursor.t -> string
 (** [read_property_value t] is the value read from [t] (until ';' or '\}'). *)
 
-val read_declaration : Reader.t -> declaration option
+val read_declaration : Cursor.t -> declaration option
 (** [read_declaration t] is one typed declaration, or [None] when no more valid
     declarations. Performs full property name and value validation per CSS spec.
 *)
 
-val read_declarations : Reader.t -> declaration list
+val read_declarations : Cursor.t -> declaration list
 (** [read_declarations t] is all typed declarations in an unbraced block. *)
 
-val read_block : Reader.t -> declaration list
+val read_block : Cursor.t -> declaration list
 (** [read_block t] is the typed declarations parsed from a braced block. *)
 
 (** {2 Type-driven helper functions} *)

@@ -27,9 +27,10 @@ module Font_face = Font_face
 
 (* CSS Parsing *)
 
-type parse_error = Reader.parse_error
+type parse_error = Error.t * string
 
-let pp_parse_error = Reader.pp_parse_error
+let pp_parse_error (err, filename) =
+  Printf.sprintf "%s: %s" filename (Error.to_string err)
 
 (* Include all public APIs except Stylesheet *)
 
@@ -75,31 +76,31 @@ let media_not_min_width_length l = Media.Not_min_width_length l
 
 let parse_length s =
   try
-    let r = Reader.of_string s in
-    let l = Values.read_length r in
-    if Reader.is_done r then Some l else None
-  with Reader.Parse_error _ | Invalid_argument _ -> None
+    let c = Cursor.of_string s in
+    let l = Values.read_length c in
+    if Cursor.is_done c then Some l else None
+  with Cursor.Parse_error _ | Invalid_argument _ -> None
 
 let parse_color s =
   try
-    let r = Reader.of_string s in
-    let c = Values.read_color r in
-    if Reader.is_done r then Some c else None
-  with Reader.Parse_error _ | Invalid_argument _ -> None
+    let c = Cursor.of_string s in
+    let col = Values.read_color c in
+    if Cursor.is_done c then Some col else None
+  with Cursor.Parse_error _ | Invalid_argument _ -> None
 
 let parse_shadow s =
   try
-    let r = Reader.of_string s in
+    let r = Cursor.of_string s in
     let sh = Properties.read_shadow r in
-    if Reader.is_done r then Some sh else None
-  with Reader.Parse_error _ | Invalid_argument _ -> None
+    if Cursor.is_done r then Some sh else None
+  with Cursor.Parse_error _ | Invalid_argument _ -> None
 
 let parse_background_image s =
   try
-    let r = Reader.of_string s in
+    let r = Cursor.of_string s in
     let imgs = Properties.read_background_images r in
-    if Reader.is_done r then Some imgs else None
-  with Reader.Parse_error _ | Invalid_argument _ -> None
+    if Cursor.is_done r then Some imgs else None
+  with Cursor.Parse_error _ | Invalid_argument _ -> None
 
 let as_layer = function
   | Layer (name, content) -> Some (name, content)
@@ -332,9 +333,9 @@ let vars_of_rules statements =
   vars_of_declarations decls
 
 let of_string ?(filename = "<string>") css =
-  let reader = Reader.of_string css in
+  let reader = Cursor.of_string css in
   try Ok (read_stylesheet reader)
-  with Reader.Parse_error error -> Error (Reader.with_filename error filename)
+  with Cursor.Parse_error error -> Error (error, filename)
 
 let to_string ?(minify = false) ?(optimize = false) ?(mode = Variables)
     ?(newline = true) ?theme ?(theme_defaults = Pp.no_theme_defaults) stylesheet

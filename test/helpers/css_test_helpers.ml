@@ -68,13 +68,18 @@ let check_error parse input expected =
     {!Css.Cursor.t}, applies [parse], pretty-prints with [pp_func], and asserts
     the round-trip equals [input] (or [expected]). Use this for parsers whose
     signature is [Cursor.t -> 'a]. *)
-let check_value_cursor type_name parse pp_func ?(minify = true) ?expected input
-    =
+let check_value_cursor type_name parse pp_func ?(minify = true)
+    ?(roundtrip = false) ?expected input =
   let expected = Option.value ~default:input expected in
   let c = Css.Cursor.of_string input in
   let v = parse c in
   let s = Css.Pp.to_string ~minify pp_func v in
-  Alcotest.(check string) (Fmt.str "%s %s" type_name input) expected s
+  Alcotest.(check string) (Fmt.str "%s %s" type_name input) expected s;
+  if roundtrip then
+    let c2 = Css.Cursor.of_string s in
+    let v2 = parse c2 in
+    let s2 = Css.Pp.to_string ~minify pp_func v2 in
+    Alcotest.(check string) (Fmt.str "roundtrip %s %s" type_name input) s s2
 
 (** Generic check function for CSS value types - handles parse/print testing *)
 let check_value type_name reader pp_func ?(minify = true) ?(roundtrip = false)

@@ -2,18 +2,22 @@ open Values
 include Properties_intf
 
 let err_invalid_value ?got t prop_name value =
-  Reader.err ?got t ("invalid " ^ prop_name ^ " value: " ^ value)
+  Cursor.err ?got t ("invalid " ^ prop_name ^ " value: " ^ value)
 
 (* Helper to read var(...) body as string *)
 let read_var_body t : string =
-  Reader.call "var" t (fun t ->
-      let body = Reader.css_value ~stops:[ ')' ] t in
-      body)
+  Cursor.call "var" t (fun t ->
+      let rec drain acc =
+        match Cursor.next_raw t with
+        | None -> List.rev acc
+        | Some cv -> drain (cv :: acc)
+      in
+      Parser.to_string (drain []))
 
 (* Generic length parsing helpers *)
 let read_line_height_length t : line_height =
-  let n, unit = Reader.number_with_unit t in
-  if n < 0. then Reader.err_invalid t "line-height cannot be negative"
+  let n, unit = Cursor.number_with_unit t in
+  if n < 0. then Cursor.err_invalid t "line-height cannot be negative"
   else
     match unit with
     | Some "px" -> Px n
@@ -21,20 +25,20 @@ let read_line_height_length t : line_height =
     | Some "em" -> Em n
     | Some "%" -> Pct n
     | None -> Num n (* unitless number *)
-    | Some u -> Reader.err_invalid t ("invalid line-height unit: " ^ u)
+    | Some u -> Cursor.err_invalid t ("invalid line-height unit: " ^ u)
 
 let read_vertical_align_length t : vertical_align =
-  let n, unit = Reader.number_with_unit t in
+  let n, unit = Cursor.number_with_unit t in
   match unit with
   | Some "px" -> Px n
   | Some "rem" -> Rem n
   | Some "em" -> Em n
   | Some "%" -> Pct n
-  | None -> Reader.err_invalid t "vertical-align requires a unit"
-  | Some u -> Reader.err_invalid t ("invalid vertical-align unit: " ^ u)
+  | None -> Cursor.err_invalid t "vertical-align requires a unit"
+  | Some u -> Cursor.err_invalid t ("invalid vertical-align unit: " ^ u)
 
 let read_background_size_length t : background_size =
-  let n, unit = Reader.number_with_unit t in
+  let n, unit = Cursor.number_with_unit t in
   match unit with
   | Some "px" -> Px n
   | Some "rem" -> Rem n
@@ -42,11 +46,11 @@ let read_background_size_length t : background_size =
   | Some "%" -> Pct n
   | Some "vw" -> Vw n
   | Some "vh" -> Vh n
-  | None -> Reader.err_invalid t "background-size requires a unit"
-  | Some u -> Reader.err_invalid t ("invalid background-size unit: " ^ u)
+  | None -> Cursor.err_invalid t "background-size requires a unit"
+  | Some u -> Cursor.err_invalid t ("invalid background-size unit: " ^ u)
 
 let read_display t : display =
-  Reader.enum "display"
+  Cursor.enum "display"
     [
       ("none", (None : display));
       ("block", Block);
@@ -77,7 +81,7 @@ let read_display t : display =
     t
 
 let read_position t : position =
-  Reader.enum "position"
+  Cursor.enum "position"
     [
       ("static", (Static : position));
       ("relative", Relative);
@@ -88,7 +92,7 @@ let read_position t : position =
     t
 
 let read_flex_direction t : flex_direction =
-  Reader.enum "flex-direction"
+  Cursor.enum "flex-direction"
     [
       ("row", (Row : flex_direction));
       ("row-reverse", Row_reverse);
@@ -100,18 +104,18 @@ let read_flex_direction t : flex_direction =
 (* Helper to parse flattened baseline tokens shared across align/justify
    readers *)
 let read_flat_baseline ~what ~baseline ~first ~last t =
-  Reader.enum what
+  Cursor.enum what
     [ ("baseline", baseline) ]
     ~default:(fun t ->
-      let tok = Reader.ident t in
+      let tok = Cursor.ident t in
       match tok with
       | "first" ->
-          Reader.ws t;
-          Reader.expect_string "baseline" t;
+          Cursor.ws t;
+          Cursor.expect_string "baseline" t;
           first
       | "last" ->
-          Reader.ws t;
-          Reader.expect_string "baseline" t;
+          Cursor.ws t;
+          Cursor.expect_string "baseline" t;
           last
       | s -> err_invalid_value t what s)
     t
@@ -123,9 +127,9 @@ module Align_items = struct
       ~first:First_baseline ~last:Last_baseline t
 
   let read_safe t : align_items =
-    Reader.expect_string "safe" t;
-    Reader.ws t;
-    Reader.enum "align-items safe"
+    Cursor.expect_string "safe" t;
+    Cursor.ws t;
+    Cursor.enum "align-items safe"
       [
         ("center", (Safe_center : align_items));
         ("start", Safe_start);
@@ -138,9 +142,9 @@ module Align_items = struct
       t
 
   let read_unsafe t : align_items =
-    Reader.expect_string "unsafe" t;
-    Reader.ws t;
-    Reader.enum "align-items unsafe"
+    Cursor.expect_string "unsafe" t;
+    Cursor.ws t;
+    Cursor.enum "align-items unsafe"
       [
         ("center", (Unsafe_center : align_items));
         ("start", Unsafe_start);
@@ -154,7 +158,7 @@ module Align_items = struct
 end
 
 let read_align_items t : align_items =
-  Reader.enum "align-items"
+  Cursor.enum "align-items"
     [
       ("normal", Normal);
       ("stretch", Stretch);
@@ -168,7 +172,7 @@ let read_align_items t : align_items =
       ("flex-end", Flex_end);
     ]
     ~default:
-      (Reader.one_of
+      (Cursor.one_of
          [
            Align_items.read_flat_baseline;
            Align_items.read_safe;
@@ -183,9 +187,9 @@ module Align_content = struct
       ~first:First_baseline ~last:Last_baseline t
 
   let read_safe t : align_content =
-    Reader.expect_string "safe" t;
-    Reader.ws t;
-    Reader.enum "align-content safe"
+    Cursor.expect_string "safe" t;
+    Cursor.ws t;
+    Cursor.enum "align-content safe"
       [
         ("center", (Safe_center : align_content));
         ("start", Safe_start);
@@ -198,9 +202,9 @@ module Align_content = struct
       t
 
   let read_unsafe t : align_content =
-    Reader.expect_string "unsafe" t;
-    Reader.ws t;
-    Reader.enum "align-content unsafe"
+    Cursor.expect_string "unsafe" t;
+    Cursor.ws t;
+    Cursor.enum "align-content unsafe"
       [
         ("center", (Unsafe_center : align_content));
         ("start", Unsafe_start);
@@ -214,7 +218,7 @@ module Align_content = struct
 end
 
 let read_align_content t : align_content =
-  Reader.enum "align-content"
+  Cursor.enum "align-content"
     [
       ("normal", Normal);
       ("center", Center);
@@ -230,7 +234,7 @@ let read_align_content t : align_content =
       ("stretch", Stretch);
     ]
     ~default:
-      (Reader.one_of
+      (Cursor.one_of
          [
            Align_content.read_flat_baseline;
            Align_content.read_safe;
@@ -240,9 +244,9 @@ let read_align_content t : align_content =
 
 module Justify_content = struct
   let read_safe t : justify_content =
-    Reader.expect_string "safe" t;
-    Reader.ws t;
-    Reader.enum "justify-content safe"
+    Cursor.expect_string "safe" t;
+    Cursor.ws t;
+    Cursor.enum "justify-content safe"
       [
         ("center", (Safe_center : justify_content));
         ("start", Safe_start);
@@ -255,9 +259,9 @@ module Justify_content = struct
       t
 
   let read_unsafe t : justify_content =
-    Reader.expect_string "unsafe" t;
-    Reader.ws t;
-    Reader.enum "justify-content unsafe"
+    Cursor.expect_string "unsafe" t;
+    Cursor.ws t;
+    Cursor.enum "justify-content unsafe"
       [
         ("center", (Unsafe_center : justify_content));
         ("start", Unsafe_start);
@@ -271,7 +275,7 @@ module Justify_content = struct
 end
 
 let read_justify_content t : justify_content =
-  Reader.enum "justify-content"
+  Cursor.enum "justify-content"
     [
       ("normal", Normal);
       ("center", Center);
@@ -287,7 +291,7 @@ let read_justify_content t : justify_content =
       ("stretch", Stretch);
     ]
     ~default:
-      (Reader.one_of [ Justify_content.read_safe; Justify_content.read_unsafe ])
+      (Cursor.one_of [ Justify_content.read_safe; Justify_content.read_unsafe ])
     t
 
 module Align_self = struct
@@ -297,9 +301,9 @@ module Align_self = struct
       ~first:First_baseline ~last:Last_baseline t
 
   let read_safe t : align_self =
-    Reader.expect_string "safe" t;
-    Reader.ws t;
-    Reader.enum "align-self safe"
+    Cursor.expect_string "safe" t;
+    Cursor.ws t;
+    Cursor.enum "align-self safe"
       [
         ("center", (Safe_center : align_self));
         ("start", Safe_start);
@@ -312,9 +316,9 @@ module Align_self = struct
       t
 
   let read_unsafe t : align_self =
-    Reader.expect_string "unsafe" t;
-    Reader.ws t;
-    Reader.enum "align-self unsafe"
+    Cursor.expect_string "unsafe" t;
+    Cursor.ws t;
+    Cursor.enum "align-self unsafe"
       [
         ("center", (Unsafe_center : align_self));
         ("start", Unsafe_start);
@@ -328,7 +332,7 @@ module Align_self = struct
 end
 
 let read_align_self t : align_self =
-  Reader.enum "align-self"
+  Cursor.enum "align-self"
     [
       ("auto", Auto);
       ("normal", Normal);
@@ -342,7 +346,7 @@ let read_align_self t : align_self =
       ("flex-end", Flex_end);
     ]
     ~default:
-      (Reader.one_of
+      (Cursor.one_of
          [
            Align_self.read_flat_baseline;
            Align_self.read_safe;
@@ -357,9 +361,9 @@ module Justify_items = struct
       ~first:First_baseline ~last:Last_baseline t
 
   let read_safe t : justify_items =
-    Reader.expect_string "safe" t;
-    Reader.ws t;
-    Reader.enum "justify-items safe"
+    Cursor.expect_string "safe" t;
+    Cursor.ws t;
+    Cursor.enum "justify-items safe"
       [
         ("center", (Safe_center : justify_items));
         ("start", Safe_start);
@@ -374,9 +378,9 @@ module Justify_items = struct
       t
 
   let read_unsafe t : justify_items =
-    Reader.expect_string "unsafe" t;
-    Reader.ws t;
-    Reader.enum "justify-items unsafe"
+    Cursor.expect_string "unsafe" t;
+    Cursor.ws t;
+    Cursor.enum "justify-items unsafe"
       [
         ("center", (Unsafe_center : justify_items));
         ("start", Unsafe_start);
@@ -392,7 +396,7 @@ module Justify_items = struct
 end
 
 let read_justify_items t : justify_items =
-  Reader.enum "justify-items"
+  Cursor.enum "justify-items"
     [
       ("normal", Normal);
       ("stretch", Stretch);
@@ -409,7 +413,7 @@ let read_justify_items t : justify_items =
       ("right", Right);
     ]
     ~default:
-      (Reader.one_of
+      (Cursor.one_of
          [
            Justify_items.read_flat_baseline;
            Justify_items.read_safe;
@@ -424,9 +428,9 @@ module Justify_self = struct
       ~first:First_baseline ~last:Last_baseline t
 
   let read_unsafe t : justify_self =
-    Reader.expect_string "unsafe" t;
-    Reader.ws t;
-    Reader.enum "justify-self unsafe"
+    Cursor.expect_string "unsafe" t;
+    Cursor.ws t;
+    Cursor.enum "justify-self unsafe"
       [
         ("center", (Unsafe_center : justify_self));
         ("start", Unsafe_start);
@@ -441,9 +445,9 @@ module Justify_self = struct
       t
 
   let read_safe t : justify_self =
-    Reader.expect_string "safe" t;
-    Reader.ws t;
-    Reader.enum "justify-self safe"
+    Cursor.expect_string "safe" t;
+    Cursor.ws t;
+    Cursor.enum "justify-self safe"
       [
         ("center", (Safe_center : justify_self));
         ("start", Safe_start);
@@ -459,7 +463,7 @@ module Justify_self = struct
 end
 
 let read_justify_self t : justify_self =
-  Reader.enum "justify-self"
+  Cursor.enum "justify-self"
     [
       ("auto", Auto);
       ("inherit", Inherit);
@@ -477,7 +481,7 @@ let read_justify_self t : justify_self =
       ("right", Right);
     ]
     ~default:
-      (Reader.one_of
+      (Cursor.one_of
          [
            Justify_self.read_flat_baseline;
            Justify_self.read_unsafe;
@@ -487,8 +491,8 @@ let read_justify_self t : justify_self =
 
 let rec read_font_weight t : font_weight =
   let read_var t : font_weight = Var (read_var read_font_weight t) in
-  Reader.ws t;
-  Reader.enum_or_calls "font-weight"
+  Cursor.ws t;
+  Cursor.enum_or_calls "font-weight"
     [
       ("normal", Normal);
       ("bold", Bold);
@@ -498,14 +502,14 @@ let rec read_font_weight t : font_weight =
     ]
     ~calls:[ ("var", read_var) ]
     ~default:(fun t ->
-      let n = Reader.number t in
+      let n = Cursor.number t in
       let weight = int_of_float n in
       if weight >= 1 && weight <= 1000 then Weight weight
       else err_invalid_value t "font-weight" (string_of_int weight))
     t
 
 let read_font_style t : font_style =
-  Reader.enum "font-style"
+  Cursor.enum "font-style"
     [
       ("normal", (Normal : font_style));
       ("italic", (Italic : font_style));
@@ -522,11 +526,11 @@ let rec read_font_size t : font_size =
     Length len
   in
   let read_pct t : font_size =
-    let n = Reader.number t in
-    Reader.expect '%' t;
+    let n = Cursor.number t in
+    Cursor.expect '%' t;
     Pct n
   in
-  Reader.enum_or_calls "font-size"
+  Cursor.enum_or_calls "font-size"
     [
       ("xx-small", (Xx_small : font_size));
       ("x-small", X_small);
@@ -548,11 +552,11 @@ let rec read_font_size t : font_size =
     ~calls:[ ("var", read_var); ("calc", read_calc) ]
     ~default:(fun t ->
       (* Try percentage first, then length *)
-      Reader.one_of [ read_pct; read_length ] t)
+      Cursor.one_of [ read_pct; read_length ] t)
     t
 
 let read_text_align t : text_align =
-  Reader.enum "text-align"
+  Cursor.enum "text-align"
     [
       ("left", (Left : text_align));
       ("right", Right);
@@ -566,7 +570,7 @@ let read_text_align t : text_align =
     t
 
 let read_text_decoration_line t : text_decoration_line =
-  Reader.enum "text-decoration-line"
+  Cursor.enum "text-decoration-line"
     [
       ("none", (None : text_decoration_line));
       ("underline", Underline);
@@ -576,7 +580,7 @@ let read_text_decoration_line t : text_decoration_line =
     t
 
 let read_text_decoration_style t : text_decoration_style =
-  Reader.enum "text-decoration-style"
+  Cursor.enum "text-decoration-style"
     [
       ("solid", (Solid : text_decoration_style));
       ("double", Double);
@@ -604,7 +608,7 @@ module Text_decoration = struct
   let empty = { lines = []; style = None; color = None; thickness = None }
 
   let read_component t =
-    Reader.one_of
+    Cursor.one_of
       [
         (fun t -> Line (read_text_decoration_line t));
         (fun t -> Style (read_text_decoration_style t));
@@ -618,7 +622,7 @@ module Text_decoration = struct
         (* Check for duplicate lines - per CSS spec, || combinator means each
            component at most once *)
         if List.mem l acc.lines then
-          Reader.err t
+          Cursor.err t
             ("duplicate text-decoration-line: "
             ^
             match l with
@@ -630,9 +634,9 @@ module Text_decoration = struct
     | Style s when acc.style = None -> { acc with style = Some s }
     | Color c when acc.color = None -> { acc with color = Some c }
     | Thickness th when acc.thickness = None -> { acc with thickness = Some th }
-    | Style _ -> Reader.err t "duplicate text-decoration-style"
-    | Color _ -> Reader.err t "duplicate text-decoration-color"
-    | Thickness _ -> Reader.err t "duplicate text-decoration-thickness"
+    | Style _ -> Cursor.err t "duplicate text-decoration-style"
+    | Color _ -> Cursor.err t "duplicate text-decoration-color"
+    | Thickness _ -> Cursor.err t "duplicate text-decoration-thickness"
 
   let to_shorthand (components : components) : text_decoration_shorthand =
     {
@@ -645,14 +649,14 @@ end
 
 let read_text_decoration_shorthand t : text_decoration_shorthand =
   let acc, _ =
-    Reader.fold_many Text_decoration.read_component ~init:Text_decoration.empty
+    Cursor.fold_many Text_decoration.read_component ~init:Text_decoration.empty
       ~f:(Text_decoration.merge t) t
   in
   Text_decoration.to_shorthand acc
 
 let rec read_text_decoration t : text_decoration =
   let read_var t : text_decoration = Var (read_var read_text_decoration t) in
-  Reader.enum_or_calls "text-decoration"
+  Cursor.enum_or_calls "text-decoration"
     [ ("inherit", (Inherit : text_decoration)); ("none", None) ]
     ~calls:[ ("var", read_var) ]
     ~default:(fun t ->
@@ -660,7 +664,7 @@ let rec read_text_decoration t : text_decoration =
       (* For the main text-decoration property, require at least one line
          decoration *)
       if shorthand.lines = [] then
-        Reader.err t
+        Cursor.err t
           "text-decoration requires at least one line decoration (underline, \
            overline, or line-through)"
       else (Shorthand shorthand : text_decoration))
@@ -668,7 +672,7 @@ let rec read_text_decoration t : text_decoration =
 
 let rec read_text_transform t : text_transform =
   let read_var t : text_transform = Var (read_var read_text_transform t) in
-  Reader.enum_or_calls "text-transform"
+  Cursor.enum_or_calls "text-transform"
     [
       ("none", (None : text_transform));
       ("uppercase", Uppercase);
@@ -681,7 +685,7 @@ let rec read_text_transform t : text_transform =
     t
 
 let read_overflow t : overflow =
-  Reader.enum "overflow"
+  Cursor.enum "overflow"
     [
       ("visible", (Visible : overflow));
       ("hidden", Hidden);
@@ -691,9 +695,9 @@ let read_overflow t : overflow =
     ]
     t
 
-module Cursor = struct
-  let read_keyword (t : Reader.t) : cursor =
-    Reader.enum "cursor"
+module Cursor_prop = struct
+  let read_keyword (t : Cursor.t) : cursor =
+    Cursor.enum "cursor"
       [
         ("auto", (Auto : cursor));
         ("default", Default);
@@ -734,68 +738,65 @@ module Cursor = struct
       ]
       t
 
-  let read_url_with_hotspot (t : Reader.t) : string * (float * float) option =
-    Reader.ws t;
+  let read_url_with_hotspot (t : Cursor.t) : string * (float * float) option =
+    Cursor.ws t;
     let url =
-      match Reader.peek t with
-      | Some ('"' | '\'') -> Reader.string ~trim:true t
-      | _ -> String.trim (Reader.until t ')')
+      match Cursor.string_opt t with
+      | Some s -> String.trim s
+      | None -> Cursor.url t
     in
-    Reader.ws t;
+    Cursor.ws t;
     let hotspot =
-      if Reader.peek t <> Some ')' then (
-        let x = Reader.number t in
-        Reader.ws t;
-        let y = Reader.number t in
+      if not (Cursor.is_done t) then (
+        let x = Cursor.number t in
+        Cursor.ws t;
+        let y = Cursor.number t in
         Some (x, y))
       else None
     in
     (url, hotspot)
 
-  let read_optional_hotspot (t : Reader.t) : (float * float) option =
-    Reader.option
+  let read_optional_hotspot (t : Cursor.t) : (float * float) option =
+    Cursor.option
       (fun t ->
-        let x = Reader.number t in
-        Reader.ws t;
-        let y = Reader.number t in
-        Reader.ws t;
+        let x = Cursor.number t in
+        Cursor.ws t;
+        let y = Cursor.number t in
+        Cursor.ws t;
         if x < 0. || y < 0. then
-          Reader.err t "cursor hotspot coordinates cannot be negative"
+          Cursor.err t "cursor hotspot coordinates cannot be negative"
         else (x, y))
       t
 
   let or_else a b = match a with Some _ -> a | None -> b
 
-  let rec read_url_cursor (t : Reader.t) : cursor =
-    Reader.expect_string "url(" t;
-    let url, hotspot = read_url_with_hotspot t in
-    Reader.expect ')' t;
-    Reader.ws t;
+  let rec read_url_cursor (t : Cursor.t) : cursor =
+    let url, hotspot = Cursor.call "url" t read_url_with_hotspot in
+    Cursor.ws t;
     let hotspot = or_else (read_optional_hotspot t) hotspot in
-    if Reader.peek t <> Some ',' then
+    if not (Cursor.comma_opt t) then
       err_invalid_value t "cursor" "url without fallback keyword"
-    else (
-      Reader.skip t;
+    else
       let fallback = read t in
-      (Url (url, hotspot, fallback) : cursor))
+      (Url (url, hotspot, fallback) : cursor)
 
-  and read_var (t : Reader.t) : cursor = Var (Values.read_var read t)
+  and read_var (t : Cursor.t) : cursor = Var (Values.read_var read t)
 
-  and read (t : Reader.t) : cursor =
-    Reader.ws t;
-    Reader.one_of [ read_url_cursor; read_var; read_keyword ] t
+  and read (t : Cursor.t) : cursor =
+    Cursor.ws t;
+    Cursor.one_of [ read_url_cursor; read_var; read_keyword ] t
 end
 
-let read_cursor t : cursor = Cursor.read t
+let read_cursor t : cursor = Cursor_prop.read t
 
 module Shadow = struct
   type component = Inset | Color of color | Length of length
 
   let read_component t =
-    Reader.one_of
+    Cursor.one_of
       [
         (fun t ->
-          Reader.expect_string "inset" t;
+          Cursor.expect_string "inset" t;
           Inset);
         (fun t -> Color (read_color t));
         (fun t -> Length (read_length t));
@@ -832,7 +833,7 @@ module Shadow = struct
       components
 
   let read t =
-    let components, _ = Reader.many read_component t in
+    let components, _ = Cursor.many read_component t in
     let parts = fold components in
     let lengths = List.rev parts.lengths in
     match read_lengths lengths with
@@ -853,8 +854,8 @@ end
 
 let rec read_shadow_single t : shadow =
   let read_var t : shadow = Var (read_var read_shadow_single t) in
-  Reader.ws t;
-  Reader.enum_or_calls "shadow"
+  Cursor.ws t;
+  Cursor.enum_or_calls "shadow"
     [
       ("none", None);
       ("inherit", Inherit);
@@ -867,108 +868,108 @@ let rec read_shadow_single t : shadow =
     ~default:Shadow.read t
 
 and read_shadow t : shadow =
-  match Reader.list ~sep:Reader.comma ~at_least:1 read_shadow_single t with
+  match Cursor.list ~sep:Cursor.comma ~at_least:1 read_shadow_single t with
   | [ x ] -> x
   | l -> List l
 
 module Transform = struct
   let read_translate_x t =
-    Reader.call "translatex" t (fun t -> Translate_x (read_length t))
+    Cursor.call "translatex" t (fun t -> Translate_x (read_length t))
 
   let read_translate_y t =
-    Reader.call "translatey" t (fun t -> Translate_y (read_length t))
+    Cursor.call "translatey" t (fun t -> Translate_y (read_length t))
 
   let read_translate_z t =
-    Reader.call "translatez" t (fun t -> Translate_z (read_length t))
+    Cursor.call "translatez" t (fun t -> Translate_z (read_length t))
 
   let read_translate3d t =
-    Reader.call "translate3d" t (fun t ->
+    Cursor.call "translate3d" t (fun t ->
         let x, y, z =
-          Reader.(triple ~sep:comma read_length read_length read_length) t
+          Cursor.(triple ~sep:comma read_length read_length read_length) t
         in
         Translate_3d (x, y, z))
 
   let read_translate t =
-    Reader.call "translate" t (fun t ->
+    Cursor.call "translate" t (fun t ->
         let x = read_length t in
         let y =
-          Reader.option
+          Cursor.option
             (fun t ->
-              Reader.comma t;
+              Cursor.comma t;
               read_length t)
             t
         in
         (Translate (x, y) : transform))
 
   let read_rotate_x t =
-    Reader.call "rotatex" t (fun t -> Rotate_x (read_angle t))
+    Cursor.call "rotatex" t (fun t -> Rotate_x (read_angle t))
 
   let read_rotate_y t =
-    Reader.call "rotatey" t (fun t -> Rotate_y (read_angle t))
+    Cursor.call "rotatey" t (fun t -> Rotate_y (read_angle t))
 
   let read_rotate_z t =
-    Reader.call "rotatez" t (fun t -> Rotate_z (read_angle t))
+    Cursor.call "rotatez" t (fun t -> Rotate_z (read_angle t))
 
   let read_rotate t : transform =
-    Reader.call "rotate" t (fun t -> (Rotate (read_angle t) : transform))
+    Cursor.call "rotate" t (fun t -> (Rotate (read_angle t) : transform))
 
   let read_scale_x t =
-    Reader.call "scalex" t (fun t -> Scale_x (Reader.number t))
+    Cursor.call "scalex" t (fun t -> Scale_x (Cursor.number t))
 
   let read_scale_y t =
-    Reader.call "scaley" t (fun t -> Scale_y (Reader.number t))
+    Cursor.call "scaley" t (fun t -> Scale_y (Cursor.number t))
 
   let read_scale_z t =
-    Reader.call "scalez" t (fun t -> Scale_z (Reader.number t))
+    Cursor.call "scalez" t (fun t -> Scale_z (Cursor.number t))
 
   let read_rotate3d t =
-    Reader.call "rotate3d" t (fun t ->
-        let x, y, z = Reader.(triple ~sep:comma number number number) t in
-        Reader.comma t;
+    Cursor.call "rotate3d" t (fun t ->
+        let x, y, z = Cursor.(triple ~sep:comma number number number) t in
+        Cursor.comma t;
         let angle = read_angle t in
         Rotate_3d (x, y, z, angle))
 
   let read_scale3d t =
-    Reader.call "scale3d" t (fun t ->
-        let x, y, z = Reader.(triple ~sep:comma number number number) t in
+    Cursor.call "scale3d" t (fun t ->
+        let x, y, z = Cursor.(triple ~sep:comma number number number) t in
         Scale_3d (x, y, z))
 
   let read_scale t : transform =
-    Reader.call "scale" t (fun t ->
-        let x = Reader.number t in
+    Cursor.call "scale" t (fun t ->
+        let x = Cursor.number t in
         let y =
-          Reader.option
+          Cursor.option
             (fun t ->
-              Reader.comma t;
-              Reader.number t)
+              Cursor.comma t;
+              Cursor.number t)
             t
         in
         (Scale (x, y) : transform))
 
-  let read_skew_x t = Reader.call "skewx" t (fun t -> Skew_x (read_angle t))
-  let read_skew_y t = Reader.call "skewy" t (fun t -> Skew_y (read_angle t))
+  let read_skew_x t = Cursor.call "skewx" t (fun t -> Skew_x (read_angle t))
+  let read_skew_y t = Cursor.call "skewy" t (fun t -> Skew_y (read_angle t))
 
   let read_skew t =
-    Reader.call "skew" t (fun t ->
+    Cursor.call "skew" t (fun t ->
         let x = read_angle t in
         let y =
-          Reader.option
+          Cursor.option
             (fun t ->
-              Reader.comma t;
+              Cursor.comma t;
               read_angle t)
             t
         in
         Skew (x, y))
 
   let read_matrix t =
-    Reader.call "matrix" t (fun t ->
-        match Reader.list ~sep:Reader.comma Reader.number t with
+    Cursor.call "matrix" t (fun t ->
+        match Cursor.list ~sep:Cursor.comma Cursor.number t with
         | [ a; b; c; d; e; f ] -> Matrix (a, b, c, d, e, f)
         | _ -> err_invalid_value t "matrix" "expected 6 arguments")
 
   let read_matrix3d t =
-    Reader.call "matrix3d" t (fun t ->
-        match Reader.list ~sep:Reader.comma Reader.number t with
+    Cursor.call "matrix3d" t (fun t ->
+        match Cursor.list ~sep:Cursor.comma Cursor.number t with
         | [
          m11;
          m12;
@@ -1036,17 +1037,17 @@ let rec read_transform t : transform =
   let read_var_transform t : transform =
     Var (Values.read_var read_transform t)
   in
-  Reader.enum_or_calls "transform"
+  Cursor.enum_or_calls "transform"
     [ ("none", (None : transform)) ]
     ~calls:(("var", read_var_transform) :: Transform.parsers)
     t
 
 let read_transforms t : transform list =
-  let transforms, error_opt = Reader.many read_transform t in
+  let transforms, error_opt = Cursor.many read_transform t in
   if List.length transforms = 0 then
     match error_opt with
-    | Some msg -> Reader.err_invalid t ("transform: " ^ msg)
-    | None -> Reader.err_invalid t "transform value"
+    | Some msg -> Cursor.err_invalid t ("transform: " ^ msg)
+    | None -> Cursor.err_invalid t "transform value"
   else transforms
 
 let pp_opt_space pp ctx = function
@@ -1058,12 +1059,12 @@ let pp_opt_space pp ctx = function
 let pp_keyword s ctx = Pp.string ctx s
 
 (* Read only the body of a url(...) call when used inside enum_calls. The
-   surrounding function name and parentheses are handled by Reader. *)
+   surrounding function name and parentheses are handled by Cursor. *)
 let read_url_arg t =
-  Reader.ws t;
-  match Reader.peek t with
-  | Some ('"' | '\'') -> Reader.string ~trim:true t
-  | _ -> String.trim (Reader.until t ')')
+  Cursor.ws t;
+  match Cursor.string_opt t with
+  | Some s -> String.trim s
+  | None -> Cursor.url t
 
 let pp_shadow_parts ctx ~inset ~inset_var ~inset_var_no_fallback h v blur spread
     color =
@@ -1139,12 +1140,12 @@ let pp_color_interpolation : color_interpolation Pp.t =
   | In_lab -> Pp.string ctx "in lab"
   | In_lch -> Pp.string ctx "in lch"
 
-let read_color_interpolation (t : Reader.t) : color_interpolation =
-  Reader.with_context t "color-interpolation" (fun () ->
-      Reader.expect_string "in" t;
+let read_color_interpolation (t : Cursor.t) : color_interpolation =
+  Cursor.with_context t "color-interpolation" (fun () ->
+      Cursor.expect_string "in" t;
       (* Require at least one space after 'in' to avoid 'inoklab' *)
-      Reader.expect ' ' t;
-      let space = Reader.ident t in
+      Cursor.expect ' ' t;
+      let space = Cursor.ident t in
       match space with
       | "oklab" -> In_oklab
       | "oklch" -> In_oklch
@@ -1152,7 +1153,7 @@ let read_color_interpolation (t : Reader.t) : color_interpolation =
       | "hsl" -> In_hsl
       | "lab" -> In_lab
       | "lch" -> In_lch
-      | _ -> Reader.err_invalid t "color-interpolation")
+      | _ -> Cursor.err_invalid t "color-interpolation")
 
 let rec pp_gradient_direction : gradient_direction Pp.t =
  fun ctx -> function
@@ -1604,9 +1605,9 @@ let rec pp_opacity : opacity Pp.t =
 
 let rec read_opacity t : opacity =
   let read_var t : opacity = Var (read_var read_opacity t) in
-  Reader.enum_or_calls "opacity" []
+  Cursor.enum_or_calls "opacity" []
     ~calls:[ ("var", read_var) ]
-    ~default:(fun t -> Opacity_number (Reader.number t))
+    ~default:(fun t -> Opacity_number (Cursor.number t))
     t
 
 let pp_overflow : overflow Pp.t =
@@ -3607,18 +3608,18 @@ let rec pp_translate_value : translate_value Pp.t =
 let read_translate_value t : translate_value =
   let read_lengths t : translate_value =
     let x = read_length t in
-    Reader.ws t;
+    Cursor.ws t;
     (* Try to read second length *)
-    match Reader.option read_length t with
+    match Cursor.option read_length t with
     | Some y -> (
-        Reader.ws t;
+        Cursor.ws t;
         (* Try to read third length *)
-        match Reader.option read_length t with
+        match Cursor.option read_length t with
         | Some z -> XYZ (x, y, z)
         | None -> XY (x, y))
     | None -> X x
   in
-  Reader.enum_or_calls "translate"
+  Cursor.enum_or_calls "translate"
     [ ("none", (None : translate_value)) ]
     ~calls:[] ~default:read_lengths t
 
@@ -3651,34 +3652,34 @@ let rec pp_rotate_value : rotate_value Pp.t =
 let rec read_rotate_value t : rotate_value =
   let read_rotate_var t : rotate_value = Var (read_var read_rotate_value t) in
   let read_x t : rotate_value =
-    Reader.expect_string "x" t;
-    Reader.ws t;
+    Cursor.expect_string "x" t;
+    Cursor.ws t;
     X (read_angle t)
   in
   let read_y t : rotate_value =
-    Reader.expect_string "y" t;
-    Reader.ws t;
+    Cursor.expect_string "y" t;
+    Cursor.ws t;
     Y (read_angle t)
   in
   let read_z t : rotate_value =
-    Reader.expect_string "z" t;
-    Reader.ws t;
+    Cursor.expect_string "z" t;
+    Cursor.ws t;
     Z (read_angle t)
   in
   (* Read custom axis: x y z angle *)
   let read_axis_angle t : rotate_value =
-    let first = Reader.number t in
-    Reader.ws t;
-    let second = Reader.number t in
-    Reader.ws t;
-    let third = Reader.number t in
-    Reader.ws t;
+    let first = Cursor.number t in
+    Cursor.ws t;
+    let second = Cursor.number t in
+    Cursor.ws t;
+    let third = Cursor.number t in
+    Cursor.ws t;
     let angle = read_angle t in
     Axis (first, second, third, angle)
   in
   (* Read a simple angle (z-axis rotation) *)
   let read_simple_angle t : rotate_value = Angle (read_angle t) in
-  Reader.enum_or_calls "rotate"
+  Cursor.enum_or_calls "rotate"
     [ ("none", (None : rotate_value)) ]
     ~calls:
       [
@@ -3686,7 +3687,7 @@ let rec read_rotate_value t : rotate_value =
         ("calc", fun t -> Angle (Calc (read_calc read_angle t)));
       ]
     ~default:(fun t ->
-      Reader.one_of
+      Cursor.one_of
         [ read_x; read_y; read_z; read_axis_angle; read_simple_angle ]
         t)
     t
@@ -3868,7 +3869,7 @@ let rec pp_webkit_line_clamp : webkit_line_clamp Pp.t =
 
 let rec read_border_style t : border_style =
   let read_var t : border_style = Var (read_var read_border_style t) in
-  Reader.enum_or_calls "border-style"
+  Cursor.enum_or_calls "border-style"
     [
       ("none", (None : border_style));
       ("solid", Solid);
@@ -3914,7 +3915,7 @@ let rec read_border_width t : border_width =
     length_to_border_width t length
   in
 
-  Reader.enum_or_calls "border-width"
+  Cursor.enum_or_calls "border-width"
     [
       ("thin", (Thin : border_width));
       ("medium", Medium);
@@ -3943,7 +3944,7 @@ module Border = struct
   let empty = { width = None; style = None; color = None }
 
   let read_component t =
-    Reader.one_of
+    Cursor.one_of
       [
         (fun t -> Width (read_border_width t));
         (fun t -> Style (read_border_style t));
@@ -3955,9 +3956,9 @@ module Border = struct
     | Width w when acc.width = None -> { acc with width = Some w }
     | Style s when acc.style = None -> { acc with style = Some s }
     | Color c when acc.color = None -> { acc with color = Some c }
-    | Width _ -> Reader.err_invalid t "duplicate border width"
-    | Style _ -> Reader.err_invalid t "duplicate border style"
-    | Color _ -> Reader.err_invalid t "duplicate border color"
+    | Width _ -> Cursor.err_invalid t "duplicate border width"
+    | Style _ -> Cursor.err_invalid t "duplicate border style"
+    | Color _ -> Cursor.err_invalid t "duplicate border color"
 
   let to_shorthand (components : components) : border_shorthand =
     {
@@ -3969,19 +3970,19 @@ end
 
 let read_border_shorthand t : border_shorthand =
   let acc, _ =
-    Reader.fold_many Border.read_component ~init:Border.empty
+    Cursor.fold_many Border.read_component ~init:Border.empty
       ~f:(Border.merge t) t
   in
   Border.to_shorthand acc
 
 let read_border t : border =
-  Reader.enum "border"
+  Cursor.enum "border"
     [ ("inherit", (Inherit : border)); ("initial", Initial); ("none", None) ]
     ~default:(fun t : border -> Shorthand (read_border_shorthand t))
     t
 
 let read_visibility t : visibility =
-  Reader.enum "visibility"
+  Cursor.enum "visibility"
     [
       ("visible", (Visible : visibility));
       ("hidden", Hidden);
@@ -4039,45 +4040,45 @@ let rec read_z_index t : z_index =
   let read_calc_z t =
     (* read_calc handles the calc(...) wrapper itself *)
     let expr =
-      read_calc (fun _ -> Reader.err t "unexpected value in z-index calc") t
+      read_calc (fun _ -> Cursor.err t "unexpected value in z-index calc") t
     in
     match eval_numeric_calc expr with
     | Some f when Float.is_integer f -> Index (int_of_float f)
-    | Some _ -> Reader.err_invalid t "z-index calc must evaluate to integer"
+    | Some _ -> Cursor.err_invalid t "z-index calc must evaluate to integer"
     | None -> Calc (calc_to_string expr)
   in
   let read_var_z t : z_index = Var (read_var read_z_index t) in
-  Reader.enum_or_calls "z-index"
+  Cursor.enum_or_calls "z-index"
     [ ("auto", (Auto : z_index)) ]
     ~calls:[ ("calc", read_calc_z); ("var", read_var_z) ]
     ~default:(fun t ->
-      let n = Reader.number t in
+      let n = Cursor.number t in
       if Float.is_integer n then Index (int_of_float n)
-      else Reader.err_invalid t "z-index must be integer")
+      else Cursor.err_invalid t "z-index must be integer")
     t
 
 let rec read_order t : order =
   let read_calc_order t =
     (* read_calc handles the calc(...) wrapper itself *)
     let expr =
-      read_calc (fun _ -> Reader.err t "unexpected value in order calc") t
+      read_calc (fun _ -> Cursor.err t "unexpected value in order calc") t
     in
     match eval_numeric_calc expr with
     | Some f when Float.is_integer f -> Order_int (int_of_float f)
-    | Some _ -> Reader.err_invalid t "order calc must evaluate to integer"
+    | Some _ -> Cursor.err_invalid t "order calc must evaluate to integer"
     | None -> Order_calc (calc_to_string expr)
   in
   let read_var t : order = Var (read_var read_order t) in
-  Reader.enum_or_calls "order" []
+  Cursor.enum_or_calls "order" []
     ~calls:[ ("calc", read_calc_order); ("var", read_var) ]
     ~default:(fun t ->
-      let n = Reader.number t in
+      let n = Cursor.number t in
       if Float.is_integer n then Order_int (int_of_float n)
-      else Reader.err_invalid t "order must be integer")
+      else Cursor.err_invalid t "order must be integer")
     t
 
 let read_flex_wrap t : flex_wrap =
-  Reader.enum "flex-wrap"
+  Cursor.enum "flex-wrap"
     [
       ("nowrap", (Nowrap : flex_wrap));
       ("wrap", Wrap);
@@ -4087,9 +4088,9 @@ let read_flex_wrap t : flex_wrap =
 
 let rec read_flex_basis t : flex_basis =
   (* Read flex-basis: auto | content | inherit | calc(...) | <length> *)
-  if Reader.looking_at t "calc(" then Calc (read_calc read_flex_basis t)
+  if Cursor.looking_at t "calc(" then Calc (read_calc read_flex_basis t)
   else
-    Reader.enum "flex-basis"
+    Cursor.enum "flex-basis"
       [
         ("auto", (Auto : flex_basis)); ("content", Content); ("inherit", Inherit);
       ]
@@ -4115,7 +4116,7 @@ let rec read_flex_basis t : flex_basis =
         | Vmin n -> Vmin n
         | Vmax n -> Vmax n
         | Zero -> Px 0.0 (* Convert Zero to Px 0 *)
-        | _ -> Reader.err_invalid t "unsupported flex-basis value")
+        | _ -> Cursor.err_invalid t "unsupported flex-basis value")
       t
 
 module Flex = struct
@@ -4123,34 +4124,25 @@ module Flex = struct
   let read_basis_only t = Basis (read_flex_basis t)
 
   let read_grow_shrink_basis t =
-    (* Parse grow [shrink] [basis] *)
-    let grow = Reader.number t in
-
-    (* Check if there's a unit immediately after the first number (no whitespace) *)
-    (* If so, this is actually a flex-basis value with units, not flex-grow *)
-    match Reader.peek t with
-    | Some '%' ->
-        (* This number has a unit, it's not a flex-grow value *)
-        Reader.err t "not a flex-grow value"
-    | Some c when (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ->
-        (* This number has a unit, it's not a flex-grow value *)
-        Reader.err t "not a flex-grow value"
-    | _ -> (
-        (* It's a unitless number, continue parsing as flex-grow *)
-        (* Optional shrink (defaults to 1) *)
+    (* Parse grow [shrink] [basis]. [Cursor.number] matches only bare
+       [Number_tok] tokens, so a [50%] or [10px] would already fail here. *)
+    let grow = Cursor.number t in
+    let _ = () in
+    match () with
+    | () -> (
         let shrink =
-          Reader.option
+          Cursor.option
             (fun t ->
-              Reader.ws t;
-              Reader.number t)
+              Cursor.ws t;
+              Cursor.number t)
             t
         in
 
         (* Optional basis (defaults to 0%) *)
         let basis =
-          Reader.option
+          Cursor.option
             (fun t ->
-              Reader.ws t;
+              Cursor.ws t;
               read_flex_basis t)
             t
         in
@@ -4162,7 +4154,7 @@ module Flex = struct
 end
 
 let read_flex t : flex =
-  Reader.enum "flex"
+  Cursor.enum "flex"
     [
       ("initial", (Initial : flex));
       ("auto", Auto);
@@ -4170,18 +4162,18 @@ let read_flex t : flex =
       ("content", Basis Content);
     ]
     ~default:
-      (Reader.one_of [ Flex.read_grow_shrink_basis; Flex.read_basis_only ])
+      (Cursor.one_of [ Flex.read_grow_shrink_basis; Flex.read_basis_only ])
     t
 
 let read_place_content t : place_content =
   let read_pair t =
-    let a, j = Reader.pair read_align_content read_justify_content t in
+    let a, j = Cursor.pair read_align_content read_justify_content t in
     (Align_justify (a, j) : place_content)
   in
   let read_safe t =
-    Reader.expect_string "safe" t;
-    Reader.ws t;
-    Reader.enum "place-content safe"
+    Cursor.expect_string "safe" t;
+    Cursor.ws t;
+    Cursor.enum "place-content safe"
       [
         ("center", (Safe_center : place_content));
         ("start", Safe_start);
@@ -4191,9 +4183,9 @@ let read_place_content t : place_content =
       t
   in
   let read_unsafe t =
-    Reader.expect_string "unsafe" t;
-    Reader.ws t;
-    Reader.enum "place-content unsafe"
+    Cursor.expect_string "unsafe" t;
+    Cursor.ws t;
+    Cursor.enum "place-content unsafe"
       [
         ("center", (Unsafe_center : place_content));
         ("start", Unsafe_start);
@@ -4203,7 +4195,7 @@ let read_place_content t : place_content =
       t
   in
   let read_single t =
-    Reader.enum "place-content"
+    Cursor.enum "place-content"
       [
         ("normal", (Normal : place_content));
         ("start", Start);
@@ -4217,31 +4209,31 @@ let read_place_content t : place_content =
       ]
       t
   in
-  Reader.one_of [ read_pair; read_safe; read_unsafe; read_single ] t
+  Cursor.one_of [ read_pair; read_safe; read_unsafe; read_single ] t
 
 let read_place_items t : place_items =
-  Reader.ws t;
+  Cursor.ws t;
   (* Check for "safe" prefix *)
-  if Reader.looking_at t "safe" then (
-    Reader.expect_string "safe" t;
-    Reader.ws t;
-    let kw = Reader.ident t in
+  if Cursor.looking_at t "safe" then (
+    Cursor.expect_string "safe" t;
+    Cursor.ws t;
+    let kw = Cursor.ident t in
     match kw with
     | "start" -> Start_safe
     | "end" -> End_safe
     | "center" -> Center_safe
-    | _ -> Reader.err_invalid t ("place-items safe " ^ kw))
-  else if Reader.looking_at t "stretch" then (
-    Reader.expect_string "stretch" t;
-    Reader.ws t;
+    | _ -> Cursor.err_invalid t ("place-items safe " ^ kw))
+  else if Cursor.looking_at t "stretch" then (
+    Cursor.expect_string "stretch" t;
+    Cursor.ws t;
     if
-      Reader.option (fun t -> Reader.expect_string "stretch" t) t
+      Cursor.option (fun t -> Cursor.expect_string "stretch" t) t
       |> Option.is_some
     then Stretch_stretch
     else Stretch)
   else
     let first =
-      Reader.enum "place-items"
+      Cursor.enum "place-items"
         [
           ("normal", (Normal : place_items));
           ("start", Start);
@@ -4252,8 +4244,8 @@ let read_place_items t : place_items =
         ]
         t
     in
-    Reader.ws t;
-    match Reader.option read_justify_items t with
+    Cursor.ws t;
+    match Cursor.option read_justify_items t with
     | None -> first
     | Some justify ->
         let align : align_items =
@@ -4264,14 +4256,14 @@ let read_place_items t : place_items =
           | Center -> Center
           | Baseline -> Baseline
           | Stretch -> Stretch
-          | _ -> Reader.err_invalid t "place-items two-value"
+          | _ -> Cursor.err_invalid t "place-items two-value"
         in
         Align_justify (align, justify)
 
 let read_grid_auto_flow t : grid_auto_flow =
-  let v = Reader.ident t in
-  Reader.ws t;
-  let second = Reader.option Reader.ident t in
+  let v = Cursor.ident t in
+  Cursor.ws t;
+  let second = Cursor.option Cursor.ident t in
   match (v, second) with
   | "row", Some "dense" -> Row_dense
   | "row", None -> Row
@@ -4290,21 +4282,14 @@ let read_grid_auto_flow t : grid_auto_flow =
 let read_span_arbitrary t : grid_line =
   let buf = Buffer.create 32 in
   Buffer.add_string buf "span ";
-  let depth = ref 0 in
   let rec loop () =
-    match Reader.peek t with
-    | Some '(' ->
-        Buffer.add_char buf (Reader.char t);
-        incr depth;
-        loop ()
-    | Some ')' ->
-        Buffer.add_char buf (Reader.char t);
-        decr depth;
-        loop ()
-    | Some '/' when !depth = 0 -> ()
-    | Some ';' | Some '}' | None -> ()
-    | Some _ ->
-        Buffer.add_char buf (Reader.char t);
+    match Cursor.peek t with
+    | None -> ()
+    | Some (Component.Preserved { kind = Token.Delim '/'; _ }) -> ()
+    | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> ()
+    | Some cv ->
+        Buffer.add_string buf (Component.to_string cv);
+        Cursor.skip t;
         loop ()
   in
   loop ();
@@ -4312,45 +4297,47 @@ let read_span_arbitrary t : grid_line =
 
 let read_grid_line t : grid_line =
   let read_span_num t =
-    let span_word = Reader.ident t in
+    let span_word = Cursor.ident t in
     if span_word = "span" then (
-      Reader.ws t;
-      match Reader.peek t with
-      | Some c when c >= '0' && c <= '9' -> Span (Reader.int t)
+      Cursor.ws t;
+      match Cursor.peek t with
+      | Some (Component.Preserved { kind = Token.Number_tok _; _ }) ->
+          Span (Cursor.int t)
       | _ -> read_span_arbitrary t)
-    else Reader.err t ("Expected 'span' but got " ^ span_word)
+    else Cursor.err t ("Expected 'span' but got " ^ span_word)
   in
-  let read_number t : grid_line = Num (Reader.int t) in
+  let read_number t : grid_line = Num (Cursor.int t) in
   let read_name t : grid_line =
-    let name = Reader.ident t in
+    let name = Cursor.ident t in
     if name = "span" then (
-      Reader.ws t;
-      match Reader.peek t with
-      | Some c when c >= '0' && c <= '9' -> Span (Reader.int t)
+      Cursor.ws t;
+      match Cursor.peek t with
+      | Some (Component.Preserved { kind = Token.Number_tok _; _ }) ->
+          Span (Cursor.int t)
       | _ -> read_span_arbitrary t)
     else Name name
   in
   let read_calc_int t : grid_line =
     (* read_calc handles the calc(...) wrapper itself *)
     let expr =
-      read_calc (fun _ -> Reader.err t "unexpected value in grid-line calc") t
+      read_calc (fun _ -> Cursor.err t "unexpected value in grid-line calc") t
     in
     match eval_numeric_calc expr with
     | Some f when Float.is_integer f -> Num (int_of_float f)
-    | Some _ -> Reader.err_invalid t "grid-line calc must evaluate to integer"
+    | Some _ -> Cursor.err_invalid t "grid-line calc must evaluate to integer"
     | None -> Calc (calc_to_string expr)
   in
   let read_var t : grid_line = Arbitrary ("var(" ^ read_var_body t ^ ")") in
-  Reader.enum_or_calls "grid-line"
+  Cursor.enum_or_calls "grid-line"
     [ ("auto", (Auto : grid_line)) ]
     ~calls:[ ("calc", read_calc_int); ("var", read_var) ]
     ~default:(fun t ->
-      Reader.one_of [ read_number; read_span_num; read_name ] t)
+      Cursor.one_of [ read_number; read_span_num; read_name ] t)
     t
 
 let read_grid_line_pair t : grid_line * grid_line =
   let start = read_grid_line t in
-  if Reader.slash_opt t then
+  if Cursor.slash_opt t then
     let end_ = read_grid_line t in
     (start, end_)
   else (start, Auto)
@@ -4370,18 +4357,18 @@ module Grid_template = struct
     | _ -> Auto
 
   let read_fr t : grid_template =
-    let n = Reader.number t in
-    Reader.expect_string "fr" t;
+    let n = Cursor.number t in
+    Cursor.expect_string "fr" t;
     Fr n
 
   let read_track_breadth t : grid_template =
     (* Accept a single breadth: length, fr, or keywords *)
-    Reader.one_of
+    Cursor.one_of
       [
         read_length_as_grid;
         read_fr;
         (fun t ->
-          Reader.enum "grid-breadth"
+          Cursor.enum "grid-breadth"
             [
               ("auto", (Auto : grid_template));
               ("min-content", (Min_content : grid_template));
@@ -4393,29 +4380,29 @@ module Grid_template = struct
       t
 
   let read_minmax t : grid_template =
-    Reader.expect_string "minmax" t;
-    Reader.expect '(' t;
-    Reader.ws t;
+    Cursor.expect_string "minmax" t;
+    Cursor.expect '(' t;
+    Cursor.ws t;
     let minv = read_track_breadth t in
-    Reader.ws t;
-    Reader.expect ',' t;
-    Reader.ws t;
+    Cursor.ws t;
+    Cursor.expect ',' t;
+    Cursor.ws t;
     let maxv = read_track_breadth t in
-    Reader.ws t;
-    Reader.expect ')' t;
+    Cursor.ws t;
+    Cursor.expect ')' t;
     Min_max (minv, maxv)
 
   let read_fit_content t : grid_template =
-    Reader.expect_string "fit-content" t;
-    Reader.expect '(' t;
-    Reader.ws t;
+    Cursor.expect_string "fit-content" t;
+    Cursor.expect '(' t;
+    Cursor.ws t;
     let len = read_length t in
-    Reader.ws t;
-    Reader.expect ')' t;
+    Cursor.ws t;
+    Cursor.expect ')' t;
     Fit_content len
 
   let rec read_single_track t =
-    Reader.enum_or_calls "grid-template"
+    Cursor.enum_or_calls "grid-template"
       [
         ("none", (None : grid_template));
         ("auto", Auto);
@@ -4431,59 +4418,59 @@ module Grid_template = struct
           ("fit-content", read_fit_content);
           ( "repeat",
             fun t ->
-              Reader.expect_string "repeat" t;
-              Reader.expect '(' t;
-              Reader.ws t;
-              let count = Reader.int t in
-              Reader.ws t;
-              Reader.expect ',' t;
-              Reader.ws t;
+              Cursor.expect_string "repeat" t;
+              Cursor.expect '(' t;
+              Cursor.ws t;
+              let count = Cursor.int t in
+              Cursor.ws t;
+              Cursor.expect ',' t;
+              Cursor.ws t;
               let tracks =
-                Reader.list ~sep:(fun t -> Reader.ws t) read_single_track t
+                Cursor.list ~sep:(fun t -> Cursor.ws t) read_single_track t
               in
-              Reader.expect ')' t;
+              Cursor.expect ')' t;
               Repeat (count, tracks) );
         ]
-      ~default:(fun t -> Reader.one_of [ read_length_as_grid; read_fr ] t)
+      ~default:(fun t -> Cursor.one_of [ read_length_as_grid; read_fr ] t)
       t
 end
 
 let read_grid_template t : grid_template =
   (* Try to read multiple space-separated tracks *)
   let tracks =
-    Reader.list ~sep:(fun t -> Reader.ws t) Grid_template.read_single_track t
+    Cursor.list ~sep:(fun t -> Cursor.ws t) Grid_template.read_single_track t
   in
   match tracks with
-  | [] -> Reader.err t "Expected at least one grid track"
+  | [] -> Cursor.err t "Expected at least one grid track"
   | [ single ] -> single (* Single track *)
   | multiple -> Tracks multiple (* Multiple tracks *)
 
 let rec read_aspect_ratio t : aspect_ratio =
   let read_var_ar t : aspect_ratio = Var (read_var read_aspect_ratio t) in
   let read_number_or_ratio t =
-    let w = Reader.number t in
-    Reader.ws t;
-    if Reader.peek t = Some '/' then (
-      Reader.expect '/' t;
-      Reader.ws t;
-      let h = Reader.number t in
+    let w = Cursor.number t in
+    Cursor.ws t;
+    if Cursor.peek_delim t = Some '/' then (
+      Cursor.expect '/' t;
+      Cursor.ws t;
+      let h = Cursor.number t in
       Ratio (w, h))
     else
       (* Single number case - treat as width/1 *)
       Ratio (w, 1.0)
   in
-  Reader.enum_or_calls "aspect-ratio"
+  Cursor.enum_or_calls "aspect-ratio"
     [ ("auto", (Auto : aspect_ratio)); ("inherit", Inherit) ]
     ~calls:[ ("var", read_var_ar) ]
     ~default:read_number_or_ratio t
 
 let read_text_overflow t : text_overflow =
-  let read_string_overflow t : text_overflow = String (Reader.string t) in
-  Reader.one_of
+  let read_string_overflow t : text_overflow = String (Cursor.string t) in
+  Cursor.one_of
     [
       read_string_overflow;
       (fun t ->
-        Reader.enum "text-overflow"
+        Cursor.enum "text-overflow"
           [
             ("clip", (Clip : text_overflow));
             ("ellipsis", Ellipsis);
@@ -4494,7 +4481,7 @@ let read_text_overflow t : text_overflow =
     t
 
 let read_text_wrap t : text_wrap =
-  Reader.enum "text-wrap"
+  Cursor.enum "text-wrap"
     [
       ("wrap", (Wrap : text_wrap));
       ("nowrap", No_wrap);
@@ -4505,7 +4492,7 @@ let read_text_wrap t : text_wrap =
     t
 
 let read_white_space t : white_space =
-  Reader.enum "white-space"
+  Cursor.enum "white-space"
     [
       ("normal", (Normal : white_space));
       ("nowrap", Nowrap);
@@ -4518,7 +4505,7 @@ let read_white_space t : white_space =
     t
 
 let read_word_break t : word_break =
-  Reader.enum "word-break"
+  Cursor.enum "word-break"
     [
       ("normal", (Normal : word_break));
       ("break-all", Break_all);
@@ -4529,7 +4516,7 @@ let read_word_break t : word_break =
     t
 
 let read_overflow_wrap t : overflow_wrap =
-  Reader.enum "overflow-wrap"
+  Cursor.enum "overflow-wrap"
     [
       ("normal", (Normal : overflow_wrap));
       ("break-word", Break_word);
@@ -4539,7 +4526,7 @@ let read_overflow_wrap t : overflow_wrap =
     t
 
 let read_hyphens t : hyphens =
-  Reader.enum "hyphens"
+  Cursor.enum "hyphens"
     [
       ("none", (None : hyphens));
       ("manual", Manual);
@@ -4551,14 +4538,14 @@ let read_hyphens t : hyphens =
 let rec read_line_height t : line_height =
   let read_var t : line_height = Var (read_var read_line_height t) in
   let read_calc t : line_height = Calc (read_calc read_line_height t) in
-  Reader.enum_or_calls "line-height"
+  Cursor.enum_or_calls "line-height"
     [ ("normal", Normal); ("inherit", Inherit) ]
     ~calls:[ ("var", read_var); ("calc", read_calc) ]
     ~default:read_line_height_length t
 
 let rec read_list_style_type t : list_style_type =
   let read_var t : list_style_type = Var (read_var read_list_style_type t) in
-  Reader.enum_or_calls "list-style-type"
+  Cursor.enum_or_calls "list-style-type"
     [
       ("none", (None : list_style_type));
       ("disc", Disc);
@@ -4574,7 +4561,7 @@ let rec read_list_style_type t : list_style_type =
     t
 
 let read_list_style_position t : list_style_position =
-  Reader.enum "list-style-position"
+  Cursor.enum "list-style-position"
     [
       ("inside", (Inside : list_style_position));
       ("outside", Outside);
@@ -4584,21 +4571,21 @@ let read_list_style_position t : list_style_position =
 
 let rec read_list_style_image t : list_style_image =
   let read_url t =
-    Reader.call "url" t (fun t -> (Url (read_url_arg t) : list_style_image))
+    Cursor.call "url" t (fun t -> (Url (read_url_arg t) : list_style_image))
   in
   let read_var t : list_style_image = Var (read_var read_list_style_image t) in
-  Reader.enum_or_calls "list-style-image"
+  Cursor.enum_or_calls "list-style-image"
     [ ("none", (None : list_style_image)); ("inherit", Inherit) ]
     ~calls:[ ("url", read_url); ("var", read_var) ]
     t
 
 let read_table_layout t : table_layout =
-  Reader.enum "table-layout"
+  Cursor.enum "table-layout"
     [ ("auto", (Auto : table_layout)); ("fixed", Fixed); ("inherit", Inherit) ]
     t
 
 let read_border_collapse t : border_collapse =
-  Reader.enum "border-collapse"
+  Cursor.enum "border-collapse"
     [
       ("collapse", (Collapse : border_collapse));
       ("separate", Separate);
@@ -4607,7 +4594,7 @@ let read_border_collapse t : border_collapse =
     t
 
 let read_user_select t : user_select =
-  Reader.enum "user-select"
+  Cursor.enum "user-select"
     [
       ("none", (None : user_select));
       ("auto", Auto);
@@ -4618,7 +4605,7 @@ let read_user_select t : user_select =
     t
 
 let read_pointer_events t : pointer_events =
-  Reader.enum "pointer-events"
+  Cursor.enum "pointer-events"
     [
       ("auto", (Auto : pointer_events));
       ("none", None);
@@ -4635,31 +4622,31 @@ let read_pointer_events t : pointer_events =
     t
 
 let rec read_touch_action_var t : touch_action var =
-  Reader.expect_string "var(" t;
-  Reader.ws t;
+  Cursor.expect_string "var(" t;
+  Cursor.ws t;
   let name =
-    if Reader.looking_at t "--" then (
-      Reader.expect_string "--" t;
-      Reader.ident ~keep_case:true t)
-    else Reader.ident ~keep_case:true t
+    if Cursor.looking_at t "--" then (
+      Cursor.expect_string "--" t;
+      Cursor.ident ~keep_case:true t)
+    else Cursor.ident ~keep_case:true t
   in
-  Reader.ws t;
+  Cursor.ws t;
   (* Touch action vars use Empty fallback (trailing comma) or value fallback *)
   let fallback : touch_action fallback =
-    if Reader.comma_opt t then (
-      Reader.ws t;
-      if Reader.looking_at t ")" then Empty else Fallback (read_touch_action t))
+    if Cursor.comma_opt t then (
+      Cursor.ws t;
+      if Cursor.looking_at t ")" then Empty else Fallback (read_touch_action t))
     else None
   in
-  Reader.expect ')' t;
+  Cursor.expect ')' t;
   Values.var_ref ~fallback name
 
 and read_touch_action t : touch_action =
-  if Reader.looking_at t "var(" then
+  if Cursor.looking_at t "var(" then
     (* Parse sequence of var() references *)
     let rec read_vars acc =
-      Reader.ws t;
-      if Reader.looking_at t "var(" then
+      Cursor.ws t;
+      if Cursor.looking_at t "var(" then
         let v = read_touch_action_var t in
         read_vars (v :: acc)
       else List.rev acc
@@ -4668,7 +4655,7 @@ and read_touch_action t : touch_action =
     let rest = read_vars [] in
     Vars (first :: rest)
   else
-    Reader.enum "touch-action"
+    Cursor.enum "touch-action"
       [
         ("auto", (Auto : touch_action));
         ("none", None);
@@ -4685,7 +4672,7 @@ and read_touch_action t : touch_action =
       t
 
 let read_resize t : resize =
-  Reader.enum "resize"
+  Cursor.enum "resize"
     [
       ("none", (None : resize));
       ("both", Both);
@@ -4698,7 +4685,7 @@ let read_resize t : resize =
     t
 
 let read_box_sizing t : box_sizing =
-  Reader.enum "box-sizing"
+  Cursor.enum "box-sizing"
     [
       ("border-box", (Border_box : box_sizing));
       ("content-box", Content_box);
@@ -4707,7 +4694,7 @@ let read_box_sizing t : box_sizing =
     t
 
 let read_field_sizing t : field_sizing =
-  Reader.enum "field-sizing"
+  Cursor.enum "field-sizing"
     [
       ("content", (Content : field_sizing));
       ("fixed", Fixed);
@@ -4716,12 +4703,12 @@ let read_field_sizing t : field_sizing =
     t
 
 let read_caption_side t : caption_side =
-  Reader.enum "caption-side"
+  Cursor.enum "caption-side"
     [ ("top", (Top : caption_side)); ("bottom", Bottom); ("inherit", Inherit) ]
     t
 
 let read_object_fit t : object_fit =
-  Reader.enum "object-fit"
+  Cursor.enum "object-fit"
     [
       ("fill", (Fill : object_fit));
       ("contain", Contain);
@@ -4734,8 +4721,8 @@ let read_object_fit t : object_fit =
 
 let rec read_content t : content =
   let read_var t : content = Var (read_var read_content t) in
-  let read_string t = String (Reader.string t) in
-  Reader.enum_or_calls "content"
+  let read_string t = String (Cursor.string t) in
+  Cursor.enum_or_calls "content"
     [
       ("none", (None : content));
       ("normal", Normal);
@@ -4749,7 +4736,7 @@ let rec read_content_visibility t : content_visibility =
   let read_var t : content_visibility =
     Var (read_var read_content_visibility t)
   in
-  Reader.enum_or_calls "content-visibility"
+  Cursor.enum_or_calls "content-visibility"
     [
       ("visible", (Visible : content_visibility));
       ("auto", Auto);
@@ -4764,18 +4751,17 @@ let rec read_quotes t : quotes =
   (* Read pairs of strings for quotes property *)
   let read_pairs t =
     let rec read_quotes_pairs acc =
-      Reader.ws t;
-      match Reader.peek t with
-      | Some ('"' | '\'') ->
-          let open_q = Reader.string t in
-          Reader.ws t;
-          let close_q = Reader.string t in
+      Cursor.ws t;
+      match Cursor.string_opt t with
+      | Some open_q ->
+          Cursor.ws t;
+          let close_q = Cursor.string t in
           read_quotes_pairs ((open_q, close_q) :: acc)
-      | _ -> List.rev acc
+      | None -> List.rev acc
     in
     Pairs (read_quotes_pairs [])
   in
-  Reader.enum_or_calls "quotes"
+  Cursor.enum_or_calls "quotes"
     [
       ("auto", (Auto : quotes));
       ("none", None);
@@ -4789,7 +4775,7 @@ let rec read_quotes t : quotes =
     ~default:read_pairs t
 
 let read_container_type t : container_type =
-  Reader.enum "container-type"
+  Cursor.enum "container-type"
     [
       ("normal", (Normal : container_type));
       ("inline-size", Inline_size);
@@ -4800,13 +4786,13 @@ let read_container_type t : container_type =
 
 let read_container_shorthand t : container_shorthand =
   (* Syntax: container: [<custom-ident>] [ / <container-type> ]? *)
-  let first = Reader.ident t in
-  Reader.ws t;
-  match Reader.peek t with
+  let first = Cursor.ident t in
+  Cursor.ws t;
+  match Cursor.peek_delim t with
   | Some '/' ->
       (* We have: name / type *)
-      Reader.expect '/' t;
-      Reader.ws t;
+      Cursor.expect '/' t;
+      Cursor.ws t;
       let ctype = read_container_type t in
       { name = Some first; ctype = Some ctype }
   | _ -> (
@@ -4820,9 +4806,9 @@ let read_container_shorthand t : container_shorthand =
 
 let rec read_contain t : contain =
   let read_contain_value t : contain =
-    if Reader.looking_at t "var(" then Var (read_var read_contain t)
+    if Cursor.looking_at t "var(" then Var (read_var read_contain t)
     else
-      Reader.enum "contain-value"
+      Cursor.enum "contain-value"
         [
           ("size", Size);
           ("inline-size", Inline_size);
@@ -4833,13 +4819,13 @@ let rec read_contain t : contain =
         t
   in
   let read_contain_list t =
-    let values = Reader.list ~sep:Reader.ws read_contain_value t in
+    let values = Cursor.list ~sep:Cursor.ws read_contain_value t in
     match values with
     | [] -> err_invalid_value t "contain" "expected contain value(s)"
     | [ v ] -> v
     | vs -> List vs
   in
-  Reader.enum "contain"
+  Cursor.enum "contain"
     [
       ("none", (None : contain));
       ("strict", Strict);
@@ -4853,12 +4839,12 @@ let rec read_contain t : contain =
     ~default:read_contain_list t
 
 let read_isolation t : isolation =
-  Reader.enum "isolation"
+  Cursor.enum "isolation"
     [ ("auto", (Auto : isolation)); ("isolate", Isolate); ("inherit", Inherit) ]
     t
 
 let read_break_value t : break_value =
-  Reader.enum "break"
+  Cursor.enum "break"
     [
       ("auto", (Auto : break_value));
       ("avoid", Avoid);
@@ -4878,7 +4864,7 @@ let read_break_value t : break_value =
     t
 
 let read_break_inside_value t : break_inside_value =
-  Reader.enum "break-inside"
+  Cursor.enum "break-inside"
     [
       ("auto", (Auto : break_inside_value));
       ("avoid", Avoid);
@@ -4891,16 +4877,16 @@ let read_break_inside_value t : break_inside_value =
 let rec read_columns_value t : columns_value =
   (* columns can be: auto | <integer> | <length> | var(...) *)
   let read_var t : columns_value = Var (read_var read_columns_value t) in
-  Reader.enum_or_calls "columns"
+  Cursor.enum_or_calls "columns"
     [ ("auto", (Auto : columns_value)); ("inherit", Inherit) ]
     ~calls:[ ("var", read_var) ]
     ~default:(fun t ->
       (* Try to read an integer for column-count, or a length for
          column-width *)
-      Reader.one_of
+      Cursor.one_of
         [
           (fun t ->
-            let n = Reader.int t in
+            let n = Cursor.int t in
             Count n);
           (fun t ->
             let len = read_length t in
@@ -4910,7 +4896,7 @@ let rec read_columns_value t : columns_value =
     t
 
 let read_scroll_behavior t : scroll_behavior =
-  Reader.enum "scroll-behavior"
+  Cursor.enum "scroll-behavior"
     [
       ("auto", (Auto : scroll_behavior));
       ("smooth", Smooth);
@@ -4919,7 +4905,7 @@ let read_scroll_behavior t : scroll_behavior =
     t
 
 let read_scroll_snap_align t : scroll_snap_align =
-  Reader.enum "scroll-snap-align"
+  Cursor.enum "scroll-snap-align"
     [
       ("none", (None : scroll_snap_align));
       ("start", Start);
@@ -4929,7 +4915,7 @@ let read_scroll_snap_align t : scroll_snap_align =
     t
 
 let read_scroll_snap_stop t : scroll_snap_stop =
-  Reader.enum "scroll-snap-stop"
+  Cursor.enum "scroll-snap-stop"
     [
       ("normal", (Normal : scroll_snap_stop));
       ("always", Always);
@@ -4938,7 +4924,7 @@ let read_scroll_snap_stop t : scroll_snap_stop =
     t
 
 let rec read_scroll_snap_strictness t : scroll_snap_strictness =
-  Reader.enum_or_calls "scroll-snap-strictness"
+  Cursor.enum_or_calls "scroll-snap-strictness"
     [
       ("proximity", (Proximity : scroll_snap_strictness));
       ("mandatory", Mandatory);
@@ -4947,7 +4933,7 @@ let rec read_scroll_snap_strictness t : scroll_snap_strictness =
     t
 
 let rec read_scroll_snap_axis t : scroll_snap_axis =
-  Reader.enum_or_calls "scroll-snap axis"
+  Cursor.enum_or_calls "scroll-snap axis"
     [
       ("none", (None : scroll_snap_axis));
       ("x", X);
@@ -4962,24 +4948,24 @@ let rec read_scroll_snap_axis t : scroll_snap_axis =
 let rec read_scroll_snap_type t : scroll_snap_type =
   let read_axis_with_optional_strictness t =
     let axis = read_scroll_snap_axis t in
-    Reader.ws t;
+    Cursor.ws t;
     match axis with
     | None | Var _ ->
         (* "none" and vars don't take strictness *)
         Axis axis
     | _ -> (
         (* Try to read strictness *)
-        match Reader.option read_scroll_snap_strictness t with
+        match Cursor.option read_scroll_snap_strictness t with
         | Some strictness -> Axis_with_strictness (axis, strictness)
         | None -> Axis axis)
   in
-  Reader.enum_or_calls "scroll-snap-type"
+  Cursor.enum_or_calls "scroll-snap-type"
     [ ("inherit", (Inherit : scroll_snap_type)) ]
     ~calls:[ ("var", fun t -> Var (read_var read_scroll_snap_type t)) ]
     ~default:read_axis_with_optional_strictness t
 
 let read_overscroll_behavior t : overscroll_behavior =
-  Reader.enum "overscroll-behavior"
+  Cursor.enum "overscroll-behavior"
     [
       ("auto", (Auto : overscroll_behavior));
       ("contain", Contain);
@@ -4990,14 +4976,14 @@ let read_overscroll_behavior t : overscroll_behavior =
 
 let read_svg_paint t : svg_paint =
   let read_url_with_fallback t =
-    let u = Reader.url t in
+    let u = Cursor.url t in
     (* Empty URLs are invalid in SVG paint context *)
-    if u = "" then Reader.err t "svg-paint url() must have a non-empty URL";
-    Reader.ws t;
+    if u = "" then Cursor.err t "svg-paint url() must have a non-empty URL";
+    Cursor.ws t;
     let fb =
-      Reader.option
+      Cursor.option
         (fun t ->
-          Reader.enum "svg-paint-fallback"
+          Cursor.enum "svg-paint-fallback"
             [ ("none", (None : svg_paint)); ("currentcolor", Current_color) ]
             ~default:(fun t -> (Color (read_color t) : svg_paint))
             t)
@@ -5005,7 +4991,7 @@ let read_svg_paint t : svg_paint =
     in
     Url (u, fb)
   in
-  Reader.enum_or_calls "svg-paint"
+  Cursor.enum_or_calls "svg-paint"
     [
       ("none", (None : svg_paint));
       ("inherit", Inherit);
@@ -5016,12 +5002,12 @@ let read_svg_paint t : svg_paint =
     t
 
 let read_direction t : direction =
-  Reader.enum "direction"
+  Cursor.enum "direction"
     [ ("ltr", (Ltr : direction)); ("rtl", Rtl); ("inherit", Inherit) ]
     t
 
 let read_unicode_bidi t : unicode_bidi =
-  Reader.enum "unicode-bidi"
+  Cursor.enum "unicode-bidi"
     [
       ("normal", (Normal : unicode_bidi));
       ("embed", Embed);
@@ -5034,7 +5020,7 @@ let read_unicode_bidi t : unicode_bidi =
     t
 
 let read_writing_mode t : writing_mode =
-  Reader.enum "writing-mode"
+  Cursor.enum "writing-mode"
     [
       ("horizontal-tb", (Horizontal_tb : writing_mode));
       ("vertical-rl", Vertical_rl);
@@ -5046,7 +5032,7 @@ let read_writing_mode t : writing_mode =
     t
 
 let read_webkit_appearance t : webkit_appearance =
-  Reader.enum "webkit-appearance"
+  Cursor.enum "webkit-appearance"
     [
       ("none", (None : webkit_appearance));
       ("auto", Auto);
@@ -5063,19 +5049,16 @@ let read_webkit_appearance t : webkit_appearance =
     t
 
 let read_text_size_adjust t : text_size_adjust =
-  Reader.ws t;
-  match Reader.peek t with
-  | Some c when Reader.is_digit c || c = '.' ->
-      (* Percentage value - text-size-adjust only accepts non-negative
-         percentages *)
-      let n = Reader.number t in
-      Reader.expect '%' t;
+  Cursor.ws t;
+  match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Percentage _; _ }) ->
+      let n = Cursor.pct t in
       if n < 0.0 then
-        Reader.err t "text-size-adjust percentages cannot be negative"
+        Cursor.err t "text-size-adjust percentages cannot be negative"
       else Pct n
   | _ ->
       (* Keyword *)
-      Reader.enum "text-size-adjust"
+      Cursor.enum "text-size-adjust"
         [
           ("none", (None : text_size_adjust));
           ("auto", Auto);
@@ -5084,7 +5067,7 @@ let read_text_size_adjust t : text_size_adjust =
         t
 
 let read_webkit_font_smoothing t : webkit_font_smoothing =
-  Reader.enum "webkit-font-smoothing"
+  Cursor.enum "webkit-font-smoothing"
     [
       ("auto", (Auto : webkit_font_smoothing));
       ("none", None);
@@ -5095,7 +5078,7 @@ let read_webkit_font_smoothing t : webkit_font_smoothing =
     t
 
 let read_moz_osx_font_smoothing t : moz_osx_font_smoothing =
-  Reader.enum "moz-osx-font-smoothing"
+  Cursor.enum "moz-osx-font-smoothing"
     [
       ("auto", (Auto : moz_osx_font_smoothing));
       ("grayscale", Grayscale);
@@ -5104,7 +5087,7 @@ let read_moz_osx_font_smoothing t : moz_osx_font_smoothing =
     t
 
 let read_webkit_box_orient t : webkit_box_orient =
-  Reader.enum "webkit-box-orient"
+  Cursor.enum "webkit-box-orient"
     [
       ("horizontal", (Horizontal : webkit_box_orient));
       ("vertical", Vertical);
@@ -5116,14 +5099,14 @@ let rec read_webkit_line_clamp t : webkit_line_clamp =
   let read_var t : webkit_line_clamp =
     Var (read_var read_webkit_line_clamp t)
   in
-  Reader.enum_or_calls "-webkit-line-clamp"
+  Cursor.enum_or_calls "-webkit-line-clamp"
     [ ("unset", (Unset : webkit_line_clamp)) ]
     ~calls:[ ("var", read_var) ]
-    ~default:(fun t -> Lines (int_of_float (Reader.number t)))
+    ~default:(fun t -> Lines (int_of_float (Cursor.number t)))
     t
 
 let read_forced_color_adjust t : forced_color_adjust =
-  Reader.enum "forced-color-adjust"
+  Cursor.enum "forced-color-adjust"
     [
       ("auto", (Auto : forced_color_adjust));
       ("none", None);
@@ -5132,7 +5115,7 @@ let read_forced_color_adjust t : forced_color_adjust =
     t
 
 let read_appearance t : appearance =
-  Reader.enum "appearance"
+  Cursor.enum "appearance"
     [
       ("none", (None : appearance));
       ("auto", Auto);
@@ -5144,24 +5127,24 @@ let read_appearance t : appearance =
     t
 
 let read_color_scheme t : color_scheme =
-  let first = Reader.ident t in
+  let first = Cursor.ident t in
   match first with
   | "normal" -> Normal
   | "light" -> (
-      Reader.ws t;
-      match Reader.option Reader.ident t with
+      Cursor.ws t;
+      match Cursor.option Cursor.ident t with
       | Some "dark" -> Light_dark
       | Some "only" -> Only_light
       | _ -> Light)
   | "dark" -> (
-      Reader.ws t;
-      match Reader.option Reader.ident t with
+      Cursor.ws t;
+      match Cursor.option Cursor.ident t with
       | Some "only" -> Only_dark
       | _ -> Dark)
-  | _ -> Reader.err t ("invalid color-scheme value: " ^ first)
+  | _ -> Cursor.err t ("invalid color-scheme value: " ^ first)
 
 let read_print_color_adjust t : print_color_adjust =
-  Reader.enum "print-color-adjust"
+  Cursor.enum "print-color-adjust"
     [
       ("economy", Economy);
       ("exact", Exact);
@@ -5172,10 +5155,10 @@ let read_print_color_adjust t : print_color_adjust =
     t
 
 let read_box_decoration_break t : box_decoration_break =
-  Reader.enum "box-decoration-break" [ ("clone", Clone); ("slice", Slice) ] t
+  Cursor.enum "box-decoration-break" [ ("clone", Clone); ("slice", Slice) ] t
 
 let read_clear t : clear =
-  Reader.enum "clear"
+  Cursor.enum "clear"
     [
       ("none", (None : clear));
       ("left", Left);
@@ -5187,7 +5170,7 @@ let read_clear t : clear =
     t
 
 let read_float_side t : float_side =
-  Reader.enum "float-side"
+  Cursor.enum "float-side"
     [
       ("none", (None : float_side));
       ("left", Left);
@@ -5199,7 +5182,7 @@ let read_float_side t : float_side =
     t
 
 let read_text_decoration_skip_ink t : text_decoration_skip_ink =
-  Reader.enum "text-decoration-skip-ink"
+  Cursor.enum "text-decoration-skip-ink"
     [
       ("auto", (Auto : text_decoration_skip_ink));
       ("none", None);
@@ -5210,7 +5193,7 @@ let read_text_decoration_skip_ink t : text_decoration_skip_ink =
 
 let rec read_vertical_align t : vertical_align =
   let read_var t : vertical_align = Var (read_var read_vertical_align t) in
-  Reader.enum_or_calls "vertical-align"
+  Cursor.enum_or_calls "vertical-align"
     [
       ("baseline", (Baseline : vertical_align));
       ("top", Top);
@@ -5227,7 +5210,7 @@ let rec read_vertical_align t : vertical_align =
 
 let rec read_outline_style t : outline_style =
   let read_var t : outline_style = Var (read_var read_outline_style t) in
-  Reader.enum_or_calls "outline-style"
+  Cursor.enum_or_calls "outline-style"
     [
       ("none", (None : outline_style));
       ("solid", Solid);
@@ -5259,43 +5242,45 @@ let outline_style_keywords =
   ]
 
 let read_outline t : outline =
-  Reader.ws t;
-  if Reader.looking_at t "inherit" then (
-    Reader.expect_string "inherit" t;
+  Cursor.ws t;
+  if Cursor.looking_at t "inherit" then (
+    Cursor.expect_string "inherit" t;
     Inherit)
-  else if Reader.looking_at t "initial" then (
-    Reader.expect_string "initial" t;
+  else if Cursor.looking_at t "initial" then (
+    Cursor.expect_string "initial" t;
     Initial)
   else
     (* For shorthand, parse parts separated by spaces *)
     let width = ref Option.None in
     let style = ref Option.None in
     let color = ref Option.None in
-    let at_end () =
-      Reader.is_done t
-      || match Reader.peek t with Some (';' | '}' | ')') -> true | _ -> false
-    in
+    let at_end () = Cursor.is_done t in
     let rec parse_parts () =
-      Reader.ws t;
+      Cursor.ws t;
       if at_end () then ()
       else
         let found_style =
           Option.is_none !style
           && List.exists
-               (fun kw -> Reader.looking_at t kw)
+               (fun kw -> Cursor.looking_at t kw)
                outline_style_keywords
         in
         if found_style then (
           style := Some (read_outline_style t);
           parse_parts ())
         else
-          (* Try length - look for digit or unit *)
-          let c = Reader.peek t in
           let is_length_start =
-            match c with
-            | Some c ->
-                Char.code c >= Char.code '0' && Char.code c <= Char.code '9'
-            | None -> false
+            match Cursor.peek t with
+            | Some
+                (Component.Preserved
+                   {
+                     kind =
+                       ( Token.Number_tok _ | Token.Dimension _
+                       | Token.Percentage _ );
+                     _;
+                   }) ->
+                true
+            | _ -> false
           in
           if Option.is_none !width && is_length_start then (
             width := Some (read_length t);
@@ -5426,35 +5411,35 @@ let rec read_font_family_single t : font_family =
   let read_var t : font_family = Var (read_var read_font_family t) in
   (* Read unquoted multi-word font names, e.g., "arial rounded" *)
   let rec read_unquoted_name_words acc =
-    let word = Reader.ident ~keep_case:true t in
+    let word = Cursor.ident ~keep_case:true t in
     let acc = word :: acc in
-    Reader.ws t;
-    match Reader.peek t with
-    | Some (',' | ';' | '}' | '!') | None -> String.concat " " (List.rev acc)
-    | Some c when Reader.is_ident_start c -> read_unquoted_name_words acc
+    Cursor.ws t;
+    match Cursor.peek t with
+    | Some (Component.Preserved { kind = Token.Ident _; _ }) ->
+        read_unquoted_name_words acc
     | _ -> String.concat " " (List.rev acc)
   in
   let read_single_word t : font_family =
     (* For single-word names, try enum match first *)
-    Reader.enum_or_calls "font-family" font_family_all_enums
+    Cursor.enum_or_calls "font-family" font_family_all_enums
       ~calls:[ ("var", read_var) ]
-      ~default:(fun t -> Name (Reader.ident ~keep_case:true t))
+      ~default:(fun t -> Name (Cursor.ident ~keep_case:true t))
       t
   in
-  Reader.ws t;
-  match Reader.peek t with
-  | Some ('"' | '\'') ->
+  Cursor.ws t;
+  match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.String _; _ }) ->
       (* Quoted string *)
-      Name (Reader.string t)
-  | Some c when Reader.is_ident_start c ->
+      Name (Cursor.string t)
+  | Some (Component.Preserved { kind = Token.Ident _; _ }) ->
       (* Peek ahead to see if this is multi-word or single-word *)
       let is_multi_word =
-        Reader.lookahead
+        Cursor.lookahead
           (fun t ->
-            let _ = Reader.ident t in
-            Reader.ws t;
-            match Reader.peek t with
-            | Some c when Reader.is_ident_start c -> true
+            let _ = Cursor.ident t in
+            Cursor.ws t;
+            match Cursor.peek t with
+            | Some (Component.Preserved { kind = Token.Ident _; _ }) -> true
             | _ -> false)
           t
       in
@@ -5464,20 +5449,20 @@ let rec read_font_family_single t : font_family =
       else
         (* Single word - try enum match *)
         read_single_word t
-  | _ -> Reader.err t "expected font-family value"
+  | _ -> Cursor.err t "expected font-family value"
 
 and read_font_family t : font_family =
-  match Reader.list ~sep:Reader.comma ~at_least:1 read_font_family_single t with
+  match Cursor.list ~sep:Cursor.comma ~at_least:1 read_font_family_single t with
   | [ x ] -> x
   | l -> List l
 
 let read_font_stretch t : font_stretch =
   let read_percentage t : font_stretch =
-    let n = Reader.number t in
-    Reader.expect '%' t;
+    let n = Cursor.number t in
+    Cursor.expect '%' t;
     Pct n
   in
-  Reader.enum "font-stretch"
+  Cursor.enum "font-stretch"
     [
       ("ultra-condensed", Ultra_condensed);
       ("extra-condensed", Extra_condensed);
@@ -5493,7 +5478,7 @@ let read_font_stretch t : font_stretch =
     ~default:read_percentage t
 
 let read_font_display t : font_display =
-  Reader.enum "font-display"
+  Cursor.enum "font-display"
     [
       ("auto", (Auto : font_display));
       ("block", Block);
@@ -5504,16 +5489,16 @@ let read_font_display t : font_display =
     t
 
 let read_unicode_range t : unicode_range =
-  Reader.with_context t "unicode-range" @@ fun () ->
-  Reader.expect 'U' t;
-  Reader.expect '+' t;
-  let start = Reader.hex t in
-  Reader.ws t;
-  if Reader.peek t = Some '-' then (
-    Reader.expect '-' t;
-    let end_ = Reader.hex t in
+  Cursor.with_context t "unicode-range" @@ fun () ->
+  Cursor.expect 'U' t;
+  Cursor.expect '+' t;
+  let start = Cursor.hex t in
+  Cursor.ws t;
+  if Cursor.peek_delim t = Some '-' then (
+    Cursor.expect '-' t;
+    let end_ = Cursor.hex t in
     if start > end_ then
-      Reader.err_invalid t "invalid unicode range: start > end"
+      Cursor.err_invalid t "invalid unicode range: start > end"
     else Range (start, end_))
   else Single start
 
@@ -5521,7 +5506,7 @@ let rec read_font_variant_numeric_token t : font_variant_numeric_token =
   let read_var t : font_variant_numeric_token =
     Var (read_var read_font_variant_numeric_token t)
   in
-  Reader.enum_or_calls "font-variant-numeric-token"
+  Cursor.enum_or_calls "font-variant-numeric-token"
     [
       ("normal", (Normal : font_variant_numeric_token));
       ("lining-nums", Lining_nums);
@@ -5537,10 +5522,10 @@ let rec read_font_variant_numeric_token t : font_variant_numeric_token =
     t
 
 let read_font_variant_numeric t : font_variant_numeric =
-  Reader.enum "font-variant-numeric"
+  Cursor.enum "font-variant-numeric"
     [ ("normal", (Normal : font_variant_numeric)) ]
     ~default:(fun t ->
-      let tokens, _ = Reader.many read_font_variant_numeric_token t in
+      let tokens, _ = Cursor.many read_font_variant_numeric_token t in
       match tokens with
       | [] -> err_invalid_value t "font-variant-numeric" "<empty>"
       | tokens -> Tokens tokens) (* All non-normal cases become Tokens *)
@@ -5551,23 +5536,23 @@ let rec read_font_feature_settings t : font_feature_settings =
     Var (read_var read_font_feature_settings t)
   in
   let read_feature t =
-    let tag_content = Reader.string t in
+    let tag_content = Cursor.string t in
     let tag = "\"" ^ tag_content ^ "\"" in
-    Reader.ws t;
-    match Reader.option Reader.number t with
+    Cursor.ws t;
+    match Cursor.option Cursor.number t with
     | Some n -> tag ^ " " ^ string_of_int (int_of_float n)
     | None -> (
-        match Reader.option Reader.ident t with
+        match Cursor.option Cursor.ident t with
         | Some "on" -> tag ^ " on"
         | Some "off" -> tag ^ " off"
         | Some v -> tag ^ " " ^ v
         | None -> tag)
   in
   let read_feature_list t =
-    let items = Reader.list ~sep:Reader.comma ~at_least:1 read_feature t in
+    let items = Cursor.list ~sep:Cursor.comma ~at_least:1 read_feature t in
     Feature_list (String.concat ", " items)
   in
-  Reader.enum_or_calls "font-feature-settings"
+  Cursor.enum_or_calls "font-feature-settings"
     [ ("normal", (Normal : font_feature_settings)); ("inherit", Inherit) ]
     ~calls:[ ("var", read_var) ]
     ~default:read_feature_list t
@@ -5577,34 +5562,34 @@ let rec read_font_variation_settings t : font_variation_settings =
     Var (read_var read_font_variation_settings t)
   in
   let read_axis t =
-    let tag_content = Reader.string t in
+    let tag_content = Cursor.string t in
     if String.length tag_content <> 4 then
-      Reader.err t
+      Cursor.err t
         "font-variation-settings axis tag must be exactly 4 characters";
     String.iter
       (fun c ->
         let code = Char.code c in
         if code < 0x20 || code > 0x7E then
-          Reader.err t
+          Cursor.err t
             "font-variation-settings axis tag must contain only ASCII \
              characters (U+20 - U+7E)")
       tag_content;
     let tag = "\"" ^ tag_content ^ "\"" in
-    Reader.ws t;
-    let value = Reader.number t in
+    Cursor.ws t;
+    let value = Cursor.number t in
     tag ^ " " ^ string_of_int (int_of_float value)
   in
   let read_axis_list t =
-    let items = Reader.list ~sep:Reader.comma ~at_least:1 read_axis t in
+    let items = Cursor.list ~sep:Cursor.comma ~at_least:1 read_axis t in
     Axis_list (String.concat ", " items)
   in
-  Reader.enum_or_calls "font-variation-settings"
+  Cursor.enum_or_calls "font-variation-settings"
     [ ("normal", (Normal : font_variation_settings)); ("inherit", Inherit) ]
     ~calls:[ ("var", read_var) ]
     ~default:read_axis_list t
 
 let read_transform_style t : transform_style =
-  Reader.enum "transform-style"
+  Cursor.enum "transform-style"
     [
       ("flat", (Flat : transform_style));
       ("preserve-3d", Preserve_3d);
@@ -5613,7 +5598,7 @@ let read_transform_style t : transform_style =
     t
 
 let read_backface_visibility t : backface_visibility =
-  Reader.enum "backface-visibility"
+  Cursor.enum "backface-visibility"
     [
       ("visible", (Visible : backface_visibility));
       ("hidden", Hidden);
@@ -5626,21 +5611,21 @@ let rec read_scale t : scale =
   let read_numbers t : scale =
     let x = Values.read_number_percentage t in
     (* Don't require whitespace between values to handle var()var() *)
-    match Reader.option Values.read_number_percentage t with
+    match Cursor.option Values.read_number_percentage t with
     | None -> X x
     | Some y -> (
-        match Reader.option Values.read_number_percentage t with
+        match Cursor.option Values.read_number_percentage t with
         | None -> XY (x, y)
         | Some z -> XYZ (x, y, z))
   in
-  Reader.enum_or_calls "scale"
+  Cursor.enum_or_calls "scale"
     [ ("none", (None : scale)) ]
     (* Remove var from calls to let read_numbers handle it via
        number_percentage *)
     ~calls:[] ~default:read_numbers t
 
 let read_steps_direction t : steps_direction =
-  Reader.enum "steps direction"
+  Cursor.enum "steps direction"
     [
       ("jump-start", Jump_start);
       ("jump-end", Jump_end);
@@ -5653,34 +5638,34 @@ let read_steps_direction t : steps_direction =
 
 module Timing_function = struct
   let read_steps t : timing_function =
-    Reader.call "steps" t (fun t ->
-        let n = int_of_float (Reader.number t) in
+    Cursor.call "steps" t (fun t ->
+        let n = int_of_float (Cursor.number t) in
         let kind =
-          Reader.option
+          Cursor.option
             (fun t ->
-              Reader.comma t;
+              Cursor.comma t;
               read_steps_direction t)
             t
         in
         Steps (n, kind))
 
   let read_cubic_bezier t : timing_function =
-    Reader.call "cubic-bezier" t (fun t ->
-        let a = Reader.number t in
-        Reader.comma t;
-        Reader.ws t;
-        let b = Reader.number t in
-        Reader.comma t;
-        Reader.ws t;
-        let c = Reader.number t in
-        Reader.comma t;
-        Reader.ws t;
-        let d = Reader.number t in
+    Cursor.call "cubic-bezier" t (fun t ->
+        let a = Cursor.number t in
+        Cursor.comma t;
+        Cursor.ws t;
+        let b = Cursor.number t in
+        Cursor.comma t;
+        Cursor.ws t;
+        let c = Cursor.number t in
+        Cursor.comma t;
+        Cursor.ws t;
+        let d = Cursor.number t in
         Cubic_bezier (a, b, c, d))
 
   let rec read t : timing_function =
     let read_var_timing t : timing_function = Var (Values.read_var read t) in
-    Reader.enum_or_calls "timing-function"
+    Cursor.enum_or_calls "timing-function"
       [
         ("ease", (Ease : timing_function));
         ("linear", Linear);
@@ -5705,21 +5690,21 @@ let rec read_transition_property_value t : transition_property_value =
   let read_var t : transition_property_value =
     Var (read_var read_transition_property_value t)
   in
-  Reader.enum_or_calls "transition-property-value"
+  Cursor.enum_or_calls "transition-property-value"
     [
       ("all", (All : transition_property_value));
       ("none", (None : transition_property_value));
     ]
     ~calls:[ ("var", read_var) ]
-    ~default:(fun t -> Property (Reader.ident ~keep_case:true t))
+    ~default:(fun t -> Property (Cursor.ident ~keep_case:true t))
     t
 
 let read_transition_property t : transition_property =
   (* Parse comma-separated list of transition properties *)
   let rec loop acc =
     let v = read_transition_property_value t in
-    Reader.ws t;
-    if Reader.comma_opt t then loop (v :: acc) else List.rev (v :: acc)
+    Cursor.ws t;
+    if Cursor.comma_opt t then loop (v :: acc) else List.rev (v :: acc)
   in
   loop []
 
@@ -5733,31 +5718,31 @@ let read_transition_shorthand t : transition_shorthand =
     match property with
     | All | None | Var _ ->
         (* For 'all', 'none', and var(), duration is optional *)
-        Reader.option
+        Cursor.option
           (fun t ->
-            Reader.ws t;
+            Cursor.ws t;
             read_duration t)
           t
     | Property _ ->
         (* For regular properties, duration is required *)
-        Reader.ws t;
+        Cursor.ws t;
         Some (read_duration t)
   in
 
   (* Optional timing function *)
   let timing_function =
-    Reader.option
+    Cursor.option
       (fun t ->
-        Reader.ws t;
+        Cursor.ws t;
         read_timing_function t)
       t
   in
 
   (* Optional delay *)
   let delay =
-    Reader.option
+    Cursor.option
       (fun t ->
-        Reader.ws t;
+        Cursor.ws t;
         read_duration t)
       t
   in
@@ -5766,14 +5751,14 @@ let read_transition_shorthand t : transition_shorthand =
 
 let rec read_transition t : transition =
   let read_var_call t : transition = Var (read_var read_transition t) in
-  Reader.enum_or_calls "transition"
+  Cursor.enum_or_calls "transition"
     [ ("inherit", Inherit); ("initial", Initial); ("none", None) ]
     ~calls:[ ("var", read_var_call) ]
     ~default:(fun t : transition -> Shorthand (read_transition_shorthand t))
     t
 
 let read_transition_behavior t : transition_behavior =
-  Reader.enum "transition-behavior"
+  Cursor.enum "transition-behavior"
     [
       ("normal", (Normal : transition_behavior));
       ("allow-discrete", (Allow_discrete : transition_behavior));
@@ -5782,10 +5767,10 @@ let read_transition_behavior t : transition_behavior =
     t
 
 let read_transitions t : transition list =
-  Reader.list ~at_least:1 ~sep:Reader.comma read_transition t
+  Cursor.list ~at_least:1 ~sep:Cursor.comma read_transition t
 
 let read_animation_direction t : animation_direction =
-  Reader.enum "animation-direction"
+  Cursor.enum "animation-direction"
     [
       ("normal", (Normal : animation_direction));
       ("reverse", Reverse);
@@ -5795,7 +5780,7 @@ let read_animation_direction t : animation_direction =
     t
 
 let read_animation_fill_mode t : animation_fill_mode =
-  Reader.enum "animation-fill-mode"
+  Cursor.enum "animation-fill-mode"
     [
       ("none", (None : animation_fill_mode));
       ("forwards", Forwards);
@@ -5805,22 +5790,22 @@ let read_animation_fill_mode t : animation_fill_mode =
     t
 
 let read_animation_iteration_count t : animation_iteration_count =
-  Reader.enum "animation-iteration-count"
+  Cursor.enum "animation-iteration-count"
     [ ("infinite", Infinite) ]
     ~default:(fun t ->
-      let n, unit = Reader.number_with_unit t in
+      let n, unit = Cursor.number_with_unit t in
       match unit with
       | Some u ->
-          Reader.err_invalid t
+          Cursor.err_invalid t
             ("animation-iteration-count must be unitless, got: " ^ u)
       | None ->
           if n < 0. then
-            Reader.err_invalid t "animation-iteration-count cannot be negative"
+            Cursor.err_invalid t "animation-iteration-count cannot be negative"
           else Num n)
     t
 
 let read_animation_play_state t : animation_play_state =
-  Reader.enum "animation-play-state"
+  Cursor.enum "animation-play-state"
     [ ("running", (Running : animation_play_state)); ("paused", Paused) ]
     t
 
@@ -5865,14 +5850,14 @@ module Animation = struct
     let read_fill t = Fill_mode (read_animation_fill_mode t) in
     let read_play t = Play_state (read_animation_play_state t) in
     let read_name t =
-      let v = Reader.ident t in
+      let v = Cursor.ident t in
       if List.mem v reserved_keywords then
         (* This identifier is for another property, not animation-name *)
-        Reader.err t
+        Cursor.err t
           ("'" ^ v ^ "' is a reserved keyword for animation properties")
       else Name (Some v)
     in
-    Reader.one_of
+    Cursor.one_of
       [
         read_duration;
         read_timing;
@@ -5898,7 +5883,7 @@ module Animation = struct
           (* CSS spec: First time value is duration, second is delay *)
           incr duration_count;
           if !duration_count > 2 then
-            Reader.err t
+            Cursor.err t
               "animation shorthand cannot have more than two time values"
           else if
             match acc.duration with Some d when is_zero d -> true | _ -> false
@@ -5932,10 +5917,10 @@ module Animation = struct
       }
     in
 
-    let acc, _ = Reader.fold_many read_component ~init ~f:apply t in
+    let acc, _ = Cursor.fold_many read_component ~init ~f:apply t in
     (* CSS spec: All components are optional *)
     if acc = init then
-      Reader.err t "animation shorthand requires at least one component"
+      Cursor.err t "animation shorthand requires at least one component"
     else acc
 
   let is_zero_duration = function S 0. | Ms 0. -> true | _ -> false
@@ -6095,18 +6080,18 @@ and pp_animation : animation Pp.t =
 
 let rec read_animation t : animation =
   let read_var_call t : animation = Var (read_var read_animation t) in
-  Reader.enum_or_calls "animation"
+  Cursor.enum_or_calls "animation"
     [ ("inherit", Inherit); ("initial", Initial); ("none", None) ]
     ~calls:[ ("var", read_var_call) ]
     ~default:(fun t -> (Shorthand (read_animation_shorthand t) : animation))
     t
 
 let read_animations t : animation list =
-  Reader.list ~at_least:1 ~sep:Reader.comma read_animation t
+  Cursor.list ~at_least:1 ~sep:Cursor.comma read_animation t
 
 let rec read_blend_mode t : blend_mode =
   let read_var t : blend_mode = Var (read_var read_blend_mode t) in
-  Reader.enum_or_calls "blend-mode"
+  Cursor.enum_or_calls "blend-mode"
     [
       ("normal", (Normal : blend_mode));
       ("multiply", Multiply);
@@ -6134,7 +6119,7 @@ module Text_shadow = struct
   type component = Color of color | Length of length
 
   let read_component t : component =
-    Reader.one_of
+    Cursor.one_of
       [ (fun t -> Color (read_color t)); (fun t -> Length (read_length t)) ]
       t
 
@@ -6150,11 +6135,11 @@ end
 
 let rec read_text_shadow t : text_shadow =
   let read_var t : text_shadow = Var (read_var read_text_shadow t) in
-  Reader.enum_or_calls "text-shadow"
+  Cursor.enum_or_calls "text-shadow"
     [ ("none", None); ("inherit", Inherit) ]
     ~calls:[ ("var", read_var) ]
     ~default:(fun t ->
-      let components, _ = Reader.many Text_shadow.read_component t in
+      let components, _ = Cursor.many Text_shadow.read_component t in
       let lengths, color = Text_shadow.fold_components components in
       match lengths with
       | h :: v :: rest ->
@@ -6165,51 +6150,51 @@ let rec read_text_shadow t : text_shadow =
     t
 
 let read_text_shadows t : text_shadow list =
-  Reader.list ~sep:Reader.comma ~at_least:1 read_text_shadow t
+  Cursor.list ~sep:Cursor.comma ~at_least:1 read_text_shadow t
 
-let read_blur t : filter = Reader.call "blur" t (fun t -> Blur (read_length t))
+let read_blur t : filter = Cursor.call "blur" t (fun t -> Blur (read_length t))
 
 module Filter = struct
   let read_brightness t : filter =
-    Reader.call "brightness" t (fun t ->
+    Cursor.call "brightness" t (fun t ->
         Brightness (Values.read_number_percentage t))
 
   let read_contrast t : filter =
-    Reader.call "contrast" t (fun t ->
+    Cursor.call "contrast" t (fun t ->
         Contrast (Values.read_number_percentage t))
 
   let read_grayscale t : filter =
-    Reader.call "grayscale" t (fun t : filter ->
+    Cursor.call "grayscale" t (fun t : filter ->
         Grayscale (Values.read_number_percentage t))
 
   let read_hue_rotate t : filter =
-    Reader.call "hue-rotate" t (fun t -> Hue_rotate (read_angle t))
+    Cursor.call "hue-rotate" t (fun t -> Hue_rotate (read_angle t))
 
   let read_invert t : filter =
-    Reader.call "invert" t (fun t -> Invert (Values.read_number_percentage t))
+    Cursor.call "invert" t (fun t -> Invert (Values.read_number_percentage t))
 
   let read_opacity t : filter =
-    Reader.call "opacity" t (fun t : filter ->
+    Cursor.call "opacity" t (fun t : filter ->
         Opacity (Values.read_number_percentage t))
 
   let read_saturate t : filter =
-    Reader.call "saturate" t (fun t ->
+    Cursor.call "saturate" t (fun t ->
         Saturate (Values.read_number_percentage t))
 
   let read_sepia t : filter =
-    Reader.call "sepia" t (fun t -> Sepia (Values.read_number_percentage t))
+    Cursor.call "sepia" t (fun t -> Sepia (Values.read_number_percentage t))
 
   let read_drop_shadow t : filter =
-    Reader.call "drop-shadow" t (fun t ->
+    Cursor.call "drop-shadow" t (fun t ->
         let read_var t : filter = Drop_shadow (Var (read_var Shadow.read t)) in
         let read_shadow t : filter = Drop_shadow (Shadow.read t) in
-        Reader.one_of [ read_var; read_shadow ] t)
+        Cursor.one_of [ read_var; read_shadow ] t)
 end
 
 let rec read_filter_item t : filter =
   let read_var t : filter = Var (read_var read_filter t) in
   let read_url t = (Url (read_url_arg t) : filter) in
-  Reader.enum_or_calls "filter"
+  Cursor.enum_or_calls "filter"
     [ ("none", (None : filter)) ]
     ~calls:
       [
@@ -6230,17 +6215,17 @@ let rec read_filter_item t : filter =
 
 and read_filter t : filter =
   let read_filter_list t =
-    let filters, _ = Reader.many read_filter_item t in
+    let filters, _ = Cursor.many read_filter_item t in
     match filters with
     | [] -> err_invalid_value t "filter" "expected filter function(s)"
     | [ f ] -> f
     | fs -> List fs
   in
-  Reader.enum "filter" [ ("none", (None : filter)) ] ~default:read_filter_list t
+  Cursor.enum "filter" [ ("none", (None : filter)) ] ~default:read_filter_list t
 
 (* Background-related readers *)
 let read_background_attachment t : background_attachment =
-  Reader.enum "background-attachment"
+  Cursor.enum "background-attachment"
     [
       ("scroll", (Scroll : background_attachment));
       ("fixed", Fixed);
@@ -6250,7 +6235,7 @@ let read_background_attachment t : background_attachment =
     t
 
 let read_background_repeat t : background_repeat =
-  Reader.enum "background-repeat"
+  Cursor.enum "background-repeat"
     [
       ("repeat", (Repeat : background_repeat));
       ("space", Space);
@@ -6282,15 +6267,15 @@ let read_background_repeat t : background_repeat =
 
 let rec read_background_size t : background_size =
   let read_pair t : background_size =
-    let a, b = Reader.pair read_length read_length t in
+    let a, b = Cursor.pair read_length read_length t in
     Size (a, b)
   in
-  let read_pct t : background_size = Pct (Reader.pct t) in
+  let read_pct t : background_size = Pct (Cursor.pct t) in
   let read_length_value t : background_size = read_background_size_length t in
   let read_var_call t : background_size =
     Var (read_var read_background_size t)
   in
-  Reader.enum_or_calls "background-size"
+  Cursor.enum_or_calls "background-size"
     [
       ("auto", (Auto : background_size));
       ("cover", Cover);
@@ -6301,14 +6286,14 @@ let rec read_background_size t : background_size =
     ]
     ~calls:[ ("var", read_var_call) ]
     ~default:(fun t ->
-      Reader.one_of [ read_pair; read_length_value; read_pct ] t)
+      Cursor.one_of [ read_pair; read_length_value; read_pct ] t)
     t
 
 module Gradient_direction = struct
   type keyword = Top | Bottom | Left | Right
 
   let read_keyword t : keyword =
-    Reader.enum "direction"
+    Cursor.enum "direction"
       [ ("top", Top); ("bottom", Bottom); ("left", Left); ("right", Right) ]
       t
 
@@ -6326,15 +6311,15 @@ module Gradient_direction = struct
         err_invalid_value t "gradient-direction" "invalid direction combination"
 
   let read_to_direction t =
-    Reader.expect_string "to" t;
-    Reader.ws t;
-    let directions, _ = Reader.many read_keyword t in
+    Cursor.expect_string "to" t;
+    Cursor.ws t;
+    let directions, _ = Cursor.many read_keyword t in
     merge_keywords t directions
 
   let read_angle t = Angle (read_angle t)
 
   let read t : gradient_direction =
-    Reader.one_of [ read_to_direction; read_angle ] t
+    Cursor.one_of [ read_to_direction; read_angle ] t
 end
 
 let read_gradient_direction t : gradient_direction = Gradient_direction.read t
@@ -6343,26 +6328,26 @@ module Gradient_stop = struct
   (* Parse specific combinations *)
   let read_color_lp_lp t =
     let color, lp1, lp2 =
-      Reader.triple ~sep:Reader.ws read_color read_length_percentage
+      Cursor.triple ~sep:Cursor.ws read_color read_length_percentage
         read_length_percentage t
     in
     Color_percentage (color, Some lp1, Some lp2)
 
   let read_color_lp t =
     let color, lp =
-      Reader.pair ~sep:Reader.ws read_color read_length_percentage t
+      Cursor.pair ~sep:Cursor.ws read_color read_length_percentage t
     in
     Color_percentage (color, Some lp, None)
 
   let read_color_len_len t =
     let color, len1, len2 =
-      Reader.triple ~sep:Reader.ws read_color read_length read_length t
+      Cursor.triple ~sep:Cursor.ws read_color read_length read_length t
     in
     Color_length (color, Some len1, Some len2)
 
   let read_color_len t =
     let color = read_color t in
-    Reader.ws t;
+    Cursor.ws t;
     let len = read_length t in
     Color_length (color, Some len, None)
 
@@ -6376,10 +6361,10 @@ end
 
 let rec read_gradient_stop_single t : gradient_stop =
   let read_var t : gradient_stop = Var (read_var read_gradient_stop_list t) in
-  Reader.ws t;
+  Cursor.ws t;
   (* Try from most specific to most general, letting individual parsers handle
      their own variables *)
-  Reader.one_of
+  Cursor.one_of
     [
       (* 3 elements: color + two length-percentages/lengths (most specific) *)
       Gradient_stop.read_color_lp_lp;
@@ -6400,7 +6385,7 @@ let rec read_gradient_stop_single t : gradient_stop =
 and read_gradient_stop_list t : gradient_stop =
   (* Parse a list of gradient stops - used only for var fallbacks *)
   match
-    Reader.list ~sep:Reader.comma ~at_least:1 read_gradient_stop_single t
+    Cursor.list ~sep:Cursor.comma ~at_least:1 read_gradient_stop_single t
   with
   | [ x ] -> x
   | l -> List l
@@ -6412,8 +6397,8 @@ and read_gradient_stop t : gradient_stop =
 
 let read_gradient_stops t =
   match
-    Reader.option
-      (Reader.list ~at_least:1 ~sep:Reader.comma read_gradient_stop)
+    Cursor.option
+      (Cursor.list ~at_least:1 ~sep:Cursor.comma read_gradient_stop)
       t
   with
   | Some stops -> stops
@@ -6422,20 +6407,20 @@ let read_gradient_stops t =
 module Position_value = struct
   type keyword = Center | Left | Right | Top | Bottom | Inherit | Initial
 
-  let read_xy (t : Reader.t) : position_value =
+  let read_xy (t : Cursor.t) : position_value =
     let x = read_length t in
     (* Reject global keywords - they should be parsed by read_1_value *)
     (match x with
     | Inherit | Initial | Unset | Revert | Revert_layer ->
-        Reader.err_invalid t "global keywords must be used alone"
+        Cursor.err_invalid t "global keywords must be used alone"
     | _ -> ());
-    Reader.ws t;
-    match Reader.option read_length t with
+    Cursor.ws t;
+    match Cursor.option read_length t with
     | Some y -> XY (x, y)
     | None -> Single x
 
   let read_keyword t : keyword =
-    Reader.enum "position-keyword"
+    Cursor.enum "position-keyword"
       [
         ("center", Center);
         ("left", Left);
@@ -6465,9 +6450,9 @@ module Position_value = struct
     (* Global keywords cannot be combined with other keywords *)
     (match first with
     | Inherit | Initial ->
-        Reader.err_invalid t "global keywords cannot be combined"
+        Cursor.err_invalid t "global keywords cannot be combined"
     | _ -> ());
-    Reader.ws t;
+    Cursor.ws t;
     let second = read_keyword t in
     match (first, second) with
     | Left, Top | Top, Left -> Left_top
@@ -6479,25 +6464,25 @@ module Position_value = struct
     | Center, Top | Top, Center -> Center_top
     | Center, Bottom | Bottom, Center -> Center_bottom
     | Center, Center -> Center
-    | _ -> Reader.err_invalid t "invalid position keyword combination"
+    | _ -> Cursor.err_invalid t "invalid position keyword combination"
 
   (* Read 3-value syntax: keyword offset keyword *)
   let read_3_value t : position_value =
-    let edge1 = Reader.ident t in
-    Reader.ws t;
+    let edge1 = Cursor.ident t in
+    Cursor.ws t;
     let offset = read_length t in
-    Reader.ws t;
-    let axis = Reader.ident t in
+    Cursor.ws t;
+    let axis = Cursor.ident t in
     Edge_offset_axis (edge1, offset, axis)
 
   (* Read 4-value syntax: keyword offset keyword offset *)
   let read_4_value t : position_value =
-    let edge1 = Reader.ident t in
-    Reader.ws t;
+    let edge1 = Cursor.ident t in
+    Cursor.ws t;
     let offset1 = read_length t in
-    Reader.ws t;
-    let edge2 = Reader.ident t in
-    Reader.ws t;
+    Cursor.ws t;
+    let edge2 = Cursor.ident t in
+    Cursor.ws t;
     let offset2 = read_length t in
     Edge_offset_edge_offset (edge1, offset1, edge2, offset2)
 end
@@ -6513,7 +6498,7 @@ let read_position_value t : position_value =
     in
     Var (var_ref name)
   in
-  Reader.one_of
+  Cursor.one_of
     [
       Position_value.read_4_value;
       Position_value.read_3_value;
@@ -6526,10 +6511,10 @@ let read_position_value t : position_value =
 
 module Radial_config = struct
   let read_shape t : radial_shape =
-    Reader.enum "radial-shape" [ ("circle", Circle); ("ellipse", Ellipse) ] t
+    Cursor.enum "radial-shape" [ ("circle", Circle); ("ellipse", Ellipse) ] t
 
   let read_size_keyword t : radial_size =
-    Reader.enum "radial-size"
+    Cursor.enum "radial-size"
       [
         ("closest-side", Closest_side);
         ("farthest-side", Farthest_side);
@@ -6540,43 +6525,43 @@ module Radial_config = struct
 
   let read_explicit_size t : radial_size =
     let first = read_length_percentage t in
-    Reader.ws t;
-    match Reader.option read_length_percentage t with
+    Cursor.ws t;
+    match Cursor.option read_length_percentage t with
     | Some second -> Ellipse_radii (first, second)
     | None -> (
         match first with
         | Length l -> Circle_radius l
         | _ ->
-            Reader.err_invalid t
+            Cursor.err_invalid t
               "circle radius must be a length, not a percentage")
 
   let read_at_position t : position_value =
-    Reader.expect_string "at" t;
-    Reader.ws t;
+    Cursor.expect_string "at" t;
+    Cursor.ws t;
     read_position_value t
 
   let read t : radial_gradient_config =
-    let shape = Reader.option read_shape t in
-    Reader.ws t;
+    let shape = Cursor.option read_shape t in
+    Cursor.ws t;
     let size =
-      Reader.option
-        (fun t -> Reader.one_of [ read_size_keyword; read_explicit_size ] t)
+      Cursor.option
+        (fun t -> Cursor.one_of [ read_size_keyword; read_explicit_size ] t)
         t
     in
-    Reader.ws t;
+    Cursor.ws t;
     (* If no shape was found before size, try after *)
     let shape =
-      match shape with Some _ -> shape | None -> Reader.option read_shape t
+      match shape with Some _ -> shape | None -> Cursor.option read_shape t
     in
-    Reader.ws t;
-    let position = Reader.option read_at_position t in
+    Cursor.ws t;
+    let position = Cursor.option read_at_position t in
     { shape; size; position }
 end
 
 let read_radial_shape t : radial_shape = Radial_config.read_shape t
 
 let read_radial_size t : radial_size =
-  Reader.one_of
+  Cursor.one_of
     [ Radial_config.read_size_keyword; Radial_config.read_explicit_size ]
     t
 
@@ -6584,27 +6569,27 @@ let read_radial_gradient_config t : radial_gradient_config =
   Radial_config.read t
 
 let read_linear_gradient_body t =
-  Reader.ws t;
+  Cursor.ws t;
   let direction =
-    match Reader.option read_gradient_direction t with
+    match Cursor.option read_gradient_direction t with
     | Some d ->
-        ignore (Reader.comma_opt t);
+        ignore (Cursor.comma_opt t);
         d
     | None -> To_bottom
   in
   Linear_gradient (direction, read_gradient_stops t)
 
 let read_radial_gradient_body t =
-  Reader.ws t;
+  Cursor.ws t;
   let config =
     match
-      Reader.option
+      Cursor.option
         (fun t ->
           let cfg = Radial_config.read t in
           if cfg.shape = None && cfg.size = None && cfg.position = None then
-            Reader.err_invalid t "no radial config";
-          Reader.ws t;
-          ignore (Reader.comma_opt t);
+            Cursor.err_invalid t "no radial config";
+          Cursor.ws t;
+          ignore (Cursor.comma_opt t);
           cfg)
         t
     with
@@ -6614,11 +6599,11 @@ let read_radial_gradient_body t =
   Radial_gradient (config, read_gradient_stops t)
 
 let read_conic_gradient_body t =
-  Reader.ws t;
+  Cursor.ws t;
   Conic_gradient (read_gradient_stops t)
 
 let rec read_bg_image t =
-  Reader.enum_or_calls "background-image"
+  Cursor.enum_or_calls "background-image"
     [
       ("none", (None : background_image));
       ("initial", Initial);
@@ -6626,30 +6611,30 @@ let rec read_bg_image t =
     ]
     ~calls:
       [
-        ("url", fun t -> Url (Reader.url t));
+        ("url", fun t -> Url (Cursor.url t));
         ( "linear-gradient",
-          fun t -> Reader.call "linear-gradient" t read_linear_gradient_body );
+          fun t -> Cursor.call "linear-gradient" t read_linear_gradient_body );
         ( "radial-gradient",
-          fun t -> Reader.call "radial-gradient" t read_radial_gradient_body );
+          fun t -> Cursor.call "radial-gradient" t read_radial_gradient_body );
         ( "conic-gradient",
-          fun t -> Reader.call "conic-gradient" t read_conic_gradient_body );
+          fun t -> Cursor.call "conic-gradient" t read_conic_gradient_body );
         ( "var",
           fun t ->
-            let _ = Reader.ident t in
+            let _ = Cursor.ident t in
             Var (Values.read_var_after_ident read_bg_image t) );
       ]
     t
 
 let read_background_image t : background_image =
   let first = read_bg_image t in
-  Reader.ws t;
-  if Reader.comma_opt t then
-    let rest = Reader.list ~sep:Reader.comma ~at_least:1 read_bg_image t in
+  Cursor.ws t;
+  if Cursor.comma_opt t then
+    let rest = Cursor.list ~sep:Cursor.comma ~at_least:1 read_bg_image t in
     List (first :: rest)
   else first
 
 let read_background_images t : background_image list =
-  Reader.list ~sep:Reader.comma read_background_image t
+  Cursor.list ~sep:Cursor.comma read_background_image t
 
 let minify_gradient_stop : gradient_stop -> gradient_stop = function
   | Color_percentage (c, p1, p2) -> Color_percentage (minify_color c, p1, p2)
@@ -6664,7 +6649,7 @@ let minify_background_image : background_image -> background_image = function
   | img -> img
 
 let read_any_property t =
-  let prop_name = Reader.ident t in
+  let prop_name = Cursor.ident t in
   (* PROPERTY_MATCHING_START - Used by scripts/check_properties.ml *)
   match prop_name with
   | "width" -> Prop Width
@@ -6986,7 +6971,7 @@ let read_any_property t =
   | "-ms-filter" -> Prop Ms_filter
   | "-o-transition" -> Prop O_transition
   (* PROPERTY_MATCHING_END - Used by scripts/check_properties.ml *)
-  | _ -> Reader.err_invalid t ("read_property: unknown property " ^ prop_name)
+  | _ -> Cursor.err_invalid t ("read_property: unknown property " ^ prop_name)
 
 (* Helper functions for property types *)
 
@@ -7068,7 +7053,7 @@ let background_shorthand ?color ?image ?position ?size ?repeat ?attachment ?clip
 
 (* Parser for background_box values *)
 let read_background_box t : background_box =
-  Reader.enum "background-box"
+  Cursor.enum "background-box"
     [
       ("border-box", (Border_box : background_box));
       ("padding-box", Padding_box);
@@ -7080,7 +7065,7 @@ let read_background_box t : background_box =
 
 (* Parser for webkit_mask_composite values *)
 let read_webkit_mask_composite t : webkit_mask_composite =
-  Reader.enum "webkit-mask-composite"
+  Cursor.enum "webkit-mask-composite"
     [
       ("source-over", (Source_over : webkit_mask_composite));
       ("xor", Xor);
@@ -7092,7 +7077,7 @@ let read_webkit_mask_composite t : webkit_mask_composite =
 
 (* Parser for mask_composite values (standard, not webkit) *)
 let read_mask_composite t : mask_composite =
-  Reader.enum "mask-composite"
+  Cursor.enum "mask-composite"
     [
       ("add", (Add : mask_composite));
       ("subtract", Subtract);
@@ -7104,7 +7089,7 @@ let read_mask_composite t : mask_composite =
 
 (* Parser for webkit_mask_source_type values *)
 let read_webkit_mask_source_type t : webkit_mask_source_type =
-  Reader.enum "webkit-mask-source-type"
+  Cursor.enum "webkit-mask-source-type"
     [
       ("alpha", (Alpha : webkit_mask_source_type));
       ("luminance", Luminance);
@@ -7115,7 +7100,7 @@ let read_webkit_mask_source_type t : webkit_mask_source_type =
 
 (* Parser for mask_mode values (standard) *)
 let read_mask_mode t : mask_mode =
-  Reader.enum "mask-mode"
+  Cursor.enum "mask-mode"
     [
       ("alpha", (Alpha : mask_mode));
       ("luminance", Luminance);
@@ -7126,7 +7111,7 @@ let read_mask_mode t : mask_mode =
 
 (* Parser for mask_type values *)
 let read_mask_type t : mask_type =
-  Reader.enum "mask-type"
+  Cursor.enum "mask-type"
     [
       ("alpha", (Alpha : mask_type));
       ("luminance", Luminance);
@@ -7136,7 +7121,7 @@ let read_mask_type t : mask_type =
 
 (* Parser for mask_box values (mask-clip and mask-origin) *)
 let read_mask_box t : mask_box =
-  Reader.enum "mask-box"
+  Cursor.enum "mask-box"
     [
       ("border-box", (Border_box : mask_box));
       ("content-box", Content_box);
@@ -7150,24 +7135,24 @@ let read_mask_box t : mask_box =
     t
 
 let read_background_position t : background_position =
-  Reader.list ~at_least:1 ~sep:Reader.comma read_position_value t
+  Cursor.list ~at_least:1 ~sep:Cursor.comma read_position_value t
 
 module Transform_origin = struct
   type keyword = Center | Left | Right | Top | Bottom
 
-  let read_xyz (t : Reader.t) : transform_origin =
+  let read_xyz (t : Cursor.t) : transform_origin =
     let x = read_length t in
-    Reader.ws t;
-    match Reader.option read_length t with
+    Cursor.ws t;
+    match Cursor.option read_length t with
     | Some y -> (
-        Reader.ws t;
-        match Reader.option read_length t with
+        Cursor.ws t;
+        match Cursor.option read_length t with
         | Some z -> XYZ (x, y, z)
         | None -> XY (x, y))
     | None -> XY (x, x)
 
   let read_keyword t : keyword =
-    Reader.enum "transform-origin-keyword"
+    Cursor.enum "transform-origin-keyword"
       [
         ("center", Center);
         ("left", Left);
@@ -7204,21 +7189,21 @@ module Transform_origin = struct
     | _ -> err_invalid_value t "transform-origin" "invalid keyword combination"
 
   let read_keywords t =
-    let keywords = Reader.list ~at_least:1 ~at_most:2 read_keyword t in
+    let keywords = Cursor.list ~at_least:1 ~at_most:2 read_keyword t in
     merge_keywords t keywords
 end
 
-let read_transform_origin (t : Reader.t) : transform_origin =
-  Reader.enum "transform-origin"
+let read_transform_origin (t : Cursor.t) : transform_origin =
+  Cursor.enum "transform-origin"
     [ ("inherit", Inherit) ]
     ~default:(fun t ->
-      Reader.one_of
+      Cursor.one_of
         [ Transform_origin.read_keywords; Transform_origin.read_xyz ]
         t)
     t
 
-let read_transform_box (t : Reader.t) : transform_box =
-  Reader.enum "transform-box"
+let read_transform_box (t : Cursor.t) : transform_box =
+  Cursor.enum "transform-box"
     [
       ("content-box", Content_box);
       ("border-box", Border_box);
@@ -7237,9 +7222,9 @@ module Background_shorthand = struct
 
   let read_position_size_item t =
     let pos = read_position_value t in
-    Reader.ws t;
+    Cursor.ws t;
     let size_opt =
-      if Reader.slash_opt t then Some (read_background_size t) else None
+      if Cursor.slash_opt t then Some (read_background_size t) else None
     in
     fun (bg : background_shorthand) ->
       if bg.position <> None then bg
@@ -7272,7 +7257,7 @@ module Background_shorthand = struct
       if bg.color = None then { bg with color = Some col } else bg
 
   let read_item t =
-    Reader.one_of
+    Cursor.one_of
       [
         read_image_item;
         read_position_size_item;
@@ -7285,7 +7270,7 @@ module Background_shorthand = struct
 end
 
 let read_background_shorthand t : background_shorthand =
-  Reader.ws t;
+  Cursor.ws t;
   let init =
     {
       color = None;
@@ -7303,17 +7288,17 @@ let read_background_shorthand t : background_shorthand =
     (* Check if the update actually changed anything *)
     if new_acc = acc then
       (* Nothing changed, meaning we tried to set a duplicate property *)
-      Reader.err t "Duplicate property in background shorthand"
+      Cursor.err t "Duplicate property in background shorthand"
     else new_acc
   in
   let acc, _ =
-    Reader.fold_many Background_shorthand.read_item ~init ~f:apply t
+    Cursor.fold_many Background_shorthand.read_item ~init ~f:apply t
   in
   acc
 
 let rec read_background t : background =
   let read_var_call t : background = Var (read_var read_background t) in
-  Reader.enum_or_calls "background"
+  Cursor.enum_or_calls "background"
     [
       ("inherit", Inherit);
       ("initial", Initial);
@@ -7325,7 +7310,7 @@ let rec read_background t : background =
     t
 
 let read_backgrounds t : background list =
-  Reader.list ~sep:Reader.comma read_background t
+  Cursor.list ~sep:Cursor.comma read_background t
 
 (* Gap shorthand parser *)
 let read_gap t : gap =
@@ -7348,40 +7333,40 @@ let read_gap t : gap =
     | Mm v
     | Q v
       when v < 0.0 ->
-        Reader.err t "gap values cannot be negative"
+        Cursor.err t "gap values cannot be negative"
     | Auto | Inherit | Initial | Unset | Revert | Revert_layer | Fit_content ->
-        Reader.err t "gap values must be explicit lengths, not keywords"
+        Cursor.err t "gap values must be explicit lengths, not keywords"
     | _ -> len
   in
   let first_length = read_non_negative_length t in
-  Reader.ws t;
-  let second_length = Reader.option read_non_negative_length t in
+  Cursor.ws t;
+  let second_length = Cursor.option read_non_negative_length t in
   match second_length with
   | Some col_gap -> { row_gap = Some first_length; column_gap = Some col_gap }
   | None -> { row_gap = Some first_length; column_gap = Some first_length }
 
 (* Reader for will-change property *)
 let rec read_will_change t : will_change =
-  Reader.ws t;
-  if Reader.looking_at t "auto" then (
-    Reader.expect_string "auto" t;
+  Cursor.ws t;
+  if Cursor.looking_at t "auto" then (
+    Cursor.expect_string "auto" t;
     Will_change_auto)
-  else if Reader.looking_at t "scroll-position" then (
-    Reader.expect_string "scroll-position" t;
+  else if Cursor.looking_at t "scroll-position" then (
+    Cursor.expect_string "scroll-position" t;
     Scroll_position)
-  else if Reader.looking_at t "contents" then (
-    Reader.expect_string "contents" t;
+  else if Cursor.looking_at t "contents" then (
+    Cursor.expect_string "contents" t;
     Contents)
-  else if Reader.looking_at t "transform" then (
-    Reader.expect_string "transform" t;
+  else if Cursor.looking_at t "transform" then (
+    Cursor.expect_string "transform" t;
     Transform)
-  else if Reader.looking_at t "opacity" then (
-    Reader.expect_string "opacity" t;
+  else if Cursor.looking_at t "opacity" then (
+    Cursor.expect_string "opacity" t;
     Opacity)
-  else if Reader.looking_at t "var(" then Var (read_var read_will_change t)
+  else if Cursor.looking_at t "var(" then Var (read_var read_will_change t)
   else
     (* Read comma-separated list of property names *)
-    let props = Reader.list ~sep:Reader.comma Reader.ident t in
+    let props = Cursor.list ~sep:Cursor.comma Cursor.ident t in
     Properties props
 
 (* Reader for perspective-origin property *)
@@ -7403,137 +7388,125 @@ let read_perspective_origin_keyword t =
     (fun (keywords, result) ->
       List.find_map
         (fun kw ->
-          if Reader.looking_at t kw then (
-            Reader.expect_string kw t;
+          if Cursor.looking_at t kw then (
+            Cursor.expect_string kw t;
             Some result)
           else None)
         keywords)
     keyword_pairs
 
 let rec read_perspective_origin t : perspective_origin =
-  Reader.ws t;
-  if Reader.looking_at t "var(" then
+  Cursor.ws t;
+  if Cursor.looking_at t "var(" then
     Perspective_var (Values.read_var read_perspective_origin t)
   else
     match read_perspective_origin_keyword t with
     | Some result -> result
     | None -> (
         let x = read_length t in
-        Reader.ws t;
+        Cursor.ws t;
         (* Second length is optional - y defaults to center *)
-        match Reader.option read_length t with
+        match Cursor.option read_length t with
         | Some y -> Perspective_xy (x, y)
         | None -> Perspective_x x)
 
 (* Reader for clip property (deprecated) *)
 let read_clip t : clip =
-  Reader.ws t;
-  if Reader.looking_at t "auto" then (
-    Reader.expect_string "auto" t;
+  Cursor.ws t;
+  if Cursor.looking_at t "auto" then (
+    Cursor.expect_string "auto" t;
     Clip_auto)
-  else if Reader.looking_at t "rect(" then (
-    Reader.expect_string "rect(" t;
-    Reader.ws t;
+  else if Cursor.looking_at t "rect(" then (
+    Cursor.expect_string "rect(" t;
+    Cursor.ws t;
     let top = read_length t in
-    Reader.ws t;
-    Reader.option (fun t -> Reader.expect ',' t) t |> ignore;
-    Reader.ws t;
+    Cursor.ws t;
+    Cursor.option (fun t -> Cursor.expect ',' t) t |> ignore;
+    Cursor.ws t;
     let right = read_length t in
-    Reader.ws t;
-    Reader.option (fun t -> Reader.expect ',' t) t |> ignore;
-    Reader.ws t;
+    Cursor.ws t;
+    Cursor.option (fun t -> Cursor.expect ',' t) t |> ignore;
+    Cursor.ws t;
     let bottom = read_length t in
-    Reader.ws t;
-    Reader.option (fun t -> Reader.expect ',' t) t |> ignore;
-    Reader.ws t;
+    Cursor.ws t;
+    Cursor.option (fun t -> Cursor.expect ',' t) t |> ignore;
+    Cursor.ws t;
     let left = read_length t in
-    Reader.ws t;
-    Reader.expect ')' t;
+    Cursor.ws t;
+    Cursor.expect ')' t;
     Clip_rect (top, right, bottom, left))
-  else Reader.err_invalid t "clip value (expected auto or rect(...))"
+  else Cursor.err_invalid t "clip value (expected auto or rect(...))"
 
 (* Reader for clip-path property *)
 let read_clip_path_url t =
-  Reader.expect_string "url(" t;
-  Reader.ws t;
   let url =
-    match Reader.peek t with
-    | Some ('"' | '\'') -> Reader.string ~trim:true t
-    | _ -> Reader.until t ')'
+    Cursor.call "url" t (fun inner ->
+        match Cursor.string_opt inner with
+        | Some s -> String.trim s
+        | None -> Cursor.url inner)
   in
-  Reader.ws t;
-  Reader.expect ')' t;
   Clip_path_url url
 
 let read_clip_path_inset t =
-  Reader.expect_string "inset(" t;
-  Reader.ws t;
-  let top = read_length t in
-  Reader.ws t;
-  let right : length option =
-    if Reader.peek t = Some ')' then None else Some (read_length t)
-  in
-  Reader.ws t;
-  let bottom : length option =
-    match right with
-    | None -> None
-    | Some _ -> if Reader.peek t = Some ')' then None else Some (read_length t)
-  in
-  Reader.ws t;
-  let left : length option =
-    match bottom with
-    | None -> None
-    | Some _ -> if Reader.peek t = Some ')' then None else Some (read_length t)
-  in
-  Reader.ws t;
-  Reader.expect ')' t;
-  Clip_path_inset (top, right, bottom, left)
+  Cursor.call "inset" t (fun t ->
+      Cursor.ws t;
+      let top = read_length t in
+      Cursor.ws t;
+      let read_opt () : length option =
+        if Cursor.is_done t then None else Some (read_length t)
+      in
+      let right = read_opt () in
+      Cursor.ws t;
+      let bottom = if Option.is_some right then read_opt () else None in
+      Cursor.ws t;
+      let left = if Option.is_some bottom then read_opt () else None in
+      Clip_path_inset (top, right, bottom, left))
 
 let read_clip_path_circle t =
-  Reader.expect_string "circle(" t;
-  Reader.ws t;
+  Cursor.expect_string "circle(" t;
+  Cursor.ws t;
   let radius = read_length t in
-  Reader.ws t;
-  Reader.expect ')' t;
+  Cursor.ws t;
+  Cursor.expect ')' t;
   Clip_path_circle radius
 
 let read_clip_path_ellipse t =
-  Reader.expect_string "ellipse(" t;
-  Reader.ws t;
+  Cursor.expect_string "ellipse(" t;
+  Cursor.ws t;
   let rx = read_length t in
-  Reader.ws t;
+  Cursor.ws t;
   let ry = read_length t in
-  Reader.ws t;
-  Reader.expect ')' t;
+  Cursor.ws t;
+  Cursor.expect ')' t;
   Clip_path_ellipse (rx, ry)
 
 let read_clip_path_polygon t =
-  Reader.expect_string "polygon(" t;
-  Reader.ws t;
+  Cursor.expect_string "polygon(" t;
+  Cursor.ws t;
   let points =
-    Reader.list ~sep:Reader.comma
+    Cursor.list ~sep:Cursor.comma
       (fun t ->
         let x = read_length t in
-        Reader.ws t;
+        Cursor.ws t;
         let y = read_length t in
         (x, y))
       t
   in
-  Reader.ws t;
-  Reader.expect ')' t;
+  Cursor.ws t;
+  Cursor.expect ')' t;
   Clip_path_polygon points
 
 let read_clip_path t : clip_path =
-  Reader.ws t;
-  if Reader.looking_at t "none" then (
-    Reader.expect_string "none" t;
+  Cursor.ws t;
+  if Cursor.looking_at t "none" then (
+    Cursor.expect_string "none" t;
     Clip_path_none)
-  else if Reader.looking_at t "url(" then read_clip_path_url t
-  else if Reader.looking_at t "inset(" then read_clip_path_inset t
-  else if Reader.looking_at t "circle(" then read_clip_path_circle t
-  else if Reader.looking_at t "ellipse(" then read_clip_path_ellipse t
-  else if Reader.looking_at t "polygon(" then read_clip_path_polygon t
-  else Reader.err_invalid t "clip-path value"
+  else if Cursor.looking_at t "url(" then read_clip_path_url t
+  else if Cursor.looking_at t "inset(" then read_clip_path_inset t
+  else if Cursor.looking_at t "circle(" then read_clip_path_circle t
+  else if Cursor.looking_at t "ellipse(" then read_clip_path_ellipse t
+  else if Cursor.looking_at t "polygon(" then read_clip_path_polygon t
+  else Cursor.err_invalid t "clip-path value"
 
 let pp_any_property ctx (Prop p) = pp_property ctx p
 

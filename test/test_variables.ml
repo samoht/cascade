@@ -6,7 +6,8 @@ open Css.Values
 open Css_test_helpers
 open Css.Variables
 
-let check_any_syntax = check_value "any_syntax" read_any_syntax pp_any_syntax
+let check_any_syntax =
+  check_value_cursor "any_syntax" read_any_syntax pp_any_syntax
 
 (* These tests are for CSS Variables module *)
 let test_any_var () =
@@ -35,7 +36,7 @@ let test_any_var () =
   | None -> Alcotest.fail "Expected custom declaration for theme color");
 
   (* Test negative cases *)
-  neg parse_var_reference "not-a-var()"
+  neg_cursor parse_var_reference "not-a-var()"
 
 (* Not a roundtrip test *)
 let test_vars_of_calc () =
@@ -183,15 +184,15 @@ let test_any_syntax () =
   check_any_syntax "\"<length> | <percentage>\"";
 
   (* Test invalid syntax values *)
-  neg read_any_syntax "<length>";
+  neg_cursor read_any_syntax "<length>";
   (* Missing quotes *)
-  neg read_any_syntax "length";
+  neg_cursor read_any_syntax "length";
   (* No angle brackets or quotes *)
-  neg read_any_syntax "\"<invalid-type>\"";
+  neg_cursor read_any_syntax "\"<invalid-type>\"";
   (* Invalid type name *)
-  neg read_any_syntax "\"\"";
+  neg_cursor read_any_syntax "\"\"";
   (* Empty syntax *)
-  neg read_any_syntax "unquoted"
+  neg_cursor read_any_syntax "unquoted"
 
 (* Not a roundtrip test *)
 let test_syntax () =
@@ -202,7 +203,7 @@ let test_syntax () =
 let test_parse_var_reference () =
   (* Test parsing CSS var() references - just extracts name and fallback *)
   let check_var_ref input expected_name expected_fallback =
-    let r = Css.Reader.of_string input in
+    let r = Css.Cursor.of_string input in
     let name, fallback = parse_var_reference r in
     Alcotest.(check string) "variable name" expected_name name;
     Alcotest.(check (option string)) "fallback" expected_fallback fallback
@@ -225,7 +226,7 @@ let test_parse_var_reference () =
 
   (* Test invalid cases *)
   let neg input =
-    let r = Css.Reader.of_string input in
+    let r = Css.Cursor.of_string input in
     try
       let _ = parse_var_reference r in
       Alcotest.failf "Expected failure for: %s" input

@@ -50,83 +50,38 @@ let rec custom_declaration_layer = function
 
 (* Parser functions *)
 
-(** Parse a property name *)
+(** Parse a property name. Property names are plain idents in the component
+    stream ([--custom] idents include the leading [--]). *)
 let read_property_name t =
-  Reader.ws t;
-  let name = Reader.while_ t (fun c -> c <> ':' && c <> ';' && c <> '}') in
-  String.trim name
+  Cursor.ws t;
+  Cursor.ident ~keep_case:true t
 
-(** Parse property value with validation for missing semicolons *)
+(** Parse property value. Components up to the next [;] or [!important] mark the
+    value. Blocks (quoted strings, [(...)], [[...]], [{...}]) are already
+    balanced by the component parser. *)
 let read_property_value t =
-  Reader.with_context t "property-value" @@ fun () ->
-  (* Read value token by token, detecting property-like patterns early *)
-  let buf = Buffer.create 64 in
-  let rec handle_escape buf t depth in_quote quote_char =
-    match Reader.peek t with
-    | None -> Buffer.contents buf
-    | Some next_c ->
-        Buffer.add_char buf next_c;
-        Reader.skip t;
-        parse_tokens buf t depth in_quote quote_char
-  and parse_tokens buf t depth in_quote quote_char =
-    match Reader.peek t with
-    | None -> Buffer.contents buf
-    | Some c when in_quote ->
-        Buffer.add_char buf c;
-        Reader.skip t;
-        if c = quote_char then parse_tokens buf t depth false '\000'
-        else if c = '\\' then handle_escape buf t depth in_quote quote_char
-        else parse_tokens buf t depth in_quote quote_char
-    | Some (('"' | '\'') as q) ->
-        Buffer.add_char buf q;
-        Reader.skip t;
-        parse_tokens buf t depth true q
-    | Some (('(' | '[' | '{') as c) ->
-        Buffer.add_char buf c;
-        Reader.skip t;
-        parse_tokens buf t (depth + 1) in_quote quote_char
-    | Some ((')' | ']' | '}') as c) when depth > 0 ->
-        Buffer.add_char buf c;
-        Reader.skip t;
-        parse_tokens buf t (depth - 1) in_quote quote_char
-    | Some c when depth = 0 && (c = ';' || c = '}' || c = '!') ->
-        Buffer.contents buf
-    | Some c when depth = 0 && Reader.is_ident_start c ->
-        (* Continue parsing as normal character - don't check for property
-           declarations within values *)
-        Buffer.add_char buf c;
-        Reader.skip t;
-        parse_tokens buf t depth in_quote quote_char
-    | Some c ->
-        Buffer.add_char buf c;
-        Reader.skip t;
-        parse_tokens buf t depth in_quote quote_char
+  Cursor.with_context t "property-value" @@ fun () ->
+  let rec drain acc =
+    match Cursor.peek t with
+    | None -> List.rev acc
+    | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> List.rev acc
+    | Some (Component.Preserved { kind = Token.Delim '!'; _ }) -> List.rev acc
+    | Some cv ->
+        Cursor.skip t;
+        drain (cv :: acc)
   in
-  let value = parse_tokens buf t 0 false '\000' in
-  (* Allow empty values - CSS custom properties can have empty values like
-     "--tw-blur: ;" *)
-  String.trim value
+  String.trim (Parser.to_string (drain []))
 
 (** Check for and consume !important *)
 let read_importance t =
-  Reader.ws t;
-  match Reader.peek t with
+  Cursor.ws t;
+  match Cursor.peek_delim t with
   | Some '!' ->
-      Reader.expect '!' t;
-      (* After !, we can have optional whitespace/comments before "important" *)
-      Reader.ws t;
-      (* Try to read an identifier after the ! *)
-      if
-        Reader.peek t
-        |> Option.map Reader.is_ident_start
-        |> Option.value ~default:false
-      then
-        let ident = Reader.ident t in
-        if ident = "important" then true
-        else Reader.err_invalid t ("invalid !important declaration: !" ^ ident)
-      else
-        (* No identifier after ! - dangling bang *)
-        Reader.err_invalid t "dangling ! without important"
+      Cursor.skip t;
+      Cursor.ws t;
+      let ident = Cursor.ident t in
+      if ident = "important" then true
+      else Cursor.err_invalid t ("invalid !important declaration: !" ^ ident)
   | _ -> false
 
 (** Check if a declaration is marked as important *)
@@ -233,28 +188,39 @@ let rec string_of_value ?(minify = true) ?(inline = false) decl =
   | Theme_guarded { decl; _ } -> string_of_value ~minify ~inline decl
 
 (* Helper to read a trimmed string *)
-let read_string t = Reader.string ~trim:true t
+let read_string t = Cursor.string ~trim:true t
 
 (* Helper to validate no extra tokens remain *)
 let validate_no_extra_tokens t =
-  Reader.ws t;
-  match Reader.peek t with
-  | Some '!' | Some ';' | Some '}' | None -> ()
+  Cursor.ws t;
+  match Cursor.peek t with
+  | None -> ()
+  | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> ()
+  | Some (Component.Preserved { kind = Token.Delim '!'; _ }) -> ()
   | Some _ ->
-      let remaining = Reader.css_value ~stops:[ ';'; '}'; '!' ] t in
-      let trimmed = String.trim remaining in
+      let rec drain acc =
+        match Cursor.peek t with
+        | None -> List.rev acc
+        | Some
+            (Component.Preserved { kind = Token.Semicolon | Token.Delim '!'; _ })
+          ->
+            List.rev acc
+        | Some cv ->
+            Cursor.skip t;
+            drain (cv :: acc)
+      in
+      let trimmed = String.trim (Parser.to_string (drain [])) in
       if trimmed <> "" then
-        Reader.err_invalid t
+        Cursor.err_invalid t
           ("unexpected tokens after property value: " ^ trimmed)
 
 (* Custom parser for grid-template-areas: reads multiple quoted strings *)
 let read_grid_template_areas t =
   let rec read_strings acc =
-    Reader.ws t;
-    match Reader.peek t with
-    | Some (';' | '}' | '!') | None -> String.concat " " (List.rev acc)
-    | _ ->
-        let s = Reader.string t in
+    Cursor.ws t;
+    match Cursor.string_opt t with
+    | None -> String.concat " " (List.rev acc)
+    | Some s ->
         let quoted_s = "\"" ^ s ^ "\"" in
         read_strings (quoted_s :: acc)
   in
@@ -264,10 +230,10 @@ let read_grid_template_areas t =
    lists *)
 let read_grid_template_list t =
   let first_value = read_grid_template t in
-  Reader.ws t;
+  Cursor.ws t;
   (* Try to read more values - if none, it's a single value *)
   let remaining_values =
-    Reader.list ~sep:(fun t -> Reader.ws t) ~at_least:0 read_grid_template t
+    Cursor.list ~sep:(fun t -> Cursor.ws t) ~at_least:0 read_grid_template t
   in
   if remaining_values = [] then
     (* Single value (e.g., "none", "repeat(3, 1fr)", "1fr") *)
@@ -279,49 +245,37 @@ let read_grid_template_list t =
 
 (* Helper to read animation-name: none | <custom-ident> *)
 let read_animation_name t =
-  if Reader.looking_at t "none" then (
-    Reader.expect_string "none" t;
-    Reader.ws t;
+  if Cursor.looking_at t "none" then (
+    Cursor.expect_string "none" t;
+    Cursor.ws t;
     "none")
-  else Reader.ident t
+  else Cursor.ident t
 
 (* Helper to read opacity: accepts either <number> (0-1), <percentage>
    (0%-100%), or var(...). Both formats are valid per CSS spec. Tailwind v4
    outputs percentages. *)
 let rec read_opacity t : opacity =
-  Reader.ws t;
-  if Reader.looking_at t "var(" then Var (Values.read_var read_opacity t)
+  Cursor.ws t;
+  if Cursor.looking_at t "var(" then Var (Values.read_var read_opacity t)
   else
-    let n = Reader.number t in
-    (* Check if followed by %, indicating percentage *)
-    match Reader.peek t with
-    | Some '%' ->
-        Reader.expect '%' t;
-        Opacity_number (n /. 100.0) (* Convert 100% -> 1.0, 0% -> 0.0 *)
-    | _ -> Opacity_number n (* Already in 0-1 range *)
+    let n, unit = Cursor.number_with_unit t in
+    match unit with
+    | Some "%" -> Opacity_number (n /. 100.0)
+    | _ -> Opacity_number n
 
-(* Helper to read raw property value - for properties that accept any text *)
+(* Helper to read raw property value - for properties that accept any text.
+   Drain components up to the next [;] or [!] delim. *)
 let read_raw_value t =
-  (* Read characters until we hit a semicolon, closing brace, or !important *)
-  let buffer = Buffer.create 64 in
-  let rec loop () =
-    match Reader.peek t with
-    | Some ';' | Some '}' | None -> Buffer.contents buffer |> String.trim
-    | Some '!' ->
-        (* Look ahead to see if this is !important *)
-        Buffer.add_char buffer '!';
-        Reader.expect '!' t;
-        if Reader.looking_at t "important" then
-          (* This is !important, stop reading the value *)
-          String.trim
-            (String.sub (Buffer.contents buffer) 0 (Buffer.length buffer - 1))
-        else loop ()
-    | Some c ->
-        Reader.expect c t;
-        Buffer.add_char buffer c;
-        loop ()
+  let rec drain acc =
+    match Cursor.peek t with
+    | None -> List.rev acc
+    | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> List.rev acc
+    | Some (Component.Preserved { kind = Token.Delim '!'; _ }) -> List.rev acc
+    | Some cv ->
+        Cursor.skip t;
+        drain (cv :: acc)
   in
-  loop ()
+  String.trim (Parser.to_string (drain []))
 
 (* Delegate to the proper reader in Properties *)
 let read_translate_value t : Properties_intf.translate_value =
@@ -332,8 +286,8 @@ let read_webkit_transform_value t = v Webkit_transform (read_transforms t)
 
 let read_place_self_value t =
   let a = read_align_self t in
-  Reader.ws t;
-  let j = Reader.option read_justify_self t in
+  Cursor.ws t;
+  let j = Cursor.option read_justify_self t in
   (* Per CSS spec, when only one value is given, both values are set to it *)
   let align_to_justify (a : align_self) : justify_self =
     match a with
@@ -369,7 +323,7 @@ let read_place_self_value t =
   v Place_self pair
 
 let read_background_blend_mode_value t =
-  v Background_blend_mode (Reader.list ~sep:Reader.comma read_blend_mode t)
+  v Background_blend_mode (Cursor.list ~sep:Cursor.comma read_blend_mode t)
 
 let prop_name (type a) (prop_type : a property) =
   let buf = Buffer.create 32 in
@@ -388,7 +342,7 @@ let prop_name (type a) (prop_type : a property) =
   Buffer.contents buf
 
 let read_value (type a) (prop : a property) t : declaration =
-  Reader.with_context t (prop_name prop) @@ fun () ->
+  Cursor.with_context t (prop_name prop) @@ fun () ->
   match prop with
   | Color -> v Color (read_color t)
   | Background_color -> v Background_color (read_color t)
@@ -453,8 +407,8 @@ let read_value (type a) (prop : a property) t : declaration =
   | Flex_direction -> v Flex_direction (read_flex_direction t)
   | Flex_wrap -> v Flex_wrap (read_flex_wrap t)
   | Flex -> v Flex (read_flex t)
-  | Flex_grow -> v Flex_grow (Reader.number t)
-  | Flex_shrink -> v Flex_shrink (Reader.number t)
+  | Flex_grow -> v Flex_grow (Cursor.number t)
+  | Flex_shrink -> v Flex_shrink (Cursor.number t)
   | Flex_basis -> v Flex_basis (read_length t)
   | Align_items -> v Align_items (read_align_items t)
   | Justify_content -> v Justify_content (read_justify_content t)
@@ -606,7 +560,7 @@ let read_value (type a) (prop : a property) t : declaration =
   (* Scroll snap *)
   | Scroll_snap_type -> v Scroll_snap_type (read_scroll_snap_type t)
   (* Tab size *)
-  | Tab_size -> v Tab_size (int_of_float (Reader.number t))
+  | Tab_size -> v Tab_size (int_of_float (Cursor.number t))
   (* Webkit properties *)
   | Webkit_text_size_adjust ->
       v Webkit_text_size_adjust (read_text_size_adjust t)
@@ -690,7 +644,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Border_spacing ->
       (* border-spacing accepts 1 or 2 length values *)
       let lengths =
-        Reader.list ~sep:Reader.ws ~at_least:1 ~at_most:2 read_length t
+        Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_length t
       in
       v Border_spacing lengths
   | Border_collapse -> v Border_collapse (read_border_collapse t)
@@ -821,9 +775,9 @@ let is_font_family_var name =
 
 let read_custom_property_declaration t : declaration =
   let name = read_property_name t in
-  Reader.ws t;
-  Reader.expect ':' t;
-  Reader.ws t;
+  Cursor.ws t;
+  Cursor.expect ':' t;
+  Cursor.ws t;
   let value_str = read_property_value t in
   let is_important = read_importance t in
   (* custom_property may raise Failure for invalid names like "--" *)
@@ -834,69 +788,66 @@ let read_custom_property_declaration t : declaration =
         if String.length trimmed >= 4 && String.sub trimmed 0 4 = "var(" then
           custom_property name value_str
         else
-          match Reader.of_string value_str |> read_font_family with
+          match Cursor.of_string value_str |> read_font_family with
           | ff -> custom_declaration name Font_family ff
           | exception _ -> custom_property name value_str
       else custom_property name value_str
     in
     if is_important then important decl else decl
-  with Failure msg -> Reader.err_invalid t msg
+  with Failure msg -> Cursor.err_invalid t msg
 
 (** Parse a regular property (name: value) *)
 let read_regular_property_declaration t : declaration =
   let (Prop prop_type) = read_any_property t in
-  Reader.ws t;
-  Reader.expect ':' t;
-  Reader.ws t;
+  Cursor.ws t;
+  if not (Cursor.colon t) then Cursor.err_expected t "':'";
+  Cursor.ws t;
   let decl = read_value prop_type t in
   validate_no_extra_tokens t;
   let is_important = read_importance t in
   validate_no_extra_tokens t;
-  (match Reader.peek t with
-  | Some '!' -> Reader.err_invalid t "duplicate !important"
+  (match Cursor.peek_delim t with
+  | Some '!' -> Cursor.err_invalid t "duplicate !important"
   | _ -> ());
   if is_important then important decl else decl
 
 (** Parse a single declaration directly from stream - no string roundtrips *)
 let read_declaration t : declaration option =
   let read_one () =
-    Reader.with_context t "read_declaration" @@ fun () ->
+    Cursor.with_context t "read_declaration" @@ fun () ->
     (* Check if this is a custom property (starts with --) *)
-    if Reader.looking_at t "--" then read_custom_property_declaration t
+    if Cursor.looking_at t "--" then read_custom_property_declaration t
     else read_regular_property_declaration t
   in
-  Reader.ws t;
-  match Reader.peek t with
-  | Some '}' -> None (* End of block - no more declarations *)
+  Cursor.ws t;
+  match Cursor.peek t with
   | None -> None (* EOF is acceptable at top-level parsing *)
-  | Some c ->
-      (* Check if content looks like a selector rather than a declaration.
-         Selector-like characters (., #, [, *, :, &) indicate nested rules. *)
-      if c = '.' || c = '#' || c = '[' || c = '*' || c = ':' || c = '&' then
-        None
-      else Some (read_one ())
+  | Some (Component.Preserved { kind = Token.Colon; _ })
+  | Some (Component.Preserved { kind = Token.Hash _; _ })
+  | Some (Component.Block { node = { opening = Token.Square; _ }; _ })
+  | Some (Component.Preserved { kind = Token.Delim ('.' | '*' | '&'); _ }) ->
+      (* Selector-like components indicate a nested rule. *)
+      None
+  | Some _ -> Some (read_one ())
 
 let read_declarations t =
-  Reader.with_context t "declarations" @@ fun () ->
+  Cursor.with_context t "declarations" @@ fun () ->
   let rec check_separator acc =
-    Reader.ws t;
-    match Reader.peek t with
-    | Some '}' -> List.rev acc (* End of block, no semicolon needed *)
-    | Some ';' ->
-        Reader.expect ';' t;
-        loop acc
+    Cursor.ws t;
+    match Cursor.peek t with
     | None -> List.rev acc (* End of input *)
+    | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
+        Cursor.skip t;
+        loop acc
+    | Some (Component.Preserved { kind = Token.Ident _; _ }) ->
+        Cursor.err t "missing semicolon between declarations"
     | _ ->
-        (* Check if we have more tokens that look like a new v *)
-        if Reader.is_ident_start (Option.value (Reader.peek t) ~default:' ')
-        then Reader.err t "missing semicolon between declarations"
-        else
-          (* Some other character - let the next iteration handle it *)
-          List.rev acc
+        (* Some other component - let the next iteration handle it *)
+        List.rev acc
   and loop acc =
-    Reader.ws t;
-    match Reader.peek t with
-    | Some '}' | None -> List.rev acc
+    Cursor.ws t;
+    match Cursor.peek t with
+    | None -> List.rev acc
     | _ -> (
         match read_declaration t with
         | None -> List.rev acc
@@ -908,12 +859,12 @@ let read_declarations t =
   loop []
 
 let read_block t =
-  Reader.ws t;
-  Reader.expect '{' t;
-  Reader.ws t;
+  Cursor.ws t;
+  Cursor.expect '{' t;
+  Cursor.ws t;
   let decls = read_declarations t in
-  Reader.ws t;
-  Reader.expect '}' t;
+  Cursor.ws t;
+  Cursor.expect '}' t;
   decls
 
 (* Pretty printer for declarations *)
