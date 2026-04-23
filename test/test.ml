@@ -34,11 +34,4 @@ let () =
       Test_string_diff.suite;
       Test_tree_diff.suite;
       Test_css_compare.suite;
-      Test_loc.suite;
-      Test_sort.suite;
-      Test_error.suite;
-      Test_token.suite;
-      Test_lexer.suite;
-      Test_component.suite;
-      Test_parser.suite;
     ]

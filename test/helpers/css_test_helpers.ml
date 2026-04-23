@@ -35,6 +35,47 @@ let test_css_wide_keywords_mixing reader css_wide_keywords prop_name =
       neg reader (prop_name ^ ": 10px " ^ keyword))
     css_wide_keywords
 
+(** Cursor-based variant of {!neg}. *)
+let neg_cursor parse input =
+  let c = Css.Cursor.of_string input in
+  match parse c with
+  | exception Css.Error.Parse_error _ -> ()
+  | _ ->
+      if Css.Cursor.is_done c then
+        Alcotest.failf "Expected '%s' to fail parsing" input
+
+(** Cursor-based variant of {!none}: the parser returns an option and should
+    yield [None] for malformed input (or raise). *)
+let none_cursor parse input =
+  let c = Css.Cursor.of_string input in
+  match parse c with
+  | None -> ()
+  | Some _ -> Alcotest.failf "expected no value for %S" input
+  | exception Css.Error.Parse_error _ -> ()
+
+(** Test that [parse] rejects [input] with an [Error.t] whose rendered string
+    matches [expected] exactly. *)
+let check_error parse input expected =
+  let c = Css.Cursor.of_string input in
+  match parse c with
+  | _ -> Alcotest.failf "expected Parse_error for %S" input
+  | exception Css.Error.Parse_error e ->
+      Alcotest.(check string)
+        (Fmt.str "error for %S" input)
+        expected (Css.Error.to_string e)
+
+(** Cursor-based variant of {!check_value}. Lexes [input], builds a
+    {!Css.Cursor.t}, applies [parse], pretty-prints with [pp_func], and asserts
+    the round-trip equals [input] (or [expected]). Use this for parsers whose
+    signature is [Cursor.t -> 'a]. *)
+let check_value_cursor type_name parse pp_func ?(minify = true) ?expected input
+    =
+  let expected = Option.value ~default:input expected in
+  let c = Css.Cursor.of_string input in
+  let v = parse c in
+  let s = Css.Pp.to_string ~minify pp_func v in
+  Alcotest.(check string) (Fmt.str "%s %s" type_name input) expected s
+
 (** Generic check function for CSS value types - handles parse/print testing *)
 let check_value type_name reader pp_func ?(minify = true) ?(roundtrip = false)
     ?expected input =

@@ -31,6 +31,30 @@ val check_value :
     tests that parsing input produces the expected output when pretty-printed.
     Optionally tests roundtrip stability (parse -> print -> parse -> print). *)
 
+val neg_cursor : (Css.Cursor.t -> 'a) -> string -> unit
+(** Cursor-based variant of {!neg}. *)
+
+val none_cursor : (Css.Cursor.t -> 'a option) -> string -> unit
+(** Cursor-based variant of {!none}. *)
+
+val check_error : (Css.Cursor.t -> 'a) -> string -> string -> unit
+(** [check_error parse input expected] asserts that [parse] applied to a cursor
+    over [input] raises {!Css.Error.Parse_error} whose rendered message equals
+    [expected]. Use to pin down error shape exactly. *)
+
+val check_value_cursor :
+  string ->
+  (Css.Cursor.t -> 'a) ->
+  'a Css.Pp.t ->
+  ?minify:bool ->
+  ?expected:string ->
+  string ->
+  unit
+(** [check_value_cursor type_name parse pp_func ?minify ?expected input] is the
+    {!Css.Cursor.t}-based variant of {!check_value}: lexes [input] into a
+    cursor, applies [parse], pretty-prints with [pp_func], and asserts the
+    round-trip equals [input] (or [expected]). *)
+
 val check_parse_error_fields :
   string -> Css.Reader.parse_error -> Css.Reader.parse_error -> unit
 (** [check_parse_error_fields name expected actual] compares message and got

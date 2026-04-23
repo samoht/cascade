@@ -4785,14 +4785,15 @@ module Pp = Pp
 
 (**/**)
 
-module Loc = Loc
-module Sort = Sort
-module Error = Error
 module Reader = Reader
+module Loc = Loc
 module Token = Token
 module Lexer = Lexer
 module Component = Component
 module Parser = Parser
+module Cursor = Cursor
+module Sort = Sort
+module Error = Error
 module Values = Values
 module Properties = Properties
 module Declaration = Declaration

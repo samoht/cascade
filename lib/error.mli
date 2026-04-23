@@ -21,7 +21,11 @@ type kind =
   | Unterminated of Sort.t
       (** Hit EOF inside a {!Sort.t} that needed a closing delimiter. *)
 
-type t = { loc : Loc.t; sort : Sort.t; kind : kind }
+type t = { loc : Loc.t; sort : Sort.t; path : string list; kind : kind }
+(** The [path] is a breadcrumb trail from the outermost context down to the
+    exact sub-production that failed, rendered with ["/"] separators (e.g.
+    [":is()/1"] means "first complex selector inside [:is()]"). Empty when the
+    error happens at the outermost level. *)
 
 val pp_kind : kind Pp.t
 (** [pp_kind] renders just the reason, e.g.
@@ -33,35 +37,79 @@ val pp : t Pp.t
 
 val to_string : t -> string
 
-(** {1 Named constructors}
+(** {1 Construction and raising}
 
-    Use these at call sites instead of building records by hand — they give the
-    parser a vocabulary that maps one-to-one with the spec. *)
+    Two flavours, [Stdlib.failwith]-style:
+
+    - Value constructors ([sort_mismatch], [bad_selector], ...) build an {!t}.
+      Use when collecting non-fatal warnings, e.g. {!Parser.parse_stylesheet}.
+    - Raising constructors ([fail_sort_mismatch], [fail_bad_selector], ...)
+      build the same error and immediately raise {!Parse_error}. Use at the
+      point of failure inside a decoder. *)
+
+exception Parse_error of t
+(** Raised by parsers (and the {!Cursor} helpers) on the first unrecoverable
+    failure. *)
+
+val fail : t -> 'a
+(** Raises {!Parse_error} with the given value. *)
+
+val with_context : string -> (unit -> 'a) -> 'a
+(** [with_context label f] runs [f ()] and, on a raised {!Parse_error}, prepends
+    [label] to the error's {!t.path}. Compose on every descent into a named
+    sub-production ([:is()], [[attr]], [nth-child], ...) to build breadcrumb
+    paths like [":is()/.foo"]. *)
+
+val v : loc:Loc.t -> sort:Sort.t -> kind -> t
+(** [v ~loc ~sort kind] builds an [Error.t] with an empty path. *)
+
+(** {2 Value constructors} *)
 
 val sort_mismatch : Loc.t -> sort:Sort.t -> expected:Sort.t -> found:Sort.t -> t
-(** [sort_mismatch loc ~sort ~expected ~found] flags a category mismatch, e.g.
-    an [At_rule] where a [Declaration] was needed. *)
+(** [sort_mismatch loc ~sort ~expected ~found] flags a category mismatch. *)
 
 val unexpected_token : Loc.t -> sort:Sort.t -> Token.kind -> t
-(** [unexpected_token loc ~sort k] flags a stray token in the production
-    labelled by [sort]. *)
+(** [unexpected_token loc ~sort k] flags a stray token in a [sort] production.
+*)
 
 val missing_token : Loc.t -> sort:Sort.t -> string -> t
 (** [missing_token loc ~sort what] flags an expected lexeme that wasn't found.
-    [what] is its short description, e.g. ["';'"]. *)
+*)
 
 val bad_selector : Loc.t -> string -> t
-(** [bad_selector loc reason] flags a selector the validator rejected; [reason]
-    is a short human-readable note. *)
+(** [bad_selector loc reason] flags a selector the validator rejected. *)
 
 val bad_value : Loc.t -> property:string -> reason:string -> t
-(** [bad_value loc ~property ~reason] flags a declaration whose right-hand side
-    failed validation for the given [property]. *)
+(** [bad_value loc ~property ~reason] flags a failed property value. *)
 
 val unknown_at_rule : Loc.t -> string -> t
-(** [unknown_at_rule loc name] flags an [\@name] keyword with no registered
-    handler. *)
+(** [unknown_at_rule loc name] flags an [\@name] keyword with no handler. *)
 
 val unterminated : Loc.t -> Sort.t -> t
-(** [unterminated loc s] flags an EOF reached while still inside a node of sort
-    [s] that needed a closing delimiter. *)
+(** [unterminated loc s] flags an EOF inside an unclosed node of sort [s]. *)
+
+(** {2 Raising constructors}
+
+    [fail_x args] is [fail (x args)]. *)
+
+val fail_sort_mismatch :
+  Loc.t -> sort:Sort.t -> expected:Sort.t -> found:Sort.t -> 'a
+(** [fail_sort_mismatch loc ~sort ~expected ~found] raises {!sort_mismatch}. *)
+
+val fail_unexpected_token : Loc.t -> sort:Sort.t -> Token.kind -> 'a
+(** [fail_unexpected_token loc ~sort k] raises {!unexpected_token}. *)
+
+val fail_missing_token : Loc.t -> sort:Sort.t -> string -> 'a
+(** [fail_missing_token loc ~sort what] raises {!missing_token}. *)
+
+val fail_bad_selector : Loc.t -> string -> 'a
+(** [fail_bad_selector loc reason] raises {!bad_selector}. *)
+
+val fail_bad_value : Loc.t -> property:string -> reason:string -> 'a
+(** [fail_bad_value loc ~property ~reason] raises {!bad_value}. *)
+
+val fail_unknown_at_rule : Loc.t -> string -> 'a
+(** [fail_unknown_at_rule loc name] raises {!unknown_at_rule}. *)
+
+val fail_unterminated : Loc.t -> Sort.t -> 'a
+(** [fail_unterminated loc s] raises {!unterminated}. *)
