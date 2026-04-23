@@ -881,7 +881,21 @@ and read_nested_at_within_rule (r : Reader.t) (selector : Selector.t) :
 
 and read_rule (r : Reader.t) : rule =
   Reader.with_context r "rule" @@ fun () ->
-  let selector = Selector.read_selector_list r in
+  let selector =
+    let parser = Parser.of_reader r in
+    let rec collect acc =
+      match Reader.peek r with
+      | None | Some '{' -> List.rev acc
+      | _ -> (
+          let cv = Parser.next parser in
+          match cv with
+          | Component.Preserved { kind = Token.Eof; _ } -> List.rev acc
+          | _ -> collect (cv :: acc))
+    in
+    let c = Cursor.of_components (collect []) in
+    try Selector.read_selector_list c
+    with Error.Parse_error e -> Reader.err r (Error.to_string e)
+  in
   Reader.ws r;
   Reader.expect '{' r;
   (* Helper to handle cases where no declaration is parsed *)

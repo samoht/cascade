@@ -4,10 +4,13 @@ open Cascade
 open Css.Selector
 open Css_test_helpers
 
-let check_nth = check_value "nth" read_nth pp_nth
-let check_combinator = check_value "combinator" read_combinator pp_combinator
-let check = check_value "selector" read pp
-let check_ns = check_value "ns" read_ns (Css.Pp.option pp_ns)
+let check_nth = check_value_cursor "nth" read_nth pp_nth
+
+let check_combinator =
+  check_value_cursor "combinator" read_combinator pp_combinator
+
+let check = check_value_cursor "selector" read pp
+let check_ns = check_value_cursor "ns" read_ns (Css.Pp.option pp_ns)
 let check_aria_attr = check_value_cursor "aria_attr" read_aria_attr pp_aria_attr
 let check_attr_name = check_value_cursor "attr_name" read_attr_name pp_attr_name
 
@@ -17,14 +20,6 @@ let check_invalid name exn_msg f =
 
 let check_construct expected selector =
   check_construct expected (to_string ~minify:true) expected selector
-
-(* Helper to check that a function returning an option returns None *)
-let none : type a. (Css.Reader.t -> a option) -> string -> unit =
- fun reader input ->
-  let t = Css.Reader.of_string input in
-  match reader t with
-  | None -> ()
-  | Some _ -> Alcotest.failf "Expected no value for '%s' but found one" input
 
 (* Not a roundtrip test *)
 let element_cases () =
@@ -312,17 +307,17 @@ let attribute_cases () =
   check_construct "[*|attr]" (attribute ~ns:Any "attr" Presence);
 
   (* Negative cases *)
-  neg read "[";
+  neg_cursor read "[";
   (* Missing closing ] *)
-  neg read "[attr=]";
+  neg_cursor read "[attr=]";
   (* Missing value *)
-  neg read "[=value]";
+  neg_cursor read "[=value]";
   (* Empty attribute name *)
-  neg read "[attr&=value]";
+  neg_cursor read "[attr&=value]";
   (* Invalid operator *)
-  neg read "[attr=\"value]";
+  neg_cursor read "[attr=\"value]";
   (* Unterminated string *)
-  neg read "[]" (* Empty attribute *)
+  neg_cursor read "[]" (* Empty attribute *)
 
 (* Not a roundtrip test *)
 let combinator_cases () =
@@ -399,11 +394,11 @@ let list_cases () =
   (* Many items *)
 
   (* Negative tests for malformed lists - should fail parsing *)
-  neg read ".a,";
+  neg_cursor read ".a,";
   (* Trailing comma is invalid *)
-  neg read ",.b";
+  neg_cursor read ",.b";
   (* Leading comma is invalid *)
-  neg read ".a,,b";
+  neg_cursor read ".a,,b";
   (* Double comma is invalid *)
   ()
 
@@ -575,11 +570,10 @@ let invalid () =
   (* Both class_ and id now accept special characters and escape them during output *)
   (* These are tested in test_class_escaping and test_id_escaping *)
 
-  (* Parsing invalid selector strings via Reader.option to avoid exceptions *)
-  let open Css.Reader in
+  (* Parsing invalid selector strings via Cursor.option to avoid exceptions *)
   let neg_parse s label =
-    let r = of_string s in
-    Alcotest.(check bool) label true (Option.is_none (Css.Reader.option read r))
+    let c = Css.Cursor.of_string s in
+    Alcotest.(check bool) label true (Option.is_none (Css.Cursor.option read c))
   in
   neg_parse "[href" "unterminated attribute selector";
   neg_parse ":nth-child(2n+)" "invalid nth-child syntax";
@@ -590,15 +584,16 @@ let invalid () =
 
 (* Test broken selectors with Parse_error exceptions *)
 let check_parse_error input expected_msg =
-  let t = Css.Reader.of_string input in
+  let t = Css.Cursor.of_string input in
   try
     let _ = read t in
     Alcotest.failf "expected Parse_error for '%s' but parsing succeeded" input
   with
-  | Css.Reader.Parse_error err ->
-      if err.message <> expected_msg then
+  | Css.Cursor.Parse_error err ->
+      let got = Css.Error.to_string err in
+      if got <> expected_msg then
         Alcotest.failf "For input '%s':\n  expected: '%s'\n  got: '%s'" input
-          expected_msg err.message
+          expected_msg got
   | exn ->
       Alcotest.failf "For '%s': expected Parse_error but got %s" input
         (Printexc.to_string exn)
@@ -660,24 +655,25 @@ let contains_substring haystack needle =
     loop 0
 
 let check_callstack name input expected_stack_parts =
-  let t = Css.Reader.of_string input in
+  let t = Css.Cursor.of_string input in
   try
     let _ = read t in
     Alcotest.failf "%s: expected Parse_error but parsing succeeded" name
   with
-  | Css.Reader.Parse_error err ->
-      let callstack_str = String.concat " -> " err.callstack in
+  | Css.Cursor.Parse_error err ->
+      let callstack_str = String.concat " -> " err.path in
       List.iter
         (fun stack_item ->
           if Bool.not @@ contains_substring callstack_str stack_item then
             Alcotest.failf "%s: expected callstack containing '%s' but got '%s'"
               name stack_item callstack_str)
         expected_stack_parts;
-      if err.position < 0 then
+      if err.loc.start_pos < 0 then
         Alcotest.failf "%s: position should be >= 0 but got %d" name
-          err.position;
-      if String.length err.context_window = 0 then
-        Alcotest.failf "%s: context_window should not be empty" name
+          err.loc.start_pos;
+      if err.loc.start_pos > err.loc.end_pos then
+        Alcotest.failf "%s: loc span should be non-empty but got [%d,%d]" name
+          err.loc.start_pos err.loc.end_pos
   | exn ->
       Alcotest.failf "%s: expected Parse_error but got %s" name
         (Printexc.to_string exn)
@@ -744,7 +740,7 @@ let component_parsing () =
 let test_attribute_match () =
   (* Test attribute matching types - these parse just the operator part *)
   let check_attribute_match =
-    check_value "attribute_match" read_attribute_match pp_attribute_match
+    check_value_cursor "attribute_match" read_attribute_match pp_attribute_match
   in
 
   (* Presence match - empty string yields Presence *)
@@ -763,13 +759,13 @@ let test_attribute_match () =
   check_attribute_match "*=substring";
 
   (* Test invalid attribute matches *)
-  neg read_attribute_match "%=invalid";
+  neg_cursor read_attribute_match "%=invalid";
   (* Invalid operator *)
-  neg read_attribute_match "!=not-equal";
+  neg_cursor read_attribute_match "!=not-equal";
   (* Not supported *)
-  neg read_attribute_match "=";
+  neg_cursor read_attribute_match "=";
   (* Missing value *)
-  neg read_attribute_match "~=" (* Missing value *)
+  neg_cursor read_attribute_match "~=" (* Missing value *)
 
 (* Not a roundtrip test *)
 let test_attr_value_quoting () =
@@ -833,7 +829,9 @@ let test_attr_value_quoting () =
 
 let test_attr_flag () =
   (* Test attribute selector flags - returns option type *)
-  let check_attr_flag = check_value "attr_flag" read_attr_flag pp_attr_flag in
+  let check_attr_flag =
+    check_value_cursor "attr_flag" read_attr_flag pp_attr_flag
+  in
 
   (* Case insensitive flag *)
   check_attr_flag ~expected:" i" "i";
@@ -843,13 +841,13 @@ let test_attr_flag () =
   check_attr_flag "";
 
   (* Test invalid flags using neg *)
-  neg read_attr_flag "x";
+  neg_cursor read_attr_flag "x";
   (* Invalid flag *)
-  neg read_attr_flag "I";
+  neg_cursor read_attr_flag "I";
   (* Wrong case *)
-  neg read_attr_flag "S";
+  neg_cursor read_attr_flag "S";
   (* Wrong case *)
-  neg read_attr_flag "is" (* Multiple characters *)
+  neg_cursor read_attr_flag "is" (* Multiple characters *)
 
 (* Not a roundtrip test *)
 let test_attr_case_sensitivity_flags () =
@@ -906,10 +904,10 @@ let test_combinator () =
   check_combinator "||";
 
   (* Test invalid combinators using neg *)
-  neg read_combinator "!";
-  neg read_combinator "&";
-  neg read_combinator "#";
-  neg read_combinator ""
+  neg_cursor read_combinator "!";
+  neg_cursor read_combinator "&";
+  neg_cursor read_combinator "#";
+  neg_cursor read_combinator ""
 
 let test_ns () =
   (* Test namespace type *)
@@ -918,19 +916,19 @@ let test_ns () =
   check_ns "*|";
 
   (* Test invalid namespace syntax *)
-  neg read_ns "|";
+  neg_cursor read_ns "|";
   (* Just pipe without namespace *)
-  neg read_ns "||";
-  neg read_ns "svg";
+  neg_cursor read_ns "||";
+  neg_cursor read_ns "svg";
   (* Missing pipe *)
-  neg read_ns "svg||";
+  neg_cursor read_ns "svg||";
 
   (* Double pipe *)
 
   (* Test cases that should return None (no namespace found) *)
-  none read_ns "notanamespace";
-  none read_ns "incomplete";
-  none read_ns "";
+  none_cursor read_ns "notanamespace";
+  none_cursor read_ns "incomplete";
+  none_cursor read_ns "";
 
   (* Test namespaced element selectors *)
   check "svg|rect";
@@ -978,10 +976,10 @@ let test_nth () =
   check_nth "5";
 
   (* Test invalid nth values *)
-  neg read_nth "invalid";
-  neg read_nth "";
-  neg read_nth "2 n";
-  neg read_nth "n+";
+  neg_cursor read_nth "invalid";
+  neg_cursor read_nth "";
+  neg_cursor read_nth "2 n";
+  neg_cursor read_nth "n+";
   ()
 
 let test_selector () =
@@ -996,21 +994,21 @@ let test_selector () =
   check ".parent .child";
 
   (* Test invalid selectors *)
-  neg read "123invalid";
+  neg_cursor read "123invalid";
   (* Can't start with digit *)
-  neg read "";
+  neg_cursor read "";
   (* Empty selector *)
-  neg read ".";
+  neg_cursor read ".";
   (* Incomplete class *)
-  neg read "#";
+  neg_cursor read "#";
   (* Incomplete id *)
-  neg read "[";
+  neg_cursor read "[";
   (* Incomplete attribute *)
-  neg read ":";
+  neg_cursor read ":";
   (* Incomplete pseudo *)
-  neg read "::";
+  neg_cursor read "::";
   (* Incomplete pseudo-element *)
-  neg read "...invalid";
+  neg_cursor read "...invalid";
   (* Multiple dots *)
   ()
 
