@@ -5431,6 +5431,7 @@ let rec read_font_family_single t : font_family =
   | Some (Component.Preserved { kind = Token.String _; _ }) ->
       (* Quoted string *)
       Name (Cursor.string t)
+  | Some (Component.Func { node = { name = "var"; _ }; _ }) -> read_var t
   | Some (Component.Preserved { kind = Token.Ident _; _ }) ->
       (* Peek ahead to see if this is multi-word or single-word *)
       let is_multi_word =
