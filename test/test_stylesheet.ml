@@ -701,7 +701,8 @@ let test_of_string_negative () =
 
   (* Basic syntax errors *)
   test_invalid_css ".btn { color: }" "empty property value";
-  test_invalid_css ".btn { color: red; " "unclosed brace";
+  (* Unclosed brace is recovered per CSS Syntax §5.3.7 — blocks auto-close at
+     EOF. Verified as a positive case below in test_invalid_syntax. *)
   test_invalid_css "{ color: red; }" "missing selector";
   test_invalid_css ".btn { invalid-property-that-does-not-exist: red; }"
     "invalid property name";
@@ -751,11 +752,10 @@ let test_of_string_negative () =
   (* Important declaration errors *)
   test_invalid_css ".btn { color: red !importent; }" "misspelled !important";
 
-  (* String and quote errors *)
-  test_invalid_css ".btn { content: 'unclosed string; }" "unclosed single quote";
-  test_invalid_css ".btn { content: \"unclosed string; }"
-    "unclosed double quote";
-  test_invalid_css ".btn { content: 'mixed quotes\"; }" "mixed quote types";
+  (* String and quote errors — per CSS Syntax §4.3.5, an unterminated string at
+     EOF is a parse-error warning but still yields a [<string-token>] whose
+     contents run to EOF. The outer block then auto-closes per §5.3.7. So these
+     are recovered (positive) cases, not hard errors. *)
 
   (* Vendor prefix validation *)
   test_invalid_css ".btn { -invalid-vendor-transform: rotate(45deg); }"
@@ -787,8 +787,10 @@ let test_of_string_negative () =
   (* Specificity and cascade errors *)
   test_invalid_css "btn.#id { color: red; }" "invalid selector combination";
 
-  (* Unicode and encoding errors *)
-  test_invalid_css ".btn { content: '\\'; }" "incomplete escape sequence";
+  (* Unicode and encoding errors — per §4.3.5 an unterminated string at EOF
+     still produces a [<string-token>]; the [\\'] escape consumes the next [\'],
+     extending the string past the semicolon. This is recovered per §5.3.7, not
+     a hard error. *)
 
   (* According to CSS spec section 4.3.7, \g is a valid escape that produces 'g'
      So '\gggg' is valid CSS and should parse successfully. *)
@@ -881,7 +883,10 @@ let test_import_rule () =
   (* Missing quotes *)
   neg_cursor read_import_rule "import 'test.css'";
   (* Missing @ *)
-  neg_cursor read_import_rule "@import 'test.css" (* Unclosed quote *)
+  (* Unclosed quote at EOF — per CSS Syntax §4.3.5 the lexer still returns a
+     string-token (the ill-formedness is a parse-error warning, not a
+     token-level failure), so [\@import 'test.css] parses as a valid import. *)
+  check_import_rule ~expected:"@import \"test.css\";" "@import 'test.css"
 
 let test_config () =
   (* Test config parsing - configs are rendering configuration objects, not CSS
@@ -984,7 +989,10 @@ let test_invalid_properties () =
 
 (* Not a roundtrip test *)
 let test_invalid_syntax () =
-  expect_parse_error ".btn { color: red ";
+  (* CSS Syntax §5.3.7: unclosed blocks auto-close at EOF and the inner
+     declaration is preserved. Verify the AST, don't just accept "didn't
+     crash". *)
+  check_stylesheet ~expected:".btn{color:red}" ".btn { color: red ";
   expect_parse_error ".btn color: red; }";
   expect_parse_error "{ color: red; }";
   expect_parse_error ".btn { : red; }";

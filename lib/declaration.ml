@@ -61,16 +61,7 @@ let read_property_name t =
     like "10px 20px" serialise back with their spaces. *)
 let read_property_value t =
   Cursor.with_context t "property-value" @@ fun () ->
-  let rec drain acc =
-    match Cursor.peek_raw t with
-    | None -> List.rev acc
-    | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> List.rev acc
-    | Some (Component.Preserved { kind = Token.Delim '!'; _ }) -> List.rev acc
-    | Some cv ->
-        ignore (Cursor.next_raw t : Component.t option);
-        drain (cv :: acc)
-  in
-  String.trim (Parser.to_string (drain []))
+  Cursor.consume_to_decl_end ~trim:true t
 
 (** Check for and consume [!important] (case-insensitive per CSS Syntax). *)
 let read_importance t =
@@ -198,18 +189,7 @@ let validate_no_extra_tokens t =
   | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> ()
   | Some (Component.Preserved { kind = Token.Delim '!'; _ }) -> ()
   | Some _ ->
-      let rec drain acc =
-        match Cursor.peek t with
-        | None -> List.rev acc
-        | Some
-            (Component.Preserved { kind = Token.Semicolon | Token.Delim '!'; _ })
-          ->
-            List.rev acc
-        | Some cv ->
-            Cursor.skip t;
-            drain (cv :: acc)
-      in
-      let trimmed = String.trim (Parser.to_string (drain [])) in
+      let trimmed = Cursor.consume_to_decl_end ~trim:true t in
       if trimmed <> "" then
         Cursor.err_invalid t
           ("unexpected tokens after property value: " ^ trimmed)
@@ -265,17 +245,7 @@ let rec read_opacity t : opacity =
 
 (* Helper to read raw property value - for properties that accept any text.
    Drain components (preserving whitespace) up to the next [;] or [!] delim. *)
-let read_raw_value t =
-  let rec drain acc =
-    match Cursor.peek_raw t with
-    | None -> List.rev acc
-    | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> List.rev acc
-    | Some (Component.Preserved { kind = Token.Delim '!'; _ }) -> List.rev acc
-    | Some cv ->
-        ignore (Cursor.next_raw t : Component.t option);
-        drain (cv :: acc)
-  in
-  String.trim (Parser.to_string (drain []))
+let read_raw_value t = Cursor.consume_to_decl_end ~trim:true t
 
 (* Delegate to the proper reader in Properties *)
 let read_translate_value t : Properties_intf.translate_value =
@@ -866,7 +836,7 @@ let read_declarations t =
 
 let read_block t =
   Cursor.ws t;
-  Cursor.braces t @@ fun inner -> read_declarations inner
+  Cursor.braces (fun inner -> read_declarations inner) t
 
 (* Pretty printer for declarations *)
 let rec pp_declaration : declaration Pp.t =

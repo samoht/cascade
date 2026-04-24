@@ -6,13 +6,7 @@ let err_invalid_value ?got t prop_name value =
 
 (* Helper to read var(...) body as string *)
 let read_var_body t : string =
-  Cursor.call "var" t (fun t ->
-      let rec drain acc =
-        match Cursor.next_raw t with
-        | None -> List.rev acc
-        | Some cv -> drain (cv :: acc)
-      in
-      Parser.to_string (drain []))
+  Cursor.call "var" t Cursor.consume_remaining_to_string
 
 (* Generic length parsing helpers *)
 let read_line_height_length t : line_height =
@@ -774,10 +768,9 @@ module Cursor_prop = struct
     let (url, hotspot) : string * (float * float) option =
       (* Bare [url(foo.cur)] is a [Token.Url]; quoted [url("foo.cur")] is a
          [Func "url"] — handle both. *)
-      match Cursor.peek t with
-      | Some (Component.Preserved { kind = Token.Url _; _ }) ->
-          (Cursor.url t, None)
-      | _ -> Cursor.call "url" t read_url_with_hotspot
+      match Cursor.url_opt t with
+      | Some url -> (url, None)
+      | None -> Cursor.call "url" t read_url_with_hotspot
     in
     Cursor.ws t;
     let hotspot = or_else (read_optional_hotspot t) hotspot in
@@ -1150,8 +1143,9 @@ let pp_color_interpolation : color_interpolation Pp.t =
 let read_color_interpolation (t : Cursor.t) : color_interpolation =
   Cursor.with_context t "color-interpolation" (fun () ->
       Cursor.expect_string "in" t;
-      (* Require at least one space after 'in' to avoid 'inoklab' *)
-      Cursor.expect ' ' t;
+      (* At the component-value level, [in oklab] lexes as two separate idents;
+         [inoklab] lexes as a single ident and would fail [expect_string "in"]
+         above, so no extra whitespace check is needed here. *)
       let space = Cursor.ident t in
       match space with
       | "oklab" -> In_oklab
@@ -4287,30 +4281,17 @@ let read_grid_auto_flow t : grid_auto_flow =
 (* CSS Grid template - flattened type with direct constructors *)
 
 let read_span_arbitrary t : grid_line =
-  let buf = Buffer.create 32 in
-  Buffer.add_string buf "span ";
-  let rec loop () =
-    match Cursor.peek t with
-    | None -> ()
-    | Some (Component.Preserved { kind = Token.Delim '/'; _ }) -> ()
-    | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> ()
-    | Some cv ->
-        Buffer.add_string buf (Component.to_string cv);
-        Cursor.skip t;
-        loop ()
-  in
-  loop ();
-  Arbitrary (String.trim (Buffer.contents buf))
+  let tail = Cursor.consume_to_slash_or_semicolon ~trim:true t in
+  Arbitrary (if tail = "" then "span" else "span " ^ tail)
 
 let read_grid_line t : grid_line =
   let read_span_num t =
     let span_word = Cursor.ident t in
     if span_word = "span" then (
       Cursor.ws t;
-      match Cursor.peek t with
-      | Some (Component.Preserved { kind = Token.Number_tok _; _ }) ->
-          Span (Cursor.int t)
-      | _ -> read_span_arbitrary t)
+      match Cursor.lookahead (Cursor.option Cursor.number) t with
+      | Some _ -> Span (Cursor.int t)
+      | None -> read_span_arbitrary t)
     else Cursor.err t ("Expected 'span' but got " ^ span_word)
   in
   let read_number t : grid_line = Num (Cursor.int t) in
@@ -4318,10 +4299,9 @@ let read_grid_line t : grid_line =
     let name = Cursor.ident t in
     if name = "span" then (
       Cursor.ws t;
-      match Cursor.peek t with
-      | Some (Component.Preserved { kind = Token.Number_tok _; _ }) ->
-          Span (Cursor.int t)
-      | _ -> read_span_arbitrary t)
+      match Cursor.lookahead (Cursor.option Cursor.number) t with
+      | Some _ -> Span (Cursor.int t)
+      | None -> read_span_arbitrary t)
     else Name name
   in
   let read_calc_int t : grid_line =
@@ -4569,18 +4549,18 @@ let read_list_style_position t : list_style_position =
     t
 
 let rec read_list_style_image t : list_style_image =
-  let read_url t =
-    Cursor.call "url" t (fun t -> (Url (read_url_arg t) : list_style_image))
-  in
+  let read_url t = (Url (Cursor.url t) : list_style_image) in
   let read_var t : list_style_image = Var (read_var read_list_style_image t) in
-  match Cursor.peek t with
-  | Some (Component.Preserved { kind = Token.Url _; _ }) ->
-      (Url (Cursor.url t) : list_style_image)
-  | _ ->
-      Cursor.enum_or_calls "list-style-image"
-        [ ("none", (None : list_style_image)); ("inherit", Inherit) ]
-        ~calls:[ ("url", read_url); ("var", read_var) ]
-        t
+  Cursor.one_of
+    [
+      read_url;
+      (fun t ->
+        Cursor.enum_or_calls "list-style-image"
+          [ ("none", (None : list_style_image)); ("inherit", Inherit) ]
+          ~calls:[ ("var", read_var) ]
+          t);
+    ]
+    t
 
 let read_table_layout t : table_layout =
   Cursor.enum "table-layout"
@@ -4996,19 +4976,20 @@ let read_svg_paint t : svg_paint =
   in
   (* Bare [url(#grad)] is a single [Token.Url] component; handle before the
      function/ident dispatch. *)
-  match Cursor.peek t with
-  | Some (Component.Preserved { kind = Token.Url _; _ }) ->
-      read_url_with_fallback t
-  | _ ->
-      Cursor.enum_or_calls "svg-paint"
-        [
-          ("none", (None : svg_paint));
-          ("inherit", Inherit);
-          ("currentcolor", Current_color);
-        ]
-        ~calls:[ ("url", read_url_with_fallback) ]
-        ~default:(fun t -> (Color (read_color t) : svg_paint))
-        t
+  Cursor.one_of
+    [
+      read_url_with_fallback;
+      (fun t ->
+        Cursor.enum_or_calls "svg-paint"
+          [
+            ("none", (None : svg_paint));
+            ("inherit", Inherit);
+            ("currentcolor", Current_color);
+          ]
+          ~default:(fun t -> (Color (read_color t) : svg_paint))
+          t);
+    ]
+    t
 
 let read_direction t : direction =
   Cursor.enum "direction"
@@ -5059,9 +5040,8 @@ let read_webkit_appearance t : webkit_appearance =
 
 let read_text_size_adjust t : text_size_adjust =
   Cursor.ws t;
-  match Cursor.peek t with
-  | Some (Component.Preserved { kind = Token.Percentage _; _ }) ->
-      let n = Cursor.pct t in
+  match Cursor.percentage_opt t with
+  | Some n ->
       if n < 0.0 then
         Cursor.err t "text-size-adjust percentages cannot be negative"
       else Pct n
@@ -5282,17 +5262,11 @@ let read_outline t : outline =
           parse_parts ())
         else
           let is_length_start =
-            match Cursor.peek t with
-            | Some
-                (Component.Preserved
-                   {
-                     kind =
-                       ( Token.Number_tok _ | Token.Dimension _
-                       | Token.Percentage _ );
-                     _;
-                   }) ->
-                true
-            | _ -> false
+            Option.is_some
+              (Cursor.lookahead
+                 (Cursor.option (fun t ->
+                      ignore (Cursor.number_with_unit t : float * string option)))
+                 t)
           in
           if Option.is_none !width && is_length_start then (
             width := Some (read_length t);
@@ -5426,10 +5400,8 @@ let rec read_font_family_single t : font_family =
     let word = Cursor.ident ~keep_case:true t in
     let acc = word :: acc in
     Cursor.ws t;
-    match Cursor.peek t with
-    | Some (Component.Preserved { kind = Token.Ident _; _ }) ->
-        read_unquoted_name_words acc
-    | _ -> String.concat " " (List.rev acc)
+    if Option.is_some (Cursor.peek_ident t) then read_unquoted_name_words acc
+    else String.concat " " (List.rev acc)
   in
   let read_single_word t : font_family =
     (* For single-word names, try enum match first *)
@@ -5439,21 +5411,17 @@ let rec read_font_family_single t : font_family =
       t
   in
   Cursor.ws t;
-  match Cursor.peek t with
-  | Some (Component.Preserved { kind = Token.String _; _ }) ->
-      (* Quoted string *)
-      Name (Cursor.string t)
-  | Some (Component.Func { node = { name = "var"; _ }; _ }) -> read_var t
-  | Some (Component.Preserved { kind = Token.Ident _; _ }) ->
+  match Cursor.string_opt t with
+  | Some name -> Name name
+  | None when Cursor.looking_at_func "var" t -> read_var t
+  | None when Option.is_some (Cursor.peek_ident t) ->
       (* Peek ahead to see if this is multi-word or single-word *)
       let is_multi_word =
         Cursor.lookahead
           (fun t ->
             let _ = Cursor.ident t in
             Cursor.ws t;
-            match Cursor.peek t with
-            | Some (Component.Preserved { kind = Token.Ident _; _ }) -> true
-            | _ -> false)
+            Option.is_some (Cursor.peek_ident t))
           t
       in
       if is_multi_word then
@@ -5462,7 +5430,7 @@ let rec read_font_family_single t : font_family =
       else
         (* Single word - try enum match *)
         read_single_word t
-  | _ -> Cursor.err t "expected font-family value"
+  | None -> Cursor.err t "expected font-family value"
 
 and read_font_family t : font_family =
   match Cursor.list ~sep:Cursor.comma ~at_least:1 read_font_family_single t with
@@ -5498,18 +5466,75 @@ let read_font_display t : font_display =
     t
 
 let read_unicode_range t : unicode_range =
+  (* CSS Syntax §7 <urange> microsyntax. [U+....] is not a single token; the
+     lexer splits it across a variable number of tokens depending on which hex
+     digits appear first — e.g. [U+0000-00FF] is ident([u]) + Number([+0000]) +
+     Dimension([-00FF]), [U+FF] is ident([u]) + Delim(['+']) + ident([FF]),
+     [U+0-FF] is ident([u]) + Dimension([+0-FF]). Reassemble the tail as literal
+     text and parse the hex range(s). *)
   Cursor.with_context t "unicode-range" @@ fun () ->
-  Cursor.expect 'U' t;
-  Cursor.expect '+' t;
-  let start = Cursor.hex t in
-  Cursor.ws t;
-  if Cursor.peek_delim t = Some '-' then (
-    Cursor.expect '-' t;
-    let end_ = Cursor.hex t in
-    if start > end_ then
-      Cursor.err_invalid t "invalid unicode range: start > end"
-    else Range (start, end_))
-  else Single start
+  (match Cursor.ident_opt t with
+  | Some s when String.lowercase_ascii s = "u" -> ()
+  | _ -> Cursor.err_expected t "U");
+  let buf = Buffer.create 16 in
+  (match Cursor.peek_raw t with
+  | Some (Component.Preserved { kind = Token.Delim '+'; _ }) ->
+      Cursor.skip t;
+      Buffer.add_char buf '+'
+  | Some
+      (Component.Preserved { kind = Token.Number_tok _ | Token.Dimension _; _ })
+    ->
+      (* The number/dimension's repr already carries the leading sign. *)
+      ()
+  | _ -> Cursor.err_expected t "'+' or signed number after U");
+  let rec collect_tail () =
+    match Cursor.peek_raw t with
+    | Some (Component.Preserved { kind = Token.Number_tok { repr; _ }; _ }) ->
+        Cursor.skip t;
+        Buffer.add_string buf repr;
+        collect_tail ()
+    | Some (Component.Preserved { kind = Token.Dimension { number; unit_ }; _ })
+      ->
+        Cursor.skip t;
+        Buffer.add_string buf number.repr;
+        Buffer.add_string buf unit_;
+        collect_tail ()
+    | Some (Component.Preserved { kind = Token.Ident s; _ }) ->
+        Cursor.skip t;
+        Buffer.add_string buf s;
+        collect_tail ()
+    | Some (Component.Preserved { kind = Token.Delim c; _ })
+      when c = '?' || c = '-' ->
+        Cursor.skip t;
+        Buffer.add_char buf c;
+        collect_tail ()
+    | _ -> ()
+  in
+  collect_tail ();
+  let text = Buffer.contents buf in
+  let body =
+    if String.length text > 0 && text.[0] = '+' then
+      String.sub text 1 (String.length text - 1)
+    else text
+  in
+  let is_hex c =
+    ('0' <= c && c <= '9') || ('a' <= c && c <= 'f') || ('A' <= c && c <= 'F')
+  in
+  let hex_of s =
+    if s = "" then Cursor.err_invalid t "empty unicode range"
+    else if not (String.for_all is_hex s) then
+      Cursor.err_invalid t ("unicode range: " ^ s)
+    else try int_of_string ("0x" ^ s) with Failure _ -> Cursor.err_invalid t s
+  in
+  match String.index_opt body '-' with
+  | None -> (Single (hex_of body) : unicode_range)
+  | Some i ->
+      let lo = String.sub body 0 i in
+      let hi = String.sub body (i + 1) (String.length body - i - 1) in
+      let start = hex_of lo and end_ = hex_of hi in
+      if start > end_ then
+        Cursor.err_invalid t "invalid unicode range: start > end"
+      else Range (start, end_)
 
 let rec read_font_variant_numeric_token t : font_variant_numeric_token =
   let read_var t : font_variant_numeric_token =
@@ -6614,30 +6639,32 @@ let read_conic_gradient_body t =
 let rec read_bg_image t : background_image =
   (* Bare [url(foo)] is a single [Token.Url] component, not a [Func]; handle it
      explicitly before dispatching on the function/ident shape. *)
-  match Cursor.peek t with
-  | Some (Component.Preserved { kind = Token.Url _; _ }) -> Url (Cursor.url t)
-  | _ ->
-      Cursor.enum_or_calls "background-image"
-        [
-          ("none", (None : background_image));
-          ("initial", Initial);
-          ("inherit", Inherit);
-        ]
-        ~calls:
+  Cursor.one_of
+    [
+      (fun t -> (Url (Cursor.url t) : background_image));
+      (fun t ->
+        Cursor.enum_or_calls "background-image"
           [
-            ("url", fun t -> Url (Cursor.url t));
-            ( "linear-gradient",
-              fun t -> Cursor.call "linear-gradient" t read_linear_gradient_body
-            );
-            ( "radial-gradient",
-              fun t -> Cursor.call "radial-gradient" t read_radial_gradient_body
-            );
-            ( "conic-gradient",
-              fun t -> Cursor.call "conic-gradient" t read_conic_gradient_body
-            );
-            ("var", fun t -> Var (Values.read_var read_bg_image t));
+            ("none", (None : background_image));
+            ("initial", Initial);
+            ("inherit", Inherit);
           ]
-        t
+          ~calls:
+            [
+              ( "linear-gradient",
+                fun t ->
+                  Cursor.call "linear-gradient" t read_linear_gradient_body );
+              ( "radial-gradient",
+                fun t ->
+                  Cursor.call "radial-gradient" t read_radial_gradient_body );
+              ( "conic-gradient",
+                fun t -> Cursor.call "conic-gradient" t read_conic_gradient_body
+              );
+              ("var", fun t -> Var (Values.read_var read_bg_image t));
+            ]
+          t);
+    ]
+    t
 
 let read_background_image t : background_image =
   let first = read_bg_image t in
@@ -7309,6 +7336,7 @@ let read_background_shorthand t : background_shorthand =
   let acc, _ =
     Cursor.fold_many Background_shorthand.read_item ~init ~f:apply t
   in
+  if acc = init then Cursor.err_expected t "background value";
   acc
 
 let rec read_background t : background =
@@ -7325,7 +7353,7 @@ let rec read_background t : background =
     t
 
 let read_backgrounds t : background list =
-  Cursor.list ~sep:Cursor.comma read_background t
+  Cursor.list ~sep:Cursor.comma ~at_least:1 read_background t
 
 (* Gap shorthand parser *)
 let read_gap t : gap =
@@ -7449,16 +7477,6 @@ let read_clip t : clip =
     let left = read_length inner in
     Clip_rect (top, right, bottom, left)
 
-(* Reader for clip-path property *)
-let read_clip_path_url t =
-  let url =
-    Cursor.call "url" t (fun inner ->
-        match Cursor.string_opt inner with
-        | Some s -> String.trim s
-        | None -> Cursor.url inner)
-  in
-  Clip_path_url url
-
 let read_clip_path_inset t =
   Cursor.call "inset" t (fun t ->
       Cursor.ws t;
@@ -7504,21 +7522,22 @@ let read_clip_path_polygon t =
 
 let read_clip_path t : clip_path =
   Cursor.ws t;
-  match Cursor.peek t with
-  | Some (Component.Preserved { kind = Token.Ident "none"; _ }) ->
-      Cursor.skip t;
-      Clip_path_none
-  | Some (Component.Preserved { kind = Token.Url _; _ }) ->
-      Clip_path_url (Cursor.url t)
-  | Some (Component.Func { node = { name; _ }; _ }) -> (
-      match String.lowercase_ascii name with
-      | "url" -> read_clip_path_url t
-      | "inset" -> read_clip_path_inset t
-      | "circle" -> read_clip_path_circle t
-      | "ellipse" -> read_clip_path_ellipse t
-      | "polygon" -> read_clip_path_polygon t
-      | _ -> Cursor.err_invalid t ("clip-path function: " ^ name))
-  | _ -> Cursor.err_invalid t "clip-path value"
+  Cursor.one_of
+    [
+      (fun t -> Clip_path_url (Cursor.url t));
+      (fun t ->
+        Cursor.enum_or_calls "clip-path"
+          [ ("none", Clip_path_none) ]
+          ~calls:
+            [
+              ("inset", read_clip_path_inset);
+              ("circle", read_clip_path_circle);
+              ("ellipse", read_clip_path_ellipse);
+              ("polygon", read_clip_path_polygon);
+            ]
+          t);
+    ]
+    t
 
 let pp_any_property ctx (Prop p) = pp_property ctx p
 

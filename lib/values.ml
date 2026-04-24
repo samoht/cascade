@@ -990,17 +990,6 @@ module Calc = struct
   let parens inner = Parens inner
 end
 
-(** Read raw fallback content as a string. In a component stream, parens are
-    already balanced by the parser; drain the remaining components and serialize
-    them back to source text. *)
-let read_raw_fallback_content t =
-  let rec drain acc =
-    match Cursor.next_raw t with
-    | None -> List.rev acc
-    | Some cv -> drain (cv :: acc)
-  in
-  Parser.to_string (drain [])
-
 (** Read the body of a var(name[, fallback]) call, given a cursor over the
     function arguments. *)
 let read_var_body : type a. (Cursor.t -> a) -> Cursor.t -> a var =
@@ -1020,11 +1009,14 @@ let read_var_body : type a. (Cursor.t -> a) -> Cursor.t -> a var =
       Cursor.ws t;
       if Cursor.is_done t then Empty
       else
-        match Cursor.try_parse_err read_value t with
-        | Ok fb when Cursor.is_done t -> Fallback fb
+        match Cursor.try_parse_full_err read_value t with
+        | Ok fb -> Fallback fb
         | _ ->
-            let raw = read_raw_fallback_content t in
-            Raw_fallback (String.trim raw))
+            let raw =
+              String.trim (Parser.to_string_minified (Cursor.remaining t))
+            in
+            t |> Cursor.consume_remaining_to_string |> ignore;
+            Raw_fallback raw)
   in
   var_ref ~fallback var_name
 
@@ -1164,62 +1156,40 @@ and read_calc_term : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
 
 and read_calc_parenthesized : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
-  Parens (Cursor.parens t (fun inner -> read_calc_expr read_a inner))
+  Parens (Cursor.parens (fun inner -> read_calc_expr read_a inner) t)
 
 and read_calc_zero : type a. Cursor.t -> a calc =
  fun t ->
   (* A zero in calc is a plain Number_tok with value 0 (not a Dimension). *)
-  match Cursor.peek t with
-  | Some (Component.Preserved { kind = Token.Number_tok { value = 0.; _ }; _ })
-    ->
-      Cursor.skip t;
-      Num 0.
-  | _ -> Cursor.err t "expected zero"
+  let snap = Cursor.save t in
+  match Cursor.number_opt t with
+  | Some 0. -> Num 0.
+  | _ ->
+      Cursor.restore t snap;
+      Cursor.err t "expected zero"
 
 and read_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
   Cursor.ws t;
-  match Cursor.peek t with
-  | Some (Component.Block { node = { opening = Token.Paren; _ }; _ }) ->
-      read_calc_parenthesized read_a t
-  | Some (Component.Func { node = { name = "calc"; _ }; _ }) ->
-      (* Handle nested calc() expressions - preserve as Nested node *)
-      Nested (Cursor.call "calc" t (fun inner -> read_calc_expr read_a inner))
-  | Some (Component.Func { node = { name = "var"; _ }; _ }) ->
-      Var (read_var read_a t)
+  match Cursor.peek_block t with
+  | Some Token.Paren -> read_calc_parenthesized read_a t
   | _ ->
-      let read_val t = Val (read_a t) in
-      let read_num : Cursor.t -> a calc =
-       fun t ->
-        (* Plain [Number_tok] only — dimensions are not numbers here. *)
-        match Cursor.peek t with
-        | Some (Component.Preserved { kind = Token.Number_tok { value; _ }; _ })
-          ->
-            Cursor.skip t;
-            (Num value : a calc)
-        | _ -> Cursor.err t "number"
-      in
-      Cursor.one_of [ read_calc_zero; read_num; read_val ] t
+      (* Handle nested calc() expressions - preserve as Nested node *)
+      if Cursor.looking_at_func "calc" t then
+        Nested (Cursor.call "calc" t (fun inner -> read_calc_expr read_a inner))
+      else if Cursor.looking_at_func "var" t then Var (read_var read_a t)
+      else
+        let read_val t = Val (read_a t) in
+        let read_num t = (Num (Cursor.number t) : a calc) in
+        Cursor.one_of [ read_calc_zero; read_num; read_val ] t
 
 and read_calc : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
   Cursor.ws t;
-  match Cursor.peek t with
-  | Some (Component.Func { node = { name = "calc"; _ }; _ }) ->
-      Cursor.call "calc" t (fun inner -> read_calc_expr read_a inner)
-  | Some (Component.Func { node = { name = "var"; _ }; _ }) ->
-      Var (read_var read_a t)
-  | _ -> Cursor.err t "calc() or var()"
-
-(* In a component stream the function arguments are already balanced; drain the
-   remaining components and re-serialize them back to source text. *)
-let _read_balanced_function_content t =
-  let rec drain acc =
-    match Cursor.next_raw t with
-    | None -> List.rev acc
-    | Some cv -> drain (cv :: acc)
-  in
-  Parser.to_string (drain [])
+  if Cursor.looking_at_func "calc" t then
+    Cursor.call "calc" t (fun inner -> read_calc_expr read_a inner)
+  else if Cursor.looking_at_func "var" t then Var (read_var read_a t)
+  else Cursor.err t "calc() or var()"
 
 let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
     =
@@ -1236,17 +1206,20 @@ let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
   let read_function_length t : length =
     (* [clamp(...)], [min(...)], [max(...)], [minmax(...)] arrive as a single
        [Func] component; consume the whole call and serialise the arguments. *)
-    match Cursor.peek t with
-    | Some (Component.Func { node = { name; arguments }; _ }) -> (
-        Cursor.skip t;
-        let content = Parser.to_string arguments in
-        match String.lowercase_ascii name with
-        | "clamp" -> Clamp content
-        | "minmax" -> Minmax content
-        | "min" -> Min content
-        | "max" -> Max content
-        | _ -> Cursor.err t ("unknown function " ^ name))
-    | _ -> Cursor.err_expected t "function call"
+    match
+      Cursor.any_function_call
+        (fun name inner ->
+          let content = Cursor.consume_remaining_to_string inner in
+          match String.lowercase_ascii name with
+          | "clamp" -> Clamp content
+          | "minmax" -> Minmax content
+          | "min" -> Min content
+          | "max" -> Max content
+          | _ -> Cursor.err t ("unknown function " ^ name))
+        t
+    with
+    | Some length -> length
+    | None -> Cursor.err_expected t "function call"
   in
   let parsers =
     [
@@ -1666,9 +1639,16 @@ and read_color t : color =
   | Some (Component.Preserved { kind = Token.Hash { value; _ }; _ }) ->
       Cursor.skip t;
       let len = String.length value in
-      if len = 3 || len = 4 || len = 6 || len = 8 then
-        Hex { hash = true; value }
-      else Cursor.err_invalid t ("hex color length: " ^ string_of_int len)
+      let is_hex c =
+        ('0' <= c && c <= '9')
+        || ('a' <= c && c <= 'f')
+        || ('A' <= c && c <= 'F')
+      in
+      if not (len = 3 || len = 4 || len = 6 || len = 8) then
+        Cursor.err_invalid t ("hex color length: " ^ string_of_int len)
+      else if not (String.for_all is_hex value) then
+        Cursor.err_invalid t ("hex color digits: " ^ value)
+      else Hex { hash = true; value }
   | Some (Component.Func { node = { name; arguments }; _ }) -> (
       match List.assoc_opt name color_parsers with
       | Some parser ->

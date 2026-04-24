@@ -55,6 +55,19 @@ let position t =
   match t.cvs with [] -> Loc.dummy | hd :: _ -> Component.source_loc hd
 
 let remaining t = t.cvs
+
+let components_to_string ?(trim = false) cvs =
+  let s = Parser.to_string cvs in
+  if trim then String.trim s else s
+
+let remaining_to_string ?(trim = false) t =
+  components_to_string ~trim (remaining t)
+
+let consume_remaining_to_string ?(trim = false) t =
+  let cvs = remaining t in
+  t.cvs <- [];
+  components_to_string ~trim cvs
+
 let peek_raw t = match t.cvs with [] -> None | hd :: _ -> Some hd
 
 let next_raw t =
@@ -153,8 +166,26 @@ let dimension_opt t =
 let hash_opt t =
   take_token_if (function Token.Hash { value; _ } -> Some value | _ -> None) t
 
+let is_hex_string s =
+  let rec loop i =
+    if i = String.length s then i > 0
+    else
+      match s.[i] with
+      | '0' .. '9' | 'a' .. 'f' | 'A' .. 'F' -> loop (i + 1)
+      | _ -> false
+  in
+  loop 0
+
 let string_opt t =
-  take_token_if (function Token.String s -> Some s | _ -> None) t
+  take_token_if
+    (function Token.String { value; _ } -> Some value | _ -> None)
+    t
+
+let string_with_quote_opt t =
+  take_token_if
+    (function
+      | Token.String { value; quote } -> Some (value, quote) | _ -> None)
+    t
 
 let url_opt t = take_token_if (function Token.Url s -> Some s | _ -> None) t
 
@@ -231,6 +262,43 @@ let drain_until_block t =
   in
   loop []
 
+let drain_until_block_to_string ?(trim = false) t =
+  components_to_string ~trim (drain_until_block t)
+
+let drain_until_raw stop t =
+  let rec loop acc =
+    match peek_raw t with
+    | None -> List.rev acc
+    | Some cv when stop cv -> List.rev acc
+    | Some cv ->
+        ignore (next_raw t : Component.t option);
+        loop (cv :: acc)
+  in
+  loop []
+
+let is_semicolon_cv = function
+  | Component.Preserved { kind = Token.Semicolon; _ } -> true
+  | _ -> false
+
+let is_bang_cv = function
+  | Component.Preserved { kind = Token.Delim '!'; _ } -> true
+  | _ -> false
+
+let consume_to_semicolon ?(trim = false) t =
+  components_to_string ~trim (drain_until_raw is_semicolon_cv t)
+
+let consume_to_decl_end ?(trim = false) t =
+  components_to_string ~trim
+    (drain_until_raw (fun cv -> is_semicolon_cv cv || is_bang_cv cv) t)
+
+let is_slash_cv = function
+  | Component.Preserved { kind = Token.Delim '/'; _ } -> true
+  | _ -> false
+
+let consume_to_slash_or_semicolon ?(trim = false) t =
+  components_to_string ~trim
+    (drain_until_raw (fun cv -> is_slash_cv cv || is_semicolon_cv cv) t)
+
 (** {1 Token-shape helpers — raising variants} *)
 
 let ident ?keep_case:_ t =
@@ -247,9 +315,22 @@ let int t =
   match integer_opt t with Some n -> n | None -> err_expected t "integer"
 
 let hex t =
-  match hash_opt t with
+  let hex_string_opt =
+    take_token_if
+      (function
+        | Token.Hash { value; _ } when is_hex_string value -> Some value
+        | Token.Ident s when is_hex_string s -> Some s
+        | Token.Number_tok n when is_hex_string n.repr -> Some n.repr
+        | Token.Dimension { number; unit_ }
+          when is_hex_string (number.repr ^ unit_) ->
+            Some (number.repr ^ unit_)
+        | _ -> None)
+      t
+  in
+  match hex_string_opt with
   | Some s -> (
-      try int_of_string ("0x" ^ s) with _ -> err_invalid t ("hex: " ^ s))
+      try int_of_string ("0x" ^ s)
+      with Failure _ -> err_invalid t ("hex: " ^ s))
   | None -> err_expected t "hex token"
 
 let string ?(trim = false) t =
@@ -289,6 +370,12 @@ let number_with_unit t =
       (value, None)
   | _ -> err_expected t "number with unit"
 
+let bool t =
+  match ident t with
+  | "true" -> true
+  | "false" -> false
+  | s -> err_invalid t ("boolean: " ^ s)
+
 (** {1 Delim helpers} *)
 
 let bool_token (k : Token.kind) t =
@@ -314,6 +401,19 @@ let slash t = if not (slash_opt t) then err_expected t "'/'"
 
 let consume_if c t =
   match peek t with
+  | Some (Component.Preserved { kind = Token.Ident s; _ })
+    when String.length s = 1 && s.[0] = c ->
+      skip t;
+      true
+  | Some (Component.Preserved { kind = Token.Colon; _ }) when c = ':' ->
+      skip t;
+      true
+  | Some (Component.Preserved { kind = Token.Semicolon; _ }) when c = ';' ->
+      skip t;
+      true
+  | Some (Component.Preserved { kind = Token.Comma; _ }) when c = ',' ->
+      skip t;
+      true
   | Some (Component.Preserved { kind = Token.Delim d; _ }) when d = c ->
       skip t;
       true
@@ -344,10 +444,26 @@ let looking_at t s =
   else if s.[len - 1] = '(' then looking_at_func (String.sub s 0 (len - 1)) t
   else if looking_at_ident s t then true
   else
-    match peek_raw t with
-    | Some (Component.Preserved { kind = Token.Delim c; _ }) ->
-        len = 1 && s.[0] = c
-    | _ -> false
+    match peek t with
+    | Some (Component.Preserved { kind = Token.Ident ident; _ }) ->
+        String.starts_with ~prefix:s ident
+    | Some (Component.Preserved { kind = Token.At_keyword name; _ }) ->
+        String.starts_with ~prefix:s ("@" ^ name)
+    | Some (Component.Preserved { kind = Token.Hash { value; _ }; _ }) ->
+        String.starts_with ~prefix:s ("#" ^ value)
+    | Some (Component.Preserved { kind = Token.Url _; _ }) ->
+        String.starts_with ~prefix:s "url("
+    | _ -> (
+        match peek_raw t with
+        | Some (Component.Preserved { kind = Token.Colon; _ }) ->
+            len = 1 && s.[0] = ':'
+        | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
+            len = 1 && s.[0] = ';'
+        | Some (Component.Preserved { kind = Token.Comma; _ }) ->
+            len = 1 && s.[0] = ','
+        | Some (Component.Preserved { kind = Token.Delim c; _ }) ->
+            len = 1 && s.[0] = c
+        | _ -> false)
 
 let try_kind_pair k1 k2 t =
   let snap = save t in
@@ -365,8 +481,7 @@ let try_kind_pair k1 k2 t =
 
 (** {1 Expectations} *)
 
-let expect c t =
-  if not (consume_if c t) then err_expected t (Printf.sprintf "'%c'" c)
+let expect c t = if not (consume_if c t) then err_expected t (Fmt.str "'%c'" c)
 
 let expect_string name t =
   match ident_opt t with Some s when s = name -> () | _ -> err_expected t name
@@ -382,17 +497,17 @@ let take_block_if pred t : Component.block Component.node option =
       Some b
   | _ -> None
 
-let parens t f =
+let parens f t =
   match take_block_if (fun b -> b = Token.Paren) t with
   | Some b -> f (of_components b.node.value)
   | None -> err_expected t "'('"
 
-let brackets t f =
+let brackets f t =
   match take_block_if (fun b -> b = Token.Square) t with
   | Some b -> f (of_components b.node.value)
   | None -> err_expected t "'['"
 
-let braces t f =
+let braces f t =
   match take_block_if (fun b -> b = Token.Curly) t with
   | Some b -> f (of_components b.node.value)
   | None -> err_expected t "'{'"
@@ -552,13 +667,25 @@ let list ?sep ?(at_least = 0) ?at_most item t =
   let items = loop [] 0 in
   let len = List.length items in
   if len < at_least then
-    err_expected t (Printf.sprintf "at least %d items (got %d)" at_least len)
+    err_expected t (Fmt.str "at least %d items (got %d)" at_least len)
   else items
 
 let try_parse_err p t =
   let snap = save t in
   match p t with
   | v -> Ok v
+  | exception Parse_error e ->
+      restore t snap;
+      Error (Error.to_string e)
+
+let try_parse_full_err p t =
+  let snap = save t in
+  match p t with
+  | v ->
+      if is_done t then Ok v
+      else (
+        restore t snap;
+        Error "trailing tokens")
   | exception Parse_error e ->
       restore t snap;
       Error (Error.to_string e)

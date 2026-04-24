@@ -543,20 +543,22 @@ let read_attr_flag t : attr_flag option =
     t
 
 let read_attribute t =
-  Cursor.brackets t @@ fun inner ->
-  Cursor.ws inner;
-  let ns = read_ns inner in
-  let attr = Cursor.ident ~keep_case:true inner in
-  validate_css_identifier_with_reader inner attr;
-  Cursor.ws inner;
-  let matcher = read_attribute_match inner in
-  Cursor.ws inner;
-  let flag = read_attr_flag inner in
-  Cursor.ws inner;
-  if not (Cursor.is_done inner) then
-    Cursor.err_invalid inner "trailing tokens in attribute selector";
-  let attr_name = attr_name_of_string attr in
-  Attribute (ns, attr_name, matcher, flag)
+  Cursor.brackets
+    (fun inner ->
+      Cursor.ws inner;
+      let ns = read_ns inner in
+      let attr = Cursor.ident ~keep_case:true inner in
+      validate_css_identifier_with_reader inner attr;
+      Cursor.ws inner;
+      let matcher = read_attribute_match inner in
+      Cursor.ws inner;
+      let flag = read_attr_flag inner in
+      Cursor.ws inner;
+      if not (Cursor.is_done inner) then
+        Cursor.err_invalid inner "trailing tokens in attribute selector";
+      let attr_name = attr_name_of_string attr in
+      Attribute (ns, attr_name, matcher, flag))
+    t
 
 (** Read the [+b] / [-b] suffix of an An+B expression. In CSS a signed number
     [+1] or [-1] tokenises as a single [Number_tok]; in contexts where the

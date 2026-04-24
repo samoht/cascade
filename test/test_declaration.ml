@@ -238,7 +238,7 @@ let error_unclosed_block () =
   (* CSS Syntax 5.3.7 auto-closes unterminated blocks at EOF, so this now parses
      with an implicit [}]. *)
   let r = Css.Cursor.of_string "{ color: red;" in
-  match read_block r with _ -> ()
+  ignore (read_block r : Css.Declaration.declaration list)
 
 let special_cases () =
   (* Nested calc() - preserved *)

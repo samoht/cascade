@@ -169,8 +169,9 @@ val read_var : (Cursor.t -> 'a) -> Cursor.t -> 'a var
     expression. *)
 
 val read_var_after_ident : (Cursor.t -> 'a) -> Cursor.t -> 'a var
-(** [read_var_after_ident read t] parses after "var" has been consumed. Expects
-    to be positioned at [(] after "var". *)
+(** [read_var_after_ident read t] is a compatibility alias for {!read_var}.
+    Component cursors receive [var(...)] as a single function component, so [t]
+    should be positioned at [var(]. *)
 
 (** {1 Calc Module} *)
 module Calc : sig

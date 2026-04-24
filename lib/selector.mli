@@ -21,9 +21,9 @@ val id : string -> t
 
 val of_string : string -> t
 (** [of_string s] parses a CSS-escaped selector string:
-    - [".classname"] → class selector
-    - ["#idname"] → id selector
-    - ["element"] → element selector
+    - [".classname"] -> class selector
+    - ["#idname"] -> id selector
+    - ["element"] -> element selector
 
     Unescapes both simple escapes (e.g., ["\:"]) and hex escapes (e.g.,
     ["\3A"]). Example: [of_string ".sm\\:p-4"] creates a class selector for
