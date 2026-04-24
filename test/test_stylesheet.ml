@@ -40,9 +40,8 @@ let test_rule () =
   neg_cursor read_stylesheet "{color:red}";
   (* Missing selector *)
   neg_cursor read_stylesheet ".btn";
-  (* Missing declarations *)
-  neg_cursor read_stylesheet ".btn{";
-  (* Unclosed brace *)
+  (* Missing declarations. CSS Syntax §5.3.7 auto-closes [.btn{] so it is
+     spec-valid and not asserted here. *)
   neg_cursor read_stylesheet ".btn{color}";
   (* Missing value *)
   neg_cursor read_rule "" (* Empty rule *)
