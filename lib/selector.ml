@@ -560,63 +560,211 @@ let read_attribute t =
       Attribute (ns, attr_name, matcher, flag))
     t
 
-(** Read the [+b] / [-b] suffix of an An+B expression. In CSS a signed number
-    [+1] or [-1] tokenises as a single [Number_tok]; in contexts where the
-    tokenizer already split the sign (e.g. inside [calc()]) we also handle a
-    leading [Delim '+' / '-']. *)
-let read_offset t =
+(** Parse the An+B microsyntax per Selectors Level 4 section 9.2 / CSS Syntax
+    Level 3 section 6. The grammar is handled as a set of shape patterns against
+    the component stream:
+
+    - Keywords [odd] / [even].
+    - Bare [<integer>].
+    - [<n-dimension>] (e.g. [5n]) optionally followed by an offset.
+    - [<ndashdigit-dimension>] like [5n-5] (single token with unit [n-5]).
+    - [<ndash-dimension>] like [5n-] followed by a signless integer.
+    - Ident forms: [n], [-n], [n-5], [-n-5], [n-], [-n-] with same offset
+      handling.
+    - A leading [+] Delim (no whitespace before [n]) promoting the ident forms.
+
+    Case-insensitivity per CSS idents (section 3.3). Whitespace between a
+    leading [+] sign and the ident is invalid: the [+] is part of the ident form
+    lexically, so [+n] is valid but [+ n] is not. *)
+
+(* Numeric helpers: split an arbitrary ident's tail into an optional [-digits]
+   suffix, for ndashdigit / ndash / n patterns. *)
+let ndashdigit_b unit_ =
+  (* Match [n-<digits>] case-insensitively; return [Some digits] or [None]. *)
+  let n = String.length unit_ in
+  if n >= 3 && Char.lowercase_ascii unit_.[0] = 'n' && unit_.[1] = '-' then
+    let tail = String.sub unit_ 2 (n - 2) in
+    match int_of_string_opt tail with Some b -> Some b | None -> None
+  else None
+
+let is_ndash unit_ =
+  String.length unit_ = 2
+  && Char.lowercase_ascii unit_.[0] = 'n'
+  && unit_.[1] = '-'
+
+let is_n_unit unit_ =
+  String.length unit_ = 1 && Char.lowercase_ascii unit_.[0] = 'n'
+
+let dashndashdigit_b ident =
+  (* Match [-n-<digits>] case-insensitively; return [Some digits]. *)
+  let n = String.length ident in
+  if
+    n >= 4
+    && ident.[0] = '-'
+    && Char.lowercase_ascii ident.[1] = 'n'
+    && ident.[2] = '-'
+  then
+    let tail = String.sub ident 3 (n - 3) in
+    match int_of_string_opt tail with Some b -> Some b | None -> None
+  else None
+
+let is_n_ident ident = String.lowercase_ascii ident = "n"
+let is_neg_n_ident ident = String.lowercase_ascii ident = "-n"
+
+let is_ndash_ident ident =
+  String.length ident = 2
+  && Char.lowercase_ascii ident.[0] = 'n'
+  && ident.[1] = '-'
+
+let is_dashndash_ident ident =
+  String.length ident = 3
+  && ident.[0] = '-'
+  && Char.lowercase_ascii ident.[1] = 'n'
+  && ident.[2] = '-'
+
+(* A signed number's repr starts with [+] or [-]; signless means it doesn't. *)
+let repr_is_signed (number : Token.number) =
+  let r = number.repr in
+  String.length r > 0 && (r.[0] = '+' || r.[0] = '-')
+
+(* Parse a [<signless-integer>] (no leading [+]/[-] in the token repr). *)
+let read_signless_integer t =
   match Cursor.peek t with
-  | Some (Component.Preserved { kind = Token.Number_tok _; _ }) -> Cursor.int t
-  | _ -> (
+  | Some (Component.Preserved { kind = Token.Number_tok n; _ })
+    when not (repr_is_signed n) ->
+      Cursor.skip t;
+      int_of_float n.value
+  | _ -> Cursor.err_expected t "signless integer"
+
+(* Parse a [<signed-integer>]: a single number token whose repr starts with [+]
+   or [-]. *)
+let read_signed_integer_opt t =
+  match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Number_tok n; _ })
+    when repr_is_signed n ->
+      Cursor.skip t;
+      Some (int_of_float n.value)
+  | _ -> None
+
+(* After an [<n-dimension>] or n-ident, consume the optional offset tail: -
+   nothing (EOF / comma / close-paren in enclosing context), -
+   [<signed-integer>] (a single signed number), - ['+' | '-']
+   [<signless-integer>] (explicit operator + unsigned int). *)
+let read_an_tail t =
+  match read_signed_integer_opt t with
+  | Some n -> n
+  | None -> (
       match Cursor.peek_delim t with
       | Some '+' ->
           Cursor.skip t;
-          Cursor.int t
+          read_signless_integer t
       | Some '-' ->
           Cursor.skip t;
-          -Cursor.int t
+          -read_signless_integer t
       | _ -> 0)
+
+(* Reject a leading [+] that is separated from the following ident by
+   whitespace. Per the grammar, the ['+'? n] form does not admit whitespace
+   between the [+] and [n]. *)
+let ensure_no_ws_after_plus t =
+  match Cursor.peek_raw t with
+  | Some (Component.Preserved { kind = Token.Whitespace; _ }) ->
+      Cursor.err_invalid t "whitespace after '+'"
+  | _ -> ()
 
 let read_nth t : nth =
   Cursor.ws t;
-  (* Start by trying keywords "odd" / "even". An [Ident "n"] means coefficient
-     1, an [Ident "-n"] is coefficient -1 (per §6.4 An+B microsyntax). *)
+  let read_n_tail ?(a_sign = 1) a =
+    (* Consume the tail after a coefficient and optional constant. [a] is the
+       full multiplier (including sign). *)
+    An_plus_b (a_sign * a, read_an_tail t)
+  in
+  let dispatch_ident_after_plus () =
+    (* After a leading [+] delim, only the positive ident forms are valid. *)
+    ensure_no_ws_after_plus t;
+    match Cursor.peek t with
+    | Some (Component.Preserved { kind = Token.Ident s; _ }) when is_n_ident s
+      ->
+        Cursor.skip t;
+        read_n_tail 1
+    | Some (Component.Preserved { kind = Token.Ident s; _ })
+      when is_ndash_ident s ->
+        Cursor.skip t;
+        An_plus_b (1, -read_signless_integer t)
+    | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (
+        match ndashdigit_b s with
+        | Some b ->
+            Cursor.skip t;
+            An_plus_b (1, -b)
+        | None -> Cursor.err_expected t "An+B after '+'")
+    | _ -> Cursor.err_expected t "An+B after '+'"
+  in
   match Cursor.peek t with
+  (* Keywords *)
   | Some (Component.Preserved { kind = Token.Ident s; _ })
-    when s = "odd" || s = "even" ->
+    when String.lowercase_ascii s = "odd" ->
       Cursor.skip t;
-      if s = "odd" then Odd else Even
-  | Some (Component.Preserved { kind = Token.Ident "n"; _ }) ->
+      Odd
+  | Some (Component.Preserved { kind = Token.Ident s; _ })
+    when String.lowercase_ascii s = "even" ->
       Cursor.skip t;
-      An_plus_b (1, read_offset t)
-  | Some (Component.Preserved { kind = Token.Ident "-n"; _ }) ->
-      Cursor.skip t;
-      An_plus_b (-1, read_offset t)
+      Even
+  (* Bare <integer>: a single integer number, possibly signed. *)
   | Some
-      (Component.Preserved { kind = Token.Dimension { number; unit_ = "n" }; _ })
+      (Component.Preserved
+         { kind = Token.Number_tok { number_flag = Integer; _ }; _ }) ->
+      Index (Cursor.int t)
+  (* <n-dimension> *)
+  | Some (Component.Preserved { kind = Token.Dimension { number; unit_ }; _ })
+    when is_n_unit unit_ ->
+      Cursor.skip t;
+      read_n_tail (int_of_float number.value)
+  (* <ndashdigit-dimension> e.g. [5n-5] *)
+  | Some (Component.Preserved { kind = Token.Dimension { number; unit_ }; _ })
+    -> (
+      match ndashdigit_b unit_ with
+      | Some b ->
+          Cursor.skip t;
+          An_plus_b (int_of_float number.value, -b)
+      | None ->
+          if is_ndash unit_ then (
+            (* <ndash-dimension> [5n-], expects signless integer next. *)
+            Cursor.skip t;
+            An_plus_b (int_of_float number.value, -read_signless_integer t))
+          else Cursor.err_expected t "An+B dimension (n / n-N / n-)")
+  (* Ident forms: n, -n, n-, -n-, n-<digits>, -n-<digits> *)
+  | Some (Component.Preserved { kind = Token.Ident s; _ }) when is_n_ident s ->
+      Cursor.skip t;
+      read_n_tail 1
+  | Some (Component.Preserved { kind = Token.Ident s; _ }) when is_neg_n_ident s
     ->
       Cursor.skip t;
-      An_plus_b (int_of_float number.value, read_offset t)
-  | Some (Component.Preserved { kind = Token.Dimension { number; unit_ }; _ })
-    when String.length unit_ >= 3 && String.sub unit_ 0 2 = "n-" -> (
-      (* Per CSS Syntax §4.3.2 / §4.3.12, [2n-1] tokenises as a single
-         [Dimension] with unit ["n-1"] since [n-1] is a valid ident sequence.
-         Selectors 4 §9.2 An+B parser splits it back into [a=2, b=-1]. *)
+      read_n_tail (-1)
+  | Some (Component.Preserved { kind = Token.Ident s; _ }) when is_ndash_ident s
+    ->
       Cursor.skip t;
-      let b_str = String.sub unit_ 2 (String.length unit_ - 2) in
-      match int_of_string_opt b_str with
-      | Some b -> An_plus_b (int_of_float number.value, -b)
-      | None -> Cursor.err_invalid t ("An+B: " ^ unit_))
-  | Some (Component.Preserved { kind = Token.Delim ('+' | '-'); _ }) -> (
-      let sign = if Cursor.peek_delim t = Some '-' then -1 else 1 in
+      An_plus_b (1, -read_signless_integer t)
+  | Some (Component.Preserved { kind = Token.Ident s; _ })
+    when is_dashndash_ident s ->
       Cursor.skip t;
-      match Cursor.peek t with
-      | Some (Component.Preserved { kind = Token.Ident "n"; _ }) ->
+      An_plus_b (-1, -read_signless_integer t)
+  | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (
+      (* Fall-through ident: must be ndashdigit [n-<digits>] or dashndashdigit
+         [-n-<digits>]. *)
+      match ndashdigit_b s with
+      | Some b ->
           Cursor.skip t;
-          An_plus_b (sign, read_offset t)
-      | _ -> Index (sign * Cursor.int t))
-  | Some (Component.Preserved { kind = Token.Number_tok _; _ }) ->
-      Index (Cursor.int t)
+          An_plus_b (1, -b)
+      | None -> (
+          match dashndashdigit_b s with
+          | Some b ->
+              Cursor.skip t;
+              An_plus_b (-1, -b)
+          | None -> Cursor.err t ("not an An+B ident: " ^ s)))
+  (* Leading [+]: followed immediately by one of the positive ident forms. *)
+  | Some (Component.Preserved { kind = Token.Delim '+'; _ }) ->
+      Cursor.skip t;
+      dispatch_ident_after_plus ()
   | _ -> Cursor.err t "expected 'odd', 'even', or An+B expression"
 
 (** Pretty print nth expression *)
@@ -789,6 +937,13 @@ and read_nth_selector t : nth * t list option =
         Cursor.list ~sep:Cursor.comma ~at_least:1 read_complex t)
       t
   in
+  (* Per Selectors Level 4 section 9.2, the An+B (plus optional [of S]) must
+     consume the entire [<nth-child>] argument list. Leftover tokens (e.g.
+     [:nth-child(1 - n)] or [:nth-child(2 n + 2)]) are a parse error, not a
+     silently-dropped tail. *)
+  Cursor.ws t;
+  if not (Cursor.is_done t) then
+    Cursor.err t "unexpected tokens after An+B expression";
   (expr, of_clause)
 
 (** Parse a relative selector (used inside :has()). A relative selector can
