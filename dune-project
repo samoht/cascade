@@ -22,4 +22,5 @@
   (astring :with-test)
   (lambdasoup :with-test)
   fmt
+  uutf
   cmdliner))

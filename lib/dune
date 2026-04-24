@@ -1,4 +1,4 @@
 (library
  (public_name cascade)
  (name cascade)
- (libraries fmt))
+ (libraries fmt uutf))

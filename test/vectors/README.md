@@ -23,11 +23,10 @@ Verbatim copies of upstream test inputs. Don't hand-edit.
 
 ## How these are used
 
-Nothing is wired up yet. The vectors are in place so we can red/green
-against them as `Uutf`-based decoding and §3/§4 code-point tables go in.
-WPT tests are HTML + `testharness.js`, so a follow-up harness will
-extract CSS inputs and expected outcomes into Alcotest cases. The Kuhn
-file is raw bytes and will be read directly.
+The WPT `css-syntax/` vectors are wired into `test/wpt/test.ml`
+(Alcotest + lambdasoup). UTF-8 decoding goes through `Uutf`, with
+CSS Syntax section 3.3 preprocessing (BOM strip, NUL to U+FFFD,
+CR/CRLF/FF normalization) applied in `Reader.preprocess`.
 
 ## Failure policy
 
