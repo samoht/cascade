@@ -1251,6 +1251,26 @@ let additional_tests =
         let stmts = Css.statements stylesheet in
         Alcotest.(check int) "one statement" 1 (List.length stmts);
         Alcotest.(check int) "no warnings" 0 (List.length warnings) );
+    ( "unknown at-rule surfaces as Unknown_at_rule warning",
+      `Quick,
+      fun () ->
+        (* Section 5.4.1: an at-rule with no handler is discarded with a typed
+           warning; the surrounding stylesheet continues to parse. *)
+        let { Css.stylesheet; warnings } =
+          Css.parse "@unknown-rule { color: red; } .a { color: blue; }"
+        in
+        Alcotest.(check int)
+          "good rule survives" 1
+          (List.length (Css.rule_statements stylesheet));
+        match warnings with
+        | [ (e, _) ] -> (
+            match e.Css.Error.kind with
+            | Css.Error.Unknown_at_rule name ->
+                Alcotest.(check string) "at-rule name" "unknown-rule" name
+            | _ ->
+                Alcotest.failf "expected Unknown_at_rule, got %s"
+                  (Css.Error.to_string e))
+        | _ -> Alcotest.fail "expected one warning" );
   ]
 
 let suite = ("stylesheet", stylesheet_tests @ additional_tests)

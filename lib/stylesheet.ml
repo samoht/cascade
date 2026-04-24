@@ -670,10 +670,16 @@ let rec read_statement (r : Cursor.t) : statement =
     ]
   in
   match Cursor.peek r with
-  | Some (Component.Preserved { kind = Token.At_keyword name; _ }) -> (
+  | Some (Component.Preserved { kind = Token.At_keyword name; loc }) -> (
       match List.assoc_opt name table with
       | Some p -> p r
-      | None -> Rule (read_rule r))
+      | None ->
+          (* Section 5.4.1: an at-rule with no registered handler is invalid.
+             Raise a typed [Unknown_at_rule] error -- the outer partial-parse
+             catch turns it into a warning and drops the rule (section 5.4.2
+             "consume an at-rule" has already captured the prelude/block bounds
+             for us). *)
+          Error.fail (Error.unknown_at_rule loc name))
   | _ -> Rule (read_rule r)
 
 and read_block (r : Cursor.t) : block =
