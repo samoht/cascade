@@ -1,7 +1,7 @@
 (** CSS Syntax Module Level 3 section 4.2: token taxonomy.
 
-    Types only; the §4.3 tokenization algorithm lives in {!Lexer}. Every token
-    carries the source {!Loc.t} it was read from. *)
+    Types only; the section 4.3 tokenization algorithm lives in {!Lexer}. Every
+    token carries the source {!Loc.t} it was read from. *)
 
 (** Whether a {!Hash} starts an identifier ([#abc]) or is unrestricted ([#123]).
     Only id-flag hashes are valid as ID selectors. *)
@@ -20,13 +20,18 @@ type bracket =
   | Paren  (** [( ... )] *)
   | Square  (** [[ ... ]] *)
 
-(** Token payload: the §4.2 variants without the location wrapper. *)
+(** Token payload: the section 4.2 variants without the location wrapper. *)
 type kind =
   | Ident of string
   | Function of string  (** Ident immediately followed by [(]. *)
   | At_keyword of string  (** [@] followed by an ident. *)
   | Hash of { value : string; hash_flag : hash_flag }
-  | String of string
+  | String of { value : string; quote : char }
+      (** String literal. [quote] is the opening quote character (double or
+          single). The spec treats both as equivalent delimiters (CSS Syntax
+          section 4.3.5), but we record it so that quote-sensitive rules (e.g.
+          [@charset] per CSS Syntax section 8.2) can check it and serialization
+          can round-trip the input style. *)
   | Bad_string
       (** Unterminated string (newline or EOF before the closing quote). *)
   | Url of string
@@ -48,13 +53,13 @@ type kind =
   | Eof
 
 type t = { kind : kind; loc : Loc.t }
-(** A located token: the §4.2 payload plus the source range it covers. *)
+(** A located token: the section 4.2 payload plus the source range it covers. *)
 
 val v : kind:kind -> loc:Loc.t -> t
 (** [v ~kind ~loc] is a token with the given payload and location. *)
 
 val synthetic : kind -> t
-(** [synthetic k] is a token with payload [k] and {!Loc.dummy} — for test
+(** [synthetic k] is a token with payload [k] and {!Loc.dummy} - for test
     fixtures and synthetic values that don't come from a real input. *)
 
 val pp_kind : kind Pp.t

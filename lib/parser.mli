@@ -38,6 +38,12 @@ val to_string : Component.t list -> string
     Whitespace tokens serialize to a single space; the output is
     parse-equivalent but not byte-identical. *)
 
+val to_string_minified : Component.t list -> string
+(** Like {!to_string} but drops whitespace that sits between two components
+    where at least one side is not word-like (ident / number / etc.). Two
+    word-like components still get a separating space so they don't merge into a
+    single token. *)
+
 (** {1 Entry points (section 5.4)} *)
 
 type 'a output = { value : 'a; warnings : Error.t list }

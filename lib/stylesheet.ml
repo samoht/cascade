@@ -428,18 +428,9 @@ let container_queries t = extract_container_queries t
 
 let read_keyframe (r : Cursor.t) : keyframe =
   Cursor.ws r;
-  let rec drain_selector acc =
-    match Cursor.peek r with
-    | None -> List.rev acc
-    | Some (Component.Block { node = { opening = Token.Curly; _ }; _ }) ->
-        List.rev acc
-    | Some cv ->
-        Cursor.skip r;
-        drain_selector (cv :: acc)
-  in
-  let selector_str = String.trim (Parser.to_string (drain_selector [])) in
+  let selector_str = Cursor.drain_until_block_to_string ~trim:true r in
   let declarations =
-    Cursor.braces r (fun inner -> Declaration.read_declarations inner)
+    Cursor.braces (fun inner -> Declaration.read_declarations inner) r
   in
   {
     keyframe_selector = Keyframe.selector_of_string selector_str;
@@ -447,10 +438,43 @@ let read_keyframe (r : Cursor.t) : keyframe =
   }
 
 (* Helper functions for reading specific at-rules *)
+
+(* WHATWG Encoding labels for UTF-8 (https://encoding.spec.whatwg.org/#names-
+   and-labels). Matched case-insensitively with ASCII whitespace trimmed. *)
+let is_utf8_label s =
+  let s = String.lowercase_ascii (String.trim s) in
+  match s with
+  | "utf-8" | "utf8" | "unicode-1-1-utf-8" | "unicode11utf8" | "unicode20utf8"
+  | "x-unicode20utf8" ->
+      true
+  | _ -> false
+
 let read_charset (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "charset" r;
   Cursor.ws r;
-  let encoding = Cursor.string r in
+  (* CSS Syntax §8.2 / css-syntax-3 requires the exact byte sequence [@charset
+     "..."]; single-quoted or otherwise non-conforming charset at-rules are not
+     recognized as charset declarations. *)
+  let encoding =
+    match Cursor.string_with_quote_opt r with
+    | Some (value, '"') -> value
+    | Some (_, _) ->
+        Error.fail_bad_value (Cursor.position r) ~property:"@charset"
+          ~reason:"@charset requires double quotes"
+    | None -> Cursor.string r
+  in
+  (* Cascade is UTF-8-only. A [@charset] pointing at any other encoding is a
+     request to decode the byte stream with a legacy decoder we don't ship, so
+     reject it rather than silently pretending the bytes are already UTF-8. *)
+  if not (is_utf8_label encoding) then
+    Error.fail_bad_value (Cursor.position r) ~property:"@charset"
+      ~reason:
+        (String.concat ""
+           [
+             "Cascade accepts UTF-8 input only; cannot honour @charset \"";
+             encoding;
+             "\"";
+           ]);
   Cursor.ws r;
   if Cursor.peek_semicolon r then Cursor.skip r;
   Charset encoding
@@ -481,14 +505,22 @@ let read_namespace (r : Cursor.t) : statement =
   Cursor.ws r;
   let uri =
     match Cursor.peek r with
-    | Some (Component.Preserved { kind = Token.String s; _ }) ->
+    | Some (Component.Preserved { kind = Token.String { value; _ }; _ }) ->
         Cursor.skip r;
-        s
+        value
     | _ -> Cursor.url r
   in
   Cursor.ws r;
   if Cursor.peek_semicolon r then Cursor.skip r;
   Namespace (prefix, uri)
+
+let read_keyframes_block inner =
+  let rec read_frames acc =
+    Cursor.ws inner;
+    if Cursor.is_done inner then List.rev acc
+    else read_frames (read_keyframe inner :: acc)
+  in
+  read_frames []
 
 let read_keyframes (r : Cursor.t) : statement =
   Cursor.with_context r "@keyframes" @@ fun () ->
@@ -496,17 +528,7 @@ let read_keyframes (r : Cursor.t) : statement =
   Cursor.ws r;
   let name = Cursor.ident ~keep_case:true r in
   Cursor.ws r;
-  let frames =
-    Cursor.braces r @@ fun inner ->
-    let rec read_frames acc =
-      Cursor.ws inner;
-      if Cursor.is_done inner then List.rev acc
-      else
-        let kf = read_keyframe inner in
-        read_frames (kf :: acc)
-    in
-    read_frames []
-  in
+  let frames = Cursor.braces read_keyframes_block r in
   Keyframes (name, frames)
 
 (* Read a font-face descriptor *)
@@ -592,34 +614,33 @@ let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
     if Cursor.peek_semicolon r then Cursor.skip r;
     Some descriptor
 
+let read_font_face_block inner =
+  let rec read_descriptors acc =
+    match read_font_face_descriptor inner with
+    | Some desc -> read_descriptors (desc :: acc)
+    | None ->
+        Cursor.ws inner;
+        if Cursor.is_done inner then List.rev acc else read_descriptors acc
+  in
+  read_descriptors []
+
 let read_font_face (r : Cursor.t) : statement =
   Cursor.with_context r "@font-face" @@ fun () ->
   Cursor.expect_at_keyword "font-face" r;
   Cursor.ws r;
-  let descriptors =
-    Cursor.braces r @@ fun inner ->
-    let rec read_descriptors acc =
-      match read_font_face_descriptor inner with
-      | Some desc -> read_descriptors (desc :: acc)
-      | None ->
-          Cursor.ws inner;
-          if Cursor.is_done inner then List.rev acc else read_descriptors acc
-    in
-    read_descriptors []
-  in
+  let descriptors = Cursor.braces read_font_face_block r in
   Font_face descriptors
 
 let read_page (r : Cursor.t) : statement =
   Cursor.with_context r "@page" @@ fun () ->
   Cursor.expect_at_keyword "page" r;
   Cursor.ws r;
-  let prelude = Cursor.drain_until_block r in
   let selector =
-    let s = String.trim (Parser.to_string prelude) in
+    let s = Cursor.drain_until_block_to_string ~trim:true r in
     if s = "" then None else Some s
   in
   let declarations =
-    Cursor.braces r (fun inner -> Declaration.read_declarations inner)
+    Cursor.braces (fun inner -> Declaration.read_declarations inner) r
   in
   Page (selector, declarations)
 
@@ -668,34 +689,32 @@ and read_block (r : Cursor.t) : block =
 and read_starting_style (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "starting-style" r;
   Cursor.ws r;
-  let content = Cursor.braces r (fun inner -> read_nesting_block inner) in
+  let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
   Starting_style content
 
 and read_media (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "media" r;
   Cursor.ws r;
-  let prelude = Cursor.drain_until_block r in
-  let condition_str = String.trim (Parser.to_string prelude) in
+  let condition_str = Cursor.drain_until_block_to_string ~trim:true r in
   if String.length condition_str = 0 then
     Cursor.err r "@media rule requires a media query condition";
-  let content = Cursor.braces r (fun inner -> read_block inner) in
+  let content = Cursor.braces (fun inner -> read_block inner) r in
   Media (Media.Raw condition_str, content)
 
 and read_supports (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "supports" r;
   Cursor.ws r;
-  let prelude = Cursor.drain_until_block r in
-  let condition = String.trim (Parser.to_string prelude) in
+  let condition = Cursor.drain_until_block_to_string ~trim:true r in
   if String.length condition = 0 then
     Cursor.err r "@supports rule requires a condition";
-  let content = Cursor.braces r (fun inner -> read_block inner) in
+  let content = Cursor.braces (fun inner -> read_block inner) r in
   Supports (Supports.of_string condition, content)
 
 and read_scope (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "scope" r;
   Cursor.ws r;
-  let _prelude = Cursor.drain_until_block r in
-  let content = Cursor.braces r (fun inner -> read_block inner) in
+  ignore (Cursor.drain_until_block r : Component.t list);
+  let content = Cursor.braces (fun inner -> read_block inner) r in
   Scope (None, None, content)
 
 and read_container (r : Cursor.t) : statement =
@@ -703,9 +722,8 @@ and read_container (r : Cursor.t) : statement =
   Cursor.ws r;
   let container_name = Cursor.option Cursor.ident r in
   Cursor.ws r;
-  let prelude = Cursor.drain_until_block r in
-  let condition_str = String.trim (Parser.to_string prelude) in
-  let content = Cursor.braces r (fun inner -> read_block inner) in
+  let condition_str = Cursor.drain_until_block_to_string ~trim:true r in
+  let content = Cursor.braces (fun inner -> read_block inner) r in
   Container (container_name, Container.Raw condition_str, content)
 
 and read_layer (r : Cursor.t) : statement =
@@ -714,7 +732,7 @@ and read_layer (r : Cursor.t) : statement =
   match Cursor.peek r with
   | Some (Component.Block { node = { opening = Token.Curly; _ }; _ }) ->
       (* Anonymous layer *)
-      let content = Cursor.braces r (fun inner -> read_block inner) in
+      let content = Cursor.braces (fun inner -> read_block inner) r in
       Layer (None, content)
   | _ -> (
       let first = Cursor.ident ~keep_case:true r in
@@ -737,7 +755,7 @@ and read_layer (r : Cursor.t) : statement =
           if Cursor.peek_semicolon r then Cursor.skip r;
           Layer_decl (first :: rest)
       | Some (Component.Block { node = { opening = Token.Curly; _ }; _ }) ->
-          let content = Cursor.braces r (fun inner -> read_block inner) in
+          let content = Cursor.braces (fun inner -> read_block inner) r in
           Layer (Some first, content)
       | _ -> Cursor.err_invalid r "expected ';' or '{' after @layer name")
 
@@ -815,19 +833,16 @@ and read_nested_at_rule (r : Cursor.t) (at_rule : string)
   | "@container" ->
       let container_name = Cursor.option Cursor.ident r in
       Cursor.ws r;
-      let prelude = Cursor.drain_until_block r in
-      let condition_str = String.trim (Parser.to_string prelude) in
-      let content = Cursor.braces r (fun inner -> read_nesting_block inner) in
+      let condition_str = Cursor.drain_until_block_to_string ~trim:true r in
+      let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
       Container (container_name, Container.Raw condition_str, content)
   | "@supports" ->
-      let prelude = Cursor.drain_until_block r in
-      let condition = String.trim (Parser.to_string prelude) in
-      let content = Cursor.braces r (fun inner -> read_nesting_block inner) in
+      let condition = Cursor.drain_until_block_to_string ~trim:true r in
+      let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
       Supports (Supports.of_string condition, content)
   | "@media" ->
-      let prelude = Cursor.drain_until_block r in
-      let condition_str = String.trim (Parser.to_string prelude) in
-      let content = Cursor.braces r (fun inner -> read_nesting_block inner) in
+      let condition_str = Cursor.drain_until_block_to_string ~trim:true r in
+      let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
       Media (Media.Raw condition_str, content)
   | _ -> Cursor.err_invalid r ("Unexpected nested at-rule: " ^ at_rule)
 
@@ -842,49 +857,55 @@ and read_nested_at_within_rule (r : Cursor.t) (selector : Selector.t) :
       Cursor.ws r;
       match Cursor.peek r with
       | Some (Component.Block { node = { opening = Token.Curly; _ }; _ }) ->
-          let content = Cursor.braces r (fun inner -> read_block inner) in
+          let content = Cursor.braces (fun inner -> read_block inner) r in
           Layer (None, content)
       | _ ->
           let name = Cursor.ident ~keep_case:true r in
           Cursor.ws r;
-          let content = Cursor.braces r (fun inner -> read_block inner) in
+          let content = Cursor.braces (fun inner -> read_block inner) r in
           Layer (Some name, content))
   | _ -> read_statement r
 
+and read_rule_selector r =
+  let prelude = Cursor.drain_until_block r in
+  let c = Cursor.of_components prelude in
+  try Selector.read_selector_list c
+  with Error.Parse_error e -> Cursor.err r (Error.to_string e)
+
+and read_rule_item selector inner decls nested =
+  match Cursor.peek inner with
+  | None -> `Done (List.rev decls, List.rev nested)
+  | Some (Component.Preserved { kind = Token.At_keyword _; _ }) ->
+      let stmt = read_nested_at_within_rule inner selector in
+      `Continue (decls, stmt :: nested)
+  | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
+      Cursor.skip inner;
+      `Continue (decls, nested)
+  | _ -> (
+      match Declaration.read_declaration inner with
+      | Some d ->
+          Cursor.ws inner;
+          if Cursor.peek_semicolon inner then Cursor.skip inner;
+          `Continue (d :: decls, nested)
+      | None ->
+          if Cursor.is_done inner then `Done (List.rev decls, List.rev nested)
+          else
+            let nr = read_rule inner in
+            `Continue (decls, Rule nr :: nested))
+
+and read_rule_body selector inner =
+  let rec loop decls nested =
+    Cursor.ws inner;
+    match read_rule_item selector inner decls nested with
+    | `Done result -> result
+    | `Continue (decls, nested) -> loop decls nested
+  in
+  loop [] []
+
 and read_rule (r : Cursor.t) : rule =
   Cursor.with_context r "rule" @@ fun () ->
-  let prelude = Cursor.drain_until_block r in
-  let selector =
-    let c = Cursor.of_components prelude in
-    try Selector.read_selector_list c
-    with Error.Parse_error e -> Cursor.err r (Error.to_string e)
-  in
-  let declarations, nested =
-    Cursor.braces r @@ fun inner ->
-    let rec loop decls nested =
-      Cursor.ws inner;
-      match Cursor.peek inner with
-      | None -> (List.rev decls, List.rev nested)
-      | Some (Component.Preserved { kind = Token.At_keyword _; _ }) ->
-          let stmt = read_nested_at_within_rule inner selector in
-          loop decls (stmt :: nested)
-      | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
-          Cursor.skip inner;
-          loop decls nested
-      | _ -> (
-          match Declaration.read_declaration inner with
-          | Some d ->
-              Cursor.ws inner;
-              if Cursor.peek_semicolon inner then Cursor.skip inner;
-              loop (d :: decls) nested
-          | None ->
-              if Cursor.is_done inner then (List.rev decls, List.rev nested)
-              else
-                let nr = read_rule inner in
-                loop decls (Rule nr :: nested))
-    in
-    loop [] []
-  in
+  let selector = read_rule_selector r in
+  let declarations, nested = Cursor.braces (read_rule_body selector) r in
   { selector; declarations; nested; merge_key = None }
 
 and read_property_rule (r : Cursor.t) : statement =
@@ -893,7 +914,7 @@ and read_property_rule (r : Cursor.t) : statement =
   Cursor.ws r;
   let name = Cursor.ident ~keep_case:true r in
   Cursor.ws r;
-  let state = Cursor.braces r (fun inner -> read_property_descriptors inner) in
+  let state = Cursor.braces (fun inner -> read_property_descriptors inner) r in
   match (state.syntax, state.inherits) with
   | None, _ ->
       Cursor.err_invalid r "@property: missing required 'syntax' descriptor"
@@ -930,25 +951,10 @@ and read_property_descriptors (r : Cursor.t) : property_reader_state =
           let syn = Variables.read_syntax r in
           state := { !state with syntax = Some syn }
       | "inherits" ->
-          let ident = Cursor.ident r in
-          let inherits_value =
-            match ident with
-            | "true" -> true
-            | "false" -> false
-            | _ -> Cursor.err_invalid r ("inherits: " ^ ident)
-          in
+          let inherits_value = Cursor.bool r in
           state := { !state with inherits = Some inherits_value }
       | "initial-value" ->
-          let rec drain acc =
-            match Cursor.peek r with
-            | None -> List.rev acc
-            | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
-                List.rev acc
-            | Some cv ->
-                Cursor.skip r;
-                drain (cv :: acc)
-          in
-          let value_str = String.trim (Parser.to_string (drain [])) in
+          let value_str = Cursor.consume_to_semicolon ~trim:true r in
           state := { !state with initial_value = Some value_str }
       | _ -> Cursor.err_invalid r "unknown property descriptor");
       Cursor.ws r;
@@ -1080,31 +1086,20 @@ let read_import_rule (r : Cursor.t) : import_rule =
   Cursor.ws r;
   let layer =
     Cursor.function_call "layer"
-      (fun inner -> String.trim (Parser.to_string (Cursor.remaining inner)))
+      (fun inner -> Cursor.remaining_to_string ~trim:true inner)
       r
   in
   Cursor.ws r;
   let supports =
     Cursor.function_call "supports"
       (fun inner ->
-        Supports.of_string
-          (String.trim (Parser.to_string (Cursor.remaining inner))))
+        Supports.of_string (Cursor.remaining_to_string ~trim:true inner))
       r
   in
   Cursor.ws r;
   let media =
     if Cursor.peek_semicolon r || Cursor.is_done r then None
-    else
-      let rec drain acc =
-        match Cursor.peek r with
-        | None -> List.rev acc
-        | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
-            List.rev acc
-        | Some cv ->
-            Cursor.skip r;
-            drain (cv :: acc)
-      in
-      Some (Media.Raw (String.trim (Parser.to_string (drain []))))
+    else Some (Media.Raw (Cursor.consume_to_semicolon ~trim:true r))
   in
   if Cursor.peek_semicolon r then Cursor.skip r;
   { url; layer; supports; media }
@@ -1125,32 +1120,32 @@ let pp_config : config Pp.t =
 
 (* Reader for config *)
 let read_config (r : Cursor.t) : config =
-  Cursor.ws r;
-  Cursor.expect_string "{" r;
-  Cursor.ws r;
-
-  let minify = ref false in
-  let mode = ref Variables in
-  let optimize = ref false in
-  let newline = ref false in
-
-  while not (Cursor.looking_at r "}") do
-    let field_name = Cursor.ident r in
-    Cursor.ws r;
-    Cursor.expect_string "=" r;
-    Cursor.ws r;
-    let value = Cursor.ident r in
-    (match field_name with
-    | "minify" -> minify := value = "true"
-    | "mode" -> mode := if value = "Inline" then Inline else Variables
-    | "optimize" -> optimize := value = "true"
-    | "newline" -> newline := value = "true"
-    | _ -> () (* ignore unknown fields *));
-    Cursor.ws r;
-    (* Skip semicolon if present *)
-    if Cursor.looking_at r ";" then (
-      Cursor.skip r;
-      Cursor.ws r)
-  done;
-  Cursor.expect_string "}" r;
-  { minify = !minify; mode = !mode; optimize = !optimize; newline = !newline }
+  Cursor.braces
+    (fun inner ->
+      let minify = ref false in
+      let mode = ref Variables in
+      let optimize = ref false in
+      let newline = ref false in
+      let rec loop () =
+        if Cursor.is_done inner then ()
+        else
+          let field_name = Cursor.ident inner in
+          Cursor.expect '=' inner;
+          let value = Cursor.ident inner in
+          (match field_name with
+          | "minify" -> minify := value = "true"
+          | "mode" -> mode := if value = "Inline" then Inline else Variables
+          | "optimize" -> optimize := value = "true"
+          | "newline" -> newline := value = "true"
+          | _ -> ());
+          if Cursor.peek_semicolon inner then Cursor.skip inner;
+          loop ()
+      in
+      loop ();
+      {
+        minify = !minify;
+        mode = !mode;
+        optimize = !optimize;
+        newline = !newline;
+      })
+    r

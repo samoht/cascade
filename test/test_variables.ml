@@ -231,7 +231,7 @@ let test_parse_var_reference () =
       let _ = parse_var_reference r in
       Alcotest.failf "Expected failure for: %s" input
     with
-    | Css.Reader.Parse_error _ -> ()
+    | Css.Cursor.Parse_error _ | Css.Reader.Parse_error _ -> ()
     | exn ->
         Alcotest.failf "Unexpected exception for '%s': %s" input
           (Printexc.to_string exn)

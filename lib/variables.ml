@@ -128,14 +128,13 @@ let rec read_value : type a. Cursor.t -> a syntax -> a =
   | Universal ->
       (* For universal syntax "*", accept any CSS value — serialise the
          remaining components back to source text. *)
-      String.trim (Parser.to_string (Cursor.remaining reader))
+      Cursor.remaining_to_string ~trim:true reader
   | String -> Cursor.string ~trim:true reader
   | Custom_ident -> Cursor.ident ~keep_case:true reader
   | Url -> Cursor.url reader
-  | Image -> String.trim (Parser.to_string (Cursor.remaining reader))
-  | Transform_function ->
-      String.trim (Parser.to_string (Cursor.remaining reader))
-  | Brackets _desc -> String.trim (Parser.to_string (Cursor.remaining reader))
+  | Image -> Cursor.remaining_to_string ~trim:true reader
+  | Transform_function -> Cursor.remaining_to_string ~trim:true reader
+  | Brackets _desc -> Cursor.remaining_to_string ~trim:true reader
   | Length -> Values.read_length reader
   | Color -> Values.read_color reader
   | Number -> Cursor.number reader
@@ -805,7 +804,7 @@ let parse_var_reference (r : Cursor.t) : string * string option =
       Cursor.ws inner;
       let fallback =
         if Cursor.comma_opt inner then
-          Some (String.trim (Parser.to_string (Cursor.remaining inner)))
+          Some (Cursor.remaining_to_string ~trim:true inner)
         else None
       in
       (name, fallback))

@@ -44,6 +44,14 @@ val position : t -> Loc.t
 val remaining : t -> Component.t list
 (** [remaining t] is the un-consumed tail (still includes whitespace). *)
 
+val remaining_to_string : ?trim:bool -> t -> string
+(** [remaining_to_string t] serializes the unconsumed tail without advancing
+    [t]. *)
+
+val consume_remaining_to_string : ?trim:bool -> t -> string
+(** [consume_remaining_to_string t] serializes and consumes the unconsumed tail.
+*)
+
 val ws : t -> unit
 (** [ws t] drops any leading whitespace components. Usually a no-op since typed
     helpers skip whitespace for you; useful when a raw [peek_raw] or [next_raw]
@@ -116,7 +124,7 @@ val with_context : t -> string -> (unit -> 'a) -> 'a
 (** [with_context t label f] annotates any {!Parse_error} raised by [f] with
     [label] in the error path. *)
 
-(** {1 Token-shape helpers — raising variants}
+(** {1 Token-shape helpers - raising variants}
 
     These parse and advance the cursor, or raise {!Parse_error} on mismatch. *)
 
@@ -148,20 +156,45 @@ val number_with_unit : t -> float * string option
 (** [number_with_unit t] consumes a dimension, percentage or number and returns
     the value and unit (if any). *)
 
-(** {1 Token-shape helpers — option variants}
+val bool : t -> bool
+(** [bool t] consumes [true] or [false]. *)
+
+(** {1 Token-shape helpers - option variants}
 
     Each [foo_opt] returns [Some _] and advances when the next component
     matches; otherwise returns [None] and the cursor is unchanged. *)
 
 val ident_opt : t -> string option
+(** [ident_opt t] consumes and returns an identifier if present. *)
+
 val number_opt : t -> float option
+(** [number_opt t] consumes and returns a number token if present. *)
+
 val integer_opt : t -> int option
+(** [integer_opt t] consumes and returns an integer-valued number if present. *)
+
 val percentage_opt : t -> float option
+(** [percentage_opt t] consumes and returns a percentage value if present. *)
+
 val dimension_opt : t -> (float * string) option
+(** [dimension_opt t] consumes and returns a dimension value and unit if
+    present. *)
+
 val hash_opt : t -> string option
+(** [hash_opt t] consumes and returns a hash token value if present. *)
+
 val string_opt : t -> string option
+(** [string_opt t] consumes and returns a string token if present. *)
+
+val string_with_quote_opt : t -> (string * char) option
+(** [string_with_quote_opt t] consumes and returns a string token plus its quote
+    character if present. *)
+
 val url_opt : t -> string option
+(** [url_opt t] consumes and returns a URL token if present. *)
+
 val delim_opt : t -> char option
+(** [delim_opt t] consumes and returns a delimiter token if present. *)
 
 val peek_delim : t -> char option
 (** [peek_delim t] is the char of the next component if it is a [Delim] token,
@@ -202,6 +235,21 @@ val drain_until_block : t -> Component.t list
     block or semicolon, returning the drained components. Used for at-rule
     preludes. *)
 
+val drain_until_block_to_string : ?trim:bool -> t -> string
+(** Like {!drain_until_block}, but serializes the drained components. *)
+
+val consume_to_semicolon : ?trim:bool -> t -> string
+(** [consume_to_semicolon t] consumes and serializes components up to, but not
+    including, the next semicolon. *)
+
+val consume_to_decl_end : ?trim:bool -> t -> string
+(** [consume_to_decl_end t] consumes and serializes components up to, but not
+    including, the next semicolon or top-level [!] delimiter. *)
+
+val consume_to_slash_or_semicolon : ?trim:bool -> t -> string
+(** [consume_to_slash_or_semicolon t] consumes and serializes components up to,
+    but not including, the next top-level slash delimiter or semicolon. *)
+
 val colon : t -> bool
 (** [colon t] consumes a [':'] if next; [true] iff consumed. *)
 
@@ -225,15 +273,25 @@ val consume_if : char -> t -> bool
 (** [consume_if c t] consumes the next component if it is the delim [c]. *)
 
 val try_kind : Token.kind -> t -> bool
+(** [try_kind kind t] consumes [kind] if it is next and returns whether it
+    matched. *)
+
 val try_kind_pair : Token.kind -> Token.kind -> t -> bool
+(** [try_kind_pair k1 k2 t] consumes [k1] followed by [k2] if both are next and
+    returns whether they matched. *)
 
 val looking_at : t -> string -> bool
 (** [looking_at t s] is [true] iff the next component (after leading whitespace)
-    starts with [s] — matches an ident, a function name followed by [(], or a
+    starts with [s] - matches an ident, a function name followed by [(], or a
     delim-based prefix. *)
 
 val looking_at_ident : string -> t -> bool
+(** [looking_at_ident name t] is [true] if the next component is identifier
+    [name]. *)
+
 val looking_at_func : string -> t -> bool
+(** [looking_at_func name t] is [true] if the next component is function [name].
+*)
 
 (** {1 Expectations} *)
 
@@ -248,14 +306,14 @@ val expect_eof : t -> unit
 
 (** {1 Group / function helpers} *)
 
-val parens : t -> (t -> 'a) -> 'a
-(** [parens t f] consumes a [(...)] block and calls [f] with a fresh cursor over
+val parens : (t -> 'a) -> t -> 'a
+(** [parens f t] consumes a [(...)] block and calls [f] with a fresh cursor over
     its contents. Raises if the next component is not a parenthesised block. *)
 
-val brackets : t -> (t -> 'a) -> 'a
+val brackets : (t -> 'a) -> t -> 'a
 (** [brackets t f] consumes a [[...]] block similarly. *)
 
-val braces : t -> (t -> 'a) -> 'a
+val braces : (t -> 'a) -> t -> 'a
 (** [braces t f] consumes a [{...}] block similarly. *)
 
 val call : string -> t -> (t -> 'a) -> 'a
@@ -268,6 +326,8 @@ val function_call : string -> (t -> 'a) -> t -> 'a option
     function with that name. *)
 
 val any_function_call : (string -> t -> 'a) -> t -> 'a option
+(** [any_function_call f t] consumes any function call and applies [f] to its
+    name and argument cursor. *)
 
 (** {1 Enums} *)
 
@@ -319,10 +379,18 @@ val many : (t -> 'a) -> t -> 'a list * string option
     simply ran out). *)
 
 val pair : ?sep:(t -> unit) -> (t -> 'a) -> (t -> 'b) -> t -> 'a * 'b
+(** [pair ?sep a b t] parses [a] followed by [b], optionally separated by [sep].
+*)
 
 val triple :
   ?sep:(t -> unit) -> (t -> 'a) -> (t -> 'b) -> (t -> 'c) -> t -> 'a * 'b * 'c
+(** [triple ?sep a b c t] parses [a], [b], and [c], optionally separated by
+    [sep]. *)
 
 val try_parse_err : (t -> 'a) -> t -> ('a, string) result
 (** [try_parse_err p t] returns [Ok v] on success or [Error msg] on parse
     failure (cursor rewound). *)
+
+val try_parse_full_err : (t -> 'a) -> t -> ('a, string) result
+(** [try_parse_full_err p t] is like {!try_parse_err}, but also requires [p] to
+    consume the cursor fully. *)

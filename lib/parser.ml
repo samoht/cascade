@@ -87,15 +87,15 @@ let token_kind_to_string : Token.kind -> string = function
   | Token.Function s -> s ^ "("
   | Token.At_keyword s -> "@" ^ s
   | Token.Hash { value; _ } -> "#" ^ value
-  | Token.String s ->
-      let buf = Buffer.create (String.length s + 2) in
-      Buffer.add_char buf '"';
+  | Token.String { value; quote } ->
+      let buf = Buffer.create (String.length value + 2) in
+      Buffer.add_char buf quote;
       String.iter
         (fun c ->
-          (match c with '"' | '\\' -> Buffer.add_char buf '\\' | _ -> ());
+          if c = quote || c = '\\' then Buffer.add_char buf '\\';
           Buffer.add_char buf c)
-        s;
-      Buffer.add_char buf '"';
+        value;
+      Buffer.add_char buf quote;
       Buffer.contents buf
   | Token.Bad_string -> ""
   | Token.Url s -> "url(" ^ s ^ ")"
@@ -143,6 +143,65 @@ let rec cv_to_buffer buf : Component.t -> unit = function
 let to_string cvs =
   let buf = Buffer.create 64 in
   List.iter (cv_to_buffer buf) cvs;
+  Buffer.contents buf
+
+(* A whitespace token between two components can be dropped when neither side is
+   "word-like". Two word-like tokens side by side could otherwise merge into a
+   single token (e.g. [ident] + [ident] → one ident; [number] + [ident] →
+   dimension). A {!Func} component starts with an ident and ends with [)], so
+   nothing placed after it can merge with its trailing [)] — it is not word-like
+   on the right. Its opening ident is followed by [(] so it is not word-like on
+   the left either. *)
+let word_like : Component.t -> bool = function
+  | Preserved
+      {
+        kind =
+          ( Token.Ident _ | Token.At_keyword _ | Token.Hash _
+          | Token.Number_tok _ | Token.Percentage _ | Token.Dimension _
+          | Token.Url _ );
+        _;
+      } ->
+      true
+  | _ -> false
+
+let rec cv_to_buffer_min buf = function
+  | Preserved t -> Buffer.add_string buf (token_kind_to_string t.kind)
+  | Block { node = { opening; value }; _ } ->
+      Buffer.add_char buf (opening_char opening);
+      cvs_to_buffer_min buf value;
+      Buffer.add_char buf (closing_char opening)
+  | Func { node = { name; arguments }; _ } ->
+      Buffer.add_string buf name;
+      Buffer.add_char buf '(';
+      cvs_to_buffer_min buf arguments;
+      Buffer.add_char buf ')'
+
+and cvs_to_buffer_min buf cvs =
+  let rec loop prev = function
+    | [] -> ()
+    | Component.Preserved { kind = Token.Whitespace; _ } :: rest ->
+        (* Look ahead past further whitespace to find the next real token. *)
+        let rec skip_ws = function
+          | Component.Preserved { kind = Token.Whitespace; _ } :: r -> skip_ws r
+          | other -> other
+        in
+        let rest' = skip_ws rest in
+        (match rest' with
+        | next :: _
+          when (match prev with Some p -> word_like p | None -> false)
+               && word_like next ->
+            Buffer.add_char buf ' '
+        | _ -> ());
+        loop prev rest'
+    | cv :: rest ->
+        cv_to_buffer_min buf cv;
+        loop (Some cv) rest
+  in
+  loop None cvs
+
+let to_string_minified cvs =
+  let buf = Buffer.create 64 in
+  cvs_to_buffer_min buf cvs;
   Buffer.contents buf
 
 (** {1 Rule / declaration consumers (section 5.3)} *)

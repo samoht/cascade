@@ -1,3 +1,4 @@
 (library
  (public_name cascade)
- (name cascade))
+ (name cascade)
+ (libraries fmt))

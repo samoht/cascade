@@ -12,7 +12,7 @@ type kind =
   | Function of string
   | At_keyword of string
   | Hash of { value : string; hash_flag : hash_flag }
-  | String of string
+  | String of { value : string; quote : char }
   | Bad_string
   | Url of string
   | Bad_url
@@ -53,9 +53,9 @@ let pp_kind : kind Pp.t =
       Pp.string ctx "<#";
       Pp.string ctx value;
       Pp.char ctx '>'
-  | String s ->
+  | String { value; _ } ->
       Pp.string ctx "<string ";
-      Pp.string ctx s;
+      Pp.string ctx value;
       Pp.char ctx '>'
   | Bad_string -> Pp.string ctx "<bad-string>"
   | Url s ->

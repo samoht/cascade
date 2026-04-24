@@ -30,7 +30,7 @@ module Font_face = Font_face
 type parse_error = Error.t * string
 
 let pp_parse_error (err, filename) =
-  Printf.sprintf "%s: %s" filename (Error.to_string err)
+  Fmt.str "%s: %s" filename (Error.to_string err)
 
 (* Include all public APIs except Stylesheet *)
 
