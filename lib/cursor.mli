@@ -10,15 +10,32 @@
 
 type t
 
-val of_components : ?source:string -> Component.t list -> t
-(** [of_components ?source cvs] is a fresh cursor over [cvs]. Pass [?source] so
-    errors raised while consuming the cursor get a source-context snippet
-    attached (matching {!of_string}'s behaviour). *)
+val of_components : ?source:string -> ?recover:bool -> Component.t list -> t
+(** [of_components ?source ?recover cvs] is a fresh cursor over [cvs]. Pass
+    [?source] so errors raised while consuming the cursor get a source-context
+    snippet attached (matching {!of_string}'s behaviour). Pass [~recover:true]
+    to enable per-declaration recovery: validators that honour {!recover} will
+    catch a [Parse_error] on one declaration, push it to {!push_warning}, and
+    skip to the next [;] instead of propagating. Defaults to [false] (strict,
+    matching {!of_string}). *)
 
 val subcursor : t -> Component.t list -> t
 (** [subcursor parent cvs] is a fresh cursor over [cvs] that inherits [parent]'s
-    source, so errors raised inside still carry source-context snippets. Prefer
-    this over {!of_components} when descending into a block or function body. *)
+    source, warnings list, and recovery mode. *)
+
+val recover : t -> bool
+(** [recover t] is the recovery mode [t] was built with. Validators that support
+    declaration-level recovery check this to decide whether to catch and skip on
+    a [Parse_error] or let it propagate. *)
+
+val push_warning : t -> Error.t -> unit
+(** [push_warning t e] records [e] as a non-fatal warning on [t]. A validator in
+    recovery mode catches a [Parse_error], pushes it here, skips to a recovery
+    point, and keeps going. Drained via {!drain_warnings}. *)
+
+val drain_warnings : t -> Error.t list
+(** [drain_warnings t] returns and clears the warnings accumulated on [t] in
+    source order. *)
 
 val of_string : string -> t
 (** [of_string s] lexes [s] into a {!Component.t} list and wraps it. The
