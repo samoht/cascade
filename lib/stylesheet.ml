@@ -869,8 +869,11 @@ and read_nested_at_within_rule (r : Cursor.t) (selector : Selector.t) :
 and read_rule_selector r =
   let prelude = Cursor.drain_until_block r in
   let c = Cursor.subcursor r prelude in
-  try Selector.read_selector_list c
-  with Error.Parse_error e -> Cursor.err r (Error.to_string e)
+  (* Re-raise the original [Parse_error] so its loc/kind/path/snippet reach the
+     caller intact. Previously we rewrapped via [Cursor.err r (Error.to_string
+     e)], which erased the structured error and relocated it to the parent
+     cursor's current position. *)
+  Cursor.with_context c "selector" (fun () -> Selector.read_selector_list c)
 
 and read_rule_item selector inner decls nested =
   match Cursor.peek inner with
@@ -1009,11 +1012,19 @@ let cursor_of_rule ?source ?meta : Component.rule -> Cursor.t = function
   | At { node = { name; prelude; block }; loc } ->
       let at_kw = Token.v ~kind:(Token.At_keyword name) ~loc in
       let at_cv = Component.Preserved at_kw in
-      let block_cv =
-        match block with Some b -> [ Component.Block b ] | None -> []
+      let tail_cv =
+        match block with
+        | Some b -> [ Component.Block b ]
+        | None ->
+            (* Section 5.4.2 "consume an at-rule" terminates on [;] or EOF and
+               drops the terminator. Readers like [read_layer] and
+               [read_charset] then expect a trailing semicolon; synthesize one
+               so the replayed cursor matches the original token shape
+               regardless of whether [;] or EOF ended the rule. *)
+            [ Component.Preserved (Token.v ~kind:Token.Semicolon ~loc) ]
       in
       Cursor.of_components ?source ?meta ~recover:true
-        ((at_cv :: prelude) @ block_cv)
+        ((at_cv :: prelude) @ tail_cv)
 
 (* Validate one Parser-recovered rule to a typed statement, or convert the
    validator's [Parse_error] into a rule-level error and drop the rule. Per-
