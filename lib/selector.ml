@@ -428,12 +428,19 @@ let read_class t =
   (* No validation needed - Cursor.ident already ensures valid identifier *)
   Class name
 
-(** Parse an ID selector (#id). [#id] is a single [Hash] token, not a [#] delim
-    followed by an ident. *)
+(** Parse an ID selector ([#id]). Per CSS Selectors §6.6, an ID must be an
+    ident-type hash; unrestricted hashes such as digit-only [#123] are not valid
+    IDs. *)
 let read_id t =
-  match Cursor.hash_opt t with
-  | Some name -> Id name
-  | None -> Cursor.err_expected t "'#'"
+  match Cursor.peek t with
+  | Some
+      (Component.Preserved
+         { kind = Token.Hash { value; hash_flag = Token.Id }; _ }) ->
+      Cursor.skip t;
+      Id value
+  | Some (Component.Preserved { kind = Token.Hash _; _ }) ->
+      Cursor.err_invalid t "expected identifier"
+  | _ -> Cursor.err_expected t "'#'"
 
 (** Parse a namespaced type or universal selector *)
 let read_type_or_universal t =
