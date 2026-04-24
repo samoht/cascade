@@ -672,35 +672,61 @@ let ensure_no_ws_after_plus t =
       Cursor.err_invalid t "whitespace after '+'"
   | _ -> ()
 
+(* Dimension forms [<n-dimension>, <ndashdigit-dimension>, <ndash-dimension>]
+   from Selectors Level 4 section 9.2. Assumes the cursor is positioned on a
+   [Dimension] component. *)
+let read_nth_dimension t number unit_ =
+  if is_n_unit unit_ then (
+    Cursor.skip t;
+    An_plus_b (int_of_float number.Token.value, read_an_tail t))
+  else
+    match ndashdigit_b unit_ with
+    | Some b ->
+        Cursor.skip t;
+        An_plus_b (int_of_float number.Token.value, -b)
+    | None ->
+        if is_ndash unit_ then (
+          Cursor.skip t;
+          An_plus_b (int_of_float number.Token.value, -read_signless_integer t))
+        else Cursor.err_expected t "An+B dimension (n / n-N / n-)"
+
+(* Fall-through for ident forms not caught by the explicit predicates: must be
+   [<ndashdigit-ident>] [n-<digits>] or [<dashndashdigit-ident>]
+   [-n-<digits>]. *)
+let read_nth_ident_tail t s =
+  match ndashdigit_b s with
+  | Some b ->
+      Cursor.skip t;
+      An_plus_b (1, -b)
+  | None -> (
+      match dashndashdigit_b s with
+      | Some b ->
+          Cursor.skip t;
+          An_plus_b (-1, -b)
+      | None -> Cursor.err t ("not an An+B ident: " ^ s))
+
+(* After a leading [+] delim, only the positive ident forms are valid. *)
+let read_nth_after_plus t =
+  ensure_no_ws_after_plus t;
+  match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Ident s; _ }) when is_n_ident s ->
+      Cursor.skip t;
+      An_plus_b (1, read_an_tail t)
+  | Some (Component.Preserved { kind = Token.Ident s; _ }) when is_ndash_ident s
+    ->
+      Cursor.skip t;
+      An_plus_b (1, -read_signless_integer t)
+  | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (
+      match ndashdigit_b s with
+      | Some b ->
+          Cursor.skip t;
+          An_plus_b (1, -b)
+      | None -> Cursor.err_expected t "An+B after '+'")
+  | _ -> Cursor.err_expected t "An+B after '+'"
+
 let read_nth t : nth =
   Cursor.ws t;
-  let read_n_tail ?(a_sign = 1) a =
-    (* Consume the tail after a coefficient and optional constant. [a] is the
-       full multiplier (including sign). *)
-    An_plus_b (a_sign * a, read_an_tail t)
-  in
-  let dispatch_ident_after_plus () =
-    (* After a leading [+] delim, only the positive ident forms are valid. *)
-    ensure_no_ws_after_plus t;
-    match Cursor.peek t with
-    | Some (Component.Preserved { kind = Token.Ident s; _ }) when is_n_ident s
-      ->
-        Cursor.skip t;
-        read_n_tail 1
-    | Some (Component.Preserved { kind = Token.Ident s; _ })
-      when is_ndash_ident s ->
-        Cursor.skip t;
-        An_plus_b (1, -read_signless_integer t)
-    | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (
-        match ndashdigit_b s with
-        | Some b ->
-            Cursor.skip t;
-            An_plus_b (1, -b)
-        | None -> Cursor.err_expected t "An+B after '+'")
-    | _ -> Cursor.err_expected t "An+B after '+'"
-  in
   match Cursor.peek t with
-  (* Keywords *)
   | Some (Component.Preserved { kind = Token.Ident s; _ })
     when String.lowercase_ascii s = "odd" ->
       Cursor.skip t;
@@ -709,37 +735,20 @@ let read_nth t : nth =
     when String.lowercase_ascii s = "even" ->
       Cursor.skip t;
       Even
-  (* Bare <integer>: a single integer number, possibly signed. *)
   | Some
       (Component.Preserved
          { kind = Token.Number_tok { number_flag = Integer; _ }; _ }) ->
       Index (Cursor.int t)
-  (* <n-dimension> *)
   | Some (Component.Preserved { kind = Token.Dimension { number; unit_ }; _ })
-    when is_n_unit unit_ ->
-      Cursor.skip t;
-      read_n_tail (int_of_float number.value)
-  (* <ndashdigit-dimension> e.g. [5n-5] *)
-  | Some (Component.Preserved { kind = Token.Dimension { number; unit_ }; _ })
-    -> (
-      match ndashdigit_b unit_ with
-      | Some b ->
-          Cursor.skip t;
-          An_plus_b (int_of_float number.value, -b)
-      | None ->
-          if is_ndash unit_ then (
-            (* <ndash-dimension> [5n-], expects signless integer next. *)
-            Cursor.skip t;
-            An_plus_b (int_of_float number.value, -read_signless_integer t))
-          else Cursor.err_expected t "An+B dimension (n / n-N / n-)")
-  (* Ident forms: n, -n, n-, -n-, n-<digits>, -n-<digits> *)
+    ->
+      read_nth_dimension t number unit_
   | Some (Component.Preserved { kind = Token.Ident s; _ }) when is_n_ident s ->
       Cursor.skip t;
-      read_n_tail 1
+      An_plus_b (1, read_an_tail t)
   | Some (Component.Preserved { kind = Token.Ident s; _ }) when is_neg_n_ident s
     ->
       Cursor.skip t;
-      read_n_tail (-1)
+      An_plus_b (-1, read_an_tail t)
   | Some (Component.Preserved { kind = Token.Ident s; _ }) when is_ndash_ident s
     ->
       Cursor.skip t;
@@ -748,23 +757,11 @@ let read_nth t : nth =
     when is_dashndash_ident s ->
       Cursor.skip t;
       An_plus_b (-1, -read_signless_integer t)
-  | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (
-      (* Fall-through ident: must be ndashdigit [n-<digits>] or dashndashdigit
-         [-n-<digits>]. *)
-      match ndashdigit_b s with
-      | Some b ->
-          Cursor.skip t;
-          An_plus_b (1, -b)
-      | None -> (
-          match dashndashdigit_b s with
-          | Some b ->
-              Cursor.skip t;
-              An_plus_b (-1, -b)
-          | None -> Cursor.err t ("not an An+B ident: " ^ s)))
-  (* Leading [+]: followed immediately by one of the positive ident forms. *)
+  | Some (Component.Preserved { kind = Token.Ident s; _ }) ->
+      read_nth_ident_tail t s
   | Some (Component.Preserved { kind = Token.Delim '+'; _ }) ->
       Cursor.skip t;
-      dispatch_ident_after_plus ()
+      read_nth_after_plus t
   | _ -> Cursor.err t "expected 'odd', 'even', or An+B expression"
 
 (** Pretty print nth expression *)

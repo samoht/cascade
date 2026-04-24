@@ -14,7 +14,7 @@ let of_components ?source ?(recover = false) ?(meta = Loc.default_meta_level)
     ?eof_loc cvs =
   { cvs; source; warnings = ref []; recover; meta; eof_loc }
 
-let subcursor ?eof_loc t cvs =
+let sub ?eof_loc t cvs =
   {
     cvs;
     source = t.source;
@@ -44,8 +44,8 @@ let lex_to_cv_list parser =
 
 (* [source] must be the post-preprocessing buffer (CSS Syntax section 3.3),
    which is what the lexer indexes against. Using the caller's raw string would
-   desync [Loc.offset] from [Loc.make_snippet] when the input contains BOM, NUL,
-   CR, FF, or CRLF. *)
+   desync [Loc.offset] from [Loc.snippet] when the input contains BOM, NUL, CR,
+   FF, or CRLF. *)
 let of_string ?(meta = Loc.default_meta_level) s =
   let reader = Reader.of_string s in
   let parser = Parser.of_reader reader in
@@ -159,7 +159,7 @@ let sort = Sort.Component
 let raise_ t kind loc =
   let snippet =
     match (t.meta, t.source) with
-    | `Full, Some source -> Some (Loc.make_snippet source loc)
+    | `Full, Some source -> Some (Loc.snippet source loc)
     | _ -> None
   in
   Error.fail (Error.v ?snippet ~loc ~sort kind)
@@ -411,15 +411,23 @@ let string ?(trim = false) t =
   | Some s -> if trim then String.trim s else s
   | None -> err_expected t "string"
 
+(* Zero-width loc pointing at the block/function closing delimiter. Used as the
+   [eof_loc] for sub-cursors so errors raised at end-of-block point at the
+   closer, not at the end of the whole input. *)
+let closer_loc (node_loc : Loc.t) =
+  Loc.v ~start_pos:node_loc.end_pos ~end_pos:node_loc.end_pos
+
+let func_sub (fn : Component.func Component.node) t =
+  sub ~eof_loc:(closer_loc fn.loc) t fn.node.arguments
+
 let url t =
   match url_opt t with
   | Some s -> s
   | None -> (
       match peek t with
-      | Some (Component.Func { node = { name = "url"; arguments }; _ }) -> (
+      | Some (Component.Func ({ node = { name = "url"; _ }; _ } as fn)) -> (
           skip t;
-          let inner = subcursor t arguments in
-          match string_opt inner with
+          match string_opt (func_sub fn t) with
           | Some s -> s
           | None -> err_expected t "url argument")
       | _ -> err_expected t "url")
@@ -570,32 +578,26 @@ let take_block_if pred t : Component.block Component.node option =
       Some b
   | _ -> None
 
-(* Zero-width loc pointing at the block/function closing delimiter. Used as the
-   [eof_loc] for sub-cursors so errors raised at end-of-block point at the
-   closer, not at the end of the whole input. *)
-let closer_loc (node_loc : Loc.t) =
-  Loc.v ~start_pos:node_loc.end_pos ~end_pos:node_loc.end_pos
-
 let parens f t =
   match take_block_if (fun b -> b = Token.Paren) t with
-  | Some b -> f (subcursor ~eof_loc:(closer_loc b.loc) t b.node.value)
+  | Some b -> f (sub ~eof_loc:(closer_loc b.loc) t b.node.value)
   | None -> err_expected t "'('"
 
 let brackets f t =
   match take_block_if (fun b -> b = Token.Square) t with
-  | Some b -> f (subcursor ~eof_loc:(closer_loc b.loc) t b.node.value)
+  | Some b -> f (sub ~eof_loc:(closer_loc b.loc) t b.node.value)
   | None -> err_expected t "'['"
 
 let braces f t =
   match take_block_if (fun b -> b = Token.Curly) t with
-  | Some b -> f (subcursor ~eof_loc:(closer_loc b.loc) t b.node.value)
+  | Some b -> f (sub ~eof_loc:(closer_loc b.loc) t b.node.value)
   | None -> err_expected t "'{'"
 
 let function_call name f t =
   match peek t with
   | Some (Component.Func fn) when fn.node.name = name ->
       let _ = next t in
-      Some (f (subcursor ~eof_loc:(closer_loc fn.loc) t fn.node.arguments))
+      Some (f (sub ~eof_loc:(closer_loc fn.loc) t fn.node.arguments))
   | _ -> None
 
 let any_function_call f t =
@@ -603,8 +605,7 @@ let any_function_call f t =
   | Some (Component.Func fn) ->
       let _ = next t in
       Some
-        (f fn.node.name
-           (subcursor ~eof_loc:(closer_loc fn.loc) t fn.node.arguments))
+        (f fn.node.name (sub ~eof_loc:(closer_loc fn.loc) t fn.node.arguments))
   | _ -> None
 
 let call name t f =
@@ -612,7 +613,7 @@ let call name t f =
   | Some (Component.Func fn)
     when String.lowercase_ascii fn.node.name = String.lowercase_ascii name ->
       let _ = next t in
-      f (subcursor ~eof_loc:(closer_loc fn.loc) t fn.node.arguments)
+      f (sub ~eof_loc:(closer_loc fn.loc) t fn.node.arguments)
   | _ -> err_expected t (name ^ "(")
 
 (** {1 Enums} *)

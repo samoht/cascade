@@ -63,7 +63,7 @@ module Context = struct
   let push step t = { t with path = Path.push step t.path }
 end
 
-let make_snippet ?(window = 40) source loc =
+let snippet ?(window = 40) source loc =
   let len = String.length source in
   let pos = max 0 (min len loc.start_pos) in
   let end_pos = max pos (min len loc.end_pos) in

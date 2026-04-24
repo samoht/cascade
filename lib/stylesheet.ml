@@ -885,7 +885,16 @@ and read_nested_at_within_rule (r : Cursor.t) (selector : Selector.t) :
 
 and read_rule_selector r =
   let prelude = Cursor.drain_until_block r in
-  let c = Cursor.subcursor r prelude in
+  (* Anchor selector-level EOF errors at the block's opening delimiter so a
+     prelude like [.a >] reports its error just before the [{], not at the end
+     of the whole stylesheet. The block itself stays in the parent cursor. *)
+  let eof_loc =
+    match Cursor.peek r with
+    | Some (Component.Block { loc; _ }) ->
+        Some (Loc.v ~start_pos:loc.start_pos ~end_pos:loc.start_pos)
+    | _ -> None
+  in
+  let c = Cursor.sub ?eof_loc r prelude in
   (* Re-raise the original [Parse_error] so its loc/kind/path/snippet reach the
      caller intact. Previously we rewrapped via [Cursor.err r (Error.to_string
      e)], which erased the structured error and relocated it to the parent

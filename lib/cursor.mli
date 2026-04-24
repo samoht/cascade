@@ -26,11 +26,16 @@ val of_components :
     controls snippet construction and defaults to {!Loc.default_meta_level}.
     [?eof_loc] anchors end-of-input errors at a specific location. *)
 
-val subcursor : ?eof_loc:Loc.t -> t -> Component.t list -> t
-(** [subcursor ?eof_loc parent cvs] is a fresh cursor over [cvs] that inherits
+val sub : ?eof_loc:Loc.t -> t -> Component.t list -> t
+(** [sub ?eof_loc parent cvs] is a fresh cursor over [cvs] that inherits
     [parent]'s source, warnings list, recovery mode, and {!meta} level. Pass
     [?eof_loc] to anchor end-of-input errors at a specific location (e.g. the
     closing delimiter of a block); defaults to [parent]'s own [eof_loc]. *)
+
+val func_sub : Component.func Component.node -> t -> t
+(** [func_sub fn parent] is a sub-cursor over [fn]'s arguments, anchored so an
+    EOF error inside the function body points at the function's closing [')']
+    rather than the end of the outer input. *)
 
 val recover : t -> bool
 (** [recover t] is the recovery mode [t] was built with. Validators that support
