@@ -413,7 +413,8 @@ let any_function_call f t =
 
 let call name t f =
   match peek t with
-  | Some (Component.Func fn) when fn.node.name = name ->
+  | Some (Component.Func fn)
+    when String.lowercase_ascii fn.node.name = String.lowercase_ascii name ->
       let _ = next t in
       f (of_components fn.node.arguments)
   | _ -> err_expected t (name ^ "(")
@@ -433,7 +434,8 @@ let try_enum table t =
 let enum ?default label table t =
   match peek t with
   | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (
-      match List.assoc_opt s table with
+      (* CSS idents are case-insensitive (Syntax §3.3). *)
+      match List.assoc_opt (String.lowercase_ascii s) table with
       | Some v ->
           let _ = next t in
           v
@@ -446,7 +448,7 @@ let enum ?default label table t =
 let enum_calls ?default table t =
   match peek t with
   | Some (Component.Func { node = { name; _ }; _ }) -> (
-      match List.assoc_opt name table with
+      match List.assoc_opt (String.lowercase_ascii name) table with
       | Some f -> f t
       | None -> (
           match default with
@@ -460,7 +462,8 @@ let enum_calls ?default table t =
 let enum_or_calls ?default label idents ?(calls = []) t =
   match peek t with
   | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (
-      match List.assoc_opt s idents with
+      (* CSS idents are case-insensitive (Syntax §3.3). *)
+      match List.assoc_opt (String.lowercase_ascii s) idents with
       | Some v ->
           let _ = next t in
           v
@@ -469,7 +472,7 @@ let enum_or_calls ?default label idents ?(calls = []) t =
           | Some f -> f t
           | None -> err t ("unknown " ^ label ^ ": " ^ s)))
   | Some (Component.Func { node = { name; _ }; _ }) -> (
-      match List.assoc_opt name calls with
+      match List.assoc_opt (String.lowercase_ascii name) calls with
       | Some f -> f t
       | None -> (
           match default with
