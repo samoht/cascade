@@ -72,7 +72,7 @@ let read_property_value t =
   in
   String.trim (Parser.to_string (drain []))
 
-(** Check for and consume !important *)
+(** Check for and consume [!important] (case-insensitive per CSS Syntax). *)
 let read_importance t =
   Cursor.ws t;
   match Cursor.peek_delim t with
@@ -80,7 +80,7 @@ let read_importance t =
       Cursor.skip t;
       Cursor.ws t;
       let ident = Cursor.ident t in
-      if ident = "important" then true
+      if String.lowercase_ascii ident = "important" then true
       else Cursor.err_invalid t ("invalid !important declaration: !" ^ ident)
   | _ -> false
 
