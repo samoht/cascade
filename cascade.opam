@@ -19,6 +19,7 @@ depends: [
   "astring" {with-test}
   "lambdasoup" {with-test}
   "fmt"
+  "uutf"
   "cmdliner"
   "odoc" {with-doc}
 ]

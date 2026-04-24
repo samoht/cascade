@@ -101,48 +101,30 @@ let of_string input =
 let source t = t.input
 let is_done t = t.pos >= t.len
 
+let utf8_byte_length cp =
+  if cp < 0x80 then 1
+  else if cp < 0x800 then 2
+  else if cp < 0x10000 then 3
+  else 4
+
 (* Decode the UTF-8 code point starting at [t.pos + offset]. Returns [Some
-   (code_point, byte_length)] or [None] at EOF or on a malformed sequence. The
-   byte length is 1..4. *)
+   (code_point, byte_length)] or [None] at EOF or on a malformed sequence. Uses
+   Uutf for the byte-level decode so overlong, surrogate, and out-of-range
+   sequences are rejected consistently with the Unicode spec. *)
 let peek_utf8_at t offset =
   let p = t.pos + offset in
   if p >= t.len then None
   else
-    let b0 = Char.code t.input.[p] in
-    if b0 < 0x80 then Some (b0, 1)
-    else if b0 < 0xC2 then None (* invalid lead byte *)
-    else
-      let cont k =
-        if p + k >= t.len then None
-        else
-          let b = Char.code t.input.[p + k] in
-          if b land 0xC0 = 0x80 then Some (b land 0x3F) else None
-      in
-      if b0 < 0xE0 then
-        match cont 1 with
-        | Some c1 ->
-            let cp = ((b0 land 0x1F) lsl 6) lor c1 in
-            if cp < 0x80 then None (* overlong *) else Some (cp, 2)
-        | None -> None
-      else if b0 < 0xF0 then
-        match (cont 1, cont 2) with
-        | Some c1, Some c2 ->
-            let cp = ((b0 land 0x0F) lsl 12) lor (c1 lsl 6) lor c2 in
-            if cp < 0x800 then None (* overlong *)
-            else if cp >= 0xD800 && cp <= 0xDFFF then None (* surrogate *)
-            else Some (cp, 3)
-        | _ -> None
-      else if b0 < 0xF5 then
-        match (cont 1, cont 2, cont 3) with
-        | Some c1, Some c2, Some c3 ->
-            let cp =
-              ((b0 land 0x07) lsl 18) lor (c1 lsl 12) lor (c2 lsl 6) lor c3
-            in
-            if cp < 0x10000 then None (* overlong *)
-            else if cp > 0x10FFFF then None
-            else Some (cp, 4)
-        | _ -> None
-      else None
+    let result = ref None in
+    let len = min 4 (t.len - p) in
+    let folder () _ = function
+      | `Uchar u when !result = None ->
+          let cp = Uchar.to_int u in
+          result := Some (cp, utf8_byte_length cp)
+      | _ -> ()
+    in
+    Uutf.String.fold_utf_8 ~pos:p ~len folder () t.input;
+    !result
 
 let peek_utf8 t = peek_utf8_at t 0
 
@@ -334,36 +316,16 @@ let is_ident_char c = is_ident_start c || (c >= '0' && c <= '9') || c = '-'
 let is_hex c =
   (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
 
-(* Encode a Unicode codepoint as UTF-8 *)
+(* Encode a Unicode codepoint as UTF-8. Out-of-range, surrogate, or negative
+   inputs fall back to U+FFFD, matching CSS Syntax section 3.3. *)
 let utf8_of_codepoint cp =
-  if cp < 0 then "?"
-  else if cp <= 0x7F then String.make 1 (Char.chr cp)
-  else if cp <= 0x7FF then
-    let b1 = 0xC0 lor (cp lsr 6) in
-    let b2 = 0x80 lor (cp land 0x3F) in
-    Bytes.init 2 (function 0 -> Char.chr b1 | _ -> Char.chr b2)
-    |> Bytes.to_string
-  else if cp <= 0xFFFF then
-    let b1 = 0xE0 lor (cp lsr 12) in
-    let b2 = 0x80 lor ((cp lsr 6) land 0x3F) in
-    let b3 = 0x80 lor (cp land 0x3F) in
-    Bytes.init 3 (function
-      | 0 -> Char.chr b1
-      | 1 -> Char.chr b2
-      | _ -> Char.chr b3)
-    |> Bytes.to_string
-  else if cp <= 0x10FFFF then
-    let b1 = 0xF0 lor (cp lsr 18) in
-    let b2 = 0x80 lor ((cp lsr 12) land 0x3F) in
-    let b3 = 0x80 lor ((cp lsr 6) land 0x3F) in
-    let b4 = 0x80 lor (cp land 0x3F) in
-    Bytes.init 4 (function
-      | 0 -> Char.chr b1
-      | 1 -> Char.chr b2
-      | 2 -> Char.chr b3
-      | _ -> Char.chr b4)
-    |> Bytes.to_string
-  else "?"
+  let u =
+    if cp < 0 || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF) then Uchar.rep
+    else Uchar.of_int cp
+  in
+  let buf = Buffer.create 4 in
+  Uutf.Buffer.add_utf_8 buf u;
+  Buffer.contents buf
 
 let read_escape t =
   (* Assumes the leading backslash has already been consumed. *)
