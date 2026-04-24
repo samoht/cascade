@@ -907,19 +907,13 @@ let number_formats () =
 
 let unterminated () =
   (* CSS Syntax 5.3.7 / 4.3.5 auto-close unterminated strings, brackets and
-     function calls at EOF, so these inputs parse (as if the closing quote /
-     bracket were inserted). *)
-  let parses input =
-    let c = Css.Cursor.of_string input in
-    match read_declaration c with
-    | Some _ | None -> ()
-    | exception _ ->
-        Alcotest.failf "expected %S to parse (spec recovery) but it failed"
-          input
-  in
-  parses "content: \"abc";
-  parses "width: calc(100% - (10px)";
-  parses "color: rgb(0, 0, 0";
+     function calls at EOF. Assert the recovered declaration matches the shape
+     an explicit closer would have produced — the parser must not silently drop
+     content. *)
+  check_declaration ~expected:"content:\"abc\"" "content: \"abc";
+  check_declaration ~expected:"width:calc(100% - (10px))"
+    "width: calc(100% - (10px)";
+  check_declaration ~expected:"color:rgb(0 0 0)" "color: rgb(0, 0, 0";
   (* A missing semicolon between two declarations in a block remains a parse
      error. *)
   Css_test_helpers.neg_cursor Css.Declaration.read_block
