@@ -199,10 +199,14 @@ let extract_test_functions test_file =
     flush_current ();
     !tests
 
-(* Analyze check and neg patterns in test function body *)
+(* Analyze check and neg patterns in test function body. The "neg" call can be
+   [neg] (basic helper), [neg_cursor] (cursor-based), or any future
+   [neg_<suffix>] variant. *)
 let analyze_test_patterns tname body module_name =
   let check_re = Re.Perl.compile_pat "\\bcheck_([A-Za-z0-9_]+)" in
-  let neg_read_re = Re.Perl.compile_pat "neg[\\s]+read_([A-Za-z0-9_]+)" in
+  let neg_read_re =
+    Re.Perl.compile_pat "\\bneg(?:_[a-z]+)?[\\s]+read_([A-Za-z0-9_]+)"
+  in
 
   let rec collect_checks pos acc =
     if pos >= String.length body then List.rev acc
@@ -226,22 +230,22 @@ let analyze_test_patterns tname body module_name =
 
   let checks = collect_checks 0 [] in
   let neg_reads = collect_neg_reads 0 [] in
-  (* For type t, the test function is test_<module> but the read function can be both "read" and "read_<module>" *)
-  (* So if tname equals the module name, we're testing type t and should look for both patterns *)
   let has_neg =
     if tname = module_name then
-      (* Testing type t - look for both "neg read" (without suffix) and "neg
-         read_<module>" *)
-      let has_read = Re.execp (Re.Perl.compile_pat "neg[\\s]+read[\\s]") body in
+      let has_read =
+        Re.execp (Re.Perl.compile_pat "\\bneg(?:_[a-z]+)?[\\s]+read[\\s]") body
+      in
       let has_read_module =
         Re.execp
-          (Re.Perl.compile_pat ("neg[\\s]+read_" ^ module_name ^ "\\b"))
+          (Re.Perl.compile_pat
+             ("\\bneg(?:_[a-z]+)?[\\s]+read_" ^ module_name ^ "\\b"))
           body
       in
       has_read || has_read_module
     else
-      (* Testing other types - look for "neg read_<type>" *)
-      let neg_re = Re.Perl.compile_pat ("neg[\\s]+read_" ^ tname ^ "\\b") in
+      let neg_re =
+        Re.Perl.compile_pat ("\\bneg(?:_[a-z]+)?[\\s]+read_" ^ tname ^ "\\b")
+      in
       Re.execp neg_re body
   in
 
@@ -280,10 +284,12 @@ let check_test_patterns ~lib_dir ~mod_name ~valid_types ~expected_test_name
   let tname_is_valid_type =
     List.exists (fun t -> expected_test_name t = tname) valid_types
   in
+  let generic_check_helpers = [ "value"; "value_cursor"; "parse_fails" ] in
   List.iter
     (fun c ->
       let is_wrong =
-        c <> expected_for_tname && c <> "value" && c <> "parse_fails"
+        c <> expected_for_tname
+        && (not (List.mem c generic_check_helpers))
         && (((not tname_is_valid_type) && List.mem c valid_check_names)
            || tname_is_valid_type)
       in
