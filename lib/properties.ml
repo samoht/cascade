@@ -4357,9 +4357,10 @@ module Grid_template = struct
     | _ -> Auto
 
   let read_fr t : grid_template =
-    let n = Cursor.number t in
-    Cursor.expect_string "fr" t;
-    Fr n
+    (* [1fr] lexes as a single [Dimension] with unit "fr". *)
+    match Cursor.dimension_opt t with
+    | Some (n, "fr") -> Fr n
+    | _ -> Cursor.err_expected t "<fr>"
 
   let read_track_breadth t : grid_template =
     (* Accept a single breadth: length, fr, or keywords *)
@@ -4380,26 +4381,19 @@ module Grid_template = struct
       t
 
   let read_minmax t : grid_template =
-    Cursor.expect_string "minmax" t;
-    Cursor.expect '(' t;
-    Cursor.ws t;
-    let minv = read_track_breadth t in
-    Cursor.ws t;
-    Cursor.expect ',' t;
-    Cursor.ws t;
-    let maxv = read_track_breadth t in
-    Cursor.ws t;
-    Cursor.expect ')' t;
+    Cursor.call "minmax" t @@ fun inner ->
+    Cursor.ws inner;
+    let minv = read_track_breadth inner in
+    Cursor.ws inner;
+    Cursor.comma inner;
+    Cursor.ws inner;
+    let maxv = read_track_breadth inner in
     Min_max (minv, maxv)
 
   let read_fit_content t : grid_template =
-    Cursor.expect_string "fit-content" t;
-    Cursor.expect '(' t;
-    Cursor.ws t;
-    let len = read_length t in
-    Cursor.ws t;
-    Cursor.expect ')' t;
-    Fit_content len
+    Cursor.call "fit-content" t @@ fun inner ->
+    Cursor.ws inner;
+    Fit_content (read_length inner)
 
   let rec read_single_track t =
     Cursor.enum_or_calls "grid-template"
@@ -4418,18 +4412,16 @@ module Grid_template = struct
           ("fit-content", read_fit_content);
           ( "repeat",
             fun t ->
-              Cursor.expect_string "repeat" t;
-              Cursor.expect '(' t;
-              Cursor.ws t;
-              let count = Cursor.int t in
-              Cursor.ws t;
-              Cursor.expect ',' t;
-              Cursor.ws t;
+              Cursor.call "repeat" t @@ fun inner ->
+              Cursor.ws inner;
+              let count = Cursor.int inner in
+              Cursor.ws inner;
+              Cursor.comma inner;
+              Cursor.ws inner;
               let tracks =
-                Cursor.list ~sep:(fun t -> Cursor.ws t) read_single_track t
+                Cursor.list ~sep:(fun i -> Cursor.ws i) read_single_track inner
               in
-              Cursor.expect ')' t;
-              Repeat (count, tracks) );
+              (Repeat (count, tracks) : grid_template) );
         ]
       ~default:(fun t -> Cursor.one_of [ read_length_as_grid; read_fr ] t)
       t
