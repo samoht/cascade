@@ -2,7 +2,10 @@
 
     Wraps a {!Reader.t} and produces {!Token.t} values via the section 4.3
     tokenization algorithm. Exposes the uniform [next / peek / reconsume] triple
-    used across parse stages. *)
+    used across parse stages.
+
+    The input is already-decoded UTF-8 text. CSS Syntax section 3.2 byte-stream
+    decoding is outside this layer. *)
 
 type t
 (** A lexer stream: a character cursor plus one-token pushback. *)
@@ -11,7 +14,8 @@ val of_reader : Reader.t -> t
 (** [of_reader r] wraps an existing character reader. *)
 
 val of_string : string -> t
-(** [of_string s] builds a fresh reader from [s] and wraps it. *)
+(** [of_string s] builds a fresh reader from an already-decoded UTF-8 string and
+    wraps it. *)
 
 val source : t -> string
 (** [source t] is the full input string the underlying reader was built from. *)
