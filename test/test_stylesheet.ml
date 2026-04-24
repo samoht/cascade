@@ -1241,6 +1241,16 @@ let additional_tests =
               "`None: snippet skipped" true
               (Css.Error.snippet e = None)
         | _ -> Alcotest.fail "expected one warning under `None" );
+    ( "semicolon-terminated at-rule survives partial parse",
+      `Quick,
+      fun () ->
+        (* [@layer base;] parses through section 5.4.2 to an at-rule with [block
+           = None]. The replay cursor must still present a terminating [;] to
+           [read_layer], otherwise the at-rule is silently dropped. *)
+        let { Css.stylesheet; warnings } = Css.parse "@layer base;" in
+        let stmts = Css.statements stylesheet in
+        Alcotest.(check int) "one statement" 1 (List.length stmts);
+        Alcotest.(check int) "no warnings" 0 (List.length warnings) );
   ]
 
 let suite = ("stylesheet", stylesheet_tests @ additional_tests)

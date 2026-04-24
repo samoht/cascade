@@ -125,11 +125,11 @@ NO_COLOR=1 cssdiff reference.css output.css
   planned work.
 - **Two parse entry points.** `Css.of_string` fails fast on the first
   validator error. `Css.parse` runs the CSS Syntax Level 3 recovery path:
-  unclosed blocks auto-close at EOF (5.3.7), invalid rules are dropped and
-  surface as warnings in the returned `parse_result.warnings`, and the rest
-  of the stylesheet parses normally. Recovery is currently rule-granular; a
-  single invalid declaration takes its enclosing rule with it. Per-
-  declaration recovery per 5.4.4 is the next refinement.
+  unclosed blocks auto-close at EOF (5.3.7), an invalid declaration is
+  dropped while its enclosing rule keeps its other declarations (5.4.4),
+  and rules that don't validate at all surface as warnings in the returned
+  `parse_result.warnings` while the rest of the stylesheet parses
+  normally.
 - CSS nesting is parsed and printed but the optimizer does not flatten nested
   rules. A round-trip through the parser preserves nesting structure.
 - `@import` rules are preserved as-is; Cascade does not resolve or inline

@@ -14,19 +14,23 @@ val of_components :
   ?source:string ->
   ?recover:bool ->
   ?meta:Loc.meta_level ->
+  ?eof_loc:Loc.t ->
   Component.t list ->
   t
-(** [of_components ?source ?recover ?meta cvs] is a fresh cursor over [cvs].
-    Pass [?source] so errors raised while consuming the cursor get a source-
-    context snippet attached (matching {!of_string}'s behaviour). Pass
+(** [of_components ?source ?recover ?meta ?eof_loc cvs] is a fresh cursor over
+    [cvs]. Pass [?source] so errors raised while consuming the cursor get a
+    source-context snippet attached (matching {!of_string}'s behaviour). Pass
     [~recover:true] to enable per-declaration recovery: validators that honour
     {!recover} will catch a [Parse_error] on one declaration, push it to
     {!push_warning}, and skip to the next [;] instead of propagating. [?meta]
-    controls snippet construction and defaults to {!Loc.default_meta_level}. *)
+    controls snippet construction and defaults to {!Loc.default_meta_level}.
+    [?eof_loc] anchors end-of-input errors at a specific location. *)
 
-val subcursor : t -> Component.t list -> t
-(** [subcursor parent cvs] is a fresh cursor over [cvs] that inherits [parent]'s
-    source, warnings list, recovery mode, and {!meta} level. *)
+val subcursor : ?eof_loc:Loc.t -> t -> Component.t list -> t
+(** [subcursor ?eof_loc parent cvs] is a fresh cursor over [cvs] that inherits
+    [parent]'s source, warnings list, recovery mode, and {!meta} level. Pass
+    [?eof_loc] to anchor end-of-input errors at a specific location (e.g. the
+    closing delimiter of a block); defaults to [parent]'s own [eof_loc]. *)
 
 val recover : t -> bool
 (** [recover t] is the recovery mode [t] was built with. Validators that support

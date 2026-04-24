@@ -4,19 +4,24 @@ type t = {
   warnings : Error.t list ref;
   recover : bool;
   meta : Loc.meta_level;
+  eof_loc : Loc.t option;
+      (* Where to point errors raised at end of this cursor. For a cursor over a
+         nested block body this is the block's closing delimiter position, not
+         the end of the whole input. *)
 }
 
 let of_components ?source ?(recover = false) ?(meta = Loc.default_meta_level)
-    cvs =
-  { cvs; source; warnings = ref []; recover; meta }
+    ?eof_loc cvs =
+  { cvs; source; warnings = ref []; recover; meta; eof_loc }
 
-let subcursor t cvs =
+let subcursor ?eof_loc t cvs =
   {
     cvs;
     source = t.source;
     warnings = t.warnings;
     recover = t.recover;
     meta = t.meta;
+    eof_loc = (match eof_loc with Some _ -> eof_loc | None -> t.eof_loc);
   }
 
 let push_warning t e = t.warnings := e :: !(t.warnings)
@@ -45,16 +50,18 @@ let of_string ?(meta = Loc.default_meta_level) s =
     warnings = ref [];
     recover = false;
     meta;
+    eof_loc = None;
   }
 
 let of_reader ?(meta = Loc.default_meta_level) r =
   let parser = Parser.of_reader r in
   {
     cvs = lex_to_cv_list parser;
-    source = None;
+    source = Some (Reader.source r);
     warnings = ref [];
     recover = false;
     meta;
+    eof_loc = None;
   }
 
 let is_ws_cv : Component.t -> bool = function
@@ -92,11 +99,17 @@ let position t =
   drop_ws t;
   match t.cvs with
   | [] -> (
-      match t.source with
-      | None -> Loc.dummy
-      | Some source ->
-          let pos = String.length source in
-          Loc.v ~start_pos:pos ~end_pos:pos)
+      (* Prefer the explicit EOF location (block closer, function ')', etc.)
+         over the whole-input end; fall back to the source length only when
+         neither is set. *)
+      match t.eof_loc with
+      | Some loc -> loc
+      | None -> (
+          match t.source with
+          | None -> Loc.dummy
+          | Some source ->
+              let pos = String.length source in
+              Loc.v ~start_pos:pos ~end_pos:pos))
   | hd :: _ -> Component.source_loc hd
 
 let remaining t = t.cvs
@@ -552,33 +565,41 @@ let take_block_if pred t : Component.block Component.node option =
       Some b
   | _ -> None
 
+(* Zero-width loc pointing at the block/function closing delimiter. Used as the
+   [eof_loc] for sub-cursors so errors raised at end-of-block point at the
+   closer, not at the end of the whole input. *)
+let closer_loc (node_loc : Loc.t) =
+  Loc.v ~start_pos:node_loc.end_pos ~end_pos:node_loc.end_pos
+
 let parens f t =
   match take_block_if (fun b -> b = Token.Paren) t with
-  | Some b -> f (subcursor t b.node.value)
+  | Some b -> f (subcursor ~eof_loc:(closer_loc b.loc) t b.node.value)
   | None -> err_expected t "'('"
 
 let brackets f t =
   match take_block_if (fun b -> b = Token.Square) t with
-  | Some b -> f (subcursor t b.node.value)
+  | Some b -> f (subcursor ~eof_loc:(closer_loc b.loc) t b.node.value)
   | None -> err_expected t "'['"
 
 let braces f t =
   match take_block_if (fun b -> b = Token.Curly) t with
-  | Some b -> f (subcursor t b.node.value)
+  | Some b -> f (subcursor ~eof_loc:(closer_loc b.loc) t b.node.value)
   | None -> err_expected t "'{'"
 
 let function_call name f t =
   match peek t with
   | Some (Component.Func fn) when fn.node.name = name ->
       let _ = next t in
-      Some (f (subcursor t fn.node.arguments))
+      Some (f (subcursor ~eof_loc:(closer_loc fn.loc) t fn.node.arguments))
   | _ -> None
 
 let any_function_call f t =
   match peek t with
   | Some (Component.Func fn) ->
       let _ = next t in
-      Some (f fn.node.name (subcursor t fn.node.arguments))
+      Some
+        (f fn.node.name
+           (subcursor ~eof_loc:(closer_loc fn.loc) t fn.node.arguments))
   | _ -> None
 
 let call name t f =
@@ -586,7 +607,7 @@ let call name t f =
   | Some (Component.Func fn)
     when String.lowercase_ascii fn.node.name = String.lowercase_ascii name ->
       let _ = next t in
-      f (subcursor t fn.node.arguments)
+      f (subcursor ~eof_loc:(closer_loc fn.loc) t fn.node.arguments)
   | _ -> err_expected t (name ^ "(")
 
 (** {1 Enums} *)
