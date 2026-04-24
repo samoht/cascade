@@ -1,4 +1,9 @@
-(** Tokenizer smoke tests. Not a full WPT port; that comes later. *)
+(** Tokenizer smoke tests. Not a full WPT port; that comes later.
+
+    CSS Syntax section 3.2 byte-stream decoding is intentionally not tested
+    here: Cascade's lexer starts from already-decoded UTF-8 text, so BOM,
+    transport charset, environment fallback, and [@charset] byte sniffing belong
+    to callers or to a future byte-decoding entry point. *)
 
 open Cascade
 
@@ -18,6 +23,28 @@ let pp_tokens kinds =
 let check input expected_summary =
   let got = pp_tokens (tokens_of input) in
   Alcotest.(check string) (Fmt.str "tokenize %S" input) expected_summary got
+
+let spec_preprocessing () =
+  (* CSS Syntax Level 3 section 3.3: Cascade starts after byte decoding, then
+     preprocesses the code-point stream before tokenization. *)
+  check "\xEF\xBB\xBFfoo" "<ident foo>";
+  check "a\rb" "<ident a> <ws> <ident b>";
+  check "a\r\nb" "<ident a> <ws> <ident b>";
+  check "a\012b" "<ident a> <ws> <ident b>";
+  check "a\x00b" ("<ident a" ^ "\xEF\xBF\xBD" ^ "b>")
+
+let spec_token_railroad_diagrams () =
+  (* CSS Syntax Level 3 section 4.1 token railroad diagrams: one compact pass
+     over the concrete token categories Cascade exposes. Unicode-range tokens
+     are a tokenizer-layer gap: Cascade currently handles unicode-range syntax
+     in the property parser instead of exposing a lexer token for it. *)
+  check
+    "foo calc( @media #id \"str\" url(a.png) url(a b) ? 1 2% 3px \t <!-- --> : \
+     ; , [ ] ( ) { }"
+    "<ident foo> <ws> <function calc(> <ws> <@media> <ws> <#id> <ws> <string \
+     str> <ws> <url a.png> <ws> <bad-url> <ws> <delim '?'> <ws> <number 1> \
+     <ws> <percentage 2%> <ws> <dimension 3px> <ws> <CDO> <ws> <CDC> <ws> <:> \
+     <ws> <;> <ws> <,> <ws> <[> <ws> <]> <ws> <(> <ws> <)> <ws> <{> <ws> <}>"
 
 let idents () =
   check "foo" "<ident foo>";
@@ -117,6 +144,10 @@ let bad_url () = check "url(a b)" "<bad-url>"
 let suite =
   ( "lexer",
     [
+      Alcotest.test_case "spec section 3.3 preprocessing" `Quick
+        spec_preprocessing;
+      Alcotest.test_case "spec section 4.1 token railroad diagrams" `Quick
+        spec_token_railroad_diagrams;
       Alcotest.test_case "idents" `Quick idents;
       Alcotest.test_case "functions" `Quick functions;
       Alcotest.test_case "at-keyword" `Quick at_keyword;

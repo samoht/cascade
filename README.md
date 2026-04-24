@@ -113,16 +113,14 @@ NO_COLOR=1 cssdiff reference.css output.css
 
 ## Limitations
 
-- **UTF-8 input only.** Cascade expects an OCaml `string` that is already
-  valid UTF-8. Stylesheets in legacy encodings (`Shift_JIS`, `Big5`, `EUC-*`,
-  `windows-125x`, UTF-16, etc.) must be decoded upstream -- use a dedicated
-  encoding library and hand Cascade the UTF-8 result. An `@charset` rule
-  naming any non-UTF-8 label is rejected as a parse error rather than
-  silently ignored. Tokenization currently treats any byte `>= 0x80` as an
-  identifier code point rather than checking the spec's non-ASCII ident
-  ranges (CSS Syntax 4.2), so valid UTF-8 round-trips but non-ident code
-  points (e.g. emoji) are over-accepted in identifiers; tightening this is
-  planned work.
+- **UTF-8 text input.** Cascade parses already-decoded UTF-8 OCaml strings. It
+  does not implement the CSS Syntax Level 3 section 3.2 byte-stream decoding
+  layer: BOM handling, HTTP/environment charset fallback, and exact
+  `@charset "...";` byte sniffing are caller responsibilities before invoking
+  Cascade. Stylesheets in legacy encodings (`Shift_JIS`, `Big5`, `EUC-*`,
+  `windows-125x`, UTF-16, etc.) must be decoded upstream with a dedicated
+  encoding library and passed to Cascade as UTF-8 text. Parsed `@charset`
+  syntax is compatibility surface, not an encoding-decoding mechanism.
 - **Two parse entry points.** `Css.of_string` fails fast on the first
   validator error. `Css.parse` runs the CSS Syntax Level 3 recovery path:
   unclosed blocks auto-close at EOF (5.3.7), an invalid declaration is

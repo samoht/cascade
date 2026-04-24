@@ -1,4 +1,9 @@
-(** Simple CSS parser API — direct and readable. *)
+(** Simple CSS parser API — direct and readable.
+
+    Cascade parses already-decoded UTF-8 text. It does not implement the CSS
+    Syntax section 3.2 byte-stream decoding layer: BOM handling, HTTP or
+    environment charset fallback, and exact [@charset "...";] byte sniffing are
+    caller responsibilities before constructing a {!Reader.t}. *)
 
 type t
 (** [t] is the parser context. *)
@@ -29,7 +34,7 @@ val pp_parse_error : parse_error -> string
 (** {1 Core} *)
 
 val of_string : string -> t
-(** [of_string s] creates a parser from a string. *)
+(** [of_string s] creates a parser from an already-decoded UTF-8 string. *)
 
 val source : t -> string
 (** [source t] is the full input string the reader was built from. *)
