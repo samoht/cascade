@@ -471,14 +471,21 @@ let read_import (r : Cursor.t) : statement =
 let read_namespace (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "namespace" r;
   Cursor.ws r;
-  (* Check for optional prefix *)
+  (* Optional prefix ident; absent when the URL comes first. *)
   let prefix =
-    if Cursor.looking_at r "url(" then None
-    else Some (Cursor.ident ~keep_case:true r)
+    match Cursor.peek r with
+    | Some (Component.Preserved { kind = Token.Ident _; _ }) ->
+        Some (Cursor.ident ~keep_case:true r)
+    | _ -> None
   in
   Cursor.ws r;
-  (* Read the URL *)
-  let uri = Cursor.url r in
+  let uri =
+    match Cursor.peek r with
+    | Some (Component.Preserved { kind = Token.String s; _ }) ->
+        Cursor.skip r;
+        s
+    | _ -> Cursor.url r
+  in
   Cursor.ws r;
   if Cursor.peek_semicolon r then Cursor.skip r;
   Namespace (prefix, uri)
