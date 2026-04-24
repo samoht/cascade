@@ -37,6 +37,19 @@ val source : t -> string
 val is_done : t -> bool
 (** [is_done t] is [true] when at end of input. *)
 
+val peek_utf8 : t -> (int * int) option
+(** [peek_utf8 t] decodes the UTF-8 code point starting at the current position.
+    Returns [Some (code_point, byte_length)] or [None] at EOF or on a malformed
+    sequence. Byte length is in [[1..4]]. *)
+
+val peek_utf8_at : t -> int -> (int * int) option
+(** [peek_utf8_at t off] decodes the UTF-8 code point at [position t + off],
+    without advancing. *)
+
+val skip_utf8 : t -> unit
+(** [skip_utf8 t] advances past the next UTF-8 code point. If the lead byte is
+    malformed, advances by one byte. *)
+
 val position : t -> int
 (** [position t] returns the current position in the input. *)
 

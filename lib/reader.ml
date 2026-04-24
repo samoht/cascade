@@ -63,11 +63,93 @@ let pp (ctx : Pp.ctx) (t : t) =
 
 (** {1 Creation} *)
 
+(* CSS Syntax Level 3 section 3.3 "Preprocessing the input stream": - Strip a
+   leading U+FEFF BYTE ORDER MARK. - Replace any U+0000 NULL or surrogate code
+   point with U+FFFD REPLACEMENT. (We operate post-UTF-8-decode; surrogates
+   don't occur in valid UTF-8 so the NUL byte is the practical concern.) -
+   Replace U+000D CARRIAGE RETURN, U+000C FORM FEED, and U+000D U+000A CRLF
+   pairs with a single U+000A LINE FEED. *)
+let preprocess input =
+  let len = String.length input in
+  let buf = Buffer.create len in
+  let fffd = "\xEF\xBF\xBD" in
+  (* Skip leading UTF-8 BOM (EF BB BF) if present. *)
+  let start =
+    if
+      len >= 3 && input.[0] = '\xEF' && input.[1] = '\xBB' && input.[2] = '\xBF'
+    then 3
+    else 0
+  in
+  let i = ref start in
+  while !i < len do
+    let c = input.[!i] in
+    (match c with
+    | '\x00' -> Buffer.add_string buf fffd
+    | '\r' ->
+        Buffer.add_char buf '\n';
+        if !i + 1 < len && input.[!i + 1] = '\n' then incr i
+    | '\x0C' -> Buffer.add_char buf '\n'
+    | _ -> Buffer.add_char buf c);
+    incr i
+  done;
+  Buffer.contents buf
+
 let of_string input =
+  let input = preprocess input in
   { input; len = String.length input; pos = 0; saved = []; call_stack = [] }
 
 let source t = t.input
 let is_done t = t.pos >= t.len
+
+(* Decode the UTF-8 code point starting at [t.pos + offset]. Returns [Some
+   (code_point, byte_length)] or [None] at EOF or on a malformed sequence. The
+   byte length is 1..4. *)
+let peek_utf8_at t offset =
+  let p = t.pos + offset in
+  if p >= t.len then None
+  else
+    let b0 = Char.code t.input.[p] in
+    if b0 < 0x80 then Some (b0, 1)
+    else if b0 < 0xC2 then None (* invalid lead byte *)
+    else
+      let cont k =
+        if p + k >= t.len then None
+        else
+          let b = Char.code t.input.[p + k] in
+          if b land 0xC0 = 0x80 then Some (b land 0x3F) else None
+      in
+      if b0 < 0xE0 then
+        match cont 1 with
+        | Some c1 ->
+            let cp = ((b0 land 0x1F) lsl 6) lor c1 in
+            if cp < 0x80 then None (* overlong *) else Some (cp, 2)
+        | None -> None
+      else if b0 < 0xF0 then
+        match (cont 1, cont 2) with
+        | Some c1, Some c2 ->
+            let cp = ((b0 land 0x0F) lsl 12) lor (c1 lsl 6) lor c2 in
+            if cp < 0x800 then None (* overlong *)
+            else if cp >= 0xD800 && cp <= 0xDFFF then None (* surrogate *)
+            else Some (cp, 3)
+        | _ -> None
+      else if b0 < 0xF5 then
+        match (cont 1, cont 2, cont 3) with
+        | Some c1, Some c2, Some c3 ->
+            let cp =
+              ((b0 land 0x07) lsl 18) lor (c1 lsl 12) lor (c2 lsl 6) lor c3
+            in
+            if cp < 0x10000 then None (* overlong *)
+            else if cp > 0x10FFFF then None
+            else Some (cp, 4)
+        | _ -> None
+      else None
+
+let peek_utf8 t = peek_utf8_at t 0
+
+let skip_utf8 t =
+  match peek_utf8 t with
+  | None -> if t.pos < t.len then t.pos <- t.pos + 1 (* advance past bad byte *)
+  | Some (_, n) -> t.pos <- t.pos + n
 
 (** {1 Call Stack Management} *)
 
