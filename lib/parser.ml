@@ -206,12 +206,18 @@ let to_string_minified cvs =
 
 (** {1 Rule / declaration consumers (section 5.3)} *)
 
-(* Push a warning, attaching a source snippet from the lexer's reader so section
-   5.3 recovery warnings carry the same context as raised Cursor errors. *)
-let warn lexer (warnings : Error.t list ref) (e : Error.t) =
-  let source = Lexer.source lexer in
-  let snippet = Loc.make_snippet source e.loc in
-  let e = Error.v ~snippet ~loc:e.loc ~sort:e.sort e.kind in
+(* Push a warning, attaching a source snippet from the lexer's reader when [meta
+   = `Full] so section 5.3 recovery warnings carry the same context as raised
+   Cursor errors. Lower meta levels skip the snippet allocation. *)
+let warn ~meta lexer (warnings : Error.t list ref) (e : Error.t) =
+  let e =
+    match meta with
+    | `Full ->
+        let source = Lexer.source lexer in
+        let snippet = Loc.make_snippet source e.loc in
+        Error.v ~snippet ~loc:e.loc ~sort:e.sort e.kind
+    | `None | `Locs -> e
+  in
   warnings := e :: !warnings
 
 let consume_at_rule lexer ~name ~start_loc : Component.at_rule =
@@ -234,14 +240,14 @@ let consume_at_rule lexer ~name ~start_loc : Component.at_rule =
   in
   loop []
 
-let consume_qualified_rule lexer ~start_loc ~warnings :
+let consume_qualified_rule ~meta lexer ~start_loc ~warnings :
     Component.qualified_rule option =
   let rec loop prelude =
     let tok = Lexer.next lexer in
     match tok.Token.kind with
     | Token.Eof ->
         let loc = Loc.union start_loc tok.loc in
-        warn lexer warnings (Error.unterminated loc Sort.Qualified_rule);
+        warn ~meta lexer warnings (Error.unterminated loc Sort.Qualified_rule);
         None
     | Token.Open Curly ->
         let block = consume_simple_block lexer Curly ~start_loc:tok.loc in
@@ -253,7 +259,8 @@ let consume_qualified_rule lexer ~start_loc ~warnings :
   in
   loop []
 
-let consume_list_of_rules lexer ~top_level ~warnings : Component.rule list =
+let consume_list_of_rules ~meta lexer ~top_level ~warnings : Component.rule list
+    =
   let rec loop acc =
     let tok = Lexer.next lexer in
     match tok.Token.kind with
@@ -262,7 +269,9 @@ let consume_list_of_rules lexer ~top_level ~warnings : Component.rule list =
     | (Token.Cdo | Token.Cdc) when top_level -> loop acc
     | Token.Cdo | Token.Cdc -> (
         Lexer.reconsume lexer tok;
-        match consume_qualified_rule lexer ~start_loc:tok.loc ~warnings with
+        match
+          consume_qualified_rule ~meta lexer ~start_loc:tok.loc ~warnings
+        with
         | Some qr -> loop (Qualified qr :: acc)
         | None -> loop acc)
     | Token.At_keyword name ->
@@ -270,14 +279,16 @@ let consume_list_of_rules lexer ~top_level ~warnings : Component.rule list =
         loop (At ar :: acc)
     | _ -> (
         Lexer.reconsume lexer tok;
-        match consume_qualified_rule lexer ~start_loc:tok.loc ~warnings with
+        match
+          consume_qualified_rule ~meta lexer ~start_loc:tok.loc ~warnings
+        with
         | Some qr -> loop (Qualified qr :: acc)
         | None -> loop acc)
   in
   loop []
 
 (* 5.3.7 Parse a declaration from a buffered component-value list. *)
-let parse_declaration_from_buffer lexer ~name ~name_loc ~warnings cvs :
+let parse_declaration_from_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
     Component.declaration option =
   let is_ws_cv = function
     | Preserved { kind = Token.Whitespace; _ } -> true
@@ -318,11 +329,11 @@ let parse_declaration_from_buffer lexer ~name ~name_loc ~warnings cvs :
       in
       Some { node = { name; value; important }; loc }
   | _ ->
-      warn lexer warnings
+      warn ~meta lexer warnings
         (Error.missing_token name_loc ~sort:Sort.Declaration "':'");
       None
 
-let consume_list_of_declarations lexer ~warnings :
+let consume_list_of_declarations ~meta lexer ~warnings :
     [ `Decl of Component.declaration | `At of Component.at_rule ] list =
   let rec loop acc =
     let tok = Lexer.next lexer in
@@ -343,13 +354,13 @@ let consume_list_of_declarations lexer ~warnings :
         in
         let body = buffer [] in
         match
-          parse_declaration_from_buffer lexer ~name ~name_loc:tok.loc ~warnings
-            body
+          parse_declaration_from_buffer ~meta lexer ~name ~name_loc:tok.loc
+            ~warnings body
         with
         | Some d -> loop (`Decl d :: acc)
         | None -> loop acc)
     | _ ->
-        warn lexer warnings
+        warn ~meta lexer warnings
           (Error.unexpected_token tok.loc ~sort:Sort.Declaration tok.kind);
         let rec skip () =
           let t = Lexer.next lexer in
@@ -374,17 +385,17 @@ let with_warnings f =
   let value = f ~warnings in
   { value; warnings = List.rev !warnings }
 
-let parse_stylesheet r =
+let parse_stylesheet ?(meta = Loc.default_meta_level) r =
   with_warnings (fun ~warnings ->
       let lexer = Lexer.of_reader r in
-      consume_list_of_rules lexer ~top_level:true ~warnings)
+      consume_list_of_rules ~meta lexer ~top_level:true ~warnings)
 
-let parse_list_of_declarations r =
+let parse_list_of_declarations ?(meta = Loc.default_meta_level) r =
   with_warnings (fun ~warnings ->
       let lexer = Lexer.of_reader r in
-      consume_list_of_declarations lexer ~warnings)
+      consume_list_of_declarations ~meta lexer ~warnings)
 
-let parse_list_of_rules r =
+let parse_list_of_rules ?(meta = Loc.default_meta_level) r =
   with_warnings (fun ~warnings ->
       let lexer = Lexer.of_reader r in
-      consume_list_of_rules lexer ~top_level:false ~warnings)
+      consume_list_of_rules ~meta lexer ~top_level:false ~warnings)

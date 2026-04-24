@@ -88,15 +88,20 @@ val read_stylesheet : Cursor.t -> stylesheet
     instead. *)
 
 val read_stylesheet_from_rules :
-  ?source:string -> Component.rule list -> stylesheet * Error.t list
-(** [read_stylesheet_from_rules ?source rules] validates each Parser- recovered
-    {!Component.rule} to a typed {!statement} independently. A validator failure
-    on one rule is captured as a warning and the rule is dropped; the remaining
-    rules are returned. Pass [?source] so dropped- rule warnings carry
-    source-context snippets. *)
+  ?source:string ->
+  ?meta:Loc.meta_level ->
+  Component.rule list ->
+  stylesheet * Error.t list
+(** [read_stylesheet_from_rules ?source ?meta rules] validates each Parser-
+    recovered {!Component.rule} to a typed {!statement} independently. A
+    validator failure on one rule is captured as a warning and the rule is
+    dropped; the remaining rules are returned. Pass [?source] (and keep [?meta]
+    at its default [`Full]) so dropped-rule warnings carry source- context
+    snippets. *)
 
-val parse_stylesheet_partial : string -> stylesheet * Error.t list
-(** [parse_stylesheet_partial source] runs section 5.3 recovery via
+val parse_stylesheet_partial :
+  ?meta:Loc.meta_level -> string -> stylesheet * Error.t list
+(** [parse_stylesheet_partial ?meta source] runs section 5.3 recovery via
     {!Parser.parse_stylesheet} and then typed-validates each recovered rule via
     {!read_stylesheet_from_rules}. Warnings from both stages are combined in
     source order. *)

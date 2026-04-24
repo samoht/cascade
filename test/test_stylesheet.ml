@@ -1223,6 +1223,24 @@ let additional_tests =
         match warnings with
         | [ (_, fname) ] -> Alcotest.(check string) "filename" "user.css" fname
         | _ -> Alcotest.fail "expected one warning" );
+    ( "meta: `Full attaches snippets, `None skips them",
+      `Quick,
+      fun () ->
+        let input = ".a { color: rgb(300); }" in
+        let full = Css.parse ~meta:`Full input in
+        let none = Css.parse ~meta:`None input in
+        (match full.warnings with
+        | [ (e, _) ] ->
+            Alcotest.(check bool)
+              "`Full: snippet present" true
+              (Css.Error.snippet e <> None)
+        | _ -> Alcotest.fail "expected one warning under `Full");
+        match none.warnings with
+        | [ (e, _) ] ->
+            Alcotest.(check bool)
+              "`None: snippet skipped" true
+              (Css.Error.snippet e = None)
+        | _ -> Alcotest.fail "expected one warning under `None" );
   ]
 
 let suite = ("stylesheet", stylesheet_tests @ additional_tests)

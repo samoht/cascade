@@ -3,16 +3,25 @@ type t = {
   source : string option;
   warnings : Error.t list ref;
   recover : bool;
+  meta : Loc.meta_level;
 }
 
-let of_components ?source ?(recover = false) cvs =
-  { cvs; source; warnings = ref []; recover }
+let of_components ?source ?(recover = false) ?(meta = Loc.default_meta_level)
+    cvs =
+  { cvs; source; warnings = ref []; recover; meta }
 
 let subcursor t cvs =
-  { cvs; source = t.source; warnings = t.warnings; recover = t.recover }
+  {
+    cvs;
+    source = t.source;
+    warnings = t.warnings;
+    recover = t.recover;
+    meta = t.meta;
+  }
 
 let push_warning t e = t.warnings := e :: !(t.warnings)
 let recover t = t.recover
+let meta t = t.meta
 
 let drain_warnings t =
   let ws = List.rev !(t.warnings) in
@@ -28,22 +37,24 @@ let lex_to_cv_list parser =
   in
   loop []
 
-let of_string s =
+let of_string ?(meta = Loc.default_meta_level) s =
   let parser = Parser.of_string s in
   {
     cvs = lex_to_cv_list parser;
     source = Some s;
     warnings = ref [];
     recover = false;
+    meta;
   }
 
-let of_reader r =
+let of_reader ?(meta = Loc.default_meta_level) r =
   let parser = Parser.of_reader r in
   {
     cvs = lex_to_cv_list parser;
     source = None;
     warnings = ref [];
     recover = false;
+    meta;
   }
 
 let is_ws_cv : Component.t -> bool = function
@@ -129,7 +140,9 @@ let sort = Sort.Component
 
 let raise_ t kind loc =
   let snippet =
-    Option.map (fun source -> Loc.make_snippet source loc) t.source
+    match (t.meta, t.source) with
+    | `Full, Some source -> Some (Loc.make_snippet source loc)
+    | _ -> None
   in
   Error.fail (Error.v ?snippet ~loc ~sort kind)
 

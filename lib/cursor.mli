@@ -10,23 +10,32 @@
 
 type t
 
-val of_components : ?source:string -> ?recover:bool -> Component.t list -> t
-(** [of_components ?source ?recover cvs] is a fresh cursor over [cvs]. Pass
-    [?source] so errors raised while consuming the cursor get a source-context
-    snippet attached (matching {!of_string}'s behaviour). Pass [~recover:true]
-    to enable per-declaration recovery: validators that honour {!recover} will
-    catch a [Parse_error] on one declaration, push it to {!push_warning}, and
-    skip to the next [;] instead of propagating. Defaults to [false] (strict,
-    matching {!of_string}). *)
+val of_components :
+  ?source:string ->
+  ?recover:bool ->
+  ?meta:Loc.meta_level ->
+  Component.t list ->
+  t
+(** [of_components ?source ?recover ?meta cvs] is a fresh cursor over [cvs].
+    Pass [?source] so errors raised while consuming the cursor get a source-
+    context snippet attached (matching {!of_string}'s behaviour). Pass
+    [~recover:true] to enable per-declaration recovery: validators that honour
+    {!recover} will catch a [Parse_error] on one declaration, push it to
+    {!push_warning}, and skip to the next [;] instead of propagating. [?meta]
+    controls snippet construction and defaults to {!Loc.default_meta_level}. *)
 
 val subcursor : t -> Component.t list -> t
 (** [subcursor parent cvs] is a fresh cursor over [cvs] that inherits [parent]'s
-    source, warnings list, and recovery mode. *)
+    source, warnings list, recovery mode, and {!meta} level. *)
 
 val recover : t -> bool
 (** [recover t] is the recovery mode [t] was built with. Validators that support
     declaration-level recovery check this to decide whether to catch and skip on
     a [Parse_error] or let it propagate. *)
+
+val meta : t -> Loc.meta_level
+(** [meta t] is the metadata level [t] was built with. At [`Full] errors carry
+    source-context snippets; lower levels skip snippet construction. *)
 
 val push_warning : t -> Error.t -> unit
 (** [push_warning t e] records [e] as a non-fatal warning on [t]. A validator in
@@ -37,13 +46,13 @@ val drain_warnings : t -> Error.t list
 (** [drain_warnings t] returns and clears the warnings accumulated on [t] in
     source order. *)
 
-val of_string : string -> t
-(** [of_string s] lexes [s] into a {!Component.t} list and wraps it. The
+val of_string : ?meta:Loc.meta_level -> string -> t
+(** [of_string ?meta s] lexes [s] into a {!Component.t} list and wraps it. The
     trailing [Eof] token is dropped. *)
 
-val of_reader : Reader.t -> t
-(** [of_reader r] consumes the rest of [r]'s input as a component stream and
-    wraps it. *)
+val of_reader : ?meta:Loc.meta_level -> Reader.t -> t
+(** [of_reader ?meta r] consumes the rest of [r]'s input as a component stream
+    and wraps it. *)
 
 (** {1 Stream API} *)
 

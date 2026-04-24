@@ -4,6 +4,10 @@
     validators report errors with precise positions and recover ranges for
     editor integrations. *)
 
+type meta_level = [ `None | `Locs | `Full ]
+
+let default_meta_level : meta_level = `Full
+
 type t = { start_pos : int; end_pos : int }
 
 let v ~start_pos ~end_pos = { start_pos; end_pos }
