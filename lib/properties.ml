@@ -4994,15 +4994,21 @@ let read_svg_paint t : svg_paint =
     in
     Url (u, fb)
   in
-  Cursor.enum_or_calls "svg-paint"
-    [
-      ("none", (None : svg_paint));
-      ("inherit", Inherit);
-      ("currentcolor", Current_color);
-    ]
-    ~calls:[ ("url", read_url_with_fallback) ]
-    ~default:(fun t -> (Color (read_color t) : svg_paint))
-    t
+  (* Bare [url(#grad)] is a single [Token.Url] component; handle before the
+     function/ident dispatch. *)
+  match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Url _; _ }) ->
+      read_url_with_fallback t
+  | _ ->
+      Cursor.enum_or_calls "svg-paint"
+        [
+          ("none", (None : svg_paint));
+          ("inherit", Inherit);
+          ("currentcolor", Current_color);
+        ]
+        ~calls:[ ("url", read_url_with_fallback) ]
+        ~default:(fun t -> (Color (read_color t) : svg_paint))
+        t
 
 let read_direction t : direction =
   Cursor.enum "direction"
