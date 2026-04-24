@@ -306,10 +306,17 @@ let consume_remnants_of_bad_url r =
   in
   loop ()
 
-(* 4.3.13 Consume a url token. Assumes "url(" and any whitespace has been
-   consumed. *)
+(* 4.3.6 Consume a url token. Assumes "url(" has been consumed. *)
 let consume_url_token r =
   let buf = Buffer.create 32 in
+  let rec skip_ws () =
+    match Reader.peek r with
+    | Some c when is_ws c ->
+        Reader.skip r;
+        skip_ws ()
+    | _ -> ()
+  in
+  skip_ws ();
   let rec loop () =
     match Reader.peek r with
     | None -> Url (Buffer.contents buf)
@@ -317,13 +324,6 @@ let consume_url_token r =
         Reader.skip r;
         Url (Buffer.contents buf)
     | Some c when is_ws c -> (
-        let rec skip_ws () =
-          match Reader.peek r with
-          | Some c when is_ws c ->
-              Reader.skip r;
-              skip_ws ()
-          | _ -> ()
-        in
         skip_ws ();
         match Reader.peek r with
         | None -> Url (Buffer.contents buf)
