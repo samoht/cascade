@@ -337,6 +337,14 @@ let of_string ?(filename = "<string>") css =
   try Ok (read_stylesheet reader)
   with Cursor.Parse_error error -> Error (error, filename)
 
+type parse_warning = Error.t * string
+type parse_result = { stylesheet : t; warnings : parse_warning list }
+
+let parse ?(filename = "<string>") css =
+  let stylesheet, warnings = Stylesheet.parse_stylesheet_partial css in
+  let warnings = List.map (fun e -> (e, filename)) warnings in
+  { stylesheet; warnings }
+
 let to_string ?(minify = false) ?(optimize = false) ?(mode = Variables)
     ?(newline = true) ?theme ?(theme_defaults = Pp.no_theme_defaults) stylesheet
     =

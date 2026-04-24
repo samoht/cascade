@@ -1,6 +1,7 @@
-type t = { mutable cvs : Component.t list }
+type t = { mutable cvs : Component.t list; source : string option }
 
-let of_components cvs = { cvs }
+let of_components ?source cvs = { cvs; source }
+let subcursor t cvs = { cvs; source = t.source }
 
 let lex_to_cv_list parser =
   let rec loop acc =
@@ -13,11 +14,11 @@ let lex_to_cv_list parser =
 
 let of_string s =
   let parser = Parser.of_string s in
-  { cvs = lex_to_cv_list parser }
+  { cvs = lex_to_cv_list parser; source = Some s }
 
 let of_reader r =
   let parser = Parser.of_reader r in
-  { cvs = lex_to_cv_list parser }
+  { cvs = lex_to_cv_list parser; source = None }
 
 let is_ws_cv : Component.t -> bool = function
   | Preserved { kind = Token.Whitespace; _ } -> true
@@ -52,7 +53,14 @@ let is_done t =
 
 let position t =
   drop_ws t;
-  match t.cvs with [] -> Loc.dummy | hd :: _ -> Component.source_loc hd
+  match t.cvs with
+  | [] -> (
+      match t.source with
+      | None -> Loc.dummy
+      | Some source ->
+          let pos = String.length source in
+          Loc.v ~start_pos:pos ~end_pos:pos)
+  | hd :: _ -> Component.source_loc hd
 
 let remaining t = t.cvs
 
@@ -92,21 +100,29 @@ let restore t s = t.cvs <- s
 exception Parse_error = Error.Parse_error
 
 let sort = Sort.Component
-let raise_ kind loc = Error.fail (Error.v ~loc ~sort kind)
+
+let raise_ t kind loc =
+  let snippet =
+    Option.map (fun source -> Loc.make_snippet source loc) t.source
+  in
+  Error.fail (Error.v ?snippet ~loc ~sort kind)
 
 let err ?got t msg =
   let loc = position t in
   match got with
   | Some g ->
-      raise_
+      raise_ t
         (Error.Bad_value { property = ""; reason = msg ^ ": got " ^ g })
         loc
-  | None -> raise_ (Error.Bad_value { property = ""; reason = msg }) loc
+  | None -> raise_ t (Error.Bad_value { property = ""; reason = msg }) loc
 
 let err_invalid t msg = err t ("invalid: " ^ msg)
-let err_eof t = raise_ (Error.Unterminated sort) (position t)
+let err_eof t = raise_ t (Error.Unterminated sort) (position t)
 let err_expected t what = err t ("expected " ^ what)
-let err_expected_but_eof t what = raise_ (Error.Missing_token what) (position t)
+
+let err_expected_but_eof t what =
+  raise_ t (Error.Missing_token what) (position t)
+
 let err_unexpected t = err t "unexpected token"
 let with_context _t label f = Error.with_context label f
 
@@ -123,7 +139,7 @@ let lookahead p t =
   restore t snap;
   v
 
-(** {1 Token-shape helpers — option variants} *)
+(** {1 Token-shape helpers - option variants} *)
 
 let take_token_if (f : Token.kind -> 'a option) t : 'a option =
   match peek t with
@@ -299,7 +315,7 @@ let consume_to_slash_or_semicolon ?(trim = false) t =
   components_to_string ~trim
     (drain_until_raw (fun cv -> is_slash_cv cv || is_semicolon_cv cv) t)
 
-(** {1 Token-shape helpers — raising variants} *)
+(** {1 Token-shape helpers - raising variants} *)
 
 let ident ?keep_case:_ t =
   match ident_opt t with Some s -> s | None -> err_expected t "identifier"
@@ -345,7 +361,7 @@ let url t =
       match peek t with
       | Some (Component.Func { node = { name = "url"; arguments }; _ }) -> (
           skip t;
-          let inner = of_components arguments in
+          let inner = subcursor t arguments in
           match string_opt inner with
           | Some s -> s
           | None -> err_expected t "url argument")
@@ -499,31 +515,31 @@ let take_block_if pred t : Component.block Component.node option =
 
 let parens f t =
   match take_block_if (fun b -> b = Token.Paren) t with
-  | Some b -> f (of_components b.node.value)
+  | Some b -> f (subcursor t b.node.value)
   | None -> err_expected t "'('"
 
 let brackets f t =
   match take_block_if (fun b -> b = Token.Square) t with
-  | Some b -> f (of_components b.node.value)
+  | Some b -> f (subcursor t b.node.value)
   | None -> err_expected t "'['"
 
 let braces f t =
   match take_block_if (fun b -> b = Token.Curly) t with
-  | Some b -> f (of_components b.node.value)
+  | Some b -> f (subcursor t b.node.value)
   | None -> err_expected t "'{'"
 
 let function_call name f t =
   match peek t with
   | Some (Component.Func fn) when fn.node.name = name ->
       let _ = next t in
-      Some (f (of_components fn.node.arguments))
+      Some (f (subcursor t fn.node.arguments))
   | _ -> None
 
 let any_function_call f t =
   match peek t with
   | Some (Component.Func fn) ->
       let _ = next t in
-      Some (f fn.node.name (of_components fn.node.arguments))
+      Some (f fn.node.name (subcursor t fn.node.arguments))
   | _ -> None
 
 let call name t f =
@@ -531,7 +547,7 @@ let call name t f =
   | Some (Component.Func fn)
     when String.lowercase_ascii fn.node.name = String.lowercase_ascii name ->
       let _ = next t in
-      f (of_components fn.node.arguments)
+      f (subcursor t fn.node.arguments)
   | _ -> err_expected t (name ^ "(")
 
 (** {1 Enums} *)
@@ -549,7 +565,7 @@ let try_enum table t =
 let enum ?default label table t =
   match peek t with
   | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (
-      (* CSS idents are case-insensitive (Syntax §3.3). *)
+      (* CSS idents are case-insensitive (Syntax section 3.3). *)
       match List.assoc_opt (String.lowercase_ascii s) table with
       | Some v ->
           let _ = next t in
@@ -577,7 +593,7 @@ let enum_calls ?default table t =
 let enum_or_calls ?default label idents ?(calls = []) t =
   match peek t with
   | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (
-      (* CSS idents are case-insensitive (Syntax §3.3). *)
+      (* CSS idents are case-insensitive (Syntax section 3.3). *)
       match List.assoc_opt (String.lowercase_ascii s) idents with
       | Some v ->
           let _ = next t in

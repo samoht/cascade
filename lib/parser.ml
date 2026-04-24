@@ -12,7 +12,7 @@ let of_lexer lexer = { lexer; lookback = None }
 let of_reader r = of_lexer (Lexer.of_reader r)
 let of_string s = of_reader (Reader.of_string s)
 
-(** {1 §5.3 algorithms operating on a {!Lexer.t}} *)
+(** {1 section 5.3 algorithms operating on a {!Lexer.t}} *)
 
 (* Consume a component value. The opening token [tok] has already been read. *)
 let rec consume_component_value_from lexer tok : Component.t =
@@ -147,11 +147,11 @@ let to_string cvs =
 
 (* A whitespace token between two components can be dropped when neither side is
    "word-like". Two word-like tokens side by side could otherwise merge into a
-   single token (e.g. [ident] + [ident] → one ident; [number] + [ident] →
+   single token (e.g. [ident] + [ident] -> one ident; [number] + [ident] ->
    dimension). A {!Func} component starts with an ident and ends with [)], so
-   nothing placed after it can merge with its trailing [)] — it is not word-like
-   on the right. Its opening ident is followed by [(] so it is not word-like on
-   the left either. *)
+   nothing placed after it can merge with its trailing [)] -- it is not
+   word-like on the right. Its opening ident is followed by [(] so it is not
+   word-like on the left either. *)
 let word_like : Component.t -> bool = function
   | Preserved
       {
@@ -206,7 +206,13 @@ let to_string_minified cvs =
 
 (** {1 Rule / declaration consumers (section 5.3)} *)
 
-let warn (warnings : Error.t list ref) e = warnings := e :: !warnings
+(* Push a warning, attaching a source snippet from the lexer's reader so section
+   5.3 recovery warnings carry the same context as raised Cursor errors. *)
+let warn lexer (warnings : Error.t list ref) (e : Error.t) =
+  let source = Lexer.source lexer in
+  let snippet = Loc.make_snippet source e.loc in
+  let e = Error.v ~snippet ~loc:e.loc ~sort:e.sort e.kind in
+  warnings := e :: !warnings
 
 let consume_at_rule lexer ~name ~start_loc : Component.at_rule =
   let rec loop prelude =
@@ -235,7 +241,7 @@ let consume_qualified_rule lexer ~start_loc ~warnings :
     match tok.Token.kind with
     | Token.Eof ->
         let loc = Loc.union start_loc tok.loc in
-        warn warnings (Error.unterminated loc Sort.Qualified_rule);
+        warn lexer warnings (Error.unterminated loc Sort.Qualified_rule);
         None
     | Token.Open Curly ->
         let block = consume_simple_block lexer Curly ~start_loc:tok.loc in
@@ -271,7 +277,7 @@ let consume_list_of_rules lexer ~top_level ~warnings : Component.rule list =
   loop []
 
 (* 5.3.7 Parse a declaration from a buffered component-value list. *)
-let parse_declaration_from_buffer ~name ~name_loc ~warnings cvs :
+let parse_declaration_from_buffer lexer ~name ~name_loc ~warnings cvs :
     Component.declaration option =
   let is_ws_cv = function
     | Preserved { kind = Token.Whitespace; _ } -> true
@@ -312,7 +318,8 @@ let parse_declaration_from_buffer ~name ~name_loc ~warnings cvs :
       in
       Some { node = { name; value; important }; loc }
   | _ ->
-      warn warnings (Error.missing_token name_loc ~sort:Sort.Declaration "':'");
+      warn lexer warnings
+        (Error.missing_token name_loc ~sort:Sort.Declaration "':'");
       None
 
 let consume_list_of_declarations lexer ~warnings :
@@ -336,12 +343,13 @@ let consume_list_of_declarations lexer ~warnings :
         in
         let body = buffer [] in
         match
-          parse_declaration_from_buffer ~name ~name_loc:tok.loc ~warnings body
+          parse_declaration_from_buffer lexer ~name ~name_loc:tok.loc ~warnings
+            body
         with
         | Some d -> loop (`Decl d :: acc)
         | None -> loop acc)
     | _ ->
-        warn warnings
+        warn lexer warnings
           (Error.unexpected_token tok.loc ~sort:Sort.Declaration tok.kind);
         let rec skip () =
           let t = Lexer.next lexer in

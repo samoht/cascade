@@ -10,6 +10,7 @@ type t = { reader : Reader.t; mutable lookback : Token.t option }
 
 let of_reader reader = { reader; lookback = None }
 let of_string s = of_reader (Reader.of_string s)
+let source t = Reader.source t.reader
 
 (** {1 Tokenization} *)
 

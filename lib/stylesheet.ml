@@ -452,9 +452,9 @@ let is_utf8_label s =
 let read_charset (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "charset" r;
   Cursor.ws r;
-  (* CSS Syntax §8.2 / css-syntax-3 requires the exact byte sequence [@charset
-     "..."]; single-quoted or otherwise non-conforming charset at-rules are not
-     recognized as charset declarations. *)
+  (* CSS Syntax section 8.2 / css-syntax-3 requires the exact byte sequence
+     [@charset "..."]; single-quoted or otherwise non-conforming charset
+     at-rules are not recognized as charset declarations. *)
   let encoding =
     match Cursor.string_with_quote_opt r with
     | Some (value, '"') -> value
@@ -868,7 +868,7 @@ and read_nested_at_within_rule (r : Cursor.t) (selector : Selector.t) :
 
 and read_rule_selector r =
   let prelude = Cursor.drain_until_block r in
-  let c = Cursor.of_components prelude in
+  let c = Cursor.subcursor r prelude in
   try Selector.read_selector_list c
   with Error.Parse_error e -> Cursor.err r (Error.to_string e)
 
@@ -973,6 +973,54 @@ let read_stylesheet (r : Cursor.t) : stylesheet =
           read_statements (stmt :: acc)
       in
       read_statements [])
+
+(* Replay a Parser-recovered rule as a Cursor by flattening its components.
+   [Component.at_rule] stores the at-keyword as a bare [name] string; the
+   original [At_keyword] token was already consumed during section 5.3, so
+   synthesize one at the rule's location so dispatch in [read_statement] still
+   sees the opening [\@name]. [?source] flows through so errors raised by
+   validators downstream pick up source-context snippets. *)
+let cursor_of_rule ?source : Component.rule -> Cursor.t = function
+  | Qualified { node = { prelude; block }; _ } ->
+      Cursor.of_components ?source (prelude @ [ Component.Block block ])
+  | At { node = { name; prelude; block }; loc } ->
+      let at_kw = Token.v ~kind:(Token.At_keyword name) ~loc in
+      let at_cv = Component.Preserved at_kw in
+      let block_cv =
+        match block with Some b -> [ Component.Block b ] | None -> []
+      in
+      Cursor.of_components ?source ((at_cv :: prelude) @ block_cv)
+
+(* Validate one Parser-recovered rule to a typed statement, or convert the
+   validator's [Parse_error] into a warning and drop the rule. Per-rule
+   isolation so a single bad declaration doesn't poison the whole sheet. *)
+let read_statement_from_rule ?source (rule : Component.rule) :
+    (statement, Error.t) result =
+  let r = cursor_of_rule ?source rule in
+  try Ok (read_statement r) with Error.Parse_error e -> Error e
+
+let read_stylesheet_from_rules ?source (rules : Component.rule list) :
+    stylesheet * Error.t list =
+  let warnings = ref [] in
+  let statements =
+    List.filter_map
+      (fun rule ->
+        match read_statement_from_rule ?source rule with
+        | Ok stmt -> Some stmt
+        | Error e ->
+            warnings := e :: !warnings;
+            None)
+      rules
+  in
+  (statements, List.rev !warnings)
+
+(* Top-level partial-recovery entry point: combine section 5.3 syntax warnings
+   from [Parser.parse_stylesheet] with per-rule typed-validation warnings. *)
+let parse_stylesheet_partial (source : string) : stylesheet * Error.t list =
+  let reader = Reader.of_string source in
+  let out = Parser.parse_stylesheet reader in
+  let sheet, typed_warnings = read_stylesheet_from_rules ~source out.value in
+  (sheet, out.warnings @ typed_warnings)
 
 (** {1 Inline Styles} *)
 

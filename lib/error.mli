@@ -23,9 +23,9 @@ type kind =
 
 type t = { loc : Loc.t; sort : Sort.t; path : string list; kind : kind }
 (** The [path] is a breadcrumb trail from the outermost context down to the
-    exact sub-production that failed, rendered with ["/"] separators (e.g.
-    [":is()/1"] means "first complex selector inside [:is()]"). Empty when the
-    error happens at the outermost level. *)
+    exact sub-production that failed, rendered with ["/"] separators. Use
+    {!context} to recover the structured path, source location, sort and source
+    snippet when available. *)
 
 val pp_kind : kind Pp.t
 (** [pp_kind] renders just the reason, e.g.
@@ -56,12 +56,26 @@ val fail : t -> 'a
 
 val with_context : string -> (unit -> 'a) -> 'a
 (** [with_context label f] runs [f ()] and, on a raised {!Parse_error}, prepends
-    [label] to the error's {!t.path}. Compose on every descent into a named
+    [label] to the error's context path. Compose on every descent into a named
     sub-production ([:is()], [[attr]], [nth-child], ...) to build breadcrumb
     paths like [":is()/.foo"]. *)
 
-val v : loc:Loc.t -> sort:Sort.t -> kind -> t
-(** [v ~loc ~sort kind] builds an [Error.t] with an empty path. *)
+val v :
+  ?path:Loc.Path.t ->
+  ?snippet:Loc.Context.snippet ->
+  loc:Loc.t ->
+  sort:Sort.t ->
+  kind ->
+  t
+(** [v ~loc ~sort kind] builds an [Error.t]. *)
+
+val context : t -> Loc.Context.t
+(** [context t] is the structured error context. *)
+
+val snippet : t -> Loc.Context.snippet option
+(** [snippet t] is the source-context snippet attached to [t], when available.
+    Warnings emitted during section 5.3 recovery and errors raised by {!Cursor}
+    both carry one when the input was provided as a string. *)
 
 (** {2 Value constructors} *)
 

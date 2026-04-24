@@ -115,18 +115,23 @@ NO_COLOR=1 cssdiff reference.css output.css
 
 - **UTF-8 input only.** Cascade expects an OCaml `string` that is already
   valid UTF-8. Stylesheets in legacy encodings (`Shift_JIS`, `Big5`, `EUC-*`,
-  `windows-125x`, UTF-16, etc.) must be decoded upstream — use a dedicated
+  `windows-125x`, UTF-16, etc.) must be decoded upstream -- use a dedicated
   encoding library and hand Cascade the UTF-8 result. An `@charset` rule
   naming any non-UTF-8 label is rejected as a parse error rather than
   silently ignored. Tokenization currently treats any byte `>= 0x80` as an
   identifier code point rather than checking the spec's non-ASCII ident
-  ranges (CSS Syntax §4.2), so valid UTF-8 round-trips but non-ident code
+  ranges (CSS Syntax 4.2), so valid UTF-8 round-trips but non-ident code
   points (e.g. emoji) are over-accepted in identifiers; tightening this is
   planned work.
+- **Two parse entry points.** `Css.of_string` fails fast on the first
+  validator error. `Css.parse` runs the CSS Syntax Level 3 recovery path:
+  unclosed blocks auto-close at EOF (5.3.7), invalid rules are dropped and
+  surface as warnings in the returned `parse_result.warnings`, and the rest
+  of the stylesheet parses normally. Recovery is currently rule-granular; a
+  single invalid declaration takes its enclosing rule with it. Per-
+  declaration recovery per 5.4.4 is the next refinement.
 - CSS nesting is parsed and printed but the optimizer does not flatten nested
   rules. A round-trip through the parser preserves nesting structure.
-- The parser uses error recovery for declarations but does not yet implement
-  the full error recovery algorithm from CSS Syntax Level 3 section 9.
 - `@import` rules are preserved as-is; Cascade does not resolve or inline
   imported stylesheets.
 - No source-map support.

@@ -1653,7 +1653,7 @@ and read_color t : color =
       match List.assoc_opt name color_parsers with
       | Some parser ->
           Cursor.skip t;
-          parser (Cursor.of_components arguments)
+          parser (Cursor.subcursor t arguments)
       | None when name = "var" -> Var (read_var read_color t)
       | None -> Cursor.err t ("unknown color function: " ^ name))
   | Some (Component.Preserved { kind = Token.Ident ident; _ }) -> (

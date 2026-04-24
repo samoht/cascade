@@ -31,6 +31,9 @@ val pp_parse_error : parse_error -> string
 val of_string : string -> t
 (** [of_string s] creates a parser from a string. *)
 
+val source : t -> string
+(** [source t] is the full input string the reader was built from. *)
+
 val is_done : t -> bool
 (** [is_done t] is [true] when at end of input. *)
 
