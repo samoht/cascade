@@ -1649,11 +1649,11 @@ and read_color t : color =
       else if not (String.for_all is_hex value) then
         Cursor.err_invalid t ("hex color digits: " ^ value)
       else Hex { hash = true; value }
-  | Some (Component.Func { node = { name; arguments }; _ }) -> (
+  | Some (Component.Func ({ node = { name; _ }; _ } as fn)) -> (
       match List.assoc_opt name color_parsers with
       | Some parser ->
           Cursor.skip t;
-          parser (Cursor.subcursor t arguments)
+          parser (Cursor.func_sub fn t)
       | None when name = "var" -> Var (read_var read_color t)
       | None -> Cursor.err t ("unknown color function: " ^ name))
   | Some (Component.Preserved { kind = Token.Ident ident; _ }) -> (

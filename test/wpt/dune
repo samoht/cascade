@@ -2,4 +2,4 @@
  (name test)
  (deps
   (source_tree ../vectors/wpt/css-syntax))
- (libraries cascade alcotest lambdasoup))
+ (libraries cascade alcotest fmt lambdasoup))

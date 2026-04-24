@@ -83,8 +83,8 @@ module Context : sig
   (** [push step t] appends [step] to [t]'s path. *)
 end
 
-val make_snippet : ?window:int -> string -> t -> Context.snippet
-(** [make_snippet source loc] extracts a snippet of [source] around [loc]:
-    [text] is the byte window (default: 40 bytes on each side of the location),
+val snippet : ?window:int -> string -> t -> Context.snippet
+(** [snippet source loc] extracts a snippet of [source] around [loc]: [text] is
+    the byte window (default: 40 bytes on each side of the location),
     [marker_pos] points at [loc.start_pos] within [text], and [marker_len] spans
     the located range. *)

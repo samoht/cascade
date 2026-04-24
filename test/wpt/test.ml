@@ -32,7 +32,7 @@ let read_file path =
 (** {1 parseRule(...) extraction from <script> bodies} *)
 
 (* Find the first occurrence of [needle] in [s] starting at [from]. *)
-let find_from ~from s needle =
+let index_from ~from s needle =
   let nlen = String.length needle in
   let slen = String.length s in
   let rec loop i =
@@ -48,12 +48,12 @@ let extract_template_args ~call_name s =
   let marker = call_name ^ "(`" in
   let mlen = String.length marker in
   let rec loop acc from =
-    match find_from ~from s marker with
+    match index_from ~from s marker with
     | None -> List.rev acc
     | Some i -> (
         let body_start = i + mlen in
         let rec find_close j =
-          match find_from ~from:j s "`" with
+          match index_from ~from:j s "`" with
           | None -> None
           | Some k when k > 0 && s.[k - 1] = '\\' -> find_close (k + 1)
           | some -> some
@@ -84,7 +84,7 @@ let cases_of_html ~source_file contents : case list =
         let body = Soup.trimmed_texts node |> String.concat "" |> String.trim in
         {
           source_file;
-          origin = Printf.sprintf "<style>[%d]" i;
+          origin = Fmt.str "<style>[%d]" i;
           css = body;
           kind = `Stylesheet;
         })
@@ -101,7 +101,7 @@ let cases_of_html ~source_file contents : case list =
         in
         {
           source_file;
-          origin = Printf.sprintf "[style][%d]" i;
+          origin = Fmt.str "[style][%d]" i;
           css = body;
           kind = `Inline_declarations;
         })
@@ -119,7 +119,7 @@ let cases_of_html ~source_file contents : case list =
           Some
             {
               source_file;
-              origin = Printf.sprintf "<link href=%S>[%d]" href i;
+              origin = Fmt.str "<link href=%S>[%d]" href i;
               css = read_file resolved;
               kind = `Stylesheet;
             })
@@ -135,7 +135,7 @@ let cases_of_html ~source_file contents : case list =
     |> List.mapi (fun i body ->
         {
           source_file;
-          origin = Printf.sprintf "parseRule[%d]" i;
+          origin = Fmt.str "parseRule[%d]" i;
           css = body;
           kind = `Stylesheet;
         })
@@ -204,7 +204,7 @@ let run_parse case () =
 let extracted_cases () =
   collect_cases ()
   |> List.map (fun case ->
-      let name = Printf.sprintf "%s %s" case.source_file case.origin in
+      let name = Fmt.str "%s %s" case.source_file case.origin in
       Alcotest.test_case name `Quick (run_parse case))
 
 (** {1 Per-file dynamic-test ports}
@@ -257,7 +257,7 @@ let non_ascii_codepoints =
     Buffer.contents b
   in
   let ident_accepts cp =
-    let css = Printf.sprintf ".f%soo { color: red; }" (utf8_of_cp cp) in
+    let css = Fmt.str ".f%soo { color: red; }" (utf8_of_cp cp) in
     let { Cascade.Css.stylesheet; warnings = _ } = Cascade.Css.parse css in
     List.length (Cascade.Css.rule_statements stylesheet) = 1
   in
@@ -273,13 +273,12 @@ let non_ascii_codepoints =
       List.iter
         (fun cp ->
           let name =
-            Printf.sprintf "non-ascii-codepoints.html U+%04X is ident-valid" cp
+            Fmt.str "non-ascii-codepoints.html U+%04X is ident-valid" cp
           in
           tests :=
             Alcotest.test_case name `Quick (fun () ->
                 Alcotest.(check bool)
-                  (Printf.sprintf "U+%04X" cp)
-                  true (ident_accepts cp))
+                  (Fmt.str "U+%04X" cp) true (ident_accepts cp))
             :: !tests)
         cps)
     valid_ranges;
@@ -289,7 +288,7 @@ let non_ascii_codepoints =
      the more precise signal is whether the code point can *start* an ident.
      Test both. *)
   let leads_ident cp =
-    let css = Printf.sprintf "%sfoo { color: red }" (utf8_of_cp cp) in
+    let css = Fmt.str "%sfoo { color: red }" (utf8_of_cp cp) in
     let r = Cascade.Css.parse css in
     List.length (Cascade.Css.rule_statements r.stylesheet) = 1
   in
@@ -315,11 +314,9 @@ let non_ascii_codepoints =
     List.map
       (fun cp ->
         Alcotest.test_case
-          (Printf.sprintf "non-ascii-codepoints.html U+%04X is not ident-start"
-             cp) `Quick (fun () ->
-            Alcotest.(check bool)
-              (Printf.sprintf "U+%04X" cp)
-              false (leads_ident cp)))
+          (Fmt.str "non-ascii-codepoints.html U+%04X is not ident-start" cp)
+          `Quick (fun () ->
+            Alcotest.(check bool) (Fmt.str "U+%04X" cp) false (leads_ident cp)))
       invalid_cps
   in
   List.rev !tests @ invalid_tests
@@ -378,37 +375,30 @@ let whitespace_html =
   let reference =
     to_string (Cascade.Css.Selector.read (Cascade.Css.Cursor.of_string ".a b"))
   in
+  let try_parse input =
+    try
+      let sel =
+        Cascade.Css.Selector.read (Cascade.Css.Cursor.of_string input)
+      in
+      Some (to_string sel)
+    with Cascade.Css.Cursor.Parse_error _ -> None
+  in
   let parses_equal_to_ref c () =
-    let input = Printf.sprintf ".a%sb" (utf8_of_cp c) in
-    let parsed =
-      try
-        let sel =
-          Cascade.Css.Selector.read (Cascade.Css.Cursor.of_string input)
-        in
-        Some (to_string sel)
-      with _ -> None
-    in
-    match parsed with
+    let input = Fmt.str ".a%sb" (utf8_of_cp c) in
+    match try_parse input with
     | Some s -> Alcotest.(check string) "equals .a b" reference s
     | None -> Alcotest.failf "U+%04X should have parsed" c
   in
   let parses_different_from_ref c () =
-    let input = Printf.sprintf ".a%sb" (utf8_of_cp c) in
-    match
-      try
-        let sel =
-          Cascade.Css.Selector.read (Cascade.Css.Cursor.of_string input)
-        in
-        Some (to_string sel)
-      with _ -> None
-    with
+    let input = Fmt.str ".a%sb" (utf8_of_cp c) in
+    match try_parse input with
     | None ->
         (* Selector rejected outright -- also spec-compliant: the char is
            neither whitespace nor a valid ident-continue. *)
         ()
     | Some s ->
         Alcotest.(check (neg string))
-          (Printf.sprintf "U+%04X should not parse to .a b" c)
+          (Fmt.str "U+%04X should not parse to .a b" c)
           reference s
   in
   let ws_chars = [ 0x9; 0xa; 0xc; 0xd; 0x20 ] in
@@ -445,13 +435,13 @@ let whitespace_html =
   List.map
     (fun c ->
       Alcotest.test_case
-        (Printf.sprintf "whitespace.html U+%04X is CSS whitespace" c)
+        (Fmt.str "whitespace.html U+%04X is CSS whitespace" c)
         `Quick (parses_equal_to_ref c))
     ws_chars
   @ List.map
       (fun c ->
         Alcotest.test_case
-          (Printf.sprintf "whitespace.html U+%04X is not CSS whitespace" c)
+          (Fmt.str "whitespace.html U+%04X is not CSS whitespace" c)
           `Quick
           (parses_different_from_ref c))
       non_ws_chars
@@ -463,15 +453,15 @@ let whitespace_html =
    serialization (Cascade's normalisation is close but not byte-identical to the
    WPT expectations in every corner). *)
 let anb_pair_test ~source ~input ~expected =
-  let selector = Printf.sprintf ":nth-child(%s)" input in
-  let name = Printf.sprintf "%s %S becomes %S" source input expected in
+  let selector = Fmt.str ":nth-child(%s)" input in
+  let name = Fmt.str "%s %S becomes %S" source input expected in
   let body () =
     let c = Cascade.Css.Cursor.of_string selector in
     let parsed =
       try
         let _ = Cascade.Css.Selector.read c in
         Ok ()
-      with e -> Error e
+      with Cascade.Css.Cursor.Parse_error _ as e -> Error e
     in
     match (parsed, expected) with
     | Ok (), "parse error" -> Alcotest.failf "%S should have failed" input
@@ -657,14 +647,14 @@ let serialize_consecutive_tokens =
         cvs
     in
     Alcotest.(check bool)
-      (Printf.sprintf "%S and %S remain separable" a b)
+      (Fmt.str "%S and %S remain separable" a b)
       true
       (List.length non_ws >= 2)
   in
   List.map
     (fun (a, b) ->
       Alcotest.test_case
-        (Printf.sprintf "serialize-consecutive-tokens.html %S / %S" a b)
+        (Fmt.str "serialize-consecutive-tokens.html %S / %S" a b)
         `Quick (pair_is_separable a b))
     pairs
 
