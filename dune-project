@@ -20,5 +20,6 @@
   (alcotest :with-test)
   (alcobar :with-test)
   (astring :with-test)
+  (lambdasoup :with-test)
   fmt
   cmdliner))
