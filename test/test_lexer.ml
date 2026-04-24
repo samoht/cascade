@@ -61,9 +61,53 @@ let dimension () =
 let comments_skipped () = check "/* hi */ foo" "<ws> <ident foo>"
 let cdo_cdc () = check "<!-- foo -->" "<CDO> <ws> <ident foo> <ws> <CDC>"
 
+let spec_escaping () =
+  (* CSS Syntax Level 3 section 2.1: hex escapes are one to six hex digits
+     followed by optional whitespace, so both forms spell the ident "&B". *)
+  check {|\26 B \000026B|} "<ident &B> <ws> <ident &B>";
+  check {|"B\26 W"|} "<string B&W>"
+
+let spec_consume_token () =
+  (* CSS Syntax Level 3 section 4.3.1: punctuation and malformed escapes map
+     directly to the token taxonomy from section 4. *)
+  check "():;,.[]" "<(> <)> <:> <;> <,> <delim '.'> <[> <]>";
+  check {|@ # \|} {|<delim '@'> <ws> <delim '#'> <ws> <delim '\'>|}
+
+let spec_comments () =
+  (* CSS Syntax Level 3 section 4.3.2: comments are consumed before the next
+     token and do not synthesize whitespace. *)
+  check "a/*x*/b" "<ident a> <ident b>";
+  check "a/*x*/ b" "<ident a> <ws> <ident b>"
+
+let spec_numeric_tokens () =
+  (* CSS Syntax Level 3 sections 4.3.3, 4.3.10, and 4.3.13. *)
+  check "+10 -2.5 .5 1e-2"
+    "<number +10> <ws> <number -2.5> <ws> <number .5> <ws> <number 1e-2>";
+  check "10px 5% 1e3ms"
+    "<dimension 10px> <ws> <percentage 5%> <ws> <dimension 1e3ms>"
+
+let spec_ident_like_tokens () =
+  (* CSS Syntax Level 3 sections 4.3.4, 4.3.9, and 4.3.12. *)
+  check "-- <!-- -x \\26 B"
+    "<ident --> <ws> <CDO> <ws> <ident -x> <ws> <ident &B>";
+  check "calc(1) url(\"a.png\")"
+    "<function calc(> <number 1> <)> <ws> <function url(> <string a.png> <)>"
+
+let spec_string_tokens () =
+  (* CSS Syntax Level 3 sections 4.3.5, 4.3.7, and 4.3.8. *)
+  check "\"a\\\nb\"" "<string ab>";
+  check {|"a\26 b"|} "<string a&b>";
+  check "\"oops\n" "<bad-string> <ws>"
+
 let url () =
   check "url(a.png)" "<url a.png>";
   check {|url("a.png")|} {|<function url(> <string a.png> <)>|}
+
+let spec_url_tokens () =
+  (* CSS Syntax Level 3 sections 4.3.6 and 4.3.15. *)
+  check "url(  a.png  )" "<url a.png>";
+  check "url(a\\ b.png)" "<url a b.png>";
+  check "url(a b) foo" "<bad-url> <ws> <ident foo>"
 
 (* Per 4.3.11, a newline inside a string produces a <bad-string> token; the
    newline is not consumed and becomes a subsequent <whitespace>. *)
@@ -85,7 +129,18 @@ let suite =
       Alcotest.test_case "dimension" `Quick dimension;
       Alcotest.test_case "comments skipped" `Quick comments_skipped;
       Alcotest.test_case "CDO/CDC" `Quick cdo_cdc;
+      Alcotest.test_case "spec section 2.1 escaping" `Quick spec_escaping;
+      Alcotest.test_case "spec section 4.3.1 consume token" `Quick
+        spec_consume_token;
+      Alcotest.test_case "spec section 4.3.2 comments" `Quick spec_comments;
+      Alcotest.test_case "spec section 4.3.3 numeric tokens" `Quick
+        spec_numeric_tokens;
+      Alcotest.test_case "spec section 4.3.4 ident-like tokens" `Quick
+        spec_ident_like_tokens;
+      Alcotest.test_case "spec section 4.3.5 string tokens" `Quick
+        spec_string_tokens;
       Alcotest.test_case "url" `Quick url;
+      Alcotest.test_case "spec section 4.3.6 url tokens" `Quick spec_url_tokens;
       Alcotest.test_case "bad string" `Quick bad_string;
       Alcotest.test_case "bad url" `Quick bad_url;
     ] )

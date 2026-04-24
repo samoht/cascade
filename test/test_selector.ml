@@ -967,6 +967,17 @@ let test_nth () =
   check_nth "3n";
   check_nth "5";
 
+  (* CSS Syntax Level 3 section 6 An+B examples. The printer canonicalizes
+     equivalent spellings, so these assert parsed meaning rather than source
+     spelling. *)
+  check_nth ~expected:"2n" "2n+0";
+  check_nth ~expected:"2n" "even";
+  check_nth "4n+1";
+  check_nth "-n+6";
+  check_nth "-4n+10";
+  check_nth ~expected:"5" "0n+5";
+  check_nth "5";
+
   (* Test invalid nth values *)
   neg_cursor read_nth "invalid";
   neg_cursor read_nth "";

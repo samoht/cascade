@@ -1,4 +1,4 @@
-(** Tests for the CSS Syntax section 5.3 parser algorithms. *)
+(** Tests for the CSS Syntax Level 3 section 5 parser algorithms. *)
 
 open Cascade
 
@@ -65,6 +65,15 @@ let parse_ss css =
   let r = Css.Reader.of_string css in
   (Css.Parser.parse_stylesheet r).value
 
+let parse_cvs css =
+  let p = Css.Parser.of_string css in
+  let rec loop acc =
+    match Css.Parser.next p with
+    | Css.Component.Preserved { kind = Css.Token.Eof; _ } -> List.rev acc
+    | cv -> loop (cv :: acc)
+  in
+  loop []
+
 (* ----- Basic shape tests ----- *)
 
 let simple_rule () =
@@ -104,9 +113,46 @@ let bad_selector_drops_rule () =
   Alcotest.(check int) "two rules survive structurally" 2 (List.length rs)
 
 let unterminated_qualified_rule_dropped () =
-  (* EOF before the opening brace drops the rule per 5.3.4. *)
+  (* EOF before the opening brace drops the rule per section 5.5.3. *)
   let rs = parse_ss "h1" in
   Alcotest.(check int) "zero rules" 0 (List.length rs)
+
+let spec_syntax_description_examples () =
+  (* CSS Syntax Level 3 section 2 uses these as representative qualified-rule
+     and at-rule shapes. They exercise the section 5.4 stylesheet entry point
+     and the section 5.5.1/5.5.2/5.5.3 rule consumers. *)
+  let rs =
+    parse_ss
+      "p > a { color: blue; text-decoration: underline } @import \
+       \"my-styles.css\"; @page :left { margin-left: 4cm; margin-right: 3cm } \
+       @media print { body { font-size: 10pt } }"
+  in
+  Alcotest.(check int)
+    "one qualified rule and three at-rules" 4 (List.length rs);
+  match rs with
+  | Css.Component.Qualified _
+    :: Css.Component.At { node = { name = "import"; _ }; _ }
+    :: Css.Component.At { node = { name = "page"; block = Some _; _ }; _ }
+    :: [ Css.Component.At { node = { name = "media"; block = Some _; _ }; _ } ]
+    ->
+      ()
+  | _ -> Alcotest.fail "unexpected section 2 example rule shapes"
+
+let spec_error_handling_eof_closes () =
+  (* CSS Syntax Level 3 section 2.2: EOF auto-closes open rules, declarations,
+     functions, and strings at the syntax layer. Grammar validation may reject
+     them later, but the component parser still builds a rule. *)
+  let rs = parse_ss ".foo { transform: translate(50px" in
+  Alcotest.(check int) "one auto-closed qualified rule" 1 (List.length rs);
+  match rs with
+  | [
+   Css.Component.Qualified
+     { node = { block = { node = { value; _ }; _ }; _ }; _ };
+  ] ->
+      let serialized = Css.Parser.to_string value in
+      Alcotest.(check string)
+        "auto-closed declaration value" " transform: translate(50px)" serialized
+  | _ -> Alcotest.fail "expected one auto-closed qualified rule"
 
 (* ----- Component values ----- *)
 
@@ -140,6 +186,16 @@ let component_value_function () =
       Alcotest.(check bool) "prelude contains rgb(...)" true has_func
   | _ -> Alcotest.fail "expected @x at-rule"
 
+let spec_component_value_algorithms () =
+  (* CSS Syntax Level 3 sections 5.5.7 through 5.5.10: lists contain preserved
+     tokens, simple blocks, and functions; EOF closes an open function. *)
+  let cvs = parse_cvs "[a b] rgb(1, 2)" in
+  Alcotest.(check string)
+    "simple block and function" "[a b] rgb(1, 2)" (Css.Parser.to_string cvs);
+  let cvs = parse_cvs "rgb(1, 2" in
+  Alcotest.(check string)
+    "function auto-closed at EOF" "rgb(1, 2)" (Css.Parser.to_string cvs)
+
 (* ----- Declaration list parsing (5.3.6 / 5.3.7) ----- *)
 
 let parse_decls input =
@@ -155,6 +211,15 @@ let basic_declaration () =
 
 let declaration_important () =
   match parse_decls "color: red !important" with
+  | [ `Decl { node = { name; important; _ }; _ } ] ->
+      Alcotest.(check string) "name" "color" name;
+      Alcotest.(check bool) "important" true important
+  | _ -> Alcotest.fail "expected one important declaration"
+
+let spec_declaration_important () =
+  (* CSS Syntax Level 3 section 5.5.6 recognizes !important with optional
+     whitespace between "!" and the ident. *)
+  match parse_decls "color: red ! important" with
   | [ `Decl { node = { name; important; _ }; _ } ] ->
       Alcotest.(check string) "name" "color" name;
       Alcotest.(check bool) "important" true important
@@ -255,11 +320,19 @@ let suite =
         bad_selector_drops_rule;
       Alcotest.test_case "unterminated qualified rule dropped" `Quick
         unterminated_qualified_rule_dropped;
+      Alcotest.test_case "spec sections 2 and 5 rule shapes" `Quick
+        spec_syntax_description_examples;
+      Alcotest.test_case "spec section 2.2 EOF closes constructs" `Quick
+        spec_error_handling_eof_closes;
       Alcotest.test_case "component value: block" `Quick component_value_block;
       Alcotest.test_case "component value: function" `Quick
         component_value_function;
+      Alcotest.test_case "spec section 5.5 component values" `Quick
+        spec_component_value_algorithms;
       Alcotest.test_case "declaration basic" `Quick basic_declaration;
       Alcotest.test_case "declaration important" `Quick declaration_important;
+      Alcotest.test_case "spec section 5.5.6 declaration important" `Quick
+        spec_declaration_important;
       Alcotest.test_case "declaration multiple" `Quick declaration_multiple;
       Alcotest.test_case "declaration missing colon dropped" `Quick
         declaration_missing_colon_dropped;
