@@ -48,12 +48,27 @@ let quoted ctx s =
 
 let char ctx c = Buffer.add_char ctx.buf c
 
-(* Helper to output a quoted string with proper escaping *)
+let hex_escape_byte ctx c =
+  (* CSS section 9: emit "\HH " for code points that cannot appear literally. *)
+  let code = Char.code c in
+  let hex_digits = "0123456789ABCDEF" in
+  char ctx '\\';
+  if code >= 0x10 then char ctx hex_digits.[code lsr 4];
+  char ctx hex_digits.[code land 0xF];
+  char ctx ' '
+
+(* Output a string literal with CSS section 9.2 escaping: backslash for the
+   delimiter and for '\', hex escapes for control bytes (U+0000..U+001F, U+007F)
+   so the serialized form parses back to the same string. *)
 let quoted_string ctx s =
   char ctx '"';
   String.iter
-    (function
-      | '"' -> string ctx "\\\"" | '\\' -> string ctx "\\\\" | c -> char ctx c)
+    (fun c ->
+      match c with
+      | '"' -> string ctx "\\\""
+      | '\\' -> string ctx "\\\\"
+      | '\x00' .. '\x1F' | '\x7F' -> hex_escape_byte ctx c
+      | c -> char ctx c)
     s;
   char ctx '"'
 

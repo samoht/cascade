@@ -1262,26 +1262,22 @@ let pp_combinator ctx = function
 
 let strs ctx strings = Pp.list ~sep:Pp.comma Pp.string ctx strings
 
-(** Escape special CSS selector characters for class and ID names. This handles
-    characters commonly found in Tailwind utilities like fractions (w-1/2),
-    arbitrary values (p-[10px]), etc. Also handles identifiers starting with
-    digits or other invalid start characters using hex escapes. *)
+(** Escape a class or ID name for use inside a selector, following CSS section
+    9.1 rules: hex-escape control bytes and leading digits (or a leading dash
+    followed by a digit), and backslash-escape the punctuation characters that
+    otherwise terminate or reframe the selector. *)
 let escape_selector_name name =
   if String.length name = 0 then ""
   else
     let buf = Buffer.create (String.length name * 2) in
-    (* Helper to convert char to hex escape *)
+    let hex_digits = "0123456789abcdef" in
     let hex_escape c =
       let code = Char.code c in
-      let hex_digits = "0123456789abcdef" in
-      let rec to_hex n acc =
-        if n = 0 then acc
-        else to_hex (n / 16) (String.make 1 hex_digits.[n mod 16] ^ acc)
-      in
-      let hex_str = if code = 0 then "0" else to_hex code "" in
-      "\\" ^ hex_str ^ " "
+      Buffer.add_char buf '\\';
+      if code >= 0x10 then Buffer.add_char buf hex_digits.[code lsr 4];
+      Buffer.add_char buf hex_digits.[code land 0xF];
+      Buffer.add_char buf ' '
     in
-    (* Check if first character needs special hex escaping *)
     let first_char = name.[0] in
     let first_needs_hex_escape =
       (first_char >= '0' && first_char <= '9')
@@ -1290,14 +1286,12 @@ let escape_selector_name name =
          && name.[1] >= '0'
          && name.[1] <= '9'
     in
-
     String.iteri
       (fun i c ->
-        (* First character gets hex escape if it's a digit or dash-digit *)
-        if i = 0 && first_needs_hex_escape then
-          Buffer.add_string buf (hex_escape c)
+        if i = 0 && first_needs_hex_escape then hex_escape c
         else
           match c with
+          | '\x00' .. '\x1F' | '\x7F' -> hex_escape c
           | '[' -> Buffer.add_string buf "\\["
           | ']' -> Buffer.add_string buf "\\]"
           | '(' -> Buffer.add_string buf "\\("
