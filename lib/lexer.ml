@@ -16,17 +16,59 @@ let source t = Reader.source t.reader
 
 (* 4.2 "name code points" *)
 
-let is_name_start c =
-  (c >= 'a' && c <= 'z')
-  || (c >= 'A' && c <= 'Z')
-  || c = '_'
-  || Char.code c >= 0x80
-
 let is_digit c = c >= '0' && c <= '9'
-let is_name c = is_name_start c || is_digit c || c = '-'
 let is_hex c = is_digit c || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
 let is_ws c = c = ' ' || c = '\n' || c = '\t' || c = '\r' || c = '\012'
 let is_newline c = c = '\n' || c = '\r' || c = '\012'
+
+(* CSS Syntax Level 3 section 4.2 "non-ASCII ident code point": the specific
+   code-point ranges allowed in identifiers. Kept as a sealed check so that
+   byte-level heuristics ([>= 0x80]) don't over-accept code points the spec
+   explicitly excludes (e.g. most symbols, emoji, BMP non-characters). *)
+let is_non_ascii_ident_cp cp =
+  cp = 0xB7
+  || (cp >= 0xC0 && cp <= 0xD6)
+  || (cp >= 0xD8 && cp <= 0xF6)
+  || (cp >= 0xF8 && cp <= 0x37D)
+  || (cp >= 0x37F && cp <= 0x1FFF)
+  || cp = 0x200C || cp = 0x200D || cp = 0x203F || cp = 0x2040
+  || (cp >= 0x2070 && cp <= 0x218F)
+  || (cp >= 0x2C00 && cp <= 0x2FEF)
+  || (cp >= 0x3001 && cp <= 0xD7FF)
+  || (cp >= 0xF900 && cp <= 0xFDCF)
+  || (cp >= 0xFDF0 && cp <= 0xFFFD)
+  || cp >= 0x10000
+
+(* [is_name_start_byte] answers the ASCII fast-path only. Callers that have a
+   byte [>= 0x80] must decode and consult [is_non_ascii_ident_cp] directly. *)
+let is_name_start_ascii c =
+  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_'
+
+(* [is_name_start r] checks whether the code point at the reader's current
+   position is a valid ident-start. For bytes [< 0x80] we answer ASCII directly;
+   otherwise decode the UTF-8 sequence and check the spec range list. Returns
+   [false] on malformed UTF-8. *)
+let is_name_start_at r offset =
+  match Reader.peek_utf8_at r offset with
+  | None -> false
+  | Some (cp, _) when cp < 0x80 -> is_name_start_ascii (Char.chr cp)
+  | Some (cp, _) -> is_non_ascii_ident_cp cp
+
+(* [is_name_at r offset] is ident-start or digit or [-]. *)
+let is_name_at r offset =
+  match Reader.peek_utf8_at r offset with
+  | None -> false
+  | Some (cp, _) when cp < 0x80 ->
+      let c = Char.chr cp in
+      is_name_start_ascii c || is_digit c || c = '-'
+  | Some (cp, _) -> is_non_ascii_ident_cp cp
+
+(* Legacy byte-level helpers kept for the hot paths where the caller has already
+   materialised the byte. For anything ASCII they match spec; for bytes [>=
+   0x80] they are now conservative (reject), and callers that might see
+   non-ASCII must use the [_at] variants above. *)
+let is_name_start c = c < '\x80' && is_name_start_ascii c
+let is_name c = is_name_start c || is_digit c || c = '-'
 
 (* 4.3.3 Check if two code points are a valid escape. The reader is at the
    first; check whether ('\\', next) forms a valid escape (i.e. first is '\\'
@@ -36,7 +78,8 @@ let valid_escape_at r =
   String.length s >= 2 && s.[0] = '\\' && not (is_newline s.[1])
 
 (* 4.3.4 Check if three code points starting at [offset] would start an ident
-   sequence. *)
+   sequence. Multi-byte code points are consulted via [is_name_start_at] (which
+   decodes at the given byte offset) rather than byte-level checks. *)
 let would_start_ident_sequence_at r offset =
   let s = Reader.peek_string r (offset + 3) in
   let len = String.length s in
@@ -45,12 +88,12 @@ let would_start_ident_sequence_at r offset =
     match s.[offset] with
     | '-' ->
         len > offset + 1
-        && (is_name_start s.[offset + 1] || s.[offset + 1] = '-')
+        && (is_name_start_at r (offset + 1) || s.[offset + 1] = '-')
         || len > offset + 2
            && s.[offset + 1] = '\\'
            && not (is_newline s.[offset + 2])
     | '\\' -> len > offset + 1 && not (is_newline s.[offset + 1])
-    | c -> is_name_start c
+    | _ -> is_name_start_at r offset
 
 let would_start_ident_sequence r = would_start_ident_sequence_at r 0
 
@@ -125,20 +168,32 @@ let consume_escape r =
       Reader.skip r;
       String.make 1 c
 
-(* 4.3.8 Consume an ident sequence. *)
+(* 4.3.8 Consume an ident sequence. Iterates at the code-point level so
+   multi-byte characters are accepted only when their code point is a valid
+   ident code point per section 4.2 (see [is_name_at]). The full UTF-8 byte
+   sequence of each accepted code point is copied into the ident buffer
+   verbatim. *)
 let consume_ident_sequence r =
   let buf = Buffer.create 16 in
+  let src = Reader.source r in
   let rec loop () =
     match Reader.peek r with
-    | Some c when is_name c ->
-        Buffer.add_char buf c;
-        Reader.skip r;
-        loop ()
     | Some '\\' when valid_escape_at r ->
         Reader.skip r;
         Buffer.add_string buf (consume_escape r);
         loop ()
-    | _ -> ()
+    | Some _ -> (
+        match Reader.peek_utf8 r with
+        | None -> () (* malformed UTF-8 stops the ident *)
+        | Some (_, nbytes) when is_name_at r 0 ->
+            let start = Reader.position r in
+            Buffer.add_substring buf src start nbytes;
+            for _ = 1 to nbytes do
+              Reader.skip r
+            done;
+            loop ()
+        | Some _ -> ())
+    | None -> ()
   in
   loop ();
   Buffer.contents buf
@@ -464,7 +519,14 @@ let next_token r =
       Reader.skip r;
       Close Curly
   | Some c when is_digit c -> consume_numeric_token r
-  | Some c when is_name_start c -> consume_ident_like_token r
+  | Some c when is_name_start_ascii c || c >= '\x80' ->
+      (* ASCII fast path or a multi-byte lead -- consult [is_name_start_at]
+         which decodes the full UTF-8 code point and checks the spec range list.
+         Non-ident code points fall through to [Delim]. *)
+      if is_name_start_at r 0 then consume_ident_like_token r
+      else (
+        Reader.skip r;
+        Delim c)
   | Some c ->
       Reader.skip r;
       Delim c

@@ -283,7 +283,46 @@ let non_ascii_codepoints =
             :: !tests)
         cps)
     valid_ranges;
-  List.rev !tests
+  (* Counter-tests for code points that the spec excludes from the non-ASCII
+     ident set. The [ident_accepts] probe inserts the code point in the middle
+     of a class name, which is resilient to trailing bytes becoming [Delim]s;
+     the more precise signal is whether the code point can *start* an ident.
+     Test both. *)
+  let leads_ident cp =
+    let css = Printf.sprintf "%sfoo { color: red }" (utf8_of_cp cp) in
+    let r = Cascade.Css.parse css in
+    List.length (Cascade.Css.rule_statements r.stylesheet) = 1
+  in
+  let invalid_cps =
+    [
+      0x80;
+      (* control-character edge *)
+      0xD7;
+      (* gap between 0xC0..0xD6 and 0xD8..0xF6 *)
+      0xF7;
+      (* gap between 0xD8..0xF6 and 0xF8..0x37D *)
+      0x37E;
+      (* gap between 0xF8..0x37D and 0x37F..0x1FFF *)
+      0x200B;
+      (* just before 0x200C..0x200D *)
+      0x200E;
+      (* just after 0x200C..0x200D *)
+      0x2041;
+      (* just after 0x203F..0x2040 *)
+    ]
+  in
+  let invalid_tests =
+    List.map
+      (fun cp ->
+        Alcotest.test_case
+          (Printf.sprintf "non-ascii-codepoints.html U+%04X is not ident-start"
+             cp) `Quick (fun () ->
+            Alcotest.(check bool)
+              (Printf.sprintf "U+%04X" cp)
+              false (leads_ident cp)))
+      invalid_cps
+  in
+  List.rev !tests @ invalid_tests
 
 (* unclosed-constructs.html: tests that unclosed attribute and function
    selectors are accepted per 5.3.7 (grammar-matching sees the recovered block,
