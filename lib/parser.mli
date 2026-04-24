@@ -51,15 +51,19 @@ type 'a output = { value : 'a; warnings : Error.t list }
     collected during error recovery. The CSS spec mandates declaration- and
     rule-level skip-on-error; the dropped material surfaces here. *)
 
-val parse_stylesheet : Reader.t -> Component.rule list output
-(** [parse_stylesheet r] runs section 5.4.3: consume a list of rules with the
-    top-level flag set. CDO and CDC are skipped. *)
+val parse_stylesheet :
+  ?meta:Loc.meta_level -> Reader.t -> Component.rule list output
+(** [parse_stylesheet ?meta r] runs section 5.4.3: consume a list of rules with
+    the top-level flag set. CDO and CDC are skipped. [?meta] controls snippet
+    attachment on recovery warnings; see {!Loc.meta_level}. *)
 
-val parse_list_of_rules : Reader.t -> Component.rule list output
-(** [parse_list_of_rules r] runs section 5.4.4. CDO/CDC are not discarded;
+val parse_list_of_rules :
+  ?meta:Loc.meta_level -> Reader.t -> Component.rule list output
+(** [parse_list_of_rules ?meta r] runs section 5.4.4. CDO/CDC are not discarded;
     suitable for nested rule bodies. *)
 
 val parse_list_of_declarations :
+  ?meta:Loc.meta_level ->
   Reader.t ->
   [ `Decl of Component.declaration | `At of Component.at_rule ] list output
-(** [parse_list_of_declarations r] runs section 5.4.8. *)
+(** [parse_list_of_declarations ?meta r] runs section 5.4.8. *)

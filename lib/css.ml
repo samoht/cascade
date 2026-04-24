@@ -332,16 +332,16 @@ let vars_of_rules statements =
   in
   vars_of_declarations decls
 
-let of_string ?(filename = "<string>") css =
-  let reader = Cursor.of_string css in
+let of_string ?(filename = "<string>") ?(meta = Loc.default_meta_level) css =
+  let reader = Cursor.of_string ~meta css in
   try Ok (read_stylesheet reader)
   with Cursor.Parse_error error -> Error (error, filename)
 
 type parse_warning = Error.t * string
 type parse_result = { stylesheet : t; warnings : parse_warning list }
 
-let parse ?(filename = "<string>") css =
-  let stylesheet, warnings = Stylesheet.parse_stylesheet_partial css in
+let parse ?(filename = "<string>") ?(meta = Loc.default_meta_level) css =
+  let stylesheet, warnings = Stylesheet.parse_stylesheet_partial ~meta css in
   let warnings = List.map (fun e -> (e, filename)) warnings in
   { stylesheet; warnings }
 

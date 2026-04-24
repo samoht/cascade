@@ -7,27 +7,22 @@ type kind =
   | Unknown_at_rule of string
   | Unterminated of Sort.t
 
-type t = { loc : Loc.t; sort : Sort.t; path : string list; kind : kind }
+type t = {
+  loc : Loc.t;
+  sort : Sort.t;
+  path : string list;
+  kind : kind;
+  snippet : Loc.Context.snippet option;
+}
 
-module Snippet_key = struct
-  type t = Loc.t * Sort.t * kind
-
-  let equal = ( = )
-  let hash = Hashtbl.hash
-end
-
-module Snippets = Hashtbl.Make (Snippet_key)
-
-let snippets = Snippets.create 16
-let key t = (t.loc, t.sort, t.kind)
-let snippet t = Snippets.find_opt snippets (key t)
+let snippet t = t.snippet
 
 let context t =
   {
     Loc.Context.path = Loc.Path.of_labels t.path;
     loc = t.loc;
     sort = t.sort;
-    snippet = snippet t;
+    snippet = t.snippet;
   }
 
 let pp_kind : kind Pp.t =
@@ -59,7 +54,7 @@ let pp_kind : kind Pp.t =
       Sort.pp ctx s
 
 let pp : t Pp.t =
- fun ctx { loc; sort; path; kind } ->
+ fun ctx { loc; sort; path; kind; snippet } ->
   (match path with
   | [] -> ()
   | _ ->
@@ -71,7 +66,7 @@ let pp : t Pp.t =
   Pp.string ctx " (in ";
   Sort.pp ctx sort;
   Pp.char ctx ')';
-  match snippet { loc; sort; path; kind } with
+  match snippet with
   | None -> ()
   | Some { text; marker_pos; marker_len } ->
       Pp.cut ctx ();
@@ -85,11 +80,7 @@ let to_string t = Pp.to_string pp t
 exception Parse_error of t
 
 let v ?(path = Loc.Path.empty) ?snippet ~loc ~sort kind =
-  let t = { loc; sort; path = Loc.Path.to_labels path; kind } in
-  (match snippet with
-  | None -> ()
-  | Some s -> Snippets.replace snippets (key t) s);
-  t
+  { loc; sort; path = Loc.Path.to_labels path; kind; snippet }
 
 let fail e = Stdlib.raise (Parse_error e)
 

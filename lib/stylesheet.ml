@@ -1002,9 +1002,9 @@ let read_stylesheet (r : Cursor.t) : stylesheet =
    synthesize one at the rule's location so dispatch in [read_statement] still
    sees the opening [\@name]. [?source] flows through so errors raised by
    validators downstream pick up source-context snippets. *)
-let cursor_of_rule ?source : Component.rule -> Cursor.t = function
+let cursor_of_rule ?source ?meta : Component.rule -> Cursor.t = function
   | Qualified { node = { prelude; block }; _ } ->
-      Cursor.of_components ?source ~recover:true
+      Cursor.of_components ?source ?meta ~recover:true
         (prelude @ [ Component.Block block ])
   | At { node = { name; prelude; block }; loc } ->
       let at_kw = Token.v ~kind:(Token.At_keyword name) ~loc in
@@ -1012,29 +1012,30 @@ let cursor_of_rule ?source : Component.rule -> Cursor.t = function
       let block_cv =
         match block with Some b -> [ Component.Block b ] | None -> []
       in
-      Cursor.of_components ?source ~recover:true ((at_cv :: prelude) @ block_cv)
+      Cursor.of_components ?source ?meta ~recover:true
+        ((at_cv :: prelude) @ block_cv)
 
 (* Validate one Parser-recovered rule to a typed statement, or convert the
    validator's [Parse_error] into a rule-level error and drop the rule. Per-
    declaration warnings accumulated on the cursor are drained separately by the
    caller. *)
-let read_statement_from_rule ?source (rule : Component.rule) :
+let read_statement_from_rule ?source ?meta (rule : Component.rule) :
     Cursor.t * (statement, Error.t) result =
-  let r = cursor_of_rule ?source rule in
+  let r = cursor_of_rule ?source ?meta rule in
   let result =
     try Ok (read_statement r) with Error.Parse_error e -> Error e
   in
   (r, result)
 
-let read_stylesheet_from_rules ?source (rules : Component.rule list) :
+let read_stylesheet_from_rules ?source ?meta (rules : Component.rule list) :
     stylesheet * Error.t list =
   let warnings = ref [] in
   let statements =
     List.filter_map
       (fun rule ->
-        let cursor, result = read_statement_from_rule ?source rule in
+        let cursor, result = read_statement_from_rule ?source ?meta rule in
         (* Drain declaration-level warnings first so source order is preserved:
-           decl warnings come from inside the rule, the rule- level error (if
+           decl warnings come from inside the rule, the rule-level error (if
            any) comes after them. *)
         List.iter
           (fun w -> warnings := w :: !warnings)
@@ -1050,10 +1051,13 @@ let read_stylesheet_from_rules ?source (rules : Component.rule list) :
 
 (* Top-level partial-recovery entry point: combine section 5.3 syntax warnings
    from [Parser.parse_stylesheet] with per-rule typed-validation warnings. *)
-let parse_stylesheet_partial (source : string) : stylesheet * Error.t list =
+let parse_stylesheet_partial ?(meta = Loc.default_meta_level) (source : string)
+    : stylesheet * Error.t list =
   let reader = Reader.of_string source in
-  let out = Parser.parse_stylesheet reader in
-  let sheet, typed_warnings = read_stylesheet_from_rules ~source out.value in
+  let out = Parser.parse_stylesheet ~meta reader in
+  let sheet, typed_warnings =
+    read_stylesheet_from_rules ~source ~meta out.value
+  in
   (sheet, out.warnings @ typed_warnings)
 
 (** {1 Inline Styles} *)

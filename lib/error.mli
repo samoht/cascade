@@ -21,7 +21,13 @@ type kind =
   | Unterminated of Sort.t
       (** Hit EOF inside a {!Sort.t} that needed a closing delimiter. *)
 
-type t = { loc : Loc.t; sort : Sort.t; path : string list; kind : kind }
+type t = {
+  loc : Loc.t;
+  sort : Sort.t;
+  path : string list;
+  kind : kind;
+  snippet : Loc.Context.snippet option;
+}
 (** The [path] is a breadcrumb trail from the outermost context down to the
     exact sub-production that failed, rendered with ["/"] separators. Use
     {!context} to recover the structured path, source location, sort and source

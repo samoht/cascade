@@ -2,6 +2,21 @@
 
     Every {!Token.t} and {!Component.t} carries one. *)
 
+type meta_level = [ `None | `Locs | `Full ]
+(** Metadata level collected during parsing, mirroring [ocaml-json]'s
+    [type meta]:
+    - [`None]: no source positions or snippets attached; fastest.
+    - [`Locs]: source positions are kept on tokens / components / errors
+      (already unconditional in Cascade since tokens always carry {!t}).
+      Equivalent to [`None] in Cascade -- present for API symmetry with
+      [ocaml-json].
+    - [`Full]: also attach source-context snippets to errors and warnings, so
+      {!Context.snippet} is populated for diagnostics. *)
+
+val default_meta_level : meta_level
+(** [default_meta_level] is [`Full]. Entry points default to this so that
+    callers who don't pass [?meta] get the rich diagnostics behaviour. *)
+
 type t = { start_pos : int; end_pos : int }
 
 val v : start_pos:int -> end_pos:int -> t
