@@ -441,9 +441,7 @@ let read_type_or_universal t =
   let ns =
     Cursor.option
       (fun t ->
-        if Cursor.looking_at t "*|" then (
-          Cursor.expect_string "*|" t;
-          Any)
+        if Cursor.try_kind_pair (Token.Delim '*') (Token.Delim '|') t then Any
         else
           let p = Cursor.ident ~keep_case:true t in
           Cursor.expect '|' t;
@@ -547,6 +545,9 @@ let read_attribute t =
   let matcher = read_attribute_match inner in
   Cursor.ws inner;
   let flag = read_attr_flag inner in
+  Cursor.ws inner;
+  if not (Cursor.is_done inner) then
+    Cursor.err_invalid inner "trailing tokens in attribute selector";
   let attr_name = attr_name_of_string attr in
   Attribute (ns, attr_name, matcher, flag)
 
@@ -587,6 +588,16 @@ let read_nth t : nth =
     ->
       Cursor.skip t;
       An_plus_b (int_of_float number.value, read_offset t)
+  | Some (Component.Preserved { kind = Token.Dimension { number; unit_ }; _ })
+    when String.length unit_ >= 3 && String.sub unit_ 0 2 = "n-" -> (
+      (* Per CSS Syntax §4.3.2 / §4.3.12, [2n-1] tokenises as a single
+         [Dimension] with unit ["n-1"] since [n-1] is a valid ident sequence.
+         Selectors 4 §9.2 An+B parser splits it back into [a=2, b=-1]. *)
+      Cursor.skip t;
+      let b_str = String.sub unit_ 2 (String.length unit_ - 2) in
+      match int_of_string_opt b_str with
+      | Some b -> An_plus_b (int_of_float number.value, -b)
+      | None -> Cursor.err_invalid t ("An+B: " ^ unit_))
   | Some (Component.Preserved { kind = Token.Delim ('+' | '-'); _ }) -> (
       let sign = if Cursor.peek_delim t = Some '-' then -1 else 1 in
       Cursor.skip t;

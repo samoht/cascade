@@ -6603,28 +6603,33 @@ let read_conic_gradient_body t =
   Cursor.ws t;
   Conic_gradient (read_gradient_stops t)
 
-let rec read_bg_image t =
-  Cursor.enum_or_calls "background-image"
-    [
-      ("none", (None : background_image));
-      ("initial", Initial);
-      ("inherit", Inherit);
-    ]
-    ~calls:
-      [
-        ("url", fun t -> Url (Cursor.url t));
-        ( "linear-gradient",
-          fun t -> Cursor.call "linear-gradient" t read_linear_gradient_body );
-        ( "radial-gradient",
-          fun t -> Cursor.call "radial-gradient" t read_radial_gradient_body );
-        ( "conic-gradient",
-          fun t -> Cursor.call "conic-gradient" t read_conic_gradient_body );
-        ( "var",
-          fun t ->
-            let _ = Cursor.ident t in
-            Var (Values.read_var_after_ident read_bg_image t) );
-      ]
-    t
+let rec read_bg_image t : background_image =
+  (* Bare [url(foo)] is a single [Token.Url] component, not a [Func]; handle it
+     explicitly before dispatching on the function/ident shape. *)
+  match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Url _; _ }) -> Url (Cursor.url t)
+  | _ ->
+      Cursor.enum_or_calls "background-image"
+        [
+          ("none", (None : background_image));
+          ("initial", Initial);
+          ("inherit", Inherit);
+        ]
+        ~calls:
+          [
+            ("url", fun t -> Url (Cursor.url t));
+            ( "linear-gradient",
+              fun t -> Cursor.call "linear-gradient" t read_linear_gradient_body
+            );
+            ( "radial-gradient",
+              fun t -> Cursor.call "radial-gradient" t read_radial_gradient_body
+            );
+            ( "conic-gradient",
+              fun t -> Cursor.call "conic-gradient" t read_conic_gradient_body
+            );
+            ("var", fun t -> Var (Values.read_var read_bg_image t));
+          ]
+        t
 
 let read_background_image t : background_image =
   let first = read_bg_image t in
