@@ -771,7 +771,14 @@ module Cursor_prop = struct
   let or_else a b = match a with Some _ -> a | None -> b
 
   let rec read_url_cursor (t : Cursor.t) : cursor =
-    let url, hotspot = Cursor.call "url" t read_url_with_hotspot in
+    let (url, hotspot) : string * (float * float) option =
+      (* Bare [url(foo.cur)] is a [Token.Url]; quoted [url("foo.cur")] is a
+         [Func "url"] — handle both. *)
+      match Cursor.peek t with
+      | Some (Component.Preserved { kind = Token.Url _; _ }) ->
+          (Cursor.url t, None)
+      | _ -> Cursor.call "url" t read_url_with_hotspot
+    in
     Cursor.ws t;
     let hotspot = or_else (read_optional_hotspot t) hotspot in
     if not (Cursor.comma_opt t) then
@@ -4566,10 +4573,14 @@ let rec read_list_style_image t : list_style_image =
     Cursor.call "url" t (fun t -> (Url (read_url_arg t) : list_style_image))
   in
   let read_var t : list_style_image = Var (read_var read_list_style_image t) in
-  Cursor.enum_or_calls "list-style-image"
-    [ ("none", (None : list_style_image)); ("inherit", Inherit) ]
-    ~calls:[ ("url", read_url); ("var", read_var) ]
-    t
+  match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Url _; _ }) ->
+      (Url (Cursor.url t) : list_style_image)
+  | _ ->
+      Cursor.enum_or_calls "list-style-image"
+        [ ("none", (None : list_style_image)); ("inherit", Inherit) ]
+        ~calls:[ ("url", read_url); ("var", read_var) ]
+        t
 
 let read_table_layout t : table_layout =
   Cursor.enum "table-layout"
@@ -5450,11 +5461,7 @@ and read_font_family t : font_family =
   | l -> List l
 
 let read_font_stretch t : font_stretch =
-  let read_percentage t : font_stretch =
-    let n = Cursor.number t in
-    Cursor.expect '%' t;
-    Pct n
-  in
+  let read_percentage t : font_stretch = Pct (Cursor.pct t) in
   Cursor.enum "font-stretch"
     [
       ("ultra-condensed", Ultra_condensed);
@@ -6647,7 +6654,8 @@ let minify_background_image : background_image -> background_image = function
   | img -> img
 
 let read_any_property t =
-  let prop_name = Cursor.ident t in
+  (* CSS property names are case-insensitive per Syntax §3.3. *)
+  let prop_name = String.lowercase_ascii (Cursor.ident t) in
   (* PROPERTY_MATCHING_START - Used by scripts/check_properties.ml *)
   match prop_name with
   | "width" -> Prop Width
@@ -7414,26 +7422,23 @@ let read_clip t : clip =
   if Cursor.looking_at t "auto" then (
     Cursor.expect_string "auto" t;
     Clip_auto)
-  else if Cursor.looking_at t "rect(" then (
-    Cursor.expect_string "rect(" t;
-    Cursor.ws t;
-    let top = read_length t in
-    Cursor.ws t;
-    Cursor.option (fun t -> Cursor.expect ',' t) t |> ignore;
-    Cursor.ws t;
-    let right = read_length t in
-    Cursor.ws t;
-    Cursor.option (fun t -> Cursor.expect ',' t) t |> ignore;
-    Cursor.ws t;
-    let bottom = read_length t in
-    Cursor.ws t;
-    Cursor.option (fun t -> Cursor.expect ',' t) t |> ignore;
-    Cursor.ws t;
-    let left = read_length t in
-    Cursor.ws t;
-    Cursor.expect ')' t;
-    Clip_rect (top, right, bottom, left))
-  else Cursor.err_invalid t "clip value (expected auto or rect(...))"
+  else
+    Cursor.call "rect" t @@ fun inner ->
+    Cursor.ws inner;
+    let top = read_length inner in
+    Cursor.ws inner;
+    ignore (Cursor.comma_opt inner : bool);
+    Cursor.ws inner;
+    let right = read_length inner in
+    Cursor.ws inner;
+    ignore (Cursor.comma_opt inner : bool);
+    Cursor.ws inner;
+    let bottom = read_length inner in
+    Cursor.ws inner;
+    ignore (Cursor.comma_opt inner : bool);
+    Cursor.ws inner;
+    let left = read_length inner in
+    Clip_rect (top, right, bottom, left)
 
 (* Reader for clip-path property *)
 let read_clip_path_url t =
