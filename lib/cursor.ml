@@ -1,7 +1,23 @@
-type t = { mutable cvs : Component.t list; source : string option }
+type t = {
+  mutable cvs : Component.t list;
+  source : string option;
+  warnings : Error.t list ref;
+  recover : bool;
+}
 
-let of_components ?source cvs = { cvs; source }
-let subcursor t cvs = { cvs; source = t.source }
+let of_components ?source ?(recover = false) cvs =
+  { cvs; source; warnings = ref []; recover }
+
+let subcursor t cvs =
+  { cvs; source = t.source; warnings = t.warnings; recover = t.recover }
+
+let push_warning t e = t.warnings := e :: !(t.warnings)
+let recover t = t.recover
+
+let drain_warnings t =
+  let ws = List.rev !(t.warnings) in
+  t.warnings := [];
+  ws
 
 let lex_to_cv_list parser =
   let rec loop acc =
@@ -14,11 +30,21 @@ let lex_to_cv_list parser =
 
 let of_string s =
   let parser = Parser.of_string s in
-  { cvs = lex_to_cv_list parser; source = Some s }
+  {
+    cvs = lex_to_cv_list parser;
+    source = Some s;
+    warnings = ref [];
+    recover = false;
+  }
 
 let of_reader r =
   let parser = Parser.of_reader r in
-  { cvs = lex_to_cv_list parser; source = None }
+  {
+    cvs = lex_to_cv_list parser;
+    source = None;
+    warnings = ref [];
+    recover = false;
+  }
 
 let is_ws_cv : Component.t -> bool = function
   | Preserved { kind = Token.Whitespace; _ } -> true

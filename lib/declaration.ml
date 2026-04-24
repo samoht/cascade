@@ -806,6 +806,20 @@ let read_declaration t : declaration option =
       None
   | Some _ -> Some (read_one ())
 
+(* Skip from the current cursor position to just past the next top-level [;], or
+   stop at EOF. Used to recover from a failed declaration inside a block: per
+   CSS Syntax section 5.4.4 ("consume a list of declarations"), an invalid
+   declaration is dropped, parsing resumes at the next [;], and the surrounding
+   rule survives. *)
+let skip_to_next_declaration t =
+  let rec loop () =
+    match Cursor.next_raw t with
+    | None -> ()
+    | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> ()
+    | Some _ -> loop ()
+  in
+  loop ()
+
 let read_declarations t =
   Cursor.with_context t "declarations" @@ fun () ->
   let rec check_separator acc =
@@ -825,12 +839,28 @@ let read_declarations t =
     match Cursor.peek t with
     | None -> List.rev acc
     | _ -> (
-        match read_declaration t with
-        | None -> List.rev acc
-        | Some decl ->
-            let acc = decl :: acc in
-            (* After reading a declaration, check for proper separation *)
-            check_separator acc)
+        if Cursor.recover t then (
+          match
+            try Ok (read_declaration t) with Error.Parse_error e -> Error e
+          with
+          | Ok None -> List.rev acc
+          | Ok (Some decl) -> (
+              let acc = decl :: acc in
+              try check_separator acc
+              with Error.Parse_error e ->
+                Cursor.push_warning t e;
+                skip_to_next_declaration t;
+                loop acc)
+          | Error e ->
+              Cursor.push_warning t e;
+              skip_to_next_declaration t;
+              loop acc)
+        else
+          match read_declaration t with
+          | None -> List.rev acc
+          | Some decl ->
+              let acc = decl :: acc in
+              check_separator acc)
   in
   loop []
 

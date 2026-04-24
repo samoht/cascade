@@ -1153,17 +1153,17 @@ let additional_tests =
     ("invalid at-rules", `Quick, test_invalid_at_rules);
     ("invalid functions", `Quick, test_invalid_functions);
     ("layer roundtrip", `Quick, test_layer_roundtrip);
-    ( "partial recovery: one bad rule keeps the good one",
+    ( "partial recovery: bad declaration does not poison sibling rule",
       `Quick,
       fun () ->
         (* Strict [read_stylesheet] would raise on the bad [rgb()]. The partial
-           entry point validates each rule in isolation, drops the bad one,
-           keeps the good one, and surfaces the failure as a warning. *)
+           entry point drops just the bad declaration; both rules survive (the
+           empty [.a\{\}] and the good [.b]). Per 5.4.4. *)
         let sheet, warnings =
           parse_stylesheet_partial ".a { color: rgb(300); } .b { color: red; }"
         in
         Alcotest.(check int)
-          "one surviving rule" 1
+          "both rules survive" 2
           (List.length (Css.Stylesheet.rules sheet));
         Alcotest.(check int) "one warning" 1 (List.length warnings) );
     ( "partial recovery: warnings carry snippets",
@@ -1187,7 +1187,7 @@ let additional_tests =
           Css.parse ".a { color: red; } .b { color: rgb(300); }"
         in
         Alcotest.(check int)
-          "one surviving rule" 1
+          "both rules survive" 2
           (List.length (Css.rule_statements stylesheet));
         Alcotest.(check int) "one warning" 1 (List.length warnings);
         (* filename threads through *)
@@ -1202,21 +1202,18 @@ let additional_tests =
         Alcotest.(check int)
           "one rule recovered" 1
           (List.length (Css.rule_statements stylesheet)) );
-    ( "partial recovery: rule-level granularity",
+    ( "partial recovery: bad declaration drops, rule survives",
       `Quick,
       fun () ->
-        (* Recovery is currently per-rule, not per-declaration: one bad
-           declaration takes the whole rule with it. Declaration-level recovery
-           (5.4.4 "consume a list of declarations") is a future refinement; this
-           test pins the current behaviour. *)
+        (* CSS Syntax 5.4.4: an invalid declaration is discarded while the
+           enclosing rule and its other declarations survive. *)
         let { Css.stylesheet; warnings } =
-          Css.parse ".a { color: invalidcolor; } .b { color: red; }"
+          Css.parse ".a { color: invalidcolor; color: red; }"
         in
+        let rules = Css.rule_statements stylesheet in
+        Alcotest.(check int) "rule kept" 1 (List.length rules);
         Alcotest.(check int)
-          "good rule survives" 1
-          (List.length (Css.rule_statements stylesheet));
-        Alcotest.(check int)
-          "bad rule dropped as one warning" 1 (List.length warnings) );
+          "one warning for the bad decl" 1 (List.length warnings) );
     ( "partial recovery: filename propagates to warnings",
       `Quick,
       fun () ->

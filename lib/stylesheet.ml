@@ -896,9 +896,31 @@ and read_rule_item selector inner decls nested =
 and read_rule_body selector inner =
   let rec loop decls nested =
     Cursor.ws inner;
-    match read_rule_item selector inner decls nested with
-    | `Done result -> result
-    | `Continue (decls, nested) -> loop decls nested
+    if Cursor.recover inner then (
+      match
+        try Ok (read_rule_item selector inner decls nested)
+        with Error.Parse_error e -> Error e
+      with
+      | Ok (`Done result) -> result
+      | Ok (`Continue (decls, nested)) -> loop decls nested
+      | Error e ->
+          (* Per 5.4.4, an invalid declaration is discarded; the enclosing rule
+             survives. Push the warning on the cursor so the top-level
+             [read_stylesheet_from_rules] drain sees it, and skip to the next
+             [;] or end of block. *)
+          Cursor.push_warning inner e;
+          let rec skip () =
+            match Cursor.next_raw inner with
+            | None -> ()
+            | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> ()
+            | Some _ -> skip ()
+          in
+          skip ();
+          loop decls nested)
+    else
+      match read_rule_item selector inner decls nested with
+      | `Done result -> result
+      | `Continue (decls, nested) -> loop decls nested
   in
   loop [] []
 
@@ -982,22 +1004,27 @@ let read_stylesheet (r : Cursor.t) : stylesheet =
    validators downstream pick up source-context snippets. *)
 let cursor_of_rule ?source : Component.rule -> Cursor.t = function
   | Qualified { node = { prelude; block }; _ } ->
-      Cursor.of_components ?source (prelude @ [ Component.Block block ])
+      Cursor.of_components ?source ~recover:true
+        (prelude @ [ Component.Block block ])
   | At { node = { name; prelude; block }; loc } ->
       let at_kw = Token.v ~kind:(Token.At_keyword name) ~loc in
       let at_cv = Component.Preserved at_kw in
       let block_cv =
         match block with Some b -> [ Component.Block b ] | None -> []
       in
-      Cursor.of_components ?source ((at_cv :: prelude) @ block_cv)
+      Cursor.of_components ?source ~recover:true ((at_cv :: prelude) @ block_cv)
 
 (* Validate one Parser-recovered rule to a typed statement, or convert the
-   validator's [Parse_error] into a warning and drop the rule. Per-rule
-   isolation so a single bad declaration doesn't poison the whole sheet. *)
+   validator's [Parse_error] into a rule-level error and drop the rule. Per-
+   declaration warnings accumulated on the cursor are drained separately by the
+   caller. *)
 let read_statement_from_rule ?source (rule : Component.rule) :
-    (statement, Error.t) result =
+    Cursor.t * (statement, Error.t) result =
   let r = cursor_of_rule ?source rule in
-  try Ok (read_statement r) with Error.Parse_error e -> Error e
+  let result =
+    try Ok (read_statement r) with Error.Parse_error e -> Error e
+  in
+  (r, result)
 
 let read_stylesheet_from_rules ?source (rules : Component.rule list) :
     stylesheet * Error.t list =
@@ -1005,7 +1032,14 @@ let read_stylesheet_from_rules ?source (rules : Component.rule list) :
   let statements =
     List.filter_map
       (fun rule ->
-        match read_statement_from_rule ?source rule with
+        let cursor, result = read_statement_from_rule ?source rule in
+        (* Drain declaration-level warnings first so source order is preserved:
+           decl warnings come from inside the rule, the rule- level error (if
+           any) comes after them. *)
+        List.iter
+          (fun w -> warnings := w :: !warnings)
+          (Cursor.drain_warnings cursor);
+        match result with
         | Ok stmt -> Some stmt
         | Error e ->
             warnings := e :: !warnings;
