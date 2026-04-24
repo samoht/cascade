@@ -42,11 +42,16 @@ let lex_to_cv_list parser =
   in
   loop []
 
+(* [source] must be the post-preprocessing buffer (CSS Syntax section 3.3),
+   which is what the lexer indexes against. Using the caller's raw string would
+   desync [Loc.offset] from [Loc.make_snippet] when the input contains BOM, NUL,
+   CR, FF, or CRLF. *)
 let of_string ?(meta = Loc.default_meta_level) s =
-  let parser = Parser.of_string s in
+  let reader = Reader.of_string s in
+  let parser = Parser.of_reader reader in
   {
     cvs = lex_to_cv_list parser;
-    source = Some s;
+    source = Some (Reader.source reader);
     warnings = ref [];
     recover = false;
     meta;

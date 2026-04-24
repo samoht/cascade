@@ -650,6 +650,15 @@ type property_reader_state = {
   initial_value : string option;
 }
 
+(* [Supports.of_string] signals a malformed condition with [Failure]. Lift it
+   into a typed [Error.Parse_error] so the partial-parse catch in
+   [read_statement_from_rule] surfaces it as a warning instead of escaping to
+   the [Css.parse] caller. *)
+let parse_supports_condition ~loc condition =
+  try Supports.of_string condition
+  with Failure reason ->
+    Error.fail_bad_condition loc ~at_rule:"@supports" ~reason
+
 let rec read_statement (r : Cursor.t) : statement =
   Cursor.ws r;
   let table : (string * (Cursor.t -> statement)) list =
@@ -710,11 +719,12 @@ and read_media (r : Cursor.t) : statement =
 and read_supports (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "supports" r;
   Cursor.ws r;
+  let cond_loc = Cursor.position r in
   let condition = Cursor.drain_until_block_to_string ~trim:true r in
   if String.length condition = 0 then
     Cursor.err r "@supports rule requires a condition";
   let content = Cursor.braces (fun inner -> read_block inner) r in
-  Supports (Supports.of_string condition, content)
+  Supports (parse_supports_condition ~loc:cond_loc condition, content)
 
 and read_scope (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "scope" r;
@@ -843,9 +853,10 @@ and read_nested_at_rule (r : Cursor.t) (at_rule : string)
       let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
       Container (container_name, Container.Raw condition_str, content)
   | "@supports" ->
+      let cond_loc = Cursor.position r in
       let condition = Cursor.drain_until_block_to_string ~trim:true r in
       let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
-      Supports (Supports.of_string condition, content)
+      Supports (parse_supports_condition ~loc:cond_loc condition, content)
   | "@media" ->
       let condition_str = Cursor.drain_until_block_to_string ~trim:true r in
       let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
@@ -1072,8 +1083,10 @@ let parse_stylesheet_partial ?(meta = Loc.default_meta_level) (source : string)
     : stylesheet * Error.t list =
   let reader = Reader.of_string source in
   let out = Parser.parse_stylesheet ~meta reader in
+  (* Snippets must be sliced from the preprocessed buffer so their offsets line
+     up with the locs the lexer produced (see Cursor.of_string). *)
   let sheet, typed_warnings =
-    read_stylesheet_from_rules ~source ~meta out.value
+    read_stylesheet_from_rules ~source:(Reader.source reader) ~meta out.value
   in
   (sheet, out.warnings @ typed_warnings)
 
@@ -1196,7 +1209,9 @@ let read_import_rule (r : Cursor.t) : import_rule =
   let supports =
     Cursor.function_call "supports"
       (fun inner ->
-        Supports.of_string (Cursor.remaining_to_string ~trim:true inner))
+        let loc = Cursor.position inner in
+        parse_supports_condition ~loc
+          (Cursor.remaining_to_string ~trim:true inner))
       r
   in
   Cursor.ws r;
