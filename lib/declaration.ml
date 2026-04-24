@@ -57,17 +57,17 @@ let read_property_name t =
   Cursor.ident ~keep_case:true t
 
 (** Parse property value. Components up to the next [;] or [!important] mark the
-    value. Blocks (quoted strings, [(...)], [[...]], [{...}]) are already
-    balanced by the component parser. *)
+    value. Whitespace is preserved in the drained value so multi-token values
+    like "10px 20px" serialise back with their spaces. *)
 let read_property_value t =
   Cursor.with_context t "property-value" @@ fun () ->
   let rec drain acc =
-    match Cursor.peek t with
+    match Cursor.peek_raw t with
     | None -> List.rev acc
     | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> List.rev acc
     | Some (Component.Preserved { kind = Token.Delim '!'; _ }) -> List.rev acc
     | Some cv ->
-        Cursor.skip t;
+        ignore (Cursor.next_raw t : Component.t option);
         drain (cv :: acc)
   in
   String.trim (Parser.to_string (drain []))
@@ -264,15 +264,15 @@ let rec read_opacity t : opacity =
     | _ -> Opacity_number n
 
 (* Helper to read raw property value - for properties that accept any text.
-   Drain components up to the next [;] or [!] delim. *)
+   Drain components (preserving whitespace) up to the next [;] or [!] delim. *)
 let read_raw_value t =
   let rec drain acc =
-    match Cursor.peek t with
+    match Cursor.peek_raw t with
     | None -> List.rev acc
     | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> List.rev acc
     | Some (Component.Preserved { kind = Token.Delim '!'; _ }) -> List.rev acc
     | Some cv ->
-        Cursor.skip t;
+        ignore (Cursor.next_raw t : Component.t option);
         drain (cv :: acc)
   in
   String.trim (Parser.to_string (drain []))
@@ -866,12 +866,7 @@ let read_declarations t =
 
 let read_block t =
   Cursor.ws t;
-  Cursor.expect '{' t;
-  Cursor.ws t;
-  let decls = read_declarations t in
-  Cursor.ws t;
-  Cursor.expect '}' t;
-  decls
+  Cursor.braces t @@ fun inner -> read_declarations inner
 
 (* Pretty printer for declarations *)
 let rec pp_declaration : declaration Pp.t =

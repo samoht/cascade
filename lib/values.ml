@@ -1312,8 +1312,7 @@ let rec read_channel t : channel =
 
 let rec read_rgb_var t : rgb var =
   Cursor.ws t;
-  Cursor.expect_string "var" t;
-  read_var_after_ident read_rgb t
+  read_var read_rgb t
 
 and read_rgb t : rgb =
   Cursor.ws t;
