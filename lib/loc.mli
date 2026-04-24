@@ -18,3 +18,58 @@ val pp : t Pp.t
 (** [pp] formats as [[start-end]]. *)
 
 val to_string : t -> string
+(** [to_string t] formats [t] as [[start-end]]. *)
+
+module Path : sig
+  type step =
+    | Mem of string
+    | Nth of int
+    | Label of string
+        (** Path step used to describe a descent into parsed structure. *)
+
+  type t
+  (** A root-to-leaf path. *)
+
+  val empty : t
+  (** [empty] is the root path. *)
+
+  val push : step -> t -> t
+  (** [push step t] appends [step] below [t]. *)
+
+  val last : t -> step option
+  (** [last t] is the leaf step of [t], if any. *)
+
+  val to_list : t -> step list
+  (** [to_list t] returns the root-to-leaf path steps. *)
+
+  val of_labels : string list -> t
+  (** [of_labels labels] builds a path from slash-separated context labels. *)
+
+  val to_labels : t -> string list
+  (** [to_labels t] renders each path step as a label. *)
+
+  val pp : t Pp.t
+  (** [pp] formats [t] as slash-separated labels. *)
+end
+
+module Context : sig
+  type snippet = { text : string; marker_pos : int; marker_len : int }
+  (** Source text around a location plus the caret marker span. *)
+
+  type nonrec t = {
+    path : Path.t;
+    loc : t;
+    sort : Sort.t;
+    snippet : snippet option;
+  }
+  (** Location, sort, path and optional source context for an error site. *)
+
+  val push : Path.step -> t -> t
+  (** [push step t] appends [step] to [t]'s path. *)
+end
+
+val make_snippet : ?window:int -> string -> t -> Context.snippet
+(** [make_snippet source loc] extracts a snippet of [source] around [loc]:
+    [text] is the byte window (default: 40 bytes on each side of the location),
+    [marker_pos] points at [loc.start_pos] within [text], and [marker_len] spans
+    the located range. *)

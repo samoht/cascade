@@ -215,6 +215,22 @@ let unexpected_token_warns () =
       ()
   | _ -> Alcotest.fail "expected an Unexpected_token warning"
 
+let warning_carries_snippet () =
+  (* Unterminated [@media] with an unclosed qualified rule inside triggers a
+     recovery warning; the warning should carry a source snippet with a caret
+     pointing at the EOF position, just like a Cursor-raised error would. *)
+  let input = "h1" in
+  let r = Css.Reader.of_string input in
+  let out = Css.Parser.parse_stylesheet r in
+  match out.warnings with
+  | [ w ] -> (
+      match Css.Error.snippet w with
+      | None -> Alcotest.fail "warning missing source snippet"
+      | Some { text; _ } ->
+          Alcotest.(check string)
+            "snippet text is the whole short input" input text)
+  | _ -> Alcotest.fail "expected exactly one warning"
+
 let declaration_at_rule_mixed () =
   (* 5.3.6 permits at-rules in declaration lists. *)
   let ds = parse_decls "color: red; @media screen { } ; width: 10px" in
@@ -254,6 +270,8 @@ let suite =
       Alcotest.test_case "warning: missing colon" `Quick missing_colon_warns;
       Alcotest.test_case "warning: unexpected token" `Quick
         unexpected_token_warns;
+      Alcotest.test_case "warning: carries source snippet" `Quick
+        warning_carries_snippet;
       Alcotest.test_case "declaration at-rule in list" `Quick
         declaration_at_rule_mixed;
     ] )

@@ -10,8 +10,15 @@
 
 type t
 
-val of_components : Component.t list -> t
-(** [of_components cvs] is a fresh cursor positioned at the head of [cvs]. *)
+val of_components : ?source:string -> Component.t list -> t
+(** [of_components ?source cvs] is a fresh cursor over [cvs]. Pass [?source] so
+    errors raised while consuming the cursor get a source-context snippet
+    attached (matching {!of_string}'s behaviour). *)
+
+val subcursor : t -> Component.t list -> t
+(** [subcursor parent cvs] is a fresh cursor over [cvs] that inherits [parent]'s
+    source, so errors raised inside still carry source-context snippets. Prefer
+    this over {!of_components} when descending into a block or function body. *)
 
 val of_string : string -> t
 (** [of_string s] lexes [s] into a {!Component.t} list and wraps it. The

@@ -9,6 +9,27 @@ type kind =
 
 type t = { loc : Loc.t; sort : Sort.t; path : string list; kind : kind }
 
+module Snippet_key = struct
+  type t = Loc.t * Sort.t * kind
+
+  let equal = ( = )
+  let hash = Hashtbl.hash
+end
+
+module Snippets = Hashtbl.Make (Snippet_key)
+
+let snippets = Snippets.create 16
+let key t = (t.loc, t.sort, t.kind)
+let snippet t = Snippets.find_opt snippets (key t)
+
+let context t =
+  {
+    Loc.Context.path = Loc.Path.of_labels t.path;
+    loc = t.loc;
+    sort = t.sort;
+    snippet = snippet t;
+  }
+
 let pp_kind : kind Pp.t =
  fun ctx -> function
   | Sort_mismatch { expected; found } ->
@@ -49,44 +70,47 @@ let pp : t Pp.t =
   Loc.pp ctx loc;
   Pp.string ctx " (in ";
   Sort.pp ctx sort;
-  Pp.char ctx ')'
+  Pp.char ctx ')';
+  match snippet { loc; sort; path; kind } with
+  | None -> ()
+  | Some { text; marker_pos; marker_len } ->
+      Pp.cut ctx ();
+      Pp.string ctx text;
+      Pp.cut ctx ();
+      Pp.string ctx (String.make marker_pos ' ');
+      Pp.string ctx (String.make (max 1 marker_len) '^')
 
 let to_string t = Pp.to_string pp t
 
 exception Parse_error of t
 
-let v ~loc ~sort kind = { loc; sort; path = []; kind }
+let v ?(path = Loc.Path.empty) ?snippet ~loc ~sort kind =
+  let t = { loc; sort; path = Loc.Path.to_labels path; kind } in
+  (match snippet with
+  | None -> ()
+  | Some s -> Snippets.replace snippets (key t) s);
+  t
+
 let fail e = Stdlib.raise (Parse_error e)
 
 let with_context label f =
   try f ()
   with Parse_error e ->
-    Stdlib.raise (Parse_error { e with path = label :: e.path })
+    let path = label :: e.path in
+    Stdlib.raise (Parse_error { e with path })
 
 let sort_mismatch loc ~sort ~expected ~found =
-  { loc; sort; path = []; kind = Sort_mismatch { expected; found } }
+  v ~loc ~sort (Sort_mismatch { expected; found })
 
-let unexpected_token loc ~sort k =
-  { loc; sort; path = []; kind = Unexpected_token k }
-
-let missing_token loc ~sort what =
-  { loc; sort; path = []; kind = Missing_token what }
-
-let bad_selector loc reason =
-  { loc; sort = Sort.Selector; path = []; kind = Bad_selector reason }
+let unexpected_token loc ~sort k = v ~loc ~sort (Unexpected_token k)
+let missing_token loc ~sort what = v ~loc ~sort (Missing_token what)
+let bad_selector loc reason = v ~loc ~sort:Sort.Selector (Bad_selector reason)
 
 let bad_value loc ~property ~reason =
-  {
-    loc;
-    sort = Sort.Property_value;
-    path = [];
-    kind = Bad_value { property; reason };
-  }
+  v ~loc ~sort:Sort.Property_value (Bad_value { property; reason })
 
-let unknown_at_rule loc name =
-  { loc; sort = Sort.At_rule; path = []; kind = Unknown_at_rule name }
-
-let unterminated loc s = { loc; sort = s; path = []; kind = Unterminated s }
+let unknown_at_rule loc name = v ~loc ~sort:Sort.At_rule (Unknown_at_rule name)
+let unterminated loc s = v ~loc ~sort:s (Unterminated s)
 
 let fail_sort_mismatch loc ~sort ~expected ~found =
   fail (sort_mismatch loc ~sort ~expected ~found)

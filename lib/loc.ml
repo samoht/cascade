@@ -21,3 +21,52 @@ let pp : t Pp.t =
   Pp.char ctx ']'
 
 let to_string t = Pp.to_string pp t
+
+module Path = struct
+  type step = Mem of string | Nth of int | Label of string
+  type t = step list
+
+  let empty = []
+  let push step t = t @ [ step ]
+
+  let rec last = function
+    | [] -> None
+    | [ step ] -> Some step
+    | _ :: rest -> last rest
+
+  let to_list t = t
+  let of_labels labels = List.map (fun label -> Label label) labels
+
+  let step_to_string = function
+    | Mem s -> s
+    | Nth n -> "[" ^ string_of_int n ^ "]"
+    | Label s -> s
+
+  let to_labels t = List.map step_to_string t
+  let pp : t Pp.t = fun ctx t -> Pp.string ctx (String.concat "/" (to_labels t))
+end
+
+module Context = struct
+  type snippet = { text : string; marker_pos : int; marker_len : int }
+
+  type nonrec t = {
+    path : Path.t;
+    loc : t;
+    sort : Sort.t;
+    snippet : snippet option;
+  }
+
+  let push step t = { t with path = Path.push step t.path }
+end
+
+let make_snippet ?(window = 40) source loc =
+  let len = String.length source in
+  let pos = max 0 (min len loc.start_pos) in
+  let end_pos = max pos (min len loc.end_pos) in
+  let start_pos = max 0 (pos - window) in
+  let stop_pos = min len (end_pos + window) in
+  let text = String.sub source start_pos (stop_pos - start_pos) in
+  let marker_pos = pos - start_pos in
+  let marker_len = max 1 (end_pos - pos) in
+  let marker_len = min marker_len (String.length text - marker_pos) in
+  { Context.text; marker_pos; marker_len }

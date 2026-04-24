@@ -13,6 +13,9 @@ val of_reader : Reader.t -> t
 val of_string : string -> t
 (** [of_string s] builds a fresh reader from [s] and wraps it. *)
 
+val source : t -> string
+(** [source t] is the full input string the underlying reader was built from. *)
+
 val next : t -> Token.t
 (** [next t] consumes the next token. Returns {!Token.Eof} at end of input.
     Honours any token pushed back by {!reconsume}. *)

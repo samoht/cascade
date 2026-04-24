@@ -44,6 +44,18 @@ let unterminated () =
     (Css.Error.unterminated loc Css.Sort.Function)
     "unterminated function at [12-13] (in function)"
 
+let source_context () =
+  let t = Css.Cursor.of_string "color red;" in
+  match Css.Cursor.colon t with
+  | true -> Alcotest.fail "expected missing colon"
+  | false -> (
+      try Css.Cursor.err_expected t "':'"
+      with Css.Cursor.Parse_error e ->
+        check "source context" e
+          "bad value for : expected ':' at [0-5] (in component)\n\
+           color red;\n\
+           ^^^^^")
+
 let suite =
   ( "error",
     [
@@ -54,4 +66,5 @@ let suite =
       Alcotest.test_case "bad value" `Quick bad_value;
       Alcotest.test_case "unknown at-rule" `Quick unknown_at_rule;
       Alcotest.test_case "unterminated" `Quick unterminated;
+      Alcotest.test_case "source context" `Quick source_context;
     ] )

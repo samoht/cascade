@@ -66,6 +66,7 @@ let pp (ctx : Pp.ctx) (t : t) =
 let of_string input =
   { input; len = String.length input; pos = 0; saved = []; call_stack = [] }
 
+let source t = t.input
 let is_done t = t.pos >= t.len
 
 (** {1 Call Stack Management} *)
