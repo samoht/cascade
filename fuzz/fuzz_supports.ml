@@ -8,26 +8,26 @@ open Alcobar
 (** Supports.of_string — must not crash on arbitrary input. *)
 let test_of_string buf =
   try ignore (Css.Supports.of_string buf)
-  with Css.Reader.Parse_error _ | Invalid_argument _ -> ()
+  with Failure _ | Invalid_argument _ -> ()
 
 (** Roundtrip: parse → to_string → parse should not crash. *)
 let test_roundtrip buf =
   match
     try Some (Css.Supports.of_string buf)
-    with Css.Reader.Parse_error _ | Invalid_argument _ -> None
+    with Failure _ | Invalid_argument _ -> None
   with
   | None -> ()
   | Some cond -> (
       let s = Css.Supports.to_string cond in
       try ignore (Css.Supports.of_string s)
-      with Css.Reader.Parse_error _ | Invalid_argument _ ->
+      with Failure _ | Invalid_argument _ ->
         fail "supports roundtrip re-parse failed")
 
 (** pp — must not crash on any parsed condition. *)
 let test_pp buf =
   match
     try Some (Css.Supports.of_string buf)
-    with Css.Reader.Parse_error _ | Invalid_argument _ -> None
+    with Failure _ | Invalid_argument _ -> None
   with
   | None -> ()
   | Some cond -> ignore (Css.Supports.to_string cond)
@@ -36,9 +36,9 @@ let test_pp buf =
 let test_compare buf1 buf2 =
   match
     ( (try Some (Css.Supports.of_string buf1)
-       with Css.Reader.Parse_error _ | Invalid_argument _ -> None),
+       with Failure _ | Invalid_argument _ -> None),
       try Some (Css.Supports.of_string buf2)
-      with Css.Reader.Parse_error _ | Invalid_argument _ -> None )
+      with Failure _ | Invalid_argument _ -> None )
   with
   | Some a, Some b ->
       ignore (Css.Supports.compare a b);

@@ -17,6 +17,9 @@ type kind =
       (** Selector parser rejected the prelude; payload is a short reason. *)
   | Bad_value of { property : string; reason : string }
       (** Property value validator rejected the right-hand side. *)
+  | Bad_condition of { at_rule : string; reason : string }
+      (** At-rule prelude (e.g. [@supports]) rejected by its condition grammar.
+      *)
   | Unknown_at_rule of string  (** At-keyword name has no registered handler. *)
   | Unterminated of Sort.t
       (** Hit EOF inside a {!Sort.t} that needed a closing delimiter. *)
@@ -102,6 +105,9 @@ val bad_selector : Loc.t -> string -> t
 val bad_value : Loc.t -> property:string -> reason:string -> t
 (** [bad_value loc ~property ~reason] flags a failed property value. *)
 
+val bad_condition : Loc.t -> at_rule:string -> reason:string -> t
+(** [bad_condition loc ~at_rule ~reason] flags a failed at-rule prelude. *)
+
 val unknown_at_rule : Loc.t -> string -> t
 (** [unknown_at_rule loc name] flags an [\@name] keyword with no handler. *)
 
@@ -127,6 +133,9 @@ val fail_bad_selector : Loc.t -> string -> 'a
 
 val fail_bad_value : Loc.t -> property:string -> reason:string -> 'a
 (** [fail_bad_value loc ~property ~reason] raises {!bad_value}. *)
+
+val fail_bad_condition : Loc.t -> at_rule:string -> reason:string -> 'a
+(** [fail_bad_condition loc ~at_rule ~reason] raises {!bad_condition}. *)
 
 val fail_unknown_at_rule : Loc.t -> string -> 'a
 (** [fail_unknown_at_rule loc name] raises {!unknown_at_rule}. *)

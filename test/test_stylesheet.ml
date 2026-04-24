@@ -1271,6 +1271,30 @@ let additional_tests =
                 Alcotest.failf "expected Unknown_at_rule, got %s"
                   (Css.Error.to_string e))
         | _ -> Alcotest.fail "expected one warning" );
+    ( "malformed @supports surfaces as Bad_condition warning",
+      `Quick,
+      fun () ->
+        (* A bad @supports condition used to raise via the untyped
+           [Reader.Parse_error] shape, bypassing the partial-parse contract. It
+           now becomes a typed [Bad_condition] warning while surrounding rules
+           keep parsing. *)
+        let { Css.stylesheet; warnings } =
+          Css.parse
+            "@supports not-a-function foo { .a { color: red } } .b { color: \
+             blue }"
+        in
+        Alcotest.(check int)
+          "sibling rule survives" 1
+          (List.length (Css.rule_statements stylesheet));
+        match warnings with
+        | [ (e, _) ] -> (
+            match e.Css.Error.kind with
+            | Css.Error.Bad_condition { at_rule; _ } ->
+                Alcotest.(check string) "at-rule label" "@supports" at_rule
+            | _ ->
+                Alcotest.failf "expected Bad_condition, got %s"
+                  (Css.Error.to_string e))
+        | _ -> Alcotest.fail "expected one warning" );
   ]
 
 let suite = ("stylesheet", stylesheet_tests @ additional_tests)

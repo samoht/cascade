@@ -4,6 +4,7 @@ type kind =
   | Missing_token of string
   | Bad_selector of string
   | Bad_value of { property : string; reason : string }
+  | Bad_condition of { at_rule : string; reason : string }
   | Unknown_at_rule of string
   | Unterminated of Sort.t
 
@@ -44,6 +45,11 @@ let pp_kind : kind Pp.t =
   | Bad_value { property; reason } ->
       Pp.string ctx "bad value for ";
       Pp.string ctx property;
+      Pp.string ctx ": ";
+      Pp.string ctx reason
+  | Bad_condition { at_rule; reason } ->
+      Pp.string ctx "bad condition for ";
+      Pp.string ctx at_rule;
       Pp.string ctx ": ";
       Pp.string ctx reason
   | Unknown_at_rule name ->
@@ -100,6 +106,9 @@ let bad_selector loc reason = v ~loc ~sort:Sort.Selector (Bad_selector reason)
 let bad_value loc ~property ~reason =
   v ~loc ~sort:Sort.Property_value (Bad_value { property; reason })
 
+let bad_condition loc ~at_rule ~reason =
+  v ~loc ~sort:Sort.At_rule (Bad_condition { at_rule; reason })
+
 let unknown_at_rule loc name = v ~loc ~sort:Sort.At_rule (Unknown_at_rule name)
 let unterminated loc s = v ~loc ~sort:s (Unterminated s)
 
@@ -112,6 +121,9 @@ let fail_bad_selector loc reason = fail (bad_selector loc reason)
 
 let fail_bad_value loc ~property ~reason =
   fail (bad_value loc ~property ~reason)
+
+let fail_bad_condition loc ~at_rule ~reason =
+  fail (bad_condition loc ~at_rule ~reason)
 
 let fail_unknown_at_rule loc name = fail (unknown_at_rule loc name)
 let fail_unterminated loc s = fail (unterminated loc s)
