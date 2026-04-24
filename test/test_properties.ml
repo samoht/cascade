@@ -1042,8 +1042,7 @@ let test_background () =
   neg_cursor read_background "invalid-background";
   neg_cursor read_background "red blue";
   (* multiple colors without gradient *)
-  neg_cursor read_background "url()";
-  (* empty url *)
+  (* Per CSS Images Module, [url()] with an empty URL is spec-valid. *)
   neg_cursor read_background "center center center";
   (* too many positions *)
   (* invalid position syntax *)
