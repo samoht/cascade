@@ -573,10 +573,19 @@ let invalid () =
     let c = Css.Cursor.of_string s in
     Alcotest.(check bool) label true (Option.is_none (Css.Cursor.option read c))
   in
-  (* CSS Syntax §5.3.7 / §4.3.5 mandate recovery for unterminated blocks and
-     strings at EOF, so [\[href] and [\[attr=value] are parsed (with the missing
-     [\]] / closing quote auto-inserted). We keep the spec-compliant behaviour
-     and only assert on the genuinely invalid cases below. *)
+  (* CSS Syntax 5.3.7 / 4.3.5 mandate recovery for unterminated blocks and
+     strings at EOF, so these inputs must still parse (with the missing closing
+     bracket / quote auto-inserted). *)
+  let parses s =
+    let c = Css.Cursor.of_string s in
+    match read c with
+    | _ -> ()
+    | exception _ ->
+        Alcotest.failf "expected %S to parse (spec recovery) but it failed" s
+  in
+  parses "[href";
+  parses "[attr=value";
+  parses "[attr=\"value]";
   neg_parse ":nth-child(2n+)" "invalid nth-child syntax";
   neg_parse ".class,,.other" "double comma in list";
   neg_parse "div > > span" "double combinator"

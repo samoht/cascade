@@ -906,15 +906,22 @@ let number_formats () =
   check_declaration ~expected:"opacity:100" "opacity: 1e2"
 
 let unterminated () =
-  (* Use common helper for consistency *)
-  let neg = none_cursor read_declaration in
-  (* Unterminated string *)
-  neg "content: \"abc";
-  (* Unterminated calc *)
-  neg "width: calc(100% - (10px);";
-  (* Unterminated rgb() *)
-  neg "color: rgb(0, 0, 0;";
-  (* Missing semicolon between decls in block *)
+  (* CSS Syntax 5.3.7 / 4.3.5 auto-close unterminated strings, brackets and
+     function calls at EOF, so these inputs parse (as if the closing quote /
+     bracket were inserted). *)
+  let parses input =
+    let c = Css.Cursor.of_string input in
+    match read_declaration c with
+    | Some _ | None -> ()
+    | exception _ ->
+        Alcotest.failf "expected %S to parse (spec recovery) but it failed"
+          input
+  in
+  parses "content: \"abc";
+  parses "width: calc(100% - (10px)";
+  parses "color: rgb(0, 0, 0";
+  (* A missing semicolon between two declarations in a block remains a parse
+     error. *)
   Css_test_helpers.neg_cursor Css.Declaration.read_block
     "{ color:red margin:10px; }"
 

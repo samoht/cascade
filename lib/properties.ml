@@ -7466,37 +7466,31 @@ let read_clip_path_inset t =
       Clip_path_inset (top, right, bottom, left))
 
 let read_clip_path_circle t =
-  Cursor.expect_string "circle(" t;
-  Cursor.ws t;
-  let radius = read_length t in
-  Cursor.ws t;
-  Cursor.expect ')' t;
+  Cursor.call "circle" t @@ fun inner ->
+  Cursor.ws inner;
+  let radius = read_length inner in
   Clip_path_circle radius
 
 let read_clip_path_ellipse t =
-  Cursor.expect_string "ellipse(" t;
-  Cursor.ws t;
-  let rx = read_length t in
-  Cursor.ws t;
-  let ry = read_length t in
-  Cursor.ws t;
-  Cursor.expect ')' t;
+  Cursor.call "ellipse" t @@ fun inner ->
+  Cursor.ws inner;
+  let rx = read_length inner in
+  Cursor.ws inner;
+  let ry = read_length inner in
   Clip_path_ellipse (rx, ry)
 
 let read_clip_path_polygon t =
-  Cursor.expect_string "polygon(" t;
-  Cursor.ws t;
+  Cursor.call "polygon" t @@ fun inner ->
+  Cursor.ws inner;
   let points =
     Cursor.list ~sep:Cursor.comma
-      (fun t ->
-        let x = read_length t in
-        Cursor.ws t;
-        let y = read_length t in
+      (fun inner ->
+        let x = read_length inner in
+        Cursor.ws inner;
+        let y = read_length inner in
         (x, y))
-      t
+      inner
   in
-  Cursor.ws t;
-  Cursor.expect ')' t;
   Clip_path_polygon points
 
 let read_clip_path t : clip_path =
