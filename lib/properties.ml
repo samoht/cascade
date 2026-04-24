@@ -7501,15 +7501,21 @@ let read_clip_path_polygon t =
 
 let read_clip_path t : clip_path =
   Cursor.ws t;
-  if Cursor.looking_at t "none" then (
-    Cursor.expect_string "none" t;
-    Clip_path_none)
-  else if Cursor.looking_at t "url(" then read_clip_path_url t
-  else if Cursor.looking_at t "inset(" then read_clip_path_inset t
-  else if Cursor.looking_at t "circle(" then read_clip_path_circle t
-  else if Cursor.looking_at t "ellipse(" then read_clip_path_ellipse t
-  else if Cursor.looking_at t "polygon(" then read_clip_path_polygon t
-  else Cursor.err_invalid t "clip-path value"
+  match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Ident "none"; _ }) ->
+      Cursor.skip t;
+      Clip_path_none
+  | Some (Component.Preserved { kind = Token.Url _; _ }) ->
+      Clip_path_url (Cursor.url t)
+  | Some (Component.Func { node = { name; _ }; _ }) -> (
+      match String.lowercase_ascii name with
+      | "url" -> read_clip_path_url t
+      | "inset" -> read_clip_path_inset t
+      | "circle" -> read_clip_path_circle t
+      | "ellipse" -> read_clip_path_ellipse t
+      | "polygon" -> read_clip_path_polygon t
+      | _ -> Cursor.err_invalid t ("clip-path function: " ^ name))
+  | _ -> Cursor.err_invalid t "clip-path value"
 
 let pp_any_property ctx (Prop p) = pp_property ctx p
 
