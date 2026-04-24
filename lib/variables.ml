@@ -793,12 +793,15 @@ let read_any_syntax (r : Cursor.t) : any_syntax =
 let parse_var_reference (r : Cursor.t) : string * string option =
   Cursor.call "var" r (fun inner ->
       let raw_name = Cursor.ident ~keep_case:true inner in
-      let name =
-        if String.length raw_name >= 2 && String.sub raw_name 0 2 = "--" then
-          String.sub raw_name 2 (String.length raw_name - 2)
-        else raw_name
-      in
-      if name = "" then Cursor.err_invalid inner "CSS variable name";
+      (* Per css-variables-1, custom-property names start with [--]; anything
+         else is rejected. *)
+      if
+        not
+          (String.length raw_name >= 3
+          && raw_name.[0] = '-'
+          && raw_name.[1] = '-')
+      then Cursor.err_invalid inner ("not a custom property: " ^ raw_name);
+      let name = String.sub raw_name 2 (String.length raw_name - 2) in
       Cursor.ws inner;
       let fallback =
         if Cursor.comma_opt inner then

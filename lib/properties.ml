@@ -5263,7 +5263,10 @@ let read_outline t : outline =
     let width = ref Option.None in
     let style = ref Option.None in
     let color = ref Option.None in
-    let at_end () = Cursor.is_done t in
+    let at_end () =
+      Cursor.is_done t || Cursor.peek_semicolon t
+      || Cursor.peek_delim t = Some '!'
+    in
     let rec parse_parts () =
       Cursor.ws t;
       if at_end () then ()
