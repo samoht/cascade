@@ -187,7 +187,7 @@ let validate_no_extra_tokens t =
   match Cursor.peek t with
   | None -> ()
   | Some (Component.Preserved { kind = Token.Semicolon; _ }) -> ()
-  | Some (Component.Preserved { kind = Token.Delim '!'; _ }) -> ()
+  | Some (Component.Preserved { kind = Token.Delim "!"; _ }) -> ()
   | Some _ ->
       let trimmed = Cursor.consume_to_decl_end ~trim:true t in
       if trimmed <> "" then
@@ -801,7 +801,7 @@ let read_declaration t : declaration option =
   | Some (Component.Preserved { kind = Token.Colon; _ })
   | Some (Component.Preserved { kind = Token.Hash _; _ })
   | Some (Component.Block { node = { opening = Token.Square; _ }; _ })
-  | Some (Component.Preserved { kind = Token.Delim ('.' | '*' | '&'); _ }) ->
+  | Some (Component.Preserved { kind = Token.Delim ("." | "*" | "&"); _ }) ->
       (* Selector-like components indicate a nested rule. *)
       None
   | Some _ -> Some (read_one ())

@@ -6,6 +6,7 @@ let () =
   Alcobar.run "css"
     [
       Fuzz_reader.suite;
+      Fuzz_parser.suite;
       Fuzz_selector.suite;
       Fuzz_values.suite;
       Fuzz_stylesheet.suite;

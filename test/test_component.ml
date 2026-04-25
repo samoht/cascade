@@ -24,7 +24,7 @@ let preserved_ident () =
 
 let preserved_delim () =
   check "preserved delim"
-    (Css.Component.Preserved (tok (Css.Token.Delim '+')))
+    (Css.Component.Preserved (tok (Css.Token.Delim "+")))
     "<delim '+'>@[0-0]"
 
 let block_curly () =

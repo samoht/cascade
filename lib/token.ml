@@ -16,11 +16,12 @@ type kind =
   | Bad_string
   | Url of string
   | Bad_url
-  | Delim of char
+  | Delim of string
   | Number_tok of number
   | Percentage of number
   | Dimension of { number : number; unit_ : string }
   | Whitespace
+  | Unicode_range of { start_value : int; end_value : int }
   | Cdo
   | Cdc
   | Colon
@@ -63,9 +64,9 @@ let pp_kind : kind Pp.t =
       Pp.string ctx s;
       Pp.char ctx '>'
   | Bad_url -> Pp.string ctx "<bad-url>"
-  | Delim c ->
+  | Delim s ->
       Pp.string ctx "<delim '";
-      Pp.char ctx c;
+      Pp.string ctx s;
       Pp.string ctx "'>"
   | Number_tok { repr; _ } ->
       Pp.string ctx "<number ";
@@ -81,6 +82,13 @@ let pp_kind : kind Pp.t =
       Pp.string ctx unit_;
       Pp.char ctx '>'
   | Whitespace -> Pp.string ctx "<ws>"
+  | Unicode_range { start_value; end_value } ->
+      Pp.string ctx "<unicode-range U+";
+      Pp.hex ctx start_value;
+      if end_value <> start_value then (
+        Pp.char ctx '-';
+        Pp.hex ctx end_value);
+      Pp.char ctx '>'
   | Cdo -> Pp.string ctx "<CDO>"
   | Cdc -> Pp.string ctx "<CDC>"
   | Colon -> Pp.string ctx "<:>"

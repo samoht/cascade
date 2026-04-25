@@ -100,11 +100,27 @@ let token_kind_to_string : Token.kind -> string = function
   | Token.Bad_string -> ""
   | Token.Url s -> "url(" ^ s ^ ")"
   | Token.Bad_url -> ""
-  | Token.Delim c -> String.make 1 c
+  | Token.Delim s -> s
   | Token.Number_tok { repr; _ } -> repr
   | Token.Percentage { repr; _ } -> repr ^ "%"
   | Token.Dimension { number; unit_ } -> number.repr ^ unit_
   | Token.Whitespace -> " "
+  | Token.Unicode_range { start_value; end_value } ->
+      let hex_digits = "0123456789ABCDEF" in
+      let to_hex n =
+        let buf = Buffer.create 6 in
+        let rec emit n =
+          if n = 0 then ()
+          else (
+            emit (n / 16);
+            Buffer.add_char buf hex_digits.[n mod 16])
+        in
+        if n = 0 then Buffer.add_char buf '0' else emit n;
+        Buffer.contents buf
+      in
+      if start_value = end_value then
+        String.concat "" [ "U+"; to_hex start_value ]
+      else String.concat "" [ "U+"; to_hex start_value; "-"; to_hex end_value ]
   | Token.Cdo -> "<!--"
   | Token.Cdc -> "-->"
   | Token.Colon -> ":"
@@ -145,23 +161,22 @@ let to_string cvs =
   List.iter (cv_to_buffer buf) cvs;
   Buffer.contents buf
 
-(* A whitespace token between two components can be dropped when neither side is
-   "word-like". Two word-like tokens side by side could otherwise merge into a
-   single token (e.g. [ident] + [ident] -> one ident; [number] + [ident] ->
-   dimension). A {!Func} component starts with an ident and ends with [)], so
-   nothing placed after it can merge with its trailing [)] -- it is not
-   word-like on the right. Its opening ident is followed by [(] so it is not
-   word-like on the left either. *)
+(* A whitespace token between two components can be dropped only when at least
+   one side is a self-delimiting structural marker (brackets, comma, colon,
+   semicolon, ...) -- otherwise the two tokens may merge on re-parse, e.g.
+   [ident] + [-] folds into a single ident, [number] + [ident] becomes a
+   dimension, [+] + [number] becomes a signed number. {!Func} starts with
+   [ident(] and ends with [)]; both ends are self-delimiting. *)
 let word_like : Component.t -> bool = function
   | Preserved
       {
         kind =
-          ( Token.Ident _ | Token.At_keyword _ | Token.Hash _
-          | Token.Number_tok _ | Token.Percentage _ | Token.Dimension _
-          | Token.Url _ );
+          ( Whitespace | Open _ | Close _ | Colon | Semicolon | Comma | Cdo
+          | Cdc | Bad_string | Bad_url | Eof );
         _;
       } ->
-      true
+      false
+  | Preserved _ -> true
   | _ -> false
 
 let rec cv_to_buffer_min buf = function
@@ -220,40 +235,74 @@ let warn ~meta lexer (warnings : Error.t list ref) (e : Error.t) =
   in
   warnings := e :: !warnings
 
-let consume_at_rule lexer ~name ~start_loc : Component.at_rule =
+(* CSS Syntax Level 3 section 5.5.2. [nested = true] also terminates on a stray
+   ['}'] (the spec's "outermost block ended") so block-contents callers can
+   recover instead of swallowing the closing delimiter. *)
+let consume_at_rule ?(nested = false) lexer ~name ~start_loc : Component.at_rule
+    =
+  let close prelude end_loc block =
+    let loc = Loc.union start_loc end_loc in
+    { node = { name; prelude = List.rev prelude; block }; loc }
+  in
   let rec loop prelude =
-    let tok = Lexer.next lexer in
+    let tok = Lexer.peek lexer in
     match tok.Token.kind with
-    | Token.Semicolon ->
-        let loc = Loc.union start_loc tok.loc in
-        { node = { name; prelude = List.rev prelude; block = None }; loc }
-    | Token.Eof ->
-        let loc = Loc.union start_loc tok.loc in
-        { node = { name; prelude = List.rev prelude; block = None }; loc }
+    | Token.Semicolon | Token.Eof ->
+        let _ = Lexer.next lexer in
+        close prelude tok.loc None
+    | Token.Close Curly when nested -> close prelude tok.loc None
     | Token.Open Curly ->
+        let _ = Lexer.next lexer in
         let block = consume_simple_block lexer Curly ~start_loc:tok.loc in
-        let loc = Loc.union start_loc block.loc in
-        { node = { name; prelude = List.rev prelude; block = Some block }; loc }
+        close prelude block.loc (Some block)
     | _ ->
+        let _ = Lexer.next lexer in
         let cv = consume_component_value_from lexer tok in
         loop (cv :: prelude)
   in
   loop []
 
-let consume_qualified_rule ~meta lexer ~start_loc ~warnings :
+(* CSS Syntax Level 3 section 5.5.3. [nested = true] makes a stray ['}'] or a
+   top-level ';' before any block end the rule attempt with [None]. The
+   custom-property-shaped guard discards a rule whose first two non-whitespace
+   prelude items are an ident starting with [--] followed by ':'. *)
+let consume_qualified_rule ?(nested = false) ~meta lexer ~start_loc ~warnings :
     Component.qualified_rule option =
+  let is_custom_property_shape prelude =
+    let rec drop_ws = function
+      | Component.Preserved { kind = Token.Whitespace; _ } :: rest ->
+          drop_ws rest
+      | other -> other
+    in
+    match drop_ws (List.rev prelude) with
+    | Component.Preserved { kind = Token.Ident name; _ } :: rest
+      when String.length name >= 2 && name.[0] = '-' && name.[1] = '-' -> (
+        match drop_ws rest with
+        | Component.Preserved { kind = Token.Colon; _ } :: _ -> true
+        | _ -> false)
+    | _ -> false
+  in
   let rec loop prelude =
-    let tok = Lexer.next lexer in
+    let tok = Lexer.peek lexer in
     match tok.Token.kind with
     | Token.Eof ->
+        let _ = Lexer.next lexer in
         let loc = Loc.union start_loc tok.loc in
         warn ~meta lexer warnings (Error.unterminated loc Sort.Qualified_rule);
         None
+    | Token.Semicolon when nested ->
+        let _ = Lexer.next lexer in
+        None
+    | Token.Close Curly when nested -> None
     | Token.Open Curly ->
+        let _ = Lexer.next lexer in
         let block = consume_simple_block lexer Curly ~start_loc:tok.loc in
-        let loc = Loc.union start_loc block.loc in
-        Some { node = { prelude = List.rev prelude; block }; loc }
+        if nested && is_custom_property_shape prelude then None
+        else
+          let loc = Loc.union start_loc block.loc in
+          Some { node = { prelude = List.rev prelude; block }; loc }
     | _ ->
+        let _ = Lexer.next lexer in
         let cv = consume_component_value_from lexer tok in
         loop (cv :: prelude)
   in
@@ -294,9 +343,34 @@ let parse_declaration_from_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
     | Preserved { kind = Token.Whitespace; _ } -> true
     | _ -> false
   in
+  let is_curly_block = function
+    | Block { node = { opening = Token.Curly; _ }; _ } -> true
+    | _ -> false
+  in
   let rec skip_leading_ws = function
     | hd :: rest when is_ws_cv hd -> skip_leading_ws rest
     | other -> other
+  in
+  let is_custom = String.length name >= 2 && name.[0] = '-' && name.[1] = '-' in
+  (* CSS Syntax section 5.5.6: a non-custom property may contain a top-level {}
+     block only if that block is the entire (non-whitespace) value. A custom
+     property may contain a {} block, but only as the FIRST non-whitespace
+     component value -- a block appearing mid-value makes the declaration
+     invalid. *)
+  let value_has_invalid_block value =
+    let trimmed =
+      skip_leading_ws value |> List.rev |> skip_leading_ws |> List.rev
+    in
+    let has_block = List.exists is_curly_block trimmed in
+    if not has_block then false
+    else
+      match trimmed with
+      | first :: _ when is_curly_block first ->
+          if is_custom then false
+          else
+            (* Non-custom: also require nothing after the leading block. *)
+            List.length trimmed > 1
+      | _ -> true
   in
   match skip_leading_ws cvs with
   | Preserved { kind = Token.Colon; _ } :: rest ->
@@ -317,21 +391,39 @@ let parse_declaration_from_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
           when String.lowercase_ascii s = "important" -> (
             let rest = skip_leading_ws rest in
             match rest with
-            | Preserved { kind = Token.Delim '!'; _ } :: rest ->
+            | Preserved { kind = Token.Delim "!"; _ } :: rest ->
                 (rtrim (List.rev rest), true)
             | _ -> (value1, false))
         | _ -> (value1, false)
       in
-      let loc =
-        List.fold_left
-          (fun l cv -> Loc.union l (Component.source_loc cv))
-          name_loc value
-      in
-      Some { node = { name; value; important }; loc }
+      if value_has_invalid_block value then (
+        warn ~meta lexer warnings
+          (Error.unexpected_token name_loc ~sort:Sort.Declaration
+             (Token.Open Token.Curly));
+        None)
+      else
+        let loc =
+          List.fold_left
+            (fun l cv -> Loc.union l (Component.source_loc cv))
+            name_loc value
+        in
+        Some { node = { name; value; important }; loc }
   | _ ->
       warn ~meta lexer warnings
         (Error.missing_token name_loc ~sort:Sort.Declaration "':'");
       None
+
+(* Buffer component values until the terminating ';' or EOF (CSS Syntax section
+   5.4.6 declaration body). Shared by the list, single-declaration and
+   block-contents entry points. *)
+let consume_declaration_body lexer =
+  let rec loop acc =
+    let t = Lexer.next lexer in
+    match t.Token.kind with
+    | Token.Semicolon | Token.Eof -> List.rev acc
+    | _ -> loop (consume_component_value_from lexer t :: acc)
+  in
+  loop []
 
 let consume_list_of_declarations ~meta lexer ~warnings :
     [ `Decl of Component.declaration | `At of Component.at_rule ] list =
@@ -344,15 +436,7 @@ let consume_list_of_declarations ~meta lexer ~warnings :
         let ar = consume_at_rule lexer ~name ~start_loc:tok.loc in
         loop (`At ar :: acc)
     | Token.Ident name -> (
-        let rec buffer acc =
-          let t = Lexer.next lexer in
-          match t.Token.kind with
-          | Token.Semicolon | Token.Eof -> List.rev acc
-          | _ ->
-              let cv = consume_component_value_from lexer t in
-              buffer (cv :: acc)
-        in
-        let body = buffer [] in
+        let body = consume_declaration_body lexer in
         match
           parse_declaration_from_buffer ~meta lexer ~name ~name_loc:tok.loc
             ~warnings body
@@ -380,6 +464,11 @@ let consume_list_of_declarations ~meta lexer ~warnings :
 
 type 'a output = { value : 'a; warnings : Error.t list }
 
+type block_item =
+  [ `Decls of Component.declaration list | `Rule of Component.rule ]
+
+type grammar = Component.t list -> bool
+
 let with_warnings f =
   let warnings = ref [] in
   let value = f ~warnings in
@@ -390,6 +479,116 @@ let parse_stylesheet ?(meta = Loc.default_meta_level) r =
       let lexer = Lexer.of_reader r in
       consume_list_of_rules ~meta lexer ~top_level:true ~warnings)
 
+let parse_stylesheet_contents = parse_stylesheet
+
+(* CSS Syntax Level 3 section 5.4.5: a block's contents is a mix of declarations
+   and nested rules. Consecutive declarations are grouped into a single [`Decls]
+   item so callers can re-emit them as a contiguous run. *)
+let consume_block_contents ~meta lexer ~warnings : block_item list =
+  let pending = ref [] in
+  let result = ref [] in
+  let flush () =
+    match !pending with
+    | [] -> ()
+    | ds ->
+        result := `Decls (List.rev ds) :: !result;
+        pending := []
+  in
+  let rec loop () =
+    let tok = Lexer.next lexer in
+    match tok.Token.kind with
+    | Token.Eof | Token.Close Curly ->
+        flush ();
+        List.rev !result
+    | Token.Whitespace | Token.Semicolon -> loop ()
+    | Token.At_keyword name ->
+        flush ();
+        let ar = consume_at_rule ~nested:true lexer ~name ~start_loc:tok.loc in
+        result := `Rule (Component.At ar) :: !result;
+        loop ()
+    | Token.Ident name -> (
+        let body = consume_declaration_body lexer in
+        match
+          parse_declaration_from_buffer ~meta lexer ~name ~name_loc:tok.loc
+            ~warnings body
+        with
+        | Some d ->
+            pending := d :: !pending;
+            loop ()
+        | None -> loop ())
+    | _ ->
+        flush ();
+        Lexer.reconsume lexer tok;
+        (match
+           consume_qualified_rule ~nested:true ~meta lexer ~start_loc:tok.loc
+             ~warnings
+         with
+        | Some qr -> result := `Rule (Component.Qualified qr) :: !result
+        | None -> ());
+        loop ()
+  in
+  loop ()
+
+let parse_block_contents ?(meta = Loc.default_meta_level) r :
+    block_item list output =
+  with_warnings (fun ~warnings ->
+      let lexer = Lexer.of_reader r in
+      consume_block_contents ~meta lexer ~warnings)
+
+(* CSS Syntax Level 3 section 5.4.6 "Parse a rule": skip surrounding whitespace,
+   consume one rule, require EOF, no extra rules or stray tokens afterwards. *)
+let parse_rule ?(meta = Loc.default_meta_level) r =
+  with_warnings (fun ~warnings ->
+      let lexer = Lexer.of_reader r in
+      let rec skip_ws () =
+        match (Lexer.peek lexer).Token.kind with
+        | Token.Whitespace ->
+            let _ = Lexer.next lexer in
+            skip_ws ()
+        | _ -> ()
+      in
+      skip_ws ();
+      let rule =
+        match (Lexer.peek lexer).Token.kind with
+        | Token.Eof -> None
+        | Token.At_keyword name ->
+            let tok = Lexer.next lexer in
+            Some (Component.At (consume_at_rule lexer ~name ~start_loc:tok.loc))
+        | _ -> (
+            let start_loc = (Lexer.peek lexer).Token.loc in
+            match consume_qualified_rule ~meta lexer ~start_loc ~warnings with
+            | Some qr -> Some (Component.Qualified qr)
+            | None -> None)
+      in
+      match rule with
+      | None -> None
+      | Some _ as r' ->
+          skip_ws ();
+          if (Lexer.peek lexer).Token.kind = Token.Eof then r' else None)
+
+(* CSS Syntax Level 3 section 5.4.7 "Parse a declaration": skip leading
+   whitespace, require an ident, consume exactly one declaration, ignore
+   anything after the terminating ';' or EOF. The first non-whitespace token
+   must be the declaration name -- a stray ':' or [@x] is a syntax error. *)
+let parse_declaration ?(meta = Loc.default_meta_level) r =
+  with_warnings (fun ~warnings ->
+      let lexer = Lexer.of_reader r in
+      let rec skip_ws () =
+        match (Lexer.peek lexer).Token.kind with
+        | Token.Whitespace ->
+            let _ = Lexer.next lexer in
+            skip_ws ()
+        | _ -> ()
+      in
+      skip_ws ();
+      match (Lexer.peek lexer).Token.kind with
+      | Token.Ident name ->
+          let tok = Lexer.next lexer in
+          let body = consume_declaration_body lexer in
+          parse_declaration_from_buffer ~meta lexer ~name ~name_loc:tok.loc
+            ~warnings body
+      | _ -> None)
+
 let parse_list_of_declarations ?(meta = Loc.default_meta_level) r =
   with_warnings (fun ~warnings ->
       let lexer = Lexer.of_reader r in
@@ -399,3 +598,118 @@ let parse_list_of_rules ?(meta = Loc.default_meta_level) r =
   with_warnings (fun ~warnings ->
       let lexer = Lexer.of_reader r in
       consume_list_of_rules ~meta lexer ~top_level:false ~warnings)
+
+let parse_list_of_component_values r =
+  with_warnings (fun ~warnings:_ ->
+      let p = of_reader r in
+      let rec loop acc =
+        match next p with
+        | Preserved { kind = Token.Eof; _ } -> List.rev acc
+        | cv -> loop (cv :: acc)
+      in
+      loop [])
+
+let parse_component_value r =
+  with_warnings (fun ~warnings:_ ->
+      let p = of_reader r in
+      let rec next_non_ws () =
+        match next p with
+        | Preserved { kind = Token.Whitespace; _ } -> next_non_ws ()
+        | cv -> cv
+      in
+      let first = next_non_ws () in
+      match first with
+      | Preserved { kind = Token.Eof; _ } -> None
+      | _ ->
+          let rec rest_is_ws_then_eof () =
+            match next p with
+            | Preserved { kind = Token.Eof; _ } -> true
+            | Preserved { kind = Token.Whitespace; _ } -> rest_is_ws_then_eof ()
+            | _ -> false
+          in
+          if rest_is_ws_then_eof () then Some first else None)
+
+let split_comma_groups cvs =
+  let rec split current groups = function
+    | [] ->
+        if current = [] && groups = [] then []
+        else if current = [] then List.rev groups
+        else List.rev (List.rev current :: groups)
+    | [ Preserved { kind = Token.Comma; _ } ] ->
+        List.rev (List.rev current :: groups)
+    | Preserved { kind = Token.Comma; _ } :: rest ->
+        split [] (List.rev current :: groups) rest
+    | cv :: rest -> split (cv :: current) groups rest
+  in
+  split [] [] cvs
+
+let parse_comma_separated_list_of_component_values r =
+  let out = parse_list_of_component_values r in
+  { out with value = split_comma_groups out.value }
+
+let trim_component_value_whitespace cvs =
+  let is_ws = function
+    | Preserved { kind = Token.Whitespace; _ } -> true
+    | _ -> false
+  in
+  let rec drop_leading = function
+    | cv :: rest when is_ws cv -> drop_leading rest
+    | rest -> rest
+  in
+  cvs |> drop_leading |> List.rev |> drop_leading |> List.rev
+
+let component_values_are_whitespace_only cvs =
+  List.for_all
+    (function Preserved { kind = Token.Whitespace; _ } -> true | _ -> false)
+    cvs
+
+let parse_according_to_grammar r grammar =
+  let out = parse_list_of_component_values r in
+  let value = trim_component_value_whitespace out.value in
+  if grammar value then { out with value = Some value }
+  else { out with value = None }
+
+let parse_comma_separated_list_according_to_grammar r grammar =
+  let raw = parse_list_of_component_values r in
+  if component_values_are_whitespace_only raw.value then { raw with value = [] }
+  else
+    let out = { raw with value = split_comma_groups raw.value } in
+    let match_group group =
+      let group = trim_component_value_whitespace group in
+      if grammar group then Some group else None
+    in
+    { out with value = List.map match_group out.value }
+
+let rec arbitrary_value_tokens_ok ~allow_top_level_semicolon_bang ~top_level =
+  List.for_all (fun cv ->
+      match cv with
+      | Component.Preserved
+          { kind = Token.Bad_string | Token.Bad_url | Token.Close _; _ } ->
+          false
+      | Component.Preserved { kind = Token.Semicolon; _ }
+        when top_level && not allow_top_level_semicolon_bang ->
+          false
+      | Component.Preserved { kind = Token.Delim "!"; _ }
+        when top_level && not allow_top_level_semicolon_bang ->
+          false
+      | Component.Block { node = { value; _ }; _ }
+      | Component.Func { node = { arguments = value; _ }; _ } ->
+          arbitrary_value_tokens_ok ~allow_top_level_semicolon_bang
+            ~top_level:false value
+      | Component.Preserved _ -> true)
+
+let parse_arbitrary_value r ~allow_top_level_semicolon_bang =
+  let out = parse_list_of_component_values r in
+  let value = trim_component_value_whitespace out.value in
+  if
+    value <> []
+    && arbitrary_value_tokens_ok ~allow_top_level_semicolon_bang ~top_level:true
+         value
+  then { out with value = Some value }
+  else { out with value = None }
+
+let parse_declaration_value r =
+  parse_arbitrary_value r ~allow_top_level_semicolon_bang:false
+
+let parse_any_value r =
+  parse_arbitrary_value r ~allow_top_level_semicolon_bang:true
