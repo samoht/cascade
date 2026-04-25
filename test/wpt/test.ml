@@ -630,14 +630,18 @@ let serialize_consecutive_tokens =
     ]
   in
   let pair_is_separable a b () =
-    (* Feed [a b] through the lexer; assert two distinct non-whitespace
-       components come out. If the minified serializer would merge them,
-       re-tokenizing the concatenation would yield a single token. *)
+    (* Feed [a b] through the lexer, serialize the resulting component values,
+       then re-tokenize that serialization. If the serializer merged the pair,
+       re-tokenizing the serialized string would yield fewer components. *)
     let source = a ^ " " ^ b in
     let cvs =
       Cascade.Css.Cursor.of_string source |> Cascade.Css.Cursor.remaining
     in
-    let non_ws =
+    let serialized = Cascade.Css.Parser.to_string_minified cvs in
+    let reparsed =
+      Cascade.Css.Cursor.of_string serialized |> Cascade.Css.Cursor.remaining
+    in
+    let non_ws cvs =
       List.filter
         (function
           | Cascade.Css.Component.Preserved
@@ -646,10 +650,10 @@ let serialize_consecutive_tokens =
           | _ -> true)
         cvs
     in
-    Alcotest.(check bool)
-      (Fmt.str "%S and %S remain separable" a b)
-      true
-      (List.length non_ws >= 2)
+    Alcotest.(check int)
+      (Fmt.str "%S and %S remain separable as %S" a b serialized)
+      (List.length (non_ws cvs))
+      (List.length (non_ws reparsed))
   in
   List.map
     (fun (a, b) ->

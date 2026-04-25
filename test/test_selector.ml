@@ -977,12 +977,36 @@ let test_nth () =
   check_nth "-4n+10";
   check_nth ~expected:"5" "0n+5";
   check_nth "5";
+  check_nth ~expected:"n" "1n+0";
+  check_nth ~expected:"n" "+n";
+  check_nth ~expected:"n" "n+0";
+  check_nth "n";
+  check_nth "-n";
+  check_nth "n-1";
+  check_nth "-n-1";
+  check_nth "2n";
+  check_nth ~expected:"2n-1" "+2n-1";
+  check_nth "-2n-1";
+  check_nth "3n-6";
+  check_nth ~expected:"3n+1" "3n + 1";
+  check_nth ~expected:"3n-2" "+3n - 2";
+  check_nth ~expected:"-n+6" "-n+ 6";
+  check_nth ~expected:"n-6" "n - 6";
+  check_nth ~expected:"6" "+6";
 
   (* Test invalid nth values *)
   neg_cursor read_nth "invalid";
   neg_cursor read_nth "";
   neg_cursor read_nth "2 n";
+  neg_cursor read_nth "3 n";
+  neg_cursor read_nth "+ 2n";
+  neg_cursor read_nth "+ 2";
+  neg_cursor read_nth "3n + -6";
   neg_cursor read_nth "n+";
+  neg_cursor read_nth "n+-1";
+  neg_cursor read_nth "2n--1";
+  neg_cursor read_nth "odd+1";
+  neg_cursor read_nth "evenn";
   ()
 
 let test_selector () =

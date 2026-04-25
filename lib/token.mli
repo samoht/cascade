@@ -37,12 +37,18 @@ type kind =
   | Url of string
   | Bad_url
       (** Malformed [url(...)] body (unquoted content with invalid chars). *)
-  | Delim of char
-      (** Any single code point not consumed by another token rule. *)
+  | Delim of string
+      (** Any single Unicode code point not consumed by another token rule.
+          Stored as the UTF-8 byte sequence (1 to 4 bytes). *)
   | Number_tok of number
   | Percentage of number
   | Dimension of { number : number; unit_ : string }
   | Whitespace  (** Any run of whitespace characters. *)
+  | Unicode_range of { start_value : int; end_value : int }
+      (** [U+XXXX] / [U+XXXX-YYYY] / [U+XX??] (CSS Syntax section 4.3.14). The
+          three syntactic forms are normalised to the [[start_value, end_value]]
+          inclusive range; [start_value = end_value] for the single-codepoint
+          form. *)
   | Cdo  (** [<!--] at top level. *)
   | Cdc  (** [-->] at top level. *)
   | Colon

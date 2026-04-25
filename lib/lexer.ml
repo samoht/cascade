@@ -354,6 +354,73 @@ let consume_url_token r =
   in
   loop ()
 
+(* 4.3.4 Check if three code points would start a unicode-range token. The
+   reader is positioned at the leading [U]/[u]; we look at offsets 0..2. *)
+let would_start_unicode_range r =
+  match (Reader.peek r, Reader.peek_string r 3) with
+  | Some ('U' | 'u'), s
+    when String.length s = 3 && s.[1] = '+' && (is_hex s.[2] || s.[2] = '?') ->
+      true
+  | _ -> false
+
+(* 4.3.14 Consume a unicode-range token. Assumes [would_start_unicode_range]
+   just returned true. *)
+let consume_unicode_range_token r =
+  Reader.skip r;
+  Reader.skip r;
+  let buf = Buffer.create 6 in
+  let rec consume_hex n =
+    if n = 6 then n
+    else
+      match Reader.peek r with
+      | Some c when is_hex c ->
+          Buffer.add_char buf c;
+          Reader.skip r;
+          consume_hex (n + 1)
+      | _ -> n
+  in
+  let n_hex = consume_hex 0 in
+  let rec consume_q n =
+    if n_hex + n = 6 then n
+    else
+      match Reader.peek r with
+      | Some '?' ->
+          Reader.skip r;
+          consume_q (n + 1)
+      | _ -> n
+  in
+  let n_q = consume_q 0 in
+  let start_repr = Buffer.contents buf in
+  let parse_hex s = int_of_string ("0x" ^ s) in
+  if n_q > 0 then
+    let start_value = parse_hex (start_repr ^ String.make n_q '0') in
+    let end_value = parse_hex (start_repr ^ String.make n_q 'F') in
+    Unicode_range { start_value; end_value }
+  else
+    let start_value = parse_hex start_repr in
+    let has_range_tail =
+      match Reader.peek_string r 2 with
+      | s when String.length s = 2 && s.[0] = '-' && is_hex s.[1] -> true
+      | _ -> false
+    in
+    if has_range_tail then (
+      Reader.skip r;
+      let end_buf = Buffer.create 6 in
+      let rec consume_end n =
+        if n = 6 then ()
+        else
+          match Reader.peek r with
+          | Some c when is_hex c ->
+              Buffer.add_char end_buf c;
+              Reader.skip r;
+              consume_end (n + 1)
+          | _ -> ()
+      in
+      consume_end 0;
+      let end_value = parse_hex (Buffer.contents end_buf) in
+      Unicode_range { start_value; end_value })
+    else Unicode_range { start_value; end_value = start_value }
+
 (* 4.3.10 Consume an ident-like token. *)
 let consume_ident_like_token r =
   let name = consume_ident_sequence r in
@@ -425,7 +492,7 @@ let consume_hash_token r =
       let hash_flag = hash_flag_now r in
       let value = consume_ident_sequence r in
       Hash { value; hash_flag }
-  | _ -> Delim '#'
+  | _ -> Delim "#"
 
 (* 4.3.1 sub-case: reader is at [-], not yet consumed. *)
 let consume_hyphen_start r =
@@ -438,7 +505,7 @@ let consume_hyphen_start r =
   else if would_start_ident_sequence r then consume_ident_like_token r
   else (
     Reader.skip r;
-    Delim '-')
+    Delim "-")
 
 (* 4.3.1 sub-case: reader is at [<]. *)
 let consume_less_than r =
@@ -450,12 +517,12 @@ let consume_less_than r =
     Cdo)
   else (
     Reader.skip r;
-    Delim '<')
+    Delim "<")
 
 (* 4.3.1 sub-case: [@] has already been consumed. *)
 let consume_at_start r =
   if would_start_ident_sequence r then At_keyword (consume_ident_sequence r)
-  else Delim '@'
+  else Delim "@"
 
 (* 4.3.1 Consume a token. *)
 let next_token r =
@@ -483,7 +550,7 @@ let next_token r =
   | Some '+' when would_start_number r -> consume_numeric_token r
   | Some '+' ->
       Reader.skip r;
-      Delim '+'
+      Delim "+"
   | Some ',' ->
       Reader.skip r;
       Comma
@@ -491,7 +558,7 @@ let next_token r =
   | Some '.' when would_start_number r -> consume_numeric_token r
   | Some '.' ->
       Reader.skip r;
-      Delim '.'
+      Delim "."
   | Some ':' ->
       Reader.skip r;
       Colon
@@ -508,7 +575,7 @@ let next_token r =
   | Some '\\' when valid_escape_at r -> consume_ident_like_token r
   | Some '\\' ->
       Reader.skip r;
-      Delim '\\'
+      Delim "\\"
   | Some ']' ->
       Reader.skip r;
       Close Square
@@ -519,17 +586,32 @@ let next_token r =
       Reader.skip r;
       Close Curly
   | Some c when is_digit c -> consume_numeric_token r
+  | Some ('U' | 'u') when would_start_unicode_range r ->
+      consume_unicode_range_token r
   | Some c when is_name_start_ascii c || c >= '\x80' ->
       (* ASCII fast path or a multi-byte lead -- consult [is_name_start_at]
          which decodes the full UTF-8 code point and checks the spec range list.
-         Non-ident code points fall through to [Delim]. *)
+         Non-ident code points fall through to [Delim], where a multi-byte lead
+         consumes the whole UTF-8 sequence so the delim token holds the full
+         code point (CSS Syntax section 4.3.1). *)
       if is_name_start_at r 0 then consume_ident_like_token r
+      else if c >= '\x80' then (
+        match Reader.peek_utf8 r with
+        | Some (_, n) ->
+            let bytes = Reader.peek_string r n in
+            for _ = 1 to n do
+              Reader.skip r
+            done;
+            Delim bytes
+        | None ->
+            Reader.skip r;
+            Delim (String.make 1 c))
       else (
         Reader.skip r;
-        Delim c)
+        Delim (String.make 1 c))
   | Some c ->
       Reader.skip r;
-      Delim c
+      Delim (String.make 1 c)
 
 (** {1 Stream API (uniform with other stages)} *)
 

@@ -1,9 +1,4 @@
-(** Tokenizer smoke tests. Not a full WPT port; that comes later.
-
-    CSS Syntax section 3.2 byte-stream decoding is intentionally not tested
-    here: Cascade's lexer starts from already-decoded UTF-8 text, so BOM,
-    transport charset, environment fallback, and [@charset] byte sniffing belong
-    to callers or to a future byte-decoding entry point. *)
+(** Tests for CSS Syntax tokenizer algorithms. *)
 
 open Cascade
 
@@ -24,20 +19,49 @@ let check input expected_summary =
   let got = pp_tokens (tokens_of input) in
   Alcotest.(check string) (Fmt.str "tokenize %S" input) expected_summary got
 
+let check_first_hash input expected_value expected_flag =
+  match tokens_of input with
+  | [ Css.Token.Hash { value; hash_flag } ] ->
+      Alcotest.(check string)
+        (Fmt.str "hash value for %S" input)
+        expected_value value;
+      Alcotest.(check bool)
+        (Fmt.str "hash flag for %S" input)
+        true
+        (hash_flag = expected_flag)
+  | kinds ->
+      Alcotest.failf "tokenize %S: expected one hash token, got %s" input
+        (pp_tokens kinds)
+
+let check_first_number_flag input expected_repr expected_flag =
+  match tokens_of input with
+  | [ Css.Token.Number_tok { repr; number_flag; _ } ] ->
+      Alcotest.(check string)
+        (Fmt.str "number repr for %S" input)
+        expected_repr repr;
+      Alcotest.(check bool)
+        (Fmt.str "number flag for %S" input)
+        true
+        (number_flag = expected_flag)
+  | kinds ->
+      Alcotest.failf "tokenize %S: expected one number token, got %s" input
+        (pp_tokens kinds)
+
 let spec_preprocessing () =
-  (* CSS Syntax Level 3 section 3.3: Cascade starts after byte decoding, then
-     preprocesses the code-point stream before tokenization. *)
+  (* CSS Syntax Level 3 section 3.3: preprocess the input stream before
+     tokenization. *)
   check "\xEF\xBB\xBFfoo" "<ident foo>";
   check "a\rb" "<ident a> <ws> <ident b>";
   check "a\r\nb" "<ident a> <ws> <ident b>";
+  check "a\nb" "<ident a> <ws> <ident b>";
+  check "a\tb" "<ident a> <ws> <ident b>";
   check "a\012b" "<ident a> <ws> <ident b>";
   check "a\x00b" ("<ident a" ^ "\xEF\xBF\xBD" ^ "b>")
 
 let spec_token_railroad_diagrams () =
   (* CSS Syntax Level 3 section 4.1 token railroad diagrams: one compact pass
-     over the concrete token categories Cascade exposes. Unicode-range tokens
-     are a tokenizer-layer gap: Cascade currently handles unicode-range syntax
-     in the property parser instead of exposing a lexer token for it. *)
+     over the token categories. Unicode-range has its own focused vectors below
+     because its syntax has a branchy range grammar. *)
   check
     "foo calc( @media #id \"str\" url(a.png) url(a b) ? 1 2% 3px \t <!-- --> : \
      ; , [ ] ( ) { }"
@@ -45,6 +69,45 @@ let spec_token_railroad_diagrams () =
      str> <ws> <url a.png> <ws> <bad-url> <ws> <delim '?'> <ws> <number 1> \
      <ws> <percentage 2%> <ws> <dimension 3px> <ws> <CDO> <ws> <CDC> <ws> <:> \
      <ws> <;> <ws> <,> <ws> <[> <ws> <]> <ws> <(> <ws> <)> <ws> <{> <ws> <}>"
+
+let spec_unicode_range_tokens () =
+  (* CSS Syntax Level 3 sections 4.1, 4.3.11, and 4.3.14. *)
+  check "U+26" "<unicode-range U+26>";
+  check "u+0-7f" "<unicode-range U+0-7F>";
+  check "U+0025-00FF" "<unicode-range U+25-FF>";
+  check "U+4??" "<unicode-range U+400-4FF>";
+  check "U+10????" "<unicode-range U+100000-10FFFF>";
+  check "U+??????" "<unicode-range U+0-FFFFFF>";
+  check "U+1234567" "<unicode-range U+123456> <number 7>";
+  check "U+12??-f" "<unicode-range U+1200-12FF> <ident -f>";
+  check "u+???????" "<unicode-range U+0-FFFFFF> <delim '?'>";
+  check "u+-1" "<ident u> <delim '+'> <number -1>";
+  check "u+" "<ident u> <delim '+'>";
+  check "u+g" "<ident u> <delim '+'> <ident g>"
+
+let spec_definitions () =
+  (* CSS Syntax Level 3 section 4.2 definitions that affect tokenizer branch
+     decisions before the section 4.3 algorithms run. *)
+  check "url(a\x07b)" "<bad-url>";
+  check "a\u{00B7}b" "<ident a\u{00B7}b>";
+  (* U+200B is not in the non-ASCII ident ranges, so it should fall through to a
+     single delim token with that code point. *)
+  check "\u{200B}" "<delim '\u{200B}'>"
+
+let spec_hash_flags () =
+  (* CSS Syntax Level 3 section 4.3.1: hash tokens remember whether the
+     following code points would start an ident sequence. *)
+  check_first_hash "#abc" "abc" Css.Token.Id;
+  check_first_hash "#123" "123" Css.Token.Unrestricted;
+  check_first_hash "#\\31 a" "1a" Css.Token.Id
+
+let spec_delim_fallbacks () =
+  (* CSS Syntax Level 3 section 4.3.1 fallback cases for punctuation that does
+     not start a more specific token. *)
+  check "+ - . @ # \\"
+    "<delim '+'> <ws> <delim '-'> <ws> <delim '.'> <ws> <delim '@'> <ws> \
+     <delim '#'> <ws> <delim '\\'>";
+  check "\\\n" "<delim '\\'> <ws>"
 
 let idents () =
   check "foo" "<ident foo>";
@@ -104,26 +167,48 @@ let spec_comments () =
   (* CSS Syntax Level 3 section 4.3.2: comments are consumed before the next
      token and do not synthesize whitespace. *)
   check "a/*x*/b" "<ident a> <ident b>";
-  check "a/*x*/ b" "<ident a> <ws> <ident b>"
+  check "a/*x*/ b" "<ident a> <ws> <ident b>";
+  check "/* one *//* two */a" "<ident a>";
+  check "a/*x" "<ident a>"
 
 let spec_numeric_tokens () =
   (* CSS Syntax Level 3 sections 4.3.3, 4.3.10, and 4.3.13. *)
   check "+10 -2.5 .5 1e-2"
     "<number +10> <ws> <number -2.5> <ws> <number .5> <ws> <number 1e-2>";
+  check "+.5 -.5" "<number +.5> <ws> <number -.5>";
+  check "1e+ 1e- 1e"
+    "<dimension 1e> <delim '+'> <ws> <dimension 1e-> <ws> <dimension 1e>";
+  check "+. -. .e1"
+    "<delim '+'> <delim '.'> <ws> <delim '-'> <delim '.'> <ws> <delim '.'> \
+     <ident e1>";
   check "10px 5% 1e3ms"
     "<dimension 10px> <ws> <percentage 5%> <ws> <dimension 1e3ms>"
+
+let spec_number_flags () =
+  (* CSS Syntax Level 3 section 4.3.13 returns a number type of "integer" or
+     "number" in addition to the numeric value. *)
+  check_first_number_flag "10" "10" Css.Token.Integer;
+  check_first_number_flag "+10" "+10" Css.Token.Integer;
+  check_first_number_flag "10.0" "10.0" Css.Token.Number;
+  check_first_number_flag "1e2" "1e2" Css.Token.Number
 
 let spec_ident_like_tokens () =
   (* CSS Syntax Level 3 sections 4.3.4, 4.3.9, and 4.3.12. *)
   check "-- <!-- -x \\26 B"
     "<ident --> <ws> <CDO> <ws> <ident -x> <ws> <ident &B>";
+  check "\\! -\\!" "<ident !> <ws> <ident -!>";
   check "calc(1) url(\"a.png\")"
     "<function calc(> <number 1> <)> <ws> <function url(> <string a.png> <)>"
 
 let spec_string_tokens () =
   (* CSS Syntax Level 3 sections 4.3.5, 4.3.7, and 4.3.8. *)
   check "\"a\\\nb\"" "<string ab>";
+  check "\"a\\\r\nb\"" "<string ab>";
   check {|"a\26 b"|} "<string a&b>";
+  check {|"a\\b"|} {|<string a\b>|};
+  check {|'a"b'|} {|<string a"b>|};
+  check "\"abc" "<string abc>";
+  check "\"abc\\" "<string abc>";
   check "\"oops\n" "<bad-string> <ws>"
 
 let url () =
@@ -133,10 +218,50 @@ let url () =
 let spec_url_tokens () =
   (* CSS Syntax Level 3 sections 4.3.6 and 4.3.15. *)
   check "url(  a.png  )" "<url a.png>";
+  check "url(\t a.png\n )" "<url a.png>";
   check "url(a\\ b.png)" "<url a b.png>";
+  check "url(a\x07b)" "<bad-url>";
+  check "url(a\\\nb)" "<bad-url>";
+  check "url(a " "<url a>";
+  check "url(a b\\) c) next" "<bad-url> <ws> <ident next>";
   check "url(a b) foo" "<bad-url> <ws> <ident foo>"
 
-(* Per 4.3.11, a newline inside a string produces a <bad-string> token; the
+let spec_escaped_code_points () =
+  (* CSS Syntax Level 3 section 4.3.7: null, surrogate, and out-of-range escapes
+     are replaced with U+FFFD. *)
+  check "\\0 " "<ident \u{FFFD}>";
+  check "\\D800 " "<ident \u{FFFD}>";
+  check "\\110000 " "<ident \u{FFFD}>"
+
+let spec_security_comment_confusion_regressions () =
+  (* CSS Syntax Level 3 section 11: regression vectors for parser-confusion
+     issues like CVE-2023-44270, where a CSS parser discrepancy around CR and
+     comments caused content written inside a comment to surface as active CSS
+     nodes downstream. *)
+  check "@font-face{ font:(\r/*); color:red */}"
+    "<@font-face> <{> <ws> <ident font> <:> <(> <ws> <}>";
+  check "safe/* .evil { color: red } */end" "<ident safe> <ident end>";
+  check "safe/* unterminated .evil { color: red }" "<ident safe>"
+
+let spec_section_12_tokenization_regression_checklist () =
+  (* CSS Syntax Level 3 section 12 is non-normative. These are regression
+     vectors for the tokenization behaviors it calls out as changed from older
+     syntax definitions. *)
+  check "a\x00b \\0 \\D800 \\110000 "
+    ("<ident a" ^ "\xEF\xBF\xBD" ^ "b> <ws> <ident " ^ "\xEF\xBF\xBD"
+   ^ "\xEF\xBF\xBD" ^ "\xEF\xBF\xBD" ^ ">");
+  check "-- --x -->" "<ident --> <ws> <ident --x> <ws> <CDC>";
+  check "url(\"a.png\") url(a.png) url(foo\"bar[still ignored]) next"
+    "<function url(> <string a.png> <)> <ws> <url a.png> <ws> <bad-url> <ws> \
+     <ident next>";
+  check "\"eof string" "<string eof string>";
+  check "url(eof-url" "<url eof-url>";
+  check "+10 -2.5 1e2 1e+2 1e-2 4e5px"
+    "<number +10> <ws> <number -2.5> <ws> <number 1e2> <ws> <number 1e+2> <ws> \
+     <number 1e-2> <ws> <dimension 4e5px>";
+  check "U+26 u+a" "<unicode-range U+26> <ws> <unicode-range U+A>"
+
+(* Per 4.3.5, a newline inside a string produces a <bad-string> token; the
    newline is not consumed and becomes a subsequent <whitespace>. *)
 let bad_string () = check "\"oops\n" "<bad-string> <ws>"
 let bad_url () = check "url(a b)" "<bad-url>"
@@ -148,6 +273,12 @@ let suite =
         spec_preprocessing;
       Alcotest.test_case "spec section 4.1 token railroad diagrams" `Quick
         spec_token_railroad_diagrams;
+      Alcotest.test_case "spec section 4.1 unicode-range tokens" `Quick
+        spec_unicode_range_tokens;
+      Alcotest.test_case "spec section 4.2 definitions" `Quick spec_definitions;
+      Alcotest.test_case "spec section 4.3.1 hash flags" `Quick spec_hash_flags;
+      Alcotest.test_case "spec section 4.3.1 delimiter fallbacks" `Quick
+        spec_delim_fallbacks;
       Alcotest.test_case "idents" `Quick idents;
       Alcotest.test_case "functions" `Quick functions;
       Alcotest.test_case "at-keyword" `Quick at_keyword;
@@ -166,12 +297,21 @@ let suite =
       Alcotest.test_case "spec section 4.3.2 comments" `Quick spec_comments;
       Alcotest.test_case "spec section 4.3.3 numeric tokens" `Quick
         spec_numeric_tokens;
+      Alcotest.test_case "spec section 4.3.13 number flags" `Quick
+        spec_number_flags;
       Alcotest.test_case "spec section 4.3.4 ident-like tokens" `Quick
         spec_ident_like_tokens;
       Alcotest.test_case "spec section 4.3.5 string tokens" `Quick
         spec_string_tokens;
       Alcotest.test_case "url" `Quick url;
       Alcotest.test_case "spec section 4.3.6 url tokens" `Quick spec_url_tokens;
+      Alcotest.test_case "spec section 4.3.7 escaped code points" `Quick
+        spec_escaped_code_points;
+      Alcotest.test_case
+        "spec section 11 comment-confusion security regressions" `Quick
+        spec_security_comment_confusion_regressions;
+      Alcotest.test_case "spec section 12 tokenization change checklist" `Quick
+        spec_section_12_tokenization_regression_checklist;
       Alcotest.test_case "bad string" `Quick bad_string;
       Alcotest.test_case "bad url" `Quick bad_url;
     ] )

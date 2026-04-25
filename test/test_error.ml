@@ -16,7 +16,7 @@ let sort_mismatch () =
 let unexpected_token () =
   check "unexpected token"
     (Css.Error.unexpected_token loc ~sort:Css.Sort.Declaration
-       (Css.Token.Delim '.'))
+       (Css.Token.Delim "."))
     "unexpected <delim '.'> at [12-13] (in declaration)"
 
 let missing_token () =

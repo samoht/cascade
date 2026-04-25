@@ -262,12 +262,15 @@ let string_with_quote_opt t =
 
 let url_opt t = take_token_if (function Token.Url s -> Some s | _ -> None) t
 
+let ascii_delim = function
+  | s -> if String.length s = 1 then Some s.[0] else None
+
 let delim_opt t =
-  take_token_if (function Token.Delim c -> Some c | _ -> None) t
+  take_token_if (function Token.Delim s -> ascii_delim s | _ -> None) t
 
 let peek_delim t =
   match peek t with
-  | Some (Component.Preserved { kind = Token.Delim c; _ }) -> Some c
+  | Some (Component.Preserved { kind = Token.Delim s; _ }) -> ascii_delim s
   | _ -> None
 
 let peek_comma t =
@@ -354,7 +357,7 @@ let is_semicolon_cv = function
   | _ -> false
 
 let is_bang_cv = function
-  | Component.Preserved { kind = Token.Delim '!'; _ } -> true
+  | Component.Preserved { kind = Token.Delim "!"; _ } -> true
   | _ -> false
 
 let consume_to_semicolon ?(trim = false) t =
@@ -365,7 +368,7 @@ let consume_to_decl_end ?(trim = false) t =
     (drain_until_raw (fun cv -> is_semicolon_cv cv || is_bang_cv cv) t)
 
 let is_slash_cv = function
-  | Component.Preserved { kind = Token.Delim '/'; _ } -> true
+  | Component.Preserved { kind = Token.Delim "/"; _ } -> true
   | _ -> false
 
 let consume_to_slash_or_semicolon ?(trim = false) t =
@@ -473,7 +476,7 @@ let comma t = if not (comma_opt t) then err_expected t "','"
 
 let slash_opt t =
   match peek t with
-  | Some (Component.Preserved { kind = Token.Delim '/'; _ }) ->
+  | Some (Component.Preserved { kind = Token.Delim "/"; _ }) ->
       skip t;
       true
   | _ -> false
@@ -495,7 +498,8 @@ let consume_if c t =
   | Some (Component.Preserved { kind = Token.Comma; _ }) when c = ',' ->
       skip t;
       true
-  | Some (Component.Preserved { kind = Token.Delim d; _ }) when d = c ->
+  | Some (Component.Preserved { kind = Token.Delim d; _ })
+    when d = String.make 1 c ->
       skip t;
       true
   | _ -> false
@@ -542,8 +546,7 @@ let looking_at t s =
             len = 1 && s.[0] = ';'
         | Some (Component.Preserved { kind = Token.Comma; _ }) ->
             len = 1 && s.[0] = ','
-        | Some (Component.Preserved { kind = Token.Delim c; _ }) ->
-            len = 1 && s.[0] = c
+        | Some (Component.Preserved { kind = Token.Delim c; _ }) -> s = c
         | _ -> false)
 
 let try_kind_pair k1 k2 t =

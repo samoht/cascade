@@ -972,6 +972,48 @@ let expect_parse_error input =
   with Css.Cursor.Parse_error _ -> ()
 
 (* Not a roundtrip test *)
+let test_spec_section_7_block_grammar_examples () =
+  (* CSS Syntax Level 3 section 7.1: these productions are parsed as generic
+     block contents, then validated by the rule grammar that owns the block. *)
+  check_stylesheet ~expected:"@media print{body{font-size:10pt}}"
+    "@media print { body { font-size: 10pt } }";
+  check_stylesheet ~expected:"p>a{color:blue;text-decoration:underline}"
+    "p > a { color: blue; text-decoration: underline; }";
+  check_stylesheet
+    ~expected:"@font-face {font-family:MyFont;src:url(font.woff2)}"
+    "@font-face { font-family: MyFont; src: url(font.woff2); }";
+  check_stylesheet ~expected:"@page:left{margin-left:4cm;margin-right:3cm}"
+    "@page :left { margin-left: 4cm; margin-right: 3cm; }";
+  check_stylesheet ~expected:"@keyframes slide{0%{opacity:0}100%{opacity:1}}"
+    "@keyframes slide { 0% { opacity: 0 } 100% { opacity: 1 } }";
+  check_stylesheet ~expected:".card{color:red;& .title{color:blue}}"
+    ".card { color: red; & .title { color: blue; } }";
+  expect_parse_error "@media print { color: red; body { font-size: 10pt } }";
+  expect_parse_error "@keyframes slide { color: red; 50% { opacity: 1 } }";
+  expect_parse_error "@font-face { .x { color: red } }"
+
+(* Not a roundtrip test *)
+let test_spec_section_8_stylesheet_rule_shapes () =
+  (* CSS Syntax Level 3 sections 8.1 and 8.2: top-level qualified rules are
+     style rules, and at-rules are either statement or block rules depending on
+     whether they end with a semicolon or a {} block. *)
+  check_stylesheet ~expected:"p>a{color:blue}" "p > a { color: blue }";
+  check_stylesheet ~expected:"@import \"theme.css\";" "@import \"theme.css\";";
+  check_stylesheet ~expected:"@media print{body{font-size:10pt}}"
+    "@media print { body { font-size: 10pt } }";
+  check_stylesheet ~expected:"@layer reset,base;" "@layer reset, base;";
+  expect_parse_error "p > a";
+  expect_parse_error "@import \"theme.css\" .a { color: red }";
+  expect_parse_error "@media print"
+
+(* Not a roundtrip test *)
+let test_spec_section_8_charset_is_not_rule () =
+  (* CSS Syntax Level 3 section 8.3: @charset is an encoding declaration shape,
+     not a CSS at-rule after stylesheet parsing. *)
+  expect_parse_error "@charset \"utf-8\";";
+  expect_parse_error "@charset \"utf-8\"; .a { color: red }"
+
+(* Not a roundtrip test *)
 let test_invalid_selectors () =
   expect_parse_error "..double-class { color: red; }";
   expect_parse_error "# { color: red; }";
@@ -1138,6 +1180,15 @@ let additional_tests =
     ("advanced properties", `Quick, test_advanced_properties);
     ("complex values", `Quick, test_complex_values);
     ("nested rules", `Quick, test_nested_rules);
+    ( "spec section 7.1 block grammar examples",
+      `Quick,
+      test_spec_section_7_block_grammar_examples );
+    ( "spec section 8.1-8.2 stylesheet rule shapes",
+      `Quick,
+      test_spec_section_8_stylesheet_rule_shapes );
+    ( "spec section 8.3 charset is not a rule",
+      `Quick,
+      test_spec_section_8_charset_is_not_rule );
     (* CSS nesting round-trip tests *)
     ("nesting basic", `Quick, test_nesting_basic);
     ("nesting ampersand hover", `Quick, test_nesting_ampersand_hover);

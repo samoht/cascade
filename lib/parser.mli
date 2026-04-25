@@ -51,11 +51,53 @@ type 'a output = { value : 'a; warnings : Error.t list }
     collected during error recovery. The CSS spec mandates declaration- and
     rule-level skip-on-error; the dropped material surfaces here. *)
 
+type block_item =
+  [ `Decls of Component.declaration list | `Rule of Component.rule ]
+(** One item returned by section 5.4.5 / 5.5.5 block-contents parsing: either a
+    contiguous declaration run or a nested rule. *)
+
+type grammar = Component.t list -> bool
+(** Minimal executable hook for section 5.4.1/5.4.2 grammar matching. The
+    representation of matched grammar results is intentionally unspecified by
+    CSS Syntax; Cascade returns the component-value group when this predicate
+    accepts it. *)
+
+val parse_according_to_grammar :
+  Reader.t -> grammar -> Component.t list option output
+(** [parse_according_to_grammar r grammar] runs section 5.4.1: parse a list of
+    component values, then return it only if [grammar] accepts it. *)
+
+val parse_comma_separated_list_according_to_grammar :
+  Reader.t -> grammar -> Component.t list option list output
+(** [parse_comma_separated_list_according_to_grammar r grammar] runs section
+    5.4.2: split into top-level comma groups, then match each group
+    independently. Whitespace-only input returns an empty list. *)
+
 val parse_stylesheet :
   ?meta:Loc.meta_level -> Reader.t -> Component.rule list output
 (** [parse_stylesheet ?meta r] runs section 5.4.3: consume a list of rules with
     the top-level flag set. CDO and CDC are skipped. [?meta] controls snippet
     attachment on recovery warnings; see {!Loc.meta_level}. *)
+
+val parse_stylesheet_contents :
+  ?meta:Loc.meta_level -> Reader.t -> Component.rule list output
+(** [parse_stylesheet_contents ?meta r] runs section 5.4.4. *)
+
+val parse_block_contents :
+  ?meta:Loc.meta_level -> Reader.t -> block_item list output
+(** [parse_block_contents ?meta r] runs section 5.4.5. *)
+
+val parse_rule :
+  ?meta:Loc.meta_level -> Reader.t -> Component.rule option output
+(** [parse_rule ?meta r] runs section 5.4.6: discard surrounding whitespace,
+    parse exactly one rule, and return [None] for empty input, invalid rule
+    input, or trailing component values. *)
+
+val parse_declaration :
+  ?meta:Loc.meta_level -> Reader.t -> Component.declaration option output
+(** [parse_declaration ?meta r] runs section 5.4.7: discard surrounding
+    whitespace, parse exactly one declaration, and reject at-rules or
+    declaration lists. *)
 
 val parse_list_of_rules :
   ?meta:Loc.meta_level -> Reader.t -> Component.rule list output
@@ -67,3 +109,24 @@ val parse_list_of_declarations :
   Reader.t ->
   [ `Decl of Component.declaration | `At of Component.at_rule ] list output
 (** [parse_list_of_declarations ?meta r] runs section 5.4.8. *)
+
+val parse_component_value : Reader.t -> Component.t option output
+(** [parse_component_value r] runs section 5.4.8: discard surrounding
+    whitespace, parse exactly one component value, and return [None] for empty
+    input or trailing component values. *)
+
+val parse_list_of_component_values : Reader.t -> Component.t list output
+(** [parse_list_of_component_values r] runs section 5.4.9. *)
+
+val parse_comma_separated_list_of_component_values :
+  Reader.t -> Component.t list list output
+(** [parse_comma_separated_list_of_component_values r] runs section 5.4.10,
+    splitting only on top-level comma tokens. *)
+
+val parse_declaration_value : Reader.t -> Component.t list option output
+(** [parse_declaration_value r] matches CSS Syntax section 7.2's
+    [<declaration-value>] production. *)
+
+val parse_any_value : Reader.t -> Component.t list option output
+(** [parse_any_value r] matches CSS Syntax section 7.2's [<any-value>]
+    production. *)

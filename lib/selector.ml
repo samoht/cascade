@@ -448,7 +448,7 @@ let read_type_or_universal t =
   let ns =
     Cursor.option
       (fun t ->
-        if Cursor.try_kind_pair (Token.Delim '*') (Token.Delim '|') t then Any
+        if Cursor.try_kind_pair (Token.Delim "*") (Token.Delim "|") t then Any
         else
           let p = Cursor.ident ~keep_case:true t in
           Cursor.expect '|' t;
@@ -480,7 +480,7 @@ let read_combinator t =
   | Some '~' ->
       Cursor.skip t;
       Subsequent_sibling
-  | Some '|' when Cursor.try_kind_pair (Token.Delim '|') (Token.Delim '|') t ->
+  | Some '|' when Cursor.try_kind_pair (Token.Delim "|") (Token.Delim "|") t ->
       Column
   | Some '!' -> Cursor.err t "invalid combinator character"
   | None when Cursor.is_done t -> Cursor.err t "empty combinator"
@@ -488,8 +488,8 @@ let read_combinator t =
 
 let read_attribute_match t : attribute_match =
   let try_eq c (cons : string -> attribute_match) : attribute_match option =
-    if Cursor.try_kind_pair (Token.Delim c) (Token.Delim '=') t then
-      Some (cons (read_attribute_value t))
+    if Cursor.try_kind_pair (Token.Delim (String.make 1 c)) (Token.Delim "=") t
+    then Some (cons (read_attribute_value t))
     else None
   in
   match try_eq '~' (fun v -> Whitespace_list v) with
@@ -515,14 +515,14 @@ let read_attribute_match t : attribute_match =
 let read_ns t : ns option =
   Cursor.option
     (fun t ->
-      if Cursor.try_kind_pair (Token.Delim '*') (Token.Delim '|') t then Any
+      if Cursor.try_kind_pair (Token.Delim "*") (Token.Delim "|") t then Any
       else
         let p = Cursor.ident ~keep_case:true t in
         (* Avoid treating '|=' as a namespace separator: peek for the pair. *)
         let is_eq_pair =
           Cursor.lookahead
             (fun t ->
-              Cursor.try_kind_pair (Token.Delim '|') (Token.Delim '=') t)
+              Cursor.try_kind_pair (Token.Delim "|") (Token.Delim "=") t)
             t
         in
         if is_eq_pair then Cursor.err t "not a namespace";
@@ -759,7 +759,7 @@ let read_nth t : nth =
       An_plus_b (-1, -read_signless_integer t)
   | Some (Component.Preserved { kind = Token.Ident s; _ }) ->
       read_nth_ident_tail t s
-  | Some (Component.Preserved { kind = Token.Delim '+'; _ }) ->
+  | Some (Component.Preserved { kind = Token.Delim "+"; _ }) ->
       Cursor.skip t;
       read_nth_after_plus t
   | _ -> Cursor.err t "expected 'odd', 'even', or An+B expression"
@@ -1176,7 +1176,7 @@ and read_complex t =
   match Cursor.peek_delim t with
   | Some '|'
     when Cursor.lookahead
-           (fun t -> Cursor.try_kind_pair (Token.Delim '|') (Token.Delim '|') t)
+           (fun t -> Cursor.try_kind_pair (Token.Delim "|") (Token.Delim "|") t)
            t ->
       let comb = read_combinator t in
       Cursor.ws t;

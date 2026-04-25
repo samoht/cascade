@@ -5466,75 +5466,19 @@ let read_font_display t : font_display =
     t
 
 let read_unicode_range t : unicode_range =
-  (* CSS Syntax §7 <urange> microsyntax. [U+....] is not a single token; the
-     lexer splits it across a variable number of tokens depending on which hex
-     digits appear first — e.g. [U+0000-00FF] is ident([u]) + Number([+0000]) +
-     Dimension([-00FF]), [U+FF] is ident([u]) + Delim(['+']) + ident([FF]),
-     [U+0-FF] is ident([u]) + Dimension([+0-FF]). Reassemble the tail as literal
-     text and parse the hex range(s). *)
+  (* The lexer emits a single [Unicode_range] token for [U+...] forms (CSS
+     Syntax section 4.3.14); we just translate it to the [unicode_range] ADT. *)
   Cursor.with_context t "unicode-range" @@ fun () ->
-  (match Cursor.ident_opt t with
-  | Some s when String.lowercase_ascii s = "u" -> ()
-  | _ -> Cursor.err_expected t "U");
-  let buf = Buffer.create 16 in
-  (match Cursor.peek_raw t with
-  | Some (Component.Preserved { kind = Token.Delim '+'; _ }) ->
-      Cursor.skip t;
-      Buffer.add_char buf '+'
+  match Cursor.peek t with
   | Some
-      (Component.Preserved { kind = Token.Number_tok _ | Token.Dimension _; _ })
-    ->
-      (* The number/dimension's repr already carries the leading sign. *)
-      ()
-  | _ -> Cursor.err_expected t "'+' or signed number after U");
-  let rec collect_tail () =
-    match Cursor.peek_raw t with
-    | Some (Component.Preserved { kind = Token.Number_tok { repr; _ }; _ }) ->
-        Cursor.skip t;
-        Buffer.add_string buf repr;
-        collect_tail ()
-    | Some (Component.Preserved { kind = Token.Dimension { number; unit_ }; _ })
-      ->
-        Cursor.skip t;
-        Buffer.add_string buf number.repr;
-        Buffer.add_string buf unit_;
-        collect_tail ()
-    | Some (Component.Preserved { kind = Token.Ident s; _ }) ->
-        Cursor.skip t;
-        Buffer.add_string buf s;
-        collect_tail ()
-    | Some (Component.Preserved { kind = Token.Delim c; _ })
-      when c = '?' || c = '-' ->
-        Cursor.skip t;
-        Buffer.add_char buf c;
-        collect_tail ()
-    | _ -> ()
-  in
-  collect_tail ();
-  let text = Buffer.contents buf in
-  let body =
-    if String.length text > 0 && text.[0] = '+' then
-      String.sub text 1 (String.length text - 1)
-    else text
-  in
-  let is_hex c =
-    ('0' <= c && c <= '9') || ('a' <= c && c <= 'f') || ('A' <= c && c <= 'F')
-  in
-  let hex_of s =
-    if s = "" then Cursor.err_invalid t "empty unicode range"
-    else if not (String.for_all is_hex s) then
-      Cursor.err_invalid t ("unicode range: " ^ s)
-    else try int_of_string ("0x" ^ s) with Failure _ -> Cursor.err_invalid t s
-  in
-  match String.index_opt body '-' with
-  | None -> (Single (hex_of body) : unicode_range)
-  | Some i ->
-      let lo = String.sub body 0 i in
-      let hi = String.sub body (i + 1) (String.length body - i - 1) in
-      let start = hex_of lo and end_ = hex_of hi in
-      if start > end_ then
-        Cursor.err_invalid t "invalid unicode range: start > end"
-      else Range (start, end_)
+      (Component.Preserved
+         { kind = Token.Unicode_range { start_value; end_value }; _ }) ->
+      Cursor.skip t;
+      if start_value > end_value then
+        Cursor.err_invalid t "unicode range: start > end"
+      else if start_value = end_value then (Single start_value : unicode_range)
+      else Range (start_value, end_value)
+  | _ -> Cursor.err_expected t "unicode-range"
 
 let rec read_font_variant_numeric_token t : font_variant_numeric_token =
   let read_var t : font_variant_numeric_token =
