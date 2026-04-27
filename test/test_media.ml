@@ -108,7 +108,21 @@ let spec_media_structural_vectors () =
             prefix = None;
             type_ = Screen;
             trailing = Some (Feature (Plain ("hover", Ident "hover")));
-          }))
+          }));
+  check "media query list" "screen and (width >= 40em), print"
+    (Custom
+       (List
+          [
+            Type
+              {
+                prefix = None;
+                type_ = Screen;
+                trailing =
+                  Some
+                    (Feature (Range ("width", Ge, length (Css.Values.Em 40.))));
+              };
+            Type { prefix = None; type_ = Print; trailing = None };
+          ]))
 
 let spec_media_negative_vectors () =
   let expect_error name input =
@@ -120,6 +134,8 @@ let spec_media_negative_vectors () =
   expect_error "empty media query" "";
   expect_error "empty media feature" "()";
   expect_error "missing range value" "(width >=)";
+  expect_error "mixed range comparison directions" "(30em < width > 60em)";
+  expect_error "double name-first comparison" "(width = 40em = 50em)";
   expect_error "missing right operand" "(width) and";
   expect_error "ungrouped mixed and/or operators"
     "(width) and (height) or (color)";

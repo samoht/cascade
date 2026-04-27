@@ -12,7 +12,9 @@ let block op vs : Css.Component.t =
   Css.Component.Block { node = body; loc = Css.Loc.dummy }
 
 let func name args : Css.Component.t =
-  let body : Css.Component.func = { name; arguments = args } in
+  let body : Css.Component.func =
+    { name; arguments = args; terminated = true }
+  in
   Css.Component.Func { node = body; loc = Css.Loc.dummy }
 
 (* Pretty-print a component value for assertion diffing. *)
@@ -31,7 +33,7 @@ let rec pp_cv : Css.Component.t Css.Pp.t =
       Css.Pp.char ctx open_c;
       Css.Pp.list ~sep:Css.Pp.sp pp_cv ctx value;
       Css.Pp.char ctx close_c
-  | Css.Component.Func { node = { name; arguments }; _ } ->
+  | Css.Component.Func { node = { name; arguments; _ }; _ } ->
       Css.Pp.string ctx name;
       Css.Pp.char ctx '(';
       Css.Pp.list ~sep:Css.Pp.sp pp_cv ctx arguments;

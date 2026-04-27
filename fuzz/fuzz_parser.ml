@@ -32,7 +32,7 @@ let rec shape = function
   | Css.Component.Block { node = { opening; value }; _ } ->
       let inner = value |> List.filter_map shape |> String.concat "," in
       Some (Fmt.str "block(%s:%s)" (bracket_shape opening) inner)
-  | Css.Component.Func { node = { name; arguments }; _ } ->
+  | Css.Component.Func { node = { name; arguments; _ }; _ } ->
       let inner = arguments |> List.filter_map shape |> String.concat "," in
       Some (Fmt.str "function(%s:%s)" name inner)
 

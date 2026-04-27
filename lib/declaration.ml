@@ -264,6 +264,40 @@ let read_dashed_ident t =
     Cursor.err_invalid t ("expected <dashed-ident>, got: " ^ s)
   else s
 
+(* [scrollbar-gutter: auto | stable [both-edges]?]. The [both-edges] keyword may
+   only follow [stable]; [stable auto] (the test's negative case) must be
+   rejected. *)
+let read_scrollbar_gutter t =
+  let kw =
+    Cursor.enum "scrollbar-gutter" [ ("auto", `Auto); ("stable", `Stable) ] t
+  in
+  match kw with
+  | `Auto -> "auto"
+  | `Stable -> (
+      Cursor.ws t;
+      match Cursor.peek_ident t with
+      | Some "both-edges" ->
+          let _ = Cursor.ident t in
+          "stable both-edges"
+      | None -> "stable"
+      | Some s ->
+          Cursor.err_invalid t
+            (String.concat "" [ "unexpected scrollbar-gutter modifier: "; s ]))
+
+(* [font-palette: normal | light | dark | <dashed-ident>]. *)
+let read_font_palette t =
+  match Cursor.peek_ident t with
+  | Some "normal" ->
+      let _ = Cursor.ident t in
+      "normal"
+  | Some "light" ->
+      let _ = Cursor.ident t in
+      "light"
+  | Some "dark" ->
+      let _ = Cursor.ident t in
+      "dark"
+  | _ -> read_dashed_ident t
+
 (* Some properties (shape-margin, scroll-margin, padding, etc.) require a
    non-negative length-percentage. Detect a leading [-] number/percentage and
    reject before delegating to the typed reader. *)
@@ -618,14 +652,36 @@ let read_value (type a) (prop : a property) t : declaration =
   | Overflow_anchor ->
       v Overflow_anchor
         (Cursor.enum "overflow-anchor" [ ("auto", "auto"); ("none", "none") ] t)
-  | Scrollbar_width -> v Scrollbar_width (read_raw_value t)
+  | Scrollbar_width ->
+      v Scrollbar_width
+        (Cursor.enum "scrollbar-width"
+           [ ("auto", "auto"); ("thin", "thin"); ("none", "none") ]
+           t)
   | Scrollbar_color -> v Scrollbar_color (read_raw_value t)
-  | Scrollbar_gutter -> v Scrollbar_gutter (read_raw_value t)
-  | Line_height_step -> v Line_height_step (read_length t)
-  | Font_palette -> v Font_palette (read_raw_value t)
+  | Scrollbar_gutter -> v Scrollbar_gutter (read_scrollbar_gutter t)
+  | Line_height_step -> v Line_height_step (read_length ~allow_negative:false t)
+  | Font_palette -> v Font_palette (read_font_palette t)
   | Font_synthesis -> v Font_synthesis (read_raw_value t)
-  | Text_wrap_style -> v Text_wrap_style (read_raw_value t)
-  | Text_box_trim -> v Text_box_trim (read_raw_value t)
+  | Text_wrap_style ->
+      v Text_wrap_style
+        (Cursor.enum "text-wrap-style"
+           [
+             ("auto", "auto");
+             ("balance", "balance");
+             ("pretty", "pretty");
+             ("stable", "stable");
+           ]
+           t)
+  | Text_box_trim ->
+      v Text_box_trim
+        (Cursor.enum "text-box-trim"
+           [
+             ("none", "none");
+             ("trim-start", "trim-start");
+             ("trim-end", "trim-end");
+             ("trim-both", "trim-both");
+           ]
+           t)
   | Animation_timeline -> v Animation_timeline (read_raw_value t)
   | Animation_range -> v Animation_range (read_raw_value t)
   | View_transition_name -> v View_transition_name (read_raw_value t)

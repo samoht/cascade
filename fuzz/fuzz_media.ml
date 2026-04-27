@@ -145,6 +145,21 @@ let spec_media_vector buf =
                type_ = Screen;
                trailing = Some (Feature (Plain ("hover", Ident "hover")));
              }) );
+      ( "screen and (width >= 40em), print",
+        Custom
+          (List
+             [
+               Type
+                 {
+                   prefix = None;
+                   type_ = Screen;
+                   trailing =
+                     Some
+                       (Feature
+                          (Range ("width", Ge, length (Css.Values.Em 40.))));
+                 };
+               Type { prefix = None; type_ = Print; trailing = None };
+             ]) );
     ]
     buf 0
 
@@ -163,6 +178,8 @@ let test_spec_media_invalid_vectors buf =
         "";
         "()";
         "(width >=)";
+        "(30em < width > 60em)";
+        "(width = 40em = 50em)";
         "(width) and";
         "(width) and (height) or (color)";
         "screen (width)";
