@@ -1957,6 +1957,8 @@ type background_image =
           conic-gradient(var(--tw-gradient-stops)) *)
   | Image_set of image_set_option list
       (** [image-set(<source>#)] CSS Images 4 *)
+  | Cross_fade of cross_fade_option list
+      (** [cross-fade(<cf-mixing-image>#)] CSS Images 4 *)
   | Var of background_image var
       (** CSS variable reference: var(--my-gradient) *)
   | List of background_image list
@@ -1973,6 +1975,11 @@ and image_set_option = {
 }
 
 and image_set_source = Image_set_url of string | Image_set_string of string
+
+and cross_fade_option = {
+  cross_fade_image : background_image;
+  cross_fade_percent : percentage option;
+}
 
 type background_box = Border_box | Padding_box | Content_box | Text | Inherit
 

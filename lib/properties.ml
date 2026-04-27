@@ -1387,6 +1387,10 @@ let rec pp_background_image : background_image Pp.t =
       Pp.call "image-set"
         (fun ctx os -> Pp.list ~sep:Pp.comma pp_image_set_option ctx os)
         ctx options
+  | Cross_fade options ->
+      Pp.call "cross-fade"
+        (fun ctx os -> Pp.list ~sep:Pp.comma pp_cross_fade_option ctx os)
+        ctx options
   | Var v -> pp_var pp_background_image ctx v
   | List images -> Pp.list ~sep:Pp.comma pp_background_image ctx images
   | None -> Pp.string ctx "none"
@@ -1410,6 +1414,14 @@ and pp_image_set_option ctx
       Pp.space ctx ();
       Pp.string ctx res)
     image_set_resolution
+
+and pp_cross_fade_option ctx { cross_fade_image; cross_fade_percent } =
+  pp_background_image ctx cross_fade_image;
+  Option.iter
+    (fun pct ->
+      Pp.space ctx ();
+      Values.pp_percentage ~always:true ctx pct)
+    cross_fade_percent
 
 let rec pp_font_family : font_family Pp.t =
  fun ctx -> function
@@ -6717,6 +6729,8 @@ let rec read_bg_image t : background_image =
               );
               ( "image-set",
                 fun t -> Cursor.call "image-set" t read_image_set_body );
+              ( "cross-fade",
+                fun t -> Cursor.call "cross-fade" t read_cross_fade_body );
               ("var", fun t -> Var (Values.read_var read_bg_image t));
             ]
           t);
@@ -6725,6 +6739,35 @@ let rec read_bg_image t : background_image =
 
 and read_image_set_body t : background_image =
   Image_set (Cursor.list ~sep:Cursor.comma ~at_least:1 read_image_set_option t)
+
+and read_cross_fade_body t : background_image =
+  Cross_fade
+    (Cursor.list ~sep:Cursor.comma ~at_least:1 read_cross_fade_option t)
+
+and read_cross_fade_option t : cross_fade_option =
+  Cursor.ws t;
+  (* [<cf-mixing-image> = <percentage>? && <image>]. The two parts are
+     order-independent in the spec; try percentage first, then image, and pick
+     up a trailing percentage if the image came first. *)
+  let pct =
+    match Cursor.peek t with
+    | Some (Component.Preserved { kind = Token.Percentage _; _ }) ->
+        Some (Values.read_percentage t)
+    | _ -> None
+  in
+  Cursor.ws t;
+  let image = read_bg_image t in
+  Cursor.ws t;
+  let pct =
+    match pct with
+    | Some _ -> pct
+    | None -> (
+        match Cursor.peek t with
+        | Some (Component.Preserved { kind = Token.Percentage _; _ }) ->
+            Some (Values.read_percentage t)
+        | _ -> None)
+  in
+  { cross_fade_image = image; cross_fade_percent = pct }
 
 and read_image_set_option t : image_set_option =
   let source : image_set_source =
