@@ -57,6 +57,18 @@ let test_of_string () =
            ( Property ("-moz-orient", "inline"),
              Not (Property ("color", "rgb(from red r g b)")) ) ))
 
+let test_current_work_vectors () =
+  let check name input expected =
+    let actual = of_string input in
+    Alcotest.(check string) name expected (to_string actual)
+  in
+  check "supports selector has" "selector(:has(img))" "selector(:has(img))";
+  check "supports font tech" "(font-tech(color-COLRv1))"
+    "(font-tech(color-COLRv1))";
+  check "supports complex selector and property"
+    "selector(:has(img)) and (container-type: inline-size)"
+    "selector(:has(img)) and (container-type: inline-size)"
+
 let test_roundtrip () =
   let cases =
     [
@@ -82,5 +94,6 @@ let suite =
     [
       test_case "to_string" `Quick test_to_string;
       test_case "of_string" `Quick test_of_string;
+      test_case "current-work vectors" `Quick test_current_work_vectors;
       test_case "roundtrip" `Quick test_roundtrip;
     ] )

@@ -344,6 +344,53 @@ val per_fragment_value :
   (string, Stylesheet.value_processing_error) result
 (** Stub entry point for per-fragment value processing. *)
 
+val selector_matches_element :
+  selector:Selector.t ->
+  element:string ->
+  (bool, Stylesheet.value_processing_error) result
+(** Stub entry point for DOM selector matching. *)
+
+val evaluate_media_query :
+  condition:Media.t ->
+  environment:string ->
+  (bool, Stylesheet.value_processing_error) result
+(** Stub entry point for Media Queries evaluation. *)
+
+val evaluate_supports_condition :
+  condition:Supports.t -> (bool, Stylesheet.value_processing_error) result
+(** Stub entry point for [@supports] evaluation. *)
+
+val resolve_url_value :
+  base:string ->
+  url:string ->
+  (string, Stylesheet.value_processing_error) result
+(** Stub entry point for CSS URL absolutization. *)
+
+val load_import_rule :
+  Stylesheet.import_rule ->
+  (Stylesheet.stylesheet, Stylesheet.value_processing_error) result
+(** Stub entry point for [@import] loading. *)
+
+val cssom_insert_rule :
+  index:int ->
+  Stylesheet.statement ->
+  Stylesheet.stylesheet ->
+  (Stylesheet.stylesheet, Stylesheet.value_processing_error) result
+(** Stub entry point for CSSOM rule insertion. *)
+
+val cssom_delete_rule :
+  index:int ->
+  Stylesheet.stylesheet ->
+  (Stylesheet.stylesheet, Stylesheet.value_processing_error) result
+(** Stub entry point for CSSOM rule deletion. *)
+
+val animated_value :
+  property:string ->
+  keyframes:string list ->
+  progress:float ->
+  (string, Stylesheet.value_processing_error) result
+(** Stub entry point for CSS/Web Animations value sampling. *)
+
 val map :
   (Selector.t -> declaration list -> statement) ->
   statement list ->

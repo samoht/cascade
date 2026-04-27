@@ -1438,6 +1438,9 @@ let expect_context_error expected = function
         (value_processing_stage_name actual)
   | Error (Css.Stylesheet.Unsupported_value_alias _) ->
       Alcotest.fail "expected document-context error, got value-alias error"
+  | Error (Css.Stylesheet.Requires_platform_context actual) ->
+      Alcotest.failf "expected document-context error, got platform error: %s"
+        actual.feature
   | Ok _ -> Alcotest.fail "expected document-context error"
 
 let expect_value_alias_error property value = function
@@ -1446,7 +1449,20 @@ let expect_value_alias_error property value = function
       Alcotest.(check string) "value-alias value" value actual.value
   | Error (Css.Stylesheet.Requires_document_context _) ->
       Alcotest.fail "expected value-alias error, got document-context error"
+  | Error (Css.Stylesheet.Requires_platform_context actual) ->
+      Alcotest.failf "expected value-alias error, got platform error: %s"
+        actual.feature
   | Ok _ -> Alcotest.fail "expected value-alias error"
+
+let expect_platform_error feature = function
+  | Error (Css.Stylesheet.Requires_platform_context actual) ->
+      Alcotest.(check string) "platform feature" feature actual.feature
+  | Error (Css.Stylesheet.Requires_document_context _) ->
+      Alcotest.fail
+        "expected platform-context error, got document-context error"
+  | Error (Css.Stylesheet.Unsupported_value_alias _) ->
+      Alcotest.fail "expected platform-context error, got value-alias error"
+  | Ok _ -> Alcotest.fail "expected platform-context error"
 
 (* Not a roundtrip test *)
 let test_spec_cascade_section_4_4_to_4_8_value_processing_stubs () =
@@ -1641,6 +1657,73 @@ let test_spec_cascade_section_4_8_per_fragment_stub () =
     (Css.Stylesheet.per_fragment_value ~property:"color"
        ~fragment:"::first-line" ~computed:"currentColor")
 
+(* Not a roundtrip test *)
+let test_spec_platform_boundary_stubs () =
+  (* Platform-facing CSS specs need DOM/CSSOM/media/fetch/URL/animation
+     subsystems. Tests call stubs directly so missing implementation surface is
+     explicit and typed. *)
+  expect_platform_error "selector matching"
+    (Css.Stylesheet.selector_matches_element
+       ~selector:(Css.Selector.class_ "card")
+       ~element:"<article class=card>");
+  expect_platform_error "media query evaluation"
+    (Css.Stylesheet.evaluate_media_query
+       ~condition:(Css.Media.Raw "(dynamic-range: high)") ~environment:"screen");
+  expect_platform_error "supports evaluation"
+    (Css.Stylesheet.evaluate_supports_condition
+       ~condition:(Css.Supports.Property ("display", "grid")));
+  expect_platform_error "URL resolution"
+    (Css.Stylesheet.resolve_url_value ~base:"https://example.test/app/"
+       ~url:"../image.png");
+  expect_platform_error "stylesheet import loading"
+    (Css.Stylesheet.load_import_rule
+       {
+         url = "theme.css";
+         layer = Some "theme";
+         supports = None;
+         media = None;
+       });
+  expect_platform_error "CSSOM insertRule"
+    (Css.Stylesheet.cssom_insert_rule ~index:0
+       (Css.Stylesheet.Layer_decl [ "theme" ]) []);
+  expect_platform_error "CSSOM deleteRule"
+    (Css.Stylesheet.cssom_delete_rule ~index:0 []);
+  expect_platform_error "animation value sampling"
+    (Css.Stylesheet.animated_value ~property:"opacity" ~keyframes:[ "0"; "1" ]
+       ~progress:0.5)
+
+let test_spec_current_work_at_rules () =
+  check_stylesheet ~expected:"@media (dynamic-range: high){.photo{color:red}}"
+    "@media (dynamic-range: high) { .photo { color: red } }";
+  check_stylesheet
+    ~expected:"@media (prefers-reduced-data: reduce){.hero{display:none}}"
+    "@media (prefers-reduced-data: reduce) { .hero { display: none } }";
+  check_stylesheet
+    ~expected:"@supports selector(:has(img)){.card{display:block}}"
+    "@supports selector(:has(img)) { .card { display: block } }";
+  check_stylesheet
+    ~expected:".card{color:red;@media (width >= 40em){&>img{display:block}}}"
+    ".card { color: red; @media (width >= 40em) { & > img { display: block } } \
+     }";
+  check_stylesheet ~expected:"@scope(.card) to (.footer){.title{color:red}}"
+    "@scope (.card) to (.footer) { .title { color: red } }";
+  check_stylesheet
+    ~expected:
+      "@font-palette-values \
+       --brand{font-family:Brand;base-palette:1;override-colors:0 red}"
+    "@font-palette-values --brand { font-family: Brand; base-palette: 1; \
+     override-colors: 0 red; }";
+  check_stylesheet ~expected:"@view-transition{navigation:auto}"
+    "@view-transition { navigation: auto; }";
+  check_stylesheet
+    ~expected:"@position-try --below{top:anchor(bottom);left:anchor(center)}"
+    "@position-try --below { top: anchor(bottom); left: anchor(center); }";
+  neg_cursor read_stylesheet "@media (width >) { .x { color: red } }";
+  neg_cursor read_stylesheet "@supports selector() { .x { color: red } }";
+  neg_cursor read_stylesheet "@scope (.card) .title { color: red }";
+  neg_cursor read_stylesheet "@font-palette-values { base-palette: 1; }";
+  neg_cursor read_stylesheet "@position-try default { top: 0; }"
+
 (** {2 CSS Nesting Round-trip Tests} *)
 
 (** Helper: parse CSS, print minified, compare to expected *)
@@ -1821,6 +1904,8 @@ let additional_tests =
     ( "spec cascade 4.8 per-fragment stub",
       `Quick,
       test_spec_cascade_section_4_8_per_fragment_stub );
+    ("spec platform boundary stubs", `Quick, test_spec_platform_boundary_stubs);
+    ("spec current-work at-rules", `Quick, test_spec_current_work_at_rules);
     ( "spec cascade 4.4-4.8 value processing stubs",
       `Quick,
       test_spec_cascade_section_4_4_to_4_8_value_processing_stubs );

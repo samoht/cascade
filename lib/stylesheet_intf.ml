@@ -97,6 +97,10 @@ type value_processing_error =
           device constraints outside this parser/serializer library. *)
   | Unsupported_value_alias of { property : string; value : string }
       (** No value-alias table is implemented for this property/value pair. *)
+  | Requires_platform_context of { feature : string; detail : string }
+      (** The requested API depends on an external browser/platform subsystem
+          such as DOM matching, CSSOM mutation, media evaluation, URL
+          resolution, network fetching, or animation timelines. *)
 
 type cascade_candidate = {
   candidate_origin : cascade_origin;
