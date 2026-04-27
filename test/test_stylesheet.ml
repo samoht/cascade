@@ -1266,6 +1266,40 @@ let css_syntax_recovery () =
     "@unknown-rule { .bad { color: red } } .ok { color: blue }"
     ".ok{color:blue}" 1
 
+let css_syntax_recovery_structural () =
+  let declaration_counts stylesheet =
+    Css.rule_statements stylesheet
+    |> List.map (fun statement ->
+        match Css.as_rule statement with
+        | Some (_, declarations, _) -> List.length declarations
+        | None -> Alcotest.fail "expected recovered qualified rule")
+  in
+  let check_counts name css expected_counts min_warnings =
+    let { Css.stylesheet; warnings } = Css.parse css in
+    Alcotest.(check (list int))
+      (name ^ " declaration counts")
+      expected_counts
+      (declaration_counts stylesheet);
+    Alcotest.(check bool)
+      (name ^ " warning count") true
+      (List.length warnings >= min_warnings)
+  in
+  (* CSS Syntax 5.4.4: invalid declarations are discarded; qualified rules
+     survive even if every declaration in the rule was invalid. *)
+  check_counts "bad declarations leave empty rules"
+    ".a { color: rgb(300); } .b { color: red; } .c { width: calc(1px + ); }"
+    [ 0; 1; 0 ] 2;
+  check_counts "bad declaration does not discard later declaration"
+    ".a { color: rgb(300); background-color: red; }" [ 1 ] 1;
+  check_counts "bad selector list drops rule only"
+    ".ok { color: green } .bad,:future-pseudo { color: red } .next { color: \
+     blue }"
+    [ 1; 1 ] 1;
+  check_counts "unknown at-rule block skipped"
+    "@unknown-rule { .bad { color: red } } .ok { color: blue }" [ 1 ] 1;
+  check_counts "unclosed block auto-closed"
+    ".a { color: red; .b { color: blue }" [ 1 ] 0
+
 (* Not a roundtrip test *)
 let test_invalid_functions () =
   expect_parse_error ".btn { color: rgb(300); }";
@@ -2172,6 +2206,9 @@ let additional_tests =
     ("spec section 8.1-8.2 stylesheet rule shapes", `Quick, spec_s8_rule_shapes);
     ("spec namespace prefix serialization", `Quick, spec_namespace_serialization);
     ("spec section 8.3 charset is not a rule", `Quick, spec_s8_charset_not_rule);
+    ( "spec CSS Syntax structural recovery",
+      `Quick,
+      css_syntax_recovery_structural );
     (* CSS nesting round-trip tests *)
     ("nesting basic", `Quick, test_nesting_basic);
     ("nesting ampersand hover", `Quick, test_nesting_ampersand_hover);

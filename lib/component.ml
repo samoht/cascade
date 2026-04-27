@@ -4,7 +4,17 @@ type 'a node = { node : 'a; loc : Loc.t }
 
 type t = Preserved of Token.t | Block of block node | Func of func node
 and block = { opening : Token.bracket; value : t list }
-and func = { name : string; arguments : t list }
+
+and func = {
+  name : string;
+  arguments : t list;
+  terminated : bool;
+      (** [false] when the lexer reached EOF before the matching [)] (CSS Syntax
+          section 5.4.6 parse error). The serializer still emits the synthetic
+          [)] so reserialised output round-trips through the lexer; typed
+          validators can inspect this flag to reject values that the syntax
+          level only forgives. *)
+}
 
 type at_rule_body = {
   name : string;
@@ -44,7 +54,7 @@ let rec pp : t Pp.t =
       Pp.char ctx (opening_char opening);
       Pp.list ~sep:Pp.sp pp ctx value;
       Pp.char ctx (closing_char opening)
-  | Func { node = { name; arguments }; _ } ->
+  | Func { node = { name; arguments; _ }; _ } ->
       Pp.string ctx name;
       Pp.char ctx '(';
       Pp.list ~sep:Pp.sp pp ctx arguments;

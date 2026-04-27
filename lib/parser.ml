@@ -50,9 +50,12 @@ and consume_function lexer ~name ~start_loc : Component.func Component.node =
   let rec loop acc =
     let tok = Lexer.next lexer in
     match tok.Token.kind with
-    | Token.Eof | Token.Close Paren ->
+    | Token.Eof ->
         let loc = Loc.union start_loc tok.loc in
-        { node = { name; arguments = List.rev acc }; loc }
+        { node = { name; arguments = List.rev acc; terminated = false }; loc }
+    | Token.Close Paren ->
+        let loc = Loc.union start_loc tok.loc in
+        { node = { name; arguments = List.rev acc; terminated = true }; loc }
     | _ ->
         let cv = consume_component_value_from lexer tok in
         loop (cv :: acc)
@@ -239,7 +242,12 @@ let rec cv_to_buffer buf : Component.t -> unit = function
       Buffer.add_char buf (opening_char opening);
       cvs_to_buffer buf value;
       Buffer.add_char buf (closing_char opening)
-  | Func { node = { name; arguments }; _ } ->
+  | Func { node = { name; arguments; _ }; _ } ->
+      (* Always emit the closing [)] - section 5.4.6 says EOF inside a function
+         is a parse error but the function token is still produced; a
+         deserialised round-trip should match the lexer's tokenisation, not the
+         original truncated bytes. The [terminated] flag is for typed validators
+         that want to reject the rule. *)
       Buffer.add_string buf (escape_ident name);
       Buffer.add_char buf '(';
       cvs_to_buffer buf arguments;
@@ -321,7 +329,7 @@ let rec cv_to_buffer_min buf = function
       Buffer.add_char buf (opening_char opening);
       cvs_to_buffer_min buf value;
       Buffer.add_char buf (closing_char opening)
-  | Func { node = { name; arguments }; _ } ->
+  | Func { node = { name; arguments; _ }; _ } ->
       Buffer.add_string buf (escape_ident name);
       Buffer.add_char buf '(';
       cvs_to_buffer_min buf arguments;

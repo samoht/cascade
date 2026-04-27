@@ -152,6 +152,13 @@ let parse_declaration input =
 let minified_stylesheet ss =
   Css.Stylesheet.to_string ~minify:true ss |> String.trim
 
+let recovered_declaration_counts stylesheet =
+  Css.rule_statements stylesheet
+  |> List.map (fun statement ->
+      match Css.as_rule statement with
+      | Some (_, declarations, _) -> List.length declarations
+      | None -> fail "recovery returned a non-rule in rule_statements")
+
 let starts_with ~prefix s =
   let prefix_len = String.length prefix in
   String.length s >= prefix_len && String.sub s 0 prefix_len = prefix
@@ -734,15 +741,51 @@ let test_property_value_context buf =
 
 let test_recovery_keeps_rules buf =
   let bad_decl =
-    pick
-      [ "color:invalidcolor"; "width:calc(1px + )"; "display:block flex" ]
-      buf 0
+    pick [ "color:rgb(300)"; "width:calc(1px + )"; "transform:rotate()" ] buf 0
   in
   let css = ".a{color:red}.b{" ^ bad_decl ^ "}.c{display:block}" in
   let { Css.stylesheet; warnings } = Css.parse css in
-  if List.length (Css.rule_statements stylesheet) < 2 then
-    fail (Fmt.str "recovery lost sibling rules: %S" css);
+  let counts = recovered_declaration_counts stylesheet in
+  if counts <> [ 1; 0; 1 ] then
+    fail (Fmt.str "CSS Syntax recovery changed rule/declaration shape: %S" css);
   if warnings = [] then fail (Fmt.str "recovery emitted no warning: %S" css)
+
+let test_recovery_invalid_rule_boundary buf =
+  let invalid_rule =
+    pick
+      [
+        ".bad,:future-pseudo{color:red}";
+        "@unknown-rule{.bad{color:red}}";
+        ".bad:not(){color:red}";
+      ]
+      buf 0
+  in
+  let css = ".ok{color:green}" ^ invalid_rule ^ ".next{color:blue}" in
+  let { Css.stylesheet; warnings } = Css.parse css in
+  let counts = recovered_declaration_counts stylesheet in
+  if counts <> [ 1; 1 ] then
+    fail
+      (Fmt.str
+         "CSS Syntax invalid-rule recovery did not preserve sibling rules: %S"
+         css);
+  if warnings = [] then fail (Fmt.str "invalid rule emitted no warning: %S" css)
+
+let test_recovery_bad_declaration_then_good buf =
+  let bad_decl =
+    pick
+      [ "color:rgb(300)"; "background-color:rgb(999)"; "width:calc(1px + )" ]
+      buf 0
+  in
+  let css = ".a{" ^ bad_decl ^ ";color:red}" in
+  let { Css.stylesheet; warnings } = Css.parse css in
+  let counts = recovered_declaration_counts stylesheet in
+  if counts <> [ 1 ] then
+    fail
+      (Fmt.str
+         "CSS Syntax recovery dropped valid declaration after invalid one: %S"
+         css);
+  if warnings = [] then
+    fail (Fmt.str "bad declaration emitted no warning: %S" css)
 
 let suite =
   ( "stylesheet",
@@ -803,4 +846,8 @@ let suite =
         test_property_value_context;
       test_case "CSS Syntax recovery keeps sibling rules" [ bytes ]
         test_recovery_keeps_rules;
+      test_case "CSS Syntax recovery invalid rule boundary" [ bytes ]
+        test_recovery_invalid_rule_boundary;
+      test_case "CSS Syntax recovery bad declaration then good" [ bytes ]
+        test_recovery_bad_declaration_then_good;
     ] )

@@ -64,6 +64,7 @@ let func_call () =
           {
             name = "rgb";
             arguments = [ Css.Component.Preserved (tok (Css.Token.Ident "x")) ];
+            terminated = true;
           }))
     "rgb(<ident x>@[0-0])"
 

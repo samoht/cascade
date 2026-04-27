@@ -221,6 +221,57 @@ let test_attr_flags buf =
         fail (Fmt.str "attribute flag should be ASCII-lowercase: %S" output);
       assert_stable output
 
+let test_where_specificity_zero buf =
+  let branch =
+    pick
+      [
+        "#id";
+        ".class[attr=value]";
+        "section > h1.title";
+        ":is(#id,.class,article)";
+        ".card:has(> img.selected)";
+      ]
+      buf 0
+  in
+  match parse_selector (":where(" ^ branch ^ ")") with
+  | None -> fail (Fmt.str ":where() branch should parse: %S" branch)
+  | Some sel ->
+      let specificity = Css.Selector.specificity sel in
+      if
+        specificity.ids <> 0 || specificity.classes <> 0
+        || specificity.elements <> 0
+      then
+        fail
+          (Fmt.str ":where() specificity was not zero after parsing: %S" branch)
+
+let test_selector_specificity_preserved_by_minify buf =
+  let input =
+    pick
+      [
+        ":is(main,.a,#id)";
+        ":not(main,.a,#id)";
+        ".card:has(> img.selected)";
+        "li:nth-child(2n+1 of .visible:not([hidden]))";
+        "article :is(h1,h2,h3):not(.muted)";
+      ]
+      buf 0
+  in
+  match parse_selector input with
+  | None -> fail (Fmt.str "specificity vector should parse: %S" input)
+  | Some sel -> (
+      let serialized = minified sel in
+      match parse_selector serialized with
+      | None ->
+          fail
+            (Fmt.str "specificity vector did not reparse after minify: %S"
+               serialized)
+      | Some reparsed ->
+          if Css.Selector.specificity sel <> Css.Selector.specificity reparsed
+          then
+            fail
+              (Fmt.str "selector minification changed specificity: %S -> %S"
+                 input serialized))
+
 let suite =
   ( "selector",
     [
@@ -244,4 +295,8 @@ let suite =
       test_case "unforgiving noisy branches" [ bytes ] test_noisy_unforgiving;
       test_case "relative has selectors" [ bytes ] test_has_relative;
       test_case "attribute flags and namespaces" [ bytes ] test_attr_flags;
+      test_case "where specificity zero invariant" [ bytes ]
+        test_where_specificity_zero;
+      test_case "selector specificity preserved by minify" [ bytes ]
+        test_selector_specificity_preserved_by_minify;
     ] )
