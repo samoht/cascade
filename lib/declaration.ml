@@ -298,6 +298,103 @@ let read_font_palette t =
       "dark"
   | _ -> read_dashed_ident t
 
+(* CSS Fonts 5: [font-size-adjust = none | <number> | from-font | [<font-metric>
+   [from-font | <number>]?]] where [<font-metric>] is one of [ex-height |
+   cap-height | ch-width | ic-width | ic-height]. Bare [from-font] is permitted;
+   [from-font <anything>] is rejected because [from-font] is not a
+   [<font-metric>]. *)
+let read_font_size_adjust t =
+  let metrics =
+    [ "ex-height"; "cap-height"; "ch-width"; "ic-width"; "ic-height" ]
+  in
+  Cursor.ws t;
+  match Cursor.peek_ident t with
+  | Some "none" ->
+      let _ = Cursor.ident t in
+      validate_no_extra_tokens t;
+      "none"
+  | Some "from-font" ->
+      let _ = Cursor.ident t in
+      validate_no_extra_tokens t;
+      "from-font"
+  | Some m when List.mem m metrics ->
+      let _ = Cursor.ident t in
+      Cursor.ws t;
+      if Cursor.is_done t || Cursor.peek_semicolon t then m
+      else
+        let tail =
+          match Cursor.peek_ident t with
+          | Some "from-font" ->
+              let _ = Cursor.ident t in
+              "from-font"
+          | _ ->
+              let n = Cursor.number t in
+              Pp.to_string Pp.float n
+        in
+        String.concat "" [ m; " "; tail ]
+  | _ ->
+      let n = Cursor.number t in
+      validate_no_extra_tokens t;
+      Pp.to_string Pp.float n
+
+(* CSS Inline 3: [initial-letter = normal | drop | raise | <number [1,inf]>
+   <integer [1,inf]>?]. The size and sink count must both be at least 1. *)
+let read_initial_letter t =
+  Cursor.ws t;
+  match Cursor.peek_ident t with
+  | Some ("normal" as s) | Some ("drop" as s) | Some ("raise" as s) ->
+      let _ = Cursor.ident t in
+      validate_no_extra_tokens t;
+      s
+  | _ ->
+      let size = Cursor.number t in
+      if size < 1. then Cursor.err_invalid t "initial-letter size must be >= 1"
+      else (
+        Cursor.ws t;
+        if Cursor.is_done t || Cursor.peek_semicolon t then
+          Pp.to_string Pp.float size
+        else
+          let sink = Cursor.int t in
+          if sink < 1 then
+            Cursor.err_invalid t "initial-letter sink must be >= 1"
+          else
+            String.concat ""
+              [ Pp.to_string Pp.float size; " "; string_of_int sink ])
+
+(* CSS Box Sizing 4: [margin-trim = none | block | inline | [block-start ||
+   inline-start || block-end || inline-end]]. The bracketed form is a [||]
+   (any-order, no-repeats) of the four physical edges. *)
+let read_margin_trim t =
+  Cursor.ws t;
+  match Cursor.peek_ident t with
+  | Some "none" ->
+      let _ = Cursor.ident t in
+      "none"
+  | Some "block" ->
+      let _ = Cursor.ident t in
+      "block"
+  | Some "inline" ->
+      let _ = Cursor.ident t in
+      "inline"
+  | _ ->
+      let edges =
+        [ "block-start"; "inline-start"; "block-end"; "inline-end" ]
+      in
+      let rec loop acc =
+        Cursor.ws t;
+        match Cursor.peek_ident t with
+        | Some s when List.mem s edges && not (List.mem s acc) ->
+            let _ = Cursor.ident t in
+            loop (s :: acc)
+        | Some s when List.mem s edges ->
+            Cursor.err_invalid t
+              (String.concat "" [ "duplicate margin-trim edge: "; s ])
+        | _ -> List.rev acc
+      in
+      let chosen = loop [] in
+      if chosen = [] then Cursor.err_expected t "margin-trim value"
+      else String.concat " " chosen
+
 (* CSS Scroll-driven Animations: [animation-range =
    <single-animation-range>{1,2}] where each [<single-animation-range>] is
    [normal | <length-percentage> | <timeline-range-name> <length-percentage>].
@@ -764,17 +861,30 @@ let read_value (type a) (prop : a property) t : declaration =
            [ ("from-image", "from-image"); ("none", "none") ]
            t)
   | Contain_intrinsic_size -> v Contain_intrinsic_size (read_raw_value t)
-  | Margin_trim -> v Margin_trim (read_raw_value t)
+  | Margin_trim -> v Margin_trim (read_margin_trim t)
   | Mask_mode_l4 -> v Mask_mode_l4 (read_raw_value t)
   | Offset_path -> v Offset_path (read_raw_value t)
-  | Offset_distance -> v Offset_distance (read_length_percentage t)
-  | Font_size_adjust -> v Font_size_adjust (read_raw_value t)
-  | Font_variant_emoji -> v Font_variant_emoji (read_raw_value t)
+  | Offset_distance -> v Offset_distance (read_non_negative_length_percentage t)
+  | Font_size_adjust -> v Font_size_adjust (read_font_size_adjust t)
+  | Font_variant_emoji ->
+      v Font_variant_emoji
+        (Cursor.enum "font-variant-emoji"
+           [
+             ("normal", "normal");
+             ("text", "text");
+             ("emoji", "emoji");
+             ("unicode", "unicode");
+           ]
+           t)
   | Text_spacing_trim -> v Text_spacing_trim (read_raw_value t)
   | Hyphenate_limit_chars -> v Hyphenate_limit_chars (read_raw_value t)
-  | Initial_letter -> v Initial_letter (read_raw_value t)
+  | Initial_letter -> v Initial_letter (read_initial_letter t)
   | View_timeline_name -> v View_timeline_name (read_raw_value t)
-  | View_timeline_axis -> v View_timeline_axis (read_raw_value t)
+  | View_timeline_axis ->
+      v View_timeline_axis
+        (Cursor.enum "view-timeline-axis"
+           [ ("block", "block"); ("inline", "inline"); ("x", "x"); ("y", "y") ]
+           t)
   | Timeline_scope -> v Timeline_scope (read_raw_value t)
   (* Transform properties *)
   | Perspective -> v Perspective (read_length t)

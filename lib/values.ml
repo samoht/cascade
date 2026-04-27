@@ -257,6 +257,26 @@ let rec eval_numeric_calc : type a. a calc -> float option = function
           | Div -> None)
       | _ -> None)
 
+(* Count the comma-separated argument groups in [s], ignoring commas inside
+   nested function calls / brackets. Used by math-function readers to validate
+   arity (clamp wants 3, minmax 2, min/max >= 1). *)
+let top_level_arg_count s =
+  let depth = ref 0 in
+  let groups = ref 1 in
+  let saw_any = ref false in
+  String.iter
+    (fun c ->
+      match c with
+      | '(' | '[' | '{' ->
+          incr depth;
+          saw_any := true
+      | ')' | ']' | '}' -> decr depth
+      | ',' when !depth = 0 -> incr groups
+      | ' ' | '\t' | '\n' | '\r' -> ()
+      | _ -> saw_any := true)
+    s;
+  if !saw_any then !groups else 0
+
 (* Top-level commas in math-function args round-trip differently in pretty vs
    minified mode: minified strips space after comma, pretty inserts ", ". Walk
    the raw arg string with a paren-depth counter so commas inside nested calls
@@ -1347,10 +1367,29 @@ let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
       Cursor.any_function_call
         (fun name inner ->
           match String.lowercase_ascii name with
-          | "clamp" -> Clamp (Cursor.consume_remaining_to_string inner)
-          | "minmax" -> Minmax (Cursor.consume_remaining_to_string inner)
-          | "min" -> Min (Cursor.consume_remaining_to_string inner)
-          | "max" -> Max (Cursor.consume_remaining_to_string inner)
+          | "clamp" ->
+              let s = Cursor.consume_remaining_to_string inner in
+              let groups = top_level_arg_count s in
+              if groups <> 3 then
+                Cursor.err_invalid inner
+                  "clamp() requires three comma-separated arguments"
+              else Clamp s
+          | "minmax" ->
+              let s = Cursor.consume_remaining_to_string inner in
+              if top_level_arg_count s <> 2 then
+                Cursor.err_invalid inner
+                  "minmax() requires two comma-separated arguments"
+              else Minmax s
+          | "min" ->
+              let s = Cursor.consume_remaining_to_string inner in
+              if top_level_arg_count s < 1 then
+                Cursor.err_invalid inner "min() requires at least one argument"
+              else Min s
+          | "max" ->
+              let s = Cursor.consume_remaining_to_string inner in
+              if top_level_arg_count s < 1 then
+                Cursor.err_invalid inner "max() requires at least one argument"
+              else Max s
           | "round" ->
               let strategy = Cursor.ident inner in
               Cursor.ws inner;
