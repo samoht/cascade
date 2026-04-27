@@ -93,6 +93,48 @@ let test_selector_roundtrip () =
   let s = selector_to_string sel in
   Alcotest.(check string) "from, to" "from, to" s
 
+let test_spec_keyframe_cascade_and_duplicate_offsets () =
+  (* Keyframes allow duplicate offsets; the cascade of declarations at a given
+     offset is resolved later by the animation engine. The parser-level selector
+     model must preserve the authored selector list shape. *)
+  let check input expected =
+    Alcotest.(check string)
+      input expected
+      (selector_of_string input |> selector_to_string)
+  in
+  check "50%, 50%" "50%, 50%";
+  check "from, 0%, 100%, to" "from, 0%, 100%, to";
+  check "0.000%, 100.000%" "0%, 100%";
+  Alcotest.(check int)
+    "from compares as 0%" 0
+    (position_compare From (Percent 0.));
+  Alcotest.(check int)
+    "to compares as 100%" 0
+    (position_compare To (Percent 100.));
+  Alcotest.(check bool)
+    "50% sorts before to" true
+    (position_compare (Percent 50.) To < 0)
+
+let test_spec_keyframe_invalid_selector_recovery_edges () =
+  (* The low-level selector helper is intentionally total and returns Raw for
+     non-keyframe selector syntax; stylesheet parsing rejects those where a
+     keyframe selector is required. *)
+  List.iter
+    (fun input ->
+      match selector_of_string input with
+      | Raw raw -> Alcotest.(check string) input input raw
+      | Positions _ -> Alcotest.failf "expected raw invalid selector: %s" input)
+    [
+      "from,";
+      ",to";
+      "from,,to";
+      "calc(50%)";
+      "50px";
+      "0%, 101%";
+      "-1%, 50%";
+      "from, middle, to";
+    ]
+
 let suite =
   let open Alcotest in
   ( "keyframe",
@@ -104,4 +146,8 @@ let suite =
       test_case "spec keyframe selector vectors" `Quick
         test_spec_keyframe_selector_vectors;
       test_case "selector roundtrip" `Quick test_selector_roundtrip;
+      test_case "spec keyframe cascade and duplicate offsets" `Quick
+        test_spec_keyframe_cascade_and_duplicate_offsets;
+      test_case "spec keyframe invalid selector recovery edges" `Quick
+        test_spec_keyframe_invalid_selector_recovery_edges;
     ] )

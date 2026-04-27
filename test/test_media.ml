@@ -120,6 +120,52 @@ let test_spec_media_sorting_edges () =
     ]
     sorted
 
+let test_spec_media_query_environment_boundary () =
+  let expect_platform condition environment =
+    match Css.Stylesheet.evaluate_media_query ~condition ~environment with
+    | Error (Css.Stylesheet.Requires_platform_context actual) ->
+        Alcotest.(check string)
+          "feature" "media query evaluation" actual.feature
+    | Error (Css.Stylesheet.Requires_document_context _) ->
+        Alcotest.fail "expected platform context"
+    | Error (Css.Stylesheet.Unsupported_value_alias _) ->
+        Alcotest.fail "expected platform context"
+    | Ok _ -> Alcotest.fail "expected media evaluation boundary"
+  in
+  List.iter
+    (fun (condition, environment) -> expect_platform condition environment)
+    [
+      (Print, "print");
+      (Min_width 640., "screen width=800px");
+      (Max_width 640., "screen width=320px");
+      (Raw "(width >= 40em)", "screen width=50em");
+      (Raw "(30em <= width < 60em)", "screen width=45em");
+      (Raw "(prefers-reduced-data: reduce)", "reduced-data");
+      (Raw "(dynamic-range: high)", "hdr");
+      (Negated Print, "screen");
+    ]
+
+let test_spec_media_query_boolean_and_range_vectors () =
+  let raw_cases =
+    [
+      "(width)";
+      "(height)";
+      "(color)";
+      "(monochrome)";
+      "(grid)";
+      "(width = 40em)";
+      "(40em < width)";
+      "(width <= 60em)";
+      "(400px <= width <= 1200px)";
+      "screen and (width >= 40em), print and (resolution >= 300dpi)";
+      "not screen and (hover: hover)";
+      "only screen and (pointer: fine)";
+    ]
+  in
+  List.iter
+    (fun input -> Alcotest.(check string) input input (to_string (Raw input)))
+    raw_cases
+
 let suite =
   let open Alcotest in
   ( "media",
@@ -130,4 +176,8 @@ let suite =
       test_case "kind" `Quick test_kind;
       test_case "compare" `Quick test_compare;
       test_case "spec media sorting edges" `Quick test_spec_media_sorting_edges;
+      test_case "spec media query environment boundary" `Quick
+        test_spec_media_query_environment_boundary;
+      test_case "spec media query boolean and range vectors" `Quick
+        test_spec_media_query_boolean_and_range_vectors;
     ] )

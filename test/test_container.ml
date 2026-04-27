@@ -108,6 +108,53 @@ let test_spec_container_compare_edges () =
     ]
     sorted
 
+let test_spec_container_query_evaluation_boundary () =
+  let open Css.Container in
+  let expect_platform condition container =
+    match Css.Stylesheet.evaluate_container_query ~condition ~container with
+    | Error (Css.Stylesheet.Requires_platform_context actual) ->
+        Alcotest.(check string)
+          "feature" "container query evaluation" actual.feature
+    | Error (Css.Stylesheet.Requires_document_context _) ->
+        Alcotest.fail "expected platform context"
+    | Error (Css.Stylesheet.Unsupported_value_alias _) ->
+        Alcotest.fail "expected platform context"
+    | Ok _ -> Alcotest.fail "expected container evaluation boundary"
+  in
+  List.iter
+    (fun (condition, container) -> expect_platform condition container)
+    [
+      (Min_width_px 400, ".card inline-size=600px");
+      (Min_width_rem 30., ".card inline-size=40rem");
+      (Raw "(inline-size > 30em)", ".card");
+      (Raw "(30em <= inline-size < 60em)", ".card");
+      (Raw "style(--theme: dark)", ".card");
+      (Raw "scroll-state(stuck: top)", ".card");
+      (Named ("card", Raw "(width >= 400px)"), ".card");
+    ]
+
+let test_spec_container_query_boolean_range_style_vectors () =
+  let open Css.Container in
+  let raw_cases =
+    [
+      "(width)";
+      "(height)";
+      "(inline-size)";
+      "(block-size >= 20rem)";
+      "(400px <= width <= 1200px)";
+      "(orientation: portrait)";
+      "(aspect-ratio > 16/9)";
+      "style(color: red)";
+      "style(--theme)";
+      "style(--theme: dark)";
+      "scroll-state(stuck: top)";
+      "scroll-state(snapped: block)";
+    ]
+  in
+  List.iter
+    (fun input -> Alcotest.(check string) input input (to_string (Raw input)))
+    raw_cases
+
 let tests =
   Alcotest.
     [
@@ -118,6 +165,10 @@ let tests =
       test_case "kind" `Quick test_kind;
       test_case "spec container compare edges" `Quick
         test_spec_container_compare_edges;
+      test_case "spec container query evaluation boundary" `Quick
+        test_spec_container_query_evaluation_boundary;
+      test_case "spec container query boolean/range/style vectors" `Quick
+        test_spec_container_query_boolean_range_style_vectors;
     ]
 
 let suite = ("container", tests)
