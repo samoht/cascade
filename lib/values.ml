@@ -307,9 +307,11 @@ let rec pp_length ?(always = false) : length Pp.t =
   | None -> Pp.string ctx "none"
   | Inherit -> Pp.string ctx "inherit"
   | Fit_content -> Pp.string ctx "fit-content"
+  | Contain -> Pp.string ctx "contain"
   | Max_content -> Pp.string ctx "max-content"
   | Min_content -> Pp.string ctx "min-content"
   | From_font -> Pp.string ctx "from-font"
+  | Stretch -> Pp.string ctx "stretch"
   | Clamp s ->
       let args =
         if ctx.Pp.minify then s
@@ -1201,6 +1203,8 @@ let read_length_keyword t =
       ("max-content", Max_content);
       ("min-content", Min_content);
       ("fit-content", Fit_content);
+      ("contain", Contain);
+      ("stretch", Stretch);
       ("from-font", From_font);
       ("inherit", Inherit);
       ("initial", Initial);

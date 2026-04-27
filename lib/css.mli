@@ -656,9 +656,11 @@ type length =
   | Revert_layer
   | Fit_content  (** fit-content keyword *)
   | Content  (** content keyword *)
+  | Contain  (** contain keyword (intrinsic sizing) *)
   | Max_content  (** max-content keyword *)
   | Min_content  (** min-content keyword *)
   | From_font  (** from-font keyword for text-decoration-thickness *)
+  | Stretch  (** stretch keyword (intrinsic sizing) *)
   | Clamp of string  (** clamp() function *)
   | Min of string  (** min() function *)
   | Max of string  (** max() function *)
