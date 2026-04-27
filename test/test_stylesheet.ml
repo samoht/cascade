@@ -1813,11 +1813,30 @@ let test_spec_current_work_at_rules () =
   check_stylesheet
     ~expected:"@position-try --below{top:anchor(bottom);left:anchor(center)}"
     "@position-try --below { top: anchor(bottom); left: anchor(center); }";
+  check_stylesheet
+    ~expected:
+      "@container card style(--variant: \
+       featured){.card{view-transition-name:card}}"
+    "@container card style(--variant: featured) { .card { \
+     view-transition-name: card } }";
+  check_stylesheet
+    ~expected:
+      "@container (30em <= inline-size < 60em){@supports \
+       (display:grid){.grid{display:grid}}}"
+    "@container (30em <= inline-size < 60em) { @supports (display: grid) { \
+     .grid { display: grid } } }";
+  check_stylesheet
+    ~expected:"@starting-style{.dialog{opacity:0;translate:0 1rem}}"
+    "@starting-style { .dialog { opacity: 0; translate: 0 1rem } }";
+  check_stylesheet ~expected:"@page chapter:left{margin:2cm}"
+    "@page chapter:left { margin: 2cm }";
   neg_cursor read_stylesheet "@media (width >) { .x { color: red } }";
   neg_cursor read_stylesheet "@supports selector() { .x { color: red } }";
   neg_cursor read_stylesheet "@scope (.card) .title { color: red }";
   neg_cursor read_stylesheet "@font-palette-values { base-palette: 1; }";
-  neg_cursor read_stylesheet "@position-try default { top: 0; }"
+  neg_cursor read_stylesheet "@position-try default { top: 0; }";
+  neg_cursor read_stylesheet "@container () { .x { color: red } }";
+  neg_cursor read_stylesheet "@page : { margin: 1cm }"
 
 let test_spec_snapshot_tracking_vectors () =
   (* Snapshot tracking vectors span stable cross-module syntax from recent CSS

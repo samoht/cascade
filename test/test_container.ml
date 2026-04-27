@@ -22,7 +22,16 @@ let test_to_string () =
     (to_string (Raw "(inline-size >= 30em)"));
   Alcotest.(check string)
     "scroll-state query raw" "scroll-state(stuck: top)"
-    (to_string (Raw "scroll-state(stuck: top)"))
+    (to_string (Raw "scroll-state(stuck: top)"));
+  Alcotest.(check string)
+    "named style query raw" "card style(--variant: featured)"
+    (to_string (Named ("card", Raw "style(--variant: featured)")));
+  Alcotest.(check string)
+    "chained range query raw" "(30em <= inline-size < 60em)"
+    (to_string (Raw "(30em <= inline-size < 60em)"));
+  Alcotest.(check string)
+    "aspect ratio query raw" "(aspect-ratio > 1/1)"
+    (to_string (Raw "(aspect-ratio > 1/1)"))
 
 let test_compare () =
   let open Css.Container in

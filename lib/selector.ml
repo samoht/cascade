@@ -306,27 +306,6 @@ let unescape_selector_name s =
   loop 0;
   Buffer.contents buf
 
-let of_string s =
-  if String.length s = 0 then invalid_arg "of_string: empty selector string";
-  let first_char = s.[0] in
-  match first_char with
-  | '.' ->
-      (* Class selector: .classname *)
-      if String.length s = 1 then
-        invalid_arg "of_string: incomplete class selector";
-      let raw = unescape_selector_name (String.sub s 1 (String.length s - 1)) in
-      class_ raw
-  | '#' ->
-      (* ID selector: #idname *)
-      if String.length s = 1 then
-        invalid_arg "of_string: incomplete id selector";
-      let raw = unescape_selector_name (String.sub s 1 (String.length s - 1)) in
-      id raw
-  | _ ->
-      (* Element selector (no prefix) *)
-      let raw = unescape_selector_name s in
-      element raw
-
 (* Simple readers that don't need recursion *)
 let read_lang_content t =
   Lang (Cursor.list ~sep:Cursor.comma ~at_least:1 Cursor.ident t)
@@ -1232,6 +1211,20 @@ let read_relative t =
   if not (Cursor.is_done t) then
     Cursor.err t "unexpected characters after selector";
   match selectors with [ s ] -> s | _ -> List selectors
+
+(* Use the full selector parser; fall back to the single-token shortcut for
+   ['.foo' / '#foo' / 'foo'] when the cursor parser would reject the input. *)
+let of_string s =
+  if String.length s = 0 then invalid_arg "of_string: empty selector string"
+  else
+    try read (Cursor.of_string s)
+    with Cursor.Parse_error _ -> (
+      match s.[0] with
+      | '.' when String.length s > 1 ->
+          class_ (unescape_selector_name (String.sub s 1 (String.length s - 1)))
+      | '#' when String.length s > 1 ->
+          id (unescape_selector_name (String.sub s 1 (String.length s - 1)))
+      | _ -> element (unescape_selector_name s))
 
 (** Pretty print a function-like pseudo-class or pseudo-element *)
 let pp_func : 'a. Pp.ctx -> prefix:string -> string -> 'a Pp.t -> 'a -> unit =

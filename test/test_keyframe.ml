@@ -25,6 +25,69 @@ let test_position_parse () =
         | _ -> false))
     cases
 
+let test_spec_keyframe_position_vectors () =
+  let positive =
+    [
+      ("0%", Some (Percent 0.));
+      ("100%", Some (Percent 100.));
+      ("0.5%", Some (Percent 0.5));
+      ("25.5%", Some (Percent 25.5));
+      (" 75% ", Some (Percent 75.));
+      ("from", Some From);
+      ("to", Some To);
+    ]
+  in
+  List.iter
+    (fun (str, expected) ->
+      let actual = position_of_string str in
+      Alcotest.(check bool)
+        ("valid keyframe position " ^ str)
+        true
+        (match (actual, expected) with
+        | Some a, Some b -> position_compare a b = 0
+        | None, None -> true
+        | _ -> false))
+    positive;
+  let negative =
+    [
+      "-0.01%"; "-1%"; "100.01%"; "101%"; "calc(50%)"; "50px"; "middle"; ""; "%";
+    ]
+  in
+  List.iter
+    (fun str ->
+      Alcotest.(check bool)
+        ("invalid keyframe position " ^ str)
+        true
+        (Option.is_none (position_of_string str)))
+    negative
+
+let test_spec_keyframe_selector_vectors () =
+  let check_positions name input expected =
+    match selector_of_string input with
+    | Positions actual ->
+        Alcotest.(check int)
+          (name ^ " length") (List.length expected) (List.length actual);
+        List.iter2
+          (fun e a ->
+            Alcotest.(check int) (name ^ " item") 0 (position_compare e a))
+          expected actual
+    | Raw raw ->
+        Alcotest.failf "%s: expected parsed positions, got raw %S" name raw
+  in
+  let check_raw name input =
+    match selector_of_string input with
+    | Raw raw -> Alcotest.(check string) name input raw
+    | Positions _ -> Alcotest.failf "%s: expected raw invalid selector" name
+  in
+  check_positions "from to list" "from, to" [ From; To ];
+  check_positions "percentage list" "0%, 50%, 100%"
+    [ Percent 0.; Percent 50.; Percent 100. ];
+  check_positions "mixed list" "from, 50%, to" [ From; Percent 50.; To ];
+  check_raw "out of range selector" "0%, 101%";
+  check_raw "negative selector" "-1%, 50%";
+  check_raw "empty item selector" "from,,to";
+  check_raw "non-keyframe selector" "from, middle, to"
+
 let test_selector_roundtrip () =
   let sel = Positions [ From; To ] in
   let s = selector_to_string sel in
@@ -36,5 +99,9 @@ let suite =
     [
       test_case "position roundtrip" `Quick test_position_roundtrip;
       test_case "position parse" `Quick test_position_parse;
+      test_case "spec keyframe position vectors" `Quick
+        test_spec_keyframe_position_vectors;
+      test_case "spec keyframe selector vectors" `Quick
+        test_spec_keyframe_selector_vectors;
       test_case "selector roundtrip" `Quick test_selector_roundtrip;
     ] )
