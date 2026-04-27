@@ -18,7 +18,10 @@ let is_valid_nmchar c = is_valid_nmstart c || (c >= '0' && c <= '9') || c = '-'
 
 let pp_ns ctx = function
   | Any -> Pp.string ctx "*|"
-  | None -> ()
+  | None ->
+      (* Explicit "no namespace" prefix [(|)] -- distinct from omitting the
+         prefix entirely, which is encoded by passing [None : ns option]. *)
+      Pp.char ctx '|'
   | Prefix p ->
       Pp.string ctx p;
       Pp.char ctx '|'
@@ -307,18 +310,32 @@ let unescape_selector_name s =
   Buffer.contents buf
 
 (* Simple readers that don't need recursion *)
-let read_lang_content t =
-  Lang (Cursor.list ~sep:Cursor.comma ~at_least:1 Cursor.ident t)
+let ensure_call_done t name =
+  Cursor.ws t;
+  if not (Cursor.is_done t) then Cursor.err t ("unexpected tokens after " ^ name)
 
-let read_dir_content t = Dir (Cursor.ident t)
-let read_state_content t = State (Cursor.ident t)
-let read_heading_content _t = Heading
+let read_lang_content t =
+  let langs = Cursor.list ~sep:Cursor.comma ~at_least:1 Cursor.ident t in
+  ensure_call_done t "lang";
+  Lang langs
+
+let read_dir_content t =
+  let dir = Cursor.ident t in
+  ensure_call_done t "dir";
+  Dir dir
+
+let read_state_content t =
+  let name = Cursor.ident t in
+  ensure_call_done t "state";
+  State name
+
+let read_heading_content t =
+  ensure_call_done t "heading";
+  Heading
 
 let read_active_view_transition_content t =
   let names = Cursor.list ~sep:Cursor.comma ~at_least:1 Cursor.ident t in
-  Cursor.ws t;
-  if not (Cursor.is_done t) then
-    Cursor.err t "unexpected tokens after active view transition type";
+  ensure_call_done t "active view transition type";
   Active_view_transition_type (Some names)
 
 let read_lang t = Cursor.call "lang" t read_lang_content
@@ -514,6 +531,22 @@ let read_ns t : ns option =
   Cursor.option
     (fun t ->
       if Cursor.try_kind_pair (Token.Delim "*") (Token.Delim "|") t then Any
+      else if
+        (* Bare ['|'] selects the default (no) namespace. Selectors Level 4
+           section 6.2 distinguishes [[|attr]] from [[attr]]: the former
+           explicitly matches the empty namespace, the latter matches any. *)
+        Cursor.lookahead
+          (fun t ->
+            match Cursor.peek_delim t with
+            | Some '|' ->
+                let _ = Cursor.next t in
+                (* Reject ['|='] (the dash-match operator). *)
+                not (Cursor.peek_delim t = Some '=')
+            | _ -> false)
+          t
+      then (
+        Cursor.expect '|' t;
+        None)
       else
         let p = Cursor.ident ~keep_case:true t in
         (* Avoid treating '|=' as a namespace separator: peek for the pair. *)
@@ -1037,22 +1070,27 @@ and read_cue_region_content t =
 
 and read_highlight_content t =
   let names = Cursor.list ~sep:Cursor.comma ~at_least:1 Cursor.ident t in
+  ensure_call_done t "highlight";
   Highlight names
 
 and read_view_transition_group_content t =
   let name = Cursor.ident t in
+  ensure_call_done t "view transition group";
   View_transition_group name
 
 and read_vt_image_pair_content t =
   let name = Cursor.ident t in
+  ensure_call_done t "view transition image pair";
   View_transition_image_pair name
 
 and read_view_transition_old_content t =
   let name = Cursor.ident t in
+  ensure_call_done t "view transition old";
   View_transition_old name
 
 and read_view_transition_new_content t =
   let name = Cursor.ident t in
+  ensure_call_done t "view transition new";
   View_transition_new name
 
 and read_slotted t = Cursor.call "slotted" t read_slotted_content
