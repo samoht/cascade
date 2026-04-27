@@ -1026,6 +1026,7 @@ type color =
   | Var of color var
   | Current
   | Transparent
+  | Auto  (** [auto] keyword, e.g. [accent-color: auto], [caret-color: auto]. *)
   | Inherit
   | Initial
   | Unset
@@ -4493,10 +4494,11 @@ val scroll_margin_inline_end : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-inline-end}
      scroll-margin-inline-end} property. *)
 
-val scroll_margin_block : length -> declaration
-(** [scroll_margin_block margin] is the
+val scroll_margin_block : length list -> declaration
+(** [scroll_margin_block margins] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-block}
-     scroll-margin-block} property. *)
+     scroll-margin-block} property; takes 1 (both edges) or 2 (start, end)
+    length values per the spec. *)
 
 val scroll_margin_block_start : length -> declaration
 (** [scroll_margin_block_start margin] is the
