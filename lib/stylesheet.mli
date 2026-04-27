@@ -190,6 +190,20 @@ val declared_values_for_element :
     selector-filtered declared values applied to a document element. It
     currently returns [Error (Requires_document_context Declared_value)]. *)
 
+val filter_style_rules :
+  ?element:string ->
+  ?media:Media.t ->
+  ?supports:Supports.t ->
+  ?shadow_tree:string ->
+  ?scope:string ->
+  stylesheet ->
+  (stylesheet, value_processing_error) result
+(** [filter_style_rules ?element ?media ?supports ?shadow_tree ?scope
+     stylesheet] is the API entry point for CSS Cascade section 5 filtering of
+    style rules. It currently returns [Error (Requires_platform_context ...)]
+    because the filtering pass needs media/supports evaluation, selector
+    matching, shadow-tree membership, and scoped-tree context. *)
+
 val normalize_value_alias :
   property:string -> value:string -> (string, value_processing_error) result
 (** [normalize_value_alias ~property ~value] is the API entry point for CSS
@@ -247,6 +261,14 @@ val evaluate_supports_condition :
     [@supports] evaluation against a user-agent support table. It currently
     returns [Error (Requires_platform_context ...)]. *)
 
+val evaluate_container_query :
+  condition:Container.t ->
+  container:string ->
+  (bool, value_processing_error) result
+(** [evaluate_container_query ~condition ~container] is the API entry point for
+    Container Queries evaluation against a query container. It currently returns
+    [Error (Requires_platform_context ...)]. *)
+
 val resolve_url_value :
   base:string -> url:string -> (string, value_processing_error) result
 (** [resolve_url_value ~base ~url] is the API entry point for CSS URL
@@ -266,6 +288,16 @@ val html_presentational_hints :
     origin declarations. It currently returns
     [Error (Requires_platform_context ...)]. *)
 
+val resolve_custom_property :
+  name:string ->
+  specified:string ->
+  environment:string ->
+  (string, value_processing_error) result
+(** [resolve_custom_property ~name ~specified ~environment] is the API entry
+    point for computed-value-time custom property substitution and cycle
+    detection. It currently returns
+    [Error (Requires_document_context Computed_value)]. *)
+
 val cssom_insert_rule :
   index:int ->
   statement ->
@@ -279,6 +311,20 @@ val cssom_delete_rule :
   index:int -> stylesheet -> (stylesheet, value_processing_error) result
 (** [cssom_delete_rule ~index stylesheet] is the API entry point for CSSOM rule
     deletion. It currently returns [Error (Requires_platform_context ...)]. *)
+
+val cssom_replace_rule :
+  index:int ->
+  statement ->
+  stylesheet ->
+  (stylesheet, value_processing_error) result
+(** [cssom_replace_rule ~index rule stylesheet] is the API entry point for CSSOM
+    rule replacement. It currently returns
+    [Error (Requires_platform_context ...)]. *)
+
+val cssom_serialize_rule : statement -> (string, value_processing_error) result
+(** [cssom_serialize_rule rule] is the API entry point for CSSOM rule-specific
+    serialization. It currently returns [Error (Requires_platform_context ...)].
+*)
 
 val animated_value :
   property:string ->

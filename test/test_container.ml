@@ -13,7 +13,16 @@ let test_to_string () =
     (to_string (Named ("sidebar", Min_width_rem 24.)));
   Alcotest.(check string)
     "raw" "(width > 0px)"
-    (to_string (Raw "(width > 0px)"))
+    (to_string (Raw "(width > 0px)"));
+  Alcotest.(check string)
+    "style query raw" "style(--theme: dark)"
+    (to_string (Raw "style(--theme: dark)"));
+  Alcotest.(check string)
+    "range query raw" "(inline-size >= 30em)"
+    (to_string (Raw "(inline-size >= 30em)"));
+  Alcotest.(check string)
+    "scroll-state query raw" "scroll-state(stuck: top)"
+    (to_string (Raw "scroll-state(stuck: top)"))
 
 let test_compare () =
   let open Css.Container in

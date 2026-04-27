@@ -1140,6 +1140,39 @@ let test_nesting_selector () =
   check "&:hover,&:focus";
   check ~expected:"&:hover,&:focus" "&:hover, &:focus"
 
+let test_spec_selector_specificity () =
+  let check_specificity name input ids classes elements =
+    let actual = specificity (of_string input) in
+    Alcotest.(check int) (name ^ " ids") ids actual.ids;
+    Alcotest.(check int) (name ^ " classes") classes actual.classes;
+    Alcotest.(check int) (name ^ " elements") elements actual.elements
+  in
+  check_specificity "type selector" "div" 0 0 1;
+  check_specificity "class selector" ".item" 0 1 0;
+  check_specificity "id selector" "#main" 1 0 0;
+  check_specificity "compound selector" "main#app.card[data-x]:hover" 1 3 1;
+  check_specificity "descendant selector" "article .card > h2" 0 1 2;
+  check_specificity "where zero" ":where(#app,.card,main)" 0 0 0;
+  check_specificity "is takes max" ":is(.card,#app,main)" 1 0 0;
+  check_specificity "not takes max" ":not(.card,#app,main)" 1 0 0;
+  check_specificity "has takes max" ".card:has(> img.selected)" 0 2 1;
+  check_specificity "nth child with selector list" ":nth-child(2n of .a,#b)" 1 1
+    0;
+  check_specificity "selector list takes max" ".a,#b,main section" 1 0 0
+
+let test_spec_forgiving_selector_lists () =
+  (* Selectors Level 4: :is(), :where(), and :has() use forgiving selector-list
+     parsing for their arguments, while top-level selector lists remain
+     unforgiving. *)
+  check ":is(.valid,:future-pseudo,#id)";
+  check ":where(.valid,:future-pseudo,#id)";
+  check ".card:has(> img,:future-pseudo)";
+  check ":not(.a,#b)";
+  neg_cursor read ".a,:future-pseudo";
+  neg_cursor read ":is()";
+  neg_cursor read ":where()";
+  neg_cursor read ":has()"
+
 let suite =
   let open Alcotest in
   ( "selector",
@@ -1185,5 +1218,9 @@ let suite =
       test_case "complex construction" `Quick test_complex_construction;
       test_case "combinator distribution" `Quick test_combinator_distribution;
       (* CSS nesting *)
+      test_case "spec selector specificity" `Quick
+        test_spec_selector_specificity;
+      test_case "spec forgiving selector lists" `Quick
+        test_spec_forgiving_selector_lists;
       test_case "nesting selector" `Quick test_nesting_selector;
     ] )

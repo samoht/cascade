@@ -136,7 +136,16 @@ let rec map f stmts =
   List.map
     (fun stmt ->
       match as_rule stmt with
-      | Some (sel, decls, _nested) -> f sel decls
+      | Some (sel, decls, nested) -> (
+          let mapped_nested = map f nested in
+          match f sel decls with
+          | Rule mapped ->
+              Rule
+                {
+                  mapped with
+                  nested = Stylesheet.nested mapped @ mapped_nested;
+                }
+          | other -> other)
       | None -> (
           match as_media stmt with
           | Some (condition, content) -> media ~condition (map f content)
@@ -241,21 +250,24 @@ let rec fold f acc t =
       let acc' = f acc stmt in
       (* Recursively fold over nested statements *)
       let nested =
-        match as_layer stmt with
-        | Some (_, nested) -> nested
+        match as_rule stmt with
+        | Some (_, _, nested) -> nested
         | None -> (
-            match as_media stmt with
+            match as_layer stmt with
             | Some (_, nested) -> nested
             | None -> (
-                match as_container stmt with
-                | Some (_, _, nested) -> nested
+                match as_media stmt with
+                | Some (_, nested) -> nested
                 | None -> (
-                    match as_supports stmt with
-                    | Some (_, nested) -> nested
+                    match as_container stmt with
+                    | Some (_, _, nested) -> nested
                     | None -> (
-                        match as_origin stmt with
+                        match as_supports stmt with
                         | Some (_, nested) -> nested
-                        | None -> []))))
+                        | None -> (
+                            match as_origin stmt with
+                            | Some (_, nested) -> nested
+                            | None -> [])))))
       in
       fold f acc' nested)
     acc t
@@ -291,28 +303,44 @@ let custom_props_from_rules rules =
   List.concat_map (fun (_, decls) -> custom_prop_names decls) rules
 
 let custom_props ?layer sheet =
-  (* Use fold to recursively traverse all statements *)
-  let in_target_layer = ref (layer = None) in
-  let props =
-    fold
-      (fun acc stmt ->
-        (* Track if we're inside the target layer *)
-        (match (layer, as_layer stmt) with
-        | Some target, Some (Some name, _) when name = target ->
-            in_target_layer := true
-        | Some _, Some (Some _, _) ->
-            (* Entering a different layer *)
-            in_target_layer := false
-        | _ -> ());
-        (* Extract custom props from rules if we're in the right context *)
-        if !in_target_layer then
-          match as_rule stmt with
-          | Some (_, decls, _) -> custom_prop_names decls @ acc
-          | None -> acc
-        else acc)
-      [] sheet
+  (* Walk the statement tree directly so [in_layer] follows the structure: it is
+     set on entry to a [Layer] node and reset on exit, never persists into
+     sibling statements. *)
+  let rec walk in_layer acc stmt =
+    let acc =
+      match as_rule stmt with
+      | Some (_, decls, nested) when in_layer ->
+          let acc = custom_prop_names decls @ acc in
+          List.fold_left (walk in_layer) acc nested
+      | Some (_, _, nested) -> List.fold_left (walk in_layer) acc nested
+      | None -> acc
+    in
+    let descend block in_layer' = List.fold_left (walk in_layer') acc block in
+    match as_layer stmt with
+    | Some (Some name, content) ->
+        let in_layer' =
+          match layer with
+          | None -> true
+          | Some target -> in_layer || name = target
+        in
+        descend content in_layer'
+    | Some (None, content) -> descend content in_layer
+    | None -> (
+        match as_media stmt with
+        | Some (_, content) -> descend content in_layer
+        | None -> (
+            match as_supports stmt with
+            | Some (_, content) -> descend content in_layer
+            | None -> (
+                match as_container stmt with
+                | Some (_, _, content) -> descend content in_layer
+                | None -> (
+                    match as_origin stmt with
+                    | Some (_, content) -> descend content in_layer
+                    | None -> acc))))
   in
-  List.rev props
+  let initial = layer = None in
+  List.rev (List.fold_left (walk initial) [] sheet)
 
 let media ~condition statements = Media (condition, statements)
 

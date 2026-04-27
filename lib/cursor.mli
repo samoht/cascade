@@ -46,6 +46,9 @@ val meta : t -> Loc.meta_level
 (** [meta t] is the metadata level [t] was built with. At [`Full] errors carry
     source-context snippets; lower levels skip snippet construction. *)
 
+val source : t -> string option
+(** [source t] is the preprocessed source text that produced [t], when known. *)
+
 val push_warning : t -> Error.t -> unit
 (** [push_warning t e] records [e] as a non-fatal warning on [t]. A validator in
     recovery mode catches a [Parse_error], pushes it here, skips to a recovery
@@ -85,6 +88,11 @@ val position : t -> Loc.t
 
 val remaining : t -> Component.t list
 (** [remaining t] is the un-consumed tail (still includes whitespace). *)
+
+val components_to_string : ?trim:bool -> Component.t list -> string
+(** [components_to_string ?trim cvs] serializes a component-value list. This is
+    useful for at-rule preludes that must be split structurally before being
+    preserved as raw CSS text. *)
 
 val remaining_to_string : ?trim:bool -> t -> string
 (** [remaining_to_string t] serializes the unconsumed tail without advancing

@@ -1069,6 +1069,55 @@ let spec_platform_property_vectors () =
       ("view-transition-name: card", "view-transition-name:card");
       ("image-orientation: from-image", "image-orientation:from-image");
       ("background-clip: text", "background-clip:text");
+      ("box-sizing: border-box", "box-sizing:border-box");
+      ("aspect-ratio: 16 / 9", "aspect-ratio:16/9");
+      ("contain: size layout style paint", "contain:size layout style paint");
+      ("content-visibility: auto", "content-visibility:auto");
+      ("contain-intrinsic-size: auto 300px", "contain-intrinsic-size:auto 300px");
+      ("container-type: inline-size", "container-type:inline-size");
+      ("container-name: card", "container-name:card");
+      ("container: card / inline-size", "container:card/inline-size");
+      ("overscroll-behavior: contain", "overscroll-behavior:contain");
+      ("scroll-snap-type: x mandatory", "scroll-snap-type:x mandatory");
+      ("scroll-margin-block: 1rem 2rem", "scroll-margin-block:1rem 2rem");
+      ("scroll-padding-inline: 10px", "scroll-padding-inline:10px");
+      ("margin-trim: block", "margin-trim:block");
+      ("field-sizing: content", "field-sizing:content");
+      ("color-scheme: light dark", "color-scheme:light dark");
+      ("accent-color: auto", "accent-color:auto");
+      ("mask-mode: alpha", "mask-mode:alpha");
+      ("mask-composite: add", "mask-composite:add");
+      ("offset-path: path('M 0 0 L 1 1')", "offset-path:path(\"M 0 0 L 1 1\")");
+      ("offset-distance: 50%", "offset-distance:50%");
+      ("font-size-adjust: from-font", "font-size-adjust:from-font");
+      ("font-variant-emoji: emoji", "font-variant-emoji:emoji");
+      ("text-spacing-trim: trim-start", "text-spacing-trim:trim-start");
+      ("hyphenate-limit-chars: 6 3 2", "hyphenate-limit-chars:6 3 2");
+      ("initial-letter: 2 3", "initial-letter:2 3");
+      ( "text-decoration-thickness: from-font",
+        "text-decoration-thickness:from-font" );
+      ("view-timeline-name: --reveal", "view-timeline-name:--reveal");
+      ("view-timeline-axis: block", "view-timeline-axis:block");
+      ("timeline-scope: --reveal", "timeline-scope:--reveal");
+      ("width: min(10px, 5vw)", "width:min(10px,5vw)");
+      ("width: max(10px, 5vw)", "width:max(10px,5vw)");
+      ("width: clamp(10px, 5vw, 100px)", "width:clamp(10px,5vw,100px)");
+      ("width: round(nearest, 10px, 3px)", "width:round(nearest,10px,3px)");
+      ("width: mod(18px, 5px)", "width:mod(18px,5px)");
+      ("width: rem(18px, 5px)", "width:rem(18px,5px)");
+      ("width: hypot(3px, 4px)", "width:hypot(3px,4px)");
+      ( "width: calc-size(auto, size + 1rem)",
+        "width:calc-size(auto,size + 1rem)" );
+      ("opacity: abs(-0.5)", "opacity:abs(-.5)");
+      ("opacity: sign(var(--delta))", "opacity:sign(var(--delta))");
+      ( "color: color-mix(in oklab, red 40%, blue)",
+        "color:color-mix(in oklab,red 40%,blue)" );
+      ( "color: light-dark(CanvasText, white)",
+        "color:light-dark(CanvasText,white)" );
+      ( "background-image: image-set(url(a.avif) type(\"image/avif\") 1x, \
+         url(a.png) type(\"image/png\") 1x)",
+        "background-image:image-set(url(a.avif) type(\"image/avif\") \
+         1x,url(a.png) type(\"image/png\") 1x)" );
     ];
   List.iter
     (fun input -> neg_cursor read_declaration input)
@@ -1092,6 +1141,26 @@ let spec_platform_property_vectors () =
       "animation-range: exit entry";
       "view-transition-name: none card";
       "image-orientation: upside-down";
+      "aspect-ratio: 16 /";
+      "contain: layout layout";
+      "container-type: inline-size size";
+      "container: / inline-size";
+      "scroll-snap-type: mandatory x";
+      "margin-trim: block inline block";
+      "field-sizing: auto";
+      "mask-composite: plus";
+      "offset-distance: -10%";
+      "font-size-adjust: from-font 1";
+      "font-variant-emoji: smile";
+      "initial-letter: 0";
+      "view-timeline-axis: diagonal";
+      "width: clamp(10px, 20px)";
+      "width: round(10px)";
+      "width: mod(10px)";
+      "opacity: abs()";
+      "opacity: sign()";
+      "color: color-mix(red, blue)";
+      "background-image: image-set(url(a.png))";
     ]
 
 let test_declaration () =

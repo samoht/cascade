@@ -128,6 +128,29 @@ let test_color_roundtrip buf =
       try ignore (Css.Values.read_color r2)
       with Css.Cursor.Parse_error _ -> fail "color roundtrip re-parse failed")
 
+(** Length serialization should reparse to the same canonical form for accepted
+    values, including calc()/var() shapes. *)
+let test_length_serialization_idempotent buf =
+  let r = Css.Cursor.of_string buf in
+  match
+    try Some (Css.Values.read_length r) with Css.Cursor.Parse_error _ -> None
+  with
+  | None -> ()
+  | Some length -> (
+      let once = Css.Pp.to_string ~minify:true Css.Values.pp_length length in
+      let r2 = Css.Cursor.of_string once in
+      match
+        try Some (Css.Values.read_length r2)
+        with Css.Cursor.Parse_error _ -> None
+      with
+      | None -> fail (Fmt.str "length serialization did not reparse: %S" once)
+      | Some reparsed ->
+          let twice =
+            Css.Pp.to_string ~minify:true Css.Values.pp_length reparsed
+          in
+          if once <> twice then
+            fail (Fmt.str "length serialization changed: %S -> %S" once twice))
+
 let suite =
   ( "values",
     [
@@ -157,4 +180,6 @@ let suite =
       test_case "read_transition_behavior crash safety" [ bytes ]
         test_read_transition_behavior;
       test_case "color roundtrip" [ bytes ] test_color_roundtrip;
+      test_case "length serialization idempotent" [ bytes ]
+        test_length_serialization_idempotent;
     ] )
