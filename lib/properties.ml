@@ -2123,7 +2123,7 @@ let pp_clip : clip Pp.t =
       pp_length ctx left;
       Pp.char ctx ')'
 
-let pp_clip_path : clip_path Pp.t =
+let rec pp_clip_path : clip_path Pp.t =
  fun ctx -> function
   | Clip_path_none -> Pp.string ctx "none"
   | Clip_path_url url ->
@@ -2172,6 +2172,33 @@ let pp_clip_path : clip_path Pp.t =
       Pp.string ctx "path(\"";
       Pp.string ctx d;
       Pp.string ctx "\")"
+  | Clip_path_xywh { x; y; width; height; rounded } ->
+      Pp.string ctx "xywh(";
+      pp_clip_path_inset_quad ctx x y width height;
+      pp_clip_path_round ctx rounded;
+      Pp.char ctx ')'
+  | Clip_path_rect { top; right; bottom; left; rounded } ->
+      Pp.string ctx "rect(";
+      pp_clip_path_inset_quad ctx top right bottom left;
+      pp_clip_path_round ctx rounded;
+      Pp.char ctx ')'
+
+and pp_clip_path_inset_quad ctx a b c d =
+  pp_length_percentage ~always:true ctx a;
+  Pp.space ctx ();
+  pp_length_percentage ~always:true ctx b;
+  Pp.space ctx ();
+  pp_length_percentage ~always:true ctx c;
+  Pp.space ctx ();
+  pp_length_percentage ~always:true ctx d
+
+and pp_clip_path_round ctx = function
+  | None -> ()
+  | Some r ->
+      Pp.space ctx ();
+      Pp.string ctx "round";
+      Pp.space ctx ();
+      pp_border_radius ctx r
 
 let pp_property : type a. a property Pp.t =
  fun ctx -> function
@@ -6712,6 +6739,8 @@ let read_conic_gradient_body t =
     Cursor.err_expected t "',' or end of conic-gradient prefix";
   if Cursor.peek_comma t then Cursor.skip t;
   let stops = read_gradient_stops t in
+  if stops = [] then
+    Cursor.err_expected t "at least one color stop in conic-gradient()";
   Conic_gradient ({ from_angle; conic_position }, stops)
 
 let rec read_bg_image t : background_image =
@@ -6752,8 +6781,23 @@ and read_image_set_body t : background_image =
   Image_set (Cursor.list ~sep:Cursor.comma ~at_least:1 read_image_set_option t)
 
 and read_cross_fade_body t : background_image =
-  Cross_fade
-    (Cursor.list ~sep:Cursor.comma ~at_least:1 read_cross_fade_option t)
+  (* Parse a non-empty comma-separated list where every comma must be followed
+     by another option. Cursor.list is permissive about trailing separators
+     (rollback on failure leaves the comma silently consumed), so the spec's
+     [<cf-mixing-image>#] grammar is enforced manually. *)
+  let first = read_cross_fade_option t in
+  let rec loop acc =
+    Cursor.ws t;
+    if Cursor.peek_comma t then (
+      Cursor.skip t;
+      loop (read_cross_fade_option t :: acc))
+    else List.rev acc
+  in
+  let opts = loop [ first ] in
+  Cursor.ws t;
+  if not (Cursor.is_done t) then
+    Cursor.err_expected t "end of cross-fade() arguments";
+  Cross_fade opts
 
 and read_cross_fade_option t : cross_fade_option =
   Cursor.ws t;
@@ -7717,6 +7761,70 @@ let read_clip_path_polygon t =
   in
   Clip_path_polygon points
 
+(* Read 4 length-percentages and an optional [round <border-radius>] suffix
+   shared by xywh() and rect(). *)
+let read_clip_path_inset_quad t =
+  let a = read_length_percentage t in
+  Cursor.ws t;
+  let b = read_length_percentage t in
+  Cursor.ws t;
+  let c = read_length_percentage t in
+  Cursor.ws t;
+  let d = read_length_percentage t in
+  (a, b, c, d)
+
+(* Inline border-radius parser for the [round <border-radius>] suffix shared by
+   xywh() and rect(). Cannot reuse [Declaration.read_border_radius] because
+   Declaration depends on Properties; the same grammar is small enough to inline
+   here. *)
+let read_border_radius_inline t : border_radius =
+  let read_radii t =
+    let rec loop acc count =
+      if count >= 4 then List.rev acc
+      else
+        match Cursor.option read_length_percentage t with
+        | None -> List.rev acc
+        | Some lp -> loop (lp :: acc) (count + 1)
+    in
+    let radii = loop [] 0 in
+    if radii = [] then Cursor.err_expected t "<length-percentage>" else radii
+  in
+  Cursor.ws t;
+  let horizontal = read_radii t in
+  Cursor.ws t;
+  let vertical =
+    match Cursor.peek_delim t with
+    | Some '/' ->
+        Cursor.skip t;
+        Cursor.ws t;
+        Some (read_radii t)
+    | _ -> None
+  in
+  { horizontal; vertical }
+
+let read_clip_path_round t : border_radius option =
+  Cursor.ws t;
+  match Cursor.peek_ident t with
+  | Some "round" ->
+      let _ = Cursor.ident t in
+      Cursor.ws t;
+      Some (read_border_radius_inline t)
+  | _ -> None
+
+let read_clip_path_xywh t =
+  Cursor.call "xywh" t (fun inner ->
+      Cursor.ws inner;
+      let x, y, width, height = read_clip_path_inset_quad inner in
+      let rounded = read_clip_path_round inner in
+      Clip_path_xywh { x; y; width; height; rounded })
+
+let read_clip_path_rect t =
+  Cursor.call "rect" t (fun inner ->
+      Cursor.ws inner;
+      let top, right, bottom, left = read_clip_path_inset_quad inner in
+      let rounded = read_clip_path_round inner in
+      Clip_path_rect { top; right; bottom; left; rounded })
+
 let read_clip_path t : clip_path =
   Cursor.ws t;
   Cursor.one_of
@@ -7731,6 +7839,8 @@ let read_clip_path t : clip_path =
               ("circle", read_clip_path_circle);
               ("ellipse", read_clip_path_ellipse);
               ("polygon", read_clip_path_polygon);
+              ("xywh", read_clip_path_xywh);
+              ("rect", read_clip_path_rect);
             ]
           t);
     ]

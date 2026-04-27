@@ -1562,6 +1562,24 @@ type clip_path =
   | Clip_path_ellipse of length * length  (** Ellipse with rx, ry *)
   | Clip_path_polygon of (length * length) list
   | Clip_path_path of string  (** SVG path data *)
+  | Clip_path_xywh of {
+      x : length_percentage;
+      y : length_percentage;
+      width : length_percentage;
+      height : length_percentage;
+      rounded : border_radius option;
+    }
+      (** [xywh(<length-percentage>{4} [round <border-radius>]?)] - CSS Shapes
+          2. *)
+  | Clip_path_rect of {
+      top : length_percentage;
+      right : length_percentage;
+      bottom : length_percentage;
+      left : length_percentage;
+      rounded : border_radius option;
+    }
+      (** [rect(<length-percentage>{4} [round <border-radius>]?)] - CSS Shapes
+          2. *)
 
 (* Property type definition *)
 type 'a property =

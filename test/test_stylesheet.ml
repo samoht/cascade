@@ -722,6 +722,63 @@ let property_rule_edges () =
   neg_cursor read_stylesheet
     "@property color { syntax: \"*\"; inherits: false }"
 
+let spec_at_rule_descriptor_matrix_more () =
+  (* Positive and negative descriptor matrices for the at-rules that Cascade
+     models. Descriptor syntax is a spec oracle; these are not snapshots of the
+     current printer. *)
+  List.iter
+    (fun (expected, input) -> check_stylesheet ~expected input)
+    [
+      ( "@font-face {font-family:\"Brand Sans\";src:local(\"Brand \
+         Sans\"),url(brand.woff2) format(\"woff2\");font-display:fallback}",
+        "@font-face { font-family: \"Brand Sans\"; src: local(\"Brand Sans\"), \
+         url(brand.woff2) format(\"woff2\"); font-display: fallback; }" );
+      ( "@font-face \
+         {font-family:RangeFont;src:url(range.woff2);font-weight:100 \
+         900;font-style:oblique 10deg 20deg;font-stretch:50% 200%}",
+        "@font-face { font-family: RangeFont; src: url(range.woff2); \
+         font-weight: 100 900; font-style: oblique 10deg 20deg; font-stretch: \
+         50% 200%; }" );
+      ( "@font-face \
+         {font-family:Metrics;src:url(metrics.woff2);size-adjust:100%;ascent-override:normal;descent-override:20%;line-gap-override:0%}",
+        "@font-face { font-family: Metrics; src: url(metrics.woff2); \
+         size-adjust: 100%; ascent-override: normal; descent-override: 20%; \
+         line-gap-override: 0%; }" );
+      ( "@keyframes move{from{translate:none}50%{translate:10px \
+         20px}to{translate:20px 0}}",
+        "@keyframes move { from { translate: none } 50% { translate: 10px 20px \
+         } to { translate: 20px 0 } }" );
+      ( "@page chapter:right{size:letter \
+         landscape;margin:1in;@right-top{content:counter(page)}@bottom-center{content:\"Chapter\"}}",
+        "@page chapter:right { size: letter landscape; margin: 1in; @right-top \
+         { content: counter(page) } @bottom-center { content: \"Chapter\" } }"
+      );
+      ( "@property \
+         --angle-list{syntax:\"<angle>#\";inherits:false;initial-value:0deg}",
+        "@property --angle-list { syntax: \"<angle>#\"; inherits: false; \
+         initial-value: 0deg }" );
+      ( "@property --ident-or-color{syntax:\"<custom-ident> | \
+         <color>\";inherits:true;initial-value:currentColor}",
+        "@property --ident-or-color { syntax: \"<custom-ident> | <color>\"; \
+         inherits: true; initial-value: currentColor }" );
+    ];
+  List.iter
+    (neg_cursor read_stylesheet)
+    [
+      "@font-face { font-family: Brand; src: url(brand.woff2); font-weight: \
+       900 100 }";
+      "@font-face { font-family: Brand; src: url(brand.woff2); \
+       ascent-override: 120%; }";
+      "@keyframes bad { 50%, { opacity: 1 } }";
+      "@keyframes bad { from, 120% { opacity: 1 } }";
+      "@page :first:left { margin: 1cm }";
+      "@page { @top-center { display: block } }";
+      "@property --bad { syntax: \"<angle>#\"; inherits: false; initial-value: \
+       red }";
+      "@property --bad { syntax: \"<length> || <color>\"; inherits: false; \
+       initial-value: 1px }";
+    ]
+
 (** Test sheet_item variants *)
 let sheet_item_case () =
   (* Test that we can parse stylesheets with various statement types *)
@@ -1029,6 +1086,9 @@ let stylesheet_tests =
     ("page", `Quick, page_case);
     ("page margin edges", `Quick, page_margin_edges);
     ("property rule edges", `Quick, property_rule_edges);
+    ( "spec at-rule descriptor matrix edges",
+      `Quick,
+      spec_at_rule_descriptor_matrix_more );
     ("sheet_item", `Quick, sheet_item_case);
     ("ordering", `Quick, ordering);
     (* CSS parsing tests *)

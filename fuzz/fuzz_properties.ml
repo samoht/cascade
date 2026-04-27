@@ -305,6 +305,106 @@ let property_grammar_vectors =
     vector "contain" Css.Properties.read_contain Css.Properties.pp_contain
       [ "none"; "layout paint"; "strict"; "content" ]
       [ "layout layout"; "strict layout" ];
+    vector "box-sizing" Css.Properties.read_box_sizing
+      Css.Properties.pp_box_sizing
+      [ "content-box"; "border-box" ]
+      [ "padding-box"; "border-box content-box" ];
+    vector "scroll-snap-align" Css.Properties.read_scroll_snap_align
+      Css.Properties.pp_scroll_snap_align
+      [ "none"; "start"; "start end"; "center" ]
+      [ "start center end"; "foo" ];
+    vector "scroll-snap-stop" Css.Properties.read_scroll_snap_stop
+      Css.Properties.pp_scroll_snap_stop [ "normal"; "always" ]
+      [ "normal always"; "sometimes" ];
+    vector "background-repeat" Css.Properties.read_background_repeat
+      Css.Properties.pp_background_repeat
+      [ "repeat"; "no-repeat"; "repeat-x"; "space round" ]
+      [ "repeat no-repeat space"; "foo" ];
+    vector "background-size" Css.Properties.read_background_size
+      Css.Properties.pp_background_size
+      [ "auto"; "cover"; "contain"; "10px 20%" ]
+      [ "cover contain"; "-1px" ];
+    vector "background-position" Css.Properties.read_background_position
+      Css.Properties.pp_background_position
+      [ "center"; "left 10px top 20px"; "10% 20%" ]
+      [ "left top center"; "foo" ];
+    vector "mask-composite" Css.Properties.read_mask_composite
+      Css.Properties.pp_mask_composite
+      [ "add"; "subtract"; "intersect"; "exclude" ]
+      [ "source-over"; "add subtract" ];
+    vector "mask-mode" Css.Properties.read_mask_mode Css.Properties.pp_mask_mode
+      [ "match-source"; "alpha"; "luminance" ]
+      [ "match-source alpha"; "foo" ];
+    vector "mask-type" Css.Properties.read_mask_type Css.Properties.pp_mask_type
+      [ "alpha"; "luminance" ]
+      [ "match-source"; "alpha luminance" ];
+    vector "mask-box" Css.Properties.read_mask_box Css.Properties.pp_mask_box
+      [ "border-box"; "padding-box"; "content-box"; "no-clip" ]
+      [ "margin-box"; "border-box padding-box content-box content-box" ];
+    vector "resize" Css.Properties.read_resize Css.Properties.pp_resize
+      [ "none"; "both"; "horizontal"; "block" ]
+      [ "horizontal vertical"; "auto" ];
+    vector "object-fit" Css.Properties.read_object_fit
+      Css.Properties.pp_object_fit
+      [ "fill"; "contain"; "cover"; "scale-down" ]
+      [ "contain cover"; "auto" ];
+    vector "appearance" Css.Properties.read_appearance
+      Css.Properties.pp_appearance
+      [ "none"; "auto"; "textfield" ]
+      [ "none auto"; "foo" ];
+    vector "color-scheme" Css.Properties.read_color_scheme
+      Css.Properties.pp_color_scheme
+      [ "normal"; "light"; "dark"; "only light" ]
+      [ "normal light"; "only" ];
+    vector "text-overflow" Css.Properties.read_text_overflow
+      Css.Properties.pp_text_overflow
+      [ "clip"; "ellipsis"; "\"...\""; "clip ellipsis" ]
+      [ "clip ellipsis clip"; "auto" ];
+    vector "text-wrap" Css.Properties.read_text_wrap Css.Properties.pp_text_wrap
+      [ "wrap"; "nowrap"; "balance"; "pretty" ]
+      [ "wrap nowrap"; "auto" ];
+    vector "overflow-wrap" Css.Properties.read_overflow_wrap
+      Css.Properties.pp_overflow_wrap
+      [ "normal"; "break-word"; "anywhere" ]
+      [ "normal anywhere"; "break-all" ];
+    vector "hyphens" Css.Properties.read_hyphens Css.Properties.pp_hyphens
+      [ "none"; "manual"; "auto" ]
+      [ "manual auto"; "normal" ];
+    vector "animation-iteration-count"
+      Css.Properties.read_animation_iteration_count
+      Css.Properties.pp_animation_iteration_count [ "infinite"; "1"; "2.5" ]
+      [ "-1"; "infinite infinite" ];
+    vector "animation-direction" Css.Properties.read_animation_direction
+      Css.Properties.pp_animation_direction
+      [ "normal"; "reverse"; "alternate"; "alternate-reverse" ]
+      [ "normal reverse"; "forwards" ];
+    vector "animation-fill-mode" Css.Properties.read_animation_fill_mode
+      Css.Properties.pp_animation_fill_mode
+      [ "none"; "forwards"; "backwards"; "both" ]
+      [ "none forwards"; "running" ];
+    vector "animation-play-state" Css.Properties.read_animation_play_state
+      Css.Properties.pp_animation_play_state [ "running"; "paused" ]
+      [ "running paused"; "none" ];
+    vector "overscroll-behavior" Css.Properties.read_overscroll_behavior
+      Css.Properties.pp_overscroll_behavior
+      [ "auto"; "contain"; "none" ]
+      [ "contain none"; "hidden" ];
+    vector "direction" Css.Properties.read_direction Css.Properties.pp_direction
+      [ "ltr"; "rtl" ] [ "ltr rtl"; "auto" ];
+    vector "unicode-bidi" Css.Properties.read_unicode_bidi
+      Css.Properties.pp_unicode_bidi
+      [ "normal"; "embed"; "isolate"; "plaintext" ]
+      [ "normal isolate"; "auto" ];
+    vector "writing-mode" Css.Properties.read_writing_mode
+      Css.Properties.pp_writing_mode
+      [ "horizontal-tb"; "vertical-rl"; "sideways-rl" ]
+      [ "vertical"; "vertical-rl horizontal-tb" ];
+    vector "caption-side" Css.Properties.read_caption_side
+      Css.Properties.pp_caption_side [ "top"; "bottom" ]
+      [ "left"; "top bottom" ];
+    vector "field-sizing" Css.Properties.read_field_sizing
+      Css.Properties.pp_field_sizing [ "fixed"; "content" ]
+      [ "auto"; "fixed content" ];
   ]
 
 let test_property_grammar_manifest_valid buf =
@@ -316,6 +416,10 @@ let test_property_grammar_manifest_invalid buf =
   row.reject (pick row.negatives buf 1)
 
 let test_property_grammar_manifest_has_both_kinds _buf =
+  let names = List.map (fun row -> row.property) property_grammar_vectors in
+  let unique_names = List.sort_uniq String.compare names in
+  if List.length names <> List.length unique_names then
+    fail "property grammar fuzz manifest has duplicate property rows";
   List.iter
     (fun row ->
       if row.positives = [] then
