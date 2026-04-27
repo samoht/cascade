@@ -46,6 +46,56 @@ type cascade_layer_candidate = {
 (** A minimal same-origin/same-specificity cascade candidate used to model the
     layer and source-order parts of the cascade sorting order. *)
 
+type cascade_origin_candidate = {
+  origin : cascade_origin;
+      (** Origin bucket that contributes this same-property candidate. *)
+  important : bool;
+      (** Whether this candidate comes from an important declaration. *)
+  source_order : int;
+      (** Later source-order values win after origin/importance ties. *)
+  value : string;  (** Test/API payload representing the cascaded value. *)
+}
+(** A minimal same-specificity cascade candidate used to model origin,
+    importance, and source-order sorting. *)
+
+type declared_value = {
+  property : string;
+  value : string;
+  important : bool;
+  source_order : int;
+}
+(** A declared value contributed by one property declaration before cascade
+    sorting. The value is the declaration's minified CSS value string. *)
+
+type specified_value_source =
+  | Cascaded
+  | Initial_default
+  | Inherited_default
+  | Initial_keyword
+  | Inherit_keyword
+  | Unset_initial
+  | Unset_inherited
+      (** Why a specified value was selected during defaulting. *)
+
+type specified_value = {
+  specified_value : string;
+  specified_value_source : specified_value_source;
+}
+(** Result of applying the non-layout parts of specified-value defaulting. *)
+
+type value_processing_stage =
+  | Declared_value
+  | Cascaded_value
+  | Specified_value
+  | Computed_value
+  | Used_value
+  | Actual_value  (** CSS Cascade value-processing stages. *)
+
+type value_processing_error =
+  | Requires_document_context of value_processing_stage
+      (** The requested stage depends on DOM, inheritance, layout, rendering, or
+          device constraints outside this parser/serializer library. *)
+
 (** {2 Basic Rules} *)
 
 type rule = {

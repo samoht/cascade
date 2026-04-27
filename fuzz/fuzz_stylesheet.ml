@@ -90,8 +90,40 @@ let parse_stylesheet input =
   try Some (Css.Stylesheet.read_stylesheet r)
   with Css.Cursor.Parse_error _ -> None
 
+let parse_declaration input =
+  let r = Css.Cursor.of_string input in
+  try
+    match Css.Declaration.read_declaration r with
+    | None -> None
+    | Some decl ->
+        Some (Css.Declaration.string_of_declaration ~minify:true decl)
+  with Css.Cursor.Parse_error _ -> None
+
 let minified_stylesheet ss =
   Css.Stylesheet.to_string ~minify:true ss |> String.trim
+
+let starts_with ~prefix s =
+  let prefix_len = String.length prefix in
+  String.length s >= prefix_len && String.sub s 0 prefix_len = prefix
+
+let css_wide_keyword buf i =
+  pick [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ] buf i
+
+let shorthand_property buf i =
+  pick [ "margin"; "padding"; "background"; "border"; "font"; "all" ] buf i
+
+let invalid_shorthand_keyword_mix buf i =
+  let keyword = css_wide_keyword buf i in
+  pick
+    [
+      ("margin", keyword ^ " 1px");
+      ("padding", "1px " ^ keyword);
+      ("background", "green " ^ keyword);
+      ("border", "1px solid " ^ keyword);
+      ("font", "bold " ^ keyword ^ " 12pt Helvetica");
+      ("all", keyword ^ " color");
+    ]
+    buf (i + 1)
 
 let rec boundary_shape = function
   | Css.Stylesheet.Rule _ -> [ "rule" ]
@@ -278,6 +310,108 @@ let test_anonymous_layer_count_invariant buf =
   if before <> after then
     fail (Fmt.str "anonymous layer count changed: %d -> %d" before after)
 
+(** CSS Cascade section 3: CSS-wide keywords used on shorthands are whole
+    declaration values and serialize as the shorthand property plus the keyword.
+*)
+let test_shorthand_css_wide_keyword_invariant buf =
+  let property = shorthand_property buf 0 in
+  let keyword = css_wide_keyword buf 1 in
+  let input = property ^ ":" ^ keyword in
+  match parse_declaration input with
+  | None -> fail (Fmt.str "CSS-wide shorthand did not parse: %S" input)
+  | Some serialized ->
+      let expected = property ^ ":" ^ keyword in
+      if serialized <> expected then
+        fail (Fmt.str "CSS-wide shorthand changed: %S -> %S" input serialized)
+
+(** CSS Cascade section 3: CSS-wide keywords cannot be combined with other
+    component values in a single declaration, including in shorthands. *)
+let test_shorthand_css_wide_keyword_mix_rejected buf =
+  let property, value = invalid_shorthand_keyword_mix buf 0 in
+  let input = property ^ ":" ^ value in
+  match parse_declaration input with
+  | None -> ()
+  | Some serialized ->
+      fail
+        (Fmt.str "invalid shorthand keyword mix parsed: %S -> %S" input
+           serialized)
+
+(** CSS Cascade section 3.1: legacy shorthands are parse-time aliases and are
+    not chosen when serializing declarations. *)
+let test_legacy_shorthand_alias_serialization_invariant buf =
+  let input, expected =
+    pick
+      [
+        ("page-break-before:always", "break-before:page");
+        ("page-break-after:always", "break-after:page");
+        ("page-break-inside:avoid", "break-inside:avoid");
+      ]
+      buf 0
+  in
+  match parse_declaration input with
+  | None -> fail (Fmt.str "legacy shorthand alias did not parse: %S" input)
+  | Some serialized ->
+      if starts_with ~prefix:"page-break-" serialized then
+        fail
+          (Fmt.str "legacy shorthand serialized with old name: %S" serialized);
+      if serialized <> expected then
+        fail
+          (Fmt.str "legacy shorthand alias changed: %S -> %S" input serialized)
+
+(** CSS Cascade section 4.1: declared values preserve declaration source order
+    before cascade sorting. *)
+let test_declared_values_source_order_invariant buf =
+  let first_color =
+    if byte_at buf 0 mod 2 = 0 then Css.Values.hex "#ff0000"
+    else Css.Values.hex "#00ff00"
+  in
+  let second_color =
+    if byte_at buf 1 mod 2 = 0 then Css.Values.hex "#0000ff"
+    else Css.Values.hex "#ffff00"
+  in
+  let declarations =
+    [
+      Css.Declaration.color first_color;
+      Css.Declaration.margin [ Css.Values.Px 1. ];
+      Css.Declaration.important (Css.Declaration.color second_color);
+    ]
+  in
+  let colors = Css.Stylesheet.declared_values ~property:"color" declarations in
+  let orders =
+    List.map (fun (d : Css.Stylesheet.declared_value) -> d.source_order) colors
+  in
+  let important =
+    List.map (fun (d : Css.Stylesheet.declared_value) -> d.important) colors
+  in
+  if orders <> [ 0; 2 ] then
+    fail
+      (Fmt.str "declared color source order changed: %s"
+         (String.concat "," (List.map string_of_int orders)));
+  if important <> [ false; true ] then
+    fail "declared value importance did not follow declarations"
+
+(** CSS Cascade section 4.3: specified-value defaulting for [unset] depends on
+    whether the property is inherited. *)
+let test_specified_value_unset_inheritance_invariant buf =
+  let inherited = Some (pick [ "blue"; "inside"; "4.2px" ] buf 0) in
+  let initial = pick [ "black"; "outside"; "medium" ] buf 1 in
+  let inherited_property =
+    Css.Stylesheet.specified_value ~inherits:true ~initial ~inherited
+      ~cascaded:(Some "unset")
+  in
+  let non_inherited_property =
+    Css.Stylesheet.specified_value ~inherits:false ~initial ~inherited
+      ~cascaded:(Some "unset")
+  in
+  if inherited_property.specified_value <> Option.get inherited then
+    fail
+      (Fmt.str "unset inherited property did not inherit: %S"
+         inherited_property.specified_value);
+  if non_inherited_property.specified_value <> initial then
+    fail
+      (Fmt.str "unset non-inherited property did not use initial: %S"
+         non_inherited_property.specified_value)
+
 let suite =
   ( "stylesheet",
     [
@@ -303,4 +437,14 @@ let suite =
         test_layer_boundary_shape_invariant;
       test_case "anonymous layer count invariant" [ bytes ]
         test_anonymous_layer_count_invariant;
+      test_case "shorthand CSS-wide keyword invariant" [ bytes ]
+        test_shorthand_css_wide_keyword_invariant;
+      test_case "shorthand CSS-wide keyword mix rejected" [ bytes ]
+        test_shorthand_css_wide_keyword_mix_rejected;
+      test_case "legacy shorthand alias serialization invariant" [ bytes ]
+        test_legacy_shorthand_alias_serialization_invariant;
+      test_case "declared values source order invariant" [ bytes ]
+        test_declared_values_source_order_invariant;
+      test_case "specified value unset inheritance invariant" [ bytes ]
+        test_specified_value_unset_inheritance_invariant;
     ] )

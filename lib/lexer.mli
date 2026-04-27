@@ -29,8 +29,23 @@ val peek : t -> Token.t
     {!next} returns the same token. *)
 
 val reconsume : t -> Token.t -> unit
-(** [reconsume t tok] pushes [tok] back so the next {!next} returns it. At most
-    one token can be pushed back. *)
+(** [reconsume t tok] pushes [tok] back so the next {!next} returns it. The
+    pushback buffer is unbounded -- multiple [reconsume] calls stack. *)
+
+val save : t -> unit
+(** [save t] records the current position. A subsequent {!restore} replays every
+    token consumed since this {!save} so the next {!next} returns the same
+    sequence again. {!save}/{!restore}/{!commit} stack: nested saves are
+    independent, like {!Reader.save}/{!Reader.restore}. *)
+
+val restore : t -> unit
+(** [restore t] replays the tokens consumed since the most recent {!save}. Pops
+    one entry off the save stack. *)
+
+val commit : t -> unit
+(** [commit t] discards the most recent {!save} without rewinding. The replay
+    log is folded into the parent save (if any) so an outer {!restore} still
+    sees the consumed tokens. *)
 
 val is_done : t -> bool
 (** [is_done t] is [true] when no more tokens remain. *)

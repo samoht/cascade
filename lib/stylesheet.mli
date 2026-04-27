@@ -105,6 +105,66 @@ val cascade_revert_layer_candidates :
     lower-priority layers than [current_layer], modeling the candidate set used
     after [revert-layer] removes declarations from the current layer. *)
 
+val compare_cascade_origin_candidate :
+  cascade_origin_candidate -> cascade_origin_candidate -> int
+(** [compare_cascade_origin_candidate] compares same-specificity candidates by
+    origin/importance precedence, then source order. *)
+
+val winning_cascade_origin_candidate :
+  cascade_origin_candidate list -> cascade_origin_candidate option
+(** [winning_cascade_origin_candidate] returns the winning candidate using
+    {!compare_cascade_origin_candidate}. *)
+
+val cascade_revert_origin_candidates :
+  important:bool ->
+  current_origin:cascade_origin ->
+  cascade_origin_candidate list ->
+  cascade_origin_candidate list
+(** [cascade_revert_origin_candidates] returns same-importance candidates in the
+    origins exposed by a [revert] declaration from [current_origin]. *)
+
+val declared_values :
+  ?property:string -> Declaration.declaration list -> declared_value list
+(** [declared_values ?property declarations] returns the declared values
+    contributed by [declarations], preserving declaration source order. When
+    [property] is supplied, only declarations for that property are returned. *)
+
+val cascaded_value : cascade_origin_candidate list -> string option
+(** [cascaded_value candidates] returns the winning cascaded value payload, or
+    [None] when no candidate contributes a value. *)
+
+val specified_value :
+  inherits:bool ->
+  initial:string ->
+  inherited:string option ->
+  cascaded:string option ->
+  specified_value
+(** [specified_value ~inherits ~initial ~inherited ~cascaded] models the
+    defaulting step that produces a specified value from a cascaded value for
+    [initial], [inherit], and [unset]. [inherited = None] means the element has
+    no parent value and falls back to [initial]. *)
+
+val value_processing_requires_document_context : value_processing_stage -> bool
+(** [value_processing_requires_document_context stage] is [true] for stages this
+    parser/serializer cannot compute without document, inheritance, layout,
+    rendering, or device context. *)
+
+val computed_value :
+  property:string -> specified:string -> (string, value_processing_error) result
+(** [computed_value ~property ~specified] is the API entry point for CSS
+    computed values. It currently returns
+    [Error (Requires_document_context Computed_value)]. *)
+
+val used_value :
+  property:string -> computed:string -> (string, value_processing_error) result
+(** [used_value ~property ~computed] is the API entry point for CSS used values.
+    It currently returns [Error (Requires_document_context Used_value)]. *)
+
+val actual_value :
+  property:string -> used:string -> (string, value_processing_error) result
+(** [actual_value ~property ~used] is the API entry point for CSS actual values.
+    It currently returns [Error (Requires_document_context Actual_value)]. *)
+
 val starting_style_nested : Declaration.declaration list -> statement
 (** [starting_style_nested declarations] creates a [@starting-style] rule for
     CSS nesting, containing bare declarations (no selector). Used inside rules

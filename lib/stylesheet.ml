@@ -59,15 +59,18 @@ let cascade_layer_precedence_rank ~layer_order ~important layer =
       let i = Option.value ~default:layer_count (index_of name 0 layer_order) in
       layer_count - i
 
-let compare_cascade_layer_candidate ~layer_order a b =
-  let key c =
+let compare_cascade_layer_candidate ~layer_order (a : cascade_layer_candidate)
+    (b : cascade_layer_candidate) =
+  let key (c : cascade_layer_candidate) =
     ( (if c.important then 1 else 0),
       cascade_layer_precedence_rank ~layer_order ~important:c.important c.layer,
       c.source_order )
   in
   compare (key a) (key b)
 
-let winning_cascade_layer_candidate ~layer_order = function
+let winning_cascade_layer_candidate ~layer_order
+    (candidates : cascade_layer_candidate list) =
+  match candidates with
   | [] -> None
   | first :: rest ->
       Some
@@ -80,16 +83,111 @@ let winning_cascade_layer_candidate ~layer_order = function
            first rest)
 
 let cascade_revert_layer_candidates ~layer_order ~important ~current_layer
-    candidates =
+    (candidates : cascade_layer_candidate list) =
   let current_rank =
     cascade_layer_precedence_rank ~layer_order ~important current_layer
   in
   List.filter
-    (fun candidate ->
+    (fun (candidate : cascade_layer_candidate) ->
       candidate.important = important
       && cascade_layer_precedence_rank ~layer_order ~important candidate.layer
          < current_rank)
     candidates
+
+let compare_cascade_origin_candidate (a : cascade_origin_candidate)
+    (b : cascade_origin_candidate) =
+  let key (c : cascade_origin_candidate) =
+    (origin_importance_rank ~important:c.important c.origin, c.source_order)
+  in
+  compare (key a) (key b)
+
+let winning_cascade_origin_candidate
+    (candidates : cascade_origin_candidate list) =
+  match candidates with
+  | [] -> None
+  | first :: rest ->
+      Some
+        (List.fold_left
+           (fun winner candidate ->
+             if compare_cascade_origin_candidate winner candidate < 0 then
+               candidate
+             else winner)
+           first rest)
+
+let revert_origin_rollback_origins = function
+  | User_agent -> []
+  | User -> [ User_agent ]
+  | Author_presentational_hint | Author | Animation -> [ User_agent; User ]
+  | Transition ->
+      [ User_agent; User; Author_presentational_hint; Author; Animation ]
+
+let cascade_revert_origin_candidates ~important ~current_origin
+    (candidates : cascade_origin_candidate list) =
+  let origins = revert_origin_rollback_origins current_origin in
+  List.filter
+    (fun (candidate : cascade_origin_candidate) ->
+      candidate.important = important
+      && List.exists (( = ) candidate.origin) origins)
+    candidates
+
+let declared_values ?property declarations =
+  declarations
+  |> List.mapi (fun source_order declaration ->
+      let declaration_property = Declaration.property_name declaration in
+      let value = Declaration.string_of_value ~minify:true declaration in
+      {
+        property = declaration_property;
+        value;
+        important = Declaration.is_important declaration;
+        source_order;
+      })
+  |> List.filter (fun declared ->
+      match property with
+      | None -> true
+      | Some property -> declared.property = property)
+
+let cascaded_value candidates =
+  winning_cascade_origin_candidate candidates
+  |> Option.map (fun (c : cascade_origin_candidate) -> c.value)
+
+let specified_value ~inherits ~initial ~inherited ~cascaded =
+  let inherited_or_initial () = Option.value ~default:initial inherited in
+  match cascaded with
+  | Some "initial" ->
+      { specified_value = initial; specified_value_source = Initial_keyword }
+  | Some "inherit" ->
+      {
+        specified_value = inherited_or_initial ();
+        specified_value_source = Inherit_keyword;
+      }
+  | Some "unset" when inherits ->
+      {
+        specified_value = inherited_or_initial ();
+        specified_value_source = Unset_inherited;
+      }
+  | Some "unset" ->
+      { specified_value = initial; specified_value_source = Unset_initial }
+  | Some value -> { specified_value = value; specified_value_source = Cascaded }
+  | None when inherits ->
+      {
+        specified_value = inherited_or_initial ();
+        specified_value_source = Inherited_default;
+      }
+  | None ->
+      { specified_value = initial; specified_value_source = Initial_default }
+
+let value_processing_requires_document_context = function
+  | Declared_value | Cascaded_value | Specified_value -> false
+  | Computed_value | Used_value | Actual_value -> true
+
+let computed_value ~property:_ ~specified:_ =
+  Error (Requires_document_context Computed_value)
+
+let used_value ~property:_ ~computed:_ =
+  Error (Requires_document_context Used_value)
+
+let actual_value ~property:_ ~used:_ =
+  Error (Requires_document_context Actual_value)
 
 let starting_style_nested declarations =
   Starting_style [ Declarations declarations ]

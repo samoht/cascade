@@ -1185,6 +1185,34 @@ let test_spec_cascade_section_6_4_import_layer_syntax () =
   neg_cursor read_import_rule "@import url(theme.css) layer(framework,theme);"
 
 (* Not a roundtrip test *)
+let test_spec_cascade_section_2_import_conditions () =
+  (* CSS Cascade sections 2 and 2.1: @import accepts url/string sources,
+     optional layer or layer(<layer-name>), optional supports(), and optional
+     media query lists. A declaration inside supports() is equivalent to the
+     same declaration wrapped as a supports condition. *)
+  check_import_rule ~expected:"@import \"mystyle.css\";"
+    "@import url(mystyle.css);";
+  check_import_rule ~expected:"@import \"mystyle.css\";"
+    "@import \"mystyle.css\";";
+  check_import_rule
+    ~expected:"@import \"narrow.css\" supports(display:flex) handheld;"
+    "@import url(narrow.css) supports(display: flex) handheld;";
+  check_import_rule
+    ~expected:"@import \"narrow.css\" supports((display:flex)) handheld;"
+    "@import url(narrow.css) supports((display: flex)) handheld;";
+  check_import_rule
+    ~expected:
+      "@import \"layout.css\" layer(framework.component) \
+       supports(display:grid) screen and (min-width:30em);"
+    "@import url(layout.css) layer(framework.component) supports(display: \
+     grid) screen and (min-width: 30em);";
+  check_import_rule ~expected:"@import \"bluish.css\" projection,tv;"
+    "@import url(bluish.css) projection, tv;";
+  neg_cursor read_import_rule "@import url(theme.css) supports();";
+  neg_cursor read_import_rule "@import url(theme.css) supports(display);";
+  neg_cursor read_import_rule "@import layer(default) url(theme.css);"
+
+(* Not a roundtrip test *)
 let test_spec_cascade_section_6_4_import_namespace_ordering () =
   (* CSS Cascade sections 2 and 6.4.4.2: empty @layer statements may appear
      before @import, but @layer rules must not be interleaved with consecutive
@@ -1275,6 +1303,164 @@ let test_spec_cascade_section_8_layer_api () =
     "non-statement layer has no nameList" None
     (Css.Stylesheet.layer_statement_name_list
        (Css.Stylesheet.Layer (Some "reset", [])))
+
+(* Not a roundtrip test *)
+let test_spec_cascade_section_4_1_declared_values () =
+  (* CSS Cascade section 4.1: each property declaration applied to an element
+     contributes a declared value for that element/property. The library can
+     expose those declaration-level values without resolving selector
+     matching. *)
+  let declarations =
+    [
+      Css.Declaration.color (Css.Values.hex "#ff0000");
+      Css.Declaration.margin [ Css.Values.Px 1. ];
+      Css.Declaration.important
+        (Css.Declaration.color (Css.Values.hex "#0000ff"));
+      Css.Declaration.custom_property "--accent" "currentColor";
+    ]
+  in
+  let declared = Css.Stylesheet.declared_values declarations in
+  let color_declared =
+    Css.Stylesheet.declared_values ~property:"color" declarations
+  in
+  let declared_property (d : Css.Stylesheet.declared_value) = d.property in
+  let declared_value (d : Css.Stylesheet.declared_value) = d.value in
+  let declared_important (d : Css.Stylesheet.declared_value) = d.important in
+  let declared_source_order (d : Css.Stylesheet.declared_value) =
+    d.source_order
+  in
+  Alcotest.(check (list string))
+    "declared values preserve every declaration property"
+    [ "color"; "margin"; "color"; "--accent" ]
+    (List.map declared_property declared);
+  Alcotest.(check (list string))
+    "declared values expose serialized values"
+    [ "#ff0000"; "1px"; "#0000ff"; "currentColor" ]
+    (List.map declared_value declared);
+  Alcotest.(check (list int))
+    "declared values preserve source order" [ 0; 1; 2; 3 ]
+    (List.map declared_source_order declared);
+  Alcotest.(check (list string))
+    "declared value filtering selects one property" [ "#ff0000"; "#0000ff" ]
+    (List.map declared_value color_declared);
+  Alcotest.(check (list bool))
+    "declared values preserve importance for cascade sorting" [ false; true ]
+    (List.map declared_important color_declared)
+
+(* Not a roundtrip test *)
+let test_spec_cascade_section_4_2_cascaded_values () =
+  (* CSS Cascade section 4.2: after cascade sorting there is at most one
+     cascaded value per property. No matching declaration means no cascaded
+     value. *)
+  let candidate origin important source_order value :
+      Css.Stylesheet.cascade_origin_candidate =
+    { origin; important; source_order; value }
+  in
+  Alcotest.(check (option string))
+    "empty candidate set has no cascaded value" None
+    (Css.Stylesheet.cascaded_value []);
+  Alcotest.(check (option string))
+    "highest origin/importance candidate becomes the cascaded value"
+    (Some "author-important")
+    (Css.Stylesheet.cascaded_value
+       [
+         candidate User_agent false 0 "ua-normal";
+         candidate User false 1 "user-normal";
+         candidate Author false 2 "author-normal";
+         candidate Author true 3 "author-important";
+       ]);
+  Alcotest.(check (option string))
+    "source order breaks ties within one origin/importance bucket"
+    (Some "later")
+    (Css.Stylesheet.cascaded_value
+       [
+         candidate Author false 10 "earlier"; candidate Author false 11 "later";
+       ])
+
+let specified_source_name = function
+  | Css.Stylesheet.Cascaded -> "cascaded"
+  | Initial_default -> "initial-default"
+  | Inherited_default -> "inherited-default"
+  | Initial_keyword -> "initial-keyword"
+  | Inherit_keyword -> "inherit-keyword"
+  | Unset_initial -> "unset-initial"
+  | Unset_inherited -> "unset-inherited"
+
+let check_specified name expected_value expected_source actual =
+  Alcotest.(check string)
+    (name ^ " value") expected_value actual.specified_value;
+  Alcotest.(check string)
+    (name ^ " source") expected_source
+    (specified_source_name actual.specified_value_source)
+
+(* Not a roundtrip test *)
+let test_spec_cascade_section_4_3_specified_values () =
+  (* CSS Cascade section 4.3: defaulting guarantees a specified value exists for
+     every property. CSS-wide keywords are handled before computed values. *)
+  check_specified "normal cascaded value" "block" "cascaded"
+    (Css.Stylesheet.specified_value ~inherits:false ~initial:"inline"
+       ~inherited:None ~cascaded:(Some "block"));
+  check_specified "missing non-inherited property" "auto" "initial-default"
+    (Css.Stylesheet.specified_value ~inherits:false ~initial:"auto"
+       ~inherited:None ~cascaded:None);
+  check_specified "missing inherited property" "blue" "inherited-default"
+    (Css.Stylesheet.specified_value ~inherits:true ~initial:"black"
+       ~inherited:(Some "blue") ~cascaded:None);
+  check_specified "initial keyword" "medium" "initial-keyword"
+    (Css.Stylesheet.specified_value ~inherits:true ~initial:"medium"
+       ~inherited:(Some "large") ~cascaded:(Some "initial"));
+  check_specified "inherit keyword" "4.2px" "inherit-keyword"
+    (Css.Stylesheet.specified_value ~inherits:false ~initial:"medium"
+       ~inherited:(Some "4.2px") ~cascaded:(Some "inherit"));
+  check_specified "inherit keyword on root" "medium" "inherit-keyword"
+    (Css.Stylesheet.specified_value ~inherits:false ~initial:"medium"
+       ~inherited:None ~cascaded:(Some "inherit"));
+  check_specified "unset on inherited property" "inside" "unset-inherited"
+    (Css.Stylesheet.specified_value ~inherits:true ~initial:"outside"
+       ~inherited:(Some "inside") ~cascaded:(Some "unset"));
+  check_specified "unset on non-inherited property" "auto" "unset-initial"
+    (Css.Stylesheet.specified_value ~inherits:false ~initial:"auto"
+       ~inherited:(Some "80px") ~cascaded:(Some "unset"))
+
+let value_processing_stage_name = function
+  | Css.Stylesheet.Declared_value -> "declared"
+  | Cascaded_value -> "cascaded"
+  | Specified_value -> "specified"
+  | Computed_value -> "computed"
+  | Used_value -> "used"
+  | Actual_value -> "actual"
+
+let expect_context_error expected = function
+  | Error (Css.Stylesheet.Requires_document_context actual) ->
+      Alcotest.(check string)
+        "document-context error stage"
+        (value_processing_stage_name expected)
+        (value_processing_stage_name actual)
+  | Ok value -> Alcotest.failf "expected document-context error, got %S" value
+
+(* Not a roundtrip test *)
+let test_spec_cascade_section_4_4_to_4_8_value_processing_stubs () =
+  (* CSS Cascade sections 4.4-4.8 depend on document, inheritance, layout,
+     rendering, device constraints, and sometimes fragment-specific context. The
+     public stubs make that boundary executable. *)
+  Alcotest.(check (list bool))
+    "declared/cascaded/specified are library-local; later stages need context"
+    [ false; false; false; true; true; true ]
+    (List.map Css.Stylesheet.value_processing_requires_document_context
+       [
+         Css.Stylesheet.Declared_value;
+         Cascaded_value;
+         Specified_value;
+         Computed_value;
+         Used_value;
+         Actual_value;
+       ]);
+  expect_context_error Computed_value
+    (Css.Stylesheet.computed_value ~property:"font-size" ~specified:"1.2em");
+  expect_context_error Used_value
+    (Css.Stylesheet.used_value ~property:"width" ~computed:"auto");
+  expect_context_error Actual_value
+    (Css.Stylesheet.actual_value ~property:"border-top-width" ~used:"4.2px")
 
 (** {2 CSS Nesting Round-trip Tests} *)
 
@@ -1418,6 +1604,9 @@ let additional_tests =
     ( "spec cascade 6.4 import layer syntax",
       `Quick,
       test_spec_cascade_section_6_4_import_layer_syntax );
+    ( "spec cascade 2 import conditions",
+      `Quick,
+      test_spec_cascade_section_2_import_conditions );
     ( "spec cascade 6.4 import namespace ordering",
       `Quick,
       test_spec_cascade_section_6_4_import_namespace_ordering );
@@ -1425,6 +1614,18 @@ let additional_tests =
       `Quick,
       test_spec_cascade_section_6_4_invalid_layer_names );
     ("spec cascade 8 layer api", `Quick, test_spec_cascade_section_8_layer_api);
+    ( "spec cascade 4.1 declared values",
+      `Quick,
+      test_spec_cascade_section_4_1_declared_values );
+    ( "spec cascade 4.2 cascaded values",
+      `Quick,
+      test_spec_cascade_section_4_2_cascaded_values );
+    ( "spec cascade 4.3 specified values",
+      `Quick,
+      test_spec_cascade_section_4_3_specified_values );
+    ( "spec cascade 4.4-4.8 value processing stubs",
+      `Quick,
+      test_spec_cascade_section_4_4_to_4_8_value_processing_stubs );
     ( "partial recovery: bad declaration does not poison sibling rule",
       `Quick,
       fun () ->

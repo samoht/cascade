@@ -906,6 +906,53 @@ let spec_cascade_section_7_defaulting_keywords () =
   neg_cursor read_declaration "margin: revert-layer 1rem";
   neg_cursor read_declaration "color: inherit red"
 
+let spec_cascade_section_3_shorthand_properties () =
+  (* CSS Cascade section 3: shorthand declarations set all of their longhand
+     sub-properties as if expanded in place. Omitted sub-properties are reset to
+     their initial values unless the individual shorthand says otherwise. *)
+  check_declaration ~expected:"margin:1px 2px 3px 4px" "margin: 1px 2px 3px 4px";
+  check_declaration ~expected:"padding:1em 2em" "padding: 1em 2em";
+  check_declaration ~expected:"background:green" "background: green";
+  check_declaration ~expected:"border:1px solid red" "border: 1px solid red";
+  check_declaration ~expected:"font:bold 12pt/14pt Helvetica"
+    "font: bold 12pt/14pt Helvetica";
+  check_declaration ~expected:"margin:inherit" "margin: inherit";
+  check_declaration ~expected:"padding:initial" "padding: initial";
+  check_declaration ~expected:"background:unset" "background: unset";
+  check_declaration ~expected:"border:revert" "border: revert";
+  check_declaration ~expected:"font:revert-layer" "font: revert-layer";
+  neg_cursor read_declaration "margin: inherit 1px";
+  neg_cursor read_declaration "padding: 1px initial";
+  neg_cursor read_declaration "background: green inherit";
+  neg_cursor read_declaration "border: 1px solid revert";
+  neg_cursor read_declaration "font: bold inherit 12pt Helvetica"
+
+let spec_cascade_section_3_property_aliasing () =
+  (* CSS Cascade section 3.1: legacy shorthands behave as shorthands at parse
+     time but are not selected for serialization. The spec example maps
+     page-break-before: always to break-before: page. *)
+  check_declaration ~expected:"break-before:page" "page-break-before: always";
+  check_declaration ~expected:"break-after:page" "page-break-after: always";
+  check_declaration ~expected:"break-inside:avoid" "page-break-inside: avoid";
+  neg_cursor read_declaration "page-break-before: recto";
+  neg_cursor read_declaration "page-break-after: revert always";
+  neg_cursor read_declaration "page-break-inside: avoid-page"
+
+let spec_cascade_section_3_all_property () =
+  (* CSS Cascade section 3.2: [all] is a shorthand that accepts only CSS-wide
+     keywords and resets all CSS properties except direction, unicode-bidi, and
+     custom properties. The parser surface can verify the allowed value set. *)
+  check_declaration ~expected:"all:initial" "all: initial";
+  check_declaration ~expected:"all:inherit" "all: inherit";
+  check_declaration ~expected:"all:unset" "all: unset";
+  check_declaration ~expected:"all:revert" "all: revert";
+  check_declaration ~expected:"all:revert-layer" "all: revert-layer";
+  neg_cursor read_declaration "all: auto";
+  neg_cursor read_declaration "all: none";
+  neg_cursor read_declaration "all: initial inherit";
+  neg_cursor read_declaration "all: revert-layer color";
+  neg_cursor read_declaration "all: var(--reset)"
+
 let comments () =
   (* Comments around colon and inside values *)
   check_declaration ~expected:"color:red" "color/*c*/:/**/red";
@@ -1069,6 +1116,12 @@ let declaration_tests =
     test_case "invalid declarations" `Quick invalid;
     (* Spec details and edge cases *)
     test_case "CSS-wide keywords" `Quick css_wide_keywords;
+    test_case "spec cascade 3 shorthand properties" `Quick
+      spec_cascade_section_3_shorthand_properties;
+    test_case "spec cascade 3.1 property aliasing" `Quick
+      spec_cascade_section_3_property_aliasing;
+    test_case "spec cascade 3.2 all property" `Quick
+      spec_cascade_section_3_all_property;
     test_case "spec cascade 7 defaulting keywords" `Quick
       spec_cascade_section_7_defaulting_keywords;
     test_case "comments handling" `Quick comments;

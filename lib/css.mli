@@ -220,6 +220,69 @@ val cascade_revert_layer_candidates :
 (** [cascade_revert_layer_candidates] returns same-importance candidates in
     lower-priority layers than the current [revert-layer] declaration. *)
 
+val compare_cascade_origin_candidate :
+  Stylesheet.cascade_origin_candidate ->
+  Stylesheet.cascade_origin_candidate ->
+  int
+(** [compare_cascade_origin_candidate] compares same-specificity candidates by
+    origin/importance precedence, then source order. *)
+
+val winning_cascade_origin_candidate :
+  Stylesheet.cascade_origin_candidate list ->
+  Stylesheet.cascade_origin_candidate option
+(** [winning_cascade_origin_candidate] returns the winning candidate using
+    {!compare_cascade_origin_candidate}. *)
+
+val cascade_revert_origin_candidates :
+  important:bool ->
+  current_origin:cascade_origin ->
+  Stylesheet.cascade_origin_candidate list ->
+  Stylesheet.cascade_origin_candidate list
+(** [cascade_revert_origin_candidates] returns same-importance candidates in the
+    origins exposed by a [revert] declaration from [current_origin]. *)
+
+val declared_values :
+  ?property:string -> declaration list -> Stylesheet.declared_value list
+(** [declared_values ?property declarations] returns declared values in source
+    order, optionally filtered to one property. *)
+
+val cascaded_value : Stylesheet.cascade_origin_candidate list -> string option
+(** [cascaded_value candidates] returns the winning cascaded value payload, or
+    [None] when no candidate contributes a value. *)
+
+val specified_value :
+  inherits:bool ->
+  initial:string ->
+  inherited:string option ->
+  cascaded:string option ->
+  Stylesheet.specified_value
+(** [specified_value ~inherits ~initial ~inherited ~cascaded] models the
+    defaulting step from cascaded value to specified value for the non-layout
+    cases represented by this library. *)
+
+val value_processing_requires_document_context :
+  Stylesheet.value_processing_stage -> bool
+(** [value_processing_requires_document_context stage] reports whether [stage]
+    needs document/layout/rendering context outside this library. *)
+
+val computed_value :
+  property:string ->
+  specified:string ->
+  (string, Stylesheet.value_processing_error) result
+(** Stub entry point for CSS computed values. *)
+
+val used_value :
+  property:string ->
+  computed:string ->
+  (string, Stylesheet.value_processing_error) result
+(** Stub entry point for CSS used values. *)
+
+val actual_value :
+  property:string ->
+  used:string ->
+  (string, Stylesheet.value_processing_error) result
+(** Stub entry point for CSS actual values. *)
+
 val map :
   (Selector.t -> declaration list -> statement) ->
   statement list ->
