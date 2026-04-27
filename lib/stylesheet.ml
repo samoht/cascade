@@ -1584,7 +1584,19 @@ let pp_import_rule : import_rule Pp.t =
   Option.iter
     (fun s ->
       Pp.string ctx " supports(";
-      Pp.string ctx (Supports.to_string s);
+      (* CSS Imports section 2 [@import supports(...)] keeps the same
+         <supports-condition> grammar as the standalone at-rule, but a single
+         declaration inside [supports()] is conventionally written without outer
+         parens (e.g. [supports(display:grid)]). Emit the inner declaration
+         directly when the condition is a bare [Property]; fall through to the
+         structured printer otherwise. *)
+      (match s with
+      | Supports.Property (prop, value) ->
+          Pp.string ctx prop;
+          Pp.char ctx ':';
+          Pp.space_if_pretty ctx ();
+          Pp.string ctx value
+      | _ -> Supports.pp ctx s);
       Pp.char ctx ')')
     supports;
   Option.iter

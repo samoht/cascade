@@ -207,13 +207,29 @@ let top_level_colon s =
 (** Parse <supports-in-parens>:
     - ( <supports-condition> )
     - ( <declaration> ) → Property
-    - <function-token> <any> ) → Func / selector *)
+    - <function-token> <any> ) → Func / selector
+    - <declaration> with no surrounding parens (browser-compatible relaxation
+      used by [@import supports(prop:value)]) → Property *)
 let rec parse_supports_in_parens sc =
   skip_ws sc;
   if at_end sc then failwith "Unexpected end of @supports condition";
   match peek sc with
   | Some '(' -> parse_paren_content sc
-  | _ -> parse_function sc
+  | _ -> (
+      (* If the remaining input has a top-level ':' that isn't part of a
+         pseudo-class function call, treat it as an unwrapped <declaration>. *)
+      let remaining = String.sub sc.s sc.pos (String.length sc.s - sc.pos) in
+      match top_level_colon remaining with
+      | Some colon_pos ->
+          let prop = String.sub remaining 0 colon_pos |> String.trim in
+          let value =
+            String.sub remaining (colon_pos + 1)
+              (String.length remaining - colon_pos - 1)
+            |> String.trim
+          in
+          sc.pos <- String.length sc.s;
+          Property (prop, value)
+      | None -> parse_function sc)
 
 (** Parse parenthesised content: could be property test or grouped condition. *)
 and parse_paren_content sc =
