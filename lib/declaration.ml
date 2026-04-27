@@ -298,6 +298,31 @@ let read_font_palette t =
       "dark"
   | _ -> read_dashed_ident t
 
+(* CSS Scroll-driven Animations: [animation-timeline = none | auto |
+   <dashed-ident> | scroll() | view()]. Functions must be terminated; [scroll(]
+   (no closing [)]) is rejected. *)
+let read_animation_timeline t =
+  Cursor.ws t;
+  match Cursor.peek t with
+  | Some (Component.Func fn) when not fn.node.terminated ->
+      Cursor.err_invalid t
+        (String.concat "" [ "unterminated function "; fn.node.name; "(...)" ])
+  | Some (Component.Func fn)
+    when fn.node.name = "scroll" || fn.node.name = "view" ->
+      let _ = Cursor.next t in
+      let buf = Buffer.create 16 in
+      Buffer.add_string buf fn.node.name;
+      Buffer.add_char buf '(';
+      Buffer.add_string buf (Parser.to_string fn.node.arguments);
+      Buffer.add_char buf ')';
+      Buffer.contents buf
+  | _ -> (
+      match Cursor.peek_ident t with
+      | Some ("none" as s) | Some ("auto" as s) ->
+          let _ = Cursor.ident t in
+          s
+      | _ -> read_dashed_ident t)
+
 (* Some properties (shape-margin, scroll-margin, padding, etc.) require a
    non-negative length-percentage. Detect a leading [-] number/percentage and
    reject before delegating to the typed reader. *)
@@ -682,7 +707,7 @@ let read_value (type a) (prop : a property) t : declaration =
              ("trim-both", "trim-both");
            ]
            t)
-  | Animation_timeline -> v Animation_timeline (read_raw_value t)
+  | Animation_timeline -> v Animation_timeline (read_animation_timeline t)
   | Animation_range -> v Animation_range (read_raw_value t)
   | View_transition_name -> v View_transition_name (read_raw_value t)
   | Image_orientation -> v Image_orientation (read_raw_value t)
