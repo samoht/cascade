@@ -250,6 +250,22 @@ val cascaded_value : Stylesheet.cascade_origin_candidate list -> string option
 (** [cascaded_value candidates] returns the winning cascaded value payload, or
     [None] when no candidate contributes a value. *)
 
+val compare_cascade_candidate :
+  layer_order:string list ->
+  Stylesheet.cascade_candidate ->
+  Stylesheet.cascade_candidate ->
+  int
+(** [compare_cascade_candidate ~layer_order a b] compares full same-property
+    cascade candidates by origin/importance, layer, specificity, scoping
+    proximity, and source order. *)
+
+val winning_cascade_candidate :
+  layer_order:string list ->
+  Stylesheet.cascade_candidate list ->
+  Stylesheet.cascade_candidate option
+(** [winning_cascade_candidate ~layer_order candidates] returns the highest
+    priority full cascade candidate. *)
+
 val specified_value :
   inherits:bool ->
   initial:string ->
@@ -260,10 +276,42 @@ val specified_value :
     defaulting step from cascaded value to specified value for the non-layout
     cases represented by this library. *)
 
+val specified_value_after_revert :
+  inherits:bool ->
+  initial:string ->
+  inherited:string option ->
+  Stylesheet.cascade_origin_candidate list ->
+  Stylesheet.specified_value
+(** [specified_value_after_revert] chains [revert] rollbacks through the origin
+    stack until a non-[revert] winner remains, then defaults. *)
+
+val specified_value_after_revert_layer :
+  inherits:bool ->
+  initial:string ->
+  inherited:string option ->
+  layer_order:string list ->
+  Stylesheet.cascade_layer_candidate list ->
+  Stylesheet.specified_value
+(** [specified_value_after_revert_layer] is the [revert-layer] analogue, chained
+    through the layer stack. *)
+
 val value_processing_requires_document_context :
   Stylesheet.value_processing_stage -> bool
 (** [value_processing_requires_document_context stage] reports whether [stage]
     needs document/layout/rendering context outside this library. *)
+
+val declared_values_for_element :
+  ?element:string ->
+  statement list ->
+  (Stylesheet.declared_value list, Stylesheet.value_processing_error) result
+(** Stub entry point for selector-filtered declared values applied to an
+    element. *)
+
+val normalize_value_alias :
+  property:string ->
+  value:string ->
+  (string, Stylesheet.value_processing_error) result
+(** Stub entry point for CSS legacy value aliases. *)
 
 val computed_value :
   property:string ->
@@ -282,6 +330,19 @@ val actual_value :
   used:string ->
   (string, Stylesheet.value_processing_error) result
 (** Stub entry point for CSS actual values. *)
+
+val applicable_property :
+  property:string ->
+  box:string ->
+  (bool, Stylesheet.value_processing_error) result
+(** Stub entry point for applicability checks. *)
+
+val per_fragment_value :
+  property:string ->
+  fragment:string ->
+  computed:string ->
+  (string, Stylesheet.value_processing_error) result
+(** Stub entry point for per-fragment value processing. *)
 
 val map :
   (Selector.t -> declaration list -> statement) ->

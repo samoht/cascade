@@ -133,6 +133,17 @@ val cascaded_value : cascade_origin_candidate list -> string option
 (** [cascaded_value candidates] returns the winning cascaded value payload, or
     [None] when no candidate contributes a value. *)
 
+val compare_cascade_candidate :
+  layer_order:string list -> cascade_candidate -> cascade_candidate -> int
+(** [compare_cascade_candidate ~layer_order a b] compares full same-property
+    cascade candidates by origin/importance, layer, specificity, scoping
+    proximity, and source order. *)
+
+val winning_cascade_candidate :
+  layer_order:string list -> cascade_candidate list -> cascade_candidate option
+(** [winning_cascade_candidate ~layer_order candidates] returns the highest
+    priority full cascade candidate. *)
+
 val specified_value :
   inherits:bool ->
   initial:string ->
@@ -144,10 +155,46 @@ val specified_value :
     [initial], [inherit], and [unset]. [inherited = None] means the element has
     no parent value and falls back to [initial]. *)
 
+val specified_value_after_revert :
+  inherits:bool ->
+  initial:string ->
+  inherited:string option ->
+  cascade_origin_candidate list ->
+  specified_value
+(** [specified_value_after_revert] resolves a chain of [revert] winners by
+    rolling back to the next-lower origin until a non-revert candidate (or none)
+    survives, then defaults the result. The rollback context is taken from each
+    winning candidate, so callers do not need to pass [current_origin]. *)
+
+val specified_value_after_revert_layer :
+  inherits:bool ->
+  initial:string ->
+  inherited:string option ->
+  layer_order:string list ->
+  cascade_layer_candidate list ->
+  specified_value
+(** [specified_value_after_revert_layer] is the [revert-layer] analogue of
+    {!specified_value_after_revert}: chains rollback through the lower-priority
+    layers until a non-[revert-layer] winner remains. *)
+
 val value_processing_requires_document_context : value_processing_stage -> bool
 (** [value_processing_requires_document_context stage] is [true] for stages this
     parser/serializer cannot compute without document, inheritance, layout,
     rendering, or device context. *)
+
+val declared_values_for_element :
+  ?element:string ->
+  stylesheet ->
+  (declared_value list, value_processing_error) result
+(** [declared_values_for_element ?element stylesheet] is the API entry point for
+    selector-filtered declared values applied to a document element. It
+    currently returns [Error (Requires_document_context Declared_value)]. *)
+
+val normalize_value_alias :
+  property:string -> value:string -> (string, value_processing_error) result
+(** [normalize_value_alias ~property ~value] is the API entry point for CSS
+    legacy value aliases. It currently returns
+    [Error (Unsupported_value_alias ...)]. *)
 
 val computed_value :
   property:string -> specified:string -> (string, value_processing_error) result
@@ -164,6 +211,21 @@ val actual_value :
   property:string -> used:string -> (string, value_processing_error) result
 (** [actual_value ~property ~used] is the API entry point for CSS actual values.
     It currently returns [Error (Requires_document_context Actual_value)]. *)
+
+val applicable_property :
+  property:string -> box:string -> (bool, value_processing_error) result
+(** [applicable_property ~property ~box] is the API entry point for determining
+    whether a property applies to an element or box type. It currently returns
+    [Error (Requires_document_context Used_value)]. *)
+
+val per_fragment_value :
+  property:string ->
+  fragment:string ->
+  computed:string ->
+  (string, value_processing_error) result
+(** [per_fragment_value ~property ~fragment ~computed] is the API entry point
+    for CSS per-fragment value processing. It currently returns
+    [Error (Requires_document_context Used_value)]. *)
 
 val starting_style_nested : Declaration.declaration list -> statement
 (** [starting_style_nested declarations] creates a [@starting-style] rule for

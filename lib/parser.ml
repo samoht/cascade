@@ -323,14 +323,14 @@ let rec cv_to_buffer_min buf = function
       Buffer.add_char buf ')'
 
 and cvs_to_buffer_min buf cvs =
+  let rec drop_ws = function
+    | cv :: rest when is_whitespace cv -> drop_ws rest
+    | other -> other
+  in
   let rec loop prev = function
     | [] -> ()
-    | Component.Preserved { kind = Token.Whitespace; _ } :: rest ->
-        let rec skip_ws = function
-          | Component.Preserved { kind = Token.Whitespace; _ } :: r -> skip_ws r
-          | other -> other
-        in
-        let rest' = skip_ws rest in
+    | cv :: rest when is_whitespace cv ->
+        let rest' = drop_ws rest in
         (match rest' with
         | next :: _
           when (match prev with
@@ -352,6 +352,16 @@ let to_string_minified cvs =
   Buffer.contents buf
 
 (** {1 Rule / declaration consumers (section 5.3)} *)
+
+(* Drop a run of whitespace tokens from [lexer]. Used by the entry-point parsers
+   that need to honour the spec's "skip surrounding whitespace" steps without
+   leaking the loop body. *)
+let rec skip_whitespace_tokens lexer =
+  match (Lexer.peek lexer).Token.kind with
+  | Token.Whitespace ->
+      let _ = Lexer.next lexer in
+      skip_whitespace_tokens lexer
+  | _ -> ()
 
 (* Push a warning, attaching a source snippet from the lexer's reader when [meta
    = `Full] so section 5.3 recovery warnings carry the same context as raised
@@ -468,63 +478,53 @@ let consume_list_of_rules ~meta lexer ~top_level ~warnings : Component.rule list
   in
   loop []
 
+(* Skip leading whitespace components from a buffered component-value list. *)
+let rec drop_leading_ws = function
+  | hd :: rest when is_whitespace hd -> drop_leading_ws rest
+  | other -> other
+
+(* Trim whitespace components from both ends of a buffered list. *)
+let trim_ws cvs = drop_leading_ws cvs |> List.rev |> drop_leading_ws |> List.rev
+
+let is_curly_block = function
+  | Block { node = { opening = Token.Curly; _ }; _ } -> true
+  | _ -> false
+
 (* 5.3.7 Parse a declaration from a buffered component-value list. *)
 let parse_declaration_from_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
     Component.declaration option =
-  let is_ws_cv = function
-    | Preserved { kind = Token.Whitespace; _ } -> true
-    | _ -> false
-  in
-  let is_curly_block = function
-    | Block { node = { opening = Token.Curly; _ }; _ } -> true
-    | _ -> false
-  in
-  let rec skip_leading_ws = function
-    | hd :: rest when is_ws_cv hd -> skip_leading_ws rest
-    | other -> other
-  in
   let is_custom = String.length name >= 2 && name.[0] = '-' && name.[1] = '-' in
-  (* CSS Syntax section 5.5.6: a non-custom property may contain a top-level {}
-     block only if that block is the entire (non-whitespace) value. A custom
-     property may contain a {} block, but only as the FIRST non-whitespace
-     component value -- a block appearing mid-value makes the declaration
-     invalid. *)
+  (* CSS Syntax section 5.5.6 top-level [{}] block rule. Non-custom: a single
+     [{}] alone, or no block at all. Custom: at most one [{}], which may have
+     content before or after but not both. *)
   let value_has_invalid_block value =
-    let trimmed =
-      skip_leading_ws value |> List.rev |> skip_leading_ws |> List.rev
-    in
-    let has_block = List.exists is_curly_block trimmed in
-    if not has_block then false
-    else
-      match trimmed with
-      | first :: _ when is_curly_block first ->
-          if is_custom then false
-          else
-            (* Non-custom: also require nothing after the leading block. *)
-            List.length trimmed > 1
-      | _ -> true
+    let trimmed = trim_ws value in
+    let blocks = List.filter is_curly_block trimmed in
+    match blocks with
+    | [] -> false
+    | _ :: _ :: _ -> true
+    | [ block ] ->
+        let rec split before = function
+          | [] -> (List.rev before, [])
+          | hd :: rest when hd == block -> (List.rev before, rest)
+          | hd :: rest -> split (hd :: before) rest
+        in
+        let before, after = split [] trimmed in
+        let non_ws = List.filter (fun cv -> not (is_whitespace cv)) in
+        let before_has = non_ws before <> [] in
+        let after_has = non_ws after <> [] in
+        if is_custom then before_has && after_has else before_has || after_has
   in
-  match skip_leading_ws cvs with
+  match drop_leading_ws cvs with
   | Preserved { kind = Token.Colon; _ } :: rest ->
-      let value0 = skip_leading_ws rest in
-      let rec rtrim = function
-        | [] -> []
-        | lst -> (
-            let rev = List.rev lst in
-            match rev with
-            | hd :: rest' when is_ws_cv hd -> rtrim (List.rev rest')
-            | _ -> lst)
-      in
-      let value1 = rtrim value0 in
+      let value1 = trim_ws rest in
       let value, important =
-        let rev = List.rev value1 in
-        match rev with
+        match List.rev value1 with
         | Preserved { kind = Token.Ident s; _ } :: rest
           when String.lowercase_ascii s = "important" -> (
-            let rest = skip_leading_ws rest in
-            match rest with
+            match drop_leading_ws rest with
             | Preserved { kind = Token.Delim "!"; _ } :: rest ->
-                (rtrim (List.rev rest), true)
+                (trim_ws (List.rev rest), true)
             | _ -> (value1, false))
         | _ -> (value1, false)
       in
@@ -687,14 +687,7 @@ let parse_block_contents ?(meta = Loc.default_meta_level) r :
 let parse_rule ?(meta = Loc.default_meta_level) r =
   with_warnings (fun ~warnings ->
       let lexer = Lexer.of_reader r in
-      let rec skip_ws () =
-        match (Lexer.peek lexer).Token.kind with
-        | Token.Whitespace ->
-            let _ = Lexer.next lexer in
-            skip_ws ()
-        | _ -> ()
-      in
-      skip_ws ();
+      skip_whitespace_tokens lexer;
       let rule =
         match (Lexer.peek lexer).Token.kind with
         | Token.Eof -> None
@@ -710,7 +703,7 @@ let parse_rule ?(meta = Loc.default_meta_level) r =
       match rule with
       | None -> None
       | Some _ as r' ->
-          skip_ws ();
+          skip_whitespace_tokens lexer;
           if (Lexer.peek lexer).Token.kind = Token.Eof then r' else None)
 
 (* CSS Syntax Level 3 section 5.4.7 "Parse a declaration": skip leading
@@ -720,14 +713,7 @@ let parse_rule ?(meta = Loc.default_meta_level) r =
 let parse_declaration ?(meta = Loc.default_meta_level) r =
   with_warnings (fun ~warnings ->
       let lexer = Lexer.of_reader r in
-      let rec skip_ws () =
-        match (Lexer.peek lexer).Token.kind with
-        | Token.Whitespace ->
-            let _ = Lexer.next lexer in
-            skip_ws ()
-        | _ -> ()
-      in
-      skip_ws ();
+      skip_whitespace_tokens lexer;
       match (Lexer.peek lexer).Token.kind with
       | Token.Ident name ->
           let tok = Lexer.next lexer in

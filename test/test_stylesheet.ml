@@ -1436,7 +1436,17 @@ let expect_context_error expected = function
         "document-context error stage"
         (value_processing_stage_name expected)
         (value_processing_stage_name actual)
-  | Ok value -> Alcotest.failf "expected document-context error, got %S" value
+  | Error (Css.Stylesheet.Unsupported_value_alias _) ->
+      Alcotest.fail "expected document-context error, got value-alias error"
+  | Ok _ -> Alcotest.fail "expected document-context error"
+
+let expect_value_alias_error property value = function
+  | Error (Css.Stylesheet.Unsupported_value_alias actual) ->
+      Alcotest.(check string) "value-alias property" property actual.property;
+      Alcotest.(check string) "value-alias value" value actual.value
+  | Error (Css.Stylesheet.Requires_document_context _) ->
+      Alcotest.fail "expected value-alias error, got document-context error"
+  | Ok _ -> Alcotest.fail "expected value-alias error"
 
 (* Not a roundtrip test *)
 let test_spec_cascade_section_4_4_to_4_8_value_processing_stubs () =
@@ -1461,6 +1471,175 @@ let test_spec_cascade_section_4_4_to_4_8_value_processing_stubs () =
     (Css.Stylesheet.used_value ~property:"width" ~computed:"auto");
   expect_context_error Actual_value
     (Css.Stylesheet.actual_value ~property:"border-top-width" ~used:"4.2px")
+
+(* Not a roundtrip test *)
+let test_spec_cascade_section_4_1_declared_values_for_element_stub () =
+  (* CSS Cascade section 4.1 talks about declarations applied to an element.
+     Selector matching requires a document tree, so this API is a stub but must
+     be callable from tests. *)
+  let stylesheet =
+    [
+      Css.Stylesheet.Rule
+        (Css.Stylesheet.rule
+           ~selector:(Css.Selector.class_ "card")
+           [ Css.Declaration.color (Css.Values.hex "#ff0000") ]);
+    ]
+  in
+  expect_context_error Declared_value
+    (Css.Stylesheet.declared_values_for_element ~element:".card" stylesheet)
+
+(* Not a roundtrip test *)
+let test_spec_cascade_section_4_1_1_value_aliasing_stub () =
+  (* CSS Cascade section 4.1.1: legacy value aliases are converted at parse time
+     where a spec defines them. The public hook exists even though this library
+     does not yet ship a property/value alias table. *)
+  expect_value_alias_error "display" "-webkit-box"
+    (Css.Stylesheet.normalize_value_alias ~property:"display"
+       ~value:"-webkit-box");
+  expect_value_alias_error "position" "-webkit-sticky"
+    (Css.Stylesheet.normalize_value_alias ~property:"position"
+       ~value:"-webkit-sticky")
+
+(* Not a roundtrip test *)
+let test_spec_cascade_section_4_2_integrated_cascade_order () =
+  (* CSS Cascade section 4.2 consumes the sorted cascade output. This helper
+     covers the full ordering criteria available without DOM matching:
+     origin/importance, layer, specificity, scope proximity, and source
+     order. *)
+  let candidate origin important layer specificity scope_hops source_order value
+      : Css.Stylesheet.cascade_candidate =
+    {
+      candidate_origin = origin;
+      candidate_important = important;
+      candidate_layer = layer;
+      candidate_specificity = specificity;
+      candidate_scope_hops = scope_hops;
+      candidate_source_order = source_order;
+      candidate_value = value;
+    }
+  in
+  let winner_value candidates =
+    Css.Stylesheet.winning_cascade_candidate
+      ~layer_order:[ "reset"; "theme"; "utilities" ]
+      candidates
+    |> Option.map (fun (c : Css.Stylesheet.cascade_candidate) ->
+        c.candidate_value)
+  in
+  Alcotest.(check (option string))
+    "important user origin beats important author origin"
+    (Some "user-important")
+    (winner_value
+       [
+         candidate Author true None 1 None 0 "author-important";
+         candidate User true None 1 None 1 "user-important";
+       ]);
+  Alcotest.(check (option string))
+    "normal unlayered beats explicit layers" (Some "unlayered")
+    (winner_value
+       [
+         candidate Author false (Some "utilities") 1 None 2 "utilities";
+         candidate Author false None 1 None 1 "unlayered";
+       ]);
+  Alcotest.(check (option string))
+    "specificity beats later source order" (Some "id-selector")
+    (winner_value
+       [
+         candidate Author false None 10 None 2 "later-class";
+         candidate Author false None 100 None 1 "id-selector";
+       ]);
+  Alcotest.(check (option string))
+    "closer scope beats farther scope" (Some "near-scope")
+    (winner_value
+       [
+         candidate Author false None 10 (Some 4) 1 "far-scope";
+         candidate Author false None 10 (Some 1) 0 "near-scope";
+       ]);
+  Alcotest.(check (option string))
+    "source order breaks final ties" (Some "later")
+    (winner_value
+       [
+         candidate Author false None 10 None 1 "earlier";
+         candidate Author false None 10 None 2 "later";
+       ])
+
+(* Not a roundtrip test *)
+let test_spec_cascade_section_4_3_revert_specified_values () =
+  (* CSS Cascade sections 4.3 and 7.3.4-7.3.5: [revert] and [revert-layer]
+     resolve by rolling back the candidate set, then defaulting if no lower
+     candidate remains. *)
+  let origin_candidate origin source_order value :
+      Css.Stylesheet.cascade_origin_candidate =
+    { origin; important = false; source_order; value }
+  in
+  check_specified "revert rolls back to user origin" "blue" "cascaded"
+    (Css.Stylesheet.specified_value_after_revert ~inherits:true ~initial:"black"
+       ~inherited:(Some "purple")
+       [
+         origin_candidate User_agent 0 "black";
+         origin_candidate User 1 "blue";
+         origin_candidate Author 2 "revert";
+       ]);
+  check_specified "revert with no previous origin defaults" "black"
+    "initial-default"
+    (Css.Stylesheet.specified_value_after_revert ~inherits:false
+       ~initial:"black" ~inherited:None
+       [ origin_candidate User_agent 0 "revert" ]);
+  let layer_candidate layer source_order value :
+      Css.Stylesheet.cascade_layer_candidate =
+    { layer; important = false; source_order; value }
+  in
+  check_specified "revert-layer rolls back to lower layer" "green" "cascaded"
+    (Css.Stylesheet.specified_value_after_revert_layer ~inherits:false
+       ~initial:"transparent" ~inherited:None ~layer_order:[ "base"; "theme" ]
+       [
+         layer_candidate (Some "base") 0 "green";
+         layer_candidate (Some "theme") 1 "revert-layer";
+       ]);
+  check_specified "revert-layer with no lower layer defaults" "transparent"
+    "initial-default"
+    (Css.Stylesheet.specified_value_after_revert_layer ~inherits:false
+       ~initial:"transparent" ~inherited:None ~layer_order:[ "base"; "theme" ]
+       [ layer_candidate (Some "base") 0 "revert-layer" ])
+
+(* Not a roundtrip test *)
+let test_spec_cascade_section_4_5_applicable_properties_stub () =
+  (* CSS Cascade section 4.5.1: applicability depends on the element or box
+     model. The API stub makes this unsupported stage explicit. *)
+  expect_context_error Used_value
+    (Css.Stylesheet.applicable_property ~property:"flex" ~box:"block");
+  expect_context_error Used_value
+    (Css.Stylesheet.applicable_property ~property:"text-transform" ~box:"inline")
+
+(* Not a roundtrip test *)
+let test_spec_cascade_section_4_7_examples () =
+  (* CSS Cascade section 4.7 examples: encode the specified-value cases we can
+     model, and keep layout/device-dependent examples on the stubbed APIs. *)
+  check_specified "border width inherit example" "4.2px" "inherit-keyword"
+    (Css.Stylesheet.specified_value ~inherits:false ~initial:"medium"
+       ~inherited:(Some "4.2px") ~cascaded:(Some "inherit"));
+  check_specified "width missing declaration example" "auto" "initial-default"
+    (Css.Stylesheet.specified_value ~inherits:false ~initial:"auto"
+       ~inherited:None ~cascaded:None);
+  check_specified "list-style-position inherit example" "inside"
+    "inherit-keyword"
+    (Css.Stylesheet.specified_value ~inherits:true ~initial:"outside"
+       ~inherited:(Some "inside") ~cascaded:(Some "inherit"));
+  check_specified "list-style-position initial example" "outside"
+    "initial-keyword"
+    (Css.Stylesheet.specified_value ~inherits:true ~initial:"outside"
+       ~inherited:(Some "inside") ~cascaded:(Some "initial"));
+  expect_context_error Used_value
+    (Css.Stylesheet.used_value ~property:"width" ~computed:"auto");
+  expect_context_error Actual_value
+    (Css.Stylesheet.actual_value ~property:"border-top-width" ~used:"4.2px")
+
+(* Not a roundtrip test *)
+let test_spec_cascade_section_4_8_per_fragment_stub () =
+  (* CSS Cascade section 4.8: fragment-specific value processing needs layout
+     fragments and pseudo-element context. *)
+  expect_context_error Used_value
+    (Css.Stylesheet.per_fragment_value ~property:"color"
+       ~fragment:"::first-line" ~computed:"currentColor")
 
 (** {2 CSS Nesting Round-trip Tests} *)
 
@@ -1617,12 +1796,31 @@ let additional_tests =
     ( "spec cascade 4.1 declared values",
       `Quick,
       test_spec_cascade_section_4_1_declared_values );
+    ( "spec cascade 4.1 declared values for element stub",
+      `Quick,
+      test_spec_cascade_section_4_1_declared_values_for_element_stub );
+    ( "spec cascade 4.1.1 value aliasing stub",
+      `Quick,
+      test_spec_cascade_section_4_1_1_value_aliasing_stub );
     ( "spec cascade 4.2 cascaded values",
       `Quick,
       test_spec_cascade_section_4_2_cascaded_values );
+    ( "spec cascade 4.2 integrated cascade order",
+      `Quick,
+      test_spec_cascade_section_4_2_integrated_cascade_order );
     ( "spec cascade 4.3 specified values",
       `Quick,
       test_spec_cascade_section_4_3_specified_values );
+    ( "spec cascade 4.3 revert specified values",
+      `Quick,
+      test_spec_cascade_section_4_3_revert_specified_values );
+    ( "spec cascade 4.5 applicable properties stub",
+      `Quick,
+      test_spec_cascade_section_4_5_applicable_properties_stub );
+    ("spec cascade 4.7 examples", `Quick, test_spec_cascade_section_4_7_examples);
+    ( "spec cascade 4.8 per-fragment stub",
+      `Quick,
+      test_spec_cascade_section_4_8_per_fragment_stub );
     ( "spec cascade 4.4-4.8 value processing stubs",
       `Quick,
       test_spec_cascade_section_4_4_to_4_8_value_processing_stubs );
