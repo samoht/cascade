@@ -638,16 +638,31 @@ let consume_block_contents ~meta lexer ~warnings : block_item list =
         let ar = consume_at_rule ~nested:true lexer ~name ~start_loc:tok.loc in
         result := `Rule (Component.At ar) :: !result;
         loop ()
-    | Token.Ident name -> (
+    | Token.Ident name ->
+        (* Section 5.5.5: try a declaration first; on failure, rewind and re-try
+           as a nested qualified rule. *)
+        Lexer.save lexer;
         let body = consume_declaration_body lexer in
-        match
-          parse_declaration_from_buffer ~meta lexer ~name ~name_loc:tok.loc
-            ~warnings body
-        with
+        let warnings_snapshot = !warnings in
+        (match
+           parse_declaration_from_buffer ~meta lexer ~name ~name_loc:tok.loc
+             ~warnings body
+         with
         | Some d ->
-            pending := d :: !pending;
-            loop ()
-        | None -> loop ())
+            Lexer.commit lexer;
+            pending := d :: !pending
+        | None -> (
+            warnings := warnings_snapshot;
+            Lexer.restore lexer;
+            Lexer.reconsume lexer tok;
+            flush ();
+            match
+              consume_qualified_rule ~nested:true ~meta lexer ~start_loc:tok.loc
+                ~warnings
+            with
+            | Some qr -> result := `Rule (Component.Qualified qr) :: !result
+            | None -> ()));
+        loop ()
     | _ ->
         flush ();
         Lexer.reconsume lexer tok;

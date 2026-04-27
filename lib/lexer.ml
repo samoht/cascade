@@ -1,14 +1,25 @@
 (** Stage 2 stream: characters -> Token.t.
 
-    Wraps a {!Reader.t} char cursor, maintains one-token pushback for
+    Wraps a {!Reader.t} char cursor, maintains a token-buffer pushback for
     {!reconsume}, and exposes the CSS Syntax section 4 tokenizer through the
-    uniform [next / peek / reconsume] triple. *)
+    uniform [next / peek / reconsume] triple. The buffer doubles as a
+    backtracking stack: {!save} marks a point in the buffered prefix and
+    {!restore} replays the tokens consumed after it, mirroring
+    {!Reader.save}/{!Reader.restore} for the Token layer. *)
 
 open Token
 
-type t = { reader : Reader.t; mutable lookback : Token.t option }
+type t = {
+  reader : Reader.t;
+  (* Token buffer: most-recently-pushed-back at the head. [next] takes from here
+     before falling through to the reader. *)
+  mutable buffer : Token.t list;
+  (* Stack of saved positions. Each entry holds the tokens consumed since [save]
+     was called; [restore] replays them at the head of [buffer]. *)
+  mutable saves : Token.t list ref list;
+}
 
-let of_reader reader = { reader; lookback = None }
+let of_reader reader = { reader; buffer = []; saves = [] }
 let of_string s = of_reader (Reader.of_string s)
 let source t = Reader.source t.reader
 
@@ -622,23 +633,55 @@ let tokenize_with_loc reader =
   let end_pos = Reader.position reader in
   Token.v ~kind ~loc:(Loc.v ~start_pos ~end_pos)
 
+let record_consume t tok =
+  List.iter (fun trace -> trace := tok :: !trace) t.saves
+
 let next t =
-  match t.lookback with
-  | Some tok ->
-      t.lookback <- None;
+  match t.buffer with
+  | tok :: rest ->
+      t.buffer <- rest;
+      record_consume t tok;
       tok
-  | None -> tokenize_with_loc t.reader
+  | [] ->
+      let tok = tokenize_with_loc t.reader in
+      record_consume t tok;
+      tok
 
 let peek t =
-  match t.lookback with
-  | Some tok -> tok
-  | None ->
+  match t.buffer with
+  | tok :: _ -> tok
+  | [] ->
       let tok = tokenize_with_loc t.reader in
-      t.lookback <- Some tok;
+      t.buffer <- [ tok ];
       tok
 
 let reconsume t tok =
-  assert (t.lookback = None);
-  t.lookback <- Some tok
+  (* Pushback returns [tok] to the front of the buffer; also undo its trace
+     entry so a subsequent {!save}/{!restore} pair sees the correct tokens. *)
+  t.buffer <- tok :: t.buffer;
+  List.iter
+    (fun trace ->
+      match !trace with hd :: rest when hd == tok -> trace := rest | _ -> ())
+    t.saves
 
-let is_done t = t.lookback = None && Reader.is_done t.reader
+let save t =
+  let trace = ref [] in
+  t.saves <- trace :: t.saves
+
+let restore t =
+  match t.saves with
+  | [] -> failwith "Lexer.restore: no saved position"
+  | trace :: rest ->
+      t.saves <- rest;
+      t.buffer <- List.rev_append !trace t.buffer
+
+let commit t =
+  match t.saves with
+  | [] -> failwith "Lexer.commit: no saved position"
+  | trace :: rest -> (
+      t.saves <- rest;
+      match rest with
+      | [] -> ()
+      | parent :: _ -> parent := List.rev_append !trace !parent)
+
+let is_done t = t.buffer = [] && Reader.is_done t.reader

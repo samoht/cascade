@@ -767,6 +767,109 @@ let test_no_merge_with_nested () =
   Alcotest.(check bool)
     "doesn't merge rules with nested statements" true (has_foo && has_bar)
 
+let spec_cascade_section_3_shorthand_resets_omitted_longhands () =
+  (* CSS Cascade section 3: a shorthand declaration sets all longhands,
+     including omitted sub-properties. A previous longhand covered by a later
+     shorthand is therefore dead even when the shorthand omits that
+     component. *)
+  let margin_rule : Css.Stylesheet.rule =
+    {
+      selector = Css.Selector.class_ "box";
+      declarations =
+        [
+          Css.Declaration.margin_left (Px 1.); Css.Declaration.margin [ Px 2. ];
+        ];
+      nested = [];
+      merge_key = None;
+    }
+  in
+  let margin_optimized = Css.Optimize.single_rule margin_rule in
+  let margin_output =
+    Css.Stylesheet.to_string ~minify:true
+      [ Css.Stylesheet.Rule margin_optimized ]
+    |> String.trim
+  in
+  Alcotest.(check string)
+    "later margin shorthand resets previous margin-left" ".box{margin:2px}"
+    margin_output;
+
+  let background_rule : Css.Stylesheet.rule =
+    {
+      selector = Css.Selector.class_ "hero";
+      declarations =
+        [
+          Css.Declaration.background_image (Css.Properties.url "hero.png");
+          Css.Declaration.background
+            (Css.Properties.background_shorthand ~color:(hex_color "008000") ());
+        ];
+      nested = [];
+      merge_key = None;
+    }
+  in
+  let background_optimized = Css.Optimize.single_rule background_rule in
+  let background_output =
+    Css.Stylesheet.to_string ~minify:true
+      [ Css.Stylesheet.Rule background_optimized ]
+    |> String.trim
+  in
+  Alcotest.(check string)
+    "background shorthand resets previous background-image"
+    ".hero{background:#008000}" background_output
+
+let spec_cascade_section_3_shorthand_source_order_corner_cases () =
+  (* CSS Cascade section 3 plus source order: a later shorthand resets all
+     covered longhands, including a longhand that occurred between two shorthand
+     declarations. *)
+  let rule : Css.Stylesheet.rule =
+    {
+      selector = Css.Selector.class_ "box";
+      declarations =
+        [
+          Css.Declaration.margin [ Px 1. ];
+          Css.Declaration.margin_left (Px 2.);
+          Css.Declaration.margin [ Px 3. ];
+        ];
+      nested = [];
+      merge_key = None;
+    }
+  in
+  let optimized = Css.Optimize.single_rule rule in
+  let output =
+    Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule optimized ]
+    |> String.trim
+  in
+  Alcotest.(check string)
+    "later shorthand resets intervening longhand" ".box{margin:3px}" output
+
+let spec_cascade_section_3_important_shorthand_expands_to_longhands () =
+  (* CSS Cascade section 3: declaring a shorthand !important is equivalent to
+     declaring all of its longhand sub-properties !important. A later normal
+     longhand covered by the shorthand cannot override any sub-property. *)
+  let rule : Css.Stylesheet.rule =
+    {
+      selector = Css.Selector.class_ "hero";
+      declarations =
+        [
+          Css.Declaration.background_image (Css.Properties.url "before.png");
+          Css.Declaration.important
+            (Css.Declaration.background
+               (Css.Properties.background_shorthand ~color:(hex_color "008000")
+                  ()));
+          Css.Declaration.background_image (Css.Properties.url "after.png");
+        ];
+      nested = [];
+      merge_key = None;
+    }
+  in
+  let optimized = Css.Optimize.single_rule rule in
+  let output =
+    Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule optimized ]
+    |> String.trim
+  in
+  Alcotest.(check string)
+    "important background shorthand blocks later normal background-image"
+    ".hero{background:#008000!important}" output
+
 let spec_cascade_section_6_1_declaration_order_shorthand_boundary () =
   (* CSS Cascade section 6.1: order of appearance is a cascade criterion.
      Removing an earlier duplicate must not move the surviving longhand before
@@ -2372,6 +2475,7 @@ let spec_cascade_section_6_4_layer_precedence_api () =
       Css.Stylesheet.cascade_layer_candidate =
     { layer; important; source_order; value }
   in
+  let layer_value (c : Css.Stylesheet.cascade_layer_candidate) = c.value in
   let winner =
     Css.Stylesheet.winning_cascade_layer_candidate ~layer_order:order
       [
@@ -2382,7 +2486,7 @@ let spec_cascade_section_6_4_layer_precedence_api () =
   in
   Alcotest.(check (option string))
     "normal unlayered candidate wins after explicit layers" (Some "unlayered")
-    (Option.map (fun c -> c.Css.Stylesheet.value) winner);
+    (Option.map layer_value winner);
   let important_winner =
     Css.Stylesheet.winning_cascade_layer_candidate ~layer_order:order
       [
@@ -2394,7 +2498,7 @@ let spec_cascade_section_6_4_layer_precedence_api () =
   Alcotest.(check (option string))
     "important first layer candidate wins after reversal"
     (Some "reset-important")
-    (Option.map (fun c -> c.Css.Stylesheet.value) important_winner)
+    (Option.map layer_value important_winner)
 
 let spec_cascade_section_6_5_presentational_hint_origin_rank () =
   (* CSS Cascade section 6.5: presentational hints can enter a special-purpose
@@ -2464,6 +2568,7 @@ let spec_cascade_section_7_3_5_revert_layer_candidate_set () =
       Css.Stylesheet.cascade_layer_candidate =
     { layer; important; source_order; value }
   in
+  let layer_value (c : Css.Stylesheet.cascade_layer_candidate) = c.value in
   let candidates =
     [
       candidate (Some "base") false 0 "base";
@@ -2479,14 +2584,14 @@ let spec_cascade_section_7_3_5_revert_layer_candidate_set () =
   Alcotest.(check (list string))
     "normal revert-layer in theme can roll back to lower explicit layers"
     [ "base"; "components" ]
-    (List.map (fun c -> c.Css.Stylesheet.value) rolled_back);
+    (List.map layer_value rolled_back);
   let winner =
     Css.Stylesheet.winning_cascade_layer_candidate ~layer_order:order
       rolled_back
   in
   Alcotest.(check (option string))
     "normal revert-layer resolves to highest lower layer" (Some "components")
-    (Option.map (fun c -> c.Css.Stylesheet.value) winner);
+    (Option.map layer_value winner);
   let important_candidates =
     [
       candidate None true 0 "unlayered-important";
@@ -2503,7 +2608,84 @@ let spec_cascade_section_7_3_5_revert_layer_candidate_set () =
     "important revert-layer in first layer can roll back to later important \
      layers and unlayered important"
     [ "unlayered-important"; "theme-important"; "components-important" ]
-    (List.map (fun c -> c.Css.Stylesheet.value) important_rolled_back)
+    (List.map layer_value important_rolled_back)
+
+let spec_cascade_section_7_3_4_revert_origin_candidate_set () =
+  (* CSS Cascade section 7.3.4: revert rolls the cascaded value back to the
+     previous origin tier. Author and animation origins roll back to the user
+     level; user origin rolls back to user-agent; user-agent origin behaves like
+     unset because no previous origin exists. Presentational hints are treated
+     as part of the author origin for revert. *)
+  let candidate origin important source_order value :
+      Css.Stylesheet.cascade_origin_candidate =
+    { origin; important; source_order; value }
+  in
+  let origin_value (c : Css.Stylesheet.cascade_origin_candidate) = c.value in
+  let candidates =
+    [
+      candidate User_agent false 0 "ua";
+      candidate User false 1 "user";
+      candidate Author_presentational_hint false 2 "hint";
+      candidate Author false 3 "author";
+      candidate Animation false 4 "animation";
+    ]
+  in
+  let author_rollback =
+    Css.Stylesheet.cascade_revert_origin_candidates ~important:false
+      ~current_origin:Author candidates
+  in
+  Alcotest.(check (list string))
+    "normal author revert exposes user and user-agent origins" [ "ua"; "user" ]
+    (List.map origin_value author_rollback);
+  let author_winner =
+    Css.Stylesheet.winning_cascade_origin_candidate author_rollback
+  in
+  Alcotest.(check (option string))
+    "normal author revert rolls back to user winner" (Some "user")
+    (Option.map origin_value author_winner);
+  let hint_rollback =
+    Css.Stylesheet.cascade_revert_origin_candidates ~important:false
+      ~current_origin:Author_presentational_hint candidates
+  in
+  Alcotest.(check (list string))
+    "presentational hint revert is treated like author revert" [ "ua"; "user" ]
+    (List.map origin_value hint_rollback);
+  let animation_rollback =
+    Css.Stylesheet.cascade_revert_origin_candidates ~important:false
+      ~current_origin:Animation candidates
+  in
+  Alcotest.(check (list string))
+    "animation revert is treated like author revert" [ "ua"; "user" ]
+    (List.map origin_value animation_rollback);
+  let user_rollback =
+    Css.Stylesheet.cascade_revert_origin_candidates ~important:false
+      ~current_origin:User candidates
+  in
+  Alcotest.(check (list string))
+    "normal user revert exposes user-agent origin" [ "ua" ]
+    (List.map origin_value user_rollback);
+  let ua_rollback =
+    Css.Stylesheet.cascade_revert_origin_candidates ~important:false
+      ~current_origin:User_agent candidates
+  in
+  Alcotest.(check (list string))
+    "user-agent revert has no previous origin and behaves like unset" []
+    (List.map origin_value ua_rollback);
+  let important_candidates =
+    [
+      candidate User_agent true 0 "ua-important";
+      candidate User true 1 "user-important";
+      candidate Author true 2 "author-important";
+    ]
+  in
+  let important_author_rollback =
+    Css.Stylesheet.cascade_revert_origin_candidates ~important:true
+      ~current_origin:Author important_candidates
+  in
+  Alcotest.(check (list string))
+    "important author revert exposes important user-agent and user origins"
+    [ "ua-important"; "user-important" ]
+    (List.map origin_value important_author_rollback)
 
 let selector_merging_tests =
   [
@@ -2514,6 +2696,15 @@ let selector_merging_tests =
     ("no merge non-consecutive", `Quick, test_no_merge_non_consecutive);
     ("no merge vendor pseudo", `Quick, test_no_merge_vendor_pseudo);
     ("no merge with nested", `Quick, test_no_merge_with_nested);
+    ( "spec cascade 3 shorthand resets omitted longhands",
+      `Quick,
+      spec_cascade_section_3_shorthand_resets_omitted_longhands );
+    ( "spec cascade 3 shorthand source order corner cases",
+      `Quick,
+      spec_cascade_section_3_shorthand_source_order_corner_cases );
+    ( "spec cascade 3 important shorthand expands to longhands",
+      `Quick,
+      spec_cascade_section_3_important_shorthand_expands_to_longhands );
     ( "spec cascade 6.1 declaration order shorthand boundary",
       `Quick,
       spec_cascade_section_6_1_declaration_order_shorthand_boundary );
@@ -2647,6 +2838,9 @@ let selector_merging_tests =
     ( "spec cascade 7.3.5 revert-layer candidate set",
       `Quick,
       spec_cascade_section_7_3_5_revert_layer_candidate_set );
+    ( "spec cascade 7.3.4 revert origin candidate set",
+      `Quick,
+      spec_cascade_section_7_3_4_revert_origin_candidate_set );
   ]
 
 let suite = ("optimize", optimize_tests @ selector_merging_tests)
