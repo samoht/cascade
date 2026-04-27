@@ -6726,6 +6726,9 @@ and read_image_set_option t : image_set_option =
         | _ -> (mime, resolution))
   in
   let mime, resolution = loop None None in
+  if Option.is_none mime && Option.is_none resolution then
+    Cursor.err_invalid t
+      "image-set option requires a <resolution> or type(<string>)";
   {
     image_set_source = source;
     image_set_resolution = resolution;
