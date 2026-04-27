@@ -1280,17 +1280,17 @@ let rec pp_position_value : position_value Pp.t =
   | Edge_offset_axis (edge, offset, axis) ->
       Pp.string ctx edge;
       Pp.space ctx ();
-      pp_length ctx offset;
+      pp_length_percentage ~always:true ctx offset;
       Pp.space ctx ();
       Pp.string ctx axis
   | Edge_offset_edge_offset (edge1, offset1, edge2, offset2) ->
       Pp.string ctx edge1;
       Pp.space ctx ();
-      pp_length ctx offset1;
+      pp_length_percentage ~always:true ctx offset1;
       Pp.space ctx ();
       Pp.string ctx edge2;
       Pp.space ctx ();
-      pp_length ctx offset2
+      pp_length_percentage ~always:true ctx offset2
   | Var v -> pp_var pp_position_value ctx v
 
 let pp_radial_gradient_config : radial_gradient_config Pp.t =
@@ -6547,7 +6547,7 @@ module Position_value = struct
   let read_3_value t : position_value =
     let edge1 = Cursor.ident t in
     Cursor.ws t;
-    let offset = read_length t in
+    let offset = read_length_percentage t in
     Cursor.ws t;
     let axis = Cursor.ident t in
     Edge_offset_axis (edge1, offset, axis)
@@ -6556,11 +6556,11 @@ module Position_value = struct
   let read_4_value t : position_value =
     let edge1 = Cursor.ident t in
     Cursor.ws t;
-    let offset1 = read_length t in
+    let offset1 = read_length_percentage t in
     Cursor.ws t;
     let edge2 = Cursor.ident t in
     Cursor.ws t;
-    let offset2 = read_length t in
+    let offset2 = read_length_percentage t in
     Edge_offset_edge_offset (edge1, offset1, edge2, offset2)
 end
 

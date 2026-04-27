@@ -498,9 +498,9 @@ let vars_of_position_value (value : Properties.position_value) : any_var list =
   | Var v -> [ V v ]
   | Single l -> vars_of_length l
   | XY (l1, l2) -> vars_of_length l1 @ vars_of_length l2
-  | Edge_offset_axis (_, l, _) -> vars_of_length l
-  | Edge_offset_edge_offset (_, l1, _, l2) ->
-      vars_of_length l1 @ vars_of_length l2
+  | Edge_offset_axis (_, lp, _) -> vars_of_length_percentage lp
+  | Edge_offset_edge_offset (_, lp1, _, lp2) ->
+      vars_of_length_percentage lp1 @ vars_of_length_percentage lp2
   | _ -> []
 
 let vars_of_outline_style (value : Properties.outline_style) : any_var list =

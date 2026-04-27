@@ -224,6 +224,77 @@ let test_invalid_features buf =
         (Fmt.str "invalid feature declaration parsed: %S -> %S" input
            (serialize decl))
 
+let test_css_wide_keyword_vectors buf =
+  let property =
+    pick [ "color"; "margin"; "padding"; "background"; "border"; "all" ] buf 0
+  in
+  let keyword =
+    pick [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ] buf 1
+  in
+  let input = property ^ ":" ^ keyword in
+  match parse_declaration input with
+  | None ->
+      fail (Fmt.str "CSS-wide keyword declaration did not parse: %S" input)
+  | Some decl ->
+      let serialized = serialize decl in
+      if serialized <> input then
+        fail
+          (Fmt.str "CSS-wide keyword declaration changed: %S -> %S" input
+             serialized)
+
+let test_invalid_css_wide_keyword_mixes buf =
+  let keyword =
+    pick [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ] buf 0
+  in
+  let input =
+    pick
+      [
+        "color:" ^ keyword ^ " red";
+        "margin:1px " ^ keyword;
+        "padding:" ^ keyword ^ " 1px";
+        "background:red " ^ keyword;
+        "border:1px solid " ^ keyword;
+        "all:" ^ keyword ^ " color";
+      ]
+      buf 1
+  in
+  match parse_declaration input with
+  | None -> ()
+  | Some decl ->
+      fail
+        (Fmt.str "invalid CSS-wide keyword mix parsed: %S -> %S" input
+           (serialize decl))
+
+let test_custom_property_token_stream_vectors buf =
+  let name = "--spec-" ^ string_of_int (byte_at buf 0) in
+  let value =
+    pick
+      [
+        "{ color: red }";
+        "[a, b, c]";
+        "var(--missing,)";
+        "1 ! important";
+        "url(foo;bar) trailing tokens";
+      ]
+      buf 1
+  in
+  let input = name ^ ":" ^ value in
+  match parse_declaration input with
+  | None ->
+      fail (Fmt.str "custom property token stream did not parse: %S" input)
+  | Some decl -> (
+      if Css.Declaration.property_name decl <> name then
+        fail (Fmt.str "custom property name changed: %S" input);
+      let serialized = serialize decl in
+      match parse_declaration serialized with
+      | None ->
+          fail
+            (Fmt.str "custom property serialization did not reparse: %S"
+               serialized)
+      | Some reparsed ->
+          if Css.Declaration.property_name reparsed <> name then
+            fail "custom property name changed after serialization")
+
 let suite =
   ( "declaration",
     [
@@ -246,4 +317,10 @@ let suite =
       test_case "feature declaration table" [ bytes ] test_feature_decl_table;
       test_case "invalid feature declarations rejected" [ bytes ]
         test_invalid_features;
+      test_case "CSS-wide keyword declaration vectors" [ bytes ]
+        test_css_wide_keyword_vectors;
+      test_case "invalid CSS-wide keyword mixes rejected" [ bytes ]
+        test_invalid_css_wide_keyword_mixes;
+      test_case "custom property token stream vectors" [ bytes ]
+        test_custom_property_token_stream_vectors;
     ] )

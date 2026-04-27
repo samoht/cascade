@@ -1092,9 +1092,10 @@ type position_value =
   | Inherit
   | Initial
   (* 3-value syntax: edge offset axis (e.g., "right 0.5rem center") *)
-  | Edge_offset_axis of string * length * string
+  | Edge_offset_axis of string * length_percentage * string
   (* 4-value syntax: edge1 offset1 edge2 offset2 *)
-  | Edge_offset_edge_offset of string * length * string * length
+  | Edge_offset_edge_offset of
+      string * length_percentage * string * length_percentage
   | Var of position_value var  (** CSS variable reference *)
 
 type radial_gradient_config = {

@@ -787,6 +787,48 @@ let test_recovery_bad_declaration_then_good buf =
   if warnings = [] then
     fail (Fmt.str "bad declaration emitted no warning: %S" css)
 
+let test_stylesheet_prelude_order_vectors buf =
+  let input =
+    pick
+      [
+        "@charset \"UTF-8\"; @layer reset, theme; @import url(theme.css) \
+         layer(theme); @namespace url(http://www.w3.org/1999/xhtml);";
+        "@layer reset, theme; @import url(theme.css) layer(theme); .ok { \
+         color: red }";
+        "@import url(base.css) screen and (width >= 40em); @namespace svg \
+         url(http://www.w3.org/2000/svg); .icon { fill: currentColor }";
+      ]
+      buf 0
+  in
+  match parse_stylesheet input with
+  | None ->
+      fail (Fmt.str "valid stylesheet prelude order did not parse: %S" input)
+  | Some ss ->
+      let shapes = boundary_shapes ss in
+      if shapes = [] then
+        fail
+          (Fmt.str "valid stylesheet prelude produced no statements: %S" input)
+
+let test_invalid_stylesheet_prelude_order_vectors buf =
+  let input =
+    pick
+      [
+        ".x { color: red } @charset \"UTF-8\";";
+        ".x { color: red } @import url(late.css);";
+        "@import url(base.css); @layer theme; @import url(late.css);";
+        "@import url(base.css); @layer theme { .x { color: red } } @namespace \
+         url(http://www.w3.org/1999/xhtml);";
+        "@namespace svg;";
+      ]
+      buf 0
+  in
+  match parse_stylesheet input with
+  | None -> ()
+  | Some ss ->
+      fail
+        (Fmt.str "invalid stylesheet prelude order parsed: %S -> %S" input
+           (String.concat " " (boundary_shapes ss)))
+
 let suite =
   ( "stylesheet",
     [
@@ -850,4 +892,8 @@ let suite =
         test_recovery_invalid_rule_boundary;
       test_case "CSS Syntax recovery bad declaration then good" [ bytes ]
         test_recovery_bad_declaration_then_good;
+      test_case "stylesheet prelude order vectors" [ bytes ]
+        test_stylesheet_prelude_order_vectors;
+      test_case "invalid stylesheet prelude order vectors rejected" [ bytes ]
+        test_invalid_stylesheet_prelude_order_vectors;
     ] )

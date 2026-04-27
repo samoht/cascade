@@ -1743,8 +1743,9 @@ type position_value =
       (** Single length/percentage value for background-position *)
   | Inherit
   | Initial
-  | Edge_offset_axis of string * length * string
-  | Edge_offset_edge_offset of string * length * string * length
+  | Edge_offset_axis of string * length_percentage * string
+  | Edge_offset_edge_offset of
+      string * length_percentage * string * length_percentage
   | Var of position_value var  (** CSS variable reference *)
 
 val object_position : position_value -> declaration

@@ -1642,6 +1642,30 @@ let test_declaration () =
   (* Duplicate !important should fail *)
   neg_cursor read_declaration "color: red blue !important !important"
 
+let spec_declaration_more_grammar_vectors () =
+  (* CSS Cascading: CSS-wide keywords are whole declaration values for standard
+     properties, not component values inside a larger value. *)
+  List.iter
+    (fun keyword ->
+      check_declaration ("color:" ^ keyword);
+      check_declaration ("margin:" ^ keyword);
+      none_cursor read_declaration ("color:" ^ keyword ^ " red");
+      none_cursor read_declaration ("margin:1px " ^ keyword);
+      none_cursor read_declaration ("background:red " ^ keyword))
+    [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ];
+  (* CSS Custom Properties: custom property values are token streams. Balanced
+     blocks and non-important [! important] tokens are preserved as values. *)
+  check_declaration ~expected:"--tokens:{ color: red }"
+    "--tokens: { color: red }";
+  check_declaration ~expected:"--list:[a, b, c]" "--list: [a, b, c]";
+  check_declaration ~expected:"--empty-fallback:var(--missing,)"
+    "--empty-fallback: var(--missing,)";
+  check_declaration ~expected:"--not-important:1 ! important"
+    "--not-important: 1 ! important";
+  check_declaration ~expected:"--is-important:1!important"
+    "--is-important: 1 !important";
+  none_cursor read_declaration "--: invalid"
+
 let declaration_tests =
   [
     (* Core declaration type testing *)
@@ -1695,6 +1719,8 @@ let declaration_tests =
       spec_property_grammar_table_expansion;
     test_case "spec remaining property vectors" `Quick
       spec_remaining_prop_vectors;
+    test_case "spec declaration additional grammar vectors" `Quick
+      spec_declaration_more_grammar_vectors;
     (* Error handling *)
     test_case "error missing colon" `Quick error_missing_colon;
     test_case "error stray semicolon" `Quick error_stray_semicolon;

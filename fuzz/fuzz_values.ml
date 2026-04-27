@@ -301,6 +301,122 @@ let test_modern_math_stable buf =
           if once <> twice then
             fail (Fmt.str "modern math length changed: %S -> %S" once twice))
 
+let test_spec_valid_value_vectors buf =
+  let parse_print parse pp input =
+    let r = Css.Cursor.of_string input in
+    match try Some (parse r) with Css.Cursor.Parse_error _ -> None with
+    | None -> fail (Fmt.str "valid CSS value vector did not parse: %S" input)
+    | Some value -> (
+        let once = Css.Pp.to_string ~minify:true pp value in
+        let r2 = Css.Cursor.of_string once in
+        match try Some (parse r2) with Css.Cursor.Parse_error _ -> None with
+        | None ->
+            fail
+              (Fmt.str "valid CSS value serialization did not reparse: %S -> %S"
+                 input once)
+        | Some reparsed ->
+            let twice = Css.Pp.to_string ~minify:true pp reparsed in
+            if once <> twice then
+              fail
+                (Fmt.str "valid CSS value serialization drifted: %S -> %S" once
+                   twice))
+  in
+  match byte_at buf 0 mod 6 with
+  | 0 ->
+      parse_print Css.Values.read_length Css.Values.pp_length
+        (pick
+           [
+             "1cqw";
+             "1cqh";
+             "1cqi";
+             "1cqb";
+             "1cqmin";
+             "1cqmax";
+             "anchor-size(width)";
+             "anchor(--tooltip width, 10px)";
+             "calc-size(auto, size + 1rem)";
+           ]
+           buf 1)
+  | 1 ->
+      parse_print Css.Values.read_color Css.Values.pp_color
+        (pick
+           [
+             "lab(50% 10 20)";
+             "lch(50% 20 30)";
+             "oklab(50% 0.1 0.2)";
+             "oklch(50% 0.1 20 / 0.5)";
+             "color(rec2020 0.1 0.2 0.3)";
+             "rgb(from var(--c) r g b / 50%)";
+             "color-mix(in lch longer hue, red 30%, blue)";
+           ]
+           buf 1)
+  | 2 ->
+      parse_print Css.Values.read_angle Css.Values.pp_angle
+        (pick [ "45deg"; ".25turn"; "100grad"; "3.14159rad" ] buf 1)
+  | 3 ->
+      parse_print Css.Values.read_duration Css.Values.pp_duration
+        (pick [ "1s"; "150ms"; ".25s"; "1ms" ] buf 1)
+  | 4 ->
+      parse_print Css.Values.read_percentage
+        Css.Values.(pp_percentage ~always:true)
+        (pick [ "0%"; "50%"; ".5%"; "200%" ] buf 1)
+  | _ ->
+      parse_print Css.Values.read_number Css.Values.pp_number
+        (pick
+           [
+             "round(up, 1.2, 1)";
+             "mod(10, 3)";
+             "hypot(3, 4)";
+             "pow(2, 3)";
+             "sqrt(4)";
+             "sin(30deg)";
+           ]
+           buf 1)
+
+let test_spec_invalid_value_vectors buf =
+  let rejected parse input =
+    let r = Css.Cursor.of_string input in
+    match try Some (parse r) with Css.Cursor.Parse_error _ -> None with
+    | None -> ()
+    | Some _ -> fail (Fmt.str "invalid CSS value vector parsed: %S" input)
+  in
+  match byte_at buf 0 mod 6 with
+  | 0 ->
+      rejected Css.Values.read_length
+        (pick
+           [
+             "1unknown";
+             "calc()";
+             "calc(10px +)";
+             "anchor()";
+             "anchor-size()";
+             "calc-size()";
+           ]
+           buf 1)
+  | 1 ->
+      rejected Css.Values.read_color
+        (pick
+           [
+             "rgb()";
+             "rgb(1 2)";
+             "lab(50% 10)";
+             "oklch(50% .1 20 /)";
+             "color(display-p3 1 0)";
+             "color(unknown 1 0 0)";
+             "color-mix(in srgb red blue)";
+           ]
+           buf 1)
+  | 2 ->
+      rejected Css.Values.read_angle
+        (pick [ "45"; "45px"; "deg"; "360.5.5deg" ] buf 1)
+  | 3 ->
+      rejected Css.Values.read_duration
+        (pick [ "1"; "1px"; "-1s"; "10xs" ] buf 1)
+  | 4 -> rejected Css.Values.read_percentage (pick [ "50"; "10px"; "%" ] buf 1)
+  | _ ->
+      rejected Css.Values.read_number
+        (pick [ "pow(2)"; "sqrt()"; "sin()"; "round(up)" ] buf 1)
+
 let suite =
   ( "values",
     [
@@ -340,4 +456,8 @@ let suite =
         test_duration_serialization_idempotent;
       test_case "modern color stable" [ bytes ] test_modern_color_stable;
       test_case "modern math stable" [ bytes ] test_modern_math_stable;
+      test_case "spec valid value vectors" [ bytes ]
+        test_spec_valid_value_vectors;
+      test_case "spec invalid value vectors rejected" [ bytes ]
+        test_spec_invalid_value_vectors;
     ] )
