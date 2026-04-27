@@ -82,6 +82,53 @@ let test_compare buf1 buf2 =
       ignore (Css.Supports.equal a b)
   | _ -> ()
 
+let byte_at buf i =
+  if String.length buf = 0 then 0 else Char.code buf.[i mod String.length buf]
+
+let pick xs buf i = List.nth xs (byte_at buf i mod List.length xs)
+
+let generated_condition buf =
+  let property =
+    pick [ ("display", "grid"); ("gap", "1rem"); ("color", "red") ] buf 0
+  in
+  let func =
+    pick
+      [
+        Css.Supports.Func ("selector", ":has(img)");
+        Css.Supports.Func ("font-format", "woff2");
+        Css.Supports.Func ("font-tech", "variations");
+      ]
+      buf 1
+  in
+  let prop = Css.Supports.Property (fst property, snd property) in
+  match byte_at buf 2 mod 6 with
+  | 0 -> prop
+  | 1 -> func
+  | 2 -> Css.Supports.Not prop
+  | 3 -> Css.Supports.And (prop, func)
+  | 4 -> Css.Supports.Or (Css.Supports.Not prop, func)
+  | _ -> Css.Supports.Not (Css.Supports.Or (prop, func))
+
+let test_generated_condition_serialization_idempotent buf =
+  let condition = generated_condition buf in
+  let once = Css.Supports.to_string condition in
+  let twice = Css.Supports.(once |> of_string |> to_string) in
+  if once <> twice then
+    fail
+      (Fmt.str "generated supports serialization changed: %S -> %S" once twice)
+
+let test_supports_evaluation_stub_identity buf =
+  let condition = generated_condition buf in
+  match Css.Stylesheet.evaluate_supports_condition ~condition with
+  | Error (Css.Stylesheet.Requires_platform_context { feature; detail }) ->
+      if feature <> "supports evaluation" || detail = "" then
+        fail "supports evaluation stub lost feature/detail identity"
+  | Error (Css.Stylesheet.Requires_document_context _) ->
+      fail "supports evaluation returned document-context error"
+  | Error (Css.Stylesheet.Unsupported_value_alias _) ->
+      fail "supports evaluation returned value-alias error"
+  | Ok _ -> fail "supports evaluation stub unexpectedly succeeded"
+
 let suite =
   ( "supports",
     [
@@ -93,4 +140,8 @@ let suite =
         test_mixed_operator_serialization_reparse;
       test_case "pp crash safety" [ bytes ] test_pp;
       test_case "compare crash safety" [ bytes; bytes ] test_compare;
+      test_case "generated condition serialization idempotent" [ bytes ]
+        test_generated_condition_serialization_idempotent;
+      test_case "supports evaluation stub identity" [ bytes ]
+        test_supports_evaluation_stub_identity;
     ] )

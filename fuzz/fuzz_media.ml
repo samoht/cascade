@@ -79,6 +79,36 @@ let test_negated_kind_invariant buf =
   if Css.Media.kind query <> Css.Media.kind negated then
     fail "negated media query changed kind bucket"
 
+let test_media_evaluation_stub_identity buf =
+  match
+    Css.Stylesheet.evaluate_media_query ~condition:(media buf 0)
+      ~environment:"screen width=80em"
+  with
+  | Error (Css.Stylesheet.Requires_platform_context { feature; detail }) ->
+      if feature <> "media query evaluation" || detail = "" then
+        fail "media evaluation stub lost feature/detail identity"
+  | Error (Css.Stylesheet.Requires_document_context _) ->
+      fail "media evaluation returned document-context error"
+  | Error (Css.Stylesheet.Unsupported_value_alias _) ->
+      fail "media evaluation returned value-alias error"
+  | Ok _ -> fail "media evaluation stub unexpectedly succeeded"
+
+let test_raw_range_serialization_stable buf =
+  let raw =
+    pick
+      [
+        "(width)";
+        "(40em < width)";
+        "(width <= 60em)";
+        "(400px <= width <= 1200px)";
+        "screen and (width >= 40em), print";
+      ]
+      buf 0
+  in
+  let query = Css.Media.Raw raw in
+  if Css.Media.to_string query <> raw then
+    fail "raw media query serialization changed"
+
 let suite =
   ( "media",
     [
@@ -87,4 +117,8 @@ let suite =
       test_case "compare antisymmetric" [ bytes ] test_compare_antisymmetric;
       test_case "compare transitive" [ bytes ] test_compare_transitive;
       test_case "negated kind invariant" [ bytes ] test_negated_kind_invariant;
+      test_case "media evaluation stub identity" [ bytes ]
+        test_media_evaluation_stub_identity;
+      test_case "raw range serialization stable" [ bytes ]
+        test_raw_range_serialization_stable;
     ] )
