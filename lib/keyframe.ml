@@ -24,15 +24,10 @@ let selector_to_string = function
       String.concat ", " (List.map position_to_string positions)
   | Raw s -> s
 
+let position_to_percent = function From -> 0. | To -> 100. | Percent p -> p
+
 let position_compare a b =
-  match (a, b) with
-  | From, From -> 0
-  | To, To -> 0
-  | Percent p1, Percent p2 -> Float.compare p1 p2
-  | From, _ -> -1
-  | _, From -> 1
-  | To, Percent _ -> 1
-  | Percent _, To -> -1
+  Float.compare (position_to_percent a) (position_to_percent b)
 
 (** Parse a position string like "from", "to", or "50%". *)
 let position_of_string s =
