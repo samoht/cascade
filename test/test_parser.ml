@@ -694,6 +694,48 @@ let spec_serialization_roundtrip_boundaries () =
     "backslash delim serialization" "\\\n"
     (Css.Parser.to_string (parse_list "\\"))
 
+let spec_wpt_unclosed_construct_edges () =
+  (* WPT unclosed-constructs vectors at the component parser layer. *)
+  let list css =
+    (Css.Parser.parse_list_of_component_values (Css.Reader.of_string css)).value
+  in
+  Alcotest.(check string)
+    "unclosed function and block auto-close" "calc(1px + [2em])"
+    (Css.Parser.to_string (list "calc(1px + [2em"));
+  Alcotest.(check string)
+    "unclosed nested function auto-closes" "f(g(h))"
+    (Css.Parser.to_string_minified (list "f(g(h"))
+
+let spec_wpt_trailing_brace_edges () =
+  (* WPT trailing-braces vectors: component-value list parsing preserves
+     unmatched closing tokens instead of swallowing later input. *)
+  let list css =
+    (Css.Parser.parse_list_of_component_values (Css.Reader.of_string css)).value
+  in
+  Alcotest.(check string)
+    "trailing right braces are preserved in component lists" "a}}"
+    (Css.Parser.to_string_minified (list "a}}"));
+  Alcotest.(check string)
+    "unmatched mixed closers are preserved" ")]}"
+    (Css.Parser.to_string_minified (list ")]}"))
+
+let spec_wpt_at_rule_boundary_edges () =
+  (* WPT at-rule recovery shape: semicolon-terminated at-rules and unclosed
+     block at-rules must not consume following sibling rules. *)
+  let rules = parse_ss "@media screen { .a { color: red } .b { color: blue }" in
+  Alcotest.(check int)
+    "unclosed at-rule block still forms one at-rule" 1 (List.length rules);
+  (match parse_ss "@bad ; .ok { color: green }" with
+  | [
+   Css.Component.At { node = { name = "bad"; block = None; _ }; _ };
+   Css.Component.Qualified _;
+  ] ->
+      ()
+  | _ -> Alcotest.fail "semicolon at-rule should not consume following rule");
+  match Css.Parser.parse_rule (Css.Reader.of_string "@bad ; .ok{}") with
+  | { value = None; _ } -> ()
+  | _ -> Alcotest.fail "parse-rule rejects at-rule plus trailing qualified rule"
+
 let spec_security_resource_exhaustion_regressions () =
   (* CSS Syntax Level 3 section 11: the spec's security value is that parsing is
      unambiguous for hostile inputs. Keep regression vectors for common parser
@@ -1271,6 +1313,12 @@ let suite =
         spec_serialization_string_escaping;
       Alcotest.test_case "spec section 9 serialization boundaries" `Quick
         spec_serialization_roundtrip_boundaries;
+      Alcotest.test_case "spec WPT unclosed construct edges" `Quick
+        spec_wpt_unclosed_construct_edges;
+      Alcotest.test_case "spec WPT trailing brace edges" `Quick
+        spec_wpt_trailing_brace_edges;
+      Alcotest.test_case "spec WPT at-rule boundary edges" `Quick
+        spec_wpt_at_rule_boundary_edges;
       Alcotest.test_case "spec section 11 parser security regressions" `Quick
         spec_security_resource_exhaustion_regressions;
       Alcotest.test_case "spec section 12 parsing change checklist" `Quick

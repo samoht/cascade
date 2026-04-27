@@ -722,10 +722,9 @@ let property_rule_edges () =
   neg_cursor read_stylesheet
     "@property color { syntax: \"*\"; inherits: false }"
 
-let spec_at_rule_descriptor_matrix_more () =
-  (* Positive and negative descriptor matrices for the at-rules that Cascade
-     models. Descriptor syntax is a spec oracle; these are not snapshots of the
-     current printer. *)
+let spec_font_face_descriptor_matrix () =
+  (* Descriptor syntax is a spec oracle; these are not snapshots of the current
+     printer. *)
   List.iter
     (fun (expected, input) -> check_stylesheet ~expected input)
     [
@@ -744,15 +743,48 @@ let spec_at_rule_descriptor_matrix_more () =
         "@font-face { font-family: Metrics; src: url(metrics.woff2); \
          size-adjust: 100%; ascent-override: normal; descent-override: 20%; \
          line-gap-override: 0%; }" );
-      ( "@keyframes move{from{translate:none}50%{translate:10px \
-         20px}to{translate:20px 0}}",
-        "@keyframes move { from { translate: none } 50% { translate: 10px 20px \
-         } to { translate: 20px 0 } }" );
-      ( "@page chapter:right{size:letter \
-         landscape;margin:1in;@right-top{content:counter(page)}@bottom-center{content:\"Chapter\"}}",
-        "@page chapter:right { size: letter landscape; margin: 1in; @right-top \
-         { content: counter(page) } @bottom-center { content: \"Chapter\" } }"
-      );
+    ];
+  List.iter
+    (neg_cursor read_stylesheet)
+    [
+      "@font-face { font-family: Brand; src: url(brand.woff2); font-weight: \
+       900 100 }";
+      "@font-face { font-family: Brand; src: url(brand.woff2); \
+       ascent-override: 120%; }";
+    ]
+
+let spec_keyframes_selector_matrix () =
+  check_stylesheet
+    ~expected:
+      "@keyframes move{from{translate:none}50%{translate:10px \
+       20px}to{translate:20px 0}}"
+    "@keyframes move { from { translate: none } 50% { translate: 10px 20px } \
+     to { translate: 20px 0 } }";
+  List.iter
+    (neg_cursor read_stylesheet)
+    [
+      "@keyframes bad { 50%, { opacity: 1 } }";
+      "@keyframes bad { from, 120% { opacity: 1 } }";
+    ]
+
+let spec_page_margin_descriptor_matrix () =
+  check_stylesheet
+    ~expected:
+      "@page chapter:right{size:letter \
+       landscape;margin:1in;@right-top{content:counter(page)}@bottom-center{content:\"Chapter\"}}"
+    "@page chapter:right { size: letter landscape; margin: 1in; @right-top { \
+     content: counter(page) } @bottom-center { content: \"Chapter\" } }";
+  List.iter
+    (neg_cursor read_stylesheet)
+    [
+      "@page :first:left { margin: 1cm }";
+      "@page { @top-center { display: block } }";
+    ]
+
+let spec_property_descriptor_matrix () =
+  List.iter
+    (fun (expected, input) -> check_stylesheet ~expected input)
+    [
       ( "@property \
          --angle-list{syntax:\"<angle>#\";inherits:false;initial-value:0deg}",
         "@property --angle-list { syntax: \"<angle>#\"; inherits: false; \
@@ -765,14 +797,6 @@ let spec_at_rule_descriptor_matrix_more () =
   List.iter
     (neg_cursor read_stylesheet)
     [
-      "@font-face { font-family: Brand; src: url(brand.woff2); font-weight: \
-       900 100 }";
-      "@font-face { font-family: Brand; src: url(brand.woff2); \
-       ascent-override: 120%; }";
-      "@keyframes bad { 50%, { opacity: 1 } }";
-      "@keyframes bad { from, 120% { opacity: 1 } }";
-      "@page :first:left { margin: 1cm }";
-      "@page { @top-center { display: block } }";
       "@property --bad { syntax: \"<angle>#\"; inherits: false; initial-value: \
        red }";
       "@property --bad { syntax: \"<length> || <color>\"; inherits: false; \
@@ -1083,12 +1107,17 @@ let stylesheet_tests =
     ("keyframes spec edge vectors", `Quick, test_keyframes_spec_edge_vectors);
     ("font_face", `Quick, font_face_case);
     ("font-face spec descriptor vectors", `Quick, spec_fontface_descriptors);
+    ( "spec font-face descriptor matrix",
+      `Quick,
+      spec_font_face_descriptor_matrix );
+    ("spec keyframes selector matrix", `Quick, spec_keyframes_selector_matrix);
     ("page", `Quick, page_case);
     ("page margin edges", `Quick, page_margin_edges);
-    ("property rule edges", `Quick, property_rule_edges);
-    ( "spec at-rule descriptor matrix edges",
+    ( "spec page margin descriptor matrix",
       `Quick,
-      spec_at_rule_descriptor_matrix_more );
+      spec_page_margin_descriptor_matrix );
+    ("property rule edges", `Quick, property_rule_edges);
+    ("spec property descriptor matrix", `Quick, spec_property_descriptor_matrix);
     ("sheet_item", `Quick, sheet_item_case);
     ("ordering", `Quick, ordering);
     (* CSS parsing tests *)

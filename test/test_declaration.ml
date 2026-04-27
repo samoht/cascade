@@ -1642,7 +1642,7 @@ let test_declaration () =
   (* Duplicate !important should fail *)
   neg_cursor read_declaration "color: red blue !important !important"
 
-let spec_declaration_more_grammar_vectors () =
+let spec_css_wide_and_custom_property_vectors () =
   (* CSS Cascading: CSS-wide keywords are whole declaration values for standard
      properties, not component values inside a larger value. *)
   List.iter
@@ -3025,7 +3025,7 @@ let declaration_tests =
     test_case "spec remaining property vectors" `Quick
       spec_remaining_prop_vectors;
     test_case "spec declaration additional grammar vectors" `Quick
-      spec_declaration_more_grammar_vectors;
+      spec_css_wide_and_custom_property_vectors;
     test_case "spec property grammar manifest" `Quick
       spec_property_grammar_manifest;
     (* Error handling *)

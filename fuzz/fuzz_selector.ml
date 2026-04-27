@@ -272,6 +272,59 @@ let test_selector_specificity_preserved_by_minify buf =
               (Fmt.str "selector minification changed specificity: %S -> %S"
                  input serialized))
 
+let test_pseudo_class_family_vectors buf =
+  let input =
+    pick
+      [
+        ":nth-child(-n+3)";
+        ":nth-last-child(odd of :not([hidden]))";
+        ":autofill";
+        ":placeholder-shown";
+        ":user-valid";
+        ":user-invalid";
+        ":active-view-transition-type(forwards, backwards)";
+        ":state(selected)";
+      ]
+      buf 0
+  in
+  assert_stable input
+
+let test_pseudo_element_family_vectors buf =
+  let input =
+    pick
+      [
+        "::target-text";
+        "::spelling-error";
+        "::grammar-error";
+        "::part(tab panel)";
+        "::slotted(img.selected)";
+        "::highlight(search-results)";
+        "::view-transition-group(root)";
+        "::view-transition-image-pair(root)";
+        "::view-transition-old(root)";
+        "::view-transition-new(root)";
+      ]
+      buf 0
+  in
+  assert_stable input
+
+let test_invalid_pseudo_family_vectors buf =
+  let input =
+    pick
+      [
+        ":nth-child(n+)";
+        ":checked()";
+        ":state()";
+        "::part()";
+        "::part(a,b)";
+        "::slotted()";
+        "::highlight()";
+        "::view-transition-old()";
+      ]
+      buf 0
+  in
+  assert_reject input
+
 let suite =
   ( "selector",
     [
@@ -299,4 +352,10 @@ let suite =
         test_where_specificity_zero;
       test_case "selector specificity preserved by minify" [ bytes ]
         test_selector_specificity_preserved_by_minify;
+      test_case "pseudo-class family vectors" [ bytes ]
+        test_pseudo_class_family_vectors;
+      test_case "pseudo-element family vectors" [ bytes ]
+        test_pseudo_element_family_vectors;
+      test_case "invalid pseudo family vectors rejected" [ bytes ]
+        test_invalid_pseudo_family_vectors;
     ] )

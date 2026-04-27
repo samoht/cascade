@@ -1351,6 +1351,74 @@ let spec_selector_l4_pseudo_matrix () =
       "::view-transition-old()";
     ]
 
+let spec_selector_tree_structural_pseudos () =
+  List.iter check
+    [
+      ":root";
+      ":empty";
+      ":only-child";
+      ":only-of-type";
+      ":nth-child(-n+3)";
+      ":nth-last-child(odd of :not([hidden]))";
+      ":nth-of-type(3n+1)";
+      ":nth-last-of-type(-n+2)";
+    ];
+  List.iter
+    (fun input -> neg_cursor read input)
+    [ ":nth-child(n+)"; ":nth-last-child(2n of)"; ":nth-of-type(odd even)" ]
+
+let spec_selector_input_state_pseudos () =
+  List.iter check
+    [
+      ":enabled";
+      ":disabled";
+      ":read-only";
+      ":read-write";
+      ":placeholder-shown";
+      ":autofill";
+      ":default";
+      ":checked";
+      ":indeterminate";
+      ":valid";
+      ":invalid";
+      ":user-valid";
+      ":user-invalid";
+      ":in-range";
+      ":out-of-range";
+      ":required";
+      ":optional";
+    ];
+  List.iter
+    (fun input -> neg_cursor read input)
+    [ ":checked()"; ":valid(.x)"; ":required(.x)" ]
+
+let spec_selector_pseudo_element_matrix () =
+  List.iter check
+    [
+      "::before";
+      "::after";
+      "::first-line";
+      "::first-letter";
+      "::marker";
+      "::selection";
+      "::target-text";
+      "::spelling-error";
+      "::grammar-error";
+      "::file-selector-button";
+      "::part(tab panel)";
+      "::slotted(img.selected)";
+      "::highlight(search-results)";
+      "::view-transition-group(root)";
+      "::view-transition-image-pair(root)";
+      "::view-transition-old(root)";
+      "::view-transition-new(root)";
+    ];
+  check_minified_to "a:before" "a::before";
+  check_minified_to "p:first-line" "p::first-line";
+  List.iter
+    (fun input -> neg_cursor read input)
+    [ "::part()"; "::part(a,b)"; "::slotted()"; "::highlight()" ]
+
 let spec_selector_attr_ns_edges () =
   (* Mixed parser/minifier coverage. *)
   check "|a";
@@ -1430,6 +1498,12 @@ let suite =
         spec_selector_scope_pseudo_edges;
       test_case "spec selector level 4 pseudo matrix edges" `Quick
         spec_selector_l4_pseudo_matrix;
+      test_case "spec selector tree structural pseudos" `Quick
+        spec_selector_tree_structural_pseudos;
+      test_case "spec selector input state pseudos" `Quick
+        spec_selector_input_state_pseudos;
+      test_case "spec selector pseudo-element matrix" `Quick
+        spec_selector_pseudo_element_matrix;
       test_case "spec selector attribute namespace edges" `Quick
         spec_selector_attr_ns_edges;
       test_case "nesting selector" `Quick test_nesting_selector;

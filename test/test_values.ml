@@ -760,7 +760,7 @@ let spec_values_l45_math_color () =
   neg_cursor read_color "rgb(from red r g)";
   neg_cursor read_color "color(display-p3 1 0)"
 
-let spec_color5_more_edges () =
+let spec_color5_function_edges () =
   check_color ~expected:"lab(50% 10 20)" "lab(50% 10 20)";
   check_color ~expected:"lch(50% 20 30)" "lch(50% 20 30)";
   check_color ~expected:"oklab(50% .1 .2)" "oklab(50% 0.1 0.2)";
@@ -778,7 +778,7 @@ let spec_color5_more_edges () =
   neg_cursor read_color "color-mix(in, red, blue)";
   neg_cursor read_color "color-mix(in srgb red blue)"
 
-let spec_math_more_edges () =
+let spec_math_function_edges () =
   check_length ~expected:"round(nearest,10px,3px)" "round(nearest, 10px, 3px)";
   check_length ~expected:"mod(10px,3px)" "mod(10px, 3px)";
   check_length ~expected:"rem(10px,3px)" "rem(10px, 3px)";
@@ -840,8 +840,8 @@ let value_tests =
       spec_values_color_current;
     test_case "spec values level 4/5 math and color edges" `Quick
       spec_values_l45_math_color;
-    test_case "spec color 5 more edges" `Quick spec_color5_more_edges;
-    test_case "spec math more edges" `Quick spec_math_more_edges;
+    test_case "spec color 5 function edges" `Quick spec_color5_function_edges;
+    test_case "spec math function edges" `Quick spec_math_function_edges;
   ]
 
 let suite = ("values", value_tests)
