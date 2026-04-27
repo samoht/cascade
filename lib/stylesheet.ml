@@ -1400,10 +1400,15 @@ let read_stylesheet_from_rules ?source ?meta (rules : Component.rule list) :
         (* Drain declaration-level warnings first so source order is preserved:
            decl warnings come from inside the rule, the rule-level error (if
            any) comes after them. *)
-        List.iter
-          (fun w -> warnings := w :: !warnings)
-          (Cursor.drain_warnings cursor);
+        let decl_warnings = Cursor.drain_warnings cursor in
+        List.iter (fun w -> warnings := w :: !warnings) decl_warnings;
         match result with
+        | Ok (Rule { declarations = []; nested = []; _ })
+          when decl_warnings <> [] ->
+            (* Recovery emptied the rule: every declaration was invalid and
+               there are no nested rules. Drop the now-vacuous rule rather than
+               emit `selector{}`. *)
+            None
         | Ok stmt -> Some stmt
         | Error e ->
             warnings := e :: !warnings;
