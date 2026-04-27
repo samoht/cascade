@@ -64,6 +64,8 @@ let generated_layer_stylesheet buf =
   [
     Css.Stylesheet.Layer_decl [ primary; secondary ];
     import_rule ~layer:secondary "theme.css";
+    import_rule ~layer:"" "anonymous-layer.css";
+    import_rule "plain.css";
     Css.Stylesheet.Layer
       ( Some primary,
         [
@@ -116,6 +118,7 @@ let rec boundary_shape = function
         match origin with
         | User_agent -> "ua"
         | User -> "user"
+        | Author_presentational_hint -> "author-presentational-hint"
         | Author -> "author"
         | Animation -> "animation"
         | Transition -> "transition"

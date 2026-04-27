@@ -27,11 +27,24 @@ type 'a property_rule = {
 type cascade_origin =
   | User_agent
   | User
+  | Author_presentational_hint
   | Author
   | Animation
   | Transition
       (** Cascade origins from CSS Cascading and Inheritance. [Animation] and
           [Transition] represent generated virtual rules. *)
+
+type cascade_layer_candidate = {
+  layer : string option;
+      (** Explicit layer name, or [None] for the implicit unlayered layer. *)
+  important : bool;
+      (** Whether this candidate comes from an important declaration. *)
+  source_order : int;
+      (** Later source-order values win after layer precedence ties. *)
+  value : string;  (** Test/API payload representing the cascaded value. *)
+}
+(** A minimal same-origin/same-specificity cascade candidate used to model the
+    layer and source-order parts of the cascade sorting order. *)
 
 (** {2 Basic Rules} *)
 

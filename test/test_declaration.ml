@@ -886,6 +886,26 @@ let css_wide_keywords () =
   check_declaration ~expected:"width:revert-layer" "width: revert-layer";
   check_declaration ~expected:"color:revert" "color: revert"
 
+let spec_cascade_section_7_defaulting_keywords () =
+  (* CSS Cascade section 7: defaulting keywords are CSS-wide values. They are
+     valid as the entire value of any property, including the [all] shorthand,
+     and invalid when mixed with other component values. *)
+  check_declaration ~expected:"display:initial" "display: initial";
+  check_declaration ~expected:"font-size:inherit" "font-size: inherit";
+  check_declaration ~expected:"margin:unset" "margin: unset";
+  check_declaration ~expected:"color:revert" "color: revert";
+  check_declaration ~expected:"width:revert-layer" "width: revert-layer";
+  check_declaration ~expected:"all:initial" "all: initial";
+  check_declaration ~expected:"all:inherit" "all: inherit";
+  check_declaration ~expected:"all:unset" "all: unset";
+  check_declaration ~expected:"all:revert" "all: revert";
+  check_declaration ~expected:"all:revert-layer" "all: revert-layer";
+  check_declaration ~expected:"display:initial" "display: INITIAL";
+  neg_cursor read_declaration "all: initial revert";
+  neg_cursor read_declaration "display: block revert";
+  neg_cursor read_declaration "margin: revert-layer 1rem";
+  neg_cursor read_declaration "color: inherit red"
+
 let comments () =
   (* Comments around colon and inside values *)
   check_declaration ~expected:"color:red" "color/*c*/:/**/red";
@@ -1049,6 +1069,8 @@ let declaration_tests =
     test_case "invalid declarations" `Quick invalid;
     (* Spec details and edge cases *)
     test_case "CSS-wide keywords" `Quick css_wide_keywords;
+    test_case "spec cascade 7 defaulting keywords" `Quick
+      spec_cascade_section_7_defaulting_keywords;
     test_case "comments handling" `Quick comments;
     test_case "unit case-insensitivity" `Quick unit_case;
     test_case "number formats" `Quick number_formats;

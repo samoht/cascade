@@ -23,14 +23,73 @@ let starting_style content = Starting_style content
 let with_origin cascade_origin content = Origin (cascade_origin, content)
 
 let origin_importance_rank ~important = function
-  | Transition -> 8
-  | User_agent when important -> 7
-  | User when important -> 6
-  | Author when important -> 5
-  | Animation -> 4
-  | Author -> 3
+  | Transition -> 9
+  | User_agent when important -> 8
+  | User when important -> 7
+  | Author when important -> 6
+  | Animation -> 5
+  | Author -> 4
+  | Author_presentational_hint -> 3
   | User -> 2
   | User_agent -> 1
+
+let import_layer_name ({ layer; _ } : import_rule) = layer
+
+let layer_block_name = function
+  | Layer (Some name, _) -> Some name
+  | Layer (None, _) -> Some ""
+  | _ -> None
+
+let layer_statement_name_list = function
+  | Layer_decl names -> Some names
+  | _ -> None
+
+let rec index_of x i = function
+  | [] -> None
+  | y :: ys -> if x = y then Some i else index_of x (i + 1) ys
+
+let cascade_layer_precedence_rank ~layer_order ~important layer =
+  let layer_count = List.length layer_order in
+  match (important, layer) with
+  | false, None -> layer_count
+  | false, Some name ->
+      Option.value ~default:layer_count (index_of name 0 layer_order)
+  | true, None -> 0
+  | true, Some name ->
+      let i = Option.value ~default:layer_count (index_of name 0 layer_order) in
+      layer_count - i
+
+let compare_cascade_layer_candidate ~layer_order a b =
+  let key c =
+    ( (if c.important then 1 else 0),
+      cascade_layer_precedence_rank ~layer_order ~important:c.important c.layer,
+      c.source_order )
+  in
+  compare (key a) (key b)
+
+let winning_cascade_layer_candidate ~layer_order = function
+  | [] -> None
+  | first :: rest ->
+      Some
+        (List.fold_left
+           (fun winner candidate ->
+             if
+               compare_cascade_layer_candidate ~layer_order winner candidate < 0
+             then candidate
+             else winner)
+           first rest)
+
+let cascade_revert_layer_candidates ~layer_order ~important ~current_layer
+    candidates =
+  let current_rank =
+    cascade_layer_precedence_rank ~layer_order ~important current_layer
+  in
+  List.filter
+    (fun candidate ->
+      candidate.important = important
+      && cascade_layer_precedence_rank ~layer_order ~important candidate.layer
+         < current_rank)
+    candidates
 
 let starting_style_nested declarations =
   Starting_style [ Declarations declarations ]
@@ -451,44 +510,25 @@ let read_keyframe (r : Cursor.t) : keyframe =
 
 (* Helper functions for reading specific at-rules *)
 
-(* WHATWG Encoding labels for UTF-8 (https://encoding.spec.whatwg.org/#names-
-   and-labels). Matched case-insensitively with ASCII whitespace trimmed. *)
-let is_utf8_label s =
-  let s = String.lowercase_ascii (String.trim s) in
-  match s with
-  | "utf-8" | "utf8" | "unicode-1-1-utf-8" | "unicode11utf8" | "unicode20utf8"
-  | "x-unicode20utf8" ->
-      true
-  | _ -> false
-
+(* CSS Syntax section 8.2 reserves [@charset "UTF-8";] as the byte-stream
+   decoder hint. The exact form -- uppercase label, double quotes, semicolon --
+   is recognised; any other [@charset] (lowercase, single quotes, different
+   label, no terminating ';') is a syntax error per section 8.3. *)
 let read_charset (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "charset" r;
   Cursor.ws r;
-  (* CSS Syntax section 8.2 / css-syntax-3 requires the exact byte sequence
-     [@charset "..."]; single-quoted or otherwise non-conforming charset
-     at-rules are not recognized as charset declarations. *)
   let encoding =
     match Cursor.string_with_quote_opt r with
-    | Some (value, '"') -> value
-    | Some (_, _) ->
+    | Some (value, '"') when value = "UTF-8" -> value
+    | _ ->
         Error.fail_bad_value (Cursor.position r) ~property:"@charset"
-          ~reason:"@charset requires double quotes"
-    | None -> Cursor.string r
+          ~reason:"@charset only recognises \"UTF-8\""
   in
-  (* Cascade is UTF-8-only. A [@charset] pointing at any other encoding is a
-     request to decode the byte stream with a legacy decoder we don't ship, so
-     reject it rather than silently pretending the bytes are already UTF-8. *)
-  if not (is_utf8_label encoding) then
-    Error.fail_bad_value (Cursor.position r) ~property:"@charset"
-      ~reason:
-        (String.concat ""
-           [
-             "Cascade accepts UTF-8 input only; cannot honour @charset \"";
-             encoding;
-             "\"";
-           ]);
   Cursor.ws r;
-  if Cursor.peek_semicolon r then Cursor.skip r;
+  if Cursor.peek_semicolon r then Cursor.skip r
+  else
+    Error.fail_bad_value (Cursor.position r) ~property:"@charset"
+      ~reason:"@charset must end with ';'";
   Charset encoding
 
 let read_import (r : Cursor.t) : statement =
@@ -754,16 +794,50 @@ and read_container (r : Cursor.t) : statement =
   let content = Cursor.braces (fun inner -> read_block inner) r in
   Container (container_name, Container.Raw condition_str, content)
 
+(* CSS Cascade section 6.4.2: a layer name is one or more idents joined by '.'
+   with no whitespace around the dot. CSS-wide keywords are reserved. *)
+and read_layer_name (r : Cursor.t) : string =
+  let reserved = function
+    | "initial" | "inherit" | "unset" | "revert" | "revert-layer" -> true
+    | _ -> false
+  in
+  let buf = Buffer.create 16 in
+  let first = Cursor.ident ~keep_case:true r in
+  if reserved (String.lowercase_ascii first) then
+    Cursor.err_invalid r ("layer name reserves CSS-wide keyword: " ^ first);
+  Buffer.add_string buf first;
+  let rec extend () =
+    match Cursor.peek_raw r with
+    | Some (Component.Preserved { kind = Token.Delim "."; _ }) ->
+        Cursor.skip r;
+        let next =
+          match Cursor.peek_raw r with
+          | Some (Component.Preserved { kind = Token.Ident s; _ }) ->
+              Cursor.skip r;
+              s
+          | _ -> Cursor.err_expected r "ident after '.' in layer name"
+        in
+        if reserved (String.lowercase_ascii next) then
+          Cursor.err_invalid r ("layer name reserves CSS-wide keyword: " ^ next);
+        Buffer.add_char buf '.';
+        Buffer.add_string buf next;
+        extend ()
+    | _ -> ()
+  in
+  extend ();
+  Buffer.contents buf
+
 and read_layer (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "layer" r;
   Cursor.ws r;
   match Cursor.peek r with
   | Some (Component.Block { node = { opening = Token.Curly; _ }; _ }) ->
-      (* Anonymous layer *)
       let content = Cursor.braces (fun inner -> read_block inner) r in
       Layer (None, content)
+  | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
+      Cursor.err_invalid r "@layer requires at least one name"
   | _ -> (
-      let first = Cursor.ident ~keep_case:true r in
+      let first = read_layer_name r in
       Cursor.ws r;
       match Cursor.peek r with
       | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
@@ -776,11 +850,17 @@ and read_layer (r : Cursor.t) : statement =
             Cursor.list ~sep:Cursor.comma ~at_least:1
               (fun r ->
                 Cursor.ws r;
-                Cursor.ident ~keep_case:true r)
+                read_layer_name r)
               r
           in
           Cursor.ws r;
-          if Cursor.peek_semicolon r then Cursor.skip r;
+          (match Cursor.peek r with
+          | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
+              Cursor.skip r
+          | Some (Component.Block { node = { opening = Token.Curly; _ }; _ }) ->
+              Cursor.err_invalid r
+                "@layer with multiple names cannot have a block"
+          | _ -> ());
           Layer_decl (first :: rest)
       | Some (Component.Block { node = { opening = Token.Curly; _ }; _ }) ->
           let content = Cursor.braces (fun inner -> read_block inner) r in
