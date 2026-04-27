@@ -22,6 +22,17 @@ type 'a property_rule = {
 }
 (** Type-safe CSS [@property] rule with typed syntax and initial value *)
 
+(** {2 Cascade Origins} *)
+
+type cascade_origin =
+  | User_agent
+  | User
+  | Author
+  | Animation
+  | Transition
+      (** Cascade origins from CSS Cascading and Inheritance. [Animation] and
+          [Transition] represent generated virtual rules. *)
+
 (** {2 Basic Rules} *)
 
 type rule = {
@@ -53,6 +64,10 @@ and statement =
       (** [@container name? (...) { ... }] *)
   | Supports of Supports.t * block  (** [@supports (...) { ... }] *)
   | Starting_style of block  (** [@starting-style { ... }] *)
+  | Origin of cascade_origin * block
+      (** API-level wrapper recording the cascade origin of a stylesheet block.
+          It has no CSS surface syntax, but lets optimizers and tests preserve
+          origin boundaries. *)
   | Scope of string option * string option * block
       (** [@scope (start)? to (end)? { ... }] *)
   | Keyframes of string * keyframe list  (** [@keyframes name { ... }] *)

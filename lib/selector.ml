@@ -579,12 +579,14 @@ let read_attribute t =
 
 (* Numeric helpers: split an arbitrary ident's tail into an optional [-digits]
    suffix, for ndashdigit / ndash / n patterns. *)
+let all_digits s =
+  String.length s > 0 && String.for_all (fun c -> c >= '0' && c <= '9') s
+
 let ndashdigit_b unit_ =
-  (* Match [n-<digits>] case-insensitively; return [Some digits] or [None]. *)
   let n = String.length unit_ in
   if n >= 3 && Char.lowercase_ascii unit_.[0] = 'n' && unit_.[1] = '-' then
     let tail = String.sub unit_ 2 (n - 2) in
-    match int_of_string_opt tail with Some b -> Some b | None -> None
+    if all_digits tail then int_of_string_opt tail else None
   else None
 
 let is_ndash unit_ =
@@ -596,7 +598,6 @@ let is_n_unit unit_ =
   String.length unit_ = 1 && Char.lowercase_ascii unit_.[0] = 'n'
 
 let dashndashdigit_b ident =
-  (* Match [-n-<digits>] case-insensitively; return [Some digits]. *)
   let n = String.length ident in
   if
     n >= 4
@@ -605,7 +606,7 @@ let dashndashdigit_b ident =
     && ident.[2] = '-'
   then
     let tail = String.sub ident 3 (n - 3) in
-    match int_of_string_opt tail with Some b -> Some b | None -> None
+    if all_digits tail then int_of_string_opt tail else None
   else None
 
 let is_n_ident ident = String.lowercase_ascii ident = "n"

@@ -128,6 +128,10 @@ let is_nested_supports = function
 
 let as_declarations = function Declarations decls -> Some decls | _ -> None
 
+let as_origin = function
+  | Origin (origin, content) -> Some (origin, content)
+  | _ -> None
+
 let rec map f stmts =
   List.map
     (fun stmt ->
@@ -146,7 +150,11 @@ let rec map f stmts =
                       match as_container stmt with
                       | Some (name, condition, content) ->
                           container ?name ~condition (map f content)
-                      | None -> stmt)))))
+                      | None -> (
+                          match as_origin stmt with
+                          | Some (origin, content) ->
+                              Origin (origin, map f content)
+                          | None -> stmt))))))
     stmts
 
 let rec sort cmp stmts =
@@ -167,7 +175,11 @@ let rec sort cmp stmts =
                     match as_container stmt with
                     | Some (name, condition, content) ->
                         container ?name ~condition (sort cmp content)
-                    | None -> stmt))))
+                    | None -> (
+                        match as_origin stmt with
+                        | Some (origin, content) ->
+                            Origin (origin, sort cmp content)
+                        | None -> stmt)))))
       stmts
   in
 
@@ -240,7 +252,10 @@ let rec fold f acc t =
                 | None -> (
                     match as_supports stmt with
                     | Some (_, nested) -> nested
-                    | None -> [])))
+                    | None -> (
+                        match as_origin stmt with
+                        | Some (_, nested) -> nested
+                        | None -> []))))
       in
       fold f acc' nested)
     acc t
@@ -307,6 +322,8 @@ let media_nested ~condition declarations =
 let declarations decls = Declarations decls
 let layer ?name statements = Layer (name, statements)
 let layer_decl names = Layer_decl names
+let with_origin = Stylesheet.with_origin
+let origin_importance_rank = Stylesheet.origin_importance_rank
 
 let layer_of ?name stylesheet =
   (* Wrap the stylesheet statements in a layer *)

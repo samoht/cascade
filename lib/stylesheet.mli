@@ -48,6 +48,15 @@ val supports : condition:Supports.t -> block -> statement
 val starting_style : block -> statement
 (** [starting_style content] creates a [@starting-style] rule. *)
 
+val with_origin : cascade_origin -> block -> statement
+(** [with_origin cascade_origin content] records the cascade origin for a
+    stylesheet block. This is an API-level wrapper with no CSS syntax. *)
+
+val origin_importance_rank : important:bool -> cascade_origin -> int
+(** [origin_importance_rank ~important origin] returns the cascade precedence
+    rank for the origin/importance criterion. Larger ranks have higher
+    precedence. *)
+
 val starting_style_nested : Declaration.declaration list -> statement
 (** [starting_style_nested declarations] creates a [@starting-style] rule for
     CSS nesting, containing bare declarations (no selector). Used inside rules

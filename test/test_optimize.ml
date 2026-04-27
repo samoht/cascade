@@ -121,7 +121,7 @@ let single_rule () =
   let rule : Css.Stylesheet.rule =
     { selector; declarations = decls; nested = []; merge_key = None }
   in
-  let optimized = single_rule rule in
+  let optimized = Css.Optimize.single_rule rule in
 
   (* Check that duplicate color declarations are removed *)
   let color_count =
@@ -406,7 +406,7 @@ let test_consecutive_media_merge () =
 let test_nonconsecutive_media_unmerged () =
   (* Media queries separated by other statements should NOT merge *)
   let selector1 = Css.Selector.class_ "a" in
-  let selector2 = Css.Selector.class_ "b" in
+  let selector2 = Css.Selector.class_ "a" in
   let selector3 = Css.Selector.class_ "c" in
 
   let rule1 : Css.Stylesheet.rule =
@@ -446,16 +446,13 @@ let test_nonconsecutive_media_unmerged () =
   in
 
   let optimized = Css.Optimize.stylesheet stylesheet in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
 
-  (* The optimizer consolidates matching media blocks at the last position, so
-     non-consecutive blocks with the same condition are merged. Result: rule
-     (moved before), merged media (at last position) *)
-  check int "non-consecutive media queries are consolidated" 2
-    (List.length optimized);
-
-  match optimized with
-  | [ Css.Stylesheet.Rule _; Css.Stylesheet.Media _ ] -> ()
-  | _ -> fail "Expected Rule, Media pattern"
+  Alcotest.(check string)
+    "non-consecutive media queries preserve source order"
+    "@media (min-width:48px){.a{color:#ff0000}}.a{color:#00ff00}@media \
+     (min-width:48px){.c{color:#0000ff}}"
+    output
 
 (** Test media queries with different conditions are NOT merged *)
 let test_different_conditions_unmerged () =
@@ -640,7 +637,7 @@ let test_merge_consecutive_identical () =
         };
     ]
   in
-  let optimized = stylesheet input in
+  let optimized = Css.Optimize.stylesheet input in
   let output_str = Css.Stylesheet.to_string ~minify:true optimized in
   Alcotest.(check bool)
     "merges consecutive identical rules" true
@@ -665,7 +662,7 @@ let test_no_merge_different_declarations () =
         };
     ]
   in
-  let optimized = stylesheet input in
+  let optimized = Css.Optimize.stylesheet input in
   let output_str = Css.Stylesheet.to_string ~minify:true optimized in
   let has_foo = Astring.String.is_infix ~affix:".foo{" output_str in
   let has_bar = Astring.String.is_infix ~affix:".bar{" output_str in
@@ -698,7 +695,7 @@ let test_no_merge_non_consecutive () =
         };
     ]
   in
-  let optimized = stylesheet input in
+  let optimized = Css.Optimize.stylesheet input in
   let output_str = Css.Stylesheet.to_string ~minify:true optimized in
   let foo_separate = Astring.String.is_infix ~affix:".foo{" output_str in
   let bar_separate = Astring.String.is_infix ~affix:".bar{" output_str in
@@ -770,6 +767,1585 @@ let test_no_merge_with_nested () =
   Alcotest.(check bool)
     "doesn't merge rules with nested statements" true (has_foo && has_bar)
 
+let spec_cascade_section_6_1_declaration_order_shorthand_boundary () =
+  (* CSS Cascade section 6.1: order of appearance is a cascade criterion.
+     Removing an earlier duplicate must not move the surviving longhand before
+     an intervening shorthand, because shorthands reset their longhands. *)
+  let rule : Css.Stylesheet.rule =
+    {
+      selector = Css.Selector.class_ "box";
+      declarations =
+        [
+          Css.Declaration.margin_left (Px 1.);
+          Css.Declaration.margin [ Px 2. ];
+          Css.Declaration.margin_left (Px 3.);
+        ];
+      nested = [];
+      merge_key = None;
+    }
+  in
+  let optimized = Css.Optimize.single_rule rule in
+  let output =
+    Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule optimized ]
+    |> String.trim
+  in
+  Alcotest.(check string)
+    "later longhand stays after shorthand" ".box{margin:2px;margin-left:3px}"
+    output
+
+let spec_cascade_section_6_1_no_merge_across_intervening_rule () =
+  (* CSS Cascade section 6.1: if rules tie on origin, importance, layer,
+     specificity, and scope proximity, the later declaration wins. Merging equal
+     selectors across an intervening rule would move the first rule's
+     declaration after that intervening rule. *)
+  let input =
+    [
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "a";
+          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
+          nested = [];
+          merge_key = None;
+        };
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "b";
+          declarations = [ Css.Declaration.color (hex_color "00ff00") ];
+          nested = [];
+          merge_key = None;
+        };
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "a";
+          declarations =
+            [ Css.Declaration.background_color (hex_color "0000ff") ];
+          nested = [];
+          merge_key = None;
+        };
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "same selector is not merged across an intervening rule"
+    ".a{color:#ff0000}.b{color:#00ff00}.a{background-color:#0000ff}" output
+
+let spec_cascade_section_6_1_no_group_non_adjacent_equal_declarations () =
+  (* CSS Cascade section 6.1: selector grouping changes where a rule appears in
+     source order. Non-adjacent equal declaration blocks must not be grouped
+     across another same-specificity rule, because elements matching both the
+     middle selector and the later selector would observe a different winner. *)
+  let input =
+    [
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "a";
+          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
+          nested = [];
+          merge_key = None;
+        };
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "b";
+          declarations = [ Css.Declaration.color (hex_color "0000ff") ];
+          nested = [];
+          merge_key = None;
+        };
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "c";
+          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
+          nested = [];
+          merge_key = None;
+        };
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "same declarations are not grouped across source-order competitor"
+    ".a{color:#ff0000}.b{color:#0000ff}.c{color:#ff0000}" output
+
+let spec_cascade_section_6_1_no_merge_across_at_rule_boundary () =
+  (* CSS Cascade section 6.1 defines style sheets and imported/nested sheets in
+     document order. An at-rule boundary is not a free reordering point for
+     surrounding rules, even when the surrounding selectors match. *)
+  let input =
+    [
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "a";
+          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
+          nested = [];
+          merge_key = None;
+        };
+      Css.Stylesheet.Media
+        ( Css.Media.Min_width 48.,
+          [
+            Css.Stylesheet.Rule
+              {
+                selector = Css.Selector.class_ "m";
+                declarations = [ Css.Declaration.color (hex_color "00ff00") ];
+                nested = [];
+                merge_key = None;
+              };
+          ] );
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "a";
+          declarations =
+            [ Css.Declaration.background_color (hex_color "0000ff") ];
+          nested = [];
+          merge_key = None;
+        };
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "same selector is not merged across media boundary"
+    ".a{color:#ff0000}@media \
+     (min-width:48px){.m{color:#00ff00}}.a{background-color:#0000ff}"
+    output
+
+let spec_cascade_section_6_1_no_merge_across_layer_boundary () =
+  (* CSS Cascade section 6.1: layers are a cascade sorting criterion. Rules in
+     different layers must not be merged, even when their selectors match. *)
+  let input =
+    [
+      Css.Stylesheet.Layer
+        ( Some "reset",
+          [
+            Css.Stylesheet.Rule
+              {
+                selector = Css.Selector.class_ "btn";
+                declarations = [ Css.Declaration.display Block ];
+                nested = [];
+                merge_key = None;
+              };
+          ] );
+      Css.Stylesheet.Layer
+        ( Some "components",
+          [
+            Css.Stylesheet.Rule
+              {
+                selector = Css.Selector.class_ "btn";
+                declarations = [ Css.Declaration.display Flex ];
+                nested = [];
+                merge_key = None;
+              };
+          ] );
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "same selector is not merged across layer boundary"
+    "@layer reset{.btn{display:block}}@layer components{.btn{display:flex}}"
+    output
+
+let spec_cascade_section_6_1_unlayered_rule_stays_outside_layer () =
+  (* CSS Cascade section 6.1: unlayered declarations are in the implicit final
+     layer for normal declarations. Optimizing must not hoist unlayered rules
+     into explicit layers or pull layered rules out. *)
+  let input =
+    [
+      Css.Stylesheet.Layer
+        ( Some "reset",
+          [
+            Css.Stylesheet.Rule
+              {
+                selector = Css.Selector.class_ "audio";
+                declarations = [ Css.Declaration.display Block ];
+                nested = [];
+                merge_key = None;
+              };
+          ] );
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "audio";
+          declarations = [ Css.Declaration.display Flex ];
+          nested = [];
+          merge_key = None;
+        };
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "unlayered rule stays outside explicit layer"
+    "@layer reset{.audio{display:block}}.audio{display:flex}" output
+
+let spec_cascade_section_6_1_important_layer_order_preserved () =
+  (* CSS Cascade section 6.1: for important declarations, earlier layers have
+     higher priority than later layers. Optimizing must preserve both layer
+     membership and layer order. *)
+  let input =
+    [
+      Css.Stylesheet.Layer
+        ( Some "base",
+          [
+            Css.Stylesheet.Rule
+              {
+                selector = Css.Selector.class_ "btn";
+                declarations =
+                  [
+                    Css.Declaration.important
+                      (Css.Declaration.color (hex_color "ff0000"));
+                  ];
+                nested = [];
+                merge_key = None;
+              };
+          ] );
+      Css.Stylesheet.Layer
+        ( Some "theme",
+          [
+            Css.Stylesheet.Rule
+              {
+                selector = Css.Selector.class_ "btn";
+                declarations =
+                  [
+                    Css.Declaration.important
+                      (Css.Declaration.color (hex_color "0000ff"));
+                  ];
+                nested = [];
+                merge_key = None;
+              };
+          ] );
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "important declarations keep layer order"
+    "@layer base{.btn{color:#ff0000!important}}@layer \
+     theme{.btn{color:#0000ff!important}}"
+    output
+
+let spec_cascade_section_6_1_style_attribute_boundary () =
+  (* CSS Cascade section 6.1 gives element-attached declarations a distinct
+     cascade slot. The closest AST analogue here is a bare declaration block: it
+     must remain a boundary for surrounding selector-mapped rules. *)
+  let input =
+    [
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "card";
+          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
+          nested = [];
+          merge_key = None;
+        };
+      Css.Stylesheet.Declarations
+        [ Css.Declaration.background_color (hex_color "00ff00") ];
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "card";
+          declarations = [ Css.Declaration.display Flex ];
+          nested = [];
+          merge_key = None;
+        };
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "bare declarations remain an optimizer boundary"
+    ".card{color:#ff0000}background-color:#00ff00;.card{display:flex}" output
+
+let spec_cascade_section_6_1_adjacent_different_specificity_grouping () =
+  (* CSS Cascade section 6.1 compares specificity per selector. Grouping
+     adjacent rules with identical declarations must keep each selector intact
+     rather than rewriting them into a different selector shape. *)
+  let input =
+    [
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "item";
+          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
+          nested = [];
+          merge_key = None;
+        };
+      Css.Stylesheet.Rule
+        {
+          selector =
+            Css.Selector.compound
+              [ Css.Selector.class_ "item"; Css.Selector.class_ "active" ];
+          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
+          nested = [];
+          merge_key = None;
+        };
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "adjacent grouping keeps selector-specific specificity"
+    ".item,.item.active{color:#ff0000}" output
+
+let spec_cascade_section_6_1_specificity_competitor_blocks_grouping () =
+  (* CSS Cascade section 6.1: specificity is evaluated before source order, but
+     source order still matters among declarations that tie. A grouping pass
+     must not move lower-specificity selectors across an overlapping
+     higher-specificity rule and change the neighboring tie behavior. *)
+  let input =
+    [
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "item";
+          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
+          nested = [];
+          merge_key = None;
+        };
+      Css.Stylesheet.Rule
+        {
+          selector =
+            Css.Selector.compound
+              [ Css.Selector.class_ "item"; Css.Selector.class_ "active" ];
+          declarations = [ Css.Declaration.color (hex_color "0000ff") ];
+          nested = [];
+          merge_key = None;
+        };
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "active";
+          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
+          nested = [];
+          merge_key = None;
+        };
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "specificity competitor remains between lower-specificity rules"
+    ".item{color:#ff0000}.item.active{color:#0000ff}.active{color:#ff0000}"
+    output
+
+let spec_cascade_section_6_1_no_merge_across_scope_boundary () =
+  (* CSS Cascade level 6 adds scope proximity to the cascade sorting order.
+     Scoped and unscoped rules must not be merged across the @scope boundary. *)
+  let item_rule decl =
+    Css.Stylesheet.Rule
+      {
+        selector = Css.Selector.class_ "item";
+        declarations = [ decl ];
+        nested = [];
+        merge_key = None;
+      }
+  in
+  let input =
+    [
+      item_rule (Css.Declaration.color (hex_color "ff0000"));
+      Css.Stylesheet.Scope
+        ( Some ".component",
+          None,
+          [
+            Css.Stylesheet.Rule
+              {
+                selector = Css.Selector.class_ "scoped";
+                declarations = [ Css.Declaration.display Block ];
+                nested = [];
+                merge_key = None;
+              };
+          ] );
+      item_rule (Css.Declaration.display Flex);
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  match optimized with
+  | [
+   Css.Stylesheet.Rule before;
+   Css.Stylesheet.Scope (Some ".component", None, [ Css.Stylesheet.Rule scoped ]);
+   Css.Stylesheet.Rule after;
+  ] ->
+      Alcotest.(check string)
+        "rule before scope is unchanged" ".item{color:#ff0000}"
+        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule before ]
+        |> String.trim);
+      Alcotest.(check string)
+        "scoped rule is unchanged" ".scoped{display:block}"
+        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule scoped ]
+        |> String.trim);
+      Alcotest.(check string)
+        "rule after scope is unchanged" ".item{display:flex}"
+        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule after ]
+        |> String.trim)
+  | _ -> Alcotest.fail "optimizer must preserve rule/scope/rule structure"
+
+let spec_cascade_section_6_1_distinct_scopes_preserved () =
+  (* CSS Cascade level 6: two @scope rules can produce different proximity for
+     the same scoped style rule. Equal nested rules in different scopes must
+     stay in their original scope blocks. *)
+  let scoped_rule =
+    Css.Stylesheet.Rule
+      {
+        selector = Css.Selector.class_ "item";
+        declarations = [ Css.Declaration.color (hex_color "ff0000") ];
+        nested = [];
+        merge_key = None;
+      }
+  in
+  let input =
+    [
+      Css.Stylesheet.Scope (Some ".outer", None, [ scoped_rule ]);
+      Css.Stylesheet.Scope (Some ".inner", None, [ scoped_rule ]);
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  match optimized with
+  | [
+   Css.Stylesheet.Scope (Some ".outer", None, [ Css.Stylesheet.Rule outer ]);
+   Css.Stylesheet.Scope (Some ".inner", None, [ Css.Stylesheet.Rule inner ]);
+  ] ->
+      Alcotest.(check string)
+        "outer scoped rule is unchanged" ".item{color:#ff0000}"
+        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule outer ]
+        |> String.trim);
+      Alcotest.(check string)
+        "inner scoped rule is unchanged" ".item{color:#ff0000}"
+        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule inner ]
+        |> String.trim)
+  | _ -> Alcotest.fail "optimizer must preserve distinct scope blocks"
+
+let spec_cascade_section_6_1_no_merge_across_supports_boundary () =
+  (* CSS Cascade section 6.1 order of appearance applies after filtering.
+     Conditional groups are not optimizer reordering points for surrounding
+     rules, even when the surrounding selectors match. *)
+  let input =
+    [
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "card";
+          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
+          nested = [];
+          merge_key = None;
+        };
+      Css.Stylesheet.Supports
+        ( Css.Supports.Property ("display", "flex"),
+          [
+            Css.Stylesheet.Rule
+              {
+                selector = Css.Selector.class_ "feature";
+                declarations = [ Css.Declaration.display Flex ];
+                nested = [];
+                merge_key = None;
+              };
+          ] );
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "card";
+          declarations =
+            [ Css.Declaration.background_color (hex_color "0000ff") ];
+          nested = [];
+          merge_key = None;
+        };
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "same selector is not merged across supports boundary"
+    ".card{color:#ff0000}@supports \
+     (display:flex){.feature{display:flex}}.card{background-color:#0000ff}"
+    output
+
+let spec_cascade_section_6_1_no_merge_across_container_boundary () =
+  (* CSS Cascade section 6.1 order of appearance still determines the winner
+     among declarations that tie after a container query matches. *)
+  let input =
+    [
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "card";
+          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
+          nested = [];
+          merge_key = None;
+        };
+      Css.Stylesheet.Container
+        ( None,
+          Css.Container.Min_width_px 48,
+          [
+            Css.Stylesheet.Rule
+              {
+                selector = Css.Selector.class_ "feature";
+                declarations = [ Css.Declaration.display Flex ];
+                nested = [];
+                merge_key = None;
+              };
+          ] );
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "card";
+          declarations =
+            [ Css.Declaration.background_color (hex_color "0000ff") ];
+          nested = [];
+          merge_key = None;
+        };
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "same selector is not merged across container boundary"
+    ".card{color:#ff0000}@container \
+     (min-width:48px){.feature{display:flex}}.card{background-color:#0000ff}"
+    output
+
+let spec_cascade_section_6_1_no_merge_across_starting_style_boundary () =
+  (* CSS Cascade section 6.1 includes transitions as the highest-precedence
+     origin, and @starting-style participates in transition setup. It must stay
+     as an ordering boundary for surrounding rules. *)
+  let input =
+    [
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "toast";
+          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
+          nested = [];
+          merge_key = None;
+        };
+      Css.Stylesheet.Starting_style
+        [
+          Css.Stylesheet.Rule
+            {
+              selector = Css.Selector.class_ "toast";
+              declarations = [ Css.Declaration.opacity (Opacity_number 0.) ];
+              nested = [];
+              merge_key = None;
+            };
+        ];
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "toast";
+          declarations = [ Css.Declaration.display Flex ];
+          nested = [];
+          merge_key = None;
+        };
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "same selector is not merged across starting-style boundary"
+    ".toast{color:#ff0000}@starting-style{.toast{opacity:0}}.toast{display:flex}"
+    output
+
+let spec_cascade_section_6_1_import_keeps_substitution_point () =
+  (* CSS Cascade section 6.1 orders imported stylesheets as if substituted at
+     the @import position. Optimizing must not move adjacent rules across that
+     substitution point. *)
+  let input =
+    [
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "theme";
+          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
+          nested = [];
+          merge_key = None;
+        };
+      Css.Stylesheet.Import
+        {
+          url = "url(\"base.css\")";
+          layer = None;
+          supports = None;
+          media = None;
+        };
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "theme";
+          declarations = [ Css.Declaration.display Flex ];
+          nested = [];
+          merge_key = None;
+        };
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "same selector is not merged across import substitution point"
+    ".theme{color:#ff0000}@import url(\"base.css\");.theme{display:flex}" output
+
+let spec_cascade_section_6_1_important_shorthand_blocks_normal_longhand () =
+  (* CSS Cascade sections 3 and 6.1: an important shorthand is equivalent to
+     important declarations for all of its longhands, so a later normal longhand
+     cannot override it. *)
+  let rule : Css.Stylesheet.rule =
+    {
+      selector = Css.Selector.class_ "box";
+      declarations =
+        [
+          Css.Declaration.margin_left (Px 1.);
+          Css.Declaration.important (Css.Declaration.margin [ Px 2. ]);
+          Css.Declaration.margin_left (Px 3.);
+        ];
+      nested = [];
+      merge_key = None;
+    }
+  in
+  let optimized = Css.Optimize.single_rule rule in
+  let output =
+    Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule optimized ]
+    |> String.trim
+  in
+  Alcotest.(check string)
+    "important shorthand keeps priority over later normal longhand"
+    ".box{margin:2px!important}" output
+
+let spec_cascade_section_6_2_origin_importance_precedence_rank () =
+  (* CSS Cascade section 6.2 defines origins, and section 6.1 orders them with
+     importance. The API rank should represent that cascade order directly. *)
+  let rank origin important =
+    Css.Stylesheet.origin_importance_rank ~important origin
+  in
+  Alcotest.(check (list int))
+    "origin and importance precedence from highest to lowest"
+    [ 8; 7; 6; 5; 4; 3; 2; 1 ]
+    [
+      rank Transition false;
+      rank User_agent true;
+      rank User true;
+      rank Author true;
+      rank Animation false;
+      rank Author false;
+      rank User false;
+      rank User_agent false;
+    ]
+
+let spec_cascade_section_6_2_no_merge_across_author_user_origins () =
+  (* CSS Cascade section 6.2: author and user stylesheets are distinct cascade
+     origins. Equal selectors from different origins must stay separated. *)
+  let origin_rule origin color =
+    Css.Stylesheet.with_origin origin
+      [
+        Css.Stylesheet.Rule
+          {
+            selector = Css.Selector.class_ "doc";
+            declarations = [ Css.Declaration.color (hex_color color) ];
+            nested = [];
+            merge_key = None;
+          };
+      ]
+  in
+  let input = [ origin_rule User "ff0000"; origin_rule Author "0000ff" ] in
+  let optimized = Css.Optimize.stylesheet input in
+  match optimized with
+  | [
+   Css.Stylesheet.Origin (User, [ Css.Stylesheet.Rule user_rule ]);
+   Css.Stylesheet.Origin (Author, [ Css.Stylesheet.Rule author_rule ]);
+  ] ->
+      Alcotest.(check string)
+        "user-origin rule is preserved" ".doc{color:#ff0000}"
+        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule user_rule ]
+        |> String.trim);
+      Alcotest.(check string)
+        "author-origin rule is preserved" ".doc{color:#0000ff}"
+        (Css.Stylesheet.to_string ~minify:true
+           [ Css.Stylesheet.Rule author_rule ]
+        |> String.trim)
+  | _ -> Alcotest.fail "optimizer must preserve user and author origin blocks"
+
+let spec_cascade_section_6_2_no_merge_across_user_agent_author_origins () =
+  (* CSS Cascade section 6.2: user-agent defaults, user styles, and author
+     styles are separate origins with different normal precedence. *)
+  let origin_rule origin display =
+    Css.Stylesheet.with_origin origin
+      [
+        Css.Stylesheet.Rule
+          {
+            selector = Css.Selector.class_ "panel";
+            declarations = [ Css.Declaration.display display ];
+            nested = [];
+            merge_key = None;
+          };
+      ]
+  in
+  let input =
+    [
+      origin_rule User_agent Block;
+      origin_rule User Flex;
+      origin_rule Author Inline_flex;
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  match optimized with
+  | [
+   Css.Stylesheet.Origin (User_agent, [ Css.Stylesheet.Rule ua_rule ]);
+   Css.Stylesheet.Origin (User, [ Css.Stylesheet.Rule user_rule ]);
+   Css.Stylesheet.Origin (Author, [ Css.Stylesheet.Rule author_rule ]);
+  ] ->
+      Alcotest.(check string)
+        "user-agent-origin rule is preserved" ".panel{display:block}"
+        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule ua_rule ]
+        |> String.trim);
+      Alcotest.(check string)
+        "user-origin rule is preserved" ".panel{display:flex}"
+        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule user_rule ]
+        |> String.trim);
+      Alcotest.(check string)
+        "author-origin rule is preserved" ".panel{display:inline-flex}"
+        (Css.Stylesheet.to_string ~minify:true
+           [ Css.Stylesheet.Rule author_rule ]
+        |> String.trim)
+  | _ ->
+      Alcotest.fail
+        "optimizer must preserve user-agent, user, and author origin blocks"
+
+let spec_cascade_section_6_2_animation_transition_origins_preserved () =
+  (* CSS Cascade section 6.2: animation and transition origins are generated
+     virtual origins and must not be folded into author styles. *)
+  let origin_rule origin color =
+    Css.Stylesheet.with_origin origin
+      [
+        Css.Stylesheet.Rule
+          {
+            selector = Css.Selector.class_ "animated";
+            declarations = [ Css.Declaration.color (hex_color color) ];
+            nested = [];
+            merge_key = None;
+          };
+      ]
+  in
+  let input =
+    [
+      origin_rule Author "ff0000";
+      origin_rule Animation "00ff00";
+      origin_rule Transition "0000ff";
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  match optimized with
+  | [
+   Css.Stylesheet.Origin (Author, [ Css.Stylesheet.Rule author_rule ]);
+   Css.Stylesheet.Origin (Animation, [ Css.Stylesheet.Rule animation_rule ]);
+   Css.Stylesheet.Origin (Transition, [ Css.Stylesheet.Rule transition_rule ]);
+  ] ->
+      Alcotest.(check string)
+        "author-origin rule is preserved" ".animated{color:#ff0000}"
+        (Css.Stylesheet.to_string ~minify:true
+           [ Css.Stylesheet.Rule author_rule ]
+        |> String.trim);
+      Alcotest.(check string)
+        "animation-origin rule is preserved" ".animated{color:#00ff00}"
+        (Css.Stylesheet.to_string ~minify:true
+           [ Css.Stylesheet.Rule animation_rule ]
+        |> String.trim);
+      Alcotest.(check string)
+        "transition-origin rule is preserved" ".animated{color:#0000ff}"
+        (Css.Stylesheet.to_string ~minify:true
+           [ Css.Stylesheet.Rule transition_rule ]
+        |> String.trim)
+  | _ ->
+      Alcotest.fail
+        "optimizer must preserve author, animation, and transition origins"
+
+let spec_cascade_section_6_2_optimize_within_single_origin () =
+  (* CSS Cascade section 6.2 creates an origin boundary, not a ban on safe
+     optimization inside one origin. Adjacent same-selector author rules can
+     still merge within the author-origin block. *)
+  let input =
+    [
+      Css.Stylesheet.with_origin Author
+        [
+          Css.Stylesheet.Rule
+            {
+              selector = Css.Selector.class_ "doc";
+              declarations = [ Css.Declaration.color (hex_color "ff0000") ];
+              nested = [];
+              merge_key = None;
+            };
+          Css.Stylesheet.Rule
+            {
+              selector = Css.Selector.class_ "doc";
+              declarations = [ Css.Declaration.display Flex ];
+              nested = [];
+              merge_key = None;
+            };
+        ];
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  match optimized with
+  | [ Css.Stylesheet.Origin (Author, [ Css.Stylesheet.Rule author_rule ]) ] ->
+      Alcotest.(check string)
+        "adjacent author-origin rules merge inside the same origin"
+        ".doc{color:#ff0000;display:flex}"
+        (Css.Stylesheet.to_string ~minify:true
+           [ Css.Stylesheet.Rule author_rule ]
+        |> String.trim)
+  | _ -> Alcotest.fail "optimizer should preserve one optimized author origin"
+
+let spec_cascade_section_6_2_identical_declarations_not_grouped_across_origins
+    () =
+  (* CSS Cascade section 6.2: origins are part of the cascade input. Equal
+     declaration blocks from different origins must not be selector-grouped into
+     one rule. *)
+  let origin_rule origin selector =
+    Css.Stylesheet.with_origin origin
+      [
+        Css.Stylesheet.Rule
+          {
+            selector = Css.Selector.class_ selector;
+            declarations = [ Css.Declaration.color (hex_color "ff0000") ];
+            nested = [];
+            merge_key = None;
+          };
+      ]
+  in
+  let input = [ origin_rule User "user"; origin_rule Author "author" ] in
+  let optimized = Css.Optimize.stylesheet input in
+  match optimized with
+  | [
+   Css.Stylesheet.Origin (User, [ Css.Stylesheet.Rule user_rule ]);
+   Css.Stylesheet.Origin (Author, [ Css.Stylesheet.Rule author_rule ]);
+  ] ->
+      Alcotest.(check string)
+        "user-origin selector remains local to user origin"
+        ".user{color:#ff0000}"
+        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule user_rule ]
+        |> String.trim);
+      Alcotest.(check string)
+        "author-origin selector remains local to author origin"
+        ".author{color:#ff0000}"
+        (Css.Stylesheet.to_string ~minify:true
+           [ Css.Stylesheet.Rule author_rule ]
+        |> String.trim)
+  | _ ->
+      Alcotest.fail
+        "optimizer must not group identical declarations across origins"
+
+let spec_cascade_section_6_2_imported_rules_keep_importing_origin () =
+  (* CSS Cascade section 2.2: an imported stylesheet has the origin of the
+     stylesheet that imported it. Within an origin block, @import remains a
+     cascade substitution point. *)
+  let before_rule =
+    {
+      Css.Stylesheet.selector = Css.Selector.class_ "theme";
+      declarations = [ Css.Declaration.color (hex_color "ff0000") ];
+      nested = [];
+      merge_key = None;
+    }
+  in
+  let after_rule =
+    {
+      Css.Stylesheet.selector = Css.Selector.class_ "theme";
+      declarations = [ Css.Declaration.display Flex ];
+      nested = [];
+      merge_key = None;
+    }
+  in
+  let import =
+    Css.Stylesheet.Import
+      {
+        url = "url(\"theme-base.css\")";
+        layer = None;
+        supports = None;
+        media = None;
+      }
+  in
+  let input =
+    [
+      Css.Stylesheet.with_origin Author
+        [
+          Css.Stylesheet.Rule before_rule;
+          import;
+          Css.Stylesheet.Rule after_rule;
+        ];
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  match optimized with
+  | [
+   Css.Stylesheet.Origin
+     ( Author,
+       [
+         Css.Stylesheet.Rule before;
+         Css.Stylesheet.Import _;
+         Css.Stylesheet.Rule after_;
+       ] );
+  ] ->
+      Alcotest.(check string)
+        "rule before import remains before import" ".theme{color:#ff0000}"
+        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule before ]
+        |> String.trim);
+      Alcotest.(check string)
+        "rule after import remains after import" ".theme{display:flex}"
+        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule after_ ]
+        |> String.trim)
+  | _ ->
+      Alcotest.fail
+        "optimizer must preserve @import as an origin-local substitution point"
+
+let spec_cascade_section_6_2_origin_wrapper_public_api () =
+  (* CSS Cascade section 6.2 has no CSS syntax for choosing a stylesheet origin
+     inside one CSS file, so the origin wrapper is an API-level annotation. *)
+  let stmt =
+    Css.with_origin User
+      [
+        Css.rule
+          ~selector:(Css.Selector.class_ "reader")
+          [ Css.color (Css.hex "#00ff00") ];
+      ]
+  in
+  (match Css.as_origin stmt with
+  | Some (User, [ child ]) -> (
+      match Css.as_rule child with
+      | Some (selector, declarations, []) ->
+          Alcotest.(check string)
+            "origin child selector" ".reader"
+            (Css.Selector.to_string selector);
+          Alcotest.(check int)
+            "origin child declaration count" 1 (List.length declarations)
+      | _ -> Alcotest.fail "origin child should be a rule")
+  | _ -> Alcotest.fail "Css.with_origin should be visible through Css.as_origin");
+  Alcotest.(check string)
+    "origin annotation has no stylesheet syntax" ".reader{color:#00ff00}\n"
+    (Css.to_string ~minify:true (Css.v [ stmt ]))
+
+let spec_cascade_section_6_3_important_beats_later_normal () =
+  (* CSS Cascade section 6.3: an important declaration takes precedence over a
+     normal declaration, even when the normal declaration appears later. *)
+  let rule : Css.Stylesheet.rule =
+    {
+      selector = Css.Selector.class_ "alert";
+      declarations =
+        [
+          Css.Declaration.important (Css.Declaration.color (hex_color "ff0000"));
+          Css.Declaration.color (hex_color "0000ff");
+        ];
+      nested = [];
+      merge_key = None;
+    }
+  in
+  let optimized = Css.Optimize.single_rule rule in
+  let output =
+    Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule optimized ]
+    |> String.trim
+  in
+  Alcotest.(check string)
+    "important declaration beats later normal declaration"
+    ".alert{color:#ff0000!important}" output
+
+let spec_cascade_section_6_3_later_important_beats_earlier_important () =
+  (* CSS Cascade section 6.3 changes the importance weight, but declarations
+     with the same origin and importance still fall through to source order. *)
+  let rule : Css.Stylesheet.rule =
+    {
+      selector = Css.Selector.class_ "alert";
+      declarations =
+        [
+          Css.Declaration.important (Css.Declaration.color (hex_color "ff0000"));
+          Css.Declaration.important (Css.Declaration.color (hex_color "0000ff"));
+        ];
+      nested = [];
+      merge_key = None;
+    }
+  in
+  let optimized = Css.Optimize.single_rule rule in
+  let output =
+    Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule optimized ]
+    |> String.trim
+  in
+  Alcotest.(check string)
+    "later important declaration wins within the same origin and importance"
+    ".alert{color:#0000ff!important}" output
+
+let spec_cascade_section_6_3_importance_inverts_origin_precedence () =
+  (* CSS Cascade section 6.3 balances author and user styles: normal origin
+     precedence is author > user > user-agent, while important origin precedence
+     is inverted. *)
+  let rank origin important =
+    Css.Stylesheet.origin_importance_rank ~important origin
+  in
+  Alcotest.(check bool)
+    "normal author beats normal user" true
+    (rank Author false > rank User false);
+  Alcotest.(check bool)
+    "normal user beats normal user-agent" true
+    (rank User false > rank User_agent false);
+  Alcotest.(check bool)
+    "important user beats important author" true
+    (rank User true > rank Author true);
+  Alcotest.(check bool)
+    "important user-agent beats important user" true
+    (rank User_agent true > rank User true);
+  Alcotest.(check bool)
+    "important author beats animation origin" true
+    (rank Author true > rank Animation false)
+
+let spec_cascade_section_6_3_keyframes_ignore_important_declarations () =
+  (* CSS Cascade section 6.3: declarations qualified with !important inside
+     @keyframes are ignored. *)
+  let stylesheet =
+    Css.Stylesheet.read
+      (Css.Cursor.of_string
+         "@keyframes fade{from{opacity:0!important}to{opacity:1}}")
+  in
+  match stylesheet with
+  | [
+   Css.Stylesheet.Keyframes
+     ( "fade",
+       [
+         {
+           keyframe_selector = Css.Keyframe.Positions [ Css.Keyframe.From ];
+           keyframe_declarations = from_decls;
+         };
+         {
+           keyframe_selector = Css.Keyframe.Positions [ Css.Keyframe.To ];
+           keyframe_declarations = to_decls;
+         };
+       ] );
+  ] ->
+      Alcotest.(check int)
+        "important keyframe declaration is ignored" 0 (List.length from_decls);
+      Alcotest.(check int)
+        "normal keyframe declaration remains" 1 (List.length to_decls)
+  | _ -> Alcotest.fail "expected parsed fade keyframes"
+
+let spec_cascade_section_6_4_statement_declares_layer_order () =
+  (* CSS Cascade section 6.4.4.2: the statement form can declare multiple layer
+     names up front, establishing their order independently of where the block
+     rules appear later. *)
+  let input =
+    [
+      Css.Stylesheet.Layer_decl [ "default"; "theme"; "components" ];
+      Css.Stylesheet.Layer
+        ( Some "theme",
+          [
+            Css.Stylesheet.Rule
+              {
+                selector = Css.Selector.class_ "widget";
+                declarations = [ Css.Declaration.color (hex_color "0000ff") ];
+                nested = [];
+                merge_key = None;
+              };
+          ] );
+      Css.Stylesheet.Layer
+        ( Some "default",
+          [
+            Css.Stylesheet.Rule
+              {
+                selector = Css.Selector.class_ "widget";
+                declarations = [ Css.Declaration.color (hex_color "ff0000") ];
+                nested = [];
+                merge_key = None;
+              };
+          ] );
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "statement layer order remains before later block assignments"
+    "@layer default,theme,components;@layer \
+     theme{.widget{color:#0000ff}}@layer default{.widget{color:#ff0000}}"
+    output
+
+let spec_cascade_section_6_4_unlayered_normal_is_implicit_final_layer () =
+  (* CSS Cascade section 6.4 example: normal unlayered declarations are in the
+     implicit final layer and can outrank more-specific explicit-layer rules.
+     The optimizer must not move either rule across that layer boundary. *)
+  let input =
+    [
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.element "audio";
+          declarations = [ Css.Declaration.display Flex ];
+          nested = [];
+          merge_key = None;
+        };
+      Css.Stylesheet.Layer
+        ( Some "reset",
+          [
+            Css.Stylesheet.Rule
+              {
+                selector =
+                  Css.Selector.compound
+                    [
+                      Css.Selector.element "audio";
+                      Css.Selector.attribute "controls" Css.Selector.Presence;
+                    ];
+                declarations = [ Css.Declaration.display Block ];
+                nested = [];
+                merge_key = None;
+              };
+          ] );
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "unlayered normal rule remains outside explicit reset layer"
+    "audio{display:flex}@layer reset{audio[controls]{display:block}}" output
+
+let spec_cascade_section_6_4_important_layers_reverse_order () =
+  (* CSS Cascade sections 6.1 and 6.4: later layers win for normal declarations,
+     but earlier layers win for important declarations. *)
+  let input =
+    [
+      Css.Stylesheet.Layer_decl [ "defaults"; "overrides" ];
+      Css.Stylesheet.Layer
+        ( Some "defaults",
+          [
+            Css.Stylesheet.Rule
+              {
+                selector = Css.Selector.class_ "notice";
+                declarations =
+                  [
+                    Css.Declaration.important
+                      (Css.Declaration.color (hex_color "ff0000"));
+                  ];
+                nested = [];
+                merge_key = None;
+              };
+          ] );
+      Css.Stylesheet.Layer
+        ( Some "overrides",
+          [
+            Css.Stylesheet.Rule
+              {
+                selector = Css.Selector.class_ "notice";
+                declarations =
+                  [
+                    Css.Declaration.important
+                      (Css.Declaration.color (hex_color "0000ff"));
+                  ];
+                nested = [];
+                merge_key = None;
+              };
+          ] );
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "important declarations keep earlier and later layers distinct"
+    "@layer defaults,overrides;@layer \
+     defaults{.notice{color:#ff0000!important}}@layer \
+     overrides{.notice{color:#0000ff!important}}"
+    output
+
+let spec_cascade_section_6_4_anonymous_layers_are_distinct () =
+  (* CSS Cascade section 6.4.2.1: each anonymous @layer block has a unique
+     anonymous segment, so two unnamed layers cannot be merged into one
+     layer. *)
+  let input =
+    [
+      Css.Stylesheet.Layer
+        ( None,
+          [
+            Css.Stylesheet.Rule
+              {
+                selector = Css.Selector.class_ "private";
+                declarations = [ Css.Declaration.color (hex_color "ff0000") ];
+                nested = [];
+                merge_key = None;
+              };
+          ] );
+      Css.Stylesheet.Layer
+        ( None,
+          [
+            Css.Stylesheet.Rule
+              {
+                selector = Css.Selector.class_ "private";
+                declarations = [ Css.Declaration.display Flex ];
+                nested = [];
+                merge_key = None;
+              };
+          ] );
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  match optimized with
+  | [
+   Css.Stylesheet.Layer (None, [ Css.Stylesheet.Rule first ]);
+   Css.Stylesheet.Layer (None, [ Css.Stylesheet.Rule second ]);
+  ] ->
+      Alcotest.(check string)
+        "first anonymous layer remains distinct" ".private{color:#ff0000}"
+        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule first ]
+        |> String.trim);
+      Alcotest.(check string)
+        "second anonymous layer remains distinct" ".private{display:flex}"
+        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule second ]
+        |> String.trim)
+  | _ -> Alcotest.fail "anonymous layer blocks must remain separate"
+
+let spec_cascade_section_6_4_nested_layer_name_is_distinct_from_top_level () =
+  (* CSS Cascade section 6.4.2: a nested framework.base layer is distinct from
+     the top-level base layer. *)
+  let input =
+    [
+      Css.Stylesheet.Layer
+        ( Some "base",
+          [
+            Css.Stylesheet.Rule
+              {
+                selector = Css.Selector.element "p";
+                declarations = [ Css.Declaration.max_width (Ch 70.) ];
+                nested = [];
+                merge_key = None;
+              };
+          ] );
+      Css.Stylesheet.Layer
+        ( Some "framework",
+          [
+            Css.Stylesheet.Layer
+              ( Some "base",
+                [
+                  Css.Stylesheet.Rule
+                    {
+                      selector = Css.Selector.element "p";
+                      declarations = [ Css.Declaration.margin_block (Em 0.75) ];
+                      nested = [];
+                      merge_key = None;
+                    };
+                ] );
+          ] );
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  match optimized with
+  | [
+   Css.Stylesheet.Layer (Some "base", [ Css.Stylesheet.Rule base_rule ]);
+   Css.Stylesheet.Layer
+     ( Some "framework",
+       [
+         Css.Stylesheet.Layer
+           (Some "base", [ Css.Stylesheet.Rule framework_base_rule ]);
+       ] );
+  ] ->
+      Alcotest.(check string)
+        "top-level base layer remains top-level" "p{max-width:70ch}"
+        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule base_rule ]
+        |> String.trim);
+      Alcotest.(check string)
+        "nested framework.base layer remains nested" "p{margin-block:.75em}"
+        (Css.Stylesheet.to_string ~minify:true
+           [ Css.Stylesheet.Rule framework_base_rule ]
+        |> String.trim)
+  | _ ->
+      Alcotest.fail
+        "nested framework.base layer must remain distinct from top-level base"
+
+let spec_cascade_section_6_4_keyframes_name_collisions_are_layered () =
+  (* CSS Cascade section 6.4: name-defining at-rules such as @keyframes use
+     layer order to resolve collisions, so same-name keyframes in different
+     layers must not be deduplicated or hoisted out of their layers. *)
+  let frame decl =
+    {
+      Css.Stylesheet.keyframe_selector =
+        Css.Keyframe.Positions [ Css.Keyframe.From ];
+      keyframe_declarations = [ decl ];
+    }
+  in
+  let input =
+    [
+      Css.Stylesheet.Layer_decl [ "framework"; "override" ];
+      Css.Stylesheet.Layer
+        ( Some "override",
+          [
+            Css.Stylesheet.Keyframes
+              ( "slide-left",
+                [ frame (Css.Declaration.opacity (Opacity_number 0.)) ] );
+          ] );
+      Css.Stylesheet.Layer
+        ( Some "framework",
+          [
+            Css.Stylesheet.Keyframes
+              ("slide-left", [ frame (Css.Declaration.margin_left (Pct 0.)) ]);
+          ] );
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "same-name keyframes remain in their declared layers"
+    "@layer framework,override;@layer override{@keyframes \
+     slide-left{from{opacity:0}}}@layer framework{@keyframes \
+     slide-left{from{margin-left:0}}}"
+    output
+
+let spec_cascade_section_6_4_layer_declarations_do_not_cross_imports () =
+  (* CSS Cascade section 6.4.4.2: layer statement rules can be interleaved with
+     imports to establish order, but @import and @namespace processing still
+     depends on their source positions. Optimizing must not merge layer
+     declarations across an import. *)
+  let input =
+    [
+      Css.Stylesheet.Layer_decl [ "default" ];
+      Css.Stylesheet.Import
+        {
+          url = "url(\"theme.css\")";
+          layer = Some "theme";
+          supports = None;
+          media = None;
+        };
+      Css.Stylesheet.Layer_decl [ "components" ];
+      Css.Stylesheet.Layer
+        ( Some "default",
+          [
+            Css.Stylesheet.Rule
+              {
+                selector = Css.Selector.class_ "audio";
+                declarations = [ Css.Declaration.display Block ];
+                nested = [];
+                merge_key = None;
+              };
+          ] );
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "layer declarations remain on their own sides of the import"
+    "@layer default;@import url(\"theme.css\") layer(theme);@layer \
+     components;@layer default{.audio{display:block}}"
+    output
+
+let spec_cascade_section_6_4_repeated_named_layer_blocks_stay_ordered () =
+  (* CSS Cascade section 6.4.2: repeated explicit layer identifiers assign style
+     blocks to the same layer. They must remain layer-scoped and in source order
+     relative to other layer blocks. *)
+  let input =
+    [
+      Css.Stylesheet.Layer
+        ( Some "base",
+          [
+            Css.Stylesheet.Rule
+              {
+                selector = Css.Selector.class_ "button";
+                declarations = [ Css.Declaration.color (hex_color "ff0000") ];
+                nested = [];
+                merge_key = None;
+              };
+          ] );
+      Css.Stylesheet.Layer
+        ( Some "theme",
+          [
+            Css.Stylesheet.Rule
+              {
+                selector = Css.Selector.class_ "button";
+                declarations = [ Css.Declaration.color (hex_color "0000ff") ];
+                nested = [];
+                merge_key = None;
+              };
+          ] );
+      Css.Stylesheet.Layer
+        ( Some "base",
+          [
+            Css.Stylesheet.Rule
+              {
+                selector = Css.Selector.class_ "button";
+                declarations = [ Css.Declaration.display Flex ];
+                nested = [];
+                merge_key = None;
+              };
+          ] );
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "repeated named layer blocks remain in source order"
+    "@layer base{.button{color:#ff0000}}@layer \
+     theme{.button{color:#0000ff}}@layer base{.button{display:flex}}"
+    output
+
+let spec_cascade_section_6_4_same_child_layer_in_one_anonymous_parent () =
+  (* CSS Cascade section 6.4.2.1: child layers with the same name inside one
+     anonymous parent share that anonymous parent segment, so they refer to the
+     same nested layer. *)
+  let input =
+    [
+      Css.Stylesheet.Layer
+        ( None,
+          [
+            Css.Stylesheet.Layer
+              ( Some "foo",
+                [
+                  Css.Stylesheet.Rule
+                    {
+                      selector = Css.Selector.class_ "inside";
+                      declarations =
+                        [ Css.Declaration.color (hex_color "ff0000") ];
+                      nested = [];
+                      merge_key = None;
+                    };
+                ] );
+            Css.Stylesheet.Layer
+              ( Some "foo",
+                [
+                  Css.Stylesheet.Rule
+                    {
+                      selector = Css.Selector.class_ "inside";
+                      declarations = [ Css.Declaration.display Flex ];
+                      nested = [];
+                      merge_key = None;
+                    };
+                ] );
+          ] );
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  match optimized with
+  | [
+   Css.Stylesheet.Layer
+     ( None,
+       [
+         Css.Stylesheet.Layer (Some "foo", [ Css.Stylesheet.Rule first ]);
+         Css.Stylesheet.Layer (Some "foo", [ Css.Stylesheet.Rule second ]);
+       ] );
+  ] ->
+      Alcotest.(check string)
+        "first child foo layer remains in anonymous parent"
+        ".inside{color:#ff0000}"
+        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule first ]
+        |> String.trim);
+      Alcotest.(check string)
+        "second child foo layer remains in same anonymous parent"
+        ".inside{display:flex}"
+        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule second ]
+        |> String.trim)
+  | _ ->
+      Alcotest.fail
+        "same child layer name inside one anonymous parent should remain nested"
+
+let spec_cascade_section_6_4_same_child_layer_in_distinct_anonymous_parents () =
+  (* CSS Cascade section 6.4.2.1: child layers with the same name inside
+     separate anonymous parents are different layers because the anonymous
+     parent segments are distinct. *)
+  let anon_child color_or_display =
+    Css.Stylesheet.Layer
+      ( None,
+        [
+          Css.Stylesheet.Layer
+            ( Some "foo",
+              [
+                Css.Stylesheet.Rule
+                  {
+                    selector = Css.Selector.class_ "inside";
+                    declarations = [ color_or_display ];
+                    nested = [];
+                    merge_key = None;
+                  };
+              ] );
+        ] )
+  in
+  let input =
+    [
+      anon_child (Css.Declaration.color (hex_color "ff0000"));
+      anon_child (Css.Declaration.display Flex);
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  match optimized with
+  | [
+   Css.Stylesheet.Layer
+     (None, [ Css.Stylesheet.Layer (Some "foo", [ Css.Stylesheet.Rule first ]) ]);
+   Css.Stylesheet.Layer
+     ( None,
+       [ Css.Stylesheet.Layer (Some "foo", [ Css.Stylesheet.Rule second ]) ] );
+  ] ->
+      Alcotest.(check string)
+        "first anonymous parent keeps its foo child" ".inside{color:#ff0000}"
+        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule first ]
+        |> String.trim);
+      Alcotest.(check string)
+        "second anonymous parent keeps its distinct foo child"
+        ".inside{display:flex}"
+        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule second ]
+        |> String.trim)
+  | _ ->
+      Alcotest.fail
+        "same child layer name in distinct anonymous parents must not collapse"
+
+let spec_cascade_section_6_4_conditional_layer_declarations_stay_nested () =
+  (* CSS Cascade section 6.4.3: layer declarations inside media/supports can be
+     conditional and must stay inside their conditional group; moving them out
+     would establish a different global layer order. *)
+  let input =
+    [
+      Css.Stylesheet.Media
+        ( Css.Media.Raw "(min-width:30em)",
+          [
+            Css.Stylesheet.Layer
+              ( Some "layout",
+                [
+                  Css.Stylesheet.Rule
+                    {
+                      selector = Css.Selector.class_ "title";
+                      declarations = [ Css.Declaration.font_size (Rem 2.) ];
+                      nested = [];
+                      merge_key = None;
+                    };
+                ] );
+          ] );
+      Css.Stylesheet.Supports
+        ( Css.Supports.Property ("display", "grid"),
+          [
+            Css.Stylesheet.Layer_decl [ "grid" ];
+            Css.Stylesheet.Layer
+              ( Some "grid",
+                [
+                  Css.Stylesheet.Rule
+                    {
+                      selector = Css.Selector.class_ "title";
+                      declarations = [ Css.Declaration.display Grid ];
+                      nested = [];
+                      merge_key = None;
+                    };
+                ] );
+          ] );
+      Css.Stylesheet.Layer_decl [ "theme"; "layout" ];
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "conditional layer declarations remain nested in their conditions"
+    "@media (min-width:30em){@layer layout{.title{font-size:2rem}}}@supports \
+     (display:grid){@layer grid;@layer grid{.title{display:grid}}}@layer \
+     theme,layout;"
+    output
+
+let spec_cascade_section_6_4_empty_named_layer_before_block_keeps_order () =
+  (* CSS Cascade section 6.4.4.2: an empty statement can establish a layer order
+     before a later block assigns style rules to that layer. *)
+  let input =
+    [
+      Css.Stylesheet.Layer (Some "reset", []);
+      Css.Stylesheet.Layer
+        ( Some "components",
+          [
+            Css.Stylesheet.Rule
+              {
+                selector = Css.Selector.class_ "card";
+                declarations = [ Css.Declaration.display Flex ];
+                nested = [];
+                merge_key = None;
+              };
+          ] );
+      Css.Stylesheet.Layer
+        ( Some "reset",
+          [
+            Css.Stylesheet.Rule
+              {
+                selector = Css.Selector.class_ "card";
+                declarations = [ Css.Declaration.display Block ];
+                nested = [];
+                merge_key = None;
+              };
+          ] );
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "empty named layer establishes order before later block"
+    "@layer reset;@layer components{.card{display:flex}}@layer \
+     reset{.card{display:block}}"
+    output
+
 let selector_merging_tests =
   [
     ("merge consecutive identical", `Quick, test_merge_consecutive_identical);
@@ -779,6 +2355,130 @@ let selector_merging_tests =
     ("no merge non-consecutive", `Quick, test_no_merge_non_consecutive);
     ("no merge vendor pseudo", `Quick, test_no_merge_vendor_pseudo);
     ("no merge with nested", `Quick, test_no_merge_with_nested);
+    ( "spec cascade 6.1 declaration order shorthand boundary",
+      `Quick,
+      spec_cascade_section_6_1_declaration_order_shorthand_boundary );
+    ( "spec cascade 6.1 no merge across intervening rule",
+      `Quick,
+      spec_cascade_section_6_1_no_merge_across_intervening_rule );
+    ( "spec cascade 6.1 no group non-adjacent equal declarations",
+      `Quick,
+      spec_cascade_section_6_1_no_group_non_adjacent_equal_declarations );
+    ( "spec cascade 6.1 no merge across at-rule boundary",
+      `Quick,
+      spec_cascade_section_6_1_no_merge_across_at_rule_boundary );
+    ( "spec cascade 6.1 no merge across layer boundary",
+      `Quick,
+      spec_cascade_section_6_1_no_merge_across_layer_boundary );
+    ( "spec cascade 6.1 unlayered rule stays outside layer",
+      `Quick,
+      spec_cascade_section_6_1_unlayered_rule_stays_outside_layer );
+    ( "spec cascade 6.1 important layer order preserved",
+      `Quick,
+      spec_cascade_section_6_1_important_layer_order_preserved );
+    ( "spec cascade 6.1 style attribute boundary",
+      `Quick,
+      spec_cascade_section_6_1_style_attribute_boundary );
+    ( "spec cascade 6.1 adjacent different specificity grouping",
+      `Quick,
+      spec_cascade_section_6_1_adjacent_different_specificity_grouping );
+    ( "spec cascade 6.1 specificity competitor blocks grouping",
+      `Quick,
+      spec_cascade_section_6_1_specificity_competitor_blocks_grouping );
+    ( "spec cascade 6.1 no merge across scope boundary",
+      `Quick,
+      spec_cascade_section_6_1_no_merge_across_scope_boundary );
+    ( "spec cascade 6.1 distinct scopes preserved",
+      `Quick,
+      spec_cascade_section_6_1_distinct_scopes_preserved );
+    ( "spec cascade 6.1 no merge across supports boundary",
+      `Quick,
+      spec_cascade_section_6_1_no_merge_across_supports_boundary );
+    ( "spec cascade 6.1 no merge across container boundary",
+      `Quick,
+      spec_cascade_section_6_1_no_merge_across_container_boundary );
+    ( "spec cascade 6.1 no merge across starting-style boundary",
+      `Quick,
+      spec_cascade_section_6_1_no_merge_across_starting_style_boundary );
+    ( "spec cascade 6.1 import keeps substitution point",
+      `Quick,
+      spec_cascade_section_6_1_import_keeps_substitution_point );
+    ( "spec cascade 6.1 important shorthand blocks normal longhand",
+      `Quick,
+      spec_cascade_section_6_1_important_shorthand_blocks_normal_longhand );
+    ( "spec cascade 6.2 origin importance precedence rank",
+      `Quick,
+      spec_cascade_section_6_2_origin_importance_precedence_rank );
+    ( "spec cascade 6.2 no merge across author user origins",
+      `Quick,
+      spec_cascade_section_6_2_no_merge_across_author_user_origins );
+    ( "spec cascade 6.2 no merge across user-agent author origins",
+      `Quick,
+      spec_cascade_section_6_2_no_merge_across_user_agent_author_origins );
+    ( "spec cascade 6.2 animation transition origins preserved",
+      `Quick,
+      spec_cascade_section_6_2_animation_transition_origins_preserved );
+    ( "spec cascade 6.2 optimize within single origin",
+      `Quick,
+      spec_cascade_section_6_2_optimize_within_single_origin );
+    ( "spec cascade 6.2 identical declarations not grouped across origins",
+      `Quick,
+      spec_cascade_section_6_2_identical_declarations_not_grouped_across_origins
+    );
+    ( "spec cascade 6.2 imported rules keep importing origin",
+      `Quick,
+      spec_cascade_section_6_2_imported_rules_keep_importing_origin );
+    ( "spec cascade 6.2 origin wrapper public api",
+      `Quick,
+      spec_cascade_section_6_2_origin_wrapper_public_api );
+    ( "spec cascade 6.3 important beats later normal",
+      `Quick,
+      spec_cascade_section_6_3_important_beats_later_normal );
+    ( "spec cascade 6.3 later important beats earlier important",
+      `Quick,
+      spec_cascade_section_6_3_later_important_beats_earlier_important );
+    ( "spec cascade 6.3 importance inverts origin precedence",
+      `Quick,
+      spec_cascade_section_6_3_importance_inverts_origin_precedence );
+    ( "spec cascade 6.3 keyframes ignore important declarations",
+      `Quick,
+      spec_cascade_section_6_3_keyframes_ignore_important_declarations );
+    ( "spec cascade 6.4 statement declares layer order",
+      `Quick,
+      spec_cascade_section_6_4_statement_declares_layer_order );
+    ( "spec cascade 6.4 unlayered normal is implicit final layer",
+      `Quick,
+      spec_cascade_section_6_4_unlayered_normal_is_implicit_final_layer );
+    ( "spec cascade 6.4 important layers reverse order",
+      `Quick,
+      spec_cascade_section_6_4_important_layers_reverse_order );
+    ( "spec cascade 6.4 anonymous layers are distinct",
+      `Quick,
+      spec_cascade_section_6_4_anonymous_layers_are_distinct );
+    ( "spec cascade 6.4 nested layer name is distinct from top level",
+      `Quick,
+      spec_cascade_section_6_4_nested_layer_name_is_distinct_from_top_level );
+    ( "spec cascade 6.4 keyframes name collisions are layered",
+      `Quick,
+      spec_cascade_section_6_4_keyframes_name_collisions_are_layered );
+    ( "spec cascade 6.4 layer declarations do not cross imports",
+      `Quick,
+      spec_cascade_section_6_4_layer_declarations_do_not_cross_imports );
+    ( "spec cascade 6.4 repeated named layer blocks stay ordered",
+      `Quick,
+      spec_cascade_section_6_4_repeated_named_layer_blocks_stay_ordered );
+    ( "spec cascade 6.4 same child layer in one anonymous parent",
+      `Quick,
+      spec_cascade_section_6_4_same_child_layer_in_one_anonymous_parent );
+    ( "spec cascade 6.4 same child layer in distinct anonymous parents",
+      `Quick,
+      spec_cascade_section_6_4_same_child_layer_in_distinct_anonymous_parents );
+    ( "spec cascade 6.4 conditional layer declarations stay nested",
+      `Quick,
+      spec_cascade_section_6_4_conditional_layer_declarations_stay_nested );
+    ( "spec cascade 6.4 empty named layer before block keeps order",
+      `Quick,
+      spec_cascade_section_6_4_empty_named_layer_before_block_keeps_order );
   ]
 
 let suite = ("optimize", optimize_tests @ selector_merging_tests)
