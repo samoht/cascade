@@ -454,6 +454,42 @@ let test_property_comments_whitespace () =
     "@property --gap { /* allow any */ syntax: \"*\"; /* ws */  inherits: true \
      }"
 
+let test_property_spec_syntax_vectors () =
+  check_stylesheet
+    ~expected:
+      "@property --length-percentage{syntax:\"<length> | \
+       <percentage>\";inherits:false;initial-value:0%}"
+    "@property --length-percentage { syntax: \"<length> | <percentage>\"; \
+     inherits: false; initial-value: 0%; }";
+  check_stylesheet
+    ~expected:
+      "@property \
+       --color-list{syntax:\"<color>#\";inherits:true;initial-value:red}"
+    "@property --color-list { syntax: \"<color>#\"; inherits: true; \
+     initial-value: red; }";
+  check_stylesheet
+    ~expected:
+      "@property \
+       --transform-like{syntax:\"<transform-list>\";inherits:false;initial-value:none}"
+    "@property --transform-like { syntax: \"<transform-list>\"; inherits: \
+     false; initial-value: none; }";
+  check_stylesheet
+    ~expected:
+      "@property \
+       --custom-ident{syntax:\"<custom-ident>\";inherits:false;initial-value:foo}"
+    "@property --custom-ident { syntax: \"<custom-ident>\"; inherits: false; \
+     initial-value: foo; }";
+  expect_property_error "property name must be custom property"
+    "@property color { syntax: \"<color>\"; inherits: false; initial-value: \
+     red }";
+  expect_property_error "syntax descriptor must be string"
+    "@property --x { syntax: <color>; inherits: false; initial-value: red }";
+  expect_property_error "empty syntax string"
+    "@property --x { syntax: \"\"; inherits: false; initial-value: red }";
+  expect_property_error "invalid initial for syntax"
+    "@property --x { syntax: \"<length>\"; inherits: false; initial-value: red \
+     }"
+
 (* Not a roundtrip test *)
 let test_layer_pp () =
   let decl =
@@ -524,6 +560,25 @@ let keyframes_case () =
   check_stylesheet ~expected:"@keyframes fade{from{opacity:0}to{opacity:1}}"
     "@keyframes fade { from { opacity: 0 } to { opacity: 1 } }"
 
+let test_keyframes_spec_edge_vectors () =
+  check_stylesheet
+    ~expected:"@keyframes pulse{0%,50%,100%{opacity:1}25%,75%{opacity:.5}}"
+    "@keyframes pulse { 0%, 50%, 100% { opacity: 1 } 25%, 75% { opacity: .5 } }";
+  check_stylesheet
+    ~expected:
+      "@keyframes \
+       slide{100%{transform:translateX(10px)}0%{transform:translateX(0)}}"
+    "@keyframes slide { 100% { transform: translateX(10px) } 0% { transform: \
+     translateX(0) } }";
+  check_stylesheet
+    ~expected:"@-webkit-keyframes fade{from{opacity:0}to{opacity:1}}"
+    "@-webkit-keyframes fade { from { opacity: 0 } to { opacity: 1 } }";
+  neg_cursor read_stylesheet "@keyframes missing-block";
+  neg_cursor read_stylesheet "@keyframes bad { -1% { opacity: 0 } }";
+  neg_cursor read_stylesheet "@keyframes bad { 101% { opacity: 1 } }";
+  neg_cursor read_stylesheet "@keyframes bad { 50px { opacity: 1 } }";
+  neg_cursor read_stylesheet "@keyframes bad { from, { opacity: 1 } }"
+
 (** Test [@font-face] rules *)
 let font_face_case () =
   (* Test font-face roundtrip *)
@@ -533,6 +588,38 @@ let font_face_case () =
        {font-family:MyCustomFont;src:url('font.woff2');font-display:swap}"
     "@font-face { font-family: MyCustomFont; src: url('font.woff2'); \
      font-display: swap; }"
+
+let test_font_face_spec_descriptor_vectors () =
+  check_stylesheet
+    ~expected:
+      "@font-face {font-family:Brand;src:local(\"Brand\"),url(\"brand.woff2\") \
+       format(\"woff2\") tech(variations);font-weight:400 \
+       700;font-style:normal italic;font-stretch:75% \
+       125%;font-display:optional;unicode-range:U+0025-00FF}"
+    "@font-face { font-family: Brand; src: local(\"Brand\"), \
+     url(\"brand.woff2\") format(\"woff2\") tech(variations); font-weight: 400 \
+     700; font-style: normal italic; font-stretch: 75% 125%; font-display: \
+     optional; unicode-range: U+0025-00FF; }";
+  check_stylesheet
+    ~expected:
+      "@font-face \
+       {font-family:MetricAdjusted;src:url(metric.woff2);size-adjust:92%;ascent-override:90%;descent-override:25%;line-gap-override:normal}"
+    "@font-face { font-family: MetricAdjusted; src: url(metric.woff2); \
+     size-adjust: 92%; ascent-override: 90%; descent-override: 25%; \
+     line-gap-override: normal; }";
+  check_stylesheet
+    ~expected:
+      "@font-face \
+       {font-family:FeatureFont;src:url(feature.woff2);font-feature-settings:\"kern\" \
+       1;font-variation-settings:\"wght\" 650}"
+    "@font-face { font-family: FeatureFont; src: url(feature.woff2); \
+     font-feature-settings: \"kern\" 1; font-variation-settings: \"wght\" 650; \
+     }";
+  neg_cursor read_stylesheet "@font-face { src: url(font.woff2); }";
+  neg_cursor read_stylesheet "@font-face { font-family: Brand; }";
+  neg_cursor read_stylesheet
+    "@font-face { font-family: Brand; src: url(font.woff2); font-display: \
+     maybe; }"
 
 (** Test [@page] rules *)
 let page_case () =
@@ -834,6 +921,7 @@ let stylesheet_tests =
       `Quick,
       test_property_duplicate_descriptors );
     ("property comments/whitespace", `Quick, test_property_comments_whitespace);
+    ("property spec syntax vectors", `Quick, test_property_spec_syntax_vectors);
     ("layer pp", `Quick, test_layer_pp);
     ("stylesheet pp", `Quick, pp_case);
     (* New CSS/MDN spec compliance tests *)
@@ -841,7 +929,11 @@ let stylesheet_tests =
     ("import", `Quick, import_case);
     ("namespace", `Quick, namespace_case);
     ("keyframes", `Quick, keyframes_case);
+    ("keyframes spec edge vectors", `Quick, test_keyframes_spec_edge_vectors);
     ("font_face", `Quick, font_face_case);
+    ( "font-face spec descriptor vectors",
+      `Quick,
+      test_font_face_spec_descriptor_vectors );
     ("page", `Quick, page_case);
     ("sheet_item", `Quick, sheet_item_case);
     ("ordering", `Quick, ordering);

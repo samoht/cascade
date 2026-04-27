@@ -31,6 +31,36 @@ let test_selector_roundtrip buf =
   if not (Css.Keyframe.selector_equal sel sel2) then
     fail "selector roundtrip mismatch"
 
+let position_in_spec_range = function
+  | Css.Keyframe.From | Css.Keyframe.To -> true
+  | Css.Keyframe.Percent p -> Float.is_finite p && p >= 0. && p <= 100.
+
+let test_position_spec_range buf =
+  match Css.Keyframe.position_of_string buf with
+  | None -> ()
+  | Some pos ->
+      if not (position_in_spec_range pos) then
+        fail "keyframe position outside the spec's 0%..100% range"
+
+let test_selector_spec_range buf =
+  match Css.Keyframe.selector_of_string buf with
+  | Css.Keyframe.Raw _ -> ()
+  | Css.Keyframe.Positions positions ->
+      if positions = [] then fail "parsed keyframe selector has no positions";
+      if not (List.for_all position_in_spec_range positions) then
+        fail "keyframe selector contains out-of-range position"
+
+let test_position_serialization_idempotent buf =
+  match Css.Keyframe.position_of_string buf with
+  | None -> ()
+  | Some pos -> (
+      let once = Css.Keyframe.position_to_string pos in
+      match Css.Keyframe.position_of_string once with
+      | None -> fail "serialized keyframe position did not re-parse"
+      | Some pos2 ->
+          let twice = Css.Keyframe.position_to_string pos2 in
+          if once <> twice then fail "keyframe position serialization drifted")
+
 (** position_compare — must not crash on any valid pair. *)
 let test_position_compare buf1 buf2 =
   match
@@ -51,6 +81,10 @@ let suite =
       test_case "selector crash safety" [ bytes ] test_selector;
       test_case "position roundtrip" [ bytes ] test_position_roundtrip;
       test_case "selector roundtrip" [ bytes ] test_selector_roundtrip;
+      test_case "position spec range" [ bytes ] test_position_spec_range;
+      test_case "selector spec range" [ bytes ] test_selector_spec_range;
+      test_case "position serialization idempotent" [ bytes ]
+        test_position_serialization_idempotent;
       test_case "position_compare antisymmetry" [ bytes; bytes ]
         test_position_compare;
     ] )

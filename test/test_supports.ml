@@ -69,6 +69,47 @@ let test_current_work_vectors () =
     "selector(:has(img)) and (container-type: inline-size)"
     "selector(:has(img)) and (container-type: inline-size)"
 
+let test_spec_conditional_supports_feature_vectors () =
+  let check name input expected =
+    let actual = of_string input in
+    Alcotest.(check string) name expected (to_string actual)
+  in
+  check "selector forgiving relative branch" "selector(:has(+ img))"
+    "selector(:has(+ img))";
+  check "selector current pseudo" "selector(:popover-open)"
+    "selector(:popover-open)";
+  check "font format feature" "font-format(woff2)" "font-format(woff2)";
+  check "font tech feature" "font-tech(variations)" "font-tech(variations)";
+  check "general enclosed function" "unknown-feature(foo bar)"
+    "unknown-feature(foo bar)";
+  check "unknown declaration feature" "(-vendor-flag: enabled)"
+    "(-vendor-flag: enabled)";
+  check "nested not selector" "not selector(:has(article > img))"
+    "(not selector(:has(article > img)))";
+  check "and chain" "(display: grid) and (gap: 1rem) and (selector(:has(img)))"
+    "(display: grid) and (gap: 1rem) and selector(:has(img))";
+  check "or chain"
+    "(font-format(woff2)) or (font-tech(color-COLRv1)) or (display: grid)"
+    "font-format(woff2) or font-tech(color-COLRv1) or (display: grid)";
+  check "grouped and inside or"
+    "((display: grid) and (gap: 1rem)) or selector(:has(img))"
+    "((display: grid) and (gap: 1rem)) or selector(:has(img))"
+
+let test_spec_conditional_supports_negative_vectors () =
+  let expect_error name input =
+    try
+      ignore (of_string input);
+      Alcotest.failf "%s: expected invalid @supports condition" name
+    with Failure _ | Invalid_argument _ -> ()
+  in
+  expect_error "empty condition" "";
+  expect_error "empty parentheses" "()";
+  expect_error "bare property without parentheses" "display: grid";
+  expect_error "missing right operand" "(display: grid) and";
+  expect_error "mixed operator without right operand" "(display: grid) or";
+  expect_error "unclosed selector function" "selector(:has(img)";
+  expect_error "unclosed property feature" "(display: grid"
+
 let test_roundtrip () =
   let cases =
     [
@@ -95,5 +136,9 @@ let suite =
       test_case "to_string" `Quick test_to_string;
       test_case "of_string" `Quick test_of_string;
       test_case "current-work vectors" `Quick test_current_work_vectors;
+      test_case "spec conditional supports feature vectors" `Quick
+        test_spec_conditional_supports_feature_vectors;
+      test_case "spec conditional supports negative vectors" `Quick
+        test_spec_conditional_supports_negative_vectors;
       test_case "roundtrip" `Quick test_roundtrip;
     ] )
