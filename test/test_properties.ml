@@ -153,8 +153,22 @@ let check_content_visibility =
 let check_container_type =
   check_value_cursor "container-type" read_container_type pp_container_type
 
-let check_container_shorthand =
-  check_value_cursor "container" read_container_shorthand pp_container_shorthand
+let check_container_shorthand ?expected input =
+  let expected = Option.value ~default:input expected in
+  let c = Css.Cursor.of_string input in
+  let value = read_container_shorthand c in
+  let serialized = Css.Pp.to_string ~minify:true pp_container_shorthand value in
+  Alcotest.(check string) (Fmt.str "container %s" input) expected serialized;
+  let expected_value =
+    read_container_shorthand (Css.Cursor.of_string expected)
+  in
+  Alcotest.(check bool)
+    (Fmt.str "container structural expected %s" input)
+    true (value = expected_value);
+  let reparsed = read_container_shorthand (Css.Cursor.of_string serialized) in
+  Alcotest.(check bool)
+    (Fmt.str "container structural roundtrip %s" input)
+    true (value = reparsed)
 
 let check_contain = check_value_cursor "contain" read_contain pp_contain
 let check_isolation = check_value_cursor "isolation" read_isolation pp_isolation
@@ -1762,8 +1776,9 @@ let test_container_shorthand () =
   check_container_shorthand "inline-size";
   check_container_shorthand "size";
   check_container_shorthand "sidebar";
-  check_container_shorthand "sidebar / inline-size";
-  check_container_shorthand "header / size";
+  check_container_shorthand "sidebar / inline-size"
+    ~expected:"sidebar/inline-size";
+  check_container_shorthand "header / size" ~expected:"header/size";
   neg_cursor read_container_shorthand "/ size";
   (* Missing name before / *)
   neg_cursor read_container_shorthand "sidebar / invalid"
@@ -2235,8 +2250,8 @@ let spec_property_grammar_edges () =
   check_transform "rotate(1 0 0 45deg)";
   check_transform "scale(1.2 0.8)";
   check_transforms "translate(10px,20%) rotate(45deg) scale(1.2)";
-  check_container_shorthand "card / inline-size";
-  check_container_shorthand "card / normal";
+  check_container_shorthand "card / inline-size" ~expected:"card/inline-size";
+  check_container_shorthand "card / normal" ~expected:"card/normal";
   check_scroll_snap_type "x mandatory";
   check_scroll_snap_type "block proximity";
   check_clip_path "path(\"M 0 0 L 10 10\")";
