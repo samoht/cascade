@@ -33,6 +33,32 @@ let test_to_string () =
     "aspect ratio query raw" "(aspect-ratio > 1/1)"
     (to_string (Raw "(aspect-ratio > 1/1)"))
 
+let test_spec_container_query_level_3_vectors () =
+  let open Css.Container in
+  let check_raw name input =
+    Alcotest.(check string) name input (to_string (Raw input))
+  in
+  check_raw "inline-size lower bound" "(inline-size > 30em)";
+  check_raw "width range" "(width >= 400px)";
+  check_raw "height range" "(height < 50rem)";
+  check_raw "chained range" "(30em <= inline-size < 60em)";
+  check_raw "orientation" "(orientation: landscape)";
+  check_raw "aspect ratio" "(aspect-ratio > 16/9)";
+  check_raw "style query custom property" "style(--theme: dark)";
+  check_raw "style query declaration" "style(color: red)";
+  check_raw "style query boolean custom property" "style(--featured)";
+  check_raw "scroll-state stuck" "scroll-state(stuck: top)";
+  check_raw "scroll-state snapped" "scroll-state(snapped: y)";
+  Alcotest.(check string)
+    "named size query" "card (inline-size > 30em)"
+    (to_string (Named ("card", Raw "(inline-size > 30em)")));
+  Alcotest.(check string)
+    "named style query" "card style(--variant: featured)"
+    (to_string (Named ("card", Raw "style(--variant: featured)")));
+  Alcotest.(check string)
+    "nested names remain explicit" "outer inner (min-width:640px)"
+    (to_string (Named ("outer", Named ("inner", Min_width_px 640))))
+
 let test_compare () =
   let open Css.Container in
   Alcotest.(check int)
@@ -58,12 +84,40 @@ let test_kind () =
     (kind (Named ("x", Min_width_rem 24.)) = Kind_min_width);
   Alcotest.(check bool) "raw is Kind_other" true (kind (Raw "foo") = Kind_other)
 
+let test_spec_container_compare_edges () =
+  let open Css.Container in
+  let sorted =
+    List.sort compare
+      [
+        Raw "(inline-size > 30em)";
+        Named ("card", Min_width_rem 24.);
+        Min_width_px 640;
+        Min_width_rem 24.;
+        Named ("aside", Min_width_rem 24.);
+      ]
+    |> List.map to_string
+  in
+  Alcotest.(check (list string))
+    "container ordering keeps typed breakpoints before named and raw queries"
+    [
+      "(min-width:24rem)";
+      "(min-width:640px)";
+      "aside (min-width:24rem)";
+      "card (min-width:24rem)";
+      "(inline-size > 30em)";
+    ]
+    sorted
+
 let tests =
   Alcotest.
     [
       test_case "to_string" `Quick test_to_string;
+      test_case "spec container query level 3 vectors" `Quick
+        test_spec_container_query_level_3_vectors;
       test_case "compare" `Quick test_compare;
       test_case "kind" `Quick test_kind;
+      test_case "spec container compare edges" `Quick
+        test_spec_container_compare_edges;
     ]
 
 let suite = ("container", tests)

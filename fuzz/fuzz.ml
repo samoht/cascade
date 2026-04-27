@@ -8,6 +8,8 @@ let () =
       Fuzz_reader.suite;
       Fuzz_parser.suite;
       Fuzz_selector.suite;
+      Fuzz_media.suite;
+      Fuzz_container.suite;
       Fuzz_values.suite;
       Fuzz_stylesheet.suite;
       Fuzz_supports.suite;

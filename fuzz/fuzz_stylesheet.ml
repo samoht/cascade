@@ -85,6 +85,56 @@ let generated_layer_stylesheet buf =
     rule buf 32;
   ]
 
+let generated_condition_stylesheet buf =
+  let media =
+    pick
+      [
+        Css.Media.Raw "(width >= 40em)";
+        Css.Media.Raw "(30em <= width < 60em)";
+        Css.Media.Raw "(dynamic-range: high)";
+        Css.Media.Prefers_reduced_motion `Reduce;
+      ]
+      buf 0
+  in
+  let supports =
+    pick
+      [
+        Css.Supports.Property ("display", "grid");
+        Css.Supports.Func ("selector", ":has(img)");
+        Css.Supports.Func ("font-tech", "variations");
+        Css.Supports.And
+          ( Css.Supports.Property ("display", "grid"),
+            Css.Supports.Func ("selector", ":has(img)") );
+      ]
+      buf 4
+  in
+  let container =
+    pick
+      [
+        Css.Container.Raw "(inline-size > 30em)";
+        Css.Container.Raw "(30em <= inline-size < 60em)";
+        Css.Container.Raw "style(--variant: featured)";
+        Css.Container.Raw "scroll-state(stuck: top)";
+      ]
+      buf 8
+  in
+  [
+    Css.Stylesheet.Media
+      ( media,
+        [
+          Css.Stylesheet.Supports
+            ( supports,
+              [
+                Css.Stylesheet.Container
+                  (Some "card", container, [ rule buf 12 ]);
+              ] );
+        ] );
+    Css.Stylesheet.Scope
+      ( Some ".card",
+        Some ".boundary",
+        [ Css.Stylesheet.Starting_style [ rule buf 16 ] ] );
+  ]
+
 let parse_stylesheet input =
   let r = Css.Cursor.of_string input in
   try Some (Css.Stylesheet.read_stylesheet r)
@@ -334,6 +384,20 @@ let test_generated_layer_stylesheet_roundtrip buf =
           (Fmt.str "generated layer stylesheet serialization changed: %S -> %S"
              once twice)
 
+let test_generated_condition_stylesheet_roundtrip buf =
+  let ss = generated_condition_stylesheet buf in
+  let once = minified_stylesheet ss in
+  match parse_stylesheet once with
+  | None ->
+      fail (Fmt.str "generated conditional stylesheet did not reparse: %S" once)
+  | Some reparsed ->
+      let twice = minified_stylesheet reparsed in
+      if once <> twice then
+        fail
+          (Fmt.str
+             "generated conditional stylesheet serialization changed: %S -> %S"
+             once twice)
+
 (** CSS Cascade section 6.4: optimization must preserve cascade boundaries that
     define layer identity, layer order, import placement, and conditional scope.
 *)
@@ -356,6 +420,16 @@ let test_anonymous_layer_count_invariant buf =
   let after = anonymous_layer_count optimized in
   if before <> after then
     fail (Fmt.str "anonymous layer count changed: %d -> %d" before after)
+
+let test_condition_boundary_shape_invariant buf =
+  let ss = generated_condition_stylesheet buf in
+  let optimized = Css.Optimize.stylesheet ss in
+  let before = boundary_shapes ss in
+  let after = boundary_shapes optimized in
+  if before <> after then
+    fail
+      (Fmt.str "conditional boundary shape changed: %S -> %S"
+         (String.concat " " before) (String.concat " " after))
 
 (** CSS Cascade section 3: CSS-wide keywords used on shorthands are whole
     declaration values and serialize as the shorthand property plus the keyword.
@@ -609,10 +683,14 @@ let suite =
         test_stylesheet_minified_idempotent;
       test_case "generated layer stylesheet roundtrip" [ bytes ]
         test_generated_layer_stylesheet_roundtrip;
+      test_case "generated condition stylesheet roundtrip" [ bytes ]
+        test_generated_condition_stylesheet_roundtrip;
       test_case "layer boundary shape invariant" [ bytes ]
         test_layer_boundary_shape_invariant;
       test_case "anonymous layer count invariant" [ bytes ]
         test_anonymous_layer_count_invariant;
+      test_case "condition boundary shape invariant" [ bytes ]
+        test_condition_boundary_shape_invariant;
       test_case "shorthand CSS-wide keyword invariant" [ bytes ]
         test_shorthand_css_wide_keyword_invariant;
       test_case "shorthand CSS-wide keyword mix rejected" [ bytes ]
