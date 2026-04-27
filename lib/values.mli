@@ -107,6 +107,11 @@ val color_mix_var_pct_fallback :
 
 (** {1 Pretty-printing Functions} *)
 
+val pp_math_call : Pp.ctx -> string -> string -> unit
+(** [pp_math_call ctx name args] pretty-prints a CSS math function call
+    [name(args)]. Top-level commas in [args] get a [", "] separator in pretty
+    mode and just [","] in minified mode. *)
+
 val pp_length : ?always:bool -> length Pp.t
 (** [pp_length ?always] pretty-prints {!length} values. When [always] is true,
     units are always included even for zero values (required for CSS [@property]

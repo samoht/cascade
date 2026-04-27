@@ -1365,11 +1365,33 @@ let rec pp_background_image : background_image Pp.t =
       Pp.call "conic-gradient"
         (fun ctx v -> pp_var pp_gradient_stop ctx v)
         ctx var_ref
+  | Image_set options ->
+      Pp.call "image-set"
+        (fun ctx os -> Pp.list ~sep:Pp.comma pp_image_set_option ctx os)
+        ctx options
   | Var v -> pp_var pp_background_image ctx v
   | List images -> Pp.list ~sep:Pp.comma pp_background_image ctx images
   | None -> Pp.string ctx "none"
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
+
+and pp_image_set_option ctx
+    { image_set_source; image_set_resolution; image_set_mime_type } =
+  (match image_set_source with
+  | Image_set_url u -> Pp.url ctx u
+  | Image_set_string s -> Pp.quoted ctx s);
+  Option.iter
+    (fun mime ->
+      Pp.space ctx ();
+      Pp.string ctx "type(";
+      Pp.quoted ctx mime;
+      Pp.char ctx ')')
+    image_set_mime_type;
+  Option.iter
+    (fun res ->
+      Pp.space ctx ();
+      Pp.string ctx res)
+    image_set_resolution
 
 let rec pp_font_family : font_family Pp.t =
  fun ctx -> function
@@ -1602,6 +1624,8 @@ let rec pp_order : order Pp.t =
 let rec pp_opacity : opacity Pp.t =
  fun ctx -> function
   | Opacity_number f -> Pp.float ctx f
+  | Abs v -> Pp.call "abs" pp_opacity ctx v
+  | Sign v -> Pp.call "sign" pp_opacity ctx v
   | Var v -> pp_var pp_opacity ctx v
 
 let rec read_opacity t : opacity =
@@ -6640,11 +6664,64 @@ let rec read_bg_image t : background_image =
               ( "conic-gradient",
                 fun t -> Cursor.call "conic-gradient" t read_conic_gradient_body
               );
+              ( "image-set",
+                fun t -> Cursor.call "image-set" t read_image_set_body );
               ("var", fun t -> Var (Values.read_var read_bg_image t));
             ]
           t);
     ]
     t
+
+and read_image_set_body t : background_image =
+  Image_set (Cursor.list ~sep:Cursor.comma ~at_least:1 read_image_set_option t)
+
+and read_image_set_option t : image_set_option =
+  let source : image_set_source =
+    Cursor.one_of
+      [
+        (fun t -> (Image_set_url (Cursor.url t) : image_set_source));
+        (fun t -> Image_set_string (Cursor.string t));
+      ]
+      t
+  in
+  (* [<resolution> || type(<string>)] in any order; both optional. Recurse,
+     accepting whichever modifier hasn't been seen yet, until neither
+     matches. *)
+  let read_resolution_opt t : string option =
+    match Cursor.dimension_opt t with
+    | None -> None
+    | Some (value, unit_) ->
+        let buf = Buffer.create 8 in
+        let pp_ctx =
+          {
+            Pp.minify = true;
+            indent = 0;
+            buf;
+            inline = false;
+            in_function = false;
+            theme = None;
+            theme_defaults = Pp.no_theme_defaults;
+          }
+        in
+        Pp.float pp_ctx value;
+        Buffer.add_string buf unit_;
+        Some (Buffer.contents buf)
+  in
+  let rec loop (mime : string option) (resolution : string option) =
+    Cursor.ws t;
+    match (mime, Cursor.function_call "type" Cursor.string t) with
+    | None, Some s -> loop (Some s) resolution
+    | _ -> (
+        match (resolution, read_resolution_opt t) with
+        | None, Some r -> loop mime (Some r)
+        | _ -> (mime, resolution))
+  in
+  let mime, resolution = loop None None in
+  {
+    image_set_source = source;
+    image_set_resolution = resolution;
+    image_set_mime_type = mime;
+  }
 
 let read_background_image t : background_image =
   let first = read_bg_image t in

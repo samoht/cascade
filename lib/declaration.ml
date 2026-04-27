@@ -240,14 +240,47 @@ let rec read_opacity t : opacity =
   Cursor.ws t;
   if Cursor.looking_at t "var(" then Var (Values.read_var read_opacity t)
   else
-    let n, unit = Cursor.number_with_unit t in
-    match unit with
-    | Some "%" -> Opacity_number (n /. 100.0)
-    | _ -> Opacity_number n
+    match Cursor.function_call "abs" read_opacity t with
+    | Some inner -> Abs inner
+    | None -> (
+        match Cursor.function_call "sign" read_opacity t with
+        | Some inner -> Sign inner
+        | None -> (
+            let n, unit = Cursor.number_with_unit t in
+            match unit with
+            | Some "%" -> Opacity_number (n /. 100.0)
+            | _ -> Opacity_number n))
 
 (* Helper to read raw property value - for properties that accept any text.
    Drain components (preserving whitespace) up to the next [;] or [!] delim. *)
 let read_raw_value t = Cursor.consume_to_decl_end ~trim:true t
+
+(* CSS [<dashed-ident>]: an ident that begins with two dashes. Used for custom
+   properties and [@property]-style names like [--tooltip] in
+   anchor-positioning, view-timeline, font-palette, etc. *)
+let read_dashed_ident t =
+  let s = Cursor.ident ~keep_case:true t in
+  if String.length s < 2 || s.[0] <> '-' || s.[1] <> '-' then
+    Cursor.err_invalid t ("expected <dashed-ident>, got: " ^ s)
+  else s
+
+(* Some properties (shape-margin, scroll-margin, padding, etc.) require a
+   non-negative length-percentage. Detect a leading [-] number/percentage and
+   reject before delegating to the typed reader. *)
+let read_non_negative_length_percentage t =
+  Cursor.ws t;
+  (match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Dimension { number; _ }; _ })
+    when number.value < 0. ->
+      Cursor.err_invalid t "negative length not allowed"
+  | Some (Component.Preserved { kind = Token.Percentage { value; _ }; _ })
+    when value < 0. ->
+      Cursor.err_invalid t "negative percentage not allowed"
+  | Some (Component.Preserved { kind = Token.Number_tok { value; _ }; _ })
+    when value < 0. ->
+      Cursor.err_invalid t "negative number not allowed"
+  | _ -> ());
+  Values.read_length_percentage t
 
 (* Delegate to the proper reader in Properties *)
 let read_translate_value t : Properties_intf.translate_value =
@@ -570,18 +603,21 @@ let read_value (type a) (prop : a property) t : declaration =
   | Container_type -> v Container_type (read_container_type t)
   | Container_name -> v Container_name (read_raw_value t)
   | Container -> v Container (read_container_shorthand t)
-  (* Anchor positioning properties *)
-  | Anchor_name -> v Anchor_name (read_raw_value t)
-  | Position_anchor -> v Position_anchor (read_raw_value t)
+  (* Anchor positioning properties. [anchor-name] / [position-anchor] take a
+     [<dashed-ident>] (ident that begins with [--]), and
+     [position-try-fallbacks] is a comma-separated list of the same. *)
+  | Anchor_name -> v Anchor_name (read_dashed_ident t)
+  | Position_anchor -> v Position_anchor (read_dashed_ident t)
   | Position_try_fallbacks ->
       v Position_try_fallbacks
-        (Cursor.list ~sep:Cursor.comma ~at_least:1
-           (fun r -> Cursor.ident ~keep_case:true r)
-           t)
+        (Cursor.list ~sep:Cursor.comma ~at_least:1 read_dashed_ident t)
   | Shape_outside -> v Shape_outside (read_raw_value t)
-  | Shape_margin -> v Shape_margin (read_length_percentage t)
-  | Overflow_clip_margin -> v Overflow_clip_margin (read_length t)
-  | Overflow_anchor -> v Overflow_anchor (read_raw_value t)
+  | Shape_margin -> v Shape_margin (read_non_negative_length_percentage t)
+  | Overflow_clip_margin ->
+      v Overflow_clip_margin (read_length ~allow_negative:false t)
+  | Overflow_anchor ->
+      v Overflow_anchor
+        (Cursor.enum "overflow-anchor" [ ("auto", "auto"); ("none", "none") ] t)
   | Scrollbar_width -> v Scrollbar_width (read_raw_value t)
   | Scrollbar_color -> v Scrollbar_color (read_raw_value t)
   | Scrollbar_gutter -> v Scrollbar_gutter (read_raw_value t)
