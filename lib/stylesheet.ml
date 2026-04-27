@@ -446,7 +446,7 @@ and pp_statement : statement Pp.t =
       (match prefix with
       | Some p ->
           Pp.string ctx p;
-          Pp.sp ctx ()
+          Pp.space ctx ()
       | None -> ());
       Pp.string ctx "url(";
       Pp.string ctx uri;
