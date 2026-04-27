@@ -371,6 +371,10 @@ val load_import_rule :
   (Stylesheet.stylesheet, Stylesheet.value_processing_error) result
 (** Stub entry point for [@import] loading. *)
 
+val html_presentational_hints :
+  element:string -> (declaration list, Stylesheet.value_processing_error) result
+(** Stub entry point for HTML presentational hints. *)
+
 val cssom_insert_rule :
   index:int ->
   Stylesheet.statement ->
