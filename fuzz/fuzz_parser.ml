@@ -94,20 +94,20 @@ let test_component_value_serialized_reparse buf =
 
 (** CSS Syntax section 9: serialization may collapse whitespace, but must not
     otherwise change the parsed component-value data structures. *)
-let test_component_value_serialized_shape_roundtrip buf =
+let test_component_shape_roundtrip buf =
   let buf = cssish buf in
   assert_same_shape "serialization" buf (serialized buf);
   assert_same_shape "minified serialization" buf (minified buf)
 
 (** CSS Syntax section 9: consecutive token pairs must not be serialized in a
     way that lets the tokenizer merge them into fewer component values. *)
-let test_component_value_token_boundary_roundtrip left right =
+let test_token_boundary_roundtrip left right =
   let left = cssish left in
   let right = cssish right in
   let input = left ^ " " ^ right in
   assert_same_shape "token boundary serialization" input (minified input)
 
-let test_comma_list_group_count_roundtrip buf =
+let test_csv_group_roundtrip buf =
   let buf = cssish buf in
   let input = buf ^ ", " ^ cssish (string_rev buf) in
   let before = parse_comma_list input |> comma_shapes in
@@ -120,7 +120,7 @@ let test_comma_list_group_count_roundtrip buf =
   if before <> after then
     fail (Fmt.str "comma-list shape changed for %S: %S" input serialized)
 
-let test_comma_inside_blocks_does_not_split_groups buf =
+let test_block_commas_stable buf =
   let payload = cssish buf in
   let input = "fn(" ^ payload ^ ", x), [a,b], {c:d,e:f}" in
   let groups = parse_comma_list input in
@@ -147,7 +147,7 @@ let test_balanced_nesting_shape_roundtrip buf =
     (serialized input);
   assert_same_shape "balanced deep nesting minification" input (minified input)
 
-let test_comment_confusion_does_not_surface_components buf =
+let test_comment_confusion_stable buf =
   let payload =
     cssish buf |> String.map (function '/' | '*' -> 'x' | c -> c)
   in
@@ -168,17 +168,17 @@ let suite =
       test_case "component-value serialized reparse" [ bytes ]
         test_component_value_serialized_reparse;
       test_case "component-value serialization preserves shape" [ bytes ]
-        test_component_value_serialized_shape_roundtrip;
+        test_component_shape_roundtrip;
       test_case "component-value token boundaries roundtrip" [ bytes; bytes ]
-        test_component_value_token_boundary_roundtrip;
+        test_token_boundary_roundtrip;
       test_case "comma-list group count roundtrip" [ bytes ]
-        test_comma_list_group_count_roundtrip;
+        test_csv_group_roundtrip;
       test_case "comma inside blocks does not split groups" [ bytes ]
-        test_comma_inside_blocks_does_not_split_groups;
+        test_block_commas_stable;
       test_case "bounded unterminated nesting reparses" [ bytes ]
         test_bounded_unterminated_nesting_reparse;
       test_case "balanced nesting shape roundtrip" [ bytes ]
         test_balanced_nesting_shape_roundtrip;
       test_case "comment confusion does not surface components" [ bytes ]
-        test_comment_confusion_does_not_surface_components;
+        test_comment_confusion_stable;
     ] )

@@ -315,8 +315,11 @@ let read_state_content t = State (Cursor.ident t)
 let read_heading_content _t = Heading
 
 let read_active_view_transition_content t =
-  Active_view_transition_type
-    (Cursor.option (Cursor.list ~sep:Cursor.comma ~at_least:1 Cursor.ident) t)
+  let names = Cursor.list ~sep:Cursor.comma ~at_least:1 Cursor.ident t in
+  Cursor.ws t;
+  if not (Cursor.is_done t) then
+    Cursor.err t "unexpected tokens after active view transition type";
+  Active_view_transition_type (Some names)
 
 let read_lang t = Cursor.call "lang" t read_lang_content
 let read_dir t = Cursor.call "dir" t read_dir_content
@@ -939,6 +942,13 @@ and read_nth_selector t : nth * t list option =
     Cursor.err t "unexpected tokens after An+B expression";
   (expr, of_clause)
 
+and read_nth_expr t =
+  let expr = read_nth t in
+  Cursor.ws t;
+  if not (Cursor.is_done t) then
+    Cursor.err t "unexpected tokens after An+B expression";
+  expr
+
 (** Parse a relative selector (used inside :has()). A relative selector can
     start with a combinator (+, >, ~) without a left operand. *)
 and read_relative_selector t =
@@ -980,8 +990,11 @@ and read_nth_last_type_content t =
   let expr, of_sel = read_nth_selector t in
   Nth_last_of_type (expr, of_sel)
 
+and read_nth_col_content t = Nth_col (read_nth_expr t)
+and read_nth_last_col_content t = Nth_last_col (read_nth_expr t)
 and read_host_content t = Host (Cursor.option read_complex_list t)
 and read_host_context_content t = Host_context (read_complex_list t)
+and read_current_content t = Current_of (read_complex_list t)
 
 (* Read helper functions for functional pseudo-classes *)
 and read_is t = Cursor.call "is" t read_is_content
@@ -998,8 +1011,11 @@ and read_nth_of_type t = Cursor.call "nth-of-type" t read_nth_of_type_content
 and read_nth_last_of_type t =
   Cursor.call "nth-last-of-type" t read_nth_last_type_content
 
+and read_nth_col t = Cursor.call "nth-col" t read_nth_col_content
+and read_nth_last_col t = Cursor.call "nth-last-col" t read_nth_last_col_content
 and read_host t = Cursor.call "host" t read_host_content
 and read_host_context t = Cursor.call "host-context" t read_host_context_content
+and read_current t = Cursor.call "current" t read_current_content
 
 (* Helper readers for pseudo-element functions that need recursion *)
 and read_slotted_content t =
@@ -1074,11 +1090,14 @@ and read_pseudo_class t =
         ("nth-last-child", read_nth_last_child);
         ("nth-of-type", read_nth_of_type);
         ("nth-last-of-type", read_nth_last_of_type);
+        ("nth-col", read_nth_col);
+        ("nth-last-col", read_nth_last_col);
         ("lang", read_lang);
         ("dir", read_dir);
         ("state", read_state);
         ("host", read_host);
         ("host-context", read_host_context);
+        ("current", read_current);
         ("heading", read_heading);
         ("active-view-transition-type", read_active_view_transition_type);
       ]
@@ -1479,7 +1498,7 @@ and pp : t Pp.t =
   | Webkit_details_marker -> vendor_elem ctx "webkit-details-marker"
   | Details_content -> elem ctx "details-content"
   (* Functional pseudo-elements *)
-  | Part idents -> elem_func ctx "part" (Pp.list ~sep:Pp.comma Pp.string) idents
+  | Part idents -> elem_func ctx "part" (Pp.list ~sep:Pp.space Pp.string) idents
   | Slotted selectors -> elem_func ctx "slotted" sels selectors
   | Cue selectors -> elem_func ctx "cue" sels selectors
   | Cue_region selectors -> elem_func ctx "cue-region" sels selectors
@@ -1494,9 +1513,12 @@ and pp : t Pp.t =
   | Nth_of_type (expr, of_sel) -> pp_nth_func ctx "nth-of-type" expr of_sel
   | Nth_last_of_type (expr, of_sel) ->
       pp_nth_func ctx "nth-last-of-type" expr of_sel
+  | Nth_col expr -> pp_nth_func ctx "nth-col" expr None
+  | Nth_last_col expr -> pp_nth_func ctx "nth-last-col" expr None
   | Dir dir -> func ctx "dir" Pp.string dir
   | Lang langs -> func ctx "lang" strs langs
   | State name -> func ctx "state" Pp.string name
+  | Current_of selectors -> func ctx "current" sels selectors
   | Host None -> pseudo ctx "host"
   | Host (Some selectors) -> func ctx "host" sels selectors
   | Host_context selectors -> func ctx "host-context" sels selectors
@@ -1570,6 +1592,9 @@ let rec map f = function
   | Host (Some selectors) ->
       let selectors' = List.map (map f) selectors in
       f (Host (Some selectors'))
+  | Current_of selectors ->
+      let selectors' = List.map (map f) selectors in
+      f (Current_of selectors')
   | Host_context selectors ->
       let selectors' = List.map (map f) selectors in
       f (Host_context selectors')
@@ -1601,6 +1626,7 @@ let rec any p = function
   | List xs -> List.exists (any p) xs || p (List xs)
   | Is xs | Where xs | Not xs | Has xs | Slotted xs | Cue xs | Cue_region xs ->
       List.exists (any p) xs || p (List xs)
+  | Current_of xs -> List.exists (any p) xs || p (Current_of xs)
   | Part xs -> p (Part xs)
   | Nth_child (_, Some xs)
   | Nth_last_child (_, Some xs)
@@ -1670,8 +1696,8 @@ let rec specificity = function
   | Webkit_datetime_edit_second_field | Webkit_datetime_edit_millisecond_field
   | Webkit_datetime_edit_meridiem_field | Webkit_inner_spin_button
   | Webkit_outer_spin_button | Webkit_calendar_picker_indicator
-  | Webkit_details_marker | Details_content | Dir _ | Lang _ | State _
-  | Active_view_transition_type _ | Heading ->
+  | Webkit_details_marker | Details_content | Nth_col _ | Nth_last_col _ | Dir _
+  | Lang _ | State _ | Active_view_transition_type _ | Heading ->
       { ids = 0; classes = 1; elements = 0 }
   | Element _ -> { ids = 0; classes = 0; elements = 1 }
   | Universal _ | Nesting -> zero_specificity
@@ -1681,7 +1707,8 @@ let rec specificity = function
     ->
       { ids = 0; classes = 0; elements = 1 }
   | Where _ -> zero_specificity
-  | Is xs | Not xs | Has xs -> xs |> List.map specificity |> max_specificity
+  | Is xs | Not xs | Has xs | Current_of xs ->
+      xs |> List.map specificity |> max_specificity
   | Nth_child (_, of_)
   | Nth_last_child (_, of_)
   | Nth_of_type (_, of_)
@@ -1717,8 +1744,14 @@ let rec first_class = function
   | Compound xs -> List.find_map first_class xs
   | Combined (a, _, _) -> first_class a
   | List (h :: _) -> first_class h
-  | Is xs | Where xs | Not xs | Has xs | Slotted xs | Cue xs | Cue_region xs
-    -> (
+  | Is xs
+  | Where xs
+  | Not xs
+  | Has xs
+  | Slotted xs
+  | Cue xs
+  | Cue_region xs
+  | Current_of xs -> (
       match xs with [] -> None | h :: _ -> first_class h)
   | Part _ -> None
   | _ -> None
@@ -1748,6 +1781,7 @@ let rec has_group_marker = function
   | List xs -> List.exists has_group_marker xs
   | Is xs | Not xs | Has xs | Slotted xs | Cue xs | Cue_region xs ->
       List.exists has_group_marker xs
+  | Current_of xs -> List.exists has_group_marker xs
   | _ -> false
 
 (** Check if selector contains :where(.peer) - used for peer-* modifiers *)
@@ -1769,6 +1803,7 @@ let rec has_peer_marker = function
   | List xs -> List.exists has_peer_marker xs
   | Is xs | Not xs | Has xs | Slotted xs | Cue xs | Cue_region xs ->
       List.exists has_peer_marker xs
+  | Current_of xs -> List.exists has_peer_marker xs
   | _ -> false
 
 (** Check if selector uses the :is(:where(...)) pattern used by group-* and
@@ -1792,6 +1827,7 @@ let rec has_newer_pseudo_class = function
   | Combined (a, _, b) -> has_newer_pseudo_class a || has_newer_pseudo_class b
   | Relative (_, b) -> has_newer_pseudo_class b
   | List xs -> List.exists has_newer_pseudo_class xs
+  | Current_of xs -> List.exists has_newer_pseudo_class xs
   (* Stop recursion at forgiving selectors — :is()/:where() have forgiving
      parsing, so newer pseudo-classes inside them don't cause the whole rule to
      fail *)

@@ -22,7 +22,7 @@ let parse_var input =
   try Some (Css.Variables.parse_var_reference r)
   with Css.Cursor.Parse_error _ | Css.Reader.Parse_error _ -> None
 
-let test_parse_var_reference_crash_safety buf = ignore (parse_var (cssish buf))
+let test_var_ref_crash_safety buf = ignore (parse_var (cssish buf))
 
 let test_generated_var_reference_roundtrip buf =
   let name = var_name buf in
@@ -69,7 +69,7 @@ let test_custom_declaration_name_invariant buf =
   | Some parsed -> fail (Fmt.str "custom declaration name changed: %S" parsed)
   | None -> fail "custom property declaration was not recognized"
 
-let test_compare_vars_by_name_antisymmetric buf =
+let test_var_compare_antisym buf =
   let _, a =
     Css.Variables.var (var_name buf) Css.Declaration.Length (Css.Values.Px 0.)
   in
@@ -90,7 +90,7 @@ let suite =
   ( "variables",
     [
       test_case "parse var reference crash safety" [ bytes ]
-        test_parse_var_reference_crash_safety;
+        test_var_ref_crash_safety;
       test_case "generated var reference roundtrip" [ bytes ]
         test_generated_var_reference_roundtrip;
       test_case "empty fallback preserved" [ bytes ]
@@ -100,5 +100,5 @@ let suite =
       test_case "custom declaration name invariant" [ bytes ]
         test_custom_declaration_name_invariant;
       test_case "compare vars by name antisymmetric" [ bytes ]
-        test_compare_vars_by_name_antisymmetric;
+        test_var_compare_antisym;
     ] )

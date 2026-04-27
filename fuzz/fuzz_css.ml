@@ -70,7 +70,7 @@ let test_parse_partial_stringify_reparse buf =
         (Fmt.str "Css.parse output did not reparse strictly: %s"
            (Css.pp_parse_error err))
 
-let test_public_map_preserves_rule_count buf =
+let test_map_preserves_rules buf =
   let sheet = generated_stylesheet buf in
   let before = List.length (Css.rule_statements sheet) in
   let mapped =
@@ -121,7 +121,7 @@ let suite =
       test_case "parse partial stringify reparse" [ bytes ]
         test_parse_partial_stringify_reparse;
       test_case "public map preserves rule count" [ bytes ]
-        test_public_map_preserves_rule_count;
+        test_map_preserves_rules;
       test_case "public sort idempotent" [ bytes ] test_public_sort_idempotent;
       test_case "public optimize idempotent" [ bytes ]
         test_public_optimize_idempotent;

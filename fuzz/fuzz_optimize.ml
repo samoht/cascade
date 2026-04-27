@@ -25,6 +25,16 @@ let rule buf i =
 
 let generated_stylesheet buf =
   [
+    Css.Stylesheet.Layer_decl [ "reset"; "theme"; "components" ];
+    Css.Stylesheet.Import
+      {
+        url = "theme.css";
+        layer = Some "theme";
+        supports = Some (Css.Supports.Property ("display", "grid"));
+        media = Some (Css.Media.Raw "(width >= 40em)");
+      };
+    Css.Stylesheet.Namespace (Some "svg", "http://www.w3.org/2000/svg");
+    Css.Stylesheet.property ~syntax:Css.Variables.Universal "--fuzz";
     rule buf 0;
     rule buf 0;
     Css.Stylesheet.Media
@@ -44,6 +54,24 @@ let generated_stylesheet buf =
       ( Some (pick [ "base"; "theme"; "components" ] buf 12),
         [ rule buf 16; Css.Stylesheet.Layer (None, [ rule buf 20 ]) ] );
     Css.Stylesheet.Scope (Some ".card", Some ".limit", [ rule buf 24 ]);
+    Css.Stylesheet.Page
+      (Some ":first", [ Css.Declaration.margin [ Css.Values.Px 10. ] ]);
+    Css.Stylesheet.Keyframes
+      ( "fade",
+        [
+          {
+            keyframe_selector =
+              Css.Keyframe.Positions [ Css.Keyframe.Percent 0. ];
+            keyframe_declarations =
+              [ Css.Declaration.opacity (Css.Properties.Opacity_number 0.) ];
+          };
+          {
+            keyframe_selector =
+              Css.Keyframe.Positions [ Css.Keyframe.Percent 100. ];
+            keyframe_declarations =
+              [ Css.Declaration.opacity (Css.Properties.Opacity_number 1.) ];
+          };
+        ] );
   ]
 
 let minified ss = Css.Stylesheet.to_string ~minify:true ss |> String.trim
@@ -125,6 +153,41 @@ let test_optimized_reparse_idempotent buf =
           (Fmt.str "optimized reparse serialization changed: %S -> %S"
              serialized serialized2)
 
+let count_imports ss =
+  List.fold_left
+    (fun acc -> function Css.Stylesheet.Import _ -> acc + 1 | _ -> acc)
+    0 ss
+
+let count_namespaces ss =
+  List.fold_left
+    (fun acc -> function Css.Stylesheet.Namespace _ -> acc + 1 | _ -> acc)
+    0 ss
+
+let test_import_namespace_counts buf =
+  let ss = generated_stylesheet buf in
+  let optimized = Css.Optimize.stylesheet ss in
+  if count_imports ss <> count_imports optimized then
+    fail "optimization changed top-level import count";
+  if count_namespaces ss <> count_namespaces optimized then
+    fail "optimization changed top-level namespace count"
+
+let count_kind f ss =
+  List.fold_left (fun acc stmt -> if f stmt then acc + 1 else acc) 0 ss
+
+let test_atrule_counts_stable buf =
+  let ss = generated_stylesheet buf in
+  let optimized = Css.Optimize.stylesheet ss in
+  let same label pred =
+    let before = count_kind pred ss in
+    let after = count_kind pred optimized in
+    if before <> after then
+      fail
+        (Fmt.str "optimization changed %s count: %d -> %d" label before after)
+  in
+  same "property" (function Css.Stylesheet.Property _ -> true | _ -> false);
+  same "page" (function Css.Stylesheet.Page _ -> true | _ -> false);
+  same "keyframes" (function Css.Stylesheet.Keyframes _ -> true | _ -> false)
+
 let suite =
   ( "optimize",
     [
@@ -135,4 +198,6 @@ let suite =
         test_optimization_preserves_boundary_shape;
       test_case "optimized reparse idempotent" [ bytes ]
         test_optimized_reparse_idempotent;
+      test_case "import namespace counts" [ bytes ] test_import_namespace_counts;
+      test_case "at-rule counts stable" [ bytes ] test_atrule_counts_stable;
     ] )

@@ -77,6 +77,27 @@ let test_eof_stable buf =
   | Css.Token.Eof, Css.Token.Eof -> ()
   | _ -> fail "lexer EOF is not stable"
 
+let pick xs buf i =
+  let b =
+    if String.length buf = 0 then 0 else Char.code buf.[i mod String.length buf]
+  in
+  List.nth xs (b mod List.length xs)
+
+let test_token_pair_stable buf =
+  let left = pick [ "a"; "#id"; "1"; "1px"; "url(a)"; "-->"; "@media" ] buf 0 in
+  let right =
+    pick [ "b"; ".c"; "2"; "solid"; "url(b)"; "--"; "@supports" ] buf 1
+  in
+  let spaced = kind_strings (left ^ " " ^ right) in
+  let commented = kind_strings (left ^ "/**/" ^ right) in
+  if spaced = [] || commented = [] then fail "token pair produced no tokens"
+
+let test_escape_bound_stable buf =
+  let suffix = pick [ "0"; "#id"; "g"; " " ] buf 0 in
+  let input = "\\000031" ^ suffix in
+  let toks = kind_strings input in
+  if toks = [] then fail "escaped identifier produced no tokens"
+
 let suite =
   ( "lexer",
     [
@@ -92,4 +113,6 @@ let suite =
       test_case "commit preserves outer restore" [ bytes ]
         test_commit_preserves_outer_restore;
       test_case "eof stable" [ bytes ] test_eof_stable;
+      test_case "token pair stable" [ bytes ] test_token_pair_stable;
+      test_case "escape bound stable" [ bytes ] test_escape_bound_stable;
     ] )

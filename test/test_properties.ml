@@ -2254,6 +2254,41 @@ let spec_property_grammar_edges () =
   neg_cursor read_clip_path "xywh(0 0)";
   neg_cursor read_content "counter()"
 
+let spec_ui_more_edges () =
+  check_text_wrap "pretty";
+  check_text_wrap "balance";
+  check_white_space "break-spaces";
+  check_word_break "auto-phrase";
+  check_overflow_wrap "anywhere";
+  check_hyphens "manual";
+  check_field_sizing "content";
+  check_appearance "base-select";
+  check_user_select "contain";
+  neg_cursor read_text_wrap "pretty balance";
+  neg_cursor read_white_space "normal nowrap pre";
+  neg_cursor read_word_break "auto phrase";
+  neg_cursor read_overflow_wrap "break-word anywhere";
+  neg_cursor read_hyphens "soft";
+  neg_cursor read_field_sizing "auto content";
+  neg_cursor read_appearance "base button";
+  neg_cursor read_user_select "none text"
+
+let spec_mask_more_edges () =
+  check_mask_box "view-box";
+  check_mask_box "stroke-box";
+  check_mask_mode "match-source";
+  check_mask_composite "exclude";
+  check_webkit_mask_composite "source-over";
+  check_webkit_mask_source_type "auto";
+  check_clip_path "shape(from 0 0, line to 100% 0, close)";
+  check_clip_path "polygon(0 0, 100% 0, 100% 100%)";
+  neg_cursor read_mask_box "margin-box";
+  neg_cursor read_mask_mode "source";
+  neg_cursor read_mask_composite "add subtract";
+  neg_cursor read_webkit_mask_composite "add";
+  neg_cursor read_webkit_mask_source_type "match-source";
+  neg_cursor read_clip_path "polygon()"
+
 let tests =
   [
     test_case "display" `Quick test_display;
@@ -2320,6 +2355,8 @@ let tests =
     test_case "pp property value" `Quick test_pp_property_value;
     test_case "spec current property grammar edges" `Quick
       spec_property_grammar_edges;
+    test_case "spec ui more edges" `Quick spec_ui_more_edges;
+    test_case "spec mask more edges" `Quick spec_mask_more_edges;
   ]
 
 let test_will_change () =
