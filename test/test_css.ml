@@ -460,6 +460,176 @@ let spec_cssom_stub_surface () =
   expect_platform "CSSOM rule serialization"
     (Stylesheet.cssom_serialize_rule stmt)
 
+let public_fold_edges () =
+  let title = Selector.class_ "title" in
+  let nested = rule ~selector:title [ color (hex "#0000ff") ] in
+  let parent =
+    rule ~selector:(Selector.class_ "card")
+      ~nested:
+        [
+          media ~condition:(Css.Media.Raw "(width >= 40em)") [ nested ];
+          declarations [ background_color (hex "#ffffff") ];
+        ]
+      [ padding [ Rem 1. ] ]
+  in
+  let sheet =
+    v
+      [
+        with_origin Author
+          [
+            layer ~name:"components"
+              [
+                supports
+                  ~condition:(Css.Supports.Property ("display", "grid"))
+                  [
+                    container
+                      ~condition:(Css.Container.Raw "(inline-size > 30em)")
+                      [ parent ];
+                  ];
+              ];
+          ];
+        starting_style
+          [
+            rule ~selector:(Selector.class_ "entry")
+              [ opacity (Opacity_number 0.) ];
+          ];
+      ]
+  in
+  let rule_count, decl_blocks, boundary_count =
+    fold
+      (fun (rules, decls, boundaries) stmt ->
+        let rules =
+          match as_rule stmt with Some _ -> rules + 1 | None -> rules
+        in
+        let decls =
+          match as_declarations stmt with Some _ -> decls + 1 | None -> decls
+        in
+        let boundaries =
+          boundaries
+          +
+          match
+            ( as_origin stmt,
+              as_layer stmt,
+              as_supports stmt,
+              as_container stmt,
+              as_media stmt )
+          with
+          | Some _, _, _, _, _
+          | _, Some _, _, _, _
+          | _, _, Some _, _, _
+          | _, _, _, Some _, _
+          | _, _, _, _, Some _ ->
+              1
+          | _ -> 0
+        in
+        (rules, decls, boundaries))
+      (0, 0, 0) sheet
+  in
+  Alcotest.(check int) "fold visits all nested rules" 3 rule_count;
+  Alcotest.(check int) "fold visits bare declaration block" 1 decl_blocks;
+  Alcotest.(check int) "fold visits cascade boundaries" 5 boundary_count
+
+let public_custom_props_edges () =
+  let root =
+    rule ~selector:Selector.Root
+      [ custom_property "--outside" "0"; color (hex "#111111") ]
+  in
+  let theme_rule =
+    rule ~selector:Selector.Root [ custom_property "--brand" "#f00" ]
+  in
+  let nested_theme =
+    media ~condition:(Css.Media.Raw "(prefers-color-scheme: dark)")
+      [
+        layer ~name:"theme"
+          [
+            rule ~selector:Selector.Root
+              [ custom_property "--brand-dark" "#000" ];
+          ];
+      ]
+  in
+  let utilities =
+    layer ~name:"utilities"
+      [
+        rule ~selector:(Selector.class_ "m")
+          [ custom_property "--space" "1rem" ];
+      ]
+  in
+  let sheet =
+    v [ root; layer ~name:"theme" [ theme_rule ]; nested_theme; utilities ]
+  in
+  let all_props = custom_props sheet in
+  let theme_props = custom_props ~layer:"theme" sheet in
+  let has name props = List.mem name props in
+  Alcotest.(check bool)
+    "all props include unlayered" true
+    (has "--outside" all_props);
+  Alcotest.(check bool)
+    "all props include theme" true
+    (has "--brand" all_props && has "--brand-dark" all_props);
+  Alcotest.(check bool)
+    "all props include utilities" true (has "--space" all_props);
+  Alcotest.(check bool)
+    "theme props include named layer" true
+    (has "--brand" theme_props && has "--brand-dark" theme_props);
+  Alcotest.(check bool)
+    "theme props exclude siblings" false
+    (has "--outside" theme_props || has "--space" theme_props)
+
+let public_property_edges () =
+  let sheet =
+    property ~name:"--gap" Length ~initial_value:(Px 1.) ~inherits:false ()
+  in
+  match statements sheet with
+  | [ stmt ] -> (
+      match as_property stmt with
+      | Some (Property_info info) -> (
+          Alcotest.(check string) "registered name" "--gap" info.name;
+          Alcotest.(check bool) "inherits flag" false info.inherits;
+          match (info.syntax, info.initial_value) with
+          | Css.Variables.Length, Some (Px n) ->
+              Alcotest.(check (float 0.0001)) "initial value" 1. n
+          | _ -> Alcotest.fail "registered property shape changed")
+      | None -> Alcotest.fail "expected @property statement")
+  | _ -> Alcotest.fail "expected one @property statement"
+
+let public_theme_edges () =
+  let guarded = theme_guarded ~var_name:"brand" (color (hex "#ff0000")) in
+  let sheet =
+    v
+      [
+        rule ~selector:(Selector.class_ "card")
+          [ guarded; background_color (hex "#ffffff") ];
+      ]
+  in
+  let empty_theme = Css.Pp.String_set.empty in
+  let brand_theme = Css.Pp.String_set.add "brand" empty_theme in
+  Alcotest.(check string)
+    "guarded declaration hidden" ".card{background-color:#ffffff}\n"
+    (to_string ~minify:true ~theme:empty_theme sheet);
+  Alcotest.(check string)
+    "guarded declaration shown"
+    ".card{color:#ff0000;background-color:#ffffff}\n"
+    (to_string ~minify:true ~theme:brand_theme sheet)
+
+let public_parse_edges () =
+  match of_string ~filename:"spec.css" ".a{color:rgb(300)}" with
+  | Ok _ -> Alcotest.fail "strict parser accepted invalid declaration"
+  | Error err ->
+      let msg = pp_parse_error err in
+      Alcotest.(check bool)
+        "parse error carries filename" true
+        (Astring.String.is_infix ~affix:"spec.css" msg);
+      let parsed =
+        parse ~filename:"spec.css"
+          ".a{color:rgb(300)}.b{color:red}.c{color:rgb(301)}"
+      in
+      Alcotest.(check int)
+        "partial parser keeps valid rules" 1
+        (List.length (rule_statements parsed.stylesheet));
+      Alcotest.(check int)
+        "partial parser reports invalid rules" 2
+        (List.length parsed.warnings)
+
 let suite =
   ( "css",
     [
@@ -492,4 +662,11 @@ let suite =
         test_spec_sort_conditional_boundaries;
       Alcotest.test_case "spec CSSOM public stub surface" `Quick
         spec_cssom_stub_surface;
+      Alcotest.test_case "public fold edge traversal" `Quick public_fold_edges;
+      Alcotest.test_case "public custom property scoping" `Quick
+        public_custom_props_edges;
+      Alcotest.test_case "public property introspection" `Quick
+        public_property_edges;
+      Alcotest.test_case "public theme guards" `Quick public_theme_edges;
+      Alcotest.test_case "public parse recovery edges" `Quick public_parse_edges;
     ] )
