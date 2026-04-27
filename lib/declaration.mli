@@ -39,6 +39,10 @@ val read_declaration : Cursor.t -> declaration option
     declarations. Performs full property name and value validation per CSS spec.
 *)
 
+val of_string : string -> declaration
+(** [of_string s] parses a single declaration from [s] (e.g. ["color: red"]).
+    Raises [Failure] if [s] is not a valid declaration. *)
+
 val read_declarations : Cursor.t -> declaration list
 (** [read_declarations t] is all typed declarations in an unbraced block. *)
 

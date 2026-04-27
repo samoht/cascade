@@ -7,6 +7,12 @@ open Css_test_helpers
 
 let check_rule = check_value_cursor "rule" read_rule pp_rule
 
+let decl_t : Css.Declaration.declaration Alcotest.testable =
+  Alcotest.testable
+    (fun fmt d ->
+      Format.pp_print_string fmt (Css.Declaration.string_of_declaration d))
+    ( = )
+
 let check_import_rule =
   check_value_cursor "import_rule" read_import_rule pp_import_rule
 
@@ -1661,53 +1667,10 @@ let c43_specified_values () =
     (Css.Stylesheet.specified_value ~inherits:false ~initial:"auto"
        ~inherited:(Some "80px") ~cascaded:(Some "unset"))
 
-let value_processing_stage_name = function
-  | Css.Stylesheet.Declared_value -> "declared"
-  | Cascaded_value -> "cascaded"
-  | Specified_value -> "specified"
-  | Computed_value -> "computed"
-  | Used_value -> "used"
-  | Actual_value -> "actual"
-
-let expect_context_error expected = function
-  | Error (Css.Stylesheet.Requires_document_context actual) ->
-      Alcotest.(check string)
-        "document-context error stage"
-        (value_processing_stage_name expected)
-        (value_processing_stage_name actual)
-  | Error (Css.Stylesheet.Unsupported_value_alias _) ->
-      Alcotest.fail "expected document-context error, got value-alias error"
-  | Error (Css.Stylesheet.Requires_platform_context actual) ->
-      Alcotest.failf "expected document-context error, got platform error: %s"
-        actual.feature
-  | Ok _ -> Alcotest.fail "expected document-context error"
-
-let expect_value_alias_error property value = function
-  | Error (Css.Stylesheet.Unsupported_value_alias actual) ->
-      Alcotest.(check string) "value-alias property" property actual.property;
-      Alcotest.(check string) "value-alias value" value actual.value
-  | Error (Css.Stylesheet.Requires_document_context _) ->
-      Alcotest.fail "expected value-alias error, got document-context error"
-  | Error (Css.Stylesheet.Requires_platform_context actual) ->
-      Alcotest.failf "expected value-alias error, got platform error: %s"
-        actual.feature
-  | Ok _ -> Alcotest.fail "expected value-alias error"
-
-let expect_platform_error feature = function
-  | Error (Css.Stylesheet.Requires_platform_context actual) ->
-      Alcotest.(check string) "platform feature" feature actual.feature
-  | Error (Css.Stylesheet.Requires_document_context _) ->
-      Alcotest.fail
-        "expected platform-context error, got document-context error"
-  | Error (Css.Stylesheet.Unsupported_value_alias _) ->
-      Alcotest.fail "expected platform-context error, got value-alias error"
-  | Ok _ -> Alcotest.fail "expected platform-context error"
-
 (* Not a roundtrip test *)
-let c448_value_stage_stubs () =
-  (* CSS Cascade sections 4.4-4.8 depend on document, inheritance, layout,
-     rendering, device constraints, and sometimes fragment-specific context. The
-     public stubs make that boundary executable. *)
+let c448_value_stage_scope () =
+  (* Later value stages need context supplied by a caller or platform; the
+     parser itself only models the local ordering of stages. *)
   Alcotest.(check (list bool))
     "declared/cascaded/specified are library-local; later stages need context"
     [ false; false; false; true; true; true ]
@@ -1719,44 +1682,7 @@ let c448_value_stage_stubs () =
          Computed_value;
          Used_value;
          Actual_value;
-       ]);
-  expect_context_error Computed_value
-    (Css.Stylesheet.computed_value ~property:"font-size" ~specified:"1.2em");
-  expect_context_error Computed_value
-    (Css.Stylesheet.resolve_custom_property ~name:"--gap"
-       ~specified:"var(--space, 1rem)" ~environment:":root");
-  expect_context_error Used_value
-    (Css.Stylesheet.used_value ~property:"width" ~computed:"auto");
-  expect_context_error Actual_value
-    (Css.Stylesheet.actual_value ~property:"border-top-width" ~used:"4.2px")
-
-(* Not a roundtrip test *)
-let c41_declared_for_element () =
-  (* CSS Cascade section 4.1 talks about declarations applied to an element.
-     Selector matching requires a document tree, so this API is a stub but must
-     be callable from tests. *)
-  let stylesheet =
-    [
-      Css.Stylesheet.Rule
-        (Css.Stylesheet.rule
-           ~selector:(Css.Selector.class_ "card")
-           [ Css.Declaration.color (Css.Values.hex "#ff0000") ]);
-    ]
-  in
-  expect_context_error Declared_value
-    (Css.Stylesheet.declared_values_for_element ~element:".card" stylesheet)
-
-(* Not a roundtrip test *)
-let c411_value_aliasing_stub () =
-  (* CSS Cascade section 4.1.1: legacy value aliases are converted at parse time
-     where a spec defines them. The public hook exists even though this library
-     does not yet ship a property/value alias table. *)
-  expect_value_alias_error "display" "-webkit-box"
-    (Css.Stylesheet.normalize_value_alias ~property:"display"
-       ~value:"-webkit-box");
-  expect_value_alias_error "position" "-webkit-sticky"
-    (Css.Stylesheet.normalize_value_alias ~property:"position"
-       ~value:"-webkit-sticky")
+       ])
 
 (* Not a roundtrip test *)
 let c42_integrated_order () =
@@ -1860,18 +1786,8 @@ let c43_revert_values () =
        [ layer_candidate (Some "base") 0 "revert-layer" ])
 
 (* Not a roundtrip test *)
-let c45_applicable_props_stub () =
-  (* CSS Cascade section 4.5.1: applicability depends on the element or box
-     model. The API stub makes this unsupported stage explicit. *)
-  expect_context_error Used_value
-    (Css.Stylesheet.applicable_property ~property:"flex" ~box:"block");
-  expect_context_error Used_value
-    (Css.Stylesheet.applicable_property ~property:"text-transform" ~box:"inline")
-
-(* Not a roundtrip test *)
 let c47_examples () =
-  (* CSS Cascade section 4.7 examples: encode the specified-value cases we can
-     model, and keep layout/device-dependent examples on the stubbed APIs. *)
+  (* CSS Cascade section 4.7 examples this library can model from CSS text. *)
   check_specified "border width inherit example" "4.2px" "inherit-keyword"
     (Css.Stylesheet.specified_value ~inherits:false ~initial:"medium"
        ~inherited:(Some "4.2px") ~cascaded:(Some "inherit"));
@@ -1885,156 +1801,31 @@ let c47_examples () =
   check_specified "list-style-position initial example" "outside"
     "initial-keyword"
     (Css.Stylesheet.specified_value ~inherits:true ~initial:"outside"
-       ~inherited:(Some "inside") ~cascaded:(Some "initial"));
-  expect_context_error Used_value
-    (Css.Stylesheet.used_value ~property:"width" ~computed:"auto");
-  expect_context_error Actual_value
-    (Css.Stylesheet.actual_value ~property:"border-top-width" ~used:"4.2px")
-
-(* Not a roundtrip test *)
-let c48_per_fragment_stub () =
-  (* CSS Cascade section 4.8: fragment-specific value processing needs layout
-     fragments and pseudo-element context. *)
-  expect_context_error Used_value
-    (Css.Stylesheet.per_fragment_value ~property:"color"
-       ~fragment:"::first-line" ~computed:"currentColor")
-
-(* Not a roundtrip test *)
-let c5_filtering_stub () =
-  (* CSS Cascade section 5 filters declarations by media/supports conditions,
-     selector matching, shadow-tree boundaries, and scoping. The parser can
-     preserve those structures, but deciding applicability needs platform
-     context. *)
-  let stylesheet =
-    [
-      Css.Stylesheet.Media
-        ( Css.Media.of_string "(width >= 40em)",
-          [
-            Css.Stylesheet.Supports
-              ( Css.Supports.Property ("display", "grid"),
-                [
-                  Css.Stylesheet.Scope
-                    ( Some ".card",
-                      Some ".footer",
-                      [
-                        Css.Stylesheet.Rule
-                          (Css.Stylesheet.rule
-                             ~selector:(Css.Selector.class_ "title")
-                             [
-                               Css.Declaration.color (Css.Values.hex "#ff0000");
-                             ]);
-                      ] );
-                ] );
-          ] );
-    ]
-  in
-  expect_platform_error "style rule filtering"
-    (Css.Stylesheet.filter_style_rules ~element:"<h2 class=title>"
-       ~media:(Css.Media.of_string "(width >= 40em)")
-       ~supports:(Css.Supports.Property ("display", "grid"))
-       ~shadow_tree:"document" ~scope:".card" stylesheet)
-
-(* Not a roundtrip test *)
-let test_spec_platform_boundary_stubs () =
-  (* Platform-facing CSS specs need DOM/CSSOM/media/fetch/URL/animation
-     subsystems. Tests call stubs directly so missing implementation surface is
-     explicit and typed. *)
-  expect_platform_error "selector matching"
-    (Css.Stylesheet.selector_matches_element
-       ~selector:(Css.Selector.class_ "card")
-       ~element:"<article class=card>");
-  expect_platform_error "media query evaluation"
-    (Css.Stylesheet.evaluate_media_query
-       ~condition:(Css.Media.of_string "(dynamic-range: high)")
-       ~environment:"screen");
-  expect_platform_error "supports evaluation"
-    (Css.Stylesheet.evaluate_supports_condition
-       ~condition:(Css.Supports.Property ("display", "grid")));
-  expect_platform_error "container query evaluation"
-    (Css.Stylesheet.evaluate_container_query
-       ~condition:(Css.Container.Raw "(inline-size > 30em)") ~container:".card");
-  expect_platform_error "URL resolution"
-    (Css.Stylesheet.resolve_url_value ~base:"https://example.test/app/"
-       ~url:"../image.png");
-  expect_platform_error "stylesheet import loading"
-    (Css.Stylesheet.load_import_rule
-       {
-         url = "theme.css";
-         layer = Some "theme";
-         supports = None;
-         media = None;
-       });
-  expect_platform_error "HTML presentational hints"
-    (Css.Stylesheet.html_presentational_hints ~element:"<table width=100>");
-  expect_platform_error "CSSOM insertRule"
-    (Css.Stylesheet.cssom_insert_rule ~index:0
-       (Css.Stylesheet.Layer_decl [ "theme" ]) []);
-  expect_platform_error "CSSOM deleteRule"
-    (Css.Stylesheet.cssom_delete_rule ~index:0 []);
-  expect_platform_error "CSSOM replaceRule"
-    (Css.Stylesheet.cssom_replace_rule ~index:0
-       (Css.Stylesheet.Layer_decl [ "replacement" ]) []);
-  expect_platform_error "CSSOM rule serialization"
-    (Css.Stylesheet.cssom_serialize_rule
-       (Css.Stylesheet.Layer_decl [ "serialized" ]));
-  expect_platform_error "animation value sampling"
-    (Css.Stylesheet.animated_value ~property:"opacity" ~keyframes:[ "0"; "1" ]
-       ~progress:0.5)
+       ~inherited:(Some "inside") ~cascaded:(Some "initial"))
 
 let dom_selector_boundary () =
-  (* Selectors can be parsed and serialized locally, but matching them against
-     elements depends on DOM structure, pseudo-class state, shadow boundaries,
-     and scoped-tree context. *)
+  (* Selector matching is DOM context, but selector syntax is CSS-file
+     surface. *)
   let selector_cases =
     [
-      (".card", "<article class=card>");
-      ("article.card > h2:first-child", "<h2>");
-      (":scope > .item", "<li class=item>");
-      (".card:has(> img[alt])", "<article class=card>");
-      ("a:visited", "<a href=/>");
-      ("::part(label)", "<custom-element>");
-      (":host(.active) .title", "<shadow-host>");
+      ".card";
+      "article.card > h2:first-child";
+      ":scope > .item";
+      ".card:has(> img[alt])";
+      "a:visited";
+      "::part(label)";
+      ":host(.active) .title";
     ]
   in
   List.iter
-    (fun (selector, element) ->
-      let parsed = Css.Selector.of_string selector in
-      expect_platform_error "selector matching"
-        (Css.Stylesheet.selector_matches_element ~selector:parsed ~element))
+    (fun selector -> ignore (Css.Selector.of_string selector))
     selector_cases;
   neg_cursor read_stylesheet ".card:has(> ) { color: red }";
   neg_cursor read_stylesheet "::before::after { color: red }";
   neg_cursor read_stylesheet ":host-context() { color: red }"
 
-let cssom_mutation_boundary () =
-  (* CSSOM mutation is observable through live CSSRuleList objects and
-     rule-specific validation. The parser can expose an API boundary, but not a
-     live object graph. *)
-  let rule_stmt =
-    Css.Stylesheet.Rule
-      (Css.Stylesheet.rule
-         ~selector:(Css.Selector.class_ "card")
-         [ Css.Declaration.color (Css.Values.hex "#ff0000") ])
-  in
-  let layer_stmt = Css.Stylesheet.Layer_decl [ "reset"; "theme" ] in
-  let sheet = [ layer_stmt; rule_stmt ] in
-  List.iter
-    (fun index ->
-      expect_platform_error "CSSOM insertRule"
-        (Css.Stylesheet.cssom_insert_rule ~index rule_stmt sheet);
-      expect_platform_error "CSSOM deleteRule"
-        (Css.Stylesheet.cssom_delete_rule ~index sheet);
-      expect_platform_error "CSSOM replaceRule"
-        (Css.Stylesheet.cssom_replace_rule ~index layer_stmt sheet))
-    [ -1; 0; 1; 3 ];
-  expect_platform_error "CSSOM rule serialization"
-    (Css.Stylesheet.cssom_serialize_rule rule_stmt);
-  expect_platform_error "CSSOM rule serialization"
-    (Css.Stylesheet.cssom_serialize_rule layer_stmt)
-
 let fetch_url_boundary () =
-  (* @import parsing preserves URL/layer/supports/media shape. Fetching the
-     imported sheet and resolving URLs require platform context. *)
+  (* @import and url(...) syntax is in scope; loading/resolution is not. *)
   let import_cases =
     [
       ( "@import url(base.css) layer(reset) supports(display: grid) screen;",
@@ -2042,6 +1833,13 @@ let fetch_url_boundary () =
         Some "reset" );
       ("@import \"print.css\" print;", "print.css", None);
       ("@import url(theme.css) layer();", "theme.css", Some "");
+      ( "@import url(theme.css) layer(theme) supports(selector(:has(img))) \
+         screen and (width >= 40em);",
+        "theme.css",
+        Some "theme" );
+      ( "@import url(\"../fonts/brand.woff2\") layer(fonts);",
+        "../fonts/brand.woff2",
+        Some "fonts" );
     ]
   in
   List.iter
@@ -2049,65 +1847,21 @@ let fetch_url_boundary () =
       let r = Css.Cursor.of_string input in
       let rule = Css.Stylesheet.read_import_rule r in
       Alcotest.(check string) "import url" url rule.url;
-      Alcotest.(check (option string)) "import layer" layer rule.layer;
-      expect_platform_error "stylesheet import loading"
-        (Css.Stylesheet.load_import_rule rule))
+      Alcotest.(check (option string)) "import layer" layer rule.layer)
     import_cases;
-  List.iter
-    (fun (base, url) ->
-      expect_platform_error "URL resolution"
-        (Css.Stylesheet.resolve_url_value ~base ~url))
-    [
-      ("https://example.test/css/app.css", "../img/logo.svg");
-      ("https://example.test/css/app.css", "#paint");
-      ("https://example.test/css/app.css", "data:image/svg+xml,%3Csvg%3E");
-      ("https://example.test/css/app.css", "https://cdn.example/a.woff2");
-    ];
   check_declaration ~expected:"background-image:url(../img/logo.svg)"
     "background-image: url(../img/logo.svg);";
   check_declaration ~expected:"cursor:url(cursor.cur),auto"
     "cursor: url(cursor.cur), auto";
+  check_declaration ~expected:"src:url(brand.woff2) format(woff2)"
+    "src: url(brand.woff2) format(woff2)";
   neg_cursor read_import_rule "@import url(theme.css) layer(theme) layer(base);";
-  neg_cursor read_import_rule "@import url(theme.css) supports(display:);"
+  neg_cursor read_import_rule "@import url(theme.css) supports(display:);";
+  neg_cursor read_import_rule
+    "@import url(theme.css) screen supports(display: grid);"
 
 let environment_query_boundary () =
-  (* Media/supports/container conditions are preserved as CSS. Whether they
-     match is a function of the environment, support table, or query
-     container. *)
-  let media_cases =
-    [
-      (Css.Media.Print, "print");
-      (Css.Media.of_string "(width >= 40em)", "screen width=50em");
-      (Css.Media.of_string "(prefers-reduced-data: reduce)", "reduced-data");
-      (Css.Media.Negated Css.Media.Print, "screen");
-    ]
-  in
-  List.iter
-    (fun (condition, environment) ->
-      expect_platform_error "media query evaluation"
-        (Css.Stylesheet.evaluate_media_query ~condition ~environment))
-    media_cases;
-  List.iter
-    (fun condition ->
-      expect_platform_error "supports evaluation"
-        (Css.Stylesheet.evaluate_supports_condition ~condition))
-    [
-      Css.Supports.Property ("display", "grid");
-      Css.Supports.Not (Css.Supports.Property ("selector", ":has(img)"));
-      Css.Supports.And
-        ( Css.Supports.Property ("container-type", "inline-size"),
-          Css.Supports.Func ("selector", ":has(> img)") );
-    ];
-  List.iter
-    (fun condition ->
-      expect_platform_error "container query evaluation"
-        (Css.Stylesheet.evaluate_container_query ~condition ~container:".card"))
-    [
-      Css.Container.Raw "(inline-size > 30em)";
-      Css.Container.Raw "style(--theme: dark)";
-      Css.Container.Raw "scroll-state(stuck: top)";
-      Css.Container.Named ("card", Css.Container.Raw "(width >= 400px)");
-    ];
+  (* Query syntax is in scope; matching needs explicit environment context. *)
   check_stylesheet
     ~expected:
       "@media (width >= 40em){@supports (display:grid){@container card \
@@ -2116,41 +1870,36 @@ let environment_query_boundary () =
      style(--theme: dark) { .card { display: grid } } } }";
   neg_cursor read_stylesheet "@media (width >= ) { .x { color: red } }";
   neg_cursor read_stylesheet "@supports (display:) { .x { color: red } }";
-  neg_cursor read_stylesheet "@container card style() { .x { color: red } }"
+  neg_cursor read_stylesheet "@container card style() { .x { color: red } }";
+  neg_cursor read_stylesheet "@container card (width >) { .x { color: red } }"
 
 let value_resolution_boundary () =
-  (* Computed/used/actual values need property metadata, inheritance, font,
-     viewport, layout, and device context. *)
-  List.iter
-    (fun (property, specified) ->
-      expect_context_error Computed_value
-        (Css.Stylesheet.computed_value ~property ~specified))
-    [
-      ("font-size", "1.2em");
-      ("line-height", "normal");
-      ("width", "50%");
-      ("background-image", "url(../img/logo.svg)");
-      ("color", "currentColor");
-    ];
-  List.iter
-    (fun (property, computed) ->
-      expect_context_error Used_value
-        (Css.Stylesheet.used_value ~property ~computed))
-    [
-      ("width", "auto");
-      ("height", "50%");
-      ("margin-left", "auto");
-      ("grid-template-columns", "subgrid");
-    ];
-  List.iter
-    (fun (property, used) ->
-      expect_context_error Actual_value
-        (Css.Stylesheet.actual_value ~property ~used))
-    [
-      ("border-top-width", "0.4px");
-      ("color", "color(display-p3 1 0 0)");
-      ("font-weight", "452");
-    ];
+  let open Css.Values in
+  let inherited_font_size = Css.Declaration.of_string "font-size: 16px" in
+  let inherited_color = Css.Declaration.of_string "color: canvastext" in
+  let initial_width = Css.Declaration.of_string "width: auto" in
+  let initial_display = Css.Declaration.of_string "display: inline" in
+  let ctx =
+    {
+      Css.Context.empty with
+      inherited_values = [ inherited_font_size; inherited_color ];
+      initial_values = [ initial_width; initial_display ];
+      base_url = Some "https://example.test/css/app.css";
+      root_font_size = Some (Px 16.);
+      parent_font_size = Some (Px 16.);
+      current_color = Some (System Canvas_text);
+      viewport_width = Some (Px 1024.);
+      viewport_height = Some (Px 768.);
+      container_width = Some (Px 640.);
+      container_height = Some (Px 480.);
+    }
+  in
+  Alcotest.(check (option decl_t))
+    "inherited font size" (Some inherited_font_size)
+    (Css.Context.inherited_value "font-size" ctx);
+  Alcotest.(check (option decl_t))
+    "initial width" (Some initial_width)
+    (Css.Context.initial_value "width" ctx);
   check_specified "inherit fallback before computed stage" "16px"
     "inherit-keyword"
     (Css.Stylesheet.specified_value ~inherits:false ~initial:"medium"
@@ -2161,25 +1910,31 @@ let value_resolution_boundary () =
        ~inherited:(Some "canvastext") ~cascaded:(Some "unset"))
 
 let custom_property_boundary () =
-  (* Custom property token streams parse locally; substitution, fallback
-     validation, invalid-at-computed-value handling, and cycle detection happen
-     at computed-value time. *)
-  List.iter
-    (fun (name, specified, environment) ->
-      expect_context_error Computed_value
-        (Css.Stylesheet.resolve_custom_property ~name ~specified ~environment))
-    [
-      ("--gap", "var(--space, 1rem)", ":root{--space:2rem}");
-      ("--a", "var(--a)", ":root{--a:var(--a)}");
-      ("--a", "var(--b)", ":root{--a:var(--b);--b:var(--a)}");
-      ("--registered", "10px", "@property --registered { syntax:\"<color>\" }");
-      ("--fallback-cycle", "var(--missing, var(--fallback))", ":root{}");
-    ];
+  let gap = Css.Declaration.of_string "--gap: 1rem" in
+  let ctx =
+    {
+      Css.Context.empty with
+      custom_properties =
+        [
+          gap;
+          Css.Declaration.of_string "--a: var(--b)";
+          Css.Declaration.of_string "--b: var(--a, red)";
+        ];
+    }
+  in
+  Alcotest.(check (option decl_t))
+    "custom property context" (Some gap)
+    (Css.Context.custom_property "--gap" ctx);
   check_declaration ~expected:"--a:var(--b)" "--a: var(--b);";
   check_declaration ~expected:"--b:var(--a, red)" "--b: var(--a, red);";
   check_declaration ~expected:"color:var(--brand, red)"
     "color: var(--brand, red);";
   check_declaration ~expected:"--:var(--x)" "--: var(--x);";
+  check_declaration ~expected:"--tokens:{color:red}" "--tokens: { color: red };";
+  check_declaration ~expected:"--empty:var(--missing,)"
+    "--empty: var(--missing,);";
+  check_declaration ~expected:"--nested:var(--a, var(--b, red))"
+    "--nested: var(--a, var(--b, red));";
   neg_cursor read_stylesheet
     "@property --registered { syntax: \"<color>\"; inherits: false; \
      initial-value: 10px }"
@@ -2436,10 +2191,6 @@ let additional_tests =
     ("spec cascade 6.4 invalid layer names", `Quick, c64_invalid_layer_names);
     ("spec cascade 8 layer api", `Quick, c8_layer_api);
     ("spec cascade 4.1 declared values", `Quick, c41_declared_values);
-    ( "spec cascade 4.1 declared values for element stub",
-      `Quick,
-      c41_declared_for_element );
-    ("spec cascade 4.1.1 value aliasing stub", `Quick, c411_value_aliasing_stub);
     ("spec cascade 4.2 cascaded values", `Quick, c42_cascaded_values);
     ( "spec cascade origin/importance order",
       `Quick,
@@ -2447,19 +2198,10 @@ let additional_tests =
     ("spec cascade 4.2 integrated cascade order", `Quick, c42_integrated_order);
     ("spec cascade 4.3 specified values", `Quick, c43_specified_values);
     ("spec cascade 4.3 revert specified values", `Quick, c43_revert_values);
-    ( "spec cascade 4.5 applicable properties stub",
-      `Quick,
-      c45_applicable_props_stub );
     ("spec cascade 4.7 examples", `Quick, c47_examples);
-    ("spec cascade 4.8 per-fragment stub", `Quick, c48_per_fragment_stub);
-    ("spec cascade 5 filtering stub", `Quick, c5_filtering_stub);
-    ("spec platform boundary stubs", `Quick, test_spec_platform_boundary_stubs);
     ( "spec DOM selector matching boundary vectors",
       `Quick,
       dom_selector_boundary );
-    ( "spec live CSSOM mutation boundary vectors",
-      `Quick,
-      cssom_mutation_boundary );
     ("spec fetch import and URL boundary vectors", `Quick, fetch_url_boundary);
     ( "spec environment query evaluation boundary vectors",
       `Quick,
@@ -2472,9 +2214,9 @@ let additional_tests =
     ( "spec snapshot tracking vectors",
       `Quick,
       test_spec_snapshot_tracking_vectors );
-    ( "spec cascade 4.4-4.8 value processing stubs",
+    ( "spec cascade 4.4-4.8 value processing scope",
       `Quick,
-      c448_value_stage_stubs );
+      c448_value_stage_scope );
     ( "partial recovery: bad declaration does not poison sibling rule",
       `Quick,
       fun () ->
