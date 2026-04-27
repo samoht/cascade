@@ -12,7 +12,7 @@ type kind =
   | Function of string
   | At_keyword of string
   | Hash of { value : string; hash_flag : hash_flag }
-  | String of { value : string; quote : char }
+  | String of { value : string; quote : char; terminated : bool }
   | Bad_string
   | Url of string
   | Bad_url

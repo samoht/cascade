@@ -608,9 +608,18 @@ let public_parse_edges () =
         parse ~filename:"spec.css"
           ".a{color:rgb(300)}.b{color:red}.c{color:rgb(301)}"
       in
-      Alcotest.(check int)
-        "partial parser keeps valid rules" 1
-        (List.length (rule_statements parsed.stylesheet));
+      let rules = rule_statements parsed.stylesheet in
+      let declaration_counts =
+        List.map
+          (fun statement ->
+            match as_rule statement with
+            | Some (_, declarations, _) -> List.length declarations
+            | None -> Alcotest.fail "expected a qualified rule")
+          rules
+      in
+      Alcotest.(check (list int))
+        "partial parser discards invalid declarations, not containing rules"
+        [ 0; 1; 0 ] declaration_counts;
       Alcotest.(check int)
         "partial parser reports invalid rules" 2
         (List.length parsed.warnings)
