@@ -69,7 +69,7 @@ let test_current_work_vectors () =
     "selector(:has(img)) and (container-type: inline-size)"
     "selector(:has(img)) and (container-type: inline-size)"
 
-let test_spec_conditional_supports_feature_vectors () =
+let spec_supports_feature_vectors () =
   let check name input expected =
     let actual = of_string input in
     Alcotest.(check string) name expected (to_string actual)
@@ -95,7 +95,7 @@ let test_spec_conditional_supports_feature_vectors () =
     "((display: grid) and (gap: 1rem)) or selector(:has(img))"
     "((display: grid) and (gap: 1rem)) or selector(:has(img))"
 
-let test_spec_conditional_supports_negative_vectors () =
+let spec_supports_negative_vectors () =
   let expect_error name input =
     try
       ignore (of_string input);
@@ -110,7 +110,7 @@ let test_spec_conditional_supports_negative_vectors () =
   expect_error "unclosed selector function" "selector(:has(img)";
   expect_error "unclosed property feature" "(display: grid"
 
-let test_spec_conditional_supports_nested_algorithm_edges () =
+let spec_supports_nested_edges () =
   let check name input expected =
     let actual = of_string input in
     Alcotest.(check string) name expected (to_string actual)
@@ -135,7 +135,7 @@ let test_spec_conditional_supports_nested_algorithm_edges () =
     "(--theme-color: color(display-p3 1 0 0))"
     "(--theme-color: color(display-p3 1 0 0))"
 
-let test_spec_conditional_supports_evaluation_boundary () =
+let spec_supports_eval_boundary () =
   let expect_platform condition =
     match Css.Stylesheet.evaluate_supports_condition ~condition with
     | Error (Css.Stylesheet.Requires_platform_context actual) ->
@@ -183,12 +183,12 @@ let suite =
       test_case "of_string" `Quick test_of_string;
       test_case "current-work vectors" `Quick test_current_work_vectors;
       test_case "spec conditional supports feature vectors" `Quick
-        test_spec_conditional_supports_feature_vectors;
+        spec_supports_feature_vectors;
       test_case "spec conditional supports negative vectors" `Quick
-        test_spec_conditional_supports_negative_vectors;
+        spec_supports_negative_vectors;
       test_case "spec conditional supports nested algorithm edges" `Quick
-        test_spec_conditional_supports_nested_algorithm_edges;
+        spec_supports_nested_edges;
       test_case "spec conditional supports evaluation boundary" `Quick
-        test_spec_conditional_supports_evaluation_boundary;
+        spec_supports_eval_boundary;
       test_case "roundtrip" `Quick test_roundtrip;
     ] )

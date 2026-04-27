@@ -180,8 +180,7 @@ let spec_parse_grammar_entry_points () =
     "multiple components do not match grammar" true
     (parse_one "foo bar" = None);
   let parse_groups css =
-    (Css.Parser.parse_comma_separated_list_according_to_grammar
-       (Css.Reader.of_string css) single_ident)
+    (Css.Parser.parse_csv_by_grammar (Css.Reader.of_string css) single_ident)
       .value
   in
   let show_group = function
@@ -195,7 +194,7 @@ let spec_parse_grammar_entry_points () =
     "whitespace-only comma grammar input is empty" 0
     (List.length (parse_groups "   "))
 
-let spec_parse_grammar_empty_and_comma_edges () =
+let spec_grammar_empty_commas () =
   (* CSS Syntax Level 3 sections 5.4.1 and 5.4.2: the caller's grammar decides
      whether an empty component-value list is valid, and comma splitting keeps
      empty interior groups while not synthesizing a group after a trailing
@@ -213,8 +212,7 @@ let spec_parse_grammar_empty_and_comma_edges () =
     | _ -> false
   in
   let parse_groups css =
-    (Css.Parser.parse_comma_separated_list_according_to_grammar
-       (Css.Reader.of_string css) single_ident)
+    (Css.Parser.parse_csv_by_grammar (Css.Reader.of_string css) single_ident)
       .value
   in
   let show_group = function
@@ -225,8 +223,7 @@ let spec_parse_grammar_empty_and_comma_edges () =
     "empty interior comma group is matched independently" "a|<no-match>|b"
     (parse_groups " a, , b " |> List.map show_group |> String.concat "|");
   let parse_empty_groups css =
-    (Css.Parser.parse_comma_separated_list_according_to_grammar
-       (Css.Reader.of_string css) empty_only)
+    (Css.Parser.parse_csv_by_grammar (Css.Reader.of_string css) empty_only)
       .value
   in
   Alcotest.(check bool)
@@ -293,7 +290,7 @@ let spec_parse_rule_entry_point () =
     "unterminated qualified rule is syntax error" true
     (parse_one_rule "h1" = None)
 
-let spec_parse_block_contents_mixed_items () =
+let spec_block_mixed_items () =
   (* CSS Syntax Level 3 section 5.4.5 / 5.5.5: block contents return runs of
      declarations interleaved with nested rules, preserving order. *)
   let out =
@@ -313,7 +310,7 @@ let spec_parse_block_contents_mixed_items () =
         "expected declaration run, nested at-rule, nested qualified rule, \
          declaration run"
 
-let spec_parse_block_contents_discard_branches () =
+let spec_block_discard_branches () =
   (* CSS Syntax Level 3 section 5.5.5: whitespace and semicolons are discarded;
      EOF and right brace terminate the block contents. *)
   let parse css =
@@ -326,7 +323,7 @@ let spec_parse_block_contents_discard_branches () =
     "right brace terminates contents" 1
     (List.length (parse "color: red; } width: 1px"))
 
-let spec_parse_block_contents_nested_error_branches () =
+let spec_block_nested_errors () =
   (* CSS Syntax Level 3 section 5.5.5 delegates failed declaration attempts to
      nested qualified-rule parsing with semicolon as a stop token. *)
   let parse css =
@@ -339,7 +336,7 @@ let spec_parse_block_contents_nested_error_branches () =
     "nested custom-property-shaped rule is consumed as bad declaration" 0
     (List.length (parse "--x: y { z } tail;"))
 
-let spec_parse_block_contents_nested_boundaries () =
+let spec_block_nested_boundaries () =
   (* CSS Syntax Level 3 section 5.5.2 and 5.5.3 nested consumers: a right brace
      terminates nested at-rules/qualified rules, and a semicolon terminates a
      nested qualified-rule attempt without consuming following content. *)
@@ -356,7 +353,7 @@ let spec_parse_block_contents_nested_boundaries () =
   | [ `Decls [ { node = { name = "color"; _ }; _ } ] ] -> ()
   | _ -> Alcotest.fail "expected nested qualified rule to stop at semicolon"
 
-let spec_parse_block_contents_reparse_examples () =
+let spec_block_reparse_examples () =
   (* CSS Syntax Level 3 section 5.5.5 first tries a declaration, then restores
      the input and tries a nested qualified rule when the declaration does not
      parse. The implementation note calls out these declaration/rule boundary
@@ -402,7 +399,7 @@ let spec_parse_block_contents_reparse_examples () =
         (Css.Parser.to_string_minified font_prelude)
   | _ -> Alcotest.fail "expected mixed block declaration to reparse as rule"
 
-let spec_parse_block_contents_flush_and_stop_edges () =
+let spec_block_flush_stop () =
   (* CSS Syntax Level 3 section 5.5.5 flushes pending declaration lists before
      nested rules, flushes before invalid nested-rule errors, and stops at a
      right brace without consuming later input. *)
@@ -431,7 +428,7 @@ let spec_parse_block_contents_flush_and_stop_edges () =
   | [ `Decls [ { node = { name = "color"; _ }; _ } ] ] -> ()
   | _ -> Alcotest.fail "expected right brace to stop block contents"
 
-let spec_parse_block_contents_custom_property_edges () =
+let spec_block_custom_props () =
   (* CSS Syntax Level 3 section 5.5.5 treats custom-property-shaped input as a
      declaration attempt, so it is not reparsed as a qualified rule. *)
   let parse css =
@@ -479,7 +476,7 @@ let spec_parse_declaration_entry_point () =
     "missing colon rejected" true
     (parse_one_decl "color red" = None)
 
-let spec_parse_component_value_entry_point () =
+let spec_component_entry_point () =
   (* CSS Syntax Level 3 section 5.4.8: surrounding whitespace is ignored, but
      the input must contain exactly one component value. *)
   let parse_one_cv css =
@@ -506,7 +503,7 @@ let spec_parse_component_value_entry_point () =
     "comments do not join two components for this entry" true
     (parse_one_cv "a/*x*/b" = None)
 
-let spec_parse_list_component_values_entry_point () =
+let spec_list_components_entry () =
   (* CSS Syntax Level 3 section 5.4.9: consume component values until EOF,
      preserving whitespace and grouping blocks/functions. *)
   let parse_list css =
@@ -526,13 +523,11 @@ let spec_parse_list_component_values_entry_point () =
     (Css.Parser.to_string (parse_list "[a f(b"));
   Alcotest.(check int) "empty list" 0 (List.length (parse_list ""))
 
-let spec_parse_comma_separated_component_values () =
+let spec_csv_components () =
   (* CSS Syntax Level 3 section 5.4.10: split only on top-level commas; a
      trailing comma is consumed and does not synthesize an empty final group. *)
   let parse_groups css =
-    (Css.Parser.parse_comma_separated_list_of_component_values
-       (Css.Reader.of_string css))
-      .value
+    (Css.Parser.parse_csv_component_values (Css.Reader.of_string css)).value
   in
   let show groups =
     List.map Css.Parser.to_string_minified groups |> String.concat "|"
@@ -736,7 +731,7 @@ let spec_security_resource_exhaustion_regressions () =
     "discarded comments do not surface declarations" false
     (String.contains serialized '{')
 
-let spec_section_12_parsing_change_checklist () =
+let spec12_parsing_checklist () =
   (* CSS Syntax Level 3 section 12 is non-normative. These vectors assert the
      current normative parser behavior it lists as changed or clarified. *)
   let block_items css =
@@ -842,7 +837,7 @@ let spec_at_rule_branches () =
       ()
   | _ -> Alcotest.fail "expected block at-rule"
 
-let spec_at_rule_right_brace_non_nested () =
+let spec_atrule_right_brace () =
   (* CSS Syntax Level 3 section 5.5.2: when not nested, a right brace in an
      at-rule prelude is just another component value. *)
   match parse_ss "@x } y;" with
@@ -866,7 +861,7 @@ let spec_qualified_rule_branches () =
         (Css.Parser.to_string_minified prelude)
   | _ -> Alcotest.fail "expected one qualified rule with right brace prelude"
 
-let spec_qualified_rule_custom_property_ambiguity () =
+let spec_qualified_custom_prop () =
   (* CSS Syntax Level 3 section 5.5.3: a top-level qualified rule whose first
      two non-whitespace prelude values look like a custom property declaration
      is consumed and discarded, not returned as a rule. *)
@@ -1121,7 +1116,7 @@ let spec_declaration_block_value_rules () =
       Alcotest.fail
         "expected non-custom mixed top-level {} declaration to be discarded"
 
-let spec_declaration_empty_and_recovery_edges () =
+let spec_decl_empty_recovery () =
   (* CSS Syntax Level 3 sections 5.5.4 and 5.5.6: declarations can have empty
      values after the colon, and bad declarations consume their own remnants
      without losing the following declaration. *)
@@ -1154,7 +1149,7 @@ let spec_declaration_unicode_range_descriptor () =
         (Css.Parser.to_string_minified value)
   | _ -> Alcotest.fail "expected one unicode-range declaration"
 
-let spec_declaration_unicode_range_descriptor_mixed () =
+let spec_decl_urange_descriptor () =
   (* CSS Syntax Level 3 section 5.5.11 retokenizes with unicode ranges allowed
      but still returns a normal component-value list for non-range fragments. *)
   (match parse_decls "unicode-range: u+0-7f, auto" with
@@ -1189,37 +1184,37 @@ let suite =
       Alcotest.test_case "spec sections 5.4.1-5.4.2 grammar entry points" `Quick
         spec_parse_grammar_entry_points;
       Alcotest.test_case "spec sections 5.4.1-5.4.2 grammar empty/comma edges"
-        `Quick spec_parse_grammar_empty_and_comma_edges;
+        `Quick spec_grammar_empty_commas;
       Alcotest.test_case "spec section 5.4.3 parse stylesheet entry point"
         `Quick spec_parse_stylesheet_entry_point;
       Alcotest.test_case "spec section 5.4.6 parse rule entry point" `Quick
         spec_parse_rule_entry_point;
       Alcotest.test_case "spec section 5.4.5 block contents mixed items" `Quick
-        spec_parse_block_contents_mixed_items;
+        spec_block_mixed_items;
       Alcotest.test_case "spec section 5.5.5 block contents discard branches"
-        `Quick spec_parse_block_contents_discard_branches;
+        `Quick spec_block_discard_branches;
       Alcotest.test_case
         "spec section 5.5.5 block contents nested error branches" `Quick
-        spec_parse_block_contents_nested_error_branches;
+        spec_block_nested_errors;
       Alcotest.test_case "spec section 5.5.5 block contents nested boundaries"
-        `Quick spec_parse_block_contents_nested_boundaries;
+        `Quick spec_block_nested_boundaries;
       Alcotest.test_case "spec section 5.5.5 block contents reparse examples"
-        `Quick spec_parse_block_contents_reparse_examples;
+        `Quick spec_block_reparse_examples;
       Alcotest.test_case "spec section 5.5.5 block contents flush/stop edges"
-        `Quick spec_parse_block_contents_flush_and_stop_edges;
+        `Quick spec_block_flush_stop;
       Alcotest.test_case
         "spec section 5.5.5 block contents custom property edges" `Quick
-        spec_parse_block_contents_custom_property_edges;
+        spec_block_custom_props;
       Alcotest.test_case "spec section 5.4.7 parse declaration entry point"
         `Quick spec_parse_declaration_entry_point;
       Alcotest.test_case "spec section 5.4.8 parse component value entry point"
-        `Quick spec_parse_component_value_entry_point;
+        `Quick spec_component_entry_point;
       Alcotest.test_case
         "spec section 5.4.9 parse list of component values entry point" `Quick
-        spec_parse_list_component_values_entry_point;
+        spec_list_components_entry;
       Alcotest.test_case
         "spec section 5.4.10 parse comma-separated component values" `Quick
-        spec_parse_comma_separated_component_values;
+        spec_csv_components;
       Alcotest.test_case
         "spec section 7.2 declaration-value and any-value productions" `Quick
         spec_arbitrary_value_productions;
@@ -1230,17 +1225,17 @@ let suite =
       Alcotest.test_case "spec section 11 parser security regressions" `Quick
         spec_security_resource_exhaustion_regressions;
       Alcotest.test_case "spec section 12 parsing change checklist" `Quick
-        spec_section_12_parsing_change_checklist;
+        spec12_parsing_checklist;
       Alcotest.test_case "spec section 5.5.1 CDO/CDC rule-list handling" `Quick
         spec_stylesheet_contents_cdo_cdc;
       Alcotest.test_case "spec section 5.5.2 at-rule branches" `Quick
         spec_at_rule_branches;
       Alcotest.test_case "spec section 5.5.2 non-nested right brace at-rule"
-        `Quick spec_at_rule_right_brace_non_nested;
+        `Quick spec_atrule_right_brace;
       Alcotest.test_case "spec section 5.5.3 qualified-rule branches" `Quick
         spec_qualified_rule_branches;
       Alcotest.test_case "spec section 5.5.3 custom property rule ambiguity"
-        `Quick spec_qualified_rule_custom_property_ambiguity;
+        `Quick spec_qualified_custom_prop;
       Alcotest.test_case "component value: block" `Quick component_value_block;
       Alcotest.test_case "component value: function" `Quick
         component_value_function;
@@ -1275,11 +1270,11 @@ let suite =
       Alcotest.test_case "spec section 5.5.6 declaration block value rules"
         `Quick spec_declaration_block_value_rules;
       Alcotest.test_case "spec section 5.5.6 declaration recovery edges" `Quick
-        spec_declaration_empty_and_recovery_edges;
+        spec_decl_empty_recovery;
       Alcotest.test_case "spec section 5.5.11 unicode-range descriptor" `Quick
         spec_declaration_unicode_range_descriptor;
       Alcotest.test_case "spec section 5.5.11 unicode-range descriptor mixed"
-        `Quick spec_declaration_unicode_range_descriptor_mixed;
+        `Quick spec_decl_urange_descriptor;
     ] )
 
 (* Keep helper constructors referenced. *)

@@ -67,11 +67,11 @@ val parse_according_to_grammar :
 (** [parse_according_to_grammar r grammar] runs section 5.4.1: parse a list of
     component values, then return it only if [grammar] accepts it. *)
 
-val parse_comma_separated_list_according_to_grammar :
+val parse_csv_by_grammar :
   Reader.t -> grammar -> Component.t list option list output
-(** [parse_comma_separated_list_according_to_grammar r grammar] runs section
-    5.4.2: split into top-level comma groups, then match each group
-    independently. Whitespace-only input returns an empty list. *)
+(** [parse_csv_by_grammar r grammar] runs section 5.4.2: split into top-level
+    comma groups, then match each group independently. Whitespace-only input
+    returns an empty list. *)
 
 val parse_stylesheet :
   ?meta:Loc.meta_level -> Reader.t -> Component.rule list output
@@ -118,10 +118,9 @@ val parse_component_value : Reader.t -> Component.t option output
 val parse_list_of_component_values : Reader.t -> Component.t list output
 (** [parse_list_of_component_values r] runs section 5.4.9. *)
 
-val parse_comma_separated_list_of_component_values :
-  Reader.t -> Component.t list list output
-(** [parse_comma_separated_list_of_component_values r] runs section 5.4.10,
-    splitting only on top-level comma tokens. *)
+val parse_csv_component_values : Reader.t -> Component.t list list output
+(** [parse_csv_component_values r] runs section 5.4.10, splitting only on
+    top-level comma tokens. *)
 
 val parse_declaration_value : Reader.t -> Component.t list option output
 (** [parse_declaration_value r] matches CSS Syntax section 7.2's

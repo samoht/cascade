@@ -328,8 +328,17 @@ let read_active_view_transition_type t =
     read_active_view_transition_content
 
 let read_part_content t =
-  let idents = Cursor.list ~sep:Cursor.comma ~at_least:1 Cursor.ident t in
-  Part idents
+  (* CSS Shadow Parts section 3 [::part()]: a whitespace-separated list of ident
+     tokens, *not* comma-separated. *)
+  let rec read_idents acc =
+    Cursor.ws t;
+    if Cursor.is_done t then List.rev acc
+    else
+      let name = Cursor.ident t in
+      read_idents (name :: acc)
+  in
+  let idents = read_idents [] in
+  if idents = [] then Cursor.err_expected t "part name" else Part idents
 
 let read_part t = Cursor.call "part" t read_part_content
 
@@ -994,8 +1003,13 @@ and read_host_context t = Cursor.call "host-context" t read_host_context_content
 
 (* Helper readers for pseudo-element functions that need recursion *)
 and read_slotted_content t =
-  let sels = read_complex_list t in
-  Slotted sels
+  (* CSS Shadow Parts section 4 [::slotted()] takes a single compound selector;
+     comma-separated lists are a syntax error. *)
+  let sel = read_complex t in
+  Cursor.ws t;
+  if not (Cursor.is_done t) then
+    Cursor.err t "::slotted() accepts a single compound selector";
+  Slotted [ sel ]
 
 and read_cue_content t =
   let sels = read_complex_list t in

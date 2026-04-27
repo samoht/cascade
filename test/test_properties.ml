@@ -2225,7 +2225,7 @@ let test_webkit_mask_source_type () =
   check_webkit_mask_source_type "inherit";
   neg_cursor read_webkit_mask_source_type "invalid-source-type"
 
-let test_spec_current_property_grammar_edges () =
+let spec_property_grammar_edges () =
   check_font_feature_settings "\"kern\" on";
   check_font_feature_settings "\"liga\" off, \"calt\" 1";
   check_font_variation_settings "\"wght\" 650, \"wdth\" 75";
@@ -2319,7 +2319,7 @@ let tests =
     test_case "filter" `Quick test_filter;
     test_case "pp property value" `Quick test_pp_property_value;
     test_case "spec current property grammar edges" `Quick
-      test_spec_current_property_grammar_edges;
+      spec_property_grammar_edges;
   ]
 
 let test_will_change () =

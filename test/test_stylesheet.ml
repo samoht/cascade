@@ -616,7 +616,7 @@ let font_face_case () =
     "@font-face { font-family: MyCustomFont; src: url('font.woff2'); \
      font-display: swap; }"
 
-let test_font_face_spec_descriptor_vectors () =
+let spec_fontface_descriptors () =
   check_stylesheet
     ~expected:
       "@font-face {font-family:Brand;src:local(\"Brand\"),url(\"brand.woff2\") \
@@ -973,9 +973,7 @@ let stylesheet_tests =
     ("keyframes", `Quick, keyframes_case);
     ("keyframes spec edge vectors", `Quick, test_keyframes_spec_edge_vectors);
     ("font_face", `Quick, font_face_case);
-    ( "font-face spec descriptor vectors",
-      `Quick,
-      test_font_face_spec_descriptor_vectors );
+    ("font-face spec descriptor vectors", `Quick, spec_fontface_descriptors);
     ("page", `Quick, page_case);
     ("sheet_item", `Quick, sheet_item_case);
     ("ordering", `Quick, ordering);
@@ -1106,7 +1104,7 @@ let expect_parse_error input =
   with Css.Cursor.Parse_error _ -> ()
 
 (* Not a roundtrip test *)
-let test_spec_section_7_block_grammar_examples () =
+let spec_s7_block_examples () =
   (* CSS Syntax Level 3 section 7.1: these productions are parsed as generic
      block contents, then validated by the rule grammar that owns the block. *)
   check_stylesheet ~expected:"@media print{body{font-size:10pt}}"
@@ -1127,7 +1125,7 @@ let test_spec_section_7_block_grammar_examples () =
   expect_parse_error "@font-face { .x { color: red } }"
 
 (* Not a roundtrip test *)
-let test_spec_section_8_stylesheet_rule_shapes () =
+let spec_s8_rule_shapes () =
   (* CSS Syntax Level 3 sections 8.1 and 8.2: top-level qualified rules are
      style rules, and at-rules are either statement or block rules depending on
      whether they end with a semicolon or a {} block. *)
@@ -1141,7 +1139,7 @@ let test_spec_section_8_stylesheet_rule_shapes () =
   expect_parse_error "@media print"
 
 (* Not a roundtrip test *)
-let test_spec_section_8_charset_is_not_rule () =
+let spec_s8_charset_not_rule () =
   (* CSS Syntax Level 3 section 8.3: @charset is an encoding declaration shape,
      not a CSS at-rule after stylesheet parsing. *)
   expect_parse_error "@charset \"utf-8\";";
@@ -1212,7 +1210,7 @@ let test_layer_roundtrip () =
     "@layer components{}@layer utilities{}"
 
 (* Not a roundtrip test *)
-let test_spec_cascade_section_6_4_layer_name_syntax () =
+let c64_layer_name_syntax () =
   (* CSS Cascade section 6.4.2: a layer name is a dot-separated list of idents
      with no whitespace around dots; CSS-wide keywords are reserved. *)
   check_stylesheet ~expected:"@layer framework.theme{blockquote{display:block}}"
@@ -1232,7 +1230,7 @@ let test_spec_cascade_section_6_4_layer_name_syntax () =
     "@layer framework.revert-layer { blockquote { display: block } }"
 
 (* Not a roundtrip test *)
-let test_spec_cascade_section_6_4_layer_nesting_examples () =
+let c64_layer_nesting_examples () =
   (* CSS Cascade sections 6.4.2 and 6.4.3: dotted layer names are shorthand for
      nested layer segments; nested names do not escape their parent layer. *)
   check_stylesheet
@@ -1253,7 +1251,7 @@ let test_spec_cascade_section_6_4_layer_nesting_examples () =
      @layer reset { [hidden] { display: none } }"
 
 (* Not a roundtrip test *)
-let test_spec_cascade_section_6_4_layer_statement_edges () =
+let c64_layer_statement_edges () =
   (* CSS Cascade section 6.4.4.2: statement @layer accepts one or more layer
      names, can appear before imports, and declares names in source order. *)
   check_stylesheet
@@ -1277,7 +1275,7 @@ let test_spec_cascade_section_6_4_layer_statement_edges () =
     "@layer default, theme { audio { display: block } }"
 
 (* Not a roundtrip test *)
-let test_spec_cascade_section_6_4_anonymous_layer_edges () =
+let c64_anonymous_layer_edges () =
   (* CSS Cascade section 6.4.2.1: anonymous layers are valid block @layer rules
      but cannot be referenced by name from outside the block. *)
   check_stylesheet
@@ -1298,7 +1296,7 @@ let test_spec_cascade_section_6_4_anonymous_layer_edges () =
      .inside { display: block } } }"
 
 (* Not a roundtrip test *)
-let test_spec_cascade_section_6_4_import_layer_syntax () =
+let c64_import_layer_syntax () =
   (* CSS Cascade section 6.4.1: @import can assign an imported sheet to a named
      layer with layer(<layer-name>) or to an anonymous layer with
      layer/layer(). *)
@@ -1319,7 +1317,7 @@ let test_spec_cascade_section_6_4_import_layer_syntax () =
   neg_cursor read_import_rule "@import url(theme.css) layer(framework,theme);"
 
 (* Not a roundtrip test *)
-let test_spec_cascade_section_2_import_conditions () =
+let c2_import_conditions () =
   (* CSS Cascade sections 2 and 2.1: @import accepts url/string sources,
      optional layer or layer(<layer-name>), optional supports(), and optional
      media query lists. A declaration inside supports() is equivalent to the
@@ -1347,7 +1345,7 @@ let test_spec_cascade_section_2_import_conditions () =
   neg_cursor read_import_rule "@import layer(default) url(theme.css);"
 
 (* Not a roundtrip test *)
-let test_spec_cascade_section_6_4_import_namespace_ordering () =
+let c64_import_namespace_order () =
   (* CSS Cascade sections 2 and 6.4.4.2: empty @layer statements may appear
      before @import, but @layer rules must not be interleaved with consecutive
      @import/@namespace rules. Block @layer rules cannot be interleaved with
@@ -1369,7 +1367,7 @@ let test_spec_cascade_section_6_4_import_namespace_ordering () =
      url(http://www.w3.org/1999/xhtml);"
 
 (* Not a roundtrip test *)
-let test_spec_cascade_section_6_4_invalid_layer_names () =
+let c64_invalid_layer_names () =
   (* CSS Cascade section 6.4.2 reserves CSS-wide keywords in every layer-name
      segment, and the <layer-name> grammar has no empty segments. *)
   List.iter
@@ -1385,7 +1383,7 @@ let test_spec_cascade_section_6_4_invalid_layer_names () =
   neg_cursor read_stylesheet "@layer InHeRiT { .x { color: red } }"
 
 (* Not a roundtrip test *)
-let test_spec_cascade_section_8_layer_api () =
+let c8_layer_api () =
   (* CSS Cascade section 8: CSSOM exposes the declared layer name on imports and
      layer block rules, and the declared name list on layer statement rules.
      Nested block rule names are the at-rule's own name, not parent-prefixed. *)
@@ -1439,7 +1437,7 @@ let test_spec_cascade_section_8_layer_api () =
        (Css.Stylesheet.Layer (Some "reset", [])))
 
 (* Not a roundtrip test *)
-let test_spec_cascade_section_4_1_declared_values () =
+let c41_declared_values () =
   (* CSS Cascade section 4.1: each property declaration applied to an element
      contributes a declared value for that element/property. The library can
      expose those declaration-level values without resolving selector
@@ -1482,7 +1480,7 @@ let test_spec_cascade_section_4_1_declared_values () =
     (List.map declared_important color_declared)
 
 (* Not a roundtrip test *)
-let test_spec_cascade_section_4_2_cascaded_values () =
+let c42_cascaded_values () =
   (* CSS Cascade section 4.2: after cascade sorting there is at most one
      cascaded value per property. No matching declaration means no cascaded
      value. *)
@@ -1511,7 +1509,7 @@ let test_spec_cascade_section_4_2_cascaded_values () =
          candidate Author false 10 "earlier"; candidate Author false 11 "later";
        ])
 
-let test_spec_cascade_origin_importance_order () =
+let spec_cascade_origin_importance_order () =
   (* CSS Cascade origin/importance order, including generated animation and
      transition origins. Larger rank wins in the helper API. *)
   let rank origin important =
@@ -1568,7 +1566,7 @@ let check_specified name expected_value expected_source actual =
     (specified_source_name actual.specified_value_source)
 
 (* Not a roundtrip test *)
-let test_spec_cascade_section_4_3_specified_values () =
+let c43_specified_values () =
   (* CSS Cascade section 4.3: defaulting guarantees a specified value exists for
      every property. CSS-wide keywords are handled before computed values. *)
   check_specified "normal cascaded value" "block" "cascaded"
@@ -1639,7 +1637,7 @@ let expect_platform_error feature = function
   | Ok _ -> Alcotest.fail "expected platform-context error"
 
 (* Not a roundtrip test *)
-let test_spec_cascade_section_4_4_to_4_8_value_processing_stubs () =
+let c448_value_stage_stubs () =
   (* CSS Cascade sections 4.4-4.8 depend on document, inheritance, layout,
      rendering, device constraints, and sometimes fragment-specific context. The
      public stubs make that boundary executable. *)
@@ -1666,7 +1664,7 @@ let test_spec_cascade_section_4_4_to_4_8_value_processing_stubs () =
     (Css.Stylesheet.actual_value ~property:"border-top-width" ~used:"4.2px")
 
 (* Not a roundtrip test *)
-let test_spec_cascade_section_4_1_declared_values_for_element_stub () =
+let c41_declared_for_element () =
   (* CSS Cascade section 4.1 talks about declarations applied to an element.
      Selector matching requires a document tree, so this API is a stub but must
      be callable from tests. *)
@@ -1682,7 +1680,7 @@ let test_spec_cascade_section_4_1_declared_values_for_element_stub () =
     (Css.Stylesheet.declared_values_for_element ~element:".card" stylesheet)
 
 (* Not a roundtrip test *)
-let test_spec_cascade_section_4_1_1_value_aliasing_stub () =
+let c411_value_aliasing_stub () =
   (* CSS Cascade section 4.1.1: legacy value aliases are converted at parse time
      where a spec defines them. The public hook exists even though this library
      does not yet ship a property/value alias table. *)
@@ -1694,7 +1692,7 @@ let test_spec_cascade_section_4_1_1_value_aliasing_stub () =
        ~value:"-webkit-sticky")
 
 (* Not a roundtrip test *)
-let test_spec_cascade_section_4_2_integrated_cascade_order () =
+let c42_integrated_order () =
   (* CSS Cascade section 4.2 consumes the sorted cascade output. This helper
      covers the full ordering criteria available without DOM matching:
      origin/importance, layer, specificity, scope proximity, and source
@@ -1756,7 +1754,7 @@ let test_spec_cascade_section_4_2_integrated_cascade_order () =
        ])
 
 (* Not a roundtrip test *)
-let test_spec_cascade_section_4_3_revert_specified_values () =
+let c43_revert_values () =
   (* CSS Cascade sections 4.3 and 7.3.4-7.3.5: [revert] and [revert-layer]
      resolve by rolling back the candidate set, then defaulting if no lower
      candidate remains. *)
@@ -1795,7 +1793,7 @@ let test_spec_cascade_section_4_3_revert_specified_values () =
        [ layer_candidate (Some "base") 0 "revert-layer" ])
 
 (* Not a roundtrip test *)
-let test_spec_cascade_section_4_5_applicable_properties_stub () =
+let c45_applicable_props_stub () =
   (* CSS Cascade section 4.5.1: applicability depends on the element or box
      model. The API stub makes this unsupported stage explicit. *)
   expect_context_error Used_value
@@ -1804,7 +1802,7 @@ let test_spec_cascade_section_4_5_applicable_properties_stub () =
     (Css.Stylesheet.applicable_property ~property:"text-transform" ~box:"inline")
 
 (* Not a roundtrip test *)
-let test_spec_cascade_section_4_7_examples () =
+let c47_examples () =
   (* CSS Cascade section 4.7 examples: encode the specified-value cases we can
      model, and keep layout/device-dependent examples on the stubbed APIs. *)
   check_specified "border width inherit example" "4.2px" "inherit-keyword"
@@ -1827,7 +1825,7 @@ let test_spec_cascade_section_4_7_examples () =
     (Css.Stylesheet.actual_value ~property:"border-top-width" ~used:"4.2px")
 
 (* Not a roundtrip test *)
-let test_spec_cascade_section_4_8_per_fragment_stub () =
+let c48_per_fragment_stub () =
   (* CSS Cascade section 4.8: fragment-specific value processing needs layout
      fragments and pseudo-element context. *)
   expect_context_error Used_value
@@ -1835,7 +1833,7 @@ let test_spec_cascade_section_4_8_per_fragment_stub () =
        ~fragment:"::first-line" ~computed:"currentColor")
 
 (* Not a roundtrip test *)
-let test_spec_cascade_section_5_filtering_stub () =
+let c5_filtering_stub () =
   (* CSS Cascade section 5 filters declarations by media/supports conditions,
      selector matching, shadow-tree boundaries, and scoping. The parser can
      preserve those structures, but deciding applicability needs platform
@@ -1915,7 +1913,7 @@ let test_spec_platform_boundary_stubs () =
     (Css.Stylesheet.animated_value ~property:"opacity" ~keyframes:[ "0"; "1" ]
        ~progress:0.5)
 
-let test_spec_dom_selector_matching_boundary_vectors () =
+let dom_selector_boundary () =
   (* Selectors can be parsed and serialized locally, but matching them against
      elements depends on DOM structure, pseudo-class state, shadow boundaries,
      and scoped-tree context. *)
@@ -1940,7 +1938,7 @@ let test_spec_dom_selector_matching_boundary_vectors () =
   neg_cursor read_stylesheet "::before::after { color: red }";
   neg_cursor read_stylesheet ":host-context() { color: red }"
 
-let test_spec_live_cssom_mutation_boundary_vectors () =
+let cssom_mutation_boundary () =
   (* CSSOM mutation is observable through live CSSRuleList objects and
      rule-specific validation. The parser can expose an API boundary, but not a
      live object graph. *)
@@ -1966,7 +1964,7 @@ let test_spec_live_cssom_mutation_boundary_vectors () =
   expect_platform_error "CSSOM rule serialization"
     (Css.Stylesheet.cssom_serialize_rule layer_stmt)
 
-let test_spec_fetch_import_and_url_boundary_vectors () =
+let fetch_url_boundary () =
   (* @import parsing preserves URL/layer/supports/media shape. Fetching the
      imported sheet and resolving URLs require platform context. *)
   let import_cases =
@@ -2004,7 +2002,7 @@ let test_spec_fetch_import_and_url_boundary_vectors () =
   neg_cursor read_import_rule "@import url(theme.css) layer(theme) layer(base);";
   neg_cursor read_import_rule "@import url(theme.css) supports(display:);"
 
-let test_spec_environment_query_evaluation_boundary_vectors () =
+let environment_query_boundary () =
   (* Media/supports/container conditions are preserved as CSS. Whether they
      match is a function of the environment, support table, or query
      container. *)
@@ -2052,7 +2050,7 @@ let test_spec_environment_query_evaluation_boundary_vectors () =
   neg_cursor read_stylesheet "@supports (display:) { .x { color: red } }";
   neg_cursor read_stylesheet "@container card style() { .x { color: red } }"
 
-let test_spec_value_resolution_boundary_vectors () =
+let value_resolution_boundary () =
   (* Computed/used/actual values need property metadata, inheritance, font,
      viewport, layout, and device context. *)
   List.iter
@@ -2094,7 +2092,7 @@ let test_spec_value_resolution_boundary_vectors () =
     (Css.Stylesheet.specified_value ~inherits:true ~initial:"black"
        ~inherited:(Some "canvastext") ~cascaded:(Some "unset"))
 
-let test_spec_custom_property_computed_time_boundary_vectors () =
+let custom_property_boundary () =
   (* Custom property token streams parse locally; substitution, fallback
      validation, invalid-at-computed-value handling, and cycle detection happen
      at computed-value time. *)
@@ -2118,7 +2116,7 @@ let test_spec_custom_property_computed_time_boundary_vectors () =
     "@property --registered { syntax: \"<color>\"; inherits: false; \
      initial-value: 10px }"
 
-let test_spec_current_work_at_rules () =
+let spec_current_at_rules () =
   check_stylesheet ~expected:"@media (dynamic-range: high){.photo{color:red}}"
     "@media (dynamic-range: high) { .photo { color: red } }";
   check_stylesheet
@@ -2299,7 +2297,7 @@ let test_nesting_check_stylesheet () =
   check_stylesheet ~expected:".a{& .b{& .c{color:red}}}"
     ".a { & .b { & .c { color: red; } } }"
 
-let test_spec_nesting_selector_and_conditional_edges () =
+let spec_nesting_selector_edges () =
   check_stylesheet
     ~expected:
       ".card{color:red;&:is(:hover,:focus-visible){color:blue}&:has(>img){display:grid}}"
@@ -2334,15 +2332,9 @@ let additional_tests =
     ("advanced properties", `Quick, test_advanced_properties);
     ("complex values", `Quick, test_complex_values);
     ("nested rules", `Quick, test_nested_rules);
-    ( "spec section 7.1 block grammar examples",
-      `Quick,
-      test_spec_section_7_block_grammar_examples );
-    ( "spec section 8.1-8.2 stylesheet rule shapes",
-      `Quick,
-      test_spec_section_8_stylesheet_rule_shapes );
-    ( "spec section 8.3 charset is not a rule",
-      `Quick,
-      test_spec_section_8_charset_is_not_rule );
+    ("spec section 7.1 block grammar examples", `Quick, spec_s7_block_examples);
+    ("spec section 8.1-8.2 stylesheet rule shapes", `Quick, spec_s8_rule_shapes);
+    ("spec section 8.3 charset is not a rule", `Quick, spec_s8_charset_not_rule);
     (* CSS nesting round-trip tests *)
     ("nesting basic", `Quick, test_nesting_basic);
     ("nesting ampersand hover", `Quick, test_nesting_ampersand_hover);
@@ -2353,7 +2345,7 @@ let additional_tests =
     ("nesting check_stylesheet", `Quick, test_nesting_check_stylesheet);
     ( "spec nesting selector and conditional edges",
       `Quick,
-      test_spec_nesting_selector_and_conditional_edges );
+      spec_nesting_selector_edges );
     (* Negative tests *)
     ("invalid selectors", `Quick, test_invalid_selectors);
     ("invalid properties", `Quick, test_invalid_properties);
@@ -2361,91 +2353,59 @@ let additional_tests =
     ("invalid at-rules", `Quick, test_invalid_at_rules);
     ("invalid functions", `Quick, test_invalid_functions);
     ("layer roundtrip", `Quick, test_layer_roundtrip);
-    ( "spec cascade 6.4 layer name syntax",
-      `Quick,
-      test_spec_cascade_section_6_4_layer_name_syntax );
+    ("spec cascade 6.4 layer name syntax", `Quick, c64_layer_name_syntax);
     ( "spec cascade 6.4 layer nesting examples",
       `Quick,
-      test_spec_cascade_section_6_4_layer_nesting_examples );
-    ( "spec cascade 6.4 layer statement edges",
-      `Quick,
-      test_spec_cascade_section_6_4_layer_statement_edges );
-    ( "spec cascade 6.4 anonymous layer edges",
-      `Quick,
-      test_spec_cascade_section_6_4_anonymous_layer_edges );
-    ( "spec cascade 6.4 import layer syntax",
-      `Quick,
-      test_spec_cascade_section_6_4_import_layer_syntax );
-    ( "spec cascade 2 import conditions",
-      `Quick,
-      test_spec_cascade_section_2_import_conditions );
+      c64_layer_nesting_examples );
+    ("spec cascade 6.4 layer statement edges", `Quick, c64_layer_statement_edges);
+    ("spec cascade 6.4 anonymous layer edges", `Quick, c64_anonymous_layer_edges);
+    ("spec cascade 6.4 import layer syntax", `Quick, c64_import_layer_syntax);
+    ("spec cascade 2 import conditions", `Quick, c2_import_conditions);
     ( "spec cascade 6.4 import namespace ordering",
       `Quick,
-      test_spec_cascade_section_6_4_import_namespace_ordering );
-    ( "spec cascade 6.4 invalid layer names",
-      `Quick,
-      test_spec_cascade_section_6_4_invalid_layer_names );
-    ("spec cascade 8 layer api", `Quick, test_spec_cascade_section_8_layer_api);
-    ( "spec cascade 4.1 declared values",
-      `Quick,
-      test_spec_cascade_section_4_1_declared_values );
+      c64_import_namespace_order );
+    ("spec cascade 6.4 invalid layer names", `Quick, c64_invalid_layer_names);
+    ("spec cascade 8 layer api", `Quick, c8_layer_api);
+    ("spec cascade 4.1 declared values", `Quick, c41_declared_values);
     ( "spec cascade 4.1 declared values for element stub",
       `Quick,
-      test_spec_cascade_section_4_1_declared_values_for_element_stub );
-    ( "spec cascade 4.1.1 value aliasing stub",
-      `Quick,
-      test_spec_cascade_section_4_1_1_value_aliasing_stub );
-    ( "spec cascade 4.2 cascaded values",
-      `Quick,
-      test_spec_cascade_section_4_2_cascaded_values );
+      c41_declared_for_element );
+    ("spec cascade 4.1.1 value aliasing stub", `Quick, c411_value_aliasing_stub);
+    ("spec cascade 4.2 cascaded values", `Quick, c42_cascaded_values);
     ( "spec cascade origin/importance order",
       `Quick,
-      test_spec_cascade_origin_importance_order );
-    ( "spec cascade 4.2 integrated cascade order",
-      `Quick,
-      test_spec_cascade_section_4_2_integrated_cascade_order );
-    ( "spec cascade 4.3 specified values",
-      `Quick,
-      test_spec_cascade_section_4_3_specified_values );
-    ( "spec cascade 4.3 revert specified values",
-      `Quick,
-      test_spec_cascade_section_4_3_revert_specified_values );
+      spec_cascade_origin_importance_order );
+    ("spec cascade 4.2 integrated cascade order", `Quick, c42_integrated_order);
+    ("spec cascade 4.3 specified values", `Quick, c43_specified_values);
+    ("spec cascade 4.3 revert specified values", `Quick, c43_revert_values);
     ( "spec cascade 4.5 applicable properties stub",
       `Quick,
-      test_spec_cascade_section_4_5_applicable_properties_stub );
-    ("spec cascade 4.7 examples", `Quick, test_spec_cascade_section_4_7_examples);
-    ( "spec cascade 4.8 per-fragment stub",
-      `Quick,
-      test_spec_cascade_section_4_8_per_fragment_stub );
-    ( "spec cascade 5 filtering stub",
-      `Quick,
-      test_spec_cascade_section_5_filtering_stub );
+      c45_applicable_props_stub );
+    ("spec cascade 4.7 examples", `Quick, c47_examples);
+    ("spec cascade 4.8 per-fragment stub", `Quick, c48_per_fragment_stub);
+    ("spec cascade 5 filtering stub", `Quick, c5_filtering_stub);
     ("spec platform boundary stubs", `Quick, test_spec_platform_boundary_stubs);
     ( "spec DOM selector matching boundary vectors",
       `Quick,
-      test_spec_dom_selector_matching_boundary_vectors );
+      dom_selector_boundary );
     ( "spec live CSSOM mutation boundary vectors",
       `Quick,
-      test_spec_live_cssom_mutation_boundary_vectors );
-    ( "spec fetch import and URL boundary vectors",
-      `Quick,
-      test_spec_fetch_import_and_url_boundary_vectors );
+      cssom_mutation_boundary );
+    ("spec fetch import and URL boundary vectors", `Quick, fetch_url_boundary);
     ( "spec environment query evaluation boundary vectors",
       `Quick,
-      test_spec_environment_query_evaluation_boundary_vectors );
-    ( "spec value resolution boundary vectors",
-      `Quick,
-      test_spec_value_resolution_boundary_vectors );
+      environment_query_boundary );
+    ("spec value resolution boundary vectors", `Quick, value_resolution_boundary);
     ( "spec custom property computed-time boundary vectors",
       `Quick,
-      test_spec_custom_property_computed_time_boundary_vectors );
-    ("spec current-work at-rules", `Quick, test_spec_current_work_at_rules);
+      custom_property_boundary );
+    ("spec current-work at-rules", `Quick, spec_current_at_rules);
     ( "spec snapshot tracking vectors",
       `Quick,
       test_spec_snapshot_tracking_vectors );
     ( "spec cascade 4.4-4.8 value processing stubs",
       `Quick,
-      test_spec_cascade_section_4_4_to_4_8_value_processing_stubs );
+      c448_value_stage_stubs );
     ( "partial recovery: bad declaration does not poison sibling rule",
       `Quick,
       fun () ->

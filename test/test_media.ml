@@ -40,7 +40,7 @@ let test_to_string () =
     "media queries prefers contrast" "(prefers-contrast: more)"
     (to_string (Raw "(prefers-contrast: more)"))
 
-let test_spec_media_query_level_4_5_vectors () =
+let spec_media_l45_vectors () =
   let check_raw name input =
     Alcotest.(check string) name input (to_string (Raw input))
   in
@@ -120,7 +120,7 @@ let test_spec_media_sorting_edges () =
     ]
     sorted
 
-let test_spec_media_query_environment_boundary () =
+let spec_media_eval_boundary () =
   let expect_platform condition environment =
     match Css.Stylesheet.evaluate_media_query ~condition ~environment with
     | Error (Css.Stylesheet.Requires_platform_context actual) ->
@@ -145,7 +145,7 @@ let test_spec_media_query_environment_boundary () =
       (Negated Print, "screen");
     ]
 
-let test_spec_media_query_boolean_and_range_vectors () =
+let spec_media_query_vectors () =
   let raw_cases =
     [
       "(width)";
@@ -172,12 +172,12 @@ let suite =
     [
       test_case "to_string" `Quick test_to_string;
       test_case "spec media query level 4/5 vectors" `Quick
-        test_spec_media_query_level_4_5_vectors;
+        spec_media_l45_vectors;
       test_case "kind" `Quick test_kind;
       test_case "compare" `Quick test_compare;
       test_case "spec media sorting edges" `Quick test_spec_media_sorting_edges;
       test_case "spec media query environment boundary" `Quick
-        test_spec_media_query_environment_boundary;
+        spec_media_eval_boundary;
       test_case "spec media query boolean and range vectors" `Quick
-        test_spec_media_query_boolean_and_range_vectors;
+        spec_media_query_vectors;
     ] )

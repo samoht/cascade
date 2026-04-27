@@ -1173,7 +1173,7 @@ let test_spec_forgiving_selector_lists () =
   neg_cursor read ":where()";
   neg_cursor read ":has()"
 
-let test_spec_selector_current_pseudo_vectors () =
+let spec_selector_current_pseudos () =
   check ":popover-open";
   check ":modal";
   check ":picture-in-picture";
@@ -1209,7 +1209,7 @@ let test_spec_selector_current_pseudo_vectors () =
   neg_cursor read "::highlight()";
   neg_cursor read ":active-view-transition-type()"
 
-let test_spec_selector_relative_scope_and_pseudo_element_edges () =
+let spec_selector_scope_pseudo_edges () =
   check ":scope";
   check ":scope > .item";
   check ":scope + .item";
@@ -1234,7 +1234,7 @@ let test_spec_selector_relative_scope_and_pseudo_element_edges () =
   neg_cursor read ".class#";
   neg_cursor read "[data-x=foo q]"
 
-let test_spec_selector_level_4_pseudo_matrix_edges () =
+let spec_selector_l4_pseudo_matrix () =
   (* Additional Selectors 4 vectors: forgiving functional pseudos, state
      pseudos, shadow-host pseudos, and pseudo-element argument forms. *)
   List.iter check
@@ -1280,7 +1280,7 @@ let test_spec_selector_level_4_pseudo_matrix_edges () =
       "::view-transition-old()";
     ]
 
-let test_spec_selector_attribute_namespace_edges () =
+let spec_selector_attr_ns_edges () =
   check "[|href]";
   check "[*|href]";
   check "[svg|href]";
@@ -1347,12 +1347,12 @@ let suite =
       test_case "spec forgiving selector lists" `Quick
         test_spec_forgiving_selector_lists;
       test_case "spec selector current pseudo vectors" `Quick
-        test_spec_selector_current_pseudo_vectors;
+        spec_selector_current_pseudos;
       test_case "spec selector relative/scope/pseudo-element edges" `Quick
-        test_spec_selector_relative_scope_and_pseudo_element_edges;
+        spec_selector_scope_pseudo_edges;
       test_case "spec selector level 4 pseudo matrix edges" `Quick
-        test_spec_selector_level_4_pseudo_matrix_edges;
+        spec_selector_l4_pseudo_matrix;
       test_case "spec selector attribute namespace edges" `Quick
-        test_spec_selector_attribute_namespace_edges;
+        spec_selector_attr_ns_edges;
       test_case "nesting selector" `Quick test_nesting_selector;
     ] )

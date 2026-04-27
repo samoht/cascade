@@ -33,7 +33,7 @@ let test_to_string () =
     "aspect ratio query raw" "(aspect-ratio > 1/1)"
     (to_string (Raw "(aspect-ratio > 1/1)"))
 
-let test_spec_container_query_level_3_vectors () =
+let spec_container_l3_vectors () =
   let open Css.Container in
   let check_raw name input =
     Alcotest.(check string) name input (to_string (Raw input))
@@ -108,7 +108,7 @@ let test_spec_container_compare_edges () =
     ]
     sorted
 
-let test_spec_container_query_evaluation_boundary () =
+let spec_container_eval_boundary () =
   let open Css.Container in
   let expect_platform condition container =
     match Css.Stylesheet.evaluate_container_query ~condition ~container with
@@ -133,7 +133,7 @@ let test_spec_container_query_evaluation_boundary () =
       (Named ("card", Raw "(width >= 400px)"), ".card");
     ]
 
-let test_spec_container_query_boolean_range_style_vectors () =
+let spec_container_query_vectors () =
   let open Css.Container in
   let raw_cases =
     [
@@ -160,15 +160,15 @@ let tests =
     [
       test_case "to_string" `Quick test_to_string;
       test_case "spec container query level 3 vectors" `Quick
-        test_spec_container_query_level_3_vectors;
+        spec_container_l3_vectors;
       test_case "compare" `Quick test_compare;
       test_case "kind" `Quick test_kind;
       test_case "spec container compare edges" `Quick
         test_spec_container_compare_edges;
       test_case "spec container query evaluation boundary" `Quick
-        test_spec_container_query_evaluation_boundary;
+        spec_container_eval_boundary;
       test_case "spec container query boolean/range/style vectors" `Quick
-        test_spec_container_query_boolean_range_style_vectors;
+        spec_container_query_vectors;
     ]
 
 let suite = ("container", tests)

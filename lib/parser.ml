@@ -797,7 +797,7 @@ let split_comma_groups cvs =
   in
   split [] [] cvs
 
-let parse_comma_separated_list_of_component_values r =
+let parse_csv_component_values r =
   let out = parse_list_of_component_values r in
   { out with value = split_comma_groups out.value }
 
@@ -823,7 +823,7 @@ let parse_according_to_grammar r grammar =
   if grammar value then { out with value = Some value }
   else { out with value = None }
 
-let parse_comma_separated_list_according_to_grammar r grammar =
+let parse_csv_by_grammar r grammar =
   let raw = parse_list_of_component_values r in
   if component_values_are_whitespace_only raw.value then { raw with value = [] }
   else

@@ -194,7 +194,7 @@ let test_any_syntax () =
   (* Empty syntax *)
   neg_cursor read_any_syntax "unquoted"
 
-let test_spec_property_syntax_descriptor_edges () =
+let spec_property_syntax_edges () =
   check_any_syntax "\"<length>+\"";
   check_any_syntax "\"<color>#\"";
   check_any_syntax "\"<custom-ident>\"";
@@ -264,7 +264,7 @@ let test_parse_var_reference () =
   (* Wrong function name *)
   neg "var(--)" (* No name after -- *)
 
-let test_spec_custom_property_fallback_edges () =
+let spec_custom_fallback_edges () =
   let check_var_ref input expected_name expected_fallback =
     let r = Css.Cursor.of_string input in
     let name, fallback = parse_var_reference r in
@@ -299,7 +299,7 @@ let test_spec_custom_property_fallback_edges () =
   neg "var(---)";
   neg "var(--, red)"
 
-let test_spec_custom_property_computed_time_edges () =
+let spec_custom_computed_edges () =
   let expect_computed_context name specified environment =
     match
       Css.Stylesheet.resolve_custom_property ~name ~specified ~environment
@@ -343,9 +343,7 @@ let tests =
   [
     ("any_var", `Quick, test_any_var);
     ("any_syntax", `Quick, test_any_syntax);
-    ( "spec property syntax descriptor edges",
-      `Quick,
-      test_spec_property_syntax_descriptor_edges );
+    ("spec property syntax descriptor edges", `Quick, spec_property_syntax_edges);
     ("vars of calc", `Quick, test_vars_of_calc);
     ("vars of property", `Quick, test_vars_of_property);
     ("vars of declarations", `Quick, test_vars_of_declarations);
@@ -356,12 +354,10 @@ let tests =
     ("custom property roundtrip", `Quick, test_custom_property_roundtrip);
     ("syntax", `Quick, test_syntax);
     ("parse_var_reference", `Quick, test_parse_var_reference);
-    ( "spec custom property fallback edges",
-      `Quick,
-      test_spec_custom_property_fallback_edges );
+    ("spec custom property fallback edges", `Quick, spec_custom_fallback_edges);
     ( "spec custom property computed-time edges",
       `Quick,
-      test_spec_custom_property_computed_time_edges );
+      spec_custom_computed_edges );
   ]
 
 let suite = ("variables", tests)

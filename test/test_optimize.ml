@@ -767,7 +767,7 @@ let test_no_merge_with_nested () =
   Alcotest.(check bool)
     "doesn't merge rules with nested statements" true (has_foo && has_bar)
 
-let spec_cascade_section_3_shorthand_resets_omitted_longhands () =
+let c3_shorthand_resets () =
   (* CSS Cascade section 3: a shorthand declaration sets all longhands,
      including omitted sub-properties. A previous longhand covered by a later
      shorthand is therefore dead even when the shorthand omits that
@@ -816,7 +816,7 @@ let spec_cascade_section_3_shorthand_resets_omitted_longhands () =
     "background shorthand resets previous background-image"
     ".hero{background:#008000}" background_output
 
-let spec_cascade_section_3_shorthand_source_order_corner_cases () =
+let c3_shorthand_order_edges () =
   (* CSS Cascade section 3 plus source order: a later shorthand resets all
      covered longhands, including a longhand that occurred between two shorthand
      declarations. *)
@@ -841,7 +841,7 @@ let spec_cascade_section_3_shorthand_source_order_corner_cases () =
   Alcotest.(check string)
     "later shorthand resets intervening longhand" ".box{margin:3px}" output
 
-let spec_cascade_section_3_important_shorthand_expands_to_longhands () =
+let c3_important_shorthand_expands () =
   (* CSS Cascade section 3: declaring a shorthand !important is equivalent to
      declaring all of its longhand sub-properties !important. A later normal
      longhand covered by the shorthand cannot override any sub-property. *)
@@ -870,7 +870,7 @@ let spec_cascade_section_3_important_shorthand_expands_to_longhands () =
     "important background shorthand blocks later normal background-image"
     ".hero{background:#008000!important}" output
 
-let spec_cascade_section_6_1_declaration_order_shorthand_boundary () =
+let c61_decl_order_shorthand_boundary () =
   (* CSS Cascade section 6.1: order of appearance is a cascade criterion.
      Removing an earlier duplicate must not move the surviving longhand before
      an intervening shorthand, because shorthands reset their longhands. *)
@@ -896,7 +896,7 @@ let spec_cascade_section_6_1_declaration_order_shorthand_boundary () =
     "later longhand stays after shorthand" ".box{margin:2px;margin-left:3px}"
     output
 
-let spec_cascade_section_6_1_no_merge_across_intervening_rule () =
+let c61_no_merge_intervening () =
   (* CSS Cascade section 6.1: if rules tie on origin, importance, layer,
      specificity, and scope proximity, the later declaration wins. Merging equal
      selectors across an intervening rule would move the first rule's
@@ -933,7 +933,7 @@ let spec_cascade_section_6_1_no_merge_across_intervening_rule () =
     "same selector is not merged across an intervening rule"
     ".a{color:#ff0000}.b{color:#00ff00}.a{background-color:#0000ff}" output
 
-let spec_cascade_section_6_1_no_group_non_adjacent_equal_declarations () =
+let c61_no_group_nonadjacent () =
   (* CSS Cascade section 6.1: selector grouping changes where a rule appears in
      source order. Non-adjacent equal declaration blocks must not be grouped
      across another same-specificity rule, because elements matching both the
@@ -969,7 +969,7 @@ let spec_cascade_section_6_1_no_group_non_adjacent_equal_declarations () =
     "same declarations are not grouped across source-order competitor"
     ".a{color:#ff0000}.b{color:#0000ff}.c{color:#ff0000}" output
 
-let spec_cascade_section_6_1_no_merge_across_at_rule_boundary () =
+let c61_no_merge_atrule () =
   (* CSS Cascade section 6.1 defines style sheets and imported/nested sheets in
      document order. An at-rule boundary is not a free reordering point for
      surrounding rules, even when the surrounding selectors match. *)
@@ -1011,7 +1011,7 @@ let spec_cascade_section_6_1_no_merge_across_at_rule_boundary () =
      (min-width:48px){.m{color:#00ff00}}.a{background-color:#0000ff}"
     output
 
-let spec_cascade_section_6_1_no_merge_across_layer_boundary () =
+let c61_no_merge_layer () =
   (* CSS Cascade section 6.1: layers are a cascade sorting criterion. Rules in
      different layers must not be merged, even when their selectors match. *)
   let input =
@@ -1047,7 +1047,7 @@ let spec_cascade_section_6_1_no_merge_across_layer_boundary () =
     "@layer reset{.btn{display:block}}@layer components{.btn{display:flex}}"
     output
 
-let spec_cascade_section_6_1_unlayered_rule_stays_outside_layer () =
+let c61_unlayered_outside_layer () =
   (* CSS Cascade section 6.1: unlayered declarations are in the implicit final
      layer for normal declarations. Optimizing must not hoist unlayered rules
      into explicit layers or pull layered rules out. *)
@@ -1079,7 +1079,7 @@ let spec_cascade_section_6_1_unlayered_rule_stays_outside_layer () =
     "unlayered rule stays outside explicit layer"
     "@layer reset{.audio{display:block}}.audio{display:flex}" output
 
-let spec_cascade_section_6_1_important_layer_order_preserved () =
+let c61_important_layer_order () =
   (* CSS Cascade section 6.1: for important declarations, earlier layers have
      higher priority than later layers. Optimizing must preserve both layer
      membership and layer order. *)
@@ -1125,7 +1125,7 @@ let spec_cascade_section_6_1_important_layer_order_preserved () =
      theme{.btn{color:#0000ff!important}}"
     output
 
-let spec_cascade_section_6_1_style_attribute_boundary () =
+let c61_style_attr_boundary () =
   (* CSS Cascade section 6.1 gives element-attached declarations a distinct
      cascade slot. The closest AST analogue here is a bare declaration block: it
      must remain a boundary for surrounding selector-mapped rules. *)
@@ -1155,7 +1155,7 @@ let spec_cascade_section_6_1_style_attribute_boundary () =
     "bare declarations remain an optimizer boundary"
     ".card{color:#ff0000}background-color:#00ff00;.card{display:flex}" output
 
-let spec_cascade_section_6_1_adjacent_different_specificity_grouping () =
+let c61_adjacent_specificity_grouping () =
   (* CSS Cascade section 6.1 compares specificity per selector. Grouping
      adjacent rules with identical declarations must keep each selector intact
      rather than rewriting them into a different selector shape. *)
@@ -1185,7 +1185,7 @@ let spec_cascade_section_6_1_adjacent_different_specificity_grouping () =
     "adjacent grouping keeps selector-specific specificity"
     ".item,.item.active{color:#ff0000}" output
 
-let spec_cascade_section_6_1_specificity_competitor_blocks_grouping () =
+let c61_specificity_blocks_grouping () =
   (* CSS Cascade section 6.1: specificity is evaluated before source order, but
      source order still matters among declarations that tie. A grouping pass
      must not move lower-specificity selectors across an overlapping
@@ -1224,7 +1224,7 @@ let spec_cascade_section_6_1_specificity_competitor_blocks_grouping () =
     ".item{color:#ff0000}.item.active{color:#0000ff}.active{color:#ff0000}"
     output
 
-let spec_cascade_section_6_1_no_merge_across_scope_boundary () =
+let c61_no_merge_scope () =
   (* CSS Cascade level 6 adds scope proximity to the cascade sorting order.
      Scoped and unscoped rules must not be merged across the @scope boundary. *)
   let item_rule decl =
@@ -1275,7 +1275,7 @@ let spec_cascade_section_6_1_no_merge_across_scope_boundary () =
         |> String.trim)
   | _ -> Alcotest.fail "optimizer must preserve rule/scope/rule structure"
 
-let spec_cascade_section_6_1_distinct_scopes_preserved () =
+let c61_distinct_scopes_preserved () =
   (* CSS Cascade level 6: two @scope rules can produce different proximity for
      the same scoped style rule. Equal nested rules in different scopes must
      stay in their original scope blocks. *)
@@ -1310,7 +1310,7 @@ let spec_cascade_section_6_1_distinct_scopes_preserved () =
         |> String.trim)
   | _ -> Alcotest.fail "optimizer must preserve distinct scope blocks"
 
-let spec_cascade_section_6_1_no_merge_across_supports_boundary () =
+let c61_no_merge_supports () =
   (* CSS Cascade section 6.1 order of appearance applies after filtering.
      Conditional groups are not optimizer reordering points for surrounding
      rules, even when the surrounding selectors match. *)
@@ -1352,7 +1352,7 @@ let spec_cascade_section_6_1_no_merge_across_supports_boundary () =
      (display:flex){.feature{display:flex}}.card{background-color:#0000ff}"
     output
 
-let spec_cascade_section_6_1_no_merge_across_container_boundary () =
+let c61_no_merge_container () =
   (* CSS Cascade section 6.1 order of appearance still determines the winner
      among declarations that tie after a container query matches. *)
   let input =
@@ -1394,7 +1394,7 @@ let spec_cascade_section_6_1_no_merge_across_container_boundary () =
      (min-width:48px){.feature{display:flex}}.card{background-color:#0000ff}"
     output
 
-let spec_cascade_section_6_1_no_merge_across_starting_style_boundary () =
+let c61_no_merge_starting_style () =
   (* CSS Cascade section 6.1 includes transitions as the highest-precedence
      origin, and @starting-style participates in transition setup. It must stay
      as an ordering boundary for surrounding rules. *)
@@ -1433,7 +1433,7 @@ let spec_cascade_section_6_1_no_merge_across_starting_style_boundary () =
     ".toast{color:#ff0000}@starting-style{.toast{opacity:0}}.toast{display:flex}"
     output
 
-let spec_cascade_section_6_1_import_keeps_substitution_point () =
+let c61_import_substitution_point () =
   (* CSS Cascade section 6.1 orders imported stylesheets as if substituted at
      the @import position. Optimizing must not move adjacent rules across that
      substitution point. *)
@@ -1468,7 +1468,7 @@ let spec_cascade_section_6_1_import_keeps_substitution_point () =
     "same selector is not merged across import substitution point"
     ".theme{color:#ff0000}@import url(\"base.css\");.theme{display:flex}" output
 
-let spec_cascade_section_6_1_important_shorthand_blocks_normal_longhand () =
+let c61_important_blocks_longhand () =
   (* CSS Cascade sections 3 and 6.1: an important shorthand is equivalent to
      important declarations for all of its longhands, so a later normal longhand
      cannot override it. *)
@@ -1494,7 +1494,7 @@ let spec_cascade_section_6_1_important_shorthand_blocks_normal_longhand () =
     "important shorthand keeps priority over later normal longhand"
     ".box{margin:2px!important}" output
 
-let spec_cascade_section_6_2_origin_importance_precedence_rank () =
+let c62_origin_importance_rank () =
   (* CSS Cascade section 6.2 defines origins, and section 6.1 orders them with
      importance. The API rank should represent that cascade order directly. *)
   let rank origin important =
@@ -1515,7 +1515,7 @@ let spec_cascade_section_6_2_origin_importance_precedence_rank () =
       rank User_agent false;
     ]
 
-let spec_cascade_section_6_2_no_merge_across_author_user_origins () =
+let c62_no_merge_author_user () =
   (* CSS Cascade section 6.2: author and user stylesheets are distinct cascade
      origins. Equal selectors from different origins must stay separated. *)
   let origin_rule origin color =
@@ -1548,7 +1548,7 @@ let spec_cascade_section_6_2_no_merge_across_author_user_origins () =
         |> String.trim)
   | _ -> Alcotest.fail "optimizer must preserve user and author origin blocks"
 
-let spec_cascade_section_6_2_no_merge_across_user_agent_author_origins () =
+let c62_no_merge_ua_author () =
   (* CSS Cascade section 6.2: user-agent defaults, user styles, and author
      styles are separate origins with different normal precedence. *)
   let origin_rule origin display =
@@ -1594,7 +1594,7 @@ let spec_cascade_section_6_2_no_merge_across_user_agent_author_origins () =
       Alcotest.fail
         "optimizer must preserve user-agent, user, and author origin blocks"
 
-let spec_cascade_section_6_2_animation_transition_origins_preserved () =
+let c62_animation_transition_origins () =
   (* CSS Cascade section 6.2: animation and transition origins are generated
      virtual origins and must not be folded into author styles. *)
   let origin_rule origin color =
@@ -1642,7 +1642,7 @@ let spec_cascade_section_6_2_animation_transition_origins_preserved () =
       Alcotest.fail
         "optimizer must preserve author, animation, and transition origins"
 
-let spec_cascade_section_6_2_optimize_within_single_origin () =
+let c62_optimize_single_origin () =
   (* CSS Cascade section 6.2 creates an origin boundary, not a ban on safe
      optimization inside one origin. Adjacent same-selector author rules can
      still merge within the author-origin block. *)
@@ -1678,8 +1678,7 @@ let spec_cascade_section_6_2_optimize_within_single_origin () =
         |> String.trim)
   | _ -> Alcotest.fail "optimizer should preserve one optimized author origin"
 
-let spec_cascade_section_6_2_identical_declarations_not_grouped_across_origins
-    () =
+let c62_no_group_across_origins () =
   (* CSS Cascade section 6.2: origins are part of the cascade input. Equal
      declaration blocks from different origins must not be selector-grouped into
      one rule. *)
@@ -1717,7 +1716,7 @@ let spec_cascade_section_6_2_identical_declarations_not_grouped_across_origins
       Alcotest.fail
         "optimizer must not group identical declarations across origins"
 
-let spec_cascade_section_6_2_imported_rules_keep_importing_origin () =
+let c62_imports_keep_origin () =
   (* CSS Cascade section 2.2: an imported stylesheet has the origin of the
      stylesheet that imported it. Within an origin block, @import remains a
      cascade substitution point. *)
@@ -1779,7 +1778,7 @@ let spec_cascade_section_6_2_imported_rules_keep_importing_origin () =
       Alcotest.fail
         "optimizer must preserve @import as an origin-local substitution point"
 
-let spec_cascade_section_6_2_origin_wrapper_public_api () =
+let c62_origin_wrapper_api () =
   (* CSS Cascade section 6.2 has no CSS syntax for choosing a stylesheet origin
      inside one CSS file, so the origin wrapper is an API-level annotation. *)
   let stmt =
@@ -1805,7 +1804,7 @@ let spec_cascade_section_6_2_origin_wrapper_public_api () =
     "origin annotation has no stylesheet syntax" ".reader{color:#00ff00}\n"
     (Css.to_string ~minify:true (Css.v [ stmt ]))
 
-let spec_cascade_section_6_3_important_beats_later_normal () =
+let c63_important_beats_normal () =
   (* CSS Cascade section 6.3: an important declaration takes precedence over a
      normal declaration, even when the normal declaration appears later. *)
   let rule : Css.Stylesheet.rule =
@@ -1829,7 +1828,7 @@ let spec_cascade_section_6_3_important_beats_later_normal () =
     "important declaration beats later normal declaration"
     ".alert{color:#ff0000!important}" output
 
-let spec_cascade_section_6_3_later_important_beats_earlier_important () =
+let c63_later_important_wins () =
   (* CSS Cascade section 6.3 changes the importance weight, but declarations
      with the same origin and importance still fall through to source order. *)
   let rule : Css.Stylesheet.rule =
@@ -1853,7 +1852,7 @@ let spec_cascade_section_6_3_later_important_beats_earlier_important () =
     "later important declaration wins within the same origin and importance"
     ".alert{color:#0000ff!important}" output
 
-let spec_cascade_section_6_3_importance_inverts_origin_precedence () =
+let c63_importance_inverts_origin () =
   (* CSS Cascade section 6.3 balances author and user styles: normal origin
      precedence is author > user > user-agent, while important origin precedence
      is inverted. *)
@@ -1876,7 +1875,7 @@ let spec_cascade_section_6_3_importance_inverts_origin_precedence () =
     "important author beats animation origin" true
     (rank Author true > rank Animation false)
 
-let spec_cascade_section_6_3_keyframes_ignore_important_declarations () =
+let c63_keyframes_ignore_important () =
   (* CSS Cascade section 6.3: declarations qualified with !important inside
      @keyframes are ignored. *)
   let stylesheet =
@@ -1905,7 +1904,7 @@ let spec_cascade_section_6_3_keyframes_ignore_important_declarations () =
         "normal keyframe declaration remains" 1 (List.length to_decls)
   | _ -> Alcotest.fail "expected parsed fade keyframes"
 
-let spec_cascade_section_6_4_statement_declares_layer_order () =
+let c64_statement_layer_order () =
   (* CSS Cascade section 6.4.4.2: the statement form can declare multiple layer
      names up front, establishing their order independently of where the block
      rules appear later. *)
@@ -1944,7 +1943,7 @@ let spec_cascade_section_6_4_statement_declares_layer_order () =
      theme{.widget{color:#0000ff}}@layer default{.widget{color:#ff0000}}"
     output
 
-let spec_cascade_section_6_4_unlayered_normal_is_implicit_final_layer () =
+let c64_unlayered_final_layer () =
   (* CSS Cascade section 6.4 example: normal unlayered declarations are in the
      implicit final layer and can outrank more-specific explicit-layer rules.
      The optimizer must not move either rule across that layer boundary. *)
@@ -1981,7 +1980,7 @@ let spec_cascade_section_6_4_unlayered_normal_is_implicit_final_layer () =
     "unlayered normal rule remains outside explicit reset layer"
     "audio{display:flex}@layer reset{audio[controls]{display:block}}" output
 
-let spec_cascade_section_6_4_important_layers_reverse_order () =
+let c64_important_layers_reverse () =
   (* CSS Cascade sections 6.1 and 6.4: later layers win for normal declarations,
      but earlier layers win for important declarations. *)
   let input =
@@ -2028,7 +2027,7 @@ let spec_cascade_section_6_4_important_layers_reverse_order () =
      overrides{.notice{color:#0000ff!important}}"
     output
 
-let spec_cascade_section_6_4_anonymous_layers_are_distinct () =
+let c64_anonymous_layers_distinct () =
   (* CSS Cascade section 6.4.2.1: each anonymous @layer block has a unique
      anonymous segment, so two unnamed layers cannot be merged into one
      layer. *)
@@ -2074,7 +2073,7 @@ let spec_cascade_section_6_4_anonymous_layers_are_distinct () =
         |> String.trim)
   | _ -> Alcotest.fail "anonymous layer blocks must remain separate"
 
-let spec_cascade_section_6_4_nested_layer_name_is_distinct_from_top_level () =
+let c64_nested_layer_distinct () =
   (* CSS Cascade section 6.4.2: a nested framework.base layer is distinct from
      the top-level base layer. *)
   let input =
@@ -2131,7 +2130,7 @@ let spec_cascade_section_6_4_nested_layer_name_is_distinct_from_top_level () =
       Alcotest.fail
         "nested framework.base layer must remain distinct from top-level base"
 
-let spec_cascade_section_6_4_keyframes_name_collisions_are_layered () =
+let c64_keyframe_name_layers () =
   (* CSS Cascade section 6.4: name-defining at-rules such as @keyframes use
      layer order to resolve collisions, so same-name keyframes in different
      layers must not be deduplicated or hoisted out of their layers. *)
@@ -2169,7 +2168,7 @@ let spec_cascade_section_6_4_keyframes_name_collisions_are_layered () =
      slide-left{from{margin-left:0}}}"
     output
 
-let spec_cascade_section_6_4_layer_declarations_do_not_cross_imports () =
+let c64_layer_decls_import_cross () =
   (* CSS Cascade section 6.4.4.2: layer statement rules can be interleaved with
      imports to establish order, but @import and @namespace processing still
      depends on their source positions. Optimizing must not merge layer
@@ -2206,7 +2205,7 @@ let spec_cascade_section_6_4_layer_declarations_do_not_cross_imports () =
      components;@layer default{.audio{display:block}}"
     output
 
-let spec_cascade_section_6_4_repeated_named_layer_blocks_stay_ordered () =
+let c64_repeated_layer_blocks_ordered () =
   (* CSS Cascade section 6.4.2: repeated explicit layer identifiers assign style
      blocks to the same layer. They must remain layer-scoped and in source order
      relative to other layer blocks. *)
@@ -2255,7 +2254,7 @@ let spec_cascade_section_6_4_repeated_named_layer_blocks_stay_ordered () =
      theme{.button{color:#0000ff}}@layer base{.button{display:flex}}"
     output
 
-let spec_cascade_section_6_4_same_child_layer_in_one_anonymous_parent () =
+let c64_child_layer_one_anonymous () =
   (* CSS Cascade section 6.4.2.1: child layers with the same name inside one
      anonymous parent share that anonymous parent segment, so they refer to the
      same nested layer. *)
@@ -2314,7 +2313,7 @@ let spec_cascade_section_6_4_same_child_layer_in_one_anonymous_parent () =
       Alcotest.fail
         "same child layer name inside one anonymous parent should remain nested"
 
-let spec_cascade_section_6_4_same_child_layer_in_distinct_anonymous_parents () =
+let c64_child_layer_distinct_anonymous () =
   (* CSS Cascade section 6.4.2.1: child layers with the same name inside
      separate anonymous parents are different layers because the anonymous
      parent segments are distinct. *)
@@ -2363,7 +2362,7 @@ let spec_cascade_section_6_4_same_child_layer_in_distinct_anonymous_parents () =
       Alcotest.fail
         "same child layer name in distinct anonymous parents must not collapse"
 
-let spec_cascade_section_6_4_conditional_layer_declarations_stay_nested () =
+let c64_conditional_layer_decls_nested () =
   (* CSS Cascade section 6.4.3: layer declarations inside media/supports can be
      conditional and must stay inside their conditional group; moving them out
      would establish a different global layer order. *)
@@ -2412,7 +2411,7 @@ let spec_cascade_section_6_4_conditional_layer_declarations_stay_nested () =
      theme,layout;"
     output
 
-let spec_cascade_section_6_4_empty_named_layer_before_block_keeps_order () =
+let c64_empty_layer_before_block () =
   (* CSS Cascade section 6.4.4.2: an empty statement can establish a layer order
      before a later block assigns style rules to that layer. *)
   let input =
@@ -2450,7 +2449,7 @@ let spec_cascade_section_6_4_empty_named_layer_before_block_keeps_order () =
      reset{.card{display:block}}"
     output
 
-let spec_cascade_section_6_4_layer_precedence_api () =
+let c64_layer_precedence_api () =
   (* CSS Cascade section 6.4.3: normal declarations rank later explicit layers
      above earlier ones, and unlayered normal declarations are in the implicit
      final layer. Important declarations reverse that layer order. *)
@@ -2500,7 +2499,7 @@ let spec_cascade_section_6_4_layer_precedence_api () =
     (Some "reset-important")
     (Option.map layer_value important_winner)
 
-let spec_cascade_section_6_5_presentational_hint_origin_rank () =
+let c65_presentational_hint_rank () =
   (* CSS Cascade section 6.5: presentational hints can enter a special-purpose
      author presentational-hint origin between regular user and author
      origins. *)
@@ -2559,7 +2558,7 @@ let spec_cascade_section_6_5_presentational_hint_origin_rank () =
       Alcotest.fail
         "presentational hint and author origins must remain separate boundaries"
 
-let spec_cascade_section_7_3_5_revert_layer_candidate_set () =
+let c735_revert_layer_candidates () =
   (* CSS Cascade section 7.3.5: revert-layer rolls the cascaded value back as if
      no rules were specified in the current cascade layer for the property. The
      helper models the lower-priority candidate set used after that removal. *)
@@ -2610,7 +2609,7 @@ let spec_cascade_section_7_3_5_revert_layer_candidate_set () =
     [ "unlayered-important"; "theme-important"; "components-important" ]
     (List.map layer_value important_rolled_back)
 
-let spec_cascade_section_7_3_4_revert_origin_candidate_set () =
+let c734_revert_origin_candidates () =
   (* CSS Cascade section 7.3.4: revert rolls the cascaded value back to the
      previous origin tier. Author and animation origins roll back to the user
      level; user origin rolls back to user-agent; user-agent origin behaves like
@@ -2698,149 +2697,146 @@ let selector_merging_tests =
     ("no merge with nested", `Quick, test_no_merge_with_nested);
     ( "spec cascade 3 shorthand resets omitted longhands",
       `Quick,
-      spec_cascade_section_3_shorthand_resets_omitted_longhands );
+      c3_shorthand_resets );
     ( "spec cascade 3 shorthand source order corner cases",
       `Quick,
-      spec_cascade_section_3_shorthand_source_order_corner_cases );
+      c3_shorthand_order_edges );
     ( "spec cascade 3 important shorthand expands to longhands",
       `Quick,
-      spec_cascade_section_3_important_shorthand_expands_to_longhands );
+      c3_important_shorthand_expands );
     ( "spec cascade 6.1 declaration order shorthand boundary",
       `Quick,
-      spec_cascade_section_6_1_declaration_order_shorthand_boundary );
+      c61_decl_order_shorthand_boundary );
     ( "spec cascade 6.1 no merge across intervening rule",
       `Quick,
-      spec_cascade_section_6_1_no_merge_across_intervening_rule );
+      c61_no_merge_intervening );
     ( "spec cascade 6.1 no group non-adjacent equal declarations",
       `Quick,
-      spec_cascade_section_6_1_no_group_non_adjacent_equal_declarations );
+      c61_no_group_nonadjacent );
     ( "spec cascade 6.1 no merge across at-rule boundary",
       `Quick,
-      spec_cascade_section_6_1_no_merge_across_at_rule_boundary );
+      c61_no_merge_atrule );
     ( "spec cascade 6.1 no merge across layer boundary",
       `Quick,
-      spec_cascade_section_6_1_no_merge_across_layer_boundary );
+      c61_no_merge_layer );
     ( "spec cascade 6.1 unlayered rule stays outside layer",
       `Quick,
-      spec_cascade_section_6_1_unlayered_rule_stays_outside_layer );
+      c61_unlayered_outside_layer );
     ( "spec cascade 6.1 important layer order preserved",
       `Quick,
-      spec_cascade_section_6_1_important_layer_order_preserved );
+      c61_important_layer_order );
     ( "spec cascade 6.1 style attribute boundary",
       `Quick,
-      spec_cascade_section_6_1_style_attribute_boundary );
+      c61_style_attr_boundary );
     ( "spec cascade 6.1 adjacent different specificity grouping",
       `Quick,
-      spec_cascade_section_6_1_adjacent_different_specificity_grouping );
+      c61_adjacent_specificity_grouping );
     ( "spec cascade 6.1 specificity competitor blocks grouping",
       `Quick,
-      spec_cascade_section_6_1_specificity_competitor_blocks_grouping );
+      c61_specificity_blocks_grouping );
     ( "spec cascade 6.1 no merge across scope boundary",
       `Quick,
-      spec_cascade_section_6_1_no_merge_across_scope_boundary );
+      c61_no_merge_scope );
     ( "spec cascade 6.1 distinct scopes preserved",
       `Quick,
-      spec_cascade_section_6_1_distinct_scopes_preserved );
+      c61_distinct_scopes_preserved );
     ( "spec cascade 6.1 no merge across supports boundary",
       `Quick,
-      spec_cascade_section_6_1_no_merge_across_supports_boundary );
+      c61_no_merge_supports );
     ( "spec cascade 6.1 no merge across container boundary",
       `Quick,
-      spec_cascade_section_6_1_no_merge_across_container_boundary );
+      c61_no_merge_container );
     ( "spec cascade 6.1 no merge across starting-style boundary",
       `Quick,
-      spec_cascade_section_6_1_no_merge_across_starting_style_boundary );
+      c61_no_merge_starting_style );
     ( "spec cascade 6.1 import keeps substitution point",
       `Quick,
-      spec_cascade_section_6_1_import_keeps_substitution_point );
+      c61_import_substitution_point );
     ( "spec cascade 6.1 important shorthand blocks normal longhand",
       `Quick,
-      spec_cascade_section_6_1_important_shorthand_blocks_normal_longhand );
+      c61_important_blocks_longhand );
     ( "spec cascade 6.2 origin importance precedence rank",
       `Quick,
-      spec_cascade_section_6_2_origin_importance_precedence_rank );
+      c62_origin_importance_rank );
     ( "spec cascade 6.2 no merge across author user origins",
       `Quick,
-      spec_cascade_section_6_2_no_merge_across_author_user_origins );
+      c62_no_merge_author_user );
     ( "spec cascade 6.2 no merge across user-agent author origins",
       `Quick,
-      spec_cascade_section_6_2_no_merge_across_user_agent_author_origins );
+      c62_no_merge_ua_author );
     ( "spec cascade 6.2 animation transition origins preserved",
       `Quick,
-      spec_cascade_section_6_2_animation_transition_origins_preserved );
+      c62_animation_transition_origins );
     ( "spec cascade 6.2 optimize within single origin",
       `Quick,
-      spec_cascade_section_6_2_optimize_within_single_origin );
+      c62_optimize_single_origin );
     ( "spec cascade 6.2 identical declarations not grouped across origins",
       `Quick,
-      spec_cascade_section_6_2_identical_declarations_not_grouped_across_origins
-    );
+      c62_no_group_across_origins );
     ( "spec cascade 6.2 imported rules keep importing origin",
       `Quick,
-      spec_cascade_section_6_2_imported_rules_keep_importing_origin );
+      c62_imports_keep_origin );
     ( "spec cascade 6.2 origin wrapper public api",
       `Quick,
-      spec_cascade_section_6_2_origin_wrapper_public_api );
+      c62_origin_wrapper_api );
     ( "spec cascade 6.3 important beats later normal",
       `Quick,
-      spec_cascade_section_6_3_important_beats_later_normal );
+      c63_important_beats_normal );
     ( "spec cascade 6.3 later important beats earlier important",
       `Quick,
-      spec_cascade_section_6_3_later_important_beats_earlier_important );
+      c63_later_important_wins );
     ( "spec cascade 6.3 importance inverts origin precedence",
       `Quick,
-      spec_cascade_section_6_3_importance_inverts_origin_precedence );
+      c63_importance_inverts_origin );
     ( "spec cascade 6.3 keyframes ignore important declarations",
       `Quick,
-      spec_cascade_section_6_3_keyframes_ignore_important_declarations );
+      c63_keyframes_ignore_important );
     ( "spec cascade 6.4 statement declares layer order",
       `Quick,
-      spec_cascade_section_6_4_statement_declares_layer_order );
+      c64_statement_layer_order );
     ( "spec cascade 6.4 unlayered normal is implicit final layer",
       `Quick,
-      spec_cascade_section_6_4_unlayered_normal_is_implicit_final_layer );
+      c64_unlayered_final_layer );
     ( "spec cascade 6.4 important layers reverse order",
       `Quick,
-      spec_cascade_section_6_4_important_layers_reverse_order );
+      c64_important_layers_reverse );
     ( "spec cascade 6.4 anonymous layers are distinct",
       `Quick,
-      spec_cascade_section_6_4_anonymous_layers_are_distinct );
+      c64_anonymous_layers_distinct );
     ( "spec cascade 6.4 nested layer name is distinct from top level",
       `Quick,
-      spec_cascade_section_6_4_nested_layer_name_is_distinct_from_top_level );
+      c64_nested_layer_distinct );
     ( "spec cascade 6.4 keyframes name collisions are layered",
       `Quick,
-      spec_cascade_section_6_4_keyframes_name_collisions_are_layered );
+      c64_keyframe_name_layers );
     ( "spec cascade 6.4 layer declarations do not cross imports",
       `Quick,
-      spec_cascade_section_6_4_layer_declarations_do_not_cross_imports );
+      c64_layer_decls_import_cross );
     ( "spec cascade 6.4 repeated named layer blocks stay ordered",
       `Quick,
-      spec_cascade_section_6_4_repeated_named_layer_blocks_stay_ordered );
+      c64_repeated_layer_blocks_ordered );
     ( "spec cascade 6.4 same child layer in one anonymous parent",
       `Quick,
-      spec_cascade_section_6_4_same_child_layer_in_one_anonymous_parent );
+      c64_child_layer_one_anonymous );
     ( "spec cascade 6.4 same child layer in distinct anonymous parents",
       `Quick,
-      spec_cascade_section_6_4_same_child_layer_in_distinct_anonymous_parents );
+      c64_child_layer_distinct_anonymous );
     ( "spec cascade 6.4 conditional layer declarations stay nested",
       `Quick,
-      spec_cascade_section_6_4_conditional_layer_declarations_stay_nested );
+      c64_conditional_layer_decls_nested );
     ( "spec cascade 6.4 empty named layer before block keeps order",
       `Quick,
-      spec_cascade_section_6_4_empty_named_layer_before_block_keeps_order );
-    ( "spec cascade 6.4 layer precedence api",
-      `Quick,
-      spec_cascade_section_6_4_layer_precedence_api );
+      c64_empty_layer_before_block );
+    ("spec cascade 6.4 layer precedence api", `Quick, c64_layer_precedence_api);
     ( "spec cascade 6.5 presentational hint origin rank",
       `Quick,
-      spec_cascade_section_6_5_presentational_hint_origin_rank );
+      c65_presentational_hint_rank );
     ( "spec cascade 7.3.5 revert-layer candidate set",
       `Quick,
-      spec_cascade_section_7_3_5_revert_layer_candidate_set );
+      c735_revert_layer_candidates );
     ( "spec cascade 7.3.4 revert origin candidate set",
       `Quick,
-      spec_cascade_section_7_3_4_revert_origin_candidate_set );
+      c734_revert_origin_candidates );
   ]
 
 let suite = ("optimize", optimize_tests @ selector_merging_tests)

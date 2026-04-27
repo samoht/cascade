@@ -437,7 +437,7 @@ let test_spec_sort_conditional_boundaries () =
   Alcotest.(check bool) "sort descends into container" true (aaa < zzz);
   Alcotest.(check bool) "sort descends into layer" true (bbb < yyy)
 
-let test_spec_cssom_public_stub_surface () =
+let spec_cssom_stub_surface () =
   let stmt =
     Css.Stylesheet.Rule
       (Css.Stylesheet.rule ~selector:btn
@@ -491,5 +491,5 @@ let suite =
       Alcotest.test_case "spec sort conditional boundaries" `Quick
         test_spec_sort_conditional_boundaries;
       Alcotest.test_case "spec CSSOM public stub surface" `Quick
-        test_spec_cssom_public_stub_surface;
+        spec_cssom_stub_surface;
     ] )
