@@ -1354,13 +1354,31 @@ let rec pp_background_image : background_image Pp.t =
       Pp.call "radial-gradient"
         (fun ctx v -> pp_var pp_gradient_stop ctx v)
         ctx var_ref
-  | Conic_gradient stops ->
+  | Conic_gradient (config, stops) ->
       Pp.call "conic-gradient"
-        (fun ctx stops ->
+        (fun ctx (config, stops) ->
+          let has_config =
+            config.from_angle <> None || config.conic_position <> None
+          in
+          if has_config then (
+            (match config.from_angle with
+            | Some a ->
+                Pp.string ctx "from ";
+                pp_angle ctx a
+            | None -> ());
+            (match (config.from_angle, config.conic_position) with
+            | Some _, Some _ -> Pp.space ctx ()
+            | _ -> ());
+            (match config.conic_position with
+            | Some p ->
+                Pp.string ctx "at ";
+                pp_position_value ctx p
+            | None -> ());
+            match stops with [] -> () | _ -> Pp.comma ctx ());
           match stops with
           | [] -> ()
           | _ -> Pp.list ~sep:Pp.comma pp_gradient_stop ctx stops)
-        ctx stops
+        ctx (config, stops)
   | Conic_gradient_var var_ref ->
       Pp.call "conic-gradient"
         (fun ctx v -> pp_var pp_gradient_stop ctx v)
@@ -6646,8 +6664,32 @@ let read_radial_gradient_body t =
   Radial_gradient (config, read_gradient_stops t)
 
 let read_conic_gradient_body t =
+  (* [conic-gradient([from <angle>]? [at <position>]? ,? <color-stop-list>)] *)
   Cursor.ws t;
-  Conic_gradient (read_gradient_stops t)
+  let from_angle =
+    match Cursor.peek_ident t with
+    | Some "from" ->
+        let _ = Cursor.ident t in
+        Cursor.ws t;
+        Some (Values.read_angle t)
+    | _ -> None
+  in
+  Cursor.ws t;
+  let conic_position =
+    match Cursor.peek_ident t with
+    | Some "at" ->
+        let _ = Cursor.ident t in
+        Cursor.ws t;
+        Some (read_position_value t)
+    | _ -> None
+  in
+  Cursor.ws t;
+  let has_config = from_angle <> None || conic_position <> None in
+  if has_config && not (Cursor.peek_comma t || Cursor.is_done t) then
+    Cursor.err_expected t "',' or end of conic-gradient prefix";
+  if Cursor.peek_comma t then Cursor.skip t;
+  let stops = read_gradient_stops t in
+  Conic_gradient ({ from_angle; conic_position }, stops)
 
 let rec read_bg_image t : background_image =
   (* Bare [url(foo)] is a single [Token.Url] component, not a [Func]; handle it
@@ -6755,7 +6797,8 @@ let minify_background_image : background_image -> background_image = function
       Linear_gradient (dir, List.map minify_gradient_stop stops)
   | Radial_gradient (config, stops) ->
       Radial_gradient (config, List.map minify_gradient_stop stops)
-  | Conic_gradient stops -> Conic_gradient (List.map minify_gradient_stop stops)
+  | Conic_gradient (config, stops) ->
+      Conic_gradient (config, List.map minify_gradient_stop stops)
   | img -> img
 
 let read_any_property t =

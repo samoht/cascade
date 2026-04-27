@@ -1103,6 +1103,11 @@ type radial_gradient_config = {
   position : position_value option;
 }
 
+type conic_gradient_config = {
+  from_angle : angle option;  (** [from <angle>] starting angle *)
+  conic_position : position_value option;  (** [at <position>] center *)
+}
+
 type background_image =
   | Url of string
   | Linear_gradient of gradient_direction * gradient_stop list
@@ -1113,7 +1118,7 @@ type background_image =
   | Radial_gradient_var of gradient_stop var
       (** Radial gradient using a single variable for all stops. Outputs:
           radial-gradient(var(--tw-gradient-stops)) *)
-  | Conic_gradient of gradient_stop list
+  | Conic_gradient of conic_gradient_config * gradient_stop list
   | Conic_gradient_var of gradient_stop var
       (** Conic gradient using a single variable for all stops. Outputs:
           conic-gradient(var(--tw-gradient-stops)) *)
