@@ -74,6 +74,33 @@ let test_position_compare buf1 buf2 =
       if c = 0 && c' <> 0 then fail "compare not antisymmetric"
   | _ -> ()
 
+let test_generated_duplicate_selector_preserved buf =
+  let pct =
+    Float.of_int
+      ((if String.length buf = 0 then 0 else Char.code buf.[0]) mod 101)
+  in
+  let input =
+    Css.Keyframe.position_to_string (Css.Keyframe.Percent pct)
+    ^ ", "
+    ^ Css.Keyframe.position_to_string (Css.Keyframe.Percent pct)
+  in
+  match Css.Keyframe.selector_of_string input with
+  | Css.Keyframe.Positions [ a; b ] ->
+      if Css.Keyframe.position_compare a b <> 0 then
+        fail "duplicate keyframe offsets were not preserved"
+  | Css.Keyframe.Positions _ -> fail "duplicate keyframe selector changed arity"
+  | Css.Keyframe.Raw _ -> fail "generated duplicate keyframe selector is raw"
+
+let test_from_to_percentage_equivalence _buf =
+  if
+    Css.Keyframe.position_compare Css.Keyframe.From (Css.Keyframe.Percent 0.)
+    <> 0
+  then fail "from is not equivalent to 0%";
+  if
+    Css.Keyframe.position_compare Css.Keyframe.To (Css.Keyframe.Percent 100.)
+    <> 0
+  then fail "to is not equivalent to 100%"
+
 let suite =
   ( "keyframe",
     [
@@ -87,4 +114,8 @@ let suite =
         test_position_serialization_idempotent;
       test_case "position_compare antisymmetry" [ bytes; bytes ]
         test_position_compare;
+      test_case "generated duplicate selector preserved" [ bytes ]
+        test_generated_duplicate_selector_preserved;
+      test_case "from/to percentage equivalence" [ bytes ]
+        test_from_to_percentage_equivalence;
     ] )

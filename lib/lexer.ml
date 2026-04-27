@@ -482,13 +482,20 @@ let rec consume_comments r =
     skip_comment_body r;
     consume_comments r)
 
-(* Consume a run of whitespace code points and return <whitespace-token>. *)
+(* Consume a run of whitespace code points and any interleaved comments. CSS
+   Syntax section 4.3.2 treats a comment as equivalent to whitespace, so [a
+   /*x*/ b] yields a single <whitespace-token> between the two idents. *)
 let rec consume_whitespace_run r =
   match Reader.peek r with
   | Some c when is_ws c ->
       Reader.skip r;
       consume_whitespace_run r
-  | _ -> ()
+  | _ ->
+      if Reader.looking_at r "/*" then (
+        Reader.skip r;
+        Reader.skip r;
+        skip_comment_body r;
+        consume_whitespace_run r)
 
 let hash_flag_now r = if would_start_ident_sequence r then Id else Unrestricted
 

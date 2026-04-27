@@ -70,6 +70,26 @@ let test_named_serialization_keeps_name_prefix buf =
     || String.sub serialized 0 prefix_len <> prefix
   then fail (Fmt.str "named container query lost name: %S" serialized)
 
+let test_container_evaluation_stub_identity buf =
+  match
+    Css.Stylesheet.evaluate_container_query ~condition:(condition buf 0)
+      ~container:".card inline-size=40rem"
+  with
+  | Error (Css.Stylesheet.Requires_platform_context { feature; detail }) ->
+      if feature <> "container query evaluation" || detail = "" then
+        fail "container evaluation stub lost feature/detail identity"
+  | Error (Css.Stylesheet.Requires_document_context _) ->
+      fail "container evaluation returned document-context error"
+  | Error (Css.Stylesheet.Unsupported_value_alias _) ->
+      fail "container evaluation returned value-alias error"
+  | Ok _ -> fail "container evaluation stub unexpectedly succeeded"
+
+let test_raw_style_scroll_state_serialization_stable buf =
+  let raw = raw buf 0 in
+  let query = Css.Container.Raw raw in
+  if Css.Container.to_string query <> raw then
+    fail "raw container query serialization changed"
+
 let suite =
   ( "container",
     [
@@ -80,4 +100,8 @@ let suite =
       test_case "compare transitive" [ bytes ] test_compare_transitive;
       test_case "named serialization keeps name prefix" [ bytes ]
         test_named_serialization_keeps_name_prefix;
+      test_case "container evaluation stub identity" [ bytes ]
+        test_container_evaluation_stub_identity;
+      test_case "raw style/scroll-state serialization stable" [ bytes ]
+        test_raw_style_scroll_state_serialization_stable;
     ] )

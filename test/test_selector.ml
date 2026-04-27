@@ -1234,6 +1234,69 @@ let test_spec_selector_relative_scope_and_pseudo_element_edges () =
   neg_cursor read ".class#";
   neg_cursor read "[data-x=foo q]"
 
+let test_spec_selector_level_4_pseudo_matrix_edges () =
+  (* Additional Selectors 4 vectors: forgiving functional pseudos, state
+     pseudos, shadow-host pseudos, and pseudo-element argument forms. *)
+  List.iter check
+    [
+      ":any-link";
+      ":local-link";
+      ":target-within";
+      ":defined";
+      ":blank";
+      ":placeholder-shown";
+      ":default";
+      ":indeterminate";
+      ":scope";
+      ":current";
+      ":current(.slide)";
+      ":past";
+      ":future";
+      ":nth-col(2n+1)";
+      ":nth-last-col(odd)";
+      ":is(section, article, aside) > :where(h1, h2)";
+      ":not(:where(.muted, [hidden]))";
+      ":has(> :is(img, picture, video))";
+      "dialog:modal::backdrop";
+      "::part(tab)";
+      "::part(tab panel)";
+      "::slotted(*:not([hidden]))";
+      "::cue(b)";
+      "::highlight(search-results)";
+      "::view-transition-group(root)";
+    ];
+  List.iter
+    (fun input -> neg_cursor read input)
+    [
+      ":nth-col()";
+      ":nth-last-col(of .item)";
+      ":current()";
+      ":has(, .item)";
+      ":is(, .item)";
+      ":not()";
+      "::part(tab, panel)";
+      "::slotted(.a, .b)";
+      "::cue()";
+      "::view-transition-old()";
+    ]
+
+let test_spec_selector_attribute_namespace_edges () =
+  check "[|href]";
+  check "[*|href]";
+  check "[svg|href]";
+  check "svg|a[*|href]";
+  check "*|a[|href]";
+  check ~expected:"[data-x=\"--value\"]" "[data-x=\"--value\"]";
+  check ~expected:"[data-x=\"1value\"]" "[data-x=\"1value\"]";
+  check ~expected:"[data-x=foo\\ bar]" "[data-x=foo\\ bar]";
+  check "[data-x=foo i]";
+  check "[data-x=foo s]";
+  neg_cursor read "[*||href]";
+  neg_cursor read "[svg|]";
+  neg_cursor read "[data-x=foo z]";
+  neg_cursor read "[data-x~=]";
+  neg_cursor read "[data-x|=]"
+
 let suite =
   let open Alcotest in
   ( "selector",
@@ -1287,5 +1350,9 @@ let suite =
         test_spec_selector_current_pseudo_vectors;
       test_case "spec selector relative/scope/pseudo-element edges" `Quick
         test_spec_selector_relative_scope_and_pseudo_element_edges;
+      test_case "spec selector level 4 pseudo matrix edges" `Quick
+        test_spec_selector_level_4_pseudo_matrix_edges;
+      test_case "spec selector attribute namespace edges" `Quick
+        test_spec_selector_attribute_namespace_edges;
       test_case "nesting selector" `Quick test_nesting_selector;
     ] )
