@@ -368,7 +368,9 @@ val evaluate_media_query :
 
 val evaluate_supports_condition :
   condition:Supports.t -> (bool, Stylesheet.value_processing_error) result
-(** Stub entry point for [@supports] evaluation. *)
+(** [evaluate_supports_condition ~condition] reports whether [condition] holds.
+    Decision depends on the UA's property support table, so it always returns
+    [Error (Requires_platform_context _)]. *)
 
 val evaluate_container_query :
   condition:Container.t ->
@@ -385,7 +387,10 @@ val resolve_url_value :
 val load_import_rule :
   Stylesheet.import_rule ->
   (Stylesheet.stylesheet, Stylesheet.value_processing_error) result
-(** Stub entry point for [@import] loading. *)
+(** [load_import_rule rule] fetches and parses the stylesheet referenced by
+    [rule]. Fetching needs network and resource-loading machinery this library
+    does not ship, so it always returns [Error (Requires_platform_context _)].
+*)
 
 val html_presentational_hints :
   element:string -> (declaration list, Stylesheet.value_processing_error) result

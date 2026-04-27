@@ -662,6 +662,117 @@ let test_platform_stub_error_identity buf =
         (Css.Stylesheet.animated_value ~property:"opacity"
            ~keyframes:[ "0"; "1" ] ~progress:0.5)
 
+let test_value_processing_stub_stage_identity buf =
+  let expect_stage stage = function
+    | Error (Css.Stylesheet.Requires_document_context actual)
+      when actual = stage ->
+        ()
+    | Error (Css.Stylesheet.Requires_document_context _) ->
+        fail "document-context stub returned the wrong stage"
+    | Error (Css.Stylesheet.Requires_platform_context actual) ->
+        fail
+          (Fmt.str "document-context stub returned platform error: %S"
+             actual.feature)
+    | Error (Css.Stylesheet.Unsupported_value_alias _) ->
+        fail "document-context stub returned value-alias error"
+    | Ok _ -> fail "document-context stub unexpectedly succeeded"
+  in
+  let name = "--fuzz-" ^ string_of_int (byte_at buf 1) in
+  match byte_at buf 0 mod 7 with
+  | 0 ->
+      expect_stage Css.Stylesheet.Declared_value
+        (Css.Stylesheet.declared_values_for_element ~element:"<div>" [])
+  | 1 ->
+      expect_stage Css.Stylesheet.Computed_value
+        (Css.Stylesheet.computed_value ~property:"font-size" ~specified:"1em")
+  | 2 ->
+      expect_stage Css.Stylesheet.Computed_value
+        (Css.Stylesheet.resolve_custom_property ~name ~specified:"var(--x)"
+           ~environment:":root")
+  | 3 ->
+      expect_stage Css.Stylesheet.Used_value
+        (Css.Stylesheet.used_value ~property:"width" ~computed:"auto")
+  | 4 ->
+      expect_stage Css.Stylesheet.Actual_value
+        (Css.Stylesheet.actual_value ~property:"border-top-width" ~used:"0.4px")
+  | 5 ->
+      expect_stage Css.Stylesheet.Used_value
+        (Css.Stylesheet.applicable_property ~property:"flex" ~box:"block")
+  | _ ->
+      expect_stage Css.Stylesheet.Used_value
+        (Css.Stylesheet.per_fragment_value ~property:"color"
+           ~fragment:"::first-line" ~computed:"currentColor")
+
+let test_platform_boundary_all_entrypoints_stay_typed buf =
+  let expect_platform = function
+    | Error (Css.Stylesheet.Requires_platform_context { feature; detail }) ->
+        if feature = "" || detail = "" then
+          fail "platform error lost feature/detail identity"
+    | Error (Css.Stylesheet.Requires_document_context _) ->
+        fail "platform API returned document-context error"
+    | Error (Css.Stylesheet.Unsupported_value_alias _) ->
+        fail "platform API returned value-alias error"
+    | Ok _ -> fail "platform API unexpectedly succeeded"
+  in
+  let stmt = rule buf 2 in
+  let import =
+    {
+      Css.Stylesheet.url = "theme.css";
+      layer = Some (layer_name buf 3);
+      supports = Some (Css.Supports.Property ("display", "grid"));
+      media = Some (Css.Media.Raw "(width >= 40em)");
+    }
+  in
+  List.iter
+    (fun f -> f ())
+    [
+      (fun () ->
+        expect_platform
+          (Css.Stylesheet.selector_matches_element ~selector:(selector buf 0)
+             ~element:"<div class=card>"));
+      (fun () ->
+        expect_platform
+          (Css.Stylesheet.evaluate_media_query
+             ~condition:(Css.Media.Raw "(width >= 40em)") ~environment:"screen"));
+      (fun () ->
+        expect_platform
+          (Css.Stylesheet.evaluate_supports_condition
+             ~condition:(Css.Supports.Property ("display", "grid"))));
+      (fun () ->
+        expect_platform
+          (Css.Stylesheet.evaluate_container_query
+             ~condition:(Css.Container.Raw "(inline-size > 30em)")
+             ~container:".card"));
+      (fun () ->
+        expect_platform
+          (Css.Stylesheet.resolve_url_value ~base:"https://example.test/app.css"
+             ~url:"../image.png"));
+      (fun () -> expect_platform (Css.Stylesheet.load_import_rule import));
+      (fun () ->
+        expect_platform
+          (Css.Stylesheet.html_presentational_hints ~element:"<table width=100>"));
+      (fun () ->
+        expect_platform
+          (Css.Stylesheet.filter_style_rules ~element:"<div>"
+             ~media:(Css.Media.Raw "(width >= 40em)")
+             ~supports:(Css.Supports.Property ("display", "grid"))
+             []));
+      (fun () ->
+        expect_platform
+          (Css.Stylesheet.cssom_insert_rule ~index:(byte_at buf 4) stmt []));
+      (fun () ->
+        expect_platform
+          (Css.Stylesheet.cssom_delete_rule ~index:(byte_at buf 5) []));
+      (fun () ->
+        expect_platform
+          (Css.Stylesheet.cssom_replace_rule ~index:(byte_at buf 6) stmt []));
+      (fun () -> expect_platform (Css.Stylesheet.cssom_serialize_rule stmt));
+      (fun () ->
+        expect_platform
+          (Css.Stylesheet.animated_value ~property:"opacity"
+             ~keyframes:[ "0"; "1" ] ~progress:0.5));
+    ]
+
 let suite =
   ( "stylesheet",
     [
@@ -711,4 +822,8 @@ let suite =
         test_invalid_platform_declaration_rejected;
       test_case "platform stub error identity" [ bytes ]
         test_platform_stub_error_identity;
+      test_case "value processing stub stage identity" [ bytes ]
+        test_value_processing_stub_stage_identity;
+      test_case "platform boundary all entrypoints stay typed" [ bytes ]
+        test_platform_boundary_all_entrypoints_stay_typed;
     ] )

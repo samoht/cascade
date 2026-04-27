@@ -728,6 +728,38 @@ let test_spec_values_and_color_current_work () =
   neg_cursor read_color "contrast-color()";
   neg_cursor read_color "light-dark(black)"
 
+let test_spec_values_level_4_5_math_and_color_edges () =
+  check_length "1cqw";
+  check_length "1cqh";
+  check_length "1cqi";
+  check_length "1cqb";
+  check_length "1cqmin";
+  check_length "1cqmax";
+  check_length ~expected:"calc-size(auto,size + 1rem)"
+    "calc-size(auto, size + 1rem)";
+  check_length ~expected:"anchor-size(width)" "anchor-size(width)";
+  check_length ~expected:"anchor(--tooltip width,10px)"
+    "anchor(--tooltip width, 10px)";
+  check_number ~expected:"calc(1 + sibling-index())" "calc(1 + sibling-index())";
+  check_number ~expected:"calc(sibling-count() - 1)" "calc(sibling-count() - 1)";
+  check_percentage ~expected:"calc(50% + 10%)" "calc(50% + 10%)";
+  check_color ~expected:"color-mix(in oklab,red 40%,blue)"
+    "color-mix(in oklab, red 40%, blue)";
+  check_color ~expected:"color-mix(in srgb longer hue,red,blue)"
+    "color-mix(in srgb longer hue, red, blue)";
+  check_color ~expected:"hsl(none 50% 50%)" "hsl(none 50% 50%)";
+  check_color ~expected:"rgb(from var(--c) r g b/50%)"
+    "rgb(from var(--c) r g b / 50%)";
+  check_color ~expected:"color(display-p3 none .5 1)"
+    "color(display-p3 none 0.5 1)";
+  neg_cursor read_length "calc-size()";
+  neg_cursor read_length "anchor()";
+  neg_cursor read_length "anchor-size()";
+  neg_cursor read_number "sibling-index(1)";
+  neg_cursor read_color "color-mix(in oklab)";
+  neg_cursor read_color "rgb(from red r g)";
+  neg_cursor read_color "color(display-p3 1 0)"
+
 let value_tests =
   [
     test_case "system_color" `Quick test_system_color;
@@ -769,6 +801,8 @@ let value_tests =
     test_case "rgb" `Quick test_rgb;
     test_case "spec values and color current-work" `Quick
       test_spec_values_and_color_current_work;
+    test_case "spec values level 4/5 math and color edges" `Quick
+      test_spec_values_level_4_5_math_and_color_edges;
   ]
 
 let suite = ("values", value_tests)

@@ -137,15 +137,16 @@ let rec map f stmts =
     (fun stmt ->
       match as_rule stmt with
       | Some (sel, decls, nested) -> (
-          let mapped_nested = map f nested in
           match f sel decls with
-          | Rule mapped ->
-              Rule
-                {
-                  mapped with
-                  nested = Stylesheet.nested mapped @ mapped_nested;
-                }
-          | other -> other)
+          | Rule mapped when Stylesheet.nested mapped = [] ->
+              (* Callback didn't supply nested; preserve the original tree (with
+                 [f] applied recursively) so map doesn't silently drop nested
+                 rules / at-rules. *)
+              Rule { mapped with nested = map f nested }
+          | other ->
+              (* Callback supplied its own nested (or returned a non-Rule);
+                 trust it and replace the original. *)
+              other)
       | None -> (
           match as_media stmt with
           | Some (condition, content) -> media ~condition (map f content)
@@ -167,28 +168,32 @@ let rec map f stmts =
     stmts
 
 let rec sort cmp stmts =
-  (* First, recursively sort within containers *)
+  (* First, recursively sort within containers and inside rule.nested. *)
   let stmts_with_sorted_contents =
     List.map
       (fun stmt ->
-        match as_media stmt with
-        | Some (condition, content) -> media ~condition (sort cmp content)
+        match as_rule stmt with
+        | Some (sel, decls, nested) ->
+            Rule (Stylesheet.rule ~selector:sel ~nested:(sort cmp nested) decls)
         | None -> (
-            match as_supports stmt with
-            | Some (condition, content) ->
-                supports ~condition (sort cmp content)
+            match as_media stmt with
+            | Some (condition, content) -> media ~condition (sort cmp content)
             | None -> (
-                match as_layer stmt with
-                | Some (name, content) -> layer ?name (sort cmp content)
+                match as_supports stmt with
+                | Some (condition, content) ->
+                    supports ~condition (sort cmp content)
                 | None -> (
-                    match as_container stmt with
-                    | Some (name, condition, content) ->
-                        container ?name ~condition (sort cmp content)
+                    match as_layer stmt with
+                    | Some (name, content) -> layer ?name (sort cmp content)
                     | None -> (
-                        match as_origin stmt with
-                        | Some (origin, content) ->
-                            Origin (origin, sort cmp content)
-                        | None -> stmt)))))
+                        match as_container stmt with
+                        | Some (name, condition, content) ->
+                            container ?name ~condition (sort cmp content)
+                        | None -> (
+                            match as_origin stmt with
+                            | Some (origin, content) ->
+                                Origin (origin, sort cmp content)
+                            | None -> stmt))))))
       stmts
   in
 

@@ -848,6 +848,178 @@ let invalid () =
   neg "opacity: revert 0.5";
   neg "z-index: revert-layer 10"
 
+let spec_property_grammar_table_expansion () =
+  (* Cross-spec property grammar vectors. This grows toward an exhaustive table:
+     each property area gets both accepted values and values that should be
+     rejected by that property's grammar. *)
+  let positive =
+    [
+      ("display", "inline flow-root");
+      ("display", "list-item flow-root");
+      ("position", "sticky");
+      ("inset", "1px 2px 3px 4px");
+      ("inset-inline", "auto 10%");
+      ("box-sizing", "border-box");
+      ("width", "fit-content(20rem)");
+      ("min-width", "min-content");
+      ("max-width", "stretch");
+      ("aspect-ratio", "16 / 9");
+      ("contain", "layout paint");
+      ("container-type", "inline-size");
+      ("container-name", "card");
+      ("container", "card / inline-size");
+      ("overflow", "clip");
+      ("overflow-clip-margin", "content-box 1px");
+      ("overscroll-behavior", "contain none");
+      ("scroll-snap-type", "x mandatory");
+      ("scrollbar-width", "thin");
+      ("scrollbar-color", "red blue");
+      ("margin", "anchor-size(width)");
+      ("padding", "max(1rem, 2vw)");
+      ("border", "1px solid currentColor");
+      ("border-radius", "10px 20px / 30px 40px");
+      ("border-image", "linear-gradient(red, blue) 30");
+      ("background", "url(bg.png) no-repeat center / cover border-box");
+      ("background-position", "left 10px top 20px");
+      ("box-shadow", "0 1px 2px rgb(0 0 0 / .2)");
+      ("clip-path", "inset(10px round 2px)");
+      ("shape-outside", "circle(50%)");
+      ("shape-margin", "1rem");
+      ("color", "color(display-p3 1 0 0)");
+      ("color", "light-dark(black, white)");
+      ("accent-color", "auto");
+      ("opacity", ".5");
+      ("mix-blend-mode", "multiply");
+      ("filter", "blur(5px) contrast(120%)");
+      ("font", "italic small-caps bold 16px/1.5 serif");
+      ("font-size", "clamp(1rem, 2vw, 2rem)");
+      ("font-weight", "650");
+      ("font-stretch", "75%");
+      ("font-feature-settings", "\"kern\" 1");
+      ("font-variation-settings", "\"wght\" 650");
+      ("font-palette", "--brand");
+      ("text-wrap-mode", "wrap");
+      ("text-wrap-style", "balance");
+      ("white-space", "preserve nowrap");
+      ("line-height", "normal");
+      ("word-break", "break-word");
+      ("writing-mode", "vertical-rl");
+      ("text-combine-upright", "digits 2");
+      ("transform", "translateX(10px) rotate(45deg) scale(1.2)");
+      ("translate", "10px 20px");
+      ("rotate", "1 0 0 45deg");
+      ("scale", "1.2 2");
+      ("transform-origin", "left 10px top 20px");
+      ("transition", "opacity 1s ease-in .2s");
+      ("transition-behavior", "allow-discrete");
+      ("animation", "fade 1s linear 2 alternate both running");
+      ("animation-timeline", "scroll()");
+      ("animation-range", "entry 10% exit 90%");
+      ("view-transition-name", "card");
+      ("grid-template-columns", "subgrid");
+      ("grid-template-rows", "masonry");
+      ("grid-auto-flow", "row dense");
+      ("gap", "1rem 2rem");
+      ("flex", "1 1 0");
+      ("flex-flow", "row wrap");
+      ("place-content", "center space-between");
+      ("place-items", "start stretch");
+      ("place-self", "auto center");
+      ("list-style", "square inside");
+      ("content", "open-quote attr(title) close-quote");
+      ("counter-reset", "section 1");
+      ("counter-increment", "section");
+      ("resize", "both");
+      ("cursor", "url(cursor.cur), pointer");
+      ("user-select", "none");
+      ("appearance", "none");
+      ("pointer-events", "auto");
+      ("anchor-name", "--tooltip");
+      ("position-anchor", "--tooltip");
+      ("position-area", "top span-right");
+      ("position-try-fallbacks", "--below, flip-block");
+      ("object-fit", "cover");
+      ("object-position", "left 10px top 20px");
+      ("mask", "url(mask.svg) center / contain no-repeat");
+      ("mask-type", "luminance");
+    ]
+  in
+  List.iter
+    (fun (property, value) -> check_declaration (property ^ ":" ^ value))
+    positive;
+  let negative =
+    [
+      ("display", "block inline flex");
+      ("position", "sticky absolute");
+      ("inset-inline", "1px 2px 3px");
+      ("box-sizing", "padding-box");
+      ("width", "-1px");
+      ("min-width", "-1px");
+      ("aspect-ratio", "16 /");
+      ("contain", "none layout");
+      ("container-type", "inline-size size");
+      ("container", "/ inline-size");
+      ("overflow", "visible clip scroll");
+      ("overflow-clip-margin", "-1px");
+      ("overscroll-behavior", "contain none auto");
+      ("scroll-snap-type", "mandatory x");
+      ("scrollbar-width", "wide");
+      ("scrollbar-color", "red");
+      ("padding", "-1px");
+      ("border", "solid solid");
+      ("border-radius", "10px /");
+      ("border-image", "none none");
+      ("background-size", "cover contain");
+      ("background-position", "left right");
+      ("box-shadow", "inset inset 0 0 red");
+      ("clip-path", "circle()");
+      ("shape-margin", "-1px");
+      ("color", "light-dark(black)");
+      ("opacity", "2");
+      ("mix-blend-mode", "normal multiply");
+      ("filter", "blur()");
+      ("font", "bold serif");
+      ("font-weight", "1000");
+      ("font-stretch", "-10%");
+      ("font-feature-settings", "\"kern\" maybe");
+      ("font-variation-settings", "\"wght\"");
+      ("font-palette", "1");
+      ("text-wrap-style", "loud");
+      ("white-space", "normal pre");
+      ("line-height", "-1");
+      ("writing-mode", "vertical");
+      ("text-combine-upright", "digits 3");
+      ("transform", "rotate()");
+      ("translate", "10px 20px 30px 40px");
+      ("rotate", "1 0 45deg");
+      ("scale", "1 2 3 4");
+      ("transition", "opacity ease ease");
+      ("transition-behavior", "allow-discrete normal");
+      ("animation", "1s 2s 3s");
+      ("animation-range", "exit entry");
+      ("view-transition-name", "none card");
+      ("grid-auto-flow", "dense dense");
+      ("gap", "-1px");
+      ("flex", "1 2 3 4");
+      ("flex-flow", "row column");
+      ("place-content", "left");
+      ("content", "open-quote none");
+      ("counter-reset", "none section");
+      ("resize", "block inline both");
+      ("cursor", "url(cursor.cur)");
+      ("user-select", "all none");
+      ("anchor-name", "tooltip");
+      ("position-anchor", "tooltip");
+      ("position-area", "top top");
+      ("object-fit", "cover contain");
+      ("mask-type", "alpha luminance");
+    ]
+  in
+  List.iter
+    (fun (property, value) ->
+      neg_cursor read_declaration (property ^ ":" ^ value))
+    negative
+
 let edge_cases () =
   (* Empty/whitespace values where valid *)
   check_declaration ~expected:"content:\"\"" "content: \"\"";
@@ -995,6 +1167,25 @@ let custom_property_values () =
   check_declaration ~expected:"color:var(--c,red)" "color: var(--c, red)";
   check_declaration ~expected:"width:var(--w,10px)" "width: var(--w, 10px)";
   check_declaration ~expected:"margin:var(--m)" "margin: var(--m)"
+
+let spec_custom_property_token_stream_values () =
+  check_declaration ~expected:"--tokens:[a, b] (c) { d: e; }"
+    "--tokens: [a, b] (c) { d: e; }";
+  check_declaration ~expected:"--empty:" "--empty:";
+  check_declaration ~expected:"--commented:a b" "--commented: a /*x*/ b";
+  check_declaration ~expected:"--important-token:1 ! important"
+    "--important-token: 1 ! important";
+  check_declaration ~expected:"--real-important:1!important"
+    "--real-important: 1 !important";
+  check_declaration ~expected:"--fallback:var(--missing,)"
+    "--fallback: var(--missing,)";
+  check_declaration ~expected:"--nested-var:var(--a, var(--b, { color: red; }))"
+    "--nested-var: var(--a, var(--b, { color: red; }))";
+  check_declaration ~expected:"--bad-string:\"unterminated"
+    "--bad-string: \"unterminated";
+  neg_cursor read_declaration "--: value";
+  neg_cursor read_declaration "-x: value";
+  neg_cursor read_declaration "--x"
 
 let color_functions () =
   (* color() with alternate spaces and alpha *)
@@ -1278,6 +1469,8 @@ let declaration_tests =
     test_case "custom properties basic" `Quick custom_properties_basic;
     test_case "custom properties" `Quick custom_properties;
     test_case "custom property values" `Quick custom_property_values;
+    test_case "spec custom property token stream values" `Quick
+      spec_custom_property_token_stream_values;
     test_case "vendor prefixes" `Quick vendor_prefixes;
     (* Property value categories *)
     test_case "colors" `Quick colors;
@@ -1305,6 +1498,8 @@ let declaration_tests =
       spec_platform_property_vectors;
     test_case "spec values level 4/5 edge vectors" `Quick
       spec_values_level_4_5_edge_vectors;
+    test_case "spec property grammar table expansion" `Quick
+      spec_property_grammar_table_expansion;
     (* Error handling *)
     test_case "error missing colon" `Quick error_missing_colon;
     test_case "error stray semicolon" `Quick error_stray_semicolon;

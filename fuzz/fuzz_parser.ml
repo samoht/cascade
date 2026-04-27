@@ -6,6 +6,11 @@ open Alcobar
 let parse_list input =
   (Css.Parser.parse_list_of_component_values (Css.Reader.of_string input)).value
 
+let parse_comma_list input =
+  (Css.Parser.parse_comma_separated_list_of_component_values
+     (Css.Reader.of_string input))
+    .value
+
 let cssish buf =
   let alphabet =
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 \
@@ -34,6 +39,7 @@ let rec shape = function
       Some (Fmt.str "function(%s:%s)" name inner)
 
 let shapes cvs = List.filter_map shape cvs
+let comma_shapes groups = List.map shapes groups
 
 let assert_same_shape label input output =
   let before = parse_list input |> shapes in
@@ -48,6 +54,10 @@ let byte_at buf i =
   if String.length buf = 0 then 0 else Char.code buf.[i mod String.length buf]
 
 let repeated c n = String.init n (fun _ -> c)
+
+let string_rev s =
+  let len = String.length s in
+  String.init len (fun i -> s.[len - 1 - i])
 
 (** Component-value parsing must not crash on decoded CSS-shaped input. *)
 let test_component_value_crash_safety buf =
@@ -101,6 +111,28 @@ let test_component_value_token_boundary_roundtrip left right =
   let input = left ^ " " ^ right in
   assert_same_shape "token boundary serialization" input (minified input)
 
+let test_comma_list_group_count_roundtrip buf =
+  let buf = cssish buf in
+  let input = buf ^ ", " ^ cssish (string_rev buf) in
+  let before = parse_comma_list input |> comma_shapes in
+  let serialized =
+    input |> parse_comma_list
+    |> List.map Css.Parser.to_string_minified
+    |> String.concat ","
+  in
+  let after = parse_comma_list serialized |> comma_shapes in
+  if before <> after then
+    fail (Fmt.str "comma-list shape changed for %S: %S" input serialized)
+
+let test_comma_inside_blocks_does_not_split_groups buf =
+  let payload = cssish buf in
+  let input = "fn(" ^ payload ^ ", x), [a,b], {c:d,e:f}" in
+  let groups = parse_comma_list input in
+  if List.length groups <> 3 then
+    fail
+      (Fmt.str "top-level comma grouping changed; expected 3 groups, got %d"
+         (List.length groups))
+
 let test_bounded_unterminated_nesting_reparse buf =
   let depth = 1 + (byte_at buf 0 mod 256) in
   let opener =
@@ -143,6 +175,10 @@ let suite =
         test_component_value_serialized_shape_roundtrip;
       test_case "component-value token boundaries roundtrip" [ bytes; bytes ]
         test_component_value_token_boundary_roundtrip;
+      test_case "comma-list group count roundtrip" [ bytes ]
+        test_comma_list_group_count_roundtrip;
+      test_case "comma inside blocks does not split groups" [ bytes ]
+        test_comma_inside_blocks_does_not_split_groups;
       test_case "bounded unterminated nesting reparses" [ bytes ]
         test_bounded_unterminated_nesting_reparse;
       test_case "balanced nesting shape roundtrip" [ bytes ]
