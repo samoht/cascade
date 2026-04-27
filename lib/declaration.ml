@@ -570,6 +570,14 @@ let read_value (type a) (prop : a property) t : declaration =
   | Container_type -> v Container_type (read_container_type t)
   | Container_name -> v Container_name (read_raw_value t)
   | Container -> v Container (read_container_shorthand t)
+  (* Anchor positioning properties *)
+  | Anchor_name -> v Anchor_name (read_raw_value t)
+  | Position_anchor -> v Position_anchor (read_raw_value t)
+  | Position_try_fallbacks ->
+      v Position_try_fallbacks
+        (Cursor.list ~sep:Cursor.comma ~at_least:1
+           (fun r -> Cursor.ident ~keep_case:true r)
+           t)
   (* Transform properties *)
   | Perspective -> v Perspective (read_length t)
   | Perspective_origin -> v Perspective_origin (read_perspective_origin t)

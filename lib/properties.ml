@@ -2287,6 +2287,9 @@ let pp_property : type a. a property Pp.t =
   | Container_type -> Pp.string ctx "container-type"
   | Container_name -> Pp.string ctx "container-name"
   | Container -> Pp.string ctx "container"
+  | Anchor_name -> Pp.string ctx "anchor-name"
+  | Position_anchor -> Pp.string ctx "position-anchor"
+  | Position_try_fallbacks -> Pp.string ctx "position-try-fallbacks"
   | Perspective -> Pp.string ctx "perspective"
   | Perspective_origin -> Pp.string ctx "perspective-origin"
   | Transform_style -> Pp.string ctx "transform-style"
@@ -6841,6 +6844,9 @@ let read_any_property t =
   | "container-name" -> Prop Container_name
   | "container-type" -> Prop Container_type
   | "container" -> Prop Container
+  | "anchor-name" -> Prop Anchor_name
+  | "position-anchor" -> Prop Position_anchor
+  | "position-try-fallbacks" -> Prop Position_try_fallbacks
   | "content-visibility" -> Prop Content_visibility
   | "direction" -> Prop Direction
   | "fill" -> Prop Fill
@@ -7747,6 +7753,9 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Mask_origin -> pp pp_mask_box
   | Mask_type -> pp pp_mask_type
   | Container_name -> pp Pp.string
+  | Anchor_name -> pp Pp.string
+  | Position_anchor -> pp Pp.string
+  | Position_try_fallbacks -> pp (Pp.list ~sep:Pp.comma Pp.string)
   | Perspective_origin -> pp pp_perspective_origin
   | Object_position -> pp pp_position_value
   | Rotate -> pp pp_rotate_value

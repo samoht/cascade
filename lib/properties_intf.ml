@@ -1697,6 +1697,9 @@ type 'a property =
   | Container_type : container_type property
   | Container_name : string property
   | Container : container_shorthand property
+  | Anchor_name : string property
+  | Position_anchor : string property
+  | Position_try_fallbacks : string list property
   | Perspective : length property
   | Perspective_origin : perspective_origin property
   | Transform_style : transform_style property
