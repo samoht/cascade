@@ -543,7 +543,7 @@ let test_platform_stub_error_identity buf =
         fail (Fmt.str "platform stub returned value-alias error: %S" feature)
     | Ok _ -> fail (Fmt.str "platform stub unexpectedly succeeded: %S" feature)
   in
-  match byte_at buf 0 mod 6 with
+  match byte_at buf 0 mod 7 with
   | 0 ->
       expect "selector matching"
         (Css.Stylesheet.selector_matches_element ~selector:(selector buf 1)
@@ -561,6 +561,9 @@ let test_platform_stub_error_identity buf =
         (Css.Stylesheet.resolve_url_value ~base:"https://example.test/"
            ~url:"image.png")
   | 4 ->
+      expect "HTML presentational hints"
+        (Css.Stylesheet.html_presentational_hints ~element:"<table width=100>")
+  | 5 ->
       expect "CSSOM insertRule"
         (Css.Stylesheet.cssom_insert_rule ~index:0 (rule buf 2) [])
   | _ ->

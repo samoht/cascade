@@ -258,6 +258,14 @@ val load_import_rule :
 (** [load_import_rule rule] is the API entry point for [@import] fetching and
     parsing. It currently returns [Error (Requires_platform_context ...)]. *)
 
+val html_presentational_hints :
+  element:string ->
+  (Declaration.declaration list, value_processing_error) result
+(** [html_presentational_hints ~element] is the API entry point for HTML
+    presentational hints that enter the cascade as author presentational-hint
+    origin declarations. It currently returns
+    [Error (Requires_platform_context ...)]. *)
+
 val cssom_insert_rule :
   index:int ->
   statement ->

@@ -1683,6 +1683,8 @@ let test_spec_platform_boundary_stubs () =
          supports = None;
          media = None;
        });
+  expect_platform_error "HTML presentational hints"
+    (Css.Stylesheet.html_presentational_hints ~element:"<table width=100>");
   expect_platform_error "CSSOM insertRule"
     (Css.Stylesheet.cssom_insert_rule ~index:0
        (Css.Stylesheet.Layer_decl [ "theme" ]) []);

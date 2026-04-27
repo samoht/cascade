@@ -322,22 +322,40 @@ let rec cv_to_buffer_min buf = function
       cvs_to_buffer_min buf arguments;
       Buffer.add_char buf ')'
 
+(* CSS Syntax section 9 fixed-pair separations: certain delim pairs would form a
+   multi-char token (comment, CDO) when emitted adjacently, even though neither
+   token is word-like. Force a separator for those. *)
+and pair_forms_multichar_token prev next =
+  match (prev, next) with
+  | ( Component.Preserved { kind = Token.Delim "/"; _ },
+      Component.Preserved { kind = Token.Delim "*"; _ } )
+  | ( Component.Preserved { kind = Token.Delim "*"; _ },
+      Component.Preserved { kind = Token.Delim "/"; _ } )
+  | ( Component.Preserved { kind = Token.Delim "<"; _ },
+      Component.Preserved { kind = Token.Delim "!"; _ } ) ->
+      true
+  | _ -> false
+
 and cvs_to_buffer_min buf cvs =
   let rec drop_ws = function
     | cv :: rest when is_whitespace cv -> drop_ws rest
     | other -> other
+  in
+  let needs_separator prev next =
+    match prev with
+    | None -> false
+    | Some p ->
+        pair_forms_multichar_token p next
+        || word_like_end p
+           && (not (is_backslash_delim p))
+           && word_like_start next
   in
   let rec loop prev = function
     | [] -> ()
     | cv :: rest when is_whitespace cv ->
         let rest' = drop_ws rest in
         (match rest' with
-        | next :: _
-          when (match prev with
-                 | Some p -> word_like_end p && not (is_backslash_delim p)
-                 | None -> false)
-               && word_like_start next ->
-            Buffer.add_char buf ' '
+        | next :: _ when needs_separator prev next -> Buffer.add_char buf ' '
         | _ -> ());
         loop prev rest'
     | cv :: rest ->
