@@ -2269,7 +2269,7 @@ let spec_property_grammar_edges () =
   neg_cursor read_clip_path "xywh(0 0)";
   neg_cursor read_content "counter()"
 
-let spec_ui_more_edges () =
+let spec_ui_property_edges () =
   check_text_wrap "pretty";
   check_text_wrap "balance";
   check_white_space "break-spaces";
@@ -2288,7 +2288,7 @@ let spec_ui_more_edges () =
   neg_cursor read_appearance "base button";
   neg_cursor read_user_select "none text"
 
-let spec_mask_more_edges () =
+let spec_mask_clip_property_edges () =
   check_mask_box "view-box";
   check_mask_box "stroke-box";
   check_mask_mode "match-source";
@@ -2370,8 +2370,9 @@ let tests =
     test_case "pp property value" `Quick test_pp_property_value;
     test_case "spec current property grammar edges" `Quick
       spec_property_grammar_edges;
-    test_case "spec ui more edges" `Quick spec_ui_more_edges;
-    test_case "spec mask more edges" `Quick spec_mask_more_edges;
+    test_case "spec UI property edges" `Quick spec_ui_property_edges;
+    test_case "spec mask and clip property edges" `Quick
+      spec_mask_clip_property_edges;
   ]
 
 let test_will_change () =

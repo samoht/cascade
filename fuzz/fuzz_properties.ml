@@ -16,6 +16,84 @@ let byte_at buf i =
 
 let pick xs buf i = List.nth xs (byte_at buf i mod List.length xs)
 
+let find_sub s pat start =
+  let s_len = String.length s and pat_len = String.length pat in
+  let rec loop i =
+    if i + pat_len > s_len then None
+    else if String.sub s i pat_len = pat then Some i
+    else loop (i + 1)
+  in
+  loop start
+
+let quoted_strings s =
+  let rec loop acc i =
+    match find_sub s "\"" i with
+    | None -> List.rev acc
+    | Some start -> (
+        match find_sub s "\"" (start + 1) with
+        | None -> List.rev acc
+        | Some stop ->
+            let value = String.sub s (start + 1) (stop - start - 1) in
+            loop (value :: acc) (stop + 1))
+  in
+  loop [] 0
+
+let source_slice s ~first ~last =
+  match (find_sub s first 0, find_sub s last 0) with
+  | Some start, Some stop when stop > start -> String.sub s start (stop - start)
+  | _ -> ""
+
+let read_source_file path =
+  let ic = open_in path in
+  Fun.protect
+    ~finally:(fun () -> close_in_noerr ic)
+    (fun () ->
+      let len = in_channel_length ic in
+      really_input_string ic len)
+
+let deterministic_manifest_properties =
+  lazy
+    (let source =
+       try read_source_file "test/test_declaration.ml"
+       with Sys_error _ -> read_source_file "../test/test_declaration.ml"
+     in
+     let manifest =
+       source_slice source ~first:"type property_grammar_row"
+         ~last:"let spec_property_grammar_manifest"
+     in
+     let rec property_fields acc i =
+       match find_sub manifest "property = \"" i with
+       | None -> acc
+       | Some start -> (
+           let value_start = start + String.length "property = \"" in
+           match find_sub manifest "\"" value_start with
+           | None -> acc
+           | Some stop ->
+               let property =
+                 String.sub manifest value_start (stop - value_start)
+               in
+               property_fields (property :: acc) (stop + 1))
+     in
+     let rec property_row_blocks acc i =
+       match find_sub manifest "property_grammar_rows" i with
+       | None -> acc
+       | Some start -> (
+           match find_sub manifest "[" start with
+           | None -> acc
+           | Some block_start -> (
+               match find_sub manifest "]" block_start with
+               | None -> acc
+               | Some block_stop ->
+                   let block =
+                     String.sub manifest block_start (block_stop - block_start)
+                   in
+                   property_row_blocks
+                     (quoted_strings block @ acc)
+                     (block_stop + 1)))
+     in
+     let names = property_fields [] 0 @ property_row_blocks [] 0 in
+     List.sort_uniq String.compare names)
+
 let check_reader reader printer input =
   let r = Css.Cursor.of_string input in
   match try Some (reader r) with Css.Cursor.Parse_error _ -> None with
@@ -405,6 +483,24 @@ let property_grammar_vectors =
     vector "field-sizing" Css.Properties.read_field_sizing
       Css.Properties.pp_field_sizing [ "fixed"; "content" ]
       [ "auto"; "fixed content" ];
+    vector "text-decoration-line" Css.Properties.read_text_decoration_line
+      Css.Properties.pp_text_decoration_line
+      [ "none"; "underline"; "underline overline line-through" ]
+      [ "none underline"; "underline underline" ];
+    vector "text-decoration-style" Css.Properties.read_text_decoration_style
+      Css.Properties.pp_text_decoration_style
+      [ "solid"; "double"; "dotted"; "wavy" ]
+      [ "solid wavy"; "none" ];
+    vector "font-style" Css.Properties.read_font_style
+      Css.Properties.pp_font_style
+      [ "normal"; "italic"; "oblique"; "oblique 20deg" ]
+      [ "italic normal"; "oblique 20px" ];
+    vector "table-layout" Css.Properties.read_table_layout
+      Css.Properties.pp_table_layout [ "auto"; "fixed" ]
+      [ "fixed auto"; "block" ];
+    vector "border-collapse" Css.Properties.read_border_collapse
+      Css.Properties.pp_border_collapse [ "collapse"; "separate" ]
+      [ "collapse separate"; "none" ];
   ]
 
 let test_property_grammar_manifest_valid buf =
@@ -428,6 +524,39 @@ let test_property_grammar_manifest_has_both_kinds _buf =
         fail (Fmt.str "%s fuzz row has no negative vectors" row.property))
     property_grammar_vectors
 
+let test_deterministic_manifest_css_wide_generation buf =
+  let properties = Lazy.force deterministic_manifest_properties in
+  if List.length properties < 346 then
+    fail
+      (Fmt.str
+         "deterministic property manifest extraction drifted: only %d rows"
+         (List.length properties));
+  let property = pick properties buf 0 in
+  let keyword =
+    pick [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ] buf 1
+  in
+  let input = property ^ ":" ^ keyword in
+  let c = Css.Cursor.of_string input in
+  match Css.Declaration.read_declaration c with
+  | None ->
+      fail
+        (Fmt.str
+           "deterministic manifest CSS-wide generated declaration rejected: %S"
+           input)
+  | Some decl -> (
+      let serialized =
+        Css.Declaration.string_of_declaration ~minify:true decl
+      in
+      let c2 = Css.Cursor.of_string serialized in
+      match Css.Declaration.read_declaration c2 with
+      | Some reparsed when decl = reparsed -> ()
+      | _ ->
+          fail
+            (Fmt.str
+               "deterministic manifest CSS-wide declaration did not \
+                structurally roundtrip: %S -> %S"
+               input serialized))
+
 let suite =
   ( "properties",
     [
@@ -445,4 +574,6 @@ let suite =
         test_property_grammar_manifest_invalid;
       test_case "property grammar manifest row shape" [ bytes ]
         test_property_grammar_manifest_has_both_kinds;
+      test_case "deterministic manifest CSS-wide generated vectors" [ bytes ]
+        test_deterministic_manifest_css_wide_generation;
     ] )

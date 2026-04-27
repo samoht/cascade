@@ -666,9 +666,20 @@ let record_consume t tok =
   t.history <- tok :: t.history;
   List.iter (fun save -> save.trace := tok :: !(save.trace)) t.saves
 
+(* True iff the previous emitted token was a [Url(...)] AND no separator
+   (whitespace or comment) follows. The next [url(...)] in that case would
+   otherwise re-enter the lexer's url branch and merge with the previous token;
+   treat it as a function-call instead so the two stay distinct. Per CSS Syntax
+   4.3.2, comments behave like whitespace, so a [/* */] between the two urls
+   also disarms this guard. *)
 let force_url_function t =
   match t.history with
-  | { kind = Url _; loc; _ } :: _ -> loc.end_pos = Reader.position t.reader
+  | { kind = Url _; loc; _ } :: _ when loc.end_pos = Reader.position t.reader
+    -> (
+      match Reader.peek t.reader with
+      | Some c when is_ws c -> false
+      | Some _ when Reader.looking_at t.reader "/*" -> false
+      | _ -> true)
   | _ -> false
 
 let next t =

@@ -573,7 +573,7 @@ let ident_with_escapes () =
   Alcotest.(check string) "multiple escapes" "123" id
 
 (* Additional identifier edge cases *)
-let ident_more_edges () =
+let ident_escape_boundary_edges () =
   (* Escaped leading digit should form a valid ident starting with digit *)
   let r = of_string "\\31 abc" in
   Alcotest.(check string) "escape-leading-digit" "1abc" (ident r);
@@ -1424,7 +1424,7 @@ let tests_backtracking () =
 let tests_idents () =
   ident_case ();
   ident_with_escapes ();
-  ident_more_edges ()
+  ident_escape_boundary_edges ()
 
 let tests_enums () =
   enum_case ();

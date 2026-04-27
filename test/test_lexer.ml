@@ -286,22 +286,26 @@ let spec_escape_boundary_edges () =
   check "\"\\26#\"" "<string &#>";
   check "\"\\26 #\"" "<string &#>"
 
-let spec_wpt_tokenizer_matrix_more () =
-  (* WPT css-syntax vectors distilled into token-level assertions for branches
-     that historically drift: decimal starts, CDC vs ident, escaped EOF, URL
-     whitespace, and inclusive unicode ranges. *)
+let spec_wpt_numeric_token_edges () =
+  (* WPT css-syntax decimal-points-in-numbers vectors. *)
   check ".5 -.5 +.5 .e1"
     "<number .5> <ws> <number -.5> <ws> <number +.5> <ws> <delim '.'> <ident \
-     e1>";
+     e1>"
+
+let spec_wpt_cdc_escape_edges () =
+  (* WPT cdc-vs-ident-tokens and escaped-eof vectors. *)
   check "--> -->a --a" "<CDC> <ws> <CDC> <ident a> <ws> <ident --a>";
   check "\\\n\\\r\n\\\r\\\012"
-    "<delim '\\'> <ws> <delim '\\'> <ws> <delim '\\'> <ws> <delim '\\'> <ws>";
+    "<delim '\\'> <ws> <delim '\\'> <ws> <delim '\\'> <ws> <delim '\\'> <ws>"
+
+let spec_wpt_url_unicode_edges () =
+  (* WPT url-whitespace-consumption and inclusive-ranges vectors. *)
   check "url(  \tfoo\\ bar\n )" "<url foo bar>";
   check "url(foo)/**/url(bar)" "<url foo> <url bar>";
   check "U+000000-10FFFF U+10FFFF U+110000"
     "<unicode-range U+0-10FFFF> <ws> <unicode-range U+10FFFF> <ws> \
      <unicode-range U+110000>";
-  check "a<!--b-->c" "<ident a> <CDO> <ident b--> <ident c>"
+  check "a<!--b-->c" "<ident a> <CDO> <ident b--> <delim '>'> <ident c>"
 
 (* Per 4.3.5, a newline inside a string produces a <bad-string> token; the
    newline is not consumed and becomes a subsequent <whitespace>. *)
@@ -358,8 +362,12 @@ let suite =
         spec_token_boundary_edges;
       Alcotest.test_case "spec escape boundary edges" `Quick
         spec_escape_boundary_edges;
-      Alcotest.test_case "spec WPT tokenizer matrix edges" `Quick
-        spec_wpt_tokenizer_matrix_more;
+      Alcotest.test_case "spec WPT numeric token edges" `Quick
+        spec_wpt_numeric_token_edges;
+      Alcotest.test_case "spec WPT CDC and escape edges" `Quick
+        spec_wpt_cdc_escape_edges;
+      Alcotest.test_case "spec WPT URL and unicode-range edges" `Quick
+        spec_wpt_url_unicode_edges;
       Alcotest.test_case "bad string" `Quick bad_string;
       Alcotest.test_case "bad url" `Quick bad_url;
     ] )

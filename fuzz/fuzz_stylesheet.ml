@@ -712,6 +712,74 @@ let test_invalid_at_rule_descriptor_vector buf =
         (Fmt.str "invalid spec at-rule vector parsed: %S -> %S" input
            (minified_stylesheet ss))
 
+let test_font_face_descriptor_matrix buf =
+  let input =
+    pick
+      [
+        "@font-face { font-family: Brand; src: local(\"Brand\"), \
+         url(brand.woff2) format(\"woff2\"); font-weight: 100 900; }";
+        "@font-face { font-family: Metrics; src: url(metrics.woff2); \
+         size-adjust: 100%; ascent-override: normal; descent-override: 20%; \
+         line-gap-override: 0%; }";
+      ]
+      buf 0
+  in
+  match parse_stylesheet input with
+  | None -> fail (Fmt.str "font-face descriptor vector rejected: %S" input)
+  | Some ss ->
+      if minified_stylesheet ss = "" then
+        fail "font-face vector serialized empty"
+
+let test_invalid_font_face_descriptor_matrix buf =
+  let input =
+    pick
+      [
+        "@font-face { font-family: Brand; src: url(brand.woff2); font-weight: \
+         900 100 }";
+        "@font-face { font-family: Brand; src: url(brand.woff2); \
+         ascent-override: 120%; }";
+      ]
+      buf 0
+  in
+  match parse_stylesheet input with
+  | None -> ()
+  | Some ss ->
+      fail
+        (Fmt.str "invalid font-face descriptor parsed: %S -> %S" input
+           (minified_stylesheet ss))
+
+let test_page_margin_descriptor_matrix buf =
+  let input =
+    pick
+      [
+        "@page chapter:right { size: letter landscape; margin: 1in; @right-top \
+         { content: counter(page) } }";
+        "@page :left { margin-left: 3cm; @left-middle { content: \
+         string(chapter) } }";
+      ]
+      buf 0
+  in
+  match parse_stylesheet input with
+  | None -> fail (Fmt.str "page margin descriptor vector rejected: %S" input)
+  | Some ss ->
+      if minified_stylesheet ss = "" then fail "page vector serialized empty"
+
+let test_invalid_page_margin_descriptor_matrix buf =
+  let input =
+    pick
+      [
+        "@page :first:left { margin: 1cm }";
+        "@page { @top-center { display: block } }";
+      ]
+      buf 0
+  in
+  match parse_stylesheet input with
+  | None -> ()
+  | Some ss ->
+      fail
+        (Fmt.str "invalid page descriptor parsed: %S -> %S" input
+           (minified_stylesheet ss))
+
 let test_property_value_context buf =
   let open Css.Values in
   let name = pick [ "--a"; "--registered"; "--empty"; "--cycle" ] buf 0 in
@@ -884,6 +952,14 @@ let suite =
         test_valid_at_rule_descriptor_vector;
       test_case "invalid at-rule descriptor vectors rejected" [ bytes ]
         test_invalid_at_rule_descriptor_vector;
+      test_case "font-face descriptor matrix" [ bytes ]
+        test_font_face_descriptor_matrix;
+      test_case "invalid font-face descriptor matrix rejected" [ bytes ]
+        test_invalid_font_face_descriptor_matrix;
+      test_case "page margin descriptor matrix" [ bytes ]
+        test_page_margin_descriptor_matrix;
+      test_case "invalid page margin descriptor matrix rejected" [ bytes ]
+        test_invalid_page_margin_descriptor_matrix;
       test_case "property value context invariant" [ bytes ]
         test_property_value_context;
       test_case "CSS Syntax recovery keeps sibling rules" [ bytes ]
