@@ -71,9 +71,10 @@ let test_stylesheet () =
   (* Test stylesheet with comments - comments are stripped in minified output *)
   check_stylesheet ~expected:".btn{color:red}" "/*comment*/.btn{color:red}";
 
-  check_stylesheet ~expected:"@media (min-width: 768px){.a{display:block}}"
+  check_stylesheet ~expected:"@media (min-width:768px){.a{display:block}}"
     "@media (min-width: 768px) { .a { display: block } }";
   check_stylesheet
+    ~expected:"@media screen and (max-width:640px){.btn{font-size:.875rem}}"
     "@media screen and (max-width: 640px){.btn{font-size:.875rem}}";
   check_stylesheet ~expected:"@media screen{.test{color:blue}}"
     "@media screen { .test { color: blue } }";
@@ -1135,7 +1136,7 @@ let test_complex_values () =
 let test_nested_rules () =
   check_stylesheet
     ~expected:
-      "@media (min-width: 768px){@supports (display:grid){.grid{display:grid}}}"
+      "@media (min-width:768px){@supports (display:grid){.grid{display:grid}}}"
     "@media (min-width: 768px) { @supports (display: grid) { .grid { display: \
      grid; } } }";
   check_stylesheet
@@ -1143,8 +1144,8 @@ let test_nested_rules () =
     "@layer base { @media print { .print-only { display: block; } } }";
   check_stylesheet
     ~expected:
-      "@container (width > 400px){@media (orientation: \
-       landscape){.landscape{color:green}}}"
+      "@container (width > 400px){@media \
+       (orientation:landscape){.landscape{color:green}}}"
     "@container (width > 400px) { @media (orientation: landscape) { .landscape \
      { color: green; } } }"
 
@@ -1952,10 +1953,10 @@ let custom_property_boundary () =
      initial-value: 10px }"
 
 let spec_current_at_rules () =
-  check_stylesheet ~expected:"@media (dynamic-range: high){.photo{color:red}}"
+  check_stylesheet ~expected:"@media (dynamic-range:high){.photo{color:red}}"
     "@media (dynamic-range: high) { .photo { color: red } }";
   check_stylesheet
-    ~expected:"@media (prefers-reduced-data: reduce){.hero{display:none}}"
+    ~expected:"@media (prefers-reduced-data:reduce){.hero{display:none}}"
     "@media (prefers-reduced-data: reduce) { .hero { display: none } }";
   check_stylesheet
     ~expected:"@supports selector(:has(img)){.card{display:block}}"
@@ -2031,8 +2032,8 @@ let test_spec_snapshot_tracking_vectors () =
      } }";
   check_stylesheet
     ~expected:
-      ".card{color:var(--fg);@media (prefers-color-scheme: \
-       dark){&{color:white}}}"
+      ".card{color:var(--fg);@media \
+       (prefers-color-scheme:dark){&{color:white}}}"
     ".card { color: var(--fg); @media (prefers-color-scheme: dark) { & { \
      color: white } } }";
   neg_cursor read_stylesheet "@layer reset,,base;";
@@ -2101,7 +2102,7 @@ let test_nesting_multiple () =
 let test_nesting_media () =
   (* Nested @media query inside a rule *)
   test_nesting_roundtrip
-    ~expected:".foo{color:red;@media (min-width: 768px){color:blue;}}"
+    ~expected:".foo{color:red;@media (min-width:768px){color:blue;}}"
     ".foo { color: red; @media (min-width: 768px) { color: blue; } }";
   test_nesting_idempotent
     ".foo { color: red; @media (min-width: 768px) { color: blue; } }"
