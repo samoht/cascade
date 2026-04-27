@@ -17,32 +17,32 @@ let test_to_string () =
   Alcotest.(check string) "print" "print" (to_string Print);
   Alcotest.(check string)
     "media queries 5 dynamic range" "(dynamic-range: high)"
-    (to_string (Raw "(dynamic-range: high)"));
+    (to_string (of_string "(dynamic-range: high)"));
   Alcotest.(check string)
     "media queries 5 reduced data" "(prefers-reduced-data: reduce)"
-    (to_string (Raw "(prefers-reduced-data: reduce)"));
+    (to_string (of_string "(prefers-reduced-data: reduce)"));
   Alcotest.(check string)
     "media queries range comparison" "(width >= 40em)"
-    (to_string (Raw "(width >= 40em)"));
+    (to_string (of_string "(width >= 40em)"));
   Alcotest.(check string)
     "media queries chained range" "(30em <= width < 60em)"
-    (to_string (Raw "(30em <= width < 60em)"));
+    (to_string (of_string "(30em <= width < 60em)"));
   Alcotest.(check string)
     "media queries hdr" "(video-dynamic-range: high)"
-    (to_string (Raw "(video-dynamic-range: high)"));
+    (to_string (of_string "(video-dynamic-range: high)"));
   Alcotest.(check string)
     "media queries update" "(update: fast)"
-    (to_string (Raw "(update: fast)"));
+    (to_string (of_string "(update: fast)"));
   Alcotest.(check string)
     "media queries scripting" "(scripting: enabled)"
-    (to_string (Raw "(scripting: enabled)"));
+    (to_string (of_string "(scripting: enabled)"));
   Alcotest.(check string)
     "media queries prefers contrast" "(prefers-contrast: more)"
-    (to_string (Raw "(prefers-contrast: more)"))
+    (to_string (of_string "(prefers-contrast: more)"))
 
 let spec_media_l45_vectors () =
   let check_raw name input =
-    Alcotest.(check string) name input (to_string (Raw input))
+    Alcotest.(check string) name input (to_string (of_string input))
   in
   check_raw "range greater than" "(width > 40em)";
   check_raw "range greater equal" "(width >= 40em)";
@@ -138,10 +138,10 @@ let spec_media_eval_boundary () =
       (Print, "print");
       (Min_width 640., "screen width=800px");
       (Max_width 640., "screen width=320px");
-      (Raw "(width >= 40em)", "screen width=50em");
-      (Raw "(30em <= width < 60em)", "screen width=45em");
-      (Raw "(prefers-reduced-data: reduce)", "reduced-data");
-      (Raw "(dynamic-range: high)", "hdr");
+      (of_string "(width >= 40em)", "screen width=50em");
+      (of_string "(30em <= width < 60em)", "screen width=45em");
+      (of_string "(prefers-reduced-data: reduce)", "reduced-data");
+      (of_string "(dynamic-range: high)", "hdr");
       (Negated Print, "screen");
     ]
 
@@ -163,7 +163,8 @@ let spec_media_query_vectors () =
     ]
   in
   List.iter
-    (fun input -> Alcotest.(check string) input input (to_string (Raw input)))
+    (fun input ->
+      Alcotest.(check string) input input (to_string (of_string input)))
     raw_cases
 
 let suite =

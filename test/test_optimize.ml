@@ -302,7 +302,8 @@ let media_queries () =
   in
 
   let media_stmt =
-    Css.Stylesheet.Media (Css.Media.Raw "screen", [ Css.Stylesheet.Rule rule ])
+    Css.Stylesheet.Media
+      (Css.Media.of_string "screen", [ Css.Stylesheet.Rule rule ])
   in
 
   let stylesheet = [ media_stmt ] in
@@ -2369,7 +2370,7 @@ let c64_conditional_layer_decls_nested () =
   let input =
     [
       Css.Stylesheet.Media
-        ( Css.Media.Raw "(min-width:30em)",
+        ( Css.Media.of_string "(min-width:30em)",
           [
             Css.Stylesheet.Layer
               ( Some "layout",

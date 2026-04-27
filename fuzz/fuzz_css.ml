@@ -25,7 +25,8 @@ let generated_stylesheet buf =
   Css.v
     [
       Css.rule ~selector:(selector "card") [ color 0 ];
-      Css.media ~condition:(Css.Media.Raw "(width >= 40em)")
+      Css.media
+        ~condition:(Css.Media.of_string "(width >= 40em)")
         [
           Css.supports
             ~condition:(Css.Supports.Property ("display", "grid"))
@@ -52,7 +53,8 @@ let generated_api_stylesheet buf =
       Css.layer ~name:"theme"
         [
           Css.rule ~selector:(selector "root") [ prop 0 ];
-          Css.media ~condition:(Css.Media.Raw "(prefers-color-scheme: dark)")
+          Css.media
+            ~condition:(Css.Media.of_string "(prefers-color-scheme: dark)")
             [ Css.rule ~selector:(selector "dark") [ prop 2 ] ];
         ];
       Css.layer ~name:"utilities"
@@ -60,7 +62,8 @@ let generated_api_stylesheet buf =
       Css.rule ~selector:(selector "card")
         ~nested:
           [
-            Css.media ~condition:(Css.Media.Raw "(width >= 40em)")
+            Css.media
+              ~condition:(Css.Media.of_string "(width >= 40em)")
               [
                 Css.rule ~selector:(selector "wide")
                   [ Css.color (Css.hex "#0000ff") ];

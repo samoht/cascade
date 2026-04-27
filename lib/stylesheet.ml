@@ -815,7 +815,7 @@ let read_import_prelude ~keep_url_repr (r : Cursor.t) : import_rule =
   Cursor.ws r;
   let media =
     if Cursor.peek_semicolon r || Cursor.is_done r then None
-    else Some (Media.Raw (Cursor.consume_to_semicolon ~trim:true r))
+    else Some (Media.of_string (Cursor.consume_to_semicolon ~trim:true r))
   in
   if Cursor.peek_semicolon r then Cursor.skip r;
   { url; layer; supports; media }
@@ -1036,7 +1036,7 @@ and read_media (r : Cursor.t) : statement =
   if String.length condition_str = 0 then
     Cursor.err r "@media rule requires a media query condition";
   let content = Cursor.braces (fun inner -> read_block inner) r in
-  Media (Media.Raw condition_str, content)
+  Media (Media.of_string condition_str, content)
 
 and read_supports (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "supports" r;
@@ -1249,7 +1249,7 @@ and read_nested_at_rule (r : Cursor.t) (at_rule : string)
   | "@media" ->
       let condition_str = Cursor.drain_until_block_to_string ~trim:true r in
       let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
-      Media (Media.Raw condition_str, content)
+      Media (Media.of_string condition_str, content)
   | _ -> Cursor.err_invalid r ("Unexpected nested at-rule: " ^ at_rule)
 
 and read_nested_at_within_rule (r : Cursor.t) (selector : Selector.t) :
