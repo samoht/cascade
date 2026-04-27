@@ -34,3 +34,9 @@ val reconsume : t -> Token.t -> unit
 
 val is_done : t -> bool
 (** [is_done t] is [true] when no more tokens remain. *)
+
+val is_non_ascii_ident_cp : int -> bool
+(** [is_non_ascii_ident_cp cp] is the CSS Syntax section 4.2 predicate: is [cp]
+    one of the non-ASCII code points allowed inside an ident sequence? Exposed
+    for serialisers that decide whether to emit a code point verbatim or
+    hex-escape it. *)

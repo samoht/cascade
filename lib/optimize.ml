@@ -978,6 +978,9 @@ and process_statements (acc : statement list) (remaining : statement list) :
       (* Recursively optimize supports block content *)
       let optimized = Supports (cond, statements block) in
       process_statements (optimized :: acc) rest
+  | Origin (origin, block) :: rest ->
+      let optimized = Origin (origin, statements block) in
+      process_statements (optimized :: acc) rest
   | Layer (name, block) :: rest ->
       let optimized_block = statements block in
       if is_layer_empty optimized_block then
@@ -1044,6 +1047,8 @@ let apply_property_duplication (stylesheet : t) : t =
             Container (name, cond, apply_to_statements inner_stmts)
         | Supports (cond, inner_stmts) ->
             Supports (cond, apply_to_statements inner_stmts)
+        | Origin (origin, inner_stmts) ->
+            Origin (origin, apply_to_statements inner_stmts)
         | other -> other)
       stmts
   in

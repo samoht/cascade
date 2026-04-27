@@ -20,6 +20,17 @@ let media_nested ~condition declarations =
 let container ?name ~condition content = Container (name, condition, content)
 let supports ~condition content = Supports (condition, content)
 let starting_style content = Starting_style content
+let with_origin cascade_origin content = Origin (cascade_origin, content)
+
+let origin_importance_rank ~important = function
+  | Transition -> 8
+  | User_agent when important -> 7
+  | User when important -> 6
+  | Author when important -> 5
+  | Animation -> 4
+  | Author -> 3
+  | User -> 2
+  | User_agent -> 1
 
 let starting_style_nested declarations =
   Starting_style [ Declarations declarations ]
@@ -271,6 +282,7 @@ and pp_statement : statement Pp.t =
   | Starting_style content ->
       Pp.string ctx "@starting-style";
       Pp.braces pp_block ctx content
+  | Origin (_, content) -> pp_block ctx content
   | Scope (start, end_, content) ->
       Pp.string ctx "@scope";
       (match start with
@@ -1158,6 +1170,7 @@ let rec vars_of_statement (stmt : statement) : Variables.any_var list =
   | Supports (_, block)
   | Layer (_, block)
   | Starting_style block
+  | Origin (_, block)
   | Scope (_, _, block) ->
       vars_of_block block
   | Font_face _ -> [] (* Font-face descriptors don't contribute CSS variables *)

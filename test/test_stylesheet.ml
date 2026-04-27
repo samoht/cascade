@@ -1077,6 +1077,124 @@ let test_layer_roundtrip () =
   test_css ~expected:"@layer components;@layer utilities;"
     "@layer components{}@layer utilities{}"
 
+(* Not a roundtrip test *)
+let test_spec_cascade_section_6_4_layer_name_syntax () =
+  (* CSS Cascade section 6.4.2: a layer name is a dot-separated list of idents
+     with no whitespace around dots; CSS-wide keywords are reserved. *)
+  check_stylesheet ~expected:"@layer framework.theme{blockquote{display:block}}"
+    "@layer framework.theme { blockquote { display: block } }";
+  check_stylesheet ~expected:"@layer framework.base,framework.theme;"
+    "@layer framework.base, framework.theme;";
+  check_stylesheet
+    ~expected:
+      "@layer reset.type{strong{font-weight:bold}}@layer \
+       reset{[hidden]{display:none}}"
+    "@layer reset.type { strong { font-weight: bold } } @layer reset { \
+     [hidden] { display: none } }";
+  neg_cursor read_stylesheet
+    "@layer framework . theme { blockquote { display: block } }";
+  neg_cursor read_stylesheet "@layer initial { blockquote { display: block } }";
+  neg_cursor read_stylesheet
+    "@layer framework.revert-layer { blockquote { display: block } }"
+
+(* Not a roundtrip test *)
+let test_spec_cascade_section_6_4_layer_nesting_examples () =
+  (* CSS Cascade sections 6.4.2 and 6.4.3: dotted layer names are shorthand for
+     nested layer segments; nested names do not escape their parent layer. *)
+  check_stylesheet
+    ~expected:
+      "@layer base{p{max-width:70ch}}@layer framework{@layer \
+       base{p{margin-block:.75em}}@layer theme{p{color:#222222}}}@layer \
+       framework.theme{blockquote{color:rebeccapurple}}"
+    "@layer base { p { max-width: 70ch } } @layer framework { @layer base { p \
+     { margin-block: 0.75em } } @layer theme { p { color: #222 } } } @layer \
+     framework.theme { blockquote { color: rebeccapurple } }";
+  check_stylesheet
+    ~expected:
+      "@layer reset.type{strong{font-weight:bold}}@layer \
+       framework{.title{font-weight:100}@layer \
+       theme{h1,h2{color:maroon}}}@layer reset{[hidden]{display:none}}"
+    "@layer reset.type { strong { font-weight: bold } } @layer framework { \
+     .title { font-weight: 100 } @layer theme { h1, h2 { color: maroon } } } \
+     @layer reset { [hidden] { display: none } }"
+
+(* Not a roundtrip test *)
+let test_spec_cascade_section_6_4_layer_statement_edges () =
+  (* CSS Cascade section 6.4.4.2: statement @layer accepts one or more layer
+     names, can appear before imports, and declares names in source order. *)
+  check_stylesheet
+    ~expected:
+      "@layer default,theme,components;@import url(theme.css) \
+       layer(theme);@layer default{audio[controls]{display:block}}"
+    "@layer default, theme, components; @import url(theme.css) layer(theme); \
+     @layer default { audio[controls] { display: block } }";
+  check_stylesheet
+    ~expected:
+      "@layer default;@import url(theme.css) layer(theme);@layer \
+       components;@layer default{audio[controls]{display:block}}"
+    "@layer default; @import url(theme.css) layer(theme); @layer components; \
+     @layer default { audio[controls] { display: block } }";
+  check_stylesheet ~expected:"@layer framework.base,framework.theme;"
+    "@layer framework.base, framework.theme;";
+  neg_cursor read_stylesheet "@layer;";
+  neg_cursor read_stylesheet "@layer , theme;";
+  neg_cursor read_stylesheet "@layer default, { audio { display: block } }";
+  neg_cursor read_stylesheet
+    "@layer default, theme { audio { display: block } }"
+
+(* Not a roundtrip test *)
+let test_spec_cascade_section_6_4_anonymous_layer_edges () =
+  (* CSS Cascade section 6.4.2.1: anonymous layers are valid block @layer rules
+     but cannot be referenced by name from outside the block. *)
+  check_stylesheet
+    ~expected:
+      "@layer{.private{color:red}}@layer{.private{display:block}}@layer public;"
+    "@layer { .private { color: red } } @layer { .private { display: block } } \
+     @layer public;";
+  check_stylesheet
+    ~expected:
+      "@layer{@layer foo{.inside{color:red}}@layer foo{.inside{display:block}}}"
+    "@layer { @layer foo { .inside { color: red } } @layer foo { .inside { \
+     display: block } } }";
+  check_stylesheet
+    ~expected:
+      "@layer{@layer foo{.inside{color:red}}}@layer{@layer \
+       foo{.inside{display:block}}}"
+    "@layer { @layer foo { .inside { color: red } } } @layer { @layer foo { \
+     .inside { display: block } } }"
+
+(* Not a roundtrip test *)
+let test_spec_cascade_section_6_4_import_layer_syntax () =
+  (* CSS Cascade section 6.4.1: @import can assign an imported sheet to a named
+     layer with layer(<layer-name>) or to an anonymous layer with layer. *)
+  check_import_rule ~expected:"@import \"headings.css\" layer(default);"
+    "@import url(headings.css) layer(default);";
+  check_import_rule ~expected:"@import \"links.css\" layer(default) screen;"
+    "@import url(links.css) layer(default) screen;";
+  check_import_rule ~expected:"@import \"theme.css\" layer(framework.theme);"
+    "@import url(theme.css) layer(framework.theme);";
+  check_import_rule ~expected:"@import \"base-forms.css\" layer;"
+    "@import url(base-forms.css) layer;";
+  neg_cursor read_import_rule "@import url(theme.css) layer(initial);";
+  neg_cursor read_import_rule "@import url(theme.css) layer(framework . theme);";
+  neg_cursor read_import_rule "@import url(theme.css) layer(framework,theme);"
+
+(* Not a roundtrip test *)
+let test_spec_cascade_section_6_4_invalid_layer_names () =
+  (* CSS Cascade section 6.4.2 reserves CSS-wide keywords in every layer-name
+     segment, and the <layer-name> grammar has no empty segments. *)
+  List.iter
+    (fun keyword ->
+      neg_cursor read_stylesheet ("@layer " ^ keyword ^ " { .x { color: red } }");
+      neg_cursor read_stylesheet
+        ("@layer framework." ^ keyword ^ " { .x { color: red } }"))
+    [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ];
+  neg_cursor read_stylesheet "@layer framework..theme { .x { color: red } }";
+  neg_cursor read_stylesheet "@layer .framework { .x { color: red } }";
+  neg_cursor read_stylesheet "@layer framework. { .x { color: red } }";
+  neg_cursor read_stylesheet "@layer framework.theme. { .x { color: red } }";
+  neg_cursor read_stylesheet "@layer InHeRiT { .x { color: red } }"
+
 (** {2 CSS Nesting Round-trip Tests} *)
 
 (** Helper: parse CSS, print minified, compare to expected *)
@@ -1204,6 +1322,24 @@ let additional_tests =
     ("invalid at-rules", `Quick, test_invalid_at_rules);
     ("invalid functions", `Quick, test_invalid_functions);
     ("layer roundtrip", `Quick, test_layer_roundtrip);
+    ( "spec cascade 6.4 layer name syntax",
+      `Quick,
+      test_spec_cascade_section_6_4_layer_name_syntax );
+    ( "spec cascade 6.4 layer nesting examples",
+      `Quick,
+      test_spec_cascade_section_6_4_layer_nesting_examples );
+    ( "spec cascade 6.4 layer statement edges",
+      `Quick,
+      test_spec_cascade_section_6_4_layer_statement_edges );
+    ( "spec cascade 6.4 anonymous layer edges",
+      `Quick,
+      test_spec_cascade_section_6_4_anonymous_layer_edges );
+    ( "spec cascade 6.4 import layer syntax",
+      `Quick,
+      test_spec_cascade_section_6_4_import_layer_syntax );
+    ( "spec cascade 6.4 invalid layer names",
+      `Quick,
+      test_spec_cascade_section_6_4_invalid_layer_names );
     ( "partial recovery: bad declaration does not poison sibling rule",
       `Quick,
       fun () ->

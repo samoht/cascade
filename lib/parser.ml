@@ -82,28 +82,104 @@ let reconsume t cv =
 
 (** {1 Reserialization} *)
 
+let hex_digit n =
+  if n < 10 then Char.chr (n + Char.code '0')
+  else Char.chr (n - 10 + Char.code 'A')
+
+(* Hex-escape a control byte as "\HH " per CSS Syntax section 9.1. *)
+let add_hex_escape buf c =
+  let code = Char.code c in
+  Buffer.add_char buf '\\';
+  if code >= 0x10 then Buffer.add_char buf (hex_digit (code lsr 4));
+  Buffer.add_char buf (hex_digit (code land 0xF));
+  Buffer.add_char buf ' '
+
+let is_ident_continue_ascii c =
+  (c >= 'a' && c <= 'z')
+  || (c >= 'A' && c <= 'Z')
+  || (c >= '0' && c <= '9')
+  || c = '-' || c = '_'
+
+let add_hex_escape_cp buf cp =
+  Buffer.add_char buf '\\';
+  let rec emit n acc =
+    if n = 0 && acc = [] then Buffer.add_char buf '0'
+    else if n = 0 then List.iter (Buffer.add_char buf) acc
+    else emit (n / 16) (hex_digit (n mod 16) :: acc)
+  in
+  emit cp [];
+  Buffer.add_char buf ' '
+
+let escape_ident s =
+  let n = String.length s in
+  let buf = Buffer.create n in
+  let starts_with_digit = n > 0 && s.[0] >= '0' && s.[0] <= '9' in
+  let starts_dash_digit =
+    n >= 2 && s.[0] = '-' && s.[1] >= '0' && s.[1] <= '9'
+  in
+  let folder () i = function
+    | `Uchar u ->
+        let cp = Uchar.to_int u in
+        if (i = 0 && starts_with_digit) || (i = 1 && starts_dash_digit) then
+          add_hex_escape_cp buf cp
+        else if cp < 0x20 || cp = 0x7F then add_hex_escape_cp buf cp
+        else if cp < 0x80 then
+          if is_ident_continue_ascii (Char.chr cp) then
+            Buffer.add_char buf (Char.chr cp)
+          else (
+            Buffer.add_char buf '\\';
+            Buffer.add_char buf (Char.chr cp))
+        else if Lexer.is_non_ascii_ident_cp cp then Uutf.Buffer.add_utf_8 buf u
+        else add_hex_escape_cp buf cp
+    | `Malformed bs -> Buffer.add_string buf bs
+  in
+  Uutf.String.fold_utf_8 folder () s;
+  Buffer.contents buf
+
+let escape_string ~quote s =
+  let buf = Buffer.create (String.length s + 2) in
+  Buffer.add_char buf quote;
+  String.iter
+    (fun c ->
+      let code = Char.code c in
+      if c = quote || c = '\\' then (
+        Buffer.add_char buf '\\';
+        Buffer.add_char buf c)
+      else if code < 0x20 || code = 0x7F then add_hex_escape buf c
+      else Buffer.add_char buf c)
+    s;
+  Buffer.add_char buf quote;
+  Buffer.contents buf
+
 let token_kind_to_string : Token.kind -> string = function
-  | Token.Ident s -> s
-  | Token.Function s -> s ^ "("
-  | Token.At_keyword s -> "@" ^ s
-  | Token.Hash { value; _ } -> "#" ^ value
-  | Token.String { value; quote } ->
-      let buf = Buffer.create (String.length value + 2) in
-      Buffer.add_char buf quote;
+  | Token.Ident s -> escape_ident s
+  | Token.Function s -> escape_ident s ^ "("
+  | Token.At_keyword s -> "@" ^ escape_ident s
+  | Token.Hash { value; _ } -> "#" ^ escape_ident value
+  | Token.String { value; quote } -> escape_string ~quote value
+  | Token.Bad_string -> ""
+  | Token.Url s ->
+      let buf = Buffer.create (String.length s + 5) in
+      Buffer.add_string buf "url(";
       String.iter
         (fun c ->
-          if c = quote || c = '\\' then Buffer.add_char buf '\\';
-          Buffer.add_char buf c)
-        value;
-      Buffer.add_char buf quote;
+          let code = Char.code c in
+          if code < 0x20 || code = 0x7F then add_hex_escape buf c
+          else if
+            c = '"' || c = '\'' || c = '(' || c = ')' || c = '\\' || c = ' '
+          then (
+            Buffer.add_char buf '\\';
+            Buffer.add_char buf c)
+          else Buffer.add_char buf c)
+        s;
+      Buffer.add_char buf ')';
       Buffer.contents buf
-  | Token.Bad_string -> ""
-  | Token.Url s -> "url(" ^ s ^ ")"
   | Token.Bad_url -> ""
+  | Token.Delim "\\" -> "\\\n"
   | Token.Delim s -> s
   | Token.Number_tok { repr; _ } -> repr
   | Token.Percentage { repr; _ } -> repr ^ "%"
-  | Token.Dimension { number; unit_ } -> number.repr ^ unit_
+  | Token.Dimension { number; unit_ } -> number.repr ^ escape_ident unit_
   | Token.Whitespace -> " "
   | Token.Unicode_range { start_value; end_value } ->
       let hex_digits = "0123456789ABCDEF" in
@@ -144,40 +220,95 @@ let closing_char : Token.bracket -> char = function
   | Paren -> ')'
   | Square -> ']'
 
+let is_backslash_delim = function
+  | Preserved { kind = Token.Delim "\\"; _ } -> true
+  | _ -> false
+
+let is_whitespace = function
+  | Preserved { kind = Token.Whitespace; _ } -> true
+  | _ -> false
+
 let rec cv_to_buffer buf : Component.t -> unit = function
   | Preserved t -> Buffer.add_string buf (token_kind_to_string t.kind)
   | Block { node = { opening; value }; _ } ->
       Buffer.add_char buf (opening_char opening);
-      List.iter (cv_to_buffer buf) value;
+      cvs_to_buffer buf value;
       Buffer.add_char buf (closing_char opening)
   | Func { node = { name; arguments }; _ } ->
-      Buffer.add_string buf name;
+      Buffer.add_string buf (escape_ident name);
       Buffer.add_char buf '(';
-      List.iter (cv_to_buffer buf) arguments;
+      cvs_to_buffer buf arguments;
       Buffer.add_char buf ')'
+
+(* The serialised [Delim "\\"] is "\\\n", which already supplies a separator;
+   eat the next whitespace so [Delim "\\"; Whitespace] round-trips cleanly. *)
+and cvs_to_buffer buf cvs =
+  let rec loop prev = function
+    | [] -> ()
+    | cv :: rest
+      when is_whitespace cv
+           && match prev with Some p -> is_backslash_delim p | None -> false ->
+        loop prev rest
+    | cv :: rest ->
+        cv_to_buffer buf cv;
+        loop (Some cv) rest
+  in
+  loop None cvs
 
 let to_string cvs =
   let buf = Buffer.create 64 in
-  List.iter (cv_to_buffer buf) cvs;
+  cvs_to_buffer buf cvs;
   Buffer.contents buf
 
-(* A whitespace token between two components can be dropped only when at least
-   one side is a self-delimiting structural marker (brackets, comma, colon,
-   semicolon, ...) -- otherwise the two tokens may merge on re-parse, e.g.
-   [ident] + [-] folds into a single ident, [number] + [ident] becomes a
-   dimension, [+] + [number] becomes a signed number. {!Func} starts with
-   [ident(] and ends with [)]; both ends are self-delimiting. *)
-let word_like : Component.t -> bool = function
+(* CSS Syntax Level 3 section 9.1: when serialising adjacent tokens, the
+   serialiser must keep them lexically separate. Two predicates are needed
+   because the relevant property is what byte the previous token *ends* with and
+   what byte the next token *starts* with:
+
+   - [word_like_end p]: [p] ends with a code point that could continue an
+   ident-like or numeric token (so an adjacent ident-continue or [-] would merge
+   in). - [word_like_start n]: [n] starts with a code point that an ident-like
+   or numeric token could absorb on its left.
+
+   {!Func} components begin with [ident(] (word-like at the start) but end with
+   [)] (self-delimiting). {!Block} is self-delimiting at both ends.
+   Self-delimiting tokens never need separation from a neighbour. *)
+let word_like_end : Component.t -> bool = function
   | Preserved
       {
         kind =
           ( Whitespace | Open _ | Close _ | Colon | Semicolon | Comma | Cdo
-          | Cdc | Bad_string | Bad_url | Eof );
+          | Cdc | Bad_string | Bad_url | Eof
+          (* These delim characters are self-delimiting at the end, so a
+             trailing [<delim>] never merges with what follows. *)
+          | Delim
+              ( "!" | "*" | "/" | ">" | "?" | "|" | "&" | "^" | "$" | "=" | "%"
+              | "~" | "(" | ")" | "[" | "]" | "{" | "}" ) );
         _;
       } ->
       false
   | Preserved _ -> true
-  | _ -> false
+  | Func _ -> false
+  | Block _ -> false
+
+let word_like_start : Component.t -> bool = function
+  | Preserved
+      {
+        kind =
+          ( Whitespace | Close _ | Colon | Semicolon | Comma | Cdo | Cdc
+          | Bad_string | Bad_url | Eof
+          | Delim
+              ( "!" | "*" | "/" | ">" | "?" | "|" | "&" | "^" | "$" | "=" | "~"
+              | "(" | ")" | "[" | "]" | "{" | "}" ) );
+        _;
+      } ->
+      false
+  | Preserved { kind = Open Square | Open Curly; _ } -> false
+  | Preserved { kind = Open Paren; _ } -> true
+  | Preserved _ -> true
+  | Func _ -> true
+  | Block { node = { opening = Paren; _ }; _ } -> true
+  | Block _ -> false
 
 let rec cv_to_buffer_min buf = function
   | Preserved t -> Buffer.add_string buf (token_kind_to_string t.kind)
@@ -186,7 +317,7 @@ let rec cv_to_buffer_min buf = function
       cvs_to_buffer_min buf value;
       Buffer.add_char buf (closing_char opening)
   | Func { node = { name; arguments }; _ } ->
-      Buffer.add_string buf name;
+      Buffer.add_string buf (escape_ident name);
       Buffer.add_char buf '(';
       cvs_to_buffer_min buf arguments;
       Buffer.add_char buf ')'
@@ -195,7 +326,6 @@ and cvs_to_buffer_min buf cvs =
   let rec loop prev = function
     | [] -> ()
     | Component.Preserved { kind = Token.Whitespace; _ } :: rest ->
-        (* Look ahead past further whitespace to find the next real token. *)
         let rec skip_ws = function
           | Component.Preserved { kind = Token.Whitespace; _ } :: r -> skip_ws r
           | other -> other
@@ -203,8 +333,10 @@ and cvs_to_buffer_min buf cvs =
         let rest' = skip_ws rest in
         (match rest' with
         | next :: _
-          when (match prev with Some p -> word_like p | None -> false)
-               && word_like next ->
+          when (match prev with
+                 | Some p -> word_like_end p && not (is_backslash_delim p)
+                 | None -> false)
+               && word_like_start next ->
             Buffer.add_char buf ' '
         | _ -> ());
         loop prev rest'

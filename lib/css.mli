@@ -103,6 +103,13 @@ type declaration
 type statement
 (** The type for CSS statements. *)
 
+type cascade_origin = Stylesheet.cascade_origin =
+  | User_agent
+  | User
+  | Author
+  | Animation
+  | Transition  (** Cascade origins from CSS Cascading and Inheritance. *)
+
 val rule :
   selector:Selector.t ->
   ?nested:statement list ->
@@ -156,6 +163,19 @@ val is_nested_supports : statement -> bool
 val as_declarations : statement -> declaration list option
 (** [as_declarations stmt] returns [Some decls] if the statement is a bare
     declarations block (used in CSS nesting), [None] otherwise. *)
+
+val with_origin : cascade_origin -> statement list -> statement
+(** [with_origin cascade_origin statements] records the cascade origin for a
+    stylesheet block. This is an API-level wrapper with no CSS syntax. *)
+
+val as_origin : statement -> (cascade_origin * statement list) option
+(** [as_origin stmt] returns [Some (origin, statements)] if the statement is an
+    origin wrapper, [None] otherwise. *)
+
+val origin_importance_rank : important:bool -> cascade_origin -> int
+(** [origin_importance_rank ~important origin] returns the cascade precedence
+    rank for the origin/importance criterion. Larger ranks have higher
+    precedence. *)
 
 val map :
   (Selector.t -> declaration list -> statement) ->
