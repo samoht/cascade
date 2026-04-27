@@ -246,6 +246,36 @@ let test_parse_var_reference () =
   (* Wrong function name *)
   neg "var(--)" (* No name after -- *)
 
+let test_spec_custom_property_fallback_edges () =
+  let check_var_ref input expected_name expected_fallback =
+    let r = Css.Cursor.of_string input in
+    let name, fallback = parse_var_reference r in
+    Alcotest.(check string) (input ^ " name") expected_name name;
+    Alcotest.(check (option string))
+      (input ^ " fallback") expected_fallback fallback
+  in
+  check_var_ref "var(--color,)" "color" (Some "");
+  check_var_ref "var(--color, red, blue)" "color" (Some "red, blue");
+  check_var_ref "var(--shadow, 0 0 0 var(--fallback, black))" "shadow"
+    (Some "0 0 0 var(--fallback, black)");
+  check_var_ref "var(--tokens, { color: red; })" "tokens"
+    (Some "{ color: red; }");
+  check_var_ref "var(--list, [a, b], (c))" "list" (Some "[a, b], (c)");
+  let neg input =
+    let r = Css.Cursor.of_string input in
+    try
+      let _ = parse_var_reference r in
+      Alcotest.failf "Expected failure for: %s" input
+    with
+    | Css.Cursor.Parse_error _ | Css.Reader.Parse_error _ -> ()
+    | exn ->
+        Alcotest.failf "Unexpected exception for '%s': %s" input
+          (Printexc.to_string exn)
+  in
+  neg "var(--color";
+  neg "var(---)";
+  neg "var(--, red)"
+
 let tests =
   [
     ("any_var", `Quick, test_any_var);
@@ -260,6 +290,9 @@ let tests =
     ("custom property roundtrip", `Quick, test_custom_property_roundtrip);
     ("syntax", `Quick, test_syntax);
     ("parse_var_reference", `Quick, test_parse_var_reference);
+    ( "spec custom property fallback edges",
+      `Quick,
+      test_spec_custom_property_fallback_edges );
   ]
 
 let suite = ("variables", tests)

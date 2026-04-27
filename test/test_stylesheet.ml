@@ -1377,6 +1377,46 @@ let test_spec_cascade_section_4_2_cascaded_values () =
          candidate Author false 10 "earlier"; candidate Author false 11 "later";
        ])
 
+let test_spec_cascade_origin_importance_order () =
+  (* CSS Cascade origin/importance order, including generated animation and
+     transition origins. Larger rank wins in the helper API. *)
+  let rank origin important =
+    Css.Stylesheet.origin_importance_rank ~important origin
+  in
+  let open Css.Stylesheet in
+  Alcotest.(check (list int))
+    "normal and important origin ranks"
+    [ 1; 2; 3; 4; 5; 6; 7; 8; 9 ]
+    [
+      rank User_agent false;
+      rank User false;
+      rank Author_presentational_hint false;
+      rank Author false;
+      rank Animation false;
+      rank Author true;
+      rank User true;
+      rank User_agent true;
+      rank Transition false;
+    ];
+  let candidate origin important source_order value :
+      Css.Stylesheet.cascade_origin_candidate =
+    { origin; important; source_order; value }
+  in
+  Alcotest.(check (option string))
+    "transition beats important user-agent" (Some "transition")
+    (Css.Stylesheet.cascaded_value
+       [
+         candidate User_agent true 0 "ua-important";
+         candidate Transition false 1 "transition";
+       ]);
+  Alcotest.(check (option string))
+    "important user beats important author" (Some "user-important")
+    (Css.Stylesheet.cascaded_value
+       [
+         candidate Author true 0 "author-important";
+         candidate User true 1 "user-important";
+       ])
+
 let specified_source_name = function
   | Css.Stylesheet.Cascaded -> "cascaded"
   | Initial_default -> "initial-default"
@@ -1483,6 +1523,9 @@ let test_spec_cascade_section_4_4_to_4_8_value_processing_stubs () =
        ]);
   expect_context_error Computed_value
     (Css.Stylesheet.computed_value ~property:"font-size" ~specified:"1.2em");
+  expect_context_error Computed_value
+    (Css.Stylesheet.resolve_custom_property ~name:"--gap"
+       ~specified:"var(--space, 1rem)" ~environment:":root");
   expect_context_error Used_value
     (Css.Stylesheet.used_value ~property:"width" ~computed:"auto");
   expect_context_error Actual_value
@@ -1658,6 +1701,41 @@ let test_spec_cascade_section_4_8_per_fragment_stub () =
        ~fragment:"::first-line" ~computed:"currentColor")
 
 (* Not a roundtrip test *)
+let test_spec_cascade_section_5_filtering_stub () =
+  (* CSS Cascade section 5 filters declarations by media/supports conditions,
+     selector matching, shadow-tree boundaries, and scoping. The parser can
+     preserve those structures, but deciding applicability needs platform
+     context. *)
+  let stylesheet =
+    [
+      Css.Stylesheet.Media
+        ( Css.Media.Raw "(width >= 40em)",
+          [
+            Css.Stylesheet.Supports
+              ( Css.Supports.Property ("display", "grid"),
+                [
+                  Css.Stylesheet.Scope
+                    ( Some ".card",
+                      Some ".footer",
+                      [
+                        Css.Stylesheet.Rule
+                          (Css.Stylesheet.rule
+                             ~selector:(Css.Selector.class_ "title")
+                             [
+                               Css.Declaration.color (Css.Values.hex "#ff0000");
+                             ]);
+                      ] );
+                ] );
+          ] );
+    ]
+  in
+  expect_platform_error "style rule filtering"
+    (Css.Stylesheet.filter_style_rules ~element:"<h2 class=title>"
+       ~media:(Css.Media.Raw "(width >= 40em)")
+       ~supports:(Css.Supports.Property ("display", "grid"))
+       ~shadow_tree:"document" ~scope:".card" stylesheet)
+
+(* Not a roundtrip test *)
 let test_spec_platform_boundary_stubs () =
   (* Platform-facing CSS specs need DOM/CSSOM/media/fetch/URL/animation
      subsystems. Tests call stubs directly so missing implementation surface is
@@ -1672,6 +1750,9 @@ let test_spec_platform_boundary_stubs () =
   expect_platform_error "supports evaluation"
     (Css.Stylesheet.evaluate_supports_condition
        ~condition:(Css.Supports.Property ("display", "grid")));
+  expect_platform_error "container query evaluation"
+    (Css.Stylesheet.evaluate_container_query
+       ~condition:(Css.Container.Raw "(inline-size > 30em)") ~container:".card");
   expect_platform_error "URL resolution"
     (Css.Stylesheet.resolve_url_value ~base:"https://example.test/app/"
        ~url:"../image.png");
@@ -1690,6 +1771,12 @@ let test_spec_platform_boundary_stubs () =
        (Css.Stylesheet.Layer_decl [ "theme" ]) []);
   expect_platform_error "CSSOM deleteRule"
     (Css.Stylesheet.cssom_delete_rule ~index:0 []);
+  expect_platform_error "CSSOM replaceRule"
+    (Css.Stylesheet.cssom_replace_rule ~index:0
+       (Css.Stylesheet.Layer_decl [ "replacement" ]) []);
+  expect_platform_error "CSSOM rule serialization"
+    (Css.Stylesheet.cssom_serialize_rule
+       (Css.Stylesheet.Layer_decl [ "serialized" ]));
   expect_platform_error "animation value sampling"
     (Css.Stylesheet.animated_value ~property:"opacity" ~keyframes:[ "0"; "1" ]
        ~progress:0.5)
@@ -1715,6 +1802,12 @@ let test_spec_current_work_at_rules () =
        --brand{font-family:Brand;base-palette:1;override-colors:0 red}"
     "@font-palette-values --brand { font-family: Brand; base-palette: 1; \
      override-colors: 0 red; }";
+  check_stylesheet
+    ~expected:
+      "@font-face {font-family:ColorFont;src:url(color.woff2) \
+       tech(color-COLRv1);font-tech:color-COLRv1}"
+    "@font-face { font-family: ColorFont; src: url(color.woff2) \
+     tech(color-COLRv1); font-tech: color-COLRv1; }";
   check_stylesheet ~expected:"@view-transition{navigation:auto}"
     "@view-transition { navigation: auto; }";
   check_stylesheet
@@ -1725,6 +1818,37 @@ let test_spec_current_work_at_rules () =
   neg_cursor read_stylesheet "@scope (.card) .title { color: red }";
   neg_cursor read_stylesheet "@font-palette-values { base-palette: 1; }";
   neg_cursor read_stylesheet "@position-try default { top: 0; }"
+
+let test_spec_snapshot_tracking_vectors () =
+  (* Snapshot tracking vectors span stable cross-module syntax from recent CSS
+     snapshots. The matrix tracks exact snapshot membership; these tests make
+     historical snapshot coverage visible in the normal stylesheet suite. *)
+  check_stylesheet
+    ~expected:
+      "@layer reset,base,components;@layer \
+       components{.card{display:grid;gap:1rem}}"
+    "@layer reset, base, components; @layer components { .card { display: \
+     grid; gap: 1rem } }";
+  check_stylesheet
+    ~expected:
+      "@container card (inline-size > \
+       30em){.card{grid-template-columns:subgrid}}"
+    "@container card (inline-size > 30em) { .card { grid-template-columns: \
+     subgrid } }";
+  check_stylesheet
+    ~expected:
+      "@supports (color:oklch(50% .1 20)){.accent{color:oklch(50% .1 20)}}"
+    "@supports (color: oklch(50% 0.1 20)) { .accent { color: oklch(50% 0.1 20) \
+     } }";
+  check_stylesheet
+    ~expected:
+      ".card{color:var(--fg);@media (prefers-color-scheme: \
+       dark){&{color:white}}}"
+    ".card { color: var(--fg); @media (prefers-color-scheme: dark) { & { \
+     color: white } } }";
+  neg_cursor read_stylesheet "@layer reset,,base;";
+  neg_cursor read_stylesheet "@container card () { .card { color: red } }";
+  neg_cursor read_stylesheet "@supports () { .accent { color: red } }"
 
 (** {2 CSS Nesting Round-trip Tests} *)
 
@@ -1890,6 +2014,9 @@ let additional_tests =
     ( "spec cascade 4.2 cascaded values",
       `Quick,
       test_spec_cascade_section_4_2_cascaded_values );
+    ( "spec cascade origin/importance order",
+      `Quick,
+      test_spec_cascade_origin_importance_order );
     ( "spec cascade 4.2 integrated cascade order",
       `Quick,
       test_spec_cascade_section_4_2_integrated_cascade_order );
@@ -1906,8 +2033,14 @@ let additional_tests =
     ( "spec cascade 4.8 per-fragment stub",
       `Quick,
       test_spec_cascade_section_4_8_per_fragment_stub );
+    ( "spec cascade 5 filtering stub",
+      `Quick,
+      test_spec_cascade_section_5_filtering_stub );
     ("spec platform boundary stubs", `Quick, test_spec_platform_boundary_stubs);
     ("spec current-work at-rules", `Quick, test_spec_current_work_at_rules);
+    ( "spec snapshot tracking vectors",
+      `Quick,
+      test_spec_snapshot_tracking_vectors );
     ( "spec cascade 4.4-4.8 value processing stubs",
       `Quick,
       test_spec_cascade_section_4_4_to_4_8_value_processing_stubs );

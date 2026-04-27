@@ -16,6 +16,7 @@ type combinator =
 
 type ns = Any | None | Prefix of string
 type attr_flag = Case_insensitive | Case_sensitive
+type specificity = { ids : int; classes : int; elements : int }
 
 (** ARIA attribute names for type-safe handling *)
 type aria_attr =

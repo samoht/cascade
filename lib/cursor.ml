@@ -27,6 +27,7 @@ let sub ?eof_loc t cvs =
 let push_warning t e = t.warnings := e :: !(t.warnings)
 let recover t = t.recover
 let meta t = t.meta
+let source t = t.source
 
 let drain_warnings t =
   let ws = List.rev !(t.warnings) in

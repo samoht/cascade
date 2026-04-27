@@ -243,8 +243,16 @@ let value_processing_requires_document_context = function
   | Declared_value | Cascaded_value | Specified_value -> false
   | Computed_value | Used_value | Actual_value -> true
 
+let platform_stub feature detail =
+  Error (Requires_platform_context { feature; detail })
+
 let declared_values_for_element ?element:_ _stylesheet =
   Error (Requires_document_context Declared_value)
+
+let filter_style_rules ?element:_ ?media:_ ?supports:_ ?shadow_tree:_ ?scope:_
+    _stylesheet =
+  platform_stub "style rule filtering"
+    "requires media/supports/selector/shadow-tree/scope evaluation"
 
 let normalize_value_alias ~property ~value =
   Error (Unsupported_value_alias { property; value })
@@ -264,9 +272,6 @@ let applicable_property ~property:_ ~box:_ =
 let per_fragment_value ~property:_ ~fragment:_ ~computed:_ =
   Error (Requires_document_context Used_value)
 
-let platform_stub feature detail =
-  Error (Requires_platform_context { feature; detail })
-
 let selector_matches_element ~selector:_ ~element:_ =
   platform_stub "selector matching" "requires a DOM element tree"
 
@@ -275,6 +280,10 @@ let evaluate_media_query ~condition:_ ~environment:_ =
 
 let evaluate_supports_condition ~condition:_ =
   platform_stub "supports evaluation" "requires a UA property support table"
+
+let evaluate_container_query ~condition:_ ~container:_ =
+  platform_stub "container query evaluation"
+    "requires a query container and its computed dimensions/style"
 
 let resolve_url_value ~base ~url =
   Error
@@ -287,11 +296,21 @@ let load_import_rule _rule =
 let html_presentational_hints ~element:_ =
   platform_stub "HTML presentational hints" "requires HTML element semantics"
 
+let resolve_custom_property ~name:_ ~specified:_ ~environment:_ =
+  Error (Requires_document_context Computed_value)
+
 let cssom_insert_rule ~index:_ _statement _stylesheet =
   platform_stub "CSSOM insertRule" "requires CSSOM mutation semantics"
 
 let cssom_delete_rule ~index:_ _stylesheet =
   platform_stub "CSSOM deleteRule" "requires CSSOM mutation semantics"
+
+let cssom_replace_rule ~index:_ _statement _stylesheet =
+  platform_stub "CSSOM replaceRule" "requires CSSOM mutation semantics"
+
+let cssom_serialize_rule _statement =
+  platform_stub "CSSOM rule serialization"
+    "requires CSSOM rule-specific serialization semantics"
 
 let animated_value ~property:_ ~keyframes:_ ~progress:_ =
   platform_stub "animation value sampling"
@@ -491,7 +510,7 @@ and pp_statement : statement Pp.t =
       | None -> ());
       (match media with
       | Some m ->
-          Pp.sp ctx ();
+          Pp.space ctx ();
           Media.pp ctx m
       | None -> ());
       Pp.semicolon ctx ()
@@ -737,18 +756,59 @@ let read_charset (r : Cursor.t) : statement =
       ~reason:"@charset must end with ';'";
   Charset encoding
 
-let read_import (r : Cursor.t) : statement =
+(* [Supports.of_string] signals a malformed condition with [Failure]. Lift it
+   into a typed [Error.Parse_error] so the partial-parse catch in
+   [read_statement_from_rule] surfaces it as a warning instead of escaping to
+   the [Css.parse] caller. *)
+let parse_supports_condition ~loc condition =
+  try Supports.of_string condition
+  with Failure reason ->
+    Error.fail_bad_condition loc ~at_rule:"@supports" ~reason
+
+(* CSS Conditional Rules section 3 [@import] prelude: [<url> [layer |
+   layer(<layer-name>)]? [supports(<supports-condition>)]? <media-query-list>?].
+   The [~keep_url_repr] flavour preserves the original quote / [url(...)] form
+   in [url] so the at-rule dispatch can round-trip author input verbatim; the
+   canonical flavour ([keep_url_repr=false]) stores the decoded string for the
+   top-level [read_import_rule] reader. *)
+let read_import_prelude ~keep_url_repr (r : Cursor.t) : import_rule =
   Cursor.expect_at_keyword "import" r;
   Cursor.ws r;
-  let prelude = Cursor.drain_until_block r in
+  let url =
+    if keep_url_repr then
+      let pos = Cursor.position r in
+      let _ = Cursor.one_of [ Cursor.url; Cursor.string ] r in
+      let end_pos = Cursor.position r in
+      let source = match Cursor.source r with Some s -> s | None -> "" in
+      String.sub source pos.start_pos (end_pos.start_pos - pos.start_pos)
+      |> String.trim
+    else Cursor.one_of [ Cursor.url; Cursor.string ] r
+  in
+  Cursor.ws r;
+  let layer =
+    Cursor.function_call "layer"
+      (fun inner -> Cursor.remaining_to_string ~trim:true inner)
+      r
+  in
+  Cursor.ws r;
+  let supports =
+    Cursor.function_call "supports"
+      (fun inner ->
+        let loc = Cursor.position inner in
+        parse_supports_condition ~loc
+          (Cursor.remaining_to_string ~trim:true inner))
+      r
+  in
+  Cursor.ws r;
+  let media =
+    if Cursor.peek_semicolon r || Cursor.is_done r then None
+    else Some (Media.Raw (Cursor.consume_to_semicolon ~trim:true r))
+  in
   if Cursor.peek_semicolon r then Cursor.skip r;
-  Import
-    {
-      url = String.trim (Parser.to_string prelude);
-      layer = None;
-      supports = None;
-      media = None;
-    }
+  { url; layer; supports; media }
+
+let read_import (r : Cursor.t) : statement =
+  Import (read_import_prelude ~keep_url_repr:true r)
 
 let read_namespace (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "namespace" r;
@@ -908,15 +968,6 @@ type property_reader_state = {
   initial_value : string option;
 }
 
-(* [Supports.of_string] signals a malformed condition with [Failure]. Lift it
-   into a typed [Error.Parse_error] so the partial-parse catch in
-   [read_statement_from_rule] surfaces it as a warning instead of escaping to
-   the [Css.parse] caller. *)
-let parse_supports_condition ~loc condition =
-  try Supports.of_string condition
-  with Failure reason ->
-    Error.fail_bad_condition loc ~at_rule:"@supports" ~reason
-
 let rec read_statement (r : Cursor.t) : statement =
   Cursor.ws r;
   let table : (string * (Cursor.t -> statement)) list =
@@ -985,11 +1036,38 @@ and read_supports (r : Cursor.t) : statement =
   Supports (parse_supports_condition ~loc:cond_loc condition, content)
 
 and read_scope (r : Cursor.t) : statement =
+  (* CSS Scoping section 3: [@scope <start> to <end> { ... }]. The two selectors
+     are kept as raw strings; the block is consumed normally. *)
   Cursor.expect_at_keyword "scope" r;
   Cursor.ws r;
-  ignore (Cursor.drain_until_block r : Component.t list);
+  let prelude_components = Cursor.drain_until_block r in
+  let prelude = Cursor.components_to_string ~trim:true prelude_components in
+  let scope_start, scope_end =
+    let rec split_at_to seen rest =
+      match rest with
+      | [] -> (List.rev seen, [])
+      | Component.Preserved { kind = Token.Ident s; _ } :: tail
+        when String.lowercase_ascii s = "to" ->
+          (List.rev seen, tail)
+      | hd :: tail -> split_at_to (hd :: seen) tail
+    in
+    let strip_parens cvs =
+      match Cursor.components_to_string ~trim:true cvs with
+      | s
+        when String.length s >= 2
+             && s.[0] = '('
+             && s.[String.length s - 1] = ')' ->
+          String.sub s 1 (String.length s - 2) |> String.trim
+      | s -> s
+    in
+    let opt s = if s = "" then None else Some s in
+    if prelude = "" then (None, None)
+    else
+      let start_cvs, end_cvs = split_at_to [] prelude_components in
+      (opt (strip_parens start_cvs), opt (strip_parens end_cvs))
+  in
   let content = Cursor.braces (fun inner -> read_block inner) r in
-  Scope (None, None, content)
+  Scope (scope_start, scope_end, content)
 
 and read_container (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "container" r;
@@ -1449,7 +1527,9 @@ let inline_style_of_declarations ?(minify = false) ?(mode : mode = Inline)
 
 let rec vars_of_statement (stmt : statement) : Variables.any_var list =
   match stmt with
-  | Rule rule -> Variables.vars_of_declarations rule.declarations
+  | Rule rule ->
+      Variables.vars_of_declarations rule.declarations
+      @ vars_of_block rule.nested
   | Declarations decls -> Variables.vars_of_declarations decls
   | Media (_, block)
   | Container (_, _, block)
@@ -1504,31 +1584,7 @@ let pp_import_rule : import_rule Pp.t =
 (* Reader for import_rule *)
 let read_import_rule (r : Cursor.t) : import_rule =
   Cursor.ws r;
-  Cursor.expect_at_keyword "import" r;
-  Cursor.ws r;
-  let url = Cursor.one_of [ Cursor.url; Cursor.string ] r in
-  Cursor.ws r;
-  let layer =
-    Cursor.function_call "layer"
-      (fun inner -> Cursor.remaining_to_string ~trim:true inner)
-      r
-  in
-  Cursor.ws r;
-  let supports =
-    Cursor.function_call "supports"
-      (fun inner ->
-        let loc = Cursor.position inner in
-        parse_supports_condition ~loc
-          (Cursor.remaining_to_string ~trim:true inner))
-      r
-  in
-  Cursor.ws r;
-  let media =
-    if Cursor.peek_semicolon r || Cursor.is_done r then None
-    else Some (Media.Raw (Cursor.consume_to_semicolon ~trim:true r))
-  in
-  if Cursor.peek_semicolon r then Cursor.skip r;
-  { url; layer; supports; media }
+  read_import_prelude ~keep_url_repr:false r
 
 (* Pretty-printer for config *)
 let pp_config : config Pp.t =

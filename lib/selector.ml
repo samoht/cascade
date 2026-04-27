@@ -280,9 +280,16 @@ let unescape_selector_name s =
       len
     else if is_hex_char s.[i + 1] then (
       let codepoint, final_idx = process_hex_escape s i len in
-      (* Add the unescaped character if it's valid *)
-      if codepoint > 0 && codepoint <= 0x10FFFF then
-        Buffer.add_utf_8_uchar buf (Uchar.of_int codepoint);
+      (* CSS Syntax 4.3.7: U+0000, surrogates, and out-of-range code points are
+         replaced with U+FFFD rather than passed through. *)
+      let cp =
+        if
+          codepoint <= 0 || codepoint > 0x10FFFF
+          || (codepoint >= 0xD800 && codepoint <= 0xDFFF)
+        then 0xFFFD
+        else codepoint
+      in
+      Buffer.add_utf_8_uchar buf (Uchar.of_int cp);
       final_idx)
     else (
       (* Simple escape: just take the next character literally *)
@@ -1611,6 +1618,89 @@ let has_pseudo_element sel =
           true
       | _ -> false)
     sel
+
+let zero_specificity = { ids = 0; classes = 0; elements = 0 }
+
+let add_specificity a b =
+  {
+    ids = a.ids + b.ids;
+    classes = a.classes + b.classes;
+    elements = a.elements + b.elements;
+  }
+
+let compare_specificity a b =
+  match compare a.ids b.ids with
+  | 0 -> (
+      match compare a.classes b.classes with
+      | 0 -> compare a.elements b.elements
+      | n -> n)
+  | n -> n
+
+let max_specificity xs =
+  List.fold_left
+    (fun acc x -> if compare_specificity x acc > 0 then x else acc)
+    zero_specificity xs
+
+let rec specificity = function
+  | Id _ -> { ids = 1; classes = 0; elements = 0 }
+  | Class _ | Attribute _ | Hover | Active | Focus | Focus_visible
+  | Focus_within | Target | Link | Visited | Any_link | Local_link
+  | Target_within | Scope | Root | Empty | First_child | Last_child | Only_child
+  | First_of_type | Last_of_type | Only_of_type | Enabled | Disabled | Read_only
+  | Read_write | Placeholder_shown | Default | Checked | Indeterminate | Blank
+  | Valid | Invalid | In_range | Out_of_range | Required | Optional
+  | User_invalid | User_valid | Inert | Autofill | Fullscreen | Modal
+  | Picture_in_picture | Left | Right | First | Defined | Playing | Paused
+  | Seeking | Buffering | Stalled | Muted | Volume_locked | Future | Past
+  | Current | Popover_open | Open | Moz_focusring | Webkit_any | Webkit_autofill
+  | Moz_placeholder | Webkit_input_placeholder | Ms_input_placeholder
+  | Moz_ui_invalid | Moz_ui_valid | Webkit_scrollbar
+  | Webkit_search_cancel_button | Webkit_search_decoration
+  | Webkit_datetime_edit_fields_wrapper | Webkit_date_and_time_value
+  | Webkit_datetime_edit | Webkit_datetime_edit_year_field
+  | Webkit_datetime_edit_month_field | Webkit_datetime_edit_day_field
+  | Webkit_datetime_edit_hour_field | Webkit_datetime_edit_minute_field
+  | Webkit_datetime_edit_second_field | Webkit_datetime_edit_millisecond_field
+  | Webkit_datetime_edit_meridiem_field | Webkit_inner_spin_button
+  | Webkit_outer_spin_button | Webkit_calendar_picker_indicator
+  | Webkit_details_marker | Details_content | Dir _ | Lang _ | State _
+  | Active_view_transition_type _ | Heading ->
+      { ids = 0; classes = 1; elements = 0 }
+  | Element _ -> { ids = 0; classes = 0; elements = 1 }
+  | Universal _ | Nesting -> zero_specificity
+  | Before | After | First_letter | First_line | Backdrop | Marker | Placeholder
+  | Selection | File_selector_button | Part _ | View_transition_group _
+  | View_transition_image_pair _ | View_transition_old _ | View_transition_new _
+    ->
+      { ids = 0; classes = 0; elements = 1 }
+  | Where _ -> zero_specificity
+  | Is xs | Not xs | Has xs -> xs |> List.map specificity |> max_specificity
+  | Nth_child (_, of_)
+  | Nth_last_child (_, of_)
+  | Nth_of_type (_, of_)
+  | Nth_last_of_type (_, of_) ->
+      add_specificity
+        { ids = 0; classes = 1; elements = 0 }
+        (match of_ with
+        | None -> zero_specificity
+        | Some xs -> xs |> List.map specificity |> max_specificity)
+  | Host None -> { ids = 0; classes = 1; elements = 0 }
+  | Host (Some xs) | Host_context xs ->
+      add_specificity
+        { ids = 0; classes = 1; elements = 0 }
+        (xs |> List.map specificity |> max_specificity)
+  | Slotted xs | Cue xs | Cue_region xs ->
+      add_specificity
+        { ids = 0; classes = 0; elements = 1 }
+        (xs |> List.map specificity |> max_specificity)
+  | Highlight _ -> { ids = 0; classes = 0; elements = 1 }
+  | Compound xs ->
+      List.fold_left
+        (fun acc sel -> add_specificity acc (specificity sel))
+        zero_specificity xs
+  | Combined (a, _, b) -> add_specificity (specificity a) (specificity b)
+  | Relative (_, sel) -> specificity sel
+  | List xs -> xs |> List.map specificity |> max_specificity
 
 let exists_class pred sel =
   any (function Class name -> pred name | _ -> false) sel

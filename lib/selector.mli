@@ -80,6 +80,12 @@ val to_string : ?minify:bool -> t -> string
 val to_buffer : ?minify:bool -> Buffer.t -> t -> unit
 (** [to_buffer ?minify buf sel] renders a selector into [buf]. *)
 
+val specificity : t -> specificity
+(** [specificity selector] computes Selectors specificity as
+    [(ids, classes, elements)]. For selector-list-like pseudos such as [:is()],
+    [:not()], and [:has()], the most specific argument is used; [:where()]
+    contributes zero. *)
+
 val map : (t -> t) -> t -> t
 (** [map f selector] recursively applies [f] to all selectors in the tree. The
     function [f] is applied bottom-up: first to descendants, then to the current

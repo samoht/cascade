@@ -61,6 +61,29 @@ let test_pp buf =
   | None -> ()
   | Some sel -> ignore (Css.Selector.to_string sel)
 
+(** Selectors specificity is structural and must be stable across
+    parse/serialize/reparse for accepted selectors. *)
+let test_specificity_roundtrip buf =
+  match
+    try Some (Css.Selector.of_string buf)
+    with Css.Cursor.Parse_error _ | Invalid_argument _ -> None
+  with
+  | None -> ()
+  | Some sel -> (
+      let serialized = Css.Selector.to_string ~minify:true sel in
+      match
+        try Some (Css.Selector.of_string serialized)
+        with Css.Cursor.Parse_error _ | Invalid_argument _ -> None
+      with
+      | None -> fail "specificity roundtrip serialization did not reparse"
+      | Some reparsed ->
+          let before = Css.Selector.specificity sel in
+          let after = Css.Selector.specificity reparsed in
+          if before <> after then
+            fail
+              (Fmt.str "specificity changed across serialization: %S -> %S" buf
+                 serialized))
+
 let suite =
   ( "selector",
     [
@@ -74,4 +97,5 @@ let suite =
       test_case "read_nth crash safety" [ bytes ] test_read_nth;
       test_case "roundtrip" [ bytes ] test_roundtrip;
       test_case "pp crash safety" [ bytes ] test_pp;
+      test_case "specificity roundtrip" [ bytes ] test_specificity_roundtrip;
     ] )

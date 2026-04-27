@@ -307,6 +307,16 @@ val declared_values_for_element :
 (** Stub entry point for selector-filtered declared values applied to an
     element. *)
 
+val filter_style_rules :
+  ?element:string ->
+  ?media:Media.t ->
+  ?supports:Supports.t ->
+  ?shadow_tree:string ->
+  ?scope:string ->
+  Stylesheet.stylesheet ->
+  (Stylesheet.stylesheet, Stylesheet.value_processing_error) result
+(** Stub entry point for CSS Cascade section 5 style-rule filtering. *)
+
 val normalize_value_alias :
   property:string ->
   value:string ->
@@ -360,6 +370,12 @@ val evaluate_supports_condition :
   condition:Supports.t -> (bool, Stylesheet.value_processing_error) result
 (** Stub entry point for [@supports] evaluation. *)
 
+val evaluate_container_query :
+  condition:Container.t ->
+  container:string ->
+  (bool, Stylesheet.value_processing_error) result
+(** Stub entry point for Container Queries evaluation. *)
+
 val resolve_url_value :
   base:string ->
   url:string ->
@@ -375,6 +391,13 @@ val html_presentational_hints :
   element:string -> (declaration list, Stylesheet.value_processing_error) result
 (** Stub entry point for HTML presentational hints. *)
 
+val resolve_custom_property :
+  name:string ->
+  specified:string ->
+  environment:string ->
+  (string, Stylesheet.value_processing_error) result
+(** Stub entry point for computed-value-time custom property substitution. *)
+
 val cssom_insert_rule :
   index:int ->
   Stylesheet.statement ->
@@ -387,6 +410,17 @@ val cssom_delete_rule :
   Stylesheet.stylesheet ->
   (Stylesheet.stylesheet, Stylesheet.value_processing_error) result
 (** Stub entry point for CSSOM rule deletion. *)
+
+val cssom_replace_rule :
+  index:int ->
+  Stylesheet.statement ->
+  Stylesheet.stylesheet ->
+  (Stylesheet.stylesheet, Stylesheet.value_processing_error) result
+(** Stub entry point for CSSOM rule replacement. *)
+
+val cssom_serialize_rule :
+  Stylesheet.statement -> (string, Stylesheet.value_processing_error) result
+(** Stub entry point for CSSOM rule-specific serialization. *)
 
 val animated_value :
   property:string ->
