@@ -84,6 +84,32 @@ let test_specificity_roundtrip buf =
               (Fmt.str "specificity changed across serialization: %S -> %S" buf
                  serialized))
 
+let test_serialization_idempotent buf =
+  match
+    try Some (Css.Selector.of_string buf)
+    with Css.Cursor.Parse_error _ | Invalid_argument _ -> None
+  with
+  | None -> ()
+  | Some sel ->
+      let once = Css.Selector.to_string ~minify:true sel in
+      let twice = Css.Selector.(once |> of_string |> to_string ~minify:true) in
+      if once <> twice then
+        fail (Fmt.str "selector serialization drifted: %S -> %S" once twice)
+
+let test_selector_list_serialization_idempotent buf =
+  let r = Css.Cursor.of_string buf in
+  match
+    try Some (Css.Selector.read_selector_list r)
+    with Css.Cursor.Parse_error _ | Invalid_argument _ -> None
+  with
+  | None -> ()
+  | Some selectors ->
+      let once = Css.Selector.to_string ~minify:true selectors in
+      let r2 = Css.Cursor.of_string once in
+      let selectors2 = Css.Selector.read_selector_list r2 in
+      let twice = Css.Selector.to_string ~minify:true selectors2 in
+      if once <> twice then fail "selector-list serialization drifted"
+
 let suite =
   ( "selector",
     [
@@ -98,4 +124,8 @@ let suite =
       test_case "roundtrip" [ bytes ] test_roundtrip;
       test_case "pp crash safety" [ bytes ] test_pp;
       test_case "specificity roundtrip" [ bytes ] test_specificity_roundtrip;
+      test_case "serialization idempotent" [ bytes ]
+        test_serialization_idempotent;
+      test_case "selector list serialization idempotent" [ bytes ]
+        test_selector_list_serialization_idempotent;
     ] )

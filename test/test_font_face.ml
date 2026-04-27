@@ -36,6 +36,19 @@ let test_src () =
     "raw source escape hatch" "url(font.woff2) tech(variations)"
     (src_to_string [ Raw "url(font.woff2) tech(variations)" ])
 
+let test_spec_src_parser_vectors () =
+  let check_raw name input =
+    Alcotest.(check string) name input (src_of_string input |> src_to_string)
+  in
+  check_raw "url format tech raw preservation"
+    "url(\"color.woff2\") format(\"woff2\") tech(color-COLRv1)";
+  check_raw "local and url list raw preservation"
+    "local(\"Brand\"), url(\"brand.woff2\") format(\"woff2\")";
+  check_raw "source with format collection"
+    "url(\"brand.otf\") format(\"opentype\")";
+  check_raw "source with tech collection"
+    "url(\"variations.woff2\") tech(variations)"
+
 let test_spec_metric_parsing_edges () =
   Alcotest.(check string)
     "normal parses" "normal"
@@ -53,6 +66,20 @@ let test_spec_metric_parsing_edges () =
     "invalid size adjust fallback" 100.
     (size_adjust_of_string "normal")
 
+let test_spec_metric_negative_vectors () =
+  Alcotest.(check string)
+    "negative metric override is invalid" "normal"
+    (metric_override_of_string "-1%" |> metric_override_to_string);
+  Alcotest.(check string)
+    "over 100 metric override still parses" "120%"
+    (metric_override_of_string "120%" |> metric_override_to_string);
+  Alcotest.(check (float 0.0001))
+    "negative size adjust is invalid" 100.
+    (size_adjust_of_string "-10%");
+  Alcotest.(check (float 0.0001))
+    "zero size adjust parses" 0.
+    (size_adjust_of_string "0%")
+
 let suite =
   let open Alcotest in
   ( "font_face",
@@ -61,6 +88,9 @@ let suite =
         test_metric_override_to_string;
       test_case "size_adjust" `Quick test_size_adjust;
       test_case "src" `Quick test_src;
+      test_case "spec src parser vectors" `Quick test_spec_src_parser_vectors;
       test_case "spec metric parsing edges" `Quick
         test_spec_metric_parsing_edges;
+      test_case "spec metric negative vectors" `Quick
+        test_spec_metric_negative_vectors;
     ] )

@@ -1209,6 +1209,31 @@ let test_spec_selector_current_pseudo_vectors () =
   neg_cursor read "::highlight()";
   neg_cursor read ":active-view-transition-type()"
 
+let test_spec_selector_relative_scope_and_pseudo_element_edges () =
+  check ":scope";
+  check ":scope > .item";
+  check ":scope + .item";
+  check ".card:has(> img)";
+  check ".card:has(+ .summary)";
+  check ".card:has(~ .summary)";
+  check "section:has(:scope > h2)";
+  check "article :is(h1,h2,h3):not(.muted)";
+  check ":where(nav,main,aside) a:any-link";
+  check "li:nth-child(2n+1 of .visible:not([hidden]))";
+  check "li:nth-last-child(-n+3 of :not([hidden]))";
+  check "input:not([type], [type=hidden])";
+  check "a::before";
+  check "::selection";
+  check "input::file-selector-button";
+  neg_cursor read "> .item";
+  neg_cursor read "+ .item";
+  neg_cursor read "~ .item";
+  neg_cursor read ".a::before:hover";
+  neg_cursor read ".a::before::marker";
+  neg_cursor read "div#";
+  neg_cursor read ".class#";
+  neg_cursor read "[data-x=foo q]"
+
 let suite =
   let open Alcotest in
   ( "selector",
@@ -1260,5 +1285,7 @@ let suite =
         test_spec_forgiving_selector_lists;
       test_case "spec selector current pseudo vectors" `Quick
         test_spec_selector_current_pseudo_vectors;
+      test_case "spec selector relative/scope/pseudo-element edges" `Quick
+        test_spec_selector_relative_scope_and_pseudo_element_edges;
       test_case "nesting selector" `Quick test_nesting_selector;
     ] )

@@ -1163,6 +1163,61 @@ let spec_platform_property_vectors () =
       "background-image: image-set(url(a.png))";
     ]
 
+let spec_values_level_4_5_edge_vectors () =
+  List.iter
+    (fun (input, expected) -> check_declaration ~expected input)
+    [
+      ("width: calc(100% - 2rem)", "width:calc(100% - 2rem)");
+      ("width: calc(1px * 2)", "width:calc(1px*2)");
+      ("width: calc(100px / 2)", "width:calc(100px/2)");
+      ("width: min(10px, 5cqw)", "width:min(10px,5cqw)");
+      ("width: max(10svw, 20lvw)", "width:max(10svw,20lvw)");
+      ("height: clamp(10dvh, 50%, 100dvh)", "height:clamp(10dvh,50%,100dvh)");
+      ("margin: anchor-size(width)", "margin:anchor-size(width)");
+      ("top: anchor(bottom)", "top:anchor(bottom)");
+      ("font-size: calc(1rem + 1cqi)", "font-size:calc(1rem + 1cqi)");
+      ("color: lab(50% 20 30)", "color:lab(50% 20 30)");
+      ("color: lch(50% 30 40)", "color:lch(50% 30 40)");
+      ("color: oklab(60% .1 .2)", "color:oklab(60% .1 .2)");
+      ("color: oklch(60% .2 120)", "color:oklch(60% .2 120)");
+      ("color: color(display-p3 1 0 0 / .5)", "color:color(display-p3 1 0 0/.5)");
+      ( "color: rgb(from var(--c) r g b / 50%)",
+        "color:rgb(from var(--c) r g b/50%)" );
+      ( "background: conic-gradient(from 45deg, red, blue)",
+        "background:conic-gradient(from 45deg,red,blue)" );
+      ( "background: cross-fade(url(a.png) 40%, url(b.png))",
+        "background:cross-fade(url(a.png) 40%,url(b.png))" );
+      ( "filter: drop-shadow(0 0 2px rgb(0 0 0 / .4))",
+        "filter:drop-shadow(0 0 2px rgb(0 0 0/.4))" );
+      ( "transform: translate(10px, 20%) rotate(.25turn) scale(1.2)",
+        "transform:translate(10px,20%) rotate(.25turn) scale(1.2)" );
+      ( "background-position: left 10px top 20%",
+        "background-position:left 10px top 20%" );
+      ("border-radius: 10px / 20px", "border-radius:10px/20px");
+      ( "clip-path: xywh(0 0 100% 100% round 10px)",
+        "clip-path:xywh(0 0 100% 100% round 10px)" );
+    ];
+  List.iter
+    (fun input -> neg_cursor read_declaration input)
+    [
+      "width: calc(1px + )";
+      "width: calc(* 1px)";
+      "width: min()";
+      "height: clamp(10px, 20px)";
+      "margin: anchor-size()";
+      "top: anchor()";
+      "color: lab(50% 20)";
+      "color: oklch(60% .2)";
+      "color: color(display-p3 1 0)";
+      "color: rgb(from red r g)";
+      "background: conic-gradient()";
+      "background: cross-fade(url(a.png), )";
+      "filter: drop-shadow()";
+      "transform: translate()";
+      "border-radius: 10px /";
+      "clip-path: xywh(0 0)";
+    ]
+
 let test_declaration () =
   (* Basic declarations - test the declaration type itself *)
   check_declaration "color:red";
@@ -1248,6 +1303,8 @@ let declaration_tests =
     test_case "url values" `Quick url_values;
     test_case "spec platform property vectors" `Quick
       spec_platform_property_vectors;
+    test_case "spec values level 4/5 edge vectors" `Quick
+      spec_values_level_4_5_edge_vectors;
     (* Error handling *)
     test_case "error missing colon" `Quick error_missing_colon;
     test_case "error stray semicolon" `Quick error_stray_semicolon;
