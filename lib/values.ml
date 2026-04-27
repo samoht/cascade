@@ -257,6 +257,39 @@ let rec eval_numeric_calc : type a. a calc -> float option = function
           | Div -> None)
       | _ -> None)
 
+(* Top-level commas in math-function args round-trip differently in pretty vs
+   minified mode: minified strips space after comma, pretty inserts ", ". Walk
+   the raw arg string with a paren-depth counter so commas inside nested calls
+   are left untouched. *)
+let pp_math_call ctx name args =
+  Pp.string ctx name;
+  Pp.char ctx '(';
+  let buf = ctx.Pp.buf in
+  let depth = ref 0 in
+  let after_comma = ref false in
+  let minify = ctx.Pp.minify in
+  String.iter
+    (fun c ->
+      match c with
+      | '(' ->
+          after_comma := false;
+          incr depth;
+          Buffer.add_char buf c
+      | ')' ->
+          after_comma := false;
+          decr depth;
+          Buffer.add_char buf c
+      | ',' when !depth = 0 ->
+          after_comma := true;
+          Buffer.add_char buf ',';
+          if not minify then Buffer.add_char buf ' '
+      | ' ' when !after_comma -> ()
+      | _ ->
+          after_comma := false;
+          Buffer.add_char buf c)
+    args;
+  Pp.char ctx ')'
+
 let rec pp_length ?(always = false) : length Pp.t =
  fun ctx v ->
   let pp_unit_fn = pp_unit ~always ctx in
@@ -312,39 +345,10 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Min_content -> Pp.string ctx "min-content"
   | From_font -> Pp.string ctx "from-font"
   | Stretch -> Pp.string ctx "stretch"
-  | Clamp s ->
-      let args =
-        if ctx.Pp.minify then s
-        else
-          (* Normalize top-level commas: "a,b,c" -> "a, b, c" *)
-          let buf = Buffer.create (String.length s + 4) in
-          let depth = ref 0 in
-          let after_comma = ref false in
-          String.iter
-            (fun c ->
-              match c with
-              | '(' ->
-                  after_comma := false;
-                  incr depth;
-                  Buffer.add_char buf c
-              | ')' ->
-                  after_comma := false;
-                  decr depth;
-                  Buffer.add_char buf c
-              | ',' when !depth = 0 ->
-                  after_comma := true;
-                  Buffer.add_string buf ", "
-              | ' ' when !after_comma -> ()
-              | _ ->
-                  after_comma := false;
-                  Buffer.add_char buf c)
-            s;
-          Buffer.contents buf
-      in
-      Pp.string ctx ("clamp(" ^ args ^ ")")
-  | Min s -> Pp.string ctx ("min(" ^ s ^ ")")
-  | Max s -> Pp.string ctx ("max(" ^ s ^ ")")
-  | Minmax s -> Pp.string ctx ("minmax(" ^ s ^ ")")
+  | Clamp s -> pp_math_call ctx "clamp" s
+  | Min s -> pp_math_call ctx "min" s
+  | Max s -> pp_math_call ctx "max" s
+  | Minmax s -> pp_math_call ctx "minmax" s
   | Round (strategy, value, step) ->
       Pp.call "round"
         (fun ctx (strategy, value, step) ->
@@ -979,6 +983,7 @@ and pp_color : color Pp.t =
   | Current ->
       Pp.string ctx (if ctx.in_function then "currentcolor" else "currentColor")
   | Transparent -> Pp.string ctx "transparent"
+  | Auto -> Pp.string ctx "auto"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -1194,10 +1199,10 @@ let read_length_unit ?(allow_negative = true) t =
   | "%" -> Pct n
   | _ -> Cursor.err_invalid t ("length unit: " ^ unit)
 
-let read_length_keyword t =
+let read_length_keyword t : length =
   Cursor.enum "length"
     [
-      ("auto", Auto);
+      ("auto", (Auto : length));
       ("none", None);
       ("size", Size);
       ("max-content", Max_content);
@@ -1987,6 +1992,7 @@ and read_color_keyword_from_string keyword : color option =
   match keyword with
   | "transparent" -> Some Transparent
   | "currentcolor" -> Some Current
+  | "auto" -> Some Auto
   | "inherit" -> Some Inherit
   | "red" -> Some (Named Red)
   | "green" -> Some (Named Green)

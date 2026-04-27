@@ -156,8 +156,12 @@ let token_kind_to_string : Token.kind -> string = function
   | Token.Function s -> escape_ident s ^ "("
   | Token.At_keyword s -> "@" ^ escape_ident s
   | Token.Hash { value; _ } -> "#" ^ escape_ident value
-  | Token.String { value; quote; terminated } ->
-      escape_string ~quote ~terminated value
+  | Token.String { value; quote = _; terminated } ->
+      (* Normalize string quoting to double-quote on serialization. The original
+         quote is recorded on the token only so quote-sensitive lookups (e.g.
+         @charset) can inspect it; the round-trip target is the canonical [".."]
+         form. *)
+      escape_string ~quote:'"' ~terminated value
   | Token.Bad_string -> ""
   | Token.Url s ->
       let buf = Buffer.create (String.length s + 5) in

@@ -2290,6 +2290,35 @@ let pp_property : type a. a property Pp.t =
   | Anchor_name -> Pp.string ctx "anchor-name"
   | Position_anchor -> Pp.string ctx "position-anchor"
   | Position_try_fallbacks -> Pp.string ctx "position-try-fallbacks"
+  | Shape_outside -> Pp.string ctx "shape-outside"
+  | Shape_margin -> Pp.string ctx "shape-margin"
+  | Overflow_clip_margin -> Pp.string ctx "overflow-clip-margin"
+  | Overflow_anchor -> Pp.string ctx "overflow-anchor"
+  | Scrollbar_width -> Pp.string ctx "scrollbar-width"
+  | Scrollbar_color -> Pp.string ctx "scrollbar-color"
+  | Scrollbar_gutter -> Pp.string ctx "scrollbar-gutter"
+  | Line_height_step -> Pp.string ctx "line-height-step"
+  | Font_palette -> Pp.string ctx "font-palette"
+  | Font_synthesis -> Pp.string ctx "font-synthesis"
+  | Text_wrap_style -> Pp.string ctx "text-wrap-style"
+  | Text_box_trim -> Pp.string ctx "text-box-trim"
+  | Animation_timeline -> Pp.string ctx "animation-timeline"
+  | Animation_range -> Pp.string ctx "animation-range"
+  | View_transition_name -> Pp.string ctx "view-transition-name"
+  | Image_orientation -> Pp.string ctx "image-orientation"
+  | Contain_intrinsic_size -> Pp.string ctx "contain-intrinsic-size"
+  | Margin_trim -> Pp.string ctx "margin-trim"
+  | Mask_mode_l4 -> Pp.string ctx "mask-mode"
+  | Offset_path -> Pp.string ctx "offset-path"
+  | Offset_distance -> Pp.string ctx "offset-distance"
+  | Font_size_adjust -> Pp.string ctx "font-size-adjust"
+  | Font_variant_emoji -> Pp.string ctx "font-variant-emoji"
+  | Text_spacing_trim -> Pp.string ctx "text-spacing-trim"
+  | Hyphenate_limit_chars -> Pp.string ctx "hyphenate-limit-chars"
+  | Initial_letter -> Pp.string ctx "initial-letter"
+  | View_timeline_name -> Pp.string ctx "view-timeline-name"
+  | View_timeline_axis -> Pp.string ctx "view-timeline-axis"
+  | Timeline_scope -> Pp.string ctx "timeline-scope"
   | Perspective -> Pp.string ctx "perspective"
   | Perspective_origin -> Pp.string ctx "perspective-origin"
   | Transform_style -> Pp.string ctx "transform-style"
@@ -2951,7 +2980,9 @@ let pp_container_shorthand : container_shorthand Pp.t =
   | None, Some t -> pp_container_type ctx t
   | Some n, Some t ->
       Pp.string ctx n;
-      Pp.string ctx " / ";
+      Pp.sp ctx ();
+      Pp.char ctx '/';
+      Pp.sp ctx ();
       pp_container_type ctx t
 
 let rec pp_content : content Pp.t =
@@ -6847,6 +6878,34 @@ let read_any_property t =
   | "anchor-name" -> Prop Anchor_name
   | "position-anchor" -> Prop Position_anchor
   | "position-try-fallbacks" -> Prop Position_try_fallbacks
+  | "shape-outside" -> Prop Shape_outside
+  | "shape-margin" -> Prop Shape_margin
+  | "overflow-clip-margin" -> Prop Overflow_clip_margin
+  | "overflow-anchor" -> Prop Overflow_anchor
+  | "scrollbar-width" -> Prop Scrollbar_width
+  | "scrollbar-color" -> Prop Scrollbar_color
+  | "scrollbar-gutter" -> Prop Scrollbar_gutter
+  | "line-height-step" -> Prop Line_height_step
+  | "font-palette" -> Prop Font_palette
+  | "font-synthesis" -> Prop Font_synthesis
+  | "text-wrap-style" -> Prop Text_wrap_style
+  | "text-box-trim" -> Prop Text_box_trim
+  | "animation-timeline" -> Prop Animation_timeline
+  | "animation-range" -> Prop Animation_range
+  | "view-transition-name" -> Prop View_transition_name
+  | "image-orientation" -> Prop Image_orientation
+  | "contain-intrinsic-size" -> Prop Contain_intrinsic_size
+  | "margin-trim" -> Prop Margin_trim
+  | "offset-path" -> Prop Offset_path
+  | "offset-distance" -> Prop Offset_distance
+  | "font-size-adjust" -> Prop Font_size_adjust
+  | "font-variant-emoji" -> Prop Font_variant_emoji
+  | "text-spacing-trim" -> Prop Text_spacing_trim
+  | "hyphenate-limit-chars" -> Prop Hyphenate_limit_chars
+  | "initial-letter" -> Prop Initial_letter
+  | "view-timeline-name" -> Prop View_timeline_name
+  | "view-timeline-axis" -> Prop View_timeline_axis
+  | "timeline-scope" -> Prop Timeline_scope
   | "content-visibility" -> Prop Content_visibility
   | "direction" -> Prop Direction
   | "fill" -> Prop Fill
@@ -7756,6 +7815,35 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Anchor_name -> pp Pp.string
   | Position_anchor -> pp Pp.string
   | Position_try_fallbacks -> pp (Pp.list ~sep:Pp.comma Pp.string)
+  | Shape_outside -> pp Pp.string
+  | Shape_margin -> pp (pp_length_percentage ~always:true)
+  | Overflow_clip_margin -> pp (pp_length ~always:true)
+  | Overflow_anchor -> pp Pp.string
+  | Scrollbar_width -> pp Pp.string
+  | Scrollbar_color -> pp Pp.string
+  | Scrollbar_gutter -> pp Pp.string
+  | Line_height_step -> pp (pp_length ~always:true)
+  | Font_palette -> pp Pp.string
+  | Font_synthesis -> pp Pp.string
+  | Text_wrap_style -> pp Pp.string
+  | Text_box_trim -> pp Pp.string
+  | Animation_timeline -> pp Pp.string
+  | Animation_range -> pp Pp.string
+  | View_transition_name -> pp Pp.string
+  | Image_orientation -> pp Pp.string
+  | Contain_intrinsic_size -> pp Pp.string
+  | Margin_trim -> pp Pp.string
+  | Mask_mode_l4 -> pp Pp.string
+  | Offset_path -> pp Pp.string
+  | Offset_distance -> pp (pp_length_percentage ~always:true)
+  | Font_size_adjust -> pp Pp.string
+  | Font_variant_emoji -> pp Pp.string
+  | Text_spacing_trim -> pp Pp.string
+  | Hyphenate_limit_chars -> pp Pp.string
+  | Initial_letter -> pp Pp.string
+  | View_timeline_name -> pp Pp.string
+  | View_timeline_axis -> pp Pp.string
+  | Timeline_scope -> pp Pp.string
   | Perspective_origin -> pp pp_perspective_origin
   | Object_position -> pp pp_position_value
   | Rotate -> pp pp_rotate_value
@@ -7827,7 +7915,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Scroll_margin_inline -> pp pp_length
   | Scroll_margin_inline_start -> pp pp_length
   | Scroll_margin_inline_end -> pp pp_length
-  | Scroll_margin_block -> pp pp_length
+  | Scroll_margin_block -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
   | Scroll_margin_block_start -> pp pp_length
   | Scroll_margin_block_end -> pp pp_length
   | Scroll_padding -> pp pp_length

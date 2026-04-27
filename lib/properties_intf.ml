@@ -1700,6 +1700,35 @@ type 'a property =
   | Anchor_name : string property
   | Position_anchor : string property
   | Position_try_fallbacks : string list property
+  | Shape_outside : string property
+  | Shape_margin : length_percentage property
+  | Overflow_clip_margin : length property
+  | Overflow_anchor : string property
+  | Scrollbar_width : string property
+  | Scrollbar_color : string property
+  | Scrollbar_gutter : string property
+  | Line_height_step : length property
+  | Font_palette : string property
+  | Font_synthesis : string property
+  | Text_wrap_style : string property
+  | Text_box_trim : string property
+  | Animation_timeline : string property
+  | Animation_range : string property
+  | View_transition_name : string property
+  | Image_orientation : string property
+  | Contain_intrinsic_size : string property
+  | Margin_trim : string property
+  | Mask_mode_l4 : string property
+  | Offset_path : string property
+  | Offset_distance : length_percentage property
+  | Font_size_adjust : string property
+  | Font_variant_emoji : string property
+  | Text_spacing_trim : string property
+  | Hyphenate_limit_chars : string property
+  | Initial_letter : string property
+  | View_timeline_name : string property
+  | View_timeline_axis : string property
+  | Timeline_scope : string property
   | Perspective : length property
   | Perspective_origin : perspective_origin property
   | Transform_style : transform_style property
@@ -1823,7 +1852,7 @@ type 'a property =
   | Scroll_margin_inline : length property
   | Scroll_margin_inline_start : length property
   | Scroll_margin_inline_end : length property
-  | Scroll_margin_block : length property
+  | Scroll_margin_block : length list property
   | Scroll_margin_block_start : length property
   | Scroll_margin_block_end : length property
   | Scroll_padding : length property

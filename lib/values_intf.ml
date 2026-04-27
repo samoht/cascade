@@ -365,6 +365,8 @@ type color =
   | Var of color var
   | Current
   | Transparent
+  | Auto
+      (** [auto] keyword (e.g., [accent-color: auto], [caret-color: auto]) *)
   | Inherit
   | Initial
   | Unset
