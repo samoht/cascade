@@ -1399,7 +1399,7 @@ let spec_cascade_section_6_2_origin_importance_precedence_rank () =
   in
   Alcotest.(check (list int))
     "origin and importance precedence from highest to lowest"
-    [ 8; 7; 6; 5; 4; 3; 2; 1 ]
+    [ 9; 8; 7; 6; 5; 4; 3; 2; 1 ]
     [
       rank Transition false;
       rank User_agent true;
@@ -1407,6 +1407,7 @@ let spec_cascade_section_6_2_origin_importance_precedence_rank () =
       rank Author true;
       rank Animation false;
       rank Author false;
+      rank Author_presentational_hint false;
       rank User false;
       rank User_agent false;
     ]
@@ -2346,6 +2347,164 @@ let spec_cascade_section_6_4_empty_named_layer_before_block_keeps_order () =
      reset{.card{display:block}}"
     output
 
+let spec_cascade_section_6_4_layer_precedence_api () =
+  (* CSS Cascade section 6.4.3: normal declarations rank later explicit layers
+     above earlier ones, and unlayered normal declarations are in the implicit
+     final layer. Important declarations reverse that layer order. *)
+  let order = [ "reset"; "framework"; "theme" ] in
+  let rank important layer =
+    Css.Stylesheet.cascade_layer_precedence_rank ~layer_order:order ~important
+      layer
+  in
+  Alcotest.(check bool)
+    "normal framework layer beats normal reset layer" true
+    (rank false (Some "framework") > rank false (Some "reset"));
+  Alcotest.(check bool)
+    "normal unlayered beats normal explicit layers" true
+    (rank false None > rank false (Some "theme"));
+  Alcotest.(check bool)
+    "important reset layer beats important framework layer" true
+    (rank true (Some "reset") > rank true (Some "framework"));
+  Alcotest.(check bool)
+    "important explicit layers beat important unlayered" true
+    (rank true (Some "theme") > rank true None);
+  let candidate layer important source_order value :
+      Css.Stylesheet.cascade_layer_candidate =
+    { layer; important; source_order; value }
+  in
+  let winner =
+    Css.Stylesheet.winning_cascade_layer_candidate ~layer_order:order
+      [
+        candidate (Some "reset") false 0 "reset";
+        candidate (Some "theme") false 1 "theme";
+        candidate None false 2 "unlayered";
+      ]
+  in
+  Alcotest.(check (option string))
+    "normal unlayered candidate wins after explicit layers" (Some "unlayered")
+    (Option.map (fun c -> c.Css.Stylesheet.value) winner);
+  let important_winner =
+    Css.Stylesheet.winning_cascade_layer_candidate ~layer_order:order
+      [
+        candidate None true 0 "unlayered-important";
+        candidate (Some "theme") true 1 "theme-important";
+        candidate (Some "reset") true 2 "reset-important";
+      ]
+  in
+  Alcotest.(check (option string))
+    "important first layer candidate wins after reversal"
+    (Some "reset-important")
+    (Option.map (fun c -> c.Css.Stylesheet.value) important_winner)
+
+let spec_cascade_section_6_5_presentational_hint_origin_rank () =
+  (* CSS Cascade section 6.5: presentational hints can enter a special-purpose
+     author presentational-hint origin between regular user and author
+     origins. *)
+  let rank origin =
+    Css.Stylesheet.origin_importance_rank ~important:false origin
+  in
+  Alcotest.(check bool)
+    "author styles beat author presentational hints" true
+    (rank Author > rank Author_presentational_hint);
+  Alcotest.(check bool)
+    "author presentational hints beat user normal styles" true
+    (rank Author_presentational_hint > rank User);
+  Alcotest.(check bool)
+    "author presentational hints beat user-agent normal styles" true
+    (rank Author_presentational_hint > rank User_agent);
+  let input =
+    [
+      Css.Stylesheet.with_origin Author_presentational_hint
+        [
+          Css.Stylesheet.Rule
+            {
+              selector = Css.Selector.class_ "legacy";
+              declarations = [ Css.Declaration.color (hex_color "ff0000") ];
+              nested = [];
+              merge_key = None;
+            };
+        ];
+      Css.Stylesheet.with_origin Author
+        [
+          Css.Stylesheet.Rule
+            {
+              selector = Css.Selector.class_ "legacy";
+              declarations = [ Css.Declaration.color (hex_color "0000ff") ];
+              nested = [];
+              merge_key = None;
+            };
+        ];
+    ]
+  in
+  match Css.Optimize.stylesheet input with
+  | [
+   Css.Stylesheet.Origin
+     (Author_presentational_hint, [ Css.Stylesheet.Rule hint_rule ]);
+   Css.Stylesheet.Origin (Author, [ Css.Stylesheet.Rule author_rule ]);
+  ] ->
+      Alcotest.(check string)
+        "presentational hint origin stays distinct" ".legacy{color:#ff0000}"
+        (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule hint_rule ]
+        |> String.trim);
+      Alcotest.(check string)
+        "author origin stays distinct" ".legacy{color:#0000ff}"
+        (Css.Stylesheet.to_string ~minify:true
+           [ Css.Stylesheet.Rule author_rule ]
+        |> String.trim)
+  | _ ->
+      Alcotest.fail
+        "presentational hint and author origins must remain separate boundaries"
+
+let spec_cascade_section_7_3_5_revert_layer_candidate_set () =
+  (* CSS Cascade section 7.3.5: revert-layer rolls the cascaded value back as if
+     no rules were specified in the current cascade layer for the property. The
+     helper models the lower-priority candidate set used after that removal. *)
+  let order = [ "base"; "components"; "theme" ] in
+  let candidate layer important source_order value :
+      Css.Stylesheet.cascade_layer_candidate =
+    { layer; important; source_order; value }
+  in
+  let candidates =
+    [
+      candidate (Some "base") false 0 "base";
+      candidate (Some "components") false 1 "components";
+      candidate (Some "theme") false 2 "revert-layer";
+      candidate None false 3 "unlayered";
+    ]
+  in
+  let rolled_back =
+    Css.Stylesheet.cascade_revert_layer_candidates ~layer_order:order
+      ~important:false ~current_layer:(Some "theme") candidates
+  in
+  Alcotest.(check (list string))
+    "normal revert-layer in theme can roll back to lower explicit layers"
+    [ "base"; "components" ]
+    (List.map (fun c -> c.Css.Stylesheet.value) rolled_back);
+  let winner =
+    Css.Stylesheet.winning_cascade_layer_candidate ~layer_order:order
+      rolled_back
+  in
+  Alcotest.(check (option string))
+    "normal revert-layer resolves to highest lower layer" (Some "components")
+    (Option.map (fun c -> c.Css.Stylesheet.value) winner);
+  let important_candidates =
+    [
+      candidate None true 0 "unlayered-important";
+      candidate (Some "theme") true 1 "theme-important";
+      candidate (Some "components") true 2 "components-important";
+      candidate (Some "base") true 3 "revert-layer";
+    ]
+  in
+  let important_rolled_back =
+    Css.Stylesheet.cascade_revert_layer_candidates ~layer_order:order
+      ~important:true ~current_layer:(Some "base") important_candidates
+  in
+  Alcotest.(check (list string))
+    "important revert-layer in first layer can roll back to later important \
+     layers and unlayered important"
+    [ "unlayered-important"; "theme-important"; "components-important" ]
+    (List.map (fun c -> c.Css.Stylesheet.value) important_rolled_back)
+
 let selector_merging_tests =
   [
     ("merge consecutive identical", `Quick, test_merge_consecutive_identical);
@@ -2479,6 +2638,15 @@ let selector_merging_tests =
     ( "spec cascade 6.4 empty named layer before block keeps order",
       `Quick,
       spec_cascade_section_6_4_empty_named_layer_before_block_keeps_order );
+    ( "spec cascade 6.4 layer precedence api",
+      `Quick,
+      spec_cascade_section_6_4_layer_precedence_api );
+    ( "spec cascade 6.5 presentational hint origin rank",
+      `Quick,
+      spec_cascade_section_6_5_presentational_hint_origin_rank );
+    ( "spec cascade 7.3.5 revert-layer candidate set",
+      `Quick,
+      spec_cascade_section_7_3_5_revert_layer_candidate_set );
   ]
 
 let suite = ("optimize", optimize_tests @ selector_merging_tests)

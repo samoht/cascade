@@ -1166,7 +1166,8 @@ let test_spec_cascade_section_6_4_anonymous_layer_edges () =
 (* Not a roundtrip test *)
 let test_spec_cascade_section_6_4_import_layer_syntax () =
   (* CSS Cascade section 6.4.1: @import can assign an imported sheet to a named
-     layer with layer(<layer-name>) or to an anonymous layer with layer. *)
+     layer with layer(<layer-name>) or to an anonymous layer with
+     layer/layer(). *)
   check_import_rule ~expected:"@import \"headings.css\" layer(default);"
     "@import url(headings.css) layer(default);";
   check_import_rule ~expected:"@import \"links.css\" layer(default) screen;"
@@ -1175,9 +1176,35 @@ let test_spec_cascade_section_6_4_import_layer_syntax () =
     "@import url(theme.css) layer(framework.theme);";
   check_import_rule ~expected:"@import \"base-forms.css\" layer;"
     "@import url(base-forms.css) layer;";
+  check_import_rule ~expected:"@import \"base-links.css\" layer();"
+    "@import url(base-links.css) layer();";
+  check_import_rule ~expected:"@import \"conditional.css\" layer() print;"
+    "@import url(conditional.css) layer() print;";
   neg_cursor read_import_rule "@import url(theme.css) layer(initial);";
   neg_cursor read_import_rule "@import url(theme.css) layer(framework . theme);";
   neg_cursor read_import_rule "@import url(theme.css) layer(framework,theme);"
+
+(* Not a roundtrip test *)
+let test_spec_cascade_section_6_4_import_namespace_ordering () =
+  (* CSS Cascade sections 2 and 6.4.4.2: empty @layer statements may appear
+     before @import, but @layer rules must not be interleaved with consecutive
+     @import/@namespace rules. Block @layer rules cannot be interleaved with
+     @import rules. *)
+  check_stylesheet
+    ~expected:
+      "@charset \"UTF-8\";@layer reset,theme;@import url(theme.css) \
+       layer(theme);@namespace url(http://www.w3.org/1999/xhtml);"
+    "@charset \"UTF-8\"; @layer reset, theme; @import url(theme.css) \
+     layer(theme); @namespace url(http://www.w3.org/1999/xhtml);";
+  neg_cursor read_stylesheet
+    "@import url(default.css) layer(default); @layer theme; @import \
+     url(components.css) layer(components);";
+  neg_cursor read_stylesheet
+    "@import url(default.css) layer(default); @layer theme { .x { color: red } \
+     } @import url(components.css) layer(components);";
+  neg_cursor read_stylesheet
+    "@import url(default.css) layer(default); @layer theme; @namespace \
+     url(http://www.w3.org/1999/xhtml);"
 
 (* Not a roundtrip test *)
 let test_spec_cascade_section_6_4_invalid_layer_names () =
@@ -1194,6 +1221,60 @@ let test_spec_cascade_section_6_4_invalid_layer_names () =
   neg_cursor read_stylesheet "@layer framework. { .x { color: red } }";
   neg_cursor read_stylesheet "@layer framework.theme. { .x { color: red } }";
   neg_cursor read_stylesheet "@layer InHeRiT { .x { color: red } }"
+
+(* Not a roundtrip test *)
+let test_spec_cascade_section_8_layer_api () =
+  (* CSS Cascade section 8: CSSOM exposes the declared layer name on imports and
+     layer block rules, and the declared name list on layer statement rules.
+     Nested block rule names are the at-rule's own name, not parent-prefixed. *)
+  let import_named =
+    {
+      url = "theme.css";
+      layer = Some "framework.theme";
+      supports = None;
+      media = None;
+    }
+  in
+  let import_anonymous =
+    { url = "private.css"; layer = Some ""; supports = None; media = None }
+  in
+  let import_plain =
+    { url = "plain.css"; layer = None; supports = None; media = None }
+  in
+  Alcotest.(check (option string))
+    "named import layerName" (Some "framework.theme")
+    (Css.Stylesheet.import_layer_name import_named);
+  Alcotest.(check (option string))
+    "anonymous import layerName is empty string" (Some "")
+    (Css.Stylesheet.import_layer_name import_anonymous);
+  Alcotest.(check (option string))
+    "unlayered import layerName is null" None
+    (Css.Stylesheet.import_layer_name import_plain);
+  Alcotest.(check (option string))
+    "named layer block API name" (Some "framework.theme")
+    (Css.Stylesheet.layer_block_name
+       (Css.Stylesheet.Layer (Some "framework.theme", [])));
+  Alcotest.(check (option string))
+    "anonymous layer block API name is empty string" (Some "")
+    (Css.Stylesheet.layer_block_name (Css.Stylesheet.Layer (None, [])));
+  (match
+     Css.Stylesheet.Layer
+       (Some "outer", [ Css.Stylesheet.Layer (Some "foo.bar", []) ])
+   with
+  | Css.Stylesheet.Layer (_, [ inner ]) ->
+      Alcotest.(check (option string))
+        "inner layer block API name is not parent-prefixed" (Some "foo.bar")
+        (Css.Stylesheet.layer_block_name inner)
+  | _ -> Alcotest.fail "expected nested layer block");
+  Alcotest.(check (option (list string)))
+    "layer statement API nameList"
+    (Some [ "reset"; "framework.theme"; "components" ])
+    (Css.Stylesheet.layer_statement_name_list
+       (Css.Stylesheet.Layer_decl [ "reset"; "framework.theme"; "components" ]));
+  Alcotest.(check (option (list string)))
+    "non-statement layer has no nameList" None
+    (Css.Stylesheet.layer_statement_name_list
+       (Css.Stylesheet.Layer (Some "reset", [])))
 
 (** {2 CSS Nesting Round-trip Tests} *)
 
@@ -1337,9 +1418,13 @@ let additional_tests =
     ( "spec cascade 6.4 import layer syntax",
       `Quick,
       test_spec_cascade_section_6_4_import_layer_syntax );
+    ( "spec cascade 6.4 import namespace ordering",
+      `Quick,
+      test_spec_cascade_section_6_4_import_namespace_ordering );
     ( "spec cascade 6.4 invalid layer names",
       `Quick,
       test_spec_cascade_section_6_4_invalid_layer_names );
+    ("spec cascade 8 layer api", `Quick, test_spec_cascade_section_8_layer_api);
     ( "partial recovery: bad declaration does not poison sibling rule",
       `Quick,
       fun () ->

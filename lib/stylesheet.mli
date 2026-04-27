@@ -57,6 +57,54 @@ val origin_importance_rank : important:bool -> cascade_origin -> int
     rank for the origin/importance criterion. Larger ranks have higher
     precedence. *)
 
+val import_layer_name : import_rule -> string option
+(** [import_layer_name rule] models [CSSImportRule.layerName]: [None] means the
+    import does not declare a layer, [Some ""] means the import declares an
+    anonymous layer, and [Some name] is the declared layer name. *)
+
+val layer_block_name : statement -> string option
+(** [layer_block_name stmt] models [CSSLayerBlockRule.name] for [@layer] block
+    rules. It returns [Some ""] for anonymous layer blocks, [Some name] for
+    named layer blocks, and [None] for non-layer-block statements. The returned
+    name is the at-rule's own declared name, not a parent-prefixed name. *)
+
+val layer_statement_name_list : statement -> string list option
+(** [layer_statement_name_list stmt] models [CSSLayerStatementRule.nameList] for
+    statement-form [@layer] rules. *)
+
+val cascade_layer_precedence_rank :
+  layer_order:string list -> important:bool -> string option -> int
+(** [cascade_layer_precedence_rank ~layer_order ~important layer] returns the
+    same-origin layer precedence rank. For normal declarations, later explicit
+    layers and then the implicit unlayered layer rank higher. For important
+    declarations, that order is reversed, with important unlayered declarations
+    ranked below important explicit layers. *)
+
+val compare_cascade_layer_candidate :
+  layer_order:string list ->
+  cascade_layer_candidate ->
+  cascade_layer_candidate ->
+  int
+(** [compare_cascade_layer_candidate] compares same-origin/same-specificity
+    candidates by importance, layer precedence, then source order. *)
+
+val winning_cascade_layer_candidate :
+  layer_order:string list ->
+  cascade_layer_candidate list ->
+  cascade_layer_candidate option
+(** [winning_cascade_layer_candidate] returns the winning candidate using
+    {!compare_cascade_layer_candidate}. *)
+
+val cascade_revert_layer_candidates :
+  layer_order:string list ->
+  important:bool ->
+  current_layer:string option ->
+  cascade_layer_candidate list ->
+  cascade_layer_candidate list
+(** [cascade_revert_layer_candidates] returns the same-importance candidates in
+    lower-priority layers than [current_layer], modeling the candidate set used
+    after [revert-layer] removes declarations from the current layer. *)
+
 val starting_style_nested : Declaration.declaration list -> statement
 (** [starting_style_nested declarations] creates a [@starting-style] rule for
     CSS nesting, containing bare declarations (no selector). Used inside rules

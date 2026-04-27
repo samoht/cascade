@@ -106,6 +106,7 @@ type statement
 type cascade_origin = Stylesheet.cascade_origin =
   | User_agent
   | User
+  | Author_presentational_hint
   | Author
   | Animation
   | Transition  (** Cascade origins from CSS Cascading and Inheritance. *)
@@ -176,6 +177,48 @@ val origin_importance_rank : important:bool -> cascade_origin -> int
 (** [origin_importance_rank ~important origin] returns the cascade precedence
     rank for the origin/importance criterion. Larger ranks have higher
     precedence. *)
+
+val import_layer_name : Stylesheet.import_rule -> string option
+(** [import_layer_name rule] models [CSSImportRule.layerName]: [None] means no
+    layer, [Some ""] means an anonymous layer, and [Some name] is a named layer.
+*)
+
+val layer_block_name : statement -> string option
+(** [layer_block_name stmt] models [CSSLayerBlockRule.name] for [@layer] block
+    rules. *)
+
+val layer_statement_name_list : statement -> string list option
+(** [layer_statement_name_list stmt] models [CSSLayerStatementRule.nameList] for
+    statement-form [@layer] rules. *)
+
+val cascade_layer_precedence_rank :
+  layer_order:string list -> important:bool -> string option -> int
+(** [cascade_layer_precedence_rank] returns the same-origin layer precedence
+    rank for a layer. Larger ranks have higher precedence. *)
+
+val compare_cascade_layer_candidate :
+  layer_order:string list ->
+  Stylesheet.cascade_layer_candidate ->
+  Stylesheet.cascade_layer_candidate ->
+  int
+(** [compare_cascade_layer_candidate] compares same-origin/same-specificity
+    candidates by importance, layer precedence, then source order. *)
+
+val winning_cascade_layer_candidate :
+  layer_order:string list ->
+  Stylesheet.cascade_layer_candidate list ->
+  Stylesheet.cascade_layer_candidate option
+(** [winning_cascade_layer_candidate] returns the winning candidate using
+    {!compare_cascade_layer_candidate}. *)
+
+val cascade_revert_layer_candidates :
+  layer_order:string list ->
+  important:bool ->
+  current_layer:string option ->
+  Stylesheet.cascade_layer_candidate list ->
+  Stylesheet.cascade_layer_candidate list
+(** [cascade_revert_layer_candidates] returns same-importance candidates in
+    lower-priority layers than the current [revert-layer] declaration. *)
 
 val map :
   (Selector.t -> declaration list -> statement) ->
