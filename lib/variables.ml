@@ -625,7 +625,10 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Webkit_tap_highlight_color, value -> vars_of_color value
   | Outline_color, value -> vars_of_color value
   (* Border radius *)
-  | Border_radius, value -> vars_of_length value
+  | Border_radius, { horizontal; vertical } ->
+      let from_list = List.concat_map vars_of_length_percentage in
+      from_list horizontal
+      @ Option.value ~default:[] (Option.map from_list vertical)
   | Border_top_left_radius, value -> vars_of_length value
   | Border_top_right_radius, value -> vars_of_length value
   | Border_bottom_left_radius, value -> vars_of_length value

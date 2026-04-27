@@ -1941,6 +1941,17 @@ type conic_gradient_config = {
 }
 (** Configuration for conic-gradient prefix: starting angle and center. *)
 
+type border_radius = {
+  horizontal : length_percentage list;
+      (** 1-4 horizontal radii (top-left, top-right, bottom-right, bottom-left).
+      *)
+  vertical : length_percentage list option;
+      (** Optional 1-4 vertical radii after [/]; when [None] the horizontal
+          values are used for both axes. *)
+}
+(** [<length-percentage [0,∞]>]{1,4} [ / [<length-percentage [0,∞]>]{1,4} ]?
+    per CSS Backgrounds and Borders 3 §5. *)
+
 (** Background image values *)
 type background_image =
   | Url of string
@@ -3295,10 +3306,11 @@ val border_color : color -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-color}
      border-color} property. *)
 
-val border_radius : length -> declaration
-(** [border_radius radius] is the
+val border_radius : border_radius -> declaration
+(** [border_radius v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-radius}
-     border-radius} property. *)
+     border-radius} property; takes a typed value with 1-4 horizontal radii and
+    optional 1-4 vertical radii separated by [/]. *)
 
 val border_top_left_radius : length -> declaration
 (** [border_top_left_radius radius] is the

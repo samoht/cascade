@@ -31,6 +31,13 @@ let check_reader reader printer input =
             fail (Fmt.str "property serialization changed: %S -> %S" once twice)
       )
 
+let reject_reader reader property input =
+  let r = Css.Cursor.of_string input in
+  match try Some (reader r) with Css.Cursor.Parse_error _ -> None with
+  | None -> ()
+  | Some _ ->
+      fail (Fmt.str "%s invalid grammar vector parsed: %S" property input)
+
 let generated_property_vector buf =
   pick
     [
@@ -208,6 +215,115 @@ let test_css_wide_mixes_stable buf =
   in
   run value
 
+type property_grammar_vector = {
+  property : string;
+  positives : string list;
+  negatives : string list;
+  accept : string -> unit;
+  reject : string -> unit;
+}
+
+let vector property reader printer positives negatives =
+  {
+    property;
+    positives;
+    negatives;
+    accept = check_reader reader printer;
+    reject = reject_reader reader property;
+  }
+
+let property_grammar_vectors =
+  [
+    vector "display" Css.Properties.read_display Css.Properties.pp_display
+      [ "block"; "inline"; "inline flow-root"; "list-item flow-root" ]
+      [ "block inline flex"; "unknown-display" ];
+    vector "position" Css.Properties.read_position Css.Properties.pp_position
+      [ "static"; "relative"; "absolute"; "fixed"; "sticky" ]
+      [ "sticky absolute"; "center" ];
+    vector "overflow" Css.Properties.read_overflow Css.Properties.pp_overflow
+      [ "visible"; "hidden"; "clip"; "auto" ]
+      [ "none"; "visible hidden scroll" ];
+    vector "border" Css.Properties.read_border Css.Properties.pp_border
+      [ "1px solid red"; "solid"; "0"; "thin currentColor" ]
+      [ "1px 2px"; "solid solid"; "red blue" ];
+    vector "font-family" Css.Properties.read_font_family
+      Css.Properties.pp_font_family
+      [ "Arial, sans-serif"; "\"A B\", serif"; "system-ui" ]
+      [ "Arial,,serif"; "," ];
+    vector "font-weight" Css.Properties.read_font_weight
+      Css.Properties.pp_font_weight
+      [ "normal"; "bold"; "400"; "650"; "lighter" ]
+      [ "1000"; "bold 400" ];
+    vector "font-feature-settings" Css.Properties.read_font_feature_settings
+      Css.Properties.pp_font_feature_settings
+      [ "normal"; "\"kern\" 1"; "\"liga\" off" ]
+      [ "\"kern\" maybe"; "1" ];
+    vector "transform" Css.Properties.read_transform Css.Properties.pp_transform
+      [ "translateX(10px)"; "rotate(45deg)"; "scale(1.2)" ]
+      [ "translate()"; "scale()" ];
+    vector "transforms" Css.Properties.read_transforms
+      Css.Properties.pp_transforms
+      [ "none"; "translateX(10px) rotate(45deg)"; "scale(1.2)" ]
+      [ "none rotate(1deg)"; "translate()" ];
+    vector "timing-function" Css.Properties.read_timing_function
+      Css.Properties.pp_timing_function
+      [ "ease"; "steps(4, jump-end)"; "cubic-bezier(.1,.2,.3,.4)" ]
+      [ "steps()"; "cubic-bezier(1,2)" ];
+    vector "transition" Css.Properties.read_transition
+      Css.Properties.pp_transition
+      [ "opacity 1s ease"; "all .2s linear .1s" ]
+      [ "1s 2s 3s"; "ease opacity ease" ];
+    vector "animation" Css.Properties.read_animation Css.Properties.pp_animation
+      [ "spin 1s linear infinite"; "none"; "fade .2s ease" ]
+      [ "1s 2s 3s"; "infinite infinite" ];
+    vector "background-image" Css.Properties.read_background_image
+      Css.Properties.pp_background_image
+      [ "none"; "url(a.png)"; "linear-gradient(red, blue)" ]
+      [ "linear-gradient()"; "image-set()" ];
+    vector "background" Css.Properties.read_background
+      Css.Properties.pp_background
+      [ "red"; "url(a.png) no-repeat center/cover"; "none" ]
+      [ "red blue"; "url(" ];
+    vector "content" Css.Properties.read_content Css.Properties.pp_content
+      [ "normal"; "\"hello\""; "attr(title)" ]
+      [ "attr()"; "open-quote close-quote none" ];
+    vector "container" Css.Properties.read_container_shorthand
+      Css.Properties.pp_container_shorthand
+      [ "card / inline-size"; "inline-size"; "normal" ]
+      [ "/ inline-size"; "card / inline-size / size" ];
+    vector "scroll-snap-type" Css.Properties.read_scroll_snap_type
+      Css.Properties.pp_scroll_snap_type
+      [ "x mandatory"; "block proximity"; "none" ]
+      [ "mandatory x"; "x y mandatory" ];
+    vector "clip-path" Css.Properties.read_clip_path Css.Properties.pp_clip_path
+      [ "none"; "inset(10px)"; "circle(50%)" ]
+      [ "circle()"; "inset()" ];
+    vector "touch-action" Css.Properties.read_touch_action
+      Css.Properties.pp_touch_action
+      [ "auto"; "none"; "pan-x pinch-zoom" ]
+      [ "pan-x pan-left"; "auto none" ];
+    vector "contain" Css.Properties.read_contain Css.Properties.pp_contain
+      [ "none"; "layout paint"; "strict"; "content" ]
+      [ "layout layout"; "strict layout" ];
+  ]
+
+let test_property_grammar_manifest_valid buf =
+  let row = pick property_grammar_vectors buf 0 in
+  row.accept (pick row.positives buf 1)
+
+let test_property_grammar_manifest_invalid buf =
+  let row = pick property_grammar_vectors buf 0 in
+  row.reject (pick row.negatives buf 1)
+
+let test_property_grammar_manifest_has_both_kinds _buf =
+  List.iter
+    (fun row ->
+      if row.positives = [] then
+        fail (Fmt.str "%s fuzz row has no positive vectors" row.property);
+      if row.negatives = [] then
+        fail (Fmt.str "%s fuzz row has no negative vectors" row.property))
+    property_grammar_vectors
+
 let suite =
   ( "properties",
     [
@@ -219,4 +335,10 @@ let suite =
         test_invalid_property_stable;
       test_case "css-wide keywords parse" [ bytes ] test_css_wide_keywords_parse;
       test_case "css-wide mixes stable" [ bytes ] test_css_wide_mixes_stable;
+      test_case "property grammar manifest valid vectors" [ bytes ]
+        test_property_grammar_manifest_valid;
+      test_case "property grammar manifest invalid vectors" [ bytes ]
+        test_property_grammar_manifest_invalid;
+      test_case "property grammar manifest row shape" [ bytes ]
+        test_property_grammar_manifest_has_both_kinds;
     ] )

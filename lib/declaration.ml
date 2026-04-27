@@ -476,6 +476,34 @@ let read_non_negative_length_percentage t =
   | _ -> ());
   Values.read_length_percentage t
 
+(* CSS Backgrounds and Borders 3 §5: [border-radius = <length-percentage>{1,4}
+   [/ <length-percentage>{1,4}]?]. Reads 1-4 horizontal radii then, after [/],
+   1-4 vertical radii. *)
+let read_border_radius t : Properties.border_radius =
+  let read_radii t =
+    let rec loop acc count =
+      if count >= 4 then List.rev acc
+      else
+        match Cursor.option read_non_negative_length_percentage t with
+        | None -> List.rev acc
+        | Some lp -> loop (lp :: acc) (count + 1)
+    in
+    let radii = loop [] 0 in
+    if radii = [] then Cursor.err_expected t "<length-percentage>" else radii
+  in
+  Cursor.ws t;
+  let horizontal = read_radii t in
+  Cursor.ws t;
+  let vertical =
+    match Cursor.peek_delim t with
+    | Some '/' ->
+        Cursor.skip t;
+        Cursor.ws t;
+        Some (read_radii t)
+    | _ -> None
+  in
+  { Properties.horizontal; vertical }
+
 (* Delegate to the proper reader in Properties *)
 let read_translate_value t : Properties_intf.translate_value =
   Properties.read_translate_value t
@@ -565,7 +593,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Min_block_size -> v Min_block_size (read_length_percentage t)
   | Max_block_size -> v Max_block_size (read_length_percentage t)
   | Font_size -> v Font_size (Properties.read_font_size t)
-  | Border_radius -> v Border_radius (read_length t)
+  | Border_radius -> v Border_radius (read_border_radius t)
   | Border_top_left_radius -> v Border_top_left_radius (read_length t)
   | Border_top_right_radius -> v Border_top_right_radius (read_length t)
   | Border_bottom_left_radius -> v Border_bottom_left_radius (read_length t)

@@ -1542,6 +1542,17 @@ let rec pp_border_style : border_style Pp.t =
   | Outset -> Pp.string ctx "outset"
   | Var v -> pp_var pp_border_style ctx v
 
+let pp_border_radius : border_radius Pp.t =
+ fun ctx { horizontal; vertical } ->
+  Pp.list ~sep:Pp.space (pp_length_percentage ~always:true) ctx horizontal;
+  match vertical with
+  | None -> ()
+  | Some vs ->
+      Pp.sp ctx ();
+      Pp.char ctx '/';
+      Pp.sp ctx ();
+      Pp.list ~sep:Pp.space (pp_length_percentage ~always:true) ctx vs
+
 let rec pp_border_width : border_width Pp.t =
  fun ctx -> function
   | Thin -> Pp.string ctx "thin"
@@ -7815,7 +7826,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_inline_end_width -> pp pp_border_width
   | Border_block_start_width -> pp pp_border_width
   | Border_block_end_width -> pp pp_border_width
-  | Border_radius -> pp pp_length
+  | Border_radius -> pp pp_border_radius
   | Border_top_left_radius -> pp pp_length
   | Border_top_right_radius -> pp pp_length
   | Border_bottom_left_radius -> pp pp_length

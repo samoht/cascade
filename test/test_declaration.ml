@@ -1666,6 +1666,311 @@ let spec_declaration_more_grammar_vectors () =
     "--is-important: 1 !important";
   none_cursor read_declaration "--: invalid"
 
+type property_grammar_row = {
+  property : string;
+  positives : string list;
+  negatives : string list;
+}
+
+let property_grammar_matrix =
+  [
+    {
+      property = "display";
+      positives =
+        [ "block"; "inline"; "inline flow-root"; "list-item flow-root" ];
+      negatives = [ "block inline flex"; "unknown-display" ];
+    };
+    {
+      property = "position";
+      positives = [ "static"; "relative"; "absolute"; "fixed"; "sticky" ];
+      negatives = [ "sticky absolute"; "center" ];
+    };
+    {
+      property = "float";
+      positives = [ "left"; "right"; "none"; "inline-start"; "inline-end" ];
+      negatives = [ "center"; "left right" ];
+    };
+    {
+      property = "overflow";
+      positives = [ "visible"; "hidden"; "clip"; "auto"; "clip auto" ];
+      negatives = [ "none"; "visible hidden scroll" ];
+    };
+    {
+      property = "contain";
+      positives = [ "none"; "layout paint"; "strict"; "content" ];
+      negatives = [ "layout layout"; "strict layout" ];
+    };
+    {
+      property = "container-type";
+      positives = [ "normal"; "size"; "inline-size" ];
+      negatives = [ "inline-size size"; "block-size" ];
+    };
+    {
+      property = "container";
+      positives = [ "card / inline-size"; "inline-size"; "normal" ];
+      negatives = [ "/ inline-size"; "card / inline-size / size" ];
+    };
+    {
+      property = "scroll-snap-type";
+      positives = [ "none"; "x mandatory"; "block proximity"; "both mandatory" ];
+      negatives = [ "mandatory x"; "x y mandatory" ];
+    };
+    {
+      property = "scroll-snap-align";
+      positives = [ "none"; "start"; "start end"; "center" ];
+      negatives = [ "start center end"; "foo" ];
+    };
+    {
+      property = "scroll-snap-stop";
+      positives = [ "normal"; "always" ];
+      negatives = [ "normal always"; "sometimes" ];
+    };
+    {
+      property = "box-sizing";
+      positives = [ "content-box"; "border-box" ];
+      negatives = [ "padding-box"; "border-box content-box" ];
+    };
+    {
+      property = "aspect-ratio";
+      positives = [ "auto"; "16 / 9"; "auto 1 / 1" ];
+      negatives = [ "16 /"; "auto auto" ];
+    };
+    {
+      property = "width";
+      positives = [ "auto"; "min-content"; "fit-content(20rem)"; "stretch" ];
+      negatives = [ "red"; "fit-content()" ];
+    };
+    {
+      property = "margin";
+      positives = [ "0"; "1px 2px 3px 4px"; "auto"; "anchor-size(width)" ];
+      negatives = [ "red"; "1px 2px 3px 4px 5px" ];
+    };
+    {
+      property = "padding";
+      positives = [ "0"; "1px 2px"; "max(1rem, 2vw)" ];
+      negatives = [ "auto"; "1px 2px 3px 4px 5px" ];
+    };
+    {
+      property = "border";
+      positives = [ "1px solid red"; "solid"; "0"; "thin currentColor" ];
+      negatives = [ "1px 2px"; "solid solid"; "red blue" ];
+    };
+    {
+      property = "border-radius";
+      positives = [ "10px"; "10px 20px / 30px 40px" ];
+      negatives = [ "10px /"; "10px 20px 30px 40px 50px" ];
+    };
+    {
+      property = "background";
+      positives = [ "red"; "url(a.png) no-repeat center / cover"; "none" ];
+      negatives = [ "red blue"; "url(" ];
+    };
+    {
+      property = "background-image";
+      positives = [ "none"; "url(a.png)"; "linear-gradient(red, blue)" ];
+      negatives = [ "linear-gradient()"; "image-set()" ];
+    };
+    {
+      property = "background-size";
+      positives = [ "auto"; "cover"; "contain"; "10px 20%" ];
+      negatives = [ "cover contain"; "-1px" ];
+    };
+    {
+      property = "clip-path";
+      positives =
+        [ "none"; "inset(10px)"; "circle(50%)"; "xywh(0 0 100% 100%)" ];
+      negatives = [ "circle()"; "inset()" ];
+    };
+    {
+      property = "shape-outside";
+      positives = [ "none"; "circle(50%)"; "inset(10px)" ];
+      negatives = [ "circle()"; "invalid-shape" ];
+    };
+    {
+      property = "color";
+      positives =
+        [ "red"; "color(display-p3 1 0 0)"; "light-dark(black, white)" ];
+      negatives = [ "not-a-color"; "color(display-p3 1 0)" ];
+    };
+    {
+      property = "opacity";
+      positives = [ "0"; ".5"; "1"; "50%" ];
+      negatives = [ "red"; "1 2" ];
+    };
+    {
+      property = "filter";
+      positives =
+        [ "none"; "blur(5px) contrast(120%)"; "drop-shadow(0 0 2px black)" ];
+      negatives = [ "blur()"; "drop-shadow()" ];
+    };
+    {
+      property = "font";
+      positives = [ "italic small-caps bold 16px/1.5 serif"; "16px serif" ];
+      negatives = [ "bold serif"; "16px" ];
+    };
+    {
+      property = "font-family";
+      positives = [ "Arial, sans-serif"; "\"A B\", serif"; "system-ui" ];
+      negatives = [ "Arial,,serif"; "," ];
+    };
+    {
+      property = "font-weight";
+      positives = [ "normal"; "bold"; "400"; "650"; "lighter" ];
+      negatives = [ "1000"; "bold 400" ];
+    };
+    {
+      property = "font-feature-settings";
+      positives = [ "normal"; "\"kern\" 1"; "\"liga\" off" ];
+      negatives = [ "\"kern\" maybe"; "1" ];
+    };
+    {
+      property = "text-decoration";
+      positives = [ "underline"; "underline wavy red 2px" ];
+      negatives = [ "underline none"; "wavy solid" ];
+    };
+    {
+      property = "white-space";
+      positives = [ "normal"; "pre"; "preserve nowrap" ];
+      negatives = [ "pre normal"; "wrap nowrap preserve" ];
+    };
+    {
+      property = "word-break";
+      positives = [ "normal"; "break-all"; "keep-all"; "break-word" ];
+      negatives = [ "break"; "normal keep-all" ];
+    };
+    {
+      property = "writing-mode";
+      positives = [ "horizontal-tb"; "vertical-rl"; "sideways-rl" ];
+      negatives = [ "vertical"; "vertical-rl horizontal-tb" ];
+    };
+    {
+      property = "transform";
+      positives = [ "none"; "translateX(10px) rotate(45deg) scale(1.2)" ];
+      negatives = [ "translate()"; "none rotate(1deg)" ];
+    };
+    {
+      property = "translate";
+      positives = [ "none"; "10px"; "10px 20px"; "10px 20px 30px" ];
+      negatives = [ "10px 20px 30px 40px"; "red" ];
+    };
+    {
+      property = "rotate";
+      positives = [ "none"; "45deg"; "1 0 0 45deg" ];
+      negatives = [ "1 0 45deg"; "45px" ];
+    };
+    {
+      property = "scale";
+      positives = [ "none"; "1.2"; "1.2 2"; "1 2 3" ];
+      negatives = [ "1 2 3 4"; "red" ];
+    };
+    {
+      property = "transition";
+      positives = [ "opacity 1s ease-in .2s"; "all .2s linear .1s" ];
+      negatives = [ "1s 2s 3s"; "ease opacity ease" ];
+    };
+    {
+      property = "transition-behavior";
+      positives = [ "normal"; "allow-discrete" ];
+      negatives = [ "normal allow-discrete"; "discrete" ];
+    };
+    {
+      property = "animation";
+      positives = [ "fade 1s linear 2 alternate both running"; "none" ];
+      negatives = [ "1s 2s 3s"; "infinite infinite" ];
+    };
+    {
+      property = "grid-auto-flow";
+      positives = [ "row"; "column"; "row dense"; "dense" ];
+      negatives = [ "row column"; "dense dense" ];
+    };
+    {
+      property = "gap";
+      positives = [ "0"; "1rem"; "1rem 2rem" ];
+      negatives = [ "1rem 2rem 3rem"; "red" ];
+    };
+    {
+      property = "flex";
+      positives = [ "none"; "auto"; "1"; "1 1 0" ];
+      negatives = [ "1 1 1 1"; "row wrap" ];
+    };
+    {
+      property = "place-content";
+      positives = [ "center"; "center space-between"; "start stretch" ];
+      negatives = [ "center center center"; "left right" ];
+    };
+    {
+      property = "place-items";
+      positives = [ "start stretch"; "center"; "normal" ];
+      negatives = [ "start center end"; "left right" ];
+    };
+    {
+      property = "list-style";
+      positives = [ "square inside"; "none"; "url(marker.png) outside" ];
+      negatives = [ "inside outside"; "square disc" ];
+    };
+    {
+      property = "content";
+      positives =
+        [ "normal"; "\"hello\""; "open-quote attr(title) close-quote" ];
+      negatives = [ "attr()"; "open-quote close-quote none" ];
+    };
+  ]
+
+let spec_property_grammar_manifest () =
+  let parse_decl property value =
+    let input = property ^ ":" ^ value in
+    let c = Css.Cursor.of_string input in
+    match read_declaration c with
+    | None -> None
+    | Some decl ->
+        let serialized =
+          Css.Declaration.string_of_declaration ~minify:true decl
+        in
+        let c2 = Css.Cursor.of_string serialized in
+        Some (input, serialized, read_declaration c2)
+  in
+  let check_positive row value =
+    match parse_decl row.property value with
+    | Some (_input, serialized, Some reparsed)
+      when Css.Declaration.property_name reparsed = row.property ->
+        ignore serialized
+    | Some (input, serialized, _) ->
+        Alcotest.failf
+          "%s positive vector serialized to unparsable/wrong property: %s -> %s"
+          row.property input serialized
+    | None ->
+        Alcotest.failf "%s positive vector rejected: %s" row.property value
+  in
+  let check_negative row value =
+    match parse_decl row.property value with
+    | None -> ()
+    | Some (input, serialized, _) ->
+        Alcotest.failf "%s negative vector parsed: %s -> %s" row.property input
+          serialized
+  in
+  let check_css_wide row keyword =
+    match parse_decl row.property keyword with
+    | Some (_, _, Some reparsed)
+      when Css.Declaration.property_name reparsed = row.property ->
+        ()
+    | Some (input, serialized, _) ->
+        Alcotest.failf "%s CSS-wide keyword did not reparse: %s -> %s"
+          row.property input serialized
+    | None ->
+        Alcotest.failf "%s CSS-wide keyword rejected: %s" row.property keyword
+  in
+  List.iter
+    (fun row ->
+      if row.positives = [] then
+        Alcotest.failf "%s has no positive grammar vectors" row.property;
+      if row.negatives = [] then
+        Alcotest.failf "%s has no negative grammar vectors" row.property;
+      List.iter (check_positive row) row.positives;
+      List.iter (check_negative row) row.negatives;
+      List.iter (check_css_wide row)
+        [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ])
+    property_grammar_matrix
+
 let declaration_tests =
   [
     (* Core declaration type testing *)
@@ -1721,6 +2026,8 @@ let declaration_tests =
       spec_remaining_prop_vectors;
     test_case "spec declaration additional grammar vectors" `Quick
       spec_declaration_more_grammar_vectors;
+    test_case "spec property grammar manifest" `Quick
+      spec_property_grammar_manifest;
     (* Error handling *)
     test_case "error missing colon" `Quick error_missing_colon;
     test_case "error stray semicolon" `Quick error_stray_semicolon;
