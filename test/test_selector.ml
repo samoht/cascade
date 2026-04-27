@@ -1173,6 +1173,42 @@ let test_spec_forgiving_selector_lists () =
   neg_cursor read ":where()";
   neg_cursor read ":has()"
 
+let test_spec_selector_current_pseudo_vectors () =
+  check ":popover-open";
+  check ":modal";
+  check ":picture-in-picture";
+  check ":fullscreen";
+  check ":autofill";
+  check ":user-valid";
+  check ":user-invalid";
+  check ":open";
+  check ":state(selected)";
+  check ":host";
+  check ":host(.active)";
+  check ":host-context(.theme-dark)";
+  check "::part(tab panel)";
+  check "::slotted(img.selected)";
+  check "::cue(.warning)";
+  check "::cue-region(.speaker)";
+  check "::highlight(search)";
+  check "::view-transition-group(root)";
+  check "::view-transition-image-pair(root)";
+  check "::view-transition-old(root)";
+  check "::view-transition-new(root)";
+  check ":active-view-transition-type(forwards,backwards)";
+  check ":playing";
+  check ":paused";
+  check ":seeking";
+  check ":buffering";
+  check ":stalled";
+  check ":muted";
+  check ":volume-locked";
+  neg_cursor read ":state()";
+  neg_cursor read "::part()";
+  neg_cursor read "::slotted()";
+  neg_cursor read "::highlight()";
+  neg_cursor read ":active-view-transition-type()"
+
 let suite =
   let open Alcotest in
   ( "selector",
@@ -1222,5 +1258,7 @@ let suite =
         test_spec_selector_specificity;
       test_case "spec forgiving selector lists" `Quick
         test_spec_forgiving_selector_lists;
+      test_case "spec selector current pseudo vectors" `Quick
+        test_spec_selector_current_pseudo_vectors;
       test_case "nesting selector" `Quick test_nesting_selector;
     ] )

@@ -23,7 +23,22 @@ let test_to_string () =
     (to_string (Raw "(prefers-reduced-data: reduce)"));
   Alcotest.(check string)
     "media queries range comparison" "(width >= 40em)"
-    (to_string (Raw "(width >= 40em)"))
+    (to_string (Raw "(width >= 40em)"));
+  Alcotest.(check string)
+    "media queries chained range" "(30em <= width < 60em)"
+    (to_string (Raw "(30em <= width < 60em)"));
+  Alcotest.(check string)
+    "media queries hdr" "(video-dynamic-range: high)"
+    (to_string (Raw "(video-dynamic-range: high)"));
+  Alcotest.(check string)
+    "media queries update" "(update: fast)"
+    (to_string (Raw "(update: fast)"));
+  Alcotest.(check string)
+    "media queries scripting" "(scripting: enabled)"
+    (to_string (Raw "(scripting: enabled)"));
+  Alcotest.(check string)
+    "media queries prefers contrast" "(prefers-contrast: more)"
+    (to_string (Raw "(prefers-contrast: more)"))
 
 let test_kind () =
   Alcotest.(check bool)
