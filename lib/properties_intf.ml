@@ -1104,6 +1104,17 @@ type radial_gradient_config = {
   position : position_value option;
 }
 
+type border_radius = {
+  horizontal : length_percentage list;
+      (** 1-4 horizontal radii (top-left, top-right, bottom-right, bottom-left).
+      *)
+  vertical : length_percentage list option;
+      (** Optional 1-4 vertical radii after [/]; when [None] the horizontal
+          values are used for both axes. *)
+}
+(** [<length-percentage [0,∞]>]{1,4} [ / [<length-percentage [0,∞]>]{1,4} ]?
+    per CSS Backgrounds and Borders 3 §5. *)
+
 type conic_gradient_config = {
   from_angle : angle option;  (** [from <angle>] starting angle *)
   conic_position : position_value option;  (** [at <position>] center *)
@@ -1656,7 +1667,7 @@ type 'a property =
   | Border_inline_end_width : border_width property
   | Border_block_start_width : border_width property
   | Border_block_end_width : border_width property
-  | Border_radius : length property
+  | Border_radius : border_radius property
   | Border_top_left_radius : length property
   | Border_top_right_radius : length property
   | Border_bottom_left_radius : length property

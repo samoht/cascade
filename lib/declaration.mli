@@ -630,7 +630,7 @@ val border_width : border_width -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-width}
      border-width} property. *)
 
-val border_radius : length -> declaration
+val border_radius : border_radius -> declaration
 (** [border_radius v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-radius}
      border-radius} property. *)
