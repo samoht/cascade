@@ -95,6 +95,21 @@ type value_processing_error =
   | Requires_document_context of value_processing_stage
       (** The requested stage depends on DOM, inheritance, layout, rendering, or
           device constraints outside this parser/serializer library. *)
+  | Unsupported_value_alias of { property : string; value : string }
+      (** No value-alias table is implemented for this property/value pair. *)
+
+type cascade_candidate = {
+  candidate_origin : cascade_origin;
+  candidate_layer : string option;
+  candidate_important : bool;
+  candidate_specificity : int;
+  candidate_scope_hops : int option;
+  candidate_source_order : int;
+  candidate_value : string;
+}
+(** A same-property cascade candidate covering the cascade ordering criteria
+    this library can model without a DOM: origin/importance, layer, specificity,
+    scoping proximity, and source order. *)
 
 (** {2 Basic Rules} *)
 

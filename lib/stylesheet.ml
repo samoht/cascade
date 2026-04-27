@@ -150,6 +150,33 @@ let cascaded_value candidates =
   winning_cascade_origin_candidate candidates
   |> Option.map (fun (c : cascade_origin_candidate) -> c.value)
 
+let scope_proximity_rank = function None -> min_int | Some hops -> -hops
+
+let compare_cascade_candidate ~layer_order (a : cascade_candidate)
+    (b : cascade_candidate) =
+  let key (c : cascade_candidate) =
+    ( origin_importance_rank ~important:c.candidate_important c.candidate_origin,
+      cascade_layer_precedence_rank ~layer_order
+        ~important:c.candidate_important c.candidate_layer,
+      c.candidate_specificity,
+      scope_proximity_rank c.candidate_scope_hops,
+      c.candidate_source_order )
+  in
+  compare (key a) (key b)
+
+let winning_cascade_candidate ~layer_order (candidates : cascade_candidate list)
+    =
+  match candidates with
+  | [] -> None
+  | first :: rest ->
+      Some
+        (List.fold_left
+           (fun winner candidate ->
+             if compare_cascade_candidate ~layer_order winner candidate < 0 then
+               candidate
+             else winner)
+           first rest)
+
 let specified_value ~inherits ~initial ~inherited ~cascaded =
   let inherited_or_initial () = Option.value ~default:initial inherited in
   match cascaded with
@@ -176,9 +203,51 @@ let specified_value ~inherits ~initial ~inherited ~cascaded =
   | None ->
       { specified_value = initial; specified_value_source = Initial_default }
 
+(* Resolve a chain of [revert] winners. Each revert exposes the next-lower
+   origin's winning candidate; if THAT is also [revert], peel another origin
+   off, and so on until a non-revert winner or no candidates remain. The
+   rollback context comes from the winner itself so callers cannot pass a
+   [current_origin] that disagrees with the candidate they exposed. *)
+let rec resolve_revert_chain candidates =
+  match winning_cascade_origin_candidate candidates with
+  | Some winner when winner.value = "revert" ->
+      cascade_revert_origin_candidates ~important:winner.important
+        ~current_origin:winner.origin candidates
+      |> resolve_revert_chain
+  | other -> other
+
+let specified_value_after_revert ~inherits ~initial ~inherited candidates =
+  let cascaded =
+    resolve_revert_chain candidates
+    |> Option.map (fun (c : cascade_origin_candidate) -> c.value)
+  in
+  specified_value ~inherits ~initial ~inherited ~cascaded
+
+let rec resolve_revert_layer_chain ~layer_order candidates =
+  match winning_cascade_layer_candidate ~layer_order candidates with
+  | Some winner when winner.value = "revert-layer" ->
+      cascade_revert_layer_candidates ~layer_order ~important:winner.important
+        ~current_layer:winner.layer candidates
+      |> resolve_revert_layer_chain ~layer_order
+  | other -> other
+
+let specified_value_after_revert_layer ~inherits ~initial ~inherited
+    ~layer_order candidates =
+  match resolve_revert_layer_chain ~layer_order candidates with
+  | Some winner ->
+      specified_value ~inherits ~initial ~inherited
+        ~cascaded:(Some winner.value)
+  | None -> specified_value ~inherits ~initial ~inherited ~cascaded:None
+
 let value_processing_requires_document_context = function
   | Declared_value | Cascaded_value | Specified_value -> false
   | Computed_value | Used_value | Actual_value -> true
+
+let declared_values_for_element ?element:_ _stylesheet =
+  Error (Requires_document_context Declared_value)
+
+let normalize_value_alias ~property ~value =
+  Error (Unsupported_value_alias { property; value })
 
 let computed_value ~property:_ ~specified:_ =
   Error (Requires_document_context Computed_value)
@@ -188,6 +257,12 @@ let used_value ~property:_ ~computed:_ =
 
 let actual_value ~property:_ ~used:_ =
   Error (Requires_document_context Actual_value)
+
+let applicable_property ~property:_ ~box:_ =
+  Error (Requires_document_context Used_value)
+
+let per_fragment_value ~property:_ ~fragment:_ ~computed:_ =
+  Error (Requires_document_context Used_value)
 
 let starting_style_nested declarations =
   Starting_style [ Declarations declarations ]

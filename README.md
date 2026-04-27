@@ -11,10 +11,14 @@ strings, so invalid constructs are caught at compile time.
 
 ## CSS specification coverage
 
-Cascade targets **CSS Level 3 and Level 4** modules. The parser handles the
-full syntax defined in
-[CSS Syntax Level 3](https://www.w3.org/TR/css-syntax-3/) and the printer
-produces spec-conformant output with optional minification.
+Cascade targets selected **CSS Level 3, Level 4, and Level 5** modules. It has
+focused parser, printer, optimizer, property, and fuzz tests for many CSS
+features, but it is not a full browser conformance suite: Cascade does not
+currently implement a DOM, layout, rendering, CSSOM mutation, network fetching,
+or computed-style engine.
+
+See [SPEC_COVERAGE.md](SPEC_COVERAGE.md) for the detailed coverage matrix,
+including tested API stubs for browser-context behavior.
 
 | Specification | Coverage |
 |---|---|

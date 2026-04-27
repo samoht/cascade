@@ -412,6 +412,54 @@ let test_specified_value_unset_inheritance_invariant buf =
       (Fmt.str "unset non-inherited property did not use initial: %S"
          non_inherited_property.specified_value)
 
+(** CSS Cascade sections 4.2 and 6.1: after all higher-priority criteria tie,
+    later source order determines the cascaded value. *)
+let test_integrated_cascade_source_order_invariant buf =
+  let first = pick [ "red"; "green"; "blue" ] buf 0 in
+  let second = pick [ "cyan"; "magenta"; "yellow" ] buf 1 in
+  let candidate source_order value : Css.Stylesheet.cascade_candidate =
+    {
+      candidate_origin = Css.Stylesheet.Author;
+      candidate_layer = None;
+      candidate_important = false;
+      candidate_specificity = 10;
+      candidate_scope_hops = None;
+      candidate_source_order = source_order;
+      candidate_value = value;
+    }
+  in
+  match
+    Css.Stylesheet.winning_cascade_candidate ~layer_order:[]
+      [ candidate 0 first; candidate 1 second ]
+  with
+  | Some winner when winner.candidate_value = second -> ()
+  | Some winner ->
+      fail
+        (Fmt.str "later source-order candidate lost: %S vs %S" second
+           winner.candidate_value)
+  | None -> fail "integrated cascade returned no winner"
+
+(** CSS Cascade section 7.3.5 as used by section 4.3: [revert-layer] falls back
+    to the winning lower layer, or defaulting if there is no lower layer. *)
+let test_revert_layer_specified_value_invariant buf =
+  let fallback = pick [ "green"; "blue"; "black" ] buf 0 in
+  let candidate layer source_order value :
+      Css.Stylesheet.cascade_layer_candidate =
+    { layer; important = false; source_order; value }
+  in
+  let specified =
+    Css.Stylesheet.specified_value_after_revert_layer ~inherits:false
+      ~initial:"transparent" ~inherited:None ~layer_order:[ "base"; "theme" ]
+      [
+        candidate (Some "base") 0 fallback;
+        candidate (Some "theme") 1 "revert-layer";
+      ]
+  in
+  if specified.specified_value <> fallback then
+    fail
+      (Fmt.str "revert-layer did not expose lower layer: %S"
+         specified.specified_value)
+
 let suite =
   ( "stylesheet",
     [
@@ -447,4 +495,8 @@ let suite =
         test_declared_values_source_order_invariant;
       test_case "specified value unset inheritance invariant" [ bytes ]
         test_specified_value_unset_inheritance_invariant;
+      test_case "integrated cascade source order invariant" [ bytes ]
+        test_integrated_cascade_source_order_invariant;
+      test_case "revert-layer specified value invariant" [ bytes ]
+        test_revert_layer_specified_value_invariant;
     ] )
