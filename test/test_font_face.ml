@@ -80,6 +80,40 @@ let test_spec_metric_negative_vectors () =
     "zero size adjust parses" 0.
     (size_adjust_of_string "0%")
 
+let test_spec_font_face_level_4_5_source_edges () =
+  let check_raw name input =
+    Alcotest.(check string) name input (src_of_string input |> src_to_string)
+  in
+  check_raw "tech variations" "url(\"variable.woff2\") tech(variations)";
+  check_raw "tech palettes" "url(\"color.woff2\") tech(palettes)";
+  check_raw "tech incremental" "url(\"font.woff2\") tech(incremental)";
+  check_raw "format collection" "url(\"collection.ttc\") format(\"collection\")";
+  check_raw "multiple urls with local fallback"
+    "local(\"Brand\"), url(\"brand.woff2\") format(\"woff2\"), \
+     url(\"brand.otf\") format(\"opentype\")";
+  check_raw "raw unknown source function"
+    "url(\"font.woff2\") format(\"woff2\") tech(color-COLRv1)"
+
+let test_spec_font_face_metric_descriptor_edges () =
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check string)
+        input expected
+        (metric_override_of_string input |> metric_override_to_string))
+    [
+      ("0%", "0%");
+      ("100%", "100%");
+      ("normal", "normal");
+      (" 87.25% ", "87.25%");
+      ("999%", "999%");
+    ];
+  List.iter
+    (fun (input, expected) ->
+      Alcotest.(check (float 0.0001))
+        input expected
+        (size_adjust_of_string input))
+    [ ("0%", 0.); ("100%", 100.); ("125.5%", 125.5); (" 87.25% ", 87.25) ]
+
 let suite =
   let open Alcotest in
   ( "font_face",
@@ -93,4 +127,8 @@ let suite =
         test_spec_metric_parsing_edges;
       test_case "spec metric negative vectors" `Quick
         test_spec_metric_negative_vectors;
+      test_case "spec font-face level 4/5 source edges" `Quick
+        test_spec_font_face_level_4_5_source_edges;
+      test_case "spec font-face metric descriptor edges" `Quick
+        test_spec_font_face_metric_descriptor_edges;
     ] )
