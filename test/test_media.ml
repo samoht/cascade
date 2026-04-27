@@ -40,6 +40,37 @@ let test_to_string () =
     "media queries prefers contrast" "(prefers-contrast: more)"
     (to_string (Raw "(prefers-contrast: more)"))
 
+let test_spec_media_query_level_4_5_vectors () =
+  let check_raw name input =
+    Alcotest.(check string) name input (to_string (Raw input))
+  in
+  check_raw "range greater than" "(width > 40em)";
+  check_raw "range greater equal" "(width >= 40em)";
+  check_raw "range less than" "(width < 60em)";
+  check_raw "chained inclusive exclusive" "(30em <= width < 60em)";
+  check_raw "height range" "(height >= 20rem)";
+  check_raw "aspect-ratio range" "(aspect-ratio > 16/9)";
+  check_raw "resolution range" "(resolution >= 2dppx)";
+  check_raw "boolean color" "(color)";
+  check_raw "boolean monochrome" "(monochrome)";
+  check_raw "update slow" "(update: slow)";
+  check_raw "overflow block paged" "(overflow-block: paged)";
+  check_raw "overflow inline scroll" "(overflow-inline: scroll)";
+  check_raw "environment blending" "(environment-blending: additive)";
+  check_raw "nav controls" "(nav-controls)";
+  check_raw "prefers reduced transparency"
+    "(prefers-reduced-transparency: reduce)";
+  check_raw "prefers reduced data" "(prefers-reduced-data: reduce)";
+  Alcotest.(check string)
+    "negated print" "not print"
+    (to_string (Negated Print));
+  Alcotest.(check string)
+    "negated min width" "not all and (min-width: 40px)"
+    (to_string (Negated (Min_width 40.)));
+  Alcotest.(check string)
+    "not min width rem" "not all and (min-width: 30rem)"
+    (to_string (Not_min_width_rem 30.))
+
 let test_kind () =
   Alcotest.(check bool)
     "min-width is responsive" true
@@ -59,11 +90,44 @@ let test_compare () =
   let cmp = compare (Min_width 640.) (Min_width 768.) in
   Alcotest.(check bool) "640 < 768" true (cmp < 0)
 
+let test_spec_media_sorting_edges () =
+  let sorted =
+    List.sort compare
+      [
+        Prefers_color_scheme `Dark;
+        Min_width 768.;
+        Hover;
+        Max_width 1024.;
+        Prefers_reduced_motion `Reduce;
+        Print;
+        Not_min_width 768.;
+        Min_width 320.;
+      ]
+    |> List.map to_string
+  in
+  Alcotest.(check (list string))
+    "media ordering keeps interaction, other, preferences, and responsive \
+     buckets stable"
+    [
+      "(hover: hover)";
+      "print";
+      "(prefers-reduced-motion: reduce)";
+      "not all and (min-width: 768px)";
+      "(max-width: 1024px)";
+      "(min-width: 320px)";
+      "(min-width: 768px)";
+      "(prefers-color-scheme: dark)";
+    ]
+    sorted
+
 let suite =
   let open Alcotest in
   ( "media",
     [
       test_case "to_string" `Quick test_to_string;
+      test_case "spec media query level 4/5 vectors" `Quick
+        test_spec_media_query_level_4_5_vectors;
       test_case "kind" `Quick test_kind;
       test_case "compare" `Quick test_compare;
+      test_case "spec media sorting edges" `Quick test_spec_media_sorting_edges;
     ] )

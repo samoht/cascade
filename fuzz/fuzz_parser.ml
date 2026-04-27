@@ -44,6 +44,11 @@ let assert_same_shape label input output =
          label input output
          (String.concat " -> " after))
 
+let byte_at buf i =
+  if String.length buf = 0 then 0 else Char.code buf.[i mod String.length buf]
+
+let repeated c n = String.init n (fun _ -> c)
+
 (** Component-value parsing must not crash on decoded CSS-shaped input. *)
 let test_component_value_crash_safety buf =
   let buf = cssish buf in
@@ -96,6 +101,33 @@ let test_component_value_token_boundary_roundtrip left right =
   let input = left ^ " " ^ right in
   assert_same_shape "token boundary serialization" input (minified input)
 
+let test_bounded_unterminated_nesting_reparse buf =
+  let depth = 1 + (byte_at buf 0 mod 256) in
+  let opener =
+    match byte_at buf 1 mod 3 with 0 -> '(' | 1 -> '[' | _ -> '{'
+  in
+  let input = repeated opener depth ^ "x" in
+  let serialized = serialized input in
+  ignore (parse_list serialized);
+  let minified = minified input in
+  ignore (parse_list minified)
+
+let test_balanced_nesting_shape_roundtrip buf =
+  let depth = 1 + (byte_at buf 0 mod 128) in
+  let input = repeated '(' depth ^ "x" ^ repeated ')' depth in
+  assert_same_shape "balanced deep nesting serialization" input
+    (serialized input);
+  assert_same_shape "balanced deep nesting minification" input (minified input)
+
+let test_comment_confusion_does_not_surface_components buf =
+  let payload =
+    cssish buf |> String.map (function '/' | '*' -> 'x' | c -> c)
+  in
+  let input = "safe/*" ^ payload ^ ".evil{color:red}" in
+  let output = minified input in
+  if String.contains output '{' || String.contains output '}' then
+    fail (Fmt.str "unterminated comment surfaced block syntax: %S" output)
+
 let suite =
   ( "parser",
     [
@@ -111,4 +143,10 @@ let suite =
         test_component_value_serialized_shape_roundtrip;
       test_case "component-value token boundaries roundtrip" [ bytes; bytes ]
         test_component_value_token_boundary_roundtrip;
+      test_case "bounded unterminated nesting reparses" [ bytes ]
+        test_bounded_unterminated_nesting_reparse;
+      test_case "balanced nesting shape roundtrip" [ bytes ]
+        test_balanced_nesting_shape_roundtrip;
+      test_case "comment confusion does not surface components" [ bytes ]
+        test_comment_confusion_does_not_surface_components;
     ] )

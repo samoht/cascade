@@ -545,12 +545,35 @@ let import_case () =
   (* Test various import forms *)
   check_stylesheet "@import 'styles.css';";
   check_stylesheet "@import url(utilities.css) layer(utilities);";
-  check_stylesheet "@import 'print.css' print;"
+  check_stylesheet "@import 'print.css' print;";
+  check_import_rule
+    ~expected:"@import \"theme.css\" supports(selector(:has(img))) screen;"
+    "@import url(theme.css) supports(selector(:has(img))) screen;";
+  check_import_rule
+    ~expected:
+      "@import \"tokens.css\" layer(theme.tokens) supports(--theme:dark) \
+       (prefers-color-scheme:dark);"
+    "@import url(tokens.css) layer(theme.tokens) supports(--theme: dark) \
+     (prefers-color-scheme: dark);";
+  check_import_rule
+    ~expected:"@import \"wide.css\" supports((width:stretch)) (width >= 40em);"
+    "@import url(wide.css) supports((width: stretch)) (width >= 40em);";
+  neg_cursor read_import_rule "@import url(theme.css) screen layer(theme);";
+  neg_cursor read_import_rule
+    "@import url(theme.css) supports(selector()) screen;";
+  neg_cursor read_import_rule "@import url(theme.css) layer(theme,) screen;"
 
 (** Test [@namespace] rules *)
 let namespace_case () =
   (* Test namespace roundtrips *)
-  check_stylesheet "@namespace url(http://www.w3.org/1999/xhtml);"
+  check_stylesheet "@namespace url(http://www.w3.org/1999/xhtml);";
+  check_stylesheet ~expected:"@namespace svg url(http://www.w3.org/2000/svg);"
+    "@namespace svg url(http://www.w3.org/2000/svg);";
+  check_stylesheet
+    ~expected:"@namespace math \"http://www.w3.org/1998/Math/MathML\";"
+    "@namespace math \"http://www.w3.org/1998/Math/MathML\";";
+  neg_cursor read_stylesheet "@namespace { url(http://example.test); }";
+  neg_cursor read_stylesheet "@namespace svg;"
 
 (** Test [@keyframes] rules *)
 let keyframes_case () =
@@ -626,7 +649,22 @@ let page_case () =
   (* Test page roundtrip *)
   check_stylesheet ~expected:"@page{margin:1in}" "@page { margin: 1in; }";
   check_stylesheet ~expected:"@page:first{margin:2in}"
-    "@page :first { margin: 2in; }"
+    "@page :first { margin: 2in; }";
+  check_stylesheet ~expected:"@page:left{margin-left:4cm;margin-right:3cm}"
+    "@page :left { margin-left: 4cm; margin-right: 3cm; }";
+  check_stylesheet ~expected:"@page:right{size:A4;margin:1cm}"
+    "@page :right { size: A4; margin: 1cm; }";
+  check_stylesheet ~expected:"@page chapter:first{margin-top:6cm}"
+    "@page chapter:first { margin-top: 6cm; }";
+  check_stylesheet
+    ~expected:
+      "@page{ @top-left{content:\"title\"} \
+       @bottom-center{content:counter(page)}}"
+    "@page { @top-left { content: \"title\" } @bottom-center { content: \
+     counter(page) } }";
+  neg_cursor read_stylesheet "@page : { margin: 1cm }";
+  neg_cursor read_stylesheet "@page :unknown { margin: 1cm }";
+  neg_cursor read_stylesheet "@page { color: red }"
 
 (** Test sheet_item variants *)
 let sheet_item_case () =

@@ -151,6 +151,82 @@ let test_length_serialization_idempotent buf =
           if once <> twice then
             fail (Fmt.str "length serialization changed: %S -> %S" once twice))
 
+let test_angle_serialization_idempotent buf =
+  let r = Css.Cursor.of_string buf in
+  match
+    try Some (Css.Values.read_angle r) with Css.Cursor.Parse_error _ -> None
+  with
+  | None -> ()
+  | Some angle -> (
+      let once = Css.Pp.to_string ~minify:true Css.Values.pp_angle angle in
+      let r2 = Css.Cursor.of_string once in
+      match
+        try Some (Css.Values.read_angle r2)
+        with Css.Cursor.Parse_error _ -> None
+      with
+      | None -> fail (Fmt.str "angle serialization did not reparse: %S" once)
+      | Some reparsed ->
+          let twice =
+            Css.Pp.to_string ~minify:true Css.Values.pp_angle reparsed
+          in
+          if once <> twice then
+            fail (Fmt.str "angle serialization changed: %S -> %S" once twice))
+
+let test_percentage_serialization_idempotent buf =
+  let r = Css.Cursor.of_string buf in
+  match
+    try Some (Css.Values.read_percentage r)
+    with Css.Cursor.Parse_error _ -> None
+  with
+  | None -> ()
+  | Some percentage -> (
+      let once =
+        Css.Pp.to_string ~minify:true
+          Css.Values.(pp_percentage ~always:true)
+          percentage
+      in
+      let r2 = Css.Cursor.of_string once in
+      match
+        try Some (Css.Values.read_percentage r2)
+        with Css.Cursor.Parse_error _ -> None
+      with
+      | None ->
+          fail (Fmt.str "percentage serialization did not reparse: %S" once)
+      | Some reparsed ->
+          let twice =
+            Css.Pp.to_string ~minify:true
+              Css.Values.(pp_percentage ~always:true)
+              reparsed
+          in
+          if once <> twice then
+            fail
+              (Fmt.str "percentage serialization changed: %S -> %S" once twice))
+
+let test_duration_serialization_idempotent buf =
+  let r = Css.Cursor.of_string buf in
+  match
+    try Some (Css.Values.read_duration r)
+    with Css.Cursor.Parse_error _ -> None
+  with
+  | None -> ()
+  | Some duration -> (
+      let once =
+        Css.Pp.to_string ~minify:true Css.Values.pp_duration duration
+      in
+      let r2 = Css.Cursor.of_string once in
+      match
+        try Some (Css.Values.read_duration r2)
+        with Css.Cursor.Parse_error _ -> None
+      with
+      | None -> fail (Fmt.str "duration serialization did not reparse: %S" once)
+      | Some reparsed ->
+          let twice =
+            Css.Pp.to_string ~minify:true Css.Values.pp_duration reparsed
+          in
+          if once <> twice then
+            fail (Fmt.str "duration serialization changed: %S -> %S" once twice)
+      )
+
 let suite =
   ( "values",
     [
@@ -182,4 +258,10 @@ let suite =
       test_case "color roundtrip" [ bytes ] test_color_roundtrip;
       test_case "length serialization idempotent" [ bytes ]
         test_length_serialization_idempotent;
+      test_case "angle serialization idempotent" [ bytes ]
+        test_angle_serialization_idempotent;
+      test_case "percentage serialization idempotent" [ bytes ]
+        test_percentage_serialization_idempotent;
+      test_case "duration serialization idempotent" [ bytes ]
+        test_duration_serialization_idempotent;
     ] )
