@@ -79,7 +79,11 @@ let media_integration () =
   let mobile_rule = rule ~selector:btn [ font_size (Rem 0.875) ] in
   let stylesheet =
     Css.v
-      [ media ~condition:(Css.Media.Raw "(max-width: 640px)") [ mobile_rule ] ]
+      [
+        media
+          ~condition:(Css.Media.of_string "(max-width: 640px)")
+          [ mobile_rule ];
+      ]
   in
 
   let css = Css.to_string ~minify:true stylesheet in
@@ -208,7 +212,8 @@ let test_rules_from_statements () =
   let stmts =
     [
       rule ~selector:btn [ color (hex "#ff0000") ];
-      media ~condition:(Css.Media.Raw "(min-width: 768px)")
+      media
+        ~condition:(Css.Media.of_string "(min-width: 768px)")
         [ rule ~selector:card [ padding [ Px 5. ] ] ];
       rule ~selector:card [ margin [ Px 10. ] ];
     ]
@@ -293,7 +298,8 @@ let test_map_nested () =
   let sel1 = Selector.class_ "foo" in
   let stmts =
     [
-      media ~condition:(Css.Media.Raw "(min-width:768px)")
+      media
+        ~condition:(Css.Media.of_string "(min-width:768px)")
         [
           rule ~selector:sel1 [ color (Hex { hash = true; value = "ff0000" }) ];
         ];
@@ -383,7 +389,8 @@ let test_sort_nested () =
   let sel2 = Selector.class_ "aaa" in
   let stmts =
     [
-      media ~condition:(Css.Media.Raw "(min-width:768px)")
+      media
+        ~condition:(Css.Media.of_string "(min-width:768px)")
         [
           rule ~selector:sel1 [ color (Hex { hash = true; value = "ff0000" }) ];
           rule ~selector:sel2 [ color (Hex { hash = true; value = "00ff00" }) ];
@@ -467,7 +474,7 @@ let public_fold_edges () =
     rule ~selector:(Selector.class_ "card")
       ~nested:
         [
-          media ~condition:(Css.Media.Raw "(width >= 40em)") [ nested ];
+          media ~condition:(Css.Media.of_string "(width >= 40em)") [ nested ];
           declarations [ background_color (hex "#ffffff") ];
         ]
       [ padding [ Rem 1. ] ]
@@ -538,7 +545,8 @@ let public_custom_props_edges () =
     rule ~selector:Selector.Root [ custom_property "--brand" "#f00" ]
   in
   let nested_theme =
-    media ~condition:(Css.Media.Raw "(prefers-color-scheme: dark)")
+    media
+      ~condition:(Css.Media.of_string "(prefers-color-scheme: dark)")
       [
         layer ~name:"theme"
           [

@@ -93,10 +93,6 @@ let test_stylesheet () =
   check_stylesheet ~expected:".test{color:red}" ".test { color: red }";
 
   (* Test invalid stylesheet syntax *)
-  neg_cursor read_stylesheet "@invalid-rule { }";
-  (* Unknown at-rule *)
-  neg_cursor read_stylesheet ".btn { invalid-property: value }";
-  (* Invalid property *)
   neg_cursor read_stylesheet "@media { }";
   (* Media without condition *)
   neg_cursor read_stylesheet "@charset 'UTF-8'" (* Wrong charset quotes *)
@@ -142,7 +138,9 @@ let test_media_rule_creation () =
   in
   let r = rule ~selector:(Selector.class_ "red") [ decl ] in
   let media_stmt =
-    media ~condition:(Css.Media.Raw "screen and (min-width: 768px)") [ Rule r ]
+    media
+      ~condition:(Css.Media.of_string "screen and (min-width: 768px)")
+      [ Rule r ]
   in
   let sheet = Css.Stylesheet.v [ media_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
@@ -251,7 +249,7 @@ let helper () =
   check_stylesheet_helper "simple stylesheet" "div{display:block}" sheet;
 
   let media_stmt =
-    media ~condition:(Css.Media.Raw "print") [ Css.Stylesheet.Rule rule ]
+    media ~condition:(Css.Media.of_string "print") [ Css.Stylesheet.Rule rule ]
   in
   let sheet2 = Css.Stylesheet.v [ media_stmt ] in
   check_stylesheet_helper "media stylesheet" "@media print{div{display:block}}"
@@ -275,7 +273,7 @@ let construction () =
   in
   let rule = rule ~selector:(Selector.class_ "red") [ decl ] in
   let media_stmt =
-    media ~condition:(Css.Media.Raw "screen") [ Css.Stylesheet.Rule rule ]
+    media ~condition:(Css.Media.of_string "screen") [ Css.Stylesheet.Rule rule ]
   in
   let prop = property ~syntax:Css.Variables.Color "--my-color" in
 
@@ -297,7 +295,7 @@ let items_conversion () =
   in
   let rule = rule ~selector:(Selector.class_ "red") [ decl ] in
   let media_stmt =
-    media ~condition:(Css.Media.Raw "screen") [ Css.Stylesheet.Rule rule ]
+    media ~condition:(Css.Media.of_string "screen") [ Css.Stylesheet.Rule rule ]
   in
 
   let sheet = Css.Stylesheet.v [ Css.Stylesheet.Rule rule; media_stmt ] in
@@ -523,7 +521,7 @@ let pp_case () =
       (Css.Values.Hex { hash = true; value = "ff0000" })
   in
   let r = rule ~selector:(Selector.class_ "red") [ decl ] in
-  let media_stmt = media ~condition:(Css.Media.Raw "screen") [ Rule r ] in
+  let media_stmt = media ~condition:(Css.Media.of_string "screen") [ Rule r ] in
   let prop =
     property ~syntax:Css.Variables.Color
       ~initial_value:(Css.Values.Named Css.Values.Blue) "--primary"
@@ -858,7 +856,9 @@ let test_of_string_positive () =
     ".btn { color: rgba(255, 0, 0); }";
 
   check_stylesheet ~expected:".btn{color:rgb(50% 100 50%)}"
-    ".btn { color: rgb(50%, 100, 50%); }"
+    ".btn { color: rgb(50%, 100, 50%); }";
+
+  check_stylesheet ~expected:".btn{--:value}" ".btn { --: value; }"
 
 (* Not a roundtrip test *)
 let test_of_string_negative () =
@@ -951,14 +951,12 @@ let test_of_string_negative () =
     "invalid calc (length * length)";
 
   (* Custom property errors *)
-  test_invalid_css ".btn { --: value; }" "empty custom property name";
   test_invalid_css ".btn { -custom: value; }"
     "invalid custom property (single hyphen)";
 
   (* Media query and at-rule errors *)
   test_invalid_css "@media { .btn { color: red; } }"
     "media query without condition";
-  test_invalid_css "@unknown-rule { .btn { color: red; } }" "unknown at-rule";
 
   (* Specificity and cascade errors *)
   test_invalid_css "btn.#id { color: red; }" "invalid selector combination";
@@ -1204,7 +1202,6 @@ let test_invalid_selectors () =
 
 (* Not a roundtrip test *)
 let test_invalid_properties () =
-  expect_parse_error ".btn { unknown-property: value; }";
   expect_parse_error ".btn { color: invalid-color; }";
   expect_parse_error ".btn { display: invalid-display; }";
   expect_parse_error ".btn { width: 100invalid; }";
@@ -1223,11 +1220,32 @@ let test_invalid_syntax () =
 
 (* Not a roundtrip test *)
 let test_invalid_at_rules () =
-  expect_parse_error "@unknown-rule { .btn { color: red; } }";
   expect_parse_error "@media { .btn { color: red; } }";
   expect_parse_error "@property { syntax: 'color'; inherits: true; }";
   expect_parse_error "@property --var { invalid-descriptor: value; }";
   expect_parse_error "@keyframes { 0% { opacity: 0; } }"
+
+(* Not a roundtrip test *)
+let css_syntax_recovery () =
+  let check_recovery name css expected min_warnings =
+    let { Css.stylesheet; warnings } = Css.parse css in
+    Alcotest.(check string)
+      (name ^ " stylesheet") expected
+      (Css.to_string ~minify:true stylesheet |> String.trim);
+    Alcotest.(check bool)
+      (name ^ " warning count") true
+      (List.length warnings >= min_warnings)
+  in
+  check_recovery "unknown declaration"
+    ".btn { unknown-property: value; color: red; }" ".btn{color:red}" 1;
+  check_recovery "invalid declaration"
+    ".btn { color: invalid-color; color: red; }" ".btn{color:red}" 1;
+  check_recovery "invalid selector list"
+    ".ok { color: green } .bad,:future-pseudo { color: red }" ".ok{color:green}"
+    1;
+  check_recovery "unknown at-rule"
+    "@unknown-rule { .bad { color: red } } .ok { color: blue }"
+    ".ok{color:blue}" 1
 
 (* Not a roundtrip test *)
 let test_invalid_functions () =
@@ -1890,7 +1908,7 @@ let c5_filtering_stub () =
   let stylesheet =
     [
       Css.Stylesheet.Media
-        ( Css.Media.Raw "(width >= 40em)",
+        ( Css.Media.of_string "(width >= 40em)",
           [
             Css.Stylesheet.Supports
               ( Css.Supports.Property ("display", "grid"),
@@ -1912,7 +1930,7 @@ let c5_filtering_stub () =
   in
   expect_platform_error "style rule filtering"
     (Css.Stylesheet.filter_style_rules ~element:"<h2 class=title>"
-       ~media:(Css.Media.Raw "(width >= 40em)")
+       ~media:(Css.Media.of_string "(width >= 40em)")
        ~supports:(Css.Supports.Property ("display", "grid"))
        ~shadow_tree:"document" ~scope:".card" stylesheet)
 
@@ -1927,7 +1945,8 @@ let test_spec_platform_boundary_stubs () =
        ~element:"<article class=card>");
   expect_platform_error "media query evaluation"
     (Css.Stylesheet.evaluate_media_query
-       ~condition:(Css.Media.Raw "(dynamic-range: high)") ~environment:"screen");
+       ~condition:(Css.Media.of_string "(dynamic-range: high)")
+       ~environment:"screen");
   expect_platform_error "supports evaluation"
     (Css.Stylesheet.evaluate_supports_condition
        ~condition:(Css.Supports.Property ("display", "grid")));
@@ -2058,8 +2077,8 @@ let environment_query_boundary () =
   let media_cases =
     [
       (Css.Media.Print, "print");
-      (Css.Media.Raw "(width >= 40em)", "screen width=50em");
-      (Css.Media.Raw "(prefers-reduced-data: reduce)", "reduced-data");
+      (Css.Media.of_string "(width >= 40em)", "screen width=50em");
+      (Css.Media.of_string "(prefers-reduced-data: reduce)", "reduced-data");
       (Css.Media.Negated Css.Media.Print, "screen");
     ]
   in
@@ -2160,7 +2179,7 @@ let custom_property_boundary () =
   check_declaration ~expected:"--b:var(--a, red)" "--b: var(--a, red);";
   check_declaration ~expected:"color:var(--brand, red)"
     "color: var(--brand, red);";
-  neg_cursor Css.Declaration.read_declaration "--: var(--x);";
+  check_declaration ~expected:"--:var(--x)" "--: var(--x);";
   neg_cursor read_stylesheet
     "@property --registered { syntax: \"<color>\"; inherits: false; \
      initial-value: 10px }"
@@ -2400,6 +2419,7 @@ let additional_tests =
     ("invalid properties", `Quick, test_invalid_properties);
     ("invalid syntax", `Quick, test_invalid_syntax);
     ("invalid at-rules", `Quick, test_invalid_at_rules);
+    ("spec CSS Syntax recovery", `Quick, css_syntax_recovery);
     ("invalid functions", `Quick, test_invalid_functions);
     ("layer roundtrip", `Quick, test_layer_roundtrip);
     ("spec cascade 6.4 layer name syntax", `Quick, c64_layer_name_syntax);

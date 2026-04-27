@@ -71,7 +71,7 @@ let generated_layer_stylesheet buf =
         [
           rule buf 12;
           Css.Stylesheet.Media
-            ( Css.Media.Raw "(min-width:30em)",
+            ( Css.Media.of_string "(min-width:30em)",
               [ Css.Stylesheet.Layer (Some nested, [ rule buf 16 ]) ] );
         ] );
     Css.Stylesheet.Layer
@@ -89,9 +89,9 @@ let generated_condition_stylesheet buf =
   let media =
     pick
       [
-        Css.Media.Raw "(width >= 40em)";
-        Css.Media.Raw "(30em <= width < 60em)";
-        Css.Media.Raw "(dynamic-range: high)";
+        Css.Media.of_string "(width >= 40em)";
+        Css.Media.of_string "(30em <= width < 60em)";
+        Css.Media.of_string "(dynamic-range: high)";
         Css.Media.Prefers_reduced_motion `Reduce;
       ]
       buf 0
@@ -625,7 +625,8 @@ let test_platform_stub_error_identity buf =
   | 1 ->
       expect "media query evaluation"
         (Css.Stylesheet.evaluate_media_query
-           ~condition:(Css.Media.Raw "(width >= 40em)") ~environment:"screen")
+           ~condition:(Css.Media.of_string "(width >= 40em)")
+           ~environment:"screen")
   | 2 ->
       expect "supports evaluation"
         (Css.Stylesheet.evaluate_supports_condition
@@ -645,7 +646,7 @@ let test_platform_stub_error_identity buf =
   | 6 ->
       expect "style rule filtering"
         (Css.Stylesheet.filter_style_rules ~element:"<div class=card>"
-           ~media:(Css.Media.Raw "(width >= 40em)")
+           ~media:(Css.Media.of_string "(width >= 40em)")
            ~supports:(Css.Supports.Property ("display", "grid"))
            ~shadow_tree:"document" ~scope:".card" [])
   | 7 ->
@@ -720,7 +721,7 @@ let test_platform_stubs_typed buf =
       Css.Stylesheet.url = "theme.css";
       layer = Some (layer_name buf 3);
       supports = Some (Css.Supports.Property ("display", "grid"));
-      media = Some (Css.Media.Raw "(width >= 40em)");
+      media = Some (Css.Media.of_string "(width >= 40em)");
     }
   in
   List.iter
@@ -733,7 +734,8 @@ let test_platform_stubs_typed buf =
       (fun () ->
         expect_platform
           (Css.Stylesheet.evaluate_media_query
-             ~condition:(Css.Media.Raw "(width >= 40em)") ~environment:"screen"));
+             ~condition:(Css.Media.of_string "(width >= 40em)")
+             ~environment:"screen"));
       (fun () ->
         expect_platform
           (Css.Stylesheet.evaluate_supports_condition
@@ -754,7 +756,7 @@ let test_platform_stubs_typed buf =
       (fun () ->
         expect_platform
           (Css.Stylesheet.filter_style_rules ~element:"<div>"
-             ~media:(Css.Media.Raw "(width >= 40em)")
+             ~media:(Css.Media.of_string "(width >= 40em)")
              ~supports:(Css.Supports.Property ("display", "grid"))
              []));
       (fun () ->

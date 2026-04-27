@@ -31,14 +31,14 @@ let generated_stylesheet buf =
         url = "theme.css";
         layer = Some "theme";
         supports = Some (Css.Supports.Property ("display", "grid"));
-        media = Some (Css.Media.Raw "(width >= 40em)");
+        media = Some (Css.Media.of_string "(width >= 40em)");
       };
     Css.Stylesheet.Namespace (Some "svg", "http://www.w3.org/2000/svg");
     Css.Stylesheet.property ~syntax:Css.Variables.Universal "--fuzz";
     rule buf 0;
     rule buf 0;
     Css.Stylesheet.Media
-      ( Css.Media.Raw "(width >= 40em)",
+      ( Css.Media.of_string "(width >= 40em)",
         [
           rule buf 4;
           Css.Stylesheet.Supports

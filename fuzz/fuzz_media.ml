@@ -33,7 +33,7 @@ let media buf i =
   | 19 -> Print
   | 20 -> Orientation `Landscape
   | _ ->
-      Raw
+      of_string
         (pick
            [
              "(width >= 40em)";
@@ -105,9 +105,11 @@ let test_raw_range_serialization_stable buf =
       ]
       buf 0
   in
-  let query = Css.Media.Raw raw in
-  if Css.Media.to_string query <> raw then
-    fail "raw media query serialization changed"
+  let once = Css.Media.to_string (Css.Media.of_string raw) in
+  let twice = Css.Media.to_string (Css.Media.of_string once) in
+  if once <> twice then
+    fail
+      (Fmt.str "media of_string/to_string not idempotent: %S vs %S" once twice)
 
 let suite =
   ( "media",
