@@ -66,7 +66,13 @@ type display =
 type position = Static | Relative | Absolute | Fixed | Sticky
 type visibility = Visible | Hidden | Collapse
 type z_index = Auto | Index of int | Calc of string | Var of z_index var
-type opacity = Opacity_number of float | Var of opacity var
+
+type opacity =
+  | Opacity_number of float
+  | Abs of opacity  (** [abs(<opacity>)] *)
+  | Sign of opacity  (** [sign(<opacity>)] *)
+  | Var of opacity var
+
 type order = Order_int of int | Order_calc of string | Var of order var
 type overflow = Visible | Hidden | Scroll | Auto | Clip
 
@@ -1111,6 +1117,8 @@ type background_image =
   | Conic_gradient_var of gradient_stop var
       (** Conic gradient using a single variable for all stops. Outputs:
           conic-gradient(var(--tw-gradient-stops)) *)
+  | Image_set of image_set_option list
+      (** [image-set(<source>#)] CSS Images 4 *)
   | Var of background_image var
       (** CSS variable reference: var(--my-gradient) *)
   | List of background_image list
@@ -1118,6 +1126,15 @@ type background_image =
   | None
   | Initial
   | Inherit
+
+and image_set_option = {
+  image_set_source : image_set_source;
+  image_set_resolution : string option;
+      (** [<resolution>] like ["1x"] or ["300dpi"] *)
+  image_set_mime_type : string option;  (** [type("image/avif")] *)
+}
+
+and image_set_source = Image_set_url of string | Image_set_string of string
 
 (* Background position can be complex with 1-4 values mixing keywords and
    lengths *)
