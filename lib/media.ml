@@ -114,15 +114,13 @@ let pp_value : value Pp.t =
       Pp.string ctx unit
   | Ident s -> Pp.string ctx s
 
-(* Media features keep their internal whitespace even when minifying, to match
-   the conventional output of major tools (lightningcss, tailwind). *)
 let pp_feature : feature Pp.t =
  fun ctx -> function
   | Plain (name, value) ->
       Pp.char ctx '(';
       Pp.string ctx name;
       Pp.char ctx ':';
-      Pp.space ctx ();
+      Pp.space_if_pretty ctx ();
       pp_value ctx value;
       Pp.char ctx ')'
   | Boolean name ->
@@ -132,29 +130,29 @@ let pp_feature : feature Pp.t =
   | Range (name, op, value) ->
       Pp.char ctx '(';
       Pp.string ctx name;
-      Pp.space ctx ();
+      Pp.space_if_pretty ctx ();
       Pp.string ctx (cmp_to_string op);
-      Pp.space ctx ();
+      Pp.space_if_pretty ctx ();
       pp_value ctx value;
       Pp.char ctx ')'
   | Range_rev (value, op, name) ->
       Pp.char ctx '(';
       pp_value ctx value;
-      Pp.space ctx ();
+      Pp.space_if_pretty ctx ();
       Pp.string ctx (cmp_to_string op);
-      Pp.space ctx ();
+      Pp.space_if_pretty ctx ();
       Pp.string ctx name;
       Pp.char ctx ')'
   | Interval (a, op1, name, op2, b) ->
       Pp.char ctx '(';
       pp_value ctx a;
-      Pp.space ctx ();
+      Pp.space_if_pretty ctx ();
       Pp.string ctx (cmp_to_string op1);
-      Pp.space ctx ();
+      Pp.space_if_pretty ctx ();
       Pp.string ctx name;
-      Pp.space ctx ();
+      Pp.space_if_pretty ctx ();
       Pp.string ctx (cmp_to_string op2);
-      Pp.space ctx ();
+      Pp.space_if_pretty ctx ();
       pp_value ctx b;
       Pp.char ctx ')'
 
@@ -203,7 +201,7 @@ let pp_named_feature ctx name value =
   Pp.char ctx '(';
   Pp.string ctx name;
   Pp.char ctx ':';
-  Pp.space ctx ();
+  Pp.space_if_pretty ctx ();
   Pp.string ctx value;
   Pp.char ctx ')'
 
@@ -211,7 +209,7 @@ let pp_min_width_length ctx l =
   Pp.char ctx '(';
   Pp.string ctx "min-width";
   Pp.char ctx ':';
-  Pp.space ctx ();
+  Pp.space_if_pretty ctx ();
   pp_length ctx l;
   Pp.char ctx ')'
 
