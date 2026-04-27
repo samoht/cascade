@@ -59,7 +59,7 @@ let test_compare_transitive buf =
         fail "container compare sort result is not ordered"
   | _ -> fail "container sort changed list length"
 
-let test_named_serialization_keeps_name_prefix buf =
+let test_named_prefix_stable buf =
   let name = name buf 0 in
   let query = Css.Container.Named (name, condition buf 4) in
   let serialized = Css.Container.to_string query in
@@ -84,7 +84,7 @@ let test_container_evaluation_stub_identity buf =
       fail "container evaluation returned value-alias error"
   | Ok _ -> fail "container evaluation stub unexpectedly succeeded"
 
-let test_raw_style_scroll_state_serialization_stable buf =
+let test_raw_query_stable buf =
   let raw = raw buf 0 in
   let query = Css.Container.Raw raw in
   if Css.Container.to_string query <> raw then
@@ -99,9 +99,9 @@ let suite =
       test_case "compare antisymmetric" [ bytes ] test_compare_antisymmetric;
       test_case "compare transitive" [ bytes ] test_compare_transitive;
       test_case "named serialization keeps name prefix" [ bytes ]
-        test_named_serialization_keeps_name_prefix;
+        test_named_prefix_stable;
       test_case "container evaluation stub identity" [ bytes ]
         test_container_evaluation_stub_identity;
       test_case "raw style/scroll-state serialization stable" [ bytes ]
-        test_raw_style_scroll_state_serialization_stable;
+        test_raw_query_stable;
     ] )

@@ -38,7 +38,7 @@ let test_serialization_idempotent buf =
               (Fmt.str "declaration serialization changed: %S -> %S" once twice)
       )
 
-let test_property_name_preserved_after_serialization buf =
+let test_property_name_stable buf =
   match parse_declaration (cssish buf) with
   | None -> ()
   | Some decl -> (
@@ -53,7 +53,7 @@ let test_property_name_preserved_after_serialization buf =
               (Fmt.str "declaration property changed: %S -> %S" property
                  reparsed_property))
 
-let test_important_flag_preserved_after_serialization buf =
+let test_important_flag_stable buf =
   match parse_declaration (cssish buf) with
   | None -> ()
   | Some decl -> (
@@ -98,7 +98,7 @@ let test_block_declarations_serialize_individually buf =
       declarations
   with Css.Cursor.Parse_error _ -> ()
 
-let test_url_declaration_serialization_stays_local buf =
+let test_url_decl_local buf =
   let url =
     match
       Char.code (if String.length buf = 0 then '\000' else buf.[0]) mod 4
@@ -125,7 +125,7 @@ let test_url_declaration_serialization_stays_local buf =
       | Error _ -> fail "URL resolution stub returned wrong error kind"
       | Ok _ -> fail "URL resolution stub unexpectedly succeeded")
 
-let test_custom_property_var_cycle_stub_is_computed_stage buf =
+let test_custom_cycle_stub buf =
   let name =
     "--cycle-"
     ^ string_of_int (if String.length buf = 0 then 0 else Char.code buf.[0])
@@ -154,15 +154,15 @@ let suite =
       test_case "serialization idempotent" [ bytes ]
         test_serialization_idempotent;
       test_case "property name preserved after serialization" [ bytes ]
-        test_property_name_preserved_after_serialization;
+        test_property_name_stable;
       test_case "important flag preserved after serialization" [ bytes ]
-        test_important_flag_preserved_after_serialization;
+        test_important_flag_stable;
       test_case "custom property serialization shape" [ bytes ]
         test_custom_property_serialization_shape;
       test_case "block declarations serialize individually" [ bytes ]
         test_block_declarations_serialize_individually;
       test_case "url declaration serialization stays local" [ bytes ]
-        test_url_declaration_serialization_stays_local;
+        test_url_decl_local;
       test_case "custom property var cycle stub is computed stage" [ bytes ]
-        test_custom_property_var_cycle_stub_is_computed_stage;
+        test_custom_cycle_stub;
     ] )

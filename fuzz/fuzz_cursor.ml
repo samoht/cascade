@@ -73,7 +73,7 @@ let test_consume_to_boundaries_reparse buf =
   in
   ignore (Css.Cursor.of_string slash)
 
-let test_list_bounds_do_not_overconsume _buf =
+let test_list_bounds_stable _buf =
   let c = Css.Cursor.of_string "a,b,c tail" in
   let parsed =
     Css.Cursor.list ~sep:Css.Cursor.comma ~at_least:1 ~at_most:2
@@ -98,5 +98,5 @@ let suite =
       test_case "consume-to boundaries reparse" [ bytes ]
         test_consume_to_boundaries_reparse;
       test_case "list bounds do not overconsume" [ bytes ]
-        test_list_bounds_do_not_overconsume;
+        test_list_bounds_stable;
     ] )

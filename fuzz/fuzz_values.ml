@@ -227,6 +227,80 @@ let test_duration_serialization_idempotent buf =
             fail (Fmt.str "duration serialization changed: %S -> %S" once twice)
       )
 
+let byte_at buf i =
+  if String.length buf = 0 then 0 else Char.code buf.[i mod String.length buf]
+
+let pick xs buf i = List.nth xs (byte_at buf i mod List.length xs)
+
+let test_modern_color_stable buf =
+  let input =
+    pick
+      [
+        "lab(50% 10 20)";
+        "lch(50% 20 30)";
+        "oklab(50% 0.1 0.2)";
+        "oklch(50% 0.1 20 / 0.5)";
+        "color(display-p3 1 0 0)";
+        "color-mix(in oklab, red 40%, blue)";
+        "light-dark(black, white)";
+      ]
+      buf 0
+  in
+  let r = Css.Cursor.of_string input in
+  match
+    try Some (Css.Values.read_color r) with Css.Cursor.Parse_error _ -> None
+  with
+  | None -> ()
+  | Some color -> (
+      let once = Css.Pp.to_string ~minify:true Css.Values.pp_color color in
+      let r2 = Css.Cursor.of_string once in
+      match
+        try Some (Css.Values.read_color r2)
+        with Css.Cursor.Parse_error _ -> None
+      with
+      | None -> fail (Fmt.str "modern color did not reparse: %S" once)
+      | Some reparsed ->
+          let twice =
+            Css.Pp.to_string ~minify:true Css.Values.pp_color reparsed
+          in
+          if once <> twice then
+            fail (Fmt.str "modern color changed: %S -> %S" once twice))
+
+let test_modern_math_stable buf =
+  let input =
+    pick
+      [
+        "round(nearest, 10px, 3px)";
+        "mod(10px, 3px)";
+        "rem(10px, 3px)";
+        "hypot(3px, 4px)";
+        "abs(-10px)";
+        "sign(10px)";
+        "anchor-size(width)";
+        "calc-size(auto, size + 1rem)";
+      ]
+      buf 0
+  in
+  let r = Css.Cursor.of_string input in
+  match
+    try Some (Css.Values.read_length r) with Css.Cursor.Parse_error _ -> None
+  with
+  | None -> ()
+  | Some length -> (
+      let once = Css.Pp.to_string ~minify:true Css.Values.pp_length length in
+      let r2 = Css.Cursor.of_string once in
+      match
+        try Some (Css.Values.read_length r2)
+        with Css.Cursor.Parse_error _ -> None
+      with
+      | None -> fail (Fmt.str "modern math length did not reparse: %S" once)
+      | Some reparsed ->
+          let twice =
+            Css.Pp.to_string ~minify:true Css.Values.pp_length reparsed
+          in
+          if once <> twice then
+            fail (Fmt.str "modern math length changed: %S -> %S" once twice))
+
 let suite =
   ( "values",
     [
@@ -264,4 +338,6 @@ let suite =
         test_percentage_serialization_idempotent;
       test_case "duration serialization idempotent" [ bytes ]
         test_duration_serialization_idempotent;
+      test_case "modern color stable" [ bytes ] test_modern_color_stable;
+      test_case "modern math stable" [ bytes ] test_modern_math_stable;
     ] )

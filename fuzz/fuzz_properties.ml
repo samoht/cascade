@@ -170,9 +170,43 @@ let test_generated_valid_property_idempotent buf =
   let property, run = generated_property_vector buf in
   run (valid_value property buf)
 
-let test_generated_invalid_property_rejected_or_stable buf =
+let test_invalid_property_stable buf =
   let property, run = generated_property_vector buf in
   run (invalid_value property buf)
+
+let test_css_wide_keywords_parse buf =
+  let property, run = generated_property_vector buf in
+  let keyword =
+    pick [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ] buf 3
+  in
+  match property with
+  | "font-family" | "font-feature-settings" -> ()
+  | _ -> run keyword
+
+let test_css_wide_mixes_stable buf =
+  let property, run = generated_property_vector buf in
+  let keyword =
+    pick [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ] buf 3
+  in
+  let value =
+    match property with
+    | "display" -> keyword ^ " block"
+    | "position" -> keyword ^ " static"
+    | "overflow" -> keyword ^ " hidden"
+    | "border" -> keyword ^ " solid"
+    | "font-weight" -> keyword ^ " bold"
+    | "transform" | "transforms" -> keyword ^ " rotate(1deg)"
+    | "transition" -> keyword ^ " opacity 1s"
+    | "animation" -> keyword ^ " fade 1s"
+    | "background-image" -> keyword ^ " url(a.png)"
+    | "background" -> keyword ^ " red"
+    | "content" -> keyword ^ " none"
+    | "container" -> keyword ^ " / inline-size"
+    | "scroll-snap-type" -> keyword ^ " mandatory"
+    | "clip-path" -> keyword ^ " inset(1px)"
+    | _ -> keyword ^ " " ^ valid_value property buf
+  in
+  run value
 
 let suite =
   ( "properties",
@@ -182,5 +216,7 @@ let suite =
       test_case "generated valid property idempotent" [ bytes ]
         test_generated_valid_property_idempotent;
       test_case "generated invalid property rejected or stable" [ bytes ]
-        test_generated_invalid_property_rejected_or_stable;
+        test_invalid_property_stable;
+      test_case "css-wide keywords parse" [ bytes ] test_css_wide_keywords_parse;
+      test_case "css-wide mixes stable" [ bytes ] test_css_wide_mixes_stable;
     ] )

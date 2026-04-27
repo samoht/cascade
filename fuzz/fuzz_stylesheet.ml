@@ -434,7 +434,7 @@ let test_condition_boundary_shape_invariant buf =
 (** CSS Cascade section 3: CSS-wide keywords used on shorthands are whole
     declaration values and serialize as the shorthand property plus the keyword.
 *)
-let test_shorthand_css_wide_keyword_invariant buf =
+let test_shorthand_wide_keyword buf =
   let property = shorthand_property buf 0 in
   let keyword = css_wide_keyword buf 1 in
   let input = property ^ ":" ^ keyword in
@@ -447,7 +447,7 @@ let test_shorthand_css_wide_keyword_invariant buf =
 
 (** CSS Cascade section 3: CSS-wide keywords cannot be combined with other
     component values in a single declaration, including in shorthands. *)
-let test_shorthand_css_wide_keyword_mix_rejected buf =
+let test_shorthand_wide_mix buf =
   let property, value = invalid_shorthand_keyword_mix buf 0 in
   let input = property ^ ":" ^ value in
   match parse_declaration input with
@@ -459,7 +459,7 @@ let test_shorthand_css_wide_keyword_mix_rejected buf =
 
 (** CSS Cascade section 3.1: legacy shorthands are parse-time aliases and are
     not chosen when serializing declarations. *)
-let test_legacy_shorthand_alias_serialization_invariant buf =
+let test_legacy_alias_stable buf =
   let input, expected =
     pick
       [
@@ -481,7 +481,7 @@ let test_legacy_shorthand_alias_serialization_invariant buf =
 
 (** CSS Cascade section 4.1: declared values preserve declaration source order
     before cascade sorting. *)
-let test_declared_values_source_order_invariant buf =
+let test_declared_order_stable buf =
   let first_color =
     if byte_at buf 0 mod 2 = 0 then Css.Values.hex "#ff0000"
     else Css.Values.hex "#00ff00"
@@ -513,7 +513,7 @@ let test_declared_values_source_order_invariant buf =
 
 (** CSS Cascade section 4.3: specified-value defaulting for [unset] depends on
     whether the property is inherited. *)
-let test_specified_value_unset_inheritance_invariant buf =
+let test_unset_inheritance buf =
   let inherited = Some (pick [ "blue"; "inside"; "4.2px" ] buf 0) in
   let initial = pick [ "black"; "outside"; "medium" ] buf 1 in
   let inherited_property =
@@ -535,7 +535,7 @@ let test_specified_value_unset_inheritance_invariant buf =
 
 (** CSS Cascade sections 4.2 and 6.1: after all higher-priority criteria tie,
     later source order determines the cascaded value. *)
-let test_integrated_cascade_source_order_invariant buf =
+let test_cascade_source_order buf =
   let first = pick [ "red"; "green"; "blue" ] buf 0 in
   let second = pick [ "cyan"; "magenta"; "yellow" ] buf 1 in
   let candidate source_order value : Css.Stylesheet.cascade_candidate =
@@ -562,7 +562,7 @@ let test_integrated_cascade_source_order_invariant buf =
 
 (** CSS Cascade section 7.3.5 as used by section 4.3: [revert-layer] falls back
     to the winning lower layer, or defaulting if there is no lower layer. *)
-let test_revert_layer_specified_value_invariant buf =
+let test_revert_layer_value buf =
   let fallback = pick [ "green"; "blue"; "black" ] buf 0 in
   let candidate layer source_order value :
       Css.Stylesheet.cascade_layer_candidate =
@@ -581,7 +581,7 @@ let test_revert_layer_specified_value_invariant buf =
       (Fmt.str "revert-layer did not expose lower layer: %S"
          specified.specified_value)
 
-let test_platform_declaration_property_name_invariant buf =
+let test_platform_decl_name buf =
   let property, input = platform_declaration_vector buf 0 in
   match parse_declaration input with
   | None -> ()
@@ -662,7 +662,7 @@ let test_platform_stub_error_identity buf =
         (Css.Stylesheet.animated_value ~property:"opacity"
            ~keyframes:[ "0"; "1" ] ~progress:0.5)
 
-let test_value_processing_stub_stage_identity buf =
+let test_value_stub_stage buf =
   let expect_stage stage = function
     | Error (Css.Stylesheet.Requires_document_context actual)
       when actual = stage ->
@@ -703,7 +703,7 @@ let test_value_processing_stub_stage_identity buf =
         (Css.Stylesheet.per_fragment_value ~property:"color"
            ~fragment:"::first-line" ~computed:"currentColor")
 
-let test_platform_boundary_all_entrypoints_stay_typed buf =
+let test_platform_stubs_typed buf =
   let expect_platform = function
     | Error (Css.Stylesheet.Requires_platform_context { feature; detail }) ->
         if feature = "" || detail = "" then
@@ -803,27 +803,27 @@ let suite =
       test_case "condition boundary shape invariant" [ bytes ]
         test_condition_boundary_shape_invariant;
       test_case "shorthand CSS-wide keyword invariant" [ bytes ]
-        test_shorthand_css_wide_keyword_invariant;
+        test_shorthand_wide_keyword;
       test_case "shorthand CSS-wide keyword mix rejected" [ bytes ]
-        test_shorthand_css_wide_keyword_mix_rejected;
+        test_shorthand_wide_mix;
       test_case "legacy shorthand alias serialization invariant" [ bytes ]
-        test_legacy_shorthand_alias_serialization_invariant;
+        test_legacy_alias_stable;
       test_case "declared values source order invariant" [ bytes ]
-        test_declared_values_source_order_invariant;
+        test_declared_order_stable;
       test_case "specified value unset inheritance invariant" [ bytes ]
-        test_specified_value_unset_inheritance_invariant;
+        test_unset_inheritance;
       test_case "integrated cascade source order invariant" [ bytes ]
-        test_integrated_cascade_source_order_invariant;
+        test_cascade_source_order;
       test_case "revert-layer specified value invariant" [ bytes ]
-        test_revert_layer_specified_value_invariant;
+        test_revert_layer_value;
       test_case "platform declaration property name invariant" [ bytes ]
-        test_platform_declaration_property_name_invariant;
+        test_platform_decl_name;
       test_case "invalid platform declaration rejected" [ bytes ]
         test_invalid_platform_declaration_rejected;
       test_case "platform stub error identity" [ bytes ]
         test_platform_stub_error_identity;
       test_case "value processing stub stage identity" [ bytes ]
-        test_value_processing_stub_stage_identity;
+        test_value_stub_stage;
       test_case "platform boundary all entrypoints stay typed" [ bytes ]
-        test_platform_boundary_all_entrypoints_stay_typed;
+        test_platform_stubs_typed;
     ] )

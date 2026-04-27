@@ -670,6 +670,53 @@ let page_case () =
   neg_cursor read_stylesheet "@page :unknown { margin: 1cm }";
   neg_cursor read_stylesheet "@page { color: red }"
 
+let page_margin_edges () =
+  check_stylesheet
+    ~expected:
+      "@page \
+       invoice:first{size:A4;margin:1cm;@top-left{content:\"Invoice\"}@bottom-right{content:counter(page)}}"
+    "@page invoice:first { size: A4; margin: 1cm; @top-left { content: \
+     \"Invoice\" } @bottom-right { content: counter(page) } }";
+  check_stylesheet
+    ~expected:
+      "@page:left{margin-left:3cm;@left-middle{content:string(chapter)}}"
+    "@page :left { margin-left: 3cm; @left-middle { content: string(chapter) } \
+     }";
+  check_stylesheet
+    ~expected:"@page{bleeds:6pt;marks:crop cross;@top-center{content:none}}"
+    "@page { bleeds: 6pt; marks: crop cross; @top-center { content: none } }";
+  neg_cursor read_stylesheet "@page invoice:blank:first { margin: 1cm }";
+  neg_cursor read_stylesheet "@page { @unknown { content: none } }";
+  neg_cursor read_stylesheet "@page { @top-left; }";
+  neg_cursor read_stylesheet "@page { @top-left { color: red } }"
+
+let property_rule_edges () =
+  check_stylesheet
+    ~expected:
+      "@property \
+       --shadow-color{syntax:\"<color>\";inherits:true;initial-value:transparent}"
+    "@property --shadow-color { syntax: \"<color>\"; inherits: true; \
+     initial-value: transparent; }";
+  check_stylesheet
+    ~expected:
+      "@property \
+       --track-list{syntax:\"<length>#\";inherits:false;initial-value:1px}"
+    "@property --track-list { syntax: \"<length>#\"; inherits: false; \
+     initial-value: 1px; }";
+  check_stylesheet
+    ~expected:"@property --any-tokens{syntax:\"*\";inherits:true}"
+    "@property --any-tokens { syntax: \"*\"; inherits: true; }";
+  neg_cursor read_stylesheet
+    "@property --bad { syntax: \"<length>+\"; inherits: false; initial-value: \
+     red }";
+  neg_cursor read_stylesheet
+    "@property --bad { syntax: \"<color>\"; inherits: yes; initial-value: red }";
+  neg_cursor read_stylesheet
+    "@property --bad { syntax: \"<length> |\"; inherits: false; initial-value: \
+     1px }";
+  neg_cursor read_stylesheet
+    "@property color { syntax: \"*\"; inherits: false }"
+
 (** Test sheet_item variants *)
 let sheet_item_case () =
   (* Test that we can parse stylesheets with various statement types *)
@@ -975,6 +1022,8 @@ let stylesheet_tests =
     ("font_face", `Quick, font_face_case);
     ("font-face spec descriptor vectors", `Quick, spec_fontface_descriptors);
     ("page", `Quick, page_case);
+    ("page margin edges", `Quick, page_margin_edges);
+    ("property rule edges", `Quick, property_rule_edges);
     ("sheet_item", `Quick, sheet_item_case);
     ("ordering", `Quick, ordering);
     (* CSS parsing tests *)

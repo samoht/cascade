@@ -1165,6 +1165,53 @@ let spec_decl_urange_descriptor () =
         (Css.Parser.to_string_minified value)
   | _ -> Alcotest.fail "expected false unicode-range start declaration"
 
+let spec_csv_nested_edges () =
+  (* CSS Syntax Level 3 section 5.4.10: top-level commas split groups, but
+     commas inside blocks and functions remain part of that group's component
+     value list. Empty interior groups are preserved for grammar matching. *)
+  let groups =
+    Css.Parser.parse_csv_component_values (Css.Reader.of_string "a,,b")
+  in
+  Alcotest.(check int) "a,,b has three groups" 3 (List.length groups.value);
+  Alcotest.(check string)
+    "empty interior group" "a||b"
+    (groups.value |> List.map Css.Parser.to_string_minified |> String.concat "|");
+  let groups =
+    Css.Parser.parse_csv_component_values
+      (Css.Reader.of_string "rgb(1, 2, 3), [a,b], {c:d,e:f}")
+  in
+  Alcotest.(check int) "nested commas not split" 3 (List.length groups.value);
+  Alcotest.(check string)
+    "nested comma groups" "rgb(1,2,3)|[a,b]|{c:d,e:f}"
+    (groups.value |> List.map Css.Parser.to_string_minified |> String.concat "|")
+
+let spec_deep_nesting_edges () =
+  (* CSS Syntax Level 3 section 5.5.9 closes simple blocks at EOF. This is a
+     bounded regression vector for stack/resource behavior and auto-closing. *)
+  let input =
+    String.make 64 '(' ^ "color(red" ^ String.make 32 ')' ^ String.make 16 ']'
+  in
+  let cvs = parse_cvs input in
+  Alcotest.(check bool) "deep mixed nesting parsed" true (cvs <> []);
+  let serialized = Css.Parser.to_string_minified cvs in
+  let reparsed = parse_cvs serialized in
+  Alcotest.(check string)
+    "deep mixed nesting reserializes" serialized
+    (Css.Parser.to_string_minified reparsed)
+
+let spec_comment_recovery_edges () =
+  (* CSS Syntax Level 3 sections 4.3.2 and 5.5: comments disappear before
+     component parsing and cannot create active braces after an unterminated
+     comment. *)
+  Alcotest.(check string)
+    "comment between decl tokens" "colorred"
+    (parse_cvs "color/*x*/red" |> Css.Parser.to_string_minified);
+  Alcotest.(check string)
+    "unterminated comment hides braces" "safe"
+    (parse_cvs "safe/* .evil { color:red }" |> Css.Parser.to_string_minified);
+  let rs = parse_ss ".a { color:red /* hidden } .b { color:blue }" in
+  Alcotest.(check int) "one rule after hidden brace" 1 (List.length rs)
+
 let suite =
   ( "parser",
     [
@@ -1275,6 +1322,12 @@ let suite =
         spec_declaration_unicode_range_descriptor;
       Alcotest.test_case "spec section 5.5.11 unicode-range descriptor mixed"
         `Quick spec_decl_urange_descriptor;
+      Alcotest.test_case "spec section 5.4.10 nested comma edges" `Quick
+        spec_csv_nested_edges;
+      Alcotest.test_case "spec section 5.5 deep nesting edges" `Quick
+        spec_deep_nesting_edges;
+      Alcotest.test_case "spec comment recovery edges" `Quick
+        spec_comment_recovery_edges;
     ] )
 
 (* Keep helper constructors referenced. *)

@@ -261,6 +261,31 @@ let spec12_tokenization_checklist () =
      <number 1e-2> <ws> <dimension 4e5px>";
   check "U+26 u+a" "<unicode-range U+26> <ws> <unicode-range U+A>"
 
+let spec_token_boundary_edges () =
+  (* CSS Syntax Level 3 section 9.4 serialization constraints are driven by
+     tokenizer ambiguities. These vectors pin down pairs that must remain
+     distinct after any serializer inserts a boundary. *)
+  check "a b" "<ident a> <ws> <ident b>";
+  check "a\\ b" "<ident a b>";
+  check "url(a)url(b)" "<url a> <function url(> <ident b> <)>";
+  check "@media@supports" "<@media> <@supports>";
+  check "#id.class" "<#id> <delim '.'> <ident class>";
+  check "1 2" "<number 1> <ws> <number 2>";
+  check "1/**/2" "<number 1> <number 2>";
+  check "1px/**/solid" "<dimension 1px> <ident solid>";
+  check "-->--" "<CDC> <ident -->";
+  check "<!---->" "<CDO> <CDC>"
+
+let spec_escape_boundary_edges () =
+  (* Escapes consume at most six hex digits and one following whitespace. *)
+  check "\\31 0" "<ident 10>";
+  check "\\0000310" "<ident 10>";
+  check "\\000031 0" "<ident 10>";
+  check "\\26#id" "<ident &#id>";
+  check "\\26 #id" "<ident &> <#id>";
+  check "\"\\26#\"" "<string &#>";
+  check "\"\\26 #\"" "<string &#>"
+
 (* Per 4.3.5, a newline inside a string produces a <bad-string> token; the
    newline is not consumed and becomes a subsequent <whitespace>. *)
 let bad_string () = check "\"oops\n" "<bad-string> <ws>"
@@ -312,6 +337,10 @@ let suite =
         spec_security_comment_confusion_regressions;
       Alcotest.test_case "spec section 12 tokenization change checklist" `Quick
         spec12_tokenization_checklist;
+      Alcotest.test_case "spec token boundary edges" `Quick
+        spec_token_boundary_edges;
+      Alcotest.test_case "spec escape boundary edges" `Quick
+        spec_escape_boundary_edges;
       Alcotest.test_case "bad string" `Quick bad_string;
       Alcotest.test_case "bad url" `Quick bad_url;
     ] )

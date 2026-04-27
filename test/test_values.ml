@@ -760,6 +760,43 @@ let spec_values_l45_math_color () =
   neg_cursor read_color "rgb(from red r g)";
   neg_cursor read_color "color(display-p3 1 0)"
 
+let spec_color5_more_edges () =
+  check_color ~expected:"lab(50% 10 20)" "lab(50% 10 20)";
+  check_color ~expected:"lch(50% 20 30)" "lch(50% 20 30)";
+  check_color ~expected:"oklab(50% .1 .2)" "oklab(50% 0.1 0.2)";
+  check_color ~expected:"oklch(50% .1 20/.5)" "oklch(50% 0.1 20 / 0.5)";
+  check_color ~expected:"color(srgb 1 0 0/.5)" "color(srgb 1 0 0 / 0.5)";
+  check_color ~expected:"color(rec2020 .1 .2 .3)" "color(rec2020 0.1 0.2 0.3)";
+  check_color ~expected:"color-mix(in lch longer hue,red 30%,blue)"
+    "color-mix(in lch longer hue, red 30%, blue)";
+  check_color ~expected:"color-mix(in hsl shorter hue,red,blue 40%)"
+    "color-mix(in hsl shorter hue, red, blue 40%)";
+  neg_cursor read_color "lab(50% 10)";
+  neg_cursor read_color "lch(50% 20)";
+  neg_cursor read_color "oklch(50% .1 20 /)";
+  neg_cursor read_color "color(unknown 1 0 0)";
+  neg_cursor read_color "color-mix(in, red, blue)";
+  neg_cursor read_color "color-mix(in srgb red blue)"
+
+let spec_math_more_edges () =
+  check_length ~expected:"round(nearest,10px,3px)" "round(nearest, 10px, 3px)";
+  check_length ~expected:"mod(10px,3px)" "mod(10px, 3px)";
+  check_length ~expected:"rem(10px,3px)" "rem(10px, 3px)";
+  check_length ~expected:"hypot(3px,4px)" "hypot(3px, 4px)";
+  check_length ~expected:"abs(-10px)" "abs(-10px)";
+  check_length ~expected:"sign(10px)" "sign(10px)";
+  check_number ~expected:"round(up,1.2,1)" "round(up, 1.2, 1)";
+  check_number ~expected:"mod(10,3)" "mod(10, 3)";
+  check_number ~expected:"hypot(3,4)" "hypot(3, 4)";
+  check_number ~expected:"pow(2,3)" "pow(2, 3)";
+  check_number ~expected:"sqrt(4)" "sqrt(4)";
+  check_number ~expected:"sin(30deg)" "sin(30deg)";
+  neg_cursor read_length "round(nearest, 10px)";
+  neg_cursor read_length "mod(10px)";
+  neg_cursor read_number "pow(2)";
+  neg_cursor read_number "sqrt()";
+  neg_cursor read_number "sin()"
+
 let value_tests =
   [
     test_case "system_color" `Quick test_system_color;
@@ -803,6 +840,8 @@ let value_tests =
       spec_values_color_current;
     test_case "spec values level 4/5 math and color edges" `Quick
       spec_values_l45_math_color;
+    test_case "spec color 5 more edges" `Quick spec_color5_more_edges;
+    test_case "spec math more edges" `Quick spec_math_more_edges;
   ]
 
 let suite = ("values", value_tests)
