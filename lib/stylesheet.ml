@@ -264,6 +264,39 @@ let applicable_property ~property:_ ~box:_ =
 let per_fragment_value ~property:_ ~fragment:_ ~computed:_ =
   Error (Requires_document_context Used_value)
 
+let platform_stub feature detail =
+  Error (Requires_platform_context { feature; detail })
+
+let selector_matches_element ~selector:_ ~element:_ =
+  platform_stub "selector matching" "requires a DOM element tree"
+
+let evaluate_media_query ~condition:_ ~environment:_ =
+  platform_stub "media query evaluation" "requires a media environment"
+
+let evaluate_supports_condition ~condition:_ =
+  platform_stub "supports evaluation" "requires a UA property support table"
+
+let resolve_url_value ~base ~url =
+  Error
+    (Requires_platform_context
+       { feature = "URL resolution"; detail = base ^ " " ^ url })
+
+let load_import_rule _rule =
+  platform_stub "stylesheet import loading" "requires URL resolution and fetch"
+
+let html_presentational_hints ~element:_ =
+  platform_stub "HTML presentational hints" "requires HTML element semantics"
+
+let cssom_insert_rule ~index:_ _statement _stylesheet =
+  platform_stub "CSSOM insertRule" "requires CSSOM mutation semantics"
+
+let cssom_delete_rule ~index:_ _stylesheet =
+  platform_stub "CSSOM deleteRule" "requires CSSOM mutation semantics"
+
+let animated_value ~property:_ ~keyframes:_ ~progress:_ =
+  platform_stub "animation value sampling"
+    "requires Web Animations timing and interpolation"
+
 let starting_style_nested declarations =
   Starting_style [ Declarations declarations ]
 

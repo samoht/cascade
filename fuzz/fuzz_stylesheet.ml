@@ -125,6 +125,53 @@ let invalid_shorthand_keyword_mix buf i =
     ]
     buf (i + 1)
 
+let platform_declaration_vector buf i =
+  pick
+    [
+      ("color", "color:light-dark(black,white)");
+      ("color", "color:rgb(from rebeccapurple r g b)");
+      ( "background-image",
+        "background-image:image-set(url(a.png) 1x,url(a@2x.png) 2x)" );
+      ("width", "width:stretch");
+      ("height", "height:contain");
+      ("anchor-name", "anchor-name:--tooltip");
+      ("position-anchor", "position-anchor:--tooltip");
+      ("grid-template-columns", "grid-template-columns:subgrid");
+      ("grid-template-rows", "grid-template-rows:masonry");
+      ("shape-outside", "shape-outside:circle(50%)");
+      ("overflow-clip-margin", "overflow-clip-margin:1px");
+      ("scrollbar-width", "scrollbar-width:thin");
+      ("scrollbar-color", "scrollbar-color:red blue");
+      ("scrollbar-gutter", "scrollbar-gutter:stable both-edges");
+      ("font-palette", "font-palette:--brand");
+      ("text-wrap-style", "text-wrap-style:pretty");
+      ("writing-mode", "writing-mode:sideways-rl");
+      ("animation-timeline", "animation-timeline:scroll()");
+      ("transition-behavior", "transition-behavior:allow-discrete");
+      ("view-transition-name", "view-transition-name:card");
+    ]
+    buf i
+
+let invalid_platform_declaration_vector buf i =
+  pick
+    [
+      "color:light-dark(black)";
+      "background-image:image-set()";
+      "display:block flex";
+      "position:sticky absolute";
+      "anchor-name:tooltip";
+      "position-anchor:tooltip";
+      "shape-margin:-1px";
+      "overflow-clip-margin:-1px";
+      "scrollbar-width:wide";
+      "scrollbar-gutter:stable auto";
+      "font-palette:1";
+      "text-wrap-style:loud";
+      "animation-range:exit entry";
+      "view-transition-name:none card";
+    ]
+    buf i
+
 let rec boundary_shape = function
   | Css.Stylesheet.Rule _ -> [ "rule" ]
   | Declarations _ -> [ "declarations" ]
@@ -460,6 +507,67 @@ let test_revert_layer_specified_value_invariant buf =
       (Fmt.str "revert-layer did not expose lower layer: %S"
          specified.specified_value)
 
+let test_platform_declaration_property_name_invariant buf =
+  let property, input = platform_declaration_vector buf 0 in
+  match parse_declaration input with
+  | None -> ()
+  | Some serialized ->
+      let prefix = property ^ ":" in
+      if not (starts_with ~prefix serialized) then
+        fail
+          (Fmt.str "accepted platform declaration changed property: %S -> %S"
+             input serialized)
+
+let test_invalid_platform_declaration_rejected buf =
+  let input = invalid_platform_declaration_vector buf 0 in
+  match parse_declaration input with
+  | None -> ()
+  | Some serialized ->
+      fail
+        (Fmt.str "invalid platform declaration parsed: %S -> %S" input
+           serialized)
+
+let test_platform_stub_error_identity buf =
+  let expect feature = function
+    | Error (Css.Stylesheet.Requires_platform_context actual)
+      when actual.feature = feature ->
+        ()
+    | Error (Css.Stylesheet.Requires_platform_context actual) ->
+        fail
+          (Fmt.str "platform stub feature changed: %S -> %S" feature
+             actual.feature)
+    | Error (Css.Stylesheet.Requires_document_context _) ->
+        fail
+          (Fmt.str "platform stub returned document-context error: %S" feature)
+    | Error (Css.Stylesheet.Unsupported_value_alias _) ->
+        fail (Fmt.str "platform stub returned value-alias error: %S" feature)
+    | Ok _ -> fail (Fmt.str "platform stub unexpectedly succeeded: %S" feature)
+  in
+  match byte_at buf 0 mod 6 with
+  | 0 ->
+      expect "selector matching"
+        (Css.Stylesheet.selector_matches_element ~selector:(selector buf 1)
+           ~element:"<div class=card>")
+  | 1 ->
+      expect "media query evaluation"
+        (Css.Stylesheet.evaluate_media_query
+           ~condition:(Css.Media.Raw "(width >= 40em)") ~environment:"screen")
+  | 2 ->
+      expect "supports evaluation"
+        (Css.Stylesheet.evaluate_supports_condition
+           ~condition:(Css.Supports.Property ("display", "grid")))
+  | 3 ->
+      expect "URL resolution"
+        (Css.Stylesheet.resolve_url_value ~base:"https://example.test/"
+           ~url:"image.png")
+  | 4 ->
+      expect "CSSOM insertRule"
+        (Css.Stylesheet.cssom_insert_rule ~index:0 (rule buf 2) [])
+  | _ ->
+      expect "animation value sampling"
+        (Css.Stylesheet.animated_value ~property:"opacity"
+           ~keyframes:[ "0"; "1" ] ~progress:0.5)
+
 let suite =
   ( "stylesheet",
     [
@@ -499,4 +607,10 @@ let suite =
         test_integrated_cascade_source_order_invariant;
       test_case "revert-layer specified value invariant" [ bytes ]
         test_revert_layer_specified_value_invariant;
+      test_case "platform declaration property name invariant" [ bytes ]
+        test_platform_declaration_property_name_invariant;
+      test_case "invalid platform declaration rejected" [ bytes ]
+        test_invalid_platform_declaration_rejected;
+      test_case "platform stub error identity" [ bytes ]
+        test_platform_stub_error_identity;
     ] )

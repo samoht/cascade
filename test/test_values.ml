@@ -717,6 +717,17 @@ let test_system_color () =
   neg_cursor read_system_color "";
   neg_cursor read_system_color "invalid-color"
 
+let test_spec_values_and_color_current_work () =
+  check_color ~expected:"oklch(50% .2 none)" "oklch(50% 0.2 none)";
+  check_color "rgb(from rebeccapurple r g b)";
+  check_color "contrast-color(white)";
+  check_color ~expected:"light-dark(black,white)" "light-dark(black, white)";
+  check_duration ~expected:"calc(sibling-index()*100ms)"
+    "calc(sibling-index() * 100ms)";
+  neg_cursor read_color "rgb(from r g b)";
+  neg_cursor read_color "contrast-color()";
+  neg_cursor read_color "light-dark(black)"
+
 let value_tests =
   [
     test_case "system_color" `Quick test_system_color;
@@ -756,6 +767,8 @@ let value_tests =
     test_case "component" `Quick test_component;
     test_case "channel" `Quick test_channel;
     test_case "rgb" `Quick test_rgb;
+    test_case "spec values and color current-work" `Quick
+      test_spec_values_and_color_current_work;
   ]
 
 let suite = ("values", value_tests)

@@ -14,7 +14,16 @@ let test_to_string () =
   Alcotest.(check string)
     "prefers-reduced-motion" "(prefers-reduced-motion: reduce)"
     (to_string (Prefers_reduced_motion `Reduce));
-  Alcotest.(check string) "print" "print" (to_string Print)
+  Alcotest.(check string) "print" "print" (to_string Print);
+  Alcotest.(check string)
+    "media queries 5 dynamic range" "(dynamic-range: high)"
+    (to_string (Raw "(dynamic-range: high)"));
+  Alcotest.(check string)
+    "media queries 5 reduced data" "(prefers-reduced-data: reduce)"
+    (to_string (Raw "(prefers-reduced-data: reduce)"));
+  Alcotest.(check string)
+    "media queries range comparison" "(width >= 40em)"
+    (to_string (Raw "(width >= 40em)"))
 
 let test_kind () =
   Alcotest.(check bool)

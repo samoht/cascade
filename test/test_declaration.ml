@@ -1025,6 +1025,75 @@ let url_values () =
     ~expected:"background-image:url(data:image/svg+xml;utf8,<svg/>)"
     "background-image: url(data:image/svg+xml;utf8,<svg/>)"
 
+let spec_platform_property_vectors () =
+  List.iter
+    (fun (input, expected) -> check_declaration ~expected input)
+    [
+      ("display: block", "display:block");
+      ("position: absolute", "position:absolute");
+      ("float: left", "float:left");
+      ("clear: both", "clear:both");
+      ("table-layout: fixed", "table-layout:fixed");
+      ("border-collapse: collapse", "border-collapse:collapse");
+      ("caption-side: bottom", "caption-side:bottom");
+      ("z-index: auto", "z-index:auto");
+      ("width: stretch", "width:stretch");
+      ("height: contain", "height:contain");
+      ("display: contents", "display:contents");
+      ("anchor-name: --tooltip", "anchor-name:--tooltip");
+      ("position-anchor: --tooltip", "position-anchor:--tooltip");
+      ( "position-try-fallbacks: --below, --above",
+        "position-try-fallbacks:--below,--above" );
+      ("grid-template-columns: subgrid", "grid-template-columns:subgrid");
+      ("grid-template-rows: masonry", "grid-template-rows:masonry");
+      ("shape-outside: circle(50%)", "shape-outside:circle(50%)");
+      ("shape-margin: 1rem", "shape-margin:1rem");
+      ("overflow-clip-margin: 1px", "overflow-clip-margin:1px");
+      ("overflow-anchor: auto", "overflow-anchor:auto");
+      ("scrollbar-width: thin", "scrollbar-width:thin");
+      ("scrollbar-color: red blue", "scrollbar-color:red blue");
+      ( "scrollbar-gutter: stable both-edges",
+        "scrollbar-gutter:stable both-edges" );
+      ("line-height-step: 4px", "line-height-step:4px");
+      ("font-palette: --brand", "font-palette:--brand");
+      ( "font-synthesis: weight style small-caps",
+        "font-synthesis:weight style small-caps" );
+      ("text-wrap-style: pretty", "text-wrap-style:pretty");
+      ("text-box-trim: trim-both", "text-box-trim:trim-both");
+      ("writing-mode: sideways-rl", "writing-mode:sideways-rl");
+      ("animation-timeline: scroll()", "animation-timeline:scroll()");
+      ( "animation-range: entry 0% exit 100%",
+        "animation-range:entry 0% exit 100%" );
+      ( "transition-behavior: allow-discrete",
+        "transition-behavior:allow-discrete" );
+      ("view-transition-name: card", "view-transition-name:card");
+      ("image-orientation: from-image", "image-orientation:from-image");
+      ("background-clip: text", "background-clip:text");
+    ];
+  List.iter
+    (fun input -> neg_cursor read_declaration input)
+    [
+      "display: block flex";
+      "position: sticky absolute";
+      "float: center";
+      "table-layout: grid";
+      "anchor-name: tooltip";
+      "position-anchor: tooltip";
+      "shape-margin: -1px";
+      "overflow-clip-margin: -1px";
+      "overflow-anchor: sometimes";
+      "scrollbar-width: wide";
+      "scrollbar-gutter: stable auto";
+      "line-height-step: -4px";
+      "font-palette: 1";
+      "text-wrap-style: loud";
+      "text-box-trim: 1px";
+      "animation-timeline: scroll(";
+      "animation-range: exit entry";
+      "view-transition-name: none card";
+      "image-orientation: upside-down";
+    ]
+
 let test_declaration () =
   (* Basic declarations - test the declaration type itself *)
   check_declaration "color:red";
@@ -1108,6 +1177,8 @@ let declaration_tests =
     test_case "list properties" `Quick list_properties;
     test_case "misc properties" `Quick misc;
     test_case "url values" `Quick url_values;
+    test_case "spec platform property vectors" `Quick
+      spec_platform_property_vectors;
     (* Error handling *)
     test_case "error missing colon" `Quick error_missing_colon;
     test_case "error stray semicolon" `Quick error_stray_semicolon;

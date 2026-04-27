@@ -439,7 +439,7 @@ let consume_qualified_rule ?(nested = false) ~meta lexer ~start_loc ~warnings :
     | Token.Open Curly ->
         let _ = Lexer.next lexer in
         let block = consume_simple_block lexer Curly ~start_loc:tok.loc in
-        if nested && is_custom_property_shape prelude then None
+        if is_custom_property_shape prelude then None
         else
           let loc = Loc.union start_loc block.loc in
           Some { node = { prelude = List.rev prelude; block }; loc }
@@ -564,6 +564,9 @@ let consume_list_of_declarations ~meta lexer ~warnings :
     match tok.Token.kind with
     | Token.Eof -> List.rev acc
     | Token.Whitespace | Token.Semicolon -> loop acc
+    (* Section 5.5.6: a stray right curly brace at the top of a declaration list
+       is silently dropped, not consumed as part of a bad declaration. *)
+    | Token.Close Curly -> loop acc
     | Token.At_keyword name ->
         let ar = consume_at_rule lexer ~name ~start_loc:tok.loc in
         loop (`At ar :: acc)

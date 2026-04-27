@@ -227,6 +227,60 @@ val per_fragment_value :
     for CSS per-fragment value processing. It currently returns
     [Error (Requires_document_context Used_value)]. *)
 
+val selector_matches_element :
+  selector:Selector.t -> element:string -> (bool, value_processing_error) result
+(** [selector_matches_element ~selector ~element] is the API entry point for DOM
+    selector matching. It currently returns
+    [Error (Requires_platform_context ...)]. *)
+
+val evaluate_media_query :
+  condition:Media.t ->
+  environment:string ->
+  (bool, value_processing_error) result
+(** [evaluate_media_query ~condition ~environment] is the API entry point for
+    Media Queries evaluation against a media environment. It currently returns
+    [Error (Requires_platform_context ...)]. *)
+
+val evaluate_supports_condition :
+  condition:Supports.t -> (bool, value_processing_error) result
+(** [evaluate_supports_condition ~condition] is the API entry point for
+    [@supports] evaluation against a user-agent support table. It currently
+    returns [Error (Requires_platform_context ...)]. *)
+
+val resolve_url_value :
+  base:string -> url:string -> (string, value_processing_error) result
+(** [resolve_url_value ~base ~url] is the API entry point for CSS URL
+    absolutization. It currently returns
+    [Error (Requires_platform_context ...)]. *)
+
+val load_import_rule :
+  import_rule -> (stylesheet, value_processing_error) result
+(** [load_import_rule rule] is the API entry point for [@import] fetching and
+    parsing. It currently returns [Error (Requires_platform_context ...)]. *)
+
+val cssom_insert_rule :
+  index:int ->
+  statement ->
+  stylesheet ->
+  (stylesheet, value_processing_error) result
+(** [cssom_insert_rule ~index rule stylesheet] is the API entry point for CSSOM
+    rule insertion. It currently returns
+    [Error (Requires_platform_context ...)]. *)
+
+val cssom_delete_rule :
+  index:int -> stylesheet -> (stylesheet, value_processing_error) result
+(** [cssom_delete_rule ~index stylesheet] is the API entry point for CSSOM rule
+    deletion. It currently returns [Error (Requires_platform_context ...)]. *)
+
+val animated_value :
+  property:string ->
+  keyframes:string list ->
+  progress:float ->
+  (string, value_processing_error) result
+(** [animated_value ~property ~keyframes ~progress] is the API entry point for
+    Web Animations/CSS Animations value sampling. It currently returns
+    [Error (Requires_platform_context ...)]. *)
+
 val starting_style_nested : Declaration.declaration list -> statement
 (** [starting_style_nested declarations] creates a [@starting-style] rule for
     CSS nesting, containing bare declarations (no selector). Used inside rules
