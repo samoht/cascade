@@ -1058,7 +1058,7 @@ let css_wide_keywords () =
   check_declaration ~expected:"width:revert-layer" "width: revert-layer";
   check_declaration ~expected:"color:revert" "color: revert"
 
-let spec_cascade_section_7_defaulting_keywords () =
+let spec_cascade7_defaulting () =
   (* CSS Cascade section 7: defaulting keywords are CSS-wide values. They are
      valid as the entire value of any property, including the [all] shorthand,
      and invalid when mixed with other component values. *)
@@ -1078,7 +1078,7 @@ let spec_cascade_section_7_defaulting_keywords () =
   neg_cursor read_declaration "margin: revert-layer 1rem";
   neg_cursor read_declaration "color: inherit red"
 
-let spec_cascade_section_3_shorthand_properties () =
+let spec_cascade3_shorthands () =
   (* CSS Cascade section 3: shorthand declarations set all of their longhand
      sub-properties as if expanded in place. Omitted sub-properties are reset to
      their initial values unless the individual shorthand says otherwise. *)
@@ -1099,7 +1099,7 @@ let spec_cascade_section_3_shorthand_properties () =
   neg_cursor read_declaration "border: 1px solid revert";
   neg_cursor read_declaration "font: bold inherit 12pt Helvetica"
 
-let spec_cascade_section_3_property_aliasing () =
+let spec_cascade3_aliasing () =
   (* CSS Cascade section 3.1: legacy shorthands behave as shorthands at parse
      time but are not selected for serialization. The spec example maps
      page-break-before: always to break-before: page. *)
@@ -1110,7 +1110,7 @@ let spec_cascade_section_3_property_aliasing () =
   neg_cursor read_declaration "page-break-after: revert always";
   neg_cursor read_declaration "page-break-inside: avoid-page"
 
-let spec_cascade_section_3_all_property () =
+let spec_cascade3_all () =
   (* CSS Cascade section 3.2: [all] is a shorthand that accepts only CSS-wide
      keywords and resets all CSS properties except direction, unicode-bidi, and
      custom properties. The parser surface can verify the allowed value set. *)
@@ -1168,7 +1168,7 @@ let custom_property_values () =
   check_declaration ~expected:"width:var(--w,10px)" "width: var(--w, 10px)";
   check_declaration ~expected:"margin:var(--m)" "margin: var(--m)"
 
-let spec_custom_property_token_stream_values () =
+let spec_custom_tokens () =
   check_declaration ~expected:"--tokens:[a, b] (c) { d: e; }"
     "--tokens: [a, b] (c) { d: e; }";
   check_declaration ~expected:"--empty:" "--empty:";
@@ -1354,7 +1354,7 @@ let spec_platform_property_vectors () =
       "background-image: image-set(url(a.png))";
     ]
 
-let spec_values_level_4_5_edge_vectors () =
+let spec_values_l45_edges () =
   List.iter
     (fun (input, expected) -> check_declaration ~expected input)
     [
@@ -1470,7 +1470,7 @@ let declaration_tests =
     test_case "custom properties" `Quick custom_properties;
     test_case "custom property values" `Quick custom_property_values;
     test_case "spec custom property token stream values" `Quick
-      spec_custom_property_token_stream_values;
+      spec_custom_tokens;
     test_case "vendor prefixes" `Quick vendor_prefixes;
     (* Property value categories *)
     test_case "colors" `Quick colors;
@@ -1496,8 +1496,7 @@ let declaration_tests =
     test_case "url values" `Quick url_values;
     test_case "spec platform property vectors" `Quick
       spec_platform_property_vectors;
-    test_case "spec values level 4/5 edge vectors" `Quick
-      spec_values_level_4_5_edge_vectors;
+    test_case "spec values level 4/5 edge vectors" `Quick spec_values_l45_edges;
     test_case "spec property grammar table expansion" `Quick
       spec_property_grammar_table_expansion;
     (* Error handling *)
@@ -1509,13 +1508,11 @@ let declaration_tests =
     (* Spec details and edge cases *)
     test_case "CSS-wide keywords" `Quick css_wide_keywords;
     test_case "spec cascade 3 shorthand properties" `Quick
-      spec_cascade_section_3_shorthand_properties;
-    test_case "spec cascade 3.1 property aliasing" `Quick
-      spec_cascade_section_3_property_aliasing;
-    test_case "spec cascade 3.2 all property" `Quick
-      spec_cascade_section_3_all_property;
+      spec_cascade3_shorthands;
+    test_case "spec cascade 3.1 property aliasing" `Quick spec_cascade3_aliasing;
+    test_case "spec cascade 3.2 all property" `Quick spec_cascade3_all;
     test_case "spec cascade 7 defaulting keywords" `Quick
-      spec_cascade_section_7_defaulting_keywords;
+      spec_cascade7_defaulting;
     test_case "comments handling" `Quick comments;
     test_case "unit case-insensitivity" `Quick unit_case;
     test_case "number formats" `Quick number_formats;

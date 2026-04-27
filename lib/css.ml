@@ -172,10 +172,9 @@ let rec sort cmp stmts =
   let stmts_with_sorted_contents =
     List.map
       (fun stmt ->
-        match as_rule stmt with
-        | Some (sel, decls, nested) ->
-            Rule (Stylesheet.rule ~selector:sel ~nested:(sort cmp nested) decls)
-        | None -> (
+        match stmt with
+        | Rule rule -> Rule { rule with nested = sort cmp rule.nested }
+        | _ -> (
             match as_media stmt with
             | Some (condition, content) -> media ~condition (sort cmp content)
             | None -> (

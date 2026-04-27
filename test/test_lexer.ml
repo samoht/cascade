@@ -243,7 +243,7 @@ let spec_security_comment_confusion_regressions () =
   check "safe/* .evil { color: red } */end" "<ident safe> <ident end>";
   check "safe/* unterminated .evil { color: red }" "<ident safe>"
 
-let spec_section_12_tokenization_regression_checklist () =
+let spec12_tokenization_checklist () =
   (* CSS Syntax Level 3 section 12 is non-normative. These are regression
      vectors for the tokenization behaviors it calls out as changed from older
      syntax definitions. *)
@@ -311,7 +311,7 @@ let suite =
         "spec section 11 comment-confusion security regressions" `Quick
         spec_security_comment_confusion_regressions;
       Alcotest.test_case "spec section 12 tokenization change checklist" `Quick
-        spec_section_12_tokenization_regression_checklist;
+        spec12_tokenization_checklist;
       Alcotest.test_case "bad string" `Quick bad_string;
       Alcotest.test_case "bad url" `Quick bad_url;
     ] )

@@ -93,7 +93,7 @@ let test_selector_roundtrip () =
   let s = selector_to_string sel in
   Alcotest.(check string) "from, to" "from, to" s
 
-let test_spec_keyframe_cascade_and_duplicate_offsets () =
+let spec_keyframe_duplicate_offsets () =
   (* Keyframes allow duplicate offsets; the cascade of declarations at a given
      offset is resolved later by the animation engine. The parser-level selector
      model must preserve the authored selector list shape. *)
@@ -115,7 +115,7 @@ let test_spec_keyframe_cascade_and_duplicate_offsets () =
     "50% sorts before to" true
     (position_compare (Percent 50.) To < 0)
 
-let test_spec_keyframe_invalid_selector_recovery_edges () =
+let spec_keyframe_invalid_edges () =
   (* The low-level selector helper is intentionally total and returns Raw for
      non-keyframe selector syntax; stylesheet parsing rejects those where a
      keyframe selector is required. *)
@@ -147,7 +147,7 @@ let suite =
         test_spec_keyframe_selector_vectors;
       test_case "selector roundtrip" `Quick test_selector_roundtrip;
       test_case "spec keyframe cascade and duplicate offsets" `Quick
-        test_spec_keyframe_cascade_and_duplicate_offsets;
+        spec_keyframe_duplicate_offsets;
       test_case "spec keyframe invalid selector recovery edges" `Quick
-        test_spec_keyframe_invalid_selector_recovery_edges;
+        spec_keyframe_invalid_edges;
     ] )

@@ -80,7 +80,7 @@ let test_spec_metric_negative_vectors () =
     "zero size adjust parses" 0.
     (size_adjust_of_string "0%")
 
-let test_spec_font_face_level_4_5_source_edges () =
+let spec_fontface_source_edges () =
   let check_raw name input =
     Alcotest.(check string) name input (src_of_string input |> src_to_string)
   in
@@ -94,7 +94,7 @@ let test_spec_font_face_level_4_5_source_edges () =
   check_raw "raw unknown source function"
     "url(\"font.woff2\") format(\"woff2\") tech(color-COLRv1)"
 
-let test_spec_font_face_metric_descriptor_edges () =
+let spec_fontface_metric_edges () =
   List.iter
     (fun (input, expected) ->
       Alcotest.(check string)
@@ -128,7 +128,7 @@ let suite =
       test_case "spec metric negative vectors" `Quick
         test_spec_metric_negative_vectors;
       test_case "spec font-face level 4/5 source edges" `Quick
-        test_spec_font_face_level_4_5_source_edges;
+        spec_fontface_source_edges;
       test_case "spec font-face metric descriptor edges" `Quick
-        test_spec_font_face_metric_descriptor_edges;
+        spec_fontface_metric_edges;
     ] )
