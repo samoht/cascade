@@ -210,12 +210,23 @@ let rec vars_of_calc : type a. a calc -> any_var list = function
   | Val _ -> []
   | Var v -> [ V v ]
   | Num _ -> []
+  | Sibling_index -> []
+  | Sibling_count -> []
   | Expr (left, _, right) -> vars_of_calc left @ vars_of_calc right
   | Nested inner -> vars_of_calc inner
   | Parens inner -> vars_of_calc inner
 
-let vars_of_length (value : Values.length) : any_var list =
-  match value with Var v -> [ V v ] | Calc calc -> vars_of_calc calc | _ -> []
+let rec vars_of_length (value : Values.length) : any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | Calc calc -> vars_of_calc calc
+  | Round (_, value, step) -> vars_of_length value @ vars_of_length step
+  | Mod (a, b) | Rem_fn (a, b) | Hypot (a, b) ->
+      vars_of_length a @ vars_of_length b
+  | Abs value | Sign value -> vars_of_length value
+  | Calc_size (basis, calc) -> vars_of_length basis @ vars_of_calc calc
+  | Anchor (_, _, Some fallback) -> vars_of_length fallback
+  | _ -> []
 
 let vars_of_length_list (values : Values.length list) : any_var list =
   List.concat_map vars_of_length values
@@ -279,6 +290,7 @@ let vars_of_component (value : Values.component) : any_var list =
   | Var v -> [ V v ]
   | Calc calc -> vars_of_calc calc
   | Angle hue -> vars_of_hue hue
+  | Component_none -> []
   | _ -> []
 
 let vars_of_percentage (value : Values.percentage) : any_var list =
@@ -297,6 +309,10 @@ let rec vars_of_color (value : Values.color) : any_var list =
       @ vars_of_alpha a
   | Color { components; alpha; _ } ->
       List.concat_map vars_of_component components @ vars_of_alpha alpha
+  | Relative_rgb _ -> []
+  | Contrast_color color -> vars_of_color color
+  | Light_dark (light, dark) -> vars_of_color light @ vars_of_color dark
+  | Lab { l; alpha; _ } -> vars_of_percentage l @ vars_of_alpha alpha
   | Oklch { l; h; alpha; _ } ->
       vars_of_percentage l @ vars_of_hue h @ vars_of_alpha alpha
   | Oklab { l; alpha; _ } -> vars_of_percentage l @ vars_of_alpha alpha
@@ -315,7 +331,7 @@ let rec vars_of_color (value : Values.color) : any_var list =
   | _ -> []
 
 let vars_of_duration (value : Values.duration) : any_var list =
-  match value with Var v -> [ V v ] | _ -> []
+  match value with Var v -> [ V v ] | Calc calc -> vars_of_calc calc | _ -> []
 
 let vars_of_border_width (value : Properties.border_width) : any_var list =
   match value with Var v -> [ V v ] | Calc calc -> vars_of_calc calc | _ -> []

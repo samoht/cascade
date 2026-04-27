@@ -1,24 +1,46 @@
 # Cascade
 
-CSS tooling for OCaml -- a typed AST, parser, pretty-printer, and optimizer
-for modern CSS.
+CSS tooling for OCaml -- a typed AST, parser, pretty-printer, structural
+transform library, diff tool, and optimizer for modern CSS.
 
 Most CSS toolchains target JavaScript runtimes. Cascade provides the same
-core capabilities -- parsing, rendering, and structural comparison -- as a
-native OCaml library with zero runtime dependencies beyond the stdlib.
+core capabilities -- parsing, printing, structural transformation, and
+structural comparison -- as a native OCaml library with zero runtime
+dependencies beyond the stdlib.
 Properties, values, and selectors are represented as OCaml types rather than
 strings, so invalid constructs are caught at compile time.
+
+## Project scope
+
+Cascade works on **CSS text and CSS syntax trees**. Its core responsibilities
+are:
+
+- parse CSS files or already-decoded CSS strings;
+- expose typed CSS ASTs for rules, declarations, selectors, values, and
+  at-rules;
+- print CSS, including minified output;
+- transform CSS ASTs with helpers such as `fold`, `map`, `sort`, and
+  structural comparison;
+- optimize/minify only when the rewrite is valid from stylesheet structure or
+  from caller-supplied context;
+- support CSS custom-property workflows, including `var()` parsing, typed
+  fallbacks, theme/default based variable output, and `@property` syntax.
+
+Cascade is a CSS library. When a transform needs information beyond CSS text,
+that information is passed as an explicit closed context record. Theme/default
+variable substitution is current behavior, and `Css.Context.t` is
+the context type for property-value transforms.
 
 ## CSS specification coverage
 
 Cascade targets selected **CSS Level 3, Level 4, and Level 5** modules. It has
 focused parser, printer, optimizer, property, and fuzz tests for many CSS
-features, but it is not a full browser conformance suite: Cascade does not
-currently implement a DOM, layout, rendering, CSSOM mutation, network fetching,
-or computed-style engine.
+features, but its conformance target is CSS parsing, ASTs, printing, transforms,
+diffs, and optimization rather than a complete web-platform runtime.
 
 See [SPEC_COVERAGE.md](SPEC_COVERAGE.md) for the detailed coverage matrix,
-including tested API stubs for browser-context behavior.
+which separates CSS-file syntax coverage from context-dependent runtime
+behavior.
 
 | Specification | Coverage |
 |---|---|
@@ -29,7 +51,7 @@ including tested API stubs for browser-context behavior.
 | [Cascade Level 5](https://www.w3.org/TR/css-cascade-5/) | `@layer` declarations and blocks, CSS-wide keywords |
 | [Nesting Module](https://www.w3.org/TR/css-nesting-1/) | Nested rules with `&`, nested `@media` and `@supports` |
 | [Container Queries Level 1](https://www.w3.org/TR/css-contain-3/) | `@container` with size queries |
-| [Custom Properties Level 1](https://www.w3.org/TR/css-variables-1/) | `var()` with typed fallbacks, `@property` registration |
+| [Custom Properties Level 1](https://www.w3.org/TR/css-variables-1/) | `var()` parsing/printing, typed fallbacks, theme/default substitution, `@property` registration |
 | [Fonts Level 4](https://www.w3.org/TR/css-fonts-4/) | `@font-face` descriptors |
 | [Animations Level 1](https://www.w3.org/TR/css-animations-1/) | `@keyframes`, `@starting-style` |
 
@@ -110,7 +132,8 @@ NO_COLOR=1 cssdiff reference.css output.css
 
 ## Libraries
 
-- **`cascade`** -- typed CSS AST, parser, pretty-printer, and optimizer.
+- **`cascade`** -- typed CSS AST, parser, pretty-printer, structural
+  transformation helpers, and optimizer.
   The main module is `Cascade.Css`.
 - **`cascade.tools`** -- structural CSS comparison (`Css_tools.Css_compare`,
   `Css_tools.Tree_diff`, `Css_tools.String_diff`).
@@ -136,6 +159,11 @@ NO_COLOR=1 cssdiff reference.css output.css
   rules. A round-trip through the parser preserves nesting structure.
 - `@import` rules are preserved as-is; Cascade does not resolve or inline
   imported stylesheets.
+- Cascade does not provide implicit runtime subsystems such as a DOM, live
+  CSSOM, network loader, layout tree, renderer, animation timeline, or ambient
+  computed-style engine. CSS syntax for those features is still parsed and
+  printed where the library models it, and explicit-context transforms can be
+  added when the required context is represented in the API.
 - No source-map support.
 
 ## Licence

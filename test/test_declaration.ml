@@ -1183,7 +1183,7 @@ let spec_custom_tokens () =
     "--nested-var: var(--a, var(--b, { color: red; }))";
   check_declaration ~expected:"--bad-string:\"unterminated"
     "--bad-string: \"unterminated";
-  neg_cursor read_declaration "--: value";
+  check_declaration ~expected:"--:value" "--: value";
   neg_cursor read_declaration "-x: value";
   neg_cursor read_declaration "--x"
 
@@ -1409,6 +1409,200 @@ let spec_values_l45_edges () =
       "clip-path: xywh(0 0)";
     ]
 
+let spec_remaining_prop_vectors () =
+  List.iter
+    (fun (input, expected) -> check_declaration ~expected input)
+    [
+      ("display: ruby", "display:ruby");
+      ("display: table-caption", "display:table-caption");
+      ("position: fixed", "position:fixed");
+      ("float: inline-start", "float:inline-start");
+      ("clear: inline-end", "clear:inline-end");
+      ("contain: strict", "contain:strict");
+      ("content-visibility: hidden", "content-visibility:hidden");
+      ( "contain-intrinsic-width: auto 10rem",
+        "contain-intrinsic-width:auto 10rem" );
+      ("contain-intrinsic-height: 20px", "contain-intrinsic-height:20px");
+      ("overflow: clip auto", "overflow:clip auto");
+      ("overflow-block: scroll", "overflow-block:scroll");
+      ("overflow-inline: hidden", "overflow-inline:hidden");
+      ( "overscroll-behavior-inline: contain",
+        "overscroll-behavior-inline:contain" );
+      ("scroll-snap-align: start end", "scroll-snap-align:start end");
+      ("scroll-snap-stop: always", "scroll-snap-stop:always");
+      ("scroll-margin: 1px 2px 3px 4px", "scroll-margin:1px 2px 3px 4px");
+      ("scroll-padding: 1rem 2rem", "scroll-padding:1rem 2rem");
+      ("columns: 12rem 3", "columns:12rem 3");
+      ( "column-rule: 1px solid currentColor",
+        "column-rule:1px solid currentColor" );
+      ("column-span: all", "column-span:all");
+      ("break-before: page", "break-before:page");
+      ("break-after: avoid-page", "break-after:avoid-page");
+      ("break-inside: avoid-column", "break-inside:avoid-column");
+      ("box-decoration-break: clone", "box-decoration-break:clone");
+      ("background-origin: content-box", "background-origin:content-box");
+      ("background-clip: padding-box", "background-clip:padding-box");
+      ("background-size: contain", "background-size:contain");
+      ("border-block: 1px solid red", "border-block:1px solid red");
+      ("border-inline-color: red blue", "border-inline-color:red blue");
+      ("border-start-start-radius: 1rem", "border-start-start-radius:1rem");
+      ("outline: 2px solid Highlight", "outline:2px solid Highlight");
+      ("outline-offset: -2px", "outline-offset:-2px");
+      ( "text-decoration: underline wavy red 2px",
+        "text-decoration:underline wavy red 2px" );
+      ("text-underline-offset: 2px", "text-underline-offset:2px");
+      ("text-emphasis: filled dot red", "text-emphasis:filled dot red");
+      ("text-emphasis-position: over right", "text-emphasis-position:over right");
+      ("text-orientation: mixed", "text-orientation:mixed");
+      ("tab-size: 4", "tab-size:4");
+      ("line-break: anywhere", "line-break:anywhere");
+      ("overflow-wrap: anywhere", "overflow-wrap:anywhere");
+      ("hyphens: manual", "hyphens:manual");
+      ("font-optical-sizing: auto", "font-optical-sizing:auto");
+      ("font-kerning: normal", "font-kerning:normal");
+      ("font-language-override: \"TRK\"", "font-language-override:\"TRK\"");
+      ("font-synthesis-style: auto", "font-synthesis-style:auto");
+      ("font-synthesis-weight: none", "font-synthesis-weight:none");
+      ( "font-variant-ligatures: common-ligatures",
+        "font-variant-ligatures:common-ligatures" );
+      ("font-variant-caps: small-caps", "font-variant-caps:small-caps");
+      ( "font-variant-numeric: tabular-nums slashed-zero",
+        "font-variant-numeric:tabular-nums slashed-zero" );
+      ("font-variant-position: sub", "font-variant-position:sub");
+      ("font-variant-east-asian: ruby", "font-variant-east-asian:ruby");
+      ("object-view-box: inset(0 0 10% 0)", "object-view-box:inset(0 0 10% 0)");
+      ("image-rendering: pixelated", "image-rendering:pixelated");
+      ("image-resolution: from-image 2dppx", "image-resolution:from-image 2dppx");
+      ("mask-border: url(mask.svg) 30 fill", "mask-border:url(mask.svg) 30 fill");
+      ("mask-size: contain", "mask-size:contain");
+      ("mask-repeat: no-repeat", "mask-repeat:no-repeat");
+      ("mask-position: left 10px top 20px", "mask-position:left 10px top 20px");
+      ( "backdrop-filter: blur(4px) saturate(120%)",
+        "backdrop-filter:blur(4px) saturate(120%)" );
+      ("will-change: transform, opacity", "will-change:transform,opacity");
+      ("touch-action: pan-x pinch-zoom", "touch-action:pan-x pinch-zoom");
+      ("caret-color: auto", "caret-color:auto");
+      ("resize: block", "resize:block");
+      ( "transition-property: opacity, display",
+        "transition-property:opacity,display" );
+      ("animation-composition: add", "animation-composition:add");
+      ("animation-range-start: entry 10%", "animation-range-start:entry 10%");
+      ("animation-range-end: exit 90%", "animation-range-end:exit 90%");
+      ("scroll-timeline-name: --scroller", "scroll-timeline-name:--scroller");
+      ("scroll-timeline-axis: inline", "scroll-timeline-axis:inline");
+      ("view-timeline-inset: auto 10%", "view-timeline-inset:auto 10%");
+      ("position-try-order: most-width", "position-try-order:most-width");
+      ( "position-visibility: anchors-visible",
+        "position-visibility:anchors-visible" );
+      ("accent-color: auto", "accent-color:auto");
+      ("color-scheme: only light dark", "color-scheme:only light dark");
+      ( "forced-color-adjust: preserve-parent-color",
+        "forced-color-adjust:preserve-parent-color" );
+      ("print-color-adjust: exact", "print-color-adjust:exact");
+      ("isolation: isolate", "isolation:isolate");
+      ("mix-blend-mode: plus-lighter", "mix-blend-mode:plus-lighter");
+      ("shape-margin: 2cqi", "shape-margin:2cqi");
+      ("shape-image-threshold: .4", "shape-image-threshold:.4");
+      ("container-type: inline-size", "container-type:inline-size");
+      ("container-name: card layout", "container-name:card layout");
+      ("container: card / inline-size", "container:card/inline-size");
+      ("anchor-name: --target, --tooltip", "anchor-name:--target,--tooltip");
+      ("position-anchor: --target", "position-anchor:--target");
+      ("position-area: top span-left", "position-area:top span-left");
+      ( "position-try-fallbacks: --below, flip-block",
+        "position-try-fallbacks:--below,flip-block" );
+      ("scrollbar-color: auto", "scrollbar-color:auto");
+      ("overlay: auto", "overlay:auto");
+      ( "transition-behavior: allow-discrete",
+        "transition-behavior:allow-discrete" );
+      ("font-size-adjust: ex-height 0.5", "font-size-adjust:ex-height .5");
+      ("font-variant-emoji: text", "font-variant-emoji:text");
+      ("initial-letter: 2 3", "initial-letter:2 3");
+      ("line-height-step: 4px", "line-height-step:4px");
+      ("text-box: trim-both cap alphabetic", "text-box:trim-both cap alphabetic");
+      ("field-sizing: content", "field-sizing:content");
+      ("margin-trim: block inline", "margin-trim:block inline");
+      ("offset-distance: 10%", "offset-distance:10%");
+      ("offset-rotate: reverse 45deg", "offset-rotate:reverse 45deg");
+      ( "view-transition-class: card primary",
+        "view-transition-class:card primary" );
+    ];
+  List.iter
+    (fun input -> neg_cursor read_declaration input)
+    [
+      "display: ruby block";
+      "float: inline-start left";
+      "contain: strict layout";
+      "content-visibility: visible hidden";
+      "contain-intrinsic-width: auto auto 10px";
+      "overflow: clip visible";
+      "overflow-block: visible hidden";
+      "overscroll-behavior-inline: contain auto none";
+      "scroll-snap-align: start center end";
+      "scroll-snap-stop: normal always";
+      "scroll-margin: -1px";
+      "columns: 1 2 3";
+      "column-rule: solid solid";
+      "column-span: all none";
+      "break-before: page column";
+      "box-decoration-break: slice clone";
+      "background-origin: border-box padding-box content-box border-box";
+      "background-size: contain cover";
+      "border-inline-color: red blue green";
+      "border-start-start-radius: 1rem /";
+      "text-decoration: underline none";
+      "text-emphasis: filled open";
+      "text-emphasis-position: over under";
+      "tab-size: -1";
+      "line-break: anywhere strict";
+      "font-optical-sizing: auto none";
+      "font-kerning: normal none";
+      "font-language-override: 1";
+      "font-synthesis-style: auto none";
+      "font-variant-caps: small-caps unicase";
+      "font-variant-position: sub super";
+      "object-view-box: inset()";
+      "image-rendering: pixelated smooth";
+      "image-resolution: from-image from-image";
+      "mask-border: fill fill";
+      "mask-size: contain cover";
+      "mask-repeat: no-repeat repeat repeat-x";
+      "backdrop-filter: blur()";
+      "will-change: auto, transform";
+      "touch-action: pan-x pan-left";
+      "resize: block inline both";
+      "transition-property: none, opacity";
+      "animation-composition: add replace";
+      "animation-range-start: exit entry";
+      "view-timeline-inset: auto auto auto";
+      "position-try-order: most-width normal";
+      "position-visibility: anchors-visible always";
+      "accent-color: auto red";
+      "color-scheme: only only";
+      "forced-color-adjust: auto none";
+      "print-color-adjust: exact economy";
+      "isolation: isolate auto";
+      "mix-blend-mode: multiply plus-lighter";
+      "shape-image-threshold: 1.5";
+      "container-name: none card";
+      "container: card inline-size";
+      "anchor-name: target";
+      "anchor-name: --a none";
+      "position-anchor: --a --b";
+      "position-area: top bottom";
+      "position-try-fallbacks: flip-block --below";
+      "overlay: auto none";
+      "transition-behavior: allow-discrete normal";
+      "font-size-adjust: ex-height";
+      "font-variant-emoji: text emoji";
+      "initial-letter: 2 0";
+      "text-box: cap trim-both";
+      "field-sizing: content fixed";
+      "margin-trim: block block";
+      "offset-rotate: reverse reverse";
+      "view-transition-class: none card";
+    ]
+
 let test_declaration () =
   (* Basic declarations - test the declaration type itself *)
   check_declaration "color:red";
@@ -1499,6 +1693,8 @@ let declaration_tests =
     test_case "spec values level 4/5 edge vectors" `Quick spec_values_l45_edges;
     test_case "spec property grammar table expansion" `Quick
       spec_property_grammar_table_expansion;
+    test_case "spec remaining property vectors" `Quick
+      spec_remaining_prop_vectors;
     (* Error handling *)
     test_case "error missing colon" `Quick error_missing_colon;
     test_case "error stray semicolon" `Quick error_stray_semicolon;

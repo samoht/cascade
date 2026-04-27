@@ -3998,6 +3998,8 @@ let calc_to_string (type a) (expr : a calc) : string =
     | Num n ->
         if Float.is_integer n then add (string_of_int (int_of_float n))
         else add (string_of_float n)
+    | Sibling_index -> add "sibling-index()"
+    | Sibling_count -> add "sibling-count()"
     | Var v ->
         add "var(--";
         add v.name;

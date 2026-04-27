@@ -1,6 +1,6 @@
 (** Fuzz tests for the CSS Supports module.
 
-    Tests crash safety of @supports condition parsing and roundtrip. *)
+    Tests crash safety of [\@supports] condition parsing and roundtrip. *)
 
 open Cascade
 open Alcobar
@@ -117,17 +117,72 @@ let test_generated_condition_serialization_idempotent buf =
     fail
       (Fmt.str "generated supports serialization changed: %S -> %S" once twice)
 
-let test_supports_evaluation_stub_identity buf =
+let test_supports_context_syntax buf =
   let condition = generated_condition buf in
-  match Css.Stylesheet.evaluate_supports_condition ~condition with
-  | Error (Css.Stylesheet.Requires_platform_context { feature; detail }) ->
-      if feature <> "supports evaluation" || detail = "" then
-        fail "supports evaluation stub lost feature/detail identity"
-  | Error (Css.Stylesheet.Requires_document_context _) ->
-      fail "supports evaluation returned document-context error"
-  | Error (Css.Stylesheet.Unsupported_value_alias _) ->
-      fail "supports evaluation returned value-alias error"
-  | Ok _ -> fail "supports evaluation stub unexpectedly succeeded"
+  let serialized = Css.Supports.to_string condition in
+  let reparsed = Css.Supports.(serialized |> of_string |> to_string) in
+  if serialized <> reparsed then
+    fail (Fmt.str "supports syntax changed: %S -> %S" serialized reparsed)
+
+let spec_supports_vector buf =
+  pick
+    [
+      ("(display: grid)", Css.Supports.Property ("display", "grid"));
+      ("selector(:has(+ img))", Css.Supports.Func ("selector", ":has(+ img)"));
+      ("font-format(woff2)", Css.Supports.Func ("font-format", "woff2"));
+      ( "font-tech(color-COLRv1)",
+        Css.Supports.Func ("font-tech", "color-COLRv1") );
+      ( "not (display: grid)",
+        Css.Supports.Not (Css.Supports.Property ("display", "grid")) );
+      ( "(display: grid) and selector(:has(img))",
+        Css.Supports.And
+          ( Css.Supports.Property ("display", "grid"),
+            Css.Supports.Func ("selector", ":has(img)") ) );
+      ( "font-format(woff2) or font-tech(variations)",
+        Css.Supports.Or
+          ( Css.Supports.Func ("font-format", "woff2"),
+            Css.Supports.Func ("font-tech", "variations") ) );
+      ( "((display: grid) and (gap: 1rem)) or (color: red)",
+        Css.Supports.Or
+          ( Css.Supports.And
+              ( Css.Supports.Property ("display", "grid"),
+                Css.Supports.Property ("gap", "1rem") ),
+            Css.Supports.Property ("color", "red") ) );
+    ]
+    buf 0
+
+let test_spec_supports_structural_vectors buf =
+  let input, expected = spec_supports_vector buf in
+  let actual = Css.Supports.of_string input in
+  if not (Css.Supports.equal expected actual) then
+    fail
+      (Fmt.str "supports vector parsed to wrong AST: %S -> %S" input
+         (Css.Supports.to_string actual))
+
+let test_spec_supports_invalid_vectors buf =
+  let input =
+    pick
+      [
+        "";
+        "()";
+        "display: grid";
+        "(display: grid) and";
+        "(display: grid) or";
+        "(display: grid) and (gap: 1rem) or selector(:has(img))";
+        "selector(:has(img)";
+        "(display: grid";
+      ]
+      buf 0
+  in
+  match
+    try Some (Css.Supports.of_string input)
+    with Failure _ | Invalid_argument _ -> None
+  with
+  | None -> ()
+  | Some actual ->
+      fail
+        (Fmt.str "invalid supports vector parsed: %S -> %S" input
+           (Css.Supports.to_string actual))
 
 let suite =
   ( "supports",
@@ -142,6 +197,10 @@ let suite =
       test_case "compare crash safety" [ bytes; bytes ] test_compare;
       test_case "generated condition serialization idempotent" [ bytes ]
         test_generated_condition_serialization_idempotent;
-      test_case "supports evaluation stub identity" [ bytes ]
-        test_supports_evaluation_stub_identity;
+      test_case "supports context syntax invariant" [ bytes ]
+        test_supports_context_syntax;
+      test_case "spec supports structural vectors" [ bytes ]
+        test_spec_supports_structural_vectors;
+      test_case "spec supports invalid vectors rejected" [ bytes ]
+        test_spec_supports_invalid_vectors;
     ] )

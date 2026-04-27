@@ -12,6 +12,7 @@ let () =
       Fuzz_selector.suite;
       Fuzz_media.suite;
       Fuzz_container.suite;
+      Fuzz_context.suite;
       Fuzz_values.suite;
       Fuzz_properties.suite;
       Fuzz_declaration.suite;

@@ -14,12 +14,15 @@ type t = {
   (* Token buffer: most-recently-pushed-back at the head. [next] takes from here
      before falling through to the reader. *)
   mutable buffer : Token.t list;
+  mutable history : Token.t list;
   (* Stack of saved positions. Each entry holds the tokens consumed since [save]
      was called; [restore] replays them at the head of [buffer]. *)
-  mutable saves : Token.t list ref list;
+  mutable saves : save list;
 }
 
-let of_reader reader = { reader; buffer = []; saves = [] }
+and save = { trace : Token.t list ref; saved_history : Token.t list }
+
+let of_reader reader = { reader; buffer = []; history = []; saves = [] }
 let of_string s = of_reader (Reader.of_string s)
 let source t = Reader.source t.reader
 
@@ -187,11 +190,28 @@ let consume_escape r =
 let consume_ident_sequence r =
   let buf = Buffer.create 16 in
   let src = Reader.source r in
+  let consume_hash_suffix () =
+    match Reader.peek r with
+    | Some '#' ->
+        Buffer.add_char buf '#';
+        Reader.skip r
+    | _ -> ()
+  in
   let rec loop () =
     match Reader.peek r with
     | Some '\\' when valid_escape_at r ->
+        let start = Reader.position r in
+        let hex_escape =
+          let s = Reader.peek_string r 2 in
+          String.length s = 2 && is_hex s.[1]
+        in
         Reader.skip r;
         Buffer.add_string buf (consume_escape r);
+        let consumed_hex_terminator =
+          let pos = Reader.position r in
+          hex_escape && pos > start + 2 && is_ws src.[pos - 1]
+        in
+        if not consumed_hex_terminator then consume_hash_suffix ();
         loop ()
     | Some _ -> (
         match Reader.peek_utf8 r with
@@ -433,7 +453,7 @@ let consume_unicode_range_token r =
     else Unicode_range { start_value; end_value = start_value }
 
 (* 4.3.10 Consume an ident-like token. *)
-let consume_ident_like_token r =
+let consume_ident_like_token ?(force_url_function = false) r =
   let name = consume_ident_sequence r in
   let lower = String.lowercase_ascii name in
   if lower = "url" && Reader.peek r = Some '(' then (
@@ -457,7 +477,8 @@ let consume_ident_like_token r =
           true
       | _ -> false
     in
-    if is_function_url then Function name else consume_url_token r)
+    if force_url_function || is_function_url then Function name
+    else consume_url_token r)
   else if Reader.peek r = Some '(' then (
     Reader.skip r;
     Function name)
@@ -543,7 +564,7 @@ let consume_at_start r =
   else Delim "@"
 
 (* 4.3.1 Consume a token. *)
-let next_token r =
+let next_token ?(force_url_function = false) r =
   consume_comments r;
   match Reader.peek r with
   | None -> Eof
@@ -612,7 +633,8 @@ let next_token r =
          Non-ident code points fall through to [Delim], where a multi-byte lead
          consumes the whole UTF-8 sequence so the delim token holds the full
          code point (CSS Syntax section 4.3.1). *)
-      if is_name_start_at r 0 then consume_ident_like_token r
+      if is_name_start_at r 0 then
+        consume_ident_like_token ~force_url_function r
       else if c >= '\x80' then (
         match Reader.peek_utf8 r with
         | Some (_, n) ->
@@ -634,14 +656,20 @@ let next_token r =
 (** {1 Stream API (uniform with other stages)} *)
 
 (* Wrap a tokenizer step with source-location capture. *)
-let tokenize_with_loc reader =
+let tokenize_with_loc ?(force_url_function = false) reader =
   let start_pos = Reader.position reader in
-  let kind = next_token reader in
+  let kind = next_token ~force_url_function reader in
   let end_pos = Reader.position reader in
   Token.v ~kind ~loc:(Loc.v ~start_pos ~end_pos)
 
 let record_consume t tok =
-  List.iter (fun trace -> trace := tok :: !trace) t.saves
+  t.history <- tok :: t.history;
+  List.iter (fun save -> save.trace := tok :: !(save.trace)) t.saves
+
+let force_url_function t =
+  match t.history with
+  | { kind = Url _; loc; _ } :: _ -> loc.end_pos = Reader.position t.reader
+  | _ -> false
 
 let next t =
   match t.buffer with
@@ -650,7 +678,9 @@ let next t =
       record_consume t tok;
       tok
   | [] ->
-      let tok = tokenize_with_loc t.reader in
+      let tok =
+        tokenize_with_loc ~force_url_function:(force_url_function t) t.reader
+      in
       record_consume t tok;
       tok
 
@@ -658,7 +688,9 @@ let peek t =
   match t.buffer with
   | tok :: _ -> tok
   | [] ->
-      let tok = tokenize_with_loc t.reader in
+      let tok =
+        tokenize_with_loc ~force_url_function:(force_url_function t) t.reader
+      in
       t.buffer <- [ tok ];
       tok
 
@@ -666,29 +698,36 @@ let reconsume t tok =
   (* Pushback returns [tok] to the front of the buffer; also undo its trace
      entry so a subsequent {!save}/{!restore} pair sees the correct tokens. *)
   t.buffer <- tok :: t.buffer;
+  (match t.history with
+  | hd :: rest when hd == tok -> t.history <- rest
+  | _ -> ());
   List.iter
-    (fun trace ->
-      match !trace with hd :: rest when hd == tok -> trace := rest | _ -> ())
+    (fun save ->
+      match !(save.trace) with
+      | hd :: rest when hd == tok -> save.trace := rest
+      | _ -> ())
     t.saves
 
 let save t =
   let trace = ref [] in
-  t.saves <- trace :: t.saves
+  t.saves <- { trace; saved_history = t.history } :: t.saves
 
 let restore t =
   match t.saves with
   | [] -> failwith "Lexer.restore: no saved position"
-  | trace :: rest ->
+  | save :: rest ->
       t.saves <- rest;
-      t.buffer <- List.rev_append !trace t.buffer
+      t.history <- save.saved_history;
+      t.buffer <- List.rev_append !(save.trace) t.buffer
 
 let commit t =
   match t.saves with
   | [] -> failwith "Lexer.commit: no saved position"
-  | trace :: rest -> (
+  | save :: rest -> (
       t.saves <- rest;
       match rest with
       | [] -> ()
-      | parent :: _ -> parent := List.rev_append !trace !parent)
+      | parent :: _ ->
+          parent.trace := List.rev_append !(save.trace) !(parent.trace))
 
 let is_done t = t.buffer = [] && Reader.is_done t.reader

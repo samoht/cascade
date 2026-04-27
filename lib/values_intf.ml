@@ -25,6 +25,8 @@ type 'a calc =
   | Var of 'a var
   | Val of 'a
   | Num of float
+  | Sibling_index
+  | Sibling_count
   | Expr of 'a calc * calc_op * 'a calc
   | Nested of 'a calc (* Explicitly nested calc(), rendered as calc(inner) *)
   | Parens of 'a calc (* Parenthesized expression, rendered as (inner) *)
@@ -62,8 +64,15 @@ type length =
   | Svw of float
   | Svmin of float
   | Svmax of float
+  | Cqw of float
+  | Cqh of float
+  | Cqi of float
+  | Cqb of float
+  | Cqmin of float
+  | Cqmax of float
   | Ch of float
   | Lh of float
+  | Size
   | Auto
   | None
   | Zero
@@ -81,6 +90,15 @@ type length =
   | Min of string
   | Max of string
   | Minmax of string
+  | Round of string * length * length
+  | Mod of length * length
+  | Rem_fn of length * length
+  | Hypot of length * length
+  | Abs of length
+  | Sign of length
+  | Calc_size of length * length calc
+  | Anchor_size of string
+  | Anchor of string option * string * length option
   | Var of length var
   | Calc of length calc
 
@@ -266,7 +284,7 @@ type angle =
   | Var of angle var
 
 type alpha = None | Num of float | Pct of float | Var of alpha var
-type hue = Unitless of float | Angle of angle | Var of hue var
+type hue = Unitless of float | Angle of angle | Var of hue var | Hue_none
 
 type component =
   | Num of float
@@ -274,6 +292,7 @@ type component =
   | Angle of hue
   | Var of component var
   | Calc of component calc
+  | Component_none
 
 type percentage =
   | Pct of float
@@ -327,6 +346,10 @@ type color =
   | Hsl of { h : hue; s : percentage; l : percentage; a : alpha }
   | Hwb of { h : hue; w : percentage; b : percentage; a : alpha }
   | Color of { space : color_space; components : component list; alpha : alpha }
+  | Relative_rgb of string
+  | Contrast_color of color
+  | Light_dark of color * color
+  | Lab of { l : percentage; a : float option; b : float option; alpha : alpha }
   | Oklch of { l : percentage; c : float; h : hue; alpha : alpha }
   | Oklab of {
       l : percentage;
@@ -354,6 +377,21 @@ type color =
       percent2 : percentage option;
     }
 
-type duration = Ms of float | S of float | Var of duration var
-type number = Num of float | Var of number var
+type duration =
+  | Ms of float
+  | S of float
+  | Var of duration var
+  | Calc of duration calc
+
+type number =
+  | Num of float
+  | Var of number var
+  | Calc of number calc
+  | Round of string * number * number
+  | Mod of number * number
+  | Hypot of number * number
+  | Pow of number * number
+  | Sqrt of number
+  | Sin of angle
+
 type transition_behavior = Normal | Allow_discrete

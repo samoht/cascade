@@ -1,4 +1,8 @@
-(** Common helpers for CSS tests to reduce duplication and inconsistencies *)
+(** Common helpers for CSS tests to reduce duplication and inconsistencies.
+
+    Expected strings passed to these helpers are spec oracles. They must come
+    from CSS specifications or from documented Cascade canonicalization that
+    preserves required CSS syntax, not from current implementation output. *)
 
 open Cascade
 
@@ -29,7 +33,8 @@ val check_value :
   unit
 (** [check_value type_name reader pp_func ?minify ?roundtrip ?expected input]
     tests that parsing input produces the expected output when pretty-printed.
-    Optionally tests roundtrip stability (parse -> print -> parse -> print). *)
+    [expected] must be spec-derived. Optionally tests roundtrip stability (parse
+    -> print -> parse -> print). *)
 
 val neg_cursor : (Css.Cursor.t -> 'a) -> string -> unit
 (** Cursor-based variant of {!neg}. *)
@@ -54,7 +59,7 @@ val check_value_cursor :
 (** [check_value_cursor type_name parse pp_func ?minify ?expected input] is the
     {!Css.Cursor.t}-based variant of {!check_value}: lexes [input] into a
     cursor, applies [parse], pretty-prints with [pp_func], and asserts the
-    round-trip equals [input] (or [expected]). *)
+    result equals spec-derived [input] or [expected]. *)
 
 val check_parse_error_fields :
   string -> Css.Reader.parse_error -> Css.Reader.parse_error -> unit

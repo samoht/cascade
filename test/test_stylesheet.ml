@@ -1191,6 +1191,18 @@ let spec_s8_rule_shapes () =
   expect_parse_error "@import \"theme.css\" .a { color: red }";
   expect_parse_error "@media print"
 
+let spec_namespace_serialization () =
+  (* CSS Namespaces: a prefixed namespace rule serializes as [@namespace
+     <prefix> <namespace-url>;]. The whitespace between prefix and URL is
+     required syntax, not an implementation formatting choice. *)
+  check_stylesheet ~expected:"@namespace svg url(http://www.w3.org/2000/svg);"
+    "@namespace svg url(http://www.w3.org/2000/svg);";
+  check_stylesheet
+    ~expected:"@namespace math \"http://www.w3.org/1998/Math/MathML\";"
+    "@namespace math \"http://www.w3.org/1998/Math/MathML\";";
+  check_stylesheet ~expected:"@namespace url(http://www.w3.org/1999/xhtml);"
+    "@namespace url(http://www.w3.org/1999/xhtml);"
+
 (* Not a roundtrip test *)
 let spec_s8_charset_not_rule () =
   (* CSS Syntax Level 3 section 8.3: @charset is an encoding declaration shape,
@@ -2157,6 +2169,7 @@ let additional_tests =
     ("nested rules", `Quick, test_nested_rules);
     ("spec section 7.1 block grammar examples", `Quick, spec_s7_block_examples);
     ("spec section 8.1-8.2 stylesheet rule shapes", `Quick, spec_s8_rule_shapes);
+    ("spec namespace prefix serialization", `Quick, spec_namespace_serialization);
     ("spec section 8.3 charset is not a rule", `Quick, spec_s8_charset_not_rule);
     (* CSS nesting round-trip tests *)
     ("nesting basic", `Quick, test_nesting_basic);

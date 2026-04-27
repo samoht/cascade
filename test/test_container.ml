@@ -108,29 +108,20 @@ let test_spec_container_compare_edges () =
     ]
     sorted
 
-let spec_container_eval_boundary () =
+let spec_container_context_vectors () =
   let open Css.Container in
-  let expect_platform condition container =
-    match Css.Stylesheet.evaluate_container_query ~condition ~container with
-    | Error (Css.Stylesheet.Requires_platform_context actual) ->
-        Alcotest.(check string)
-          "feature" "container query evaluation" actual.feature
-    | Error (Css.Stylesheet.Requires_document_context _) ->
-        Alcotest.fail "expected platform context"
-    | Error (Css.Stylesheet.Unsupported_value_alias _) ->
-        Alcotest.fail "expected platform context"
-    | Ok _ -> Alcotest.fail "expected container evaluation boundary"
-  in
   List.iter
-    (fun (condition, container) -> expect_platform condition container)
+    (fun (condition, expected) ->
+      Alcotest.(check string)
+        "container condition syntax" expected (to_string condition))
     [
-      (Min_width_px 400, ".card inline-size=600px");
-      (Min_width_rem 30., ".card inline-size=40rem");
-      (Raw "(inline-size > 30em)", ".card");
-      (Raw "(30em <= inline-size < 60em)", ".card");
-      (Raw "style(--theme: dark)", ".card");
-      (Raw "scroll-state(stuck: top)", ".card");
-      (Named ("card", Raw "(width >= 400px)"), ".card");
+      (Min_width_px 400, "(min-width:400px)");
+      (Min_width_rem 30., "(min-width:30rem)");
+      (Raw "(inline-size > 30em)", "(inline-size > 30em)");
+      (Raw "(30em <= inline-size < 60em)", "(30em <= inline-size < 60em)");
+      (Raw "style(--theme: dark)", "style(--theme: dark)");
+      (Raw "scroll-state(stuck: top)", "scroll-state(stuck: top)");
+      (Named ("card", Raw "(width >= 400px)"), "card (width >= 400px)");
     ]
 
 let spec_container_query_vectors () =
@@ -165,8 +156,8 @@ let tests =
       test_case "kind" `Quick test_kind;
       test_case "spec container compare edges" `Quick
         test_spec_container_compare_edges;
-      test_case "spec container query evaluation boundary" `Quick
-        spec_container_eval_boundary;
+      test_case "spec container query context syntax vectors" `Quick
+        spec_container_context_vectors;
       test_case "spec container query boolean/range/style vectors" `Quick
         spec_container_query_vectors;
     ]

@@ -79,19 +79,17 @@ let test_negated_kind_invariant buf =
   if Css.Media.kind query <> Css.Media.kind negated then
     fail "negated media query changed kind bucket"
 
-let test_media_evaluation_stub_identity buf =
-  match
-    Css.Stylesheet.evaluate_media_query ~condition:(media buf 0)
-      ~environment:"screen width=80em"
-  with
-  | Error (Css.Stylesheet.Requires_platform_context { feature; detail }) ->
-      if feature <> "media query evaluation" || detail = "" then
-        fail "media evaluation stub lost feature/detail identity"
-  | Error (Css.Stylesheet.Requires_document_context _) ->
-      fail "media evaluation returned document-context error"
-  | Error (Css.Stylesheet.Unsupported_value_alias _) ->
-      fail "media evaluation returned value-alias error"
-  | Ok _ -> fail "media evaluation stub unexpectedly succeeded"
+let test_media_context_shape buf =
+  let open Css.Values in
+  let ctx =
+    {
+      Css.Context.empty with
+      viewport_width = Some (Px (float_of_int (byte_at buf 0 + 1)));
+      viewport_height = Some (Px (float_of_int (byte_at buf 1 + 1)));
+    }
+  in
+  if ctx.viewport_width = None || ctx.viewport_height = None then
+    fail "media context dimensions were not preserved"
 
 let test_raw_range_serialization_stable buf =
   let raw =
@@ -111,6 +109,77 @@ let test_raw_range_serialization_stable buf =
     fail
       (Fmt.str "media of_string/to_string not idempotent: %S vs %S" once twice)
 
+let spec_media_vector buf =
+  let open Css.Media in
+  let length l = Length l in
+  pick
+    [
+      ("(min-width: 640px)", Min_width 640.);
+      ("(max-width: 768px)", Max_width 768.);
+      ("(prefers-reduced-motion: reduce)", Prefers_reduced_motion `Reduce);
+      ("print", Print);
+      ("not print", Negated Print);
+      ("not all and (min-width: 40px)", Not_min_width 40.);
+      ( "(width > 40em)",
+        Custom
+          (Cond (Feature (Range ("width", Gt, length (Css.Values.Em 40.))))) );
+      ( "(40em < width)",
+        Custom
+          (Cond (Feature (Range_rev (length (Css.Values.Em 40.), Lt, "width"))))
+      );
+      ( "(30em <= width < 60em)",
+        Custom
+          (Cond
+             (Feature
+                (Interval
+                   ( length (Css.Values.Em 30.),
+                     Le,
+                     "width",
+                     Lt,
+                     length (Css.Values.Em 60.) )))) );
+      ( "screen and (hover: hover)",
+        Custom
+          (Type
+             {
+               prefix = None;
+               type_ = Screen;
+               trailing = Some (Feature (Plain ("hover", Ident "hover")));
+             }) );
+    ]
+    buf 0
+
+let test_spec_media_structural_vectors buf =
+  let input, expected = spec_media_vector buf in
+  let actual = Css.Media.of_string input in
+  if not (Css.Media.equal expected actual) then
+    fail
+      (Fmt.str "media vector parsed to wrong AST: %S -> %S" input
+         (Css.Media.to_string actual))
+
+let test_spec_media_invalid_vectors buf =
+  let input =
+    pick
+      [
+        "";
+        "()";
+        "(width >=)";
+        "(width) and";
+        "(width) and (height) or (color)";
+        "screen (width)";
+        "(width >= 40em";
+      ]
+      buf 0
+  in
+  match
+    try Some (Css.Media.of_string input)
+    with Failure _ | Invalid_argument _ -> None
+  with
+  | None -> ()
+  | Some actual ->
+      fail
+        (Fmt.str "invalid media vector parsed: %S -> %S" input
+           (Css.Media.to_string actual))
+
 let suite =
   ( "media",
     [
@@ -119,8 +188,12 @@ let suite =
       test_case "compare antisymmetric" [ bytes ] test_compare_antisymmetric;
       test_case "compare transitive" [ bytes ] test_compare_transitive;
       test_case "negated kind invariant" [ bytes ] test_negated_kind_invariant;
-      test_case "media evaluation stub identity" [ bytes ]
-        test_media_evaluation_stub_identity;
+      test_case "media context shape invariant" [ bytes ]
+        test_media_context_shape;
       test_case "raw range serialization stable" [ bytes ]
         test_raw_range_serialization_stable;
+      test_case "spec media structural vectors" [ bytes ]
+        test_spec_media_structural_vectors;
+      test_case "spec media invalid vectors rejected" [ bytes ]
+        test_spec_media_invalid_vectors;
     ] )
