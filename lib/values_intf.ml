@@ -83,9 +83,11 @@ type length =
   | Revert_layer
   | Fit_content
   | Content
+  | Contain
   | Max_content
   | Min_content
   | From_font
+  | Stretch
   | Clamp of string
   | Min of string
   | Max of string
