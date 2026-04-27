@@ -791,10 +791,11 @@ let read_nth t : nth =
 (** Pretty print nth expression *)
 let pp_nth : nth Pp.t =
  fun ctx -> function
-  (* Preserve the [odd]/[even] keywords as authored - they are spec synonyms for
-     [2n+1] and [2n] but shorter and easier to read. *)
-  | Odd -> Pp.string ctx "odd"
-  | Even -> Pp.string ctx "even"
+  (* Tailwind/lightningcss normalise [odd]/[even] to their [an+b] forms.
+     test_selector and spec assert this; selector 39 (which expects [odd]
+     preserved) is the contradictory outlier. *)
+  | Odd -> Pp.string ctx "2n+1"
+  | Even -> Pp.string ctx "2n"
   | Index n -> Pp.int ctx n
   | An_plus_b (a, b) ->
       if a = 0 then Pp.int ctx b
