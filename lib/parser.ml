@@ -136,7 +136,7 @@ let escape_ident s =
   Uutf.String.fold_utf_8 folder () s;
   Buffer.contents buf
 
-let escape_string ~quote s =
+let escape_string ~quote ~terminated s =
   let buf = Buffer.create (String.length s + 2) in
   Buffer.add_char buf quote;
   String.iter
@@ -148,7 +148,7 @@ let escape_string ~quote s =
       else if code < 0x20 || code = 0x7F then add_hex_escape buf c
       else Buffer.add_char buf c)
     s;
-  Buffer.add_char buf quote;
+  if terminated then Buffer.add_char buf quote;
   Buffer.contents buf
 
 let token_kind_to_string : Token.kind -> string = function
@@ -156,7 +156,8 @@ let token_kind_to_string : Token.kind -> string = function
   | Token.Function s -> escape_ident s ^ "("
   | Token.At_keyword s -> "@" ^ escape_ident s
   | Token.Hash { value; _ } -> "#" ^ escape_ident value
-  | Token.String { value; quote } -> escape_string ~quote value
+  | Token.String { value; quote; terminated } ->
+      escape_string ~quote ~terminated value
   | Token.Bad_string -> ""
   | Token.Url s ->
       let buf = Buffer.create (String.length s + 5) in

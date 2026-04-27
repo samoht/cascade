@@ -31,8 +31,10 @@ let rec important = function
 (* Helper for raw custom properties - primarily for internal use *)
 
 let custom_property ?layer name value =
-  (* Validate that this is a proper CSS variable name *)
-  if not (String.length name > 2 && String.sub name 0 2 = "--") then
+  (* Validate that this is a proper CSS variable name. Per CSS Custom Properties
+     Level 1, [--] (the bare two-dash ident with no body) is a legal name in the
+     syntax even though it is reserved for future use. *)
+  if not (String.length name >= 2 && String.sub name 0 2 = "--") then
     failwith
       (String.concat ""
          [
@@ -743,13 +745,33 @@ let is_font_family_var name =
   || starts_with "default-font-family" bare
   || starts_with "default-mono-font-family" bare
 
+(* For custom properties only, !important is recognised solely as the literal
+   10-character suffix [!important]; [! important] (with whitespace between the
+   bang and the ident) is part of the value, not the importance flag. Per
+   test_declaration's spec_custom_tokens: this matches Tailwind/lightningcss's
+   conservative handling for [--*] values, where any whitespace inside the flag
+   means the user wrote arbitrary tokens, not the cascade marker. *)
+let split_custom_important value =
+  let trimmed = String.trim value in
+  let len = String.length trimmed in
+  let suffix = "!important" in
+  let suffix_len = String.length suffix in
+  if
+    len >= suffix_len
+    && String.lowercase_ascii (String.sub trimmed (len - suffix_len) suffix_len)
+       = suffix
+  then
+    let head = String.sub trimmed 0 (len - suffix_len) in
+    (String.trim head, true)
+  else (trimmed, false)
+
 let read_custom_property_declaration t : declaration =
   let name = read_property_name t in
   Cursor.ws t;
   if not (Cursor.colon t) then Cursor.err_expected t "':'";
   Cursor.ws t;
-  let value_str = read_property_value t in
-  let is_important = read_importance t in
+  let raw_value = Cursor.consume_to_semicolon ~trim:true t in
+  let value_str, is_important = split_custom_important raw_value in
   (* custom_property may raise Failure for invalid names like "--" *)
   try
     let decl =

@@ -258,7 +258,7 @@ let string_opt t =
 let string_with_quote_opt t =
   take_token_if
     (function
-      | Token.String { value; quote } -> Some (value, quote) | _ -> None)
+      | Token.String { value; quote; _ } -> Some (value, quote) | _ -> None)
     t
 
 let url_opt t = take_token_if (function Token.Url s -> Some s | _ -> None) t

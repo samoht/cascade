@@ -234,10 +234,10 @@ let consume_string_token ~quote r =
   let buf = Buffer.create 32 in
   let rec loop () =
     match Reader.peek r with
-    | None -> String { value = Buffer.contents buf; quote }
+    | None -> String { value = Buffer.contents buf; quote; terminated = false }
     | Some c when c = quote ->
         Reader.skip r;
-        String { value = Buffer.contents buf; quote }
+        String { value = Buffer.contents buf; quote; terminated = true }
     | Some c when is_newline c -> Bad_string (* do not consume the newline *)
     | Some '\\' -> (
         Reader.skip r;
