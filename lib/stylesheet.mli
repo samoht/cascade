@@ -1,4 +1,10 @@
-(** CSS stylesheet interface *)
+(** CSS stylesheet interface.
+
+    This module models stylesheet syntax and CSS-file-local structure:
+    construction, parsing, printing, traversal helpers, and context-free cascade
+    ordering helpers. Operations that need information beyond stylesheet text
+    should take an explicit closed context record from a dedicated module, such
+    as {!module:Context}. *)
 
 open Declaration
 include module type of Stylesheet_intf
@@ -58,18 +64,19 @@ val origin_importance_rank : important:bool -> cascade_origin -> int
     precedence. *)
 
 val import_layer_name : import_rule -> string option
-(** [import_layer_name rule] models [CSSImportRule.layerName]: [None] means the
-    import does not declare a layer, [Some ""] means the import declares an
-    anonymous layer, and [Some name] is the declared layer name. *)
+(** [import_layer_name rule] returns the layer name declared by an [@import]
+    rule: [None] means the import does not declare a layer, [Some ""] means the
+    import declares an anonymous layer, and [Some name] is the declared layer
+    name. *)
 
 val layer_block_name : statement -> string option
-(** [layer_block_name stmt] models [CSSLayerBlockRule.name] for [@layer] block
-    rules. It returns [Some ""] for anonymous layer blocks, [Some name] for
-    named layer blocks, and [None] for non-layer-block statements. The returned
-    name is the at-rule's own declared name, not a parent-prefixed name. *)
+(** [layer_block_name stmt] returns the declared name for an [@layer] block
+    rule. It returns [Some ""] for anonymous layer blocks, [Some name] for named
+    layer blocks, and [None] for non-layer-block statements. The returned name
+    is the at-rule's own declared name, not a parent-prefixed name. *)
 
 val layer_statement_name_list : statement -> string list option
-(** [layer_statement_name_list stmt] models [CSSLayerStatementRule.nameList] for
+(** [layer_statement_name_list stmt] returns the declared name list for
     statement-form [@layer] rules. *)
 
 val cascade_layer_precedence_rank :
@@ -179,161 +186,8 @@ val specified_value_after_revert_layer :
 
 val value_processing_requires_document_context : value_processing_stage -> bool
 (** [value_processing_requires_document_context stage] is [true] for stages this
-    parser/serializer cannot compute without document, inheritance, layout,
-    rendering, or device context. *)
-
-val declared_values_for_element :
-  ?element:string ->
-  stylesheet ->
-  (declared_value list, value_processing_error) result
-(** [declared_values_for_element ?element stylesheet] is the API entry point for
-    selector-filtered declared values applied to a document element. It
-    currently returns [Error (Requires_document_context Declared_value)]. *)
-
-val filter_style_rules :
-  ?element:string ->
-  ?media:Media.t ->
-  ?supports:Supports.t ->
-  ?shadow_tree:string ->
-  ?scope:string ->
-  stylesheet ->
-  (stylesheet, value_processing_error) result
-(** [filter_style_rules ?element ?media ?supports ?shadow_tree ?scope
-     stylesheet] is the API entry point for CSS Cascade section 5 filtering of
-    style rules. It currently returns [Error (Requires_platform_context ...)]
-    because the filtering pass needs media/supports evaluation, selector
-    matching, shadow-tree membership, and scoped-tree context. *)
-
-val normalize_value_alias :
-  property:string -> value:string -> (string, value_processing_error) result
-(** [normalize_value_alias ~property ~value] is the API entry point for CSS
-    legacy value aliases. It currently returns
-    [Error (Unsupported_value_alias ...)]. *)
-
-val computed_value :
-  property:string -> specified:string -> (string, value_processing_error) result
-(** [computed_value ~property ~specified] is the API entry point for CSS
-    computed values. It currently returns
-    [Error (Requires_document_context Computed_value)]. *)
-
-val used_value :
-  property:string -> computed:string -> (string, value_processing_error) result
-(** [used_value ~property ~computed] is the API entry point for CSS used values.
-    It currently returns [Error (Requires_document_context Used_value)]. *)
-
-val actual_value :
-  property:string -> used:string -> (string, value_processing_error) result
-(** [actual_value ~property ~used] is the API entry point for CSS actual values.
-    It currently returns [Error (Requires_document_context Actual_value)]. *)
-
-val applicable_property :
-  property:string -> box:string -> (bool, value_processing_error) result
-(** [applicable_property ~property ~box] is the API entry point for determining
-    whether a property applies to an element or box type. It currently returns
-    [Error (Requires_document_context Used_value)]. *)
-
-val per_fragment_value :
-  property:string ->
-  fragment:string ->
-  computed:string ->
-  (string, value_processing_error) result
-(** [per_fragment_value ~property ~fragment ~computed] is the API entry point
-    for CSS per-fragment value processing. It currently returns
-    [Error (Requires_document_context Used_value)]. *)
-
-val selector_matches_element :
-  selector:Selector.t -> element:string -> (bool, value_processing_error) result
-(** [selector_matches_element ~selector ~element] is the API entry point for DOM
-    selector matching. It currently returns
-    [Error (Requires_platform_context ...)]. *)
-
-val evaluate_media_query :
-  condition:Media.t ->
-  environment:string ->
-  (bool, value_processing_error) result
-(** [evaluate_media_query ~condition ~environment] is the API entry point for
-    Media Queries evaluation against a media environment. It currently returns
-    [Error (Requires_platform_context ...)]. *)
-
-val evaluate_supports_condition :
-  condition:Supports.t -> (bool, value_processing_error) result
-(** [evaluate_supports_condition ~condition] is the API entry point for
-    [@supports] evaluation against a user-agent support table. It currently
-    returns [Error (Requires_platform_context ...)]. *)
-
-val evaluate_container_query :
-  condition:Container.t ->
-  container:string ->
-  (bool, value_processing_error) result
-(** [evaluate_container_query ~condition ~container] is the API entry point for
-    Container Queries evaluation against a query container. It currently returns
-    [Error (Requires_platform_context ...)]. *)
-
-val resolve_url_value :
-  base:string -> url:string -> (string, value_processing_error) result
-(** [resolve_url_value ~base ~url] is the API entry point for CSS URL
-    absolutization. It currently returns
-    [Error (Requires_platform_context ...)]. *)
-
-val load_import_rule :
-  import_rule -> (stylesheet, value_processing_error) result
-(** [load_import_rule rule] is the API entry point for [@import] fetching and
-    parsing. It currently returns [Error (Requires_platform_context ...)]. *)
-
-val html_presentational_hints :
-  element:string ->
-  (Declaration.declaration list, value_processing_error) result
-(** [html_presentational_hints ~element] is the API entry point for HTML
-    presentational hints that enter the cascade as author presentational-hint
-    origin declarations. It currently returns
-    [Error (Requires_platform_context ...)]. *)
-
-val resolve_custom_property :
-  name:string ->
-  specified:string ->
-  environment:string ->
-  (string, value_processing_error) result
-(** [resolve_custom_property ~name ~specified ~environment] is the API entry
-    point for computed-value-time custom property substitution and cycle
-    detection. It currently returns
-    [Error (Requires_document_context Computed_value)]. *)
-
-val cssom_insert_rule :
-  index:int ->
-  statement ->
-  stylesheet ->
-  (stylesheet, value_processing_error) result
-(** [cssom_insert_rule ~index rule stylesheet] is the API entry point for CSSOM
-    rule insertion. It currently returns
-    [Error (Requires_platform_context ...)]. *)
-
-val cssom_delete_rule :
-  index:int -> stylesheet -> (stylesheet, value_processing_error) result
-(** [cssom_delete_rule ~index stylesheet] is the API entry point for CSSOM rule
-    deletion. It currently returns [Error (Requires_platform_context ...)]. *)
-
-val cssom_replace_rule :
-  index:int ->
-  statement ->
-  stylesheet ->
-  (stylesheet, value_processing_error) result
-(** [cssom_replace_rule ~index rule stylesheet] is the API entry point for CSSOM
-    rule replacement. It currently returns
-    [Error (Requires_platform_context ...)]. *)
-
-val cssom_serialize_rule : statement -> (string, value_processing_error) result
-(** [cssom_serialize_rule rule] is the API entry point for CSSOM rule-specific
-    serialization. It currently returns [Error (Requires_platform_context ...)].
-*)
-
-val animated_value :
-  property:string ->
-  keyframes:string list ->
-  progress:float ->
-  (string, value_processing_error) result
-(** [animated_value ~property ~keyframes ~progress] is the API entry point for
-    Web Animations/CSS Animations value sampling. It currently returns
-    [Error (Requires_platform_context ...)]. *)
+    parser/serializer cannot compute from CSS text alone without caller-supplied
+    document, inheritance, layout, rendering, or device context. *)
 
 val starting_style_nested : Declaration.declaration list -> statement
 (** [starting_style_nested declarations] creates a [@starting-style] rule for

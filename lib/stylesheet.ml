@@ -243,79 +243,6 @@ let value_processing_requires_document_context = function
   | Declared_value | Cascaded_value | Specified_value -> false
   | Computed_value | Used_value | Actual_value -> true
 
-let platform_stub feature detail =
-  Error (Requires_platform_context { feature; detail })
-
-let declared_values_for_element ?element:_ _stylesheet =
-  Error (Requires_document_context Declared_value)
-
-let filter_style_rules ?element:_ ?media:_ ?supports:_ ?shadow_tree:_ ?scope:_
-    _stylesheet =
-  platform_stub "style rule filtering"
-    "requires media/supports/selector/shadow-tree/scope evaluation"
-
-let normalize_value_alias ~property ~value =
-  Error (Unsupported_value_alias { property; value })
-
-let computed_value ~property:_ ~specified:_ =
-  Error (Requires_document_context Computed_value)
-
-let used_value ~property:_ ~computed:_ =
-  Error (Requires_document_context Used_value)
-
-let actual_value ~property:_ ~used:_ =
-  Error (Requires_document_context Actual_value)
-
-let applicable_property ~property:_ ~box:_ =
-  Error (Requires_document_context Used_value)
-
-let per_fragment_value ~property:_ ~fragment:_ ~computed:_ =
-  Error (Requires_document_context Used_value)
-
-let selector_matches_element ~selector:_ ~element:_ =
-  platform_stub "selector matching" "requires a DOM element tree"
-
-let evaluate_media_query ~condition:_ ~environment:_ =
-  platform_stub "media query evaluation" "requires a media environment"
-
-let evaluate_supports_condition ~condition:_ =
-  platform_stub "supports evaluation" "requires a UA property support table"
-
-let evaluate_container_query ~condition:_ ~container:_ =
-  platform_stub "container query evaluation"
-    "requires a query container and its computed dimensions/style"
-
-let resolve_url_value ~base ~url =
-  Error
-    (Requires_platform_context
-       { feature = "URL resolution"; detail = base ^ " " ^ url })
-
-let load_import_rule _rule =
-  platform_stub "stylesheet import loading" "requires URL resolution and fetch"
-
-let html_presentational_hints ~element:_ =
-  platform_stub "HTML presentational hints" "requires HTML element semantics"
-
-let resolve_custom_property ~name:_ ~specified:_ ~environment:_ =
-  Error (Requires_document_context Computed_value)
-
-let cssom_insert_rule ~index:_ _statement _stylesheet =
-  platform_stub "CSSOM insertRule" "requires CSSOM mutation semantics"
-
-let cssom_delete_rule ~index:_ _stylesheet =
-  platform_stub "CSSOM deleteRule" "requires CSSOM mutation semantics"
-
-let cssom_replace_rule ~index:_ _statement _stylesheet =
-  platform_stub "CSSOM replaceRule" "requires CSSOM mutation semantics"
-
-let cssom_serialize_rule _statement =
-  platform_stub "CSSOM rule serialization"
-    "requires CSSOM rule-specific serialization semantics"
-
-let animated_value ~property:_ ~keyframes:_ ~progress:_ =
-  platform_stub "animation value sampling"
-    "requires Web Animations timing and interpolation"
-
 let starting_style_nested declarations =
   Starting_style [ Declarations declarations ]
 
@@ -1036,7 +963,13 @@ and read_media (r : Cursor.t) : statement =
   if String.length condition_str = 0 then
     Cursor.err r "@media rule requires a media query condition";
   let content = Cursor.braces (fun inner -> read_block inner) r in
-  Media (Media.of_string condition_str, content)
+  let condition =
+    (* CSS Media Queries Level 4 section 3.2: a media query that does not match
+       the grammar must be replaced by "not all". *)
+    try Media.of_string condition_str
+    with Failure _ -> Media.of_string "not all"
+  in
+  Media (condition, content)
 
 and read_supports (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "supports" r;
@@ -1249,7 +1182,11 @@ and read_nested_at_rule (r : Cursor.t) (at_rule : string)
   | "@media" ->
       let condition_str = Cursor.drain_until_block_to_string ~trim:true r in
       let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
-      Media (Media.of_string condition_str, content)
+      let condition =
+        try Media.of_string condition_str
+        with Failure _ -> Media.of_string "not all"
+      in
+      Media (condition, content)
   | _ -> Cursor.err_invalid r ("Unexpected nested at-rule: " ^ at_rule)
 
 and read_nested_at_within_rule (r : Cursor.t) (selector : Selector.t) :
