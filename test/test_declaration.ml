@@ -2904,6 +2904,15 @@ let property_grammar_matrix =
     ]
 
 let spec_property_grammar_manifest () =
+  let unique_properties =
+    List.sort_uniq String.compare
+      (List.map (fun row -> row.property) property_grammar_matrix)
+  in
+  if List.length unique_properties <> List.length property_grammar_matrix then
+    Alcotest.fail "property grammar manifest has duplicate property rows";
+  Alcotest.(check int)
+    "property grammar manifest covers every unique public property name" 346
+    (List.length unique_properties);
   let parse_decl property value =
     let input = property ^ ":" ^ value in
     let c = Css.Cursor.of_string input in
