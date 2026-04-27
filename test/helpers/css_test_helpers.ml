@@ -1,4 +1,8 @@
-(** Common helpers for CSS tests to reduce duplication and inconsistencies *)
+(** Common helpers for CSS tests to reduce duplication and inconsistencies.
+
+    Test expectations passed to these helpers must come from CSS specifications
+    or from a documented Cascade canonical form that preserves the spec syntax.
+    Do not derive [expected] values from the current implementation output. *)
 
 open Cascade
 
@@ -66,8 +70,8 @@ let check_error parse input expected =
 
 (** Cursor-based variant of {!check_value}. Lexes [input], builds a
     {!Css.Cursor.t}, applies [parse], pretty-prints with [pp_func], and asserts
-    the round-trip equals [input] (or [expected]). Use this for parsers whose
-    signature is [Cursor.t -> 'a]. *)
+    the result equals the spec-derived [input] or [expected]. Use this for
+    parsers whose signature is [Cursor.t -> 'a]. *)
 let check_value_cursor type_name parse pp_func ?(minify = true)
     ?(roundtrip = false) ?expected input =
   let expected = Option.value ~default:input expected in
@@ -81,7 +85,8 @@ let check_value_cursor type_name parse pp_func ?(minify = true)
     let s2 = Css.Pp.to_string ~minify pp_func v2 in
     Alcotest.(check string) (Fmt.str "roundtrip %s %s" type_name input) s s2
 
-(** Generic check function for CSS value types - handles parse/print testing *)
+(** Generic check function for CSS value types. [expected] is a spec oracle, not
+    a snapshot of current implementation behavior. *)
 let check_value type_name reader pp_func ?(minify = true) ?(roundtrip = false)
     ?expected input =
   let expected = Option.value ~default:input expected in

@@ -174,50 +174,50 @@ let pp_calc_op : calc_op Pp.t =
       Pp.string ctx "/";
       Pp.space_if_pretty ctx ()
 
-let pp_calc : type a. a Pp.t -> a calc Pp.t =
+let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
  fun pp_value ctx calc ->
-  Pp.call "calc"
-    (fun ctx calc ->
-      let precedence = function Add | Sub -> 1 | Mul | Div -> 2 in
-      (* Print a calc expression, tracking parent precedence and whether we're
-         on the right side of a non-commutative operator (Sub/Div) *)
-      let rec pp_calc_inner ~parent_prec ~right_of_noncommut ctx = function
-        | Val v -> pp_value ctx v
-        | Var v -> pp_var pp_value ctx v
-        | Num n -> Pp.float ctx n
-        | Nested inner ->
-            (* Preserve nested calc() exactly as written to match Tailwind's
-               output format, e.g. calc(4px * calc(1 - var(--tw-reverse))) *)
-            Pp.call "calc"
-              (fun ctx inner ->
-                pp_calc_inner ~parent_prec:0 ~right_of_noncommut:false ctx inner)
-              ctx inner
-        | Parens inner ->
-            (* Parenthesized expression - render as (inner) *)
-            Pp.char ctx '(';
-            pp_calc_inner ~parent_prec:0 ~right_of_noncommut:false ctx inner;
-            Pp.char ctx ')'
-        | Expr (left, op, right) ->
-            let op_prec = precedence op in
-            (* Need parens if: - Our precedence is lower than parent (standard)
-               - OR we're on the right of a non-commutative op (Sub/Div) and our
-               op has same or lower precedence *)
-            let needs_parens =
-              op_prec < parent_prec
-              || (right_of_noncommut && op_prec <= parent_prec)
-            in
-            if needs_parens then Pp.char ctx '(';
-            pp_calc_inner ~parent_prec:op_prec ~right_of_noncommut:false ctx
-              left;
-            pp_calc_op ctx op;
-            (* Right side of Sub/Div needs special handling *)
-            let is_noncommut = match op with Sub | Div -> true | _ -> false in
-            pp_calc_inner ~parent_prec:op_prec ~right_of_noncommut:is_noncommut
-              ctx right;
-            if needs_parens then Pp.char ctx ')'
-      in
-      pp_calc_inner ~parent_prec:0 ~right_of_noncommut:false ctx calc)
-    ctx calc
+  let precedence = function Add | Sub -> 1 | Mul | Div -> 2 in
+  (* Print a calc expression, tracking parent precedence and whether we're on
+     the right side of a non-commutative operator (Sub/Div) *)
+  let rec pp_calc_inner ~parent_prec ~right_of_noncommut ctx = function
+    | Val v -> pp_value ctx v
+    | Var v -> pp_var pp_value ctx v
+    | Num n -> Pp.float ctx n
+    | Sibling_index -> Pp.string ctx "sibling-index()"
+    | Sibling_count -> Pp.string ctx "sibling-count()"
+    | Nested inner ->
+        (* Preserve nested calc() exactly as written to match Tailwind's output
+           format, e.g. calc(4px * calc(1 - var(--tw-reverse))) *)
+        Pp.call "calc"
+          (fun ctx inner ->
+            pp_calc_inner ~parent_prec:0 ~right_of_noncommut:false ctx inner)
+          ctx inner
+    | Parens inner ->
+        (* Parenthesized expression - render as (inner) *)
+        Pp.char ctx '(';
+        pp_calc_inner ~parent_prec:0 ~right_of_noncommut:false ctx inner;
+        Pp.char ctx ')'
+    | Expr (left, op, right) ->
+        let op_prec = precedence op in
+        (* Need parens if: - Our precedence is lower than parent (standard) - OR
+           we're on the right of a non-commutative op (Sub/Div) and our op has
+           same or lower precedence *)
+        let needs_parens =
+          op_prec < parent_prec || (right_of_noncommut && op_prec <= parent_prec)
+        in
+        if needs_parens then Pp.char ctx '(';
+        pp_calc_inner ~parent_prec:op_prec ~right_of_noncommut:false ctx left;
+        pp_calc_op ctx op;
+        (* Right side of Sub/Div needs special handling *)
+        let is_noncommut = match op with Sub | Div -> true | _ -> false in
+        pp_calc_inner ~parent_prec:op_prec ~right_of_noncommut:is_noncommut ctx
+          right;
+        if needs_parens then Pp.char ctx ')'
+  in
+  pp_calc_inner ~parent_prec:0 ~right_of_noncommut:false ctx calc
+
+let pp_calc : type a. a Pp.t -> a calc Pp.t =
+ fun pp_value ctx calc -> Pp.call "calc" (pp_calc_contents pp_value) ctx calc
 
 (* Small helpers *)
 let pp_unit ?(always = true) ctx f suffix =
@@ -240,6 +240,8 @@ let pp_unit_compact ctx f suffix =
     Returns None if the expression contains variables or non-numeric values. *)
 let rec eval_numeric_calc : type a. a calc -> float option = function
   | Num f -> Some f
+  | Sibling_index -> None
+  | Sibling_count -> None
   | Val _ -> None (* Can't evaluate typed values *)
   | Var _ -> None (* Can't evaluate variables *)
   | Nested inner -> eval_numeric_calc inner
@@ -292,8 +294,15 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Svw f -> pp_unit_fn f "svw"
   | Svmin f -> pp_unit_fn f "svmin"
   | Svmax f -> pp_unit_fn f "svmax"
+  | Cqw f -> pp_unit_fn f "cqw"
+  | Cqh f -> pp_unit_fn f "cqh"
+  | Cqi f -> pp_unit_fn f "cqi"
+  | Cqb f -> pp_unit_fn f "cqb"
+  | Cqmin f -> pp_unit_fn f "cqmin"
+  | Cqmax f -> pp_unit_fn f "cqmax"
   | Ch f -> pp_unit_fn f "ch"
   | Lh f -> pp_unit_fn f "lh"
+  | Size -> Pp.string ctx "size"
   | Auto -> Pp.string ctx "auto"
   | None -> Pp.string ctx "none"
   | Inherit -> Pp.string ctx "inherit"
@@ -334,6 +343,62 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Min s -> Pp.string ctx ("min(" ^ s ^ ")")
   | Max s -> Pp.string ctx ("max(" ^ s ^ ")")
   | Minmax s -> Pp.string ctx ("minmax(" ^ s ^ ")")
+  | Round (strategy, value, step) ->
+      Pp.call "round"
+        (fun ctx (strategy, value, step) ->
+          Pp.string ctx strategy;
+          Pp.comma ctx ();
+          pp_length ~always ctx value;
+          Pp.comma ctx ();
+          pp_length ~always ctx step)
+        ctx (strategy, value, step)
+  | Mod (a, b) ->
+      Pp.call "mod"
+        (fun ctx (a, b) ->
+          pp_length ~always ctx a;
+          Pp.comma ctx ();
+          pp_length ~always ctx b)
+        ctx (a, b)
+  | Rem_fn (a, b) ->
+      Pp.call "rem"
+        (fun ctx (a, b) ->
+          pp_length ~always ctx a;
+          Pp.comma ctx ();
+          pp_length ~always ctx b)
+        ctx (a, b)
+  | Hypot (a, b) ->
+      Pp.call "hypot"
+        (fun ctx (a, b) ->
+          pp_length ~always ctx a;
+          Pp.comma ctx ();
+          pp_length ~always ctx b)
+        ctx (a, b)
+  | Abs v -> Pp.call "abs" (pp_length ~always) ctx v
+  | Sign v -> Pp.call "sign" (pp_length ~always) ctx v
+  | Calc_size (basis, calc) ->
+      Pp.call "calc-size"
+        (fun ctx (basis, calc) ->
+          pp_length ~always ctx basis;
+          Pp.comma ctx ();
+          pp_calc_contents (pp_length ~always) ctx calc)
+        ctx (basis, calc)
+  | Anchor_size size ->
+      Pp.call "anchor-size" (fun ctx size -> Pp.string ctx size) ctx size
+  | Anchor (name, side, fallback) ->
+      Pp.call "anchor"
+        (fun ctx (name, side, fallback) ->
+          Option.iter
+            (fun name ->
+              Pp.string ctx name;
+              Pp.space ctx ())
+            name;
+          Pp.string ctx side;
+          match fallback with
+          | Option.None -> ()
+          | Option.Some fallback ->
+              Pp.comma ctx ();
+              pp_length ~always ctx fallback)
+        ctx (name, side, fallback)
   | Var v -> pp_var (pp_length ~always) ctx v
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -643,6 +708,7 @@ let rec pp_hue : hue Pp.t =
       Pp.float ctx f
   | Angle a -> pp_angle ctx a
   | Var v -> pp_var pp_hue ctx v
+  | Hue_none -> Pp.string ctx "none"
 
 and pp_alpha : alpha Pp.t =
  fun ctx -> function
@@ -695,6 +761,7 @@ and pp_component : component Pp.t =
   | Angle h -> pp_hue ctx h
   | Var v -> pp_var pp_component ctx v
   | Calc c -> pp_calc pp_component ctx c
+  | Component_none -> Pp.string ctx "none"
 
 and pp_hue_interpolation : hue_interpolation Pp.t =
  fun ctx -> function
@@ -784,6 +851,7 @@ let pp_oklab_args : (percentage * float option * float option * alpha) Pp.t =
       Pp.op_char ctx '/';
       pp_alpha_drop_zero ctx a
 
+let pp_lab = Pp.call "lab" pp_oklab_args
 let pp_oklab = Pp.call "oklab" pp_oklab_args
 let pp_lch = Pp.call "lch" pp_pct_num_hue_alpha
 
@@ -804,11 +872,6 @@ let pp_color_space : color_space Pp.t =
   | Oklch -> Pp.string ctx "oklch"
   | Hsl -> Pp.string ctx "hsl"
   | Hwb -> Pp.string ctx "hwb"
-
-(** Check if a color value ends with a letter (needs space before percentage) *)
-let color_needs_space_before_percent = function
-  | Current | Inherit | Transparent -> true
-  | _ -> false (* All other colors end with ) or a non-letter *)
 
 let rec pp_color_in_mix : color Pp.t =
  fun ctx -> function
@@ -833,18 +896,14 @@ and pp_color_mix ctx in_space hue color1 percent1 color2 percent2 =
       pp_color_in_mix ctx color1;
       (match percent1 with
       | Some p ->
-          (* Space needed after keyword colors like currentcolor, but not after
-             function-ending colors like var() *)
-          if color_needs_space_before_percent color1 then Pp.space ctx ()
-          else Pp.space_if_pretty ctx ();
+          Pp.space ctx ();
           pp_percentage ctx p
       | None -> ());
       Pp.comma ctx ();
       pp_color_in_mix ctx color2;
       match percent2 with
       | Some p ->
-          if color_needs_space_before_percent color2 then Pp.space ctx ()
-          else Pp.space_if_pretty ctx ();
+          Pp.space ctx ();
           pp_percentage ctx p
       | None -> ())
     ctx
@@ -898,6 +957,17 @@ and pp_color : color Pp.t =
   | Hsl { h; s; l; a } -> pp_hsl ctx (h, s, l, a)
   | Hwb { h; w; b; a } -> pp_hwb ctx (h, w, b, a)
   | Color { space; components; alpha } -> pp_color' ctx space components alpha
+  | Relative_rgb body ->
+      Pp.call "rgb" (fun ctx body -> Pp.string ctx body) ctx body
+  | Contrast_color color -> Pp.call "contrast-color" pp_color ctx color
+  | Light_dark (light, dark) ->
+      Pp.call "light-dark"
+        (fun ctx (light, dark) ->
+          pp_color ctx light;
+          Pp.comma ctx ();
+          pp_color ctx dark)
+        ctx (light, dark)
+  | Lab { l; a; b; alpha } -> pp_lab ctx (l, a, b, alpha)
   | Oklch { l; c; h; alpha } -> pp_oklch ctx (l, c, h, alpha)
   | Oklab { l; a; b; alpha } -> pp_oklab ctx (l, a, b, alpha)
   | Lch { l; c; h; alpha } -> pp_lch ctx (l, c, h, alpha)
@@ -946,9 +1016,52 @@ let rec pp_duration : duration Pp.t =
       else pp_unit_compact ctx f "ms"
   | S f -> pp_unit_compact ctx f "s"
   | Var v -> pp_var pp_duration ctx v
+  | Calc c -> pp_calc pp_duration_in_calc ctx c
+
+and pp_duration_in_calc : duration Pp.t =
+ fun ctx -> function
+  | Ms f -> pp_unit_compact ctx f "ms"
+  | S f -> pp_unit_compact ctx f "s"
+  | Var v -> pp_var pp_duration ctx v
+  | Calc c -> pp_calc pp_duration_in_calc ctx c
 
 let rec pp_number : number Pp.t =
- fun ctx -> function Num f -> Pp.float ctx f | Var v -> pp_var pp_number ctx v
+ fun ctx -> function
+  | Num f -> Pp.float ctx f
+  | Var v -> pp_var pp_number ctx v
+  | Calc c -> pp_calc pp_number ctx c
+  | Round (strategy, value, step) ->
+      Pp.call "round"
+        (fun ctx (strategy, value, step) ->
+          Pp.string ctx strategy;
+          Pp.comma ctx ();
+          pp_number ctx value;
+          Pp.comma ctx ();
+          pp_number ctx step)
+        ctx (strategy, value, step)
+  | Mod (a, b) ->
+      Pp.call "mod"
+        (fun ctx (a, b) ->
+          pp_number ctx a;
+          Pp.comma ctx ();
+          pp_number ctx b)
+        ctx (a, b)
+  | Hypot (a, b) ->
+      Pp.call "hypot"
+        (fun ctx (a, b) ->
+          pp_number ctx a;
+          Pp.comma ctx ();
+          pp_number ctx b)
+        ctx (a, b)
+  | Pow (a, b) ->
+      Pp.call "pow"
+        (fun ctx (a, b) ->
+          pp_number ctx a;
+          Pp.comma ctx ();
+          pp_number ctx b)
+        ctx (a, b)
+  | Sqrt v -> Pp.call "sqrt" pp_number ctx v
+  | Sin a -> Pp.call "sin" pp_angle ctx a
 
 let pp_transition_behavior : transition_behavior Pp.t =
  fun ctx -> function
@@ -1068,6 +1181,12 @@ let read_length_unit ?(allow_negative = true) t =
   | "svw" -> Svw n
   | "svmin" -> Svmin n
   | "svmax" -> Svmax n
+  | "cqw" -> Cqw n
+  | "cqh" -> Cqh n
+  | "cqi" -> Cqi n
+  | "cqb" -> Cqb n
+  | "cqmin" -> Cqmin n
+  | "cqmax" -> Cqmax n
   | "ch" -> Ch n
   | "lh" -> Lh n
   | "%" -> Pct n
@@ -1078,6 +1197,7 @@ let read_length_keyword t =
     [
       ("auto", Auto);
       ("none", None);
+      ("size", Size);
       ("max-content", Max_content);
       ("min-content", Min_content);
       ("fit-content", Fit_content);
@@ -1178,6 +1298,14 @@ and read_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
       if Cursor.looking_at_func "calc" t then
         Nested (Cursor.call "calc" t (fun inner -> read_calc_expr read_a inner))
       else if Cursor.looking_at_func "var" t then Var (read_var read_a t)
+      else if Cursor.looking_at_func "sibling-index" t then
+        Cursor.call "sibling-index" t (fun inner ->
+            Cursor.expect_eof inner;
+            Sibling_index)
+      else if Cursor.looking_at_func "sibling-count" t then
+        Cursor.call "sibling-count" t (fun inner ->
+            Cursor.expect_eof inner;
+            Sibling_count)
       else
         let read_val t = Val (read_a t) in
         let read_num t = (Num (Cursor.number t) : a calc) in
@@ -1209,12 +1337,91 @@ let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
     match
       Cursor.any_function_call
         (fun name inner ->
-          let content = Cursor.consume_remaining_to_string inner in
           match String.lowercase_ascii name with
-          | "clamp" -> Clamp content
-          | "minmax" -> Minmax content
-          | "min" -> Min content
-          | "max" -> Max content
+          | "clamp" -> Clamp (Cursor.consume_remaining_to_string inner)
+          | "minmax" -> Minmax (Cursor.consume_remaining_to_string inner)
+          | "min" -> Min (Cursor.consume_remaining_to_string inner)
+          | "max" -> Max (Cursor.consume_remaining_to_string inner)
+          | "round" ->
+              let strategy = Cursor.ident inner in
+              Cursor.ws inner;
+              Cursor.comma inner;
+              let value = read_length ~allow_negative ~with_keywords inner in
+              Cursor.ws inner;
+              Cursor.comma inner;
+              let step = read_length ~allow_negative ~with_keywords inner in
+              Cursor.ws inner;
+              Cursor.expect_eof inner;
+              Round (strategy, value, step)
+          | "mod" ->
+              let a = read_length ~allow_negative ~with_keywords inner in
+              Cursor.ws inner;
+              Cursor.comma inner;
+              let b = read_length ~allow_negative ~with_keywords inner in
+              Cursor.ws inner;
+              Cursor.expect_eof inner;
+              Mod (a, b)
+          | "rem" ->
+              let a = read_length ~allow_negative ~with_keywords inner in
+              Cursor.ws inner;
+              Cursor.comma inner;
+              let b = read_length ~allow_negative ~with_keywords inner in
+              Cursor.ws inner;
+              Cursor.expect_eof inner;
+              Rem_fn (a, b)
+          | "hypot" ->
+              let a = read_length ~allow_negative ~with_keywords inner in
+              Cursor.ws inner;
+              Cursor.comma inner;
+              let b = read_length ~allow_negative ~with_keywords inner in
+              Cursor.ws inner;
+              Cursor.expect_eof inner;
+              Hypot (a, b)
+          | "abs" ->
+              let value = read_length ~allow_negative ~with_keywords inner in
+              Cursor.ws inner;
+              Cursor.expect_eof inner;
+              Abs value
+          | "sign" ->
+              let value = read_length ~allow_negative ~with_keywords inner in
+              Cursor.ws inner;
+              Cursor.expect_eof inner;
+              Sign value
+          | "calc-size" ->
+              let basis = read_length ~allow_negative ~with_keywords inner in
+              Cursor.ws inner;
+              Cursor.comma inner;
+              let calc =
+                read_calc_expr
+                  (read_length ~allow_negative ~with_keywords)
+                  inner
+              in
+              Cursor.ws inner;
+              Cursor.expect_eof inner;
+              Calc_size (basis, calc)
+          | "anchor-size" ->
+              let size = Cursor.consume_remaining_to_string ~trim:true inner in
+              if size = "" then Cursor.err_expected inner "anchor-size argument";
+              Anchor_size size
+          | "anchor" ->
+              let first = Cursor.ident inner in
+              Cursor.ws inner;
+              let name, side =
+                if String.starts_with ~prefix:"--" first then
+                  let side = Cursor.ident inner in
+                  (Some first, side)
+                else (None, first)
+              in
+              Cursor.ws inner;
+              let fallback =
+                if Cursor.comma_opt inner then (
+                  Cursor.ws inner;
+                  Some (read_length ~allow_negative ~with_keywords inner))
+                else None
+              in
+              Cursor.ws inner;
+              Cursor.expect_eof inner;
+              Anchor (name, side, fallback)
           | _ -> Cursor.err t ("unknown function " ^ name))
         t
     with
@@ -1366,11 +1573,14 @@ let read_color_space t : color_space =
 let rec read_color_components space t acc =
   Cursor.ws t;
   if Cursor.is_done t || Cursor.peek_delim t = Some '/' then List.rev acc
+  else if Cursor.looking_at t "none" then (
+    Cursor.expect_string "none" t;
+    read_color_components space t (Component_none :: acc))
   else
     let component_count = List.length acc in
     let n, unit = Cursor.number_with_unit t in
     let component : component =
-      match (space, component_count, unit) with
+      match ((space : color_space), component_count, unit) with
       | (Lab | Oklab | Lch | Oklch), 0, Some "%" -> Pct n
       | (Lab | Oklab | Lch | Oklch), 0, _ ->
           Cursor.err_invalid t "L component must be percentage"
@@ -1422,7 +1632,10 @@ let normalize_hue (degrees : float) : float =
 let rec read_hue t : hue =
   Cursor.ws t;
   (* Check for var() *)
-  if Cursor.looking_at t "var(" then Var (read_var read_hue t)
+  if Cursor.looking_at t "none" then (
+    Cursor.expect_string "none" t;
+    Hue_none)
+  else if Cursor.looking_at t "var(" then Var (read_var read_hue t)
   else
     let n, unit_raw = Cursor.number_with_unit t in
     let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
@@ -1495,10 +1708,10 @@ let read_oklch t : color =
   Cursor.ws t;
   let c = Cursor.number t in
   Cursor.ws t;
-  let h = Cursor.number t in
+  let h = read_hue t in
   let alpha = read_optional_alpha t in
   Cursor.ws t;
-  Oklch { l = Pct l; c; h = Unitless h; alpha }
+  Oklch { l = Pct l; c; h; alpha }
 
 let read_number_or_none t : float option =
   Cursor.ws t;
@@ -1525,21 +1738,31 @@ let read_oklab t : color =
   Cursor.ws t;
   Oklab { l = Pct l; a; b; alpha }
 
+let read_lab t : color =
+  Cursor.ws t;
+  let l = read_percentage_float t in
+  let a = read_number_or_none t in
+  let b = read_number_or_none t in
+  let alpha = read_optional_alpha t in
+  Cursor.ws t;
+  Lab { l = Pct l; a; b; alpha }
+
 let read_lch t : color =
   Cursor.ws t;
   let l, c, h =
-    Cursor.triple ~sep:Cursor.ws read_percentage_float Cursor.number
-      Cursor.number t
+    Cursor.triple ~sep:Cursor.ws read_percentage_float Cursor.number read_hue t
   in
   let alpha = read_optional_alpha t in
   Cursor.ws t;
-  Lch { l = Pct l; c; h = Unitless h; alpha }
+  Lch { l = Pct l; c; h; alpha }
 
 let read_color_function t : color =
   Cursor.ws t;
   let space = read_color_space t in
   Cursor.ws t;
   let components = read_color_components space t [] in
+  if List.length components <> 3 then
+    Cursor.err_invalid t "color() requires three components";
   let alpha = read_optional_alpha t in
   Color { space; components; alpha }
 
@@ -1586,7 +1809,25 @@ let rec read_color_mix t : color =
       let space = read_color_space t in
       Cursor.ws t;
       (* For cylindrical color spaces, check for hue interpolation *)
-      let hue = Default in
+      let hue =
+        match Cursor.peek_ident t with
+        | Some ("shorter" | "longer" | "increasing" | "decreasing") ->
+            let hue =
+              Cursor.enum "hue-interpolation"
+                [
+                  ("shorter", Shorter);
+                  ("longer", Longer);
+                  ("increasing", Increasing);
+                  ("decreasing", Decreasing);
+                ]
+                t
+            in
+            Cursor.ws t;
+            Cursor.expect_string "hue" t;
+            Cursor.ws t;
+            hue
+        | _ -> Default
+      in
       (Some space, hue))
     else (None, Default)
   in
@@ -1611,12 +1852,83 @@ let rec read_color_mix t : color =
   Cursor.ws t;
   Mix { in_space; hue; color1; percent1; color2; percent2 }
 
+and normalize_relative_color_tail tail =
+  let tail = String.trim tail in
+  let len = String.length tail in
+  let buf = Buffer.create len in
+  let rec skip_spaces i =
+    if i < len && tail.[i] = ' ' then skip_spaces (i + 1) else i
+  in
+  let rec loop i last_was_space =
+    if i >= len then ()
+    else
+      match tail.[i] with
+      | ' ' | '\n' | '\t' | '\r' | '\012' -> loop (i + 1) true
+      | '/' ->
+          let blen = Buffer.length buf in
+          if blen > 0 && Buffer.nth buf (blen - 1) = ' ' then
+            Buffer.truncate buf (blen - 1);
+          Buffer.add_char buf '/';
+          loop (skip_spaces (i + 1)) false
+      | c ->
+          if last_was_space && Buffer.length buf > 0 then
+            Buffer.add_char buf ' ';
+          Buffer.add_char buf c;
+          loop (i + 1) false
+  in
+  loop 0 false;
+  Buffer.contents buf
+
+and relative_color_channel_count tail =
+  let channel_part =
+    match String.index_opt tail '/' with
+    | Some i -> String.sub tail 0 i
+    | None -> tail
+  in
+  channel_part |> String.split_on_char ' '
+  |> List.filter (fun s -> s <> "")
+  |> List.length
+
+and read_relative_rgb t : color =
+  Cursor.ws t;
+  Cursor.expect_string "from" t;
+  Cursor.ws t;
+  let origin = read_color t in
+  Cursor.ws t;
+  let tail =
+    Cursor.consume_remaining_to_string ~trim:true t
+    |> normalize_relative_color_tail
+  in
+  if tail = "" then Cursor.err_expected t "relative rgb channels";
+  if relative_color_channel_count tail < 3 then
+    Cursor.err_expected t "relative rgb channels";
+  let origin = Pp.to_string ~minify:true pp_color origin in
+  Relative_rgb ("from " ^ origin ^ " " ^ tail)
+
+and read_contrast_color t : color =
+  Cursor.ws t;
+  let color = read_color t in
+  Cursor.ws t;
+  Contrast_color color
+
+and read_light_dark t : color =
+  Cursor.ws t;
+  let light = read_color t in
+  Cursor.ws t;
+  Cursor.comma t;
+  Cursor.ws t;
+  let dark = read_color t in
+  Cursor.ws t;
+  Light_dark (light, dark)
+
 and color_parsers =
   [
     ( "rgb",
       fun t ->
         Cursor.ws t;
-        Cursor.one_of [ read_rgb_space_separated; read_rgb_comma_separated ] t
+        if Cursor.looking_at t "from" then read_relative_rgb t
+        else
+          Cursor.one_of [ read_rgb_space_separated; read_rgb_comma_separated ] t
     );
     ( "rgba",
       fun t ->
@@ -1627,9 +1939,12 @@ and color_parsers =
     ("hsla", read_hsl);
     ("hwb", read_hwb);
     ("oklch", read_oklch);
+    ("lab", read_lab);
     ("oklab", read_oklab);
     ("lch", read_lch);
     ("color", read_color_function);
+    ("contrast-color", read_contrast_color);
+    ("light-dark", read_light_dark);
     ("color-mix", read_color_mix);
   ]
 
@@ -1881,6 +2196,7 @@ let rec read_duration t : duration =
   Cursor.ws t;
   (* Check for var() *)
   if Cursor.looking_at t "var(" then Var (read_var read_duration t)
+  else if Cursor.looking_at t "calc(" then Calc (read_calc read_duration t)
   else
     let n, unit_raw = Cursor.number_with_unit t in
     if n < 0.0 then Cursor.err_invalid t "negative durations are not allowed"
@@ -1910,6 +2226,58 @@ let rec read_number t : number =
   Cursor.ws t;
   (* Check for var() *)
   if Cursor.looking_at t "var(" then Var (read_var read_number t)
+  else if Cursor.looking_at t "calc(" then Calc (read_calc read_number t)
+  else if Cursor.looking_at_func "round" t then
+    Cursor.call "round" t (fun inner ->
+        let strategy = Cursor.ident inner in
+        Cursor.ws inner;
+        Cursor.comma inner;
+        let value = read_number inner in
+        Cursor.ws inner;
+        Cursor.comma inner;
+        let step = read_number inner in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        Round (strategy, value, step))
+  else if Cursor.looking_at_func "mod" t then
+    Cursor.call "mod" t (fun inner ->
+        let a = read_number inner in
+        Cursor.ws inner;
+        Cursor.comma inner;
+        let b = read_number inner in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        Mod (a, b))
+  else if Cursor.looking_at_func "hypot" t then
+    Cursor.call "hypot" t (fun inner ->
+        let a = read_number inner in
+        Cursor.ws inner;
+        Cursor.comma inner;
+        let b = read_number inner in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        Hypot (a, b))
+  else if Cursor.looking_at_func "pow" t then
+    Cursor.call "pow" t (fun inner ->
+        let a = read_number inner in
+        Cursor.ws inner;
+        Cursor.comma inner;
+        let b = read_number inner in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        Pow (a, b))
+  else if Cursor.looking_at_func "sqrt" t then
+    Cursor.call "sqrt" t (fun inner ->
+        let value = read_number inner in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        Sqrt value)
+  else if Cursor.looking_at_func "sin" t then
+    Cursor.call "sin" t (fun inner ->
+        let value = read_angle inner in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        Sin value)
   else Num (Cursor.number t)
 
 (** Read transition_behavior value *)

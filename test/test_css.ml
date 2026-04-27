@@ -444,29 +444,6 @@ let test_spec_sort_conditional_boundaries () =
   Alcotest.(check bool) "sort descends into container" true (aaa < zzz);
   Alcotest.(check bool) "sort descends into layer" true (bbb < yyy)
 
-let spec_cssom_stub_surface () =
-  let stmt =
-    Css.Stylesheet.Rule
-      (Css.Stylesheet.rule ~selector:btn
-         [ Css.Declaration.color (Css.Values.hex "#ff0000") ])
-  in
-  let expect_platform feature = function
-    | Error (Stylesheet.Requires_platform_context actual)
-      when actual.feature = feature ->
-        ()
-    | Error (Stylesheet.Requires_platform_context actual) ->
-        Alcotest.failf "expected %s, got %s" feature actual.feature
-    | Error _ -> Alcotest.failf "expected platform error for %s" feature
-    | Ok _ -> Alcotest.failf "expected platform error for %s" feature
-  in
-  expect_platform "CSSOM insertRule"
-    (Stylesheet.cssom_insert_rule ~index:0 stmt []);
-  expect_platform "CSSOM deleteRule" (Stylesheet.cssom_delete_rule ~index:0 []);
-  expect_platform "CSSOM replaceRule"
-    (Stylesheet.cssom_replace_rule ~index:0 stmt []);
-  expect_platform "CSSOM rule serialization"
-    (Stylesheet.cssom_serialize_rule stmt)
-
 let public_fold_edges () =
   let title = Selector.class_ "title" in
   let nested = rule ~selector:title [ color (hex "#0000ff") ] in
@@ -668,8 +645,6 @@ let suite =
       Alcotest.test_case "sort nested in media" `Quick test_sort_nested;
       Alcotest.test_case "spec sort conditional boundaries" `Quick
         test_spec_sort_conditional_boundaries;
-      Alcotest.test_case "spec CSSOM public stub surface" `Quick
-        spec_cssom_stub_surface;
       Alcotest.test_case "public fold edge traversal" `Quick public_fold_edges;
       Alcotest.test_case "public custom property scoping" `Quick
         public_custom_props_edges;

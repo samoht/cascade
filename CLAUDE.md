@@ -4,7 +4,15 @@
 
 A standalone CSS generation and manipulation library extracted from the `tw`
 (Tailwind CSS v4 in OCaml) project. It provides a typed CSS AST, parser,
-pretty-printer, and optimizer with no Tailwind-specific code.
+pretty-printer, structural transformation helpers, structural diff tools, and
+optimizer with no Tailwind-specific code.
+
+Cascade is a CSS library scoped to CSS text and CSS ASTs. It should parse,
+print, minify, diff, fold/map/sort, and apply safe AST transforms.
+Context-supplied evaluations are in scope when the caller provides the needed
+data through an explicit closed context record; theme/default based `var()`
+output is an existing example, and `Css.Context.t` is the context
+type for property-value transforms.
 
 ## Build & Test
 

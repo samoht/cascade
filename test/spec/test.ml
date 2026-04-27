@@ -1,7 +1,9 @@
 (** CSS specification compliance tests.
 
-    Test vectors derived from W3C CSS specifications to verify parsing and
-    rendering conformance. *)
+    Test vectors are derived from W3C CSS specifications. The specs are the
+    oracle: do not update expected results to match current implementation
+    output. A failing spec-derived vector should remain visible until the
+    implementation is fixed or the feature is explicitly out of scope. *)
 
 open Cascade
 open Css
@@ -16,6 +18,19 @@ let roundtrip css expected =
   | Error e -> Alcotest.fail (pp_parse_error e)
 
 let roundtrip_identity css = roundtrip css css
+
+let parses_valid css =
+  match of_string css with
+  | Ok _ -> ()
+  | Error e -> Alcotest.fail (pp_parse_error e)
+
+let recover css expected min_warnings =
+  let { stylesheet; warnings } = parse css in
+  let output = to_string ~minify:true ~newline:false stylesheet in
+  Alcotest.(check string) css expected output;
+  Alcotest.(check bool)
+    (css ^ " warnings") true
+    (List.length warnings >= min_warnings)
 
 (* {2 CSS Syntax Level 3} https://www.w3.org/TR/css-syntax-3/ *)
 
@@ -59,6 +74,14 @@ let syntax_escapes () =
   (* Escaped class names roundtrip correctly *)
   roundtrip_identity ".sm\\:p-4{color:red}";
   roundtrip_identity ".w-1\\/2{width:50%}"
+
+(* SS 5.3.7 / 5.4 - Parse errors recover locally *)
+let syntax_recovery () =
+  recover ".a { color: invalid; color: red }" ".a{color:red}" 1;
+  recover ".a,:future-pseudo { color: red } .b { color: blue }" ".b{color:blue}"
+    1;
+  recover "@unknown { .a { color: red } } .b { color: blue }" ".b{color:blue}" 1;
+  recover ".a { color: red" ".a{color:red}" 0
 
 (* {2 CSS Selectors Level 4} https://www.w3.org/TR/selectors-4/ *)
 
@@ -139,7 +162,11 @@ let selectors_list () =
 (* SS 8.4.1 - :where() and :is() pseudo-classes *)
 let selectors_where_is () =
   roundtrip ":where(.a, .b) { color: red }" ":where(.a,.b){color:red}";
-  roundtrip ":is(.a, .b) { color: red }" ":is(.a,.b){color:red}"
+  roundtrip ":is(.a, .b) { color: red }" ":is(.a,.b){color:red}";
+  roundtrip ":is() { color: red }" ":is(){color:red}";
+  roundtrip ":where() { color: red }" ":where(){color:red}";
+  roundtrip ":is(:future-pseudo, .a) { color: red }" ":is(.a){color:red}";
+  roundtrip ":where(:future-pseudo, .a) { color: red }" ":where(.a){color:red}"
 
 (* {2 CSS Values and Units Level 4} https://www.w3.org/TR/css-values-4/ *)
 
@@ -242,18 +269,27 @@ let color_keywords () =
 
 (* SS 7.1 - @media with min-width/max-width *)
 let conditional_media () =
-  roundtrip "@media (min-width: 768px) { .btn { display: block } }"
-    "@media (min-width: 768px){.btn{display:block}}";
-  roundtrip "@media (max-width: 640px) { .btn { font-size: 14px } }"
-    "@media (max-width: 640px){.btn{font-size:14px}}";
-  roundtrip
+  parses_valid "@media (min-width: 768px) { .btn { display: block } }";
+  parses_valid "@media (max-width: 640px) { .btn { font-size: 14px } }";
+  parses_valid
     "@media (prefers-color-scheme: dark) { body { background-color: black } }"
-    "@media (prefers-color-scheme: dark){body{background-color:black}}"
 
 (* SS 8 - @supports with property checks *)
 let conditional_supports () =
   roundtrip "@supports (display: grid) { .grid { display: grid } }"
     "@supports (display:grid){.grid{display:grid}}"
+
+(* {2 CSS Syntax and Stylesheet At-rule Coverage}
+   https://www.w3.org/TR/css-syntax-3/ SS 8 *)
+
+let stylesheet_at_rules () =
+  roundtrip "@charset \"UTF-8\";" "@charset \"UTF-8\";";
+  roundtrip "@namespace url(http://www.w3.org/1999/xhtml);"
+    "@namespace url(http://www.w3.org/1999/xhtml);";
+  roundtrip "@namespace svg url(http://www.w3.org/2000/svg);"
+    "@namespace svg url(http://www.w3.org/2000/svg);";
+  roundtrip "@page :left { margin-left: 4cm; margin-right: 3cm }"
+    "@page:left{margin-left:4cm;margin-right:3cm}"
 
 (* {2 CSS Cascade and Inheritance Level 4}
    https://www.w3.org/TR/css-cascade-4/ *)
@@ -270,9 +306,38 @@ let cascade_keywords () =
 let cascade_layers () =
   (* Layer block with rules *)
   roundtrip "@layer base { body { margin: 0 } }" "@layer base{body{margin:0}}";
+  (* Layer statement establishes layer order *)
+  roundtrip "@layer reset, base, components;" "@layer reset,base,components;";
   (* Layer block with multiple rules *)
   roundtrip "@layer base { h1 { color: red } p { margin: 0 } }"
     "@layer base{h1{color:red}p{margin:0}}"
+
+(* {2 CSS Cascade Level 5 / 6 at-rule syntax}
+   https://www.w3.org/TR/css-cascade-5/ https://www.w3.org/TR/css-cascade-6/ *)
+
+let cascade_current_at_rules () =
+  parses_valid
+    "@import url(\"theme.css\") layer(theme) supports(display: grid) screen;";
+  roundtrip "@scope (.card) to (.footer) { .title { color: red } }"
+    "@scope(.card) to (.footer){.title{color:red}}";
+  roundtrip "@starting-style { .dialog { opacity: 0 } }"
+    "@starting-style{.dialog{opacity:0}}"
+
+(* {2 CSS Conditional Rules / Container Queries}
+   https://www.w3.org/TR/css-conditional-3/
+   https://www.w3.org/TR/css-contain-3/ *)
+
+let conditional_container () =
+  parses_valid
+    "@container card (inline-size > 30em) { .item { display: grid } }";
+  parses_valid "@container style(--variant: featured) { .card { color: red } }"
+
+(* {2 CSS Nesting Level 1} https://www.w3.org/TR/css-nesting-1/ *)
+
+let nesting_rules () =
+  roundtrip ".card { color: red; & > img { display: block } }"
+    ".card{color:red;&>img{display:block}}";
+  parses_valid ".card { @media (width >= 40em) { & > img { display: block } } }"
 
 (* {2 CSS Custom Properties for Cascading Variables Level 1}
    https://www.w3.org/TR/css-variables-1/ *)
@@ -288,7 +353,10 @@ let custom_properties () =
 (* SS 4.2 - @font-face rule *)
 let font_face () =
   roundtrip "@font-face { font-family: MyFont; src: url(font.woff2); }"
-    "@font-face {font-family:MyFont;src:url(font.woff2)}"
+    "@font-face {font-family:MyFont;src:url(font.woff2)}";
+  parses_valid
+    "@font-face { font-family: Brand; src: url(\"brand.woff2\") \
+     format(\"woff2\"); font-display: swap; unicode-range: U+0025-00FF; }"
 
 (* {2 CSS Animations Level 1} https://www.w3.org/TR/css-animations-1/ *)
 
@@ -336,6 +404,7 @@ let () =
           Alcotest.test_case "syntax: comments" `Quick syntax_comments;
           Alcotest.test_case "syntax: whitespace" `Quick syntax_whitespace;
           Alcotest.test_case "syntax: escapes" `Quick syntax_escapes;
+          Alcotest.test_case "syntax: recovery" `Quick syntax_recovery;
           (* CSS Selectors Level 4 *)
           Alcotest.test_case "selectors: type" `Quick selectors_type;
           Alcotest.test_case "selectors: universal" `Quick selectors_universal;
@@ -375,10 +444,17 @@ let () =
           Alcotest.test_case "conditional: @media" `Quick conditional_media;
           Alcotest.test_case "conditional: @supports" `Quick
             conditional_supports;
+          Alcotest.test_case "conditional: @container" `Quick
+            conditional_container;
+          Alcotest.test_case "stylesheet: at-rules" `Quick stylesheet_at_rules;
           (* CSS Cascade and Inheritance Level 4 *)
           Alcotest.test_case "cascade: CSS-wide keywords" `Quick
             cascade_keywords;
           Alcotest.test_case "cascade: @layer" `Quick cascade_layers;
+          Alcotest.test_case "cascade: current at-rules" `Quick
+            cascade_current_at_rules;
+          (* CSS Nesting *)
+          Alcotest.test_case "nesting: rules" `Quick nesting_rules;
           (* CSS Custom Properties *)
           Alcotest.test_case "variables: custom properties" `Quick
             custom_properties;

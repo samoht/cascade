@@ -4,6 +4,13 @@
     rules and stylesheets. It avoids stringly-typed CSS by keeping close to the
     CSS syntax and specifications.
 
+    Cascade is scoped to CSS text and CSS ASTs: parsing, printing, minification,
+    structural traversal, structural transforms, structural diffs, and safe
+    optimizations. When a transform needs information beyond CSS text, that
+    information is passed as an explicit closed context record. Theme/default
+    based [var()] output is part of the current API; {!module:Context} contains
+    context records for value-oriented transforms.
+
     The main notions are:
     - A {!type:declaration} is a property/value pair.
     - A rule couples a selector with declarations.
@@ -42,7 +49,7 @@
       {!section:at_rules}
     - Values and declarations: {!section:values}
     - Property groups: see sections below
-    - Rendering and optimization: {!section:rendering}, {!section:optimization}
+    - Printing and optimization: {!section:rendering}, {!section:optimization}
 
     {b Core Concepts} - Core CSS system setup and construction:
     - {!section:css_selectors} - CSS Selectors
@@ -67,8 +74,8 @@
     - {!section:visual_effects} - Visual Effects
     - {!section:interaction} - User Interaction
 
-    {b Rendering & Optimization} - CSS output and performance:
-    - {!section:rendering} - Rendering
+    {b Printing & Optimization} - CSS output and performance:
+    - {!section:rendering} - Printing
     - {!section:optimization} - Optimization
 
     {b Advanced Features} - Specialized functionality:
@@ -90,6 +97,7 @@
     See {:https://www.w3.org/TR/selectors-4/ CSS Selectors Level 4}. *)
 
 module Selector = Selector
+module Context = Context
 
 (** {2:css_rules CSS Rules and Stylesheets}
 
@@ -179,16 +187,16 @@ val origin_importance_rank : important:bool -> cascade_origin -> int
     precedence. *)
 
 val import_layer_name : Stylesheet.import_rule -> string option
-(** [import_layer_name rule] models [CSSImportRule.layerName]: [None] means no
-    layer, [Some ""] means an anonymous layer, and [Some name] is a named layer.
-*)
+(** [import_layer_name rule] returns the layer name declared by an [@import]
+    rule: [None] means no layer, [Some ""] means an anonymous layer, and
+    [Some name] is a named layer. *)
 
 val layer_block_name : statement -> string option
-(** [layer_block_name stmt] models [CSSLayerBlockRule.name] for [@layer] block
-    rules. *)
+(** [layer_block_name stmt] returns the declared name of an [@layer] block rule.
+    Anonymous layer blocks return [Some ""]. *)
 
 val layer_statement_name_list : statement -> string list option
-(** [layer_statement_name_list stmt] models [CSSLayerStatementRule.nameList] for
+(** [layer_statement_name_list stmt] returns the declared name list for
     statement-form [@layer] rules. *)
 
 val cascade_layer_precedence_rank :
@@ -298,141 +306,8 @@ val specified_value_after_revert_layer :
 val value_processing_requires_document_context :
   Stylesheet.value_processing_stage -> bool
 (** [value_processing_requires_document_context stage] reports whether [stage]
-    needs document/layout/rendering context outside this library. *)
-
-val declared_values_for_element :
-  ?element:string ->
-  statement list ->
-  (Stylesheet.declared_value list, Stylesheet.value_processing_error) result
-(** Stub entry point for selector-filtered declared values applied to an
-    element. *)
-
-val filter_style_rules :
-  ?element:string ->
-  ?media:Media.t ->
-  ?supports:Supports.t ->
-  ?shadow_tree:string ->
-  ?scope:string ->
-  Stylesheet.stylesheet ->
-  (Stylesheet.stylesheet, Stylesheet.value_processing_error) result
-(** Stub entry point for CSS Cascade section 5 style-rule filtering. *)
-
-val normalize_value_alias :
-  property:string ->
-  value:string ->
-  (string, Stylesheet.value_processing_error) result
-(** Stub entry point for CSS legacy value aliases. *)
-
-val computed_value :
-  property:string ->
-  specified:string ->
-  (string, Stylesheet.value_processing_error) result
-(** Stub entry point for CSS computed values. *)
-
-val used_value :
-  property:string ->
-  computed:string ->
-  (string, Stylesheet.value_processing_error) result
-(** Stub entry point for CSS used values. *)
-
-val actual_value :
-  property:string ->
-  used:string ->
-  (string, Stylesheet.value_processing_error) result
-(** Stub entry point for CSS actual values. *)
-
-val applicable_property :
-  property:string ->
-  box:string ->
-  (bool, Stylesheet.value_processing_error) result
-(** Stub entry point for applicability checks. *)
-
-val per_fragment_value :
-  property:string ->
-  fragment:string ->
-  computed:string ->
-  (string, Stylesheet.value_processing_error) result
-(** Stub entry point for per-fragment value processing. *)
-
-val selector_matches_element :
-  selector:Selector.t ->
-  element:string ->
-  (bool, Stylesheet.value_processing_error) result
-(** Stub entry point for DOM selector matching. *)
-
-val evaluate_media_query :
-  condition:Media.t ->
-  environment:string ->
-  (bool, Stylesheet.value_processing_error) result
-(** Stub entry point for Media Queries evaluation. *)
-
-val evaluate_supports_condition :
-  condition:Supports.t -> (bool, Stylesheet.value_processing_error) result
-(** [evaluate_supports_condition ~condition] reports whether [condition] holds.
-    Decision depends on the UA's property support table, so it always returns
-    [Error (Requires_platform_context _)]. *)
-
-val evaluate_container_query :
-  condition:Container.t ->
-  container:string ->
-  (bool, Stylesheet.value_processing_error) result
-(** Stub entry point for Container Queries evaluation. *)
-
-val resolve_url_value :
-  base:string ->
-  url:string ->
-  (string, Stylesheet.value_processing_error) result
-(** Stub entry point for CSS URL absolutization. *)
-
-val load_import_rule :
-  Stylesheet.import_rule ->
-  (Stylesheet.stylesheet, Stylesheet.value_processing_error) result
-(** [load_import_rule rule] fetches and parses the stylesheet referenced by
-    [rule]. Fetching needs network and resource-loading machinery this library
-    does not ship, so it always returns [Error (Requires_platform_context _)].
-*)
-
-val html_presentational_hints :
-  element:string -> (declaration list, Stylesheet.value_processing_error) result
-(** Stub entry point for HTML presentational hints. *)
-
-val resolve_custom_property :
-  name:string ->
-  specified:string ->
-  environment:string ->
-  (string, Stylesheet.value_processing_error) result
-(** Stub entry point for computed-value-time custom property substitution. *)
-
-val cssom_insert_rule :
-  index:int ->
-  Stylesheet.statement ->
-  Stylesheet.stylesheet ->
-  (Stylesheet.stylesheet, Stylesheet.value_processing_error) result
-(** Stub entry point for CSSOM rule insertion. *)
-
-val cssom_delete_rule :
-  index:int ->
-  Stylesheet.stylesheet ->
-  (Stylesheet.stylesheet, Stylesheet.value_processing_error) result
-(** Stub entry point for CSSOM rule deletion. *)
-
-val cssom_replace_rule :
-  index:int ->
-  Stylesheet.statement ->
-  Stylesheet.stylesheet ->
-  (Stylesheet.stylesheet, Stylesheet.value_processing_error) result
-(** Stub entry point for CSSOM rule replacement. *)
-
-val cssom_serialize_rule :
-  Stylesheet.statement -> (string, Stylesheet.value_processing_error) result
-(** Stub entry point for CSSOM rule-specific serialization. *)
-
-val animated_value :
-  property:string ->
-  keyframes:string list ->
-  progress:float ->
-  (string, Stylesheet.value_processing_error) result
-(** Stub entry point for CSS/Web Animations value sampling. *)
+    needs caller-supplied document, layout, rendering, or device context rather
+    than CSS text alone. *)
 
 val map :
   (Selector.t -> declaration list -> statement) ->
@@ -701,6 +576,8 @@ type 'a calc =
   | Var of 'a var  (** CSS variable *)
   | Val of 'a
   | Num of float  (** Unitless number *)
+  | Sibling_index  (** CSS [sibling-index()] math function. *)
+  | Sibling_count  (** CSS [sibling-count()] math function. *)
   | Expr of 'a calc * calc_op * 'a calc
   | Nested of 'a calc  (** Explicitly nested calc() *)
   | Parens of 'a calc  (** Parenthesized expression *)
@@ -760,8 +637,15 @@ type length =
   | Svw of float
   | Svmin of float
   | Svmax of float
+  | Cqw of float  (** Container query width units *)
+  | Cqh of float  (** Container query height units *)
+  | Cqi of float  (** Container query inline-size units *)
+  | Cqb of float  (** Container query block-size units *)
+  | Cqmin of float  (** Smaller container query dimension units *)
+  | Cqmax of float  (** Larger container query dimension units *)
   | Ch of float  (** Character units *)
   | Lh of float  (** Line height units *)
+  | Size  (** [size] keyword inside [calc-size()]. *)
   | Auto
   | None  (** none keyword (e.g., for max-width) *)
   | Zero
@@ -779,6 +663,16 @@ type length =
   | Min of string  (** min() function *)
   | Max of string  (** max() function *)
   | Minmax of string  (** minmax() function for grid *)
+  | Round of string * length * length  (** CSS [round()] math function *)
+  | Mod of length * length  (** CSS [mod()] math function *)
+  | Rem_fn of length * length  (** CSS [rem()] math function *)
+  | Hypot of length * length  (** CSS [hypot()] math function *)
+  | Abs of length  (** CSS [abs()] math function *)
+  | Sign of length  (** CSS [sign()] math function *)
+  | Calc_size of length * length calc  (** CSS [calc-size()] function *)
+  | Anchor_size of string  (** CSS [anchor-size()] function *)
+  | Anchor of string option * string * length option
+      (** CSS [anchor()] function: optional anchor name, side, and fallback. *)
   | Var of length var  (** CSS variable reference *)
   | Calc of length calc  (** Calculated expressions *)
 
@@ -1038,6 +932,7 @@ type hue =
   | Unitless of float (* Unitless number, defaults to degrees *)
   | Angle of Values.angle (* Explicit angle unit *)
   | Var of hue var
+  | Hue_none
 
 (** CSS color component values *)
 type component =
@@ -1046,6 +941,7 @@ type component =
   | Angle of hue (* for color(lch ...) / color(lab ...) syntaxes *)
   | Var of component var
   | Calc of component calc
+  | Component_none
 
 (** CSS percentage values *)
 type percentage =
@@ -1105,6 +1001,11 @@ type color =
   | Hsl of { h : hue; s : percentage; l : percentage; a : alpha }
   | Hwb of { h : hue; w : percentage; b : percentage; a : alpha }
   | Color of { space : color_space; components : component list; alpha : alpha }
+  | Relative_rgb of string
+  | Contrast_color of color
+  | Light_dark of color * color
+  | Lab of { l : percentage; a : float option; b : float option; alpha : alpha }
+      (** Lab color space. a and b can be [None] to represent CSS [none]. *)
   | Oklch of { l : percentage; c : float; h : hue; alpha : alpha }
       (** OKLCH color space *)
   | Oklab of {
@@ -3720,6 +3621,7 @@ type duration =
   | Ms of float  (** milliseconds *)
   | S of float  (** seconds *)
   | Var of duration var  (** CSS variable reference *)
+  | Calc of duration calc
 
 (** CSS transition property value. *)
 type transition_property_value =
@@ -3917,6 +3819,13 @@ val box_shadows : shadow list -> declaration
 type number =
   | Num of float  (** Number value *)
   | Var of number var  (** CSS variable reference *)
+  | Calc of number calc
+  | Round of string * number * number  (** CSS [round()] math function *)
+  | Mod of number * number  (** CSS [mod()] math function *)
+  | Hypot of number * number  (** CSS [hypot()] math function *)
+  | Pow of number * number  (** CSS [pow()] math function *)
+  | Sqrt of number  (** CSS [sqrt()] math function *)
+  | Sin of angle  (** CSS [sin()] math function *)
 
 (** CSS scale property values *)
 type scale =
@@ -4886,11 +4795,11 @@ val custom_declaration_layer : declaration -> string option
     declaration if present (e.g., "theme" or "utilities"). It is [None] for
     non-custom declarations or when no layer metadata is attached. *)
 
-(** {1 Rendering & Optimization}
+(** {1 Printing & Optimization}
 
     CSS output generation and performance optimization tools. *)
 
-(** {2:rendering Rendering}
+(** {2:rendering Printing}
 
     Functions for converting CSS structures to string output. *)
 
@@ -4922,7 +4831,8 @@ val to_string :
       compliance.
     - [theme] is the set of theme-defined variable names. When a variable name
       is in this set, [var(--name)] is emitted; otherwise the concrete default
-      value is used.
+      value is used. This is current CSS AST transformation/printing behavior,
+      not ambient computed-style resolution.
     - [theme_defaults] maps variable names to concrete CSS default values for
       variables not in the theme set.
 

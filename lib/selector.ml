@@ -40,11 +40,8 @@ let attr_value_needs_quoting value =
   if value = "" then true
   else
     let first = value.[0] in
-    (* Must quote if starts with digit or two hyphens *)
-    if
-      (first >= '0' && first <= '9')
-      || (first = '-' && String.length value > 1 && value.[1] = '-')
-    then true
+    (* Numbers need quoting; double-dash identifiers are valid CSS idents. *)
+    if first >= '0' && first <= '9' then true
     else
       (* Must quote if contains non-identifier characters *)
       not
@@ -61,7 +58,8 @@ let pp_attr_value : string Pp.t =
  fun ctx value ->
   (* Only quote attribute values when necessary per CSS specs. This preserves
      the original format when possible. *)
-  if attr_value_needs_quoting value then Pp.quoted_string ctx value
+  if String.contains value '\\' then Pp.string ctx value
+  else if attr_value_needs_quoting value then Pp.quoted_string ctx value
   else Pp.string ctx value
 
 (* Helper to print a token with pretty spacing when not minifying. *)
@@ -396,9 +394,19 @@ let read_attribute_value t =
         (* Otherwise parse as an ident / dimension / number *)
         let v =
           match Cursor.peek t with
-          | Some (Component.Preserved { kind = Token.Ident s; _ }) ->
+          | Some (Component.Preserved { kind = Token.Ident s; loc }) -> (
               Cursor.skip t;
-              s
+              let raw =
+                match Cursor.source t with
+                | Some source ->
+                    Some
+                      (String.sub source loc.start_pos
+                         (loc.end_pos - loc.start_pos))
+                | None -> None
+              in
+              match raw with
+              | Some raw when String.contains raw '\\' -> raw
+              | _ -> s)
           | Some (Component.Preserved { kind = Token.Number_tok _; _ })
           | Some (Component.Preserved { kind = Token.Dimension _; _ })
           | Some (Component.Preserved { kind = Token.Percentage _; _ }) -> (
@@ -421,26 +429,12 @@ let read_attribute_value t =
     | Some _ -> Cursor.err_invalid t "attribute value"
   else value
 
-(** Validate CSS identifier with proper reader error context *)
-let validate_css_identifier_with_reader t name =
-  try validate_css_identifier name
-  with Invalid_argument msg ->
-    (* Extract just the validation reason from the message *)
-    let clean_msg =
-      if String.contains msg '\'' then
-        let parts = String.split_on_char '\'' msg in
-        match parts with
-        | _ :: _ :: reason :: _ -> "invalid identifier: " ^ String.trim reason
-        | _ -> msg
-      else msg
-    in
-    Cursor.err t clean_msg
-
 (** Parse a class selector (.classname) *)
 let read_class t =
   Cursor.expect '.' t;
   let name = Cursor.ident ~keep_case:true t in
-  (* No validation needed - Cursor.ident already ensures valid identifier *)
+  (* No validation needed: Cursor.ident already enforces CSS identifier syntax,
+     including parser-valid double-dash identifiers such as .--x. *)
   Class name
 
 (** Parse an ID selector ([#id]). Per CSS Selectors §6.6, an ID must be an
@@ -457,19 +451,52 @@ let read_id t =
       Cursor.err_invalid t "expected identifier"
   | _ -> Cursor.err_expected t "'#'"
 
+let read_ns t : ns option =
+  Cursor.option
+    (fun t ->
+      if Cursor.try_kind_pair (Token.Delim "*") (Token.Delim "|") t then Any
+      else if
+        (* Bare ['|'] selects the default (no) namespace. Selectors Level 4
+           section 6.2 distinguishes [[|attr]] from [[attr]]: the former
+           explicitly matches the empty namespace, the latter matches any. *)
+        Cursor.lookahead
+          (fun t ->
+            match Cursor.peek_delim t with
+            | Some '|' -> (
+                let _ = Cursor.next t in
+                (* Reject ['|='] (the dash-match operator). *)
+                if Cursor.peek_delim t = Some '=' then false
+                else
+                  (* Bare ['|'] is only a namespace prefix when a namespaced
+                     element or attribute name follows it. *)
+                  match Cursor.peek t with
+                  | Some (Component.Preserved { kind = Token.Ident _; _ }) ->
+                      true
+                  | Some (Component.Preserved { kind = Token.Delim "*"; _ }) ->
+                      true
+                  | _ -> false)
+            | _ -> false)
+          t
+      then (
+        Cursor.expect '|' t;
+        None)
+      else
+        let p = Cursor.ident ~keep_case:true t in
+        (* Avoid treating '|=' as a namespace separator: peek for the pair. *)
+        let is_eq_pair =
+          Cursor.lookahead
+            (fun t ->
+              Cursor.try_kind_pair (Token.Delim "|") (Token.Delim "=") t)
+            t
+        in
+        if is_eq_pair then Cursor.err t "not a namespace";
+        Cursor.expect '|' t;
+        Prefix p)
+    t
+
 (** Parse a namespaced type or universal selector *)
 let read_type_or_universal t =
-  (* Try to read namespace prefix first *)
-  let ns =
-    Cursor.option
-      (fun t ->
-        if Cursor.try_kind_pair (Token.Delim "*") (Token.Delim "|") t then Any
-        else
-          let p = Cursor.ident ~keep_case:true t in
-          Cursor.expect '|' t;
-          Prefix p)
-      t
-  in
+  let ns = read_ns t in
 
   (* Now read the selector itself *)
   match Cursor.peek_delim t with
@@ -478,7 +505,8 @@ let read_type_or_universal t =
       match ns with None -> universal | Some ns -> universal_ns ns)
   | _ -> (
       let name = Cursor.ident ~keep_case:true t in
-      validate_css_identifier_with_reader t name;
+      (* Cursor.ident is the parser contract here. Constructors can keep their
+         stricter policy, but parsed CSS identifiers such as --x are valid. *)
       match ns with
       | None -> Element (None, name)
       | Some ns -> Element (Some ns, name))
@@ -527,48 +555,13 @@ let read_attribute_match t : attribute_match =
                         Exact (read_attribute_value t))
                       else Presence))))
 
-let read_ns t : ns option =
-  Cursor.option
-    (fun t ->
-      if Cursor.try_kind_pair (Token.Delim "*") (Token.Delim "|") t then Any
-      else if
-        (* Bare ['|'] selects the default (no) namespace. Selectors Level 4
-           section 6.2 distinguishes [[|attr]] from [[attr]]: the former
-           explicitly matches the empty namespace, the latter matches any. *)
-        Cursor.lookahead
-          (fun t ->
-            match Cursor.peek_delim t with
-            | Some '|' ->
-                let _ = Cursor.next t in
-                (* Reject ['|='] (the dash-match operator). *)
-                not (Cursor.peek_delim t = Some '=')
-            | _ -> false)
-          t
-      then (
-        Cursor.expect '|' t;
-        None)
-      else
-        let p = Cursor.ident ~keep_case:true t in
-        (* Avoid treating '|=' as a namespace separator: peek for the pair. *)
-        let is_eq_pair =
-          Cursor.lookahead
-            (fun t ->
-              Cursor.try_kind_pair (Token.Delim "|") (Token.Delim "=") t)
-            t
-        in
-        if is_eq_pair then Cursor.err t "not a namespace";
-        (* Expect the namespace separator *)
-        Cursor.expect '|' t;
-        Prefix p)
-    t
-
 let read_attr_flag t : attr_flag option =
   Cursor.ws t;
   Cursor.option
     (fun t ->
       match Cursor.ident_opt t with
-      | Some "i" -> Case_insensitive
-      | Some "s" -> Case_sensitive
+      | Some s when String.lowercase_ascii s = "i" -> Case_insensitive
+      | Some s when String.lowercase_ascii s = "s" -> Case_sensitive
       | Some s -> Cursor.err t ~got:s "'i' or 's'"
       | None -> Cursor.err_unexpected t)
     t
@@ -579,7 +572,6 @@ let read_attribute t =
       Cursor.ws inner;
       let ns = read_ns inner in
       let attr = Cursor.ident ~keep_case:true inner in
-      validate_css_identifier_with_reader inner attr;
       Cursor.ws inner;
       let matcher = read_attribute_match inner in
       Cursor.ws inner;
@@ -944,13 +936,110 @@ let pseudo_vendor_idents =
     ("details-content", Details_content);
   ]
 
+let is_pseudo_element_selector = function
+  | Before | After | First_letter | First_line | Backdrop | Marker | Placeholder
+  | Selection | File_selector_button | Moz_placeholder
+  | Webkit_input_placeholder | Ms_input_placeholder | Webkit_scrollbar
+  | Webkit_search_cancel_button | Webkit_search_decoration
+  | Webkit_datetime_edit_fields_wrapper | Webkit_date_and_time_value
+  | Webkit_datetime_edit | Webkit_datetime_edit_year_field
+  | Webkit_datetime_edit_month_field | Webkit_datetime_edit_day_field
+  | Webkit_datetime_edit_hour_field | Webkit_datetime_edit_minute_field
+  | Webkit_datetime_edit_second_field | Webkit_datetime_edit_millisecond_field
+  | Webkit_datetime_edit_meridiem_field | Webkit_inner_spin_button
+  | Webkit_outer_spin_button | Webkit_calendar_picker_indicator
+  | Webkit_details_marker | Details_content | Part _ | Slotted _ | Cue _
+  | Cue_region _ | Highlight _ | View_transition_group _
+  | View_transition_image_pair _ | View_transition_old _ | View_transition_new _
+    ->
+      true
+  | _ -> false
+
+let rec any p = function
+  | Compound xs as sel -> List.exists (any p) xs || p sel
+  | Combined (a, _, b) as sel -> any p a || any p b || p sel
+  | Relative (_, b) as sel -> any p b || p sel
+  | List xs as sel -> List.exists (any p) xs || p sel
+  | ( Is xs
+    | Where xs
+    | Not xs
+    | Has xs
+    | Slotted xs
+    | Cue xs
+    | Cue_region xs
+    | Current_of xs ) as sel ->
+      List.exists (any p) xs || p sel
+  | ( Nth_child (_, Some xs)
+    | Nth_last_child (_, Some xs)
+    | Nth_of_type (_, Some xs)
+    | Nth_last_of_type (_, Some xs)
+    | Host (Some xs)
+    | Host_context xs ) as sel ->
+      List.exists (any p) xs || p sel
+  | Part _ as sel -> p sel
+  | s -> p s
+
+let has_pseudo_element sel = any is_pseudo_element_selector sel
+
+let is_pseudo_element_user_action_selector = function
+  | Hover | Active | Focus | Focus_visible | Focus_within -> true
+  | _ -> false
+
 (* Forward declarations for mutually recursive functions *)
-let rec read_complex_list t =
+let rec read_selector_list_with read_item t =
   Cursor.ws t;
   if Cursor.is_done t then Cursor.err t "expected at least one selector"
   else
-    try Cursor.list ~sep:Cursor.comma ~at_least:1 read_complex t
-    with Cursor.Parse_error _ -> Cursor.err t "expected at least one selector"
+    let rec loop acc =
+      let sel = read_item t in
+      let acc = sel :: acc in
+      Cursor.ws t;
+      if Cursor.comma_opt t then (
+        Cursor.ws t;
+        if Cursor.is_done t then Cursor.err t "expected at least one selector";
+        loop acc)
+      else if Cursor.is_done t then List.rev acc
+      else Cursor.err t "unexpected tokens after selector"
+    in
+    loop []
+
+and read_complex_list t = read_selector_list_with read_complex t
+
+and read_forgiving_complex_list t =
+  read_forgiving_list read_forgiving_complex_item t
+
+and read_forgiving_complex_item t =
+  let sel = read_complex t in
+  if has_pseudo_element sel then Cursor.err t "pseudo-element not allowed here";
+  sel
+
+and read_forgiving_list read_item t =
+  let is_comma = function
+    | Component.Preserved { kind = Token.Comma; _ } -> true
+    | _ -> false
+  in
+  let rec take_segment acc =
+    match Cursor.peek_raw t with
+    | None -> List.rev acc
+    | Some cv when is_comma cv ->
+        ignore (Cursor.next_raw t : Component.t option);
+        List.rev acc
+    | Some _ -> (
+        match Cursor.next_raw t with
+        | None -> List.rev acc
+        | Some cv -> take_segment (cv :: acc))
+  in
+  let rec loop acc =
+    if Cursor.is_done t then List.rev acc
+    else
+      let item = Cursor.sub t (take_segment []) in
+      match read_item item with
+      | sel ->
+          Cursor.ws item;
+          if Cursor.is_done item then loop (sel :: acc) else loop acc
+      | exception Cursor.Parse_error _ -> loop acc
+  in
+  loop []
 
 (** Read nth selector with optional "of S" clause *)
 and read_nth_selector t : nth * t list option =
@@ -995,17 +1084,24 @@ and read_relative_selector t =
   | _ -> read_complex t
 
 and read_relative_selector_list t =
-  Cursor.ws t;
-  if Cursor.is_done t then Cursor.err t "expected at least one selector"
-  else
-    try Cursor.list ~sep:Cursor.comma ~at_least:1 read_relative_selector t
-    with Cursor.Parse_error _ -> Cursor.err t "expected at least one selector"
+  read_selector_list_with read_relative_selector t
 
 (* Helper readers for functional pseudo-class content *)
-and read_is_content t = Is (read_complex_list t)
-and read_has_content t = Has (read_relative_selector_list t)
+and read_is_content t = Is (read_forgiving_complex_list t)
+
+and read_has_content t =
+  let selectors = read_relative_selector_list t in
+  let contains_has sel = any (function Has _ -> true | _ -> false) sel in
+  List.iter
+    (fun sel ->
+      if contains_has sel then Cursor.err t ":has() cannot contain :has()";
+      if has_pseudo_element sel then
+        Cursor.err t ":has() cannot contain pseudo-elements")
+    selectors;
+  Has selectors
+
 and read_not_content t = Not (read_complex_list t)
-and read_where_content t = Where (read_complex_list t)
+and read_where_content t = Where (read_forgiving_complex_list t)
 
 and read_nth_child_content t =
   let expr, of_sel = read_nth_selector t in
@@ -1170,7 +1266,7 @@ and read_pseudo_element t =
 and read_simple t =
   match Cursor.peek_delim t with
   | Some '.' -> read_class t
-  | Some '*' -> read_type_or_universal t
+  | Some ('*' | '|') -> read_type_or_universal t
   | Some '&' ->
       Cursor.skip t;
       Nesting
@@ -1200,7 +1296,7 @@ and read_compound t =
     | Some (Component.Preserved { kind = Token.Whitespace; _ }) -> false
     | _ ->
         (match Cursor.peek_delim t with
-          | Some ('.' | '*' | '&') -> true
+          | Some ('.' | '*' | '|' | '&') -> true
           | _ -> false)
         || Cursor.peek_hash t <> None
         || Cursor.peek_colon t
@@ -1210,7 +1306,10 @@ and read_compound t =
   let rec loop acc =
     if can_start () then
       let s = read_simple t in
-      loop (s :: acc)
+      if List.exists is_pseudo_element_selector acc then
+        if is_pseudo_element_user_action_selector s then loop (s :: acc)
+        else Cursor.err t "pseudo-element must be last in compound selector"
+      else loop (s :: acc)
     else acc
   in
   match loop [] with
@@ -1224,7 +1323,7 @@ and read_complex t =
   Cursor.ws t;
   let can_start_selector () =
     (match Cursor.peek_delim t with
-      | Some ('.' | '*' | '&') -> true
+      | Some ('.' | '*' | '|' | '&') -> true
       | _ -> false)
     || Cursor.peek_hash t <> None
     || Cursor.peek_colon t
@@ -1283,19 +1382,45 @@ let read_relative t =
     Cursor.err t "unexpected characters after selector";
   match selectors with [ s ] -> s | _ -> List selectors
 
+let is_unescaped_selector_syntax s start =
+  let len = String.length s in
+  let rec loop i =
+    if i >= len then false
+    else
+      match s.[i] with
+      | '\\' ->
+          let j = ref i in
+          skip_css_escape s j;
+          loop !j
+      | ':' | '(' | ')' | '[' | ']' | ',' | '>' | '+' | '~' | '|' | '*' | ' '
+      | '\t' | '\n' | '\r' | '\012' ->
+          true
+      | _ -> loop (i + 1)
+  in
+  loop start
+
+let can_fallback_shortcut s =
+  let len = String.length s in
+  match s.[0] with
+  | '.' | '#' -> len > 1 && not (is_unescaped_selector_syntax s 1)
+  | _ -> not (is_unescaped_selector_syntax s 0)
+
 (* Use the full selector parser; fall back to the single-token shortcut for
    ['.foo' / '#foo' / 'foo'] when the cursor parser would reject the input. *)
 let of_string s =
   if String.length s = 0 then invalid_arg "of_string: empty selector string"
   else
     try read (Cursor.of_string s)
-    with Cursor.Parse_error _ -> (
-      match s.[0] with
-      | '.' when String.length s > 1 ->
-          class_ (unescape_selector_name (String.sub s 1 (String.length s - 1)))
-      | '#' when String.length s > 1 ->
-          id (unescape_selector_name (String.sub s 1 (String.length s - 1)))
-      | _ -> element (unescape_selector_name s))
+    with Cursor.Parse_error _ as exn -> (
+      if not (can_fallback_shortcut s) then raise exn
+      else
+        match s.[0] with
+        | '.' ->
+            class_
+              (unescape_selector_name (String.sub s 1 (String.length s - 1)))
+        | '#' ->
+            id (unescape_selector_name (String.sub s 1 (String.length s - 1)))
+        | _ -> element (unescape_selector_name s))
 
 (** Pretty print a function-like pseudo-class or pseudo-element *)
 let pp_func : 'a. Pp.ctx -> prefix:string -> string -> 'a Pp.t -> 'a -> unit =
@@ -1328,6 +1453,20 @@ let pp_combinator ctx = function
   | Next_sibling -> pp_token ctx "+"
   | Subsequent_sibling -> pp_token ctx "~"
   | Column -> pp_token ctx "||"
+
+let pp_spaced_combinator ctx = function
+  | Descendant -> Pp.space ctx ()
+  | Child -> Pp.string ctx " > "
+  | Next_sibling -> Pp.string ctx " + "
+  | Subsequent_sibling -> Pp.string ctx " ~ "
+  | Column -> Pp.string ctx " || "
+
+let pp_relative_combinator ctx = function
+  | Descendant -> Pp.space ctx ()
+  | Child -> Pp.string ctx "> "
+  | Next_sibling -> Pp.string ctx "+ "
+  | Subsequent_sibling -> Pp.string ctx "~ "
+  | Column -> Pp.string ctx "|| "
 
 let strs ctx strings = Pp.list ~sep:Pp.comma Pp.string ctx strings
 
@@ -1402,7 +1541,44 @@ let rec pp_nth_func ctx name expr of_sel =
   | None -> ());
   Pp.char ctx ')'
 
+and pp_nth_col_func ctx name expr =
+  let pp_nth_col ctx = function
+    | Odd -> Pp.string ctx "odd"
+    | Even -> Pp.string ctx "even"
+    | expr -> pp_nth ctx expr
+  in
+  Pp.char ctx ':';
+  Pp.string ctx name;
+  Pp.char ctx '(';
+  pp_nth_col ctx expr;
+  Pp.char ctx ')'
+
 and sels ctx selectors = Pp.list ~sep:Pp.comma pp ctx selectors
+and comma_space ctx () = Pp.string ctx ", "
+
+and sels_nested_function_lists ctx selectors =
+  Pp.list ~sep:Pp.comma pp_nested_function_lists ctx selectors
+
+and spaced_sels_nested_function_lists ctx selectors =
+  Pp.list ~sep:comma_space pp_nested_function_lists ctx selectors
+
+and pp_nested_function_lists ctx = function
+  | Is selectors -> func ctx "is" spaced_sels_nested_function_lists selectors
+  | Where selectors ->
+      func ctx "where" spaced_sels_nested_function_lists selectors
+  | Compound selectors -> List.iter (pp_nested_function_lists ctx) selectors
+  | Combined (left, comb, right) ->
+      pp_nested_function_lists ctx left;
+      (match left with
+      | Scope -> pp_spaced_combinator ctx comb
+      | _ -> pp_combinator ctx comb);
+      pp_nested_function_lists ctx right
+  | Relative (comb, right) ->
+      pp_relative_combinator ctx comb;
+      pp_nested_function_lists ctx right
+  | List selectors ->
+      Pp.list ~sep:Pp.comma pp_nested_function_lists ctx selectors
+  | selector -> pp ctx selector
 
 and pp : t Pp.t =
  fun ctx -> function
@@ -1544,15 +1720,15 @@ and pp : t Pp.t =
   | Is selectors -> func ctx "is" sels selectors
   | Where selectors -> func ctx "where" sels selectors
   | Not selectors -> func ctx "not" sels selectors
-  | Has selectors -> func ctx "has" sels selectors
+  | Has selectors -> func ctx "has" sels_nested_function_lists selectors
   | Nth_child (expr, of_sel) -> pp_nth_func ctx "nth-child" expr of_sel
   | Nth_last_child (expr, of_sel) ->
       pp_nth_func ctx "nth-last-child" expr of_sel
   | Nth_of_type (expr, of_sel) -> pp_nth_func ctx "nth-of-type" expr of_sel
   | Nth_last_of_type (expr, of_sel) ->
       pp_nth_func ctx "nth-last-of-type" expr of_sel
-  | Nth_col expr -> pp_nth_func ctx "nth-col" expr None
-  | Nth_last_col expr -> pp_nth_func ctx "nth-last-col" expr None
+  | Nth_col expr -> pp_nth_col_func ctx "nth-col" expr
+  | Nth_last_col expr -> pp_nth_col_func ctx "nth-last-col" expr
   | Dir dir -> func ctx "dir" Pp.string dir
   | Lang langs -> func ctx "lang" strs langs
   | State name -> func ctx "state" Pp.string name
@@ -1577,10 +1753,12 @@ and pp : t Pp.t =
   | Compound selectors -> List.iter (pp ctx) selectors
   | Combined (left, comb, right) ->
       pp ctx left;
-      pp_combinator ctx comb;
+      (match left with
+      | Scope -> pp_spaced_combinator ctx comb
+      | _ -> pp_combinator ctx comb);
       pp ctx right
   | Relative (comb, right) ->
-      pp_combinator ctx comb;
+      pp_relative_combinator ctx comb;
       pp ctx right
   | List selectors -> Pp.list ~sep:Pp.comma pp ctx selectors
   | Nesting -> Pp.char ctx '&'
@@ -1657,22 +1835,6 @@ let host ?selectors () = Host selectors
 (* Analysis helpers          *)
 (* ========================= *)
 
-let rec any p = function
-  | Compound xs -> List.exists (any p) xs || p (Compound xs)
-  | Combined (a, comb, b) -> any p a || any p b || p (Combined (a, comb, b))
-  | Relative (comb, b) -> any p b || p (Relative (comb, b))
-  | List xs -> List.exists (any p) xs || p (List xs)
-  | Is xs | Where xs | Not xs | Has xs | Slotted xs | Cue xs | Cue_region xs ->
-      List.exists (any p) xs || p (List xs)
-  | Current_of xs -> List.exists (any p) xs || p (Current_of xs)
-  | Part xs -> p (Part xs)
-  | Nth_child (_, Some xs)
-  | Nth_last_child (_, Some xs)
-  | Nth_of_type (_, Some xs)
-  | Nth_last_of_type (_, Some xs) ->
-      List.exists (any p) xs || p (List xs)
-  | s -> p s
-
 let has_focus sel = any (function Focus -> true | _ -> false) sel
 
 let has_focus_within sel =
@@ -1680,15 +1842,6 @@ let has_focus_within sel =
 
 let has_focus_visible sel =
   any (function Focus_visible -> true | _ -> false) sel
-
-let has_pseudo_element sel =
-  any
-    (function
-      | Before | After | First_letter | First_line | Backdrop | Marker
-      | Placeholder | Selection | File_selector_button ->
-          true
-      | _ -> false)
-    sel
 
 let zero_specificity = { ids = 0; classes = 0; elements = 0 }
 

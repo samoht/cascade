@@ -61,34 +61,52 @@ let test_compare_transitive buf =
 
 let test_named_prefix_stable buf =
   let name = name buf 0 in
-  let query = Css.Container.Named (name, condition buf 4) in
+  let inner = condition buf 4 in
+  let query = Css.Container.Named (name, inner) in
   let serialized = Css.Container.to_string query in
-  let prefix = name ^ " " in
-  let prefix_len = String.length prefix in
-  if
-    String.length serialized < prefix_len
-    || String.sub serialized 0 prefix_len <> prefix
-  then fail (Fmt.str "named container query lost name: %S" serialized)
+  let expected = name ^ " " ^ Css.Container.to_string inner in
+  if serialized <> expected then
+    fail
+      (Fmt.str "named container query serialization changed: %S <> %S" expected
+         serialized)
 
-let test_container_evaluation_stub_identity buf =
-  match
-    Css.Stylesheet.evaluate_container_query ~condition:(condition buf 0)
-      ~container:".card inline-size=40rem"
-  with
-  | Error (Css.Stylesheet.Requires_platform_context { feature; detail }) ->
-      if feature <> "container query evaluation" || detail = "" then
-        fail "container evaluation stub lost feature/detail identity"
-  | Error (Css.Stylesheet.Requires_document_context _) ->
-      fail "container evaluation returned document-context error"
-  | Error (Css.Stylesheet.Unsupported_value_alias _) ->
-      fail "container evaluation returned value-alias error"
-  | Ok _ -> fail "container evaluation stub unexpectedly succeeded"
+let test_container_context_shape buf =
+  let open Css.Values in
+  let ctx =
+    {
+      Css.Context.empty with
+      container_width = Some (Px (float_of_int (byte_at buf 0 + 1)));
+      container_height = Some (Px (float_of_int (byte_at buf 1 + 1)));
+    }
+  in
+  if ctx.container_width = None || ctx.container_height = None then
+    fail "container context dimensions were not preserved"
 
 let test_raw_query_stable buf =
   let raw = raw buf 0 in
   let query = Css.Container.Raw raw in
   if Css.Container.to_string query <> raw then
     fail "raw container query serialization changed"
+
+let test_spec_container_vectors buf =
+  let open Css.Container in
+  let query, expected =
+    pick
+      [
+        (Raw "(inline-size > 30em)", "(inline-size > 30em)");
+        (Raw "(30em <= inline-size < 60em)", "(30em <= inline-size < 60em)");
+        (Raw "style(--theme: dark)", "style(--theme: dark)");
+        (Raw "style(--featured)", "style(--featured)");
+        (Raw "scroll-state(stuck: top)", "scroll-state(stuck: top)");
+        (Named ("card", Raw "(width >= 400px)"), "card (width >= 400px)");
+        ( Named ("card", Raw "style(--variant: featured)"),
+          "card style(--variant: featured)" );
+      ]
+      buf 0
+  in
+  let actual = to_string query in
+  if actual <> expected then
+    fail (Fmt.str "container spec vector changed: %S <> %S" expected actual)
 
 let suite =
   ( "container",
@@ -100,8 +118,10 @@ let suite =
       test_case "compare transitive" [ bytes ] test_compare_transitive;
       test_case "named serialization keeps name prefix" [ bytes ]
         test_named_prefix_stable;
-      test_case "container evaluation stub identity" [ bytes ]
-        test_container_evaluation_stub_identity;
+      test_case "container context shape invariant" [ bytes ]
+        test_container_context_shape;
       test_case "raw style/scroll-state serialization stable" [ bytes ]
         test_raw_query_stable;
+      test_case "spec container query vectors" [ bytes ]
+        test_spec_container_vectors;
     ] )

@@ -107,8 +107,33 @@ let spec_supports_negative_vectors () =
   expect_error "bare property without parentheses" "display: grid";
   expect_error "missing right operand" "(display: grid) and";
   expect_error "mixed operator without right operand" "(display: grid) or";
+  expect_error "ungrouped mixed and/or operators"
+    "(display: grid) and (gap: 1rem) or selector(:has(img))";
   expect_error "unclosed selector function" "selector(:has(img)";
   expect_error "unclosed property feature" "(display: grid"
+
+let spec_supports_structural_vectors () =
+  let check name input expected =
+    let actual = of_string input in
+    Alcotest.(check bool) name true (equal expected actual)
+  in
+  check "declaration feature" "(display: grid)" (Property ("display", "grid"));
+  check "selector feature" "selector(:has(+ img))"
+    (Func ("selector", ":has(+ img)"));
+  check "font technology feature" "font-tech(color-COLRv1)"
+    (Func ("font-tech", "color-COLRv1"));
+  check "font format feature" "font-format(woff2)"
+    (Func ("font-format", "woff2"));
+  check "not feature" "not (display: grid)" (Not (Property ("display", "grid")));
+  check "and feature list" "(display: grid) and selector(:has(img))"
+    (And (Property ("display", "grid"), Func ("selector", ":has(img)")));
+  check "or feature list" "font-format(woff2) or font-tech(variations)"
+    (Or (Func ("font-format", "woff2"), Func ("font-tech", "variations")));
+  check "grouped mixed operator"
+    "((display: grid) and (gap: 1rem)) or (color: red)"
+    (Or
+       ( And (Property ("display", "grid"), Property ("gap", "1rem")),
+         Property ("color", "red") ))
 
 let spec_supports_nested_edges () =
   let check name input expected =
@@ -135,19 +160,12 @@ let spec_supports_nested_edges () =
     "(--theme-color: color(display-p3 1 0 0))"
     "(--theme-color: color(display-p3 1 0 0))"
 
-let spec_supports_eval_boundary () =
-  let expect_platform condition =
-    match Css.Stylesheet.evaluate_supports_condition ~condition with
-    | Error (Css.Stylesheet.Requires_platform_context actual) ->
-        Alcotest.(check string) "feature" "supports evaluation" actual.feature
-    | Error (Css.Stylesheet.Requires_document_context _) ->
-        Alcotest.fail "expected platform context"
-    | Error (Css.Stylesheet.Unsupported_value_alias _) ->
-        Alcotest.fail "expected platform context"
-    | Ok _ -> Alcotest.fail "expected supports evaluation boundary"
-  in
+let spec_supports_context_vectors () =
   List.iter
-    (fun input -> expect_platform (of_string input))
+    (fun input ->
+      Alcotest.(check string)
+        "supports condition syntax" input
+        (to_string (of_string input)))
     [
       "(display: grid)";
       "selector(:has(img))";
@@ -186,9 +204,11 @@ let suite =
         spec_supports_feature_vectors;
       test_case "spec conditional supports negative vectors" `Quick
         spec_supports_negative_vectors;
+      test_case "spec conditional supports structural vectors" `Quick
+        spec_supports_structural_vectors;
       test_case "spec conditional supports nested algorithm edges" `Quick
         spec_supports_nested_edges;
-      test_case "spec conditional supports evaluation boundary" `Quick
-        spec_supports_eval_boundary;
+      test_case "spec conditional supports context syntax vectors" `Quick
+        spec_supports_context_vectors;
       test_case "roundtrip" `Quick test_roundtrip;
     ] )

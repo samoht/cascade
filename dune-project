@@ -21,6 +21,7 @@
   (alcobar :with-test)
   (astring :with-test)
   (lambdasoup :with-test)
+  (re :with-test)
   fmt
   uutf
   cmdliner))

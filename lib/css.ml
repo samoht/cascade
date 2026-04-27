@@ -19,6 +19,7 @@ module Selector = Selector
 module Stylesheet = Stylesheet
 module Variables = Variables
 module Optimize = Optimize
+module Context = Context
 module Media = Media
 module Container = Container
 module Supports = Supports
@@ -271,7 +272,11 @@ let rec fold f acc t =
                         | None -> (
                             match as_origin stmt with
                             | Some (_, nested) -> nested
-                            | None -> [])))))
+                            | None -> (
+                                match stmt with
+                                | Starting_style nested -> nested
+                                | Scope (_, _, nested) -> nested
+                                | _ -> []))))))
       in
       fold f acc' nested)
     acc t

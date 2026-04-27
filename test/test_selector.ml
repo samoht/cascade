@@ -21,6 +21,37 @@ let check_invalid name exn_msg f =
 let check_construct expected selector =
   check_construct expected (to_string ~minify:true) expected selector
 
+let check_spec_tuple name expected actual =
+  Alcotest.(check int) (name ^ " ids") expected.ids actual.ids;
+  Alcotest.(check int) (name ^ " classes") expected.classes actual.classes;
+  Alcotest.(check int) (name ^ " elements") expected.elements actual.elements
+
+(* Extra minifier invariant: reparse and preserve specificity. *)
+let check_minified_to expected input =
+  let original = of_string input in
+  let minified = to_string ~minify:true original in
+  Alcotest.(check string) ("minify " ^ input) expected minified;
+  let reparsed = of_string minified in
+  let expected_ast = of_string expected in
+  Alcotest.(check bool)
+    ("minified selector reparses to expected AST: " ^ input)
+    true (reparsed = expected_ast);
+  check_spec_tuple
+    ("specificity preserved: " ^ input)
+    (specificity expected_ast) (specificity reparsed)
+
+(* Extra minifier invariant: equivalent AST and specificity. *)
+let check_minified_equiv input =
+  let original = of_string input in
+  let minified = to_string ~minify:true original in
+  let reparsed = of_string minified in
+  Alcotest.(check bool)
+    ("minified selector reparses equivalently: " ^ input)
+    true (reparsed = original);
+  check_spec_tuple
+    ("specificity preserved: " ^ input)
+    (specificity original) (specificity reparsed)
+
 (* Not a roundtrip test *)
 let element_cases () =
   (* Test element selectors *)
@@ -241,9 +272,10 @@ let attribute_cases () =
   check "[data-path=\"/home/user\"]";
   check "[content=\"Hello, World!\"]";
 
-  (* Values starting with double hyphen require quotes *)
-  check "[id=\"--custom\"]";
-  check "[class=\"--modifier\"]";
+  (* CSS Syntax ident sequences can start with [--], so minification can leave
+     these as identifiers instead of forcing strings. *)
+  check ~expected:"[id=--custom]" "[id=\"--custom\"]";
+  check ~expected:"[class=--modifier]" "[class=\"--modifier\"]";
 
   (* Test cases where quotes are OPTIONAL per CSS spec *)
   (* Simple identifiers don't need quotes - test both forms are accepted and normalized *)
@@ -292,9 +324,11 @@ let attribute_cases () =
 
   (* Test case sensitivity flags with different quoting *)
   check "[type=button i]";
+  check ~expected:"[type=button i]" "[type=button I]";
   check ~expected:"[type=button i]" "[type=\"button\" i]";
   (* Normalizes to unquoted *)
   check "[class=\"My Class\" s]";
+  check ~expected:"[class=\"My Class\" s]" "[class=\"My Class\" S]";
 
   (* Case modifiers *)
   check_construct "[attr=v i]"
@@ -545,7 +579,7 @@ let invalid () =
   Alcotest.(check string)
     "class starting with digit gets escaped" ".\\39 class" output;
 
-  (* Double dash reserved for custom properties *)
+  (* Local constructor policy, not selector syntax. *)
   check_invalid "double dash class"
     "CSS identifier '--var' cannot start with '--' (reserved for custom \
      properties)" (fun () -> ignore (class_ "--var"));
@@ -565,8 +599,9 @@ let invalid () =
   Alcotest.(check string)
     "id starting with dash-digit gets escaped" "#\\2d 9test" output;
 
-  (* Both class_ and id now accept special characters and escape them during output *)
-  (* These are tested in test_class_escaping and test_id_escaping *)
+  (* Parser syntax path: [--] is a valid ident start. *)
+  check_minified_equiv ".--var";
+  check_minified_equiv "#--id";
 
   (* Parsing invalid selector strings via Cursor.option to avoid exceptions *)
   let neg_parse s label =
@@ -621,7 +656,6 @@ let parse_errors_starts () =
 let parse_errors_pseudo () =
   (* Unterminated [:not(...)] auto-closes at EOF per CSS Syntax 5.3.7. *)
   check_parse_error ".test:not()" "expected at least one selector";
-  check_parse_error ":is()" "expected at least one selector";
   check_parse_error ".test:has()" "expected at least one selector"
 
 let parse_errors_empty_list () =
@@ -636,17 +670,9 @@ let parse_errors_complex () =
   check_parse_error ".parent > [data-id=\"test\" .child:hover" "trailing tokens"
 
 (* Helpers for callstack accuracy checks to reduce nesting *)
-let contains_substring haystack needle =
-  let len_h = String.length haystack in
-  let len_n = String.length needle in
-  if len_n = 0 then true
-  else
-    let rec loop i =
-      if i > len_h - len_n then false
-      else if String.sub haystack i len_n = needle then true
-      else loop (i + 1)
-    in
-    loop 0
+let matches_literal haystack needle =
+  let re = Re.(compile (str needle)) in
+  Re.execp re haystack
 
 let check_callstack name input expected_stack_parts =
   let t = Css.Cursor.of_string input in
@@ -658,7 +684,7 @@ let check_callstack name input expected_stack_parts =
       let callstack_str = String.concat " -> " err.path in
       List.iter
         (fun stack_item ->
-          if Bool.not @@ contains_substring callstack_str stack_item then
+          if Bool.not @@ matches_literal callstack_str stack_item then
             Alcotest.failf "%s: expected callstack containing '%s' but got '%s'"
               name stack_item callstack_str)
         expected_stack_parts;
@@ -679,7 +705,7 @@ let check_full_css_callstack name css_input expected_stack_parts =
       let callstack_str = String.concat " -> " err.path in
       List.iter
         (fun stack_item ->
-          if Bool.not @@ contains_substring callstack_str stack_item then
+          if Bool.not @@ matches_literal callstack_str stack_item then
             Alcotest.failf "%s: expected callstack containing '%s' but got '%s'"
               name stack_item callstack_str)
         expected_stack_parts
@@ -694,8 +720,6 @@ let callstack_accuracy () =
 
   (* These fail at even higher level when parsing selectors directly *)
   check_callstack "pseudo_function_error" ".test:not()" [];
-  (* No specific context when selector fails early *)
-  check_callstack "invalid_pseudo" ":is()" [];
 
   (* Full CSS parsing should show complete callstack *)
   check_full_css_callstack "full_css_selector_error"
@@ -790,8 +814,8 @@ let test_attr_value_quoting () =
   (* Starts with digit *)
   check_needs_quoting "2.0" true;
   (* Starts with digit *)
-  check_needs_quoting "--custom" true;
-  (* Starts with double hyphen *)
+  check_needs_quoting "--custom" false;
+  (* CSS Syntax allows [--] to start an identifier. *)
   check_needs_quoting "a!b" true;
   (* Contains special character *)
   check_needs_quoting "a@b" true;
@@ -827,18 +851,16 @@ let test_attr_flag () =
 
   (* Case insensitive flag *)
   check_attr_flag ~expected:" i" "i";
+  check_attr_flag ~expected:" i" "I";
   (* Case sensitive flag *)
   check_attr_flag ~expected:" s" "s";
+  check_attr_flag ~expected:" s" "S";
   (* No flag / empty should return None *)
   check_attr_flag "";
 
   (* Test invalid flags using neg *)
   neg_cursor read_attr_flag "x";
   (* Invalid flag *)
-  neg_cursor read_attr_flag "I";
-  (* Wrong case *)
-  neg_cursor read_attr_flag "S";
-  (* Wrong case *)
   neg_cursor read_attr_flag "is" (* Multiple characters *)
 
 (* Not a roundtrip test *)
@@ -864,10 +886,11 @@ let test_attr_case_sensitivity_flags () =
   check_selector_with_flag "I" None "[type=I]";
   check_selector_with_flag "i" None "[type=i]";
 
-  (* With case-insensitive flag (i) *)
+  (* Uppercase input minifies to lowercase flags. *)
   check_selector_with_flag "A" (Some Case_insensitive) "[type=A i]";
   check_selector_with_flag "a" (Some Case_insensitive) "[type=a i]";
   check_selector_with_flag "foo" (Some Case_insensitive) "[type=foo i]";
+  check ~expected:"[type=foo i]" "[type=foo I]";
 
   (* With case-sensitive flag (s) *)
   check_selector_with_flag "A" (Some Case_sensitive) "[type=A s]";
@@ -875,6 +898,7 @@ let test_attr_case_sensitivity_flags () =
   check_selector_with_flag "I" (Some Case_sensitive) "[type=I s]";
   check_selector_with_flag "i" (Some Case_sensitive) "[type=i s]";
   check_selector_with_flag "foo" (Some Case_sensitive) "[type=foo s]";
+  check ~expected:"[type=foo s]" "[type=foo S]";
 
   (* Values with spaces should be quoted regardless of flag *)
   let sel = S.attribute ~flag:Case_sensitive "type" (Exact "A B") in
@@ -952,11 +976,8 @@ let test_ns () =
   check "*|div#main[*|attr]";
 
   (* Edge cases with namespace *)
-  (* Note: Explicit no-namespace syntax (|element) may not be supported *)
-  (* check "|div"; *)
-  (* No namespace (explicitly) *)
-  (* check "|*"; *)
-  (* No namespace universal selector *)
+  check "|div";
+  check "|*";
   ()
 
 let test_nth () =
@@ -1153,27 +1174,74 @@ let test_spec_selector_specificity () =
   check_specificity "compound selector" "main#app.card[data-x]:hover" 1 3 1;
   check_specificity "descendant selector" "article .card > h2" 0 1 2;
   check_specificity "where zero" ":where(#app,.card,main)" 0 0 0;
+  check_specificity "empty where zero" ":where()" 0 0 0;
   check_specificity "is takes max" ":is(.card,#app,main)" 1 0 0;
+  check_specificity "empty is zero" ":is()" 0 0 0;
   check_specificity "not takes max" ":not(.card,#app,main)" 1 0 0;
   check_specificity "has takes max" ".card:has(> img.selected)" 0 2 1;
   check_specificity "nth child with selector list" ":nth-child(2n of .a,#b)" 1 1
     0;
   check_specificity "selector list takes max" ".a,#b,main section" 1 0 0
 
+let spec_minifier_semantics () =
+  let check_specificity name input ids classes elements =
+    let minified = to_string ~minify:true (of_string input) in
+    let actual = specificity (of_string minified) in
+    Alcotest.(check int) (name ^ " ids") ids actual.ids;
+    Alcotest.(check int) (name ^ " classes") classes actual.classes;
+    Alcotest.(check int) (name ^ " elements") elements actual.elements
+  in
+  List.iter check_minified_equiv
+    [
+      "main#app.card[data-x]:hover";
+      ":where(nav, main, aside) a:any-link";
+      ":is(section,article,aside)>:where(h1,h2)";
+      ".card:has(> img.selected)";
+      "li:nth-child(2n+1 of .visible:not([hidden]))";
+      "[svg|href=\"--icon\" I]";
+      ".\\31 0\\/12:hover";
+    ];
+  check_minified_to ":before" "::before";
+  check_minified_to ":after" "::after";
+  check_minified_to ":first-letter" "::first-letter";
+  check_minified_to ":first-line" "::first-line";
+  check_minified_to ":is(.valid,#id)" ":is(.valid,::before,:future-pseudo,#id)";
+  check_minified_to ":where(.valid,#id)"
+    ":where(.valid,::before,:future-pseudo,#id)";
+  check_specificity "where stays zero" ":where(#id,.a,main)" 0 0 0;
+  check_specificity "is max specificity" ":is(main,.a,#id)" 1 0 0;
+  check_specificity "not max specificity" ":not(main,.a,#id)" 1 0 0;
+  check_specificity "has max specificity" ".card:has(> img.selected)" 0 2 1;
+  check_specificity "nth of list specificity" ":nth-child(2n of .a,#b)" 1 1 0;
+  neg_cursor read ".valid,:future-pseudo";
+  neg_cursor read ":not(.valid,:future-pseudo)";
+  neg_cursor read ".card:has(:has(img))";
+  neg_cursor read ".card:has(::before)";
+  neg_cursor read ".a::before.class";
+  neg_cursor read ".a::before::marker"
+
 let test_spec_forgiving_selector_lists () =
-  (* Selectors Level 4: :is(), :where(), and :has() use forgiving selector-list
-     parsing for their arguments, while top-level selector lists remain
-     unforgiving. *)
-  check ":is(.valid,:future-pseudo,#id)";
-  check ":where(.valid,:future-pseudo,#id)";
-  check ".card:has(> img,:future-pseudo)";
+  (* Selectors Level 4: :is() and :where() use forgiving selector-list parsing.
+     Invalid selector branches are dropped before minification; top-level lists,
+     :not(), and :has() remain unforgiving. *)
+  check_minified_to ":is(.valid,#id)" ":is(.valid,:future-pseudo,#id)";
+  check_minified_to ":where(.valid,#id)" ":where(.valid,:future-pseudo,#id)";
+  check_minified_to ":is(.item)" ":is(, .item)";
+  check_minified_to ":where(.item)" ":where(, .item)";
+  check_minified_to ":is()" ":is()";
+  check_minified_to ":where()" ":where()";
+  check_minified_to ":is()" ":is(,)";
+  check_minified_to ":where()" ":where(,)";
+  check_minified_to ":is()" ":is(:future-pseudo,::before)";
+  check_minified_to ":where()" ":where(:future-pseudo,::before)";
   check ":not(.a,#b)";
   neg_cursor read ".a,:future-pseudo";
-  neg_cursor read ":is()";
-  neg_cursor read ":where()";
+  neg_cursor read ":not(.a,:future-pseudo)";
+  neg_cursor read ".card:has(> img,:future-pseudo)";
   neg_cursor read ":has()"
 
 let spec_selector_current_pseudos () =
+  (* Parser coverage; matching needs DOM/UA state. *)
   check ":popover-open";
   check ":modal";
   check ":picture-in-picture";
@@ -1210,6 +1278,7 @@ let spec_selector_current_pseudos () =
   neg_cursor read ":active-view-transition-type()"
 
 let spec_selector_scope_pseudo_edges () =
+  (* Mixed parser/minifier coverage. *)
   check ":scope";
   check ":scope > .item";
   check ":scope + .item";
@@ -1221,22 +1290,25 @@ let spec_selector_scope_pseudo_edges () =
   check ":where(nav,main,aside) a:any-link";
   check "li:nth-child(2n+1 of .visible:not([hidden]))";
   check "li:nth-last-child(-n+3 of :not([hidden]))";
-  check "input:not([type], [type=hidden])";
-  check "a::before";
+  check_minified_to "input:not([type],[type=hidden])"
+    "input:not([type], [type=hidden])";
+  check_minified_to "a:before" "a::before";
+  check_minified_to ".a:before:hover" ".a::before:hover";
   check "::selection";
   check "input::file-selector-button";
   neg_cursor read "> .item";
   neg_cursor read "+ .item";
   neg_cursor read "~ .item";
-  neg_cursor read ".a::before:hover";
+  neg_cursor read ".a::before.class";
   neg_cursor read ".a::before::marker";
+  neg_cursor read ".a:has(:has(img))";
+  neg_cursor read ".a:has(::before)";
   neg_cursor read "div#";
   neg_cursor read ".class#";
   neg_cursor read "[data-x=foo q]"
 
 let spec_selector_l4_pseudo_matrix () =
-  (* Additional Selectors 4 vectors: forgiving functional pseudos, state
-     pseudos, shadow-host pseudos, and pseudo-element argument forms. *)
+  (* Parser-surface coverage for Selectors 4 pseudo forms. *)
   List.iter check
     [
       ":any-link";
@@ -1254,8 +1326,8 @@ let spec_selector_l4_pseudo_matrix () =
       ":future";
       ":nth-col(2n+1)";
       ":nth-last-col(odd)";
-      ":is(section, article, aside) > :where(h1, h2)";
-      ":not(:where(.muted, [hidden]))";
+      ":is(section,article,aside)>:where(h1,h2)";
+      ":not(:where(.muted,[hidden]))";
       ":has(> :is(img, picture, video))";
       "dialog:modal::backdrop";
       "::part(tab)";
@@ -1272,7 +1344,6 @@ let spec_selector_l4_pseudo_matrix () =
       ":nth-last-col(of .item)";
       ":current()";
       ":has(, .item)";
-      ":is(, .item)";
       ":not()";
       "::part(tab, panel)";
       "::slotted(.a, .b)";
@@ -1281,16 +1352,21 @@ let spec_selector_l4_pseudo_matrix () =
     ]
 
 let spec_selector_attr_ns_edges () =
+  (* Mixed parser/minifier coverage. *)
+  check "|a";
+  check "|*";
   check "[|href]";
   check "[*|href]";
   check "[svg|href]";
   check "svg|a[*|href]";
   check "*|a[|href]";
-  check ~expected:"[data-x=\"--value\"]" "[data-x=\"--value\"]";
+  check ~expected:"[data-x=--value]" "[data-x=\"--value\"]";
   check ~expected:"[data-x=\"1value\"]" "[data-x=\"1value\"]";
   check ~expected:"[data-x=foo\\ bar]" "[data-x=foo\\ bar]";
   check "[data-x=foo i]";
+  check ~expected:"[data-x=foo i]" "[data-x=foo I]";
   check "[data-x=foo s]";
+  check ~expected:"[data-x=foo s]" "[data-x=foo S]";
   neg_cursor read "[*||href]";
   neg_cursor read "[svg|]";
   neg_cursor read "[data-x=foo z]";
@@ -1320,7 +1396,7 @@ let suite =
       test_case "compound" `Quick compound_cases;
       test_case "list" `Quick list_cases;
       test_case "where is" `Quick where_is_cases;
-      (* Parsing *)
+      (* Parser/serializer coverage. *)
       test_case "roundtrip" `Quick roundtrip;
       test_case "selector component parsing" `Quick component_parsing;
       test_case "attribute match" `Quick test_attribute_match;
@@ -1329,7 +1405,7 @@ let suite =
       test_case "attr_case_sensitivity_flags" `Quick
         test_attr_case_sensitivity_flags;
       test_case "selector component failures" `Quick component_parsing_failures;
-      (* Error cases *)
+      (* Parser/API-policy error coverage. *)
       test_case "invalid" `Quick invalid;
       test_case "parse errors - attributes" `Quick parse_errors_attributes;
       test_case "parse errors - combinators" `Quick parse_errors_combinators;
@@ -1338,12 +1414,14 @@ let suite =
       test_case "parse errors - empty list" `Quick parse_errors_empty_list;
       test_case "parse errors - complex" `Quick parse_errors_complex;
       test_case "callstack accuracy" `Quick callstack_accuracy;
-      (* Special cases *)
+      (* Local construction helpers. *)
       test_case "complex construction" `Quick test_complex_construction;
       test_case "combinator distribution" `Quick test_combinator_distribution;
-      (* CSS nesting *)
+      (* Spec/minifier coverage. *)
       test_case "spec selector specificity" `Quick
         test_spec_selector_specificity;
+      test_case "spec selector minifier semantics" `Quick
+        spec_minifier_semantics;
       test_case "spec forgiving selector lists" `Quick
         test_spec_forgiving_selector_lists;
       test_case "spec selector current pseudo vectors" `Quick

@@ -481,20 +481,19 @@ let ident_case () =
   check_ident "-ms-filter";
   check_ident "-webkit";
   check_ident "-_foo";
+  check_ident "--";
   check_ident "--my-variable";
   check_ident "--primary-color";
+  check_ident "--2";
+  check_ident "---webkit";
 
   (* Additional valid edge cases *)
   check_ident "-a-b";
   check_ident "-_-foo";
 
   (* CSS spec-compliant dash prefixes - INVALID cases *)
-  neg ident "--";
-  (* Double dash alone *)
   neg ident "-";
   (* Single dash alone *)
-  neg ident "---webkit";
-  (* Triple dash - questionable identifier *)
   neg ident "-2s";
   neg ident "-123abc";
   neg ident "-0webkit";

@@ -630,6 +630,81 @@ let test_import_url_syntax buf =
       if once <> twice then
         fail (Fmt.str "import/url syntax changed: %S -> %S" once twice)
 
+let test_namespace_prefix_separator buf =
+  let prefix = pick [ "svg"; "math"; "html"; "foo" ] buf 0 in
+  let url =
+    pick
+      [
+        "http://www.w3.org/2000/svg";
+        "http://www.w3.org/1998/Math/MathML";
+        "http://www.w3.org/1999/xhtml";
+      ]
+      buf 1
+  in
+  let input = Fmt.str "@namespace %s url(%s);" prefix url in
+  match parse_stylesheet input with
+  | None -> fail (Fmt.str "valid prefixed namespace did not parse: %S" input)
+  | Some ss -> (
+      let output = minified_stylesheet ss in
+      match parse_stylesheet output with
+      | Some [ Css.Stylesheet.Namespace (Some output_prefix, output_url) ]
+        when output_prefix = prefix && output_url = url ->
+          ()
+      | Some reparsed ->
+          fail
+            (Fmt.str
+               "CSS Namespaces serialization changed namespace structure: %S \
+                -> %S -> %S"
+               input output
+               (String.concat " " (boundary_shapes reparsed)))
+      | None ->
+          fail
+            (Fmt.str
+               "CSS Namespaces serialization emitted unparsable CSS: %S -> %S"
+               input output))
+
+let test_valid_at_rule_descriptor_vector buf =
+  let input =
+    pick
+      [
+        "@property --gap { syntax: \"<length>\"; inherits: false; \
+         initial-value: 1px }";
+        "@font-face { font-family: Brand; src: url(\"brand.woff2\") \
+         format(\"woff2\"); font-display: swap; unicode-range: U+0025-00FF; }";
+        "@page invoice:first { size: A4; margin: 1cm; @top-left { content: \
+         \"Invoice\" } }";
+        "@keyframes fade { from { opacity: 0 } 50%, 100% { opacity: 1 } }";
+        "@container card (inline-size > 30em) { .item { display: grid } }";
+      ]
+      buf 0
+  in
+  match parse_stylesheet input with
+  | None -> fail (Fmt.str "valid spec at-rule vector did not parse: %S" input)
+  | Some ss ->
+      let output = minified_stylesheet ss in
+      if output = "" then
+        fail (Fmt.str "valid at-rule serialized empty: %S" input)
+
+let test_invalid_at_rule_descriptor_vector buf =
+  let input =
+    pick
+      [
+        "@property --gap { syntax: \"<length>\"; inherits: false }";
+        "@font-face { src: url(\"brand.woff2\"); }";
+        "@page :unknown { margin: 1cm }";
+        "@keyframes bad { -1% { opacity: 0 } }";
+        "@namespace svg;";
+        "@container () { .x { color: red } }";
+      ]
+      buf 0
+  in
+  match parse_stylesheet input with
+  | None -> ()
+  | Some ss ->
+      fail
+        (Fmt.str "invalid spec at-rule vector parsed: %S -> %S" input
+           (minified_stylesheet ss))
+
 let test_property_value_context buf =
   let open Css.Values in
   let name = pick [ "--a"; "--registered"; "--empty"; "--cycle" ] buf 0 in
@@ -718,6 +793,12 @@ let suite =
         test_invalid_platform_declaration_rejected;
       test_case "import and URL syntax roundtrip" [ bytes ]
         test_import_url_syntax;
+      test_case "namespace prefix separator invariant" [ bytes ]
+        test_namespace_prefix_separator;
+      test_case "valid at-rule descriptor vectors" [ bytes ]
+        test_valid_at_rule_descriptor_vector;
+      test_case "invalid at-rule descriptor vectors rejected" [ bytes ]
+        test_invalid_at_rule_descriptor_vector;
       test_case "property value context invariant" [ bytes ]
         test_property_value_context;
       test_case "CSS Syntax recovery keeps sibling rules" [ bytes ]

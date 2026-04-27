@@ -408,11 +408,7 @@ let ident ?(keep_case = false) t =
     (List.rev !chars);
   let result = Buffer.contents buf in
   (* CSS spec: Invalid identifier patterns *)
-  if result = "--" then err_invalid t "CSS identifier cannot be '--' alone"
-  else if result = "-" then
-    err_invalid t "CSS identifier cannot be single dash '-'"
-  else if String.length result >= 3 && String.sub result 0 3 = "---" then
-    err_invalid t "CSS identifier cannot start with triple dash '---'"
+  if result = "-" then err_invalid t "CSS identifier cannot be single dash '-'"
   else result
 
 let is_digit c = c >= '0' && c <= '9'
