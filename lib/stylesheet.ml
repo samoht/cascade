@@ -775,20 +775,33 @@ let read_import_prelude ~keep_url_repr (r : Cursor.t) : import_rule =
   Cursor.expect_at_keyword "import" r;
   Cursor.ws r;
   let url =
+    let pos = Cursor.position r in
+    let value = Cursor.one_of [ Cursor.url; Cursor.string ] r in
     if keep_url_repr then
-      let pos = Cursor.position r in
-      let _ = Cursor.one_of [ Cursor.url; Cursor.string ] r in
       let end_pos = Cursor.position r in
-      let source = match Cursor.source r with Some s -> s | None -> "" in
-      String.sub source pos.start_pos (end_pos.start_pos - pos.start_pos)
-      |> String.trim
-    else Cursor.one_of [ Cursor.url; Cursor.string ] r
+      match Cursor.source r with
+      | Some source when end_pos.start_pos <= String.length source ->
+          String.sub source pos.start_pos (end_pos.start_pos - pos.start_pos)
+          |> String.trim
+      | _ -> value
+    else value
   in
   Cursor.ws r;
+  (* Section 3 [<layer-keyword>]: either [layer(<layer-name>)] or the bare
+     [layer] keyword (anonymous layer; encoded as [Some ""]). *)
   let layer =
-    Cursor.function_call "layer"
-      (fun inner -> Cursor.remaining_to_string ~trim:true inner)
-      r
+    match
+      Cursor.function_call "layer"
+        (fun inner -> Cursor.remaining_to_string ~trim:true inner)
+        r
+    with
+    | Some _ as some -> some
+    | None -> (
+        match Cursor.peek_ident r with
+        | Some s when String.lowercase_ascii s = "layer" ->
+            let _ = Cursor.ident r in
+            Some ""
+        | _ -> None)
   in
   Cursor.ws r;
   let supports =

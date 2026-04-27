@@ -10,6 +10,10 @@ let check_rule = check_value_cursor "rule" read_rule pp_rule
 let check_import_rule =
   check_value_cursor "import_rule" read_import_rule pp_import_rule
 
+let check_declaration =
+  check_value_cursor "declaration" Css.Declaration.read_declaration
+    (Css.Pp.option Css.Declaration.pp_declaration)
+
 let check_config = check_value_cursor "config" read_config pp_config
 
 let check_stylesheet =
@@ -1911,6 +1915,209 @@ let test_spec_platform_boundary_stubs () =
     (Css.Stylesheet.animated_value ~property:"opacity" ~keyframes:[ "0"; "1" ]
        ~progress:0.5)
 
+let test_spec_dom_selector_matching_boundary_vectors () =
+  (* Selectors can be parsed and serialized locally, but matching them against
+     elements depends on DOM structure, pseudo-class state, shadow boundaries,
+     and scoped-tree context. *)
+  let selector_cases =
+    [
+      (".card", "<article class=card>");
+      ("article.card > h2:first-child", "<h2>");
+      (":scope > .item", "<li class=item>");
+      (".card:has(> img[alt])", "<article class=card>");
+      ("a:visited", "<a href=/>");
+      ("::part(label)", "<custom-element>");
+      (":host(.active) .title", "<shadow-host>");
+    ]
+  in
+  List.iter
+    (fun (selector, element) ->
+      let parsed = Css.Selector.of_string selector in
+      expect_platform_error "selector matching"
+        (Css.Stylesheet.selector_matches_element ~selector:parsed ~element))
+    selector_cases;
+  neg_cursor read_stylesheet ".card:has(> ) { color: red }";
+  neg_cursor read_stylesheet "::before::after { color: red }";
+  neg_cursor read_stylesheet ":host-context() { color: red }"
+
+let test_spec_live_cssom_mutation_boundary_vectors () =
+  (* CSSOM mutation is observable through live CSSRuleList objects and
+     rule-specific validation. The parser can expose an API boundary, but not a
+     live object graph. *)
+  let rule_stmt =
+    Css.Stylesheet.Rule
+      (Css.Stylesheet.rule
+         ~selector:(Css.Selector.class_ "card")
+         [ Css.Declaration.color (Css.Values.hex "#ff0000") ])
+  in
+  let layer_stmt = Css.Stylesheet.Layer_decl [ "reset"; "theme" ] in
+  let sheet = [ layer_stmt; rule_stmt ] in
+  List.iter
+    (fun index ->
+      expect_platform_error "CSSOM insertRule"
+        (Css.Stylesheet.cssom_insert_rule ~index rule_stmt sheet);
+      expect_platform_error "CSSOM deleteRule"
+        (Css.Stylesheet.cssom_delete_rule ~index sheet);
+      expect_platform_error "CSSOM replaceRule"
+        (Css.Stylesheet.cssom_replace_rule ~index layer_stmt sheet))
+    [ -1; 0; 1; 3 ];
+  expect_platform_error "CSSOM rule serialization"
+    (Css.Stylesheet.cssom_serialize_rule rule_stmt);
+  expect_platform_error "CSSOM rule serialization"
+    (Css.Stylesheet.cssom_serialize_rule layer_stmt)
+
+let test_spec_fetch_import_and_url_boundary_vectors () =
+  (* @import parsing preserves URL/layer/supports/media shape. Fetching the
+     imported sheet and resolving URLs require platform context. *)
+  let import_cases =
+    [
+      ( "@import url(base.css) layer(reset) supports(display: grid) screen;",
+        "base.css",
+        Some "reset" );
+      ("@import \"print.css\" print;", "print.css", None);
+      ("@import url(theme.css) layer();", "theme.css", Some "");
+    ]
+  in
+  List.iter
+    (fun (input, url, layer) ->
+      let r = Css.Cursor.of_string input in
+      let rule = Css.Stylesheet.read_import_rule r in
+      Alcotest.(check string) "import url" url rule.url;
+      Alcotest.(check (option string)) "import layer" layer rule.layer;
+      expect_platform_error "stylesheet import loading"
+        (Css.Stylesheet.load_import_rule rule))
+    import_cases;
+  List.iter
+    (fun (base, url) ->
+      expect_platform_error "URL resolution"
+        (Css.Stylesheet.resolve_url_value ~base ~url))
+    [
+      ("https://example.test/css/app.css", "../img/logo.svg");
+      ("https://example.test/css/app.css", "#paint");
+      ("https://example.test/css/app.css", "data:image/svg+xml,%3Csvg%3E");
+      ("https://example.test/css/app.css", "https://cdn.example/a.woff2");
+    ];
+  check_declaration ~expected:"background-image:url(../img/logo.svg)"
+    "background-image: url(../img/logo.svg);";
+  check_declaration ~expected:"cursor:url(cursor.cur),auto"
+    "cursor: url(cursor.cur), auto";
+  neg_cursor read_import_rule "@import url(theme.css) layer(theme) layer(base);";
+  neg_cursor read_import_rule "@import url(theme.css) supports(display:);"
+
+let test_spec_environment_query_evaluation_boundary_vectors () =
+  (* Media/supports/container conditions are preserved as CSS. Whether they
+     match is a function of the environment, support table, or query
+     container. *)
+  let media_cases =
+    [
+      (Css.Media.Print, "print");
+      (Css.Media.Raw "(width >= 40em)", "screen width=50em");
+      (Css.Media.Raw "(prefers-reduced-data: reduce)", "reduced-data");
+      (Css.Media.Negated Css.Media.Print, "screen");
+    ]
+  in
+  List.iter
+    (fun (condition, environment) ->
+      expect_platform_error "media query evaluation"
+        (Css.Stylesheet.evaluate_media_query ~condition ~environment))
+    media_cases;
+  List.iter
+    (fun condition ->
+      expect_platform_error "supports evaluation"
+        (Css.Stylesheet.evaluate_supports_condition ~condition))
+    [
+      Css.Supports.Property ("display", "grid");
+      Css.Supports.Not (Css.Supports.Property ("selector", ":has(img)"));
+      Css.Supports.And
+        ( Css.Supports.Property ("container-type", "inline-size"),
+          Css.Supports.Func ("selector", ":has(> img)") );
+    ];
+  List.iter
+    (fun condition ->
+      expect_platform_error "container query evaluation"
+        (Css.Stylesheet.evaluate_container_query ~condition ~container:".card"))
+    [
+      Css.Container.Raw "(inline-size > 30em)";
+      Css.Container.Raw "style(--theme: dark)";
+      Css.Container.Raw "scroll-state(stuck: top)";
+      Css.Container.Named ("card", Css.Container.Raw "(width >= 400px)");
+    ];
+  check_stylesheet
+    ~expected:
+      "@media (width >= 40em){@supports (display:grid){@container card \
+       style(--theme: dark){.card{display:grid}}}}"
+    "@media (width >= 40em) { @supports (display: grid) { @container card \
+     style(--theme: dark) { .card { display: grid } } } }";
+  neg_cursor read_stylesheet "@media (width >= ) { .x { color: red } }";
+  neg_cursor read_stylesheet "@supports (display:) { .x { color: red } }";
+  neg_cursor read_stylesheet "@container card style() { .x { color: red } }"
+
+let test_spec_value_resolution_boundary_vectors () =
+  (* Computed/used/actual values need property metadata, inheritance, font,
+     viewport, layout, and device context. *)
+  List.iter
+    (fun (property, specified) ->
+      expect_context_error Computed_value
+        (Css.Stylesheet.computed_value ~property ~specified))
+    [
+      ("font-size", "1.2em");
+      ("line-height", "normal");
+      ("width", "50%");
+      ("background-image", "url(../img/logo.svg)");
+      ("color", "currentColor");
+    ];
+  List.iter
+    (fun (property, computed) ->
+      expect_context_error Used_value
+        (Css.Stylesheet.used_value ~property ~computed))
+    [
+      ("width", "auto");
+      ("height", "50%");
+      ("margin-left", "auto");
+      ("grid-template-columns", "subgrid");
+    ];
+  List.iter
+    (fun (property, used) ->
+      expect_context_error Actual_value
+        (Css.Stylesheet.actual_value ~property ~used))
+    [
+      ("border-top-width", "0.4px");
+      ("color", "color(display-p3 1 0 0)");
+      ("font-weight", "452");
+    ];
+  check_specified "inherit fallback before computed stage" "16px"
+    "inherit-keyword"
+    (Css.Stylesheet.specified_value ~inherits:false ~initial:"medium"
+       ~inherited:(Some "16px") ~cascaded:(Some "inherit"));
+  check_specified "unset chooses inherited before computed stage" "canvastext"
+    "unset-inherited"
+    (Css.Stylesheet.specified_value ~inherits:true ~initial:"black"
+       ~inherited:(Some "canvastext") ~cascaded:(Some "unset"))
+
+let test_spec_custom_property_computed_time_boundary_vectors () =
+  (* Custom property token streams parse locally; substitution, fallback
+     validation, invalid-at-computed-value handling, and cycle detection happen
+     at computed-value time. *)
+  List.iter
+    (fun (name, specified, environment) ->
+      expect_context_error Computed_value
+        (Css.Stylesheet.resolve_custom_property ~name ~specified ~environment))
+    [
+      ("--gap", "var(--space, 1rem)", ":root{--space:2rem}");
+      ("--a", "var(--a)", ":root{--a:var(--a)}");
+      ("--a", "var(--b)", ":root{--a:var(--b);--b:var(--a)}");
+      ("--registered", "10px", "@property --registered { syntax:\"<color>\" }");
+      ("--fallback-cycle", "var(--missing, var(--fallback))", ":root{}");
+    ];
+  check_declaration ~expected:"--a:var(--b)" "--a: var(--b);";
+  check_declaration ~expected:"--b:var(--a, red)" "--b: var(--a, red);";
+  check_declaration ~expected:"color:var(--brand, red)"
+    "color: var(--brand, red);";
+  neg_cursor Css.Declaration.read_declaration "--: var(--x);";
+  neg_cursor read_stylesheet
+    "@property --registered { syntax: \"<color>\"; inherits: false; \
+     initial-value: 10px }"
+
 let test_spec_current_work_at_rules () =
   check_stylesheet ~expected:"@media (dynamic-range: high){.photo{color:red}}"
     "@media (dynamic-range: high) { .photo { color: red } }";
@@ -2092,6 +2299,31 @@ let test_nesting_check_stylesheet () =
   check_stylesheet ~expected:".a{& .b{& .c{color:red}}}"
     ".a { & .b { & .c { color: red; } } }"
 
+let test_spec_nesting_selector_and_conditional_edges () =
+  check_stylesheet
+    ~expected:
+      ".card{color:red;&:is(:hover,:focus-visible){color:blue}&:has(>img){display:grid}}"
+    ".card { color: red; &:is(:hover, :focus-visible) { color: blue } &:has(> \
+     img) { display: grid } }";
+  check_stylesheet
+    ~expected:
+      ".card{@supports selector(:has(img)){&:has(img){display:grid}}@container \
+       (inline-size > 30em){&>.media{display:block}}}"
+    ".card { @supports selector(:has(img)) { &:has(img) { display: grid } } \
+     @container (inline-size > 30em) { & > .media { display: block } } }";
+  check_stylesheet
+    ~expected:
+      "@scope (.card) to (.boundary){.title{color:red;&:hover{color:blue}}}"
+    "@scope (.card) to (.boundary) { .title { color: red; &:hover { color: \
+     blue } } }";
+  check_stylesheet
+    ~expected:"@starting-style{.dialog[open]{opacity:0;transform:scale(.95)}}"
+    "@starting-style { .dialog[open] { opacity: 0; transform: scale(0.95) } }";
+  neg_cursor read_stylesheet ".card { & { & { color: red } } }";
+  neg_cursor read_stylesheet "@scope () { .x { color: red } }";
+  neg_cursor read_stylesheet "@scope (.x) to () { .x { color: red } }";
+  neg_cursor read_stylesheet "@starting-style;"
+
 let additional_tests =
   [
     ("check function", `Quick, test_check);
@@ -2119,6 +2351,9 @@ let additional_tests =
     ("nesting deeply nested", `Quick, test_nesting_deep);
     ("nesting with declarations", `Quick, test_nesting_with_declarations);
     ("nesting check_stylesheet", `Quick, test_nesting_check_stylesheet);
+    ( "spec nesting selector and conditional edges",
+      `Quick,
+      test_spec_nesting_selector_and_conditional_edges );
     (* Negative tests *)
     ("invalid selectors", `Quick, test_invalid_selectors);
     ("invalid properties", `Quick, test_invalid_properties);
@@ -2186,6 +2421,24 @@ let additional_tests =
       `Quick,
       test_spec_cascade_section_5_filtering_stub );
     ("spec platform boundary stubs", `Quick, test_spec_platform_boundary_stubs);
+    ( "spec DOM selector matching boundary vectors",
+      `Quick,
+      test_spec_dom_selector_matching_boundary_vectors );
+    ( "spec live CSSOM mutation boundary vectors",
+      `Quick,
+      test_spec_live_cssom_mutation_boundary_vectors );
+    ( "spec fetch import and URL boundary vectors",
+      `Quick,
+      test_spec_fetch_import_and_url_boundary_vectors );
+    ( "spec environment query evaluation boundary vectors",
+      `Quick,
+      test_spec_environment_query_evaluation_boundary_vectors );
+    ( "spec value resolution boundary vectors",
+      `Quick,
+      test_spec_value_resolution_boundary_vectors );
+    ( "spec custom property computed-time boundary vectors",
+      `Quick,
+      test_spec_custom_property_computed_time_boundary_vectors );
     ("spec current-work at-rules", `Quick, test_spec_current_work_at_rules);
     ( "spec snapshot tracking vectors",
       `Quick,

@@ -314,6 +314,39 @@ let test_map_nested () =
     "map descends into media" true
     (String.contains css '0' && String.contains css 'f')
 
+let test_spec_map_conditional_boundaries () =
+  let recolor sel _decls =
+    rule ~selector:sel [ color (Hex { hash = true; value = "0000ff" }) ]
+  in
+  let stmts =
+    [
+      supports
+        ~condition:(Css.Supports.Func ("selector", ":has(img)"))
+        [
+          container ~name:"card"
+            ~condition:(Css.Container.Raw "(inline-size > 30em)")
+            [
+              rule ~selector:(Selector.class_ "title") [ color (hex "#ff0000") ];
+            ];
+        ];
+      layer ~name:"components"
+        [ rule ~selector:(Selector.class_ "inside") [ color (hex "#ff0000") ] ];
+    ]
+  in
+  let mapped = Css.map recolor stmts in
+  let css = Css.to_string ~minify:true (v mapped) in
+  Alcotest.(check bool)
+    "map descends through supports/container" true
+    (Astring.String.is_infix ~affix:".title{color:#0000ff}" css);
+  Alcotest.(check bool)
+    "map descends through layer" true
+    (Astring.String.is_infix ~affix:".inside{color:#0000ff}" css);
+  Alcotest.(check bool)
+    "map preserves condition boundaries" true
+    (Astring.String.is_infix ~affix:"@supports" css
+    && Astring.String.is_infix ~affix:"@container" css
+    && Astring.String.is_infix ~affix:"@layer" css)
+
 (* Test Css.sort - sorts rules by custom comparison *)
 let test_sort () =
   let sel1 = Selector.class_ "zzz" in
@@ -373,6 +406,60 @@ let test_sort_nested () =
   let zzz_pos = String.index_from css aaa_pos 'z' in
   Alcotest.(check bool) "sort descends into media" true (aaa_pos < zzz_pos)
 
+let test_spec_sort_conditional_boundaries () =
+  let cmp (sel1, _) (sel2, _) =
+    String.compare (Selector.to_string sel1) (Selector.to_string sel2)
+  in
+  let stmts =
+    [
+      supports
+        ~condition:(Css.Supports.Property ("display", "grid"))
+        [
+          container ~condition:(Css.Container.Raw "(inline-size > 30em)")
+            [
+              rule ~selector:(Selector.class_ "zzz") [ color (hex "#ff0000") ];
+              rule ~selector:(Selector.class_ "aaa") [ color (hex "#00ff00") ];
+            ];
+        ];
+      layer ~name:"base"
+        [
+          rule ~selector:(Selector.class_ "yyy") [ color (hex "#ff0000") ];
+          rule ~selector:(Selector.class_ "bbb") [ color (hex "#00ff00") ];
+        ];
+    ]
+  in
+  let sorted = Css.sort cmp stmts in
+  let css = Css.to_string ~minify:true (v sorted) in
+  let aaa = Astring.String.find_sub ~sub:".aaa" css |> Option.get in
+  let zzz = Astring.String.find_sub ~sub:".zzz" css |> Option.get in
+  let bbb = Astring.String.find_sub ~sub:".bbb" css |> Option.get in
+  let yyy = Astring.String.find_sub ~sub:".yyy" css |> Option.get in
+  Alcotest.(check bool) "sort descends into container" true (aaa < zzz);
+  Alcotest.(check bool) "sort descends into layer" true (bbb < yyy)
+
+let test_spec_cssom_public_stub_surface () =
+  let stmt =
+    Css.Stylesheet.Rule
+      (Css.Stylesheet.rule ~selector:btn
+         [ Css.Declaration.color (Css.Values.hex "#ff0000") ])
+  in
+  let expect_platform feature = function
+    | Error (Stylesheet.Requires_platform_context actual)
+      when actual.feature = feature ->
+        ()
+    | Error (Stylesheet.Requires_platform_context actual) ->
+        Alcotest.failf "expected %s, got %s" feature actual.feature
+    | Error _ -> Alcotest.failf "expected platform error for %s" feature
+    | Ok _ -> Alcotest.failf "expected platform error for %s" feature
+  in
+  expect_platform "CSSOM insertRule"
+    (Stylesheet.cssom_insert_rule ~index:0 stmt []);
+  expect_platform "CSSOM deleteRule" (Stylesheet.cssom_delete_rule ~index:0 []);
+  expect_platform "CSSOM replaceRule"
+    (Stylesheet.cssom_replace_rule ~index:0 stmt []);
+  expect_platform "CSSOM rule serialization"
+    (Stylesheet.cssom_serialize_rule stmt)
+
 let suite =
   ( "css",
     [
@@ -397,6 +484,12 @@ let suite =
       (* Statement transformation helpers *)
       Alcotest.test_case "map transforms rules" `Quick test_map;
       Alcotest.test_case "map nested in media" `Quick test_map_nested;
+      Alcotest.test_case "spec map conditional boundaries" `Quick
+        test_spec_map_conditional_boundaries;
       Alcotest.test_case "sort orders rules" `Quick test_sort;
       Alcotest.test_case "sort nested in media" `Quick test_sort_nested;
+      Alcotest.test_case "spec sort conditional boundaries" `Quick
+        test_spec_sort_conditional_boundaries;
+      Alcotest.test_case "spec CSSOM public stub surface" `Quick
+        test_spec_cssom_public_stub_surface;
     ] )

@@ -2225,6 +2225,35 @@ let test_webkit_mask_source_type () =
   check_webkit_mask_source_type "inherit";
   neg_cursor read_webkit_mask_source_type "invalid-source-type"
 
+let test_spec_current_property_grammar_edges () =
+  check_font_feature_settings "\"kern\" on";
+  check_font_feature_settings "\"liga\" off, \"calt\" 1";
+  check_font_variation_settings "\"wght\" 650, \"wdth\" 75";
+  check_timing_function "linear(0, .25 50%, 1)";
+  check_timing_function "steps(4, jump-none)";
+  check_transform "translate(10px, 20%)" ~expected:"translate(10px,20%)";
+  check_transform "rotate(1 0 0 45deg)";
+  check_transform "scale(1.2 0.8)";
+  check_transforms "translate(10px,20%) rotate(45deg) scale(1.2)";
+  check_container_shorthand "card / inline-size";
+  check_container_shorthand "card / normal";
+  check_scroll_snap_type "x mandatory";
+  check_scroll_snap_type "block proximity";
+  check_clip_path "path(\"M 0 0 L 10 10\")";
+  check_clip_path "xywh(0 0 100% 100% round 10px)";
+  check_content "counter(page)";
+  check_content "counters(section, \".\")";
+  neg_cursor read_font_feature_settings "\"kern\" 2";
+  neg_cursor read_font_variation_settings "\"wg\" 400";
+  neg_cursor read_timing_function "linear()";
+  neg_cursor read_timing_function "steps(0, jump-end)";
+  neg_cursor read_transform "rotate(1 0 45deg)";
+  neg_cursor read_transform "scale(1 2 3 4)";
+  neg_cursor read_container_shorthand "card / inline-size / size";
+  neg_cursor read_scroll_snap_type "mandatory x";
+  neg_cursor read_clip_path "xywh(0 0)";
+  neg_cursor read_content "counter()"
+
 let tests =
   [
     test_case "display" `Quick test_display;
@@ -2289,6 +2318,8 @@ let tests =
     test_case "background-image" `Quick test_background_image;
     test_case "filter" `Quick test_filter;
     test_case "pp property value" `Quick test_pp_property_value;
+    test_case "spec current property grammar edges" `Quick
+      test_spec_current_property_grammar_edges;
   ]
 
 let test_will_change () =

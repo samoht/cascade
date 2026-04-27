@@ -194,6 +194,24 @@ let test_any_syntax () =
   (* Empty syntax *)
   neg_cursor read_any_syntax "unquoted"
 
+let test_spec_property_syntax_descriptor_edges () =
+  check_any_syntax "\"<length>+\"";
+  check_any_syntax "\"<color>#\"";
+  check_any_syntax "\"<custom-ident>\"";
+  check_any_syntax "\"<transform-list>\"";
+  check_any_syntax "\"<url>\"";
+  check_any_syntax "\"<image>\"";
+  check_any_syntax "\"<length> | <percentage> | auto\"";
+  check_any_syntax "\"<number> | none\"";
+  neg_cursor read_any_syntax "\"<length>++\"";
+  neg_cursor read_any_syntax "\"<color># #\"";
+  neg_cursor read_any_syntax "\"<length>|\"";
+  neg_cursor read_any_syntax "\"| <length>\"";
+  neg_cursor read_any_syntax "\"<length> <color>\"";
+  neg_cursor read_any_syntax "\"<length> || <color>\"";
+  neg_cursor read_any_syntax "\"<unknown>\"";
+  neg_cursor read_any_syntax "\"<length\""
+
 (* Not a roundtrip test *)
 let test_syntax () =
   (* Syntax checking is not available in current implementation *)
@@ -261,6 +279,11 @@ let test_spec_custom_property_fallback_edges () =
   check_var_ref "var(--tokens, { color: red; })" "tokens"
     (Some "{ color: red; }");
   check_var_ref "var(--list, [a, b], (c))" "list" (Some "[a, b], (c)");
+  check_var_ref "var(--commented, a /*x*/ b)" "commented" (Some "a /*x*/ b");
+  check_var_ref "var(--string, \"a,b\")" "string" (Some "\"a,b\"");
+  check_var_ref "var(--empty-block, {})" "empty-block" (Some "{}");
+  check_var_ref "var(--bad-string, \"unterminated)" "bad-string"
+    (Some "\"unterminated");
   let neg input =
     let r = Css.Cursor.of_string input in
     try
@@ -276,10 +299,53 @@ let test_spec_custom_property_fallback_edges () =
   neg "var(---)";
   neg "var(--, red)"
 
+let test_spec_custom_property_computed_time_edges () =
+  let expect_computed_context name specified environment =
+    match
+      Css.Stylesheet.resolve_custom_property ~name ~specified ~environment
+    with
+    | Error
+        (Css.Stylesheet.Requires_document_context Css.Stylesheet.Computed_value)
+      ->
+        ()
+    | Error (Css.Stylesheet.Requires_document_context _) ->
+        Alcotest.fail "expected computed-value document context"
+    | Error (Css.Stylesheet.Requires_platform_context actual) ->
+        Alcotest.failf "expected document context, got platform: %s"
+          actual.feature
+    | Error (Css.Stylesheet.Unsupported_value_alias _) ->
+        Alcotest.fail "expected document context, got value alias error"
+    | Ok _ -> Alcotest.fail "expected computed-time custom property boundary"
+  in
+  expect_computed_context "--gap" "var(--space, 1rem)" ":root { --space: 2rem }";
+  expect_computed_context "--self" "var(--self)" ":root { --self: var(--self) }";
+  expect_computed_context "--a" "var(--b)"
+    ":root { --a: var(--b); --b: var(--a) }";
+  expect_computed_context "--registered" "10px"
+    "@property --registered { syntax: \"<color>\"; inherits: false; \
+     initial-value: red } :root { --registered: 10px }";
+  expect_computed_context "--invalid-fallback" "var(--missing, 10px)"
+    "@property --invalid-fallback { syntax: \"<color>\"; inherits: false; \
+     initial-value: red }";
+  let check_var_ref input expected_name expected_fallback =
+    let r = Css.Cursor.of_string input in
+    let name, fallback = parse_var_reference r in
+    Alcotest.(check string) (input ^ " name") expected_name name;
+    Alcotest.(check (option string))
+      (input ^ " fallback") expected_fallback fallback
+  in
+  check_var_ref "var(--self)" "self" None;
+  check_var_ref "var(--a, var(--b, var(--c)))" "a" (Some "var(--b, var(--c))");
+  check_var_ref "var(--registered, color(display-p3 1 0 0))" "registered"
+    (Some "color(display-p3 1 0 0)")
+
 let tests =
   [
     ("any_var", `Quick, test_any_var);
     ("any_syntax", `Quick, test_any_syntax);
+    ( "spec property syntax descriptor edges",
+      `Quick,
+      test_spec_property_syntax_descriptor_edges );
     ("vars of calc", `Quick, test_vars_of_calc);
     ("vars of property", `Quick, test_vars_of_property);
     ("vars of declarations", `Quick, test_vars_of_declarations);
@@ -293,6 +359,9 @@ let tests =
     ( "spec custom property fallback edges",
       `Quick,
       test_spec_custom_property_fallback_edges );
+    ( "spec custom property computed-time edges",
+      `Quick,
+      test_spec_custom_property_computed_time_edges );
   ]
 
 let suite = ("variables", tests)
