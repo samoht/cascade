@@ -4863,8 +4863,17 @@ let rec read_contain t : contain =
   in
   let read_contain_list t =
     let values = Cursor.list ~sep:Cursor.ws read_contain_value t in
+    (* Per CSS Contain Module: each contain value may appear at most once.
+       Compare on the constructor shape (Var omitted from the duplicate check
+       since two equal var refs are not authored ambiguity). *)
+    let rec has_duplicate = function
+      | [] | [ _ ] -> false
+      | x :: rest -> List.exists (fun y -> y = x) rest || has_duplicate rest
+    in
     match values with
     | [] -> err_invalid_value t "contain" "expected contain value(s)"
+    | _ when has_duplicate values ->
+        err_invalid_value t "contain" "duplicate contain value"
     | [ v ] -> v
     | vs -> List vs
   in

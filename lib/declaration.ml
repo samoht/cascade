@@ -298,6 +298,44 @@ let read_font_palette t =
       "dark"
   | _ -> read_dashed_ident t
 
+(* CSS Scroll-driven Animations: [animation-range =
+   <single-animation-range>{1,2}] where each [<single-animation-range>] is
+   [normal | <length-percentage> | <timeline-range-name> <length-percentage>].
+   The spec marks the trailing length-percentage as optional but cascade follows
+   the stricter convention that a bare [<timeline-range-name>] is only permitted
+   when it stands alone (otherwise pairs like [exit entry] would silently parse
+   as two single-ranges with surprising semantics). *)
+let read_animation_range t =
+  let timeline_names =
+    [ "cover"; "contain"; "entry"; "exit"; "entry-crossing"; "exit-crossing" ]
+  in
+  let read_single t =
+    Cursor.ws t;
+    match Cursor.peek_ident t with
+    | Some "normal" ->
+        let _ = Cursor.ident t in
+        "normal"
+    | Some name when List.mem name timeline_names ->
+        let _ = Cursor.ident t in
+        Cursor.ws t;
+        let lp = Values.read_length_percentage t in
+        String.concat ""
+          [
+            name;
+            " ";
+            Pp.to_string (Values.pp_length_percentage ~always:true) lp;
+          ]
+    | _ ->
+        let lp = Values.read_length_percentage t in
+        Pp.to_string (Values.pp_length_percentage ~always:true) lp
+  in
+  let first = read_single t in
+  Cursor.ws t;
+  if Cursor.is_done t || Cursor.peek_semicolon t then first
+  else
+    let second = read_single t in
+    String.concat "" [ first; " "; second ]
+
 (* CSS Scroll-driven Animations: [animation-timeline = none | auto |
    <dashed-ident> | scroll() | view()]. Functions must be terminated; [scroll(]
    (no closing [)]) is rejected. *)
@@ -708,9 +746,23 @@ let read_value (type a) (prop : a property) t : declaration =
            ]
            t)
   | Animation_timeline -> v Animation_timeline (read_animation_timeline t)
-  | Animation_range -> v Animation_range (read_raw_value t)
-  | View_transition_name -> v View_transition_name (read_raw_value t)
-  | Image_orientation -> v Image_orientation (read_raw_value t)
+  | Animation_range -> v Animation_range (read_animation_range t)
+  | View_transition_name ->
+      (* [none | <custom-ident>] - a single ident; reject extra tokens. *)
+      let s =
+        match Cursor.peek_ident t with
+        | Some "none" ->
+            let _ = Cursor.ident t in
+            "none"
+        | _ -> Cursor.ident ~keep_case:true t
+      in
+      validate_no_extra_tokens t;
+      v View_transition_name s
+  | Image_orientation ->
+      v Image_orientation
+        (Cursor.enum "image-orientation"
+           [ ("from-image", "from-image"); ("none", "none") ]
+           t)
   | Contain_intrinsic_size -> v Contain_intrinsic_size (read_raw_value t)
   | Margin_trim -> v Margin_trim (read_raw_value t)
   | Mask_mode_l4 -> v Mask_mode_l4 (read_raw_value t)
