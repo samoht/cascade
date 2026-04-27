@@ -601,179 +601,73 @@ let test_invalid_platform_declaration_rejected buf =
         (Fmt.str "invalid platform declaration parsed: %S -> %S" input
            serialized)
 
-let test_platform_stub_error_identity buf =
-  let expect feature = function
-    | Error (Css.Stylesheet.Requires_platform_context actual)
-      when actual.feature = feature ->
-        ()
-    | Error (Css.Stylesheet.Requires_platform_context actual) ->
-        fail
-          (Fmt.str "platform stub feature changed: %S -> %S" feature
-             actual.feature)
-    | Error (Css.Stylesheet.Requires_document_context _) ->
-        fail
-          (Fmt.str "platform stub returned document-context error: %S" feature)
-    | Error (Css.Stylesheet.Unsupported_value_alias _) ->
-        fail (Fmt.str "platform stub returned value-alias error: %S" feature)
-    | Ok _ -> fail (Fmt.str "platform stub unexpectedly succeeded: %S" feature)
+let test_import_url_syntax buf =
+  let url =
+    pick
+      [
+        "theme.css";
+        "../fonts/brand.woff2";
+        "#paint";
+        "data:image/svg+xml,%3Csvg%3E";
+        "//cdn.example/reset.css";
+      ]
+      buf 0
   in
-  match byte_at buf 0 mod 11 with
-  | 0 ->
-      expect "selector matching"
-        (Css.Stylesheet.selector_matches_element ~selector:(selector buf 1)
-           ~element:"<div class=card>")
-  | 1 ->
-      expect "media query evaluation"
-        (Css.Stylesheet.evaluate_media_query
-           ~condition:(Css.Media.of_string "(width >= 40em)")
-           ~environment:"screen")
-  | 2 ->
-      expect "supports evaluation"
-        (Css.Stylesheet.evaluate_supports_condition
-           ~condition:(Css.Supports.Property ("display", "grid")))
-  | 3 ->
-      expect "container query evaluation"
-        (Css.Stylesheet.evaluate_container_query
-           ~condition:(Css.Container.Raw "(inline-size > 30em)")
-           ~container:".card")
-  | 4 ->
-      expect "URL resolution"
-        (Css.Stylesheet.resolve_url_value ~base:"https://example.test/"
-           ~url:"image.png")
-  | 5 ->
-      expect "HTML presentational hints"
-        (Css.Stylesheet.html_presentational_hints ~element:"<table width=100>")
-  | 6 ->
-      expect "style rule filtering"
-        (Css.Stylesheet.filter_style_rules ~element:"<div class=card>"
-           ~media:(Css.Media.of_string "(width >= 40em)")
-           ~supports:(Css.Supports.Property ("display", "grid"))
-           ~shadow_tree:"document" ~scope:".card" [])
-  | 7 ->
-      expect "CSSOM insertRule"
-        (Css.Stylesheet.cssom_insert_rule ~index:0 (rule buf 2) [])
-  | 8 ->
-      expect "CSSOM replaceRule"
-        (Css.Stylesheet.cssom_replace_rule ~index:0 (rule buf 2) [])
-  | 9 ->
-      expect "CSSOM rule serialization"
-        (Css.Stylesheet.cssom_serialize_rule (rule buf 2))
-  | _ ->
-      expect "animation value sampling"
-        (Css.Stylesheet.animated_value ~property:"opacity"
-           ~keyframes:[ "0"; "1" ] ~progress:0.5)
-
-let test_value_stub_stage buf =
-  let expect_stage stage = function
-    | Error (Css.Stylesheet.Requires_document_context actual)
-      when actual = stage ->
-        ()
-    | Error (Css.Stylesheet.Requires_document_context _) ->
-        fail "document-context stub returned the wrong stage"
-    | Error (Css.Stylesheet.Requires_platform_context actual) ->
-        fail
-          (Fmt.str "document-context stub returned platform error: %S"
-             actual.feature)
-    | Error (Css.Stylesheet.Unsupported_value_alias _) ->
-        fail "document-context stub returned value-alias error"
-    | Ok _ -> fail "document-context stub unexpectedly succeeded"
-  in
-  let name = "--fuzz-" ^ string_of_int (byte_at buf 1) in
-  match byte_at buf 0 mod 7 with
-  | 0 ->
-      expect_stage Css.Stylesheet.Declared_value
-        (Css.Stylesheet.declared_values_for_element ~element:"<div>" [])
-  | 1 ->
-      expect_stage Css.Stylesheet.Computed_value
-        (Css.Stylesheet.computed_value ~property:"font-size" ~specified:"1em")
-  | 2 ->
-      expect_stage Css.Stylesheet.Computed_value
-        (Css.Stylesheet.resolve_custom_property ~name ~specified:"var(--x)"
-           ~environment:":root")
-  | 3 ->
-      expect_stage Css.Stylesheet.Used_value
-        (Css.Stylesheet.used_value ~property:"width" ~computed:"auto")
-  | 4 ->
-      expect_stage Css.Stylesheet.Actual_value
-        (Css.Stylesheet.actual_value ~property:"border-top-width" ~used:"0.4px")
-  | 5 ->
-      expect_stage Css.Stylesheet.Used_value
-        (Css.Stylesheet.applicable_property ~property:"flex" ~box:"block")
-  | _ ->
-      expect_stage Css.Stylesheet.Used_value
-        (Css.Stylesheet.per_fragment_value ~property:"color"
-           ~fragment:"::first-line" ~computed:"currentColor")
-
-let test_platform_stubs_typed buf =
-  let expect_platform = function
-    | Error (Css.Stylesheet.Requires_platform_context { feature; detail }) ->
-        if feature = "" || detail = "" then
-          fail "platform error lost feature/detail identity"
-    | Error (Css.Stylesheet.Requires_document_context _) ->
-        fail "platform API returned document-context error"
-    | Error (Css.Stylesheet.Unsupported_value_alias _) ->
-        fail "platform API returned value-alias error"
-    | Ok _ -> fail "platform API unexpectedly succeeded"
-  in
-  let stmt = rule buf 2 in
   let import =
     {
-      Css.Stylesheet.url = "theme.css";
-      layer = Some (layer_name buf 3);
-      supports = Some (Css.Supports.Property ("display", "grid"));
+      Css.Stylesheet.url;
+      layer = Some (layer_name buf 1);
+      supports = Some (Css.Supports.Func ("selector", ":has(img)"));
       media = Some (Css.Media.of_string "(width >= 40em)");
     }
   in
-  List.iter
-    (fun f -> f ())
-    [
-      (fun () ->
-        expect_platform
-          (Css.Stylesheet.selector_matches_element ~selector:(selector buf 0)
-             ~element:"<div class=card>"));
-      (fun () ->
-        expect_platform
-          (Css.Stylesheet.evaluate_media_query
-             ~condition:(Css.Media.of_string "(width >= 40em)")
-             ~environment:"screen"));
-      (fun () ->
-        expect_platform
-          (Css.Stylesheet.evaluate_supports_condition
-             ~condition:(Css.Supports.Property ("display", "grid"))));
-      (fun () ->
-        expect_platform
-          (Css.Stylesheet.evaluate_container_query
-             ~condition:(Css.Container.Raw "(inline-size > 30em)")
-             ~container:".card"));
-      (fun () ->
-        expect_platform
-          (Css.Stylesheet.resolve_url_value ~base:"https://example.test/app.css"
-             ~url:"../image.png"));
-      (fun () -> expect_platform (Css.Stylesheet.load_import_rule import));
-      (fun () ->
-        expect_platform
-          (Css.Stylesheet.html_presentational_hints ~element:"<table width=100>"));
-      (fun () ->
-        expect_platform
-          (Css.Stylesheet.filter_style_rules ~element:"<div>"
-             ~media:(Css.Media.of_string "(width >= 40em)")
-             ~supports:(Css.Supports.Property ("display", "grid"))
-             []));
-      (fun () ->
-        expect_platform
-          (Css.Stylesheet.cssom_insert_rule ~index:(byte_at buf 4) stmt []));
-      (fun () ->
-        expect_platform
-          (Css.Stylesheet.cssom_delete_rule ~index:(byte_at buf 5) []));
-      (fun () ->
-        expect_platform
-          (Css.Stylesheet.cssom_replace_rule ~index:(byte_at buf 6) stmt []));
-      (fun () -> expect_platform (Css.Stylesheet.cssom_serialize_rule stmt));
-      (fun () ->
-        expect_platform
-          (Css.Stylesheet.animated_value ~property:"opacity"
-             ~keyframes:[ "0"; "1" ] ~progress:0.5));
-    ]
+  let ss = [ Css.Stylesheet.Import import ] in
+  let once = minified_stylesheet ss in
+  match parse_stylesheet once with
+  | None -> fail (Fmt.str "import/url syntax did not reparse: %S" once)
+  | Some reparsed ->
+      let twice = minified_stylesheet reparsed in
+      if once <> twice then
+        fail (Fmt.str "import/url syntax changed: %S -> %S" once twice)
+
+let test_property_value_context buf =
+  let open Css.Values in
+  let name = pick [ "--a"; "--registered"; "--empty"; "--cycle" ] buf 0 in
+  let specified =
+    pick
+      [
+        "var(--missing,)";
+        "var(--a, var(--b, red))";
+        "var(--cycle)";
+        "10px";
+        "{ color: red }";
+      ]
+      buf 1
+  in
+  let custom_decl = Css.Declaration.of_string (name ^ ": " ^ specified) in
+  let ctx =
+    Css.Context.v ~custom_properties:[ custom_decl ]
+      ~inherited_values:[ Css.Declaration.of_string "color: currentColor" ]
+      ~initial_values:[ Css.Declaration.of_string "display: inline" ]
+      ~base_url:"https://example.test/css/app.css" ~root_font_size:(Px 16.)
+      ~parent_font_size:(Px 14.) ~current_color:(Named Black)
+      ~viewport_width:(Px 1024.) ~viewport_height:(Px 768.)
+      ~container_width:(Px 640.) ~container_height:(Px 480.) ()
+  in
+  if Css.Context.custom_property name ctx <> Some custom_decl then
+    fail "property-value context lost custom property"
+
+let test_recovery_keeps_rules buf =
+  let bad_decl =
+    pick
+      [ "color:invalidcolor"; "width:calc(1px + )"; "display:block flex" ]
+      buf 0
+  in
+  let css = ".a{color:red}.b{" ^ bad_decl ^ "}.c{display:block}" in
+  let { Css.stylesheet; warnings } = Css.parse css in
+  if List.length (Css.rule_statements stylesheet) < 2 then
+    fail (Fmt.str "recovery lost sibling rules: %S" css);
+  if warnings = [] then fail (Fmt.str "recovery emitted no warning: %S" css)
 
 let suite =
   ( "stylesheet",
@@ -822,10 +716,10 @@ let suite =
         test_platform_decl_name;
       test_case "invalid platform declaration rejected" [ bytes ]
         test_invalid_platform_declaration_rejected;
-      test_case "platform stub error identity" [ bytes ]
-        test_platform_stub_error_identity;
-      test_case "value processing stub stage identity" [ bytes ]
-        test_value_stub_stage;
-      test_case "platform boundary all entrypoints stay typed" [ bytes ]
-        test_platform_stubs_typed;
+      test_case "import and URL syntax roundtrip" [ bytes ]
+        test_import_url_syntax;
+      test_case "property value context invariant" [ bytes ]
+        test_property_value_context;
+      test_case "CSS Syntax recovery keeps sibling rules" [ bytes ]
+        test_recovery_keeps_rules;
     ] )

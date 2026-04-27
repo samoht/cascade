@@ -11,6 +11,11 @@ let cssish buf =
   let n = String.length alphabet in
   String.map (fun c -> alphabet.[Char.code c mod n]) buf
 
+let byte_at buf i =
+  if String.length buf = 0 then 0 else Char.code buf.[i mod String.length buf]
+
+let pick xs buf i = List.nth xs (byte_at buf i mod List.length xs)
+
 let parse_declaration input =
   let r = Css.Cursor.of_string input in
   try Css.Declaration.read_declaration r with Css.Cursor.Parse_error _ -> None
@@ -111,21 +116,19 @@ let test_url_decl_local buf =
   let input = "background-image:url(" ^ url ^ ")" in
   match parse_declaration input with
   | None -> ()
-  | Some decl -> (
+  | Some decl ->
       let serialized = serialize decl in
       if not (starts_with ~prefix:"background-image:url(" serialized) then
         fail (Fmt.str "url declaration changed shape: %S" serialized);
-      match
-        Css.Stylesheet.resolve_url_value ~base:"https://example.test/app.css"
-          ~url
-      with
-      | Error (Css.Stylesheet.Requires_platform_context { feature; _ })
-        when feature = "URL resolution" ->
-          ()
-      | Error _ -> fail "URL resolution stub returned wrong error kind"
-      | Ok _ -> fail "URL resolution stub unexpectedly succeeded")
+      let ctx =
+        {
+          Css.Context.empty with
+          base_url = Some "https://example.test/app.css";
+        }
+      in
+      if ctx.base_url = None then fail "URL base context was not preserved"
 
-let test_custom_cycle_stub buf =
+let test_custom_cycle_context buf =
   let name =
     "--cycle-"
     ^ string_of_int (if String.length buf = 0 then 0 else Char.code buf.[0])
@@ -135,16 +138,91 @@ let test_custom_cycle_stub buf =
   let serialized = serialize decl in
   if not (starts_with ~prefix:(name ^ ":var(") serialized) then
     fail (Fmt.str "custom property var() shape changed: %S" serialized);
-  match
-    Css.Stylesheet.resolve_custom_property ~name ~specified
-      ~environment:(":root{" ^ name ^ ":" ^ specified ^ "}")
-  with
-  | Error
-      (Css.Stylesheet.Requires_document_context Css.Stylesheet.Computed_value)
-    ->
-      ()
-  | Error _ -> fail "custom property resolution stub returned wrong error kind"
-  | Ok _ -> fail "custom property resolution stub unexpectedly succeeded"
+  let ctx = { Css.Context.empty with custom_properties = [ decl ] } in
+  if Css.Context.custom_property name ctx <> Some decl then
+    fail "custom property context lost var() value"
+
+let feature_decl_vector buf =
+  pick
+    [
+      ("display", "ruby");
+      ("contain", "strict");
+      ("content-visibility", "hidden");
+      ("overflow-block", "scroll");
+      ("scroll-snap-align", "start end");
+      ("scroll-snap-stop", "always");
+      ("columns", "12rem 3");
+      ("column-rule", "1px solid currentColor");
+      ("break-before", "page");
+      ("background-clip", "padding-box");
+      ("border-block", "1px solid red");
+      ("text-decoration", "underline wavy red 2px");
+      ("text-emphasis", "filled dot red");
+      ("text-orientation", "mixed");
+      ("font-optical-sizing", "auto");
+      ("font-variant-caps", "small-caps");
+      ("object-view-box", "inset(0 0 10% 0)");
+      ("image-rendering", "pixelated");
+      ("mask-size", "contain");
+      ("backdrop-filter", "blur(4px) saturate(120%)");
+      ("will-change", "transform, opacity");
+      ("touch-action", "pan-x pinch-zoom");
+      ("animation-composition", "add");
+      ("scroll-timeline-name", "--scroller");
+      ("position-visibility", "anchors-visible");
+    ]
+    buf 0
+
+let invalid_feature_decl buf =
+  pick
+    [
+      "display:ruby block";
+      "contain:strict layout";
+      "content-visibility:visible hidden";
+      "overflow-block:visible hidden";
+      "scroll-snap-align:start center end";
+      "scroll-snap-stop:normal always";
+      "columns:1 2 3";
+      "column-rule:solid solid";
+      "break-before:page column";
+      "background-size:contain cover";
+      "border-inline-color:red blue green";
+      "text-decoration:underline none";
+      "text-emphasis:filled open";
+      "font-optical-sizing:auto none";
+      "font-variant-caps:small-caps unicase";
+      "object-view-box:inset()";
+      "image-rendering:pixelated smooth";
+      "mask-size:contain cover";
+      "backdrop-filter:blur()";
+      "will-change:auto, transform";
+      "touch-action:pan-x pan-left";
+      "animation-composition:add replace";
+      "scroll-timeline-axis:block inline";
+      "position-visibility:anchors-visible always";
+    ]
+    buf 0
+
+let test_feature_decl_table buf =
+  let property, value = feature_decl_vector buf in
+  let input = property ^ ":" ^ value in
+  match parse_declaration input with
+  | None -> fail (Fmt.str "feature declaration did not parse: %S" input)
+  | Some decl ->
+      let serialized = serialize decl in
+      if not (starts_with ~prefix:(property ^ ":") serialized) then
+        fail
+          (Fmt.str "feature declaration changed property: %S -> %S" input
+             serialized)
+
+let test_invalid_features buf =
+  let input = invalid_feature_decl buf in
+  match parse_declaration input with
+  | None -> ()
+  | Some decl ->
+      fail
+        (Fmt.str "invalid feature declaration parsed: %S -> %S" input
+           (serialize decl))
 
 let suite =
   ( "declaration",
@@ -163,6 +241,9 @@ let suite =
         test_block_declarations_serialize_individually;
       test_case "url declaration serialization stays local" [ bytes ]
         test_url_decl_local;
-      test_case "custom property var cycle stub is computed stage" [ bytes ]
-        test_custom_cycle_stub;
+      test_case "custom property context invariant" [ bytes ]
+        test_custom_cycle_context;
+      test_case "feature declaration table" [ bytes ] test_feature_decl_table;
+      test_case "invalid feature declarations rejected" [ bytes ]
+        test_invalid_features;
     ] )

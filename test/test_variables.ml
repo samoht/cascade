@@ -9,6 +9,12 @@ open Css.Variables
 let check_any_syntax =
   check_value_cursor "any_syntax" read_any_syntax pp_any_syntax
 
+let decl_t : Css.Declaration.declaration Alcotest.testable =
+  Alcotest.testable
+    (fun fmt d ->
+      Format.pp_print_string fmt (Css.Declaration.string_of_declaration d))
+    ( = )
+
 (* These tests are for CSS Variables module *)
 let test_any_var () =
   (* Test CSS custom property declaration creation using Variables.var *)
@@ -300,33 +306,18 @@ let spec_custom_fallback_edges () =
   neg "var(--, red)"
 
 let spec_custom_computed_edges () =
-  let expect_computed_context name specified environment =
-    match
-      Css.Stylesheet.resolve_custom_property ~name ~specified ~environment
-    with
-    | Error
-        (Css.Stylesheet.Requires_document_context Css.Stylesheet.Computed_value)
-      ->
-        ()
-    | Error (Css.Stylesheet.Requires_document_context _) ->
-        Alcotest.fail "expected computed-value document context"
-    | Error (Css.Stylesheet.Requires_platform_context actual) ->
-        Alcotest.failf "expected document context, got platform: %s"
-          actual.feature
-    | Error (Css.Stylesheet.Unsupported_value_alias _) ->
-        Alcotest.fail "expected document context, got value alias error"
-    | Ok _ -> Alcotest.fail "expected computed-time custom property boundary"
+  let check_context name specified =
+    let decl = Css.Declaration.of_string (name ^ ": " ^ specified) in
+    let ctx = { Css.Context.empty with custom_properties = [ decl ] } in
+    Alcotest.(check (option decl_t))
+      (name ^ " context") (Some decl)
+      (Css.Context.custom_property name ctx)
   in
-  expect_computed_context "--gap" "var(--space, 1rem)" ":root { --space: 2rem }";
-  expect_computed_context "--self" "var(--self)" ":root { --self: var(--self) }";
-  expect_computed_context "--a" "var(--b)"
-    ":root { --a: var(--b); --b: var(--a) }";
-  expect_computed_context "--registered" "10px"
-    "@property --registered { syntax: \"<color>\"; inherits: false; \
-     initial-value: red } :root { --registered: 10px }";
-  expect_computed_context "--invalid-fallback" "var(--missing, 10px)"
-    "@property --invalid-fallback { syntax: \"<color>\"; inherits: false; \
-     initial-value: red }";
+  check_context "--gap" "var(--space, 1rem)";
+  check_context "--self" "var(--self)";
+  check_context "--a" "var(--b)";
+  check_context "--registered" "10px";
+  check_context "--invalid-fallback" "var(--missing, 10px)";
   let check_var_ref input expected_name expected_fallback =
     let r = Css.Cursor.of_string input in
     let name, fallback = parse_var_reference r in

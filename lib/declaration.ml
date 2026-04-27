@@ -868,6 +868,11 @@ let read_block t =
   Cursor.ws t;
   Cursor.braces (fun inner -> read_declarations inner) t
 
+let of_string s =
+  match read_declaration (Cursor.of_string s) with
+  | Some d -> d
+  | None -> failwith ("Declaration.of_string: invalid declaration: " ^ s)
+
 (* Pretty printer for declarations *)
 let rec pp_declaration : declaration Pp.t =
  fun ctx -> function
