@@ -370,7 +370,10 @@ let cascade_current_at_rules () =
 let conditional_container () =
   parses_valid
     "@container card (inline-size > 30em) { .item { display: grid } }";
-  parses_valid "@container style(--variant: featured) { .card { color: red } }"
+  parses_valid "@container style(--variant: featured) { .card { color: red } }";
+  parses_valid "@container scroll-state(stuck: top) { .card { color: red } }";
+  rejects_invalid "@container style() { .card { color: red } }";
+  rejects_invalid "@container scroll-state() { .card { color: red } }"
 
 (* {2 CSS Nesting Level 1} https://www.w3.org/TR/css-nesting-1/ *)
 

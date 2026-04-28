@@ -8312,7 +8312,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Scroll_padding_block -> pp pp_length
   | Scroll_padding_block_start -> pp pp_length
   | Scroll_padding_block_end -> pp pp_length
-  | Overscroll_behavior -> pp pp_overscroll_behavior
+  | Overscroll_behavior -> pp (Pp.list ~sep:Pp.space pp_overscroll_behavior)
   | Overscroll_behavior_x -> pp pp_overscroll_behavior
   | Overscroll_behavior_y -> pp pp_overscroll_behavior
   | Accent_color -> pp pp_color

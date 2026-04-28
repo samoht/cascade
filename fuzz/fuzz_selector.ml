@@ -278,6 +278,8 @@ let test_pseudo_class_family_vectors buf =
       [
         ":nth-child(-n+3)";
         ":nth-last-child(odd of :not([hidden]))";
+        ":lang(en, fr)";
+        ":dir(ltr)";
         ":autofill";
         ":placeholder-shown";
         ":user-valid";
@@ -313,6 +315,8 @@ let test_invalid_pseudo_family_vectors buf =
     pick
       [
         ":nth-child(n+)";
+        ":lang()";
+        ":dir()";
         ":checked()";
         ":state()";
         "::part()";

@@ -4646,8 +4646,8 @@ val scroll_padding_block_end : length -> declaration
 (** CSS overscroll behavior values *)
 type overscroll_behavior = Auto | Contain | None | Inherit
 
-val overscroll_behavior : overscroll_behavior -> declaration
-(** [overscroll_behavior behavior] is the
+val overscroll_behavior : overscroll_behavior list -> declaration
+(** [overscroll_behavior behaviors] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/overscroll-behavior}
      overscroll-behavior} property. *)
 

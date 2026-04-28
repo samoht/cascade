@@ -682,6 +682,10 @@ let test_valid_at_rule_descriptor_vector buf =
          \"Invoice\" } }";
         "@keyframes fade { from { opacity: 0 } 50%, 100% { opacity: 1 } }";
         "@container card (inline-size > 30em) { .item { display: grid } }";
+        "@container style(--variant: featured) { .item { display: grid } }";
+        "@container scroll-state(stuck: top) { .item { display: grid } }";
+        "@scope (.card) to (.footer) { .title { color: red } }";
+        "@starting-style { .dialog { opacity: 0; translate: 0 1rem } }";
       ]
       buf 0
   in
@@ -702,6 +706,11 @@ let test_invalid_at_rule_descriptor_vector buf =
         "@keyframes bad { -1% { opacity: 0 } }";
         "@namespace svg;";
         "@container () { .x { color: red } }";
+        "@container style() { .x { color: red } }";
+        "@container scroll-state() { .x { color: red } }";
+        "@scope () { .x { color: red } }";
+        "@scope (.x) to () { .x { color: red } }";
+        "@starting-style;";
       ]
       buf 0
   in
