@@ -38,6 +38,38 @@ let quoted_strings s =
   in
   loop [] 0
 
+let ocaml_string_literals s =
+  let len = String.length s in
+  let buffer = Buffer.create 32 in
+  let rec scan acc i =
+    if i >= len then List.rev acc
+    else if s.[i] <> '"' then scan acc (i + 1)
+    else (
+      Buffer.clear buffer;
+      string acc (i + 1))
+  and string acc i =
+    if i >= len then List.rev acc
+    else
+      match s.[i] with
+      | '"' ->
+          let value = Buffer.contents buffer in
+          scan (value :: acc) (i + 1)
+      | '\\' when i + 1 < len ->
+          let c = s.[i + 1] in
+          Buffer.add_char buffer
+            (match c with
+            | '"' -> '"'
+            | '\\' -> '\\'
+            | 'n' -> '\n'
+            | 't' -> '\t'
+            | c -> c);
+          string acc (i + 2)
+      | c ->
+          Buffer.add_char buffer c;
+          string acc (i + 1)
+  in
+  scan [] 0
+
 let source_slice s ~first ~last =
   match (find_sub s first 0, find_sub s last 0) with
   | Some start, Some stop when stop > start -> String.sub s start (stop - start)
@@ -93,6 +125,106 @@ let deterministic_manifest_properties =
      in
      let names = property_fields [] 0 @ property_row_blocks [] 0 in
      List.sort_uniq String.compare names)
+
+type deterministic_manifest_row = {
+  name : string;
+  positive_values : string list;
+  negative_values : string list;
+}
+
+let bracket_payload source start =
+  match find_sub source "[" start with
+  | None -> None
+  | Some open_i ->
+      let rec loop depth i =
+        if i >= String.length source then None
+        else
+          match source.[i] with
+          | '[' -> loop (depth + 1) (i + 1)
+          | ']' when depth = 1 ->
+              Some (open_i, i, String.sub source open_i (i - open_i + 1))
+          | ']' -> loop (depth - 1) (i + 1)
+          | _ -> loop depth (i + 1)
+      in
+      loop 0 open_i
+
+let deterministic_manifest_rows =
+  lazy
+    (let source =
+       try read_source_file "test/test_declaration.ml"
+       with Sys_error _ -> read_source_file "../test/test_declaration.ml"
+     in
+     let manifest =
+       source_slice source ~first:"type property_grammar_row"
+         ~last:"let spec_property_grammar_manifest"
+     in
+     let rec grouped_rows acc i =
+       match find_sub manifest "property_grammar_rows" i with
+       | None -> acc
+       | Some start -> (
+           match bracket_payload manifest start with
+           | None -> acc
+           | Some (_, props_end, props_src) -> (
+               match bracket_payload manifest (props_end + 1) with
+               | None -> acc
+               | Some (_, positives_end, positives_src) -> (
+                   match bracket_payload manifest (positives_end + 1) with
+                   | None -> acc
+                   | Some (_, negatives_end, negatives_src) ->
+                       let positives = ocaml_string_literals positives_src in
+                       let negatives = ocaml_string_literals negatives_src in
+                       let rows =
+                         List.map
+                           (fun name ->
+                             {
+                               name;
+                               positive_values = positives;
+                               negative_values = negatives;
+                             })
+                           (ocaml_string_literals props_src)
+                       in
+                       grouped_rows (rows @ acc) (negatives_end + 1))))
+     in
+     let rec explicit_rows acc i =
+       match find_sub manifest "property = \"" i with
+       | None -> acc
+       | Some start -> (
+           let name_start = start + String.length "property = \"" in
+           match find_sub manifest "\"" name_start with
+           | None -> acc
+           | Some name_end -> (
+               let name =
+                 String.sub manifest name_start (name_end - name_start)
+               in
+               match find_sub manifest "positives =" name_end with
+               | None -> explicit_rows acc (name_end + 1)
+               | Some positives_start -> (
+                   match bracket_payload manifest positives_start with
+                   | None -> explicit_rows acc (name_end + 1)
+                   | Some (_, positives_end, positives_src) -> (
+                       match find_sub manifest "negatives =" positives_end with
+                       | None -> explicit_rows acc (positives_end + 1)
+                       | Some negatives_start -> (
+                           match bracket_payload manifest negatives_start with
+                           | None -> explicit_rows acc (positives_end + 1)
+                           | Some (_, negatives_end, negatives_src) ->
+                               let row =
+                                 {
+                                   name;
+                                   positive_values =
+                                     ocaml_string_literals positives_src;
+                                   negative_values =
+                                     ocaml_string_literals negatives_src;
+                                 }
+                               in
+                               explicit_rows (row :: acc) (negatives_end + 1))))
+               ))
+     in
+     let rows = explicit_rows [] 0 @ grouped_rows [] 0 in
+     let table = Hashtbl.create 512 in
+     List.iter (fun row -> Hashtbl.replace table row.name row) rows;
+     Hashtbl.fold (fun _ row acc -> row :: acc) table []
+     |> List.sort (fun a b -> String.compare a.name b.name))
 
 let check_reader reader printer input =
   let r = Css.Cursor.of_string input in
@@ -557,6 +689,54 @@ let test_deterministic_manifest_css_wide_generation buf =
                 structurally roundtrip: %S -> %S"
                input serialized))
 
+let parse_declaration input =
+  let c = Css.Cursor.of_string input in
+  try Css.Declaration.read_declaration c with Css.Cursor.Parse_error _ -> None
+
+let test_deterministic_manifest_positive_values buf =
+  let rows = Lazy.force deterministic_manifest_rows in
+  if List.length rows < 346 then
+    fail
+      (Fmt.str "deterministic property manifest row extraction drifted: %d rows"
+         (List.length rows));
+  let row = pick rows buf 0 in
+  let value = pick row.positive_values buf 1 in
+  let input = row.name ^ ":" ^ value in
+  match parse_declaration input with
+  | None ->
+      fail
+        (Fmt.str "deterministic manifest positive declaration rejected: %S"
+           input)
+  | Some decl -> (
+      let serialized =
+        Css.Declaration.string_of_declaration ~minify:true decl
+      in
+      match parse_declaration serialized with
+      | Some reparsed when decl = reparsed -> ()
+      | _ ->
+          fail
+            (Fmt.str
+               "deterministic manifest positive declaration did not \
+                structurally roundtrip: %S -> %S"
+               input serialized))
+
+let test_deterministic_manifest_negative_values buf =
+  let rows = Lazy.force deterministic_manifest_rows in
+  if List.length rows < 346 then
+    fail
+      (Fmt.str "deterministic property manifest row extraction drifted: %d rows"
+         (List.length rows));
+  let row = pick rows buf 0 in
+  let value = pick row.negative_values buf 1 in
+  let input = row.name ^ ":" ^ value in
+  match parse_declaration input with
+  | None -> ()
+  | Some decl ->
+      fail
+        (Fmt.str "deterministic manifest negative declaration parsed: %S -> %S"
+           input
+           (Css.Declaration.string_of_declaration ~minify:true decl))
+
 let suite =
   ( "properties",
     [
@@ -576,4 +756,8 @@ let suite =
         test_property_grammar_manifest_has_both_kinds;
       test_case "deterministic manifest CSS-wide generated vectors" [ bytes ]
         test_deterministic_manifest_css_wide_generation;
+      test_case "deterministic manifest positive value vectors" [ bytes ]
+        test_deterministic_manifest_positive_values;
+      test_case "deterministic manifest negative value vectors" [ bytes ]
+        test_deterministic_manifest_negative_values;
     ] )

@@ -130,9 +130,10 @@ let selectors_pseudo_classes () =
   roundtrip ":first-child { color: red }" ":first-child{color:red}";
   roundtrip ":last-child { margin: 0 }" ":last-child{margin:0}";
   roundtrip ":nth-child(2n+1) { color: red }" ":nth-child(2n+1){color:red}";
-  (* even normalizes to 2n, odd normalizes to 2n+1 in output *)
-  roundtrip ":nth-child(even) { color: blue }" ":nth-child(2n){color:blue}";
-  roundtrip ":nth-child(odd) { color: red }" ":nth-child(2n+1){color:red}";
+  (* CSS Selectors 4 §6.6.1: [odd]/[even] are valid output forms in their own
+     right; the printer preserves whatever the author wrote. *)
+  roundtrip ":nth-child(even) { color: blue }" ":nth-child(even){color:blue}";
+  roundtrip ":nth-child(odd) { color: red }" ":nth-child(odd){color:red}";
   roundtrip ":not(.foo) { color: red }" ":not(.foo){color:red}"
 
 (* SS 8.2 - Pseudo-elements The printer uses legacy single-colon form for

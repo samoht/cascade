@@ -780,6 +780,107 @@ let test_invalid_page_margin_descriptor_matrix buf =
         (Fmt.str "invalid page descriptor parsed: %S -> %S" input
            (minified_stylesheet ss))
 
+let test_font_palette_values_descriptor_matrix buf =
+  let input =
+    pick
+      [
+        "@font-palette-values --brand { font-family: Brand; base-palette: 1; \
+         override-colors: 0 red, 1 color(display-p3 1 0 0); }";
+        "@font-palette-values --dark { font-family: \"Color Font\", Brand; \
+         base-palette: dark; }";
+      ]
+      buf 0
+  in
+  match parse_stylesheet input with
+  | None -> fail (Fmt.str "font-palette-values vector rejected: %S" input)
+  | Some ss ->
+      if minified_stylesheet ss = "" then
+        fail "font-palette-values vector serialized empty"
+
+let test_invalid_font_palette_values_descriptor_matrix buf =
+  let input =
+    pick
+      [
+        "@font-palette-values brand { font-family: Brand; base-palette: 1 }";
+        "@font-palette-values --brand;";
+        "@font-palette-values --brand { font-family: Brand; override-colors: \
+         -1 red }";
+      ]
+      buf 0
+  in
+  match parse_stylesheet input with
+  | None -> ()
+  | Some ss ->
+      fail
+        (Fmt.str "invalid font-palette-values vector parsed: %S -> %S" input
+           (minified_stylesheet ss))
+
+let test_view_transition_descriptor_matrix buf =
+  let input =
+    pick
+      [
+        "@view-transition { navigation: auto; }";
+        "@view-transition { navigation: none; }";
+      ]
+      buf 0
+  in
+  match parse_stylesheet input with
+  | None -> fail (Fmt.str "view-transition vector rejected: %S" input)
+  | Some ss ->
+      if minified_stylesheet ss = "" then
+        fail "view-transition vector serialized empty"
+
+let test_invalid_view_transition_descriptor_matrix buf =
+  let input =
+    pick
+      [
+        "@view-transition page { navigation: auto; }";
+        "@view-transition;";
+        "@view-transition { navigation: always; }";
+      ]
+      buf 0
+  in
+  match parse_stylesheet input with
+  | None -> ()
+  | Some ss ->
+      fail
+        (Fmt.str "invalid view-transition vector parsed: %S -> %S" input
+           (minified_stylesheet ss))
+
+let test_position_try_descriptor_matrix buf =
+  let input =
+    pick
+      [
+        "@position-try --below { top: anchor(bottom); left: anchor(center); \
+         width: anchor-size(width); }";
+        "@position-try --inline-start { inset-inline-end: anchor(start); \
+         margin-inline: 1rem; }";
+      ]
+      buf 0
+  in
+  match parse_stylesheet input with
+  | None -> fail (Fmt.str "position-try vector rejected: %S" input)
+  | Some ss ->
+      if minified_stylesheet ss = "" then
+        fail "position-try vector serialized empty"
+
+let test_invalid_position_try_descriptor_matrix buf =
+  let input =
+    pick
+      [
+        "@position-try default { top: 0; }";
+        "@position-try --fallback;";
+        "@position-try --fallback { @media screen { .x { color: red } } }";
+      ]
+      buf 0
+  in
+  match parse_stylesheet input with
+  | None -> ()
+  | Some ss ->
+      fail
+        (Fmt.str "invalid position-try vector parsed: %S -> %S" input
+           (minified_stylesheet ss))
+
 let test_property_value_context buf =
   let open Css.Values in
   let name = pick [ "--a"; "--registered"; "--empty"; "--cycle" ] buf 0 in
@@ -960,6 +1061,18 @@ let suite =
         test_page_margin_descriptor_matrix;
       test_case "invalid page margin descriptor matrix rejected" [ bytes ]
         test_invalid_page_margin_descriptor_matrix;
+      test_case "font-palette-values descriptor matrix" [ bytes ]
+        test_font_palette_values_descriptor_matrix;
+      test_case "invalid font-palette-values descriptor matrix rejected"
+        [ bytes ] test_invalid_font_palette_values_descriptor_matrix;
+      test_case "view-transition descriptor matrix" [ bytes ]
+        test_view_transition_descriptor_matrix;
+      test_case "invalid view-transition descriptor matrix rejected" [ bytes ]
+        test_invalid_view_transition_descriptor_matrix;
+      test_case "position-try descriptor matrix" [ bytes ]
+        test_position_try_descriptor_matrix;
+      test_case "invalid position-try descriptor matrix rejected" [ bytes ]
+        test_invalid_position_try_descriptor_matrix;
       test_case "property value context invariant" [ bytes ]
         test_property_value_context;
       test_case "CSS Syntax recovery keeps sibling rules" [ bytes ]

@@ -142,12 +142,12 @@ let pseudo_class_cases () =
   check_construct ":first-child" First_child;
   check_construct ":last-child" Last_child;
   check_construct ":nth-child(2)" (nth_child (An_plus_b (0, 2)));
-  check_construct ":nth-child(2n+1)" (nth_child Odd);
-  check_construct ":nth-child(2n)" (nth_child Even);
+  check_construct ":nth-child(odd)" (nth_child Odd);
+  check_construct ":nth-child(even)" (nth_child Even);
   check_construct ":nth-child(2n+1)" (nth_child (An_plus_b (2, 1)));
   (* nth with Index and of clause *)
   check ":nth-child(5)";
-  check ~expected:":nth-child(2n+1 of .item)" ":nth-child( odd of .item )";
+  check ~expected:":nth-child(odd of .item)" ":nth-child( odd of .item )";
   check ~expected:":nth-child(2n-1 of a,b)" ":nth-child( 2n-1 of a , b )";
   check ":nth-of-type(3)";
   check ~expected:":nth-last-child(2 of .x,.y)" ":nth-last-child(2 of .x , .y)";
@@ -455,8 +455,8 @@ let roundtrip () =
   check ":hover";
   check ":nth-child(2)";
   check ":nth-child(2n+1)";
-  check ~expected:":nth-child(2n+1)" ":nth-child(odd)";
-  check ~expected:":nth-child(2n)" ":nth-child(even)";
+  check ":nth-child(odd)";
+  check ":nth-child(even)";
 
   (* Pseudo-elements - legacy ones minify to : *)
   check ~expected:":before" "::before";
@@ -737,8 +737,8 @@ let callstack_accuracy () =
 let component_parsing () =
   (* Test nth values — odd/even are canonicalized to 2n+1/2n *)
   check_nth "2n+1";
-  check_nth ~expected:"2n+1" "odd";
-  check_nth ~expected:"2n" "even";
+  check_nth "odd";
+  check_nth "even";
   check_nth "3n";
   check_nth "5";
 
@@ -982,17 +982,23 @@ let test_ns () =
 
 let test_nth () =
   (* Test nth type — odd/even are canonicalized to 2n+1/2n *)
+  Alcotest.(check bool)
+    "odd parses to Odd AST" true
+    (read_nth (Css.Cursor.of_string "odd") = Odd);
+  Alcotest.(check bool)
+    "even parses to Even AST" true
+    (read_nth (Css.Cursor.of_string "even") = Even);
   check_nth "2n+1";
-  check_nth ~expected:"2n+1" "odd";
-  check_nth ~expected:"2n" "even";
+  (* The parser keeps [odd]/[even] keywords distinct from their An+B forms (Odd
+     vs An_plus_b (2, 1), Even vs An_plus_b (2, 0)) so the printer emits
+     whatever the author wrote. *)
+  check_nth "odd";
+  check_nth "even";
   check_nth "3n";
   check_nth "5";
 
-  (* CSS Syntax Level 3 section 6 An+B examples. The printer canonicalizes
-     equivalent spellings, so these assert parsed meaning rather than source
-     spelling. *)
+  (* CSS Syntax Level 3 section 6 An+B examples. *)
   check_nth ~expected:"2n" "2n+0";
-  check_nth ~expected:"2n" "even";
   check_nth "4n+1";
   check_nth "-n+6";
   check_nth "-4n+10";
@@ -1359,10 +1365,10 @@ let spec_selector_tree_structural_pseudos () =
       ":only-child";
       ":only-of-type";
       ":nth-child(-n+3)";
-      ":nth-last-child(odd of :not([hidden]))";
       ":nth-of-type(3n+1)";
       ":nth-last-of-type(-n+2)";
     ];
+  check ":nth-last-child(odd of :not([hidden]))";
   List.iter
     (fun input -> neg_cursor read input)
     [ ":nth-child(n+)"; ":nth-last-child(2n of)"; ":nth-of-type(odd even)" ]
@@ -1418,6 +1424,127 @@ let spec_selector_pseudo_element_matrix () =
   List.iter
     (fun input -> neg_cursor read input)
     [ "::part()"; "::part(a,b)"; "::slotted()"; "::highlight()" ]
+
+let spec_selector_pseudo_manifest () =
+  let positive_pseudos =
+    [
+      ":active";
+      ":active-view-transition";
+      ":active-view-transition-type(forwards)";
+      ":any-link";
+      ":autofill";
+      ":blank";
+      ":buffering";
+      ":checked";
+      ":current";
+      ":current(:is(h1,h2))";
+      ":default";
+      ":defined";
+      ":dir(ltr)";
+      ":disabled";
+      ":empty";
+      ":enabled";
+      ":first-child";
+      ":first-of-type";
+      ":focus";
+      ":focus-visible";
+      ":focus-within";
+      ":fullscreen";
+      ":future";
+      ":has(> img)";
+      ":host";
+      ":host(.active)";
+      ":host-context(.theme-dark)";
+      ":hover";
+      ":in-range";
+      ":indeterminate";
+      ":invalid";
+      ":is(.a,#b)";
+      ":lang(en, fr)";
+      ":last-child";
+      ":last-of-type";
+      ":link";
+      ":local-link";
+      ":modal";
+      ":muted";
+      ":not(.a,#b)";
+      ":nth-child(2n+1 of .item)";
+      ":nth-col(odd)";
+      ":nth-last-child(2n of :not([hidden]))";
+      ":nth-last-col(even)";
+      ":nth-last-of-type(-n+3)";
+      ":nth-of-type(3n)";
+      ":only-child";
+      ":only-of-type";
+      ":open";
+      ":optional";
+      ":out-of-range";
+      ":past";
+      ":paused";
+      ":picture-in-picture";
+      ":placeholder-shown";
+      ":playing";
+      ":popover-open";
+      ":read-only";
+      ":read-write";
+      ":required";
+      ":root";
+      ":scope";
+      ":seeking";
+      ":stalled";
+      ":state(selected)";
+      ":target";
+      ":target-within";
+      ":user-invalid";
+      ":user-valid";
+      ":valid";
+      ":visited";
+      ":volume-locked";
+      ":where(.a,#b)";
+      "::after";
+      "::before";
+      "::cue(.warning)";
+      "::cue-region(.speaker)";
+      "::file-selector-button";
+      "::first-letter";
+      "::first-line";
+      "::grammar-error";
+      "::highlight(search)";
+      "::marker";
+      "::part(tab panel)";
+      "::selection";
+      "::slotted(img.selected)";
+      "::spelling-error";
+      "::target-text";
+      "::view-transition-group(root)";
+      "::view-transition-image-pair(root)";
+      "::view-transition-new(root)";
+      "::view-transition-old(root)";
+    ]
+  in
+  let negative_pseudos =
+    [
+      ":active-view-transition-type()";
+      ":dir()";
+      ":has()";
+      ":host-context()";
+      ":lang()";
+      ":not()";
+      ":nth-child(2n of)";
+      ":nth-col()";
+      ":nth-last-col(of .item)";
+      ":state()";
+      "::cue()";
+      "::highlight()";
+      "::part()";
+      "::part(tab, panel)";
+      "::slotted()";
+      "::slotted(.a, .b)";
+      "::view-transition-old()";
+    ]
+  in
+  List.iter check positive_pseudos;
+  List.iter (fun input -> neg_cursor read input) negative_pseudos
 
 let spec_selector_attr_ns_edges () =
   (* Mixed parser/minifier coverage. *)
@@ -1504,6 +1631,8 @@ let suite =
         spec_selector_input_state_pseudos;
       test_case "spec selector pseudo-element matrix" `Quick
         spec_selector_pseudo_element_matrix;
+      test_case "spec selector pseudo manifest" `Quick
+        spec_selector_pseudo_manifest;
       test_case "spec selector attribute namespace edges" `Quick
         spec_selector_attr_ns_edges;
       test_case "nesting selector" `Quick test_nesting_selector;
