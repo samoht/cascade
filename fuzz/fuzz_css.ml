@@ -232,11 +232,20 @@ let test_css2_legacy_minified_vectors buf =
     pick
       [
         "body { margin: 0; color: black }";
+        "@charset \"UTF-8\";";
+        "@import 'legacy.css';";
         "@media print { body { color: black } }";
+        "@page :left { margin-left: 4cm; margin-right: 3cm }";
+        "html > body p + p { text-indent: 1em }";
+        "a:link { color: blue } a:visited { color: purple }";
+        "li:first-child { list-style-type: none }";
         "h1:first-letter { color: red }";
         "p::first-line { color: blue }";
-        "a:link { color: blue } a:visited { color: purple }";
+        "q:before { content: open-quote }";
+        "q::after { content: close-quote }";
         "div { page-break-before: always }";
+        "div { page-break-after: avoid }";
+        "div { page-break-inside: avoid }";
       ]
       buf 0
   in
@@ -251,6 +260,25 @@ let test_css2_legacy_minified_vectors buf =
           fail
             (Fmt.str "CSS2 legacy minified output rejected: %S (%s)" minified
                (Css.pp_parse_error err)))
+
+let test_css2_legacy_invalid_vectors buf =
+  let input =
+    pick
+      [
+        "@charset 'UTF-8';";
+        "@page :first:left { margin: 1cm }";
+        "div { page-break-before: always avoid }";
+        "div { page-break-inside: left }";
+        "h1::first-line::before { color: red }";
+      ]
+      buf 0
+  in
+  match Css.of_string input with
+  | Error _ -> ()
+  | Ok sheet ->
+      fail
+        (Fmt.str "CSS2 legacy invalid vector parsed: %S -> %S" input
+           (Css.to_string ~minify:true ~newline:false sheet))
 
 let suite =
   ( "css",
@@ -273,4 +301,6 @@ let suite =
       test_case "public property shape" [ bytes ] test_public_property_shape;
       test_case "CSS2 legacy minified vectors" [ bytes ]
         test_css2_legacy_minified_vectors;
+      test_case "CSS2 legacy invalid vectors rejected" [ bytes ]
+        test_css2_legacy_invalid_vectors;
     ] )
