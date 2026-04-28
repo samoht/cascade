@@ -92,17 +92,8 @@ let test_media_context_shape buf =
     fail "media context dimensions were not preserved"
 
 let test_raw_range_serialization_stable buf =
-  let raw =
-    pick
-      [
-        "(width)";
-        "(40em < width)";
-        "(width <= 60em)";
-        "(400px <= width <= 1200px)";
-        "screen and (width >= 40em), print";
-      ]
-      buf 0
-  in
+  let row = pick Cascade_spec_inventory.Query_grammar.media_positive buf 0 in
+  let raw = row.input in
   let once = Css.Media.to_string (Css.Media.of_string raw) in
   let twice = Css.Media.to_string (Css.Media.of_string once) in
   if once <> twice then
@@ -172,21 +163,8 @@ let test_spec_media_structural_vectors buf =
          (Css.Media.to_string actual))
 
 let test_spec_media_invalid_vectors buf =
-  let input =
-    pick
-      [
-        "";
-        "()";
-        "(width >=)";
-        "(30em < width > 60em)";
-        "(width = 40em = 50em)";
-        "(width) and";
-        "(width) and (height) or (color)";
-        "screen (width)";
-        "(width >= 40em";
-      ]
-      buf 0
-  in
+  let row = pick Cascade_spec_inventory.Query_grammar.media_negative buf 0 in
+  let input = row.input in
   match
     try Some (Css.Media.of_string input)
     with Failure _ | Invalid_argument _ -> None
@@ -198,37 +176,8 @@ let test_spec_media_invalid_vectors buf =
            (Css.Media.to_string actual))
 
 let test_spec_media_feature_family_vectors buf =
-  let input =
-    pick
-      [
-        "(width)";
-        "(min-width: 40em)";
-        "(400px <= width <= 1200px)";
-        "(height > 50dvh)";
-        "(aspect-ratio > 16/9)";
-        "(orientation: landscape)";
-        "(hover: hover)";
-        "(any-hover: none)";
-        "(pointer: coarse)";
-        "(any-pointer: fine)";
-        "(update: fast)";
-        "(overflow-block: scroll)";
-        "(overflow-inline: none)";
-        "(color-gamut: p3)";
-        "(dynamic-range: high)";
-        "(video-dynamic-range: standard)";
-        "(prefers-color-scheme: dark)";
-        "(prefers-reduced-motion: reduce)";
-        "(prefers-reduced-transparency: reduce)";
-        "(prefers-contrast: more)";
-        "(forced-colors: active)";
-        "(scripting: enabled)";
-        "screen and ((width >= 40em) or (orientation: landscape))";
-        "not screen and (hover: none)";
-        "screen and (width >= 40em), print and (color)";
-      ]
-      buf 2
-  in
+  let row = pick Cascade_spec_inventory.Query_grammar.media_positive buf 2 in
+  let input = row.input in
   let once = Css.Media.to_string (Css.Media.of_string input) in
   let twice = Css.Media.to_string (Css.Media.of_string once) in
   if once <> twice then
@@ -236,28 +185,12 @@ let test_spec_media_feature_family_vectors buf =
       (Fmt.str "media feature family serialization drifted: %S -> %S" once twice)
 
 let test_spec_media_invalid_feature_family_vectors buf =
+  let valid = pick Cascade_spec_inventory.Query_grammar.media_positive buf 3 in
   let input =
-    pick
-      [
-        "(min-width)";
-        "(width:)";
-        "(width < 40px < 20px)";
-        "(400px <= width <=)";
-        "(aspect-ratio > 16/)";
-        "(orientation: diagonal)";
-        "(hover: sometimes)";
-        "(any-pointer: hover)";
-        "(update: instant)";
-        "(overflow-block: hidden)";
-        "(color-gamut: rgb)";
-        "(dynamic-range: ultra)";
-        "(prefers-color-scheme: sepia)";
-        "(prefers-reduced-motion: yes)";
-        "(forced-colors: enabled)";
-        "screen and or (width)";
-        "not not screen";
-      ]
-      buf 3
+    if byte_at buf 4 mod 2 = 0 then
+      (pick Cascade_spec_inventory.Query_grammar.media_negative buf 5).input
+    else
+      Cascade_spec_inventory.Query_grammar.mutate_invalid valid (byte_at buf 6)
   in
   match
     try Some (Css.Media.of_string input)

@@ -44,23 +44,10 @@ let spec_media_l45_vectors () =
   let check_raw name input =
     Alcotest.(check string) name input (to_string (of_string input))
   in
-  check_raw "range greater than" "(width > 40em)";
-  check_raw "range greater equal" "(width >= 40em)";
-  check_raw "range less than" "(width < 60em)";
-  check_raw "chained inclusive exclusive" "(30em <= width < 60em)";
-  check_raw "height range" "(height >= 20rem)";
-  check_raw "aspect-ratio range" "(aspect-ratio > 16/9)";
-  check_raw "resolution range" "(resolution >= 2dppx)";
-  check_raw "boolean color" "(color)";
-  check_raw "boolean monochrome" "(monochrome)";
-  check_raw "update slow" "(update: slow)";
-  check_raw "overflow block paged" "(overflow-block: paged)";
-  check_raw "overflow inline scroll" "(overflow-inline: scroll)";
-  check_raw "environment blending" "(environment-blending: additive)";
-  check_raw "nav controls" "(nav-controls)";
-  check_raw "prefers reduced transparency"
-    "(prefers-reduced-transparency: reduce)";
-  check_raw "prefers reduced data" "(prefers-reduced-data: reduce)";
+  List.iter
+    (fun (row : Cascade_spec_inventory.Query_grammar.row) ->
+      check_raw row.branch row.input)
+    Cascade_spec_inventory.Query_grammar.media_positive;
   Alcotest.(check string)
     "negated print" "not print"
     (to_string (Negated Print));
@@ -131,16 +118,10 @@ let spec_media_negative_vectors () =
       Alcotest.failf "%s: expected invalid media query" name
     with Failure _ | Invalid_argument _ -> ()
   in
-  expect_error "empty media query" "";
-  expect_error "empty media feature" "()";
-  expect_error "missing range value" "(width >=)";
-  expect_error "mixed range comparison directions" "(30em < width > 60em)";
-  expect_error "double name-first comparison" "(width = 40em = 50em)";
-  expect_error "missing right operand" "(width) and";
-  expect_error "ungrouped mixed and/or operators"
-    "(width) and (height) or (color)";
-  expect_error "media type requires and before feature" "screen (width)";
-  expect_error "unclosed media feature" "(width >= 40em"
+  List.iter
+    (fun (row : Cascade_spec_inventory.Query_grammar.invalid_row) ->
+      expect_error row.branch row.input)
+    Cascade_spec_inventory.Query_grammar.media_negative
 
 let test_kind () =
   Alcotest.(check bool)
@@ -211,26 +192,12 @@ let spec_media_context_vectors () =
     ]
 
 let spec_media_query_vectors () =
-  let raw_cases =
-    [
-      "(width)";
-      "(height)";
-      "(color)";
-      "(monochrome)";
-      "(grid)";
-      "(width = 40em)";
-      "(40em < width)";
-      "(width <= 60em)";
-      "(400px <= width <= 1200px)";
-      "screen and (width >= 40em), print and (resolution >= 300dpi)";
-      "not screen and (hover: hover)";
-      "only screen and (pointer: fine)";
-    ]
-  in
   List.iter
-    (fun input ->
-      Alcotest.(check string) input input (to_string (of_string input)))
-    raw_cases
+    (fun (row : Cascade_spec_inventory.Query_grammar.row) ->
+      Alcotest.(check string)
+        row.branch row.expected
+        (to_string (of_string row.input)))
+    Cascade_spec_inventory.Query_grammar.media_positive
 
 let suite =
   let open Alcotest in

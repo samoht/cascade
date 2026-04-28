@@ -167,16 +167,16 @@ let test_comment_confusion_stable buf =
     fail (Fmt.str "unterminated comment surfaced block syntax: %S" output)
 
 let test_spec_parser_branch_vectors buf =
+  let row =
+    List.nth Cascade_spec_inventory.Syntax_grammar.parser_rows
+      (byte_at buf 0
+      mod List.length Cascade_spec_inventory.Syntax_grammar.parser_rows)
+  in
   let input =
-    match byte_at buf 0 mod 8 with
-    | 0 -> "calc(1px + [2em"
-    | 1 -> "a}}"
-    | 2 -> "a,(b,c),f(x,y),d"
-    | 3 -> "url(foo\"bar) next"
-    | 4 -> "[a {b (c"
-    | 5 -> "a/* ignored { color: red } */b"
-    | 6 -> "foo/**/bar"
-    | _ -> "@media screen { .a { color: red }"
+    if byte_at buf 1 mod 2 = 0 then row.input
+    else
+      Cascade_spec_inventory.Syntax_grammar.mutate_parser_input row
+        (byte_at buf 2)
   in
   let before = parse_list input |> shapes in
   let serialized = serialized input in
