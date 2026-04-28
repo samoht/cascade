@@ -128,31 +128,33 @@ let pp_feature : feature Pp.t =
       Pp.string ctx name;
       Pp.char ctx ')'
   | Range (name, op, value) ->
+      (* CSS Media Queries 4 §3.2: relational operators need whitespace so the
+         tokenizer doesn't merge them with adjacent idents/numbers. *)
       Pp.char ctx '(';
       Pp.string ctx name;
-      Pp.space_if_pretty ctx ();
+      Pp.space ctx ();
       Pp.string ctx (cmp_to_string op);
-      Pp.space_if_pretty ctx ();
+      Pp.space ctx ();
       pp_value ctx value;
       Pp.char ctx ')'
   | Range_rev (value, op, name) ->
       Pp.char ctx '(';
       pp_value ctx value;
-      Pp.space_if_pretty ctx ();
+      Pp.space ctx ();
       Pp.string ctx (cmp_to_string op);
-      Pp.space_if_pretty ctx ();
+      Pp.space ctx ();
       Pp.string ctx name;
       Pp.char ctx ')'
   | Interval (a, op1, name, op2, b) ->
       Pp.char ctx '(';
       pp_value ctx a;
-      Pp.space_if_pretty ctx ();
+      Pp.space ctx ();
       Pp.string ctx (cmp_to_string op1);
-      Pp.space_if_pretty ctx ();
+      Pp.space ctx ();
       Pp.string ctx name;
-      Pp.space_if_pretty ctx ();
+      Pp.space ctx ();
       Pp.string ctx (cmp_to_string op2);
-      Pp.space_if_pretty ctx ();
+      Pp.space ctx ();
       pp_value ctx b;
       Pp.char ctx ')'
 
