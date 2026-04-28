@@ -19,11 +19,13 @@ let rec pp_syntax_inner : type a. a syntax Pp.t =
   | Length_percentage -> Pp.string ctx "<length-percentage>"
   | Angle -> Pp.string ctx "<angle>"
   | Time -> Pp.string ctx "<time>"
+  | Resolution -> Pp.string ctx "<resolution>"
   | Custom_ident -> Pp.string ctx "<custom-ident>"
   | String -> Pp.string ctx "<string>"
   | Url -> Pp.string ctx "<url>"
   | Image -> Pp.string ctx "<image>"
   | Transform_function -> Pp.string ctx "<transform-function>"
+  | Transform_list -> Pp.string ctx "<transform-list>"
   | Universal -> Pp.string ctx "*"
   | Or (syn1, syn2) ->
       pp_syntax_inner ctx syn1;
@@ -35,20 +37,6 @@ let rec pp_syntax_inner : type a. a syntax Pp.t =
   | Hash syn ->
       pp_syntax_inner ctx syn;
       Pp.string ctx "#"
-  | Question syn ->
-      pp_syntax_inner ctx syn;
-      Pp.string ctx "?"
-  | Brackets s ->
-      (* The [Brackets] payload may already carry the [<...>] form (used as a
-         stash for spec types that have no typed counterpart, like
-         [<transform-list>]); preserve it verbatim and only wrap with literal
-         [[]] when the payload looks like a non-bracketed grammar. *)
-      let len = String.length s in
-      if len >= 2 && s.[0] = '<' && s.[len - 1] = '>' then Pp.string ctx s
-      else (
-        Pp.string ctx "[";
-        Pp.string ctx s;
-        Pp.string ctx "]")
   | Ident_keyword name -> Pp.string ctx name
 
 and pp_syntax : type a. a syntax Pp.t =
@@ -70,6 +58,7 @@ let rec pp_value : type a. a syntax -> a Pp.t =
   | Length_percentage -> Values.pp_length_percentage ~always:true ctx value
   | Angle -> Values.pp_angle ctx value
   | Time -> Values.pp_duration ctx value
+  | Resolution -> Pp.string ctx value
   | Custom_ident -> Pp.string ctx value
   | String -> Pp.quoted ctx value
   | Url ->
@@ -78,6 +67,7 @@ let rec pp_value : type a. a syntax -> a Pp.t =
       Pp.string ctx ")"
   | Image -> Pp.string ctx value
   | Transform_function -> Pp.string ctx value
+  | Transform_list -> Pp.string ctx value
   | Universal -> Pp.string ctx value
   | Or (syn1, syn2) -> (
       match value with
@@ -95,20 +85,11 @@ let rec pp_value : type a. a syntax -> a Pp.t =
           if i > 0 then Pp.string ctx ", ";
           pp_value syn ctx v)
         value
-  | Question syn -> (
-      match value with None -> () | Some v -> pp_value syn ctx v)
-  | Brackets _ -> Pp.string ctx value
   | Ident_keyword name -> Pp.string ctx name
 
-(* CSS @property §3 known [<syntax-type-name>]s. [<transform-list>] has no typed
-   counterpart in [Values]; carry it through [Brackets "<transform-list>"] so
-   the descriptor round-trips and the initial-value reader treats it as
-   universal. *)
-
-(* CSS Properties and Values 4 §2 [<syntax>] grammar: each component is either a
-   typed [<...>] reference, the universal [*], a bracketed sub-grammar, or a
-   plain ident keyword. Identifiers must follow the [<custom-ident>] shape so we
-   can distinguish stray punctuation from valid keywords. *)
+(* CSS Properties and Values API 1 §2 lists the named [<...>] type references.
+   Bare ident keywords match the [<custom-ident>] shape so a leading letter
+   followed by ident-cont characters counts; this rejects stray punctuation. *)
 let is_ident_start c =
   (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_' || c = '-'
 
@@ -136,29 +117,25 @@ let read_simple_syntax_component r s : any_syntax =
   | "<length-percentage>" -> Syntax Length_percentage
   | "<angle>" -> Syntax Angle
   | "<time>" -> Syntax Time
+  | "<resolution>" -> Syntax Resolution
   | "<custom-ident>" -> Syntax Custom_ident
   | "<string>" -> Syntax String
   | "<url>" -> Syntax Url
   | "<image>" -> Syntax Image
   | "<transform-function>" -> Syntax Transform_function
-  | "<transform-list>" -> Syntax (Brackets "<transform-list>")
+  | "<transform-list>" -> Syntax Transform_list
   | "*" -> Syntax Universal
-  | s when String.length s > 2 && s.[0] = '[' && s.[String.length s - 1] = ']'
-    ->
-      Syntax (Brackets (String.sub s 1 (String.length s - 2)))
   | s when is_ident_keyword s -> Syntax (Ident_keyword s)
   | s -> Cursor.err_invalid r ("Unsupported CSS syntax: " ^ s)
 
-(* Apply a [+]/[#]/[?] modifier to a typed syntax. Carries through whatever the
-   simple component resolved to; the typed variants are exposed where the value
-   type stays well-defined. *)
+(* CSS Properties and Values API 1 §2: only [+] and [#] are valid syntax
+   multipliers. *)
 let apply_syntax_modifier r (Syntax inner) (modifier : char option) : any_syntax
     =
   match modifier with
   | None -> Syntax inner
   | Some '+' -> Syntax (Plus inner)
   | Some '#' -> Syntax (Hash inner)
-  | Some '?' -> Syntax (Question inner)
   | Some c ->
       Cursor.err_invalid r
         (String.concat ""
@@ -169,7 +146,7 @@ let split_syntax_modifier s : string * char option =
   if n = 0 then (s, None)
   else
     match s.[n - 1] with
-    | ('+' | '#' | '?') as m -> (String.sub s 0 (n - 1), Some m)
+    | ('+' | '#') as m -> (String.sub s 0 (n - 1), Some m)
     | _ -> (s, None)
 
 let read_syntax (r : Cursor.t) : any_syntax =
@@ -207,7 +184,8 @@ let rec read_value : type a. Cursor.t -> a syntax -> a =
   | Url -> Cursor.url reader
   | Image -> Cursor.remaining_to_string ~trim:true reader
   | Transform_function -> Cursor.remaining_to_string ~trim:true reader
-  | Brackets _desc -> Cursor.remaining_to_string ~trim:true reader
+  | Transform_list -> Cursor.remaining_to_string ~trim:true reader
+  | Resolution -> Cursor.remaining_to_string ~trim:true reader
   | Length -> Values.read_length reader
   | Color -> Values.read_color reader
   | Number -> Cursor.number reader
@@ -236,9 +214,6 @@ let rec read_value : type a. Cursor.t -> a syntax -> a =
           reader
       in
       values
-  | Question syn ->
-      (* Optional value - use Cursor.option for safe parsing *)
-      Cursor.option (fun r -> read_value r syn) reader
   | Ident_keyword name ->
       let got = Cursor.ident reader in
       if got <> name then
@@ -892,6 +867,26 @@ let read_any_syntax (r : Cursor.t) : any_syntax =
   (* Reuse the main read_syntax function *)
   read_syntax r
 
+(* CSS Custom Properties §3 requires [var()] fallbacks to round-trip including
+   author-written comments. The token stream silently drops comments, so slice
+   the original source between the first and last fallback component instead of
+   re-serialising tokens. Falls back to component-based serialisation when the
+   source is not retained on the cursor. *)
+let fallback_to_string inner =
+  let cvs = Cursor.remaining inner in
+  match (cvs, Cursor.source inner) with
+  | [], _ -> ""
+  | _, None -> Cursor.remaining_to_string ~trim:true inner
+  | first :: _, Some src ->
+      let start_pos = (Component.source_loc first).start_pos in
+      let last = List.nth cvs (List.length cvs - 1) in
+      let end_pos = (Component.source_loc last).end_pos in
+      let len = max 0 (end_pos - start_pos) in
+      let slice =
+        String.sub src start_pos (min len (String.length src - start_pos))
+      in
+      String.trim slice
+
 (** Parse a CSS variable reference with optional fallback value. This creates a
     variable handle for parsing purposes only - it doesn't have type or layer
     information which would need to be resolved from a variable registry or
@@ -911,8 +906,7 @@ let parse_var_reference (r : Cursor.t) : string * string option =
         let name = String.sub raw_name 2 (String.length raw_name - 2) in
         Cursor.ws inner;
         let fallback =
-          if Cursor.comma_opt inner then
-            Some (Cursor.remaining_to_string ~trim:true inner)
+          if Cursor.comma_opt inner then Some (fallback_to_string inner)
           else None
         in
         (name, fallback))
