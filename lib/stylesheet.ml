@@ -557,7 +557,12 @@ and pp_statement : statement Pp.t =
       Pp.string ctx "@page";
       (match selector with
       | Some s ->
-          Pp.sp ctx ();
+          (* CSS Paged Media: when the selector starts with a pseudo-page
+             (':first', ':left', ...) the leading colon disambiguates from
+             '@page' and the conditional space can be dropped in minified
+             output. A leading page name still needs the separating space. *)
+          if String.length s > 0 && s.[0] = ':' then Pp.sp ctx ()
+          else Pp.space ctx ();
           Pp.string ctx s
       | None -> ());
       Pp.sp ctx ();
@@ -912,13 +917,44 @@ let read_font_face (r : Cursor.t) : statement =
   let descriptors = Cursor.braces read_font_face_block r in
   Font_face descriptors
 
+(* CSS 2.1 §13.2.4: a page selector is an optional page name followed by at most
+   one pseudo-page from [:first | :left | :right | :blank]. Combining multiple
+   pseudo-pages (e.g. [:first:left]) is not part of CSS 2.x. *)
+let validate_page_selector r selector =
+  let s = String.trim selector in
+  let len = String.length s in
+  let is_ident_char c =
+    (c >= 'a' && c <= 'z')
+    || (c >= 'A' && c <= 'Z')
+    || (c >= '0' && c <= '9')
+    || c = '-' || c = '_'
+  in
+  let rec consume_ident i =
+    if i < len && is_ident_char s.[i] then consume_ident (i + 1) else i
+  in
+  let after_ident = consume_ident 0 in
+  let pseudo_start =
+    if after_ident < len && s.[after_ident] = ':' then after_ident else -1
+  in
+  let body_end = if pseudo_start < 0 then after_ident else pseudo_start in
+  if body_end <> after_ident then ()
+  else if pseudo_start < 0 then ()
+  else
+    let rest = String.sub s (pseudo_start + 1) (len - pseudo_start - 1) in
+    match rest with
+    | "first" | "left" | "right" | "blank" -> ()
+    | _ -> Cursor.err_invalid r ("invalid @page selector: " ^ s)
+
 let read_page (r : Cursor.t) : statement =
   Cursor.with_context r "@page" @@ fun () ->
   Cursor.expect_at_keyword "page" r;
   Cursor.ws r;
   let selector =
     let s = Cursor.drain_until_block_to_string ~trim:true r in
-    if s = "" then None else Some s
+    if s = "" then None
+    else (
+      validate_page_selector r s;
+      Some s)
   in
   let declarations =
     Cursor.braces (fun inner -> Declaration.read_declarations inner) r

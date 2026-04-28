@@ -876,6 +876,8 @@ module Shadow = struct
     let lengths = List.rev parts.lengths in
     match read_lengths lengths with
     | Some (h_offset, v_offset, blur, spread) ->
+        if blur = None && spread = None && parts.color = None then
+          err_invalid_value t "shadow" "blur, spread, or color is required";
         Shadow
           {
             inset = parts.inset;
@@ -1974,11 +1976,15 @@ let rec pp_text_transform : text_transform Pp.t =
   | Inherit -> Pp.string ctx "inherit"
   | Var v -> pp_var pp_text_transform ctx v
 
-let pp_text_overflow : text_overflow Pp.t =
+let rec pp_text_overflow : text_overflow Pp.t =
  fun ctx -> function
   | Clip -> Pp.string ctx "clip"
   | Ellipsis -> Pp.string ctx "ellipsis"
   | String s -> Pp.string ctx s
+  | Pair (first, second) ->
+      pp_text_overflow ctx first;
+      Pp.space ctx ();
+      pp_text_overflow ctx second
   | Inherit -> Pp.string ctx "inherit"
 
 let pp_text_wrap : text_wrap Pp.t =
@@ -2103,6 +2109,10 @@ let rec pp_grid_line : grid_line Pp.t =
 let rec pp_aspect_ratio : aspect_ratio Pp.t =
  fun ctx -> function
   | Auto -> Pp.string ctx "auto"
+  | Auto_ratio (a, b) ->
+      Pp.string ctx "auto";
+      Pp.space ctx ();
+      pp_aspect_ratio ctx (Ratio (a, b))
   | Inherit -> Pp.string ctx "inherit"
   | Var v -> pp_var pp_aspect_ratio ctx v
   | Ratio (a, b) ->
@@ -2429,11 +2439,11 @@ let pp_property : type a. a property Pp.t =
   | Text_box_trim -> Pp.string ctx "text-box-trim"
   | Animation_timeline -> Pp.string ctx "animation-timeline"
   | Animation_range -> Pp.string ctx "animation-range"
+  | Scroll_timeline -> Pp.string ctx "scroll-timeline"
   | View_transition_name -> Pp.string ctx "view-transition-name"
   | Image_orientation -> Pp.string ctx "image-orientation"
   | Contain_intrinsic_size -> Pp.string ctx "contain-intrinsic-size"
   | Margin_trim -> Pp.string ctx "margin-trim"
-  | Mask_mode_l4 -> Pp.string ctx "mask-mode"
   | Offset_path -> Pp.string ctx "offset-path"
   | Offset_distance -> Pp.string ctx "offset-distance"
   | Font_size_adjust -> Pp.string ctx "font-size-adjust"
@@ -2443,6 +2453,7 @@ let pp_property : type a. a property Pp.t =
   | Initial_letter -> Pp.string ctx "initial-letter"
   | View_timeline_name -> Pp.string ctx "view-timeline-name"
   | View_timeline_axis -> Pp.string ctx "view-timeline-axis"
+  | View_timeline -> Pp.string ctx "view-timeline"
   | Timeline_scope -> Pp.string ctx "timeline-scope"
   | Perspective -> Pp.string ctx "perspective"
   | Perspective_origin -> Pp.string ctx "perspective-origin"
@@ -2462,9 +2473,7 @@ let pp_property : type a. a property Pp.t =
   | Break_before -> Pp.string ctx "break-before"
   | Break_after -> Pp.string ctx "break-after"
   | Break_inside -> Pp.string ctx "break-inside"
-  | Page_break_before -> Pp.string ctx "page-break-before"
-  | Page_break_after -> Pp.string ctx "page-break-after"
-  | Page_break_inside -> Pp.string ctx "page-break-inside"
+  | Page_size -> Pp.string ctx "size"
   | Columns -> Pp.string ctx "columns"
   | Word_spacing -> Pp.string ctx "word-spacing"
   | Background_attachment -> Pp.string ctx "background-attachment"
@@ -3265,12 +3274,64 @@ let rec pp_columns_value : columns_value Pp.t =
   | Var v -> pp_var pp_columns_value ctx v
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_scroll_snap_align : scroll_snap_align Pp.t =
+let rec pp_scroll_snap_align : scroll_snap_align Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
   | Start -> Pp.string ctx "start"
   | End -> Pp.string ctx "end"
   | Center -> Pp.string ctx "center"
+  | Snap_align_pair (block, inline) ->
+      pp_scroll_snap_align ctx block;
+      Pp.space ctx ();
+      pp_scroll_snap_align ctx inline
+
+let pp_timeline_axis : timeline_axis Pp.t =
+ fun ctx -> function
+  | Block -> Pp.string ctx "block"
+  | Inline -> Pp.string ctx "inline"
+  | X -> Pp.string ctx "x"
+  | Y -> Pp.string ctx "y"
+
+let pp_timeline_shorthand : timeline_shorthand Pp.t =
+ fun ctx { timeline_name; timeline_axis } ->
+  Pp.string ctx timeline_name;
+  Pp.space ctx ();
+  pp_timeline_axis ctx timeline_axis
+
+let pp_page_size_name : page_size_name Pp.t =
+ fun ctx -> function
+  | A5 -> Pp.string ctx "A5"
+  | A4 -> Pp.string ctx "A4"
+  | A3 -> Pp.string ctx "A3"
+  | B5 -> Pp.string ctx "B5"
+  | B4 -> Pp.string ctx "B4"
+  | Jis_b5 -> Pp.string ctx "JIS-B5"
+  | Jis_b4 -> Pp.string ctx "JIS-B4"
+  | Letter -> Pp.string ctx "letter"
+  | Legal -> Pp.string ctx "legal"
+  | Ledger -> Pp.string ctx "ledger"
+
+let pp_page_size_orientation : page_size_orientation Pp.t =
+ fun ctx -> function
+  | Portrait -> Pp.string ctx "portrait"
+  | Landscape -> Pp.string ctx "landscape"
+
+let rec pp_page_size : page_size Pp.t =
+ fun ctx -> function
+  | Auto -> Pp.string ctx "auto"
+  | Single len -> pp_length ctx len
+  | Pair (width, height) ->
+      pp_length ctx width;
+      Pp.space ctx ();
+      pp_length ctx height
+  | Named name -> pp_page_size_name ctx name
+  | Named_oriented (name, orientation) ->
+      pp_page_size_name ctx name;
+      Pp.space ctx ();
+      pp_page_size_orientation ctx orientation
+  | Oriented orientation -> pp_page_size_orientation ctx orientation
+  | Inherit -> Pp.string ctx "inherit"
+  | Var v -> pp_var pp_page_size ctx v
 
 let pp_scroll_snap_stop : scroll_snap_stop Pp.t =
  fun ctx -> function
@@ -3460,6 +3521,7 @@ let rec pp_grid_template : grid_template Pp.t =
         pp_grid_template ctx size
       in
       Pp.list ~sep:Pp.space pp_named_track ctx tracks
+  | Template raw -> Pp.string ctx raw
   | Subgrid -> Pp.string ctx "subgrid"
   | Masonry -> Pp.string ctx "masonry"
   | Var v -> pp_var pp_grid_template ctx v
@@ -3698,7 +3760,7 @@ let pp_transition_behavior : transition_behavior Pp.t =
   | Inherit -> Pp.string ctx "inherit"
 
 let pp_transition_shorthand : transition_shorthand Pp.t =
- fun ctx { property; duration; timing_function; delay } ->
+ fun ctx { property; duration; timing_function; delay; behavior } ->
   pp_transition_property_value ctx property;
   (* Only output non-default values: defaults are 0s, ease, 0s *)
   (match duration with
@@ -3711,11 +3773,16 @@ let pp_transition_shorthand : transition_shorthand Pp.t =
   | Some tf ->
       Pp.space ctx ();
       pp_timing_function ctx tf);
-  match delay with
+  (match delay with
   | Some (S 0.) | Some (Ms 0.) | None -> ()
   | Some d ->
       Pp.space ctx ();
-      pp_duration ctx d
+      pp_duration ctx d);
+  match behavior with
+  | None | Some Normal -> ()
+  | Some b ->
+      Pp.space ctx ();
+      pp_transition_behavior ctx b
 
 let rec pp_transition : transition Pp.t =
  fun ctx -> function
@@ -3914,6 +3981,7 @@ let pp_forced_color_adjust : forced_color_adjust Pp.t =
  fun ctx -> function
   | Auto -> Pp.string ctx "auto"
   | None -> Pp.string ctx "none"
+  | Preserve_parent_color -> Pp.string ctx "preserve-parent-color"
   | Inherit -> Pp.string ctx "inherit"
 
 let pp_float_side : float_side Pp.t =
@@ -4595,50 +4663,98 @@ module Grid_template = struct
       t
 end
 
-let read_grid_template t : grid_template =
-  (* Try to read multiple space-separated tracks *)
-  let tracks =
-    Cursor.list ~sep:(fun t -> Cursor.ws t) Grid_template.read_single_track t
+let grid_template_needs_raw_template cvs =
+  let rec has_string = function
+    | [] -> false
+    | Component.Preserved { kind = Token.String _; _ } :: _ -> true
+    | Component.Block { node = { value; _ }; _ } :: rest ->
+        has_string value || has_string rest
+    | Component.Func { node = { arguments; _ }; _ } :: rest ->
+        has_string arguments || has_string rest
+    | _ :: rest -> has_string rest
   in
-  match tracks with
-  | [] -> Cursor.err t "Expected at least one grid track"
-  | [ single ] -> single (* Single track *)
-  | multiple -> Tracks multiple (* Multiple tracks *)
+  let rec has_spaced_slash = function
+    | Component.Preserved { kind = Token.Whitespace; _ }
+      :: Component.Preserved { kind = Token.Delim "/"; _ }
+      :: Component.Preserved { kind = Token.Whitespace; _ }
+      :: _ ->
+        true
+    | _ :: rest -> has_spaced_slash rest
+    | [] -> false
+  in
+  has_string cvs || has_spaced_slash cvs
+
+let read_grid_template t : grid_template =
+  if grid_template_needs_raw_template (Cursor.remaining t) then
+    Template (Cursor.consume_to_decl_end ~trim:true t)
+  else
+    (* Try to read multiple space-separated tracks *)
+    let tracks =
+      Cursor.list ~sep:(fun t -> Cursor.ws t) Grid_template.read_single_track t
+    in
+    match tracks with
+    | [] -> Cursor.err t "Expected at least one grid track"
+    | [ single ] -> single (* Single track *)
+    | multiple -> Tracks multiple (* Multiple tracks *)
 
 let rec read_aspect_ratio t : aspect_ratio =
   let read_var_ar t : aspect_ratio = Var (read_var read_aspect_ratio t) in
-  let read_number_or_ratio t =
+  let read_ratio t =
     let w = Cursor.number t in
     Cursor.ws t;
     if Cursor.peek_delim t = Some '/' then (
       Cursor.expect '/' t;
       Cursor.ws t;
       let h = Cursor.number t in
-      Ratio (w, h))
-    else
-      (* Single number case - treat as width/1 *)
-      Ratio (w, 1.0)
+      (w, h))
+    else (w, 1.0)
+  in
+  let read_number_or_ratio t : aspect_ratio =
+    let w, h = read_ratio t in
+    Ratio (w, h)
+  in
+  let read_auto t : aspect_ratio =
+    match Cursor.peek_ident t with
+    | Some "auto" ->
+        Cursor.skip t;
+        Cursor.ws t;
+        if Cursor.is_done t then Auto
+        else
+          let w, h = read_ratio t in
+          Auto_ratio (w, h)
+    | _ -> Cursor.err_expected t "auto"
   in
   Cursor.enum_or_calls "aspect-ratio"
-    [ ("auto", (Auto : aspect_ratio)); ("inherit", Inherit) ]
+    [ ("inherit", Inherit) ]
     ~calls:[ ("var", read_var_ar) ]
-    ~default:read_number_or_ratio t
+    ~default:(Cursor.one_of [ read_auto; read_number_or_ratio ])
+    t
 
 let read_text_overflow t : text_overflow =
-  let read_string_overflow t : text_overflow = String (Cursor.string t) in
-  Cursor.one_of
-    [
-      read_string_overflow;
-      (fun t ->
-        Cursor.enum "text-overflow"
-          [
-            ("clip", (Clip : text_overflow));
-            ("ellipsis", Ellipsis);
-            ("inherit", Inherit);
-          ]
-          t);
-    ]
-    t
+  let read_single t =
+    let read_string_overflow t : text_overflow = String (Cursor.string t) in
+    Cursor.one_of
+      [
+        read_string_overflow;
+        (fun t ->
+          Cursor.enum "text-overflow"
+            [
+              ("clip", (Clip : text_overflow));
+              ("ellipsis", Ellipsis);
+              ("inherit", Inherit);
+            ]
+            t);
+      ]
+      t
+  in
+  let first = read_single t in
+  Cursor.ws t;
+  if Cursor.is_done t then first
+  else
+    let second = read_single t in
+    Cursor.ws t;
+    Cursor.expect_eof t;
+    Pair (first, second)
 
 let read_text_wrap t : text_wrap =
   Cursor.enum "text-wrap"
@@ -5104,13 +5220,94 @@ let read_scroll_behavior t : scroll_behavior =
     t
 
 let read_scroll_snap_align t : scroll_snap_align =
-  Cursor.enum "scroll-snap-align"
-    [
-      ("none", (None : scroll_snap_align));
-      ("start", Start);
-      ("end", End);
-      ("center", Center);
-    ]
+  let read_single t =
+    Cursor.enum "scroll-snap-align"
+      [
+        ("none", (None : scroll_snap_align));
+        ("start", Start);
+        ("end", End);
+        ("center", Center);
+      ]
+      t
+  in
+  let first = read_single t in
+  Cursor.ws t;
+  if Cursor.is_done t then first
+  else
+    let second = read_single t in
+    Cursor.ws t;
+    Cursor.expect_eof t;
+    Snap_align_pair (first, second)
+
+let read_timeline_axis t : timeline_axis =
+  Cursor.enum "timeline-axis"
+    [ ("block", Block); ("inline", Inline); ("x", X); ("y", Y) ]
+    t
+
+let read_timeline_shorthand t : timeline_shorthand =
+  Cursor.ws t;
+  let timeline_name = Cursor.ident ~keep_case:true t in
+  if not (String.starts_with ~prefix:"--" timeline_name) then
+    Cursor.err_invalid t "timeline name";
+  Cursor.ws t;
+  let timeline_axis = read_timeline_axis t in
+  Cursor.ws t;
+  Cursor.expect_eof t;
+  { timeline_name; timeline_axis }
+
+let rec read_page_size t : page_size =
+  let read_var_ps t : page_size = Var (read_var read_page_size t) in
+  let read_name t : page_size_name =
+    Cursor.enum "page-size name"
+      [
+        ("a5", A5);
+        ("a4", A4);
+        ("a3", A3);
+        ("b5", B5);
+        ("b4", B4);
+        ("jis-b5", Jis_b5);
+        ("jis-b4", Jis_b4);
+        ("letter", Letter);
+        ("legal", Legal);
+        ("ledger", Ledger);
+      ]
+      t
+  in
+  let read_orientation t : page_size_orientation =
+    Cursor.enum "page-size orientation"
+      [ ("portrait", Portrait); ("landscape", Landscape) ]
+      t
+  in
+  let read_named t =
+    let name = read_name t in
+    Cursor.ws t;
+    if Cursor.is_done t then Named name
+    else
+      let orientation = read_orientation t in
+      Cursor.ws t;
+      Cursor.expect_eof t;
+      Named_oriented (name, orientation)
+  in
+  let read_oriented t =
+    let orientation = read_orientation t in
+    Cursor.ws t;
+    Cursor.expect_eof t;
+    Oriented orientation
+  in
+  let read_lengths t =
+    let first = read_length t in
+    Cursor.ws t;
+    if Cursor.is_done t then Single first
+    else
+      let second = read_length t in
+      Cursor.ws t;
+      Cursor.expect_eof t;
+      Pair (first, second)
+  in
+  Cursor.enum_or_calls "page-size"
+    [ ("auto", Auto); ("inherit", Inherit) ]
+    ~calls:[ ("var", read_var_ps) ]
+    ~default:(Cursor.one_of [ read_named; read_oriented; read_lengths ])
     t
 
 let read_scroll_snap_stop t : scroll_snap_stop =
@@ -5315,6 +5512,7 @@ let read_forced_color_adjust t : forced_color_adjust =
     [
       ("auto", (Auto : forced_color_adjust));
       ("none", None);
+      ("preserve-parent-color", Preserve_parent_color);
       ("inherit", Inherit);
     ]
     t
@@ -5902,6 +6100,15 @@ let read_transition_property t : transition_property =
   in
   loop []
 
+let read_transition_behavior t : transition_behavior =
+  Cursor.enum "transition-behavior"
+    [
+      ("normal", (Normal : transition_behavior));
+      ("allow-discrete", (Allow_discrete : transition_behavior));
+      ("inherit", (Inherit : transition_behavior));
+    ]
+    t
+
 let read_transition_shorthand t : transition_shorthand =
   (* Parse transition shorthand: property duration timing-function delay *)
   let property = read_transition_property_value t in
@@ -5941,7 +6148,16 @@ let read_transition_shorthand t : transition_shorthand =
       t
   in
 
-  { property; duration; timing_function; delay }
+  (* Optional behavior (transition-behavior, Transitions Level 2) *)
+  let behavior =
+    Cursor.option
+      (fun t ->
+        Cursor.ws t;
+        read_transition_behavior t)
+      t
+  in
+
+  { property; duration; timing_function; delay; behavior }
 
 let rec read_transition t : transition =
   let read_var_call t : transition = Var (read_var read_transition t) in
@@ -5949,15 +6165,6 @@ let rec read_transition t : transition =
     [ ("inherit", Inherit); ("initial", Initial); ("none", None) ]
     ~calls:[ ("var", read_var_call) ]
     ~default:(fun t : transition -> Shorthand (read_transition_shorthand t))
-    t
-
-let read_transition_behavior t : transition_behavior =
-  Cursor.enum "transition-behavior"
-    [
-      ("normal", (Normal : transition_behavior));
-      ("allow-discrete", (Allow_discrete : transition_behavior));
-      ("inherit", (Inherit : transition_behavior));
-    ]
     t
 
 let read_transitions t : transition list =
@@ -6428,33 +6635,57 @@ let read_background_attachment t : background_attachment =
     t
 
 let read_background_repeat t : background_repeat =
-  Cursor.enum "background-repeat"
+  let read_style t =
+    Cursor.enum "background-repeat"
+      [
+        ("repeat", (Repeat : background_repeat));
+        ("space", Space);
+        ("round", Round);
+        ("no-repeat", No_repeat);
+      ]
+      t
+  in
+  let pair a b =
+    match (a, b) with
+    | Repeat, Repeat -> Repeat_repeat
+    | Repeat, Space -> Repeat_space
+    | Repeat, Round -> Repeat_round
+    | Repeat, No_repeat -> Repeat_no_repeat
+    | Space, Repeat -> Space_repeat
+    | Space, Space -> Space_space
+    | Space, Round -> Space_round
+    | Space, No_repeat -> Space_no_repeat
+    | Round, Repeat -> Round_repeat
+    | Round, Space -> Round_space
+    | Round, Round -> Round_round
+    | Round, No_repeat -> Round_no_repeat
+    | No_repeat, Repeat -> No_repeat_repeat
+    | No_repeat, Space -> No_repeat_space
+    | No_repeat, Round -> No_repeat_round
+    | No_repeat, No_repeat -> No_repeat_no_repeat
+    | _ -> a
+  in
+  Cursor.one_of
     [
-      ("repeat", (Repeat : background_repeat));
-      ("space", Space);
-      ("round", Round);
-      ("no-repeat", No_repeat);
-      ("repeat-x", Repeat_x);
-      ("repeat-y", Repeat_y);
-      ("repeat repeat", Repeat_repeat);
-      ("repeat space", Repeat_space);
-      ("repeat round", Repeat_round);
-      ("repeat no-repeat", Repeat_no_repeat);
-      ("space repeat", Space_repeat);
-      ("space space", Space_space);
-      ("space round", Space_round);
-      ("space no-repeat", Space_no_repeat);
-      ("round repeat", Round_repeat);
-      ("round space", Round_space);
-      ("round round", Round_round);
-      ("round no-repeat", Round_no_repeat);
-      ("no-repeat repeat", No_repeat_repeat);
-      ("no-repeat space", No_repeat_space);
-      ("no-repeat round", No_repeat_round);
-      ("no-repeat no-repeat", No_repeat_no_repeat);
-      ("inherit", Inherit);
-      ("initial", Initial);
-      ("unset", Unset);
+      (fun t ->
+        Cursor.enum "background-repeat"
+          [
+            ("repeat-x", Repeat_x);
+            ("repeat-y", Repeat_y);
+            ("inherit", Inherit);
+            ("initial", Initial);
+            ("unset", Unset);
+          ]
+          t);
+      (fun t ->
+        let first = read_style t in
+        Cursor.ws t;
+        match Cursor.option read_style t with
+        | None -> first
+        | Some second ->
+            Cursor.ws t;
+            Cursor.expect_eof t;
+            pair first second);
     ]
     t
 
@@ -7174,6 +7405,7 @@ let read_any_property t =
   | "break-before" -> Prop Break_before
   | "break-after" -> Prop Break_after
   | "break-inside" -> Prop Break_inside
+  | "size" -> Prop Page_size
   (* CSS Fragmentation 3 §6 page-break-* aliases. The legacy values map onto the
      modern [break-*] vocabulary at parse time so the canonical output emits
      [break-before/after/inside]. *)
@@ -7206,6 +7438,7 @@ let read_any_property t =
   | "text-box-trim" -> Prop Text_box_trim
   | "animation-timeline" -> Prop Animation_timeline
   | "animation-range" -> Prop Animation_range
+  | "scroll-timeline" -> Prop Scroll_timeline
   | "view-transition-name" -> Prop View_transition_name
   | "image-orientation" -> Prop Image_orientation
   | "contain-intrinsic-size" -> Prop Contain_intrinsic_size
@@ -7219,6 +7452,7 @@ let read_any_property t =
   | "initial-letter" -> Prop Initial_letter
   | "view-timeline-name" -> Prop View_timeline_name
   | "view-timeline-axis" -> Prop View_timeline_axis
+  | "view-timeline" -> Prop View_timeline
   | "timeline-scope" -> Prop Timeline_scope
   | "content-visibility" -> Prop Content_visibility
   | "direction" -> Prop Direction
@@ -7404,8 +7638,8 @@ let animation_shorthand ?name ?duration ?timing_function ?delay ?iteration_count
     }
 
 let transition_shorthand ?(property = (All : transition_property_value))
-    ?duration ?timing_function ?delay () : transition =
-  Shorthand { property; duration; timing_function; delay }
+    ?duration ?timing_function ?delay ?behavior () : transition =
+  Shorthand { property; duration; timing_function; delay; behavior }
 
 let border_shorthand ?width ?style ?color () : border =
   Shorthand { width; style; color }
@@ -8050,9 +8284,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Break_before -> pp pp_break_value
   | Break_after -> pp pp_break_value
   | Break_inside -> pp pp_break_inside_value
-  | Page_break_before -> pp pp_page_break_value
-  | Page_break_after -> pp pp_page_break_value
-  | Page_break_inside -> pp pp_page_break_inside_value
+  | Page_size -> pp pp_page_size
   | Columns -> pp pp_columns_value
   | Transform_style -> pp pp_transform_style
   | Backface_visibility -> pp pp_backface_visibility
@@ -8212,11 +8444,11 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Text_box_trim -> pp Pp.string
   | Animation_timeline -> pp Pp.string
   | Animation_range -> pp Pp.string
+  | Scroll_timeline -> pp pp_timeline_shorthand
   | View_transition_name -> pp Pp.string
   | Image_orientation -> pp Pp.string
   | Contain_intrinsic_size -> pp Pp.string
   | Margin_trim -> pp Pp.string
-  | Mask_mode_l4 -> pp Pp.string
   | Offset_path -> pp Pp.string
   | Offset_distance -> pp (pp_length_percentage ~always:true)
   | Font_size_adjust -> pp Pp.string
@@ -8226,6 +8458,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Initial_letter -> pp Pp.string
   | View_timeline_name -> pp Pp.string
   | View_timeline_axis -> pp Pp.string
+  | View_timeline -> pp pp_timeline_shorthand
   | Timeline_scope -> pp Pp.string
   | Perspective_origin -> pp pp_perspective_origin
   | Object_position -> pp pp_position_value

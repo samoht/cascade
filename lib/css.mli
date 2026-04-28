@@ -1149,6 +1149,7 @@ type angle =
 (** CSS aspect-ratio values *)
 type aspect_ratio =
   | Auto
+  | Auto_ratio of float * float
   | Ratio of float * float
   | Inherit
   | Var of aspect_ratio var
@@ -1670,6 +1671,30 @@ val page_break_after : page_break_value -> declaration
 val page_break_inside : page_break_inside_value -> declaration
 (** [page_break_inside v] is the legacy [page-break-inside] property. *)
 
+type page_size_name =
+  | A5
+  | A4
+  | A3
+  | B5
+  | B4
+  | Jis_b5
+  | Jis_b4
+  | Letter
+  | Legal
+  | Ledger
+
+type page_size_orientation = Portrait | Landscape
+
+type page_size =
+  | Auto
+  | Single of length
+  | Pair of length * length
+  | Named of page_size_name
+  | Named_oriented of page_size_name * page_size_orientation
+  | Oriented of page_size_orientation
+  | Inherit
+  | Var of page_size var
+
 (** CSS columns values for multi-column layout. *)
 type columns_value =
   | Auto
@@ -1776,7 +1801,12 @@ val object_position : position_value -> declaration
      object-position} property. *)
 
 (** CSS text-overflow values *)
-type text_overflow = Clip | Ellipsis | String of string | Inherit
+type text_overflow =
+  | Clip
+  | Ellipsis
+  | String of string
+  | Pair of text_overflow * text_overflow
+  | Inherit
 
 val text_overflow : text_overflow -> declaration
 (** [text_overflow ov] is the
@@ -1848,7 +1878,7 @@ val list_style_position : list_style_position -> declaration
       CSS Backgrounds and Borders Module Level 3 *)
 
 (** CSS forced-color-adjust values. *)
-type forced_color_adjust = Auto | None | Inherit
+type forced_color_adjust = Auto | None | Preserve_parent_color | Inherit
 
 (** CSS background-repeat values. *)
 type background_repeat =
@@ -2574,6 +2604,7 @@ type grid_template =
   | Repeat of int * grid_template list
   | Tracks of grid_template list
   | Named_tracks of (string option * grid_template) list
+  | Template of string
   | Subgrid
   | Masonry
   | Var of grid_template var  (** CSS variable reference *)
@@ -3697,11 +3728,15 @@ type transition_property_value =
 type transition_property = transition_property_value list
 (** CSS transition property (list of property values). *)
 
+(** CSS transition-behavior values (Transitions Level 2). *)
+type transition_behavior = Normal | Allow_discrete | Inherit
+
 type transition_shorthand = {
   property : transition_property_value;
   duration : duration option;
   timing_function : timing_function option;
   delay : duration option;
+  behavior : transition_behavior option;
 }
 (** CSS transition shorthand values. *)
 
@@ -3717,14 +3752,16 @@ val transition_shorthand :
   ?duration:duration ->
   ?timing_function:timing_function ->
   ?delay:duration ->
+  ?behavior:transition_behavior ->
   unit ->
   transition
-(** [transition_shorthand ?property ?duration ?timing_function ?delay ()] is the
-    transition shorthand.
+(** [transition_shorthand ?property ?duration ?timing_function ?delay ?behavior
+     ()] is the transition shorthand.
     - [property]: CSS property to transition (defaults to All)
     - [duration]: transition duration
     - [timing_function]: easing function (ease, linear, ease-in, etc.)
-    - [delay]: delay before transition starts. *)
+    - [delay]: delay before transition starts
+    - [behavior]: transition-behavior (Transitions Level 2). *)
 
 val transition : transition -> declaration
 (** [transition transition] is the
@@ -4488,7 +4525,19 @@ type scroll_snap_type =
   | Var of scroll_snap_type var
 
 (** CSS scroll-snap-align values *)
-type scroll_snap_align = None | Start | End | Center
+type scroll_snap_align =
+  | None
+  | Start
+  | End
+  | Center
+  | Snap_align_pair of scroll_snap_align * scroll_snap_align
+
+type timeline_axis = Block | Inline | X | Y
+
+type timeline_shorthand = {
+  timeline_name : string;
+  timeline_axis : timeline_axis;
+}
 
 val touch_action : touch_action -> declaration
 (** [touch_action action] is the
