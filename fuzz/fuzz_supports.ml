@@ -184,6 +184,63 @@ let test_spec_supports_invalid_vectors buf =
         (Fmt.str "invalid supports vector parsed: %S -> %S" input
            (Css.Supports.to_string actual))
 
+let test_spec_supports_condition_family_vectors buf =
+  let input =
+    pick
+      [
+        "(display: grid)";
+        "(container-type: inline-size)";
+        "(selector(:has(+ img)))";
+        "selector(:has(+ img))";
+        "font-format(woff2)";
+        "font-tech(color-COLRv1)";
+        "font-tech(variations)";
+        "not (display: grid)";
+        "(display: grid) and (gap: 1rem)";
+        "(display: grid) or (display: flex)";
+        "((container-type: inline-size) and selector(:has(img))) or (display: \
+         grid)";
+        "not ((display: grid) or selector(:has(img)))";
+      ]
+      buf 2
+  in
+  let once = Css.Supports.to_string (Css.Supports.of_string input) in
+  let twice = Css.Supports.to_string (Css.Supports.of_string once) in
+  if once <> twice then
+    fail
+      (Fmt.str "supports condition family serialization drifted: %S -> %S" once
+         twice)
+
+let test_spec_supports_invalid_condition_family_vectors buf =
+  let input =
+    pick
+      [
+        "(display)";
+        "(display:)";
+        "(: grid)";
+        "selector()";
+        "selector(:has(img)";
+        "font-format()";
+        "font-tech()";
+        "not";
+        "not ()";
+        "(display: grid) and or (gap: 1rem)";
+        "(display: grid) and (gap: 1rem) or (color: red)";
+        "((display: grid)";
+      ]
+      buf 3
+  in
+  match
+    try Some (Css.Supports.of_string input)
+    with Failure _ | Invalid_argument _ -> None
+  with
+  | None -> ()
+  | Some actual ->
+      fail
+        (Fmt.str "invalid supports condition family vector parsed: %S -> %S"
+           input
+           (Css.Supports.to_string actual))
+
 let suite =
   ( "supports",
     [
@@ -203,4 +260,8 @@ let suite =
         test_spec_supports_structural_vectors;
       test_case "spec supports invalid vectors rejected" [ bytes ]
         test_spec_supports_invalid_vectors;
+      test_case "spec supports condition family vectors" [ bytes ]
+        test_spec_supports_condition_family_vectors;
+      test_case "spec invalid supports condition family vectors rejected"
+        [ bytes ] test_spec_supports_invalid_condition_family_vectors;
     ] )

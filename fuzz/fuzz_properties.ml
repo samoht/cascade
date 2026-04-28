@@ -737,6 +737,82 @@ let test_deterministic_manifest_negative_values buf =
            input
            (Css.Declaration.string_of_declaration ~minify:true decl))
 
+let test_property_value_branch_depth_positive buf =
+  let input =
+    pick
+      [
+        "background:url(bg.png) no-repeat left 10px top 20%/cover border-box \
+         content-box";
+        "background-image:image-set(url(a.avif) type(\"image/avif\") \
+         1x,url(a.png) type(\"image/png\") 1x)";
+        "border-image:linear-gradient(red,blue) 30 fill/10px/1 stretch";
+        "clip-path:xywh(0 0 100% 100% round 10px)";
+        "shape-outside:inset(10px round 2px)";
+        "width:clamp(10px,5vw,100px)";
+        "width:round(nearest,10px,3px)";
+        "width:calc-size(auto,size + 1rem)";
+        "opacity:sign(var(--delta))";
+        "color:rgb(from var(--c) r g b/50%)";
+        "font:italic small-caps 650 condensed 16px/1.5 \"Brand\",serif";
+        "grid-template:\"head head\" auto \"nav main\" 1fr/12rem 1fr";
+        "animation:fade 1s linear .2s 2 alternate both running";
+        "transition:opacity 1s ease-in .2s allow-discrete";
+        "scroll-timeline:--scroller block";
+        "view-timeline:--reveal inline";
+        "container:card/inline-size";
+        "position-try-fallbacks:--below,flip-block,--above";
+      ]
+      buf 2
+  in
+  match parse_declaration input with
+  | None ->
+      fail (Fmt.str "property branch-depth declaration rejected: %S" input)
+  | Some decl -> (
+      let serialized =
+        Css.Declaration.string_of_declaration ~minify:true decl
+      in
+      match parse_declaration serialized with
+      | Some reparsed when decl = reparsed -> ()
+      | _ ->
+          fail
+            (Fmt.str
+               "property branch-depth declaration did not structurally \
+                roundtrip: %S -> %S"
+               input serialized))
+
+let test_property_value_branch_depth_negative buf =
+  let input =
+    pick
+      [
+        "background:red blue";
+        "background-image:image-set(url(a.png))";
+        "border-image:linear-gradient(red,blue) fill fill";
+        "clip-path:xywh(0 0)";
+        "shape-outside:circle()";
+        "width:clamp(10px,20px)";
+        "width:round(10px)";
+        "width:calc-size()";
+        "opacity:sign()";
+        "color:rgb(from red r g)";
+        "font:bold serif";
+        "grid-template:none/1fr";
+        "animation:1s 2s 3s";
+        "transition:allow-discrete allow-discrete";
+        "scroll-timeline:block --scroller";
+        "view-timeline:inline --reveal";
+        "container:card/inline-size/size";
+        "position-try-fallbacks:flip-block --below";
+      ]
+      buf 3
+  in
+  match parse_declaration input with
+  | None -> ()
+  | Some decl ->
+      fail
+        (Fmt.str "invalid property branch-depth declaration parsed: %S -> %S"
+           input
+           (Css.Declaration.string_of_declaration ~minify:true decl))
+
 let suite =
   ( "properties",
     [
@@ -760,4 +836,8 @@ let suite =
         test_deterministic_manifest_positive_values;
       test_case "deterministic manifest negative value vectors" [ bytes ]
         test_deterministic_manifest_negative_values;
+      test_case "property value branch-depth positive vectors" [ bytes ]
+        test_property_value_branch_depth_positive;
+      test_case "property value branch-depth negative vectors" [ bytes ]
+        test_property_value_branch_depth_negative;
     ] )

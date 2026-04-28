@@ -39,9 +39,16 @@ let rec pp_syntax_inner : type a. a syntax Pp.t =
       pp_syntax_inner ctx syn;
       Pp.string ctx "?"
   | Brackets s ->
-      Pp.string ctx "[";
-      Pp.string ctx s;
-      Pp.string ctx "]"
+      (* The [Brackets] payload may already carry the [<...>] form (used as a
+         stash for spec types that have no typed counterpart, like
+         [<transform-list>]); preserve it verbatim and only wrap with literal
+         [[]] when the payload looks like a non-bracketed grammar. *)
+      let len = String.length s in
+      if len >= 2 && s.[0] = '<' && s.[len - 1] = '>' then Pp.string ctx s
+      else (
+        Pp.string ctx "[";
+        Pp.string ctx s;
+        Pp.string ctx "]")
 
 and pp_syntax : type a. a syntax Pp.t =
  fun ctx syn ->
@@ -91,10 +98,13 @@ let rec pp_value : type a. a syntax -> a Pp.t =
       match value with None -> () | Some v -> pp_value syn ctx v)
   | Brackets _ -> Pp.string ctx value
 
+(* CSS @property §3 known [<syntax-type-name>]s. [<transform-list>] has no typed
+   counterpart in [Values]; carry it through [Brackets "<transform-list>"] so
+   the descriptor round-trips and the initial-value reader treats it as
+   universal. *)
+
 (** Read a CSS syntax descriptor from input *)
-let read_syntax (r : Cursor.t) : any_syntax =
-  (* CSS @property syntax values must be quoted strings per spec *)
-  let s = Cursor.string r in
+let read_simple_syntax_component r s : any_syntax =
   match s with
   | "<length>" -> Syntax Length
   | "<color>" -> Syntax Color
@@ -109,17 +119,47 @@ let read_syntax (r : Cursor.t) : any_syntax =
   | "<url>" -> Syntax Url
   | "<image>" -> Syntax Image
   | "<transform-function>" -> Syntax Transform_function
+  | "<transform-list>" -> Syntax (Brackets "<transform-list>")
   | "*" -> Syntax Universal
   | s when String.length s > 2 && s.[0] = '[' && s.[String.length s - 1] = ']'
     ->
       Syntax (Brackets (String.sub s 1 (String.length s - 2)))
-  | s when String.contains s '|' -> (
-      (* Handle composite syntax like "<length> | <percentage>" *)
-      match List.map String.trim (String.split_on_char '|' s) with
-      | [ "<length>"; "<percentage>" ] | [ "<percentage>"; "<length>" ] ->
-          Syntax (Or (Length, Percentage))
-      | _ -> Cursor.err_invalid r ("Unsupported CSS composite syntax: " ^ s))
   | s -> Cursor.err_invalid r ("Unsupported CSS syntax: " ^ s)
+
+(* Apply a [+]/[#]/[?] modifier to a typed syntax. Carries through whatever the
+   simple component resolved to; the typed variants are exposed where the value
+   type stays well-defined. *)
+let apply_syntax_modifier r (Syntax inner) (modifier : char option) : any_syntax
+    =
+  match modifier with
+  | None -> Syntax inner
+  | Some '+' -> Syntax (Plus inner)
+  | Some '#' -> Syntax (Hash inner)
+  | Some '?' -> Syntax (Question inner)
+  | Some c ->
+      Cursor.err_invalid r
+        (String.concat ""
+           [ "Unsupported CSS syntax modifier: '"; String.make 1 c; "'" ])
+
+let split_syntax_modifier s : string * char option =
+  let n = String.length s in
+  if n = 0 then (s, None)
+  else
+    match s.[n - 1] with
+    | ('+' | '#' | '?') as m -> (String.sub s 0 (n - 1), Some m)
+    | _ -> (s, None)
+
+let read_syntax (r : Cursor.t) : any_syntax =
+  (* CSS @property syntax values must be quoted strings per spec *)
+  let s = Cursor.string r in
+  if String.contains s '|' then
+    match List.map String.trim (String.split_on_char '|' s) with
+    | [ "<length>"; "<percentage>" ] | [ "<percentage>"; "<length>" ] ->
+        Syntax (Or (Length, Percentage))
+    | _ -> Cursor.err_invalid r ("Unsupported CSS composite syntax: " ^ s)
+  else
+    let body, modifier = split_syntax_modifier s in
+    apply_syntax_modifier r (read_simple_syntax_component r body) modifier
 
 (** Read a value according to its syntax type *)
 let rec read_value : type a. Cursor.t -> a syntax -> a =
@@ -143,10 +183,11 @@ let rec read_value : type a. Cursor.t -> a syntax -> a =
   | Length_percentage -> Values.read_length_percentage reader
   | Angle -> Values.read_angle reader
   | Time -> Values.read_duration reader
-  | Or (syn1, _syn2) ->
-      (* For now, only try the first syntax - proper backtracking would require
-         a seekable reader *)
-      Either.Left (read_value reader syn1)
+  | Or (syn1, syn2) -> (
+      (* Try the left branch with backtracking; fall back to the right. *)
+      match Cursor.option (fun r -> read_value r syn1) reader with
+      | Some v -> Either.Left v
+      | None -> Either.Right (read_value reader syn2))
   | Plus syn ->
       (* Read space-separated list - use Cursor.many for proper error
          handling *)

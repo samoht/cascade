@@ -197,6 +197,78 @@ let test_spec_media_invalid_vectors buf =
         (Fmt.str "invalid media vector parsed: %S -> %S" input
            (Css.Media.to_string actual))
 
+let test_spec_media_feature_family_vectors buf =
+  let input =
+    pick
+      [
+        "(width)";
+        "(min-width: 40em)";
+        "(400px <= width <= 1200px)";
+        "(height > 50dvh)";
+        "(aspect-ratio > 16/9)";
+        "(orientation: landscape)";
+        "(hover: hover)";
+        "(any-hover: none)";
+        "(pointer: coarse)";
+        "(any-pointer: fine)";
+        "(update: fast)";
+        "(overflow-block: scroll)";
+        "(overflow-inline: none)";
+        "(color-gamut: p3)";
+        "(dynamic-range: high)";
+        "(video-dynamic-range: standard)";
+        "(prefers-color-scheme: dark)";
+        "(prefers-reduced-motion: reduce)";
+        "(prefers-reduced-transparency: reduce)";
+        "(prefers-contrast: more)";
+        "(forced-colors: active)";
+        "(scripting: enabled)";
+        "screen and ((width >= 40em) or (orientation: landscape))";
+        "not screen and (hover: none)";
+        "screen and (width >= 40em), print and (color)";
+      ]
+      buf 2
+  in
+  let once = Css.Media.to_string (Css.Media.of_string input) in
+  let twice = Css.Media.to_string (Css.Media.of_string once) in
+  if once <> twice then
+    fail
+      (Fmt.str "media feature family serialization drifted: %S -> %S" once twice)
+
+let test_spec_media_invalid_feature_family_vectors buf =
+  let input =
+    pick
+      [
+        "(min-width)";
+        "(width:)";
+        "(width < 40px < 20px)";
+        "(400px <= width <=)";
+        "(aspect-ratio > 16/)";
+        "(orientation: diagonal)";
+        "(hover: sometimes)";
+        "(any-pointer: hover)";
+        "(update: instant)";
+        "(overflow-block: hidden)";
+        "(color-gamut: rgb)";
+        "(dynamic-range: ultra)";
+        "(prefers-color-scheme: sepia)";
+        "(prefers-reduced-motion: yes)";
+        "(forced-colors: enabled)";
+        "screen and or (width)";
+        "not not screen";
+      ]
+      buf 3
+  in
+  match
+    try Some (Css.Media.of_string input)
+    with Failure _ | Invalid_argument _ -> None
+  with
+  | None -> ()
+  | Some actual ->
+      fail
+        (Fmt.str "invalid media feature family vector parsed: %S -> %S" input
+           (Css.Media.to_string actual))
+
 let suite =
   ( "media",
     [
@@ -213,4 +285,8 @@ let suite =
         test_spec_media_structural_vectors;
       test_case "spec media invalid vectors rejected" [ bytes ]
         test_spec_media_invalid_vectors;
+      test_case "spec media feature family vectors" [ bytes ]
+        test_spec_media_feature_family_vectors;
+      test_case "spec invalid media feature family vectors rejected" [ bytes ]
+        test_spec_media_invalid_feature_family_vectors;
     ] )
