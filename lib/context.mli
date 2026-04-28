@@ -177,6 +177,38 @@ val media_feature : string -> query -> string option
 val supports_declaration : property:string -> value:string -> query -> bool
 (** [supports_declaration ~property ~value ctx] checks the support table. *)
 
+val computed_value :
+  ?layer_order:string list ->
+  ?layer:string ->
+  t ->
+  Declaration.declaration ->
+  (string, string) result
+(** [computed_value ?layer_order ?layer ctx decl] resolves the declaration
+    against [ctx]: applies the CSS-wide keywords ([initial], [inherit],
+    [unset]), expands [var(...)] references, evaluates [currentColor], and
+    converts [rem]/[em]/viewport/container relative lengths into absolute pixels
+    when the relevant base size is supplied. Returns [Error msg] when a
+    referenced source is missing from the context. *)
+
+val matches_selector : document -> Selector.t -> bool
+(** [matches_selector doc sel] tests whether [sel] would match an element
+    described by [doc]. Approximate: classes/ids/attributes/element name are
+    checked but the document is not a tree. *)
+
+val matches_media : query -> Media.t -> bool
+(** [matches_media q m] evaluates [m] against [q.media_features]. *)
+
+val matches_supports : query -> Supports.t -> bool
+(** [matches_supports q cond] evaluates [cond] against [q.supports_table]. *)
+
+val matches_container : query -> ?name:string -> Container.t -> bool
+(** [matches_container q ?name cond] evaluates [cond] against the container
+    query state in [q]. *)
+
+val resolve_url : loader -> string -> (string, string) result
+(** [resolve_url loader href] resolves [href] against [loader.base_url] using
+    simple relative-URL handling. *)
+
 val container_feature : string -> query -> string option
 (** [container_feature name ctx] looks up a container feature. *)
 
@@ -185,3 +217,14 @@ val import_source : string -> loader -> string option
 
 val animates_property : string -> animation -> bool
 (** [animates_property property ctx] checks [ctx.animated_properties]. *)
+
+val load_import :
+  ?query:query ->
+  ?layer_order:string list ->
+  loader ->
+  Stylesheet.import_rule ->
+  (Stylesheet.t, string) result
+(** [load_import ?query ?layer_order loader rule] loads the stylesheet
+    referenced by [rule] from [loader.imports], applying any [@import]
+    media/supports/layer guards. Returns [Error] if the import path isn't in
+    [loader.imports] or a guard rejects it. *)

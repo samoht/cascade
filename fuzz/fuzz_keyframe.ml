@@ -8,8 +8,12 @@ open Alcobar
 (** position_of_string — must not crash. *)
 let test_position buf = ignore (Css.Keyframe.position_of_string buf)
 
-(** selector_of_string — must not crash (always succeeds, falls back to Raw). *)
-let test_selector buf = ignore (Css.Keyframe.selector_of_string buf)
+(** selector_of_string — must reject invalid selectors without unexpected
+    exceptions. *)
+let test_selector buf =
+  match Css.Keyframe.selector_of_string buf with
+  | _ -> ()
+  | exception Invalid_argument _ -> ()
 
 (** position roundtrip: parse → to_string → parse. *)
 let test_position_roundtrip buf =
@@ -25,11 +29,13 @@ let test_position_roundtrip buf =
 
 (** selector roundtrip: parse → to_string → parse. *)
 let test_selector_roundtrip buf =
-  let sel = Css.Keyframe.selector_of_string buf in
-  let s = Css.Keyframe.selector_to_string sel in
-  let sel2 = Css.Keyframe.selector_of_string s in
-  if not (Css.Keyframe.selector_equal sel sel2) then
-    fail "selector roundtrip mismatch"
+  match Css.Keyframe.selector_of_string buf with
+  | exception Invalid_argument _ -> ()
+  | sel ->
+      let s = Css.Keyframe.selector_to_string sel in
+      let sel2 = Css.Keyframe.selector_of_string s in
+      if not (Css.Keyframe.selector_equal sel sel2) then
+        fail "selector roundtrip mismatch"
 
 let position_in_spec_range = function
   | Css.Keyframe.From | Css.Keyframe.To -> true

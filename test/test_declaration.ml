@@ -2919,6 +2919,87 @@ let property_grammar_matrix =
       };
     ]
 
+let parse_property_decl property value =
+  let input = property ^ ":" ^ value in
+  let c = Css.Cursor.of_string input in
+  match read_declaration c with
+  | None -> None
+  | Some decl ->
+      let serialized =
+        Css.Declaration.string_of_declaration ~minify:true decl
+      in
+      let c2 = Css.Cursor.of_string serialized in
+      Some (input, serialized, decl, read_declaration c2)
+
+let same_property_reparse row decl reparsed =
+  Css.Declaration.property_name reparsed = row.property && decl = reparsed
+
+let check_property_positive row value =
+  match parse_property_decl row.property value with
+  | Some (_input, serialized, decl, Some reparsed)
+    when same_property_reparse row decl reparsed ->
+      ignore serialized
+  | Some (input, serialized, _, _) ->
+      Alcotest.failf
+        "%s positive vector serialized to unparsable or structurally different \
+         declaration: %s -> %s"
+        row.property input serialized
+  | None -> Alcotest.failf "%s positive vector rejected: %s" row.property value
+
+let check_property_negative row value =
+  match parse_property_decl row.property value with
+  | None -> ()
+  | Some (input, serialized, _, _) ->
+      Alcotest.failf "%s negative vector parsed: %s -> %s" row.property input
+        serialized
+
+let check_property_css_wide row keyword =
+  match parse_property_decl row.property keyword with
+  | Some (_, _, decl, Some reparsed)
+    when same_property_reparse row decl reparsed ->
+      ()
+  | Some (input, serialized, _, _) ->
+      Alcotest.failf
+        "%s CSS-wide keyword did not structurally reparse: %s -> %s"
+        row.property input serialized
+  | None ->
+      Alcotest.failf "%s CSS-wide keyword rejected: %s" row.property keyword
+
+let check_property_var row =
+  if row.property <> "all" then
+    let fallback =
+      match row.positives with value :: _ -> value | [] -> "initial"
+    in
+    match
+      parse_property_decl row.property ("var(--spec-value," ^ fallback ^ ")")
+    with
+    | Some (_, _, decl, Some reparsed)
+      when same_property_reparse row decl reparsed ->
+        ()
+    | Some (input, serialized, _, _) ->
+        Alcotest.failf "%s var() value did not structurally reparse: %s -> %s"
+          row.property input serialized
+    | None -> Alcotest.failf "%s var() value rejected" row.property
+
+let check_manifest_row_shape row =
+  if row.positives = [] then
+    Alcotest.failf "%s has no positive grammar vectors" row.property;
+  if row.negatives = [] then
+    Alcotest.failf "%s has no negative grammar vectors" row.property;
+  if List.length row.positives < 2 then
+    Alcotest.failf "%s needs at least two positive branch vectors" row.property;
+  if List.length row.negatives < 2 then
+    Alcotest.failf "%s needs at least two negative branch vectors" row.property
+
+let check_property_row row =
+  check_manifest_row_shape row;
+  List.iter (check_property_positive row) row.positives;
+  List.iter (check_property_negative row) row.negatives;
+  List.iter
+    (check_property_css_wide row)
+    [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ];
+  check_property_var row
+
 let spec_property_grammar_manifest () =
   let unique_properties =
     List.sort_uniq String.compare
@@ -2929,85 +3010,7 @@ let spec_property_grammar_manifest () =
   Alcotest.(check int)
     "property grammar manifest covers every unique public property name" 346
     (List.length unique_properties);
-  let parse_decl property value =
-    let input = property ^ ":" ^ value in
-    let c = Css.Cursor.of_string input in
-    match read_declaration c with
-    | None -> None
-    | Some decl ->
-        let serialized =
-          Css.Declaration.string_of_declaration ~minify:true decl
-        in
-        let c2 = Css.Cursor.of_string serialized in
-        Some (input, serialized, decl, read_declaration c2)
-  in
-  let check_positive row value =
-    match parse_decl row.property value with
-    | Some (_input, serialized, decl, Some reparsed)
-      when Css.Declaration.property_name reparsed = row.property
-           && decl = reparsed ->
-        ignore serialized
-    | Some (input, serialized, _, _) ->
-        Alcotest.failf
-          "%s positive vector serialized to unparsable or structurally \
-           different declaration: %s -> %s"
-          row.property input serialized
-    | None ->
-        Alcotest.failf "%s positive vector rejected: %s" row.property value
-  in
-  let check_negative row value =
-    match parse_decl row.property value with
-    | None -> ()
-    | Some (input, serialized, _, _) ->
-        Alcotest.failf "%s negative vector parsed: %s -> %s" row.property input
-          serialized
-  in
-  let check_css_wide row keyword =
-    match parse_decl row.property keyword with
-    | Some (_, _, decl, Some reparsed)
-      when Css.Declaration.property_name reparsed = row.property
-           && decl = reparsed ->
-        ()
-    | Some (input, serialized, _, _) ->
-        Alcotest.failf
-          "%s CSS-wide keyword did not structurally reparse: %s -> %s"
-          row.property input serialized
-    | None ->
-        Alcotest.failf "%s CSS-wide keyword rejected: %s" row.property keyword
-  in
-  let check_var row =
-    if row.property <> "all" then
-      let fallback =
-        match row.positives with value :: _ -> value | [] -> "initial"
-      in
-      match parse_decl row.property ("var(--spec-value," ^ fallback ^ ")") with
-      | Some (_, _, decl, Some reparsed)
-        when Css.Declaration.property_name reparsed = row.property
-             && decl = reparsed ->
-          ()
-      | Some (input, serialized, _, _) ->
-          Alcotest.failf "%s var() value did not structurally reparse: %s -> %s"
-            row.property input serialized
-      | None -> Alcotest.failf "%s var() value rejected" row.property
-  in
-  List.iter
-    (fun row ->
-      if row.positives = [] then
-        Alcotest.failf "%s has no positive grammar vectors" row.property;
-      if row.negatives = [] then
-        Alcotest.failf "%s has no negative grammar vectors" row.property;
-      if List.length row.positives < 2 then
-        Alcotest.failf "%s needs at least two positive branch vectors"
-          row.property;
-      if List.length row.negatives < 2 then
-        Alcotest.failf "%s needs at least two negative branch vectors"
-          row.property;
-      List.iter (check_positive row) row.positives;
-      List.iter (check_negative row) row.negatives;
-      List.iter (check_css_wide row)
-        [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ];
-      check_var row)
-    property_grammar_matrix
+  List.iter check_property_row property_grammar_matrix
 
 let declaration_tests =
   [

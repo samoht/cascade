@@ -386,6 +386,22 @@ let check_computed_error name ~ctx input =
         actual
   | Error _ -> ()
 
+let check_layered_computed_value name ~ctx ~layer_order ?layer ~expected input =
+  let decl = Css.Declaration.of_string input in
+  match Css.Context.computed_value ~layer_order ?layer ctx decl with
+  | Ok actual -> Alcotest.(check string) name expected actual
+  | Error _ ->
+      Alcotest.failf "%s: expected layered %S to resolve to %S" name input
+        expected
+
+let check_layered_computed_error name ~ctx ~layer_order ?layer input =
+  let decl = Css.Declaration.of_string input in
+  match Css.Context.computed_value ~layer_order ?layer ctx decl with
+  | Ok actual ->
+      Alcotest.failf "%s: expected layered %S to be unresolved, got %S" name
+        input actual
+  | Error _ -> ()
+
 let check_selector_match name ~ctx ~expected input =
   let selector = Css.Selector.of_string input in
   Alcotest.(check bool)
@@ -421,22 +437,44 @@ let check_url_error name ~loader input =
         actual
   | Error _ -> ()
 
-let check_import_loaded name ~loader ~expected input =
+let check_import_loaded name ?query ~loader ~expected input =
   let r = Css.Cursor.of_string input in
   let import_rule = Css.Stylesheet.read_import_rule r in
-  match Css.Context.load_import loader import_rule with
+  match Css.Context.load_import ?query loader import_rule with
   | Ok stylesheet ->
       Alcotest.(check string)
         name expected
         (Css.Stylesheet.to_string ~minify:true stylesheet)
   | Error _ -> Alcotest.failf "%s: expected import %S to load" name input
 
-let check_import_error name ~loader input =
+let check_import_error name ?query ~loader input =
   let r = Css.Cursor.of_string input in
   let import_rule = Css.Stylesheet.read_import_rule r in
-  match Css.Context.load_import loader import_rule with
+  match Css.Context.load_import ?query loader import_rule with
   | Ok stylesheet ->
       Alcotest.failf "%s: expected import %S to be blocked, got %S" name input
+        (Css.Stylesheet.to_string ~minify:true stylesheet)
+  | Error _ -> ()
+
+let check_layered_import_loaded name ?query ~loader ~layer_order ~expected input
+    =
+  let r = Css.Cursor.of_string input in
+  let import_rule = Css.Stylesheet.read_import_rule r in
+  match Css.Context.load_import ?query ~layer_order loader import_rule with
+  | Ok stylesheet ->
+      Alcotest.(check string)
+        name expected
+        (Css.Stylesheet.to_string ~minify:true stylesheet)
+  | Error _ ->
+      Alcotest.failf "%s: expected layered import %S to load" name input
+
+let check_layered_import_error name ?query ~loader ~layer_order input =
+  let r = Css.Cursor.of_string input in
+  let import_rule = Css.Stylesheet.read_import_rule r in
+  match Css.Context.load_import ?query ~layer_order loader import_rule with
+  | Ok stylesheet ->
+      Alcotest.failf "%s: expected layered import %S to be blocked, got %S" name
+        input
         (Css.Stylesheet.to_string ~minify:true stylesheet)
   | Error _ -> ()
 
@@ -506,7 +544,7 @@ let test_computed_value_resolution_contract () =
   check_computed_error "relative URL without base URL is unresolved"
     ~ctx:Css.Context.empty "background-image: url(../img/logo.svg)"
 
-let test_computed_value_resolution_edge_contract () =
+let computed_edge_contract () =
   let ctx =
     Css.Context.v
       ~custom_properties:
@@ -716,6 +754,439 @@ let test_animation_context_contract () =
   Alcotest.(check (option (float 0.0001)))
     "animation progress is preserved" (Some 0.25) ctx.progress
 
+let computed_calc_contract () =
+  let ctx =
+    Css.Context.v
+      ~custom_properties:
+        [
+          Css.Declaration.of_string "--pad-y: 1em";
+          Css.Declaration.of_string "--pad-x: 2rem";
+          Css.Declaration.of_string "--brand-alpha: 0.5";
+        ]
+      ~inherited_values:[ Css.Declaration.of_string "font-size: 12px" ]
+      ~initial_values:[ Css.Declaration.of_string "opacity: 1" ]
+      ~root_font_size:(Css.Values.Px 16.) ~parent_font_size:(Css.Values.Px 12.)
+      ~viewport_width:(Css.Values.Px 1000.)
+      ~viewport_height:(Css.Values.Px 600.)
+      ~container_width:(Css.Values.Px 500.)
+      ~container_height:(Css.Values.Px 400.) ()
+  in
+  check_computed_value "calc resolves compatible absolute and rem units" ~ctx
+    ~expected:"18px" "margin-left: calc(1rem + 2px)";
+  check_computed_value "calc resolves multiplication with rem" ~ctx
+    ~expected:"32px" "margin-left: calc(2 * 1rem)";
+  check_computed_value "calc resolves division with em" ~ctx ~expected:"6px"
+    "margin-left: calc(1em / 2)";
+  check_computed_value "margin shorthand computes each length slot" ~ctx
+    ~expected:"12px 32px" "margin: 1em 2rem";
+  check_computed_value "padding shorthand computes var-backed slots" ~ctx
+    ~expected:"12px 32px" "padding: var(--pad-y) var(--pad-x)";
+  check_computed_value "border-width shorthand computes absolute units" ~ctx
+    ~expected:"1px 2px 4px 8px" "border-width: 1px 0.125rem 4px 0.5rem";
+  check_computed_value "number custom property resolves for opacity" ~ctx
+    ~expected:"0.5" "opacity: var(--brand-alpha)";
+  check_computed_value "viewport dvw resolves against viewport width" ~ctx
+    ~expected:"250px" "width: 25dvw";
+  check_computed_value "viewport svh resolves against viewport height" ~ctx
+    ~expected:"60px" "height: 10svh";
+  check_computed_value "container cqi resolves against inline size" ~ctx
+    ~expected:"125px" "width: 25cqi";
+  check_computed_value "container cqb resolves against block size" ~ctx
+    ~expected:"100px" "height: 25cqb";
+  check_computed_error "calc with unresolved percentage remains unresolved" ~ctx
+    "width: calc(100% - 1rem)";
+  check_computed_error "font metric unit ch needs font metrics" ~ctx
+    "width: 4ch";
+  check_computed_error "font metric unit ex needs font metrics" ~ctx
+    "width: 2ex"
+
+let test_document_selector_function_contract () =
+  let ctx =
+    Css.Context.document ~element:"button" ~classes:[ "btn"; "primary" ]
+      ~ids:[ "submit" ]
+      ~attributes:[ ("aria-expanded", Some "true"); ("disabled", None) ]
+      ~pseudo_classes:[ "enabled"; "focus-visible" ]
+      ~pseudo_elements:[ "before" ] ()
+  in
+  check_selector_match ":is matches one matching branch" ~ctx ~expected:true
+    ":is(.link, .btn)";
+  check_selector_match ":where matches without changing context semantics" ~ctx
+    ~expected:true ":where(button.primary)";
+  check_selector_match ":not matches absent selector" ~ctx ~expected:true
+    ":not(.secondary)";
+  check_selector_match ":not fails when inner selector matches" ~ctx
+    ~expected:false ":not(.btn)";
+  check_selector_match "compound with :is and attribute matches" ~ctx
+    ~expected:true "button:is(.primary)[aria-expanded=true]";
+  check_selector_match "compound with :where and pseudo-class matches" ~ctx
+    ~expected:true ":where(button.btn):enabled";
+  check_selector_match "pseudo-element compound matches explicit element" ~ctx
+    ~expected:true "button::before";
+  check_selector_match "attribute exact value is case-sensitive by default" ~ctx
+    ~expected:false "[aria-expanded=True]"
+
+let test_query_context_boolean_contract () =
+  let ctx =
+    Css.Context.query ~media_type:"screen"
+      ~media_features:
+        [
+          ("width", "1024px");
+          ("height", "768px");
+          ("orientation", "landscape");
+          ("hover", "hover");
+          ("pointer", "fine");
+        ]
+      ~supports_declarations:
+        [ ("display", "grid"); ("display", "flex"); ("color", "lab(50% 0 0)") ]
+      ~supports_functions:
+        [ ("selector", ":is(.a, .b)"); ("font-format", "woff2") ]
+      ~container_name:"card"
+      ~container_features:
+        [
+          ("inline-size", "720px");
+          ("block-size", "360px");
+          ("style(--density)", "compact");
+        ]
+      ()
+  in
+  check_media_match "media and chain matches" ~ctx ~expected:true
+    "screen and (width >= 60em) and (orientation: landscape)";
+  check_media_match "media comma list matches any branch" ~ctx ~expected:true
+    "print, screen and (hover: hover)";
+  check_media_match "media comma list fails all branches" ~ctx ~expected:false
+    "print, speech";
+  check_media_match "media pointer feature matches" ~ctx ~expected:true
+    "(pointer: fine)";
+  check_supports_match "supports or matches one branch" ~ctx ~expected:true
+    "(display: ruby) or (display: grid)";
+  check_supports_match "supports and fails when one branch fails" ~ctx
+    ~expected:false "(display: grid) and (display: ruby)";
+  check_supports_match "supports selector function exact match" ~ctx
+    ~expected:true "selector(:is(.a, .b))";
+  check_supports_match "unsupported function argument fails" ~ctx
+    ~expected:false "selector(:has(img))";
+  check_container_match "container block axis range matches" ~ctx ~name:"card"
+    ~expected:true "(block-size >= 20rem)";
+  check_container_match "container boolean and matches" ~ctx ~name:"card"
+    ~expected:true "((inline-size >= 40rem) and style(--density: compact))";
+  check_container_match "container boolean and fails one branch" ~ctx
+    ~name:"card" ~expected:false
+    "((inline-size >= 40rem) and style(--density: spacious))"
+
+let test_loader_import_condition_contract () =
+  let loader =
+    Css.Context.loader ~base_url:"https://example.test/css/app.css"
+      ~imports:
+        [
+          ("https://example.test/css/grid.css", ".grid{display:grid}");
+          ("https://example.test/css/print.css", ".print{display:block}");
+          ("https://example.test/css/lab.css", ".lab{color:lab(50% 0 0)}");
+        ]
+      ()
+  in
+  let query =
+    Css.Context.query ~media_type:"screen"
+      ~media_features:[ ("width", "1024px") ]
+      ~supports_declarations:[ ("display", "grid"); ("color", "lab(50% 0 0)") ]
+      ()
+  in
+  check_import_loaded "import loads when media and supports match" ~query
+    ~loader ~expected:".grid{display:grid}"
+    "@import url(grid.css) supports(display: grid) screen and (width >= 40em);";
+  check_import_loaded "import loads when supports color function matches" ~query
+    ~loader ~expected:".lab{color:lab(50% 0 0)}"
+    "@import url(lab.css) supports(color: lab(50% 0 0));";
+  check_import_error "import blocked by unmatched media" ~query ~loader
+    "@import url(print.css) print;";
+  check_import_error "import blocked by unmatched supports" ~query ~loader
+    "@import url(grid.css) supports(display: ruby);"
+
+let layered_vars_contract () =
+  let layer_order = [ "theme"; "base"; "components"; "utilities" ] in
+  let ctx =
+    Css.Context.v
+      ~custom_properties:
+        [
+          Css.Declaration.custom_property ~layer:"theme" "--color-brand-500"
+            "oklch(70% 0.15 250)";
+          Css.Declaration.custom_property ~layer:"theme" "--spacing" "0.25rem";
+          Css.Declaration.custom_property ~layer:"theme" "--font-sans"
+            "Inter, sans-serif";
+          Css.Declaration.custom_property ~layer:"base" "--color-brand-500"
+            "oklch(60% 0.12 250)";
+          Css.Declaration.custom_property ~layer:"components" "--card-padding"
+            "calc(var(--spacing) * 6)";
+          Css.Declaration.custom_property ~layer:"utilities" "--tw-translate-x"
+            "calc(var(--spacing) * 4)";
+          Css.Declaration.custom_property ~layer:"utilities" "--tw-bg-opacity"
+            "0.5";
+          Css.Declaration.custom_property "--color-brand-500"
+            "oklch(40% 0.10 250)";
+          Css.Declaration.important
+            (Css.Declaration.custom_property ~layer:"utilities"
+               "--tw-ring-color" "red");
+          Css.Declaration.important
+            (Css.Declaration.custom_property ~layer:"theme" "--tw-ring-color"
+               "blue");
+        ]
+      ~root_font_size:(Css.Values.Px 16.) ()
+  in
+  check_layered_computed_value
+    "tailwind theme variable is visible to utility declarations" ~ctx
+    ~layer_order ~layer:"utilities" ~expected:"oklch(70% 0.15 250)"
+    "color: var(--color-brand-500)";
+  check_layered_computed_value
+    "normal unlayered app variable overrides tailwind layered tokens" ~ctx
+    ~layer_order ~expected:"oklch(40% 0.10 250)" "color: var(--color-brand-500)";
+  check_layered_computed_value
+    "base layer token overrides theme for base-scoped resolution" ~ctx
+    ~layer_order ~layer:"base" ~expected:"oklch(60% 0.12 250)"
+    "color: var(--color-brand-500)";
+  check_layered_computed_value
+    "component token resolves through tailwind theme spacing" ~ctx ~layer_order
+    ~layer:"components" ~expected:"24px" "padding: var(--card-padding)";
+  check_layered_computed_value
+    "utility-local --tw variable resolves through theme spacing" ~ctx
+    ~layer_order ~layer:"utilities" ~expected:"16px"
+    "translate: var(--tw-translate-x)";
+  check_layered_computed_value
+    "utility-local opacity variable resolves as a number" ~ctx ~layer_order
+    ~layer:"utilities" ~expected:"0.5" "opacity: var(--tw-bg-opacity)";
+  check_layered_computed_value
+    "important tailwind theme layer beats important utility layer" ~ctx
+    ~layer_order ~expected:"blue" "outline-color: var(--tw-ring-color)";
+  check_layered_computed_error "unknown layer is rejected for scoped resolution"
+    ~ctx ~layer_order ~layer:"unknown" "color: var(--color-brand-500)"
+
+let test_layered_computed_revert_contract () =
+  let layer_order = [ "theme"; "base"; "components"; "utilities" ] in
+  let ctx =
+    Css.Context.v
+      ~initial_values:
+        [
+          Css.Declaration.of_string "color: canvastext";
+          Css.Declaration.of_string "margin-left: 0";
+        ]
+      ~inherited_values:[ Css.Declaration.of_string "color: purple" ]
+      ~custom_properties:
+        [
+          Css.Declaration.custom_property ~layer:"theme" "--color-brand-500"
+            "oklch(70% 0.15 250)";
+          Css.Declaration.custom_property ~layer:"base" "--color-brand-500"
+            "oklch(60% 0.12 250)";
+          Css.Declaration.custom_property ~layer:"utilities" "--color-brand-500"
+            "revert-layer";
+          Css.Declaration.custom_property ~layer:"theme" "--spacing" "0.25rem";
+          Css.Declaration.custom_property ~layer:"components" "--card-padding"
+            "calc(var(--spacing) * 6)";
+          Css.Declaration.custom_property ~layer:"utilities" "--card-padding"
+            "revert-layer";
+        ]
+      ~root_font_size:(Css.Values.Px 16.) ()
+  in
+  check_layered_computed_value
+    "revert-layer utility token rolls back to base token" ~ctx ~layer_order
+    ~layer:"utilities" ~expected:"oklch(60% 0.12 250)"
+    "color: var(--color-brand-500)";
+  check_layered_computed_value
+    "revert-layer utility spacing rolls back to component token then theme \
+     token"
+    ~ctx ~layer_order ~layer:"utilities" ~expected:"24px"
+    "padding: var(--card-padding)";
+  check_layered_computed_value
+    "property revert-layer rolls back to lower cascaded layer" ~ctx ~layer_order
+    ~layer:"utilities" ~expected:"oklch(60% 0.12 250)" "color: revert-layer";
+  check_layered_computed_value
+    "property revert-layer in theme falls back to initial" ~ctx ~layer_order
+    ~layer:"theme" ~expected:"0" "margin-left: revert-layer";
+  check_layered_computed_error "revert-layer cycle is unresolved" ~ctx
+    ~layer_order ~layer:"utilities" "margin-left: var(--missing, revert-layer)"
+
+let test_loader_import_layer_contract () =
+  let layer_order = [ "theme"; "base"; "components"; "utilities" ] in
+  let loader =
+    Css.Context.loader ~base_url:"https://example.test/css/app.css"
+      ~imports:
+        [
+          ( "https://example.test/css/theme.css",
+            ":root{--color-brand-500:oklch(70% 0.15 250);--spacing:0.25rem}" );
+          ("https://example.test/css/base.css", "*,::before,::after{margin:0}");
+          ("https://example.test/css/components.css", ".card{padding:1rem}");
+          ("https://example.test/css/utilities.css", ".text-brand{color:red}");
+        ]
+      ()
+  in
+  let query =
+    Css.Context.query ~media_type:"screen"
+      ~supports_declarations:[ ("display", "grid") ]
+      ~media_features:[ ("width", "1024px") ]
+      ()
+  in
+  check_layered_import_loaded "tailwind theme import enters theme layer" ~loader
+    ~layer_order
+    ~expected:
+      "@layer theme{:root{--color-brand-500:oklch(70% 0.15 \
+       250);--spacing:0.25rem}}"
+    "@import url(theme.css) layer(theme);";
+  check_layered_import_loaded "tailwind base import enters base layer" ~loader
+    ~layer_order ~expected:"@layer base{*,::before,::after{margin:0}}"
+    "@import url(base.css) layer(base);";
+  check_layered_import_loaded
+    "tailwind components import keeps layer when query context matches" ~query
+    ~loader ~layer_order ~expected:"@layer components{.card{padding:1rem}}"
+    "@import url(components.css) layer(components) supports(display: grid) \
+     screen and (width >= 40em);";
+  check_layered_import_loaded "tailwind utilities import enters final layer"
+    ~loader ~layer_order ~expected:"@layer utilities{.text-brand{color:red}}"
+    "@import url(utilities.css) layer(utilities);";
+  check_layered_import_error
+    "conditional layered import blocked before layer insertion" ~query ~loader
+    ~layer_order
+    "@import url(components.css) layer(components) supports(display: flex);";
+  check_layered_import_error "unknown layer name is rejected by layer context"
+    ~loader ~layer_order "@import url(theme.css) layer(experimental);"
+
+let tw_vars_contract () =
+  let layer_order = [ "theme"; "base"; "components"; "utilities" ] in
+  let ctx =
+    Css.Context.v
+      ~custom_properties:
+        [
+          Css.Declaration.custom_property ~layer:"theme" "--color-red-500"
+            "239 68 68";
+          Css.Declaration.custom_property ~layer:"theme" "--color-blue-500"
+            "59 130 246";
+          Css.Declaration.custom_property ~layer:"theme" "--spacing" "0.25rem";
+          Css.Declaration.custom_property ~layer:"theme" "--radius-lg" "0.5rem";
+          Css.Declaration.custom_property ~layer:"utilities" "--tw-bg-opacity"
+            "0.75";
+          Css.Declaration.custom_property ~layer:"utilities"
+            "--tw-border-opacity" "0.5";
+          Css.Declaration.custom_property ~layer:"utilities"
+            "--tw-gradient-from" "rgb(var(--color-red-500) / 1)";
+          Css.Declaration.custom_property ~layer:"utilities" "--tw-gradient-to"
+            "rgb(var(--color-blue-500) / 0)";
+          Css.Declaration.custom_property ~layer:"utilities"
+            "--tw-gradient-stops"
+            "var(--tw-gradient-from), var(--tw-gradient-to)";
+          Css.Declaration.custom_property ~layer:"utilities"
+            "--tw-ring-offset-width" "2px";
+          Css.Declaration.custom_property ~layer:"utilities"
+            "--tw-ring-offset-color" "#fff";
+          Css.Declaration.custom_property ~layer:"utilities" "--tw-ring-color"
+            "rgb(var(--color-blue-500) / 0.5)";
+          Css.Declaration.custom_property ~layer:"utilities" "--tw-translate-x"
+            "calc(var(--spacing) * 4)";
+          Css.Declaration.custom_property ~layer:"utilities" "--tw-rotate"
+            "45deg";
+          Css.Declaration.custom_property ~layer:"utilities" "--tw-scale-x" "1";
+          Css.Declaration.custom_property ~layer:"utilities" "--tw-scale-y" "1";
+        ]
+      ~root_font_size:(Css.Values.Px 16.) ()
+  in
+  check_layered_computed_value
+    "tailwind rgb slash alpha resolves theme channel and opacity var" ~ctx
+    ~layer_order ~layer:"utilities" ~expected:"rgb(239 68 68/0.75)"
+    "background-color: rgb(var(--color-red-500) / var(--tw-bg-opacity))";
+  check_layered_computed_value
+    "tailwind border opacity var resolves independently" ~ctx ~layer_order
+    ~layer:"utilities" ~expected:"rgb(59 130 246/0.5)"
+    "border-color: rgb(var(--color-blue-500) / var(--tw-border-opacity))";
+  check_layered_computed_value
+    "tailwind gradient stops resolve chained utility variables" ~ctx
+    ~layer_order ~layer:"utilities"
+    ~expected:"linear-gradient(to right,rgb(239 68 68/1),rgb(59 130 246/0))"
+    "background-image: linear-gradient(to right, var(--tw-gradient-stops))";
+  check_layered_computed_value
+    "tailwind ring shadow resolves offset and color variables" ~ctx ~layer_order
+    ~layer:"utilities"
+    ~expected:"0 0 0 2px #fff,0 0 0 calc(3px + 2px) rgb(59 130 246/0.5)"
+    "box-shadow: 0 0 0 var(--tw-ring-offset-width) \
+     var(--tw-ring-offset-color), 0 0 0 calc(3px + \
+     var(--tw-ring-offset-width)) var(--tw-ring-color)";
+  check_layered_computed_value
+    "tailwind transform utility variables resolve in order" ~ctx ~layer_order
+    ~layer:"utilities"
+    ~expected:"translate(16px) rotate(45deg) scaleX(1) scaleY(1)"
+    "transform: translate(var(--tw-translate-x)) rotate(var(--tw-rotate)) \
+     scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y))";
+  check_layered_computed_value
+    "tailwind radius token resolves through theme variable" ~ctx ~layer_order
+    ~layer:"utilities" ~expected:"8px" "border-radius: var(--radius-lg)";
+  check_layered_computed_value
+    "tailwind nested fallback uses theme token when utility var is absent" ~ctx
+    ~layer_order ~layer:"utilities" ~expected:"16px"
+    "margin-left: var(--tw-space-x, calc(var(--spacing) * 4))";
+  check_layered_computed_error
+    "tailwind utility var without fallback remains unresolved" ~ctx ~layer_order
+    ~layer:"utilities" "outline-width: var(--tw-outline-width)"
+
+let selector_scope_contract () =
+  let scoped =
+    Css.Context.document ~root:"html" ~scope:".card" ~element:"section"
+      ~classes:[ "card"; "group"; "is-open" ]
+      ~ids:[ "billing" ]
+      ~attributes:[ ("data-theme", Some "dark"); ("dir", Some "ltr") ]
+      ~pseudo_classes:[ "focus-within" ] ()
+  in
+  check_selector_match ":root matches explicit root context" ~ctx:scoped
+    ~expected:true ":root";
+  check_selector_match ":scope matches explicit scope element" ~ctx:scoped
+    ~expected:true ":scope";
+  check_selector_match "scoped class compound matches" ~ctx:scoped
+    ~expected:true ":scope.card[data-theme=dark]";
+  check_selector_match "scope mismatch fails" ~ctx:scoped ~expected:false
+    ":scope.modal";
+  check_selector_match "dir attribute selector matches explicit context"
+    ~ctx:scoped ~expected:true "[dir=ltr]";
+  check_selector_match "group state selector matches explicit class/state"
+    ~ctx:scoped ~expected:true ".group:focus-within";
+  check_selector_match "missing group state fails" ~ctx:scoped ~expected:false
+    ".group:hover";
+  let rootless =
+    Css.Context.document ~element:"section" ~classes:[ "card" ] ()
+  in
+  check_selector_match ":root fails without root context" ~ctx:rootless
+    ~expected:false ":root";
+  check_selector_match ":scope fails without scope context" ~ctx:rootless
+    ~expected:false ":scope"
+
+let tw_layer_order_contract () =
+  let layer_order = [ "theme"; "base"; "components"; "utilities" ] in
+  let ctx =
+    Css.Context.v
+      ~custom_properties:
+        [
+          Css.Declaration.custom_property ~layer:"theme" "--spacing" "0.25rem";
+          Css.Declaration.custom_property ~layer:"components" "--spacing"
+            "0.5rem";
+          Css.Declaration.custom_property ~layer:"utilities" "--spacing" "1rem";
+          Css.Declaration.custom_property ~layer:"theme" "--color-brand" "red";
+          Css.Declaration.custom_property ~layer:"components" "--color-brand"
+            "blue";
+          Css.Declaration.custom_property ~layer:"utilities" "--color-brand"
+            "green";
+        ]
+      ~root_font_size:(Css.Values.Px 16.) ()
+  in
+  check_layered_computed_value
+    "tailwind utility layer token wins within utility layer" ~ctx ~layer_order
+    ~layer:"utilities" ~expected:"16px" "margin-left: var(--spacing)";
+  check_layered_computed_value
+    "tailwind component layer token wins within component layer" ~ctx
+    ~layer_order ~layer:"components" ~expected:"8px"
+    "margin-left: var(--spacing)";
+  check_layered_computed_value
+    "tailwind theme layer token wins within theme layer" ~ctx ~layer_order
+    ~layer:"theme" ~expected:"4px" "margin-left: var(--spacing)";
+  check_layered_computed_value
+    "tailwind unscoped normal lookup uses final layered token" ~ctx ~layer_order
+    ~expected:"green" "color: var(--color-brand)";
+  check_layered_computed_value
+    "tailwind component scoped lookup ignores later utility token" ~ctx
+    ~layer_order ~layer:"components" ~expected:"blue"
+    "color: var(--color-brand)"
+
 let suite =
   ( "context",
     [
@@ -741,7 +1212,7 @@ let suite =
       Alcotest.test_case "computed value resolution contract" `Quick
         test_computed_value_resolution_contract;
       Alcotest.test_case "computed value edge contract" `Quick
-        test_computed_value_resolution_edge_contract;
+        computed_edge_contract;
       Alcotest.test_case "document selector context contract" `Quick
         test_document_selector_context_contract;
       Alcotest.test_case "query context evaluation contract" `Quick
@@ -750,4 +1221,24 @@ let suite =
         test_loader_context_contract;
       Alcotest.test_case "animation context contract" `Quick
         test_animation_context_contract;
+      Alcotest.test_case "computed value calc and shorthand contract" `Quick
+        computed_calc_contract;
+      Alcotest.test_case "document selector function contract" `Quick
+        test_document_selector_function_contract;
+      Alcotest.test_case "query context boolean contract" `Quick
+        test_query_context_boolean_contract;
+      Alcotest.test_case "loader import condition contract" `Quick
+        test_loader_import_condition_contract;
+      Alcotest.test_case "layered custom property context contract" `Quick
+        layered_vars_contract;
+      Alcotest.test_case "layered computed revert contract" `Quick
+        test_layered_computed_revert_contract;
+      Alcotest.test_case "loader import layer contract" `Quick
+        test_loader_import_layer_contract;
+      Alcotest.test_case "tailwind variable layer contract" `Quick
+        tw_vars_contract;
+      Alcotest.test_case "selector scope context contract" `Quick
+        selector_scope_contract;
+      Alcotest.test_case "tailwind layer order contract" `Quick
+        tw_layer_order_contract;
     ] )
