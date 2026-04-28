@@ -4839,20 +4839,20 @@ type 'a syntax =
   | Length_percentage : length_percentage syntax
   | Angle : angle syntax
   | Time : duration syntax
+  | Resolution : string syntax
   | Custom_ident : string syntax
   | String : string syntax
   | Url : string syntax
   | Image : string syntax
   | Transform_function : string syntax
+  | Transform_list : string syntax
   | Universal : string syntax
-  (* Compound syntax types *)
   | Or : 'a syntax * 'b syntax -> ('a, 'b) Either.t syntax
   | Plus : 'a syntax -> 'a list syntax
   | Hash : 'a syntax -> 'a list syntax
-  | Question : 'a syntax -> 'a option syntax
-  | Brackets : string -> string syntax
   | Ident_keyword : string -> unit syntax
-      (** Type-safe syntax descriptors for CSS [@property] rules. *)
+      (** Type-safe syntax descriptors for CSS [@property] rules per CSS
+          Properties and Values API 1 §2. *)
 
 val property :
   name:string -> 'a syntax -> ?initial_value:'a -> ?inherits:bool -> unit -> t

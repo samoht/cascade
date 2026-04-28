@@ -1038,7 +1038,7 @@ let pp_duration_unit ?(shorten_ms = true) ctx f suffix =
     let in_seconds = f /. 1000. in
     let ms_str = Pp.float_to_string ~drop_leading_zero:true f in
     let s_str = Pp.float_to_string ~drop_leading_zero:true in_seconds in
-    if String.length s_str <= String.length ms_str then (
+    if String.length s_str + 1 <= String.length ms_str + 2 then (
       Pp.string ctx s_str;
       Pp.string ctx "s")
     else (
@@ -1974,12 +1974,32 @@ and relative_color_channel_count tail =
   |> List.filter (fun s -> s <> "")
   |> List.length
 
+and relative_color_has_empty_alpha cvs =
+  let is_ws = function
+    | Component.Preserved { Token.kind = Whitespace; _ } -> true
+    | _ -> false
+  in
+  let rec only_ws = function
+    | [] -> true
+    | cv :: rest when is_ws cv -> only_ws rest
+    | _ -> false
+  in
+  let rec loop = function
+    | [] -> false
+    | Component.Preserved { Token.kind = Delim "/"; _ } :: rest -> only_ws rest
+    | _ :: rest -> loop rest
+  in
+  loop cvs
+
 and read_relative_rgb t : color =
   Cursor.ws t;
   Cursor.expect_string "from" t;
   Cursor.ws t;
   let origin = read_color t in
   Cursor.ws t;
+  let tail_components = Cursor.remaining t in
+  if relative_color_has_empty_alpha tail_components then
+    Cursor.err_expected t "relative rgb alpha";
   let tail =
     Cursor.consume_remaining_to_string ~trim:true t
     |> normalize_relative_color_tail

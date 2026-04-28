@@ -564,13 +564,14 @@ let test_overflow () =
   check_overflow "scroll";
   check_overflow "auto";
   check_overflow "clip";
+  check_overflow "visible hidden";
   neg_cursor read_overflow "invalid-overflow";
-  (* contradictory *)
-  neg_cursor read_overflow "visible hidden";
   (* axis-specific not valid here *)
   neg_cursor read_overflow "scroll-x";
   (* not a valid overflow value *)
-  neg_cursor read_overflow "none"
+  neg_cursor read_overflow "none";
+  (* overflow accepts at most two axes *)
+  neg_cursor read_overflow "visible hidden scroll"
 
 let test_border_style () =
   check_border_style "none";
@@ -764,13 +765,14 @@ let test_text_decoration_style () =
 let test_text_overflow () =
   check_text_overflow "clip";
   check_text_overflow "ellipsis";
+  check_text_overflow "clip ellipsis";
   check_text_overflow "inherit";
   neg_cursor read_text_overflow "invalid-overflow";
-  neg_cursor read_text_overflow "clip ellipsis";
-  (* multiple values *)
   neg_cursor read_text_overflow "hidden";
   (* literal ellipsis not valid *)
-  neg_cursor read_text_overflow "..."
+  neg_cursor read_text_overflow "...";
+  (* CSS Overflow 4 text-overflow accepts at most two markers *)
+  neg_cursor read_text_overflow "clip ellipsis clip"
 
 let test_text_wrap () =
   check_text_wrap "wrap";
@@ -1279,6 +1281,7 @@ let test_background_shorthand () =
   check_background_shorthand "url(image.png)";
   check_background_shorthand "center";
   check_background_shorthand "no-repeat";
+  check_background_shorthand "repeat repeat";
   check_background_shorthand ~expected:"url(image.png) red" "red url(image.png)";
   check_background_shorthand ~expected:"url(image.png) center"
     "url(image.png) center";
@@ -1287,10 +1290,10 @@ let test_background_shorthand () =
   neg_cursor read_background_shorthand "invalid invalid";
   neg_cursor read_background_shorthand "red blue green";
   (* multiple colors *)
-  neg_cursor read_background_shorthand "repeat repeat";
-  (* duplicate *)
   (* incomplete size syntax *)
-  neg_cursor read_background_shorthand "center/"
+  neg_cursor read_background_shorthand "center/";
+  (* a single background layer accepts only one repeat-style *)
+  neg_cursor read_background_shorthand "repeat repeat repeat"
 
 let test_animation_shorthand () =
   (* Valid CSS per spec - all components optional *)
