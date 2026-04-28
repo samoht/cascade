@@ -559,7 +559,16 @@ let parse_declaration_from_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
             | _ -> (value1, false))
         | _ -> (value1, false)
       in
-      if value_has_invalid_block value then (
+      let has_bad_token =
+        let rec walk = function
+          | Preserved { kind = Token.Bad_string | Token.Bad_url; _ } -> true
+          | Block { node = { value; _ }; _ } -> List.exists walk value
+          | Func { node = { arguments; _ }; _ } -> List.exists walk arguments
+          | _ -> false
+        in
+        List.exists walk value
+      in
+      if value_has_invalid_block value || has_bad_token then (
         warn ~meta lexer warnings
           (Error.unexpected_token name_loc ~sort:Sort.Declaration
              (Token.Open Token.Curly));
