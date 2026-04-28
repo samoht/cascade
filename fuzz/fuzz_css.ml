@@ -246,6 +246,12 @@ let test_css2_legacy_minified_vectors buf =
         "div { page-break-before: always }";
         "div { page-break-after: avoid }";
         "div { page-break-inside: avoid }";
+        "table > caption + colgroup col { visibility: collapse }";
+        "ol li { list-style: decimal inside }";
+        "pre { white-space: pre; tab-size: 4 }";
+        "img { float: left; clear: both; vertical-align: middle }";
+        "@media print { h1 { page-break-before: always } }";
+        "@page chapter:right { margin: 2cm; size: A4 }";
       ]
       buf 0
   in
@@ -270,6 +276,12 @@ let test_css2_legacy_invalid_vectors buf =
         "div { page-break-before: always avoid }";
         "div { page-break-inside: left }";
         "h1::first-line::before { color: red }";
+        "a + { color: red }";
+        "table > > td { color: red }";
+        "@page :left:right { margin: 1cm }";
+        "ol { list-style-position: center }";
+        "p { vertical-align: left right }";
+        "q { content: open-quote none }";
       ]
       buf 0
   in

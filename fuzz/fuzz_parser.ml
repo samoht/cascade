@@ -156,6 +156,26 @@ let test_comment_confusion_stable buf =
   if String.contains output '{' || String.contains output '}' then
     fail (Fmt.str "unterminated comment surfaced block syntax: %S" output)
 
+let test_spec_parser_branch_vectors buf =
+  let input =
+    match byte_at buf 0 mod 8 with
+    | 0 -> "calc(1px + [2em"
+    | 1 -> "a}}"
+    | 2 -> "a,(b,c),f(x,y),d"
+    | 3 -> "url(foo\"bar) next"
+    | 4 -> "[a {b (c"
+    | 5 -> "a/* ignored { color: red } */b"
+    | 6 -> "foo/**/bar"
+    | _ -> "@media screen { .a { color: red }"
+  in
+  let before = parse_list input |> shapes in
+  let serialized = serialized input in
+  let after = parse_list serialized |> shapes in
+  if before <> after then
+    fail
+      (Fmt.str "CSS Syntax parser branch vector changed shape: %S -> %S" input
+         serialized)
+
 let suite =
   ( "parser",
     [
@@ -181,4 +201,6 @@ let suite =
         test_balanced_nesting_shape_roundtrip;
       test_case "comment confusion does not surface components" [ bytes ]
         test_comment_confusion_stable;
+      test_case "spec parser branch vectors" [ bytes ]
+        test_spec_parser_branch_vectors;
     ] )

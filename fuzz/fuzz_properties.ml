@@ -737,6 +737,35 @@ let test_deterministic_manifest_negative_values buf =
            input
            (Css.Declaration.string_of_declaration ~minify:true decl))
 
+let test_deterministic_manifest_var_values buf =
+  let rows =
+    Lazy.force deterministic_manifest_rows
+    |> List.filter (fun row -> row.name <> "all")
+  in
+  if List.length rows < 345 then
+    fail
+      (Fmt.str "deterministic property manifest row extraction drifted: %d rows"
+         (List.length rows));
+  let row = pick rows buf 0 in
+  let fallback = pick row.positive_values buf 1 in
+  let input = row.name ^ ":var(--spec-value," ^ fallback ^ ")" in
+  match parse_declaration input with
+  | None ->
+      fail
+        (Fmt.str "deterministic manifest var() declaration rejected: %S" input)
+  | Some decl -> (
+      let serialized =
+        Css.Declaration.string_of_declaration ~minify:true decl
+      in
+      match parse_declaration serialized with
+      | Some reparsed when decl = reparsed -> ()
+      | _ ->
+          fail
+            (Fmt.str
+               "deterministic manifest var() declaration did not structurally \
+                roundtrip: %S -> %S"
+               input serialized))
+
 let test_property_value_branch_depth_positive buf =
   let input =
     pick
@@ -836,6 +865,8 @@ let suite =
         test_deterministic_manifest_positive_values;
       test_case "deterministic manifest negative value vectors" [ bytes ]
         test_deterministic_manifest_negative_values;
+      test_case "deterministic manifest var() value vectors" [ bytes ]
+        test_deterministic_manifest_var_values;
       test_case "property value branch-depth positive vectors" [ bytes ]
         test_property_value_branch_depth_positive;
       test_case "property value branch-depth negative vectors" [ bytes ]

@@ -2975,16 +2975,38 @@ let spec_property_grammar_manifest () =
     | None ->
         Alcotest.failf "%s CSS-wide keyword rejected: %s" row.property keyword
   in
+  let check_var row =
+    if row.property <> "all" then
+      let fallback =
+        match row.positives with value :: _ -> value | [] -> "initial"
+      in
+      match parse_decl row.property ("var(--spec-value," ^ fallback ^ ")") with
+      | Some (_, _, decl, Some reparsed)
+        when Css.Declaration.property_name reparsed = row.property
+             && decl = reparsed ->
+          ()
+      | Some (input, serialized, _, _) ->
+          Alcotest.failf "%s var() value did not structurally reparse: %s -> %s"
+            row.property input serialized
+      | None -> Alcotest.failf "%s var() value rejected" row.property
+  in
   List.iter
     (fun row ->
       if row.positives = [] then
         Alcotest.failf "%s has no positive grammar vectors" row.property;
       if row.negatives = [] then
         Alcotest.failf "%s has no negative grammar vectors" row.property;
+      if List.length row.positives < 2 then
+        Alcotest.failf "%s needs at least two positive branch vectors"
+          row.property;
+      if List.length row.negatives < 2 then
+        Alcotest.failf "%s needs at least two negative branch vectors"
+          row.property;
       List.iter (check_positive row) row.positives;
       List.iter (check_negative row) row.negatives;
       List.iter (check_css_wide row)
-        [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ])
+        [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ];
+      check_var row)
     property_grammar_matrix
 
 let declaration_tests =

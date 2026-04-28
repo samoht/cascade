@@ -74,6 +74,41 @@ let css2_legacy_invalid_vectors () =
   rejects_invalid "div { page-break-inside: left }";
   rejects_invalid "h1::first-line::before { color: red }"
 
+let css2_chapter_matrix () =
+  (* CSS 2.x context-free grammar surface: selectors, paged media, visual
+     formatting, generated content, lists/tables, and legacy recovery. *)
+  List.iter
+    (fun (input, expected) -> roundtrip input expected)
+    [
+      ( "html, body { display: block; min-height: 100% }",
+        "html,body{display:block;min-height:100%}" );
+      ( "body *[lang|=\"en\"] + p:first-line { text-transform: uppercase }",
+        "body *[lang|=en]+p:first-line{text-transform:uppercase}" );
+      ( "table > caption + colgroup col { visibility: collapse }",
+        "table>caption+colgroup col{visibility:collapse}" );
+      ( "ol li { list-style: decimal inside }",
+        "ol li{list-style:decimal inside}" );
+      ( "q:before { content: open-quote } q:after { content: close-quote }",
+        "q:before{content:open-quote}q:after{content:close-quote}" );
+      ( "pre { white-space: pre; tab-size: 4 }",
+        "pre{white-space:pre;tab-size:4}" );
+      ( "img { float: left; clear: both; vertical-align: middle }",
+        "img{float:left;clear:both;vertical-align:middle}" );
+      ( "@media print { h1 { page-break-before: always } }",
+        "@media print{h1{break-before:page}}" );
+      ( "@page chapter:right { margin: 2cm; size: A4 }",
+        "@page chapter:right{margin:2cm;size:A4}" );
+    ];
+  List.iter rejects_invalid
+    [
+      "a + { color: red }";
+      "table > > td { color: red }";
+      "@page :left:right { margin: 1cm }";
+      "ol { list-style-position: center }";
+      "p { vertical-align: left right }";
+      "q { content: open-quote none }";
+    ]
+
 (* SS 5.3 - Qualified rules: a prelude (selector) + block (declarations) *)
 let syntax_qualified_rules () =
   (* Single rule with single declaration *)
@@ -446,6 +481,7 @@ let () =
             css2_pseudo_elements_aliases;
           Alcotest.test_case "css2: invalid legacy vectors" `Quick
             css2_legacy_invalid_vectors;
+          Alcotest.test_case "css2: chapter matrix" `Quick css2_chapter_matrix;
           (* CSS Syntax Level 3 *)
           Alcotest.test_case "syntax: qualified rules" `Quick
             syntax_qualified_rules;

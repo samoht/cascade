@@ -778,6 +778,42 @@ let spec_color5_function_edges () =
   neg_cursor read_color "color-mix(in, red, blue)";
   neg_cursor read_color "color-mix(in srgb red blue)"
 
+let spec_color_invalid_mutation_matrix () =
+  List.iter
+    (fun input -> neg_cursor read_color input)
+    [
+      "#12";
+      "#12345";
+      "#123456789";
+      "#ggg";
+      "rgb()";
+      "rgb(1 2)";
+      "rgb(1, 2 3)";
+      "rgb(1 2 3 4)";
+      "rgba(1, 2, 3)";
+      "hsl(0 50)";
+      "hsl(0, 50%, 50% 1)";
+      "hwb(0 0%)";
+      "hwb(0 0% 0% 0%)";
+      "lab(50% 10)";
+      "lab(50% 10 20 30)";
+      "lch(50% 20)";
+      "oklab(50% .1)";
+      "oklch(50% .1 20 /)";
+      "color()";
+      "color(display-p3 1 0)";
+      "color(unknown 1 0 0)";
+      "color(display-p3 1 0 0 1 2)";
+      "color-mix(red, blue)";
+      "color-mix(in srgb, red,)";
+      "color-mix(in srgb, red 20% 30%, blue)";
+      "light-dark(black)";
+      "light-dark(black, white, red)";
+      "rgb(from red r g)";
+      "rgb(from red r g b extra)";
+      "contrast-color()";
+    ]
+
 let spec_math_function_edges () =
   check_length ~expected:"round(nearest,10px,3px)" "round(nearest, 10px, 3px)";
   check_length ~expected:"mod(10px,3px)" "mod(10px, 3px)";
@@ -841,6 +877,8 @@ let value_tests =
     test_case "spec values level 4/5 math and color edges" `Quick
       spec_values_l45_math_color;
     test_case "spec color 5 function edges" `Quick spec_color5_function_edges;
+    test_case "spec color invalid mutation matrix" `Quick
+      spec_color_invalid_mutation_matrix;
     test_case "spec math function edges" `Quick spec_math_function_edges;
   ]
 

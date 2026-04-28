@@ -2210,6 +2210,50 @@ let spec_position_try_descriptor_matrix () =
       "@position-try --fallback { @media screen { .x { color: red } } }";
     ]
 
+let spec_at_rule_descriptor_order_duplicate_matrix () =
+  List.iter
+    (fun (expected, input) -> check_stylesheet ~expected input)
+    [
+      ( "@property --accent{syntax:\"<color>\";inherits:true;initial-value:red}",
+        "@property --accent { initial-value: red; inherits: true; syntax: \
+         \"<color>\" }" );
+      ( "@property --dup{syntax:\"*\";inherits:false}",
+        "@property --dup { syntax: \"<length>\"; inherits: true; syntax: \
+         \"*\"; inherits: false }" );
+      ( "@font-face \
+         {font-family:Brand;src:url(brand.woff2);font-display:swap;font-weight:100 \
+         900}",
+        "@font-face { font-weight: 100 900; font-display: swap; src: \
+         url(brand.woff2); font-family: Brand }" );
+      ( "@page invoice:first{size:A4;margin:1cm;@top-left{content:\"Invoice\"}}",
+        "@page invoice:first { margin: 1cm; size: A4; @top-left { content: \
+         \"Invoice\" } }" );
+      ( "@font-palette-values \
+         --brand{font-family:Brand;base-palette:2;override-colors:0 red}",
+        "@font-palette-values --brand { font-family: Brand; base-palette: 1; \
+         base-palette: 2; override-colors: 0 red }" );
+      ( "@view-transition{navigation:none}",
+        "@view-transition { navigation: auto; navigation: none }" );
+      ( "@position-try --below{top:anchor(bottom);left:anchor(center)}",
+        "@position-try --below { left: anchor(center); top: anchor(bottom) }" );
+    ];
+  List.iter
+    (neg_cursor read_stylesheet)
+    [
+      "@property --bad { syntax: \"<length>\"; inherits: false }";
+      "@property --bad { syntax: \"<length>\"; inherits: false; initial-value: \
+       red }";
+      "@font-face { font-family: Brand; src: url(brand.woff2); @media screen { \
+       .x { color: red } } }";
+      "@font-palette-values --brand { font-family: Brand; @media screen { .x { \
+       color: red } } }";
+      "@view-transition { @media screen { .x { color: red } } }";
+      "@position-try --below { @supports (display: grid) { .x { color: red } } \
+       }";
+      "@page { @top-center { display: block } }";
+      "@keyframes fade { @media screen { opacity: 1 } }";
+    ]
+
 let test_spec_snapshot_tracking_vectors () =
   (* Snapshot tracking vectors span stable cross-module syntax from recent CSS
      snapshots. The matrix tracks exact snapshot membership; these tests make
@@ -2438,6 +2482,9 @@ let additional_tests =
     ( "spec position-try descriptor matrix",
       `Quick,
       spec_position_try_descriptor_matrix );
+    ( "spec at-rule descriptor order duplicate matrix",
+      `Quick,
+      spec_at_rule_descriptor_order_duplicate_matrix );
     ( "spec snapshot tracking vectors",
       `Quick,
       test_spec_snapshot_tracking_vectors );
