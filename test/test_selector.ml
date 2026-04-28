@@ -1597,6 +1597,33 @@ let spec_selector_attr_ns_edges () =
   neg_cursor read "[data-x~=]";
   neg_cursor read "[data-x|=]"
 
+let spec_selector_serialization_invariant_matrix () =
+  List.iter check_minified_equiv
+    [
+      "svg|a[href^=\"https\" i] > :is(img,picture):not([hidden])";
+      ":where(main, article, aside) :has(> h2 + p)";
+      "section:has(:scope > h2, :scope > h3)";
+      "li:nth-child(2n+1 of .item:not([hidden]))";
+      "li:nth-last-child(-n+3 of :where(.visible,[data-visible]))";
+      "::part(tab panel)";
+      "::slotted(*:not([hidden]))";
+      "dialog:modal::backdrop";
+      ":host(.active) ::slotted(img.selected)";
+      ":is(:lang(en, fr), :dir(ltr), :state(selected))";
+    ];
+  check_minified_to ":is(.a,.b)" ":is(.a, [=bad], .b)";
+  List.iter
+    (fun input -> neg_cursor read input)
+    [
+      ":not(.a, :future-pseudo)";
+      ".card:has(:has(img))";
+      ".card:has(::before)";
+      "li:nth-child(2n+1 of)";
+      "::part(tab, panel)";
+      "::slotted(.a, .b)";
+      ":host-context()";
+    ]
+
 let suite =
   let open Alcotest in
   ( "selector",
@@ -1662,6 +1689,8 @@ let suite =
         spec_selector_pseudo_element_matrix;
       test_case "spec selector pseudo manifest" `Quick
         spec_selector_pseudo_manifest;
+      test_case "spec selector serialization invariant matrix" `Quick
+        spec_selector_serialization_invariant_matrix;
       test_case "spec selector attribute namespace edges" `Quick
         spec_selector_attr_ns_edges;
       test_case "nesting selector" `Quick test_nesting_selector;

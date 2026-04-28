@@ -736,6 +736,58 @@ let wpt_at_rule_boundary_edges () =
   | { value = None; _ } -> ()
   | _ -> Alcotest.fail "parse-rule rejects at-rule plus trailing qualified rule"
 
+let spec_wpt_parser_branch_matrix () =
+  (* Focused WPT-style branch matrix for section 5 parser algorithms: nested
+     blocks/functions, invalid declarations, CDO/CDC contexts, and list/rule
+     entry-point boundaries. *)
+  let list css =
+    (Css.Parser.parse_list_of_component_values (Css.Reader.of_string css)).value
+  in
+  let block_items css =
+    (Css.Parser.parse_block_contents (Css.Reader.of_string css)).value
+  in
+  Alcotest.(check string)
+    "mixed unmatched closers preserved at component layer" "a)]}b"
+    (Css.Parser.to_string_minified (list "a)]}b"));
+  (match list "a url(foo\"bar) next" with
+  | [
+   Css.Component.Preserved { kind = Css.Token.Ident "a"; _ };
+   Css.Component.Preserved { kind = Css.Token.Whitespace; _ };
+   Css.Component.Preserved { kind = Css.Token.Bad_url; _ };
+   Css.Component.Preserved { kind = Css.Token.Whitespace; _ };
+   Css.Component.Preserved { kind = Css.Token.Ident "next"; _ };
+  ] ->
+      ()
+  | _ -> Alcotest.fail "expected bad-url token and following ident to survive");
+  Alcotest.(check string)
+    "nested block EOF recovery" "[a {b (c)}]"
+    (Css.Parser.to_string (list "[a {b (c"));
+  (match parse_ss "@a; @b{} .c{}" with
+  | [
+   Css.Component.At { node = { name = "a"; block = None; _ }; _ };
+   Css.Component.At { node = { name = "b"; block = Some _; _ }; _ };
+   Css.Component.Qualified _;
+  ] ->
+      ()
+  | _ -> Alcotest.fail "expected semicolon at-rule, block at-rule, rule");
+  (match
+     block_items "color: red; @supports (display: grid) { &{} } .x{} bad;"
+   with
+  | [
+   `Decls [ { node = { name = "color"; _ }; _ } ];
+   `Rule (Css.Component.At { node = { name = "supports"; _ }; _ });
+   `Rule (Css.Component.Qualified _);
+  ] ->
+      ()
+  | _ -> Alcotest.fail "expected block declaration/rule recovery branches");
+  Alcotest.(check bool)
+    "parse-rule rejects declaration-looking input" true
+    ((Css.Parser.parse_rule (Css.Reader.of_string "color: red")).value = None);
+  Alcotest.(check bool)
+    "parse component rejects two comma-separated values" true
+    ((Css.Parser.parse_component_value (Css.Reader.of_string "a,b")).value
+   = None)
+
 let spec_security_resource_exhaustion_regressions () =
   (* CSS Syntax Level 3 section 11: the spec's security value is that parsing is
      unambiguous for hostile inputs. Keep regression vectors for common parser
@@ -1319,6 +1371,8 @@ let suite =
         spec_wpt_trailing_brace_edges;
       Alcotest.test_case "spec WPT at-rule boundary edges" `Quick
         wpt_at_rule_boundary_edges;
+      Alcotest.test_case "spec WPT parser branch matrix" `Quick
+        spec_wpt_parser_branch_matrix;
       Alcotest.test_case "spec section 11 parser security regressions" `Quick
         spec_security_resource_exhaustion_regressions;
       Alcotest.test_case "spec section 12 parsing change checklist" `Quick

@@ -329,6 +329,41 @@ let test_invalid_pseudo_family_vectors buf =
   in
   assert_reject input
 
+let test_selector_l4_serialization_matrix buf =
+  let input =
+    pick
+      [
+        "svg|a[href^=\"https\" i] > :is(img,picture):not([hidden])";
+        ":where(main,article,aside) :has(> h2 + p)";
+        "section:has(:scope > h2,:scope > h3)";
+        "li:nth-child(2n+1 of .item:not([hidden]))";
+        "li:nth-last-child(-n+3 of :where(.visible,[data-visible]))";
+        "::part(tab panel)";
+        "::slotted(*:not([hidden]))";
+        "dialog:modal::backdrop";
+        ":host(.active) ::slotted(img.selected)";
+        ":is(:lang(en, fr),:dir(ltr),:state(selected))";
+      ]
+      buf 1
+  in
+  match parse_selector input with
+  | None -> fail (Fmt.str "selector L4 serialization vector rejected: %S" input)
+  | Some selector -> (
+      let serialized = minified selector in
+      match parse_selector serialized with
+      | None ->
+          fail
+            (Fmt.str "selector L4 serialization did not reparse: %S -> %S" input
+               serialized)
+      | Some reparsed ->
+          if
+            Css.Selector.specificity selector
+            <> Css.Selector.specificity reparsed
+          then
+            fail
+              (Fmt.str "selector L4 serialization changed specificity: %S -> %S"
+                 input serialized))
+
 let suite =
   ( "selector",
     [
@@ -362,4 +397,6 @@ let suite =
         test_pseudo_element_family_vectors;
       test_case "invalid pseudo family vectors rejected" [ bytes ]
         test_invalid_pseudo_family_vectors;
+      test_case "selector L4 serialization matrix" [ bytes ]
+        test_selector_l4_serialization_matrix;
     ] )

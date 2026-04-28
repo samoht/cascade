@@ -488,6 +488,15 @@ let test_spec_invalid_color_branch_vectors buf =
         "color-mix(in srgb red blue)";
         "light-dark(black)";
         "rgb(from red r g)";
+        "rgba(1, 2, 3)";
+        "hsl(0, 50%, 50% 1)";
+        "hwb(0 0% 0% 0%)";
+        "lab(50% 10 20 30)";
+        "color(display-p3 1 0 0 1 2)";
+        "color-mix(in srgb, red 20% 30%, blue)";
+        "light-dark(black, white, red)";
+        "rgb(from red r g b extra)";
+        "contrast-color()";
       ]
       buf 3
   in
