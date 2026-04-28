@@ -1017,7 +1017,9 @@ let read_value (type a) (prop : a property) t : declaration =
   | Scroll_padding_block -> v Scroll_padding_block (read_length t)
   | Scroll_padding_block_start -> v Scroll_padding_block_start (read_length t)
   | Scroll_padding_block_end -> v Scroll_padding_block_end (read_length t)
-  | Overscroll_behavior -> v Overscroll_behavior (read_overscroll_behavior t)
+  | Overscroll_behavior ->
+      let xs, _ = Cursor.many (fun r -> read_overscroll_behavior r) t in
+      v Overscroll_behavior xs
   | Overscroll_behavior_x ->
       v Overscroll_behavior_x (read_overscroll_behavior t)
   | Overscroll_behavior_y ->

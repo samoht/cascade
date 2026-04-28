@@ -1941,7 +1941,7 @@ type 'a property =
   | Scroll_padding_block : length property
   | Scroll_padding_block_start : length property
   | Scroll_padding_block_end : length property
-  | Overscroll_behavior : overscroll_behavior property
+  | Overscroll_behavior : overscroll_behavior list property
   | Overscroll_behavior_x : overscroll_behavior property
   | Overscroll_behavior_y : overscroll_behavior property
   | Accent_color : color property

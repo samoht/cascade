@@ -906,7 +906,7 @@ val scroll_padding_block_end : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-block-end}
      scroll-padding-block-end} property. *)
 
-val overscroll_behavior : overscroll_behavior -> declaration
+val overscroll_behavior : overscroll_behavior list -> declaration
 (** [overscroll_behavior v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/overscroll-behavior}
      overscroll-behavior} property. *)

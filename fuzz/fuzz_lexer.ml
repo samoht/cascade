@@ -23,6 +23,13 @@ let rec take_kinds lexer limit acc =
 let kinds input = take_kinds (Css.Lexer.of_string input) 4096 []
 let kind_string kind = Css.Pp.to_string Css.Token.pp_kind kind
 let kind_strings input = List.map kind_string (kinds input)
+
+let kind_strings_no_eof input =
+  kinds input
+  |> List.filter_map (function
+    | Css.Token.Eof -> None
+    | kind -> Some (kind_string kind))
+
 let test_tokenization_crash_safety buf = ignore (kinds (cssish buf))
 
 let test_tokenization_deterministic buf =
@@ -98,6 +105,36 @@ let test_escape_bound_stable buf =
   let toks = kind_strings input in
   if toks = [] then fail "escaped identifier produced no tokens"
 
+let test_spec_token_family_vectors buf =
+  let input, expected =
+    pick
+      [
+        ("U+4??", [ "<unicode-range U+400-4FF>" ]);
+        ("\"oops\n", [ "<bad-string>"; "<ws>" ]);
+        ("url(a b) foo", [ "<bad-url>"; "<ws>"; "<ident foo>" ]);
+        ( "--> -->a --a",
+          [ "<CDC>"; "<ws>"; "<CDC>"; "<ident a>"; "<ws>"; "<ident --a>" ] );
+        ( ".5 -.5 +.5 .e1",
+          [
+            "<number .5>";
+            "<ws>";
+            "<number -.5>";
+            "<ws>";
+            "<number +.5>";
+            "<ws>";
+            "<delim '.'>";
+            "<ident e1>";
+          ] );
+        ("\\26 #id", [ "<ident &>"; "<#id>" ]);
+      ]
+      buf 0
+  in
+  let actual = kind_strings_no_eof input in
+  if actual <> expected then
+    fail
+      (Fmt.str "CSS Syntax token vector changed for %S: %S" input
+         (String.concat " " actual))
+
 let suite =
   ( "lexer",
     [
@@ -115,4 +152,6 @@ let suite =
       test_case "eof stable" [ bytes ] test_eof_stable;
       test_case "token pair stable" [ bytes ] test_token_pair_stable;
       test_case "escape bound stable" [ bytes ] test_escape_bound_stable;
+      test_case "spec token family vectors" [ bytes ]
+        test_spec_token_family_vectors;
     ] )
