@@ -9,7 +9,6 @@ type 'a fallback =
   | Fallback of 'a (* Value fallback: var(--name, value) *)
   | Var_fallback of
       string (* Nested var fallback: var(--name, var(--fallback)) *)
-  | Raw_fallback of string (* Raw string fallback when typed parsing fails *)
 
 type 'a var = {
   name : string;

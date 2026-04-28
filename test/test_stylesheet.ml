@@ -162,7 +162,8 @@ let test_container_rule_creation () =
   let r = rule ~selector:(Selector.class_ "red") [ decl ] in
   let container_stmt =
     container ~name:"sidebar"
-      ~condition:(Css.Container.Raw "(min-width: 400px)") [ Rule r ]
+      ~condition:(Css.Container.of_string "(min-width: 400px)")
+      [ Rule r ]
   in
   let sheet = Css.Stylesheet.v [ container_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in

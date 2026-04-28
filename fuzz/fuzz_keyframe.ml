@@ -44,7 +44,7 @@ let test_position_spec_range buf =
 
 let test_selector_spec_range buf =
   match Css.Keyframe.selector_of_string buf with
-  | Css.Keyframe.Raw _ -> ()
+  | exception Invalid_argument _ -> ()
   | Css.Keyframe.Positions positions ->
       if positions = [] then fail "parsed keyframe selector has no positions";
       if not (List.for_all position_in_spec_range positions) then
@@ -85,11 +85,12 @@ let test_generated_duplicate_selector_preserved buf =
     ^ Css.Keyframe.position_to_string (Css.Keyframe.Percent pct)
   in
   match Css.Keyframe.selector_of_string input with
+  | exception Invalid_argument _ ->
+      fail "generated duplicate keyframe selector failed to parse"
   | Css.Keyframe.Positions [ a; b ] ->
       if Css.Keyframe.position_compare a b <> 0 then
         fail "duplicate keyframe offsets were not preserved"
   | Css.Keyframe.Positions _ -> fail "duplicate keyframe selector changed arity"
-  | Css.Keyframe.Raw _ -> fail "generated duplicate keyframe selector is raw"
 
 let test_from_to_percentage_equivalence _buf =
   if

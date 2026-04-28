@@ -34,6 +34,18 @@ let recover css expected min_warnings =
 
 (* {2 CSS Syntax Level 3} https://www.w3.org/TR/css-syntax-3/ *)
 
+(* {2 CSS 2.x compatibility surface} *)
+
+let css2_legacy_core () =
+  roundtrip "body { margin: 0; color: black }" "body{margin:0;color:black}";
+  roundtrip "@media print { body { color: black } }"
+    "@media print{body{color:black}}";
+  roundtrip "h1:first-letter { color: red }" "h1:first-letter{color:red}";
+  roundtrip "p::first-line { color: blue }" "p:first-line{color:blue}";
+  roundtrip "a:link { color: blue } a:visited { color: purple }"
+    "a:link{color:blue}a:visited{color:purple}";
+  roundtrip "div { page-break-before: always }" "div{break-before:page}"
+
 (* SS 5.3 - Qualified rules: a prelude (selector) + block (declarations) *)
 let syntax_qualified_rules () =
   (* Single rule with single declaration *)
@@ -397,6 +409,8 @@ let () =
     [
       ( "spec",
         [
+          Alcotest.test_case "css2: legacy compatibility core" `Quick
+            css2_legacy_core;
           (* CSS Syntax Level 3 *)
           Alcotest.test_case "syntax: qualified rules" `Quick
             syntax_qualified_rules;

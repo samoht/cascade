@@ -591,7 +591,6 @@ type 'a fallback =
   | Fallback of 'a  (** Value fallback: var(--name, value) *)
   | Var_fallback of string
       (** Nested var fallback: var(--name, var(--fallback)) *)
-  | Raw_fallback of string  (** Raw string fallback when typed parsing fails *)
 
 (** {2:values CSS Values & Units}
 
@@ -952,8 +951,7 @@ type component =
 (** CSS percentage values *)
 type percentage =
   | Pct of float (* 0%–100% as a % token *)
-  | Num of
-      float (* Raw numeric value in percentage context, e.g., opacity 0.5 *)
+  | Num of float (* Numeric value in percentage context, e.g., opacity 0.5 *)
   | Var of percentage var
   | Calc of percentage calc (* calc(...) that resolves to a % *)
 
@@ -2569,8 +2567,9 @@ type grid_line =
   | Num of int  (** 1, 2, 3, ... or -1, -2, ... *)
   | Name of string  (** "header-start", "main-end", etc. *)
   | Span of int  (** span 2, span 3, etc. *)
+  | Span_name of string  (** span <custom-ident> *)
+  | Span_num_name of int * string  (** span <integer> <custom-ident> *)
   | Calc of string  (** calc(12 * -1), etc. *)
-  | Arbitrary of string  (** User arbitrary values like "span 123 / span 123" *)
   | Var of grid_line var  (** CSS variable reference *)
 
 val grid_template_columns : grid_template -> declaration
@@ -2869,7 +2868,7 @@ type font_family =
   | Inherit
   | Initial
   | Unset
-  (* Arbitrary font family name *)
+  (* Custom font family name *)
   | Name of string
   (* CSS variables *)
   | Var of font_family var
@@ -3534,7 +3533,6 @@ type transform =
   | Inherit
   | Var of transform var
   | List of transform list
-  | Arbitrary of string  (** Raw CSS value for user arbitrary input. *)
 
 val transform : transform -> declaration
 (** [transform t] is the
@@ -3567,7 +3565,6 @@ type transform_origin =
   | X of length  (** Single x-offset, y defaults to 50%. *)
   | XY of length * length
   | XYZ of length * length * length
-  | Arbitrary of string  (** User arbitrary values *)
   | Var of transform_origin var  (** CSS variable reference *)
   | Inherit  (** Transform origin (2D or 3D). *)
 
@@ -3629,7 +3626,6 @@ type perspective_origin =
   | Perspective_bottom_right
   | Perspective_x of length  (** Single x-offset, y defaults to center. *)
   | Perspective_xy of length * length  (** Custom x, y coordinates. *)
-  | Perspective_arbitrary of string  (** Raw CSS value for arbitrary origins. *)
   | Perspective_var of perspective_origin var  (** CSS variable reference. *)
 
 val perspective_origin : perspective_origin -> declaration
@@ -3778,7 +3774,6 @@ type animation =
   | None
   | Var of animation var
   | Shorthand of animation_shorthand
-  | Arbitrary of string  (** CSS animation values *)
 
 val animation_shorthand :
   ?name:string ->

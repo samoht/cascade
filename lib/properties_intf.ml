@@ -465,8 +465,9 @@ type grid_line =
   | Num of int
   | Name of string
   | Span of int
+  | Span_name of string
+  | Span_num_name of int * string
   | Calc of string
-  | Arbitrary of string  (** Raw CSS value for user arbitrary input *)
   | Var of grid_line var  (** CSS variable reference *)
 
 type aspect_ratio =
@@ -697,7 +698,7 @@ type font_family =
   | Inherit
   | Initial
   | Unset
-  (* Arbitrary font family name *)
+  (* Custom font family name *)
   | Name of string
   (* CSS variables *)
   | Var of font_family var
@@ -804,7 +805,6 @@ type transform =
   | Inherit
   | Var of transform var
   | List of transform list
-  | Arbitrary of string
 
 type transforms = transform list
 type transform_style = Flat | Preserve_3d | Inherit
@@ -900,7 +900,6 @@ type animation =
   | None (* Special case for "animation: none" *)
   | Var of animation var
   | Shorthand of animation_shorthand (* Requires a name *)
-  | Arbitrary of string (* Bracket notation: animate-[bounce_1s_infinite] *)
 
 (* Visual Effects Types *)
 type blend_mode =
@@ -1510,7 +1509,6 @@ type transform_origin =
   | X of length  (** Single x-offset, y defaults to 50% *)
   | XY of length * length
   | XYZ of length * length * length
-  | Arbitrary of string  (** Raw CSS value for user arbitrary input *)
   | Var of transform_origin var  (** CSS variable reference *)
   | Inherit
 
@@ -1546,7 +1544,6 @@ type perspective_origin =
   | Perspective_bottom_right
   | Perspective_x of length  (** Single x-offset, y defaults to center *)
   | Perspective_xy of length * length
-  | Perspective_arbitrary of string  (** Raw CSS value for arbitrary origins *)
   | Perspective_var of perspective_origin var
 
 (* clip property (deprecated, but needed for sr-only) *)

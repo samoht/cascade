@@ -330,7 +330,7 @@ let test_spec_map_conditional_boundaries () =
         ~condition:(Css.Supports.Func ("selector", ":has(img)"))
         [
           container ~name:"card"
-            ~condition:(Css.Container.Raw "(inline-size > 30em)")
+            ~condition:(Css.Container.of_string "(inline-size > 30em)")
             [
               rule ~selector:(Selector.class_ "title") [ color (hex "#ff0000") ];
             ];
@@ -422,7 +422,8 @@ let test_spec_sort_conditional_boundaries () =
       supports
         ~condition:(Css.Supports.Property ("display", "grid"))
         [
-          container ~condition:(Css.Container.Raw "(inline-size > 30em)")
+          container
+            ~condition:(Css.Container.of_string "(inline-size > 30em)")
             [
               rule ~selector:(Selector.class_ "zzz") [ color (hex "#ff0000") ];
               rule ~selector:(Selector.class_ "aaa") [ color (hex "#00ff00") ];
@@ -467,7 +468,8 @@ let public_fold_edges () =
                   ~condition:(Css.Supports.Property ("display", "grid"))
                   [
                     container
-                      ~condition:(Css.Container.Raw "(inline-size > 30em)")
+                      ~condition:
+                        (Css.Container.of_string "(inline-size > 30em)")
                       [ parent ];
                   ];
               ];

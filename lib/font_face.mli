@@ -24,7 +24,6 @@ val size_adjust_to_string : size_adjust -> string
 type src_entry =
   | Url of { url : string; format : string option; tech : string option }
   | Local of string
-  | Raw of string  (** Escape hatch for unparsed sources *)
 
 type src = src_entry list
 (** Font source list. *)
@@ -45,4 +44,5 @@ val size_adjust_of_string : string -> size_adjust
 (** [size_adjust_of_string s] parses a size-adjust percentage. *)
 
 val src_of_string : string -> src
-(** [src_of_string s] parses a src value. Falls back to [Raw] for unparsed. *)
+(** [src_of_string s] parses a src value. Raises {!Cursor.Parse_error} for
+    unparsed sources. *)

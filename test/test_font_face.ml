@@ -33,8 +33,9 @@ let test_src () =
          Url { url = "brand.woff2"; format = Some "woff2"; tech = None };
        ]);
   Alcotest.(check string)
-    "raw source escape hatch" "url(font.woff2) tech(variations)"
-    (src_to_string [ Raw "url(font.woff2) tech(variations)" ])
+    "url with tech" "url(font.woff2) tech(variations)"
+    (src_to_string
+       [ Url { url = "font.woff2"; format = None; tech = Some "variations" } ])
 
 let test_spec_src_parser_vectors () =
   let check_raw name input =

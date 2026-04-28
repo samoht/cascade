@@ -32,7 +32,7 @@ let generated_stylesheet buf =
             ~condition:(Css.Supports.Property ("display", "grid"))
             [
               Css.container
-                ~condition:(Css.Container.Raw "(inline-size > 30em)")
+                ~condition:(Css.Container.of_string "(inline-size > 30em)")
                 [ Css.rule ~selector:(selector "inside") [ color 4 ] ];
             ];
         ];
@@ -227,6 +227,31 @@ let test_public_property_shape buf =
       | None -> fail "Css.property did not create @property statement")
   | _ -> fail "Css.property did not create one statement"
 
+let test_css2_legacy_minified_vectors buf =
+  let input =
+    pick
+      [
+        "body { margin: 0; color: black }";
+        "@media print { body { color: black } }";
+        "h1:first-letter { color: red }";
+        "p::first-line { color: blue }";
+        "a:link { color: blue } a:visited { color: purple }";
+        "div { page-break-before: always }";
+      ]
+      buf 0
+  in
+  match Css.of_string input with
+  | Error err ->
+      fail (Fmt.str "CSS2 legacy vector rejected: %s" (Css.pp_parse_error err))
+  | Ok sheet -> (
+      let minified = Css.to_string ~minify:true ~newline:false sheet in
+      match Css.of_string minified with
+      | Ok _ -> ()
+      | Error err ->
+          fail
+            (Fmt.str "CSS2 legacy minified output rejected: %S (%s)" minified
+               (Css.pp_parse_error err)))
+
 let suite =
   ( "css",
     [
@@ -246,4 +271,6 @@ let suite =
         test_custom_props_scope;
       test_case "public theme guard rendering" [ bytes ] test_public_theme_guard;
       test_case "public property shape" [ bytes ] test_public_property_shape;
+      test_case "CSS2 legacy minified vectors" [ bytes ]
+        test_css2_legacy_minified_vectors;
     ] )

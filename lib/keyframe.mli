@@ -9,8 +9,8 @@ type position =
 val position_to_string : position -> string
 (** [position_to_string pos] renders a position as CSS string. *)
 
-(** A keyframe selector (one or more positions, or raw string). *)
-type selector = Positions of position list | Raw of string
+(** A keyframe selector (one or more positions). *)
+type selector = Positions of position list
 
 val selector_to_string : selector -> string
 (** [selector_to_string sel] renders a selector as CSS string. *)
@@ -22,8 +22,8 @@ val position_of_string : string -> position option
 (** [position_of_string s] parses a position string like "from", "to", "50%". *)
 
 val selector_of_string : string -> selector
-(** [selector_of_string s] parses a selector string. Always succeeds - returns
-    [Raw s] if parsing fails. *)
+(** [selector_of_string s] parses a selector string. Raises [Invalid_argument]
+    if parsing fails. *)
 
 val selector_equal : selector -> selector -> bool
 (** [selector_equal a b] checks if two selectors are equal. *)

@@ -56,15 +56,12 @@ let display_outside_idents : (string * display) list =
 
 let display_inside_idents : (string * display) list =
   [
+    (* CSS Display 3 §2.1 [<display-inside>]: only [flow] and [flow-root] are
+       accepted in the explicit two-value form. The legacy single-value
+       spellings ([flex], [grid], [table]) remain canonical, so [block flex] is
+       intentionally rejected even though the spec also recognises it. *)
     ("flow", Block);
-    (* spec [<display-inside>] [flow] composes to plain block-or-inline; the AST
-       does not need a dedicated [Flow] variant since [Flow_root] is the only
-       inside that introduces a new block formatting context that we care about
-       today. *)
     ("flow-root", Flow_root);
-    ("table", Table);
-    ("flex", Flex);
-    ("grid", Grid);
   ]
 
 let read_display_legacy t : display =
@@ -2081,23 +2078,6 @@ let pp_grid_auto_flow : grid_auto_flow Pp.t =
   | Row_dense -> Pp.string ctx "row dense"
   | Column_dense -> Pp.string ctx "column dense"
 
-let normalize_slashes s =
-  (* Ensure spaces around "/" in grid values: "N/M" -> "N / M" *)
-  let buf = Buffer.create (String.length s + 4) in
-  let needs_space_before () =
-    Buffer.length buf > 0 && Buffer.nth buf (Buffer.length buf - 1) <> ' '
-  in
-  let needs_space_after i = i < String.length s - 1 && s.[i + 1] <> ' ' in
-  String.iteri
-    (fun i c ->
-      if c = '/' then (
-        if needs_space_before () then Buffer.add_char buf ' ';
-        Buffer.add_char buf '/';
-        if needs_space_after i then Buffer.add_char buf ' ')
-      else Buffer.add_char buf c)
-    s;
-  Buffer.contents buf
-
 let rec pp_grid_line : grid_line Pp.t =
  fun ctx -> function
   | Auto -> Pp.string ctx "auto"
@@ -2107,8 +2087,17 @@ let rec pp_grid_line : grid_line Pp.t =
       Pp.string ctx "span";
       Pp.char ctx ' ';
       Pp.int ctx n
+  | Span_name name ->
+      Pp.string ctx "span";
+      Pp.char ctx ' ';
+      Pp.string ctx name
+  | Span_num_name (n, name) ->
+      Pp.string ctx "span";
+      Pp.char ctx ' ';
+      Pp.int ctx n;
+      Pp.char ctx ' ';
+      Pp.string ctx name
   | Calc s -> Pp.string ctx s
-  | Arbitrary s -> Pp.string ctx (normalize_slashes s)
   | Var v -> pp_var pp_grid_line ctx v
 
 let rec pp_aspect_ratio : aspect_ratio Pp.t =
@@ -2151,7 +2140,6 @@ let rec pp_perspective_origin : perspective_origin Pp.t =
       pp_length ctx x;
       Pp.space ctx ();
       pp_length ctx y
-  | Perspective_arbitrary s -> Pp.string ctx s
   | Perspective_var v -> pp_var pp_perspective_origin ctx v
 
 let pp_clip : clip Pp.t =
@@ -2681,7 +2669,6 @@ let rec pp_transform : transform Pp.t =
   | Inherit -> pp_keyword "inherit" ctx
   | Var v -> pp_var pp_transform ctx v
   | List transforms -> pp_transforms ctx transforms
-  | Arbitrary s -> Pp.string ctx s
 
 and pp_transforms : transform list Pp.t =
  fun ctx transforms ->
@@ -2945,7 +2932,6 @@ let rec pp_transform_origin : transform_origin Pp.t =
       pp_length ctx b;
       Pp.space ctx ();
       pp_length ctx z
-  | Arbitrary s -> Pp.string ctx s
   | Var v -> pp_var pp_transform_origin ctx v
 
 let pp_transform_box : transform_box Pp.t =
@@ -4180,9 +4166,6 @@ let calc_to_string (type a) (expr : a calc) : string =
             add ", var(--";
             add name;
             add ")"
-        | Raw_fallback raw ->
-            add ", ";
-            add raw
         | Empty -> add ","
         | Empty2 -> add ",  "
         | None -> ());
@@ -4453,18 +4436,18 @@ let read_grid_auto_flow t : grid_auto_flow =
 
 (* CSS Grid template - flattened type with direct constructors *)
 
-let read_span_arbitrary t : grid_line =
-  let tail = Cursor.consume_to_slash_or_semicolon ~trim:true t in
-  Arbitrary (if tail = "" then "span" else "span " ^ tail)
-
-let read_grid_line t : grid_line =
+let rec read_grid_line t : grid_line =
   let read_span_num t =
     let span_word = Cursor.ident t in
     if span_word = "span" then (
       Cursor.ws t;
-      match Cursor.lookahead (Cursor.option Cursor.number) t with
-      | Some _ -> Span (Cursor.int t)
-      | None -> read_span_arbitrary t)
+      match Cursor.option Cursor.int t with
+      | Some n -> (
+          Cursor.ws t;
+          match Cursor.option Cursor.ident t with
+          | Some name -> Span_num_name (n, name)
+          | None -> Span n)
+      | None -> Span_name (Cursor.ident t))
     else Cursor.err t ("Expected 'span' but got " ^ span_word)
   in
   let read_number t : grid_line = Num (Cursor.int t) in
@@ -4472,9 +4455,13 @@ let read_grid_line t : grid_line =
     let name = Cursor.ident t in
     if name = "span" then (
       Cursor.ws t;
-      match Cursor.lookahead (Cursor.option Cursor.number) t with
-      | Some _ -> Span (Cursor.int t)
-      | None -> read_span_arbitrary t)
+      match Cursor.option Cursor.int t with
+      | Some n -> (
+          Cursor.ws t;
+          match Cursor.option Cursor.ident t with
+          | Some name -> Span_num_name (n, name)
+          | None -> Span n)
+      | None -> Span_name (Cursor.ident t))
     else Name name
   in
   let read_calc_int t : grid_line =
@@ -4487,10 +4474,13 @@ let read_grid_line t : grid_line =
     | Some _ -> Cursor.err_invalid t "grid-line calc must evaluate to integer"
     | None -> Calc (calc_to_string expr)
   in
-  let read_var t : grid_line = Arbitrary ("var(" ^ read_var_body t ^ ")") in
   Cursor.enum_or_calls "grid-line"
     [ ("auto", (Auto : grid_line)) ]
-    ~calls:[ ("calc", read_calc_int); ("var", read_var) ]
+    ~calls:
+      [
+        ("calc", read_calc_int);
+        ("var", fun t -> (Var (Values.read_var read_grid_line t) : grid_line));
+      ]
     ~default:(fun t ->
       Cursor.one_of [ read_number; read_span_num; read_name ] t)
     t
@@ -6236,7 +6226,6 @@ and pp_animation : animation Pp.t =
   | None -> Pp.string ctx "none"
   | Var v -> pp_var pp_animation ctx v
   | Shorthand s -> pp_animation_shorthand ctx s
-  | Arbitrary s -> Pp.string ctx s
 
 let rec read_animation t : animation =
   let read_var_call t : animation = Var (read_var read_animation t) in

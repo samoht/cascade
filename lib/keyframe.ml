@@ -16,13 +16,12 @@ let position_to_string = function
       in
       p_str ^ "%"
 
-(** A keyframe selector (one or more positions, or raw string). *)
-type selector = Positions of position list | Raw of string
+(** A keyframe selector (one or more positions). *)
+type selector = Positions of position list
 
 let selector_to_string = function
   | Positions positions ->
       String.concat ", " (List.map position_to_string positions)
-  | Raw s -> s
 
 let position_to_percent = function From -> 0. | To -> 100. | Percent p -> p
 
@@ -41,13 +40,12 @@ let position_of_string s =
     with Failure _ | Invalid_argument _ -> None
   else None
 
-(** Parse a selector string like "from", "50%", or "from, 50%". Always succeeds
-    \- returns Raw if parsing fails. *)
+(** Parse a selector string like "from", "50%", or "from, 50%". *)
 let selector_of_string s =
   let parts = String.split_on_char ',' s in
   let positions = List.filter_map position_of_string parts in
   if List.length positions = List.length parts && positions <> [] then
     Positions positions
-  else Raw s
+  else invalid_arg ("invalid keyframe selector: " ^ s)
 
 let selector_equal a b = selector_to_string a = selector_to_string b

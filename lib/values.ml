@@ -120,7 +120,6 @@ let pp_var : type a. a Pp.t -> a var Pp.t =
             match ctx.theme_defaults fallback_name with
             | Some resolved -> Pp.string ctx resolved
             | Option.None -> emit_var_ref ())
-        | Raw_fallback raw -> Pp.string ctx raw
         | None | Empty | Empty2 -> emit_var_ref ())
   else
     match v.fallback with
@@ -150,12 +149,6 @@ let pp_var : type a. a Pp.t -> a var Pp.t =
         Pp.string ctx v.name;
         Pp.comma ctx ();
         pp_var_fallback ctx fallback_name
-    | Raw_fallback raw ->
-        Pp.string ctx "var(--";
-        Pp.string ctx v.name;
-        Pp.comma ctx ();
-        Pp.string ctx raw;
-        Pp.char ctx ')'
 
 (* Function call formatting now provided by Pp.call and Pp.call_list *)
 
@@ -1155,12 +1148,7 @@ let read_var_body : type a. (Cursor.t -> a) -> Cursor.t -> a var =
       else
         match Cursor.try_parse_full_err read_value t with
         | Ok fb -> Fallback fb
-        | _ ->
-            let raw =
-              String.trim (Parser.to_string_minified (Cursor.remaining t))
-            in
-            t |> Cursor.consume_remaining_to_string |> ignore;
-            Raw_fallback raw)
+        | Error msg -> Cursor.err_invalid t ("var fallback: " ^ msg))
   in
   var_ref ~fallback var_name
 

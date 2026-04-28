@@ -334,7 +334,6 @@ and pp_keyframe_selector : Keyframe.selector Pp.t =
       Pp.list ~sep:Pp.comma
         (fun ctx pos -> Pp.string ctx (Keyframe.position_to_string pos))
         ctx positions
-  | Keyframe.Raw s -> Pp.string ctx s
 
 and pp_keyframe : keyframe Pp.t =
  fun ctx kf ->
@@ -1022,7 +1021,7 @@ and read_container (r : Cursor.t) : statement =
   Cursor.ws r;
   let condition_str = Cursor.drain_until_block_to_string ~trim:true r in
   let content = Cursor.braces (fun inner -> read_block inner) r in
-  Container (container_name, Container.Raw condition_str, content)
+  Container (container_name, Container.of_string condition_str, content)
 
 (* CSS Cascade section 6.4.2: a layer name is one or more idents joined by '.'
    with no whitespace around the dot. CSS-wide keywords are reserved. *)
@@ -1173,7 +1172,7 @@ and read_nested_at_rule (r : Cursor.t) (at_rule : string)
       Cursor.ws r;
       let condition_str = Cursor.drain_until_block_to_string ~trim:true r in
       let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
-      Container (container_name, Container.Raw condition_str, content)
+      Container (container_name, Container.of_string condition_str, content)
   | "@supports" ->
       let cond_loc = Cursor.position r in
       let condition = Cursor.drain_until_block_to_string ~trim:true r in

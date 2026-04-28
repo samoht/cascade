@@ -23,7 +23,6 @@ let size_adjust_to_string p = Pp.float_to_string p ^ "%"
 type src_entry =
   | Url of { url : string; format : string option; tech : string option }
   | Local of string
-  | Raw of string  (** Escape hatch for unparsed sources *)
 
 type src = src_entry list
 (** Font source list. *)
@@ -40,7 +39,6 @@ let src_entry_to_string = function
       | Some t -> with_format ^ " tech(" ^ t ^ ")"
       | None -> with_format)
   | Local name -> "local(\"" ^ name ^ "\")"
-  | Raw s -> s
 
 let src_to_string entries =
   String.concat ", " (List.map src_entry_to_string entries)
@@ -64,6 +62,54 @@ let size_adjust_of_string s =
     with Failure _ -> 100. (* fallback to 100% on invalid float *)
   else 100. (* fallback *)
 
-(** Parse a src string into a list of entries. Falls back to Raw for complex
-    values. *)
-let src_of_string s = [ Raw s ]
+let read_function_arg name t =
+  Cursor.call name t @@ fun inner ->
+  Cursor.ws inner;
+  let value =
+    match Cursor.string_opt inner with
+    | Some s -> s
+    | None -> Cursor.remaining_to_string ~trim:true inner
+  in
+  Cursor.expect_eof inner;
+  if value = "" then Cursor.err_invalid inner (name ^ "() argument");
+  value
+
+let read_url t =
+  match Cursor.url_opt t with
+  | Some url -> url
+  | None -> read_function_arg "url" t
+
+let read_src_modifier t =
+  Cursor.ws t;
+  match Cursor.peek_raw t with
+  | Some (Component.Func { node = { name; _ }; _ })
+    when String.lowercase_ascii name = "format" ->
+      `Format (read_function_arg "format" t)
+  | Some (Component.Func { node = { name; _ }; _ })
+    when String.lowercase_ascii name = "tech" ->
+      `Tech (read_function_arg "tech" t)
+  | _ -> Cursor.err_expected t "font source modifier"
+
+let read_src_entry t =
+  Cursor.ws t;
+  match Cursor.peek_raw t with
+  | Some (Component.Func { node = { name; _ }; _ })
+    when String.lowercase_ascii name = "local" ->
+      Local (read_function_arg "local" t)
+  | _ ->
+      let url = read_url t in
+      let rec modifiers format tech =
+        Cursor.ws t;
+        match Cursor.option read_src_modifier t with
+        | None -> Url { url; format; tech }
+        | Some (`Format value) -> modifiers (Some value) tech
+        | Some (`Tech value) -> modifiers format (Some value)
+      in
+      modifiers None None
+
+(** Parse a src string into a list of typed entries. *)
+let src_of_string s =
+  let t = Cursor.of_string s in
+  let entries = Cursor.list ~at_least:1 ~sep:Cursor.comma read_src_entry t in
+  Cursor.expect_eof t;
+  entries
