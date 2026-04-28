@@ -676,11 +676,23 @@ let test_valid_at_rule_descriptor_vector buf =
       [
         "@property --gap { syntax: \"<length>\"; inherits: false; \
          initial-value: 1px }";
+        "@property --tokens { inherits: true; initial-value: red; syntax: \
+         \"<color>\" }";
         "@font-face { font-family: Brand; src: url(\"brand.woff2\") \
          format(\"woff2\"); font-display: swap; unicode-range: U+0025-00FF; }";
+        "@font-face { font-family: Brand; src: local(\"Brand\"), \
+         url(\"brand.woff2\") format(\"woff2\") tech(variations); font-weight: \
+         100 900; font-style: oblique 10deg 20deg; }";
         "@page invoice:first { size: A4; margin: 1cm; @top-left { content: \
          \"Invoice\" } }";
+        "@page chapter:right { size: letter landscape; marks: crop cross; \
+         @bottom-center { content: counter(page) } }";
         "@keyframes fade { from { opacity: 0 } 50%, 100% { opacity: 1 } }";
+        "@keyframes slide { 100% { translate: 10px 0 } 0% { translate: none } }";
+        "@font-palette-values --brand { font-family: Brand; base-palette: 1; \
+         override-colors: 0 red, 1 color(display-p3 1 0 0); }";
+        "@view-transition { navigation: auto; }";
+        "@position-try --below { top: anchor(bottom); left: anchor(center); }";
         "@container card (inline-size > 30em) { .item { display: grid } }";
         "@container style(--variant: featured) { .item { display: grid } }";
         "@container scroll-state(stuck: top) { .item { display: grid } }";
@@ -702,8 +714,18 @@ let test_invalid_at_rule_descriptor_vector buf =
       [
         "@property --gap { syntax: \"<length>\"; inherits: false }";
         "@font-face { src: url(\"brand.woff2\"); }";
+        "@font-face { font-family: Brand; src: url(\"brand.woff2\"); \
+         font-weight: 900 100 }";
+        "@font-face { font-family: Brand; src: format(\"woff2\"); }";
         "@page :unknown { margin: 1cm }";
+        "@page { @top-center { display: block } }";
         "@keyframes bad { -1% { opacity: 0 } }";
+        "@keyframes bad { 50%, { opacity: 1 } }";
+        "@font-palette-values brand { font-family: Brand; base-palette: 1 }";
+        "@font-palette-values --brand { override-colors: -1 red }";
+        "@view-transition { navigation: always; }";
+        "@position-try default { top: 0; }";
+        "@position-try --fallback { @media screen { .x { color: red } } }";
         "@namespace svg;";
         "@container () { .x { color: red } }";
         "@container style() { .x { color: red } }";

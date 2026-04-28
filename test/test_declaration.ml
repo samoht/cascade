@@ -863,7 +863,7 @@ let spec_property_grammar_table_expansion () =
       ("width", "fit-content(20rem)");
       ("min-width", "min-content");
       ("max-width", "stretch");
-      ("aspect-ratio", "16 / 9");
+      ("aspect-ratio", "16/9");
       ("contain", "layout paint");
       ("container-type", "inline-size");
       ("container-name", "card");
@@ -1309,6 +1309,16 @@ let spec_platform_property_vectors () =
          url(a.png) type(\"image/png\") 1x)",
         "background-image:image-set(url(a.avif) type(\"image/avif\") \
          1x,url(a.png) type(\"image/png\") 1x)" );
+      ( "border-image: linear-gradient(red, blue) 30 fill / 10px / 1 stretch",
+        "border-image:linear-gradient(red,blue) 30 fill/10px/1 stretch" );
+      ( "font: italic small-caps 650 condensed 16px/1.5 \"Brand\", serif",
+        "font:italic small-caps 650 condensed 16px/1.5 \"Brand\",serif" );
+      ( "grid-template: \"head head\" auto \"nav main\" 1fr / 12rem 1fr",
+        "grid-template:\"head head\" auto \"nav main\" 1fr/12rem 1fr" );
+      ( "transition: opacity 1s ease-in .2s allow-discrete",
+        "transition:opacity 1s ease-in .2s allow-discrete" );
+      ("scroll-timeline: --scroller block", "scroll-timeline:--scroller block");
+      ("view-timeline: --reveal inline", "view-timeline:--reveal inline");
     ];
   List.iter
     (fun input -> neg_cursor read_declaration input)
@@ -1352,6 +1362,12 @@ let spec_platform_property_vectors () =
       "opacity: sign()";
       "color: color-mix(red, blue)";
       "background-image: image-set(url(a.png))";
+      "border-image: linear-gradient(red, blue) fill fill";
+      "font: bold serif";
+      "grid-template: none / 1fr";
+      "transition: allow-discrete allow-discrete";
+      "scroll-timeline: block --scroller";
+      "view-timeline: inline --reveal";
     ]
 
 let spec_values_l45_edges () =
@@ -1732,7 +1748,7 @@ let property_grammar_matrix =
     };
     {
       property = "aspect-ratio";
-      positives = [ "auto"; "16 / 9"; "auto 1 / 1" ];
+      positives = [ "auto"; "16/9"; "auto 1/1" ];
       negatives = [ "16 /"; "auto auto" ];
     };
     {

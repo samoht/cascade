@@ -1289,6 +1289,8 @@ and read_property_rule (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "property" r;
   Cursor.ws r;
   let name = Cursor.ident ~keep_case:true r in
+  if not (String.length name >= 2 && String.sub name 0 2 = "--") then
+    Cursor.err_invalid r ("@property: name must start with '--', got: " ^ name);
   Cursor.ws r;
   let state = Cursor.braces (fun inner -> read_property_descriptors inner) r in
   match (state.syntax, state.inherits) with
