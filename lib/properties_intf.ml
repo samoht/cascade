@@ -1647,7 +1647,7 @@ type 'a property =
   | Font_style : font_style property
   | Text_align : text_align property
   | Text_decoration : text_decoration property
-  | Text_decoration_line : text_decoration_line property
+  | Text_decoration_line : text_decoration_line list property
   | Text_decoration_style : text_decoration_style property
   | Text_decoration_color : color property
   | Text_underline_offset : length property
@@ -1728,15 +1728,15 @@ type 'a property =
   | Overflow : overflow property
   | Inset : length list property
   | Inset_inline : length list property
-  | Inset_inline_start : length property
-  | Inset_inline_end : length property
+  | Inset_inline_start : length list property
+  | Inset_inline_end : length list property
   | Inset_block : length list property
-  | Inset_block_start : length property
-  | Inset_block_end : length property
-  | Top : length property
-  | Right : length property
-  | Bottom : length property
-  | Left : length property
+  | Inset_block_start : length list property
+  | Inset_block_end : length list property
+  | Top : length list property
+  | Right : length list property
+  | Bottom : length list property
+  | Left : length list property
   | Z_index : z_index property
   | Outline : outline property
   | Outline_style : outline_style property

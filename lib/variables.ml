@@ -624,10 +624,10 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Margin_block, value -> vars_of_length value
   | Margin_block_start, value -> vars_of_length value
   | Margin_block_end, value -> vars_of_length value
-  | Top, value -> vars_of_length value
-  | Right, value -> vars_of_length value
-  | Bottom, value -> vars_of_length value
-  | Left, value -> vars_of_length value
+  | Top, value -> vars_of_length_list value
+  | Right, value -> vars_of_length_list value
+  | Bottom, value -> vars_of_length_list value
+  | Left, value -> vars_of_length_list value
   | Font_size, value -> vars_of_font_size value
   | Letter_spacing, value -> vars_of_length value
   | Line_height, value -> vars_of_line_height value
@@ -850,21 +850,27 @@ let read_any_syntax (r : Cursor.t) : any_syntax =
     information which would need to be resolved from a variable registry or
     context. *)
 let parse_var_reference (r : Cursor.t) : string * string option =
-  Cursor.call "var" r (fun inner ->
-      let raw_name = Cursor.ident ~keep_case:true inner in
-      (* Per css-variables-1, custom-property names start with [--]; anything
-         else is rejected. *)
-      if
-        not
-          (String.length raw_name >= 3
-          && raw_name.[0] = '-'
-          && raw_name.[1] = '-')
-      then Cursor.err_invalid inner ("not a custom property: " ^ raw_name);
-      let name = String.sub raw_name 2 (String.length raw_name - 2) in
-      Cursor.ws inner;
-      let fallback =
-        if Cursor.comma_opt inner then
-          Some (Cursor.remaining_to_string ~trim:true inner)
-        else None
-      in
-      (name, fallback))
+  let result =
+    Cursor.call "var" r (fun inner ->
+        let raw_name = Cursor.ident ~keep_case:true inner in
+        (* Per css-variables-1, custom-property names start with [--]; anything
+           else is rejected. *)
+        if
+          not
+            (String.length raw_name >= 3
+            && raw_name.[0] = '-'
+            && raw_name.[1] = '-')
+        then Cursor.err_invalid inner ("not a custom property: " ^ raw_name);
+        let name = String.sub raw_name 2 (String.length raw_name - 2) in
+        Cursor.ws inner;
+        let fallback =
+          if Cursor.comma_opt inner then
+            Some (Cursor.remaining_to_string ~trim:true inner)
+          else None
+        in
+        (name, fallback))
+  in
+  Cursor.ws r;
+  if not (Cursor.is_done r) then
+    Cursor.err_invalid r "trailing tokens after var()";
+  result

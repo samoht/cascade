@@ -258,6 +258,56 @@ let test_invalid_css_wide_keyword_mixes buf =
   | None -> ()
   | Some decl -> ignore (serialize decl)
 
+let test_shared_css_wide_inventory buf =
+  let row =
+    pick Cascade_spec_inventory.Declaration_grammar.css_wide_positive buf 0
+  in
+  match parse_declaration row.input with
+  | None -> fail (Fmt.str "shared CSS-wide declaration rejected: %S" row.input)
+  | Some decl ->
+      let serialized = serialize decl in
+      if serialized <> row.expected then
+        fail
+          (Fmt.str "shared CSS-wide declaration changed: %S -> %S" row.input
+             serialized)
+
+let test_shared_invalid_css_wide_inventory buf =
+  let row =
+    pick Cascade_spec_inventory.Declaration_grammar.css_wide_negative buf 0
+  in
+  match parse_declaration row.input with
+  | None -> ()
+  | Some decl ->
+      fail
+        (Fmt.str "shared invalid CSS-wide declaration parsed: %S -> %S"
+           row.input (serialize decl))
+
+let test_shared_alias_inventory buf =
+  let row =
+    pick Cascade_spec_inventory.Declaration_grammar.alias_positive buf 0
+  in
+  match parse_declaration row.input with
+  | None -> fail (Fmt.str "shared alias declaration rejected: %S" row.input)
+  | Some decl ->
+      let serialized = serialize decl in
+      if starts_with ~prefix:"page-break-" serialized then
+        fail (Fmt.str "legacy alias serialized with old name: %S" serialized);
+      if serialized <> row.expected then
+        fail
+          (Fmt.str "shared alias declaration changed: %S -> %S" row.input
+             serialized)
+
+let test_shared_invalid_alias_inventory buf =
+  let row =
+    pick Cascade_spec_inventory.Declaration_grammar.alias_negative buf 0
+  in
+  match parse_declaration row.input with
+  | None -> ()
+  | Some decl ->
+      fail
+        (Fmt.str "shared invalid alias declaration parsed: %S -> %S" row.input
+           (serialize decl))
+
 let test_custom_property_token_stream_vectors buf =
   let name = "--spec-" ^ string_of_int (byte_at buf 0) in
   let value =
@@ -314,6 +364,14 @@ let suite =
         test_css_wide_keyword_vectors;
       test_case "invalid CSS-wide keyword mixes rejected" [ bytes ]
         test_invalid_css_wide_keyword_mixes;
+      test_case "shared CSS-wide declaration inventory" [ bytes ]
+        test_shared_css_wide_inventory;
+      test_case "shared invalid CSS-wide declaration inventory" [ bytes ]
+        test_shared_invalid_css_wide_inventory;
+      test_case "shared legacy alias declaration inventory" [ bytes ]
+        test_shared_alias_inventory;
+      test_case "shared invalid legacy alias declaration inventory" [ bytes ]
+        test_shared_invalid_alias_inventory;
       test_case "custom property token stream vectors" [ bytes ]
         test_custom_property_token_stream_vectors;
     ] )

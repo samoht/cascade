@@ -8002,15 +8002,15 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Webkit_box_orient -> pp pp_webkit_box_orient
   | Inset -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
   | Inset_inline -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
-  | Inset_inline_start -> pp pp_length
-  | Inset_inline_end -> pp pp_length
+  | Inset_inline_start -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
+  | Inset_inline_end -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
   | Inset_block -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
-  | Inset_block_start -> pp pp_length
-  | Inset_block_end -> pp pp_length
-  | Top -> pp pp_length
-  | Right -> pp pp_length
-  | Bottom -> pp pp_length
-  | Left -> pp pp_length
+  | Inset_block_start -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
+  | Inset_block_end -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
+  | Top -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
+  | Right -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
+  | Bottom -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
+  | Left -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
   | Border_width -> pp pp_border_width
   | Border_top_width -> pp pp_border_width
   | Border_right_width -> pp pp_border_width
@@ -8041,7 +8041,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Webkit_text_decoration_color -> pp pp_color
   | Webkit_tap_highlight_color -> pp pp_color
   | Text_indent -> pp pp_length
-  | Border_spacing -> pp (Pp.list ~sep:Pp.space_if_pretty pp_length)
+  | Border_spacing -> pp (Pp.list ~sep:Pp.space pp_length)
   | Outline_offset -> pp pp_length
   | Perspective -> pp pp_length
   | Transform -> pp pp_transforms
@@ -8077,7 +8077,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Font_style -> pp pp_font_style
   | Text_align -> pp pp_text_align
   | Text_decoration -> pp pp_text_decoration
-  | Text_decoration_line -> pp pp_text_decoration_line
+  | Text_decoration_line -> pp (Pp.list ~sep:Pp.space pp_text_decoration_line)
   | Text_decoration_style -> pp pp_text_decoration_style
   | Text_transform -> pp pp_text_transform
   | List_style_type -> pp pp_list_style_type

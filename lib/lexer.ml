@@ -558,19 +558,11 @@ let consume_at_start r =
 
 (* CSS Syntax 4.3.2: skip a run of comments without consuming surrounding
    whitespace. *)
-let rec skip_comment_run r =
-  if Reader.looking_at r "/*" then (
-    Reader.skip r;
-    Reader.skip r;
-    skip_comment_body r;
-    skip_comment_run r)
-
 (* 4.3.1 Consume a token. *)
 let next_token ?(force_url_function = false) r =
-  skip_comment_run r;
   match Reader.peek r with
   | None -> Eof
-  | Some c when is_ws c ->
+  | Some c when is_ws c || Reader.looking_at r "/*" ->
       consume_whitespace_run r;
       Whitespace
   | Some '"' ->

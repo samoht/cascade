@@ -401,6 +401,8 @@ type number =
   | Hypot of number * number
   | Pow of number * number
   | Sqrt of number
+  | Abs of number
+  | Sign of number
   | Sin of angle
 
 type transition_behavior = Normal | Allow_discrete

@@ -743,6 +743,44 @@ let test_invalid_at_rule_descriptor_vector buf =
         (Fmt.str "invalid spec at-rule vector parsed: %S -> %S" input
            (minified_stylesheet ss))
 
+let test_shared_at_rule_inventory_valid buf =
+  let row = pick Cascade_spec_inventory.At_rule_grammar.positive buf 0 in
+  match parse_stylesheet row.input with
+  | None ->
+      fail
+        (Fmt.str "shared at-rule inventory valid row rejected: %s/%s %S"
+           row.feature row.branch row.input)
+  | Some ss -> (
+      let output = minified_stylesheet ss in
+      if output <> row.expected then
+        fail
+          (Fmt.str
+             "shared at-rule inventory serialization changed: %s/%s %S -> %S"
+             row.feature row.branch row.input output);
+      match parse_stylesheet output with
+      | None ->
+          fail
+            (Fmt.str
+               "shared at-rule inventory serialization did not reparse: %S"
+               output)
+      | Some reparsed ->
+          let twice = minified_stylesheet reparsed in
+          if twice <> output then
+            fail
+              (Fmt.str
+                 "shared at-rule inventory serialization not idempotent: %S -> \
+                  %S"
+                 output twice))
+
+let test_shared_at_rule_inventory_invalid buf =
+  let row = pick Cascade_spec_inventory.At_rule_grammar.negative buf 0 in
+  match parse_stylesheet row.input with
+  | None -> ()
+  | Some ss ->
+      fail
+        (Fmt.str "shared at-rule inventory invalid row parsed: %s/%s %S -> %S"
+           row.feature row.branch row.input (minified_stylesheet ss))
+
 let test_font_face_descriptor_matrix buf =
   let input =
     pick
@@ -1089,6 +1127,10 @@ let suite =
         test_valid_at_rule_descriptor_vector;
       test_case "invalid at-rule descriptor vectors rejected" [ bytes ]
         test_invalid_at_rule_descriptor_vector;
+      test_case "shared at-rule inventory valid vectors" [ bytes ]
+        test_shared_at_rule_inventory_valid;
+      test_case "shared at-rule inventory invalid vectors rejected" [ bytes ]
+        test_shared_at_rule_inventory_invalid;
       test_case "font-face descriptor matrix" [ bytes ]
         test_font_face_descriptor_matrix;
       test_case "invalid font-face descriptor matrix rejected" [ bytes ]
