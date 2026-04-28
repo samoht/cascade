@@ -536,7 +536,7 @@ let rec read_font_weight t : font_weight =
     ~default:(fun t ->
       let n = Cursor.number t in
       let weight = int_of_float n in
-      if weight >= 1 && weight <= 1000 then Weight weight
+      if weight >= 1 && weight < 1000 then Weight weight
       else err_invalid_value t "font-weight" (string_of_int weight))
     t
 
@@ -1012,9 +1012,18 @@ module Transform = struct
             t
         in
         match y with
-        | None -> (Scale (x, None) : transform)
-        | Some (true, y) -> Scale (x, Some y)
-        | Some (false, y) -> Scale_space (x, y))
+        | None ->
+            Cursor.ws t;
+            Cursor.expect_eof t;
+            (Scale (x, None) : transform)
+        | Some (true, y) ->
+            Cursor.ws t;
+            Cursor.expect_eof t;
+            Scale (x, Some y)
+        | Some (false, y) ->
+            Cursor.ws t;
+            Cursor.expect_eof t;
+            Scale_space (x, y))
 
   let read_skew_x t = Cursor.call "skewx" t (fun t -> Skew_x (read_angle t))
   let read_skew_y t = Cursor.call "skewy" t (fun t -> Skew_y (read_angle t))
