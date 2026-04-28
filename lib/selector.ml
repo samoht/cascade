@@ -318,7 +318,10 @@ let read_lang_content t =
   Lang langs
 
 let read_dir_content t =
+  (* :dir() accepts only [ltr] or [rtl] per Selectors 4 §6.5.1. *)
   let dir = Cursor.ident t in
+  if dir <> "ltr" && dir <> "rtl" then
+    Cursor.err_invalid t (":dir() expects ltr or rtl, got: " ^ dir);
   ensure_call_done t "dir";
   Dir dir
 
