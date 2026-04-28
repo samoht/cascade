@@ -1008,11 +1008,7 @@ and rules_aux (rules : rule list) : rule list =
     List.map (fun rule -> { rule with nested = statements rule.nested }) rules
   in
   (* Then apply standard rule optimizations *)
-  let deduped = List.map single_rule_without_nested with_optimized_nested in
-  let merged = merge_rules deduped in
-  (* Combine consecutive rules with identical declarations into selector
-     lists *)
-  combine_identical_rules merged
+  List.map single_rule_without_nested with_optimized_nested
 
 let single_rule (rule : rule) : rule =
   {
@@ -1054,15 +1050,4 @@ let apply_property_duplication (stylesheet : t) : t =
   in
   apply_to_statements stylesheet
 
-let stylesheet (stylesheet : t) : t =
-  (* Apply CSS optimizations while preserving cascade semantics *)
-  (* Also remove the initial layer declaration list (@layer theme,base,components,utilities;)
-     as Tailwind v4 doesn't include it in minified+optimized output *)
-  let remove_initial_layer_decl = function
-    | Layer_decl names :: rest
-      when List.mem "theme" names && List.mem "utilities" names ->
-        (* This is the full layer declaration list - remove it *)
-        rest
-    | stmts -> stmts
-  in
-  stylesheet |> remove_initial_layer_decl |> statements
+let stylesheet (stylesheet : t) : t = statements stylesheet

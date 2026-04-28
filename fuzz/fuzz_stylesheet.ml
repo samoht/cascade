@@ -147,7 +147,7 @@ let parse_declaration input =
     | None -> None
     | Some decl ->
         Some (Css.Declaration.string_of_declaration ~minify:true decl)
-  with Css.Cursor.Parse_error _ -> None
+  with Css.Cursor.Parse_error _ | Css.Error.Parse_error _ -> None
 
 let minified_stylesheet ss =
   Css.Stylesheet.to_string ~minify:true ss |> String.trim

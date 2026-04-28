@@ -519,6 +519,116 @@ let test_spec_invalid_color_branch_vectors buf =
         (Fmt.str "invalid CSS color branch vector parsed: %S -> %S" input
            (Css.Pp.to_string ~minify:true Css.Values.pp_color color))
 
+let generated_number buf i = pick [ "0"; ".5"; "1"; "12"; "-3"; "100" ] buf i
+
+let generated_length buf i =
+  let number = generated_number buf i in
+  number ^ pick [ "px"; "rem"; "em"; "vw"; "cqw"; "%" ] buf (i + 1)
+
+let generated_value buf =
+  match byte_at buf 0 mod 6 with
+  | 0 -> (`Length, generated_length buf 1)
+  | 1 ->
+      ( `Length,
+        "calc(" ^ generated_length buf 1 ^ " + " ^ generated_length buf 3 ^ ")"
+      )
+  | 2 ->
+      ( `Length,
+        "clamp(" ^ generated_length buf 1 ^ "," ^ generated_length buf 3 ^ ","
+        ^ generated_length buf 5 ^ ")" )
+  | 3 ->
+      ( `Color,
+        "rgb(" ^ generated_number buf 1 ^ " " ^ generated_number buf 2 ^ " "
+        ^ generated_number buf 3 ^ " / "
+        ^ pick [ "50%"; ".5"; "1" ] buf 4
+        ^ ")" )
+  | 4 ->
+      ( `Color,
+        "color-mix(in "
+        ^ pick [ "srgb"; "oklab"; "lch longer hue" ] buf 1
+        ^ ", "
+        ^ pick [ "red"; "blue"; "oklch(50% .1 20)" ] buf 2
+        ^ " "
+        ^ pick [ "25%"; "50%"; "75%" ] buf 3
+        ^ ", "
+        ^ pick [ "white"; "black"; "transparent" ] buf 4
+        ^ ")" )
+  | _ ->
+      ( `Number,
+        pick
+          [
+            "round(nearest, 10, 3)";
+            "mod(10, 3)";
+            "hypot(3, 4)";
+            "abs(-10)";
+            "sign(-1)";
+          ]
+          buf 1 )
+
+let invalid_value_mutation buf =
+  match generated_value buf with
+  | `Length, value ->
+      ( `Length,
+        match byte_at buf 7 mod 4 with
+        | 0 -> "calc(" ^ value ^ " +)"
+        | 1 -> "clamp(" ^ value ^ "," ^ value ^ ")"
+        | 2 -> value ^ " " ^ value
+        | _ -> "anchor-size()" )
+  | `Color, value ->
+      ( `Color,
+        match byte_at buf 7 mod 4 with
+        | 0 -> "rgb(" ^ value ^ ")"
+        | 1 -> "color-mix(in srgb " ^ value ^ ", blue)"
+        | 2 -> "light-dark(" ^ value ^ ")"
+        | _ -> value ^ " / / .5" )
+  | `Number, value ->
+      ( `Number,
+        match byte_at buf 7 mod 4 with
+        | 0 -> "round(up)"
+        | 1 -> "pow(" ^ value ^ ")"
+        | 2 -> "sqrt()"
+        | _ -> value ^ " " ^ value )
+
+let assert_value_roundtrip kind input =
+  let run parse pp =
+    let r = Css.Cursor.of_string input in
+    match try Some (parse r) with Css.Cursor.Parse_error _ -> None with
+    | None -> fail (Fmt.str "generated valid CSS value rejected: %S" input)
+    | Some value -> (
+        let once = Css.Pp.to_string ~minify:true pp value in
+        let r2 = Css.Cursor.of_string once in
+        match try Some (parse r2) with Css.Cursor.Parse_error _ -> None with
+        | None -> fail (Fmt.str "generated CSS value did not reparse: %S" once)
+        | Some reparsed ->
+            let twice = Css.Pp.to_string ~minify:true pp reparsed in
+            if once <> twice then
+              fail (Fmt.str "generated CSS value drifted: %S -> %S" once twice))
+  in
+  match kind with
+  | `Length -> run Css.Values.read_length Css.Values.pp_length
+  | `Color -> run Css.Values.read_color Css.Values.pp_color
+  | `Number -> run Css.Values.read_number Css.Values.pp_number
+
+let assert_value_reject kind input =
+  let reject parse =
+    let r = Css.Cursor.of_string input in
+    match try Some (parse r) with Css.Cursor.Parse_error _ -> None with
+    | None -> ()
+    | Some _ -> fail (Fmt.str "generated invalid CSS value parsed: %S" input)
+  in
+  match kind with
+  | `Length -> reject Css.Values.read_length
+  | `Color -> reject Css.Values.read_color
+  | `Number -> reject Css.Values.read_number
+
+let test_generated_value_grammar buf =
+  let kind, input = generated_value buf in
+  assert_value_roundtrip kind input
+
+let test_invalid_value_mutations buf =
+  let kind, input = invalid_value_mutation buf in
+  assert_value_reject kind input
+
 let suite =
   ( "values",
     [
@@ -566,4 +676,7 @@ let suite =
         test_spec_color_branch_vectors;
       test_case "spec invalid color branch vectors rejected" [ bytes ]
         test_spec_invalid_color_branch_vectors;
+      test_case "generated value grammar" [ bytes ] test_generated_value_grammar;
+      test_case "invalid value mutations rejected" [ bytes ]
+        test_invalid_value_mutations;
     ] )

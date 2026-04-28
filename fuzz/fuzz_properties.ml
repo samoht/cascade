@@ -16,215 +16,11 @@ let byte_at buf i =
 
 let pick xs buf i = List.nth xs (byte_at buf i mod List.length xs)
 
-let find_sub s pat start =
-  let s_len = String.length s and pat_len = String.length pat in
-  let rec loop i =
-    if i + pat_len > s_len then None
-    else if String.sub s i pat_len = pat then Some i
-    else loop (i + 1)
-  in
-  loop start
+let property_inventory : Cascade_spec_inventory.Property_grammar.row list =
+  Cascade_spec_inventory.Property_grammar.rows
 
-let quoted_strings s =
-  let rec loop acc i =
-    match find_sub s "\"" i with
-    | None -> List.rev acc
-    | Some start -> (
-        match find_sub s "\"" (start + 1) with
-        | None -> List.rev acc
-        | Some stop ->
-            let value = String.sub s (start + 1) (stop - start - 1) in
-            loop (value :: acc) (stop + 1))
-  in
-  loop [] 0
-
-let ocaml_string_literals s =
-  let len = String.length s in
-  let buffer = Buffer.create 32 in
-  let rec scan acc i =
-    if i >= len then List.rev acc
-    else if s.[i] <> '"' then scan acc (i + 1)
-    else (
-      Buffer.clear buffer;
-      string acc (i + 1))
-  and string acc i =
-    if i >= len then List.rev acc
-    else
-      match s.[i] with
-      | '"' ->
-          let value = Buffer.contents buffer in
-          scan (value :: acc) (i + 1)
-      | '\\' when i + 1 < len ->
-          let c = s.[i + 1] in
-          Buffer.add_char buffer
-            (match c with
-            | '"' -> '"'
-            | '\\' -> '\\'
-            | 'n' -> '\n'
-            | 't' -> '\t'
-            | c -> c);
-          string acc (i + 2)
-      | c ->
-          Buffer.add_char buffer c;
-          string acc (i + 1)
-  in
-  scan [] 0
-
-let source_slice s ~first ~last =
-  match (find_sub s first 0, find_sub s last 0) with
-  | Some start, Some stop when stop > start -> String.sub s start (stop - start)
-  | _ -> ""
-
-let read_source_file path =
-  let ic = open_in path in
-  Fun.protect
-    ~finally:(fun () -> close_in_noerr ic)
-    (fun () ->
-      let len = in_channel_length ic in
-      really_input_string ic len)
-
-let deterministic_manifest_properties =
-  lazy
-    (let source =
-       try read_source_file "test/test_declaration.ml"
-       with Sys_error _ -> read_source_file "../test/test_declaration.ml"
-     in
-     let manifest =
-       source_slice source ~first:"type property_grammar_row"
-         ~last:"let spec_property_grammar_manifest"
-     in
-     let rec property_fields acc i =
-       match find_sub manifest "property = \"" i with
-       | None -> acc
-       | Some start -> (
-           let value_start = start + String.length "property = \"" in
-           match find_sub manifest "\"" value_start with
-           | None -> acc
-           | Some stop ->
-               let property =
-                 String.sub manifest value_start (stop - value_start)
-               in
-               property_fields (property :: acc) (stop + 1))
-     in
-     let rec property_row_blocks acc i =
-       match find_sub manifest "property_grammar_rows" i with
-       | None -> acc
-       | Some start -> (
-           match find_sub manifest "[" start with
-           | None -> acc
-           | Some block_start -> (
-               match find_sub manifest "]" block_start with
-               | None -> acc
-               | Some block_stop ->
-                   let block =
-                     String.sub manifest block_start (block_stop - block_start)
-                   in
-                   property_row_blocks
-                     (quoted_strings block @ acc)
-                     (block_stop + 1)))
-     in
-     let names = property_fields [] 0 @ property_row_blocks [] 0 in
-     List.sort_uniq String.compare names)
-
-type deterministic_manifest_row = {
-  name : string;
-  positive_values : string list;
-  negative_values : string list;
-}
-
-let bracket_payload source start =
-  match find_sub source "[" start with
-  | None -> None
-  | Some open_i ->
-      let rec loop depth i =
-        if i >= String.length source then None
-        else
-          match source.[i] with
-          | '[' -> loop (depth + 1) (i + 1)
-          | ']' when depth = 1 ->
-              Some (open_i, i, String.sub source open_i (i - open_i + 1))
-          | ']' -> loop (depth - 1) (i + 1)
-          | _ -> loop depth (i + 1)
-      in
-      loop 0 open_i
-
-let deterministic_manifest_rows =
-  lazy
-    (let source =
-       try read_source_file "test/test_declaration.ml"
-       with Sys_error _ -> read_source_file "../test/test_declaration.ml"
-     in
-     let manifest =
-       source_slice source ~first:"type property_grammar_row"
-         ~last:"let spec_property_grammar_manifest"
-     in
-     let rec grouped_rows acc i =
-       match find_sub manifest "property_grammar_rows" i with
-       | None -> acc
-       | Some start -> (
-           match bracket_payload manifest start with
-           | None -> acc
-           | Some (_, props_end, props_src) -> (
-               match bracket_payload manifest (props_end + 1) with
-               | None -> acc
-               | Some (_, positives_end, positives_src) -> (
-                   match bracket_payload manifest (positives_end + 1) with
-                   | None -> acc
-                   | Some (_, negatives_end, negatives_src) ->
-                       let positives = ocaml_string_literals positives_src in
-                       let negatives = ocaml_string_literals negatives_src in
-                       let rows =
-                         List.map
-                           (fun name ->
-                             {
-                               name;
-                               positive_values = positives;
-                               negative_values = negatives;
-                             })
-                           (ocaml_string_literals props_src)
-                       in
-                       grouped_rows (rows @ acc) (negatives_end + 1))))
-     in
-     let rec explicit_rows acc i =
-       match find_sub manifest "property = \"" i with
-       | None -> acc
-       | Some start -> (
-           let name_start = start + String.length "property = \"" in
-           match find_sub manifest "\"" name_start with
-           | None -> acc
-           | Some name_end -> (
-               let name =
-                 String.sub manifest name_start (name_end - name_start)
-               in
-               match find_sub manifest "positives =" name_end with
-               | None -> explicit_rows acc (name_end + 1)
-               | Some positives_start -> (
-                   match bracket_payload manifest positives_start with
-                   | None -> explicit_rows acc (name_end + 1)
-                   | Some (_, positives_end, positives_src) -> (
-                       match find_sub manifest "negatives =" positives_end with
-                       | None -> explicit_rows acc (positives_end + 1)
-                       | Some negatives_start -> (
-                           match bracket_payload manifest negatives_start with
-                           | None -> explicit_rows acc (positives_end + 1)
-                           | Some (_, negatives_end, negatives_src) ->
-                               let row =
-                                 {
-                                   name;
-                                   positive_values =
-                                     ocaml_string_literals positives_src;
-                                   negative_values =
-                                     ocaml_string_literals negatives_src;
-                                 }
-                               in
-                               explicit_rows (row :: acc) (negatives_end + 1))))
-               ))
-     in
-     let rows = explicit_rows [] 0 @ grouped_rows [] 0 in
-     let table = Hashtbl.create 512 in
-     List.iter (fun row -> Hashtbl.replace table row.name row) rows;
-     Hashtbl.fold (fun _ row acc -> row :: acc) table []
-     |> List.sort (fun a b -> String.compare a.name b.name))
+let inventory_properties =
+  Cascade_spec_inventory.Property_grammar.property_names
 
 let check_reader reader printer input =
   let r = Css.Cursor.of_string input in
@@ -239,7 +35,7 @@ let check_reader reader printer input =
           let twice = Css.Pp.to_string ~minify:true printer reparsed in
           ignore twice)
 
-let reject_reader reader property input =
+let reject_reader reader _property input =
   let r = Css.Cursor.of_string input in
   match try Some (reader r) with Css.Cursor.Parse_error _ -> None with
   | None -> ()
@@ -653,14 +449,12 @@ let test_property_grammar_manifest_has_both_kinds _buf =
         fail (Fmt.str "%s fuzz row has no negative vectors" row.property))
     property_grammar_vectors
 
-let test_deterministic_manifest_css_wide_generation buf =
-  let properties = Lazy.force deterministic_manifest_properties in
-  if List.length properties < 346 then
+let test_inventory_css_wide_generation buf =
+  if List.length inventory_properties < 346 then
     fail
-      (Fmt.str
-         "deterministic property manifest extraction drifted: only %d rows"
-         (List.length properties));
-  let property = pick properties buf 0 in
+      (Fmt.str "shared property grammar inventory drifted: only %d rows"
+         (List.length inventory_properties));
+  let property = pick inventory_properties buf 0 in
   let keyword =
     pick [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ] buf 1
   in
@@ -686,17 +480,54 @@ let parse_declaration input =
   let c = Css.Cursor.of_string input in
   try Css.Declaration.read_declaration c with Css.Cursor.Parse_error _ -> None
 
-let test_deterministic_manifest_positive_values buf =
-  let rows = Lazy.force deterministic_manifest_rows in
-  if List.length rows < 346 then
-    fail
-      (Fmt.str "deterministic property manifest row extraction drifted: %d rows"
-         (List.length rows));
-  let row = pick rows buf 0 in
-  let value = pick row.positive_values buf 1 in
-  let input = row.name ^ ":" ^ value in
+let assert_decl_roundtrip label input =
+  match parse_declaration input with
+  | None -> fail (Fmt.str "%s declaration rejected: %S" label input)
+  | Some decl -> (
+      let serialized =
+        Css.Declaration.string_of_declaration ~minify:true decl
+      in
+      match parse_declaration serialized with
+      | Some reparsed when decl = reparsed -> ()
+      | _ ->
+          fail
+            (Fmt.str "%s declaration did not structurally roundtrip: %S -> %S"
+               label input serialized))
+
+let assert_decl_reject label input =
   match parse_declaration input with
   | None -> ()
+  | Some decl ->
+      fail
+        (Fmt.str "%s invalid declaration parsed: %S -> %S" label input
+           (Css.Declaration.string_of_declaration ~minify:true decl))
+
+let has_literal literal value = Re.execp Re.(compile (str literal)) value
+
+let invalid_property_mutation
+    (row : Cascade_spec_inventory.Property_grammar.row) value buf =
+  match byte_at buf 4 mod 6 with
+  | 0 -> pick row.negatives buf 5
+  | 1 -> "initial " ^ value
+  | 2 -> "inherit " ^ value
+  | 3 -> "var()"
+  | 4 -> if has_literal ")" value then value ^ " )" else value ^ " " ^ value
+  | _ -> value ^ " " ^ pick row.negatives buf 6
+
+let test_inventory_positive_values buf =
+  let rows = property_inventory in
+  if List.length rows < 346 then
+    fail
+      (Fmt.str "shared property grammar inventory drifted: %d rows"
+         (List.length rows));
+  let row = pick rows buf 0 in
+  let value = pick row.positives buf 1 in
+  let input = row.property ^ ":" ^ value in
+  match parse_declaration input with
+  | None ->
+      fail
+        (Fmt.str "deterministic manifest positive declaration rejected: %S"
+           input)
   | Some decl -> (
       let serialized =
         Css.Declaration.string_of_declaration ~minify:true decl
@@ -710,34 +541,41 @@ let test_deterministic_manifest_positive_values buf =
                 structurally roundtrip: %S -> %S"
                input serialized))
 
-let test_deterministic_manifest_negative_values buf =
-  let rows = Lazy.force deterministic_manifest_rows in
+let test_inventory_negative_values buf =
+  let rows = property_inventory in
   if List.length rows < 346 then
     fail
-      (Fmt.str "deterministic property manifest row extraction drifted: %d rows"
+      (Fmt.str "shared property grammar inventory drifted: %d rows"
          (List.length rows));
   let row = pick rows buf 0 in
-  let value = pick row.negative_values buf 1 in
-  let input = row.name ^ ":" ^ value in
+  let value = pick row.negatives buf 1 in
+  let input = row.property ^ ":" ^ value in
   match parse_declaration input with
   | None -> ()
   | Some decl ->
-      ignore (Css.Declaration.string_of_declaration ~minify:true decl)
+      fail
+        (Fmt.str "deterministic manifest negative declaration parsed: %S -> %S"
+           input
+           (Css.Declaration.string_of_declaration ~minify:true decl))
 
-let test_deterministic_manifest_var_values buf =
+let test_inventory_var_values buf =
   let rows =
-    Lazy.force deterministic_manifest_rows
-    |> List.filter (fun row -> row.name <> "all")
+    List.filter
+      (fun (row : Cascade_spec_inventory.Property_grammar.row) ->
+        row.property <> "all")
+      property_inventory
   in
   if List.length rows < 345 then
     fail
-      (Fmt.str "deterministic property manifest row extraction drifted: %d rows"
+      (Fmt.str "shared property grammar inventory drifted: %d rows"
          (List.length rows));
   let row = pick rows buf 0 in
-  let fallback = pick row.positive_values buf 1 in
-  let input = row.name ^ ":var(--spec-value," ^ fallback ^ ")" in
+  let fallback = pick row.positives buf 1 in
+  let input = row.property ^ ":var(--spec-value," ^ fallback ^ ")" in
   match parse_declaration input with
-  | None -> ()
+  | None ->
+      fail
+        (Fmt.str "deterministic manifest var() declaration rejected: %S" input)
   | Some decl -> (
       let serialized =
         Css.Declaration.string_of_declaration ~minify:true decl
@@ -750,6 +588,28 @@ let test_deterministic_manifest_var_values buf =
                "deterministic manifest var() declaration did not structurally \
                 roundtrip: %S -> %S"
                input serialized))
+
+let test_inventory_valid_generation buf =
+  let row = pick property_inventory buf 0 in
+  let value =
+    match byte_at buf 2 mod 4 with
+    | 0 -> pick row.positives buf 1
+    | 1 ->
+        pick [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ] buf 1
+    | 2 when row.property <> "all" ->
+        let fallback = pick row.positives buf 1 in
+        "var(--spec-value," ^ fallback ^ ")"
+    | _ -> pick row.positives buf 1
+  in
+  assert_decl_roundtrip "shared-inventory generated valid"
+    (row.property ^ ":" ^ value)
+
+let test_inventory_invalid_mutation buf =
+  let row = pick property_inventory buf 0 in
+  let value = pick row.positives buf 1 in
+  let invalid = invalid_property_mutation row value buf in
+  assert_decl_reject "shared-inventory generated invalid"
+    (row.property ^ ":" ^ invalid)
 
 let test_property_value_branch_depth_positive buf =
   let input =
@@ -779,7 +639,9 @@ let test_property_value_branch_depth_positive buf =
       buf 2
   in
   match parse_declaration input with
-  | None -> ()
+  | None ->
+      fail
+        (Fmt.str "property branch-depth positive declaration rejected: %S" input)
   | Some decl -> (
       let serialized =
         Css.Declaration.string_of_declaration ~minify:true decl
@@ -821,7 +683,10 @@ let test_property_value_branch_depth_negative buf =
   match parse_declaration input with
   | None -> ()
   | Some decl ->
-      ignore (Css.Declaration.string_of_declaration ~minify:true decl)
+      fail
+        (Fmt.str "property branch-depth negative declaration parsed: %S -> %S"
+           input
+           (Css.Declaration.string_of_declaration ~minify:true decl))
 
 let suite =
   ( "properties",
@@ -840,14 +705,18 @@ let suite =
         test_property_grammar_manifest_invalid;
       test_case "property grammar manifest row shape" [ bytes ]
         test_property_grammar_manifest_has_both_kinds;
-      test_case "deterministic manifest CSS-wide generated vectors" [ bytes ]
-        test_deterministic_manifest_css_wide_generation;
-      test_case "deterministic manifest positive value vectors" [ bytes ]
-        test_deterministic_manifest_positive_values;
-      test_case "deterministic manifest negative value vectors" [ bytes ]
-        test_deterministic_manifest_negative_values;
-      test_case "deterministic manifest var() value vectors" [ bytes ]
-        test_deterministic_manifest_var_values;
+      test_case "shared inventory CSS-wide generated vectors" [ bytes ]
+        test_inventory_css_wide_generation;
+      test_case "shared inventory positive value vectors" [ bytes ]
+        test_inventory_positive_values;
+      test_case "shared inventory negative value vectors" [ bytes ]
+        test_inventory_negative_values;
+      test_case "shared inventory var() value vectors" [ bytes ]
+        test_inventory_var_values;
+      test_case "shared inventory generated valid declarations" [ bytes ]
+        test_inventory_valid_generation;
+      test_case "shared inventory invalid declaration mutations" [ bytes ]
+        test_inventory_invalid_mutation;
       test_case "property value branch-depth positive vectors" [ bytes ]
         test_property_value_branch_depth_positive;
       test_case "property value branch-depth negative vectors" [ bytes ]

@@ -2304,6 +2304,68 @@ let test_spec_snapshot_tracking_vectors () =
   neg_cursor read_stylesheet "@container card () { .card { color: red } }";
   neg_cursor read_stylesheet "@supports () { .accent { color: red } }"
 
+let test_snapshot_membership_matrix () =
+  let module S = Cascade_spec_inventory.Css_snapshot in
+  let keys rows = List.map S.key rows |> List.sort String.compare in
+  let snapshot_2026 =
+    [
+      "CSS Animations@1/2";
+      "CSS Backgrounds and Borders@3";
+      "CSS Box Alignment@3";
+      "CSS Box Model@3";
+      "CSS Cascading and Inheritance@5";
+      "CSS Color@3";
+      "CSS Color@4";
+      "CSS Containment@3";
+      "CSS Custom Properties@1";
+      "CSS Display@3";
+      "CSS Flexible Box Layout@1";
+      "CSS Fonts@4";
+      "CSS Grid Layout@1/2";
+      "CSS Logical Properties@1";
+      "CSS Overflow@3/4";
+      "CSS Positioned Layout@3";
+      "CSS Pseudo-Elements@4";
+      "CSS Scroll Snap@1";
+      "CSS Sizing@3";
+      "CSS Syntax@3";
+      "CSS Transforms@1/2";
+      "CSS Transitions@1/2";
+      "Conditional Rules@3";
+      "Media Queries@4";
+      "Selectors@4";
+      "Values and Units@3";
+    ]
+  in
+  let current_work =
+    [
+      "CSS Cascading and Inheritance@6";
+      "CSS Fonts@5";
+      "CSS Nesting@1";
+      "CSS Properties and Values API@1";
+      "Conditional Rules@4";
+      "Media Queries@5";
+      "Values and Units@4";
+    ]
+  in
+  let experimental = [ "CSS Color@5"; "Values and Units@5" ] in
+  Alcotest.(check (list string))
+    "CSS Snapshot 2026 module membership" snapshot_2026
+    (keys (S.by_baseline S.Snapshot_2026));
+  Alcotest.(check (list string))
+    "current-work module membership" current_work
+    (keys (S.by_baseline S.Current_work));
+  Alcotest.(check (list string))
+    "experimental module membership" experimental
+    (keys (S.by_baseline S.Experimental));
+  List.iter
+    (fun row ->
+      if row.S.tests = [] then
+        Alcotest.failf "%s has no deterministic test surface" (S.key row);
+      if row.S.fuzzers = [] then
+        Alcotest.failf "%s has no fuzz surface" (S.key row))
+    S.rows
+
 (** {2 CSS Nesting Round-trip Tests} *)
 
 (** Helper: parse CSS, print minified, compare to expected *)
@@ -2507,6 +2569,7 @@ let additional_tests =
     ( "spec snapshot tracking vectors",
       `Quick,
       test_spec_snapshot_tracking_vectors );
+    ("spec snapshot membership matrix", `Quick, test_snapshot_membership_matrix);
     ( "spec cascade 4.4-4.8 value processing scope",
       `Quick,
       c448_value_stage_scope );

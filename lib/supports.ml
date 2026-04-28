@@ -112,7 +112,7 @@ let pp ctx t = pp_aux ~in_and:false ctx t
 
 (* ===== Scanner ===== *)
 
-type scanner = { s : string; mutable pos : int }
+type scanner = { s : string; mutable pos : int; allow_unwrapped_decl : bool }
 
 let peek sc = if sc.pos < String.length sc.s then Some sc.s.[sc.pos] else None
 let advance sc = sc.pos <- sc.pos + 1
@@ -219,7 +219,9 @@ let rec parse_supports_in_parens sc =
       (* If the remaining input has a top-level ':' that isn't part of a
          pseudo-class function call, treat it as an unwrapped <declaration>. *)
       let remaining = String.sub sc.s sc.pos (String.length sc.s - sc.pos) in
-      match top_level_colon remaining with
+      match
+        if sc.allow_unwrapped_decl then top_level_colon remaining else None
+      with
       | Some colon_pos ->
           let prop = String.sub remaining 0 colon_pos |> String.trim in
           let value =
@@ -240,7 +242,9 @@ and parse_paren_content sc =
   if String.length trimmed = 0 then failwith "Empty parentheses in @supports";
   (* Try <supports-condition>: starts with "not" *)
   if looking_at_sub trimmed "not" then
-    let sub = { s = trimmed; pos = 0 } in
+    let sub =
+      { s = trimmed; pos = 0; allow_unwrapped_decl = sc.allow_unwrapped_decl }
+    in
     parse_supports_condition sub
   else
     match top_level_colon trimmed with
@@ -255,7 +259,13 @@ and parse_paren_content sc =
         Property (prop, value)
     | None ->
         (* No colon → grouped <supports-condition> *)
-        let sub = { s = trimmed; pos = 0 } in
+        let sub =
+          {
+            s = trimmed;
+            pos = 0;
+            allow_unwrapped_decl = sc.allow_unwrapped_decl;
+          }
+        in
         parse_supports_condition sub
 
 (** Parse a bare function: name( args ) → Func *)
@@ -273,8 +283,14 @@ and parse_function sc =
   match peek sc with
   | Some '(' ->
       advance sc;
-      let args = read_balanced sc in
-      Func (name, String.trim args)
+      let args = String.trim (read_balanced sc) in
+      if
+        args = ""
+        &&
+        let lower = String.lowercase_ascii name in
+        lower = "selector" || lower = "font-format" || lower = "font-tech"
+      then failwith ("Empty " ^ name ^ "() in @supports")
+      else Func (name, args)
   | _ ->
       failwith
         (String.concat ""
@@ -295,7 +311,7 @@ and parse_supports_condition sc =
   if looking_at sc "not" then (
     sc.pos <- sc.pos + 3;
     let cond = parse_supports_in_parens sc in
-    Not cond)
+    chain sc (Not cond))
   else
     let left = parse_supports_in_parens sc in
     chain sc left
@@ -330,8 +346,8 @@ and looking_at_sub s kw =
        let c = s.[kw_len] in
        c = ' ' || c = '(' || c = '\t')
 
-let of_string s =
-  let sc = { s = String.trim s; pos = 0 } in
+let of_string ?(allow_unwrapped_decl = false) s =
+  let sc = { s = String.trim s; pos = 0; allow_unwrapped_decl } in
   let cond = parse_supports_condition sc in
   skip_ws sc;
   if not (at_end sc) then
