@@ -4,7 +4,7 @@ type t =
   | Min_width_rem of float
   | Min_width_px of int
   | Named of string * t
-  | Raw of string
+  | Custom of Media.t
 
 (* Format float without trailing period (24. -> 24, 24.5 -> 24.5) *)
 let format_rem f =
@@ -16,7 +16,7 @@ let rec to_string = function
   | Min_width_rem rem -> "(min-width:" ^ format_rem rem ^ "rem)"
   | Min_width_px px -> "(min-width:" ^ Int.to_string px ^ "px)"
   | Named (name, cond) -> name ^ " " ^ to_string cond
-  | Raw s -> s
+  | Custom cond -> Media.to_string cond
 
 let pp = to_string
 
@@ -27,18 +27,25 @@ let rec compare t1 t2 =
   | Named (n1, c1), Named (n2, c2) ->
       let name_cmp = String.compare n1 n2 in
       if name_cmp <> 0 then name_cmp else compare c1 c2
-  | Raw s1, Raw s2 -> String.compare s1 s2
-  (* Order: Min_width_rem < Min_width_px < Named < Raw *)
+  | Custom c1, Custom c2 -> Media.compare c1 c2
+  (* Order: Min_width_rem < Min_width_px < Named < Custom *)
   | Min_width_rem _, _ -> -1
   | _, Min_width_rem _ -> 1
   | Min_width_px _, _ -> -1
   | _, Min_width_px _ -> 1
-  | Named _, Raw _ -> -1
-  | Raw _, Named _ -> 1
+  | Named _, Custom _ -> -1
+  | Custom _, Named _ -> 1
 
 type kind = Kind_min_width | Kind_other
 
 let rec kind = function
   | Min_width_rem _ | Min_width_px _ -> Kind_min_width
   | Named (_, cond) -> kind cond
-  | Raw _ -> Kind_other
+  | Custom _ -> Kind_other
+
+let of_string s =
+  match Media.of_string s with
+  | Media.Min_width_rem rem -> Min_width_rem rem
+  | Media.Min_width px when Float.is_integer px ->
+      Min_width_px (int_of_float px)
+  | media -> Custom media

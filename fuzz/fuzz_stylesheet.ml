@@ -111,10 +111,10 @@ let generated_condition_stylesheet buf =
   let container =
     pick
       [
-        Css.Container.Raw "(inline-size > 30em)";
-        Css.Container.Raw "(30em <= inline-size < 60em)";
-        Css.Container.Raw "style(--variant: featured)";
-        Css.Container.Raw "scroll-state(stuck: top)";
+        Css.Container.of_string "(inline-size > 30em)";
+        Css.Container.of_string "(30em <= inline-size < 60em)";
+        Css.Container.of_string "style(--variant: featured)";
+        Css.Container.of_string "scroll-state(stuck: top)";
       ]
       buf 8
   in

@@ -54,7 +54,7 @@ type t =
   | Not_min_width_rem of float
       (** Negated breakpoint: [not all and (min-width:Xrem)] *)
   | Min_width_length of Values.length
-      (** Arbitrary length breakpoint: [(min-width:<length>)] *)
+      (** Custom length breakpoint: [(min-width:<length>)] *)
   | Not_min_width_length of Values.length
       (** Negated arbitrary length breakpoint:
           [not all and (min-width:<length>)] *)

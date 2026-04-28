@@ -253,7 +253,7 @@ let rec read_opacity t : opacity =
 
 (* Helper to read raw property value - for properties that accept any text.
    Drain components (preserving whitespace) up to the next [;] or [!] delim. *)
-let read_raw_value t = Cursor.consume_to_decl_end ~trim:true t
+let read_untyped_value t = Cursor.consume_to_decl_end ~trim:true t
 
 (* CSS [<dashed-ident>]: an ident that begins with two dashes. Used for custom
    properties and [@property]-style names like [--tooltip] in
@@ -623,7 +623,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Font_weight -> v Font_weight (read_font_weight t)
   | Font_style -> v Font_style (read_font_style t)
   | Font_family -> v Font_family (read_font_family t)
-  | Font -> v Font (read_raw_value t)
+  | Font -> v Font (read_untyped_value t)
   | Text_align -> v Text_align (read_text_align t)
   | Text_transform -> v Text_transform (read_text_transform t)
   | White_space -> v White_space (read_white_space t)
@@ -731,7 +731,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | List_style_type -> v List_style_type (read_list_style_type t)
   | List_style_position -> v List_style_position (read_list_style_position t)
   | List_style_image -> v List_style_image (read_list_style_image t)
-  | List_style -> v List_style (read_raw_value t)
+  | List_style -> v List_style (read_untyped_value t)
   (* Flexbox order *)
   | Order -> v Order (Properties.read_order t)
   (* Justify properties *)
@@ -746,7 +746,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Place_self -> read_place_self_value t
   (* Additional grid properties *)
   | Grid_template -> v Grid_template (read_grid_template t)
-  | Grid_area -> v Grid_area (read_raw_value t)
+  | Grid_area -> v Grid_area (read_untyped_value t)
   | Grid_auto_columns -> v Grid_auto_columns (read_grid_template t)
   | Grid_auto_rows -> v Grid_auto_rows (read_grid_template t)
   | Grid_column -> v Grid_column (read_grid_line_pair t)
@@ -829,7 +829,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Word_spacing -> v Word_spacing (read_length t)
   (* Container properties *)
   | Container_type -> v Container_type (read_container_type t)
-  | Container_name -> v Container_name (read_raw_value t)
+  | Container_name -> v Container_name (read_untyped_value t)
   | Container -> v Container (read_container_shorthand t)
   (* Anchor positioning properties. [anchor-name] / [position-anchor] take a
      [<dashed-ident>] (ident that begins with [--]), and
@@ -839,7 +839,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Position_try_fallbacks ->
       v Position_try_fallbacks
         (Cursor.list ~sep:Cursor.comma ~at_least:1 read_dashed_ident t)
-  | Shape_outside -> v Shape_outside (read_raw_value t)
+  | Shape_outside -> v Shape_outside (read_untyped_value t)
   | Shape_margin -> v Shape_margin (read_non_negative_length_percentage t)
   | Overflow_clip_margin ->
       v Overflow_clip_margin (read_length ~allow_negative:false t)
@@ -851,11 +851,11 @@ let read_value (type a) (prop : a property) t : declaration =
         (Cursor.enum "scrollbar-width"
            [ ("auto", "auto"); ("thin", "thin"); ("none", "none") ]
            t)
-  | Scrollbar_color -> v Scrollbar_color (read_raw_value t)
+  | Scrollbar_color -> v Scrollbar_color (read_untyped_value t)
   | Scrollbar_gutter -> v Scrollbar_gutter (read_scrollbar_gutter t)
   | Line_height_step -> v Line_height_step (read_length ~allow_negative:false t)
   | Font_palette -> v Font_palette (read_font_palette t)
-  | Font_synthesis -> v Font_synthesis (read_raw_value t)
+  | Font_synthesis -> v Font_synthesis (read_untyped_value t)
   | Text_wrap_style ->
       v Text_wrap_style
         (Cursor.enum "text-wrap-style"
@@ -894,10 +894,10 @@ let read_value (type a) (prop : a property) t : declaration =
         (Cursor.enum "image-orientation"
            [ ("from-image", "from-image"); ("none", "none") ]
            t)
-  | Contain_intrinsic_size -> v Contain_intrinsic_size (read_raw_value t)
+  | Contain_intrinsic_size -> v Contain_intrinsic_size (read_untyped_value t)
   | Margin_trim -> v Margin_trim (read_margin_trim t)
-  | Mask_mode_l4 -> v Mask_mode_l4 (read_raw_value t)
-  | Offset_path -> v Offset_path (read_raw_value t)
+  | Mask_mode_l4 -> v Mask_mode_l4 (read_untyped_value t)
+  | Offset_path -> v Offset_path (read_untyped_value t)
   | Offset_distance -> v Offset_distance (read_non_negative_length_percentage t)
   | Font_size_adjust -> v Font_size_adjust (read_font_size_adjust t)
   | Font_variant_emoji ->
@@ -910,16 +910,16 @@ let read_value (type a) (prop : a property) t : declaration =
              ("unicode", "unicode");
            ]
            t)
-  | Text_spacing_trim -> v Text_spacing_trim (read_raw_value t)
-  | Hyphenate_limit_chars -> v Hyphenate_limit_chars (read_raw_value t)
+  | Text_spacing_trim -> v Text_spacing_trim (read_untyped_value t)
+  | Hyphenate_limit_chars -> v Hyphenate_limit_chars (read_untyped_value t)
   | Initial_letter -> v Initial_letter (read_initial_letter t)
-  | View_timeline_name -> v View_timeline_name (read_raw_value t)
+  | View_timeline_name -> v View_timeline_name (read_untyped_value t)
   | View_timeline_axis ->
       v View_timeline_axis
         (Cursor.enum "view-timeline-axis"
            [ ("block", "block"); ("inline", "inline"); ("x", "x"); ("y", "y") ]
            t)
-  | Timeline_scope -> v Timeline_scope (read_raw_value t)
+  | Timeline_scope -> v Timeline_scope (read_untyped_value t)
   (* Transform properties *)
   | Perspective -> v Perspective (read_length t)
   | Perspective_origin -> v Perspective_origin (read_perspective_origin t)

@@ -8,7 +8,7 @@ type t =
       (** Container min-width in pixels: [@container (min-width:Xpx)] *)
   | Named of string * t
       (** Named container with condition: [@container name (condition)] *)
-  | Raw of string  (** Escape hatch for complex/unknown conditions *)
+  | Custom of Media.t  (** Structured condition beyond the typed shorthands. *)
 
 val to_string : t -> string
 (** [to_string t] converts a container condition to its CSS string
@@ -16,6 +16,10 @@ val to_string : t -> string
 
 val pp : t -> string
 (** [pp t] returns a string representation of a container condition. *)
+
+val of_string : string -> t
+(** [of_string s] parses a container condition. Raises [Failure] for malformed
+    conditions. *)
 
 val compare : t -> t -> int
 (** [compare t1 t2] compares two container conditions. *)

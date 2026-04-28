@@ -13,30 +13,30 @@ let test_to_string () =
     (to_string (Named ("sidebar", Min_width_rem 24.)));
   Alcotest.(check string)
     "raw" "(width > 0px)"
-    (to_string (Raw "(width > 0px)"));
+    (to_string (of_string "(width > 0px)"));
   Alcotest.(check string)
     "style query raw" "style(--theme: dark)"
-    (to_string (Raw "style(--theme: dark)"));
+    (to_string (of_string "style(--theme: dark)"));
   Alcotest.(check string)
     "range query raw" "(inline-size >= 30em)"
-    (to_string (Raw "(inline-size >= 30em)"));
+    (to_string (of_string "(inline-size >= 30em)"));
   Alcotest.(check string)
     "scroll-state query raw" "scroll-state(stuck: top)"
-    (to_string (Raw "scroll-state(stuck: top)"));
+    (to_string (of_string "scroll-state(stuck: top)"));
   Alcotest.(check string)
     "named style query raw" "card style(--variant: featured)"
-    (to_string (Named ("card", Raw "style(--variant: featured)")));
+    (to_string (Named ("card", of_string "style(--variant: featured)")));
   Alcotest.(check string)
     "chained range query raw" "(30em <= inline-size < 60em)"
-    (to_string (Raw "(30em <= inline-size < 60em)"));
+    (to_string (of_string "(30em <= inline-size < 60em)"));
   Alcotest.(check string)
     "aspect ratio query raw" "(aspect-ratio > 1/1)"
-    (to_string (Raw "(aspect-ratio > 1/1)"))
+    (to_string (of_string "(aspect-ratio > 1/1)"))
 
 let spec_container_l3_vectors () =
   let open Css.Container in
   let check_raw name input =
-    Alcotest.(check string) name input (to_string (Raw input))
+    Alcotest.(check string) name input (to_string (of_string input))
   in
   check_raw "inline-size lower bound" "(inline-size > 30em)";
   check_raw "width range" "(width >= 400px)";
@@ -51,10 +51,10 @@ let spec_container_l3_vectors () =
   check_raw "scroll-state snapped" "scroll-state(snapped: y)";
   Alcotest.(check string)
     "named size query" "card (inline-size > 30em)"
-    (to_string (Named ("card", Raw "(inline-size > 30em)")));
+    (to_string (Named ("card", of_string "(inline-size > 30em)")));
   Alcotest.(check string)
     "named style query" "card style(--variant: featured)"
-    (to_string (Named ("card", Raw "style(--variant: featured)")));
+    (to_string (Named ("card", of_string "style(--variant: featured)")));
   Alcotest.(check string)
     "nested names remain explicit" "outer inner (min-width:640px)"
     (to_string (Named ("outer", Named ("inner", Min_width_px 640))))
@@ -82,14 +82,16 @@ let test_kind () =
   Alcotest.(check bool)
     "named min-width is Kind_min_width" true
     (kind (Named ("x", Min_width_rem 24.)) = Kind_min_width);
-  Alcotest.(check bool) "raw is Kind_other" true (kind (Raw "foo") = Kind_other)
+  Alcotest.(check bool)
+    "raw is Kind_other" true
+    (kind (of_string "foo") = Kind_other)
 
 let test_spec_container_compare_edges () =
   let open Css.Container in
   let sorted =
     List.sort compare
       [
-        Raw "(inline-size > 30em)";
+        of_string "(inline-size > 30em)";
         Named ("card", Min_width_rem 24.);
         Min_width_px 640;
         Min_width_rem 24.;
@@ -117,11 +119,11 @@ let spec_container_context_vectors () =
     [
       (Min_width_px 400, "(min-width:400px)");
       (Min_width_rem 30., "(min-width:30rem)");
-      (Raw "(inline-size > 30em)", "(inline-size > 30em)");
-      (Raw "(30em <= inline-size < 60em)", "(30em <= inline-size < 60em)");
-      (Raw "style(--theme: dark)", "style(--theme: dark)");
-      (Raw "scroll-state(stuck: top)", "scroll-state(stuck: top)");
-      (Named ("card", Raw "(width >= 400px)"), "card (width >= 400px)");
+      (of_string "(inline-size > 30em)", "(inline-size > 30em)");
+      (of_string "(30em <= inline-size < 60em)", "(30em <= inline-size < 60em)");
+      (of_string "style(--theme: dark)", "style(--theme: dark)");
+      (of_string "scroll-state(stuck: top)", "scroll-state(stuck: top)");
+      (Named ("card", of_string "(width >= 400px)"), "card (width >= 400px)");
     ]
 
 let spec_container_query_vectors () =
@@ -143,7 +145,8 @@ let spec_container_query_vectors () =
     ]
   in
   List.iter
-    (fun input -> Alcotest.(check string) input input (to_string (Raw input)))
+    (fun input ->
+      Alcotest.(check string) input input (to_string (of_string input)))
     raw_cases
 
 let tests =

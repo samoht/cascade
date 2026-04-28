@@ -71,13 +71,11 @@ let test_spec_keyframe_selector_vectors () =
           (fun e a ->
             Alcotest.(check int) (name ^ " item") 0 (position_compare e a))
           expected actual
-    | Raw raw ->
-        Alcotest.failf "%s: expected parsed positions, got raw %S" name raw
   in
   let check_raw name input =
     match selector_of_string input with
-    | Raw raw -> Alcotest.(check string) name input raw
-    | Positions _ -> Alcotest.failf "%s: expected raw invalid selector" name
+    | exception Invalid_argument _ -> ()
+    | Positions _ -> Alcotest.failf "%s: expected invalid selector" name
   in
   check_positions "from to list" "from, to" [ From; To ];
   check_positions "percentage list" "0%, 50%, 100%"
@@ -116,14 +114,13 @@ let spec_keyframe_duplicate_offsets () =
     (position_compare (Percent 50.) To < 0)
 
 let spec_keyframe_invalid_edges () =
-  (* The low-level selector helper is intentionally total and returns Raw for
-     non-keyframe selector syntax; stylesheet parsing rejects those where a
-     keyframe selector is required. *)
+  (* The low-level selector helper raises on non-keyframe selector syntax;
+     stylesheet parsing rejects those where a keyframe selector is required. *)
   List.iter
     (fun input ->
       match selector_of_string input with
-      | Raw raw -> Alcotest.(check string) input input raw
-      | Positions _ -> Alcotest.failf "expected raw invalid selector: %s" input)
+      | exception Invalid_argument _ -> ()
+      | Positions _ -> Alcotest.failf "expected invalid selector: %s" input)
     [
       "from,";
       ",to";

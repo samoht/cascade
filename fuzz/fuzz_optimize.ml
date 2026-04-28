@@ -46,7 +46,7 @@ let generated_stylesheet buf =
               [
                 Css.Stylesheet.Container
                   ( Some "card",
-                    Css.Container.Raw "(inline-size > 30em)",
+                    Css.Container.of_string "(inline-size > 30em)",
                     [ rule buf 8 ] );
               ] );
         ] );

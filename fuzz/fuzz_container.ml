@@ -26,8 +26,8 @@ let condition buf i =
   | 0 -> Min_width_rem (Float.of_int (byte_at buf (i + 1)) /. 4.)
   | 1 -> Min_width_px (byte_at buf (i + 1))
   | 2 -> Named (name buf (i + 1), Min_width_rem 24.)
-  | 3 -> Named (name buf (i + 1), Raw (raw buf (i + 2)))
-  | _ -> Raw (raw buf (i + 1))
+  | 3 -> Named (name buf (i + 1), of_string (raw buf (i + 2)))
+  | _ -> of_string (raw buf (i + 1))
 
 let test_to_string_no_empty buf =
   let s = Css.Container.to_string (condition buf 0) in
@@ -84,7 +84,7 @@ let test_container_context_shape buf =
 
 let test_raw_query_stable buf =
   let raw = raw buf 0 in
-  let query = Css.Container.Raw raw in
+  let query = Css.Container.of_string raw in
   if Css.Container.to_string query <> raw then
     fail "raw container query serialization changed"
 
@@ -93,13 +93,14 @@ let test_spec_container_vectors buf =
   let query, expected =
     pick
       [
-        (Raw "(inline-size > 30em)", "(inline-size > 30em)");
-        (Raw "(30em <= inline-size < 60em)", "(30em <= inline-size < 60em)");
-        (Raw "style(--theme: dark)", "style(--theme: dark)");
-        (Raw "style(--featured)", "style(--featured)");
-        (Raw "scroll-state(stuck: top)", "scroll-state(stuck: top)");
-        (Named ("card", Raw "(width >= 400px)"), "card (width >= 400px)");
-        ( Named ("card", Raw "style(--variant: featured)"),
+        (of_string "(inline-size > 30em)", "(inline-size > 30em)");
+        ( of_string "(30em <= inline-size < 60em)",
+          "(30em <= inline-size < 60em)" );
+        (of_string "style(--theme: dark)", "style(--theme: dark)");
+        (of_string "style(--featured)", "style(--featured)");
+        (of_string "scroll-state(stuck: top)", "scroll-state(stuck: top)");
+        (Named ("card", of_string "(width >= 400px)"), "card (width >= 400px)");
+        ( Named ("card", of_string "style(--variant: featured)"),
           "card style(--variant: featured)" );
       ]
       buf 0
