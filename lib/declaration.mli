@@ -496,12 +496,12 @@ val visibility : visibility -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/visibility} visibility}
     property. *)
 
-val inset : length -> declaration
+val inset : length list -> declaration
 (** [inset v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/inset} inset} property.
 *)
 
-val inset_inline : length -> declaration
+val inset_inline : length list -> declaration
 (** [inset_inline v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/inset-inline}
      inset-inline} property. *)
@@ -512,7 +512,7 @@ val inset_inline_start : length -> declaration
 val inset_inline_end : length -> declaration
 (** [inset_inline_end v] is the inset-inline-end property. *)
 
-val inset_block : length -> declaration
+val inset_block : length list -> declaration
 (** [inset_block v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/inset-block}
      inset-block} property. *)

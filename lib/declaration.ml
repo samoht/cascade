@@ -766,11 +766,17 @@ let read_value (type a) (prop : a property) t : declaration =
   | Border_end_start_radius -> v Border_end_start_radius (read_length t)
   | Border_end_end_radius -> v Border_end_end_radius (read_length t)
   (* Position properties *)
-  | Inset -> v Inset (read_length t)
-  | Inset_inline -> v Inset_inline (read_length t)
+  | Inset ->
+      let lengths, _ = Cursor.many (fun r -> read_length r) t in
+      v Inset lengths
+  | Inset_inline ->
+      let lengths, _ = Cursor.many (fun r -> read_length r) t in
+      v Inset_inline lengths
   | Inset_inline_start -> v Inset_inline_start (read_length t)
   | Inset_inline_end -> v Inset_inline_end (read_length t)
-  | Inset_block -> v Inset_block (read_length t)
+  | Inset_block ->
+      let lengths, _ = Cursor.many (fun r -> read_length r) t in
+      v Inset_block lengths
   | Inset_block_start -> v Inset_block_start (read_length t)
   | Inset_block_end -> v Inset_block_end (read_length t)
   | Top -> v Top (read_length t)

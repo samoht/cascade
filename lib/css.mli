@@ -655,6 +655,10 @@ type length =
   | Revert
   | Revert_layer
   | Fit_content  (** fit-content keyword *)
+  | Fit_content_arg of length
+      (** [fit-content(<length-percentage>)]; the argument is stored via the
+          [length] type because [length] already has a [Pct of float] case for
+          the percentage form. *)
   | Content  (** content keyword *)
   | Contain  (** contain keyword (intrinsic sizing) *)
   | Max_content  (** max-content keyword *)
@@ -1521,6 +1525,9 @@ type display =
   | Inherit
   | Initial
   | Unset
+  | Multi of display * display
+      (** Two-value [<display-outside> <display-inside>] syntax per CSS Display
+          3 §2.1, e.g. [inline flow-root] or [list-item flow-root]. *)
 
 (** CSS position values. *)
 type position = Static | Relative | Absolute | Fixed | Sticky
@@ -1554,12 +1561,12 @@ val position : position -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/position} position}
     property. *)
 
-val inset : length -> declaration
+val inset : length list -> declaration
 (** [inset len] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/inset} inset} property
     for positioned elements. *)
 
-val inset_inline : length -> declaration
+val inset_inline : length list -> declaration
 (** [inset_inline len] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/inset-inline}
      inset-inline} logical property. *)
@@ -1570,7 +1577,7 @@ val inset_inline_start : length -> declaration
 val inset_inline_end : length -> declaration
 (** [inset_inline_end len] is the inset-inline-end logical property. *)
 
-val inset_block : length -> declaration
+val inset_block : length list -> declaration
 (** [inset_block len] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/inset-block}
      inset-block} logical property. *)

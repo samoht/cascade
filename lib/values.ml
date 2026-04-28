@@ -360,6 +360,10 @@ let rec pp_length ?(always = false) : length Pp.t =
   | None -> Pp.string ctx "none"
   | Inherit -> Pp.string ctx "inherit"
   | Fit_content -> Pp.string ctx "fit-content"
+  | Fit_content_arg arg ->
+      Pp.string ctx "fit-content(";
+      pp_length ~always ctx arg;
+      Pp.char ctx ')'
   | Contain -> Pp.string ctx "contain"
   | Max_content -> Pp.string ctx "max-content"
   | Min_content -> Pp.string ctx "min-content"
@@ -1390,6 +1394,12 @@ let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
               if top_level_arg_count s < 1 then
                 Cursor.err_invalid inner "max() requires at least one argument"
               else Max s
+          | "fit-content" ->
+              Cursor.ws inner;
+              let arg = read_length ~allow_negative ~with_keywords inner in
+              Cursor.ws inner;
+              Cursor.expect_eof inner;
+              Fit_content_arg arg
           | "round" ->
               let strategy = Cursor.ident inner in
               Cursor.ws inner;
