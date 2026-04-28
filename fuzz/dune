@@ -1,6 +1,6 @@
 (executables
  (names fuzz)
- (libraries cascade alcobar fmt re))
+ (libraries cascade alcobar fmt re cascade_spec_inventory))
 
 ; Property-based testing — runs with dune test
 

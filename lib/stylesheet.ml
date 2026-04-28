@@ -402,6 +402,19 @@ and pp_font_face_descriptor : font_face_descriptor Pp.t =
         (fun ctx v -> Pp.string ctx (Font_face.metric_override_to_string v))
         value
 
+and pp_import_url ctx url =
+  let len = String.length url in
+  if
+    len > 0
+    && (url.[0] = '"'
+       || url.[0] = '\''
+       || (len >= 4 && String.lowercase_ascii (String.sub url 0 4) = "url("))
+  then Pp.string ctx url
+  else (
+    Pp.char ctx '"';
+    Pp.string ctx url;
+    Pp.char ctx '"')
+
 and pp_statement : statement Pp.t =
  fun ctx -> function
   | Rule rule -> pp_rule ctx rule
@@ -421,7 +434,7 @@ and pp_statement : statement Pp.t =
       Pp.string ctx "\";"
   | Import { url; layer; supports; media } ->
       Pp.string ctx "@import ";
-      Pp.string ctx url;
+      pp_import_url ctx url;
       (match layer with
       | Some l ->
           Pp.string ctx " layer(";
@@ -431,7 +444,13 @@ and pp_statement : statement Pp.t =
       (match supports with
       | Some s ->
           Pp.string ctx " supports(";
-          Pp.string ctx (Supports.to_string s);
+          (match s with
+          | Supports.Property (prop, value) ->
+              Pp.string ctx prop;
+              Pp.char ctx ':';
+              Pp.space_if_pretty ctx ();
+              Pp.string ctx value
+          | _ -> Supports.pp ctx s);
           Pp.string ctx ")"
       | None -> ());
       (match media with
@@ -734,8 +753,11 @@ let read_import_prelude ~keep_url_repr (r : Cursor.t) : import_rule =
     Cursor.function_call "supports"
       (fun inner ->
         let loc = Cursor.position inner in
-        parse_supports_condition ~loc
-          (Cursor.remaining_to_string ~trim:true inner))
+        try
+          Supports.of_string ~allow_unwrapped_decl:true
+            (Cursor.remaining_to_string ~trim:true inner)
+        with Failure reason ->
+          Error.fail_bad_condition loc ~at_rule:"@supports" ~reason)
       r
   in
   Cursor.ws r;
@@ -1511,10 +1533,7 @@ let read = read_stylesheet
 let pp_import_rule : import_rule Pp.t =
  fun ctx { url; layer; supports; media } ->
   Pp.string ctx "@import ";
-  (* Always use string form - it's valid CSS and shorter than url() *)
-  Pp.char ctx '"';
-  Pp.string ctx url;
-  Pp.char ctx '"';
+  pp_import_url ctx url;
   Option.iter
     (fun l ->
       Pp.string ctx " layer(";

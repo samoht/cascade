@@ -364,6 +364,60 @@ let test_selector_l4_serialization_matrix buf =
               (Fmt.str "selector L4 serialization changed specificity: %S -> %S"
                  input serialized))
 
+let ident buf i = pick [ "article"; "card"; "item"; "nav"; "dialog" ] buf i
+
+let class_name buf i =
+  pick [ "active"; "selected"; "dark"; "group"; "peer" ] buf i
+
+let attr_selector buf i =
+  let attr = pick [ "data-state"; "aria-expanded"; "role"; "href" ] buf i in
+  let op = pick [ "="; "~="; "|="; "^="; "$="; "*=" ] buf (i + 1) in
+  let value = pick [ "open"; "true"; "button"; "https" ] buf (i + 2) in
+  let flag = pick [ ""; " i"; " s" ] buf (i + 3) in
+  "[" ^ attr ^ op ^ "\"" ^ value ^ "\"" ^ flag ^ "]"
+
+let pseudo_class buf i =
+  match byte_at buf i mod 6 with
+  | 0 -> ":is(." ^ class_name buf (i + 1) ^ ",#" ^ ident buf (i + 2) ^ ")"
+  | 1 -> ":where(" ^ ident buf (i + 1) ^ ",." ^ class_name buf (i + 2) ^ ")"
+  | 2 -> ":not([hidden],." ^ class_name buf (i + 1) ^ ")"
+  | 3 -> ":has(> " ^ ident buf (i + 1) ^ "." ^ class_name buf (i + 2) ^ ")"
+  | 4 ->
+      ":nth-child(" ^ pick [ "odd"; "even"; "2n+1"; "-n+3" ] buf (i + 1) ^ ")"
+  | _ -> ":" ^ pick [ "enabled"; "disabled"; "checked"; "modal" ] buf (i + 1)
+
+let pseudo_element buf i =
+  match byte_at buf i mod 4 with
+  | 0 -> "::before"
+  | 1 -> "::part(" ^ class_name buf (i + 1) ^ ")"
+  | 2 -> "::slotted(" ^ ident buf (i + 1) ^ "." ^ class_name buf (i + 2) ^ ")"
+  | _ -> "::view-transition-old(" ^ ident buf (i + 1) ^ ")"
+
+let generated_selector buf =
+  let base = ident buf 0 in
+  let simple =
+    base ^ "." ^ class_name buf 1 ^ attr_selector buf 2 ^ pseudo_class buf 6
+  in
+  match byte_at buf 10 mod 4 with
+  | 0 -> simple
+  | 1 -> simple ^ " > " ^ ident buf 11 ^ "." ^ class_name buf 12
+  | 2 -> ":where(" ^ simple ^ "," ^ ident buf 13 ^ ")"
+  | _ -> simple ^ pseudo_element buf 14
+
+let invalid_selector_mutation buf =
+  match byte_at buf 0 mod 6 with
+  | 0 -> generated_selector buf ^ " > > " ^ ident buf 1
+  | 1 -> generated_selector buf ^ "[data-state"
+  | 2 -> ":not()"
+  | 3 -> ":has(:has(" ^ ident buf 1 ^ "))"
+  | 4 -> generated_selector buf ^ "::before." ^ class_name buf 1
+  | _ -> ident buf 1 ^ ":nth-child(n+)"
+
+let test_generated_selector_grammar buf = assert_stable (generated_selector buf)
+
+let test_invalid_selector_mutations buf =
+  assert_reject (invalid_selector_mutation buf)
+
 let suite =
   ( "selector",
     [
@@ -399,4 +453,8 @@ let suite =
         test_invalid_pseudo_family_vectors;
       test_case "selector L4 serialization matrix" [ bytes ]
         test_selector_l4_serialization_matrix;
+      test_case "generated selector grammar" [ bytes ]
+        test_generated_selector_grammar;
+      test_case "invalid selector mutations rejected" [ bytes ]
+        test_invalid_selector_mutations;
     ] )

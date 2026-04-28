@@ -17,7 +17,7 @@ val to_string : t -> string
 val pp : t Pp.t
 (** [pp ctx cond] prints the condition with context-aware spacing. *)
 
-val of_string : string -> t
+val of_string : ?allow_unwrapped_decl:bool -> string -> t
 (** [of_string s] parses a [\@supports] condition string into a structured type.
     Fails if the condition cannot be parsed. *)
 
