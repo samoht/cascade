@@ -565,9 +565,11 @@ let consume_at_start r =
 
 (* 4.3.1 Consume a token. *)
 let next_token ?(force_url_function = false) r =
-  consume_comments r;
   match Reader.peek r with
   | None -> Eof
+  | Some _ when Reader.looking_at r "/*" ->
+      consume_whitespace_run r;
+      Whitespace
   | Some c when is_ws c ->
       consume_whitespace_run r;
       Whitespace

@@ -371,6 +371,351 @@ let test_context_debug_printers () =
   check_matches "animation dump has property" "animated_properties=.*transform"
     animation_dump
 
+let check_computed_value name ~ctx ~expected input =
+  let decl = Css.Declaration.of_string input in
+  match Css.Context.computed_value ctx decl with
+  | Ok actual -> Alcotest.(check string) name expected actual
+  | Error _ ->
+      Alcotest.failf "%s: expected %S to resolve to %S" name input expected
+
+let check_computed_error name ~ctx input =
+  let decl = Css.Declaration.of_string input in
+  match Css.Context.computed_value ctx decl with
+  | Ok actual ->
+      Alcotest.failf "%s: expected %S to be unresolved, got %S" name input
+        actual
+  | Error _ -> ()
+
+let check_selector_match name ~ctx ~expected input =
+  let selector = Css.Selector.of_string input in
+  Alcotest.(check bool)
+    name expected
+    (Css.Context.matches_selector ctx selector)
+
+let check_media_match name ~ctx ~expected input =
+  let query = Css.Media.of_string input in
+  Alcotest.(check bool) name expected (Css.Context.matches_media ctx query)
+
+let check_supports_match name ~ctx ~expected input =
+  let condition = Css.Supports.of_string input in
+  Alcotest.(check bool)
+    name expected
+    (Css.Context.matches_supports ctx condition)
+
+let check_container_match name ~ctx ?name:container_name ~expected input =
+  let condition = Css.Container.of_string input in
+  Alcotest.(check bool)
+    name expected
+    (Css.Context.matches_container ctx ?name:container_name condition)
+
+let check_resolved_url name ~loader ~expected input =
+  match Css.Context.resolve_url loader input with
+  | Ok actual -> Alcotest.(check string) name expected actual
+  | Error _ ->
+      Alcotest.failf "%s: expected URL %S to resolve to %S" name input expected
+
+let check_url_error name ~loader input =
+  match Css.Context.resolve_url loader input with
+  | Ok actual ->
+      Alcotest.failf "%s: expected URL %S to be unresolved, got %S" name input
+        actual
+  | Error _ -> ()
+
+let check_import_loaded name ~loader ~expected input =
+  let r = Css.Cursor.of_string input in
+  let import_rule = Css.Stylesheet.read_import_rule r in
+  match Css.Context.load_import loader import_rule with
+  | Ok stylesheet ->
+      Alcotest.(check string)
+        name expected
+        (Css.Stylesheet.to_string ~minify:true stylesheet)
+  | Error _ -> Alcotest.failf "%s: expected import %S to load" name input
+
+let check_import_error name ~loader input =
+  let r = Css.Cursor.of_string input in
+  let import_rule = Css.Stylesheet.read_import_rule r in
+  match Css.Context.load_import loader import_rule with
+  | Ok stylesheet ->
+      Alcotest.failf "%s: expected import %S to be blocked, got %S" name input
+        (Css.Stylesheet.to_string ~minify:true stylesheet)
+  | Error _ -> ()
+
+let test_computed_value_resolution_contract () =
+  let ctx =
+    Css.Context.v
+      ~custom_properties:
+        [
+          Css.Declaration.of_string "--brand: red";
+          Css.Declaration.of_string "--gap: 1rem";
+        ]
+      ~inherited_values:
+        [
+          Css.Declaration.of_string "color: blue";
+          Css.Declaration.of_string "font-size: 10px";
+        ]
+      ~initial_values:
+        [
+          Css.Declaration.of_string "display: inline";
+          Css.Declaration.of_string "width: auto";
+        ]
+      ~base_url:"https://example.test/css/app.css"
+      ~root_font_size:(Css.Values.Px 16.) ~parent_font_size:(Css.Values.Px 10.)
+      ~current_color:(Css.Values.Named Css.Values.Red)
+      ~viewport_width:(Css.Values.Px 1024.)
+      ~viewport_height:(Css.Values.Px 768.)
+      ~container_width:(Css.Values.Px 640.)
+      ~container_height:(Css.Values.Px 480.) ()
+  in
+  check_computed_value "initial keyword uses property initial value" ~ctx
+    ~expected:"inline" "display: initial";
+  check_computed_value "inherit keyword uses inherited value" ~ctx
+    ~expected:"blue" "color: inherit";
+  check_computed_value "unset on inherited property uses inherited value" ~ctx
+    ~expected:"blue" "color: unset";
+  check_computed_value "unset on non-inherited property uses initial value" ~ctx
+    ~expected:"auto" "width: unset";
+  check_computed_value "currentColor uses explicit current color" ~ctx
+    ~expected:"red" "border-color: currentColor";
+  check_computed_value "custom property var resolves from context" ~ctx
+    ~expected:"red" "color: var(--brand)";
+  check_computed_value "custom property fallback resolves when missing" ~ctx
+    ~expected:"green" "color: var(--missing, green)";
+  check_computed_value "custom length var resolves then computes" ~ctx
+    ~expected:"16px" "margin-left: var(--gap)";
+  check_computed_value "rem resolves against root font size" ~ctx
+    ~expected:"32px" "margin-left: 2rem";
+  check_computed_value "em resolves against parent font size" ~ctx
+    ~expected:"20px" "font-size: 2em";
+  check_computed_value "vw resolves against viewport width" ~ctx
+    ~expected:"512px" "width: 50vw";
+  check_computed_value "vh resolves against viewport height" ~ctx
+    ~expected:"192px" "height: 25vh";
+  check_computed_value "cqw resolves against container width" ~ctx
+    ~expected:"320px" "width: 50cqw";
+  check_computed_value "cqh resolves against container height" ~ctx
+    ~expected:"120px" "height: 25cqh";
+  check_computed_value "relative URL resolves against base URL" ~ctx
+    ~expected:"url(https://example.test/img/logo.svg)"
+    "background-image: url(../img/logo.svg)";
+  check_computed_error "missing var without fallback is unresolved" ~ctx
+    "color: var(--missing)";
+  check_computed_error "viewport unit without viewport context is unresolved"
+    ~ctx:Css.Context.empty "width: 50vw";
+  check_computed_error "currentColor without current color is unresolved"
+    ~ctx:Css.Context.empty "color: currentColor";
+  check_computed_error "relative URL without base URL is unresolved"
+    ~ctx:Css.Context.empty "background-image: url(../img/logo.svg)"
+
+let test_computed_value_resolution_edge_contract () =
+  let ctx =
+    Css.Context.v
+      ~custom_properties:
+        [
+          Css.Declaration.of_string "--brand: red";
+          Css.Declaration.of_string "--accent: var(--brand)";
+          Css.Declaration.of_string "--cycle-a: var(--cycle-b)";
+          Css.Declaration.of_string "--cycle-b: var(--cycle-a)";
+          Css.Declaration.of_string "--space: 2em";
+        ]
+      ~inherited_values:[ Css.Declaration.of_string "font-size: 12px" ]
+      ~initial_values:
+        [
+          Css.Declaration.of_string "color: canvastext";
+          Css.Declaration.of_string "font-size: medium";
+          Css.Declaration.of_string "line-height: normal";
+          Css.Declaration.of_string "margin-left: 0";
+        ]
+      ~base_url:"https://example.test/assets/css/theme.css"
+      ~root_font_size:(Css.Values.Px 20.) ~parent_font_size:(Css.Values.Px 12.)
+      ~current_color:(Css.Values.Named Css.Values.Blue)
+      ~viewport_width:(Css.Values.Px 1200.)
+      ~viewport_height:(Css.Values.Px 800.)
+      ~container_width:(Css.Values.Px 300.)
+      ~container_height:(Css.Values.Px 900.) ()
+  in
+  check_computed_value "inherit on root falls back to property initial" ~ctx
+    ~expected:"canvastext" "color: inherit";
+  check_computed_value "nested custom property var resolves transitively" ~ctx
+    ~expected:"red" "color: var(--accent)";
+  check_computed_value "nested var fallback resolves transitively" ~ctx
+    ~expected:"red" "color: var(--missing, var(--accent))";
+  check_computed_value "custom length var resolves with parent font context"
+    ~ctx ~expected:"24px" "margin-left: var(--space)";
+  check_computed_value "font-size percentage resolves against parent font" ~ctx
+    ~expected:"18px" "font-size: 150%";
+  check_computed_value "absolute inches canonicalize to px" ~ctx
+    ~expected:"96px" "margin-left: 1in";
+  check_computed_value "absolute points canonicalize to px" ~ctx
+    ~expected:"96px" "margin-left: 72pt";
+  check_computed_value "viewport vmin uses smaller viewport side" ~ctx
+    ~expected:"80px" "width: 10vmin";
+  check_computed_value "viewport vmax uses larger viewport side" ~ctx
+    ~expected:"120px" "width: 10vmax";
+  check_computed_value "container cqmin uses smaller container side" ~ctx
+    ~expected:"30px" "width: 10cqmin";
+  check_computed_value "container cqmax uses larger container side" ~ctx
+    ~expected:"90px" "width: 10cqmax";
+  check_computed_value "same-directory URL resolves against base URL" ~ctx
+    ~expected:"url(https://example.test/assets/css/panel.css)"
+    "background-image: url(panel.css)";
+  check_computed_value "root-relative URL preserves origin" ~ctx
+    ~expected:"url(https://example.test/icons/logo.svg)"
+    "background-image: url(/icons/logo.svg)";
+  check_computed_error "custom property cycle is unresolved" ~ctx
+    "color: var(--cycle-a)";
+  check_computed_error "width percentage needs layout context" ~ctx "width: 50%";
+  check_computed_error "em unit without parent font context is unresolved"
+    ~ctx:Css.Context.empty "margin-left: 2em";
+  check_computed_error "rem unit without root font context is unresolved"
+    ~ctx:Css.Context.empty "margin-left: 2rem";
+  check_computed_error "container unit without container context is unresolved"
+    ~ctx:Css.Context.empty "width: 50cqw"
+
+let test_document_selector_context_contract () =
+  let ctx =
+    Css.Context.document ~root:"html" ~scope:".card" ~element:"button"
+      ~classes:[ "btn"; "primary" ] ~ids:[ "submit" ]
+      ~attributes:
+        [
+          ("type", Some "submit");
+          ("disabled", None);
+          ("data-state", Some "ready");
+        ]
+      ~pseudo_classes:[ "focus-visible"; "enabled" ]
+      ~pseudo_elements:[ "before" ] ()
+  in
+  check_selector_match "type selector matches element" ~ctx ~expected:true
+    "button";
+  check_selector_match "class selector matches class list" ~ctx ~expected:true
+    ".primary";
+  check_selector_match "id selector matches id list" ~ctx ~expected:true
+    "#submit";
+  check_selector_match "attribute presence selector matches" ~ctx ~expected:true
+    "[disabled]";
+  check_selector_match "attribute value selector matches" ~ctx ~expected:true
+    "[type=submit]";
+  check_selector_match "pseudo-class selector matches explicit state" ~ctx
+    ~expected:true ":focus-visible";
+  check_selector_match "pseudo-element selector matches explicit context" ~ctx
+    ~expected:true "::before";
+  check_selector_match "compound selector matches all simple selectors" ~ctx
+    ~expected:true "button.btn.primary[type=submit]:focus-visible";
+  check_selector_match "wrong element fails" ~ctx ~expected:false "a";
+  check_selector_match "missing class fails" ~ctx ~expected:false ".secondary";
+  check_selector_match "missing attribute value fails" ~ctx ~expected:false
+    "[type=button]";
+  check_selector_match "missing pseudo-class fails" ~ctx ~expected:false
+    ":hover";
+  check_selector_match "missing pseudo-element fails" ~ctx ~expected:false
+    "::after"
+
+let test_query_context_evaluation_contract () =
+  let ctx =
+    Css.Context.query ~media_type:"screen"
+      ~media_features:
+        [
+          ("width", "1024px");
+          ("height", "768px");
+          ("prefers-color-scheme", "dark");
+          ("dynamic-range", "high");
+        ]
+      ~supports_declarations:
+        [
+          ("display", "grid");
+          ("container-type", "inline-size");
+          ("color", "oklch(50% 0.1 20)");
+        ]
+      ~supports_functions:[ ("selector", ":has(img)") ]
+      ~container_name:"card"
+      ~container_features:
+        [
+          ("inline-size", "640px");
+          ("block-size", "480px");
+          ("style(--theme)", "dark");
+          ("scroll-state(stuck: top)", "true");
+        ]
+      ()
+  in
+  check_media_match "media type and min-width match" ~ctx ~expected:true
+    "screen and (min-width: 48em)";
+  check_media_match "media range comparison matches" ~ctx ~expected:true
+    "(width >= 1024px)";
+  check_media_match "media feature equality matches" ~ctx ~expected:true
+    "(prefers-color-scheme: dark)";
+  check_media_match "media not operator negates" ~ctx ~expected:false
+    "not screen";
+  check_media_match "media range comparison fails" ~ctx ~expected:false
+    "(width > 1200px)";
+  check_supports_match "supported declaration matches" ~ctx ~expected:true
+    "(display: grid)";
+  check_supports_match "supported selector function matches" ~ctx ~expected:true
+    "selector(:has(img))";
+  check_supports_match "supports and combines true branches" ~ctx ~expected:true
+    "(display: grid) and (container-type: inline-size)";
+  check_supports_match "supports not negates unsupported branch" ~ctx
+    ~expected:true "not (display: ruby)";
+  check_supports_match "unsupported declaration fails" ~ctx ~expected:false
+    "(display: ruby)";
+  check_container_match "named container and width match" ~ctx ~name:"card"
+    ~expected:true "(inline-size >= 40rem)";
+  check_container_match "wrong container name fails" ~ctx ~name:"sidebar"
+    ~expected:false "(inline-size >= 40rem)";
+  check_container_match "style query matches explicit container state" ~ctx
+    ~name:"card" ~expected:true "style(--theme: dark)";
+  check_container_match "scroll-state query matches explicit container state"
+    ~ctx ~name:"card" ~expected:true "scroll-state(stuck: top)";
+  check_container_match "container range comparison fails" ~ctx ~name:"card"
+    ~expected:false "(inline-size > 900px)"
+
+let test_loader_context_contract () =
+  let loader =
+    Css.Context.loader ~base_url:"https://example.test/css/app.css"
+      ~imports:
+        [
+          ("https://example.test/css/base.css", ".base{display:block}");
+          ("https://example.test/css/theme.css", ".theme{color:red}");
+          ("https://example.test/print.css", ".print{display:none}");
+        ]
+      ()
+  in
+  check_resolved_url "relative URL uses base directory" ~loader
+    ~expected:"https://example.test/css/theme.css" "theme.css";
+  check_resolved_url "parent-relative URL normalizes path" ~loader
+    ~expected:"https://example.test/img/logo.svg" "../img/logo.svg";
+  check_resolved_url "root-relative URL preserves origin" ~loader
+    ~expected:"https://example.test/print.css" "/print.css";
+  check_resolved_url "absolute URL remains absolute" ~loader
+    ~expected:"https://cdn.example.test/site.css"
+    "https://cdn.example.test/site.css";
+  check_url_error "relative URL without base is unresolved"
+    ~loader:Css.Context.empty_loader "theme.css";
+  check_import_loaded "loads same-directory import" ~loader
+    ~expected:".theme{color:red}" "@import url(theme.css);";
+  check_import_loaded "loads root-relative import" ~loader
+    ~expected:".print{display:none}" "@import url(/print.css);";
+  check_import_error "missing import is unresolved" ~loader
+    "@import url(missing.css);"
+
+let test_animation_context_contract () =
+  let ctx =
+    Css.Context.animation ~timeline_time:"250ms" ~progress:0.25
+      ~animated_properties:[ "opacity"; "transform"; "--offset" ]
+      ()
+  in
+  Alcotest.(check bool)
+    "standard property animation is detected" true
+    (Css.Context.animates_property "opacity" ctx);
+  Alcotest.(check bool)
+    "custom property animation is detected" true
+    (Css.Context.animates_property "--offset" ctx);
+  Alcotest.(check bool)
+    "unanimated property is absent" false
+    (Css.Context.animates_property "color" ctx);
+  Alcotest.(check (option string))
+    "timeline time is preserved" (Some "250ms") ctx.timeline_time;
+  Alcotest.(check (option (float 0.0001)))
+    "animation progress is preserved" (Some 0.25) ctx.progress
+
 let suite =
   ( "context",
     [
@@ -393,4 +738,16 @@ let suite =
         test_loader_and_animation_boundaries;
       Alcotest.test_case "context debug printers" `Quick
         test_context_debug_printers;
+      Alcotest.test_case "computed value resolution contract" `Quick
+        test_computed_value_resolution_contract;
+      Alcotest.test_case "computed value edge contract" `Quick
+        test_computed_value_resolution_edge_contract;
+      Alcotest.test_case "document selector context contract" `Quick
+        test_document_selector_context_contract;
+      Alcotest.test_case "query context evaluation contract" `Quick
+        test_query_context_evaluation_contract;
+      Alcotest.test_case "loader context contract" `Quick
+        test_loader_context_contract;
+      Alcotest.test_case "animation context contract" `Quick
+        test_animation_context_contract;
     ] )

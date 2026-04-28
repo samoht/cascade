@@ -58,18 +58,20 @@ let src_to_string entries =
 let metric_override_of_string s =
   let s = String.trim s in
   if String.equal s "normal" then Normal
-  else if String.length s > 0 && s.[String.length s - 1] = '%' then
-    try Percent (float_of_string (String.sub s 0 (String.length s - 1)))
-    with Failure _ -> Normal (* fallback on invalid float *)
-  else Normal (* fallback *)
+  else if String.length s > 0 && s.[String.length s - 1] = '%' then (
+    let p = float_of_string (String.sub s 0 (String.length s - 1)) in
+    if p < 0. then failwith "negative metric override";
+    Percent p)
+  else failwith "invalid metric override"
 
 (** Parse a size-adjust percentage like "90%". *)
 let size_adjust_of_string s =
   let s = String.trim s in
-  if String.length s > 0 && s.[String.length s - 1] = '%' then
-    try float_of_string (String.sub s 0 (String.length s - 1))
-    with Failure _ -> 100. (* fallback to 100% on invalid float *)
-  else 100. (* fallback *)
+  if String.length s > 0 && s.[String.length s - 1] = '%' then (
+    let p = float_of_string (String.sub s 0 (String.length s - 1)) in
+    if p < 0. then failwith "negative size-adjust";
+    p)
+  else failwith "invalid size-adjust"
 
 let read_function_arg name t =
   Cursor.call name t @@ fun inner ->
@@ -77,7 +79,7 @@ let read_function_arg name t =
   let value =
     match Cursor.string_opt inner with
     | Some s -> s
-    | None -> Cursor.remaining_to_string ~trim:true inner
+    | None -> Cursor.consume_remaining_to_string ~trim:true inner
   in
   Cursor.expect_eof inner;
   if value = "" then Cursor.err_invalid inner (name ^ "() argument");
@@ -118,7 +120,9 @@ let read_src_entry t =
 
 (** Parse a src string into a list of typed entries. *)
 let src_of_string s =
-  let t = Cursor.of_string s in
-  let entries = Cursor.list ~at_least:1 ~sep:Cursor.comma read_src_entry t in
-  Cursor.expect_eof t;
-  entries
+  try
+    let t = Cursor.of_string s in
+    let entries = Cursor.list ~at_least:1 ~sep:Cursor.comma read_src_entry t in
+    Cursor.expect_eof t;
+    entries
+  with Cursor.Parse_error _ -> failwith "invalid font src"
