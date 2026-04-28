@@ -576,6 +576,12 @@ let vars_of_vertical_align (value : Properties.vertical_align) : any_var list =
 let vars_of_will_change (value : Properties.will_change) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
+let rec vars_of_opacity (value : Properties.opacity) : any_var list =
+  match value with
+  | Opacity_number _ -> []
+  | Abs v | Sign v -> vars_of_opacity v
+  | Var v -> [ V v ]
+
 let compare_vars_by_name (V x) (V y) = String.compare x.name y.name
 
 (** {1 Variable name utilities} *)
@@ -798,6 +804,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Vertical_align, value -> vars_of_vertical_align value
   (* Will change *)
   | Will_change, value -> vars_of_will_change value
+  (* Opacity (typed math) *)
+  | Opacity, value -> vars_of_opacity value
   (* Default case for all other properties *)
   | _ -> []
 

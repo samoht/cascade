@@ -106,33 +106,13 @@ let test_escape_bound_stable buf =
   if toks = [] then fail "escaped identifier produced no tokens"
 
 let test_spec_token_family_vectors buf =
-  let input, expected =
-    pick
-      [
-        ("U+4??", [ "<unicode-range U+400-4FF>" ]);
-        ("\"oops\n", [ "<bad-string>"; "<ws>" ]);
-        ("url(a b) foo", [ "<bad-url>"; "<ws>"; "<ident foo>" ]);
-        ( "--> -->a --a",
-          [ "<CDC>"; "<ws>"; "<CDC>"; "<ident a>"; "<ws>"; "<ident --a>" ] );
-        ( ".5 -.5 +.5 .e1",
-          [
-            "<number .5>";
-            "<ws>";
-            "<number -.5>";
-            "<ws>";
-            "<number +.5>";
-            "<ws>";
-            "<delim '.'>";
-            "<ident e1>";
-          ] );
-        ("\\26 #id", [ "<ident &>"; "<#id>" ]);
-      ]
-      buf 0
-  in
+  let row = pick Cascade_spec_inventory.Syntax_grammar.token_rows buf 0 in
+  let input = row.input in
+  let expected = row.expected in
   let actual = kind_strings_no_eof input in
   if actual <> expected then
     fail
-      (Fmt.str "CSS Syntax token vector changed for %S: %S" input
+      (Fmt.str "CSS Syntax token vector %s changed for %S: %S" row.branch input
          (String.concat " " actual))
 
 let suite =

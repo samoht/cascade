@@ -10,18 +10,7 @@ let pick xs buf i = List.nth xs (byte_at buf i mod List.length xs)
 let name buf i = pick [ "card"; "sidebar"; "layout"; "main" ] buf i
 
 let raw buf i =
-  pick
-    [
-      "(inline-size > 30em)";
-      "(30em <= inline-size < 60em)";
-      "style(--variant: featured)";
-      "style(color: red)";
-      "style(--featured)";
-      "scroll-state(stuck: top)";
-      "scroll-state(snapped: block)";
-      "(aspect-ratio > 1/1)";
-    ]
-    buf i
+  (pick Cascade_spec_inventory.Query_grammar.container_positive buf i).input
 
 let condition buf i =
   let open Css.Container in
@@ -93,47 +82,24 @@ let test_raw_query_stable buf =
 
 let test_spec_container_vectors buf =
   let open Css.Container in
-  let query, expected =
-    pick
-      [
-        (of_string "(inline-size > 30em)", "(inline-size > 30em)");
-        ( of_string "(30em <= inline-size < 60em)",
-          "(30em <= inline-size < 60em)" );
-        (of_string "style(--theme: dark)", "style(--theme: dark)");
-        (of_string "style(color: red)", "style(color: red)");
-        (of_string "style(--featured)", "style(--featured)");
-        (of_string "scroll-state(stuck: top)", "scroll-state(stuck: top)");
-        ( of_string "scroll-state(snapped: block)",
-          "scroll-state(snapped: block)" );
-        (Named ("card", of_string "(width >= 400px)"), "card (width >= 400px)");
-        ( Named ("card", of_string "style(--variant: featured)"),
-          "card style(--variant: featured)" );
-        ( Named ("card", of_string "scroll-state(stuck: top)"),
-          "card scroll-state(stuck: top)" );
-      ]
-      buf 0
+  let row =
+    pick Cascade_spec_inventory.Query_grammar.container_positive buf 0
   in
+  let query = of_string row.input in
+  let expected = row.expected in
   let actual = to_string query in
   if actual <> expected then
     fail (Fmt.str "container spec vector changed: %S <> %S" expected actual)
 
 let test_invalid_container_vectors buf =
+  let valid =
+    pick Cascade_spec_inventory.Query_grammar.container_positive buf 0
+  in
   let input =
-    pick
-      [
-        "";
-        "style()";
-        "style(--theme: dark";
-        "style(color)";
-        "style(: red)";
-        "scroll-state()";
-        "scroll-state(stuck: top";
-        "scroll-state(stuck)";
-        "scroll-state(stuck: diagonal)";
-        "(width >)";
-        "(30em < inline-size > 60em)";
-      ]
-      buf 0
+    if byte_at buf 1 mod 2 = 0 then
+      (pick Cascade_spec_inventory.Query_grammar.container_negative buf 2).input
+    else
+      Cascade_spec_inventory.Query_grammar.mutate_invalid valid (byte_at buf 3)
   in
   match Css.Container.of_string input with
   | exception Failure _ -> ()

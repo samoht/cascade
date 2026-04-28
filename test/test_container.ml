@@ -46,18 +46,10 @@ let spec_container_l3_vectors () =
   let check_raw name input =
     Alcotest.(check string) name input (to_string (of_string input))
   in
-  check_raw "inline-size lower bound" "(inline-size > 30em)";
-  check_raw "width range" "(width >= 400px)";
-  check_raw "height range" "(height < 50rem)";
-  check_raw "chained range" "(30em <= inline-size < 60em)";
-  check_raw "orientation" "(orientation: landscape)";
-  check_raw "aspect ratio" "(aspect-ratio > 16/9)";
-  check_raw "style query custom property" "style(--theme: dark)";
-  check_raw "style query declaration" "style(color: red)";
-  check_raw "uppercase style query function" "STYLE(--theme: dark)";
-  check_raw "style query boolean custom property" "style(--featured)";
-  check_raw "scroll-state stuck" "scroll-state(stuck: top)";
-  check_raw "scroll-state snapped" "scroll-state(snapped: y)";
+  List.iter
+    (fun (row : Cascade_spec_inventory.Query_grammar.row) ->
+      check_raw row.branch row.input)
+    Cascade_spec_inventory.Query_grammar.container_positive;
   Alcotest.(check string)
     "named size query" "card (inline-size > 30em)"
     (to_string (Named ("card", of_string "(inline-size > 30em)")));
@@ -137,34 +129,18 @@ let spec_container_context_vectors () =
 
 let spec_container_query_vectors () =
   let open Css.Container in
-  let raw_cases =
-    [
-      "(width)";
-      "(height)";
-      "(inline-size)";
-      "(block-size >= 20rem)";
-      "(400px <= width <= 1200px)";
-      "(orientation: portrait)";
-      "(aspect-ratio > 16/9)";
-      "style(color: red)";
-      "style(--theme)";
-      "style(--theme: dark)";
-      "scroll-state(stuck: top)";
-      "scroll-state(snapped: block)";
-    ]
-  in
   List.iter
-    (fun input ->
-      Alcotest.(check string) input input (to_string (of_string input)))
-    raw_cases
+    (fun (row : Cascade_spec_inventory.Query_grammar.row) ->
+      Alcotest.(check string)
+        row.branch row.expected
+        (to_string (of_string row.input)))
+    Cascade_spec_inventory.Query_grammar.container_positive
 
 let spec_container_invalid_vectors () =
-  rejects_invalid "";
-  rejects_invalid "style()";
-  rejects_invalid "style(--theme: dark";
-  rejects_invalid "scroll-state()";
-  rejects_invalid "scroll-state(stuck: top";
-  rejects_invalid "(width >)"
+  List.iter
+    (fun (row : Cascade_spec_inventory.Query_grammar.invalid_row) ->
+      rejects_invalid row.input)
+    Cascade_spec_inventory.Query_grammar.container_negative
 
 let tests =
   Alcotest.

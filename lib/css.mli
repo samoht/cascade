@@ -3888,6 +3888,8 @@ type number =
   | Hypot of number * number  (** CSS [hypot()] math function *)
   | Pow of number * number  (** CSS [pow()] math function *)
   | Sqrt of number  (** CSS [sqrt()] math function *)
+  | Abs of number  (** CSS [abs()] math function *)
+  | Sign of number  (** CSS [sign()] math function *)
   | Sin of angle  (** CSS [sin()] math function *)
 
 (** CSS scale property values *)
