@@ -59,89 +59,98 @@ let rec kind = function
   | Named (_, cond) -> kind cond
   | Style _ | Scroll_state _ | Custom _ -> Kind_other
 
-let of_string s =
-  let is_ident_start c =
-    (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_' || c = '-'
-  in
-  let is_ident_cont c = is_ident_start c || (c >= '0' && c <= '9') in
-  let split_named s =
-    let s = String.trim s in
-    let len = String.length s in
-    let rec ident_end i =
-      if i < len && is_ident_cont s.[i] then ident_end (i + 1) else i
-    in
-    if len = 0 || not (is_ident_start s.[0]) then None
+let is_ident_start c =
+  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_' || c = '-'
+
+let is_ident_cont c = is_ident_start c || (c >= '0' && c <= '9')
+
+let starts_with ~prefix s =
+  let n = String.length prefix in
+  String.length s >= n && String.sub s 0 n = prefix
+
+let first_non_ws s =
+  let rec loop i =
+    if i >= String.length s then None
     else
-      let stop = ident_end 0 in
-      let rec first_non_ws i =
-        if i >= len then None
-        else
-          match s.[i] with
-          | ' ' | '\t' | '\n' | '\r' | '\012' -> first_non_ws (i + 1)
-          | c -> Some (i, c)
-      in
-      match first_non_ws stop with
-      | Some (i, ('(' | 's')) when stop > 0 && i > stop ->
-          Some (String.sub s 0 stop, String.sub s i (len - i))
-      | _ -> None
+      match s.[i] with
+      | ' ' | '\t' | '\n' | '\r' | '\012' -> loop (i + 1)
+      | c -> Some (i, c)
   in
-  let balanced s =
-    let len = String.length s in
-    let rec loop depth i =
-      if i >= len then depth = 0
-      else
-        match s.[i] with
-        | '(' -> loop (depth + 1) (i + 1)
-        | ')' -> depth > 0 && loop (depth - 1) (i + 1)
-        | _ -> loop depth (i + 1)
-    in
-    loop 0 0
+  loop
+
+let split_named s =
+  let s = String.trim s in
+  let len = String.length s in
+  let rec ident_end i =
+    if i < len && is_ident_cont s.[i] then ident_end (i + 1) else i
   in
-  let starts_with ~prefix s =
-    let n = String.length prefix in
-    String.length s >= n && String.sub s 0 n = prefix
+  if len = 0 || not (is_ident_start s.[0]) then None
+  else
+    let stop = ident_end 0 in
+    match first_non_ws s stop with
+    | Some (i, ('(' | 's')) when stop > 0 && i > stop ->
+        Some (String.sub s 0 stop, String.sub s i (len - i))
+    | _ -> None
+
+let balanced s =
+  let len = String.length s in
+  let rec loop depth i =
+    if i >= len then depth = 0
+    else
+      match s.[i] with
+      | '(' -> loop (depth + 1) (i + 1)
+      | ')' -> depth > 0 && loop (depth - 1) (i + 1)
+      | _ -> loop depth (i + 1)
   in
-  let parse_container_specific raw =
-    let raw = String.trim raw in
-    if raw = "" then failwith "empty container query";
-    if not (balanced raw) then failwith "unmatched container query parentheses";
-    if starts_with ~prefix:"style(" raw then (
-      if not (String.ends_with ~suffix:")" raw) then
-        failwith "unmatched style() container query";
-      let body = String.sub raw 6 (String.length raw - 7) |> String.trim in
-      if body = "" then failwith "empty style() container query";
-      if String.contains body ':' then
-        let parts = String.split_on_char ':' body in
-        match parts with
-        | [ name; value ] when String.trim name <> "" && String.trim value <> ""
-          ->
-            Style (String.trim name, Some (String.trim value))
-        | _ -> failwith "invalid style() container query"
-      else if String.length body >= 2 && body.[0] = '-' && body.[1] = '-' then
-        Style (body, None)
-      else failwith "invalid style() container query")
-    else if starts_with ~prefix:"scroll-state(" raw then (
-      if not (String.ends_with ~suffix:")" raw) then
-        failwith "unmatched scroll-state() container query";
-      let body = String.sub raw 13 (String.length raw - 14) |> String.trim in
-      match String.split_on_char ':' body with
-      | [ name; value ] -> (
-          match (String.trim name, String.trim value) with
-          | "stuck", ("top" | "right" | "bottom" | "left")
-          | "snapped", ("block" | "inline" | "both") ->
-              Scroll_state (String.trim name, String.trim value)
-          | _ -> failwith "invalid scroll-state() container query")
+  loop 0 0
+
+let style_body body =
+  let body = String.trim body in
+  if body = "" then failwith "empty style() container query";
+  if String.contains body ':' then
+    match String.split_on_char ':' body with
+    | [ name; value ] when String.trim name <> "" && String.trim value <> "" ->
+        Style (String.trim name, Some (String.trim value))
+    | _ -> failwith "invalid style() container query"
+  else if String.length body >= 2 && body.[0] = '-' && body.[1] = '-' then
+    Style (body, None)
+  else failwith "invalid style() container query"
+
+let scroll_state_body body =
+  match String.split_on_char ':' (String.trim body) with
+  | [ name; value ] -> (
+      match (String.trim name, String.trim value) with
+      | "stuck", ("top" | "right" | "bottom" | "left")
+      | "snapped", ("block" | "inline" | "both") ->
+          Scroll_state (String.trim name, String.trim value)
       | _ -> failwith "invalid scroll-state() container query")
-    else failwith "not a container-specific query"
-  in
-  let parse_unnamed s =
-    match Media.of_string s with
-    | Media.Min_width_rem rem -> Min_width_rem rem
-    | Media.Min_width px when Float.is_integer px ->
-        Min_width_px (int_of_float px)
-    | media -> Custom media
-    | exception Failure _ -> parse_container_specific s
-  in
+  | _ -> failwith "invalid scroll-state() container query"
+
+let function_body raw prefix =
+  if not (String.ends_with ~suffix:")" raw) then
+    failwith ("unmatched " ^ prefix ^ " container query");
+  let start = String.length prefix in
+  String.sub raw start (String.length raw - start - 1)
+
+let parse_container_specific raw =
+  let raw = String.trim raw in
+  if raw = "" then failwith "empty container query";
+  if not (balanced raw) then failwith "unmatched container query parentheses";
+  if starts_with ~prefix:"style(" raw then
+    style_body (function_body raw "style(")
+  else if starts_with ~prefix:"scroll-state(" raw then
+    scroll_state_body (function_body raw "scroll-state(")
+  else failwith "not a container-specific query"
+
+let parse_unnamed s =
+  match Media.of_string s with
+  | Media.Min_width_rem rem -> Min_width_rem rem
+  | Media.Min_width px when Float.is_integer px ->
+      Min_width_px (int_of_float px)
+  | media -> Custom media
+  | exception Failure _ -> parse_container_specific s
+
+let of_string s =
   match split_named s with
   | Some (name, raw) -> Named (name, parse_unnamed raw)
   | None -> parse_unnamed s

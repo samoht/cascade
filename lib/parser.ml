@@ -522,31 +522,37 @@ let is_curly_block = function
   | Block { node = { opening = Token.Curly; _ }; _ } -> true
   | _ -> false
 
+let has_bad_token value =
+  let rec walk = function
+    | Preserved { kind = Token.Bad_string | Token.Bad_url; _ } -> true
+    | Block { node = { value; _ }; _ } -> List.exists walk value
+    | Func { node = { arguments; _ }; _ } -> List.exists walk arguments
+    | _ -> false
+  in
+  List.exists walk value
+
+let value_has_invalid_block ~is_custom value =
+  let trimmed = trim_ws value in
+  let blocks = List.filter is_curly_block trimmed in
+  match blocks with
+  | [] -> false
+  | _ :: _ :: _ -> true
+  | [ block ] ->
+      let rec split before = function
+        | [] -> (List.rev before, [])
+        | hd :: rest when hd == block -> (List.rev before, rest)
+        | hd :: rest -> split (hd :: before) rest
+      in
+      let before, after = split [] trimmed in
+      let non_ws = List.filter (fun cv -> not (is_whitespace cv)) in
+      let before_has = non_ws before <> [] in
+      let after_has = non_ws after <> [] in
+      if is_custom then before_has && after_has else before_has || after_has
+
 (* 5.3.7 Parse a declaration from a buffered component-value list. *)
 let parse_declaration_from_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
     Component.declaration option =
   let is_custom = String.length name >= 2 && name.[0] = '-' && name.[1] = '-' in
-  (* CSS Syntax section 5.5.6 top-level [{}] block rule. Non-custom: a single
-     [{}] alone, or no block at all. Custom: at most one [{}], which may have
-     content before or after but not both. *)
-  let value_has_invalid_block value =
-    let trimmed = trim_ws value in
-    let blocks = List.filter is_curly_block trimmed in
-    match blocks with
-    | [] -> false
-    | _ :: _ :: _ -> true
-    | [ block ] ->
-        let rec split before = function
-          | [] -> (List.rev before, [])
-          | hd :: rest when hd == block -> (List.rev before, rest)
-          | hd :: rest -> split (hd :: before) rest
-        in
-        let before, after = split [] trimmed in
-        let non_ws = List.filter (fun cv -> not (is_whitespace cv)) in
-        let before_has = non_ws before <> [] in
-        let after_has = non_ws after <> [] in
-        if is_custom then before_has && after_has else before_has || after_has
-  in
   match drop_leading_ws cvs with
   | Preserved { kind = Token.Colon; _ } :: rest ->
       let value1 = trim_ws rest in
@@ -560,16 +566,7 @@ let parse_declaration_from_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
             | _ -> (value1, false))
         | _ -> (value1, false)
       in
-      let has_bad_token =
-        let rec walk = function
-          | Preserved { kind = Token.Bad_string | Token.Bad_url; _ } -> true
-          | Block { node = { value; _ }; _ } -> List.exists walk value
-          | Func { node = { arguments; _ }; _ } -> List.exists walk arguments
-          | _ -> false
-        in
-        List.exists walk value
-      in
-      if value_has_invalid_block value || has_bad_token then (
+      if value_has_invalid_block ~is_custom value || has_bad_token value then (
         warn ~meta lexer warnings
           (Error.unexpected_token name_loc ~sort:Sort.Declaration
              (Token.Open Token.Curly));

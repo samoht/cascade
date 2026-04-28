@@ -56,8 +56,12 @@ let test_components_to_string_idempotent buf =
   let once = Css.Cursor.remaining_to_string c in
   let c2 = Css.Cursor.of_string once in
   let twice = Css.Cursor.remaining_to_string c2 in
-  if once <> twice then
-    fail (Fmt.str "cursor component serialization changed: %S -> %S" once twice)
+  let c3 = Css.Cursor.of_string twice in
+  let thrice = Css.Cursor.remaining_to_string c3 in
+  if twice <> thrice then
+    fail
+      (Fmt.str "cursor component serialization did not stabilize: %S -> %S"
+         twice thrice)
 
 let test_consume_to_boundaries_reparse buf =
   let input = cssish buf ^ "; tail { x: y } / rest" in

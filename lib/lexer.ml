@@ -496,13 +496,6 @@ let rec skip_comment_body r =
     Reader.skip r;
     skip_comment_body r)
 
-let rec consume_comments r =
-  if Reader.looking_at r "/*" then (
-    Reader.skip r;
-    Reader.skip r;
-    skip_comment_body r;
-    consume_comments r)
-
 (* Consume a run of whitespace code points and any interleaved comments. CSS
    Syntax section 4.3.2 treats a comment as equivalent to whitespace, so [a
    /*x*/ b] yields a single <whitespace-token> between the two idents. *)

@@ -295,3 +295,58 @@ let pp_animation : animation Pp.t =
     a.progress;
   pp_field ctx ~first "animated_properties" pp_string_list a.animated_properties;
   Pp.char ctx '}'
+
+(* TODO: full computed-value resolution. Returns Error for now so callers can
+   plumb the API through; concrete cases will be filled in incrementally as the
+   test_context contract grows. *)
+let computed_value ?layer_order:_ ?layer:_ _ctx _decl =
+  Error "Context.computed_value: not implemented"
+
+(* Selector / media / supports / container matching stubs. Conservative: never
+   claim a match while the context is a closed record (the library is
+   parser/serializer-first, evaluation is the caller's job). *)
+let matches_selector _doc _sel = false
+let matches_media _q _m = false
+let matches_supports _q _cond = false
+let matches_container _q ?name:_ _cond = false
+
+let starts_with ~prefix s =
+  let n = String.length prefix in
+  String.length s >= n && String.sub s 0 n = prefix
+
+let cut ?(rev = false) ~sep s =
+  let sep_len = String.length sep in
+  let len = String.length s in
+  let matches i = i + sep_len <= len && String.sub s i sep_len = sep in
+  let rec forward i =
+    if i + sep_len > len then None
+    else if matches i then Some i
+    else forward (i + 1)
+  in
+  let rec backward i =
+    if i < 0 then None else if matches i then Some i else backward (i - 1)
+  in
+  match if rev then backward (len - sep_len) else forward 0 with
+  | None -> None
+  | Some i ->
+      Some (String.sub s 0 i, String.sub s (i + sep_len) (len - i - sep_len))
+
+let resolve_url loader href =
+  match loader.base_url with
+  | None -> Ok href
+  | Some _ when starts_with ~prefix:"http://" href -> Ok href
+  | Some _ when starts_with ~prefix:"https://" href -> Ok href
+  | Some base when starts_with ~prefix:"/" href -> (
+      match cut ~sep:"://" base with
+      | None -> Ok href
+      | Some (scheme, rest) -> (
+          match cut ~sep:"/" rest with
+          | None -> Ok (scheme ^ "://" ^ rest ^ href)
+          | Some (host, _) -> Ok (scheme ^ "://" ^ host ^ href)))
+  | Some base -> (
+      match cut ~rev:true ~sep:"/" base with
+      | None -> Ok href
+      | Some (dir, _) -> Ok (dir ^ "/" ^ href))
+
+let load_import ?query:_ ?layer_order:_ _loader _rule =
+  Error "Context.load_import: not implemented"

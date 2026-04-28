@@ -794,8 +794,10 @@ let read_descriptor_value parse_fn constructor r =
   Cursor.ws r;
   if not (Cursor.colon r) then Cursor.err_expected r "':'";
   Cursor.ws r;
-  let value = parse_fn r in
-  constructor value
+  try
+    let value = parse_fn r in
+    constructor value
+  with Failure msg -> Cursor.err_invalid r msg
 
 let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
   Cursor.ws r;

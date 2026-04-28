@@ -689,19 +689,6 @@ and chain sc acc =
   in
   loop None acc
 
-and chain_old sc acc =
-  skip_ws sc;
-  if at_end sc then acc
-  else if lookahead_ident sc "and" then (
-    consume_keyword sc "and";
-    let right = parse_in_parens sc in
-    chain sc (And (acc, right)))
-  else if lookahead_ident sc "or" then (
-    consume_keyword sc "or";
-    let right = parse_in_parens sc in
-    chain sc (Or (acc, right)))
-  else acc
-
 let medium_of_ident s : medium =
   match String.lowercase_ascii s with
   | "all" -> All

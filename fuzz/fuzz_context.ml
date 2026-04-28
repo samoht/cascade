@@ -52,16 +52,15 @@ let test_empty_contexts _buf =
 let test_property_value_context buf =
   let open Css.Values in
   let custom = name "--v" buf 0 in
-  let property = pick [ "color"; "font-size"; "display"; "width" ] buf 1 in
-  let value =
+  let property, value =
     pick
       [
-        css_value pp_color (Named Red);
-        css_value pp_length (Rem 1.);
-        "grid";
-        css_value pp_length Auto;
+        ("color", css_value pp_color (Named Red));
+        ("font-size", css_value pp_length (Rem 1.));
+        ("display", "grid");
+        ("width", css_value pp_length Auto);
       ]
-      buf 2
+      buf 1
   in
   let custom_decl = Css.Declaration.of_string (custom ^ ": " ^ value) in
   let inherited_decl = Css.Declaration.of_string (property ^ ": " ^ value) in

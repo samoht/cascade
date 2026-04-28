@@ -2210,7 +2210,7 @@ let spec_position_try_descriptor_matrix () =
       "@position-try --fallback { @media screen { .x { color: red } } }";
     ]
 
-let spec_at_rule_descriptor_order_duplicate_matrix () =
+let spec_at_rule_descriptor_matrix () =
   List.iter
     (fun (expected, input) -> check_stylesheet ~expected input)
     [
@@ -2503,7 +2503,7 @@ let additional_tests =
       spec_position_try_descriptor_matrix );
     ( "spec at-rule descriptor order duplicate matrix",
       `Quick,
-      spec_at_rule_descriptor_order_duplicate_matrix );
+      spec_at_rule_descriptor_matrix );
     ( "spec snapshot tracking vectors",
       `Quick,
       test_spec_snapshot_tracking_vectors );
