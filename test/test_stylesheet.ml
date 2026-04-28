@@ -2273,6 +2273,39 @@ let spec_at_rule_descriptor_matrix () =
       "@starting-style;";
     ]
 
+let spec_at_rule_inventory_matrix () =
+  let module A = Cascade_spec_inventory.At_rule_grammar in
+  List.iter
+    (fun (row : A.row) -> check_stylesheet ~expected:row.expected row.input)
+    A.positive;
+  List.iter
+    (fun (row : A.invalid_row) -> neg_cursor read_stylesheet row.input)
+    A.negative;
+  let positive_features = A.features A.positive in
+  let negative_features =
+    A.negative
+    |> List.map (fun (row : A.invalid_row) -> row.feature)
+    |> List.sort_uniq String.compare
+  in
+  Alcotest.(check (list string))
+    "at-rule inventory positive/negative feature parity" positive_features
+    negative_features;
+  List.iter
+    (fun feature ->
+      let positive_branches =
+        List.filter (fun (row : A.row) -> row.feature = feature) A.positive
+      in
+      let negative_branches =
+        List.filter
+          (fun (row : A.invalid_row) -> row.feature = feature)
+          A.negative
+      in
+      if positive_branches = [] then
+        Alcotest.failf "%s has no positive at-rule inventory rows" feature;
+      if negative_branches = [] then
+        Alcotest.failf "%s has no negative at-rule inventory rows" feature)
+    positive_features
+
 let test_spec_snapshot_tracking_vectors () =
   (* Snapshot tracking vectors span stable cross-module syntax from recent CSS
      snapshots. The matrix tracks exact snapshot membership; these tests make
@@ -2566,6 +2599,9 @@ let additional_tests =
     ( "spec at-rule descriptor order duplicate matrix",
       `Quick,
       spec_at_rule_descriptor_matrix );
+    ( "spec at-rule shared inventory matrix",
+      `Quick,
+      spec_at_rule_inventory_matrix );
     ( "spec snapshot tracking vectors",
       `Quick,
       test_spec_snapshot_tracking_vectors );

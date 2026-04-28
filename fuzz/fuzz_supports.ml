@@ -4,6 +4,18 @@
 
 open Cascade
 open Alcobar
+module Supports_inventory = Cascade_spec_inventory.Supports_grammar
+
+let rec supports_of_expected = function
+  | Supports_inventory.Property (property, value) ->
+      Css.Supports.Property (property, value)
+  | Supports_inventory.Func (name, value) -> Css.Supports.Func (name, value)
+  | Supports_inventory.Not condition ->
+      Css.Supports.Not (supports_of_expected condition)
+  | Supports_inventory.And (left, right) ->
+      Css.Supports.And (supports_of_expected left, supports_of_expected right)
+  | Supports_inventory.Or (left, right) ->
+      Css.Supports.Or (supports_of_expected left, supports_of_expected right)
 
 (** Supports.of_string — must not crash on arbitrary input. *)
 let test_of_string buf =
@@ -124,56 +136,18 @@ let test_supports_context_syntax buf =
   if serialized <> reparsed then
     fail (Fmt.str "supports syntax changed: %S -> %S" serialized reparsed)
 
-let spec_supports_vector buf =
-  pick
-    [
-      ("(display: grid)", Css.Supports.Property ("display", "grid"));
-      ("selector(:has(+ img))", Css.Supports.Func ("selector", ":has(+ img)"));
-      ("font-format(woff2)", Css.Supports.Func ("font-format", "woff2"));
-      ( "font-tech(color-COLRv1)",
-        Css.Supports.Func ("font-tech", "color-COLRv1") );
-      ( "not (display: grid)",
-        Css.Supports.Not (Css.Supports.Property ("display", "grid")) );
-      ( "(display: grid) and selector(:has(img))",
-        Css.Supports.And
-          ( Css.Supports.Property ("display", "grid"),
-            Css.Supports.Func ("selector", ":has(img)") ) );
-      ( "font-format(woff2) or font-tech(variations)",
-        Css.Supports.Or
-          ( Css.Supports.Func ("font-format", "woff2"),
-            Css.Supports.Func ("font-tech", "variations") ) );
-      ( "((display: grid) and (gap: 1rem)) or (color: red)",
-        Css.Supports.Or
-          ( Css.Supports.And
-              ( Css.Supports.Property ("display", "grid"),
-                Css.Supports.Property ("gap", "1rem") ),
-            Css.Supports.Property ("color", "red") ) );
-    ]
-    buf 0
+let spec_supports_vector buf = pick Supports_inventory.rows buf 0
 
 let test_spec_supports_structural_vectors buf =
-  let input, expected = spec_supports_vector buf in
-  let actual = Css.Supports.of_string input in
-  if not (Css.Supports.equal expected actual) then
+  let row = spec_supports_vector buf in
+  let actual = Css.Supports.of_string row.input in
+  if not (Css.Supports.equal (supports_of_expected row.expected) actual) then
     fail
-      (Fmt.str "supports vector parsed to wrong AST: %S -> %S" input
+      (Fmt.str "supports vector parsed to wrong AST: %S -> %S" row.input
          (Css.Supports.to_string actual))
 
 let test_spec_supports_invalid_vectors buf =
-  let input =
-    pick
-      [
-        "";
-        "()";
-        "display: grid";
-        "(display: grid) and";
-        "(display: grid) or";
-        "(display: grid) and (gap: 1rem) or selector(:has(img))";
-        "selector(:has(img)";
-        "(display: grid";
-      ]
-      buf 0
-  in
+  let input = pick Supports_inventory.invalid buf 0 in
   match
     try Some (Css.Supports.of_string input)
     with Failure _ | Invalid_argument _ -> None
@@ -185,25 +159,8 @@ let test_spec_supports_invalid_vectors buf =
            (Css.Supports.to_string actual))
 
 let test_spec_supports_condition_family_vectors buf =
-  let input =
-    pick
-      [
-        "(display: grid)";
-        "(container-type: inline-size)";
-        "(selector(:has(+ img)))";
-        "selector(:has(+ img))";
-        "font-format(woff2)";
-        "font-tech(color-COLRv1)";
-        "font-tech(variations)";
-        "not (display: grid)";
-        "(display: grid) and (gap: 1rem)";
-        "(display: grid) or (display: flex)";
-        "((container-type: inline-size) and selector(:has(img))) or (display: \
-         grid)";
-        "not ((display: grid) or selector(:has(img)))";
-      ]
-      buf 2
-  in
+  let row = pick Supports_inventory.rows buf 2 in
+  let input = row.input in
   let once = Css.Supports.to_string (Css.Supports.of_string input) in
   let twice = Css.Supports.to_string (Css.Supports.of_string once) in
   if once <> twice then
@@ -212,24 +169,8 @@ let test_spec_supports_condition_family_vectors buf =
          twice)
 
 let test_spec_supports_invalid_condition_family_vectors buf =
-  let input =
-    pick
-      [
-        "(display)";
-        "(display:)";
-        "(: grid)";
-        "selector()";
-        "selector(:has(img)";
-        "font-format()";
-        "font-tech()";
-        "not";
-        "not ()";
-        "(display: grid) and or (gap: 1rem)";
-        "(display: grid) and (gap: 1rem) or (color: red)";
-        "((display: grid)";
-      ]
-      buf 3
-  in
+  let row = pick Supports_inventory.rows buf 3 in
+  let input = Supports_inventory.mutate_invalid row (byte_at buf 4) in
   match
     try Some (Css.Supports.of_string input)
     with Failure _ | Invalid_argument _ -> None

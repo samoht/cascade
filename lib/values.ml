@@ -1085,6 +1085,8 @@ let rec pp_number : number Pp.t =
           pp_number ctx b)
         ctx (a, b)
   | Sqrt v -> Pp.call "sqrt" pp_number ctx v
+  | Abs v -> Pp.call "abs" pp_number ctx v
+  | Sign v -> Pp.call "sign" pp_number ctx v
   | Sin a -> Pp.call "sin" pp_angle ctx a
 
 let pp_transition_behavior : transition_behavior Pp.t =
@@ -1590,6 +1592,7 @@ and read_rgb_comma_separated t : color =
      target CSS4 (supported by all major browsers), we allow mixing. *)
   let alpha = if Cursor.comma_opt t then read_alpha t else None in
   Cursor.ws t;
+  Cursor.expect_eof t;
   match alpha with
   | None -> Rgb (Channels { r; g; b })
   | a -> Rgba { rgb = Channels { r; g; b }; a }
@@ -1722,6 +1725,7 @@ let read_hsl t : color =
     else None
   in
   Cursor.ws t;
+  Cursor.expect_eof t;
   Hsl { h; s = Pct s; l = Pct l; a }
 
 let read_hwb t : color =
@@ -1737,6 +1741,7 @@ let read_hwb t : color =
     else None
   in
   Cursor.ws t;
+  Cursor.expect_eof t;
   Hwb { h; w = Pct w; b = Pct b; a }
 
 let read_oklch t : color =
@@ -2319,6 +2324,18 @@ let rec read_number t : number =
         Cursor.ws inner;
         Cursor.expect_eof inner;
         Sqrt value)
+  else if Cursor.looking_at_func "abs" t then
+    Cursor.call "abs" t (fun inner ->
+        let value = read_number inner in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        Abs value)
+  else if Cursor.looking_at_func "sign" t then
+    Cursor.call "sign" t (fun inner ->
+        let value = read_number inner in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        Sign value)
   else if Cursor.looking_at_func "sin" t then
     Cursor.call "sin" t (fun inner ->
         let value = read_angle inner in

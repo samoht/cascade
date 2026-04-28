@@ -1062,21 +1062,14 @@ let spec_cascade7_defaulting () =
   (* CSS Cascade section 7: defaulting keywords are CSS-wide values. They are
      valid as the entire value of any property, including the [all] shorthand,
      and invalid when mixed with other component values. *)
-  check_declaration ~expected:"display:initial" "display: initial";
-  check_declaration ~expected:"font-size:inherit" "font-size: inherit";
-  check_declaration ~expected:"margin:unset" "margin: unset";
-  check_declaration ~expected:"color:revert" "color: revert";
-  check_declaration ~expected:"width:revert-layer" "width: revert-layer";
-  check_declaration ~expected:"all:initial" "all: initial";
-  check_declaration ~expected:"all:inherit" "all: inherit";
-  check_declaration ~expected:"all:unset" "all: unset";
-  check_declaration ~expected:"all:revert" "all: revert";
-  check_declaration ~expected:"all:revert-layer" "all: revert-layer";
-  check_declaration ~expected:"display:initial" "display: INITIAL";
-  neg_cursor read_declaration "all: initial revert";
-  neg_cursor read_declaration "display: block revert";
-  neg_cursor read_declaration "margin: revert-layer 1rem";
-  neg_cursor read_declaration "color: inherit red"
+  List.iter
+    (fun (row : Cascade_spec_inventory.Declaration_grammar.serialization_row) ->
+      check_declaration ~expected:row.expected row.input)
+    Cascade_spec_inventory.Declaration_grammar.css_wide_positive;
+  List.iter
+    (fun (row : Cascade_spec_inventory.Declaration_grammar.invalid_row) ->
+      neg_cursor read_declaration row.input)
+    Cascade_spec_inventory.Declaration_grammar.css_wide_negative
 
 let spec_cascade3_shorthands () =
   (* CSS Cascade section 3: shorthand declarations set all of their longhand
@@ -1103,27 +1096,29 @@ let spec_cascade3_aliasing () =
   (* CSS Cascade section 3.1: legacy shorthands behave as shorthands at parse
      time but are not selected for serialization. The spec example maps
      page-break-before: always to break-before: page. *)
-  check_declaration ~expected:"break-before:page" "page-break-before: always";
-  check_declaration ~expected:"break-after:page" "page-break-after: always";
-  check_declaration ~expected:"break-inside:avoid" "page-break-inside: avoid";
-  neg_cursor read_declaration "page-break-before: recto";
-  neg_cursor read_declaration "page-break-after: revert always";
-  neg_cursor read_declaration "page-break-inside: avoid-page"
+  List.iter
+    (fun (row : Cascade_spec_inventory.Declaration_grammar.serialization_row) ->
+      check_declaration ~expected:row.expected row.input)
+    Cascade_spec_inventory.Declaration_grammar.alias_positive;
+  List.iter
+    (fun (row : Cascade_spec_inventory.Declaration_grammar.invalid_row) ->
+      neg_cursor read_declaration row.input)
+    Cascade_spec_inventory.Declaration_grammar.alias_negative
 
 let spec_cascade3_all () =
   (* CSS Cascade section 3.2: [all] is a shorthand that accepts only CSS-wide
      keywords and resets all CSS properties except direction, unicode-bidi, and
      custom properties. The parser surface can verify the allowed value set. *)
-  check_declaration ~expected:"all:initial" "all: initial";
-  check_declaration ~expected:"all:inherit" "all: inherit";
-  check_declaration ~expected:"all:unset" "all: unset";
-  check_declaration ~expected:"all:revert" "all: revert";
-  check_declaration ~expected:"all:revert-layer" "all: revert-layer";
-  neg_cursor read_declaration "all: auto";
-  neg_cursor read_declaration "all: none";
-  neg_cursor read_declaration "all: initial inherit";
-  neg_cursor read_declaration "all: revert-layer color";
-  neg_cursor read_declaration "all: var(--reset)"
+  List.iter
+    (fun (row : Cascade_spec_inventory.Declaration_grammar.serialization_row) ->
+      if String.starts_with ~prefix:"all:" row.expected then
+        check_declaration ~expected:row.expected row.input)
+    Cascade_spec_inventory.Declaration_grammar.css_wide_positive;
+  List.iter
+    (fun (row : Cascade_spec_inventory.Declaration_grammar.invalid_row) ->
+      if String.starts_with ~prefix:"all:" row.input then
+        neg_cursor read_declaration row.input)
+    Cascade_spec_inventory.Declaration_grammar.css_wide_negative
 
 let comments () =
   (* Comments around colon and inside values *)

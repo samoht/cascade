@@ -1,5 +1,15 @@
 open Cascade
 open Css.Supports
+module Supports_inventory = Cascade_spec_inventory.Supports_grammar
+
+let rec supports_of_expected = function
+  | Supports_inventory.Property (property, value) -> Property (property, value)
+  | Supports_inventory.Func (name, value) -> Func (name, value)
+  | Supports_inventory.Not condition -> Not (supports_of_expected condition)
+  | Supports_inventory.And (left, right) ->
+      And (supports_of_expected left, supports_of_expected right)
+  | Supports_inventory.Or (left, right) ->
+      Or (supports_of_expected left, supports_of_expected right)
 
 let test_to_string () =
   let cases =
@@ -102,38 +112,19 @@ let spec_supports_negative_vectors () =
       Alcotest.failf "%s: expected invalid @supports condition" name
     with Failure _ | Invalid_argument _ -> ()
   in
-  expect_error "empty condition" "";
-  expect_error "empty parentheses" "()";
-  expect_error "bare property without parentheses" "display: grid";
-  expect_error "missing right operand" "(display: grid) and";
-  expect_error "mixed operator without right operand" "(display: grid) or";
-  expect_error "ungrouped mixed and/or operators"
-    "(display: grid) and (gap: 1rem) or selector(:has(img))";
-  expect_error "unclosed selector function" "selector(:has(img)";
-  expect_error "unclosed property feature" "(display: grid"
+  List.iteri
+    (fun i input ->
+      expect_error ("invalid shared vector " ^ string_of_int i) input)
+    Cascade_spec_inventory.Supports_grammar.invalid
 
 let spec_supports_structural_vectors () =
-  let check name input expected =
-    let actual = of_string input in
-    Alcotest.(check bool) name true (equal expected actual)
-  in
-  check "declaration feature" "(display: grid)" (Property ("display", "grid"));
-  check "selector feature" "selector(:has(+ img))"
-    (Func ("selector", ":has(+ img)"));
-  check "font technology feature" "font-tech(color-COLRv1)"
-    (Func ("font-tech", "color-COLRv1"));
-  check "font format feature" "font-format(woff2)"
-    (Func ("font-format", "woff2"));
-  check "not feature" "not (display: grid)" (Not (Property ("display", "grid")));
-  check "and feature list" "(display: grid) and selector(:has(img))"
-    (And (Property ("display", "grid"), Func ("selector", ":has(img)")));
-  check "or feature list" "font-format(woff2) or font-tech(variations)"
-    (Or (Func ("font-format", "woff2"), Func ("font-tech", "variations")));
-  check "grouped mixed operator"
-    "((display: grid) and (gap: 1rem)) or (color: red)"
-    (Or
-       ( And (Property ("display", "grid"), Property ("gap", "1rem")),
-         Property ("color", "red") ))
+  List.iter
+    (fun (row : Supports_inventory.row) ->
+      let actual = of_string row.input in
+      Alcotest.(check bool)
+        row.name true
+        (equal (supports_of_expected row.expected) actual))
+    Supports_inventory.rows
 
 let spec_supports_nested_edges () =
   let check name input expected =

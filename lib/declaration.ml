@@ -223,6 +223,114 @@ let validate_no_extra_tokens t =
         Cursor.err_invalid t
           ("unexpected tokens after property value: " ^ trimmed)
 
+let validate_var_reference t value =
+  let validate r =
+    let raw_name = Cursor.ident ~keep_case:true r in
+    if
+      not
+        (String.length raw_name >= 3 && raw_name.[0] = '-' && raw_name.[1] = '-')
+    then Cursor.err_invalid r ("not a custom property: " ^ raw_name);
+    Cursor.ws r;
+    if Cursor.comma_opt r then ignore (Cursor.remaining_to_string ~trim:true r)
+  in
+  try
+    let r = Cursor.of_string value in
+    Cursor.call "var" r validate;
+    Cursor.ws r;
+    Cursor.expect_eof r
+  with Cursor.Parse_error _ -> Cursor.err_invalid t "invalid var() reference"
+
+let read_length_box ?(allow_negative = true) t =
+  let values =
+    Cursor.list ~at_least:1 ~at_most:4
+      (fun r -> read_length ~allow_negative r)
+      t
+  in
+  if values = [] then Cursor.err_expected t "length value";
+  values
+
+let read_text_decoration_lines t =
+  let lines = Cursor.list ~at_least:1 read_text_decoration_line t in
+  let is_none (line : text_decoration_line) =
+    match line with None -> true | _ -> false
+  in
+  if List.exists is_none lines && List.length lines > 1 then
+    Cursor.err_invalid t "none cannot be combined with text-decoration lines";
+  let rec duplicates = function
+    | [] -> false
+    | x :: xs -> List.mem x xs || duplicates xs
+  in
+  if duplicates lines then Cursor.err_invalid t "duplicate text-decoration-line";
+  lines
+
+let read_position_try_fallback t =
+  Cursor.ws t;
+  match Cursor.peek_ident t with
+  | Some "none" ->
+      let _ = Cursor.ident t in
+      "none"
+  | Some (("flip-block" | "flip-inline" | "flip-start") as keyword) ->
+      let _ = Cursor.ident t in
+      keyword
+  | _ ->
+      let ident = Cursor.ident ~keep_case:true t in
+      if String.length ident >= 3 && String.sub ident 0 2 = "--" then ident
+      else Cursor.err_invalid t ("expected dashed ident, got: " ^ ident)
+
+let read_shape_outside t =
+  let raw = Cursor.consume_to_decl_end ~trim:true t in
+  let lower = String.lowercase_ascii raw in
+  if lower = "none" then raw
+  else if
+    String.length lower >= 8
+    && (String.sub lower 0 7 = "circle(" || String.sub lower 0 6 = "inset(")
+  then
+    if String.ends_with ~suffix:"()" lower then
+      Cursor.err_invalid t "empty basic shape"
+    else raw
+  else Cursor.err_invalid t ("invalid shape-outside: " ^ raw)
+
+let read_font_shorthand t =
+  let raw = Cursor.consume_to_decl_end ~trim:true t in
+  let lower = String.lowercase_ascii raw in
+  if is_css_wide_keyword lower then raw
+  else
+    let r = Cursor.of_string raw in
+    let saw_size = ref false in
+    let rec loop () =
+      Cursor.ws r;
+      if Cursor.is_done r then ()
+      else if !saw_size then (
+        ignore (Cursor.consume_to_decl_end ~trim:true r);
+        Cursor.ws r)
+      else
+        match Cursor.peek_ident r with
+        | Some
+            ( "italic" | "oblique" | "normal" | "small-caps" | "bold" | "bolder"
+            | "lighter" | "condensed" | "expanded" ) ->
+            let _ = Cursor.ident r in
+            loop ()
+        | _ -> (
+            let before = Cursor.save r in
+            match read_font_weight r with
+            | _ -> loop ()
+            | exception Cursor.Parse_error _ ->
+                Cursor.restore r before;
+                let _ = read_font_size r in
+                saw_size := true;
+                (match Cursor.peek_delim r with
+                | Some '/' ->
+                    Cursor.skip r;
+                    ignore (read_line_height r : line_height)
+                | _ -> ());
+                loop ())
+    in
+    (try loop ()
+     with Cursor.Parse_error _ ->
+       Cursor.err_invalid t "invalid font shorthand");
+    if not !saw_size then Cursor.err_invalid t "font shorthand missing size";
+    raw
+
 (* Custom parser for grid-template-areas: reads multiple quoted strings *)
 let read_grid_template_areas t =
   let rec read_strings acc =
@@ -347,7 +455,8 @@ let read_font_size_adjust t =
   | Some m when List.mem m metrics ->
       let _ = Cursor.ident t in
       Cursor.ws t;
-      if Cursor.is_done t || Cursor.peek_semicolon t then m
+      if Cursor.is_done t || Cursor.peek_semicolon t then
+        Cursor.err_invalid t "font-size-adjust metric requires a value"
       else
         let tail =
           match Cursor.peek_ident t with
@@ -358,6 +467,7 @@ let read_font_size_adjust t =
               let n = Cursor.number t in
               Pp.to_string Pp.float n
         in
+        validate_no_extra_tokens t;
         String.concat "" [ m; " "; tail ]
   | _ ->
       let n = Cursor.number t in
@@ -655,7 +765,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Font_weight -> v Font_weight (read_font_weight t)
   | Font_style -> v Font_style (read_font_style t)
   | Font_family -> v Font_family (read_font_family t)
-  | Font -> v Font (read_untyped_value t)
+  | Font -> v Font (read_font_shorthand t)
   | Text_align -> v Text_align (read_text_align t)
   | Text_transform -> v Text_transform (read_text_transform t)
   | White_space -> v White_space (read_white_space t)
@@ -754,7 +864,8 @@ let read_value (type a) (prop : a property) t : declaration =
   (* Additional color properties *)
   | Text_decoration_color -> v Text_decoration_color (read_color t)
   (* Text decoration line and style *)
-  | Text_decoration_line -> v Text_decoration_line (read_text_decoration_line t)
+  | Text_decoration_line ->
+      v Text_decoration_line (read_text_decoration_lines t)
   | Text_decoration_style ->
       v Text_decoration_style (read_text_decoration_style t)
   | Text_underline_offset -> v Text_underline_offset (read_length t)
@@ -798,23 +909,17 @@ let read_value (type a) (prop : a property) t : declaration =
   | Border_end_start_radius -> v Border_end_start_radius (read_length t)
   | Border_end_end_radius -> v Border_end_end_radius (read_length t)
   (* Position properties *)
-  | Inset ->
-      let lengths, _ = Cursor.many (fun r -> read_length r) t in
-      v Inset lengths
-  | Inset_inline ->
-      let lengths, _ = Cursor.many (fun r -> read_length r) t in
-      v Inset_inline lengths
-  | Inset_inline_start -> v Inset_inline_start (read_length t)
-  | Inset_inline_end -> v Inset_inline_end (read_length t)
-  | Inset_block ->
-      let lengths, _ = Cursor.many (fun r -> read_length r) t in
-      v Inset_block lengths
-  | Inset_block_start -> v Inset_block_start (read_length t)
-  | Inset_block_end -> v Inset_block_end (read_length t)
-  | Top -> v Top (read_length t)
-  | Right -> v Right (read_length t)
-  | Bottom -> v Bottom (read_length t)
-  | Left -> v Left (read_length t)
+  | Inset -> v Inset (read_length_box t)
+  | Inset_inline -> v Inset_inline (read_length_box t)
+  | Inset_inline_start -> v Inset_inline_start (read_length_box t)
+  | Inset_inline_end -> v Inset_inline_end (read_length_box t)
+  | Inset_block -> v Inset_block (read_length_box t)
+  | Inset_block_start -> v Inset_block_start (read_length_box t)
+  | Inset_block_end -> v Inset_block_end (read_length_box t)
+  | Top -> v Top (read_length_box t)
+  | Right -> v Right (read_length_box t)
+  | Bottom -> v Bottom (read_length_box t)
+  | Left -> v Left (read_length_box t)
   (* Outline properties *)
   | Outline -> v Outline (read_outline t)
   | Outline_style -> v Outline_style (read_outline_style t)
@@ -866,12 +971,28 @@ let read_value (type a) (prop : a property) t : declaration =
   (* Anchor positioning properties. [anchor-name] / [position-anchor] take a
      [<dashed-ident>] (ident that begins with [--]), and
      [position-try-fallbacks] is a comma-separated list of the same. *)
-  | Anchor_name -> v Anchor_name (read_dashed_ident t)
-  | Position_anchor -> v Position_anchor (read_dashed_ident t)
+  | Anchor_name ->
+      v Anchor_name
+        (Cursor.list ~sep:Cursor.comma ~at_least:1
+           (fun r ->
+             match Cursor.peek_ident r with
+             | Some "none" ->
+                 let _ = Cursor.ident r in
+                 "none"
+             | _ -> read_dashed_ident r)
+           t
+        |> String.concat ",")
+  | Position_anchor ->
+      v Position_anchor
+        (match Cursor.peek_ident t with
+        | Some "auto" ->
+            let _ = Cursor.ident t in
+            "auto"
+        | _ -> read_dashed_ident t)
   | Position_try_fallbacks ->
       v Position_try_fallbacks
-        (Cursor.list ~sep:Cursor.comma ~at_least:1 read_dashed_ident t)
-  | Shape_outside -> v Shape_outside (read_untyped_value t)
+        (Cursor.list ~sep:Cursor.comma ~at_least:1 read_position_try_fallback t)
+  | Shape_outside -> v Shape_outside (read_shape_outside t)
   | Shape_margin -> v Shape_margin (read_non_negative_length_percentage t)
   | Overflow_clip_margin ->
       v Overflow_clip_margin (read_length ~allow_negative:false t)
@@ -953,7 +1074,7 @@ let read_value (type a) (prop : a property) t : declaration =
            t)
   | Timeline_scope -> v Timeline_scope (read_untyped_value t)
   (* Transform properties *)
-  | Perspective -> v Perspective (read_length t)
+  | Perspective -> v Perspective (read_length ~with_keywords:false t)
   | Perspective_origin -> v Perspective_origin (read_perspective_origin t)
   | Transform_style -> v Transform_style (read_transform_style t)
   | Backface_visibility -> v Backface_visibility (read_backface_visibility t)
@@ -1187,10 +1308,26 @@ let read_regular_property_declaration t : declaration =
   let raw_value = Cursor.lookahead (Cursor.consume_to_decl_end ~trim:true) t in
   if value_has_css_wide_mix raw_value then
     Cursor.err_invalid t "CSS-wide keyword mixed with other values";
+  if name = "all" && not (is_css_wide_keyword raw_value) then
+    Cursor.err_invalid t "all accepts only CSS-wide keywords";
+  if
+    (name = "page-break-before" || name = "page-break-after")
+    && not
+         (is_css_wide_keyword raw_value
+         || List.mem raw_value [ "auto"; "always"; "avoid"; "left"; "right" ])
+  then Cursor.err_invalid t "invalid legacy page-break value";
+  if
+    name = "page-break-inside"
+    && not
+         (is_css_wide_keyword raw_value
+         || List.mem raw_value [ "auto"; "avoid" ])
+  then Cursor.err_invalid t "invalid legacy page-break-inside value";
   if
     is_css_wide_keyword raw_value
     || (String.length raw_value >= 4 && String.sub raw_value 0 4 = "var(")
   then (
+    if String.length raw_value >= 4 && String.sub raw_value 0 4 = "var(" then
+      validate_var_reference t raw_value;
     ignore (Cursor.consume_to_decl_end ~trim:true t);
     let is_important = read_importance t in
     validate_no_extra_tokens t;
@@ -1451,7 +1588,7 @@ let line_height len = v Line_height len
 let font_weight w = v Font_weight w
 let text_align a = v Text_align a
 let text_decoration_style value = v Text_decoration_style value
-let text_decoration_line value = v Text_decoration_line value
+let text_decoration_line value = v Text_decoration_line [ value ]
 let text_underline_offset value = v Text_underline_offset value
 let text_transform value = v Text_transform value
 let letter_spacing len = v Letter_spacing len
@@ -1461,15 +1598,15 @@ let position p = v Position p
 let visibility p = v Visibility p
 let inset len = v Inset len
 let inset_inline len = v Inset_inline len
-let inset_inline_start len = v Inset_inline_start len
-let inset_inline_end len = v Inset_inline_end len
+let inset_inline_start len = v Inset_inline_start [ len ]
+let inset_inline_end len = v Inset_inline_end [ len ]
 let inset_block len = v Inset_block len
-let inset_block_start len = v Inset_block_start len
-let inset_block_end len = v Inset_block_end len
-let top len = v Top len
-let right len = v Right len
-let bottom len = v Bottom len
-let left len = v Left len
+let inset_block_start len = v Inset_block_start [ len ]
+let inset_block_end len = v Inset_block_end [ len ]
+let top len = v Top [ len ]
+let right len = v Right [ len ]
+let bottom len = v Bottom [ len ]
+let left len = v Left [ len ]
 let opacity value = v Opacity value
 
 (* Remove deprecated string-based versions *)
