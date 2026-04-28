@@ -118,6 +118,9 @@ type t =
   | Marker
   | Placeholder
   | Selection
+  | Target_text
+  | Spelling_error
+  | Grammar_error
   | File_selector_button
   (* Known vendor-specific pseudo-classes *)
   | Moz_focusring

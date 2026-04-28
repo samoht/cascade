@@ -191,18 +191,22 @@ let pseudo_class_cases () =
 (* Not a roundtrip test *)
 let pseudo_element_cases () =
   (* Test pseudo-element selectors *)
-  check_construct ":before" Before;
-  check_construct ":after" After;
-  check_construct ":first-line" First_line;
-  check_construct ":first-letter" First_letter;
+  check_construct "::before" Before;
+  check_construct "::after" After;
+  check_construct "::first-line" First_line;
+  check_construct "::first-letter" First_letter;
   check_construct "::marker" Marker;
 
-  (* Double-colon syntax (preferred in CSS3+) but minified to : for legacy
-     elements *)
-  check ~expected:":before" "::before";
-  check ~expected:":after" "::after";
-  check ~expected:":first-line" "::first-line";
-  check ~expected:":first-letter" "::first-letter";
+  (* Selectors 4: pseudo-elements serialize with double-colon syntax. Legacy
+     single-colon syntax remains accepted for the CSS2 pseudo-elements. *)
+  check ~expected:"::before" ":before";
+  check "::before";
+  check ~expected:"::after" ":after";
+  check "::after";
+  check ~expected:"::first-line" ":first-line";
+  check "::first-line";
+  check ~expected:"::first-letter" ":first-letter";
+  check "::first-letter";
 
   (* Additional modern pseudo-elements *)
   check "::placeholder";
@@ -386,7 +390,7 @@ let list_cases () =
   check ~expected:"h1:hover,h2:focus,h3:active" "h1:hover, h2:focus, h3:active";
   check ~expected:"[data-attr],[aria-label],[role=button]"
     "[data-attr], [aria-label], [role=button]";
-  check ~expected:":before,:after,:first-letter"
+  check ~expected:"::before,::after,::first-letter"
     "::before, ::after, ::first-letter";
 
   (* Mixed complexity grouped selectors *)
@@ -410,7 +414,7 @@ let list_cases () =
   (* Grouped selectors with pseudo-elements and classes *)
   check ~expected:"button:hover,a:hover,input[type=submit]:hover"
     "button:hover, a:hover, input[type=submit]:hover";
-  check ~expected:"h1:before,h2:before,h3:before,h4:before"
+  check ~expected:"h1::before,h2::before,h3::before,h4::before"
     "h1::before, h2::before, h3::before, h4::before";
 
   (* Deeply nested grouped selectors *)
@@ -458,9 +462,11 @@ let roundtrip () =
   check ":nth-child(odd)";
   check ":nth-child(even)";
 
-  (* Pseudo-elements - legacy ones minify to : *)
-  check ~expected:":before" "::before";
-  check ~expected:":after" "::after";
+  (* Pseudo-elements use the Selectors 4 double-colon spelling. *)
+  check ~expected:"::before" ":before";
+  check "::before";
+  check ~expected:"::after" ":after";
+  check "::after";
   check "::part(foo)";
   check "::slotted(.class)";
 
@@ -477,7 +483,7 @@ let roundtrip () =
   check ~expected:".first~.later" ".first ~ .later";
 
   (* Complex selectors *)
-  check ~expected:"div.class#id[href]:hover:after"
+  check ~expected:"div.class#id[href]:hover::after"
     "div.class#id[href]:hover::after";
   check ~expected:".a,.b,.c" ".a, .b, .c";
   check ":where(.a,.b)";
@@ -1207,10 +1213,14 @@ let spec_minifier_semantics () =
       "[svg|href=\"--icon\" I]";
       ".\\31 0\\/12:hover";
     ];
-  check_minified_to ":before" "::before";
-  check_minified_to ":after" "::after";
-  check_minified_to ":first-letter" "::first-letter";
-  check_minified_to ":first-line" "::first-line";
+  check_minified_to "::before" ":before";
+  check_minified_to "::before" "::before";
+  check_minified_to "::after" ":after";
+  check_minified_to "::after" "::after";
+  check_minified_to "::first-letter" ":first-letter";
+  check_minified_to "::first-letter" "::first-letter";
+  check_minified_to "::first-line" ":first-line";
+  check_minified_to "::first-line" "::first-line";
   check_minified_to ":is(.valid,#id)" ":is(.valid,::before,:future-pseudo,#id)";
   check_minified_to ":where(.valid,#id)"
     ":where(.valid,::before,:future-pseudo,#id)";
@@ -1298,8 +1308,8 @@ let spec_selector_scope_pseudo_edges () =
   check "li:nth-last-child(-n+3 of :not([hidden]))";
   check_minified_to "input:not([type],[type=hidden])"
     "input:not([type], [type=hidden])";
-  check_minified_to "a:before" "a::before";
-  check_minified_to ".a:before:hover" ".a::before:hover";
+  check_minified_to "a::before" "a::before";
+  check_minified_to ".a::before:hover" ".a::before:hover";
   check "::selection";
   check "input::file-selector-button";
   neg_cursor read "> .item";
@@ -1399,12 +1409,16 @@ let spec_selector_input_state_pseudos () =
     [ ":checked()"; ":valid(.x)"; ":required(.x)" ]
 
 let spec_selector_pseudo_element_matrix () =
+  check ~expected:"::before" ":before";
+  check "::before";
+  check ~expected:"::after" ":after";
+  check "::after";
+  check ~expected:"::first-line" ":first-line";
+  check "::first-line";
+  check ~expected:"::first-letter" ":first-letter";
+  check "::first-letter";
   List.iter check
     [
-      "::before";
-      "::after";
-      "::first-line";
-      "::first-letter";
       "::marker";
       "::selection";
       "::target-text";
@@ -1419,8 +1433,8 @@ let spec_selector_pseudo_element_matrix () =
       "::view-transition-old(root)";
       "::view-transition-new(root)";
     ];
-  check_minified_to "a:before" "a::before";
-  check_minified_to "p:first-line" "p::first-line";
+  check_minified_to "a::before" "a::before";
+  check_minified_to "p::first-line" "p::first-line";
   List.iter
     (fun input -> neg_cursor read input)
     [ "::part()"; "::part(a,b)"; "::slotted()"; "::highlight()" ]
@@ -1506,8 +1520,6 @@ let spec_selector_pseudo_manifest () =
       "::cue(.warning)";
       "::cue-region(.speaker)";
       "::file-selector-button";
-      "::first-letter";
-      "::first-line";
       "::grammar-error";
       "::highlight(search)";
       "::marker";
