@@ -1030,8 +1030,10 @@ and pp_color : color Pp.t =
    spelling when minifying. The "s" suffix is one character shorter than "ms",
    so a millisecond value collapses to seconds when its second-form digits are
    no longer than the millisecond-form digits. *)
-let pp_duration_unit ctx f suffix =
-  if (not ctx.Pp.minify) || suffix <> "ms" then pp_unit ctx f suffix
+let pp_duration_unit ?(shorten_ms = true) ctx f suffix =
+  if f = 0. then Pp.string ctx "0"
+  else if (not shorten_ms) || (not ctx.Pp.minify) || suffix <> "ms" then
+    pp_unit ctx f suffix
   else
     let in_seconds = f /. 1000. in
     let ms_str = Pp.float_to_string ~drop_leading_zero:true f in
@@ -1052,7 +1054,7 @@ let rec pp_duration : duration Pp.t =
 
 and pp_duration_in_calc : duration Pp.t =
  fun ctx -> function
-  | Ms f -> pp_duration_unit ctx f "ms"
+  | Ms f -> pp_duration_unit ~shorten_ms:false ctx f "ms"
   | S f -> pp_duration_unit ctx f "s"
   | Var v -> pp_var pp_duration ctx v
   | Calc c -> pp_calc pp_duration_in_calc ctx c
@@ -1849,6 +1851,8 @@ let rec read_percentage_in_color_mix t : percentage =
   else
     let n = Cursor.number t in
     Cursor.expect '%' t;
+    if n < 0. || n > 100. then
+      Cursor.err_invalid t "color-mix percentage must be between 0% and 100%";
     (Pct n : percentage)
 
 let read_optional_percentage t : percentage option =
@@ -1862,12 +1866,18 @@ let read_optional_percentage t : percentage option =
     (* [50%] is a single [Percentage] token; a plain decimal is a [Number]. *)
     match Cursor.percentage_opt t with
     | Some n ->
+        if n < 0. || n > 100. then
+          Cursor.err_invalid t
+            "color-mix percentage must be between 0% and 100%";
         Cursor.ws t;
         Some (Pct n : percentage)
     | None ->
         Cursor.option
           (fun t ->
             let n = Cursor.number t in
+            if n < 0. || n > 1. then
+              Cursor.err_invalid t
+                "color-mix percentage must be between 0 and 1";
             Cursor.ws t;
             (* Convert decimal to percentage: .5 -> 50% stored as Pct 50.0 *)
             (Pct (n *. 100.0) : percentage))
