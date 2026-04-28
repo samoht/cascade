@@ -30,7 +30,7 @@ type condition =
   | Or of condition * condition
 
 (** Media type identifier. *)
-type media_type = All | Screen | Print | Other of string
+type medium = All | Screen | Print | Other of string
 
 (** Prefix on a media query starting with a media type. *)
 type prefix = Not | Only
@@ -39,7 +39,7 @@ type query =
   | Cond of condition
   | Type of {
       prefix : prefix option;
-      type_ : media_type;
+      type_ : medium;
       trailing : condition option;
     }
   | List of query list  (** Comma-separated media query list. *)

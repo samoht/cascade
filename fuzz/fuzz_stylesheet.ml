@@ -730,6 +730,9 @@ let test_font_face_descriptor_matrix buf =
         "@font-face { font-family: Metrics; src: url(metrics.woff2); \
          size-adjust: 100%; ascent-override: normal; descent-override: 20%; \
          line-gap-override: 0%; }";
+        "@font-face { font-family: TallMetrics; src: url(tall.woff2); \
+         ascent-override: 120%; descent-override: 125%; line-gap-override: 0%; \
+         }";
       ]
       buf 0
   in
@@ -746,7 +749,9 @@ let test_invalid_font_face_descriptor_matrix buf =
         "@font-face { font-family: Brand; src: url(brand.woff2); font-weight: \
          900 100 }";
         "@font-face { font-family: Brand; src: url(brand.woff2); \
-         ascent-override: 120%; }";
+         ascent-override: -1%; }";
+        "@font-face { font-family: Brand; src: url(brand.woff2); size-adjust: \
+         normal; }";
       ]
       buf 0
   in

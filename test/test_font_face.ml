@@ -37,18 +37,69 @@ let test_src () =
     (src_to_string
        [ Url { url = "font.woff2"; format = None; tech = Some "variations" } ])
 
+let expect_src_rejected input =
+  try
+    let src = src_of_string input in
+    Alcotest.failf "invalid font-face src parsed: %S -> %S" input
+      (src_to_string src)
+  with Css.Reader.Parse_error _ | Invalid_argument _ | Failure _ -> ()
+
+let expect_metric_rejected input =
+  try
+    let metric = metric_override_of_string input in
+    Alcotest.failf "invalid font metric parsed: %S -> %S" input
+      (metric_override_to_string metric)
+  with Css.Reader.Parse_error _ | Invalid_argument _ | Failure _ -> ()
+
+let expect_size_adjust_rejected input =
+  try
+    let size_adjust = size_adjust_of_string input in
+    Alcotest.failf "invalid font size-adjust parsed: %S -> %g" input size_adjust
+  with Css.Reader.Parse_error _ | Invalid_argument _ | Failure _ -> ()
+
 let test_spec_src_parser_vectors () =
-  let check_raw name input =
-    Alcotest.(check string) name input (src_of_string input |> src_to_string)
+  let check_src name input expected =
+    let parsed = src_of_string input in
+    Alcotest.(check bool) name true (parsed = expected);
+    Alcotest.(check bool)
+      (name ^ " serialization idempotent")
+      true
+      (src_of_string (src_to_string parsed) = parsed)
   in
-  check_raw "url format tech raw preservation"
-    "url(\"color.woff2\") format(\"woff2\") tech(color-COLRv1)";
-  check_raw "local and url list raw preservation"
-    "local(\"Brand\"), url(\"brand.woff2\") format(\"woff2\")";
-  check_raw "source with format collection"
-    "url(\"brand.otf\") format(\"opentype\")";
-  check_raw "source with tech collection"
+  check_src "url format tech"
+    "url(\"color.woff2\") format(\"woff2\") tech(color-COLRv1)"
+    [
+      Url
+        {
+          url = "color.woff2";
+          format = Some "woff2";
+          tech = Some "color-COLRv1";
+        };
+    ];
+  check_src "local and url list"
+    "local(\"Brand\"), url(\"brand.woff2\") format(\"woff2\")"
+    [
+      Local "Brand";
+      Url { url = "brand.woff2"; format = Some "woff2"; tech = None };
+    ];
+  check_src "source with format collection"
+    "url(\"brand.otf\") format(\"opentype\")"
+    [ Url { url = "brand.otf"; format = Some "opentype"; tech = None } ];
+  check_src "source with tech collection"
     "url(\"variations.woff2\") tech(variations)"
+    [
+      Url { url = "variations.woff2"; format = None; tech = Some "variations" };
+    ]
+
+let test_spec_src_invalid_vectors () =
+  List.iter expect_src_rejected
+    [
+      "format(\"woff2\")";
+      "tech(variations)";
+      "local()";
+      "url(\"font.woff2\") format()";
+      "url(\"font.woff2\") tech()";
+    ]
 
 let test_spec_metric_parsing_edges () =
   Alcotest.(check string)
@@ -57,26 +108,17 @@ let test_spec_metric_parsing_edges () =
   Alcotest.(check string)
     "percentage parses" "92.5%"
     (metric_override_of_string "92.5%" |> metric_override_to_string);
-  Alcotest.(check string)
-    "invalid metric falls back to normal" "normal"
-    (metric_override_of_string "auto" |> metric_override_to_string);
   Alcotest.(check (float 0.0001))
     "size adjust percentage" 87.5
-    (size_adjust_of_string "87.5%");
-  Alcotest.(check (float 0.0001))
-    "invalid size adjust fallback" 100.
-    (size_adjust_of_string "normal")
+    (size_adjust_of_string "87.5%")
 
 let test_spec_metric_negative_vectors () =
-  Alcotest.(check string)
-    "negative metric override is invalid" "normal"
-    (metric_override_of_string "-1%" |> metric_override_to_string);
+  List.iter expect_metric_rejected [ "-1%"; "auto"; "100"; "calc(1%)" ];
   Alcotest.(check string)
     "over 100 metric override still parses" "120%"
     (metric_override_of_string "120%" |> metric_override_to_string);
-  Alcotest.(check (float 0.0001))
-    "negative size adjust is invalid" 100.
-    (size_adjust_of_string "-10%");
+  List.iter expect_size_adjust_rejected
+    [ "-10%"; "normal"; "auto"; "100"; "calc(100%)" ];
   Alcotest.(check (float 0.0001))
     "zero size adjust parses" 0.
     (size_adjust_of_string "0%")
@@ -124,6 +166,7 @@ let suite =
       test_case "size_adjust" `Quick test_size_adjust;
       test_case "src" `Quick test_src;
       test_case "spec src parser vectors" `Quick test_spec_src_parser_vectors;
+      test_case "spec src invalid vectors" `Quick test_spec_src_invalid_vectors;
       test_case "spec metric parsing edges" `Quick
         test_spec_metric_parsing_edges;
       test_case "spec metric negative vectors" `Quick

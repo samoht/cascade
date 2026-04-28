@@ -43,7 +43,7 @@ let recover css expected min_warnings =
 
 (* {2 CSS 2.x compatibility surface} *)
 
-let css2_legacy_selectors_and_at_rules () =
+let css2_selectors_and_at_rules () =
   roundtrip "body { margin: 0; color: black }" "body{margin:0;color:black}";
   roundtrip "@charset \"UTF-8\";" "@charset \"UTF-8\";";
   roundtrip "@import 'legacy.css';" "@import 'legacy.css';";
@@ -58,7 +58,7 @@ let css2_legacy_selectors_and_at_rules () =
   roundtrip "li:first-child { list-style-type: none }"
     "li:first-child{list-style-type:none}"
 
-let css2_legacy_pseudo_elements_and_aliases () =
+let css2_pseudo_elements_aliases () =
   roundtrip "h1:first-letter { color: red }" "h1:first-letter{color:red}";
   roundtrip "p::first-line { color: blue }" "p:first-line{color:blue}";
   roundtrip "q:before { content: open-quote }" "q:before{content:open-quote}";
@@ -441,9 +441,9 @@ let () =
       ( "spec",
         [
           Alcotest.test_case "css2: selectors and at-rules" `Quick
-            css2_legacy_selectors_and_at_rules;
+            css2_selectors_and_at_rules;
           Alcotest.test_case "css2: pseudo-elements and aliases" `Quick
-            css2_legacy_pseudo_elements_and_aliases;
+            css2_pseudo_elements_aliases;
           Alcotest.test_case "css2: invalid legacy vectors" `Quick
             css2_legacy_invalid_vectors;
           (* CSS Syntax Level 3 *)
