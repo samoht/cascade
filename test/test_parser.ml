@@ -788,6 +788,37 @@ let spec_wpt_parser_branch_matrix () =
     ((Css.Parser.parse_component_value (Css.Reader.of_string "a,b")).value
    = None)
 
+let spec_wpt_declaration_recovery_matrix () =
+  let decls css =
+    (Css.Parser.parse_list_of_declarations (Css.Reader.of_string css)).value
+  in
+  let names css =
+    decls css
+    |> List.filter_map (function
+      | `Decl ({ node = { name; _ }; _ } : Css.Component.declaration) ->
+          Some name
+      | `At _ -> None)
+  in
+  Alcotest.(check (list string))
+    "bad declarations recover at following semicolon" [ "color"; "width" ]
+    (names ": bad; color: red; width: 1px");
+  Alcotest.(check (list string))
+    "bad string declaration is dropped" [ "color" ]
+    (names "background: \"bad\n; color: red");
+  Alcotest.(check (list string))
+    "bad url declaration is dropped" [ "color" ]
+    (names "background: url(foo\"bar); color: red");
+  Alcotest.(check (list string))
+    "missing colon declaration is dropped" [ "height" ]
+    (names "width 10px; height: 20px");
+  match decls "@page :left { margin: 1cm } color: red" with
+  | [
+   `At { node = { name = "page"; block = Some _; _ }; _ };
+   `Decl { node = { name = "color"; _ }; _ };
+  ] ->
+      ()
+  | _ -> Alcotest.fail "expected at-rule and declaration in declaration list"
+
 let spec_security_resource_exhaustion_regressions () =
   (* CSS Syntax Level 3 section 11: the spec's security value is that parsing is
      unambiguous for hostile inputs. Keep regression vectors for common parser
@@ -1373,6 +1404,8 @@ let suite =
         wpt_at_rule_boundary_edges;
       Alcotest.test_case "spec WPT parser branch matrix" `Quick
         spec_wpt_parser_branch_matrix;
+      Alcotest.test_case "spec WPT declaration recovery matrix" `Quick
+        spec_wpt_declaration_recovery_matrix;
       Alcotest.test_case "spec section 11 parser security regressions" `Quick
         spec_security_resource_exhaustion_regressions;
       Alcotest.test_case "spec section 12 parsing change checklist" `Quick

@@ -1610,6 +1610,17 @@ let spec_selector_serialization_invariant_matrix () =
       "dialog:modal::backdrop";
       ":host(.active) ::slotted(img.selected)";
       ":is(:lang(en, fr), :dir(ltr), :state(selected))";
+      ":root > body :where(nav,main,aside) a:any-link";
+      "form \
+       :is(input:user-invalid,select:user-valid,textarea:placeholder-shown)";
+      ":not(:is(.a,#b,[hidden]))";
+      ".media:has(> img.selected + figcaption)";
+      "article:target-within :focus-visible";
+      "video:playing:picture-in-picture";
+      "input:read-write:placeholder-shown";
+      ":active-view-transition-type(forwards, backwards)";
+      "::highlight(search-results)";
+      "::cue-region(.speaker)";
     ];
   check_minified_to ":is(.a,.b)" ":is(.a, [=bad], .b)";
   List.iter
@@ -1619,8 +1630,15 @@ let spec_selector_serialization_invariant_matrix () =
       ".card:has(:has(img))";
       ".card:has(::before)";
       "li:nth-child(2n+1 of)";
+      ":nth-child(of .item)";
+      ":nth-last-of-type(odd even)";
+      ":has(+)";
+      ":lang(, en)";
+      ":dir(sideways)";
       "::part(tab, panel)";
       "::slotted(.a, .b)";
+      "::cue-region()";
+      "::highlight(search, spelling)";
       ":host-context()";
     ]
 
