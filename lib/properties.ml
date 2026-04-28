@@ -5022,6 +5022,11 @@ let read_break_value t : break_value =
       ("auto", (Auto : break_value));
       ("avoid", Avoid);
       ("all", All);
+      (* CSS Fragmentation 3 §6: legacy [page-break-*: always] maps to [break-*:
+         page]. The reader accepts the legacy spelling so the page-break alias
+         dispatch (which routes to [Break_before/after]) can keep using this
+         reader. *)
+      ("always", Page);
       ("avoid-page", Avoid_page);
       ("page", Page);
       ("left", Left);
@@ -7169,9 +7174,12 @@ let read_any_property t =
   | "break-before" -> Prop Break_before
   | "break-after" -> Prop Break_after
   | "break-inside" -> Prop Break_inside
-  | "page-break-before" -> Prop Page_break_before
-  | "page-break-after" -> Prop Page_break_after
-  | "page-break-inside" -> Prop Page_break_inside
+  (* CSS Fragmentation 3 §6 page-break-* aliases. The legacy values map onto the
+     modern [break-*] vocabulary at parse time so the canonical output emits
+     [break-before/after/inside]. *)
+  | "page-break-before" -> Prop Break_before
+  | "page-break-after" -> Prop Break_after
+  | "page-break-inside" -> Prop Break_inside
   | "columns" -> Prop Columns
   | "clear" -> Prop Clear
   | "clip" -> Prop Clip

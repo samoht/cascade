@@ -2118,6 +2118,12 @@ let spec_current_at_rules () =
     ~expected:"@container style(--variant: featured){.card{color:red}}"
     "@container style(--variant: featured) { .card { color: red } }";
   check_stylesheet
+    ~expected:"@container scroll-state(stuck: top){.card{color:red}}"
+    "@container scroll-state(stuck: top) { .card { color: red } }";
+  neg_cursor read_stylesheet "@container style() { .card { color: red } }";
+  neg_cursor read_stylesheet
+    "@container scroll-state() { .card { color: red } }";
+  check_stylesheet
     ~expected:
       "@container (30em <= inline-size < 60em){@supports \
        (display:grid){.grid{display:grid}}}"
