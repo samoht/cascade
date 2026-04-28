@@ -62,6 +62,9 @@ type display =
   | Inherit
   | Initial
   | Unset
+  | Multi of display * display
+      (** Two-value [<display-outside> <display-inside>] syntax per CSS Display
+          3 §2.1, e.g. [inline flow-root] or [list-item flow-root]. *)
 
 type position = Static | Relative | Absolute | Fixed | Sticky
 type visibility = Visible | Hidden | Collapse
@@ -1713,11 +1716,11 @@ type 'a property =
   | User_select : user_select property
   | Pointer_events : pointer_events property
   | Overflow : overflow property
-  | Inset : length property
-  | Inset_inline : length property
+  | Inset : length list property
+  | Inset_inline : length list property
   | Inset_inline_start : length property
   | Inset_inline_end : length property
-  | Inset_block : length property
+  | Inset_block : length list property
   | Inset_block_start : length property
   | Inset_block_end : length property
   | Top : length property

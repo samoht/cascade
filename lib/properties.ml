@@ -43,7 +43,31 @@ let read_background_size_length t : background_size =
   | None -> Cursor.err_invalid t "background-size requires a unit"
   | Some u -> Cursor.err_invalid t ("invalid background-size unit: " ^ u)
 
-let read_display t : display =
+(* CSS Display 3 §2.1 [display-outside]: pre-existing aliases inside the
+   single-value vocabulary that compose with a [display-inside] in the two-value
+   form. The composite [<outside> <inside>] is a [Multi]. *)
+let display_outside_idents : (string * display) list =
+  [
+    ("block", Block);
+    ("inline", Inline);
+    ("run-in", Webkit_box);
+    ("list-item", List_item);
+  ]
+
+let display_inside_idents : (string * display) list =
+  [
+    ("flow", Block);
+    (* spec [<display-inside>] [flow] composes to plain block-or-inline; the AST
+       does not need a dedicated [Flow] variant since [Flow_root] is the only
+       inside that introduces a new block formatting context that we care about
+       today. *)
+    ("flow-root", Flow_root);
+    ("table", Table);
+    ("flex", Flex);
+    ("grid", Grid);
+  ]
+
+let read_display_legacy t : display =
   Cursor.enum "display"
     [
       ("none", (None : display));
@@ -73,6 +97,23 @@ let read_display t : display =
       ("unset", Unset);
     ]
     t
+
+let read_display_two_value t : display =
+  (* CSS Display 3 §2.1 two-value form [<display-outside> <display-inside>].
+     Both keywords must come from their respective vocabularies; otherwise
+     reject so the caller can fall back to the legacy single-value form. *)
+  let outside = Cursor.enum "display-outside" display_outside_idents t in
+  Cursor.ws t;
+  match Cursor.peek_ident t with
+  | Some s when List.mem_assoc s display_inside_idents ->
+      let inside = Cursor.enum "display-inside" display_inside_idents t in
+      Multi (outside, inside)
+  | _ -> Cursor.err_expected t "<display-inside>"
+
+let read_display t : display =
+  match Cursor.option read_display_two_value t with
+  | Some d -> d
+  | None -> read_display_legacy t
 
 let read_position t : position =
   Cursor.enum "position"
@@ -1604,7 +1645,7 @@ let pp_border : border Pp.t =
   | None -> Pp.string ctx "none"
   | Shorthand shorthand -> pp_border_shorthand ctx shorthand
 
-let pp_display : display Pp.t =
+let rec pp_display : display Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
   | Block -> Pp.string ctx "block"
@@ -1631,6 +1672,10 @@ let pp_display : display Pp.t =
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
+  | Multi (outside, inside) ->
+      pp_display ctx outside;
+      Pp.space ctx ();
+      pp_display ctx inside
 
 let pp_position : position Pp.t =
  fun ctx -> function
@@ -7916,11 +7961,11 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Tab_size -> pp Pp.int
   | Webkit_line_clamp -> pp pp_webkit_line_clamp
   | Webkit_box_orient -> pp pp_webkit_box_orient
-  | Inset -> pp pp_length
-  | Inset_inline -> pp pp_length
+  | Inset -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
+  | Inset_inline -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
   | Inset_inline_start -> pp pp_length
   | Inset_inline_end -> pp pp_length
-  | Inset_block -> pp pp_length
+  | Inset_block -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
   | Inset_block_start -> pp pp_length
   | Inset_block_end -> pp pp_length
   | Top -> pp pp_length

@@ -82,6 +82,12 @@ type length =
   | Revert
   | Revert_layer
   | Fit_content
+  | Fit_content_arg of length
+      (** [fit-content(<length-percentage>)] - CSS Sizing 3 §5.1. The argument
+          is a [<length-percentage>]; we store it via the [length] type because
+          [length] already has a [Pct of float] case for the percentage form (a
+          separate [length_percentage] would force a mutually-recursive type).
+      *)
   | Content
   | Contain
   | Max_content
