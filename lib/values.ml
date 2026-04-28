@@ -1045,6 +1045,12 @@ let pp_duration_unit ?(shorten_ms = true) ctx f suffix =
       Pp.string ctx ms_str;
       Pp.string ctx "ms")
 
+let ms_prints_shorter_as_seconds f =
+  let in_seconds = f /. 1000. in
+  let ms_str = Pp.float_to_string ~drop_leading_zero:true f in
+  let s_str = Pp.float_to_string ~drop_leading_zero:true in_seconds in
+  String.length s_str + 1 <= String.length ms_str + 2
+
 let rec pp_duration : duration Pp.t =
  fun ctx -> function
   | Ms f -> pp_duration_unit ctx f "ms"
@@ -2305,12 +2311,12 @@ let read_system_color t : system_color =
   | "-webkit-focus-ring-color" -> Webkit_focus_ring_color
   | _ -> Cursor.err_invalid t ("system color: " ^ keyword)
 
-(** Read a duration value *)
-let rec read_duration t : duration =
+let rec read_duration_with ~canonicalize_ms t : duration =
   Cursor.ws t;
   (* Check for var() *)
   if Cursor.looking_at t "var(" then Var (read_var read_duration t)
-  else if Cursor.looking_at t "calc(" then Calc (read_calc read_duration t)
+  else if Cursor.looking_at t "calc(" then
+    Calc (read_calc read_duration_in_calc t)
   else
     let n, unit_raw = Cursor.number_with_unit t in
     if n < 0.0 then Cursor.err_invalid t "negative durations are not allowed"
@@ -2318,8 +2324,16 @@ let rec read_duration t : duration =
       let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
       match unit with
       | "s" -> S n
+      | "ms" when canonicalize_ms && ms_prints_shorter_as_seconds n ->
+          S (n /. 1000.)
       | "ms" -> Ms n
       | _ -> Cursor.err_invalid t ("duration unit: " ^ unit)
+
+(** Read a duration value *)
+and read_duration t : duration = read_duration_with ~canonicalize_ms:true t
+
+and read_duration_in_calc t : duration =
+  read_duration_with ~canonicalize_ms:false t
 
 (** Read a time value that can be negative (for animation-delay,
     transition-delay) *)
@@ -2332,6 +2346,7 @@ let rec read_time t : duration =
     let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
     match unit with
     | "s" -> S n
+    | "ms" when ms_prints_shorter_as_seconds n -> S (n /. 1000.)
     | "ms" -> Ms n
     | _ -> Cursor.err_invalid t ("time unit: " ^ unit)
 

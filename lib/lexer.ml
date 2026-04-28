@@ -496,9 +496,20 @@ let rec skip_comment_body r =
     Reader.skip r;
     skip_comment_body r)
 
-(* Consume a run of whitespace code points and any interleaved comments. CSS
-   Syntax section 4.3.2 treats a comment as equivalent to whitespace, so [a
-   /*x*/ b] yields a single <whitespace-token> between the two idents. *)
+(* Skip a run of comments without consuming surrounding whitespace, so a comment
+   between two non-whitespace code points disappears from the token stream
+   rather than synthesising a <whitespace-token>. CSS Syntax §4.3.2 says
+   comments are treated as "nothing"; only actual whitespace produces a
+   <whitespace-token>. *)
+let rec skip_comment_run r =
+  if Reader.looking_at r "/*" then (
+    Reader.skip r;
+    Reader.skip r;
+    skip_comment_body r;
+    skip_comment_run r)
+
+(* Consume a run of whitespace code points and any interleaved comments,
+   returning [true] when at least one whitespace code point was seen. *)
 let rec consume_whitespace_run r =
   match Reader.peek r with
   | Some c when is_ws c ->
@@ -558,9 +569,10 @@ let consume_at_start r =
 
 (* 4.3.1 Consume a token. *)
 let next_token ?(force_url_function = false) r =
+  skip_comment_run r;
   match Reader.peek r with
   | None -> Eof
-  | Some c when is_ws c || Reader.looking_at r "/*" ->
+  | Some c when is_ws c ->
       consume_whitespace_run r;
       Whitespace
   | Some '"' ->
