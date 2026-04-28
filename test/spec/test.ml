@@ -24,6 +24,13 @@ let parses_valid css =
   | Ok _ -> ()
   | Error e -> Alcotest.fail (pp_parse_error e)
 
+let rejects_invalid css =
+  match of_string css with
+  | Error _ -> ()
+  | Ok sheet ->
+      Alcotest.failf "invalid CSS vector parsed: %s -> %s" css
+        (to_string ~minify:true ~newline:false sheet)
+
 let recover css expected min_warnings =
   let { stylesheet; warnings } = parse css in
   let output = to_string ~minify:true ~newline:false stylesheet in
@@ -36,15 +43,36 @@ let recover css expected min_warnings =
 
 (* {2 CSS 2.x compatibility surface} *)
 
-let css2_legacy_core () =
+let css2_legacy_selectors_and_at_rules () =
   roundtrip "body { margin: 0; color: black }" "body{margin:0;color:black}";
+  roundtrip "@charset \"UTF-8\";" "@charset \"UTF-8\";";
+  roundtrip "@import 'legacy.css';" "@import 'legacy.css';";
   roundtrip "@media print { body { color: black } }"
     "@media print{body{color:black}}";
-  roundtrip "h1:first-letter { color: red }" "h1:first-letter{color:red}";
-  roundtrip "p::first-line { color: blue }" "p:first-line{color:blue}";
+  roundtrip "@page :left { margin-left: 4cm; margin-right: 3cm }"
+    "@page:left{margin-left:4cm;margin-right:3cm}";
+  roundtrip "html > body p + p { text-indent: 1em }"
+    "html>body p+p{text-indent:1em}";
   roundtrip "a:link { color: blue } a:visited { color: purple }"
     "a:link{color:blue}a:visited{color:purple}";
-  roundtrip "div { page-break-before: always }" "div{break-before:page}"
+  roundtrip "li:first-child { list-style-type: none }"
+    "li:first-child{list-style-type:none}"
+
+let css2_legacy_pseudo_elements_and_aliases () =
+  roundtrip "h1:first-letter { color: red }" "h1:first-letter{color:red}";
+  roundtrip "p::first-line { color: blue }" "p:first-line{color:blue}";
+  roundtrip "q:before { content: open-quote }" "q:before{content:open-quote}";
+  roundtrip "q::after { content: close-quote }" "q:after{content:close-quote}";
+  roundtrip "div { page-break-before: always }" "div{break-before:page}";
+  roundtrip "div { page-break-after: avoid }" "div{break-after:avoid}";
+  roundtrip "div { page-break-inside: avoid }" "div{break-inside:avoid}"
+
+let css2_legacy_invalid_vectors () =
+  rejects_invalid "@charset 'UTF-8';";
+  rejects_invalid "@page :first:left { margin: 1cm }";
+  rejects_invalid "div { page-break-before: always avoid }";
+  rejects_invalid "div { page-break-inside: left }";
+  rejects_invalid "h1::first-line::before { color: red }"
 
 (* SS 5.3 - Qualified rules: a prelude (selector) + block (declarations) *)
 let syntax_qualified_rules () =
@@ -409,8 +437,12 @@ let () =
     [
       ( "spec",
         [
-          Alcotest.test_case "css2: legacy compatibility core" `Quick
-            css2_legacy_core;
+          Alcotest.test_case "css2: selectors and at-rules" `Quick
+            css2_legacy_selectors_and_at_rules;
+          Alcotest.test_case "css2: pseudo-elements and aliases" `Quick
+            css2_legacy_pseudo_elements_and_aliases;
+          Alcotest.test_case "css2: invalid legacy vectors" `Quick
+            css2_legacy_invalid_vectors;
           (* CSS Syntax Level 3 *)
           Alcotest.test_case "syntax: qualified rules" `Quick
             syntax_qualified_rules;
