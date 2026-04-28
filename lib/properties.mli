@@ -914,6 +914,21 @@ val pp_break_inside_value : break_inside_value Pp.t
 val read_break_inside_value : Cursor.t -> break_inside_value
 (** [read_break_inside_value t] is the break-inside value parsed from [t]. *)
 
+val pp_page_break_value : page_break_value Pp.t
+(** [pp_page_break_value] is the printer for legacy [page-break-*]. *)
+
+val read_page_break_value : Cursor.t -> page_break_value
+(** [read_page_break_value t] is the legacy [page-break-before / -after] value
+    parsed from [t]. *)
+
+val pp_page_break_inside_value : page_break_inside_value Pp.t
+(** [pp_page_break_inside_value] is the printer for legacy [page-break-inside].
+*)
+
+val read_page_break_inside_value : Cursor.t -> page_break_inside_value
+(** [read_page_break_inside_value t] is the legacy [page-break-inside] value
+    parsed from [t]. *)
+
 val pp_columns_value : columns_value Pp.t
 (** [pp_columns_value] is the pretty-printer for [columns_value]. *)
 

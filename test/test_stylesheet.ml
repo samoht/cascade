@@ -2115,6 +2115,9 @@ let spec_current_at_rules () =
     "@container card style(--variant: featured) { .card { \
      view-transition-name: card } }";
   check_stylesheet
+    ~expected:"@container style(--variant: featured){.card{color:red}}"
+    "@container style(--variant: featured) { .card { color: red } }";
+  check_stylesheet
     ~expected:
       "@container (30em <= inline-size < 60em){@supports \
        (display:grid){.grid{display:grid}}}"

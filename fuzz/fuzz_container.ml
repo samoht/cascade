@@ -109,6 +109,26 @@ let test_spec_container_vectors buf =
   if actual <> expected then
     fail (Fmt.str "container spec vector changed: %S <> %S" expected actual)
 
+let test_invalid_container_vectors buf =
+  let input =
+    pick
+      [
+        "";
+        "style()";
+        "style(--theme: dark";
+        "scroll-state()";
+        "scroll-state(stuck: top";
+        "(width >)";
+      ]
+      buf 0
+  in
+  match Css.Container.of_string input with
+  | exception Failure _ -> ()
+  | query ->
+      fail
+        (Fmt.str "invalid container query parsed: %S -> %S" input
+           (Css.Container.to_string query))
+
 let suite =
   ( "container",
     [
@@ -125,4 +145,6 @@ let suite =
         test_raw_query_stable;
       test_case "spec container query vectors" [ bytes ]
         test_spec_container_vectors;
+      test_case "invalid container query vectors rejected" [ bytes ]
+        test_invalid_container_vectors;
     ] )

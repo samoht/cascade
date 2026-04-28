@@ -1377,6 +1377,19 @@ type break_value =
 
 type break_inside_value = Auto | Avoid | Avoid_page | Avoid_column | Inherit
 
+(* CSS Fragmentation 3 §6 deprecated [page-break-before / -after / -inside]
+   aliases. The shorter value vocabulary makes them their own type rather than
+   overload [break_value]. *)
+type page_break_value =
+  | Auto
+  | Always (* maps to [break-before/after: page] *)
+  | Avoid
+  | Left
+  | Right
+  | Inherit
+
+type page_break_inside_value = Auto | Avoid | Inherit
+
 (* Multi-column Layout Types *)
 type columns_value =
   | Auto
@@ -1805,6 +1818,9 @@ type 'a property =
   | Break_before : break_value property
   | Break_after : break_value property
   | Break_inside : break_inside_value property
+  | Page_break_before : page_break_value property
+  | Page_break_after : page_break_value property
+  | Page_break_inside : page_break_inside_value property
   | Columns : columns_value property
   | Word_spacing : length property
   | Background_attachment : background_attachment property
