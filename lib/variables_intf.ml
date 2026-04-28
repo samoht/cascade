@@ -25,10 +25,10 @@ type 'a syntax =
   | Hash : 'a syntax -> 'a list syntax
   | Question : 'a syntax -> 'a option syntax
   | Brackets : string -> string syntax
-  | Ident_keyword : string -> string syntax
+  | Ident_keyword : string -> unit syntax
       (** Literal ident keyword in a [@property] syntax disjunction (e.g. [auto]
-          in [<length> | auto]). The descriptor's value is the keyword itself.
-      *)
+          in [<length> | auto]). The keyword has no value-level data; matching
+          the spelling is enough. *)
 
 (** Existential wrapper for syntax of any type *)
 type any_syntax = Syntax : 'a syntax -> any_syntax

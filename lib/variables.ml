@@ -98,7 +98,7 @@ let rec pp_value : type a. a syntax -> a Pp.t =
   | Question syn -> (
       match value with None -> () | Some v -> pp_value syn ctx v)
   | Brackets _ -> Pp.string ctx value
-  | Ident_keyword _ -> Pp.string ctx value
+  | Ident_keyword name -> Pp.string ctx name
 
 (* CSS @property §3 known [<syntax-type-name>]s. [<transform-list>] has no typed
    counterpart in [Values]; carry it through [Brackets "<transform-list>"] so
@@ -241,8 +241,7 @@ let rec read_value : type a. Cursor.t -> a syntax -> a =
       Cursor.option (fun r -> read_value r syn) reader
   | Ident_keyword name ->
       let got = Cursor.ident reader in
-      if got = name then name
-      else
+      if got <> name then
         Cursor.err_invalid reader
           (String.concat ""
              [ "expected keyword '"; name; "', got '"; got; "'" ])
