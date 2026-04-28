@@ -168,6 +168,7 @@ type t =
   | Host of t list option (* :host or :host(selector) *)
   | Host_context of t list (* :host-context(selector) *)
   | State of string (* :state(custom-state) *)
+  | Active_view_transition (* :active-view-transition *)
   | Active_view_transition_type of
       string list option (* :active-view-transition-type(type,...) *)
   | Heading (* :heading() - matches h1-h6 *)
