@@ -990,7 +990,7 @@ let rec any p = function
 
 let has_pseudo_element sel = any is_pseudo_element_selector sel
 
-let is_pseudo_element_user_action_selector = function
+let is_pe_action = function
   | Hover | Active | Focus | Focus_visible | Focus_within -> true
   | _ -> false
 
@@ -1312,15 +1312,13 @@ and read_compound t =
         || Cursor.peek_block t = Some Token.Square
         || Cursor.peek_ident t <> None
   in
-  let rec loop acc =
-    if can_start () then
-      let s = read_simple t in
-      if List.exists is_pseudo_element_selector acc then
-        if is_pseudo_element_user_action_selector s then loop (s :: acc)
-        else Cursor.err t "pseudo-element must be last in compound selector"
-      else loop (s :: acc)
-    else acc
+  let prepend_simple acc =
+    let s = read_simple t in
+    if List.exists is_pseudo_element_selector acc && not (is_pe_action s) then
+      Cursor.err t "pseudo-element must be last in compound selector"
+    else s :: acc
   in
+  let rec loop acc = if can_start () then loop (prepend_simple acc) else acc in
   match loop [] with
   | [] -> err_expected t "at least one selector"
   | [ s ] -> s

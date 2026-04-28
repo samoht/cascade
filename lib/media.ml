@@ -40,14 +40,14 @@ type condition =
   | And of condition * condition
   | Or of condition * condition
 
-type media_type = All | Screen | Print | Other of string
+type medium = All | Screen | Print | Other of string
 type prefix = Not | Only
 
 type query =
   | Cond of condition
   | Type of {
       prefix : prefix option;
-      type_ : media_type;
+      type_ : medium;
       trailing : condition option;
     }
   | List of query list  (** Comma-separated media query list. *)
@@ -90,7 +90,7 @@ let cmp_to_string = function
   | Gt -> ">"
   | Ge -> ">="
 
-let media_type_to_string : media_type -> string = function
+let medium_to_string : medium -> string = function
   | All -> "all"
   | Screen -> "screen"
   | Print -> "print"
@@ -179,7 +179,7 @@ let rec pp_query : query Pp.t =
       | None -> ()
       | Some Not -> Pp.string ctx "not "
       | Some Only -> Pp.string ctx "only ");
-      Pp.string ctx (media_type_to_string type_);
+      Pp.string ctx (medium_to_string type_);
       match trailing with
       | None -> ()
       | Some c ->
@@ -320,25 +320,32 @@ let lookahead_ident sc kw =
 let consume_keyword sc kw = sc.pos <- sc.pos + String.length kw
 
 (* Parse an mf-value: number/integer + optional unit, ratio, or ident. *)
-let read_number_lit sc =
-  let start = sc.pos in
-  let saw_sign =
-    match peek sc with
-    | Some ('+' | '-') ->
-        advance sc;
-        true
-    | _ -> false
-  in
+let is_digit c = c >= '0' && c <= '9'
+
+let consume_digits sc =
   let saw_digit = ref false in
-  while
-    (not (at_end sc))
-    &&
-    let c = sc.s.[sc.pos] in
-    c >= '0' && c <= '9'
-  do
+  while (not (at_end sc)) && is_digit sc.s.[sc.pos] do
     saw_digit := true;
     advance sc
   done;
+  !saw_digit
+
+let consume_sign sc =
+  match peek sc with Some ('+' | '-') -> advance sc | _ -> ()
+
+let consume_exponent sc =
+  match peek sc with
+  | Some ('e' | 'E') ->
+      let mark = sc.pos in
+      advance sc;
+      consume_sign sc;
+      if not (consume_digits sc) then sc.pos <- mark
+  | _ -> ()
+
+let read_number_lit sc =
+  let start = sc.pos in
+  consume_sign sc;
+  let saw_int = consume_digits sc in
   let saw_dot =
     match peek sc with
     | Some '.' ->
@@ -346,33 +353,9 @@ let read_number_lit sc =
         true
     | _ -> false
   in
-  if saw_dot then
-    while
-      (not (at_end sc))
-      &&
-      let c = sc.s.[sc.pos] in
-      c >= '0' && c <= '9'
-    do
-      saw_digit := true;
-      advance sc
-    done;
-  (match peek sc with
-  | Some ('e' | 'E') ->
-      let mark = sc.pos in
-      advance sc;
-      (match peek sc with Some ('+' | '-') -> advance sc | _ -> ());
-      let exp_start = sc.pos in
-      while
-        (not (at_end sc))
-        &&
-        let c = sc.s.[sc.pos] in
-        c >= '0' && c <= '9'
-      do
-        advance sc
-      done;
-      if sc.pos = exp_start then sc.pos <- mark
-  | _ -> ());
-  if not !saw_digit then (
+  let saw_frac = saw_dot && consume_digits sc in
+  consume_exponent sc;
+  if not (saw_int || saw_frac) then (
     sc.pos <- start;
     None)
   else
@@ -380,9 +363,7 @@ let read_number_lit sc =
     let is_int =
       (not saw_dot) && not (String.contains txt 'e' || String.contains txt 'E')
     in
-    if is_int then
-      let _ = saw_sign in
-      Some (`Int (int_of_string txt), txt)
+    if is_int then Some (`Int (int_of_string txt), txt)
     else Some (`Float (float_of_string txt), txt)
 
 let read_unit sc =
@@ -658,7 +639,7 @@ and chain sc acc =
     chain sc (Or (acc, right)))
   else acc
 
-let media_type_of_ident s : media_type =
+let medium_of_ident s : medium =
   match String.lowercase_ascii s with
   | "all" -> All
   | "screen" -> Screen
@@ -699,7 +680,7 @@ let parse_single_query sc =
       let id = read_ident sc in
       if id = "" then failwith "expected media type or condition"
       else
-        let type_ = media_type_of_ident id in
+        let type_ = medium_of_ident id in
         skip_ws sc;
         if at_end sc || peek sc = Some ',' then
           Type { prefix; type_; trailing = None }

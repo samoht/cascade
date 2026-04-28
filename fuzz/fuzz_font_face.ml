@@ -5,6 +5,24 @@
 open Cascade
 open Alcobar
 
+let byte_at buf idx =
+  if String.length buf = 0 then 0 else Char.code buf.[idx mod String.length buf]
+
+let pick values buf salt =
+  List.nth values (byte_at buf salt mod List.length values)
+
+let parse_metric input =
+  try Some (Css.Font_face.metric_override_of_string input)
+  with Css.Reader.Parse_error _ | Invalid_argument _ | Failure _ -> None
+
+let parse_size_adjust input =
+  try Some (Css.Font_face.size_adjust_of_string input)
+  with Css.Reader.Parse_error _ | Invalid_argument _ | Failure _ -> None
+
+let parse_src input =
+  try Some (Css.Font_face.src_of_string input)
+  with Css.Reader.Parse_error _ | Invalid_argument _ | Failure _ -> None
+
 (** metric_override_of_string — must not crash. *)
 let test_metric_override buf =
   try ignore (Css.Font_face.metric_override_of_string buf)
@@ -22,10 +40,7 @@ let test_src buf =
 
 (** metric_override roundtrip: parse → to_string → parse. *)
 let test_metric_override_roundtrip buf =
-  match
-    try Some (Css.Font_face.metric_override_of_string buf)
-    with Css.Reader.Parse_error _ | Invalid_argument _ | Failure _ -> None
-  with
+  match parse_metric buf with
   | None -> ()
   | Some m -> (
       let s = Css.Font_face.metric_override_to_string m in
@@ -35,10 +50,7 @@ let test_metric_override_roundtrip buf =
 
 (** src roundtrip: parse → to_string → parse. *)
 let test_src_roundtrip buf =
-  match
-    try Some (Css.Font_face.src_of_string buf)
-    with Css.Reader.Parse_error _ | Invalid_argument _ | Failure _ -> None
-  with
+  match parse_src buf with
   | None -> ()
   | Some src -> (
       let s = Css.Font_face.src_to_string src in
@@ -47,27 +59,18 @@ let test_src_roundtrip buf =
         fail "src roundtrip failed")
 
 let test_metric_override_non_negative buf =
-  match
-    try Some (Css.Font_face.metric_override_of_string buf)
-    with Css.Reader.Parse_error _ | Invalid_argument _ | Failure _ -> None
-  with
+  match parse_metric buf with
   | None | Some Css.Font_face.Normal -> ()
   | Some (Css.Font_face.Percent p) ->
       if p < 0. then fail "metric override parsed a negative percentage"
 
 let test_size_adjust_non_negative buf =
-  match
-    try Some (Css.Font_face.size_adjust_of_string buf)
-    with Css.Reader.Parse_error _ | Invalid_argument _ | Failure _ -> None
-  with
+  match parse_size_adjust buf with
   | None -> ()
   | Some p -> if p < 0. then fail "size-adjust parsed a negative percentage"
 
 let test_metric_override_serialization_idempotent buf =
-  match
-    try Some (Css.Font_face.metric_override_of_string buf)
-    with Css.Reader.Parse_error _ | Invalid_argument _ | Failure _ -> None
-  with
+  match parse_metric buf with
   | None -> ()
   | Some metric ->
       let once = Css.Font_face.metric_override_to_string metric in
@@ -79,7 +82,7 @@ let test_metric_override_serialization_idempotent buf =
 
 let test_generated_src_serialization_idempotent buf =
   let entry =
-    match (if String.length buf = 0 then 0 else Char.code buf.[0]) mod 4 with
+    match byte_at buf 0 mod 4 with
     | 0 -> "local(\"Brand\")"
     | 1 -> "url(\"brand.woff2\") format(\"woff2\")"
     | 2 -> "url(\"color.woff2\") format(\"woff2\") tech(color-COLRv1)"
@@ -92,12 +95,11 @@ let test_generated_src_serialization_idempotent buf =
 
 let test_generated_metric_edge_idempotent buf =
   let input =
-    match (if String.length buf = 0 then 0 else Char.code buf.[0]) mod 5 with
+    match byte_at buf 0 mod 4 with
     | 0 -> "normal"
     | 1 -> "0%"
     | 2 -> "100%"
-    | 3 -> "125.5%"
-    | _ -> "-1%"
+    | _ -> "125.5%"
   in
   let metric = Css.Font_face.metric_override_of_string input in
   let once = Css.Font_face.metric_override_to_string metric in
@@ -106,6 +108,93 @@ let test_generated_metric_edge_idempotent buf =
       once |> metric_override_of_string |> metric_override_to_string)
   in
   if once <> twice then fail "generated metric serialization drifted"
+
+let test_spec_src_vectors buf =
+  let input =
+    pick
+      [
+        "local(\"Brand\")";
+        "url(\"brand.woff2\") format(\"woff2\")";
+        "url(\"color.woff2\") format(\"woff2\") tech(color-COLRv1)";
+        "url(\"variable.woff2\") tech(variations)";
+        "local(\"Brand\"), url(\"brand.woff2\") format(\"woff2\")";
+      ]
+      buf 1
+  in
+  match parse_src input with
+  | None -> fail (Fmt.str "valid font-face src vector rejected: %S" input)
+  | Some src ->
+      let serialized = Css.Font_face.src_to_string src in
+      let reparsed = Css.Font_face.src_of_string serialized in
+      if src <> reparsed then
+        fail
+          (Fmt.str "font-face src structure changed: %S -> %S" input serialized)
+
+let test_invalid_src_vectors buf =
+  let input =
+    pick
+      [
+        "format(\"woff2\")";
+        "tech(variations)";
+        "local()";
+        "url(\"font.woff2\") format()";
+        "url(\"font.woff2\") tech()";
+      ]
+      buf 2
+  in
+  match parse_src input with
+  | None -> ()
+  | Some src ->
+      fail
+        (Fmt.str "invalid font-face src vector parsed: %S -> %S" input
+           (Css.Font_face.src_to_string src))
+
+let test_spec_metric_vectors buf =
+  let input, expected =
+    pick
+      [
+        ("normal", Css.Font_face.Normal);
+        ("0%", Css.Font_face.Percent 0.);
+        ("100%", Css.Font_face.Percent 100.);
+        ("125.5%", Css.Font_face.Percent 125.5);
+      ]
+      buf 3
+  in
+  match parse_metric input with
+  | Some actual when actual = expected -> ()
+  | Some actual ->
+      fail
+        (Fmt.str "font metric structure changed: %S -> %S" input
+           (Css.Font_face.metric_override_to_string actual))
+  | None -> fail (Fmt.str "valid font metric vector rejected: %S" input)
+
+let test_invalid_metric_vectors buf =
+  let input = pick [ "-1%"; "auto"; "100"; "calc(1%)" ] buf 4 in
+  match parse_metric input with
+  | None -> ()
+  | Some metric ->
+      fail
+        (Fmt.str "invalid font metric vector parsed: %S -> %S" input
+           (Css.Font_face.metric_override_to_string metric))
+
+let test_spec_size_adjust_vectors buf =
+  let input, expected =
+    pick [ ("0%", 0.); ("100%", 100.); ("125.5%", 125.5) ] buf 5
+  in
+  match parse_size_adjust input with
+  | Some actual when actual = expected -> ()
+  | Some actual ->
+      fail (Fmt.str "font size-adjust structure changed: %S -> %g" input actual)
+  | None -> fail (Fmt.str "valid font size-adjust vector rejected: %S" input)
+
+let test_invalid_size_adjust_vectors buf =
+  let input = pick [ "-1%"; "normal"; "auto"; "100"; "calc(100%)" ] buf 6 in
+  match parse_size_adjust input with
+  | None -> ()
+  | Some size_adjust ->
+      fail
+        (Fmt.str "invalid font size-adjust vector parsed: %S -> %g" input
+           size_adjust)
 
 let suite =
   ( "font_face",
@@ -126,4 +215,14 @@ let suite =
         test_generated_src_serialization_idempotent;
       test_case "generated metric edge idempotent" [ bytes ]
         test_generated_metric_edge_idempotent;
+      test_case "spec font src vectors" [ bytes ] test_spec_src_vectors;
+      test_case "invalid font src vectors rejected" [ bytes ]
+        test_invalid_src_vectors;
+      test_case "spec font metric vectors" [ bytes ] test_spec_metric_vectors;
+      test_case "invalid font metric vectors rejected" [ bytes ]
+        test_invalid_metric_vectors;
+      test_case "spec size-adjust vectors" [ bytes ]
+        test_spec_size_adjust_vectors;
+      test_case "invalid size-adjust vectors rejected" [ bytes ]
+        test_invalid_size_adjust_vectors;
     ] )

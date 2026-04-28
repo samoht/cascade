@@ -417,6 +417,90 @@ let test_spec_invalid_value_vectors buf =
       rejected Css.Values.read_number
         (pick [ "pow(2)"; "sqrt()"; "sin()"; "round(up)" ] buf 1)
 
+let test_spec_color_branch_vectors buf =
+  let input =
+    pick
+      [
+        "#fff";
+        "#ffff";
+        "#112233";
+        "#11223344";
+        "transparent";
+        "currentColor";
+        "CanvasText";
+        "rgb(255, 0, 0)";
+        "rgba(255, 0, 0, .5)";
+        "hsl(120, 100%, 50%)";
+        "hsla(120, 100%, 50%, .5)";
+        "hwb(90 10% 20%)";
+        "lab(50% 10 20 / .5)";
+        "lch(50% 20 30)";
+        "oklab(50% 0.1 0.2)";
+        "oklch(50% 0.1 20 / 0.5)";
+        "color(display-p3 1 0 0 / .5)";
+        "color-mix(in srgb, red 40%, blue)";
+        "light-dark(black, white)";
+        "rgb(from rebeccapurple r g b / 50%)";
+      ]
+      buf 2
+  in
+  let r = Css.Cursor.of_string input in
+  match
+    try Some (Css.Values.read_color r) with Css.Cursor.Parse_error _ -> None
+  with
+  | None -> fail (Fmt.str "valid CSS color branch vector rejected: %S" input)
+  | Some color -> (
+      let serialized =
+        Css.Pp.to_string ~minify:true Css.Values.pp_color color
+      in
+      let r2 = Css.Cursor.of_string serialized in
+      match
+        try Some (Css.Values.read_color r2)
+        with Css.Cursor.Parse_error _ -> None
+      with
+      | Some reparsed when color = reparsed -> ()
+      | Some _ ->
+          fail
+            (Fmt.str "CSS color branch structure changed: %S -> %S" input
+               serialized)
+      | None ->
+          fail
+            (Fmt.str "CSS color branch serialization did not reparse: %S -> %S"
+               input serialized))
+
+let test_spec_invalid_color_branch_vectors buf =
+  let input =
+    pick
+      [
+        "#12";
+        "#12345";
+        "#ggg";
+        "rgb()";
+        "rgb(1 2)";
+        "rgb(1, 2 3)";
+        "hsl(0 50)";
+        "hwb(0 0%)";
+        "lab(50% 10)";
+        "lch(50% 20)";
+        "oklab(50% .1)";
+        "color(display-p3 1 0)";
+        "color(unknown 1 0 0)";
+        "color-mix(in srgb red blue)";
+        "light-dark(black)";
+        "rgb(from red r g)";
+      ]
+      buf 3
+  in
+  let r = Css.Cursor.of_string input in
+  match
+    try Some (Css.Values.read_color r) with Css.Cursor.Parse_error _ -> None
+  with
+  | None -> ()
+  | Some color ->
+      fail
+        (Fmt.str "invalid CSS color branch vector parsed: %S -> %S" input
+           (Css.Pp.to_string ~minify:true Css.Values.pp_color color))
+
 let suite =
   ( "values",
     [
@@ -460,4 +544,8 @@ let suite =
         test_spec_valid_value_vectors;
       test_case "spec invalid value vectors rejected" [ bytes ]
         test_spec_invalid_value_vectors;
+      test_case "spec color branch vectors" [ bytes ]
+        test_spec_color_branch_vectors;
+      test_case "spec invalid color branch vectors rejected" [ bytes ]
+        test_spec_invalid_color_branch_vectors;
     ] )

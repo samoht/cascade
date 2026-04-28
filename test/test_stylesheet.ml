@@ -744,6 +744,11 @@ let spec_font_face_descriptor_matrix () =
         "@font-face { font-family: Metrics; src: url(metrics.woff2); \
          size-adjust: 100%; ascent-override: normal; descent-override: 20%; \
          line-gap-override: 0%; }" );
+      ( "@font-face \
+         {font-family:TallMetrics;src:url(tall.woff2);ascent-override:120%;descent-override:125%;line-gap-override:0%}",
+        "@font-face { font-family: TallMetrics; src: url(tall.woff2); \
+         ascent-override: 120%; descent-override: 125%; line-gap-override: 0%; \
+         }" );
     ];
   List.iter
     (neg_cursor read_stylesheet)
@@ -751,7 +756,9 @@ let spec_font_face_descriptor_matrix () =
       "@font-face { font-family: Brand; src: url(brand.woff2); font-weight: \
        900 100 }";
       "@font-face { font-family: Brand; src: url(brand.woff2); \
-       ascent-override: 120%; }";
+       ascent-override: -1%; }";
+      "@font-face { font-family: Brand; src: url(brand.woff2); size-adjust: \
+       normal; }";
     ]
 
 let spec_keyframes_selector_matrix () =
@@ -2142,7 +2149,7 @@ let spec_current_at_rules () =
   neg_cursor read_stylesheet "@container () { .x { color: red } }";
   neg_cursor read_stylesheet "@page : { margin: 1cm }"
 
-let spec_font_palette_values_descriptor_matrix () =
+let font_palette_values_descriptor_matrix () =
   List.iter
     (fun (expected, input) -> check_stylesheet ~expected input)
     [
@@ -2424,7 +2431,7 @@ let additional_tests =
     ("spec current-work at-rules", `Quick, spec_current_at_rules);
     ( "spec font-palette-values descriptor matrix",
       `Quick,
-      spec_font_palette_values_descriptor_matrix );
+      font_palette_values_descriptor_matrix );
     ( "spec view-transition descriptor matrix",
       `Quick,
       spec_view_transition_descriptor_matrix );

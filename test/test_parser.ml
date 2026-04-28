@@ -719,7 +719,7 @@ let spec_wpt_trailing_brace_edges () =
     "unmatched mixed closers are preserved" ")]}"
     (Css.Parser.to_string_minified (list ")]}"))
 
-let spec_wpt_at_rule_boundary_edges () =
+let wpt_at_rule_boundary_edges () =
   (* WPT at-rule recovery shape: semicolon-terminated at-rules and unclosed
      block at-rules must not consume following sibling rules. *)
   let rules = parse_ss "@media screen { .a { color: red } .b { color: blue }" in
@@ -1318,7 +1318,7 @@ let suite =
       Alcotest.test_case "spec WPT trailing brace edges" `Quick
         spec_wpt_trailing_brace_edges;
       Alcotest.test_case "spec WPT at-rule boundary edges" `Quick
-        spec_wpt_at_rule_boundary_edges;
+        wpt_at_rule_boundary_edges;
       Alcotest.test_case "spec section 11 parser security regressions" `Quick
         spec_security_resource_exhaustion_regressions;
       Alcotest.test_case "spec section 12 parsing change checklist" `Quick

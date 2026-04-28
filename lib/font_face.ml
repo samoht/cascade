@@ -27,9 +27,18 @@ type src_entry =
 type src = src_entry list
 (** Font source list. *)
 
+let url_needs_quotes s =
+  String.exists
+    (fun c -> c = ' ' || c = ')' || c = '"' || c = '\'' || c = '(' || c = '\\')
+    s
+
+let format_url s =
+  if url_needs_quotes s then String.concat "" [ "url(\""; s; "\")" ]
+  else String.concat "" [ "url("; s; ")" ]
+
 let src_entry_to_string = function
   | Url { url; format; tech } -> (
-      let base = "url(\"" ^ url ^ "\")" in
+      let base = format_url url in
       let with_format =
         match format with
         | Some f -> base ^ " format(\"" ^ f ^ "\")"
