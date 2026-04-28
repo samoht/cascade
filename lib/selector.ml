@@ -903,6 +903,9 @@ let pseudo_element_modern_idents =
     ("marker", Marker);
     ("placeholder", Placeholder);
     ("selection", Selection);
+    ("target-text", Target_text);
+    ("spelling-error", Spelling_error);
+    ("grammar-error", Grammar_error);
     ("file-selector-button", File_selector_button);
   ]
 
@@ -1442,8 +1445,11 @@ let elem ctx name = Pp.string ctx ("::" ^ name)
 let vendor ctx name = Pp.string ctx (":-" ^ name)
 let vendor_elem ctx name = Pp.string ctx ("::-" ^ name)
 
-let legacy_elem (ctx : Pp.ctx) name =
-  if ctx.minify then Pp.string ctx (":" ^ name) else Pp.string ctx ("::" ^ name)
+(* CSS Selectors 4 §3.7 keeps both [:before] (CSS 2.1) and [::before] (CSS 3+)
+   as valid output. Cascade emits the modern double-colon form regardless of
+   [minify]; callers that need the legacy single-colon form for IE 8 / 9
+   compatibility can post-process the output. *)
+let legacy_elem ctx name = Pp.string ctx ("::" ^ name)
 
 let func ctx name pp_content value =
   pp_func ctx ~prefix:":" name pp_content value
@@ -1674,6 +1680,9 @@ and pp : t Pp.t =
   | Marker -> elem ctx "marker"
   | Placeholder -> elem ctx "placeholder"
   | Selection -> elem ctx "selection"
+  | Target_text -> elem ctx "target-text"
+  | Spelling_error -> elem ctx "spelling-error"
+  | Grammar_error -> elem ctx "grammar-error"
   | File_selector_button -> elem ctx "file-selector-button"
   (* Vendor-specific pseudo-classes *)
   | Moz_focusring -> vendor ctx "moz-focusring"
@@ -1897,7 +1906,8 @@ let rec specificity = function
   | Element _ -> { ids = 0; classes = 0; elements = 1 }
   | Universal _ | Nesting -> zero_specificity
   | Before | After | First_letter | First_line | Backdrop | Marker | Placeholder
-  | Selection | File_selector_button | Part _ | View_transition_group _
+  | Selection | Target_text | Spelling_error | Grammar_error
+  | File_selector_button | Part _ | View_transition_group _
   | View_transition_image_pair _ | View_transition_old _ | View_transition_new _
     ->
       { ids = 0; classes = 0; elements = 1 }
