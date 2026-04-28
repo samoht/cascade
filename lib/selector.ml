@@ -1482,6 +1482,13 @@ let pp_relative_combinator ctx = function
 
 let strs ctx strings = Pp.list ~sep:Pp.comma Pp.string ctx strings
 
+(* :lang() canonically serialises with a space after each comma per CSS
+   Selectors 4 §6.4.1, even in minified output, so the printer matches what
+   authors typically write. *)
+let strs_spaced ctx strings =
+  let sep ctx () = Pp.string ctx ", " in
+  Pp.list ~sep Pp.string ctx strings
+
 (** Escape a class or ID name for use inside a selector, following CSS section
     9.1 rules: hex-escape control bytes and leading digits (or a leading dash
     followed by a digit), and backslash-escape the punctuation characters that
@@ -1745,7 +1752,7 @@ and pp : t Pp.t =
   | Nth_col expr -> pp_nth_col_func ctx "nth-col" expr
   | Nth_last_col expr -> pp_nth_col_func ctx "nth-last-col" expr
   | Dir dir -> func ctx "dir" Pp.string dir
-  | Lang langs -> func ctx "lang" strs langs
+  | Lang langs -> func ctx "lang" strs_spaced langs
   | State name -> func ctx "state" Pp.string name
   | Current_of selectors -> func ctx "current" sels selectors
   | Host None -> pseudo ctx "host"
