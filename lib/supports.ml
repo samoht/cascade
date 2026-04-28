@@ -42,6 +42,7 @@ type t =
 let rec to_string = function
   | Property (prop, value) -> "(" ^ prop ^ ": " ^ value ^ ")"
   | Func (name, args) -> name ^ "(" ^ args ^ ")"
+  | Not (And _ as cond) | Not (Or _ as cond) -> "(not (" ^ to_string cond ^ "))"
   | Not cond -> "(not " ^ to_string cond ^ ")"
   | And (a, b) -> to_string a ^ " and " ^ to_string b
   | Or (a, b) ->
@@ -50,8 +51,7 @@ let rec to_string = function
         | And _ as x -> "(" ^ to_string x ^ ")"
         | x -> to_string x
       in
-      let sep = match a with Not _ -> "  or " | _ -> " or " in
-      wrap a ^ sep ^ wrap b
+      wrap a ^ " or " ^ wrap b
 
 let rec pp_aux ~in_and ctx = function
   | Property (prop, value) ->
@@ -73,7 +73,12 @@ let rec pp_aux ~in_and ctx = function
       let extra_parens = Pp.minified ctx && not in_and in
       Pp.string ctx "(not ";
       if extra_parens then Pp.char ctx '(';
-      pp_aux ~in_and ctx cond;
+      (match cond with
+      | And _ | Or _ ->
+          Pp.char ctx '(';
+          pp_aux ~in_and ctx cond;
+          Pp.char ctx ')'
+      | _ -> pp_aux ~in_and ctx cond);
       if extra_parens then Pp.char ctx ')';
       Pp.char ctx ')'
   | And (a, b) ->
@@ -101,10 +106,6 @@ let rec pp_aux ~in_and ctx = function
         | x -> pp_aux ~in_and:false ctx x
       in
       pp_or_branch ~is_left:true ctx a;
-      (* Tailwind quirk: double space before "or" after Not in non-minified
-         mode. Goal: match tailwindcss output exactly. *)
-      if (not (Pp.minified ctx)) && match a with Not _ -> true | _ -> false
-      then Pp.char ctx ' ';
       Pp.string ctx " or ";
       pp_or_branch ~is_left:false ctx b
 
@@ -202,6 +203,9 @@ let top_level_colon s =
   done;
   !result
 
+let valid_property_test prop value =
+  prop <> "" && value <> "" && not (String.contains prop '(')
+
 (* ===== Recursive descent parser following the CSS spec grammar ===== *)
 
 (** Parse <supports-in-parens>:
@@ -230,7 +234,8 @@ let rec parse_supports_in_parens sc =
             |> String.trim
           in
           sc.pos <- String.length sc.s;
-          Property (prop, value)
+          if valid_property_test prop value then Property (prop, value)
+          else failwith "Invalid declaration in @supports"
       | None -> parse_function sc)
 
 (** Parse parenthesised content: could be property test or grouped condition. *)
@@ -256,7 +261,8 @@ and parse_paren_content sc =
             (String.length trimmed - colon_pos - 1)
           |> String.trim
         in
-        Property (prop, value)
+        if valid_property_test prop value then Property (prop, value)
+        else failwith "Invalid declaration in @supports"
     | None ->
         (* No colon → grouped <supports-condition> *)
         let sub =
@@ -279,6 +285,9 @@ and parse_function sc =
            string_of_int sc.pos;
            " in @supports";
          ]);
+  let lower_name = String.lowercase_ascii name in
+  if lower_name = "and" || lower_name = "or" || lower_name = "not" then
+    failwith ("Invalid function name in @supports: " ^ name);
   skip_ws sc;
   match peek sc with
   | Some '(' ->
@@ -311,22 +320,28 @@ and parse_supports_condition sc =
   if looking_at sc "not" then (
     sc.pos <- sc.pos + 3;
     let cond = parse_supports_in_parens sc in
-    chain sc (Not cond))
+    chain sc None (Not cond))
   else
     let left = parse_supports_in_parens sc in
-    chain sc left
+    chain sc None left
 
-and chain sc acc =
+and chain sc op acc =
   skip_ws sc;
   if at_end sc then acc
   else if looking_at sc "and" then (
+    (match op with
+    | Some `Or -> failwith "Cannot mix and/or without parentheses in @supports"
+    | _ -> ());
     sc.pos <- sc.pos + 3;
     let right = parse_supports_in_parens sc in
-    chain sc (And (acc, right)))
+    chain sc (Some `And) (And (acc, right)))
   else if looking_at sc "or" then (
+    (match op with
+    | Some `And -> failwith "Cannot mix and/or without parentheses in @supports"
+    | _ -> ());
     sc.pos <- sc.pos + 2;
     let right = parse_supports_in_parens sc in
-    chain sc (Or (acc, right)))
+    chain sc (Some `Or) (Or (acc, right)))
   else acc
 
 (** Check if a substring starts with keyword [kw] (for sub-parsing). *)

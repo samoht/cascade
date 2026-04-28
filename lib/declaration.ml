@@ -65,6 +65,33 @@ let read_property_value t =
   Cursor.with_context t "property-value" @@ fun () ->
   Cursor.consume_to_decl_end ~trim:true t
 
+let css_wide_keywords =
+  [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ]
+
+let is_css_wide_keyword value = List.mem value css_wide_keywords
+
+let value_has_css_wide_mix value =
+  let trimmed = String.trim value in
+  (not (is_css_wide_keyword trimmed))
+  &&
+  let is_sep = function
+    | ' ' | '\t' | '\n' | '\r' | ',' | '/' | '(' | ')' -> true
+    | _ -> false
+  in
+  let len = String.length trimmed in
+  let rec token acc i =
+    if i >= len then List.rev acc
+    else if is_sep trimmed.[i] then token acc (i + 1)
+    else
+      let j = ref i in
+      while !j < len && not (is_sep trimmed.[!j]) do
+        incr j
+      done;
+      token (String.sub trimmed i (!j - i) :: acc) !j
+  in
+  let tokens = token [] 0 in
+  List.exists (fun keyword -> List.mem keyword tokens) css_wide_keywords
+
 (** Check for and consume [!important] (case-insensitive per CSS Syntax). *)
 let read_importance t =
   Cursor.ws t;
@@ -476,6 +503,11 @@ let read_non_negative_length_percentage t =
   | _ -> ());
   Values.read_length_percentage t
 
+let read_non_negative_number t =
+  let value = Cursor.number t in
+  if value < 0. then Cursor.err_invalid t "negative number not allowed";
+  value
+
 (* CSS Backgrounds and Borders 3 §5: [border-radius = <length-percentage>{1,4}
    [/ <length-percentage>{1,4}]?]. Reads 1-4 horizontal radii then, after [/],
    1-4 vertical radii. *)
@@ -634,8 +666,8 @@ let read_value (type a) (prop : a property) t : declaration =
   | Flex_direction -> v Flex_direction (read_flex_direction t)
   | Flex_wrap -> v Flex_wrap (read_flex_wrap t)
   | Flex -> v Flex (read_flex t)
-  | Flex_grow -> v Flex_grow (Cursor.number t)
-  | Flex_shrink -> v Flex_shrink (Cursor.number t)
+  | Flex_grow -> v Flex_grow (read_non_negative_number t)
+  | Flex_shrink -> v Flex_shrink (read_non_negative_number t)
   | Flex_basis -> v Flex_basis (read_length t)
   | Align_items -> v Align_items (read_align_items t)
   | Justify_content -> v Justify_content (read_justify_content t)
@@ -1147,18 +1179,37 @@ let read_custom_property_declaration t : declaration =
 
 (** Parse a regular property (name: value) *)
 let read_regular_property_declaration t : declaration =
-  let (Prop prop_type) = read_any_property t in
+  let start = Cursor.save t in
+  let name = String.lowercase_ascii (read_property_name t) in
   Cursor.ws t;
   if not (Cursor.colon t) then Cursor.err_expected t "':'";
   Cursor.ws t;
-  let decl = read_value prop_type t in
-  validate_no_extra_tokens t;
-  let is_important = read_importance t in
-  validate_no_extra_tokens t;
-  (match Cursor.peek_delim t with
-  | Some '!' -> Cursor.err_invalid t "duplicate !important"
-  | _ -> ());
-  if is_important then important decl else decl
+  let raw_value = Cursor.lookahead (Cursor.consume_to_decl_end ~trim:true) t in
+  if value_has_css_wide_mix raw_value then
+    Cursor.err_invalid t "CSS-wide keyword mixed with other values";
+  if
+    is_css_wide_keyword raw_value
+    || (String.length raw_value >= 4 && String.sub raw_value 0 4 = "var(")
+  then (
+    ignore (Cursor.consume_to_decl_end ~trim:true t);
+    let is_important = read_importance t in
+    validate_no_extra_tokens t;
+    let decl = custom_declaration name String raw_value in
+    if is_important then important decl else decl)
+  else (
+    Cursor.restore t start;
+    let (Prop prop_type) = read_any_property t in
+    Cursor.ws t;
+    if not (Cursor.colon t) then Cursor.err_expected t "':'";
+    Cursor.ws t;
+    let decl = read_value prop_type t in
+    validate_no_extra_tokens t;
+    let is_important = read_importance t in
+    validate_no_extra_tokens t;
+    (match Cursor.peek_delim t with
+    | Some '!' -> Cursor.err_invalid t "duplicate !important"
+    | _ -> ());
+    if is_important then important decl else decl)
 
 (** Parse a single declaration directly from stream - no string roundtrips *)
 let read_declaration t : declaration option =
