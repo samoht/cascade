@@ -8,8 +8,11 @@ type t =
       (** Container min-width in pixels: [@container (min-width:Xpx)] *)
   | Named of string * t
       (** Named container with condition: [@container name (condition)] *)
+  | Style of string * string option
+      (** Style query: [style(--flag)] or [style(property: value)]. *)
+  | Scroll_state of string * string
+      (** Scroll-state query: [scroll-state(stuck: top)]. *)
   | Custom of Media.t  (** Structured condition beyond the typed shorthands. *)
-  | Raw of string  (** Valid container-specific query syntax. *)
 
 val to_string : t -> string
 (** [to_string t] converts a container condition to its CSS string

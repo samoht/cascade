@@ -514,6 +514,39 @@ let read_cmp sc =
       Some Eq
   | _ -> None
 
+let interval_ops_compatible op1 op2 =
+  match (op1, op2) with
+  | (Lt | Le), (Lt | Le) | (Gt | Ge), (Gt | Ge) -> true
+  | _ -> false
+
+let starts_with ~prefix s =
+  let len = String.length prefix in
+  String.length s >= len && String.sub s 0 len = prefix
+
+let validate_plain_feature name value =
+  let ident_value =
+    match value with Ident s -> Some (String.lowercase_ascii s) | _ -> None
+  in
+  let one_of values =
+    match ident_value with Some s -> List.mem s values | None -> false
+  in
+  match String.lowercase_ascii name with
+  | "orientation" -> one_of [ "portrait"; "landscape" ]
+  | "hover" | "any-hover" -> one_of [ "none"; "hover" ]
+  | "pointer" | "any-pointer" -> one_of [ "none"; "coarse"; "fine" ]
+  | "update" -> one_of [ "none"; "slow"; "fast" ]
+  | "overflow-block" | "overflow-inline" ->
+      one_of [ "none"; "scroll"; "optional-paged"; "paged" ]
+  | "color-gamut" -> one_of [ "srgb"; "p3"; "rec2020" ]
+  | "dynamic-range" | "video-dynamic-range" -> one_of [ "standard"; "high" ]
+  | "prefers-color-scheme" -> one_of [ "light"; "dark" ]
+  | "prefers-reduced-motion" | "prefers-reduced-transparency"
+  | "prefers-reduced-data" ->
+      one_of [ "no-preference"; "reduce" ]
+  | "prefers-contrast" -> one_of [ "no-preference"; "less"; "more"; "custom" ]
+  | "forced-colors" -> one_of [ "none"; "active" ]
+  | _ -> true
+
 (* Parse content already inside parens (no surrounding parens). *)
 let parse_inside_parens content =
   let sc = mk_scanner content in
@@ -536,7 +569,8 @@ let parse_inside_parens content =
                 match read_value sc with
                 | Some v2 ->
                     skip_ws sc;
-                    if at_end sc then Some (Interval (v1, op1, name, op2, v2))
+                    if at_end sc && interval_ops_compatible op1 op2 then
+                      Some (Interval (v1, op1, name, op2, v2))
                     else None
                 | None -> None)
             | None ->
@@ -556,7 +590,10 @@ let parse_feature_in_parens content =
     if id <> "" then (
       skip_ws sc;
       match peek sc with
-      | None -> Some (Boolean id)
+      | None ->
+          if starts_with ~prefix:"min-" id || starts_with ~prefix:"max-" id then
+            None
+          else Some (Boolean id)
       | Some ':' -> (
           advance sc;
           skip_ws sc;
@@ -564,7 +601,9 @@ let parse_feature_in_parens content =
           match v with
           | Some value ->
               skip_ws sc;
-              if at_end sc then Some (Plain (id, value)) else None
+              if at_end sc && validate_plain_feature id value then
+                Some (Plain (id, value))
+              else None
           | None -> None)
       | Some _ -> (
           match read_cmp sc with
@@ -629,6 +668,28 @@ and parse_condition sc =
     chain sc left
 
 and chain sc acc =
+  let rec loop op acc =
+    skip_ws sc;
+    if at_end sc then acc
+    else if lookahead_ident sc "and" then (
+      (match op with
+      | Some `Or -> failwith "mixed 'and'/'or' media condition"
+      | _ -> ());
+      consume_keyword sc "and";
+      let right = parse_in_parens sc in
+      loop (Some `And) (And (acc, right)))
+    else if lookahead_ident sc "or" then (
+      (match op with
+      | Some `And -> failwith "mixed 'and'/'or' media condition"
+      | _ -> ());
+      consume_keyword sc "or";
+      let right = parse_in_parens sc in
+      loop (Some `Or) (Or (acc, right)))
+    else acc
+  in
+  loop None acc
+
+and chain_old sc acc =
   skip_ws sc;
   if at_end sc then acc
   else if lookahead_ident sc "and" then (

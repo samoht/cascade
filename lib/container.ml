@@ -4,8 +4,9 @@ type t =
   | Min_width_rem of float
   | Min_width_px of int
   | Named of string * t
+  | Style of string * string option
+  | Scroll_state of string * string
   | Custom of Media.t
-  | Raw of string
 
 (* Format float without trailing period (24. -> 24, 24.5 -> 24.5) *)
 let format_rem f =
@@ -17,8 +18,10 @@ let rec to_string = function
   | Min_width_rem rem -> "(min-width:" ^ format_rem rem ^ "rem)"
   | Min_width_px px -> "(min-width:" ^ Int.to_string px ^ "px)"
   | Named (name, cond) -> name ^ " " ^ to_string cond
+  | Style (name, None) -> "style(" ^ name ^ ")"
+  | Style (name, Some value) -> "style(" ^ name ^ ": " ^ value ^ ")"
+  | Scroll_state (name, value) -> "scroll-state(" ^ name ^ ": " ^ value ^ ")"
   | Custom cond -> Media.to_string cond
-  | Raw s -> s
 
 let pp = to_string
 
@@ -29,24 +32,32 @@ let rec compare t1 t2 =
   | Named (n1, c1), Named (n2, c2) ->
       let name_cmp = String.compare n1 n2 in
       if name_cmp <> 0 then name_cmp else compare c1 c2
+  | Style (n1, v1), Style (n2, v2) -> (
+      match String.compare n1 n2 with
+      | 0 -> Option.compare String.compare v1 v2
+      | cmp -> cmp)
+  | Scroll_state (n1, v1), Scroll_state (n2, v2) -> (
+      match String.compare n1 n2 with 0 -> String.compare v1 v2 | cmp -> cmp)
   | Custom c1, Custom c2 -> Media.compare c1 c2
-  | Raw s1, Raw s2 -> String.compare s1 s2
-  (* Order: Min_width_rem < Min_width_px < Named < Custom *)
+  (* Order: Min_width_rem < Min_width_px < Named < Style < Scroll_state <
+     Custom *)
   | Min_width_rem _, _ -> -1
   | _, Min_width_rem _ -> 1
   | Min_width_px _, _ -> -1
   | _, Min_width_px _ -> 1
-  | Named _, (Custom _ | Raw _) -> -1
-  | (Custom _ | Raw _), Named _ -> 1
-  | Custom _, Raw _ -> -1
-  | Raw _, Custom _ -> 1
+  | Named _, (Style _ | Scroll_state _ | Custom _) -> -1
+  | (Style _ | Scroll_state _ | Custom _), Named _ -> 1
+  | Style _, (Scroll_state _ | Custom _) -> -1
+  | (Scroll_state _ | Custom _), Style _ -> 1
+  | Scroll_state _, Custom _ -> -1
+  | Custom _, Scroll_state _ -> 1
 
 type kind = Kind_min_width | Kind_other
 
 let rec kind = function
   | Min_width_rem _ | Min_width_px _ -> Kind_min_width
   | Named (_, cond) -> kind cond
-  | Custom _ | Raw _ -> Kind_other
+  | Style _ | Scroll_state _ | Custom _ -> Kind_other
 
 let of_string s =
   let is_ident_start c =
@@ -90,7 +101,7 @@ let of_string s =
     let n = String.length prefix in
     String.length s >= n && String.sub s 0 n = prefix
   in
-  let validate_raw raw =
+  let parse_container_specific raw =
     let raw = String.trim raw in
     if raw = "" then failwith "empty container query";
     if not (balanced raw) then failwith "unmatched container query parentheses";
@@ -104,10 +115,11 @@ let of_string s =
         match parts with
         | [ name; value ] when String.trim name <> "" && String.trim value <> ""
           ->
-            ()
+            Style (String.trim name, Some (String.trim value))
         | _ -> failwith "invalid style() container query"
-      else if body = "color" || body = "stuck" || body = "snapped" then
-        failwith "invalid style() container query")
+      else if String.length body >= 2 && body.[0] = '-' && body.[1] = '-' then
+        Style (body, None)
+      else failwith "invalid style() container query")
     else if starts_with ~prefix:"scroll-state(" raw then (
       if not (String.ends_with ~suffix:")" raw) then
         failwith "unmatched scroll-state() container query";
@@ -117,11 +129,10 @@ let of_string s =
           match (String.trim name, String.trim value) with
           | "stuck", ("top" | "right" | "bottom" | "left")
           | "snapped", ("block" | "inline" | "both") ->
-              ()
+              Scroll_state (String.trim name, String.trim value)
           | _ -> failwith "invalid scroll-state() container query")
       | _ -> failwith "invalid scroll-state() container query")
-    else ignore (Media.of_string raw : Media.t);
-    raw
+    else failwith "not a container-specific query"
   in
   let parse_unnamed s =
     match Media.of_string s with
@@ -129,7 +140,7 @@ let of_string s =
     | Media.Min_width px when Float.is_integer px ->
         Min_width_px (int_of_float px)
     | media -> Custom media
-    | exception Failure _ -> Raw (validate_raw s)
+    | exception Failure _ -> parse_container_specific s
   in
   match split_named s with
   | Some (name, raw) -> Named (name, parse_unnamed raw)
