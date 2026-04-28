@@ -885,6 +885,8 @@ let pseudo_class_base_idents =
     ("current", Current);
     ("past", Past);
     ("future", Future);
+    (* View transitions *)
+    ("active-view-transition", Active_view_transition);
   ]
 
 let pseudo_element_legacy_idents =
@@ -1750,6 +1752,7 @@ and pp : t Pp.t =
   | Host (Some selectors) -> func ctx "host" sels selectors
   | Host_context selectors -> func ctx "host-context" sels selectors
   | Heading -> Pp.string ctx ":heading()"
+  | Active_view_transition -> pseudo ctx "active-view-transition"
   | Active_view_transition_type None ->
       Pp.string ctx ":active-view-transition-type()"
   | Active_view_transition_type (Some t) ->
@@ -1901,7 +1904,8 @@ let rec specificity = function
   | Webkit_datetime_edit_meridiem_field | Webkit_inner_spin_button
   | Webkit_outer_spin_button | Webkit_calendar_picker_indicator
   | Webkit_details_marker | Details_content | Nth_col _ | Nth_last_col _ | Dir _
-  | Lang _ | State _ | Active_view_transition_type _ | Heading ->
+  | Lang _ | State _ | Active_view_transition | Active_view_transition_type _
+  | Heading ->
       { ids = 0; classes = 1; elements = 0 }
   | Element _ -> { ids = 0; classes = 0; elements = 1 }
   | Universal _ | Nesting -> zero_specificity
