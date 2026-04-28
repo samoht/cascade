@@ -542,7 +542,14 @@ type white_space =
   | Preserve_nowrap
   | Inherit
 
-type word_break = Normal | Break_all | Keep_all | Break_word | Inherit
+type word_break =
+  | Normal
+  | Break_all
+  | Keep_all
+  | Break_word
+  | Auto_phrase
+  | Inherit
+
 type overflow_wrap = Normal | Break_word | Anywhere | Inherit
 type hyphens = None | Manual | Auto | Inherit
 
@@ -790,7 +797,9 @@ type transform =
   | Rotate_y of angle
   | Rotate_z of angle
   | Rotate_3d of float * float * float * angle
+  | Rotate_axis of float * float * float * angle
   | Scale of float * float option
+  | Scale_space of float * float
   | Scale_x of float
   | Scale_y of float
   | Scale_z of float
@@ -867,6 +876,7 @@ type timing_function =
   | Step_end
   | Steps of int * steps_direction option
   | Cubic_bezier of float * float * float * float
+  | Linear_function of string
   | Var of timing_function var
 
 type transition_property_value =
@@ -1326,6 +1336,8 @@ type content =
   | Open_quote
   | Close_quote
   | Attr of string
+  | Counter of string
+  | Counters of string * string
   | Content_list of content list
   | Var of content var
 
@@ -1554,7 +1566,15 @@ type color_scheme =
   | Only_light
   | Only_dark
 
-type appearance = None | Auto | Button | Textfield | Menulist | Inherit
+type appearance =
+  | None
+  | Auto
+  | Button
+  | Textfield
+  | Menulist
+  | Base_select
+  | Inherit
+
 type print_color_adjust = Economy | Exact | Initial | Inherit | Unset
 type box_decoration_break = Clone | Slice
 type clear = None | Left | Right | Both | Inline_start | Inline_end
@@ -1634,7 +1654,9 @@ type clip_path =
   | Clip_path_circle of length  (** Circle with radius *)
   | Clip_path_ellipse of length * length  (** Ellipse with rx, ry *)
   | Clip_path_polygon of (length * length) list
+  | Clip_path_polygon_spaced of (length * length) list
   | Clip_path_path of string  (** SVG path data *)
+  | Clip_path_shape of string
   | Clip_path_xywh of {
       x : length_percentage;
       y : length_percentage;

@@ -1759,6 +1759,8 @@ type content =
   | Open_quote
   | Close_quote
   | Attr of string
+  | Counter of string
+  | Counters of string * string
   | Content_list of content list
   | Var of content var
 
@@ -3026,7 +3028,13 @@ val white_space : white_space -> declaration
      white-space} property. *)
 
 (** CSS word-break values *)
-type word_break = Normal | Break_all | Keep_all | Break_word | Inherit
+type word_break =
+  | Normal
+  | Break_all
+  | Keep_all
+  | Break_word
+  | Auto_phrase
+  | Inherit
 
 val word_break : word_break -> declaration
 (** [word_break break] is the
@@ -3559,7 +3567,9 @@ type transform =
   | Rotate_y of angle
   | Rotate_z of angle
   | Rotate_3d of float * float * float * angle
+  | Rotate_axis of float * float * float * angle
   | Scale of float * float option
+  | Scale_space of float * float
   | Scale_x of float
   | Scale_y of float
   | Scale_z of float
@@ -3718,6 +3728,7 @@ type timing_function =
   | Step_end
   | Steps of int * steps_direction option
   | Cubic_bezier of float * float * float * float
+  | Linear_function of string
   | Var of timing_function var
 
 (** CSS duration values. *)
@@ -4028,7 +4039,9 @@ type clip_path =
   | Clip_path_circle of length  (** Circle with radius *)
   | Clip_path_ellipse of length * length  (** Ellipse with rx, ry *)
   | Clip_path_polygon of (length * length) list
+  | Clip_path_polygon_spaced of (length * length) list
   | Clip_path_path of string  (** SVG path data *)
+  | Clip_path_shape of string
   | Clip_path_xywh of {
       x : length_percentage;
       y : length_percentage;
@@ -4740,7 +4753,14 @@ val forced_color_adjust : forced_color_adjust -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/forced-color-adjust}
      forced-color-adjust} property. *)
 
-type appearance = None | Auto | Button | Textfield | Menulist | Inherit
+type appearance =
+  | None
+  | Auto
+  | Button
+  | Textfield
+  | Menulist
+  | Base_select
+  | Inherit
 
 val appearance : appearance -> declaration
 (** [appearance app] is the

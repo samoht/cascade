@@ -536,7 +536,7 @@ let rec read_font_weight t : font_weight =
     ~default:(fun t ->
       let n = Cursor.number t in
       let weight = int_of_float n in
-      if weight >= 1 && weight < 1000 then Weight weight
+      if weight >= 1 && weight <= 1000 then Weight weight
       else err_invalid_value t "font-weight" (string_of_int weight))
     t
 
@@ -886,8 +886,10 @@ module Shadow = struct
     let lengths = List.rev parts.lengths in
     match read_lengths lengths with
     | Some (h_offset, v_offset, blur, spread) ->
-        if blur = None && spread = None && parts.color = None then
-          err_invalid_value t "shadow" "blur, spread, or color is required";
+        if
+          blur = None && spread = None && parts.color = None && h_offset = Zero
+          && v_offset = Zero
+        then err_invalid_value t "shadow" "blur, spread, or color is required";
         Shadow
           {
             inset = parts.inset;
@@ -961,7 +963,21 @@ module Transform = struct
     Cursor.call "rotatez" t (fun t -> Rotate_z (read_angle t))
 
   let read_rotate t : transform =
-    Cursor.call "rotate" t (fun t -> (Rotate (read_angle t) : transform))
+    Cursor.call "rotate" t (fun t ->
+        Cursor.one_of
+          [
+            (fun t ->
+              let x = Cursor.number t in
+              Cursor.ws t;
+              let y = Cursor.number t in
+              Cursor.ws t;
+              let z = Cursor.number t in
+              Cursor.ws t;
+              let angle = read_angle t in
+              (Rotate_axis (x, y, z, angle) : transform));
+            (fun t -> (Rotate (read_angle t) : transform));
+          ]
+          t)
 
   let read_scale_x t =
     Cursor.call "scalex" t (fun t -> Scale_x (Cursor.number t))
@@ -990,11 +1006,15 @@ module Transform = struct
         let y =
           Cursor.option
             (fun t ->
-              Cursor.comma t;
-              Cursor.number t)
+              let has_comma = Cursor.comma_opt t in
+              Cursor.ws t;
+              (has_comma, Cursor.number t))
             t
         in
-        (Scale (x, y) : transform))
+        match y with
+        | None -> (Scale (x, None) : transform)
+        | Some (true, y) -> Scale (x, Some y)
+        | Some (false, y) -> Scale_space (x, y))
 
   let read_skew_x t = Cursor.call "skewx" t (fun t -> Skew_x (read_angle t))
   let read_skew_y t = Cursor.call "skewy" t (fun t -> Skew_y (read_angle t))
@@ -2026,6 +2046,7 @@ let pp_word_break : word_break Pp.t =
   | Break_all -> Pp.string ctx "break-all"
   | Keep_all -> Pp.string ctx "keep-all"
   | Break_word -> Pp.string ctx "break-word"
+  | Auto_phrase -> Pp.string ctx "auto-phrase"
   | Inherit -> Pp.string ctx "inherit"
 
 let pp_overflow_wrap : overflow_wrap Pp.t =
@@ -2219,7 +2240,20 @@ let rec pp_clip_path : clip_path Pp.t =
       Pp.char ctx ')'
   | Clip_path_polygon points ->
       Pp.string ctx "polygon(";
-      Pp.list ~sep:Pp.comma
+      Pp.list
+        ~sep:(fun ctx () -> Pp.char ctx ',')
+        (fun ctx (x, y) ->
+          pp_length ctx x;
+          Pp.space ctx ();
+          pp_length ctx y)
+        ctx points;
+      Pp.char ctx ')'
+  | Clip_path_polygon_spaced points ->
+      Pp.string ctx "polygon(";
+      Pp.list
+        ~sep:(fun ctx () ->
+          Pp.char ctx ',';
+          Pp.space ctx ())
         (fun ctx (x, y) ->
           pp_length ctx x;
           Pp.space ctx ();
@@ -2230,6 +2264,10 @@ let rec pp_clip_path : clip_path Pp.t =
       Pp.string ctx "path(\"";
       Pp.string ctx d;
       Pp.string ctx "\")"
+  | Clip_path_shape body ->
+      Pp.string ctx "shape(";
+      Pp.string ctx body;
+      Pp.char ctx ')'
   | Clip_path_xywh { x; y; width; height; rounded } ->
       Pp.string ctx "xywh(";
       pp_clip_path_inset_quad ctx x y width height;
@@ -2678,8 +2716,24 @@ let rec pp_transform : transform Pp.t =
   | Rotate_y a -> Pp.call "rotateY" pp_angle ctx a
   | Rotate_z a -> Pp.call "rotateZ" pp_angle ctx a
   | Rotate_3d (x, y, z, a) -> pp_rotate_3d ctx (x, y, z, a)
+  | Rotate_axis (x, y, z, a) ->
+      Pp.string ctx "rotate(";
+      Pp.float ctx x;
+      Pp.space ctx ();
+      Pp.float ctx y;
+      Pp.space ctx ();
+      Pp.float ctx z;
+      Pp.space ctx ();
+      pp_angle ctx a;
+      Pp.char ctx ')'
   | Scale (x, None) -> Pp.call "scale" Pp.float ctx x
   | Scale (x, Some y) -> Pp.call_2 "scale" Pp.float Pp.float ctx (x, y)
+  | Scale_space (x, y) ->
+      Pp.string ctx "scale(";
+      Pp.string ctx (Pp.float_to_string ~drop_leading_zero:false x);
+      Pp.space ctx ();
+      Pp.string ctx (Pp.float_to_string ~drop_leading_zero:false y);
+      Pp.char ctx ')'
   | Scale_x f -> Pp.call "scaleX" Pp.float ctx f
   | Scale_y f -> Pp.call "scaleY" Pp.float ctx f
   | Scale_z f -> Pp.call "scaleZ" Pp.float ctx f
@@ -3025,6 +3079,7 @@ let pp_appearance : appearance Pp.t =
   | Button -> Pp.string ctx "button"
   | Textfield -> Pp.string ctx "textfield"
   | Menulist -> Pp.string ctx "menulist"
+  | Base_select -> Pp.string ctx "base-select"
   | Inherit -> Pp.string ctx "inherit"
 
 let pp_color_scheme : color_scheme Pp.t =
@@ -3143,6 +3198,14 @@ let rec pp_content : content Pp.t =
   | Open_quote -> Pp.string ctx "open-quote"
   | Close_quote -> Pp.string ctx "close-quote"
   | Attr name -> Pp.call "attr" Pp.string ctx name
+  | Counter name -> Pp.call "counter" Pp.string ctx name
+  | Counters (name, separator) ->
+      Pp.string ctx "counters(";
+      Pp.string ctx name;
+      Pp.char ctx ',';
+      Pp.space ctx ();
+      Pp.quoted_string ctx separator;
+      Pp.char ctx ')'
   | Content_list items -> Pp.list ~sep:Pp.space pp_content ctx items
   | Var v -> pp_var pp_content ctx v
 
@@ -3739,11 +3802,16 @@ let rec pp_timing_function : timing_function Pp.t =
       Pp.int ctx n;
       (match jump_term_opt with
       | Some d ->
-          Pp.comma ctx ();
+          Pp.char ctx ',';
+          Pp.space ctx ();
           pp_steps_direction ctx d
       | None -> ());
       Pp.char ctx ')'
   | Cubic_bezier (x1, y1, x2, y2) -> pp_cubic_bezier ctx (x1, y1, x2, y2)
+  | Linear_function body ->
+      Pp.string ctx "linear(";
+      Pp.string ctx body;
+      Pp.char ctx ')'
   | Var v -> pp_var pp_timing_function ctx v
 
 let rec pp_svg_paint : svg_paint Pp.t =
@@ -4563,7 +4631,10 @@ let rec read_grid_line t : grid_line =
           match Cursor.option Cursor.ident t with
           | Some name -> Span_num_name (n, name)
           | None -> Span n)
-      | None -> Span_name (Cursor.ident t))
+      | None -> (
+          match Cursor.option Cursor.ident t with
+          | Some name -> Span_name name
+          | None -> Name "span"))
     else Name name
   in
   let read_calc_int t : grid_line =
@@ -4784,18 +4855,25 @@ let read_text_wrap t : text_wrap =
     t
 
 let read_white_space t : white_space =
-  Cursor.enum "white-space"
-    [
-      ("normal", (Normal : white_space));
-      ("nowrap", Nowrap);
-      ("pre", Pre);
-      ("pre-wrap", Pre_wrap);
-      ("pre-line", Pre_line);
-      ("break-spaces", Break_spaces);
-      ("preserve nowrap", Preserve_nowrap);
-      ("inherit", Inherit);
-    ]
-    t
+  Cursor.ws t;
+  match Cursor.peek_ident t with
+  | Some "preserve" ->
+      ignore (Cursor.ident t : string);
+      Cursor.ws t;
+      Cursor.expect_string "nowrap" t;
+      Preserve_nowrap
+  | _ ->
+      Cursor.enum "white-space"
+        [
+          ("normal", (Normal : white_space));
+          ("nowrap", Nowrap);
+          ("pre", Pre);
+          ("pre-wrap", Pre_wrap);
+          ("pre-line", Pre_line);
+          ("break-spaces", Break_spaces);
+          ("inherit", Inherit);
+        ]
+        t
 
 let read_word_break t : word_break =
   Cursor.enum "word-break"
@@ -4804,6 +4882,7 @@ let read_word_break t : word_break =
       ("break-all", Break_all);
       ("keep-all", Keep_all);
       ("break-word", Break_word);
+      ("auto-phrase", Auto_phrase);
       ("inherit", Inherit);
     ]
     t
@@ -5027,6 +5106,26 @@ let rec read_content t : content =
         Cursor.expect_eof inner;
         Attr name)
   in
+  let read_counter t =
+    Cursor.call "counter" t (fun inner ->
+        Cursor.ws inner;
+        let name = Cursor.ident inner in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        Counter name)
+  in
+  let read_counters t =
+    Cursor.call "counters" t (fun inner ->
+        Cursor.ws inner;
+        let name = Cursor.ident inner in
+        Cursor.ws inner;
+        Cursor.comma inner;
+        Cursor.ws inner;
+        let separator = Cursor.string inner in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        Counters (name, separator))
+  in
   let read_single t =
     Cursor.enum_or_calls "content"
       [
@@ -5035,7 +5134,13 @@ let rec read_content t : content =
         ("open-quote", Open_quote);
         ("close-quote", Close_quote);
       ]
-      ~calls:[ ("var", read_var); ("attr", read_attr) ]
+      ~calls:
+        [
+          ("var", read_var);
+          ("attr", read_attr);
+          ("counter", read_counter);
+          ("counters", read_counters);
+        ]
       ~default:read_string t
   in
   let items = Cursor.list ~sep:Cursor.ws ~at_least:1 read_single t in
@@ -5563,6 +5668,7 @@ let read_appearance t : appearance =
       ("button", Button);
       ("textfield", Textfield);
       ("menulist", Menulist);
+      ("base-select", Base_select);
       ("inherit", Inherit);
     ]
     t
@@ -6067,6 +6173,10 @@ let read_steps_direction t : steps_direction =
     t
 
 module Timing_function = struct
+  let read_linear_function t : timing_function =
+    Cursor.call "linear" t (fun t ->
+        Linear_function (Cursor.consume_remaining_to_string ~trim:true t))
+
   let read_steps t : timing_function =
     Cursor.call "steps" t (fun t ->
         let n = int_of_float (Cursor.number t) in
@@ -6107,6 +6217,7 @@ module Timing_function = struct
       ]
       ~calls:
         [
+          ("linear", read_linear_function);
           ("steps", read_steps);
           ("cubic-bezier", read_cubic_bezier);
           ("var", read_var_timing);
@@ -6370,7 +6481,7 @@ module Animation = struct
 
   (* Check if a timing function ends with ')' - only cubic-bezier/steps do *)
   let ends_with_paren = function
-    | Cubic_bezier _ | Steps _ | Var _ -> true
+    | Cubic_bezier _ | Steps _ | Linear_function _ | Var _ -> true
     | Linear | Ease | Ease_in | Ease_out | Ease_in_out | Step_start | Step_end
       ->
         false
@@ -6383,6 +6494,10 @@ module Animation = struct
     | Ease_in_out -> Pp.string ctx "ease-in-out"
     | Step_start -> Pp.string ctx "step-start"
     | Step_end -> Pp.string ctx "step-end"
+    | Linear_function body ->
+        Pp.string ctx "linear(";
+        Pp.string ctx body;
+        Pp.char ctx ')'
     | Cubic_bezier (x1, y1, x2, y2) ->
         Pp.string ctx "cubic-bezier(";
         Pp.float ctx x1;
@@ -6398,7 +6513,8 @@ module Animation = struct
         Pp.int ctx steps;
         (match direction with
         | Some d ->
-            Pp.comma ctx ();
+            Pp.char ctx ',';
+            Pp.space ctx ();
             pp_steps_direction ctx d
         | None -> ());
         Pp.char ctx ')'
@@ -8106,16 +8222,38 @@ let read_clip_path_ellipse t =
 let read_clip_path_polygon t =
   Cursor.call "polygon" t @@ fun inner ->
   Cursor.ws inner;
-  let points =
-    Cursor.list ~sep:Cursor.comma
-      (fun inner ->
-        let x = read_length inner in
-        Cursor.ws inner;
-        let y = read_length inner in
-        (x, y))
-      inner
+  let read_point inner =
+    let x = read_length inner in
+    Cursor.ws inner;
+    let y = read_length inner in
+    (x, y)
   in
-  Clip_path_polygon points
+  let first = read_point inner in
+  let has_ws_after_comma inner =
+    match Cursor.peek_raw inner with
+    | Some (Component.Preserved { kind = Token.Whitespace; _ }) -> true
+    | _ -> false
+  in
+  let rec loop acc spaced =
+    Cursor.ws inner;
+    if Cursor.comma_opt inner then (
+      let spaced = spaced || has_ws_after_comma inner in
+      Cursor.ws inner;
+      loop (read_point inner :: acc) spaced)
+    else (List.rev acc, spaced)
+  in
+  let points, spaced = loop [ first ] false in
+  Cursor.ws inner;
+  Cursor.expect_eof inner;
+  if spaced then Clip_path_polygon_spaced points else Clip_path_polygon points
+
+let read_clip_path_path t =
+  Cursor.call "path" t @@ fun inner ->
+  Cursor.ws inner;
+  let data = Cursor.string inner in
+  Cursor.ws inner;
+  Cursor.expect_eof inner;
+  Clip_path_path data
 
 (* Read 4 length-percentages and an optional [round <border-radius>] suffix
    shared by xywh() and rect(). *)
@@ -8181,6 +8319,10 @@ let read_clip_path_rect t =
       let rounded = read_clip_path_round inner in
       Clip_path_rect { top; right; bottom; left; rounded })
 
+let read_clip_path_shape t =
+  Cursor.call "shape" t (fun inner ->
+      Clip_path_shape (Cursor.consume_remaining_to_string ~trim:true inner))
+
 let read_clip_path t : clip_path =
   Cursor.ws t;
   Cursor.one_of
@@ -8195,8 +8337,10 @@ let read_clip_path t : clip_path =
               ("circle", read_clip_path_circle);
               ("ellipse", read_clip_path_ellipse);
               ("polygon", read_clip_path_polygon);
+              ("path", read_clip_path_path);
               ("xywh", read_clip_path_xywh);
               ("rect", read_clip_path_rect);
+              ("shape", read_clip_path_shape);
             ]
           t);
     ]
