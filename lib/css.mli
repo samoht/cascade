@@ -1548,7 +1548,13 @@ type opacity =
 type order = Order_int of int | Order_calc of string | Var of order var
 
 (** CSS overflow values. *)
-type overflow = Visible | Hidden | Scroll | Auto | Clip
+type overflow =
+  | Visible
+  | Hidden
+  | Scroll
+  | Auto
+  | Clip
+  | Overflow_pair of overflow * overflow
 
 val display : display -> declaration
 (** [display d] is the
@@ -1752,6 +1758,8 @@ type content =
   | Normal
   | Open_quote
   | Close_quote
+  | Attr of string
+  | Content_list of content list
   | Var of content var
 
 val content : content -> declaration
@@ -3009,6 +3017,7 @@ type white_space =
   | Pre_wrap
   | Pre_line
   | Break_spaces
+  | Preserve_nowrap
   | Inherit
 
 val white_space : white_space -> declaration

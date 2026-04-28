@@ -756,8 +756,8 @@ let read_value (type a) (prop : a property) t : declaration =
   | Position -> v Position (read_position t)
   | Visibility -> v Visibility (read_visibility t)
   | Overflow -> v Overflow (read_overflow t)
-  | Overflow_x -> v Overflow_x (read_overflow t)
-  | Overflow_y -> v Overflow_y (read_overflow t)
+  | Overflow_x -> v Overflow_x (read_overflow_single t)
+  | Overflow_y -> v Overflow_y (read_overflow_single t)
   (* Padding/Margin *)
   | Padding -> v Padding (read_padding_shorthand t)
   | Margin -> v Margin (read_margin_shorthand t)
@@ -849,10 +849,14 @@ let read_value (type a) (prop : a property) t : declaration =
   | Border_bottom_style -> v Border_bottom_style (read_border_style t)
   | Border_left_style -> v Border_left_style (read_border_style t)
   (* Additional margin/padding properties *)
-  | Padding_left -> v Padding_left (read_non_negative_length t)
-  | Padding_right -> v Padding_right (read_non_negative_length t)
-  | Padding_top -> v Padding_top (read_non_negative_length t)
-  | Padding_bottom -> v Padding_bottom (read_non_negative_length t)
+  | Padding_left ->
+      v Padding_left (read_non_negative_length ~with_keywords:false t)
+  | Padding_right ->
+      v Padding_right (read_non_negative_length ~with_keywords:false t)
+  | Padding_top ->
+      v Padding_top (read_non_negative_length ~with_keywords:false t)
+  | Padding_bottom ->
+      v Padding_bottom (read_non_negative_length ~with_keywords:false t)
   | Padding_inline -> v Padding_inline (read_non_negative_length t)
   | Padding_inline_start -> v Padding_inline_start (read_non_negative_length t)
   | Padding_inline_end -> v Padding_inline_end (read_non_negative_length t)

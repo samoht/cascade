@@ -295,6 +295,31 @@ let pp_math_call ctx name args =
     args;
   Pp.char ctx ')'
 
+let normalize_math_args args =
+  let buf = Buffer.create (String.length args) in
+  let depth = ref 0 in
+  let after_comma = ref false in
+  String.iter
+    (fun c ->
+      match c with
+      | '(' ->
+          after_comma := false;
+          incr depth;
+          Buffer.add_char buf c
+      | ')' ->
+          after_comma := false;
+          decr depth;
+          Buffer.add_char buf c
+      | ',' when !depth = 0 ->
+          after_comma := true;
+          Buffer.add_char buf ','
+      | ' ' when !after_comma -> ()
+      | _ ->
+          after_comma := false;
+          Buffer.add_char buf c)
+    args;
+  Buffer.contents buf
+
 let rec pp_length ?(always = false) : length Pp.t =
  fun ctx v ->
   let pp_unit_fn = pp_unit ~always ctx in
@@ -1001,17 +1026,34 @@ and pp_color : color Pp.t =
   | Mix { in_space; hue; color1; percent1; color2; percent2 } ->
       pp_color_mix ctx in_space hue color1 percent1 color2 percent2
 
+(* CSS Values 4 §6.3: [ms] and [s] are interchangeable; pick the shorter
+   spelling when minifying. The "s" suffix is one character shorter than "ms",
+   so a millisecond value collapses to seconds when its second-form digits are
+   no longer than the millisecond-form digits. *)
+let pp_duration_unit ctx f suffix =
+  if (not ctx.Pp.minify) || suffix <> "ms" then pp_unit ctx f suffix
+  else
+    let in_seconds = f /. 1000. in
+    let ms_str = Pp.float_to_string ~drop_leading_zero:true f in
+    let s_str = Pp.float_to_string ~drop_leading_zero:true in_seconds in
+    if String.length s_str <= String.length ms_str then (
+      Pp.string ctx s_str;
+      Pp.string ctx "s")
+    else (
+      Pp.string ctx ms_str;
+      Pp.string ctx "ms")
+
 let rec pp_duration : duration Pp.t =
  fun ctx -> function
-  | Ms f -> pp_unit ctx f "ms"
-  | S f -> pp_unit ctx f "s"
+  | Ms f -> pp_duration_unit ctx f "ms"
+  | S f -> pp_duration_unit ctx f "s"
   | Var v -> pp_var pp_duration ctx v
   | Calc c -> pp_calc pp_duration_in_calc ctx c
 
 and pp_duration_in_calc : duration Pp.t =
  fun ctx -> function
-  | Ms f -> pp_unit ctx f "ms"
-  | S f -> pp_unit ctx f "s"
+  | Ms f -> pp_duration_unit ctx f "ms"
+  | S f -> pp_duration_unit ctx f "s"
   | Var v -> pp_var pp_duration ctx v
   | Calc c -> pp_calc pp_duration_in_calc ctx c
 
@@ -1328,25 +1370,33 @@ let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
         (fun name inner ->
           match String.lowercase_ascii name with
           | "clamp" ->
-              let s = Cursor.consume_remaining_to_string inner in
+              let s =
+                Cursor.consume_remaining_to_string inner |> normalize_math_args
+              in
               let groups = top_level_arg_count s in
               if groups <> 3 then
                 Cursor.err_invalid inner
                   "clamp() requires three comma-separated arguments"
               else Clamp s
           | "minmax" ->
-              let s = Cursor.consume_remaining_to_string inner in
+              let s =
+                Cursor.consume_remaining_to_string inner |> normalize_math_args
+              in
               if top_level_arg_count s <> 2 then
                 Cursor.err_invalid inner
                   "minmax() requires two comma-separated arguments"
               else Minmax s
           | "min" ->
-              let s = Cursor.consume_remaining_to_string inner in
+              let s =
+                Cursor.consume_remaining_to_string inner |> normalize_math_args
+              in
               if top_level_arg_count s < 1 then
                 Cursor.err_invalid inner "min() requires at least one argument"
               else Min s
           | "max" ->
-              let s = Cursor.consume_remaining_to_string inner in
+              let s =
+                Cursor.consume_remaining_to_string inner |> normalize_math_args
+              in
               if top_level_arg_count s < 1 then
                 Cursor.err_invalid inner "max() requires at least one argument"
               else Max s
