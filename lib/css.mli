@@ -1653,6 +1653,23 @@ type break_inside_value = Auto | Avoid | Avoid_page | Avoid_column | Inherit
 val break_inside : break_inside_value -> declaration
 (** [break_inside v] is the break-inside property. *)
 
+(** CSS Fragmentation 3 §6 deprecated [page-break-before / -after] alias
+    vocabulary; the shorter value list makes these their own type rather than
+    overload [break_value]. *)
+type page_break_value = Auto | Always | Avoid | Left | Right | Inherit
+
+(** CSS Fragmentation 3 §6 deprecated [page-break-inside] vocabulary. *)
+type page_break_inside_value = Auto | Avoid | Inherit
+
+val page_break_before : page_break_value -> declaration
+(** [page_break_before v] is the legacy [page-break-before] property. *)
+
+val page_break_after : page_break_value -> declaration
+(** [page_break_after v] is the legacy [page-break-after] property. *)
+
+val page_break_inside : page_break_inside_value -> declaration
+(** [page_break_inside v] is the legacy [page-break-inside] property. *)
+
 (** CSS columns values for multi-column layout. *)
 type columns_value =
   | Auto

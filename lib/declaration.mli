@@ -1414,6 +1414,15 @@ val break_inside : break_inside_value -> declaration
 (** [break_inside v] is the CSS [break-inside] property for page/column/region
     breaks. *)
 
+val page_break_before : page_break_value -> declaration
+(** [page_break_before v] is the legacy [page-break-before] property. *)
+
+val page_break_after : page_break_value -> declaration
+(** [page_break_after v] is the legacy [page-break-after] property. *)
+
+val page_break_inside : page_break_inside_value -> declaration
+(** [page_break_inside v] is the legacy [page-break-inside] property. *)
+
 val columns : columns_value -> declaration
 (** [columns v] is the CSS [columns] property for multi-column layout. *)
 

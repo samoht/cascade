@@ -1,5 +1,13 @@
 open Cascade
 
+let rejects_invalid input =
+  let open Css.Container in
+  match of_string input with
+  | exception Failure _ -> ()
+  | query ->
+      Alcotest.failf "invalid container query parsed: %s -> %s" input
+        (to_string query)
+
 let test_to_string () =
   let open Css.Container in
   Alcotest.(check string)
@@ -46,6 +54,7 @@ let spec_container_l3_vectors () =
   check_raw "aspect ratio" "(aspect-ratio > 16/9)";
   check_raw "style query custom property" "style(--theme: dark)";
   check_raw "style query declaration" "style(color: red)";
+  check_raw "uppercase style query function" "STYLE(--theme: dark)";
   check_raw "style query boolean custom property" "style(--featured)";
   check_raw "scroll-state stuck" "scroll-state(stuck: top)";
   check_raw "scroll-state snapped" "scroll-state(snapped: y)";
@@ -84,7 +93,7 @@ let test_kind () =
     (kind (Named ("x", Min_width_rem 24.)) = Kind_min_width);
   Alcotest.(check bool)
     "raw is Kind_other" true
-    (kind (of_string "foo") = Kind_other)
+    (kind (of_string "style(--theme: dark)") = Kind_other)
 
 let test_spec_container_compare_edges () =
   let open Css.Container in
@@ -149,6 +158,14 @@ let spec_container_query_vectors () =
       Alcotest.(check string) input input (to_string (of_string input)))
     raw_cases
 
+let spec_container_invalid_vectors () =
+  rejects_invalid "";
+  rejects_invalid "style()";
+  rejects_invalid "style(--theme: dark";
+  rejects_invalid "scroll-state()";
+  rejects_invalid "scroll-state(stuck: top";
+  rejects_invalid "(width >)"
+
 let tests =
   Alcotest.
     [
@@ -163,6 +180,8 @@ let tests =
         spec_container_context_vectors;
       test_case "spec container query boolean/range/style vectors" `Quick
         spec_container_query_vectors;
+      test_case "spec container invalid query vectors" `Quick
+        spec_container_invalid_vectors;
     ]
 
 let suite = ("container", tests)

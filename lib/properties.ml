@@ -2462,6 +2462,9 @@ let pp_property : type a. a property Pp.t =
   | Break_before -> Pp.string ctx "break-before"
   | Break_after -> Pp.string ctx "break-after"
   | Break_inside -> Pp.string ctx "break-inside"
+  | Page_break_before -> Pp.string ctx "page-break-before"
+  | Page_break_after -> Pp.string ctx "page-break-after"
+  | Page_break_inside -> Pp.string ctx "page-break-inside"
   | Columns -> Pp.string ctx "columns"
   | Word_spacing -> Pp.string ctx "word-spacing"
   | Background_attachment -> Pp.string ctx "background-attachment"
@@ -3233,6 +3236,21 @@ let pp_break_inside_value : break_inside_value Pp.t =
   | Avoid -> Pp.string ctx "avoid"
   | Avoid_page -> Pp.string ctx "avoid-page"
   | Avoid_column -> Pp.string ctx "avoid-column"
+  | Inherit -> Pp.string ctx "inherit"
+
+let pp_page_break_value : page_break_value Pp.t =
+ fun ctx -> function
+  | Auto -> Pp.string ctx "auto"
+  | Always -> Pp.string ctx "always"
+  | Avoid -> Pp.string ctx "avoid"
+  | Left -> Pp.string ctx "left"
+  | Right -> Pp.string ctx "right"
+  | Inherit -> Pp.string ctx "inherit"
+
+let pp_page_break_inside_value : page_break_inside_value Pp.t =
+ fun ctx -> function
+  | Auto -> Pp.string ctx "auto"
+  | Avoid -> Pp.string ctx "avoid"
   | Inherit -> Pp.string ctx "inherit"
 
 let rec pp_columns_value : columns_value Pp.t =
@@ -5025,6 +5043,27 @@ let read_break_inside_value t : break_inside_value =
       ("avoid", Avoid);
       ("avoid-page", Avoid_page);
       ("avoid-column", Avoid_column);
+      ("inherit", Inherit);
+    ]
+    t
+
+let read_page_break_value t : page_break_value =
+  Cursor.enum "page-break"
+    [
+      ("auto", (Auto : page_break_value));
+      ("always", Always);
+      ("avoid", Avoid);
+      ("left", Left);
+      ("right", Right);
+      ("inherit", Inherit);
+    ]
+    t
+
+let read_page_break_inside_value t : page_break_inside_value =
+  Cursor.enum "page-break-inside"
+    [
+      ("auto", (Auto : page_break_inside_value));
+      ("avoid", Avoid);
       ("inherit", Inherit);
     ]
     t
@@ -7130,6 +7169,9 @@ let read_any_property t =
   | "break-before" -> Prop Break_before
   | "break-after" -> Prop Break_after
   | "break-inside" -> Prop Break_inside
+  | "page-break-before" -> Prop Page_break_before
+  | "page-break-after" -> Prop Page_break_after
+  | "page-break-inside" -> Prop Page_break_inside
   | "columns" -> Prop Columns
   | "clear" -> Prop Clear
   | "clip" -> Prop Clip
@@ -8000,6 +8042,9 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Break_before -> pp pp_break_value
   | Break_after -> pp pp_break_value
   | Break_inside -> pp pp_break_inside_value
+  | Page_break_before -> pp pp_page_break_value
+  | Page_break_after -> pp pp_page_break_value
+  | Page_break_inside -> pp pp_page_break_inside_value
   | Columns -> pp pp_columns_value
   | Transform_style -> pp pp_transform_style
   | Backface_visibility -> pp pp_backface_visibility
