@@ -488,7 +488,6 @@ let test_spec_invalid_color_branch_vectors buf =
         "color-mix(in srgb red blue)";
         "light-dark(black)";
         "rgb(from red r g)";
-        "rgba(1, 2, 3)";
         "hsl(0, 50%, 50% 1)";
         "hwb(0 0% 0% 0%)";
         "lab(50% 10 20 30)";
@@ -497,6 +496,16 @@ let test_spec_invalid_color_branch_vectors buf =
         "light-dark(black, white, red)";
         "rgb(from red r g b extra)";
         "contrast-color()";
+        "transparent()";
+        "currentColor()";
+        "rgb(255, 0, 0 / 50%)";
+        "rgb(255 0 0, 50%)";
+        "hsl(0deg, 50% 50%)";
+        "hwb(0deg, 0%, 0%)";
+        "lab(50% 10px 20)";
+        "color(srgb 1 0 0 / / .5)";
+        "color-mix(in bogus, red, blue)";
+        "light-dark()";
       ]
       buf 3
   in

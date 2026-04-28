@@ -2236,6 +2236,17 @@ let spec_at_rule_descriptor_order_duplicate_matrix () =
         "@view-transition { navigation: auto; navigation: none }" );
       ( "@position-try --below{top:anchor(bottom);left:anchor(center)}",
         "@position-try --below { left: anchor(center); top: anchor(bottom) }" );
+      ( "@media screen and (width >= 40em){.card{display:grid}}",
+        "@media screen and (width >= 40em) { .card { display: grid } }" );
+      ( "@supports ((display:grid) and selector(:has(img))){.card{display:grid}}",
+        "@supports ((display: grid) and selector(:has(img))) { .card { \
+         display: grid } }" );
+      ( "@container card style(--variant: featured){.card{color:red}}",
+        "@container card style(--variant: featured) { .card { color: red } }" );
+      ( "@scope (.card) to (.boundary){.title{color:red}}",
+        "@scope (.card) to (.boundary) { .title { color: red } }" );
+      ( "@starting-style{.dialog{opacity:0}}",
+        "@starting-style { .dialog { opacity: 0 } }" );
     ];
   List.iter
     (neg_cursor read_stylesheet)
@@ -2252,6 +2263,14 @@ let spec_at_rule_descriptor_order_duplicate_matrix () =
        }";
       "@page { @top-center { display: block } }";
       "@keyframes fade { @media screen { opacity: 1 } }";
+      "@media screen;";
+      "@media screen and or (width) { .x { color: red } }";
+      "@supports (display: grid) and (gap: 1rem) or (color: red) { .x { color: \
+       red } }";
+      "@container card style() { .x { color: red } }";
+      "@scope () { .x { color: red } }";
+      "@scope (.x) to () { .x { color: red } }";
+      "@starting-style;";
     ]
 
 let test_spec_snapshot_tracking_vectors () =

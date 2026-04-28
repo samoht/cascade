@@ -790,7 +790,6 @@ let spec_color_invalid_mutation_matrix () =
       "rgb(1 2)";
       "rgb(1, 2 3)";
       "rgb(1 2 3 4)";
-      "rgba(1, 2, 3)";
       "hsl(0 50)";
       "hsl(0, 50%, 50% 1)";
       "hwb(0 0%)";
@@ -812,6 +811,24 @@ let spec_color_invalid_mutation_matrix () =
       "rgb(from red r g)";
       "rgb(from red r g b extra)";
       "contrast-color()";
+      "transparent()";
+      "currentColor()";
+      "rgb(255, 0, 0 / 50%)";
+      "rgb(255 0 0, 50%)";
+      "hsl(0deg, 50% 50%)";
+      "hsl(0 50% 50%, .5)";
+      "hwb(0deg, 0%, 0%)";
+      "lab(50% 10px 20)";
+      "lch(50% red 30)";
+      "oklab(50% .1px .2)";
+      "oklch(50% .1 red)";
+      "color(srgb 1 0 / .5)";
+      "color(srgb 1 0 0 / / .5)";
+      "color-mix(in bogus, red, blue)";
+      "color-mix(in srgb, red -10%, blue)";
+      "color-mix(in srgb, red 110%, blue)";
+      "light-dark()";
+      "rgb(from red r g b /)";
     ]
 
 let spec_math_function_edges () =
