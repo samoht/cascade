@@ -1177,9 +1177,11 @@ and read_cue_region_content t =
   Cue_region sels
 
 and read_highlight_content t =
-  let names = Cursor.list ~sep:Cursor.comma ~at_least:1 Cursor.ident t in
+  (* ::highlight() takes a single custom-ident per CSS Custom Highlight API
+     §3.1; comma-separated names are rejected. *)
+  let name = Cursor.ident t in
   ensure_call_done t "highlight";
-  Highlight names
+  Highlight [ name ]
 
 and read_view_transition_group_content t =
   let name = Cursor.ident t in
