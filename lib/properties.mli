@@ -174,6 +174,9 @@ val pp_overflow : overflow Pp.t
 val read_overflow : Cursor.t -> overflow
 (** [read_overflow t] is the [overflow] parsed from [t]. *)
 
+val read_overflow_single : Cursor.t -> overflow
+(** [read_overflow_single t] parses a single-axis [overflow] value. *)
+
 val pp_flex_direction : flex_direction Pp.t
 (** [pp_flex_direction] is the pretty-printer for [flex_direction]. *)
 

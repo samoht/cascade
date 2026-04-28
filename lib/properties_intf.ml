@@ -77,7 +77,14 @@ type opacity =
   | Var of opacity var
 
 type order = Order_int of int | Order_calc of string | Var of order var
-type overflow = Visible | Hidden | Scroll | Auto | Clip
+
+type overflow =
+  | Visible
+  | Hidden
+  | Scroll
+  | Auto
+  | Clip
+  | Overflow_pair of overflow * overflow
 
 (* Flexbox Types *)
 type flex_direction = Row | Row_reverse | Column | Column_reverse
@@ -532,6 +539,7 @@ type white_space =
   | Pre_wrap
   | Pre_line
   | Break_spaces
+  | Preserve_nowrap
   | Inherit
 
 type word_break = Normal | Break_all | Keep_all | Break_word | Inherit
@@ -1317,6 +1325,8 @@ type content =
   | Normal
   | Open_quote
   | Close_quote
+  | Attr of string
+  | Content_list of content list
   | Var of content var
 
 type content_visibility =

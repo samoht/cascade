@@ -536,7 +536,7 @@ let rec read_font_weight t : font_weight =
     ~default:(fun t ->
       let n = Cursor.number t in
       let weight = int_of_float n in
-      if weight >= 1 && weight <= 1000 then Weight weight
+      if weight >= 1 && weight < 1000 then Weight weight
       else err_invalid_value t "font-weight" (string_of_int weight))
     t
 
@@ -716,7 +716,7 @@ let rec read_text_transform t : text_transform =
     ~calls:[ ("var", read_var) ]
     t
 
-let read_overflow t : overflow =
+let read_overflow_single t : overflow =
   Cursor.enum "overflow"
     [
       ("visible", (Visible : overflow));
@@ -726,6 +726,16 @@ let read_overflow t : overflow =
       ("clip", Clip);
     ]
     t
+
+let read_overflow t : overflow =
+  let first = read_overflow_single t in
+  Cursor.ws t;
+  if Cursor.is_done t then first
+  else
+    let second = read_overflow_single t in
+    Cursor.ws t;
+    Cursor.expect_eof t;
+    Overflow_pair (first, second)
 
 module Cursor_prop = struct
   let read_keyword (t : Cursor.t) : cursor =
@@ -1720,13 +1730,17 @@ let rec read_opacity t : opacity =
     ~default:(fun t -> Opacity_number (Cursor.number t))
     t
 
-let pp_overflow : overflow Pp.t =
+let rec pp_overflow : overflow Pp.t =
  fun ctx -> function
   | Visible -> Pp.string ctx "visible"
   | Hidden -> Pp.string ctx "hidden"
   | Scroll -> Pp.string ctx "scroll"
   | Auto -> Pp.string ctx "auto"
   | Clip -> Pp.string ctx "clip"
+  | Overflow_pair (x, y) ->
+      pp_overflow ctx x;
+      Pp.space ctx ();
+      pp_overflow ctx y
 
 let pp_flex_direction : flex_direction Pp.t =
  fun ctx -> function
@@ -2003,6 +2017,7 @@ let pp_white_space : white_space Pp.t =
   | Pre_wrap -> Pp.string ctx "pre-wrap"
   | Pre_line -> Pp.string ctx "pre-line"
   | Break_spaces -> Pp.string ctx "break-spaces"
+  | Preserve_nowrap -> Pp.string ctx "preserve nowrap"
   | Inherit -> Pp.string ctx "inherit"
 
 let pp_word_break : word_break Pp.t =
@@ -3127,6 +3142,8 @@ let rec pp_content : content Pp.t =
   | String s -> Pp.quoted_string ctx s
   | Open_quote -> Pp.string ctx "open-quote"
   | Close_quote -> Pp.string ctx "close-quote"
+  | Attr name -> Pp.call "attr" Pp.string ctx name
+  | Content_list items -> Pp.list ~sep:Pp.space pp_content ctx items
   | Var v -> pp_var pp_content ctx v
 
 let rec pp_content_visibility : content_visibility Pp.t =
@@ -4164,7 +4181,6 @@ let rec read_border_width t : border_width =
       ("thin", (Thin : border_width));
       ("medium", Medium);
       ("thick", Thick);
-      ("auto", Auto);
       ("max-content", Max_content);
       ("min-content", Min_content);
       ("fit-content", Fit_content);
@@ -4776,6 +4792,7 @@ let read_white_space t : white_space =
       ("pre-wrap", Pre_wrap);
       ("pre-line", Pre_line);
       ("break-spaces", Break_spaces);
+      ("preserve nowrap", Preserve_nowrap);
       ("inherit", Inherit);
     ]
     t
@@ -5002,15 +5019,36 @@ let read_object_fit t : object_fit =
 let rec read_content t : content =
   let read_var t : content = Var (read_var read_content t) in
   let read_string t = String (Cursor.string t) in
-  Cursor.enum_or_calls "content"
-    [
-      ("none", (None : content));
-      ("normal", Normal);
-      ("open-quote", Open_quote);
-      ("close-quote", Close_quote);
-    ]
-    ~calls:[ ("var", read_var) ]
-    ~default:read_string t
+  let read_attr t =
+    Cursor.call "attr" t (fun inner ->
+        Cursor.ws inner;
+        let name = Cursor.ident inner in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        Attr name)
+  in
+  let read_single t =
+    Cursor.enum_or_calls "content"
+      [
+        ("none", (None : content));
+        ("normal", Normal);
+        ("open-quote", Open_quote);
+        ("close-quote", Close_quote);
+      ]
+      ~calls:[ ("var", read_var); ("attr", read_attr) ]
+      ~default:read_string t
+  in
+  let items = Cursor.list ~sep:Cursor.ws ~at_least:1 read_single t in
+  match items with
+  | [ item ] -> item
+  | _ ->
+      if
+        List.exists
+          (fun (item : content) ->
+            match item with None | Normal -> true | _ -> false)
+          items
+      then Cursor.err_invalid t "none/normal cannot be combined in content";
+      Content_list items
 
 let rec read_content_visibility t : content_visibility =
   let read_var t : content_visibility =

@@ -1081,7 +1081,11 @@ and read_container (r : Cursor.t) : statement =
   Cursor.ws r;
   let condition_str = Cursor.drain_until_block_to_string ~trim:true r in
   let content = Cursor.braces (fun inner -> read_block inner) r in
-  Container (container_name, Container.of_string condition_str, content)
+  let condition =
+    try Container.of_string condition_str
+    with Failure msg -> Cursor.err_invalid r msg
+  in
+  Container (container_name, condition, content)
 
 (* CSS Cascade section 6.4.2: a layer name is one or more idents joined by '.'
    with no whitespace around the dot. CSS-wide keywords are reserved. *)
