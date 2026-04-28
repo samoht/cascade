@@ -791,11 +791,13 @@ let read_nth t : nth =
 (** Pretty print nth expression *)
 let pp_nth : nth Pp.t =
  fun ctx -> function
-  (* Tailwind/lightningcss normalise [odd]/[even] to their [an+b] forms.
-     test_selector and spec assert this; selector 39 (which expects [odd]
-     preserved) is the contradictory outlier. *)
-  | Odd -> Pp.string ctx "2n+1"
-  | Even -> Pp.string ctx "2n"
+  (* Source-shape preserving: the parser keeps [Odd]/[Even] for the keyword
+     spellings and [An_plus_b (2, 1)] / [An_plus_b (2, 0)] for the explicit An+B
+     forms, so the printer just emits whichever the author actually wrote.
+     Callers that want one canonical spelling can construct that variant
+     directly. *)
+  | Odd -> Pp.string ctx "odd"
+  | Even -> Pp.string ctx "even"
   | Index n -> Pp.int ctx n
   | An_plus_b (a, b) ->
       if a = 0 then Pp.int ctx b

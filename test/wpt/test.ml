@@ -181,6 +181,45 @@ let collect_cases () =
   in
   html_cases @ css_cases
 
+let expected_vector_files =
+  [
+    "anb-parsing.html";
+    "anb-serialization.html";
+    "at-rule-in-declaration-list.html";
+    "cdc-vs-ident-tokens.html";
+    "charset-is-not-a-rule.html";
+    "custom-property-rule-ambiguity.html";
+    "decimal-points-in-numbers.html";
+    "declarations-trim-whitespace.html";
+    "escaped-eof.html";
+    "ident-three-code-points.html";
+    "inclusive-ranges.html";
+    "input-preprocessing.html";
+    "invalid-nested-rules.html";
+    "missing-semicolon-ref.html";
+    "missing-semicolon.html";
+    "non-ascii-codepoints.html";
+    "serialize-consecutive-tokens.html";
+    "serialize-escape-identifiers.html";
+    "support/missing-semicolon.css";
+    "trailing-braces.html";
+    "unclosed-constructs.html";
+    "unclosed-url-at-eof.html";
+    "unicode-range-selector.html";
+    "urange-parsing.html";
+    "url-whitespace-consumption.html";
+    "var-with-blocks.html";
+    "whitespace.html";
+  ]
+
+let wpt_vector_manifest () =
+  let actual =
+    List.sort compare
+      (list_html_files vectors_dir @ list_support_css vectors_dir)
+  in
+  Alcotest.(check (list string))
+    "imported WPT css-syntax vector manifest" expected_vector_files actual
+
 (** {1 Alcotest wiring} *)
 
 (* One CSS input -> one test case. For a full [<style>] body or linked CSS file
@@ -666,7 +705,11 @@ let serialize_consecutive_tokens =
 
 let suite () =
   ( "wpt css-syntax",
-    extracted_cases () @ non_ascii_codepoints @ unclosed_constructs
+    [
+      Alcotest.test_case "imported WPT vector manifest" `Quick
+        wpt_vector_manifest;
+    ]
+    @ extracted_cases () @ non_ascii_codepoints @ unclosed_constructs
     @ whitespace_html @ anb_parsing @ anb_serialization
     @ serialize_consecutive_tokens )
 

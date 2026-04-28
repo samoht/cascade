@@ -2132,6 +2132,67 @@ let spec_current_at_rules () =
   neg_cursor read_stylesheet "@container () { .x { color: red } }";
   neg_cursor read_stylesheet "@page : { margin: 1cm }"
 
+let spec_font_palette_values_descriptor_matrix () =
+  List.iter
+    (fun (expected, input) -> check_stylesheet ~expected input)
+    [
+      ( "@font-palette-values \
+         --brand{font-family:Brand;base-palette:1;override-colors:0 red,1 \
+         color(display-p3 1 0 0)}",
+        "@font-palette-values --brand { font-family: Brand; base-palette: 1; \
+         override-colors: 0 red, 1 color(display-p3 1 0 0); }" );
+      ( "@font-palette-values --dark{font-family:\"Color \
+         Font\",Brand;base-palette:dark}",
+        "@font-palette-values --dark { font-family: \"Color Font\", Brand; \
+         base-palette: dark; }" );
+    ];
+  List.iter
+    (neg_cursor read_stylesheet)
+    [
+      "@font-palette-values brand { font-family: Brand; base-palette: 1 }";
+      "@font-palette-values --brand;";
+      "@font-palette-values --brand { font-family: Brand; override-colors: -1 \
+       red }";
+    ]
+
+let spec_view_transition_descriptor_matrix () =
+  List.iter
+    (fun (expected, input) -> check_stylesheet ~expected input)
+    [
+      ( "@view-transition{navigation:auto}",
+        "@view-transition { navigation: auto; }" );
+      ( "@view-transition{navigation:none}",
+        "@view-transition { navigation: none; }" );
+    ];
+  List.iter
+    (neg_cursor read_stylesheet)
+    [
+      "@view-transition page { navigation: auto; }";
+      "@view-transition;";
+      "@view-transition { navigation: always; }";
+    ]
+
+let spec_position_try_descriptor_matrix () =
+  List.iter
+    (fun (expected, input) -> check_stylesheet ~expected input)
+    [
+      ( "@position-try \
+         --below{top:anchor(bottom);left:anchor(center);width:anchor-size(width)}",
+        "@position-try --below { top: anchor(bottom); left: anchor(center); \
+         width: anchor-size(width); }" );
+      ( "@position-try \
+         --inline-start{inset-inline-end:anchor(start);margin-inline:1rem}",
+        "@position-try --inline-start { inset-inline-end: anchor(start); \
+         margin-inline: 1rem; }" );
+    ];
+  List.iter
+    (neg_cursor read_stylesheet)
+    [
+      "@position-try default { top: 0; }";
+      "@position-try --fallback;";
+      "@position-try --fallback { @media screen { .x { color: red } } }";
+    ]
+
 let test_spec_snapshot_tracking_vectors () =
   (* Snapshot tracking vectors span stable cross-module syntax from recent CSS
      snapshots. The matrix tracks exact snapshot membership; these tests make
@@ -2351,6 +2412,15 @@ let additional_tests =
       `Quick,
       custom_property_boundary );
     ("spec current-work at-rules", `Quick, spec_current_at_rules);
+    ( "spec font-palette-values descriptor matrix",
+      `Quick,
+      spec_font_palette_values_descriptor_matrix );
+    ( "spec view-transition descriptor matrix",
+      `Quick,
+      spec_view_transition_descriptor_matrix );
+    ( "spec position-try descriptor matrix",
+      `Quick,
+      spec_position_try_descriptor_matrix );
     ( "spec snapshot tracking vectors",
       `Quick,
       test_spec_snapshot_tracking_vectors );
