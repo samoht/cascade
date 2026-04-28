@@ -4851,6 +4851,7 @@ type 'a syntax =
   | Hash : 'a syntax -> 'a list syntax
   | Question : 'a syntax -> 'a option syntax
   | Brackets : string -> string syntax
+  | Ident_keyword : string -> string syntax
       (** Type-safe syntax descriptors for CSS [@property] rules. *)
 
 val property :

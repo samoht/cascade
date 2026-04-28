@@ -49,6 +49,7 @@ let rec pp_syntax_inner : type a. a syntax Pp.t =
         Pp.string ctx "[";
         Pp.string ctx s;
         Pp.string ctx "]")
+  | Ident_keyword name -> Pp.string ctx name
 
 and pp_syntax : type a. a syntax Pp.t =
  fun ctx syn ->
@@ -97,11 +98,32 @@ let rec pp_value : type a. a syntax -> a Pp.t =
   | Question syn -> (
       match value with None -> () | Some v -> pp_value syn ctx v)
   | Brackets _ -> Pp.string ctx value
+  | Ident_keyword _ -> Pp.string ctx value
 
 (* CSS @property §3 known [<syntax-type-name>]s. [<transform-list>] has no typed
    counterpart in [Values]; carry it through [Brackets "<transform-list>"] so
    the descriptor round-trips and the initial-value reader treats it as
    universal. *)
+
+(* CSS Properties and Values 4 §2 [<syntax>] grammar: each component is either a
+   typed [<...>] reference, the universal [*], a bracketed sub-grammar, or a
+   plain ident keyword. Identifiers must follow the [<custom-ident>] shape so we
+   can distinguish stray punctuation from valid keywords. *)
+let is_ident_start c =
+  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_' || c = '-'
+
+let is_ident_cont c = is_ident_start c || (c >= '0' && c <= '9')
+
+let is_ident_keyword s =
+  String.length s > 0
+  && is_ident_start s.[0]
+  &&
+  let rec loop i =
+    if i = String.length s then true
+    else if is_ident_cont s.[i] then loop (i + 1)
+    else false
+  in
+  loop 1
 
 (** Read a CSS syntax descriptor from input *)
 let read_simple_syntax_component r s : any_syntax =
@@ -124,6 +146,7 @@ let read_simple_syntax_component r s : any_syntax =
   | s when String.length s > 2 && s.[0] = '[' && s.[String.length s - 1] = ']'
     ->
       Syntax (Brackets (String.sub s 1 (String.length s - 2)))
+  | s when is_ident_keyword s -> Syntax (Ident_keyword s)
   | s -> Cursor.err_invalid r ("Unsupported CSS syntax: " ^ s)
 
 (* Apply a [+]/[#]/[?] modifier to a typed syntax. Carries through whatever the
@@ -152,15 +175,24 @@ let split_syntax_modifier s : string * char option =
 let read_syntax (r : Cursor.t) : any_syntax =
   (* CSS @property syntax values must be quoted strings per spec *)
   let s = Cursor.string r in
-  if String.contains s '|' then
-    match List.map String.trim (String.split_on_char '|' s) with
-    | [ "<length>"; "<percentage>" ] | [ "<percentage>"; "<length>" ] ->
-        Syntax (Or (Length, Percentage))
-    | s when List.mem "auto" s -> assert false
-    | _ -> Cursor.err_invalid r ("Unsupported CSS composite syntax: " ^ s)
-  else
-    let body, modifier = split_syntax_modifier s in
+  let read_component part =
+    let body, modifier = split_syntax_modifier (String.trim part) in
+    if body = "" then Cursor.err_invalid r "empty CSS syntax component";
     apply_syntax_modifier r (read_simple_syntax_component r body) modifier
+  in
+  if String.contains s '|' then
+    let parts = String.split_on_char '|' s in
+    let components = List.map read_component parts in
+    match components with
+    | [] | [ _ ] ->
+        (* split_on_char never returns empty list; the single-element case
+           cannot reach here because '|' is in [s]. *)
+        Cursor.err_invalid r "invalid CSS syntax disjunction"
+    | first :: rest ->
+        List.fold_left
+          (fun (Syntax left) (Syntax right) -> Syntax (Or (left, right)))
+          first rest
+  else read_component s
 
 (** Read a value according to its syntax type *)
 let rec read_value : type a. Cursor.t -> a syntax -> a =
@@ -207,6 +239,13 @@ let rec read_value : type a. Cursor.t -> a syntax -> a =
   | Question syn ->
       (* Optional value - use Cursor.option for safe parsing *)
       Cursor.option (fun r -> read_value r syn) reader
+  | Ident_keyword name ->
+      let got = Cursor.ident reader in
+      if got = name then name
+      else
+        Cursor.err_invalid reader
+          (String.concat ""
+             [ "expected keyword '"; name; "', got '"; got; "'" ])
 
 (** {1 Meta handling} *)
 
