@@ -6073,15 +6073,20 @@ let rec read_font_feature_settings t : font_feature_settings =
   in
   let read_feature t =
     let tag_content = Cursor.string t in
+    if String.length tag_content <> 4 then
+      Cursor.err t "font-feature-settings tag must be exactly 4 characters";
     let tag = "\"" ^ tag_content ^ "\"" in
     Cursor.ws t;
     match Cursor.option Cursor.number t with
-    | Some n -> tag ^ " " ^ string_of_int (int_of_float n)
+    | Some n ->
+        if n <> 0.0 && n <> 1.0 then
+          Cursor.err t "font-feature-settings value must be 0 or 1";
+        tag ^ " " ^ string_of_int (int_of_float n)
     | None -> (
         match Cursor.option Cursor.ident t with
         | Some "on" -> tag ^ " on"
         | Some "off" -> tag ^ " off"
-        | Some v -> tag ^ " " ^ v
+        | Some _ -> Cursor.err t "font-feature-settings value must be on/off"
         | None -> tag)
   in
   let read_feature_list t =
@@ -6175,11 +6180,14 @@ let read_steps_direction t : steps_direction =
 module Timing_function = struct
   let read_linear_function t : timing_function =
     Cursor.call "linear" t (fun t ->
-        Linear_function (Cursor.consume_remaining_to_string ~trim:true t))
+        let body = Cursor.consume_remaining_to_string ~trim:true t in
+        if body = "" then Cursor.err t "linear() requires at least one stop";
+        Linear_function body)
 
   let read_steps t : timing_function =
     Cursor.call "steps" t (fun t ->
         let n = int_of_float (Cursor.number t) in
+        if n <= 0 then Cursor.err t "steps() requires a positive step count";
         let kind =
           Cursor.option
             (fun t ->
