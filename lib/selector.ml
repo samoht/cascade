@@ -1447,11 +1447,12 @@ let elem ctx name = Pp.string ctx ("::" ^ name)
 let vendor ctx name = Pp.string ctx (":-" ^ name)
 let vendor_elem ctx name = Pp.string ctx ("::-" ^ name)
 
-(* CSS Selectors 4 §3.7 keeps both [:before] (CSS 2.1) and [::before] (CSS 3+)
-   as valid output. Cascade emits the modern double-colon form regardless of
-   [minify]; callers that need the legacy single-colon form for IE 8 / 9
-   compatibility can post-process the output. *)
-let legacy_elem ctx name = Pp.string ctx ("::" ^ name)
+(* CSS Selectors 4 §3.7 keeps [:before] (CSS 2.1) as a deprecated compatibility
+   spelling for the four original pseudo-elements. In minified output we use it
+   because it is shorter; otherwise emit the modern double-colon pseudo-element
+   syntax. *)
+let legacy_elem ctx name =
+  Pp.string ctx ((if Pp.minified ctx then ":" else "::") ^ name)
 
 let func ctx name pp_content value =
   pp_func ctx ~prefix:":" name pp_content value

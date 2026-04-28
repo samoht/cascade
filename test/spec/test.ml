@@ -136,12 +136,12 @@ let selectors_pseudo_classes () =
   roundtrip ":nth-child(odd) { color: red }" ":nth-child(odd){color:red}";
   roundtrip ":not(.foo) { color: red }" ":not(.foo){color:red}"
 
-(* SS 8.2 - Pseudo-elements use Selectors 4 double-colon syntax in canonical
-   output. Legacy single-colon input remains accepted elsewhere. *)
+(* SS 8.2 - Pseudo-elements use the shortest valid legacy spelling in minified
+   output for the four CSS1/CSS2 compatibility pseudo-elements. *)
 let selectors_pseudo_elements () =
-  roundtrip "::before { content: '' }" "::before{content:\"\"}";
-  roundtrip "::after { content: '' }" "::after{content:\"\"}";
-  roundtrip "::first-line { color: red }" "::first-line{color:red}"
+  roundtrip "::before { content: '' }" ":before{content:\"\"}";
+  roundtrip "::after { content: '' }" ":after{content:\"\"}";
+  roundtrip "::first-line { color: red }" ":first-line{color:red}"
 
 (* SS 15 - Combinators *)
 let selectors_combinators () =
@@ -375,8 +375,8 @@ let selectors_compound () =
   roundtrip "div#main { display: flex }" "div#main{display:flex}";
   (* Element + pseudo-class *)
   roundtrip "a:hover { color: red }" "a:hover{color:red}";
-  (* Element + pseudo-element: uses legacy single-colon form *)
-  roundtrip "p::first-line { color: blue }" "p::first-line{color:blue}";
+  (* Element + pseudo-element: minified output uses legacy single-colon form. *)
+  roundtrip "p::first-line { color: blue }" "p:first-line{color:blue}";
   (* Multiple compound: element + class + pseudo *)
   roundtrip "a.link:hover { color: red }" "a.link:hover{color:red}"
 
