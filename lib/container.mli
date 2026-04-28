@@ -9,6 +9,7 @@ type t =
   | Named of string * t
       (** Named container with condition: [@container name (condition)] *)
   | Custom of Media.t  (** Structured condition beyond the typed shorthands. *)
+  | Raw of string  (** Valid container-specific query syntax. *)
 
 val to_string : t -> string
 (** [to_string t] converts a container condition to its CSS string
