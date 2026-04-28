@@ -556,8 +556,6 @@ let consume_at_start r =
   if would_start_ident_sequence r then At_keyword (consume_ident_sequence r)
   else Delim "@"
 
-(* CSS Syntax 4.3.2: skip a run of comments without consuming surrounding
-   whitespace. *)
 (* 4.3.1 Consume a token. *)
 let next_token ?(force_url_function = false) r =
   match Reader.peek r with

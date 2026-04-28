@@ -752,7 +752,7 @@ let parse_query_str s =
   let first = parse_single_query sc in
   skip_ws sc;
   if at_end sc then first
-  else if peek sc = Some ',' then
+  else if peek sc = Some ',' then (
     let rec loop acc =
       match peek sc with
       | Some ',' ->
@@ -763,7 +763,15 @@ let parse_query_str s =
       | _ -> List.rev acc
     in
     let rest = loop [] in
-    List (first :: rest)
+    skip_ws sc;
+    if not (at_end sc) then
+      failwith
+        (String.concat ""
+           [
+             "trailing content in media query: ";
+             String.sub sc.s sc.pos (String.length sc.s - sc.pos);
+           ]);
+    List (first :: rest))
   else
     failwith
       (String.concat ""

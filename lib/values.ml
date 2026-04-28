@@ -221,14 +221,6 @@ let pp_unit ?(always = true) ctx f suffix =
     Pp.string ctx (Pp.float_to_string ~drop_leading_zero:true f);
     Pp.string ctx suffix)
 
-(* Like pp_unit but always drops leading zeros (e.g., 0.5 -> .5) Used for
-   durations which always use compact format in Tailwind *)
-let pp_unit_compact ctx f suffix =
-  if f = 0. then Pp.char ctx '0'
-  else (
-    Pp.string ctx (Pp.float_to_string ~drop_leading_zero:true f);
-    Pp.string ctx suffix)
-
 (** Try to evaluate a calc expression containing only numbers to a float.
     Returns None if the expression contains variables or non-numeric values. *)
 let rec eval_numeric_calc : type a. a calc -> float option = function
@@ -1009,43 +1001,17 @@ and pp_color : color Pp.t =
   | Mix { in_space; hue; color1; percent1; color2; percent2 } ->
       pp_color_mix ctx in_space hue color1 percent1 color2 percent2
 
-(* Helper to estimate the string length of a duration value in minified format.
-   Used for deciding whether to output milliseconds or seconds. *)
-let duration_str_len f unit_suffix =
-  (* Simple estimation: format the number and add unit length. In minified
-     format, leading zeros before decimal are dropped: 0.123 -> .123 *)
-  let num_str =
-    if f = floor f then string_of_int (int_of_float f)
-    else
-      let s = Float.to_string f in
-      (* Check if it starts with "0." and drop the leading zero *)
-      if String.length s >= 2 && s.[0] = '0' && s.[1] = '.' then
-        String.sub s 1 (String.length s - 1)
-      else s
-  in
-  String.length num_str + String.length unit_suffix
-
 let rec pp_duration : duration Pp.t =
  fun ctx -> function
-  | Ms f ->
-      (* Normalize to seconds if result is shorter or equal (like Tailwind)
-         e.g., 150ms -> .15s (4 chars vs 5 chars - seconds is shorter) 1500ms ->
-         1.5s (4 chars vs 6 chars - seconds is shorter) 123ms -> .123s (5 chars
-         each - prefer seconds like Tailwind) 50ms -> 50ms (4 chars vs 5 chars -
-         keep ms) *)
-      let seconds = f /. 1000. in
-      let ms_len = duration_str_len f "ms" in
-      let s_len = duration_str_len seconds "s" in
-      if s_len <= ms_len then pp_unit_compact ctx seconds "s"
-      else pp_unit_compact ctx f "ms"
-  | S f -> pp_unit_compact ctx f "s"
+  | Ms f -> pp_unit ctx f "ms"
+  | S f -> pp_unit ctx f "s"
   | Var v -> pp_var pp_duration ctx v
   | Calc c -> pp_calc pp_duration_in_calc ctx c
 
 and pp_duration_in_calc : duration Pp.t =
  fun ctx -> function
-  | Ms f -> pp_unit_compact ctx f "ms"
-  | S f -> pp_unit_compact ctx f "s"
+  | Ms f -> pp_unit ctx f "ms"
+  | S f -> pp_unit ctx f "s"
   | Var v -> pp_var pp_duration ctx v
   | Calc c -> pp_calc pp_duration_in_calc ctx c
 
@@ -1711,16 +1677,20 @@ let read_hsl t : color =
   let h = read_hue t in
   Cursor.ws t;
   (* Handle comma or space separator after hue *)
-  ignore (Cursor.comma_opt t : bool);
+  let comma_separated = Cursor.comma_opt t in
   Cursor.ws t;
   let s = read_percentage_float t in
   Cursor.ws t;
-  ignore (Cursor.comma_opt t : bool);
+  if comma_separated then Cursor.comma t
+  else if Cursor.comma_opt t then
+    Cursor.err_invalid t "mixed comma and space separated hsl() syntax";
   Cursor.ws t;
   let l = read_percentage_float t in
   let a =
     Cursor.ws t;
-    if Cursor.comma_opt t then read_alpha t
+    if comma_separated && Cursor.comma_opt t then read_alpha t
+    else if (not comma_separated) && Cursor.comma_opt t then
+      Cursor.err_invalid t "mixed comma and space separated hsl() syntax"
     else if Cursor.peek_delim t = Some '/' then read_optional_alpha t
     else None
   in
@@ -1762,6 +1732,7 @@ let read_oklch t : color =
   let h = read_hue t in
   let alpha = read_optional_alpha t in
   Cursor.ws t;
+  Cursor.expect_eof t;
   Oklch { l = Pct l; c; h; alpha }
 
 let read_number_or_none t : float option =
@@ -1787,6 +1758,7 @@ let read_oklab t : color =
   let b = read_number_or_none t in
   let alpha = read_optional_alpha t in
   Cursor.ws t;
+  Cursor.expect_eof t;
   Oklab { l = Pct l; a; b; alpha }
 
 let read_lab t : color =
@@ -1796,6 +1768,7 @@ let read_lab t : color =
   let b = read_number_or_none t in
   let alpha = read_optional_alpha t in
   Cursor.ws t;
+  Cursor.expect_eof t;
   Lab { l = Pct l; a; b; alpha }
 
 let read_lch t : color =
@@ -1805,6 +1778,7 @@ let read_lch t : color =
   in
   let alpha = read_optional_alpha t in
   Cursor.ws t;
+  Cursor.expect_eof t;
   Lch { l = Pct l; c; h; alpha }
 
 let read_color_function t : color =
@@ -1951,7 +1925,7 @@ and read_relative_rgb t : color =
     |> normalize_relative_color_tail
   in
   if tail = "" then Cursor.err_expected t "relative rgb channels";
-  if relative_color_channel_count tail < 3 then
+  if relative_color_channel_count tail <> 3 then
     Cursor.err_expected t "relative rgb channels";
   let origin = Pp.to_string ~minify:true pp_color origin in
   Relative_rgb ("from " ^ origin ^ " " ^ tail)
@@ -1970,6 +1944,7 @@ and read_light_dark t : color =
   Cursor.ws t;
   let dark = read_color t in
   Cursor.ws t;
+  Cursor.expect_eof t;
   Light_dark (light, dark)
 
 and color_parsers =
@@ -2001,34 +1976,41 @@ and color_parsers =
 
 and read_color t : color =
   Cursor.ws t;
-  match Cursor.peek t with
-  | Some (Component.Preserved { kind = Token.Hash { value; _ }; _ }) ->
-      Cursor.skip t;
-      let len = String.length value in
-      let is_hex c =
-        ('0' <= c && c <= '9')
-        || ('a' <= c && c <= 'f')
-        || ('A' <= c && c <= 'F')
-      in
-      if not (len = 3 || len = 4 || len = 6 || len = 8) then
-        Cursor.err_invalid t ("hex color length: " ^ string_of_int len)
-      else if not (String.for_all is_hex value) then
-        Cursor.err_invalid t ("hex color digits: " ^ value)
-      else Hex { hash = true; value }
-  | Some (Component.Func ({ node = { name; _ }; _ } as fn)) -> (
-      match List.assoc_opt name color_parsers with
-      | Some parser ->
-          Cursor.skip t;
-          parser (Cursor.func_sub fn t)
-      | None when name = "var" -> Var (read_var read_color t)
-      | None -> Cursor.err t ("unknown color function: " ^ name))
-  | Some (Component.Preserved { kind = Token.Ident ident; _ }) -> (
-      Cursor.skip t;
-      (* CSS color keywords are case-insensitive. *)
-      match read_color_keyword_from_string (String.lowercase_ascii ident) with
-      | Some color -> color
-      | None -> Cursor.err t ("unknown color: " ^ ident))
-  | _ -> Cursor.err t "color"
+  let color =
+    match Cursor.peek t with
+    | Some (Component.Preserved { kind = Token.Hash { value; _ }; _ }) ->
+        Cursor.skip t;
+        let len = String.length value in
+        let is_hex c =
+          ('0' <= c && c <= '9')
+          || ('a' <= c && c <= 'f')
+          || ('A' <= c && c <= 'F')
+        in
+        if not (len = 3 || len = 4 || len = 6 || len = 8) then
+          Cursor.err_invalid t ("hex color length: " ^ string_of_int len)
+        else if not (String.for_all is_hex value) then
+          Cursor.err_invalid t ("hex color digits: " ^ value)
+        else Hex { hash = true; value }
+    | Some (Component.Func ({ node = { name; _ }; _ } as fn)) -> (
+        match List.assoc_opt name color_parsers with
+        | Some parser ->
+            Cursor.skip t;
+            parser (Cursor.func_sub fn t)
+        | None when name = "var" -> Var (read_var read_color t)
+        | None -> Cursor.err t ("unknown color function: " ^ name))
+    | Some (Component.Preserved { kind = Token.Ident ident; _ }) -> (
+        Cursor.skip t;
+        (* CSS color keywords are case-insensitive. *)
+        match read_color_keyword_from_string (String.lowercase_ascii ident) with
+        | Some color -> color
+        | None -> Cursor.err t ("unknown color: " ^ ident))
+    | _ -> Cursor.err t "color"
+  in
+  Cursor.ws t;
+  (match Cursor.peek_delim t with
+  | Some '/' -> Cursor.err_invalid t "unexpected color alpha separator"
+  | _ -> ());
+  color
 
 and read_color_keyword_from_string keyword : color option =
   match keyword with
@@ -2276,73 +2258,82 @@ let rec read_time t : duration =
 (** Read a number value *)
 let rec read_number t : number =
   Cursor.ws t;
-  (* Check for var() *)
-  if Cursor.looking_at t "var(" then Var (read_var read_number t)
-  else if Cursor.looking_at t "calc(" then Calc (read_calc read_number t)
-  else if Cursor.looking_at_func "round" t then
-    Cursor.call "round" t (fun inner ->
-        let strategy = Cursor.ident inner in
-        Cursor.ws inner;
-        Cursor.comma inner;
-        let value = read_number inner in
-        Cursor.ws inner;
-        Cursor.comma inner;
-        let step = read_number inner in
-        Cursor.ws inner;
-        Cursor.expect_eof inner;
-        Round (strategy, value, step))
-  else if Cursor.looking_at_func "mod" t then
-    Cursor.call "mod" t (fun inner ->
-        let a = read_number inner in
-        Cursor.ws inner;
-        Cursor.comma inner;
-        let b = read_number inner in
-        Cursor.ws inner;
-        Cursor.expect_eof inner;
-        Mod (a, b))
-  else if Cursor.looking_at_func "hypot" t then
-    Cursor.call "hypot" t (fun inner ->
-        let a = read_number inner in
-        Cursor.ws inner;
-        Cursor.comma inner;
-        let b = read_number inner in
-        Cursor.ws inner;
-        Cursor.expect_eof inner;
-        Hypot (a, b))
-  else if Cursor.looking_at_func "pow" t then
-    Cursor.call "pow" t (fun inner ->
-        let a = read_number inner in
-        Cursor.ws inner;
-        Cursor.comma inner;
-        let b = read_number inner in
-        Cursor.ws inner;
-        Cursor.expect_eof inner;
-        Pow (a, b))
-  else if Cursor.looking_at_func "sqrt" t then
-    Cursor.call "sqrt" t (fun inner ->
-        let value = read_number inner in
-        Cursor.ws inner;
-        Cursor.expect_eof inner;
-        Sqrt value)
-  else if Cursor.looking_at_func "abs" t then
-    Cursor.call "abs" t (fun inner ->
-        let value = read_number inner in
-        Cursor.ws inner;
-        Cursor.expect_eof inner;
-        Abs value)
-  else if Cursor.looking_at_func "sign" t then
-    Cursor.call "sign" t (fun inner ->
-        let value = read_number inner in
-        Cursor.ws inner;
-        Cursor.expect_eof inner;
-        Sign value)
-  else if Cursor.looking_at_func "sin" t then
-    Cursor.call "sin" t (fun inner ->
-        let value = read_angle inner in
-        Cursor.ws inner;
-        Cursor.expect_eof inner;
-        Sin value)
-  else Num (Cursor.number t)
+  let number =
+    (* Check for var() *)
+    if Cursor.looking_at t "var(" then Var (read_var read_number t)
+    else if Cursor.looking_at t "calc(" then Calc (read_calc read_number t)
+    else if Cursor.looking_at_func "round" t then
+      Cursor.call "round" t (fun inner ->
+          let strategy = Cursor.ident inner in
+          Cursor.ws inner;
+          Cursor.comma inner;
+          let value = read_number inner in
+          Cursor.ws inner;
+          Cursor.comma inner;
+          let step = read_number inner in
+          Cursor.ws inner;
+          Cursor.expect_eof inner;
+          Round (strategy, value, step))
+    else if Cursor.looking_at_func "mod" t then
+      Cursor.call "mod" t (fun inner ->
+          let a = read_number inner in
+          Cursor.ws inner;
+          Cursor.comma inner;
+          let b = read_number inner in
+          Cursor.ws inner;
+          Cursor.expect_eof inner;
+          Mod (a, b))
+    else if Cursor.looking_at_func "hypot" t then
+      Cursor.call "hypot" t (fun inner ->
+          let a = read_number inner in
+          Cursor.ws inner;
+          Cursor.comma inner;
+          let b = read_number inner in
+          Cursor.ws inner;
+          Cursor.expect_eof inner;
+          Hypot (a, b))
+    else if Cursor.looking_at_func "pow" t then
+      Cursor.call "pow" t (fun inner ->
+          let a = read_number inner in
+          Cursor.ws inner;
+          Cursor.comma inner;
+          let b = read_number inner in
+          Cursor.ws inner;
+          Cursor.expect_eof inner;
+          Pow (a, b))
+    else if Cursor.looking_at_func "sqrt" t then
+      Cursor.call "sqrt" t (fun inner ->
+          let value = read_number inner in
+          Cursor.ws inner;
+          Cursor.expect_eof inner;
+          Sqrt value)
+    else if Cursor.looking_at_func "abs" t then
+      Cursor.call "abs" t (fun inner ->
+          let value = read_number inner in
+          Cursor.ws inner;
+          Cursor.expect_eof inner;
+          Abs value)
+    else if Cursor.looking_at_func "sign" t then
+      Cursor.call "sign" t (fun inner ->
+          let value = read_number inner in
+          Cursor.ws inner;
+          Cursor.expect_eof inner;
+          Sign value)
+    else if Cursor.looking_at_func "sin" t then
+      Cursor.call "sin" t (fun inner ->
+          let value = read_angle inner in
+          Cursor.ws inner;
+          Cursor.expect_eof inner;
+          Sin value)
+    else Num (Cursor.number t)
+  in
+  Cursor.ws t;
+  (match Cursor.peek t with
+  | Some (Component.Func _)
+  | Some (Component.Preserved { kind = Token.Number_tok _; _ }) ->
+      Cursor.err_invalid t "unexpected tokens after number"
+  | _ -> ());
+  number
 
 (** Read transition_behavior value *)
 let read_transition_behavior t : transition_behavior =

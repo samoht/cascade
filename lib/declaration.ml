@@ -278,17 +278,20 @@ let read_position_try_fallback t =
       else Cursor.err_invalid t ("expected dashed ident, got: " ^ ident)
 
 let read_shape_outside t =
-  let raw = Cursor.consume_to_decl_end ~trim:true t in
-  let lower = String.lowercase_ascii raw in
-  if lower = "none" then raw
-  else if
-    String.length lower >= 8
-    && (String.sub lower 0 7 = "circle(" || String.sub lower 0 6 = "inset(")
-  then
-    if String.ends_with ~suffix:"()" lower then
+  let raw = Cursor.lookahead (Cursor.consume_to_decl_end ~trim:true) t in
+  match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Ident "none"; _ }) ->
+      Cursor.skip t;
+      raw
+  | Some
+      (Component.Func
+         { node = { name = "circle" | "inset"; arguments; terminated }; _ })
+    when terminated && arguments <> [] ->
+      ignore (Cursor.consume_to_decl_end ~trim:true t);
+      raw
+  | Some (Component.Func { node = { name = "circle" | "inset"; _ }; _ }) ->
       Cursor.err_invalid t "empty basic shape"
-    else raw
-  else Cursor.err_invalid t ("invalid shape-outside: " ^ raw)
+  | _ -> Cursor.err_invalid t ("invalid shape-outside: " ^ raw)
 
 let read_font_shorthand t =
   let raw = Cursor.consume_to_decl_end ~trim:true t in
@@ -333,15 +336,20 @@ let read_font_shorthand t =
 
 (* Custom parser for grid-template-areas: reads multiple quoted strings *)
 let read_grid_template_areas t =
-  let rec read_strings acc =
-    Cursor.ws t;
-    match Cursor.string_opt t with
-    | None -> String.concat " " (List.rev acc)
-    | Some s ->
-        let quoted_s = "\"" ^ s ^ "\"" in
-        read_strings (quoted_s :: acc)
-  in
-  read_strings []
+  match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Ident "none"; _ }) ->
+      Cursor.skip t;
+      "none"
+  | _ ->
+      let rec read_strings acc =
+        Cursor.ws t;
+        match Cursor.string_opt t with
+        | None -> String.concat " " (List.rev acc)
+        | Some s ->
+            let quoted_s = "\"" ^ s ^ "\"" in
+            read_strings (quoted_s :: acc)
+      in
+      read_strings []
 
 (* Custom parser for grid-template-columns/rows: handles both single values and
    lists *)
@@ -890,8 +898,20 @@ let read_value (type a) (prop : a property) t : declaration =
   (* Additional grid properties *)
   | Grid_template -> v Grid_template (read_grid_template t)
   | Grid_area -> v Grid_area (read_untyped_value t)
-  | Grid_auto_columns -> v Grid_auto_columns (read_grid_template t)
-  | Grid_auto_rows -> v Grid_auto_rows (read_grid_template t)
+  | Grid_auto_columns ->
+      let value = read_grid_template t in
+      (match value with
+      | Subgrid | Masonry ->
+          Cursor.err_invalid t "grid-auto track cannot be subgrid or masonry"
+      | _ -> ());
+      v Grid_auto_columns value
+  | Grid_auto_rows ->
+      let value = read_grid_template t in
+      (match value with
+      | Subgrid | Masonry ->
+          Cursor.err_invalid t "grid-auto track cannot be subgrid or masonry"
+      | _ -> ());
+      v Grid_auto_rows value
   | Grid_column -> v Grid_column (read_grid_line_pair t)
   | Grid_row -> v Grid_row (read_grid_line_pair t)
   (* Border inline/block properties *)
@@ -1031,6 +1051,7 @@ let read_value (type a) (prop : a property) t : declaration =
            t)
   | Animation_timeline -> v Animation_timeline (read_animation_timeline t)
   | Animation_range -> v Animation_range (read_animation_range t)
+  | Scroll_timeline -> v Scroll_timeline (read_timeline_shorthand t)
   | View_transition_name ->
       (* [none | <custom-ident>] - a single ident; reject extra tokens. *)
       let s =
@@ -1049,7 +1070,6 @@ let read_value (type a) (prop : a property) t : declaration =
            t)
   | Contain_intrinsic_size -> v Contain_intrinsic_size (read_untyped_value t)
   | Margin_trim -> v Margin_trim (read_margin_trim t)
-  | Mask_mode_l4 -> v Mask_mode_l4 (read_untyped_value t)
   | Offset_path -> v Offset_path (read_untyped_value t)
   | Offset_distance -> v Offset_distance (read_non_negative_length_percentage t)
   | Font_size_adjust -> v Font_size_adjust (read_font_size_adjust t)
@@ -1072,6 +1092,7 @@ let read_value (type a) (prop : a property) t : declaration =
         (Cursor.enum "view-timeline-axis"
            [ ("block", "block"); ("inline", "inline"); ("x", "x"); ("y", "y") ]
            t)
+  | View_timeline -> v View_timeline (read_timeline_shorthand t)
   | Timeline_scope -> v Timeline_scope (read_untyped_value t)
   (* Transform properties *)
   | Perspective -> v Perspective (read_length ~with_keywords:false t)
@@ -1100,9 +1121,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Break_before -> v Break_before (read_break_value t)
   | Break_after -> v Break_after (read_break_value t)
   | Break_inside -> v Break_inside (read_break_inside_value t)
-  | Page_break_before -> v Page_break_before (read_page_break_value t)
-  | Page_break_after -> v Page_break_after (read_page_break_value t)
-  | Page_break_inside -> v Page_break_inside (read_page_break_inside_value t)
+  | Page_size -> v Page_size (read_page_size t)
   | Columns -> v Columns (read_columns_value t)
   (* Background properties *)
   | Background_attachment ->
@@ -1156,6 +1175,9 @@ let read_value (type a) (prop : a property) t : declaration =
   | Scroll_margin_inline_end -> v Scroll_margin_inline_end (read_length t)
   | Scroll_margin_block ->
       let lengths, _ = Cursor.many (fun r -> read_length r) t in
+      (match lengths with
+      | [ Zero; Zero ] -> Cursor.err_invalid t "duplicate zero scroll margin"
+      | _ -> ());
       v Scroll_margin_block lengths
   | Scroll_margin_block_start -> v Scroll_margin_block_start (read_length t)
   | Scroll_margin_block_end -> v Scroll_margin_block_end (read_length t)
@@ -1853,9 +1875,23 @@ let isolation value = v Isolation value
 let break_before value = v Break_before value
 let break_after value = v Break_after value
 let break_inside value = v Break_inside value
-let page_break_before value = v Page_break_before value
-let page_break_after value = v Page_break_after value
-let page_break_inside value = v Page_break_inside value
+
+let break_of_page_break (value : page_break_value) : break_value =
+  match value with
+  | Auto -> Auto
+  | Always -> Page
+  | Avoid -> Avoid
+  | Left -> Left
+  | Right -> Right
+  | Inherit -> Inherit
+
+let break_inside_of_page_break (value : page_break_inside_value) :
+    break_inside_value =
+  match value with Auto -> Auto | Avoid -> Avoid | Inherit -> Inherit
+
+let page_break_before value = v Break_before (break_of_page_break value)
+let page_break_after value = v Break_after (break_of_page_break value)
+let page_break_inside value = v Break_inside (break_inside_of_page_break value)
 let columns value = v Columns value
 let outline value = v Outline value
 let outline_offset len = v Outline_offset len

@@ -156,6 +156,7 @@ let read_syntax (r : Cursor.t) : any_syntax =
     match List.map String.trim (String.split_on_char '|' s) with
     | [ "<length>"; "<percentage>" ] | [ "<percentage>"; "<length>" ] ->
         Syntax (Or (Length, Percentage))
+    | s when List.mem "auto" s -> assert false
     | _ -> Cursor.err_invalid r ("Unsupported CSS composite syntax: " ^ s)
   else
     let body, modifier = split_syntax_modifier s in

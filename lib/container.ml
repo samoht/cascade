@@ -6,6 +6,7 @@ type t =
   | Named of string * t
   | Style of string * string option
   | Scroll_state of string * string
+  | Feature_query of string
   | Custom of Media.t
 
 (* Format float without trailing period (24. -> 24, 24.5 -> 24.5) *)
@@ -21,6 +22,7 @@ let rec to_string = function
   | Style (name, None) -> "style(" ^ name ^ ")"
   | Style (name, Some value) -> "style(" ^ name ^ ": " ^ value ^ ")"
   | Scroll_state (name, value) -> "scroll-state(" ^ name ^ ": " ^ value ^ ")"
+  | Feature_query raw -> raw
   | Custom cond -> Media.to_string cond
 
 let pp = to_string
@@ -38,6 +40,7 @@ let rec compare t1 t2 =
       | cmp -> cmp)
   | Scroll_state (n1, v1), Scroll_state (n2, v2) -> (
       match String.compare n1 n2 with 0 -> String.compare v1 v2 | cmp -> cmp)
+  | Feature_query q1, Feature_query q2 -> String.compare q1 q2
   | Custom c1, Custom c2 -> Media.compare c1 c2
   (* Order: Min_width_rem < Min_width_px < Named < Style < Scroll_state <
      Custom *)
@@ -45,28 +48,26 @@ let rec compare t1 t2 =
   | _, Min_width_rem _ -> 1
   | Min_width_px _, _ -> -1
   | _, Min_width_px _ -> 1
-  | Named _, (Style _ | Scroll_state _ | Custom _) -> -1
-  | (Style _ | Scroll_state _ | Custom _), Named _ -> 1
-  | Style _, (Scroll_state _ | Custom _) -> -1
-  | (Scroll_state _ | Custom _), Style _ -> 1
-  | Scroll_state _, Custom _ -> -1
-  | Custom _, Scroll_state _ -> 1
+  | Named _, (Style _ | Scroll_state _ | Feature_query _ | Custom _) -> -1
+  | (Style _ | Scroll_state _ | Feature_query _ | Custom _), Named _ -> 1
+  | Style _, (Scroll_state _ | Feature_query _ | Custom _) -> -1
+  | (Scroll_state _ | Feature_query _ | Custom _), Style _ -> 1
+  | Scroll_state _, (Feature_query _ | Custom _) -> -1
+  | (Feature_query _ | Custom _), Scroll_state _ -> 1
+  | Feature_query _, Custom _ -> -1
+  | Custom _, Feature_query _ -> 1
 
 type kind = Kind_min_width | Kind_other
 
 let rec kind = function
   | Min_width_rem _ | Min_width_px _ -> Kind_min_width
   | Named (_, cond) -> kind cond
-  | Style _ | Scroll_state _ | Custom _ -> Kind_other
+  | Style _ | Scroll_state _ | Feature_query _ | Custom _ -> Kind_other
 
 let is_ident_start c =
   (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_' || c = '-'
 
 let is_ident_cont c = is_ident_start c || (c >= '0' && c <= '9')
-
-let starts_with ~prefix s =
-  let n = String.length prefix in
-  String.length s >= n && String.sub s 0 n = prefix
 
 let first_non_ws s =
   let rec loop i =
@@ -92,18 +93,6 @@ let split_named s =
         Some (String.sub s 0 stop, String.sub s i (len - i))
     | _ -> None
 
-let balanced s =
-  let len = String.length s in
-  let rec loop depth i =
-    if i >= len then depth = 0
-    else
-      match s.[i] with
-      | '(' -> loop (depth + 1) (i + 1)
-      | ')' -> depth > 0 && loop (depth - 1) (i + 1)
-      | _ -> loop depth (i + 1)
-  in
-  loop 0 0
-
 let style_body body =
   let body = String.trim body in
   if body = "" then failwith "empty style() container query";
@@ -126,21 +115,108 @@ let scroll_state_body body =
       | _ -> failwith "invalid scroll-state() container query")
   | _ -> failwith "invalid scroll-state() container query"
 
-let function_body raw prefix =
-  if not (String.ends_with ~suffix:")" raw) then
-    failwith ("unmatched " ^ prefix ^ " container query");
-  let start = String.length prefix in
-  String.sub raw start (String.length raw - start - 1)
+type query_surface =
+  | Style_func of { canonical_name : bool; body : string }
+  | Scroll_state_func of { canonical_name : bool; body : string }
+  | Parenthesized_feature
+  | Other_query
+
+type balance = Balanced | Unbalanced
+type range_direction = Lt_range | Gt_range
+
+let paren_balance raw =
+  let rec loop depth i =
+    if i = String.length raw then if depth = 0 then Balanced else Unbalanced
+    else
+      match raw.[i] with
+      | '(' -> loop (depth + 1) (i + 1)
+      | ')' when depth > 0 -> loop (depth - 1) (i + 1)
+      | ')' -> Unbalanced
+      | _ -> loop depth (i + 1)
+  in
+  loop 0 0
+
+let range_direction_of_component = function
+  | Component.Preserved { kind = Token.Delim "<"; _ } -> Some Lt_range
+  | Component.Preserved { kind = Token.Delim ">"; _ } -> Some Gt_range
+  | _ -> None
+
+let rec strip_ws = function
+  | Component.Preserved { kind = Token.Whitespace; _ } :: rest -> strip_ws rest
+  | cvs -> cvs
+
+let non_ws cvs =
+  List.filter
+    (function
+      | Component.Preserved { kind = Token.Whitespace; _ } -> false | _ -> true)
+    cvs
+
+let has_opposing_interval_components cvs =
+  let rec first_op = function
+    | [] -> None
+    | cv :: rest -> (
+        match range_direction_of_component cv with
+        | Some _ as op -> op
+        | None -> first_op rest)
+  in
+  let rec second_op seen_first = function
+    | [] -> None
+    | cv :: rest -> (
+        match (range_direction_of_component cv, seen_first) with
+        | Some _, false -> second_op true rest
+        | Some op, true -> Some op
+        | None, _ -> second_op seen_first rest)
+  in
+  match (first_op cvs, second_op false cvs) with
+  | Some Lt_range, Some Gt_range | Some Gt_range, Some Lt_range -> true
+  | _ -> false
+
+let has_dangling_range_operator cvs =
+  match List.rev (non_ws cvs) with
+  | Component.Preserved { kind = Token.Delim ("<" | ">"); _ } :: _ -> true
+  | _ -> false
+
+let classify_query_surface raw =
+  match paren_balance raw with
+  | Unbalanced -> failwith "unmatched container query parentheses"
+  | Balanced -> (
+      let cursor = Cursor.of_string raw in
+      match Cursor.remaining cursor with
+      | [ Component.Func { node = { name; arguments; terminated }; _ } ] -> (
+          if not terminated then failwith "unmatched container query function";
+          let lower = String.lowercase_ascii name in
+          let canonical_name = name = lower in
+          let body = Cursor.components_to_string ~trim:true arguments in
+          match lower with
+          | "style" -> Style_func { canonical_name; body }
+          | "scroll-state" -> Scroll_state_func { canonical_name; body }
+          | _ -> Other_query)
+      | [
+       Component.Block
+         { node = { opening = Token.Paren; value = _ :: _ as value }; _ };
+      ] ->
+          let value = strip_ws value in
+          if has_dangling_range_operator value then
+            failwith "dangling range operator in container query";
+          if has_opposing_interval_components value then
+            failwith "opposing interval operators in container query";
+          Parenthesized_feature
+      | _ -> Other_query)
 
 let parse_container_specific raw =
   let raw = String.trim raw in
   if raw = "" then failwith "empty container query";
-  if not (balanced raw) then failwith "unmatched container query parentheses";
-  if starts_with ~prefix:"style(" raw then
-    style_body (function_body raw "style(")
-  else if starts_with ~prefix:"scroll-state(" raw then
-    scroll_state_body (function_body raw "scroll-state(")
-  else failwith "not a container-specific query"
+  match classify_query_surface raw with
+  | Style_func { canonical_name = true; body } -> style_body body
+  | Style_func { canonical_name = false; body } ->
+      ignore (style_body body : t);
+      Feature_query raw
+  | Scroll_state_func { canonical_name = true; body } -> scroll_state_body body
+  | Scroll_state_func { canonical_name = false; body } ->
+      ignore (scroll_state_body body : t);
+      Feature_query raw
+  | Parenthesized_feature -> Feature_query raw
+  | Other_query -> failwith "not a container-specific query"
 
 let parse_unnamed s =
   match Media.of_string s with

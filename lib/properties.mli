@@ -16,6 +16,12 @@ val pp_shadow : shadow Pp.t
 val read_shadow : Cursor.t -> shadow
 (** [read_shadow t] parses a [shadow] value from [t]. *)
 
+val read_timeline_shorthand : Cursor.t -> timeline_shorthand
+(** [read_timeline_shorthand t] parses [scroll-timeline] and [view-timeline]. *)
+
+val read_page_size : Cursor.t -> page_size
+(** [read_page_size t] parses the paged-media [size] descriptor/property. *)
+
 (* Background and animation helpers moved from Css *)
 
 val url : string -> background_image
@@ -56,10 +62,11 @@ val transition_shorthand :
   ?duration:Values.duration ->
   ?timing_function:timing_function ->
   ?delay:Values.duration ->
+  ?behavior:transition_behavior ->
   unit ->
   transition
-(** [transition_shorthand ?property ?duration ?timing_function ?delay ()] is the
-    transition shorthand. Defaults to property = All. *)
+(** [transition_shorthand ?property ?duration ?timing_function ?delay ?behavior
+     ()] is the transition shorthand. Defaults to property = All. *)
 
 val border_shorthand :
   ?width:border_width ->

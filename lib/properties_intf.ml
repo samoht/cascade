@@ -456,6 +456,7 @@ type grid_template =
   | Repeat of int * grid_template list
   | Tracks of grid_template list
   | Named_tracks of (string option * grid_template) list
+  | Template of string
   | Subgrid
   | Masonry
   | Var of grid_template var  (** CSS variable reference *)
@@ -472,6 +473,7 @@ type grid_line =
 
 type aspect_ratio =
   | Auto
+  | Auto_ratio of float * float
   | Ratio of float * float
   | Inherit
   | Var of aspect_ratio var
@@ -514,7 +516,13 @@ type text_transform =
   | Inherit
   | Var of text_transform var
 
-type text_overflow = Clip | Ellipsis | String of string | Inherit
+type text_overflow =
+  | Clip
+  | Ellipsis
+  | String of string
+  | Pair of text_overflow * text_overflow
+  | Inherit
+
 type text_wrap = Wrap | No_wrap | Balance | Pretty | Inherit
 
 type white_space =
@@ -869,6 +877,7 @@ type transition_shorthand = {
   duration : duration option;
   timing_function : timing_function option;
   delay : duration option;
+  behavior : transition_behavior option;
 }
 
 type transition =
@@ -1390,6 +1399,33 @@ type page_break_value =
 
 type page_break_inside_value = Auto | Avoid | Inherit
 
+(* CSS Paged Media 3 §6.1 [size] descriptor: optional page size keyword (paper
+   sheet name), explicit dimensions, [auto], or a page size combined with an
+   orientation. *)
+type page_size_name =
+  | A5
+  | A4
+  | A3
+  | B5
+  | B4
+  | Jis_b5
+  | Jis_b4
+  | Letter
+  | Legal
+  | Ledger
+
+type page_size_orientation = Portrait | Landscape
+
+type page_size =
+  | Auto
+  | Single of length
+  | Pair of length * length
+  | Named of page_size_name
+  | Named_oriented of page_size_name * page_size_orientation
+  | Oriented of page_size_orientation
+  | Inherit
+  | Var of page_size var
+
 (* Multi-column Layout Types *)
 type columns_value =
   | Auto
@@ -1401,7 +1437,14 @@ type columns_value =
 
 (* Scroll Types *)
 type scroll_behavior = Auto | Smooth | Inherit
-type scroll_snap_align = None | Start | End | Center
+
+type scroll_snap_align =
+  | None
+  | Start
+  | End
+  | Center
+  | Snap_align_pair of scroll_snap_align * scroll_snap_align
+
 type scroll_snap_stop = Normal | Always | Inherit
 
 type scroll_snap_strictness =
@@ -1425,6 +1468,13 @@ type scroll_snap_type =
       * scroll_snap_strictness (* Axis with explicit strictness or var *)
   | Inherit
   | Var of scroll_snap_type var
+
+type timeline_axis = Block | Inline | X | Y
+
+type timeline_shorthand = {
+  timeline_name : string;
+  timeline_axis : timeline_axis;
+}
 
 type overscroll_behavior = Auto | Contain | None | Inherit
 
@@ -1484,7 +1534,7 @@ type webkit_line_clamp = Lines of int | Unset | Var of webkit_line_clamp var
 type text_size_adjust = None | Auto | Pct of float | Inherit
 
 (* Other Types *)
-type forced_color_adjust = Auto | None | Inherit
+type forced_color_adjust = Auto | None | Preserve_parent_color | Inherit
 
 type color_scheme =
   | Normal
@@ -1786,11 +1836,11 @@ type 'a property =
   | Text_box_trim : string property
   | Animation_timeline : string property
   | Animation_range : string property
+  | Scroll_timeline : timeline_shorthand property
   | View_transition_name : string property
   | Image_orientation : string property
   | Contain_intrinsic_size : string property
   | Margin_trim : string property
-  | Mask_mode_l4 : string property
   | Offset_path : string property
   | Offset_distance : length_percentage property
   | Font_size_adjust : string property
@@ -1800,6 +1850,7 @@ type 'a property =
   | Initial_letter : string property
   | View_timeline_name : string property
   | View_timeline_axis : string property
+  | View_timeline : timeline_shorthand property
   | Timeline_scope : string property
   | Perspective : length property
   | Perspective_origin : perspective_origin property
@@ -1818,9 +1869,7 @@ type 'a property =
   | Break_before : break_value property
   | Break_after : break_value property
   | Break_inside : break_inside_value property
-  | Page_break_before : page_break_value property
-  | Page_break_after : page_break_value property
-  | Page_break_inside : page_break_inside_value property
+  | Page_size : page_size property
   | Columns : columns_value property
   | Word_spacing : length property
   | Background_attachment : background_attachment property

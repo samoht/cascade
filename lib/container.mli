@@ -12,6 +12,8 @@ type t =
       (** Style query: [style(--flag)] or [style(property: value)]. *)
   | Scroll_state of string * string
       (** Scroll-state query: [scroll-state(stuck: top)]. *)
+  | Feature_query of string
+      (** Container size/feature query preserved in normalized source form. *)
   | Custom of Media.t  (** Structured condition beyond the typed shorthands. *)
 
 val to_string : t -> string
