@@ -605,7 +605,7 @@ let any_var_name (V v) = String.concat "" [ "--"; v.name ]
 (** Extract variables from timing function *)
 let vars_of_timing_function = function
   | Ease | Linear | Ease_in | Ease_out | Ease_in_out | Step_start | Step_end
-  | Steps _ | Cubic_bezier _ ->
+  | Steps _ | Cubic_bezier _ | Linear_function _ ->
       []
   | Var v -> [ V v ]
 
@@ -892,16 +892,30 @@ let fallback_to_string inner =
     information which would need to be resolved from a variable registry or
     context. *)
 let parse_var_reference (r : Cursor.t) : string * string option =
+  (* CSS Syntax 3 §4.3.6: EOF inside a function is a parse error. We tolerate it
+     only when the fallback list was opened with a comma — the trailing
+     [<string-token>] from §4.3.5 may have eaten the function's closing [)] — so
+     the declaration still carries a recoverable name + fallback pair. Without a
+     fallback there is no recovery signal and the malformed var() is
+     rejected. *)
+  let terminated =
+    match Cursor.peek r with
+    | Some (Component.Func fn) -> fn.node.terminated
+    | _ -> true
+  in
   let result =
     Cursor.call "var" r (fun inner ->
         let raw_name = Cursor.ident ~keep_case:true inner in
-        (* Per css-variables-1, custom-property names start with [--]; anything
-           else is rejected. *)
+        (* css-variables-1: a <custom-property-name> is a <dashed-ident> other
+           than [--]. The [--] prefix must be followed by an ident-continue code
+           point that is not itself [-], otherwise the trailing dashes are
+           ambiguous with the reserved [--] keyword. *)
         if
           not
             (String.length raw_name >= 3
             && raw_name.[0] = '-'
-            && raw_name.[1] = '-')
+            && raw_name.[1] = '-'
+            && raw_name.[2] <> '-')
         then Cursor.err_invalid inner ("not a custom property: " ^ raw_name);
         let name = String.sub raw_name 2 (String.length raw_name - 2) in
         Cursor.ws inner;
@@ -911,6 +925,9 @@ let parse_var_reference (r : Cursor.t) : string * string option =
         in
         (name, fallback))
   in
+  (match (terminated, snd result) with
+  | false, None -> Cursor.err_invalid r "unterminated var()"
+  | _ -> ());
   Cursor.ws r;
   if not (Cursor.is_done r) then
     Cursor.err_invalid r "trailing tokens after var()";

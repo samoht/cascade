@@ -288,8 +288,10 @@ let spec_custom_fallback_edges () =
   check_var_ref "var(--commented, a /*x*/ b)" "commented" (Some "a /*x*/ b");
   check_var_ref "var(--string, \"a,b\")" "string" (Some "\"a,b\"");
   check_var_ref "var(--empty-block, {})" "empty-block" (Some "{}");
+  (* CSS Syntax §4.3.5 consumes ')' as part of an unterminated string at EOF; it
+     is not a function close token. *)
   check_var_ref "var(--bad-string, \"unterminated)" "bad-string"
-    (Some "\"unterminated");
+    (Some "\"unterminated)");
   let neg input =
     let r = Css.Cursor.of_string input in
     try
