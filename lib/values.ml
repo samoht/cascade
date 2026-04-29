@@ -2458,15 +2458,19 @@ let rec read_percentage t : percentage =
   else Pct (Cursor.pct t)
 
 (** Read length_percentage value *)
-let rec read_length_percentage t : length_percentage =
+let rec read_length_percentage ?(allow_negative = true) ?(with_keywords = true)
+    t : length_percentage =
   Cursor.ws t;
-  if Cursor.looking_at t "var(" then Var (read_var read_length_percentage t)
+  if Cursor.looking_at t "var(" then
+    Var (read_var (read_length_percentage ~allow_negative ~with_keywords) t)
   else if Cursor.looking_at t "calc(" then
-    Calc (read_calc read_length_percentage t)
+    Calc (read_calc (read_length_percentage ~allow_negative ~with_keywords) t)
   else
     (* Try to read as percentage or length *)
     let read_pct t : length_percentage = Pct (Cursor.pct t) in
-    let read_length_as_lp t : length_percentage = Length (read_length t) in
+    let read_length_as_lp t : length_percentage =
+      Length (read_length ~allow_negative ~with_keywords t)
+    in
     Cursor.one_of [ read_pct; read_length_as_lp ] t
 
 (** Read number_percentage value *)

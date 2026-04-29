@@ -318,7 +318,8 @@ val read_transition_behavior : Cursor.t -> transition_behavior
 val read_percentage : Cursor.t -> percentage
 (** [read_percentage t] parses a CSS percentage. *)
 
-val read_length_percentage : Cursor.t -> length_percentage
+val read_length_percentage :
+  ?allow_negative:bool -> ?with_keywords:bool -> Cursor.t -> length_percentage
 (** [read_length_percentage t] parses a CSS length or percentage. *)
 
 val read_number_percentage : Cursor.t -> number_percentage
