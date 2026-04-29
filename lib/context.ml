@@ -1352,10 +1352,67 @@ module Computed_value = struct
       Ok (String.concat " " resolved)
     with Unresolved token -> Error ("unresolved length: " ^ token)
 
-  let lookup_custom ctx name =
-    List.find_opt
-      (fun d -> Declaration.property_name d = "--" ^ name)
-      ctx.custom_properties
+  (* CSS Cascade 5 §6.4.3 layered custom-property lookup.
+
+     Important-flagged declarations beat normal ones. For normal author rules
+     the unlayered declaration wins, otherwise later layers beat earlier ones.
+     For important author rules the order reverses: earlier layers beat later
+     ones, and unlayered ranks below them.
+
+     [layer_order] supplies the cascade order over layer names; the lookup picks
+     the candidate with the highest priority per the rules above. *)
+  let layer_index ~layer_order = function
+    | None -> max_int (* unlayered, highest in normal cascade *)
+    | Some name ->
+        let rec find i = function
+          | [] -> -1
+          | n :: _ when n = name -> i
+          | _ :: rest -> find (i + 1) rest
+        in
+        find 0 layer_order
+
+  let lookup_custom ?layer ?(layer_order = []) ctx name =
+    let target = "--" ^ name in
+    let matches d = Declaration.property_name d = target in
+    let candidates = List.filter matches ctx.custom_properties in
+    let important, normal =
+      List.partition Declaration.is_important candidates
+    in
+    let pick_normal pool =
+      let by_layer scope =
+        List.find_opt
+          (fun d -> Declaration.custom_declaration_layer d = scope)
+          pool
+      in
+      match layer with
+      | None -> (
+          match by_layer None with
+          | Some _ as v -> v
+          | None -> List.nth_opt pool 0)
+      | Some scope -> (
+          match by_layer (Some scope) with
+          | Some _ as v -> v
+          | None ->
+              (* Fall back to first declared layer (cascade-earlier wins within
+                 a scoped lookup). *)
+              List.nth_opt pool 0)
+    in
+    let pick_important pool =
+      (* Important reverses cascade order: earlier layers (lower index in
+         [layer_order]) win, unlayered ranks below all named layers. *)
+      let unlayered_rank = max_int in
+      let rank_of d =
+        match Declaration.custom_declaration_layer d with
+        | None -> unlayered_rank
+        | Some _ as l -> layer_index ~layer_order l
+      in
+      let scored = List.map (fun d -> (rank_of d, d)) pool in
+      let sorted = List.sort (fun (a, _) (b, _) -> compare a b) scored in
+      match sorted with [] -> None | (_, d) :: _ -> Some d
+    in
+    match pick_important important with
+    | Some _ as v -> v
+    | None -> pick_normal normal
 
   let initial_value_str ctx property =
     match
@@ -1376,21 +1433,26 @@ module Computed_value = struct
     | Some d -> Some (Declaration.string_of_value ~minify:true d)
 
   (* Resolve a custom property var() reference with cycle detection. *)
-  let resolve_var_chain ctx ~visited name fallback =
+  let resolve_var_chain ?layer ?layer_order ctx ~visited name fallback =
     if List.mem name visited then None
     else
-      match lookup_custom ctx name with
+      match lookup_custom ?layer ?layer_order ctx name with
       | None -> fallback
       | Some d -> Some (Declaration.string_of_value ~minify:true d)
 
-  let rec expand_value ctx ~visited s : (string, string) result =
+  let rec expand_value ?layer ?layer_order ctx ~visited s :
+      (string, string) result =
     let resolve_var name fallback =
-      match resolve_var_chain ctx ~visited name fallback with
+      match
+        resolve_var_chain ?layer ?layer_order ctx ~visited name fallback
+      with
       | None -> None
       | Some raw -> (
           (* Recursively expand vars in the resolved value using the updated
              [visited] list to detect cycles. *)
-          match expand_value ctx ~visited:(name :: visited) raw with
+          match
+            expand_value ?layer ?layer_order ctx ~visited:(name :: visited) raw
+          with
           | Ok expanded -> Some expanded
           | Error _ -> None)
     in
@@ -1432,57 +1494,69 @@ module Computed_value = struct
       Ok (String.concat " " resolved)
     with Unresolved token -> Error ("unresolved percentage: " ^ token)
 
-  let resolve ctx ~property ~value =
+  let resolve ?layer ?layer_order ctx ~property ~value =
     let value = trim value in
-    match value with
-    | "initial" -> (
-        match initial_value_str ctx property with
-        | Some v -> Ok v
-        | None -> Ok "initial")
-    | "inherit" -> (
-        match inherited_value_str ctx property with
-        | Some v -> Ok v
-        | None -> (
-            match initial_value_str ctx property with
-            | Some v -> Ok v
-            | None -> Ok "inherit"))
-    | "unset" -> (
-        let target = unset_target property in
-        match target with
-        | `Inherit -> (
-            match inherited_value_str ctx property with
-            | Some v -> Ok v
-            | None -> (
-                match initial_value_str ctx property with
-                | Some v -> Ok v
-                | None -> Ok "unset"))
-        | `Initial -> (
-            match initial_value_str ctx property with
-            | Some v -> Ok v
-            | None -> Ok "unset"))
-    | _ -> (
-        match expand_value ctx ~visited:[] value with
-        | Error msg -> Error msg
-        | Ok expanded -> (
-            let length_ctx = Length.of_t ctx in
-            match resolve_current_color ctx expanded with
-            | Error msg -> Error msg
-            | Ok with_color -> (
-                match resolve_url_in_value ctx with_color with
-                | Error msg -> Error msg
-                | Ok with_url -> (
-                    match resolve_calc length_ctx with_url with
-                    | Error msg -> Error msg
-                    | Ok with_calc -> (
-                        match resolve_lengths length_ctx with_calc with
-                        | Error msg -> Error msg
-                        | Ok with_lengths ->
-                            resolve_percentage ~property
-                              ~parent_font_size_px:length_ctx.parent_font_size
-                              with_lengths)))))
+    let layer_known =
+      match (layer, layer_order) with
+      | None, _ -> true
+      | Some name, Some order -> List.mem name order
+      | Some _, None -> true
+    in
+    if not layer_known then
+      Error
+        ("unknown layer "
+        ^ Option.value layer ~default:""
+        ^ " for scoped resolution")
+    else
+      match value with
+      | "initial" -> (
+          match initial_value_str ctx property with
+          | Some v -> Ok v
+          | None -> Ok "initial")
+      | "inherit" -> (
+          match inherited_value_str ctx property with
+          | Some v -> Ok v
+          | None -> (
+              match initial_value_str ctx property with
+              | Some v -> Ok v
+              | None -> Ok "inherit"))
+      | "unset" -> (
+          let target = unset_target property in
+          match target with
+          | `Inherit -> (
+              match inherited_value_str ctx property with
+              | Some v -> Ok v
+              | None -> (
+                  match initial_value_str ctx property with
+                  | Some v -> Ok v
+                  | None -> Ok "unset"))
+          | `Initial -> (
+              match initial_value_str ctx property with
+              | Some v -> Ok v
+              | None -> Ok "unset"))
+      | _ -> (
+          match expand_value ?layer ?layer_order ctx ~visited:[] value with
+          | Error msg -> Error msg
+          | Ok expanded -> (
+              let length_ctx = Length.of_t ctx in
+              match resolve_current_color ctx expanded with
+              | Error msg -> Error msg
+              | Ok with_color -> (
+                  match resolve_url_in_value ctx with_color with
+                  | Error msg -> Error msg
+                  | Ok with_url -> (
+                      match resolve_calc length_ctx with_url with
+                      | Error msg -> Error msg
+                      | Ok with_calc -> (
+                          match resolve_lengths length_ctx with_calc with
+                          | Error msg -> Error msg
+                          | Ok with_lengths ->
+                              resolve_percentage ~property
+                                ~parent_font_size_px:length_ctx.parent_font_size
+                                with_lengths)))))
 end
 
-let computed_value ?layer_order:_ ?layer:_ ctx decl =
+let computed_value ?layer_order ?layer ctx decl =
   let property = Declaration.property_name decl in
   let value = Declaration.string_of_value ~minify:true decl in
-  Computed_value.resolve ctx ~property ~value
+  Computed_value.resolve ?layer ?layer_order ctx ~property ~value

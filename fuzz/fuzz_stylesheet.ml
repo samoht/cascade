@@ -265,6 +265,10 @@ let rec boundary_shape = function
   | Keyframes _ -> [ "keyframes" ]
   | Font_face _ -> [ "font-face" ]
   | Page _ -> [ "page" ]
+  | Page_with_margins _ -> [ "page" ]
+  | Font_palette_values _ -> [ "font-palette-values" ]
+  | View_transition _ -> [ "view-transition" ]
+  | Position_try _ -> [ "position-try" ]
   | Property _ -> [ "property" ]
 
 let boundary_shapes ss = List.concat_map boundary_shape ss
@@ -281,7 +285,8 @@ let anonymous_layer_count ss =
     | Origin (_, block) ->
         block_count block
     | Rule _ | Declarations _ | Charset _ | Import _ | Namespace _
-    | Layer_decl _ | Keyframes _ | Font_face _ | Page _ | Property _ ->
+    | Layer_decl _ | Keyframes _ | Font_face _ | Page _ | Page_with_margins _
+    | Font_palette_values _ | View_transition _ | Position_try _ | Property _ ->
         0
   and block_count block = List.fold_left (fun n s -> n + statement s) 0 block in
   block_count ss
