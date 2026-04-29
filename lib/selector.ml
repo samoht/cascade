@@ -1508,10 +1508,18 @@ let pp_spaced_combinator ctx = function
 
 let pp_relative_combinator ctx = function
   | Descendant -> Pp.space ctx ()
-  | Child -> Pp.string ctx "> "
-  | Next_sibling -> Pp.string ctx "+ "
-  | Subsequent_sibling -> Pp.string ctx "~ "
-  | Column -> Pp.string ctx "|| "
+  | Child ->
+      Pp.string ctx ">";
+      Pp.space_if_pretty ctx ()
+  | Next_sibling ->
+      Pp.string ctx "+";
+      Pp.space_if_pretty ctx ()
+  | Subsequent_sibling ->
+      Pp.string ctx "~";
+      Pp.space_if_pretty ctx ()
+  | Column ->
+      Pp.string ctx "||";
+      Pp.space_if_pretty ctx ()
 
 let strs ctx strings = Pp.list ~sep:Pp.comma Pp.string ctx strings
 
