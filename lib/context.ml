@@ -1423,18 +1423,49 @@ module Computed_value = struct
       let resolve_with_revert d scope =
         if is_revert_layer d then revert_layer_fallback pool scope else Some d
       in
+      let pick_latest_layered () =
+        let scored =
+          List.filter_map
+            (fun d ->
+              if is_revert_layer d then None
+              else
+                match Declaration.custom_declaration_layer d with
+                | None -> None
+                | Some _ as l -> Some (layer_index ~layer_order l, d))
+            pool
+        in
+        let sorted = List.sort (fun (a, _) (b, _) -> compare b a) scored in
+        match sorted with [] -> None | (_, d) :: _ -> Some d
+      in
+      let pick_earliest_layered () =
+        let scored =
+          List.filter_map
+            (fun d ->
+              if is_revert_layer d then None
+              else
+                match Declaration.custom_declaration_layer d with
+                | None -> None
+                | Some _ as l -> Some (layer_index ~layer_order l, d))
+            pool
+        in
+        let sorted = List.sort (fun (a, _) (b, _) -> compare a b) scored in
+        match sorted with [] -> None | (_, d) :: _ -> Some d
+      in
       match layer with
       | None -> (
+          (* Unscoped lookup: unlayered author beats layered, else the latest
+             layer wins per CSS Cascade 5 §6.4.3. *)
           match by_layer None with
           | Some d -> resolve_with_revert d None
-          | None -> List.nth_opt pool 0)
+          | None -> pick_latest_layered ())
       | Some scope -> (
+          (* Scoped lookup: prefer the same layer, then walk earlier layers
+             (cascade-priority within the layer's own ancestry) to provide a
+             deterministic fallback when the layer has no entry. The unlayered
+             author declaration is not consulted in this branch. *)
           match by_layer (Some scope) with
           | Some d -> resolve_with_revert d (Some scope)
-          | None ->
-              (* Fall back to first declared layer (cascade-earlier wins within
-                 a scoped lookup). *)
-              List.nth_opt pool 0)
+          | None -> pick_earliest_layered ())
     in
     let pick_important pool =
       (* Important reverses cascade order: earlier layers (lower index in

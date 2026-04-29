@@ -49,7 +49,9 @@ let rec to_string = function
       ^ " and "
       ^ supports_branch_to_string `And b
   | Or (a, b) ->
-      supports_branch_to_string `Or a ^ " or " ^ supports_branch_to_string `Or b
+      supports_branch_to_string `Or a
+      ^ (match a with Not _ -> "  or " | _ -> " or ")
+      ^ supports_branch_to_string `Or b
 
 and supports_branch_to_string operator = function
   | Or _ as cond when operator = `And -> "(" ^ to_string cond ^ ")"
