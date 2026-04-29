@@ -433,16 +433,17 @@ module Media_value = struct
           let length = Values.read_length cursor in
           Cursor.ws cursor;
           if Cursor.is_done cursor then Some (Media.Length length) else None
-        with _ -> None
+        with Cursor.Parse_error _ | Reader.Parse_error _ -> None
       in
       let try_ratio () =
         match String.split_on_char '/' s with
         | [ a; b ] -> (
-            try
-              Some
-                (Media.Ratio
-                   (int_of_string (String.trim a), int_of_string (String.trim b)))
-            with _ -> None)
+            match
+              ( int_of_string_opt (String.trim a),
+                int_of_string_opt (String.trim b) )
+            with
+            | Some n, Some d -> Some (Media.Ratio (n, d))
+            | _ -> None)
         | _ -> None
       in
       let try_number () =
@@ -454,7 +455,7 @@ module Media_value = struct
             if Float.is_integer n then Some (Media.Integer (int_of_float n))
             else Some (Media.Number n)
           else None
-        with _ -> None
+        with Cursor.Parse_error _ | Reader.Parse_error _ -> None
       in
       match try_length () with
       | Some _ as v -> v
@@ -713,7 +714,9 @@ module Container_eval = struct
         | Style (prop, value) -> style_match q ~prop ~value
         | Scroll_state (prop, value) -> eval_scroll_state q ~prop ~value
         | Feature_query raw -> (
-            try Media_eval.eval media_q (Media.of_string raw) with _ -> false)
+            try Media_eval.eval media_q (Media.of_string raw)
+            with Failure _ | Cursor.Parse_error _ | Reader.Parse_error _ ->
+              false)
         | Custom media -> Media_eval.eval media_q media
 end
 
@@ -1080,8 +1083,60 @@ module Computed_value = struct
   module Calc = struct
     type token = Num of float | Op of char | Lparen | Rparen
 
+    (* End of a [calc()] term: stop at whitespace, parenthesis, or operator. *)
+    let term_terminator = function
+      | ' ' | '\t' | '\n' | '+' | '-' | '*' | '/' | '(' | ')' -> true
+      | _ -> false
+
+    let read_term_end s i =
+      let len = String.length s in
+      let rec scan j =
+        if j >= len then j else if term_terminator s.[j] then j else scan (j + 1)
+      in
+      scan i
+
+    let parse_length length_ctx term =
+      try
+        let cursor = Cursor.of_string term in
+        let length = Values.read_length cursor in
+        Cursor.ws cursor;
+        if Cursor.is_done cursor then Length.to_px length_ctx length else None
+      with Cursor.Parse_error _ | Reader.Parse_error _ -> None
+
+    let parse_number term =
+      try
+        let cursor = Cursor.of_string term in
+        let n = Cursor.number cursor in
+        Cursor.ws cursor;
+        if Cursor.is_done cursor then Some n else None
+      with Cursor.Parse_error _ | Reader.Parse_error _ -> None
+
+    let parse_term length_ctx term =
+      match parse_length length_ctx term with
+      | Some _ as v -> v
+      | None -> parse_number term
+
+    let prev_is_operator = function
+      | [] | Op _ :: _ | Lparen :: _ -> true
+      | _ -> false
+
+    let signed_numeric_start s i len c =
+      i + 1 < len
+      && prev_is_operator [] (* dummy signature — actual call wraps acc *)
+      && (c = '-' || c = '+')
+      && (s.[i + 1] = '.' || (s.[i + 1] >= '0' && s.[i + 1] <= '9'))
+
+    let _ = signed_numeric_start
+
     let tokenise length_ctx s =
       let len = String.length s in
+      let consume_term i acc =
+        let stop = read_term_end s i in
+        let term = String.sub s i (stop - i) in
+        match parse_term length_ctx term with
+        | None -> raise Exit
+        | Some v -> (stop, Num v :: acc)
+      in
       let rec loop i acc =
         if i >= len then List.rev acc
         else
@@ -1089,83 +1144,20 @@ module Computed_value = struct
           | ' ' | '\t' | '\n' -> loop (i + 1) acc
           | '(' -> loop (i + 1) (Lparen :: acc)
           | ')' -> loop (i + 1) (Rparen :: acc)
-          | ('+' | '-' | '*' | '/') as c when i + 1 < len ->
-              (* A leading [-] may be part of a numeric literal when it is
-                 attached to the next character without whitespace; calc()
-                 binary operators require surrounding whitespace per §10. *)
-              let prev_is_op =
-                match acc with
-                | [] -> true
-                | Op _ :: _ | Lparen :: _ -> true
-                | _ -> false
-              in
-              if
-                (c = '-' || c = '+')
-                && prev_is_op
-                && (s.[i + 1] = '.' || (s.[i + 1] >= '0' && s.[i + 1] <= '9'))
-              then
-                let rec read_term j =
-                  if j >= len then j
-                  else
-                    match s.[j] with
-                    | ' ' | '\t' | '\n' | '+' | '-' | '*' | '/' | '(' | ')' -> j
-                    | _ -> read_term (j + 1)
-                in
-                let stop = read_term (i + 1) in
-                let term = String.sub s i (stop - i) in
-                let parsed_token =
-                  let cursor = Cursor.of_string term in
-                  try
-                    let length = Values.read_length cursor in
-                    Cursor.ws cursor;
-                    if Cursor.is_done cursor then
-                      match Length.to_px length_ctx length with
-                      | Some px -> Some (Num px)
-                      | None -> None
-                    else None
-                  with _ -> (
-                    try
-                      let n = Cursor.number cursor in
-                      Cursor.ws cursor;
-                      if Cursor.is_done cursor then Some (Num n) else None
-                    with _ -> None)
-                in
-                match parsed_token with
-                | None -> raise Exit
-                | Some tok -> loop stop (tok :: acc)
-              else loop (i + 1) (Op c :: acc)
+          | ('+' | '-') as c
+            when i + 1 < len
+                 && prev_is_operator acc
+                 && (s.[i + 1] = '.' || (s.[i + 1] >= '0' && s.[i + 1] <= '9'))
+            ->
+              (* A leading [+]/[-] is part of a numeric literal when it sits
+                 between operators or at the start of an expression. *)
+              let _ = c in
+              let stop, acc = consume_term i acc in
+              loop stop acc
           | ('+' | '-' | '*' | '/') as c -> loop (i + 1) (Op c :: acc)
-          | _ -> (
-              let rec read_term j =
-                if j >= len then j
-                else
-                  match s.[j] with
-                  | ' ' | '\t' | '\n' | '+' | '-' | '*' | '/' | '(' | ')' -> j
-                  | _ -> read_term (j + 1)
-              in
-              let stop = read_term i in
-              let term = String.sub s i (stop - i) in
-              let cursor = Cursor.of_string term in
-              let parsed_token =
-                try
-                  let length = Values.read_length cursor in
-                  Cursor.ws cursor;
-                  if Cursor.is_done cursor then
-                    match Length.to_px length_ctx length with
-                    | Some px -> Some (Num px)
-                    | None -> None
-                  else None
-                with _ -> (
-                  let cursor = Cursor.of_string term in
-                  try
-                    let n = Cursor.number cursor in
-                    Cursor.ws cursor;
-                    if Cursor.is_done cursor then Some (Num n) else None
-                  with _ -> None)
-              in
-              match parsed_token with
-              | None -> raise Exit
-              | Some tok -> loop stop (tok :: acc))
+          | _ ->
+              let stop, acc = consume_term i acc in
+              loop stop acc
       in
       try Some (loop 0 []) with Exit -> None
 
@@ -1280,7 +1272,7 @@ module Computed_value = struct
         let length = Values.read_length cursor in
         Cursor.ws cursor;
         if Cursor.is_done cursor then Some length else None
-      with _ -> None
+      with Cursor.Parse_error _ | Reader.Parse_error _ -> None
     in
     match parsed with
     | None -> `Not_length
@@ -1375,114 +1367,91 @@ module Computed_value = struct
     let v = Declaration.string_of_value ~minify:true d in
     String.trim v = "revert-layer"
 
+  (* Layered candidates extracted from a [custom_properties] pool, paired with
+     their [layer_order] index so callers can pick the highest- or lowest-ranked
+     entry without re-scanning. Revert-layer placeholders are dropped because
+     they do not contribute their own value. *)
+  let layered_candidates ~layer_order pool =
+    List.filter_map
+      (fun d ->
+        if is_revert_layer d then None
+        else
+          match Declaration.custom_declaration_layer d with
+          | None -> None
+          | Some _ as l -> Some (layer_index ~layer_order l, d))
+      pool
+
+  let pick_first_in pool ~compare_score =
+    match List.sort (fun (a, _) (b, _) -> compare_score a b) pool with
+    | [] -> None
+    | (_, d) :: _ -> Some d
+
+  let pick_latest_layer ~layer_order pool =
+    pick_first_in (layered_candidates ~layer_order pool)
+      ~compare_score:(fun a b -> compare b a)
+
+  let pick_earliest_layer ~layer_order pool =
+    pick_first_in (layered_candidates ~layer_order pool) ~compare_score:compare
+
+  let by_layer scope pool =
+    List.find_opt (fun d -> Declaration.custom_declaration_layer d = scope) pool
+
+  (* CSS Cascade 5 §7.4: rolling [revert-layer] back to the next earlier layer
+     for the same custom property. *)
+  let revert_layer_fallback ~layer_order pool scope =
+    let scope_index =
+      match scope with
+      | None -> max_int
+      | Some _ as l -> layer_index ~layer_order l
+    in
+    let earlier =
+      List.filter
+        (fun (idx, _) -> idx < scope_index)
+        (layered_candidates ~layer_order pool)
+    in
+    pick_first_in earlier ~compare_score:(fun a b -> compare b a)
+
+  let resolve_with_revert ~layer_order pool d scope =
+    if is_revert_layer d then revert_layer_fallback ~layer_order pool scope
+    else Some d
+
+  let pick_normal ?layer ~layer_order pool =
+    match layer with
+    | None -> (
+        match by_layer None pool with
+        | Some d -> resolve_with_revert ~layer_order pool d None
+        | None -> pick_latest_layer ~layer_order pool)
+    | Some scope -> (
+        match by_layer (Some scope) pool with
+        | Some d -> resolve_with_revert ~layer_order pool d (Some scope)
+        | None -> pick_earliest_layer ~layer_order pool)
+
+  (* Important reverses cascade order: earlier layers win, unlayered ranks below
+     all named layers. *)
+  let pick_important ~layer_order pool =
+    let unlayered_rank = max_int in
+    let rank_of d =
+      match Declaration.custom_declaration_layer d with
+      | None -> unlayered_rank
+      | Some _ as l -> layer_index ~layer_order l
+    in
+    pick_first_in
+      (List.map (fun d -> (rank_of d, d)) pool)
+      ~compare_score:compare
+
   let lookup_custom ?layer ?(layer_order = []) ctx name =
     let target = "--" ^ name in
-    let matches d = Declaration.property_name d = target in
-    let candidates = List.filter matches ctx.custom_properties in
+    let candidates =
+      List.filter
+        (fun d -> Declaration.property_name d = target)
+        ctx.custom_properties
+    in
     let important, normal =
       List.partition Declaration.is_important candidates
     in
-    (* CSS Cascade 5 §7.4: a [revert-layer] cascade keyword on a custom property
-       rolls the lookup back to the closest earlier layer's declaration,
-       ignoring the current layer's own value. *)
-    let revert_layer_fallback pool scope =
-      let scope_index =
-        match scope with
-        | None -> max_int
-        | Some name -> layer_index ~layer_order (Some name)
-      in
-      let earlier =
-        List.filter
-          (fun d ->
-            (not (is_revert_layer d))
-            &&
-            let l = Declaration.custom_declaration_layer d in
-            let idx = layer_index ~layer_order l in
-            idx < scope_index)
-          pool
-      in
-      match earlier with
-      | [] -> None
-      | _ -> (
-          let scored =
-            List.map
-              (fun d ->
-                let l = Declaration.custom_declaration_layer d in
-                (-layer_index ~layer_order l, d))
-              earlier
-          in
-          let sorted = List.sort (fun (a, _) (b, _) -> compare a b) scored in
-          match sorted with [] -> None | (_, d) :: _ -> Some d)
-    in
-    let pick_normal pool =
-      let by_layer scope =
-        List.find_opt
-          (fun d -> Declaration.custom_declaration_layer d = scope)
-          pool
-      in
-      let resolve_with_revert d scope =
-        if is_revert_layer d then revert_layer_fallback pool scope else Some d
-      in
-      let pick_latest_layered () =
-        let scored =
-          List.filter_map
-            (fun d ->
-              if is_revert_layer d then None
-              else
-                match Declaration.custom_declaration_layer d with
-                | None -> None
-                | Some _ as l -> Some (layer_index ~layer_order l, d))
-            pool
-        in
-        let sorted = List.sort (fun (a, _) (b, _) -> compare b a) scored in
-        match sorted with [] -> None | (_, d) :: _ -> Some d
-      in
-      let pick_earliest_layered () =
-        let scored =
-          List.filter_map
-            (fun d ->
-              if is_revert_layer d then None
-              else
-                match Declaration.custom_declaration_layer d with
-                | None -> None
-                | Some _ as l -> Some (layer_index ~layer_order l, d))
-            pool
-        in
-        let sorted = List.sort (fun (a, _) (b, _) -> compare a b) scored in
-        match sorted with [] -> None | (_, d) :: _ -> Some d
-      in
-      match layer with
-      | None -> (
-          (* Unscoped lookup: unlayered author beats layered, else the latest
-             layer wins per CSS Cascade 5 §6.4.3. *)
-          match by_layer None with
-          | Some d -> resolve_with_revert d None
-          | None -> pick_latest_layered ())
-      | Some scope -> (
-          (* Scoped lookup: prefer the same layer, then walk earlier layers
-             (cascade-priority within the layer's own ancestry) to provide a
-             deterministic fallback when the layer has no entry. The unlayered
-             author declaration is not consulted in this branch. *)
-          match by_layer (Some scope) with
-          | Some d -> resolve_with_revert d (Some scope)
-          | None -> pick_earliest_layered ())
-    in
-    let pick_important pool =
-      (* Important reverses cascade order: earlier layers (lower index in
-         [layer_order]) win, unlayered ranks below all named layers. *)
-      let unlayered_rank = max_int in
-      let rank_of d =
-        match Declaration.custom_declaration_layer d with
-        | None -> unlayered_rank
-        | Some _ as l -> layer_index ~layer_order l
-      in
-      let scored = List.map (fun d -> (rank_of d, d)) pool in
-      let sorted = List.sort (fun (a, _) (b, _) -> compare a b) scored in
-      match sorted with [] -> None | (_, d) :: _ -> Some d
-    in
-    match pick_important important with
+    match pick_important ~layer_order important with
     | Some _ as v -> v
-    | None -> pick_normal normal
+    | None -> pick_normal ?layer ~layer_order normal
 
   let initial_value_str ctx property =
     match
