@@ -44,14 +44,17 @@ let rec to_string = function
   | Func (name, args) -> name ^ "(" ^ args ^ ")"
   | Not (And _ as cond) | Not (Or _ as cond) -> "(not (" ^ to_string cond ^ "))"
   | Not cond -> "(not " ^ to_string cond ^ ")"
-  | And (a, b) -> to_string a ^ " and " ^ to_string b
+  | And (a, b) ->
+      supports_branch_to_string `And a
+      ^ " and "
+      ^ supports_branch_to_string `And b
   | Or (a, b) ->
-      (* Wrap And branches in parens when inside Or *)
-      let wrap = function
-        | And _ as x -> "(" ^ to_string x ^ ")"
-        | x -> to_string x
-      in
-      wrap a ^ " or " ^ wrap b
+      supports_branch_to_string `Or a ^ " or " ^ supports_branch_to_string `Or b
+
+and supports_branch_to_string operator = function
+  | Or _ as cond when operator = `And -> "(" ^ to_string cond ^ ")"
+  | And _ as cond when operator = `Or -> "(" ^ to_string cond ^ ")"
+  | cond -> to_string cond
 
 let rec pp_aux ~in_and ctx = function
   | Property (prop, value) ->
@@ -81,10 +84,20 @@ let rec pp_aux ~in_and ctx = function
       | _ -> pp_aux ~in_and ctx cond);
       if extra_parens then Pp.char ctx ')';
       Pp.char ctx ')'
-  | And (a, b) ->
-      pp_aux ~in_and:true ctx a;
+  | And (a, b) -> (
+      (match a with
+      | Or _ ->
+          Pp.char ctx '(';
+          pp_aux ~in_and:true ctx a;
+          Pp.char ctx ')'
+      | _ -> pp_aux ~in_and:true ctx a);
       Pp.string ctx " and ";
-      pp_aux ~in_and:true ctx b
+      match b with
+      | Or _ ->
+          Pp.char ctx '(';
+          pp_aux ~in_and:true ctx b;
+          Pp.char ctx ')'
+      | _ -> pp_aux ~in_and:true ctx b)
   | Or (a, b) ->
       (* Wrap And branches in parens when inside Or, to match tailwindcss output
          exactly. LightningCSS quirk: in minified mode, the left branch's first

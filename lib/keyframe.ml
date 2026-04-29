@@ -36,7 +36,7 @@ let position_of_string s =
   else if String.length s > 0 && s.[String.length s - 1] = '%' then
     try
       let p = float_of_string (String.sub s 0 (String.length s - 1)) in
-      Some (Percent p)
+      if p >= 0. && p <= 100. then Some (Percent p) else None
     with Failure _ | Invalid_argument _ -> None
   else None
 

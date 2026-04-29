@@ -107,6 +107,10 @@ let rec boundary_shape = function
   | Keyframes _ -> [ "keyframes" ]
   | Font_face _ -> [ "font-face" ]
   | Page _ -> [ "page" ]
+  | Page_with_margins _ -> [ "page" ]
+  | Font_palette_values _ -> [ "font-palette-values" ]
+  | View_transition _ -> [ "view-transition" ]
+  | Position_try _ -> [ "position-try" ]
   | Property _ -> [ "property" ]
 
 let boundary_shapes ss = List.concat_map boundary_shape ss
