@@ -47,23 +47,19 @@ let test_empty_side_contexts () =
     (Css.Context.attribute "hidden" document);
   let query = Css.Context.empty_query in
   Alcotest.(check (option string)) "query media type" None query.media_type;
-  Alcotest.(check (list (pair string string)))
-    "query media features" [] query.media_features;
+  Alcotest.(check int)
+    "query media features" 0
+    (List.length query.media_features);
   Alcotest.(check int) "query supports" 0 (List.length query.supports);
   Alcotest.(check (option string))
     "query container name" None query.container_name;
-  Alcotest.(check (list (pair string string)))
-    "query container features" [] query.container_features;
-  Alcotest.(check (option string))
-    "empty query has no media feature" None
-    (Css.Context.media_feature "width" query);
+  Alcotest.(check int)
+    "query container features" 0
+    (List.length query.container_features);
   Alcotest.(check bool)
     "empty query supports no declaration" false
     (Css.Context.matches_supports query
        (Css.Supports.property "display" "grid"));
-  Alcotest.(check (option string))
-    "empty query has no container feature" None
-    (Css.Context.container_feature "inline-size" query);
   let loader = Css.Context.empty_loader in
   Alcotest.(check (option string)) "loader base url" None loader.base_url;
   Alcotest.(check (list (pair string string)))
@@ -190,7 +186,11 @@ let test_document_context_boundaries () =
 let test_query_context () =
   let ctx =
     Css.Context.query ~media_type:"screen"
-      ~media_features:[ ("width", "1024px"); ("dynamic-range", "high") ]
+      ~media_features:
+        [
+          Css.Media.feature "width" "1024px";
+          Css.Media.feature "dynamic-range" "high";
+        ]
       ~supports:
         [
           Css.Supports.property "display" "grid";
@@ -199,26 +199,31 @@ let test_query_context () =
         ]
       ~container_name:"card"
       ~container_features:
-        [ ("inline-size", "640px"); ("style(--theme)", "dark") ]
+        [
+          Css.Container.feature "inline-size" "640px";
+          Css.Container.style ~value:"dark" "--theme";
+        ]
       ()
   in
-  Alcotest.(check (option string))
-    "media feature" (Some "1024px")
-    (Css.Context.media_feature "width" ctx);
+  Alcotest.(check int) "media feature count" 2 (List.length ctx.media_features);
   Alcotest.(check bool)
     "supported declaration" true
     (Css.Context.matches_supports ctx (Css.Supports.property "display" "grid"));
   Alcotest.(check bool)
     "unsupported declaration" false
     (Css.Context.matches_supports ctx (Css.Supports.property "display" "ruby"));
-  Alcotest.(check (option string))
-    "container feature" (Some "640px")
-    (Css.Context.container_feature "inline-size" ctx)
+  Alcotest.(check int)
+    "container feature count" 2
+    (List.length ctx.container_features)
 
 let test_query_context_boundaries () =
   let ctx =
     Css.Context.query ~media_type:"print"
-      ~media_features:[ ("width", "80rem"); ("prefers-color-scheme", "dark") ]
+      ~media_features:
+        [
+          Css.Media.feature "width" "80rem";
+          Css.Media.feature "prefers-color-scheme" "dark";
+        ]
       ~supports:
         [
           Css.Supports.property "display" "grid";
@@ -228,7 +233,10 @@ let test_query_context_boundaries () =
         ]
       ~container_name:"sidebar"
       ~container_features:
-        [ ("inline-size", "42rem"); ("style(--theme)", "dark") ]
+        [
+          Css.Container.feature "inline-size" "42rem";
+          Css.Container.style ~value:"dark" "--theme";
+        ]
       ()
   in
   Alcotest.(check (option string))
@@ -236,9 +244,6 @@ let test_query_context_boundaries () =
   Alcotest.(check int) "supports preserved" 4 (List.length ctx.supports);
   Alcotest.(check (option string))
     "container name preserved" (Some "sidebar") ctx.container_name;
-  Alcotest.(check (option string))
-    "missing media feature" None
-    (Css.Context.media_feature "height" ctx);
   Alcotest.(check bool)
     "supports declaration is exact on value" false
     (Css.Context.matches_supports ctx (Css.Supports.property "display" "flex"));
@@ -246,13 +251,7 @@ let test_query_context_boundaries () =
      "Display" and "display" name the same property. *)
   Alcotest.(check bool)
     "supports declaration normalises property case" true
-    (Css.Context.matches_supports ctx (Css.Supports.property "Display" "grid"));
-  Alcotest.(check (option string))
-    "style container feature" (Some "dark")
-    (Css.Context.container_feature "style(--theme)" ctx);
-  Alcotest.(check (option string))
-    "missing container feature" None
-    (Css.Context.container_feature "block-size" ctx)
+    (Css.Context.matches_supports ctx (Css.Supports.property "Display" "grid"))
 
 let test_loader_and_animation_contexts () =
   let loader =
@@ -344,14 +343,14 @@ let test_context_debug_printers () =
     document_dump;
   let query_dump =
     Css.Context.query ~media_type:"screen"
-      ~media_features:[ ("width", "1024px") ]
+      ~media_features:[ Css.Media.feature "width" "1024px" ]
       ~supports:
         [
           Css.Supports.property "display" "grid";
           Css.Supports.func "selector" ":has(img)";
         ]
       ~container_name:"card"
-      ~container_features:[ ("inline-size", "640px") ]
+      ~container_features:[ Css.Container.feature "inline-size" "640px" ]
       ()
     |> Css.Pp.to_string Css.Context.pp_query
   in
@@ -658,10 +657,10 @@ let test_query_context_evaluation_contract () =
     Css.Context.query ~media_type:"screen"
       ~media_features:
         [
-          ("width", "1024px");
-          ("height", "768px");
-          ("prefers-color-scheme", "dark");
-          ("dynamic-range", "high");
+          Css.Media.feature "width" "1024px";
+          Css.Media.feature "height" "768px";
+          Css.Media.feature "prefers-color-scheme" "dark";
+          Css.Media.feature "dynamic-range" "high";
         ]
       ~supports:
         [
@@ -673,10 +672,10 @@ let test_query_context_evaluation_contract () =
       ~container_name:"card"
       ~container_features:
         [
-          ("inline-size", "640px");
-          ("block-size", "480px");
-          ("style(--theme)", "dark");
-          ("scroll-state(stuck: top)", "true");
+          Css.Container.feature "inline-size" "640px";
+          Css.Container.feature "block-size" "480px";
+          Css.Container.style ~value:"dark" "--theme";
+          Css.Container.scroll_state "stuck" "top";
         ]
       ()
   in
@@ -836,11 +835,11 @@ let test_query_context_boolean_contract () =
     Css.Context.query ~media_type:"screen"
       ~media_features:
         [
-          ("width", "1024px");
-          ("height", "768px");
-          ("orientation", "landscape");
-          ("hover", "hover");
-          ("pointer", "fine");
+          Css.Media.feature "width" "1024px";
+          Css.Media.feature "height" "768px";
+          Css.Media.feature "orientation" "landscape";
+          Css.Media.feature "hover" "hover";
+          Css.Media.feature "pointer" "fine";
         ]
       ~supports:
         [
@@ -853,9 +852,9 @@ let test_query_context_boolean_contract () =
       ~container_name:"card"
       ~container_features:
         [
-          ("inline-size", "720px");
-          ("block-size", "360px");
-          ("style(--density)", "compact");
+          Css.Container.feature "inline-size" "720px";
+          Css.Container.feature "block-size" "360px";
+          Css.Container.style ~value:"compact" "--density";
         ]
       ()
   in
@@ -896,7 +895,7 @@ let test_loader_import_condition_contract () =
   in
   let query =
     Css.Context.query ~media_type:"screen"
-      ~media_features:[ ("width", "1024px") ]
+      ~media_features:[ Css.Media.feature "width" "1024px" ]
       ~supports:
         [
           Css.Supports.property "display" "grid";
@@ -1033,7 +1032,7 @@ let test_loader_import_layer_contract () =
   let query =
     Css.Context.query ~media_type:"screen"
       ~supports:[ Css.Supports.property "display" "grid" ]
-      ~media_features:[ ("width", "1024px") ]
+      ~media_features:[ Css.Media.feature "width" "1024px" ]
       ()
   in
   check_layered_import_loaded "tailwind theme import enters theme layer" ~loader

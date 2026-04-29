@@ -39,9 +39,10 @@ type document = {
 
 type query = {
   media_type : string option;
-  media_features : (string * string) list;
-  supports_declarations : (string * string) list;
-  supports_functions : (string * string) list;
+  media_features : Media.feature list;
+      (** Media features the rendering environment claims to expose. Build
+          entries with {!Media.feature} (plain [(name: value)]) or
+          {!Media.boolean_feature} (boolean [(name)]). *)
   supports : Supports.t list;
       (** Capability flags the rendering environment claims to support. Each
           entry is normally a [Supports.Property] or [Supports.Func] leaf, built
@@ -49,7 +50,11 @@ type query = {
           [Or] / [Not]) are accepted but only match a query that is structurally
           identical. *)
   container_name : string option;
-  container_features : (string * string) list;
+  container_features : Container.t list;
+      (** Container capabilities exposed by the matching container. Build size
+          features with {!Container.feature}, style queries with
+          {!Container.style}, and scroll-state queries with
+          {!Container.scroll_state}. *)
 }
 (** Explicit context for media/supports/container query transforms. *)
 
@@ -106,12 +111,10 @@ val empty_query : query
 
 val query :
   ?media_type:string ->
-  ?media_features:(string * string) list ->
-  ?supports_declarations:(string * string) list ->
-  ?supports_functions:(string * string) list ->
+  ?media_features:Media.feature list ->
   ?supports:Supports.t list ->
   ?container_name:string ->
-  ?container_features:(string * string) list ->
+  ?container_features:Container.t list ->
   unit ->
   query
 (** [query ()] constructs a media/supports/container context. Build [supports]
@@ -179,9 +182,6 @@ val attribute : string -> document -> string option option
 (** [attribute name ctx] looks up an attribute. [None] means absent; [Some None]
     means present without a value. *)
 
-val media_feature : string -> query -> string option
-(** [media_feature name ctx] looks up a media feature. *)
-
 val computed_value :
   ?layer_order:string list ->
   ?layer:string ->
@@ -213,9 +213,6 @@ val matches_container : query -> ?name:string -> Container.t -> bool
 val resolve_url : loader -> string -> (string, string) result
 (** [resolve_url loader href] resolves [href] against [loader.base_url] using
     simple relative-URL handling. *)
-
-val container_feature : string -> query -> string option
-(** [container_feature name ctx] looks up a container feature. *)
 
 val import_source : string -> loader -> string option
 (** [import_source url ctx] looks up imported stylesheet text. *)

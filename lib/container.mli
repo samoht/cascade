@@ -27,6 +27,19 @@ val of_string : string -> t
 (** [of_string s] parses a container condition. Raises [Failure] for malformed
     conditions. *)
 
+val feature : string -> string -> t
+(** [feature name value] is a size/range container feature in [Feature_query]
+    form, e.g. [feature "inline-size" "640px"] for [(inline-size: 640px)]. *)
+
+val style : ?value:string -> string -> t
+(** [style ?value prop] is a [style()] query: [Style (prop, value)]. With no
+    [value] it matches the boolean form [style(--flag)]; with a value it matches
+    [style(prop: value)]. *)
+
+val scroll_state : string -> string -> t
+(** [scroll_state prop value] is [Scroll_state (prop, value)], matching
+    [scroll-state(prop: value)]. *)
+
 val compare : t -> t -> int
 (** [compare t1 t2] compares two container conditions. *)
 
