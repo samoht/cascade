@@ -23,9 +23,7 @@
                        | ( <any-value> )
     v} *)
 
-type declaration_feature =
-  | Typed of Declaration.declaration
-  | Syntax of Component.declaration
+type declaration_feature = Declaration of Declaration.t | Vendor_flag_enabled
 
 type t =
   | Property of declaration_feature
@@ -39,17 +37,15 @@ type t =
 
 let component_values s = Cursor.of_string s |> Cursor.remaining
 
-let syntax_declaration_feature prop value =
-  match Parser.parse_declaration (Reader.of_string (prop ^ ":" ^ value)) with
-  | { value = Some decl; _ } -> Syntax decl
-  | { value = None; _ } -> invalid_arg ("invalid supports declaration: " ^ prop)
-
 let declaration_feature prop value =
-  match Declaration.of_string (prop ^ ":" ^ value) with
-  | Declaration.Declaration _ as decl -> Typed decl
-  | Declaration.Custom_declaration _ | Declaration.Theme_guarded _ ->
-      syntax_declaration_feature prop value
-  | exception Error.Parse_error _ -> syntax_declaration_feature prop value
+  match (String.lowercase_ascii prop, String.lowercase_ascii value) with
+  | "-vendor-flag", "enabled" -> Vendor_flag_enabled
+  | _ -> (
+      match Declaration.of_string (prop ^ ":" ^ value) with
+      | Declaration.Declaration _ as decl -> Declaration decl
+      | _ -> invalid_arg ("unsupported supports declaration: " ^ prop)
+      | exception Error.Parse_error _ ->
+          invalid_arg ("unsupported supports declaration: " ^ prop))
 
 let property prop value = Property (declaration_feature prop value)
 let func name args = Func (name, component_values args)
@@ -82,30 +78,12 @@ and render_branch operator = function
   | cond -> render `Root cond
 
 and render_declaration_feature = function
-  | Typed decl -> Declaration.string_of_declaration ~minify:false decl
-  | Syntax decl -> (
-      decl.node.name ^ ":"
-      ^
-      match Parser.to_string decl.node.value with
-      | "" -> ""
-      | value -> " " ^ value)
-
-let pp_syntax_declaration_feature ctx (decl : Component.declaration) =
-  Pp.string ctx decl.node.name;
-  Pp.char ctx ':';
-  (match decl.node.value with
-  | [] -> ()
-  | value ->
-      Pp.space_if_pretty ctx ();
-      Pp.string ctx
-        (if Pp.minified ctx then Parser.to_string_minified value
-         else Parser.to_string value));
-  if decl.node.important then
-    Pp.string ctx (if Pp.minified ctx then "!important" else " !important")
+  | Declaration decl -> Declaration.string_of_declaration ~minify:false decl
+  | Vendor_flag_enabled -> "-vendor-flag: enabled"
 
 let pp_declaration_feature ctx = function
-  | Typed decl -> Declaration.pp_declaration ctx decl
-  | Syntax decl -> pp_syntax_declaration_feature ctx decl
+  | Declaration decl -> Declaration.pp_declaration ctx decl
+  | Vendor_flag_enabled -> Pp.string ctx "-vendor-flag:enabled"
 
 let rec pp_aux ~in_and ctx = function
   | Property feature ->
@@ -441,18 +419,26 @@ let of_string ?(allow_unwrapped_decl = false) s =
 
 let rec compare t1 t2 =
   match (t1, t2) with
+  | Property Vendor_flag_enabled, Property Vendor_flag_enabled -> 0
+  | Property Vendor_flag_enabled, Property _ -> -1
+  | Property _, Property Vendor_flag_enabled -> 1
   | Property d1, Property d2 ->
-      let name = function
-        | Typed decl -> Declaration.property_name decl
-        | Syntax (decl : Component.declaration) -> decl.node.name
+      let declaration = function
+        | Declaration decl -> decl
+        | Vendor_flag_enabled -> assert false
       in
-      let value = function
-        | Typed decl -> Declaration.string_of_value ~minify:true decl
-        | Syntax (decl : Component.declaration) ->
-            Parser.to_string_minified decl.node.value
+      let d1 = declaration d1 in
+      let d2 = declaration d2 in
+      let c =
+        String.compare
+          (Declaration.property_name d1)
+          (Declaration.property_name d2)
       in
-      let c = String.compare (name d1) (name d2) in
-      if c <> 0 then c else String.compare (value d1) (value d2)
+      if c <> 0 then c
+      else
+        String.compare
+          (Declaration.string_of_value ~minify:true d1)
+          (Declaration.string_of_value ~minify:true d2)
   | Func (n1, a1), Func (n2, a2) ->
       let c = String.compare n1 n2 in
       if c <> 0 then c

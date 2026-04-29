@@ -18,7 +18,6 @@ type t =
   | Feature_query of Media.t
       (** Container size/range feature query, e.g. [(inline-size: 640px)] or
           [(inline-size > 30em)]. *)
-  | Custom of Media.t  (** Structured condition beyond the typed shorthands. *)
 
 val to_string : t -> string
 (** [to_string t] converts a container condition to its CSS string
@@ -46,12 +45,3 @@ val scroll_state : string -> string -> t
 
 val compare : t -> t -> int
 (** [compare t1 t2] compares two container conditions. *)
-
-(** {1 Container Condition Classification} *)
-
-type kind =
-  | Min_width  (** min-width based query *)
-  | Other  (** Other/unknown condition *)
-
-val kind : t -> kind
-(** [kind t] returns the classification of a container condition. *)

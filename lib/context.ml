@@ -940,7 +940,6 @@ module Match_container = struct
         | Or (a, b) -> eval q a || eval q b
         | Not c -> not (eval q c)
         | Feature_query media -> Match_media.eval media_q media
-        | Custom media -> Match_media.eval media_q media
 end
 
 (** {2 Selector matching (CSS Selectors 4)}
