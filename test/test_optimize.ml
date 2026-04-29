@@ -1325,7 +1325,7 @@ let c61_no_merge_supports () =
           merge_key = None;
         };
       Css.Stylesheet.Supports
-        ( Css.Supports.Property ("display", "flex"),
+        ( Css.Supports.property "display" "flex",
           [
             Css.Stylesheet.Rule
               {
@@ -2385,7 +2385,7 @@ let c64_conditional_layer_decls_nested () =
                 ] );
           ] );
       Css.Stylesheet.Supports
-        ( Css.Supports.Property ("display", "grid"),
+        ( Css.Supports.property "display" "grid",
           [
             Css.Stylesheet.Layer_decl [ "grid" ];
             Css.Stylesheet.Layer

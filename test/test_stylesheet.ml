@@ -175,7 +175,7 @@ let test_supports_rule_creation () =
   let r = rule ~selector:(Selector.class_ "grid") [ decl ] in
   let supports_stmt =
     supports
-      ~condition:(Css.Supports.Property ("display", "grid"))
+      ~condition:(Css.Supports.property "display" "grid")
       [ Css.Stylesheet.Rule r ]
   in
   let sheet = Css.Stylesheet.v [ supports_stmt ] in
@@ -188,12 +188,12 @@ let test_supports_nested_creation () =
   let r = rule ~selector:(Selector.class_ "grid") [ decl ] in
   let nested_supports =
     supports
-      ~condition:(Css.Supports.Property ("color", "red"))
+      ~condition:(Css.Supports.property "color" "red")
       [ Css.Stylesheet.Rule r ]
   in
   let supports_stmt =
     supports
-      ~condition:(Css.Supports.Property ("display", "grid"))
+      ~condition:(Css.Supports.property "display" "grid")
       [ Rule r; nested_supports ]
   in
   let sheet = Css.Stylesheet.v [ supports_stmt ] in
@@ -566,7 +566,7 @@ let import_case () =
     "@import url(tokens.css) layer(theme.tokens) supports(--theme: dark) \
      (prefers-color-scheme: dark);";
   check_import_rule
-    ~expected:"@import \"wide.css\" supports((width:stretch)) (width >= 40em);"
+    ~expected:"@import \"wide.css\" supports(width:stretch) (width >= 40em);"
     "@import url(wide.css) supports((width: stretch)) (width >= 40em);";
   neg_cursor read_import_rule "@import url(theme.css) screen layer(theme);";
   neg_cursor read_import_rule
@@ -628,7 +628,7 @@ let spec_fontface_descriptors () =
       "@font-face {font-family:Brand;src:local(\"Brand\"),url(\"brand.woff2\") \
        format(\"woff2\") tech(variations);font-weight:400 \
        700;font-style:normal italic;font-stretch:75% \
-       125%;font-display:optional;unicode-range:U+0025-00FF}"
+       125%;font-display:optional;unicode-range:U+25-FF}"
     "@font-face { font-family: Brand; src: local(\"Brand\"), \
      url(\"brand.woff2\") format(\"woff2\") tech(variations); font-weight: 400 \
      700; font-style: normal italic; font-stretch: 75% 125%; font-display: \
@@ -668,8 +668,7 @@ let page_case () =
     "@page chapter:first { margin-top: 6cm; }";
   check_stylesheet
     ~expected:
-      "@page{ @top-left{content:\"title\"} \
-       @bottom-center{content:counter(page)}}"
+      "@page{@top-left{content:\"title\"}@bottom-center{content:counter(page)}}"
     "@page { @top-left { content: \"title\" } @bottom-center { content: \
      counter(page) } }";
   neg_cursor read_stylesheet "@page : { margin: 1cm }";
@@ -1224,9 +1223,9 @@ let test_complex_values () =
     ".multi { margin: 10px 20px 30px 40px; }";
   check_stylesheet ~expected:".var{color:var(--primary-color,blue)}"
     ".var { color: var(--primary-color, blue); }";
-  check_stylesheet ~expected:".clamp{font-size:clamp(1rem, 2vw, 2rem)}"
+  check_stylesheet ~expected:".clamp{font-size:clamp(1rem,2vw,2rem)}"
     ".clamp { font-size: clamp(1rem, 2vw, 2rem); }";
-  check_stylesheet ~expected:".minmax{width:minmax(200px, 1fr)}"
+  check_stylesheet ~expected:".minmax{width:minmax(200px,1fr)}"
     ".minmax { width: minmax(200px, 1fr); }"
 
 (* Not a roundtrip test *)
@@ -1453,7 +1452,7 @@ let c64_layer_nesting_examples () =
   check_stylesheet
     ~expected:
       "@layer base{p{max-width:70ch}}@layer framework{@layer \
-       base{p{margin-block:.75em}}@layer theme{p{color:#222222}}}@layer \
+       base{p{margin-block:.75em}}@layer theme{p{color:#222}}}@layer \
        framework.theme{blockquote{color:rebeccapurple}}"
     "@layer base { p { max-width: 70ch } } @layer framework { @layer base { p \
      { margin-block: 0.75em } } @layer theme { p { color: #222 } } } @layer \
@@ -1525,9 +1524,9 @@ let c64_import_layer_syntax () =
     "@import url(theme.css) layer(framework.theme);";
   check_import_rule ~expected:"@import \"base-forms.css\" layer;"
     "@import url(base-forms.css) layer;";
-  check_import_rule ~expected:"@import \"base-links.css\" layer();"
+  check_import_rule ~expected:"@import \"base-links.css\" layer;"
     "@import url(base-links.css) layer();";
-  check_import_rule ~expected:"@import \"conditional.css\" layer() print;"
+  check_import_rule ~expected:"@import \"conditional.css\" layer print;"
     "@import url(conditional.css) layer() print;";
   neg_cursor read_import_rule "@import url(theme.css) layer(initial);";
   neg_cursor read_import_rule "@import url(theme.css) layer(framework . theme);";
@@ -1547,7 +1546,7 @@ let c2_import_conditions () =
     ~expected:"@import \"narrow.css\" supports(display:flex) handheld;"
     "@import url(narrow.css) supports(display: flex) handheld;";
   check_import_rule
-    ~expected:"@import \"narrow.css\" supports((display:flex)) handheld;"
+    ~expected:"@import \"narrow.css\" supports(display:flex) handheld;"
     "@import url(narrow.css) supports((display: flex)) handheld;";
   check_import_rule
     ~expected:
@@ -2054,6 +2053,18 @@ let value_resolution_boundary () =
        ~inherited:(Some "canvastext") ~cascaded:(Some "unset"))
 
 let custom_property_boundary () =
+  let check_specified_value name css expected =
+    let decl = Css.Declaration.of_string css in
+    Alcotest.(check string)
+      name expected
+      (Css.Declaration.string_of_value ~minify:false decl)
+  in
+  let check_minified_value name css expected =
+    let decl = Css.Declaration.of_string css in
+    Alcotest.(check string)
+      name expected
+      (Css.Declaration.string_of_value ~minify:true decl)
+  in
   let gap = Css.Declaration.of_string "--gap: 1rem" in
   let ctx =
     {
@@ -2070,15 +2081,26 @@ let custom_property_boundary () =
     "custom property context" (Some gap)
     (Css.Context.custom_property "--gap" ctx);
   check_declaration ~expected:"--a:var(--b)" "--a: var(--b);";
-  check_declaration ~expected:"--b:var(--a, red)" "--b: var(--a, red);";
-  check_declaration ~expected:"color:var(--brand, red)"
-    "color: var(--brand, red);";
+  (* CSS Custom Properties requires specified custom-property values to
+     serialize as authored. Assert the value serialization directly so this spec
+     boundary does not depend on declaration-colon formatting. *)
+  check_specified_value "custom property var fallback" "--b: var(--a, red);"
+    "var(--a, red)";
+  check_specified_value "var fallback in ordinary declaration"
+    "color: var(--brand, red);" "var(--brand, red)";
+  (* Minification may remove whitespace around the fallback comma while
+     preserving the var() grammar. Keep this explicit and separate from the
+     specified-value serialization checks above. *)
+  check_minified_value "custom property var fallback minified"
+    "--b: var(--a, red);" "var(--a,red)";
+  check_minified_value "nested var fallback minified"
+    "--nested: var(--a, var(--b, red));" "var(--a,var(--b,red))";
   check_declaration ~expected:"--:var(--x)" "--: var(--x);";
   check_declaration ~expected:"--tokens:{color:red}" "--tokens: { color: red };";
   check_declaration ~expected:"--empty:var(--missing,)"
     "--empty: var(--missing,);";
-  check_declaration ~expected:"--nested:var(--a, var(--b, red))"
-    "--nested: var(--a, var(--b, red));";
+  check_specified_value "nested var fallback"
+    "--nested: var(--a, var(--b, red));" "var(--a, var(--b, red))";
   neg_cursor read_stylesheet
     "@property --registered { syntax: \"<color>\"; inherits: false; \
      initial-value: 10px }"
@@ -2243,7 +2265,7 @@ let spec_at_rule_descriptor_matrix () =
          display: grid } }" );
       ( "@container card style(--variant: featured){.card{color:red}}",
         "@container card style(--variant: featured) { .card { color: red } }" );
-      ( "@scope (.card) to (.boundary){.title{color:red}}",
+      ( "@scope(.card) to (.boundary){.title{color:red}}",
         "@scope (.card) to (.boundary) { .title { color: red } }" );
       ( "@starting-style{.dialog{opacity:0}}",
         "@starting-style { .dialog { opacity: 0 } }" );
@@ -2506,7 +2528,7 @@ let spec_nesting_selector_edges () =
      @container (inline-size > 30em) { & > .media { display: block } } }";
   check_stylesheet
     ~expected:
-      "@scope (.card) to (.boundary){.title{color:red;&:hover{color:blue}}}"
+      "@scope(.card) to (.boundary){.title{color:red;&:hover{color:blue}}}"
     "@scope (.card) to (.boundary) { .title { color: red; &:hover { color: \
      blue } } }";
   check_stylesheet

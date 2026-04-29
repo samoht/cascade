@@ -688,13 +688,11 @@ let test_font_style () =
   check_font_style "normal";
   check_font_style "italic";
   check_font_style "oblique";
+  check_font_style "oblique 45deg";
   check_font_style "inherit";
   neg_cursor read_font_style "invalid";
   neg_cursor read_font_style "italics";
   (* common typo *)
-  neg_cursor read_font_style "oblique 45deg";
-  (* degree not supported *)
-  (* contradictory *)
   neg_cursor read_font_style "normal italic"
 
 let test_font_display () =
@@ -2062,7 +2060,7 @@ let test_grid_line () =
   check_grid_line "main-start";
   check_grid_line "content-end";
   check_grid_line "inherit";
-  check_grid_line "span"
+  neg_cursor read_grid_line "span"
 
 let test_grid_template () =
   check_grid_template "none";

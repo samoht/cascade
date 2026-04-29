@@ -69,7 +69,7 @@ let positive =
       "@container scroll-state(stuck: top){.card{color:red}}"
       "@container scroll-state(stuck: top) { .card { color: red } }";
     row "scope" "limit-selector"
-      "@scope (.card) to (.boundary){.title{color:red}}"
+      "@scope(.card) to (.boundary){.title{color:red}}"
       "@scope (.card) to (.boundary) { .title { color: red } }";
     row "starting-style" "nested-rule" "@starting-style{.dialog{opacity:0}}"
       "@starting-style { .dialog { opacity: 0 } }";
