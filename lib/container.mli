@@ -19,6 +19,11 @@ type t =
       (** Container size/range feature query, e.g. [(inline-size: 640px)] or
           [(inline-size > 30em)]. *)
 
+type kind = Min_width | Other  (** Coarse container condition category. *)
+
+val kind : t -> kind
+(** [kind t] classifies min-width-only conditions for compatibility helpers. *)
+
 val to_string : t -> string
 (** [to_string t] converts a container condition to its CSS string
     representation. *)
