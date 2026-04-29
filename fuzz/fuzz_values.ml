@@ -6,6 +6,14 @@
 open Cascade
 open Alcobar
 
+let parse_whole parse input =
+  let r = Css.Cursor.of_string input in
+  try
+    let value = parse r in
+    Css.Cursor.ws r;
+    if Css.Cursor.is_done r then Some value else None
+  with Css.Cursor.Parse_error _ -> None
+
 (** read_color — must not crash on arbitrary input. *)
 let test_read_color buf =
   let r = Css.Cursor.of_string buf in
@@ -303,13 +311,11 @@ let test_modern_math_stable buf =
 
 let test_spec_valid_value_vectors buf =
   let parse_print parse pp input =
-    let r = Css.Cursor.of_string input in
-    match try Some (parse r) with Css.Cursor.Parse_error _ -> None with
+    match parse_whole parse input with
     | None -> fail (Fmt.str "valid CSS value vector did not parse: %S" input)
     | Some value -> (
         let once = Css.Pp.to_string ~minify:true pp value in
-        let r2 = Css.Cursor.of_string once in
-        match try Some (parse r2) with Css.Cursor.Parse_error _ -> None with
+        match parse_whole parse once with
         | None ->
             fail
               (Fmt.str "valid CSS value serialization did not reparse: %S -> %S"
@@ -375,8 +381,7 @@ let test_spec_valid_value_vectors buf =
 
 let test_spec_invalid_value_vectors buf =
   let rejected parse input =
-    let r = Css.Cursor.of_string input in
-    match try Some (parse r) with Css.Cursor.Parse_error _ -> None with
+    match parse_whole parse input with
     | None -> ()
     | Some _ -> fail (Fmt.str "invalid CSS value vector parsed: %S" input)
   in
@@ -591,13 +596,11 @@ let invalid_value_mutation buf =
 
 let assert_value_roundtrip kind input =
   let run parse pp =
-    let r = Css.Cursor.of_string input in
-    match try Some (parse r) with Css.Cursor.Parse_error _ -> None with
+    match parse_whole parse input with
     | None -> fail (Fmt.str "generated valid CSS value rejected: %S" input)
     | Some value -> (
         let once = Css.Pp.to_string ~minify:true pp value in
-        let r2 = Css.Cursor.of_string once in
-        match try Some (parse r2) with Css.Cursor.Parse_error _ -> None with
+        match parse_whole parse once with
         | None -> fail (Fmt.str "generated CSS value did not reparse: %S" once)
         | Some reparsed ->
             let twice = Css.Pp.to_string ~minify:true pp reparsed in
@@ -611,8 +614,7 @@ let assert_value_roundtrip kind input =
 
 let assert_value_reject kind input =
   let reject parse =
-    let r = Css.Cursor.of_string input in
-    match try Some (parse r) with Css.Cursor.Parse_error _ -> None with
+    match parse_whole parse input with
     | None -> ()
     | Some _ -> fail (Fmt.str "generated invalid CSS value parsed: %S" input)
   in

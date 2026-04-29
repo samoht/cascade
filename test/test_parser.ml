@@ -518,7 +518,7 @@ let spec_list_components_entry () =
     "unmatched closing tokens are preserved" ")]}"
     (Css.Parser.to_string (parse_list ")]}"));
   Alcotest.(check string)
-    "comments are not component values" "ab"
+    "comments preserve token boundary" "a b"
     (Css.Parser.to_string (parse_list "a/*x*/b"));
   Alcotest.(check string)
     "EOF closes nested blocks and functions" "[a f(b)]"
@@ -1328,10 +1328,10 @@ let spec_deep_nesting_edges () =
 
 let spec_comment_recovery_edges () =
   (* CSS Syntax Level 3 sections 4.3.2 and 5.5: comments disappear before
-     component parsing and cannot create active braces after an unterminated
-     comment. *)
+     component parsing, but serialization must preserve identifier token
+     boundaries so comments cannot merge two identifiers into a new token. *)
   Alcotest.(check string)
-    "comment between decl tokens" "colorred"
+    "comment between decl tokens" "color red"
     (parse_cvs "color/*x*/red" |> Css.Parser.to_string_minified);
   Alcotest.(check string)
     "unterminated comment hides braces" "safe"

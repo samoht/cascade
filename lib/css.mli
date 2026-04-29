@@ -2447,6 +2447,9 @@ type justify_items =
   | Unsafe_right
   | Anchor_center
   | Legacy
+  | Legacy_center
+  | Legacy_left
+  | Legacy_right
 
 (** CSS justify-self values.
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-self} MDN:
@@ -2613,6 +2616,7 @@ type grid_template =
   | Fit_content of length
   | Repeat of int * grid_template list
   | Tracks of grid_template list
+  | Split of grid_template * grid_template
   | Named_tracks of (string option * grid_template) list
   | Template of string
   | Subgrid
@@ -2817,7 +2821,13 @@ val text_decoration_shorthand :
     - [thickness]: line thickness. *)
 
 (** CSS font style values. *)
-type font_style = Normal | Italic | Oblique | Inherit
+type font_style =
+  | Normal
+  | Italic
+  | Oblique
+  | Oblique_angle of angle
+  | Oblique_range of angle * angle
+  | Inherit
 
 (** CSS text transform values. *)
 type text_transform =
@@ -4423,6 +4433,7 @@ type list_style_type =
   | Upper_alpha
   | Lower_roman
   | Upper_roman
+  | String of string
   | Var of list_style_type var
 
 (** CSS list-style-image values *)
