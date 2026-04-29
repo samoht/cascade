@@ -952,21 +952,7 @@ end
 
 module Match_selector = struct
   let attr_name : Selector.attr_name -> string = function
-    | Aria a ->
-        let suffix =
-          match a with
-          | Busy -> "busy"
-          | Checked -> "checked"
-          | Disabled -> "disabled"
-          | Expanded -> "expanded"
-          | Hidden -> "hidden"
-          | Pressed -> "pressed"
-          | Readonly -> "readonly"
-          | Required -> "required"
-          | Selected -> "selected"
-          | Custom s -> s
-        in
-        "aria-" ^ suffix
+    | Aria a -> Aria.to_string a
     | Data s -> "data-" ^ s
     | Regular s -> s
 
