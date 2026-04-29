@@ -39,24 +39,26 @@ type t =
 
 (* ===== Pretty printing ===== *)
 
-let rec to_string = function
+let rec to_string condition = render `Root condition
+
+and render context = function
   | Property (prop, value) -> "(" ^ prop ^ ": " ^ value ^ ")"
   | Func (name, args) -> name ^ "(" ^ args ^ ")"
-  | Not (And _ as cond) | Not (Or _ as cond) -> "(not (" ^ to_string cond ^ "))"
-  | Not cond -> "(not " ^ to_string cond ^ ")"
-  | And (a, b) ->
-      supports_branch_to_string `And a
-      ^ " and "
-      ^ supports_branch_to_string `And b
-  | Or (a, b) ->
-      supports_branch_to_string `Or a
-      ^ (match a with Not _ -> "  or " | _ -> " or ")
-      ^ supports_branch_to_string `Or b
+  | Not cond ->
+      let rendered = "not " ^ render_not_operand cond in
+      if context = `Operand then "(" ^ rendered ^ ")" else rendered
+  | And (a, b) -> render_branch `And a ^ " and " ^ render_branch `And b
+  | Or (a, b) -> render_branch `Or a ^ " or " ^ render_branch `Or b
 
-and supports_branch_to_string operator = function
-  | Or _ as cond when operator = `And -> "(" ^ to_string cond ^ ")"
-  | And _ as cond when operator = `Or -> "(" ^ to_string cond ^ ")"
-  | cond -> to_string cond
+and render_not_operand = function
+  | (And _ | Or _) as cond -> "(" ^ render `Root cond ^ ")"
+  | cond -> render `Root cond
+
+and render_branch operator = function
+  | Or _ as cond when operator = `And -> "(" ^ render `Root cond ^ ")"
+  | And _ as cond when operator = `Or -> "(" ^ render `Root cond ^ ")"
+  | Not _ as cond -> render `Operand cond
+  | cond -> render `Root cond
 
 let rec pp_aux ~in_and ctx = function
   | Property (prop, value) ->
@@ -71,58 +73,55 @@ let rec pp_aux ~in_and ctx = function
       Pp.char ctx '(';
       Pp.string ctx args;
       Pp.char ctx ')'
-  | Not cond ->
-      (* Tailwind/LightningCSS quirk: in minified mode, Not wraps its child in
-         extra parens — but only when Not is NOT nested inside And. Goal: match
-         tailwindcss output exactly. *)
-      let extra_parens = Pp.minified ctx && not in_and in
-      Pp.string ctx "(not ";
-      if extra_parens then Pp.char ctx '(';
-      (match cond with
-      | And _ | Or _ ->
-          Pp.char ctx '(';
-          pp_aux ~in_and ctx cond;
-          Pp.char ctx ')'
-      | _ -> pp_aux ~in_and ctx cond);
-      if extra_parens then Pp.char ctx ')';
+  | Not cond -> pp_not ~in_and ctx cond
+  | And (a, b) -> pp_and ctx a b
+  | Or (a, b) -> pp_or ctx a b
+
+and pp_not ~in_and ctx cond =
+  let extra_parens = Pp.minified ctx && not in_and in
+  Pp.string ctx "(not ";
+  if extra_parens then Pp.char ctx '(';
+  (match cond with
+  | And _ | Or _ ->
+      Pp.char ctx '(';
+      pp_aux ~in_and ctx cond;
       Pp.char ctx ')'
-  | And (a, b) -> (
-      (match a with
-      | Or _ ->
-          Pp.char ctx '(';
-          pp_aux ~in_and:true ctx a;
-          Pp.char ctx ')'
-      | _ -> pp_aux ~in_and:true ctx a);
+  | _ -> pp_aux ~in_and ctx cond);
+  if extra_parens then Pp.char ctx ')';
+  Pp.char ctx ')'
+
+and pp_and_branch ctx = function
+  | Or _ as branch ->
+      Pp.char ctx '(';
+      pp_aux ~in_and:true ctx branch;
+      Pp.char ctx ')'
+  | branch -> pp_aux ~in_and:true ctx branch
+
+and pp_and ctx a b =
+  pp_and_branch ctx a;
+  Pp.string ctx " and ";
+  pp_and_branch ctx b
+
+and pp_or_branch ~is_left ctx = function
+  | And (a, b) ->
+      Pp.char ctx '(';
+      pp_or_and_left ~is_left ctx a;
       Pp.string ctx " and ";
-      match b with
-      | Or _ ->
-          Pp.char ctx '(';
-          pp_aux ~in_and:true ctx b;
-          Pp.char ctx ')'
-      | _ -> pp_aux ~in_and:true ctx b)
-  | Or (a, b) ->
-      (* Wrap And branches in parens when inside Or, to match tailwindcss output
-         exactly. LightningCSS quirk: in minified mode, the left branch's first
-         Property operand gets extra grouping parens. *)
-      let pp_or_branch ~is_left ctx = function
-        | And (a1, b1) ->
-            Pp.char ctx '(';
-            (* LightningCSS quirk: first Property in left And gets extra parens
-               in minified mode. Goal: match tailwindcss exactly. *)
-            (match a1 with
-            | Property _ when Pp.minified ctx && is_left ->
-                Pp.char ctx '(';
-                pp_aux ~in_and:true ctx a1;
-                Pp.char ctx ')'
-            | _ -> pp_aux ~in_and:true ctx a1);
-            Pp.string ctx " and ";
-            pp_aux ~in_and:true ctx b1;
-            Pp.char ctx ')'
-        | x -> pp_aux ~in_and:false ctx x
-      in
-      pp_or_branch ~is_left:true ctx a;
-      Pp.string ctx " or ";
-      pp_or_branch ~is_left:false ctx b
+      pp_aux ~in_and:true ctx b;
+      Pp.char ctx ')'
+  | branch -> pp_aux ~in_and:false ctx branch
+
+and pp_or_and_left ~is_left ctx = function
+  | Property _ as branch when Pp.minified ctx && is_left ->
+      Pp.char ctx '(';
+      pp_aux ~in_and:true ctx branch;
+      Pp.char ctx ')'
+  | branch -> pp_aux ~in_and:true ctx branch
+
+and pp_or ctx a b =
+  pp_or_branch ~is_left:true ctx a;
+  Pp.string ctx " or ";
+  pp_or_branch ~is_left:false ctx b
 
 let pp ctx t = pp_aux ~in_and:false ctx t
 

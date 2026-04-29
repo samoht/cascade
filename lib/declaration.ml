@@ -353,103 +353,108 @@ let read_grid_template_areas t =
       in
       read_strings []
 
-let read_border_image t =
-  let at_end t = Cursor.is_done t || Cursor.peek_semicolon t in
-  let pp_bg image = Pp.to_string ~minify:true pp_background_image image in
+let border_image_at_end t = Cursor.is_done t || Cursor.peek_semicolon t
+
+let read_border_image_non_negative_number_unit t =
   let pp_float n = Pp.to_string ~minify:true Pp.float n in
-  let read_non_negative_number_unit t =
-    let n, unit = Cursor.number_with_unit t in
-    if n < 0. then Cursor.err_invalid t "border-image value cannot be negative";
-    match unit with
-    | None -> pp_float n
-    | Some "%" -> pp_float n ^ "%"
-    | Some unit -> pp_float n ^ unit
-  in
-  let read_slice t =
-    let rec loop values has_fill =
-      Cursor.ws t;
-      if at_end t || Cursor.peek_delim t = Some '/' then (values, has_fill)
-      else
-        match Cursor.peek_ident t with
-        | Some "fill" ->
-            if has_fill then
-              Cursor.err_invalid t "duplicate border-image fill keyword";
-            let _ = Cursor.ident t in
-            loop values true
-        | _ -> (
-            match Cursor.option read_non_negative_number_unit t with
-            | Some value ->
-                if List.length values >= 4 then
-                  Cursor.err_invalid t "too many border-image slice values";
-                loop (value :: values) has_fill
-            | None -> (values, has_fill))
-    in
-    let values, has_fill = loop [] false in
-    match (List.rev values, has_fill) with
-    | [], true -> Cursor.err_invalid t "border-image fill requires slice values"
-    | [], false -> Cursor.err_expected t "border-image slice"
-    | values, false -> String.concat " " values
-    | values, true -> String.concat " " (values @ [ "fill" ])
-  in
-  let read_box_values ~what ~allow_auto t =
-    let read_item t =
-      match Cursor.peek_ident t with
-      | Some "auto" when allow_auto ->
-          let _ = Cursor.ident t in
-          "auto"
-      | _ -> read_non_negative_number_unit t
-    in
-    let rec loop acc =
-      Cursor.ws t;
-      if at_end t || Cursor.peek_delim t = Some '/' then List.rev acc
-      else
-        match Cursor.option read_item t with
-        | Some value ->
-            if List.length acc >= 4 then
-              Cursor.err_invalid t ("too many border-image " ^ what ^ " values");
-            loop (value :: acc)
-        | None -> List.rev acc
-    in
-    match loop [] with
-    | [] -> Cursor.err_expected t ("border-image " ^ what)
-    | values -> String.concat " " values
-  in
-  let read_repeat t =
-    let read_keyword t =
-      Cursor.enum "border-image-repeat"
-        [
-          ("stretch", "stretch");
-          ("repeat", "repeat");
-          ("round", "round");
-          ("space", "space");
-        ]
-        t
-    in
-    let first = read_keyword t in
+  let n, unit = Cursor.number_with_unit t in
+  if n < 0. then Cursor.err_invalid t "border-image value cannot be negative";
+  match unit with
+  | None -> pp_float n
+  | Some "%" -> pp_float n ^ "%"
+  | Some unit -> pp_float n ^ unit
+
+let read_border_image_slice t =
+  let rec loop values has_fill =
     Cursor.ws t;
-    match Cursor.option read_keyword t with
-    | None -> first
-    | Some second -> first ^ " " ^ second
+    if border_image_at_end t || Cursor.peek_delim t = Some '/' then
+      (values, has_fill)
+    else
+      match Cursor.peek_ident t with
+      | Some "fill" ->
+          if has_fill then
+            Cursor.err_invalid t "duplicate border-image fill keyword";
+          let _ = Cursor.ident t in
+          loop values true
+      | _ -> (
+          match Cursor.option read_border_image_non_negative_number_unit t with
+          | Some value ->
+              if List.length values >= 4 then
+                Cursor.err_invalid t "too many border-image slice values";
+              loop (value :: values) has_fill
+          | None -> (values, has_fill))
   in
+  let values, has_fill = loop [] false in
+  match (List.rev values, has_fill) with
+  | [], true -> Cursor.err_invalid t "border-image fill requires slice values"
+  | [], false -> Cursor.err_expected t "border-image slice"
+  | values, false -> String.concat " " values
+  | values, true -> String.concat " " (values @ [ "fill" ])
+
+let read_border_image_box_values ~what ~allow_auto t =
+  let read_item t =
+    match Cursor.peek_ident t with
+    | Some "auto" when allow_auto ->
+        let _ = Cursor.ident t in
+        "auto"
+    | _ -> read_border_image_non_negative_number_unit t
+  in
+  let rec loop acc =
+    Cursor.ws t;
+    if border_image_at_end t || Cursor.peek_delim t = Some '/' then List.rev acc
+    else
+      match Cursor.option read_item t with
+      | Some value ->
+          if List.length acc >= 4 then
+            Cursor.err_invalid t ("too many border-image " ^ what ^ " values");
+          loop (value :: acc)
+      | None -> List.rev acc
+  in
+  match loop [] with
+  | [] -> Cursor.err_expected t ("border-image " ^ what)
+  | values -> String.concat " " values
+
+let read_border_image_repeat t =
+  let read_keyword t =
+    Cursor.enum "border-image-repeat"
+      [
+        ("stretch", "stretch");
+        ("repeat", "repeat");
+        ("round", "round");
+        ("space", "space");
+      ]
+      t
+  in
+  let first = read_keyword t in
+  Cursor.ws t;
+  match Cursor.option read_keyword t with
+  | None -> first
+  | Some second -> first ^ " " ^ second
+
+let read_border_image t =
   let source : string option =
     match Cursor.option read_background_image t with
     | None -> None
-    | Some image -> Stdlib.Option.Some (pp_bg image)
+    | Some image -> Some (Pp.to_string ~minify:true pp_background_image image)
   in
   Cursor.ws t;
-  let slice = Cursor.option read_slice t in
+  let slice = Cursor.option read_border_image_slice t in
   let width, outset =
     Cursor.ws t;
     if Cursor.slash_opt t then (
-      let width = Some (read_box_values ~what:"width" ~allow_auto:true t) in
+      let width =
+        Some (read_border_image_box_values ~what:"width" ~allow_auto:true t)
+      in
       Cursor.ws t;
       if Cursor.slash_opt t then
-        (width, Some (read_box_values ~what:"outset" ~allow_auto:false t))
+        ( width,
+          Some (read_border_image_box_values ~what:"outset" ~allow_auto:false t)
+        )
       else (width, None))
     else (None, None)
   in
   Cursor.ws t;
-  let repeat = Cursor.option read_repeat t in
+  let repeat = Cursor.option read_border_image_repeat t in
   let value =
     match (source, slice) with
     | None, None -> Cursor.err_expected t "border-image source or slice"
