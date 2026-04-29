@@ -274,6 +274,10 @@ val read_grid_line_pair : Cursor.t -> grid_line * grid_line
     [<grid-line> [ / <grid-line> ]?]. If no slash is present, the second value
     defaults to [Auto]. *)
 
+val read_grid_area : Cursor.t -> string
+(** [read_grid_area t] parses a [grid-area] shorthand value as one to four
+    structured grid-line values and returns the minified spelling. *)
+
 val pp_aspect_ratio : aspect_ratio Pp.t
 (** [pp_aspect_ratio] is the pretty-printer for [aspect_ratio]. *)
 

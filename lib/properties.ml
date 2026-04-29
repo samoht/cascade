@@ -2023,7 +2023,7 @@ let rec pp_text_overflow : text_overflow Pp.t =
  fun ctx -> function
   | Clip -> Pp.string ctx "clip"
   | Ellipsis -> Pp.string ctx "ellipsis"
-  | String s -> Pp.string ctx s
+  | String s -> Pp.quoted_string ctx s
   | Pair (first, second) ->
       pp_text_overflow ctx first;
       Pp.space ctx ();
@@ -3681,8 +3681,12 @@ let pp_flex : flex Pp.t =
   | Full (grow, shrink, basis) ->
       Pp.float ctx grow;
       Pp.space ctx ();
-      (* Omit shrink when it's 1 (the default) to match Tailwind v4 output *)
-      if shrink <> 1.0 then (
+      (* Omit the default shrink only when the following basis cannot be
+         confused with a shrink factor on reparse. *)
+      let basis_needs_shrink =
+        match basis with Zero | Num _ | Px 0.0 -> true | _ -> false
+      in
+      if shrink <> 1.0 || basis_needs_shrink then (
         Pp.float ctx shrink;
         Pp.space ctx ());
       pp_flex_basis ctx basis
@@ -4673,6 +4677,22 @@ let read_grid_line_pair t : grid_line * grid_line =
     let end_ = read_grid_line t in
     (start, end_)
   else (start, Auto)
+
+let read_grid_area t =
+  let first = read_grid_line t in
+  let rest =
+    Cursor.many
+      (fun t ->
+        Cursor.slash t;
+        read_grid_line t)
+      t
+    |> fst
+  in
+  if List.length rest > 3 then
+    err_invalid_value t "grid-area" "too many grid lines";
+  Pp.to_string ~minify:true
+    (fun ctx lines -> Pp.list ~sep:Pp.slash pp_grid_line ctx lines)
+    (first :: rest)
 
 module Grid_template = struct
   let read_length_as_grid t : grid_template =
@@ -6067,13 +6087,35 @@ let rec read_font_variant_numeric_token t : font_variant_numeric_token =
     t
 
 let read_font_variant_numeric t : font_variant_numeric =
+  let token_family = function
+    | Lining_nums | Oldstyle_nums -> `Numeric_figure
+    | Proportional_nums | Tabular_nums -> `Numeric_spacing
+    | Diagonal_fractions | Stacked_fractions -> `Numeric_fraction
+    | Ordinal -> `Ordinal
+    | Slashed_zero -> `Slashed_zero
+    | Normal | Var _ -> `Other
+  in
+  let reject_duplicate_families tokens =
+    let seen = Hashtbl.create 5 in
+    List.iter
+      (fun token ->
+        match token_family token with
+        | `Other -> ()
+        | family ->
+            if Hashtbl.mem seen family then
+              err_invalid_value t "font-variant-numeric" "duplicate token";
+            Hashtbl.add seen family ())
+      tokens
+  in
   Cursor.enum "font-variant-numeric"
     [ ("normal", (Normal : font_variant_numeric)) ]
     ~default:(fun t ->
       let tokens, _ = Cursor.many read_font_variant_numeric_token t in
       match tokens with
       | [] -> err_invalid_value t "font-variant-numeric" "<empty>"
-      | tokens -> Tokens tokens) (* All non-normal cases become Tokens *)
+      | tokens ->
+          reject_duplicate_families tokens;
+          Tokens tokens) (* All non-normal cases become Tokens *)
     t
 
 let rec read_font_feature_settings t : font_feature_settings =
