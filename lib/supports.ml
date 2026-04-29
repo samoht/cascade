@@ -83,7 +83,10 @@ and render_declaration_feature = function
 
 let pp_declaration_feature ctx = function
   | Declaration decl -> Declaration.pp_declaration ctx decl
-  | Vendor_flag_enabled -> Pp.string ctx "-vendor-flag:enabled"
+  | Vendor_flag_enabled ->
+      Pp.string ctx "-vendor-flag:";
+      Pp.space_if_pretty ctx ();
+      Pp.string ctx "enabled"
 
 let rec pp_aux ~in_and ctx = function
   | Property feature ->
@@ -417,28 +420,26 @@ let of_string ?(allow_unwrapped_decl = false) s =
 
 (* ===== Comparison ===== *)
 
+let compare_declaration d1 d2 =
+  let c =
+    String.compare (Declaration.property_name d1) (Declaration.property_name d2)
+  in
+  if c <> 0 then c
+  else
+    String.compare
+      (Declaration.string_of_value ~minify:true d1)
+      (Declaration.string_of_value ~minify:true d2)
+
+let compare_declaration_feature d1 d2 =
+  match (d1, d2) with
+  | Vendor_flag_enabled, Vendor_flag_enabled -> 0
+  | Vendor_flag_enabled, Declaration _ -> -1
+  | Declaration _, Vendor_flag_enabled -> 1
+  | Declaration d1, Declaration d2 -> compare_declaration d1 d2
+
 let rec compare t1 t2 =
   match (t1, t2) with
-  | Property Vendor_flag_enabled, Property Vendor_flag_enabled -> 0
-  | Property Vendor_flag_enabled, Property _ -> -1
-  | Property _, Property Vendor_flag_enabled -> 1
-  | Property d1, Property d2 ->
-      let declaration = function
-        | Declaration decl -> decl
-        | Vendor_flag_enabled -> assert false
-      in
-      let d1 = declaration d1 in
-      let d2 = declaration d2 in
-      let c =
-        String.compare
-          (Declaration.property_name d1)
-          (Declaration.property_name d2)
-      in
-      if c <> 0 then c
-      else
-        String.compare
-          (Declaration.string_of_value ~minify:true d1)
-          (Declaration.string_of_value ~minify:true d2)
+  | Property d1, Property d2 -> compare_declaration_feature d1 d2
   | Func (n1, a1), Func (n2, a2) ->
       let c = String.compare n1 n2 in
       if c <> 0 then c
