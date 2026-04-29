@@ -1137,11 +1137,12 @@ let test_aria_attr () =
   check_aria_attr "aria-readonly";
   check_aria_attr "aria-required";
   check_aria_attr "aria-selected";
-  check_aria_attr "aria-custom";
+  neg_cursor read_aria_attr "aria-custom";
   neg_cursor read_aria_attr "not-aria"
 
 let test_attr_name () =
   check_attr_name "aria-busy";
+  check_attr_name "aria-custom";
   check_attr_name "data-testid";
   check_attr_name "href"
 

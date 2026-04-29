@@ -18,18 +18,8 @@ type ns = Any | None | Prefix of string
 type attr_flag = Case_insensitive | Case_sensitive
 type specificity = { ids : int; classes : int; elements : int }
 
+type aria_attr = Aria.t
 (** ARIA attribute names for type-safe handling *)
-type aria_attr =
-  | Busy
-  | Checked
-  | Disabled
-  | Expanded
-  | Hidden
-  | Pressed
-  | Readonly
-  | Required
-  | Selected
-  | Custom of string  (** For aria-[custom] arbitrary values *)
 
 (** Structured attribute names *)
 type attr_name =

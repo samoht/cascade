@@ -184,20 +184,7 @@ let universal = Universal None
 let universal_ns ns = Universal (Some ns)
 
 (** Parse an ARIA attribute name into its structured type *)
-let aria_attr_of_string s : aria_attr =
-  match s with
-  | "aria-busy" -> Busy
-  | "aria-checked" -> Checked
-  | "aria-disabled" -> Disabled
-  | "aria-expanded" -> Expanded
-  | "aria-hidden" -> Hidden
-  | "aria-pressed" -> Pressed
-  | "aria-readonly" -> Readonly
-  | "aria-required" -> Required
-  | "aria-selected" -> Selected
-  | s when String.length s > 5 && String.sub s 0 5 = "aria-" ->
-      Custom (String.sub s 5 (String.length s - 5))
-  | _ -> invalid_arg ("not an aria attribute: " ^ s)
+let aria_attr_of_string : string -> aria_attr = Aria.of_string
 
 (** Categorize an attribute name into its structured type *)
 let attr_name_of_string name =
@@ -209,17 +196,7 @@ let attr_name_of_string name =
   else Regular name
 
 (** Convert attr_name back to string for printing *)
-let string_of_aria_attr : aria_attr -> string = function
-  | Busy -> "aria-busy"
-  | Checked -> "aria-checked"
-  | Disabled -> "aria-disabled"
-  | Expanded -> "aria-expanded"
-  | Hidden -> "aria-hidden"
-  | Pressed -> "aria-pressed"
-  | Readonly -> "aria-readonly"
-  | Required -> "aria-required"
-  | Selected -> "aria-selected"
-  | Custom s -> "aria-" ^ s
+let string_of_aria_attr : aria_attr -> string = Aria.to_string
 
 let string_of_attr_name = function
   | Aria a -> string_of_aria_attr a
