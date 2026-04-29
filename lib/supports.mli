@@ -3,13 +3,21 @@
 
 (** Supports condition type. Provides type safety and consistent formatting. *)
 type t =
-  | Property of string * string  (** [(property: value)] feature test *)
-  | Func of string * string
+  | Property of Declaration.declaration  (** [(property: value)] feature test *)
+  | Func of string * Component.t list
       (** [name(args)] function test: [selector()], [font-format()],
           [font-tech()], [var()], etc. *)
   | Not of t  (** [not (condition)] negation *)
   | And of t * t  (** [(cond1) and (cond2)] conjunction *)
   | Or of t * t  (** [(cond1) or (cond2)] disjunction *)
+
+val property : string -> string -> t
+(** [property name value] parses [name: value] as a structured supports
+    declaration feature. *)
+
+val func : string -> string -> t
+(** [func name args] parses [args] as CSS component values for a supports
+    function feature. *)
 
 val to_string : t -> string
 (** [to_string cond] renders the condition as a CSS [\@supports] string. *)

@@ -3,8 +3,8 @@ open Css.Supports
 module Supports_inventory = Cascade_spec_inventory.Supports_grammar
 
 let rec supports_of_expected = function
-  | Supports_inventory.Property (property, value) -> Property (property, value)
-  | Supports_inventory.Func (name, value) -> Func (name, value)
+  | Supports_inventory.Property (name, value) -> property name value
+  | Supports_inventory.Func (name, value) -> func name value
   | Supports_inventory.Not condition -> Not (supports_of_expected condition)
   | Supports_inventory.And (left, right) ->
       And (supports_of_expected left, supports_of_expected right)
@@ -14,15 +14,15 @@ let rec supports_of_expected = function
 let test_to_string () =
   let cases =
     [
-      (Property ("display", "grid"), "(display: grid)");
-      (Not (Property ("display", "grid")), "not (display: grid)");
-      ( Or (Property ("display", "grid"), Property ("gap", "1rem")),
+      (property "display" "grid", "(display: grid)");
+      (Not (property "display" "grid"), "not (display: grid)");
+      ( Or (property "display" "grid", property "gap" "1rem"),
         "(display: grid) or (gap: 1rem)" );
-      ( And (Property ("display", "grid"), Property ("gap", "1rem")),
+      ( And (property "display" "grid", property "gap" "1rem"),
         "(display: grid) and (gap: 1rem)" );
       ( Or
-          ( Not (Property ("-webkit-appearance", "-apple-pay-button")),
-            Property ("contain-intrinsic-size", "1px") ),
+          ( Not (property "-webkit-appearance" "-apple-pay-button"),
+            property "contain-intrinsic-size" "1px" ),
         "(not (-webkit-appearance: -apple-pay-button)) or \
          (contain-intrinsic-size: 1px)" );
     ]
@@ -37,34 +37,34 @@ let test_of_string () =
     let actual = of_string input in
     Alcotest.(check string) name (to_string expected) (to_string actual)
   in
-  check "simple property" "(display: grid)" (Property ("display", "grid"));
-  check "property no space" "(display:grid)" (Property ("display", "grid"));
+  check "simple property" "(display: grid)" (property "display" "grid");
+  check "property no space" "(display:grid)" (property "display" "grid");
   check "not condition" "(not (display: grid))"
-    (Not (Property ("display", "grid")));
+    (Not (property "display" "grid"));
   check "or condition" "(display: grid) or (gap: 1rem)"
-    (Or (Property ("display", "grid"), Property ("gap", "1rem")));
+    (Or (property "display" "grid", property "gap" "1rem"));
   check "and condition" "(display: grid) and (gap: 1rem)"
-    (And (Property ("display", "grid"), Property ("gap", "1rem")));
+    (And (property "display" "grid", property "gap" "1rem"));
   check "complex: not or property"
     "(not (-webkit-appearance: -apple-pay-button)) or (contain-intrinsic-size: \
      1px)"
     (Or
-       ( Not (Property ("-webkit-appearance", "-apple-pay-button")),
-         Property ("contain-intrinsic-size", "1px") ));
+       ( Not (property "-webkit-appearance" "-apple-pay-button"),
+         property "contain-intrinsic-size" "1px" ));
   check "nested function value" "(color: color-mix(in lab, red, red))"
-    (Property ("color", "color-mix(in lab, red, red)"));
+    (property "color" "color-mix(in lab, red, red)");
   check "double parens around property" "((-webkit-hyphens: none))"
-    (Property ("-webkit-hyphens", "none"));
+    (property "-webkit-hyphens" "none");
   check "complex browser detection"
     "((-webkit-hyphens: none) and (not (margin-trim: inline))) or \
      ((-moz-orient: inline) and (not (color: rgb(from red r g b))))"
     (Or
        ( And
-           ( Property ("-webkit-hyphens", "none"),
-             Not (Property ("margin-trim", "inline")) ),
+           ( property "-webkit-hyphens" "none",
+             Not (property "margin-trim" "inline") ),
          And
-           ( Property ("-moz-orient", "inline"),
-             Not (Property ("color", "rgb(from red r g b)")) ) ))
+           ( property "-moz-orient" "inline",
+             Not (property "color" "rgb(from red r g b)") ) ))
 
 let test_current_work_vectors () =
   let check name input expected =
@@ -89,6 +89,9 @@ let spec_supports_feature_vectors () =
     "selector(:popover-open)";
   check "font format feature" "font-format(woff2)" "font-format(woff2)";
   check "font tech feature" "font-tech(variations)" "font-tech(variations)";
+  check "at-rule feature" "at-rule(@container)" "at-rule(@container)";
+  check "named feature function" "named-feature(--compact)"
+    "named-feature(--compact)";
   check "general enclosed function" "unknown-feature(foo bar)"
     "unknown-feature(foo bar)";
   check "unknown declaration feature" "(-vendor-flag: enabled)"
@@ -167,13 +170,13 @@ let spec_supports_context_vectors () =
 let test_roundtrip () =
   let cases =
     [
-      Property ("display", "grid");
-      Not (Property ("display", "grid"));
-      Or (Property ("display", "grid"), Property ("gap", "1rem"));
-      And (Property ("display", "grid"), Property ("gap", "1rem"));
+      property "display" "grid";
+      Not (property "display" "grid");
+      Or (property "display" "grid", property "gap" "1rem");
+      And (property "display" "grid", property "gap" "1rem");
       Or
-        ( Not (Property ("-webkit-appearance", "-apple-pay-button")),
-          Property ("contain-intrinsic-size", "1px") );
+        ( Not (property "-webkit-appearance" "-apple-pay-button"),
+          property "contain-intrinsic-size" "1px" );
     ]
   in
   List.iter
