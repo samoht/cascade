@@ -30,10 +30,11 @@ let generated_stylesheet buf =
       {
         url = "theme.css";
         layer = Some "theme";
-        supports = Some (Css.Supports.Property ("display", "grid"));
+        supports = Some (Css.Supports.property "display" "grid");
         media = Some (Css.Media.of_string "(width >= 40em)");
       };
-    Css.Stylesheet.Namespace (Some "svg", "http://www.w3.org/2000/svg");
+    Css.Stylesheet.Namespace
+      (Some "svg", Css.Stylesheet.Url "http://www.w3.org/2000/svg");
     Css.Stylesheet.property ~syntax:Css.Variables.Universal "--fuzz";
     rule buf 0;
     rule buf 0;
@@ -42,7 +43,7 @@ let generated_stylesheet buf =
         [
           rule buf 4;
           Css.Stylesheet.Supports
-            ( Css.Supports.Property ("display", "grid"),
+            ( Css.Supports.property "display" "grid",
               [
                 Css.Stylesheet.Container
                   ( Some "card",
@@ -104,7 +105,7 @@ let rec boundary_shape = function
   | Origin (_, block) ->
       ("origin" :: List.concat_map boundary_shape block) @ [ "/origin" ]
   | Charset _ -> [ "charset" ]
-  | Keyframes _ -> [ "keyframes" ]
+  | Keyframes _ | Webkit_keyframes _ -> [ "keyframes" ]
   | Font_face _ -> [ "font-face" ]
   | Page _ -> [ "page" ]
   | Page_with_margins _ -> [ "page" ]

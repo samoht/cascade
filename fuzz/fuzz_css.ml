@@ -29,7 +29,7 @@ let generated_stylesheet buf =
         ~condition:(Css.Media.of_string "(width >= 40em)")
         [
           Css.supports
-            ~condition:(Css.Supports.Property ("display", "grid"))
+            ~condition:(Css.Supports.property "display" "grid")
             [
               Css.container
                 ~condition:(Css.Container.of_string "(inline-size > 30em)")
