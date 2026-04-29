@@ -109,8 +109,33 @@ let empty_query =
     container_features = [];
   }
 
+(* Re-tokenise a value string and reserialise it minified. Used to bring
+   user-provided table entries into the same canonical form as query inputs,
+   which always run through [Parser.to_string_minified] /
+   [Declaration.string_of_value ~minify:true] before comparison. Falls back to
+   [String.trim] on parse failure so callers never get a surprise exception. *)
+let canon_value s =
+  let s = String.trim s in
+  try
+    let p = Parser.of_string s in
+    let rec collect acc =
+      match Parser.next p with
+      | Component.Preserved { kind = Token.Eof; _ } -> List.rev acc
+      | c -> collect (c :: acc)
+    in
+    Parser.to_string_minified (collect [])
+  with _ -> s
+
 let query ?media_type ?(media_features = []) ?(supports_declarations = [])
     ?(supports_functions = []) ?container_name ?(container_features = []) () =
+  let supports_declarations =
+    List.map
+      (fun (prop, value) -> (prop, canon_value value))
+      supports_declarations
+  in
+  let supports_functions =
+    List.map (fun (name, args) -> (name, canon_value args)) supports_functions
+  in
   {
     media_type;
     media_features;
@@ -141,10 +166,12 @@ let attribute name ctx = List.assoc_opt name ctx.attributes
 let media_feature name ctx = List.assoc_opt name ctx.media_features
 
 let supports_declaration ~property ~value ctx =
-  let value = String.trim value in
+  (* [ctx.supports_declarations] was canonicalised at [query] construction;
+     canonicalise the caller's [value] the same way before comparing. *)
+  let value = canon_value value in
   List.exists
     (fun (property', value') ->
-      String.equal property property' && String.equal value (String.trim value'))
+      String.equal property property' && String.equal value value')
     ctx.supports_declarations
 
 let container_feature name ctx = List.assoc_opt name ctx.container_features
@@ -503,25 +530,26 @@ end
     consult the explicit declaration/function tables. *)
 
 module Supports_eval = struct
-  let normalize = String.trim
-
+  (* [q.supports_declarations] and [q.supports_functions] are already in
+     minified canonical form (applied at [query] construction), and the query
+     side of each comparison is always minified at the call site, so the leaves
+     can use plain [String.equal]. *)
   let eval_property table ~property ~value =
-    let value = normalize value in
     List.exists
-      (fun (p, v) ->
-        String.equal property p && String.equal value (normalize v))
+      (fun (p, v) -> String.equal property p && String.equal value v)
       table
 
   let eval_func table ~name ~args =
-    let args = normalize args in
-    List.exists
-      (fun (n, a) -> String.equal name n && String.equal args (normalize a))
-      table
+    List.exists (fun (n, a) -> String.equal name n && String.equal args a) table
 
   let rec eval q : Supports.t -> bool = function
-    | Property (property, value) ->
+    | Property decl ->
+        let property = Declaration.property_name decl in
+        let value = Declaration.string_of_value ~minify:true decl in
         eval_property q.supports_declarations ~property ~value
-    | Func (name, args) -> eval_func q.supports_functions ~name ~args
+    | Func (name, args) ->
+        eval_func q.supports_functions ~name
+          ~args:(Parser.to_string_minified args)
     | Not c -> not (eval q c)
     | And (a, b) -> eval q a && eval q b
     | Or (a, b) -> eval q a || eval q b
