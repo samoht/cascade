@@ -24,26 +24,38 @@
     v} *)
 
 type t =
-  | Property of string * string
+  | Property of Declaration.declaration
       (** [(property: value)] declaration feature test *)
-  | Func of string * string
+  | Func of string * Component.t list
       (** [name(args)] function test (selector, font-format, font-tech, var,
           etc.) *)
   | Not of t  (** [not (condition)] negation *)
   | And of t * t  (** [(cond1) and (cond2)] conjunction *)
   | Or of t * t  (** [(cond1) or (cond2)] disjunction *)
 
-(* Selector is subsumed by Func("selector", ...) for simplicity — the selector
-   content is stored as raw string to avoid css identifier validation on
-   arbitrary selectors like "A > B". *)
+let component_values s = Cursor.of_string s |> Cursor.remaining
+
+let declaration_of_pair prop value =
+  try Declaration.of_string (prop ^ ":" ^ value)
+  with Error.Parse_error _ ->
+    Declaration.custom_declaration prop Declaration.Value
+      (component_values value)
+
+let property prop value = Property (declaration_of_pair prop value)
+let func name args = Func (name, component_values args)
+
+(* Selector is subsumed by [Func ("selector", ...)] for simplicity. The argument
+   is still a CSS component stream, because arbitrary selector text is not a
+   declaration value. *)
 
 (* ===== Pretty printing ===== *)
 
 let rec to_string condition = render `Root condition
 
 and render context = function
-  | Property (prop, value) -> "(" ^ prop ^ ": " ^ value ^ ")"
-  | Func (name, args) -> name ^ "(" ^ args ^ ")"
+  | Property decl ->
+      "(" ^ Declaration.string_of_declaration ~minify:false decl ^ ")"
+  | Func (name, args) -> name ^ "(" ^ Parser.to_string args ^ ")"
   | Not cond ->
       let rendered = "not " ^ render_not_operand cond in
       if context = `Operand then "(" ^ rendered ^ ")" else rendered
@@ -61,17 +73,16 @@ and render_branch operator = function
   | cond -> render `Root cond
 
 let rec pp_aux ~in_and ctx = function
-  | Property (prop, value) ->
+  | Property decl ->
       Pp.char ctx '(';
-      Pp.string ctx prop;
-      Pp.char ctx ':';
-      Pp.space_if_pretty ctx ();
-      Pp.string ctx value;
+      Declaration.pp_declaration ctx decl;
       Pp.char ctx ')'
   | Func (name, args) ->
       Pp.string ctx name;
       Pp.char ctx '(';
-      Pp.string ctx args;
+      Pp.string ctx
+        (if Pp.minified ctx then Parser.to_string_minified args
+         else Parser.to_string args);
       Pp.char ctx ')'
   | Not cond -> pp_not ~in_and ctx cond
   | And (a, b) -> pp_and ctx a b
@@ -248,7 +259,7 @@ let rec parse_supports_in_parens sc =
             |> String.trim
           in
           sc.pos <- String.length sc.s;
-          if valid_property_test prop value then Property (prop, value)
+          if valid_property_test prop value then property prop value
           else failwith "Invalid declaration in @supports"
       | None -> parse_function sc)
 
@@ -275,7 +286,7 @@ and parse_paren_content sc =
             (String.length trimmed - colon_pos - 1)
           |> String.trim
         in
-        if valid_property_test prop value then Property (prop, value)
+        if valid_property_test prop value then property prop value
         else failwith "Invalid declaration in @supports"
     | None ->
         (* No colon → grouped <supports-condition> *)
@@ -313,7 +324,7 @@ and parse_function sc =
         let lower = String.lowercase_ascii name in
         lower = "selector" || lower = "font-format" || lower = "font-tech"
       then failwith ("Empty " ^ name ^ "() in @supports")
-      else Func (name, args)
+      else func name args
   | _ ->
       failwith
         (String.concat ""
@@ -394,12 +405,24 @@ let of_string ?(allow_unwrapped_decl = false) s =
 
 let rec compare t1 t2 =
   match (t1, t2) with
-  | Property (p1, v1), Property (p2, v2) ->
-      let c = String.compare p1 p2 in
-      if c <> 0 then c else String.compare v1 v2
+  | Property d1, Property d2 ->
+      let c =
+        String.compare
+          (Declaration.property_name d1)
+          (Declaration.property_name d2)
+      in
+      if c <> 0 then c
+      else
+        String.compare
+          (Declaration.string_of_value ~minify:true d1)
+          (Declaration.string_of_value ~minify:true d2)
   | Func (n1, a1), Func (n2, a2) ->
       let c = String.compare n1 n2 in
-      if c <> 0 then c else String.compare a1 a2
+      if c <> 0 then c
+      else
+        String.compare
+          (Parser.to_string_minified a1)
+          (Parser.to_string_minified a2)
   | Not a, Not b -> compare a b
   | And (a1, b1), And (a2, b2) ->
       let c = compare a1 a2 in

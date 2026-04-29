@@ -8,8 +8,8 @@ module Supports_inventory = Cascade_spec_inventory.Supports_grammar
 
 let rec supports_of_expected = function
   | Supports_inventory.Property (property, value) ->
-      Css.Supports.Property (property, value)
-  | Supports_inventory.Func (name, value) -> Css.Supports.Func (name, value)
+      Css.Supports.property property value
+  | Supports_inventory.Func (name, value) -> Css.Supports.func name value
   | Supports_inventory.Not condition ->
       Css.Supports.Not (supports_of_expected condition)
   | Supports_inventory.And (left, right) ->
@@ -106,13 +106,15 @@ let generated_condition buf =
   let func =
     pick
       [
-        Css.Supports.Func ("selector", ":has(img)");
-        Css.Supports.Func ("font-format", "woff2");
-        Css.Supports.Func ("font-tech", "variations");
+        Css.Supports.func "selector" ":has(img)";
+        Css.Supports.func "font-format" "woff2";
+        Css.Supports.func "font-tech" "variations";
+        Css.Supports.func "at-rule" "@container";
+        Css.Supports.func "named-feature" "--compact";
       ]
       buf 1
   in
-  let prop = Css.Supports.Property (fst property, snd property) in
+  let prop = Css.Supports.property (fst property) (snd property) in
   match byte_at buf 2 mod 6 with
   | 0 -> prop
   | 1 -> func
