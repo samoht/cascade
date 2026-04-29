@@ -487,11 +487,7 @@ and pp_statement : statement Pp.t =
       | Some s ->
           Pp.string ctx " supports(";
           (match s with
-          | Supports.Property (prop, value) ->
-              Pp.string ctx prop;
-              Pp.char ctx ':';
-              Pp.space_if_pretty ctx ();
-              Pp.string ctx value
+          | Supports.Property decl -> Declaration.pp_declaration ctx decl
           | _ -> Supports.pp ctx s);
           Pp.string ctx ")"
       | None -> ());
@@ -1822,10 +1818,7 @@ let read_stylesheet (r : Cursor.t) : stylesheet =
             if !charset_seen || !import_seen || !namespace_seen || !body_seen
             then Cursor.err_invalid r "@charset must precede all rules";
             charset_seen := true
-        | Layer_decl _ ->
-            if !import_seen || !namespace_seen || !body_seen then
-              Cursor.err_invalid r "@layer statements must precede @import";
-            ()
+        | Layer_decl _ -> ()
         | Import _ ->
             if !namespace_seen || !body_seen then
               Cursor.err_invalid r "@import must precede style rules";
@@ -2022,11 +2015,7 @@ let pp_import_rule : import_rule Pp.t =
          directly when the condition is a bare [Property]; fall through to the
          structured printer otherwise. *)
       (match s with
-      | Supports.Property (prop, value) ->
-          Pp.string ctx prop;
-          Pp.char ctx ':';
-          Pp.space_if_pretty ctx ();
-          Pp.string ctx value
+      | Supports.Property decl -> Declaration.pp_declaration ctx decl
       | _ -> Supports.pp ctx s);
       Pp.char ctx ')')
     supports;
