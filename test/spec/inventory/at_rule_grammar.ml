@@ -21,9 +21,8 @@ let positive =
       "@property --dup { syntax: \"<length>\"; inherits: true; syntax: \"*\"; \
        inherits: false }";
     row "font-face" "descriptor-order"
-      "@font-face \
-       {font-family:Brand;src:url(brand.woff2);font-display:swap;font-weight:100 \
-       900}"
+      "@font-face {font-weight:100 \
+       900;font-display:swap;src:url(brand.woff2);font-family:Brand}"
       "@font-face { font-weight: 100 900; font-display: swap; src: \
        url(brand.woff2); font-family: Brand }";
     row "font-face" "metric-overrides"

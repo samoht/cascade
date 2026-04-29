@@ -4203,6 +4203,7 @@ let pp_webkit_appearance : webkit_appearance Pp.t =
   | Radio -> Pp.string ctx "radio"
   | Push_button -> Pp.string ctx "push-button"
   | Square_button -> Pp.string ctx "square-button"
+  | Apple_pay_button -> Pp.string ctx "-apple-pay-button"
   | Inherit -> Pp.string ctx "inherit"
 
 let pp_pointer_events : pointer_events Pp.t =
@@ -5669,6 +5670,7 @@ let read_webkit_appearance t : webkit_appearance =
       ("radio", Radio);
       ("push-button", Push_button);
       ("square-button", Square_button);
+      ("-apple-pay-button", Apple_pay_button);
       ("inherit", Inherit);
     ]
     t

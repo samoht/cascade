@@ -1190,25 +1190,7 @@ let read_font_face_block inner =
         Cursor.ws inner;
         if Cursor.is_done inner then List.rev acc else read_descriptors acc
   in
-  let descriptors = read_descriptors [] in
-  let rank = function
-    | Font_family _ -> 0
-    | Src _ -> 1
-    | Font_display _ -> 2
-    | Font_weight _ | Font_weight_range _ -> 3
-    | Font_style _ | Font_style_range _ -> 4
-    | Font_stretch _ | Font_stretch_range _ -> 5
-    | Unicode_range _ -> 6
-    | Font_variant _ -> 7
-    | Font_feature_settings _ -> 8
-    | Font_variation_settings _ -> 9
-    | Font_tech _ -> 10
-    | Size_adjust _ -> 11
-    | Ascent_override _ -> 12
-    | Descent_override _ -> 13
-    | Line_gap_override _ -> 14
-  in
-  List.stable_sort (fun a b -> compare (rank a) (rank b)) descriptors
+  read_descriptors []
 
 let read_font_face (r : Cursor.t) : statement =
   Cursor.with_context r "@font-face" @@ fun () ->

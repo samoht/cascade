@@ -626,10 +626,9 @@ let spec_fontface_descriptors () =
   check_stylesheet
     ~expected:
       "@font-face {font-family:Brand;src:local(\"Brand\"),url(\"brand.woff2\") \
-       format(\"woff2\") \
-       tech(variations);font-display:optional;font-weight:400 \
+       format(\"woff2\") tech(variations);font-weight:400 \
        700;font-style:normal italic;font-stretch:75% \
-       125%;unicode-range:U+25-FF}"
+       125%;font-display:optional;unicode-range:U+25-FF}"
     "@font-face { font-family: Brand; src: local(\"Brand\"), \
      url(\"brand.woff2\") format(\"woff2\") tech(variations); font-weight: 400 \
      700; font-style: normal italic; font-stretch: 75% 125%; font-display: \
@@ -2245,9 +2244,8 @@ let spec_at_rule_descriptor_matrix () =
       ( "@property --dup{syntax:\"*\";inherits:false}",
         "@property --dup { syntax: \"<length>\"; inherits: true; syntax: \
          \"*\"; inherits: false }" );
-      ( "@font-face \
-         {font-family:Brand;src:url(brand.woff2);font-display:swap;font-weight:100 \
-         900}",
+      ( "@font-face {font-weight:100 \
+         900;font-display:swap;src:url(brand.woff2);font-family:Brand}",
         "@font-face { font-weight: 100 900; font-display: swap; src: \
          url(brand.woff2); font-family: Brand }" );
       ( "@page invoice:first{size:A4;margin:1cm;@top-left{content:\"Invoice\"}}",
