@@ -30,6 +30,12 @@ type query = {
   media_features : (string * string) list;
   supports_declarations : (string * string) list;
   supports_functions : (string * string) list;
+  supports : Supports.t list;
+      (** Capability flags the rendering environment claims to support. Each
+          entry is normally a [Supports.Property] or [Supports.Func] leaf, built
+          with [Supports.property] / [Supports.func]. Compound forms ([And] /
+          [Or] / [Not]) are accepted but only match a query that is structurally
+          identical. *)
   container_name : string option;
   container_features : (string * string) list;
 }
@@ -105,42 +111,20 @@ let empty_query =
     media_features = [];
     supports_declarations = [];
     supports_functions = [];
+    supports = [];
     container_name = None;
     container_features = [];
   }
 
-(* Re-tokenise a value string and reserialise it minified. Used to bring
-   user-provided table entries into the same canonical form as query inputs,
-   which always run through [Parser.to_string_minified] /
-   [Declaration.string_of_value ~minify:true] before comparison. Falls back to
-   [String.trim] on parse failure so callers never get a surprise exception. *)
-let canon_value s =
-  let s = String.trim s in
-  try
-    let p = Parser.of_string s in
-    let rec collect acc =
-      match Parser.next p with
-      | Component.Preserved { kind = Token.Eof; _ } -> List.rev acc
-      | c -> collect (c :: acc)
-    in
-    Parser.to_string_minified (collect [])
-  with _ -> s
-
 let query ?media_type ?(media_features = []) ?(supports_declarations = [])
-    ?(supports_functions = []) ?container_name ?(container_features = []) () =
-  let supports_declarations =
-    List.map
-      (fun (prop, value) -> (prop, canon_value value))
-      supports_declarations
-  in
-  let supports_functions =
-    List.map (fun (name, args) -> (name, canon_value args)) supports_functions
-  in
+    ?(supports_functions = []) ?(supports = []) ?container_name
+    ?(container_features = []) () =
   {
     media_type;
     media_features;
     supports_declarations;
     supports_functions;
+    supports;
     container_name;
     container_features;
   }
@@ -164,16 +148,6 @@ let has_class name ctx = List.exists (String.equal name) ctx.classes
 let has_id name ctx = List.exists (String.equal name) ctx.ids
 let attribute name ctx = List.assoc_opt name ctx.attributes
 let media_feature name ctx = List.assoc_opt name ctx.media_features
-
-let supports_declaration ~property ~value ctx =
-  (* [ctx.supports_declarations] was canonicalised at [query] construction;
-     canonicalise the caller's [value] the same way before comparing. *)
-  let value = canon_value value in
-  List.exists
-    (fun (property', value') ->
-      String.equal property property' && String.equal value value')
-    ctx.supports_declarations
-
 let container_feature name ctx = List.assoc_opt name ctx.container_features
 let import_source url ctx = List.assoc_opt url ctx.imports
 
@@ -297,6 +271,17 @@ let pp_query : query Pp.t =
   pp_field ctx ~first "supports_declarations" pp_pair_list
     q.supports_declarations;
   pp_field ctx ~first "supports_functions" pp_pair_list q.supports_functions;
+  pp_field ctx ~first "supports"
+    (fun ctx items ->
+      Pp.char ctx '[';
+      let first = ref true in
+      List.iter
+        (fun cond ->
+          if !first then first := false else Pp.string ctx ", ";
+          Pp.string ctx (Supports.to_string cond))
+        items;
+      Pp.char ctx ']')
+    q.supports;
   pp_field ctx ~first "container_name" pp_string_option q.container_name;
   pp_field ctx ~first "container_features" pp_pair_list q.container_features;
   Pp.char ctx '}'
@@ -333,10 +318,10 @@ let pp_animation : animation Pp.t =
       individual module readers).
     + {b Length canonicalisation} ([Length]) maps each unit to absolute pixels
       using the supplied font/viewport/container references.
-    + {b Condition evaluation} ([Supports_eval], [Media_eval], [Container_eval])
-      walks the structured query AST against the explicit feature/declaration
-      tables in [query].
-    + {b Selector matching} ([Selector_eval]) decides whether a selector would
+    + {b Condition evaluation} ([Match_supports], [Match_media],
+      [Match_container]) walks the structured query AST against the explicit
+      feature/declaration tables in [query].
+    + {b Selector matching} ([Match_selector]) decides whether a selector would
       attach to the element described by [document]. The element is not part of
       a tree, so combinators reduce to matching the rightmost compound selector.
     + {b Cascade + computed value} ([Computed_value]) resolves CSS-wide
@@ -529,27 +514,15 @@ end
     cases ([Not]/[And]/[Or]) recurse into [eval]; the leaves ([Property]/[Func])
     consult the explicit declaration/function tables. *)
 
-module Supports_eval = struct
-  (* [q.supports_declarations] and [q.supports_functions] are already in
-     minified canonical form (applied at [query] construction), and the query
-     side of each comparison is always minified at the call site, so the leaves
-     can use plain [String.equal]. *)
-  let eval_property table ~property ~value =
-    List.exists
-      (fun (p, v) -> String.equal property p && String.equal value v)
-      table
-
-  let eval_func table ~name ~args =
-    List.exists (fun (n, a) -> String.equal name n && String.equal args a) table
-
+module Match_supports = struct
+  (* Leaves match against [q.supports] via the typed [Supports.equal], which
+     compares declaration values and function arguments after canonical
+     minification. So a leaf built with [Supports.property "display" "grid"]
+     matches a [@supports (display: grid)] query, and [Supports.func "selector"
+     ":is(.a, .b)"] matches [@supports selector(:is(.a,.b))]. *)
   let rec eval q : Supports.t -> bool = function
-    | Property decl ->
-        let property = Declaration.property_name decl in
-        let value = Declaration.string_of_value ~minify:true decl in
-        eval_property q.supports_declarations ~property ~value
-    | Func (name, args) ->
-        eval_func q.supports_functions ~name
-          ~args:(Parser.to_string_minified args)
+    | (Property _ | Func _) as leaf ->
+        List.exists (Supports.equal leaf) q.supports
     | Not c -> not (eval q c)
     | And (a, b) -> eval q a && eval q b
     | Or (a, b) -> eval q a || eval q b
@@ -563,7 +536,7 @@ end
     typed-shorthand wrapper [Media.t]. Lengths resolve against a 16px base per
     §1.3; [min-]/[max-] feature prefixes desugar to range comparisons. *)
 
-module Media_eval = struct
+module Match_media = struct
   open Media
 
   type feature_table = (string * string) list
@@ -699,7 +672,7 @@ end
     and accept [style()] / [scroll-state()] queries that the media evaluator
     does not know about. *)
 
-module Container_eval = struct
+module Match_container = struct
   let name_matches ?name q =
     match (name, q.container_name) with
     | None, _ -> true
@@ -820,7 +793,7 @@ module Container_eval = struct
         | None -> (
             (* Fall back to media-feature evaluation for size queries. *)
             let media_q = { q with media_features = q.container_features } in
-            try Media_eval.eval media_q (Media.of_string ("(" ^ s ^ ")"))
+            try Match_media.eval media_q (Media.of_string ("(" ^ s ^ ")"))
             with Failure _ | Cursor.Parse_error _ | Reader.Parse_error _ ->
               false))
 
@@ -830,14 +803,14 @@ module Container_eval = struct
       if not (name_matches ?name q) then false
       else
         match cond with
-        | Min_width_rem rem -> Media_eval.eval media_q (Min_width_rem rem)
+        | Min_width_rem rem -> Match_media.eval media_q (Min_width_rem rem)
         | Min_width_px px ->
-            Media_eval.eval media_q (Min_width (float_of_int px))
+            Match_media.eval media_q (Min_width (float_of_int px))
         | Named (n, inner) -> eval q ~name:n inner
         | Style (prop, value) -> style_match q ~prop ~value
         | Scroll_state (prop, value) -> eval_scroll_state q ~prop ~value
         | Feature_query raw -> eval_raw q raw
-        | Custom media -> Media_eval.eval media_q media
+        | Custom media -> Match_media.eval media_q media
 end
 
 (** {2 Selector matching (CSS Selectors 4)}
@@ -848,7 +821,7 @@ end
     only request selector matching when they have already decided which element
     they are testing. *)
 
-module Selector_eval = struct
+module Match_selector = struct
   let attr_name : Selector.attr_name -> string = function
     | Aria a ->
         let suffix =
@@ -1053,13 +1026,13 @@ module Import = struct
     match ((rule : Stylesheet.import_rule).supports, query) with
     | None, _ -> true
     | Some _, None -> false
-    | Some cond, Some q -> Supports_eval.eval q cond
+    | Some cond, Some q -> Match_supports.eval q cond
 
   let media_ok ?query rule =
     match ((rule : Stylesheet.import_rule).media, query) with
     | None, _ -> true
     | Some _, None -> false
-    | Some media, Some q -> Media_eval.eval q media
+    | Some media, Some q -> Match_media.eval q media
 
   let wrap_in_layer rule statements =
     match (rule : Stylesheet.import_rule).layer with
@@ -1092,10 +1065,10 @@ end
 
 (** {2 Public API surface (forwards to the internal modules)} *)
 
-let matches_supports = Supports_eval.eval
-let matches_media = Media_eval.eval
-let matches_container = Container_eval.eval
-let matches_selector = Selector_eval.eval
+let matches_supports = Match_supports.eval
+let matches_media = Match_media.eval
+let matches_container = Match_container.eval
+let matches_selector = Match_selector.eval
 let resolve_url = Url.resolve
 let load_import = Import.load
 

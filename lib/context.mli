@@ -42,6 +42,12 @@ type query = {
   media_features : (string * string) list;
   supports_declarations : (string * string) list;
   supports_functions : (string * string) list;
+  supports : Supports.t list;
+      (** Capability flags the rendering environment claims to support. Each
+          entry is normally a [Supports.Property] or [Supports.Func] leaf, built
+          with {!Supports.property} / {!Supports.func}. Compound forms ([And] /
+          [Or] / [Not]) are accepted but only match a query that is structurally
+          identical. *)
   container_name : string option;
   container_features : (string * string) list;
 }
@@ -103,11 +109,13 @@ val query :
   ?media_features:(string * string) list ->
   ?supports_declarations:(string * string) list ->
   ?supports_functions:(string * string) list ->
+  ?supports:Supports.t list ->
   ?container_name:string ->
   ?container_features:(string * string) list ->
   unit ->
   query
-(** [query ()] constructs a media/supports/container context. *)
+(** [query ()] constructs a media/supports/container context. Build [supports]
+    entries with {!Supports.property} and {!Supports.func}. *)
 
 val empty_loader : loader
 (** Empty URL/import-loader context. *)
@@ -173,9 +181,6 @@ val attribute : string -> document -> string option option
 
 val media_feature : string -> query -> string option
 (** [media_feature name ctx] looks up a media feature. *)
-
-val supports_declaration : property:string -> value:string -> query -> bool
-(** [supports_declaration ~property ~value ctx] checks the support table. *)
 
 val computed_value :
   ?layer_order:string list ->
