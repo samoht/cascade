@@ -15,6 +15,12 @@ let matches pattern text =
 let check_matches name pattern text =
   Alcotest.(check bool) name true (matches pattern text)
 
+let px value = Css.Media.Length (Css.Values.Px value)
+let rem value = Css.Media.Length (Css.Values.Rem value)
+let ident value = Css.Media.Ident value
+let feature = Css.Media.feature
+let container_feature = Css.Container.feature
+
 let test_empty_property_value () =
   let ctx = Css.Context.empty in
   Alcotest.(check (list decl_t)) "custom properties" [] ctx.custom_properties;
@@ -187,10 +193,7 @@ let test_query_context () =
   let ctx =
     Css.Context.query ~media_type:"screen"
       ~media_features:
-        [
-          Css.Media.feature "width" "1024px";
-          Css.Media.feature "dynamic-range" "high";
-        ]
+        [ feature "width" (px 1024.); feature "dynamic-range" (ident "high") ]
       ~supports:
         [
           Css.Supports.property "display" "grid";
@@ -200,7 +203,7 @@ let test_query_context () =
       ~container_name:"card"
       ~container_features:
         [
-          Css.Container.feature "inline-size" "640px";
+          container_feature "inline-size" (px 640.);
           Css.Container.style ~value:"dark" "--theme";
         ]
       ()
@@ -221,8 +224,8 @@ let test_query_context_boundaries () =
     Css.Context.query ~media_type:"print"
       ~media_features:
         [
-          Css.Media.feature "width" "80rem";
-          Css.Media.feature "prefers-color-scheme" "dark";
+          feature "width" (rem 80.);
+          feature "prefers-color-scheme" (ident "dark");
         ]
       ~supports:
         [
@@ -234,7 +237,7 @@ let test_query_context_boundaries () =
       ~container_name:"sidebar"
       ~container_features:
         [
-          Css.Container.feature "inline-size" "42rem";
+          container_feature "inline-size" (rem 42.);
           Css.Container.style ~value:"dark" "--theme";
         ]
       ()
@@ -343,14 +346,14 @@ let test_context_debug_printers () =
     document_dump;
   let query_dump =
     Css.Context.query ~media_type:"screen"
-      ~media_features:[ Css.Media.feature "width" "1024px" ]
+      ~media_features:[ feature "width" (px 1024.) ]
       ~supports:
         [
           Css.Supports.property "display" "grid";
           Css.Supports.func "selector" ":has(img)";
         ]
       ~container_name:"card"
-      ~container_features:[ Css.Container.feature "inline-size" "640px" ]
+      ~container_features:[ container_feature "inline-size" (px 640.) ]
       ()
     |> Css.Pp.to_string Css.Context.pp_query
   in
@@ -440,6 +443,22 @@ let check_url_error name ~loader input =
   | Ok actual ->
       Alcotest.failf "%s: expected URL %S to be unresolved, got %S" name input
         actual
+  | Error _ -> ()
+
+let check_registered_property_valid name ~registry input =
+  let decl = Css.Declaration.of_string input in
+  match Css.Context.validate_registered_custom_property registry decl with
+  | Ok () -> ()
+  | Error msg ->
+      Alcotest.failf "%s: expected registered property %S to validate, got %S"
+        name input msg
+
+let check_registered_property_error name ~registry input =
+  let decl = Css.Declaration.of_string input in
+  match Css.Context.validate_registered_custom_property registry decl with
+  | Ok () ->
+      Alcotest.failf "%s: expected registered property %S to fail validation"
+        name input
   | Error _ -> ()
 
 let check_import_loaded name ?query ~loader ~expected input =
@@ -657,10 +676,10 @@ let test_query_context_evaluation_contract () =
     Css.Context.query ~media_type:"screen"
       ~media_features:
         [
-          Css.Media.feature "width" "1024px";
-          Css.Media.feature "height" "768px";
-          Css.Media.feature "prefers-color-scheme" "dark";
-          Css.Media.feature "dynamic-range" "high";
+          feature "width" (px 1024.);
+          feature "height" (px 768.);
+          feature "prefers-color-scheme" (ident "dark");
+          feature "dynamic-range" (ident "high");
         ]
       ~supports:
         [
@@ -672,8 +691,8 @@ let test_query_context_evaluation_contract () =
       ~container_name:"card"
       ~container_features:
         [
-          Css.Container.feature "inline-size" "640px";
-          Css.Container.feature "block-size" "480px";
+          container_feature "inline-size" (px 640.);
+          container_feature "block-size" (px 480.);
           Css.Container.style ~value:"dark" "--theme";
           Css.Container.scroll_state "stuck" "top";
         ]
@@ -759,6 +778,54 @@ let test_animation_context_contract () =
   Alcotest.(check (option (float 0.0001)))
     "animation progress is preserved" (Some 0.25) ctx.progress
 
+let test_property_registration_context_contract () =
+  let length_reg =
+    Css.Context.property_registration "--gap"
+      (Css.Variables.Syntax Css.Variables.Length) ~inherits:true
+      ~initial_value:"0px"
+  in
+  let color_reg =
+    Css.Context.property_registration "--brand"
+      (Css.Variables.Syntax Css.Variables.Color) ~inherits:false
+      ~initial_value:"red"
+  in
+  let universal_reg =
+    Css.Context.property_registration "--tokens"
+      (Css.Variables.Syntax Css.Variables.Universal) ~inherits:true
+  in
+  let registry =
+    Css.Context.property_registry
+      ~property_registrations:[ length_reg; color_reg; universal_reg ]
+      ()
+  in
+  Alcotest.(check (option string))
+    "registered property lookup" (Some "--gap")
+    (Option.map
+       (fun (reg : Css.Context.property_registration) -> reg.registered_name)
+       (Css.Context.registered_property "--gap" registry));
+  Alcotest.(check bool)
+    "registered inherits flag" false
+    (let (reg : Css.Context.property_registration) = color_reg in
+     reg.registered_inherits);
+  Alcotest.(check (option string))
+    "registered initial value" (Some "0px")
+    (let (reg : Css.Context.property_registration) = length_reg in
+     reg.registered_initial_value);
+  check_registered_property_valid "registered length accepts length" ~registry
+    "--gap: 1rem";
+  check_registered_property_valid "registered color accepts color" ~registry
+    "--brand: color(display-p3 1 0 0)";
+  check_registered_property_valid "universal syntax accepts token stream"
+    ~registry "--tokens: { color: red }";
+  check_registered_property_valid "unregistered custom property remains valid"
+    ~registry "--unknown: red";
+  check_registered_property_error "registered length rejects color" ~registry
+    "--gap: red";
+  check_registered_property_error "registered color rejects length" ~registry
+    "--brand: 1rem";
+  check_registered_property_error "non-custom declaration is not registered"
+    ~registry "color: red"
+
 let computed_calc_contract () =
   let ctx =
     Css.Context.v
@@ -835,11 +902,11 @@ let test_query_context_boolean_contract () =
     Css.Context.query ~media_type:"screen"
       ~media_features:
         [
-          Css.Media.feature "width" "1024px";
-          Css.Media.feature "height" "768px";
-          Css.Media.feature "orientation" "landscape";
-          Css.Media.feature "hover" "hover";
-          Css.Media.feature "pointer" "fine";
+          feature "width" (px 1024.);
+          feature "height" (px 768.);
+          feature "orientation" (ident "landscape");
+          feature "hover" (ident "hover");
+          feature "pointer" (ident "fine");
         ]
       ~supports:
         [
@@ -852,8 +919,8 @@ let test_query_context_boolean_contract () =
       ~container_name:"card"
       ~container_features:
         [
-          Css.Container.feature "inline-size" "720px";
-          Css.Container.feature "block-size" "360px";
+          container_feature "inline-size" (px 720.);
+          container_feature "block-size" (px 360.);
           Css.Container.style ~value:"compact" "--density";
         ]
       ()
@@ -895,7 +962,7 @@ let test_loader_import_condition_contract () =
   in
   let query =
     Css.Context.query ~media_type:"screen"
-      ~media_features:[ Css.Media.feature "width" "1024px" ]
+      ~media_features:[ feature "width" (px 1024.) ]
       ~supports:
         [
           Css.Supports.property "display" "grid";
@@ -1032,7 +1099,7 @@ let test_loader_import_layer_contract () =
   let query =
     Css.Context.query ~media_type:"screen"
       ~supports:[ Css.Supports.property "display" "grid" ]
-      ~media_features:[ Css.Media.feature "width" "1024px" ]
+      ~media_features:[ feature "width" (px 1024.) ]
       ()
   in
   check_layered_import_loaded "tailwind theme import enters theme layer" ~loader
@@ -1234,6 +1301,8 @@ let suite =
         test_loader_context_contract;
       Alcotest.test_case "animation context contract" `Quick
         test_animation_context_contract;
+      Alcotest.test_case "property registration context contract" `Quick
+        test_property_registration_context_contract;
       Alcotest.test_case "computed value calc and shorthand contract" `Quick
         computed_calc_contract;
       Alcotest.test_case "document selector function contract" `Quick

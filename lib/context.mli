@@ -39,10 +39,9 @@ type document = {
 
 type query = {
   media_type : string option;
-  media_features : Media.feature list;
+  media_features : Media.t list;
       (** Media features the rendering environment claims to expose. Build
-          entries with {!Media.feature} (plain [(name: value)]) or
-          {!Media.boolean_feature} (boolean [(name)]). *)
+          entries with {!Media.feature} or {!Media.boolean}. *)
   supports : Supports.t list;
       (** Capability flags the rendering environment claims to support. Each
           entry is normally a [Supports.Property] or [Supports.Func] leaf, built
@@ -68,6 +67,19 @@ type animation = {
   animated_properties : string list;
 }
 (** Explicit context for animation/keyframe transforms. *)
+
+type property_registration = {
+  registered_name : string;
+  registered_syntax : Variables.any_syntax;
+  registered_inherits : bool;
+  registered_initial_value : string option;
+}
+(** Explicit context entry for a registered custom property. This models the
+    parser-visible data from an [@property] rule without creating live CSSOM
+    registration state. *)
+
+type property_registry = { property_registrations : property_registration list }
+(** Explicit context for registration-aware custom property validation. *)
 
 val empty : t
 (** A context with no known custom properties, inherited values, dimensions,
@@ -111,7 +123,7 @@ val empty_query : query
 
 val query :
   ?media_type:string ->
-  ?media_features:Media.feature list ->
+  ?media_features:Media.t list ->
   ?supports:Supports.t list ->
   ?container_name:string ->
   ?container_features:Container.t list ->
@@ -138,6 +150,24 @@ val animation :
   animation
 (** [animation ()] constructs an animation context. *)
 
+val empty_property_registry : property_registry
+(** Empty registered-property context. *)
+
+val property_registration :
+  ?initial_value:string ->
+  inherits:bool ->
+  string ->
+  Variables.any_syntax ->
+  property_registration
+(** [property_registration name syntax ~inherits ?initial_value] describes a
+    registered custom property. [name] must be a dashed custom-property name. *)
+
+val property_registry :
+  ?property_registrations:property_registration list ->
+  unit ->
+  property_registry
+(** [property_registry ()] constructs a registered-property context. *)
+
 (** {1 Pretty-printing}
 
     Debug-style record dumps, intended for inspection and logging. They are not
@@ -158,6 +188,9 @@ val pp_loader : loader Pp.t
 val pp_animation : animation Pp.t
 (** [pp_animation] dumps an animation context. *)
 
+val pp_property_registry : property_registry Pp.t
+(** [pp_property_registry] dumps a registered-property context. *)
+
 (** {1 Lookups} *)
 
 val custom_property : string -> t -> Declaration.declaration option
@@ -171,6 +204,15 @@ val inherited_value : string -> t -> Declaration.declaration option
 val initial_value : string -> t -> Declaration.declaration option
 (** [initial_value property ctx] is the initial declaration for [property] in
     [ctx], if any. *)
+
+val media_feature : string -> query -> Media.value option
+(** [media_feature name ctx] is the plain media feature value named [name] in
+    [ctx], if any. Boolean and range media features do not produce a value. *)
+
+val container_feature : string -> query -> Media.value option
+(** [container_feature name ctx] is the plain container size feature value named
+    [name] in [ctx], if any. Style, scroll-state, boolean, and range container
+    features do not produce a value. *)
 
 val has_class : string -> document -> bool
 (** [has_class name ctx] checks [ctx.classes]. *)
@@ -230,3 +272,15 @@ val load_import :
     referenced by [rule] from [loader.imports], applying any [@import]
     media/supports/layer guards. Returns [Error] if the import path isn't in
     [loader.imports] or a guard rejects it. *)
+
+val registered_property :
+  string -> property_registry -> property_registration option
+(** [registered_property name registry] is the registration for [name], if any.
+*)
+
+val validate_registered_custom_property :
+  property_registry -> Declaration.declaration -> (unit, string) result
+(** [validate_registered_custom_property registry decl] validates a custom
+    property declaration against [registry] when the property is registered.
+    Unregistered custom properties are accepted. Non-custom declarations and
+    registered values that do not match the registered syntax return [Error]. *)
