@@ -124,18 +124,26 @@ let test_spec_metric_negative_vectors () =
     (size_adjust_of_string "0%")
 
 let spec_fontface_source_edges () =
-  let check_raw name input =
-    Alcotest.(check string) name input (src_of_string input |> src_to_string)
+  let check_normalized name input expected =
+    Alcotest.(check string) name expected (src_of_string input |> src_to_string)
   in
-  check_raw "tech variations" "url(\"variable.woff2\") tech(variations)";
-  check_raw "tech palettes" "url(\"color.woff2\") tech(palettes)";
-  check_raw "tech incremental" "url(\"font.woff2\") tech(incremental)";
-  check_raw "format collection" "url(\"collection.ttc\") format(\"collection\")";
-  check_raw "multiple urls with local fallback"
+  check_normalized "tech variations" "url(\"variable.woff2\") tech(variations)"
+    "url(variable.woff2) tech(variations)";
+  check_normalized "tech palettes" "url(\"color.woff2\") tech(palettes)"
+    "url(color.woff2) tech(palettes)";
+  check_normalized "tech incremental" "url(\"font.woff2\") tech(incremental)"
+    "url(font.woff2) tech(incremental)";
+  check_normalized "format collection"
+    "url(\"collection.ttc\") format(\"collection\")"
+    "url(collection.ttc) format(\"collection\")";
+  check_normalized "multiple urls with local fallback"
     "local(\"Brand\"), url(\"brand.woff2\") format(\"woff2\"), \
-     url(\"brand.otf\") format(\"opentype\")";
-  check_raw "raw unknown source function"
+     url(\"brand.otf\") format(\"opentype\")"
+    "local(\"Brand\"), url(brand.woff2) format(\"woff2\"), url(brand.otf) \
+     format(\"opentype\")";
+  check_normalized "raw unknown source function"
     "url(\"font.woff2\") format(\"woff2\") tech(color-COLRv1)"
+    "url(font.woff2) format(\"woff2\") tech(color-COLRv1)"
 
 let spec_fontface_metric_edges () =
   List.iter
