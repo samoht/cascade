@@ -91,6 +91,8 @@ type value_processing_stage =
   | Used_value
   | Actual_value  (** CSS Cascade value-processing stages. *)
 
+type namespace_url = Url of string | Quoted of string
+
 type cascade_candidate = {
   candidate_origin : cascade_origin;
   candidate_layer : string option;
@@ -126,7 +128,7 @@ and statement =
       (** Bare declarations for CSS nesting (no selector) *)
   | Charset of string  (** [@charset "UTF-8";] *)
   | Import of import_rule  (** [@import url(...) layer(...) supports(...);] *)
-  | Namespace of string option * string  (** [@namespace prefix? url;] *)
+  | Namespace of string option * namespace_url  (** [@namespace prefix? url;] *)
   | Property : 'a property_rule -> statement  (** [@property --name { ... }] *)
   | Layer_decl of string list  (** [@layer theme, base, utilities;] *)
   | Layer of string option * block  (** [@layer name? { ... }] *)
@@ -165,7 +167,10 @@ and keyframe = {
 }
 (** A single keyframe within [\@keyframes] *)
 
-and raw_descriptor = { descriptor_name : string; descriptor_value : string }
+and raw_descriptor = {
+  descriptor_name : string;
+  descriptor_value : Component.t list;
+}
 (** Raw descriptor used by descriptor-only at-rules. *)
 
 and page_margin_rule = {

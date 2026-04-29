@@ -416,7 +416,9 @@ and pp_raw_descriptor : raw_descriptor Pp.t =
   Pp.string ctx desc.descriptor_name;
   Pp.string ctx ":";
   Pp.space_if_pretty ctx ();
-  Pp.string ctx desc.descriptor_value
+  Pp.string ctx
+    (if Pp.minified ctx then Parser.to_string_minified desc.descriptor_value
+     else Parser.to_string desc.descriptor_value)
 
 and pp_page_margin_rule : page_margin_rule Pp.t =
  fun ctx rule ->
@@ -479,9 +481,11 @@ and pp_statement : statement Pp.t =
       pp_import_url ctx url;
       (match layer with
       | Some l ->
-          Pp.string ctx " layer(";
-          Pp.string ctx l;
-          Pp.string ctx ")"
+          if l = "" then Pp.string ctx " layer"
+          else (
+            Pp.string ctx " layer(";
+            Pp.string ctx l;
+            Pp.string ctx ")")
       | None -> ());
       (match supports with
       | Some s ->
@@ -504,9 +508,13 @@ and pp_statement : statement Pp.t =
           Pp.string ctx p;
           Pp.space ctx ()
       | None -> ());
-      Pp.string ctx "url(";
-      Pp.string ctx uri;
-      Pp.string ctx ");"
+      (match uri with
+      | Url value ->
+          Pp.string ctx "url(";
+          Pp.string ctx value;
+          Pp.char ctx ')'
+      | Quoted value -> Pp.quoted_string ctx value);
+      Pp.semicolon ctx ()
   | Property r -> pp_property_rule ctx r
   | Layer_decl names ->
       Pp.string ctx "@layer ";
@@ -559,7 +567,7 @@ and pp_statement : statement Pp.t =
       Pp.string ctx "@scope";
       (match start with
       | Some s ->
-          Pp.space ctx ();
+          Pp.space_if_pretty ctx ();
           Pp.string ctx "(";
           Pp.string ctx s;
           Pp.string ctx ")"
@@ -818,6 +826,39 @@ let parse_supports_condition ~loc condition =
   with Failure reason ->
     Error.fail_bad_condition loc ~at_rule:"@supports" ~reason
 
+(* CSS Cascade section 6.4.2: a layer name is one or more idents joined by '.'
+   with no whitespace around the dot. CSS-wide keywords are reserved. *)
+let read_layer_name_component (r : Cursor.t) : string =
+  let reserved = function
+    | "initial" | "inherit" | "unset" | "revert" | "revert-layer" -> true
+    | _ -> false
+  in
+  let buf = Buffer.create 16 in
+  let add_part part =
+    if reserved (String.lowercase_ascii part) then
+      Cursor.err_invalid r ("layer name reserves CSS-wide keyword: " ^ part);
+    Buffer.add_string buf part
+  in
+  add_part (Cursor.ident ~keep_case:true r);
+  let rec extend () =
+    match Cursor.peek_raw r with
+    | Some (Component.Preserved { kind = Token.Delim "."; _ }) ->
+        Cursor.skip r;
+        let next =
+          match Cursor.peek_raw r with
+          | Some (Component.Preserved { kind = Token.Ident s; _ }) ->
+              Cursor.skip r;
+              s
+          | _ -> Cursor.err_expected r "ident after '.' in layer name"
+        in
+        Buffer.add_char buf '.';
+        add_part next;
+        extend ()
+    | _ -> ()
+  in
+  extend ();
+  Buffer.contents buf
+
 (* CSS Conditional Rules section 3 [@import] prelude: [<url> [layer |
    layer(<layer-name>)]? [supports(<supports-condition>)]? <media-query-list>?].
    The [~keep_url_repr] flavour preserves the original quote / [url(...)] form
@@ -845,7 +886,14 @@ let read_import_prelude ~keep_url_repr (r : Cursor.t) : import_rule =
   let layer =
     match
       Cursor.function_call "layer"
-        (fun inner -> Cursor.remaining_to_string ~trim:true inner)
+        (fun inner ->
+          Cursor.ws inner;
+          if Cursor.is_done inner then ""
+          else
+            let name = read_layer_name_component inner in
+            Cursor.ws inner;
+            Cursor.expect_eof inner;
+            name)
         r
     with
     | Some _ as some -> some
@@ -871,7 +919,12 @@ let read_import_prelude ~keep_url_repr (r : Cursor.t) : import_rule =
   Cursor.ws r;
   let media =
     if Cursor.peek_semicolon r || Cursor.is_done r then None
-    else Some (Media.of_string (Cursor.consume_to_semicolon ~trim:true r))
+    else
+      let loc = Cursor.position r in
+      let raw = Cursor.consume_to_semicolon ~trim:true r in
+      try Some (Media.of_string raw)
+      with Failure reason ->
+        Error.fail_bad_condition loc ~at_rule:"@media" ~reason
   in
   if Cursor.peek_semicolon r then Cursor.skip r;
   { url; layer; supports; media }
@@ -894,8 +947,8 @@ let read_namespace (r : Cursor.t) : statement =
     match Cursor.peek r with
     | Some (Component.Preserved { kind = Token.String { value; _ }; _ }) ->
         Cursor.skip r;
-        value
-    | _ -> Cursor.url r
+        Quoted value
+    | _ -> Url (Cursor.url r)
   in
   Cursor.ws r;
   if Cursor.peek_semicolon r then Cursor.skip r;
@@ -929,8 +982,14 @@ let read_descriptor_value parse_fn constructor r =
     constructor value
   with Failure msg -> Cursor.err_invalid r msg
 
+let raw_descriptor_value ?(minify = false) value =
+  if minify then Parser.to_string_minified value else Parser.to_string value
+
 let raw_descriptor name value =
-  { descriptor_name = name; descriptor_value = value }
+  {
+    descriptor_name = name;
+    descriptor_value = Cursor.remaining (Cursor.of_string value);
+  }
 
 let read_raw_descriptor (r : Cursor.t) : raw_descriptor option =
   Cursor.ws r;
@@ -1263,10 +1322,12 @@ let read_font_palette_values (r : Cursor.t) : statement =
   let validate_descriptor desc acc =
     match desc.descriptor_name with
     | "font-family" ->
-        validate_nonempty_descriptor r "font-family" desc.descriptor_value;
+        validate_nonempty_descriptor r "font-family"
+          (raw_descriptor_value desc.descriptor_value);
         replace_descriptor desc acc
     | "base-palette" ->
-        validate_nonempty_descriptor r "base-palette" desc.descriptor_value;
+        validate_nonempty_descriptor r "base-palette"
+          (raw_descriptor_value desc.descriptor_value);
         replace_descriptor desc acc
     | "override-colors" ->
         let entry c =
@@ -1277,7 +1338,7 @@ let read_font_palette_values (r : Cursor.t) : statement =
           ignore (Values.read_color c);
           Cursor.ws c
         in
-        let c = Cursor.of_string desc.descriptor_value in
+        let c = Cursor.of_components desc.descriptor_value in
         ignore (Cursor.list ~sep:Cursor.comma ~at_least:1 entry c);
         Cursor.ws c;
         Cursor.expect_eof c;
@@ -1303,7 +1364,10 @@ let read_view_transition (r : Cursor.t) : statement =
   | Some _ -> Cursor.err_invalid r "@view-transition does not take a prelude"
   | None -> Cursor.err_expected r "'{'");
   let validate_descriptor desc acc =
-    match (desc.descriptor_name, desc.descriptor_value) with
+    match
+      ( desc.descriptor_name,
+        raw_descriptor_value ~minify:true desc.descriptor_value )
+    with
     | "navigation", ("auto" | "none") -> replace_descriptor desc acc
     | "navigation", _ ->
         Cursor.err_invalid r "invalid @view-transition navigation descriptor"
@@ -1488,38 +1552,7 @@ and read_container (r : Cursor.t) : statement =
   in
   Container (container_name, condition, content)
 
-(* CSS Cascade section 6.4.2: a layer name is one or more idents joined by '.'
-   with no whitespace around the dot. CSS-wide keywords are reserved. *)
-and read_layer_name (r : Cursor.t) : string =
-  let reserved = function
-    | "initial" | "inherit" | "unset" | "revert" | "revert-layer" -> true
-    | _ -> false
-  in
-  let buf = Buffer.create 16 in
-  let first = Cursor.ident ~keep_case:true r in
-  if reserved (String.lowercase_ascii first) then
-    Cursor.err_invalid r ("layer name reserves CSS-wide keyword: " ^ first);
-  Buffer.add_string buf first;
-  let rec extend () =
-    match Cursor.peek_raw r with
-    | Some (Component.Preserved { kind = Token.Delim "."; _ }) ->
-        Cursor.skip r;
-        let next =
-          match Cursor.peek_raw r with
-          | Some (Component.Preserved { kind = Token.Ident s; _ }) ->
-              Cursor.skip r;
-              s
-          | _ -> Cursor.err_expected r "ident after '.' in layer name"
-        in
-        if reserved (String.lowercase_ascii next) then
-          Cursor.err_invalid r ("layer name reserves CSS-wide keyword: " ^ next);
-        Buffer.add_char buf '.';
-        Buffer.add_string buf next;
-        extend ()
-    | _ -> ()
-  in
-  extend ();
-  Buffer.contents buf
+and read_layer_name (r : Cursor.t) : string = read_layer_name_component r
 
 and read_layer (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "layer" r;
@@ -1691,6 +1724,10 @@ and read_rule_selector r =
      cursor's current position. *)
   Cursor.with_context c "selector" (fun () -> Selector.read_selector_list c)
 
+and is_bare_nesting_selector : Selector.t -> bool = function
+  | Selector.Nesting -> true
+  | _ -> false
+
 and read_rule_item selector inner decls nested =
   match Cursor.peek inner with
   | None -> `Done (List.rev decls, List.rev nested)
@@ -1710,6 +1747,13 @@ and read_rule_item selector inner decls nested =
           if Cursor.is_done inner then `Done (List.rev decls, List.rev nested)
           else
             let nr = read_rule inner in
+            if
+              is_bare_nesting_selector selector
+              && is_bare_nesting_selector nr.selector
+            then
+              Cursor.err_invalid inner
+                "bare nesting selector cannot directly nest another bare \
+                 nesting selector";
             `Continue (decls, Rule nr :: nested))
 
 and read_rule_body selector inner =
@@ -1818,7 +1862,8 @@ let read_stylesheet (r : Cursor.t) : stylesheet =
             if !charset_seen || !import_seen || !namespace_seen || !body_seen
             then Cursor.err_invalid r "@charset must precede all rules";
             charset_seen := true
-        | Layer_decl _ -> ()
+        | Layer_decl _ ->
+            if !import_seen || !namespace_seen then body_seen := true
         | Import _ ->
             if !namespace_seen || !body_seen then
               Cursor.err_invalid r "@import must precede style rules";
@@ -2001,9 +2046,11 @@ let pp_import_rule : import_rule Pp.t =
   pp_import_url ctx url;
   Option.iter
     (fun l ->
-      Pp.string ctx " layer(";
-      Pp.string ctx l;
-      Pp.char ctx ')')
+      if l = "" then Pp.string ctx " layer"
+      else (
+        Pp.string ctx " layer(";
+        Pp.string ctx l;
+        Pp.char ctx ')'))
     layer;
   Option.iter
     (fun s ->
