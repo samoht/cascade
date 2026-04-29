@@ -67,8 +67,15 @@ type display =
       (** Two-value [<display-outside> <display-inside>] syntax per CSS Display
           3 §2.1, e.g. [inline flow-root] or [list-item flow-root]. *)
 
-type position = Static | Relative | Absolute | Fixed | Sticky
-type visibility = Visible | Hidden | Collapse
+type position =
+  | Static
+  | Relative
+  | Absolute
+  | Fixed
+  | Sticky
+  | Var of position var
+
+type visibility = Visible | Hidden | Collapse | Var of visibility var
 type z_index = Auto | Index of int | Calc of string | Var of z_index var
 
 type opacity =
