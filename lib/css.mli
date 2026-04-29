@@ -4351,6 +4351,7 @@ type webkit_appearance =
   | Radio  (** Radio button appearance *)
   | Push_button  (** Push button appearance *)
   | Square_button  (** Square button appearance *)
+  | Apple_pay_button  (** Apple Pay button appearance *)
   | Inherit  (** Inherit from parent *)
 
 (** CSS -webkit-font-smoothing values. *)

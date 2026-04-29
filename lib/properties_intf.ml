@@ -1564,6 +1564,7 @@ type webkit_font_smoothing =
 
 type moz_osx_font_smoothing = Auto | Grayscale | Inherit
 type webkit_box_orient = Horizontal | Vertical | Inherit
+type moz_orient = Inline | Block | Horizontal | Vertical | Inherit
 type webkit_line_clamp = Lines of int | Unset | Var of webkit_line_clamp var
 type text_size_adjust = None | Auto | Pct of float | Inherit
 
@@ -1946,6 +1947,7 @@ type 'a property =
   | Moz_osx_font_smoothing : moz_osx_font_smoothing property
   | Webkit_line_clamp : webkit_line_clamp property
   | Webkit_box_orient : webkit_box_orient property
+  | Moz_orient : moz_orient property
   | Text_overflow : text_overflow property
   | Text_wrap : text_wrap property
   | Word_break : word_break property

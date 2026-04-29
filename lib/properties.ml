@@ -2615,6 +2615,7 @@ let pp_property : type a. a property Pp.t =
   | Moz_osx_font_smoothing -> Pp.string ctx "-moz-osx-font-smoothing"
   | Webkit_line_clamp -> Pp.string ctx "-webkit-line-clamp"
   | Webkit_box_orient -> Pp.string ctx "-webkit-box-orient"
+  | Moz_orient -> Pp.string ctx "-moz-orient"
   | Text_overflow -> Pp.string ctx "text-overflow"
   | Text_wrap -> Pp.string ctx "text-wrap"
   | Word_break -> Pp.string ctx "word-break"
@@ -4256,6 +4257,14 @@ let pp_webkit_box_orient : webkit_box_orient Pp.t =
   | Vertical -> Pp.string ctx "vertical"
   | Inherit -> Pp.string ctx "inherit"
 
+let pp_moz_orient : moz_orient Pp.t =
+ fun ctx -> function
+  | Inline -> Pp.string ctx "inline"
+  | Block -> Pp.string ctx "block"
+  | Horizontal -> Pp.string ctx "horizontal"
+  | Vertical -> Pp.string ctx "vertical"
+  | Inherit -> Pp.string ctx "inherit"
+
 let rec pp_webkit_line_clamp : webkit_line_clamp Pp.t =
  fun ctx -> function
   | Lines n -> Pp.int ctx n
@@ -5464,7 +5473,12 @@ let read_scroll_snap_align t : scroll_snap_align =
 
 let read_timeline_axis t : timeline_axis =
   Cursor.enum "timeline-axis"
-    [ ("block", Block); ("inline", Inline); ("x", X); ("y", Y) ]
+    [
+      ("block", (Block : timeline_axis));
+      ("inline", (Inline : timeline_axis));
+      ("x", (X : timeline_axis));
+      ("y", (Y : timeline_axis));
+    ]
     t
 
 let read_timeline_shorthand t : timeline_shorthand =
@@ -5716,6 +5730,17 @@ let read_webkit_box_orient t : webkit_box_orient =
   Cursor.enum "webkit-box-orient"
     [
       ("horizontal", (Horizontal : webkit_box_orient));
+      ("vertical", Vertical);
+      ("inherit", Inherit);
+    ]
+    t
+
+let read_moz_orient t : moz_orient =
+  Cursor.enum "moz-orient"
+    [
+      ("inline", (Inline : moz_orient));
+      ("block", Block);
+      ("horizontal", Horizontal);
       ("vertical", Vertical);
       ("inherit", Inherit);
     ]
@@ -7840,6 +7865,7 @@ let read_any_property t =
   | "-webkit-box-orient" -> Prop Webkit_box_orient
   | "-webkit-hyphens" -> Prop Webkit_hyphens
   | "-moz-appearance" -> Prop Moz_appearance
+  | "-moz-orient" -> Prop Moz_orient
   | "-moz-osx-font-smoothing" -> Prop Moz_osx_font_smoothing
   | "-ms-filter" -> Prop Ms_filter
   | "-o-transition" -> Prop O_transition
@@ -8867,6 +8893,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Webkit_transition -> pp (Pp.list ~sep:Pp.comma pp_transition)
   | Webkit_filter -> pp pp_filter
   | Moz_appearance -> pp pp_appearance
+  | Moz_orient -> pp pp_moz_orient
   | Ms_filter -> pp pp_filter
   | O_transition -> pp (Pp.list ~sep:Pp.comma pp_transition)
   | Font_family -> pp pp_font_family

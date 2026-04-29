@@ -1046,6 +1046,12 @@ val pp_webkit_box_orient : webkit_box_orient Pp.t
 val read_webkit_box_orient : Cursor.t -> webkit_box_orient
 (** [read_webkit_box_orient t] is the [webkit_box_orient] parsed from [t]. *)
 
+val pp_moz_orient : moz_orient Pp.t
+(** [pp_moz_orient] is the pretty-printer for [moz_orient]. *)
+
+val read_moz_orient : Cursor.t -> moz_orient
+(** [read_moz_orient t] is the [moz_orient] parsed from [t]. *)
+
 val pp_webkit_line_clamp : webkit_line_clamp Pp.t
 (** [pp_webkit_line_clamp] is the pretty-printer for [webkit_line_clamp]. *)
 

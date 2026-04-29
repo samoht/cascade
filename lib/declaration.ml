@@ -1298,6 +1298,7 @@ let read_value (type a) (prop : a property) t : declaration =
       v Webkit_font_smoothing (read_webkit_font_smoothing t)
   | Webkit_line_clamp -> v Webkit_line_clamp (read_webkit_line_clamp t)
   | Webkit_box_orient -> v Webkit_box_orient (read_webkit_box_orient t)
+  | Moz_orient -> v Moz_orient (read_moz_orient t)
   | Webkit_hyphens -> v Webkit_hyphens (read_hyphens t)
   (* Font properties *)
   | Font_feature_settings ->
