@@ -29,7 +29,7 @@ let media buf i =
   | 15 -> Pointer `Fine
   | 16 -> Any_pointer `Coarse
   | 17 -> Scripting `Enabled
-  | 18 -> Hover
+  | 18 -> Hover `Hover
   | 19 -> Print
   | 20 -> Orientation `Landscape
   | _ ->
@@ -111,46 +111,30 @@ let spec_media_vector buf =
       ("print", Print);
       ("not print", Negated Print);
       ("not all and (min-width: 40px)", Not_min_width 40.);
-      ( "(width > 40em)",
-        Custom
-          (Cond (Feature (Range ("width", Gt, length (Css.Values.Em 40.))))) );
-      ( "(40em < width)",
-        Custom
-          (Cond (Feature (Range_rev (length (Css.Values.Em 40.), Lt, "width"))))
-      );
+      ("(width > 40em)", Range ("width", Gt, length (Css.Values.Em 40.)));
+      ("(40em < width)", Range_rev (length (Css.Values.Em 40.), Lt, "width"));
       ( "(30em <= width < 60em)",
-        Custom
-          (Cond
-             (Feature
-                (Interval
-                   ( length (Css.Values.Em 30.),
-                     Le,
-                     "width",
-                     Lt,
-                     length (Css.Values.Em 60.) )))) );
+        Interval
+          ( length (Css.Values.Em 30.),
+            Le,
+            "width",
+            Lt,
+            length (Css.Values.Em 60.) ) );
       ( "screen and (hover: hover)",
-        Custom
-          (Type
-             {
-               prefix = None;
-               type_ = Screen;
-               trailing = Some (Feature (Plain ("hover", Ident "hover")));
-             }) );
+        Type_query
+          { prefix = None; type_ = Screen; trailing = Some (Hover `Hover) } );
       ( "screen and (width >= 40em), print",
-        Custom
-          (List
-             [
-               Type
-                 {
-                   prefix = None;
-                   type_ = Screen;
-                   trailing =
-                     Some
-                       (Feature
-                          (Range ("width", Ge, length (Css.Values.Em 40.))));
-                 };
-               Type { prefix = None; type_ = Print; trailing = None };
-             ]) );
+        List
+          [
+            Type_query
+              {
+                prefix = None;
+                type_ = Screen;
+                trailing =
+                  Some (Range ("width", Ge, length (Css.Values.Em 40.)));
+              };
+            Print;
+          ] );
     ]
     buf 0
 

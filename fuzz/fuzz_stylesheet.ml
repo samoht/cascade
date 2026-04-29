@@ -99,12 +99,12 @@ let generated_condition_stylesheet buf =
   let supports =
     pick
       [
-        Css.Supports.Property ("display", "grid");
-        Css.Supports.Func ("selector", ":has(img)");
-        Css.Supports.Func ("font-tech", "variations");
+        Css.Supports.property "display" "grid";
+        Css.Supports.func "selector" ":has(img)";
+        Css.Supports.func "font-tech" "variations";
         Css.Supports.And
-          ( Css.Supports.Property ("display", "grid"),
-            Css.Supports.Func ("selector", ":has(img)") );
+          ( Css.Supports.property "display" "grid",
+            Css.Supports.func "selector" ":has(img)" );
       ]
       buf 4
   in
@@ -262,7 +262,7 @@ let rec boundary_shape = function
       (("origin:" ^ origin) :: List.concat_map boundary_shape block)
       @ [ "/origin" ]
   | Charset _ -> [ "charset" ]
-  | Keyframes _ -> [ "keyframes" ]
+  | Keyframes _ | Webkit_keyframes _ -> [ "keyframes" ]
   | Font_face _ -> [ "font-face" ]
   | Page _ -> [ "page" ]
   | Page_with_margins _ -> [ "page" ]
@@ -285,8 +285,9 @@ let anonymous_layer_count ss =
     | Origin (_, block) ->
         block_count block
     | Rule _ | Declarations _ | Charset _ | Import _ | Namespace _
-    | Layer_decl _ | Keyframes _ | Font_face _ | Page _ | Page_with_margins _
-    | Font_palette_values _ | View_transition _ | Position_try _ | Property _ ->
+    | Layer_decl _ | Keyframes _ | Webkit_keyframes _ | Font_face _ | Page _
+    | Page_with_margins _ | Font_palette_values _ | View_transition _
+    | Position_try _ | Property _ ->
         0
   and block_count block = List.fold_left (fun n s -> n + statement s) 0 block in
   block_count ss
@@ -629,7 +630,7 @@ let test_import_url_syntax buf =
     {
       Css.Stylesheet.url;
       layer = Some (layer_name buf 1);
-      supports = Some (Css.Supports.Func ("selector", ":has(img)"));
+      supports = Some (Css.Supports.func "selector" ":has(img)");
       media = Some (Css.Media.of_string "(width >= 40em)");
     }
   in
@@ -659,8 +660,18 @@ let test_namespace_prefix_separator buf =
   | Some ss -> (
       let output = minified_stylesheet ss in
       match parse_stylesheet output with
-      | Some [ Css.Stylesheet.Namespace (Some output_prefix, output_url) ]
-        when output_prefix = prefix && output_url = url ->
+      | Some
+          [
+            Css.Stylesheet.Namespace (Some output_prefix, Css.Stylesheet.Url u);
+          ]
+        when output_prefix = prefix && u = url ->
+          ()
+      | Some
+          [
+            Css.Stylesheet.Namespace
+              (Some output_prefix, Css.Stylesheet.Quoted u);
+          ]
+        when output_prefix = prefix && u = url ->
           ()
       | Some reparsed ->
           fail
