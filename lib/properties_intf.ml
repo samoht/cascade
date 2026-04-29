@@ -1782,7 +1782,7 @@ type 'a property =
   | Grid_column_end : grid_line property
   | Grid_row_start : grid_line property
   | Grid_row_end : grid_line property
-  | Border_width : border_width property
+  | Border_width : border_width list property
   | Border_top_width : border_width property
   | Border_right_width : border_width property
   | Border_bottom_width : border_width property

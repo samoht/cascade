@@ -1528,6 +1528,7 @@ let strs_spaced ctx strings =
     otherwise terminate or reframe the selector. *)
 let escape_selector_name name =
   if String.length name = 0 then ""
+  else if name = "-" then "\\-"
   else
     let buf = Buffer.create (String.length name * 2) in
     let hex_digits = "0123456789abcdef" in
@@ -1579,7 +1580,10 @@ let escape_selector_name name =
         | '=' -> Buffer.add_string buf "\\="
         | '!' -> Buffer.add_string buf "\\!"
         | '|' -> Buffer.add_string buf "\\|"
-        | c -> Buffer.add_char buf c
+        | c when is_valid_nmchar c -> Buffer.add_char buf c
+        | c ->
+            Buffer.add_char buf '\\';
+            Buffer.add_char buf c
     in
     let folder () i = function
       | `Uchar u ->

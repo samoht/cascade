@@ -2353,77 +2353,29 @@ let rec read_time t : duration =
     | "ms" -> Ms n
     | _ -> Cursor.err_invalid t ("time unit: " ^ unit)
 
+let number_binary_functions =
+  [
+    ("mod", fun a b -> Mod (a, b));
+    ("hypot", fun a b -> Hypot (a, b));
+    ("pow", fun a b -> Pow (a, b));
+  ]
+
+let number_unary_functions =
+  [
+    ("sqrt", fun value -> Sqrt value);
+    ("abs", fun value -> Abs value);
+    ("sign", fun value -> Sign value);
+  ]
+
+let angle_number_functions = [ ("sin", fun value -> Sin value) ]
+
 (** Read a number value *)
 let rec read_number t : number =
   Cursor.ws t;
   let number =
-    (* Check for var() *)
-    if Cursor.looking_at t "var(" then Var (read_var read_number t)
-    else if Cursor.looking_at t "calc(" then Calc (read_calc read_number t)
-    else if Cursor.looking_at_func "round" t then
-      Cursor.call "round" t (fun inner ->
-          let strategy = Cursor.ident inner in
-          Cursor.ws inner;
-          Cursor.comma inner;
-          let value = read_number inner in
-          Cursor.ws inner;
-          Cursor.comma inner;
-          let step = read_number inner in
-          Cursor.ws inner;
-          Cursor.expect_eof inner;
-          Round (strategy, value, step))
-    else if Cursor.looking_at_func "mod" t then
-      Cursor.call "mod" t (fun inner ->
-          let a = read_number inner in
-          Cursor.ws inner;
-          Cursor.comma inner;
-          let b = read_number inner in
-          Cursor.ws inner;
-          Cursor.expect_eof inner;
-          Mod (a, b))
-    else if Cursor.looking_at_func "hypot" t then
-      Cursor.call "hypot" t (fun inner ->
-          let a = read_number inner in
-          Cursor.ws inner;
-          Cursor.comma inner;
-          let b = read_number inner in
-          Cursor.ws inner;
-          Cursor.expect_eof inner;
-          Hypot (a, b))
-    else if Cursor.looking_at_func "pow" t then
-      Cursor.call "pow" t (fun inner ->
-          let a = read_number inner in
-          Cursor.ws inner;
-          Cursor.comma inner;
-          let b = read_number inner in
-          Cursor.ws inner;
-          Cursor.expect_eof inner;
-          Pow (a, b))
-    else if Cursor.looking_at_func "sqrt" t then
-      Cursor.call "sqrt" t (fun inner ->
-          let value = read_number inner in
-          Cursor.ws inner;
-          Cursor.expect_eof inner;
-          Sqrt value)
-    else if Cursor.looking_at_func "abs" t then
-      Cursor.call "abs" t (fun inner ->
-          let value = read_number inner in
-          Cursor.ws inner;
-          Cursor.expect_eof inner;
-          Abs value)
-    else if Cursor.looking_at_func "sign" t then
-      Cursor.call "sign" t (fun inner ->
-          let value = read_number inner in
-          Cursor.ws inner;
-          Cursor.expect_eof inner;
-          Sign value)
-    else if Cursor.looking_at_func "sin" t then
-      Cursor.call "sin" t (fun inner ->
-          let value = read_angle inner in
-          Cursor.ws inner;
-          Cursor.expect_eof inner;
-          Sin value)
-    else Num (Cursor.number t)
+    match read_number_function t with
+    | Some value -> value
+    | None -> Num (Cursor.number t)
   in
   Cursor.ws t;
   (match Cursor.peek t with
@@ -2432,6 +2384,65 @@ let rec read_number t : number =
       Cursor.err_invalid t "unexpected tokens after number"
   | _ -> ());
   number
+
+and read_number_function t =
+  match Cursor.peek t with
+  | Some (Component.Func { node = { name; _ }; _ }) -> (
+      let name = String.lowercase_ascii name in
+      match name with
+      | "var" -> Some (Var (read_var read_number t))
+      | "calc" -> Some (Calc (read_calc read_number t))
+      | "round" -> Some (read_round_number t)
+      | _ -> read_math_number_function t name)
+  | _ -> None
+
+and read_math_number_function t name =
+  match List.assoc_opt name number_binary_functions with
+  | Some make -> Some (read_binary_number_function name make t)
+  | None -> (
+      match List.assoc_opt name number_unary_functions with
+      | Some make -> Some (read_unary_number_function name make t)
+      | None -> (
+          match List.assoc_opt name angle_number_functions with
+          | Some make -> Some (read_angle_number_function name make t)
+          | None -> None))
+
+and read_round_number t =
+  Cursor.call "round" t (fun inner ->
+      let strategy = Cursor.ident inner in
+      Cursor.ws inner;
+      Cursor.comma inner;
+      let value = read_number inner in
+      Cursor.ws inner;
+      Cursor.comma inner;
+      let step = read_number inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      Round (strategy, value, step))
+
+and read_binary_number_function name make t =
+  Cursor.call name t (fun inner ->
+      let a = read_number inner in
+      Cursor.ws inner;
+      Cursor.comma inner;
+      let b = read_number inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      make a b)
+
+and read_unary_number_function name make t =
+  Cursor.call name t (fun inner ->
+      let value = read_number inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      make value)
+
+and read_angle_number_function name make t =
+  Cursor.call name t (fun inner ->
+      let value = read_angle inner in
+      Cursor.ws inner;
+      Cursor.expect_eof inner;
+      make value)
 
 (** Read transition_behavior value *)
 let read_transition_behavior t : transition_behavior =

@@ -8543,7 +8543,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Right -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
   | Bottom -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
   | Left -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
-  | Border_width -> pp pp_border_width
+  | Border_width -> pp (Pp.list ~sep:Pp.space pp_border_width)
   | Border_top_width -> pp pp_border_width
   | Border_right_width -> pp pp_border_width
   | Border_bottom_width -> pp pp_border_width
