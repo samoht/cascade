@@ -253,6 +253,9 @@ type justify_items =
   | Unsafe_right
   | Anchor_center
   | Legacy
+  | Legacy_center
+  | Legacy_left
+  | Legacy_right
 
 type justify_self =
   | Auto
@@ -462,6 +465,7 @@ type grid_template =
   | Fit_content of length
   | Repeat of int * grid_template list
   | Tracks of grid_template list
+  | Split of grid_template * grid_template
   | Named_tracks of (string option * grid_template) list
   | Template of string
   | Subgrid
@@ -485,7 +489,13 @@ type aspect_ratio =
   | Inherit
   | Var of aspect_ratio var
 
-type font_style = Normal | Italic | Oblique | Inherit
+type font_style =
+  | Normal
+  | Italic
+  | Oblique
+  | Oblique_angle of angle
+  | Oblique_range of angle * angle
+  | Inherit
 
 type text_align =
   | Left
@@ -564,6 +574,7 @@ type list_style_type =
   | Upper_alpha
   | Lower_roman
   | Upper_roman
+  | String of string
   | Var of list_style_type var
 
 type list_style_position = Inside | Outside | Inherit
@@ -1704,8 +1715,8 @@ type 'a property =
   | Margin_right : length property
   | Margin_top : length property
   | Margin_bottom : length property
-  | Margin_inline : length property
-  | Margin_block : length property
+  | Margin_inline : length list property
+  | Margin_block : length list property
   | Margin_block_start : length property
   | Margin_block_end : length property
   | Gap : gap property
@@ -1780,6 +1791,7 @@ type 'a property =
   | Border_inline_end_width : border_width property
   | Border_block_start_width : border_width property
   | Border_block_end_width : border_width property
+  | Border_image : string property
   | Border_radius : border_radius property
   | Border_top_left_radius : length property
   | Border_top_right_radius : length property

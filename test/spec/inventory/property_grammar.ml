@@ -440,7 +440,9 @@ let matrix =
       [ "margin-box"; "border-box padding-box content-box content-box" ]
   @ rows_for
       [ "background-repeat"; "mask-repeat"; "-webkit-mask-repeat" ]
-      [ "repeat"; "no-repeat"; "repeat-x"; "space round" ]
+      [
+        "repeat"; "no-repeat"; "repeat-x"; "space round"; "no-repeat no-repeat";
+      ]
       [ "repeat no-repeat space"; "foo" ]
   @ rows_for
       [
@@ -734,13 +736,13 @@ let matrix =
       };
       {
         property = "user-select";
-        positives = [ "auto"; "text"; "none"; "all" ];
-        negatives = [ "text none"; "contain" ];
+        positives = [ "auto"; "text"; "none"; "contain"; "all" ];
+        negatives = [ "text none"; "contain all" ];
       };
       {
         property = "-webkit-user-select";
-        positives = [ "auto"; "text"; "none"; "all" ];
-        negatives = [ "text none"; "contain" ];
+        positives = [ "auto"; "text"; "none"; "contain"; "all" ];
+        negatives = [ "text none"; "contain all" ];
       };
       {
         property = "pointer-events";

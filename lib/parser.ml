@@ -139,6 +139,26 @@ let escape_ident s =
   Uutf.String.fold_utf_8 folder () s;
   Buffer.contents buf
 
+let escape_name s =
+  let n = String.length s in
+  let buf = Buffer.create n in
+  let folder () _ = function
+    | `Uchar u ->
+        let cp = Uchar.to_int u in
+        if cp < 0x20 || cp = 0x7F then add_hex_escape_cp buf cp
+        else if cp < 0x80 then
+          if is_ident_continue_ascii (Char.chr cp) then
+            Buffer.add_char buf (Char.chr cp)
+          else (
+            Buffer.add_char buf '\\';
+            Buffer.add_char buf (Char.chr cp))
+        else if Lexer.is_non_ascii_ident_cp cp then Uutf.Buffer.add_utf_8 buf u
+        else add_hex_escape_cp buf cp
+    | `Malformed bs -> Buffer.add_string buf bs
+  in
+  Uutf.String.fold_utf_8 folder () s;
+  Buffer.contents buf
+
 let escape_string ~quote ~terminated s =
   let buf = Buffer.create (String.length s + 2) in
   Buffer.add_char buf quote;
@@ -158,7 +178,7 @@ let token_kind_to_string : Token.kind -> string = function
   | Token.Ident s -> escape_ident s
   | Token.Function s -> escape_ident s ^ "("
   | Token.At_keyword s -> "@" ^ escape_ident s
-  | Token.Hash { value; _ } -> "#" ^ escape_ident value
+  | Token.Hash { value; _ } -> "#" ^ escape_name value
   | Token.String { value; quote = _; terminated = _ } ->
       (* Normalize string quoting to double-quote on serialization. The original
          quote is recorded on the token only so quote-sensitive lookups (e.g.
@@ -350,6 +370,58 @@ and pair_forms_multichar_token prev next =
       true
   | _ -> false
 
+and pair_needs_token_boundary prev next =
+  match (prev, next) with
+  | _ when pair_forms_multichar_token prev next -> true
+  | ( Component.Preserved
+        {
+          kind =
+            ( Token.Ident _ | Token.At_keyword _ | Token.Hash _
+            | Token.Dimension _ );
+          _;
+        },
+      ( Component.Preserved
+          {
+            kind =
+              ( Token.Ident _ | Token.Function _ | Token.Number_tok _
+              | Token.Percentage _ | Token.Dimension _ );
+            _;
+          }
+      | Component.Func _
+      | Component.Block { node = { opening = Token.Paren; _ }; _ } ) ) ->
+      true
+  | ( Component.Preserved { kind = Token.Number_tok _ | Token.Percentage _; _ },
+      Component.Preserved
+        {
+          kind =
+            ( Token.Ident _ | Token.Function _ | Token.Number_tok _
+            | Token.Percentage _ | Token.Dimension _ );
+          _;
+        } ) ->
+      true
+  | ( Component.Preserved { kind = Token.Delim ("-" | "#" | "@"); _ },
+      ( Component.Preserved { kind = Token.Ident _ | Token.Function _; _ }
+      | Component.Func _ ) ) ->
+      true
+  | ( Component.Preserved { kind = Token.Delim ("+" | "-"); _ },
+      Component.Preserved
+        {
+          kind = Token.Number_tok _ | Token.Percentage _ | Token.Dimension _;
+          _;
+        } ) ->
+      true
+  | ( Component.Preserved { kind = Token.Delim "."; _ },
+      Component.Preserved
+        {
+          kind =
+            ( Token.Number_tok { repr; _ }
+            | Token.Percentage { repr; _ }
+            | Token.Dimension { number = { repr; _ }; _ } );
+          _;
+        } ) ->
+      repr <> "" && repr.[0] >= '0' && repr.[0] <= '9'
+  | _ -> false
+
 and cvs_to_buffer_min buf cvs =
   let rec drop_ws = function
     | cv :: rest when is_whitespace cv -> drop_ws rest
@@ -364,19 +436,27 @@ and cvs_to_buffer_min buf cvs =
            && (not (is_backslash_delim p))
            && word_like_start next
   in
-  let rec loop prev = function
+  let rec loop prev separated = function
     | [] -> ()
     | cv :: rest when is_whitespace cv ->
         let rest' = drop_ws rest in
-        (match rest' with
-        | next :: _ when needs_separator prev next -> Buffer.add_char buf ' '
-        | _ -> ());
-        loop prev rest'
+        let separated' =
+          match rest' with
+          | next :: _ when needs_separator prev next ->
+              Buffer.add_char buf ' ';
+              true
+          | _ -> separated
+        in
+        loop prev separated' rest'
     | cv :: rest ->
+        (match prev with
+        | Some p when (not separated) && pair_needs_token_boundary p cv ->
+            Buffer.add_char buf ' '
+        | _ -> ());
         cv_to_buffer_min buf cv;
-        loop (Some cv) rest
+        loop (Some cv) false rest
   in
-  loop None cvs
+  loop None false cvs
 
 let to_string_minified cvs =
   let buf = Buffer.create 64 in

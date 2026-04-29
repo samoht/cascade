@@ -351,6 +351,121 @@ let read_grid_template_areas t =
       in
       read_strings []
 
+let read_border_image t =
+  let at_end t = Cursor.is_done t || Cursor.peek_semicolon t in
+  let pp_bg image = Pp.to_string ~minify:true pp_background_image image in
+  let pp_float n = Pp.to_string ~minify:true Pp.float n in
+  let read_non_negative_number_unit t =
+    let n, unit = Cursor.number_with_unit t in
+    if n < 0. then Cursor.err_invalid t "border-image value cannot be negative";
+    match unit with
+    | None -> pp_float n
+    | Some "%" -> pp_float n ^ "%"
+    | Some unit -> pp_float n ^ unit
+  in
+  let read_slice t =
+    let rec loop values has_fill =
+      Cursor.ws t;
+      if at_end t || Cursor.peek_delim t = Some '/' then (values, has_fill)
+      else
+        match Cursor.peek_ident t with
+        | Some "fill" ->
+            if has_fill then
+              Cursor.err_invalid t "duplicate border-image fill keyword";
+            let _ = Cursor.ident t in
+            loop values true
+        | _ -> (
+            match Cursor.option read_non_negative_number_unit t with
+            | Some value ->
+                if List.length values >= 4 then
+                  Cursor.err_invalid t "too many border-image slice values";
+                loop (value :: values) has_fill
+            | None -> (values, has_fill))
+    in
+    let values, has_fill = loop [] false in
+    match (List.rev values, has_fill) with
+    | [], true -> Cursor.err_invalid t "border-image fill requires slice values"
+    | [], false -> Cursor.err_expected t "border-image slice"
+    | values, false -> String.concat " " values
+    | values, true -> String.concat " " (values @ [ "fill" ])
+  in
+  let read_box_values ~what ~allow_auto t =
+    let read_item t =
+      match Cursor.peek_ident t with
+      | Some "auto" when allow_auto ->
+          let _ = Cursor.ident t in
+          "auto"
+      | _ -> read_non_negative_number_unit t
+    in
+    let rec loop acc =
+      Cursor.ws t;
+      if at_end t || Cursor.peek_delim t = Some '/' then List.rev acc
+      else
+        match Cursor.option read_item t with
+        | Some value ->
+            if List.length acc >= 4 then
+              Cursor.err_invalid t ("too many border-image " ^ what ^ " values");
+            loop (value :: acc)
+        | None -> List.rev acc
+    in
+    match loop [] with
+    | [] -> Cursor.err_expected t ("border-image " ^ what)
+    | values -> String.concat " " values
+  in
+  let read_repeat t =
+    let read_keyword t =
+      Cursor.enum "border-image-repeat"
+        [
+          ("stretch", "stretch");
+          ("repeat", "repeat");
+          ("round", "round");
+          ("space", "space");
+        ]
+        t
+    in
+    let first = read_keyword t in
+    Cursor.ws t;
+    match Cursor.option read_keyword t with
+    | None -> first
+    | Some second -> first ^ " " ^ second
+  in
+  let source : string option =
+    match Cursor.option read_background_image t with
+    | None -> None
+    | Some image -> Stdlib.Option.Some (pp_bg image)
+  in
+  Cursor.ws t;
+  let slice = Cursor.option read_slice t in
+  let width, outset =
+    Cursor.ws t;
+    if Cursor.slash_opt t then (
+      let width = Some (read_box_values ~what:"width" ~allow_auto:true t) in
+      Cursor.ws t;
+      if Cursor.slash_opt t then
+        (width, Some (read_box_values ~what:"outset" ~allow_auto:false t))
+      else (width, None))
+    else (None, None)
+  in
+  Cursor.ws t;
+  let repeat = Cursor.option read_repeat t in
+  let value =
+    match (source, slice) with
+    | None, None -> Cursor.err_expected t "border-image source or slice"
+    | Some source, None -> source
+    | None, Some slice -> slice
+    | Some source, Some slice -> source ^ " " ^ slice
+  in
+  let value =
+    match width with None -> value | Some width -> value ^ "/" ^ width
+  in
+  let value =
+    match outset with None -> value | Some outset -> value ^ "/" ^ outset
+  in
+  let value =
+    match repeat with None -> value | Some repeat -> value ^ " " ^ repeat
+  in
+  value
+
 (* Custom parser for grid-template-columns/rows: handles both single values and
    lists *)
 let read_grid_template_list t =
@@ -753,8 +868,8 @@ let read_value (type a) (prop : a property) t : declaration =
   | Border_bottom_right_radius ->
       v Border_bottom_right_radius (read_length ~with_keywords:false t)
   | Gap -> v Gap (Properties.read_gap t)
-  | Column_gap -> v Column_gap (read_length t)
-  | Row_gap -> v Row_gap (read_length t)
+  | Column_gap -> v Column_gap (read_non_negative_length ~with_keywords:false t)
+  | Row_gap -> v Row_gap (read_non_negative_length ~with_keywords:false t)
   (* Display and layout *)
   | Display -> v Display (read_display t)
   | Position -> v Position (read_position t)
@@ -877,10 +992,14 @@ let read_value (type a) (prop : a property) t : declaration =
   | Margin_right -> v Margin_right (read_length t)
   | Margin_top -> v Margin_top (read_length t)
   | Margin_bottom -> v Margin_bottom (read_length t)
-  | Margin_inline -> v Margin_inline (read_length t)
+  | Margin_inline ->
+      v Margin_inline
+        (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_length t)
   | Margin_inline_start -> v Margin_inline_start (read_length t)
   | Margin_inline_end -> v Margin_inline_end (read_length t)
-  | Margin_block -> v Margin_block (read_length t)
+  | Margin_block ->
+      v Margin_block
+        (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_length t)
   | Margin_block_start -> v Margin_block_start (read_length t)
   | Margin_block_end -> v Margin_block_end (read_length t)
   (* Additional color properties *)
@@ -891,7 +1010,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Text_decoration_style ->
       v Text_decoration_style (read_text_decoration_style t)
   | Text_underline_offset -> v Text_underline_offset (read_length t)
-  | Letter_spacing -> v Letter_spacing (read_length t)
+  | Letter_spacing -> v Letter_spacing (read_length ~with_keywords:false t)
   (* List properties *)
   | List_style_type -> v List_style_type (read_list_style_type t)
   | List_style_position -> v List_style_position (read_list_style_position t)
@@ -1033,7 +1152,8 @@ let read_value (type a) (prop : a property) t : declaration =
   | Shape_outside -> v Shape_outside (read_shape_outside t)
   | Shape_margin -> v Shape_margin (read_non_negative_length_percentage t)
   | Overflow_clip_margin ->
-      v Overflow_clip_margin (read_length ~allow_negative:false t)
+      v Overflow_clip_margin
+        (read_length ~allow_negative:false ~with_keywords:false t)
   | Overflow_anchor ->
       v Overflow_anchor
         (Cursor.enum "overflow-anchor" [ ("auto", "auto"); ("none", "none") ] t)
@@ -1101,7 +1221,16 @@ let read_value (type a) (prop : a property) t : declaration =
              ("unicode", "unicode");
            ]
            t)
-  | Text_spacing_trim -> v Text_spacing_trim (read_untyped_value t)
+  | Text_spacing_trim ->
+      v Text_spacing_trim
+        (Cursor.enum "text-spacing-trim"
+           [
+             ("normal", "normal");
+             ("space-all", "space-all");
+             ("trim-start", "trim-start");
+             ("space-first", "space-first");
+           ]
+           t)
   | Hyphenate_limit_chars -> v Hyphenate_limit_chars (read_untyped_value t)
   | Initial_letter -> v Initial_letter (read_initial_letter t)
   | View_timeline_name -> v View_timeline_name (read_untyped_value t)
@@ -1162,6 +1291,7 @@ let read_value (type a) (prop : a property) t : declaration =
         Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_length t
       in
       v Border_spacing lengths
+  | Border_image -> v Border_image (read_border_image t)
   | Border_collapse -> v Border_collapse (read_border_collapse t)
   (* Clip and mask *)
   | Clip_path -> v Clip_path (read_clip_path t)
@@ -1192,7 +1322,9 @@ let read_value (type a) (prop : a property) t : declaration =
   | Scroll_margin_inline_start -> v Scroll_margin_inline_start (read_length t)
   | Scroll_margin_inline_end -> v Scroll_margin_inline_end (read_length t)
   | Scroll_margin_block ->
-      let lengths, _ = Cursor.many (fun r -> read_length r) t in
+      let lengths =
+        Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_length t
+      in
       (match lengths with
       | [ Zero; Zero ] -> Cursor.err_invalid t "duplicate zero scroll margin"
       | _ -> ());
@@ -1881,10 +2013,10 @@ let padding_inline_end value = v Padding_inline_end value
 let padding_block value = v Padding_block value
 let padding_block_start value = v Padding_block_start value
 let padding_block_end value = v Padding_block_end value
-let margin_inline value = v Margin_inline value
+let margin_inline value = v Margin_inline [ value ]
 let margin_inline_start value = v Margin_inline_start value
 let margin_inline_end value = v Margin_inline_end value
-let margin_block value = v Margin_block value
+let margin_block value = v Margin_block [ value ]
 let margin_block_start value = v Margin_block_start value
 let margin_block_end value = v Margin_block_end value
 let will_change value = v Will_change value

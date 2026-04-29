@@ -297,392 +297,687 @@ let pp_animation : animation Pp.t =
   pp_field ctx ~first "animated_properties" pp_string_list a.animated_properties;
   Pp.char ctx '}'
 
+(** {1 CSS Evaluator Pipeline}
+
+    Browser CSS engines structure rule application as a sequence of stages
+    operating on closed inputs:
+
+    + {b Tokenization / parsing} produces structured ASTs (handled by the
+      individual module readers).
+    + {b Length canonicalisation} ([Length]) maps each unit to absolute pixels
+      using the supplied font/viewport/container references.
+    + {b Condition evaluation} ([Supports_eval], [Media_eval], [Container_eval])
+      walks the structured query AST against the explicit feature/declaration
+      tables in [query].
+    + {b Selector matching} ([Selector_match]) decides whether a selector would
+      attach to the element described by [document]. The element is not part of
+      a tree, so combinators reduce to matching the rightmost compound selector.
+    + {b Cascade + computed value} ([Computed_value]) resolves CSS-wide
+      keywords, expands [var()], evaluates [calc()], and converts relative
+      lengths against the property-value context.
+    + {b Loader} ([Import_loader], [Url_resolver]) resolves relative URLs and
+      looks up imported stylesheets, applying [@import] guards. *)
+
+(** {2 Length canonicalisation (CSS Values 4 §6)}
+
+    All length units convert to pixels. Absolute units come from the fixed 1in =
+    96px conversion table; font-relative and viewport-relative units require the
+    supplied base size. Returns [None] when a length depends on information not
+    present in the context (e.g. [ch]/[ex] need glyph metrics, percentages need
+    a containing-block size). *)
+
+module Length = struct
+  type ctx = {
+    base_font_size : float;
+    root_font_size : float option;
+    parent_font_size : float option;
+    viewport_width : float option;
+    viewport_height : float option;
+    container_width : float option;
+    container_height : float option;
+  }
+
+  let media_default =
+    {
+      base_font_size = 16.;
+      root_font_size = None;
+      parent_font_size = None;
+      viewport_width = None;
+      viewport_height = None;
+      container_width = None;
+      container_height = None;
+    }
+
+  let in_to_px = 96.
+  let cm_to_px = 96. /. 2.54
+  let mm_to_px = cm_to_px /. 10.
+  let q_to_px = cm_to_px /. 40.
+  let pt_to_px = in_to_px /. 72.
+  let pc_to_px = in_to_px /. 6.
+
+  let to_px ctx (l : Values.length) : float option =
+    let viewport_v fn =
+      match (ctx.viewport_width, ctx.viewport_height) with
+      | Some w, Some h -> Some (fn w h)
+      | _ -> None
+    in
+    let container_v fn =
+      match (ctx.container_width, ctx.container_height) with
+      | Some w, Some h -> Some (fn w h)
+      | _ -> None
+    in
+    match l with
+    | Px f -> Some f
+    | Cm f -> Some (f *. cm_to_px)
+    | Mm f -> Some (f *. mm_to_px)
+    | Q f -> Some (f *. q_to_px)
+    | In f -> Some (f *. in_to_px)
+    | Pt f -> Some (f *. pt_to_px)
+    | Pc f -> Some (f *. pc_to_px)
+    | Rem f ->
+        let base =
+          Option.value ctx.root_font_size ~default:ctx.base_font_size
+        in
+        Some (f *. base)
+    | Em f -> (
+        match ctx.parent_font_size with
+        | Some b -> Some (f *. b)
+        | None ->
+            (* CSS Media Queries 4 §1.3: in @media/@container query contexts
+               every relative unit resolves against the initial font-size value,
+               so [em] falls back to [base_font_size] when no parent size was
+               supplied. *)
+            Some (f *. ctx.base_font_size))
+    | Vw f | Lvw f | Svw f ->
+        Option.map (fun w -> f *. w /. 100.) ctx.viewport_width
+    | Vh f | Lvh f | Svh f ->
+        Option.map (fun h -> f *. h /. 100.) ctx.viewport_height
+    | Dvw f -> Option.map (fun w -> f *. w /. 100.) ctx.viewport_width
+    | Dvh f -> Option.map (fun h -> f *. h /. 100.) ctx.viewport_height
+    | Vmin f | Lvmin f | Svmin f | Dvmin f ->
+        viewport_v (fun w h -> f *. Float.min w h /. 100.)
+    | Vmax f | Lvmax f | Svmax f | Dvmax f ->
+        viewport_v (fun w h -> f *. Float.max w h /. 100.)
+    | Vi f -> Option.map (fun w -> f *. w /. 100.) ctx.viewport_width
+    | Vb f -> Option.map (fun h -> f *. h /. 100.) ctx.viewport_height
+    | Cqw f | Cqi f -> Option.map (fun w -> f *. w /. 100.) ctx.container_width
+    | Cqh f | Cqb f -> Option.map (fun h -> f *. h /. 100.) ctx.container_height
+    | Cqmin f -> container_v (fun w h -> f *. Float.min w h /. 100.)
+    | Cqmax f -> container_v (fun w h -> f *. Float.max w h /. 100.)
+    | Zero -> Some 0.
+    | _ -> None
+
+  let media_to_px (l : Values.length) : float option = to_px media_default l
+
+  let _of_t (ctx : t) : ctx =
+    let unwrap_px = function Some (Values.Px p) -> Some p | _ -> None in
+    {
+      base_font_size = 16.;
+      root_font_size = unwrap_px ctx.root_font_size;
+      parent_font_size = unwrap_px ctx.parent_font_size;
+      viewport_width = unwrap_px ctx.viewport_width;
+      viewport_height = unwrap_px ctx.viewport_height;
+      container_width = unwrap_px ctx.container_width;
+      container_height = unwrap_px ctx.container_height;
+    }
+end
+
+(** {2 Media-feature value parsing and comparison (CSS Media Queries 4 §3)}
+
+    Feature values arrive in [query.media_features] / [query.container_features]
+    as raw strings. Parsing produces a {!Media.value} so length, ratio, integer
+    and ident comparisons share the same code path with the typed feature AST.
+*)
+
+module Media_value = struct
+  let parse s : Media.value option =
+    let s = String.trim s in
+    if s = "" then None
+    else
+      let try_length () =
+        try
+          let cursor = Cursor.of_string s in
+          let length = Values.read_length cursor in
+          Cursor.ws cursor;
+          if Cursor.is_done cursor then Some (Media.Length length) else None
+        with _ -> None
+      in
+      let try_ratio () =
+        match String.split_on_char '/' s with
+        | [ a; b ] -> (
+            try
+              Some
+                (Media.Ratio
+                   (int_of_string (String.trim a), int_of_string (String.trim b)))
+            with _ -> None)
+        | _ -> None
+      in
+      let try_number () =
+        try
+          let cursor = Cursor.of_string s in
+          let n = Cursor.number cursor in
+          Cursor.ws cursor;
+          if Cursor.is_done cursor then
+            if Float.is_integer n then Some (Media.Integer (int_of_float n))
+            else Some (Media.Number n)
+          else None
+        with _ -> None
+      in
+      match try_length () with
+      | Some _ as v -> v
+      | None -> (
+          match try_ratio () with
+          | Some _ as v -> v
+          | None -> (
+              match try_number () with
+              | Some _ as v -> v
+              | None -> Some (Media.Ident s)))
+
+  let to_number (v : Media.value) : float option =
+    match v with
+    | Length l -> Length.media_to_px l
+    | Integer i -> Some (float_of_int i)
+    | Number n -> Some n
+    | Ratio (a, b) when b <> 0 -> Some (float_of_int a /. float_of_int b)
+    | Ratio _ -> None
+    | Resolution (n, _) -> Some n
+    | Ident _ -> None
+
+  let cmp_op : Media.cmp -> float -> float -> bool = function
+    | Lt -> ( < )
+    | Le -> ( <= )
+    | Eq -> ( = )
+    | Gt -> ( > )
+    | Ge -> ( >= )
+
+  (* Compare two media values. [None] when the comparison cannot be decided
+     (mixed kinds, missing length context). *)
+  let compare_with op (lhs : Media.value) (rhs : Media.value) : bool option =
+    match (lhs, rhs) with
+    | Ident a, Ident b ->
+        Some (op = Media.Eq && String.equal (String.trim a) (String.trim b))
+    | _ -> (
+        match (to_number lhs, to_number rhs) with
+        | Some la, Some lb -> Some (cmp_op op la lb)
+        | _ -> None)
+end
+
+(** {2 [@supports] evaluation (CSS Conditional 4 §3)} *)
+
+module Supports_eval = struct
+  let normalize = String.trim
+
+  let func_match table name args =
+    let args = normalize args in
+    List.exists
+      (fun (n, a) -> String.equal name n && String.equal args (normalize a))
+      table
+
+  let rec matches q (cond : Supports.t) =
+    match cond with
+    | Property (property, value) ->
+        let value = normalize value in
+        List.exists
+          (fun (p, v) ->
+            String.equal property p && String.equal value (normalize v))
+          q.supports_declarations
+    | Func (name, args) -> func_match q.supports_functions name args
+    | Not c -> not (matches q c)
+    | And (a, b) -> matches q a && matches q b
+    | Or (a, b) -> matches q a || matches q b
+end
+
+(** {2 [@media] evaluation (CSS Media Queries 4)}
+
+    Evaluates a structured {!Media.t} against the explicit feature table.
+    Lengths in queries resolve against a 16px base font size per §1.3. The
+    [min-]/[max-] feature prefixes desugar to [<= value] / [>= value]. *)
+
+module Media_eval = struct
+  let strip_min_max name =
+    let len = String.length name in
+    if len > 4 && String.sub name 0 4 = "min-" then
+      Some (`Min, String.sub name 4 (len - 4))
+    else if len > 4 && String.sub name 0 4 = "max-" then
+      Some (`Max, String.sub name 4 (len - 4))
+    else None
+
+  let lookup table feature_name =
+    match List.assoc_opt feature_name table with
+    | None -> None
+    | Some raw -> Media_value.parse raw
+
+  let eval_feature table (feature : Media.feature) : bool =
+    let with_lookup name f =
+      match lookup table name with
+      | None -> false
+      | Some actual -> Option.value ~default:false (f actual)
+    in
+    match feature with
+    | Boolean name -> List.mem_assoc name table
+    | Plain (name, value) -> (
+        match strip_min_max name with
+        | Some (`Min, base) ->
+            with_lookup base (fun a -> Media_value.compare_with Ge a value)
+        | Some (`Max, base) ->
+            with_lookup base (fun a -> Media_value.compare_with Le a value)
+        | None ->
+            with_lookup name (fun a -> Media_value.compare_with Eq a value))
+    | Range (name, op, value) ->
+        with_lookup name (fun a -> Media_value.compare_with op a value)
+    | Range_rev (value, op, name) ->
+        with_lookup name (fun a -> Media_value.compare_with op value a)
+    | Interval (lo, lo_op, name, hi_op, hi) ->
+        with_lookup name (fun a ->
+            match
+              ( Media_value.compare_with lo_op lo a,
+                Media_value.compare_with hi_op a hi )
+            with
+            | Some x, Some y -> Some (x && y)
+            | _ -> None)
+
+  let rec eval_condition table (c : Media.condition) =
+    match c with
+    | Feature f -> eval_feature table f
+    | Not c -> not (eval_condition table c)
+    | And (a, b) -> eval_condition table a && eval_condition table b
+    | Or (a, b) -> eval_condition table a || eval_condition table b
+
+  let medium_to_string : Media.medium -> string = function
+    | All -> "all"
+    | Screen -> "screen"
+    | Print -> "print"
+    | Other s -> s
+
+  let media_type_matches q (medium : Media.medium) =
+    match (medium, q.media_type) with
+    | All, _ -> true
+    | _, None -> medium = All
+    | _, Some t -> String.equal (medium_to_string medium) t
+
+  let rec eval_query q (query : Media.query) =
+    match query with
+    | Cond c -> eval_condition q.media_features c
+    | Type { prefix; type_; trailing } -> (
+        let head = media_type_matches q type_ in
+        let body =
+          match trailing with
+          | None -> head
+          | Some c -> head && eval_condition q.media_features c
+        in
+        match prefix with Some Media.Not -> not body | _ -> body)
+    | List qs -> List.exists (eval_query q) qs
+
+  let bool_feature q name expected =
+    match lookup q.media_features name with
+    | Some (Ident s) -> String.equal s expected
+    | _ -> false
+
+  let rec matches q (m : Media.t) =
+    match m with
+    | Min_width px | Max_width px -> (
+        let op : Media.cmp = match m with Min_width _ -> Ge | _ -> Le in
+        match lookup q.media_features "width" with
+        | None -> false
+        | Some actual -> (
+            match Media_value.compare_with op actual (Length (Px px)) with
+            | Some b -> b
+            | None -> false))
+    | Not_min_width px -> not (matches q (Min_width px))
+    | Min_width_rem rem ->
+        matches q (Min_width (rem *. Length.media_default.base_font_size))
+    | Not_min_width_rem rem ->
+        matches q (Not_min_width (rem *. Length.media_default.base_font_size))
+    | Min_width_length l -> (
+        match Length.media_to_px l with
+        | Some px -> matches q (Min_width px)
+        | None -> false)
+    | Not_min_width_length l -> not (matches q (Min_width_length l))
+    | Prefers_reduced_motion `No_preference ->
+        bool_feature q "prefers-reduced-motion" "no-preference"
+    | Prefers_reduced_motion `Reduce ->
+        bool_feature q "prefers-reduced-motion" "reduce"
+    | Prefers_contrast `More -> bool_feature q "prefers-contrast" "more"
+    | Prefers_contrast `Less -> bool_feature q "prefers-contrast" "less"
+    | Prefers_color_scheme `Dark -> bool_feature q "prefers-color-scheme" "dark"
+    | Prefers_color_scheme `Light ->
+        bool_feature q "prefers-color-scheme" "light"
+    | Forced_colors `Active -> bool_feature q "forced-colors" "active"
+    | Forced_colors `None -> bool_feature q "forced-colors" "none"
+    | Inverted_colors `Inverted -> bool_feature q "inverted-colors" "inverted"
+    | Inverted_colors `None -> bool_feature q "inverted-colors" "none"
+    | Pointer `None -> bool_feature q "pointer" "none"
+    | Pointer `Coarse -> bool_feature q "pointer" "coarse"
+    | Pointer `Fine -> bool_feature q "pointer" "fine"
+    | Any_pointer `None -> bool_feature q "any-pointer" "none"
+    | Any_pointer `Coarse -> bool_feature q "any-pointer" "coarse"
+    | Any_pointer `Fine -> bool_feature q "any-pointer" "fine"
+    | Scripting `None -> bool_feature q "scripting" "none"
+    | Scripting `Initial_only -> bool_feature q "scripting" "initial-only"
+    | Scripting `Enabled -> bool_feature q "scripting" "enabled"
+    | Hover -> bool_feature q "hover" "hover"
+    | Print -> q.media_type = Some "print"
+    | Orientation `Portrait -> bool_feature q "orientation" "portrait"
+    | Orientation `Landscape -> bool_feature q "orientation" "landscape"
+    | Custom q' -> eval_query q q'
+    | Negated m -> not (matches q m)
+end
+
+(** {2 Container-query evaluation (CSS Containment 3 §3.4)}
+
+    Container queries reuse the media-feature evaluator applied to the container
+    feature table; they additionally guard on the container name (when supplied)
+    and accept [style()] / [scroll-state()] queries that the media evaluator
+    does not know about. *)
+
+module Container_eval = struct
+  let name_matches ?name q =
+    match (name, q.container_name) with
+    | None, _ -> true
+    | Some n, Some actual -> String.equal n actual
+    | Some _, None -> false
+
+  let style_match q ~prop ~value =
+    let key_with_value v = "style(" ^ prop ^ ": " ^ v ^ ")" in
+    let key_bool = "style(" ^ prop ^ ")" in
+    match value with
+    | None ->
+        List.mem_assoc key_bool q.container_features
+        || List.exists
+             (fun (k, _) ->
+               String.length k >= String.length key_bool
+               && String.sub k 0 (String.length key_bool) = key_bool)
+             q.container_features
+    | Some v ->
+        List.mem_assoc (key_with_value v) q.container_features
+        || List.exists
+             (fun (k, vv) ->
+               String.equal k key_bool
+               && String.equal (String.trim vv) (String.trim v))
+             q.container_features
+
+  let rec matches q ?name (cond : Container.t) =
+    if not (name_matches ?name q) then false
+    else
+      let media_q = { q with media_features = q.container_features } in
+      match cond with
+      | Min_width_rem rem -> Media_eval.matches media_q (Min_width_rem rem)
+      | Min_width_px px ->
+          Media_eval.matches media_q (Min_width (float_of_int px))
+      | Named (n, inner) -> matches q ~name:n inner
+      | Style (prop, value) -> style_match q ~prop ~value
+      | Scroll_state (prop, value) ->
+          let key = "scroll-state(" ^ prop ^ ": " ^ value ^ ")" in
+          List.mem_assoc key q.container_features
+      | Feature_query raw -> (
+          try
+            let media = Media.of_string raw in
+            Media_eval.matches media_q media
+          with _ -> false)
+      | Custom media -> Media_eval.matches media_q media
+end
+
+(** {2 Selector matching (CSS Selectors 4)}
+
+    Browsers match selectors right-to-left because the rightmost compound fixes
+    the candidate element. Without a tree the matcher reduces to that rightmost
+    subject; combinators always succeed against the document so callers should
+    only request selector matching when they have already decided which element
+    they are testing. *)
+
+module Selector_match = struct
+  let attr_name : Selector.attr_name -> string = function
+    | Aria a ->
+        let suffix =
+          match a with
+          | Busy -> "busy"
+          | Checked -> "checked"
+          | Disabled -> "disabled"
+          | Expanded -> "expanded"
+          | Hidden -> "hidden"
+          | Pressed -> "pressed"
+          | Readonly -> "readonly"
+          | Required -> "required"
+          | Selected -> "selected"
+          | Custom s -> s
+        in
+        "aria-" ^ suffix
+    | Data s -> "data-" ^ s
+    | Regular s -> s
+
+  let value_match (matcher : Selector.attribute_match) ~flag actual =
+    let normalize =
+      match flag with
+      | Some Selector.Case_insensitive -> String.lowercase_ascii
+      | _ -> Fun.id
+    in
+    let actual = normalize actual in
+    let words s =
+      String.split_on_char ' ' s |> List.filter (fun s -> s <> "")
+    in
+    match matcher with
+    | Presence -> true
+    | Exact v -> String.equal actual (normalize v)
+    | Whitespace_list v ->
+        let v = normalize v in
+        List.exists (String.equal v) (words actual)
+    | Hyphen_list v ->
+        let v = normalize v in
+        String.equal actual v
+        || String.length actual > String.length v
+           && String.sub actual 0 (String.length v) = v
+           && actual.[String.length v] = '-'
+    | Prefix v ->
+        let v = normalize v in
+        String.length actual >= String.length v
+        && String.sub actual 0 (String.length v) = v
+    | Suffix v ->
+        let v = normalize v in
+        let la = String.length actual and lv = String.length v in
+        la >= lv && String.sub actual (la - lv) lv = v
+    | Substring v ->
+        let v = normalize v in
+        let la = String.length actual and lv = String.length v in
+        let rec scan i =
+          if i + lv > la then false
+          else if String.sub actual i lv = v then true
+          else scan (i + 1)
+        in
+        lv = 0 || scan 0
+
+  let rec matches (doc : document) (sel : Selector.t) : bool =
+    match sel with
+    | Universal _ -> true
+    | Element (_, name) -> doc.element = Some name
+    | Class name -> List.exists (String.equal name) doc.classes
+    | Id name -> List.exists (String.equal name) doc.ids
+    | Attribute (_, name, matcher, flag) -> (
+        match List.assoc_opt (attr_name name) doc.attributes with
+        | None -> false
+        | Some None -> matcher = Presence
+        | Some (Some v) -> value_match matcher ~flag v)
+    | Compound parts -> List.for_all (matches doc) parts
+    | List alts -> List.exists (matches doc) alts
+    | Is alts | Where alts -> List.exists (matches doc) alts
+    | Not alts -> not (List.exists (matches doc) alts)
+    | Combined (_, _, right) ->
+        (* Combinators need a tree we do not have; collapse to the rightmost
+           subject so the matcher answers questions about the [doc] element. *)
+        matches doc right
+    | Scope -> Option.is_some doc.scope
+    | Root -> Option.is_some doc.root
+    | Nesting -> true
+    | Hover -> List.mem "hover" doc.pseudo_classes
+    | Active -> List.mem "active" doc.pseudo_classes
+    | Focus -> List.mem "focus" doc.pseudo_classes
+    | Focus_visible -> List.mem "focus-visible" doc.pseudo_classes
+    | Focus_within -> List.mem "focus-within" doc.pseudo_classes
+    | Target -> List.mem "target" doc.pseudo_classes
+    | Link -> List.mem "link" doc.pseudo_classes
+    | Visited -> List.mem "visited" doc.pseudo_classes
+    | Any_link -> List.mem "any-link" doc.pseudo_classes
+    | Empty -> List.mem "empty" doc.pseudo_classes
+    | First_child -> List.mem "first-child" doc.pseudo_classes
+    | Last_child -> List.mem "last-child" doc.pseudo_classes
+    | Only_child -> List.mem "only-child" doc.pseudo_classes
+    | First_of_type -> List.mem "first-of-type" doc.pseudo_classes
+    | Last_of_type -> List.mem "last-of-type" doc.pseudo_classes
+    | Only_of_type -> List.mem "only-of-type" doc.pseudo_classes
+    | Enabled -> List.mem "enabled" doc.pseudo_classes
+    | Disabled -> List.mem "disabled" doc.pseudo_classes
+    | Read_only -> List.mem "read-only" doc.pseudo_classes
+    | Read_write -> List.mem "read-write" doc.pseudo_classes
+    | Placeholder_shown -> List.mem "placeholder-shown" doc.pseudo_classes
+    | Default -> List.mem "default" doc.pseudo_classes
+    | Checked -> List.mem "checked" doc.pseudo_classes
+    | Indeterminate -> List.mem "indeterminate" doc.pseudo_classes
+    | Valid -> List.mem "valid" doc.pseudo_classes
+    | Invalid -> List.mem "invalid" doc.pseudo_classes
+    | In_range -> List.mem "in-range" doc.pseudo_classes
+    | Out_of_range -> List.mem "out-of-range" doc.pseudo_classes
+    | Required -> List.mem "required" doc.pseudo_classes
+    | Optional -> List.mem "optional" doc.pseudo_classes
+    | Open -> List.mem "open" doc.pseudo_classes
+    | Popover_open -> List.mem "popover-open" doc.pseudo_classes
+    | Before -> List.mem "before" doc.pseudo_elements
+    | After -> List.mem "after" doc.pseudo_elements
+    | First_letter -> List.mem "first-letter" doc.pseudo_elements
+    | First_line -> List.mem "first-line" doc.pseudo_elements
+    | Backdrop -> List.mem "backdrop" doc.pseudo_elements
+    | Marker -> List.mem "marker" doc.pseudo_elements
+    | Placeholder -> List.mem "placeholder" doc.pseudo_elements
+    | Selection -> List.mem "selection" doc.pseudo_elements
+    | _ -> false
+end
+
+(** {2 URL resolution (RFC 3986)} *)
+
+module Url_resolver = struct
+  let starts_with ~prefix s =
+    let n = String.length prefix in
+    String.length s >= n && String.sub s 0 n = prefix
+
+  let cut ?(rev = false) ~sep s =
+    let sep_len = String.length sep in
+    let len = String.length s in
+    let matches i = i + sep_len <= len && String.sub s i sep_len = sep in
+    let rec forward i =
+      if i + sep_len > len then None
+      else if matches i then Some i
+      else forward (i + 1)
+    in
+    let rec backward i =
+      if i < 0 then None else if matches i then Some i else backward (i - 1)
+    in
+    match if rev then backward (len - sep_len) else forward 0 with
+    | None -> None
+    | Some i ->
+        Some (String.sub s 0 i, String.sub s (i + sep_len) (len - i - sep_len))
+
+  (* Collapse a single [..]/[.] segment in [path]. Returns [None] when the path
+     has no segments left to normalise. *)
+  let normalise_path path =
+    let parts = String.split_on_char '/' path in
+    let rec loop acc = function
+      | [] -> List.rev acc
+      | "." :: rest -> loop acc rest
+      | ".." :: rest -> (
+          match acc with [] -> loop acc rest | _ :: tl -> loop tl rest)
+      | seg :: rest -> loop (seg :: acc) rest
+    in
+    String.concat "/" (loop [] parts)
+
+  let resolve loader href =
+    match loader.base_url with
+    | None when starts_with ~prefix:"http://" href -> Ok href
+    | None when starts_with ~prefix:"https://" href -> Ok href
+    | None -> Error ("no base URL to resolve " ^ href)
+    | Some _ when starts_with ~prefix:"http://" href -> Ok href
+    | Some _ when starts_with ~prefix:"https://" href -> Ok href
+    | Some base when starts_with ~prefix:"/" href -> (
+        match cut ~sep:"://" base with
+        | None -> Ok href
+        | Some (scheme, rest) -> (
+            match cut ~sep:"/" rest with
+            | None -> Ok (scheme ^ "://" ^ rest ^ href)
+            | Some (host, _) -> Ok (scheme ^ "://" ^ host ^ href)))
+    | Some base -> (
+        match cut ~rev:true ~sep:"/" base with
+        | None -> Ok href
+        | Some (dir, _) -> (
+            let combined = dir ^ "/" ^ href in
+            match cut ~sep:"://" combined with
+            | None -> Ok (normalise_path combined)
+            | Some (scheme, rest) -> (
+                match cut ~sep:"/" rest with
+                | None -> Ok (scheme ^ "://" ^ normalise_path rest)
+                | Some (host, path) ->
+                    Ok (scheme ^ "://" ^ host ^ "/" ^ normalise_path path))))
+end
+
+(** {2 [@import] loader (CSS Cascade 5 §6)}
+
+    Resolves the import URL through {!Url_resolver}, looks up the body in
+    [loader.imports], parses it, and applies any media/supports/layer guards on
+    the rule. *)
+
+module Import_loader = struct
+  let layer_known ~layer_order = function
+    | None -> true
+    | Some name -> List.mem name layer_order
+
+  let supports_ok ?query rule =
+    match ((rule : Stylesheet.import_rule).supports, query) with
+    | None, _ -> true
+    | Some _, None -> false
+    | Some cond, Some q -> Supports_eval.matches q cond
+
+  let media_ok ?query rule =
+    match ((rule : Stylesheet.import_rule).media, query) with
+    | None, _ -> true
+    | Some _, None -> false
+    | Some media, Some q -> Media_eval.matches q media
+
+  let wrap_in_layer rule statements =
+    match (rule : Stylesheet.import_rule).layer with
+    | None -> statements
+    | Some name -> [ Stylesheet.Layer (Some name, statements) ]
+
+  let load ?query ?(layer_order = []) loader (rule : Stylesheet.import_rule) =
+    let layer_name = rule.layer in
+    if not (layer_known ~layer_order layer_name) then
+      Error ("unknown layer " ^ Option.value layer_name ~default:"")
+    else if not (supports_ok ?query rule) then
+      Error "supports() guard rejected the import"
+    else if not (media_ok ?query rule) then
+      Error "media guard rejected the import"
+    else
+      match Url_resolver.resolve loader rule.url with
+      | Error _ as e -> e
+      | Ok resolved -> (
+          match List.assoc_opt resolved loader.imports with
+          | None -> Error ("import not in loader table: " ^ resolved)
+          | Some source -> (
+              try
+                let cursor = Cursor.of_string source in
+                let sheet = Stylesheet.read_stylesheet cursor in
+                Ok (wrap_in_layer rule sheet)
+              with
+              | Failure msg -> Error msg
+              | Cursor.Parse_error _ -> Error "stylesheet parse error"))
+end
+
+(** {2 Public API surface (forwards to the internal modules)} *)
+
+let matches_supports = Supports_eval.matches
+let matches_media = Media_eval.matches
+let matches_container = Container_eval.matches
+let matches_selector = Selector_match.matches
+let resolve_url = Url_resolver.resolve
+let load_import = Import_loader.load
+
 (* TODO: full computed-value resolution. Returns Error for now so callers can
    plumb the API through; concrete cases will be filled in incrementally as the
    test_context contract grows. *)
 let computed_value ?layer_order:_ ?layer:_ _ctx _decl =
   Error "Context.computed_value: not implemented"
-
-(* Selector / media / supports / container matching evaluates the structured
-   condition AST against the closed query record. Every lookup is a string match
-   against the explicit feature/declaration tables in [query]; nothing in the
-   library reaches outside the supplied context. *)
-
-(* CSS Values 4 absolute-length conversion table. Values that depend on
-   font-size or viewport size are resolved with a 16px base when no explicit
-   context is supplied; the typical UA initial font-size. *)
-let length_to_px ?(base_font_size = 16.) ?(viewport_width = 0.)
-    ?(viewport_height = 0.) (l : Values.length) : float option =
-  match l with
-  | Px f -> Some f
-  | Cm f -> Some (f *. 96. /. 2.54)
-  | Mm f -> Some (f *. 96. /. 25.4)
-  | Q f -> Some (f *. 96. /. (2.54 *. 40.))
-  | In f -> Some (f *. 96.)
-  | Pt f -> Some (f *. 96. /. 72.)
-  | Pc f -> Some (f *. 96. /. 6.)
-  | Rem f | Em f -> Some (f *. base_font_size)
-  | Vw f | Dvw f | Lvw f | Svw f -> Some (f *. viewport_width /. 100.)
-  | Vh f | Dvh f | Lvh f | Svh f -> Some (f *. viewport_height /. 100.)
-  | Vmin f | Dvmin f | Lvmin f | Svmin f ->
-      Some (f *. Float.min viewport_width viewport_height /. 100.)
-  | Vmax f | Dvmax f | Lvmax f | Svmax f ->
-      Some (f *. Float.max viewport_width viewport_height /. 100.)
-  | Zero -> Some 0.
-  | _ -> None
-
-(* Parse a media-feature value (e.g. "1024px", "48em", "16/9") through the
-   normal length reader; falls back to a numeric or keyword view when the value
-   is not a length. *)
-let parse_media_value s : Media.value option =
-  let s = String.trim s in
-  if s = "" then None
-  else
-    let try_length () =
-      try
-        let cursor = Cursor.of_string s in
-        let length = Values.read_length cursor in
-        Cursor.ws cursor;
-        if Cursor.is_done cursor then Some (Media.Length length) else None
-      with _ -> None
-    in
-    let try_ratio () =
-      match String.split_on_char '/' s with
-      | [ a; b ] -> (
-          try
-            Some
-              (Media.Ratio
-                 (int_of_string (String.trim a), int_of_string (String.trim b)))
-          with _ -> None)
-      | _ -> None
-    in
-    let try_number () =
-      try
-        let cursor = Cursor.of_string s in
-        let n = Cursor.number cursor in
-        Cursor.ws cursor;
-        if Cursor.is_done cursor then
-          if Float.is_integer n then Some (Media.Integer (int_of_float n))
-          else Some (Media.Number n)
-        else None
-      with _ -> None
-    in
-    match try_length () with
-    | Some _ as v -> v
-    | None -> (
-        match try_ratio () with
-        | Some _ as v -> v
-        | None -> (
-            match try_number () with
-            | Some _ as v -> v
-            | None -> Some (Media.Ident s)))
-
-(* Convert a media value to a comparable number when one exists. Ratios collapse
-   to width/height to support range comparisons on aspect-ratio. *)
-let media_value_to_number ~base_font_size (v : Media.value) : float option =
-  match v with
-  | Length l -> length_to_px ~base_font_size l
-  | Integer i -> Some (float_of_int i)
-  | Number n -> Some n
-  | Ratio (a, b) when b <> 0 -> Some (float_of_int a /. float_of_int b)
-  | Ratio _ -> None
-  | Resolution (n, _) -> Some n
-  | Ident _ -> None
-
-let cmp_to_float_op : Media.cmp -> float -> float -> bool = function
-  | Lt -> ( < )
-  | Le -> ( <= )
-  | Eq -> ( = )
-  | Gt -> ( > )
-  | Ge -> ( >= )
-
-let normalize_supports_value v = String.trim v
-
-let supports_function_match table name args =
-  let args = normalize_supports_value args in
-  List.exists
-    (fun (n, a) ->
-      String.equal name n && String.equal args (normalize_supports_value a))
-    table
-
-let rec matches_supports q (cond : Supports.t) =
-  match cond with
-  | Property (property, value) ->
-      supports_declaration ~property ~value:(normalize_supports_value value) q
-  | Func (name, args) -> supports_function_match q.supports_functions name args
-  | Not c -> not (matches_supports q c)
-  | And (a, b) -> matches_supports q a && matches_supports q b
-  | Or (a, b) -> matches_supports q a || matches_supports q b
-
-(* Strip the [min-]/[max-] prefix from a CSS feature name. The prefixed forms
-   imply [<= value] and [>= value] respectively per CSS Media Queries 4 §2.4. *)
-let strip_min_max_prefix name =
-  if String.length name > 4 && String.sub name 0 4 = "min-" then
-    Some (`Min, String.sub name 4 (String.length name - 4))
-  else if String.length name > 4 && String.sub name 0 4 = "max-" then
-    Some (`Max, String.sub name 4 (String.length name - 4))
-  else None
-
-(* The base font size used when resolving [em]/[rem] inside a media or container
-   query. Per CSS Media Queries 4 §1.3 these resolve against the initial value
-   of font-size on the root element. *)
-let media_base_font_size = 16.
-
-(* Look up a media feature's parsed value from the context. *)
-let lookup_feature_value table feature_name =
-  match List.assoc_opt feature_name table with
-  | None -> None
-  | Some raw -> parse_media_value raw
-
-let compare_with_op ~base_font_size (op : Media.cmp) (lhs : Media.value)
-    (rhs : Media.value) : bool option =
-  match (lhs, rhs) with
-  | Ident a, Ident b ->
-      Some (op = Media.Eq && String.equal (String.trim a) (String.trim b))
-  | _ -> (
-      match
-        ( media_value_to_number ~base_font_size lhs,
-          media_value_to_number ~base_font_size rhs )
-      with
-      | Some la, Some lb -> Some (cmp_to_float_op op la lb)
-      | _ -> None)
-
-(* CSS Media Queries 4 §3 evaluates each feature against the explicit query
-   table. An unknown feature is treated as not matching ([Some false] would be a
-   stronger claim, but here [None] means "cannot decide"). *)
-let eval_feature ~base_font_size table (feature : Media.feature) : bool =
-  let with_lookup name f =
-    match lookup_feature_value table name with
-    | None -> false
-    | Some actual -> Option.value ~default:false (f actual)
-  in
-  match feature with
-  | Boolean name -> List.mem_assoc name table
-  | Plain (name, value) -> (
-      match strip_min_max_prefix name with
-      | Some (`Min, base) ->
-          with_lookup base (fun actual ->
-              compare_with_op ~base_font_size Media.Ge actual value)
-      | Some (`Max, base) ->
-          with_lookup base (fun actual ->
-              compare_with_op ~base_font_size Media.Le actual value)
-      | None ->
-          with_lookup name (fun actual ->
-              compare_with_op ~base_font_size Media.Eq actual value))
-  | Range (name, op, value) ->
-      with_lookup name (fun actual ->
-          compare_with_op ~base_font_size op actual value)
-  | Range_rev (value, op, name) ->
-      with_lookup name (fun actual ->
-          compare_with_op ~base_font_size op value actual)
-  | Interval (lo, lo_op, name, hi_op, hi) ->
-      with_lookup name (fun actual ->
-          match
-            ( compare_with_op ~base_font_size lo_op lo actual,
-              compare_with_op ~base_font_size hi_op actual hi )
-          with
-          | Some a, Some b -> Some (a && b)
-          | _ -> None)
-
-let rec eval_condition ~base_font_size table (c : Media.condition) =
-  match c with
-  | Feature f -> eval_feature ~base_font_size table f
-  | Not c -> not (eval_condition ~base_font_size table c)
-  | And (a, b) ->
-      eval_condition ~base_font_size table a
-      && eval_condition ~base_font_size table b
-  | Or (a, b) ->
-      eval_condition ~base_font_size table a
-      || eval_condition ~base_font_size table b
-
-let medium_to_string = function
-  | Media.All -> "all"
-  | Screen -> "screen"
-  | Print -> "print"
-  | Other s -> s
-
-let media_type_matches q (medium : Media.medium) =
-  match (medium, q.media_type) with
-  | All, _ -> true
-  | _, None -> medium = All
-  | _, Some t -> String.equal (medium_to_string medium) t
-
-let rec eval_query ~base_font_size q (query : Media.query) =
-  match query with
-  | Cond c -> eval_condition ~base_font_size q.media_features c
-  | Type { prefix; type_; trailing } -> (
-      let head = media_type_matches q type_ in
-      let body =
-        match trailing with
-        | None -> head
-        | Some c -> head && eval_condition ~base_font_size q.media_features c
-      in
-      match prefix with Some Media.Not -> not body | _ -> body)
-  | List qs -> List.exists (eval_query ~base_font_size q) qs
-
-let rec matches_media q (m : Media.t) =
-  let base_font_size = media_base_font_size in
-  let table = q.media_features in
-  let bool_feature name expected =
-    match lookup_feature_value table name with
-    | Some (Ident s) -> String.equal s expected
-    | _ -> false
-  in
-  match m with
-  | Min_width px | Max_width px -> (
-      let op = match m with Min_width _ -> Media.Ge | _ -> Media.Le in
-      match lookup_feature_value table "width" with
-      | None -> false
-      | Some actual -> (
-          match compare_with_op ~base_font_size op actual (Length (Px px)) with
-          | Some b -> b
-          | None -> false))
-  | Not_min_width px -> not (matches_media q (Min_width px))
-  | Min_width_rem rem -> matches_media q (Min_width (rem *. base_font_size))
-  | Not_min_width_rem rem ->
-      matches_media q (Not_min_width (rem *. base_font_size))
-  | Min_width_length l -> (
-      match length_to_px ~base_font_size l with
-      | Some px -> matches_media q (Min_width px)
-      | None -> false)
-  | Not_min_width_length l -> not (matches_media q (Min_width_length l))
-  | Prefers_reduced_motion `No_preference ->
-      bool_feature "prefers-reduced-motion" "no-preference"
-  | Prefers_reduced_motion `Reduce ->
-      bool_feature "prefers-reduced-motion" "reduce"
-  | Prefers_contrast `More -> bool_feature "prefers-contrast" "more"
-  | Prefers_contrast `Less -> bool_feature "prefers-contrast" "less"
-  | Prefers_color_scheme `Dark -> bool_feature "prefers-color-scheme" "dark"
-  | Prefers_color_scheme `Light -> bool_feature "prefers-color-scheme" "light"
-  | Forced_colors `Active -> bool_feature "forced-colors" "active"
-  | Forced_colors `None -> bool_feature "forced-colors" "none"
-  | Inverted_colors `Inverted -> bool_feature "inverted-colors" "inverted"
-  | Inverted_colors `None -> bool_feature "inverted-colors" "none"
-  | Pointer `None -> bool_feature "pointer" "none"
-  | Pointer `Coarse -> bool_feature "pointer" "coarse"
-  | Pointer `Fine -> bool_feature "pointer" "fine"
-  | Any_pointer `None -> bool_feature "any-pointer" "none"
-  | Any_pointer `Coarse -> bool_feature "any-pointer" "coarse"
-  | Any_pointer `Fine -> bool_feature "any-pointer" "fine"
-  | Scripting `None -> bool_feature "scripting" "none"
-  | Scripting `Initial_only -> bool_feature "scripting" "initial-only"
-  | Scripting `Enabled -> bool_feature "scripting" "enabled"
-  | Hover -> bool_feature "hover" "hover"
-  | Print -> ( match q.media_type with Some t -> t = "print" | None -> false)
-  | Orientation `Portrait -> bool_feature "orientation" "portrait"
-  | Orientation `Landscape -> bool_feature "orientation" "landscape"
-  | Custom q' -> eval_query ~base_font_size q q'
-  | Negated m -> not (matches_media q m)
-
-let matches_selector _doc _sel = false
-
-(* Container queries reuse the media-feature/condition machinery applied to
-   [q.container_features], with optional named-container guarding. *)
-let rec matches_container q ?name (cond : Container.t) =
-  let base_font_size = media_base_font_size in
-  let name_matches expected =
-    match (name, q.container_name) with
-    | None, _ -> true
-    | Some n, Some actual -> String.equal n actual
-    | Some _, None -> false || expected = ""
-  in
-  let _ = name_matches in
-  let check_named =
-    match (name, q.container_name) with
-    | None, _ -> true
-    | Some n, Some actual -> String.equal n actual
-    | Some _, None -> false
-  in
-  if not check_named then false
-  else
-    match cond with
-    | Min_width_rem rem -> (
-        let target = rem *. base_font_size in
-        match lookup_feature_value q.container_features "inline-size" with
-        | None -> false
-        | Some actual -> (
-            match
-              compare_with_op ~base_font_size Media.Ge actual
-                (Length (Px target))
-            with
-            | Some b -> b
-            | None -> false))
-    | Min_width_px px -> (
-        match lookup_feature_value q.container_features "inline-size" with
-        | None -> false
-        | Some actual -> (
-            match
-              compare_with_op ~base_font_size Media.Ge actual
-                (Length (Px (float_of_int px)))
-            with
-            | Some b -> b
-            | None -> false))
-    | Named (n, inner) -> matches_container q ~name:n inner
-    | Style (prop, value) -> (
-        let key =
-          match value with
-          | None -> "style(" ^ prop ^ ")"
-          | Some v -> "style(" ^ prop ^ ": " ^ v ^ ")"
-        in
-        List.mem_assoc key q.container_features
-        ||
-        match value with
-        | None -> List.mem_assoc ("style(" ^ prop ^ ")") q.container_features
-        | Some v ->
-            List.exists
-              (fun (k, vv) ->
-                String.equal k ("style(" ^ prop ^ ")")
-                && String.equal (String.trim vv) (String.trim v))
-              q.container_features)
-    | Scroll_state (prop, value) ->
-        let key = "scroll-state(" ^ prop ^ ": " ^ value ^ ")" in
-        List.mem_assoc key q.container_features
-    | Feature_query raw -> (
-        (* Parse the raw feature back as a media condition and evaluate. *)
-        try
-          let media = Media.of_string raw in
-          matches_media { q with media_features = q.container_features } media
-        with _ -> false)
-    | Custom media ->
-        matches_media { q with media_features = q.container_features } media
-
-let starts_with ~prefix s =
-  let n = String.length prefix in
-  String.length s >= n && String.sub s 0 n = prefix
-
-let cut ?(rev = false) ~sep s =
-  let sep_len = String.length sep in
-  let len = String.length s in
-  let matches i = i + sep_len <= len && String.sub s i sep_len = sep in
-  let rec forward i =
-    if i + sep_len > len then None
-    else if matches i then Some i
-    else forward (i + 1)
-  in
-  let rec backward i =
-    if i < 0 then None else if matches i then Some i else backward (i - 1)
-  in
-  match if rev then backward (len - sep_len) else forward 0 with
-  | None -> None
-  | Some i ->
-      Some (String.sub s 0 i, String.sub s (i + sep_len) (len - i - sep_len))
-
-let resolve_url loader href =
-  match loader.base_url with
-  | None -> Ok href
-  | Some _ when starts_with ~prefix:"http://" href -> Ok href
-  | Some _ when starts_with ~prefix:"https://" href -> Ok href
-  | Some base when starts_with ~prefix:"/" href -> (
-      match cut ~sep:"://" base with
-      | None -> Ok href
-      | Some (scheme, rest) -> (
-          match cut ~sep:"/" rest with
-          | None -> Ok (scheme ^ "://" ^ rest ^ href)
-          | Some (host, _) -> Ok (scheme ^ "://" ^ host ^ href)))
-  | Some base -> (
-      match cut ~rev:true ~sep:"/" base with
-      | None -> Ok href
-      | Some (dir, _) -> Ok (dir ^ "/" ^ href))
-
-let load_import ?query:_ ?layer_order:_ _loader _rule =
-  Error "Context.load_import: not implemented"

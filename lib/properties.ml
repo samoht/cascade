@@ -428,12 +428,28 @@ module Justify_items = struct
 end
 
 let read_justify_items t : justify_items =
+  let read_legacy t =
+    Cursor.expect_string "legacy" t;
+    Cursor.ws t;
+    match Cursor.peek_ident t with
+    | Some "center" ->
+        let _ = Cursor.ident t in
+        Legacy_center
+    | Some "left" ->
+        let _ = Cursor.ident t in
+        Legacy_left
+    | Some "right" ->
+        let _ = Cursor.ident t in
+        Legacy_right
+    | None -> Legacy
+    | Some _ when Cursor.peek_semicolon t -> Legacy
+    | Some s -> err_invalid_value t "justify-items legacy" s
+  in
   Cursor.enum "justify-items"
     [
       ("normal", Normal);
       ("stretch", Stretch);
       ("anchor-center", Anchor_center);
-      ("legacy", Legacy);
       ("center", Center);
       ("start", Start);
       ("end", End);
@@ -447,6 +463,7 @@ let read_justify_items t : justify_items =
     ~default:
       (Cursor.one_of
          [
+           read_legacy;
            Justify_items.read_flat_baseline;
            Justify_items.read_safe;
            Justify_items.read_unsafe;
@@ -536,7 +553,7 @@ let rec read_font_weight t : font_weight =
     ~default:(fun t ->
       let n = Cursor.number t in
       let weight = int_of_float n in
-      if weight >= 1 && weight < 1000 then Weight weight
+      if weight >= 1 && weight <= 1000 then Weight weight
       else err_invalid_value t "font-weight" (string_of_int weight))
     t
 
@@ -545,9 +562,19 @@ let read_font_style t : font_style =
     [
       ("normal", (Normal : font_style));
       ("italic", (Italic : font_style));
-      ("oblique", (Oblique : font_style));
       ("inherit", (Inherit : font_style));
     ]
+    ~default:(fun t ->
+      Cursor.expect_string "oblique" t;
+      Cursor.ws t;
+      if Cursor.is_done t || Cursor.peek_semicolon t then Oblique
+      else
+        let first = read_angle t in
+        Cursor.ws t;
+        if Cursor.is_done t || Cursor.peek_semicolon t then Oblique_angle first
+        else
+          let second = read_angle t in
+          Oblique_range (first, second))
     t
 
 let rec read_font_size t : font_size =
@@ -653,7 +680,13 @@ module Text_decoration = struct
     | Line l ->
         (* Check for duplicate lines - per CSS spec, || combinator means each
            component at most once *)
-        if List.mem l acc.lines then
+        if l = (None : text_decoration_line) && acc.lines <> [] then
+          Cursor.err t "text-decoration-line none cannot be mixed"
+        else if
+          l <> (None : text_decoration_line)
+          && List.mem (None : text_decoration_line) acc.lines
+        then Cursor.err t "text-decoration-line none cannot be mixed"
+        else if List.mem l acc.lines then
           Cursor.err t
             ("duplicate text-decoration-line: "
             ^
@@ -1903,6 +1936,9 @@ let pp_justify_items : justify_items Pp.t =
   | Unsafe_right -> Pp.string ctx "unsafe right"
   | Anchor_center -> Pp.string ctx "anchor-center"
   | Legacy -> Pp.string ctx "legacy"
+  | Legacy_center -> Pp.string ctx "legacy center"
+  | Legacy_left -> Pp.string ctx "legacy left"
+  | Legacy_right -> Pp.string ctx "legacy right"
 
 let pp_justify_self : justify_self Pp.t =
  fun ctx -> function
@@ -1947,6 +1983,16 @@ let pp_font_style : font_style Pp.t =
   | Normal -> Pp.string ctx "normal"
   | Italic -> Pp.string ctx "italic"
   | Oblique -> Pp.string ctx "oblique"
+  | Oblique_angle angle ->
+      Pp.string ctx "oblique";
+      Pp.space ctx ();
+      pp_angle ctx angle
+  | Oblique_range (first, second) ->
+      Pp.string ctx "oblique";
+      Pp.space ctx ();
+      pp_angle ctx first;
+      Pp.space ctx ();
+      pp_angle ctx second
   | Inherit -> Pp.string ctx "inherit"
 
 let pp_text_align : text_align Pp.t =
@@ -2083,6 +2129,7 @@ let rec pp_list_style_type : list_style_type Pp.t =
   | Upper_alpha -> Pp.string ctx "upper-alpha"
   | Lower_roman -> Pp.string ctx "lower-roman"
   | Upper_roman -> Pp.string ctx "upper-roman"
+  | String s -> Pp.quoted_string ctx s
   | Var v -> pp_var pp_list_style_type ctx v
 
 let pp_list_style_position : list_style_position Pp.t =
@@ -2410,6 +2457,7 @@ let pp_property : type a. a property Pp.t =
   | Border_inline_end_width -> Pp.string ctx "border-inline-end-width"
   | Border_block_start_width -> Pp.string ctx "border-block-start-width"
   | Border_block_end_width -> Pp.string ctx "border-block-end-width"
+  | Border_image -> Pp.string ctx "border-image"
   | Border_radius -> Pp.string ctx "border-radius"
   | Border_top_left_radius -> Pp.string ctx "border-top-left-radius"
   | Border_top_right_radius -> Pp.string ctx "border-top-right-radius"
@@ -3599,6 +3647,10 @@ let rec pp_grid_template : grid_template Pp.t =
           Pp.list ~sep:Pp.space pp_grid_template ctx sizes)
         ctx (count, sizes)
   | Tracks sizes -> Pp.list ~sep:Pp.space pp_grid_template ctx sizes
+  | Split (rows, columns) ->
+      pp_grid_template ctx rows;
+      Pp.slash ctx ();
+      pp_grid_template ctx columns
   | Named_tracks tracks ->
       let pp_named_track ctx (name, size) =
         (match name with
@@ -4636,18 +4688,7 @@ let rec read_grid_line t : grid_line =
   let read_number t : grid_line = Num (Cursor.int t) in
   let read_name t : grid_line =
     let name = Cursor.ident t in
-    if name = "span" then (
-      Cursor.ws t;
-      match Cursor.option Cursor.int t with
-      | Some n -> (
-          Cursor.ws t;
-          match Cursor.option Cursor.ident t with
-          | Some name -> Span_num_name (n, name)
-          | None -> Span n)
-      | None -> (
-          match Cursor.option Cursor.ident t with
-          | Some name -> Span_name name
-          | None -> Name "span"))
+    if name = "span" then Cursor.err_invalid t "bare span grid line"
     else Name name
   in
   let read_calc_int t : grid_line =
@@ -4789,29 +4830,37 @@ let grid_template_needs_raw_template cvs =
         has_string arguments || has_string rest
     | _ :: rest -> has_string rest
   in
-  let rec has_spaced_slash = function
-    | Component.Preserved { kind = Token.Whitespace; _ }
-      :: Component.Preserved { kind = Token.Delim "/"; _ }
-      :: Component.Preserved { kind = Token.Whitespace; _ }
-      :: _ ->
-        true
-    | _ :: rest -> has_spaced_slash rest
-    | [] -> false
+  has_string cvs
+
+let read_grid_template_tracks t =
+  let tracks =
+    Cursor.list ~sep:(fun t -> Cursor.ws t) Grid_template.read_single_track t
   in
-  has_string cvs || has_spaced_slash cvs
+  match tracks with
+  | [] -> Cursor.err t "Expected at least one grid track"
+  | [ single ] -> single
+  | multiple
+    when List.exists
+           (fun (track : grid_template) ->
+             match track with None | Subgrid | Masonry -> true | _ -> false)
+           multiple ->
+      Cursor.err_invalid t "grid-template standalone keyword in track list"
+  | multiple -> Tracks multiple
 
 let read_grid_template t : grid_template =
   if grid_template_needs_raw_template (Cursor.remaining t) then
     Template (Cursor.consume_to_decl_end ~trim:true t)
   else
-    (* Try to read multiple space-separated tracks *)
-    let tracks =
-      Cursor.list ~sep:(fun t -> Cursor.ws t) Grid_template.read_single_track t
-    in
-    match tracks with
-    | [] -> Cursor.err t "Expected at least one grid track"
-    | [ single ] -> single (* Single track *)
-    | multiple -> Tracks multiple (* Multiple tracks *)
+    let rows = read_grid_template_tracks t in
+    Cursor.ws t;
+    if Cursor.slash_opt t then (
+      Cursor.ws t;
+      let columns = read_grid_template_tracks t in
+      match (rows, columns) with
+      | None, _ | _, None ->
+          err_invalid_value t "grid-template" "none in slash form"
+      | _ -> Split (rows, columns))
+    else rows
 
 let rec read_aspect_ratio t : aspect_ratio =
   let read_var_ar t : aspect_ratio = Var (read_var read_aspect_ratio t) in
@@ -4959,6 +5008,7 @@ let rec read_list_style_type t : list_style_type =
       ("upper-roman", Upper_roman);
     ]
     ~calls:[ ("var", read_var) ]
+    ~default:(fun t -> (String (Cursor.string t) : list_style_type))
     t
 
 let read_list_style_position t : list_style_position =
@@ -7457,6 +7507,7 @@ let read_any_property t =
   | "border-right-width" -> Prop Border_right_width
   | "border-bottom-width" -> Prop Border_bottom_width
   | "border-left-width" -> Prop Border_left_width
+  | "border-image" -> Prop Border_image
   | "border-radius" -> Prop Border_radius
   | "border-top-left-radius" -> Prop Border_top_left_radius
   | "border-top-right-radius" -> Prop Border_top_right_radius
@@ -8437,8 +8488,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Margin_right -> pp pp_length
   | Margin_top -> pp pp_length
   | Margin_bottom -> pp pp_length
-  | Margin_inline -> pp pp_length
-  | Margin_block -> pp pp_length
+  | Margin_inline -> pp (Pp.list ~sep:Pp.space pp_length)
+  | Margin_block -> pp (Pp.list ~sep:Pp.space pp_length)
   | Margin_block_start -> pp pp_length
   | Margin_block_end -> pp pp_length
   | Gap -> pp pp_gap
@@ -8495,6 +8546,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_inline_end_width -> pp pp_border_width
   | Border_block_start_width -> pp pp_border_width
   | Border_block_end_width -> pp pp_border_width
+  | Border_image -> pp Pp.string
   | Border_radius -> pp pp_border_radius
   | Border_top_left_radius -> pp pp_length
   | Border_top_right_radius -> pp pp_length

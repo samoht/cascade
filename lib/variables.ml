@@ -533,6 +533,8 @@ let rec vars_of_grid_template (value : Properties.grid_template) : any_var list
   | Min_max (a, b) -> vars_of_grid_template a @ vars_of_grid_template b
   | Repeat (_, ts) -> List.concat_map vars_of_grid_template ts
   | Tracks ts -> List.concat_map vars_of_grid_template ts
+  | Split (rows, columns) ->
+      vars_of_grid_template rows @ vars_of_grid_template columns
   | Named_tracks ts ->
       List.concat_map (fun (_, t) -> vars_of_grid_template t) ts
   | _ -> []
@@ -638,10 +640,10 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Margin_right, value -> vars_of_length value
   | Margin_bottom, value -> vars_of_length value
   | Margin_left, value -> vars_of_length value
-  | Margin_inline, value -> vars_of_length value
+  | Margin_inline, value -> vars_of_length_list value
   | Margin_inline_start, value -> vars_of_length value
   | Margin_inline_end, value -> vars_of_length value
-  | Margin_block, value -> vars_of_length value
+  | Margin_block, value -> vars_of_length_list value
   | Margin_block_start, value -> vars_of_length value
   | Margin_block_end, value -> vars_of_length value
   | Top, value -> vars_of_length_list value
@@ -694,6 +696,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Border_top_right_radius, value -> vars_of_length value
   | Border_bottom_left_radius, value -> vars_of_length value
   | Border_bottom_right_radius, value -> vars_of_length value
+  | Border_image, _ -> []
   (* Outline offset *)
   | Outline_offset, value -> vars_of_length value
   | Flex_basis, value -> vars_of_length value
