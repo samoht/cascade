@@ -699,7 +699,7 @@ let minify_color : color -> color = function
   | Hex h -> Hex { h with value = shorten_hex h.value }
   | c -> c
 
-(* CSS Color 4 §11 normalises system colours to lowercase ASCII keywords. *)
+(* CSS Color 4 §11 normalises system colour keywords to lowercase ASCII. *)
 let pp_system_color : system_color Pp.t =
  fun ctx -> function
   | Accent_color -> Pp.string ctx "accentcolor"
