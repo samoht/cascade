@@ -107,10 +107,15 @@ let read_display_two_value t : display =
       Multi (outside, inside)
   | _ -> Cursor.err_expected t "<display-inside>"
 
-let read_display t : display =
-  match Cursor.option read_display_two_value t with
-  | Some d -> d
-  | None -> read_display_legacy t
+let rec read_display t : display =
+  let read_var t : display = Var (read_var read_display t) in
+  Cursor.ws t;
+  match Cursor.peek t with
+  | Some (Component.Func { node = { name = "var"; _ }; _ }) -> read_var t
+  | _ -> (
+      match Cursor.option read_display_two_value t with
+      | Some d -> d
+      | None -> read_display_legacy t)
 
 let read_position t : position =
   Cursor.enum "position"
@@ -1743,6 +1748,7 @@ let rec pp_display : display Pp.t =
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
+  | Var v -> pp_var pp_display ctx v
   | Multi (outside, inside) ->
       pp_display ctx outside;
       Pp.space ctx ();

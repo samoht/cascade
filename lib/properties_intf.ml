@@ -62,6 +62,7 @@ type display =
   | Inherit
   | Initial
   | Unset
+  | Var of display var
   | Multi of display * display
       (** Two-value [<display-outside> <display-inside>] syntax per CSS Display
           3 §2.1, e.g. [inline flow-root] or [list-item flow-root]. *)

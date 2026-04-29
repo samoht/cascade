@@ -153,9 +153,13 @@ let read_src t =
   entries
 
 let src_of_string s =
+  let normalize_entry = function
+    | Quoted_url { url; format; tech; _ } -> Url { url; format; tech }
+    | entry -> entry
+  in
   try
     let t = Cursor.of_string s in
     let entries = read_src t in
     Cursor.expect_eof t;
-    entries
+    List.map normalize_entry entries
   with Cursor.Parse_error _ -> failwith "invalid font src"
