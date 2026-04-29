@@ -27,9 +27,10 @@ type document = {
 
 type query = {
   media_type : string option;
-  media_features : (string * string) list;
-  supports_declarations : (string * string) list;
-  supports_functions : (string * string) list;
+  media_features : Media.feature list;
+      (** Media features the rendering environment claims to expose. Build
+          entries with [Media.feature] (plain [(name: value)]) or
+          [Media.boolean_feature] (boolean [(name)]). *)
   supports : Supports.t list;
       (** Capability flags the rendering environment claims to support. Each
           entry is normally a [Supports.Property] or [Supports.Func] leaf, built
@@ -37,7 +38,11 @@ type query = {
           [Or] / [Not]) are accepted but only match a query that is structurally
           identical. *)
   container_name : string option;
-  container_features : (string * string) list;
+  container_features : Container.t list;
+      (** Container capabilities exposed by the matching container. Build size
+          features with [Container.feature], style queries with
+          [Container.style], and scroll-state queries with
+          [Container.scroll_state]. *)
 }
 
 type loader = { base_url : string option; imports : (string * string) list }
@@ -109,25 +114,14 @@ let empty_query =
   {
     media_type = None;
     media_features = [];
-    supports_declarations = [];
-    supports_functions = [];
     supports = [];
     container_name = None;
     container_features = [];
   }
 
-let query ?media_type ?(media_features = []) ?(supports_declarations = [])
-    ?(supports_functions = []) ?(supports = []) ?container_name
+let query ?media_type ?(media_features = []) ?(supports = []) ?container_name
     ?(container_features = []) () =
-  {
-    media_type;
-    media_features;
-    supports_declarations;
-    supports_functions;
-    supports;
-    container_name;
-    container_features;
-  }
+  { media_type; media_features; supports; container_name; container_features }
 
 let empty_loader = { base_url = None; imports = [] }
 let loader ?base_url ?(imports = []) () = { base_url; imports }
@@ -147,8 +141,6 @@ let initial_value property ctx = by_name property ctx.initial_values
 let has_class name ctx = List.exists (String.equal name) ctx.classes
 let has_id name ctx = List.exists (String.equal name) ctx.ids
 let attribute name ctx = List.assoc_opt name ctx.attributes
-let media_feature name ctx = List.assoc_opt name ctx.media_features
-let container_feature name ctx = List.assoc_opt name ctx.container_features
 let import_source url ctx = List.assoc_opt url ctx.imports
 
 let animates_property property ctx =
@@ -267,23 +259,24 @@ let pp_query : query Pp.t =
   let first = ref true in
   Pp.char ctx '{';
   pp_field ctx ~first "media_type" pp_string_option q.media_type;
-  pp_field ctx ~first "media_features" pp_pair_list q.media_features;
-  pp_field ctx ~first "supports_declarations" pp_pair_list
-    q.supports_declarations;
-  pp_field ctx ~first "supports_functions" pp_pair_list q.supports_functions;
-  pp_field ctx ~first "supports"
-    (fun ctx items ->
-      Pp.char ctx '[';
-      let first = ref true in
-      List.iter
-        (fun cond ->
-          if !first then first := false else Pp.string ctx ", ";
-          Pp.string ctx (Supports.to_string cond))
-        items;
-      Pp.char ctx ']')
-    q.supports;
+  let pp_typed_list to_str ctx items =
+    Pp.char ctx '[';
+    let first = ref true in
+    List.iter
+      (fun item ->
+        if !first then first := false else Pp.string ctx ", ";
+        Pp.string ctx (to_str item))
+      items;
+    Pp.char ctx ']'
+  in
+  pp_field ctx ~first "media_features"
+    (pp_typed_list (Pp.to_string Media.pp_feature))
+    q.media_features;
+  pp_field ctx ~first "supports" (pp_typed_list Supports.to_string) q.supports;
   pp_field ctx ~first "container_name" pp_string_option q.container_name;
-  pp_field ctx ~first "container_features" pp_pair_list q.container_features;
+  pp_field ctx ~first "container_features"
+    (pp_typed_list Container.to_string)
+    q.container_features;
   Pp.char ctx '}'
 
 let pp_loader : loader Pp.t =
@@ -427,58 +420,13 @@ module Length = struct
     }
 end
 
-(** {2 Media-feature value parsing and comparison (CSS Media Queries 4 §3)}
+(** {2 Media-feature value comparison (CSS Media Queries 4 §3)}
 
-    Feature values arrive in [query.media_features] / [query.container_features]
-    as raw strings. Parsing produces a {!Media.value} so length, ratio, integer
-    and ident comparisons share the same code path with the typed feature AST.
-*)
+    [query.media_features] stores typed [Media.feature]s parsed at construction;
+    this module is just the numeric comparison glue used when matching range
+    queries against those typed values. *)
 
 module Media_value = struct
-  let parse s : Media.value option =
-    let s = String.trim s in
-    if s = "" then None
-    else
-      let try_length () =
-        try
-          let cursor = Cursor.of_string s in
-          let length = Values.read_length cursor in
-          Cursor.ws cursor;
-          if Cursor.is_done cursor then Some (Media.Length length) else None
-        with Cursor.Parse_error _ | Reader.Parse_error _ -> None
-      in
-      let try_ratio () =
-        match String.split_on_char '/' s with
-        | [ a; b ] -> (
-            match
-              ( int_of_string_opt (String.trim a),
-                int_of_string_opt (String.trim b) )
-            with
-            | Some n, Some d -> Some (Media.Ratio (n, d))
-            | _ -> None)
-        | _ -> None
-      in
-      let try_number () =
-        try
-          let cursor = Cursor.of_string s in
-          let n = Cursor.number cursor in
-          Cursor.ws cursor;
-          if Cursor.is_done cursor then
-            if Float.is_integer n then Some (Media.Integer (int_of_float n))
-            else Some (Media.Number n)
-          else None
-        with Cursor.Parse_error _ | Reader.Parse_error _ -> None
-      in
-      match try_length () with
-      | Some _ as v -> v
-      | None -> (
-          match try_ratio () with
-          | Some _ as v -> v
-          | None -> (
-              match try_number () with
-              | Some _ as v -> v
-              | None -> Some (Media.Ident s)))
-
   let to_number (v : Media.value) : float option =
     match v with
     | Length l -> Length.media_to_px l
@@ -539,7 +487,7 @@ end
 module Match_media = struct
   open Media
 
-  type feature_table = (string * string) list
+  type feature_table = Media.feature list
 
   let strip_min_max name =
     let len = String.length name in
@@ -549,10 +497,13 @@ module Match_media = struct
       Some (`Max, String.sub name 4 (len - 4))
     else None
 
+  (* Pull the value out of a [Plain (name, _)] entry whose [name] matches
+     [feature_name]. Boolean entries don't carry a comparable value. *)
   let lookup_value (table : feature_table) feature_name : Media.value option =
-    match List.assoc_opt feature_name table with
-    | None -> None
-    | Some raw -> Media_value.parse raw
+    List.find_map
+      (function
+        | Plain (n, v) when String.equal n feature_name -> Some v | _ -> None)
+      table
 
   let eval_feature (table : feature_table) : Media.feature -> bool =
     let with_lookup name f =
@@ -561,7 +512,13 @@ module Match_media = struct
       | Some actual -> Option.value ~default:false (f actual)
     in
     function
-    | Boolean name -> List.mem_assoc name table
+    | Boolean name ->
+        List.exists
+          (function
+            | Boolean n -> String.equal n name
+            | Plain (n, _) -> String.equal n name
+            | _ -> false)
+          table
     | Plain (name, value) -> (
         match strip_min_max name with
         | Some (`Min, base) ->
@@ -679,28 +636,45 @@ module Match_container = struct
     | Some n, Some actual -> String.equal n actual
     | Some _, None -> false
 
+  (* Project [container_features] entries that look like size/range features
+     into [Media.feature]s so the [Match_media] evaluator can range-compare
+     them. [Feature_query "name: value"] is the only shape we lift; the [Style
+     _] / [Scroll_state _] entries are handled directly. *)
+  let media_features_of q =
+    List.filter_map
+      (function
+        | Container.Feature_query raw -> (
+            match String.index_opt raw ':' with
+            | None -> None
+            | Some i ->
+                let name = String.trim (String.sub raw 0 i) in
+                let value =
+                  String.trim
+                    (String.sub raw (i + 1) (String.length raw - i - 1))
+                in
+                if name = "" then None else Some (Media.feature name value))
+        | _ -> None)
+      q.container_features
+
   let style_match q ~prop ~value =
-    let key_with_value v = "style(" ^ prop ^ ": " ^ v ^ ")" in
-    let key_bool = "style(" ^ prop ^ ")" in
-    match value with
-    | None ->
-        List.mem_assoc key_bool q.container_features
-        || List.exists
-             (fun (k, _) ->
-               String.length k >= String.length key_bool
-               && String.sub k 0 (String.length key_bool) = key_bool)
-             q.container_features
-    | Some v ->
-        List.mem_assoc (key_with_value v) q.container_features
-        || List.exists
-             (fun (k, vv) ->
-               String.equal k key_bool
-               && String.equal (String.trim vv) (String.trim v))
-             q.container_features
+    List.exists
+      (function
+        | Container.Style (p, v) when String.equal p prop -> (
+            match (value, v) with
+            | None, _ -> true (* any style(prop) match: present in any form *)
+            | Some _, None -> false
+            | Some asked, Some actual ->
+                String.equal (String.trim asked) (String.trim actual))
+        | _ -> false)
+      q.container_features
 
   let eval_scroll_state q ~prop ~value =
-    let key = "scroll-state(" ^ prop ^ ": " ^ value ^ ")" in
-    List.mem_assoc key q.container_features
+    List.exists
+      (function
+        | Container.Scroll_state (p, v) ->
+            String.equal p prop && String.equal v value
+        | _ -> false)
+      q.container_features
 
   let outer_parens_wrap_all s =
     let len = String.length s in
@@ -792,13 +766,13 @@ module Match_container = struct
             | None -> false)
         | None -> (
             (* Fall back to media-feature evaluation for size queries. *)
-            let media_q = { q with media_features = q.container_features } in
+            let media_q = { q with media_features = media_features_of q } in
             try Match_media.eval media_q (Media.of_string ("(" ^ s ^ ")"))
             with Failure _ | Cursor.Parse_error _ | Reader.Parse_error _ ->
               false))
 
   let rec eval q ?name : Container.t -> bool =
-    let media_q = { q with media_features = q.container_features } in
+    let media_q = { q with media_features = media_features_of q } in
     fun cond ->
       if not (name_matches ?name q) then false
       else

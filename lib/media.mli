@@ -80,6 +80,19 @@ val of_string : string -> t
     recognised plain features into their typed shorthands and falling back to
     {!Custom} for richer forms. Raises {!Failure} for malformed input. *)
 
+val value_of_string : string -> value
+(** [value_of_string s] parses [s] as a media feature value: length ([1024px],
+    [60em]), integer, number, ratio ([16/9]), resolution, or - if nothing else
+    fits - an identifier. *)
+
+val feature : string -> string -> feature
+(** [feature name value] is [Plain (name, value_of_string value)]. Use
+    {!boolean_feature} for valueless features. *)
+
+val boolean_feature : string -> feature
+(** [boolean_feature name] is the boolean-form media feature [(name)], matching
+    e.g. [@media (hover)]. *)
+
 val to_string : t -> string
 (** [to_string cond] renders the condition as a CSS media query string. Includes
     spaces after colons (non-minified form). *)

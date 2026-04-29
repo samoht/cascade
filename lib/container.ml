@@ -230,3 +230,7 @@ let of_string s =
   match split_named s with
   | Some (name, raw) -> Named (name, parse_unnamed raw)
   | None -> parse_unnamed s
+
+let feature name value = Feature_query (name ^ ": " ^ value)
+let style ?value prop = Style (prop, value)
+let scroll_state prop value = Scroll_state (prop, value)

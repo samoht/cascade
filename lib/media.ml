@@ -468,6 +468,17 @@ let read_value sc =
       let id = read_ident sc in
       if id = "" then None else Some (Ident id)
 
+let value_of_string s =
+  let sc = mk_scanner s in
+  match read_value sc with
+  | Some value ->
+      skip_ws sc;
+      if at_end sc then value else failwith ("invalid media value: " ^ s)
+  | None -> failwith ("invalid media value: " ^ s)
+
+let feature name value = Plain (name, value_of_string value)
+let boolean_feature name = Boolean name
+
 (* Read balanced parens content into a string. Assumes '(' already consumed. *)
 let read_balanced sc =
   let buf = Buffer.create 32 in
@@ -593,16 +604,21 @@ let parse_feature_in_parens content =
       | None ->
           if starts_with ~prefix:"min-" id || starts_with ~prefix:"max-" id then
             None
-          else Some (Boolean id)
+          else Some (boolean_feature id)
       | Some ':' -> (
           advance sc;
           skip_ws sc;
+          let value_start = sc.pos in
           let v = read_value sc in
           match v with
           | Some value ->
+              let raw_value =
+                String.sub sc.s value_start (sc.pos - value_start)
+                |> String.trim
+              in
               skip_ws sc;
               if at_end sc && validate_plain_feature id value then
-                Some (Plain (id, value))
+                Some (feature id raw_value)
               else None
           | None -> None)
       | Some _ -> (
