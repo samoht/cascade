@@ -1552,6 +1552,7 @@ type webkit_appearance =
   | Radio
   | Push_button
   | Square_button
+  | Apple_pay_button
   | Inherit
 
 type webkit_font_smoothing =
