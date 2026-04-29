@@ -9,6 +9,10 @@ let byte_at buf i =
 let pick xs buf i = List.nth xs (byte_at buf i mod List.length xs)
 let name prefix buf i = prefix ^ string_of_int (byte_at buf i)
 let css_value pp value = Css.Pp.to_string ~minify:true pp value
+let px value = Css.Media.Length (Css.Values.Px value)
+let ident value = Css.Media.Ident value
+let feature = Css.Media.feature
+let container_feature = Css.Container.feature
 
 let contains_literal haystack needle =
   let re = Re.compile (Re.str needle) in
@@ -40,7 +44,7 @@ let test_empty_contexts _buf =
   let query = Css.Context.empty_query in
   if Css.Context.media_feature "width" query <> None then
     fail "empty query context matched a media feature";
-  if Css.Context.supports_declaration ~property:"display" ~value:"grid" query
+  if Css.Context.matches_supports query (Css.Supports.property "display" "grid")
   then fail "empty query context matched a support declaration";
   if Css.Context.container_feature "inline-size" query <> None then
     fail "empty query context matched a container feature";
@@ -126,35 +130,55 @@ let test_document_context buf =
     fail "document context lost pseudo-element list"
 
 let test_query_context buf =
-  let media = pick [ "width"; "height"; "dynamic-range" ] buf 0 in
-  let feature_value = pick [ "1024px"; "768px"; "high" ] buf 1 in
+  let media, feature_value =
+    pick
+      [
+        ("width", px 1024.); ("height", px 768.); ("dynamic-range", ident "high");
+      ]
+      buf 0
+  in
+  let inline_size = px 640. in
   let ctx =
     Css.Context.query ~media_type:"screen"
-      ~media_features:[ (media, feature_value) ]
-      ~supports_declarations:[ ("display", "grid") ]
-      ~supports_functions:[ ("selector", ":has(img)") ]
+      ~media_features:[ feature media feature_value ]
+      ~supports:
+        [
+          Css.Supports.property "display" "grid";
+          Css.Supports.func "selector" ":has(img)";
+        ]
       ~container_name:"card"
-      ~container_features:[ ("inline-size", "640px") ]
+      ~container_features:[ container_feature "inline-size" inline_size ]
       ()
   in
   if Css.Context.media_feature media ctx <> Some feature_value then
     fail "query context lost media feature";
   if
-    not (Css.Context.supports_declaration ~property:"display" ~value:"grid" ctx)
+    not
+      (Css.Context.matches_supports ctx
+         (Css.Supports.property "display" "grid"))
   then fail "query context lost supported declaration";
-  if Css.Context.container_feature "inline-size" ctx <> Some "640px" then
+  if Css.Context.container_feature "inline-size" ctx <> Some inline_size then
     fail "query context lost container feature";
   if Css.Context.media_feature (media ^ "-missing") ctx <> None then
     fail "query context media lookup stopped being exact";
-  if Css.Context.supports_declaration ~property:"display" ~value:"flex" ctx then
-    fail "query context support value lookup stopped being exact";
-  if Css.Context.supports_declaration ~property:"Display" ~value:"grid" ctx then
-    fail "query context support property lookup stopped being exact";
+  if Css.Context.matches_supports ctx (Css.Supports.property "display" "flex")
+  then fail "query context support value lookup stopped being exact";
+  if
+    not
+      (Css.Context.matches_supports ctx
+         (Css.Supports.property "Display" "grid"))
+  then
+    fail "query context support property lookup stopped being case-insensitive";
   if Css.Context.container_feature "block-size" ctx <> None then
     fail "query context container lookup stopped being exact";
   if ctx.media_type <> Some "screen" then fail "query context lost media type";
-  if ctx.supports_functions <> [ ("selector", ":has(img)") ] then
-    fail "query context lost supports function list";
+  if
+    ctx.supports
+    <> [
+         Css.Supports.property "display" "grid";
+         Css.Supports.func "selector" ":has(img)";
+       ]
+  then fail "query context lost supports list";
   if ctx.container_name <> Some "card" then
     fail "query context lost container name"
 
@@ -184,10 +208,59 @@ let test_loader_animation_context buf =
   if animation.timeline_time <> Some "250ms" || animation.progress <> Some 0.5
   then fail "animation context lost timeline fields"
 
+let test_property_registration_context buf =
+  let name = pick [ "--gap"; "--brand"; "--tokens" ] buf 0 in
+  let syntax =
+    pick
+      [
+        Css.Variables.Syntax Css.Variables.Length;
+        Css.Variables.Syntax Css.Variables.Color;
+        Css.Variables.Syntax Css.Variables.Universal;
+      ]
+      buf 1
+  in
+  let valid_value, invalid_value =
+    match syntax with
+    | Css.Variables.Syntax Css.Variables.Length -> ("1rem", "red")
+    | Css.Variables.Syntax Css.Variables.Color -> ("red", "1rem")
+    | Css.Variables.Syntax Css.Variables.Universal -> ("{ color: red }", "")
+    | _ -> ("red", "")
+  in
+  let registration =
+    Css.Context.property_registration name syntax ~inherits:true
+      ~initial_value:valid_value
+  in
+  let registry =
+    Css.Context.property_registry ~property_registrations:[ registration ] ()
+  in
+  if Css.Context.registered_property name registry <> Some registration then
+    fail "property registry lost registration";
+  let valid_decl = Css.Declaration.of_string (name ^ ": " ^ valid_value) in
+  (match
+     Css.Context.validate_registered_custom_property registry valid_decl
+   with
+  | Ok () -> ()
+  | Error msg -> fail (Fmt.str "registered valid value rejected: %S" msg));
+  if invalid_value <> "" then
+    let invalid_decl =
+      Css.Declaration.of_string (name ^ ": " ^ invalid_value)
+    in
+    match
+      Css.Context.validate_registered_custom_property registry invalid_decl
+    with
+    | Ok () -> fail "registered invalid value accepted"
+    | Error _ -> ()
+
 let test_context_printers buf =
   let custom = name "--print" buf 0 in
   let class_name = name "c" buf 1 in
-  let media = pick [ "width"; "height"; "dynamic-range" ] buf 2 in
+  let media, feature_value =
+    pick
+      [
+        ("width", px 1024.); ("height", px 768.); ("dynamic-range", ident "high");
+      ]
+      buf 2
+  in
   let property = pick [ "opacity"; "transform"; "color" ] buf 3 in
   let value_ctx =
     Css.Context.v
@@ -209,13 +282,13 @@ let test_context_printers buf =
   expect_contains "document context printer" document_dump "data-state=open";
   let query_dump =
     Css.Context.query ~media_type:"screen"
-      ~media_features:[ (media, "1024px") ]
-      ~supports_functions:[ ("selector", ":has(img)") ]
+      ~media_features:[ feature media feature_value ]
+      ~supports:[ Css.Supports.func "selector" ":has(img)" ]
       ()
     |> Css.Pp.to_string Css.Context.pp_query
   in
   expect_contains "query context printer" query_dump media;
-  expect_contains "query context printer" query_dump "selector=:has(img)";
+  expect_contains "query context printer" query_dump "selector(:has(img))";
   let loader_dump =
     Css.Context.loader ~base_url:"https://example.test/"
       ~imports:[ ("theme.css", ".card{color:red}") ]
@@ -240,5 +313,7 @@ let suite =
       test_case "query context" [ bytes ] test_query_context;
       test_case "loader and animation context" [ bytes ]
         test_loader_animation_context;
+      test_case "property registration context" [ bytes ]
+        test_property_registration_context;
       test_case "context printers" [ bytes ] test_context_printers;
     ] )
