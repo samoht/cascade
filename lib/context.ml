@@ -309,14 +309,14 @@ let pp_animation : animation Pp.t =
     + {b Condition evaluation} ([Supports_eval], [Media_eval], [Container_eval])
       walks the structured query AST against the explicit feature/declaration
       tables in [query].
-    + {b Selector matching} ([Selector_match]) decides whether a selector would
+    + {b Selector matching} ([Selector_eval]) decides whether a selector would
       attach to the element described by [document]. The element is not part of
       a tree, so combinators reduce to matching the rightmost compound selector.
     + {b Cascade + computed value} ([Computed_value]) resolves CSS-wide
       keywords, expands [var()], evaluates [calc()], and converts relative
       lengths against the property-value context.
-    + {b Loader} ([Import_loader], [Url_resolver]) resolves relative URLs and
-      looks up imported stylesheets, applying [@import] guards. *)
+    + {b Loader} ([Import], [Url]) resolves relative URLs and looks up imported
+      stylesheets, applying [@import] guards. *)
 
 (** {2 Length canonicalisation (CSS Values 4 §6)}
 
@@ -502,38 +502,50 @@ module Media_value = struct
         | _ -> None)
 end
 
-(** {2 [@supports] evaluation (CSS Conditional 4 §3)} *)
+(** {2 [@supports] evaluation (CSS Conditional 4 §3)}
+
+    Each [Supports.t] constructor has a dedicated evaluator. The structural
+    cases ([Not]/[And]/[Or]) recurse into [eval]; the leaves ([Property]/[Func])
+    consult the explicit declaration/function tables. *)
 
 module Supports_eval = struct
   let normalize = String.trim
 
-  let func_match table name args =
+  let eval_property table ~property ~value =
+    let value = normalize value in
+    List.exists
+      (fun (p, v) ->
+        String.equal property p && String.equal value (normalize v))
+      table
+
+  let eval_func table ~name ~args =
     let args = normalize args in
     List.exists
       (fun (n, a) -> String.equal name n && String.equal args (normalize a))
       table
 
-  let rec matches q (cond : Supports.t) =
-    match cond with
+  let rec eval q : Supports.t -> bool = function
     | Property (property, value) ->
-        let value = normalize value in
-        List.exists
-          (fun (p, v) ->
-            String.equal property p && String.equal value (normalize v))
-          q.supports_declarations
-    | Func (name, args) -> func_match q.supports_functions name args
-    | Not c -> not (matches q c)
-    | And (a, b) -> matches q a && matches q b
-    | Or (a, b) -> matches q a || matches q b
+        eval_property q.supports_declarations ~property ~value
+    | Func (name, args) -> eval_func q.supports_functions ~name ~args
+    | Not c -> not (eval q c)
+    | And (a, b) -> eval q a && eval q b
+    | Or (a, b) -> eval q a || eval q b
 end
 
 (** {2 [@media] evaluation (CSS Media Queries 4)}
 
-    Evaluates a structured {!Media.t} against the explicit feature table.
-    Lengths in queries resolve against a 16px base font size per §1.3. The
-    [min-]/[max-] feature prefixes desugar to [<= value] / [>= value]. *)
+    Each [Media] AST type has its own evaluator: [eval_feature] for
+    [Media.feature], [eval_condition] for [Media.condition], [eval_query] for
+    [Media.query], [eval_medium] for [Media.medium], and [eval] for the
+    typed-shorthand wrapper [Media.t]. Lengths resolve against a 16px base per
+    §1.3; [min-]/[max-] feature prefixes desugar to range comparisons. *)
 
 module Media_eval = struct
+  open Media
+
+  type feature_table = (string * string) list
+
   let strip_min_max name =
     let len = String.length name in
     if len > 4 && String.sub name 0 4 = "min-" then
@@ -542,18 +554,18 @@ module Media_eval = struct
       Some (`Max, String.sub name 4 (len - 4))
     else None
 
-  let lookup table feature_name =
+  let lookup_value (table : feature_table) feature_name : Media.value option =
     match List.assoc_opt feature_name table with
     | None -> None
     | Some raw -> Media_value.parse raw
 
-  let eval_feature table (feature : Media.feature) : bool =
+  let eval_feature (table : feature_table) : Media.feature -> bool =
     let with_lookup name f =
-      match lookup table name with
+      match lookup_value table name with
       | None -> false
       | Some actual -> Option.value ~default:false (f actual)
     in
-    match feature with
+    function
     | Boolean name -> List.mem_assoc name table
     | Plain (name, value) -> (
         match strip_min_max name with
@@ -576,30 +588,23 @@ module Media_eval = struct
             | Some x, Some y -> Some (x && y)
             | _ -> None)
 
-  let rec eval_condition table (c : Media.condition) =
-    match c with
+  let rec eval_condition (table : feature_table) : Media.condition -> bool =
+    function
     | Feature f -> eval_feature table f
     | Not c -> not (eval_condition table c)
     | And (a, b) -> eval_condition table a && eval_condition table b
     | Or (a, b) -> eval_condition table a || eval_condition table b
 
-  let medium_to_string : Media.medium -> string = function
-    | All -> "all"
-    | Screen -> "screen"
-    | Print -> "print"
-    | Other s -> s
+  let eval_medium q : Media.medium -> bool = function
+    | All -> true
+    | Screen -> q.media_type = Some "screen"
+    | Print -> q.media_type = Some "print"
+    | Other s -> q.media_type = Some s
 
-  let media_type_matches q (medium : Media.medium) =
-    match (medium, q.media_type) with
-    | All, _ -> true
-    | _, None -> medium = All
-    | _, Some t -> String.equal (medium_to_string medium) t
-
-  let rec eval_query q (query : Media.query) =
-    match query with
+  let rec eval_query q : Media.query -> bool = function
     | Cond c -> eval_condition q.media_features c
     | Type { prefix; type_; trailing } -> (
-        let head = media_type_matches q type_ in
+        let head = eval_medium q type_ in
         let body =
           match trailing with
           | None -> head
@@ -609,30 +614,32 @@ module Media_eval = struct
     | List qs -> List.exists (eval_query q) qs
 
   let bool_feature q name expected =
-    match lookup q.media_features name with
+    match lookup_value q.media_features name with
     | Some (Ident s) -> String.equal s expected
     | _ -> false
 
-  let rec matches q (m : Media.t) =
+  (* CSS Media Queries 4 typed shorthands map onto specific [Plain]/[Range]
+     evaluations against the explicit feature table. *)
+  let rec eval q (m : Media.t) : bool =
     match m with
     | Min_width px | Max_width px -> (
         let op : Media.cmp = match m with Min_width _ -> Ge | _ -> Le in
-        match lookup q.media_features "width" with
+        match lookup_value q.media_features "width" with
         | None -> false
         | Some actual -> (
             match Media_value.compare_with op actual (Length (Px px)) with
             | Some b -> b
             | None -> false))
-    | Not_min_width px -> not (matches q (Min_width px))
+    | Not_min_width px -> not (eval q (Min_width px))
     | Min_width_rem rem ->
-        matches q (Min_width (rem *. Length.media_default.base_font_size))
+        eval q (Min_width (rem *. Length.media_default.base_font_size))
     | Not_min_width_rem rem ->
-        matches q (Not_min_width (rem *. Length.media_default.base_font_size))
+        eval q (Not_min_width (rem *. Length.media_default.base_font_size))
     | Min_width_length l -> (
         match Length.media_to_px l with
-        | Some px -> matches q (Min_width px)
+        | Some px -> eval q (Min_width px)
         | None -> false)
-    | Not_min_width_length l -> not (matches q (Min_width_length l))
+    | Not_min_width_length l -> not (eval q (Min_width_length l))
     | Prefers_reduced_motion `No_preference ->
         bool_feature q "prefers-reduced-motion" "no-preference"
     | Prefers_reduced_motion `Reduce ->
@@ -660,7 +667,7 @@ module Media_eval = struct
     | Orientation `Portrait -> bool_feature q "orientation" "portrait"
     | Orientation `Landscape -> bool_feature q "orientation" "landscape"
     | Custom q' -> eval_query q q'
-    | Negated m -> not (matches q m)
+    | Negated m -> not (eval q m)
 end
 
 (** {2 Container-query evaluation (CSS Containment 3 §3.4)}
@@ -696,25 +703,25 @@ module Container_eval = struct
                && String.equal (String.trim vv) (String.trim v))
              q.container_features
 
-  let rec matches q ?name (cond : Container.t) =
-    if not (name_matches ?name q) then false
-    else
-      let media_q = { q with media_features = q.container_features } in
-      match cond with
-      | Min_width_rem rem -> Media_eval.matches media_q (Min_width_rem rem)
-      | Min_width_px px ->
-          Media_eval.matches media_q (Min_width (float_of_int px))
-      | Named (n, inner) -> matches q ~name:n inner
-      | Style (prop, value) -> style_match q ~prop ~value
-      | Scroll_state (prop, value) ->
-          let key = "scroll-state(" ^ prop ^ ": " ^ value ^ ")" in
-          List.mem_assoc key q.container_features
-      | Feature_query raw -> (
-          try
-            let media = Media.of_string raw in
-            Media_eval.matches media_q media
-          with _ -> false)
-      | Custom media -> Media_eval.matches media_q media
+  let eval_scroll_state q ~prop ~value =
+    let key = "scroll-state(" ^ prop ^ ": " ^ value ^ ")" in
+    List.mem_assoc key q.container_features
+
+  let rec eval q ?name : Container.t -> bool =
+    let media_q = { q with media_features = q.container_features } in
+    fun cond ->
+      if not (name_matches ?name q) then false
+      else
+        match cond with
+        | Min_width_rem rem -> Media_eval.eval media_q (Min_width_rem rem)
+        | Min_width_px px ->
+            Media_eval.eval media_q (Min_width (float_of_int px))
+        | Named (n, inner) -> eval q ~name:n inner
+        | Style (prop, value) -> style_match q ~prop ~value
+        | Scroll_state (prop, value) -> eval_scroll_state q ~prop ~value
+        | Feature_query raw -> (
+            try Media_eval.eval media_q (Media.of_string raw) with _ -> false)
+        | Custom media -> Media_eval.eval media_q media
 end
 
 (** {2 Selector matching (CSS Selectors 4)}
@@ -725,7 +732,7 @@ end
     only request selector matching when they have already decided which element
     they are testing. *)
 
-module Selector_match = struct
+module Selector_eval = struct
   let attr_name : Selector.attr_name -> string = function
     | Aria a ->
         let suffix =
@@ -785,7 +792,7 @@ module Selector_match = struct
         in
         lv = 0 || scan 0
 
-  let rec matches (doc : document) (sel : Selector.t) : bool =
+  let rec eval (doc : document) (sel : Selector.t) : bool =
     match sel with
     | Universal _ -> true
     | Element (_, name) -> doc.element = Some name
@@ -796,14 +803,14 @@ module Selector_match = struct
         | None -> false
         | Some None -> matcher = Presence
         | Some (Some v) -> value_match matcher ~flag v)
-    | Compound parts -> List.for_all (matches doc) parts
-    | List alts -> List.exists (matches doc) alts
-    | Is alts | Where alts -> List.exists (matches doc) alts
-    | Not alts -> not (List.exists (matches doc) alts)
+    | Compound parts -> List.for_all (eval doc) parts
+    | List alts -> List.exists (eval doc) alts
+    | Is alts | Where alts -> List.exists (eval doc) alts
+    | Not alts -> not (List.exists (eval doc) alts)
     | Combined (_, _, right) ->
         (* Combinators need a tree we do not have; collapse to the rightmost
            subject so the matcher answers questions about the [doc] element. *)
-        matches doc right
+        eval doc right
     | Scope -> Option.is_some doc.scope
     | Root -> Option.is_some doc.root
     | Nesting -> true
@@ -852,7 +859,7 @@ end
 
 (** {2 URL resolution (RFC 3986)} *)
 
-module Url_resolver = struct
+module Url = struct
   let starts_with ~prefix s =
     let n = String.length prefix in
     String.length s >= n && String.sub s 0 n = prefix
@@ -917,11 +924,11 @@ end
 
 (** {2 [@import] loader (CSS Cascade 5 §6)}
 
-    Resolves the import URL through {!Url_resolver}, looks up the body in
+    Resolves the import URL through {!Url}, looks up the body in
     [loader.imports], parses it, and applies any media/supports/layer guards on
     the rule. *)
 
-module Import_loader = struct
+module Import = struct
   let layer_known ~layer_order = function
     | None -> true
     | Some name -> List.mem name layer_order
@@ -930,13 +937,13 @@ module Import_loader = struct
     match ((rule : Stylesheet.import_rule).supports, query) with
     | None, _ -> true
     | Some _, None -> false
-    | Some cond, Some q -> Supports_eval.matches q cond
+    | Some cond, Some q -> Supports_eval.eval q cond
 
   let media_ok ?query rule =
     match ((rule : Stylesheet.import_rule).media, query) with
     | None, _ -> true
     | Some _, None -> false
-    | Some media, Some q -> Media_eval.matches q media
+    | Some media, Some q -> Media_eval.eval q media
 
   let wrap_in_layer rule statements =
     match (rule : Stylesheet.import_rule).layer with
@@ -952,7 +959,7 @@ module Import_loader = struct
     else if not (media_ok ?query rule) then
       Error "media guard rejected the import"
     else
-      match Url_resolver.resolve loader rule.url with
+      match Url.resolve loader rule.url with
       | Error _ as e -> e
       | Ok resolved -> (
           match List.assoc_opt resolved loader.imports with
@@ -969,12 +976,12 @@ end
 
 (** {2 Public API surface (forwards to the internal modules)} *)
 
-let matches_supports = Supports_eval.matches
-let matches_media = Media_eval.matches
-let matches_container = Container_eval.matches
-let matches_selector = Selector_match.matches
-let resolve_url = Url_resolver.resolve
-let load_import = Import_loader.load
+let matches_supports = Supports_eval.eval
+let matches_media = Media_eval.eval
+let matches_container = Container_eval.eval
+let matches_selector = Selector_eval.eval
+let resolve_url = Url.resolve
+let load_import = Import.load
 
 (* TODO: full computed-value resolution. Returns Error for now so callers can
    plumb the API through; concrete cases will be filled in incrementally as the

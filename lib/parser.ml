@@ -257,6 +257,57 @@ let is_whitespace = function
   | Preserved { kind = Token.Whitespace; _ } -> true
   | _ -> false
 
+let normal_pair_needs_token_boundary prev next =
+  match (prev, next) with
+  | ( Component.Preserved
+        {
+          kind =
+            ( Token.Ident _ | Token.At_keyword _ | Token.Hash _
+            | Token.Dimension _ );
+          _;
+        },
+      ( Component.Preserved
+          {
+            kind =
+              ( Token.Ident _ | Token.Function _ | Token.Number_tok _
+              | Token.Percentage _ | Token.Dimension _ );
+            _;
+          }
+      | Component.Func _
+      | Component.Block { node = { opening = Token.Paren; _ }; _ } ) ) ->
+      true
+  | ( Component.Preserved { kind = Token.Number_tok _ | Token.Percentage _; _ },
+      Component.Preserved
+        {
+          kind =
+            ( Token.Ident _ | Token.Function _ | Token.Number_tok _
+            | Token.Percentage _ | Token.Dimension _ );
+          _;
+        } ) ->
+      true
+  | ( Component.Preserved { kind = Token.Delim ("-" | "#" | "@"); _ },
+      ( Component.Preserved { kind = Token.Ident _ | Token.Function _; _ }
+      | Component.Func _ ) ) ->
+      true
+  | ( Component.Preserved { kind = Token.Delim ("+" | "-"); _ },
+      Component.Preserved
+        {
+          kind = Token.Number_tok _ | Token.Percentage _ | Token.Dimension _;
+          _;
+        } ) ->
+      true
+  | ( Component.Preserved { kind = Token.Delim "."; _ },
+      Component.Preserved
+        {
+          kind =
+            ( Token.Number_tok { repr; _ }
+            | Token.Percentage { repr; _ }
+            | Token.Dimension { number = { repr; _ }; _ } );
+          _;
+        } ) ->
+      repr <> "" && repr.[0] >= '0' && repr.[0] <= '9'
+  | _ -> false
+
 let rec cv_to_buffer buf : Component.t -> unit = function
   | Preserved t -> Buffer.add_string buf (token_kind_to_string t.kind)
   | Block { node = { opening; value }; _ } ->
@@ -284,6 +335,10 @@ and cvs_to_buffer buf cvs =
            && match prev with Some p -> is_backslash_delim p | None -> false ->
         loop prev rest
     | cv :: rest ->
+        (match prev with
+        | Some p when normal_pair_needs_token_boundary p cv ->
+            Buffer.add_char buf ' '
+        | _ -> ());
         cv_to_buffer buf cv;
         loop (Some cv) rest
   in

@@ -81,9 +81,6 @@ let is_name_at r offset =
    materialised the byte. For anything ASCII they match spec; for bytes [>=
    0x80] they are now conservative (reject), and callers that might see
    non-ASCII must use the [_at] variants above. *)
-let is_name_start c = c < '\x80' && is_name_start_ascii c
-let is_name c = is_name_start c || is_digit c || c = '-'
-
 (* 4.3.3 Check if two code points are a valid escape. The reader is at the
    first; check whether ('\\', next) forms a valid escape (i.e. first is '\\'
    and next is not a newline). *)
@@ -527,7 +524,7 @@ let hash_flag_now r = if would_start_ident_sequence r then Id else Unrestricted
 (* 4.3.1 sub-case: [#] has already been consumed. *)
 let consume_hash_token r =
   match Reader.peek r with
-  | Some c when is_name c ->
+  | Some _ when is_name_at r 0 ->
       let hash_flag = hash_flag_now r in
       let value = consume_ident_sequence r in
       Hash { value; hash_flag }
