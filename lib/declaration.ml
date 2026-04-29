@@ -62,6 +62,29 @@ let pp_font_url ctx s =
   else Pp.string ctx s;
   Pp.char ctx ')'
 
+let pp_quoted_font_url ctx quote s =
+  Pp.string ctx "url(";
+  Pp.char ctx quote;
+  Pp.string ctx s;
+  Pp.char ctx quote;
+  Pp.char ctx ')'
+
+let pp_font_src_modifiers ctx (format : string option) (tech : string option) =
+  (match format with
+  | None -> ()
+  | Some value ->
+      Pp.space ctx ();
+      Pp.string ctx "format(";
+      Pp.string ctx value;
+      Pp.char ctx ')');
+  match tech with
+  | None -> ()
+  | Some value ->
+      Pp.space ctx ();
+      Pp.string ctx "tech(";
+      Pp.string ctx value;
+      Pp.char ctx ')'
+
 let pp_font_src_entry ctx : Font_face.src_entry -> unit = function
   | Local name ->
       Pp.string ctx "local(";
@@ -69,22 +92,12 @@ let pp_font_src_entry ctx : Font_face.src_entry -> unit = function
       Pp.string ctx name;
       Pp.char ctx '"';
       Pp.char ctx ')'
-  | Url { url; format; tech } -> (
+  | Url { url; format; tech } ->
       pp_font_url ctx url;
-      (match format with
-      | None -> ()
-      | Some value ->
-          Pp.space ctx ();
-          Pp.string ctx "format(";
-          Pp.string ctx value;
-          Pp.char ctx ')');
-      match tech with
-      | None -> ()
-      | Some value ->
-          Pp.space ctx ();
-          Pp.string ctx "tech(";
-          Pp.string ctx value;
-          Pp.char ctx ')')
+      pp_font_src_modifiers ctx format tech
+  | Quoted_url { url; quote; format; tech } ->
+      pp_quoted_font_url ctx quote url;
+      pp_font_src_modifiers ctx format tech
 
 let pp_font_src ctx entries =
   let first = ref true in
