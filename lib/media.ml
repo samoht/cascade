@@ -998,6 +998,73 @@ let normalise_value name value =
       | "portrait" -> Some (Orientation `Portrait)
       | "landscape" -> Some (Orientation `Landscape)
       | _ -> None)
+  | "width", Length l -> Some (Width l)
+  | "height", Length l -> Some (Height l)
+  | "aspect-ratio", Ratio (a, b) -> Some (Aspect_ratio (a, b))
+  | "resolution", Resolution_value (n, u) -> Some (Resolution (n, u))
+  | "color", Integer n -> Some (Color n)
+  | "color-index", Integer n -> Some (Color_index n)
+  | "monochrome", Integer n -> Some (Monochrome n)
+  | "color-gamut", Ident s -> (
+      match String.lowercase_ascii s with
+      | "srgb" -> Some (Color_gamut `Srgb)
+      | "p3" -> Some (Color_gamut `P3)
+      | "rec2020" -> Some (Color_gamut `Rec2020)
+      | _ -> None)
+  | "video-color-gamut", Ident s -> (
+      match String.lowercase_ascii s with
+      | "srgb" -> Some (Video_color_gamut `Srgb)
+      | "p3" -> Some (Video_color_gamut `P3)
+      | "rec2020" -> Some (Video_color_gamut `Rec2020)
+      | _ -> None)
+  | "dynamic-range", Ident s -> (
+      match String.lowercase_ascii s with
+      | "standard" -> Some (Dynamic_range `Standard)
+      | "high" -> Some (Dynamic_range `High)
+      | _ -> None)
+  | "video-dynamic-range", Ident s -> (
+      match String.lowercase_ascii s with
+      | "standard" -> Some (Video_dynamic_range `Standard)
+      | "high" -> Some (Video_dynamic_range `High)
+      | _ -> None)
+  | "scan", Ident s -> (
+      match String.lowercase_ascii s with
+      | "interlace" -> Some (Scan `Interlace)
+      | "progressive" -> Some (Scan `Progressive)
+      | _ -> None)
+  | "update", Ident s -> (
+      match String.lowercase_ascii s with
+      | "none" -> Some (Update `None)
+      | "slow" -> Some (Update `Slow)
+      | "fast" -> Some (Update `Fast)
+      | _ -> None)
+  | "overflow-block", Ident s -> (
+      match String.lowercase_ascii s with
+      | "none" -> Some (Overflow_block `None)
+      | "scroll" -> Some (Overflow_block `Scroll)
+      | "optional-paged" -> Some (Overflow_block `Optional_paged)
+      | "paged" -> Some (Overflow_block `Paged)
+      | _ -> None)
+  | "overflow-inline", Ident s -> (
+      match String.lowercase_ascii s with
+      | "none" -> Some (Overflow_inline `None)
+      | "scroll" -> Some (Overflow_inline `Scroll)
+      | _ -> None)
+  | "prefers-reduced-transparency", Ident s -> (
+      match String.lowercase_ascii s with
+      | "no-preference" -> Some (Prefers_reduced_transparency `No_preference)
+      | "reduce" -> Some (Prefers_reduced_transparency `Reduce)
+      | _ -> None)
+  | "prefers-reduced-data", Ident s -> (
+      match String.lowercase_ascii s with
+      | "no-preference" -> Some (Prefers_reduced_data `No_preference)
+      | "reduce" -> Some (Prefers_reduced_data `Reduce)
+      | _ -> None)
+  | "nav-controls", Ident s -> (
+      match String.lowercase_ascii s with
+      | "none" -> Some (Nav_controls `None)
+      | "back-button" -> Some (Nav_controls `Back_button)
+      | _ -> None)
   | _ -> None
 
 let rec feature_to_t : feature -> t = function
