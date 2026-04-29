@@ -12,6 +12,9 @@ type t =
       (** Style query: [style(--flag)] or [style(property: value)]. *)
   | Scroll_state of string * string
       (** Scroll-state query: [scroll-state(stuck: top)]. *)
+  | And of t * t  (** [(A) and (B)] *)
+  | Or of t * t  (** [(A) or (B)] *)
+  | Not of t  (** [not (A)] *)
   | Feature_query of Media.t
       (** Container size/range feature query, e.g. [(inline-size: 640px)] or
           [(inline-size > 30em)]. *)
