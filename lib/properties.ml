@@ -818,7 +818,7 @@ module Cursor_prop = struct
     let url =
       match Cursor.string_opt t with
       | Some s -> String.trim s
-      | None -> Cursor.url t
+      | None -> Cursor.consume_remaining_to_string ~trim:true t
     in
     Cursor.ws t;
     let hotspot =
