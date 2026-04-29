@@ -15,16 +15,15 @@ let test_to_string () =
   let cases =
     [
       (Property ("display", "grid"), "(display: grid)");
-      (Not (Property ("display", "grid")), "(not (display: grid))");
+      (Not (Property ("display", "grid")), "not (display: grid)");
       ( Or (Property ("display", "grid"), Property ("gap", "1rem")),
         "(display: grid) or (gap: 1rem)" );
       ( And (Property ("display", "grid"), Property ("gap", "1rem")),
         "(display: grid) and (gap: 1rem)" );
-      (* Tailwind quirk: double space before "or" after Not *)
       ( Or
           ( Not (Property ("-webkit-appearance", "-apple-pay-button")),
             Property ("contain-intrinsic-size", "1px") ),
-        "(not (-webkit-appearance: -apple-pay-button))  or \
+        "(not (-webkit-appearance: -apple-pay-button)) or \
          (contain-intrinsic-size: 1px)" );
     ]
   in
@@ -74,7 +73,7 @@ let test_current_work_vectors () =
   in
   check "supports selector has" "selector(:has(img))" "selector(:has(img))";
   check "supports font tech" "(font-tech(color-COLRv1))"
-    "(font-tech(color-COLRv1))";
+    "font-tech(color-COLRv1)";
   check "supports complex selector and property"
     "selector(:has(img)) and (container-type: inline-size)"
     "selector(:has(img)) and (container-type: inline-size)"
@@ -95,7 +94,7 @@ let spec_supports_feature_vectors () =
   check "unknown declaration feature" "(-vendor-flag: enabled)"
     "(-vendor-flag: enabled)";
   check "nested not selector" "not selector(:has(article > img))"
-    "(not selector(:has(article > img)))";
+    "not selector(:has(article > img))";
   check "and chain" "(display: grid) and (gap: 1rem) and (selector(:has(img)))"
     "(display: grid) and (gap: 1rem) and selector(:has(img))";
   check "or chain"
@@ -132,7 +131,7 @@ let spec_supports_nested_edges () =
     Alcotest.(check string) name expected (to_string actual)
   in
   check "not wraps grouped or" "not ((display: grid) or (display: flex))"
-    "(not ((display: grid) or (display: flex)))";
+    "not ((display: grid) or (display: flex))";
   check "and preserves grouped or branch"
     "((display: grid) or (display: flex)) and (gap: 1rem)"
     "((display: grid) or (display: flex)) and (gap: 1rem)";
