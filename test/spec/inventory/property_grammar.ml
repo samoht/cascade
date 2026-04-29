@@ -147,8 +147,8 @@ let matrix =
     };
     {
       property = "font-weight";
-      positives = [ "normal"; "bold"; "400"; "650"; "lighter" ];
-      negatives = [ "1000"; "bold 400" ];
+      positives = [ "normal"; "bold"; "400"; "650"; "1000"; "lighter" ];
+      negatives = [ "1001"; "0"; "bold 400" ];
     };
     {
       property = "font-feature-settings";

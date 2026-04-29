@@ -128,7 +128,7 @@ let valid_value property buf =
       pick [ "1px solid red"; "solid"; "0"; "thin currentColor" ] buf 1
   | "font-family" ->
       pick [ "Arial, sans-serif"; "\"A B\", serif"; "system-ui" ] buf 1
-  | "font-weight" -> pick [ "400"; "700"; "bold"; "lighter" ] buf 1
+  | "font-weight" -> pick [ "400"; "700"; "1000"; "bold"; "lighter" ] buf 1
   | "font-feature-settings" ->
       pick [ "normal"; "\"kern\" 1"; "\"liga\" off" ] buf 1
   | "transform" ->
@@ -157,7 +157,7 @@ let invalid_value property buf =
   | "overflow" -> pick [ "visible hidden"; "none" ] buf 2
   | "border" -> pick [ "1px 2px"; "solid solid"; "red blue" ] buf 2
   | "font-family" -> pick [ "Arial,,serif"; "," ] buf 2
-  | "font-weight" -> pick [ "1000"; "bold 400" ] buf 2
+  | "font-weight" -> pick [ "1001"; "0"; "bold 400" ] buf 2
   | "font-feature-settings" -> pick [ "\"kern\" maybe"; "1" ] buf 2
   | "transform" -> pick [ "rotate()"; "scale()" ] buf 2
   | "transforms" -> pick [ "none rotate(1deg)"; "translate()" ] buf 2
@@ -255,8 +255,8 @@ let property_grammar_vectors =
       [ "Arial,,serif"; "," ];
     vector "font-weight" Css.Properties.read_font_weight
       Css.Properties.pp_font_weight
-      [ "normal"; "bold"; "400"; "650"; "lighter" ]
-      [ "1000"; "bold 400" ];
+      [ "normal"; "bold"; "400"; "650"; "1000"; "lighter" ]
+      [ "1001"; "0"; "bold 400" ];
     vector "font-feature-settings" Css.Properties.read_font_feature_settings
       Css.Properties.pp_font_feature_settings
       [ "normal"; "\"kern\" 1"; "\"liga\" off" ]

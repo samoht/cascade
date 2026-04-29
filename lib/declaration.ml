@@ -744,10 +744,14 @@ let read_value (type a) (prop : a property) t : declaration =
   | Max_block_size -> v Max_block_size (read_length_percentage t)
   | Font_size -> v Font_size (Properties.read_font_size t)
   | Border_radius -> v Border_radius (read_border_radius t)
-  | Border_top_left_radius -> v Border_top_left_radius (read_length t)
-  | Border_top_right_radius -> v Border_top_right_radius (read_length t)
-  | Border_bottom_left_radius -> v Border_bottom_left_radius (read_length t)
-  | Border_bottom_right_radius -> v Border_bottom_right_radius (read_length t)
+  | Border_top_left_radius ->
+      v Border_top_left_radius (read_length ~with_keywords:false t)
+  | Border_top_right_radius ->
+      v Border_top_right_radius (read_length ~with_keywords:false t)
+  | Border_bottom_left_radius ->
+      v Border_bottom_left_radius (read_length ~with_keywords:false t)
+  | Border_bottom_right_radius ->
+      v Border_bottom_right_radius (read_length ~with_keywords:false t)
   | Gap -> v Gap (Properties.read_gap t)
   | Column_gap -> v Column_gap (read_length t)
   | Row_gap -> v Row_gap (read_length t)
@@ -857,12 +861,18 @@ let read_value (type a) (prop : a property) t : declaration =
       v Padding_top (read_non_negative_length ~with_keywords:false t)
   | Padding_bottom ->
       v Padding_bottom (read_non_negative_length ~with_keywords:false t)
-  | Padding_inline -> v Padding_inline (read_non_negative_length t)
-  | Padding_inline_start -> v Padding_inline_start (read_non_negative_length t)
-  | Padding_inline_end -> v Padding_inline_end (read_non_negative_length t)
-  | Padding_block -> v Padding_block (read_non_negative_length t)
-  | Padding_block_start -> v Padding_block_start (read_non_negative_length t)
-  | Padding_block_end -> v Padding_block_end (read_non_negative_length t)
+  | Padding_inline ->
+      v Padding_inline (read_non_negative_length ~with_keywords:false t)
+  | Padding_inline_start ->
+      v Padding_inline_start (read_non_negative_length ~with_keywords:false t)
+  | Padding_inline_end ->
+      v Padding_inline_end (read_non_negative_length ~with_keywords:false t)
+  | Padding_block ->
+      v Padding_block (read_non_negative_length ~with_keywords:false t)
+  | Padding_block_start ->
+      v Padding_block_start (read_non_negative_length ~with_keywords:false t)
+  | Padding_block_end ->
+      v Padding_block_end (read_non_negative_length ~with_keywords:false t)
   | Margin_left -> v Margin_left (read_length t)
   | Margin_right -> v Margin_right (read_length t)
   | Margin_top -> v Margin_top (read_length t)
@@ -901,7 +911,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Place_self -> read_place_self_value t
   (* Additional grid properties *)
   | Grid_template -> v Grid_template (read_grid_template t)
-  | Grid_area -> v Grid_area (read_untyped_value t)
+  | Grid_area -> v Grid_area (read_grid_area t)
   | Grid_auto_columns ->
       let value = read_grid_template t in
       (match value with
@@ -928,10 +938,14 @@ let read_value (type a) (prop : a property) t : declaration =
   | Border_inline_end_color -> v Border_inline_end_color (read_color t)
   | Border_inline_style -> v Border_inline_style (read_border_style t)
   | Border_block_style -> v Border_block_style (read_border_style t)
-  | Border_start_start_radius -> v Border_start_start_radius (read_length t)
-  | Border_start_end_radius -> v Border_start_end_radius (read_length t)
-  | Border_end_start_radius -> v Border_end_start_radius (read_length t)
-  | Border_end_end_radius -> v Border_end_end_radius (read_length t)
+  | Border_start_start_radius ->
+      v Border_start_start_radius (read_length ~with_keywords:false t)
+  | Border_start_end_radius ->
+      v Border_start_end_radius (read_length ~with_keywords:false t)
+  | Border_end_start_radius ->
+      v Border_end_start_radius (read_length ~with_keywords:false t)
+  | Border_end_end_radius ->
+      v Border_end_end_radius (read_length ~with_keywords:false t)
   (* Position properties *)
   | Inset -> v Inset (read_length_box t)
   | Inset_inline -> v Inset_inline (read_length_box t)

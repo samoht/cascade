@@ -2323,6 +2323,7 @@ let rec read_duration_with ~canonicalize_ms t : duration =
     else
       let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
       match unit with
+      | "" when n = 0.0 -> S 0.0
       | "s" -> S n
       | "ms" when canonicalize_ms && ms_prints_shorter_as_seconds n ->
           S (n /. 1000.)
@@ -2345,6 +2346,7 @@ let rec read_time t : duration =
     let n, unit_raw = Cursor.number_with_unit t in
     let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
     match unit with
+    | "" when n = 0.0 -> S 0.0
     | "s" -> S n
     | "ms" when ms_prints_shorter_as_seconds n -> S (n /. 1000.)
     | "ms" -> Ms n
