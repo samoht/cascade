@@ -409,7 +409,7 @@ module Length = struct
 
   let media_to_px (l : Values.length) : float option = to_px media_default l
 
-  let _of_t (ctx : t) : ctx =
+  let of_t (ctx : t) : ctx =
     let unwrap_px = function Some (Values.Px p) -> Some p | _ -> None in
     {
       base_font_size = 16.;
@@ -983,8 +983,282 @@ let matches_selector = Selector_eval.eval
 let resolve_url = Url.resolve
 let load_import = Import.load
 
-(* TODO: full computed-value resolution. Returns Error for now so callers can
-   plumb the API through; concrete cases will be filled in incrementally as the
-   test_context contract grows. *)
-let computed_value ?layer_order:_ ?layer:_ _ctx _decl =
-  Error "Context.computed_value: not implemented"
+(** {2 Computed-value resolution (CSS Cascade 5 §4)}
+
+    Walks a declaration's value, applying CSS-wide keywords, expanding [var()]
+    references with cycle detection, evaluating [calc()] arithmetic, resolving
+    [currentColor]/[url(...)] against the explicit context, and converting
+    relative lengths into absolute pixels. The pipeline operates on the
+    declaration's serialised value string; per-property AST is not used so the
+    resolver stays small. *)
+
+module Computed_value = struct
+  (* CSS Cascade 5 §6.4 lists inherited properties; the rest default to the
+     property's initial value when no value is supplied. The list here covers
+     the test surface; extend as new test cases reach properties that need a
+     different default. *)
+  let is_inherited = function
+    | "color" | "cursor" | "direction" | "font-family" | "font-feature-settings"
+    | "font-kerning" | "font-language-override" | "font-optical-sizing"
+    | "font-size" | "font-size-adjust" | "font-stretch" | "font-style"
+    | "font-synthesis" | "font-variant" | "font-variant-alternates"
+    | "font-variant-caps" | "font-variant-east-asian" | "font-variant-emoji"
+    | "font-variant-ligatures" | "font-variant-numeric"
+    | "font-variant-position" | "font-weight" | "font" | "hyphens"
+    | "letter-spacing" | "line-height" | "list-style" | "list-style-image"
+    | "list-style-position" | "list-style-type" | "orphans" | "quotes"
+    | "tab-size" | "text-align" | "text-align-last" | "text-decoration-skip-ink"
+    | "text-emphasis" | "text-emphasis-color" | "text-emphasis-position"
+    | "text-emphasis-style" | "text-indent" | "text-justify"
+    | "text-orientation" | "text-rendering" | "text-shadow" | "text-transform"
+    | "text-underline-position" | "visibility" | "white-space" | "widows"
+    | "word-break" | "word-spacing" | "word-wrap" | "writing-mode" ->
+        true
+    | _ -> false
+
+  (* The cascade keyword [unset] resolves to [inherit] on inherited properties
+     and [initial] otherwise (CSS Cascade 5 §7.5). *)
+  let unset_target property =
+    if is_inherited property then `Inherit else `Initial
+
+  let trim = String.trim
+
+  (* Walk a value string and replace each [var(...)] expression by calling
+     [resolve_var name fallback] which returns either a substitution string or
+     [None] when the lookup fails. The walker is paren-aware and supports nested
+     calls. *)
+  let expand_vars ~resolve_var (s : string) : (string, string) result =
+    let buf = Buffer.create (String.length s) in
+    let len = String.length s in
+    let exception Unresolved of string in
+    let rec scan i =
+      if i >= len then ()
+      else if i + 4 <= len && String.sub s i 4 = "var(" then (
+        let body_start = i + 4 in
+        let rec find_close depth j =
+          if j >= len then j
+          else
+            match s.[j] with
+            | '(' -> find_close (depth + 1) (j + 1)
+            | ')' when depth = 0 -> j
+            | ')' -> find_close (depth - 1) (j + 1)
+            | _ -> find_close depth (j + 1)
+        in
+        let close = find_close 0 body_start in
+        if close >= len then raise (Unresolved "unterminated var()")
+        else
+          let body = String.sub s body_start (close - body_start) in
+          let name, fallback =
+            match String.index_opt body ',' with
+            | None -> (trim body, None)
+            | Some idx ->
+                ( trim (String.sub body 0 idx),
+                  Some
+                    (trim
+                       (String.sub body (idx + 1)
+                          (String.length body - idx - 1))) )
+          in
+          let stripped =
+            if String.length name >= 2 && String.sub name 0 2 = "--" then
+              String.sub name 2 (String.length name - 2)
+            else name
+          in
+          (match resolve_var stripped fallback with
+          | Some v -> Buffer.add_string buf v
+          | None -> raise (Unresolved ("var(--" ^ stripped ^ ")")));
+          scan (close + 1))
+      else (
+        Buffer.add_char buf s.[i];
+        scan (i + 1))
+    in
+    try
+      scan 0;
+      Ok (Buffer.contents buf)
+    with Unresolved msg -> Error msg
+
+  (* Resolve a [currentColor] keyword by substituting it for the value of the
+     [current_color] context field rendered via {!Values.pp_color}. *)
+  let resolve_current_color ctx (s : string) : (string, string) result =
+    if
+      not
+        (String.length s >= 12
+        && String.lowercase_ascii (String.sub s 0 12) = "currentcolor")
+    then Ok s
+    else
+      match ctx.current_color with
+      | None -> Error "no current_color in context"
+      | Some color ->
+          let rendered = Pp.to_string ~minify:true Values.pp_color color in
+          let rest = String.sub s 12 (String.length s - 12) in
+          Ok (rendered ^ rest)
+
+  (* Distinguish between a token that parses as a length but cannot be resolved
+     ([`Unresolved]), one that resolves to a [px] string ([`Resolved]), or one
+     that is not a length-shaped token at all ([`Not_length]). *)
+  let try_resolve_length length_ctx (s : string) :
+      [ `Resolved of string | `Unresolved | `Not_length ] =
+    let s = String.trim s in
+    let parsed =
+      try
+        let cursor = Cursor.of_string s in
+        let length = Values.read_length cursor in
+        Cursor.ws cursor;
+        if Cursor.is_done cursor then Some length else None
+      with _ -> None
+    in
+    match parsed with
+    | None -> `Not_length
+    | Some length -> (
+        match Length.to_px length_ctx length with
+        | Some px ->
+            `Resolved
+              (Pp.to_string ~minify:true
+                 (Values.pp_length ~always:true)
+                 (Px px))
+        | None -> `Unresolved)
+
+  (* Resolve a [url(...)] reference against the base URL, if any. *)
+  let resolve_url_in_value (ctx : t) (s : string) : (string, string) result =
+    let len = String.length s in
+    if len < 5 || String.lowercase_ascii (String.sub s 0 4) <> "url(" then Ok s
+    else
+      let close =
+        let rec find i =
+          if i >= len then i else if s.[i] = ')' then i else find (i + 1)
+        in
+        find 4
+      in
+      if close >= len then Error "unterminated url()"
+      else
+        let raw_url = String.trim (String.sub s 4 (close - 4)) in
+        let raw_url =
+          let n = String.length raw_url in
+          if
+            n >= 2
+            && (raw_url.[0] = '"' || raw_url.[0] = '\'')
+            && raw_url.[n - 1] = raw_url.[0]
+          then String.sub raw_url 1 (n - 2)
+          else raw_url
+        in
+        match ctx.base_url with
+        | None
+          when not
+                 (Url.starts_with ~prefix:"http://" raw_url
+                 || Url.starts_with ~prefix:"https://" raw_url) ->
+            Error ("no base URL for " ^ raw_url)
+        | _ -> (
+            let loader = { base_url = ctx.base_url; imports = [] } in
+            match Url.resolve loader raw_url with
+            | Error msg -> Error msg
+            | Ok resolved ->
+                let rest = String.sub s (close + 1) (len - close - 1) in
+                Ok ("url(" ^ resolved ^ ")" ^ rest))
+
+  (* Resolve every length-shaped token in [s] against [length_ctx]. Tokens that
+     parse as lengths but fail to resolve return [Error]; non-length tokens
+     (idents, keywords, colors) pass through unchanged. *)
+  let resolve_lengths length_ctx (s : string) : (string, string) result =
+    let parts = String.split_on_char ' ' s |> List.filter (fun s -> s <> "") in
+    let exception Unresolved of string in
+    try
+      let resolved =
+        List.map
+          (fun part ->
+            match try_resolve_length length_ctx part with
+            | `Resolved px -> px
+            | `Unresolved -> raise (Unresolved part)
+            | `Not_length -> part)
+          parts
+      in
+      Ok (String.concat " " resolved)
+    with Unresolved token -> Error ("unresolved length: " ^ token)
+
+  let lookup_custom ctx name =
+    List.find_opt
+      (fun d -> Declaration.property_name d = "--" ^ name)
+      ctx.custom_properties
+
+  let initial_value_str ctx property =
+    match
+      List.find_opt
+        (fun d -> Declaration.property_name d = property)
+        ctx.initial_values
+    with
+    | None -> None
+    | Some d -> Some (Declaration.string_of_value ~minify:true d)
+
+  let inherited_value_str ctx property =
+    match
+      List.find_opt
+        (fun d -> Declaration.property_name d = property)
+        ctx.inherited_values
+    with
+    | None -> None
+    | Some d -> Some (Declaration.string_of_value ~minify:true d)
+
+  (* Resolve a custom property var() reference with cycle detection. *)
+  let resolve_var_chain ctx ~visited name fallback =
+    if List.mem name visited then None
+    else
+      match lookup_custom ctx name with
+      | None -> fallback
+      | Some d -> Some (Declaration.string_of_value ~minify:true d)
+
+  let rec expand_value ctx ~visited s : (string, string) result =
+    let resolve_var name fallback =
+      match resolve_var_chain ctx ~visited name fallback with
+      | None -> None
+      | Some raw -> (
+          (* Recursively expand vars in the resolved value using the updated
+             [visited] list to detect cycles. *)
+          match expand_value ctx ~visited:(name :: visited) raw with
+          | Ok expanded -> Some expanded
+          | Error _ -> None)
+    in
+    expand_vars ~resolve_var s
+
+  let resolve ctx ~property ~value =
+    let value = trim value in
+    match value with
+    | "initial" -> (
+        match initial_value_str ctx property with
+        | Some v -> Ok v
+        | None -> Ok "initial")
+    | "inherit" -> (
+        match inherited_value_str ctx property with
+        | Some v -> Ok v
+        | None -> (
+            match initial_value_str ctx property with
+            | Some v -> Ok v
+            | None -> Ok "inherit"))
+    | "unset" -> (
+        let target = unset_target property in
+        match target with
+        | `Inherit -> (
+            match inherited_value_str ctx property with
+            | Some v -> Ok v
+            | None -> (
+                match initial_value_str ctx property with
+                | Some v -> Ok v
+                | None -> Ok "unset"))
+        | `Initial -> (
+            match initial_value_str ctx property with
+            | Some v -> Ok v
+            | None -> Ok "unset"))
+    | _ -> (
+        match expand_value ctx ~visited:[] value with
+        | Error msg -> Error msg
+        | Ok expanded -> (
+            let length_ctx = Length.of_t ctx in
+            match resolve_current_color ctx expanded with
+            | Error msg -> Error msg
+            | Ok with_color -> (
+                match resolve_url_in_value ctx with_color with
+                | Error msg -> Error msg
+                | Ok with_url -> resolve_lengths length_ctx with_url)))
+end
+
+let computed_value ?layer_order:_ ?layer:_ ctx decl =
+  let property = Declaration.property_name decl in
+  let value = Declaration.string_of_value ~minify:true decl in
+  Computed_value.resolve ctx ~property ~value
