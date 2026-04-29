@@ -17,8 +17,13 @@ let rec meta_of_declaration : declaration -> meta option = function
 let v ?(important = false) property value =
   Declaration { property; value; important }
 
-(* Smart constructor for custom declarations *)
+(* Smart constructor for custom declarations. CSS Custom Properties Level 1
+   restricts the name to dashed idents (start with [--]). *)
 let custom_declaration ?(important = false) ?layer ?meta name kind value =
+  if not (String.length name >= 2 && String.sub name 0 2 = "--") then
+    invalid_arg
+      ("Declaration.custom_declaration: " ^ name
+     ^ " is not a CSS custom property name (must start with --)");
   Custom_declaration { name; kind; value; layer; meta; important }
 
 (* Helper to mark a declaration as important *)
