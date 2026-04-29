@@ -3,9 +3,7 @@
 
 (** Supports condition type. Provides type safety and consistent formatting. *)
 
-type declaration_feature =
-  | Typed of Declaration.declaration
-  | Syntax of Component.declaration
+type declaration_feature = Declaration of Declaration.t | Vendor_flag_enabled
 
 type t =
   | Property of declaration_feature  (** [(property: value)] feature test *)

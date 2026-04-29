@@ -60,3 +60,5 @@ type declaration =
     }
       -> declaration
   | Theme_guarded : { var_name : string; decl : declaration } -> declaration
+
+type t = declaration

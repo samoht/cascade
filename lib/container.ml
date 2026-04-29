@@ -10,7 +10,6 @@ type t =
   | Or of t * t
   | Not of t
   | Feature_query of Media.t
-  | Custom of Media.t
 
 (* Format float without trailing period (24. -> 24, 24.5 -> 24.5) *)
 let format_rem f =
@@ -29,7 +28,6 @@ let rec to_string = function
   | Or (a, b) -> "(" ^ to_string a ^ " or " ^ to_string b ^ ")"
   | Not c -> "(not " ^ to_string c ^ ")"
   | Feature_query f -> Media.to_string f
-  | Custom cond -> Media.to_string cond
 
 let pp = to_string
 
@@ -54,7 +52,6 @@ let rec compare t1 t2 =
       if c <> 0 then c else compare b1 b2
   | Not a, Not b -> compare a b
   | Feature_query q1, Feature_query q2 -> Media.compare q1 q2
-  | Custom c1, Custom c2 -> Media.compare c1 c2
   | _ -> Stdlib.compare t1 t2
 
 type kind = Min_width | Other
@@ -62,9 +59,7 @@ type kind = Min_width | Other
 let rec kind = function
   | Min_width_rem _ | Min_width_px _ -> Min_width
   | Named (_, cond) -> kind cond
-  | And _ | Or _ | Not _ | Style _ | Scroll_state _ | Feature_query _ | Custom _
-    ->
-      Other
+  | And _ | Or _ | Not _ | Style _ | Scroll_state _ | Feature_query _ -> Other
 
 let is_ident_start c =
   (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_' || c = '-'
@@ -205,14 +200,16 @@ let classify_query_surface raw =
           Parenthesized_feature
       | _ -> Other_query)
 
-(* Try to lift a typed [Media.t] that wraps a single feature into the more
-   precise [Feature_query (feature)]. Anything richer (logical combinations,
-   media-type prefixes, etc.) stays in [Custom]. *)
+(* Lift a typed [Media.t] into a [Feature_query]. The container parser only
+   produces single-feature media leaves at this point (compound forms are peeled
+   off by [parse_unnamed] before [parse_atom]), so anything that's not a single
+   feature is a parse error. *)
 let single_feature_of_media (media : Media.t) =
   match media with
-  | Media.Range _ | Media.Range_rev _ | Media.Interval _ | Media.Boolean _ ->
-      Some media
-  | _ -> None
+  | Media.And _ | Media.Or _ | Media.Negated _ | Media.List _
+  | Media.Type_query _ ->
+      None
+  | _ -> Some media
 
 let parse_container_specific raw =
   let raw = String.trim raw in
@@ -290,7 +287,7 @@ and parse_atom s =
   | media -> (
       match single_feature_of_media media with
       | Some f -> Feature_query f
-      | None -> Custom media)
+      | None -> failwith ("non-leaf media expression in container query: " ^ s))
   | exception Failure _ -> parse_container_specific s
 
 let of_string s =
