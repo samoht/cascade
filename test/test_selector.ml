@@ -1311,9 +1311,9 @@ let spec_selector_scope_pseudo_edges () =
   check ":scope";
   check ":scope > .item";
   check ":scope + .item";
-  check ".card:has(> img)";
-  check ".card:has(+ .summary)";
-  check ".card:has(~ .summary)";
+  check_minified_to ".card:has(>img)" ".card:has(> img)";
+  check_minified_to ".card:has(+.summary)" ".card:has(+ .summary)";
+  check_minified_to ".card:has(~.summary)" ".card:has(~ .summary)";
   check "section:has(:scope > h2)";
   check "article :is(h1,h2,h3):not(.muted)";
   check ":where(nav,main,aside) a:any-link";
