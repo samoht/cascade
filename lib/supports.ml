@@ -23,8 +23,12 @@
                        | ( <any-value> )
     v} *)
 
+type declaration_feature =
+  | Typed of Declaration.declaration
+  | Syntax of Component.declaration
+
 type t =
-  | Property of Declaration.declaration
+  | Property of declaration_feature
       (** [(property: value)] declaration feature test *)
   | Func of string * Component.t list
       (** [name(args)] function test (selector, font-format, font-tech, var,
@@ -35,13 +39,19 @@ type t =
 
 let component_values s = Cursor.of_string s |> Cursor.remaining
 
-let declaration_of_pair prop value =
-  try Declaration.of_string (prop ^ ":" ^ value)
-  with Error.Parse_error _ ->
-    Declaration.custom_declaration prop Declaration.Value
-      (component_values value)
+let syntax_declaration_feature prop value =
+  match Parser.parse_declaration (Reader.of_string (prop ^ ":" ^ value)) with
+  | { value = Some decl; _ } -> Syntax decl
+  | { value = None; _ } -> invalid_arg ("invalid supports declaration: " ^ prop)
 
-let property prop value = Property (declaration_of_pair prop value)
+let declaration_feature prop value =
+  match Declaration.of_string (prop ^ ":" ^ value) with
+  | Declaration.Declaration _ as decl -> Typed decl
+  | Declaration.Custom_declaration _ | Declaration.Theme_guarded _ ->
+      syntax_declaration_feature prop value
+  | exception Error.Parse_error _ -> syntax_declaration_feature prop value
+
+let property prop value = Property (declaration_feature prop value)
 let func name args = Func (name, component_values args)
 
 (* Selector is subsumed by [Func ("selector", ...)] for simplicity. The argument
@@ -53,8 +63,7 @@ let func name args = Func (name, component_values args)
 let rec to_string condition = render `Root condition
 
 and render context = function
-  | Property decl ->
-      "(" ^ Declaration.string_of_declaration ~minify:false decl ^ ")"
+  | Property feature -> "(" ^ render_declaration_feature feature ^ ")"
   | Func (name, args) -> name ^ "(" ^ Parser.to_string args ^ ")"
   | Not cond ->
       let rendered = "not " ^ render_not_operand cond in
@@ -72,10 +81,36 @@ and render_branch operator = function
   | Not _ as cond -> render `Operand cond
   | cond -> render `Root cond
 
+and render_declaration_feature = function
+  | Typed decl -> Declaration.string_of_declaration ~minify:false decl
+  | Syntax decl -> (
+      decl.node.name ^ ":"
+      ^
+      match Parser.to_string decl.node.value with
+      | "" -> ""
+      | value -> " " ^ value)
+
+let pp_syntax_declaration_feature ctx (decl : Component.declaration) =
+  Pp.string ctx decl.node.name;
+  Pp.char ctx ':';
+  (match decl.node.value with
+  | [] -> ()
+  | value ->
+      Pp.space_if_pretty ctx ();
+      Pp.string ctx
+        (if Pp.minified ctx then Parser.to_string_minified value
+         else Parser.to_string value));
+  if decl.node.important then
+    Pp.string ctx (if Pp.minified ctx then "!important" else " !important")
+
+let pp_declaration_feature ctx = function
+  | Typed decl -> Declaration.pp_declaration ctx decl
+  | Syntax decl -> pp_syntax_declaration_feature ctx decl
+
 let rec pp_aux ~in_and ctx = function
-  | Property decl ->
+  | Property feature ->
       Pp.char ctx '(';
-      Declaration.pp_declaration ctx decl;
+      pp_declaration_feature ctx feature;
       Pp.char ctx ')'
   | Func (name, args) ->
       Pp.string ctx name;
@@ -229,7 +264,9 @@ let top_level_colon s =
   !result
 
 let valid_property_test prop value =
-  prop <> "" && value <> "" && not (String.contains prop '(')
+  prop <> ""
+  && (not (String.contains prop '('))
+  && not (String.contains value ';')
 
 (* ===== Recursive descent parser following the CSS spec grammar ===== *)
 
@@ -344,8 +381,7 @@ and parse_supports_condition sc =
   skip_ws sc;
   if looking_at sc "not" then (
     sc.pos <- sc.pos + 3;
-    let cond = parse_supports_in_parens sc in
-    chain sc None (Not cond))
+    Not (parse_supports_in_parens sc))
   else
     let left = parse_supports_in_parens sc in
     chain sc None left
@@ -406,16 +442,17 @@ let of_string ?(allow_unwrapped_decl = false) s =
 let rec compare t1 t2 =
   match (t1, t2) with
   | Property d1, Property d2 ->
-      let c =
-        String.compare
-          (Declaration.property_name d1)
-          (Declaration.property_name d2)
+      let name = function
+        | Typed decl -> Declaration.property_name decl
+        | Syntax (decl : Component.declaration) -> decl.node.name
       in
-      if c <> 0 then c
-      else
-        String.compare
-          (Declaration.string_of_value ~minify:true d1)
-          (Declaration.string_of_value ~minify:true d2)
+      let value = function
+        | Typed decl -> Declaration.string_of_value ~minify:true decl
+        | Syntax (decl : Component.declaration) ->
+            Parser.to_string_minified decl.node.value
+      in
+      let c = String.compare (name d1) (name d2) in
+      if c <> 0 then c else String.compare (value d1) (value d2)
   | Func (n1, a1), Func (n2, a2) ->
       let c = String.compare n1 n2 in
       if c <> 0 then c

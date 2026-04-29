@@ -2,8 +2,13 @@
 *)
 
 (** Supports condition type. Provides type safety and consistent formatting. *)
+
+type declaration_feature =
+  | Typed of Declaration.declaration
+  | Syntax of Component.declaration
+
 type t =
-  | Property of Declaration.declaration  (** [(property: value)] feature test *)
+  | Property of declaration_feature  (** [(property: value)] feature test *)
   | Func of string * Component.t list
       (** [name(args)] function test: [selector()], [font-format()],
           [font-tech()], [var()], etc. *)
@@ -24,6 +29,10 @@ val to_string : t -> string
 
 val pp : t Pp.t
 (** [pp ctx cond] prints the condition with context-aware spacing. *)
+
+val pp_declaration_feature : declaration_feature Pp.t
+(** [pp_declaration_feature ctx feature] prints a supports declaration feature
+    without the surrounding condition parentheses. *)
 
 val of_string : ?allow_unwrapped_decl:bool -> string -> t
 (** [of_string s] parses a [\@supports] condition string into a structured type.
