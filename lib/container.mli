@@ -12,8 +12,9 @@ type t =
       (** Style query: [style(--flag)] or [style(property: value)]. *)
   | Scroll_state of string * string
       (** Scroll-state query: [scroll-state(stuck: top)]. *)
-  | Feature_query of string
-      (** Container size/feature query preserved in normalized source form. *)
+  | Feature_query of Media.t
+      (** Container size/range feature query, e.g. [(inline-size: 640px)] or
+          [(inline-size > 30em)]. *)
   | Custom of Media.t  (** Structured condition beyond the typed shorthands. *)
 
 val to_string : t -> string
@@ -27,9 +28,9 @@ val of_string : string -> t
 (** [of_string s] parses a container condition. Raises [Failure] for malformed
     conditions. *)
 
-val feature : string -> string -> t
-(** [feature name value] is a size/range container feature in [Feature_query]
-    form, e.g. [feature "inline-size" "640px"] for [(inline-size: 640px)]. *)
+val feature : string -> Media.value -> t
+(** [feature name value] is the typed container feature query constructed via
+    {!Media.feature}. *)
 
 val style : ?value:string -> string -> t
 (** [style ?value prop] is a [style()] query: [Style (prop, value)]. With no
@@ -46,8 +47,8 @@ val compare : t -> t -> int
 (** {1 Container Condition Classification} *)
 
 type kind =
-  | Kind_min_width  (** min-width based query *)
-  | Kind_other  (** Other/unknown condition *)
+  | Min_width  (** min-width based query *)
+  | Other  (** Other/unknown condition *)
 
 val kind : t -> kind
 (** [kind t] returns the classification of a container condition. *)

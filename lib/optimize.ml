@@ -791,9 +791,10 @@ let emit_pending_hover ~hover_insert_pos ~pending_hover_blocks
 (* Route a consolidated media block: either defer it to a pending list for later
    repositioning, or emit it directly at the current position. *)
 let route_consolidated ~should_reposition_hover ~is_top_level
-    ~pending_hover_blocks ~pending_motion_blocks:_ consolidated cond acc =
+    ~pending_hover_blocks ~pending_motion_blocks:_ consolidated (cond : Media.t)
+    acc =
   match cond with
-  | Media.Hover when should_reposition_hover ->
+  | Media.Hover `Hover when should_reposition_hover ->
       (* For hover at top-level, add to pending list for repositioning. Append
          to maintain order (first occurrence stays first). *)
       pending_hover_blocks := !pending_hover_blocks @ [ consolidated ];
