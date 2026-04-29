@@ -1371,6 +1371,10 @@ module Computed_value = struct
         in
         find 0 layer_order
 
+  let is_revert_layer d =
+    let v = Declaration.string_of_value ~minify:true d in
+    String.trim v = "revert-layer"
+
   let lookup_custom ?layer ?(layer_order = []) ctx name =
     let target = "--" ^ name in
     let matches d = Declaration.property_name d = target in
@@ -1378,20 +1382,55 @@ module Computed_value = struct
     let important, normal =
       List.partition Declaration.is_important candidates
     in
+    (* CSS Cascade 5 §7.4: a [revert-layer] cascade keyword on a custom property
+       rolls the lookup back to the closest earlier layer's declaration,
+       ignoring the current layer's own value. *)
+    let revert_layer_fallback pool scope =
+      let scope_index =
+        match scope with
+        | None -> max_int
+        | Some name -> layer_index ~layer_order (Some name)
+      in
+      let earlier =
+        List.filter
+          (fun d ->
+            (not (is_revert_layer d))
+            &&
+            let l = Declaration.custom_declaration_layer d in
+            let idx = layer_index ~layer_order l in
+            idx < scope_index)
+          pool
+      in
+      match earlier with
+      | [] -> None
+      | _ -> (
+          let scored =
+            List.map
+              (fun d ->
+                let l = Declaration.custom_declaration_layer d in
+                (-layer_index ~layer_order l, d))
+              earlier
+          in
+          let sorted = List.sort (fun (a, _) (b, _) -> compare a b) scored in
+          match sorted with [] -> None | (_, d) :: _ -> Some d)
+    in
     let pick_normal pool =
       let by_layer scope =
         List.find_opt
           (fun d -> Declaration.custom_declaration_layer d = scope)
           pool
       in
+      let resolve_with_revert d scope =
+        if is_revert_layer d then revert_layer_fallback pool scope else Some d
+      in
       match layer with
       | None -> (
           match by_layer None with
-          | Some _ as v -> v
+          | Some d -> resolve_with_revert d None
           | None -> List.nth_opt pool 0)
       | Some scope -> (
           match by_layer (Some scope) with
-          | Some _ as v -> v
+          | Some d -> resolve_with_revert d (Some scope)
           | None ->
               (* Fall back to first declared layer (cascade-earlier wins within
                  a scoped lookup). *)
