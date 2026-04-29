@@ -144,6 +144,8 @@ and statement =
   | Scope of string option * string option * block
       (** [@scope (start)? to (end)? { ... }] *)
   | Keyframes of string * keyframe list  (** [@keyframes name { ... }] *)
+  | Webkit_keyframes of string * keyframe list
+      (** [@-webkit-keyframes name { ... }] *)
   | Font_face of font_face_descriptor list  (** [@font-face { ... }] *)
   | Page of string option * Declaration.declaration list
       (** [@page :first { ... }] *)
@@ -184,6 +186,8 @@ and font_face_descriptor =
   | Font_family of Properties.font_family list  (** Font family name *)
   | Src of Font_face.src  (** Font source (url(), local(), etc.) *)
   | Font_style of Properties.font_style  (** normal, italic, oblique *)
+  | Font_style_range of Properties.font_style * Properties.font_style
+      (** variable font style range, e.g. [normal italic] *)
   | Font_weight of Properties.font_weight  (** normal, bold, 100-900 *)
   | Font_weight_range of Properties.font_weight * Properties.font_weight
       (** variable font weight range, e.g. [100 900] *)

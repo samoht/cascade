@@ -368,10 +368,18 @@ and pp_font_face_descriptor : font_face_descriptor Pp.t =
         families
   | Src value ->
       pp_descriptor "src"
-        (fun ctx v -> Pp.string ctx (Font_face.src_to_string v))
+        (fun ctx v ->
+          Pp.string ctx (Font_face.src_to_string ~minify:(Pp.minified ctx) v))
         value
   | Font_style style ->
       pp_descriptor "font-style" Properties.pp_font_style style
+  | Font_style_range (min_style, max_style) ->
+      pp_descriptor "font-style"
+        (fun ctx (min_style, max_style) ->
+          Properties.pp_font_style ctx min_style;
+          Pp.space ctx ();
+          Properties.pp_font_style ctx max_style)
+        (min_style, max_style)
   | Font_weight weight ->
       pp_descriptor "font-weight" Properties.pp_font_weight weight
   | Font_weight_range (min_weight, max_weight) ->
@@ -582,6 +590,16 @@ and pp_statement : statement Pp.t =
       Pp.braces pp_block ctx content
   | Keyframes (name, frames) ->
       Pp.string ctx "@keyframes ";
+      Pp.string ctx name;
+      Pp.sp ctx ();
+      Pp.braces
+        (fun ctx () ->
+          Pp.cut ctx ();
+          Pp.nest 2 (Pp.list ~sep:Pp.cut pp_keyframe) ctx frames;
+          Pp.cut ctx ())
+        ctx ()
+  | Webkit_keyframes (name, frames) ->
+      Pp.string ctx "@-webkit-keyframes ";
       Pp.string ctx name;
       Pp.sp ctx ();
       Pp.braces
@@ -962,14 +980,24 @@ let read_keyframes_block inner =
   in
   read_frames []
 
-let read_keyframes (r : Cursor.t) : statement =
-  Cursor.with_context r "@keyframes" @@ fun () ->
-  Cursor.expect_at_keyword "keyframes" r;
+let read_keyframes_named at_keyword make_statement (r : Cursor.t) : statement =
+  Cursor.with_context r ("@" ^ at_keyword) @@ fun () ->
+  Cursor.expect_at_keyword at_keyword r;
   Cursor.ws r;
   let name = Cursor.ident ~keep_case:true r in
   Cursor.ws r;
   let frames = Cursor.braces read_keyframes_block r in
-  Keyframes (name, frames)
+  make_statement name frames
+
+let read_keyframes (r : Cursor.t) : statement =
+  read_keyframes_named "keyframes"
+    (fun name frames -> Keyframes (name, frames))
+    r
+
+let read_webkit_keyframes r =
+  read_keyframes_named "-webkit-keyframes"
+    (fun name frames -> Webkit_keyframes (name, frames))
+    r
 
 (* Read a font-face descriptor *)
 (* Helper to parse descriptor value after colon *)
@@ -1053,6 +1081,20 @@ let read_font_weight_descriptor r =
         Font_weight_range (first, second))
     r
 
+let read_font_style_descriptor r =
+  read_descriptor_value Declaration.read_property_value
+    (fun value ->
+      let c = Cursor.of_string value in
+      let first = Properties.read_font_style c in
+      Cursor.ws c;
+      if Cursor.is_done c then Font_style first
+      else
+        let second = Properties.read_font_style c in
+        Cursor.ws c;
+        Cursor.expect_eof c;
+        Font_style_range (first, second))
+    r
+
 let validate_nonempty_descriptor r name value =
   if String.trim value = "" then
     Cursor.err_invalid r ("empty " ^ name ^ " descriptor")
@@ -1080,14 +1122,8 @@ let read_font_face_descriptor (r : Cursor.t) : font_face_descriptor option =
               Cursor.list ~sep:Cursor.comma Properties.read_font_family r)
             (fun v -> Font_family v)
             r
-      | "src" ->
-          read_descriptor_value Declaration.read_property_value
-            (fun v -> Src (Font_face.src_of_string v))
-            r
-      | "font-style" ->
-          read_descriptor_value Properties.read_font_style
-            (fun v -> Font_style v)
-            r
+      | "src" -> read_descriptor_value Font_face.read_src (fun v -> Src v) r
+      | "font-style" -> read_font_style_descriptor r
       | "font-weight" -> read_font_weight_descriptor r
       | "font-stretch" ->
           read_descriptor_value Declaration.read_property_value
@@ -1158,10 +1194,10 @@ let read_font_face_block inner =
   let rank = function
     | Font_family _ -> 0
     | Src _ -> 1
-    | Font_display _ -> 2
-    | Font_weight _ | Font_weight_range _ -> 3
-    | Font_style _ -> 4
-    | Font_stretch _ | Font_stretch_range _ -> 5
+    | Font_weight _ | Font_weight_range _ -> 2
+    | Font_style _ | Font_style_range _ -> 3
+    | Font_stretch _ | Font_stretch_range _ -> 4
+    | Font_display _ -> 5
     | Unicode_range _ -> 6
     | Font_variant _ -> 7
     | Font_feature_settings _ -> 8
@@ -1438,6 +1474,7 @@ let rec read_statement (r : Cursor.t) : statement =
       ("starting-style", read_starting_style);
       ("scope", read_scope);
       ("keyframes", read_keyframes);
+      ("-webkit-keyframes", read_webkit_keyframes);
       ("font-face", read_font_face);
       ("page", read_page);
       ("font-palette-values", read_font_palette_values);
@@ -2027,7 +2064,8 @@ let rec vars_of_statement (stmt : statement) : Variables.any_var list =
   | Page_with_margins (_, _, _) -> []
   | Position_try (_, decls) -> Variables.vars_of_declarations decls
   | Font_palette_values _ | View_transition _ | Charset _ | Import _
-  | Namespace _ | Property _ | Layer_decl _ | Keyframes _ ->
+  | Namespace _ | Property _ | Layer_decl _ | Keyframes _ | Webkit_keyframes _
+    ->
       []
 
 and vars_of_block (block : block) : Variables.any_var list =

@@ -22,6 +22,12 @@ let size_adjust_to_string p = Pp.float_to_string p ^ "%"
 (** A single font source entry. *)
 type src_entry =
   | Url of { url : string; format : string option; tech : string option }
+  | Quoted_url of {
+      url : string;
+      quote : char;
+      format : string option;
+      tech : string option;
+    }
   | Local of string
 
 type src = src_entry list
@@ -36,21 +42,27 @@ let format_url s =
   if url_needs_quotes s then String.concat "" [ "url(\""; s; "\")" ]
   else String.concat "" [ "url("; s; ")" ]
 
+let format_quoted_url ~quote s =
+  String.concat "" [ "url("; String.make 1 quote; s; String.make 1 quote; ")" ]
+
+let format_src_url base format tech =
+  let with_format =
+    match format with Some f -> base ^ " format(\"" ^ f ^ "\")" | None -> base
+  in
+  match tech with
+  | Some t -> with_format ^ " tech(" ^ t ^ ")"
+  | None -> with_format
+
 let src_entry_to_string = function
-  | Url { url; format; tech } -> (
-      let base = format_url url in
-      let with_format =
-        match format with
-        | Some f -> base ^ " format(\"" ^ f ^ "\")"
-        | None -> base
-      in
-      match tech with
-      | Some t -> with_format ^ " tech(" ^ t ^ ")"
-      | None -> with_format)
+  | Url { url; format; tech } -> format_src_url (format_url url) format tech
+  | Quoted_url { url; quote; format; tech } ->
+      format_src_url (format_quoted_url ~quote url) format tech
   | Local name -> "local(\"" ^ name ^ "\")"
 
-let src_to_string entries =
-  String.concat ", " (List.map src_entry_to_string entries)
+let src_to_string ?(minify = false) entries =
+  String.concat
+    (if minify then "," else ", ")
+    (List.map src_entry_to_string entries)
 
 (** {1 Parsing} *)
 
@@ -87,8 +99,19 @@ let read_function_arg name t =
 
 let read_url t =
   match Cursor.url_opt t with
-  | Some url -> url
-  | None -> read_function_arg "url" t
+  | Some url -> `Bare url
+  | None -> (
+      Cursor.call "url" t @@ fun inner ->
+      Cursor.ws inner;
+      let value =
+        match Cursor.string_with_quote_opt inner with
+        | Some (url, quote) -> `Quoted (url, quote)
+        | None -> `Bare (Cursor.consume_remaining_to_string ~trim:true inner)
+      in
+      Cursor.expect_eof inner;
+      match value with
+      | `Bare "" | `Quoted ("", _) -> Cursor.err_invalid inner "url() argument"
+      | _ -> value)
 
 let read_src_modifier t =
   Cursor.ws t;
@@ -112,17 +135,27 @@ let read_src_entry t =
       let rec modifiers format tech =
         Cursor.ws t;
         match Cursor.option read_src_modifier t with
-        | None -> Url { url; format; tech }
+        | None -> (
+            match url with
+            | `Bare url -> Url { url; format; tech }
+            | `Quoted (url, quote) -> Quoted_url { url; quote; format; tech })
         | Some (`Format value) -> modifiers (Some value) tech
         | Some (`Tech value) -> modifiers format (Some value)
       in
       modifiers None None
 
 (** Parse a src string into a list of typed entries. *)
+let read_src t =
+  let entries = Cursor.list ~at_least:1 ~sep:Cursor.comma read_src_entry t in
+  Cursor.ws t;
+  if (not (Cursor.is_done t)) && not (Cursor.peek_semicolon t) then
+    Cursor.err t "unexpected tokens after font src";
+  entries
+
 let src_of_string s =
   try
     let t = Cursor.of_string s in
-    let entries = Cursor.list ~at_least:1 ~sep:Cursor.comma read_src_entry t in
+    let entries = read_src t in
     Cursor.expect_eof t;
     entries
   with Cursor.Parse_error _ -> failwith "invalid font src"

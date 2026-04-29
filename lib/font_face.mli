@@ -23,6 +23,12 @@ val size_adjust_to_string : size_adjust -> string
 (** A single font source entry. *)
 type src_entry =
   | Url of { url : string; format : string option; tech : string option }
+  | Quoted_url of {
+      url : string;
+      quote : char;
+      format : string option;
+      tech : string option;
+    }
   | Local of string
 
 type src = src_entry list
@@ -31,7 +37,7 @@ type src = src_entry list
 val src_entry_to_string : src_entry -> string
 (** [src_entry_to_string e] converts source entry to string. *)
 
-val src_to_string : src -> string
+val src_to_string : ?minify:bool -> src -> string
 (** [src_to_string entries] converts a font source list to its CSS string
     representation. *)
 
@@ -46,3 +52,6 @@ val size_adjust_of_string : string -> size_adjust
 val src_of_string : string -> src
 (** [src_of_string s] parses a src value. Raises {!Cursor.Parse_error} for
     unparsed sources. *)
+
+val read_src : Cursor.t -> src
+(** [read_src t] parses a font source list from a component cursor. *)
