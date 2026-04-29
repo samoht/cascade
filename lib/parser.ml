@@ -517,9 +517,11 @@ and cvs_to_buffer_min buf cvs =
   loop None false cvs
 
 let to_string_minified cvs =
-  let buf = Buffer.create 64 in
-  cvs_to_buffer_min buf cvs;
-  Buffer.contents buf
+  if cvs <> [] && List.for_all is_whitespace cvs then " "
+  else
+    let buf = Buffer.create 64 in
+    cvs_to_buffer_min buf cvs;
+    Buffer.contents buf
 
 (** {1 Rule / declaration consumers (section 5.3)} *)
 

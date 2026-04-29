@@ -337,11 +337,16 @@ module Length = struct
     container_height : float option;
   }
 
+  (* CSS Media Queries 4 §1.3: relative units in @media/@container resolve
+     against the initial value of font-size on the root element. Pre-fill
+     [parent_font_size] / [root_font_size] with the 16px default so [em] / [rem]
+     in queries always have a reference, while a fresh user-supplied
+     [Length.ctx] without these fields will reject relative units. *)
   let media_default =
     {
       base_font_size = 16.;
-      root_font_size = None;
-      parent_font_size = None;
+      root_font_size = Some 16.;
+      parent_font_size = Some 16.;
       viewport_width = None;
       viewport_height = None;
       container_width = None;
@@ -374,20 +379,8 @@ module Length = struct
     | In f -> Some (f *. in_to_px)
     | Pt f -> Some (f *. pt_to_px)
     | Pc f -> Some (f *. pc_to_px)
-    | Rem f ->
-        let base =
-          Option.value ctx.root_font_size ~default:ctx.base_font_size
-        in
-        Some (f *. base)
-    | Em f -> (
-        match ctx.parent_font_size with
-        | Some b -> Some (f *. b)
-        | None ->
-            (* CSS Media Queries 4 §1.3: in @media/@container query contexts
-               every relative unit resolves against the initial font-size value,
-               so [em] falls back to [base_font_size] when no parent size was
-               supplied. *)
-            Some (f *. ctx.base_font_size))
+    | Rem f -> Option.map (fun b -> f *. b) ctx.root_font_size
+    | Em f -> Option.map (fun b -> f *. b) ctx.parent_font_size
     | Vw f | Lvw f | Svw f ->
         Option.map (fun w -> f *. w /. 100.) ctx.viewport_width
     | Vh f | Lvh f | Svh f ->
@@ -1108,6 +1101,9 @@ module Computed_value = struct
     in
     match parsed with
     | None -> `Not_length
+    | Some (Pct _) ->
+        (* Defer to the property-aware percentage resolver. *)
+        `Not_length
     | Some length -> (
         match Length.to_px length_ctx length with
         | Some px ->
@@ -1217,6 +1213,42 @@ module Computed_value = struct
     in
     expand_vars ~resolve_var s
 
+  (* CSS Values 4 §6.3: percentages compute against a property-specific
+     reference. The resolver here only handles font-size (parent font-size);
+     other properties either keep the percentage as-is or reject when the
+     reference is missing. *)
+  let resolve_percentage ~property ~parent_font_size_px (s : string) :
+      (string, string) result =
+    let parts = String.split_on_char ' ' s |> List.filter (fun s -> s <> "") in
+    let pct_to_px part =
+      let n = String.length part in
+      if n > 1 && part.[n - 1] = '%' then
+        match float_of_string_opt (String.sub part 0 (n - 1)) with
+        | Some pct -> Some pct
+        | None -> None
+      else None
+    in
+    let exception Unresolved of string in
+    try
+      let resolved =
+        List.map
+          (fun part ->
+            match pct_to_px part with
+            | None -> part
+            | Some pct ->
+                if String.equal property "font-size" then
+                  match parent_font_size_px with
+                  | None -> raise (Unresolved part)
+                  | Some base ->
+                      Pp.to_string ~minify:true
+                        (Values.pp_length ~always:true)
+                        (Px (pct /. 100. *. base))
+                else raise (Unresolved part))
+          parts
+      in
+      Ok (String.concat " " resolved)
+    with Unresolved token -> Error ("unresolved percentage: " ^ token)
+
   let resolve ctx ~property ~value =
     let value = trim value in
     match value with
@@ -1255,7 +1287,13 @@ module Computed_value = struct
             | Ok with_color -> (
                 match resolve_url_in_value ctx with_color with
                 | Error msg -> Error msg
-                | Ok with_url -> resolve_lengths length_ctx with_url)))
+                | Ok with_url -> (
+                    match resolve_lengths length_ctx with_url with
+                    | Error msg -> Error msg
+                    | Ok with_lengths ->
+                        resolve_percentage ~property
+                          ~parent_font_size_px:length_ctx.parent_font_size
+                          with_lengths))))
 end
 
 let computed_value ?layer_order:_ ?layer:_ ctx decl =
