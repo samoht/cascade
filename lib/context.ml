@@ -701,6 +701,99 @@ module Container_eval = struct
     let key = "scroll-state(" ^ prop ^ ": " ^ value ^ ")" in
     List.mem_assoc key q.container_features
 
+  (* Strip a single outer paren pair if it wraps the entire input. *)
+  let strip_outer_parens s =
+    let s = String.trim s in
+    let len = String.length s in
+    if len >= 2 && s.[0] = '(' && s.[len - 1] = ')' then (
+      let inner = String.sub s 1 (len - 2) in
+      let depth = ref 0 in
+      let mid_close = ref false in
+      String.iteri
+        (fun i c ->
+          if c = '(' then incr depth
+          else if c = ')' then (
+            decr depth;
+            if !depth < 0 && i < String.length inner - 1 then mid_close := true))
+        inner;
+      if !mid_close then s else String.trim inner)
+    else s
+
+  (* Find the position of [keyword] at parenthesis depth 0 inside [s]. The
+     keyword is matched literally, so callers pass it with surrounding spaces
+     ([" and "], [" or "]) to avoid catching identifier substrings. *)
+  let find_top_level_keyword s keyword =
+    let len = String.length s in
+    let klen = String.length keyword in
+    let depth = ref 0 in
+    let result = ref None in
+    let i = ref 0 in
+    while !result = None && !i + klen <= len do
+      (match s.[!i] with '(' -> incr depth | ')' -> decr depth | _ -> ());
+      if !depth = 0 && String.sub s !i klen = keyword then result := Some !i;
+      incr i
+    done;
+    !result
+
+  let parse_style_call body =
+    let body = String.trim body in
+    if String.contains body ':' then
+      match String.split_on_char ':' body with
+      | [ name; value ] when String.trim name <> "" && String.trim value <> ""
+        ->
+          Some (String.trim name, Some (String.trim value))
+      | _ -> None
+    else if String.length body >= 2 && body.[0] = '-' && body.[1] = '-' then
+      Some (body, None)
+    else None
+
+  let parse_scroll_state_call body =
+    match String.split_on_char ':' (String.trim body) with
+    | [ name; value ] -> Some (String.trim name, String.trim value)
+    | _ -> None
+
+  let extract_func_call s prefix =
+    let s = String.trim s in
+    let plen = String.length prefix in
+    if String.length s < plen + 1 || String.sub s 0 plen <> prefix then None
+    else if s.[String.length s - 1] <> ')' then None
+    else Some (String.sub s plen (String.length s - plen - 1))
+
+  let rec eval_raw q raw =
+    let s = strip_outer_parens raw in
+    match find_top_level_keyword s " or " with
+    | Some i ->
+        let lhs = String.sub s 0 i in
+        let rhs = String.sub s (i + 4) (String.length s - i - 4) in
+        eval_raw q lhs || eval_raw q rhs
+    | None -> (
+        match find_top_level_keyword s " and " with
+        | Some i ->
+            let lhs = String.sub s 0 i in
+            let rhs = String.sub s (i + 5) (String.length s - i - 5) in
+            eval_raw q lhs && eval_raw q rhs
+        | None -> eval_leaf q s)
+
+  and eval_leaf q s =
+    let s = strip_outer_parens s in
+    match extract_func_call s "style(" with
+    | Some body -> (
+        match parse_style_call body with
+        | Some (prop, value) -> style_match q ~prop ~value
+        | None -> false)
+    | None -> (
+        match extract_func_call s "scroll-state(" with
+        | Some body -> (
+            match parse_scroll_state_call body with
+            | Some (prop, value) -> eval_scroll_state q ~prop ~value
+            | None -> false)
+        | None -> (
+            (* Fall back to media-feature evaluation for size queries. *)
+            let media_q = { q with media_features = q.container_features } in
+            try Media_eval.eval media_q (Media.of_string ("(" ^ s ^ ")"))
+            with Failure _ | Cursor.Parse_error _ | Reader.Parse_error _ ->
+              false))
+
   let rec eval q ?name : Container.t -> bool =
     let media_q = { q with media_features = q.container_features } in
     fun cond ->
@@ -713,10 +806,7 @@ module Container_eval = struct
         | Named (n, inner) -> eval q ~name:n inner
         | Style (prop, value) -> style_match q ~prop ~value
         | Scroll_state (prop, value) -> eval_scroll_state q ~prop ~value
-        | Feature_query raw -> (
-            try Media_eval.eval media_q (Media.of_string raw)
-            with Failure _ | Cursor.Parse_error _ | Reader.Parse_error _ ->
-              false)
+        | Feature_query raw -> eval_raw q raw
         | Custom media -> Media_eval.eval media_q media
 end
 
@@ -1119,14 +1209,6 @@ module Computed_value = struct
     let prev_is_operator = function
       | [] | Op _ :: _ | Lparen :: _ -> true
       | _ -> false
-
-    let signed_numeric_start s i len c =
-      i + 1 < len
-      && prev_is_operator [] (* dummy signature — actual call wraps acc *)
-      && (c = '-' || c = '+')
-      && (s.[i + 1] = '.' || (s.[i + 1] >= '0' && s.[i + 1] <= '9'))
-
-    let _ = signed_numeric_start
 
     let tokenise length_ctx s =
       let len = String.length s in
