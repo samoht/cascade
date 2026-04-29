@@ -27,10 +27,9 @@ type document = {
 
 type query = {
   media_type : string option;
-  media_features : Media.feature list;
+  media_features : Media.t list;
       (** Media features the rendering environment claims to expose. Build
-          entries with [Media.feature] (plain [(name: value)]) or
-          [Media.boolean_feature] (boolean [(name)]). *)
+          entries with [Media.feature] or [Media.boolean]. *)
   supports : Supports.t list;
       (** Capability flags the rendering environment claims to support. Each
           entry is normally a [Supports.Property] or [Supports.Func] leaf, built
@@ -52,6 +51,15 @@ type animation = {
   progress : float option;
   animated_properties : string list;
 }
+
+type property_registration = {
+  registered_name : string;
+  registered_syntax : Variables.any_syntax;
+  registered_inherits : bool;
+  registered_initial_value : string option;
+}
+
+type property_registry = { property_registrations : property_registration list }
 
 let empty =
   {
@@ -132,12 +140,131 @@ let empty_animation =
 let animation ?timeline_time ?progress ?(animated_properties = []) () =
   { timeline_time; progress; animated_properties }
 
+let empty_property_registry = { property_registrations = [] }
+
+let property_registration ?initial_value ~inherits name registered_syntax =
+  if not (String.length name >= 2 && String.sub name 0 2 = "--") then
+    invalid_arg "property_registration: name must start with --";
+  {
+    registered_name = name;
+    registered_syntax;
+    registered_inherits = inherits;
+    registered_initial_value = initial_value;
+  }
+
+let property_registry ?(property_registrations = []) () =
+  { property_registrations }
+
 let by_name name decls =
   List.find_opt (fun d -> Declaration.property_name d = name) decls
 
 let custom_property name ctx = by_name name ctx.custom_properties
 let inherited_value property ctx = by_name property ctx.inherited_values
 let initial_value property ctx = by_name property ctx.initial_values
+
+let media_feature_value name : Media.t -> Media.value option =
+  let ident s = Some (Media.Ident s) in
+  function
+  | Media.Width l when String.equal name "width" -> Some (Media.Length l)
+  | Media.Height l when String.equal name "height" -> Some (Media.Length l)
+  | Media.Aspect_ratio (a, b) when String.equal name "aspect-ratio" ->
+      Some (Media.Ratio (a, b))
+  | Media.Resolution (n, unit) when String.equal name "resolution" ->
+      Some (Media.Resolution_value (n, unit))
+  | Media.Color n when String.equal name "color" -> Some (Media.Integer n)
+  | Media.Color_index n when String.equal name "color-index" ->
+      Some (Media.Integer n)
+  | Media.Monochrome n when String.equal name "monochrome" ->
+      Some (Media.Integer n)
+  | Media.Color_gamut g when String.equal name "color-gamut" ->
+      ident
+        (match g with `Srgb -> "srgb" | `P3 -> "p3" | `Rec2020 -> "rec2020")
+  | Media.Video_color_gamut g when String.equal name "video-color-gamut" ->
+      ident
+        (match g with `Srgb -> "srgb" | `P3 -> "p3" | `Rec2020 -> "rec2020")
+  | Media.Dynamic_range r when String.equal name "dynamic-range" ->
+      ident (match r with `Standard -> "standard" | `High -> "high")
+  | Media.Video_dynamic_range r when String.equal name "video-dynamic-range" ->
+      ident (match r with `Standard -> "standard" | `High -> "high")
+  | Media.Scan s when String.equal name "scan" ->
+      ident
+        (match s with
+        | `Interlace -> "interlace"
+        | `Progressive -> "progressive")
+  | Media.Update u when String.equal name "update" ->
+      ident (match u with `None -> "none" | `Slow -> "slow" | `Fast -> "fast")
+  | Media.Overflow_block o when String.equal name "overflow-block" ->
+      ident
+        (match o with
+        | `None -> "none"
+        | `Scroll -> "scroll"
+        | `Optional_paged -> "optional-paged"
+        | `Paged -> "paged")
+  | Media.Overflow_inline o when String.equal name "overflow-inline" ->
+      ident (match o with `None -> "none" | `Scroll -> "scroll")
+  | Media.Prefers_reduced_motion v
+    when String.equal name "prefers-reduced-motion" ->
+      ident
+        (match v with `No_preference -> "no-preference" | `Reduce -> "reduce")
+  | Media.Prefers_reduced_transparency v
+    when String.equal name "prefers-reduced-transparency" ->
+      ident
+        (match v with `No_preference -> "no-preference" | `Reduce -> "reduce")
+  | Media.Prefers_reduced_data v when String.equal name "prefers-reduced-data"
+    ->
+      ident
+        (match v with `No_preference -> "no-preference" | `Reduce -> "reduce")
+  | Media.Prefers_contrast v when String.equal name "prefers-contrast" ->
+      ident
+        (match v with
+        | `No_preference -> "no-preference"
+        | `Less -> "less"
+        | `More -> "more"
+        | `Custom -> "custom")
+  | Media.Prefers_color_scheme v when String.equal name "prefers-color-scheme"
+    ->
+      ident (match v with `Light -> "light" | `Dark -> "dark")
+  | Media.Forced_colors v when String.equal name "forced-colors" ->
+      ident (match v with `None -> "none" | `Active -> "active")
+  | Media.Inverted_colors v when String.equal name "inverted-colors" ->
+      ident (match v with `None -> "none" | `Inverted -> "inverted")
+  | Media.Pointer v when String.equal name "pointer" ->
+      ident
+        (match v with `None -> "none" | `Coarse -> "coarse" | `Fine -> "fine")
+  | Media.Any_pointer v when String.equal name "any-pointer" ->
+      ident
+        (match v with `None -> "none" | `Coarse -> "coarse" | `Fine -> "fine")
+  | Media.Hover v when String.equal name "hover" ->
+      ident (match v with `None -> "none" | `Hover -> "hover")
+  | Media.Any_hover v when String.equal name "any-hover" ->
+      ident (match v with `None -> "none" | `Hover -> "hover")
+  | Media.Scripting v when String.equal name "scripting" ->
+      ident
+        (match v with
+        | `None -> "none"
+        | `Initial_only -> "initial-only"
+        | `Enabled -> "enabled")
+  | Media.Nav_controls v when String.equal name "nav-controls" ->
+      ident (match v with `None -> "none" | `Back_button -> "back-button")
+  | Media.Orientation v when String.equal name "orientation" ->
+      ident (match v with `Portrait -> "portrait" | `Landscape -> "landscape")
+  | Media.Range (feature_name, Media.Eq, value)
+    when String.equal name feature_name ->
+      Some value
+  | Media.Plain (feature_name, value) when String.equal name feature_name ->
+      Some value
+  | _ -> None
+
+let media_feature name ctx =
+  List.find_map (media_feature_value name) ctx.media_features
+
+let container_feature name ctx =
+  List.find_map
+    (function
+      | Container.Feature_query media -> media_feature_value name media
+      | _ -> None)
+    ctx.container_features
+
 let has_class name ctx = List.exists (String.equal name) ctx.classes
 let has_id name ctx = List.exists (String.equal name) ctx.ids
 let attribute name ctx = List.assoc_opt name ctx.attributes
@@ -145,6 +272,43 @@ let import_source url ctx = List.assoc_opt url ctx.imports
 
 let animates_property property ctx =
   List.exists (String.equal property) ctx.animated_properties
+
+let registered_property name registry =
+  List.find_opt
+    (fun registration -> String.equal name registration.registered_name)
+    registry.property_registrations
+
+let validate_value_against_syntax (Variables.Syntax syntax) value =
+  match syntax with
+  | Variables.Universal | Variables.Image | Variables.Transform_function
+  | Variables.Transform_list | Variables.Resolution ->
+      if String.trim value = "" then Error "registered value is empty"
+      else Ok ()
+  | _ -> (
+      let cursor = Cursor.of_string value in
+      match
+        try
+          ignore (Variables.read_value cursor syntax);
+          Cursor.ws cursor;
+          if Cursor.is_done cursor then Ok ()
+          else
+            Error
+              ("value has trailing tokens: " ^ Cursor.remaining_to_string cursor)
+        with Error.Parse_error e -> Error (Error.to_string e)
+      with
+      | Ok () -> Ok ()
+      | Error msg -> Error msg)
+
+let validate_registered_custom_property registry decl =
+  let name = Declaration.property_name decl in
+  if not (String.length name >= 2 && String.sub name 0 2 = "--") then
+    Error ("not a custom property: " ^ name)
+  else
+    match registered_property name registry with
+    | None -> Ok ()
+    | Some registration ->
+        let value = Declaration.string_of_value ~minify:false decl in
+        validate_value_against_syntax registration.registered_syntax value
 
 (* Pretty-printers emit a debug-style record for inspection, not CSS source. *)
 
@@ -270,7 +434,7 @@ let pp_query : query Pp.t =
     Pp.char ctx ']'
   in
   pp_field ctx ~first "media_features"
-    (pp_typed_list (Pp.to_string Media.pp_feature))
+    (pp_typed_list Media.to_string)
     q.media_features;
   pp_field ctx ~first "supports" (pp_typed_list Supports.to_string) q.supports;
   pp_field ctx ~first "container_name" pp_string_option q.container_name;
@@ -301,6 +465,29 @@ let pp_animation : animation Pp.t =
     a.progress;
   pp_field ctx ~first "animated_properties" pp_string_list a.animated_properties;
   Pp.char ctx '}'
+
+let pp_property_registration ctx registration =
+  Pp.char ctx '{';
+  Pp.string ctx "name=";
+  Pp.string ctx registration.registered_name;
+  Pp.string ctx "; syntax=";
+  Variables.pp_any_syntax ctx registration.registered_syntax;
+  Pp.string ctx "; inherits=";
+  Pp.string ctx (Bool.to_string registration.registered_inherits);
+  Pp.string ctx "; initial_value=";
+  pp_string_option ctx registration.registered_initial_value;
+  Pp.char ctx '}'
+
+let pp_property_registry : property_registry Pp.t =
+ fun ctx registry ->
+  Pp.char ctx '[';
+  let first = ref true in
+  List.iter
+    (fun registration ->
+      if !first then first := false else Pp.string ctx ", ";
+      pp_property_registration ctx registration)
+    registry.property_registrations;
+  Pp.char ctx ']'
 
 (** {1 CSS Evaluator Pipeline}
 
@@ -434,7 +621,7 @@ module Media_value = struct
     | Number n -> Some n
     | Ratio (a, b) when b <> 0 -> Some (float_of_int a /. float_of_int b)
     | Ratio _ -> None
-    | Resolution (n, _) -> Some n
+    | Resolution_value (n, _) -> Some n
     | Ident _ -> None
 
   let cmp_op : Media.cmp -> float -> float -> bool = function
@@ -487,7 +674,7 @@ end
 module Match_media = struct
   open Media
 
-  type feature_table = Media.feature list
+  type feature_table = Media.t list
 
   let strip_min_max name =
     let len = String.length name in
@@ -497,13 +684,8 @@ module Match_media = struct
       Some (`Max, String.sub name 4 (len - 4))
     else None
 
-  (* Pull the value out of a [Plain (name, _)] entry whose [name] matches
-     [feature_name]. Boolean entries don't carry a comparable value. *)
   let lookup_value (table : feature_table) feature_name : Media.value option =
-    List.find_map
-      (function
-        | Plain (n, v) when String.equal n feature_name -> Some v | _ -> None)
-      table
+    List.find_map (media_feature_value feature_name) table
 
   let eval_feature (table : feature_table) : Media.feature -> bool =
     let with_lookup name f =
@@ -516,8 +698,7 @@ module Match_media = struct
         List.exists
           (function
             | Boolean n -> String.equal n name
-            | Plain (n, _) -> String.equal n name
-            | _ -> false)
+            | feature -> Option.is_some (media_feature_value name feature))
           table
     | Plain (name, value) -> (
         match strip_min_max name with
@@ -540,86 +721,165 @@ module Match_media = struct
             | Some x, Some y -> Some (x && y)
             | _ -> None)
 
-  let rec eval_condition (table : feature_table) : Media.condition -> bool =
-    function
-    | Feature f -> eval_feature table f
-    | Not c -> not (eval_condition table c)
-    | And (a, b) -> eval_condition table a && eval_condition table b
-    | Or (a, b) -> eval_condition table a || eval_condition table b
-
   let eval_medium q : Media.medium -> bool = function
     | All -> true
     | Screen -> q.media_type = Some "screen"
     | Print -> q.media_type = Some "print"
     | Other s -> q.media_type = Some s
 
-  let rec eval_query q : Media.query -> bool = function
-    | Cond c -> eval_condition q.media_features c
-    | Type { prefix; type_; trailing } -> (
-        let head = eval_medium q type_ in
-        let body =
-          match trailing with
-          | None -> head
-          | Some c -> head && eval_condition q.media_features c
-        in
-        match prefix with Some Media.Not -> not body | _ -> body)
-    | List qs -> List.exists (eval_query q) qs
-
   let bool_feature q name expected =
     match lookup_value q.media_features name with
     | Some (Ident s) -> String.equal s expected
     | _ -> false
 
-  (* CSS Media Queries 4 typed shorthands map onto specific [Plain]/[Range]
-     evaluations against the explicit feature table. *)
-  let rec eval q (m : Media.t) : bool =
-    match m with
-    | Min_width px | Max_width px -> (
-        let op : Media.cmp = match m with Min_width _ -> Ge | _ -> Le in
-        match lookup_value q.media_features "width" with
-        | None -> false
-        | Some actual -> (
-            match Media_value.compare_with op actual (Length (Px px)) with
-            | Some b -> b
-            | None -> false))
-    | Not_min_width px -> not (eval q (Min_width px))
+  let plain q name value = eval_feature q.media_features (Plain (name, value))
+  let ident q name value = bool_feature q name value
+  let integer q name value = plain q name (Integer value)
+  let length q name value = plain q name (Length value)
+  let ratio q name a b = plain q name (Ratio (a, b))
+  let resolution q name n unit = plain q name (Resolution_value (n, unit))
+
+  let eval_width_range q op px =
+    match lookup_value q.media_features "width" with
+    | None -> false
+    | Some actual ->
+        Option.value ~default:false
+          (Media_value.compare_with op actual (Length (Px px)))
+
+  let eval_size q = function
+    | Width l -> Some (length q "width" l)
+    | Height l -> Some (length q "height" l)
+    | Min_width px -> Some (eval_width_range q Ge px)
+    | Max_width px -> Some (eval_width_range q Le px)
     | Min_width_rem rem ->
-        eval q (Min_width (rem *. Length.media_default.base_font_size))
-    | Not_min_width_rem rem ->
-        eval q (Not_min_width (rem *. Length.media_default.base_font_size))
+        Some
+          (eval_width_range q Ge (rem *. Length.media_default.base_font_size))
     | Min_width_length l -> (
         match Length.media_to_px l with
-        | Some px -> eval q (Min_width px)
-        | None -> false)
-    | Not_min_width_length l -> not (eval q (Min_width_length l))
+        | Some px -> Some (eval_width_range q Ge px)
+        | None -> Some false)
+    | _ -> None
+
+  let eval_display q = function
+    | Aspect_ratio (a, b) -> Some (ratio q "aspect-ratio" a b)
+    | Resolution (n, unit) -> Some (resolution q "resolution" n unit)
+    | Color n -> Some (integer q "color" n)
+    | Color_index n -> Some (integer q "color-index" n)
+    | Monochrome n -> Some (integer q "monochrome" n)
+    | Color_gamut `Srgb -> Some (ident q "color-gamut" "srgb")
+    | Color_gamut `P3 -> Some (ident q "color-gamut" "p3")
+    | Color_gamut `Rec2020 -> Some (ident q "color-gamut" "rec2020")
+    | Video_color_gamut `Srgb -> Some (ident q "video-color-gamut" "srgb")
+    | Video_color_gamut `P3 -> Some (ident q "video-color-gamut" "p3")
+    | Video_color_gamut `Rec2020 -> Some (ident q "video-color-gamut" "rec2020")
+    | Dynamic_range `Standard -> Some (ident q "dynamic-range" "standard")
+    | Dynamic_range `High -> Some (ident q "dynamic-range" "high")
+    | Video_dynamic_range `Standard ->
+        Some (ident q "video-dynamic-range" "standard")
+    | Video_dynamic_range `High -> Some (ident q "video-dynamic-range" "high")
+    | _ -> None
+
+  let eval_user_prefs q = function
     | Prefers_reduced_motion `No_preference ->
-        bool_feature q "prefers-reduced-motion" "no-preference"
+        Some (ident q "prefers-reduced-motion" "no-preference")
     | Prefers_reduced_motion `Reduce ->
-        bool_feature q "prefers-reduced-motion" "reduce"
-    | Prefers_contrast `More -> bool_feature q "prefers-contrast" "more"
-    | Prefers_contrast `Less -> bool_feature q "prefers-contrast" "less"
-    | Prefers_color_scheme `Dark -> bool_feature q "prefers-color-scheme" "dark"
+        Some (ident q "prefers-reduced-motion" "reduce")
+    | Prefers_reduced_transparency `No_preference ->
+        Some (ident q "prefers-reduced-transparency" "no-preference")
+    | Prefers_reduced_transparency `Reduce ->
+        Some (ident q "prefers-reduced-transparency" "reduce")
+    | Prefers_reduced_data `No_preference ->
+        Some (ident q "prefers-reduced-data" "no-preference")
+    | Prefers_reduced_data `Reduce ->
+        Some (ident q "prefers-reduced-data" "reduce")
+    | Prefers_contrast `No_preference ->
+        Some (ident q "prefers-contrast" "no-preference")
+    | Prefers_contrast `More -> Some (ident q "prefers-contrast" "more")
+    | Prefers_contrast `Less -> Some (ident q "prefers-contrast" "less")
+    | Prefers_contrast `Custom -> Some (ident q "prefers-contrast" "custom")
+    | Prefers_color_scheme `Dark -> Some (ident q "prefers-color-scheme" "dark")
     | Prefers_color_scheme `Light ->
-        bool_feature q "prefers-color-scheme" "light"
-    | Forced_colors `Active -> bool_feature q "forced-colors" "active"
-    | Forced_colors `None -> bool_feature q "forced-colors" "none"
-    | Inverted_colors `Inverted -> bool_feature q "inverted-colors" "inverted"
-    | Inverted_colors `None -> bool_feature q "inverted-colors" "none"
-    | Pointer `None -> bool_feature q "pointer" "none"
-    | Pointer `Coarse -> bool_feature q "pointer" "coarse"
-    | Pointer `Fine -> bool_feature q "pointer" "fine"
-    | Any_pointer `None -> bool_feature q "any-pointer" "none"
-    | Any_pointer `Coarse -> bool_feature q "any-pointer" "coarse"
-    | Any_pointer `Fine -> bool_feature q "any-pointer" "fine"
-    | Scripting `None -> bool_feature q "scripting" "none"
-    | Scripting `Initial_only -> bool_feature q "scripting" "initial-only"
-    | Scripting `Enabled -> bool_feature q "scripting" "enabled"
-    | Hover -> bool_feature q "hover" "hover"
-    | Print -> q.media_type = Some "print"
-    | Orientation `Portrait -> bool_feature q "orientation" "portrait"
-    | Orientation `Landscape -> bool_feature q "orientation" "landscape"
-    | Custom q' -> eval_query q q'
+        Some (ident q "prefers-color-scheme" "light")
+    | Forced_colors `Active -> Some (ident q "forced-colors" "active")
+    | Forced_colors `None -> Some (ident q "forced-colors" "none")
+    | Inverted_colors `Inverted -> Some (ident q "inverted-colors" "inverted")
+    | Inverted_colors `None -> Some (ident q "inverted-colors" "none")
+    | _ -> None
+
+  let eval_interaction q = function
+    | Pointer `None -> Some (ident q "pointer" "none")
+    | Pointer `Coarse -> Some (ident q "pointer" "coarse")
+    | Pointer `Fine -> Some (ident q "pointer" "fine")
+    | Any_pointer `None -> Some (ident q "any-pointer" "none")
+    | Any_pointer `Coarse -> Some (ident q "any-pointer" "coarse")
+    | Any_pointer `Fine -> Some (ident q "any-pointer" "fine")
+    | Hover `None -> Some (ident q "hover" "none")
+    | Hover `Hover -> Some (ident q "hover" "hover")
+    | Any_hover `None -> Some (ident q "any-hover" "none")
+    | Any_hover `Hover -> Some (ident q "any-hover" "hover")
+    | Scripting `None -> Some (ident q "scripting" "none")
+    | Scripting `Initial_only -> Some (ident q "scripting" "initial-only")
+    | Scripting `Enabled -> Some (ident q "scripting" "enabled")
+    | Nav_controls `None -> Some (ident q "nav-controls" "none")
+    | Nav_controls `Back_button -> Some (ident q "nav-controls" "back-button")
+    | _ -> None
+
+  let eval_output q = function
+    | Scan `Interlace -> Some (ident q "scan" "interlace")
+    | Scan `Progressive -> Some (ident q "scan" "progressive")
+    | Update `None -> Some (ident q "update" "none")
+    | Update `Slow -> Some (ident q "update" "slow")
+    | Update `Fast -> Some (ident q "update" "fast")
+    | Overflow_block `None -> Some (ident q "overflow-block" "none")
+    | Overflow_block `Scroll -> Some (ident q "overflow-block" "scroll")
+    | Overflow_block `Optional_paged ->
+        Some (ident q "overflow-block" "optional-paged")
+    | Overflow_block `Paged -> Some (ident q "overflow-block" "paged")
+    | Overflow_inline `None -> Some (ident q "overflow-inline" "none")
+    | Overflow_inline `Scroll -> Some (ident q "overflow-inline" "scroll")
+    | Orientation `Portrait -> Some (ident q "orientation" "portrait")
+    | Orientation `Landscape -> Some (ident q "orientation" "landscape")
+    | _ -> None
+
+  let eval_range q = function
+    | Range (name, op, value) ->
+        Some (eval_feature q.media_features (Range (name, op, value)))
+    | Range_rev (value, op, name) ->
+        Some (eval_feature q.media_features (Range_rev (value, op, name)))
+    | Interval (a, op1, name, op2, b) ->
+        Some (eval_feature q.media_features (Interval (a, op1, name, op2, b)))
+    | Boolean name ->
+        Some (eval_feature q.media_features (Boolean name : Media.feature))
+    | _ -> None
+
+  let first_some fs q m =
+    List.find_map (fun f -> f q m) fs |> Option.value ~default:false
+
+  let rec eval q = function
+    | Not_min_width px -> not (eval q (Min_width px))
+    | Not_min_width_rem rem -> not (eval q (Min_width_rem rem))
+    | Not_min_width_length l -> not (eval q (Min_width_length l))
+    | And (a, b) -> eval q a && eval q b
+    | Or (a, b) -> eval q a || eval q b
     | Negated m -> not (eval q m)
+    | Print -> q.media_type = Some "print"
+    | Type_query { prefix; type_; trailing } -> (
+        let body =
+          eval_medium q type_ && Option.fold ~none:true ~some:(eval q) trailing
+        in
+        match prefix with Some Media.Not -> not body | _ -> body)
+    | List qs -> List.exists (eval q) qs
+    | m ->
+        first_some
+          [
+            eval_size;
+            eval_display;
+            eval_user_prefs;
+            eval_interaction;
+            eval_output;
+            eval_range;
+          ]
+          q m
 end
 
 (** {2 Container-query evaluation (CSS Containment 3 §3.4)}
@@ -637,23 +897,11 @@ module Match_container = struct
     | Some _, None -> false
 
   (* Project [container_features] entries that look like size/range features
-     into [Media.feature]s so the [Match_media] evaluator can range-compare
-     them. [Feature_query "name: value"] is the only shape we lift; the [Style
-     _] / [Scroll_state _] entries are handled directly. *)
+     into [Media.t]s so the [Match_media] evaluator can range-compare them.
+     [Style _] / [Scroll_state _] are handled directly. *)
   let media_features_of q =
     List.filter_map
-      (function
-        | Container.Feature_query raw -> (
-            match String.index_opt raw ':' with
-            | None -> None
-            | Some i ->
-                let name = String.trim (String.sub raw 0 i) in
-                let value =
-                  String.trim
-                    (String.sub raw (i + 1) (String.length raw - i - 1))
-                in
-                if name = "" then None else Some (Media.feature name value))
-        | _ -> None)
+      (function Container.Feature_query f -> Some f | _ -> None)
       q.container_features
 
   let style_match q ~prop ~value =
@@ -676,101 +924,6 @@ module Match_container = struct
         | _ -> false)
       q.container_features
 
-  let outer_parens_wrap_all s =
-    let len = String.length s in
-    let rec loop depth i =
-      if i >= len - 1 then true
-      else
-        match s.[i] with
-        | '(' -> loop (depth + 1) (i + 1)
-        | ')' when depth = 0 -> false
-        | ')' -> loop (depth - 1) (i + 1)
-        | _ -> loop depth (i + 1)
-    in
-    len >= 2 && s.[0] = '(' && s.[len - 1] = ')' && loop 0 1
-
-  (* Strip a single outer paren pair if it wraps the entire input. *)
-  let strip_outer_parens s =
-    let s = String.trim s in
-    if outer_parens_wrap_all s then
-      String.sub s 1 (String.length s - 2) |> String.trim
-    else s
-
-  (* Find the position of [keyword] at parenthesis depth 0 inside [s]. The
-     keyword is matched literally, so callers pass it with surrounding spaces
-     ([" and "], [" or "]) to avoid catching identifier substrings. *)
-  let find_top_level_keyword s keyword =
-    let len = String.length s in
-    let klen = String.length keyword in
-    let depth = ref 0 in
-    let result = ref None in
-    let i = ref 0 in
-    while !result = None && !i + klen <= len do
-      (match s.[!i] with '(' -> incr depth | ')' -> decr depth | _ -> ());
-      if !depth = 0 && String.sub s !i klen = keyword then result := Some !i;
-      incr i
-    done;
-    !result
-
-  let parse_style_call body =
-    let body = String.trim body in
-    if String.contains body ':' then
-      match String.split_on_char ':' body with
-      | [ name; value ] when String.trim name <> "" && String.trim value <> ""
-        ->
-          Some (String.trim name, Some (String.trim value))
-      | _ -> None
-    else if String.length body >= 2 && body.[0] = '-' && body.[1] = '-' then
-      Some (body, None)
-    else None
-
-  let parse_scroll_state_call body =
-    match String.split_on_char ':' (String.trim body) with
-    | [ name; value ] -> Some (String.trim name, String.trim value)
-    | _ -> None
-
-  let extract_func_call s prefix =
-    let s = String.trim s in
-    let plen = String.length prefix in
-    if String.length s < plen + 1 || String.sub s 0 plen <> prefix then None
-    else if s.[String.length s - 1] <> ')' then None
-    else Some (String.sub s plen (String.length s - plen - 1))
-
-  let rec eval_raw q raw =
-    let s = strip_outer_parens raw in
-    match find_top_level_keyword s " or " with
-    | Some i ->
-        let lhs = String.sub s 0 i in
-        let rhs = String.sub s (i + 4) (String.length s - i - 4) in
-        eval_raw q lhs || eval_raw q rhs
-    | None -> (
-        match find_top_level_keyword s " and " with
-        | Some i ->
-            let lhs = String.sub s 0 i in
-            let rhs = String.sub s (i + 5) (String.length s - i - 5) in
-            eval_raw q lhs && eval_raw q rhs
-        | None -> eval_leaf q s)
-
-  and eval_leaf q s =
-    let s = strip_outer_parens s in
-    match extract_func_call s "style(" with
-    | Some body -> (
-        match parse_style_call body with
-        | Some (prop, value) -> style_match q ~prop ~value
-        | None -> false)
-    | None -> (
-        match extract_func_call s "scroll-state(" with
-        | Some body -> (
-            match parse_scroll_state_call body with
-            | Some (prop, value) -> eval_scroll_state q ~prop ~value
-            | None -> false)
-        | None -> (
-            (* Fall back to media-feature evaluation for size queries. *)
-            let media_q = { q with media_features = media_features_of q } in
-            try Match_media.eval media_q (Media.of_string ("(" ^ s ^ ")"))
-            with Failure _ | Cursor.Parse_error _ | Reader.Parse_error _ ->
-              false))
-
   let rec eval q ?name : Container.t -> bool =
     let media_q = { q with media_features = media_features_of q } in
     fun cond ->
@@ -783,7 +936,7 @@ module Match_container = struct
         | Named (n, inner) -> eval q ~name:n inner
         | Style (prop, value) -> style_match q ~prop ~value
         | Scroll_state (prop, value) -> eval_scroll_state q ~prop ~value
-        | Feature_query raw -> eval_raw q raw
+        | Feature_query media -> Match_media.eval media_q media
         | Custom media -> Match_media.eval media_q media
 end
 
