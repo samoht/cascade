@@ -1029,7 +1029,7 @@ let test_loader_import_layer_contract () =
        250);--spacing:0.25rem}}"
     "@import url(theme.css) layer(theme);";
   check_layered_import_loaded "tailwind base import enters base layer" ~loader
-    ~layer_order ~expected:"@layer base{*,::before,::after{margin:0}}"
+    ~layer_order ~expected:"@layer base{*,:before,:after{margin:0}}"
     "@import url(base.css) layer(base);";
   check_layered_import_loaded
     "tailwind components import keeps layer when query context matches" ~query

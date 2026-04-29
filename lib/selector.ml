@@ -569,7 +569,18 @@ let read_attr_flag t : attr_flag option =
       | None -> Cursor.err_unexpected t)
     t
 
+let block_has_closing_char t loc closing =
+  match Cursor.source t with
+  | Some source when loc.Loc.end_pos > loc.start_pos ->
+      loc.end_pos <= String.length source && source.[loc.end_pos - 1] = closing
+  | _ -> true
+
 let read_attribute t =
+  (match Cursor.peek t with
+  | Some (Component.Block { node = { opening = Token.Square; _ }; loc })
+    when not (block_has_closing_char t loc ']') ->
+      Cursor.err_expected_but_eof t "']'"
+  | _ -> ());
   Cursor.brackets
     (fun inner ->
       Cursor.ws inner;
@@ -1411,8 +1422,26 @@ let is_unescaped_selector_syntax s start =
   in
   loop start
 
+let has_invalid_css_escape s =
+  let len = String.length s in
+  let rec loop i =
+    if i >= len then false
+    else if s.[i] <> '\\' then loop (i + 1)
+    else if i + 1 >= len then true
+    else
+      match s.[i + 1] with
+      | '\n' | '\r' | '\012' -> true
+      | _ ->
+          let j = ref i in
+          skip_css_escape s j;
+          loop !j
+  in
+  loop 0
+
 let can_fallback_shortcut s =
   let len = String.length s in
+  (not (has_invalid_css_escape s))
+  &&
   match s.[0] with
   | '.' | '#' -> len > 1 && not (is_unescaped_selector_syntax s 1)
   | _ -> not (is_unescaped_selector_syntax s 0)
@@ -1432,7 +1461,7 @@ let of_string s =
               (unescape_selector_name (String.sub s 1 (String.length s - 1)))
         | '#' ->
             id (unescape_selector_name (String.sub s 1 (String.length s - 1)))
-        | _ -> element (unescape_selector_name s))
+        | _ -> Element (None, unescape_selector_name s))
 
 (** Pretty print a function-like pseudo-class or pseudo-element *)
 let pp_func : 'a. Pp.ctx -> prefix:string -> string -> 'a Pp.t -> 'a -> unit =
@@ -1502,11 +1531,14 @@ let escape_selector_name name =
   else
     let buf = Buffer.create (String.length name * 2) in
     let hex_digits = "0123456789abcdef" in
-    let hex_escape c =
-      let code = Char.code c in
+    let hex_escape_code code =
       Buffer.add_char buf '\\';
-      if code >= 0x10 then Buffer.add_char buf hex_digits.[code lsr 4];
-      Buffer.add_char buf hex_digits.[code land 0xF];
+      let rec emit n acc =
+        if n = 0 && acc = [] then Buffer.add_char buf '0'
+        else if n = 0 then List.iter (Buffer.add_char buf) acc
+        else emit (n / 16) (hex_digits.[n mod 16] :: acc)
+      in
+      emit code [];
       Buffer.add_char buf ' '
     in
     let first_char = name.[0] in
@@ -1517,38 +1549,50 @@ let escape_selector_name name =
          && name.[1] >= '0'
          && name.[1] <= '9'
     in
-    String.iteri
-      (fun i c ->
-        if i = 0 && first_needs_hex_escape then hex_escape c
-        else
-          match c with
-          | '\x00' .. '\x1F' | '\x7F' -> hex_escape c
-          | '[' -> Buffer.add_string buf "\\["
-          | ']' -> Buffer.add_string buf "\\]"
-          | '(' -> Buffer.add_string buf "\\("
-          | ')' -> Buffer.add_string buf "\\)"
-          | ',' -> Buffer.add_string buf "\\,"
-          | '/' -> Buffer.add_string buf "\\/"
-          | ':' -> Buffer.add_string buf "\\:"
-          | '%' -> Buffer.add_string buf "\\%"
-          | '.' -> Buffer.add_string buf "\\."
-          | '#' -> Buffer.add_string buf "\\#"
-          | ' ' -> Buffer.add_string buf "\\ "
-          | '"' -> Buffer.add_string buf "\\\""
-          | '\'' -> Buffer.add_string buf "\\'"
-          | '@' -> Buffer.add_string buf "\\@"
-          | '*' -> Buffer.add_string buf "\\*"
-          | '>' -> Buffer.add_string buf "\\>"
-          | '+' -> Buffer.add_string buf "\\+"
-          | '~' -> Buffer.add_string buf "\\~"
-          | '&' -> Buffer.add_string buf "\\&"
-          | '^' -> Buffer.add_string buf "\\^"
-          | '$' -> Buffer.add_string buf "\\$"
-          | '=' -> Buffer.add_string buf "\\="
-          | '!' -> Buffer.add_string buf "\\!"
-          | '|' -> Buffer.add_string buf "\\|"
-          | c -> Buffer.add_char buf c)
-      name;
+    let add_ascii i c =
+      if i = 0 && first_needs_hex_escape then hex_escape_code (Char.code c)
+      else
+        match c with
+        | '\x00' .. '\x1F' | '\x7F' -> hex_escape_code (Char.code c)
+        | '[' -> Buffer.add_string buf "\\["
+        | ']' -> Buffer.add_string buf "\\]"
+        | '\\' -> Buffer.add_string buf "\\\\"
+        | '(' -> Buffer.add_string buf "\\("
+        | ')' -> Buffer.add_string buf "\\)"
+        | ',' -> Buffer.add_string buf "\\,"
+        | '/' -> Buffer.add_string buf "\\/"
+        | ':' -> Buffer.add_string buf "\\:"
+        | '%' -> Buffer.add_string buf "\\%"
+        | '.' -> Buffer.add_string buf "\\."
+        | '#' -> Buffer.add_string buf "\\#"
+        | ' ' -> Buffer.add_string buf "\\ "
+        | '"' -> Buffer.add_string buf "\\\""
+        | '\'' -> Buffer.add_string buf "\\'"
+        | '@' -> Buffer.add_string buf "\\@"
+        | '*' -> Buffer.add_string buf "\\*"
+        | '>' -> Buffer.add_string buf "\\>"
+        | '+' -> Buffer.add_string buf "\\+"
+        | '~' -> Buffer.add_string buf "\\~"
+        | '&' -> Buffer.add_string buf "\\&"
+        | '^' -> Buffer.add_string buf "\\^"
+        | '$' -> Buffer.add_string buf "\\$"
+        | '=' -> Buffer.add_string buf "\\="
+        | '!' -> Buffer.add_string buf "\\!"
+        | '|' -> Buffer.add_string buf "\\|"
+        | c -> Buffer.add_char buf c
+    in
+    let folder () i = function
+      | `Uchar u ->
+          let cp = Uchar.to_int u in
+          if cp < 0x80 then add_ascii i (Char.chr cp) else hex_escape_code cp
+      | `Malformed bytes ->
+          String.iteri
+            (fun offset c ->
+              if Char.code c < 0x80 then add_ascii (i + offset) c
+              else hex_escape_code (Char.code c))
+            bytes
+    in
+    Uutf.String.fold_utf_8 folder () name;
     Buffer.contents buf
 
 (** Pretty print nth function with optional "of" clause *)
@@ -1607,7 +1651,7 @@ and pp : t Pp.t =
  fun ctx -> function
   | Element (ns, name) ->
       Pp.option pp_ns ctx ns;
-      Pp.string ctx name
+      Pp.string ctx (escape_selector_name name)
   | Class name ->
       Pp.char ctx '.';
       Pp.string ctx (escape_selector_name name)
