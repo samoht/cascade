@@ -49,10 +49,7 @@ let test_empty_side_contexts () =
   Alcotest.(check (option string)) "query media type" None query.media_type;
   Alcotest.(check (list (pair string string)))
     "query media features" [] query.media_features;
-  Alcotest.(check (list (pair string string)))
-    "query supports declarations" [] query.supports_declarations;
-  Alcotest.(check (list (pair string string)))
-    "query supports functions" [] query.supports_functions;
+  Alcotest.(check int) "query supports" 0 (List.length query.supports);
   Alcotest.(check (option string))
     "query container name" None query.container_name;
   Alcotest.(check (list (pair string string)))
@@ -62,7 +59,8 @@ let test_empty_side_contexts () =
     (Css.Context.media_feature "width" query);
   Alcotest.(check bool)
     "empty query supports no declaration" false
-    (Css.Context.supports_declaration ~property:"display" ~value:"grid" query);
+    (Css.Context.matches_supports query
+       (Css.Supports.property "display" "grid"));
   Alcotest.(check (option string))
     "empty query has no container feature" None
     (Css.Context.container_feature "inline-size" query);
@@ -193,9 +191,12 @@ let test_query_context () =
   let ctx =
     Css.Context.query ~media_type:"screen"
       ~media_features:[ ("width", "1024px"); ("dynamic-range", "high") ]
-      ~supports_declarations:
-        [ ("display", "grid"); ("container-type", "inline-size") ]
-      ~supports_functions:[ ("selector", ":has(img)") ]
+      ~supports:
+        [
+          Css.Supports.property "display" "grid";
+          Css.Supports.property "container-type" "inline-size";
+          Css.Supports.func "selector" ":has(img)";
+        ]
       ~container_name:"card"
       ~container_features:
         [ ("inline-size", "640px"); ("style(--theme)", "dark") ]
@@ -206,10 +207,10 @@ let test_query_context () =
     (Css.Context.media_feature "width" ctx);
   Alcotest.(check bool)
     "supported declaration" true
-    (Css.Context.supports_declaration ~property:"display" ~value:"grid" ctx);
+    (Css.Context.matches_supports ctx (Css.Supports.property "display" "grid"));
   Alcotest.(check bool)
     "unsupported declaration" false
-    (Css.Context.supports_declaration ~property:"display" ~value:"ruby" ctx);
+    (Css.Context.matches_supports ctx (Css.Supports.property "display" "ruby"));
   Alcotest.(check (option string))
     "container feature" (Some "640px")
     (Css.Context.container_feature "inline-size" ctx)
@@ -218,9 +219,13 @@ let test_query_context_boundaries () =
   let ctx =
     Css.Context.query ~media_type:"print"
       ~media_features:[ ("width", "80rem"); ("prefers-color-scheme", "dark") ]
-      ~supports_declarations:[ ("display", "grid"); ("selector", ":has(img)") ]
-      ~supports_functions:
-        [ ("selector", ":has(img)"); ("font-tech", "color-COLRv1") ]
+      ~supports:
+        [
+          Css.Supports.property "display" "grid";
+          Css.Supports.property "selector" ":has(img)";
+          Css.Supports.func "selector" ":has(img)";
+          Css.Supports.func "font-tech" "color-COLRv1";
+        ]
       ~container_name:"sidebar"
       ~container_features:
         [ ("inline-size", "42rem"); ("style(--theme)", "dark") ]
@@ -228,10 +233,7 @@ let test_query_context_boundaries () =
   in
   Alcotest.(check (option string))
     "media type preserved" (Some "print") ctx.media_type;
-  Alcotest.(check (list (pair string string)))
-    "supports functions preserved"
-    [ ("selector", ":has(img)"); ("font-tech", "color-COLRv1") ]
-    ctx.supports_functions;
+  Alcotest.(check int) "supports preserved" 4 (List.length ctx.supports);
   Alcotest.(check (option string))
     "container name preserved" (Some "sidebar") ctx.container_name;
   Alcotest.(check (option string))
@@ -239,10 +241,12 @@ let test_query_context_boundaries () =
     (Css.Context.media_feature "height" ctx);
   Alcotest.(check bool)
     "supports declaration is exact on value" false
-    (Css.Context.supports_declaration ~property:"display" ~value:"flex" ctx);
+    (Css.Context.matches_supports ctx (Css.Supports.property "display" "flex"));
+  (* CSS property names are ASCII case-insensitive (CSS Syntax §3.6), so
+     "Display" and "display" name the same property. *)
   Alcotest.(check bool)
-    "supports declaration is exact on property" false
-    (Css.Context.supports_declaration ~property:"Display" ~value:"grid" ctx);
+    "supports declaration normalises property case" true
+    (Css.Context.matches_supports ctx (Css.Supports.property "Display" "grid"));
   Alcotest.(check (option string))
     "style container feature" (Some "dark")
     (Css.Context.container_feature "style(--theme)" ctx);
@@ -341,15 +345,17 @@ let test_context_debug_printers () =
   let query_dump =
     Css.Context.query ~media_type:"screen"
       ~media_features:[ ("width", "1024px") ]
-      ~supports_declarations:[ ("display", "grid") ]
-      ~supports_functions:[ ("selector", ":has(img)") ]
+      ~supports:
+        [
+          Css.Supports.property "display" "grid";
+          Css.Supports.func "selector" ":has(img)";
+        ]
       ~container_name:"card"
       ~container_features:[ ("inline-size", "640px") ]
       ()
     |> Css.Pp.to_string Css.Context.pp_query
   in
-  check_matches "query dump has supports function" "supports_functions=.*:has"
-    query_dump;
+  check_matches "query dump has supports function" "supports=.*:has" query_dump;
   check_matches "query dump has container name" "container_name=Some card"
     query_dump;
   let loader_dump =
@@ -657,13 +663,13 @@ let test_query_context_evaluation_contract () =
           ("prefers-color-scheme", "dark");
           ("dynamic-range", "high");
         ]
-      ~supports_declarations:
+      ~supports:
         [
-          ("display", "grid");
-          ("container-type", "inline-size");
-          ("color", "oklch(50% 0.1 20)");
+          Css.Supports.property "display" "grid";
+          Css.Supports.property "container-type" "inline-size";
+          Css.Supports.property "color" "oklch(50% 0.1 20)";
+          Css.Supports.func "selector" ":has(img)";
         ]
-      ~supports_functions:[ ("selector", ":has(img)") ]
       ~container_name:"card"
       ~container_features:
         [
@@ -836,10 +842,14 @@ let test_query_context_boolean_contract () =
           ("hover", "hover");
           ("pointer", "fine");
         ]
-      ~supports_declarations:
-        [ ("display", "grid"); ("display", "flex"); ("color", "lab(50% 0 0)") ]
-      ~supports_functions:
-        [ ("selector", ":is(.a, .b)"); ("font-format", "woff2") ]
+      ~supports:
+        [
+          Css.Supports.property "display" "grid";
+          Css.Supports.property "display" "flex";
+          Css.Supports.property "color" "lab(50% 0 0)";
+          Css.Supports.func "selector" ":is(.a, .b)";
+          Css.Supports.func "font-format" "woff2";
+        ]
       ~container_name:"card"
       ~container_features:
         [
@@ -887,7 +897,11 @@ let test_loader_import_condition_contract () =
   let query =
     Css.Context.query ~media_type:"screen"
       ~media_features:[ ("width", "1024px") ]
-      ~supports_declarations:[ ("display", "grid"); ("color", "lab(50% 0 0)") ]
+      ~supports:
+        [
+          Css.Supports.property "display" "grid";
+          Css.Supports.property "color" "lab(50% 0 0)";
+        ]
       ()
   in
   check_import_loaded "import loads when media and supports match" ~query
@@ -1018,7 +1032,7 @@ let test_loader_import_layer_contract () =
   in
   let query =
     Css.Context.query ~media_type:"screen"
-      ~supports_declarations:[ ("display", "grid") ]
+      ~supports:[ Css.Supports.property "display" "grid" ]
       ~media_features:[ ("width", "1024px") ]
       ()
   in
