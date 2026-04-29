@@ -569,18 +569,7 @@ let read_attr_flag t : attr_flag option =
       | None -> Cursor.err_unexpected t)
     t
 
-let block_has_closing_char t loc closing =
-  match Cursor.source t with
-  | Some source when loc.Loc.end_pos > loc.start_pos ->
-      loc.end_pos <= String.length source && source.[loc.end_pos - 1] = closing
-  | _ -> true
-
 let read_attribute t =
-  (match Cursor.peek t with
-  | Some (Component.Block { node = { opening = Token.Square; _ }; loc })
-    when not (block_has_closing_char t loc ']') ->
-      Cursor.err_expected_but_eof t "']'"
-  | _ -> ());
   Cursor.brackets
     (fun inner ->
       Cursor.ws inner;

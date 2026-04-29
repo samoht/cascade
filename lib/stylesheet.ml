@@ -499,7 +499,7 @@ and pp_statement : statement Pp.t =
       | Some s ->
           Pp.string ctx " supports(";
           (match s with
-          | Supports.Property decl -> Declaration.pp_declaration ctx decl
+          | Supports.Property decl -> Supports.pp_declaration_feature ctx decl
           | _ -> Supports.pp ctx s);
           Pp.string ctx ")"
       | None -> ());
@@ -2100,7 +2100,7 @@ let pp_import_rule : import_rule Pp.t =
          directly when the condition is a bare [Property]; fall through to the
          structured printer otherwise. *)
       (match s with
-      | Supports.Property decl -> Declaration.pp_declaration ctx decl
+      | Supports.Property decl -> Supports.pp_declaration_feature ctx decl
       | _ -> Supports.pp ctx s);
       Pp.char ctx ')')
     supports;
