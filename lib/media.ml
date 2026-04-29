@@ -373,9 +373,16 @@ let rec pp ctx = function
       Pp.string ctx (medium_to_string type_);
       match trailing with
       | None -> ()
-      | Some cond ->
+      | Some cond -> (
           Pp.string ctx " and ";
-          pp ctx cond)
+          (* CSS Media Queries 4 §3 [media-condition-without-or]: Or
+             sub-expressions need explicit parens in this context. *)
+          match cond with
+          | Or _ ->
+              Pp.char ctx '(';
+              pp ctx cond;
+              Pp.char ctx ')'
+          | _ -> pp ctx cond))
   | Plain (name, value) -> pp_feature ctx (Plain (name, value))
   | Boolean name -> pp_feature ctx (Boolean name)
   | List qs ->
@@ -1138,7 +1145,8 @@ let value_sort_key = function
 
 let rec kind : t -> kind = function
   | Hover _ | Any_hover _ -> Hover
-  | Min_width px | Max_width px -> Responsive (0, px)
+  | Min_width px -> Responsive (0, px)
+  | Max_width px -> Responsive_max (0, px)
   | Not_min_width px -> Responsive_max (0, px)
   | Min_width_rem rem -> Responsive (0, rem *. 16.)
   | Not_min_width_rem rem -> Responsive_max (0, rem *. 16.)
@@ -1196,7 +1204,7 @@ let group_order = function
   | Other -> (500, 0.)
   | Preference_accessibility -> (1000, 0.)
   | Responsive_max (unit_ord, value) ->
-      (1999, (Float.of_int unit_ord *. 1e9) +. (1e6 -. value))
+      (1999, (Float.of_int unit_ord *. 1e9) +. value)
   | Responsive (unit_ord, value) ->
       (2000, (Float.of_int unit_ord *. 1e9) +. value)
   | Preference_appearance -> (3000, 0.)
