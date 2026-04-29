@@ -115,29 +115,32 @@ let add_hex_escape_cp buf cp =
 
 let escape_ident s =
   let n = String.length s in
-  let buf = Buffer.create n in
-  let starts_with_digit = n > 0 && s.[0] >= '0' && s.[0] <= '9' in
-  let starts_dash_digit =
-    n >= 2 && s.[0] = '-' && s.[1] >= '0' && s.[1] <= '9'
-  in
-  let folder () i = function
-    | `Uchar u ->
-        let cp = Uchar.to_int u in
-        if (i = 0 && starts_with_digit) || (i = 1 && starts_dash_digit) then
-          add_hex_escape_cp buf cp
-        else if cp < 0x20 || cp = 0x7F then add_hex_escape_cp buf cp
-        else if cp < 0x80 then
-          if is_ident_continue_ascii (Char.chr cp) then
-            Buffer.add_char buf (Char.chr cp)
-          else (
-            Buffer.add_char buf '\\';
-            Buffer.add_char buf (Char.chr cp))
-        else if Lexer.is_non_ascii_ident_cp cp then Uutf.Buffer.add_utf_8 buf u
-        else add_hex_escape_cp buf cp
-    | `Malformed bs -> Buffer.add_string buf bs
-  in
-  Uutf.String.fold_utf_8 folder () s;
-  Buffer.contents buf
+  if n = 1 && s.[0] = '-' then "\\-"
+  else
+    let buf = Buffer.create n in
+    let starts_with_digit = n > 0 && s.[0] >= '0' && s.[0] <= '9' in
+    let starts_dash_digit =
+      n >= 2 && s.[0] = '-' && s.[1] >= '0' && s.[1] <= '9'
+    in
+    let folder () i = function
+      | `Uchar u ->
+          let cp = Uchar.to_int u in
+          if (i = 0 && starts_with_digit) || (i = 1 && starts_dash_digit) then
+            add_hex_escape_cp buf cp
+          else if cp < 0x20 || cp = 0x7F then add_hex_escape_cp buf cp
+          else if cp < 0x80 then
+            if is_ident_continue_ascii (Char.chr cp) then
+              Buffer.add_char buf (Char.chr cp)
+            else (
+              Buffer.add_char buf '\\';
+              Buffer.add_char buf (Char.chr cp))
+          else if Lexer.is_non_ascii_ident_cp cp then
+            Uutf.Buffer.add_utf_8 buf u
+          else add_hex_escape_cp buf cp
+      | `Malformed bs -> Buffer.add_string buf bs
+    in
+    Uutf.String.fold_utf_8 folder () s;
+    Buffer.contents buf
 
 let escape_name s =
   let n = String.length s in
@@ -269,8 +272,8 @@ let normal_pair_needs_token_boundary prev next =
       ( Component.Preserved
           {
             kind =
-              ( Token.Ident _ | Token.Function _ | Token.Number_tok _
-              | Token.Percentage _ | Token.Dimension _ );
+              ( Token.Ident _ | Token.Function _ | Token.Hash _
+              | Token.Number_tok _ | Token.Percentage _ | Token.Dimension _ );
             _;
           }
       | Component.Func _
@@ -280,8 +283,8 @@ let normal_pair_needs_token_boundary prev next =
       Component.Preserved
         {
           kind =
-            ( Token.Ident _ | Token.Function _ | Token.Number_tok _
-            | Token.Percentage _ | Token.Dimension _ );
+            ( Token.Ident _ | Token.Function _ | Token.Hash _
+            | Token.Number_tok _ | Token.Percentage _ | Token.Dimension _ );
           _;
         } ) ->
       true
@@ -438,8 +441,8 @@ and pair_needs_token_boundary prev next =
       ( Component.Preserved
           {
             kind =
-              ( Token.Ident _ | Token.Function _ | Token.Number_tok _
-              | Token.Percentage _ | Token.Dimension _ );
+              ( Token.Ident _ | Token.Function _ | Token.Hash _
+              | Token.Number_tok _ | Token.Percentage _ | Token.Dimension _ );
             _;
           }
       | Component.Func _
@@ -449,8 +452,8 @@ and pair_needs_token_boundary prev next =
       Component.Preserved
         {
           kind =
-            ( Token.Ident _ | Token.Function _ | Token.Number_tok _
-            | Token.Percentage _ | Token.Dimension _ );
+            ( Token.Ident _ | Token.Function _ | Token.Hash _
+            | Token.Number_tok _ | Token.Percentage _ | Token.Dimension _ );
           _;
         } ) ->
       true
