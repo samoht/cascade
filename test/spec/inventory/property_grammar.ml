@@ -393,11 +393,15 @@ let matrix =
       ]
       [ "thin"; "medium"; "thick"; "1px" ]
       [ "auto"; "thin medium thick 1px 2px"; "red" ]
+  @ rows_for [ "inset" ]
+      [ "auto"; "1px"; "10%"; "1px 2px 3px 4px" ]
+      [ "red"; "1px 2px 3px 4px 5px" ]
+  @ rows_for
+      [ "inset-inline"; "inset-block" ]
+      [ "auto"; "1px"; "10%"; "1px 2px" ]
+      [ "red"; "1px 2px 3px"; "1px 2px 3px 4px" ]
   @ rows_for
       [
-        "inset";
-        "inset-inline";
-        "inset-block";
         "top";
         "right";
         "bottom";
@@ -407,8 +411,8 @@ let matrix =
         "inset-block-start";
         "inset-block-end";
       ]
-      [ "auto"; "1px"; "10%"; "1px 2px 3px 4px" ]
-      [ "red"; "1px 2px 3px 4px 5px" ]
+      [ "auto"; "1px"; "10%" ]
+      [ "red"; "1px 2px"; "1px 2px 3px 4px" ]
   @ rows_for
       [ "overflow-x"; "overflow-y" ]
       [ "visible"; "hidden"; "clip"; "auto"; "scroll" ]

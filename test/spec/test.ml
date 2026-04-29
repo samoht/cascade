@@ -352,7 +352,10 @@ let conditional_media () =
 (* SS 8 - @supports with property checks *)
 let conditional_supports () =
   roundtrip "@supports (display: grid) { .grid { display: grid } }"
-    "@supports (display:grid){.grid{display:grid}}"
+    "@supports (display:grid){.grid{display:grid}}";
+  roundtrip
+    "@supports at-rule(@container) { .cq { container-type: inline-size } }"
+    "@supports at-rule(@container){.cq{container-type:inline-size}}"
 
 (* {2 CSS Syntax and Stylesheet At-rule Coverage}
    https://www.w3.org/TR/css-syntax-3/ SS 8 *)

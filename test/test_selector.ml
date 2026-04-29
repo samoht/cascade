@@ -1357,7 +1357,7 @@ let spec_selector_l4_pseudo_matrix () =
       ":nth-last-col(odd)";
       ":is(section,article,aside)>:where(h1,h2)";
       ":not(:where(.muted,[hidden]))";
-      ":has(> :is(img, picture, video))";
+      ":has(>:is(img, picture, video))";
       "dialog:modal::backdrop";
       "::part(tab)";
       "::part(tab panel)";
@@ -1482,7 +1482,7 @@ let spec_selector_pseudo_manifest () =
       ":focus-within";
       ":fullscreen";
       ":future";
-      ":has(> img)";
+      ":has(>img)";
       ":host";
       ":host(.active)";
       ":host-context(.theme-dark)";
