@@ -74,42 +74,26 @@ let spec_media_structural_vectors () =
   check "negated min-width shorthand" "not all and (min-width: 40px)"
     (Not_min_width 40.);
   check "name first range" "(width > 40em)"
-    (Custom (Cond (Feature (Range ("width", Gt, length (Css.Values.Em 40.))))));
+    (Range ("width", Gt, length (Css.Values.Em 40.)));
   check "value first range" "(40em < width)"
-    (Custom
-       (Cond (Feature (Range_rev (length (Css.Values.Em 40.), Lt, "width")))));
+    (Range_rev (length (Css.Values.Em 40.), Lt, "width"));
   check "interval range" "(30em <= width < 60em)"
-    (Custom
-       (Cond
-          (Feature
-             (Interval
-                ( length (Css.Values.Em 30.),
-                  Le,
-                  "width",
-                  Lt,
-                  length (Css.Values.Em 60.) )))));
+    (Interval
+       (length (Css.Values.Em 30.), Le, "width", Lt, length (Css.Values.Em 60.)));
   check "media type with trailing condition" "screen and (hover: hover)"
-    (Custom
-       (Type
-          {
-            prefix = None;
-            type_ = Screen;
-            trailing = Some (Feature (Plain ("hover", Ident "hover")));
-          }));
+    (Type_query
+       { prefix = None; type_ = Screen; trailing = Some (Hover `Hover) });
   check "media query list" "screen and (width >= 40em), print"
-    (Custom
-       (List
-          [
-            Type
-              {
-                prefix = None;
-                type_ = Screen;
-                trailing =
-                  Some
-                    (Feature (Range ("width", Ge, length (Css.Values.Em 40.))));
-              };
-            Type { prefix = None; type_ = Print; trailing = None };
-          ]))
+    (List
+       [
+         Type_query
+           {
+             prefix = None;
+             type_ = Screen;
+             trailing = Some (Range ("width", Ge, length (Css.Values.Em 40.)));
+           };
+         Print;
+       ])
 
 let spec_media_negative_vectors () =
   let expect_error name input =
@@ -126,16 +110,16 @@ let spec_media_negative_vectors () =
 let test_kind () =
   Alcotest.(check bool)
     "min-width is responsive" true
-    (match kind (Min_width 640.) with Kind_responsive _ -> true | _ -> false);
+    (match kind (Min_width 640.) with Responsive _ -> true | _ -> false);
   Alcotest.(check bool)
     "prefers-color-scheme is appearance" true
     (match kind (Prefers_color_scheme `Dark) with
-    | Kind_preference_appearance -> true
+    | Preference_appearance -> true
     | _ -> false);
   Alcotest.(check bool)
     "prefers-reduced-motion is accessibility" true
     (match kind (Prefers_reduced_motion `Reduce) with
-    | Kind_preference_accessibility -> true
+    | Preference_accessibility -> true
     | _ -> false)
 
 let test_compare () =
@@ -148,7 +132,7 @@ let test_spec_media_sorting_edges () =
       [
         Prefers_color_scheme `Dark;
         Min_width 768.;
-        Hover;
+        Hover `Hover;
         Max_width 1024.;
         Prefers_reduced_motion `Reduce;
         Print;

@@ -6,7 +6,7 @@ type t =
   | Named of string * t
   | Style of string * string option
   | Scroll_state of string * string
-  | Feature_query of string
+  | Feature_query of Media.t
   | Custom of Media.t
 
 (* Format float without trailing period (24. -> 24, 24.5 -> 24.5) *)
@@ -22,7 +22,7 @@ let rec to_string = function
   | Style (name, None) -> "style(" ^ name ^ ")"
   | Style (name, Some value) -> "style(" ^ name ^ ": " ^ value ^ ")"
   | Scroll_state (name, value) -> "scroll-state(" ^ name ^ ": " ^ value ^ ")"
-  | Feature_query raw -> raw
+  | Feature_query f -> Media.to_string f
   | Custom cond -> Media.to_string cond
 
 let pp = to_string
@@ -40,10 +40,10 @@ let rec compare t1 t2 =
       | cmp -> cmp)
   | Scroll_state (n1, v1), Scroll_state (n2, v2) -> (
       match String.compare n1 n2 with 0 -> String.compare v1 v2 | cmp -> cmp)
-  | Feature_query q1, Feature_query q2 -> String.compare q1 q2
+  | Feature_query q1, Feature_query q2 -> Media.compare q1 q2
   | Custom c1, Custom c2 -> Media.compare c1 c2
   (* Order: Min_width_rem < Min_width_px < Named < Style < Scroll_state <
-     Custom *)
+     Feature_query < Custom *)
   | Min_width_rem _, _ -> -1
   | _, Min_width_rem _ -> 1
   | Min_width_px _, _ -> -1
@@ -57,12 +57,12 @@ let rec compare t1 t2 =
   | Feature_query _, Custom _ -> -1
   | Custom _, Feature_query _ -> 1
 
-type kind = Kind_min_width | Kind_other
+type kind = Min_width | Other
 
 let rec kind = function
-  | Min_width_rem _ | Min_width_px _ -> Kind_min_width
+  | Min_width_rem _ | Min_width_px _ -> Min_width
   | Named (_, cond) -> kind cond
-  | Style _ | Scroll_state _ | Feature_query _ | Custom _ -> Kind_other
+  | Style _ | Scroll_state _ | Feature_query _ | Custom _ -> Other
 
 let is_ident_start c =
   (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_' || c = '-'
@@ -203,19 +203,24 @@ let classify_query_surface raw =
           Parenthesized_feature
       | _ -> Other_query)
 
+(* Try to lift a typed [Media.t] that wraps a single feature into the more
+   precise [Feature_query (feature)]. Anything richer (logical combinations,
+   media-type prefixes, etc.) stays in [Custom]. *)
+let single_feature_of_media (media : Media.t) =
+  match media with
+  | Media.Range _ | Media.Range_rev _ | Media.Interval _ | Media.Boolean _ ->
+      Some media
+  | _ -> None
+
 let parse_container_specific raw =
   let raw = String.trim raw in
   if raw = "" then failwith "empty container query";
   match classify_query_surface raw with
   | Style_func { canonical_name = true; body } -> style_body body
-  | Style_func { canonical_name = false; body } ->
-      ignore (style_body body : t);
-      Feature_query raw
+  | Style_func { canonical_name = false; body } -> style_body body
   | Scroll_state_func { canonical_name = true; body } -> scroll_state_body body
-  | Scroll_state_func { canonical_name = false; body } ->
-      ignore (scroll_state_body body : t);
-      Feature_query raw
-  | Parenthesized_feature -> Feature_query raw
+  | Scroll_state_func { canonical_name = false; body } -> scroll_state_body body
+  | Parenthesized_feature -> failwith "unrecognised container feature query"
   | Other_query -> failwith "not a container-specific query"
 
 let parse_unnamed s =
@@ -223,7 +228,10 @@ let parse_unnamed s =
   | Media.Min_width_rem rem -> Min_width_rem rem
   | Media.Min_width px when Float.is_integer px ->
       Min_width_px (int_of_float px)
-  | media -> Custom media
+  | media -> (
+      match single_feature_of_media media with
+      | Some f -> Feature_query f
+      | None -> Custom media)
   | exception Failure _ -> parse_container_specific s
 
 let of_string s =
@@ -231,6 +239,6 @@ let of_string s =
   | Some (name, raw) -> Named (name, parse_unnamed raw)
   | None -> parse_unnamed s
 
-let feature name value = Feature_query (name ^ ": " ^ value)
+let feature name value = Feature_query (Media.feature name value)
 let style ?value prop = Style (prop, value)
 let scroll_state prop value = Scroll_state (prop, value)

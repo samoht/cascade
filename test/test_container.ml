@@ -78,14 +78,14 @@ let test_compare () =
 let test_kind () =
   let open Css.Container in
   Alcotest.(check bool)
-    "min-width rem is Kind_min_width" true
-    (kind (Min_width_rem 24.) = Kind_min_width);
+    "min-width rem is Min_width" true
+    (kind (Min_width_rem 24.) = Min_width);
   Alcotest.(check bool)
-    "named min-width is Kind_min_width" true
-    (kind (Named ("x", Min_width_rem 24.)) = Kind_min_width);
+    "named min-width is Min_width" true
+    (kind (Named ("x", Min_width_rem 24.)) = Min_width);
   Alcotest.(check bool)
-    "raw is Kind_other" true
-    (kind (of_string "style(--theme: dark)") = Kind_other)
+    "raw is Other" true
+    (kind (of_string "style(--theme: dark)") = Other)
 
 let test_spec_container_compare_edges () =
   let open Css.Container in

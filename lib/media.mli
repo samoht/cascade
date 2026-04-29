@@ -1,20 +1,15 @@
 (** Structured media conditions for type-safe media query construction. *)
 
-(** Comparison operator for range-form media features. *)
 type cmp = Lt | Le | Eq | Gt | Ge
 
-(** Value carried by a media feature: length, number, ratio, resolution, ident.
-*)
 type value =
   | Length of Values.length
   | Integer of int
   | Number of float
   | Ratio of int * int
-  | Resolution of float * string
+  | Resolution_value of float * string
   | Ident of string
 
-(** Media feature query: plain ([(name: value)]), boolean ([(name)]), or range
-    forms ([(name op value)], [(value op name)], [(value op name op value)]). *)
 type feature =
   | Plain of string * value
   | Boolean of string
@@ -22,17 +17,13 @@ type feature =
   | Range_rev of value * cmp * string
   | Interval of value * cmp * string * cmp * value
 
-(** Media condition: nested combinations of features with [not], [and], [or]. *)
 type condition =
   | Feature of feature
   | Not of condition
   | And of condition * condition
   | Or of condition * condition
 
-(** Media type identifier. *)
 type medium = All | Screen | Print | Other of string
-
-(** Prefix on a media query starting with a media type. *)
 type prefix = Not | Only
 
 type query =
@@ -42,97 +33,81 @@ type query =
       type_ : medium;
       trailing : condition option;
     }
-  | List of query list  (** Comma-separated media query list. *)
+  | List of query list
 
-(** Media condition. Provides type safety and consistent formatting. *)
 type t =
-  | Min_width of float  (** Responsive breakpoint: [(min-width:Xpx)] *)
-  | Max_width of float  (** Max-width query: [(max-width:Xpx)] *)
+  | Width of Values.length
+  | Height of Values.length
+  | Min_width of float
+  | Max_width of float
   | Not_min_width of float
-      (** Negated breakpoint: [not all and (min-width:Xpx)] *)
-  | Min_width_rem of float  (** Responsive breakpoint: [(min-width:Xrem)] *)
+  | Min_width_rem of float
   | Not_min_width_rem of float
-      (** Negated breakpoint: [not all and (min-width:Xrem)] *)
   | Min_width_length of Values.length
-      (** Custom length breakpoint: [(min-width:<length>)] *)
   | Not_min_width_length of Values.length
-      (** Negated arbitrary length breakpoint:
-          [not all and (min-width:<length>)] *)
+  | Aspect_ratio of int * int
+  | Resolution of float * string
+  | Color of int
+  | Color_index of int
+  | Monochrome of int
+  | Color_gamut of [ `Srgb | `P3 | `Rec2020 ]
+  | Video_color_gamut of [ `Srgb | `P3 | `Rec2020 ]
+  | Dynamic_range of [ `Standard | `High ]
+  | Video_dynamic_range of [ `Standard | `High ]
+  | Scan of [ `Interlace | `Progressive ]
+  | Update of [ `None | `Slow | `Fast ]
+  | Overflow_block of [ `None | `Scroll | `Optional_paged | `Paged ]
+  | Overflow_inline of [ `None | `Scroll ]
   | Prefers_reduced_motion of [ `No_preference | `Reduce ]
-  | Prefers_contrast of [ `More | `Less ]
+  | Prefers_reduced_transparency of [ `No_preference | `Reduce ]
+  | Prefers_reduced_data of [ `No_preference | `Reduce ]
+  | Prefers_contrast of [ `No_preference | `Less | `More | `Custom ]
   | Prefers_color_scheme of [ `Dark | `Light ]
   | Forced_colors of [ `Active | `None ]
-  | Inverted_colors of [ `Inverted | `None ]  (** [(inverted-colors:...)] *)
-  | Pointer of [ `None | `Coarse | `Fine ]  (** [(pointer:...)] *)
-  | Any_pointer of [ `None | `Coarse | `Fine ]  (** [(any-pointer:...)] *)
-  | Scripting of [ `None | `Initial_only | `Enabled ]  (** [(scripting:...)] *)
-  | Hover  (** [(hover:hover)] *)
-  | Print  (** [print] media type *)
-  | Orientation of [ `Portrait | `Landscape ]  (** [(orientation:...)] *)
-  | Custom of query
-      (** Structured query for forms not covered by the typed shorthands above
-          (range syntax, combined media-type+condition, etc.). *)
+  | Inverted_colors of [ `Inverted | `None ]
+  | Pointer of [ `None | `Coarse | `Fine ]
+  | Any_pointer of [ `None | `Coarse | `Fine ]
+  | Hover of [ `None | `Hover ]
+  | Any_hover of [ `None | `Hover ]
+  | Scripting of [ `None | `Initial_only | `Enabled ]
+  | Nav_controls of [ `None | `Back_button ]
+  | Print
+  | Orientation of [ `Portrait | `Landscape ]
+  | And of t * t
+  | Or of t * t
   | Negated of t
-      (** [not all and (condition)] or [not print] for media type negation *)
+  | Range of string * cmp * value
+  | Range_rev of value * cmp * string
+  | Interval of value * cmp * string * cmp * value
+  | Type_query of {
+      prefix : prefix option;
+      type_ : medium;
+      trailing : t option;
+    }
+  | Plain of string * value
+  | Boolean of string
+  | List of t list
 
 val of_string : string -> t
-(** [of_string s] parses a CSS media query into the typed AST, collapsing
-    recognised plain features into their typed shorthands and falling back to
-    {!Custom} for richer forms. Raises {!Failure} for malformed input. *)
-
 val value_of_string : string -> value
-(** [value_of_string s] parses [s] as a media feature value: length ([1024px],
-    [60em]), integer, number, ratio ([16/9]), resolution, or - if nothing else
-    fits - an identifier. *)
-
-val feature : string -> string -> feature
-(** [feature name value] is [Plain (name, value_of_string value)]. Use
-    {!boolean_feature} for valueless features. *)
-
-val boolean_feature : string -> feature
-(** [boolean_feature name] is the boolean-form media feature [(name)], matching
-    e.g. [@media (hover)]. *)
-
+val feature : string -> value -> t
+val boolean : string -> t
 val to_string : t -> string
-(** [to_string cond] renders the condition as a CSS media query string. Includes
-    spaces after colons (non-minified form). *)
-
 val pp : t Pp.t
-(** [pp] pretty-prints the condition. *)
-
 val pp_query : query Pp.t
-(** [pp_query] pretty-prints a structured query. *)
-
 val pp_condition : condition Pp.t
-(** [pp_condition] pretty-prints a media condition. *)
-
 val pp_feature : feature Pp.t
-(** [pp_feature] pretty-prints a media feature. *)
-
 val compare : t -> t -> int
-(** [compare a b] compares conditions for sorting. Order: Hover < Other <
-    Preference_accessibility < Responsive < Preference_appearance. *)
-
 val equal : t -> t -> bool
-(** [equal a b] tests structural equality. *)
 
-(** Classification for sorting/grouping. *)
 type kind =
-  | Kind_hover
-  | Kind_responsive of int * float
-      (** (unit_order, value) -- unit_order: -2=calc, -1=em, 0=px, 1=rem, 2=vh
-      *)
-  | Kind_responsive_max of int * float
-  | Kind_preference_accessibility
-  | Kind_preference_appearance
-  | Kind_other
+  | Hover
+  | Responsive of int * float
+  | Responsive_max of int * float
+  | Preference_accessibility
+  | Preference_appearance
+  | Other
 
 val kind : t -> kind
-(** [kind cond] classifies a condition for grouping. *)
-
 val group_order : kind -> int * float
-(** [group_order k] returns (group, value) for sorting. *)
-
 val preference_order : t -> int
-(** [preference_order cond] returns fine-grained order among preference
-    conditions. *)
