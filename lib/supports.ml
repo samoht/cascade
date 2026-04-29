@@ -23,7 +23,12 @@
                        | ( <any-value> )
     v} *)
 
-type declaration_feature = Declaration of Declaration.t | Vendor_flag_enabled
+type property_name = Property_name of string
+
+type declaration_feature =
+  | Declaration of Declaration.t
+  | Empty of property_name
+  | Vendor_flag_enabled
 
 type t =
   | Property of declaration_feature
@@ -37,12 +42,32 @@ type t =
 
 let component_values s = Cursor.of_string s |> Cursor.remaining
 
+let starts_with ~prefix s =
+  let prefix_len = String.length prefix in
+  String.length s >= prefix_len && String.sub s 0 prefix_len = prefix
+
+let property_name name =
+  let reader = Cursor.of_string name in
+  let parsed = Cursor.ident ~keep_case:true reader in
+  if not (Cursor.is_done reader) then
+    invalid_arg ("invalid supports declaration property name: " ^ name);
+  let name =
+    if starts_with ~prefix:"--" parsed then parsed
+    else String.lowercase_ascii parsed
+  in
+  Property_name name
+
+let string_of_property_name (Property_name name) = name
+
 let declaration_feature prop value =
   match (String.lowercase_ascii prop, String.lowercase_ascii value) with
+  | _, "" -> Empty (property_name prop)
   | "-vendor-flag", "enabled" -> Vendor_flag_enabled
   | _ -> (
       match Declaration.of_string (prop ^ ":" ^ value) with
-      | Declaration.Declaration _ as decl -> Declaration decl
+      | (Declaration.Declaration _ | Declaration.Custom_declaration _) as decl
+        ->
+          Declaration decl
       | _ -> invalid_arg ("unsupported supports declaration: " ^ prop)
       | exception Error.Parse_error _ ->
           invalid_arg ("unsupported supports declaration: " ^ prop))
@@ -79,10 +104,14 @@ and render_branch operator = function
 
 and render_declaration_feature = function
   | Declaration decl -> Declaration.string_of_declaration ~minify:false decl
+  | Empty name -> string_of_property_name name ^ ":"
   | Vendor_flag_enabled -> "-vendor-flag: enabled"
 
 let pp_declaration_feature ctx = function
   | Declaration decl -> Declaration.pp_declaration ctx decl
+  | Empty name ->
+      Pp.string ctx (string_of_property_name name);
+      Pp.char ctx ':'
   | Vendor_flag_enabled ->
       Pp.string ctx "-vendor-flag:";
       Pp.space_if_pretty ctx ();
@@ -432,6 +461,10 @@ let compare_declaration d1 d2 =
 
 let compare_declaration_feature d1 d2 =
   match (d1, d2) with
+  | Empty n1, Empty n2 ->
+      String.compare (string_of_property_name n1) (string_of_property_name n2)
+  | Empty _, (Declaration _ | Vendor_flag_enabled) -> -1
+  | (Declaration _ | Vendor_flag_enabled), Empty _ -> 1
   | Vendor_flag_enabled, Vendor_flag_enabled -> 0
   | Vendor_flag_enabled, Declaration _ -> -1
   | Declaration _, Vendor_flag_enabled -> 1

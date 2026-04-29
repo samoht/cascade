@@ -96,6 +96,7 @@ let spec_supports_feature_vectors () =
     "unknown-feature(foo bar)";
   check "unknown declaration feature" "(-vendor-flag: enabled)"
     "(-vendor-flag: enabled)";
+  check "empty declaration value" "(display:)" "(display:)";
   check "nested not selector" "not selector(:has(article > img))"
     "not selector(:has(article > img))";
   check "and chain" "(display: grid) and (gap: 1rem) and (selector(:has(img)))"

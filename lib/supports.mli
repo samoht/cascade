@@ -3,7 +3,12 @@
 
 (** Supports condition type. Provides type safety and consistent formatting. *)
 
-type declaration_feature = Declaration of Declaration.t | Vendor_flag_enabled
+type property_name
+
+type declaration_feature =
+  | Declaration of Declaration.t
+  | Empty of property_name
+  | Vendor_flag_enabled
 
 type t =
   | Property of declaration_feature  (** [(property: value)] feature test *)

@@ -1194,10 +1194,10 @@ let read_font_face_block inner =
   let rank = function
     | Font_family _ -> 0
     | Src _ -> 1
-    | Font_weight _ | Font_weight_range _ -> 2
-    | Font_style _ | Font_style_range _ -> 3
-    | Font_stretch _ | Font_stretch_range _ -> 4
-    | Font_display _ -> 5
+    | Font_display _ -> 2
+    | Font_weight _ | Font_weight_range _ -> 3
+    | Font_style _ | Font_style_range _ -> 4
+    | Font_stretch _ | Font_stretch_range _ -> 5
     | Unicode_range _ -> 6
     | Font_variant _ -> 7
     | Font_feature_settings _ -> 8
