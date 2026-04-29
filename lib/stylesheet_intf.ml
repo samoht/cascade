@@ -145,6 +145,15 @@ and statement =
   | Font_face of font_face_descriptor list  (** [@font-face { ... }] *)
   | Page of string option * Declaration.declaration list
       (** [@page :first { ... }] *)
+  | Page_with_margins of
+      string option * raw_descriptor list * page_margin_rule list
+      (** [@page :first { margin: 1cm; @top-left { content: ... } }] *)
+  | Font_palette_values of string * raw_descriptor list
+      (** [@font-palette-values --name { ... }] *)
+  | View_transition of raw_descriptor list
+      (** [@view-transition { navigation: auto }] *)
+  | Position_try of string * Declaration.declaration list
+      (** [@position-try --name { top: anchor(...) }] *)
 
 and block = statement list
 (** A block contains a list of statements *)
@@ -156,14 +165,26 @@ and keyframe = {
 }
 (** A single keyframe within [\@keyframes] *)
 
+and raw_descriptor = { descriptor_name : string; descriptor_value : string }
+(** Raw descriptor used by descriptor-only at-rules. *)
+
+and page_margin_rule = {
+  margin_name : string;
+  margin_descriptors : raw_descriptor list;
+}
+(** CSS page margin at-rule inside [@page]. *)
+
 (** Font-face descriptors per CSS Fonts spec *)
 and font_face_descriptor =
   | Font_family of Properties.font_family list  (** Font family name *)
   | Src of Font_face.src  (** Font source (url(), local(), etc.) *)
   | Font_style of Properties.font_style  (** normal, italic, oblique *)
   | Font_weight of Properties.font_weight  (** normal, bold, 100-900 *)
+  | Font_weight_range of Properties.font_weight * Properties.font_weight
+      (** variable font weight range, e.g. [100 900] *)
   | Font_stretch of Properties.font_stretch
       (** normal, condensed, expanded, etc. *)
+  | Font_stretch_range of string  (** variable font stretch range *)
   | Font_display of Properties.font_display
       (** auto, block, swap, fallback, optional *)
   | Unicode_range of Properties.unicode_range  (** Unicode range *)
@@ -172,6 +193,7 @@ and font_face_descriptor =
       (** OpenType feature settings - TODO: proper type *)
   | Font_variation_settings of string
       (** Variable font settings - TODO: proper type *)
+  | Font_tech of string  (** [font-tech] descriptor *)
   | Size_adjust of Font_face.size_adjust  (** Size adjustment percentage *)
   | Ascent_override of Font_face.metric_override  (** Ascent metric override *)
   | Descent_override of Font_face.metric_override

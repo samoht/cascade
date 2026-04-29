@@ -709,11 +709,11 @@ let test_rgb () =
   neg_cursor read_rgb "255"
 
 let test_system_color () =
-  check_system_color "AccentColor";
-  check_system_color "CanvasText";
-  check_system_color "Highlight";
-  check_system_color "ButtonFace";
-  check_system_color "Field";
+  check_system_color ~expected:"accentcolor" "AccentColor";
+  check_system_color ~expected:"canvastext" "CanvasText";
+  check_system_color ~expected:"highlight" "Highlight";
+  check_system_color ~expected:"buttonface" "ButtonFace";
+  check_system_color ~expected:"field" "Field";
   neg_cursor read_system_color "";
   neg_cursor read_system_color "invalid-color"
 
