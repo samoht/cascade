@@ -701,22 +701,24 @@ module Container_eval = struct
     let key = "scroll-state(" ^ prop ^ ": " ^ value ^ ")" in
     List.mem_assoc key q.container_features
 
+  let outer_parens_wrap_all s =
+    let len = String.length s in
+    let rec loop depth i =
+      if i >= len - 1 then true
+      else
+        match s.[i] with
+        | '(' -> loop (depth + 1) (i + 1)
+        | ')' when depth = 0 -> false
+        | ')' -> loop (depth - 1) (i + 1)
+        | _ -> loop depth (i + 1)
+    in
+    len >= 2 && s.[0] = '(' && s.[len - 1] = ')' && loop 0 1
+
   (* Strip a single outer paren pair if it wraps the entire input. *)
   let strip_outer_parens s =
     let s = String.trim s in
-    let len = String.length s in
-    if len >= 2 && s.[0] = '(' && s.[len - 1] = ')' then (
-      let inner = String.sub s 1 (len - 2) in
-      let depth = ref 0 in
-      let mid_close = ref false in
-      String.iteri
-        (fun i c ->
-          if c = '(' then incr depth
-          else if c = ')' then (
-            decr depth;
-            if !depth < 0 && i < String.length inner - 1 then mid_close := true))
-        inner;
-      if !mid_close then s else String.trim inner)
+    if outer_parens_wrap_all s then
+      String.sub s 1 (String.length s - 2) |> String.trim
     else s
 
   (* Find the position of [keyword] at parenthesis depth 0 inside [s]. The

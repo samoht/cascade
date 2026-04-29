@@ -223,19 +223,27 @@ let validate_no_extra_tokens t =
         Cursor.err_invalid t
           ("unexpected tokens after property value: " ^ trimmed)
 
-let validate_var_reference t value =
-  let validate r =
-    let raw_name = Cursor.ident ~keep_case:true r in
-    if
-      not
-        (String.length raw_name >= 3 && raw_name.[0] = '-' && raw_name.[1] = '-')
-    then Cursor.err_invalid r ("not a custom property: " ^ raw_name);
-    Cursor.ws r;
-    if Cursor.comma_opt r then ignore (Cursor.remaining_to_string ~trim:true r)
-  in
+let validate_var_reference_body r =
+  let raw_name = Cursor.ident ~keep_case:true r in
+  if
+    not (String.length raw_name >= 3 && raw_name.[0] = '-' && raw_name.[1] = '-')
+  then Cursor.err_invalid r ("not a custom property: " ^ raw_name);
+  Cursor.ws r;
+  if Cursor.comma_opt r then ignore (Cursor.remaining_to_string ~trim:true r)
+
+let is_var_reference value =
   try
     let r = Cursor.of_string value in
-    Cursor.call "var" r validate;
+    Cursor.call "var" r validate_var_reference_body;
+    Cursor.ws r;
+    Cursor.expect_eof r;
+    true
+  with Cursor.Parse_error _ -> false
+
+let validate_var_reference t value =
+  try
+    let r = Cursor.of_string value in
+    Cursor.call "var" r validate_var_reference_body;
     Cursor.ws r;
     Cursor.expect_eof r
   with Cursor.Parse_error _ -> Cursor.err_invalid t "invalid var() reference"
@@ -250,6 +258,9 @@ let read_length_box ?(allow_negative = true) t =
   values
 
 let read_inset_longhand t = [ read_length t ]
+
+let read_border_width_box t =
+  Cursor.list ~at_least:1 ~at_most:4 read_border_width t
 
 let read_text_decoration_lines t =
   let lines = Cursor.list ~at_least:1 read_text_decoration_line t in
@@ -355,7 +366,7 @@ let read_grid_template_areas t =
 
 let border_image_at_end t = Cursor.is_done t || Cursor.peek_semicolon t
 
-let read_border_image_non_negative_number_unit t =
+let read_bi_nonneg_unit t =
   let pp_float n = Pp.to_string ~minify:true Pp.float n in
   let n, unit = Cursor.number_with_unit t in
   if n < 0. then Cursor.err_invalid t "border-image value cannot be negative";
@@ -377,7 +388,7 @@ let read_border_image_slice t =
           let _ = Cursor.ident t in
           loop values true
       | _ -> (
-          match Cursor.option read_border_image_non_negative_number_unit t with
+          match Cursor.option read_bi_nonneg_unit t with
           | Some value ->
               if List.length values >= 4 then
                 Cursor.err_invalid t "too many border-image slice values";
@@ -397,7 +408,7 @@ let read_border_image_box_values ~what ~allow_auto t =
     | Some "auto" when allow_auto ->
         let _ = Cursor.ident t in
         "auto"
-    | _ -> read_border_image_non_negative_number_unit t
+    | _ -> read_bi_nonneg_unit t
   in
   let rec loop acc =
     Cursor.ws t;
@@ -889,7 +900,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Margin -> v Margin (read_margin_shorthand t)
   (* Border styles *)
   | Border_style -> v Border_style (read_border_style t)
-  | Border_width -> v Border_width (read_border_width t)
+  | Border_width -> v Border_width (read_border_width_box t)
   | Border_top_width -> v Border_top_width (read_border_width t)
   | Border_right_width -> v Border_right_width (read_border_width t)
   | Border_bottom_width -> v Border_bottom_width (read_border_width t)
@@ -1477,6 +1488,51 @@ let read_custom_property_declaration t : declaration =
     if is_important then important decl else decl
   with Failure msg -> Cursor.err_invalid t msg
 
+let starts_with_var raw_value =
+  String.length raw_value >= 4 && String.sub raw_value 0 4 = "var("
+
+let validate_legacy_page_break t name raw_value =
+  if not (is_css_wide_keyword raw_value) then
+    match name with
+    | ("page-break-before" | "page-break-after")
+      when not
+             (List.mem raw_value [ "auto"; "always"; "avoid"; "left"; "right" ])
+      ->
+        Cursor.err_invalid t "invalid legacy page-break value"
+    | "page-break-inside" when not (List.mem raw_value [ "auto"; "avoid" ]) ->
+        Cursor.err_invalid t "invalid legacy page-break-inside value"
+    | _ -> ()
+
+let validate_regular_property_raw t name raw_value =
+  if value_has_css_wide_mix raw_value then
+    Cursor.err_invalid t "CSS-wide keyword mixed with other values";
+  if name = "all" && not (is_css_wide_keyword raw_value) then
+    Cursor.err_invalid t "all accepts only CSS-wide keywords";
+  validate_legacy_page_break t name raw_value
+
+let read_css_wide_or_var_declaration t name raw_value =
+  if starts_with_var raw_value then validate_var_reference t raw_value;
+  ignore (Cursor.consume_to_decl_end ~trim:true t);
+  let is_important = read_importance t in
+  validate_no_extra_tokens t;
+  let decl = custom_declaration name String raw_value in
+  if is_important then important decl else decl
+
+let read_typed_property_declaration t start =
+  Cursor.restore t start;
+  let (Prop prop_type) = read_any_property t in
+  Cursor.ws t;
+  if not (Cursor.colon t) then Cursor.err_expected t "':'";
+  Cursor.ws t;
+  let decl = read_value prop_type t in
+  validate_no_extra_tokens t;
+  let is_important = read_importance t in
+  validate_no_extra_tokens t;
+  (match Cursor.peek_delim t with
+  | Some '!' -> Cursor.err_invalid t "duplicate !important"
+  | _ -> ());
+  if is_important then important decl else decl
+
 (** Parse a regular property (name: value) *)
 let read_regular_property_declaration t : declaration =
   let start = Cursor.save t in
@@ -1485,47 +1541,10 @@ let read_regular_property_declaration t : declaration =
   if not (Cursor.colon t) then Cursor.err_expected t "':'";
   Cursor.ws t;
   let raw_value = Cursor.lookahead (Cursor.consume_to_decl_end ~trim:true) t in
-  if value_has_css_wide_mix raw_value then
-    Cursor.err_invalid t "CSS-wide keyword mixed with other values";
-  if name = "all" && not (is_css_wide_keyword raw_value) then
-    Cursor.err_invalid t "all accepts only CSS-wide keywords";
-  if
-    (name = "page-break-before" || name = "page-break-after")
-    && not
-         (is_css_wide_keyword raw_value
-         || List.mem raw_value [ "auto"; "always"; "avoid"; "left"; "right" ])
-  then Cursor.err_invalid t "invalid legacy page-break value";
-  if
-    name = "page-break-inside"
-    && not
-         (is_css_wide_keyword raw_value
-         || List.mem raw_value [ "auto"; "avoid" ])
-  then Cursor.err_invalid t "invalid legacy page-break-inside value";
-  if
-    is_css_wide_keyword raw_value
-    || (String.length raw_value >= 4 && String.sub raw_value 0 4 = "var(")
-  then (
-    if String.length raw_value >= 4 && String.sub raw_value 0 4 = "var(" then
-      validate_var_reference t raw_value;
-    ignore (Cursor.consume_to_decl_end ~trim:true t);
-    let is_important = read_importance t in
-    validate_no_extra_tokens t;
-    let decl = custom_declaration name String raw_value in
-    if is_important then important decl else decl)
-  else (
-    Cursor.restore t start;
-    let (Prop prop_type) = read_any_property t in
-    Cursor.ws t;
-    if not (Cursor.colon t) then Cursor.err_expected t "':'";
-    Cursor.ws t;
-    let decl = read_value prop_type t in
-    validate_no_extra_tokens t;
-    let is_important = read_importance t in
-    validate_no_extra_tokens t;
-    (match Cursor.peek_delim t with
-    | Some '!' -> Cursor.err_invalid t "duplicate !important"
-    | _ -> ());
-    if is_important then important decl else decl)
+  validate_regular_property_raw t name raw_value;
+  if is_css_wide_keyword raw_value || is_var_reference raw_value then
+    read_css_wide_or_var_declaration t name raw_value
+  else read_typed_property_declaration t start
 
 (** Parse a single declaration directly from stream - no string roundtrips *)
 let read_declaration t : declaration option =
@@ -1805,7 +1824,7 @@ let justify_self a = v Justify_self a
 let place_content value = v Place_content value
 let place_items value = v Place_items value
 let place_self value = v Place_self value
-let border_width len = v Border_width len
+let border_width len = v Border_width [ len ]
 let border_radius len = v Border_radius len
 let border_top_left_radius len = v Border_top_left_radius len
 let border_top_right_radius len = v Border_top_right_radius len

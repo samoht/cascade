@@ -391,6 +391,9 @@ let vars_of_duration (value : Values.duration) : any_var list =
 let vars_of_border_width (value : Properties.border_width) : any_var list =
   match value with Var v -> [ V v ] | Calc calc -> vars_of_calc calc | _ -> []
 
+let vars_of_border_width_list values =
+  List.concat_map vars_of_border_width values
+
 let vars_of_line_height (value : Properties.line_height) : any_var list =
   match value with Var v -> [ V v ] | Calc calc -> vars_of_calc calc | _ -> []
 
@@ -653,7 +656,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Font_size, value -> vars_of_font_size value
   | Letter_spacing, value -> vars_of_length value
   | Line_height, value -> vars_of_line_height value
-  | Border_width, value -> vars_of_border_width value
+  | Border_width, value -> vars_of_border_width_list value
   | Border_top_width, value -> vars_of_border_width value
   | Border_right_width, value -> vars_of_border_width value
   | Border_bottom_width, value -> vars_of_border_width value
