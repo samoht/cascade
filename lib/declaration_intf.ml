@@ -12,7 +12,7 @@ type _ kind =
   | Percentage : percentage kind
   | Length_percentage : length_percentage kind
   | Number_percentage : number_percentage kind
-  | String : string kind
+  | Value : Component.t list kind
   | Duration : duration kind
   | Aspect_ratio : aspect_ratio kind
   | Border_style : border_style kind
@@ -41,6 +41,7 @@ type _ kind =
   | Background_image : background_image kind
   | Z_index : z_index kind
   | Filter : filter kind
+  | Font_src : Font_face.src kind
 
 type declaration =
   | Declaration : {

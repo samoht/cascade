@@ -42,7 +42,60 @@ let custom_property ?layer name value =
            name;
            " is not a valid CSS variable name (must start with --)";
          ]);
-  custom_declaration ?layer name String value
+  (* Parse the value into a CSS Syntax 3 component stream so the declaration
+     never carries a raw author string; the printer can then re-serialise with
+     the active [Pp] context (handles minification). *)
+  let components = Cursor.remaining (Cursor.of_string value) in
+  custom_declaration ?layer name Value components
+
+let font_url_needs_quotes s =
+  String.exists
+    (fun c -> c = ' ' || c = ')' || c = '"' || c = '\'' || c = '(' || c = '\\')
+    s
+
+let pp_font_url ctx s =
+  Pp.string ctx "url(";
+  if font_url_needs_quotes s then (
+    Pp.char ctx '"';
+    Pp.string ctx s;
+    Pp.char ctx '"')
+  else Pp.string ctx s;
+  Pp.char ctx ')'
+
+let pp_font_src_entry ctx : Font_face.src_entry -> unit = function
+  | Local name ->
+      Pp.string ctx "local(";
+      Pp.char ctx '"';
+      Pp.string ctx name;
+      Pp.char ctx '"';
+      Pp.char ctx ')'
+  | Url { url; format; tech } -> (
+      pp_font_url ctx url;
+      (match format with
+      | None -> ()
+      | Some value ->
+          Pp.space ctx ();
+          Pp.string ctx "format(";
+          Pp.string ctx value;
+          Pp.char ctx ')');
+      match tech with
+      | None -> ()
+      | Some value ->
+          Pp.space ctx ();
+          Pp.string ctx "tech(";
+          Pp.string ctx value;
+          Pp.char ctx ')')
+
+let pp_font_src ctx entries =
+  let first = ref true in
+  List.iter
+    (fun entry ->
+      if !first then first := false
+      else (
+        Pp.char ctx ',';
+        Pp.space_if_pretty ctx ());
+      pp_font_src_entry ctx entry)
+    entries
 
 (* Access the layer associated with a custom declaration, if any *)
 let rec custom_declaration_layer = function
@@ -156,7 +209,12 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Percentage -> pp pp_percentage
   | Length_percentage -> pp (pp_length_percentage ~always:true)
   | Number_percentage -> pp pp_number_percentage
-  | String -> pp Pp.string
+  | Value ->
+      let rendered =
+        if Pp.minified ctx then Parser.to_string_minified value
+        else Parser.to_string value
+      in
+      Pp.string ctx rendered
   | Shadow -> pp pp_shadow
   | Duration -> pp pp_duration
   | Aspect_ratio -> pp pp_aspect_ratio
@@ -185,6 +243,7 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Background_image -> pp pp_background_image
   | Z_index -> pp pp_z_index
   | Filter -> pp pp_filter
+  | Font_src -> pp pp_font_src
 
 let rec string_of_value ?(minify = true) ?(inline = false) decl =
   let ctx =
@@ -258,9 +317,48 @@ let read_length_box ?(allow_negative = true) t =
   values
 
 let read_inset_longhand t = [ read_length t ]
+let read_inset_axis t = Cursor.list ~at_least:1 ~at_most:2 read_length t
 
 let read_border_width_box t =
   Cursor.list ~at_least:1 ~at_most:4 read_border_width t
+
+type list_style_slot = Type | Position | Image
+
+let slot_seen slot seen = List.mem slot seen
+
+let read_list_style_slot slot t =
+  match slot with
+  | Type -> ignore (read_list_style_type t)
+  | Position -> ignore (read_list_style_position t)
+  | Image -> ignore (read_list_style_image t)
+
+let read_list_style_shorthand t =
+  let raw = Cursor.lookahead (Cursor.consume_to_decl_end ~trim:true) t in
+  let slots : list_style_slot list = [ Position; Image; Type ] in
+  let rec parse seen r =
+    Cursor.ws r;
+    if Cursor.is_done r then seen <> []
+    else
+      List.exists
+        (fun slot ->
+          if slot_seen slot seen then false
+          else
+            let pos = Cursor.save r in
+            try
+              read_list_style_slot slot r;
+              if parse (slot :: seen) r then true
+              else (
+                Cursor.restore r pos;
+                false)
+            with Cursor.Parse_error _ ->
+              Cursor.restore r pos;
+              false)
+        slots
+  in
+  if not (parse [] (Cursor.of_string raw)) then
+    Cursor.err_invalid t "invalid list-style shorthand";
+  ignore (Cursor.consume_to_decl_end ~trim:true t);
+  raw
 
 let read_text_decoration_lines t =
   let lines = Cursor.list ~at_least:1 read_text_decoration_line t in
@@ -316,9 +414,6 @@ let read_font_shorthand t =
     let rec loop () =
       Cursor.ws r;
       if Cursor.is_done r then ()
-      else if !saw_size then (
-        ignore (Cursor.consume_to_decl_end ~trim:true r);
-        Cursor.ws r)
       else
         match Cursor.peek_ident r with
         | Some
@@ -339,7 +434,9 @@ let read_font_shorthand t =
                     Cursor.skip r;
                     ignore (read_line_height r : line_height)
                 | _ -> ());
-                loop ())
+                ignore (read_font_family r : font_family);
+                Cursor.ws r;
+                Cursor.expect_eof r)
     in
     (try loop ()
      with Cursor.Parse_error _ ->
@@ -347,22 +444,104 @@ let read_font_shorthand t =
     if not !saw_size then Cursor.err_invalid t "font shorthand missing size";
     raw
 
-(* Custom parser for grid-template-areas: reads multiple quoted strings *)
+let is_grid_area_ws = function
+  | ' ' | '\t' | '\n' | '\r' | '\012' -> true
+  | _ -> false
+
+let grid_area_row_cells row =
+  let len = String.length row in
+  let rec skip_ws i =
+    if i < len && is_grid_area_ws row.[i] then skip_ws (i + 1) else i
+  in
+  let rec take_cell start i =
+    if i < len && not (is_grid_area_ws row.[i]) then take_cell start (i + 1)
+    else (String.sub row start (i - start), i)
+  in
+  let rec loop acc i =
+    let start = skip_ws i in
+    if start >= len then List.rev acc
+    else
+      let cell, next = take_cell start start in
+      loop (cell :: acc) next
+  in
+  loop [] 0
+
+let grid_area_null_cell cell =
+  let len = String.length cell in
+  len > 0
+  &&
+  let rec loop i = i = len || (cell.[i] = '.' && loop (i + 1)) in
+  loop 0
+
+let validate_grid_area_width t (expected : int option) cells =
+  match expected with
+  | None -> Some (List.length cells)
+  | Some width when List.length cells = width -> expected
+  | Some _ -> Cursor.err_invalid t "grid-template-areas rows differ in width"
+
+let grid_area_positions rows =
+  rows
+  |> List.mapi (fun row cells ->
+      cells
+      |> List.mapi (fun col cell -> (cell, row, col))
+      |> List.filter (fun (cell, _, _) -> not (grid_area_null_cell cell)))
+  |> List.flatten
+
+let grid_area_names positions =
+  positions
+  |> List.fold_left
+       (fun names (cell, _, _) ->
+         if List.mem cell names then names else cell :: names)
+       []
+
+let validate_grid_area_rectangles t rows =
+  let positions = grid_area_positions rows in
+  let cell_at row col = List.nth (List.nth rows row) col in
+  let validate_name name =
+    let coords =
+      positions
+      |> List.filter_map (fun (cell, row, col) ->
+          if cell = name then Some (row, col) else None)
+    in
+    let rows = List.map fst coords in
+    let cols = List.map snd coords in
+    let min_row = List.fold_left min max_int rows in
+    let max_row = List.fold_left max min_int rows in
+    let min_col = List.fold_left min max_int cols in
+    let max_col = List.fold_left max min_int cols in
+    for row = min_row to max_row do
+      for col = min_col to max_col do
+        if cell_at row col <> name then
+          Cursor.err_invalid t
+            "grid-template-areas named area is not rectangular"
+      done
+    done
+  in
+  List.iter validate_name (grid_area_names positions)
+
+(* Custom parser for grid-template-areas: reads and validates quoted rows. *)
 let read_grid_template_areas t =
   match Cursor.peek t with
   | Some (Component.Preserved { kind = Token.Ident "none"; _ }) ->
       Cursor.skip t;
       "none"
   | _ ->
-      let rec read_strings acc =
+      let rec read_strings (width : int option) rows rendered =
         Cursor.ws t;
         match Cursor.string_opt t with
-        | None -> String.concat " " (List.rev acc)
+        | None ->
+            let rows = List.rev rows in
+            if rows = [] then Cursor.err_expected t "grid-template-areas row";
+            validate_grid_area_rectangles t rows;
+            String.concat " " (List.rev rendered)
         | Some s ->
-            let quoted_s = "\"" ^ s ^ "\"" in
-            read_strings (quoted_s :: acc)
+            let cells = grid_area_row_cells s in
+            if cells = [] then
+              Cursor.err_invalid t "empty grid-template-areas row";
+            let width = validate_grid_area_width t width cells in
+            read_strings width (cells :: rows) (("\"" ^ s ^ "\"") :: rendered)
       in
-      read_strings []
+      read_strings (None : int option) [] []
 
 let border_image_at_end t = Cursor.is_done t || Cursor.peek_semicolon t
 
@@ -740,19 +919,7 @@ let read_animation_timeline t =
    non-negative length-percentage. Detect a leading [-] number/percentage and
    reject before delegating to the typed reader. *)
 let read_non_negative_length_percentage t =
-  Cursor.ws t;
-  (match Cursor.peek t with
-  | Some (Component.Preserved { kind = Token.Dimension { number; _ }; _ })
-    when number.value < 0. ->
-      Cursor.err_invalid t "negative length not allowed"
-  | Some (Component.Preserved { kind = Token.Percentage { value; _ }; _ })
-    when value < 0. ->
-      Cursor.err_invalid t "negative percentage not allowed"
-  | Some (Component.Preserved { kind = Token.Number_tok { value; _ }; _ })
-    when value < 0. ->
-      Cursor.err_invalid t "negative number not allowed"
-  | _ -> ());
-  Values.read_length_percentage t
+  Values.read_length_percentage ~allow_negative:false ~with_keywords:false t
 
 let read_non_negative_number t =
   let value = Cursor.number t in
@@ -1033,7 +1200,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | List_style_type -> v List_style_type (read_list_style_type t)
   | List_style_position -> v List_style_position (read_list_style_position t)
   | List_style_image -> v List_style_image (read_list_style_image t)
-  | List_style -> v List_style (read_untyped_value t)
+  | List_style -> v List_style (read_list_style_shorthand t)
   (* Flexbox order *)
   | Order -> v Order (Properties.read_order t)
   (* Justify properties *)
@@ -1085,12 +1252,12 @@ let read_value (type a) (prop : a property) t : declaration =
       v Border_end_end_radius (read_length ~with_keywords:false t)
   (* Position properties *)
   | Inset -> v Inset (read_length_box t)
-  | Inset_inline -> v Inset_inline (read_length_box t)
-  | Inset_inline_start -> v Inset_inline_start (read_length_box t)
-  | Inset_inline_end -> v Inset_inline_end (read_length_box t)
-  | Inset_block -> v Inset_block (read_length_box t)
-  | Inset_block_start -> v Inset_block_start (read_length_box t)
-  | Inset_block_end -> v Inset_block_end (read_length_box t)
+  | Inset_inline -> v Inset_inline (read_inset_axis t)
+  | Inset_inline_start -> v Inset_inline_start (read_inset_longhand t)
+  | Inset_inline_end -> v Inset_inline_end (read_inset_longhand t)
+  | Inset_block -> v Inset_block (read_inset_axis t)
+  | Inset_block_start -> v Inset_block_start (read_inset_longhand t)
+  | Inset_block_end -> v Inset_block_end (read_inset_longhand t)
   | Top -> v Top (read_inset_longhand t)
   | Right -> v Right (read_inset_longhand t)
   | Bottom -> v Bottom (read_inset_longhand t)
@@ -1510,12 +1677,23 @@ let validate_regular_property_raw t name raw_value =
     Cursor.err_invalid t "all accepts only CSS-wide keywords";
   validate_legacy_page_break t name raw_value
 
-let read_css_wide_or_var_declaration t name raw_value =
+let read_keyword_or_var_decl t name raw_value =
   if starts_with_var raw_value then validate_var_reference t raw_value;
   ignore (Cursor.consume_to_decl_end ~trim:true t);
   let is_important = read_importance t in
   validate_no_extra_tokens t;
-  let decl = custom_declaration name String raw_value in
+  let value = Cursor.remaining (Cursor.of_string raw_value) in
+  let decl = custom_declaration name Value value in
+  if is_important then important decl else decl
+
+let read_font_src_declaration t raw_value =
+  ignore (Cursor.consume_to_decl_end ~trim:true t);
+  let is_important = read_importance t in
+  validate_no_extra_tokens t;
+  let decl =
+    try custom_declaration "src" Font_src (Font_face.src_of_string raw_value)
+    with Failure msg -> Cursor.err_invalid t msg
+  in
   if is_important then important decl else decl
 
 let read_typed_property_declaration t start =
@@ -1543,7 +1721,8 @@ let read_regular_property_declaration t : declaration =
   let raw_value = Cursor.lookahead (Cursor.consume_to_decl_end ~trim:true) t in
   validate_regular_property_raw t name raw_value;
   if is_css_wide_keyword raw_value || is_var_reference raw_value then
-    read_css_wide_or_var_declaration t name raw_value
+    read_keyword_or_var_decl t name raw_value
+  else if String.equal name "src" then read_font_src_declaration t raw_value
   else read_typed_property_declaration t start
 
 (** Parse a single declaration directly from stream - no string roundtrips *)
