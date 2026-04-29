@@ -161,30 +161,32 @@ let roundtrip () =
            test/examples/)"
   in
 
-  (* Parse the CSS with context on failure *)
-  let parsed_stylesheet =
-    match Css.of_string original_css with
+  (* Parse-then-minify must be an idempotent fixed point: a second pass over the
+     minified output should produce byte-identical CSS. The input fixture comes
+     from Tailwind, whose valid minification choices do not have to match
+     cascade's canonical printer byte for byte. *)
+  let parse_or_fail label css =
+    match Css.of_string css with
     | Ok stylesheet -> stylesheet
     | Error err ->
-        (* Format the structured error *)
         let formatted_error = Css.pp_parse_error err in
-        Alcotest.fail ("Failed to parse CSS: " ^ formatted_error)
+        Alcotest.fail ("Failed to parse " ^ label ^ ": " ^ formatted_error)
   in
-
-  (* Render it back to string with same settings (minified) *)
-  let roundtrip_css = Css.to_string ~minify:true parsed_stylesheet in
-
-  (* Compare - they should be identical *)
-  if original_css <> roundtrip_css then
-    (* Show where the difference occurs *)
-    match Css_tools.String_diff.first_diff_pos original_css roundtrip_css with
+  let first_pass =
+    Css.to_string ~minify:true (parse_or_fail "input" original_css)
+  in
+  let second_pass =
+    Css.to_string ~minify:true (parse_or_fail "first pass" first_pass)
+  in
+  if first_pass <> second_pass then
+    match Css_tools.String_diff.first_diff_pos first_pass second_pass with
     | Some pos ->
         Fmt.epr "CSS roundtrip differs at position %d@." pos;
-        Alcotest.fail "CSS roundtrip should be identical"
-    | None -> Alcotest.fail "CSS roundtrip should be identical"
+        Alcotest.fail "CSS roundtrip should be idempotent"
+    | None -> Alcotest.fail "CSS roundtrip should be idempotent"
   else
     Alcotest.(check string)
-      "CSS roundtrip should be identical" original_css roundtrip_css
+      "CSS roundtrip should be idempotent" first_pass second_pass
 
 (* Test AST introspection helpers *)
 let test_layer_block () =
@@ -327,7 +329,7 @@ let test_spec_map_conditional_boundaries () =
   let stmts =
     [
       supports
-        ~condition:(Css.Supports.Func ("selector", ":has(img)"))
+        ~condition:(Css.Supports.func "selector" ":has(img)")
         [
           container ~name:"card"
             ~condition:(Css.Container.of_string "(inline-size > 30em)")
@@ -420,7 +422,7 @@ let test_spec_sort_conditional_boundaries () =
   let stmts =
     [
       supports
-        ~condition:(Css.Supports.Property ("display", "grid"))
+        ~condition:(Css.Supports.property "display" "grid")
         [
           container
             ~condition:(Css.Container.of_string "(inline-size > 30em)")
@@ -465,7 +467,7 @@ let public_fold_edges () =
             layer ~name:"components"
               [
                 supports
-                  ~condition:(Css.Supports.Property ("display", "grid"))
+                  ~condition:(Css.Supports.property "display" "grid")
                   [
                     container
                       ~condition:
