@@ -53,55 +53,58 @@ let is_intentionally_duplicated prop_name =
   prop_name = "content" || prop_name = "outline"
   || (String.length prop_name > 12 && String.sub prop_name 0 12 = "-webkit-mask")
 
-let track_last_occurrence normal_seen important_seen decl =
-  let prop_name = property_name decl in
-  (* Skip tracking for properties that use intentional duplication: - content:
-     counter fallbacks - outline: webkit fallbacks - -webkit-mask-*: vendor
-     prefix fallback patterns *)
-  if is_intentionally_duplicated prop_name then ()
-  else if is_important decl then Hashtbl.replace important_seen prop_name decl
-  else Hashtbl.replace normal_seen prop_name decl
+let shorthand_longhands = function
+  | "margin" -> [ "margin-top"; "margin-right"; "margin-bottom"; "margin-left" ]
+  | "padding" ->
+      [ "padding-top"; "padding-right"; "padding-bottom"; "padding-left" ]
+  | "background" ->
+      [
+        "background-attachment";
+        "background-blend-mode";
+        "background-clip";
+        "background-color";
+        "background-image";
+        "background-origin";
+        "background-position";
+        "background-repeat";
+        "background-size";
+      ]
+  | _ -> []
 
-let choose_final_decl important_seen normal_seen prop_name decl =
-  if Hashtbl.mem important_seen prop_name then
-    Hashtbl.find important_seen prop_name
-  else if Hashtbl.mem normal_seen prop_name then
-    Hashtbl.find normal_seen prop_name
-  else decl
+let declaration_covers covering covered =
+  covering = covered || List.mem covered (shorthand_longhands covering)
 
 let deduplicate_declarations props =
-  (* CSS cascade rules: 1. !important declarations always win over normal
-     declarations 2. Among declarations of same importance, last one wins We
-     need to track normal and important separately
-
-     Special case: Don't deduplicate content properties as they may be
-     intentionally duplicated for fallback patterns *)
-  let normal_seen = Hashtbl.create 16 in
-  let important_seen = Hashtbl.create 16 in
-
-  (* First pass: collect last occurrence of each property by importance *)
-  List.iter (track_last_occurrence normal_seen important_seen) props;
-
-  (* Second pass: build result, important wins over normal for same property *)
-  let deduped = ref [] in
-  let processed = Hashtbl.create 16 in
-
-  (* Process in reverse order to maintain first occurrence position *)
-  List.iter
-    (fun decl ->
-      let prop_name = property_name decl in
-      (* Always keep intentionally duplicated properties (no deduplication) *)
-      if is_intentionally_duplicated prop_name then deduped := decl :: !deduped
-      else if not (Hashtbl.mem processed prop_name) then (
-        Hashtbl.add processed prop_name ();
-        let final_decl =
-          choose_final_decl important_seen normal_seen prop_name decl
-        in
-        deduped := final_decl :: !deduped))
-    props;
-
-  (* Apply buggy property duplication after deduplication *)
-  duplicate_buggy_properties (List.rev !deduped)
+  let covered_by_important kept prop_name =
+    List.exists
+      (fun decl ->
+        (not (is_intentionally_duplicated (property_name decl)))
+        && is_important decl
+        && declaration_covers (property_name decl) prop_name)
+      kept
+  in
+  let covered_by_new new_decl existing =
+    let new_prop = property_name new_decl in
+    let existing_prop = property_name existing in
+    (not (is_intentionally_duplicated existing_prop))
+    && declaration_covers new_prop existing_prop
+    && (is_important new_decl || not (is_important existing))
+  in
+  let kept =
+    List.fold_left
+      (fun kept decl ->
+        let prop_name = property_name decl in
+        if is_intentionally_duplicated prop_name then kept @ [ decl ]
+        else if (not (is_important decl)) && covered_by_important kept prop_name
+        then kept
+        else
+          let kept =
+            List.filter (fun old -> not (covered_by_new decl old)) kept
+          in
+          kept @ [ decl ])
+      [] props
+  in
+  duplicate_buggy_properties kept
 
 (** {1 Rule Optimization} *)
 
@@ -830,7 +833,7 @@ let try_consolidate_media ~optimize_merged_block ~media_map ~last_pos
       else stmt :: acc
   | _ -> stmt :: acc
 
-let consolidate_media_blocks (stmts : statement list) : statement list =
+let _consolidate_media_blocks (stmts : statement list) : statement list =
   let optimize_merged_block block = !statements_ref block in
   let ( media_map,
         last_pos,
@@ -946,8 +949,7 @@ let merge_layer_declarations (stmts : statement list) : statement list =
 (* Main statement processing function with layer optimization *)
 let rec statements (stmts : statement list) : statement list =
   process_statements [] stmts
-  |> consolidate_media_blocks |> merge_consecutive_media
-  |> merge_layer_declarations
+  |> merge_consecutive_media |> merge_layer_declarations
 
 and process_statements (acc : statement list) (remaining : statement list) :
     statement list =
@@ -1010,6 +1012,7 @@ and rules_aux (rules : rule list) : rule list =
   in
   (* Then apply standard rule optimizations *)
   List.map single_rule_without_nested with_optimized_nested
+  |> merge_rules |> combine_identical_rules
 
 let single_rule (rule : rule) : rule =
   {
