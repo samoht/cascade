@@ -117,8 +117,8 @@ let rec read_display t : display =
       | Some d -> d
       | None -> read_display_legacy t)
 
-let read_position t : position =
-  Cursor.enum "position"
+let rec read_position t : position =
+  Cursor.enum_or_var "position"
     [
       ("static", (Static : position));
       ("relative", Relative);
@@ -126,6 +126,7 @@ let read_position t : position =
       ("fixed", Fixed);
       ("sticky", Sticky);
     ]
+    ~var:(fun t -> Var (Values.read_var read_position t))
     t
 
 let read_flex_direction t : flex_direction =
@@ -1754,19 +1755,21 @@ let rec pp_display : display Pp.t =
       Pp.space ctx ();
       pp_display ctx inside
 
-let pp_position : position Pp.t =
+let rec pp_position : position Pp.t =
  fun ctx -> function
   | Static -> Pp.string ctx "static"
   | Relative -> Pp.string ctx "relative"
   | Absolute -> Pp.string ctx "absolute"
   | Fixed -> Pp.string ctx "fixed"
   | Sticky -> Pp.string ctx "sticky"
+  | Var v -> Values.pp_var pp_position ctx v
 
-let pp_visibility : visibility Pp.t =
+let rec pp_visibility : visibility Pp.t =
  fun ctx -> function
   | Visible -> Pp.string ctx "visible"
   | Hidden -> Pp.string ctx "hidden"
   | Collapse -> Pp.string ctx "collapse"
+  | Var v -> Values.pp_var pp_visibility ctx v
 
 let rec pp_z_index : z_index Pp.t =
  fun ctx -> function
@@ -4390,13 +4393,14 @@ let read_border t : border =
     ~default:(fun t : border -> Shorthand (read_border_shorthand t))
     t
 
-let read_visibility t : visibility =
-  Cursor.enum "visibility"
+let rec read_visibility t : visibility =
+  Cursor.enum_or_var "visibility"
     [
       ("visible", (Visible : visibility));
       ("hidden", Hidden);
       ("collapse", Collapse);
     ]
+    ~var:(fun t -> Var (Values.read_var read_visibility t))
     t
 
 let calc_to_string (type a) (expr : a calc) : string =

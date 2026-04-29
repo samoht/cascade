@@ -1530,10 +1530,16 @@ type display =
           3 §2.1, e.g. [inline flow-root] or [list-item flow-root]. *)
 
 (** CSS position values. *)
-type position = Static | Relative | Absolute | Fixed | Sticky
+type position =
+  | Static
+  | Relative
+  | Absolute
+  | Fixed
+  | Sticky
+  | Var of position var
 
 (** CSS visibility values. *)
-type visibility = Visible | Hidden | Collapse
+type visibility = Visible | Hidden | Collapse | Var of visibility var
 
 (** CSS z-index values. *)
 type z_index = Auto | Index of int | Calc of string | Var of z_index var

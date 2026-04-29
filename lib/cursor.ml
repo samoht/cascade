@@ -660,6 +660,13 @@ let enum_calls ?default table t =
       | Some f -> f t
       | None -> err_expected t "function call")
 
+let enum_or_var ?default label idents ~var t =
+  match peek t with
+  | Some (Component.Func { node = { name; _ }; _ })
+    when String.lowercase_ascii name = "var" ->
+      var t
+  | _ -> enum ?default label idents t
+
 let enum_or_calls ?default label idents ?(calls = []) t =
   match peek t with
   | Some (Component.Preserved { kind = Token.Ident s; _ }) -> (

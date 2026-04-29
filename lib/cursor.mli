@@ -404,6 +404,13 @@ val enum_or_calls :
     (ident token), then [calls] (function call), and finally falls back to
     [default]. Raises if none apply and no default is given. *)
 
+val enum_or_var :
+  ?default:(t -> 'a) -> string -> (string * 'a) list -> var:(t -> 'a) -> t -> 'a
+(** [enum_or_var label idents ~var t] is [enum_or_calls] specialised to the
+    common case of "match a CSS keyword from [idents], or read [var(...)] via
+    [var]". Removes the boilerplate of writing the [var] entry in a [calls] list
+    at every typed-property reader. *)
+
 (** {1 Higher-order combinators} *)
 
 val option : (t -> 'a) -> t -> 'a option
