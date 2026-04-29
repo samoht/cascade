@@ -936,6 +936,9 @@ module Match_container = struct
         | Named (n, inner) -> eval q ~name:n inner
         | Style (prop, value) -> style_match q ~prop ~value
         | Scroll_state (prop, value) -> eval_scroll_state q ~prop ~value
+        | And (a, b) -> eval q a && eval q b
+        | Or (a, b) -> eval q a || eval q b
+        | Not c -> not (eval q c)
         | Feature_query media -> Match_media.eval media_q media
         | Custom media -> Match_media.eval media_q media
 end

@@ -6,6 +6,9 @@ type t =
   | Named of string * t
   | Style of string * string option
   | Scroll_state of string * string
+  | And of t * t
+  | Or of t * t
+  | Not of t
   | Feature_query of Media.t
   | Custom of Media.t
 
@@ -22,6 +25,9 @@ let rec to_string = function
   | Style (name, None) -> "style(" ^ name ^ ")"
   | Style (name, Some value) -> "style(" ^ name ^ ": " ^ value ^ ")"
   | Scroll_state (name, value) -> "scroll-state(" ^ name ^ ": " ^ value ^ ")"
+  | And (a, b) -> "(" ^ to_string a ^ " and " ^ to_string b ^ ")"
+  | Or (a, b) -> "(" ^ to_string a ^ " or " ^ to_string b ^ ")"
+  | Not c -> "(not " ^ to_string c ^ ")"
   | Feature_query f -> Media.to_string f
   | Custom cond -> Media.to_string cond
 
@@ -40,29 +46,25 @@ let rec compare t1 t2 =
       | cmp -> cmp)
   | Scroll_state (n1, v1), Scroll_state (n2, v2) -> (
       match String.compare n1 n2 with 0 -> String.compare v1 v2 | cmp -> cmp)
+  | And (a1, b1), And (a2, b2) ->
+      let c = compare a1 a2 in
+      if c <> 0 then c else compare b1 b2
+  | Or (a1, b1), Or (a2, b2) ->
+      let c = compare a1 a2 in
+      if c <> 0 then c else compare b1 b2
+  | Not a, Not b -> compare a b
   | Feature_query q1, Feature_query q2 -> Media.compare q1 q2
   | Custom c1, Custom c2 -> Media.compare c1 c2
-  (* Order: Min_width_rem < Min_width_px < Named < Style < Scroll_state <
-     Feature_query < Custom *)
-  | Min_width_rem _, _ -> -1
-  | _, Min_width_rem _ -> 1
-  | Min_width_px _, _ -> -1
-  | _, Min_width_px _ -> 1
-  | Named _, (Style _ | Scroll_state _ | Feature_query _ | Custom _) -> -1
-  | (Style _ | Scroll_state _ | Feature_query _ | Custom _), Named _ -> 1
-  | Style _, (Scroll_state _ | Feature_query _ | Custom _) -> -1
-  | (Scroll_state _ | Feature_query _ | Custom _), Style _ -> 1
-  | Scroll_state _, (Feature_query _ | Custom _) -> -1
-  | (Feature_query _ | Custom _), Scroll_state _ -> 1
-  | Feature_query _, Custom _ -> -1
-  | Custom _, Feature_query _ -> 1
+  | _ -> Stdlib.compare t1 t2
 
 type kind = Min_width | Other
 
 let rec kind = function
   | Min_width_rem _ | Min_width_px _ -> Min_width
   | Named (_, cond) -> kind cond
-  | Style _ | Scroll_state _ | Feature_query _ | Custom _ -> Other
+  | And _ | Or _ | Not _ | Style _ | Scroll_state _ | Feature_query _ | Custom _
+    ->
+      Other
 
 let is_ident_start c =
   (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_' || c = '-'
@@ -223,7 +225,64 @@ let parse_container_specific raw =
   | Parenthesized_feature -> failwith "unrecognised container feature query"
   | Other_query -> failwith "not a container-specific query"
 
-let parse_unnamed s =
+(* Find the position of [keyword] at parenthesis depth 0 inside [s]. The keyword
+   is matched literally (caller passes [" and "], [" or "], etc.). *)
+let find_top_level_keyword s keyword =
+  let len = String.length s in
+  let klen = String.length keyword in
+  let depth = ref 0 in
+  let result = ref None in
+  let i = ref 0 in
+  while !result = None && !i + klen <= len do
+    (match s.[!i] with '(' -> incr depth | ')' -> decr depth | _ -> ());
+    if !depth = 0 && String.sub s !i klen = keyword then result := Some !i;
+    incr i
+  done;
+  !result
+
+let outer_parens_wrap_all s =
+  let len = String.length s in
+  let rec loop depth i =
+    if i >= len - 1 then true
+    else
+      match s.[i] with
+      | '(' -> loop (depth + 1) (i + 1)
+      | ')' when depth = 0 -> false
+      | ')' -> loop (depth - 1) (i + 1)
+      | _ -> loop depth (i + 1)
+  in
+  len >= 2 && s.[0] = '(' && s.[len - 1] = ')' && loop 0 1
+
+let strip_outer_parens s =
+  let s = String.trim s in
+  if outer_parens_wrap_all s then
+    String.sub s 1 (String.length s - 2) |> String.trim
+  else s
+
+let rec parse_unnamed s =
+  let s = String.trim s in
+  let stripped = strip_outer_parens s in
+  match find_top_level_keyword stripped " or " with
+  | Some i ->
+      let lhs = String.sub stripped 0 i in
+      let rhs = String.sub stripped (i + 4) (String.length stripped - i - 4) in
+      Or (parse_unnamed lhs, parse_unnamed rhs)
+  | None -> (
+      match find_top_level_keyword stripped " and " with
+      | Some i ->
+          let lhs = String.sub stripped 0 i in
+          let rhs =
+            String.sub stripped (i + 5) (String.length stripped - i - 5)
+          in
+          And (parse_unnamed lhs, parse_unnamed rhs)
+      | None ->
+          if String.length stripped >= 4 && String.sub stripped 0 4 = "not "
+          then
+            let inner = String.sub stripped 4 (String.length stripped - 4) in
+            Not (parse_unnamed inner)
+          else parse_atom s)
+
+and parse_atom s =
   match Media.of_string s with
   | Media.Min_width_rem rem -> Min_width_rem rem
   | Media.Min_width px when Float.is_integer px ->
