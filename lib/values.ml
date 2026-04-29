@@ -699,27 +699,28 @@ let minify_color : color -> color = function
   | Hex h -> Hex { h with value = shorten_hex h.value }
   | c -> c
 
+(* CSS Color 4 §11 normalises system colours to lowercase ASCII keywords. *)
 let pp_system_color : system_color Pp.t =
  fun ctx -> function
-  | Accent_color -> Pp.string ctx "AccentColor"
-  | Accent_color_text -> Pp.string ctx "AccentColorText"
-  | Active_text -> Pp.string ctx "ActiveText"
-  | Button_border -> Pp.string ctx "ButtonBorder"
-  | Button_face -> Pp.string ctx "ButtonFace"
+  | Accent_color -> Pp.string ctx "accentcolor"
+  | Accent_color_text -> Pp.string ctx "accentcolortext"
+  | Active_text -> Pp.string ctx "activetext"
+  | Button_border -> Pp.string ctx "buttonborder"
+  | Button_face -> Pp.string ctx "buttonface"
   | Button_text -> Pp.string ctx "buttontext"
-  | Canvas -> Pp.string ctx "Canvas"
-  | Canvas_text -> Pp.string ctx "CanvasText"
-  | Field -> Pp.string ctx "Field"
-  | Field_text -> Pp.string ctx "FieldText"
-  | Gray_text -> Pp.string ctx "GrayText"
-  | Highlight -> Pp.string ctx "Highlight"
-  | Highlight_text -> Pp.string ctx "HighlightText"
-  | Link_text -> Pp.string ctx "LinkText"
-  | Mark -> Pp.string ctx "Mark"
-  | Mark_text -> Pp.string ctx "MarkText"
-  | Selected_item -> Pp.string ctx "SelectedItem"
-  | Selected_item_text -> Pp.string ctx "SelectedItemText"
-  | Visited_text -> Pp.string ctx "VisitedText"
+  | Canvas -> Pp.string ctx "canvas"
+  | Canvas_text -> Pp.string ctx "canvastext"
+  | Field -> Pp.string ctx "field"
+  | Field_text -> Pp.string ctx "fieldtext"
+  | Gray_text -> Pp.string ctx "graytext"
+  | Highlight -> Pp.string ctx "highlight"
+  | Highlight_text -> Pp.string ctx "highlighttext"
+  | Link_text -> Pp.string ctx "linktext"
+  | Mark -> Pp.string ctx "mark"
+  | Mark_text -> Pp.string ctx "marktext"
+  | Selected_item -> Pp.string ctx "selecteditem"
+  | Selected_item_text -> Pp.string ctx "selecteditemtext"
+  | Visited_text -> Pp.string ctx "visitedtext"
   | Webkit_focus_ring_color -> Pp.string ctx "-webkit-focus-ring-color"
 
 let rec pp_channel : channel Pp.t =
