@@ -626,9 +626,10 @@ let spec_fontface_descriptors () =
   check_stylesheet
     ~expected:
       "@font-face {font-family:Brand;src:local(\"Brand\"),url(\"brand.woff2\") \
-       format(\"woff2\") tech(variations);font-weight:400 \
+       format(\"woff2\") \
+       tech(variations);font-display:optional;font-weight:400 \
        700;font-style:normal italic;font-stretch:75% \
-       125%;font-display:optional;unicode-range:U+25-FF}"
+       125%;unicode-range:U+25-FF}"
     "@font-face { font-family: Brand; src: local(\"Brand\"), \
      url(\"brand.woff2\") format(\"woff2\") tech(variations); font-weight: 400 \
      700; font-style: normal italic; font-stretch: 75% 125%; font-display: \
@@ -1998,8 +1999,9 @@ let fetch_url_boundary () =
     "cursor: url(cursor.cur), auto";
   check_declaration ~expected:"src:url(brand.woff2) format(woff2)"
     "src: url(brand.woff2) format(woff2)";
+  check_import_rule ~expected:"@import \"theme.css\" supports(display:);"
+    "@import url(theme.css) supports(display:);";
   neg_cursor read_import_rule "@import url(theme.css) layer(theme) layer(base);";
-  neg_cursor read_import_rule "@import url(theme.css) supports(display:);";
   neg_cursor read_import_rule
     "@import url(theme.css) screen supports(display: grid);"
 
@@ -2011,8 +2013,9 @@ let environment_query_boundary () =
        style(--theme: dark){.card{display:grid}}}}"
     "@media (width >= 40em) { @supports (display: grid) { @container card \
      style(--theme: dark) { .card { display: grid } } } }";
+  check_stylesheet ~expected:"@supports (display:){.x{color:red}}"
+    "@supports (display:) { .x { color: red } }";
   neg_cursor read_stylesheet "@media (width >= ) { .x { color: red } }";
-  neg_cursor read_stylesheet "@supports (display:) { .x { color: red } }";
   neg_cursor read_stylesheet "@container card style() { .x { color: red } }";
   neg_cursor read_stylesheet "@container card (width >) { .x { color: red } }"
 
