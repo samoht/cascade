@@ -7264,7 +7264,10 @@ let read_linear_gradient_body t =
         d
     | None -> To_bottom
   in
-  Linear_gradient (direction, read_gradient_stops t)
+  let stops = read_gradient_stops t in
+  if stops = [] then
+    Cursor.err_expected t "at least one color stop in linear-gradient()";
+  Linear_gradient (direction, stops)
 
 let read_radial_gradient_body t =
   Cursor.ws t;
@@ -7283,7 +7286,10 @@ let read_radial_gradient_body t =
     | Some cfg -> cfg
     | None -> { shape = None; size = None; position = None }
   in
-  Radial_gradient (config, read_gradient_stops t)
+  let stops = read_gradient_stops t in
+  if stops = [] then
+    Cursor.err_expected t "at least one color stop in radial-gradient()";
+  Radial_gradient (config, stops)
 
 let read_conic_gradient_body t =
   (* [conic-gradient([from <angle>]? [at <position>]? ,? <color-stop-list>)] *)

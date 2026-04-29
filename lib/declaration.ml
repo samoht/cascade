@@ -249,6 +249,8 @@ let read_length_box ?(allow_negative = true) t =
   if values = [] then Cursor.err_expected t "length value";
   values
 
+let read_inset_longhand t = [ read_length t ]
+
 let read_text_decoration_lines t =
   let lines = Cursor.list ~at_least:1 read_text_decoration_line t in
   let is_none (line : text_decoration_line) =
@@ -1073,10 +1075,10 @@ let read_value (type a) (prop : a property) t : declaration =
   | Inset_block -> v Inset_block (read_length_box t)
   | Inset_block_start -> v Inset_block_start (read_length_box t)
   | Inset_block_end -> v Inset_block_end (read_length_box t)
-  | Top -> v Top (read_length_box t)
-  | Right -> v Right (read_length_box t)
-  | Bottom -> v Bottom (read_length_box t)
-  | Left -> v Left (read_length_box t)
+  | Top -> v Top (read_inset_longhand t)
+  | Right -> v Right (read_inset_longhand t)
+  | Bottom -> v Bottom (read_inset_longhand t)
+  | Left -> v Left (read_inset_longhand t)
   (* Outline properties *)
   | Outline -> v Outline (read_outline t)
   | Outline_style -> v Outline_style (read_outline_style t)

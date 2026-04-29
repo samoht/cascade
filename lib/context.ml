@@ -1071,6 +1071,189 @@ module Computed_value = struct
 
   (* Resolve a [currentColor] keyword by substituting it for the value of the
      [current_color] context field rendered via {!Values.pp_color}. *)
+  (* CSS Values 4 §10 [calc()] over absolute/length operands. The evaluator is
+     a small Pratt-style parser: terms are either a length (resolved against
+     [length_ctx]) or a unitless number, joined by [+ - * /] with the usual
+     precedence. Parenthesised sub-expressions are supported. Returns [None]
+     when any operand is unresolvable, mirroring the [Unresolved] path of
+     [resolve_lengths]. *)
+  module Calc = struct
+    type token = Num of float | Op of char | Lparen | Rparen
+
+    let tokenise length_ctx s =
+      let len = String.length s in
+      let rec loop i acc =
+        if i >= len then List.rev acc
+        else
+          match s.[i] with
+          | ' ' | '\t' | '\n' -> loop (i + 1) acc
+          | '(' -> loop (i + 1) (Lparen :: acc)
+          | ')' -> loop (i + 1) (Rparen :: acc)
+          | ('+' | '-' | '*' | '/') as c when i + 1 < len ->
+              (* A leading [-] may be part of a numeric literal when it is
+                 attached to the next character without whitespace; calc()
+                 binary operators require surrounding whitespace per §10. *)
+              let prev_is_op =
+                match acc with
+                | [] -> true
+                | Op _ :: _ | Lparen :: _ -> true
+                | _ -> false
+              in
+              if
+                (c = '-' || c = '+')
+                && prev_is_op
+                && (s.[i + 1] = '.' || (s.[i + 1] >= '0' && s.[i + 1] <= '9'))
+              then
+                let rec read_term j =
+                  if j >= len then j
+                  else
+                    match s.[j] with
+                    | ' ' | '\t' | '\n' | '+' | '-' | '*' | '/' | '(' | ')' -> j
+                    | _ -> read_term (j + 1)
+                in
+                let stop = read_term (i + 1) in
+                let term = String.sub s i (stop - i) in
+                let parsed_token =
+                  let cursor = Cursor.of_string term in
+                  try
+                    let length = Values.read_length cursor in
+                    Cursor.ws cursor;
+                    if Cursor.is_done cursor then
+                      match Length.to_px length_ctx length with
+                      | Some px -> Some (Num px)
+                      | None -> None
+                    else None
+                  with _ -> (
+                    try
+                      let n = Cursor.number cursor in
+                      Cursor.ws cursor;
+                      if Cursor.is_done cursor then Some (Num n) else None
+                    with _ -> None)
+                in
+                match parsed_token with
+                | None -> raise Exit
+                | Some tok -> loop stop (tok :: acc)
+              else loop (i + 1) (Op c :: acc)
+          | ('+' | '-' | '*' | '/') as c -> loop (i + 1) (Op c :: acc)
+          | _ -> (
+              let rec read_term j =
+                if j >= len then j
+                else
+                  match s.[j] with
+                  | ' ' | '\t' | '\n' | '+' | '-' | '*' | '/' | '(' | ')' -> j
+                  | _ -> read_term (j + 1)
+              in
+              let stop = read_term i in
+              let term = String.sub s i (stop - i) in
+              let cursor = Cursor.of_string term in
+              let parsed_token =
+                try
+                  let length = Values.read_length cursor in
+                  Cursor.ws cursor;
+                  if Cursor.is_done cursor then
+                    match Length.to_px length_ctx length with
+                    | Some px -> Some (Num px)
+                    | None -> None
+                  else None
+                with _ -> (
+                  let cursor = Cursor.of_string term in
+                  try
+                    let n = Cursor.number cursor in
+                    Cursor.ws cursor;
+                    if Cursor.is_done cursor then Some (Num n) else None
+                  with _ -> None)
+              in
+              match parsed_token with
+              | None -> raise Exit
+              | Some tok -> loop stop (tok :: acc))
+      in
+      try Some (loop 0 []) with Exit -> None
+
+    let rec parse_expr tokens = parse_addsub tokens
+
+    and parse_addsub tokens =
+      let rec loop lhs tokens =
+        match tokens with
+        | Op ('+' as op) :: rest | Op ('-' as op) :: rest ->
+            let rhs, tokens = parse_muldiv rest in
+            let v = if op = '+' then lhs +. rhs else lhs -. rhs in
+            loop v tokens
+        | _ -> (lhs, tokens)
+      in
+      let lhs, tokens = parse_muldiv tokens in
+      loop lhs tokens
+
+    and parse_muldiv tokens =
+      let rec loop lhs tokens =
+        match tokens with
+        | Op '*' :: rest ->
+            let rhs, tokens = parse_atom rest in
+            loop (lhs *. rhs) tokens
+        | Op '/' :: rest ->
+            let rhs, tokens = parse_atom rest in
+            if rhs = 0. then raise Exit else loop (lhs /. rhs) tokens
+        | _ -> (lhs, tokens)
+      in
+      let lhs, tokens = parse_atom tokens in
+      loop lhs tokens
+
+    and parse_atom tokens =
+      match tokens with
+      | Num n :: rest -> (n, rest)
+      | Lparen :: rest -> (
+          let v, tokens = parse_expr rest in
+          match tokens with Rparen :: rest -> (v, rest) | _ -> raise Exit)
+      | _ -> raise Exit
+
+    let evaluate length_ctx s : float option =
+      match tokenise length_ctx s with
+      | None -> None
+      | Some tokens -> (
+          try
+            let v, remaining = parse_expr tokens in
+            if remaining = [] then Some v else None
+          with Exit -> None)
+  end
+
+  (* Replace each [calc(...)] expression in [s] with its evaluated px value. *)
+  let resolve_calc length_ctx (s : string) : (string, string) result =
+    let len = String.length s in
+    let buf = Buffer.create len in
+    let exception Unresolved of string in
+    let rec scan i =
+      if i >= len then ()
+      else if i + 5 <= len && String.sub s i 5 = "calc(" then (
+        let body_start = i + 5 in
+        let rec find_close depth j =
+          if j >= len then j
+          else
+            match s.[j] with
+            | '(' -> find_close (depth + 1) (j + 1)
+            | ')' when depth = 0 -> j
+            | ')' -> find_close (depth - 1) (j + 1)
+            | _ -> find_close depth (j + 1)
+        in
+        let close = find_close 0 body_start in
+        if close >= len then raise (Unresolved "unterminated calc()")
+        else
+          let body = String.sub s body_start (close - body_start) in
+          (match Calc.evaluate length_ctx body with
+          | None -> raise (Unresolved ("calc(" ^ body ^ ")"))
+          | Some px ->
+              Buffer.add_string buf
+                (Pp.to_string ~minify:true
+                   (Values.pp_length ~always:true)
+                   (Px px)));
+          scan (close + 1))
+      else (
+        Buffer.add_char buf s.[i];
+        scan (i + 1))
+    in
+    try
+      scan 0;
+      Ok (Buffer.contents buf)
+    with Unresolved msg -> Error msg
+
   let resolve_current_color ctx (s : string) : (string, string) result =
     if
       not
@@ -1288,12 +1471,15 @@ module Computed_value = struct
                 match resolve_url_in_value ctx with_color with
                 | Error msg -> Error msg
                 | Ok with_url -> (
-                    match resolve_lengths length_ctx with_url with
+                    match resolve_calc length_ctx with_url with
                     | Error msg -> Error msg
-                    | Ok with_lengths ->
-                        resolve_percentage ~property
-                          ~parent_font_size_px:length_ctx.parent_font_size
-                          with_lengths))))
+                    | Ok with_calc -> (
+                        match resolve_lengths length_ctx with_calc with
+                        | Error msg -> Error msg
+                        | Ok with_lengths ->
+                            resolve_percentage ~property
+                              ~parent_font_size_px:length_ctx.parent_font_size
+                              with_lengths)))))
 end
 
 let computed_value ?layer_order:_ ?layer:_ ctx decl =
