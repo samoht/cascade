@@ -678,46 +678,59 @@ let read_font_palette t =
       "dark"
   | _ -> read_dashed_ident t
 
-(* CSS Fonts 5: [font-size-adjust = none | <number> | from-font | [<font-metric>
-   [from-font | <number>]?]] where [<font-metric>] is one of [ex-height |
-   cap-height | ch-width | ic-width | ic-height]. Bare [from-font] is permitted;
-   [from-font <anything>] is rejected because [from-font] is not a
-   [<font-metric>]. *)
-let read_font_size_adjust t =
-  let metrics =
-    [ "ex-height"; "cap-height"; "ch-width"; "ic-width"; "ic-height" ]
+let read_font_size_adjust_metric t =
+  Cursor.enum "font-size-adjust metric"
+    [
+      ("ex-height", (Ex_height : font_size_adjust_metric));
+      ("cap-height", Cap_height);
+      ("ch-width", Ch_width);
+      ("ic-width", Ic_width);
+      ("ic-height", Ic_height);
+    ]
+    t
+
+let rec read_font_size_adjust t =
+  let read_metric_value t =
+    let metric = read_font_size_adjust_metric t in
+    Cursor.ws t;
+    match Cursor.peek_ident t with
+    | Some "from-font" ->
+        let _ = Cursor.ident t in
+        Metric_from_font metric
+    | _ -> Metric_number (metric, Cursor.number t)
   in
-  Cursor.ws t;
-  match Cursor.peek_ident t with
-  | Some "none" ->
-      let _ = Cursor.ident t in
-      validate_no_extra_tokens t;
-      "none"
-  | Some "from-font" ->
-      let _ = Cursor.ident t in
-      validate_no_extra_tokens t;
-      "from-font"
-  | Some m when List.mem m metrics ->
-      let _ = Cursor.ident t in
-      Cursor.ws t;
-      if Cursor.is_done t || Cursor.peek_semicolon t then
-        Cursor.err_invalid t "font-size-adjust metric requires a value"
-      else
-        let tail =
-          match Cursor.peek_ident t with
-          | Some "from-font" ->
-              let _ = Cursor.ident t in
-              "from-font"
-          | _ ->
-              let n = Cursor.number t in
-              Pp.to_string Pp.float n
-        in
-        validate_no_extra_tokens t;
-        String.concat "" [ m; " "; tail ]
-  | _ ->
-      let n = Cursor.number t in
-      validate_no_extra_tokens t;
-      Pp.to_string Pp.float n
+  Cursor.enum_or_var "font-size-adjust"
+    [
+      ("none", (None : font_size_adjust));
+      ("from-font", From_font);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (read_var read_font_size_adjust t))
+    ~default:(fun t ->
+      match Cursor.peek_ident t with
+      | Some _ -> read_metric_value t
+      | None -> Number (Cursor.number t))
+    t
+
+let rec read_font_variant_emoji t =
+  Cursor.enum_or_var "font-variant-emoji"
+    [
+      ("normal", (Normal : font_variant_emoji));
+      ("text", Text);
+      ("emoji", Emoji);
+      ("unicode", Unicode);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (read_var read_font_variant_emoji t))
+    t
 
 (* CSS Inline 3: [initial-letter = normal | drop | raise | <number [1,inf]>
    <integer [1,inf]>?]. The size and sink count must both be at least 1. *)
@@ -1053,6 +1066,8 @@ let read_value (type a) (prop : a property) t : declaration =
   | Overflow -> v Overflow (read_overflow t)
   | Overflow_x -> v Overflow_x (read_overflow_single t)
   | Overflow_y -> v Overflow_y (read_overflow_single t)
+  | Overflow_block -> v Overflow_block (read_overflow_single t)
+  | Overflow_inline -> v Overflow_inline (read_overflow_single t)
   (* Padding/Margin *)
   | Padding -> v Padding (read_padding_shorthand t)
   | Margin -> v Margin (read_margin_shorthand t)
@@ -1394,16 +1409,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Offset_distance ->
       v Offset_distance (read_non_negative_length_percentage_or_css_wide t)
   | Font_size_adjust -> v Font_size_adjust (read_font_size_adjust t)
-  | Font_variant_emoji ->
-      v Font_variant_emoji
-        (Cursor.enum "font-variant-emoji"
-           [
-             ("normal", "normal");
-             ("text", "text");
-             ("emoji", "emoji");
-             ("unicode", "unicode");
-           ]
-           t)
+  | Font_variant_emoji -> v Font_variant_emoji (read_font_variant_emoji t)
   | Text_spacing_trim ->
       v Text_spacing_trim
         (Cursor.enum "text-spacing-trim"
@@ -1532,6 +1538,10 @@ let read_value (type a) (prop : a property) t : declaration =
       v Overscroll_behavior_x (read_overscroll_behavior t)
   | Overscroll_behavior_y ->
       v Overscroll_behavior_y (read_overscroll_behavior t)
+  | Overscroll_behavior_block ->
+      v Overscroll_behavior_block (read_overscroll_behavior t)
+  | Overscroll_behavior_inline ->
+      v Overscroll_behavior_inline (read_overscroll_behavior t)
   (* Quotes *)
   | Quotes -> v Quotes (read_quotes t)
   (* Touch action *)

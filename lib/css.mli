@@ -3393,6 +3393,41 @@ val font_stretch : font_stretch -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-stretch}
      font-stretch} property. *)
 
+(** CSS font-size-adjust metric keywords *)
+type font_size_adjust_metric =
+  | Ex_height
+  | Cap_height
+  | Ch_width
+  | Ic_width
+  | Ic_height
+
+(** CSS font-size-adjust values *)
+type font_size_adjust =
+  | None
+  | Number of float
+  | From_font
+  | Metric_number of font_size_adjust_metric * float
+  | Metric_from_font of font_size_adjust_metric
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_size_adjust var
+
+(** CSS font-variant-emoji values *)
+type font_variant_emoji =
+  | Normal
+  | Text
+  | Emoji
+  | Unicode
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_variant_emoji var
+
 (** CSS font-variant-numeric token values *)
 type font_variant_numeric_token =
   | Normal  (** Reset to normal font variant *)
