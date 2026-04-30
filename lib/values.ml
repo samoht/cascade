@@ -378,6 +378,10 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Max_content -> Pp.string ctx "max-content"
   | Min_content -> Pp.string ctx "min-content"
   | From_font -> Pp.string ctx "from-font"
+  | Hairline -> Pp.string ctx "hairline"
+  | Thin -> Pp.string ctx "thin"
+  | Medium -> Pp.string ctx "medium"
+  | Thick -> Pp.string ctx "thick"
   | Stretch -> Pp.string ctx "stretch"
   | Clamp s -> pp_math_call ctx "clamp" s
   | Min s -> pp_math_call ctx "min" s

@@ -166,6 +166,12 @@ let matrix =
       negatives = [ "underline none"; "wavy solid" ];
     };
     {
+      property = "text-decoration-thickness";
+      positives =
+        [ "auto"; "from-font"; "0"; "1px"; "10%"; "hairline"; "thin"; "thick" ];
+      negatives = [ "red"; "1px 2px"; "-1px"; "none"; "min-content"; "stretch" ];
+    };
+    {
       property = "white-space";
       positives = [ "normal"; "pre"; "preserve nowrap" ];
       negatives = [ "pre normal"; "wrap nowrap preserve" ];
@@ -312,7 +318,6 @@ let matrix =
         "stroke-width";
         "outline-width";
         "outline-offset";
-        "text-decoration-thickness";
         "text-underline-offset";
         "letter-spacing";
         "text-indent";
