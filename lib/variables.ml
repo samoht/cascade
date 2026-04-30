@@ -499,7 +499,7 @@ let vars_of_scroll_snap_type (value : Properties.scroll_snap_type) :
   | Axis axis -> vars_of_scroll_snap_axis axis
   | Axis_with_strictness (axis, strictness) ->
       vars_of_scroll_snap_axis axis @ vars_of_scroll_snap_strictness strictness
-  | Inherit -> []
+  | Inherit | Initial | Unset | Revert | Revert_layer -> []
 
 let vars_of_aspect_ratio (value : Properties.aspect_ratio) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
@@ -720,6 +720,9 @@ let vars_of_background_repeat (value : Properties.background_repeat) =
 let vars_of_border_collapse (value : Properties.border_collapse) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_box_sizing (value : Properties.box_sizing) =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_transform_style (value : Properties.transform_style) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -781,6 +784,12 @@ let vars_of_object_fit (value : Properties.object_fit) =
 
 let vars_of_container_type (value : Properties.container_type) =
   match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_container_shorthand (value : Properties.container_shorthand) =
+  match value with
+  | Var v -> [ V v ]
+  | Shorthand { ctype = Some ctype; _ } -> vars_of_container_type ctype
+  | _ -> []
 
 let vars_of_break_value (value : Properties.break_value) =
   match value with Var v -> [ V v ] | _ -> []
@@ -865,8 +874,12 @@ let vars_of_clip (value : Properties.clip) =
 
 let vars_of_border_radius (value : Properties.border_radius) =
   let from_list = List.concat_map vars_of_length_percentage in
-  from_list value.horizontal
-  @ Option.value ~default:[] (Option.map from_list value.vertical)
+  match value with
+  | Var v -> [ V v ]
+  | Radius { horizontal; vertical } ->
+      from_list horizontal
+      @ Option.value ~default:[] (Option.map from_list vertical)
+  | Inherit | Initial | Unset | Revert | Revert_layer -> []
 
 let vars_of_perspective_origin (value : Properties.perspective_origin) =
   match value with
@@ -1002,10 +1015,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Webkit_tap_highlight_color, value -> vars_of_color value
   | Outline_color, value -> vars_of_color value
   (* Border radius *)
-  | Border_radius, { horizontal; vertical } ->
-      let from_list = List.concat_map vars_of_length_percentage in
-      from_list horizontal
-      @ Option.value ~default:[] (Option.map from_list vertical)
+  | Border_radius, value -> vars_of_border_radius value
   | Border_top_left_radius, value -> vars_of_length value
   | Border_top_right_radius, value -> vars_of_length value
   | Border_bottom_left_radius, value -> vars_of_length value
@@ -1151,6 +1161,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Background_repeat, value -> vars_of_background_repeat value
   | Border, value -> vars_of_border value
   | Border_collapse, value -> vars_of_border_collapse value
+  | Box_sizing, value -> vars_of_box_sizing value
   | Box_decoration_break, value -> vars_of_box_decoration_break value
   | Break_after, value -> vars_of_break_value value
   | Break_before, value -> vars_of_break_value value
@@ -1160,6 +1171,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Clip_path, value -> vars_of_clip_path value
   | Color_scheme, value -> vars_of_color_scheme value
   | Container_type, value -> vars_of_container_type value
+  | Container, value -> vars_of_container_shorthand value
   | Direction, value -> vars_of_direction value
   | Display, value -> vars_of_display value
   | Fill, value -> vars_of_svg_paint value

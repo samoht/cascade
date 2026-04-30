@@ -809,7 +809,7 @@ let read_non_negative_number t =
 (* CSS Backgrounds and Borders 3 §5: [border-radius = <length-percentage>{1,4}
    [/ <length-percentage>{1,4}]?]. Reads 1-4 horizontal radii then, after [/],
    1-4 vertical radii. *)
-let read_border_radius t : Properties.border_radius =
+let rec read_border_radius (t : Cursor.t) : Properties.border_radius =
   let read_radii t =
     let rec loop acc count =
       if count >= 4 then List.rev acc
@@ -822,17 +822,34 @@ let read_border_radius t : Properties.border_radius =
     if radii = [] then Cursor.err_expected t "<length-percentage>" else radii
   in
   Cursor.ws t;
-  let horizontal = read_radii t in
-  Cursor.ws t;
-  let vertical =
-    match Cursor.peek_delim t with
-    | Some '/' ->
-        Cursor.skip t;
-        Cursor.ws t;
-        Some (read_radii t)
-    | _ -> None
-  in
-  { Properties.horizontal; vertical }
+  Cursor.enum_or_calls "border-radius"
+    [
+      ("inherit", (Properties.Inherit : Properties.border_radius));
+      ("initial", Properties.Initial);
+      ("unset", Properties.Unset);
+      ("revert", Properties.Revert);
+      ("revert-layer", Properties.Revert_layer);
+    ]
+    ~calls:
+      [
+        ( "var",
+          fun t ->
+            (Properties.Var (Values.read_var read_border_radius t)
+              : Properties.border_radius) );
+      ]
+    ~default:(fun t ->
+      let horizontal = read_radii t in
+      Cursor.ws t;
+      let vertical =
+        match Cursor.peek_delim t with
+        | Some '/' ->
+            Cursor.skip t;
+            Cursor.ws t;
+            Some (read_radii t)
+        | _ -> None
+      in
+      Properties.Radius { horizontal; vertical })
+    t
 
 (* Delegate to the proper reader in Properties *)
 let read_translate_value t : Properties_intf.translate_value =

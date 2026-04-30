@@ -106,6 +106,11 @@ type overflow =
   | Scroll
   | Auto
   | Clip
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Overflow_pair of overflow * overflow
   | Var of overflow var
 
@@ -530,6 +535,10 @@ type aspect_ratio =
   | Auto_ratio of float * float
   | Ratio of float * float
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of aspect_ratio var
 
 type font_style =
@@ -698,6 +707,9 @@ type border_shorthand = {
 type border =
   | Inherit
   | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | None
   | Shorthand of border_shorthand
   | Var of border var
@@ -1289,15 +1301,22 @@ type radial_gradient_config = {
   position : position_value option;
 }
 
-type border_radius = {
-  horizontal : length_percentage list;
-      (** 1-4 horizontal radii (top-left, top-right, bottom-right, bottom-left).
-      *)
-  vertical : length_percentage list option;
-      (** Optional 1-4 vertical radii after [/]; when [None] the horizontal
-          values are used for both axes. *)
-}
-(** [<length-percentage [0,∞]>]{1,4} [ / [<length-percentage [0,∞]>]{1,4} ]?
+type border_radius =
+  | Radius of {
+      horizontal : length_percentage list;
+          (** 1-4 horizontal radii (top-left, top-right, bottom-right,
+              bottom-left). *)
+      vertical : length_percentage list option;
+          (** Optional 1-4 vertical radii after [/]; when [None] the horizontal
+              values are used for both axes. *)
+    }
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of border_radius var
+      (** [<length-percentage [0,∞]>]{1,4} [ / [<length-percentage [0,∞]>]{1,4} ]?
     per CSS Backgrounds and Borders 3 §5. *)
 
 type conic_gradient_config = {
@@ -1505,7 +1524,16 @@ type resize =
   | Var of resize var
 
 (* Box Model Types *)
-type box_sizing = Border_box | Content_box | Inherit | Var of box_sizing var
+type box_sizing =
+  | Border_box
+  | Content_box
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of box_sizing var
+
 type field_sizing = Content | Fixed | Inherit | Var of field_sizing var
 type caption_side = Top | Bottom | Inherit | Var of caption_side var
 
@@ -1556,13 +1584,22 @@ type container_type =
   | Inline_size
   | Scroll_state
   | Normal
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of container_type var
 
 (* Container shorthand: name / type *)
-type container_shorthand = {
-  name : string option;
-  ctype : container_type option;
-}
+type container_shorthand =
+  | Shorthand of { name : string option; ctype : container_type option }
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of container_shorthand var
 
 (* Containment Types *)
 type contain =
@@ -1669,7 +1706,15 @@ type columns_value =
   | Var of columns_value var
 
 (* Scroll Types *)
-type scroll_behavior = Auto | Smooth | Inherit | Var of scroll_behavior var
+type scroll_behavior =
+  | Auto
+  | Smooth
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of scroll_behavior var
 
 type scroll_snap_align =
   | None
@@ -1677,12 +1722,21 @@ type scroll_snap_align =
   | End
   | Center
   | Snap_align_pair of scroll_snap_align * scroll_snap_align
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of scroll_snap_align var
 
 type scroll_snap_stop =
   | Normal
   | Always
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of scroll_snap_stop var
 
 type scroll_snap_strictness =
@@ -1705,6 +1759,10 @@ type scroll_snap_type =
       scroll_snap_axis
       * scroll_snap_strictness (* Axis with explicit strictness or var *)
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of scroll_snap_type var
 
 type timeline_axis = Block | Inline | X | Y | Var of timeline_axis var

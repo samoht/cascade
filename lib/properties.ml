@@ -791,15 +791,21 @@ let rec read_text_transform t : text_transform =
     ~calls:[ ("var", read_var) ]
     t
 
-let read_overflow_single t : overflow =
-  Cursor.enum "overflow"
+let rec read_overflow_single (t : Cursor.t) : overflow =
+  Cursor.enum_or_var "overflow"
     [
       ("visible", (Visible : overflow));
       ("hidden", Hidden);
       ("scroll", Scroll);
       ("auto", Auto);
       ("clip", Clip);
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_overflow_single t))
     t
 
 let read_overflow t : overflow =
@@ -1704,16 +1710,23 @@ let rec pp_border_style : border_style Pp.t =
   | Outset -> Pp.string ctx "outset"
   | Var v -> pp_var pp_border_style ctx v
 
-let pp_border_radius : border_radius Pp.t =
- fun ctx { horizontal; vertical } ->
-  Pp.list ~sep:Pp.space (pp_length_percentage ~always:true) ctx horizontal;
-  match vertical with
-  | None -> ()
-  | Some vs ->
-      Pp.sp ctx ();
-      Pp.char ctx '/';
-      Pp.sp ctx ();
-      Pp.list ~sep:Pp.space (pp_length_percentage ~always:true) ctx vs
+let rec pp_border_radius : border_radius Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_border_radius ctx v
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Radius { horizontal; vertical } -> (
+      Pp.list ~sep:Pp.space (pp_length_percentage ~always:true) ctx horizontal;
+      match vertical with
+      | None -> ()
+      | Some vs ->
+          Pp.sp ctx ();
+          Pp.char ctx '/';
+          Pp.sp ctx ();
+          Pp.list ~sep:Pp.space (pp_length_percentage ~always:true) ctx vs)
 
 let rec pp_border_width : border_width Pp.t =
  fun ctx -> function
@@ -1764,6 +1777,9 @@ let rec pp_border : border Pp.t =
   | Var v -> pp_var pp_border ctx v
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | None -> Pp.string ctx "none"
   | Shorthand shorthand -> pp_border_shorthand ctx shorthand
 
@@ -1868,6 +1884,11 @@ let rec pp_overflow : overflow Pp.t =
   | Scroll -> Pp.string ctx "scroll"
   | Auto -> Pp.string ctx "auto"
   | Clip -> Pp.string ctx "clip"
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Overflow_pair (x, y) ->
       pp_overflow ctx x;
       Pp.space ctx ();
@@ -2295,6 +2316,10 @@ let rec pp_aspect_ratio : aspect_ratio Pp.t =
       Pp.space ctx ();
       pp_aspect_ratio ctx (Ratio (a, b))
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_aspect_ratio ctx v
   | Ratio (a, b) ->
       if b = 1.0 then
@@ -3305,6 +3330,10 @@ let rec pp_box_sizing : box_sizing Pp.t =
   | Border_box -> Pp.string ctx "border-box"
   | Content_box -> Pp.string ctx "content-box"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_field_sizing : field_sizing Pp.t =
  fun ctx -> function
@@ -3355,19 +3384,31 @@ let rec pp_container_type : container_type Pp.t =
   | Size -> Pp.string ctx "size"
   | Inline_size -> Pp.string ctx "inline-size"
   | Scroll_state -> Pp.string ctx "scroll-state"
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
-let pp_container_shorthand : container_shorthand Pp.t =
- fun ctx { name; ctype } ->
-  match (name, ctype) with
-  | None, None -> () (* Should not happen, but emit nothing *)
-  | Some n, None -> Pp.string ctx n
-  | None, Some t -> pp_container_type ctx t
-  | Some n, Some t ->
-      Pp.string ctx n;
-      Pp.sp ctx ();
-      Pp.char ctx '/';
-      Pp.sp ctx ();
-      pp_container_type ctx t
+let rec pp_container_shorthand : container_shorthand Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_container_shorthand ctx v
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Shorthand { name; ctype } -> (
+      match (name, ctype) with
+      | None, None -> () (* Should not happen, but emit nothing *)
+      | Some n, None -> Pp.string ctx n
+      | None, Some t -> pp_container_type ctx t
+      | Some n, Some t ->
+          Pp.string ctx n;
+          Pp.sp ctx ();
+          Pp.char ctx '/';
+          Pp.sp ctx ();
+          pp_container_type ctx t)
 
 let rec pp_content : content Pp.t =
  fun ctx -> function
@@ -3546,6 +3587,11 @@ let rec pp_scroll_snap_align : scroll_snap_align Pp.t =
   | Start -> Pp.string ctx "start"
   | End -> Pp.string ctx "end"
   | Center -> Pp.string ctx "center"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Snap_align_pair (block, inline) ->
       pp_scroll_snap_align ctx block;
       Pp.space ctx ();
@@ -3608,6 +3654,10 @@ let rec pp_scroll_snap_stop : scroll_snap_stop Pp.t =
   | Normal -> Pp.string ctx "normal"
   | Always -> Pp.string ctx "always"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_scroll_behavior : scroll_behavior Pp.t =
  fun ctx -> function
@@ -3615,6 +3665,10 @@ let rec pp_scroll_behavior : scroll_behavior Pp.t =
   | Auto -> Pp.string ctx "auto"
   | Smooth -> Pp.string ctx "smooth"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_resize : resize Pp.t =
  fun ctx -> function
@@ -3758,6 +3812,10 @@ let rec pp_scroll_snap_type : scroll_snap_type Pp.t =
           Pp.space ctx ();
           pp_scroll_snap_strictness ctx strictness)
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_scroll_snap_type ctx v
 
 let rec pp_grid_template : grid_template Pp.t =
@@ -4542,9 +4600,17 @@ let read_border_shorthand t : border_shorthand =
   in
   Border.to_shorthand acc
 
-let read_border t : border =
-  Cursor.enum "border"
-    [ ("inherit", (Inherit : border)); ("initial", Initial); ("none", None) ]
+let rec read_border (t : Cursor.t) : border =
+  Cursor.enum_or_calls "border"
+    [
+      ("inherit", (Inherit : border));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+      ("none", None);
+    ]
+    ~calls:[ ("var", fun t -> (Var (Values.read_var read_border t) : border)) ]
     ~default:(fun t : border -> Shorthand (read_border_shorthand t))
     t
 
@@ -5037,8 +5103,10 @@ let read_grid_template t : grid_template =
       | _ -> Split (rows, columns))
     else rows
 
-let rec read_aspect_ratio t : aspect_ratio =
-  let read_var_ar t : aspect_ratio = Var (read_var read_aspect_ratio t) in
+let rec read_aspect_ratio (t : Cursor.t) : aspect_ratio =
+  let read_var_ar t : aspect_ratio =
+    (Var (read_var read_aspect_ratio t) : aspect_ratio)
+  in
   let read_ratio t =
     let w = Cursor.number t in
     Cursor.ws t;
@@ -5065,7 +5133,13 @@ let rec read_aspect_ratio t : aspect_ratio =
     | _ -> Cursor.err_expected t "auto"
   in
   Cursor.enum_or_calls "aspect-ratio"
-    [ ("inherit", Inherit) ]
+    [
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
     ~calls:[ ("var", read_var_ar) ]
     ~default:(Cursor.one_of [ read_auto; read_number_or_ratio ])
     t
@@ -5314,13 +5388,18 @@ let read_resize t : resize =
     ]
     t
 
-let read_box_sizing t : box_sizing =
-  Cursor.enum "box-sizing"
+let rec read_box_sizing (t : Cursor.t) : box_sizing =
+  Cursor.enum_or_var "box-sizing"
     [
       ("border-box", (Border_box : box_sizing));
       ("content-box", Content_box);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> (Var (Values.read_var read_box_sizing t) : box_sizing))
     t
 
 let read_field_sizing t : field_sizing =
@@ -5451,35 +5530,54 @@ let rec read_quotes t : quotes =
     ~calls:[ ("var", read_var') ]
     ~default:read_pairs t
 
-let read_container_type t : container_type =
-  Cursor.enum "container-type"
+let rec read_container_type (t : Cursor.t) : container_type =
+  Cursor.enum_or_var "container-type"
     [
       ("normal", (Normal : container_type));
       ("inline-size", Inline_size);
       ("size", Size);
       ("scroll-state", Scroll_state);
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t ->
+      (Var (Values.read_var read_container_type t) : container_type))
     t
 
-let read_container_shorthand t : container_shorthand =
+let rec read_container_shorthand (t : Cursor.t) : container_shorthand =
   (* Syntax: container: [<custom-ident>] [ / <container-type> ]? *)
-  let first = Cursor.ident t in
   Cursor.ws t;
-  match Cursor.peek_delim t with
-  | Some '/' ->
-      (* We have: name / type *)
-      Cursor.expect '/' t;
-      Cursor.ws t;
-      let ctype = read_container_type t in
-      { name = Some first; ctype = Some ctype }
+  match Cursor.peek t with
+  | Some (Component.Func { node = { name = "var"; _ }; _ }) ->
+      (Var (Values.read_var read_container_shorthand t) : container_shorthand)
   | _ -> (
-      (* Just a name, or just a type? Check if it's a valid container-type *)
-      match first with
-      | "normal" -> { name = None; ctype = Some Normal }
-      | "inline-size" -> { name = None; ctype = Some Inline_size }
-      | "size" -> { name = None; ctype = Some Size }
-      | "scroll-state" -> { name = None; ctype = Some Scroll_state }
-      | _ -> { name = Some first; ctype = None })
+      let first = Cursor.ident t in
+      Cursor.ws t;
+      match Cursor.peek_delim t with
+      | Some '/' ->
+          (* We have: name / type *)
+          Cursor.expect '/' t;
+          Cursor.ws t;
+          let ctype = read_container_type t in
+          Shorthand { name = Some first; ctype = Some ctype }
+      | _ -> (
+          (* Just a name, or just a type? Check if it's a valid
+             container-type *)
+          match first with
+          | "normal" -> Shorthand { name = None; ctype = Some Normal }
+          | "inline-size" -> Shorthand { name = None; ctype = Some Inline_size }
+          | "size" -> Shorthand { name = None; ctype = Some Size }
+          | "scroll-state" ->
+              Shorthand { name = None; ctype = Some Scroll_state }
+          | "initial" -> Initial
+          | "inherit" -> Inherit
+          | "unset" -> Unset
+          | "revert" -> Revert
+          | "revert-layer" -> Revert_layer
+          | _ -> Shorthand { name = Some first; ctype = None }))
 
 let rec read_contain t : contain =
   let read_contain_value t : contain =
@@ -5607,34 +5705,56 @@ let rec read_columns_value t : columns_value =
         t)
     t
 
-let read_scroll_behavior t : scroll_behavior =
-  Cursor.enum "scroll-behavior"
+let rec read_scroll_behavior (t : Cursor.t) : scroll_behavior =
+  Cursor.enum_or_var "scroll-behavior"
     [
       ("auto", (Auto : scroll_behavior));
       ("smooth", Smooth);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t ->
+      (Var (Values.read_var read_scroll_behavior t) : scroll_behavior))
     t
 
-let read_scroll_snap_align t : scroll_snap_align =
+let rec read_scroll_snap_align (t : Cursor.t) : scroll_snap_align =
   let read_single t =
-    Cursor.enum "scroll-snap-align"
+    Cursor.enum_or_calls "scroll-snap-align"
       [
         ("none", (None : scroll_snap_align));
         ("start", Start);
         ("end", End);
         ("center", Center);
+        ("inherit", Inherit);
+        ("initial", Initial);
+        ("unset", Unset);
+        ("revert", Revert);
+        ("revert-layer", Revert_layer);
       ]
+      ~calls:
+        [
+          ( "var",
+            fun t ->
+              (Var (Values.read_var read_scroll_snap_align t)
+                : scroll_snap_align) );
+        ]
       t
   in
   let first = read_single t in
   Cursor.ws t;
   if Cursor.is_done t then first
-  else
+  else (
+    (match first with
+    | Inherit | Initial | Unset | Revert | Revert_layer ->
+        Cursor.err_invalid t "scroll-snap-align CSS-wide value in pair"
+    | _ -> ());
     let second = read_single t in
     Cursor.ws t;
     Cursor.expect_eof t;
-    Snap_align_pair (first, second)
+    Snap_align_pair (first, second))
 
 let read_timeline_axis t : timeline_axis =
   Cursor.enum "timeline-axis"
@@ -5712,13 +5832,19 @@ let rec read_page_size t : page_size =
     ~default:(Cursor.one_of [ read_named; read_oriented; read_lengths ])
     t
 
-let read_scroll_snap_stop t : scroll_snap_stop =
-  Cursor.enum "scroll-snap-stop"
+let rec read_scroll_snap_stop (t : Cursor.t) : scroll_snap_stop =
+  Cursor.enum_or_var "scroll-snap-stop"
     [
       ("normal", (Normal : scroll_snap_stop));
       ("always", Always);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t ->
+      (Var (Values.read_var read_scroll_snap_stop t) : scroll_snap_stop))
     t
 
 let rec read_scroll_snap_strictness t : scroll_snap_strictness =
@@ -5758,8 +5884,19 @@ let rec read_scroll_snap_type t : scroll_snap_type =
         | None -> Axis axis)
   in
   Cursor.enum_or_calls "scroll-snap-type"
-    [ ("inherit", (Inherit : scroll_snap_type)) ]
-    ~calls:[ ("var", fun t -> Var (read_var read_scroll_snap_type t)) ]
+    [
+      ("inherit", (Inherit : scroll_snap_type));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:
+      [
+        ( "var",
+          fun t -> (Var (read_var read_scroll_snap_type t) : scroll_snap_type)
+        );
+      ]
     ~default:read_axis_with_optional_strictness t
 
 let read_overscroll_behavior t : overscroll_behavior =
@@ -5987,7 +6124,7 @@ let read_clear t : clear =
     ]
     t
 
-let rec read_float_side t : float_side =
+let rec read_float_side (t : Cursor.t) : float_side =
   Cursor.enum_or_var "float-side"
     [
       ("none", (None : float_side));
@@ -8391,7 +8528,7 @@ let rec read_background t : background =
       ("none", None);
     ]
     ~calls:[ ("var", read_var_call) ]
-    ~default:(fun t -> Shorthand (read_background_shorthand t))
+    ~default:(fun t -> (Shorthand (read_background_shorthand t) : background))
     t
 
 let read_backgrounds t : background list =
@@ -8625,9 +8762,24 @@ let read_border_radius_inline t : border_radius =
         Some (read_radii t)
     | _ -> None
   in
-  { horizontal; vertical }
+  Radius { horizontal; vertical }
 
-let read_border_radius = read_border_radius_inline
+let rec read_border_radius (t : Cursor.t) : border_radius =
+  Cursor.enum_or_calls "border-radius"
+    [
+      ("inherit", (Inherit : border_radius));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:
+      [
+        ( "var",
+          fun t -> (Var (Values.read_var read_border_radius t) : border_radius)
+        );
+      ]
+    ~default:read_border_radius_inline t
 
 let read_clip_path_round t : border_radius option =
   Cursor.ws t;
@@ -8771,7 +8923,7 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Number_percentage -> pp pp_number_percentage
   | Value ->
       let rendered =
-        if Pp.minified ctx then Parser.to_string_minified value
+        if Pp.minified ctx then Parser.to_string_custom_minified value
         else Parser.to_string value
       in
       Pp.string ctx rendered
