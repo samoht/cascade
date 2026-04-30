@@ -1070,7 +1070,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Text_decoration_style ->
       v Text_decoration_style (read_text_decoration_style t)
   | Text_underline_offset -> v Text_underline_offset (read_length t)
-  | Letter_spacing -> v Letter_spacing (read_length ~with_keywords:false t)
+  | Letter_spacing -> v Letter_spacing (read_length t)
   (* List properties *)
   | List_style_type -> v List_style_type (read_list_style_type t)
   | List_style_position -> v List_style_position (read_list_style_position t)
