@@ -734,27 +734,33 @@ let rec read_font_variant_emoji t =
 
 (* CSS Inline 3: [initial-letter = normal | drop | raise | <number [1,inf]>
    <integer [1,inf]>?]. The size and sink count must both be at least 1. *)
-let read_initial_letter t =
-  Cursor.ws t;
-  match Cursor.peek_ident t with
-  | Some ("normal" as s) | Some ("drop" as s) | Some ("raise" as s) ->
-      let _ = Cursor.ident t in
-      validate_no_extra_tokens t;
-      s
-  | _ ->
-      let size = Cursor.number t in
-      if size < 1. then Cursor.err_invalid t "initial-letter size must be >= 1"
-      else (
-        Cursor.ws t;
-        if Cursor.is_done t || Cursor.peek_semicolon t then
-          Pp.to_string Pp.float size
-        else
-          let sink = Cursor.int t in
-          if sink < 1 then
-            Cursor.err_invalid t "initial-letter sink must be >= 1"
-          else
-            String.concat ""
-              [ Pp.to_string Pp.float size; " "; string_of_int sink ])
+let rec read_initial_letter t =
+  let read_number t =
+    let size = Cursor.number t in
+    if size < 1. then Cursor.err_invalid t "initial-letter size must be >= 1";
+    Cursor.ws t;
+    if Cursor.is_done t || Cursor.peek_semicolon t then
+      (Size size : initial_letter)
+    else
+      let sink = Cursor.int t in
+      if sink < 1 then Cursor.err_invalid t "initial-letter sink must be >= 1";
+      Cursor.ws t;
+      Cursor.expect_eof t;
+      Size_sink (size, sink)
+  in
+  Cursor.enum_or_calls "initial-letter"
+    [
+      ("normal", (Normal : initial_letter));
+      ("drop", Drop);
+      ("raise", Raise);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:[ ("var", fun t -> Var (read_var read_initial_letter t)) ]
+    ~default:read_number t
 
 (* CSS Box Sizing 4: [margin-trim = none | block | inline | [block-start ||
    inline-start || block-end || inline-end]]. The bracketed form is a [||]
@@ -1393,7 +1399,8 @@ let read_value (type a) (prop : a property) t : declaration =
   | Font_size_adjust -> v Font_size_adjust (read_font_size_adjust t)
   | Font_variant_emoji -> v Font_variant_emoji (read_font_variant_emoji t)
   | Text_spacing_trim -> v Text_spacing_trim (read_text_spacing_trim t)
-  | Hyphenate_limit_chars -> v Hyphenate_limit_chars (read_untyped_value t)
+  | Hyphenate_limit_chars ->
+      v Hyphenate_limit_chars (read_hyphenate_limit_chars t)
   | Initial_letter -> v Initial_letter (read_initial_letter t)
   | View_timeline_name -> v View_timeline_name (read_untyped_value t)
   | View_timeline_axis ->

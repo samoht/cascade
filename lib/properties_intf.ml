@@ -102,7 +102,17 @@ type position =
   | Revert_layer
   | Var of position var
 
-type visibility = Visible | Hidden | Collapse | Var of visibility var
+type visibility =
+  | Visible
+  | Hidden
+  | Collapse
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of visibility var
+
 type z_index = Auto | Index of int | Calc of string | Var of z_index var
 
 type opacity =
@@ -138,9 +148,23 @@ type flex_direction =
   | Row_reverse
   | Column
   | Column_reverse
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of flex_direction var
 
-type flex_wrap = Nowrap | Wrap | Wrap_reverse | Var of flex_wrap var
+type flex_wrap =
+  | Nowrap
+  | Wrap
+  | Wrap_reverse
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of flex_wrap var
 
 type align_content =
   | Normal
@@ -735,6 +759,19 @@ type hyphenate_limit_chars =
   | Revert
   | Revert_layer
   | Var of hyphenate_limit_chars var
+
+type initial_letter =
+  | Normal
+  | Drop
+  | Raise
+  | Size of float
+  | Size_sink of float * int
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of initial_letter var
 
 type white_space =
   | Normal
@@ -2563,7 +2600,7 @@ type 'a property =
   | Font_variant_emoji : font_variant_emoji property
   | Text_spacing_trim : text_spacing_trim property
   | Hyphenate_limit_chars : hyphenate_limit_chars property
-  | Initial_letter : string property
+  | Initial_letter : initial_letter property
   | View_timeline_name : string property
   | View_timeline_axis : string property
   | View_timeline : timeline_shorthand property

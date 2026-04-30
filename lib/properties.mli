@@ -400,6 +400,15 @@ val pp_text_spacing_trim : text_spacing_trim Pp.t
 val read_text_spacing_trim : Cursor.t -> text_spacing_trim
 (** [read_text_spacing_trim t] is the [text_spacing_trim] parsed from [t]. *)
 
+val pp_hyphenate_limit_chars : hyphenate_limit_chars Pp.t
+(** [pp_hyphenate_limit_chars] pretty-prints a [hyphenate_limit_chars]. *)
+
+val read_hyphenate_limit_chars : Cursor.t -> hyphenate_limit_chars
+(** [read_hyphenate_limit_chars t] parses a [hyphenate_limit_chars]. *)
+
+val pp_initial_letter : initial_letter Pp.t
+(** [pp_initial_letter] pretty-prints an [initial_letter]. *)
+
 val pp_text_size_adjust : text_size_adjust Pp.t
 (** [pp_text_size_adjust] pretty-prints a text-size-adjust value. *)
 
