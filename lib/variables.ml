@@ -600,6 +600,7 @@ let rec vars_of_opacity (value : Properties.opacity) : any_var list =
   | Opacity_number _ -> []
   | Abs v | Sign v -> vars_of_opacity v
   | Var v -> [ V v ]
+  | Inherit | Initial | Unset | Revert | Revert_layer -> []
 
 let compare_vars_by_name (V x) (V y) = String.compare x.name y.name
 

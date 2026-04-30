@@ -1183,6 +1183,10 @@ type font_feature_settings =
   | Normal
   | Feature_list of string
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | String of string
   | Var of font_feature_settings var  (** CSS font-variation-settings values *)
 
@@ -1190,6 +1194,10 @@ type font_variation_settings =
   | Normal
   | Axis_list of string
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | String of string
   | Var of font_variation_settings var
 
@@ -1578,6 +1586,11 @@ type opacity =
   | Opacity_number of float
   | Abs of opacity  (** [abs(<opacity>)] *)
   | Sign of opacity  (** [sign(<opacity>)] *)
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of opacity var  (** CSS order values (flexbox order). *)
 
 type order =
@@ -2942,6 +2955,10 @@ type font_weight =
   | Bolder
   | Lighter
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of font_weight var  (** CSS text align values. *)
 
 type text_align =
@@ -2982,6 +2999,10 @@ type text_decoration =
   | None
   | Shorthand of text_decoration_shorthand
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of text_decoration var
 
 val text_decoration_shorthand :
@@ -4233,6 +4254,11 @@ type filter =
   | Sepia of number_percentage  (** sepia(%) *)
   | Url of string  (** url(...) *)
   | List of filter list  (** Multiple filters *)
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of filter var
 
 val filter : filter -> declaration
@@ -4304,6 +4330,11 @@ type clip_path =
     }
       (** [rect(<length-percentage>{4} [round <border-radius>]?)] - CSS Shapes
           2. *)
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of clip_path var
 
 val clip : clip -> declaration

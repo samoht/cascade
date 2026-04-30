@@ -33,6 +33,10 @@ type font_weight =
   | Bolder
   | Lighter
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of font_weight var
 
 (* Display & Layout Types *)
@@ -96,6 +100,11 @@ type opacity =
   | Opacity_number of float
   | Abs of opacity  (** [abs(<opacity>)] *)
   | Sign of opacity  (** [sign(<opacity>)] *)
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of opacity var
 
 type order = Order_int of int | Order_calc of string | Var of order var
@@ -588,6 +597,10 @@ type text_decoration =
   | None
   | Shorthand of text_decoration_shorthand
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of text_decoration var
 
 type text_transform =
@@ -625,6 +638,10 @@ type white_space =
   | Break_spaces
   | Preserve_nowrap
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of white_space var
 
 type word_break =
@@ -897,6 +914,10 @@ type font_feature_settings =
   | Normal
   | Feature_list of string
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | String of string
   | Var of font_feature_settings var
 
@@ -904,6 +925,10 @@ type font_variation_settings =
   | Normal
   | Axis_list of string
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | String of string
   | Var of font_variation_settings var
 
@@ -1153,6 +1178,11 @@ type filter =
   | Sepia of number_percentage
   | Url of string
   | List of filter list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of filter var
 
 (* Background Types *)
@@ -2031,6 +2061,11 @@ type clip_path =
     }
       (** [rect(<length-percentage>{4} [round <border-radius>]?)] - CSS Shapes
           2. *)
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of clip_path var
 
 type _ kind =
@@ -2292,6 +2327,10 @@ type 'a property =
   | View_transition_name : string property
   | Image_orientation : string property
   | Contain_intrinsic_size : string property
+  | Contain_intrinsic_width : string property
+  | Contain_intrinsic_height : string property
+  | Contain_intrinsic_block_size : string property
+  | Contain_intrinsic_inline_size : string property
   | Margin_trim : string property
   | Offset_path : string property
   | Offset_distance : length_percentage property
