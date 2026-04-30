@@ -2479,6 +2479,15 @@ type flex_wrap =
   | Revert_layer
   | Var of flex_wrap var  (** CSS flex basis values. *)
 
+type flex_factor =
+  | Number of float
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of flex_factor var
+
 type flex_basis =
   | Auto
   | Content
@@ -5759,6 +5768,9 @@ val pp_scroll_snap_strictness : scroll_snap_strictness Pp.t
 
 val pp_flex_direction : flex_direction Pp.t
 (** [pp_flex_direction] is the pretty printer for flex-direction values. *)
+
+val pp_flex_factor : flex_factor Pp.t
+(** [pp_flex_factor] is the pretty printer for flex factor values. *)
 
 val pp_align_items : align_items Pp.t
 (** [pp_align_items] is the pretty printer for align-items values. *)
