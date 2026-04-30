@@ -92,6 +92,10 @@ type length =
   | Max_content
   | Min_content
   | From_font
+  | Hairline
+  | Thin
+  | Medium
+  | Thick
   | Stretch
   | Clamp of string
   | Min of string

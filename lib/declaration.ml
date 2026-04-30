@@ -869,6 +869,32 @@ let read_non_negative_length_or_css_wide t =
     ~default:(read_non_negative_length ~with_keywords:false)
     t
 
+let rec read_text_decoration_thickness t =
+  Cursor.enum_or_calls "text-decoration-thickness"
+    [
+      ("auto", (Auto : length));
+      ("from-font", From_font);
+      ("hairline", Hairline);
+      ("thin", Thin);
+      ("medium", Medium);
+      ("thick", Thick);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:
+      [
+        ("var", fun t -> Var (read_var read_text_decoration_thickness t));
+        ( "calc",
+          fun t ->
+            Calc (read_calc (read_non_negative_length ~with_keywords:false) t)
+        );
+      ]
+    ~default:(read_non_negative_length ~with_keywords:false)
+    t
+
 let read_non_negative_number t =
   let value = Cursor.number t in
   if value < 0. then Cursor.err_invalid t "negative number not allowed";
@@ -1260,12 +1286,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Text_overflow -> v Text_overflow (read_text_overflow t)
   | Text_wrap -> v Text_wrap (read_text_wrap t)
   | Text_decoration_thickness ->
-      (* CSS Text Decoration 4 §3.3: [auto | from-font | <length-percentage>]
-         (non-negative). [length] already carries [Auto] / [From_font] /
-         CSS-wide cases when keywords are enabled, so we forward to
-         [read_non_negative_length] with [~with_keywords:true]. *)
-      v Text_decoration_thickness
-        (Values.read_non_negative_length ~with_keywords:true t)
+      v Text_decoration_thickness (read_text_decoration_thickness t)
   | Text_size_adjust -> v Text_size_adjust (read_text_size_adjust t)
   | Text_decoration_skip_ink ->
       v Text_decoration_skip_ink (read_text_decoration_skip_ink t)

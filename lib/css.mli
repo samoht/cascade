@@ -663,6 +663,10 @@ type length =
   | Max_content  (** max-content keyword *)
   | Min_content  (** min-content keyword *)
   | From_font  (** from-font keyword for text-decoration-thickness *)
+  | Hairline  (** hairline line-width keyword for text-decoration-thickness *)
+  | Thin  (** thin line-width keyword for text-decoration-thickness *)
+  | Medium  (** medium line-width keyword for text-decoration-thickness *)
+  | Thick  (** thick line-width keyword for text-decoration-thickness *)
   | Stretch  (** stretch keyword (intrinsic sizing) *)
   | Clamp of string  (** clamp() function *)
   | Min of string  (** min() function *)
@@ -3405,6 +3409,11 @@ type font_variant_numeric_token =
 
 type font_variant_numeric =
   | Normal
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Tokens of font_variant_numeric_token list
   | Composed of {
       ordinal : font_variant_numeric_token option;

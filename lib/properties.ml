@@ -3880,6 +3880,11 @@ let rec pp_font_variant_numeric_token : font_variant_numeric_token Pp.t =
 and pp_font_variant_numeric : font_variant_numeric Pp.t =
  fun ctx -> function
   | Normal -> Pp.string ctx "normal"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Tokens tokens ->
       Pp.list ~sep:Pp.space pp_font_variant_numeric_token ctx tokens
   | Var v -> pp_var pp_font_variant_numeric ctx v
@@ -6774,7 +6779,7 @@ let rec read_font_variant_numeric_token t : font_variant_numeric_token =
   let read_var t : font_variant_numeric_token =
     Var (read_var read_font_variant_numeric_token t)
   in
-  Cursor.enum_or_calls "font-variant-numeric-token"
+  Cursor.enum_or_var "font-variant-numeric-token"
     [
       ("normal", (Normal : font_variant_numeric_token));
       ("lining-nums", Lining_nums);
@@ -6786,10 +6791,9 @@ let rec read_font_variant_numeric_token t : font_variant_numeric_token =
       ("ordinal", Ordinal);
       ("slashed-zero", Slashed_zero);
     ]
-    ~calls:[ ("var", read_var) ]
-    t
+    ~var:read_var t
 
-let read_font_variant_numeric t : font_variant_numeric =
+let rec read_font_variant_numeric t : font_variant_numeric =
   let token_family = function
     | Lining_nums | Oldstyle_nums -> `Numeric_figure
     | Proportional_nums | Tabular_nums -> `Numeric_spacing
@@ -6810,8 +6814,16 @@ let read_font_variant_numeric t : font_variant_numeric =
             Hashtbl.add seen family ())
       tokens
   in
-  Cursor.enum "font-variant-numeric"
-    [ ("normal", (Normal : font_variant_numeric)) ]
+  Cursor.enum_or_var "font-variant-numeric"
+    [
+      ("normal", (Normal : font_variant_numeric));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (read_var read_font_variant_numeric t))
     ~default:(fun t ->
       let tokens, _ = Cursor.many read_font_variant_numeric_token t in
       match tokens with

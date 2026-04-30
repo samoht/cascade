@@ -955,6 +955,11 @@ type font_variant_numeric_token =
 
 type font_variant_numeric =
   | Normal
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Tokens of font_variant_numeric_token list
   | Composed of {
       ordinal : font_variant_numeric_token option;

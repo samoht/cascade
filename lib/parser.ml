@@ -485,20 +485,11 @@ and cvs_to_buffer_min buf cvs =
     | cv :: rest when is_whitespace cv -> drop_ws rest
     | other -> other
   in
-  (* CSS Values 4 §10.10 mandates one space on each side of [*]/[/] in math
-     expressions; if the source already wrote a space around such a delimiter we
-     keep it. We never *insert* one where the author omitted it, so [16px/1.5]
-     in a font shorthand round-trips as two tokens. *)
-  let is_math_delim = function
-    | Component.Preserved { kind = Token.Delim ("*" | "/"); _ } -> true
-    | _ -> false
-  in
   let needs_separator prev next =
     match prev with
     | None -> false
     | Some p ->
         pair_forms_multichar_token p next
-        || is_math_delim p || is_math_delim next
         || word_like_end p
            && (not (is_backslash_delim p))
            && word_like_start next

@@ -1307,7 +1307,7 @@ let spec_platform_property_vectors () =
       ( "color: color-mix(in oklab, red 40%, blue)",
         "color:color-mix(in oklab,red 40%,blue)" );
       ( "color: light-dark(CanvasText, white)",
-        "color:light-dark(CanvasText,white)" );
+        "color:light-dark(canvastext,white)" );
       ( "background-image: image-set(url(a.avif) type(\"image/avif\") 1x, \
          url(a.png) type(\"image/png\") 1x)",
         "background-image:image-set(url(a.avif) type(\"image/avif\") \
