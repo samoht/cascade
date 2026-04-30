@@ -65,9 +65,7 @@ let declaration_feature prop value =
   | "-vendor-flag", "enabled" -> Vendor_flag_enabled
   | _ -> (
       match Declaration.of_string (prop ^ ":" ^ value) with
-      | (Declaration.Declaration _ | Declaration.Custom_declaration _) as decl
-        ->
-          Declaration decl
+      | Declaration.Declaration _ as decl -> Declaration decl
       | _ -> invalid_arg ("unsupported supports declaration: " ^ prop)
       | exception Error.Parse_error _ ->
           invalid_arg ("unsupported supports declaration: " ^ prop))

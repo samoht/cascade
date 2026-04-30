@@ -72,12 +72,12 @@ let test_custom_declaration_name_invariant buf =
 
 let test_var_compare_antisym buf =
   let _, a =
-    Css.Variables.var (var_name buf) Css.Declaration.Length (Css.Values.Px 0.)
+    Css.Variables.var (var_name buf) Css.Properties.Length (Css.Values.Px 0.)
   in
   let _, b =
     Css.Variables.var
       (var_name (String.sub (buf ^ "x") 1 (String.length buf)))
-      Css.Declaration.Length (Css.Values.Px 0.)
+      Css.Properties.Length (Css.Values.Px 0.)
   in
   let va = Css.Variables.V a in
   let vb = Css.Variables.V b in

@@ -54,17 +54,6 @@ val read_block : Cursor.t -> declaration list
 val v : ?important:bool -> 'a Properties.property -> 'a -> declaration
 (** [v ?important property value] creates a typed declaration. *)
 
-val custom_declaration :
-  ?important:bool ->
-  ?layer:string ->
-  ?meta:Values.meta ->
-  string ->
-  'a kind ->
-  'a ->
-  declaration
-(** [custom_declaration ?important ?layer ?meta name kind value] creates a
-    custom property declaration. *)
-
 val is_important : declaration -> bool
 (** [is_important decl] returns true if the declaration has !important. *)
 

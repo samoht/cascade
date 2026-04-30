@@ -10,6 +10,9 @@ val pp_property_value : ('a property * 'a) Pp.t
 (** [pp_property_value] is the pretty-printer for a property and its typed
     value. *)
 
+val pp_value : ('a kind * 'a) Pp.t
+(** [pp_value] pretty-prints a typed custom property value. *)
+
 val pp_shadow : shadow Pp.t
 (** [pp_shadow] is the pretty-printer for [shadow] values. *)
 

@@ -245,9 +245,9 @@ let var : type a.
  fun ?default ?fallback ?layer ?meta name kind value ->
   (* Create the declaration directly with the value *)
   let decl =
-    Declaration.custom_declaration ?layer ?meta
-      (String.concat "" [ "--"; name ])
-      kind value
+    Declaration.v
+      (Custom_property (String.concat "" [ "--"; name ]))
+      (Custom_value { kind; value; layer; meta })
   in
   let fallback : a fallback =
     match fallback with None -> None | Some v -> v
@@ -830,7 +830,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | _ -> []
 
 let rec extract_vars_from_declaration : declaration -> any_var list = function
-  | Custom_declaration _ -> [] (* Custom properties don't have typed vars *)
+  | Declaration { property = Custom_property _; _ } -> []
   | Declaration { property; value; _ } -> vars_of_property property value
   | Theme_guarded { decl; _ } -> extract_vars_from_declaration decl
 
@@ -853,7 +853,12 @@ let vars_of_declarations properties =
 let custom_declarations ?layer (decls : declaration list) : declaration list =
   List.filter
     (function
-      | Custom_declaration { layer = decl_layer; _ } -> (
+      | Declaration
+          {
+            property = Custom_property _;
+            value = Custom_value { layer = decl_layer; _ };
+            _;
+          } -> (
           match layer with None -> true | Some l -> decl_layer = Some l)
       | _ -> false)
     decls
@@ -861,7 +866,7 @@ let custom_declarations ?layer (decls : declaration list) : declaration list =
 (* Extract the variable name from a custom declaration *)
 let rec custom_declaration_name (decl : declaration) : string option =
   match decl with
-  | Custom_declaration { name; _ } -> Some name
+  | Declaration { property = Custom_property name; _ } -> Some name
   | Theme_guarded { decl; _ } -> custom_declaration_name decl
   | _ -> None
 

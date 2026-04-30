@@ -1181,12 +1181,6 @@ let read_var : type a. (Cursor.t -> a) -> Cursor.t -> a var =
     entry point and is kept so call sites stay source-compatible. *)
 let read_var_after_ident = read_var
 
-let enum_or_var ?default label idents ~wrap read_value t =
-  Cursor.enum_or_calls ?default label idents
-    ~calls:[ ("var", fun t -> wrap (read_var read_value t)) ]
-    t
-[@@warning "-32"]
-
 let read_length_unit ?(allow_negative = true) t =
   let n, unit_raw = Cursor.number_with_unit t in
   if (not allow_negative) && n < 0.0 then Cursor.err_invalid t "negative";

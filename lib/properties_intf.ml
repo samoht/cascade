@@ -23,8 +23,8 @@ type line_height =
   | Pct of float
   | Num of float
   | Inherit
-  | Var of line_height var
   | Calc of line_height calc
+  | Var of line_height var
 
 type font_weight =
   | Weight of int
@@ -62,10 +62,10 @@ type display =
   | Inherit
   | Initial
   | Unset
-  | Var of display var
   | Multi of display * display
       (** Two-value [<display-outside> <display-inside>] syntax per CSS Display
           3 §2.1, e.g. [inline flow-root] or [list-item flow-root]. *)
+  | Var of display var
 
 type position =
   | Static
@@ -93,10 +93,17 @@ type overflow =
   | Auto
   | Clip
   | Overflow_pair of overflow * overflow
+  | Var of overflow var
 
 (* Flexbox Types *)
-type flex_direction = Row | Row_reverse | Column | Column_reverse
-type flex_wrap = Nowrap | Wrap | Wrap_reverse
+type flex_direction =
+  | Row
+  | Row_reverse
+  | Column
+  | Column_reverse
+  | Var of flex_direction var
+
+type flex_wrap = Nowrap | Wrap | Wrap_reverse | Var of flex_wrap var
 
 type align_content =
   | Normal
@@ -132,6 +139,7 @@ type align_content =
   | Space_around
   | Space_evenly
   | Stretch
+  | Var of align_content var
 
 type align_items =
   | Normal
@@ -162,6 +170,7 @@ type align_items =
   | Unsafe_flex_start
   | Unsafe_flex_end
   | Anchor_center
+  | Var of align_items var
 
 type align_self =
   | Auto
@@ -192,6 +201,7 @@ type align_self =
   | Unsafe_self_end
   | Unsafe_flex_start
   | Unsafe_flex_end
+  | Var of align_self var
 
 type justify_content =
   | Normal
@@ -222,6 +232,7 @@ type justify_content =
   | Space_around
   | Space_evenly
   | Stretch
+  | Var of justify_content var
 
 type justify_items =
   | Normal
@@ -264,6 +275,7 @@ type justify_items =
   | Legacy_center
   | Legacy_left
   | Legacy_right
+  | Var of justify_items var
 
 type justify_self =
   | Auto
@@ -304,6 +316,7 @@ type justify_self =
   | Unsafe_right
   | Anchor_center
   | Inherit
+  | Var of justify_self var
 
 type flex_basis =
   | Auto
@@ -353,8 +366,8 @@ type flex_basis =
   | Max_content
   | Min_content
   | From_font
-  | Var of flex_basis var
   | Calc of flex_basis calc
+  | Var of flex_basis var
 
 type border_width =
   | Thin
@@ -376,8 +389,8 @@ type border_width =
   | Fit_content
   | From_font
   | Calc of border_width calc
-  | Var of border_width var
   | Inherit
+  | Var of border_width var
 
 type flex =
   | Initial (* 0 1 auto *)
@@ -387,12 +400,11 @@ type flex =
   | Basis of flex_basis (* 1 1 <flex-basis> *)
   | Grow_shrink of float * float (* grow shrink 0% *)
   | Full of float * float * flex_basis (* grow shrink basis *)
+  | Var of flex var  (** Font-size values including relative keywords *)
 
-(** Font-size values including relative keywords *)
 type font_size =
   | Length of length
   | Pct of float
-  | Var of font_size var
   | Calc of font_size calc
   (* Absolute size keywords *)
   | Xx_small
@@ -413,6 +425,7 @@ type font_size =
   | Unset
   | Revert
   | Revert_layer
+  | Var of font_size var
 
 type place_content =
   | Normal
@@ -433,6 +446,7 @@ type place_content =
   | Unsafe_stretch
   | Align_justify of align_content * justify_content
   | Inherit
+  | Var of place_content var
 
 type place_items =
   | Normal
@@ -447,9 +461,16 @@ type place_items =
   | Stretch_stretch  (** Explicit stretch on both axes *)
   | Align_justify of align_items * justify_items
   | Inherit
+  | Var of place_items var
 
 (* Grid Types *)
-type grid_auto_flow = Row | Column | Dense | Row_dense | Column_dense
+type grid_auto_flow =
+  | Row
+  | Column
+  | Dense
+  | Row_dense
+  | Column_dense
+  | Var of grid_auto_flow var
 
 type grid_template =
   | None
@@ -478,7 +499,7 @@ type grid_template =
   | Template of string
   | Subgrid
   | Masonry
-  | Var of grid_template var  (** CSS variable reference *)
+  | Var of grid_template var
 
 type grid_line =
   | Auto
@@ -488,7 +509,7 @@ type grid_line =
   | Span_name of string
   | Span_num_name of int * string
   | Calc of string
-  | Var of grid_line var  (** CSS variable reference *)
+  | Var of grid_line var
 
 type aspect_ratio =
   | Auto
@@ -504,6 +525,7 @@ type font_style =
   | Oblique_angle of angle
   | Oblique_range of angle * angle
   | Inherit
+  | Var of font_style var
 
 type text_align =
   | Left
@@ -514,9 +536,23 @@ type text_align =
   | End
   | Match_parent
   | Inherit
+  | Var of text_align var
 
-type text_decoration_line = None | Underline | Overline | Line_through
-type text_decoration_style = Solid | Double | Dotted | Dashed | Wavy | Inherit
+type text_decoration_line =
+  | None
+  | Underline
+  | Overline
+  | Line_through
+  | Var of text_decoration_line var
+
+type text_decoration_style =
+  | Solid
+  | Double
+  | Dotted
+  | Dashed
+  | Wavy
+  | Inherit
+  | Var of text_decoration_style var
 
 type text_decoration_shorthand = {
   lines : text_decoration_line list;
@@ -547,8 +583,15 @@ type text_overflow =
   | String of string
   | Pair of text_overflow * text_overflow
   | Inherit
+  | Var of text_overflow var
 
-type text_wrap = Wrap | No_wrap | Balance | Pretty | Inherit
+type text_wrap =
+  | Wrap
+  | No_wrap
+  | Balance
+  | Pretty
+  | Inherit
+  | Var of text_wrap var
 
 type white_space =
   | Normal
@@ -559,6 +602,7 @@ type white_space =
   | Break_spaces
   | Preserve_nowrap
   | Inherit
+  | Var of white_space var
 
 type word_break =
   | Normal
@@ -567,9 +611,16 @@ type word_break =
   | Break_word
   | Auto_phrase
   | Inherit
+  | Var of word_break var
 
-type overflow_wrap = Normal | Break_word | Anywhere | Inherit
-type hyphens = None | Manual | Auto | Inherit
+type overflow_wrap =
+  | Normal
+  | Break_word
+  | Anywhere
+  | Inherit
+  | Var of overflow_wrap var
+
+type hyphens = None | Manual | Auto | Inherit | Var of hyphens var
 
 (* List Types *)
 type list_style_type =
@@ -585,16 +636,20 @@ type list_style_type =
   | String of string
   | Var of list_style_type var
 
-type list_style_position = Inside | Outside | Inherit
+type list_style_position =
+  | Inside
+  | Outside
+  | Inherit
+  | Var of list_style_position var
 
 type list_style_image =
   | None
   | Url of string
-  | Var of list_style_image var
   | Inherit
+  | Var of list_style_image var
 
 (* Table Types *)
-type table_layout = Auto | Fixed | Inherit
+type table_layout = Auto | Fixed | Inherit | Var of table_layout var
 
 type vertical_align =
   | Baseline
@@ -613,7 +668,11 @@ type vertical_align =
   | Var of vertical_align var
 
 (* Border Types *)
-type border_collapse = Collapse | Separate | Inherit
+type border_collapse =
+  | Collapse
+  | Separate
+  | Inherit
+  | Var of border_collapse var
 
 (* Border shorthand type *)
 type border_shorthand = {
@@ -622,7 +681,12 @@ type border_shorthand = {
   color : color option;
 }
 
-type border = Inherit | Initial | None | Shorthand of border_shorthand
+type border =
+  | Inherit
+  | Initial
+  | None
+  | Shorthand of border_shorthand
+  | Var of border var
 
 type outline_style =
   | None
@@ -645,7 +709,12 @@ type outline_shorthand = {
   color : color option;
 }
 
-type outline = Inherit | Initial | None | Shorthand of outline_shorthand
+type outline =
+  | Inherit
+  | Initial
+  | None
+  | Shorthand of outline_shorthand
+  | Var of outline var
 
 (* Font Types *)
 type font_family =
@@ -743,9 +812,9 @@ type font_family =
   (* Custom font family name *)
   | Name of string
   (* CSS variables *)
-  | Var of font_family var
   (* List of fonts for composition *)
   | List of font_family list
+  | Var of font_family var
 
 type font_stretch =
   | Pct of float
@@ -759,12 +828,20 @@ type font_stretch =
   | Extra_expanded
   | Ultra_expanded
   | Inherit
+  | Var of font_stretch var
 
-type font_display = Auto | Block | Swap | Fallback | Optional
+type font_display =
+  | Auto
+  | Block
+  | Swap
+  | Fallback
+  | Optional
+  | Var of font_display var
 
 type unicode_range =
   | Single of int  (** U+xxxx *)
   | Range of int * int  (** U+xxxx-yyyy *)
+  | Var of unicode_range var
 
 type font_variant_numeric_token =
   | Normal
@@ -781,7 +858,6 @@ type font_variant_numeric_token =
 type font_variant_numeric =
   | Normal
   | Tokens of font_variant_numeric_token list
-  | Var of font_variant_numeric var
   | Composed of {
       ordinal : font_variant_numeric_token option;
       slashed_zero : font_variant_numeric_token option;
@@ -789,6 +865,7 @@ type font_variant_numeric =
       numeric_spacing : font_variant_numeric_token option;
       numeric_fraction : font_variant_numeric_token option;
     }
+  | Var of font_variant_numeric var
 
 type font_feature_settings =
   | Normal
@@ -847,12 +924,22 @@ type transform =
   | Perspective of length
   | None
   | Inherit
-  | Var of transform var
   | List of transform list
+  | Var of transform var
 
 type transforms = transform list
-type transform_style = Flat | Preserve_3d | Inherit
-type backface_visibility = Visible | Hidden | Inherit
+
+type transform_style =
+  | Flat
+  | Preserve_3d
+  | Inherit
+  | Var of transform_style var
+
+type backface_visibility =
+  | Visible
+  | Hidden
+  | Inherit
+  | Var of backface_visibility var
 
 type scale =
   | X of number_percentage
@@ -884,6 +971,7 @@ type steps_direction =
   | Jump_both
   | Start
   | End
+  | Var of steps_direction var
 
 type timing_function =
   | Ease
@@ -907,7 +995,11 @@ type transition_property_value =
 type transition_property = transition_property_value list
 
 (* Transition behavior for discrete transitions (CSS Transitions Level 2) *)
-type transition_behavior = Normal | Allow_discrete | Inherit
+type transition_behavior =
+  | Normal
+  | Allow_discrete
+  | Inherit
+  | Var of transition_behavior var
 
 type transition_shorthand = {
   property : transition_property_value;
@@ -921,13 +1013,29 @@ type transition =
   | Inherit
   | Initial
   | None
-  | Var of transition var
   | Shorthand of transition_shorthand
+  | Var of transition var
 
-type animation_direction = Normal | Reverse | Alternate | Alternate_reverse
-type animation_fill_mode = None | Forwards | Backwards | Both
-type animation_iteration_count = Num of float | Infinite
-type animation_play_state = Running | Paused
+type animation_direction =
+  | Normal
+  | Reverse
+  | Alternate
+  | Alternate_reverse
+  | Var of animation_direction var
+
+type animation_fill_mode =
+  | None
+  | Forwards
+  | Backwards
+  | Both
+  | Var of animation_fill_mode var
+
+type animation_iteration_count =
+  | Num of float
+  | Infinite
+  | Var of animation_iteration_count var
+
+type animation_play_state = Running | Paused | Var of animation_play_state var
 
 type animation_shorthand = {
   name : string option; (* Optional animation name, defaults to None *)
@@ -944,8 +1052,8 @@ type animation =
   | Inherit
   | Initial
   | None (* Special case for "animation: none" *)
-  | Var of animation var
   | Shorthand of animation_shorthand (* Requires a name *)
+  | Var of animation var
 
 (* Visual Effects Types *)
 type blend_mode =
@@ -991,8 +1099,8 @@ type shadow =
   | Unset
   | Revert
   | Revert_layer
-  | Var of shadow var
   | List of shadow list
+  | Var of shadow var
 
 type text_shadow =
   | None
@@ -1022,8 +1130,20 @@ type filter =
   | Var of filter var
 
 (* Background Types *)
-type background_attachment = Scroll | Fixed | Local | Inherit
-type background_box = Border_box | Padding_box | Content_box | Text | Inherit
+type background_attachment =
+  | Scroll
+  | Fixed
+  | Local
+  | Inherit
+  | Var of background_attachment var
+
+type background_box =
+  | Border_box
+  | Padding_box
+  | Content_box
+  | Text
+  | Inherit
+  | Var of background_box var
 
 type background_repeat =
   | Repeat
@@ -1051,6 +1171,7 @@ type background_repeat =
   | Inherit
   | Initial
   | Unset
+  | Var of background_repeat var
 
 type background_size =
   | Auto
@@ -1075,6 +1196,7 @@ type color_interpolation =
   | In_hsl
   | In_lab
   | In_lch
+  | Var of color_interpolation var
 
 type gradient_direction =
   | To_top
@@ -1090,7 +1212,6 @@ type gradient_direction =
   | Var of gradient_direction var
 
 type gradient_stop =
-  | Var of gradient_stop var
   | Color_percentage of
       color * length_percentage option * length_percentage option
     (* Color with optional length-percentage position *)
@@ -1104,9 +1225,10 @@ type gradient_stop =
   | Percentage of
       percentage (* Interpolation hint with percentage, e.g., "50%" *)
   | Direction of gradient_direction
+  | Var of gradient_stop var
 (* Gradient direction for stops, e.g., "to right" or Var *)
 
-type radial_shape = Circle | Ellipse
+type radial_shape = Circle | Ellipse | Var of radial_shape var
 
 type radial_size =
   | Closest_side
@@ -1115,6 +1237,7 @@ type radial_size =
   | Farthest_corner
   | Circle_radius of length
   | Ellipse_radii of length_percentage * length_percentage
+  | Var of radial_size var
 
 type position_value =
   | Center
@@ -1144,7 +1267,7 @@ type position_value =
   (* 4-value syntax: edge1 offset1 edge2 offset2 *)
   | Edge_offset_edge_offset of
       string * length_percentage * string * length_percentage
-  | Var of position_value var  (** CSS variable reference *)
+  | Var of position_value var
 
 type radial_gradient_config = {
   shape : radial_shape option;
@@ -1186,13 +1309,13 @@ type background_image =
       (** [image-set(<source>#)] CSS Images 4 *)
   | Cross_fade of cross_fade_option list
       (** [cross-fade(<cf-mixing-image>#)] CSS Images 4 *)
-  | Var of background_image var
-      (** CSS variable reference: var(--my-gradient) *)
   | List of background_image list
       (** Comma-separated list of background images *)
   | None
   | Initial
   | Inherit
+  | Var of background_image var
+      (** CSS variable reference: var(--my-gradient) *)
 
 and image_set_option = {
   image_set_source : image_set_source;
@@ -1229,9 +1352,8 @@ type background =
   | Initial
   | Unset
   | None
-  | Var of background var
   | Shorthand of background_shorthand
-
+  | Var of background var
 (* Mask Types *)
 
 (** Webkit-prefixed mask-composite values *)
@@ -1241,18 +1363,34 @@ type webkit_mask_composite =
   | Source_in
   | Source_out
   | Inherit
+  | Var of webkit_mask_composite var
+      (** Standard mask-composite values (different from webkit) *)
 
-(** Standard mask-composite values (different from webkit) *)
-type mask_composite = Add | Subtract | Intersect | Exclude | Inherit
+type mask_composite =
+  | Add
+  | Subtract
+  | Intersect
+  | Exclude
+  | Inherit
+  | Var of mask_composite var  (** Webkit mask-source-type values *)
 
-(** Webkit mask-source-type values *)
-type webkit_mask_source_type = Alpha | Luminance | Auto | Inherit
+type webkit_mask_source_type =
+  | Alpha
+  | Luminance
+  | Auto
+  | Inherit
+  | Var of webkit_mask_source_type var
+      (** Standard mask-mode values (different from webkit) *)
 
-(** Standard mask-mode values (different from webkit) *)
-type mask_mode = Alpha | Luminance | Match_source | Inherit
+type mask_mode =
+  | Alpha
+  | Luminance
+  | Match_source
+  | Inherit
+  | Var of mask_mode var
+      (** mask-type property values (only alpha and luminance) *)
 
-(** mask-type property values (only alpha and luminance) *)
-type mask_type = Alpha | Luminance | Inherit
+type mask_type = Alpha | Luminance | Inherit | Var of mask_type var
 
 type mask_box =
   | Border_box
@@ -1263,6 +1401,7 @@ type mask_box =
   | View_box
   | No_clip  (** Only valid for mask-clip *)
   | Inherit
+  | Var of mask_box var
 
 (* Gap shorthand type *)
 type gap = { row_gap : length option; column_gap : length option }
@@ -1306,10 +1445,10 @@ type cursor =
   | Zoom_in
   | Zoom_out
   | Url of string * (float * float) option * cursor
-  | Var of cursor var
   | Inherit
+  | Var of cursor var
 
-type user_select = None | Auto | Text | All | Contain
+type user_select = None | Auto | Text | All | Contain | Var of user_select var
 
 type pointer_events =
   | Auto
@@ -1323,6 +1462,7 @@ type pointer_events =
   | Stroke
   | All
   | Inherit
+  | Var of pointer_events var
 
 type touch_action =
   | Auto
@@ -1338,14 +1478,31 @@ type touch_action =
   | Inherit
   | Vars of touch_action var list
       (** Variable references like var(--tw-pan-x,) var(--tw-pan-y,) *)
+  | Var of touch_action var
 
-type resize = None | Both | Horizontal | Vertical | Block | Inline | Inherit
+type resize =
+  | None
+  | Both
+  | Horizontal
+  | Vertical
+  | Block
+  | Inline
+  | Inherit
+  | Var of resize var
 
 (* Box Model Types *)
-type box_sizing = Border_box | Content_box | Inherit
-type field_sizing = Content | Fixed | Inherit
-type caption_side = Top | Bottom | Inherit
-type object_fit = Fill | Contain | Cover | None | Scale_down | Inherit
+type box_sizing = Border_box | Content_box | Inherit | Var of box_sizing var
+type field_sizing = Content | Fixed | Inherit | Var of field_sizing var
+type caption_side = Top | Bottom | Inherit | Var of caption_side var
+
+type object_fit =
+  | Fill
+  | Contain
+  | Cover
+  | None
+  | Scale_down
+  | Inherit
+  | Var of object_fit var
 
 (* Content Types *)
 type content =
@@ -1366,8 +1523,8 @@ type content_visibility =
   | Auto
   | Inherit
   | Var of content_visibility var
+      (** The CSS quotes property - defines quotation marks *)
 
-(** The CSS quotes property - defines quotation marks *)
 type quotes =
   | Auto  (** Browser default based on language *)
   | None  (** No quotation marks *)
@@ -1380,7 +1537,12 @@ type quotes =
   | Var of quotes var
 
 (* Container Types *)
-type container_type = Size | Inline_size | Scroll_state | Normal
+type container_type =
+  | Size
+  | Inline_size
+  | Scroll_state
+  | Normal
+  | Var of container_type var
 
 (* Container shorthand: name / type *)
 type container_shorthand = {
@@ -1399,14 +1561,14 @@ type contain =
   | Paint
   | Inline_size
   | List of contain list
-  | Var of contain var
   | Inherit
   | Initial
   | Unset
   | Revert
   | Revert_layer
+  | Var of contain var
 
-type isolation = Auto | Isolate | Inherit
+type isolation = Auto | Isolate | Inherit | Var of isolation var
 
 (* Break Types - for page/column/region breaks *)
 type break_value =
@@ -1424,8 +1586,15 @@ type break_value =
   | Avoid_region
   | Region
   | Inherit
+  | Var of break_value var
 
-type break_inside_value = Auto | Avoid | Avoid_page | Avoid_column | Inherit
+type break_inside_value =
+  | Auto
+  | Avoid
+  | Avoid_page
+  | Avoid_column
+  | Inherit
+  | Var of break_inside_value var
 
 (* CSS Fragmentation 3 §6 deprecated [page-break-before / -after / -inside]
    aliases. The shorter value vocabulary makes them their own type rather than
@@ -1437,8 +1606,13 @@ type page_break_value =
   | Left
   | Right
   | Inherit
+  | Var of page_break_value var
 
-type page_break_inside_value = Auto | Avoid | Inherit
+type page_break_inside_value =
+  | Auto
+  | Avoid
+  | Inherit
+  | Var of page_break_inside_value var
 
 (* CSS Paged Media 3 §6.1 [size] descriptor: optional page size keyword (paper
    sheet name), explicit dimensions, [auto], or a page size combined with an
@@ -1454,8 +1628,12 @@ type page_size_name =
   | Letter
   | Legal
   | Ledger
+  | Var of page_size_name var
 
-type page_size_orientation = Portrait | Landscape
+type page_size_orientation =
+  | Portrait
+  | Landscape
+  | Var of page_size_orientation var
 
 type page_size =
   | Auto
@@ -1473,11 +1651,11 @@ type columns_value =
   | Count of int
   | Width of length
   | Both of int * length
-  | Var of columns_value var
   | Inherit
+  | Var of columns_value var
 
 (* Scroll Types *)
-type scroll_behavior = Auto | Smooth | Inherit
+type scroll_behavior = Auto | Smooth | Inherit | Var of scroll_behavior var
 
 type scroll_snap_align =
   | None
@@ -1485,8 +1663,13 @@ type scroll_snap_align =
   | End
   | Center
   | Snap_align_pair of scroll_snap_align * scroll_snap_align
+  | Var of scroll_snap_align var
 
-type scroll_snap_stop = Normal | Always | Inherit
+type scroll_snap_stop =
+  | Normal
+  | Always
+  | Inherit
+  | Var of scroll_snap_stop var
 
 type scroll_snap_strictness =
   | Mandatory
@@ -1510,14 +1693,19 @@ type scroll_snap_type =
   | Inherit
   | Var of scroll_snap_type var
 
-type timeline_axis = Block | Inline | X | Y
+type timeline_axis = Block | Inline | X | Y | Var of timeline_axis var
 
 type timeline_shorthand = {
   timeline_name : string;
   timeline_axis : timeline_axis;
 }
 
-type overscroll_behavior = Auto | Contain | None | Inherit
+type overscroll_behavior =
+  | Auto
+  | Contain
+  | None
+  | Inherit
+  | Var of overscroll_behavior var
 
 (* SVG Types *)
 (* SVG paint servers allow url(#id) with optional fallback (none/currentcolor/color). *)
@@ -1527,9 +1715,10 @@ type svg_paint =
   | Current_color
   | Color of color
   | Url of string * svg_paint option
+  | Var of svg_paint var
 
 (* Direction Types *)
-type direction = Ltr | Rtl | Inherit
+type direction = Ltr | Rtl | Inherit | Var of direction var
 
 type unicode_bidi =
   | Normal
@@ -1539,6 +1728,7 @@ type unicode_bidi =
   | Isolate_override
   | Plaintext
   | Inherit
+  | Var of unicode_bidi var
 
 type writing_mode =
   | Horizontal_tb
@@ -1547,6 +1737,7 @@ type writing_mode =
   | Sideways_lr
   | Sideways_rl
   | Inherit
+  | Var of writing_mode var
 
 (* Webkit & Mozilla Specific Types *)
 type webkit_appearance =
@@ -1562,6 +1753,7 @@ type webkit_appearance =
   | Square_button
   | Apple_pay_button
   | Inherit
+  | Var of webkit_appearance var
 
 type webkit_font_smoothing =
   | Auto
@@ -1569,15 +1761,44 @@ type webkit_font_smoothing =
   | Antialiased
   | Subpixel_antialiased
   | Inherit
+  | Var of webkit_font_smoothing var
 
-type moz_osx_font_smoothing = Auto | Grayscale | Inherit
-type webkit_box_orient = Horizontal | Vertical | Inherit
-type moz_orient = Inline | Block | Horizontal | Vertical | Inherit
+type moz_osx_font_smoothing =
+  | Auto
+  | Grayscale
+  | Inherit
+  | Var of moz_osx_font_smoothing var
+
+type webkit_box_orient =
+  | Horizontal
+  | Vertical
+  | Inherit
+  | Var of webkit_box_orient var
+
+type moz_orient =
+  | Inline
+  | Block
+  | Horizontal
+  | Vertical
+  | Inherit
+  | Var of moz_orient var
+
 type webkit_line_clamp = Lines of int | Unset | Var of webkit_line_clamp var
-type text_size_adjust = None | Auto | Pct of float | Inherit
+
+type text_size_adjust =
+  | None
+  | Auto
+  | Pct of float
+  | Inherit
+  | Var of text_size_adjust var
 
 (* Other Types *)
-type forced_color_adjust = Auto | None | Preserve_parent_color | Inherit
+type forced_color_adjust =
+  | Auto
+  | None
+  | Preserve_parent_color
+  | Inherit
+  | Var of forced_color_adjust var
 
 type color_scheme =
   | Normal
@@ -1586,6 +1807,7 @@ type color_scheme =
   | Light_dark
   | Only_light
   | Only_dark
+  | Var of color_scheme var
 
 type appearance =
   | None
@@ -1595,12 +1817,42 @@ type appearance =
   | Menulist
   | Base_select
   | Inherit
+  | Var of appearance var
 
-type print_color_adjust = Economy | Exact | Initial | Inherit | Unset
-type box_decoration_break = Clone | Slice
-type clear = None | Left | Right | Both | Inline_start | Inline_end
-type float_side = None | Left | Right | Inline_start | Inline_end | Inherit
-type text_decoration_skip_ink = Auto | None | All | Inherit
+type print_color_adjust =
+  | Economy
+  | Exact
+  | Initial
+  | Inherit
+  | Unset
+  | Var of print_color_adjust var
+
+type box_decoration_break = Clone | Slice | Var of box_decoration_break var
+
+type clear =
+  | None
+  | Left
+  | Right
+  | Both
+  | Inline_start
+  | Inline_end
+  | Var of clear var
+
+type float_side =
+  | None
+  | Left
+  | Right
+  | Inline_start
+  | Inline_end
+  | Inherit
+  | Var of float_side var
+
+type text_decoration_skip_ink =
+  | Auto
+  | None
+  | All
+  | Inherit
+  | Var of text_decoration_skip_ink var
 
 type transform_origin =
   | Center
@@ -1623,8 +1875,8 @@ type transform_origin =
   | X of length  (** Single x-offset, y defaults to 50% *)
   | XY of length * length
   | XYZ of length * length * length
-  | Var of transform_origin var  (** CSS variable reference *)
   | Inherit
+  | Var of transform_origin var
 
 (* transform-box property: establishes the reference box for transform *)
 type transform_box =
@@ -1634,6 +1886,7 @@ type transform_box =
   | Stroke_box
   | View_box
   | Inherit
+  | Var of transform_box var
 
 (* will-change property: which properties will animate *)
 type will_change =
@@ -1659,12 +1912,14 @@ type perspective_origin =
   | Perspective_x of length  (** Single x-offset, y defaults to center *)
   | Perspective_xy of length * length
   | Perspective_var of perspective_origin var
+  | Var of perspective_origin var
 
 (* clip property (deprecated, but needed for sr-only) *)
 type clip =
   | Clip_auto
   | Clip_rect of length * length * length * length
       (** top, right, bottom, left *)
+  | Var of clip var
 
 (* clip-path property for clipping regions *)
 type clip_path =
@@ -1696,9 +1951,60 @@ type clip_path =
     }
       (** [rect(<length-percentage>{4} [round <border-radius>]?)] - CSS Shapes
           2. *)
+  | Var of clip_path var
+
+type _ kind =
+  | Length : length kind
+  | Color : color kind
+  | Rgb : rgb kind
+  | Int : int kind
+  | Float : float kind
+  | Percentage : percentage kind
+  | Length_percentage : length_percentage kind
+  | Number_percentage : number_percentage kind
+  | Value : Component.t list kind
+  | Duration : duration kind
+  | Aspect_ratio : aspect_ratio kind
+  | Border_style : border_style kind
+  | Outline_style : outline_style kind
+  | Border : border kind
+  | Font_weight : font_weight kind
+  | Line_height : line_height kind
+  | Font_family : font_family kind
+  | Font_feature_settings : font_feature_settings kind
+  | Font_variation_settings : font_variation_settings kind
+  | Font_variant_numeric : font_variant_numeric kind
+  | Font_variant_numeric_token : font_variant_numeric_token kind
+  | Blend_mode : blend_mode kind
+  | Scroll_snap_strictness : scroll_snap_strictness kind
+  | Angle : angle kind
+  | Shadow : shadow kind
+  | Box_shadow : shadow kind
+  | Content : content kind
+  | Gradient_stop : gradient_stop kind
+  | Gradient_direction : gradient_direction kind
+  | Animation : animation kind
+  | Timing_function : timing_function kind
+  | Transform : transform kind
+  | Touch_action : touch_action kind
+  | Transition_property_value : transition_property_value kind
+  | Background_image : background_image kind
+  | Z_index : z_index kind
+  | Filter : filter kind
+  | Font_src : Font_face.src kind
+
+type custom_property =
+  | Custom_value : {
+      kind : 'a kind;
+      value : 'a;
+      layer : string option;
+      meta : meta option;
+    }
+      -> custom_property
 
 (* Property type definition *)
 type 'a property =
+  | Custom_property : string -> custom_property property
   | Background_color : color property
   | Color : color property
   | Border_color : color property
