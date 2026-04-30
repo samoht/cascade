@@ -661,8 +661,8 @@ let rec read_font_size t : font_size =
       Cursor.one_of [ read_pct; read_length ] t)
     t
 
-let read_text_align t : text_align =
-  Cursor.enum "text-align"
+let rec read_text_align t : text_align =
+  Cursor.enum_or_var "text-align"
     [
       ("left", (Left : text_align));
       ("right", Right);
@@ -672,21 +672,32 @@ let read_text_align t : text_align =
       ("end", End);
       ("match-parent", Match_parent);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (read_var read_text_align t))
     t
 
-let read_text_decoration_line t : text_decoration_line =
-  Cursor.enum "text-decoration-line"
+let rec read_text_decoration_line t : text_decoration_line =
+  Cursor.enum_or_var "text-decoration-line"
     [
       ("none", (None : text_decoration_line));
       ("underline", Underline);
       ("overline", Overline);
       ("line-through", Line_through);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (read_var read_text_decoration_line t))
     t
 
-let read_text_decoration_style t : text_decoration_style =
-  Cursor.enum "text-decoration-style"
+let rec read_text_decoration_style t : text_decoration_style =
+  Cursor.enum_or_var "text-decoration-style"
     [
       ("solid", (Solid : text_decoration_style));
       ("double", Double);
@@ -694,7 +705,12 @@ let read_text_decoration_style t : text_decoration_style =
       ("dashed", Dashed);
       ("wavy", Wavy);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (read_var read_text_decoration_style t))
     t
 
 module Text_decoration = struct
@@ -742,6 +758,11 @@ module Text_decoration = struct
             | Underline -> "underline"
             | Overline -> "overline"
             | Line_through -> "line-through"
+            | Inherit -> "inherit"
+            | Initial -> "initial"
+            | Unset -> "unset"
+            | Revert -> "revert"
+            | Revert_layer -> "revert-layer"
             | Var _ -> "var(...)")
         else { acc with lines = acc.lines @ [ l ] }
     | Style s when acc.style = None -> { acc with style = Some s }
@@ -2165,6 +2186,10 @@ let rec pp_text_align : text_align Pp.t =
   | End -> Pp.string ctx "end"
   | Match_parent -> Pp.string ctx "match-parent"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_text_decoration_line : text_decoration_line Pp.t =
  fun ctx -> function
@@ -2173,6 +2198,11 @@ let rec pp_text_decoration_line : text_decoration_line Pp.t =
   | Underline -> Pp.string ctx "underline"
   | Overline -> Pp.string ctx "overline"
   | Line_through -> Pp.string ctx "line-through"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_text_decoration_style : text_decoration_style Pp.t =
  fun ctx -> function
@@ -2183,6 +2213,10 @@ let rec pp_text_decoration_style : text_decoration_style Pp.t =
   | Dashed -> Pp.string ctx "dashed"
   | Wavy -> Pp.string ctx "wavy"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let pp_text_decoration_shorthand : text_decoration_shorthand Pp.t =
  fun ctx { lines; style; color; thickness } ->
@@ -3710,10 +3744,10 @@ let rec pp_columns_value : columns_value Pp.t =
   | Auto -> Pp.string ctx "auto"
   | Count n -> Pp.int ctx n
   | Width len -> pp_length ctx len
-  | Both (n, len) ->
-      Pp.int ctx n;
+  | Both (len, n) ->
+      pp_length ctx len;
       Pp.space ctx ();
-      pp_length ctx len
+      Pp.int ctx n
   | Var v -> pp_var pp_columns_value ctx v
   | Inherit -> Pp.string ctx "inherit"
 
@@ -6053,24 +6087,31 @@ let read_page_break_inside_value t : page_break_inside_value =
     t
 
 let rec read_columns_value t : columns_value =
-  (* columns can be: auto | <integer> | <length> | var(...) *)
+  (* CSS Multicol 2 §6.1: [<<column-count> || <column-width>>] — each side is
+     independently optional and the two may appear in either order in the
+     source. Whenever both are present we canonicalise to [<width>, <count>] so
+     the printer always emits the width first. *)
   let read_var t : columns_value = Var (read_var read_columns_value t) in
+  let read_count t = Cursor.int t in
+  let read_width t = read_length t in
   Cursor.enum_or_calls "columns"
     [ ("auto", (Auto : columns_value)); ("inherit", Inherit) ]
     ~calls:[ ("var", read_var) ]
     ~default:(fun t ->
-      (* Try to read an integer for column-count, or a length for
-         column-width *)
-      Cursor.one_of
-        [
-          (fun t ->
-            let n = Cursor.int t in
-            Count n);
-          (fun t ->
-            let len = read_length t in
-            Width len);
-        ]
-        t)
+      let snap = Cursor.save t in
+      match Cursor.option read_count t with
+      | Some n -> (
+          Cursor.ws t;
+          match Cursor.option read_width t with
+          | Some w -> (Both (w, n) : columns_value)
+          | None -> Count n)
+      | None -> (
+          Cursor.restore t snap;
+          let w = read_width t in
+          Cursor.ws t;
+          match Cursor.option read_count t with
+          | Some n -> (Both (w, n) : columns_value)
+          | None -> Width w))
     t
 
 let rec read_scroll_behavior (t : Cursor.t) : scroll_behavior =
@@ -9856,7 +9897,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Animation_fill_mode -> pp pp_animation_fill_mode
   | Animation_play_state -> pp pp_animation_play_state
   | Background_blend_mode -> pp (Pp.list ~sep:Pp.comma pp_blend_mode)
-  | Scroll_margin -> pp pp_length
+  | Scroll_margin -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
   | Scroll_margin_top -> pp pp_length
   | Scroll_margin_right -> pp pp_length
   | Scroll_margin_bottom -> pp pp_length
@@ -9867,7 +9908,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Scroll_margin_block -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
   | Scroll_margin_block_start -> pp pp_length
   | Scroll_margin_block_end -> pp pp_length
-  | Scroll_padding -> pp pp_length
+  | Scroll_padding -> pp (Pp.list ~sep:Pp.space (pp_length ~always:true))
   | Scroll_padding_top -> pp pp_length
   | Scroll_padding_right -> pp pp_length
   | Scroll_padding_bottom -> pp pp_length

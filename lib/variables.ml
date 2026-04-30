@@ -516,7 +516,7 @@ let vars_of_columns_value (value : Properties.columns_value) : any_var list =
   match value with
   | Var v -> [ V v ]
   | Width l -> vars_of_length l
-  | Both (_, l) -> vars_of_length l
+  | Both (l, _) -> vars_of_length l
   | _ -> []
 
 let vars_of_contain (value : Properties.contain) : any_var list =
@@ -1048,12 +1048,12 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Border_spacing, values -> List.concat_map vars_of_length values
   | Perspective, value -> vars_of_length value
   | Stroke_width, value -> vars_of_length value
-  | Scroll_margin, value -> vars_of_length value
+  | Scroll_margin, value -> List.concat_map vars_of_length value
   | Scroll_margin_top, value -> vars_of_length value
   | Scroll_margin_right, value -> vars_of_length value
   | Scroll_margin_bottom, value -> vars_of_length value
   | Scroll_margin_left, value -> vars_of_length value
-  | Scroll_padding, value -> vars_of_length value
+  | Scroll_padding, value -> List.concat_map vars_of_length value
   | Scroll_padding_top, value -> vars_of_length value
   | Scroll_padding_right, value -> vars_of_length value
   | Scroll_padding_bottom, value -> vars_of_length value

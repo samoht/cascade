@@ -1791,7 +1791,7 @@ type columns_value =
   | Auto
   | Count of int
   | Width of length
-  | Both of int * length
+  | Both of length * int
   | Inherit
   | Var of columns_value var
 
@@ -3019,6 +3019,10 @@ type text_align =
   | End
   | Match_parent
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of text_align var  (** CSS text decoration values. *)
 
 type text_decoration_line =
@@ -3026,6 +3030,11 @@ type text_decoration_line =
   | Underline
   | Overline
   | Line_through
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of text_decoration_line var
 
 type text_decoration_style =
@@ -3035,6 +3044,10 @@ type text_decoration_style =
   | Dashed
   | Wavy
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of text_decoration_style var
 
 type text_decoration_shorthand = {
@@ -5107,7 +5120,7 @@ val color_scheme : color_scheme -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/color-scheme}
      color-scheme} property for light/dark mode preference. *)
 
-val scroll_margin : length -> declaration
+val scroll_margin : length list -> declaration
 (** [scroll_margin margin] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin}
      scroll-margin} property. *)
@@ -5163,7 +5176,7 @@ val scroll_margin_block_end : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-block-end}
      scroll-margin-block-end} property. *)
 
-val scroll_padding : length -> declaration
+val scroll_padding : length list -> declaration
 (** [scroll_padding padding] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding}
      scroll-padding} property. *)

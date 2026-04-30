@@ -1502,7 +1502,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Scroll_snap_align -> v Scroll_snap_align (read_scroll_snap_align t)
   | Scroll_snap_stop -> v Scroll_snap_stop (read_scroll_snap_stop t)
   | Scroll_behavior -> v Scroll_behavior (read_scroll_behavior t)
-  | Scroll_margin -> v Scroll_margin (read_length t)
+  | Scroll_margin -> v Scroll_margin (Values.read_padding_shorthand t)
   | Scroll_margin_top -> v Scroll_margin_top (read_length t)
   | Scroll_margin_right -> v Scroll_margin_right (read_length t)
   | Scroll_margin_bottom -> v Scroll_margin_bottom (read_length t)
@@ -1520,7 +1520,7 @@ let read_value (type a) (prop : a property) t : declaration =
       v Scroll_margin_block lengths
   | Scroll_margin_block_start -> v Scroll_margin_block_start (read_length t)
   | Scroll_margin_block_end -> v Scroll_margin_block_end (read_length t)
-  | Scroll_padding -> v Scroll_padding (read_length t)
+  | Scroll_padding -> v Scroll_padding (Values.read_padding_shorthand t)
   | Scroll_padding_top -> v Scroll_padding_top (read_length t)
   | Scroll_padding_right -> v Scroll_padding_right (read_length t)
   | Scroll_padding_bottom -> v Scroll_padding_bottom (read_length t)
