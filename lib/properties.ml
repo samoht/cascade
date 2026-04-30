@@ -33,6 +33,7 @@ let read_vertical_align_length t : vertical_align =
 
 let read_background_size_length t : background_size =
   let n, unit = Cursor.number_with_unit t in
+  if n < 0. then Cursor.err_invalid t "background-size cannot be negative";
   match unit with
   | Some "px" -> Px n
   | Some "rem" -> Rem n
@@ -1564,6 +1565,9 @@ let rec pp_background_image : background_image Pp.t =
   | None -> Pp.string ctx "none"
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 and pp_image_set_option ctx
     { image_set_source; image_set_resolution; image_set_mime_type } =
@@ -3112,6 +3116,8 @@ let rec pp_background_size : background_size Pp.t =
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_background_size ctx v
 
 let pp_background_position : background_position Pp.t =
@@ -5308,8 +5314,8 @@ let read_user_select t : user_select =
     ]
     t
 
-let read_pointer_events t : pointer_events =
-  Cursor.enum "pointer-events"
+let rec read_pointer_events t : pointer_events =
+  Cursor.enum_or_var "pointer-events"
     [
       ("auto", (Auto : pointer_events));
       ("none", None);
@@ -5323,6 +5329,7 @@ let read_pointer_events t : pointer_events =
       ("all", All);
       ("inherit", Inherit);
     ]
+    ~var:(fun t -> Var (Values.read_var read_pointer_events t))
     t
 
 let rec read_touch_action_var t : touch_action var =
@@ -7280,15 +7287,24 @@ let read_background_repeat t : background_repeat =
 
 let rec read_background_size t : background_size =
   let read_pair t : background_size =
-    let a, b = Cursor.pair read_length read_length t in
+    let a, b =
+      Cursor.pair
+        (read_length ~allow_negative:false)
+        (read_length ~allow_negative:false)
+        t
+    in
     Size (a, b)
   in
-  let read_pct t : background_size = Pct (Cursor.pct t) in
+  let read_pct t : background_size =
+    let pct = Cursor.pct t in
+    if pct < 0. then Cursor.err_invalid t "background-size cannot be negative";
+    Pct pct
+  in
   let read_length_value t : background_size = read_background_size_length t in
   let read_var_call t : background_size =
-    Var (read_var read_background_size t)
+    (Var (read_var read_background_size t) : background_size)
   in
-  Cursor.enum_or_calls "background-size"
+  Cursor.enum_or_var "background-size"
     [
       ("auto", (Auto : background_size));
       ("cover", Cover);
@@ -7296,8 +7312,10 @@ let rec read_background_size t : background_size =
       ("inherit", Inherit);
       ("initial", Initial);
       ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
-    ~calls:[ ("var", read_var_call) ]
+    ~var:read_var_call
     ~default:(fun t ->
       Cursor.one_of [ read_pair; read_length_value; read_pct ] t)
     t
@@ -7670,6 +7688,9 @@ let rec read_bg_image t : background_image =
             ("none", (None : background_image));
             ("initial", Initial);
             ("inherit", Inherit);
+            ("unset", Unset);
+            ("revert", Revert);
+            ("revert-layer", Revert_layer);
           ]
           ~calls:
             [
@@ -9335,7 +9356,17 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Accent_color -> pp pp_color
   | Caret_color -> pp pp_color
   | List_style -> pp Pp.string
-  | Font -> pp Pp.string
+  | Font ->
+      (* The font shorthand is captured as a raw string by
+         [read_font_shorthand]; re-tokenise it through the component parser so
+         the minifier can drop optional whitespace (e.g. the space after the
+         comma in ["Brand", serif]). *)
+      let rendered =
+        if Pp.minified ctx then
+          Parser.to_string_minified (Cursor.remaining (Cursor.of_string value))
+        else value
+      in
+      Pp.string ctx rendered
   | Source -> pp pp_font_src
   | Webkit_appearance -> pp pp_webkit_appearance
   | Letter_spacing -> pp pp_length

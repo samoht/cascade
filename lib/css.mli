@@ -2041,6 +2041,8 @@ type background_size =
   | Inherit
   | Initial
   | Unset
+  | Revert
+  | Revert_layer
   | Var of background_size var  (** CSS background-attachment values. *)
 
 type background_attachment =
@@ -2157,6 +2159,9 @@ type background_image =
   | None
   | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of background_image var
       (** CSS variable reference: var(--my-gradient) *)
 
