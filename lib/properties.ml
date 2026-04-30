@@ -161,14 +161,20 @@ let rec pp_css_wide : css_wide Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> Values.pp_var pp_css_wide ctx v
 
-let read_flex_direction t : flex_direction =
-  Cursor.enum "flex-direction"
+let rec read_flex_direction t : flex_direction =
+  Cursor.enum_or_var "flex-direction"
     [
       ("row", (Row : flex_direction));
       ("row-reverse", Row_reverse);
       ("column", Column);
       ("column-reverse", Column_reverse);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_flex_direction t))
     t
 
 (* Helper to parse flattened baseline tokens shared across align/justify
@@ -1914,6 +1920,11 @@ let rec pp_visibility : visibility Pp.t =
   | Visible -> Pp.string ctx "visible"
   | Hidden -> Pp.string ctx "hidden"
   | Collapse -> Pp.string ctx "collapse"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> Values.pp_var pp_visibility ctx v
 
 let rec pp_z_index : z_index Pp.t =
@@ -1983,6 +1994,11 @@ let rec pp_flex_direction : flex_direction Pp.t =
   | Row_reverse -> Pp.string ctx "row-reverse"
   | Column -> Pp.string ctx "column"
   | Column_reverse -> Pp.string ctx "column-reverse"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_flex_wrap : flex_wrap Pp.t =
  fun ctx -> function
@@ -1990,6 +2006,11 @@ let rec pp_flex_wrap : flex_wrap Pp.t =
   | Nowrap -> Pp.string ctx "nowrap"
   | Wrap -> Pp.string ctx "wrap"
   | Wrap_reverse -> Pp.string ctx "wrap-reverse"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_align_items : align_items Pp.t =
  fun ctx -> function
@@ -2335,6 +2356,44 @@ let rec pp_text_spacing_trim : text_spacing_trim Pp.t =
   | Space_all -> Pp.string ctx "space-all"
   | Trim_start -> Pp.string ctx "trim-start"
   | Space_first -> Pp.string ctx "space-first"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+
+let rec pp_hyphenate_limit_chars : hyphenate_limit_chars Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_hyphenate_limit_chars ctx v
+  | Auto -> Pp.string ctx "auto"
+  | One a -> Pp.int ctx a
+  | Two (a, b) ->
+      Pp.int ctx a;
+      Pp.space ctx ();
+      Pp.int ctx b
+  | Three (a, b, c) ->
+      Pp.int ctx a;
+      Pp.space ctx ();
+      Pp.int ctx b;
+      Pp.space ctx ();
+      Pp.int ctx c
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+
+let rec pp_initial_letter : initial_letter Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_initial_letter ctx v
+  | Normal -> Pp.string ctx "normal"
+  | Drop -> Pp.string ctx "drop"
+  | Raise -> Pp.string ctx "raise"
+  | Size size -> Pp.float ctx size
+  | Size_sink (size, sink) ->
+      Pp.float ctx size;
+      Pp.space ctx ();
+      Pp.int ctx sink
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -4994,6 +5053,11 @@ let rec read_visibility t : visibility =
       ("visible", (Visible : visibility));
       ("hidden", Hidden);
       ("collapse", Collapse);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (Values.read_var read_visibility t))
     t
@@ -5084,13 +5148,19 @@ let rec read_order t : order =
       else Cursor.err_invalid t "order must be integer")
     t
 
-let read_flex_wrap t : flex_wrap =
-  Cursor.enum "flex-wrap"
+let rec read_flex_wrap t : flex_wrap =
+  Cursor.enum_or_var "flex-wrap"
     [
       ("nowrap", (Nowrap : flex_wrap));
       ("wrap", Wrap);
       ("wrap-reverse", Wrap_reverse);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_flex_wrap t))
     t
 
 let rec read_flex_basis t : flex_basis =
@@ -5665,6 +5735,35 @@ let rec read_text_spacing_trim t : text_spacing_trim =
     ]
     ~var:(fun t -> Var (read_var read_text_spacing_trim t))
     t
+
+let rec read_hyphenate_limit_chars t : hyphenate_limit_chars =
+  let read_counts t =
+    let counts =
+      Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:3 Cursor.int t
+    in
+    let check_count n =
+      if n < 1 then Cursor.err_invalid t "hyphenate-limit-chars must be >= 1"
+    in
+    List.iter check_count counts;
+    Cursor.ws t;
+    Cursor.expect_eof t;
+    match counts with
+    | [ a ] -> (One a : hyphenate_limit_chars)
+    | [ a; b ] -> Two (a, b)
+    | [ a; b; c ] -> Three (a, b, c)
+    | _ -> Cursor.err_invalid t "expected one to three integers"
+  in
+  Cursor.enum_or_calls "hyphenate-limit-chars"
+    [
+      ("auto", (Auto : hyphenate_limit_chars));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:[ ("var", fun t -> Var (read_var read_hyphenate_limit_chars t)) ]
+    ~default:read_counts t
 
 let rec read_white_space t : white_space =
   Cursor.ws t;
@@ -9951,8 +10050,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Font_size_adjust -> pp pp_font_size_adjust
   | Font_variant_emoji -> pp pp_font_variant_emoji
   | Text_spacing_trim -> pp pp_text_spacing_trim
-  | Hyphenate_limit_chars -> pp Pp.string
-  | Initial_letter -> pp Pp.string
+  | Hyphenate_limit_chars -> pp pp_hyphenate_limit_chars
+  | Initial_letter -> pp pp_initial_letter
   | View_timeline_name -> pp Pp.string
   | View_timeline_axis -> pp Pp.string
   | View_timeline -> pp pp_timeline_shorthand

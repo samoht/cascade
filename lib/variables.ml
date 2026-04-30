@@ -628,6 +628,9 @@ let vars_of_overflow (value : Properties.overflow) =
 let vars_of_flex_direction (value : Properties.flex_direction) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_flex_wrap (value : Properties.flex_wrap) =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_align_content (value : Properties.align_content) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -668,6 +671,9 @@ let vars_of_font_style (value : Properties.font_style) =
 let vars_of_text_align (value : Properties.text_align) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_visibility (value : Properties.visibility) =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_text_decoration_line (value : Properties.text_decoration_line) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -691,6 +697,12 @@ let vars_of_text_box_trim (value : Properties.text_box_trim) =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_text_spacing_trim (value : Properties.text_spacing_trim) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_hyphenate_limit_chars (value : Properties.hyphenate_limit_chars) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_initial_letter (value : Properties.initial_letter) =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_white_space (value : Properties.white_space) =
@@ -1210,6 +1222,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Fill, value -> vars_of_svg_paint value
   | Flex, value -> vars_of_flex value
   | Flex_direction, value -> vars_of_flex_direction value
+  | Flex_wrap, value -> vars_of_flex_wrap value
   | Float, value -> vars_of_float_side value
   | Font_style, value -> vars_of_font_style value
   | Forced_color_adjust, value -> vars_of_forced_color_adjust value
@@ -1265,12 +1278,15 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Text_wrap_style, value -> vars_of_text_wrap_style value
   | Text_box_trim, value -> vars_of_text_box_trim value
   | Text_spacing_trim, value -> vars_of_text_spacing_trim value
+  | Hyphenate_limit_chars, value -> vars_of_hyphenate_limit_chars value
+  | Initial_letter, value -> vars_of_initial_letter value
   | Touch_action, value -> vars_of_touch_action value
   | Transform_box, value -> vars_of_transform_box value
   | Transform_style, value -> vars_of_transform_style value
   | Transition_behavior, value -> vars_of_transition_behavior value
   | Unicode_bidi, value -> vars_of_unicode_bidi value
   | User_select, value -> vars_of_user_select value
+  | Visibility, value -> vars_of_visibility value
   | View_timeline, value -> vars_of_timeline_shorthand value
   | Webkit_appearance, value -> vars_of_webkit_appearance value
   | Webkit_background_clip, value -> vars_of_background_box value

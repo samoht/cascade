@@ -1582,6 +1582,11 @@ type visibility =
   | Visible
   | Hidden
   | Collapse
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of visibility var  (** CSS z-index values. *)
 
 type z_index =
@@ -2006,6 +2011,19 @@ type hyphenate_limit_chars =
   | Revert
   | Revert_layer
   | Var of hyphenate_limit_chars var
+
+type initial_letter =
+  | Normal
+  | Drop
+  | Raise
+  | Size of float
+  | Size_sink of float * int
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of initial_letter var
 
 val text_wrap : text_wrap -> declaration
 (** [text_wrap wrap] is the
@@ -2443,12 +2461,22 @@ type flex_direction =
   | Row_reverse
   | Column
   | Column_reverse
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of flex_direction var  (** CSS flex wrap values. *)
 
 type flex_wrap =
   | Nowrap
   | Wrap
   | Wrap_reverse
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of flex_wrap var  (** CSS flex basis values. *)
 
 type flex_basis =
@@ -5708,6 +5736,13 @@ val pp_text_box_trim : text_box_trim Pp.t
 val pp_text_spacing_trim : text_spacing_trim Pp.t
 (** [pp_text_spacing_trim] is the pretty printer for text-spacing-trim values.
 *)
+
+val pp_hyphenate_limit_chars : hyphenate_limit_chars Pp.t
+(** [pp_hyphenate_limit_chars] is the pretty printer for hyphenate-limit-chars
+    values. *)
+
+val pp_initial_letter : initial_letter Pp.t
+(** [pp_initial_letter] is the pretty printer for initial-letter values. *)
 
 val pp_overflow : overflow Pp.t
 (** [pp_overflow] is the pretty printer for overflow values. *)
