@@ -7,6 +7,11 @@ type row = {
 let matrix =
   [
     {
+      property = "all";
+      positives = [ "initial"; "revert-layer" ];
+      negatives = [ "auto"; "none" ];
+    };
+    {
       property = "display";
       positives =
         [ "block"; "inline"; "inline flow-root"; "list-item flow-root" ];

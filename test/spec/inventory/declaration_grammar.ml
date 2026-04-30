@@ -20,6 +20,7 @@ let css_wide_positive =
     row "all unset" "all: unset" "all:unset";
     row "all revert" "all: revert" "all:revert";
     row "all revert-layer" "all: revert-layer" "all:revert-layer";
+    row "all custom property reference" "all: var(--reset)" "all:var(--reset)";
     row "case-insensitive keyword" "display: INITIAL" "display:initial";
   ]
 
@@ -31,7 +32,6 @@ let css_wide_negative =
     invalid "keyword followed by color" "color: inherit red";
     invalid "all non-keyword" "all: auto";
     invalid "all identifier" "all: none";
-    invalid "all custom property reference" "all: var(--reset)";
   ]
 
 let alias_positive =
