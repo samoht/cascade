@@ -81,7 +81,16 @@ let read_property_value t =
 let css_wide_keywords =
   [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ]
 
-let is_css_wide_keyword value = List.mem value css_wide_keywords
+let is_css_wide_keyword value =
+  List.mem (String.lowercase_ascii value) css_wide_keywords
+
+let is_css_wide_value value =
+  let reader = Cursor.of_string value in
+  match Properties.read_css_wide reader with
+  | _ ->
+      Cursor.ws reader;
+      Cursor.is_done reader
+  | exception Cursor.Parse_error _ -> false
 
 let value_has_css_wide_mix value =
   let trimmed = String.trim value in
@@ -102,7 +111,7 @@ let value_has_css_wide_mix value =
       done;
       token (String.sub trimmed i (!j - i) :: acc) !j
   in
-  let tokens = token [] 0 in
+  let tokens = List.map String.lowercase_ascii (token [] 0) in
   List.exists (fun keyword -> List.mem keyword tokens) css_wide_keywords
 
 (** Check for and consume [!important] (case-insensitive per CSS Syntax). *)
@@ -280,6 +289,17 @@ let read_font_shorthand t =
   if is_css_wide_keyword lower then raw
   else
     let r = Cursor.of_string raw in
+    let read_shorthand_line_height r =
+      Cursor.one_of
+        [
+          (fun r -> ignore (read_length r : length));
+          (fun r -> ignore (read_percentage r : percentage));
+          (fun r -> ignore (Cursor.number r : float));
+          (fun r ->
+            ignore (Cursor.enum "font line-height" [ ("normal", ()) ] r));
+        ]
+        r
+    in
     let saw_size = ref false in
     let rec loop () =
       Cursor.ws r;
@@ -302,7 +322,7 @@ let read_font_shorthand t =
                 (match Cursor.peek_delim r with
                 | Some '/' ->
                     Cursor.skip r;
-                    ignore (read_line_height r : line_height)
+                    read_shorthand_line_height r
                 | _ -> ());
                 ignore (read_font_family r : font_family);
                 Cursor.ws r;
@@ -1547,7 +1567,7 @@ let validate_legacy_page_break t name raw_value =
 let validate_regular_property_raw t name raw_value =
   if value_has_css_wide_mix raw_value then
     Cursor.err_invalid t "CSS-wide keyword mixed with other values";
-  if name = "all" && not (is_css_wide_keyword raw_value) then
+  if name = "all" && not (is_css_wide_value raw_value) then
     Cursor.err_invalid t "all accepts only CSS-wide keywords";
   validate_legacy_page_break t name raw_value
 

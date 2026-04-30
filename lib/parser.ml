@@ -468,6 +468,10 @@ and pair_needs_token_boundary prev next =
           _;
         } ) ->
       true
+  (* CSS Values 4 §10.10: keep one space around * and / in math expressions. *)
+  | _, Component.Preserved { kind = Token.Delim ("*" | "/"); _ }
+  | Component.Preserved { kind = Token.Delim ("*" | "/"); _ }, _ ->
+      true
   | ( Component.Preserved { kind = Token.Delim "."; _ },
       Component.Preserved
         {

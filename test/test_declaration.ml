@@ -1691,15 +1691,17 @@ let property_grammar_matrix = Cascade_spec_inventory.Property_grammar.rows
 
 let parse_property_decl property value =
   let input = property ^ ":" ^ value in
-  let c = Css.Cursor.of_string input in
-  match read_declaration c with
-  | None -> None
-  | Some decl ->
-      let serialized =
-        Css.Declaration.string_of_declaration ~minify:true decl
-      in
-      let c2 = Css.Cursor.of_string serialized in
-      Some (input, serialized, decl, read_declaration c2)
+  try
+    let c = Css.Cursor.of_string input in
+    match read_declaration c with
+    | None -> None
+    | Some decl ->
+        let serialized =
+          Css.Declaration.string_of_declaration ~minify:true decl
+        in
+        let c2 = Css.Cursor.of_string serialized in
+        Some (input, serialized, decl, read_declaration c2)
+  with Css.Cursor.Parse_error _ | Css.Reader.Parse_error _ -> None
 
 let same_property_reparse (row : property_grammar_row) decl reparsed =
   Css.Declaration.property_name reparsed = row.property && decl = reparsed
