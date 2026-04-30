@@ -1911,6 +1911,9 @@ type position_value =
       (** Single length/percentage value for background-position *)
   | Inherit
   | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Edge_offset_axis of string * length_percentage * string
   | Edge_offset_edge_offset of
       string * length_percentage * string * length_percentage
@@ -1997,6 +2000,10 @@ type list_style_position =
   | Inside
   | Outside
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of list_style_position var
 
 val list_style_position : list_style_position -> declaration
@@ -2047,6 +2054,8 @@ type background_repeat =
   | Inherit
   | Initial
   | Unset
+  | Revert
+  | Revert_layer
   | Var of background_repeat var  (** CSS background-size values. *)
 
 type background_size =
@@ -2207,6 +2216,10 @@ type background_box =
   | Content_box
   | Text
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of background_box var  (** Mask-related types *)
 
 type webkit_mask_composite =
@@ -3059,6 +3072,10 @@ type font_style =
   | Oblique_angle of angle
   | Oblique_range of angle * angle
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of font_style var  (** CSS text transform values. *)
 
 type text_transform =
@@ -3217,6 +3234,10 @@ type line_height =
   | Pct of float
   | Num of float
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Calc of line_height calc
   | Var of line_height var
 
@@ -3357,6 +3378,10 @@ type font_stretch =
   | Extra_expanded
   | Ultra_expanded
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of font_stretch var
 
 val font_stretch : font_stretch -> declaration
@@ -4823,12 +4848,21 @@ type list_style_type =
   | Lower_roman
   | Upper_roman
   | String of string
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of list_style_type var  (** CSS list-style-image values *)
 
 type list_style_image =
   | None
   | Url of string
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of list_style_image var
 
 val list_style_type : list_style_type -> declaration

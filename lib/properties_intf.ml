@@ -28,6 +28,10 @@ type line_height =
   | Pct of float
   | Num of float
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Calc of line_height calc
   | Var of line_height var
 
@@ -583,6 +587,10 @@ type font_style =
   | Oblique_angle of angle
   | Oblique_range of angle * angle
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of font_style var
 
 type text_align =
@@ -704,18 +712,31 @@ type list_style_type =
   | Lower_roman
   | Upper_roman
   | String of string
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of list_style_type var
 
 type list_style_position =
   | Inside
   | Outside
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of list_style_position var
 
 type list_style_image =
   | None
   | Url of string
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of list_style_image var
 
 (* Table Types *)
@@ -901,6 +922,10 @@ type font_stretch =
   | Extra_expanded
   | Ultra_expanded
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of font_stretch var
 
 type font_display =
@@ -1260,6 +1285,10 @@ type background_box =
   | Content_box
   | Text
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of background_box var
 
 type background_repeat =
@@ -1288,6 +1317,8 @@ type background_repeat =
   | Inherit
   | Initial
   | Unset
+  | Revert
+  | Revert_layer
   | Var of background_repeat var
 
 type background_size =
@@ -1381,6 +1412,9 @@ type position_value =
       (** Single length/percentage value for background-position *)
   | Inherit
   | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   (* 3-value syntax: edge offset axis (e.g., "right 0.5rem center") *)
   | Edge_offset_axis of string * length_percentage * string
   (* 4-value syntax: edge1 offset1 edge2 offset2 *)
