@@ -98,7 +98,7 @@ let quoted_strings () =
 let custom_properties_basic () =
   check_declaration ~expected:"--color:red" "--color: red;";
   check_declaration ~expected:"--my-var:10px" "--my-var: 10px;";
-  check_declaration ~expected:"--complex:var(--other, 10px)"
+  check_declaration ~expected:"--complex:var(--other,10px)"
     "--complex: var(--other, 10px);";
   check_declaration ~expected:"--important:value!important"
     "--important: value !important;"
@@ -1736,20 +1736,19 @@ let check_property_css_wide (row : property_grammar_row) keyword =
       Alcotest.failf "%s CSS-wide keyword rejected: %s" row.property keyword
 
 let check_property_var (row : property_grammar_row) =
-  if row.property <> "all" then
-    let fallback =
-      match row.positives with value :: _ -> value | [] -> "initial"
-    in
-    match
-      parse_property_decl row.property ("var(--spec-value," ^ fallback ^ ")")
-    with
-    | Some (_, _, decl, Some reparsed)
-      when same_property_reparse row decl reparsed ->
-        ()
-    | Some (input, serialized, _, _) ->
-        Alcotest.failf "%s var() value did not structurally reparse: %s -> %s"
-          row.property input serialized
-    | None -> Alcotest.failf "%s var() value rejected" row.property
+  let fallback =
+    match row.positives with value :: _ -> value | [] -> "initial"
+  in
+  match
+    parse_property_decl row.property ("var(--spec-value," ^ fallback ^ ")")
+  with
+  | Some (_, _, decl, Some reparsed)
+    when same_property_reparse row decl reparsed ->
+      ()
+  | Some (input, serialized, _, _) ->
+      Alcotest.failf "%s var() value did not structurally reparse: %s -> %s"
+        row.property input serialized
+  | None -> Alcotest.failf "%s var() value rejected" row.property
 
 let check_manifest_row_shape (row : property_grammar_row) =
   if row.positives = [] then
@@ -1780,7 +1779,7 @@ let spec_property_grammar_manifest () =
   if List.length unique_properties <> List.length property_grammar_matrix then
     Alcotest.fail "property grammar manifest has duplicate property rows";
   Alcotest.(check int)
-    "property grammar manifest covers every unique public property name" 346
+    "property grammar manifest covers every unique public property name" 347
     (List.length unique_properties);
   List.iter check_property_row property_grammar_matrix
 

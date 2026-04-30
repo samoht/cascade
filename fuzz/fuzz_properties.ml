@@ -559,17 +559,11 @@ let test_inventory_negative_values buf =
            (Css.Declaration.string_of_declaration ~minify:true decl))
 
 let test_inventory_var_values buf =
-  let rows =
-    List.filter
-      (fun (row : Cascade_spec_inventory.Property_grammar.row) ->
-        row.property <> "all")
-      property_inventory
-  in
-  if List.length rows < 345 then
+  if List.length property_inventory < 347 then
     fail
       (Fmt.str "shared property grammar inventory drifted: %d rows"
-         (List.length rows));
-  let row = pick rows buf 0 in
+         (List.length property_inventory));
+  let row = pick property_inventory buf 0 in
   let fallback = pick row.positives buf 1 in
   let input = row.property ^ ":var(--spec-value," ^ fallback ^ ")" in
   match parse_declaration input with
@@ -596,7 +590,7 @@ let test_inventory_valid_generation buf =
     | 0 -> pick row.positives buf 1
     | 1 ->
         pick [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ] buf 1
-    | 2 when row.property <> "all" ->
+    | 2 ->
         let fallback = pick row.positives buf 1 in
         "var(--spec-value," ^ fallback ^ ")"
     | _ -> pick row.positives buf 1
