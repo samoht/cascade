@@ -464,6 +464,12 @@ val pp_font_family : font_family Pp.t
 val read_font_family : Cursor.t -> font_family
 (** [read_font_family t] is the [font_family] parsed from [t]. *)
 
+val pp_font_src : Font_face.src Pp.t
+(** [pp_font_src] is the pretty-printer for [@font-face] [src] values. *)
+
+val read_font_src : Cursor.t -> Font_face.src
+(** [read_font_src t] is the [@font-face] [src] value parsed from [t]. *)
+
 val pp_font_stretch : font_stretch Pp.t
 (** [pp_font_stretch] is the pretty-printer for [font_stretch]. *)
 

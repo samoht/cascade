@@ -952,6 +952,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Font_style -> v Font_style (read_font_style t)
   | Font_family -> v Font_family (read_font_family t)
   | Font -> v Font (read_font_shorthand t)
+  | Source -> v Source (Properties.read_font_src t)
   | Text_align -> v Text_align (read_text_align t)
   | Text_transform -> v Text_transform (read_text_transform t)
   | White_space -> v White_space (read_white_space t)
@@ -1552,7 +1553,11 @@ let validate_regular_property_raw t name raw_value =
 
 let read_font_src_declaration t raw_value =
   ignore raw_value;
-  Cursor.err_invalid t "src is a @font-face descriptor, not a declaration"
+  let decl = v Source (Properties.read_font_src t) in
+  validate_no_extra_tokens t;
+  let is_important = read_importance t in
+  validate_no_extra_tokens t;
+  if is_important then important decl else decl
 
 let read_typed_property_declaration t start =
   Cursor.restore t start;

@@ -58,6 +58,13 @@ type display =
   | Inline_table
   | List_item
   | Contents
+  | Run_in
+  | Ruby
+  | Ruby_base
+  | Ruby_text
+  | Ruby_base_container
+  | Ruby_text_container
+  | Math
   | Webkit_box
   | Inherit
   | Initial
@@ -2179,6 +2186,7 @@ type 'a property =
   | Text_indent : length property
   | List_style : string property
   | Font : string property
+  | Source : Font_face.src property
   | Webkit_appearance : webkit_appearance property
   | Webkit_transform : transform list property
   | Webkit_transition : transition list property

@@ -66,9 +66,12 @@ let declaration_feature prop value =
   | _ -> (
       match Declaration.of_string (prop ^ ":" ^ value) with
       | Declaration.Declaration _ as decl -> Declaration decl
-      | _ -> invalid_arg ("unsupported supports declaration: " ^ prop)
+      | _ ->
+          failwith
+            ("invalid supports declaration feature: " ^ prop ^ ":" ^ value)
       | exception Error.Parse_error _ ->
-          invalid_arg ("unsupported supports declaration: " ^ prop))
+          failwith
+            ("invalid supports declaration feature: " ^ prop ^ ":" ^ value))
 
 let property prop value = Property (declaration_feature prop value)
 let func name args = Func (name, component_values args)

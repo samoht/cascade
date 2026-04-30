@@ -1523,6 +1523,13 @@ type display =
   | Inline_table
   | List_item
   | Contents
+  | Run_in
+  | Ruby
+  | Ruby_base
+  | Ruby_text
+  | Ruby_base_container
+  | Ruby_text_container
+  | Math
   | Webkit_box
   | Inherit
   | Initial
