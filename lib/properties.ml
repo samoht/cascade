@@ -99,6 +99,8 @@ let read_display_legacy t : display =
       ("inherit", Inherit);
       ("initial", Initial);
       ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
     t
 
@@ -132,6 +134,11 @@ let rec read_position t : position =
       ("absolute", Absolute);
       ("fixed", Fixed);
       ("sticky", Sticky);
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (Values.read_var read_position t))
     t
@@ -1794,6 +1801,8 @@ let rec pp_display : display Pp.t =
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_display ctx v
   | Multi (outside, inside) ->
       pp_display ctx outside;
@@ -1807,6 +1816,11 @@ let rec pp_position : position Pp.t =
   | Absolute -> Pp.string ctx "absolute"
   | Fixed -> Pp.string ctx "fixed"
   | Sticky -> Pp.string ctx "sticky"
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> Values.pp_var pp_position ctx v
 
 let rec pp_visibility : visibility Pp.t =
@@ -4278,7 +4292,11 @@ let rec pp_float_side : float_side Pp.t =
   | Right -> Pp.string ctx "right"
   | Inline_start -> Pp.string ctx "inline-start"
   | Inline_end -> Pp.string ctx "inline-end"
+  | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_touch_action : touch_action Pp.t =
  fun ctx -> function
@@ -5969,16 +5987,21 @@ let read_clear t : clear =
     ]
     t
 
-let read_float_side t : float_side =
-  Cursor.enum "float-side"
+let rec read_float_side t : float_side =
+  Cursor.enum_or_var "float-side"
     [
       ("none", (None : float_side));
       ("left", Left);
       ("right", Right);
       ("inline-start", Inline_start);
       ("inline-end", Inline_end);
+      ("initial", Initial);
       ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_float_side t))
     t
 
 let read_text_decoration_skip_ink t : text_decoration_skip_ink =
@@ -8582,7 +8605,9 @@ let read_border_radius_inline t : border_radius =
     let rec loop acc count =
       if count >= 4 then List.rev acc
       else
-        match Cursor.option read_length_percentage t with
+        match
+          Cursor.option (read_length_percentage ~allow_negative:false) t
+        with
         | None -> List.rev acc
         | Some lp -> loop (lp :: acc) (count + 1)
     in
