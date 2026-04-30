@@ -4,10 +4,6 @@ include Properties_intf
 let err_invalid_value ?got t prop_name value =
   Cursor.err ?got t ("invalid " ^ prop_name ^ " value: " ^ value)
 
-(* Helper to read var(...) body as string *)
-let read_var_body t : string =
-  Cursor.call "var" t Cursor.consume_remaining_to_string
-
 (* Generic length parsing helpers *)
 let read_line_height_length t : line_height =
   let n, unit = Cursor.number_with_unit t in
@@ -603,13 +599,18 @@ let rec read_font_weight t : font_weight =
       else err_invalid_value t "font-weight" (string_of_int weight))
     t
 
-let read_font_style t : font_style =
-  Cursor.enum "font-style"
+let rec read_font_style t : font_style =
+  Cursor.enum_or_var "font-style"
     [
       ("normal", (Normal : font_style));
       ("italic", (Italic : font_style));
       ("inherit", (Inherit : font_style));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (read_var read_font_style t))
     ~default:(fun t ->
       Cursor.expect_string "oblique" t;
       Cursor.ws t;
@@ -1448,6 +1449,9 @@ let rec pp_position_value : position_value Pp.t =
  fun ctx -> function
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Center -> Pp.string ctx "center"
   | Top -> Pp.string ctx "top"
   | Bottom -> Pp.string ctx "bottom"
@@ -2145,6 +2149,10 @@ let rec pp_font_style : font_style Pp.t =
       Pp.space ctx ();
       pp_angle ctx second
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_text_align : text_align Pp.t =
  fun ctx -> function
@@ -2302,6 +2310,11 @@ let rec pp_list_style_type : list_style_type Pp.t =
   | Lower_roman -> Pp.string ctx "lower-roman"
   | Upper_roman -> Pp.string ctx "upper-roman"
   | String s -> Pp.quoted_string ctx s
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_list_style_type ctx v
 
 let rec pp_list_style_position : list_style_position Pp.t =
@@ -2310,6 +2323,10 @@ let rec pp_list_style_position : list_style_position Pp.t =
   | Inside -> Pp.string ctx "inside"
   | Outside -> Pp.string ctx "outside"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_list_style_image : list_style_image Pp.t =
  fun ctx -> function
@@ -2317,6 +2334,10 @@ let rec pp_list_style_image : list_style_image Pp.t =
   | Url u -> Pp.url ctx u
   | Var v -> pp_var pp_list_style_image ctx v
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_table_layout : table_layout Pp.t =
  fun ctx -> function
@@ -3123,6 +3144,8 @@ let rec pp_background_repeat : background_repeat Pp.t =
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_background_box : background_box Pp.t =
  fun ctx -> function
@@ -3132,6 +3155,10 @@ let rec pp_background_box : background_box Pp.t =
   | Content_box -> Pp.string ctx "content-box"
   | Text -> Pp.string ctx "text"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_webkit_mask_composite : webkit_mask_composite Pp.t =
  fun ctx -> function
@@ -3811,6 +3838,10 @@ let rec pp_font_stretch : font_stretch Pp.t =
   | Extra_expanded -> Pp.string ctx "extra-expanded"
   | Ultra_expanded -> Pp.string ctx "ultra-expanded"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_font_display : font_display Pp.t =
  fun ctx -> function
@@ -3967,7 +3998,18 @@ let rec pp_grid_template : grid_template Pp.t =
         pp_grid_template ctx size
       in
       Pp.list ~sep:Pp.space pp_named_track ctx tracks
-  | Template raw -> Pp.string ctx raw
+  | Template raw ->
+      (* The complex grid-template syntax (with [<grid-template-areas>] string
+         tracks) is captured as a raw decl-end slice in [read_grid_template]
+         because the typed grammar can't easily express it. When minifying we
+         re-tokenise the slice so optional whitespace (e.g. around the row /
+         column [/] separator) collapses uniformly. *)
+      let rendered =
+        if Pp.minified ctx then
+          Parser.to_string_minified (Cursor.remaining (Cursor.of_string raw))
+        else raw
+      in
+      Pp.string ctx rendered
   | Subgrid -> Pp.string ctx "subgrid"
   | Masonry -> Pp.string ctx "masonry"
   | Var v -> pp_var pp_grid_template ctx v
@@ -4638,6 +4680,10 @@ let rec pp_line_height : line_height Pp.t =
   | Pct p -> Pp.pct ctx p
   | Num n -> Pp.float ctx n
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_line_height ctx v
   | Calc c -> pp_calc pp_line_height ctx c
 
@@ -5480,13 +5526,20 @@ let rec read_line_height t : line_height =
   let read_var t : line_height = Var (read_var read_line_height t) in
   let read_calc t : line_height = Calc (read_calc read_line_height t) in
   Cursor.enum_or_calls "line-height"
-    [ ("normal", Normal); ("inherit", Inherit) ]
+    [
+      ("normal", Normal);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
     ~calls:[ ("var", read_var); ("calc", read_calc) ]
     ~default:read_line_height_length t
 
 let rec read_list_style_type t : list_style_type =
   let read_var t : list_style_type = Var (read_var read_list_style_type t) in
-  Cursor.enum_or_calls "list-style-type"
+  Cursor.enum_or_var "list-style-type"
     [
       ("none", (None : list_style_type));
       ("disc", Disc);
@@ -5497,18 +5550,28 @@ let rec read_list_style_type t : list_style_type =
       ("upper-alpha", Upper_alpha);
       ("lower-roman", Lower_roman);
       ("upper-roman", Upper_roman);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
-    ~calls:[ ("var", read_var) ]
+    ~var:read_var
     ~default:(fun t -> (String (Cursor.string t) : list_style_type))
     t
 
-let read_list_style_position t : list_style_position =
-  Cursor.enum "list-style-position"
+let rec read_list_style_position t : list_style_position =
+  Cursor.enum_or_var "list-style-position"
     [
       ("inside", (Inside : list_style_position));
       ("outside", Outside);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (read_var read_list_style_position t))
     t
 
 let rec read_list_style_image t : list_style_image =
@@ -5519,7 +5582,14 @@ let rec read_list_style_image t : list_style_image =
       read_url;
       (fun t ->
         Cursor.enum_or_calls "list-style-image"
-          [ ("none", (None : list_style_image)); ("inherit", Inherit) ]
+          [
+            ("none", (None : list_style_image));
+            ("inherit", Inherit);
+            ("initial", Initial);
+            ("unset", Unset);
+            ("revert", Revert);
+            ("revert-layer", Revert_layer);
+          ]
           ~calls:[ ("var", read_var) ]
           t);
     ]
@@ -6652,9 +6722,9 @@ and read_font_family t : font_family =
   | [ x ] -> x
   | l -> List l
 
-let read_font_stretch t : font_stretch =
+let rec read_font_stretch t : font_stretch =
   let read_percentage t : font_stretch = Pct (Cursor.pct t) in
-  Cursor.enum "font-stretch"
+  Cursor.enum_or_var "font-stretch"
     [
       ("ultra-condensed", Ultra_condensed);
       ("extra-condensed", Extra_condensed);
@@ -6666,7 +6736,12 @@ let read_font_stretch t : font_stretch =
       ("extra-expanded", Extra_expanded);
       ("ultra-expanded", Ultra_expanded);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (read_var read_font_stretch t))
     ~default:read_percentage t
 
 let read_font_display t : font_display =
@@ -7578,7 +7653,7 @@ let read_background_attachment t : background_attachment =
     ]
     t
 
-let read_background_repeat t : background_repeat =
+let rec read_background_repeat t : background_repeat =
   let read_style t =
     Cursor.enum "background-repeat"
       [
@@ -7609,29 +7684,28 @@ let read_background_repeat t : background_repeat =
     | No_repeat, No_repeat -> No_repeat_no_repeat
     | _ -> a
   in
-  Cursor.one_of
-    [
-      (fun t ->
-        Cursor.enum "background-repeat"
-          [
-            ("repeat-x", Repeat_x);
-            ("repeat-y", Repeat_y);
-            ("inherit", Inherit);
-            ("initial", Initial);
-            ("unset", Unset);
-          ]
-          t);
-      (fun t ->
-        let first = read_style t in
+  let read_repeats t =
+    let first = read_style t in
+    Cursor.ws t;
+    match Cursor.option read_style t with
+    | None -> first
+    | Some second ->
         Cursor.ws t;
-        match Cursor.option read_style t with
-        | None -> first
-        | Some second ->
-            Cursor.ws t;
-            Cursor.expect_eof t;
-            pair first second);
+        Cursor.expect_eof t;
+        pair first second
+  in
+  Cursor.enum_or_var "background-repeat"
+    [
+      ("repeat-x", Repeat_x);
+      ("repeat-y", Repeat_y);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
-    t
+    ~var:(fun t -> Var (read_var read_background_repeat t))
+    ~default:read_repeats t
 
 let rec read_background_size t : background_size =
   let read_pair t : background_size =
@@ -7784,7 +7858,17 @@ let read_gradient_stops t =
   | None -> []
 
 module Position_value = struct
-  type keyword = Center | Left | Right | Top | Bottom | Inherit | Initial
+  type keyword =
+    | Center
+    | Left
+    | Right
+    | Top
+    | Bottom
+    | Inherit
+    | Initial
+    | Unset
+    | Revert
+    | Revert_layer
 
   let read_xy (t : Cursor.t) : position_value =
     let x = read_length t in
@@ -7808,6 +7892,9 @@ module Position_value = struct
         ("bottom", Bottom);
         ("inherit", Inherit);
         ("initial", Initial);
+        ("unset", Unset);
+        ("revert", Revert);
+        ("revert-layer", Revert_layer);
       ]
       t
 
@@ -7818,6 +7905,9 @@ module Position_value = struct
     | Center -> Center
     | Inherit -> Inherit
     | Initial -> Initial
+    | Unset -> Unset
+    | Revert -> Revert
+    | Revert_layer -> Revert_layer
     | Left -> Left_center
     | Right -> Right_center
     | Top -> Center_top
@@ -7828,7 +7918,7 @@ module Position_value = struct
     let first = read_keyword t in
     (* Global keywords cannot be combined with other keywords *)
     (match first with
-    | Inherit | Initial ->
+    | Inherit | Initial | Unset | Revert | Revert_layer ->
         Cursor.err_invalid t "global keywords cannot be combined"
     | _ -> ());
     Cursor.ws t;
@@ -7866,17 +7956,8 @@ module Position_value = struct
     Edge_offset_edge_offset (edge1, offset1, edge2, offset2)
 end
 
-let read_position_value t : position_value =
-  let read_var t : position_value =
-    let body = read_var_body t in
-    (* Strip leading -- if present *)
-    let name =
-      if String.length body >= 2 && String.sub body 0 2 = "--" then
-        String.sub body 2 (String.length body - 2)
-      else body
-    in
-    Var (var_ref name)
-  in
+let rec read_position_value t : position_value =
+  let read_var t : position_value = Var (read_var read_position_value t) in
   Cursor.one_of
     [
       Position_value.read_4_value;
@@ -8636,15 +8717,20 @@ let background_shorthand ?color ?image ?position ?size ?repeat ?attachment ?clip
   Shorthand { color; image; position; size; repeat; attachment; clip; origin }
 
 (* Parser for background_box values *)
-let read_background_box t : background_box =
-  Cursor.enum "background-box"
+let rec read_background_box t : background_box =
+  Cursor.enum_or_var "background-box"
     [
       ("border-box", (Border_box : background_box));
       ("padding-box", Padding_box);
       ("content-box", Content_box);
       ("text", Text);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (read_var read_background_box t))
     t
 
 (* Parser for webkit_mask_composite values *)

@@ -1260,7 +1260,12 @@ let read_value (type a) (prop : a property) t : declaration =
   | Text_overflow -> v Text_overflow (read_text_overflow t)
   | Text_wrap -> v Text_wrap (read_text_wrap t)
   | Text_decoration_thickness ->
-      v Text_decoration_thickness (read_non_negative_length_or_css_wide t)
+      (* CSS Text Decoration 4 §3.3: [auto | from-font | <length-percentage>]
+         (non-negative). [length] already carries [Auto] / [From_font] /
+         CSS-wide cases when keywords are enabled, so we forward to
+         [read_non_negative_length] with [~with_keywords:true]. *)
+      v Text_decoration_thickness
+        (Values.read_non_negative_length ~with_keywords:true t)
   | Text_size_adjust -> v Text_size_adjust (read_text_size_adjust t)
   | Text_decoration_skip_ink ->
       v Text_decoration_skip_ink (read_text_decoration_skip_ink t)
