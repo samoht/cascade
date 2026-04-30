@@ -1204,6 +1204,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Scroll_snap_stop, value -> vars_of_scroll_snap_stop value
   | Scroll_timeline, value -> vars_of_timeline_shorthand value
   | Stroke, value -> vars_of_svg_paint value
+  | Source, _ -> []
   | Text_align, value -> vars_of_text_align value
   | Text_decoration_line, values ->
       List.concat_map vars_of_text_decoration_line values

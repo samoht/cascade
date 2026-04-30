@@ -50,7 +50,7 @@ let display_outside_idents : (string * display) list =
   [
     ("block", Block);
     ("inline", Inline);
-    ("run-in", Webkit_box);
+    ("run-in", Run_in);
     ("list-item", List_item);
   ]
 
@@ -88,6 +88,13 @@ let read_display_legacy t : display =
       ("inline-table", Inline_table);
       ("list-item", List_item);
       ("contents", Contents);
+      ("run-in", Run_in);
+      ("ruby", Ruby);
+      ("ruby-base", Ruby_base);
+      ("ruby-text", Ruby_text);
+      ("ruby-base-container", Ruby_base_container);
+      ("ruby-text-container", Ruby_text_container);
+      ("math", Math);
       ("-webkit-box", Webkit_box);
       ("inherit", Inherit);
       ("initial", Initial);
@@ -1776,6 +1783,13 @@ let rec pp_display : display Pp.t =
   | Inline_table -> Pp.string ctx "inline-table"
   | List_item -> Pp.string ctx "list-item"
   | Contents -> Pp.string ctx "contents"
+  | Run_in -> Pp.string ctx "run-in"
+  | Ruby -> Pp.string ctx "ruby"
+  | Ruby_base -> Pp.string ctx "ruby-base"
+  | Ruby_text -> Pp.string ctx "ruby-text"
+  | Ruby_base_container -> Pp.string ctx "ruby-base-container"
+  | Ruby_text_container -> Pp.string ctx "ruby-text-container"
+  | Math -> Pp.string ctx "math"
   | Webkit_box -> Pp.string ctx "-webkit-box"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
@@ -2593,6 +2607,7 @@ let pp_property : type a. a property Pp.t =
   | Text_indent -> Pp.string ctx "text-indent"
   | List_style -> Pp.string ctx "list-style"
   | Font -> Pp.string ctx "font"
+  | Source -> Pp.string ctx "src"
   | Webkit_appearance -> Pp.string ctx "-webkit-appearance"
   | Container_type -> Pp.string ctx "container-type"
   | Container_name -> Pp.string ctx "container-name"
@@ -7728,6 +7743,7 @@ let read_any_property t =
   | "font-family" -> Prop Font_family
   | "font-feature-settings" -> Prop Font_feature_settings
   | "font-variation-settings" -> Prop Font_variation_settings
+  | "src" -> Prop Source
   | "text-align" -> Prop Text_align
   | "text-decoration" -> Prop Text_decoration
   | "text-decoration-line" -> Prop Text_decoration_line
@@ -8702,6 +8718,8 @@ let pp_font_src ctx entries =
       pp_font_src_entry ctx entry)
     entries
 
+let read_font_src = Font_face.read_src
+
 let pp_value : type a. (a kind * a) Pp.t =
  fun ctx (kind, value) ->
   let pp pp_a = pp_a ctx value in
@@ -9156,6 +9174,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Caret_color -> pp pp_color
   | List_style -> pp Pp.string
   | Font -> pp Pp.string
+  | Source -> pp pp_font_src
   | Webkit_appearance -> pp pp_webkit_appearance
   | Letter_spacing -> pp pp_length
   | Cursor -> pp pp_cursor
