@@ -4036,6 +4036,11 @@ type timing_function =
   | Steps of int * steps_direction option
   | Cubic_bezier of float * float * float * float
   | Linear_function of string
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of timing_function var  (** CSS duration values. *)
 
 type duration =

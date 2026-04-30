@@ -611,7 +611,8 @@ let any_var_name (V v) = String.concat "" [ "--"; v.name ]
 (** Extract variables from timing function *)
 let vars_of_timing_function = function
   | Ease | Linear | Ease_in | Ease_out | Ease_in_out | Step_start | Step_end
-  | Steps _ | Cubic_bezier _ | Linear_function _ ->
+  | Steps _ | Cubic_bezier _ | Linear_function _ | Inherit | Initial | Unset
+  | Revert | Revert_layer ->
       []
   | Var v -> [ V v ]
 
