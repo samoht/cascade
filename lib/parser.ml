@@ -523,11 +523,6 @@ let to_string_minified cvs =
     cvs_to_buffer_min buf cvs;
     Buffer.contents buf
 
-(* CSS Custom Properties Level 1: a custom property value is an opaque token
-   stream — whitespace is significant. We still minify whitespace inside CSS
-   function calls (so [var(--a, --b)] collapses to [var(--a,--b)]), but
-   block-style containers ([{ ... }], [[...]], [(...)] outside a function head)
-   round-trip verbatim, including blocks nested inside function arguments. *)
 let rec cv_to_buffer_custom buf : Component.t -> unit = function
   | Preserved t -> Buffer.add_string buf (token_kind_to_string t.kind)
   | Block { node = { opening; value }; _ } ->
@@ -537,7 +532,7 @@ let rec cv_to_buffer_custom buf : Component.t -> unit = function
   | Func { node = { name; arguments; _ }; _ } ->
       Buffer.add_string buf (escape_ident name);
       Buffer.add_char buf '(';
-      cvs_to_buffer_min_custom buf arguments;
+      cvs_to_buffer_custom buf arguments;
       Buffer.add_char buf ')'
 
 and cvs_to_buffer_custom buf cvs =
@@ -557,9 +552,31 @@ and cvs_to_buffer_custom buf cvs =
   in
   loop None cvs
 
-(* Minified variant for function arguments: drops optional whitespace between
-   sibling tokens (like [cvs_to_buffer_min]) but routes children through
-   [cv_to_buffer_custom] so any nested block keeps its internal whitespace. *)
+let to_string_custom cvs =
+  let buf = Buffer.create 64 in
+  cvs_to_buffer_custom buf cvs;
+  Buffer.contents buf
+
+(* CSS Custom Properties Level 1: specified custom-property values are opaque
+   token streams, so authored whitespace is preserved by [to_string_custom].
+   This minified rendering is only for canonical output: it collapses optional
+   whitespace in blocks and function arguments while preserving token
+   boundaries. *)
+let rec cv_to_buffer_custom_min buf : Component.t -> unit = function
+  | Preserved t -> Buffer.add_string buf (token_kind_to_string t.kind)
+  | Block { node = { opening; value }; _ } ->
+      Buffer.add_char buf (opening_char opening);
+      cvs_to_buffer_min_custom buf value;
+      Buffer.add_char buf (closing_char opening)
+  | Func { node = { name; arguments; _ }; _ } ->
+      Buffer.add_string buf (escape_ident name);
+      Buffer.add_char buf '(';
+      cvs_to_buffer_min_custom buf arguments;
+      Buffer.add_char buf ')'
+
+(* Drops optional whitespace between sibling tokens (like [cvs_to_buffer_min])
+   but routes children through [cv_to_buffer_custom_min] so nested function and
+   block contents use the custom-property minifier recursively. *)
 and cvs_to_buffer_min_custom buf cvs =
   let rec drop_ws = function
     | cv :: rest when is_whitespace cv -> drop_ws rest
@@ -596,14 +613,14 @@ and cvs_to_buffer_min_custom buf cvs =
         | Some p when (not separated) && pair_needs_token_boundary p cv ->
             Buffer.add_char buf ' '
         | _ -> ());
-        cv_to_buffer_custom buf cv;
+        cv_to_buffer_custom_min buf cv;
         loop (Some cv) false rest
   in
   loop None false cvs
 
 let to_string_custom_minified cvs =
   let buf = Buffer.create 64 in
-  cvs_to_buffer_custom buf cvs;
+  cvs_to_buffer_min_custom buf cvs;
   Buffer.contents buf
 
 (** {1 Rule / declaration consumers (section 5.3)} *)

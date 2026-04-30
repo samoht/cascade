@@ -12,6 +12,12 @@ let check_declaration =
 
 let check = check_declaration
 
+let check_specified_value name css expected =
+  let decl = Css.Declaration.of_string css in
+  Alcotest.(check string)
+    name expected
+    (Css.Declaration.string_of_value ~minify:false decl)
+
 let check_declarations input expected_count =
   let r = Css.Cursor.of_string input in
   let decls = read_declarations r in
@@ -1163,7 +1169,9 @@ let unterminated () =
 
 let custom_property_values () =
   (* Balanced braces in custom property values *)
-  check_declaration ~expected:"--x:{ a: b; }" "--x: { a: b; }";
+  check_specified_value "custom property block specified" "--x: { a: b; }"
+    "{ a: b; }";
+  check_declaration ~expected:"--x:{a:b;}" "--x: { a: b; }";
   (* Semicolons inside strings are fine *)
   check_declaration ~expected:"--x:\"a;b\"" "--x: \"a;b\"";
   (* var() usage in standard properties, with and without fallback *)
@@ -1172,7 +1180,9 @@ let custom_property_values () =
   check_declaration ~expected:"margin:var(--m)" "margin: var(--m)"
 
 let spec_custom_tokens () =
-  check_declaration ~expected:"--tokens:[a, b] (c) { d: e; }"
+  check_specified_value "custom property token stream specified"
+    "--tokens: [a, b] (c) { d: e; }" "[a, b] (c) { d: e; }";
+  check_declaration ~expected:"--tokens:[a,b](c){d:e;}"
     "--tokens: [a, b] (c) { d: e; }";
   check_declaration ~expected:"--empty:" "--empty:";
   check_declaration ~expected:"--commented:a b" "--commented: a /*x*/ b";
@@ -1182,7 +1192,10 @@ let spec_custom_tokens () =
     "--real-important: 1 !important";
   check_declaration ~expected:"--fallback:var(--missing,)"
     "--fallback: var(--missing,)";
-  check_declaration ~expected:"--nested-var:var(--a,var(--b,{ color: red; }))"
+  check_specified_value "custom property nested fallback specified"
+    "--nested-var: var(--a, var(--b, { color: red; }))"
+    "var(--a, var(--b, { color: red; }))";
+  check_declaration ~expected:"--nested-var:var(--a,var(--b,{color:red;}))"
     "--nested-var: var(--a, var(--b, { color: red; }))";
   check_declaration ~expected:"--bad-string:\"unterminated"
     "--bad-string: \"unterminated";
@@ -1672,11 +1685,15 @@ let css_wide_custom_property_vectors () =
       none_cursor read_declaration ("margin:1px " ^ keyword);
       none_cursor read_declaration ("background:red " ^ keyword))
     [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ];
-  (* CSS Custom Properties: custom property values are token streams. Balanced
-     blocks and non-important [! important] tokens are preserved as values. *)
-  check_declaration ~expected:"--tokens:{ color: red }"
-    "--tokens: { color: red }";
-  check_declaration ~expected:"--list:[a, b, c]" "--list: [a, b, c]";
+  (* CSS Custom Properties: specified values preserve authored token streams;
+     the minified declaration path may compact block/list whitespace where
+     tokenization is unchanged. *)
+  check_specified_value "custom property block token stream specified"
+    "--tokens: { color: red }" "{ color: red }";
+  check_declaration ~expected:"--tokens:{color:red}" "--tokens: { color: red }";
+  check_specified_value "custom property list token stream specified"
+    "--list: [a, b, c]" "[a, b, c]";
+  check_declaration ~expected:"--list:[a,b,c]" "--list: [a, b, c]";
   check_declaration ~expected:"--empty-fallback:var(--missing,)"
     "--empty-fallback: var(--missing,)";
   check_declaration ~expected:"--not-important:1 ! important"
