@@ -4199,6 +4199,11 @@ let rec pp_timing_function : timing_function Pp.t =
       Pp.string ctx "linear(";
       Pp.string ctx body;
       Pp.char ctx ')'
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_timing_function ctx v
 
 let rec pp_svg_paint : svg_paint Pp.t =
@@ -4339,12 +4344,13 @@ let rec pp_translate_value : translate_value Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_translate_value ctx v
 
-let read_translate_value t : translate_value =
+let rec read_translate_value t : translate_value =
   (* Per CSS Transforms 2 §3.5: [<length-percentage> <length-percentage>?
-     <length>?]. Each component can be a [var()], so we read every slot through
-     [read_length] (which already understands [var()]/[calc()]). *)
-  let read_lengths t : translate_value =
-    let x = read_length t in
+     <length>?]. Same two [var()] shapes as [read_scale]:
+
+     - [translate: var(--t)] is a whole-value [var()] — produce [Var _]. -
+     [translate: var(--x) var(--y)] is per-slot — produce [XY (_, _)]. *)
+  let read_lengths_from t (x : length) : translate_value =
     Cursor.ws t;
     match Cursor.option read_length t with
     | Some y -> (
@@ -4353,6 +4359,20 @@ let read_translate_value t : translate_value =
         | Some z -> XYZ (x, y, z)
         | None -> XY (x, y))
     | None -> X x
+  in
+  let read_lengths t : translate_value =
+    let x = read_length t in
+    read_lengths_from t x
+  in
+  let read_var_or_components t : translate_value =
+    let snap = Cursor.save t in
+    let whole_var : translate_value = Var (read_var read_translate_value t) in
+    Cursor.ws t;
+    if Cursor.is_done t then whole_var
+    else
+      let () = Cursor.restore t snap in
+      let x = read_length t in
+      read_lengths_from t x
   in
   Cursor.enum_or_calls "translate"
     [
@@ -4363,6 +4383,7 @@ let read_translate_value t : translate_value =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
+    ~calls:[ ("var", read_var_or_components) ]
     ~default:read_lengths t
 
 let rec pp_rotate_value : rotate_value Pp.t =
@@ -6820,12 +6841,19 @@ let read_backface_visibility t : backface_visibility =
     t
 
 let rec read_scale t : scale =
-  (* Per CSS Transforms 2 §3.6: [<number-percentage>{1,3}]. Each component can
-     be a [var()], so we delegate to [read_number_percentage] for every slot
-     rather than peeling off the first [var()] specially — that lets [scale:
-     var(--x) var(--y)] round-trip. *)
-  let read_numbers t : scale =
-    let x = Values.read_number_percentage t in
+  (* Per CSS Transforms 2 §3.6: [<number-percentage>{1,3}]. There are two
+     [var()] shapes to keep distinct:
+
+     - [scale: var(--s)] — the var resolves to the whole [scale] value (which
+     itself can be 1 to 3 components). Produce [Var _]. - [scale: var(--x)
+     var(--y)] — each slot is independently a number- percentage that may be a
+     [var()]. Produce [XY (_, _)] etc.
+
+     We can't tell which shape we're in until we try to read a second component,
+     so we speculatively peel the first [var()] off as a whole- value [Var]; if
+     another component follows, the lookahead-saved snapshot lets us re-read it
+     as a per-slot [Var] and continue with [read_numbers]. *)
+  let read_numbers_from t (x : number_percentage) : scale =
     match Cursor.option Values.read_number_percentage t with
     | None -> X x
     | Some y -> (
@@ -6833,7 +6861,24 @@ let rec read_scale t : scale =
         | None -> XY (x, y)
         | Some z -> XYZ (x, y, z))
   in
-  Cursor.enum_or_var "scale"
+  let read_numbers t : scale =
+    let x = Values.read_number_percentage t in
+    read_numbers_from t x
+  in
+  let read_var_or_components t : scale =
+    let snap = Cursor.save t in
+    let whole_var : scale = Var (read_var read_scale t) in
+    Cursor.ws t;
+    if Cursor.is_done t then whole_var
+    else
+      (* Another value follows the [var()]: this was per-slot syntax, not a
+         whole-value var. Rewind and re-read the first [var()] as a number-
+         percentage so it ends up inside [XY] / [XYZ]. *)
+      let () = Cursor.restore t snap in
+      let x = Values.read_number_percentage t in
+      read_numbers_from t x
+  in
+  Cursor.enum_or_calls "scale"
     [
       ("none", (None : scale));
       ("inherit", Inherit);
@@ -6842,7 +6887,7 @@ let rec read_scale t : scale =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~var:(fun t -> Var (read_var read_scale t))
+    ~calls:[ ("var", read_var_or_components) ]
     ~default:read_numbers t
 
 let read_steps_direction t : steps_direction =
@@ -6858,6 +6903,15 @@ let read_steps_direction t : steps_direction =
     t
 
 module Timing_function = struct
+  let css_wide =
+    [
+      ("inherit", (Inherit : timing_function));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+
   let read_linear_function t : timing_function =
     Cursor.call "linear" t (fun t ->
         let body = Cursor.consume_remaining_to_string ~trim:true t in
@@ -6894,15 +6948,16 @@ module Timing_function = struct
   let rec read t : timing_function =
     let read_var_timing t : timing_function = Var (Values.read_var read t) in
     Cursor.enum_or_calls "timing-function"
-      [
-        ("ease", (Ease : timing_function));
-        ("linear", Linear);
-        ("ease-in", Ease_in);
-        ("ease-out", Ease_out);
-        ("ease-in-out", Ease_in_out);
-        ("step-start", Step_start);
-        ("step-end", Step_end);
-      ]
+      ([
+         ("ease", (Ease : timing_function));
+         ("linear", Linear);
+         ("ease-in", Ease_in);
+         ("ease-out", Ease_out);
+         ("ease-in-out", Ease_in_out);
+         ("step-start", Step_start);
+         ("step-end", Step_end);
+       ]
+      @ css_wide)
       ~calls:
         [
           ("linear", read_linear_function);
@@ -7202,6 +7257,7 @@ module Animation = struct
   (* Check if a timing function ends with ')' - only cubic-bezier/steps do *)
   let ends_with_paren = function
     | Cubic_bezier _ | Steps _ | Linear_function _ | Var _ -> true
+    | Inherit | Initial | Unset | Revert | Revert_layer -> false
     | Linear | Ease | Ease_in | Ease_out | Ease_in_out | Step_start | Step_end
       ->
         false
@@ -7218,6 +7274,11 @@ module Animation = struct
         Pp.string ctx "linear(";
         Pp.string ctx body;
         Pp.char ctx ')'
+    | Inherit -> Pp.string ctx "inherit"
+    | Initial -> Pp.string ctx "initial"
+    | Unset -> Pp.string ctx "unset"
+    | Revert -> Pp.string ctx "revert"
+    | Revert_layer -> Pp.string ctx "revert-layer"
     | Cubic_bezier (x1, y1, x2, y2) ->
         Pp.string ctx "cubic-bezier(";
         Pp.float ctx x1;
