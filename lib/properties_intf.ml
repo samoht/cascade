@@ -658,6 +658,10 @@ type text_transform =
   | Full_width
   | Full_size_kana
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of text_transform var
 
 type text_overflow =
@@ -666,6 +670,10 @@ type text_overflow =
   | String of string
   | Pair of text_overflow * text_overflow
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of text_overflow var
 
 type text_wrap =
@@ -674,7 +682,59 @@ type text_wrap =
   | Balance
   | Pretty
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of text_wrap var
+
+type text_wrap_style =
+  | Auto
+  | Balance
+  | Pretty
+  | Stable
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_wrap_style var
+
+type text_box_trim =
+  | None
+  | Trim_start
+  | Trim_end
+  | Trim_both
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_box_trim var
+
+type text_spacing_trim =
+  | Normal
+  | Space_all
+  | Trim_start
+  | Space_first
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_spacing_trim var
+
+type hyphenate_limit_chars =
+  | Auto
+  | One of int
+  | Two of int * int
+  | Three of int * int * int
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of hyphenate_limit_chars var
 
 type white_space =
   | Normal
@@ -2484,8 +2544,8 @@ type 'a property =
   | Line_height_step : length property
   | Font_palette : string property
   | Font_synthesis : string property
-  | Text_wrap_style : string property
-  | Text_box_trim : string property
+  | Text_wrap_style : text_wrap_style property
+  | Text_box_trim : text_box_trim property
   | Animation_timeline : string property
   | Animation_range : string property
   | Scroll_timeline : timeline_shorthand property
@@ -2501,8 +2561,8 @@ type 'a property =
   | Offset_distance : length_percentage property
   | Font_size_adjust : font_size_adjust property
   | Font_variant_emoji : font_variant_emoji property
-  | Text_spacing_trim : string property
-  | Hyphenate_limit_chars : string property
+  | Text_spacing_trim : text_spacing_trim property
+  | Hyphenate_limit_chars : hyphenate_limit_chars property
   | Initial_letter : string property
   | View_timeline_name : string property
   | View_timeline_axis : string property

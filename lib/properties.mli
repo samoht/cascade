@@ -382,6 +382,24 @@ val pp_text_wrap : text_wrap Pp.t
 val read_text_wrap : Cursor.t -> text_wrap
 (** [read_text_wrap t] is the [text_wrap] parsed from [t]. *)
 
+val pp_text_wrap_style : text_wrap_style Pp.t
+(** [pp_text_wrap_style] is the pretty-printer for [text_wrap_style]. *)
+
+val read_text_wrap_style : Cursor.t -> text_wrap_style
+(** [read_text_wrap_style t] is the [text_wrap_style] parsed from [t]. *)
+
+val pp_text_box_trim : text_box_trim Pp.t
+(** [pp_text_box_trim] is the pretty-printer for [text_box_trim]. *)
+
+val read_text_box_trim : Cursor.t -> text_box_trim
+(** [read_text_box_trim t] is the [text_box_trim] parsed from [t]. *)
+
+val pp_text_spacing_trim : text_spacing_trim Pp.t
+(** [pp_text_spacing_trim] is the pretty-printer for [text_spacing_trim]. *)
+
+val read_text_spacing_trim : Cursor.t -> text_spacing_trim
+(** [read_text_spacing_trim t] is the [text_spacing_trim] parsed from [t]. *)
+
 val pp_text_size_adjust : text_size_adjust Pp.t
 (** [pp_text_size_adjust] pretty-prints a text-size-adjust value. *)
 

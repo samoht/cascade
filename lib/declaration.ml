@@ -1357,26 +1357,8 @@ let read_value (type a) (prop : a property) t : declaration =
       v Line_height_step (read_non_negative_length_or_css_wide t)
   | Font_palette -> v Font_palette (read_font_palette t)
   | Font_synthesis -> v Font_synthesis (read_untyped_value t)
-  | Text_wrap_style ->
-      v Text_wrap_style
-        (Cursor.enum "text-wrap-style"
-           [
-             ("auto", "auto");
-             ("balance", "balance");
-             ("pretty", "pretty");
-             ("stable", "stable");
-           ]
-           t)
-  | Text_box_trim ->
-      v Text_box_trim
-        (Cursor.enum "text-box-trim"
-           [
-             ("none", "none");
-             ("trim-start", "trim-start");
-             ("trim-end", "trim-end");
-             ("trim-both", "trim-both");
-           ]
-           t)
+  | Text_wrap_style -> v Text_wrap_style (read_text_wrap_style t)
+  | Text_box_trim -> v Text_box_trim (read_text_box_trim t)
   | Animation_timeline -> v Animation_timeline (read_animation_timeline t)
   | Animation_range -> v Animation_range (read_animation_range t)
   | Scroll_timeline -> v Scroll_timeline (read_timeline_shorthand t)
@@ -1410,16 +1392,7 @@ let read_value (type a) (prop : a property) t : declaration =
       v Offset_distance (read_non_negative_length_percentage_or_css_wide t)
   | Font_size_adjust -> v Font_size_adjust (read_font_size_adjust t)
   | Font_variant_emoji -> v Font_variant_emoji (read_font_variant_emoji t)
-  | Text_spacing_trim ->
-      v Text_spacing_trim
-        (Cursor.enum "text-spacing-trim"
-           [
-             ("normal", "normal");
-             ("space-all", "space-all");
-             ("trim-start", "trim-start");
-             ("space-first", "space-first");
-           ]
-           t)
+  | Text_spacing_trim -> v Text_spacing_trim (read_text_spacing_trim t)
   | Hyphenate_limit_chars -> v Hyphenate_limit_chars (read_untyped_value t)
   | Initial_letter -> v Initial_letter (read_initial_letter t)
   | View_timeline_name -> v View_timeline_name (read_untyped_value t)
