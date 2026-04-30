@@ -259,70 +259,89 @@ let read_position_try_fallback t =
 
 let read_shape_outside t =
   let raw = Cursor.lookahead (Cursor.consume_to_decl_end ~trim:true) t in
+  let accept_raw () =
+    ignore (Cursor.consume_to_decl_end ~trim:true t);
+    raw
+  in
   match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Ident keyword; _ })
+    when is_css_wide_keyword keyword ->
+      accept_raw ()
   | Some (Component.Preserved { kind = Token.Ident "none"; _ }) ->
       Cursor.skip t;
       raw
+  | Some (Component.Func { node = { name = "var"; terminated = true; _ }; _ })
+    ->
+      accept_raw ()
   | Some
       (Component.Func
          { node = { name = "circle" | "inset"; arguments; terminated }; _ })
     when terminated && arguments <> [] ->
-      ignore (Cursor.consume_to_decl_end ~trim:true t);
-      raw
+      accept_raw ()
   | Some (Component.Func { node = { name = "circle" | "inset"; _ }; _ }) ->
       Cursor.err_invalid t "empty basic shape"
   | _ -> Cursor.err_invalid t ("invalid shape-outside: " ^ raw)
 
-let read_font_shorthand t =
+let rec read_font_shorthand t =
   let raw = Cursor.consume_to_decl_end ~trim:true t in
   let lower = String.lowercase_ascii raw in
   if is_css_wide_keyword lower then raw
   else
-    let r = Cursor.of_string raw in
-    let read_shorthand_line_height r =
-      Cursor.one_of
-        [
-          (fun r -> ignore (read_length r : length));
-          (fun r -> ignore (read_percentage r : percentage));
-          (fun r -> ignore (Cursor.number r : float));
-          (fun r ->
-            ignore (Cursor.enum "font line-height" [ ("normal", ()) ] r));
-        ]
-        r
+    let is_valid_var () =
+      let r = Cursor.of_string raw in
+      match Values.read_var read_font_shorthand r with
+      | (_ : string var) ->
+          Cursor.ws r;
+          Cursor.is_done r
+      | exception Cursor.Parse_error _ -> false
     in
-    let saw_size = ref false in
-    let rec loop () =
-      Cursor.ws r;
-      if Cursor.is_done r then ()
-      else
-        match Cursor.peek_ident r with
-        | Some
-            ( "italic" | "oblique" | "normal" | "small-caps" | "bold" | "bolder"
-            | "lighter" | "condensed" | "expanded" ) ->
-            let _ = Cursor.ident r in
-            loop ()
-        | _ -> (
-            let before = Cursor.save r in
-            match read_font_weight r with
-            | _ -> loop ()
-            | exception Cursor.Parse_error _ ->
-                Cursor.restore r before;
-                let _ = read_font_size r in
-                saw_size := true;
-                (match Cursor.peek_delim r with
-                | Some '/' ->
-                    Cursor.skip r;
-                    read_shorthand_line_height r
-                | _ -> ());
-                ignore (read_font_family r : font_family);
-                Cursor.ws r;
-                Cursor.expect_eof r)
-    in
-    (try loop ()
-     with Cursor.Parse_error _ ->
-       Cursor.err_invalid t "invalid font shorthand");
-    if not !saw_size then Cursor.err_invalid t "font shorthand missing size";
-    raw
+    if is_valid_var () then raw
+    else
+      let r = Cursor.of_string raw in
+      let read_shorthand_line_height r =
+        Cursor.one_of
+          [
+            (fun r -> ignore (read_length r : length));
+            (fun r -> ignore (read_percentage r : percentage));
+            (fun r -> ignore (Cursor.number r : float));
+            (fun r ->
+              ignore (Cursor.enum "font line-height" [ ("normal", ()) ] r));
+          ]
+          r
+      in
+      let saw_size = ref false in
+      let rec loop () =
+        Cursor.ws r;
+        if Cursor.is_done r then ()
+        else
+          match Cursor.peek_ident r with
+          | Some
+              ( "italic" | "oblique" | "normal" | "small-caps" | "bold"
+              | "bolder" | "lighter" | "condensed" | "expanded" ) ->
+              let _ = Cursor.ident r in
+              loop ()
+          | _ -> (
+              let before = Cursor.save r in
+              match read_font_weight r with
+              | _ -> loop ()
+              | exception Cursor.Parse_error _ ->
+                  Cursor.restore r before;
+                  let _ = read_font_size r in
+                  saw_size := true;
+                  (match Cursor.peek_delim r with
+                  | Some '/' ->
+                      Cursor.skip r;
+                      read_shorthand_line_height r
+                  | _ -> ());
+                  ignore (read_font_family r : font_family);
+                  Cursor.ws r;
+                  Cursor.expect_eof r)
+      in
+      (try loop ()
+       with Cursor.Parse_error _ ->
+         Cursor.err_invalid t "invalid font shorthand");
+      if not !saw_size then Cursor.err_invalid t "font shorthand missing size";
+      raw
 
 let is_grid_area_ws = function
   | ' ' | '\t' | '\n' | '\r' | '\012' -> true
@@ -573,18 +592,29 @@ let read_animation_name t =
    outputs percentages. *)
 let rec read_opacity t : opacity =
   Cursor.ws t;
-  if Cursor.looking_at t "var(" then Var (Values.read_var read_opacity t)
-  else
-    match Cursor.function_call "abs" read_opacity t with
-    | Some inner -> Abs inner
-    | None -> (
-        match Cursor.function_call "sign" read_opacity t with
-        | Some inner -> Sign inner
+  match Cursor.peek_ident t with
+  | Some keyword when is_css_wide_keyword keyword -> (
+      Cursor.skip t;
+      match keyword with
+      | "inherit" -> Inherit
+      | "initial" -> Initial
+      | "unset" -> Unset
+      | "revert" -> Revert
+      | "revert-layer" -> Revert_layer
+      | _ -> Cursor.err_invalid t ("invalid opacity keyword: " ^ keyword))
+  | _ -> (
+      if Cursor.looking_at t "var(" then Var (Values.read_var read_opacity t)
+      else
+        match Cursor.function_call "abs" read_opacity t with
+        | Some inner -> Abs inner
         | None -> (
-            let n, unit = Cursor.number_with_unit t in
-            match unit with
-            | Some "%" -> Opacity_number (n /. 100.0)
-            | _ -> Opacity_number n))
+            match Cursor.function_call "sign" read_opacity t with
+            | Some inner -> Sign inner
+            | None -> (
+                let n, unit = Cursor.number_with_unit t in
+                match unit with
+                | Some "%" -> Opacity_number (n /. 100.0)
+                | _ -> Opacity_number n)))
 
 (* Helper to read raw property value - for properties that accept any text.
    Drain components (preserving whitespace) up to the next [;] or [!] delim. *)
@@ -1291,6 +1321,13 @@ let read_value (type a) (prop : a property) t : declaration =
            [ ("from-image", "from-image"); ("none", "none") ]
            t)
   | Contain_intrinsic_size -> v Contain_intrinsic_size (read_untyped_value t)
+  | Contain_intrinsic_width -> v Contain_intrinsic_width (read_untyped_value t)
+  | Contain_intrinsic_height ->
+      v Contain_intrinsic_height (read_untyped_value t)
+  | Contain_intrinsic_block_size ->
+      v Contain_intrinsic_block_size (read_untyped_value t)
+  | Contain_intrinsic_inline_size ->
+      v Contain_intrinsic_inline_size (read_untyped_value t)
   | Margin_trim -> v Margin_trim (read_margin_trim t)
   | Offset_path -> v Offset_path (read_untyped_value t)
   | Offset_distance -> v Offset_distance (read_non_negative_length_percentage t)

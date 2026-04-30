@@ -590,6 +590,10 @@ let rec read_font_weight t : font_weight =
       ("bolder", Bolder);
       ("lighter", Lighter);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
     ~calls:[ ("var", read_var) ]
     ~default:(fun t ->
@@ -765,7 +769,14 @@ let read_text_decoration_shorthand t : text_decoration_shorthand =
 let rec read_text_decoration t : text_decoration =
   let read_var t : text_decoration = Var (read_var read_text_decoration t) in
   Cursor.enum_or_calls "text-decoration"
-    [ ("inherit", (Inherit : text_decoration)); ("none", None) ]
+    [
+      ("inherit", (Inherit : text_decoration));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+      ("none", None);
+    ]
     ~calls:[ ("var", read_var) ]
     ~default:(fun t ->
       let shorthand = read_text_decoration_shorthand t in
@@ -1414,6 +1425,11 @@ let rec pp_filter : filter Pp.t =
   | Sepia n -> Pp.call "sepia" (pp_number_percentage ~always:true) ctx n
   | Url url -> Pp.url ctx url
   | List filters -> Pp.list ~sep:Pp.space pp_filter ctx filters
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_filter ctx v
 
 let rec pp_position_value : position_value Pp.t =
@@ -1871,11 +1887,23 @@ let rec pp_opacity : opacity Pp.t =
   | Opacity_number f -> Pp.float ctx f
   | Abs v -> Pp.call "abs" pp_opacity ctx v
   | Sign v -> Pp.call "sign" pp_opacity ctx v
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_opacity ctx v
 
 let rec read_opacity t : opacity =
   let read_var t : opacity = Var (read_var read_opacity t) in
-  Cursor.enum_or_calls "opacity" []
+  Cursor.enum_or_calls "opacity"
+    [
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
     ~calls:[ ("var", read_var) ]
     ~default:(fun t -> Opacity_number (Cursor.number t))
     t
@@ -2157,6 +2185,10 @@ let rec pp_text_decoration : text_decoration Pp.t =
   | None -> Pp.string ctx "none"
   | Shorthand shorthand -> pp_text_decoration_shorthand ctx shorthand
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_text_decoration ctx v
 
 let rec pp_text_transform : text_transform Pp.t =
@@ -2380,6 +2412,11 @@ let rec pp_clip : clip Pp.t =
 let rec pp_clip_path : clip_path Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_clip_path ctx v
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Clip_path_none -> Pp.string ctx "none"
   | Clip_path_url url ->
       Pp.string ctx "url(";
@@ -2676,6 +2713,11 @@ let pp_property : type a. a property Pp.t =
   | View_transition_name -> Pp.string ctx "view-transition-name"
   | Image_orientation -> Pp.string ctx "image-orientation"
   | Contain_intrinsic_size -> Pp.string ctx "contain-intrinsic-size"
+  | Contain_intrinsic_width -> Pp.string ctx "contain-intrinsic-width"
+  | Contain_intrinsic_height -> Pp.string ctx "contain-intrinsic-height"
+  | Contain_intrinsic_block_size -> Pp.string ctx "contain-intrinsic-block-size"
+  | Contain_intrinsic_inline_size ->
+      Pp.string ctx "contain-intrinsic-inline-size"
   | Margin_trim -> Pp.string ctx "margin-trim"
   | Offset_path -> Pp.string ctx "offset-path"
   | Offset_distance -> Pp.string ctx "offset-distance"
@@ -2837,6 +2879,10 @@ let rec pp_font_feature_settings : font_feature_settings Pp.t =
       (* Feature list contains quoted tags already in the stored string *)
       Pp.string ctx s
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | String s -> Pp.quoted_string ctx s
   | Var v -> pp_var pp_font_feature_settings ctx v
 
@@ -2845,6 +2891,10 @@ let rec pp_font_variation_settings : font_variation_settings Pp.t =
   | Normal -> Pp.string ctx "normal"
   | Axis_list s -> Pp.string ctx s
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | String s -> Pp.quoted_string ctx s
   | Var v -> pp_var pp_font_variation_settings ctx v
 
@@ -4475,6 +4525,10 @@ let rec pp_font_weight : font_weight Pp.t =
   | Bolder -> Pp.string ctx "bolder"
   | Lighter -> Pp.string ctx "lighter"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_font_weight ctx v
 
 let rec pp_webkit_box_orient : webkit_box_orient Pp.t =
@@ -6527,7 +6581,14 @@ let rec read_font_feature_settings t : font_feature_settings =
     Feature_list (String.concat ", " items)
   in
   Cursor.enum_or_calls "font-feature-settings"
-    [ ("normal", (Normal : font_feature_settings)); ("inherit", Inherit) ]
+    [
+      ("normal", (Normal : font_feature_settings));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
     ~calls:[ ("var", read_var) ]
     ~default:read_feature_list t
 
@@ -6558,7 +6619,14 @@ let rec read_font_variation_settings t : font_variation_settings =
     Axis_list (String.concat ", " items)
   in
   Cursor.enum_or_calls "font-variation-settings"
-    [ ("normal", (Normal : font_variation_settings)); ("inherit", Inherit) ]
+    [
+      ("normal", (Normal : font_variation_settings));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
     ~calls:[ ("var", read_var) ]
     ~default:read_axis_list t
 
@@ -7217,7 +7285,16 @@ and read_filter t : filter =
     | [ f ] -> f
     | fs -> List fs
   in
-  Cursor.enum "filter" [ ("none", (None : filter)) ] ~default:read_filter_list t
+  Cursor.enum "filter"
+    [
+      ("none", (None : filter));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~default:read_filter_list t
 
 (* Background-related readers *)
 let read_background_attachment t : background_attachment =
@@ -8072,6 +8149,10 @@ let read_any_property t =
   | "view-transition-name" -> Prop View_transition_name
   | "image-orientation" -> Prop Image_orientation
   | "contain-intrinsic-size" -> Prop Contain_intrinsic_size
+  | "contain-intrinsic-width" -> Prop Contain_intrinsic_width
+  | "contain-intrinsic-height" -> Prop Contain_intrinsic_height
+  | "contain-intrinsic-block-size" -> Prop Contain_intrinsic_block_size
+  | "contain-intrinsic-inline-size" -> Prop Contain_intrinsic_inline_size
   | "margin-trim" -> Prop Margin_trim
   | "offset-path" -> Prop Offset_path
   | "offset-distance" -> Prop Offset_distance
@@ -8814,14 +8895,21 @@ let read_clip_path_shape t =
   Cursor.call "shape" t (fun inner ->
       Clip_path_shape (Cursor.consume_remaining_to_string ~trim:true inner))
 
-let read_clip_path t : clip_path =
+let rec read_clip_path (t : Cursor.t) : clip_path =
   Cursor.ws t;
   Cursor.one_of
     [
       (fun t -> Clip_path_url (Cursor.url t));
       (fun t ->
         Cursor.enum_or_calls "clip-path"
-          [ ("none", Clip_path_none) ]
+          [
+            ("none", Clip_path_none);
+            ("inherit", Inherit);
+            ("initial", Initial);
+            ("unset", Unset);
+            ("revert", Revert);
+            ("revert-layer", Revert_layer);
+          ]
           ~calls:
             [
               ("inset", read_clip_path_inset);
@@ -8832,6 +8920,8 @@ let read_clip_path t : clip_path =
               ("xywh", read_clip_path_xywh);
               ("rect", read_clip_path_rect);
               ("shape", read_clip_path_shape);
+              ( "var",
+                fun t -> (Var (Values.read_var read_clip_path t) : clip_path) );
             ]
           t);
     ]
@@ -9253,6 +9343,10 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | View_transition_name -> pp Pp.string
   | Image_orientation -> pp Pp.string
   | Contain_intrinsic_size -> pp Pp.string
+  | Contain_intrinsic_width -> pp Pp.string
+  | Contain_intrinsic_height -> pp Pp.string
+  | Contain_intrinsic_block_size -> pp Pp.string
+  | Contain_intrinsic_inline_size -> pp Pp.string
   | Margin_trim -> pp Pp.string
   | Offset_path -> pp Pp.string
   | Offset_distance -> pp (pp_length_percentage ~always:true)
