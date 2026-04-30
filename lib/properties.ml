@@ -812,17 +812,21 @@ let rec read_text_decoration t : text_decoration =
     t
 
 let rec read_text_transform t : text_transform =
-  let read_var t : text_transform = Var (read_var read_text_transform t) in
-  Cursor.enum_or_calls "text-transform"
+  Cursor.enum_or_var "text-transform"
     [
       ("none", (None : text_transform));
       ("uppercase", Uppercase);
       ("lowercase", Lowercase);
       ("capitalize", Capitalize);
       ("full-width", Full_width);
+      ("full-size-kana", Full_size_kana);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
-    ~calls:[ ("var", read_var) ]
+    ~var:(fun t -> Var (read_var read_text_transform t))
     t
 
 let rec read_overflow_single (t : Cursor.t) : overflow =
@@ -2263,6 +2267,10 @@ let rec pp_text_transform : text_transform Pp.t =
   | Full_width -> Pp.string ctx "full-width"
   | Full_size_kana -> Pp.string ctx "full-size-kana"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_text_transform ctx v
 
 let rec pp_text_overflow : text_overflow Pp.t =
@@ -2276,6 +2284,10 @@ let rec pp_text_overflow : text_overflow Pp.t =
       Pp.space ctx ();
       pp_text_overflow ctx second
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_text_wrap : text_wrap Pp.t =
  fun ctx -> function
@@ -2285,6 +2297,49 @@ let rec pp_text_wrap : text_wrap Pp.t =
   | Balance -> Pp.string ctx "balance"
   | Pretty -> Pp.string ctx "pretty"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+
+let rec pp_text_wrap_style : text_wrap_style Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_text_wrap_style ctx v
+  | Auto -> Pp.string ctx "auto"
+  | Balance -> Pp.string ctx "balance"
+  | Pretty -> Pp.string ctx "pretty"
+  | Stable -> Pp.string ctx "stable"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+
+let rec pp_text_box_trim : text_box_trim Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_text_box_trim ctx v
+  | None -> Pp.string ctx "none"
+  | Trim_start -> Pp.string ctx "trim-start"
+  | Trim_end -> Pp.string ctx "trim-end"
+  | Trim_both -> Pp.string ctx "trim-both"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+
+let rec pp_text_spacing_trim : text_spacing_trim Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_text_spacing_trim ctx v
+  | Normal -> Pp.string ctx "normal"
+  | Space_all -> Pp.string ctx "space-all"
+  | Trim_start -> Pp.string ctx "trim-start"
+  | Space_first -> Pp.string ctx "space-first"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_white_space : white_space Pp.t =
  fun ctx -> function
@@ -5506,7 +5561,20 @@ let rec read_aspect_ratio (t : Cursor.t) : aspect_ratio =
     ~default:(Cursor.one_of [ read_auto; read_number_or_ratio ])
     t
 
-let read_text_overflow t : text_overflow =
+let rec read_text_overflow t : text_overflow =
+  let read_var t : text_overflow = Var (read_var read_text_overflow t) in
+  let read_css_wide_or_var t =
+    Cursor.enum_or_calls "text-overflow"
+      [
+        ("inherit", (Inherit : text_overflow));
+        ("initial", Initial);
+        ("unset", Unset);
+        ("revert", Revert);
+        ("revert-layer", Revert_layer);
+      ]
+      ~calls:[ ("var", read_var) ]
+      t
+  in
   let read_single t =
     let read_string_overflow t : text_overflow = String (Cursor.string t) in
     Cursor.one_of
@@ -5514,33 +5582,88 @@ let read_text_overflow t : text_overflow =
         read_string_overflow;
         (fun t ->
           Cursor.enum "text-overflow"
-            [
-              ("clip", (Clip : text_overflow));
-              ("ellipsis", Ellipsis);
-              ("inherit", Inherit);
-            ]
+            [ ("clip", (Clip : text_overflow)); ("ellipsis", Ellipsis) ]
             t);
       ]
       t
   in
-  let first = read_single t in
-  Cursor.ws t;
-  if Cursor.is_done t then first
-  else
-    let second = read_single t in
-    Cursor.ws t;
-    Cursor.expect_eof t;
-    Pair (first, second)
+  Cursor.one_of
+    [
+      read_css_wide_or_var;
+      (fun t ->
+        let first = read_single t in
+        Cursor.ws t;
+        if Cursor.is_done t then first
+        else
+          let second = read_single t in
+          Cursor.ws t;
+          Cursor.expect_eof t;
+          Pair (first, second));
+    ]
+    t
 
-let read_text_wrap t : text_wrap =
-  Cursor.enum "text-wrap"
+let rec read_text_wrap t : text_wrap =
+  Cursor.enum_or_var "text-wrap"
     [
       ("wrap", (Wrap : text_wrap));
       ("nowrap", No_wrap);
       ("balance", Balance);
       ("pretty", Pretty);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (read_var read_text_wrap t))
+    t
+
+let rec read_text_wrap_style t : text_wrap_style =
+  Cursor.enum_or_var "text-wrap-style"
+    [
+      ("auto", (Auto : text_wrap_style));
+      ("balance", Balance);
+      ("pretty", Pretty);
+      ("stable", Stable);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (read_var read_text_wrap_style t))
+    t
+
+let rec read_text_box_trim t : text_box_trim =
+  Cursor.enum_or_var "text-box-trim"
+    [
+      ("none", (None : text_box_trim));
+      ("trim-start", Trim_start);
+      ("trim-end", Trim_end);
+      ("trim-both", Trim_both);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (read_var read_text_box_trim t))
+    t
+
+let rec read_text_spacing_trim t : text_spacing_trim =
+  Cursor.enum_or_var "text-spacing-trim"
+    [
+      ("normal", (Normal : text_spacing_trim));
+      ("space-all", Space_all);
+      ("trim-start", Trim_start);
+      ("space-first", Space_first);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (read_var read_text_spacing_trim t))
     t
 
 let rec read_white_space t : white_space =
@@ -9810,8 +9933,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Line_height_step -> pp (pp_length ~always:true)
   | Font_palette -> pp Pp.string
   | Font_synthesis -> pp Pp.string
-  | Text_wrap_style -> pp Pp.string
-  | Text_box_trim -> pp Pp.string
+  | Text_wrap_style -> pp pp_text_wrap_style
+  | Text_box_trim -> pp pp_text_box_trim
   | Animation_timeline -> pp Pp.string
   | Animation_range -> pp Pp.string
   | Scroll_timeline -> pp pp_timeline_shorthand
@@ -9827,7 +9950,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Offset_distance -> pp (pp_length_percentage ~always:true)
   | Font_size_adjust -> pp pp_font_size_adjust
   | Font_variant_emoji -> pp pp_font_variant_emoji
-  | Text_spacing_trim -> pp Pp.string
+  | Text_spacing_trim -> pp pp_text_spacing_trim
   | Hyphenate_limit_chars -> pp Pp.string
   | Initial_letter -> pp Pp.string
   | View_timeline_name -> pp Pp.string

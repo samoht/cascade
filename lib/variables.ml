@@ -674,10 +674,23 @@ let vars_of_text_decoration_line (value : Properties.text_decoration_line) =
 let vars_of_text_decoration_style (value : Properties.text_decoration_style) =
   match value with Var v -> [ V v ] | _ -> []
 
-let vars_of_text_overflow (value : Properties.text_overflow) =
-  match value with Var v -> [ V v ] | _ -> []
+let rec vars_of_text_overflow (value : Properties.text_overflow) =
+  match value with
+  | Var v -> [ V v ]
+  | Pair (first, second) ->
+      vars_of_text_overflow first @ vars_of_text_overflow second
+  | _ -> []
 
 let vars_of_text_wrap (value : Properties.text_wrap) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_text_wrap_style (value : Properties.text_wrap_style) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_text_box_trim (value : Properties.text_box_trim) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_text_spacing_trim (value : Properties.text_spacing_trim) =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_white_space (value : Properties.white_space) =
@@ -1219,6 +1232,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Overflow_wrap, value -> vars_of_overflow_wrap value
   | Overflow_x, value -> vars_of_overflow value
   | Overflow_y, value -> vars_of_overflow value
+  | Overflow_block, value -> vars_of_overflow value
+  | Overflow_inline, value -> vars_of_overflow value
   | Overscroll_behavior, values ->
       List.concat_map vars_of_overscroll_behavior values
   | Overscroll_behavior_x, value -> vars_of_overscroll_behavior value
@@ -1247,6 +1262,9 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Text_overflow, value -> vars_of_text_overflow value
   | Text_size_adjust, value -> vars_of_text_size_adjust value
   | Text_wrap, value -> vars_of_text_wrap value
+  | Text_wrap_style, value -> vars_of_text_wrap_style value
+  | Text_box_trim, value -> vars_of_text_box_trim value
+  | Text_spacing_trim, value -> vars_of_text_spacing_trim value
   | Touch_action, value -> vars_of_touch_action value
   | Transform_box, value -> vars_of_transform_box value
   | Transform_style, value -> vars_of_transform_style value

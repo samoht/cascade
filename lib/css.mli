@@ -1935,6 +1935,10 @@ type text_overflow =
   | String of string
   | Pair of text_overflow * text_overflow
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of text_overflow var
 
 val text_overflow : text_overflow -> declaration
@@ -1949,7 +1953,59 @@ type text_wrap =
   | Balance
   | Pretty
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of text_wrap var
+
+type text_wrap_style =
+  | Auto
+  | Balance
+  | Pretty
+  | Stable
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_wrap_style var
+
+type text_box_trim =
+  | None
+  | Trim_start
+  | Trim_end
+  | Trim_both
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_box_trim var
+
+type text_spacing_trim =
+  | Normal
+  | Space_all
+  | Trim_start
+  | Space_first
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_spacing_trim var
+
+type hyphenate_limit_chars =
+  | Auto
+  | One of int
+  | Two of int * int
+  | Three of int * int * int
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of hyphenate_limit_chars var
 
 val text_wrap : text_wrap -> declaration
 (** [text_wrap wrap] is the
@@ -3103,6 +3159,10 @@ type text_transform =
   | Full_width
   | Full_size_kana
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of text_transform var
       (** CSS text-size-adjust values (including vendor prefixes). *)
 
@@ -5638,6 +5698,16 @@ val pp_text_decoration : text_decoration Pp.t
 
 val pp_text_transform : text_transform Pp.t
 (** [pp_text_transform] is the pretty printer for text-transform values. *)
+
+val pp_text_wrap_style : text_wrap_style Pp.t
+(** [pp_text_wrap_style] is the pretty printer for text-wrap-style values. *)
+
+val pp_text_box_trim : text_box_trim Pp.t
+(** [pp_text_box_trim] is the pretty printer for text-box-trim values. *)
+
+val pp_text_spacing_trim : text_spacing_trim Pp.t
+(** [pp_text_spacing_trim] is the pretty printer for text-spacing-trim values.
+*)
 
 val pp_overflow : overflow Pp.t
 (** [pp_overflow] is the pretty printer for overflow values. *)
