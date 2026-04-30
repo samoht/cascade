@@ -928,6 +928,38 @@ type font_stretch =
   | Revert_layer
   | Var of font_stretch var
 
+type font_size_adjust_metric =
+  | Ex_height
+  | Cap_height
+  | Ch_width
+  | Ic_width
+  | Ic_height
+
+type font_size_adjust =
+  | None
+  | Number of float
+  | From_font
+  | Metric_number of font_size_adjust_metric * float
+  | Metric_from_font of font_size_adjust_metric
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_size_adjust var
+
+type font_variant_emoji =
+  | Normal
+  | Text
+  | Emoji
+  | Unicode
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_variant_emoji var
+
 type font_display =
   | Auto
   | Block
@@ -2450,8 +2482,8 @@ type 'a property =
   | Margin_trim : string property
   | Offset_path : string property
   | Offset_distance : length_percentage property
-  | Font_size_adjust : string property
-  | Font_variant_emoji : string property
+  | Font_size_adjust : font_size_adjust property
+  | Font_variant_emoji : font_variant_emoji property
   | Text_spacing_trim : string property
   | Hyphenate_limit_chars : string property
   | Initial_letter : string property
@@ -2499,6 +2531,8 @@ type 'a property =
   | Aspect_ratio : aspect_ratio property
   | Overflow_x : overflow property
   | Overflow_y : overflow property
+  | Overflow_block : overflow property
+  | Overflow_inline : overflow property
   | Vertical_align : vertical_align property
   | Font_family : font_family property
   | Background_position : background_position property
@@ -2601,6 +2635,8 @@ type 'a property =
   | Overscroll_behavior : overscroll_behavior list property
   | Overscroll_behavior_x : overscroll_behavior property
   | Overscroll_behavior_y : overscroll_behavior property
+  | Overscroll_behavior_block : overscroll_behavior property
+  | Overscroll_behavior_inline : overscroll_behavior property
   | Accent_color : color property
   | Caret_color : color property
 

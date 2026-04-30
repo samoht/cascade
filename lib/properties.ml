@@ -2826,6 +2826,8 @@ let pp_property : type a. a property Pp.t =
   | Aspect_ratio -> Pp.string ctx "aspect-ratio"
   | Overflow_x -> Pp.string ctx "overflow-x"
   | Overflow_y -> Pp.string ctx "overflow-y"
+  | Overflow_block -> Pp.string ctx "overflow-block"
+  | Overflow_inline -> Pp.string ctx "overflow-inline"
   | Vertical_align -> Pp.string ctx "vertical-align"
   | Font_family -> Pp.string ctx "font-family"
   | Background_position -> Pp.string ctx "background-position"
@@ -2918,6 +2920,8 @@ let pp_property : type a. a property Pp.t =
   | Overscroll_behavior -> Pp.string ctx "overscroll-behavior"
   | Overscroll_behavior_x -> Pp.string ctx "overscroll-behavior-x"
   | Overscroll_behavior_y -> Pp.string ctx "overscroll-behavior-y"
+  | Overscroll_behavior_block -> Pp.string ctx "overscroll-behavior-block"
+  | Overscroll_behavior_inline -> Pp.string ctx "overscroll-behavior-inline"
   | Accent_color -> Pp.string ctx "accent-color"
   | Caret_color -> Pp.string ctx "caret-color"
   | Webkit_transform -> Pp.string ctx "-webkit-transform"
@@ -3842,6 +3846,47 @@ let rec pp_font_stretch : font_stretch Pp.t =
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
+
+let pp_font_size_adjust_metric : font_size_adjust_metric Pp.t =
+ fun ctx -> function
+  | Ex_height -> Pp.string ctx "ex-height"
+  | Cap_height -> Pp.string ctx "cap-height"
+  | Ch_width -> Pp.string ctx "ch-width"
+  | Ic_width -> Pp.string ctx "ic-width"
+  | Ic_height -> Pp.string ctx "ic-height"
+
+let rec pp_font_size_adjust : font_size_adjust Pp.t =
+ fun ctx -> function
+  | None -> Pp.string ctx "none"
+  | Number f -> Pp.float ctx f
+  | From_font -> Pp.string ctx "from-font"
+  | Metric_number (metric, f) ->
+      pp_font_size_adjust_metric ctx metric;
+      Pp.space ctx ();
+      Pp.float ctx f
+  | Metric_from_font metric ->
+      pp_font_size_adjust_metric ctx metric;
+      Pp.space ctx ();
+      Pp.string ctx "from-font"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_font_size_adjust ctx v
+
+let rec pp_font_variant_emoji : font_variant_emoji Pp.t =
+ fun ctx -> function
+  | Normal -> Pp.string ctx "normal"
+  | Text -> Pp.string ctx "text"
+  | Emoji -> Pp.string ctx "emoji"
+  | Unicode -> Pp.string ctx "unicode"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_font_variant_emoji ctx v
 
 let rec pp_font_display : font_display Pp.t =
  fun ctx -> function
@@ -8327,6 +8372,8 @@ let read_any_property t =
   | "overflow" -> Prop Overflow
   | "overflow-x" -> Prop Overflow_x
   | "overflow-y" -> Prop Overflow_y
+  | "overflow-block" -> Prop Overflow_block
+  | "overflow-inline" -> Prop Overflow_inline
   | "margin" -> Prop Margin
   | "margin-left" -> Prop Margin_left
   | "margin-right" -> Prop Margin_right
@@ -8571,6 +8618,8 @@ let read_any_property t =
   | "overscroll-behavior" -> Prop Overscroll_behavior
   | "overscroll-behavior-x" -> Prop Overscroll_behavior_x
   | "overscroll-behavior-y" -> Prop Overscroll_behavior_y
+  | "overscroll-behavior-block" -> Prop Overscroll_behavior_block
+  | "overscroll-behavior-inline" -> Prop Overscroll_behavior_inline
   | "perspective" -> Prop Perspective
   | "perspective-origin" -> Prop Perspective_origin
   | "place-content" -> Prop Place_content
@@ -9596,6 +9645,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Overflow -> pp pp_overflow
   | Overflow_x -> pp pp_overflow
   | Overflow_y -> pp pp_overflow
+  | Overflow_block -> pp pp_overflow
+  | Overflow_inline -> pp pp_overflow
   | Vertical_align -> pp pp_vertical_align
   | Text_overflow -> pp pp_text_overflow
   | Text_wrap -> pp pp_text_wrap
@@ -9733,8 +9784,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Margin_trim -> pp Pp.string
   | Offset_path -> pp Pp.string
   | Offset_distance -> pp (pp_length_percentage ~always:true)
-  | Font_size_adjust -> pp Pp.string
-  | Font_variant_emoji -> pp Pp.string
+  | Font_size_adjust -> pp pp_font_size_adjust
+  | Font_variant_emoji -> pp pp_font_variant_emoji
   | Text_spacing_trim -> pp Pp.string
   | Hyphenate_limit_chars -> pp Pp.string
   | Initial_letter -> pp Pp.string
@@ -9830,6 +9881,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Overscroll_behavior -> pp (Pp.list ~sep:Pp.space pp_overscroll_behavior)
   | Overscroll_behavior_x -> pp pp_overscroll_behavior
   | Overscroll_behavior_y -> pp pp_overscroll_behavior
+  | Overscroll_behavior_block -> pp pp_overscroll_behavior
+  | Overscroll_behavior_inline -> pp pp_overscroll_behavior
   | Accent_color -> pp pp_color
   | Caret_color -> pp pp_color
   | List_style -> pp Pp.string

@@ -858,6 +858,12 @@ let vars_of_moz_orient (value : Properties.moz_orient) =
 let vars_of_font_stretch (value : Properties.font_stretch) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_font_size_adjust (value : Properties.font_size_adjust) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_font_variant_emoji (value : Properties.font_variant_emoji) =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_text_size_adjust (value : Properties.text_size_adjust) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -1076,6 +1082,9 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Font_weight, value -> vars_of_font_weight value
   | Font_family, value -> vars_of_font_family value
   | Font_feature_settings, value -> vars_of_font_feature_settings value
+  | Font_size_adjust, value -> vars_of_font_size_adjust value
+  | Font_stretch, value -> vars_of_font_stretch value
+  | Font_variant_emoji, value -> vars_of_font_variant_emoji value
   | Font_variation_settings, value -> vars_of_font_variation_settings value
   | Font_variant_numeric, value -> vars_of_font_variant_numeric value
   (* Text properties *)
@@ -1189,7 +1198,6 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Flex, value -> vars_of_flex value
   | Flex_direction, value -> vars_of_flex_direction value
   | Float, value -> vars_of_float_side value
-  | Font_stretch, value -> vars_of_font_stretch value
   | Font_style, value -> vars_of_font_style value
   | Forced_color_adjust, value -> vars_of_forced_color_adjust value
   | Grid_auto_flow, value -> vars_of_grid_auto_flow value
@@ -1215,6 +1223,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
       List.concat_map vars_of_overscroll_behavior values
   | Overscroll_behavior_x, value -> vars_of_overscroll_behavior value
   | Overscroll_behavior_y, value -> vars_of_overscroll_behavior value
+  | Overscroll_behavior_block, value -> vars_of_overscroll_behavior value
+  | Overscroll_behavior_inline, value -> vars_of_overscroll_behavior value
   | Page_size, value -> vars_of_page_size value
   | Perspective_origin, value -> vars_of_perspective_origin value
   | Place_content, value -> vars_of_place_content value
