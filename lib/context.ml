@@ -1484,10 +1484,14 @@ module Computed_value = struct
     | Some length -> (
         match Length.to_px length_ctx length with
         | Some px ->
+            (* CSS Values 4 §2.4: a [0] length is dimensionless and is
+               canonicalised back without the [px] suffix; only non-zero lengths
+               force a unit on output. *)
+            let resolved : Values.length = if px = 0.0 then Zero else Px px in
             `Resolved
               (Pp.to_string ~minify:true
                  (Values.pp_length ~always:true)
-                 (Px px))
+                 resolved)
         | None -> `Unresolved)
 
   (* Resolve a [url(...)] reference against the base URL, if any. *)
@@ -1735,7 +1739,7 @@ module Computed_value = struct
       Ok (String.concat " " resolved)
     with Unresolved token -> Error ("unresolved percentage: " ^ token)
 
-  let resolve ?layer ?layer_order ctx ~property ~value =
+  let rec resolve ?layer ?layer_order ctx ~property ~value =
     let value = trim value in
     let layer_known =
       match (layer, layer_order) with
@@ -1775,6 +1779,32 @@ module Computed_value = struct
               match initial_value_str ctx property with
               | Some v -> Ok v
               | None -> Ok "unset"))
+      | "revert" | "revert-layer" -> (
+          (* CSS Cascade 5 §6.5 / §6.6: [revert-layer] rolls the cascaded value
+             back to whatever the cascade would compute at the next lower
+             priority cascade layer. The non-custom-property cascade layers
+             carry no [property: value] declarations in this context (only
+             [custom_properties] are layered), so the rollback always clears the
+             author origin's contribution and falls through to the user-agent /
+             inherited / initial chain — i.e. the same chain [unset] runs. The
+             [revert] keyword behaves the same way at the author origin where
+             there is no user-origin layer to roll back into. The inherited /
+             initial values can themselves contain [var()] references (a parent
+             stylesheet may have cascaded [color: var(--color-brand-500)] into
+             the inherited pool), so we recurse through [resolve] to expand vars
+             and resolve length / current-color / calc layers uniformly. *)
+          let target = unset_target property in
+          let next =
+            match target with
+            | `Inherit -> (
+                match inherited_value_str ctx property with
+                | Some v -> Some v
+                | None -> initial_value_str ctx property)
+            | `Initial -> initial_value_str ctx property
+          in
+          match next with
+          | None -> Ok value
+          | Some v -> resolve ?layer ?layer_order ctx ~property ~value:v)
       | _ -> (
           match expand_value ?layer ?layer_order ctx ~visited:[] value with
           | Error msg -> Error msg

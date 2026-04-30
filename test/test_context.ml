@@ -1047,7 +1047,8 @@ let test_layered_computed_revert_contract () =
           Css.Declaration.of_string "color: canvastext";
           Css.Declaration.of_string "margin-left: 0";
         ]
-      ~inherited_values:[ Css.Declaration.of_string "color: purple" ]
+      ~inherited_values:
+        [ Css.Declaration.of_string "color: var(--color-brand-500)" ]
       ~custom_properties:
         [
           Css.Declaration.custom_property ~layer:"theme" "--color-brand-500"

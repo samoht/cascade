@@ -44,11 +44,15 @@ val to_string_minified : Component.t list -> string
     word-like components still get a separating space so they don't merge into a
     single token. *)
 
+val to_string_custom : Component.t list -> string
+(** Variant of {!to_string} for CSS Custom Properties Level 1 token streams.
+    Whitespace is preserved at the top level and inside nested blocks and
+    functions. *)
+
 val to_string_custom_minified : Component.t list -> string
 (** Variant of {!to_string} for CSS Custom Properties Level 1 token streams.
-    Whitespace is preserved at the top level and inside block containers
-    ([{...}], [[...]], standalone [(...)]); only function-argument whitespace is
-    collapsed using the rules of {!to_string_minified}. *)
+    Optional whitespace is collapsed using the rules of {!to_string_minified}
+    while preserving token boundaries. *)
 
 (** {1 Entry points (section 5.4)} *)
 

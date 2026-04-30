@@ -9742,7 +9742,7 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Value ->
       let rendered =
         if Pp.minified ctx then Parser.to_string_custom_minified value
-        else Parser.to_string value
+        else Parser.to_string_custom value
       in
       Pp.string ctx rendered
   | Shadow -> pp pp_shadow
