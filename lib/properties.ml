@@ -4601,7 +4601,7 @@ let read_border_shorthand t : border_shorthand =
   Border.to_shorthand acc
 
 let rec read_border (t : Cursor.t) : border =
-  Cursor.enum_or_calls "border"
+  Cursor.enum_or_var "border"
     [
       ("inherit", (Inherit : border));
       ("initial", Initial);
@@ -4610,7 +4610,7 @@ let rec read_border (t : Cursor.t) : border =
       ("revert-layer", Revert_layer);
       ("none", None);
     ]
-    ~calls:[ ("var", fun t -> (Var (Values.read_var read_border t) : border)) ]
+    ~var:(fun t -> (Var (Values.read_var read_border t) : border))
     ~default:(fun t : border -> Shorthand (read_border_shorthand t))
     t
 
@@ -5132,7 +5132,7 @@ let rec read_aspect_ratio (t : Cursor.t) : aspect_ratio =
           Auto_ratio (w, h)
     | _ -> Cursor.err_expected t "auto"
   in
-  Cursor.enum_or_calls "aspect-ratio"
+  Cursor.enum_or_var "aspect-ratio"
     [
       ("inherit", Inherit);
       ("initial", Initial);
@@ -5140,7 +5140,7 @@ let rec read_aspect_ratio (t : Cursor.t) : aspect_ratio =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~calls:[ ("var", read_var_ar) ]
+    ~var:read_var_ar
     ~default:(Cursor.one_of [ read_auto; read_number_or_ratio ])
     t
 
@@ -5722,7 +5722,7 @@ let rec read_scroll_behavior (t : Cursor.t) : scroll_behavior =
 
 let rec read_scroll_snap_align (t : Cursor.t) : scroll_snap_align =
   let read_single t =
-    Cursor.enum_or_calls "scroll-snap-align"
+    Cursor.enum_or_var "scroll-snap-align"
       [
         ("none", (None : scroll_snap_align));
         ("start", Start);
@@ -5734,13 +5734,8 @@ let rec read_scroll_snap_align (t : Cursor.t) : scroll_snap_align =
         ("revert", Revert);
         ("revert-layer", Revert_layer);
       ]
-      ~calls:
-        [
-          ( "var",
-            fun t ->
-              (Var (Values.read_var read_scroll_snap_align t)
-                : scroll_snap_align) );
-        ]
+      ~var:(fun t ->
+        (Var (Values.read_var read_scroll_snap_align t) : scroll_snap_align))
       t
   in
   let first = read_single t in
@@ -5883,7 +5878,7 @@ let rec read_scroll_snap_type t : scroll_snap_type =
         | Some strictness -> Axis_with_strictness (axis, strictness)
         | None -> Axis axis)
   in
-  Cursor.enum_or_calls "scroll-snap-type"
+  Cursor.enum_or_var "scroll-snap-type"
     [
       ("inherit", (Inherit : scroll_snap_type));
       ("initial", Initial);
@@ -5891,12 +5886,7 @@ let rec read_scroll_snap_type t : scroll_snap_type =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~calls:
-      [
-        ( "var",
-          fun t -> (Var (read_var read_scroll_snap_type t) : scroll_snap_type)
-        );
-      ]
+    ~var:(fun t -> (Var (read_var read_scroll_snap_type t) : scroll_snap_type))
     ~default:read_axis_with_optional_strictness t
 
 let read_overscroll_behavior t : overscroll_behavior =
@@ -8765,7 +8755,7 @@ let read_border_radius_inline t : border_radius =
   Radius { horizontal; vertical }
 
 let rec read_border_radius (t : Cursor.t) : border_radius =
-  Cursor.enum_or_calls "border-radius"
+  Cursor.enum_or_var "border-radius"
     [
       ("inherit", (Inherit : border_radius));
       ("initial", Initial);
@@ -8773,12 +8763,7 @@ let rec read_border_radius (t : Cursor.t) : border_radius =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~calls:
-      [
-        ( "var",
-          fun t -> (Var (Values.read_var read_border_radius t) : border_radius)
-        );
-      ]
+    ~var:(fun t -> (Var (Values.read_var read_border_radius t) : border_radius))
     ~default:read_border_radius_inline t
 
 let read_clip_path_round t : border_radius option =

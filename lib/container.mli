@@ -8,10 +8,21 @@ type t =
       (** Container min-width in pixels: [@container (min-width:Xpx)] *)
   | Named of string * t
       (** Named container with condition: [@container name (condition)] *)
-  | Style of string * string option
-      (** Style query: [style(--flag)] or [style(property: value)]. *)
-  | Scroll_state of string * string
-      (** Scroll-state query: [scroll-state(stuck: top)]. *)
+  | Style of {
+      name : string;
+      value : string option;
+      uppercase : bool;
+          (** [true] when the source spelled the function as [STYLE(...)] (case
+              preserved for round-trip fidelity); [false] for the canonical
+              lowercase spelling. *)
+    }  (** Style query: [style(--flag)] or [style(property: value)]. *)
+  | Scroll_state of {
+      name : string;
+      value : string;
+      uppercase : bool;
+          (** [true] when the source spelled the function as
+              [SCROLL-STATE(...)]. *)
+    }  (** Scroll-state query: [scroll-state(stuck: top)]. *)
   | And of t * t  (** [(A) and (B)] *)
   | Or of t * t  (** [(A) or (B)] *)
   | Not of t  (** [not (A)] *)
@@ -40,13 +51,13 @@ val feature : string -> Media.value -> t
     {!Media.feature}. *)
 
 val style : ?value:string -> string -> t
-(** [style ?value prop] is a [style()] query: [Style (prop, value)]. With no
-    [value] it matches the boolean form [style(--flag)]; with a value it matches
-    [style(prop: value)]. *)
+(** [style ?value prop] is a [style()] query. With no [value] it matches the
+    boolean form [style(--flag)]; with a value it matches [style(prop: value)].
+    Constructs the canonical lowercase form. *)
 
 val scroll_state : string -> string -> t
-(** [scroll_state prop value] is [Scroll_state (prop, value)], matching
-    [scroll-state(prop: value)]. *)
+(** [scroll_state prop value] is the canonical lowercase [Scroll_state] query,
+    matching [scroll-state(prop: value)]. *)
 
 val compare : t -> t -> int
 (** [compare t1 t2] compares two container conditions. *)

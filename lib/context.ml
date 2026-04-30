@@ -907,7 +907,8 @@ module Match_container = struct
   let style_match q ~prop ~value =
     List.exists
       (function
-        | Container.Style (p, v) when String.equal p prop -> (
+        | Container.Style { name = p; value = v; _ } when String.equal p prop
+          -> (
             match (value, v) with
             | None, _ -> true (* any style(prop) match: present in any form *)
             | Some _, None -> false
@@ -919,7 +920,7 @@ module Match_container = struct
   let eval_scroll_state q ~prop ~value =
     List.exists
       (function
-        | Container.Scroll_state (p, v) ->
+        | Container.Scroll_state { name = p; value = v; _ } ->
             String.equal p prop && String.equal v value
         | _ -> false)
       q.container_features
@@ -934,8 +935,9 @@ module Match_container = struct
         | Min_width_px px ->
             Match_media.eval media_q (Min_width (float_of_int px))
         | Named (n, inner) -> eval q ~name:n inner
-        | Style (prop, value) -> style_match q ~prop ~value
-        | Scroll_state (prop, value) -> eval_scroll_state q ~prop ~value
+        | Style { name; value; _ } -> style_match q ~prop:name ~value
+        | Scroll_state { name; value; _ } ->
+            eval_scroll_state q ~prop:name ~value
         | And (a, b) -> eval q a && eval q b
         | Or (a, b) -> eval q a || eval q b
         | Not c -> not (eval q c)

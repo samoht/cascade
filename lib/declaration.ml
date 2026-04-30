@@ -822,7 +822,7 @@ let rec read_border_radius (t : Cursor.t) : Properties.border_radius =
     if radii = [] then Cursor.err_expected t "<length-percentage>" else radii
   in
   Cursor.ws t;
-  Cursor.enum_or_calls "border-radius"
+  Cursor.enum_or_var "border-radius"
     [
       ("inherit", (Properties.Inherit : Properties.border_radius));
       ("initial", Properties.Initial);
@@ -830,13 +830,9 @@ let rec read_border_radius (t : Cursor.t) : Properties.border_radius =
       ("revert", Properties.Revert);
       ("revert-layer", Properties.Revert_layer);
     ]
-    ~calls:
-      [
-        ( "var",
-          fun t ->
-            (Properties.Var (Values.read_var read_border_radius t)
-              : Properties.border_radius) );
-      ]
+    ~var:(fun t ->
+      (Properties.Var (Values.read_var read_border_radius t)
+        : Properties.border_radius))
     ~default:(fun t ->
       let horizontal = read_radii t in
       Cursor.ws t;
