@@ -425,11 +425,20 @@ let func_sub (fn : Component.func Component.node) t =
   sub ~eof_loc:(closer_loc fn.loc) t fn.node.arguments
 
 let url t =
-  match url_opt t with
-  | Some s -> s
-  | None -> (
+  match peek t with
+  | Some (Component.Preserved { kind = Token.Url ""; loc }) ->
+      if loc.end_pos - loc.start_pos < 5 then err_expected t "url argument";
+      skip t;
+      ""
+  | Some (Component.Preserved { kind = Token.Url s; _ }) ->
+      skip t;
+      s
+  | _ -> (
       match peek t with
-      | Some (Component.Func ({ node = { name = "url"; _ }; _ } as fn)) -> (
+      | Some
+          (Component.Func ({ node = { name = "url"; terminated; _ }; _ } as fn))
+        -> (
+          if not terminated then err_expected t "terminated url";
           skip t;
           match string_opt (func_sub fn t) with
           | Some s -> s
