@@ -16,7 +16,7 @@ let test_src () =
   Alcotest.(check bool) "local src" true (String.length s > 0);
   Alcotest.(check string)
     "url source with format and tech"
-    "url(\"fonts/color.woff2\") format(\"woff2\") tech(color-COLRv1)"
+    "url(fonts/color.woff2) format(\"woff2\") tech(color-COLRv1)"
     (src_entry_to_string
        (Url
           {
@@ -26,7 +26,7 @@ let test_src () =
           }));
   Alcotest.(check string)
     "src list preserves order"
-    "local(\"Brand\"), url(\"brand.woff2\") format(\"woff2\")"
+    "local(\"Brand\"), url(brand.woff2) format(\"woff2\")"
     (src_to_string
        [
          Local "Brand";

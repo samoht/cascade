@@ -254,7 +254,7 @@ let special_cases () =
     "width: calc(100% - calc(50px + 10px));";
 
   (* Custom property with var() value *)
-  check_declaration ~expected:"--x:var(--y, 10px)" "--x: var(--y, 10px)";
+  check_declaration ~expected:"--x:var(--y,10px)" "--x: var(--y, 10px)";
 
   (* Multiple backgrounds *)
   check_declaration ~expected:"background:url(x.png),linear-gradient(red,blue)"
@@ -792,7 +792,7 @@ let custom_properties () =
     "--primary: var(--base-color)";
   check_declaration ~expected:"--size:calc(var(--base) * 2)"
     "--size: calc(var(--base) * 2)";
-  check_declaration ~expected:"--fallback:var(--undefined, 10px)"
+  check_declaration ~expected:"--fallback:var(--undefined,10px)"
     "--fallback: var(--undefined, 10px)";
 
   (* var() with empty fallback - declaration level coverage *)
@@ -1182,7 +1182,7 @@ let spec_custom_tokens () =
     "--real-important: 1 !important";
   check_declaration ~expected:"--fallback:var(--missing,)"
     "--fallback: var(--missing,)";
-  check_declaration ~expected:"--nested-var:var(--a, var(--b, { color: red; }))"
+  check_declaration ~expected:"--nested-var:var(--a,var(--b,{ color: red; }))"
     "--nested-var: var(--a, var(--b, { color: red; }))";
   check_declaration ~expected:"--bad-string:\"unterminated"
     "--bad-string: \"unterminated";

@@ -1175,8 +1175,8 @@ let test_border_radius () =
   check_border_radius "1px";
   check_border_radius "1px 2px";
   check_border_radius "1px 2px 3px 4px";
-  check_border_radius "1px / 2px";
-  check_border_radius "1px 2px / 3px 4px";
+  check_border_radius ~expected:"1px/2px" "1px / 2px";
+  check_border_radius ~expected:"1px 2px/3px 4px" "1px 2px / 3px 4px";
   neg_cursor read_border_radius "";
   neg_cursor read_border_radius "1px /";
   neg_cursor read_border_radius "-1px"
