@@ -700,7 +700,8 @@ module Text_decoration = struct
             | None -> "none"
             | Underline -> "underline"
             | Overline -> "overline"
-            | Line_through -> "line-through")
+            | Line_through -> "line-through"
+            | Var _ -> "var(...)")
         else { acc with lines = acc.lines @ [ l ] }
     | Style s when acc.style = None -> { acc with style = Some s }
     | Color c when acc.color = None -> { acc with color = Some c }
@@ -929,17 +930,18 @@ module Shadow = struct
           blur = None && spread = None && parts.color = None && h_offset = Zero
           && v_offset = Zero
         then err_invalid_value t "shadow" "blur, spread, or color is required";
-        Shadow
-          {
-            inset = parts.inset;
-            inset_var = None;
-            inset_var_no_fallback = false;
-            h_offset;
-            v_offset;
-            blur;
-            spread;
-            color = parts.color;
-          }
+        (Shadow
+           {
+             inset = parts.inset;
+             inset_var = None;
+             inset_var_no_fallback = false;
+             h_offset;
+             v_offset;
+             blur;
+             spread;
+             color = parts.color;
+           }
+          : shadow)
     | None -> err_invalid_value t "shadow" "at least two lengths are required"
 end
 
@@ -1249,8 +1251,9 @@ let rec pp_shadow : shadow Pp.t =
 
 (* pp_box_shadow removed - use pp_shadow with List constructor *)
 
-let pp_color_interpolation : color_interpolation Pp.t =
+let rec pp_color_interpolation : color_interpolation Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_color_interpolation ctx v
   | In_oklab -> Pp.string ctx "in oklab"
   | In_oklch -> Pp.string ctx "in oklch"
   | In_srgb -> Pp.string ctx "in srgb"
@@ -1296,13 +1299,15 @@ let rec pp_gradient_direction : gradient_direction Pp.t =
       pp_color_interpolation ctx interp
   | Var v -> pp_var pp_gradient_direction ctx v
 
-let pp_radial_shape : radial_shape Pp.t =
+let rec pp_radial_shape : radial_shape Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_radial_shape ctx v
   | Circle -> Pp.string ctx "circle"
   | Ellipse -> Pp.string ctx "ellipse"
 
-let pp_radial_size : radial_size Pp.t =
+let rec pp_radial_size : radial_size Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_radial_size ctx v
   | Closest_side -> Pp.string ctx "closest-side"
   | Farthest_side -> Pp.string ctx "farthest-side"
   | Closest_corner -> Pp.string ctx "closest-corner"
@@ -1715,8 +1720,9 @@ let pp_border_shorthand : border_shorthand Pp.t =
       pp_color ctx c)
     color
 
-let pp_border : border Pp.t =
+let rec pp_border : border Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_border ctx v
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | None -> Pp.string ctx "none"
@@ -1803,6 +1809,7 @@ let rec read_opacity t : opacity =
 
 let rec pp_overflow : overflow Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_overflow ctx v
   | Visible -> Pp.string ctx "visible"
   | Hidden -> Pp.string ctx "hidden"
   | Scroll -> Pp.string ctx "scroll"
@@ -1813,21 +1820,24 @@ let rec pp_overflow : overflow Pp.t =
       Pp.space ctx ();
       pp_overflow ctx y
 
-let pp_flex_direction : flex_direction Pp.t =
+let rec pp_flex_direction : flex_direction Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_flex_direction ctx v
   | Row -> Pp.string ctx "row"
   | Row_reverse -> Pp.string ctx "row-reverse"
   | Column -> Pp.string ctx "column"
   | Column_reverse -> Pp.string ctx "column-reverse"
 
-let pp_flex_wrap : flex_wrap Pp.t =
+let rec pp_flex_wrap : flex_wrap Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_flex_wrap ctx v
   | Nowrap -> Pp.string ctx "nowrap"
   | Wrap -> Pp.string ctx "wrap"
   | Wrap_reverse -> Pp.string ctx "wrap-reverse"
 
-let pp_align_items : align_items Pp.t =
+let rec pp_align_items : align_items Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_align_items ctx v
   | Normal -> Pp.string ctx "normal"
   | Stretch -> Pp.string ctx "stretch"
   | Baseline -> Pp.string ctx "baseline"
@@ -1854,8 +1864,9 @@ let pp_align_items : align_items Pp.t =
   | Unsafe_flex_end -> Pp.string ctx "unsafe flex-end"
   | Anchor_center -> Pp.string ctx "anchor-center"
 
-let pp_align_self : align_self Pp.t =
+let rec pp_align_self : align_self Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_align_self ctx v
   | Auto -> Pp.string ctx "auto"
   | Normal -> Pp.string ctx "normal"
   | Stretch -> Pp.string ctx "stretch"
@@ -1882,8 +1893,9 @@ let pp_align_self : align_self Pp.t =
   | Unsafe_flex_start -> Pp.string ctx "unsafe flex-start"
   | Unsafe_flex_end -> Pp.string ctx "unsafe flex-end"
 
-let pp_justify_content : justify_content Pp.t =
+let rec pp_justify_content : justify_content Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_justify_content ctx v
   | Normal -> Pp.string ctx "normal"
   | Center -> Pp.string ctx "center"
   | Start -> Pp.string ctx "start"
@@ -1909,8 +1921,9 @@ let pp_justify_content : justify_content Pp.t =
   | Space_evenly -> Pp.string ctx "space-evenly"
   | Stretch -> Pp.string ctx "stretch"
 
-let pp_justify_items : justify_items Pp.t =
+let rec pp_justify_items : justify_items Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_justify_items ctx v
   | Normal -> Pp.string ctx "normal"
   | Stretch -> Pp.string ctx "stretch"
   | Baseline -> Pp.string ctx "baseline"
@@ -1949,8 +1962,9 @@ let pp_justify_items : justify_items Pp.t =
   | Legacy_left -> Pp.string ctx "legacy left"
   | Legacy_right -> Pp.string ctx "legacy right"
 
-let pp_justify_self : justify_self Pp.t =
+let rec pp_justify_self : justify_self Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_justify_self ctx v
   | Auto -> Pp.string ctx "auto"
   | Normal -> Pp.string ctx "normal"
   | Stretch -> Pp.string ctx "stretch"
@@ -1987,8 +2001,9 @@ let pp_justify_self : justify_self Pp.t =
   | Anchor_center -> Pp.string ctx "anchor-center"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_font_style : font_style Pp.t =
+let rec pp_font_style : font_style Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_font_style ctx v
   | Normal -> Pp.string ctx "normal"
   | Italic -> Pp.string ctx "italic"
   | Oblique -> Pp.string ctx "oblique"
@@ -2004,8 +2019,9 @@ let pp_font_style : font_style Pp.t =
       pp_angle ctx second
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_text_align : text_align Pp.t =
+let rec pp_text_align : text_align Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_text_align ctx v
   | Left -> Pp.string ctx "left"
   | Right -> Pp.string ctx "right"
   | Center -> Pp.string ctx "center"
@@ -2015,15 +2031,17 @@ let pp_text_align : text_align Pp.t =
   | Match_parent -> Pp.string ctx "match-parent"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_text_decoration_line : text_decoration_line Pp.t =
+let rec pp_text_decoration_line : text_decoration_line Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_text_decoration_line ctx v
   | None -> Pp.string ctx "none"
   | Underline -> Pp.string ctx "underline"
   | Overline -> Pp.string ctx "overline"
   | Line_through -> Pp.string ctx "line-through"
 
-let pp_text_decoration_style : text_decoration_style Pp.t =
+let rec pp_text_decoration_style : text_decoration_style Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_text_decoration_style ctx v
   | Solid -> Pp.string ctx "solid"
   | Double -> Pp.string ctx "double"
   | Dotted -> Pp.string ctx "dotted"
@@ -2076,6 +2094,7 @@ let rec pp_text_transform : text_transform Pp.t =
 
 let rec pp_text_overflow : text_overflow Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_text_overflow ctx v
   | Clip -> Pp.string ctx "clip"
   | Ellipsis -> Pp.string ctx "ellipsis"
   | String s -> Pp.quoted_string ctx s
@@ -2085,16 +2104,18 @@ let rec pp_text_overflow : text_overflow Pp.t =
       pp_text_overflow ctx second
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_text_wrap : text_wrap Pp.t =
+let rec pp_text_wrap : text_wrap Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_text_wrap ctx v
   | Wrap -> Pp.string ctx "wrap"
   | No_wrap -> Pp.string ctx "nowrap"
   | Balance -> Pp.string ctx "balance"
   | Pretty -> Pp.string ctx "pretty"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_white_space : white_space Pp.t =
+let rec pp_white_space : white_space Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_white_space ctx v
   | Normal -> Pp.string ctx "normal"
   | Nowrap -> Pp.string ctx "nowrap"
   | Pre -> Pp.string ctx "pre"
@@ -2104,8 +2125,9 @@ let pp_white_space : white_space Pp.t =
   | Preserve_nowrap -> Pp.string ctx "preserve nowrap"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_word_break : word_break Pp.t =
+let rec pp_word_break : word_break Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_word_break ctx v
   | Normal -> Pp.string ctx "normal"
   | Break_all -> Pp.string ctx "break-all"
   | Keep_all -> Pp.string ctx "keep-all"
@@ -2113,15 +2135,17 @@ let pp_word_break : word_break Pp.t =
   | Auto_phrase -> Pp.string ctx "auto-phrase"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_overflow_wrap : overflow_wrap Pp.t =
+let rec pp_overflow_wrap : overflow_wrap Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_overflow_wrap ctx v
   | Normal -> Pp.string ctx "normal"
   | Break_word -> Pp.string ctx "break-word"
   | Anywhere -> Pp.string ctx "anywhere"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_hyphens : hyphens Pp.t =
+let rec pp_hyphens : hyphens Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_hyphens ctx v
   | None -> Pp.string ctx "none"
   | Manual -> Pp.string ctx "manual"
   | Auto -> Pp.string ctx "auto"
@@ -2141,8 +2165,9 @@ let rec pp_list_style_type : list_style_type Pp.t =
   | String s -> Pp.quoted_string ctx s
   | Var v -> pp_var pp_list_style_type ctx v
 
-let pp_list_style_position : list_style_position Pp.t =
+let rec pp_list_style_position : list_style_position Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_list_style_position ctx v
   | Inside -> Pp.string ctx "inside"
   | Outside -> Pp.string ctx "outside"
   | Inherit -> Pp.string ctx "inherit"
@@ -2154,8 +2179,9 @@ let rec pp_list_style_image : list_style_image Pp.t =
   | Var v -> pp_var pp_list_style_image ctx v
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_table_layout : table_layout Pp.t =
+let rec pp_table_layout : table_layout Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_table_layout ctx v
   | Auto -> Pp.string ctx "auto"
   | Fixed -> Pp.string ctx "fixed"
   | Inherit -> Pp.string ctx "inherit"
@@ -2177,8 +2203,9 @@ let rec pp_vertical_align : vertical_align Pp.t =
   | Inherit -> Pp.string ctx "inherit"
   | Var v -> pp_var pp_vertical_align ctx v
 
-let pp_grid_auto_flow : grid_auto_flow Pp.t =
+let rec pp_grid_auto_flow : grid_auto_flow Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_grid_auto_flow ctx v
   | Row -> Pp.string ctx "row"
   | Column -> Pp.string ctx "column"
   | Dense -> Pp.string ctx "dense"
@@ -2237,6 +2264,7 @@ let rec pp_will_change : will_change Pp.t =
 
 let rec pp_perspective_origin : perspective_origin Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_perspective_origin ctx v
   | Perspective_center -> Pp.string ctx "center"
   | Perspective_top -> Pp.string ctx "top"
   | Perspective_bottom -> Pp.string ctx "bottom"
@@ -2253,8 +2281,9 @@ let rec pp_perspective_origin : perspective_origin Pp.t =
       pp_length ctx y
   | Perspective_var v -> pp_var pp_perspective_origin ctx v
 
-let pp_clip : clip Pp.t =
+let rec pp_clip : clip Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_clip ctx v
   | Clip_auto -> Pp.string ctx "auto"
   | Clip_rect (top, right, bottom, left) ->
       Pp.string ctx "rect(";
@@ -2269,6 +2298,7 @@ let pp_clip : clip Pp.t =
 
 let rec pp_clip_path : clip_path Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_clip_path ctx v
   | Clip_path_none -> Pp.string ctx "none"
   | Clip_path_url url ->
       Pp.string ctx "url(";
@@ -2363,6 +2393,7 @@ and pp_clip_path_round ctx = function
 
 let pp_property : type a. a property Pp.t =
  fun ctx -> function
+  | Custom_property name -> Pp.string ctx name
   | Background_color -> Pp.string ctx "background-color"
   | Color -> Pp.string ctx "color"
   | Border_color -> Pp.string ctx "border-color"
@@ -2836,8 +2867,9 @@ and pp_transforms : transform list Pp.t =
       pp_transform ctx h;
       loop h t
 
-let pp_transform_style : transform_style Pp.t =
+let rec pp_transform_style : transform_style Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_transform_style ctx v
   | Flat -> Pp.string ctx "flat"
   | Preserve_3d -> Pp.string ctx "preserve-3d"
   | Inherit -> Pp.string ctx "inherit"
@@ -2884,15 +2916,17 @@ let rec pp_text_shadow : text_shadow Pp.t =
           pp_color ctx c
       | None -> ())
 
-let pp_background_attachment : background_attachment Pp.t =
+let rec pp_background_attachment : background_attachment Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_background_attachment ctx v
   | Fixed -> Pp.string ctx "fixed"
   | Local -> Pp.string ctx "local"
   | Scroll -> Pp.string ctx "scroll"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_background_repeat : background_repeat Pp.t =
+let rec pp_background_repeat : background_repeat Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_background_repeat ctx v
   | Repeat -> Pp.string ctx "repeat"
   | Space -> Pp.string ctx "space"
   | Round -> Pp.string ctx "round"
@@ -2919,52 +2953,59 @@ let pp_background_repeat : background_repeat Pp.t =
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
 
-let pp_background_box : background_box Pp.t =
+let rec pp_background_box : background_box Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_background_box ctx v
   | Border_box -> Pp.string ctx "border-box"
   | Padding_box -> Pp.string ctx "padding-box"
   | Content_box -> Pp.string ctx "content-box"
   | Text -> Pp.string ctx "text"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_webkit_mask_composite : webkit_mask_composite Pp.t =
+let rec pp_webkit_mask_composite : webkit_mask_composite Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_webkit_mask_composite ctx v
   | Source_over -> Pp.string ctx "source-over"
   | Xor -> Pp.string ctx "xor"
   | Source_in -> Pp.string ctx "source-in"
   | Source_out -> Pp.string ctx "source-out"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_mask_composite : mask_composite Pp.t =
+let rec pp_mask_composite : mask_composite Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_mask_composite ctx v
   | Add -> Pp.string ctx "add"
   | Subtract -> Pp.string ctx "subtract"
   | Intersect -> Pp.string ctx "intersect"
   | Exclude -> Pp.string ctx "exclude"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_webkit_mask_source_type : webkit_mask_source_type Pp.t =
+let rec pp_webkit_mask_source_type : webkit_mask_source_type Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_webkit_mask_source_type ctx v
   | Alpha -> Pp.string ctx "alpha"
   | Luminance -> Pp.string ctx "luminance"
   | Auto -> Pp.string ctx "auto"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_mask_mode : mask_mode Pp.t =
+let rec pp_mask_mode : mask_mode Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_mask_mode ctx v
   | Alpha -> Pp.string ctx "alpha"
   | Luminance -> Pp.string ctx "luminance"
   | Match_source -> Pp.string ctx "match-source"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_mask_type : mask_type Pp.t =
+let rec pp_mask_type : mask_type Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_mask_type ctx v
   | Alpha -> Pp.string ctx "alpha"
   | Luminance -> Pp.string ctx "luminance"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_mask_box : mask_box Pp.t =
+let rec pp_mask_box : mask_box Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_mask_box ctx v
   | Border_box -> Pp.string ctx "border-box"
   | Content_box -> Pp.string ctx "content-box"
   | Fill_box -> Pp.string ctx "fill-box"
@@ -3082,8 +3123,9 @@ let rec pp_transform_origin : transform_origin Pp.t =
       pp_length ctx z
   | Var v -> pp_var pp_transform_origin ctx v
 
-let pp_transform_box : transform_box Pp.t =
+let rec pp_transform_box : transform_box Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_transform_box ctx v
   | Content_box -> Pp.string ctx "content-box"
   | Border_box -> Pp.string ctx "border-box"
   | Fill_box -> Pp.string ctx "fill-box"
@@ -3106,32 +3148,37 @@ let origin (a : length) (b : length) : transform_origin = XY (a, b)
 let origin3d (a : length) (b : length) (z : length) : transform_origin =
   XYZ (a, b, z)
 
-let pp_animation_direction : animation_direction Pp.t =
+let rec pp_animation_direction : animation_direction Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_animation_direction ctx v
   | Normal -> Pp.string ctx "normal"
   | Reverse -> Pp.string ctx "reverse"
   | Alternate -> Pp.string ctx "alternate"
   | Alternate_reverse -> Pp.string ctx "alternate-reverse"
 
-let pp_animation_fill_mode : animation_fill_mode Pp.t =
+let rec pp_animation_fill_mode : animation_fill_mode Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_animation_fill_mode ctx v
   | None -> Pp.string ctx "none"
   | Forwards -> Pp.string ctx "forwards"
   | Backwards -> Pp.string ctx "backwards"
   | Both -> Pp.string ctx "both"
 
-let pp_animation_iteration_count : animation_iteration_count Pp.t =
+let rec pp_animation_iteration_count : animation_iteration_count Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_animation_iteration_count ctx v
   | Infinite -> Pp.string ctx "infinite"
   | Num n -> Pp.float ctx n
 
-let pp_animation_play_state : animation_play_state Pp.t =
+let rec pp_animation_play_state : animation_play_state Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_animation_play_state ctx v
   | Running -> Pp.string ctx "running"
   | Paused -> Pp.string ctx "paused"
 
-let pp_steps_direction : steps_direction Pp.t =
+let rec pp_steps_direction : steps_direction Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_steps_direction ctx v
   | Jump_start -> Pp.string ctx "jump-start"
   | Jump_end -> Pp.string ctx "jump-end"
   | Jump_none -> Pp.string ctx "jump-none"
@@ -3139,8 +3186,9 @@ let pp_steps_direction : steps_direction Pp.t =
   | Start -> Pp.string ctx "start"
   | End -> Pp.string ctx "end"
 
-let pp_appearance : appearance Pp.t =
+let rec pp_appearance : appearance Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_appearance ctx v
   | None -> Pp.string ctx "none"
   | Auto -> Pp.string ctx "auto"
   | Button -> Pp.string ctx "button"
@@ -3149,8 +3197,9 @@ let pp_appearance : appearance Pp.t =
   | Base_select -> Pp.string ctx "base-select"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_color_scheme : color_scheme Pp.t =
+let rec pp_color_scheme : color_scheme Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_color_scheme ctx v
   | Normal -> Pp.string ctx "normal"
   | Light -> Pp.string ctx "light"
   | Dark -> Pp.string ctx "dark"
@@ -3167,51 +3216,59 @@ let pp_color_scheme : color_scheme Pp.t =
       Pp.space ctx ();
       Pp.string ctx "only"
 
-let pp_print_color_adjust : print_color_adjust Pp.t =
+let rec pp_print_color_adjust : print_color_adjust Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_print_color_adjust ctx v
   | Economy -> Pp.string ctx "economy"
   | Exact -> Pp.string ctx "exact"
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
 
-let pp_box_decoration_break : box_decoration_break Pp.t =
+let rec pp_box_decoration_break : box_decoration_break Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_box_decoration_break ctx v
   | Clone -> Pp.string ctx "clone"
   | Slice -> Pp.string ctx "slice"
 
-let pp_backface_visibility : backface_visibility Pp.t =
+let rec pp_backface_visibility : backface_visibility Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_backface_visibility ctx v
   | Visible -> Pp.string ctx "visible"
   | Hidden -> Pp.string ctx "hidden"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_border_collapse : border_collapse Pp.t =
+let rec pp_border_collapse : border_collapse Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_border_collapse ctx v
   | Collapse -> Pp.string ctx "collapse"
   | Separate -> Pp.string ctx "separate"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_box_sizing : box_sizing Pp.t =
+let rec pp_box_sizing : box_sizing Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_box_sizing ctx v
   | Border_box -> Pp.string ctx "border-box"
   | Content_box -> Pp.string ctx "content-box"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_field_sizing : field_sizing Pp.t =
+let rec pp_field_sizing : field_sizing Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_field_sizing ctx v
   | Content -> Pp.string ctx "content"
   | Fixed -> Pp.string ctx "fixed"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_caption_side : caption_side Pp.t =
+let rec pp_caption_side : caption_side Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_caption_side ctx v
   | Top -> Pp.string ctx "top"
   | Bottom -> Pp.string ctx "bottom"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_clear : clear Pp.t =
+let rec pp_clear : clear Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_clear ctx v
   | None -> Pp.string ctx "none"
   | Left -> Pp.string ctx "left"
   | Right -> Pp.string ctx "right"
@@ -3237,8 +3294,9 @@ let rec pp_contain : contain Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
-let pp_container_type : container_type Pp.t =
+let rec pp_container_type : container_type Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_container_type ctx v
   | Normal -> Pp.string ctx "normal"
   | Size -> Pp.string ctx "size"
   | Inline_size -> Pp.string ctx "inline-size"
@@ -3357,20 +3415,23 @@ let rec pp_cursor : cursor Pp.t =
   | Var v -> pp_var pp_cursor ctx v
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_direction : direction Pp.t =
+let rec pp_direction : direction Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_direction ctx v
   | Ltr -> Pp.string ctx "ltr"
   | Rtl -> Pp.string ctx "rtl"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_isolation : isolation Pp.t =
+let rec pp_isolation : isolation Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_isolation ctx v
   | Auto -> Pp.string ctx "auto"
   | Isolate -> Pp.string ctx "isolate"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_break_value : break_value Pp.t =
+let rec pp_break_value : break_value Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_break_value ctx v
   | Auto -> Pp.string ctx "auto"
   | Avoid -> Pp.string ctx "avoid"
   | All -> Pp.string ctx "all"
@@ -3386,16 +3447,18 @@ let pp_break_value : break_value Pp.t =
   | Region -> Pp.string ctx "region"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_break_inside_value : break_inside_value Pp.t =
+let rec pp_break_inside_value : break_inside_value Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_break_inside_value ctx v
   | Auto -> Pp.string ctx "auto"
   | Avoid -> Pp.string ctx "avoid"
   | Avoid_page -> Pp.string ctx "avoid-page"
   | Avoid_column -> Pp.string ctx "avoid-column"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_page_break_value : page_break_value Pp.t =
+let rec pp_page_break_value : page_break_value Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_page_break_value ctx v
   | Auto -> Pp.string ctx "auto"
   | Always -> Pp.string ctx "always"
   | Avoid -> Pp.string ctx "avoid"
@@ -3403,8 +3466,9 @@ let pp_page_break_value : page_break_value Pp.t =
   | Right -> Pp.string ctx "right"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_page_break_inside_value : page_break_inside_value Pp.t =
+let rec pp_page_break_inside_value : page_break_inside_value Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_page_break_inside_value ctx v
   | Auto -> Pp.string ctx "auto"
   | Avoid -> Pp.string ctx "avoid"
   | Inherit -> Pp.string ctx "inherit"
@@ -3423,6 +3487,7 @@ let rec pp_columns_value : columns_value Pp.t =
 
 let rec pp_scroll_snap_align : scroll_snap_align Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_scroll_snap_align ctx v
   | None -> Pp.string ctx "none"
   | Start -> Pp.string ctx "start"
   | End -> Pp.string ctx "end"
@@ -3432,8 +3497,9 @@ let rec pp_scroll_snap_align : scroll_snap_align Pp.t =
       Pp.space ctx ();
       pp_scroll_snap_align ctx inline
 
-let pp_timeline_axis : timeline_axis Pp.t =
+let rec pp_timeline_axis : timeline_axis Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_timeline_axis ctx v
   | Block -> Pp.string ctx "block"
   | Inline -> Pp.string ctx "inline"
   | X -> Pp.string ctx "x"
@@ -3445,8 +3511,9 @@ let pp_timeline_shorthand : timeline_shorthand Pp.t =
   Pp.space ctx ();
   pp_timeline_axis ctx timeline_axis
 
-let pp_page_size_name : page_size_name Pp.t =
+let rec pp_page_size_name : page_size_name Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_page_size_name ctx v
   | A5 -> Pp.string ctx "A5"
   | A4 -> Pp.string ctx "A4"
   | A3 -> Pp.string ctx "A3"
@@ -3458,8 +3525,9 @@ let pp_page_size_name : page_size_name Pp.t =
   | Legal -> Pp.string ctx "legal"
   | Ledger -> Pp.string ctx "ledger"
 
-let pp_page_size_orientation : page_size_orientation Pp.t =
+let rec pp_page_size_orientation : page_size_orientation Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_page_size_orientation ctx v
   | Portrait -> Pp.string ctx "portrait"
   | Landscape -> Pp.string ctx "landscape"
 
@@ -3480,20 +3548,23 @@ let rec pp_page_size : page_size Pp.t =
   | Inherit -> Pp.string ctx "inherit"
   | Var v -> pp_var pp_page_size ctx v
 
-let pp_scroll_snap_stop : scroll_snap_stop Pp.t =
+let rec pp_scroll_snap_stop : scroll_snap_stop Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_scroll_snap_stop ctx v
   | Normal -> Pp.string ctx "normal"
   | Always -> Pp.string ctx "always"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_scroll_behavior : scroll_behavior Pp.t =
+let rec pp_scroll_behavior : scroll_behavior Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_scroll_behavior ctx v
   | Auto -> Pp.string ctx "auto"
   | Smooth -> Pp.string ctx "smooth"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_resize : resize Pp.t =
+let rec pp_resize : resize Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_resize ctx v
   | None -> Pp.string ctx "none"
   | Both -> Pp.string ctx "both"
   | Horizontal -> Pp.string ctx "horizontal"
@@ -3502,8 +3573,9 @@ let pp_resize : resize Pp.t =
   | Inline -> Pp.string ctx "inline"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_object_fit : object_fit Pp.t =
+let rec pp_object_fit : object_fit Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_object_fit ctx v
   | Fill -> Pp.string ctx "fill"
   | Contain -> Pp.string ctx "contain"
   | Cover -> Pp.string ctx "cover"
@@ -3511,8 +3583,9 @@ let pp_object_fit : object_fit Pp.t =
   | Scale_down -> Pp.string ctx "scale-down"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_font_stretch : font_stretch Pp.t =
+let rec pp_font_stretch : font_stretch Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_font_stretch ctx v
   | Pct f -> Pp.pct ctx f
   | Ultra_condensed -> Pp.string ctx "ultra-condensed"
   | Extra_condensed -> Pp.string ctx "extra-condensed"
@@ -3525,16 +3598,18 @@ let pp_font_stretch : font_stretch Pp.t =
   | Ultra_expanded -> Pp.string ctx "ultra-expanded"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_font_display : font_display Pp.t =
+let rec pp_font_display : font_display Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_font_display ctx v
   | Auto -> Pp.string ctx "auto"
   | Block -> Pp.string ctx "block"
   | Swap -> Pp.string ctx "swap"
   | Fallback -> Pp.string ctx "fallback"
   | Optional -> Pp.string ctx "optional"
 
-let pp_unicode_range : unicode_range Pp.t =
+let rec pp_unicode_range : unicode_range Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_unicode_range ctx v
   | Single hex ->
       Pp.string ctx "U+";
       Pp.hex ctx hex
@@ -3585,15 +3660,17 @@ and pp_font_variant_numeric : font_variant_numeric Pp.t =
       in
       Pp.list ~sep:Pp.space pp_font_variant_numeric_token ctx tokens
 
-let pp_text_size_adjust : text_size_adjust Pp.t =
+let rec pp_text_size_adjust : text_size_adjust Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_text_size_adjust ctx v
   | None -> Pp.string ctx "none"
   | Auto -> Pp.string ctx "auto"
   | Pct n -> Pp.pct ctx n
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_webkit_font_smoothing : webkit_font_smoothing Pp.t =
+let rec pp_webkit_font_smoothing : webkit_font_smoothing Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_webkit_font_smoothing ctx v
   | Auto -> Pp.string ctx "auto"
   | None -> Pp.string ctx "none"
   | Antialiased -> Pp.string ctx "antialiased"
@@ -3729,8 +3806,9 @@ let rec pp_flex_basis : flex_basis Pp.t =
   | Var v -> pp_var pp_flex_basis ctx v
   | Calc cv -> pp_calc pp_flex_basis ctx cv
 
-let pp_flex : flex Pp.t =
+let rec pp_flex : flex Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_flex ctx v
   | Initial -> Pp.string ctx "initial"
   | Auto -> Pp.string ctx "auto"
   | None -> Pp.string ctx "none"
@@ -3776,8 +3854,9 @@ let rec pp_font_size : font_size Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
-let pp_align_content : align_content Pp.t =
+let rec pp_align_content : align_content Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_align_content ctx v
   | Normal -> Pp.string ctx "normal"
   | Baseline -> Pp.string ctx "baseline"
   | First_baseline -> Pp.string ctx "first baseline"
@@ -3808,8 +3887,9 @@ let pp_align_content : align_content Pp.t =
   | Space_evenly -> Pp.string ctx "space-evenly"
   | Stretch -> Pp.string ctx "stretch"
 
-let pp_place_content : place_content Pp.t =
+let rec pp_place_content : place_content Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_place_content ctx v
   | Normal -> Pp.string ctx "normal"
   | Start -> Pp.string ctx "start"
   | End -> Pp.string ctx "end"
@@ -3832,8 +3912,9 @@ let pp_place_content : place_content Pp.t =
       pp_justify_content ctx j
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_place_items : place_items Pp.t =
+let rec pp_place_items : place_items Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_place_items ctx v
   | Normal -> Pp.string ctx "normal"
   | Start -> Pp.string ctx "start"
   | End -> Pp.string ctx "end"
@@ -3850,8 +3931,9 @@ let pp_place_items : place_items Pp.t =
       pp_justify_items ctx j
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_moz_osx_font_smoothing : moz_osx_font_smoothing Pp.t =
+let rec pp_moz_osx_font_smoothing : moz_osx_font_smoothing Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_moz_osx_font_smoothing ctx v
   | Auto -> Pp.string ctx "auto"
   | Grayscale -> Pp.string ctx "grayscale"
   | Inherit -> Pp.string ctx "inherit"
@@ -3891,6 +3973,7 @@ let rec pp_timing_function : timing_function Pp.t =
 
 let rec pp_svg_paint : svg_paint Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_svg_paint ctx v
   | None -> Pp.string ctx "none"
   | Inherit -> Pp.string ctx "inherit"
   | Current_color -> Pp.string ctx "currentcolor"
@@ -3913,8 +3996,9 @@ let rec pp_transition_property_value : transition_property_value Pp.t =
 let pp_transition_property : transition_property Pp.t =
  fun ctx -> Pp.list ~sep:Pp.comma pp_transition_property_value ctx
 
-let pp_transition_behavior : transition_behavior Pp.t =
+let rec pp_transition_behavior : transition_behavior Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_transition_behavior ctx v
   | Normal -> Pp.string ctx "normal"
   | Allow_discrete -> Pp.string ctx "allow-discrete"
   | Inherit -> Pp.string ctx "inherit"
@@ -4130,22 +4214,25 @@ let pp_outline_shorthand : outline_shorthand Pp.t =
       pp_color ctx c)
     color
 
-let pp_outline : outline Pp.t =
+let rec pp_outline : outline Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_outline ctx v
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | None -> Pp.string ctx "none"
   | Shorthand shorthand -> pp_outline_shorthand ctx shorthand
 
-let pp_forced_color_adjust : forced_color_adjust Pp.t =
+let rec pp_forced_color_adjust : forced_color_adjust Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_forced_color_adjust ctx v
   | Auto -> Pp.string ctx "auto"
   | None -> Pp.string ctx "none"
   | Preserve_parent_color -> Pp.string ctx "preserve-parent-color"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_float_side : float_side Pp.t =
+let rec pp_float_side : float_side Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_float_side ctx v
   | None -> Pp.string ctx "none"
   | Left -> Pp.string ctx "left"
   | Right -> Pp.string ctx "right"
@@ -4155,6 +4242,7 @@ let pp_float_side : float_side Pp.t =
 
 let rec pp_touch_action : touch_action Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_touch_action ctx v
   | Auto -> Pp.string ctx "auto"
   | None -> Pp.string ctx "none"
   | Pan_x -> Pp.string ctx "pan-x"
@@ -4168,8 +4256,9 @@ let rec pp_touch_action : touch_action Pp.t =
   | Inherit -> Pp.string ctx "inherit"
   | Vars vars -> Pp.list ~sep:Pp.space (pp_var pp_touch_action) ctx vars
 
-let pp_unicode_bidi : unicode_bidi Pp.t =
+let rec pp_unicode_bidi : unicode_bidi Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_unicode_bidi ctx v
   | Normal -> Pp.string ctx "normal"
   | Embed -> Pp.string ctx "embed"
   | Isolate -> Pp.string ctx "isolate"
@@ -4178,8 +4267,9 @@ let pp_unicode_bidi : unicode_bidi Pp.t =
   | Plaintext -> Pp.string ctx "plaintext"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_writing_mode : writing_mode Pp.t =
+let rec pp_writing_mode : writing_mode Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_writing_mode ctx v
   | Horizontal_tb -> Pp.string ctx "horizontal-tb"
   | Vertical_rl -> Pp.string ctx "vertical-rl"
   | Vertical_lr -> Pp.string ctx "vertical-lr"
@@ -4187,22 +4277,25 @@ let pp_writing_mode : writing_mode Pp.t =
   | Sideways_rl -> Pp.string ctx "sideways-rl"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_text_decoration_skip_ink : text_decoration_skip_ink Pp.t =
+let rec pp_text_decoration_skip_ink : text_decoration_skip_ink Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_text_decoration_skip_ink ctx v
   | Auto -> Pp.string ctx "auto"
   | None -> Pp.string ctx "none"
   | All -> Pp.string ctx "all"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_overscroll_behavior : overscroll_behavior Pp.t =
+let rec pp_overscroll_behavior : overscroll_behavior Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_overscroll_behavior ctx v
   | Auto -> Pp.string ctx "auto"
   | Contain -> Pp.string ctx "contain"
   | None -> Pp.string ctx "none"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_webkit_appearance : webkit_appearance Pp.t =
+let rec pp_webkit_appearance : webkit_appearance Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_webkit_appearance ctx v
   | None -> Pp.string ctx "none"
   | Auto -> Pp.string ctx "auto"
   | Button -> Pp.string ctx "button"
@@ -4216,8 +4309,9 @@ let pp_webkit_appearance : webkit_appearance Pp.t =
   | Apple_pay_button -> Pp.string ctx "-apple-pay-button"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_pointer_events : pointer_events Pp.t =
+let rec pp_pointer_events : pointer_events Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_pointer_events ctx v
   | Auto -> Pp.string ctx "auto"
   | None -> Pp.string ctx "none"
   | Visible_painted -> Pp.string ctx "visiblepainted"
@@ -4230,8 +4324,9 @@ let pp_pointer_events : pointer_events Pp.t =
   | All -> Pp.string ctx "all"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_user_select : user_select Pp.t =
+let rec pp_user_select : user_select Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_user_select ctx v
   | None -> Pp.string ctx "none"
   | Auto -> Pp.string ctx "auto"
   | Text -> Pp.string ctx "text"
@@ -4260,14 +4355,16 @@ let rec pp_font_weight : font_weight Pp.t =
   | Inherit -> Pp.string ctx "inherit"
   | Var v -> pp_var pp_font_weight ctx v
 
-let pp_webkit_box_orient : webkit_box_orient Pp.t =
+let rec pp_webkit_box_orient : webkit_box_orient Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_webkit_box_orient ctx v
   | Horizontal -> Pp.string ctx "horizontal"
   | Vertical -> Pp.string ctx "vertical"
   | Inherit -> Pp.string ctx "inherit"
 
-let pp_moz_orient : moz_orient Pp.t =
+let rec pp_moz_orient : moz_orient Pp.t =
  fun ctx -> function
+  | Var v -> pp_var pp_moz_orient ctx v
   | Inline -> Pp.string ctx "inline"
   | Block -> Pp.string ctx "block"
   | Horizontal -> Pp.string ctx "horizontal"
@@ -5960,6 +6057,7 @@ let read_outline_shorthand t : outline_shorthand =
   | Shorthand s -> s
   | Inherit | Initial | None ->
       { width = Option.None; style = Option.None; color = Option.None }
+  | Var _ -> Cursor.err_invalid t "outline var shorthand"
 
 let font_family_generic_css =
   [
@@ -6621,9 +6719,10 @@ module Animation = struct
 
   let is_zero_duration = function S 0. | Ms 0. -> true | _ -> false
 
-  let pp_iter_count ctx = function
+  let rec pp_iter_count ctx = function
     | Infinite -> Pp.string ctx "infinite"
     | Num n -> Pp.float ctx n
+    | Var v -> pp_var pp_iter_count ctx v
 
   (* Check if a timing function ends with ')' - only cubic-bezier/steps do *)
   let ends_with_paren = function
@@ -7040,7 +7139,7 @@ module Gradient_direction = struct
     let directions, _ = Cursor.many read_keyword t in
     merge_keywords t directions
 
-  let read_angle t = Angle (read_angle t)
+  let read_angle t = (Angle (Values.read_angle t) : gradient_direction)
 
   let read t : gradient_direction =
     Cursor.one_of [ read_to_direction; read_angle ] t
@@ -7885,7 +7984,7 @@ let read_any_property t =
 (* Helper functions for property types *)
 
 (* RGB color helpers *)
-let rgb_black = Rgb (Channels { r = Int 0; g = Int 0; b = Int 0 })
+let rgb_black : color = Rgb (Channels { r = Int 0; g = Int 0; b = Int 0 })
 
 let shadow ?(inset = false) ?(inset_var : string option)
     ?(inset_var_no_fallback = false) ?(h_offset : length option)
@@ -8502,10 +8601,138 @@ let read_clip_path t : clip_path =
 
 let pp_any_property ctx (Prop p) = pp_property ctx p
 
+let font_url_needs_quotes s =
+  String.exists
+    (fun c -> c = ' ' || c = ')' || c = '"' || c = '\'' || c = '(' || c = '\\')
+    s
+
+let pp_font_url ctx s =
+  Pp.string ctx "url(";
+  if font_url_needs_quotes s then (
+    Pp.char ctx '"';
+    Pp.string ctx s;
+    Pp.char ctx '"')
+  else Pp.string ctx s;
+  Pp.char ctx ')'
+
+let pp_quoted_font_url ctx quote s =
+  Pp.string ctx "url(";
+  Pp.char ctx quote;
+  Pp.string ctx s;
+  Pp.char ctx quote;
+  Pp.char ctx ')'
+
+let pp_font_src_modifiers ctx (format : string option) (tech : string option) =
+  (match format with
+  | None -> ()
+  | Some value ->
+      Pp.space ctx ();
+      Pp.string ctx "format(";
+      Pp.string ctx value;
+      Pp.char ctx ')');
+  match tech with
+  | None -> ()
+  | Some value ->
+      Pp.space ctx ();
+      Pp.string ctx "tech(";
+      Pp.string ctx value;
+      Pp.char ctx ')'
+
+let pp_font_src_entry ctx : Font_face.src_entry -> unit = function
+  | Local name ->
+      Pp.string ctx "local(";
+      Pp.char ctx '"';
+      Pp.string ctx name;
+      Pp.char ctx '"';
+      Pp.char ctx ')'
+  | Url { url; format; tech } ->
+      pp_font_url ctx url;
+      pp_font_src_modifiers ctx format tech
+  | Quoted_url { url; quote; format; tech } ->
+      pp_quoted_font_url ctx quote url;
+      pp_font_src_modifiers ctx format tech
+
+let pp_font_src ctx entries =
+  let first = ref true in
+  List.iter
+    (fun entry ->
+      if !first then first := false
+      else (
+        Pp.char ctx ',';
+        Pp.space_if_pretty ctx ());
+      pp_font_src_entry ctx entry)
+    entries
+
+let pp_value : type a. (a kind * a) Pp.t =
+ fun ctx (kind, value) ->
+  let pp pp_a = pp_a ctx value in
+  match kind with
+  | Length -> pp (pp_length ~always:true)
+  | Color -> pp pp_color_in_mix
+  | Rgb ->
+      let rec pp_rgb_type : rgb Pp.t =
+       fun ctx rgb ->
+        match rgb with
+        | Channels { r; g; b } ->
+            pp_channel ctx r;
+            Pp.space ctx ();
+            pp_channel ctx g;
+            Pp.space ctx ();
+            pp_channel ctx b
+        | Var v -> pp_var pp_rgb_type ctx v
+      in
+      pp pp_rgb_type
+  | Int -> pp Pp.int
+  | Float -> pp Pp.float
+  | Percentage -> pp pp_percentage
+  | Length_percentage -> pp (pp_length_percentage ~always:true)
+  | Number_percentage -> pp pp_number_percentage
+  | Value ->
+      let rendered =
+        if Pp.minified ctx then Parser.to_string_minified value
+        else Parser.to_string value
+      in
+      Pp.string ctx rendered
+  | Shadow -> pp pp_shadow
+  | Duration -> pp pp_duration
+  | Aspect_ratio -> pp pp_aspect_ratio
+  | Border_style -> pp pp_border_style
+  | Outline_style -> pp pp_outline_style
+  | Border -> pp pp_border
+  | Font_weight -> pp pp_font_weight
+  | Line_height -> pp pp_line_height
+  | Font_family -> pp pp_font_family
+  | Font_feature_settings -> pp pp_font_feature_settings
+  | Font_variation_settings -> pp pp_font_variation_settings
+  | Font_variant_numeric -> pp pp_font_variant_numeric
+  | Font_variant_numeric_token -> pp pp_font_variant_numeric_token
+  | Blend_mode -> pp pp_blend_mode
+  | Scroll_snap_strictness -> pp pp_scroll_snap_strictness
+  | Angle -> pp pp_angle
+  | Box_shadow -> pp pp_shadow
+  | Content -> pp pp_content
+  | Gradient_stop -> pp pp_gradient_stop
+  | Gradient_direction -> pp pp_gradient_direction
+  | Animation -> pp pp_animation
+  | Timing_function -> pp pp_timing_function
+  | Transform -> pp pp_transform
+  | Touch_action -> pp pp_touch_action
+  | Transition_property_value -> pp pp_transition_property_value
+  | Background_image -> pp pp_background_image
+  | Z_index -> pp pp_z_index
+  | Filter -> pp pp_filter
+  | Font_src -> pp pp_font_src
+
+let pp_custom_property_value ctx (Custom_value { kind; value; layer; _ }) =
+  match (layer, kind) with
+  | Some "theme", Font_family -> pp_value ctx (kind, value)
+  | _ -> pp_value ctx (kind, value)
+
 let pp_property_value : type a. (a property * a) Pp.t =
  fun ctx (prop, value) ->
   let pp pp_a = pp_a ctx value in
   match prop with
+  | Custom_property _ -> pp pp_custom_property_value
   | Background_color -> pp pp_color
   | Color -> pp pp_color
   | Border_color -> pp pp_color

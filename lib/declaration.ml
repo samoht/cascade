@@ -9,7 +9,9 @@ let pp_property = pp_property
 
 (* Extract metadata from a declaration *)
 let rec meta_of_declaration : declaration -> meta option = function
-  | Custom_declaration { meta; _ } -> meta
+  | Declaration
+      { property = Custom_property _; value = Custom_value { meta; _ }; _ } ->
+      meta
   | Declaration _ -> None
   | Theme_guarded { decl; _ } -> meta_of_declaration decl
 
@@ -19,18 +21,18 @@ let v ?(important = false) property value =
 
 (* Smart constructor for custom declarations. CSS Custom Properties Level 1
    restricts the name to dashed idents (start with [--]). *)
-let custom_declaration ?(important = false) ?layer ?meta name kind value =
+let typed_custom_property ?(important = false) ?layer ?meta name kind value =
   if not (String.length name >= 2 && String.sub name 0 2 = "--") then
     invalid_arg
-      ("Declaration.custom_declaration: " ^ name
+      ("Declaration.typed_custom_property: " ^ name
      ^ " is not a CSS custom property name (must start with --)");
-  Custom_declaration { name; kind; value; layer; meta; important }
+  v ~important (Custom_property name)
+    (Custom_value { kind; value; layer; meta })
 
 (* Helper to mark a declaration as important *)
 let rec important = function
   | Declaration { property; value; _ } ->
       Declaration { property; value; important = true }
-  | Custom_declaration d -> Custom_declaration { d with important = true }
   | Theme_guarded g -> Theme_guarded { g with decl = important g.decl }
 
 (* Helper for raw custom properties - primarily for internal use *)
@@ -51,73 +53,13 @@ let custom_property ?layer name value =
      never carries a raw author string; the printer can then re-serialise with
      the active [Pp] context (handles minification). *)
   let components = Cursor.remaining (Cursor.of_string value) in
-  custom_declaration ?layer name Value components
-
-let font_url_needs_quotes s =
-  String.exists
-    (fun c -> c = ' ' || c = ')' || c = '"' || c = '\'' || c = '(' || c = '\\')
-    s
-
-let pp_font_url ctx s =
-  Pp.string ctx "url(";
-  if font_url_needs_quotes s then (
-    Pp.char ctx '"';
-    Pp.string ctx s;
-    Pp.char ctx '"')
-  else Pp.string ctx s;
-  Pp.char ctx ')'
-
-let pp_quoted_font_url ctx quote s =
-  Pp.string ctx "url(";
-  Pp.char ctx quote;
-  Pp.string ctx s;
-  Pp.char ctx quote;
-  Pp.char ctx ')'
-
-let pp_font_src_modifiers ctx (format : string option) (tech : string option) =
-  (match format with
-  | None -> ()
-  | Some value ->
-      Pp.space ctx ();
-      Pp.string ctx "format(";
-      Pp.string ctx value;
-      Pp.char ctx ')');
-  match tech with
-  | None -> ()
-  | Some value ->
-      Pp.space ctx ();
-      Pp.string ctx "tech(";
-      Pp.string ctx value;
-      Pp.char ctx ')'
-
-let pp_font_src_entry ctx : Font_face.src_entry -> unit = function
-  | Local name ->
-      Pp.string ctx "local(";
-      Pp.char ctx '"';
-      Pp.string ctx name;
-      Pp.char ctx '"';
-      Pp.char ctx ')'
-  | Url { url; format; tech } ->
-      pp_font_url ctx url;
-      pp_font_src_modifiers ctx format tech
-  | Quoted_url { url; quote; format; tech } ->
-      pp_quoted_font_url ctx quote url;
-      pp_font_src_modifiers ctx format tech
-
-let pp_font_src ctx entries =
-  let first = ref true in
-  List.iter
-    (fun entry ->
-      if !first then first := false
-      else (
-        Pp.char ctx ',';
-        Pp.space_if_pretty ctx ());
-      pp_font_src_entry ctx entry)
-    entries
+  typed_custom_property ?layer name Value components
 
 (* Access the layer associated with a custom declaration, if any *)
 let rec custom_declaration_layer = function
-  | Custom_declaration { layer; _ } -> layer
+  | Declaration
+      { property = Custom_property _; value = Custom_value { layer; _ }; _ } ->
+      layer
   | Declaration _ -> None
   | Theme_guarded { decl; _ } -> custom_declaration_layer decl
 
@@ -178,7 +120,6 @@ let read_importance t =
 (** Check if a declaration is marked as important *)
 let rec is_important = function
   | Declaration { important; _ } -> important
-  | Custom_declaration { important; _ } -> important
   | Theme_guarded { decl; _ } -> is_important decl
 
 (** Get the property name as a string from a declaration *)
@@ -198,70 +139,9 @@ let rec property_name decl =
   | Declaration { property; _ } ->
       pp_property ctx property;
       Buffer.contents ctx.buf
-  | Custom_declaration { name; _ } -> name
   | Theme_guarded { decl; _ } -> property_name decl
 
-(* Pretty printer for values based on their kind *)
-let pp_value : type a. (a kind * a) Pp.t =
- fun ctx (kind, value) ->
-  let pp pp_a = pp_a ctx value in
-  match kind with
-  | Length -> pp (pp_length ~always:true)
-  | Color -> pp pp_color_in_mix (* custom props use lowercase currentcolor *)
-  | Rgb ->
-      let rec pp_rgb_type : rgb Pp.t =
-       fun ctx rgb ->
-        match rgb with
-        | Channels { r; g; b } ->
-            (* Just output the RGB values without wrapper *)
-            pp_channel ctx r;
-            Pp.space ctx ();
-            pp_channel ctx g;
-            Pp.space ctx ();
-            pp_channel ctx b
-        | Var v -> pp_var pp_rgb_type ctx v
-      in
-      pp pp_rgb_type
-  | Int -> pp Pp.int
-  | Float -> pp Pp.float
-  | Percentage -> pp pp_percentage
-  | Length_percentage -> pp (pp_length_percentage ~always:true)
-  | Number_percentage -> pp pp_number_percentage
-  | Value ->
-      let rendered =
-        if Pp.minified ctx then Parser.to_string_minified value
-        else Parser.to_string value
-      in
-      Pp.string ctx rendered
-  | Shadow -> pp pp_shadow
-  | Duration -> pp pp_duration
-  | Aspect_ratio -> pp pp_aspect_ratio
-  | Border_style -> pp pp_border_style
-  | Outline_style -> pp pp_outline_style
-  | Border -> pp pp_border
-  | Font_weight -> pp pp_font_weight
-  | Line_height -> pp pp_line_height
-  | Font_family -> pp pp_font_family
-  | Font_feature_settings -> pp pp_font_feature_settings
-  | Font_variation_settings -> pp pp_font_variation_settings
-  | Font_variant_numeric -> pp pp_font_variant_numeric
-  | Font_variant_numeric_token -> pp pp_font_variant_numeric_token
-  | Blend_mode -> pp pp_blend_mode
-  | Scroll_snap_strictness -> pp pp_scroll_snap_strictness
-  | Angle -> pp pp_angle
-  | Box_shadow -> pp pp_shadow
-  | Content -> pp pp_content
-  | Gradient_stop -> pp pp_gradient_stop
-  | Gradient_direction -> pp pp_gradient_direction
-  | Animation -> pp pp_animation
-  | Timing_function -> pp pp_timing_function
-  | Transform -> pp pp_transform
-  | Touch_action -> pp pp_touch_action
-  | Transition_property_value -> pp pp_transition_property_value
-  | Background_image -> pp pp_background_image
-  | Z_index -> pp pp_z_index
-  | Filter -> pp pp_filter
-  | Font_src -> pp pp_font_src
+let pp_value = Properties.pp_value
 
 let rec string_of_value ?(minify = true) ?(inline = false) decl =
   let ctx =
@@ -278,9 +158,6 @@ let rec string_of_value ?(minify = true) ?(inline = false) decl =
   match decl with
   | Declaration { property; value; _ } ->
       pp_property_value ctx (property, value);
-      Buffer.contents ctx.buf
-  | Custom_declaration { kind; value; _ } ->
-      pp_value ctx (kind, value);
       Buffer.contents ctx.buf
   | Theme_guarded { decl; _ } -> string_of_value ~minify ~inline decl
 
@@ -299,31 +176,6 @@ let validate_no_extra_tokens t =
       if trimmed <> "" then
         Cursor.err_invalid t
           ("unexpected tokens after property value: " ^ trimmed)
-
-let validate_var_reference_body r =
-  let raw_name = Cursor.ident ~keep_case:true r in
-  if
-    not (String.length raw_name >= 3 && raw_name.[0] = '-' && raw_name.[1] = '-')
-  then Cursor.err_invalid r ("not a custom property: " ^ raw_name);
-  Cursor.ws r;
-  if Cursor.comma_opt r then ignore (Cursor.remaining_to_string ~trim:true r)
-
-let is_var_reference value =
-  try
-    let r = Cursor.of_string value in
-    Cursor.call "var" r validate_var_reference_body;
-    Cursor.ws r;
-    Cursor.expect_eof r;
-    true
-  with Cursor.Parse_error _ -> false
-
-let validate_var_reference t value =
-  try
-    let r = Cursor.of_string value in
-    Cursor.call "var" r validate_var_reference_body;
-    Cursor.ws r;
-    Cursor.expect_eof r
-  with Cursor.Parse_error _ -> Cursor.err_invalid t "invalid var() reference"
 
 let read_length_box ?(allow_negative = true) t =
   let values =
@@ -1011,6 +863,7 @@ let read_place_self_value t =
     | Unsafe_self_end -> Unsafe_self_end
     | Unsafe_flex_start -> Unsafe_flex_start
     | Unsafe_flex_end -> Unsafe_flex_end
+    | Var _ -> invalid_arg "place-self: cannot mirror align-self var"
   in
   let pair =
     match j with None -> (a, align_to_justify a) | Some jj -> (a, jj)
@@ -1039,6 +892,9 @@ let prop_name (type a) (prop_type : a property) =
 let read_value (type a) (prop : a property) t : declaration =
   Cursor.with_context t (prop_name prop) @@ fun () ->
   match prop with
+  | Custom_property name ->
+      Cursor.err_invalid t
+        ("custom property read through regular property: " ^ name)
   | Color -> v Color (read_color t)
   | Background_color -> v Background_color (read_color t)
   | Border_color -> v Border_color (read_color t)
@@ -1667,15 +1523,12 @@ let read_custom_property_declaration t : declaration =
           custom_property name value_str
         else
           match Cursor.of_string value_str |> read_font_family with
-          | ff -> custom_declaration name Font_family ff
+          | ff -> typed_custom_property name Font_family ff
           | exception _ -> custom_property name value_str
       else custom_property name value_str
     in
     if is_important then important decl else decl
   with Failure msg -> Cursor.err_invalid t msg
-
-let starts_with_var raw_value =
-  String.length raw_value >= 4 && String.sub raw_value 0 4 = "var("
 
 let validate_legacy_page_break t name raw_value =
   if not (is_css_wide_keyword raw_value) then
@@ -1696,24 +1549,9 @@ let validate_regular_property_raw t name raw_value =
     Cursor.err_invalid t "all accepts only CSS-wide keywords";
   validate_legacy_page_break t name raw_value
 
-let read_keyword_or_var_decl t name raw_value =
-  if starts_with_var raw_value then validate_var_reference t raw_value;
-  ignore (Cursor.consume_to_decl_end ~trim:true t);
-  let is_important = read_importance t in
-  validate_no_extra_tokens t;
-  let value = Cursor.remaining (Cursor.of_string raw_value) in
-  let decl = custom_declaration name Value value in
-  if is_important then important decl else decl
-
 let read_font_src_declaration t raw_value =
-  ignore (Cursor.consume_to_decl_end ~trim:true t);
-  let is_important = read_importance t in
-  validate_no_extra_tokens t;
-  let decl =
-    try custom_declaration "src" Font_src (Font_face.src_of_string raw_value)
-    with Failure msg -> Cursor.err_invalid t msg
-  in
-  if is_important then important decl else decl
+  ignore raw_value;
+  Cursor.err_invalid t "src is a @font-face descriptor, not a declaration"
 
 let read_typed_property_declaration t start =
   Cursor.restore t start;
@@ -1739,9 +1577,7 @@ let read_regular_property_declaration t : declaration =
   Cursor.ws t;
   let raw_value = Cursor.lookahead (Cursor.consume_to_decl_end ~trim:true) t in
   validate_regular_property_raw t name raw_value;
-  if is_css_wide_keyword raw_value || is_var_reference raw_value then
-    read_keyword_or_var_decl t name raw_value
-  else if String.equal name "src" then read_font_src_declaration t raw_value
+  if String.equal name "src" then read_font_src_declaration t raw_value
   else read_typed_property_declaration t start
 
 (** Parse a single declaration directly from stream - no string roundtrips *)
@@ -1839,31 +1675,31 @@ let of_string s =
 (* Pretty printer for declarations *)
 let rec pp_declaration : declaration Pp.t =
  fun ctx -> function
-  | Declaration { property; value; important } ->
-      pp_property ctx property;
-      Pp.string ctx ":";
-      Pp.space_if_pretty ctx ();
-      pp_property_value ctx (property, value);
-      if important then
-        Pp.string ctx (if ctx.minify then "!important" else " !important")
-  | Custom_declaration { name; kind; value; layer; important; _ } ->
+  | Declaration
+      {
+        property = Custom_property name;
+        value = Custom_value { kind; value; layer; _ };
+        important;
+      } ->
       Pp.string ctx name;
       Pp.string ctx ":";
       Pp.space_if_pretty ctx ();
-      (* For theme layer declarations, check if theme_defaults provides an
-         override value (e.g., --font-weight-bold: 650 from theme config) *)
       let bare_name =
         if String.length name > 2 && String.sub name 0 2 = "--" then
           String.sub name 2 (String.length name - 2)
         else name
       in
       (match (layer, kind, ctx.theme_defaults bare_name) with
-      | Some "theme", Font_family, _ ->
-          (* Font_family values must go through pp_font_family for proper line
-             wrapping; raw theme_defaults strings have wrong indent *)
-          pp_value ctx (kind, value)
+      | Some "theme", Font_family, _ -> pp_value ctx (kind, value)
       | Some "theme", _, Some override_value -> Pp.string ctx override_value
       | _ -> pp_value ctx (kind, value));
+      if important then
+        Pp.string ctx (if ctx.minify then "!important" else " !important")
+  | Declaration { property; value; important } ->
+      pp_property ctx property;
+      Pp.string ctx ":";
+      Pp.space_if_pretty ctx ();
+      pp_property_value ctx (property, value);
       if important then
         Pp.string ctx (if ctx.minify then "!important" else " !important")
   | Theme_guarded { var_name; decl } ->
@@ -2258,10 +2094,15 @@ let break_of_page_break (value : page_break_value) : break_value =
   | Left -> Left
   | Right -> Right
   | Inherit -> Inherit
+  | Var _ -> invalid_arg "page-break value var cannot be converted"
 
 let break_inside_of_page_break (value : page_break_inside_value) :
     break_inside_value =
-  match value with Auto -> Auto | Avoid -> Avoid | Inherit -> Inherit
+  match value with
+  | Auto -> Auto
+  | Avoid -> Avoid
+  | Inherit -> Inherit
+  | Var _ -> invalid_arg "page-break-inside value var cannot be converted"
 
 let page_break_before value = v Break_before (break_of_page_break value)
 let page_break_after value = v Break_after (break_of_page_break value)
