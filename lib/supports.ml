@@ -29,6 +29,12 @@ type declaration_feature =
   | Declaration of Declaration.t
   | Empty of property_name
   | Vendor_flag_enabled
+  | Unparseable of { property : property_name; value : Component.t list }
+      (** A [(<property>: <value>)] feature whose [<value>] does not parse as a
+          typed declaration value for [<property>]. CSS Conditional Rules 4 §3.5
+          routes this through the [<general-enclosed>] production: it is
+          preserved verbatim and always evaluates to [false], rather than being
+          a parse error in the API surface. *)
 
 type t =
   | Property of declaration_feature
@@ -67,11 +73,11 @@ let declaration_feature prop value =
       match Declaration.of_string (prop ^ ":" ^ value) with
       | Declaration.Declaration _ as decl -> Declaration decl
       | _ ->
-          failwith
-            ("invalid supports declaration feature: " ^ prop ^ ":" ^ value)
+          Unparseable
+            { property = property_name prop; value = component_values value }
       | exception Error.Parse_error _ ->
-          failwith
-            ("invalid supports declaration feature: " ^ prop ^ ":" ^ value))
+          Unparseable
+            { property = property_name prop; value = component_values value })
 
 let property prop value = Property (declaration_feature prop value)
 let func name args = Func (name, component_values args)
@@ -107,6 +113,8 @@ and render_declaration_feature = function
   | Declaration decl -> Declaration.string_of_declaration ~minify:false decl
   | Empty name -> string_of_property_name name ^ ":"
   | Vendor_flag_enabled -> "-vendor-flag: enabled"
+  | Unparseable { property; value } ->
+      string_of_property_name property ^ ": " ^ Parser.to_string value
 
 let pp_declaration_feature ctx = function
   | Declaration decl -> Declaration.pp_declaration ctx decl
@@ -117,6 +125,13 @@ let pp_declaration_feature ctx = function
       Pp.string ctx "-vendor-flag:";
       Pp.space_if_pretty ctx ();
       Pp.string ctx "enabled"
+  | Unparseable { property; value } ->
+      Pp.string ctx (string_of_property_name property);
+      Pp.char ctx ':';
+      Pp.space_if_pretty ctx ();
+      Pp.string ctx
+        (if Pp.minified ctx then Parser.to_string_minified value
+         else Parser.to_string value)
 
 let rec pp_aux ~in_and ctx = function
   | Property feature ->
@@ -461,15 +476,25 @@ let compare_declaration d1 d2 =
       (Declaration.string_of_value ~minify:true d2)
 
 let compare_declaration_feature d1 d2 =
+  let order = function
+    | Empty _ -> 0
+    | Vendor_flag_enabled -> 1
+    | Declaration _ -> 2
+    | Unparseable _ -> 3
+  in
   match (d1, d2) with
   | Empty n1, Empty n2 ->
       String.compare (string_of_property_name n1) (string_of_property_name n2)
-  | Empty _, (Declaration _ | Vendor_flag_enabled) -> -1
-  | (Declaration _ | Vendor_flag_enabled), Empty _ -> 1
   | Vendor_flag_enabled, Vendor_flag_enabled -> 0
-  | Vendor_flag_enabled, Declaration _ -> -1
-  | Declaration _, Vendor_flag_enabled -> 1
   | Declaration d1, Declaration d2 -> compare_declaration d1 d2
+  | ( Unparseable { property = p1; value = v1 },
+      Unparseable { property = p2; value = v2 } ) ->
+      let cp =
+        String.compare (string_of_property_name p1) (string_of_property_name p2)
+      in
+      if cp <> 0 then cp
+      else String.compare (Parser.to_string v1) (Parser.to_string v2)
+  | _ -> Stdlib.compare (order d1) (order d2)
 
 let rec compare t1 t2 =
   match (t1, t2) with

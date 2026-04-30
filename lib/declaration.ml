@@ -914,11 +914,6 @@ let rec read_text_decoration_thickness t =
     ~default:(read_non_negative_length ~with_keywords:false)
     t
 
-let read_non_negative_number t =
-  let value = Cursor.number t in
-  if value < 0. then Cursor.err_invalid t "negative number not allowed";
-  value
-
 (* CSS Backgrounds and Borders 3 §5: [border-radius = <length-percentage>{1,4}
    [/ <length-percentage>{1,4}]?]. Reads 1-4 horizontal radii then, after [/],
    1-4 vertical radii. *)
@@ -1101,8 +1096,8 @@ let read_value (type a) (prop : a property) t : declaration =
   | Flex_direction -> v Flex_direction (read_flex_direction t)
   | Flex_wrap -> v Flex_wrap (read_flex_wrap t)
   | Flex -> v Flex (read_flex t)
-  | Flex_grow -> v Flex_grow (read_non_negative_number t)
-  | Flex_shrink -> v Flex_shrink (read_non_negative_number t)
+  | Flex_grow -> v Flex_grow (Properties.read_flex_factor t)
+  | Flex_shrink -> v Flex_shrink (Properties.read_flex_factor t)
   | Flex_basis -> v Flex_basis (read_length t)
   | Align_items -> v Align_items (read_align_items t)
   | Justify_content -> v Justify_content (read_justify_content t)
@@ -1969,8 +1964,8 @@ let opacity value = v Opacity value
 (* Remove deprecated string-based versions *)
 let flex_direction d = v Flex_direction d
 let flex value = v Flex value
-let flex_grow value = v Flex_grow value
-let flex_shrink value = v Flex_shrink value
+let flex_grow value = v Flex_grow (Number value : flex_factor)
+let flex_shrink value = v Flex_shrink (Number value : flex_factor)
 let flex_basis value = v Flex_basis value
 let flex_wrap value = v Flex_wrap value
 let order value = v Order value

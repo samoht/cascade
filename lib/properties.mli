@@ -224,6 +224,12 @@ val pp_flex_wrap : flex_wrap Pp.t
 val read_flex_wrap : Cursor.t -> flex_wrap
 (** [read_flex_wrap t] is the [flex_wrap] parsed from [t]. *)
 
+val pp_flex_factor : flex_factor Pp.t
+(** [pp_flex_factor] is the pretty-printer for [flex_factor]. *)
+
+val read_flex_factor : Cursor.t -> flex_factor
+(** [read_flex_factor t] is the [flex_factor] parsed from [t]. *)
+
 (* align type removed; use align_content/justify_* instead *)
 
 val pp_align_items : align_items Pp.t

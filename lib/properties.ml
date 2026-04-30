@@ -2012,6 +2012,16 @@ let rec pp_flex_wrap : flex_wrap Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+let rec pp_flex_factor : flex_factor Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_flex_factor ctx v
+  | Number value -> Pp.float ctx value
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+
 let rec pp_align_items : align_items Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_align_items ctx v
@@ -5162,6 +5172,23 @@ let rec read_flex_wrap t : flex_wrap =
     ]
     ~var:(fun t -> Var (Values.read_var read_flex_wrap t))
     t
+
+let rec read_flex_factor t : flex_factor =
+  let read_number t =
+    let value = Cursor.number t in
+    if value < 0. then Cursor.err_invalid t "negative number not allowed";
+    (Number value : flex_factor)
+  in
+  Cursor.enum_or_calls "flex factor"
+    [
+      ("inherit", (Inherit : flex_factor));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:[ ("var", fun t -> Var (Values.read_var read_flex_factor t)) ]
+    ~default:read_number t
 
 let rec read_flex_basis t : flex_basis =
   (* Read flex-basis: auto | content | inherit | calc(...) | <length> *)
@@ -9891,8 +9918,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Print_color_adjust -> pp pp_print_color_adjust
   | Box_decoration_break -> pp pp_box_decoration_break
   | Webkit_box_decoration_break -> pp pp_box_decoration_break
-  | Flex_grow -> pp Pp.float
-  | Flex_shrink -> pp Pp.float
+  | Flex_grow -> pp pp_flex_factor
+  | Flex_shrink -> pp pp_flex_factor
   | Order -> pp pp_order
   | Flex_direction -> pp pp_flex_direction
   | Flex_wrap -> pp pp_flex_wrap

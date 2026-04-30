@@ -9,6 +9,12 @@ type declaration_feature =
   | Declaration of Declaration.t
   | Empty of property_name
   | Vendor_flag_enabled
+  | Unparseable of { property : property_name; value : Component.t list }
+      (** A [(<property>: <value>)] feature whose [<value>] does not parse as a
+          typed declaration value for [<property>]. CSS Conditional Rules 4 §3.5
+          routes this through the [<general-enclosed>] production: it is
+          preserved verbatim and always evaluates to [false], rather than being
+          a parse error in the API surface. *)
 
 type t =
   | Property of declaration_feature  (** [(property: value)] feature test *)

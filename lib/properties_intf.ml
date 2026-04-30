@@ -166,6 +166,15 @@ type flex_wrap =
   | Revert_layer
   | Var of flex_wrap var
 
+type flex_factor =
+  | Number of float
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of flex_factor var
+
 type align_content =
   | Normal
   | Baseline
@@ -2459,8 +2468,8 @@ type 'a property =
   | Flex_direction : flex_direction property
   | Flex_wrap : flex_wrap property
   | Flex : flex property
-  | Flex_grow : float property
-  | Flex_shrink : float property
+  | Flex_grow : flex_factor property
+  | Flex_shrink : flex_factor property
   | Flex_basis : length property
   | Order : order property
   | Align_items : align_items property

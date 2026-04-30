@@ -631,6 +631,9 @@ let vars_of_flex_direction (value : Properties.flex_direction) =
 let vars_of_flex_wrap (value : Properties.flex_wrap) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_flex_factor (value : Properties.flex_factor) =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_align_content (value : Properties.align_content) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -1223,6 +1226,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Flex, value -> vars_of_flex value
   | Flex_direction, value -> vars_of_flex_direction value
   | Flex_wrap, value -> vars_of_flex_wrap value
+  | Flex_grow, value -> vars_of_flex_factor value
+  | Flex_shrink, value -> vars_of_flex_factor value
   | Float, value -> vars_of_float_side value
   | Font_style, value -> vars_of_font_style value
   | Forced_color_adjust, value -> vars_of_forced_color_adjust value
