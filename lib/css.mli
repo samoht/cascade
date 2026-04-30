@@ -1152,6 +1152,10 @@ type aspect_ratio =
   | Auto_ratio of float * float
   | Ratio of float * float
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of aspect_ratio var  (** CSS blend-mode values *)
 
 type blend_mode =
@@ -1229,6 +1233,10 @@ type box_sizing =
   | Border_box
   | Content_box
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of box_sizing var  (** CSS field sizing values. *)
 
 type field_sizing =
@@ -1583,6 +1591,11 @@ type overflow =
   | Scroll
   | Auto
   | Clip
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Overflow_pair of overflow * overflow
   | Var of overflow var
 
@@ -2102,15 +2115,22 @@ type conic_gradient_config = {
 }
 (** Configuration for conic-gradient prefix: starting angle and center. *)
 
-type border_radius = {
-  horizontal : length_percentage list;
-      (** 1-4 horizontal radii (top-left, top-right, bottom-right, bottom-left).
-      *)
-  vertical : length_percentage list option;
-      (** Optional 1-4 vertical radii after [/]; when [None] the horizontal
-          values are used for both axes. *)
-}
-(** [<length-percentage [0,∞]>]{1,4} [ / [<length-percentage [0,∞]>]{1,4} ]?
+type border_radius =
+  | Radius of {
+      horizontal : length_percentage list;
+          (** 1-4 horizontal radii (top-left, top-right, bottom-right,
+              bottom-left). *)
+      vertical : length_percentage list option;
+          (** Optional 1-4 vertical radii after [/]; when [None] the horizontal
+              values are used for both axes. *)
+    }
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of border_radius var
+      (** [<length-percentage [0,∞]>]{1,4} [ / [<length-percentage [0,∞]>]{1,4} ]?
     per CSS Backgrounds and Borders 3 §5. *)
 
 (** Background image values *)
@@ -3503,6 +3523,9 @@ type border_shorthand = {
 type border =
   | Inherit
   | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | None
   | Shorthand of border_shorthand
   | Var of border var  (** CSS outline style values. *)
@@ -4515,6 +4538,11 @@ type container_type =
   | Inline_size
   | Scroll_state
   | Normal
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of container_type var
 
 val container_type : container_type -> declaration
@@ -4793,6 +4821,10 @@ type scroll_snap_type =
       scroll_snap_axis
       * scroll_snap_strictness (* Axis with explicit strictness or var *)
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of scroll_snap_type var  (** CSS scroll-snap-align values *)
 
 type scroll_snap_align =
@@ -4801,6 +4833,11 @@ type scroll_snap_align =
   | End
   | Center
   | Snap_align_pair of scroll_snap_align * scroll_snap_align
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of scroll_snap_align var
 
 type timeline_axis = Block | Inline | X | Y | Var of timeline_axis var
@@ -4830,6 +4867,10 @@ type scroll_snap_stop =
   | Normal
   | Always
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of scroll_snap_stop var
 
 val scroll_snap_stop : scroll_snap_stop -> declaration
@@ -4838,7 +4879,15 @@ val scroll_snap_stop : scroll_snap_stop -> declaration
      scroll-snap-stop} property. *)
 
 (** CSS scroll behavior values *)
-type scroll_behavior = Auto | Smooth | Inherit | Var of scroll_behavior var
+type scroll_behavior =
+  | Auto
+  | Smooth
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of scroll_behavior var
 
 val scroll_behavior : scroll_behavior -> declaration
 (** [scroll_behavior behavior] is the

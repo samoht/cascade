@@ -527,6 +527,84 @@ let to_string_minified cvs =
     cvs_to_buffer_min buf cvs;
     Buffer.contents buf
 
+(* CSS Custom Properties Level 1: a custom property value is an opaque token
+   stream — whitespace is significant. We still minify whitespace inside CSS
+   function calls (so [var(--a, --b)] collapses to [var(--a,--b)]), but
+   block-style containers ([{ ... }], [[...]], [(...)] outside a function head)
+   round-trip verbatim, including blocks nested inside function arguments. *)
+let rec cv_to_buffer_custom buf : Component.t -> unit = function
+  | Preserved t -> Buffer.add_string buf (token_kind_to_string t.kind)
+  | Block { node = { opening; value }; _ } ->
+      Buffer.add_char buf (opening_char opening);
+      cvs_to_buffer_custom buf value;
+      Buffer.add_char buf (closing_char opening)
+  | Func { node = { name; arguments; _ }; _ } ->
+      Buffer.add_string buf (escape_ident name);
+      Buffer.add_char buf '(';
+      cvs_to_buffer_min_custom buf arguments;
+      Buffer.add_char buf ')'
+
+and cvs_to_buffer_custom buf cvs =
+  let rec loop prev = function
+    | [] -> ()
+    | cv :: rest
+      when is_whitespace cv
+           && match prev with Some p -> is_backslash_delim p | None -> false ->
+        loop prev rest
+    | cv :: rest ->
+        (match prev with
+        | Some p when normal_pair_needs_token_boundary p cv ->
+            Buffer.add_char buf ' '
+        | _ -> ());
+        cv_to_buffer_custom buf cv;
+        loop (Some cv) rest
+  in
+  loop None cvs
+
+(* Minified variant for function arguments: drops optional whitespace between
+   sibling tokens (like [cvs_to_buffer_min]) but routes children through
+   [cv_to_buffer_custom] so any nested block keeps its internal whitespace. *)
+and cvs_to_buffer_min_custom buf cvs =
+  let rec drop_ws = function
+    | cv :: rest when is_whitespace cv -> drop_ws rest
+    | other -> other
+  in
+  let needs_separator prev next =
+    match prev with
+    | None -> false
+    | Some p ->
+        pair_forms_multichar_token p next
+        || word_like_end p
+           && (not (is_backslash_delim p))
+           && word_like_start next
+  in
+  let rec loop prev separated = function
+    | [] -> ()
+    | cv :: rest when is_whitespace cv ->
+        let rest' = drop_ws rest in
+        let separated' =
+          match rest' with
+          | next :: _ when needs_separator prev next ->
+              Buffer.add_char buf ' ';
+              true
+          | _ -> separated
+        in
+        loop prev separated' rest'
+    | cv :: rest ->
+        (match prev with
+        | Some p when (not separated) && pair_needs_token_boundary p cv ->
+            Buffer.add_char buf ' '
+        | _ -> ());
+        cv_to_buffer_custom buf cv;
+        loop (Some cv) false rest
+  in
+  loop None false cvs
+
+let to_string_custom_minified cvs =
+  let buf = Buffer.create 64 in
+  cvs_to_buffer_custom buf cvs;
+  Buffer.contents buf
+
 (** {1 Rule / declaration consumers (section 5.3)} *)
 
 (* Drop a run of whitespace tokens from [lexer]. Used by the entry-point parsers
