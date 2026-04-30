@@ -213,6 +213,9 @@ let check_webkit_box_orient =
   check_value_cursor "-webkit-box-orient" read_webkit_box_orient
     pp_webkit_box_orient
 
+let check_moz_orient =
+  check_value_cursor "-moz-orient" read_moz_orient pp_moz_orient
+
 let check_forced_color_adjust =
   check_value_cursor "forced-color-adjust" read_forced_color_adjust
     pp_forced_color_adjust
@@ -387,6 +390,10 @@ let check_radial_gradient_config =
   check_value_cursor "radial_gradient_config" read_radial_gradient_config
     pp_radial_gradient_config
 
+let check_conic_gradient_config =
+  check_value_cursor "conic_gradient_config" read_conic_gradient_config
+    pp_conic_gradient_config
+
 let check_color_interpolation =
   check_value_cursor "color_interpolation" read_color_interpolation
     pp_color_interpolation
@@ -429,6 +436,9 @@ let check_text_decoration =
 let check_border_width =
   check_value_cursor "border_width" read_border_width pp_border_width
 
+let check_border_radius =
+  check_value_cursor "border_radius" read_border_radius pp_border_radius
+
 let check_text_transform =
   check_value_cursor "text_transform" read_text_transform pp_text_transform
 
@@ -449,6 +459,8 @@ let check_outline_shorthand =
   check_value_cursor "outline_shorthand" read_outline_shorthand
     pp_outline_shorthand
 
+let check_css_wide = check_value_cursor "css_wide" read_css_wide pp_css_wide
+
 let check_box_decoration_break =
   check_value_cursor "box_decoration_break" read_box_decoration_break
     pp_box_decoration_break
@@ -459,6 +471,30 @@ let check_break_value =
 let check_break_inside_value =
   check_value_cursor "break_inside_value" read_break_inside_value
     pp_break_inside_value
+
+let check_page_break_value =
+  check_value_cursor "page_break_value" read_page_break_value
+    pp_page_break_value
+
+let check_page_break_inside_value =
+  check_value_cursor "page_break_inside_value" read_page_break_inside_value
+    pp_page_break_inside_value
+
+let check_page_size = check_value_cursor "page_size" read_page_size pp_page_size
+
+let check_page_size_name =
+  check_value_cursor "page_size_name" read_page_size_name pp_page_size_name
+
+let check_page_size_orientation =
+  check_value_cursor "page_size_orientation" read_page_size_orientation
+    pp_page_size_orientation
+
+let check_timeline_axis =
+  check_value_cursor "timeline_axis" read_timeline_axis pp_timeline_axis
+
+let check_timeline_shorthand =
+  check_value_cursor "timeline_shorthand" read_timeline_shorthand
+    pp_timeline_shorthand
 
 let check_caption_side =
   check_value_cursor "caption_side" read_caption_side pp_caption_side
@@ -1135,6 +1171,16 @@ let test_border_width () =
   (* not a valid keyword *)
   neg_cursor read_border_width "heavy"
 
+let test_border_radius () =
+  check_border_radius "1px";
+  check_border_radius "1px 2px";
+  check_border_radius "1px 2px 3px 4px";
+  check_border_radius "1px / 2px";
+  check_border_radius "1px 2px / 3px 4px";
+  neg_cursor read_border_radius "";
+  neg_cursor read_border_radius "1px /";
+  neg_cursor read_border_radius "-1px"
+
 let test_text_decoration () =
   check_text_decoration "underline";
   check_text_decoration "line-through";
@@ -1670,6 +1716,14 @@ let test_radial_gradient_config () =
   check_radial_gradient_config ~expected:"circle at center" "circle at center";
   neg_cursor read_radial_gradient_config "invalid-config"
 
+let test_conic_gradient_config () =
+  check_conic_gradient_config "from 45deg";
+  check_conic_gradient_config "at center";
+  check_conic_gradient_config "from 90deg at left top";
+  neg_cursor read_conic_gradient_config "";
+  neg_cursor read_conic_gradient_config "center";
+  neg_cursor read_conic_gradient_config "from"
+
 let test_background_position () =
   check_background_position "center";
   check_background_position "left top";
@@ -1917,6 +1971,14 @@ let test_webkit_box_orient () =
   check_webkit_box_orient "inherit";
   neg_cursor read_webkit_box_orient "invalid-orient"
 
+let test_moz_orient () =
+  check_moz_orient "inline";
+  check_moz_orient "block";
+  check_moz_orient "horizontal";
+  check_moz_orient "vertical";
+  check_moz_orient "inherit";
+  neg_cursor read_moz_orient "invalid-orient"
+
 let test_text_size_adjust () =
   check_text_size_adjust "none";
   check_text_size_adjust "auto";
@@ -2130,6 +2192,66 @@ let test_break_inside_value () =
   check_break_inside_value "inherit";
   neg_cursor read_break_inside_value "invalid-break-inside"
 
+let test_page_break_value () =
+  check_page_break_value "auto";
+  check_page_break_value "always";
+  check_page_break_value "avoid";
+  check_page_break_value "left";
+  check_page_break_value "right";
+  check_page_break_value "inherit";
+  neg_cursor read_page_break_value "page";
+  neg_cursor read_page_break_value "avoid-page"
+
+let test_page_break_inside_value () =
+  check_page_break_inside_value "auto";
+  check_page_break_inside_value "avoid";
+  check_page_break_inside_value "inherit";
+  neg_cursor read_page_break_inside_value "always";
+  neg_cursor read_page_break_inside_value "avoid-page"
+
+let test_page_size_name () =
+  check_page_size_name ~expected:"A5" "a5";
+  check_page_size_name ~expected:"A4" "a4";
+  check_page_size_name ~expected:"A3" "a3";
+  check_page_size_name ~expected:"JIS-B5" "jis-b5";
+  check_page_size_name "letter";
+  check_page_size_name "legal";
+  neg_cursor read_page_size_name "portrait";
+  neg_cursor read_page_size_name "tabloid"
+
+let test_page_size_orientation () =
+  check_page_size_orientation "portrait";
+  check_page_size_orientation "landscape";
+  neg_cursor read_page_size_orientation "a4";
+  neg_cursor read_page_size_orientation "sideways"
+
+let test_page_size () =
+  check_page_size "auto";
+  check_page_size "8.5in 11in";
+  check_page_size ~expected:"A4 landscape" "a4 landscape";
+  check_page_size "letter portrait";
+  check_page_size "landscape";
+  check_page_size "inherit";
+  neg_cursor read_page_size "";
+  neg_cursor read_page_size "a4 sideways";
+  neg_cursor read_page_size "8.5in 11in 12in"
+
+let test_timeline_axis () =
+  check_timeline_axis "block";
+  check_timeline_axis "inline";
+  check_timeline_axis "x";
+  check_timeline_axis "y";
+  neg_cursor read_timeline_axis "z";
+  neg_cursor read_timeline_axis "auto"
+
+let test_timeline_shorthand () =
+  check_timeline_shorthand "--main block";
+  check_timeline_shorthand "--scroll inline";
+  check_timeline_shorthand "--x x";
+  neg_cursor read_timeline_shorthand "main block";
+  neg_cursor read_timeline_shorthand "--main";
+  neg_cursor read_timeline_shorthand "--main z"
+
 let test_caption_side () =
   check_caption_side "top";
   check_caption_side "bottom";
@@ -2240,6 +2362,15 @@ let test_webkit_mask_source_type () =
   check_webkit_mask_source_type "auto";
   check_webkit_mask_source_type "inherit";
   neg_cursor read_webkit_mask_source_type "invalid-source-type"
+
+let test_css_wide () =
+  check_css_wide "initial";
+  check_css_wide "inherit";
+  check_css_wide "unset";
+  check_css_wide "revert";
+  check_css_wide "revert-layer";
+  neg_cursor read_css_wide "red";
+  neg_cursor read_css_wide ""
 
 let spec_property_grammar_edges () =
   check_font_feature_settings "\"kern\" on";
@@ -2456,6 +2587,7 @@ let additional_tests =
     test_case "text_decoration" `Quick test_text_decoration;
     test_case "cursor" `Quick test_cursor;
     test_case "border_width" `Quick test_border_width;
+    test_case "border_radius" `Quick test_border_radius;
     (* New test cases *)
     test_case "text_decoration_shorthand" `Quick test_text_decoration_shorthand;
     test_case "justify_self" `Quick test_justify_self;
@@ -2499,6 +2631,7 @@ let additional_tests =
     test_case "background_size" `Quick test_background_size;
     test_case "gradient_direction" `Quick test_gradient_direction;
     test_case "gradient_stop" `Quick test_gradient_stop;
+    test_case "conic_gradient_config" `Quick test_conic_gradient_config;
     test_case "radial_shape" `Quick test_radial_shape;
     test_case "radial_size" `Quick test_radial_size;
     test_case "radial_gradient_config" `Quick test_radial_gradient_config;
@@ -2532,6 +2665,7 @@ let additional_tests =
     test_case "webkit_font_smoothing" `Quick test_webkit_font_smoothing;
     test_case "moz_osx_font_smoothing" `Quick test_moz_osx_font_smoothing;
     test_case "webkit_box_orient" `Quick test_webkit_box_orient;
+    test_case "moz_orient" `Quick test_moz_orient;
     test_case "forced_color_adjust" `Quick test_forced_color_adjust;
     test_case "print_color_adjust" `Quick test_print_color_adjust;
     test_case "appearance" `Quick test_appearance;
@@ -2553,6 +2687,13 @@ let additional_tests =
     test_case "box_decoration_break" `Quick test_box_decoration_break;
     test_case "break_value" `Quick test_break_value;
     test_case "break_inside_value" `Quick test_break_inside_value;
+    test_case "page_break_value" `Quick test_page_break_value;
+    test_case "page_break_inside_value" `Quick test_page_break_inside_value;
+    test_case "page_size" `Quick test_page_size;
+    test_case "page_size_name" `Quick test_page_size_name;
+    test_case "page_size_orientation" `Quick test_page_size_orientation;
+    test_case "timeline_axis" `Quick test_timeline_axis;
+    test_case "timeline_shorthand" `Quick test_timeline_shorthand;
     test_case "caption_side" `Quick test_caption_side;
     test_case "color_scheme" `Quick test_color_scheme;
     test_case "columns_value" `Quick test_columns_value;
@@ -2569,6 +2710,7 @@ let additional_tests =
     test_case "webkit_line_clamp" `Quick test_webkit_line_clamp;
     test_case "webkit_mask_composite" `Quick test_webkit_mask_composite;
     test_case "webkit_mask_source_type" `Quick test_webkit_mask_source_type;
+    test_case "css_wide" `Quick test_css_wide;
   ]
 
 let suite = ("properties", tests @ additional_tests)

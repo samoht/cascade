@@ -22,6 +22,20 @@ let ignored_types =
     (* Internal implementation detail *)
     "any_var";
     (* Internal type for existential variables *)
+    "custom_property";
+    (* Existential typed custom property value, parsed through declarations. *)
+    "specificity";
+    (* Derived selector metric, not a CSS syntax value. *)
+    "cascade_origin";
+    "cascade_origin_candidate";
+    "cascade_layer_candidate";
+    "cascade_candidate";
+    "declared_value";
+    "specified_value";
+    "specified_value_source";
+    "value_processing_stage";
+    "namespace_url";
+    (* Stylesheet analysis records/enums, not standalone CSS value parsers. *)
   ]
 
 (* Types where neg (negative) tests are not applicable because the parser

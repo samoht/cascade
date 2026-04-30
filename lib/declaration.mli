@@ -8,6 +8,9 @@ val pp_property : 'a Properties.property Pp.t
 val pp_declaration : declaration Pp.t
 (** [pp_declaration] is the pretty-printer for declarations. *)
 
+val pp : t Pp.t
+(** [pp] is the pretty-printer for declarations. *)
+
 val pp_value : ('a kind * 'a) Pp.t
 (** [pp_value] is the pretty-printer for typed values. *)
 
@@ -38,6 +41,9 @@ val read_declaration : Cursor.t -> declaration option
 (** [read_declaration t] is one typed declaration, or [None] when no more valid
     declarations. Performs full property name and value validation per CSS spec.
 *)
+
+val read : Cursor.t -> t
+(** [read t] parses one typed declaration from [t]. *)
 
 val of_string : string -> declaration
 (** [of_string s] parses a single declaration from [s] (e.g. ["color: red"]).

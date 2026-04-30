@@ -1900,18 +1900,17 @@ type will_change =
 
 (* perspective-origin: origin point for 3D perspective *)
 type perspective_origin =
-  | Perspective_center
-  | Perspective_top
-  | Perspective_bottom
-  | Perspective_left
-  | Perspective_right
-  | Perspective_top_left
-  | Perspective_top_right
-  | Perspective_bottom_left
-  | Perspective_bottom_right
-  | Perspective_x of length  (** Single x-offset, y defaults to center *)
-  | Perspective_xy of length * length
-  | Perspective_var of perspective_origin var
+  | Center
+  | Top
+  | Bottom
+  | Left
+  | Right
+  | Top_left
+  | Top_right
+  | Bottom_left
+  | Bottom_right
+  | X of length  (** Single x-offset, y defaults to center *)
+  | XY of length * length
   | Var of perspective_origin var
 
 (* clip property (deprecated, but needed for sr-only) *)
@@ -2002,9 +2001,20 @@ type custom_property =
     }
       -> custom_property
 
+(** [all] shorthand value (CSS Cascade 5 §3.2). The [all] property only accepts
+    CSS-wide keywords - no other syntax is valid. *)
+type css_wide =
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of css_wide var
+
 (* Property type definition *)
 type 'a property =
   | Custom_property : string -> custom_property property
+  | All : css_wide property
   | Background_color : color property
   | Color : color property
   | Border_color : color property

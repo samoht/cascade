@@ -614,6 +614,317 @@ let vars_of_timing_function = function
       []
   | Var v -> [ V v ]
 
+let vars_of_display (value : Properties.display) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_position (value : Properties.position) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_overflow (value : Properties.overflow) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_flex_direction (value : Properties.flex_direction) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_align_content (value : Properties.align_content) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_align_items (value : Properties.align_items) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_align_self (value : Properties.align_self) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_justify_content (value : Properties.justify_content) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_justify_items (value : Properties.justify_items) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_justify_self (value : Properties.justify_self) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_place_content (value : Properties.place_content) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_place_items (value : Properties.place_items) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_grid_auto_flow (value : Properties.grid_auto_flow) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_flex (value : Properties.flex) =
+  match value with
+  | Var v -> [ V v ]
+  | Basis b | Full (_, _, b) -> (
+      match b with Var v -> [ V v ] | Calc c -> vars_of_calc c | _ -> [])
+  | _ -> []
+
+let vars_of_font_style (value : Properties.font_style) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_text_align (value : Properties.text_align) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_text_decoration_line (value : Properties.text_decoration_line) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_text_decoration_style (value : Properties.text_decoration_style) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_text_overflow (value : Properties.text_overflow) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_text_wrap (value : Properties.text_wrap) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_white_space (value : Properties.white_space) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_word_break (value : Properties.word_break) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_overflow_wrap (value : Properties.overflow_wrap) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_list_style_position (value : Properties.list_style_position) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_border (value : Properties.border) =
+  match value with
+  | Var v -> [ V v ]
+  | Shorthand { width; style; color } ->
+      Option.value ~default:[] (Option.map vars_of_border_width width)
+      @ Option.value ~default:[] (Option.map vars_of_border_style style)
+      @ Option.value ~default:[] (Option.map vars_of_color color)
+  | _ -> []
+
+let vars_of_outline (value : Properties.outline) =
+  match value with
+  | Var v -> [ V v ]
+  | Shorthand { width; style; color } ->
+      Option.value ~default:[] (Option.map vars_of_length width)
+      @ Option.value ~default:[] (Option.map vars_of_outline_style style)
+      @ Option.value ~default:[] (Option.map vars_of_color color)
+  | _ -> []
+
+let vars_of_background_attachment (value : Properties.background_attachment) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_background_box (value : Properties.background_box) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_background_repeat (value : Properties.background_repeat) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_border_collapse (value : Properties.border_collapse) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_transform_style (value : Properties.transform_style) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_transform_box (value : Properties.transform_box) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_backface_visibility (value : Properties.backface_visibility) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_animation_direction (value : Properties.animation_direction) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_animation_fill_mode (value : Properties.animation_fill_mode) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_animation_iteration_count
+    (value : Properties.animation_iteration_count) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_transition_behavior (value : Properties.transition_behavior) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_appearance (value : Properties.appearance) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_webkit_appearance (value : Properties.webkit_appearance) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_color_scheme (value : Properties.color_scheme) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_print_color_adjust (value : Properties.print_color_adjust) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_box_decoration_break (value : Properties.box_decoration_break) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_clear (value : Properties.clear) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_float_side (value : Properties.float_side) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_text_decoration_skip_ink
+    (value : Properties.text_decoration_skip_ink) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_forced_color_adjust (value : Properties.forced_color_adjust) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_pointer_events (value : Properties.pointer_events) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_resize (value : Properties.resize) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_object_fit (value : Properties.object_fit) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_container_type (value : Properties.container_type) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_break_value (value : Properties.break_value) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_break_inside_value (value : Properties.break_inside_value) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_page_size_name (value : Properties.page_size_name) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_page_size_orientation (value : Properties.page_size_orientation) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_page_size (value : Properties.page_size) =
+  match value with
+  | Var v -> [ V v ]
+  | Single l -> vars_of_length l
+  | Pair (a, b) -> vars_of_length a @ vars_of_length b
+  | Named name -> vars_of_page_size_name name
+  | Named_oriented (name, orientation) ->
+      vars_of_page_size_name name @ vars_of_page_size_orientation orientation
+  | Oriented orientation -> vars_of_page_size_orientation orientation
+  | _ -> []
+
+let rec vars_of_scroll_snap_align (value : Properties.scroll_snap_align) =
+  match value with
+  | Var v -> [ V v ]
+  | Snap_align_pair (a, b) ->
+      vars_of_scroll_snap_align a @ vars_of_scroll_snap_align b
+  | _ -> []
+
+let vars_of_scroll_snap_stop (value : Properties.scroll_snap_stop) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_overscroll_behavior (value : Properties.overscroll_behavior) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let rec vars_of_svg_paint (value : Properties.svg_paint) =
+  match value with
+  | Var v -> [ V v ]
+  | Color c -> vars_of_color c
+  | Url (_, fallback) ->
+      Option.value ~default:[] (Option.map vars_of_svg_paint fallback)
+  | _ -> []
+
+let vars_of_unicode_bidi (value : Properties.unicode_bidi) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_writing_mode (value : Properties.writing_mode) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_webkit_font_smoothing (value : Properties.webkit_font_smoothing) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_moz_osx_font_smoothing (value : Properties.moz_osx_font_smoothing) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_webkit_box_orient (value : Properties.webkit_box_orient) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_moz_orient (value : Properties.moz_orient) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_font_stretch (value : Properties.font_stretch) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_text_size_adjust (value : Properties.text_size_adjust) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_touch_action (value : Properties.touch_action) =
+  match value with
+  | Var v -> [ V v ]
+  | Vars vars -> List.map (fun v -> V v) vars
+  | _ -> []
+
+let vars_of_clip (value : Properties.clip) =
+  match value with
+  | Var v -> [ V v ]
+  | Clip_rect (a, b, c, d) ->
+      vars_of_length a @ vars_of_length b @ vars_of_length c @ vars_of_length d
+  | _ -> []
+
+let vars_of_border_radius (value : Properties.border_radius) =
+  let from_list = List.concat_map vars_of_length_percentage in
+  from_list value.horizontal
+  @ Option.value ~default:[] (Option.map from_list value.vertical)
+
+let vars_of_perspective_origin (value : Properties.perspective_origin) =
+  match value with
+  | Var v -> [ V v ]
+  | X l -> vars_of_length l
+  | XY (l1, l2) -> vars_of_length l1 @ vars_of_length l2
+  | _ -> []
+
+let vars_of_clip_path (value : Properties.clip_path) =
+  match value with
+  | Var v -> [ V v ]
+  | Clip_path_inset (a, b, c, d) ->
+      vars_of_length a
+      @ Option.value ~default:[] (Option.map vars_of_length b)
+      @ Option.value ~default:[] (Option.map vars_of_length c)
+      @ Option.value ~default:[] (Option.map vars_of_length d)
+  | Clip_path_circle l -> vars_of_length l
+  | Clip_path_ellipse (a, b) -> vars_of_length a @ vars_of_length b
+  | Clip_path_polygon points | Clip_path_polygon_spaced points ->
+      List.concat_map (fun (a, b) -> vars_of_length a @ vars_of_length b) points
+  | Clip_path_xywh { x; y; width; height; rounded }
+  | Clip_path_rect
+      { top = x; right = y; bottom = width; left = height; rounded } ->
+      vars_of_length_percentage x
+      @ vars_of_length_percentage y
+      @ vars_of_length_percentage width
+      @ vars_of_length_percentage height
+      @ Option.value ~default:[] (Option.map vars_of_border_radius rounded)
+  | _ -> []
+
+let vars_of_mask_box (value : Properties.mask_box) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_webkit_mask_composite (value : Properties.webkit_mask_composite) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_mask_composite (value : Properties.mask_composite) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_webkit_mask_source_type (value : Properties.webkit_mask_source_type)
+    =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_mask_mode (value : Properties.mask_mode) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_user_select (value : Properties.user_select) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_timeline_axis (value : Properties.timeline_axis) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_timeline_shorthand (value : Properties.timeline_shorthand) =
+  vars_of_timeline_axis value.timeline_axis
+
+let vars_of_direction (value : Properties.direction) =
+  match value with Var v -> [ V v ] | _ -> []
+
 (** {1 Advanced variable extraction} *)
 
 (* Extract variables from CSS property values using type-specific extraction
@@ -826,6 +1137,103 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Will_change, value -> vars_of_will_change value
   (* Opacity (typed math) *)
   | Opacity, value -> vars_of_opacity value
+  | Align_content, value -> vars_of_align_content value
+  | Align_items, value -> vars_of_align_items value
+  | Align_self, value -> vars_of_align_self value
+  | Animation_direction, value -> vars_of_animation_direction value
+  | Animation_fill_mode, value -> vars_of_animation_fill_mode value
+  | Animation_iteration_count, value -> vars_of_animation_iteration_count value
+  | Appearance, value -> vars_of_appearance value
+  | Backface_visibility, value -> vars_of_backface_visibility value
+  | Background_attachment, value -> vars_of_background_attachment value
+  | Background_clip, value -> vars_of_background_box value
+  | Background_origin, value -> vars_of_background_box value
+  | Background_repeat, value -> vars_of_background_repeat value
+  | Border, value -> vars_of_border value
+  | Border_collapse, value -> vars_of_border_collapse value
+  | Box_decoration_break, value -> vars_of_box_decoration_break value
+  | Break_after, value -> vars_of_break_value value
+  | Break_before, value -> vars_of_break_value value
+  | Break_inside, value -> vars_of_break_inside_value value
+  | Clear, value -> vars_of_clear value
+  | Clip, value -> vars_of_clip value
+  | Clip_path, value -> vars_of_clip_path value
+  | Color_scheme, value -> vars_of_color_scheme value
+  | Container_type, value -> vars_of_container_type value
+  | Direction, value -> vars_of_direction value
+  | Display, value -> vars_of_display value
+  | Fill, value -> vars_of_svg_paint value
+  | Flex, value -> vars_of_flex value
+  | Flex_direction, value -> vars_of_flex_direction value
+  | Float, value -> vars_of_float_side value
+  | Font_stretch, value -> vars_of_font_stretch value
+  | Font_style, value -> vars_of_font_style value
+  | Forced_color_adjust, value -> vars_of_forced_color_adjust value
+  | Grid_auto_flow, value -> vars_of_grid_auto_flow value
+  | Justify_content, value -> vars_of_justify_content value
+  | Justify_items, value -> vars_of_justify_items value
+  | Justify_self, value -> vars_of_justify_self value
+  | List_style_position, value -> vars_of_list_style_position value
+  | Mask_clip, value -> vars_of_mask_box value
+  | Mask_composite, value -> vars_of_mask_composite value
+  | Mask_mode, value -> vars_of_mask_mode value
+  | Mask_origin, value -> vars_of_mask_box value
+  | Mask_repeat, value -> vars_of_background_repeat value
+  | Moz_appearance, value -> vars_of_appearance value
+  | Moz_orient, value -> vars_of_moz_orient value
+  | Moz_osx_font_smoothing, value -> vars_of_moz_osx_font_smoothing value
+  | Object_fit, value -> vars_of_object_fit value
+  | Outline, value -> vars_of_outline value
+  | Overflow, value -> vars_of_overflow value
+  | Overflow_wrap, value -> vars_of_overflow_wrap value
+  | Overflow_x, value -> vars_of_overflow value
+  | Overflow_y, value -> vars_of_overflow value
+  | Overscroll_behavior, values ->
+      List.concat_map vars_of_overscroll_behavior values
+  | Overscroll_behavior_x, value -> vars_of_overscroll_behavior value
+  | Overscroll_behavior_y, value -> vars_of_overscroll_behavior value
+  | Page_size, value -> vars_of_page_size value
+  | Perspective_origin, value -> vars_of_perspective_origin value
+  | Place_content, value -> vars_of_place_content value
+  | Place_items, value -> vars_of_place_items value
+  | Pointer_events, value -> vars_of_pointer_events value
+  | Position, value -> vars_of_position value
+  | Print_color_adjust, value -> vars_of_print_color_adjust value
+  | Resize, value -> vars_of_resize value
+  | Scroll_snap_align, value -> vars_of_scroll_snap_align value
+  | Scroll_snap_stop, value -> vars_of_scroll_snap_stop value
+  | Scroll_timeline, value -> vars_of_timeline_shorthand value
+  | Stroke, value -> vars_of_svg_paint value
+  | Text_align, value -> vars_of_text_align value
+  | Text_decoration_line, values ->
+      List.concat_map vars_of_text_decoration_line values
+  | Text_decoration_skip_ink, value -> vars_of_text_decoration_skip_ink value
+  | Text_decoration_style, value -> vars_of_text_decoration_style value
+  | Text_overflow, value -> vars_of_text_overflow value
+  | Text_size_adjust, value -> vars_of_text_size_adjust value
+  | Text_wrap, value -> vars_of_text_wrap value
+  | Touch_action, value -> vars_of_touch_action value
+  | Transform_box, value -> vars_of_transform_box value
+  | Transform_style, value -> vars_of_transform_style value
+  | Transition_behavior, value -> vars_of_transition_behavior value
+  | Unicode_bidi, value -> vars_of_unicode_bidi value
+  | User_select, value -> vars_of_user_select value
+  | View_timeline, value -> vars_of_timeline_shorthand value
+  | Webkit_appearance, value -> vars_of_webkit_appearance value
+  | Webkit_background_clip, value -> vars_of_background_box value
+  | Webkit_box_decoration_break, value -> vars_of_box_decoration_break value
+  | Webkit_box_orient, value -> vars_of_webkit_box_orient value
+  | Webkit_font_smoothing, value -> vars_of_webkit_font_smoothing value
+  | Webkit_mask_clip, value -> vars_of_mask_box value
+  | Webkit_mask_composite, value -> vars_of_webkit_mask_composite value
+  | Webkit_mask_origin, value -> vars_of_mask_box value
+  | Webkit_mask_repeat, value -> vars_of_background_repeat value
+  | Webkit_mask_source_type, value -> vars_of_webkit_mask_source_type value
+  | Webkit_text_size_adjust, value -> vars_of_text_size_adjust value
+  | Webkit_user_select, value -> vars_of_user_select value
+  | White_space, value -> vars_of_white_space value
+  | Word_break, value -> vars_of_word_break value
+  | Writing_mode, value -> vars_of_writing_mode value
   (* Default case for all other properties *)
   | _ -> []
 

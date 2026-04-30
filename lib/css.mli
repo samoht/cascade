@@ -3860,18 +3860,17 @@ val perspective : length -> declaration
 
 (** CSS perspective-origin values for 3D transforms. *)
 type perspective_origin =
-  | Perspective_center
-  | Perspective_top
-  | Perspective_bottom
-  | Perspective_left
-  | Perspective_right
-  | Perspective_top_left
-  | Perspective_top_right
-  | Perspective_bottom_left
-  | Perspective_bottom_right
-  | Perspective_x of length  (** Single x-offset, y defaults to center. *)
-  | Perspective_xy of length * length  (** Custom x, y coordinates. *)
-  | Perspective_var of perspective_origin var  (** CSS variable reference. *)
+  | Center
+  | Top
+  | Bottom
+  | Left
+  | Right
+  | Top_left
+  | Top_right
+  | Bottom_left
+  | Bottom_right
+  | X of length  (** Single x-offset, y defaults to center. *)
+  | XY of length * length  (** Custom x, y coordinates. *)
   | Var of perspective_origin var
 
 val perspective_origin : perspective_origin -> declaration

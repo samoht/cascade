@@ -129,6 +129,27 @@ let rec read_position t : position =
     ~var:(fun t -> Var (Values.read_var read_position t))
     t
 
+let rec read_css_wide t : css_wide =
+  Cursor.enum_or_var "css-wide keyword"
+    [
+      ("initial", (Initial : css_wide));
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_css_wide t))
+    t
+
+let rec pp_css_wide : css_wide Pp.t =
+ fun ctx -> function
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> Values.pp_var pp_css_wide ctx v
+
 let read_flex_direction t : flex_direction =
   Cursor.enum "flex-direction"
     [
@@ -1438,6 +1459,22 @@ let pp_radial_gradient_config : radial_gradient_config Pp.t =
       pp_position_value ctx p
   | None -> ()
 
+let pp_conic_gradient_config : conic_gradient_config Pp.t =
+ fun ctx config ->
+  let has_output = ref false in
+  (match config.from_angle with
+  | Some a ->
+      Pp.string ctx "from ";
+      pp_angle ctx a;
+      has_output := true
+  | None -> ());
+  match config.conic_position with
+  | Some p ->
+      if !has_output then Pp.space ctx ();
+      Pp.string ctx "at ";
+      pp_position_value ctx p
+  | None -> ()
+
 let rec pp_background_image : background_image Pp.t =
  fun ctx -> function
   | Url url -> Pp.url ctx url
@@ -1484,19 +1521,7 @@ let rec pp_background_image : background_image Pp.t =
             config.from_angle <> None || config.conic_position <> None
           in
           if has_config then (
-            (match config.from_angle with
-            | Some a ->
-                Pp.string ctx "from ";
-                pp_angle ctx a
-            | None -> ());
-            (match (config.from_angle, config.conic_position) with
-            | Some _, Some _ -> Pp.space ctx ()
-            | _ -> ());
-            (match config.conic_position with
-            | Some p ->
-                Pp.string ctx "at ";
-                pp_position_value ctx p
-            | None -> ());
+            pp_conic_gradient_config ctx config;
             match stops with [] -> () | _ -> Pp.comma ctx ());
           match stops with
           | [] -> ()
@@ -2265,21 +2290,20 @@ let rec pp_will_change : will_change Pp.t =
 let rec pp_perspective_origin : perspective_origin Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_perspective_origin ctx v
-  | Perspective_center -> Pp.string ctx "center"
-  | Perspective_top -> Pp.string ctx "top"
-  | Perspective_bottom -> Pp.string ctx "bottom"
-  | Perspective_left -> Pp.string ctx "left"
-  | Perspective_right -> Pp.string ctx "right"
-  | Perspective_top_left -> Pp.string ctx "top left"
-  | Perspective_top_right -> Pp.string ctx "top right"
-  | Perspective_bottom_left -> Pp.string ctx "bottom left"
-  | Perspective_bottom_right -> Pp.string ctx "bottom right"
-  | Perspective_x x -> pp_length ctx x
-  | Perspective_xy (x, y) ->
+  | Center -> Pp.string ctx "center"
+  | Top -> Pp.string ctx "top"
+  | Bottom -> Pp.string ctx "bottom"
+  | Left -> Pp.string ctx "left"
+  | Right -> Pp.string ctx "right"
+  | Top_left -> Pp.string ctx "top left"
+  | Top_right -> Pp.string ctx "top right"
+  | Bottom_left -> Pp.string ctx "bottom left"
+  | Bottom_right -> Pp.string ctx "bottom right"
+  | X x -> pp_length ctx x
+  | XY (x, y) ->
       pp_length ctx x;
       Pp.space ctx ();
       pp_length ctx y
-  | Perspective_var v -> pp_var pp_perspective_origin ctx v
 
 let rec pp_clip : clip Pp.t =
  fun ctx -> function
@@ -2394,6 +2418,7 @@ and pp_clip_path_round ctx = function
 let pp_property : type a. a property Pp.t =
  fun ctx -> function
   | Custom_property name -> Pp.string ctx name
+  | All -> Pp.string ctx "all"
   | Background_color -> Pp.string ctx "background-color"
   | Color -> Pp.string ctx "color"
   | Border_color -> Pp.string ctx "border-color"
@@ -5599,41 +5624,41 @@ let read_timeline_shorthand t : timeline_shorthand =
   Cursor.expect_eof t;
   { timeline_name; timeline_axis }
 
+let read_page_size_name t : page_size_name =
+  Cursor.enum "page-size name"
+    [
+      ("a5", A5);
+      ("a4", A4);
+      ("a3", A3);
+      ("b5", B5);
+      ("b4", B4);
+      ("jis-b5", Jis_b5);
+      ("jis-b4", Jis_b4);
+      ("letter", Letter);
+      ("legal", Legal);
+      ("ledger", Ledger);
+    ]
+    t
+
+let read_page_size_orientation t : page_size_orientation =
+  Cursor.enum "page-size orientation"
+    [ ("portrait", Portrait); ("landscape", Landscape) ]
+    t
+
 let rec read_page_size t : page_size =
   let read_var_ps t : page_size = Var (read_var read_page_size t) in
-  let read_name t : page_size_name =
-    Cursor.enum "page-size name"
-      [
-        ("a5", A5);
-        ("a4", A4);
-        ("a3", A3);
-        ("b5", B5);
-        ("b4", B4);
-        ("jis-b5", Jis_b5);
-        ("jis-b4", Jis_b4);
-        ("letter", Letter);
-        ("legal", Legal);
-        ("ledger", Ledger);
-      ]
-      t
-  in
-  let read_orientation t : page_size_orientation =
-    Cursor.enum "page-size orientation"
-      [ ("portrait", Portrait); ("landscape", Landscape) ]
-      t
-  in
   let read_named t =
-    let name = read_name t in
+    let name = read_page_size_name t in
     Cursor.ws t;
     if Cursor.is_done t then Named name
     else
-      let orientation = read_orientation t in
+      let orientation = read_page_size_orientation t in
       Cursor.ws t;
       Cursor.expect_eof t;
       Named_oriented (name, orientation)
   in
   let read_oriented t =
-    let orientation = read_orientation t in
+    let orientation = read_page_size_orientation t in
     Cursor.ws t;
     Cursor.expect_eof t;
     Oriented orientation
@@ -7391,6 +7416,29 @@ let read_radial_size t : radial_size =
 let read_radial_gradient_config t : radial_gradient_config =
   Radial_config.read t
 
+let read_conic_gradient_config t : conic_gradient_config =
+  Cursor.ws t;
+  let from_angle =
+    match Cursor.peek_ident t with
+    | Some "from" ->
+        let _ = Cursor.ident t in
+        Cursor.ws t;
+        Some (Values.read_angle t)
+    | _ -> None
+  in
+  Cursor.ws t;
+  let conic_position =
+    match Cursor.peek_ident t with
+    | Some "at" ->
+        let _ = Cursor.ident t in
+        Cursor.ws t;
+        Some (read_position_value t)
+    | _ -> None
+  in
+  if from_angle = None && conic_position = None then
+    Cursor.err_invalid t "conic-gradient config";
+  { from_angle; conic_position }
+
 let read_linear_gradient_body t =
   Cursor.ws t;
   let direction =
@@ -7429,33 +7477,21 @@ let read_radial_gradient_body t =
 
 let read_conic_gradient_body t =
   (* [conic-gradient([from <angle>]? [at <position>]? ,? <color-stop-list>)] *)
+  let config = Cursor.option read_conic_gradient_config t in
   Cursor.ws t;
-  let from_angle =
-    match Cursor.peek_ident t with
-    | Some "from" ->
-        let _ = Cursor.ident t in
-        Cursor.ws t;
-        Some (Values.read_angle t)
-    | _ -> None
-  in
-  Cursor.ws t;
-  let conic_position =
-    match Cursor.peek_ident t with
-    | Some "at" ->
-        let _ = Cursor.ident t in
-        Cursor.ws t;
-        Some (read_position_value t)
-    | _ -> None
-  in
-  Cursor.ws t;
-  let has_config = from_angle <> None || conic_position <> None in
+  let has_config = config <> None in
   if has_config && not (Cursor.peek_comma t || Cursor.is_done t) then
     Cursor.err_expected t "',' or end of conic-gradient prefix";
   if Cursor.peek_comma t then Cursor.skip t;
   let stops = read_gradient_stops t in
   if stops = [] then
     Cursor.err_expected t "at least one color stop in conic-gradient()";
-  Conic_gradient ({ from_angle; conic_position }, stops)
+  let config =
+    match config with
+    | Some config -> config
+    | None -> { from_angle = None; conic_position = None }
+  in
+  Conic_gradient (config, stops)
 
 let rec read_bg_image t : background_image =
   (* Bare [url(foo)] is a single [Token.Url] component, not a [Func]; handle it
@@ -7618,6 +7654,7 @@ let read_any_property t =
   let prop_name = String.lowercase_ascii (Cursor.ident t) in
   (* PROPERTY_MATCHING_START - Used by scripts/check_properties.ml *)
   match prop_name with
+  | "all" -> Prop All
   | "width" -> Prop Width
   | "height" -> Prop Height
   | "min-width" -> Prop Min_width
@@ -8382,15 +8419,15 @@ let rec read_will_change t : will_change =
 let read_perspective_origin_keyword t =
   let keyword_pairs =
     [
-      ([ "center" ], Perspective_center);
-      ([ "top left"; "left top" ], Perspective_top_left);
-      ([ "top right"; "right top" ], Perspective_top_right);
-      ([ "bottom left"; "left bottom" ], Perspective_bottom_left);
-      ([ "bottom right"; "right bottom" ], Perspective_bottom_right);
-      ([ "top" ], Perspective_top);
-      ([ "bottom" ], Perspective_bottom);
-      ([ "left" ], Perspective_left);
-      ([ "right" ], Perspective_right);
+      ([ "center" ], (Center : perspective_origin));
+      ([ "top left"; "left top" ], Top_left);
+      ([ "top right"; "right top" ], Top_right);
+      ([ "bottom left"; "left bottom" ], Bottom_left);
+      ([ "bottom right"; "right bottom" ], Bottom_right);
+      ([ "top" ], Top);
+      ([ "bottom" ], Bottom);
+      ([ "left" ], Left);
+      ([ "right" ], Right);
     ]
   in
   List.find_map
@@ -8407,7 +8444,7 @@ let read_perspective_origin_keyword t =
 let rec read_perspective_origin t : perspective_origin =
   Cursor.ws t;
   if Cursor.looking_at t "var(" then
-    Perspective_var (Values.read_var read_perspective_origin t)
+    Var (Values.read_var read_perspective_origin t)
   else
     match read_perspective_origin_keyword t with
     | Some result -> result
@@ -8416,8 +8453,8 @@ let rec read_perspective_origin t : perspective_origin =
         Cursor.ws t;
         (* Second length is optional - y defaults to center *)
         match Cursor.option read_length t with
-        | Some y -> Perspective_xy (x, y)
-        | None -> Perspective_x x)
+        | Some y -> XY (x, y)
+        | None -> X x)
 
 (* Reader for clip property (deprecated) *)
 let read_clip t : clip =
@@ -8548,6 +8585,8 @@ let read_border_radius_inline t : border_radius =
     | _ -> None
   in
   { horizontal; vertical }
+
+let read_border_radius = read_border_radius_inline
 
 let read_clip_path_round t : border_radius option =
   Cursor.ws t;
@@ -8733,6 +8772,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   let pp pp_a = pp_a ctx value in
   match prop with
   | Custom_property _ -> pp pp_custom_property_value
+  | All -> pp pp_css_wide
   | Background_color -> pp pp_color
   | Color -> pp pp_color
   | Border_color -> pp pp_color
