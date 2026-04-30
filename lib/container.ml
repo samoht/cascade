@@ -4,8 +4,8 @@ type t =
   | Min_width_rem of float
   | Min_width_px of int
   | Named of string * t
-  | Style of string * string option
-  | Scroll_state of string * string
+  | Style of { name : string; value : string option; uppercase : bool }
+  | Scroll_state of { name : string; value : string; uppercase : bool }
   | And of t * t
   | Or of t * t
   | Not of t
@@ -21,9 +21,15 @@ let rec to_string = function
   | Min_width_rem rem -> "(min-width:" ^ format_rem rem ^ "rem)"
   | Min_width_px px -> "(min-width:" ^ Int.to_string px ^ "px)"
   | Named (name, cond) -> name ^ " " ^ to_string cond
-  | Style (name, None) -> "style(" ^ name ^ ")"
-  | Style (name, Some value) -> "style(" ^ name ^ ": " ^ value ^ ")"
-  | Scroll_state (name, value) -> "scroll-state(" ^ name ^ ": " ^ value ^ ")"
+  | Style { name; value = None; uppercase } ->
+      let head = if uppercase then "STYLE(" else "style(" in
+      head ^ name ^ ")"
+  | Style { name; value = Some value; uppercase } ->
+      let head = if uppercase then "STYLE(" else "style(" in
+      head ^ name ^ ": " ^ value ^ ")"
+  | Scroll_state { name; value; uppercase } ->
+      let head = if uppercase then "SCROLL-STATE(" else "scroll-state(" in
+      head ^ name ^ ": " ^ value ^ ")"
   | And (a, b) -> "(" ^ to_string a ^ " and " ^ to_string b ^ ")"
   | Or (a, b) -> "(" ^ to_string a ^ " or " ^ to_string b ^ ")"
   | Not c -> "(not " ^ to_string c ^ ")"
@@ -38,11 +44,12 @@ let rec compare t1 t2 =
   | Named (n1, c1), Named (n2, c2) ->
       let name_cmp = String.compare n1 n2 in
       if name_cmp <> 0 then name_cmp else compare c1 c2
-  | Style (n1, v1), Style (n2, v2) -> (
+  | Style { name = n1; value = v1; _ }, Style { name = n2; value = v2; _ } -> (
       match String.compare n1 n2 with
       | 0 -> Option.compare String.compare v1 v2
       | cmp -> cmp)
-  | Scroll_state (n1, v1), Scroll_state (n2, v2) -> (
+  | ( Scroll_state { name = n1; value = v1; _ },
+      Scroll_state { name = n2; value = v2; _ } ) -> (
       match String.compare n1 n2 with 0 -> String.compare v1 v2 | cmp -> cmp)
   | And (a1, b1), And (a2, b2) ->
       let c = compare a1 a2 in
@@ -90,25 +97,31 @@ let split_named s =
         Some (String.sub s 0 stop, String.sub s i (len - i))
     | _ -> None
 
-let style_body body =
+let style_body ~uppercase body =
   let body = String.trim body in
   if body = "" then failwith "empty style() container query";
   if String.contains body ':' then
     match String.split_on_char ':' body with
     | [ name; value ] when String.trim name <> "" && String.trim value <> "" ->
-        Style (String.trim name, Some (String.trim value))
+        Style
+          {
+            name = String.trim name;
+            value = Some (String.trim value);
+            uppercase;
+          }
     | _ -> failwith "invalid style() container query"
   else if String.length body >= 2 && body.[0] = '-' && body.[1] = '-' then
-    Style (body, None)
+    Style { name = body; value = None; uppercase }
   else failwith "invalid style() container query"
 
-let scroll_state_body body =
+let scroll_state_body ~uppercase body =
   match String.split_on_char ':' (String.trim body) with
   | [ name; value ] -> (
       match (String.trim name, String.trim value) with
-      | "stuck", ("top" | "right" | "bottom" | "left")
-      | "snapped", ("block" | "inline" | "both") ->
-          Scroll_state (String.trim name, String.trim value)
+      | (("stuck", ("top" | "right" | "bottom" | "left")) as pair)
+      | (("snapped", ("block" | "inline" | "both")) as pair) ->
+          let name, value = pair in
+          Scroll_state { name; value; uppercase }
       | _ -> failwith "invalid scroll-state() container query")
   | _ -> failwith "invalid scroll-state() container query"
 
@@ -215,10 +228,10 @@ let parse_container_specific raw =
   let raw = String.trim raw in
   if raw = "" then failwith "empty container query";
   match classify_query_surface raw with
-  | Style_func { canonical_name = true; body } -> style_body body
-  | Style_func { canonical_name = false; body } -> style_body body
-  | Scroll_state_func { canonical_name = true; body } -> scroll_state_body body
-  | Scroll_state_func { canonical_name = false; body } -> scroll_state_body body
+  | Style_func { canonical_name; body } ->
+      style_body ~uppercase:(not canonical_name) body
+  | Scroll_state_func { canonical_name; body } ->
+      scroll_state_body ~uppercase:(not canonical_name) body
   | Parenthesized_feature -> failwith "unrecognised container feature query"
   | Other_query -> failwith "not a container-specific query"
 
@@ -275,8 +288,17 @@ let rec parse_unnamed s =
       | None ->
           if String.length stripped >= 4 && String.sub stripped 0 4 = "not "
           then
-            let inner = String.sub stripped 4 (String.length stripped - 4) in
-            Not (parse_unnamed inner)
+            (* CSS Containment 3 §4 and Conditional Rules: [not] takes exactly
+               one [<query-in-parens>], so [not not (x)] is a parse error. The
+               inner expression must be wrapped in parens (a feature query, a
+               style()/scroll-state() function, or a parenthesised compound
+               condition). *)
+            let inner =
+              String.trim (String.sub stripped 4 (String.length stripped - 4))
+            in
+            if String.length inner = 0 || inner.[0] <> '(' then
+              failwith "container query: 'not' requires a parenthesised operand"
+            else Not (parse_unnamed inner)
           else parse_atom s)
 
 and parse_atom s =
@@ -296,5 +318,5 @@ let of_string s =
   | None -> parse_unnamed s
 
 let feature name value = Feature_query (Media.feature name value)
-let style ?value prop = Style (prop, value)
-let scroll_state prop value = Scroll_state (prop, value)
+let style ?value prop = Style { name = prop; value; uppercase = false }
+let scroll_state name value = Scroll_state { name; value; uppercase = false }
