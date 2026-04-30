@@ -389,6 +389,11 @@ type color =
 type duration =
   | Ms of float
   | S of float
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of duration var
   | Calc of duration calc
 

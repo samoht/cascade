@@ -1056,6 +1056,11 @@ let rec pp_duration : duration Pp.t =
  fun ctx -> function
   | Ms f -> pp_duration_unit ctx f "ms"
   | S f -> pp_duration_unit ctx f "s"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_duration ctx v
   | Calc c -> pp_calc pp_duration_in_calc ctx c
 
@@ -1063,6 +1068,11 @@ and pp_duration_in_calc : duration Pp.t =
  fun ctx -> function
   | Ms f -> pp_duration_unit ~shorten_ms:false ctx f "ms"
   | S f -> pp_duration_unit ctx f "s"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_duration ctx v
   | Calc c -> pp_calc pp_duration_in_calc ctx c
 
@@ -2312,46 +2322,62 @@ let read_system_color t : system_color =
   | "-webkit-focus-ring-color" -> Webkit_focus_ring_color
   | _ -> Cursor.err_invalid t ("system color: " ^ keyword)
 
-let rec read_duration_with ~canonicalize_ms t : duration =
-  Cursor.ws t;
-  (* Check for var() *)
-  if Cursor.looking_at t "var(" then Var (read_var read_duration t)
-  else if Cursor.looking_at t "calc(" then
-    Calc (read_calc read_duration_in_calc t)
+let duration_css_wide =
+  [
+    ("inherit", (Inherit : duration));
+    ("initial", Initial);
+    ("unset", Unset);
+    ("revert", Revert);
+    ("revert-layer", Revert_layer);
+  ]
+
+let read_duration_number ~canonicalize_ms t : duration =
+  let n, unit_raw = Cursor.number_with_unit t in
+  if n < 0.0 then Cursor.err_invalid t "negative durations are not allowed"
   else
-    let n, unit_raw = Cursor.number_with_unit t in
-    if n < 0.0 then Cursor.err_invalid t "negative durations are not allowed"
-    else
-      let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
-      match unit with
-      | "" when n = 0.0 -> S 0.0
-      | "s" -> S n
-      | "ms" when canonicalize_ms && ms_prints_shorter_as_seconds n ->
-          S (n /. 1000.)
-      | "ms" -> Ms n
-      | _ -> Cursor.err_invalid t ("duration unit: " ^ unit)
+    let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
+    match unit with
+    | "" when n = 0.0 -> S 0.0
+    | "s" -> S n
+    | "ms" when canonicalize_ms && ms_prints_shorter_as_seconds n ->
+        S (n /. 1000.)
+    | "ms" -> Ms n
+    | _ -> Cursor.err_invalid t ("duration unit: " ^ unit)
+
+let read_time_number t : duration =
+  let n, unit_raw = Cursor.number_with_unit t in
+  let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
+  match unit with
+  | "" when n = 0.0 -> S 0.0
+  | "s" -> S n
+  | "ms" when ms_prints_shorter_as_seconds n -> S (n /. 1000.)
+  | "ms" -> Ms n
+  | _ -> Cursor.err_invalid t ("time unit: " ^ unit)
+
+let rec read_duration_with ?(css_wide = true) ~canonicalize_ms t : duration =
+  Cursor.enum_or_calls
+    ~default:(read_duration_number ~canonicalize_ms)
+    "duration"
+    (if css_wide then duration_css_wide else [])
+    ~calls:
+      [
+        ("var", fun t -> Var (read_var read_duration t));
+        ("calc", fun t -> Calc (read_calc read_duration_in_calc t));
+      ]
+    t
 
 (** Read a duration value *)
 and read_duration t : duration = read_duration_with ~canonicalize_ms:true t
 
 and read_duration_in_calc t : duration =
-  read_duration_with ~canonicalize_ms:false t
+  read_duration_with ~css_wide:false ~canonicalize_ms:false t
 
 (** Read a time value that can be negative (for animation-delay,
     transition-delay) *)
 let rec read_time t : duration =
-  Cursor.ws t;
-  (* Check for var() *)
-  if Cursor.looking_at t "var(" then Var (read_var read_time t)
-  else
-    let n, unit_raw = Cursor.number_with_unit t in
-    let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
-    match unit with
-    | "" when n = 0.0 -> S 0.0
-    | "s" -> S n
-    | "ms" when ms_prints_shorter_as_seconds n -> S (n /. 1000.)
-    | "ms" -> Ms n
-    | _ -> Cursor.err_invalid t ("time unit: " ^ unit)
+  Cursor.enum_or_var ~default:read_time_number "time" duration_css_wide
+    ~var:(fun t -> Var (read_var read_time t))
+    t
 
 let number_binary_functions =
   [

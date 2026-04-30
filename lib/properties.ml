@@ -1211,9 +1211,19 @@ let rec read_transform t : transform =
     Var (Values.read_var read_transform t)
   in
   Cursor.enum_or_calls "transform"
-    [ ("none", (None : transform)) ]
+    [
+      ("none", (None : transform));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
     ~calls:(("var", read_var_transform) :: Transform.parsers)
     t
+
+let is_transform_none (value : transform) =
+  match value with None -> true | _ -> false
 
 let read_transforms t : transform list =
   let transforms, error_opt = Cursor.many read_transform t in
@@ -1221,6 +1231,8 @@ let read_transforms t : transform list =
     match error_opt with
     | Some msg -> Cursor.err_invalid t ("transform: " ^ msg)
     | None -> Cursor.err_invalid t "transform value"
+  else if List.length transforms > 1 && List.exists is_transform_none transforms
+  then Cursor.err_invalid t "transform none cannot be combined"
   else transforms
 
 let pp_opt_space pp ctx = function
@@ -1728,6 +1740,11 @@ let rec pp_border_style : border_style Pp.t =
   | Ridge -> Pp.string ctx "ridge"
   | Inset -> Pp.string ctx "inset"
   | Outset -> Pp.string ctx "outset"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_border_style ctx v
 
 let rec pp_border_radius : border_radius Pp.t =
@@ -1771,6 +1788,10 @@ let rec pp_border_width : border_width Pp.t =
   | Calc cv -> pp_calc pp_border_width ctx cv
   | Var v -> pp_var pp_border_width ctx v
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let pp_border_shorthand : border_shorthand Pp.t =
  fun ctx { width; style; color } ->
@@ -2234,6 +2255,10 @@ let rec pp_white_space : white_space Pp.t =
   | Break_spaces -> Pp.string ctx "break-spaces"
   | Preserve_nowrap -> Pp.string ctx "preserve nowrap"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_word_break : word_break Pp.t =
  fun ctx -> function
@@ -2244,6 +2269,10 @@ let rec pp_word_break : word_break Pp.t =
   | Break_word -> Pp.string ctx "break-word"
   | Auto_phrase -> Pp.string ctx "auto-phrase"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_overflow_wrap : overflow_wrap Pp.t =
  fun ctx -> function
@@ -2321,6 +2350,11 @@ let rec pp_grid_auto_flow : grid_auto_flow Pp.t =
   | Dense -> Pp.string ctx "dense"
   | Row_dense -> Pp.string ctx "row dense"
   | Column_dense -> Pp.string ctx "column dense"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_grid_line : grid_line Pp.t =
  fun ctx -> function
@@ -2979,6 +3013,10 @@ let rec pp_transform : transform Pp.t =
   | Matrix_3d m -> pp_matrix_3d ctx m
   | Perspective p -> Pp.call "perspective" pp_length ctx p
   | Inherit -> pp_keyword "inherit" ctx
+  | Initial -> pp_keyword "initial" ctx
+  | Unset -> pp_keyword "unset" ctx
+  | Revert -> pp_keyword "revert" ctx
+  | Revert_layer -> pp_keyword "revert-layer" ctx
   | Var v -> pp_var pp_transform ctx v
   | List transforms -> pp_transforms ctx transforms
 
@@ -3207,23 +3245,30 @@ let pp_background_shorthand : background_shorthand Pp.t =
   (* If nothing was set, output 'none' *)
   if !first then Pp.string ctx "none"
 
-let pp_gap : gap Pp.t =
- fun ctx gap ->
-  match (gap.row_gap, gap.column_gap) with
-  | Some row, Some col when row = col ->
-      (* Single value when both gaps are equal *)
-      pp_length ctx row
-  | Some row, Some col ->
-      (* Two values when different *)
-      pp_length ctx row;
-      Pp.space ctx ();
-      pp_length ctx col
-  | Some row, None | None, Some row ->
-      (* Single value *)
-      pp_length ctx row
-  | None, None ->
-      (* Fallback - shouldn't happen with proper parsing *)
-      Pp.string ctx "0"
+let rec pp_gap : gap Pp.t =
+ fun ctx -> function
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_gap ctx v
+  | Lengths { row_gap; column_gap } -> (
+      match (row_gap, column_gap) with
+      | Some row, Some col when row = col ->
+          (* Single value when both gaps are equal *)
+          pp_length ctx row
+      | Some row, Some col ->
+          (* Two values when different *)
+          pp_length ctx row;
+          Pp.space ctx ();
+          pp_length ctx col
+      | Some row, None | None, Some row ->
+          (* Single value *)
+          pp_length ctx row
+      | None, None ->
+          (* Fallback - shouldn't happen with proper parsing *)
+          Pp.string ctx "0")
 
 let rec pp_transform_origin : transform_origin Pp.t =
  fun ctx -> function
@@ -3483,6 +3528,11 @@ let rec pp_content : content Pp.t =
       Pp.quoted_string ctx separator;
       Pp.char ctx ')'
   | Content_list items -> Pp.list ~sep:Pp.space pp_content ctx items
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_content ctx v
 
 let rec pp_content_visibility : content_visibility Pp.t =
@@ -3978,6 +4028,10 @@ let rec pp_flex : flex Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_flex ctx v
   | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Auto -> Pp.string ctx "auto"
   | None -> Pp.string ctx "none"
   | Grow f -> Pp.float ctx f
@@ -4079,6 +4133,10 @@ let rec pp_place_content : place_content Pp.t =
       Pp.space ctx ();
       pp_justify_content ctx j
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_place_items : place_items Pp.t =
  fun ctx -> function
@@ -4098,6 +4156,10 @@ let rec pp_place_items : place_items Pp.t =
       Pp.space ctx ();
       pp_justify_items ctx j
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_moz_osx_font_smoothing : moz_osx_font_smoothing Pp.t =
  fun ctx -> function
@@ -4170,6 +4232,10 @@ let rec pp_transition_behavior : transition_behavior Pp.t =
   | Normal -> Pp.string ctx "normal"
   | Allow_discrete -> Pp.string ctx "allow-discrete"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let pp_transition_shorthand : transition_shorthand Pp.t =
  fun ctx { property; duration; timing_function; delay; behavior } ->
@@ -4200,6 +4266,9 @@ let rec pp_transition : transition Pp.t =
  fun ctx -> function
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | None -> Pp.string ctx "none"
   | Var v -> pp_var pp_transition ctx v
   | Shorthand s -> pp_transition_shorthand ctx s
@@ -4230,6 +4299,11 @@ let rec pp_scale : scale Pp.t =
       Pp.space ctx ();
       pp_number_percentage ctx z
   | None -> Pp.string ctx "none"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_scale ctx v
 
 let rec pp_translate_value : translate_value Pp.t =
@@ -4258,25 +4332,38 @@ let rec pp_translate_value : translate_value Pp.t =
       Pp.space ctx ();
       pp_length ctx z
   | None -> Pp.string ctx "none"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_translate_value ctx v
 
 let read_translate_value t : translate_value =
+  (* Per CSS Transforms 2 §3.5: [<length-percentage> <length-percentage>?
+     <length>?]. Each component can be a [var()], so we read every slot through
+     [read_length] (which already understands [var()]/[calc()]). *)
   let read_lengths t : translate_value =
     let x = read_length t in
     Cursor.ws t;
-    (* Try to read second length *)
     match Cursor.option read_length t with
     | Some y -> (
         Cursor.ws t;
-        (* Try to read third length *)
         match Cursor.option read_length t with
         | Some z -> XYZ (x, y, z)
         | None -> XY (x, y))
     | None -> X x
   in
   Cursor.enum_or_calls "translate"
-    [ ("none", (None : translate_value)) ]
-    ~calls:[] ~default:read_lengths t
+    [
+      ("none", (None : translate_value));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~default:read_lengths t
 
 let rec pp_rotate_value : rotate_value Pp.t =
  fun ctx -> function
@@ -4302,6 +4389,11 @@ let rec pp_rotate_value : rotate_value Pp.t =
       Pp.space ctx ();
       pp_angle ctx a
   | None -> Pp.string ctx "none"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_rotate_value ctx v
 
 let rec read_rotate_value t : rotate_value =
@@ -4335,7 +4427,14 @@ let rec read_rotate_value t : rotate_value =
   (* Read a simple angle (z-axis rotation) *)
   let read_simple_angle t : rotate_value = Angle (read_angle t) in
   Cursor.enum_or_calls "rotate"
-    [ ("none", (None : rotate_value)) ]
+    [
+      ("none", (None : rotate_value));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
     ~calls:
       [
         ("var", read_rotate_var);
@@ -4448,6 +4547,10 @@ let rec pp_writing_mode : writing_mode Pp.t =
   | Sideways_lr -> Pp.string ctx "sideways-lr"
   | Sideways_rl -> Pp.string ctx "sideways-rl"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_text_decoration_skip_ink : text_decoration_skip_ink Pp.t =
  fun ctx -> function
@@ -4554,8 +4657,7 @@ let rec pp_webkit_line_clamp : webkit_line_clamp Pp.t =
   | Var v -> pp_var pp_webkit_line_clamp ctx v
 
 let rec read_border_style t : border_style =
-  let read_var t : border_style = Var (read_var read_border_style t) in
-  Cursor.enum_or_calls "border-style"
+  Cursor.enum_or_var "border-style"
     [
       ("none", (None : border_style));
       ("solid", Solid);
@@ -4567,8 +4669,13 @@ let rec read_border_style t : border_style =
       ("inset", Inset);
       ("outset", Outset);
       ("hidden", Hidden);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
-    ~calls:[ ("var", read_var) ]
+    ~var:(fun t -> Var (read_var read_border_style t))
     t
 
 (* Helper: ensure border-width values are non-negative per CSS spec *)
@@ -4597,7 +4704,7 @@ let rec read_border_width t : border_width =
   let read_var t : border_width = Var (read_var read_border_width t) in
   let read_calc t : border_width = Calc (read_calc read_border_width t) in
   let read_length_as_border_width t =
-    let length = read_length t in
+    let length = read_length ~with_keywords:false t in
     length_to_border_width t length
   in
 
@@ -4606,10 +4713,11 @@ let rec read_border_width t : border_width =
       ("thin", (Thin : border_width));
       ("medium", Medium);
       ("thick", Thick);
-      ("max-content", Max_content);
-      ("min-content", Min_content);
-      ("fit-content", Fit_content);
-      ("from-font", From_font);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
     ~calls:[ ("var", read_var); ("calc", read_calc) ]
     ~default:read_length_as_border_width t
@@ -4846,21 +4954,32 @@ module Flex = struct
         | _, Some b -> Full (grow, Option.value shrink ~default:1.0, b))
 end
 
-let read_flex t : flex =
-  Cursor.enum "flex"
+let rec read_flex t : flex =
+  Cursor.enum_or_var "flex"
     [
       ("initial", (Initial : flex));
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
       ("auto", Auto);
       ("none", (None : flex));
       ("content", Basis Content);
     ]
+    ~var:(fun t -> Var (read_var read_flex t))
     ~default:
       (Cursor.one_of [ Flex.read_grow_shrink_basis; Flex.read_basis_only ])
     t
 
-let read_place_content t : place_content =
+let rec read_place_content t : place_content =
+  let read_place_align_content t =
+    match read_align_content t with
+    | Left | Right | Safe_left | Safe_right | Unsafe_left | Unsafe_right ->
+        Cursor.err_invalid t "place-content align value cannot be left or right"
+    | value -> value
+  in
   let read_pair t =
-    let a, j = Cursor.pair read_align_content read_justify_content t in
+    let a, j = Cursor.pair read_place_align_content read_justify_content t in
     (Align_justify (a, j) : place_content)
   in
   let read_safe t =
@@ -4902,73 +5021,105 @@ let read_place_content t : place_content =
       ]
       t
   in
-  Cursor.one_of [ read_pair; read_safe; read_unsafe; read_single ] t
+  Cursor.enum_or_var "place-content"
+    [
+      ("inherit", (Inherit : place_content));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (read_var read_place_content t))
+    ~default:(Cursor.one_of [ read_pair; read_safe; read_unsafe; read_single ])
+    t
 
-let read_place_items t : place_items =
+let rec read_place_items t : place_items =
   Cursor.ws t;
-  (* Check for "safe" prefix *)
-  if Cursor.looking_at t "safe" then (
-    Cursor.expect_string "safe" t;
-    Cursor.ws t;
-    let kw = Cursor.ident t in
-    match kw with
-    | "start" -> Start_safe
-    | "end" -> End_safe
-    | "center" -> Center_safe
-    | _ -> Cursor.err_invalid t ("place-items safe " ^ kw))
-  else if Cursor.looking_at t "stretch" then (
-    Cursor.expect_string "stretch" t;
-    Cursor.ws t;
-    if
-      Cursor.option (fun t -> Cursor.expect_string "stretch" t) t
-      |> Option.is_some
-    then Stretch_stretch
-    else Stretch)
-  else
-    let first =
-      Cursor.enum "place-items"
-        [
-          ("normal", (Normal : place_items));
-          ("start", Start);
-          ("end", End);
-          ("center", Center);
-          ("baseline", Baseline);
-          ("inherit", Inherit);
-        ]
-        t
-    in
-    Cursor.ws t;
-    match Cursor.option read_justify_items t with
-    | None -> first
-    | Some justify ->
-        let align : align_items =
-          match first with
-          | Normal -> Normal
-          | Start -> Start
-          | End -> End
-          | Center -> Center
-          | Baseline -> Baseline
-          | Stretch -> Stretch
-          | _ -> Cursor.err_invalid t "place-items two-value"
+  Cursor.enum_or_var "place-items"
+    [
+      ("inherit", (Inherit : place_items));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (read_var read_place_items t))
+    ~default:(fun t ->
+      (* Check for "safe" prefix *)
+      if Cursor.looking_at t "safe" then (
+        Cursor.expect_string "safe" t;
+        Cursor.ws t;
+        let kw = Cursor.ident t in
+        match kw with
+        | "start" -> Start_safe
+        | "end" -> End_safe
+        | "center" -> Center_safe
+        | _ -> Cursor.err_invalid t ("place-items safe " ^ kw))
+      else if Cursor.looking_at t "stretch" then (
+        Cursor.expect_string "stretch" t;
+        Cursor.ws t;
+        if
+          Cursor.option (fun t -> Cursor.expect_string "stretch" t) t
+          |> Option.is_some
+        then Stretch_stretch
+        else Stretch)
+      else
+        let first =
+          Cursor.enum "place-items"
+            [
+              ("normal", (Normal : place_items));
+              ("start", Start);
+              ("end", End);
+              ("center", Center);
+              ("baseline", Baseline);
+              ("inherit", Inherit);
+            ]
+            t
         in
-        Align_justify (align, justify)
+        Cursor.ws t;
+        match Cursor.option read_justify_items t with
+        | None -> first
+        | Some justify ->
+            let align : align_items =
+              match first with
+              | Normal -> Normal
+              | Start -> Start
+              | End -> End
+              | Center -> Center
+              | Baseline -> Baseline
+              | Stretch -> Stretch
+              | _ -> Cursor.err_invalid t "place-items two-value"
+            in
+            Align_justify (align, justify))
+    t
 
-let read_grid_auto_flow t : grid_auto_flow =
-  let v = Cursor.ident t in
-  Cursor.ws t;
-  let second = Cursor.option Cursor.ident t in
-  match (v, second) with
-  | "row", Some "dense" -> Row_dense
-  | "row", None -> Row
-  | "column", Some "dense" -> Column_dense
-  | "column", None -> Column
-  | "dense", Some "row" -> Row_dense
-  | "dense", Some "column" -> Column_dense
-  | "dense", None -> Dense
-  | _, Some _ ->
-      err_invalid_value t "grid-auto-flow"
-        (v ^ " " ^ Option.value second ~default:"")
-  | _ -> err_invalid_value t "grid-auto-flow" v
+let rec read_grid_auto_flow t : grid_auto_flow =
+  Cursor.enum_or_var "grid-auto-flow"
+    [
+      ("inherit", (Inherit : grid_auto_flow));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (read_var read_grid_auto_flow t))
+    ~default:(fun t ->
+      let v = Cursor.ident t in
+      Cursor.ws t;
+      let second = Cursor.option Cursor.ident t in
+      match (v, second) with
+      | "row", Some "dense" -> Row_dense
+      | "row", None -> Row
+      | "column", Some "dense" -> Column_dense
+      | "column", None -> Column
+      | "dense", Some "row" -> Row_dense
+      | "dense", Some "column" -> Column_dense
+      | "dense", None -> Dense
+      | _, Some _ ->
+          err_invalid_value t "grid-auto-flow"
+            (v ^ " " ^ Option.value second ~default:"")
+      | _ -> err_invalid_value t "grid-auto-flow" v)
+    t
 
 (* CSS Grid template - flattened type with direct constructors *)
 
@@ -5241,7 +5392,7 @@ let read_text_wrap t : text_wrap =
     ]
     t
 
-let read_white_space t : white_space =
+let rec read_white_space t : white_space =
   Cursor.ws t;
   match Cursor.peek_ident t with
   | Some "preserve" ->
@@ -5250,7 +5401,7 @@ let read_white_space t : white_space =
       Cursor.expect_string "nowrap" t;
       Preserve_nowrap
   | _ ->
-      Cursor.enum "white-space"
+      Cursor.enum_or_var "white-space"
         [
           ("normal", (Normal : white_space));
           ("nowrap", Nowrap);
@@ -5259,11 +5410,16 @@ let read_white_space t : white_space =
           ("pre-line", Pre_line);
           ("break-spaces", Break_spaces);
           ("inherit", Inherit);
+          ("initial", Initial);
+          ("unset", Unset);
+          ("revert", Revert);
+          ("revert-layer", Revert_layer);
         ]
+        ~var:(fun t -> Var (read_var read_white_space t))
         t
 
-let read_word_break t : word_break =
-  Cursor.enum "word-break"
+let rec read_word_break t : word_break =
+  Cursor.enum_or_var "word-break"
     [
       ("normal", (Normal : word_break));
       ("break-all", Break_all);
@@ -5271,7 +5427,12 @@ let read_word_break t : word_break =
       ("break-word", Break_word);
       ("auto-phrase", Auto_phrase);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (read_var read_word_break t))
     t
 
 let read_overflow_wrap t : overflow_wrap =
@@ -5527,6 +5688,11 @@ let rec read_content t : content =
         ("normal", Normal);
         ("open-quote", Open_quote);
         ("close-quote", Close_quote);
+        ("inherit", Inherit);
+        ("initial", Initial);
+        ("unset", Unset);
+        ("revert", Revert);
+        ("revert-layer", Revert_layer);
       ]
       ~calls:
         [
@@ -6012,8 +6178,8 @@ let read_unicode_bidi t : unicode_bidi =
     ]
     t
 
-let read_writing_mode t : writing_mode =
-  Cursor.enum "writing-mode"
+let rec read_writing_mode t : writing_mode =
+  Cursor.enum_or_var "writing-mode"
     [
       ("horizontal-tb", (Horizontal_tb : writing_mode));
       ("vertical-rl", Vertical_rl);
@@ -6021,7 +6187,12 @@ let read_writing_mode t : writing_mode =
       ("sideways-lr", Sideways_lr);
       ("sideways-rl", Sideways_rl);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (read_var read_writing_mode t))
     t
 
 let read_webkit_appearance t : webkit_appearance =
@@ -6649,10 +6820,12 @@ let read_backface_visibility t : backface_visibility =
     t
 
 let rec read_scale t : scale =
-  let _read_scale_var t : scale = Var (read_var read_scale t) in
+  (* Per CSS Transforms 2 §3.6: [<number-percentage>{1,3}]. Each component can
+     be a [var()], so we delegate to [read_number_percentage] for every slot
+     rather than peeling off the first [var()] specially — that lets [scale:
+     var(--x) var(--y)] round-trip. *)
   let read_numbers t : scale =
     let x = Values.read_number_percentage t in
-    (* Don't require whitespace between values to handle var()var() *)
     match Cursor.option Values.read_number_percentage t with
     | None -> X x
     | Some y -> (
@@ -6660,11 +6833,17 @@ let rec read_scale t : scale =
         | None -> XY (x, y)
         | Some z -> XYZ (x, y, z))
   in
-  Cursor.enum_or_calls "scale"
-    [ ("none", (None : scale)) ]
-    (* Remove var from calls to let read_numbers handle it via
-       number_percentage *)
-    ~calls:[] ~default:read_numbers t
+  Cursor.enum_or_var "scale"
+    [
+      ("none", (None : scale));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (read_var read_scale t))
+    ~default:read_numbers t
 
 let read_steps_direction t : steps_direction =
   Cursor.enum "steps direction"
@@ -6758,13 +6937,18 @@ let read_transition_property t : transition_property =
   in
   loop []
 
-let read_transition_behavior t : transition_behavior =
-  Cursor.enum "transition-behavior"
+let rec read_transition_behavior t : transition_behavior =
+  Cursor.enum_or_var "transition-behavior"
     [
       ("normal", (Normal : transition_behavior));
       ("allow-discrete", (Allow_discrete : transition_behavior));
       ("inherit", (Inherit : transition_behavior));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (read_var read_transition_behavior t))
     t
 
 let read_transition_shorthand t : transition_shorthand =
@@ -6818,10 +7002,16 @@ let read_transition_shorthand t : transition_shorthand =
   { property; duration; timing_function; delay; behavior }
 
 let rec read_transition t : transition =
-  let read_var_call t : transition = Var (read_var read_transition t) in
-  Cursor.enum_or_calls "transition"
-    [ ("inherit", Inherit); ("initial", Initial); ("none", None) ]
-    ~calls:[ ("var", read_var_call) ]
+  Cursor.enum_or_var "transition"
+    [
+      ("inherit", (Inherit : transition));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+      ("none", None);
+    ]
+    ~var:(fun t -> Var (read_var read_transition t))
     ~default:(fun t : transition -> Shorthand (read_transition_shorthand t))
     t
 
@@ -6930,29 +7120,49 @@ module Animation = struct
       ]
       t
 
-  let is_zero = function S 0. | Ms 0. -> true | _ -> false
-
   let read_shorthand t =
     let duration_count = ref 0 in
+    let name_seen = ref false in
+    let timing_seen = ref false in
+    let iteration_seen = ref false in
+    let direction_seen = ref false in
+    let fill_seen = ref false in
+    let play_seen = ref false in
     let apply (acc : animation_shorthand) = function
       | Name name ->
-          (* Only set name if we don't already have one *)
-          if acc.name = None then { acc with name } else acc
+          if !name_seen then Cursor.err t "duplicate animation-name";
+          name_seen := true;
+          { acc with name }
       | Duration d ->
           (* CSS spec: First time value is duration, second is delay *)
           incr duration_count;
           if !duration_count > 2 then
             Cursor.err t
               "animation shorthand cannot have more than two time values"
-          else if
-            match acc.duration with Some d when is_zero d -> true | _ -> false
-          then { acc with duration = Some d }
+          else if !duration_count = 1 then { acc with duration = Some d }
           else { acc with delay = Some d }
-      | Timing_function tf -> { acc with timing_function = Some tf }
-      | Iteration_count ic -> { acc with iteration_count = Some ic }
-      | Direction dir -> { acc with direction = Some dir }
-      | Fill_mode fm -> { acc with fill_mode = Some fm }
-      | Play_state ps -> { acc with play_state = Some ps }
+      | Timing_function tf ->
+          if !timing_seen then
+            Cursor.err t "duplicate animation-timing-function";
+          timing_seen := true;
+          { acc with timing_function = Some tf }
+      | Iteration_count ic ->
+          if !iteration_seen then
+            Cursor.err t "duplicate animation-iteration-count";
+          iteration_seen := true;
+          { acc with iteration_count = Some ic }
+      | Direction dir ->
+          if !direction_seen then Cursor.err t "duplicate animation-direction";
+          direction_seen := true;
+          { acc with direction = Some dir }
+      | Fill_mode fm ->
+          if !fill_seen then Cursor.err t "duplicate animation-fill-mode";
+          fill_seen := true;
+          { acc with fill_mode = Some fm }
+      | Play_state ps ->
+          if !play_seen then Cursor.err t "duplicate animation-play-state";
+          play_seen := true;
+          { acc with play_state = Some ps }
     in
 
     let init =
@@ -8627,7 +8837,7 @@ let read_backgrounds t : background list =
   Cursor.list ~sep:Cursor.comma ~at_least:1 read_background t
 
 (* Gap shorthand parser *)
-let read_gap t : gap =
+let rec read_gap t : gap =
   let read_non_negative_length t =
     let len = read_length t in
     match len with
@@ -8652,12 +8862,26 @@ let read_gap t : gap =
         Cursor.err t "gap values must be explicit lengths, not keywords"
     | _ -> len
   in
-  let first_length = read_non_negative_length t in
-  Cursor.ws t;
-  let second_length = Cursor.option read_non_negative_length t in
-  match second_length with
-  | Some col_gap -> { row_gap = Some first_length; column_gap = Some col_gap }
-  | None -> { row_gap = Some first_length; column_gap = Some first_length }
+  Cursor.enum_or_var "gap"
+    [
+      ("inherit", (Inherit : gap));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (read_var read_gap t))
+    ~default:(fun t ->
+      let first_length = read_non_negative_length t in
+      Cursor.ws t;
+      let second_length = Cursor.option read_non_negative_length t in
+      match second_length with
+      | Some col_gap ->
+          Lengths { row_gap = Some first_length; column_gap = Some col_gap }
+      | None ->
+          Lengths
+            { row_gap = Some first_length; column_gap = Some first_length })
+    t
 
 (* Reader for will-change property *)
 let rec read_will_change t : will_change =

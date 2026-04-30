@@ -320,7 +320,7 @@ let vars_of_rotate_value (value : Properties.rotate_value) : any_var list =
   | Angle a | X a | Y a | Z a -> vars_of_angle a
   | Axis (_, _, _, a) -> vars_of_angle a
   | Var v -> [ V v ]
-  | None -> []
+  | None | Inherit | Initial | Unset | Revert | Revert_layer -> []
 
 let vars_of_channel (value : Values.channel) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
@@ -451,7 +451,7 @@ let vars_of_translate_value (value : Properties.translate_value) : any_var list
   | XY (len1, len2) -> vars_of_length len1 @ vars_of_length len2
   | XYZ (len1, len2, len3) ->
       vars_of_length len1 @ vars_of_length len2 @ vars_of_length len3
-  | None -> []
+  | None | Inherit | Initial | Unset | Revert | Revert_layer -> []
 
 let vars_of_quotes (value : Properties.quotes) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
@@ -939,6 +939,12 @@ let vars_of_timeline_shorthand (value : Properties.timeline_shorthand) =
 let vars_of_direction (value : Properties.direction) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_css_wide (value : Properties.css_wide) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_scroll_behavior (value : Properties.scroll_behavior) =
+  match value with Var v -> [ V v ] | _ -> []
+
 (** {1 Advanced variable extraction} *)
 
 (* Extract variables from CSS property values using type-specific extraction
@@ -993,8 +999,10 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Outline_width, value -> vars_of_length value
   | Column_gap, value -> vars_of_length value
   | Row_gap, value -> vars_of_length value
-  | Gap, { row_gap; column_gap } ->
+  | Gap, Lengths { row_gap; column_gap } ->
       vars_of_optional_length row_gap @ vars_of_optional_length column_gap
+  | Gap, Var v -> [ V v ]
+  | Gap, (Inherit | Initial | Unset | Revert | Revert_layer) -> []
   (* Color properties *)
   | Background_color, value -> vars_of_color value
   | Color, value -> vars_of_color value
@@ -1173,6 +1181,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Color_scheme, value -> vars_of_color_scheme value
   | Container_type, value -> vars_of_container_type value
   | Container, value -> vars_of_container_shorthand value
+  | All, value -> vars_of_css_wide value
   | Direction, value -> vars_of_direction value
   | Display, value -> vars_of_display value
   | Fill, value -> vars_of_svg_paint value
@@ -1215,6 +1224,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Resize, value -> vars_of_resize value
   | Scroll_snap_align, value -> vars_of_scroll_snap_align value
   | Scroll_snap_stop, value -> vars_of_scroll_snap_stop value
+  | Scroll_behavior, value -> vars_of_scroll_behavior value
   | Scroll_timeline, value -> vars_of_timeline_shorthand value
   | Stroke, value -> vars_of_svg_paint value
   | Source, _ -> []
