@@ -69,6 +69,8 @@ type display =
   | Inherit
   | Initial
   | Unset
+  | Revert
+  | Revert_layer
   | Multi of display * display
       (** Two-value [<display-outside> <display-inside>] syntax per CSS Display
           3 §2.1, e.g. [inline flow-root] or [list-item flow-root]. *)
@@ -80,6 +82,11 @@ type position =
   | Absolute
   | Fixed
   | Sticky
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of position var
 
 type visibility = Visible | Hidden | Collapse | Var of visibility var
@@ -1851,7 +1858,11 @@ type float_side =
   | Right
   | Inline_start
   | Inline_end
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of float_side var
 
 type text_decoration_skip_ink =

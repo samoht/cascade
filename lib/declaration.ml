@@ -96,23 +96,13 @@ let value_has_css_wide_mix value =
   let trimmed = String.trim value in
   (not (is_css_wide_keyword trimmed))
   &&
-  let is_sep = function
-    | ' ' | '\t' | '\n' | '\r' | ',' | '/' | '(' | ')' -> true
-    | _ -> false
-  in
-  let len = String.length trimmed in
-  let rec token acc i =
-    if i >= len then List.rev acc
-    else if is_sep trimmed.[i] then token acc (i + 1)
-    else
-      let j = ref i in
-      while !j < len && not (is_sep trimmed.[!j]) do
-        incr j
-      done;
-      token (String.sub trimmed i (!j - i) :: acc) !j
-  in
-  let tokens = List.map String.lowercase_ascii (token [] 0) in
-  List.exists (fun keyword -> List.mem keyword tokens) css_wide_keywords
+  let components = Cursor.remaining (Cursor.of_string trimmed) in
+  List.exists
+    (function
+      | Component.Preserved { kind = Token.Ident ident; _ } ->
+          is_css_wide_keyword ident
+      | _ -> false)
+    components
 
 (** Check for and consume [!important] (case-insensitive per CSS Syntax). *)
 let read_importance t =
