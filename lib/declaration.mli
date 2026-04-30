@@ -790,7 +790,7 @@ val background_blend_mode : blend_mode -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background-blend-mode}
      background-blend-mode} property. *)
 
-val scroll_margin : length -> declaration
+val scroll_margin : length list -> declaration
 (** [scroll_margin v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin}
      scroll-margin} shorthand. *)
@@ -846,7 +846,7 @@ val scroll_margin_block_end : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-block-end}
      scroll-margin-block-end} property. *)
 
-val scroll_padding : length -> declaration
+val scroll_padding : length list -> declaration
 (** [scroll_padding v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding}
      scroll-padding} shorthand. *)

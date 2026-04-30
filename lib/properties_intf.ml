@@ -602,6 +602,10 @@ type text_align =
   | End
   | Match_parent
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of text_align var
 
 type text_decoration_line =
@@ -609,6 +613,11 @@ type text_decoration_line =
   | Underline
   | Overline
   | Line_through
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of text_decoration_line var
 
 type text_decoration_style =
@@ -618,6 +627,10 @@ type text_decoration_style =
   | Dashed
   | Wavy
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of text_decoration_style var
 
 type text_decoration_shorthand = {
@@ -1880,7 +1893,11 @@ type columns_value =
   | Auto
   | Count of int
   | Width of length
-  | Both of int * length
+  | Both of length * int
+      (** [<column-width> <column-count>] per CSS Multicol 2 §6.1. The two
+          components can appear in either order in the source; we canonicalise
+          to [<width>, <count>] internally so the printer always emits the width
+          first. *)
   | Inherit
   | Var of columns_value var
 
@@ -2610,7 +2627,7 @@ type 'a property =
   | Animation_fill_mode : animation_fill_mode property
   | Animation_play_state : animation_play_state property
   | Background_blend_mode : blend_mode list property
-  | Scroll_margin : length property
+  | Scroll_margin : length list property
   | Scroll_margin_top : length property
   | Scroll_margin_right : length property
   | Scroll_margin_bottom : length property
@@ -2621,7 +2638,7 @@ type 'a property =
   | Scroll_margin_block : length list property
   | Scroll_margin_block_start : length property
   | Scroll_margin_block_end : length property
-  | Scroll_padding : length property
+  | Scroll_padding : length list property
   | Scroll_padding_top : length property
   | Scroll_padding_right : length property
   | Scroll_padding_bottom : length property
