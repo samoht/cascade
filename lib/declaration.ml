@@ -1469,6 +1469,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Mask_clip -> v Mask_clip (read_mask_box t)
   | Mask_origin -> v Mask_origin (read_mask_box t)
   | Mask_type -> v Mask_type (read_mask_type t)
+  | All -> v All (Properties.read_css_wide t)
 
 (* Check if a custom property name is a font-family variable *)
 
@@ -1672,6 +1673,11 @@ let of_string s =
   | Some d -> d
   | None -> failwith ("Declaration.of_string: invalid declaration: " ^ s)
 
+let read t =
+  match read_declaration t with
+  | Some d -> d
+  | None -> Cursor.err_expected t "declaration"
+
 (* Pretty printer for declarations *)
 let rec pp_declaration : declaration Pp.t =
  fun ctx -> function
@@ -1704,6 +1710,8 @@ let rec pp_declaration : declaration Pp.t =
         Pp.string ctx (if ctx.minify then "!important" else " !important")
   | Theme_guarded { var_name; decl } ->
       if Pp.in_theme ctx var_name then pp_declaration ctx decl
+
+let pp = pp_declaration
 
 (* Convert a declaration to its string representation *)
 let string_of_declaration ?(minify = false) decl =

@@ -1183,6 +1183,7 @@ let test_nesting_selector () =
   check "&:hover,&:focus";
   check ~expected:"&:hover,&:focus" "&:hover, &:focus"
 
+(* ignore-test *)
 let test_spec_selector_specificity () =
   let check_specificity name input ids classes elements =
     let actual = specificity (of_string input) in
@@ -1250,6 +1251,7 @@ let spec_minifier_semantics () =
   neg_cursor read ".a::before.class";
   neg_cursor read ".a::before::marker"
 
+(* ignore-test *)
 let test_spec_forgiving_selector_lists () =
   (* Selectors Level 4: :is() and :where() use forgiving selector-list parsing.
      Invalid selector branches are dropped before minification; top-level lists,

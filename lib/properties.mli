@@ -22,8 +22,33 @@ val read_shadow : Cursor.t -> shadow
 val read_timeline_shorthand : Cursor.t -> timeline_shorthand
 (** [read_timeline_shorthand t] parses [scroll-timeline] and [view-timeline]. *)
 
+val pp_timeline_shorthand : timeline_shorthand Pp.t
+(** [pp_timeline_shorthand] pretty-prints [scroll-timeline] and [view-timeline]
+    shorthand values. *)
+
+val pp_timeline_axis : timeline_axis Pp.t
+(** [pp_timeline_axis] pretty-prints a timeline axis. *)
+
+val read_timeline_axis : Cursor.t -> timeline_axis
+(** [read_timeline_axis t] parses a timeline axis. *)
+
 val read_page_size : Cursor.t -> page_size
 (** [read_page_size t] parses the paged-media [size] descriptor/property. *)
+
+val pp_page_size : page_size Pp.t
+(** [pp_page_size] pretty-prints the paged-media [size] descriptor/property. *)
+
+val pp_page_size_name : page_size_name Pp.t
+(** [pp_page_size_name] pretty-prints a page size name. *)
+
+val read_page_size_name : Cursor.t -> page_size_name
+(** [read_page_size_name t] parses a page size name. *)
+
+val pp_page_size_orientation : page_size_orientation Pp.t
+(** [pp_page_size_orientation] pretty-prints a page size orientation. *)
+
+val read_page_size_orientation : Cursor.t -> page_size_orientation
+(** [read_page_size_orientation t] parses a page size orientation. *)
 
 (* Background and animation helpers moved from Css *)
 
@@ -152,6 +177,13 @@ val pp_position : position Pp.t
 
 val read_position : Cursor.t -> position
 (** [read_position t] is the [position] parsed from [t]. *)
+
+val pp_css_wide : css_wide Pp.t
+(** [pp_css_wide] is the pretty-printer for the CSS-wide keyword set ([initial],
+    [inherit], [unset], [revert], [revert-layer]). *)
+
+val read_css_wide : Cursor.t -> css_wide
+(** [read_css_wide t] reads a CSS-wide keyword (and only those) from [t]. *)
 
 val pp_visibility : visibility Pp.t
 (** [pp_visibility] is the pretty-printer for [visibility]. *)
@@ -725,6 +757,14 @@ val read_radial_gradient_config : Cursor.t -> radial_gradient_config
 (** [read_radial_gradient_config t] is the [radial_gradient_config] parsed from
     [t]. *)
 
+val pp_conic_gradient_config : conic_gradient_config Pp.t
+(** [pp_conic_gradient_config] pretty-prints a conic-gradient prefix
+    configuration. *)
+
+val read_conic_gradient_config : Cursor.t -> conic_gradient_config
+(** [read_conic_gradient_config t] parses a conic-gradient prefix configuration.
+*)
+
 val pp_gradient_stop : gradient_stop Pp.t
 (** [pp_gradient_stop] is the pretty-printer for [gradient_stop]. *)
 
@@ -805,6 +845,12 @@ val read_backgrounds : Cursor.t -> background list
 
 val pp_background : background Pp.t
 (** [pp_background] pretty-prints a background value. *)
+
+val pp_border_radius : border_radius Pp.t
+(** [pp_border_radius] pretty-prints a border-radius shorthand value. *)
+
+val read_border_radius : Cursor.t -> border_radius
+(** [read_border_radius t] parses a border-radius shorthand value. *)
 
 val read_gap : Cursor.t -> gap
 (** [read_gap t] parses a gap shorthand property (one or two length values). *)

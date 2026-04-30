@@ -10,10 +10,12 @@ let check_declaration =
   check_value_cursor "declaration" read_declaration
     (Css.Pp.option pp_declaration)
 
+let check = check_declaration
+
 let check_declarations input expected_count =
   let r = Css.Cursor.of_string input in
   let decls = read_declarations r in
-  check int
+  Alcotest.check int
     (Fmt.str "declarations count %s" input)
     expected_count (List.length decls);
   decls
@@ -21,7 +23,9 @@ let check_declarations input expected_count =
 let check_block input expected_count =
   let r = Css.Cursor.of_string input in
   let decls = read_block r in
-  check int (Fmt.str "block count %s" input) expected_count (List.length decls);
+  Alcotest.check int
+    (Fmt.str "block count %s" input)
+    expected_count (List.length decls);
   decls
 
 let simple () =
@@ -112,15 +116,15 @@ let multiple () =
   (* Check first declaration *)
   (match List.nth_opt decls 0 with
   | Some decl ->
-      check string "first property" "color" (property_name decl);
-      check bool "first not important" false (is_important decl)
+      Alcotest.check string "first property" "color" (property_name decl);
+      Alcotest.check bool "first not important" false (is_important decl)
   | None -> fail "Missing first declaration");
 
   (* Check second declaration *)
   (match List.nth_opt decls 1 with
   | Some decl ->
-      check string "second property" "margin" (property_name decl);
-      check bool "second not important" false (is_important decl)
+      Alcotest.check string "second property" "margin" (property_name decl);
+      Alcotest.check bool "second not important" false (is_important decl)
   | None -> fail "Missing second declaration");
 
   (* Mixed important and normal *)
@@ -128,22 +132,24 @@ let multiple () =
     check_declarations "color: red; margin: 10px !important; padding: 5px;" 3
   in
   match List.nth_opt decls 1 with
-  | Some decl -> check bool "second is important" true (is_important decl)
+  | Some decl ->
+      Alcotest.check bool "second is important" true (is_important decl)
   | None -> fail "Missing second declaration"
 
 let block () =
   (* Basic block *)
   let decls = check_block "{ color: blue; display: block; }" 2 in
   (match List.nth_opt decls 0 with
-  | Some decl -> check string "first property" "color" (property_name decl)
+  | Some decl ->
+      Alcotest.check string "first property" "color" (property_name decl)
   | None -> fail "Missing first declaration");
 
   (* Block with important *)
   let decls = check_block "{ padding: 10px !important; margin: auto; }" 2 in
   (match List.nth_opt decls 0 with
   | Some decl ->
-      check string "first property" "padding" (property_name decl);
-      check bool "first is important" true (is_important decl)
+      Alcotest.check string "first property" "padding" (property_name decl);
+      Alcotest.check bool "first is important" true (is_important decl)
   | None -> fail "Missing first declaration");
 
   (* Empty blocks *)
@@ -164,18 +170,20 @@ let missing_semicolon () =
 let empty_input () =
   let r = Css.Cursor.of_string "" in
   let decls = read_declarations r in
-  check int "empty input" 0 (List.length decls);
+  Alcotest.check int "empty input" 0 (List.length decls);
 
   let r = Css.Cursor.of_string "   " in
   let decls = read_declarations r in
-  check int "whitespace only" 0 (List.length decls)
+  Alcotest.check int "whitespace only" 0 (List.length decls)
 
 let property_name () =
   (* Test read_property_name directly *)
   let test_prop_name input expected =
     let r = Css.Cursor.of_string input in
     let name = read_property_name r in
-    check string (Fmt.str "property name %s" input) expected (String.trim name)
+    Alcotest.check string
+      (Fmt.str "property name %s" input)
+      expected (String.trim name)
   in
 
   test_prop_name "color:" "color";
@@ -189,7 +197,7 @@ let property_value () =
   let test_prop_value input expected =
     let r = Css.Cursor.of_string input in
     let value = read_property_value r in
-    check string (Fmt.str "property value %s" input) expected value
+    Alcotest.check string (Fmt.str "property value %s" input) expected value
   in
 
   test_prop_value "red;" "red";
@@ -1616,26 +1624,26 @@ let spec_remaining_prop_vectors () =
 
 let test_declaration () =
   (* Basic declarations - test the declaration type itself *)
-  check_declaration "color:red";
-  check_declaration "margin:10px";
-  check_declaration "display:block";
+  check "color:red";
+  check "margin:10px";
+  check "display:block";
 
   (* Custom properties *)
-  check_declaration "--custom:value";
-  check_declaration "--color:red";
+  check "--custom:value";
+  check "--color:red";
 
   (* Important declarations *)
-  check_declaration "color:red!important";
-  check_declaration "--custom:value!important";
+  check "color:red!important";
+  check "--custom:value!important";
 
   (* Complex values *)
-  check_declaration "background:linear-gradient(to right,red,blue)";
-  check_declaration "transform:translateX(10px) rotate(45deg)";
-  check_declaration "font-family:Arial,sans-serif";
+  check "background:linear-gradient(to right,red,blue)";
+  check "transform:translateX(10px) rotate(45deg)";
+  check "font-family:Arial,sans-serif";
 
   (* Vendor prefixes *)
-  check_declaration "-webkit-transform:rotate(45deg)";
-  check_declaration "-moz-appearance:none";
+  check "-webkit-transform:rotate(45deg)";
+  check "-moz-appearance:none";
 
   (* Test invalid declarations using none *)
   none_cursor read_declaration "color red";
