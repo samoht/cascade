@@ -15,18 +15,37 @@ let read_file filename =
 
 (* Extract property constructors from properties_intf.ml *)
 let extract_property_constructors content =
+  let is_static_property_constructor = function
+    | "Custom_property" -> false
+    | _ -> true
+  in
   let lines = String.split_on_char '\n' content in
+  let property_start_pattern =
+    Re.Perl.compile_pat "^[ ]*type[ ]+'a[ ]+property[ ]*="
+  in
+  let next_type_pattern = Re.Perl.compile_pat "^[ ]*type[ ]+" in
   let constructor_pattern =
     Re.Perl.compile_pat "^[ ]*\\| ([A-Z][A-Za-z0-9_]*) :"
   in
-  List.fold_left
-    (fun acc line ->
-      match Re.exec_opt constructor_pattern line with
-      | Some g ->
-          let name = Re.Group.get g 1 in
-          name :: acc
-      | None -> acc)
-    [] lines
+  let rec loop in_property acc = function
+    | [] -> List.rev acc
+    | line :: rest ->
+        if Re.execp property_start_pattern line then loop true acc rest
+        else if in_property && Re.execp next_type_pattern line then List.rev acc
+        else if in_property then
+          match Re.exec_opt constructor_pattern line with
+          | Some g ->
+              let constructor = Re.Group.get g 1 in
+              let acc =
+                if is_static_property_constructor constructor then
+                  constructor :: acc
+                else acc
+              in
+              loop true acc rest
+          | None -> loop true acc rest
+        else loop false acc rest
+  in
+  loop false [] lines
 
 (* Extract handled properties from properties.ml read_property function *)
 let extract_handled_properties content =

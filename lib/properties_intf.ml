@@ -13,6 +13,11 @@ type border_style =
   | Inset
   | Outset
   | Hidden
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of border_style var
 
 type line_height =
@@ -418,10 +423,18 @@ type border_width =
   | From_font
   | Calc of border_width calc
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of border_width var
 
 type flex =
   | Initial (* 0 1 auto *)
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Auto (* 1 1 auto *)
   | None (* 0 0 auto *)
   | Grow of float (* Single grow value *)
@@ -474,6 +487,10 @@ type place_content =
   | Unsafe_stretch
   | Align_justify of align_content * justify_content
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of place_content var
 
 type place_items =
@@ -489,6 +506,10 @@ type place_items =
   | Stretch_stretch  (** Explicit stretch on both axes *)
   | Align_justify of align_items * justify_items
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of place_items var
 
 (* Grid Types *)
@@ -498,6 +519,11 @@ type grid_auto_flow =
   | Dense
   | Row_dense
   | Column_dense
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of grid_auto_flow var
 
 type grid_template =
@@ -651,6 +677,10 @@ type word_break =
   | Break_word
   | Auto_phrase
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of word_break var
 
 type overflow_wrap =
@@ -975,6 +1005,10 @@ type transform =
   | Perspective of length
   | None
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | List of transform list
   | Var of transform var
 
@@ -997,6 +1031,11 @@ type scale =
   | XY of number_percentage * number_percentage
   | XYZ of number_percentage * number_percentage * number_percentage
   | None
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of scale var
 
 type translate_value =
@@ -1004,6 +1043,11 @@ type translate_value =
   | XY of length * length
   | XYZ of length * length * length
   | None
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of translate_value var
 
 type rotate_value =
@@ -1013,6 +1057,11 @@ type rotate_value =
   | Z of angle  (** z-axis rotation (explicit) *)
   | Axis of float * float * float * angle  (** custom axis rotation *)
   | None
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of rotate_value var
 
 type steps_direction =
@@ -1050,6 +1099,10 @@ type transition_behavior =
   | Normal
   | Allow_discrete
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of transition_behavior var
 
 type transition_shorthand = {
@@ -1063,6 +1116,9 @@ type transition_shorthand = {
 type transition =
   | Inherit
   | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | None
   | Shorthand of transition_shorthand
   | Var of transition var
@@ -1472,7 +1528,14 @@ type mask_box =
   | Var of mask_box var
 
 (* Gap shorthand type *)
-type gap = { row_gap : length option; column_gap : length option }
+type gap =
+  | Lengths of { row_gap : length option; column_gap : length option }
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of gap var
 
 (* User Interaction Types *)
 type cursor =
@@ -1592,6 +1655,11 @@ type content =
   | Counter of string
   | Counters of string * string
   | Content_list of content list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of content var
 
 type content_visibility =
@@ -1844,6 +1912,10 @@ type writing_mode =
   | Sideways_lr
   | Sideways_rl
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of writing_mode var
 
 (* Webkit & Mozilla Specific Types *)
