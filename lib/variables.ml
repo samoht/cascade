@@ -1006,11 +1006,7 @@ let vars_of_border_radius (value : Properties.border_radius) =
   | Inherit | Initial | Unset | Revert | Revert_layer -> []
 
 let vars_of_perspective_origin (value : Properties.perspective_origin) =
-  match value with
-  | Var v -> [ V v ]
-  | X l -> vars_of_length l
-  | XY (l1, l2) -> vars_of_length l1 @ vars_of_length l2
-  | _ -> []
+  vars_of_position_value value
 
 let vars_of_clip_path (value : Properties.clip_path) =
   match value with

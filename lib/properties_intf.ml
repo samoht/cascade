@@ -1283,13 +1283,21 @@ type transforms = transform list
 type transform_style =
   | Flat
   | Preserve_3d
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of transform_style var
 
 type backface_visibility =
   | Visible
   | Hidden
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of backface_visibility var
 
 type scale =
@@ -1361,6 +1369,11 @@ type transition_property_value =
   | All
   | None
   | Property of string
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of transition_property_value var
 
 type transition_property = transition_property_value list
@@ -2649,22 +2662,15 @@ type will_change =
   | Transform
   | Opacity
   | Properties of string list  (** Custom CSS property names *)
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of will_change var
 
-(* perspective-origin: origin point for 3D perspective *)
-type perspective_origin =
-  | Center
-  | Top
-  | Bottom
-  | Left
-  | Right
-  | Top_left
-  | Top_right
-  | Bottom_left
-  | Bottom_right
-  | X of length  (** Single x-offset, y defaults to center *)
-  | XY of length * length
-  | Var of perspective_origin var
+(* perspective-origin is the CSS <position> grammar. *)
+type perspective_origin = position_value
 
 (* clip property (deprecated, but needed for sr-only) *)
 type clip =

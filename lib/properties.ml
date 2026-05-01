@@ -2728,25 +2728,14 @@ let rec pp_will_change : will_change Pp.t =
   | Transform -> Pp.string ctx "transform"
   | Opacity -> Pp.string ctx "opacity"
   | Properties props -> Pp.list ~sep:Pp.comma Pp.string ctx props
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_will_change ctx v
 
-let rec pp_perspective_origin : perspective_origin Pp.t =
- fun ctx -> function
-  | Var v -> pp_var pp_perspective_origin ctx v
-  | Center -> Pp.string ctx "center"
-  | Top -> Pp.string ctx "top"
-  | Bottom -> Pp.string ctx "bottom"
-  | Left -> Pp.string ctx "left"
-  | Right -> Pp.string ctx "right"
-  | Top_left -> Pp.string ctx "top left"
-  | Top_right -> Pp.string ctx "top right"
-  | Bottom_left -> Pp.string ctx "bottom left"
-  | Bottom_right -> Pp.string ctx "bottom right"
-  | X x -> pp_length ctx x
-  | XY (x, y) ->
-      pp_length ctx x;
-      Pp.space ctx ();
-      pp_length ctx y
+let pp_perspective_origin : perspective_origin Pp.t = pp_position_value
 
 let rec pp_clip : clip Pp.t =
  fun ctx -> function
@@ -3372,7 +3361,11 @@ let rec pp_transform_style : transform_style Pp.t =
   | Var v -> pp_var pp_transform_style ctx v
   | Flat -> Pp.string ctx "flat"
   | Preserve_3d -> Pp.string ctx "preserve-3d"
+  | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_blend_mode : blend_mode Pp.t =
  fun ctx -> function
@@ -3765,7 +3758,11 @@ let rec pp_backface_visibility : backface_visibility Pp.t =
   | Var v -> pp_var pp_backface_visibility ctx v
   | Visible -> Pp.string ctx "visible"
   | Hidden -> Pp.string ctx "hidden"
+  | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_border_collapse : border_collapse Pp.t =
  fun ctx -> function
@@ -4970,6 +4967,11 @@ let rec pp_transition_property_value : transition_property_value Pp.t =
   | All -> Pp.string ctx "all"
   | None -> Pp.string ctx "none"
   | Property s -> Pp.string ctx s
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_transition_property_value ctx v
 
 let pp_transition_property : transition_property Pp.t =
@@ -8215,22 +8217,32 @@ let rec read_font_variation_settings t : font_variation_settings =
     ~calls:[ ("var", read_var) ]
     ~default:read_axis_list t
 
-let read_transform_style t : transform_style =
-  Cursor.enum "transform-style"
+let rec read_transform_style t : transform_style =
+  Cursor.enum_or_var "transform-style"
     [
       ("flat", (Flat : transform_style));
       ("preserve-3d", Preserve_3d);
+      ("initial", Initial);
       ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_transform_style t))
     t
 
-let read_backface_visibility t : backface_visibility =
-  Cursor.enum "backface-visibility"
+let rec read_backface_visibility t : backface_visibility =
+  Cursor.enum_or_var "backface-visibility"
     [
       ("visible", (Visible : backface_visibility));
       ("hidden", Hidden);
+      ("initial", Initial);
       ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_backface_visibility t))
     t
 
 let rec read_scale t : scale =
@@ -8371,6 +8383,11 @@ let rec read_transition_property_value t : transition_property_value =
     [
       ("all", (All : transition_property_value));
       ("none", (None : transition_property_value));
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
     ~calls:[ ("var", read_var) ]
     ~default:(fun t -> Property (Cursor.ident ~keep_case:true t))
@@ -8383,7 +8400,14 @@ let read_transition_property t : transition_property =
     Cursor.ws t;
     if Cursor.comma_opt t then loop (v :: acc) else List.rev (v :: acc)
   in
-  loop []
+  let values = loop [] in
+  let singleton_only : transition_property_value -> bool = function
+    | All | None | Initial | Inherit | Unset | Revert | Revert_layer -> true
+    | Property _ | Var _ -> false
+  in
+  if List.length values > 1 && List.exists singleton_only values then
+    Cursor.err_invalid t "transition-property singleton value in list";
+  values
 
 let rec read_transition_behavior t : transition_behavior =
   Cursor.enum_or_var "transition-behavior"
@@ -8407,7 +8431,7 @@ let read_transition_shorthand t : transition_shorthand =
      var() *)
   let duration =
     match property with
-    | All | None | Var _ ->
+    | All | None | Initial | Inherit | Unset | Revert | Revert_layer | Var _ ->
         (* For 'all', 'none', and var(), duration is optional *)
         Cursor.option
           (fun t ->
@@ -10374,68 +10398,35 @@ let rec read_gap t : gap =
 
 (* Reader for will-change property *)
 let rec read_will_change t : will_change =
-  Cursor.ws t;
-  if Cursor.looking_at t "auto" then (
-    Cursor.expect_string "auto" t;
-    Will_change_auto)
-  else if Cursor.looking_at t "scroll-position" then (
-    Cursor.expect_string "scroll-position" t;
-    Scroll_position)
-  else if Cursor.looking_at t "contents" then (
-    Cursor.expect_string "contents" t;
-    Contents)
-  else if Cursor.looking_at t "transform" then (
-    Cursor.expect_string "transform" t;
-    Transform)
-  else if Cursor.looking_at t "opacity" then (
-    Cursor.expect_string "opacity" t;
-    Opacity)
-  else if Cursor.looking_at t "var(" then Var (read_var read_will_change t)
-  else
-    (* Read comma-separated list of property names *)
-    let props = Cursor.list ~sep:Cursor.comma Cursor.ident t in
-    Properties props
-
-(* Reader for perspective-origin property *)
-let read_perspective_origin_keyword t =
-  let keyword_pairs =
-    [
-      ([ "center" ], (Center : perspective_origin));
-      ([ "top left"; "left top" ], Top_left);
-      ([ "top right"; "right top" ], Top_right);
-      ([ "bottom left"; "left bottom" ], Bottom_left);
-      ([ "bottom right"; "right bottom" ], Bottom_right);
-      ([ "top" ], Top);
-      ([ "bottom" ], Bottom);
-      ([ "left" ], Left);
-      ([ "right" ], Right);
-    ]
+  let read_ident t =
+    let ident = Cursor.ident ~keep_case:true t in
+    if ident = "auto" then
+      Cursor.err_invalid t "auto cannot be used in a will-change list";
+    if ident = "will-change" then
+      Cursor.err_invalid t "will-change cannot reference itself";
+    ident
   in
-  List.find_map
-    (fun (keywords, result) ->
-      List.find_map
-        (fun kw ->
-          if Cursor.looking_at t kw then (
-            Cursor.expect_string kw t;
-            Some result)
-          else None)
-        keywords)
-    keyword_pairs
+  Cursor.enum_or_var "will-change"
+    [
+      ("auto", Will_change_auto);
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (read_var read_will_change t))
+    ~default:(fun t ->
+      match Cursor.list ~sep:Cursor.comma ~at_least:1 read_ident t with
+      | [ "scroll-position" ] -> Scroll_position
+      | [ "contents" ] -> Contents
+      | [ "transform" ] -> Transform
+      | [ "opacity" ] -> Opacity
+      | props -> Properties props)
+    t
 
-let rec read_perspective_origin t : perspective_origin =
-  Cursor.ws t;
-  if Cursor.looking_at t "var(" then
-    Var (Values.read_var read_perspective_origin t)
-  else
-    match read_perspective_origin_keyword t with
-    | Some result -> result
-    | None -> (
-        let x = read_length t in
-        Cursor.ws t;
-        (* Second length is optional - y defaults to center *)
-        match Cursor.option read_length t with
-        | Some y -> XY (x, y)
-        | None -> X x)
+let read_perspective_origin : Cursor.t -> perspective_origin =
+  read_position_value
 
 (* Reader for clip property (deprecated) *)
 let rec read_clip t : clip =

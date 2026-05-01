@@ -32,7 +32,7 @@ let positive =
        size-adjust: 100%; ascent-override: normal; descent-override: 20%; \
        line-gap-override: 0%; }";
     row "page" "margin-rule"
-      "@page invoice:first{size:A4;margin:1cm;@top-left{content:\"Invoice\"}}"
+      "@page invoice:first{margin:1cm;size:A4;@top-left{content:\"Invoice\"}}"
       "@page invoice:first { margin: 1cm; size: A4; @top-left { content: \
        \"Invoice\" } }";
     row "page" "page-margin-descriptor"
