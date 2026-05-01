@@ -1373,131 +1373,53 @@ module Computed_value = struct
       Ok (Buffer.contents buf)
     with Unresolved msg -> Error msg
 
-  (* Resolve a [currentColor] keyword by substituting it for the value of the
-     [current_color] context field rendered via {!Values.pp_color}. *)
-  (* CSS Values 4 §10 [calc()] over absolute/length operands. The evaluator is
-     a small Pratt-style parser: terms are either a length (resolved against
-     [length_ctx]) or a unitless number, joined by [+ - * /] with the usual
-     precedence. Parenthesised sub-expressions are supported. Returns [None]
-     when any operand is unresolvable, mirroring the [Unresolved] path of
-     [resolve_lengths]. *)
+  (* CSS Values 4 §10.11 computed-value-time math evaluation.
+
+     The body of a [calc(...)] is parsed by {!Values.read_calc_expr} into the
+     same typed [length calc] AST the value parser already produces. Walking
+     that AST folds every subtree whose operands resolve, and tags whether any
+     leaf was a relative unit (rem/em/vh/...). The relativity bit lets the
+     resolver follow §10.11 strictly when relative units force computed-time
+     evaluation, while preserving authored pure-absolute calcs through [var()]
+     substitution (see {!resolve_calc}). *)
   module Calc = struct
-    type token = Num of float | Op of char | Lparen | Rparen
+    type result = { px : float; has_relative : bool }
 
-    (* End of a [calc()] term: stop at whitespace, parenthesis, or operator. *)
-    let term_terminator = function
-      | ' ' | '\t' | '\n' | '+' | '-' | '*' | '/' | '(' | ')' -> true
+    let is_absolute_length : Values.length -> bool = function
+      | Zero | Px _ | Cm _ | Mm _ | Q _ | In _ | Pt _ | Pc _ -> true
       | _ -> false
 
-    let read_term_end s i =
-      let len = String.length s in
-      let rec scan j =
-        if j >= len then j else if term_terminator s.[j] then j else scan (j + 1)
-      in
-      scan i
+    let combine op (l : result) (r : result) : result option =
+      let has_relative = l.has_relative || r.has_relative in
+      match (op : Values.calc_op) with
+      | Add -> Some { px = l.px +. r.px; has_relative }
+      | Sub -> Some { px = l.px -. r.px; has_relative }
+      | Mul -> Some { px = l.px *. r.px; has_relative }
+      | Div when r.px <> 0. -> Some { px = l.px /. r.px; has_relative }
+      | Div -> None
 
-    let parse_length length_ctx term =
+    let rec eval length_ctx (calc : Values.length Values.calc) : result option =
+      match calc with
+      | Num n -> Some { px = n; has_relative = false }
+      | Val length -> (
+          match Length.to_px length_ctx length with
+          | Some px ->
+              Some { px; has_relative = not (is_absolute_length length) }
+          | None -> None)
+      | Var _ | Sibling_index | Sibling_count -> None
+      | Nested inner | Parens inner -> eval length_ctx inner
+      | Expr (l, op, r) -> (
+          match (eval length_ctx l, eval length_ctx r) with
+          | Some l, Some r -> combine op l r
+          | _ -> None)
+
+    let evaluate length_ctx s : result option =
       try
-        let cursor = Cursor.of_string term in
-        let length = Values.read_length cursor in
+        let cursor = Cursor.of_string s in
+        let calc = Values.read_calc_expr Values.read_length cursor in
         Cursor.ws cursor;
-        if Cursor.is_done cursor then Length.to_px length_ctx length else None
+        if not (Cursor.is_done cursor) then None else eval length_ctx calc
       with Cursor.Parse_error _ | Reader.Parse_error _ -> None
-
-    let parse_number term =
-      try
-        let cursor = Cursor.of_string term in
-        let n = Cursor.number cursor in
-        Cursor.ws cursor;
-        if Cursor.is_done cursor then Some n else None
-      with Cursor.Parse_error _ | Reader.Parse_error _ -> None
-
-    let parse_term length_ctx term =
-      match parse_length length_ctx term with
-      | Some _ as v -> v
-      | None -> parse_number term
-
-    let prev_is_operator = function
-      | [] | Op _ :: _ | Lparen :: _ -> true
-      | _ -> false
-
-    let tokenise length_ctx s =
-      let len = String.length s in
-      let consume_term i acc =
-        let stop = read_term_end s i in
-        let term = String.sub s i (stop - i) in
-        match parse_term length_ctx term with
-        | None -> raise Exit
-        | Some v -> (stop, Num v :: acc)
-      in
-      let rec loop i acc =
-        if i >= len then List.rev acc
-        else
-          match s.[i] with
-          | ' ' | '\t' | '\n' -> loop (i + 1) acc
-          | '(' -> loop (i + 1) (Lparen :: acc)
-          | ')' -> loop (i + 1) (Rparen :: acc)
-          | ('+' | '-') as c
-            when i + 1 < len
-                 && prev_is_operator acc
-                 && (s.[i + 1] = '.' || (s.[i + 1] >= '0' && s.[i + 1] <= '9'))
-            ->
-              (* A leading [+]/[-] is part of a numeric literal when it sits
-                 between operators or at the start of an expression. *)
-              let _ = c in
-              let stop, acc = consume_term i acc in
-              loop stop acc
-          | ('+' | '-' | '*' | '/') as c -> loop (i + 1) (Op c :: acc)
-          | _ ->
-              let stop, acc = consume_term i acc in
-              loop stop acc
-      in
-      try Some (loop 0 []) with Exit -> None
-
-    let rec parse_expr tokens = parse_addsub tokens
-
-    and parse_addsub tokens =
-      let rec loop lhs tokens =
-        match tokens with
-        | Op ('+' as op) :: rest | Op ('-' as op) :: rest ->
-            let rhs, tokens = parse_muldiv rest in
-            let v = if op = '+' then lhs +. rhs else lhs -. rhs in
-            loop v tokens
-        | _ -> (lhs, tokens)
-      in
-      let lhs, tokens = parse_muldiv tokens in
-      loop lhs tokens
-
-    and parse_muldiv tokens =
-      let rec loop lhs tokens =
-        match tokens with
-        | Op '*' :: rest ->
-            let rhs, tokens = parse_atom rest in
-            loop (lhs *. rhs) tokens
-        | Op '/' :: rest ->
-            let rhs, tokens = parse_atom rest in
-            if rhs = 0. then raise Exit else loop (lhs /. rhs) tokens
-        | _ -> (lhs, tokens)
-      in
-      let lhs, tokens = parse_atom tokens in
-      loop lhs tokens
-
-    and parse_atom tokens =
-      match tokens with
-      | Num n :: rest -> (n, rest)
-      | Lparen :: rest -> (
-          let v, tokens = parse_expr rest in
-          match tokens with Rparen :: rest -> (v, rest) | _ -> raise Exit)
-      | _ -> raise Exit
-
-    let evaluate length_ctx s : float option =
-      match tokenise length_ctx s with
-      | None -> None
-      | Some tokens -> (
-          try
-            let v, remaining = parse_expr tokens in
-            if remaining = [] then Some v else None
-          with Exit -> None)
   end
 
   (* CSS Values 4 §10.13 collapses a fully-absolute [calc()] to a single length
@@ -1552,23 +1474,31 @@ module Computed_value = struct
                 close + 2
               else close + 1
             in
-            (if authored && body_has_subst_marker body then (
-               (* Authored calc with a substituted hole: preserve the form,
-                  recurse into the body so nested calcs still simplify. *)
-               Buffer.add_string buf "calc(";
-               (match resolve_calc length_ctx body with
-               | Ok inner -> Buffer.add_string buf (strip_markers inner)
-               | Error msg -> raise (Unresolved msg));
-               Buffer.add_char buf ')')
-             else
-               let body_clean = strip_markers body in
-               match Calc.evaluate length_ctx body_clean with
-               | Some px ->
-                   Buffer.add_string buf
-                     (Pp.to_string ~minify:true
-                        (Values.pp_length ~always:true)
-                        (Px px))
-               | None -> raise (Unresolved ("calc(" ^ body_clean ^ ")")));
+            let body_clean = strip_markers body in
+            let preserve () =
+              Buffer.add_string buf "calc(";
+              (match resolve_calc length_ctx body with
+              | Ok inner -> Buffer.add_string buf (strip_markers inner)
+              | Error msg -> raise (Unresolved msg));
+              Buffer.add_char buf ')'
+            in
+            let emit_px px =
+              Buffer.add_string buf
+                (Pp.to_string ~minify:true
+                   (Values.pp_length ~always:true)
+                   (Px px))
+            in
+            (match Calc.evaluate length_ctx body_clean with
+            | Some { px; has_relative = true } ->
+                (* CSS Values 4 §10.11: relative units force computed-value
+                   simplification regardless of substitution provenance. *)
+                emit_px px
+            | Some { px; has_relative = false } ->
+                if authored && body_has_subst_marker body then preserve ()
+                else emit_px px
+            | None ->
+                if authored && body_has_subst_marker body then preserve ()
+                else raise (Unresolved ("calc(" ^ body_clean ^ ")")));
             scan after)
         else
           let c = s.[i] in
