@@ -1055,6 +1055,7 @@ module Shadow = struct
        [var(--c)] in the colour slot rather than greedily folding [var(--w)]
        there and dropping [var(--c)]. *)
     let inset = ref false in
+    let color : color option ref = ref (None : color option) in
     let try_inset () =
       if !inset then false
       else
@@ -1071,6 +1072,19 @@ module Shadow = struct
             true
         | None -> false
     in
+    let try_color () =
+      match !color with
+      | Some _ -> false
+      | None -> (
+          match Cursor.option (fun t -> read_color t) t with
+          | Some c ->
+              color := Some c;
+              Cursor.ws t;
+              true
+          | None -> false)
+    in
+    let _ : bool = try_inset () in
+    let _ : bool = try_color () in
     let _ : bool = try_inset () in
     let lengths_rev = ref [] in
     let rec read_lengths_loop n =
@@ -1086,19 +1100,13 @@ module Shadow = struct
     in
     read_lengths_loop 0;
     let _ : bool = try_inset () in
-    let (color : color option) =
-      match Cursor.option (fun t -> read_color t) t with
-      | Some c ->
-          Cursor.ws t;
-          let _ : bool = try_inset () in
-          Some c
-      | None -> None
-    in
+    let _ : bool = try_color () in
+    let _ : bool = try_inset () in
     let lengths = List.rev !lengths_rev in
     match read_lengths lengths with
     | Some (h_offset, v_offset, blur, spread) ->
         if
-          blur = None && spread = None && color = None && h_offset = Zero
+          blur = None && spread = None && !color = None && h_offset = Zero
           && v_offset = Zero
         then err_invalid_value t "shadow" "blur, spread, or color is required";
         (Shadow
@@ -1110,7 +1118,7 @@ module Shadow = struct
              v_offset;
              blur;
              spread;
-             color;
+             color = !color;
            }
           : shadow)
     | None -> err_invalid_value t "shadow" "at least two lengths are required"
@@ -2021,6 +2029,11 @@ let rec pp_z_index : z_index Pp.t =
   | Auto -> Pp.string ctx "auto"
   | Index i -> Pp.int ctx i
   | Calc s -> Pp.string ctx s
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_z_index ctx v
 
 let rec pp_order : order Pp.t =
@@ -5013,6 +5026,10 @@ let rec pp_pointer_events : pointer_events Pp.t =
   | Stroke -> Pp.string ctx "stroke"
   | All -> Pp.string ctx "all"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_user_select : user_select Pp.t =
  fun ctx -> function
@@ -5022,6 +5039,11 @@ let rec pp_user_select : user_select Pp.t =
   | Text -> Pp.string ctx "text"
   | All -> Pp.string ctx "all"
   | Contain -> Pp.string ctx "contain"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_line_height : line_height Pp.t =
  fun ctx -> function
@@ -5274,7 +5296,14 @@ let rec read_z_index t : z_index =
   in
   let read_var_z t : z_index = Var (read_var read_z_index t) in
   Cursor.enum_or_calls "z-index"
-    [ ("auto", (Auto : z_index)) ]
+    [
+      ("auto", (Auto : z_index));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
     ~calls:[ ("calc", read_calc_z); ("var", read_var_z) ]
     ~default:(fun t ->
       let n = Cursor.number t in
@@ -6110,15 +6139,21 @@ let rec read_border_collapse t : border_collapse =
       (Var (Values.read_var read_border_collapse t) : border_collapse))
     t
 
-let read_user_select t : user_select =
-  Cursor.enum "user-select"
+let rec read_user_select t : user_select =
+  Cursor.enum_or_var "user-select"
     [
       ("none", (None : user_select));
       ("auto", Auto);
       ("text", Text);
       ("all", All);
       ("contain", Contain);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> (Var (Values.read_var read_user_select t) : user_select))
     t
 
 let rec read_pointer_events t : pointer_events =
@@ -6135,6 +6170,10 @@ let rec read_pointer_events t : pointer_events =
       ("stroke", Stroke);
       ("all", All);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (Values.read_var read_pointer_events t))
     t
