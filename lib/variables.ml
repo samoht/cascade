@@ -738,6 +738,17 @@ let vars_of_contain_intrinsic_size (value : Properties.contain_intrinsic_size) =
 let vars_of_margin_trim (value : Properties.margin_trim) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_ray (value : Properties.ray) =
+  vars_of_angle value.angle
+  @ Option.fold ~none:[] ~some:vars_of_position_value value.position
+
+let vars_of_offset_path (value : Properties.offset_path) =
+  match value with
+  | Var v -> [ V v ]
+  | Ray ray -> vars_of_ray ray
+  | None | Url _ | Path _ | Initial | Inherit | Unset | Revert | Revert_layer ->
+      []
+
 let vars_of_flex (value : Properties.flex) =
   match value with
   | Var v -> [ V v ]
@@ -1050,6 +1061,9 @@ let vars_of_user_select (value : Properties.user_select) =
 let vars_of_timeline_axis (value : Properties.timeline_axis) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_timeline_name (value : Properties.timeline_name) =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_timeline_shorthand (value : Properties.timeline_shorthand) =
   vars_of_timeline_axis value.timeline_axis
 
@@ -1318,6 +1332,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Image_orientation, value -> vars_of_image_orientation value
   | Contain_intrinsic_size, value -> vars_of_contain_intrinsic_size value
   | Margin_trim, value -> vars_of_margin_trim value
+  | Offset_path, value -> vars_of_offset_path value
   | All, value -> vars_of_css_wide value
   | Direction, value -> vars_of_direction value
   | Display, value -> vars_of_display value
@@ -1391,7 +1406,9 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Unicode_bidi, value -> vars_of_unicode_bidi value
   | User_select, value -> vars_of_user_select value
   | Visibility, value -> vars_of_visibility value
+  | View_timeline_name, value -> vars_of_timeline_name value
   | View_timeline, value -> vars_of_timeline_shorthand value
+  | Timeline_scope, value -> vars_of_timeline_name value
   | Webkit_appearance, value -> vars_of_webkit_appearance value
   | Webkit_background_clip, value -> vars_of_background_box value
   | Webkit_box_decoration_break, value -> vars_of_box_decoration_break value

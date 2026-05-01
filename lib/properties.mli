@@ -32,6 +32,12 @@ val pp_timeline_axis : timeline_axis Pp.t
 val read_timeline_axis : Cursor.t -> timeline_axis
 (** [read_timeline_axis t] parses a timeline axis. *)
 
+val pp_timeline_name : timeline_name Pp.t
+(** [pp_timeline_name] pretty-prints a timeline name list. *)
+
+val read_timeline_name : Cursor.t -> timeline_name
+(** [read_timeline_name t] parses [view-timeline-name] and [timeline-scope]. *)
+
 val read_page_size : Cursor.t -> page_size
 (** [read_page_size t] parses the paged-media [size] descriptor/property. *)
 

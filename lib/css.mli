@@ -5272,7 +5272,17 @@ type scroll_snap_align =
   | Revert_layer
   | Var of scroll_snap_align var
 
-type timeline_axis = Block | Inline | X | Y | Var of timeline_axis var
+type timeline_axis =
+  | Block
+  | Inline
+  | X
+  | Y
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of timeline_axis var
 
 type timeline_shorthand = {
   timeline_name : string;

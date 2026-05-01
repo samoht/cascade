@@ -2198,6 +2198,27 @@ type margin_trim =
   | Revert_layer
   | Var of margin_trim var
 
+type ray_size = Radial of radial_size | Sides
+
+type ray = {
+  angle : angle;
+  size : ray_size option;
+  contain : bool;
+  position : position_value option;
+}
+
+type offset_path =
+  | None
+  | Url of string
+  | Path of string
+  | Ray of ray
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of offset_path var
+
 (* Container shorthand: name / type *)
 type container_shorthand =
   | Shorthand of { name : string option; ctype : container_type option }
@@ -2376,7 +2397,27 @@ type scroll_snap_type =
   | Revert_layer
   | Var of scroll_snap_type var
 
-type timeline_axis = Block | Inline | X | Y | Var of timeline_axis var
+type timeline_axis =
+  | Block
+  | Inline
+  | X
+  | Y
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of timeline_axis var
+
+type timeline_name =
+  | None
+  | Names of string list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of timeline_name var
 
 type timeline_shorthand = {
   timeline_name : string;
@@ -2938,17 +2979,17 @@ type 'a property =
   | Contain_intrinsic_block_size : string property
   | Contain_intrinsic_inline_size : string property
   | Margin_trim : margin_trim property
-  | Offset_path : string property
+  | Offset_path : offset_path property
   | Offset_distance : length_percentage property
   | Font_size_adjust : font_size_adjust property
   | Font_variant_emoji : font_variant_emoji property
   | Text_spacing_trim : text_spacing_trim property
   | Hyphenate_limit_chars : hyphenate_limit_chars property
   | Initial_letter : initial_letter property
-  | View_timeline_name : string property
-  | View_timeline_axis : string property
+  | View_timeline_name : timeline_name property
+  | View_timeline_axis : timeline_axis property
   | View_timeline : timeline_shorthand property
-  | Timeline_scope : string property
+  | Timeline_scope : timeline_name property
   | Perspective : length property
   | Perspective_origin : perspective_origin property
   | Transform_style : transform_style property

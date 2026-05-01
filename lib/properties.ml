@@ -3562,7 +3562,7 @@ let pp_bg_prop maybe_space pp_func ctx = function
       pp_func ctx value
   | None -> ()
 
-let pp_bg_size_with_position maybe_space bg ctx =
+let pp_bg_size_with_position maybe_space (bg : background_shorthand) ctx =
   match bg.size with
   | Some size when bg.position <> None ->
       Pp.string ctx "/";
@@ -4100,6 +4100,47 @@ let rec pp_margin_trim : margin_trim Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+let pp_ray_size : ray_size Pp.t =
+ fun ctx -> function
+  | Radial Closest_side -> Pp.string ctx "closest-side"
+  | Radial Closest_corner -> Pp.string ctx "closest-corner"
+  | Radial Farthest_side -> Pp.string ctx "farthest-side"
+  | Radial Farthest_corner -> Pp.string ctx "farthest-corner"
+  | Radial _ -> invalid_arg "pp_ray_size: invalid radial size for ray()"
+  | Sides -> Pp.string ctx "sides"
+
+let pp_ray : ray Pp.t =
+ fun ctx ({ angle; size; contain; position } : ray) ->
+  pp_angle ctx angle;
+  Option.iter
+    (fun size ->
+      Pp.space ctx ();
+      pp_ray_size ctx size)
+    size;
+  if contain then (
+    Pp.space ctx ();
+    Pp.string ctx "contain");
+  Option.iter
+    (fun position ->
+      Pp.space ctx ();
+      Pp.string ctx "at";
+      Pp.space ctx ();
+      pp_position_value ctx position)
+    position
+
+let rec pp_offset_path : offset_path Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_offset_path ctx v
+  | None -> Pp.string ctx "none"
+  | Url url -> Pp.url ctx url
+  | Path path -> Pp.call "path" Pp.quoted_string ctx path
+  | Ray ray -> Pp.call "ray" pp_ray ctx ray
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+
 let rec pp_container_shorthand : container_shorthand Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_container_shorthand ctx v
@@ -4323,6 +4364,22 @@ let rec pp_timeline_axis : timeline_axis Pp.t =
   | Inline -> Pp.string ctx "inline"
   | X -> Pp.string ctx "x"
   | Y -> Pp.string ctx "y"
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+
+let rec pp_timeline_name : timeline_name Pp.t =
+ fun ctx -> function
+  | Var v -> pp_var pp_timeline_name ctx v
+  | None -> Pp.string ctx "none"
+  | Names names -> Pp.list ~sep:Pp.comma Pp.string ctx names
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let pp_timeline_shorthand : timeline_shorthand Pp.t =
  fun ctx { timeline_name; timeline_axis } ->
@@ -7238,14 +7295,36 @@ let rec read_scroll_snap_align (t : Cursor.t) : scroll_snap_align =
     Cursor.expect_eof t;
     Snap_align_pair (first, second))
 
-let read_timeline_axis t : timeline_axis =
-  Cursor.enum "timeline-axis"
+let rec read_timeline_axis t : timeline_axis =
+  Cursor.enum_or_var "timeline-axis"
     [
       ("block", (Block : timeline_axis));
       ("inline", (Inline : timeline_axis));
       ("x", (X : timeline_axis));
       ("y", (Y : timeline_axis));
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_timeline_axis t))
+    t
+
+let rec read_timeline_name t : timeline_name =
+  Cursor.enum_or_var "timeline-name"
+    [
+      ("none", (None : timeline_name));
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> (Var (Values.read_var read_timeline_name t) : timeline_name))
+    ~default:(fun t ->
+      (Names (Cursor.list ~sep:Cursor.comma ~at_least:1 read_dashed_ident t)
+        : timeline_name))
     t
 
 let read_timeline_shorthand t : timeline_shorthand =
@@ -10997,17 +11076,17 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Contain_intrinsic_block_size -> pp Pp.string
   | Contain_intrinsic_inline_size -> pp Pp.string
   | Margin_trim -> pp pp_margin_trim
-  | Offset_path -> pp Pp.string
+  | Offset_path -> pp pp_offset_path
   | Offset_distance -> pp (pp_length_percentage ~always:true)
   | Font_size_adjust -> pp pp_font_size_adjust
   | Font_variant_emoji -> pp pp_font_variant_emoji
   | Text_spacing_trim -> pp pp_text_spacing_trim
   | Hyphenate_limit_chars -> pp pp_hyphenate_limit_chars
   | Initial_letter -> pp pp_initial_letter
-  | View_timeline_name -> pp Pp.string
-  | View_timeline_axis -> pp Pp.string
+  | View_timeline_name -> pp pp_timeline_name
+  | View_timeline_axis -> pp pp_timeline_axis
   | View_timeline -> pp pp_timeline_shorthand
-  | Timeline_scope -> pp Pp.string
+  | Timeline_scope -> pp pp_timeline_name
   | Perspective_origin -> pp pp_perspective_origin
   | Object_position -> pp pp_position_value
   | Rotate -> pp pp_rotate_value
