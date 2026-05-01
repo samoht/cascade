@@ -981,6 +981,10 @@ type outline_style =
   | Outset
   | Auto
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of outline_style var
 
 (* Outline shorthand type *)
@@ -993,6 +997,9 @@ type outline_shorthand = {
 type outline =
   | Inherit
   | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | None
   | Shorthand of outline_shorthand
   | Var of outline var
@@ -2268,6 +2275,10 @@ type forced_color_adjust =
   | None
   | Preserve_parent_color
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of forced_color_adjust var
 
 type color_scheme =
@@ -2392,6 +2403,11 @@ type clip =
   | Clip_auto
   | Clip_rect of length * length * length * length
       (** top, right, bottom, left *)
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of clip var
 
 (* clip-path property for clipping regions *)
