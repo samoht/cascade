@@ -1708,7 +1708,15 @@ val z_index_auto : declaration
     property set to [auto]. *)
 
 (** CSS isolation values *)
-type isolation = Auto | Isolate | Inherit | Var of isolation var
+type isolation =
+  | Auto
+  | Isolate
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of isolation var
 
 val isolation : isolation -> declaration
 (** [isolation iso] is the
@@ -1730,7 +1738,11 @@ type break_value =
   | Column
   | Avoid_region
   | Region
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of break_value var
 
 val break_before : break_value -> declaration
@@ -1745,7 +1757,11 @@ type break_inside_value =
   | Avoid
   | Avoid_page
   | Avoid_column
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of break_inside_value var
 
 val break_inside : break_inside_value -> declaration
@@ -2186,7 +2202,12 @@ type background_attachment =
   | Scroll
   | Fixed
   | Local
+  | Layers of background_attachment list
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of background_attachment var  (** Color interpolation for gradients *)
 
 type color_interpolation =
@@ -3737,7 +3758,11 @@ type text_shadow =
       blur : length option;
       color : color option;
     }
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of text_shadow var
 
 val text_shadow : text_shadow -> declaration
@@ -3954,22 +3979,22 @@ val border_bottom_right_radius : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-bottom-right-radius}
      border-bottom-right-radius} property. *)
 
-val border_top : string -> declaration
+val border_top : border -> declaration
 (** [border_top border] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-top} border-top}
     property. *)
 
-val border_right : string -> declaration
+val border_right : border -> declaration
 (** [border_right border] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-right}
      border-right} property. *)
 
-val border_bottom : string -> declaration
+val border_bottom : border -> declaration
 (** [border_bottom border] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-bottom}
      border-bottom} property. *)
 
-val border_left : string -> declaration
+val border_left : border -> declaration
 (** [border_left border] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-left}
      border-left} property. *)
@@ -4192,10 +4217,16 @@ type transform_origin =
   | Top_right
   | Bottom_left
   | Bottom_right
+  | Position of position_value
   | X of length  (** Single x-offset, y defaults to 50%. *)
   | XY of length * length
   | XYZ of length * length * length
+  | Position_z of position_value * length
+  | Initial
   | Inherit  (** Transform origin (2D or 3D). *)
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of transform_origin var
 
 val origin : length -> length -> transform_origin
@@ -4216,7 +4247,11 @@ type transform_box =
   | Fill_box
   | Stroke_box
   | View_box
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of transform_box var
 
 val transform_box : transform_box -> declaration

@@ -1506,7 +1506,11 @@ type text_shadow =
       blur : length option;
       color : color option;
     }
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of text_shadow var
 
 type filter =
@@ -1535,7 +1539,12 @@ type background_attachment =
   | Scroll
   | Fixed
   | Local
+  | Layers of background_attachment list
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of background_attachment var
 
 type background_box =
@@ -2260,7 +2269,15 @@ type contain =
   | Revert_layer
   | Var of contain var
 
-type isolation = Auto | Isolate | Inherit | Var of isolation var
+type isolation =
+  | Auto
+  | Isolate
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of isolation var
 
 (* Break Types - for page/column/region breaks *)
 type break_value =
@@ -2277,7 +2294,11 @@ type break_value =
   | Column
   | Avoid_region
   | Region
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of break_value var
 
 type break_inside_value =
@@ -2285,7 +2306,11 @@ type break_inside_value =
   | Avoid
   | Avoid_page
   | Avoid_column
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of break_inside_value var
 
 (* CSS Fragmentation 3 §6 deprecated [page-break-before / -after / -inside]
@@ -2638,10 +2663,16 @@ type transform_origin =
   | Top_right
   | Bottom_left
   | Bottom_right
+  | Position of position_value
   | X of length  (** Single x-offset, y defaults to 50% *)
   | XY of length * length
   | XYZ of length * length * length
+  | Position_z of position_value * length
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of transform_origin var
 
 (* transform-box property: establishes the reference box for transform *)
@@ -2651,7 +2682,11 @@ type transform_box =
   | Fill_box
   | Stroke_box
   | View_box
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of transform_box var
 
 (* will-change property: which properties will animate *)
@@ -3017,10 +3052,10 @@ type 'a property =
   | Columns : columns_value property
   | Word_spacing : length property
   | Background_attachment : background_attachment property
-  | Border_top : string property
-  | Border_right : string property
-  | Border_bottom : string property
-  | Border_left : string property
+  | Border_top : border property
+  | Border_right : border property
+  | Border_bottom : border property
+  | Border_left : border property
   | Transform_origin : transform_origin property
   | Transform_box : transform_box property
   | Text_shadow : text_shadow list property

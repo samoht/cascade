@@ -90,20 +90,18 @@ let rec boundary_shape = function
   | Layer_decl names -> [ "layer-decl:" ^ String.concat "," names ]
   | Layer (name, block) ->
       let name = Option.value ~default:"<anonymous>" name in
-      (("layer:" ^ name) :: List.concat_map boundary_shape block) @ [ "/layer" ]
-  | Media (_, block) ->
-      ("media" :: List.concat_map boundary_shape block) @ [ "/media" ]
+      (("layer:" ^ name) :: shapes_with_rule_runs block) @ [ "/layer" ]
+  | Media (_, block) -> ("media" :: shapes_with_rule_runs block) @ [ "/media" ]
   | Supports (_, block) ->
-      ("supports" :: List.concat_map boundary_shape block) @ [ "/supports" ]
+      ("supports" :: shapes_with_rule_runs block) @ [ "/supports" ]
   | Container (_, _, block) ->
-      ("container" :: List.concat_map boundary_shape block) @ [ "/container" ]
+      ("container" :: shapes_with_rule_runs block) @ [ "/container" ]
   | Scope (_, _, block) ->
-      ("scope" :: List.concat_map boundary_shape block) @ [ "/scope" ]
+      ("scope" :: shapes_with_rule_runs block) @ [ "/scope" ]
   | Starting_style block ->
-      ("starting-style" :: List.concat_map boundary_shape block)
-      @ [ "/starting-style" ]
+      ("starting-style" :: shapes_with_rule_runs block) @ [ "/starting-style" ]
   | Origin (_, block) ->
-      ("origin" :: List.concat_map boundary_shape block) @ [ "/origin" ]
+      ("origin" :: shapes_with_rule_runs block) @ [ "/origin" ]
   | Charset _ -> [ "charset" ]
   | Keyframes _ | Webkit_keyframes _ -> [ "keyframes" ]
   | Font_face _ -> [ "font-face" ]
@@ -114,7 +112,21 @@ let rec boundary_shape = function
   | Position_try _ -> [ "position-try" ]
   | Property _ -> [ "property" ]
 
-let boundary_shapes ss = List.concat_map boundary_shape ss
+(* The optimizer is allowed to merge a contiguous run of [Rule]s into fewer
+   rules (e.g. [combine_identical_rules]). Collapse consecutive [Rule] entries
+   into a single [rules] token so the boundary check tracks the at-rule skeleton
+   without forcing the optimizer to leave every individual rule intact. *)
+and shapes_with_rule_runs ss =
+  let rec loop acc seen_rule = function
+    | [] -> if seen_rule then List.rev ("rules" :: acc) else List.rev acc
+    | Css.Stylesheet.Rule _ :: rest -> loop acc true rest
+    | other :: rest ->
+        let acc = if seen_rule then "rules" :: acc else acc in
+        loop (List.rev_append (boundary_shape other) acc) false rest
+  in
+  loop [] false ss
+
+let boundary_shapes ss = shapes_with_rule_runs ss
 
 let test_optimize_idempotent buf =
   let ss = generated_stylesheet buf in

@@ -1055,22 +1055,22 @@ val background_attachment : background_attachment -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/background-attachment}
      background-attachment} property. *)
 
-val border_top : string -> declaration
+val border_top : border -> declaration
 (** [border_top v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-top} border-top}
     shorthand. *)
 
-val border_right : string -> declaration
+val border_right : border -> declaration
 (** [border_right v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-right}
      border-right} shorthand. *)
 
-val border_bottom : string -> declaration
+val border_bottom : border -> declaration
 (** [border_bottom v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-bottom}
      border-bottom} shorthand. *)
 
-val border_left : string -> declaration
+val border_left : border -> declaration
 (** [border_left v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-left}
      border-left} shorthand. *)
