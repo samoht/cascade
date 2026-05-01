@@ -1181,6 +1181,11 @@ type blend_mode =
   | Luminosity
   | Plus_darker
   | Plus_lighter
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of blend_mode var  (** CSS font-feature-settings values *)
 
 type font_feature_settings =
@@ -1607,8 +1612,13 @@ type opacity =
   | Var of opacity var  (** CSS order values (flexbox order). *)
 
 type order =
-  | Order_int of int
-  | Order_calc of string
+  | Int of int
+  | Calc of string
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of order var  (** CSS overflow values. *)
 
 type overflow =
@@ -2610,6 +2620,11 @@ type align_content =
   | Space_around
   | Space_evenly
   | Stretch
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of align_content var
       (** CSS align-items values.
           {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-items} MDN:
@@ -2641,6 +2656,11 @@ type align_items =
   | Unsafe_flex_start
   | Unsafe_flex_end
   | Anchor_center
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of align_items var
       (** CSS justify-content values.
           {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-content}
@@ -2671,6 +2691,11 @@ type justify_content =
   | Space_around
   | Space_evenly
   | Stretch
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of justify_content var
       (** CSS align-self values.
           {{:https://developer.mozilla.org/en-US/docs/Web/CSS/align-self} MDN:
@@ -2702,6 +2727,11 @@ type align_self =
   | Unsafe_self_end
   | Unsafe_flex_start
   | Unsafe_flex_end
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of align_self var
       (** CSS justify-items values.
           {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-items}
@@ -2745,6 +2775,11 @@ type justify_items =
   | Legacy_center
   | Legacy_left
   | Legacy_right
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of justify_items var
       (** CSS justify-self values.
           {{:https://developer.mozilla.org/en-US/docs/Web/CSS/justify-self} MDN:
@@ -2788,6 +2823,10 @@ type justify_self =
   | Unsafe_right
   | Anchor_center
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of justify_self var
       (** {2:alignment_properties Alignment Properties}
           CSS Box Alignment properties for flexbox and grid layouts. *)
@@ -2923,7 +2962,17 @@ type grid_template =
   | Template of string
   | Subgrid
   | Masonry
-  | Var of grid_template var  (** CSS grid line values *)
+  | Var of grid_template var
+
+type grid_template_areas =
+  | No_areas
+  | Areas of string
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of grid_template_areas var  (** CSS grid line values *)
 
 type grid_line =
   | Auto  (** auto *)
@@ -4011,6 +4060,10 @@ type border_collapse =
   | Collapse
   | Separate
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of border_collapse var
 
 val border_collapse : border_collapse -> declaration
@@ -4724,6 +4777,10 @@ type cursor =
   | Zoom_out
   | Url of string * (float * float) option * cursor
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of cursor var  (** CSS user-select values. *)
 
 type user_select =
@@ -5030,7 +5087,15 @@ val list_style_image : list_style_image -> declaration
      list-style-image} property. *)
 
 (* Table layout and vertical-align types *)
-type table_layout = Auto | Fixed | Inherit | Var of table_layout var
+type table_layout =
+  | Auto
+  | Fixed
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of table_layout var
 
 type vertical_align =
   | Baseline

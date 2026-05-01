@@ -126,7 +126,15 @@ type opacity =
   | Revert_layer
   | Var of opacity var
 
-type order = Order_int of int | Order_calc of string | Var of order var
+type order =
+  | Int of int
+  | Calc of string
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of order var
 
 type overflow =
   | Visible
@@ -209,6 +217,11 @@ type align_content =
   | Space_around
   | Space_evenly
   | Stretch
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of align_content var
 
 type align_items =
@@ -240,6 +253,11 @@ type align_items =
   | Unsafe_flex_start
   | Unsafe_flex_end
   | Anchor_center
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of align_items var
 
 type align_self =
@@ -271,6 +289,11 @@ type align_self =
   | Unsafe_self_end
   | Unsafe_flex_start
   | Unsafe_flex_end
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of align_self var
 
 type justify_content =
@@ -302,6 +325,11 @@ type justify_content =
   | Space_around
   | Space_evenly
   | Stretch
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of justify_content var
 
 type justify_items =
@@ -345,6 +373,11 @@ type justify_items =
   | Legacy_center
   | Legacy_left
   | Legacy_right
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of justify_items var
 
 type justify_self =
@@ -386,6 +419,10 @@ type justify_self =
   | Unsafe_right
   | Anchor_center
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of justify_self var
 
 type flex_basis =
@@ -591,6 +628,16 @@ type grid_template =
   | Subgrid
   | Masonry
   | Var of grid_template var
+
+type grid_template_areas =
+  | No_areas
+  | Areas of string
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of grid_template_areas var
 
 type grid_line =
   | Auto
@@ -859,7 +906,15 @@ type list_style_image =
   | Var of list_style_image var
 
 (* Table Types *)
-type table_layout = Auto | Fixed | Inherit | Var of table_layout var
+type table_layout =
+  | Auto
+  | Fixed
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of table_layout var
 
 type vertical_align =
   | Baseline
@@ -882,6 +937,10 @@ type border_collapse =
   | Collapse
   | Separate
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of border_collapse var
 
 (* Border shorthand type *)
@@ -1368,6 +1427,11 @@ type blend_mode =
   | Luminosity
   | Plus_darker
   | Plus_lighter
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of blend_mode var
 
 type shadow =
@@ -1772,6 +1836,10 @@ type cursor =
   | Zoom_out
   | Url of string * (float * float) option * cursor
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of cursor var
 
 type user_select = None | Auto | Text | All | Contain | Var of user_select var
@@ -2483,7 +2551,7 @@ type 'a property =
   | Place_self : (align_self * justify_self) property
   | Grid_template_columns : grid_template property
   | Grid_template_rows : grid_template property
-  | Grid_template_areas : string property
+  | Grid_template_areas : grid_template_areas property
   | Grid_template : grid_template property
   | Grid_area : string property
   | Grid_auto_flow : grid_auto_flow property
