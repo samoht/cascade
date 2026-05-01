@@ -1304,9 +1304,7 @@ let read_page_body inner =
   let rec loop descriptors margins =
     Cursor.ws inner;
     match Cursor.peek inner with
-    | None ->
-        ( order_raw_descriptors page_descriptor_order (List.rev descriptors),
-          List.rev margins )
+    | None -> (List.rev descriptors, List.rev margins)
     | Some (Component.Preserved { kind = Token.Semicolon; _ }) ->
         Cursor.skip inner;
         loop descriptors margins

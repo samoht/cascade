@@ -2054,7 +2054,11 @@ val text_wrap : text_wrap -> declaration
 type backface_visibility =
   | Visible
   | Hidden
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of backface_visibility var
 
 val backface_visibility : backface_visibility -> declaration
@@ -4245,20 +4249,8 @@ val perspective : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/perspective}
      perspective} property (3D transforms). *)
 
+type perspective_origin = position_value
 (** CSS perspective-origin values for 3D transforms. *)
-type perspective_origin =
-  | Center
-  | Top
-  | Bottom
-  | Left
-  | Right
-  | Top_left
-  | Top_right
-  | Bottom_left
-  | Bottom_right
-  | X of length  (** Single x-offset, y defaults to center. *)
-  | XY of length * length  (** Custom x, y coordinates. *)
-  | Var of perspective_origin var
 
 val perspective_origin : perspective_origin -> declaration
 (** [perspective_origin origin] is the
@@ -4269,7 +4261,11 @@ val perspective_origin : perspective_origin -> declaration
 type transform_style =
   | Flat
   | Preserve_3d
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of transform_style var
 
 val transform_style : transform_style -> declaration
@@ -4321,6 +4317,11 @@ type transition_property_value =
   | All
   | None
   | Property of string
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of transition_property_value var
 
 type transition_property = transition_property_value list
@@ -5815,6 +5816,11 @@ type will_change =
   | Transform
   | Opacity
   | Properties of string list  (** Custom CSS property names *)
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of will_change var
 
 val will_change : will_change -> declaration

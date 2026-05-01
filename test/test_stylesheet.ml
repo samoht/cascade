@@ -2250,7 +2250,7 @@ let spec_at_rule_descriptor_matrix () =
          900;font-display:swap;src:url(brand.woff2);font-family:Brand}",
         "@font-face { font-weight: 100 900; font-display: swap; src: \
          url(brand.woff2); font-family: Brand }" );
-      ( "@page invoice:first{size:A4;margin:1cm;@top-left{content:\"Invoice\"}}",
+      ( "@page invoice:first{margin:1cm;size:A4;@top-left{content:\"Invoice\"}}",
         "@page invoice:first { margin: 1cm; size: A4; @top-left { content: \
          \"Invoice\" } }" );
       ( "@font-palette-values \
