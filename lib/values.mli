@@ -152,10 +152,10 @@ val pp_calc : 'a Pp.t -> 'a calc Pp.t
 (** [pp_calc pp] pretty-prints [calc] expressions using [pp] for leaf values. *)
 
 val pp_color_name : color_name Pp.t
-(** [pp_color_name] pretty-prints {!color_name} values. *)
+(** [pp_color_name] pretty-prints {!type-color_name} values. *)
 
 val read_color_name : Cursor.t -> color_name
-(** [read_color_name] reads a {!color_name} value. *)
+(** [read_color_name] reads a {!type-color_name} value. *)
 
 val pp_color_space : color_space Pp.t
 (** [pp_color_space] pretty-prints {!color_space} values. *)
@@ -295,7 +295,7 @@ val read_channel : Cursor.t -> channel
 (** [read_channel t] parses a channel value. *)
 
 val pp_rgb : rgb Pp.t
-(** [pp_rgb] pretty-prints {!rgb} values. *)
+(** [pp_rgb] pretty-prints {!type-rgb} values. *)
 
 val read_rgb : Cursor.t -> rgb
 (** [read_rgb t] parses an RGB value. *)

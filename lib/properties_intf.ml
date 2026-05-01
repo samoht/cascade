@@ -1710,9 +1710,7 @@ type border_radius =
   | Unset
   | Revert
   | Revert_layer
-  | Var of border_radius var
-      (** [<length-percentage [0,∞]>]{1,4} [ / [<length-percentage [0,∞]>]{1,4} ]?
-    per CSS Backgrounds and Borders 3 §5. *)
+  | Var of border_radius var  (** Per CSS Backgrounds and Borders 3 §5. *)
 
 type conic_gradient_config = {
   from_angle : angle option;  (** [from <angle>] starting angle *)
@@ -1838,6 +1836,28 @@ type mask_box =
   | No_clip  (** Only valid for mask-clip *)
   | Inherit
   | Var of mask_box var
+
+type mask_layer = {
+  image : background_image option;
+  position : position_value option;
+  size : background_size option;
+  repeat : background_repeat option;
+  origin : mask_box option;
+  clip : mask_box option;
+  mode : mask_mode option;
+  composite : mask_composite option;
+}
+
+type mask =
+  | None
+  | Layer of mask_layer
+  | Layers of mask_layer list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of mask var
 
 (* Gap shorthand type *)
 type gap =
@@ -3060,7 +3080,7 @@ type 'a property =
   | Transform_box : transform_box property
   | Text_shadow : text_shadow list property
   | Clip_path : clip_path property
-  | Mask : string property
+  | Mask : mask property
   | Content_visibility : content_visibility property
   | Filter : filter property
   | Background_image : background_image list property

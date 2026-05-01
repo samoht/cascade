@@ -1,7 +1,7 @@
 (** Parse errors, sealed.
 
     Every error is anchored to a {!Loc.t} and labelled with the {!Sort.t} of the
-    IR node the parser was building when the failure occurred. The {!kind}
+    IR node the parser was building when the failure occurred. The {!type-kind}
     variant is closed: every CSS-syntax-level failure that the parser can emit
     is enumerated here. *)
 

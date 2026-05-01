@@ -36,7 +36,7 @@ val save : t -> unit
 (** [save t] records the current position. A subsequent {!restore} replays every
     token consumed since this {!save} so the next {!next} returns the same
     sequence again. {!save}/{!restore}/{!commit} stack: nested saves are
-    independent, like {!Reader.save}/{!Reader.restore}. *)
+    independent. *)
 
 val restore : t -> unit
 (** [restore t] replays the tokens consumed since the most recent {!save}. Pops

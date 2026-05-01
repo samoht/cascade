@@ -2289,9 +2289,7 @@ type border_radius =
   | Unset
   | Revert
   | Revert_layer
-  | Var of border_radius var
-      (** [<length-percentage [0,∞]>]{1,4} [ / [<length-percentage [0,∞]>]{1,4} ]?
-    per CSS Backgrounds and Borders 3 §5. *)
+  | Var of border_radius var  (** Per CSS Backgrounds and Borders 3 §5. *)
 
 (** Background image values *)
 type background_image =
@@ -2396,6 +2394,28 @@ type mask_box =
   | No_clip  (** Only valid for mask-clip *)
   | Inherit
   | Var of mask_box var
+
+type mask_layer = {
+  image : background_image option;
+  position : position_value option;
+  size : background_size option;
+  repeat : background_repeat option;
+  origin : mask_box option;
+  clip : mask_box option;
+  mode : mask_mode option;
+  composite : mask_composite option;
+}
+
+type mask =
+  | None
+  | Layer of mask_layer
+  | Layers of mask_layer list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of mask var
 
 type background_shorthand = {
   color : color option;
@@ -4735,7 +4755,7 @@ val clip_path : clip_path -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/clip-path} clip-path}
     property. *)
 
-val mask : string -> declaration
+val mask : mask -> declaration
 (** [mask mask] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/mask} mask} property. *)
 

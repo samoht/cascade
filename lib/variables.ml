@@ -1060,6 +1060,23 @@ let rec vars_of_mask_mode (value : Properties.mask_mode) =
   | Revert_layer ->
       []
 
+let vars_of_mask_layer (layer : Properties.mask_layer) : any_var list =
+  Option.fold ~none:[] ~some:vars_of_background_image layer.image
+  @ Option.fold ~none:[] ~some:vars_of_position_value layer.position
+  @ Option.fold ~none:[] ~some:vars_of_background_size layer.size
+  @ Option.fold ~none:[] ~some:vars_of_background_repeat layer.repeat
+  @ Option.fold ~none:[] ~some:vars_of_mask_box layer.origin
+  @ Option.fold ~none:[] ~some:vars_of_mask_box layer.clip
+  @ Option.fold ~none:[] ~some:vars_of_mask_mode layer.mode
+  @ Option.fold ~none:[] ~some:vars_of_mask_composite layer.composite
+
+let vars_of_mask (value : Properties.mask) : any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | Layer layer -> vars_of_mask_layer layer
+  | Layers layers -> List.concat_map vars_of_mask_layer layers
+  | _ -> []
+
 let vars_of_user_select (value : Properties.user_select) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -1361,6 +1378,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | List_style_position, value -> vars_of_list_style_position value
   | Mask_clip, value -> vars_of_mask_box value
   | Mask_composite, value -> vars_of_mask_composite value
+  | Mask, value -> vars_of_mask value
   | Mask_mode, value -> vars_of_mask_mode value
   | Mask_origin, value -> vars_of_mask_box value
   | Mask_repeat, value -> vars_of_background_repeat value

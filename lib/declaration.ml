@@ -160,9 +160,6 @@ let rec string_of_value ?(minify = true) ?(inline = false) decl =
       Buffer.contents ctx.buf
   | Theme_guarded { decl; _ } -> string_of_value ~minify ~inline decl
 
-(* Helper to read a trimmed string *)
-let read_string t = Cursor.string ~trim:true t
-
 (* Helper to validate no extra tokens remain *)
 let validate_no_extra_tokens t =
   Cursor.ws t;
@@ -1538,7 +1535,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Border_collapse -> v Border_collapse (read_border_collapse t)
   (* Clip and mask *)
   | Clip_path -> v Clip_path (read_clip_path t)
-  | Mask -> v Mask (read_string t)
+  | Mask -> v Mask (read_mask t)
   | Clip -> v Clip (read_clip t)
   (* Content visibility *)
   | Content_visibility -> v Content_visibility (read_content_visibility t)

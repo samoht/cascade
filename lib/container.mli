@@ -48,7 +48,7 @@ val of_string : string -> t
 
 val feature : string -> Media.value -> t
 (** [feature name value] is the typed container feature query constructed via
-    {!Media.feature}. *)
+    {!Media.val-feature}. *)
 
 val style : ?value:string -> string -> t
 (** [style ?value prop] is a [style()] query. With no [value] it matches the
