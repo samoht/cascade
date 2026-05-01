@@ -22,7 +22,7 @@ let v ?(important = false) property value =
 (* Smart constructor for custom declarations. CSS Custom Properties Level 1
    restricts the name to dashed idents (start with [--]). *)
 let typed_custom_property ?(important = false) ?layer ?meta name kind value =
-  if not (String.length name >= 2 && String.sub name 0 2 = "--") then
+  if not (String.length name > 2 && String.sub name 0 2 = "--") then
     invalid_arg
       ("Declaration.typed_custom_property: " ^ name
      ^ " is not a CSS custom property name (must start with --)");
@@ -38,10 +38,9 @@ let rec important = function
 (* Helper for raw custom properties - primarily for internal use *)
 
 let custom_property ?layer name value =
-  (* Validate that this is a proper CSS variable name. Per CSS Custom Properties
-     Level 1, [--] (the bare two-dash ident with no body) is a legal name in the
-     syntax even though it is reserved for future use. *)
-  if not (String.length name >= 2 && String.sub name 0 2 = "--") then
+  (* Validate that this is a proper CSS variable name. Custom property names are
+     dashed idents with a body after the leading [--]. *)
+  if not (String.length name > 2 && String.sub name 0 2 = "--") then
     failwith
       (String.concat ""
          [
@@ -1300,6 +1299,10 @@ let read_value (type a) (prop : a property) t : declaration =
       v Text_decoration_style (read_text_decoration_style t)
   | Text_underline_offset ->
       v Text_underline_offset (read_non_negative_length_or_css_wide t)
+  | Text_emphasis -> v Text_emphasis (read_text_emphasis t)
+  | Text_emphasis_position ->
+      v Text_emphasis_position (read_text_emphasis_position t)
+  | Text_orientation -> v Text_orientation (read_text_orientation t)
   | Letter_spacing -> v Letter_spacing (read_non_negative_length_or_css_wide t)
   (* List properties *)
   | List_style_type -> v List_style_type (read_list_style_type t)
@@ -1345,6 +1348,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Border_block_end_width -> v Border_block_end_width (read_border_width t)
   | Border_inline_start_color -> v Border_inline_start_color (read_color t)
   | Border_inline_end_color -> v Border_inline_end_color (read_color t)
+  | Border_inline_color -> v Border_inline_color (read_logical_border_color t)
   | Border_inline_style -> v Border_inline_style (read_border_style t)
   | Border_block_style -> v Border_block_style (read_border_style t)
   | Border_start_start_radius ->
@@ -1371,7 +1375,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Outline -> v Outline (read_outline t)
   | Outline_style -> v Outline_style (read_outline_style t)
   | Outline_width -> v Outline_width (read_non_negative_length_or_css_wide t)
-  | Outline_offset -> v Outline_offset (read_non_negative_length_or_css_wide t)
+  | Outline_offset -> v Outline_offset (read_length ~with_keywords:false t)
   (* Forced color adjust *)
   | Forced_color_adjust -> v Forced_color_adjust (read_forced_color_adjust t)
   (* Scroll snap *)
@@ -1411,6 +1415,7 @@ let read_value (type a) (prop : a property) t : declaration =
   (* Word/text breaking *)
   | Word_break -> v Word_break (read_word_break t)
   | Overflow_wrap -> v Overflow_wrap (read_overflow_wrap t)
+  | Line_break -> v Line_break (read_line_break t)
   | Hyphens -> v Hyphens (read_hyphens t)
   | Word_spacing -> v Word_spacing (read_non_negative_length_or_css_wide t)
   (* Container properties *)
@@ -1496,6 +1501,8 @@ let read_value (type a) (prop : a property) t : declaration =
   | Break_inside -> v Break_inside (read_break_inside_value t)
   | Page_size -> v Page_size (read_page_size t)
   | Columns -> v Columns (read_columns_value t)
+  | Column_rule -> v Column_rule (read_border t)
+  | Column_span -> v Column_span (read_column_span t)
   (* Background properties *)
   | Background_attachment ->
       v Background_attachment (read_background_attachment t)
@@ -1511,6 +1518,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Border_right -> v Border_right (read_border t)
   | Border_bottom -> v Border_bottom (read_border t)
   | Border_left -> v Border_left (read_border t)
+  | Border_block -> v Border_block (read_border t)
   | Border_spacing ->
       (* border-spacing accepts 1 or 2 length values *)
       let lengths =
@@ -1575,7 +1583,10 @@ let read_value (type a) (prop : a property) t : declaration =
   | Scroll_padding_block_start -> v Scroll_padding_block_start (read_length t)
   | Scroll_padding_block_end -> v Scroll_padding_block_end (read_length t)
   | Overscroll_behavior ->
-      let xs, _ = Cursor.many (fun r -> read_overscroll_behavior r) t in
+      let xs =
+        Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2
+          read_overscroll_behavior t
+      in
       v Overscroll_behavior xs
   | Overscroll_behavior_x ->
       v Overscroll_behavior_x (read_overscroll_behavior t)
@@ -2010,6 +2021,9 @@ let text_align a = v Text_align a
 let text_decoration_style value = v Text_decoration_style value
 let text_decoration_line value = v Text_decoration_line [ value ]
 let text_underline_offset value = v Text_underline_offset value
+let text_emphasis value = v Text_emphasis value
+let text_emphasis_position value = v Text_emphasis_position value
+let text_orientation value = v Text_orientation value
 let text_transform value = v Text_transform value
 let letter_spacing len = v Letter_spacing len
 let white_space value = v White_space value
@@ -2130,6 +2144,7 @@ let border ?width ?style ?color () =
   in
   v Border border_value
 
+let border_block value = v Border_block value
 let tab_size value = v Tab_size (Int value : tab_size)
 let webkit_text_size_adjust value = v Webkit_text_size_adjust value
 let font_feature_settings value = v Font_feature_settings value
@@ -2212,6 +2227,7 @@ let text_overflow value = v Text_overflow value
 let text_wrap value = v Text_wrap value
 let word_break value = v Word_break value
 let overflow_wrap value = v Overflow_wrap value
+let line_break value = v Line_break value
 let hyphens value = v Hyphens value
 let webkit_hyphens value = v Webkit_hyphens value
 let font_stretch value = v Font_stretch value
@@ -2236,6 +2252,7 @@ let border_bottom_color value = v Border_bottom_color value
 let border_left_color value = v Border_left_color value
 let border_inline_start_color value = v Border_inline_start_color value
 let border_inline_end_color value = v Border_inline_end_color value
+let border_inline_color value = v Border_inline_color value
 let border_inline_style value = v Border_inline_style value
 let border_block_style value = v Border_block_style value
 let border_start_start_radius value = v Border_start_start_radius value
@@ -2302,6 +2319,8 @@ let page_break_before value = v Break_before (break_of_page_break value)
 let page_break_after value = v Break_after (break_of_page_break value)
 let page_break_inside value = v Break_inside (break_inside_of_page_break value)
 let columns value = v Columns value
+let column_rule value = v Column_rule value
+let column_span value = v Column_span value
 let outline value = v Outline value
 let outline_offset len = v Outline_offset len
 let scroll_snap_type value = v Scroll_snap_type value

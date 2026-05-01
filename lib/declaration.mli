@@ -461,6 +461,21 @@ val text_underline_offset : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-underline-offset}
      text-underline-offset} property. *)
 
+val text_emphasis : text_emphasis -> declaration
+(** [text_emphasis v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-emphasis}
+     text-emphasis} property. *)
+
+val text_emphasis_position : text_emphasis_position -> declaration
+(** [text_emphasis_position v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-emphasis-position}
+     text-emphasis-position} property. *)
+
+val text_orientation : text_orientation -> declaration
+(** [text_orientation v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-orientation}
+     text-orientation} property. *)
+
 val text_transform : text_transform -> declaration
 (** [text_transform v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-transform}
@@ -1177,6 +1192,9 @@ val word_break : word_break -> declaration
 val overflow_wrap : overflow_wrap -> declaration
 (** [overflow_wrap v] is the CSS [overflow-wrap] property. *)
 
+val line_break : line_break -> declaration
+(** [line_break v] is the CSS [line-break] property. *)
+
 val hyphens : hyphens -> declaration
 (** [hyphens v] is the CSS [hyphens] property. *)
 
@@ -1259,6 +1277,9 @@ val border_inline_start_color : color -> declaration
 val border_inline_end_color : color -> declaration
 (** [border_inline_end_color v] is the CSS [border-inline-end-color] property.
 *)
+
+val border_inline_color : logical_border_color -> declaration
+(** [border_inline_color v] is the CSS [border-inline-color] property. *)
 
 val quotes : Properties.quotes -> declaration
 (** [quotes v] is the CSS [quotes] property. *)
@@ -1420,6 +1441,15 @@ val page_break_inside : page_break_inside_value -> declaration
 
 val columns : columns_value -> declaration
 (** [columns v] is the CSS [columns] property for multi-column layout. *)
+
+val column_rule : border -> declaration
+(** [column_rule v] is the CSS [column-rule] shorthand property. *)
+
+val border_block : border -> declaration
+(** [border_block v] is the CSS [border-block] shorthand property. *)
+
+val column_span : column_span -> declaration
+(** [column_span v] is the CSS [column-span] property. *)
 
 val padding_inline : length -> declaration
 (** [padding_inline v] is the CSS [padding-inline] property. *)
