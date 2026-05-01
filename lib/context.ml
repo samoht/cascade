@@ -1229,10 +1229,98 @@ module Computed_value = struct
 
   let trim = String.trim
 
+  (* Internal markers used by the resolver to track provenance during the
+     value-rewrite pipeline. CSS Values 4 §10.13 fully reduces an absolute
+     [calc()] to a single length at computed-value time, but Tailwind-style
+     output prefers to preserve [calc()] form when an author wrote one whose
+     body contains a [var()] reference (e.g. [calc(3px + var(--ring-offset))]) —
+     the resolver only folds calcs whose body was purely literal. To distinguish
+     the two cases the pipeline marks: - each substituted [var()] value with
+     [\x03 ... \x04] in {!expand_vars}; - each authored [calc(...)] with [\x05
+     ... \x06] in {!mark_authored_calcs}, run before [var()] expansion so the
+     markers stick to the original calc boundaries even after the inner [var()]
+     terms are filled in.
+
+     [\x03..\x06] are C0 control characters that never appear in well-formed
+     CSS, so they are safe to use as internal delimiters. All four are stripped
+     before any value reaches the resolver's output or the canonical
+     minifier. *)
+  let subst_open = '\x03'
+  let subst_close = '\x04'
+  let calc_open = '\x05'
+  let calc_close = '\x06'
+
+  let is_marker = function
+    | '\x03' | '\x04' | '\x05' | '\x06' -> true
+    | _ -> false
+
+  let strip_markers (s : string) : string =
+    let len = String.length s in
+    let buf = Buffer.create len in
+    for i = 0 to len - 1 do
+      let c = s.[i] in
+      if not (is_marker c) then Buffer.add_char buf c
+    done;
+    Buffer.contents buf
+
+  let body_has_subst_marker (s : string) : bool =
+    let len = String.length s in
+    let rec scan i =
+      if i >= len then false
+      else if s.[i] = subst_open then true
+      else scan (i + 1)
+    in
+    scan 0
+
+  (* Wrap each [calc(...)] in [s] with [calc_open]/[calc_close] markers so the
+     resolver can later tell which calcs were authored in the original property
+     value and which were spliced in by [var()] expansion. The walker is
+     paren-aware and works recursively over nested calcs. *)
+  let rec mark_authored_calcs (s : string) : string =
+    let len = String.length s in
+    let buf = Buffer.create len in
+    let rec scan i =
+      if i >= len then ()
+      else if
+        i + 5 <= len && String.lowercase_ascii (String.sub s i 5) = "calc("
+      then
+        let body_start = i + 5 in
+        let rec find_close depth j =
+          if j >= len then j
+          else
+            match s.[j] with
+            | '(' -> find_close (depth + 1) (j + 1)
+            | ')' when depth = 0 -> j
+            | ')' -> find_close (depth - 1) (j + 1)
+            | _ -> find_close depth (j + 1)
+        in
+        let close = find_close 0 body_start in
+        if close >= len then (
+          (* Unbalanced — copy the rest verbatim and let later phases report. *)
+          Buffer.add_substring buf s i (len - i);
+          ())
+        else (
+          Buffer.add_char buf calc_open;
+          Buffer.add_string buf (String.sub s i (body_start - i));
+          (* Recurse into the body so nested calcs also get marked. *)
+          let inner = String.sub s body_start (close - body_start) in
+          Buffer.add_string buf (mark_authored_calcs inner);
+          Buffer.add_char buf ')';
+          Buffer.add_char buf calc_close;
+          scan (close + 1))
+      else (
+        Buffer.add_char buf s.[i];
+        scan (i + 1))
+    in
+    scan 0;
+    Buffer.contents buf
+
   (* Walk a value string and replace each [var(...)] expression by calling
      [resolve_var name fallback] which returns either a substitution string or
      [None] when the lookup fails. The walker is paren-aware and supports nested
-     calls. *)
+     calls. Substituted values are wrapped with [subst_open]/[subst_close]
+     markers so the [calc()] resolver can later distinguish authored calc
+     literals from calcs whose terms came from [var()] expansion. *)
   let expand_vars ~resolve_var (s : string) : (string, string) result =
     let buf = Buffer.create (String.length s) in
     let len = String.length s in
@@ -1270,7 +1358,10 @@ module Computed_value = struct
             else name
           in
           (match resolve_var stripped fallback with
-          | Some v -> Buffer.add_string buf v
+          | Some v ->
+              Buffer.add_char buf subst_open;
+              Buffer.add_string buf v;
+              Buffer.add_char buf subst_close
           | None -> raise (Unresolved ("var(--" ^ stripped ^ ")")));
           scan (close + 1))
       else (
@@ -1409,117 +1500,80 @@ module Computed_value = struct
           with Exit -> None)
   end
 
-  (* Per CSS Values 4 §10.13 a [calc()] whose terms are all absolute units could
-     be folded to a literal length at computed-value time, but doing so here
-     loses author intent (Tailwind-style emitted output keeps the [calc()]
-     form). We only fold when the body actually depends on length-context
-     resolution — i.e. references a relative unit such as [em], [rem], [vh],
-     [vw], [vmin], [vmax], [ch], [ex] or their dynamic variants — so
-     pure-absolute [calc(3px + 2px)] round-trips through the resolver
-     verbatim. *)
-  let needs_length_context body =
-    (* Relative-unit suffixes that require a length context to resolve. We leave
-       the absolute set ([px], [cm], [mm], ...) and the unitless number form
-       alone so [calc(3px + 2px)] survives the resolver intact. *)
-    let rels =
-      [
-        "em";
-        "rem";
-        "ex";
-        "ch";
-        "cap";
-        "ic";
-        "lh";
-        "rlh";
-        "vw";
-        "vh";
-        "vmin";
-        "vmax";
-        "vi";
-        "vb";
-        "svw";
-        "svh";
-        "svmin";
-        "svmax";
-        "lvw";
-        "lvh";
-        "lvmin";
-        "lvmax";
-        "dvw";
-        "dvh";
-        "dvmin";
-        "dvmax";
-        "cqw";
-        "cqh";
-        "cqi";
-        "cqb";
-        "cqmin";
-        "cqmax";
-        "%";
-      ]
-    in
-    let is_ident_cont c =
-      (c >= 'a' && c <= 'z')
-      || (c >= 'A' && c <= 'Z')
-      || (c >= '0' && c <= '9')
-      || c = '-' || c = '_'
-    in
-    let len = String.length body in
-    let matches_at i unit =
-      let ulen = String.length unit in
-      i + ulen <= len
-      && String.lowercase_ascii (String.sub body i ulen) = unit
-      && (i + ulen >= len || not (is_ident_cont body.[i + ulen]))
-    in
-    let rec scan i =
-      if i >= len then false
-      else if List.exists (matches_at i) rels then true
-      else scan (i + 1)
-    in
-    scan 0
-
-  (* Replace each [calc(...)] expression in [s] with its evaluated px value when
-     the body references a relative unit that needs length-context resolution.
-     Pure-absolute [calc()] expressions are left verbatim. *)
-  let resolve_calc length_ctx (s : string) : (string, string) result =
+  (* CSS Values 4 §10.13 collapses a fully-absolute [calc()] to a single length
+     at computed-value time. The resolver follows that rule with one Tailwind-
+     friendly addendum: an authored [calc(...)] (one whose [calc_open] marker
+     sits in the input — {!mark_authored_calcs} placed it there before [var()]
+     expansion ran) whose body now contains a [subst_open] marker is preserved
+     as [calc(...)], because folding it would erase authored intent like
+     [calc(3px + var(--ring-offset))]. Calcs that came in via [var()] expansion
+     (no [calc_open] marker around them) and authored calcs whose body holds no
+     substitution still fold to a single px when reducible, and propagate as
+     [Error] when they reference a hole the resolver cannot fill (a [%] against
+     a property without a percentage reference, [ch] without font metrics,
+     ...). *)
+  let rec resolve_calc length_ctx (s : string) : (string, string) result =
     let len = String.length s in
     let buf = Buffer.create len in
     let exception Unresolved of string in
+    let starts_with_calc i =
+      i + 5 <= len && String.lowercase_ascii (String.sub s i 5) = "calc("
+    in
+    let find_paren_close depth_start j_start =
+      let rec loop depth j =
+        if j >= len then j
+        else
+          match s.[j] with
+          | '(' -> loop (depth + 1) (j + 1)
+          | ')' when depth = 0 -> j
+          | ')' -> loop (depth - 1) (j + 1)
+          | _ -> loop depth (j + 1)
+      in
+      loop depth_start j_start
+    in
     let rec scan i =
       if i >= len then ()
-      else if i + 5 <= len && String.sub s i 5 = "calc(" then (
-        let body_start = i + 5 in
-        let rec find_close depth j =
-          if j >= len then j
-          else
-            match s.[j] with
-            | '(' -> find_close (depth + 1) (j + 1)
-            | ')' when depth = 0 -> j
-            | ')' -> find_close (depth - 1) (j + 1)
-            | _ -> find_close depth (j + 1)
+      else
+        let authored, calc_at =
+          if s.[i] = calc_open && i + 1 < len && starts_with_calc (i + 1) then
+            (true, i + 1)
+          else if starts_with_calc i then (false, i)
+          else (false, -1)
         in
-        let close = find_close 0 body_start in
-        if close >= len then raise (Unresolved "unterminated calc()")
+        if calc_at >= 0 then (
+          let body_start = calc_at + 5 in
+          let close = find_paren_close 0 body_start in
+          if close >= len then raise (Unresolved "unterminated calc()")
+          else
+            let body = String.sub s body_start (close - body_start) in
+            let after =
+              (* Skip the matching [calc_close] marker for an authored calc. *)
+              if authored && close + 1 < len && s.[close + 1] = calc_close then
+                close + 2
+              else close + 1
+            in
+            if authored && body_has_subst_marker body then (
+              (* Authored calc with a substituted hole: preserve the form,
+                 recurse into the body so nested calcs still simplify. *)
+              Buffer.add_string buf "calc(";
+              (match resolve_calc length_ctx body with
+              | Ok inner -> Buffer.add_string buf (strip_markers inner)
+              | Error msg -> raise (Unresolved msg));
+              Buffer.add_char buf ')')
+            else
+              let body_clean = strip_markers body in
+              (match Calc.evaluate length_ctx body_clean with
+              | Some px ->
+                  Buffer.add_string buf
+                    (Pp.to_string ~minify:true
+                       (Values.pp_length ~always:true)
+                       (Px px))
+              | None -> raise (Unresolved ("calc(" ^ body_clean ^ ")")));
+              scan after)
         else
-          let body = String.sub s body_start (close - body_start) in
-          (if not (needs_length_context body) then (
-             (* Preserve the calc() form verbatim — author / Tailwind-style
-                output expects [calc(3px + 2px)] not [5px]. *)
-             Buffer.add_string buf "calc(";
-             Buffer.add_string buf body;
-             Buffer.add_char buf ')')
-           else
-             match Calc.evaluate length_ctx body with
-             | None -> raise (Unresolved ("calc(" ^ body ^ ")"))
-             | Some px ->
-                 Buffer.add_string buf
-                   (Pp.to_string ~minify:true
-                      (Values.pp_length ~always:true)
-                      (Px px)));
-          scan (close + 1))
-      else (
-        Buffer.add_char buf s.[i];
-        scan (i + 1))
+          let c = s.[i] in
+          if not (is_marker c) then Buffer.add_char buf c;
+          scan (i + 1)
     in
     try
       scan 0;
@@ -1546,31 +1600,41 @@ module Computed_value = struct
   let try_resolve_length length_ctx (s : string) :
       [ `Resolved of string | `Unresolved | `Not_length ] =
     let s = String.trim s in
-    let parsed =
-      try
-        let cursor = Cursor.of_string s in
-        let length = Values.read_length cursor in
-        Cursor.ws cursor;
-        if Cursor.is_done cursor then Some length else None
-      with Cursor.Parse_error _ | Reader.Parse_error _ -> None
+    let starts_with_calc =
+      String.length s >= 5
+      && String.lowercase_ascii (String.sub s 0 5) = "calc("
     in
-    match parsed with
-    | None -> `Not_length
-    | Some (Pct _) ->
-        (* Defer to the property-aware percentage resolver. *)
-        `Not_length
-    | Some length -> (
-        match Length.to_px length_ctx length with
-        | Some px ->
-            (* CSS Values 4 §2.4: a [0] length is dimensionless and is
-               canonicalised back without the [px] suffix; only non-zero lengths
-               force a unit on output. *)
-            let resolved : Values.length = if px = 0.0 then Zero else Px px in
-            `Resolved
-              (Pp.to_string ~minify:true
-                 (Values.pp_length ~always:true)
-                 resolved)
-        | None -> `Unresolved)
+    if starts_with_calc then
+      (* {!resolve_calc} already ran on this input — any [calc(...)] still
+         present is a preserved authored form (CSS Values 4 §10.13 + Tailwind
+         convention) and should pass through verbatim. *)
+      `Not_length
+    else
+      let parsed =
+        try
+          let cursor = Cursor.of_string s in
+          let length = Values.read_length cursor in
+          Cursor.ws cursor;
+          if Cursor.is_done cursor then Some length else None
+        with Cursor.Parse_error _ | Reader.Parse_error _ -> None
+      in
+      match parsed with
+      | None -> `Not_length
+      | Some (Pct _) ->
+          (* Defer to the property-aware percentage resolver. *)
+          `Not_length
+      | Some length -> (
+          match Length.to_px length_ctx length with
+          | Some px ->
+              (* CSS Values 4 §2.4: a [0] length is dimensionless and is
+                 canonicalised back without the [px] suffix; only non-zero
+                 lengths force a unit on output. *)
+              let resolved : Values.length = if px = 0.0 then Zero else Px px in
+              `Resolved
+                (Pp.to_string ~minify:true
+                   (Values.pp_length ~always:true)
+                   resolved)
+          | None -> `Unresolved)
 
   (* Resolve a [url(...)] reference against the base URL, if any. *)
   let resolve_url_in_value (ctx : t) (s : string) : (string, string) result =
@@ -1613,7 +1677,46 @@ module Computed_value = struct
      parse as lengths but fail to resolve return [Error]; non-length tokens
      (idents, keywords, colors) pass through unchanged. *)
   let resolve_lengths length_ctx (s : string) : (string, string) result =
-    let parts = String.split_on_char ' ' s |> List.filter (fun s -> s <> "") in
+    (* Tokenise [s] on whitespace while keeping balanced [(...)] groups (e.g.
+       [calc(3px + 2px)] preserved by {!resolve_calc}, [rgb(...)] colors) intact
+       as opaque non-length tokens — splitting them on space would feed
+       fragments like [calc(3px] to the per-token length parser and trigger
+       false unresolved errors. *)
+    let len = String.length s in
+    let parts = ref [] in
+    let buf = Buffer.create 16 in
+    let flush () =
+      if Buffer.length buf > 0 then (
+        parts := Buffer.contents buf :: !parts;
+        Buffer.clear buf)
+    in
+    let rec scan i =
+      if i >= len then flush ()
+      else
+        match s.[i] with
+        | ' ' | '\t' | '\n' ->
+            flush ();
+            scan (i + 1)
+        | '(' ->
+            let rec close depth j =
+              if j >= len then j
+              else
+                match s.[j] with
+                | '(' -> close (depth + 1) (j + 1)
+                | ')' when depth = 0 -> j
+                | ')' -> close (depth - 1) (j + 1)
+                | _ -> close depth (j + 1)
+            in
+            let cl = close 0 (i + 1) in
+            let stop = if cl < len then cl + 1 else cl in
+            Buffer.add_substring buf s i (stop - i);
+            scan stop
+        | c ->
+            Buffer.add_char buf c;
+            scan (i + 1)
+    in
+    scan 0;
+    let parts = List.rev !parts in
     let exception Unresolved of string in
     try
       let resolved =
@@ -1884,18 +1987,19 @@ module Computed_value = struct
           | None -> Ok value
           | Some v -> resolve ?layer ?layer_order ctx ~property ~value:v)
       | _ -> (
-          match expand_value ?layer ?layer_order ctx ~visited:[] value with
-          | Error msg -> Error msg
+          let marked = mark_authored_calcs value in
+          match expand_value ?layer ?layer_order ctx ~visited:[] marked with
+          | Error msg -> Error (strip_markers msg)
           | Ok expanded -> (
               let length_ctx = Length.of_t ctx in
               match resolve_current_color ctx expanded with
-              | Error msg -> Error msg
+              | Error msg -> Error (strip_markers msg)
               | Ok with_color -> (
                   match resolve_url_in_value ctx with_color with
-                  | Error msg -> Error msg
+                  | Error msg -> Error (strip_markers msg)
                   | Ok with_url -> (
                       match resolve_calc length_ctx with_url with
-                      | Error msg -> Error msg
+                      | Error msg -> Error (strip_markers msg)
                       | Ok with_calc -> (
                           match resolve_lengths length_ctx with_calc with
                           | Error msg -> Error msg

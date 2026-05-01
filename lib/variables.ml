@@ -602,6 +602,13 @@ let rec vars_of_opacity (value : Properties.opacity) : any_var list =
   | Var v -> [ V v ]
   | Inherit | Initial | Unset | Revert | Revert_layer -> []
 
+let vars_of_tab_size (value : Properties.tab_size) : any_var list =
+  match value with
+  | Int _ -> []
+  | Length len -> vars_of_length len
+  | Var v -> [ V v ]
+  | Initial | Inherit | Unset | Revert | Revert_layer -> []
+
 let compare_vars_by_name (V x) (V y) = String.compare x.name y.name
 
 (** {1 Variable name utilities} *)
@@ -659,6 +666,76 @@ let vars_of_place_items (value : Properties.place_items) =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_grid_auto_flow (value : Properties.grid_auto_flow) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_container_name (value : Properties.container_name) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_anchor_name (value : Properties.anchor_name) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_position_anchor (value : Properties.position_anchor) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_position_try_fallbacks (value : Properties.position_try_fallbacks) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_overflow_anchor (value : Properties.overflow_anchor) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_scrollbar_width (value : Properties.scrollbar_width) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_scrollbar_color (value : Properties.scrollbar_color) =
+  match value with
+  | Var v -> [ V v ]
+  | Colors (thumb, track) -> vars_of_color thumb @ vars_of_color track
+  | Auto | Initial | Inherit | Unset | Revert | Revert_layer -> []
+
+let vars_of_scrollbar_gutter (value : Properties.scrollbar_gutter) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_font_palette (value : Properties.font_palette) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_font_synthesis (value : Properties.font_synthesis) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_animation_timeline (value : Properties.animation_timeline) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_animation_range_item (value : Properties.animation_range_item) =
+  match value with
+  | Normal -> []
+  | Offset lp | Named (_, lp) -> vars_of_length_percentage lp
+
+let vars_of_animation_range (value : Properties.animation_range) =
+  match value with
+  | Var v -> [ V v ]
+  | Range (first, second) ->
+      vars_of_animation_range_item first
+      @ Option.fold ~none:[] ~some:vars_of_animation_range_item second
+  | Initial | Inherit | Unset | Revert | Revert_layer -> []
+
+let vars_of_view_transition_name (value : Properties.view_transition_name) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_image_orientation (value : Properties.image_orientation) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_contain_intrinsic_size_item
+    (value : Properties.contain_intrinsic_size_item) =
+  match value with Length len | Auto len -> vars_of_length len
+
+let vars_of_contain_intrinsic_size (value : Properties.contain_intrinsic_size) =
+  match value with
+  | Var v -> [ V v ]
+  | Intrinsic (first, second) ->
+      vars_of_contain_intrinsic_size_item first
+      @ Option.fold ~none:[] ~some:vars_of_contain_intrinsic_size_item second
+  | None | Initial | Inherit | Unset | Revert | Revert_layer -> []
+
+let vars_of_margin_trim (value : Properties.margin_trim) =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_flex (value : Properties.flex) =
@@ -959,8 +1036,13 @@ let vars_of_webkit_mask_source_type (value : Properties.webkit_mask_source_type)
     =
   match value with Var v -> [ V v ] | _ -> []
 
-let vars_of_mask_mode (value : Properties.mask_mode) =
-  match value with Var v -> [ V v ] | _ -> []
+let rec vars_of_mask_mode (value : Properties.mask_mode) =
+  match value with
+  | Var v -> [ V v ]
+  | Modes modes -> List.concat_map vars_of_mask_mode modes
+  | Alpha | Luminance | Match_source | Initial | Inherit | Unset | Revert
+  | Revert_layer ->
+      []
 
 let vars_of_user_select (value : Properties.user_select) =
   match value with Var v -> [ V v ] | _ -> []
@@ -1194,6 +1276,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Will_change, value -> vars_of_will_change value
   (* Opacity (typed math) *)
   | Opacity, value -> vars_of_opacity value
+  | Tab_size, value -> vars_of_tab_size value
   | Align_content, value -> vars_of_align_content value
   | Align_items, value -> vars_of_align_items value
   | Align_self, value -> vars_of_align_self value
@@ -1219,6 +1302,22 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Color_scheme, value -> vars_of_color_scheme value
   | Container_type, value -> vars_of_container_type value
   | Container, value -> vars_of_container_shorthand value
+  | Container_name, value -> vars_of_container_name value
+  | Anchor_name, value -> vars_of_anchor_name value
+  | Position_anchor, value -> vars_of_position_anchor value
+  | Position_try_fallbacks, value -> vars_of_position_try_fallbacks value
+  | Overflow_anchor, value -> vars_of_overflow_anchor value
+  | Scrollbar_width, value -> vars_of_scrollbar_width value
+  | Scrollbar_color, value -> vars_of_scrollbar_color value
+  | Scrollbar_gutter, value -> vars_of_scrollbar_gutter value
+  | Font_palette, value -> vars_of_font_palette value
+  | Font_synthesis, value -> vars_of_font_synthesis value
+  | Animation_timeline, value -> vars_of_animation_timeline value
+  | Animation_range, value -> vars_of_animation_range value
+  | View_transition_name, value -> vars_of_view_transition_name value
+  | Image_orientation, value -> vars_of_image_orientation value
+  | Contain_intrinsic_size, value -> vars_of_contain_intrinsic_size value
+  | Margin_trim, value -> vars_of_margin_trim value
   | All, value -> vars_of_css_wide value
   | Direction, value -> vars_of_direction value
   | Display, value -> vars_of_display value

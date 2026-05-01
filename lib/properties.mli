@@ -197,6 +197,12 @@ val pp_z_index : z_index Pp.t
 val read_z_index : Cursor.t -> z_index
 (** [read_z_index t] is the [z_index] parsed from [t]. *)
 
+val pp_tab_size : tab_size Pp.t
+(** [pp_tab_size] is the pretty-printer for [tab_size]. *)
+
+val read_tab_size : Cursor.t -> tab_size
+(** [read_tab_size t] is the [tab_size] parsed from [t]. *)
+
 val pp_order : order Pp.t
 (** [pp_order] is the pretty-printer for [order]. *)
 
@@ -987,6 +993,91 @@ val pp_container_type : container_type Pp.t
 
 val read_container_type : Cursor.t -> container_type
 (** [read_container_type t] is the [container_type] parsed from [t]. *)
+
+val pp_container_name : container_name Pp.t
+(** [pp_container_name] is the pretty-printer for [container_name]. *)
+
+val read_container_name : Cursor.t -> container_name
+(** [read_container_name t] is the [container_name] parsed from [t]. *)
+
+val pp_anchor_name : anchor_name Pp.t
+(** [pp_anchor_name] is the pretty-printer for [anchor_name]. *)
+
+val read_anchor_name : Cursor.t -> anchor_name
+(** [read_anchor_name t] is the [anchor_name] parsed from [t]. *)
+
+val pp_position_anchor : position_anchor Pp.t
+(** [pp_position_anchor] is the pretty-printer for [position_anchor]. *)
+
+val read_position_anchor : Cursor.t -> position_anchor
+(** [read_position_anchor t] is the [position_anchor] parsed from [t]. *)
+
+val pp_overflow_anchor : overflow_anchor Pp.t
+(** [pp_overflow_anchor] is the pretty-printer for [overflow_anchor]. *)
+
+val read_overflow_anchor : Cursor.t -> overflow_anchor
+(** [read_overflow_anchor t] is the [overflow_anchor] parsed from [t]. *)
+
+val pp_scrollbar_width : scrollbar_width Pp.t
+(** [pp_scrollbar_width] is the pretty-printer for [scrollbar_width]. *)
+
+val read_scrollbar_width : Cursor.t -> scrollbar_width
+(** [read_scrollbar_width t] is the [scrollbar_width] parsed from [t]. *)
+
+val pp_scrollbar_color : scrollbar_color Pp.t
+(** [pp_scrollbar_color] is the pretty-printer for [scrollbar_color]. *)
+
+val read_scrollbar_color : Cursor.t -> scrollbar_color
+(** [read_scrollbar_color t] is the [scrollbar_color] parsed from [t]. *)
+
+val pp_scrollbar_gutter : scrollbar_gutter Pp.t
+(** [pp_scrollbar_gutter] is the pretty-printer for [scrollbar_gutter]. *)
+
+val read_scrollbar_gutter : Cursor.t -> scrollbar_gutter
+(** [read_scrollbar_gutter t] is the [scrollbar_gutter] parsed from [t]. *)
+
+val pp_font_palette : font_palette Pp.t
+(** [pp_font_palette] is the pretty-printer for [font_palette]. *)
+
+val read_font_palette : Cursor.t -> font_palette
+(** [read_font_palette t] is the [font_palette] parsed from [t]. *)
+
+val pp_font_synthesis : font_synthesis Pp.t
+(** [pp_font_synthesis] is the pretty-printer for [font_synthesis]. *)
+
+val read_font_synthesis : Cursor.t -> font_synthesis
+(** [read_font_synthesis t] is the [font_synthesis] parsed from [t]. *)
+
+val pp_animation_timeline : animation_timeline Pp.t
+(** [pp_animation_timeline] is the pretty-printer for [animation_timeline]. *)
+
+val read_animation_timeline : Cursor.t -> animation_timeline
+(** [read_animation_timeline t] is the [animation_timeline] parsed from [t]. *)
+
+val pp_animation_range : animation_range Pp.t
+(** [pp_animation_range] is the pretty-printer for [animation_range]. *)
+
+val pp_view_transition_name : view_transition_name Pp.t
+(** [pp_view_transition_name] is the pretty-printer for [view_transition_name].
+*)
+
+val read_view_transition_name : Cursor.t -> view_transition_name
+(** [read_view_transition_name t] is the [view_transition_name] parsed from [t].
+*)
+
+val pp_image_orientation : image_orientation Pp.t
+(** [pp_image_orientation] is the pretty-printer for [image_orientation]. *)
+
+val read_image_orientation : Cursor.t -> image_orientation
+(** [read_image_orientation t] is the [image_orientation] parsed from [t]. *)
+
+val pp_contain_intrinsic_size : contain_intrinsic_size Pp.t
+(** [pp_contain_intrinsic_size] is the pretty-printer for
+    [contain_intrinsic_size]. *)
+
+val read_contain_intrinsic_size : Cursor.t -> contain_intrinsic_size
+(** [read_contain_intrinsic_size t] is the [contain_intrinsic_size] parsed from
+    [t]. *)
 
 val pp_container_shorthand : container_shorthand Pp.t
 (** [pp_container_shorthand] is the pretty-printer for [container_shorthand]. *)

@@ -407,13 +407,20 @@ let generated_selector buf =
 let invalid_selector_mutation buf =
   match byte_at buf 0 mod 6 with
   | 0 -> generated_selector buf ^ " > > " ^ ident buf 1
-  | 1 -> generated_selector buf ^ "[data-state"
+  | 1 -> generated_selector buf ^ "[data-state=]"
   | 2 -> ":not()"
   | 3 -> ":has(:has(" ^ ident buf 1 ^ "))"
   | 4 -> generated_selector buf ^ "::before." ^ class_name buf 1
   | _ -> ident buf 1 ^ ":nth-child(n+)"
 
 let test_generated_selector_grammar buf = assert_stable (generated_selector buf)
+
+let test_unterminated_attribute_recovery buf =
+  let compound =
+    ident buf 0 ^ "." ^ class_name buf 1 ^ attr_selector buf 2
+    ^ pseudo_class buf 6
+  in
+  assert_stable (compound ^ "[data-state")
 
 let test_invalid_selector_mutations buf =
   assert_reject (invalid_selector_mutation buf)
@@ -455,6 +462,8 @@ let suite =
         test_selector_l4_serialization_matrix;
       test_case "generated selector grammar" [ bytes ]
         test_generated_selector_grammar;
+      test_case "unterminated attribute selector recovery" [ bytes ]
+        test_unterminated_attribute_recovery;
       test_case "invalid selector mutations rejected" [ bytes ]
         test_invalid_selector_mutations;
     ] )

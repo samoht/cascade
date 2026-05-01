@@ -3,7 +3,15 @@
 type 'a node = { node : 'a; loc : Loc.t }
 
 type t = Preserved of Token.t | Block of block node | Func of func node
-and block = { opening : Token.bracket; value : t list }
+
+and block = {
+  opening : Token.bracket;
+  value : t list;
+  closed : bool;
+      (** [false] when the lexer reached EOF before the matching closer (CSS
+          Syntax section 5.4.6 parse error). Typed validators inspect this to
+          reject values that the syntax level only forgives. *)
+}
 
 and func = {
   name : string;
@@ -50,7 +58,7 @@ let rec pp : t Pp.t =
  fun ctx cv ->
   match cv with
   | Preserved tok -> Token.pp ctx tok
-  | Block { node = { opening; value }; _ } ->
+  | Block { node = { opening; value; _ }; _ } ->
       Pp.char ctx (opening_char opening);
       Pp.list ~sep:Pp.sp pp ctx value;
       Pp.char ctx (closing_char opening)
