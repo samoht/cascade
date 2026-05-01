@@ -328,6 +328,10 @@ val read_number_percentage : Cursor.t -> number_percentage
 val read_calc : (Cursor.t -> 'a) -> Cursor.t -> 'a calc
 (** [read_calc read t] parses a [calc(...)] expression or a promotable value. *)
 
+val read_calc_expr : (Cursor.t -> 'a) -> Cursor.t -> 'a calc
+(** [read_calc_expr read t] parses a calc expression body — the contents of a
+    [calc(...)] form without the surrounding [calc(] and [)]. *)
+
 val eval_numeric_calc : 'a calc -> float option
 (** [eval_numeric_calc calc] tries to evaluate a calc expression containing only
     numbers to a float. Returns [None] if the expression contains variables or
