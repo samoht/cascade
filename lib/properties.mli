@@ -681,6 +681,12 @@ val read_animation_iteration_count : Cursor.t -> animation_iteration_count
 (** [read_animation_iteration_count t] is the [animation_iteration_count] parsed
     from [t]. *)
 
+val pp_animation_name : animation_name Pp.t
+(** [pp_animation_name] is the pretty-printer for [animation_name]. *)
+
+val read_animation_name : Cursor.t -> animation_name
+(** [read_animation_name t] is the [animation_name] parsed from [t]. *)
+
 val pp_animation_play_state : animation_play_state Pp.t
 (** [pp_animation_play_state] is the pretty-printer for [animation_play_state].
 *)

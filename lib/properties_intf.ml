@@ -1424,9 +1424,26 @@ type animation_fill_mode =
 type animation_iteration_count =
   | Num of float
   | Infinite
+  | Counts of animation_iteration_count list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of animation_iteration_count var
 
 type animation_play_state = Running | Paused | Var of animation_play_state var
+
+type animation_name =
+  | None
+  | Name of string
+  | Names of animation_name list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of animation_name var
 
 type animation_shorthand = {
   name : string option; (* Optional animation name, defaults to None *)
@@ -2017,7 +2034,11 @@ type content_visibility =
   | Visible
   | Hidden
   | Auto
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of content_visibility var
       (** The CSS quotes property - defines quotation marks *)
 
@@ -3161,7 +3182,7 @@ type 'a property =
   | Unicode_bidi : unicode_bidi property
   | Writing_mode : writing_mode property
   | Text_decoration_skip_ink : text_decoration_skip_ink property
-  | Animation_name : string property
+  | Animation_name : animation_name property
   | Animation_duration : duration property
   | Animation_timing_function : timing_function property
   | Animation_delay : duration property

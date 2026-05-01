@@ -472,6 +472,13 @@ let vars_of_content_visibility (value : Properties.content_visibility) :
     any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
+let rec vars_of_animation_name (value : Properties.animation_name) :
+    any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | Names names -> List.concat_map vars_of_animation_name names
+  | _ -> []
+
 let vars_of_font_feature_settings (value : Properties.font_feature_settings) :
     any_var list =
   match value with Var v -> [ V v ] | _ -> []
@@ -1214,6 +1221,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Transition_delay, value -> vars_of_duration value
   | Animation_duration, value -> vars_of_duration value
   | Animation_delay, value -> vars_of_duration value
+  | Animation_name, value -> vars_of_animation_name value
   (* Transform properties *)
   | Transform, value -> vars_of_transform_list value
   | Webkit_transform, value -> vars_of_transform_list value

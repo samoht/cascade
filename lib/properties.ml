@@ -3746,6 +3746,18 @@ let rec pp_animation_iteration_count : animation_iteration_count Pp.t =
   | Infinite -> Pp.string ctx "infinite"
   | Num n -> Pp.float ctx n
 
+let rec pp_animation_name : animation_name Pp.t =
+ fun ctx -> function
+  | None -> Pp.string ctx "none"
+  | Name name -> Pp.string ctx name
+  | Names names -> Pp.list ~sep:Pp.comma pp_animation_name ctx names
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_animation_name ctx v
+
 let rec pp_animation_play_state : animation_play_state Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_animation_play_state ctx v
@@ -4245,7 +4257,11 @@ let rec pp_content_visibility : content_visibility Pp.t =
   | Visible -> Pp.string ctx "visible"
   | Hidden -> Pp.string ctx "hidden"
   | Auto -> Pp.string ctx "auto"
+  | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_content_visibility ctx v
 
 let rec pp_quotes : quotes Pp.t =
@@ -6779,7 +6795,11 @@ let rec read_content_visibility t : content_visibility =
       ("visible", (Visible : content_visibility));
       ("auto", Auto);
       ("hidden", Hidden);
+      ("initial", Initial);
       ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
     ~calls:[ ("var", read_var) ]
     t
@@ -8612,6 +8632,27 @@ let read_animation_iteration_count t : animation_iteration_count =
           if n < 0. then
             Cursor.err_invalid t "animation-iteration-count cannot be negative"
           else Num n)
+    t
+
+let rec read_animation_name t : animation_name =
+  let read_item t =
+    Cursor.enum "animation-name-item"
+      [ ("none", (None : animation_name)) ]
+      ~default:(fun t -> (Name (Cursor.ident t) : animation_name))
+      t
+  in
+  Cursor.enum_or_var "animation-name"
+    [
+      ("initial", (Initial : animation_name));
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_animation_name t))
+    ~default:(fun t ->
+      let names = Cursor.list ~sep:Cursor.comma ~at_least:1 read_item t in
+      match names with [ name ] -> name | names -> Names names)
     t
 
 let read_animation_play_state t : animation_play_state =
@@ -11370,7 +11411,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Unicode_bidi -> pp pp_unicode_bidi
   | Writing_mode -> pp pp_writing_mode
   | Text_decoration_skip_ink -> pp pp_text_decoration_skip_ink
-  | Animation_name -> pp Pp.string
+  | Animation_name -> pp pp_animation_name
   | Animation_duration -> pp pp_duration
   | Animation_timing_function -> pp pp_timing_function
   | Animation_delay -> pp pp_duration

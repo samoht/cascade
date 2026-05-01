@@ -2087,7 +2087,11 @@ type content_visibility =
   | Visible  (** Content is visible and rendered *)
   | Hidden  (** Content is hidden from rendering *)
   | Auto  (** Browser determines visibility based on relevance *)
+  | Initial
   | Inherit  (** Inherit from parent *)
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of content_visibility var
 
 val content_visibility : content_visibility -> declaration
@@ -4486,7 +4490,24 @@ type animation_play_state =
 type animation_iteration_count =
   | Num of float
   | Infinite
+  | Counts of animation_iteration_count list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of animation_iteration_count var
+
+type animation_name =
+  | None
+  | Name of string
+  | Names of animation_name list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of animation_name var
 
 type animation_shorthand = {
   name : string option; (* Optional animation name, defaults to None *)
@@ -4535,7 +4556,7 @@ val animation : animation -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/animation} animation}
     shorthand property. *)
 
-val animation_name : string -> declaration
+val animation_name : animation_name -> declaration
 (** [animation_name name] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/animation-name}
      animation-name} property. *)
