@@ -211,7 +211,30 @@ let token_kind_to_string : Token.kind -> string = function
   | Token.Delim s -> s
   | Token.Number_tok { repr; _ } -> repr
   | Token.Percentage { repr; _ } -> repr ^ "%"
-  | Token.Dimension { number; unit_ } -> number.repr ^ escape_ident unit_
+  | Token.Dimension { number; unit_ } ->
+      (* CSS Syntax §9.1 ambiguous-dimension rule: a unit starting with [e]/[E]
+         followed by a digit (with optional sign) round-trips as scientific
+         notation rather than a dimension. Escape the leading letter via the hex
+         form so the lexer cannot fold it into the number's exponent. *)
+      let unit_serialized =
+        let len = String.length unit_ in
+        let next_is_digit i = i < len && unit_.[i] >= '0' && unit_.[i] <= '9' in
+        let is_sign c = c = '+' || c = '-' in
+        if
+          len >= 2
+          && (unit_.[0] = 'e' || unit_.[0] = 'E')
+          && (next_is_digit 1
+             || (len >= 3 && is_sign unit_.[1] && next_is_digit 2))
+        then (
+          let buf = Buffer.create (len + 4) in
+          Buffer.add_char buf '\\';
+          Buffer.add_string buf (Printf.sprintf "%x" (Char.code unit_.[0]));
+          Buffer.add_char buf ' ';
+          Buffer.add_string buf (escape_ident (String.sub unit_ 1 (len - 1)));
+          Buffer.contents buf)
+        else escape_ident unit_
+      in
+      number.repr ^ unit_serialized
   | Token.Whitespace -> " "
   | Token.Unicode_range { start_value; end_value } ->
       let hex_digits = "0123456789ABCDEF" in

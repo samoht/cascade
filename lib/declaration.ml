@@ -804,6 +804,92 @@ let rec read_margin_trim t : margin_trim =
      ~default:read_edges t
     : margin_trim)
 
+let read_ray_size t : ray_size =
+  Cursor.enum "ray size"
+    [
+      ("closest-side", (Radial Closest_side : ray_size));
+      ("closest-corner", Radial Closest_corner);
+      ("farthest-side", Radial Farthest_side);
+      ("farthest-corner", Radial Farthest_corner);
+      ("sides", Sides);
+    ]
+    t
+
+let rec read_offset_path t : offset_path =
+  let read_path t =
+    Cursor.call "path" t @@ fun inner ->
+    Cursor.ws inner;
+    match Cursor.string_opt inner with
+    | Some path when path <> "" ->
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        (Path path : offset_path)
+    | Some _ -> Cursor.err_invalid inner "empty offset path"
+    | None -> Cursor.err_expected inner "path string"
+  in
+  let read_ray t =
+    Cursor.call "ray" t @@ fun inner ->
+    Cursor.ws inner;
+    let angle = Values.read_angle inner in
+    Cursor.ws inner;
+    let size = Cursor.option read_ray_size inner in
+    Cursor.ws inner;
+    let contain =
+      match Cursor.peek_ident inner with
+      | Some "contain" ->
+          let _ = Cursor.ident inner in
+          true
+      | _ -> false
+    in
+    Cursor.ws inner;
+    let position =
+      match Cursor.peek_ident inner with
+      | Some "at" ->
+          let _ = Cursor.ident inner in
+          Cursor.ws inner;
+          Some (read_position_value inner)
+      | _ -> None
+    in
+    Cursor.ws inner;
+    Cursor.expect_eof inner;
+    (Ray { angle; size; contain; position } : offset_path)
+  in
+  let read_url_function t =
+    Cursor.call "url" t @@ fun inner ->
+    Cursor.ws inner;
+    match Cursor.string_opt inner with
+    | Some url when url <> "" ->
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        (Url url : offset_path)
+    | Some _ -> Cursor.err_invalid inner "empty offset path url"
+    | None -> Cursor.err_expected inner "url string"
+  in
+  let read_url_token t =
+    match Cursor.url_opt t with
+    | Some url when url <> "" -> (Url url : offset_path)
+    | Some _ -> Cursor.err_invalid t "empty offset path url"
+    | None -> Cursor.err_expected t "offset-path"
+  in
+  Cursor.enum_or_calls "offset-path"
+    [
+      ("none", (None : offset_path));
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:
+      [
+        ("path", read_path);
+        ("ray", read_ray);
+        ("url", read_url_function);
+        ( "var",
+          fun t -> (Var (Values.read_var read_offset_path t) : offset_path) );
+      ]
+    ~default:read_url_token t
+
 (* CSS Scroll-driven Animations: [animation-range =
    <single-animation-range>{1,2}] where each [<single-animation-range>] is
    [normal | <length-percentage> | <timeline-range-name> <length-percentage>].
@@ -1379,7 +1465,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Contain_intrinsic_inline_size ->
       v Contain_intrinsic_inline_size (read_untyped_value t)
   | Margin_trim -> v Margin_trim (read_margin_trim t)
-  | Offset_path -> v Offset_path (read_untyped_value t)
+  | Offset_path -> v Offset_path (read_offset_path t)
   | Offset_distance ->
       v Offset_distance (read_non_negative_length_percentage_or_css_wide t)
   | Font_size_adjust -> v Font_size_adjust (read_font_size_adjust t)
@@ -1388,14 +1474,10 @@ let read_value (type a) (prop : a property) t : declaration =
   | Hyphenate_limit_chars ->
       v Hyphenate_limit_chars (read_hyphenate_limit_chars t)
   | Initial_letter -> v Initial_letter (read_initial_letter t)
-  | View_timeline_name -> v View_timeline_name (read_untyped_value t)
-  | View_timeline_axis ->
-      v View_timeline_axis
-        (Cursor.enum "view-timeline-axis"
-           [ ("block", "block"); ("inline", "inline"); ("x", "x"); ("y", "y") ]
-           t)
+  | View_timeline_name -> v View_timeline_name (read_timeline_name t)
+  | View_timeline_axis -> v View_timeline_axis (read_timeline_axis t)
   | View_timeline -> v View_timeline (read_timeline_shorthand t)
-  | Timeline_scope -> v Timeline_scope (read_untyped_value t)
+  | Timeline_scope -> v Timeline_scope (read_timeline_name t)
   (* Transform properties *)
   | Perspective -> v Perspective (read_non_negative_length_or_css_wide t)
   | Perspective_origin -> v Perspective_origin (read_perspective_origin t)
