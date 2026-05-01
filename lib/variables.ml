@@ -583,10 +583,13 @@ let vars_of_transform_origin (value : Properties.transform_origin) :
     any_var list =
   match value with
   | Var v -> [ V v ]
+  | Position position -> vars_of_position_value position
   | X l -> vars_of_length l
   | XY (l1, l2) -> vars_of_length l1 @ vars_of_length l2
   | XYZ (l1, l2, l3) ->
       vars_of_length l1 @ vars_of_length l2 @ vars_of_length l3
+  | Position_z (position, z) ->
+      vars_of_position_value position @ vars_of_length z
   | _ -> []
 
 let vars_of_vertical_align (value : Properties.vertical_align) : any_var list =
@@ -826,8 +829,14 @@ let vars_of_outline (value : Properties.outline) =
       @ Option.value ~default:[] (Option.map vars_of_color color)
   | _ -> []
 
-let vars_of_background_attachment (value : Properties.background_attachment) =
-  match value with Var v -> [ V v ] | _ -> []
+let rec vars_of_background_attachment (value : Properties.background_attachment)
+    =
+  match value with
+  | Var v -> [ V v ]
+  | Layers layers -> List.concat_map vars_of_background_attachment layers
+  | Scroll | Fixed | Local | Initial | Inherit | Unset | Revert | Revert_layer
+    ->
+      []
 
 let vars_of_background_box (value : Properties.background_box) =
   match value with Var v -> [ V v ] | _ -> []
@@ -1300,6 +1309,10 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Background_origin, value -> vars_of_background_box value
   | Background_repeat, value -> vars_of_background_repeat value
   | Border, value -> vars_of_border value
+  | Border_top, value -> vars_of_border value
+  | Border_right, value -> vars_of_border value
+  | Border_bottom, value -> vars_of_border value
+  | Border_left, value -> vars_of_border value
   | Border_collapse, value -> vars_of_border_collapse value
   | Box_sizing, value -> vars_of_box_sizing value
   | Box_decoration_break, value -> vars_of_box_decoration_break value

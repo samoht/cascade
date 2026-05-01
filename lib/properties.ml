@@ -3397,7 +3397,11 @@ let rec pp_blend_mode : blend_mode Pp.t =
 let rec pp_text_shadow : text_shadow Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
+  | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_text_shadow ctx v
   | Text_shadow { h_offset; v_offset; blur; color } -> (
       pp_length ctx h_offset;
@@ -3417,10 +3421,15 @@ let rec pp_text_shadow : text_shadow Pp.t =
 let rec pp_background_attachment : background_attachment Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_background_attachment ctx v
+  | Layers layers -> Pp.list ~sep:Pp.comma pp_background_attachment ctx layers
   | Fixed -> Pp.string ctx "fixed"
   | Local -> Pp.string ctx "local"
   | Scroll -> Pp.string ctx "scroll"
+  | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_background_repeat : background_repeat Pp.t =
  fun ctx -> function
@@ -3611,6 +3620,10 @@ let rec pp_gap : gap Pp.t =
 let rec pp_transform_origin : transform_origin Pp.t =
  fun ctx -> function
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Center -> Pp.string ctx "center"
   | Left -> Pp.string ctx "left"
   | Right -> Pp.string ctx "right"
@@ -3628,6 +3641,7 @@ let rec pp_transform_origin : transform_origin Pp.t =
   | Top_right -> Pp.string ctx "top right"
   | Bottom_left -> Pp.string ctx "bottom left"
   | Bottom_right -> Pp.string ctx "bottom right"
+  | Position position -> pp_position_value ctx position
   | X a -> pp_length ctx a
   | XY (a, b) ->
       pp_length ctx a;
@@ -3637,6 +3651,10 @@ let rec pp_transform_origin : transform_origin Pp.t =
       pp_length ctx a;
       Pp.space ctx ();
       pp_length ctx b;
+      Pp.space ctx ();
+      pp_length ctx z
+  | Position_z (position, z) ->
+      pp_position_value ctx position;
       Pp.space ctx ();
       pp_length ctx z
   | Var v -> pp_var pp_transform_origin ctx v
@@ -3649,7 +3667,11 @@ let rec pp_transform_box : transform_box Pp.t =
   | Fill_box -> Pp.string ctx "fill-box"
   | Stroke_box -> Pp.string ctx "stroke-box"
   | View_box -> Pp.string ctx "view-box"
+  | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_background : background Pp.t =
  fun ctx -> function
@@ -4279,7 +4301,11 @@ let rec pp_isolation : isolation Pp.t =
   | Var v -> pp_var pp_isolation ctx v
   | Auto -> Pp.string ctx "auto"
   | Isolate -> Pp.string ctx "isolate"
+  | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_break_value : break_value Pp.t =
  fun ctx -> function
@@ -4297,7 +4323,11 @@ let rec pp_break_value : break_value Pp.t =
   | Column -> Pp.string ctx "column"
   | Avoid_region -> Pp.string ctx "avoid-region"
   | Region -> Pp.string ctx "region"
+  | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_break_inside_value : break_inside_value Pp.t =
  fun ctx -> function
@@ -4306,7 +4336,11 @@ let rec pp_break_inside_value : break_inside_value Pp.t =
   | Avoid -> Pp.string ctx "avoid"
   | Avoid_page -> Pp.string ctx "avoid-page"
   | Avoid_column -> Pp.string ctx "avoid-column"
+  | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_page_break_value : page_break_value Pp.t =
  fun ctx -> function
@@ -7161,13 +7195,22 @@ let rec read_contain t : contain =
     ]
     ~default:read_contain_list t
 
-let read_isolation t : isolation =
-  Cursor.enum "isolation"
-    [ ("auto", (Auto : isolation)); ("isolate", Isolate); ("inherit", Inherit) ]
+let rec read_isolation t : isolation =
+  Cursor.enum_or_var "isolation"
+    [
+      ("auto", (Auto : isolation));
+      ("isolate", Isolate);
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_isolation t))
     t
 
-let read_break_value t : break_value =
-  Cursor.enum "break"
+let rec read_break_value t : break_value =
+  Cursor.enum_or_var "break"
     [
       ("auto", (Auto : break_value));
       ("avoid", Avoid);
@@ -7187,19 +7230,29 @@ let read_break_value t : break_value =
       ("column", Column);
       ("avoid-region", Avoid_region);
       ("region", Region);
+      ("initial", Initial);
       ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_break_value t))
     t
 
-let read_break_inside_value t : break_inside_value =
-  Cursor.enum "break-inside"
+let rec read_break_inside_value t : break_inside_value =
+  Cursor.enum_or_var "break-inside"
     [
       ("auto", (Auto : break_inside_value));
       ("avoid", Avoid);
       ("avoid-page", Avoid_page);
       ("avoid-column", Avoid_column);
+      ("initial", Initial);
       ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_break_inside_value t))
     t
 
 let read_page_break_value t : page_break_value =
@@ -8893,7 +8946,14 @@ end
 let rec read_text_shadow t : text_shadow =
   let read_var t : text_shadow = Var (read_var read_text_shadow t) in
   Cursor.enum_or_calls "text-shadow"
-    [ ("none", None); ("inherit", Inherit) ]
+    [
+      ("none", None);
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
     ~calls:[ ("var", read_var) ]
     ~default:(fun t ->
       let components, _ = Cursor.many Text_shadow.read_component t in
@@ -8990,15 +9050,31 @@ and read_filter t : filter =
     ~default:read_filter_list t
 
 (* Background-related readers *)
-let read_background_attachment t : background_attachment =
-  Cursor.enum "background-attachment"
+let rec read_background_attachment t : background_attachment =
+  let read_layer t =
+    Cursor.enum "background-attachment layer"
+      [
+        ("scroll", (Scroll : background_attachment));
+        ("fixed", Fixed);
+        ("local", Local);
+      ]
+      t
+  in
+  let read_layers t =
+    match Cursor.list ~sep:Cursor.comma ~at_least:1 read_layer t with
+    | [ layer ] -> layer
+    | layers -> Layers layers
+  in
+  Cursor.enum_or_var "background-attachment"
     [
-      ("scroll", (Scroll : background_attachment));
-      ("fixed", Fixed);
-      ("local", Local);
+      ("initial", (Initial : background_attachment));
       ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
-    t
+    ~var:(fun t -> Var (Values.read_var read_background_attachment t))
+    ~default:read_layers t
 
 let rec read_background_repeat t : background_repeat =
   let read_style t =
@@ -10176,6 +10252,17 @@ let read_background_position t : background_position =
 module Transform_origin = struct
   type keyword = Center | Left | Right | Top | Bottom
 
+  let read_position t : transform_origin =
+    let position =
+      Cursor.one_of
+        [ Position_value.read_4_value; Position_value.read_3_value ]
+        t
+    in
+    Cursor.ws t;
+    match Cursor.option read_length t with
+    | Some z -> Position_z (position, z)
+    | None -> Position position
+
   let read_xyz (t : Cursor.t) : transform_origin =
     let x = read_length t in
     Cursor.ws t;
@@ -10229,25 +10316,41 @@ module Transform_origin = struct
     merge_keywords t keywords
 end
 
-let read_transform_origin (t : Cursor.t) : transform_origin =
-  Cursor.enum "transform-origin"
-    [ ("inherit", Inherit) ]
+let rec read_transform_origin (t : Cursor.t) : transform_origin =
+  Cursor.enum_or_var "transform-origin"
+    [
+      ("initial", (Initial : transform_origin));
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_transform_origin t))
     ~default:(fun t ->
       Cursor.one_of
-        [ Transform_origin.read_keywords; Transform_origin.read_xyz ]
+        [
+          Transform_origin.read_position;
+          Transform_origin.read_keywords;
+          Transform_origin.read_xyz;
+        ]
         t)
     t
 
-let read_transform_box (t : Cursor.t) : transform_box =
-  Cursor.enum "transform-box"
+let rec read_transform_box (t : Cursor.t) : transform_box =
+  Cursor.enum_or_var "transform-box"
     [
       ("content-box", Content_box);
       ("border-box", Border_box);
       ("fill-box", Fill_box);
       ("stroke-box", Stroke_box);
       ("view-box", View_box);
+      ("initial", Initial);
       ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_transform_box t))
     t
 
 module Background_shorthand = struct
@@ -11090,10 +11193,10 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Contain -> pp pp_contain
   | Word_spacing -> pp pp_length
   | Background_attachment -> pp pp_background_attachment
-  | Border_top -> pp Pp.string
-  | Border_right -> pp Pp.string
-  | Border_bottom -> pp Pp.string
-  | Border_left -> pp Pp.string
+  | Border_top -> pp pp_border
+  | Border_right -> pp pp_border
+  | Border_bottom -> pp pp_border
+  | Border_left -> pp pp_border
   | Transform_origin -> pp pp_transform_origin
   | Transform_box -> pp pp_transform_box
   | Text_shadow -> pp (Pp.list ~sep:Pp.comma pp_text_shadow)

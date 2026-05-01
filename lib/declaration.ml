@@ -1518,10 +1518,10 @@ let read_value (type a) (prop : a property) t : declaration =
   | Background_size -> v Background_size (read_background_size t)
   | Background_blend_mode -> read_background_blend_mode_value t
   (* Border shorthands *)
-  | Border_top -> v Border_top (read_string t)
-  | Border_right -> v Border_right (read_string t)
-  | Border_bottom -> v Border_bottom (read_string t)
-  | Border_left -> v Border_left (read_string t)
+  | Border_top -> v Border_top (read_border t)
+  | Border_right -> v Border_right (read_border t)
+  | Border_bottom -> v Border_bottom (read_border t)
+  | Border_left -> v Border_left (read_border t)
   | Border_spacing ->
       (* border-spacing accepts 1 or 2 length values *)
       let lengths =
