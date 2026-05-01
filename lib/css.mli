@@ -1598,6 +1598,11 @@ type z_index =
   | Auto
   | Index of int
   | Calc of string
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of z_index var  (** CSS opacity values. *)
 
 type opacity =
@@ -4789,6 +4794,11 @@ type user_select =
   | Text
   | All
   | Contain
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of user_select var  (** CSS resize values. *)
 
 type resize =
@@ -4827,6 +4837,10 @@ type pointer_events =
   | Stroke
   | All
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of pointer_events var
 
 val pointer_events : pointer_events -> declaration

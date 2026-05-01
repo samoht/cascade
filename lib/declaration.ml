@@ -1483,7 +1483,13 @@ let read_value (type a) (prop : a property) t : declaration =
   | Border_spacing ->
       (* border-spacing accepts 1 or 2 length values *)
       let lengths =
-        Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_length t
+        Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2
+          (fun t ->
+            let length = read_non_negative_length t in
+            match length with
+            | Auto -> Cursor.err_invalid t "border-spacing does not accept auto"
+            | _ -> length)
+          t
       in
       v Border_spacing lengths
   | Border_image -> v Border_image (read_border_image t)
