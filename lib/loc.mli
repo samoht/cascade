@@ -11,7 +11,7 @@ type meta_level = [ `None | `Locs | `Full ]
       Equivalent to [`None] in Cascade -- present for API symmetry with
       [ocaml-json].
     - [`Full]: also attach source-context snippets to errors and warnings, so
-      {!Context.snippet} is populated for diagnostics. *)
+      {!Context.field-snippet} is populated for diagnostics. *)
 
 val default_meta_level : meta_level
 (** [default_meta_level] is [`Full]. Entry points default to this so that

@@ -884,6 +884,12 @@ val read_mask_box : Cursor.t -> mask_box
 val pp_mask_box : mask_box Pp.t
 (** [pp_mask_box] pretty-prints a mask-clip or mask-origin value. *)
 
+val read_mask : Cursor.t -> mask
+(** [read_mask t] parses a mask shorthand value. *)
+
+val pp_mask : mask Pp.t
+(** [pp_mask] pretty-prints a mask shorthand value. *)
+
 val read_background_shorthand : Cursor.t -> background_shorthand
 (** [read_background_shorthand t] parses a background shorthand property. *)
 

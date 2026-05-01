@@ -41,7 +41,7 @@ type query = {
   media_type : string option;
   media_features : Media.t list;
       (** Media features the rendering environment claims to expose. Build
-          entries with {!Media.feature} or {!Media.boolean}. *)
+          entries with {!Media.val-feature} or {!Media.boolean}. *)
   supports : Supports.t list;
       (** Capability flags the rendering environment claims to support. Each
           entry is normally a [Supports.Property] or [Supports.Func] leaf, built

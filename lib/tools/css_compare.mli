@@ -15,7 +15,7 @@ open Cascade
 
 (** {1:diffs Difference types}
 
-    Tree difference types are defined in the {!Tree_diff} module. *)
+    Tree difference types are defined in the {!module-Tree_diff} module. *)
 
 val strip_header : string -> string
 (** [strip_header css] removes a leading header comment if present. *)

@@ -3574,6 +3574,42 @@ let pp_bg_size_with_position maybe_space (bg : background_shorthand) ctx =
       pp_background_size ctx size
   | None -> ()
 
+let pp_mask_layer : mask_layer Pp.t =
+ fun ctx layer ->
+  let first = ref true in
+  let maybe_space () = if !first then first := false else Pp.space ctx () in
+  pp_bg_prop maybe_space pp_background_image ctx layer.image;
+  pp_bg_prop maybe_space pp_background_repeat ctx layer.repeat;
+  (match (layer.position, layer.size) with
+  | Some position, Some size ->
+      maybe_space ();
+      pp_position_value ctx position;
+      Pp.string ctx "/";
+      pp_background_size ctx size
+  | Some position, None ->
+      maybe_space ();
+      pp_position_value ctx position
+  | None, Some size ->
+      maybe_space ();
+      pp_background_size ctx size
+  | None, None -> ());
+  pp_bg_prop maybe_space pp_mask_box ctx layer.origin;
+  pp_bg_prop maybe_space pp_mask_box ctx layer.clip;
+  pp_bg_prop maybe_space pp_mask_mode ctx layer.mode;
+  pp_bg_prop maybe_space pp_mask_composite ctx layer.composite
+
+let rec pp_mask : mask Pp.t =
+ fun ctx -> function
+  | None -> Pp.string ctx "none"
+  | Layer layer -> pp_mask_layer ctx layer
+  | Layers layers -> Pp.list ~sep:Pp.comma pp_mask_layer ctx layers
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_mask ctx v
+
 let pp_background_shorthand : background_shorthand Pp.t =
  fun ctx bg ->
   let first = ref true in
@@ -10246,6 +10282,105 @@ let read_mask_box t : mask_box =
     ]
     t
 
+module Mask_shorthand = struct
+  let init =
+    {
+      image = None;
+      position = None;
+      size = None;
+      repeat = None;
+      origin = None;
+      clip = None;
+      mode = None;
+      composite = None;
+    }
+
+  let read_image_item t =
+    let image = read_background_image t in
+    fun (mask : mask_layer) ->
+      if mask.image = None then { mask with image = Some image } else mask
+
+  let read_position_size_item t =
+    let position = read_position_value t in
+    Cursor.ws t;
+    let size =
+      if Cursor.slash_opt t then Some (read_background_size t) else None
+    in
+    fun (mask : mask_layer) ->
+      if mask.position <> None then mask
+      else
+        let mask = { mask with position = Some position } in
+        match size with
+        | Some size when mask.size = None -> { mask with size = Some size }
+        | _ -> mask
+
+  let read_repeat_item t =
+    let repeat = read_background_repeat t in
+    fun (mask : mask_layer) ->
+      if mask.repeat = None then { mask with repeat = Some repeat } else mask
+
+  let read_box_item t =
+    let box = read_mask_box t in
+    fun (mask : mask_layer) ->
+      if mask.origin = None then { mask with origin = Some box }
+      else if mask.clip = None then { mask with clip = Some box }
+      else mask
+
+  let read_mode_item t =
+    let mode = read_mask_mode t in
+    fun (mask : mask_layer) ->
+      if mask.mode = None then { mask with mode = Some mode } else mask
+
+  let read_composite_item t =
+    let composite = read_mask_composite t in
+    fun (mask : mask_layer) ->
+      if mask.composite = None then { mask with composite = Some composite }
+      else mask
+
+  let read_item t =
+    Cursor.one_of
+      [
+        read_image_item;
+        read_position_size_item;
+        read_repeat_item;
+        read_box_item;
+        read_mode_item;
+        read_composite_item;
+      ]
+      t
+end
+
+let read_mask_layer t : mask_layer =
+  let apply acc upd =
+    let next = upd acc in
+    if next = acc then Cursor.err t "Duplicate property in mask shorthand"
+    else next
+  in
+  let layer, _ =
+    Cursor.fold_many Mask_shorthand.read_item ~init:Mask_shorthand.init ~f:apply
+      t
+  in
+  if layer = Mask_shorthand.init then Cursor.err_expected t "mask value";
+  layer
+
+let rec read_mask t : mask =
+  Cursor.enum_or_var "mask"
+    [
+      ("none", (None : mask));
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_mask t))
+    ~default:(fun t ->
+      let layers =
+        Cursor.list ~sep:Cursor.comma ~at_least:1 read_mask_layer t
+      in
+      match layers with [ layer ] -> Layer layer | layers -> Layers layers)
+    t
+
 let read_background_position t : background_position =
   Cursor.list ~at_least:1 ~sep:Cursor.comma read_position_value t
 
@@ -11143,6 +11278,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Mask_clip -> pp pp_mask_box
   | Mask_origin -> pp pp_mask_box
   | Mask_type -> pp pp_mask_type
+  | Mask -> pp pp_mask
   | Container_name -> pp pp_container_name
   | Anchor_name -> pp pp_anchor_name
   | Position_anchor -> pp pp_position_anchor
@@ -11201,7 +11337,6 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Transform_box -> pp pp_transform_box
   | Text_shadow -> pp (Pp.list ~sep:Pp.comma pp_text_shadow)
   | Clip_path -> pp pp_clip_path
-  | Mask -> pp Pp.string
   | Content_visibility -> pp pp_content_visibility
   | Filter -> pp pp_filter
   | Background_image -> pp (Pp.list ~sep:Pp.comma pp_background_image)

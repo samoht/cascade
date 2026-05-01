@@ -75,6 +75,6 @@ val pp_kind : kind Pp.t
 (** [pp_kind] renders just the payload, e.g. [<ident foo>]. *)
 
 val pp : t Pp.t
-(** [pp] renders a located token, e.g. [<ident foo>@[3-6\]]. *)
+(** [pp] renders a located token, e.g. [<ident foo>@[3-6]]. *)
 
 val to_string : t -> string

@@ -23,7 +23,7 @@ val read_value : Cursor.t -> 'a syntax -> 'a
 
 val meta : unit -> ('a -> meta) * (meta -> 'a option)
 (** [meta ()] returns a fresh injection/projection pair for storing values of
-    type ['a] inside {!type-meta}. *)
+    type ['a] inside {!Cascade.Values.type-meta}. *)
 
 (** {1 Variable creation} *)
 

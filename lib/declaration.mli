@@ -1095,7 +1095,7 @@ val clip_path : clip_path -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/clip-path} clip-path}
     property. *)
 
-val mask : string -> declaration
+val mask : mask -> declaration
 (** [mask v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/mask} mask} property. *)
 
