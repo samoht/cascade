@@ -258,19 +258,49 @@ let read_text_decoration_lines t =
   if duplicates lines then Cursor.err_invalid t "duplicate text-decoration-line";
   lines
 
+(* CSS [<dashed-ident>]: an ident that begins with two dashes. Used for custom
+   properties and [@property]-style names like [--tooltip] in
+   anchor-positioning, view-timeline, font-palette, etc. *)
+let read_dashed_ident t =
+  let s = Cursor.ident ~keep_case:true t in
+  if String.length s < 2 || s.[0] <> '-' || s.[1] <> '-' then
+    Cursor.err_invalid t ("expected <dashed-ident>, got: " ^ s)
+  else s
+
 let read_position_try_fallback t =
   Cursor.ws t;
   match Cursor.peek_ident t with
-  | Some "none" ->
+  | Some (("flip-block" | "flip-inline" | "flip-start") as keyword) -> (
       let _ = Cursor.ident t in
-      "none"
-  | Some (("flip-block" | "flip-inline" | "flip-start") as keyword) ->
-      let _ = Cursor.ident t in
-      keyword
-  | _ ->
-      let ident = Cursor.ident ~keep_case:true t in
-      if String.length ident >= 3 && String.sub ident 0 2 = "--" then ident
-      else Cursor.err_invalid t ("expected dashed ident, got: " ^ ident)
+      match keyword with
+      | "flip-block" -> (Flip_block : position_try_fallback)
+      | "flip-inline" -> Flip_inline
+      | "flip-start" -> Flip_start
+      | _ -> assert false)
+  | _ -> Name (read_dashed_ident t)
+
+let rec read_position_try_fallbacks t : position_try_fallbacks =
+  let keywords : (string * position_try_fallbacks) list =
+    [
+      ("none", None);
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+  in
+  (Cursor.enum_or_var "position-try-fallbacks" keywords
+     ~var:(fun t ->
+       (Var (Values.read_var read_position_try_fallbacks t)
+         : position_try_fallbacks))
+     ~default:(fun t ->
+       (Fallbacks
+          (Cursor.list ~sep:Cursor.comma ~at_least:1 read_position_try_fallback
+             t)
+         : position_try_fallbacks))
+     t
+    : position_try_fallbacks)
 
 let read_shape_outside t =
   let raw = Cursor.lookahead (Cursor.consume_to_decl_end ~trim:true) t in
@@ -645,49 +675,6 @@ let rec read_opacity t : opacity =
    Drain components (preserving whitespace) up to the next [;] or [!] delim. *)
 let read_untyped_value t = Cursor.consume_to_decl_end ~trim:true t
 
-(* CSS [<dashed-ident>]: an ident that begins with two dashes. Used for custom
-   properties and [@property]-style names like [--tooltip] in
-   anchor-positioning, view-timeline, font-palette, etc. *)
-let read_dashed_ident t =
-  let s = Cursor.ident ~keep_case:true t in
-  if String.length s < 2 || s.[0] <> '-' || s.[1] <> '-' then
-    Cursor.err_invalid t ("expected <dashed-ident>, got: " ^ s)
-  else s
-
-(* [scrollbar-gutter: auto | stable [both-edges]?]. The [both-edges] keyword may
-   only follow [stable]; [stable auto] (the test's negative case) must be
-   rejected. *)
-let read_scrollbar_gutter t =
-  let kw =
-    Cursor.enum "scrollbar-gutter" [ ("auto", `Auto); ("stable", `Stable) ] t
-  in
-  match kw with
-  | `Auto -> "auto"
-  | `Stable -> (
-      Cursor.ws t;
-      match Cursor.peek_ident t with
-      | Some "both-edges" ->
-          let _ = Cursor.ident t in
-          "stable both-edges"
-      | None -> "stable"
-      | Some s ->
-          Cursor.err_invalid t
-            (String.concat "" [ "unexpected scrollbar-gutter modifier: "; s ]))
-
-(* [font-palette: normal | light | dark | <dashed-ident>]. *)
-let read_font_palette t =
-  match Cursor.peek_ident t with
-  | Some "normal" ->
-      let _ = Cursor.ident t in
-      "normal"
-  | Some "light" ->
-      let _ = Cursor.ident t in
-      "light"
-  | Some "dark" ->
-      let _ = Cursor.ident t in
-      "dark"
-  | _ -> read_dashed_ident t
-
 let read_font_size_adjust_metric t =
   Cursor.enum "font-size-adjust metric"
     [
@@ -775,36 +762,47 @@ let rec read_initial_letter t =
 (* CSS Box Sizing 4: [margin-trim = none | block | inline | [block-start ||
    inline-start || block-end || inline-end]]. The bracketed form is a [||]
    (any-order, no-repeats) of the four physical edges. *)
-let read_margin_trim t =
-  Cursor.ws t;
-  match Cursor.peek_ident t with
-  | Some "none" ->
-      let _ = Cursor.ident t in
-      "none"
-  | Some "block" ->
-      let _ = Cursor.ident t in
-      "block"
-  | Some "inline" ->
-      let _ = Cursor.ident t in
-      "inline"
-  | _ ->
-      let edges =
-        [ "block-start"; "inline-start"; "block-end"; "inline-end" ]
-      in
-      let rec loop acc =
-        Cursor.ws t;
-        match Cursor.peek_ident t with
-        | Some s when List.mem s edges && not (List.mem s acc) ->
-            let _ = Cursor.ident t in
-            loop (s :: acc)
-        | Some s when List.mem s edges ->
-            Cursor.err_invalid t
-              (String.concat "" [ "duplicate margin-trim edge: "; s ])
-        | _ -> List.rev acc
-      in
-      let chosen = loop [] in
-      if chosen = [] then Cursor.err_expected t "margin-trim value"
-      else String.concat " " chosen
+let rec read_margin_trim t : margin_trim =
+  let keywords : (string * margin_trim) list =
+    [
+      ("none", None);
+      ("block", Block);
+      ("inline", Inline);
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+  in
+  let read_edges t =
+    let read_edge = function
+      | "block-start" -> (Block_start : margin_trim_edge)
+      | "inline-start" -> Inline_start
+      | "block-end" -> Block_end
+      | "inline-end" -> Inline_end
+      | s -> Cursor.err_invalid t ("invalid margin-trim edge: " ^ s)
+    in
+    let edges = [ "block-start"; "inline-start"; "block-end"; "inline-end" ] in
+    let rec loop acc =
+      Cursor.ws t;
+      match Cursor.peek_ident t with
+      | Some s when List.mem s edges && not (List.mem (read_edge s) acc) ->
+          let _ = Cursor.ident t in
+          loop (read_edge s :: acc)
+      | Some s when List.mem s edges ->
+          Cursor.err_invalid t
+            (String.concat "" [ "duplicate margin-trim edge: "; s ])
+      | _ -> List.rev acc
+    in
+    let chosen = loop [] in
+    if chosen = [] then Cursor.err_expected t "margin-trim value"
+    else (Edges chosen : margin_trim)
+  in
+  (Cursor.enum_or_var "margin-trim" keywords
+     ~var:(fun t -> (Var (Values.read_var read_margin_trim t) : margin_trim))
+     ~default:read_edges t
+    : margin_trim)
 
 (* CSS Scroll-driven Animations: [animation-range =
    <single-animation-range>{1,2}] where each [<single-animation-range>] is
@@ -813,61 +811,59 @@ let read_margin_trim t =
    the stricter convention that a bare [<timeline-range-name>] is only permitted
    when it stands alone (otherwise pairs like [exit entry] would silently parse
    as two single-ranges with surprising semantics). *)
-let read_animation_range t =
-  let timeline_names =
-    [ "cover"; "contain"; "entry"; "exit"; "entry-crossing"; "exit-crossing" ]
-  in
-  let read_single t =
-    Cursor.ws t;
-    match Cursor.peek_ident t with
-    | Some "normal" ->
-        let _ = Cursor.ident t in
-        "normal"
-    | Some name when List.mem name timeline_names ->
-        let _ = Cursor.ident t in
-        Cursor.ws t;
-        let lp = Values.read_length_percentage t in
-        String.concat ""
-          [
-            name;
-            " ";
-            Pp.to_string (Values.pp_length_percentage ~always:true) lp;
-          ]
-    | _ ->
-        let lp = Values.read_length_percentage t in
-        Pp.to_string (Values.pp_length_percentage ~always:true) lp
-  in
-  let first = read_single t in
-  Cursor.ws t;
-  if Cursor.is_done t || Cursor.peek_semicolon t then first
-  else
-    let second = read_single t in
-    String.concat "" [ first; " "; second ]
+let read_animation_range_name t : animation_range_name =
+  Cursor.enum "animation-range name"
+    [
+      ("cover", Cover);
+      ("contain", Contain);
+      ("entry", Entry);
+      ("exit", Exit);
+      ("entry-crossing", Entry_crossing);
+      ("exit-crossing", Exit_crossing);
+    ]
+    t
 
-(* CSS Scroll-driven Animations: [animation-timeline = none | auto |
-   <dashed-ident> | scroll() | view()]. Functions must be terminated; [scroll(]
-   (no closing [)]) is rejected. *)
-let read_animation_timeline t =
-  Cursor.ws t;
-  match Cursor.peek t with
-  | Some (Component.Func fn) when not fn.node.terminated ->
-      Cursor.err_invalid t
-        (String.concat "" [ "unterminated function "; fn.node.name; "(...)" ])
-  | Some (Component.Func fn)
-    when fn.node.name = "scroll" || fn.node.name = "view" ->
-      let _ = Cursor.next t in
-      let buf = Buffer.create 16 in
-      Buffer.add_string buf fn.node.name;
-      Buffer.add_char buf '(';
-      Buffer.add_string buf (Parser.to_string fn.node.arguments);
-      Buffer.add_char buf ')';
-      Buffer.contents buf
-  | _ -> (
+let rec read_animation_range t : animation_range =
+  let keywords : (string * animation_range) list =
+    [
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+  in
+  let read_range t =
+    let timeline_names =
+      [ "cover"; "contain"; "entry"; "exit"; "entry-crossing"; "exit-crossing" ]
+    in
+    let read_single t =
+      Cursor.ws t;
       match Cursor.peek_ident t with
-      | Some ("none" as s) | Some ("auto" as s) ->
+      | Some "normal" ->
           let _ = Cursor.ident t in
-          s
-      | _ -> read_dashed_ident t)
+          (Normal : animation_range_item)
+      | Some name when List.mem name timeline_names ->
+          let name = read_animation_range_name t in
+          Cursor.ws t;
+          let lp = Values.read_length_percentage t in
+          Named (name, lp)
+      | _ ->
+          let lp = Values.read_length_percentage t in
+          Offset lp
+    in
+    let first = read_single t in
+    Cursor.ws t;
+    if Cursor.is_done t || Cursor.peek_semicolon t then Range (first, None)
+    else
+      let second = read_single t in
+      Range (first, Some second)
+  in
+  (Cursor.enum_or_var "animation-range" keywords
+     ~var:(fun t ->
+       (Var (Values.read_var read_animation_range t) : animation_range))
+     ~default:read_range t
+    : animation_range)
 
 (* Some properties (shape-margin, scroll-margin, padding, etc.) require a
    non-negative length-percentage. Detect a leading [-] number/percentage and
@@ -1306,7 +1302,7 @@ let read_value (type a) (prop : a property) t : declaration =
   (* Scroll snap *)
   | Scroll_snap_type -> v Scroll_snap_type (read_scroll_snap_type t)
   (* Tab size *)
-  | Tab_size -> v Tab_size (int_of_float (Cursor.number t))
+  | Tab_size -> v Tab_size (read_tab_size t)
   (* Webkit properties *)
   | Webkit_text_size_adjust ->
       v Webkit_text_size_adjust (read_text_size_adjust t)
@@ -1344,73 +1340,37 @@ let read_value (type a) (prop : a property) t : declaration =
   | Word_spacing -> v Word_spacing (read_non_negative_length_or_css_wide t)
   (* Container properties *)
   | Container_type -> v Container_type (read_container_type t)
-  | Container_name -> v Container_name (read_untyped_value t)
+  | Container_name -> v Container_name (read_container_name t)
   | Container -> v Container (read_container_shorthand t)
   (* Anchor positioning properties. [anchor-name] / [position-anchor] take a
      [<dashed-ident>] (ident that begins with [--]), and
      [position-try-fallbacks] is a comma-separated list of the same. *)
-  | Anchor_name ->
-      v Anchor_name
-        (Cursor.list ~sep:Cursor.comma ~at_least:1
-           (fun r ->
-             match Cursor.peek_ident r with
-             | Some "none" ->
-                 let _ = Cursor.ident r in
-                 "none"
-             | _ -> read_dashed_ident r)
-           t
-        |> String.concat ",")
-  | Position_anchor ->
-      v Position_anchor
-        (match Cursor.peek_ident t with
-        | Some "auto" ->
-            let _ = Cursor.ident t in
-            "auto"
-        | _ -> read_dashed_ident t)
+  | Anchor_name -> v Anchor_name (read_anchor_name t)
+  | Position_anchor -> v Position_anchor (read_position_anchor t)
   | Position_try_fallbacks ->
-      v Position_try_fallbacks
-        (Cursor.list ~sep:Cursor.comma ~at_least:1 read_position_try_fallback t)
+      v Position_try_fallbacks (read_position_try_fallbacks t)
   | Shape_outside -> v Shape_outside (read_shape_outside t)
   | Shape_margin ->
       v Shape_margin (read_non_negative_length_percentage_or_css_wide t)
   | Overflow_clip_margin ->
       v Overflow_clip_margin (read_non_negative_length_or_css_wide t)
-  | Overflow_anchor ->
-      v Overflow_anchor
-        (Cursor.enum "overflow-anchor" [ ("auto", "auto"); ("none", "none") ] t)
-  | Scrollbar_width ->
-      v Scrollbar_width
-        (Cursor.enum "scrollbar-width"
-           [ ("auto", "auto"); ("thin", "thin"); ("none", "none") ]
-           t)
-  | Scrollbar_color -> v Scrollbar_color (read_untyped_value t)
+  | Overflow_anchor -> v Overflow_anchor (read_overflow_anchor t)
+  | Scrollbar_width -> v Scrollbar_width (read_scrollbar_width t)
+  | Scrollbar_color -> v Scrollbar_color (read_scrollbar_color t)
   | Scrollbar_gutter -> v Scrollbar_gutter (read_scrollbar_gutter t)
   | Line_height_step ->
       v Line_height_step (read_non_negative_length_or_css_wide t)
   | Font_palette -> v Font_palette (read_font_palette t)
-  | Font_synthesis -> v Font_synthesis (read_untyped_value t)
+  | Font_synthesis -> v Font_synthesis (read_font_synthesis t)
   | Text_wrap_style -> v Text_wrap_style (read_text_wrap_style t)
   | Text_box_trim -> v Text_box_trim (read_text_box_trim t)
   | Animation_timeline -> v Animation_timeline (read_animation_timeline t)
   | Animation_range -> v Animation_range (read_animation_range t)
   | Scroll_timeline -> v Scroll_timeline (read_timeline_shorthand t)
-  | View_transition_name ->
-      (* [none | <custom-ident>] - a single ident; reject extra tokens. *)
-      let s =
-        match Cursor.peek_ident t with
-        | Some "none" ->
-            let _ = Cursor.ident t in
-            "none"
-        | _ -> Cursor.ident ~keep_case:true t
-      in
-      validate_no_extra_tokens t;
-      v View_transition_name s
-  | Image_orientation ->
-      v Image_orientation
-        (Cursor.enum "image-orientation"
-           [ ("from-image", "from-image"); ("none", "none") ]
-           t)
-  | Contain_intrinsic_size -> v Contain_intrinsic_size (read_untyped_value t)
+  | View_transition_name -> v View_transition_name (read_view_transition_name t)
+  | Image_orientation -> v Image_orientation (read_image_orientation t)
+  | Contain_intrinsic_size ->
+      v Contain_intrinsic_size (read_contain_intrinsic_size t)
   | Contain_intrinsic_width -> v Contain_intrinsic_width (read_untyped_value t)
   | Contain_intrinsic_height ->
       v Contain_intrinsic_height (read_untyped_value t)
@@ -2099,7 +2059,7 @@ let border ?width ?style ?color () =
   in
   v Border border_value
 
-let tab_size value = v Tab_size value
+let tab_size value = v Tab_size (Int value : tab_size)
 let webkit_text_size_adjust value = v Webkit_text_size_adjust value
 let font_feature_settings value = v Font_feature_settings value
 let font_variation_settings value = v Font_variation_settings value
@@ -2216,7 +2176,13 @@ let cursor value = v Cursor value
 let user_select value = v User_select value
 let webkit_user_select value = v Webkit_user_select value
 let container_type value = v Container_type value
-let container_name value = v Container_name value
+
+let container_name value =
+  let names = String.split_on_char ' ' value |> List.filter (( <> ) "") in
+  match names with
+  | [ "none" ] -> v Container_name (None : container_name)
+  | _ -> v Container_name (Names names)
+
 let transform value = v Transform [ value ]
 let transforms value = v Transform value
 let rotate (value : Properties_intf.rotate_value) = v Rotate value

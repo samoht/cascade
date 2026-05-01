@@ -135,6 +135,16 @@ type opacity =
   | Revert_layer
   | Var of opacity var
 
+type tab_size =
+  | Int of int
+  | Length of length
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of tab_size var
+
 type order =
   | Int of int
   | Calc of string
@@ -1785,7 +1795,12 @@ type mask_mode =
   | Alpha
   | Luminance
   | Match_source
+  | Modes of mask_mode list
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of mask_mode var
       (** mask-type property values (only alpha and luminance) *)
 
@@ -1987,6 +2002,201 @@ type container_type =
   | Revert
   | Revert_layer
   | Var of container_type var
+
+type container_name =
+  | None
+  | Names of string list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of container_name var
+
+type anchor_name =
+  | None
+  | Names of string list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of anchor_name var
+
+type position_anchor =
+  | Auto
+  | Anchor of string
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_anchor var
+
+type position_try_fallback =
+  | Flip_block
+  | Flip_inline
+  | Flip_start
+  | Name of string
+
+type position_try_fallbacks =
+  | None
+  | Fallbacks of position_try_fallback list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_try_fallbacks var
+
+type overflow_anchor =
+  | Auto
+  | None
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of overflow_anchor var
+
+type scrollbar_width =
+  | Auto
+  | Thin
+  | None
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of scrollbar_width var
+
+type scrollbar_color =
+  | Auto
+  | Colors of color * color
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of scrollbar_color var
+
+type scrollbar_gutter =
+  | Auto
+  | Stable
+  | Stable_both_edges
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of scrollbar_gutter var
+
+type font_palette =
+  | Normal
+  | Light
+  | Dark
+  | Palette of string
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_palette var
+
+type font_synthesis_feature = Weight | Style | Small_caps | Position
+
+type font_synthesis =
+  | None
+  | Features of font_synthesis_feature list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_synthesis var
+
+type animation_timeline =
+  | None
+  | Auto
+  | Name of string
+  | Scroll of string
+  | View of string
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of animation_timeline var
+
+type animation_range_name =
+  | Cover
+  | Contain
+  | Entry
+  | Exit
+  | Entry_crossing
+  | Exit_crossing
+
+type animation_range_item =
+  | Normal
+  | Offset of length_percentage
+  | Named of animation_range_name * length_percentage
+
+type animation_range =
+  | Range of animation_range_item * animation_range_item option
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of animation_range var
+
+type view_transition_name =
+  | None
+  | Match_element
+  | Name of string
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of view_transition_name var
+
+type image_orientation =
+  | None
+  | From_image
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of image_orientation var
+
+type contain_intrinsic_size_item = Length of length | Auto of length
+
+type contain_intrinsic_size =
+  | None
+  | Intrinsic of
+      contain_intrinsic_size_item * contain_intrinsic_size_item option
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of contain_intrinsic_size var
+
+type margin_trim_edge = Block_start | Inline_start | Block_end | Inline_end
+
+type margin_trim =
+  | None
+  | Block
+  | Inline
+  | Edges of margin_trim_edge list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of margin_trim var
 
 (* Container shorthand: name / type *)
 type container_shorthand =
@@ -2230,6 +2440,10 @@ type webkit_appearance =
   | Square_button
   | Apple_pay_button
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of webkit_appearance var
 
 type webkit_font_smoothing =
@@ -2267,6 +2481,10 @@ type text_size_adjust =
   | Auto
   | Pct of float
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of text_size_adjust var
 
 (* Other Types *)
@@ -2298,6 +2516,10 @@ type appearance =
   | Menulist
   | Base_select
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of appearance var
 
 type print_color_adjust =
@@ -2317,6 +2539,11 @@ type clear =
   | Both
   | Inline_start
   | Inline_end
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of clear var
 
 type float_side =
@@ -2663,7 +2890,7 @@ type 'a property =
   | White_space : white_space property
   | Border : border property
   | Background : background list property
-  | Tab_size : int property
+  | Tab_size : tab_size property
   | Webkit_text_size_adjust : text_size_adjust property
   | Font_feature_settings : font_feature_settings property
   | Font_variation_settings : font_variation_settings property
@@ -2683,34 +2910,34 @@ type 'a property =
   | Ms_filter : filter property
   | O_transition : transition list property
   | Container_type : container_type property
-  | Container_name : string property
+  | Container_name : container_name property
   | Container : container_shorthand property
-  | Anchor_name : string property
-  | Position_anchor : string property
-  | Position_try_fallbacks : string list property
+  | Anchor_name : anchor_name property
+  | Position_anchor : position_anchor property
+  | Position_try_fallbacks : position_try_fallbacks property
   | Shape_outside : string property
   | Shape_margin : length_percentage property
   | Overflow_clip_margin : length property
-  | Overflow_anchor : string property
-  | Scrollbar_width : string property
-  | Scrollbar_color : string property
-  | Scrollbar_gutter : string property
+  | Overflow_anchor : overflow_anchor property
+  | Scrollbar_width : scrollbar_width property
+  | Scrollbar_color : scrollbar_color property
+  | Scrollbar_gutter : scrollbar_gutter property
   | Line_height_step : length property
-  | Font_palette : string property
-  | Font_synthesis : string property
+  | Font_palette : font_palette property
+  | Font_synthesis : font_synthesis property
   | Text_wrap_style : text_wrap_style property
   | Text_box_trim : text_box_trim property
-  | Animation_timeline : string property
-  | Animation_range : string property
+  | Animation_timeline : animation_timeline property
+  | Animation_range : animation_range property
   | Scroll_timeline : timeline_shorthand property
-  | View_transition_name : string property
-  | Image_orientation : string property
-  | Contain_intrinsic_size : string property
+  | View_transition_name : view_transition_name property
+  | Image_orientation : image_orientation property
+  | Contain_intrinsic_size : contain_intrinsic_size property
   | Contain_intrinsic_width : string property
   | Contain_intrinsic_height : string property
   | Contain_intrinsic_block_size : string property
   | Contain_intrinsic_inline_size : string property
-  | Margin_trim : string property
+  | Margin_trim : margin_trim property
   | Offset_path : string property
   | Offset_distance : length_percentage property
   | Font_size_adjust : font_size_adjust property

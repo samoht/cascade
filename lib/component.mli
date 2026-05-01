@@ -13,7 +13,15 @@ type 'a node = { node : 'a; loc : Loc.t }
     a located payload. *)
 
 type t = Preserved of Token.t | Block of block node | Func of func node
-and block = { opening : Token.bracket; value : t list }
+
+and block = {
+  opening : Token.bracket;
+  value : t list;
+  closed : bool;
+      (** [false] when the lexer reached EOF before the matching closer (CSS
+          Syntax §5.4.6 parse error). The serializer still emits the synthetic
+          closer so reserialised output round-trips. *)
+}
 
 and func = {
   name : string;

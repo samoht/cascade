@@ -29,7 +29,7 @@ let rec shape = function
   | Css.Component.Preserved { kind = Css.Token.Whitespace; _ } -> None
   | Css.Component.Preserved tok ->
       Some (Css.Pp.to_string Css.Token.pp_kind tok.kind)
-  | Css.Component.Block { node = { opening; value }; _ } ->
+  | Css.Component.Block { node = { opening; value; _ }; _ } ->
       let inner = value |> List.filter_map shape |> String.concat "," in
       Some (Fmt.str "block(%s:%s)" (bracket_shape opening) inner)
   | Css.Component.Func { node = { name; arguments; _ }; _ } ->

@@ -34,6 +34,7 @@ let block_curly () =
           {
             opening = Css.Token.Curly;
             value = [ Css.Component.Preserved (tok (Css.Token.Ident "red")) ];
+            closed = true;
           }))
     "{<ident red>@[0-0]}"
 
@@ -44,6 +45,7 @@ let block_paren () =
           {
             opening = Css.Token.Paren;
             value = [ Css.Component.Preserved (tok (Css.Token.Ident "ok")) ];
+            closed = true;
           }))
     "(<ident ok>@[0-0])"
 
@@ -54,6 +56,7 @@ let block_square () =
           {
             opening = Css.Token.Square;
             value = [ Css.Component.Preserved (tok (Css.Token.Ident "attr")) ];
+            closed = true;
           }))
     "[<ident attr>@[0-0]]"
 

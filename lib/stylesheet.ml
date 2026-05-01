@@ -1067,7 +1067,10 @@ let read_descriptor_block normalize inner =
 
 let validate_font_weight_range r first second =
   match (first, second) with
-  | Properties.Weight a, Properties.Weight b when a <= b -> ()
+  | ( (Properties.Weight a : Properties.font_weight),
+      (Properties.Weight b : Properties.font_weight) )
+    when a <= b ->
+      ()
   | _ -> Cursor.err_invalid r "invalid font-weight descriptor range"
 
 let read_font_weight_descriptor r =

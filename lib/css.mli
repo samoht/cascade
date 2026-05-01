@@ -1852,6 +1852,11 @@ type clear =
   | Both
   | Inline_start
   | Inline_end
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of clear var
 
 val clear : clear -> declaration
@@ -2346,7 +2351,12 @@ type mask_mode =
   | Alpha
   | Luminance
   | Match_source
+  | Modes of mask_mode list
+  | Initial
   | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of mask_mode var
 
 type mask_type = Alpha | Luminance | Inherit | Var of mask_type var
@@ -3266,6 +3276,10 @@ type text_size_adjust =
   | Auto
   | Pct of float
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of text_size_adjust var  (** CSS font-family values *)
 
 type font_family =
@@ -4632,6 +4646,11 @@ type clip =
   | Clip_auto
   | Clip_rect of length * length * length * length
       (** top, right, bottom, left *)
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of clip var  (** CSS clip-path property values for clipping regions. *)
 
 type clip_path =
@@ -4932,6 +4951,16 @@ val container_type : container_type -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/container-type}
      container-type} property for container queries. *)
 
+type container_name =
+  | None
+  | Names of string list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of container_name var
+
 val container_name : string -> declaration
 (** [container_name name] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/container-name}
@@ -4998,6 +5027,10 @@ type webkit_appearance =
   | Square_button  (** Square button appearance *)
   | Apple_pay_button  (** Apple Pay button appearance *)
   | Inherit  (** Inherit from parent *)
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of webkit_appearance var  (** CSS -webkit-font-smoothing values. *)
 
 type webkit_font_smoothing =
@@ -5468,12 +5501,26 @@ type appearance =
   | Menulist
   | Base_select
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of appearance var
 
 val appearance : appearance -> declaration
 (** [appearance app] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/appearance} appearance}
     property. *)
+
+type tab_size =
+  | Int of int
+  | Length of length
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of tab_size var
 
 val tab_size : int -> declaration
 (** [tab_size size] is the

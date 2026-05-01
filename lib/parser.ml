@@ -36,10 +36,10 @@ and consume_simple_block lexer opening ~start_loc :
     match tok.Token.kind with
     | Token.Eof ->
         let loc = Loc.union start_loc tok.loc in
-        { node = { opening; value = List.rev acc }; loc }
+        { node = { opening; value = List.rev acc; closed = false }; loc }
     | Token.Close b when b = opening ->
         let loc = Loc.union start_loc tok.loc in
-        { node = { opening; value = List.rev acc }; loc }
+        { node = { opening; value = List.rev acc; closed = true }; loc }
     | _ ->
         let cv = consume_component_value_from lexer tok in
         loop (cv :: acc)
@@ -313,7 +313,7 @@ let normal_pair_needs_token_boundary prev next =
 
 let rec cv_to_buffer buf : Component.t -> unit = function
   | Preserved t -> Buffer.add_string buf (token_kind_to_string t.kind)
-  | Block { node = { opening; value }; _ } ->
+  | Block { node = { opening; value; _ }; _ } ->
       Buffer.add_char buf (opening_char opening);
       cvs_to_buffer buf value;
       Buffer.add_char buf (closing_char opening)
@@ -404,7 +404,7 @@ let word_like_start : Component.t -> bool = function
 
 let rec cv_to_buffer_min buf = function
   | Preserved t -> Buffer.add_string buf (token_kind_to_string t.kind)
-  | Block { node = { opening; value }; _ } ->
+  | Block { node = { opening; value; _ }; _ } ->
       Buffer.add_char buf (opening_char opening);
       cvs_to_buffer_min buf value;
       Buffer.add_char buf (closing_char opening)
@@ -525,7 +525,7 @@ let to_string_minified cvs =
 
 let rec cv_to_buffer_custom buf : Component.t -> unit = function
   | Preserved t -> Buffer.add_string buf (token_kind_to_string t.kind)
-  | Block { node = { opening; value }; _ } ->
+  | Block { node = { opening; value; _ }; _ } ->
       Buffer.add_char buf (opening_char opening);
       cvs_to_buffer_custom buf value;
       Buffer.add_char buf (closing_char opening)
@@ -564,7 +564,7 @@ let to_string_custom cvs =
    boundaries. *)
 let rec cv_to_buffer_custom_min buf : Component.t -> unit = function
   | Preserved t -> Buffer.add_string buf (token_kind_to_string t.kind)
-  | Block { node = { opening; value }; _ } ->
+  | Block { node = { opening; value; _ }; _ } ->
       Buffer.add_char buf (opening_char opening);
       cvs_to_buffer_min_custom buf value;
       Buffer.add_char buf (closing_char opening)
@@ -586,12 +586,37 @@ and cvs_to_buffer_min_custom buf cvs =
     | Component.Preserved { kind = Token.Delim ("*" | "/"); _ } -> true
     | _ -> false
   in
-  let needs_separator prev next =
+  let is_bang = function
+    | Component.Preserved { kind = Token.Delim "!"; _ } -> true
+    | _ -> false
+  in
+  let is_important_ident = function
+    | Component.Preserved { kind = Token.Ident s; _ }
+      when String.lowercase_ascii s = "important" ->
+        true
+    | _ -> false
+  in
+  (* Preserve ws on both sides of [! important]: collapsing it would parse as
+     the [!important] flag on re-parse. *)
+  let bang_important_boundary prev next rest =
+    match (prev, next) with
+    | _, Component.Preserved { kind = Token.Delim "!"; _ } -> (
+        let after_bang =
+          match rest with _ :: more -> drop_ws more | [] -> []
+        in
+        match after_bang with
+        | head :: _ -> is_important_ident head
+        | [] -> false)
+    | Some p, _ when is_bang p && is_important_ident next -> true
+    | _ -> false
+  in
+  let needs_separator prev next rest =
     match prev with
     | None -> false
     | Some p ->
         pair_forms_multichar_token p next
         || is_math_delim p || is_math_delim next
+        || bang_important_boundary prev next rest
         || word_like_end p
            && (not (is_backslash_delim p))
            && word_like_start next
@@ -602,7 +627,7 @@ and cvs_to_buffer_min_custom buf cvs =
         let rest' = drop_ws rest in
         let separated' =
           match rest' with
-          | next :: _ when needs_separator prev next ->
+          | next :: _ when needs_separator prev next rest' ->
               Buffer.add_char buf ' ';
               true
           | _ -> separated

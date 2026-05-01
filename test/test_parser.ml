@@ -8,7 +8,9 @@ open Cascade
 let pv t = Css.Component.Preserved t
 
 let block op vs : Css.Component.t =
-  let body : Css.Component.block = { opening = op; value = vs } in
+  let body : Css.Component.block =
+    { opening = op; value = vs; closed = true }
+  in
   Css.Component.Block { node = body; loc = Css.Loc.dummy }
 
 let func name args : Css.Component.t =
@@ -23,7 +25,7 @@ let rec pp_cv : Css.Component.t Css.Pp.t =
  fun ctx cv ->
   match cv with
   | Css.Component.Preserved t -> Css.Token.pp ctx t
-  | Css.Component.Block { node = { opening; value }; _ } ->
+  | Css.Component.Block { node = { opening; value; _ }; _ } ->
       let open_c, close_c =
         match opening with
         | Css.Token.Curly -> ('{', '}')
@@ -44,7 +46,8 @@ let pp_cvs ctx cvs = Css.Pp.list ~sep:Css.Pp.sp pp_cv ctx cvs
 let pp_rule : Css.Component.rule Css.Pp.t =
  fun ctx -> function
   | Css.Component.Qualified
-      { node = { prelude; block = { node = { opening = _; value }; _ } }; _ } ->
+      { node = { prelude; block = { node = { opening = _; value; _ }; _ } }; _ }
+    ->
       Css.Pp.string ctx "qualified{prelude=";
       pp_cvs ctx prelude;
       Css.Pp.string ctx "; block=";

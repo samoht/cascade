@@ -203,7 +203,7 @@ let classify_query_surface raw =
           | _ -> Other_query)
       | [
        Component.Block
-         { node = { opening = Token.Paren; value = _ :: _ as value }; _ };
+         { node = { opening = Token.Paren; value = _ :: _ as value; _ }; _ };
       ] ->
           let value = strip_ws value in
           if has_dangling_range_operator value then
