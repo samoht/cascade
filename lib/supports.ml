@@ -54,7 +54,11 @@ let starts_with ~prefix s =
 
 let property_name name =
   let reader = Cursor.of_string name in
-  let parsed = Cursor.ident ~keep_case:true reader in
+  let parsed =
+    try Cursor.ident ~keep_case:true reader
+    with Cursor.Parse_error _ ->
+      invalid_arg ("invalid supports declaration property name: " ^ name)
+  in
   if not (Cursor.is_done reader) then
     invalid_arg ("invalid supports declaration property name: " ^ name);
   let name =

@@ -4887,6 +4887,10 @@ let rec pp_outline_style : outline_style Pp.t =
   | Outset -> Pp.string ctx "outset"
   | Auto -> Pp.string ctx "auto"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_outline_style ctx v
 
 let pp_outline_shorthand : outline_shorthand Pp.t =
@@ -4914,6 +4918,9 @@ let rec pp_outline : outline Pp.t =
   | Var v -> pp_var pp_outline ctx v
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | None -> Pp.string ctx "none"
   | Shorthand shorthand -> pp_outline_shorthand ctx shorthand
 
@@ -4924,6 +4931,10 @@ let rec pp_forced_color_adjust : forced_color_adjust Pp.t =
   | None -> Pp.string ctx "none"
   | Preserve_parent_color -> Pp.string ctx "preserve-parent-color"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_float_side : float_side Pp.t =
  fun ctx -> function
@@ -6918,14 +6929,20 @@ let rec read_webkit_line_clamp t : webkit_line_clamp =
     ~default:(fun t -> Lines (int_of_float (Cursor.number t)))
     t
 
-let read_forced_color_adjust t : forced_color_adjust =
-  Cursor.enum "forced-color-adjust"
+let rec read_forced_color_adjust t : forced_color_adjust =
+  Cursor.enum_or_var "forced-color-adjust"
     [
       ("auto", (Auto : forced_color_adjust));
       ("none", None);
       ("preserve-parent-color", Preserve_parent_color);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t ->
+      (Var (Values.read_var read_forced_color_adjust t) : forced_color_adjust))
     t
 
 let read_appearance t : appearance =
@@ -7043,6 +7060,10 @@ let rec read_outline_style t : outline_style =
       ("outset", Outset);
       ("auto", Auto);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
     ~calls:[ ("var", read_var) ]
     t
@@ -7061,14 +7082,24 @@ let outline_style_keywords =
     "auto";
   ]
 
-let read_outline t : outline =
+let rec read_outline t : outline =
   Cursor.ws t;
-  if Cursor.looking_at t "inherit" then (
+  if Cursor.looking_at_func "var" t then Var (Values.read_var read_outline t)
+  else if Cursor.looking_at t "inherit" then (
     Cursor.expect_string "inherit" t;
     Inherit)
   else if Cursor.looking_at t "initial" then (
     Cursor.expect_string "initial" t;
     Initial)
+  else if Cursor.looking_at t "unset" then (
+    Cursor.expect_string "unset" t;
+    Unset)
+  else if Cursor.looking_at t "revert-layer" then (
+    Cursor.expect_string "revert-layer" t;
+    Revert_layer)
+  else if Cursor.looking_at t "revert" then (
+    Cursor.expect_string "revert" t;
+    Revert)
   else
     (* For shorthand, parse parts separated by spaces *)
     let width = ref Option.None in
@@ -7115,7 +7146,7 @@ let read_outline t : outline =
 let read_outline_shorthand t : outline_shorthand =
   match read_outline t with
   | Shorthand s -> s
-  | Inherit | Initial | None ->
+  | Inherit | Initial | Unset | Revert | Revert_layer | None ->
       { width = Option.None; style = Option.None; color = Option.None }
   | Var _ -> Cursor.err_invalid t "outline var shorthand"
 
