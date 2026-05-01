@@ -853,6 +853,276 @@ let rec read_text_decoration t : text_decoration =
       else (Shorthand shorthand : text_decoration))
     t
 
+let pp_text_emphasis_fill ctx = function
+  | Filled -> Pp.string ctx "filled"
+  | Open -> Pp.string ctx "open"
+
+let pp_text_emphasis_shape ctx = function
+  | Dot -> Pp.string ctx "dot"
+  | Circle -> Pp.string ctx "circle"
+  | Double_circle -> Pp.string ctx "double-circle"
+  | Triangle -> Pp.string ctx "triangle"
+  | Sesame -> Pp.string ctx "sesame"
+
+let rec pp_text_emphasis_style : text_emphasis_style Pp.t =
+ fun ctx -> function
+  | None -> Pp.string ctx "none"
+  | Mark (fill, shape) ->
+      let first = ref true in
+      let space_if_needed () =
+        if !first then first := false else Pp.space ctx ()
+      in
+      Option.iter
+        (fun fill ->
+          space_if_needed ();
+          pp_text_emphasis_fill ctx fill)
+        fill;
+      Option.iter
+        (fun shape ->
+          space_if_needed ();
+          pp_text_emphasis_shape ctx shape)
+        shape
+  | String s -> Pp.quoted_string ctx s
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_text_emphasis_style ctx v
+
+let rec pp_text_emphasis : text_emphasis Pp.t =
+ fun ctx -> function
+  | Emphasis (style, color) ->
+      let first = ref true in
+      let space_if_needed () =
+        if !first then first := false else Pp.space ctx ()
+      in
+      Option.iter
+        (fun style ->
+          space_if_needed ();
+          pp_text_emphasis_style ctx style)
+        style;
+      Option.iter
+        (fun color ->
+          space_if_needed ();
+          pp_color ctx color)
+        color
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_text_emphasis ctx v
+
+let read_text_emphasis_fill t =
+  Cursor.enum "text-emphasis fill"
+    [ ("filled", (Filled : text_emphasis_fill)); ("open", Open) ]
+    t
+
+let read_text_emphasis_shape t =
+  Cursor.enum "text-emphasis shape"
+    [
+      ("dot", (Dot : text_emphasis_shape));
+      ("circle", Circle);
+      ("double-circle", Double_circle);
+      ("triangle", Triangle);
+      ("sesame", Sesame);
+    ]
+    t
+
+module Text_emphasis_style = struct
+  type part = Fill of text_emphasis_fill | Shape of text_emphasis_shape
+
+  let read_part t =
+    Cursor.one_of
+      [
+        (fun t -> Fill (read_text_emphasis_fill t));
+        (fun t -> Shape (read_text_emphasis_shape t));
+      ]
+      t
+
+  let merge t (fill_opt, shape_opt) = function
+    | Fill fill when Option.is_none fill_opt -> (Some fill, shape_opt)
+    | Shape shape when Option.is_none shape_opt -> (fill_opt, Some shape)
+    | Fill _ -> Cursor.err t "duplicate text-emphasis fill"
+    | Shape _ -> Cursor.err t "duplicate text-emphasis shape"
+
+  let read_mark t =
+    let first = read_part t in
+    let second = Cursor.option read_part t in
+    let fill, shape =
+      List.fold_left (merge t) (None, None) (first :: Option.to_list second)
+    in
+    (Mark (fill, shape) : text_emphasis_style)
+end
+
+let rec read_text_emphasis_style t : text_emphasis_style =
+  Cursor.enum_or_calls "text-emphasis-style"
+    [
+      ("none", (None : text_emphasis_style));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:[ ("var", fun t -> Var (read_var read_text_emphasis_style t)) ]
+    ~default:(fun t ->
+      Cursor.one_of
+        [
+          (fun t -> (String (Cursor.string t) : text_emphasis_style));
+          Text_emphasis_style.read_mark;
+        ]
+        t)
+    t
+
+module Text_emphasis = struct
+  type component = Style of text_emphasis_style | Color of color
+
+  let read_component t =
+    Cursor.one_of
+      [
+        (fun t -> Style (read_text_emphasis_style t));
+        (fun t -> Color (read_color t));
+      ]
+      t
+
+  let merge t (style_opt, color_opt) = function
+    | Style style when Option.is_none style_opt -> (Some style, color_opt)
+    | Color color when Option.is_none color_opt -> (style_opt, Some color)
+    | Style _ -> Cursor.err t "duplicate text-emphasis-style"
+    | Color _ -> Cursor.err t "duplicate text-emphasis-color"
+end
+
+let rec read_text_emphasis t : text_emphasis =
+  Cursor.enum_or_calls "text-emphasis"
+    [
+      ("inherit", (Inherit : text_emphasis));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:[ ("var", fun t -> Var (read_var read_text_emphasis t)) ]
+    ~default:(fun t ->
+      let style, color =
+        Cursor.fold_many Text_emphasis.read_component
+          ~init:((None : text_emphasis_style option), (None : color option))
+          ~f:(Text_emphasis.merge t) t
+        |> fst
+      in
+      match (style, color) with
+      | None, None -> Cursor.err_expected t "text-emphasis value"
+      | _ -> Emphasis (style, color))
+    t
+
+let pp_text_emphasis_line : text_emphasis_line Pp.t =
+ fun ctx -> function
+  | Over -> Pp.string ctx "over"
+  | Under -> Pp.string ctx "under"
+
+let pp_text_emphasis_side : text_emphasis_side Pp.t =
+ fun ctx -> function
+  | Left -> Pp.string ctx "left"
+  | Right -> Pp.string ctx "right"
+
+let rec pp_text_emphasis_position : text_emphasis_position Pp.t =
+ fun ctx -> function
+  | Position (line, side) ->
+      pp_text_emphasis_line ctx line;
+      Pp.space ctx ();
+      pp_text_emphasis_side ctx side
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_text_emphasis_position ctx v
+
+let read_text_emphasis_line t =
+  Cursor.enum "text-emphasis-position line"
+    [ ("over", (Over : text_emphasis_line)); ("under", Under) ]
+    t
+
+let read_text_emphasis_side t =
+  Cursor.enum "text-emphasis-position side"
+    [ ("left", (Left : text_emphasis_side)); ("right", Right) ]
+    t
+
+module Text_emphasis_position = struct
+  type component = Line of text_emphasis_line | Side of text_emphasis_side
+
+  let read_component t =
+    Cursor.one_of
+      [
+        (fun t -> Line (read_text_emphasis_line t));
+        (fun t -> Side (read_text_emphasis_side t));
+      ]
+      t
+
+  let merge t (line_opt, side_opt) = function
+    | Line line when Option.is_none line_opt -> (Some line, side_opt)
+    | Side side when Option.is_none side_opt -> (line_opt, Some side)
+    | Line _ -> Cursor.err t "duplicate text-emphasis-position line"
+    | Side _ -> Cursor.err t "duplicate text-emphasis-position side"
+end
+
+let rec read_text_emphasis_position t : text_emphasis_position =
+  Cursor.enum_or_calls "text-emphasis-position"
+    [
+      ("inherit", (Inherit : text_emphasis_position));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:[ ("var", fun t -> Var (read_var read_text_emphasis_position t)) ]
+    ~default:(fun t ->
+      let line, side =
+        Cursor.fold_many Text_emphasis_position.read_component
+          ~init:
+            ( (None : text_emphasis_line option),
+              (None : text_emphasis_side option) )
+          ~f:(Text_emphasis_position.merge t)
+          t
+        |> fst
+      in
+      match (line, side) with
+      | Some line, Some side -> (Position (line, side) : text_emphasis_position)
+      | _ -> Cursor.err_expected t "text-emphasis-position value")
+    t
+
+let rec pp_text_orientation : text_orientation Pp.t =
+ fun ctx -> function
+  | Mixed -> Pp.string ctx "mixed"
+  | Upright -> Pp.string ctx "upright"
+  | Sideways -> Pp.string ctx "sideways"
+  | Sideways_right -> Pp.string ctx "sideways-right"
+  | Use_glyph_orientation -> Pp.string ctx "use-glyph-orientation"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_text_orientation ctx v
+
+let rec read_text_orientation t : text_orientation =
+  Cursor.enum_or_var "text-orientation"
+    [
+      ("mixed", (Mixed : text_orientation));
+      ("upright", Upright);
+      ("sideways", Sideways);
+      ("sideways-right", Sideways_right);
+      ("use-glyph-orientation", Use_glyph_orientation);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (read_var read_text_orientation t))
+    t
+
 let rec read_text_transform t : text_transform =
   Cursor.enum_or_var "text-transform"
     [
@@ -869,6 +1139,37 @@ let rec read_text_transform t : text_transform =
       ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (read_var read_text_transform t))
+    t
+
+let rec pp_line_break : line_break Pp.t =
+ fun ctx -> function
+  | Auto -> Pp.string ctx "auto"
+  | Loose -> Pp.string ctx "loose"
+  | Normal -> Pp.string ctx "normal"
+  | Strict -> Pp.string ctx "strict"
+  | Anywhere -> Pp.string ctx "anywhere"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_line_break ctx v
+
+let rec read_line_break t : line_break =
+  Cursor.enum_or_var "line-break"
+    [
+      ("auto", (Auto : line_break));
+      ("loose", Loose);
+      ("normal", Normal);
+      ("strict", Strict);
+      ("anywhere", Anywhere);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (read_var read_line_break t))
     t
 
 let rec read_overflow_single (t : Cursor.t) : overflow =
@@ -1198,13 +1499,13 @@ module Transform = struct
           t)
 
   let read_scale_x t =
-    Cursor.call "scalex" t (fun t -> Scale_x (Cursor.number t))
+    Cursor.call "scalex" t (fun t -> Scale_x (Values.read_number_percentage t))
 
   let read_scale_y t =
-    Cursor.call "scaley" t (fun t -> Scale_y (Cursor.number t))
+    Cursor.call "scaley" t (fun t -> Scale_y (Values.read_number_percentage t))
 
   let read_scale_z t =
-    Cursor.call "scalez" t (fun t -> Scale_z (Cursor.number t))
+    Cursor.call "scalez" t (fun t -> Scale_z (Values.read_number_percentage t))
 
   let read_rotate3d t =
     Cursor.call "rotate3d" t (fun t ->
@@ -1215,18 +1516,23 @@ module Transform = struct
 
   let read_scale3d t =
     Cursor.call "scale3d" t (fun t ->
-        let x, y, z = Cursor.(triple ~sep:comma number number number) t in
+        let x, y, z =
+          Cursor.(
+            triple ~sep:comma Values.read_number_percentage
+              Values.read_number_percentage Values.read_number_percentage)
+            t
+        in
         Scale_3d (x, y, z))
 
   let read_scale t : transform =
     Cursor.call "scale" t (fun t ->
-        let x = Cursor.number t in
+        let x = Values.read_number_percentage t in
         let y =
           Cursor.option
             (fun t ->
               let has_comma = Cursor.comma_opt t in
               Cursor.ws t;
-              (has_comma, Cursor.number t))
+              (has_comma, Values.read_number_percentage t))
             t
         in
         match y with
@@ -1951,6 +2257,20 @@ let rec pp_border : border Pp.t =
   | None -> Pp.string ctx "none"
   | Shorthand shorthand -> pp_border_shorthand ctx shorthand
 
+let rec pp_logical_border_color : logical_border_color Pp.t =
+ fun ctx -> function
+  | Single color -> pp_color ctx color
+  | Pair (start_, end_) ->
+      pp_color ctx start_;
+      Pp.space ctx ();
+      pp_color ctx end_
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_logical_border_color ctx v
+
 let rec pp_display : display Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
@@ -2584,6 +2904,10 @@ let rec pp_overflow_wrap : overflow_wrap Pp.t =
   | Break_word -> Pp.string ctx "break-word"
   | Anywhere -> Pp.string ctx "anywhere"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_hyphens : hyphens Pp.t =
  fun ctx -> function
@@ -2592,6 +2916,10 @@ let rec pp_hyphens : hyphens Pp.t =
   | Manual -> Pp.string ctx "manual"
   | Auto -> Pp.string ctx "auto"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_list_style_type : list_style_type Pp.t =
  fun ctx -> function
@@ -2660,6 +2988,10 @@ let rec pp_vertical_align : vertical_align Pp.t =
   | Em f -> Pp.unit ctx f "em"
   | Pct p -> Pp.pct ctx p
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_vertical_align ctx v
 
 let rec pp_grid_auto_flow : grid_auto_flow Pp.t =
@@ -2917,6 +3249,9 @@ let pp_property : type a. a property Pp.t =
   | Text_decoration_color -> Pp.string ctx "text-decoration-color"
   | Text_decoration_thickness -> Pp.string ctx "text-decoration-thickness"
   | Text_underline_offset -> Pp.string ctx "text-underline-offset"
+  | Text_emphasis -> Pp.string ctx "text-emphasis"
+  | Text_emphasis_position -> Pp.string ctx "text-emphasis-position"
+  | Text_orientation -> Pp.string ctx "text-orientation"
   | Text_transform -> Pp.string ctx "text-transform"
   | Letter_spacing -> Pp.string ctx "letter-spacing"
   | List_style_type -> Pp.string ctx "list-style-type"
@@ -2976,6 +3311,7 @@ let pp_property : type a. a property Pp.t =
   | Border_left_color -> Pp.string ctx "border-left-color"
   | Border_inline_start_color -> Pp.string ctx "border-inline-start-color"
   | Border_inline_end_color -> Pp.string ctx "border-inline-end-color"
+  | Border_inline_color -> Pp.string ctx "border-inline-color"
   | Border_inline_style -> Pp.string ctx "border-inline-style"
   | Border_block_style -> Pp.string ctx "border-block-style"
   | Border_start_start_radius -> Pp.string ctx "border-start-start-radius"
@@ -3098,12 +3434,15 @@ let pp_property : type a. a property Pp.t =
   | Break_inside -> Pp.string ctx "break-inside"
   | Page_size -> Pp.string ctx "size"
   | Columns -> Pp.string ctx "columns"
+  | Column_rule -> Pp.string ctx "column-rule"
+  | Column_span -> Pp.string ctx "column-span"
   | Word_spacing -> Pp.string ctx "word-spacing"
   | Background_attachment -> Pp.string ctx "background-attachment"
   | Border_top -> Pp.string ctx "border-top"
   | Border_right -> Pp.string ctx "border-right"
   | Border_bottom -> Pp.string ctx "border-bottom"
   | Border_left -> Pp.string ctx "border-left"
+  | Border_block -> Pp.string ctx "border-block"
   | Transform_origin -> Pp.string ctx "transform-origin"
   | Transform_box -> Pp.string ctx "transform-box"
   | Text_shadow -> Pp.string ctx "text-shadow"
@@ -3135,6 +3474,7 @@ let pp_property : type a. a property Pp.t =
   | Text_wrap -> Pp.string ctx "text-wrap"
   | Word_break -> Pp.string ctx "word-break"
   | Overflow_wrap -> Pp.string ctx "overflow-wrap"
+  | Line_break -> Pp.string ctx "line-break"
   | Hyphens -> Pp.string ctx "hyphens"
   | Webkit_hyphens -> Pp.string ctx "-webkit-hyphens"
   | Font_stretch -> Pp.string ctx "font-stretch"
@@ -3309,19 +3649,21 @@ let rec pp_transform : transform Pp.t =
       Pp.space ctx ();
       pp_angle ctx a;
       Pp.char ctx ')'
-  | Scale (x, None) -> Pp.call "scale" Pp.float ctx x
-  | Scale (x, Some y) -> Pp.call_2 "scale" Pp.float Pp.float ctx (x, y)
+  | Scale (x, None) -> Pp.call "scale" pp_number_percentage ctx x
+  | Scale (x, Some y) ->
+      Pp.call_2 "scale" pp_number_percentage pp_number_percentage ctx (x, y)
   | Scale_space (x, y) ->
       Pp.string ctx "scale(";
-      Pp.string ctx (Pp.float_to_string ~drop_leading_zero:false x);
+      pp_number_percentage ctx x;
       Pp.space ctx ();
-      Pp.string ctx (Pp.float_to_string ~drop_leading_zero:false y);
+      pp_number_percentage ctx y;
       Pp.char ctx ')'
-  | Scale_x f -> Pp.call "scaleX" Pp.float ctx f
-  | Scale_y f -> Pp.call "scaleY" Pp.float ctx f
-  | Scale_z f -> Pp.call "scaleZ" Pp.float ctx f
+  | Scale_x v -> Pp.call "scaleX" pp_number_percentage ctx v
+  | Scale_y v -> Pp.call "scaleY" pp_number_percentage ctx v
+  | Scale_z v -> Pp.call "scaleZ" pp_number_percentage ctx v
   | Scale_3d (x, y, z) ->
-      Pp.call_3 "scale3d" Pp.float Pp.float Pp.float ctx (x, y, z)
+      Pp.call_3 "scale3d" pp_number_percentage pp_number_percentage
+        pp_number_percentage ctx (x, y, z)
   | Skew (x, None) -> Pp.call "skew" pp_angle ctx x
   | Skew (x, Some y) -> Pp.call_2 "skew" pp_angle pp_angle ctx (x, y)
   | Skew_x x -> Pp.call "skewX" pp_angle ctx x
@@ -3478,11 +3820,17 @@ let rec pp_background_box : background_box Pp.t =
 let rec pp_webkit_mask_composite : webkit_mask_composite Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_webkit_mask_composite ctx v
+  | Composites composites ->
+      Pp.list ~sep:Pp.comma pp_webkit_mask_composite ctx composites
   | Source_over -> Pp.string ctx "source-over"
   | Xor -> Pp.string ctx "xor"
   | Source_in -> Pp.string ctx "source-in"
   | Source_out -> Pp.string ctx "source-out"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_mask_composite : mask_composite Pp.t =
  fun ctx -> function
@@ -3492,6 +3840,10 @@ let rec pp_mask_composite : mask_composite Pp.t =
   | Intersect -> Pp.string ctx "intersect"
   | Exclude -> Pp.string ctx "exclude"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_webkit_mask_source_type : webkit_mask_source_type Pp.t =
  fun ctx -> function
@@ -3500,6 +3852,10 @@ let rec pp_webkit_mask_source_type : webkit_mask_source_type Pp.t =
   | Luminance -> Pp.string ctx "luminance"
   | Auto -> Pp.string ctx "auto"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_mask_mode : mask_mode Pp.t =
  fun ctx -> function
@@ -3520,6 +3876,10 @@ let rec pp_mask_type : mask_type Pp.t =
   | Alpha -> Pp.string ctx "alpha"
   | Luminance -> Pp.string ctx "luminance"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_mask_box : mask_box Pp.t =
  fun ctx -> function
@@ -3532,6 +3892,10 @@ let rec pp_mask_box : mask_box Pp.t =
   | View_box -> Pp.string ctx "view-box"
   | No_clip -> Pp.string ctx "no-clip"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_background_size : background_size Pp.t =
  fun ctx -> function
@@ -3731,6 +4095,11 @@ let rec pp_animation_direction : animation_direction Pp.t =
   | Reverse -> Pp.string ctx "reverse"
   | Alternate -> Pp.string ctx "alternate"
   | Alternate_reverse -> Pp.string ctx "alternate-reverse"
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_animation_fill_mode : animation_fill_mode Pp.t =
  fun ctx -> function
@@ -3739,12 +4108,24 @@ let rec pp_animation_fill_mode : animation_fill_mode Pp.t =
   | Forwards -> Pp.string ctx "forwards"
   | Backwards -> Pp.string ctx "backwards"
   | Both -> Pp.string ctx "both"
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_animation_iteration_count : animation_iteration_count Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_animation_iteration_count ctx v
+  | Counts counts ->
+      Pp.list ~sep:Pp.comma pp_animation_iteration_count ctx counts
   | Infinite -> Pp.string ctx "infinite"
   | Num n -> Pp.float ctx n
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_animation_name : animation_name Pp.t =
  fun ctx -> function
@@ -3761,8 +4142,14 @@ let rec pp_animation_name : animation_name Pp.t =
 let rec pp_animation_play_state : animation_play_state Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_animation_play_state ctx v
+  | States states -> Pp.list ~sep:Pp.comma pp_animation_play_state ctx states
   | Running -> Pp.string ctx "running"
   | Paused -> Pp.string ctx "paused"
+  | Initial -> Pp.string ctx "initial"
+  | Inherit -> Pp.string ctx "inherit"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_steps_direction : steps_direction Pp.t =
  fun ctx -> function
@@ -3800,13 +4187,24 @@ let rec pp_color_scheme : color_scheme Pp.t =
       Pp.space ctx ();
       Pp.string ctx "dark"
   | Only_light ->
+      Pp.string ctx "only";
+      Pp.space ctx ();
+      Pp.string ctx "light"
+  | Only_dark ->
+      Pp.string ctx "only";
+      Pp.space ctx ();
+      Pp.string ctx "dark"
+  | Only_light_dark ->
+      Pp.string ctx "only";
+      Pp.space ctx ();
       Pp.string ctx "light";
       Pp.space ctx ();
-      Pp.string ctx "only"
-  | Only_dark ->
-      Pp.string ctx "dark";
-      Pp.space ctx ();
-      Pp.string ctx "only"
+      Pp.string ctx "dark"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_print_color_adjust : print_color_adjust Pp.t =
  fun ctx -> function
@@ -3816,12 +4214,19 @@ let rec pp_print_color_adjust : print_color_adjust Pp.t =
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_box_decoration_break : box_decoration_break Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_box_decoration_break ctx v
   | Clone -> Pp.string ctx "clone"
   | Slice -> Pp.string ctx "slice"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_backface_visibility : backface_visibility Pp.t =
  fun ctx -> function
@@ -3862,6 +4267,10 @@ let rec pp_field_sizing : field_sizing Pp.t =
   | Content -> Pp.string ctx "content"
   | Fixed -> Pp.string ctx "fixed"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_caption_side : caption_side Pp.t =
  fun ctx -> function
@@ -3869,6 +4278,10 @@ let rec pp_caption_side : caption_side Pp.t =
   | Top -> Pp.string ctx "top"
   | Bottom -> Pp.string ctx "bottom"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_clear : clear Pp.t =
  fun ctx -> function
@@ -4347,6 +4760,10 @@ let rec pp_direction : direction Pp.t =
   | Ltr -> Pp.string ctx "ltr"
   | Rtl -> Pp.string ctx "rtl"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_isolation : isolation Pp.t =
  fun ctx -> function
@@ -4422,6 +4839,21 @@ let rec pp_columns_value : columns_value Pp.t =
       Pp.int ctx n
   | Var v -> pp_var pp_columns_value ctx v
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+
+let rec pp_column_span : column_span Pp.t =
+ fun ctx -> function
+  | None -> Pp.string ctx "none"
+  | All -> Pp.string ctx "all"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_column_span ctx v
 
 let rec pp_scroll_snap_align : scroll_snap_align Pp.t =
  fun ctx -> function
@@ -4539,6 +4971,10 @@ let rec pp_resize : resize Pp.t =
   | Block -> Pp.string ctx "block"
   | Inline -> Pp.string ctx "inline"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_object_fit : object_fit Pp.t =
  fun ctx -> function
@@ -4549,6 +4985,10 @@ let rec pp_object_fit : object_fit Pp.t =
   | None -> Pp.string ctx "none"
   | Scale_down -> Pp.string ctx "scale-down"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_font_stretch : font_stretch Pp.t =
  fun ctx -> function
@@ -4697,6 +5137,10 @@ let rec pp_webkit_font_smoothing : webkit_font_smoothing Pp.t =
   | Antialiased -> Pp.string ctx "antialiased"
   | Subpixel_antialiased -> Pp.string ctx "subpixel-antialiased"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_scroll_snap_strictness : scroll_snap_strictness Pp.t =
  fun ctx -> function
@@ -4994,6 +5438,10 @@ let rec pp_moz_osx_font_smoothing : moz_osx_font_smoothing Pp.t =
   | Auto -> Pp.string ctx "auto"
   | Grayscale -> Pp.string ctx "grayscale"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 (* Helpers for timing-function pretty printing *)
 
@@ -5388,7 +5836,12 @@ let rec pp_touch_action : touch_action Pp.t =
   | Pan_down -> Pp.string ctx "pan-down"
   | Pinch_zoom -> Pp.string ctx "pinch-zoom"
   | Manipulation -> Pp.string ctx "manipulation"
+  | Actions actions -> Pp.list ~sep:Pp.space pp_touch_action ctx actions
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Vars vars -> Pp.list ~sep:Pp.space (pp_var pp_touch_action) ctx vars
 
 let rec pp_unicode_bidi : unicode_bidi Pp.t =
@@ -5401,6 +5854,10 @@ let rec pp_unicode_bidi : unicode_bidi Pp.t =
   | Isolate_override -> Pp.string ctx "isolate-override"
   | Plaintext -> Pp.string ctx "plaintext"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_writing_mode : writing_mode Pp.t =
  fun ctx -> function
@@ -5423,6 +5880,10 @@ let rec pp_text_decoration_skip_ink : text_decoration_skip_ink Pp.t =
   | None -> Pp.string ctx "none"
   | All -> Pp.string ctx "all"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_overscroll_behavior : overscroll_behavior Pp.t =
  fun ctx -> function
@@ -5431,6 +5892,10 @@ let rec pp_overscroll_behavior : overscroll_behavior Pp.t =
   | Contain -> Pp.string ctx "contain"
   | None -> Pp.string ctx "none"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_webkit_appearance : webkit_appearance Pp.t =
  fun ctx -> function
@@ -5520,7 +5985,13 @@ let rec pp_webkit_box_orient : webkit_box_orient Pp.t =
   | Var v -> pp_var pp_webkit_box_orient ctx v
   | Horizontal -> Pp.string ctx "horizontal"
   | Vertical -> Pp.string ctx "vertical"
+  | Inline_axis -> Pp.string ctx "inline-axis"
+  | Block_axis -> Pp.string ctx "block-axis"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_moz_orient : moz_orient Pp.t =
  fun ctx -> function
@@ -5533,8 +6004,13 @@ let rec pp_moz_orient : moz_orient Pp.t =
 
 let rec pp_webkit_line_clamp : webkit_line_clamp Pp.t =
  fun ctx -> function
+  | None -> Pp.string ctx "none"
   | Lines n -> Pp.int ctx n
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_webkit_line_clamp ctx v
 
 let rec read_border_style t : border_style =
@@ -5662,6 +6138,24 @@ let rec read_border (t : Cursor.t) : border =
     ~var:(fun t -> (Var (Values.read_var read_border t) : border))
     ~default:(fun t : border -> Shorthand (read_border_shorthand t))
     t
+
+let rec read_logical_border_color t : logical_border_color =
+  let read_colors t =
+    match Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_color t with
+    | [ color ] -> (Single color : logical_border_color)
+    | [ start_; end_ ] -> Pair (start_, end_)
+    | _ -> Cursor.err_expected t "one or two colors"
+  in
+  Cursor.enum_or_var "logical border color"
+    [
+      ("inherit", (Inherit : logical_border_color));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_logical_border_color t))
+    ~default:read_colors t
 
 let rec read_visibility t : visibility =
   Cursor.enum_or_var "visibility"
@@ -6457,24 +6951,34 @@ let rec read_word_break t : word_break =
     ~var:(fun t -> Var (read_var read_word_break t))
     t
 
-let read_overflow_wrap t : overflow_wrap =
-  Cursor.enum "overflow-wrap"
+let rec read_overflow_wrap t : overflow_wrap =
+  Cursor.enum_or_var "overflow-wrap"
     [
       ("normal", (Normal : overflow_wrap));
       ("break-word", Break_word);
       ("anywhere", Anywhere);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_overflow_wrap t))
     t
 
-let read_hyphens t : hyphens =
-  Cursor.enum "hyphens"
+let rec read_hyphens t : hyphens =
+  Cursor.enum_or_var "hyphens"
     [
       ("none", (None : hyphens));
       ("manual", Manual);
       ("auto", Auto);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_hyphens t))
     t
 
 let rec read_line_height t : line_height =
@@ -6619,31 +7123,55 @@ let rec read_pointer_events t : pointer_events =
     t
 
 let rec read_touch_action_var t : touch_action var =
-  Cursor.expect_string "var(" t;
-  Cursor.ws t;
-  let name =
-    if Cursor.looking_at t "--" then (
-      Cursor.expect_string "--" t;
-      Cursor.ident ~keep_case:true t)
-    else Cursor.ident ~keep_case:true t
-  in
-  Cursor.ws t;
-  (* Touch action vars use Empty fallback (trailing comma) or value fallback *)
-  let fallback : touch_action fallback =
-    if Cursor.comma_opt t then (
-      Cursor.ws t;
-      if Cursor.looking_at t ")" then Empty else Fallback (read_touch_action t))
-    else None
-  in
-  Cursor.expect ')' t;
-  Values.var_ref ~fallback name
+  Values.read_var read_touch_action t
 
 and read_touch_action t : touch_action =
-  if Cursor.looking_at t "var(" then
+  let is_var t =
+    match Cursor.peek t with
+    | Some (Component.Func { node = { name; _ }; _ }) ->
+        String.equal (String.lowercase_ascii name) "var"
+    | _ -> false
+  in
+  let read_action t =
+    Cursor.enum "touch-action gesture"
+      [
+        ("pan-x", (Pan_x : touch_action));
+        ("pan-y", Pan_y);
+        ("pan-left", Pan_left);
+        ("pan-right", Pan_right);
+        ("pan-up", Pan_up);
+        ("pan-down", Pan_down);
+        ("pinch-zoom", Pinch_zoom);
+      ]
+      t
+  in
+  let validate_actions actions =
+    let has_horizontal = ref false in
+    let has_vertical = ref false in
+    let has_pinch = ref false in
+    let check action =
+      match action with
+      | Pan_x | Pan_left | Pan_right ->
+          if !has_horizontal then
+            Cursor.err t "duplicate horizontal touch-action gesture";
+          has_horizontal := true
+      | Pan_y | Pan_up | Pan_down ->
+          if !has_vertical then
+            Cursor.err t "duplicate vertical touch-action gesture";
+          has_vertical := true
+      | Pinch_zoom ->
+          if !has_pinch then Cursor.err t "duplicate pinch-zoom touch-action";
+          has_pinch := true
+      | _ -> Cursor.err t "invalid touch-action gesture"
+    in
+    List.iter check actions;
+    match actions with [ action ] -> action | _ -> Actions actions
+  in
+  if is_var t then
     (* Parse sequence of var() references *)
     let rec read_vars acc =
       Cursor.ws t;
-      if Cursor.looking_at t "var(" then
+      if is_var t then
         let v = read_touch_action_var t in
         read_vars (v :: acc)
       else List.rev acc
@@ -6651,25 +7179,32 @@ and read_touch_action t : touch_action =
     let first = read_touch_action_var t in
     let rest = read_vars [] in
     Vars (first :: rest)
-  else
+  else if
+    Cursor.peek_ident t = Some "auto"
+    || Cursor.peek_ident t = Some "none"
+    || Cursor.peek_ident t = Some "manipulation"
+    || Cursor.peek_ident t = Some "inherit"
+    || Cursor.peek_ident t = Some "initial"
+    || Cursor.peek_ident t = Some "unset"
+    || Cursor.peek_ident t = Some "revert"
+    || Cursor.peek_ident t = Some "revert-layer"
+  then
     Cursor.enum "touch-action"
       [
         ("auto", (Auto : touch_action));
         ("none", None);
-        ("pan-x", Pan_x);
-        ("pan-y", Pan_y);
-        ("pan-left", Pan_left);
-        ("pan-right", Pan_right);
-        ("pan-up", Pan_up);
-        ("pan-down", Pan_down);
-        ("pinch-zoom", Pinch_zoom);
         ("manipulation", Manipulation);
         ("inherit", Inherit);
+        ("initial", Initial);
+        ("unset", Unset);
+        ("revert", Revert);
+        ("revert-layer", Revert_layer);
       ]
       t
+  else validate_actions (Cursor.list ~at_least:1 read_action t)
 
-let read_resize t : resize =
-  Cursor.enum "resize"
+let rec read_resize t : resize =
+  Cursor.enum_or_var "resize"
     [
       ("none", (None : resize));
       ("both", Both);
@@ -6678,7 +7213,12 @@ let read_resize t : resize =
       ("block", Block);
       ("inline", Inline);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_resize t))
     t
 
 let rec read_box_sizing (t : Cursor.t) : box_sizing =
@@ -6695,22 +7235,36 @@ let rec read_box_sizing (t : Cursor.t) : box_sizing =
     ~var:(fun t -> (Var (Values.read_var read_box_sizing t) : box_sizing))
     t
 
-let read_field_sizing t : field_sizing =
-  Cursor.enum "field-sizing"
+let rec read_field_sizing t : field_sizing =
+  Cursor.enum_or_var "field-sizing"
     [
       ("content", (Content : field_sizing));
       ("fixed", Fixed);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_field_sizing t))
     t
 
-let read_caption_side t : caption_side =
-  Cursor.enum "caption-side"
-    [ ("top", (Top : caption_side)); ("bottom", Bottom); ("inherit", Inherit) ]
+let rec read_caption_side t : caption_side =
+  Cursor.enum_or_var "caption-side"
+    [
+      ("top", (Top : caption_side));
+      ("bottom", Bottom);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_caption_side t))
     t
 
-let read_object_fit t : object_fit =
-  Cursor.enum "object-fit"
+let rec read_object_fit t : object_fit =
+  Cursor.enum_or_var "object-fit"
     [
       ("fill", (Fill : object_fit));
       ("contain", Contain);
@@ -6718,7 +7272,12 @@ let read_object_fit t : object_fit =
       ("none", None);
       ("scale-down", Scale_down);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_object_fit t))
     t
 
 let rec read_content t : content =
@@ -7337,27 +7896,51 @@ let rec read_columns_value t : columns_value =
      independently optional and the two may appear in either order in the
      source. Whenever both are present we canonicalise to [<width>, <count>] so
      the printer always emits the width first. *)
-  let read_var t : columns_value = Var (read_var read_columns_value t) in
-  let read_count t = Cursor.int t in
+  let read_count t =
+    let n = Cursor.int t in
+    if n <= 0 then Cursor.err_invalid t "column count must be positive";
+    n
+  in
   let read_width t = read_length t in
-  Cursor.enum_or_calls "columns"
-    [ ("auto", (Auto : columns_value)); ("inherit", Inherit) ]
-    ~calls:[ ("var", read_var) ]
-    ~default:(fun t ->
-      let snap = Cursor.save t in
-      match Cursor.option read_count t with
-      | Some n -> (
-          Cursor.ws t;
-          match Cursor.option read_width t with
-          | Some w -> (Both (w, n) : columns_value)
-          | None -> Count n)
-      | None -> (
-          Cursor.restore t snap;
-          let w = read_width t in
-          Cursor.ws t;
-          match Cursor.option read_count t with
-          | Some n -> (Both (w, n) : columns_value)
-          | None -> Width w))
+  let read_width_count t =
+    let w = read_width t in
+    Cursor.ws t;
+    match Cursor.option read_count t with
+    | Some n -> (Both (w, n) : columns_value)
+    | None -> Width w
+  in
+  let read_count_width t =
+    let n = read_count t in
+    Cursor.ws t;
+    match Cursor.option read_width t with
+    | Some w -> (Both (w, n) : columns_value)
+    | None -> Count n
+  in
+  Cursor.enum_or_var "columns"
+    [
+      ("auto", (Auto : columns_value));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_columns_value t))
+    ~default:(Cursor.one_of [ read_width_count; read_count_width ])
+    t
+
+let rec read_column_span t : column_span =
+  Cursor.enum_or_var "column-span"
+    [
+      ("none", (None : column_span));
+      ("all", All);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_column_span t))
     t
 
 let rec read_scroll_behavior (t : Cursor.t) : scroll_behavior =
@@ -7566,14 +8149,19 @@ let rec read_scroll_snap_type t : scroll_snap_type =
     ~var:(fun t -> (Var (read_var read_scroll_snap_type t) : scroll_snap_type))
     ~default:read_axis_with_optional_strictness t
 
-let read_overscroll_behavior t : overscroll_behavior =
-  Cursor.enum "overscroll-behavior"
+let rec read_overscroll_behavior t : overscroll_behavior =
+  Cursor.enum_or_var "overscroll-behavior"
     [
       ("auto", (Auto : overscroll_behavior));
       ("contain", Contain);
       ("none", None);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_overscroll_behavior t))
     t
 
 let read_svg_paint t : svg_paint =
@@ -7610,13 +8198,22 @@ let read_svg_paint t : svg_paint =
     ]
     t
 
-let read_direction t : direction =
-  Cursor.enum "direction"
-    [ ("ltr", (Ltr : direction)); ("rtl", Rtl); ("inherit", Inherit) ]
+let rec read_direction t : direction =
+  Cursor.enum_or_var "direction"
+    [
+      ("ltr", (Ltr : direction));
+      ("rtl", Rtl);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_direction t))
     t
 
-let read_unicode_bidi t : unicode_bidi =
-  Cursor.enum "unicode-bidi"
+let rec read_unicode_bidi t : unicode_bidi =
+  Cursor.enum_or_var "unicode-bidi"
     [
       ("normal", (Normal : unicode_bidi));
       ("embed", Embed);
@@ -7625,7 +8222,12 @@ let read_unicode_bidi t : unicode_bidi =
       ("isolate-override", Isolate_override);
       ("plaintext", Plaintext);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_unicode_bidi t))
     t
 
 let rec read_writing_mode t : writing_mode =
@@ -7691,33 +8293,50 @@ let rec read_text_size_adjust t : text_size_adjust =
         ~var:(fun t -> Var (Values.read_var read_text_size_adjust t))
         t
 
-let read_webkit_font_smoothing t : webkit_font_smoothing =
-  Cursor.enum "webkit-font-smoothing"
+let rec read_webkit_font_smoothing t : webkit_font_smoothing =
+  Cursor.enum_or_var "webkit-font-smoothing"
     [
       ("auto", (Auto : webkit_font_smoothing));
       ("none", None);
       ("antialiased", Antialiased);
       ("subpixel-antialiased", Subpixel_antialiased);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_webkit_font_smoothing t))
     t
 
-let read_moz_osx_font_smoothing t : moz_osx_font_smoothing =
-  Cursor.enum "moz-osx-font-smoothing"
+let rec read_moz_osx_font_smoothing t : moz_osx_font_smoothing =
+  Cursor.enum_or_var "moz-osx-font-smoothing"
     [
       ("auto", (Auto : moz_osx_font_smoothing));
       ("grayscale", Grayscale);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_moz_osx_font_smoothing t))
     t
 
-let read_webkit_box_orient t : webkit_box_orient =
-  Cursor.enum "webkit-box-orient"
+let rec read_webkit_box_orient t : webkit_box_orient =
+  Cursor.enum_or_var "webkit-box-orient"
     [
       ("horizontal", (Horizontal : webkit_box_orient));
       ("vertical", Vertical);
+      ("inline-axis", Inline_axis);
+      ("block-axis", Block_axis);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_webkit_box_orient t))
     t
 
 let read_moz_orient t : moz_orient =
@@ -7736,9 +8355,19 @@ let rec read_webkit_line_clamp t : webkit_line_clamp =
     Var (read_var read_webkit_line_clamp t)
   in
   Cursor.enum_or_calls "-webkit-line-clamp"
-    [ ("unset", (Unset : webkit_line_clamp)) ]
+    [
+      ("none", (None : webkit_line_clamp));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
     ~calls:[ ("var", read_var) ]
-    ~default:(fun t -> Lines (int_of_float (Cursor.number t)))
+    ~default:(fun t ->
+      let n = Cursor.int t in
+      if n <= 0 then Cursor.err_invalid t "-webkit-line-clamp must be positive";
+      Lines n)
     t
 
 let rec read_forced_color_adjust t : forced_color_adjust =
@@ -7775,36 +8404,76 @@ let rec read_appearance t : appearance =
     ~var:(fun t -> (Var (Values.read_var read_appearance t) : appearance))
     t
 
-let read_color_scheme t : color_scheme =
-  let first = Cursor.ident t in
-  match first with
-  | "normal" -> Normal
-  | "light" -> (
-      Cursor.ws t;
-      match Cursor.option Cursor.ident t with
-      | Some "dark" -> Light_dark
-      | Some "only" -> Only_light
-      | _ -> Light)
-  | "dark" -> (
-      Cursor.ws t;
-      match Cursor.option Cursor.ident t with
-      | Some "only" -> Only_dark
-      | _ -> Dark)
-  | _ -> Cursor.err t ("invalid color-scheme value: " ^ first)
+let rec read_color_scheme t : color_scheme =
+  let read_only t =
+    Cursor.ws t;
+    match Cursor.ident t with
+    | "light" -> (
+        Cursor.ws t;
+        match Cursor.option Cursor.ident t with
+        | Some "dark" -> Only_light_dark
+        | Some s ->
+            Cursor.err t ("invalid color-scheme value after only light: " ^ s)
+        | None -> Only_light)
+    | "dark" -> Only_dark
+    | s -> Cursor.err t ("invalid color-scheme value after only: " ^ s)
+  in
+  let read_keyword t =
+    let first = Cursor.ident t in
+    match first with
+    | "normal" -> Normal
+    | "light" -> (
+        Cursor.ws t;
+        match Cursor.option Cursor.ident t with
+        | Some "dark" -> Light_dark
+        | Some s -> Cursor.err t ("invalid color-scheme value after light: " ^ s)
+        | _ -> Light)
+    | "dark" -> (
+        Cursor.ws t;
+        match Cursor.option Cursor.ident t with
+        | Some s -> Cursor.err t ("invalid color-scheme value after dark: " ^ s)
+        | _ -> Dark)
+    | "only" -> read_only t
+    | "inherit" -> Inherit
+    | "initial" -> Initial
+    | "unset" -> Unset
+    | "revert" -> Revert
+    | "revert-layer" -> Revert_layer
+    | _ -> Cursor.err t ("invalid color-scheme value: " ^ first)
+  in
+  match Cursor.peek t with
+  | Some (Component.Func { node = { name; _ }; _ })
+    when String.equal (String.lowercase_ascii name) "var" ->
+      Var (Values.read_var read_color_scheme t)
+  | _ -> read_keyword t
 
-let read_print_color_adjust t : print_color_adjust =
-  Cursor.enum "print-color-adjust"
+let rec read_print_color_adjust t : print_color_adjust =
+  Cursor.enum_or_var "print-color-adjust"
     [
-      ("economy", Economy);
+      ("economy", (Economy : print_color_adjust));
       ("exact", Exact);
       ("initial", Initial);
       ("inherit", Inherit);
       ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_print_color_adjust t))
     t
 
-let read_box_decoration_break t : box_decoration_break =
-  Cursor.enum "box-decoration-break" [ ("clone", Clone); ("slice", Slice) ] t
+let rec read_box_decoration_break t : box_decoration_break =
+  Cursor.enum_or_var "box-decoration-break"
+    [
+      ("clone", (Clone : box_decoration_break));
+      ("slice", Slice);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_box_decoration_break t))
+    t
 
 let rec read_clear (t : Cursor.t) : clear =
   Cursor.enum_or_var "clear"
@@ -7861,14 +8530,19 @@ let rec read_tab_size (t : Cursor.t) : tab_size =
     ~var:(fun t -> Var (Values.read_var read_tab_size t))
     ~default:read_value t
 
-let read_text_decoration_skip_ink t : text_decoration_skip_ink =
-  Cursor.enum "text-decoration-skip-ink"
+let rec read_text_decoration_skip_ink t : text_decoration_skip_ink =
+  Cursor.enum_or_var "text-decoration-skip-ink"
     [
       ("auto", (Auto : text_decoration_skip_ink));
       ("none", None);
       ("all", All);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_text_decoration_skip_ink t))
     t
 
 let rec read_vertical_align t : vertical_align =
@@ -7884,6 +8558,10 @@ let rec read_vertical_align t : vertical_align =
       ("sub", Sub);
       ("super", Super);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
     ~calls:[ ("var", read_var) ]
     ~default:read_vertical_align_length t
@@ -8599,39 +9277,67 @@ let rec read_transition t : transition =
 let read_transitions t : transition list =
   Cursor.list ~at_least:1 ~sep:Cursor.comma read_transition t
 
-let read_animation_direction t : animation_direction =
-  Cursor.enum "animation-direction"
+let rec read_animation_direction t : animation_direction =
+  Cursor.enum_or_var "animation-direction"
     [
       ("normal", (Normal : animation_direction));
       ("reverse", Reverse);
       ("alternate", Alternate);
       ("alternate-reverse", Alternate_reverse);
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_animation_direction t))
     t
 
-let read_animation_fill_mode t : animation_fill_mode =
-  Cursor.enum "animation-fill-mode"
+let rec read_animation_fill_mode t : animation_fill_mode =
+  Cursor.enum_or_var "animation-fill-mode"
     [
       ("none", (None : animation_fill_mode));
       ("forwards", Forwards);
       ("backwards", Backwards);
       ("both", Both);
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_animation_fill_mode t))
     t
 
-let read_animation_iteration_count t : animation_iteration_count =
-  Cursor.enum "animation-iteration-count"
-    [ ("infinite", Infinite) ]
+let rec read_animation_iteration_count t : animation_iteration_count =
+  let read_count t =
+    Cursor.enum "animation-iteration-count-item"
+      [ ("infinite", (Infinite : animation_iteration_count)) ]
+      ~default:(fun t ->
+        let n, unit = Cursor.number_with_unit t in
+        match unit with
+        | Some u ->
+            Cursor.err_invalid t
+              ("animation-iteration-count must be unitless, got: " ^ u)
+        | None ->
+            if n < 0. then
+              Cursor.err_invalid t
+                "animation-iteration-count cannot be negative"
+            else Num n)
+      t
+  in
+  Cursor.enum_or_var "animation-iteration-count"
+    [
+      ("initial", (Initial : animation_iteration_count));
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_animation_iteration_count t))
     ~default:(fun t ->
-      let n, unit = Cursor.number_with_unit t in
-      match unit with
-      | Some u ->
-          Cursor.err_invalid t
-            ("animation-iteration-count must be unitless, got: " ^ u)
-      | None ->
-          if n < 0. then
-            Cursor.err_invalid t "animation-iteration-count cannot be negative"
-          else Num n)
+      let counts = Cursor.list ~sep:Cursor.comma ~at_least:1 read_count t in
+      match counts with [ count ] -> count | counts -> Counts counts)
     t
 
 let rec read_animation_name t : animation_name =
@@ -8655,9 +9361,24 @@ let rec read_animation_name t : animation_name =
       match names with [ name ] -> name | names -> Names names)
     t
 
-let read_animation_play_state t : animation_play_state =
-  Cursor.enum "animation-play-state"
-    [ ("running", (Running : animation_play_state)); ("paused", Paused) ]
+let rec read_animation_play_state t : animation_play_state =
+  let read_state t =
+    Cursor.enum "animation-play-state-item"
+      [ ("running", (Running : animation_play_state)); ("paused", Paused) ]
+      t
+  in
+  Cursor.enum_or_var "animation-play-state"
+    [
+      ("initial", (Initial : animation_play_state));
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_animation_play_state t))
+    ~default:(fun t ->
+      let states = Cursor.list ~sep:Cursor.comma ~at_least:1 read_state t in
+      match states with [ state ] -> state | states -> States states)
     t
 
 module Animation = struct
@@ -8795,11 +9516,7 @@ module Animation = struct
     else acc
 
   let is_zero_duration = function S 0. | Ms 0. -> true | _ -> false
-
-  let rec pp_iter_count ctx = function
-    | Infinite -> Pp.string ctx "infinite"
-    | Num n -> Pp.float ctx n
-    | Var v -> pp_var pp_iter_count ctx v
+  let pp_iter_count = pp_animation_iteration_count
 
   (* Check if a timing function ends with ')' - only cubic-bezier/steps do *)
   let ends_with_paren = function
@@ -9791,6 +10508,7 @@ let read_any_property t =
   | "border-right-color" -> Prop Border_right_color
   | "border-bottom-color" -> Prop Border_bottom_color
   | "border-left-color" -> Prop Border_left_color
+  | "border-inline-color" -> Prop Border_inline_color
   | "border-style" -> Prop Border_style
   | "border-top-style" -> Prop Border_top_style
   | "border-right-style" -> Prop Border_right_style
@@ -9849,6 +10567,9 @@ let read_any_property t =
   | "text-align" -> Prop Text_align
   | "text-decoration" -> Prop Text_decoration
   | "text-decoration-line" -> Prop Text_decoration_line
+  | "text-emphasis" -> Prop Text_emphasis
+  | "text-emphasis-position" -> Prop Text_emphasis_position
+  | "text-orientation" -> Prop Text_orientation
   | "text-transform" -> Prop Text_transform
   | "text-indent" -> Prop Text_indent
   | "letter-spacing" -> Prop Letter_spacing
@@ -9950,6 +10671,7 @@ let read_any_property t =
   | "background-position" -> Prop Background_position
   | "background-repeat" -> Prop Background_repeat
   | "background-size" -> Prop Background_size
+  | "border-block" -> Prop Border_block
   | "border-end-end-radius" -> Prop Border_end_end_radius
   | "border-end-start-radius" -> Prop Border_end_start_radius
   | "border-inline-end-color" -> Prop Border_inline_end_color
@@ -9974,6 +10696,8 @@ let read_any_property t =
   | "page-break-after" -> Prop Break_after
   | "page-break-inside" -> Prop Break_inside
   | "columns" -> Prop Columns
+  | "column-rule" -> Prop Column_rule
+  | "column-span" -> Prop Column_span
   | "clear" -> Prop Clear
   | "clip" -> Prop Clip
   | "clip-path" -> Prop Clip_path
@@ -10108,6 +10832,7 @@ let read_any_property t =
   | "text-size-adjust" -> Prop Text_size_adjust
   | "text-underline-offset" -> Prop Text_underline_offset
   | "text-wrap" -> Prop Text_wrap
+  | "line-break" -> Prop Line_break
   | "touch-action" -> Prop Touch_action
   | "transform-style" -> Prop Transform_style
   | "transition-delay" -> Prop Transition_delay
@@ -10238,38 +10963,64 @@ let rec read_background_box t : background_box =
     t
 
 (* Parser for webkit_mask_composite values *)
-let read_webkit_mask_composite t : webkit_mask_composite =
-  Cursor.enum "webkit-mask-composite"
+let rec read_webkit_mask_composite t : webkit_mask_composite =
+  let read_item t =
+    Cursor.enum "webkit-mask-composite-item"
+      [
+        ("source-over", (Source_over : webkit_mask_composite));
+        ("xor", Xor);
+        ("source-in", Source_in);
+        ("source-out", Source_out);
+      ]
+      t
+  in
+  Cursor.enum_or_var "webkit-mask-composite"
     [
-      ("source-over", (Source_over : webkit_mask_composite));
-      ("xor", Xor);
-      ("source-in", Source_in);
-      ("source-out", Source_out);
-      ("inherit", Inherit);
+      ("inherit", (Inherit : webkit_mask_composite));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_webkit_mask_composite t))
+    ~default:(fun t ->
+      let composites = Cursor.list ~sep:Cursor.comma ~at_least:1 read_item t in
+      match composites with
+      | [ composite ] -> composite
+      | composites -> Composites composites)
     t
 
 (* Parser for mask_composite values (standard, not webkit) *)
-let read_mask_composite t : mask_composite =
-  Cursor.enum "mask-composite"
+let rec read_mask_composite t : mask_composite =
+  Cursor.enum_or_var "mask-composite"
     [
       ("add", (Add : mask_composite));
       ("subtract", Subtract);
       ("intersect", Intersect);
       ("exclude", Exclude);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_mask_composite t))
     t
 
 (* Parser for webkit_mask_source_type values *)
-let read_webkit_mask_source_type t : webkit_mask_source_type =
-  Cursor.enum "webkit-mask-source-type"
+let rec read_webkit_mask_source_type t : webkit_mask_source_type =
+  Cursor.enum_or_var "webkit-mask-source-type"
     [
       ("alpha", (Alpha : webkit_mask_source_type));
       ("luminance", Luminance);
       ("auto", Auto);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_webkit_mask_source_type t))
     t
 
 (* Parser for mask_mode values (standard) *)
@@ -10299,18 +11050,23 @@ let rec read_mask_mode t : mask_mode =
     ~default:read_modes t
 
 (* Parser for mask_type values *)
-let read_mask_type t : mask_type =
-  Cursor.enum "mask-type"
+let rec read_mask_type t : mask_type =
+  Cursor.enum_or_var "mask-type"
     [
       ("alpha", (Alpha : mask_type));
       ("luminance", Luminance);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_mask_type t))
     t
 
 (* Parser for mask_box values (mask-clip and mask-origin) *)
-let read_mask_box t : mask_box =
-  Cursor.enum "mask-box"
+let rec read_mask_box t : mask_box =
+  Cursor.enum_or_var "mask-box"
     [
       ("border-box", (Border_box : mask_box));
       ("content-box", Content_box);
@@ -10320,7 +11076,12 @@ let read_mask_box t : mask_box =
       ("view-box", View_box);
       ("no-clip", No_clip);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> Var (Values.read_var read_mask_box t))
     t
 
 module Mask_shorthand = struct
@@ -11151,6 +11912,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_left_color -> pp pp_color
   | Border_inline_start_color -> pp pp_color
   | Border_inline_end_color -> pp pp_color
+  | Border_inline_color -> pp pp_logical_border_color
   | Border_inline_style -> pp pp_border_style
   | Border_block_style -> pp pp_border_style
   | Border_start_start_radius -> pp pp_length
@@ -11172,6 +11934,8 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Break_inside -> pp pp_break_inside_value
   | Page_size -> pp pp_page_size
   | Columns -> pp pp_columns_value
+  | Column_rule -> pp pp_border
+  | Column_span -> pp pp_column_span
   | Transform_style -> pp pp_transform_style
   | Backface_visibility -> pp pp_backface_visibility
   | Scroll_snap_align -> pp pp_scroll_snap_align
@@ -11197,6 +11961,9 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Text_decoration -> pp pp_text_decoration
   | Text_decoration_line -> pp (Pp.list ~sep:Pp.space pp_text_decoration_line)
   | Text_decoration_style -> pp pp_text_decoration_style
+  | Text_emphasis -> pp pp_text_emphasis
+  | Text_emphasis_position -> pp pp_text_emphasis_position
+  | Text_orientation -> pp pp_text_orientation
   | Text_transform -> pp pp_text_transform
   | List_style_type -> pp pp_list_style_type
   | List_style_position -> pp pp_list_style_position
@@ -11211,6 +11978,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Text_wrap -> pp pp_text_wrap
   | Word_break -> pp pp_word_break
   | Overflow_wrap -> pp pp_overflow_wrap
+  | Line_break -> pp pp_line_break
   | Hyphens -> pp pp_hyphens
   | Webkit_hyphens -> pp pp_hyphens
   | Font_stretch -> pp pp_font_stretch
@@ -11403,6 +12171,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Clear -> pp pp_clear
   | Float -> pp pp_float_side
   | Border -> pp pp_border
+  | Border_block -> pp pp_border
   | Background -> pp (Pp.list ~sep:Pp.comma pp_background)
   | Text_decoration_thickness -> pp pp_length
   | Text_size_adjust -> pp pp_text_size_adjust

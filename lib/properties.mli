@@ -1149,6 +1149,46 @@ val pp_columns_value : columns_value Pp.t
 val read_columns_value : Cursor.t -> columns_value
 (** [read_columns_value t] is the [columns_value] parsed from [t]. *)
 
+val pp_logical_border_color : logical_border_color Pp.t
+(** [pp_logical_border_color] is the pretty-printer for [logical_border_color].
+*)
+
+val read_logical_border_color : Cursor.t -> logical_border_color
+(** [read_logical_border_color t] is the [logical_border_color] parsed from [t].
+*)
+
+val pp_column_span : column_span Pp.t
+(** [pp_column_span] is the pretty-printer for [column_span]. *)
+
+val read_column_span : Cursor.t -> column_span
+(** [read_column_span t] is the [column_span] parsed from [t]. *)
+
+val pp_text_emphasis : text_emphasis Pp.t
+(** [pp_text_emphasis] is the pretty-printer for [text_emphasis]. *)
+
+val read_text_emphasis : Cursor.t -> text_emphasis
+(** [read_text_emphasis t] is the [text_emphasis] parsed from [t]. *)
+
+val pp_text_emphasis_position : text_emphasis_position Pp.t
+(** [pp_text_emphasis_position] is the pretty-printer for
+    [text_emphasis_position]. *)
+
+val read_text_emphasis_position : Cursor.t -> text_emphasis_position
+(** [read_text_emphasis_position t] is the [text_emphasis_position] parsed from
+    [t]. *)
+
+val pp_text_orientation : text_orientation Pp.t
+(** [pp_text_orientation] is the pretty-printer for [text_orientation]. *)
+
+val read_text_orientation : Cursor.t -> text_orientation
+(** [read_text_orientation t] is the [text_orientation] parsed from [t]. *)
+
+val pp_line_break : line_break Pp.t
+(** [pp_line_break] is the pretty-printer for [line_break]. *)
+
+val read_line_break : Cursor.t -> line_break
+(** [read_line_break t] is the [line_break] parsed from [t]. *)
+
 val pp_scroll_behavior : scroll_behavior Pp.t
 (** [pp_scroll_behavior] is the pretty-printer for [scroll_behavior]. *)
 

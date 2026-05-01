@@ -437,6 +437,26 @@ let vars_of_text_decoration (value : Properties.text_decoration) : any_var list
     =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_text_emphasis_style (value : Properties.text_emphasis_style) :
+    any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_text_emphasis (value : Properties.text_emphasis) : any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | Emphasis (style, color) ->
+      Option.value ~default:[] (Option.map vars_of_text_emphasis_style style)
+      @ Option.value ~default:[] (Option.map vars_of_color color)
+  | _ -> []
+
+let vars_of_text_emphasis_position (value : Properties.text_emphasis_position) :
+    any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_text_orientation (value : Properties.text_orientation) :
+    any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_text_transform (value : Properties.text_transform) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -525,6 +545,9 @@ let vars_of_columns_value (value : Properties.columns_value) : any_var list =
   | Width l -> vars_of_length l
   | Both (l, _) -> vars_of_length l
   | _ -> []
+
+let vars_of_column_span (value : Properties.column_span) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_contain (value : Properties.contain) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
@@ -815,6 +838,9 @@ let vars_of_word_break (value : Properties.word_break) =
 let vars_of_overflow_wrap (value : Properties.overflow_wrap) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_line_break (value : Properties.line_break) =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_list_style_position (value : Properties.list_style_position) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -825,6 +851,13 @@ let vars_of_border (value : Properties.border) =
       Option.value ~default:[] (Option.map vars_of_border_width width)
       @ Option.value ~default:[] (Option.map vars_of_border_style style)
       @ Option.value ~default:[] (Option.map vars_of_color color)
+  | _ -> []
+
+let vars_of_logical_border_color (value : Properties.logical_border_color) =
+  match value with
+  | Var v -> [ V v ]
+  | Single color -> vars_of_color color
+  | Pair (start_, end_) -> vars_of_color start_ @ vars_of_color end_
   | _ -> []
 
 let vars_of_outline (value : Properties.outline) =
@@ -872,9 +905,18 @@ let vars_of_animation_direction (value : Properties.animation_direction) =
 let vars_of_animation_fill_mode (value : Properties.animation_fill_mode) =
   match value with Var v -> [ V v ] | _ -> []
 
-let vars_of_animation_iteration_count
+let rec vars_of_animation_play_state (value : Properties.animation_play_state) =
+  match value with
+  | Var v -> [ V v ]
+  | States states -> List.concat_map vars_of_animation_play_state states
+  | _ -> []
+
+let rec vars_of_animation_iteration_count
     (value : Properties.animation_iteration_count) =
-  match value with Var v -> [ V v ] | _ -> []
+  match value with
+  | Var v -> [ V v ]
+  | Counts counts -> List.concat_map vars_of_animation_iteration_count counts
+  | _ -> []
 
 let vars_of_transition_behavior (value : Properties.transition_behavior) =
   match value with Var v -> [ V v ] | _ -> []
@@ -1049,8 +1091,13 @@ let vars_of_clip_path (value : Properties.clip_path) =
 let vars_of_mask_box (value : Properties.mask_box) =
   match value with Var v -> [ V v ] | _ -> []
 
-let vars_of_webkit_mask_composite (value : Properties.webkit_mask_composite) =
-  match value with Var v -> [ V v ] | _ -> []
+let rec vars_of_webkit_mask_composite (value : Properties.webkit_mask_composite)
+    =
+  match value with
+  | Var v -> [ V v ]
+  | Composites composites ->
+      List.concat_map vars_of_webkit_mask_composite composites
+  | _ -> []
 
 let vars_of_mask_composite (value : Properties.mask_composite) =
   match value with Var v -> [ V v ] | _ -> []
@@ -1173,6 +1220,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Border_left_color, value -> vars_of_color value
   | Border_inline_start_color, value -> vars_of_color value
   | Border_inline_end_color, value -> vars_of_color value
+  | Border_inline_color, value -> vars_of_logical_border_color value
   | Border_inline_style, value -> vars_of_border_style value
   | Border_block_style, value -> vars_of_border_style value
   | Border_start_start_radius, value -> vars_of_length value
@@ -1243,6 +1291,9 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Font_variant_numeric, value -> vars_of_font_variant_numeric value
   (* Text properties *)
   | Text_decoration, value -> vars_of_text_decoration value
+  | Text_emphasis, value -> vars_of_text_emphasis value
+  | Text_emphasis_position, value -> vars_of_text_emphasis_position value
+  | Text_orientation, value -> vars_of_text_orientation value
   | Webkit_text_decoration, value -> vars_of_text_decoration value
   | Text_transform, value -> vars_of_text_transform value
   (* Content and visibility *)
@@ -1283,6 +1334,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Background_size, value -> vars_of_background_size value
   (* Columns *)
   | Columns, value -> vars_of_columns_value value
+  | Column_rule, value -> vars_of_border value
+  | Column_span, value -> vars_of_column_span value
   (* Contain *)
   | Contain, value -> vars_of_contain value
   (* Cursor *)
@@ -1327,6 +1380,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Animation_direction, value -> vars_of_animation_direction value
   | Animation_fill_mode, value -> vars_of_animation_fill_mode value
   | Animation_iteration_count, value -> vars_of_animation_iteration_count value
+  | Animation_play_state, value -> vars_of_animation_play_state value
   | Appearance, value -> vars_of_appearance value
   | Backface_visibility, value -> vars_of_backface_visibility value
   | Background_attachment, value -> vars_of_background_attachment value
@@ -1334,6 +1388,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Background_origin, value -> vars_of_background_box value
   | Background_repeat, value -> vars_of_background_repeat value
   | Border, value -> vars_of_border value
+  | Border_block, value -> vars_of_border value
   | Border_top, value -> vars_of_border value
   | Border_right, value -> vars_of_border value
   | Border_bottom, value -> vars_of_border value
@@ -1397,6 +1452,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Outline, value -> vars_of_outline value
   | Overflow, value -> vars_of_overflow value
   | Overflow_wrap, value -> vars_of_overflow_wrap value
+  | Line_break, value -> vars_of_line_break value
   | Overflow_x, value -> vars_of_overflow value
   | Overflow_y, value -> vars_of_overflow value
   | Overflow_block, value -> vars_of_overflow value

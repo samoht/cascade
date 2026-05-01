@@ -749,6 +749,54 @@ type text_decoration =
   | Revert_layer
   | Var of text_decoration var
 
+type text_emphasis_fill = Filled | Open
+type text_emphasis_shape = Dot | Circle | Double_circle | Triangle | Sesame
+
+type text_emphasis_style =
+  | None
+  | Mark of text_emphasis_fill option * text_emphasis_shape option
+  | String of string
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_emphasis_style var
+
+type text_emphasis =
+  | Emphasis of text_emphasis_style option * color option
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_emphasis var
+
+type text_emphasis_line = Over | Under
+type text_emphasis_side = Left | Right
+
+type text_emphasis_position =
+  | Position of text_emphasis_line * text_emphasis_side
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_emphasis_position var
+
+type text_orientation =
+  | Mixed
+  | Upright
+  | Sideways
+  | Sideways_right
+  | Use_glyph_orientation
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_orientation var
+
 type text_transform =
   | None
   | Capitalize
@@ -762,6 +810,19 @@ type text_transform =
   | Revert
   | Revert_layer
   | Var of text_transform var
+
+type line_break =
+  | Auto
+  | Loose
+  | Normal
+  | Strict
+  | Anywhere
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of line_break var
 
 type text_overflow =
   | Clip
@@ -881,9 +942,22 @@ type overflow_wrap =
   | Break_word
   | Anywhere
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of overflow_wrap var
 
-type hyphens = None | Manual | Auto | Inherit | Var of hyphens var
+type hyphens =
+  | None
+  | Manual
+  | Auto
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of hyphens var
 
 (* List Types *)
 type list_style_type =
@@ -949,6 +1023,10 @@ type vertical_align =
   | Em of float
   | Pct of float
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of vertical_align var
 
 (* Border Types *)
@@ -978,6 +1056,16 @@ type border =
   | None
   | Shorthand of border_shorthand
   | Var of border var
+
+type logical_border_color =
+  | Single of color
+  | Pair of color * color
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of logical_border_color var
 
 type outline_style =
   | None
@@ -1241,12 +1329,12 @@ type transform =
   | Rotate_z of angle
   | Rotate_3d of float * float * float * angle
   | Rotate_axis of float * float * float * angle
-  | Scale of float * float option
-  | Scale_space of float * float
-  | Scale_x of float
-  | Scale_y of float
-  | Scale_z of float
-  | Scale_3d of float * float * float
+  | Scale of number_percentage * number_percentage option
+  | Scale_space of number_percentage * number_percentage
+  | Scale_x of number_percentage
+  | Scale_y of number_percentage
+  | Scale_z of number_percentage
+  | Scale_3d of number_percentage * number_percentage * number_percentage
   | Skew of angle * angle option
   | Skew_x of angle
   | Skew_y of angle
@@ -1412,6 +1500,11 @@ type animation_direction =
   | Reverse
   | Alternate
   | Alternate_reverse
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of animation_direction var
 
 type animation_fill_mode =
@@ -1419,6 +1512,11 @@ type animation_fill_mode =
   | Forwards
   | Backwards
   | Both
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of animation_fill_mode var
 
 type animation_iteration_count =
@@ -1432,7 +1530,16 @@ type animation_iteration_count =
   | Revert_layer
   | Var of animation_iteration_count var
 
-type animation_play_state = Running | Paused | Var of animation_play_state var
+type animation_play_state =
+  | Running
+  | Paused
+  | States of animation_play_state list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of animation_play_state var
 
 type animation_name =
   | None
@@ -1808,7 +1915,12 @@ type webkit_mask_composite =
   | Xor
   | Source_in
   | Source_out
+  | Composites of webkit_mask_composite list
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of webkit_mask_composite var
       (** Standard mask-composite values (different from webkit) *)
 
@@ -1818,6 +1930,10 @@ type mask_composite =
   | Intersect
   | Exclude
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of mask_composite var  (** Webkit mask-source-type values *)
 
 type webkit_mask_source_type =
@@ -1825,6 +1941,10 @@ type webkit_mask_source_type =
   | Luminance
   | Auto
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of webkit_mask_source_type var
       (** Standard mask-mode values (different from webkit) *)
 
@@ -1841,7 +1961,15 @@ type mask_mode =
   | Var of mask_mode var
       (** mask-type property values (only alpha and luminance) *)
 
-type mask_type = Alpha | Luminance | Inherit | Var of mask_type var
+type mask_type =
+  | Alpha
+  | Luminance
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of mask_type var
 
 type mask_box =
   | Border_box
@@ -1852,6 +1980,10 @@ type mask_box =
   | View_box
   | No_clip  (** Only valid for mask-clip *)
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of mask_box var
 
 type mask_layer = {
@@ -1974,7 +2106,12 @@ type touch_action =
   | Pan_down
   | Pinch_zoom
   | Manipulation
+  | Actions of touch_action list
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Vars of touch_action var list
       (** Variable references like var(--tw-pan-x,) var(--tw-pan-y,) *)
   | Var of touch_action var
@@ -1987,6 +2124,10 @@ type resize =
   | Block
   | Inline
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of resize var
 
 (* Box Model Types *)
@@ -2000,8 +2141,25 @@ type box_sizing =
   | Revert_layer
   | Var of box_sizing var
 
-type field_sizing = Content | Fixed | Inherit | Var of field_sizing var
-type caption_side = Top | Bottom | Inherit | Var of caption_side var
+type field_sizing =
+  | Content
+  | Fixed
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of field_sizing var
+
+type caption_side =
+  | Top
+  | Bottom
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of caption_side var
 
 type object_fit =
   | Fill
@@ -2010,6 +2168,10 @@ type object_fit =
   | None
   | Scale_down
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of object_fit var
 
 (* Content Types *)
@@ -2414,7 +2576,21 @@ type columns_value =
           to [<width>, <count>] internally so the printer always emits the width
           first. *)
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of columns_value var
+
+type column_span =
+  | None
+  | All
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of column_span var
 
 (* Scroll Types *)
 type scroll_behavior =
@@ -2508,6 +2684,10 @@ type overscroll_behavior =
   | Contain
   | None
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of overscroll_behavior var
 
 (* SVG Types *)
@@ -2521,7 +2701,15 @@ type svg_paint =
   | Var of svg_paint var
 
 (* Direction Types *)
-type direction = Ltr | Rtl | Inherit | Var of direction var
+type direction =
+  | Ltr
+  | Rtl
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of direction var
 
 type unicode_bidi =
   | Normal
@@ -2531,6 +2719,10 @@ type unicode_bidi =
   | Isolate_override
   | Plaintext
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of unicode_bidi var
 
 type writing_mode =
@@ -2572,18 +2764,32 @@ type webkit_font_smoothing =
   | Antialiased
   | Subpixel_antialiased
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of webkit_font_smoothing var
 
 type moz_osx_font_smoothing =
   | Auto
   | Grayscale
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of moz_osx_font_smoothing var
 
 type webkit_box_orient =
   | Horizontal
   | Vertical
+  | Inline_axis
+  | Block_axis
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of webkit_box_orient var
 
 type moz_orient =
@@ -2594,7 +2800,15 @@ type moz_orient =
   | Inherit
   | Var of moz_orient var
 
-type webkit_line_clamp = Lines of int | Unset | Var of webkit_line_clamp var
+type webkit_line_clamp =
+  | None
+  | Lines of int
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of webkit_line_clamp var
 
 type text_size_adjust =
   | None
@@ -2626,6 +2840,12 @@ type color_scheme =
   | Light_dark
   | Only_light
   | Only_dark
+  | Only_light_dark
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of color_scheme var
 
 type appearance =
@@ -2648,9 +2868,19 @@ type print_color_adjust =
   | Initial
   | Inherit
   | Unset
+  | Revert
+  | Revert_layer
   | Var of print_color_adjust var
 
-type box_decoration_break = Clone | Slice | Var of box_decoration_break var
+type box_decoration_break =
+  | Clone
+  | Slice
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of box_decoration_break var
 
 type clear =
   | None
@@ -2684,6 +2914,10 @@ type text_decoration_skip_ink =
   | None
   | All
   | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of text_decoration_skip_ink var
 
 type transform_origin =
@@ -2915,6 +3149,9 @@ type 'a property =
   | Text_decoration_style : text_decoration_style property
   | Text_decoration_color : color property
   | Text_underline_offset : length property
+  | Text_emphasis : text_emphasis property
+  | Text_emphasis_position : text_emphasis_position property
+  | Text_orientation : text_orientation property
   | Text_transform : text_transform property
   | Letter_spacing : length property
   | List_style_type : list_style_type property
@@ -2974,6 +3211,7 @@ type 'a property =
   | Border_left_color : color property
   | Border_inline_start_color : color property
   | Border_inline_end_color : color property
+  | Border_inline_color : logical_border_color property
   | Border_inline_style : border_style property
   | Border_block_style : border_style property
   | Border_start_start_radius : length property
@@ -3012,6 +3250,7 @@ type 'a property =
   | Scroll_snap_type : scroll_snap_type property
   | White_space : white_space property
   | Border : border property
+  | Border_block : border property
   | Background : background list property
   | Tab_size : tab_size property
   | Webkit_text_size_adjust : text_size_adjust property
@@ -3091,6 +3330,8 @@ type 'a property =
   | Break_inside : break_inside_value property
   | Page_size : page_size property
   | Columns : columns_value property
+  | Column_rule : border property
+  | Column_span : column_span property
   | Word_spacing : length property
   | Background_attachment : background_attachment property
   | Border_top : border property
@@ -3128,6 +3369,7 @@ type 'a property =
   | Text_wrap : text_wrap property
   | Word_break : word_break property
   | Overflow_wrap : overflow_wrap property
+  | Line_break : line_break property
   | Hyphens : hyphens property
   | Webkit_hyphens : hyphens property
   | Font_stretch : font_stretch property

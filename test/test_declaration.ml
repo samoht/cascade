@@ -1478,7 +1478,7 @@ let spec_remaining_prop_vectors () =
       ("border-block: 1px solid red", "border-block:1px solid red");
       ("border-inline-color: red blue", "border-inline-color:red blue");
       ("border-start-start-radius: 1rem", "border-start-start-radius:1rem");
-      ("outline: 2px solid Highlight", "outline:2px solid Highlight");
+      ("outline: 2px solid Highlight", "outline:2px solid highlight");
       ("outline-offset: -2px", "outline-offset:-2px");
       ( "text-decoration: underline wavy red 2px",
         "text-decoration:underline wavy red 2px" );
