@@ -745,7 +745,7 @@ val text_decoration_skip_ink : text_decoration_skip_ink -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-decoration-skip-ink}
      text-decoration-skip-ink} property. *)
 
-val animation_name : string -> declaration
+val animation_name : animation_name -> declaration
 (** [animation_name v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/animation-name}
      animation-name} property. *)

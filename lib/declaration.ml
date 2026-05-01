@@ -631,14 +631,6 @@ let read_grid_template_list t =
     let all_values = first_value :: remaining_values in
     Tracks all_values
 
-(* Helper to read animation-name: none | <custom-ident> *)
-let read_animation_name t =
-  if Cursor.looking_at t "none" then (
-    Cursor.expect_string "none" t;
-    Cursor.ws t;
-    "none")
-  else Cursor.ident t
-
 (* Helper to read opacity: accepts either <number> (0-1), <percentage>
    (0%-100%), or var(...). Both formats are valid per CSS spec. Tailwind v4
    outputs percentages. *)

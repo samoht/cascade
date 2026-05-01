@@ -1552,24 +1552,24 @@ module Computed_value = struct
                 close + 2
               else close + 1
             in
-            if authored && body_has_subst_marker body then (
-              (* Authored calc with a substituted hole: preserve the form,
-                 recurse into the body so nested calcs still simplify. *)
-              Buffer.add_string buf "calc(";
-              (match resolve_calc length_ctx body with
-              | Ok inner -> Buffer.add_string buf (strip_markers inner)
-              | Error msg -> raise (Unresolved msg));
-              Buffer.add_char buf ')')
-            else
-              let body_clean = strip_markers body in
-              (match Calc.evaluate length_ctx body_clean with
-              | Some px ->
-                  Buffer.add_string buf
-                    (Pp.to_string ~minify:true
-                       (Values.pp_length ~always:true)
-                       (Px px))
-              | None -> raise (Unresolved ("calc(" ^ body_clean ^ ")")));
-              scan after)
+            (if authored && body_has_subst_marker body then (
+               (* Authored calc with a substituted hole: preserve the form,
+                  recurse into the body so nested calcs still simplify. *)
+               Buffer.add_string buf "calc(";
+               (match resolve_calc length_ctx body with
+               | Ok inner -> Buffer.add_string buf (strip_markers inner)
+               | Error msg -> raise (Unresolved msg));
+               Buffer.add_char buf ')')
+             else
+               let body_clean = strip_markers body in
+               match Calc.evaluate length_ctx body_clean with
+               | Some px ->
+                   Buffer.add_string buf
+                     (Pp.to_string ~minify:true
+                        (Values.pp_length ~always:true)
+                        (Px px))
+               | None -> raise (Unresolved ("calc(" ^ body_clean ^ ")")));
+            scan after)
         else
           let c = s.[i] in
           if not (is_marker c) then Buffer.add_char buf c;
@@ -2009,15 +2009,35 @@ module Computed_value = struct
                                 with_lengths)))))
 end
 
-(* CSS Cascade 5 §8: the final computed value is canonicalised by the user agent
-   — re-tokenise the resolved string through the generic minifier so
-   author-preserved whitespace inside the looked-up custom-property values
-   (which goes through [to_string_custom_minified] to keep math-operator spacing
-   around [*]/[/] in [calc()] author intent) collapses to the canonical form for
-   composite values like [rgb(R G B/A)]. *)
+(* CSS Cascade 5 §8: the final computed value canonicalises whitespace inside
+   substituted [var()] values (e.g. an [rgb(R G B / A)] custom-property value
+   collapses to [rgb(R G B/A)]) but keeps the top-level shadow / list spacing
+   the typed pp emitted. We re-tokenise each [Func]'s arguments through the
+   generic minifier and leave the surrounding sequence alone. *)
 let canonicalise_computed_value s =
   let cvs = Cursor.remaining (Cursor.of_string s) in
-  Parser.to_string_minified cvs
+  let buf = Buffer.create (String.length s) in
+  let emit cv =
+    match cv with
+    | Component.Func { node = { name; arguments; _ }; _ } ->
+        Buffer.add_string buf name;
+        Buffer.add_char buf '(';
+        Buffer.add_string buf (Parser.to_string_minified arguments);
+        Buffer.add_char buf ')'
+    | Component.Block { node = { opening; value; _ }; _ } ->
+        let open_, close =
+          match opening with
+          | Token.Paren -> ('(', ')')
+          | Token.Square -> ('[', ']')
+          | Token.Curly -> ('{', '}')
+        in
+        Buffer.add_char buf open_;
+        Buffer.add_string buf (Parser.to_string_minified value);
+        Buffer.add_char buf close
+    | Component.Preserved _ -> Buffer.add_string buf (Parser.to_string [ cv ])
+  in
+  List.iter emit cvs;
+  Buffer.contents buf
 
 let computed_value ?layer_order ?layer ctx decl =
   let property = Declaration.property_name decl in
