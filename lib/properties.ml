@@ -233,8 +233,8 @@ module Align_items = struct
       t
 end
 
-let read_align_items t : align_items =
-  Cursor.enum "align-items"
+let rec read_align_items t : align_items =
+  Cursor.enum_or_var "align-items"
     [
       ("normal", Normal);
       ("stretch", Stretch);
@@ -246,7 +246,13 @@ let read_align_items t : align_items =
       ("self-end", Self_end);
       ("flex-start", Flex_start);
       ("flex-end", Flex_end);
+      ("inherit", (Inherit : align_items));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> (Var (Values.read_var read_align_items t) : align_items))
     ~default:
       (Cursor.one_of
          [
@@ -293,10 +299,10 @@ module Align_content = struct
       t
 end
 
-let read_align_content t : align_content =
-  Cursor.enum "align-content"
+let rec read_align_content t : align_content =
+  Cursor.enum_or_var "align-content"
     [
-      ("normal", Normal);
+      ("normal", (Normal : align_content));
       ("center", Center);
       ("start", Start);
       ("end", End);
@@ -308,7 +314,13 @@ let read_align_content t : align_content =
       ("space-around", Space_around);
       ("space-evenly", Space_evenly);
       ("stretch", Stretch);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> (Var (Values.read_var read_align_content t) : align_content))
     ~default:
       (Cursor.one_of
          [
@@ -350,10 +362,10 @@ module Justify_content = struct
       t
 end
 
-let read_justify_content t : justify_content =
-  Cursor.enum "justify-content"
+let rec read_justify_content t : justify_content =
+  Cursor.enum_or_var "justify-content"
     [
-      ("normal", Normal);
+      ("normal", (Normal : justify_content));
       ("center", Center);
       ("start", Start);
       ("end", End);
@@ -365,7 +377,14 @@ let read_justify_content t : justify_content =
       ("space-around", Space_around);
       ("space-evenly", Space_evenly);
       ("stretch", Stretch);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t ->
+      (Var (Values.read_var read_justify_content t) : justify_content))
     ~default:
       (Cursor.one_of [ Justify_content.read_safe; Justify_content.read_unsafe ])
     t
@@ -407,8 +426,8 @@ module Align_self = struct
       t
 end
 
-let read_align_self t : align_self =
-  Cursor.enum "align-self"
+let rec read_align_self t : align_self =
+  Cursor.enum_or_var "align-self"
     [
       ("auto", Auto);
       ("normal", Normal);
@@ -420,7 +439,13 @@ let read_align_self t : align_self =
       ("self-end", Self_end);
       ("flex-start", Flex_start);
       ("flex-end", Flex_end);
+      ("inherit", (Inherit : align_self));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> (Var (Values.read_var read_align_self t) : align_self))
     ~default:
       (Cursor.one_of
          [
@@ -471,7 +496,7 @@ module Justify_items = struct
       t
 end
 
-let read_justify_items t : justify_items =
+let rec read_justify_items t : justify_items =
   let read_legacy t =
     Cursor.expect_string "legacy" t;
     Cursor.ws t;
@@ -489,9 +514,9 @@ let read_justify_items t : justify_items =
     | Some _ when Cursor.peek_semicolon t -> Legacy
     | Some s -> err_invalid_value t "justify-items legacy" s
   in
-  Cursor.enum "justify-items"
+  Cursor.enum_or_var "justify-items"
     [
-      ("normal", Normal);
+      ("normal", (Normal : justify_items));
       ("stretch", Stretch);
       ("anchor-center", Anchor_center);
       ("center", Center);
@@ -503,7 +528,13 @@ let read_justify_items t : justify_items =
       ("flex-end", Flex_end);
       ("left", Left);
       ("right", Right);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t -> (Var (Values.read_var read_justify_items t) : justify_items))
     ~default:
       (Cursor.one_of
          [
@@ -555,11 +586,15 @@ module Justify_self = struct
       t
 end
 
-let read_justify_self t : justify_self =
-  Cursor.enum "justify-self"
+let rec read_justify_self t : justify_self =
+  Cursor.enum_or_var "justify-self"
     [
       ("auto", Auto);
-      ("inherit", Inherit);
+      ("inherit", (Inherit : justify_self));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
       ("normal", Normal);
       ("stretch", Stretch);
       ("anchor-center", Anchor_center);
@@ -573,6 +608,7 @@ let read_justify_self t : justify_self =
       ("left", Left);
       ("right", Right);
     ]
+    ~var:(fun t -> (Var (Values.read_var read_justify_self t) : justify_self))
     ~default:
       (Cursor.one_of
          [
@@ -902,6 +938,11 @@ module Cursor_prop = struct
         ("nwse-resize", Nwse_resize);
         ("zoom-in", Zoom_in);
         ("zoom-out", Zoom_out);
+        ("inherit", Inherit);
+        ("initial", Initial);
+        ("unset", Unset);
+        ("revert", Revert);
+        ("revert-layer", Revert_layer);
       ]
       t
 
@@ -1006,28 +1047,76 @@ module Shadow = struct
       components
 
   let read t =
-    let components, _ = Cursor.many read_component t in
-    let parts = fold components in
-    let lengths = List.rev parts.lengths in
+    (* CSS Backgrounds and Borders 3 §6.3 shadow grammar: [inset? &&
+       <length>{2,4} && <color>?]. A bare [var()] is ambiguous between the
+       [<length>] and [<color>] arms, so drive the parse positionally: read
+       [inset]?, then up to four [<length>]s greedily, then optionally one
+       trailing [<color>]. With this ordering [0 0 0 var(--w) var(--c)] keeps
+       [var(--c)] in the colour slot rather than greedily folding [var(--w)]
+       there and dropping [var(--c)]. *)
+    let inset = ref false in
+    let try_inset () =
+      if !inset then false
+      else
+        match
+          Cursor.option
+            (fun t ->
+              Cursor.expect_string "inset" t;
+              true)
+            t
+        with
+        | Some _ ->
+            inset := true;
+            Cursor.ws t;
+            true
+        | None -> false
+    in
+    let _ : bool = try_inset () in
+    let lengths_rev = ref [] in
+    let rec read_lengths_loop n =
+      if n >= 4 then ()
+      else
+        match Cursor.option (fun t -> read_length t) t with
+        | Some l ->
+            lengths_rev := l :: !lengths_rev;
+            Cursor.ws t;
+            let _ : bool = try_inset () in
+            read_lengths_loop (n + 1)
+        | None -> ()
+    in
+    read_lengths_loop 0;
+    let _ : bool = try_inset () in
+    let (color : color option) =
+      match Cursor.option (fun t -> read_color t) t with
+      | Some c ->
+          Cursor.ws t;
+          let _ : bool = try_inset () in
+          Some c
+      | None -> None
+    in
+    let lengths = List.rev !lengths_rev in
     match read_lengths lengths with
     | Some (h_offset, v_offset, blur, spread) ->
         if
-          blur = None && spread = None && parts.color = None && h_offset = Zero
+          blur = None && spread = None && color = None && h_offset = Zero
           && v_offset = Zero
         then err_invalid_value t "shadow" "blur, spread, or color is required";
         (Shadow
            {
-             inset = parts.inset;
+             inset = !inset;
              inset_var = None;
              inset_var_no_fallback = false;
              h_offset;
              v_offset;
              blur;
              spread;
-             color = parts.color;
+             color;
            }
           : shadow)
     | None -> err_invalid_value t "shadow" "at least two lengths are required"
+
+  let _ = fold
+  let _ = read_component
 end
 
 let rec read_shadow_single t : shadow =
@@ -1936,8 +2025,13 @@ let rec pp_z_index : z_index Pp.t =
 
 let rec pp_order : order Pp.t =
  fun ctx -> function
-  | Order_int i -> Pp.int ctx i
-  | Order_calc s -> Pp.string ctx s
+  | Int i -> Pp.int ctx i
+  | Calc s -> Pp.string ctx s
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_order ctx v
 
 (* Opacity as float (0.0-1.0). While CSS accepts both number and percentage
@@ -2050,6 +2144,11 @@ let rec pp_align_items : align_items Pp.t =
   | Unsafe_flex_start -> Pp.string ctx "unsafe flex-start"
   | Unsafe_flex_end -> Pp.string ctx "unsafe flex-end"
   | Anchor_center -> Pp.string ctx "anchor-center"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_align_self : align_self Pp.t =
  fun ctx -> function
@@ -2079,6 +2178,11 @@ let rec pp_align_self : align_self Pp.t =
   | Unsafe_self_end -> Pp.string ctx "unsafe self-end"
   | Unsafe_flex_start -> Pp.string ctx "unsafe flex-start"
   | Unsafe_flex_end -> Pp.string ctx "unsafe flex-end"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_justify_content : justify_content Pp.t =
  fun ctx -> function
@@ -2107,6 +2211,11 @@ let rec pp_justify_content : justify_content Pp.t =
   | Space_around -> Pp.string ctx "space-around"
   | Space_evenly -> Pp.string ctx "space-evenly"
   | Stretch -> Pp.string ctx "stretch"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_justify_items : justify_items Pp.t =
  fun ctx -> function
@@ -2148,6 +2257,11 @@ let rec pp_justify_items : justify_items Pp.t =
   | Legacy_center -> Pp.string ctx "legacy center"
   | Legacy_left -> Pp.string ctx "legacy left"
   | Legacy_right -> Pp.string ctx "legacy right"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_justify_self : justify_self Pp.t =
  fun ctx -> function
@@ -2187,6 +2301,10 @@ let rec pp_justify_self : justify_self Pp.t =
   | Unsafe_right -> Pp.string ctx "unsafe right"
   | Anchor_center -> Pp.string ctx "anchor-center"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_font_style : font_style Pp.t =
  fun ctx -> function
@@ -2503,6 +2621,10 @@ let rec pp_table_layout : table_layout Pp.t =
   | Auto -> Pp.string ctx "auto"
   | Fixed -> Pp.string ctx "fixed"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_vertical_align : vertical_align Pp.t =
  fun ctx -> function
@@ -3248,6 +3370,11 @@ let rec pp_blend_mode : blend_mode Pp.t =
   | Luminosity -> Pp.string ctx "luminosity"
   | Plus_darker -> Pp.string ctx "plus-darker"
   | Plus_lighter -> Pp.string ctx "plus-lighter"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_blend_mode ctx v
 
 let rec pp_text_shadow : text_shadow Pp.t =
@@ -3613,6 +3740,10 @@ let rec pp_border_collapse : border_collapse Pp.t =
   | Collapse -> Pp.string ctx "collapse"
   | Separate -> Pp.string ctx "separate"
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_box_sizing : box_sizing Pp.t =
  fun ctx -> function
@@ -3804,6 +3935,10 @@ let rec pp_cursor : cursor Pp.t =
       pp_cursor ctx fallback
   | Var v -> pp_var pp_cursor ctx v
   | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_direction : direction Pp.t =
  fun ctx -> function
@@ -4208,19 +4343,23 @@ let rec pp_grid_template : grid_template Pp.t =
       Pp.list ~sep:Pp.space pp_named_track ctx tracks
   | Template raw ->
       (* The complex grid-template syntax (with [<grid-template-areas>] string
-         tracks) is captured as a raw decl-end slice in [read_grid_template]
-         because the typed grammar can't easily express it. When minifying we
-         re-tokenise the slice so optional whitespace (e.g. around the row /
-         column [/] separator) collapses uniformly. *)
-      let rendered =
-        if Pp.minified ctx then
-          Parser.to_string_minified (Cursor.remaining (Cursor.of_string raw))
-        else raw
-      in
-      Pp.string ctx rendered
+         tracks) is stored as a canonical component-value slice because the
+         typed grammar can't easily express it yet. *)
+      Pp.string ctx raw
   | Subgrid -> Pp.string ctx "subgrid"
   | Masonry -> Pp.string ctx "masonry"
   | Var v -> pp_var pp_grid_template ctx v
+
+let rec pp_grid_template_areas : grid_template_areas Pp.t =
+ fun ctx -> function
+  | No_areas -> Pp.string ctx "none"
+  | Areas value -> Pp.string ctx value
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_grid_template_areas ctx v
 
 let rec pp_flex_basis : flex_basis Pp.t =
  fun ctx -> function
@@ -4358,6 +4497,11 @@ let rec pp_align_content : align_content Pp.t =
   | Space_around -> Pp.string ctx "space-around"
   | Space_evenly -> Pp.string ctx "space-evenly"
   | Stretch -> Pp.string ctx "stretch"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
 
 let rec pp_place_content : place_content Pp.t =
  fun ctx -> function
@@ -5145,16 +5289,23 @@ let rec read_order t : order =
       read_calc (fun _ -> Cursor.err t "unexpected value in order calc") t
     in
     match eval_numeric_calc expr with
-    | Some f when Float.is_integer f -> Order_int (int_of_float f)
+    | Some f when Float.is_integer f -> (Int (int_of_float f) : order)
     | Some _ -> Cursor.err_invalid t "order calc must evaluate to integer"
-    | None -> Order_calc (calc_to_string expr)
+    | None -> (Calc (calc_to_string expr) : order)
   in
   let read_var t : order = Var (read_var read_order t) in
-  Cursor.enum_or_calls "order" []
+  Cursor.enum_or_calls "order"
+    [
+      ("inherit", (Inherit : order));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
     ~calls:[ ("calc", read_calc_order); ("var", read_var) ]
     ~default:(fun t ->
       let n = Cursor.number t in
-      if Float.is_integer n then Order_int (int_of_float n)
+      if Float.is_integer n then (Int (int_of_float n) : order)
       else Cursor.err_invalid t "order must be integer")
     t
 
@@ -5604,7 +5755,9 @@ let read_grid_template_tracks t =
 
 let read_grid_template t : grid_template =
   if grid_template_needs_raw_template (Cursor.remaining t) then
-    Template (Cursor.consume_to_decl_end ~trim:true t)
+    let raw = Cursor.consume_to_decl_end ~trim:true t in
+    Template
+      (Parser.to_string_minified (Cursor.remaining (Cursor.of_string raw)))
   else
     let rows = read_grid_template_tracks t in
     Cursor.ws t;
@@ -5928,18 +6081,33 @@ let rec read_list_style_image t : list_style_image =
     ]
     t
 
-let read_table_layout t : table_layout =
-  Cursor.enum "table-layout"
-    [ ("auto", (Auto : table_layout)); ("fixed", Fixed); ("inherit", Inherit) ]
+let rec read_table_layout t : table_layout =
+  Cursor.enum_or_var "table-layout"
+    [
+      ("auto", (Auto : table_layout));
+      ("fixed", Fixed);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> (Var (Values.read_var read_table_layout t) : table_layout))
     t
 
-let read_border_collapse t : border_collapse =
-  Cursor.enum "border-collapse"
+let rec read_border_collapse t : border_collapse =
+  Cursor.enum_or_var "border-collapse"
     [
       ("collapse", (Collapse : border_collapse));
       ("separate", Separate);
       ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
+    ~var:(fun t ->
+      (Var (Values.read_var read_border_collapse t) : border_collapse))
     t
 
 let read_user_select t : user_select =
@@ -7868,6 +8036,11 @@ let rec read_blend_mode t : blend_mode =
       ("luminosity", Luminosity);
       ("plus-darker", Plus_darker);
       ("plus-lighter", Plus_lighter);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
     ]
     ~calls:[ ("var", read_var) ]
     t
@@ -9953,7 +10126,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | White_space -> pp pp_white_space
   | Grid_template_columns -> pp pp_grid_template
   | Grid_template_rows -> pp pp_grid_template
-  | Grid_template_areas -> pp Pp.string
+  | Grid_template_areas -> pp pp_grid_template_areas
   | Grid_template -> pp pp_grid_template
   | Grid_area -> pp Pp.string
   | Grid_auto_columns -> pp pp_grid_template
@@ -9992,6 +10165,11 @@ let pp_property_value : type a. (a property * a) Pp.t =
             | Unsafe_center, Unsafe_center -> false
             | Unsafe_start, Unsafe_start -> false
             | Unsafe_end, Unsafe_end -> false
+            | Inherit, Inherit -> false
+            | Initial, Initial -> false
+            | Unset, Unset -> false
+            | Revert, Revert -> false
+            | Revert_layer, Revert_layer -> false
             | _ -> true (* Different values always need both *)
           in
           if needs_second_value then (

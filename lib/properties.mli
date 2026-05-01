@@ -301,6 +301,9 @@ val read_grid_auto_flow : Cursor.t -> grid_auto_flow
 val pp_grid_template : grid_template Pp.t
 (** [pp_grid_template] is the pretty-printer for [grid_template]. *)
 
+val pp_grid_template_areas : grid_template_areas Pp.t
+(** [pp_grid_template_areas] is the pretty-printer for [grid_template_areas]. *)
+
 val read_grid_template : Cursor.t -> grid_template
 (** [read_grid_template t] is the [grid_template] parsed from [t]. *)
 

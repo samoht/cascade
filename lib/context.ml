@@ -1409,7 +1409,78 @@ module Computed_value = struct
           with Exit -> None)
   end
 
-  (* Replace each [calc(...)] expression in [s] with its evaluated px value. *)
+  (* Per CSS Values 4 §10.13 a [calc()] whose terms are all absolute units could
+     be folded to a literal length at computed-value time, but doing so here
+     loses author intent (Tailwind-style emitted output keeps the [calc()]
+     form). We only fold when the body actually depends on length-context
+     resolution — i.e. references a relative unit such as [em], [rem], [vh],
+     [vw], [vmin], [vmax], [ch], [ex] or their dynamic variants — so
+     pure-absolute [calc(3px + 2px)] round-trips through the resolver
+     verbatim. *)
+  let needs_length_context body =
+    (* Relative-unit suffixes that require a length context to resolve. We leave
+       the absolute set ([px], [cm], [mm], ...) and the unitless number form
+       alone so [calc(3px + 2px)] survives the resolver intact. *)
+    let rels =
+      [
+        "em";
+        "rem";
+        "ex";
+        "ch";
+        "cap";
+        "ic";
+        "lh";
+        "rlh";
+        "vw";
+        "vh";
+        "vmin";
+        "vmax";
+        "vi";
+        "vb";
+        "svw";
+        "svh";
+        "svmin";
+        "svmax";
+        "lvw";
+        "lvh";
+        "lvmin";
+        "lvmax";
+        "dvw";
+        "dvh";
+        "dvmin";
+        "dvmax";
+        "cqw";
+        "cqh";
+        "cqi";
+        "cqb";
+        "cqmin";
+        "cqmax";
+        "%";
+      ]
+    in
+    let is_ident_cont c =
+      (c >= 'a' && c <= 'z')
+      || (c >= 'A' && c <= 'Z')
+      || (c >= '0' && c <= '9')
+      || c = '-' || c = '_'
+    in
+    let len = String.length body in
+    let matches_at i unit =
+      let ulen = String.length unit in
+      i + ulen <= len
+      && String.lowercase_ascii (String.sub body i ulen) = unit
+      && (i + ulen >= len || not (is_ident_cont body.[i + ulen]))
+    in
+    let rec scan i =
+      if i >= len then false
+      else if List.exists (matches_at i) rels then true
+      else scan (i + 1)
+    in
+    scan 0
+
+  (* Replace each [calc(...)] expression in [s] with its evaluated px value when
+     the body references a relative unit that needs length-context resolution.
+     Pure-absolute [calc()] expressions are left verbatim. *)
   let resolve_calc length_ctx (s : string) : (string, string) result =
     let len = String.length s in
     let buf = Buffer.create len in
@@ -1431,13 +1502,20 @@ module Computed_value = struct
         if close >= len then raise (Unresolved "unterminated calc()")
         else
           let body = String.sub s body_start (close - body_start) in
-          (match Calc.evaluate length_ctx body with
-          | None -> raise (Unresolved ("calc(" ^ body ^ ")"))
-          | Some px ->
-              Buffer.add_string buf
-                (Pp.to_string ~minify:true
-                   (Values.pp_length ~always:true)
-                   (Px px)));
+          (if not (needs_length_context body) then (
+             (* Preserve the calc() form verbatim — author / Tailwind-style
+                output expects [calc(3px + 2px)] not [5px]. *)
+             Buffer.add_string buf "calc(";
+             Buffer.add_string buf body;
+             Buffer.add_char buf ')')
+           else
+             match Calc.evaluate length_ctx body with
+             | None -> raise (Unresolved ("calc(" ^ body ^ ")"))
+             | Some px ->
+                 Buffer.add_string buf
+                   (Pp.to_string ~minify:true
+                      (Values.pp_length ~always:true)
+                      (Px px)));
           scan (close + 1))
       else (
         Buffer.add_char buf s.[i];
@@ -1827,7 +1905,19 @@ module Computed_value = struct
                                 with_lengths)))))
 end
 
+(* CSS Cascade 5 §8: the final computed value is canonicalised by the user agent
+   — re-tokenise the resolved string through the generic minifier so
+   author-preserved whitespace inside the looked-up custom-property values
+   (which goes through [to_string_custom_minified] to keep math-operator spacing
+   around [*]/[/] in [calc()] author intent) collapses to the canonical form for
+   composite values like [rgb(R G B/A)]. *)
+let canonicalise_computed_value s =
+  let cvs = Cursor.remaining (Cursor.of_string s) in
+  Parser.to_string_minified cvs
+
 let computed_value ?layer_order ?layer ctx decl =
   let property = Declaration.property_name decl in
   let value = Declaration.string_of_value ~minify:true decl in
-  Computed_value.resolve ?layer ?layer_order ctx ~property ~value
+  match Computed_value.resolve ?layer ?layer_order ctx ~property ~value with
+  | Error _ as e -> e
+  | Ok resolved -> Ok (canonicalise_computed_value resolved)

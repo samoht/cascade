@@ -434,28 +434,38 @@ let validate_grid_area_rectangles t rows =
   List.iter validate_name (grid_area_names positions)
 
 (* Custom parser for grid-template-areas: reads and validates quoted rows. *)
-let read_grid_template_areas t =
-  match Cursor.peek t with
-  | Some (Component.Preserved { kind = Token.Ident "none"; _ }) ->
-      Cursor.skip t;
-      "none"
-  | _ ->
-      let rec read_strings (width : int option) rows rendered =
-        Cursor.ws t;
-        match Cursor.string_opt t with
-        | None ->
-            let rows = List.rev rows in
-            if rows = [] then Cursor.err_expected t "grid-template-areas row";
-            validate_grid_area_rectangles t rows;
-            String.concat " " (List.rev rendered)
-        | Some s ->
-            let cells = grid_area_row_cells s in
-            if cells = [] then
-              Cursor.err_invalid t "empty grid-template-areas row";
-            let width = validate_grid_area_width t width cells in
-            read_strings width (cells :: rows) (("\"" ^ s ^ "\"") :: rendered)
-      in
-      read_strings (None : int option) [] []
+let rec read_grid_template_areas t : Properties.grid_template_areas =
+  let read_rows t =
+    let rec read_strings (width : int option) rows rendered =
+      Cursor.ws t;
+      match Cursor.string_opt t with
+      | None ->
+          let rows = List.rev rows in
+          if rows = [] then Cursor.err_expected t "grid-template-areas row";
+          validate_grid_area_rectangles t rows;
+          Properties.Areas (String.concat " " (List.rev rendered))
+      | Some s ->
+          let cells = grid_area_row_cells s in
+          if cells = [] then
+            Cursor.err_invalid t "empty grid-template-areas row";
+          let width = validate_grid_area_width t width cells in
+          read_strings width (cells :: rows) (("\"" ^ s ^ "\"") :: rendered)
+    in
+    read_strings (None : int option) [] []
+  in
+  Cursor.enum_or_var "grid-template-areas"
+    [
+      ("none", (Properties.No_areas : Properties.grid_template_areas));
+      ("inherit", Properties.Inherit);
+      ("initial", Properties.Initial);
+      ("unset", Properties.Unset);
+      ("revert", Properties.Revert);
+      ("revert-layer", Properties.Revert_layer);
+    ]
+    ~var:(fun t ->
+      (Properties.Var (Values.read_var read_grid_template_areas t)
+        : Properties.grid_template_areas))
+    ~default:read_rows t
 
 let border_image_at_end t = Cursor.is_done t || Cursor.peek_semicolon t
 
@@ -967,7 +977,7 @@ let read_place_self_value t =
   Cursor.ws t;
   let j = Cursor.option read_justify_self t in
   (* Per CSS spec, when only one value is given, both values are set to it *)
-  let align_to_justify (a : align_self) : justify_self =
+  let rec align_to_justify (a : align_self) : justify_self =
     match a with
     | Auto -> Auto
     | Normal -> Normal
@@ -994,7 +1004,28 @@ let read_place_self_value t =
     | Unsafe_self_end -> Unsafe_self_end
     | Unsafe_flex_start -> Unsafe_flex_start
     | Unsafe_flex_end -> Unsafe_flex_end
-    | Var _ -> invalid_arg "place-self: cannot mirror align-self var"
+    | Inherit -> Inherit
+    | Initial -> Initial
+    | Unset -> Unset
+    | Revert -> Revert
+    | Revert_layer -> Revert_layer
+    | Var v -> Var (align_var_to_justify v)
+  and align_var_to_justify (v : align_self var) : justify_self var =
+    let fallback : justify_self fallback =
+      match v.fallback with
+      | None -> None
+      | Empty -> Empty
+      | Empty2 -> Empty2
+      | Var_fallback name -> Var_fallback name
+      | Fallback value -> Fallback (align_to_justify value)
+    in
+    {
+      name = v.name;
+      fallback;
+      default = Option.map align_to_justify v.default;
+      layer = v.layer;
+      meta = v.meta;
+    }
   in
   let pair =
     match j with None -> (a, align_to_justify a) | Some jj -> (a, jj)
@@ -1909,7 +1940,7 @@ let column_gap len = v Column_gap len
 let row_gap len = v Row_gap len
 
 (* Grid functions *)
-let grid_template_areas template = v Grid_template_areas template
+let grid_template_areas template = v Grid_template_areas (Areas template)
 let grid_template template = v Grid_template template
 let grid_auto_columns size = v Grid_auto_columns size
 let grid_auto_rows size = v Grid_auto_rows size

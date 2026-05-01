@@ -398,9 +398,9 @@ let check_layered_computed_value name ~ctx ~layer_order ?layer ~expected input =
   let decl = Css.Declaration.of_string input in
   match Css.Context.computed_value ~layer_order ?layer ctx decl with
   | Ok actual -> Alcotest.(check string) name expected actual
-  | Error _ ->
-      Alcotest.failf "%s: expected layered %S to resolve to %S" name input
-        expected
+  | Error msg ->
+      Alcotest.failf "%s: expected layered %S to resolve to %S, got error: %s"
+        name input expected msg
 
 let check_layered_computed_error name ~ctx ~layer_order ?layer input =
   let decl = Css.Declaration.of_string input in
