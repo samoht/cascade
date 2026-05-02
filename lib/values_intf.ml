@@ -294,7 +294,13 @@ type angle =
   | Calc of angle calc
   | Var of angle var
 
-type alpha = None | Num of float | Pct of float | Var of alpha var
+type alpha =
+  | None
+  | Num of float
+  | Pct of float
+  | Var of alpha var
+  | Calc of alpha calc
+
 type hue = Unitless of float | Angle of angle | Var of hue var | Hue_none
 
 type component =

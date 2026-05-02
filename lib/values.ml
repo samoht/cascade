@@ -819,11 +819,12 @@ and pp_alpha : alpha Pp.t =
       Pp.float ctx f;
       Pp.char ctx '%'
   | Var v -> pp_var pp_alpha ctx v
+  | Calc c -> pp_calc pp_alpha ctx c
 
 (* Helper to print optional alpha with the correct leading separator *)
 let pp_opt_alpha ctx = function
   | None -> ()
-  | (Num _ | Pct _ | Var _) as a ->
+  | (Num _ | Pct _ | Var _ | Calc _) as a ->
       Pp.op_char ctx '/';
       pp_alpha ctx a
 
@@ -916,6 +917,7 @@ let pp_alpha_drop_zero : alpha Pp.t =
       pp_float_drop_zero ctx f;
       Pp.char ctx '%'
   | Var v -> pp_var pp_alpha ctx v
+  | Calc c -> pp_calc pp_alpha ctx c
 
 (** Oklab-specific float printer with precision control. Non-minified: fixed
     decimal places (matching upstream Tailwind test expectations). Minified: 6
@@ -1592,6 +1594,7 @@ let read_percentage_float t : float = Cursor.pct ~clamp:true t
 let rec read_alpha t : alpha =
   Cursor.ws t;
   let read_var_alpha t : alpha = Var (read_var read_alpha t) in
+  let read_calc_alpha t : alpha = Calc (read_calc read_alpha t) in
   let read_pct t : alpha =
     (* Alpha percentages are clamped to 0-100 per CSS spec *)
     Pct (Cursor.pct ~clamp:true t)
@@ -1602,7 +1605,7 @@ let rec read_alpha t : alpha =
     (* Clamp numeric alpha to 0-1 range per CSS spec *)
     Num (max 0. (min 1. n))
   in
-  Cursor.one_of [ read_var_alpha; read_pct; read_num ] t
+  Cursor.one_of [ read_var_alpha; read_calc_alpha; read_pct; read_num ] t
 
 (** Read optional alpha component *)
 and read_optional_alpha t : alpha =
@@ -1672,7 +1675,8 @@ and read_rgb_space_separated t : color =
     if not (Cursor.is_done t) then Cursor.err t "unexpected tokens after rgb()";
     match alpha with
     | None -> Rgb (Channels { r; g; b })
-    | Num _ | Pct _ | Var _ -> Rgba { rgb = Channels { r; g; b }; a = alpha }
+    | Num _ | Pct _ | Var _ | Calc _ ->
+        Rgba { rgb = Channels { r; g; b }; a = alpha }
 
 and read_rgb_comma_separated t : color =
   let r, g, b =
@@ -1709,25 +1713,35 @@ let read_color_space t : color_space =
   | "hwb" -> Hwb
   | _ -> Cursor.err_invalid t ("color space: " ^ space_ident)
 
+let rec read_color_component t : component =
+  Cursor.ws t;
+  if Cursor.looking_at t "none" then (
+    Cursor.expect_string "none" t;
+    Component_none)
+  else if Cursor.looking_at t "var(" then Var (read_var read_color_component t)
+  else if Cursor.looking_at t "calc(" then
+    Calc (read_calc read_color_component t)
+  else
+    let n, unit = Cursor.number_with_unit t in
+    match unit with
+    | Some "%" -> Pct n
+    | Some u -> Cursor.err_invalid t ("unit: " ^ u)
+    | None -> Num n
+
 (** Read color components until the alpha separator ['/'] or end of input. *)
 let rec read_color_components space t acc =
   Cursor.ws t;
   if Cursor.is_done t || Cursor.peek_delim t = Some '/' then List.rev acc
-  else if Cursor.looking_at t "none" then (
-    Cursor.expect_string "none" t;
-    read_color_components space t (Component_none :: acc))
   else
     let component_count = List.length acc in
-    let n, unit = Cursor.number_with_unit t in
-    let component : component =
-      match ((space : color_space), component_count, unit) with
-      | (Lab | Oklab | Lch | Oklch), 0, Some "%" -> Pct n
-      | (Lab | Oklab | Lch | Oklch), 0, _ ->
-          Cursor.err_invalid t "L component must be percentage"
-      | _, _, Some "%" -> Pct (n /. 100.)
-      | _, _, None -> Num n
-      | _, _, Some u -> Cursor.err_invalid t ("unit: " ^ u)
-    in
+    let component = read_color_component t in
+    (match ((space : color_space), component_count, component) with
+    | (Lab | Oklab | Lch | Oklch), 0, (Pct _ | Var _ | Calc _ | Component_none)
+      ->
+        ()
+    | (Lab | Oklab | Lch | Oklch), 0, _ ->
+        Cursor.err_invalid t "L component must be percentage"
+    | _ -> ());
     read_color_components space t (component :: acc)
 
 (** Read hex color digits. The tokenizer represents [#deadbeef] as a single
