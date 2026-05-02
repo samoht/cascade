@@ -456,6 +456,10 @@ let vars_of_text_emphasis_position (value : Properties.text_emphasis_position) :
     any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_text_emphasis_skip (value : Properties.text_emphasis_skip) :
+    any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_text_orientation (value : Properties.text_orientation) :
     any_var list =
   match value with Var v -> [ V v ] | _ -> []
@@ -795,7 +799,7 @@ let vars_of_image_rendering (value : Properties.image_rendering) =
 let vars_of_image_resolution (value : Properties.image_resolution) =
   match value with Var v -> [ V v ] | _ -> []
 
-let vars_of_contain_intrinsic_size_item
+let vars_of_intrinsic_size_item
     (value : Properties.contain_intrinsic_size_item) =
   match value with Length len | Auto len -> vars_of_length len
 
@@ -803,15 +807,15 @@ let vars_of_contain_intrinsic_size (value : Properties.contain_intrinsic_size) =
   match value with
   | Var v -> [ V v ]
   | Intrinsic (first, second) ->
-      vars_of_contain_intrinsic_size_item first
-      @ Option.fold ~none:[] ~some:vars_of_contain_intrinsic_size_item second
+      vars_of_intrinsic_size_item first
+      @ Option.fold ~none:[] ~some:vars_of_intrinsic_size_item second
   | None | Initial | Inherit | Unset | Revert | Revert_layer -> []
 
 let vars_of_contain_intrinsic_longhand
     (value : Properties.contain_intrinsic_longhand) =
   match value with
   | Var v -> [ V v ]
-  | Size size -> vars_of_contain_intrinsic_size_item size
+  | Size size -> vars_of_intrinsic_size_item size
   | None | Initial | Inherit | Unset | Revert | Revert_layer -> []
 
 let vars_of_margin_trim (value : Properties.margin_trim) =
@@ -1014,7 +1018,7 @@ let vars_of_clear (value : Properties.clear) =
 let vars_of_float_side (value : Properties.float_side) =
   match value with Var v -> [ V v ] | _ -> []
 
-let vars_of_text_decoration_skip_ink
+let vars_of_decoration_skip_ink
     (value : Properties.text_decoration_skip_ink) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -1095,7 +1099,7 @@ let vars_of_text_combine_upright (value : Properties.text_combine_upright) =
 let vars_of_webkit_font_smoothing (value : Properties.webkit_font_smoothing) =
   match value with Var v -> [ V v ] | _ -> []
 
-let vars_of_moz_osx_font_smoothing (value : Properties.moz_osx_font_smoothing) =
+let vars_of_osx_font_smoothing (value : Properties.moz_osx_font_smoothing) =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_webkit_box_orient (value : Properties.webkit_box_orient) =
@@ -1131,7 +1135,7 @@ let vars_of_font_variant_caps (value : Properties.font_variant_caps) =
 let vars_of_font_variant_position (value : Properties.font_variant_position) =
   match value with Var v -> [ V v ] | _ -> []
 
-let vars_of_font_variant_east_asian (value : Properties.font_variant_east_asian)
+let vars_of_east_asian (value : Properties.font_variant_east_asian)
     =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -1223,7 +1227,7 @@ let rec vars_of_webkit_mask_composite (value : Properties.webkit_mask_composite)
 let vars_of_mask_composite (value : Properties.mask_composite) =
   match value with Var v -> [ V v ] | _ -> []
 
-let vars_of_webkit_mask_source_type (value : Properties.webkit_mask_source_type)
+let vars_of_mask_source_type (value : Properties.webkit_mask_source_type)
     =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -1432,11 +1436,12 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Font_variation_settings, value -> vars_of_font_variation_settings value
   | Font_variant_numeric, value -> vars_of_font_variant_numeric value
   | Font_variant_position, value -> vars_of_font_variant_position value
-  | Font_variant_east_asian, value -> vars_of_font_variant_east_asian value
+  | Font_variant_east_asian, value -> vars_of_east_asian value
   (* Text properties *)
   | Text_decoration, value -> vars_of_text_decoration value
   | Text_emphasis, value -> vars_of_text_emphasis value
   | Text_emphasis_position, value -> vars_of_text_emphasis_position value
+  | Text_emphasis_skip, value -> vars_of_text_emphasis_skip value
   | Text_orientation, value -> vars_of_text_orientation value
   | Webkit_text_decoration, value -> vars_of_text_decoration value
   | Text_transform, value -> vars_of_text_transform value
@@ -1614,7 +1619,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Mask_repeat, value -> vars_of_background_repeat value
   | Moz_appearance, value -> vars_of_appearance value
   | Moz_orient, value -> vars_of_moz_orient value
-  | Moz_osx_font_smoothing, value -> vars_of_moz_osx_font_smoothing value
+  | Moz_osx_font_smoothing, value -> vars_of_osx_font_smoothing value
   | Object_fit, value -> vars_of_object_fit value
   | Object_view_box, value -> vars_of_object_view_box value
   | Outline, value -> vars_of_outline value
@@ -1650,7 +1655,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Text_align, value -> vars_of_text_align value
   | Text_decoration_line, values ->
       List.concat_map vars_of_text_decoration_line values
-  | Text_decoration_skip_ink, value -> vars_of_text_decoration_skip_ink value
+  | Text_decoration_skip_ink, value -> vars_of_decoration_skip_ink value
   | Text_decoration_style, value -> vars_of_text_decoration_style value
   | Text_overflow, value -> vars_of_text_overflow value
   | Text_size_adjust, value -> vars_of_text_size_adjust value
@@ -1684,7 +1689,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Webkit_mask_composite, value -> vars_of_webkit_mask_composite value
   | Webkit_mask_origin, value -> vars_of_mask_box value
   | Webkit_mask_repeat, value -> vars_of_background_repeat value
-  | Webkit_mask_source_type, value -> vars_of_webkit_mask_source_type value
+  | Webkit_mask_source_type, value -> vars_of_mask_source_type value
   | Webkit_text_size_adjust, value -> vars_of_text_size_adjust value
   | Webkit_user_select, value -> vars_of_user_select value
   | White_space, value -> vars_of_white_space value
