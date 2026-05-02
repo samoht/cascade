@@ -3584,7 +3584,7 @@ type 'a property =
   | Flex : flex property
   | Flex_grow : flex_factor property
   | Flex_shrink : flex_factor property
-  | Flex_basis : length property
+  | Flex_basis : flex_basis property
   | Order : order property
   | Align_items : align_items property
   | Justify_content : justify_content property
@@ -3934,8 +3934,11 @@ type _ property_value_kind =
   | Scale : scale property_value_kind
   | Translate : translate_value property_value_kind
   | Transform : transform list property_value_kind
+  | Animation : animation list property_value_kind
+  | Transition : transition list property_value_kind
   | Filter : filter property_value_kind
   | Shadow : shadow property_value_kind
+  | Border_radius : border_radius property_value_kind
   | Color : color property_value_kind
   | Background_image : background_image property_value_kind
   | Background_images : background_image list property_value_kind

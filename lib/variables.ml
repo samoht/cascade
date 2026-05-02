@@ -841,6 +841,9 @@ let vars_of_flex (value : Properties.flex) =
       match b with Var v -> [ V v ] | Calc c -> vars_of_calc c | _ -> [])
   | _ -> []
 
+let vars_of_flex_basis (value : Properties.flex_basis) =
+  match value with Var v -> [ V v ] | Calc c -> vars_of_calc c | _ -> []
+
 let vars_of_font_style (value : Properties.font_style) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -1372,7 +1375,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Border_image, value -> vars_of_border_image value
   (* Outline offset *)
   | Outline_offset, value -> vars_of_length value
-  | Flex_basis, value -> vars_of_length value
+  | Flex_basis, value -> vars_of_flex_basis value
   (* Text and font properties *)
   | Text_indent, value -> vars_of_length value
   | Text_decoration_thickness, value -> vars_of_length value

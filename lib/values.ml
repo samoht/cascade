@@ -2444,10 +2444,19 @@ and read_duration_in_calc t : duration =
 
 (** Read a time value that can be negative (for animation-delay,
     transition-delay) *)
-let rec read_time t : duration =
-  Cursor.enum_or_var ~default:read_time_number "time" duration_css_wide
-    ~var:(fun t -> Var (read_var read_time t))
+let rec read_time_with ?(css_wide = true) t : duration =
+  Cursor.enum_or_calls ~default:read_time_number "time"
+    (if css_wide then duration_css_wide else [])
+    ~calls:
+      [
+        ("var", fun t -> Var (read_var read_time t));
+        ("calc", fun t -> Calc (read_calc read_time_in_calc t));
+      ]
     t
+
+and read_time t : duration = read_time_with t
+
+and read_time_in_calc t : duration = read_time_with ~css_wide:false t
 
 let number_binary_functions =
   [

@@ -2708,7 +2708,9 @@ let rec read_opacity t : opacity =
     ~calls:
       [
         ("var", read_var);
-        ("calc", fun t -> Calc (Values.read_calc read_opacity t));
+        ("calc", (fun t -> Calc (Values.read_calc read_opacity t)));
+        ("abs", (fun t -> Abs (read_opacity t)));
+        ("sign", (fun t -> Sign (read_opacity t)));
       ]
     ~default:read_number_or_percentage t
 
@@ -13474,7 +13476,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Grid_auto_columns -> pp pp_grid_template
   | Grid_auto_rows -> pp pp_grid_template
   | Flex -> pp pp_flex
-  | Flex_basis -> pp pp_length
+  | Flex_basis -> pp pp_flex_basis
   | Align_content -> pp pp_align_content
   | Justify_self -> pp pp_justify_self
   | Place_content -> pp pp_place_content
@@ -13771,7 +13773,6 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Margin_block_end -> Some Length
   | Column_gap -> Some Length
   | Row_gap -> Some Length
-  | Flex_basis -> Some Length
   | Text_underline_offset -> Some Length
   | Letter_spacing -> Some Length
   | Border_top_left_radius -> Some Length
@@ -13865,12 +13866,17 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Translate -> Some Translate
   | Transform -> Some Transform
   | Webkit_transform -> Some Transform
+  | Animation -> Some (Animation : animation list property_value_kind)
+  | Transition -> Some (Transition : transition list property_value_kind)
+  | Webkit_transition -> Some (Transition : transition list property_value_kind)
+  | O_transition -> Some (Transition : transition list property_value_kind)
   | Filter -> Some Filter
   | Backdrop_filter -> Some Filter
   | Webkit_backdrop_filter -> Some Filter
   | Webkit_filter -> Some Filter
   | Ms_filter -> Some Filter
   | Box_shadow -> Some Shadow
+  | Border_radius -> Some Border_radius
   | Offset_distance -> Some Length_percentage
   | Background_color -> Some Color
   | Color -> Some Color

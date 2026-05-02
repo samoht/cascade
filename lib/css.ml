@@ -33,6 +33,38 @@ module Selector = Selector
 module Stylesheet = struct
   include Stylesheet
 
+  let synthetic kind = Component.Preserved (Token.synthetic kind)
+
+  let declaration_of_descriptor descriptor =
+    let components =
+      synthetic (Token.Ident descriptor.descriptor_name)
+      :: synthetic Token.Colon
+      :: descriptor.descriptor_value
+    in
+    Declaration.read_declaration (Cursor.of_components components)
+
+  let descriptor_of_declaration decl =
+    {
+      descriptor_name = Declaration.property_name decl;
+      descriptor_value =
+        Cursor.remaining
+          (Cursor.of_string (Declaration.string_of_value ~minify:true decl));
+    }
+
+  let eval_descriptor ~layer_order ?layer ctx descriptor =
+    match declaration_of_descriptor descriptor with
+    | Some decl ->
+        Declaration.eval ~layer_order ?layer ctx decl |> descriptor_of_declaration
+    | None -> descriptor
+
+  let eval_page_margin_rule ~layer_order ?layer ctx rule =
+    {
+      rule with
+      margin_descriptors =
+        List.map (eval_descriptor ~layer_order ?layer ctx)
+          rule.margin_descriptors;
+    }
+
   let layer_known ~layer_order = function
     | None -> true
     | Some name -> List.exists (String.equal name) layer_order
@@ -159,9 +191,14 @@ module Stylesheet = struct
         Position_try
           ( name,
             List.map (Declaration.eval ~layer_order ?layer ctx) declarations )
+    | Page_with_margins (selector, descriptors, margins) ->
+        Page_with_margins
+          ( selector,
+            List.map (eval_descriptor ~layer_order ?layer ctx) descriptors,
+            List.map (eval_page_margin_rule ~layer_order ?layer ctx) margins )
     | ( Charset _ | Import _ | Namespace _ | Property _ | Layer_decl _
-      | Font_face _ | Page_with_margins _ | Font_palette_values _
-      | View_transition _ ) as statement ->
+      | Font_face _ | Font_palette_values _ | View_transition _ ) as statement
+      ->
         statement
 
   and eval_rule_with_ctx ?ctx_for_layer ~layer_order ?layer ctx rule =
