@@ -3264,6 +3264,23 @@ let rec eval_typed ?layer_order ?layer ctx decl =
           eval_kind ~layer_order ?layer ctx kind property important value
       | None -> decl)
 
+and resolve_typed : type b.
+    layer_order:string list ->
+    t ->
+    (b -> b) ->
+    (b -> css_wide_keyword option) ->
+    b Properties.property ->
+    bool ->
+    b ->
+    Declaration.declaration =
+ fun ~layer_order ctx simplify css_wide_of property important value ->
+  let value = simplify value in
+  Option.value
+    (Option.bind (css_wide_of value) (fun keyword ->
+         resolve_css_wide_keyword ~layer_order ctx ~important
+           ~property_name:(property_name property) keyword))
+    ~default:(Declaration.Declaration { property; value; important })
+
 and eval_kind : type a.
     layer_order:string list ->
     ?layer:string ->
@@ -3275,68 +3292,54 @@ and eval_kind : type a.
     Declaration.declaration =
  fun ~layer_order ?layer ctx kind property important value ->
   let length_ctx = Length.of_t ctx in
-  let resolve_css_wide property important keyword =
-    resolve_css_wide_keyword ~layer_order ctx ~important
-      ~property_name:(property_name property) keyword
-  in
-  let resolve : type b.
-      (b -> b) ->
-      (b -> css_wide_keyword option) ->
-      b Properties.property ->
-      bool ->
-      b ->
-      Declaration.declaration =
-   fun simplify css_wide_of property important value ->
-    let value = simplify value in
-    Option.value
-      (Option.bind (css_wide_of value) (resolve_css_wide property important))
-      ~default:(Declaration.Declaration { property; value; important })
+  let resolve s c =
+    resolve_typed ~layer_order ctx s c property important value
   in
   match kind with
   | Properties.Length ->
       resolve
         (Length.simplify ~layer_order ?layer ctx length_ctx)
-        css_wide_of_length property important value
+        css_wide_of_length
   | Properties.Lengths ->
       resolve
         (List.map (Length.simplify ~layer_order ?layer ctx length_ctx))
-        css_wide_of_length_list property important value
+        css_wide_of_length_list
   | Properties.Length_percentage ->
       resolve
         (simplify_length_percentage ~layer_order ?layer ctx length_ctx)
-        css_wide_of_length_percentage property important value
+        css_wide_of_length_percentage
   | Properties.Border_width ->
       resolve
         (simplify_border_width ~layer_order ?layer ctx length_ctx)
-        css_wide_of_border_width property important value
+        css_wide_of_border_width
   | Properties.Border_widths ->
       resolve
         (List.map (simplify_border_width ~layer_order ?layer ctx length_ctx))
-        css_wide_of_border_widths property important value
+        css_wide_of_border_widths
   | Properties.Font_size ->
       resolve
         (simplify_font_size ~layer_order ?layer ctx length_ctx)
-        css_wide_of_font_size property important value
+        css_wide_of_font_size
   | Properties.Translate ->
       resolve
         (simplify_translate_value ~layer_order ?layer ctx length_ctx)
-        css_wide_of_translate_value property important value
+        css_wide_of_translate_value
   | Properties.Transform ->
       resolve
         (List.map (simplify_transform ~layer_order ?layer ctx length_ctx))
-        css_wide_of_transforms property important value
+        css_wide_of_transforms
   | Properties.Filter ->
       resolve
         (simplify_filter ~layer_order ?layer ctx length_ctx)
-        css_wide_of_filter property important value
+        css_wide_of_filter
   | Properties.Shadow ->
       resolve
         (simplify_shadow ~layer_order ?layer ctx length_ctx)
-        css_wide_of_shadow property important value
+        css_wide_of_shadow
   | Properties.Border_radius ->
       resolve
         (simplify_border_radius ~layer_order ?layer ctx length_ctx)
-        css_wide_of_border_radius property important value
+        css_wide_of_border_radius
   | kind ->
       eval_kind_other ~layer_order ?layer ctx kind property important value
 
@@ -3350,56 +3353,32 @@ and eval_kind_other : type a.
     a ->
     Declaration.declaration =
  fun ~layer_order ?layer ctx kind property important value ->
-  let resolve_css_wide property important keyword =
-    resolve_css_wide_keyword ~layer_order ctx ~important
-      ~property_name:(property_name property) keyword
-  in
-  let resolve : type b.
-      (b -> b) ->
-      (b -> css_wide_keyword option) ->
-      b Properties.property ->
-      bool ->
-      b ->
-      Declaration.declaration =
-   fun simplify css_wide_of property important value ->
-    let value = simplify value in
-    Option.value
-      (Option.bind (css_wide_of value) (resolve_css_wide property important))
-      ~default:(Declaration.Declaration { property; value; important })
+  let resolve s c =
+    resolve_typed ~layer_order ctx s c property important value
   in
   match kind with
   | Properties.Opacity ->
-      resolve
-        (simplify_opacity ~layer_order ?layer ctx)
-        css_wide_of_opacity property important value
+      resolve (simplify_opacity ~layer_order ?layer ctx) css_wide_of_opacity
   | Properties.Rotate ->
       resolve
         (simplify_rotate_value ~layer_order ?layer ctx)
-        css_wide_of_rotate_value property important value
+        css_wide_of_rotate_value
   | Properties.Duration ->
-      resolve
-        (simplify_duration ~layer_order ?layer ctx)
-        css_wide_of_duration property important value
+      resolve (simplify_duration ~layer_order ?layer ctx) css_wide_of_duration
   | Properties.Display ->
-      resolve
-        (simplify_display ~layer_order ?layer ctx)
-        css_wide_of_display property important value
+      resolve (simplify_display ~layer_order ?layer ctx) css_wide_of_display
   | Properties.Position ->
-      resolve
-        (simplify_position ~layer_order ?layer ctx)
-        css_wide_of_position property important value
+      resolve (simplify_position ~layer_order ?layer ctx) css_wide_of_position
   | Properties.Visibility ->
       resolve
         (simplify_visibility ~layer_order ?layer ctx)
-        css_wide_of_visibility property important value
+        css_wide_of_visibility
   | Properties.Clear ->
-      resolve
-        (simplify_clear ~layer_order ?layer ctx)
-        css_wide_of_clear property important value
+      resolve (simplify_clear ~layer_order ?layer ctx) css_wide_of_clear
   | Properties.Float ->
       resolve
         (simplify_float_side ~layer_order ?layer ctx)
-        css_wide_of_float_side property important value
+        css_wide_of_float_side
   | kind -> eval_kind_misc ~layer_order ?layer ctx kind property important value
 
 and eval_kind_misc : type a.
@@ -3412,53 +3391,35 @@ and eval_kind_misc : type a.
     a ->
     Declaration.declaration =
  fun ~layer_order ?layer ctx kind property important value ->
-  let resolve_css_wide property important keyword =
-    resolve_css_wide_keyword ~layer_order ctx ~important
-      ~property_name:(property_name property) keyword
-  in
-  let resolve : type b.
-      (b -> b) ->
-      (b -> css_wide_keyword option) ->
-      b Properties.property ->
-      bool ->
-      b ->
-      Declaration.declaration =
-   fun simplify css_wide_of property important value ->
-    let value = simplify value in
-    Option.value
-      (Option.bind (css_wide_of value) (resolve_css_wide property important))
-      ~default:(Declaration.Declaration { property; value; important })
+  let resolve s c =
+    resolve_typed ~layer_order ctx s c property important value
   in
   match kind with
   | Properties.Number_percentage ->
       let value = simplify_number_percentage ~layer_order ?layer ctx value in
       Declaration.Declaration { property; value; important }
   | Properties.Scale ->
-      resolve
-        (simplify_scale ~layer_order ?layer ctx)
-        css_wide_of_scale property important value
+      resolve (simplify_scale ~layer_order ?layer ctx) css_wide_of_scale
   | Properties.Animation ->
       let duration = simplify_duration ~layer_order ?layer ctx in
       resolve
         (List.map (simplify_animation_item ~layer_order ?layer ctx duration))
-        css_wide_of_animations property important value
+        css_wide_of_animations
   | Properties.Transition ->
       let duration = simplify_duration ~layer_order ?layer ctx in
       resolve
         (List.map (simplify_transition_item ~layer_order ?layer ctx duration))
-        css_wide_of_transitions property important value
+        css_wide_of_transitions
   | Properties.Color ->
-      resolve
-        (simplify_color ~layer_order ?layer ctx)
-        css_wide_of_color property important value
+      resolve (simplify_color ~layer_order ?layer ctx) css_wide_of_color
   | Properties.Background_image ->
       resolve
         (simplify_background_image ~layer_order ?layer ctx)
-        css_wide_of_background_image property important value
+        css_wide_of_background_image
   | Properties.Background_images ->
       resolve
         (List.map (simplify_background_image ~layer_order ?layer ctx))
-        css_wide_of_background_images property important value
+        css_wide_of_background_images
   | _ ->
       (* unreachable: handled by eval_kind / eval_kind_other *)
       assert false
