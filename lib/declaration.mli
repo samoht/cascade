@@ -585,6 +585,9 @@ val flex_wrap : flex_wrap -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/flex-wrap} flex-wrap}
     property. *)
 
+val flex_flow : flex_flow -> declaration
+(** [flex_flow v] is the CSS [flex-flow] property. *)
+
 val order : Properties.order -> declaration
 (** [order v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/order} order} property.
@@ -720,6 +723,9 @@ val object_fit : object_fit -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/object-fit} object-fit}
     property. *)
 
+val object_view_box : object_view_box -> declaration
+(** [object_view_box v] is the CSS [object-view-box] property. *)
+
 val clip : clip -> declaration
 (** [clip v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/clip} clip} property
@@ -754,6 +760,9 @@ val writing_mode : writing_mode -> declaration
 (** [writing_mode v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/writing-mode}
      writing-mode} property. *)
+
+val text_combine_upright : text_combine_upright -> declaration
+(** [text_combine_upright v] is the CSS [text-combine-upright] property. *)
 
 val text_decoration_skip_ink : text_decoration_skip_ink -> declaration
 (** [text_decoration_skip_ink v] is the
@@ -1186,6 +1195,9 @@ val text_overflow : text_overflow -> declaration
 val text_wrap : text_wrap -> declaration
 (** [text_wrap v] is the CSS [text-wrap] property. *)
 
+val text_wrap_mode : text_wrap_mode -> declaration
+(** [text_wrap_mode v] is the CSS [text-wrap-mode] property. *)
+
 val word_break : word_break -> declaration
 (** [word_break v] is the CSS [word-break] property. *)
 
@@ -1204,8 +1216,36 @@ val webkit_hyphens : hyphens -> declaration
 val font_stretch : font_stretch -> declaration
 (** [font_stretch v] is the CSS [font-stretch] property. *)
 
+val font_optical_sizing : font_optical_sizing -> declaration
+(** [font_optical_sizing v] is the CSS [font-optical-sizing] property. *)
+
+val font_kerning : font_kerning -> declaration
+(** [font_kerning v] is the CSS [font-kerning] property. *)
+
+val font_language_override : font_language_override -> declaration
+(** [font_language_override v] is the CSS [font-language-override] property. *)
+
+val font_synthesis_style : font_synthesis_style -> declaration
+(** [font_synthesis_style v] is the CSS [font-synthesis-style] property. *)
+
+val font_synthesis_weight : font_synthesis_weight -> declaration
+(** [font_synthesis_weight v] is the CSS [font-synthesis-weight] property. *)
+
+val font_variant_ligatures : font_variant_ligatures -> declaration
+(** [font_variant_ligatures v] is the CSS [font-variant-ligatures] property. *)
+
+val font_variant_caps : font_variant_caps -> declaration
+(** [font_variant_caps v] is the CSS [font-variant-caps] property. *)
+
 val font_variant_numeric : font_variant_numeric -> declaration
 (** [font_variant_numeric v] is the CSS [font-variant-numeric] property. *)
+
+val font_variant_position : font_variant_position -> declaration
+(** [font_variant_position v] is the CSS [font-variant-position] property. *)
+
+val font_variant_east_asian : font_variant_east_asian -> declaration
+(** [font_variant_east_asian v] is the CSS [font-variant-east-asian] property.
+*)
 
 val backdrop_filter : filter -> declaration
 (** [backdrop_filter v] is the CSS [backdrop-filter] property. *)
@@ -1230,6 +1270,12 @@ val background_size : background_size -> declaration
 
 val content : content -> declaration
 (** [content v] is the CSS [content] property. *)
+
+val counter_reset : counter_set -> declaration
+(** [counter_reset v] is the CSS [counter-reset] property. *)
+
+val counter_increment : counter_set -> declaration
+(** [counter_increment v] is the CSS [counter-increment] property. *)
 
 val border_left_width : border_width -> declaration
 (** [border_left_width v] is the CSS [border-left-width] property. *)
@@ -1507,3 +1553,9 @@ val scroll_behavior : scroll_behavior -> declaration
 
 val color_scheme : color_scheme -> declaration
 (** [color_scheme v] is the CSS [color-scheme] property. *)
+
+val image_rendering : image_rendering -> declaration
+(** [image_rendering v] is the CSS [image-rendering] property. *)
+
+val image_resolution : image_resolution -> declaration
+(** [image_resolution v] is the CSS [image-resolution] property. *)

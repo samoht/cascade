@@ -394,6 +394,43 @@ let check_computed_error name ~ctx input =
         actual
   | Error _ -> ()
 
+let declaration_source decl =
+  Css.Declaration.string_of_declaration ~minify:true decl
+
+let check_eval name ~ctx ?layer_order ?layer ~expected input =
+  let decl = Css.Declaration.of_string input in
+  let expected = Css.Declaration.of_string expected in
+  let actual = Css.Context.eval ?layer_order ?layer ctx decl in
+  Alcotest.(check string)
+    name
+    (declaration_source expected)
+    (declaration_source actual)
+
+let check_eval_idempotent name ~ctx ?layer_order ?layer input =
+  let decl = Css.Declaration.of_string input in
+  let once = Css.Context.eval ?layer_order ?layer ctx decl in
+  let twice = Css.Context.eval ?layer_order ?layer ctx once in
+  Alcotest.(check string)
+    name (declaration_source once) (declaration_source twice)
+
+let check_eval_context_extension name ?layer_order ?layer ~weak_ctx ~strong_ctx
+    ~expected input =
+  let decl = Css.Declaration.of_string input in
+  let expected = Css.Declaration.of_string expected in
+  let direct = Css.Context.eval ?layer_order ?layer strong_ctx decl in
+  let staged =
+    Css.Context.eval ?layer_order ?layer strong_ctx
+      (Css.Context.eval ?layer_order ?layer weak_ctx decl)
+  in
+  Alcotest.(check string)
+    (name ^ " direct")
+    (declaration_source expected)
+    (declaration_source direct);
+  Alcotest.(check string)
+    (name ^ " staged")
+    (declaration_source direct)
+    (declaration_source staged)
+
 let check_layered_computed_value name ~ctx ~layer_order ?layer ~expected input =
   let decl = Css.Declaration.of_string input in
   match Css.Context.computed_value ~layer_order ?layer ctx decl with
@@ -849,6 +886,16 @@ let computed_calc_contract () =
     ~expected:"32px" "margin-left: calc(2 * 1rem)";
   check_computed_value "calc resolves division with em" ~ctx ~expected:"6px"
     "margin-left: calc(1em / 2)";
+  check_computed_value "number calc folds structurally" ~ctx ~expected:"0.5"
+    "opacity: calc(0.25 * 2)";
+  check_computed_value "angle calc folds structurally" ~ctx ~expected:"45deg"
+    "rotate: calc(30deg + 15deg)";
+  check_computed_value "time calc folds structurally" ~ctx ~expected:"2s"
+    "animation-duration: calc(1s * 2)";
+  check_computed_value "time calc combines compatible units" ~ctx ~expected:"1s"
+    "transition-duration: calc(500ms + 0.5s)";
+  check_computed_value "font-size calc resolves percentage and em basis" ~ctx
+    ~expected:"18px" "font-size: calc(100% + 0.5em)";
   check_computed_value "margin shorthand computes each length slot" ~ctx
     ~expected:"12px 32px" "margin: 1em 2rem";
   check_computed_value "padding shorthand computes var-backed slots" ~ctx
@@ -871,6 +918,130 @@ let computed_calc_contract () =
     "width: 4ch";
   check_computed_error "font metric unit ex needs font metrics" ~ctx
     "width: 2ex"
+
+let eval_ast_contract () =
+  let ctx =
+    Css.Context.v
+      ~custom_properties:
+        [
+          Css.Declaration.of_string "--brand: red";
+          Css.Declaration.of_string "--gap: calc(1rem + 2px)";
+          Css.Declaration.of_string "--rgb: 10 20 30";
+          Css.Declaration.of_string "--alpha: 0.5";
+          Css.Declaration.of_string "--shift: 1rem";
+          Css.Declaration.of_string "--ring-offset: 2px";
+          Css.Declaration.of_string "--ring-color: blue";
+        ]
+      ~inherited_values:
+        [
+          Css.Declaration.of_string "color: blue";
+          Css.Declaration.of_string "font-size: 12px";
+        ]
+      ~initial_values:[ Css.Declaration.of_string "width: auto" ]
+      ~base_url:"https://example.test/css/app.css"
+      ~root_font_size:(Css.Values.Px 16.) ~parent_font_size:(Css.Values.Px 12.)
+      ~current_color:(Css.Values.Named Css.Values.Red)
+      ~viewport_width:(Css.Values.Px 1000.)
+      ~container_width:(Css.Values.Px 400.) ()
+  in
+  check_eval "eval resolves inherited css-wide keyword" ~ctx
+    ~expected:"color: blue" "color: inherit";
+  check_eval "eval resolves initial css-wide keyword" ~ctx
+    ~expected:"width: auto" "width: initial";
+  check_eval "eval resolves color variable" ~ctx ~expected:"color: red"
+    "color: var(--brand)";
+  check_eval "eval resolves fallback variable" ~ctx ~expected:"color: green"
+    "color: var(--missing, green)";
+  check_eval "eval resolves currentColor leaf" ~ctx
+    ~expected:"border-color: red" "border-color: currentColor";
+  check_eval "eval resolves relative URL leaf" ~ctx
+    ~expected:"background-image: url(https://example.test/img/logo.svg)"
+    "background-image: url(../img/logo.svg)";
+  check_eval "eval folds number calc" ~ctx ~expected:"opacity: 0.5"
+    "opacity: calc(0.25 * 2)";
+  check_eval "eval folds angle calc" ~ctx ~expected:"rotate: 45deg"
+    "rotate: calc(30deg + 15deg)";
+  check_eval "eval folds time calc" ~ctx ~expected:"animation-duration: 2s"
+    "animation-duration: calc(1s * 2)";
+  check_eval "eval folds known length calc subtree" ~ctx
+    ~expected:"margin-left: 18px" "margin-left: calc(1rem + 2px)";
+  check_eval "eval preserves unresolved viewport leaf in calc AST" ~ctx
+    ~expected:"height: calc(16px + 10vh)" "height: calc(1rem + 10vh)";
+  check_eval "eval preserves unresolved percentage leaf in calc AST" ~ctx
+    ~expected:"width: calc(100% - 16px)" "width: calc(100% - 1rem)";
+  check_eval "eval preserves abstract var leaf in calc AST" ~ctx
+    ~expected:"margin-left: calc(16px + var(--future-gap))"
+    "margin-left: calc(1rem + var(--future-gap))";
+  check_eval "eval resolves vars inside color function AST" ~ctx
+    ~expected:"background-color: rgb(10 20 30 / 0.5)"
+    "background-color: rgb(var(--rgb) / var(--alpha))";
+  check_eval "eval resolves vars inside transform list AST" ~ctx
+    ~expected:"transform: translateX(16px) rotate(45deg)"
+    "transform: translateX(var(--shift)) rotate(calc(30deg + 15deg))";
+  check_eval "eval resolves vars and calc inside shadow list AST" ~ctx
+    ~expected:"box-shadow: 0 0 0 5px blue"
+    "box-shadow: 0 0 0 calc(3px + var(--ring-offset)) var(--ring-color)";
+  check_eval "eval resolves shorthand slots independently" ~ctx
+    ~expected:"padding: 18px 36px" "padding: var(--gap) calc(var(--gap) * 2)"
+
+let eval_laws_contract () =
+  let weak_ctx =
+    Css.Context.v ~root_font_size:(Css.Values.Px 16.)
+      ~parent_font_size:(Css.Values.Px 12.) ()
+  in
+  let strong_ctx =
+    Css.Context.v ~root_font_size:(Css.Values.Px 16.)
+      ~parent_font_size:(Css.Values.Px 12.)
+      ~viewport_height:(Css.Values.Px 1000.) ()
+  in
+  check_eval_idempotent "eval is idempotent on reduced calc AST" ~ctx:weak_ctx
+    "height: calc(1rem + 10vh)";
+  check_eval_context_extension
+    "eval with stronger context equals staged weaker-then-stronger eval"
+    ~weak_ctx ~strong_ctx ~expected:"height: 116px" "height: calc(1rem + 10vh)";
+  check_eval_context_extension
+    "eval context extension recurses through nested calc AST" ~weak_ctx
+    ~strong_ctx ~expected:"height: 124px" "height: calc((1rem + 8px) + 10vh)"
+
+let layered_eval_ast_contract () =
+  let layer_order = [ "theme"; "base"; "components"; "utilities" ] in
+  let custom_properties =
+    [
+      Css.Declaration.custom_property ~layer:"theme" "--spacing" "0.25rem";
+      Css.Declaration.custom_property ~layer:"base" "--base-gap"
+        "calc(var(--spacing) * 2)";
+      Css.Declaration.custom_property ~layer:"components" "--component-gap"
+        "calc(var(--base-gap) + 1rem)";
+      Css.Declaration.custom_property ~layer:"utilities" "--utility-gap"
+        "calc(var(--component-gap) + 2vh)";
+      Css.Declaration.custom_property ~layer:"utilities" "--future-gap"
+        "calc(var(--component-gap) + var(--user-gap))";
+    ]
+  in
+  let weak_ctx =
+    Css.Context.v ~custom_properties ~root_font_size:(Css.Values.Px 16.) ()
+  in
+  let strong_ctx =
+    Css.Context.v ~custom_properties ~root_font_size:(Css.Values.Px 16.)
+      ~viewport_height:(Css.Values.Px 1000.) ()
+  in
+  check_eval "eval resolves layered calc across all cascade layers"
+    ~ctx:strong_ctx ~layer_order ~layer:"utilities"
+    ~expected:"margin-left: 44px" "margin-left: var(--utility-gap)";
+  check_eval "eval preserves unknown viewport leaf after layered var resolution"
+    ~ctx:weak_ctx ~layer_order ~layer:"utilities"
+    ~expected:"margin-left: calc(24px + 2vh)" "margin-left: var(--utility-gap)";
+  check_eval "eval preserves abstract var leaf after known layers resolve"
+    ~ctx:weak_ctx ~layer_order ~layer:"utilities"
+    ~expected:"margin-left: calc(24px + var(--user-gap))"
+    "margin-left: var(--future-gap)";
+  check_eval_idempotent "layered eval is idempotent on symbolic AST"
+    ~ctx:weak_ctx ~layer_order ~layer:"utilities"
+    "margin-left: var(--utility-gap)";
+  check_eval_context_extension
+    "layered eval context extension reaches the same final AST" ~layer_order
+    ~layer:"utilities" ~weak_ctx ~strong_ctx ~expected:"margin-left: 44px"
+    "margin-left: var(--utility-gap)"
 
 let test_document_selector_function_contract () =
   let ctx =
@@ -1194,6 +1365,9 @@ let tw_vars_contract () =
   check_layered_computed_value
     "tailwind radius token resolves through theme variable" ~ctx ~layer_order
     ~layer:"utilities" ~expected:"8px" "border-radius: var(--radius-lg)";
+  (* CSS Values 4: once the fallback var() has selected the calc() and --spacing
+     has resolved to a rem length, computed-value simplification has enough
+     information to reduce the expression to px. *)
   check_layered_computed_value
     "tailwind nested fallback uses theme token when utility var is absent" ~ctx
     ~layer_order ~layer:"utilities" ~expected:"16px"
@@ -1306,6 +1480,10 @@ let suite =
         test_property_registration_context_contract;
       Alcotest.test_case "computed value calc and shorthand contract" `Quick
         computed_calc_contract;
+      Alcotest.test_case "eval AST contract" `Quick eval_ast_contract;
+      Alcotest.test_case "eval laws contract" `Quick eval_laws_contract;
+      Alcotest.test_case "layered eval AST contract" `Quick
+        layered_eval_ast_contract;
       Alcotest.test_case "document selector function contract" `Quick
         test_document_selector_function_contract;
       Alcotest.test_case "query context boolean contract" `Quick

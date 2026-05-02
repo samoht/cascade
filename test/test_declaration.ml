@@ -959,7 +959,35 @@ let spec_property_grammar_table_expansion () =
     ]
   in
   List.iter
-    (fun (property, value) -> check_declaration (property ^ ":" ^ value))
+    (fun (property, value) ->
+      let input = property ^ ":" ^ value in
+      let expected =
+        match (property, value) with
+        | "container", "card / inline-size" -> Some "container:card/inline-size"
+        | "padding", "max(1rem, 2vw)" -> Some "padding:max(1rem,2vw)"
+        | "border-radius", "10px 20px / 30px 40px" ->
+            Some "border-radius:10px 20px/30px 40px"
+        | "border-image", "linear-gradient(red, blue) 30" ->
+            Some "border-image:linear-gradient(red,blue) 30"
+        | "background", "url(bg.png) no-repeat center / cover border-box" ->
+            Some "background:url(bg.png) center/cover no-repeat border-box"
+        | "box-shadow", "0 1px 2px rgb(0 0 0 / .2)" ->
+            Some "box-shadow:0 1px 2px rgb(0 0 0/.2)"
+        | "color", "light-dark(black, white)" ->
+            Some "color:light-dark(black,white)"
+        | "font-size", "clamp(1rem, 2vw, 2rem)" ->
+            Some "font-size:clamp(1rem,2vw,2rem)"
+        | "animation", "fade 1s linear 2 alternate both running" ->
+            Some "animation:fade 1s linear 2 alternate both"
+        | "position-try-fallbacks", "--below, flip-block" ->
+            Some "position-try-fallbacks:--below,flip-block"
+        | "cursor", "url(cursor.cur), pointer" ->
+            Some "cursor:url(cursor.cur),pointer"
+        | "mask", "url(mask.svg) center / contain no-repeat" ->
+            Some "mask:url(mask.svg) center/contain no-repeat"
+        | _ -> None
+      in
+      check_declaration ?expected input)
     positive;
   let negative =
     [
@@ -1456,6 +1484,7 @@ let spec_remaining_prop_vectors () =
         "contain-intrinsic-width:auto 10rem" );
       ("contain-intrinsic-height: 20px", "contain-intrinsic-height:20px");
       ("overflow: clip auto", "overflow:clip auto");
+      ("overflow: clip visible", "overflow:clip visible");
       ("overflow-block: scroll", "overflow-block:scroll");
       ("overflow-inline: hidden", "overflow-inline:hidden");
       ( "overscroll-behavior-inline: contain",
@@ -1567,7 +1596,6 @@ let spec_remaining_prop_vectors () =
       "contain: strict layout";
       "content-visibility: visible hidden";
       "contain-intrinsic-width: auto auto 10px";
-      "overflow: clip visible";
       "overflow-block: visible hidden";
       "overscroll-behavior-inline: contain auto none";
       "scroll-snap-align: start center end";

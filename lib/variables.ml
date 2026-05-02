@@ -427,6 +427,9 @@ let rec vars_of_shadow (value : Properties.shadow) : any_var list =
 let vars_of_content (value : Properties.content) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_counter_set (value : Properties.counter_set) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_blend_mode (value : Properties.blend_mode) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -635,6 +638,20 @@ let rec vars_of_opacity (value : Properties.opacity) : any_var list =
   | Var v -> [ V v ]
   | Inherit | Initial | Unset | Revert | Revert_layer -> []
 
+let vars_of_shape_image_threshold (value : Properties.shape_image_threshold) :
+    any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | Number _ | Inherit | Initial | Unset | Revert | Revert_layer -> []
+
+let vars_of_overflow_clip_margin (value : Properties.overflow_clip_margin) :
+    any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | Clip_margin (_, Some length) -> vars_of_length length
+  | Clip_margin (_, None) | Initial | Inherit | Unset | Revert | Revert_layer ->
+      []
+
 let vars_of_tab_size (value : Properties.tab_size) : any_var list =
   match value with
   | Int _ -> []
@@ -669,6 +686,9 @@ let vars_of_flex_direction (value : Properties.flex_direction) =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_flex_wrap (value : Properties.flex_wrap) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_flex_flow (value : Properties.flex_flow) =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_flex_factor (value : Properties.flex_factor) =
@@ -713,6 +733,15 @@ let vars_of_position_anchor (value : Properties.position_anchor) =
 let vars_of_position_try_fallbacks (value : Properties.position_try_fallbacks) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_position_try_order (value : Properties.position_try_order) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_position_visibility (value : Properties.position_visibility) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_position_area (value : Properties.position_area) =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_overflow_anchor (value : Properties.overflow_anchor) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -753,7 +782,16 @@ let vars_of_animation_range (value : Properties.animation_range) =
 let vars_of_view_transition_name (value : Properties.view_transition_name) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_view_transition_class (value : Properties.view_transition_class) =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_image_orientation (value : Properties.image_orientation) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_image_rendering (value : Properties.image_rendering) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_image_resolution (value : Properties.image_resolution) =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_contain_intrinsic_size_item
@@ -766,6 +804,13 @@ let vars_of_contain_intrinsic_size (value : Properties.contain_intrinsic_size) =
   | Intrinsic (first, second) ->
       vars_of_contain_intrinsic_size_item first
       @ Option.fold ~none:[] ~some:vars_of_contain_intrinsic_size_item second
+  | None | Initial | Inherit | Unset | Revert | Revert_layer -> []
+
+let vars_of_contain_intrinsic_longhand
+    (value : Properties.contain_intrinsic_longhand) =
+  match value with
+  | Var v -> [ V v ]
+  | Size size -> vars_of_contain_intrinsic_size_item size
   | None | Initial | Inherit | Unset | Revert | Revert_layer -> []
 
 let vars_of_margin_trim (value : Properties.margin_trim) =
@@ -781,6 +826,12 @@ let vars_of_offset_path (value : Properties.offset_path) =
   | Ray ray -> vars_of_ray ray
   | None | Url _ | Path _ | Initial | Inherit | Unset | Revert | Revert_layer ->
       []
+
+let vars_of_offset_rotate (value : Properties.offset_rotate) =
+  match value with
+  | Var v -> [ V v ]
+  | Angle angle | With_angle (_, angle) -> vars_of_angle angle
+  | Auto | Reverse | Initial | Inherit | Unset | Revert | Revert_layer -> []
 
 let vars_of_flex (value : Properties.flex) =
   match value with
@@ -814,11 +865,25 @@ let rec vars_of_text_overflow (value : Properties.text_overflow) =
 let vars_of_text_wrap (value : Properties.text_wrap) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_text_wrap_mode (value : Properties.text_wrap_mode) =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_text_wrap_style (value : Properties.text_wrap_style) =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_text_box_trim (value : Properties.text_box_trim) =
   match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_text_box_edge (value : Properties.text_box_edge) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_text_box (value : Properties.text_box) =
+  match value with
+  | Var v -> [ V v ]
+  | Box (trim, edge) ->
+      vars_of_text_box_trim trim
+      @ Option.value ~default:[] (Option.map vars_of_text_box_edge edge)
+  | Initial | Inherit | Unset | Revert | Revert_layer -> []
 
 let vars_of_text_spacing_trim (value : Properties.text_spacing_trim) =
   match value with Var v -> [ V v ] | _ -> []
@@ -921,6 +986,9 @@ let rec vars_of_animation_iteration_count
 let vars_of_transition_behavior (value : Properties.transition_behavior) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_overlay (value : Properties.overlay) =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_appearance (value : Properties.appearance) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -1017,6 +1085,9 @@ let vars_of_unicode_bidi (value : Properties.unicode_bidi) =
 let vars_of_writing_mode (value : Properties.writing_mode) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_text_combine_upright (value : Properties.text_combine_upright) =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_webkit_font_smoothing (value : Properties.webkit_font_smoothing) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -1030,6 +1101,34 @@ let vars_of_moz_orient (value : Properties.moz_orient) =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_font_stretch (value : Properties.font_stretch) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_font_optical_sizing (value : Properties.font_optical_sizing) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_font_kerning (value : Properties.font_kerning) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_font_language_override (value : Properties.font_language_override) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_font_synthesis_style (value : Properties.font_synthesis_style) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_font_synthesis_weight (value : Properties.font_synthesis_weight) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_font_variant_ligatures (value : Properties.font_variant_ligatures) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_font_variant_caps (value : Properties.font_variant_caps) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_font_variant_position (value : Properties.font_variant_position) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_font_variant_east_asian (value : Properties.font_variant_east_asian)
+    =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_font_size_adjust (value : Properties.font_size_adjust) =
@@ -1069,11 +1168,12 @@ let vars_of_perspective_origin (value : Properties.perspective_origin) =
 let vars_of_clip_path (value : Properties.clip_path) =
   match value with
   | Var v -> [ V v ]
-  | Clip_path_inset (a, b, c, d) ->
-      vars_of_length a
-      @ Option.value ~default:[] (Option.map vars_of_length b)
-      @ Option.value ~default:[] (Option.map vars_of_length c)
-      @ Option.value ~default:[] (Option.map vars_of_length d)
+  | Clip_path_inset { top; right; bottom; left; rounded } ->
+      vars_of_length_percentage top
+      @ Option.value ~default:[] (Option.map vars_of_length_percentage right)
+      @ Option.value ~default:[] (Option.map vars_of_length_percentage bottom)
+      @ Option.value ~default:[] (Option.map vars_of_length_percentage left)
+      @ Option.value ~default:[] (Option.map vars_of_border_radius rounded)
   | Clip_path_circle l -> vars_of_length l
   | Clip_path_ellipse (a, b) -> vars_of_length a @ vars_of_length b
   | Clip_path_polygon points | Clip_path_polygon_spaced points ->
@@ -1087,6 +1187,23 @@ let vars_of_clip_path (value : Properties.clip_path) =
       @ vars_of_length_percentage height
       @ Option.value ~default:[] (Option.map vars_of_border_radius rounded)
   | _ -> []
+
+let vars_of_object_view_box (value : Properties.object_view_box) =
+  match value with
+  | Var v -> [ V v ]
+  | Inset (a, b, c, d) ->
+      vars_of_length a
+      @ Option.value ~default:[] (Option.map vars_of_length b)
+      @ Option.value ~default:[] (Option.map vars_of_length c)
+      @ Option.value ~default:[] (Option.map vars_of_length d)
+  | Xywh { x; y; width; height; rounded }
+  | Rect { top = x; right = y; bottom = width; left = height; rounded } ->
+      vars_of_length_percentage x
+      @ vars_of_length_percentage y
+      @ vars_of_length_percentage width
+      @ vars_of_length_percentage height
+      @ Option.value ~default:[] (Option.map vars_of_border_radius rounded)
+  | None | Inherit | Initial | Unset | Revert | Revert_layer -> []
 
 let vars_of_mask_box (value : Properties.mask_box) =
   match value with Var v -> [ V v ] | _ -> []
@@ -1131,6 +1248,9 @@ let vars_of_mask (value : Properties.mask) : any_var list =
   | Layers layers -> List.concat_map vars_of_mask_layer layers
   | _ -> []
 
+let vars_of_border_image (value : Properties.border_image) : any_var list =
+  Option.fold ~none:[] ~some:vars_of_background_image value.source
+
 let vars_of_user_select (value : Properties.user_select) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -1142,6 +1262,17 @@ let vars_of_timeline_name (value : Properties.timeline_name) =
 
 let vars_of_timeline_shorthand (value : Properties.timeline_shorthand) =
   vars_of_timeline_axis value.timeline_axis
+
+let vars_of_timeline_inset_item (value : Properties.timeline_inset_item) =
+  match value with Auto -> [] | Length lp -> vars_of_length_percentage lp
+
+let vars_of_timeline_inset (value : Properties.timeline_inset) =
+  match value with
+  | Var v -> [ V v ]
+  | Inset (first, second) ->
+      vars_of_timeline_inset_item first
+      @ Option.value ~default:[] (Option.map vars_of_timeline_inset_item second)
+  | Initial | Inherit | Unset | Revert | Revert_layer -> []
 
 let vars_of_direction (value : Properties.direction) =
   match value with Var v -> [ V v ] | _ -> []
@@ -1237,7 +1368,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Border_top_right_radius, value -> vars_of_length value
   | Border_bottom_left_radius, value -> vars_of_length value
   | Border_bottom_right_radius, value -> vars_of_length value
-  | Border_image, _ -> []
+  | Border_image, value -> vars_of_border_image value
   (* Outline offset *)
   | Outline_offset, value -> vars_of_length value
   | Flex_basis, value -> vars_of_length value
@@ -1286,9 +1417,18 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Font_feature_settings, value -> vars_of_font_feature_settings value
   | Font_size_adjust, value -> vars_of_font_size_adjust value
   | Font_stretch, value -> vars_of_font_stretch value
+  | Font_optical_sizing, value -> vars_of_font_optical_sizing value
+  | Font_kerning, value -> vars_of_font_kerning value
+  | Font_language_override, value -> vars_of_font_language_override value
+  | Font_synthesis_style, value -> vars_of_font_synthesis_style value
+  | Font_synthesis_weight, value -> vars_of_font_synthesis_weight value
+  | Font_variant_ligatures, value -> vars_of_font_variant_ligatures value
+  | Font_variant_caps, value -> vars_of_font_variant_caps value
   | Font_variant_emoji, value -> vars_of_font_variant_emoji value
   | Font_variation_settings, value -> vars_of_font_variation_settings value
   | Font_variant_numeric, value -> vars_of_font_variant_numeric value
+  | Font_variant_position, value -> vars_of_font_variant_position value
+  | Font_variant_east_asian, value -> vars_of_font_variant_east_asian value
   (* Text properties *)
   | Text_decoration, value -> vars_of_text_decoration value
   | Text_emphasis, value -> vars_of_text_emphasis value
@@ -1298,6 +1438,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Text_transform, value -> vars_of_text_transform value
   (* Content and visibility *)
   | Content, value -> vars_of_content value
+  | Counter_reset, value -> vars_of_counter_set value
+  | Counter_increment, value -> vars_of_counter_set value
   | Content_visibility, value -> vars_of_content_visibility value
   (* Blend mode properties *)
   | Mix_blend_mode, value -> vars_of_blend_mode value
@@ -1381,6 +1523,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Animation_fill_mode, value -> vars_of_animation_fill_mode value
   | Animation_iteration_count, value -> vars_of_animation_iteration_count value
   | Animation_play_state, value -> vars_of_animation_play_state value
+  | Animation_composition, value -> (
+      match value with Var v -> [ V v ] | _ -> [])
   | Appearance, value -> vars_of_appearance value
   | Backface_visibility, value -> vars_of_backface_visibility value
   | Background_attachment, value -> vars_of_background_attachment value
@@ -1409,6 +1553,11 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Anchor_name, value -> vars_of_anchor_name value
   | Position_anchor, value -> vars_of_position_anchor value
   | Position_try_fallbacks, value -> vars_of_position_try_fallbacks value
+  | Position_try_order, value -> vars_of_position_try_order value
+  | Position_visibility, value -> vars_of_position_visibility value
+  | Position_area, value -> vars_of_position_area value
+  | Shape_image_threshold, value -> vars_of_shape_image_threshold value
+  | Overflow_clip_margin, value -> vars_of_overflow_clip_margin value
   | Overflow_anchor, value -> vars_of_overflow_anchor value
   | Scrollbar_width, value -> vars_of_scrollbar_width value
   | Scrollbar_color, value -> vars_of_scrollbar_color value
@@ -1417,11 +1566,23 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Font_synthesis, value -> vars_of_font_synthesis value
   | Animation_timeline, value -> vars_of_animation_timeline value
   | Animation_range, value -> vars_of_animation_range value
+  | Animation_range_start, value -> vars_of_animation_range value
+  | Animation_range_end, value -> vars_of_animation_range value
   | View_transition_name, value -> vars_of_view_transition_name value
+  | View_transition_class, value -> vars_of_view_transition_class value
   | Image_orientation, value -> vars_of_image_orientation value
+  | Image_rendering, value -> vars_of_image_rendering value
+  | Image_resolution, value -> vars_of_image_resolution value
   | Contain_intrinsic_size, value -> vars_of_contain_intrinsic_size value
+  | Contain_intrinsic_width, value -> vars_of_contain_intrinsic_longhand value
+  | Contain_intrinsic_height, value -> vars_of_contain_intrinsic_longhand value
+  | Contain_intrinsic_block_size, value ->
+      vars_of_contain_intrinsic_longhand value
+  | Contain_intrinsic_inline_size, value ->
+      vars_of_contain_intrinsic_longhand value
   | Margin_trim, value -> vars_of_margin_trim value
   | Offset_path, value -> vars_of_offset_path value
+  | Offset_rotate, value -> vars_of_offset_rotate value
   | All, value -> vars_of_css_wide value
   | Direction, value -> vars_of_direction value
   | Display, value -> vars_of_display value
@@ -1429,6 +1590,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Flex, value -> vars_of_flex value
   | Flex_direction, value -> vars_of_flex_direction value
   | Flex_wrap, value -> vars_of_flex_wrap value
+  | Flex_flow, value -> vars_of_flex_flow value
   | Flex_grow, value -> vars_of_flex_factor value
   | Flex_shrink, value -> vars_of_flex_factor value
   | Float, value -> vars_of_float_side value
@@ -1442,6 +1604,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Mask_clip, value -> vars_of_mask_box value
   | Mask_composite, value -> vars_of_mask_composite value
   | Mask, value -> vars_of_mask value
+  | Mask_border, value -> vars_of_border_image value
   | Mask_mode, value -> vars_of_mask_mode value
   | Mask_origin, value -> vars_of_mask_box value
   | Mask_repeat, value -> vars_of_background_repeat value
@@ -1449,6 +1612,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Moz_orient, value -> vars_of_moz_orient value
   | Moz_osx_font_smoothing, value -> vars_of_moz_osx_font_smoothing value
   | Object_fit, value -> vars_of_object_fit value
+  | Object_view_box, value -> vars_of_object_view_box value
   | Outline, value -> vars_of_outline value
   | Overflow, value -> vars_of_overflow value
   | Overflow_wrap, value -> vars_of_overflow_wrap value
@@ -1475,6 +1639,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Scroll_snap_stop, value -> vars_of_scroll_snap_stop value
   | Scroll_behavior, value -> vars_of_scroll_behavior value
   | Scroll_timeline, value -> vars_of_timeline_shorthand value
+  | Scroll_timeline_name, value -> vars_of_timeline_name value
+  | Scroll_timeline_axis, value -> vars_of_timeline_axis value
   | Stroke, value -> vars_of_svg_paint value
   | Source, _ -> []
   | Text_align, value -> vars_of_text_align value
@@ -1485,8 +1651,10 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Text_overflow, value -> vars_of_text_overflow value
   | Text_size_adjust, value -> vars_of_text_size_adjust value
   | Text_wrap, value -> vars_of_text_wrap value
+  | Text_wrap_mode, value -> vars_of_text_wrap_mode value
   | Text_wrap_style, value -> vars_of_text_wrap_style value
   | Text_box_trim, value -> vars_of_text_box_trim value
+  | Text_box, value -> vars_of_text_box value
   | Text_spacing_trim, value -> vars_of_text_spacing_trim value
   | Hyphenate_limit_chars, value -> vars_of_hyphenate_limit_chars value
   | Initial_letter, value -> vars_of_initial_letter value
@@ -1494,10 +1662,13 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Transform_box, value -> vars_of_transform_box value
   | Transform_style, value -> vars_of_transform_style value
   | Transition_behavior, value -> vars_of_transition_behavior value
+  | Overlay, value -> vars_of_overlay value
   | Unicode_bidi, value -> vars_of_unicode_bidi value
   | User_select, value -> vars_of_user_select value
   | Visibility, value -> vars_of_visibility value
   | View_timeline_name, value -> vars_of_timeline_name value
+  | View_timeline_axis, value -> vars_of_timeline_axis value
+  | View_timeline_inset, value -> vars_of_timeline_inset value
   | View_timeline, value -> vars_of_timeline_shorthand value
   | Timeline_scope, value -> vars_of_timeline_name value
   | Webkit_appearance, value -> vars_of_webkit_appearance value
@@ -1515,6 +1686,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | White_space, value -> vars_of_white_space value
   | Word_break, value -> vars_of_word_break value
   | Writing_mode, value -> vars_of_writing_mode value
+  | Text_combine_upright, value -> vars_of_text_combine_upright value
   (* Default case for all other properties *)
   | _ -> []
 

@@ -495,14 +495,15 @@ let rec read_grid_template_areas t : Properties.grid_template_areas =
 
 let border_image_at_end t = Cursor.is_done t || Cursor.peek_semicolon t
 
-let read_bi_nonneg_unit t =
-  let pp_float n = Pp.to_string ~minify:true Pp.float n in
-  let n, unit = Cursor.number_with_unit t in
-  if n < 0. then Cursor.err_invalid t "border-image value cannot be negative";
-  match unit with
-  | None -> pp_float n
-  | Some "%" -> pp_float n ^ "%"
-  | Some unit -> pp_float n ^ unit
+let read_border_image_slice_item t : border_image_slice_item =
+  match Cursor.percentage_opt t with
+  | Some n when n >= 0. -> Pct n
+  | Some _ -> Cursor.err_invalid t "border-image value cannot be negative"
+  | None -> (
+      match Cursor.number_opt t with
+      | Some n when n >= 0. -> Number n
+      | Some _ -> Cursor.err_invalid t "border-image value cannot be negative"
+      | None -> Cursor.err_expected t "border-image slice")
 
 let read_border_image_slice t =
   let rec loop values has_fill =
@@ -517,7 +518,7 @@ let read_border_image_slice t =
           let _ = Cursor.ident t in
           loop values true
       | _ -> (
-          match Cursor.option read_bi_nonneg_unit t with
+          match Cursor.option read_border_image_slice_item t with
           | Some value ->
               if List.length values >= 4 then
                 Cursor.err_invalid t "too many border-image slice values";
@@ -528,17 +529,35 @@ let read_border_image_slice t =
   match (List.rev values, has_fill) with
   | [], true -> Cursor.err_invalid t "border-image fill requires slice values"
   | [], false -> Cursor.err_expected t "border-image slice"
-  | values, false -> String.concat " " values
-  | values, true -> String.concat " " (values @ [ "fill" ])
+  | offsets, fill -> { offsets; fill }
 
-let read_border_image_box_values ~what ~allow_auto t =
-  let read_item t =
-    match Cursor.peek_ident t with
-    | Some "auto" when allow_auto ->
-        let _ = Cursor.ident t in
-        "auto"
-    | _ -> read_bi_nonneg_unit t
-  in
+let read_border_image_width_item t : border_image_width_item =
+  match Cursor.peek_ident t with
+  | Some "auto" ->
+      ignore (Cursor.ident t : string);
+      Auto
+  | _ -> (
+      match Cursor.percentage_opt t with
+      | Some n when n >= 0. -> Pct n
+      | Some _ -> Cursor.err_invalid t "border-image value cannot be negative"
+      | None -> (
+          match Cursor.number_opt t with
+          | Some n when n >= 0. -> Number n
+          | Some _ ->
+              Cursor.err_invalid t "border-image value cannot be negative"
+          | None ->
+              let len = read_length ~allow_negative:false t in
+              Length len))
+
+let read_border_image_outset_item t : border_image_outset_item =
+  match Cursor.number_opt t with
+  | Some n when n >= 0. -> Number n
+  | Some _ -> Cursor.err_invalid t "border-image value cannot be negative"
+  | None ->
+      let len = read_length ~allow_negative:false t in
+      Length len
+
+let read_border_image_box_values ~what read_item t =
   let rec loop acc =
     Cursor.ws t;
     if border_image_at_end t || Cursor.peek_delim t = Some '/' then List.rev acc
@@ -552,66 +571,52 @@ let read_border_image_box_values ~what ~allow_auto t =
   in
   match loop [] with
   | [] -> Cursor.err_expected t ("border-image " ^ what)
-  | values -> String.concat " " values
+  | values -> values
 
 let read_border_image_repeat t =
-  let read_keyword t =
+  let read_keyword (t : Cursor.t) : border_image_repeat_keyword =
     Cursor.enum "border-image-repeat"
       [
-        ("stretch", "stretch");
-        ("repeat", "repeat");
-        ("round", "round");
-        ("space", "space");
+        ("stretch", (Stretch : border_image_repeat_keyword));
+        ("repeat", Repeat);
+        ("round", Round);
+        ("space", Space);
       ]
       t
   in
   let first = read_keyword t in
   Cursor.ws t;
   match Cursor.option read_keyword t with
-  | None -> first
-  | Some second -> first ^ " " ^ second
+  | None -> [ first ]
+  | Some second -> [ first; second ]
 
 let read_border_image t =
-  let source : string option =
-    match Cursor.option read_background_image t with
-    | None -> None
-    | Some image -> Some (Pp.to_string ~minify:true pp_background_image image)
-  in
+  let source = Cursor.option read_background_image t in
   Cursor.ws t;
   let slice = Cursor.option read_border_image_slice t in
   let width, outset =
     Cursor.ws t;
     if Cursor.slash_opt t then (
       let width =
-        Some (read_border_image_box_values ~what:"width" ~allow_auto:true t)
+        Some
+          (read_border_image_box_values ~what:"width"
+             read_border_image_width_item t)
       in
       Cursor.ws t;
       if Cursor.slash_opt t then
         ( width,
-          Some (read_border_image_box_values ~what:"outset" ~allow_auto:false t)
-        )
+          Some
+            (read_border_image_box_values ~what:"outset"
+               read_border_image_outset_item t) )
       else (width, None))
     else (None, None)
   in
   Cursor.ws t;
   let repeat = Cursor.option read_border_image_repeat t in
-  let value =
-    match (source, slice) with
-    | None, None -> Cursor.err_expected t "border-image source or slice"
-    | Some source, None -> source
-    | None, Some slice -> slice
-    | Some source, Some slice -> source ^ " " ^ slice
-  in
-  let value =
-    match width with None -> value | Some width -> value ^ "/" ^ width
-  in
-  let value =
-    match outset with None -> value | Some outset -> value ^ "/" ^ outset
-  in
-  let value =
-    match repeat with None -> value | Some repeat -> value ^ " " ^ repeat
-  in
-  value
+  (match (source, slice) with
+  | None, None -> Cursor.err_expected t "border-image source or slice"
+  | _ -> ());
+  { source; slice; width; outset; repeat }
 
 (* Custom parser for grid-template-columns/rows: handles both single values and
    lists *)
@@ -658,10 +663,6 @@ let rec read_opacity t : opacity =
                 match unit with
                 | Some "%" -> Opacity_number (n /. 100.0)
                 | _ -> Opacity_number n)))
-
-(* Helper to read raw property value - for properties that accept any text.
-   Drain components (preserving whitespace) up to the next [;] or [!] delim. *)
-let read_untyped_value t = Cursor.consume_to_decl_end ~trim:true t
 
 let read_font_size_adjust_metric t =
   Cursor.enum "font-size-adjust metric"
@@ -747,21 +748,43 @@ let rec read_initial_letter t =
     ~calls:[ ("var", fun t -> Var (read_var read_initial_letter t)) ]
     ~default:read_number t
 
-(* CSS Box Sizing 4: [margin-trim = none | block | inline | [block-start ||
-   inline-start || block-end || inline-end]]. The bracketed form is a [||]
-   (any-order, no-repeats) of the four physical edges. *)
+(* CSS Box Sizing 4: [margin-trim = none | block | inline | [block || inline] |
+   [block-start || inline-start || block-end || inline-end]]. The bracketed
+   forms are [||] groups: any-order, no-repeats. *)
 let rec read_margin_trim t : margin_trim =
   let keywords : (string * margin_trim) list =
     [
       ("none", None);
-      ("block", Block);
-      ("inline", Inline);
       ("initial", Initial);
       ("inherit", Inherit);
       ("unset", Unset);
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
+  in
+  let read_axis = function
+    | "block" -> (Block : margin_trim_axis)
+    | "inline" -> Inline
+    | s -> Cursor.err_invalid t ("invalid margin-trim axis: " ^ s)
+  in
+  let read_axes t : margin_trim option =
+    let axes = [ "block"; "inline" ] in
+    let rec loop acc =
+      Cursor.ws t;
+      match Cursor.peek_ident t with
+      | Some s when List.mem s axes && not (List.mem (read_axis s) acc) ->
+          let _ = Cursor.ident t in
+          loop (read_axis s :: acc)
+      | Some s when List.mem s axes ->
+          Cursor.err_invalid t
+            (String.concat "" [ "duplicate margin-trim axis: "; s ])
+      | _ -> List.rev acc
+    in
+    match loop [] with
+    | [] -> None
+    | [ Block ] -> Some (Block : margin_trim)
+    | [ Inline ] -> Some (Inline : margin_trim)
+    | axes -> Some (Axes axes : margin_trim)
   in
   let read_edges t =
     let read_edge = function
@@ -789,7 +812,9 @@ let rec read_margin_trim t : margin_trim =
   in
   (Cursor.enum_or_var "margin-trim" keywords
      ~var:(fun t -> (Var (Values.read_var read_margin_trim t) : margin_trim))
-     ~default:read_edges t
+     ~default:(fun t ->
+       match read_axes t with Some value -> value | None -> read_edges t)
+     t
     : margin_trim)
 
 let read_ray_size t : ray_size =
@@ -1196,6 +1221,7 @@ let read_value (type a) (prop : a property) t : declaration =
   (* Flexbox *)
   | Flex_direction -> v Flex_direction (read_flex_direction t)
   | Flex_wrap -> v Flex_wrap (read_flex_wrap t)
+  | Flex_flow -> v Flex_flow (read_flex_flow t)
   | Flex -> v Flex (read_flex t)
   | Flex_grow -> v Flex_grow (Properties.read_flex_factor t)
   | Flex_shrink -> v Flex_shrink (Properties.read_flex_factor t)
@@ -1243,6 +1269,8 @@ let read_value (type a) (prop : a property) t : declaration =
   | Text_shadow -> v Text_shadow (read_text_shadows t)
   (* Content *)
   | Content -> v Content (read_content t)
+  | Counter_reset -> v Counter_reset (read_counter_set t)
+  | Counter_increment -> v Counter_increment (read_counter_set t)
   (* Other properties *)
   | Z_index -> v Z_index (Properties.read_z_index t)
   | Opacity -> v Opacity (read_opacity t)
@@ -1402,7 +1430,21 @@ let read_value (type a) (prop : a property) t : declaration =
   | Font_variation_settings ->
       v Font_variation_settings (read_font_variation_settings t)
   | Font_stretch -> v Font_stretch (read_font_stretch t)
+  | Font_optical_sizing -> v Font_optical_sizing (read_font_optical_sizing t)
+  | Font_kerning -> v Font_kerning (read_font_kerning t)
+  | Font_language_override ->
+      v Font_language_override (read_font_language_override t)
+  | Font_synthesis_style -> v Font_synthesis_style (read_font_synthesis_style t)
+  | Font_synthesis_weight ->
+      v Font_synthesis_weight (read_font_synthesis_weight t)
+  | Font_variant_ligatures ->
+      v Font_variant_ligatures (read_font_variant_ligatures t)
+  | Font_variant_caps -> v Font_variant_caps (read_font_variant_caps t)
   | Font_variant_numeric -> v Font_variant_numeric (read_font_variant_numeric t)
+  | Font_variant_position ->
+      v Font_variant_position (read_font_variant_position t)
+  | Font_variant_east_asian ->
+      v Font_variant_east_asian (read_font_variant_east_asian t)
   (* Text properties *)
   | Text_indent -> v Text_indent (read_non_negative_length_or_css_wide t)
   | Text_overflow -> v Text_overflow (read_text_overflow t)
@@ -1429,11 +1471,15 @@ let read_value (type a) (prop : a property) t : declaration =
   | Position_anchor -> v Position_anchor (read_position_anchor t)
   | Position_try_fallbacks ->
       v Position_try_fallbacks (read_position_try_fallbacks t)
+  | Position_try_order -> v Position_try_order (read_position_try_order t)
+  | Position_visibility -> v Position_visibility (read_position_visibility t)
+  | Position_area -> v Position_area (read_position_area t)
   | Shape_outside -> v Shape_outside (read_shape_outside t)
   | Shape_margin ->
       v Shape_margin (read_non_negative_length_percentage_or_css_wide t)
-  | Overflow_clip_margin ->
-      v Overflow_clip_margin (read_non_negative_length_or_css_wide t)
+  | Shape_image_threshold ->
+      v Shape_image_threshold (read_shape_image_threshold t)
+  | Overflow_clip_margin -> v Overflow_clip_margin (read_overflow_clip_margin t)
   | Overflow_anchor -> v Overflow_anchor (read_overflow_anchor t)
   | Scrollbar_width -> v Scrollbar_width (read_scrollbar_width t)
   | Scrollbar_color -> v Scrollbar_color (read_scrollbar_color t)
@@ -1442,26 +1488,38 @@ let read_value (type a) (prop : a property) t : declaration =
       v Line_height_step (read_non_negative_length_or_css_wide t)
   | Font_palette -> v Font_palette (read_font_palette t)
   | Font_synthesis -> v Font_synthesis (read_font_synthesis t)
+  | Text_wrap_mode -> v Text_wrap_mode (read_text_wrap_mode t)
   | Text_wrap_style -> v Text_wrap_style (read_text_wrap_style t)
   | Text_box_trim -> v Text_box_trim (read_text_box_trim t)
+  | Text_box -> v Text_box (read_text_box t)
   | Animation_timeline -> v Animation_timeline (read_animation_timeline t)
   | Animation_range -> v Animation_range (read_animation_range t)
+  | Animation_range_start -> v Animation_range_start (read_animation_range t)
+  | Animation_range_end -> v Animation_range_end (read_animation_range t)
   | Scroll_timeline -> v Scroll_timeline (read_timeline_shorthand t)
+  | Scroll_timeline_name -> v Scroll_timeline_name (read_timeline_name t)
+  | Scroll_timeline_axis -> v Scroll_timeline_axis (read_timeline_axis t)
   | View_transition_name -> v View_transition_name (read_view_transition_name t)
+  | View_transition_class ->
+      v View_transition_class (read_view_transition_class t)
   | Image_orientation -> v Image_orientation (read_image_orientation t)
+  | Image_rendering -> v Image_rendering (read_image_rendering t)
+  | Image_resolution -> v Image_resolution (read_image_resolution t)
   | Contain_intrinsic_size ->
       v Contain_intrinsic_size (read_contain_intrinsic_size t)
-  | Contain_intrinsic_width -> v Contain_intrinsic_width (read_untyped_value t)
+  | Contain_intrinsic_width ->
+      v Contain_intrinsic_width (read_contain_intrinsic_longhand t)
   | Contain_intrinsic_height ->
-      v Contain_intrinsic_height (read_untyped_value t)
+      v Contain_intrinsic_height (read_contain_intrinsic_longhand t)
   | Contain_intrinsic_block_size ->
-      v Contain_intrinsic_block_size (read_untyped_value t)
+      v Contain_intrinsic_block_size (read_contain_intrinsic_longhand t)
   | Contain_intrinsic_inline_size ->
-      v Contain_intrinsic_inline_size (read_untyped_value t)
+      v Contain_intrinsic_inline_size (read_contain_intrinsic_longhand t)
   | Margin_trim -> v Margin_trim (read_margin_trim t)
   | Offset_path -> v Offset_path (read_offset_path t)
   | Offset_distance ->
       v Offset_distance (read_non_negative_length_percentage_or_css_wide t)
+  | Offset_rotate -> v Offset_rotate (read_offset_rotate t)
   | Font_size_adjust -> v Font_size_adjust (read_font_size_adjust t)
   | Font_variant_emoji -> v Font_variant_emoji (read_font_variant_emoji t)
   | Text_spacing_trim -> v Text_spacing_trim (read_text_spacing_trim t)
@@ -1470,6 +1528,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Initial_letter -> v Initial_letter (read_initial_letter t)
   | View_timeline_name -> v View_timeline_name (read_timeline_name t)
   | View_timeline_axis -> v View_timeline_axis (read_timeline_axis t)
+  | View_timeline_inset -> v View_timeline_inset (read_timeline_inset t)
   | View_timeline -> v View_timeline (read_timeline_shorthand t)
   | Timeline_scope -> v Timeline_scope (read_timeline_name t)
   (* Transform properties *)
@@ -1482,6 +1541,7 @@ let read_value (type a) (prop : a property) t : declaration =
   (* Object properties *)
   | Object_position -> v Object_position (read_position_value t)
   | Object_fit -> v Object_fit (read_object_fit t)
+  | Object_view_box -> v Object_view_box (read_object_view_box t)
   (* Transition properties *)
   | Transition_duration -> v Transition_duration (read_duration t)
   | Transition_timing_function ->
@@ -1490,6 +1550,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Transition_property -> v Transition_property (read_transition_property t)
   | Transition_behavior ->
       v Transition_behavior (Properties.read_transition_behavior t)
+  | Overlay -> v Overlay (read_overlay t)
   (* Will change *)
   | Will_change -> v Will_change (read_will_change t)
   (* Contain and isolation *)
@@ -1611,6 +1672,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Direction -> v Direction (read_direction t)
   | Unicode_bidi -> v Unicode_bidi (read_unicode_bidi t)
   | Writing_mode -> v Writing_mode (read_writing_mode t)
+  | Text_combine_upright -> v Text_combine_upright (read_text_combine_upright t)
   (* Animation properties *)
   | Animation_name -> v Animation_name (read_animation_name t)
   | Animation_duration -> v Animation_duration (read_duration t)
@@ -1622,6 +1684,8 @@ let read_value (type a) (prop : a property) t : declaration =
   | Animation_direction -> v Animation_direction (read_animation_direction t)
   | Animation_fill_mode -> v Animation_fill_mode (read_animation_fill_mode t)
   | Animation_play_state -> v Animation_play_state (read_animation_play_state t)
+  | Animation_composition ->
+      v Animation_composition (read_animation_composition t)
   (* Color properties *)
   | Accent_color -> v Accent_color (read_color t)
   | Caret_color -> v Caret_color (read_color t)
@@ -1650,6 +1714,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Mask_image -> v Mask_image (read_background_image t)
   | Mask_composite -> v Mask_composite (read_mask_composite t)
   | Mask_mode -> v Mask_mode (read_mask_mode t)
+  | Mask_border -> v Mask_border (read_border_image t)
   | Mask_size -> v Mask_size (read_background_size t)
   | Mask_position -> v Mask_position (read_background_position t)
   | Mask_repeat -> v Mask_repeat (read_background_repeat t)
@@ -2050,6 +2115,7 @@ let flex_grow value = v Flex_grow (Number value : flex_factor)
 let flex_shrink value = v Flex_shrink (Number value : flex_factor)
 let flex_basis value = v Flex_basis value
 let flex_wrap value = v Flex_wrap value
+let flex_flow value = v Flex_flow value
 let order value = v Order value
 let align_items a = v Align_items a
 let align_content a = v Align_content a
@@ -2077,6 +2143,7 @@ let table_layout value = v Table_layout value
 let border_spacing lens = v Border_spacing lens
 let overflow o = v Overflow o
 let object_fit value = v Object_fit value
+let object_view_box value = v Object_view_box value
 let clip value = v Clip value
 let clear value = v Clear value
 let float value = v Float value
@@ -2084,6 +2151,7 @@ let touch_action value = v Touch_action value
 let direction value = v Direction value
 let unicode_bidi value = v Unicode_bidi value
 let writing_mode value = v Writing_mode value
+let text_combine_upright value = v Text_combine_upright value
 let text_decoration_skip_ink value = v Text_decoration_skip_ink value
 let animation_name value = v Animation_name value
 let animation_duration value = v Animation_duration value
@@ -2225,19 +2293,31 @@ let webkit_line_clamp value = v Webkit_line_clamp value
 let webkit_box_orient value = v Webkit_box_orient value
 let text_overflow value = v Text_overflow value
 let text_wrap value = v Text_wrap value
+let text_wrap_mode value = v Text_wrap_mode value
 let word_break value = v Word_break value
 let overflow_wrap value = v Overflow_wrap value
 let line_break value = v Line_break value
 let hyphens value = v Hyphens value
 let webkit_hyphens value = v Webkit_hyphens value
 let font_stretch value = v Font_stretch value
+let font_optical_sizing value = v Font_optical_sizing value
+let font_kerning value = v Font_kerning value
+let font_language_override value = v Font_language_override value
+let font_synthesis_style value = v Font_synthesis_style value
+let font_synthesis_weight value = v Font_synthesis_weight value
+let font_variant_ligatures value = v Font_variant_ligatures value
+let font_variant_caps value = v Font_variant_caps value
 let font_variant_numeric value = v Font_variant_numeric value
+let font_variant_position value = v Font_variant_position value
+let font_variant_east_asian value = v Font_variant_east_asian value
 let backdrop_filter value = v Backdrop_filter value
 let webkit_backdrop_filter value = v Webkit_backdrop_filter value
 let background_position value = v Background_position value
 let background_repeat value = v Background_repeat value
 let background_size value = v Background_size value
 let content value = v Content value
+let counter_reset value = v Counter_reset value
+let counter_increment value = v Counter_increment value
 let border_left_width value = v Border_left_width value
 let border_inline_start_width value = v Border_inline_start_width value
 let border_inline_end_width value = v Border_inline_end_width value
@@ -2328,5 +2408,7 @@ let scroll_snap_align value = v Scroll_snap_align value
 let scroll_snap_stop value = v Scroll_snap_stop value
 let scroll_behavior value = v Scroll_behavior value
 let color_scheme value = v Color_scheme value
+let image_rendering value = v Image_rendering value
+let image_resolution value = v Image_resolution value
 
 (* Alignment constructor helpers (declarations) *)
