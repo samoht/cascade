@@ -605,6 +605,80 @@ module Length = struct
       container_width = unwrap_px ctx.container_width;
       container_height = unwrap_px ctx.container_height;
     }
+
+  let is_absolute : Values.length -> bool = function
+    | Zero | Px _ | Cm _ | Mm _ | Q _ | In _ | Pt _ | Pc _ -> true
+    | _ -> false
+
+  let rec calc_has_relative : Values.length Values.calc -> bool = function
+    | Val l -> not (is_absolute l)
+    | Num _ | Var _ | Sibling_index | Sibling_count -> false
+    | Nested inner | Parens inner -> calc_has_relative inner
+    | Expr (l, _, r) -> calc_has_relative l || calc_has_relative r
+
+  (* CSS Values 4 §10.11 simplification of a typed [length calc]. Folds every
+     subtree whose operands the [ctx] can collapse to absolute lengths, and
+     leaves [Var] / [Sibling_*] / unresolvable subtrees in place. The result is
+     still a [length calc]: a fully reducible body collapses to [Val (Px _)]
+     (caller decides whether to keep the [calc()] wrapper); a partially
+     reducible body keeps the [Expr] structure with the simplified operands. *)
+  let eval_calc =
+    let combine_lengths ctx la lb (op : Values.calc_op) : Values.length option =
+      match (to_px ctx la, to_px ctx lb) with
+      | Some pa, Some pb -> (
+          match op with
+          | Add -> Some (Px (pa +. pb))
+          | Sub -> Some (Px (pa -. pb))
+          | _ -> None)
+      | _ -> None
+    in
+    let combine_length_num ctx l n (op : Values.calc_op) : Values.length option
+        =
+      match to_px ctx l with
+      | None -> None
+      | Some p -> (
+          match op with
+          | Mul -> Some (Px (p *. n))
+          | Div when n <> 0. -> Some (Px (p /. n))
+          | _ -> None)
+    in
+    let rec eval ctx (calc : Values.length Values.calc) :
+        Values.length Values.calc =
+      let open Values in
+      match calc with
+      | Num _ | Val _ | Var _ | Sibling_index | Sibling_count -> calc
+      | Nested inner -> (
+          match eval ctx inner with
+          | (Val _ | Num _ | Var _) as leaf -> leaf
+          | reduced -> Nested reduced)
+      | Parens inner -> (
+          match eval ctx inner with
+          | (Val _ | Num _ | Var _) as leaf -> leaf
+          | reduced -> Parens reduced)
+      | Expr (l, op, r) -> (
+          let l = eval ctx l in
+          let r = eval ctx r in
+          match (l, op, r) with
+          | Num a, Add, Num b -> Num (a +. b)
+          | Num a, Sub, Num b -> Num (a -. b)
+          | Num a, Mul, Num b -> Num (a *. b)
+          | Num a, Div, Num b when b <> 0. -> Num (a /. b)
+          | Val la, _, Val lb -> (
+              match combine_lengths ctx la lb op with
+              | Some out -> Val out
+              | None -> Expr (l, op, r))
+          | Val la, _, Num n -> (
+              match combine_length_num ctx la n op with
+              | Some out -> Val out
+              | None -> Expr (l, op, r))
+          | Num n, Mul, Val lb -> (
+              (* Multiplication is commutative on length × number. *)
+              match combine_length_num ctx lb n Mul with
+              | Some out -> Val out
+              | None -> Expr (l, op, r))
+          | _ -> Expr (l, op, r))
+    in
+    eval
 end
 
 (** {2 Media-feature value comparison (CSS Media Queries 4 §3)}
@@ -1373,54 +1447,22 @@ module Computed_value = struct
       Ok (Buffer.contents buf)
     with Unresolved msg -> Error msg
 
-  (* CSS Values 4 §10.11 computed-value-time math evaluation.
-
-     The body of a [calc(...)] is parsed by {!Values.read_calc_expr} into the
-     same typed [length calc] AST the value parser already produces. Walking
-     that AST folds every subtree whose operands resolve, and tags whether any
-     leaf was a relative unit (rem/em/vh/...). The relativity bit lets the
-     resolver follow §10.11 strictly when relative units force computed-time
-     evaluation, while preserving authored pure-absolute calcs through [var()]
-     substitution (see {!resolve_calc}). *)
-  module Calc = struct
-    type result = { px : float; has_relative : bool }
-
-    let is_absolute_length : Values.length -> bool = function
-      | Zero | Px _ | Cm _ | Mm _ | Q _ | In _ | Pt _ | Pc _ -> true
-      | _ -> false
-
-    let combine op (l : result) (r : result) : result option =
-      let has_relative = l.has_relative || r.has_relative in
-      match (op : Values.calc_op) with
-      | Add -> Some { px = l.px +. r.px; has_relative }
-      | Sub -> Some { px = l.px -. r.px; has_relative }
-      | Mul -> Some { px = l.px *. r.px; has_relative }
-      | Div when r.px <> 0. -> Some { px = l.px /. r.px; has_relative }
-      | Div -> None
-
-    let rec eval length_ctx (calc : Values.length Values.calc) : result option =
-      match calc with
-      | Num n -> Some { px = n; has_relative = false }
-      | Val length -> (
-          match Length.to_px length_ctx length with
-          | Some px ->
-              Some { px; has_relative = not (is_absolute_length length) }
-          | None -> None)
-      | Var _ | Sibling_index | Sibling_count -> None
-      | Nested inner | Parens inner -> eval length_ctx inner
-      | Expr (l, op, r) -> (
-          match (eval length_ctx l, eval length_ctx r) with
-          | Some l, Some r -> combine op l r
-          | _ -> None)
-
-    let evaluate length_ctx s : result option =
-      try
-        let cursor = Cursor.of_string s in
-        let calc = Values.read_calc_expr Values.read_length cursor in
-        Cursor.ws cursor;
-        if not (Cursor.is_done cursor) then None else eval length_ctx calc
-      with Cursor.Parse_error _ | Reader.Parse_error _ -> None
-  end
+  (* Parse a calc body string into the typed [length calc] AST and apply
+     {!Length.eval_calc}. Returns the simplified calc plus whether the original
+     body referenced any relative-unit leaf — the resolver consults that flag to
+     decide between folding to a single length and preserving authored
+     [calc(...)] form across [var()] substitution. *)
+  let evaluate_calc_body length_ctx (body : string) :
+      (Values.length Values.calc * bool) option =
+    try
+      let cursor = Cursor.of_string body in
+      let calc = Values.read_calc_expr Values.read_length cursor in
+      Cursor.ws cursor;
+      if not (Cursor.is_done cursor) then None
+      else
+        let has_relative = Length.calc_has_relative calc in
+        Some (Length.eval_calc length_ctx calc, has_relative)
+    with Cursor.Parse_error _ | Reader.Parse_error _ -> None
 
   (* CSS Values 4 §10.13 collapses a fully-absolute [calc()] to a single length
      at computed-value time. The resolver follows that rule with one Tailwind-
@@ -1488,17 +1530,18 @@ module Computed_value = struct
                    (Values.pp_length ~always:true)
                    (Px px))
             in
-            (match Calc.evaluate length_ctx body_clean with
-            | Some { px; has_relative = true } ->
+            let from_var = authored && body_has_subst_marker body in
+            (match evaluate_calc_body length_ctx body_clean with
+            | Some (Val (Px px), true) ->
                 (* CSS Values 4 §10.11: relative units force computed-value
                    simplification regardless of substitution provenance. *)
                 emit_px px
-            | Some { px; has_relative = false } ->
-                if authored && body_has_subst_marker body then preserve ()
-                else emit_px px
-            | None ->
-                if authored && body_has_subst_marker body then preserve ()
-                else raise (Unresolved ("calc(" ^ body_clean ^ ")")));
+            | Some (Val (Px px), false) when not from_var -> emit_px px
+            | Some _ when from_var -> preserve ()
+            | Some (Val (Px px), false) -> emit_px px
+            | Some _ -> raise (Unresolved ("calc(" ^ body_clean ^ ")"))
+            | None when from_var -> preserve ()
+            | None -> raise (Unresolved ("calc(" ^ body_clean ^ ")")));
             scan after)
         else
           let c = s.[i] in
