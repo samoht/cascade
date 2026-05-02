@@ -1358,9 +1358,14 @@ let spec_selector_l4_pseudo_matrix () =
       ":future";
       ":nth-col(2n+1)";
       ":nth-last-col(odd)";
+      ":nth-child(even of :is(.item,[data-visible]))";
+      ":nth-last-child(3n+1 of :where(.visible,:not([hidden])))";
       ":is(section,article,aside)>:where(h1,h2)";
       ":not(:where(.muted,[hidden]))";
+      ":not(:is(.muted,[hidden]))";
       ":has(>:is(img, picture, video))";
+      ":has(+ :is(summary, .summary))";
+      ":where(:modal,:popover-open)";
       "dialog:modal::backdrop";
       "::part(tab)";
       "::part(tab panel)";
@@ -1376,7 +1381,9 @@ let spec_selector_l4_pseudo_matrix () =
       ":nth-last-col(of .item)";
       ":current()";
       ":has(, .item)";
+      ":has(+)";
       ":not()";
+      ":not(:has())";
       "::part(tab, panel)";
       "::slotted(.a, .b)";
       "::cue()";
@@ -1503,8 +1510,10 @@ let spec_selector_pseudo_manifest () =
       ":muted";
       ":not(.a,#b)";
       ":nth-child(2n+1 of .item)";
+      ":nth-child(even of :is(.item,[data-visible]))";
       ":nth-col(odd)";
       ":nth-last-child(2n of :not([hidden]))";
+      ":nth-last-child(3n+1 of :where(.visible,:not([hidden])))";
       ":nth-last-col(even)";
       ":nth-last-of-type(-n+3)";
       ":nth-of-type(3n)";
@@ -1535,6 +1544,7 @@ let spec_selector_pseudo_manifest () =
       ":visited";
       ":volume-locked";
       ":where(.a,#b)";
+      ":where(:modal,:popover-open)";
       ":after";
       ":before";
       "::cue(.warning)";
@@ -1563,6 +1573,7 @@ let spec_selector_pseudo_manifest () =
       ":lang()";
       ":not()";
       ":nth-child(2n of)";
+      ":not(:has())";
       ":nth-col()";
       ":nth-last-col(of .item)";
       ":state()";

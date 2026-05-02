@@ -740,7 +740,7 @@ val table_layout : table_layout -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/table-layout}
      table-layout} property. *)
 
-val border_spacing : length list -> declaration
+val border_spacing : border_spacing -> declaration
 (** [border_spacing values] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-spacing}
      border-spacing} property. Accepts 1 or 2 length values. *)
@@ -772,6 +772,18 @@ val float : float_side -> declaration
 (** [float v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/float} float} property.
 *)
+
+val interactivity : interactivity -> declaration
+(** [interactivity v] is the CSS [interactivity] property. *)
+
+val interest_delay : interest_delay -> declaration
+(** [interest_delay v] is the CSS [interest-delay] property. *)
+
+val interest_delay_start : interest_delay -> declaration
+(** [interest_delay_start v] is the CSS [interest-delay-start] property. *)
+
+val interest_delay_end : interest_delay -> declaration
+(** [interest_delay_end v] is the CSS [interest-delay-end] property. *)
 
 val touch_action : touch_action -> declaration
 (** [touch_action v] is the

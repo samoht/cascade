@@ -7,6 +7,8 @@ type 'a fallback =
        a bug in tailwindcss *)
   | None (* No fallback: var(--name) *)
   | Fallback of 'a (* Value fallback: var(--name, value) *)
+  | Syntax_fallback of Component.t list
+    (* Syntactic declaration-value fallback when it is not a typed value. *)
   | Var_fallback of
       string (* Nested var fallback: var(--name, var(--fallback)) *)
 

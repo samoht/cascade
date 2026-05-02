@@ -338,6 +338,10 @@ let test_selector_l4_serialization_matrix buf =
         "section:has(:scope > h2,:scope > h3)";
         "li:nth-child(2n+1 of .item:not([hidden]))";
         "li:nth-last-child(-n+3 of :where(.visible,[data-visible]))";
+        "li:nth-child(even of :is(.item,[data-visible]))";
+        "li:nth-last-child(3n+1 of :where(.visible,:not([hidden])))";
+        ":where(:modal,:popover-open)";
+        ":has(+ :is(summary,.summary))";
         "::part(tab panel)";
         "::slotted(*:not([hidden]))";
         "dialog:modal::backdrop";

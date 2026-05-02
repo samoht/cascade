@@ -589,6 +589,8 @@ type 'a fallback =
           likely a bug in tailwindcss *)
   | None  (** No fallback: var(--name) *)
   | Fallback of 'a  (** Value fallback: var(--name, value) *)
+  | Syntax_fallback of Component.t list
+      (** Syntactic declaration-value fallback when it is not a typed value. *)
   | Var_fallback of string
       (** Nested var fallback: var(--name, var(--fallback)) *)
 
@@ -1653,6 +1655,8 @@ type overflow =
   | Revert_layer
   | Overflow_pair of overflow * overflow
   | Var of overflow var
+
+type border_spacing = Lengths of length list | Var of border_spacing var
 
 val display : display -> declaration
 (** [display d] is the
@@ -3185,6 +3189,10 @@ type grid_line =
   | Calc of string  (** calc(12 * -1), etc. *)
   | Var of grid_line var
 
+type grid_line_pair =
+  | Lines of grid_line * grid_line
+  | Var of grid_line_pair var
+
 val grid_template_columns : grid_template -> declaration
 (** [grid_template_columns cols] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/grid-template-columns}
@@ -3778,6 +3786,16 @@ val text_emphasis : text_emphasis -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-emphasis}
      text-emphasis} property. *)
 
+val text_emphasis_style : text_emphasis_style -> declaration
+(** [text_emphasis_style style] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-emphasis-style}
+     text-emphasis-style} property. *)
+
+val text_emphasis_color : color -> declaration
+(** [text_emphasis_color color] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-emphasis-color}
+     text-emphasis-color} property. *)
+
 val text_emphasis_position : text_emphasis_position -> declaration
 (** [text_emphasis_position position] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-emphasis-position}
@@ -3900,6 +3918,7 @@ val font_language_override : font_language_override -> declaration
 type font_synthesis_style =
   | Auto
   | None
+  | Oblique_only
   | Inherit
   | Initial
   | Unset
@@ -3926,6 +3945,36 @@ val font_synthesis_weight : font_synthesis_weight -> declaration
 (** [font_synthesis_weight weight] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-synthesis-weight}
      font-synthesis-weight} property. *)
+
+type font_synthesis_small_caps =
+  | Auto
+  | None
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_synthesis_small_caps var
+
+val font_synthesis_small_caps : font_synthesis_small_caps -> declaration
+(** [font_synthesis_small_caps small_caps] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-synthesis-small-caps}
+     font-synthesis-small-caps} property. *)
+
+type font_synthesis_position =
+  | Auto
+  | None
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_synthesis_position var
+
+val font_synthesis_position : font_synthesis_position -> declaration
+(** [font_synthesis_position position] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-synthesis-position}
+     font-synthesis-position} property. *)
 
 type font_variant_ligature =
   | Common_ligatures
@@ -5404,6 +5453,38 @@ val cursor : cursor -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/cursor} cursor}
     property. *)
 
+type interactivity =
+  | Auto
+  | Inert
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of interactivity var
+
+val interactivity : interactivity -> declaration
+(** [interactivity interactivity] is the CSS [interactivity] property. *)
+
+type interest_delay =
+  | Normal
+  | Durations of duration list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of interest_delay var
+
+val interest_delay : interest_delay -> declaration
+(** [interest_delay delay] is the CSS [interest-delay] property. *)
+
+val interest_delay_start : interest_delay -> declaration
+(** [interest_delay_start delay] is the CSS [interest-delay-start] property. *)
+
+val interest_delay_end : interest_delay -> declaration
+(** [interest_delay_end delay] is the CSS [interest-delay-end] property. *)
+
 (** CSS pointer-events values *)
 type pointer_events =
   | Auto
@@ -5767,7 +5848,7 @@ val list_style : string -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/list-style} list-style}
     shorthand property. *)
 
-val border_spacing : length list -> declaration
+val border_spacing : border_spacing -> declaration
 (** [border_spacing values] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/border-spacing}
      border-spacing} property. Accepts 1 or 2 length values. *)
@@ -5967,7 +6048,7 @@ val scroll_margin_left : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-left}
      scroll-margin-left} property. *)
 
-val scroll_margin_inline : length -> declaration
+val scroll_margin_inline : length list -> declaration
 (** [scroll_margin_inline margin] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-inline}
      scroll-margin-inline} property. *)
@@ -6023,7 +6104,7 @@ val scroll_padding_left : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-left}
      scroll-padding-left} property. *)
 
-val scroll_padding_inline : length -> declaration
+val scroll_padding_inline : length list -> declaration
 (** [scroll_padding_inline padding] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-inline}
      scroll-padding-inline} property. *)
@@ -6038,7 +6119,7 @@ val scroll_padding_inline_end : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-inline-end}
      scroll-padding-inline-end} property. *)
 
-val scroll_padding_block : length -> declaration
+val scroll_padding_block : length list -> declaration
 (** [scroll_padding_block padding] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-block}
      scroll-padding-block} property. *)
@@ -6510,6 +6591,9 @@ val pp_initial_letter : initial_letter Pp.t
 
 val pp_overflow : overflow Pp.t
 (** [pp_overflow] is the pretty printer for overflow values. *)
+
+val pp_border_spacing : border_spacing Pp.t
+(** [pp_border_spacing] is the pretty printer for border-spacing values. *)
 
 val pp_border_style : border_style Pp.t
 (** [pp_border_style] is the pretty printer for border-style values. *)

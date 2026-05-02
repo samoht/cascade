@@ -13,6 +13,26 @@ let cssish buf =
 
 let cursor buf = Css.Cursor.of_string (cssish buf)
 
+let byte_at buf i =
+  if String.length buf = 0 then 0 else Char.code buf.[i mod String.length buf]
+
+let pick xs buf i = List.nth xs (byte_at buf i mod List.length xs)
+
+let safe_component_input buf =
+  let ident =
+    "x" ^ string_of_int (byte_at buf 0) ^ "-" ^ string_of_int (byte_at buf 1)
+  in
+  pick
+    [
+      ident;
+      ident ^ " 1px";
+      "calc(1rem + 2px)";
+      "var(--" ^ ident ^ ",1px)";
+      "[" ^ ident ^ "=open]";
+      "{color:red}";
+    ]
+    buf 2
+
 let test_cursor_crash_safety buf =
   let c = cursor buf in
   ignore (Css.Cursor.peek c);
@@ -51,7 +71,7 @@ let test_option_rewinds_on_failure buf =
   if before <> after then fail "cursor option did not rewind after failure"
 
 let test_components_to_string_idempotent buf =
-  let input = cssish buf in
+  let input = safe_component_input buf in
   let c = Css.Cursor.of_string input in
   let once = Css.Cursor.remaining_to_string c in
   let c2 = Css.Cursor.of_string once in

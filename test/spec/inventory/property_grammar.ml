@@ -55,7 +55,7 @@ let matrix =
     };
     {
       property = "scroll-snap-align";
-      positives = [ "none"; "start"; "start end"; "center" ];
+      positives = [ "none"; "start"; "start end"; "center"; "none start" ];
       negatives = [ "start center end"; "foo" ];
     };
     {
@@ -75,12 +75,26 @@ let matrix =
     };
     {
       property = "width";
-      positives = [ "auto"; "min-content"; "fit-content(20rem)"; "stretch" ];
+      positives =
+        [
+          "auto";
+          "min-content";
+          "fit-content(20rem)";
+          "stretch";
+          "calc(1rem + 2px)";
+        ];
       negatives = [ "red"; "fit-content()" ];
     };
     {
       property = "margin";
-      positives = [ "0"; "1px 2px 3px 4px"; "auto"; "anchor-size(width)" ];
+      positives =
+        [
+          "0";
+          "1px 2px 3px 4px";
+          "auto";
+          "anchor-size(width)";
+          "calc(1rem + 2px)";
+        ];
       negatives = [ "red"; "1px 2px 3px 4px 5px" ];
     };
     {
@@ -100,13 +114,28 @@ let matrix =
     };
     {
       property = "background";
-      positives = [ "red"; "url(a.png) no-repeat center / cover"; "none" ];
+      positives =
+        [
+          "red";
+          "url(a.png) no-repeat center / cover";
+          "none";
+          "conic-gradient(from 45deg, red, blue)";
+          "cross-fade(url(a.png) 40%, url(b.png))";
+        ];
       negatives = [ "red blue"; "url(" ];
     };
     {
       property = "background-image";
-      positives = [ "none"; "url(a.png)"; "linear-gradient(red, blue)" ];
-      negatives = [ "linear-gradient()"; "image-set()" ];
+      positives =
+        [
+          "none";
+          "url(a.png)";
+          "linear-gradient(red, blue)";
+          "image-set(url(a.avif) type(\"image/avif\") 1x, url(a.png) \
+           type(\"image/png\") 1x)";
+          "cross-fade(url(a.png) 40%, url(b.png))";
+        ];
+      negatives = [ "linear-gradient()"; "image-set()"; "cross-fade(url(a.png), )" ];
     };
     {
       property = "background-size";
@@ -127,8 +156,26 @@ let matrix =
     {
       property = "color";
       positives =
-        [ "red"; "color(display-p3 1 0 0)"; "light-dark(black, white)" ];
-      negatives = [ "not-a-color"; "color(display-p3 1 0)" ];
+        [
+          "red";
+          "color(display-p3 1 0 0)";
+          "light-dark(black, white)";
+          "hwb(90 10% 20%)";
+          "lab(50% 10 20 / .5)";
+          "lch(50% 20 30)";
+          "oklab(50% 0.1 0.2)";
+          "oklch(50% 0.1 20 / .5)";
+          "color-mix(in lch longer hue, red 30%, blue)";
+        ];
+      negatives =
+        [
+          "not-a-color";
+          "color(display-p3 1 0)";
+          "hwb(0 0%)";
+          "lab(50% 10)";
+          "oklch(50% .1 20 /)";
+          "color-mix(in bogus, red, blue)";
+        ];
     };
     {
       property = "opacity";
@@ -267,6 +314,16 @@ let matrix =
       negatives = [ "inside outside"; "square disc" ];
     };
     {
+      property = "counter-reset";
+      positives = [ "none"; "section"; "section 2"; "section 2 page -1" ];
+      negatives = [ "none section"; "section 1.5"; "section none" ];
+    };
+    {
+      property = "counter-increment";
+      positives = [ "none"; "section"; "section 2"; "section 2 page -1" ];
+      negatives = [ "none section"; "section 1.5"; "section none" ];
+    };
+    {
       property = "content";
       positives =
         [ "normal"; "\"hello\""; "open-quote attr(title) close-quote" ];
@@ -354,8 +411,8 @@ let matrix =
       [ "0"; "1rem"; "10%" ]
       [ "auto"; "1px 2px 3px"; "red" ]
   @ rows_for
-      [ "margin-inline"; "margin-block"; "scroll-margin-block" ]
-      [ "0"; "1px"; "1px 2px"; "auto" ]
+      [ "margin-inline"; "margin-block" ]
+      [ "0"; "1px"; "1px 1px"; "1px 2px"; "auto" ]
       [ "red"; "1px 2px 3px" ]
   @ rows_for
       [
@@ -363,30 +420,49 @@ let matrix =
         "margin-inline-end";
         "margin-block-start";
         "margin-block-end";
-        "scroll-margin";
+      ]
+      [ "0"; "1px"; "10%"; "auto" ]
+      [ "red"; "1px 2px" ]
+  @ rows_for [ "scroll-margin" ]
+      [ "0"; "1px"; "1px 2px"; "1px 2px 3px 4px" ]
+      [ "auto"; "10%"; "red"; "1px 2px 3px 4px 5px" ]
+  @ rows_for
+      [ "scroll-margin-inline"; "scroll-margin-block" ]
+      [ "0"; "1px"; "1px 2px" ]
+      [ "auto"; "10%"; "red"; "1px 2px 3px" ]
+  @ rows_for
+      [
         "scroll-margin-top";
         "scroll-margin-right";
         "scroll-margin-bottom";
         "scroll-margin-left";
-        "scroll-margin-inline";
         "scroll-margin-inline-start";
         "scroll-margin-inline-end";
         "scroll-margin-block-start";
         "scroll-margin-block-end";
-        "scroll-padding";
+      ]
+      [ "0"; "1px" ]
+      [ "auto"; "10%"; "red"; "1px 2px" ]
+  @ rows_for [ "scroll-padding" ]
+      [ "auto"; "0"; "1px"; "10%"; "1px 2px"; "1px 2px 3px 4px" ]
+      [ "red"; "1px 2px 3px 4px 5px"; "-1px" ]
+  @ rows_for
+      [ "scroll-padding-inline"; "scroll-padding-block" ]
+      [ "auto"; "0"; "1px"; "10%"; "1px 2px" ]
+      [ "red"; "1px 2px 3px"; "-1px" ]
+  @ rows_for
+      [
         "scroll-padding-top";
         "scroll-padding-right";
         "scroll-padding-bottom";
         "scroll-padding-left";
-        "scroll-padding-inline";
         "scroll-padding-inline-start";
         "scroll-padding-inline-end";
-        "scroll-padding-block";
         "scroll-padding-block-start";
         "scroll-padding-block-end";
       ]
-      [ "0"; "1px"; "10%" ]
-      [ "red"; "1px 2px 3px 4px 5px" ]
+      [ "auto"; "0"; "1px"; "10%" ]
+      [ "red"; "1px 2px"; "-1px" ]
   @ rows_for
       [
         "height";
@@ -402,8 +478,17 @@ let matrix =
         "max-block-size";
         "flex-basis";
       ]
-      [ "auto"; "10%"; "min-content"; "fit-content(20rem)" ]
+      [ "auto"; "10%"; "min-content"; "fit-content(20rem)"; "calc(1rem + 2px)" ]
       [ "red"; "fit-content()"; "1px 2px" ]
+  @ rows_for
+      [
+        "contain-intrinsic-width";
+        "contain-intrinsic-height";
+        "contain-intrinsic-inline-size";
+        "contain-intrinsic-block-size";
+      ]
+      [ "none"; "100px"; "auto 300px" ]
+      [ "auto"; "1px 2px"; "red" ]
   @ rows_for
       [
         "border-width";
@@ -418,6 +503,18 @@ let matrix =
       ]
       [ "thin"; "medium"; "thick"; "1px" ]
       [ "auto"; "thin medium thick 1px 2px"; "red" ]
+  @ [
+      {
+        property = "border-block";
+        positives = [ "1px solid red"; "solid"; "0" ];
+        negatives = [ "solid solid"; "red blue" ];
+      };
+      {
+        property = "border-inline-color";
+        positives = [ "red"; "red blue"; "currentColor" ];
+        negatives = [ "red blue green"; "1px" ];
+      };
+    ]
   @ rows_for [ "inset" ]
       [ "auto"; "1px"; "10%"; "1px 2px 3px 4px" ]
       [ "red"; "1px 2px 3px 4px 5px" ]
@@ -535,8 +632,21 @@ let matrix =
       };
       {
         property = "font-variant-numeric";
-        positives = [ "normal"; "tabular-nums"; "lining-nums slashed-zero" ];
-        negatives = [ "normal tabular-nums"; "tabular-nums tabular-nums" ];
+        positives =
+          [
+            "normal";
+            "tabular-nums";
+            "lining-nums slashed-zero";
+            "oldstyle-nums tabular-nums stacked-fractions ordinal slashed-zero";
+          ];
+        negatives =
+          [
+            "normal tabular-nums";
+            "tabular-nums tabular-nums";
+            "lining-nums oldstyle-nums";
+            "proportional-nums tabular-nums";
+            "diagonal-fractions stacked-fractions";
+          ];
       };
       {
         property = "font-size-adjust";
@@ -556,12 +666,45 @@ let matrix =
       {
         property = "text-decoration-line";
         positives = [ "none"; "underline"; "underline overline line-through" ];
-        negatives = [ "none underline"; "underline underline" ];
+        negatives =
+          [
+            "none underline"; "underline underline"; "spelling-error underline";
+          ];
       };
       {
         property = "text-decoration-style";
         positives = [ "solid"; "double"; "dotted"; "wavy" ];
         negatives = [ "solid wavy"; "none" ];
+      };
+      {
+        property = "text-underline-position";
+        positives = [ "auto"; "from-font"; "under left"; "right under" ];
+        negatives = [ "auto under"; "left right" ];
+      };
+      {
+        property = "text-decoration-skip";
+        positives = [ "none"; "auto" ];
+        negatives = [ "none auto"; "objects" ];
+      };
+      {
+        property = "text-decoration-skip-self";
+        positives = [ "none"; "objects" ];
+        negatives = [ "auto"; "none objects" ];
+      };
+      {
+        property = "text-decoration-skip-box";
+        positives = [ "all"; "none" ];
+        negatives = [ "auto"; "all none" ];
+      };
+      {
+        property = "text-decoration-skip-inset";
+        positives = [ "none"; "auto" ];
+        negatives = [ "1px"; "none auto" ];
+      };
+      {
+        property = "text-decoration-skip-spaces";
+        positives = [ "all"; "start"; "end"; "start end" ];
+        negatives = [ "none"; "start start" ];
       };
       {
         property = "text-transform";
@@ -594,6 +737,72 @@ let matrix =
         negatives = [ "normal trim-start"; "auto" ];
       };
       {
+        property = "text-emphasis";
+        positives = [ "none"; "filled dot red"; "\"*\" blue"; "sesame" ];
+        negatives = [ "filled open"; "dot circle"; "red blue" ];
+      };
+      {
+        property = "text-emphasis-style";
+        positives = [ "none"; "filled dot"; "open sesame"; "\"*\"" ];
+        negatives = [ "filled open"; "dot circle" ];
+      };
+      {
+        property = "text-emphasis-color";
+        positives = [ "currentColor"; "red"; "rgb(0 0 0 / 50%)" ];
+        negatives = [ "1px"; "red blue" ];
+      };
+      {
+        property = "text-emphasis-position";
+        positives = [ "over right"; "under left"; "over" ];
+        negatives = [ "over under"; "left right" ];
+      };
+      {
+        property = "text-emphasis-skip";
+        positives =
+          [ "spaces"; "punctuation symbols"; "spaces punctuation narrow" ];
+        negatives = [ "spaces spaces"; "none" ];
+      };
+      {
+        property = "text-orientation";
+        positives = [ "mixed"; "upright"; "sideways" ];
+        negatives = [ "mixed upright"; "sideways-right" ];
+      };
+      {
+        property = "text-combine-upright";
+        positives = [ "none"; "all"; "digits"; "digits 2"; "digits 4" ];
+        negatives = [ "digits 1"; "digits 5"; "all digits"; "digits 2 3" ];
+      };
+      {
+        property = "glyph-orientation-vertical";
+        positives = [ "auto"; "0deg"; "90deg"; "0"; "90" ];
+        negatives = [ "45deg"; "180"; "auto 90deg" ];
+      };
+      {
+        property = "line-break";
+        positives = [ "auto"; "loose"; "normal"; "strict"; "anywhere" ];
+        negatives = [ "anywhere strict"; "break-word" ];
+      };
+      {
+        property = "text-box";
+        positives = [ "none"; "trim-both cap alphabetic"; "trim-start text" ];
+        negatives = [ "cap trim-both"; "trim-start cap alphabetic text" ];
+      };
+      {
+        property = "text-box-edge";
+        positives = [ "auto"; "text"; "cap alphabetic"; "ex text" ];
+        negatives = [ "cap"; "alphabetic cap"; "cap ex" ];
+      };
+      {
+        property = "line-fit-edge";
+        positives = [ "leading"; "text"; "cap alphabetic"; "ideographic-ink" ];
+        negatives = [ "leading text"; "cap"; "alphabetic cap" ];
+      };
+      {
+        property = "inline-sizing";
+        positives = [ "normal"; "stretch" ];
+        negatives = [ "normal stretch"; "auto" ];
+      };
+      {
         property = "hyphenate-limit-chars";
         positives = [ "auto"; "6"; "6 3"; "6 3 2" ];
         negatives = [ "1 2 3 4"; "red" ];
@@ -602,6 +811,37 @@ let matrix =
         property = "initial-letter";
         positives = [ "normal"; "2"; "2 3" ];
         negatives = [ "2 3 4"; "auto" ];
+      };
+      {
+        property = "initial-letter-align";
+        positives =
+          [ "alphabetic"; "ideographic"; "border-box"; "border-box hanging" ];
+        negatives = [ "alphabetic ideographic"; "border-box border-box" ];
+      };
+      {
+        property = "initial-letter-wrap";
+        positives = [ "none"; "first"; "all"; "grid"; "10%" ];
+        negatives = [ "none first"; "auto"; "1px 2px" ];
+      };
+      {
+        property = "dominant-baseline";
+        positives = [ "auto"; "alphabetic"; "ideographic"; "mathematical" ];
+        negatives = [ "alphabetic ideographic"; "baseline" ];
+      };
+      {
+        property = "baseline-source";
+        positives = [ "auto"; "first"; "last" ];
+        negatives = [ "first last"; "baseline" ];
+      };
+      {
+        property = "alignment-baseline";
+        positives = [ "baseline"; "text-bottom"; "middle"; "central" ];
+        negatives = [ "baseline middle"; "auto" ];
+      };
+      {
+        property = "baseline-shift";
+        positives = [ "0"; "10%"; "sub"; "super"; "top"; "center"; "bottom" ];
+        negatives = [ "sub super"; "auto" ];
       };
       {
         property = "visibility";
@@ -749,6 +989,73 @@ let matrix =
         negatives = [ "url(cursor.png)"; "pointer auto" ];
       };
       {
+        property = "caret";
+        positives = [ "auto"; "red"; "manual"; "block"; "red manual block" ];
+        negatives = [ "manual manual"; "block underscore"; "red blue" ];
+      };
+      {
+        property = "caret-animation";
+        positives = [ "auto"; "manual" ];
+        negatives = [ "manual auto"; "blink" ];
+      };
+      {
+        property = "caret-shape";
+        positives = [ "auto"; "bar"; "block"; "underscore" ];
+        negatives = [ "bar block"; "line" ];
+      };
+      {
+        property = "interactivity";
+        positives = [ "auto"; "inert" ];
+        negatives = [ "none"; "auto inert" ];
+      };
+      {
+        property = "interest-delay";
+        positives = [ "normal"; "200ms"; "200ms 1s" ];
+        negatives = [ "auto"; "1s 2s 3s"; "-1s" ];
+      };
+      {
+        property = "interest-delay-start";
+        positives = [ "normal"; "200ms"; "1s" ];
+        negatives = [ "auto"; "1s 2s"; "-1s" ];
+      };
+      {
+        property = "interest-delay-end";
+        positives = [ "normal"; "200ms"; "1s" ];
+        negatives = [ "auto"; "1s 2s"; "-1s" ];
+      };
+      {
+        property = "nav-up";
+        positives =
+          [
+            "auto"; "#next"; "#next current"; "#next root"; "#next \"sidebar\"";
+          ];
+        negatives = [ "current"; "#next current root"; "#next \"_self\"" ];
+      };
+      {
+        property = "nav-right";
+        positives =
+          [
+            "auto"; "#next"; "#next current"; "#next root"; "#next \"sidebar\"";
+          ];
+        negatives = [ "current"; "#next current root"; "#next \"_self\"" ];
+      };
+      {
+        property = "nav-down";
+        positives =
+          [
+            "auto"; "#next"; "#next current"; "#next root"; "#next \"sidebar\"";
+          ];
+        negatives = [ "current"; "#next current root"; "#next \"_self\"" ];
+      };
+      {
+        property = "nav-left";
+        positives =
+          [
+            "auto"; "#next"; "#next current"; "#next root"; "#next \"sidebar\"";
+          ];
+        negatives = [ "current"; "#next current root"; "#next \"_self\"" ];
+      };
+      {
         property = "table-layout";
         positives = [ "auto"; "fixed" ];
         negatives = [ "fixed auto"; "block" ];
@@ -864,6 +1171,22 @@ let matrix =
         negatives = [ "flip-block --fallback"; "," ];
       };
       {
+        property = "position-area";
+        positives = [ "none"; "top span-left"; "center" ];
+        negatives = [ "top bottom"; "foo" ];
+      };
+      {
+        property = "position-try-order";
+        positives = [ "normal"; "most-width"; "most-height" ];
+        negatives = [ "most-width normal"; "largest" ];
+      };
+      {
+        property = "position-visibility";
+        positives =
+          [ "always"; "anchors-visible"; "anchors-visible no-overflow" ];
+        negatives = [ "always anchors-visible"; "visible" ];
+      };
+      {
         property = "overflow-anchor";
         positives = [ "auto"; "none" ];
         negatives = [ "auto none"; "hidden" ];
@@ -894,6 +1217,127 @@ let matrix =
         negatives = [ "none weight"; "weight weight" ];
       };
       {
+        property = "font-optical-sizing";
+        positives = [ "auto"; "none" ];
+        negatives = [ "auto none"; "normal" ];
+      };
+      {
+        property = "font-kerning";
+        positives = [ "auto"; "normal"; "none" ];
+        negatives = [ "normal none"; "kern" ];
+      };
+      {
+        property = "font-language-override";
+        positives = [ "normal"; "\"TRK\"" ];
+        negatives = [ "none"; "TRK"; "\"TRK\" \"ENG\"" ];
+      };
+      {
+        property = "font-synthesis-style";
+        positives = [ "auto"; "none"; "oblique-only" ];
+        negatives = [ "auto none"; "oblique" ];
+      };
+      {
+        property = "font-synthesis-weight";
+        positives = [ "auto"; "none" ];
+        negatives = [ "auto none"; "normal" ];
+      };
+      {
+        property = "font-synthesis-small-caps";
+        positives = [ "auto"; "none" ];
+        negatives = [ "auto none"; "normal" ];
+      };
+      {
+        property = "font-synthesis-position";
+        positives = [ "auto"; "none" ];
+        negatives = [ "auto none"; "normal" ];
+      };
+      {
+        property = "font-variant-ligatures";
+        positives =
+          [
+            "normal";
+            "none";
+            "common-ligatures";
+            "no-contextual common-ligatures";
+            "common-ligatures no-discretionary-ligatures historical-ligatures \
+             contextual";
+          ];
+        negatives =
+          [
+            "normal common-ligatures";
+            "none common-ligatures";
+            "common-ligatures no-common-ligatures";
+            "common-ligatures common-ligatures";
+          ];
+      };
+      {
+        property = "font-variant-caps";
+        positives =
+          [
+            "normal";
+            "small-caps";
+            "all-small-caps";
+            "petite-caps";
+            "all-petite-caps";
+            "unicase";
+            "titling-caps";
+          ];
+        negatives = [ "small-caps unicase"; "normal small-caps" ];
+      };
+      {
+        property = "font-variant-position";
+        positives = [ "normal"; "sub"; "super" ];
+        negatives = [ "sub super"; "normal sub" ];
+      };
+      {
+        property = "font-variant-east-asian";
+        positives =
+          [
+            "normal";
+            "jis78";
+            "jis04 full-width";
+            "traditional proportional-width ruby";
+          ];
+        negatives =
+          [
+            "normal ruby";
+            "jis78 jis83";
+            "full-width proportional-width";
+            "ruby ruby";
+          ];
+      };
+      {
+        property = "ruby-position";
+        positives =
+          [ "alternate"; "over"; "under"; "alternate over"; "inter-character" ];
+        negatives = [ "over under"; "alternate inter-character" ];
+      };
+      {
+        property = "ruby-align";
+        positives = [ "start"; "center"; "space-between"; "space-around" ];
+        negatives = [ "start center"; "auto" ];
+      };
+      {
+        property = "ruby-merge";
+        positives = [ "separate"; "merge"; "auto" ];
+        negatives = [ "merge separate"; "none" ];
+      };
+      {
+        property = "ruby-overhang";
+        positives = [ "auto"; "none" ];
+        negatives = [ "auto none"; "over" ];
+      };
+      {
+        property = "column-rule";
+        positives = [ "thin solid currentColor"; "solid"; "1px dotted red" ];
+        negatives = [ "solid solid"; "red blue" ];
+      };
+      {
+        property = "column-span";
+        positives = [ "none"; "all" ];
+        negatives = [ "none all"; "2" ];
+      };
+      {
         property = "animation-timeline";
         positives = [ "auto"; "none"; "scroll()"; "--timeline" ];
         negatives = [ "auto none"; "scroll(" ];
@@ -904,9 +1348,29 @@ let matrix =
         negatives = [ "entry exit cover"; "10% 20% 30%" ];
       };
       {
+        property = "animation-range-start";
+        positives = [ "normal"; "20%"; "entry 10%" ];
+        negatives = [ "entry exit"; "10% 20%" ];
+      };
+      {
+        property = "animation-range-end";
+        positives = [ "normal"; "90%"; "exit 90%" ];
+        negatives = [ "entry exit"; "10% 20%" ];
+      };
+      {
+        property = "animation-composition";
+        positives = [ "replace"; "add"; "accumulate, replace" ];
+        negatives = [ "add replace"; "compose" ];
+      };
+      {
         property = "view-transition-name";
         positives = [ "none"; "card"; "match-element" ];
         negatives = [ "card card"; "auto" ];
+      };
+      {
+        property = "view-transition-class";
+        positives = [ "none"; "card"; "card primary" ];
+        negatives = [ "none card"; "card, primary" ];
       };
       {
         property = "image-orientation";
@@ -914,9 +1378,35 @@ let matrix =
         negatives = [ "90deg"; "from-image none" ];
       };
       {
+        property = "image-rendering";
+        positives = [ "auto"; "smooth"; "pixelated"; "crisp-edges" ];
+        negatives = [ "pixelated smooth"; "best-quality" ];
+      };
+      {
+        property = "image-resolution";
+        positives = [ "1dppx"; "from-image"; "from-image 2dppx" ];
+        negatives = [ "from-image from-image"; "-1dppx" ];
+      };
+      {
         property = "contain-intrinsic-size";
         positives = [ "none"; "auto 300px"; "100px 200px" ];
         negatives = [ "auto"; "1px 2px 3px" ];
+      };
+      {
+        property = "min-intrinsic-sizing";
+        positives =
+          [
+            "legacy";
+            "zero-if-scroll";
+            "zero-if-extrinsic";
+            "zero-if-scroll zero-if-extrinsic";
+          ];
+        negatives = [ "none"; "zero-if-scroll zero-if-scroll" ];
+      };
+      {
+        property = "interpolate-size";
+        positives = [ "numeric-only"; "allow-keywords" ];
+        negatives = [ "auto"; "numeric-only allow-keywords" ];
       };
       {
         property = "margin-trim";
@@ -935,6 +1425,31 @@ let matrix =
         negatives = [ "path()"; "ray()" ];
       };
       {
+        property = "offset-rotate";
+        positives = [ "auto"; "reverse"; "reverse 45deg" ];
+        negatives = [ "reverse reverse"; "45px" ];
+      };
+      {
+        property = "scroll-timeline";
+        positives = [ "none"; "--scroller block"; "--x x, --y y" ];
+        negatives = [ "block --scroller"; "--a --b" ];
+      };
+      {
+        property = "scroll-timeline-name";
+        positives = [ "none"; "--scroller"; "--x, --y" ];
+        negatives = [ "scroller"; "--x --y" ];
+      };
+      {
+        property = "scroll-timeline-axis";
+        positives = [ "block"; "inline"; "x"; "y" ];
+        negatives = [ "z"; "block inline" ];
+      };
+      {
+        property = "view-timeline";
+        positives = [ "none"; "--reveal inline"; "--x x, --y y" ];
+        negatives = [ "inline --reveal"; "--a --b" ];
+      };
+      {
         property = "view-timeline-name";
         positives = [ "none"; "--timeline"; "--a, --b" ];
         negatives = [ "timeline"; "--a --b" ];
@@ -943,6 +1458,11 @@ let matrix =
         property = "view-timeline-axis";
         positives = [ "block"; "inline"; "x"; "y" ];
         negatives = [ "block inline"; "z" ];
+      };
+      {
+        property = "view-timeline-inset";
+        positives = [ "auto"; "auto 10%"; "20px 10%" ];
+        negatives = [ "auto auto auto"; "red" ];
       };
       {
         property = "timeline-scope";
@@ -1051,6 +1571,27 @@ let matrix =
         property = "mask";
         positives = [ "none"; "url(mask.png) no-repeat center / contain" ];
         negatives = [ "url("; "red blue" ];
+      };
+      {
+        property = "mask-border";
+        positives =
+          [ "none"; "url(mask.svg) 30 fill"; "url(mask.svg) 30 / 10px" ];
+        negatives = [ "fill fill"; "url(" ];
+      };
+      {
+        property = "border-image";
+        positives =
+          [
+            "none";
+            "linear-gradient(red, blue) 30";
+            "linear-gradient(red, blue) 30 fill / 10px / 1 stretch";
+          ];
+        negatives = [ "none none"; "linear-gradient(red, blue) fill fill" ];
+      };
+      {
+        property = "object-view-box";
+        positives = [ "none"; "inset(0 0 10% 0)"; "xywh(0 0 100% 100%)" ];
+        negatives = [ "inset()"; "rect(0, 1px)" ];
       };
       {
         property = "content-visibility";
@@ -1177,6 +1718,11 @@ let matrix =
         negatives = [ "auto smooth"; "none" ];
       };
       {
+        property = "overlay";
+        positives = [ "none"; "auto" ];
+        negatives = [ "auto none"; "hidden" ];
+      };
+      {
         property = "field-sizing";
         positives = [ "fixed"; "content" ];
         negatives = [ "auto"; "fixed content" ];
@@ -1253,6 +1799,16 @@ let matrix =
       };
       {
         property = "overscroll-behavior-y";
+        positives = [ "auto"; "contain"; "none" ];
+        negatives = [ "contain none"; "hidden" ];
+      };
+      {
+        property = "overscroll-behavior-inline";
+        positives = [ "auto"; "contain"; "none" ];
+        negatives = [ "contain none"; "hidden" ];
+      };
+      {
+        property = "overscroll-behavior-block";
         positives = [ "auto"; "contain"; "none" ];
         negatives = [ "contain none"; "hidden" ];
       };

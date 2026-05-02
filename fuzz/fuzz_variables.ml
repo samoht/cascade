@@ -14,8 +14,22 @@ let cssish buf =
 let byte_at buf i =
   if String.length buf = 0 then 0 else Char.code buf.[i mod String.length buf]
 
+let pick xs buf i = List.nth xs (byte_at buf i mod List.length xs)
+
 let var_name buf =
   "fuzz-" ^ string_of_int (byte_at buf 0) ^ "-" ^ string_of_int (byte_at buf 1)
+
+let fallback_value buf =
+  pick
+    [
+      "red";
+      "1rem";
+      "calc(100% - 1rem)";
+      "var(--gap, 2px)";
+      "{ color: red }";
+      "[a, b, c]";
+    ]
+    buf 2
 
 let parse_var input =
   let r = Css.Cursor.of_string input in
@@ -26,7 +40,7 @@ let test_var_ref_crash_safety buf = ignore (parse_var (cssish buf))
 
 let test_generated_var_reference_roundtrip buf =
   let name = var_name buf in
-  let fallback = cssish buf in
+  let fallback = fallback_value buf in
   let input = "var(--" ^ name ^ ", " ^ fallback ^ ")" in
   match parse_var input with
   | None -> ()

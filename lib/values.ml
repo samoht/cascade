@@ -103,6 +103,11 @@ let pp_var_fallback ctx fallback_name =
         Pp.string ctx fallback_name;
         Pp.string ctx "))"
 
+let pp_syntax_fallback ctx value =
+  Pp.string ctx
+    (if Pp.minified ctx then Parser.to_string_custom_minified value
+     else Parser.to_string_custom value)
+
 let pp_var : type a. a Pp.t -> a var Pp.t =
  fun pp_value ctx v ->
   let emit_var_ref () =
@@ -120,7 +125,7 @@ let pp_var : type a. a Pp.t -> a var Pp.t =
             match ctx.theme_defaults fallback_name with
             | Some resolved -> Pp.string ctx resolved
             | Option.None -> emit_var_ref ())
-        | None | Empty | Empty2 -> emit_var_ref ())
+        | None | Empty | Empty2 | Syntax_fallback _ -> emit_var_ref ())
   else
     match v.fallback with
     | None -> (
@@ -143,6 +148,12 @@ let pp_var : type a. a Pp.t -> a var Pp.t =
         Pp.string ctx v.name;
         Pp.comma ctx ();
         pp_value { ctx with in_function = true } value;
+        Pp.char ctx ')'
+    | Syntax_fallback value ->
+        Pp.string ctx "var(--";
+        Pp.string ctx v.name;
+        Pp.comma ctx ();
+        pp_syntax_fallback { ctx with in_function = true } value;
         Pp.char ctx ')'
     | Var_fallback fallback_name ->
         Pp.string ctx "var(--";
@@ -257,6 +268,7 @@ let rec map_calc : type a b. (a -> b) -> a calc -> b calc =
         | Empty2 -> Empty2
         | None -> None
         | Fallback x -> Fallback (f x)
+        | Syntax_fallback value -> Syntax_fallback value
         | Var_fallback s -> Var_fallback s
       in
       let default = Option.map f v.default in
@@ -1235,7 +1247,7 @@ let read_var_body : type a. (Cursor.t -> a) -> Cursor.t -> a var =
       else
         match Cursor.try_parse_full_err read_value t with
         | Ok fb -> Fallback fb
-        | Error msg -> Cursor.err_invalid t ("var fallback: " ^ msg))
+        | Error _ -> Syntax_fallback (Cursor.remaining t))
   in
   var_ref ~fallback var_name
 
@@ -2697,6 +2709,15 @@ let read_padding_shorthand t : length list =
     https://www.w3.org/TR/CSS21/box.html#margin-properties CSS margin accepts
     1-4 space-separated values *)
 let read_margin_shorthand t : length list =
+  let rec read_margin_component t : length =
+    if Cursor.looking_at_func "var" t then
+      Var (read_var read_margin_component t)
+    else
+      Cursor.enum "margin component"
+        [ ("auto", (Auto : length)) ]
+        ~default:(read_length ~with_keywords:false)
+        t
+  in
   (* CSS margin accepts 1-4 space-separated values *)
   (* CSS-wide keywords must be the only value when present *)
   Cursor.enum "margin"
@@ -2709,7 +2730,5 @@ let read_margin_shorthand t : length list =
       ("revert-layer", [ Revert_layer ]);
     ]
     ~default:(fun t ->
-      Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:4
-        (read_length ~with_keywords:false)
-        t)
+      Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:4 read_margin_component t)
     t

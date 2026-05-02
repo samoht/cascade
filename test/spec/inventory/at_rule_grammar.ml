@@ -20,6 +20,18 @@ let positive =
       "@property --dup{syntax:\"*\";inherits:false}"
       "@property --dup { syntax: \"<length>\"; inherits: true; syntax: \"*\"; \
        inherits: false }";
+    row "import" "layer-supports-media"
+      "@import url(layout.css) layer(framework.component) \
+       supports(display:grid) screen and (width >= 40em);"
+      "@import url(layout.css) layer(framework.component) supports(display: \
+       grid) screen and (width >= 40em);";
+    row "namespace" "prefixed-url"
+      "@namespace svg url(http://www.w3.org/2000/svg);"
+      "@namespace svg url(http://www.w3.org/2000/svg);";
+    row "layer" "statement-order" "@layer reset,theme,components;"
+      "@layer reset, theme, components;";
+    row "layer" "anonymous-block" "@layer{.private{color:red}}"
+      "@layer { .private { color: red } }";
     row "font-face" "descriptor-order"
       "@font-face {font-weight:100 \
        900;font-display:swap;src:url(brand.woff2);font-family:Brand}"
@@ -72,6 +84,30 @@ let positive =
       "@scope (.card) to (.boundary) { .title { color: red } }";
     row "starting-style" "nested-rule" "@starting-style{.dialog{opacity:0}}"
       "@starting-style { .dialog { opacity: 0 } }";
+    row "when" "media-condition"
+      "@when media(width >= 40em){.card{display:grid}}"
+      "@when media(width >= 40em) { .card { display: grid } }";
+    row "when" "supports-condition"
+      "@when supports(display:grid) and \
+       media(pointer:fine){.card{display:grid}}"
+      "@when supports(display: grid) and media(pointer: fine) { .card { \
+       display: grid } }";
+    row "else" "conditional-chain"
+      "@when \
+       supports(display:grid){.card{display:grid}}@else{.card{display:block}}"
+      "@when supports(display: grid) { .card { display: grid } } @else { .card \
+       { display: block } }";
+    row "else" "conditional-branch"
+      "@when media(width>=60em){.card{display:grid}}@else \
+       supports(display:flex){.card{display:flex}}@else{.card{display:block}}"
+      "@when media(width >= 60em) { .card { display: grid } } @else \
+       supports(display: flex) { .card { display: flex } } @else { .card { \
+       display: block } }";
+    row "supports-condition" "named-query"
+      "@supports-condition \
+       --thicker-underlines{text-decoration-thickness:.2em;text-underline-offset:.3em}"
+      "@supports-condition --thicker-underlines { text-decoration-thickness: \
+       .2em; text-underline-offset: .3em }";
   ]
 
 let negative =
@@ -81,6 +117,12 @@ let negative =
     invalid "property" "invalid-initial"
       "@property --bad { syntax: \"<length>\"; inherits: false; initial-value: \
        red }";
+    invalid "import" "bad-order" "@import url(theme.css) screen layer(theme);";
+    invalid "import" "missing-source" "@import layer(theme);";
+    invalid "namespace" "missing-url" "@namespace svg;";
+    invalid "namespace" "block" "@namespace { url(http://example.test); }";
+    invalid "layer" "empty-name-list" "@layer;";
+    invalid "layer" "bad-name-list" "@layer theme,;";
     invalid "font-face" "nested-rule"
       "@font-face { font-family: Brand; src: url(brand.woff2); @media screen { \
        .x { color: red } } }";
@@ -116,6 +158,18 @@ let negative =
     invalid "scope" "empty-root" "@scope () { .x { color: red } }";
     invalid "scope" "empty-limit" "@scope (.x) to () { .x { color: red } }";
     invalid "starting-style" "missing-block" "@starting-style;";
+    invalid "when" "empty-condition" "@when { .x { color: red } }";
+    invalid "when" "missing-block" "@when media(width >= 40em);";
+    invalid "else" "standalone" "@else { .x { color: red } }";
+    invalid "else" "condition-without-previous"
+      "@else supports(display: grid) { .x { color: red } }";
+    invalid "else" "duplicate-condition"
+      "@when media(width >= 40em) { .x { color: red } } @else \
+       supports(display: grid) supports(color: red) { .x { color: blue } }";
+    invalid "supports-condition" "bad-name"
+      "@supports-condition thicker-underlines { color: red }";
+    invalid "supports-condition" "missing-block"
+      "@supports-condition --thicker-underlines;";
   ]
 
 let features (rows : row list) =

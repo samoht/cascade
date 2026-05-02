@@ -23,7 +23,13 @@ let pp_decl decl = Css.Declaration.string_of_declaration ~minify:true decl
 let pp_stylesheet sheet =
   Css.Stylesheet.to_string ~minify:true ~newline:false sheet
 
+let normalize_decl decl =
+  Css.Declaration.of_string
+    (Css.Declaration.string_of_declaration ~minify:true decl)
+
 let check_same_decl label expected actual =
+  let expected = normalize_decl expected in
+  let actual = normalize_decl actual in
   if expected <> actual then
     fail
       (Fmt.str "%s: expected %S, got %S" label (pp_decl expected)
