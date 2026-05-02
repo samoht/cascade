@@ -2692,10 +2692,16 @@ let rec read_opacity t : opacity =
   let read_var t : opacity = Var (read_var read_opacity t) in
   let read_number_or_percentage t =
     let n, unit = Cursor.number_with_unit t in
-    match unit with
-    | Some "%" -> Opacity_number (n /. 100.)
-    | Some unit -> Cursor.err_invalid t ("opacity unit: " ^ unit)
-    | None -> Opacity_number n
+    let value =
+      match unit with
+      | Some "%" -> n /. 100.
+      | Some unit -> Cursor.err_invalid t ("opacity unit: " ^ unit)
+      | None -> n
+    in
+    if value < 0. || value > 1. then
+      Cursor.err_invalid t
+        ("opacity out of [0, 1] range: " ^ string_of_float value);
+    Opacity_number value
   in
   Cursor.enum_or_calls "opacity"
     [
