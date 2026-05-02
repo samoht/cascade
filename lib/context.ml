@@ -3057,6 +3057,15 @@ let simplify_gradient_stop ?(layer_order = []) ?layer ctx
   in
   Var_residual.simplify ~layer_order ?layer ctx ops value
 
+let resolve_image_set_option ctx (option : Properties.image_set_option) =
+  let image_set_source =
+    match option.Properties.image_set_source with
+    | Properties.Image_set_url url ->
+        Properties.Image_set_url (resolve_url_leaf ctx url)
+    | Properties.Image_set_string _ as source -> source
+  in
+  { option with Properties.image_set_source }
+
 let simplify_background_image ?(layer_order = []) ?layer ctx
     (value : Properties.background_image) : Properties.background_image =
   let gradient_stop = simplify_gradient_stop ~layer_order ?layer ctx in
@@ -3094,17 +3103,7 @@ let simplify_background_image ?(layer_order = []) ?layer ctx
     | Properties.Conic_gradient_var var ->
         Properties.Conic_gradient_var (gradient_stop_var var)
     | Properties.Image_set options ->
-        Properties.Image_set
-          (List.map
-             (fun (option : Properties.image_set_option) ->
-               let image_set_source =
-                 match option.Properties.image_set_source with
-                 | Properties.Image_set_url url ->
-                     Properties.Image_set_url (resolve_url_leaf ctx url)
-                 | Properties.Image_set_string _ as source -> source
-               in
-               { option with Properties.image_set_source })
-             options)
+        Properties.Image_set (List.map (resolve_image_set_option ctx) options)
     | Properties.Cross_fade options ->
         Properties.Cross_fade
           (List.map
