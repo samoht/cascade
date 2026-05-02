@@ -10172,7 +10172,12 @@ and read_font_family t : font_family =
   | l -> List l
 
 let rec read_font_stretch t : font_stretch =
-  let read_percentage t : font_stretch = Pct (Cursor.pct t) in
+  let read_percentage t : font_stretch =
+    let n = Cursor.pct t in
+    (* CSS Fonts 4 §6.1.2: font-stretch percentage is non-negative. *)
+    if n < 0. then err_invalid_value t "font-stretch" (string_of_float n);
+    Pct n
+  in
   Cursor.enum_or_var "font-stretch"
     [
       ("ultra-condensed", Ultra_condensed);
