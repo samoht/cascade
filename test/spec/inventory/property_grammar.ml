@@ -95,7 +95,7 @@ let matrix =
     };
     {
       property = "border-radius";
-      positives = [ "10px"; "10px 20px / 30px 40px" ];
+      positives = [ "10px"; "10px 20px / 30px 40px"; "calc(1rem + 2px)" ];
       negatives = [ "10px /"; "10px 20px 30px 40px 50px" ];
     };
     {
@@ -132,13 +132,18 @@ let matrix =
     };
     {
       property = "opacity";
-      positives = [ "0"; ".5"; "1"; "50%" ];
+      positives = [ "0"; ".5"; "1"; "50%"; "calc(0.25 * 2)" ];
       negatives = [ "red"; "1 2" ];
     };
     {
       property = "filter";
       positives =
-        [ "none"; "blur(5px) contrast(120%)"; "drop-shadow(0 0 2px black)" ];
+        [
+          "none";
+          "blur(5px) contrast(120%)";
+          "drop-shadow(0 0 2px black)";
+          "opacity(calc(50% + 25%))";
+        ];
       negatives = [ "blur()"; "drop-shadow()" ];
     };
     {
@@ -194,22 +199,28 @@ let matrix =
     };
     {
       property = "translate";
-      positives = [ "none"; "10px"; "10px 20px"; "10px 20px 30px" ];
+      positives =
+        [ "none"; "10px"; "10px 20px"; "10px 20px 30px"; "calc(1rem + 2px)" ];
       negatives = [ "10px 20px 30px 40px"; "red" ];
     };
     {
       property = "rotate";
-      positives = [ "none"; "45deg"; "1 0 0 45deg" ];
+      positives = [ "none"; "45deg"; "1 0 0 45deg"; "calc(30deg + 15deg)" ];
       negatives = [ "1 0 45deg"; "45px" ];
     };
     {
       property = "scale";
-      positives = [ "none"; "1.2"; "1.2 2"; "1 2 3" ];
+      positives = [ "none"; "1.2"; "1.2 2"; "1 2 3"; "calc(50% + 25%)" ];
       negatives = [ "1 2 3 4"; "red" ];
     };
     {
       property = "transition";
-      positives = [ "opacity 1s ease-in .2s"; "all .2s linear .1s" ];
+      positives =
+        [
+          "opacity 1s ease-in .2s";
+          "all .2s linear .1s";
+          "opacity calc(500ms + .5s)";
+        ];
       negatives = [ "1s 2s 3s"; "ease opacity ease" ];
     };
     {
@@ -219,7 +230,10 @@ let matrix =
     };
     {
       property = "animation";
-      positives = [ "fade 1s linear 2 alternate both running"; "none" ];
+      positives =
+        [
+          "fade 1s linear 2 alternate both running"; "none"; "fade calc(1s * 2)";
+        ];
       negatives = [ "1s 2s 3s"; "infinite infinite" ];
     };
     {
@@ -466,7 +480,7 @@ let matrix =
         "-webkit-mask-position";
         "object-position";
       ]
-      [ "center"; "left 10px top 20px"; "10% 20%" ]
+      [ "center"; "left 10px top 20px"; "10% 20%"; "calc(10% + 1px) 20%" ]
       [ "left top center"; "foo" ]
   @ rows_for
       [ "mask-size"; "-webkit-mask-size" ]
@@ -501,7 +515,7 @@ let matrix =
       };
       {
         property = "line-height";
-        positives = [ "normal"; "1.5"; "12px"; "120%" ];
+        positives = [ "normal"; "1.5"; "12px"; "120%"; "calc(1em + 2px)" ];
         negatives = [ "red"; "1 2" ];
       };
       {
@@ -1013,7 +1027,14 @@ let matrix =
       };
       {
         property = "transform-origin";
-        positives = [ "center"; "left top"; "left 10px top 20px"; "10px 20px" ];
+        positives =
+          [
+            "center";
+            "left top";
+            "left 10px top 20px";
+            "10px 20px";
+            "calc(10% + 1px) 20px";
+          ];
         negatives = [ "left right"; "top bottom" ];
       };
       {

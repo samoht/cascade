@@ -903,11 +903,13 @@ let spec_property_grammar_table_expansion () =
       ("color", "light-dark(black, white)");
       ("accent-color", "auto");
       ("opacity", ".5");
+      ("opacity", "2");
       ("mix-blend-mode", "multiply");
       ("filter", "blur(5px) contrast(120%)");
       ("font", "italic small-caps bold 16px/1.5 serif");
       ("font-size", "clamp(1rem, 2vw, 2rem)");
       ("font-weight", "650");
+      ("font-weight", "1000");
       ("font-stretch", "75%");
       ("font-feature-settings", "\"kern\" 1");
       ("font-variation-settings", "\"wght\" 650");
@@ -919,6 +921,7 @@ let spec_property_grammar_table_expansion () =
       ("word-break", "break-word");
       ("writing-mode", "vertical-rl");
       ("text-combine-upright", "digits 2");
+      ("text-combine-upright", "digits 3");
       ("transform", "translateX(10px) rotate(45deg) scale(1.2)");
       ("translate", "10px 20px");
       ("rotate", "1 0 0 45deg");
@@ -1017,11 +1020,9 @@ let spec_property_grammar_table_expansion () =
       ("clip-path", "circle()");
       ("shape-margin", "-1px");
       ("color", "light-dark(black)");
-      ("opacity", "2");
       ("mix-blend-mode", "normal multiply");
       ("filter", "blur()");
       ("font", "bold serif");
-      ("font-weight", "1000");
       ("font-stretch", "-10%");
       ("font-feature-settings", "\"kern\" maybe");
       ("font-variation-settings", "\"wght\"");
@@ -1030,7 +1031,6 @@ let spec_property_grammar_table_expansion () =
       ("white-space", "normal pre");
       ("line-height", "-1");
       ("writing-mode", "vertical");
-      ("text-combine-upright", "digits 3");
       ("transform", "rotate()");
       ("translate", "10px 20px 30px 40px");
       ("rotate", "1 0 45deg");

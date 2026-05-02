@@ -969,6 +969,18 @@ let read_non_negative_length_or_css_wide t =
     ~default:(read_non_negative_length ~with_keywords:false)
     t
 
+let rec read_length_or_css_wide t =
+  Cursor.enum_or_calls "length"
+    [
+      ("inherit", (Inherit : length));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:[ ("var", fun t -> Var (read_var read_length_or_css_wide t)) ]
+    ~default:(read_length ~with_keywords:false) t
+
 let rec read_text_decoration_thickness t =
   Cursor.enum_or_calls "text-decoration-thickness"
     [
@@ -1384,7 +1396,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Outline -> v Outline (read_outline t)
   | Outline_style -> v Outline_style (read_outline_style t)
   | Outline_width -> v Outline_width (read_non_negative_length_or_css_wide t)
-  | Outline_offset -> v Outline_offset (read_length ~with_keywords:false t)
+  | Outline_offset -> v Outline_offset (read_length_or_css_wide t)
   (* Forced color adjust *)
   | Forced_color_adjust -> v Forced_color_adjust (read_forced_color_adjust t)
   (* Scroll snap *)

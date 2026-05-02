@@ -519,6 +519,7 @@ type flex_basis =
   | Revert
   | Revert_layer
   | Fit_content
+  | Fit_content_arg of length
   | Max_content
   | Min_content
   | From_font
