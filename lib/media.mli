@@ -89,16 +89,37 @@ type t =
   | List of t list
 
 val of_string : string -> t
+(** [of_string s] parses [s] as a media query. *)
+
 val value_of_string : string -> value
+(** [value_of_string s] parses [s] as a media-feature value. *)
+
 val feature : string -> value -> t
+(** [feature name v] is the plain feature [(name: v)]. *)
+
 val boolean : string -> t
+(** [boolean name] is the boolean feature [(name)]. *)
+
 val to_string : t -> string
+(** [to_string t] serialises [t] as CSS source text. *)
+
 val pp : t Pp.t
+(** Pretty-printer for media queries. *)
+
 val pp_query : query Pp.t
+(** Pretty-printer for parsed media queries. *)
+
 val pp_condition : condition Pp.t
+(** Pretty-printer for media query conditions. *)
+
 val pp_feature : feature Pp.t
+(** Pretty-printer for media features. *)
+
 val compare : t -> t -> int
+(** Total order on media queries. *)
+
 val equal : t -> t -> bool
+(** Structural equality on media queries. *)
 
 type kind =
   | Hover
@@ -109,5 +130,10 @@ type kind =
   | Other
 
 val kind : t -> kind
+(** [kind t] classifies [t] for grouping and ordering. *)
+
 val group_order : kind -> int * float
+(** [group_order k] is the sort key used to group queries by [kind]. *)
+
 val preference_order : t -> int
+(** [preference_order t] orders preference queries within their group. *)
