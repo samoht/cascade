@@ -2018,3 +2018,17 @@ let computed_value ?layer_order ?layer ctx decl =
   match Computed_value.resolve ?layer ?layer_order ctx ~property ~value with
   | Error _ as e -> e
   | Ok resolved -> Ok (canonicalise_computed_value resolved)
+
+(* Initial typed-AST eval. Round-trips through {!computed_value} for everything
+   it can fully resolve, and leaves unresolvable declarations untouched. The
+   richer "partial" semantics — keeping unresolved subtrees in place while
+   collapsing every reducible neighbour — is not yet wired up; CSS Values 4
+   §10.11 partial simplification still needs per-type AST walkers (length,
+   color, angle, duration, percentage, plus per-property dispatch). *)
+let eval ?layer_order ?layer ctx decl =
+  let property = Declaration.property_name decl in
+  match computed_value ?layer_order ?layer ctx decl with
+  | Error _ -> decl
+  | Ok resolved -> (
+      try Declaration.of_string (String.concat "" [ property; ":"; resolved ])
+      with _ -> decl)

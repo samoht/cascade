@@ -337,6 +337,17 @@ val eval_numeric_calc : 'a calc -> float option
     numbers to a float. Returns [None] if the expression contains variables or
     non-numeric values. *)
 
+val map_calc : ('a -> 'b) -> 'a calc -> 'b calc
+(** [map_calc f calc] rewrites every [Val] leaf via [f], preserving the calc
+    structure (operators, [Nested], [Parens], [Var] fallbacks). *)
+
+val eval_calc : 'a calc -> 'a calc
+(** [eval_calc calc] applies CSS Values 4 §10.7 structural simplification: folds
+    [Expr (Num _, op, Num _)] subtrees into a single [Num] and unwraps trivial
+    [Nested] / [Parens] around leaves. [Val] / [Var] leaves and mixed-type
+    operands survive — type-specific simplification (e.g., length arithmetic) is
+    the caller's job. *)
+
 val var_name : 'a var -> string
 (** [var_name v] is [v]'s variable name (without --). *)
 

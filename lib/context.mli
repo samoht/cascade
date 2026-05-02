@@ -237,6 +237,16 @@ val computed_value :
     when the relevant base size is supplied. Returns [Error msg] when a
     referenced source is missing from the context. *)
 
+val eval :
+  ?layer_order:string list ->
+  ?layer:string ->
+  t ->
+  Declaration.declaration ->
+  Declaration.declaration
+(** [eval ?layer_order ?layer ctx decl] resolves the declaration against [ctx]
+    and returns the simplified declaration AST. Leaves the declaration unchanged
+    when the resolver cannot make progress. *)
+
 val matches_selector : document -> Selector.t -> bool
 (** [matches_selector doc sel] tests whether [sel] would match an element
     described by [doc]. Approximate: classes/ids/attributes/element name are
