@@ -2678,6 +2678,7 @@ let rec pp_order : order Pp.t =
 let rec pp_opacity : opacity Pp.t =
  fun ctx -> function
   | Opacity_number f -> Pp.float ctx f
+  | Calc c -> pp_calc pp_opacity ctx c
   | Abs v -> Pp.call "abs" pp_opacity ctx v
   | Sign v -> Pp.call "sign" pp_opacity ctx v
   | Inherit -> Pp.string ctx "inherit"
@@ -2689,6 +2690,13 @@ let rec pp_opacity : opacity Pp.t =
 
 let rec read_opacity t : opacity =
   let read_var t : opacity = Var (read_var read_opacity t) in
+  let read_number_or_percentage t =
+    let n, unit = Cursor.number_with_unit t in
+    match unit with
+    | Some "%" -> Opacity_number (n /. 100.)
+    | Some unit -> Cursor.err_invalid t ("opacity unit: " ^ unit)
+    | None -> Opacity_number n
+  in
   Cursor.enum_or_calls "opacity"
     [
       ("inherit", Inherit);
@@ -2697,9 +2705,12 @@ let rec read_opacity t : opacity =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~calls:[ ("var", read_var) ]
-    ~default:(fun t -> Opacity_number (Cursor.number t))
-    t
+    ~calls:
+      [
+        ("var", read_var);
+        ("calc", fun t -> Calc (Values.read_calc read_opacity t));
+      ]
+    ~default:read_number_or_percentage t
 
 let rec pp_shape_image_threshold : shape_image_threshold Pp.t =
  fun ctx -> function
@@ -12826,10 +12837,12 @@ let rec read_gap t : gap =
       let second_length = Cursor.option read_non_negative_length t in
       match second_length with
       | Some col_gap ->
-          Lengths { row_gap = Some first_length; column_gap = Some col_gap }
+          (Lengths { row_gap = Some first_length; column_gap = Some col_gap }
+            : gap)
       | None ->
-          Lengths
-            { row_gap = Some first_length; column_gap = Some first_length })
+          (Lengths
+             { row_gap = Some first_length; column_gap = Some first_length }
+            : gap))
     t
 
 (* Reader for will-change property *)
@@ -13219,6 +13232,7 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Percentage -> pp pp_percentage
   | Length_percentage -> pp (pp_length_percentage ~always:true)
   | Number_percentage -> pp pp_number_percentage
+  | Opacity -> pp pp_opacity
   | Value ->
       let rendered =
         if Pp.minified ctx then Parser.to_string_custom_minified value
@@ -13232,6 +13246,7 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Outline_style -> pp pp_outline_style
   | Border -> pp pp_border
   | Font_weight -> pp pp_font_weight
+  | Font_size -> pp pp_font_size
   | Line_height -> pp pp_line_height
   | Font_family -> pp pp_font_family
   | Font_feature_settings -> pp pp_font_feature_settings
@@ -13241,6 +13256,8 @@ let pp_value : type a. (a kind * a) Pp.t =
   | Blend_mode -> pp pp_blend_mode
   | Scroll_snap_strictness -> pp pp_scroll_snap_strictness
   | Angle -> pp pp_angle
+  | Rotate -> pp pp_rotate_value
+  | Scale -> pp pp_scale
   | Box_shadow -> pp pp_shadow
   | Content -> pp pp_content
   | Gradient_stop -> pp pp_gradient_stop
@@ -13731,3 +13748,144 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Ms_filter -> pp pp_filter
   | O_transition -> pp (Pp.list ~sep:Pp.comma pp_transition)
   | Font_family -> pp pp_font_family
+
+let property_value_kind : type a. a property -> a property_value_kind option =
+  function
+  | Padding_left -> Some Length
+  | Padding_right -> Some Length
+  | Padding_bottom -> Some Length
+  | Padding_top -> Some Length
+  | Padding_inline -> Some Length
+  | Padding_inline_start -> Some Length
+  | Padding_inline_end -> Some Length
+  | Padding_block -> Some Length
+  | Padding_block_start -> Some Length
+  | Padding_block_end -> Some Length
+  | Margin_inline_end -> Some Length
+  | Margin_inline_start -> Some Length
+  | Margin_left -> Some Length
+  | Margin_right -> Some Length
+  | Margin_top -> Some Length
+  | Margin_bottom -> Some Length
+  | Margin_block_start -> Some Length
+  | Margin_block_end -> Some Length
+  | Column_gap -> Some Length
+  | Row_gap -> Some Length
+  | Flex_basis -> Some Length
+  | Text_underline_offset -> Some Length
+  | Letter_spacing -> Some Length
+  | Border_top_left_radius -> Some Length
+  | Border_top_right_radius -> Some Length
+  | Border_bottom_left_radius -> Some Length
+  | Border_bottom_right_radius -> Some Length
+  | Border_start_start_radius -> Some Length
+  | Border_start_end_radius -> Some Length
+  | Border_end_start_radius -> Some Length
+  | Border_end_end_radius -> Some Length
+  | Outline_width -> Some Length
+  | Border_top_width -> Some Border_width
+  | Border_right_width -> Some Border_width
+  | Border_bottom_width -> Some Border_width
+  | Border_left_width -> Some Border_width
+  | Border_inline_start_width -> Some Border_width
+  | Border_inline_end_width -> Some Border_width
+  | Border_block_start_width -> Some Border_width
+  | Border_block_end_width -> Some Border_width
+  | Outline_offset -> Some Length
+  | Text_indent -> Some Length
+  | Line_height_step -> Some Length
+  | Perspective -> Some Length
+  | Text_decoration_thickness -> Some Length
+  | Stroke_width -> Some Length
+  | Scroll_margin_top -> Some Length
+  | Scroll_margin_right -> Some Length
+  | Scroll_margin_bottom -> Some Length
+  | Scroll_margin_left -> Some Length
+  | Scroll_margin_inline -> Some Length
+  | Scroll_margin_inline_start -> Some Length
+  | Scroll_margin_inline_end -> Some Length
+  | Scroll_margin_block_start -> Some Length
+  | Scroll_margin_block_end -> Some Length
+  | Scroll_padding_top -> Some Length
+  | Scroll_padding_right -> Some Length
+  | Scroll_padding_bottom -> Some Length
+  | Scroll_padding_left -> Some Length
+  | Scroll_padding_inline -> Some Length
+  | Scroll_padding_inline_start -> Some Length
+  | Scroll_padding_inline_end -> Some Length
+  | Scroll_padding_block -> Some Length
+  | Scroll_padding_block_start -> Some Length
+  | Scroll_padding_block_end -> Some Length
+  | Padding -> Some Lengths
+  | Margin -> Some Lengths
+  | Margin_inline -> Some Lengths
+  | Margin_block -> Some Lengths
+  | Inset -> Some Lengths
+  | Inset_inline -> Some Lengths
+  | Inset_inline_start -> Some Lengths
+  | Inset_inline_end -> Some Lengths
+  | Inset_block -> Some Lengths
+  | Inset_block_start -> Some Lengths
+  | Inset_block_end -> Some Lengths
+  | Top -> Some Lengths
+  | Right -> Some Lengths
+  | Bottom -> Some Lengths
+  | Left -> Some Lengths
+  | Border_spacing -> Some Lengths
+  | Border_width -> Some Border_widths
+  | Scroll_margin -> Some Lengths
+  | Scroll_margin_block -> Some Lengths
+  | Scroll_padding -> Some Lengths
+  | Width -> Some Length_percentage
+  | Height -> Some Length_percentage
+  | Min_width -> Some Length_percentage
+  | Min_height -> Some Length_percentage
+  | Max_width -> Some Length_percentage
+  | Max_height -> Some Length_percentage
+  | Inline_size -> Some Length_percentage
+  | Min_inline_size -> Some Length_percentage
+  | Max_inline_size -> Some Length_percentage
+  | Block_size -> Some Length_percentage
+  | Min_block_size -> Some Length_percentage
+  | Max_block_size -> Some Length_percentage
+  | Shape_margin -> Some Length_percentage
+  | Font_size -> Some Font_size
+  | Opacity -> Some Opacity
+  | Rotate -> Some Rotate
+  | Animation_duration -> Some Duration
+  | Animation_delay -> Some Duration
+  | Transition_duration -> Some Duration
+  | Transition_delay -> Some Duration
+  | Display -> Some Display
+  | Position -> Some Position
+  | Visibility -> Some Visibility
+  | Clear -> Some Clear
+  | Float -> Some Float
+  | Scale -> Some Scale
+  | Translate -> Some Translate
+  | Transform -> Some Transform
+  | Webkit_transform -> Some Transform
+  | Filter -> Some Filter
+  | Backdrop_filter -> Some Filter
+  | Webkit_backdrop_filter -> Some Filter
+  | Webkit_filter -> Some Filter
+  | Ms_filter -> Some Filter
+  | Box_shadow -> Some Shadow
+  | Offset_distance -> Some Length_percentage
+  | Background_color -> Some Color
+  | Color -> Some Color
+  | Border_color -> Some Color
+  | Text_decoration_color -> Some Color
+  | Border_top_color -> Some Color
+  | Border_right_color -> Some Color
+  | Border_bottom_color -> Some Color
+  | Border_left_color -> Some Color
+  | Outline_color -> Some Color
+  | Webkit_tap_highlight_color -> Some Color
+  | Webkit_text_decoration_color -> Some Color
+  | Accent_color -> Some Color
+  | Caret_color -> Some Color
+  | Background_image -> Some Background_images
+  | Webkit_mask_image -> Some Background_image
+  | Mask_image -> Some Background_image
+  | _ -> None

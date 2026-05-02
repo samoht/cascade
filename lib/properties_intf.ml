@@ -126,6 +126,7 @@ type z_index =
 
 type opacity =
   | Opacity_number of float
+  | Calc of opacity calc
   | Abs of opacity  (** [abs(<opacity>)] *)
   | Sign of opacity  (** [sign(<opacity>)] *)
   | Inherit
@@ -3453,6 +3454,7 @@ type _ kind =
   | Percentage : percentage kind
   | Length_percentage : length_percentage kind
   | Number_percentage : number_percentage kind
+  | Opacity : opacity kind
   | Value : Component.t list kind
   | Duration : duration kind
   | Aspect_ratio : aspect_ratio kind
@@ -3460,6 +3462,7 @@ type _ kind =
   | Outline_style : outline_style kind
   | Border : border kind
   | Font_weight : font_weight kind
+  | Font_size : font_size kind
   | Line_height : line_height kind
   | Font_family : font_family kind
   | Font_feature_settings : font_feature_settings kind
@@ -3469,6 +3472,8 @@ type _ kind =
   | Blend_mode : blend_mode kind
   | Scroll_snap_strictness : scroll_snap_strictness kind
   | Angle : angle kind
+  | Rotate : rotate_value kind
+  | Scale : scale kind
   | Shadow : shadow kind
   | Box_shadow : shadow kind
   | Content : content kind
@@ -3909,3 +3914,28 @@ type 'a property =
   | Caret_color : color property
 
 type any_property = Prop : 'a property -> any_property
+
+type _ property_value_kind =
+  | Length : length property_value_kind
+  | Lengths : length list property_value_kind
+  | Length_percentage : length_percentage property_value_kind
+  | Border_width : border_width property_value_kind
+  | Border_widths : border_width list property_value_kind
+  | Opacity : opacity property_value_kind
+  | Rotate : rotate_value property_value_kind
+  | Duration : duration property_value_kind
+  | Number_percentage : number_percentage property_value_kind
+  | Font_size : font_size property_value_kind
+  | Display : display property_value_kind
+  | Position : position property_value_kind
+  | Visibility : visibility property_value_kind
+  | Clear : clear property_value_kind
+  | Float : float_side property_value_kind
+  | Scale : scale property_value_kind
+  | Translate : translate_value property_value_kind
+  | Transform : transform list property_value_kind
+  | Filter : filter property_value_kind
+  | Shadow : shadow property_value_kind
+  | Color : color property_value_kind
+  | Background_image : background_image property_value_kind
+  | Background_images : background_image list property_value_kind

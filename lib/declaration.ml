@@ -635,34 +635,7 @@ let read_grid_template_list t =
     let all_values = first_value :: remaining_values in
     Tracks all_values
 
-(* Helper to read opacity: accepts either <number> (0-1), <percentage>
-   (0%-100%), or var(...). Both formats are valid per CSS spec. Tailwind v4
-   outputs percentages. *)
-let rec read_opacity t : opacity =
-  Cursor.ws t;
-  match Cursor.peek_ident t with
-  | Some keyword when is_css_wide_keyword keyword -> (
-      Cursor.skip t;
-      match keyword with
-      | "inherit" -> Inherit
-      | "initial" -> Initial
-      | "unset" -> Unset
-      | "revert" -> Revert
-      | "revert-layer" -> Revert_layer
-      | _ -> Cursor.err_invalid t ("invalid opacity keyword: " ^ keyword))
-  | _ -> (
-      if Cursor.looking_at t "var(" then Var (Values.read_var read_opacity t)
-      else
-        match Cursor.function_call "abs" read_opacity t with
-        | Some inner -> Abs inner
-        | None -> (
-            match Cursor.function_call "sign" read_opacity t with
-            | Some inner -> Sign inner
-            | None -> (
-                let n, unit = Cursor.number_with_unit t in
-                match unit with
-                | Some "%" -> Opacity_number (n /. 100.0)
-                | _ -> Opacity_number n)))
+let read_opacity = Properties.read_opacity
 
 let read_font_size_adjust_metric t =
   Cursor.enum "font-size-adjust metric"
