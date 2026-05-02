@@ -237,7 +237,7 @@ let parse_container_specific raw =
 
 (* Find the position of [keyword] at parenthesis depth 0 inside [s]. The keyword
    is matched literally (caller passes [" and "], [" or "], etc.). *)
-let find_top_level_keyword s keyword =
+let top_level_keyword s keyword =
   let len = String.length s in
   let klen = String.length keyword in
   let depth = ref 0 in
@@ -272,13 +272,13 @@ let strip_outer_parens s =
 let rec parse_unnamed s =
   let s = String.trim s in
   let stripped = strip_outer_parens s in
-  match find_top_level_keyword stripped " or " with
+  match top_level_keyword stripped " or " with
   | Some i ->
       let lhs = String.sub stripped 0 i in
       let rhs = String.sub stripped (i + 4) (String.length stripped - i - 4) in
       Or (parse_unnamed lhs, parse_unnamed rhs)
   | None -> (
-      match find_top_level_keyword stripped " and " with
+      match top_level_keyword stripped " and " with
       | Some i ->
           let lhs = String.sub stripped 0 i in
           let rhs =

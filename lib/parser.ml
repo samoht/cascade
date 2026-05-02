@@ -228,9 +228,7 @@ let token_kind_to_string : Token.kind -> string = function
              || (len >= 3 && is_sign unit_.[1] && next_is_digit 2))
         then (
           let buf = Buffer.create (len + 4) in
-          Buffer.add_char buf '\\';
-          Buffer.add_string buf (Printf.sprintf "%x" (Char.code unit_.[0]));
-          Buffer.add_char buf ' ';
+          add_hex_escape buf unit_.[0];
           Buffer.add_string buf (escape_ident (String.sub unit_ 1 (len - 1)));
           Buffer.contents buf)
         else escape_ident unit_
