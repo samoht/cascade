@@ -887,67 +887,69 @@ let read_layer_name_component (r : Cursor.t) : string =
    in [url] so the at-rule dispatch can round-trip author input verbatim; the
    canonical flavour ([keep_url_repr=false]) stores the decoded string for the
    top-level [read_import_rule] reader. *)
+let read_import_url ~keep_url_repr (r : Cursor.t) =
+  let pos = Cursor.position r in
+  let value = Cursor.one_of [ Cursor.url; Cursor.string ] r in
+  if keep_url_repr then
+    let end_pos = Cursor.position r in
+    match Cursor.source r with
+    | Some source when end_pos.start_pos <= String.length source ->
+        String.sub source pos.start_pos (end_pos.start_pos - pos.start_pos)
+        |> String.trim
+    | _ -> value
+  else value
+
+let read_import_layer (r : Cursor.t) =
+  match
+    Cursor.function_call "layer"
+      (fun inner ->
+        Cursor.ws inner;
+        if Cursor.is_done inner then ""
+        else
+          let name = read_layer_name_component inner in
+          Cursor.ws inner;
+          Cursor.expect_eof inner;
+          name)
+      r
+  with
+  | Some _ as some -> some
+  | None -> (
+      match Cursor.peek_ident r with
+      | Some s when String.lowercase_ascii s = "layer" ->
+          let _ = Cursor.ident r in
+          Some ""
+      | _ -> None)
+
+let read_import_supports (r : Cursor.t) =
+  Cursor.function_call "supports"
+    (fun inner ->
+      let loc = Cursor.position inner in
+      try
+        Supports.of_string ~allow_unwrapped_decl:true
+          (Cursor.remaining_to_string ~trim:true inner)
+      with Failure reason ->
+        Error.fail_bad_condition loc ~at_rule:"@supports" ~reason)
+    r
+
+let read_import_media (r : Cursor.t) =
+  if Cursor.peek_semicolon r || Cursor.is_done r then None
+  else
+    let loc = Cursor.position r in
+    let raw = Cursor.consume_to_semicolon ~trim:true r in
+    try Some (Media.of_string raw)
+    with Failure reason ->
+      Error.fail_bad_condition loc ~at_rule:"@media" ~reason
+
 let read_import_prelude ~keep_url_repr (r : Cursor.t) : import_rule =
   Cursor.expect_at_keyword "import" r;
   Cursor.ws r;
-  let url =
-    let pos = Cursor.position r in
-    let value = Cursor.one_of [ Cursor.url; Cursor.string ] r in
-    if keep_url_repr then
-      let end_pos = Cursor.position r in
-      match Cursor.source r with
-      | Some source when end_pos.start_pos <= String.length source ->
-          String.sub source pos.start_pos (end_pos.start_pos - pos.start_pos)
-          |> String.trim
-      | _ -> value
-    else value
-  in
+  let url = read_import_url ~keep_url_repr r in
   Cursor.ws r;
-  (* Section 3 [<layer-keyword>]: either [layer(<layer-name>)] or the bare
-     [layer] keyword (anonymous layer; encoded as [Some ""]). *)
-  let layer =
-    match
-      Cursor.function_call "layer"
-        (fun inner ->
-          Cursor.ws inner;
-          if Cursor.is_done inner then ""
-          else
-            let name = read_layer_name_component inner in
-            Cursor.ws inner;
-            Cursor.expect_eof inner;
-            name)
-        r
-    with
-    | Some _ as some -> some
-    | None -> (
-        match Cursor.peek_ident r with
-        | Some s when String.lowercase_ascii s = "layer" ->
-            let _ = Cursor.ident r in
-            Some ""
-        | _ -> None)
-  in
+  let layer = read_import_layer r in
   Cursor.ws r;
-  let supports =
-    Cursor.function_call "supports"
-      (fun inner ->
-        let loc = Cursor.position inner in
-        try
-          Supports.of_string ~allow_unwrapped_decl:true
-            (Cursor.remaining_to_string ~trim:true inner)
-        with Failure reason ->
-          Error.fail_bad_condition loc ~at_rule:"@supports" ~reason)
-      r
-  in
+  let supports = read_import_supports r in
   Cursor.ws r;
-  let media =
-    if Cursor.peek_semicolon r || Cursor.is_done r then None
-    else
-      let loc = Cursor.position r in
-      let raw = Cursor.consume_to_semicolon ~trim:true r in
-      try Some (Media.of_string raw)
-      with Failure reason ->
-        Error.fail_bad_condition loc ~at_rule:"@media" ~reason
-  in
+  let media = read_import_media r in
   if Cursor.peek_semicolon r then Cursor.skip r;
   { url; layer; supports; media }
 
