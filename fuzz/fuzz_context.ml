@@ -18,9 +18,307 @@ let contains_literal haystack needle =
   let re = Re.compile (Re.str needle) in
   Re.execp re haystack
 
+let pp_decl decl = Css.Declaration.string_of_declaration ~minify:true decl
+
+let pp_stylesheet sheet =
+  Css.Stylesheet.to_string ~minify:true ~newline:false sheet
+
+let check_same_decl label expected actual =
+  if expected <> actual then
+    fail
+      (Fmt.str "%s: expected %S, got %S" label (pp_decl expected)
+         (pp_decl actual))
+
+let check_eval_shape label input actual =
+  let before_name = Css.Declaration.property_name input in
+  let after_name = Css.Declaration.property_name actual in
+  if before_name <> after_name then
+    fail
+      (Fmt.str "%s: property changed from %S to %S" label before_name after_name);
+  let reparsed = Css.Declaration.of_string (pp_decl actual) in
+  check_same_decl (label ^ " roundtrip") actual reparsed
+
+let check_same_stylesheet label expected actual =
+  if expected <> actual then
+    fail
+      (Fmt.str "%s: expected %S, got %S" label (pp_stylesheet expected)
+         (pp_stylesheet actual))
+
 let expect_contains label haystack needle =
   if not (contains_literal haystack needle) then
     fail (Fmt.str "%s missing %S in %S" label needle haystack)
+
+let number buf i =
+  let n = byte_at buf i mod 9 in
+  if n = 0 then "0" else string_of_int n
+
+let percentage buf i = string_of_int (byte_at buf i mod 101) ^ "%"
+
+let length buf i =
+  let n = 1 + (byte_at buf i mod 16) in
+  let unit = pick [ "px"; "rem"; "em"; "vw"; "vh"; "cqw"; "cqh" ] buf (i + 1) in
+  string_of_int n ^ unit
+
+let resolvable_length buf i =
+  let n = 1 + (byte_at buf i mod 16) in
+  let unit = pick [ "px"; "rem"; "em" ] buf (i + 1) in
+  string_of_int n ^ unit
+
+let angle buf i =
+  let n = 1 + (byte_at buf i mod 359) in
+  let unit = pick [ "deg"; "turn"; "grad"; "rad" ] buf (i + 1) in
+  string_of_int n ^ unit
+
+let duration buf i =
+  let n = 1 + (byte_at buf i mod 9) in
+  let unit = pick [ "ms"; "s" ] buf (i + 1) in
+  string_of_int n ^ unit
+
+let generated_decl buf =
+  let calc_len i =
+    "calc(" ^ resolvable_length buf i ^ " + "
+    ^ resolvable_length buf (i + 2)
+    ^ ")"
+  in
+  let residual_len i =
+    "calc(" ^ resolvable_length buf i ^ " + " ^ length buf (i + 2) ^ ")"
+  in
+  let decl =
+    match byte_at buf 13 mod 30 with
+    | 0 -> "margin-left: " ^ calc_len 14
+    | 1 -> "height: " ^ residual_len 15
+    | 2 ->
+        "width: calc(" ^ percentage buf 16 ^ " + " ^ resolvable_length buf 17
+        ^ ")"
+    | 3 ->
+        "padding: var(--gap, " ^ resolvable_length buf 18 ^ ") "
+        ^ "calc(var(--missing, " ^ resolvable_length buf 20 ^ ") * "
+        ^ number buf 22 ^ ")"
+    | 4 -> "color: var(--brand, " ^ pick [ "red"; "green"; "blue" ] buf 23 ^ ")"
+    | 5 -> "display: var(--missing, inherit)"
+    | 6 -> "color: var(--missing, unset)"
+    | 7 -> "background-image: url(../img/" ^ name "asset-" buf 24 ^ ".svg)"
+    | 8 ->
+        "background-color: rgb(var(--rgb) / var(--alpha, "
+        ^ pick [ "0.25"; "0.5"; "75%" ] buf 25
+        ^ "))"
+    | 9 ->
+        "transform: translateX(" ^ calc_len 26 ^ ") rotate(calc(" ^ angle buf 28
+        ^ " + " ^ angle buf 30 ^ "))"
+    | 10 -> "rotate: calc(" ^ angle buf 31 ^ " + " ^ angle buf 33 ^ ")"
+    | 11 ->
+        "transition-duration: calc(" ^ duration buf 34 ^ " + " ^ duration buf 36
+        ^ ")"
+    | 12 -> "scale: calc(" ^ percentage buf 37 ^ " + " ^ percentage buf 38 ^ ")"
+    | 13 ->
+        "box-shadow: 0 0 0 calc(" ^ resolvable_length buf 39
+        ^ " + var(--ring-offset)) var(--ring-color)"
+    | 14 -> "margin-left: var(--missing, calc(var(--gap) + var(--future-gap)))"
+    | 15 -> "z-index: calc(sibling-index() + " ^ number buf 40 ^ ")"
+    | 16 ->
+        "font-size: calc(" ^ percentage buf 41 ^ " + "
+        ^ resolvable_length buf 42 ^ ")"
+    | 17 -> "grid-template-columns: minmax(min-content, 1fr) fit-content(20%)"
+    | 18 -> "flex-basis: content"
+    | 19 -> "aspect-ratio: 16 / 9"
+    | 20 -> "width: " ^ string_of_int (1 + (byte_at buf 44 mod 16)) ^ "ch"
+    | 21 ->
+        "color: color-mix(in oklab, "
+        ^ pick [ "red"; "green"; "blue" ] buf 45
+        ^ " 40%, "
+        ^ pick [ "white"; "black"; "transparent" ] buf 46
+        ^ ")"
+    | 22 -> "color: color(display-p3 1 0.5 0)"
+    | 23 -> "filter: blur(" ^ resolvable_length buf 47 ^ ") contrast(120%)"
+    | 24 -> "mask-image: linear-gradient(black, transparent)"
+    | 25 -> "animation-timeline: scroll()"
+    | 26 ->
+        "animation-duration: calc(" ^ duration buf 48 ^ " + " ^ duration buf 50
+        ^ ")"
+    | 27 ->
+        "animation-delay: var(--delay, calc(" ^ duration buf 52 ^ " * "
+        ^ number buf 54 ^ "))"
+    | 28 ->
+        "transition: opacity var(--duration, " ^ duration buf 55
+        ^ ") ease-in var(--delay, " ^ duration buf 56 ^ ")"
+    | _ -> "view-timeline: --reveal block"
+  in
+  Css.Declaration.of_string decl
+
+let fuzz_decl buf =
+  if byte_at buf 0 mod 3 = 0 then generated_decl buf
+  else
+    pick
+      [
+        "margin-left: calc(1rem + 2px)";
+        "height: calc(1rem + 10vh)";
+        "width: calc(50% + 1rem)";
+        "padding: var(--gap) calc(var(--gap) * 2)";
+        "color: var(--brand, green)";
+        "border-color: currentColor";
+        "background-image: url(../img/logo.svg)";
+        "background-color: rgb(var(--rgb) / var(--alpha))";
+        "color: color(srgb calc(0.25 + 0.25) 0 0)";
+        "display: var(--missing, inherit)";
+        "color: var(--missing, unset)";
+        "margin-left: var(--missing, calc(var(--gap) + var(--future-gap)))";
+        "box-shadow: var(--shadow)";
+        "z-index: calc(sibling-index() + 1)";
+        "opacity: calc(0.25 * 2)";
+        "rotate: calc(30deg + 15deg)";
+        "animation-duration: calc(1s * 2)";
+        "transition-duration: calc(500ms + 0.5s)";
+        "scale: calc(50% + 25%)";
+        "filter: opacity(calc(50% + 25%))";
+        "transform: translateX(var(--shift)) rotate(45deg)";
+        "box-shadow: 0 0 0 calc(3px + var(--ring-offset)) var(--ring-color)";
+        "grid-template-columns: minmax(min-content, 1fr) fit-content(20%)";
+        "flex-basis: content";
+        "aspect-ratio: 16 / 9";
+        "width: 12ch";
+        "color: color-mix(in oklab, red 40%, blue)";
+        "color: color(display-p3 1 0.5 0)";
+        "filter: blur(4px) contrast(120%)";
+        "mask-image: linear-gradient(black, transparent)";
+        "animation-timeline: scroll()";
+        "animation-duration: calc(500ms * 2)";
+        "animation-delay: calc(250ms * 2)";
+        "transition: opacity var(--duration, 1s) ease-in var(--delay, 500ms)";
+        "view-timeline: --reveal block";
+      ]
+      buf 0
+    |> Css.Declaration.of_string
+
+let conservative_decl buf =
+  pick
+    [
+      "display: grid";
+      "color: red";
+      "opacity: 0.5";
+      "margin-left: 12px";
+      "background-image: url(https://example.test/img/logo.svg)";
+      "transform: translateX(10px) rotate(45deg)";
+    ]
+    buf 1
+  |> Css.Declaration.of_string
+
+let computable_decl buf =
+  pick
+    [
+      "margin-left: var(--gap)";
+      "padding: calc(var(--gap) * 2)";
+      "color: var(--brand)";
+      "border-color: currentColor";
+      "background-image: url(../img/logo.svg)";
+      "background-color: rgb(var(--rgb) / var(--alpha))";
+      "opacity: var(--alpha)";
+      "rotate: calc(30deg + 15deg)";
+      "animation-duration: var(--duration)";
+      "transition-delay: var(--delay)";
+      "transform: translateX(var(--shift)) rotate(45deg)";
+    ]
+    buf 2
+  |> Css.Declaration.of_string
+
+let contains_residual text =
+  List.exists (contains_literal text)
+    [
+      "var(";
+      "currentColor";
+      "inherit";
+      "initial";
+      "unset";
+      "revert";
+      "revert-layer";
+    ]
+
+let eval_ctx ?viewport_height buf =
+  let open Css.Values in
+  let root = float_of_int (12 + (byte_at buf 2 mod 9)) in
+  let parent = float_of_int (10 + (byte_at buf 3 mod 9)) in
+  let viewport_width = float_of_int (320 + (byte_at buf 4 mod 1200)) in
+  let container_width = float_of_int (160 + (byte_at buf 5 mod 900)) in
+  Css.Context.v
+    ~custom_properties:
+      [
+        Css.Declaration.of_string "--brand: red";
+        Css.Declaration.of_string "--gap: calc(1rem + 2px)";
+        Css.Declaration.of_string "--rgb: 12 34 56";
+        Css.Declaration.of_string "--alpha: 0.5";
+        Css.Declaration.of_string "--shift: 1rem";
+        Css.Declaration.of_string "--ring-offset: 2px";
+        Css.Declaration.of_string "--ring-color: blue";
+        Css.Declaration.of_string "--shadow: 0 0 var(--gap) currentColor";
+        Css.Declaration.of_string "--duration: calc(500ms * 2)";
+        Css.Declaration.of_string "--delay: calc(250ms * 2)";
+      ]
+    ~inherited_values:
+      [
+        Css.Declaration.of_string "color: blue";
+        Css.Declaration.of_string "display: block";
+      ]
+    ~initial_values:
+      [
+        Css.Declaration.of_string "display: inline";
+        Css.Declaration.of_string "margin-left: 0";
+      ]
+    ~base_url:"https://example.test/css/app.css" ~root_font_size:(Px root)
+    ~parent_font_size:(Px parent) ~current_color:(Named Blue)
+    ~viewport_width:(Px viewport_width) ?viewport_height
+    ~container_width:(Px container_width) ()
+
+let stylesheet_of_string css =
+  try Css.Stylesheet.read_stylesheet (Css.Cursor.of_string css)
+  with Css.Cursor.Parse_error err ->
+    fail (Fmt.str "stylesheet did not parse: %s" (Css.Error.to_string err))
+
+let fuzz_stylesheet buf =
+  pick
+    [
+      ".card{color:var(--brand);margin-left:var(--gap)}";
+      ".card{& .title{border-color:currentColor;padding:var(--gap)}}";
+      "@media (min-width:40rem){.card{width:calc(100% - 1rem)}}";
+      "@supports (display:grid){.card{transform:translateX(var(--gap))}}";
+      "@starting-style{.card{opacity:var(--alpha)}}";
+      "@keyframes \
+       fade{from{opacity:var(--alpha)}to{transform:translateX(var(--gap))}}";
+      "@font-face{font-family:Brand;src:url(brand.woff2) \
+       format(\"woff2\");font-display:swap}";
+      ".grid{grid-template-columns:minmax(min-content,1fr) \
+       fit-content(20%);aspect-ratio:16/9}";
+      ".media{filter:blur(4px) contrast(120%);animation-timeline:scroll()}";
+      "@page{margin:var(--gap)}";
+    ]
+    buf 12
+  |> stylesheet_of_string
+
+let eval_layered_ctx ?viewport_height buf =
+  let open Css.Values in
+  let root = float_of_int (12 + (byte_at buf 6 mod 9)) in
+  Css.Context.v
+    ~custom_properties:
+      [
+        Css.Declaration.custom_property ~layer:"theme" "--spacing" "0.25rem";
+        Css.Declaration.custom_property ~layer:"base" "--base-gap"
+          "calc(var(--spacing) * 2)";
+        Css.Declaration.custom_property ~layer:"components" "--component-gap"
+          "calc(var(--base-gap) + 1rem)";
+        Css.Declaration.custom_property ~layer:"utilities" "--utility-gap"
+          "calc(var(--component-gap) + 2vh)";
+        Css.Declaration.custom_property ~layer:"utilities" "--future-gap"
+          "calc(var(--component-gap) + var(--user-gap))";
+      ]
+    ~root_font_size:(Px root) ?viewport_height ()
+
+let fuzz_layered_decl buf =
+  pick
+    [
+      "margin-left: var(--utility-gap)";
+      "margin-left: var(--future-gap)";
+      "padding: var(--component-gap)";
+    ]
+    buf 7
+  |> Css.Declaration.of_string
 
 let test_empty_contexts _buf =
   let value = Css.Context.empty in
@@ -304,6 +602,101 @@ let test_context_printers buf =
   expect_contains "animation context printer" animation_dump property;
   expect_contains "animation context printer" animation_dump "progress=Some 0.5"
 
+let test_eval_idempotent buf =
+  let ctx =
+    eval_ctx
+      ~viewport_height:
+        (Css.Values.Px (float_of_int (480 + (byte_at buf 8 mod 900))))
+      buf
+  in
+  let decl = fuzz_decl buf in
+  let once = Css.Declaration.eval ctx decl in
+  let twice = Css.Declaration.eval ctx once in
+  check_eval_shape "eval idempotency shape" decl once;
+  check_same_decl "eval idempotency" once twice
+
+let test_eval_context_monotonicity buf =
+  let weak = eval_ctx buf in
+  let strong =
+    eval_ctx
+      ~viewport_height:
+        (Css.Values.Px (float_of_int (480 + (byte_at buf 9 mod 900))))
+      buf
+  in
+  let decl = fuzz_decl buf in
+  let direct = Css.Declaration.eval strong decl in
+  let staged = Css.Declaration.eval strong (Css.Declaration.eval weak decl) in
+  check_eval_shape "eval context monotonicity direct shape" decl direct;
+  check_eval_shape "eval context monotonicity staged shape" decl staged;
+  check_same_decl "eval context monotonicity" direct staged
+
+let test_eval_conservativity buf =
+  let ctx =
+    eval_ctx
+      ~viewport_height:
+        (Css.Values.Px (float_of_int (480 + (byte_at buf 10 mod 900))))
+      buf
+  in
+  let decl = conservative_decl buf in
+  let actual = Css.Declaration.eval ctx decl in
+  check_eval_shape "eval conservativity shape" decl actual;
+  check_same_decl "eval conservativity" decl actual
+
+let test_eval_full_context_computes_claimed_observables buf =
+  let ctx =
+    eval_ctx
+      ~viewport_height:
+        (Css.Values.Px (float_of_int (480 + (byte_at buf 42 mod 900))))
+      buf
+  in
+  let decl = computable_decl buf in
+  let actual = Css.Declaration.eval ctx decl in
+  check_eval_shape "eval full-context conservativity shape" decl actual;
+  let rendered = pp_decl actual in
+  if contains_residual rendered then
+    fail
+      (Fmt.str "eval full-context conservativity left residual in %S" rendered)
+
+let test_layered_eval_laws buf =
+  let layer_order = [ "theme"; "base"; "components"; "utilities" ] in
+  let weak = eval_layered_ctx buf in
+  let strong =
+    eval_layered_ctx
+      ~viewport_height:
+        (Css.Values.Px (float_of_int (480 + (byte_at buf 11 mod 900))))
+      buf
+  in
+  let decl = fuzz_layered_decl buf in
+  let once = Css.Declaration.eval weak ~layer_order ~layer:"utilities" decl in
+  let twice = Css.Declaration.eval weak ~layer_order ~layer:"utilities" once in
+  check_eval_shape "layered eval idempotency shape" decl once;
+  check_same_decl "layered eval idempotency" once twice;
+  let direct =
+    Css.Declaration.eval strong ~layer_order ~layer:"utilities" decl
+  in
+  let staged =
+    Css.Declaration.eval strong ~layer_order ~layer:"utilities" once
+  in
+  check_eval_shape "layered eval context monotonicity direct shape" decl direct;
+  check_eval_shape "layered eval context monotonicity staged shape" decl staged;
+  check_same_decl "layered eval context monotonicity" direct staged
+
+let test_stylesheet_eval_laws buf =
+  let weak = eval_ctx buf in
+  let strong =
+    eval_ctx
+      ~viewport_height:
+        (Css.Values.Px (float_of_int (480 + (byte_at buf 43 mod 900))))
+      buf
+  in
+  let stylesheet = fuzz_stylesheet buf in
+  let once = Css.Stylesheet.eval weak stylesheet in
+  let twice = Css.Stylesheet.eval weak once in
+  check_same_stylesheet "stylesheet eval idempotency" once twice;
+  let direct = Css.Stylesheet.eval strong stylesheet in
+  let staged = Css.Stylesheet.eval strong once in
+  check_same_stylesheet "stylesheet eval context monotonicity" direct staged
+
 let suite =
   ( "context",
     [
@@ -316,4 +709,12 @@ let suite =
       test_case "property registration context" [ bytes ]
         test_property_registration_context;
       test_case "context printers" [ bytes ] test_context_printers;
+      test_case "eval idempotency law" [ bytes ] test_eval_idempotent;
+      test_case "eval context monotonicity law" [ bytes ]
+        test_eval_context_monotonicity;
+      test_case "eval conservativity law" [ bytes ] test_eval_conservativity;
+      test_case "eval full-context conservativity law" [ bytes ]
+        test_eval_full_context_computes_claimed_observables;
+      test_case "layered eval laws" [ bytes ] test_layered_eval_laws;
+      test_case "stylesheet eval laws" [ bytes ] test_stylesheet_eval_laws;
     ] )
