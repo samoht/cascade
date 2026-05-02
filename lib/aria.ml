@@ -110,7 +110,11 @@ let suffix = function
   | Valuenow -> "valuenow"
   | Valuetext -> "valuetext"
 
-let to_string attr = "aria-" ^ suffix attr
+let pp ctx attr =
+  Pp.string ctx "aria-";
+  Pp.string ctx (suffix attr)
+
+let to_string attr = Pp.to_string pp attr
 
 let of_string = function
   | "aria-activedescendant" -> Active_descendant

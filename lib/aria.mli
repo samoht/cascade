@@ -63,3 +63,6 @@ val to_string : t -> string
 
 val of_string : string -> t
 (** [of_string name] parses a full [aria-*] attribute name. *)
+
+val pp : t Pp.t
+(** [pp] prints the full [aria-*] attribute name. *)
