@@ -581,7 +581,9 @@ let try_kind_pair k1 k2 t =
 
 (** {1 Expectations} *)
 
-let expect c t = if not (consume_if c t) then err_expected t (Fmt.str "'%c'" c)
+let expect c t =
+  if not (consume_if c t) then
+    err_expected t (String.concat "" [ "'"; String.make 1 c; "'" ])
 
 let expect_string name t =
   match ident_opt t with Some s when s = name -> () | _ -> err_expected t name
@@ -775,7 +777,15 @@ let list ?sep ?(at_least = 0) ?at_most item t =
   let items = loop [] 0 in
   let len = List.length items in
   if len < at_least then
-    err_expected t (Fmt.str "at least %d items (got %d)" at_least len)
+    err_expected t
+      (String.concat ""
+         [
+           "at least ";
+           string_of_int at_least;
+           " items (got ";
+           string_of_int len;
+           ")";
+         ])
   else items
 
 let try_parse_err p t =

@@ -38,8 +38,7 @@ module Stylesheet = struct
   let declaration_of_descriptor descriptor =
     let components =
       synthetic (Token.Ident descriptor.descriptor_name)
-      :: synthetic Token.Colon
-      :: descriptor.descriptor_value
+      :: synthetic Token.Colon :: descriptor.descriptor_value
     in
     Declaration.read_declaration (Cursor.of_components components)
 
@@ -54,14 +53,16 @@ module Stylesheet = struct
   let eval_descriptor ~layer_order ?layer ctx descriptor =
     match declaration_of_descriptor descriptor with
     | Some decl ->
-        Declaration.eval ~layer_order ?layer ctx decl |> descriptor_of_declaration
+        Declaration.eval ~layer_order ?layer ctx decl
+        |> descriptor_of_declaration
     | None -> descriptor
 
   let eval_page_margin_rule ~layer_order ?layer ctx rule =
     {
       rule with
       margin_descriptors =
-        List.map (eval_descriptor ~layer_order ?layer ctx)
+        List.map
+          (eval_descriptor ~layer_order ?layer ctx)
           rule.margin_descriptors;
     }
 
@@ -108,7 +109,7 @@ module Stylesheet = struct
     in
     List.fold_left (statement None) [] stylesheet
     |> List.filter (fun (rule : Context.cascade_rule) ->
-           layer_known ~layer_order rule.layer)
+        layer_known ~layer_order rule.layer)
 
   let rec eval_statement ?ctx_for_layer ~layer_order ?layer ctx = function
     | Rule rule ->
@@ -257,7 +258,7 @@ module Font_face = Font_face
 type parse_error = Error.t * string
 
 let pp_parse_error (err, filename) =
-  Fmt.str "%s: %s" filename (Error.to_string err)
+  String.concat "" [ filename; ": "; Error.to_string err ]
 
 (* Include all public APIs except Stylesheet *)
 
