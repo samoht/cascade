@@ -210,21 +210,21 @@ let cascade_rule_chain ctx ~property_name ~important =
       in
       rules
       |> List.filter (fun (rule : cascade_rule) ->
-             String.equal rule.property_name property_name
-             && Bool.equal rule.important important
-             && cascade_layer_precedence_rank ~layer_order:ctx.layer_order
-                  ~important rule.layer
-                < current_rank)
+          String.equal rule.property_name property_name
+          && Bool.equal rule.important important
+          && cascade_layer_precedence_rank ~layer_order:ctx.layer_order
+               ~important rule.layer
+             < current_rank)
       |> List.sort (fun (a : cascade_rule) (b : cascade_rule) ->
-             match
-               compare
-                 (cascade_layer_precedence_rank ~layer_order:ctx.layer_order
-                    ~important b.layer)
-                 (cascade_layer_precedence_rank ~layer_order:ctx.layer_order
-                    ~important a.layer)
-             with
-             | 0 -> compare b.source_order a.source_order
-             | by_layer -> by_layer)
+          match
+            compare
+              (cascade_layer_precedence_rank ~layer_order:ctx.layer_order
+                 ~important b.layer)
+              (cascade_layer_precedence_rank ~layer_order:ctx.layer_order
+                 ~important a.layer)
+          with
+          | 0 -> compare b.source_order a.source_order
+          | by_layer -> by_layer)
       |> Option.some
 
 let remove_cascade_rule (target : cascade_rule) rules =
@@ -559,7 +559,6 @@ let pp_decl_list ctx items =
   Pp.char ctx ']'
 
 let pp_bool ctx value = Pp.string ctx (string_of_bool value)
-
 let pp_int ctx value = Pp.string ctx (string_of_int value)
 
 let pp_cascade_rule ctx (rule : cascade_rule) =
@@ -569,8 +568,7 @@ let pp_cascade_rule ctx (rule : cascade_rule) =
   pp_field ctx ~first "important" pp_bool rule.important;
   pp_field ctx ~first "layer" pp_string_option rule.layer;
   pp_field ctx ~first "source_order" pp_int rule.source_order;
-  pp_field ctx ~first "declaration" Declaration.pp_declaration
-    rule.declaration;
+  pp_field ctx ~first "declaration" Declaration.pp_declaration rule.declaration;
   Pp.char ctx '}'
 
 let pp_cascade_rules ctx = function
@@ -778,7 +776,7 @@ let read_full_components read components =
     Cursor.ws cursor;
     Cursor.expect_eof cursor;
     Some value
-  with _ -> None
+  with Cursor.Parse_error _ -> None
 
 let read_custom_value : type a.
     a Properties.kind -> (Cursor.t -> a) -> Declaration.declaration -> a option
@@ -814,22 +812,33 @@ let map_var_fallback f = function
   | Values.Empty2 -> Values.Empty2
   | Values.None -> Values.None
   | Values.Fallback value -> Values.Fallback (f value)
+  | Values.Syntax_fallback value -> Values.Syntax_fallback value
   | Values.Var_fallback name -> Values.Var_fallback name
 
 let combine_numeric_values ~to_number ~of_number left op right =
+  let canonical f =
+    try float_of_string (Pp.float_to_string f) with Failure _ -> f
+  in
   match (to_number left, op, to_number right) with
-  | Some a, Values.Add, Some b -> Some (of_number (a +. b))
-  | Some a, Values.Sub, Some b -> Some (of_number (a -. b))
+  | Some a, Values.Add, Some b -> Some (of_number (canonical (a +. b)))
+  | Some a, Values.Sub, Some b -> Some (of_number (canonical (a -. b)))
   | _ -> None
 
 let combine_numeric_value_num ~to_number ~of_number value op num =
+  let canonical f =
+    try float_of_string (Pp.float_to_string f) with Failure _ -> f
+  in
   match (to_number value, op) with
-  | Some n, Values.Mul -> Some (of_number (n *. num))
-  | Some n, Values.Div when num <> 0. -> Some (of_number (n /. num))
+  | Some n, Values.Mul -> Some (of_number (canonical (n *. num)))
+  | Some n, Values.Div when num <> 0. -> Some (of_number (canonical (n /. num)))
   | _ -> None
 
 let normalize_numeric_value ~to_number ~of_number value =
-  match to_number value with Some n -> of_number n | None -> value
+  match to_number value with
+  | Some n -> (
+      try of_number (float_of_string (Pp.float_to_string n))
+      with Failure _ -> of_number n)
+  | None -> value
 
 module Var_residual = struct
   type 'a simplifier = authored:bool -> visited:string list -> 'a -> 'a
@@ -852,9 +861,7 @@ module Var_residual = struct
       {
         var with
         Values.fallback =
-          map_var_fallback
-            (simplify ~authored:false ~visited:[])
-            var.fallback;
+          map_var_fallback (simplify ~authored:false ~visited:[]) var.fallback;
         default = Option.map (simplify ~authored:false ~visited:[]) var.default;
       }
     and resolve_var ~(simplify : a simplifier) ~visited (var : a Values.var) :
@@ -876,15 +883,14 @@ module Var_residual = struct
         in
         match parsed with
         | Some value ->
-            Some
-              (simplify ~authored:false ~visited:(var.name :: visited) value)
+            Some (simplify ~authored:false ~visited:(var.name :: visited) value)
         | None -> (
             match var.fallback with
             | Values.Fallback fallback when resolve_fallback fallback ->
                 Some (simplify ~authored:false ~visited fallback)
             | Values.Fallback _ -> None
-            | Values.Empty | Values.Empty2 | Values.None | Values.Var_fallback _
-              ->
+            | Values.Empty | Values.Empty2 | Values.None
+            | Values.Syntax_fallback _ | Values.Var_fallback _ ->
                 None)
     in
     f ~resolve_var ~simplify_var_record
@@ -929,8 +935,8 @@ module Calc_residual = struct
     | Values.Var _ -> true
     | Values.Nested inner | Values.Parens inner -> contains_var inner
     | Values.Expr (left, _, right) -> contains_var left || contains_var right
-    | Values.Num _ | Values.Val _ | Values.Sibling_index
-    | Values.Sibling_count ->
+    | Values.Num _ | Values.Val _ | Values.Sibling_index | Values.Sibling_count
+      ->
         false
 
   let simplify (type a) ?resolve_fallback ?layer_order ?layer cascade
@@ -1129,7 +1135,7 @@ module Length = struct
       Cursor.ws cursor;
       Cursor.expect_eof cursor;
       Some args
-    with _ -> None
+    with Cursor.Parse_error _ -> None
 
   let string_of_math_args args =
     Pp.to_string ~minify:true (Pp.list ~sep:Pp.comma Values.pp_length) args
@@ -2228,8 +2234,8 @@ let simplify_rotate_value ?layer_order ?layer cascade value =
 
 let simplify_translate_value ?layer_order ?layer cascade length_ctx value =
   let length authored =
-    Length.simplify ~preserve_authored_calc:authored ?layer_order ?layer
-      cascade length_ctx
+    Length.simplify ~preserve_authored_calc:authored ?layer_order ?layer cascade
+      length_ctx
   in
   let simplify_leaf _simplify ~authored ~visited:_
       (value : Properties.translate_value) =
@@ -2240,8 +2246,7 @@ let simplify_translate_value ?layer_order ?layer cascade length_ctx value =
         (Properties.XY (length authored x, length authored y)
           : Properties.translate_value)
     | Properties.XYZ (x, y, z) ->
-        (Properties.XYZ
-           (length authored x, length authored y, length authored z)
+        (Properties.XYZ (length authored x, length authored y, length authored z)
           : Properties.translate_value)
     | value -> value
   in
@@ -2294,8 +2299,8 @@ let simplify_scale ?layer_order ?layer cascade value =
 
 let simplify_transform ?layer_order ?layer cascade length_ctx value =
   let length authored =
-    Length.simplify ~preserve_authored_calc:authored ?layer_order ?layer
-      cascade length_ctx
+    Length.simplify ~preserve_authored_calc:authored ?layer_order ?layer cascade
+      length_ctx
   in
   let angle = simplify_angle ?layer_order ?layer cascade in
   let number_percentage =
@@ -2304,8 +2309,7 @@ let simplify_transform ?layer_order ?layer cascade length_ctx value =
   let simplify_leaf simplify ~authored ~visited (value : Properties.transform) =
     match value with
     | Properties.Translate (x, y) ->
-        (Properties.Translate
-           (length authored x, Option.map (length authored) y)
+        (Properties.Translate (length authored x, Option.map (length authored) y)
           : Properties.transform)
     | Properties.Translate_x x ->
         (Properties.Translate_x (length authored x) : Properties.transform)
@@ -2373,8 +2377,8 @@ let simplify_transform ?layer_order ?layer cascade length_ctx value =
 
 let simplify_filter ?layer_order ?layer cascade length_ctx value =
   let length authored =
-    Length.simplify ~preserve_authored_calc:authored ?layer_order ?layer
-      cascade length_ctx
+    Length.simplify ~preserve_authored_calc:authored ?layer_order ?layer cascade
+      length_ctx
   in
   let number_percentage =
     simplify_number_percentage ?layer_order ?layer cascade
@@ -2610,8 +2614,7 @@ let css_wide_of_background_image (value : Properties.background_image) =
   | Properties.Revert_layer -> Some Revert_layer
   | _ -> None
 
-let css_wide_of_background_image_list (value : Properties.background_image list)
-    =
+let css_wide_of_background_images (value : Properties.background_image list) =
   match value with [ image ] -> css_wide_of_background_image image | _ -> None
 
 let css_wide_of_animation (value : Properties.animation) =
@@ -2621,7 +2624,9 @@ let css_wide_of_animation (value : Properties.animation) =
   | _ -> None
 
 let css_wide_of_animations (value : Properties.animation list) =
-  match value with [ animation ] -> css_wide_of_animation animation | _ -> None
+  match value with
+  | [ animation ] -> css_wide_of_animation animation
+  | _ -> None
 
 let css_wide_of_transition (value : Properties.transition) =
   match value with
@@ -2633,7 +2638,9 @@ let css_wide_of_transition (value : Properties.transition) =
   | _ -> None
 
 let css_wide_of_transitions (value : Properties.transition list) =
-  match value with [ transition ] -> css_wide_of_transition transition | _ -> None
+  match value with
+  | [ transition ] -> css_wide_of_transition transition
+  | _ -> None
 
 let rec declaration_with_importance important = function
   | Declaration.Declaration { property; value; important = _ } ->
@@ -2894,8 +2901,8 @@ let simplify_color ?(layer_order = []) ?layer ctx (value : Values.color) :
 
 let simplify_shadow ?layer_order ?layer cascade length_ctx value =
   let length authored =
-    Length.simplify ~preserve_authored_calc:authored ?layer_order ?layer
-      cascade length_ctx
+    Length.simplify ~preserve_authored_calc:authored ?layer_order ?layer cascade
+      length_ctx
   in
   let color = simplify_color ?layer_order ?layer cascade in
   let simplify_leaf simplify ~authored ~visited (value : Properties.shadow) =
@@ -2977,8 +2984,24 @@ let resolve_url_leaf (ctx : t) url =
   let loader = { base_url = ctx.base_url; imports = [] } in
   match Url.resolve loader url with Ok resolved -> resolved | Error _ -> url
 
-let simplify_background_image ?(layer_order = []) ?layer ctx
-    (value : Properties.background_image) : Properties.background_image =
+let gradient_stop_of_color_var (var : Values.color Values.var) :
+    Properties.gradient_stop Values.var =
+  {
+    Values.name = var.name;
+    fallback =
+      map_var_fallback
+        (fun color -> Properties.Color_percentage (color, None, None))
+        var.fallback;
+    default =
+      Option.map
+        (fun color -> Properties.Color_percentage (color, None, None))
+        var.default;
+    layer = var.layer;
+    meta = var.meta;
+  }
+
+let simplify_gradient_stop ?(layer_order = []) ?layer ctx
+    (value : Properties.gradient_stop) =
   let length_ctx = Length.of_t ctx in
   let length = Length.simplify ~layer_order ?layer ctx length_ctx in
   let length_percentage =
@@ -2986,73 +3009,57 @@ let simplify_background_image ?(layer_order = []) ?layer ctx
   in
   let percentage = simplify_percentage ~layer_order ?layer ctx in
   let color = simplify_color ~layer_order ?layer ctx in
-  let gradient_stop_of_color_var (var : Values.color Values.var) :
-      Properties.gradient_stop Values.var =
+  let simplify_leaf simplify ~authored ~visited
+      (value : Properties.gradient_stop) =
+    match value with
+    | Properties.Color_percentage (Values.Var var, None, None) -> (
+        let stop_var = gradient_stop_of_color_var var in
+        let stop =
+          simplify ~authored ~visited
+            (Properties.Var stop_var : Properties.gradient_stop)
+        in
+        match (stop : Properties.gradient_stop) with
+        | Properties.Var unresolved when unresolved.Values.name = stop_var.name
+          ->
+            Properties.Color_percentage (color (Values.Var var), None, None)
+        | stop -> stop)
+    | Properties.Color_percentage (color_value, first, second) ->
+        (Properties.Color_percentage
+           ( color color_value,
+             Option.map length_percentage first,
+             Option.map length_percentage second )
+          : Properties.gradient_stop)
+    | Properties.Color_length (color_value, first, second) ->
+        (Properties.Color_length
+           (color color_value, Option.map length first, Option.map length second)
+          : Properties.gradient_stop)
+    | Properties.Length value ->
+        (Properties.Length (length value) : Properties.gradient_stop)
+    | Properties.Percentage value ->
+        (Properties.Percentage (percentage value) : Properties.gradient_stop)
+    | Properties.List values ->
+        (Properties.List (List.map (simplify ~authored ~visited) values)
+          : Properties.gradient_stop)
+    | value -> value
+  in
+  let ops : Properties.gradient_stop Var_residual.ops =
     {
-      Values.name = var.name;
-      fallback =
-        map_var_fallback
-          (fun color -> Properties.Color_percentage (color, None, None))
-          var.fallback;
-      default =
-        Option.map
-          (fun color -> Properties.Color_percentage (color, None, None))
-          var.default;
-      layer = var.layer;
-      meta = var.meta;
+      Var_residual.as_var =
+        (function
+        | (Properties.Var var : Properties.gradient_stop) -> Some var
+        | _ -> None);
+      of_var = (fun var -> Properties.Var var);
+      read_custom =
+        read_custom_value Properties.Gradient_stop
+          Properties.read_gradient_stop_list;
+      simplify_leaf;
     }
   in
-  let gradient_stop (value : Properties.gradient_stop) =
-    let simplify_leaf simplify ~authored ~visited
-        (value : Properties.gradient_stop) =
-      match value with
-      | Properties.Color_percentage (Values.Var var, None, None) -> (
-          let stop_var = gradient_stop_of_color_var var in
-          let stop =
-            simplify ~authored ~visited
-              (Properties.Var stop_var : Properties.gradient_stop)
-          in
-          match (stop : Properties.gradient_stop) with
-          | Properties.Var unresolved
-            when unresolved.Values.name = stop_var.name ->
-              Properties.Color_percentage (color (Values.Var var), None, None)
-          | stop -> stop)
-      | Properties.Color_percentage (color_value, first, second) ->
-          (Properties.Color_percentage
-             ( color color_value,
-               Option.map length_percentage first,
-               Option.map length_percentage second )
-            : Properties.gradient_stop)
-      | Properties.Color_length (color_value, first, second) ->
-          (Properties.Color_length
-             ( color color_value,
-               Option.map length first,
-               Option.map length second )
-            : Properties.gradient_stop)
-      | Properties.Length value ->
-          (Properties.Length (length value) : Properties.gradient_stop)
-      | Properties.Percentage value ->
-          (Properties.Percentage (percentage value) : Properties.gradient_stop)
-      | Properties.List values ->
-          (Properties.List (List.map (simplify ~authored ~visited) values)
-            : Properties.gradient_stop)
-      | value -> value
-    in
-    let ops : Properties.gradient_stop Var_residual.ops =
-      {
-        Var_residual.as_var =
-          (function
-          | (Properties.Var var : Properties.gradient_stop) -> Some var
-          | _ -> None);
-        of_var = (fun var -> Properties.Var var);
-        read_custom =
-          read_custom_value Properties.Gradient_stop
-            Properties.read_gradient_stop_list;
-        simplify_leaf;
-      }
-    in
-    Var_residual.simplify ~layer_order ?layer ctx ops value
-  in
+  Var_residual.simplify ~layer_order ?layer ctx ops value
+
+let simplify_background_image ?(layer_order = []) ?layer ctx
+    (value : Properties.background_image) : Properties.background_image =
+  let gradient_stop = simplify_gradient_stop ~layer_order ?layer ctx in
   let gradient_stops values =
     List.concat_map
       (fun value ->
@@ -3202,268 +3209,263 @@ let simplify_var_value ?layer_order ?layer ctx ~as_var ~of_var ~read_custom
   in
   Var_residual.simplify ?layer_order ?layer ctx ops value
 
+let simplify_display ~layer_order ?layer ctx (value : Properties.display) =
+  simplify_var_value ~layer_order ?layer ctx
+    ~as_var:(function
+      | (Properties.Var var : Properties.display) -> Some var | _ -> None)
+    ~of_var:(fun var -> Properties.Var var)
+    ~read_custom:(read_custom_components Properties.read_display)
+    value
+
+let simplify_position ~layer_order ?layer ctx (value : Properties.position) =
+  simplify_var_value ~layer_order ?layer ctx
+    ~as_var:(function
+      | (Properties.Var var : Properties.position) -> Some var | _ -> None)
+    ~of_var:(fun var -> Properties.Var var)
+    ~read_custom:(read_custom_components Properties.read_position)
+    value
+
+let simplify_visibility ~layer_order ?layer ctx (value : Properties.visibility)
+    =
+  simplify_var_value ~layer_order ?layer ctx
+    ~as_var:(function
+      | (Properties.Var var : Properties.visibility) -> Some var | _ -> None)
+    ~of_var:(fun var -> Properties.Var var)
+    ~read_custom:(read_custom_components Properties.read_visibility)
+    value
+
+let simplify_clear ~layer_order ?layer ctx (value : Properties.clear) =
+  simplify_var_value ~layer_order ?layer ctx
+    ~as_var:(function
+      | (Properties.Var var : Properties.clear) -> Some var | _ -> None)
+    ~of_var:(fun var -> Properties.Var var)
+    ~read_custom:(read_custom_components Properties.read_clear)
+    value
+
+let simplify_float_side ~layer_order ?layer ctx (value : Properties.float_side)
+    =
+  simplify_var_value ~layer_order ?layer ctx
+    ~as_var:(function
+      | (Properties.Var var : Properties.float_side) -> Some var | _ -> None)
+    ~of_var:(fun var -> Properties.Var var)
+    ~read_custom:(read_custom_components Properties.read_float_side)
+    value
+
 let rec eval_typed ?layer_order ?layer ctx decl =
   let ctx = scope ?layer_order ?layer ctx in
   let layer_order = ctx.layer_order in
   let layer = ctx.layer in
-  let length_ctx = Length.of_t ctx in
-  let length = Length.simplify ~layer_order ?layer ctx length_ctx in
-  let lengths = List.map length in
-  let length_percentage =
-    simplify_length_percentage ~layer_order ?layer ctx length_ctx
-  in
-  let border_width = simplify_border_width ~layer_order ?layer ctx length_ctx in
-  let border_widths = List.map border_width in
-  let opacity = simplify_opacity ~layer_order ?layer ctx in
-  let rotate = simplify_rotate_value ~layer_order ?layer ctx in
-  let duration = simplify_duration ~layer_order ?layer ctx in
-  let font_size = simplify_font_size ~layer_order ?layer ctx length_ctx in
-  let display value =
-    simplify_var_value ~layer_order ?layer ctx
-      ~as_var:(function
-        | (Properties.Var var : Properties.display) -> Some var | _ -> None)
-      ~of_var:(fun var -> Properties.Var var)
-      ~read_custom:(read_custom_components Properties.read_display)
-      value
-  in
-  let position value =
-    simplify_var_value ~layer_order ?layer ctx
-      ~as_var:(function
-        | (Properties.Var var : Properties.position) -> Some var | _ -> None)
-      ~of_var:(fun var -> Properties.Var var)
-      ~read_custom:(read_custom_components Properties.read_position)
-      value
-  in
-  let visibility value =
-    simplify_var_value ~layer_order ?layer ctx
-      ~as_var:(function
-        | (Properties.Var var : Properties.visibility) -> Some var | _ -> None)
-      ~of_var:(fun var -> Properties.Var var)
-      ~read_custom:(read_custom_components Properties.read_visibility)
-      value
-  in
-  let clear value =
-    simplify_var_value ~layer_order ?layer ctx
-      ~as_var:(function
-        | (Properties.Var var : Properties.clear) -> Some var | _ -> None)
-      ~of_var:(fun var -> Properties.Var var)
-      ~read_custom:(read_custom_components Properties.read_clear)
-      value
-  in
-  let float_side value =
-    simplify_var_value ~layer_order ?layer ctx
-      ~as_var:(function
-        | (Properties.Var var : Properties.float_side) -> Some var | _ -> None)
-      ~of_var:(fun var -> Properties.Var var)
-      ~read_custom:(read_custom_components Properties.read_float_side)
-      value
-  in
-  let translate = simplify_translate_value ~layer_order ?layer ctx length_ctx in
-  let scale = simplify_scale ~layer_order ?layer ctx in
-  let transform = simplify_transform ~layer_order ?layer ctx length_ctx in
-  let transforms = List.map transform in
-  let filter = simplify_filter ~layer_order ?layer ctx length_ctx in
-  let shadow = simplify_shadow ~layer_order ?layer ctx length_ctx in
-  let border_radius =
-    simplify_border_radius ~layer_order ?layer ctx length_ctx
-  in
-  let color = simplify_color ~layer_order ?layer ctx in
-  let background_image = simplify_background_image ~layer_order ?layer ctx in
-  let background_images = List.map background_image in
-  let animation =
-    List.map (simplify_animation_item ~layer_order ?layer ctx duration)
-  in
-  let transition =
-    List.map (simplify_transition_item ~layer_order ?layer ctx duration)
-  in
-  let resolve_css_wide property important keyword =
-    resolve_css_wide_keyword ~layer_order ctx ~important
-      ~property_name:(property_name property) keyword
-  in
   match decl with
   | Declaration.Theme_guarded { var_name; decl } ->
       Declaration.Theme_guarded
         { var_name; decl = eval_typed ~layer_order ?layer ctx decl }
   | Declaration.Declaration { property; value; important } -> (
       match Properties.property_value_kind property with
-      | Some Properties.Length ->
-          let value = length value in
-          Option.value
-            (Option.bind (css_wide_of_length value)
-               (resolve_css_wide property important))
-            ~default:(Declaration.Declaration { property; value; important })
-      | Some Properties.Lengths ->
-          let value = lengths value in
-          Option.value
-            (Option.bind
-               (css_wide_of_length_list value)
-               (resolve_css_wide property important))
-            ~default:(Declaration.Declaration { property; value; important })
-      | Some Properties.Length_percentage ->
-          let value = length_percentage value in
-          Option.value
-            (Option.bind
-               (css_wide_of_length_percentage value)
-               (resolve_css_wide property important))
-            ~default:(Declaration.Declaration { property; value; important })
-      | Some Properties.Border_width ->
-          let value = border_width value in
-          Option.value
-            (Option.bind
-               (css_wide_of_border_width value)
-               (resolve_css_wide property important))
-            ~default:(Declaration.Declaration { property; value; important })
-      | Some Properties.Border_widths ->
-          let value = border_widths value in
-          Option.value
-            (Option.bind
-               (css_wide_of_border_widths value)
-               (resolve_css_wide property important))
-            ~default:(Declaration.Declaration { property; value; important })
-      | Some Properties.Font_size ->
-          let value = font_size value in
-          Option.value
-            (Option.bind
-               (css_wide_of_font_size value)
-               (resolve_css_wide property important))
-            ~default:(Declaration.Declaration { property; value; important })
-      | Some Properties.Opacity ->
-          let value = opacity value in
-          Option.value
-            (Option.bind
-               (css_wide_of_opacity value)
-               (resolve_css_wide property important))
-            ~default:(Declaration.Declaration { property; value; important })
-      | Some Properties.Rotate ->
-          let value = rotate value in
-          Option.value
-            (Option.bind
-               (css_wide_of_rotate_value value)
-               (resolve_css_wide property important))
-            ~default:(Declaration.Declaration { property; value; important })
-      | Some Properties.Duration ->
-          let value = duration value in
-          Option.value
-            (Option.bind
-               (css_wide_of_duration value)
-               (resolve_css_wide property important))
-            ~default:(Declaration.Declaration { property; value; important })
-      | Some Properties.Display ->
-          let value = display value in
-          Option.value
-            (Option.bind
-               (css_wide_of_display value)
-               (resolve_css_wide property important))
-            ~default:(Declaration.Declaration { property; value; important })
-      | Some Properties.Position ->
-          let value = position value in
-          Option.value
-            (Option.bind
-               (css_wide_of_position value)
-               (resolve_css_wide property important))
-            ~default:(Declaration.Declaration { property; value; important })
-      | Some Properties.Visibility ->
-          let value = visibility value in
-          Option.value
-            (Option.bind
-               (css_wide_of_visibility value)
-               (resolve_css_wide property important))
-            ~default:(Declaration.Declaration { property; value; important })
-      | Some Properties.Clear ->
-          let value = clear value in
-          Option.value
-            (Option.bind (css_wide_of_clear value)
-               (resolve_css_wide property important))
-            ~default:(Declaration.Declaration { property; value; important })
-      | Some Properties.Float ->
-          let value = float_side value in
-          Option.value
-            (Option.bind
-               (css_wide_of_float_side value)
-               (resolve_css_wide property important))
-            ~default:(Declaration.Declaration { property; value; important })
-      | Some Properties.Number_percentage ->
-          let value =
-            simplify_number_percentage ~layer_order ?layer ctx value
-          in
-          Declaration.Declaration { property; value; important }
-      | Some Properties.Scale ->
-          let value = scale value in
-          Option.value
-            (Option.bind (css_wide_of_scale value)
-               (resolve_css_wide property important))
-            ~default:(Declaration.Declaration { property; value; important })
-      | Some Properties.Translate ->
-          let value = translate value in
-          Option.value
-            (Option.bind
-               (css_wide_of_translate_value value)
-               (resolve_css_wide property important))
-            ~default:(Declaration.Declaration { property; value; important })
-      | Some Properties.Transform ->
-          let value = transforms value in
-          Option.value
-            (Option.bind
-               (css_wide_of_transforms value)
-               (resolve_css_wide property important))
-            ~default:(Declaration.Declaration { property; value; important })
-      | Some Properties.Animation ->
-          let value = animation value in
-          Option.value
-            (Option.bind
-               (css_wide_of_animations value)
-               (resolve_css_wide property important))
-            ~default:(Declaration.Declaration { property; value; important })
-      | Some Properties.Transition ->
-          let value = transition value in
-          Option.value
-            (Option.bind
-               (css_wide_of_transitions value)
-               (resolve_css_wide property important))
-            ~default:(Declaration.Declaration { property; value; important })
-      | Some Properties.Filter ->
-          let value = filter value in
-          Option.value
-            (Option.bind (css_wide_of_filter value)
-               (resolve_css_wide property important))
-            ~default:(Declaration.Declaration { property; value; important })
-      | Some Properties.Shadow ->
-          let value = shadow value in
-          Option.value
-            (Option.bind (css_wide_of_shadow value)
-               (resolve_css_wide property important))
-            ~default:(Declaration.Declaration { property; value; important })
-      | Some Properties.Border_radius ->
-          let value = border_radius value in
-          Option.value
-            (Option.bind
-               (css_wide_of_border_radius value)
-               (resolve_css_wide property important))
-            ~default:(Declaration.Declaration { property; value; important })
-      | Some Properties.Color ->
-          let value = color value in
-          Option.value
-            (Option.bind (css_wide_of_color value)
-               (resolve_css_wide property important))
-            ~default:(Declaration.Declaration { property; value; important })
-      | Some Properties.Background_image ->
-          let value = background_image value in
-          Option.value
-            (Option.bind
-               (css_wide_of_background_image value)
-               (resolve_css_wide property important))
-            ~default:(Declaration.Declaration { property; value; important })
-      | Some Properties.Background_images ->
-          let value = background_images value in
-          Option.value
-            (Option.bind
-               (css_wide_of_background_image_list value)
-               (resolve_css_wide property important))
-            ~default:(Declaration.Declaration { property; value; important })
+      | Some kind ->
+          eval_kind ~layer_order ?layer ctx kind property important value
       | None -> decl)
 
-and resolve_css_wide_keyword ~layer_order ctx ~important ~property_name
-    keyword =
+and eval_kind : type a.
+    layer_order:string list ->
+    ?layer:string ->
+    t ->
+    a Properties.property_value_kind ->
+    a Properties.property ->
+    bool ->
+    a ->
+    Declaration.declaration =
+ fun ~layer_order ?layer ctx kind property important value ->
+  let length_ctx = Length.of_t ctx in
+  let resolve_css_wide property important keyword =
+    resolve_css_wide_keyword ~layer_order ctx ~important
+      ~property_name:(property_name property) keyword
+  in
+  let resolve : type b.
+      (b -> b) ->
+      (b -> css_wide_keyword option) ->
+      b Properties.property ->
+      bool ->
+      b ->
+      Declaration.declaration =
+   fun simplify css_wide_of property important value ->
+    let value = simplify value in
+    Option.value
+      (Option.bind (css_wide_of value) (resolve_css_wide property important))
+      ~default:(Declaration.Declaration { property; value; important })
+  in
+  match kind with
+  | Properties.Length ->
+      resolve
+        (Length.simplify ~layer_order ?layer ctx length_ctx)
+        css_wide_of_length property important value
+  | Properties.Lengths ->
+      resolve
+        (List.map (Length.simplify ~layer_order ?layer ctx length_ctx))
+        css_wide_of_length_list property important value
+  | Properties.Length_percentage ->
+      resolve
+        (simplify_length_percentage ~layer_order ?layer ctx length_ctx)
+        css_wide_of_length_percentage property important value
+  | Properties.Border_width ->
+      resolve
+        (simplify_border_width ~layer_order ?layer ctx length_ctx)
+        css_wide_of_border_width property important value
+  | Properties.Border_widths ->
+      resolve
+        (List.map (simplify_border_width ~layer_order ?layer ctx length_ctx))
+        css_wide_of_border_widths property important value
+  | Properties.Font_size ->
+      resolve
+        (simplify_font_size ~layer_order ?layer ctx length_ctx)
+        css_wide_of_font_size property important value
+  | Properties.Translate ->
+      resolve
+        (simplify_translate_value ~layer_order ?layer ctx length_ctx)
+        css_wide_of_translate_value property important value
+  | Properties.Transform ->
+      resolve
+        (List.map (simplify_transform ~layer_order ?layer ctx length_ctx))
+        css_wide_of_transforms property important value
+  | Properties.Filter ->
+      resolve
+        (simplify_filter ~layer_order ?layer ctx length_ctx)
+        css_wide_of_filter property important value
+  | Properties.Shadow ->
+      resolve
+        (simplify_shadow ~layer_order ?layer ctx length_ctx)
+        css_wide_of_shadow property important value
+  | Properties.Border_radius ->
+      resolve
+        (simplify_border_radius ~layer_order ?layer ctx length_ctx)
+        css_wide_of_border_radius property important value
+  | kind ->
+      eval_kind_other ~layer_order ?layer ctx kind property important value
+
+and eval_kind_other : type a.
+    layer_order:string list ->
+    ?layer:string ->
+    t ->
+    a Properties.property_value_kind ->
+    a Properties.property ->
+    bool ->
+    a ->
+    Declaration.declaration =
+ fun ~layer_order ?layer ctx kind property important value ->
+  let resolve_css_wide property important keyword =
+    resolve_css_wide_keyword ~layer_order ctx ~important
+      ~property_name:(property_name property) keyword
+  in
+  let resolve : type b.
+      (b -> b) ->
+      (b -> css_wide_keyword option) ->
+      b Properties.property ->
+      bool ->
+      b ->
+      Declaration.declaration =
+   fun simplify css_wide_of property important value ->
+    let value = simplify value in
+    Option.value
+      (Option.bind (css_wide_of value) (resolve_css_wide property important))
+      ~default:(Declaration.Declaration { property; value; important })
+  in
+  match kind with
+  | Properties.Opacity ->
+      resolve
+        (simplify_opacity ~layer_order ?layer ctx)
+        css_wide_of_opacity property important value
+  | Properties.Rotate ->
+      resolve
+        (simplify_rotate_value ~layer_order ?layer ctx)
+        css_wide_of_rotate_value property important value
+  | Properties.Duration ->
+      resolve
+        (simplify_duration ~layer_order ?layer ctx)
+        css_wide_of_duration property important value
+  | Properties.Display ->
+      resolve
+        (simplify_display ~layer_order ?layer ctx)
+        css_wide_of_display property important value
+  | Properties.Position ->
+      resolve
+        (simplify_position ~layer_order ?layer ctx)
+        css_wide_of_position property important value
+  | Properties.Visibility ->
+      resolve
+        (simplify_visibility ~layer_order ?layer ctx)
+        css_wide_of_visibility property important value
+  | Properties.Clear ->
+      resolve
+        (simplify_clear ~layer_order ?layer ctx)
+        css_wide_of_clear property important value
+  | Properties.Float ->
+      resolve
+        (simplify_float_side ~layer_order ?layer ctx)
+        css_wide_of_float_side property important value
+  | kind -> eval_kind_misc ~layer_order ?layer ctx kind property important value
+
+and eval_kind_misc : type a.
+    layer_order:string list ->
+    ?layer:string ->
+    t ->
+    a Properties.property_value_kind ->
+    a Properties.property ->
+    bool ->
+    a ->
+    Declaration.declaration =
+ fun ~layer_order ?layer ctx kind property important value ->
+  let resolve_css_wide property important keyword =
+    resolve_css_wide_keyword ~layer_order ctx ~important
+      ~property_name:(property_name property) keyword
+  in
+  let resolve : type b.
+      (b -> b) ->
+      (b -> css_wide_keyword option) ->
+      b Properties.property ->
+      bool ->
+      b ->
+      Declaration.declaration =
+   fun simplify css_wide_of property important value ->
+    let value = simplify value in
+    Option.value
+      (Option.bind (css_wide_of value) (resolve_css_wide property important))
+      ~default:(Declaration.Declaration { property; value; important })
+  in
+  match kind with
+  | Properties.Number_percentage ->
+      let value = simplify_number_percentage ~layer_order ?layer ctx value in
+      Declaration.Declaration { property; value; important }
+  | Properties.Scale ->
+      resolve
+        (simplify_scale ~layer_order ?layer ctx)
+        css_wide_of_scale property important value
+  | Properties.Animation ->
+      let duration = simplify_duration ~layer_order ?layer ctx in
+      resolve
+        (List.map (simplify_animation_item ~layer_order ?layer ctx duration))
+        css_wide_of_animations property important value
+  | Properties.Transition ->
+      let duration = simplify_duration ~layer_order ?layer ctx in
+      resolve
+        (List.map (simplify_transition_item ~layer_order ?layer ctx duration))
+        css_wide_of_transitions property important value
+  | Properties.Color ->
+      resolve
+        (simplify_color ~layer_order ?layer ctx)
+        css_wide_of_color property important value
+  | Properties.Background_image ->
+      resolve
+        (simplify_background_image ~layer_order ?layer ctx)
+        css_wide_of_background_image property important value
+  | Properties.Background_images ->
+      resolve
+        (List.map (simplify_background_image ~layer_order ?layer ctx))
+        css_wide_of_background_images property important value
+  | _ ->
+      (* unreachable: handled by eval_kind / eval_kind_other *)
+      assert false
+
+and resolve_css_wide_keyword ~layer_order ctx ~important ~property_name keyword
+    =
   let eval_source ctx decl = eval_typed ~layer_order ctx decl in
   let inherit_source () =
     match inherited_value property_name ctx with
@@ -3482,9 +3484,7 @@ and resolve_css_wide_keyword ~layer_order ctx ~important ~property_name
         match chain with
         | rule :: _ ->
             let cascade_rules =
-              Option.map
-                (remove_cascade_rule rule)
-                ctx.cascade_rules
+              Option.map (remove_cascade_rule rule) ctx.cascade_rules
             in
             let ctx = { ctx with layer = rule.layer; cascade_rules } in
             Some (eval_source ctx rule.declaration)
