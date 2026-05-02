@@ -8,6 +8,13 @@ let decl_t : Css.Declaration.declaration Alcotest.testable =
       Format.pp_print_string fmt (Css.Declaration.string_of_declaration d))
     ( = )
 
+let stylesheet_t : Css.Stylesheet.t Alcotest.testable =
+  Alcotest.testable
+    (fun fmt sheet ->
+      Format.pp_print_string fmt
+        (Css.Stylesheet.to_string ~minify:true ~newline:false sheet))
+    ( = )
+
 let matches pattern text =
   let re = Re.Perl.compile_pat pattern in
   Re.execp re text
@@ -379,73 +386,379 @@ let test_context_debug_printers () =
   check_matches "animation dump has property" "animated_properties=.*transform"
     animation_dump
 
-let check_computed_value name ~ctx ~expected input =
-  let decl = Css.Declaration.of_string input in
-  match Css.Context.computed_value ctx decl with
-  | Ok actual -> Alcotest.(check string) name expected actual
-  | Error _ ->
-      Alcotest.failf "%s: expected %S to resolve to %S" name input expected
+let declaration_with_value decl value =
+  Css.Declaration.of_string
+    (Css.Declaration.property_name decl
+    ^ ": " ^ value
+    ^ if Css.Declaration.is_important decl then " !important" else "")
 
-let check_computed_error name ~ctx input =
+let check_eval_value name ~ctx ~expected input =
   let decl = Css.Declaration.of_string input in
-  match Css.Context.computed_value ctx decl with
-  | Ok actual ->
-      Alcotest.failf "%s: expected %S to be unresolved, got %S" name input
-        actual
-  | Error _ -> ()
+  Alcotest.(check decl_t)
+    name
+    (declaration_with_value decl expected)
+    (Css.Declaration.eval ctx decl)
 
-let declaration_source decl =
-  Css.Declaration.string_of_declaration ~minify:true decl
+let check_eval_preserves name ~ctx input =
+  let decl = Css.Declaration.of_string input in
+  Alcotest.(check decl_t) name decl (Css.Declaration.eval ctx decl)
 
 let check_eval name ~ctx ?layer_order ?layer ~expected input =
   let decl = Css.Declaration.of_string input in
   let expected = Css.Declaration.of_string expected in
-  let actual = Css.Context.eval ?layer_order ?layer ctx decl in
-  Alcotest.(check string)
-    name
-    (declaration_source expected)
-    (declaration_source actual)
+  let actual = Css.Declaration.eval ctx ?layer_order ?layer decl in
+  Alcotest.(check decl_t) name expected actual
 
 let check_eval_idempotent name ~ctx ?layer_order ?layer input =
   let decl = Css.Declaration.of_string input in
-  let once = Css.Context.eval ?layer_order ?layer ctx decl in
-  let twice = Css.Context.eval ?layer_order ?layer ctx once in
-  Alcotest.(check string)
-    name (declaration_source once) (declaration_source twice)
+  let once = Css.Declaration.eval ctx ?layer_order ?layer decl in
+  let twice = Css.Declaration.eval ctx ?layer_order ?layer once in
+  Alcotest.(check decl_t) name once twice
 
 let check_eval_context_extension name ?layer_order ?layer ~weak_ctx ~strong_ctx
     ~expected input =
   let decl = Css.Declaration.of_string input in
   let expected = Css.Declaration.of_string expected in
-  let direct = Css.Context.eval ?layer_order ?layer strong_ctx decl in
+  let direct = Css.Declaration.eval strong_ctx ?layer_order ?layer decl in
   let staged =
-    Css.Context.eval ?layer_order ?layer strong_ctx
-      (Css.Context.eval ?layer_order ?layer weak_ctx decl)
+    Css.Declaration.eval strong_ctx ?layer_order ?layer
+      (Css.Declaration.eval weak_ctx ?layer_order ?layer decl)
   in
-  Alcotest.(check string)
-    (name ^ " direct")
-    (declaration_source expected)
-    (declaration_source direct);
-  Alcotest.(check string)
-    (name ^ " staged")
-    (declaration_source direct)
-    (declaration_source staged)
+  Alcotest.(check decl_t) (name ^ " direct") expected direct;
+  Alcotest.(check decl_t) (name ^ " staged") direct staged
 
-let check_layered_computed_value name ~ctx ~layer_order ?layer ~expected input =
+let check_layered_eval_value name ~ctx ~layer_order ?layer ~expected input =
   let decl = Css.Declaration.of_string input in
-  match Css.Context.computed_value ~layer_order ?layer ctx decl with
-  | Ok actual -> Alcotest.(check string) name expected actual
-  | Error msg ->
-      Alcotest.failf "%s: expected layered %S to resolve to %S, got error: %s"
-        name input expected msg
+  Alcotest.(check decl_t)
+    name
+    (declaration_with_value decl expected)
+    (Css.Declaration.eval ctx ~layer_order ?layer decl)
 
-let check_layered_computed_error name ~ctx ~layer_order ?layer input =
+let check_layered_eval_preserves name ~ctx ~layer_order ?layer input =
   let decl = Css.Declaration.of_string input in
-  match Css.Context.computed_value ~layer_order ?layer ctx decl with
-  | Ok actual ->
-      Alcotest.failf "%s: expected layered %S to be unresolved, got %S" name
-        input actual
-  | Error _ -> ()
+  Alcotest.(check decl_t)
+    name decl
+    (Css.Declaration.eval ctx ~layer_order ?layer decl)
+
+let stylesheet_of_string input =
+  let cursor = Css.Cursor.of_string input in
+  try Css.Stylesheet.read_stylesheet cursor
+  with Css.Cursor.Parse_error err ->
+    Alcotest.failf "expected stylesheet to parse: %s" (Css.Error.to_string err)
+
+let check_eval_stylesheet name ~ctx ?layer_order ?layer ~expected input =
+  let expected = stylesheet_of_string expected in
+  let actual =
+    Css.Stylesheet.eval ctx ?layer_order ?layer (stylesheet_of_string input)
+  in
+  Alcotest.(check stylesheet_t) name expected actual
+
+let declaration_shape decl =
+  Css.Declaration.property_name decl
+  ^ if Css.Declaration.is_important decl then " !important" else ""
+
+let raw_descriptor_shape (descriptor : Css.Stylesheet.raw_descriptor) =
+  descriptor.descriptor_name
+
+let rec statement_shape stmt =
+  let sheet_source stmt =
+    Css.Stylesheet.to_string ~minify:true ~newline:false [ stmt ]
+  in
+  let prefixed prefix lines = List.map (fun line -> prefix ^ line) lines in
+  let declaration_lines declarations =
+    List.map (fun decl -> "decl:" ^ declaration_shape decl) declarations
+  in
+  let block_lines block =
+    block |> List.map statement_shape |> List.concat |> prefixed "  "
+  in
+  match stmt with
+  | Css.Stylesheet.Rule rule ->
+      ("rule:" ^ Css.Selector.to_string ~minify:true rule.selector)
+      :: declaration_lines rule.declarations
+      @ block_lines rule.nested
+  | Declarations declarations -> "decls" :: declaration_lines declarations
+  | Charset _ -> [ "charset:" ^ sheet_source stmt ]
+  | Import _ -> [ "import:" ^ sheet_source stmt ]
+  | Namespace _ -> [ "namespace:" ^ sheet_source stmt ]
+  | Property _ -> [ "property:" ^ sheet_source stmt ]
+  | Layer_decl names -> [ "layer-decl:" ^ String.concat "." names ]
+  | Layer (name, block) ->
+      ("layer:" ^ Option.value ~default:"" name) :: block_lines block
+  | Media (condition, block) ->
+      ("media:" ^ Css.Pp.to_string ~minify:true Css.Media.pp condition)
+      :: block_lines block
+  | Container (name, condition, block) ->
+      ("container:"
+      ^ Option.value ~default:"" name
+      ^ ":" ^ Css.Container.pp condition)
+      :: block_lines block
+  | Supports (condition, block) ->
+      ("supports:" ^ Css.Pp.to_string ~minify:true Css.Supports.pp condition)
+      :: block_lines block
+  | Starting_style block -> "starting-style" :: block_lines block
+  | Origin (origin, block) ->
+      ("origin:"
+      ^ string_of_int
+          (Css.Stylesheet.origin_importance_rank ~important:false origin))
+      :: block_lines block
+  | Scope (start, boundary, block) ->
+      ("scope:"
+      ^ Option.value ~default:"" start
+      ^ ":"
+      ^ Option.value ~default:"" boundary)
+      :: block_lines block
+  | Keyframes (name, keyframes) ->
+      ("keyframes:" ^ name)
+      :: (keyframes
+         |> List.map (fun (keyframe : Css.Stylesheet.keyframe) ->
+             ("  keyframe:"
+             ^ Css.Keyframe.selector_to_string keyframe.keyframe_selector)
+             :: prefixed "    "
+                  (declaration_lines keyframe.keyframe_declarations))
+         |> List.concat)
+  | Webkit_keyframes (name, keyframes) ->
+      ("webkit-keyframes:" ^ name)
+      :: (keyframes
+         |> List.map (fun (keyframe : Css.Stylesheet.keyframe) ->
+             ("  keyframe:"
+             ^ Css.Keyframe.selector_to_string keyframe.keyframe_selector)
+             :: prefixed "    "
+                  (declaration_lines keyframe.keyframe_declarations))
+         |> List.concat)
+  | Font_face descriptors ->
+      "font-face" :: List.map (fun _ -> "descriptor") descriptors
+  | Page (selector, declarations) ->
+      ("page:" ^ Option.value ~default:"" selector)
+      :: declaration_lines declarations
+  | Page_with_margins (selector, descriptors, margins) ->
+      ("page-margins:"
+      ^ Option.value ~default:"" selector
+      ^ ":"
+      ^ String.concat "," (List.map raw_descriptor_shape descriptors))
+      :: List.map
+           (fun (margin : Css.Stylesheet.page_margin_rule) ->
+             "  margin:" ^ margin.margin_name ^ ":"
+             ^ String.concat ","
+                 (List.map raw_descriptor_shape margin.margin_descriptors))
+           margins
+  | Font_palette_values (name, descriptors) ->
+      [
+        "font-palette-values:" ^ name ^ ":"
+        ^ String.concat "," (List.map raw_descriptor_shape descriptors);
+      ]
+  | View_transition descriptors ->
+      [
+        "view-transition:"
+        ^ String.concat "," (List.map raw_descriptor_shape descriptors);
+      ]
+  | Position_try (name, declarations) ->
+      ("position-try:" ^ name) :: declaration_lines declarations
+
+let stylesheet_shape sheet = List.concat_map statement_shape sheet
+
+let check_eval_stylesheet_preserves_structure name ~ctx ?layer_order ?layer
+    input =
+  let sheet = stylesheet_of_string input in
+  let actual = Css.Stylesheet.eval ctx ?layer_order ?layer sheet in
+  Alcotest.(check (list string))
+    name (stylesheet_shape sheet) (stylesheet_shape actual)
+
+let specificity_score selector =
+  let specificity = Css.Selector.specificity selector in
+  (specificity.ids * 1_000_000)
+  + (specificity.classes * 1_000)
+  + specificity.elements
+
+let declaration_source decl =
+  Css.Declaration.string_of_declaration ~minify:true decl
+
+let declaration_value_source decl =
+  let source = declaration_source decl in
+  match String.index_opt source ':' with
+  | None -> source
+  | Some i -> String.sub source (i + 1) (String.length source - i - 1)
+
+let scope_selector_matches (document : Css.Context.document) = function
+  | None -> true
+  | Some selector ->
+      document.scope = Some selector
+      || Css.Context.matches_selector document (Css.Selector.of_string selector)
+
+let scope_boundary_allows document start boundary =
+  scope_selector_matches document start
+  && not (scope_selector_matches document boundary)
+
+let resolve_stylesheet_property ?(layer_order = []) ~ctx ~document ~query
+    ~property stylesheet =
+  let source_order = ref 0 in
+  let add_declarations ~origin ~layer ~specificity ~scope_hops acc declarations
+      =
+    List.fold_left
+      (fun acc decl ->
+        let order = !source_order in
+        incr source_order;
+        if Css.Declaration.property_name decl = property then
+          let candidate : Css.Stylesheet.cascade_candidate =
+            {
+              candidate_origin = origin;
+              candidate_important = Css.Declaration.is_important decl;
+              candidate_layer = layer;
+              candidate_specificity = specificity;
+              candidate_scope_hops = scope_hops;
+              candidate_source_order = order;
+              candidate_value = declaration_value_source decl;
+            }
+          in
+          candidate :: acc
+        else acc)
+      acc declarations
+  in
+  let rec collect_block ~origin ~layer ~current_specificity ~scope_hops acc
+      block =
+    List.fold_left
+      (collect_statement ~origin ~layer ~current_specificity ~scope_hops)
+      acc block
+  and collect_statement ~origin ~layer ~current_specificity ~scope_hops acc =
+    function
+    | Css.Stylesheet.Rule rule ->
+        if Css.Context.matches_selector document rule.selector then
+          let specificity = specificity_score rule.selector in
+          let acc =
+            add_declarations ~origin ~layer ~specificity ~scope_hops acc
+              rule.declarations
+          in
+          collect_block ~origin ~layer ~current_specificity:(Some specificity)
+            ~scope_hops acc rule.nested
+        else acc
+    | Declarations declarations -> (
+        match current_specificity with
+        | None -> acc
+        | Some specificity ->
+            add_declarations ~origin ~layer ~specificity ~scope_hops acc
+              declarations)
+    | Layer (name, block) ->
+        collect_block ~origin ~layer:name ~current_specificity ~scope_hops acc
+          block
+    | Media (condition, block) ->
+        if Css.Context.matches_media query condition then
+          collect_block ~origin ~layer ~current_specificity ~scope_hops acc
+            block
+        else acc
+    | Supports (condition, block) ->
+        if Css.Context.matches_supports query condition then
+          collect_block ~origin ~layer ~current_specificity ~scope_hops acc
+            block
+        else acc
+    | Container (name, condition, block) ->
+        if Css.Context.matches_container query ?name condition then
+          collect_block ~origin ~layer ~current_specificity ~scope_hops acc
+            block
+        else acc
+    | Starting_style block ->
+        collect_block ~origin ~layer ~current_specificity ~scope_hops acc block
+    | Origin (origin, block) ->
+        collect_block ~origin ~layer ~current_specificity ~scope_hops acc block
+    | Scope (start, boundary, block) ->
+        if scope_boundary_allows document start boundary then
+          collect_block ~origin ~layer ~current_specificity ~scope_hops:(Some 0)
+            acc block
+        else acc
+    | Charset _ | Import _ | Namespace _ | Property _ | Layer_decl _
+    | Keyframes _ | Webkit_keyframes _ | Font_face _ | Page _
+    | Page_with_margins _ | Font_palette_values _ | View_transition _
+    | Position_try _ ->
+        acc
+  in
+  let candidates =
+    collect_block ~origin:Css.Stylesheet.Author ~layer:None
+      ~current_specificity:None ~scope_hops:None [] stylesheet
+  in
+  let rec winner candidates =
+    Css.Stylesheet.winning_cascade_candidate ~layer_order candidates
+    |> Option.bind (fun (candidate : Css.Stylesheet.cascade_candidate) ->
+        match candidate.candidate_value with
+        | "revert-layer" ->
+            let lower =
+              Css.Stylesheet.cascade_revert_layer_candidates ~layer_order
+                ~important:candidate.candidate_important
+                ~current_layer:candidate.candidate_layer
+                (List.map
+                   (fun (c : Css.Stylesheet.cascade_candidate) :
+                        Css.Stylesheet.cascade_layer_candidate ->
+                     {
+                       layer = c.candidate_layer;
+                       important = c.candidate_important;
+                       source_order = c.candidate_source_order;
+                       value = c.candidate_value;
+                     })
+                   candidates)
+            in
+            let lower_candidates =
+              List.filter
+                (fun (c : Css.Stylesheet.cascade_candidate) ->
+                  List.exists
+                    (fun (l : Css.Stylesheet.cascade_layer_candidate) ->
+                      l.layer = c.candidate_layer
+                      && l.important = c.candidate_important
+                      && l.source_order = c.candidate_source_order)
+                    lower)
+                candidates
+            in
+            winner lower_candidates
+        | "revert" ->
+            let lower =
+              Css.Stylesheet.cascade_revert_origin_candidates
+                ~important:candidate.candidate_important
+                ~current_origin:candidate.candidate_origin
+                (List.map
+                   (fun (c : Css.Stylesheet.cascade_candidate) :
+                        Css.Stylesheet.cascade_origin_candidate ->
+                     {
+                       origin = c.candidate_origin;
+                       important = c.candidate_important;
+                       source_order = c.candidate_source_order;
+                       value = c.candidate_value;
+                     })
+                   candidates)
+            in
+            let lower_candidates =
+              List.filter
+                (fun (c : Css.Stylesheet.cascade_candidate) ->
+                  List.exists
+                    (fun (l : Css.Stylesheet.cascade_origin_candidate) ->
+                      l.origin = c.candidate_origin
+                      && l.important = c.candidate_important
+                      && l.source_order = c.candidate_source_order)
+                    lower)
+                candidates
+            in
+            winner lower_candidates
+        | value -> Some (candidate, value))
+  in
+  winner candidates
+  |> Option.map (fun ((candidate : Css.Stylesheet.cascade_candidate), value) ->
+      let decl = Css.Declaration.of_string (property ^ ": " ^ value) in
+      match candidate.candidate_layer with
+      | None -> Css.Declaration.eval ctx ~layer_order decl
+      | Some layer -> Css.Declaration.eval ctx ~layer_order ~layer decl)
+
+let check_resolved_property ?layer_order name ~ctx ~document ~query ~property
+    ~expected stylesheet =
+  let expected = Css.Declaration.of_string expected in
+  let actual =
+    resolve_stylesheet_property ?layer_order ~ctx ~document ~query ~property
+      (stylesheet_of_string stylesheet)
+  in
+  Alcotest.(check (option decl_t)) name (Some expected) actual
+
+let check_resolved_property_from_ast ?layer_order name ~ctx ~document ~query
+    ~property ~expected stylesheet =
+  let expected = Css.Declaration.of_string expected in
+  let actual =
+    resolve_stylesheet_property ?layer_order ~ctx ~document ~query ~property
+      stylesheet
+  in
+  Alcotest.(check (option decl_t)) name (Some expected) actual
 
 let check_selector_match name ~ctx ~expected input =
   let selector = Css.Selector.of_string input in
@@ -565,44 +878,44 @@ let test_computed_value_resolution_contract () =
       ~container_width:(Css.Values.Px 640.)
       ~container_height:(Css.Values.Px 480.) ()
   in
-  check_computed_value "initial keyword uses property initial value" ~ctx
+  check_eval_value "initial keyword uses property initial value" ~ctx
     ~expected:"inline" "display: initial";
-  check_computed_value "inherit keyword uses inherited value" ~ctx
-    ~expected:"blue" "color: inherit";
-  check_computed_value "unset on inherited property uses inherited value" ~ctx
+  check_eval_value "inherit keyword uses inherited value" ~ctx ~expected:"blue"
+    "color: inherit";
+  check_eval_value "unset on inherited property uses inherited value" ~ctx
     ~expected:"blue" "color: unset";
-  check_computed_value "unset on non-inherited property uses initial value" ~ctx
+  check_eval_value "unset on non-inherited property uses initial value" ~ctx
     ~expected:"auto" "width: unset";
-  check_computed_value "currentColor uses explicit current color" ~ctx
+  check_eval_value "currentColor uses explicit current color" ~ctx
     ~expected:"red" "border-color: currentColor";
-  check_computed_value "custom property var resolves from context" ~ctx
+  check_eval_value "custom property var resolves from context" ~ctx
     ~expected:"red" "color: var(--brand)";
-  check_computed_value "custom property fallback resolves when missing" ~ctx
+  check_eval_value "custom property fallback resolves when missing" ~ctx
     ~expected:"green" "color: var(--missing, green)";
-  check_computed_value "custom length var resolves then computes" ~ctx
+  check_eval_value "custom length var resolves then computes" ~ctx
     ~expected:"16px" "margin-left: var(--gap)";
-  check_computed_value "rem resolves against root font size" ~ctx
-    ~expected:"32px" "margin-left: 2rem";
-  check_computed_value "em resolves against parent font size" ~ctx
-    ~expected:"20px" "font-size: 2em";
-  check_computed_value "vw resolves against viewport width" ~ctx
-    ~expected:"512px" "width: 50vw";
-  check_computed_value "vh resolves against viewport height" ~ctx
-    ~expected:"192px" "height: 25vh";
-  check_computed_value "cqw resolves against container width" ~ctx
-    ~expected:"320px" "width: 50cqw";
-  check_computed_value "cqh resolves against container height" ~ctx
+  check_eval_value "rem resolves against root font size" ~ctx ~expected:"32px"
+    "margin-left: 2rem";
+  check_eval_value "em resolves against parent font size" ~ctx ~expected:"20px"
+    "font-size: 2em";
+  check_eval_value "vw resolves against viewport width" ~ctx ~expected:"512px"
+    "width: 50vw";
+  check_eval_value "vh resolves against viewport height" ~ctx ~expected:"192px"
+    "height: 25vh";
+  check_eval_value "cqw resolves against container width" ~ctx ~expected:"320px"
+    "width: 50cqw";
+  check_eval_value "cqh resolves against container height" ~ctx
     ~expected:"120px" "height: 25cqh";
-  check_computed_value "relative URL resolves against base URL" ~ctx
+  check_eval_value "relative URL resolves against base URL" ~ctx
     ~expected:"url(https://example.test/img/logo.svg)"
     "background-image: url(../img/logo.svg)";
-  check_computed_error "missing var without fallback is unresolved" ~ctx
+  check_eval_preserves "missing var without fallback is unresolved" ~ctx
     "color: var(--missing)";
-  check_computed_error "viewport unit without viewport context is unresolved"
+  check_eval_preserves "viewport unit without viewport context is unresolved"
     ~ctx:Css.Context.empty "width: 50vw";
-  check_computed_error "currentColor without current color is unresolved"
+  check_eval_preserves "currentColor without current color is unresolved"
     ~ctx:Css.Context.empty "color: currentColor";
-  check_computed_error "relative URL without base URL is unresolved"
+  check_eval_preserves "relative URL without base URL is unresolved"
     ~ctx:Css.Context.empty "background-image: url(../img/logo.svg)"
 
 let computed_edge_contract () =
@@ -632,42 +945,42 @@ let computed_edge_contract () =
       ~container_width:(Css.Values.Px 300.)
       ~container_height:(Css.Values.Px 900.) ()
   in
-  check_computed_value "inherit on root falls back to property initial" ~ctx
+  check_eval_value "inherit on root falls back to property initial" ~ctx
     ~expected:"canvastext" "color: inherit";
-  check_computed_value "nested custom property var resolves transitively" ~ctx
+  check_eval_value "nested custom property var resolves transitively" ~ctx
     ~expected:"red" "color: var(--accent)";
-  check_computed_value "nested var fallback resolves transitively" ~ctx
+  check_eval_value "nested var fallback resolves transitively" ~ctx
     ~expected:"red" "color: var(--missing, var(--accent))";
-  check_computed_value "custom length var resolves with parent font context"
-    ~ctx ~expected:"24px" "margin-left: var(--space)";
-  check_computed_value "font-size percentage resolves against parent font" ~ctx
+  check_eval_value "custom length var resolves with parent font context" ~ctx
+    ~expected:"24px" "margin-left: var(--space)";
+  check_eval_value "font-size percentage resolves against parent font" ~ctx
     ~expected:"18px" "font-size: 150%";
-  check_computed_value "absolute inches canonicalize to px" ~ctx
-    ~expected:"96px" "margin-left: 1in";
-  check_computed_value "absolute points canonicalize to px" ~ctx
-    ~expected:"96px" "margin-left: 72pt";
-  check_computed_value "viewport vmin uses smaller viewport side" ~ctx
+  check_eval_value "absolute inches canonicalize to px" ~ctx ~expected:"96px"
+    "margin-left: 1in";
+  check_eval_value "absolute points canonicalize to px" ~ctx ~expected:"96px"
+    "margin-left: 72pt";
+  check_eval_value "viewport vmin uses smaller viewport side" ~ctx
     ~expected:"80px" "width: 10vmin";
-  check_computed_value "viewport vmax uses larger viewport side" ~ctx
+  check_eval_value "viewport vmax uses larger viewport side" ~ctx
     ~expected:"120px" "width: 10vmax";
-  check_computed_value "container cqmin uses smaller container side" ~ctx
+  check_eval_value "container cqmin uses smaller container side" ~ctx
     ~expected:"30px" "width: 10cqmin";
-  check_computed_value "container cqmax uses larger container side" ~ctx
+  check_eval_value "container cqmax uses larger container side" ~ctx
     ~expected:"90px" "width: 10cqmax";
-  check_computed_value "same-directory URL resolves against base URL" ~ctx
+  check_eval_value "same-directory URL resolves against base URL" ~ctx
     ~expected:"url(https://example.test/assets/css/panel.css)"
     "background-image: url(panel.css)";
-  check_computed_value "root-relative URL preserves origin" ~ctx
+  check_eval_value "root-relative URL preserves origin" ~ctx
     ~expected:"url(https://example.test/icons/logo.svg)"
     "background-image: url(/icons/logo.svg)";
-  check_computed_error "custom property cycle is unresolved" ~ctx
+  check_eval_preserves "custom property cycle is unresolved" ~ctx
     "color: var(--cycle-a)";
-  check_computed_error "width percentage needs layout context" ~ctx "width: 50%";
-  check_computed_error "em unit without parent font context is unresolved"
+  check_eval_preserves "width percentage needs layout context" ~ctx "width: 50%";
+  check_eval_preserves "em unit without parent font context is unresolved"
     ~ctx:Css.Context.empty "margin-left: 2em";
-  check_computed_error "rem unit without root font context is unresolved"
+  check_eval_preserves "rem unit without root font context is unresolved"
     ~ctx:Css.Context.empty "margin-left: 2rem";
-  check_computed_error "container unit without container context is unresolved"
+  check_eval_preserves "container unit without container context is unresolved"
     ~ctx:Css.Context.empty "width: 50cqw"
 
 let test_document_selector_context_contract () =
@@ -880,44 +1193,82 @@ let computed_calc_contract () =
       ~container_width:(Css.Values.Px 500.)
       ~container_height:(Css.Values.Px 400.) ()
   in
-  check_computed_value "calc resolves compatible absolute and rem units" ~ctx
+  check_eval_value "calc resolves compatible absolute and rem units" ~ctx
     ~expected:"18px" "margin-left: calc(1rem + 2px)";
-  check_computed_value "calc resolves multiplication with rem" ~ctx
-    ~expected:"32px" "margin-left: calc(2 * 1rem)";
-  check_computed_value "calc resolves division with em" ~ctx ~expected:"6px"
+  check_eval_value "calc resolves multiplication with rem" ~ctx ~expected:"32px"
+    "margin-left: calc(2 * 1rem)";
+  check_eval_value "calc resolves division with em" ~ctx ~expected:"6px"
     "margin-left: calc(1em / 2)";
-  check_computed_value "number calc folds structurally" ~ctx ~expected:"0.5"
-    "opacity: calc(0.25 * 2)";
-  check_computed_value "angle calc folds structurally" ~ctx ~expected:"45deg"
-    "rotate: calc(30deg + 15deg)";
-  check_computed_value "time calc folds structurally" ~ctx ~expected:"2s"
-    "animation-duration: calc(1s * 2)";
-  check_computed_value "time calc combines compatible units" ~ctx ~expected:"1s"
-    "transition-duration: calc(500ms + 0.5s)";
-  check_computed_value "font-size calc resolves percentage and em basis" ~ctx
-    ~expected:"18px" "font-size: calc(100% + 0.5em)";
-  check_computed_value "margin shorthand computes each length slot" ~ctx
+  check_eval_value "margin shorthand computes each length slot" ~ctx
     ~expected:"12px 32px" "margin: 1em 2rem";
-  check_computed_value "padding shorthand computes var-backed slots" ~ctx
+  check_eval_value "padding shorthand computes var-backed slots" ~ctx
     ~expected:"12px 32px" "padding: var(--pad-y) var(--pad-x)";
-  check_computed_value "border-width shorthand computes absolute units" ~ctx
+  check_eval_value "border-width shorthand computes absolute units" ~ctx
     ~expected:"1px 2px 4px 8px" "border-width: 1px 0.125rem 4px 0.5rem";
-  check_computed_value "number custom property resolves for opacity" ~ctx
+  check_eval_value "number custom property resolves for opacity" ~ctx
     ~expected:"0.5" "opacity: var(--brand-alpha)";
-  check_computed_value "viewport dvw resolves against viewport width" ~ctx
+  check_eval_value "viewport dvw resolves against viewport width" ~ctx
     ~expected:"250px" "width: 25dvw";
-  check_computed_value "viewport svh resolves against viewport height" ~ctx
+  check_eval_value "viewport svh resolves against viewport height" ~ctx
     ~expected:"60px" "height: 10svh";
-  check_computed_value "container cqi resolves against inline size" ~ctx
+  check_eval_value "container cqi resolves against inline size" ~ctx
     ~expected:"125px" "width: 25cqi";
-  check_computed_value "container cqb resolves against block size" ~ctx
+  check_eval_value "container cqb resolves against block size" ~ctx
     ~expected:"100px" "height: 25cqb";
-  check_computed_error "calc with unresolved percentage remains unresolved" ~ctx
-    "width: calc(100% - 1rem)";
-  check_computed_error "font metric unit ch needs font metrics" ~ctx
+  check_eval "calc partially residualizes known length under unresolved layout"
+    ~ctx ~expected:"width: calc(100% - 16px)" "width: calc(100% - 1rem)";
+  check_eval_preserves "font metric unit ch needs font metrics" ~ctx
     "width: 4ch";
-  check_computed_error "font metric unit ex needs font metrics" ~ctx
+  check_eval_preserves "font metric unit ex needs font metrics" ~ctx
     "width: 2ex"
+
+let eval_calc_family_contract () =
+  let ctx =
+    Css.Context.v
+      ~custom_properties:
+        [
+          Css.Declaration.of_string "--n: calc(0.25 * 2)";
+          Css.Declaration.of_string "--a: calc(30deg + 15deg)";
+          Css.Declaration.of_string "--t: calc(500ms + 0.5s)";
+          Css.Declaration.of_string "--lp: calc(50% + 1rem)";
+        ]
+      ~root_font_size:(Css.Values.Px 16.) ~parent_font_size:(Css.Values.Px 12.)
+      ~viewport_width:(Css.Values.Px 1000.)
+      ~viewport_height:(Css.Values.Px 800.)
+      ~container_width:(Css.Values.Px 400.) ()
+  in
+  check_eval "eval folds opacity number calc" ~ctx ~expected:"opacity: 0.5"
+    "opacity: calc(0.25 * 2)";
+  check_eval "eval folds opacity calc through var substitution" ~ctx
+    ~expected:"opacity: 0.5" "opacity: var(--n)";
+  check_eval "eval folds transform angle calc" ~ctx ~expected:"rotate: 45deg"
+    "rotate: calc(30deg + 15deg)";
+  check_eval "eval folds transform angle calc through var substitution" ~ctx
+    ~expected:"rotate: 45deg" "rotate: var(--a)";
+  check_eval "eval folds animation duration calc" ~ctx
+    ~expected:"animation-duration: 2s" "animation-duration: calc(1s * 2)";
+  check_eval "eval folds transition duration calc with compatible units" ~ctx
+    ~expected:"transition-duration: 1s"
+    "transition-duration: calc(500ms + 0.5s)";
+  check_eval "eval folds duration calc through var substitution" ~ctx
+    ~expected:"transition-duration: 1s" "transition-duration: var(--t)";
+  check_eval "eval folds number-percentage calc" ~ctx ~expected:"scale: 75%"
+    "scale: calc(50% + 25%)";
+  check_eval "eval folds filter number-percentage calc" ~ctx
+    ~expected:"filter: opacity(75%)" "filter: opacity(calc(50% + 25%))";
+  check_eval "eval folds color component calc" ~ctx
+    ~expected:"color: color(srgb 0.5 0 0)"
+    "color: color(srgb calc(0.25 + 0.25) 0 0)";
+  check_eval "eval folds color percentage component calc" ~ctx
+    ~expected:"color: color(srgb 50% 0 0)"
+    "color: color(srgb calc(25% + 25%) 0 0)";
+  check_eval "eval folds gradient stop percentage calc" ~ctx
+    ~expected:"background-image: linear-gradient(red 50%, blue)"
+    "background-image: linear-gradient(red calc(20% + 30%), blue)";
+  check_eval "eval partially folds length-percentage calc" ~ctx
+    ~expected:"width: calc(50% + 16px)" "width: var(--lp)";
+  check_eval "eval preserves unknown viewport leaf after folding known units"
+    ~ctx ~expected:"height: calc(16px + 10dvh)" "height: calc(1rem + 10dvh)"
 
 let eval_ast_contract () =
   let ctx =
@@ -963,6 +1314,9 @@ let eval_ast_contract () =
     "rotate: calc(30deg + 15deg)";
   check_eval "eval folds time calc" ~ctx ~expected:"animation-duration: 2s"
     "animation-duration: calc(1s * 2)";
+  check_eval "eval combines compatible time units" ~ctx
+    ~expected:"transition-duration: 1s"
+    "transition-duration: calc(500ms + 0.5s)";
   check_eval "eval folds known length calc subtree" ~ctx
     ~expected:"margin-left: 18px" "margin-left: calc(1rem + 2px)";
   check_eval "eval preserves unresolved viewport leaf in calc AST" ~ctx
@@ -983,6 +1337,372 @@ let eval_ast_contract () =
     "box-shadow: 0 0 0 calc(3px + var(--ring-offset)) var(--ring-color)";
   check_eval "eval resolves shorthand slots independently" ~ctx
     ~expected:"padding: 18px 36px" "padding: var(--gap) calc(var(--gap) * 2)"
+
+let eval_spec_edge_contract () =
+  let ctx =
+    Css.Context.v
+      ~custom_properties:
+        [
+          Css.Declaration.of_string "--gap: calc(1rem + 2px)";
+          Css.Declaration.of_string "--outer: var(--missing, var(--gap))";
+          Css.Declaration.of_string
+            "--nested-fallback: var(--missing, calc(var(--gap) + 1rem))";
+          Css.Declaration.of_string "--rgb: 12 34 56";
+          Css.Declaration.of_string "--alpha: calc(0.2 + 0.3)";
+        ]
+      ~inherited_values:[ Css.Declaration.of_string "color: blue" ]
+      ~initial_values:
+        [
+          Css.Declaration.of_string "margin-left: 0";
+          Css.Declaration.of_string "color: canvastext";
+        ]
+      ~base_url:"https://example.test/css/app.css"
+      ~root_font_size:(Css.Values.Px 16.) ~parent_font_size:(Css.Values.Px 12.)
+      ~current_color:(Css.Values.Named Css.Values.Blue)
+      ~viewport_width:(Css.Values.Px 1000.)
+      ~viewport_height:(Css.Values.Px 800.)
+      ~container_width:(Css.Values.Px 400.)
+      ~container_height:(Css.Values.Px 300.) ()
+  in
+  check_eval "eval resolves nested var fallback chain" ~ctx
+    ~expected:"margin-left: 18px" "margin-left: var(--outer)";
+  check_eval "eval resolves fallback containing nested var and calc" ~ctx
+    ~expected:"margin-left: 34px" "margin-left: var(--nested-fallback)";
+  check_eval "eval applies css-wide fallback after var substitution" ~ctx
+    ~expected:"color: blue" "color: var(--missing, inherit)";
+  check_eval "eval applies initial fallback after var substitution" ~ctx
+    ~expected:"margin-left: 0" "margin-left: var(--missing, initial)";
+  check_eval "eval preserves unresolved fallback subtree as AST" ~ctx
+    ~expected:"margin-left: calc(18px + var(--user-gap))"
+    "margin-left: var(--missing, calc(var(--gap) + var(--user-gap)))";
+  check_eval "eval preserves mixed percentage and resolved dimension" ~ctx
+    ~expected:"width: calc(50% + 18px)" "width: calc(50% + var(--gap))";
+  check_eval "eval resolves percentage where property defines computed basis"
+    ~ctx ~expected:"font-size: 18px" "font-size: calc(100% + 0.5em)";
+  check_eval "eval canonicalizes absolute units inside calc" ~ctx
+    ~expected:"margin-left: 0" "margin-left: calc(1in - 72pt)";
+  check_eval "eval resolves min with comparable computed lengths" ~ctx
+    ~expected:"width: 20px" "width: min(10cqi, calc(1rem + 4px))";
+  check_eval "eval resolves clamp with comparable computed lengths" ~ctx
+    ~expected:"font-size: 18px" "font-size: clamp(1rem, calc(1rem + 2px), 2rem)";
+  check_eval "eval resolves vars inside slash color function" ~ctx
+    ~expected:"background-color: rgb(12 34 56 / 0.5)"
+    "background-color: rgb(var(--rgb) / var(--alpha))";
+  check_eval "eval resolves currentColor inside list item" ~ctx
+    ~expected:"box-shadow: 0 0 0 1px blue, 0 0 0 2px red"
+    "box-shadow: 0 0 0 1px currentColor, 0 0 0 2px red";
+  check_eval "eval resolves nested URL inside image function" ~ctx
+    ~expected:
+      "background-image: image-set(url(https://example.test/img/a.png) 1x)"
+    "background-image: image-set(url(../img/a.png) 1x)"
+
+let eval_css_spec_edge_contract () =
+  let ctx =
+    Css.Context.v
+      ~custom_properties:
+        [
+          Css.Declaration.of_string "--brand: red";
+          Css.Declaration.of_string "--gap: calc(1rem + 2px)";
+          Css.Declaration.of_string "--angle: calc(30deg + 15deg)";
+          Css.Declaration.of_string "--alpha: 0.5";
+          Css.Declaration.of_string "--shadow: 0 0 var(--gap) currentColor";
+          Css.Declaration.of_string "--image: url(../img/pattern.svg)";
+        ]
+      ~inherited_values:
+        [
+          Css.Declaration.of_string "color: blue";
+          Css.Declaration.of_string "display: block";
+          Css.Declaration.of_string "font-size: 10px";
+        ]
+      ~initial_values:
+        [
+          Css.Declaration.of_string "display: inline";
+          Css.Declaration.of_string "margin-left: 0";
+          Css.Declaration.of_string "opacity: 1";
+        ]
+      ~base_url:"https://example.test/css/app.css"
+      ~root_font_size:(Css.Values.Px 16.) ~parent_font_size:(Css.Values.Px 10.)
+      ~current_color:(Css.Values.Named Css.Values.Blue)
+      ~viewport_width:(Css.Values.Px 1200.) ()
+  in
+  check_eval "eval applies inherited css-wide keyword from var fallback" ~ctx
+    ~expected:"display: block" "display: var(--missing, inherit)";
+  check_eval "eval applies unset fallback using inherited property default" ~ctx
+    ~expected:"color: blue" "color: var(--missing, unset)";
+  check_eval "eval applies unset fallback using non-inherited initial default"
+    ~ctx ~expected:"margin-left: 0" "margin-left: var(--missing, unset)";
+  check_eval "eval applies initial fallback after nested var fallback" ~ctx
+    ~expected:"opacity: 1" "opacity: var(--missing, var(--other, initial))";
+  check_eval "eval residualizes unresolved nested fallback after known rewrite"
+    ~ctx ~expected:"margin-left: calc(18px + var(--fluid-gap))"
+    "margin-left: var(--missing, calc(var(--gap) + var(--fluid-gap)))";
+  check_eval "eval resolves currentColor and length inside shadow custom prop"
+    ~ctx ~expected:"box-shadow: 0 0 18px blue" "box-shadow: var(--shadow)";
+  check_eval "eval resolves url custom property after substitution" ~ctx
+    ~expected:"background-image: url(https://example.test/img/pattern.svg)"
+    "background-image: var(--image)";
+  check_eval "eval resolves transform longhand angle variable" ~ctx
+    ~expected:"rotate: 45deg" "rotate: var(--angle)";
+  check_eval "eval resolves opacity alpha inside color function from var" ~ctx
+    ~expected:"background-color: rgb(255 0 0 / 0.5)"
+    "background-color: rgb(255 0 0 / var(--alpha))";
+  check_eval "eval preserves division by zero calc as residual" ~ctx
+    ~expected:"margin-left: calc(16px / 0)" "margin-left: calc(1rem / 0)";
+  check_eval "eval preserves sibling-dependent calc as residual" ~ctx
+    ~expected:"z-index: calc(sibling-index() + 1)"
+    "z-index: calc(sibling-index() + 1)";
+  check_eval
+    "eval resolves font-relative percentage only where property has basis" ~ctx
+    ~expected:"font-size: 15px" "font-size: calc(100% + 0.5em)";
+  check_eval "eval leaves layout percentage abstract while reducing known side"
+    ~ctx ~expected:"width: calc(50% + 16px)" "width: calc(50% + 1rem)"
+
+let runtime_boundary_contract () =
+  let ctx =
+    Css.Context.v ~root_font_size:(Css.Values.Px 16.)
+      ~parent_font_size:(Css.Values.Px 12.)
+      ~current_color:(Css.Values.Named Css.Values.Blue) ()
+  in
+  check_eval_preserves "layout percentage remains a computed percentage" ~ctx
+    "width: 50%";
+  check_eval "layout calc partially folds lengths but preserves percentage" ~ctx
+    ~expected:"width: calc(50% - 16px)" "width: calc(50% - 1rem)";
+  check_eval_preserves "grid fr tracks are layout-only used values" ~ctx
+    "grid-template-columns: minmax(min-content, 1fr) fit-content(20%)";
+  check_eval_preserves "flex content basis is layout-only" ~ctx
+    "flex-basis: content";
+  check_eval_preserves "aspect-ratio affects layout, not computed eval" ~ctx
+    "aspect-ratio: 16 / 9";
+  check_eval_preserves "font metric ch unit needs font metrics" ~ctx
+    "width: 12ch";
+  check_eval_preserves "font metric cap unit needs font metrics" ~ctx
+    "height: 2cap";
+  check_eval_preserves "color interpolation space is rendering-time behavior"
+    ~ctx "color: color-mix(in oklab, red 40%, blue)";
+  check_eval_preserves "gamut mapping is rendering-time behavior" ~ctx
+    "color: color(display-p3 1 0.5 0)";
+  check_eval_preserves "filter raster effects are rendering-time behavior" ~ctx
+    "filter: blur(4px) contrast(120%)";
+  check_eval_preserves "mask painting is rendering-time behavior" ~ctx
+    "mask-image: linear-gradient(black, transparent)";
+  check_eval_preserves "scroll timeline sampling is runtime behavior" ~ctx
+    "animation-timeline: scroll()";
+  check_eval_preserves "view timeline sampling is runtime behavior" ~ctx
+    "view-timeline: --reveal block";
+  check_eval_stylesheet "font loading stays a stylesheet syntax boundary" ~ctx
+    ~expected:
+      "@font-face { font-family: Brand; src: url(brand.woff2) \
+       format(\"woff2\"); font-display: swap; }"
+    "@font-face { font-family: Brand; src: url(brand.woff2) format(\"woff2\"); \
+     font-display: swap; }";
+  check_eval_stylesheet "keyframe timing stays runtime, values still eval" ~ctx
+    ~expected:
+      "@keyframes fade { from { opacity: 0; } to { opacity: 1; transform: \
+       translateX(16px); } }"
+    "@keyframes fade { from { opacity: 0; } to { opacity: 1; transform: \
+     translateX(1rem); } }"
+
+let animation_time_eval_contract () =
+  let ctx =
+    Css.Context.v
+      ~custom_properties:
+        [
+          Css.Declaration.of_string "--duration: calc(500ms * 2)";
+          Css.Declaration.of_string "--delay: calc(250ms * 2)";
+          Css.Declaration.of_string "--distance: calc(1rem + 2px)";
+        ]
+      ~root_font_size:(Css.Values.Px 16.) ()
+  in
+  check_eval "eval folds animation-duration time calc" ~ctx
+    ~expected:"animation-duration: 1s" "animation-duration: calc(500ms * 2)";
+  check_eval "eval folds animation-delay time calc" ~ctx
+    ~expected:"animation-delay: 0.5s" "animation-delay: calc(250ms * 2)";
+  check_eval "eval folds transition-duration time calc" ~ctx
+    ~expected:"transition-duration: 1s" "transition-duration: calc(250ms * 4)";
+  check_eval "eval folds transition-delay time var" ~ctx
+    ~expected:"transition-delay: 0.5s" "transition-delay: var(--delay)";
+  check_eval "eval folds time slots inside animation shorthand" ~ctx
+    ~expected:"animation: fade 1s linear 0.5s 2 alternate both running"
+    "animation: fade var(--duration) linear var(--delay) 2 alternate both \
+     running";
+  check_eval "eval folds time slots inside transition shorthand" ~ctx
+    ~expected:"transition: opacity 1s ease-in 0.5s"
+    "transition: opacity var(--duration) ease-in var(--delay)";
+  check_eval_preserves
+    "animation-timeline is not sampled without a timeline context" ~ctx
+    "animation-timeline: scroll()";
+  check_eval_stylesheet "stylesheet eval reaches animation keyframe values" ~ctx
+    ~expected:
+      "@keyframes slide { from { transform: translateX(0); } to { transform: \
+       translateX(18px); } }"
+    "@keyframes slide { from { transform: translateX(0); } to { transform: \
+     translateX(var(--distance)); } }";
+  check_eval_stylesheet "stylesheet eval reaches time declarations in rules"
+    ~ctx
+    ~expected:
+      ".fade{animation-duration:1s;animation-delay:0.5s;transition-duration:1s;transition-delay:0.5s}"
+    ".fade{animation-duration:var(--duration);animation-delay:var(--delay);transition-duration:calc(250ms \
+     * 4);transition-delay:var(--delay)}"
+
+let eval_observable_matrix_contract () =
+  let full_ctx =
+    Css.Context.v
+      ~custom_properties:
+        [
+          Css.Declaration.of_string "--gap: 1rem";
+          Css.Declaration.of_string "--angle: 45deg";
+          Css.Declaration.of_string "--duration: 500ms";
+        ]
+      ~inherited_values:
+        [
+          Css.Declaration.of_string "color: blue";
+          Css.Declaration.of_string "font-size: 10px";
+        ]
+      ~initial_values:
+        [
+          Css.Declaration.of_string "display: inline";
+          Css.Declaration.of_string "margin-left: 0";
+          Css.Declaration.of_string "color: canvastext";
+        ]
+      ~base_url:"https://example.test/css/app.css"
+      ~root_font_size:(Css.Values.Px 16.) ~parent_font_size:(Css.Values.Px 10.)
+      ~current_color:(Css.Values.Named Css.Values.Blue)
+      ~viewport_width:(Css.Values.Px 1000.)
+      ~viewport_height:(Css.Values.Px 500.)
+      ~container_width:(Css.Values.Px 400.)
+      ~container_height:(Css.Values.Px 300.) ()
+  in
+  let empty_ctx = Css.Context.empty in
+  check_eval "observable custom property resolves present var" ~ctx:full_ctx
+    ~expected:"margin-left: 16px" "margin-left: var(--gap)";
+  check_eval_preserves "observable missing custom property stays residual"
+    ~ctx:empty_ctx "margin-left: var(--missing)";
+  check_eval "observable inherited value resolves inherit" ~ctx:full_ctx
+    ~expected:"color: blue" "color: inherit";
+  check_eval_preserves "observable absent inherited value preserves inherit"
+    ~ctx:empty_ctx "color: inherit";
+  check_eval "observable initial value resolves initial" ~ctx:full_ctx
+    ~expected:"display: inline" "display: initial";
+  check_eval_preserves "observable absent initial value preserves initial"
+    ~ctx:empty_ctx "display: initial";
+  check_eval "observable currentColor resolves present color" ~ctx:full_ctx
+    ~expected:"border-color: blue" "border-color: currentColor";
+  check_eval_preserves "observable absent currentColor preserves currentColor"
+    ~ctx:empty_ctx "border-color: currentColor";
+  check_eval "observable root font size resolves rem" ~ctx:full_ctx
+    ~expected:"margin-left: 16px" "margin-left: 1rem";
+  check_eval_preserves "observable absent root font size preserves rem"
+    ~ctx:empty_ctx "margin-left: 1rem";
+  check_eval "observable parent font size resolves em" ~ctx:full_ctx
+    ~expected:"font-size: 20px" "font-size: 2em";
+  check_eval_preserves "observable absent parent font size preserves em"
+    ~ctx:empty_ctx "font-size: 2em";
+  check_eval "observable viewport resolves vh" ~ctx:full_ctx
+    ~expected:"height: 50px" "height: 10vh";
+  check_eval_preserves "observable absent viewport preserves vh" ~ctx:empty_ctx
+    "height: 10vh";
+  check_eval "observable container resolves cqi" ~ctx:full_ctx
+    ~expected:"width: 100px" "width: 25cqi";
+  check_eval_preserves "observable absent container preserves cqi"
+    ~ctx:empty_ctx "width: 25cqi";
+  check_eval "observable base URL resolves relative URL" ~ctx:full_ctx
+    ~expected:"background-image: url(https://example.test/img/a.png)"
+    "background-image: url(../img/a.png)";
+  check_eval_preserves "observable absent base URL preserves relative URL"
+    ~ctx:empty_ctx "background-image: url(../img/a.png)";
+  check_eval_preserves "observable absent cascade chain preserves revert-layer"
+    ~ctx:empty_ctx "color: revert-layer";
+  check_eval_preserves "observable absent cascade chain preserves revert"
+    ~ctx:empty_ctx "color: revert";
+  check_eval "observable angle calc folds with typed value" ~ctx:full_ctx
+    ~expected:"rotate: 45deg" "rotate: var(--angle)";
+  check_eval_preserves "observable absent angle var stays residual"
+    ~ctx:empty_ctx "rotate: var(--angle)";
+  check_eval "observable duration var folds with typed value" ~ctx:full_ctx
+    ~expected:"animation-duration: 0.5s" "animation-duration: var(--duration)";
+  check_eval_preserves "observable absent duration var stays residual"
+    ~ctx:empty_ctx "animation-duration: var(--duration)"
+
+let eval_stylesheet_spec_edge_contract () =
+  let ctx =
+    Css.Context.v
+      ~custom_properties:
+        [
+          Css.Declaration.of_string "--brand: red";
+          Css.Declaration.of_string "--gap: calc(1rem + 2px)";
+          Css.Declaration.of_string "--alpha: 0.5";
+          Css.Declaration.of_string "--angle: calc(30deg + 15deg)";
+        ]
+      ~base_url:"https://example.test/css/app.css"
+      ~root_font_size:(Css.Values.Px 16.) ~parent_font_size:(Css.Values.Px 12.)
+      ~current_color:(Css.Values.Named Css.Values.Red)
+      ~viewport_width:(Css.Values.Px 1000.) ()
+  in
+  check_eval_stylesheet
+    "stylesheet eval walks nested rules, grouping at-rules, and keyframes" ~ctx
+    ~expected:
+      {|
+        @import url(theme.css);
+        @font-face { font-family: Brand; src: url(brand.woff2); }
+        .card {
+          color: red;
+          margin-left: 18px;
+          background-image: url(https://example.test/img/card.svg);
+          & .title { border-color: red; padding: 18px; }
+          @media (min-width: 40rem) { width: calc(100% - 16px); }
+          @supports (display: grid) { transform: rotate(45deg); }
+        }
+        @starting-style { .card { opacity: 0.5; } }
+        @keyframes fade {
+          from { opacity: 0.5; }
+          to { transform: translateX(18px); }
+        }
+        @page { margin: 18px; }
+        @position-try --flip { inset-inline-start: 18px; }
+      |}
+    {|
+        @import url(theme.css);
+        @font-face { font-family: Brand; src: url(brand.woff2); }
+        .card {
+          color: var(--brand);
+          margin-left: var(--gap);
+          background-image: url(../img/card.svg);
+          & .title { border-color: currentColor; padding: var(--gap); }
+          @media (min-width: 40rem) { width: calc(100% - 1rem); }
+          @supports (display: grid) { transform: rotate(var(--angle)); }
+        }
+        @starting-style { .card { opacity: var(--alpha); } }
+        @keyframes fade {
+          from { opacity: var(--alpha); }
+          to { transform: translateX(var(--gap)); }
+        }
+        @page { margin: var(--gap); }
+        @position-try --flip { inset-inline-start: var(--gap); }
+      |};
+  check_eval_stylesheet_preserves_structure
+    "stylesheet eval preserves non-declaration structure" ~ctx
+    {|
+      @import url(theme.css);
+      @layer theme, components, utilities;
+      @layer components {
+        .card {
+          color: var(--brand);
+          & .title { border-color: currentColor; padding: var(--gap); }
+          @media (min-width: 40rem) { width: calc(100% - 1rem); }
+          @supports (display: grid) { transform: rotate(var(--angle)); }
+        }
+      }
+      @scope (.card) to (.boundary) {
+        .title { color: var(--brand); }
+      }
+      @starting-style { .card { opacity: var(--alpha); } }
+      @keyframes fade {
+        from { opacity: var(--alpha); }
+        to { transform: translateX(var(--gap)); }
+      }
+      @page { margin: var(--gap); }
+      @position-try --flip { inset-inline-start: var(--gap); }
+    |}
 
 let eval_laws_contract () =
   let weak_ctx =
@@ -1016,14 +1736,38 @@ let layered_eval_ast_contract () =
         "calc(var(--component-gap) + 2vh)";
       Css.Declaration.custom_property ~layer:"utilities" "--future-gap"
         "calc(var(--component-gap) + var(--user-gap))";
+      Css.Declaration.custom_property ~layer:"utilities" "--component-gap"
+        "revert-layer";
+      Css.Declaration.custom_property ~layer:"utilities" "--color-brand"
+        "revert-layer";
+      Css.Declaration.custom_property ~layer:"base" "--color-brand"
+        "oklch(60% 0.12 250)";
+      Css.Declaration.custom_property ~layer:"theme" "--color-brand"
+        "oklch(70% 0.15 250)";
     ]
   in
   let weak_ctx =
-    Css.Context.v ~custom_properties ~root_font_size:(Css.Values.Px 16.) ()
+    Css.Context.v ~custom_properties
+      ~initial_values:
+        [
+          Css.Declaration.of_string "color: canvastext";
+          Css.Declaration.of_string "margin-left: 0";
+        ]
+      ~inherited_values:
+        [ Css.Declaration.of_string "color: var(--color-brand)" ]
+      ~root_font_size:(Css.Values.Px 16.) ()
   in
   let strong_ctx =
-    Css.Context.v ~custom_properties ~root_font_size:(Css.Values.Px 16.)
-      ~viewport_height:(Css.Values.Px 1000.) ()
+    Css.Context.v ~custom_properties
+      ~initial_values:
+        [
+          Css.Declaration.of_string "color: canvastext";
+          Css.Declaration.of_string "margin-left: 0";
+        ]
+      ~inherited_values:
+        [ Css.Declaration.of_string "color: var(--color-brand)" ]
+      ~root_font_size:(Css.Values.Px 16.) ~viewport_height:(Css.Values.Px 1000.)
+      ()
   in
   check_eval "eval resolves layered calc across all cascade layers"
     ~ctx:strong_ctx ~layer_order ~layer:"utilities"
@@ -1035,6 +1779,15 @@ let layered_eval_ast_contract () =
     ~ctx:weak_ctx ~layer_order ~layer:"utilities"
     ~expected:"margin-left: calc(24px + var(--user-gap))"
     "margin-left: var(--future-gap)";
+  check_eval "eval resolves custom property revert-layer before calc eval"
+    ~ctx:weak_ctx ~layer_order ~layer:"utilities" ~expected:"padding: 24px"
+    "padding: var(--component-gap)";
+  check_eval "eval resolves layered color revert through inherited value"
+    ~ctx:weak_ctx ~layer_order ~layer:"utilities"
+    ~expected:"color: oklch(60% 0.12 250)" "color: revert-layer";
+  check_eval "eval resolves theme revert-layer to property initial value"
+    ~ctx:weak_ctx ~layer_order ~layer:"theme" ~expected:"margin-left: 0"
+    "margin-left: revert-layer";
   check_eval_idempotent "layered eval is idempotent on symbolic AST"
     ~ctx:weak_ctx ~layer_order ~layer:"utilities"
     "margin-left: var(--utility-gap)";
@@ -1182,31 +1935,31 @@ let layered_vars_contract () =
         ]
       ~root_font_size:(Css.Values.Px 16.) ()
   in
-  check_layered_computed_value
+  check_layered_eval_value
     "tailwind theme variable is visible to utility declarations" ~ctx
     ~layer_order ~layer:"utilities" ~expected:"oklch(70% 0.15 250)"
     "color: var(--color-brand-500)";
-  check_layered_computed_value
+  check_layered_eval_value
     "normal unlayered app variable overrides tailwind layered tokens" ~ctx
     ~layer_order ~expected:"oklch(40% 0.10 250)" "color: var(--color-brand-500)";
-  check_layered_computed_value
+  check_layered_eval_value
     "base layer token overrides theme for base-scoped resolution" ~ctx
     ~layer_order ~layer:"base" ~expected:"oklch(60% 0.12 250)"
     "color: var(--color-brand-500)";
-  check_layered_computed_value
+  check_layered_eval_value
     "component token resolves through tailwind theme spacing" ~ctx ~layer_order
     ~layer:"components" ~expected:"24px" "padding: var(--card-padding)";
-  check_layered_computed_value
+  check_layered_eval_value
     "utility-local --tw variable resolves through theme spacing" ~ctx
     ~layer_order ~layer:"utilities" ~expected:"16px"
     "translate: var(--tw-translate-x)";
-  check_layered_computed_value
-    "utility-local opacity variable resolves as a number" ~ctx ~layer_order
-    ~layer:"utilities" ~expected:"0.5" "opacity: var(--tw-bg-opacity)";
-  check_layered_computed_value
+  check_layered_eval_value "utility-local opacity variable resolves as a number"
+    ~ctx ~layer_order ~layer:"utilities" ~expected:"0.5"
+    "opacity: var(--tw-bg-opacity)";
+  check_layered_eval_value
     "important tailwind theme layer beats important utility layer" ~ctx
     ~layer_order ~expected:"blue" "outline-color: var(--tw-ring-color)";
-  check_layered_computed_error "unknown layer is rejected for scoped resolution"
+  check_layered_eval_preserves "unknown layer is rejected for scoped resolution"
     ~ctx ~layer_order ~layer:"unknown" "color: var(--color-brand-500)"
 
 let test_layered_computed_revert_contract () =
@@ -1236,22 +1989,21 @@ let test_layered_computed_revert_contract () =
         ]
       ~root_font_size:(Css.Values.Px 16.) ()
   in
-  check_layered_computed_value
-    "revert-layer utility token rolls back to base token" ~ctx ~layer_order
-    ~layer:"utilities" ~expected:"oklch(60% 0.12 250)"
+  check_layered_eval_value "revert-layer utility token rolls back to base token"
+    ~ctx ~layer_order ~layer:"utilities" ~expected:"oklch(60% 0.12 250)"
     "color: var(--color-brand-500)";
-  check_layered_computed_value
+  check_layered_eval_value
     "revert-layer utility spacing rolls back to component token then theme \
      token"
     ~ctx ~layer_order ~layer:"utilities" ~expected:"24px"
     "padding: var(--card-padding)";
-  check_layered_computed_value
+  check_layered_eval_value
     "property revert-layer rolls back to lower cascaded layer" ~ctx ~layer_order
     ~layer:"utilities" ~expected:"oklch(60% 0.12 250)" "color: revert-layer";
-  check_layered_computed_value
+  check_layered_eval_value
     "property revert-layer in theme falls back to initial" ~ctx ~layer_order
     ~layer:"theme" ~expected:"0" "margin-left: revert-layer";
-  check_layered_computed_error "revert-layer cycle is unresolved" ~ctx
+  check_layered_eval_preserves "revert-layer cycle is unresolved" ~ctx
     ~layer_order ~layer:"utilities" "margin-left: var(--missing, revert-layer)"
 
 let test_loader_import_layer_contract () =
@@ -1336,43 +2088,42 @@ let tw_vars_contract () =
         ]
       ~root_font_size:(Css.Values.Px 16.) ()
   in
-  check_layered_computed_value
+  check_layered_eval_value
     "tailwind rgb slash alpha resolves theme channel and opacity var" ~ctx
     ~layer_order ~layer:"utilities" ~expected:"rgb(239 68 68/0.75)"
     "background-color: rgb(var(--color-red-500) / var(--tw-bg-opacity))";
-  check_layered_computed_value
-    "tailwind border opacity var resolves independently" ~ctx ~layer_order
-    ~layer:"utilities" ~expected:"rgb(59 130 246/0.5)"
+  check_layered_eval_value "tailwind border opacity var resolves independently"
+    ~ctx ~layer_order ~layer:"utilities" ~expected:"rgb(59 130 246/0.5)"
     "border-color: rgb(var(--color-blue-500) / var(--tw-border-opacity))";
-  check_layered_computed_value
+  check_layered_eval_value
     "tailwind gradient stops resolve chained utility variables" ~ctx
     ~layer_order ~layer:"utilities"
     ~expected:"linear-gradient(to right,rgb(239 68 68/1),rgb(59 130 246/0))"
     "background-image: linear-gradient(to right, var(--tw-gradient-stops))";
-  check_layered_computed_value
+  check_layered_eval_value
     "tailwind ring shadow resolves offset and color variables" ~ctx ~layer_order
     ~layer:"utilities"
     ~expected:"0 0 0 2px #fff,0 0 0 calc(3px + 2px) rgb(59 130 246/0.5)"
     "box-shadow: 0 0 0 var(--tw-ring-offset-width) \
      var(--tw-ring-offset-color), 0 0 0 calc(3px + \
      var(--tw-ring-offset-width)) var(--tw-ring-color)";
-  check_layered_computed_value
+  check_layered_eval_value
     "tailwind transform utility variables resolve in order" ~ctx ~layer_order
     ~layer:"utilities"
     ~expected:"translate(16px) rotate(45deg) scaleX(1) scaleY(1)"
     "transform: translate(var(--tw-translate-x)) rotate(var(--tw-rotate)) \
      scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y))";
-  check_layered_computed_value
+  check_layered_eval_value
     "tailwind radius token resolves through theme variable" ~ctx ~layer_order
     ~layer:"utilities" ~expected:"8px" "border-radius: var(--radius-lg)";
   (* CSS Values 4: once the fallback var() has selected the calc() and --spacing
      has resolved to a rem length, computed-value simplification has enough
      information to reduce the expression to px. *)
-  check_layered_computed_value
+  check_layered_eval_value
     "tailwind nested fallback uses theme token when utility var is absent" ~ctx
     ~layer_order ~layer:"utilities" ~expected:"16px"
     "margin-left: var(--tw-space-x, calc(var(--spacing) * 4))";
-  check_layered_computed_error
+  check_layered_eval_preserves
     "tailwind utility var without fallback remains unresolved" ~ctx ~layer_order
     ~layer:"utilities" "outline-width: var(--tw-outline-width)"
 
@@ -1424,23 +2175,164 @@ let tw_layer_order_contract () =
         ]
       ~root_font_size:(Css.Values.Px 16.) ()
   in
-  check_layered_computed_value
+  check_layered_eval_value
     "tailwind utility layer token wins within utility layer" ~ctx ~layer_order
     ~layer:"utilities" ~expected:"16px" "margin-left: var(--spacing)";
-  check_layered_computed_value
+  check_layered_eval_value
     "tailwind component layer token wins within component layer" ~ctx
     ~layer_order ~layer:"components" ~expected:"8px"
     "margin-left: var(--spacing)";
-  check_layered_computed_value
-    "tailwind theme layer token wins within theme layer" ~ctx ~layer_order
-    ~layer:"theme" ~expected:"4px" "margin-left: var(--spacing)";
-  check_layered_computed_value
+  check_layered_eval_value "tailwind theme layer token wins within theme layer"
+    ~ctx ~layer_order ~layer:"theme" ~expected:"4px"
+    "margin-left: var(--spacing)";
+  check_layered_eval_value
     "tailwind unscoped normal lookup uses final layered token" ~ctx ~layer_order
     ~expected:"green" "color: var(--color-brand)";
-  check_layered_computed_value
+  check_layered_eval_value
     "tailwind component scoped lookup ignores later utility token" ~ctx
     ~layer_order ~layer:"components" ~expected:"blue"
     "color: var(--color-brand)"
+
+let cascade_rule_resolver_contract () =
+  let layer_order = [ "reset"; "theme"; "components"; "utilities" ] in
+  let value_ctx =
+    Css.Context.v
+      ~custom_properties:
+        [
+          Css.Declaration.of_string "--theme-color: oklch(70% 0.15 250)";
+          Css.Declaration.of_string "--app-color: oklch(40% 0.10 250)";
+          Css.Declaration.of_string "--scoped-color: green";
+        ]
+      ~root_font_size:(Css.Values.Px 16.) ()
+  in
+  let query =
+    Css.Context.query ~media_type:"screen"
+      ~media_features:[ feature "width" (px 1024.) ]
+      ~supports:
+        [
+          Css.Supports.property "display" "grid";
+          Css.Supports.property "container-type" "inline-size";
+        ]
+      ~container_name:"card"
+      ~container_features:[ container_feature "inline-size" (px 640.) ]
+      ()
+  in
+  let primary =
+    Css.Context.document ~element:"button" ~classes:[ "btn"; "primary" ] ()
+  in
+  check_resolved_property "unlayered rule beats matching explicit layers"
+    ~layer_order ~ctx:value_ctx ~document:primary ~query ~property:"color"
+    ~expected:"color: oklch(40% 0.10 250)"
+    {|
+      @layer reset, theme, components, utilities;
+      @layer theme { .btn { color: var(--theme-color); } }
+      @layer utilities { .btn { color: orange; } }
+      @media screen and (width >= 40rem) { .btn { color: blue; } }
+      @supports (display: ruby) { .btn.primary { color: red; } }
+      @supports (display: grid) { .btn.primary { color: var(--app-color); } }
+    |};
+  let id_button =
+    Css.Context.document ~element:"button" ~classes:[ "btn"; "primary" ]
+      ~ids:[ "submit" ] ()
+  in
+  check_resolved_property
+    "specificity chooses id selector after condition filtering" ~layer_order
+    ~ctx:value_ctx ~document:id_button ~query ~property:"color"
+    ~expected:"color: purple"
+    {|
+      .btn.primary { color: var(--app-color); }
+      #submit { color: purple; }
+      @supports (display: ruby) { #submit { color: red; } }
+    |};
+  check_resolved_property "important layer order reverses normal layer order"
+    ~layer_order ~ctx:value_ctx ~document:primary ~query
+    ~property:"border-color" ~expected:"border-color: red"
+    {|
+      @layer reset, theme, components, utilities;
+      .btn { border-color: green !important; }
+      @layer reset { .btn { border-color: red !important; } }
+      @layer utilities { .btn { border-color: blue !important; } }
+    |};
+  check_resolved_property
+    "revert-layer rolls back to the next lower normal layer" ~layer_order
+    ~ctx:value_ctx ~document:primary ~query ~property:"color"
+    ~expected:"color: green"
+    {|
+      @layer reset, theme, components, utilities;
+      @layer theme { .btn { color: red; } }
+      @layer components { .btn { color: green; } }
+      @layer utilities { .btn { color: revert-layer; } }
+    |};
+  let scoped =
+    Css.Context.document ~scope:".card" ~element:"h2" ~classes:[ "title" ] ()
+  in
+  check_resolved_property
+    "scope proximity beats later source order at equal specificity" ~layer_order
+    ~ctx:value_ctx ~document:scoped ~query ~property:"color"
+    ~expected:"color: green"
+    {|
+      @scope (.card) { .title { color: var(--scoped-color); } }
+      .title { color: blue; }
+    |};
+  check_resolved_property
+    "scope boundary suppresses declarations outside the active scope"
+    ~layer_order ~ctx:value_ctx
+    ~document:
+      (Css.Context.document ~scope:".card" ~element:"h2"
+         ~classes:[ "title"; "boundary" ] ())
+    ~query ~property:"color" ~expected:"color: blue"
+    {|
+      @scope (.card) to (.boundary) { .title { color: green; } }
+      .title { color: blue; }
+    |};
+  let ast_rule selector declarations =
+    Css.Stylesheet.rule
+      ~selector:(Css.Selector.of_string selector)
+      (List.map Css.Declaration.of_string declarations)
+  in
+  let origin_sheet =
+    [
+      Css.Stylesheet.with_origin Css.Stylesheet.User_agent
+        [ Css.Stylesheet.Rule (ast_rule ".btn" [ "color: black" ]) ];
+      Css.Stylesheet.with_origin Css.Stylesheet.Author
+        [ Css.Stylesheet.Rule (ast_rule ".btn" [ "color: red" ]) ];
+      Css.Stylesheet.with_origin Css.Stylesheet.User
+        [ Css.Stylesheet.Rule (ast_rule ".btn" [ "color: blue !important" ]) ];
+      Css.Stylesheet.with_origin Css.Stylesheet.Transition
+        [ Css.Stylesheet.Rule (ast_rule ".btn" [ "color: yellow" ]) ];
+    ]
+  in
+  check_resolved_property_from_ast
+    "origin and animation/transition ranks are applied" ~layer_order
+    ~ctx:value_ctx ~document:primary ~query ~property:"color"
+    ~expected:"color: yellow" origin_sheet;
+  let revert_origin_sheet =
+    [
+      Css.Stylesheet.with_origin Css.Stylesheet.User_agent
+        [ Css.Stylesheet.Rule (ast_rule ".btn" [ "color: black" ]) ];
+      Css.Stylesheet.with_origin Css.Stylesheet.User
+        [ Css.Stylesheet.Rule (ast_rule ".btn" [ "color: blue" ]) ];
+      Css.Stylesheet.with_origin Css.Stylesheet.Author
+        [ Css.Stylesheet.Rule (ast_rule ".btn" [ "color: revert" ]) ];
+    ]
+  in
+  check_resolved_property_from_ast
+    "revert rolls back to the next lower cascade origin" ~layer_order
+    ~ctx:value_ctx ~document:primary ~query ~property:"color"
+    ~expected:"color: blue" revert_origin_sheet;
+  check_resolved_property "nested conditional declarations inherit parent rule"
+    ~layer_order ~ctx:value_ctx ~document:primary ~query
+    ~property:"outline-color" ~expected:"outline-color: oklch(40% 0.10 250)"
+    {|
+      .btn {
+        @media screen and (width >= 40rem) {
+          outline-color: var(--app-color);
+        }
+        @supports (display: ruby) {
+          outline-color: red;
+        }
+      }
+    |}
 
 let suite =
   ( "context",
@@ -1480,7 +2372,21 @@ let suite =
         test_property_registration_context_contract;
       Alcotest.test_case "computed value calc and shorthand contract" `Quick
         computed_calc_contract;
+      Alcotest.test_case "eval calc family contract" `Quick
+        eval_calc_family_contract;
       Alcotest.test_case "eval AST contract" `Quick eval_ast_contract;
+      Alcotest.test_case "eval spec edge contract" `Quick
+        eval_spec_edge_contract;
+      Alcotest.test_case "eval CSS spec edge contract" `Quick
+        eval_css_spec_edge_contract;
+      Alcotest.test_case "runtime boundary contract" `Quick
+        runtime_boundary_contract;
+      Alcotest.test_case "animation time eval contract" `Quick
+        animation_time_eval_contract;
+      Alcotest.test_case "eval observable matrix contract" `Quick
+        eval_observable_matrix_contract;
+      Alcotest.test_case "eval stylesheet spec edge contract" `Quick
+        eval_stylesheet_spec_edge_contract;
       Alcotest.test_case "eval laws contract" `Quick eval_laws_contract;
       Alcotest.test_case "layered eval AST contract" `Quick
         layered_eval_ast_contract;
@@ -1502,4 +2408,6 @@ let suite =
         selector_scope_contract;
       Alcotest.test_case "tailwind layer order contract" `Quick
         tw_layer_order_contract;
+      Alcotest.test_case "cascade rule resolver contract" `Quick
+        cascade_rule_resolver_contract;
     ] )
