@@ -135,6 +135,15 @@ type opacity =
   | Revert_layer
   | Var of opacity var
 
+type shape_image_threshold =
+  | Number of float
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of shape_image_threshold var
+
 type tab_size =
   | Int of int
   | Length of length
@@ -169,6 +178,17 @@ type overflow =
   | Overflow_pair of overflow * overflow
   | Var of overflow var
 
+type overflow_clip_box = Content_box | Padding_box | Border_box
+
+type overflow_clip_margin =
+  | Clip_margin of overflow_clip_box option * length option
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of overflow_clip_margin var
+
 (* Flexbox Types *)
 type flex_direction =
   | Row
@@ -192,6 +212,15 @@ type flex_wrap =
   | Revert
   | Revert_layer
   | Var of flex_wrap var
+
+type flex_flow =
+  | Flow of flex_direction option * flex_wrap option
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of flex_flow var
 
 type flex_factor =
   | Number of float
@@ -824,6 +853,125 @@ type line_break =
   | Revert_layer
   | Var of line_break var
 
+type font_optical_sizing =
+  | Auto
+  | None
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_optical_sizing var
+
+type font_kerning =
+  | Auto
+  | Normal
+  | None
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_kerning var
+
+type font_language_override =
+  | Normal
+  | String of string
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_language_override var
+
+type font_synthesis_style =
+  | Auto
+  | None
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_synthesis_style var
+
+type font_synthesis_weight =
+  | Auto
+  | None
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_synthesis_weight var
+
+type font_variant_ligature =
+  | Common_ligatures
+  | No_common_ligatures
+  | Discretionary_ligatures
+  | No_discretionary_ligatures
+  | Historical_ligatures
+  | No_historical_ligatures
+  | Contextual
+  | No_contextual
+
+type font_variant_ligatures =
+  | Normal
+  | None
+  | Ligatures of font_variant_ligature list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_variant_ligatures var
+
+type font_variant_caps =
+  | Normal
+  | Small_caps
+  | All_small_caps
+  | Petite_caps
+  | All_petite_caps
+  | Unicase
+  | Titling_caps
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_variant_caps var
+
+type font_variant_position =
+  | Normal
+  | Sub
+  | Super
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_variant_position var
+
+type font_variant_east_asian_feature =
+  | Jis78
+  | Jis83
+  | Jis90
+  | Jis04
+  | Simplified
+  | Traditional
+  | Full_width
+  | Proportional_width
+  | Ruby
+
+type font_variant_east_asian =
+  | Normal
+  | Features of font_variant_east_asian_feature list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_variant_east_asian var
+
 type text_overflow =
   | Clip
   | Ellipsis
@@ -848,6 +996,16 @@ type text_wrap =
   | Revert_layer
   | Var of text_wrap var
 
+type text_wrap_mode =
+  | Wrap
+  | No_wrap
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_wrap_mode var
+
 type text_wrap_style =
   | Auto
   | Balance
@@ -871,6 +1029,27 @@ type text_box_trim =
   | Revert
   | Revert_layer
   | Var of text_box_trim var
+
+type text_box_edge_keyword =
+  | Text
+  | Cap
+  | Ex
+  | Alphabetic
+  | Ideographic
+  | Ideographic_ink
+
+type text_box_edge =
+  | Edge of text_box_edge_keyword * text_box_edge_keyword option
+  | Var of text_box_edge var
+
+type text_box =
+  | Box of text_box_trim * text_box_edge option
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_box var
 
 type text_spacing_trim =
   | Normal
@@ -1477,6 +1656,16 @@ type transition_behavior =
   | Revert_layer
   | Var of transition_behavior var
 
+type overlay =
+  | Auto
+  | None
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of overlay var
+
 type transition_shorthand = {
   property : transition_property_value;
   duration : duration option;
@@ -1540,6 +1729,17 @@ type animation_play_state =
   | Revert
   | Revert_layer
   | Var of animation_play_state var
+
+type animation_composition_item = Replace | Add | Accumulate
+
+type animation_composition =
+  | Compositions of animation_composition_item list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of animation_composition var
 
 type animation_name =
   | None
@@ -2008,6 +2208,30 @@ type mask =
   | Revert_layer
   | Var of mask var
 
+type border_image_slice_item = Number of float | Pct of float
+
+type border_image_slice = {
+  offsets : border_image_slice_item list;
+  fill : bool;
+}
+
+type border_image_width_item =
+  | Number of float
+  | Pct of float
+  | Length of length
+  | Auto
+
+type border_image_outset_item = Number of float | Length of length
+type border_image_repeat_keyword = Stretch | Repeat | Round | Space
+
+type border_image = {
+  source : background_image option;
+  slice : border_image_slice option;
+  width : border_image_width_item list option;
+  outset : border_image_outset_item list option;
+  repeat : border_image_repeat_keyword list option;
+}
+
 (* Gap shorthand type *)
 type gap =
   | Lengths of { row_gap : length option; column_gap : length option }
@@ -2174,6 +2398,30 @@ type object_fit =
   | Revert_layer
   | Var of object_fit var
 
+type object_view_box =
+  | None
+  | Inset of length * length option * length option * length option
+  | Xywh of {
+      x : length_percentage;
+      y : length_percentage;
+      width : length_percentage;
+      height : length_percentage;
+      rounded : border_radius option;
+    }
+  | Rect of {
+      top : length_percentage;
+      right : length_percentage;
+      bottom : length_percentage;
+      left : length_percentage;
+      rounded : border_radius option;
+    }
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of object_view_box var
+
 (* Content Types *)
 type content =
   | String of string
@@ -2191,6 +2439,18 @@ type content =
   | Revert
   | Revert_layer
   | Var of content var
+
+type counter_item = { name : string; value : int option }
+
+type counter_set =
+  | None
+  | Counters of counter_item list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of counter_set var
 
 type content_visibility =
   | Visible
@@ -2273,6 +2533,67 @@ type position_try_fallbacks =
   | Revert
   | Revert_layer
   | Var of position_try_fallbacks var
+
+type position_try_order =
+  | Normal
+  | Most_width
+  | Most_height
+  | Most_block_size
+  | Most_inline_size
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_try_order var
+
+type position_visibility =
+  | Always
+  | Anchors_visible
+  | No_overflow
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_visibility var
+
+type position_area_keyword =
+  | Top
+  | Bottom
+  | Left
+  | Right
+  | Center
+  | Span_top
+  | Span_bottom
+  | Span_left
+  | Span_right
+  | X_start
+  | X_end
+  | Y_start
+  | Y_end
+  | Span_x_start
+  | Span_x_end
+  | Span_y_start
+  | Span_y_end
+  | Inline_start
+  | Inline_end
+  | Block_start
+  | Block_end
+  | Span_inline_start
+  | Span_inline_end
+  | Span_block_start
+  | Span_block_end
+  | Span_all
+
+type position_area =
+  | Area of position_area_keyword * position_area_keyword option
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of position_area var
 
 type overflow_anchor =
   | Auto
@@ -2386,6 +2707,16 @@ type view_transition_name =
   | Revert_layer
   | Var of view_transition_name var
 
+type view_transition_class =
+  | None
+  | Classes of string list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of view_transition_class var
+
 type image_orientation =
   | None
   | From_image
@@ -2395,6 +2726,35 @@ type image_orientation =
   | Revert
   | Revert_layer
   | Var of image_orientation var
+
+type image_rendering =
+  | Auto
+  | Smooth
+  | High_quality
+  | Crisp_edges
+  | Pixelated
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of image_rendering var
+
+type resolution = Dpi of float | Dpcm of float | Dppx of float | X of float
+
+type image_resolution =
+  | Resolution of resolution
+  | From_image
+  | From_image_resolution of resolution
+  | Snap of resolution
+  | From_image_snap
+  | From_image_snap_resolution of resolution
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of image_resolution var
 
 type contain_intrinsic_size_item = Length of length | Auto of length
 
@@ -2409,12 +2769,24 @@ type contain_intrinsic_size =
   | Revert_layer
   | Var of contain_intrinsic_size var
 
+type contain_intrinsic_longhand =
+  | None
+  | Size of contain_intrinsic_size_item
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of contain_intrinsic_longhand var
+
 type margin_trim_edge = Block_start | Inline_start | Block_end | Inline_end
+type margin_trim_axis = Block | Inline
 
 type margin_trim =
   | None
   | Block
   | Inline
+  | Axes of margin_trim_axis list
   | Edges of margin_trim_edge list
   | Initial
   | Inherit
@@ -2443,6 +2815,20 @@ type offset_path =
   | Revert
   | Revert_layer
   | Var of offset_path var
+
+type offset_rotate_mode = Auto | Reverse
+
+type offset_rotate =
+  | Auto
+  | Reverse
+  | Angle of angle
+  | With_angle of offset_rotate_mode * angle
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of offset_rotate var
 
 (* Container shorthand: name / type *)
 type container_shorthand =
@@ -2679,6 +3065,17 @@ type timeline_shorthand = {
   timeline_axis : timeline_axis;
 }
 
+type timeline_inset_item = Auto | Length of length_percentage
+
+type timeline_inset =
+  | Inset of timeline_inset_item * timeline_inset_item option
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of timeline_inset var
+
 type overscroll_behavior =
   | Auto
   | Contain
@@ -2737,6 +3134,17 @@ type writing_mode =
   | Revert
   | Revert_layer
   | Var of writing_mode var
+
+type text_combine_upright =
+  | None
+  | All
+  | Digits of int option
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_combine_upright var
 
 (* Webkit & Mozilla Specific Types *)
 type webkit_appearance =
@@ -2998,8 +3406,13 @@ type clip =
 type clip_path =
   | Clip_path_none
   | Clip_path_url of string
-  | Clip_path_inset of length * length option * length option * length option
-      (** inset(top, right?, bottom?, left?) - supports 1-4 values *)
+  | Clip_path_inset of {
+      top : length_percentage;
+      right : length_percentage option;
+      bottom : length_percentage option;
+      left : length_percentage option;
+      rounded : border_radius option;
+    }  (** [inset(<length-percentage>{1,4} [round <border-radius>]?)] *)
   | Clip_path_circle of length  (** Circle with radius *)
   | Clip_path_ellipse of length * length  (** Ellipse with rx, ry *)
   | Clip_path_polygon of (length * length) list
@@ -3162,6 +3575,7 @@ type 'a property =
   | Visibility : visibility property
   | Flex_direction : flex_direction property
   | Flex_wrap : flex_wrap property
+  | Flex_flow : flex_flow property
   | Flex : flex property
   | Flex_grow : flex_factor property
   | Flex_shrink : flex_factor property
@@ -3199,7 +3613,7 @@ type 'a property =
   | Border_inline_end_width : border_width property
   | Border_block_start_width : border_width property
   | Border_block_end_width : border_width property
-  | Border_image : string property
+  | Border_image : border_image property
   | Border_radius : border_radius property
   | Border_top_left_radius : length property
   | Border_top_right_radius : length property
@@ -3277,9 +3691,13 @@ type 'a property =
   | Anchor_name : anchor_name property
   | Position_anchor : position_anchor property
   | Position_try_fallbacks : position_try_fallbacks property
+  | Position_try_order : position_try_order property
+  | Position_visibility : position_visibility property
+  | Position_area : position_area property
   | Shape_outside : string property
   | Shape_margin : length_percentage property
-  | Overflow_clip_margin : length property
+  | Shape_image_threshold : shape_image_threshold property
+  | Overflow_clip_margin : overflow_clip_margin property
   | Overflow_anchor : overflow_anchor property
   | Scrollbar_width : scrollbar_width property
   | Scrollbar_color : scrollbar_color property
@@ -3287,21 +3705,32 @@ type 'a property =
   | Line_height_step : length property
   | Font_palette : font_palette property
   | Font_synthesis : font_synthesis property
+  | Text_wrap_mode : text_wrap_mode property
   | Text_wrap_style : text_wrap_style property
   | Text_box_trim : text_box_trim property
+  | Text_box : text_box property
+  | Text_combine_upright : text_combine_upright property
   | Animation_timeline : animation_timeline property
   | Animation_range : animation_range property
+  | Animation_range_start : animation_range property
+  | Animation_range_end : animation_range property
   | Scroll_timeline : timeline_shorthand property
+  | Scroll_timeline_name : timeline_name property
+  | Scroll_timeline_axis : timeline_axis property
   | View_transition_name : view_transition_name property
+  | View_transition_class : view_transition_class property
   | Image_orientation : image_orientation property
+  | Image_rendering : image_rendering property
+  | Image_resolution : image_resolution property
   | Contain_intrinsic_size : contain_intrinsic_size property
-  | Contain_intrinsic_width : string property
-  | Contain_intrinsic_height : string property
-  | Contain_intrinsic_block_size : string property
-  | Contain_intrinsic_inline_size : string property
+  | Contain_intrinsic_width : contain_intrinsic_longhand property
+  | Contain_intrinsic_height : contain_intrinsic_longhand property
+  | Contain_intrinsic_block_size : contain_intrinsic_longhand property
+  | Contain_intrinsic_inline_size : contain_intrinsic_longhand property
   | Margin_trim : margin_trim property
   | Offset_path : offset_path property
   | Offset_distance : length_percentage property
+  | Offset_rotate : offset_rotate property
   | Font_size_adjust : font_size_adjust property
   | Font_variant_emoji : font_variant_emoji property
   | Text_spacing_trim : text_spacing_trim property
@@ -3309,6 +3738,7 @@ type 'a property =
   | Initial_letter : initial_letter property
   | View_timeline_name : timeline_name property
   | View_timeline_axis : timeline_axis property
+  | View_timeline_inset : timeline_inset property
   | View_timeline : timeline_shorthand property
   | Timeline_scope : timeline_name property
   | Perspective : length property
@@ -3322,6 +3752,7 @@ type 'a property =
   | Transition_delay : duration property
   | Transition_property : transition_property property
   | Transition_behavior : transition_behavior property
+  | Overlay : overlay property
   | Will_change : will_change property
   | Contain : contain property
   | Isolation : isolation property
@@ -3343,6 +3774,7 @@ type 'a property =
   | Text_shadow : text_shadow list property
   | Clip_path : clip_path property
   | Mask : mask property
+  | Mask_border : border_image property
   | Content_visibility : content_visibility property
   | Filter : filter property
   | Background_image : background_image list property
@@ -3373,7 +3805,16 @@ type 'a property =
   | Hyphens : hyphens property
   | Webkit_hyphens : hyphens property
   | Font_stretch : font_stretch property
+  | Font_optical_sizing : font_optical_sizing property
+  | Font_kerning : font_kerning property
+  | Font_language_override : font_language_override property
+  | Font_synthesis_style : font_synthesis_style property
+  | Font_synthesis_weight : font_synthesis_weight property
+  | Font_variant_ligatures : font_variant_ligatures property
+  | Font_variant_caps : font_variant_caps property
   | Font_variant_numeric : font_variant_numeric property
+  | Font_variant_position : font_variant_position property
+  | Font_variant_east_asian : font_variant_east_asian property
   | Backdrop_filter : filter property
   | Webkit_backdrop_filter : filter property
   | Webkit_mask_image : background_image property
@@ -3401,12 +3842,15 @@ type 'a property =
   | Caption_side : caption_side property
   | Resize : resize property
   | Object_fit : object_fit property
+  | Object_view_box : object_view_box property
   | Appearance : appearance property
   | Color_scheme : color_scheme property
   | Print_color_adjust : print_color_adjust property
   | Box_decoration_break : box_decoration_break property
   | Webkit_box_decoration_break : box_decoration_break property
   | Content : content property
+  | Counter_reset : counter_set property
+  | Counter_increment : counter_set property
   | Quotes : quotes property
   | Text_decoration_thickness : length property
   | Text_size_adjust : text_size_adjust property
@@ -3432,6 +3876,7 @@ type 'a property =
   | Animation_direction : animation_direction property
   | Animation_fill_mode : animation_fill_mode property
   | Animation_play_state : animation_play_state property
+  | Animation_composition : animation_composition property
   | Background_blend_mode : blend_mode list property
   | Scroll_margin : length list property
   | Scroll_margin_top : length property

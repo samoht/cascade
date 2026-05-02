@@ -29,7 +29,8 @@ let matrix =
     };
     {
       property = "overflow";
-      positives = [ "visible"; "hidden"; "clip"; "auto"; "clip auto" ];
+      positives =
+        [ "visible"; "hidden"; "clip"; "auto"; "clip auto"; "clip visible" ];
       negatives = [ "none"; "visible hidden scroll" ];
     };
     {

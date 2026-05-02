@@ -1944,10 +1944,28 @@ type content =
   | Revert_layer
   | Var of content var
 
+type counter_item = { name : string; value : int option }
+
+type counter_set =
+  | None
+  | Counters of counter_item list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of counter_set var
+
 val content : content -> declaration
 (** [content c] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/content} content}
     property. *)
+
+val counter_reset : counter_set -> declaration
+(** [counter_reset c] is the CSS [counter-reset] property. *)
+
+val counter_increment : counter_set -> declaration
+(** [counter_increment c] is the CSS [counter-increment] property. *)
 
 (** CSS object-fit values *)
 type object_fit =
@@ -2035,6 +2053,16 @@ type text_wrap =
   | Revert_layer
   | Var of text_wrap var
 
+type text_wrap_mode =
+  | Wrap
+  | No_wrap
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_wrap_mode var
+
 type text_wrap_style =
   | Auto
   | Balance
@@ -2100,6 +2128,9 @@ val text_wrap : text_wrap -> declaration
 (** [text_wrap wrap] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-wrap} text-wrap}
     property. *)
+
+val text_wrap_mode : text_wrap_mode -> declaration
+(** [text_wrap_mode wrap] is the CSS [text-wrap-mode] property. *)
 
 (** CSS backface-visibility values *)
 type backface_visibility =
@@ -2329,6 +2360,33 @@ type border_radius =
   | Revert
   | Revert_layer
   | Var of border_radius var  (** Per CSS Backgrounds and Borders 3 §5. *)
+
+type object_view_box =
+  | None
+  | Inset of length * length option * length option * length option
+  | Xywh of {
+      x : length_percentage;
+      y : length_percentage;
+      width : length_percentage;
+      height : length_percentage;
+      rounded : border_radius option;
+    }
+  | Rect of {
+      top : length_percentage;
+      right : length_percentage;
+      bottom : length_percentage;
+      left : length_percentage;
+      rounded : border_radius option;
+    }
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of object_view_box var
+
+val object_view_box : object_view_box -> declaration
+(** [object_view_box box] is the CSS [object-view-box] property. *)
 
 (** Background image values *)
 type background_image =
@@ -2616,6 +2674,15 @@ type flex_wrap =
   | Revert
   | Revert_layer
   | Var of flex_wrap var  (** CSS flex basis values. *)
+
+type flex_flow =
+  | Flow of flex_direction option * flex_wrap option
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of flex_flow var
 
 type flex_factor =
   | Number of float
@@ -3006,6 +3073,9 @@ val flex_wrap : flex_wrap -> declaration
 (** [flex_wrap wrap] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/flex-wrap} flex-wrap}
     property. *)
+
+val flex_flow : flex_flow -> declaration
+(** [flex_flow flow] is the CSS [flex-flow] property. *)
 
 val flex : flex -> declaration
 (** [flex flex] is the
@@ -3778,6 +3848,170 @@ val font_stretch : font_stretch -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-stretch}
      font-stretch} property. *)
 
+type font_optical_sizing =
+  | Auto
+  | None
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_optical_sizing var
+
+val font_optical_sizing : font_optical_sizing -> declaration
+(** [font_optical_sizing sizing] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-optical-sizing}
+     font-optical-sizing} property. *)
+
+type font_kerning =
+  | Auto
+  | Normal
+  | None
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_kerning var
+
+val font_kerning : font_kerning -> declaration
+(** [font_kerning kerning] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-kerning}
+     font-kerning} property. *)
+
+type font_language_override =
+  | Normal
+  | String of string
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_language_override var
+
+val font_language_override : font_language_override -> declaration
+(** [font_language_override override] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-language-override}
+     font-language-override} property. *)
+
+type font_synthesis_style =
+  | Auto
+  | None
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_synthesis_style var
+
+val font_synthesis_style : font_synthesis_style -> declaration
+(** [font_synthesis_style style] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-synthesis-style}
+     font-synthesis-style} property. *)
+
+type font_synthesis_weight =
+  | Auto
+  | None
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_synthesis_weight var
+
+val font_synthesis_weight : font_synthesis_weight -> declaration
+(** [font_synthesis_weight weight] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-synthesis-weight}
+     font-synthesis-weight} property. *)
+
+type font_variant_ligature =
+  | Common_ligatures
+  | No_common_ligatures
+  | Discretionary_ligatures
+  | No_discretionary_ligatures
+  | Historical_ligatures
+  | No_historical_ligatures
+  | Contextual
+  | No_contextual
+
+type font_variant_ligatures =
+  | Normal
+  | None
+  | Ligatures of font_variant_ligature list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_variant_ligatures var
+
+val font_variant_ligatures : font_variant_ligatures -> declaration
+(** [font_variant_ligatures ligatures] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-variant-ligatures}
+     font-variant-ligatures} property. *)
+
+type font_variant_caps =
+  | Normal
+  | Small_caps
+  | All_small_caps
+  | Petite_caps
+  | All_petite_caps
+  | Unicase
+  | Titling_caps
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_variant_caps var
+
+val font_variant_caps : font_variant_caps -> declaration
+(** [font_variant_caps caps] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-variant-caps}
+     font-variant-caps} property. *)
+
+type font_variant_position =
+  | Normal
+  | Sub
+  | Super
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_variant_position var
+
+val font_variant_position : font_variant_position -> declaration
+(** [font_variant_position position] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-variant-position}
+     font-variant-position} property. *)
+
+type font_variant_east_asian_feature =
+  | Jis78
+  | Jis83
+  | Jis90
+  | Jis04
+  | Simplified
+  | Traditional
+  | Full_width
+  | Proportional_width
+  | Ruby
+
+type font_variant_east_asian =
+  | Normal
+  | Features of font_variant_east_asian_feature list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_variant_east_asian var
+
+val font_variant_east_asian : font_variant_east_asian -> declaration
+(** [font_variant_east_asian east_asian] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/font-variant-east-asian}
+     font-variant-east-asian} property. *)
+
 (** CSS font-size-adjust metric keywords *)
 type font_size_adjust_metric =
   | Ex_height
@@ -4006,10 +4240,24 @@ type writing_mode =
   | Revert_layer
   | Var of writing_mode var
 
+type text_combine_upright =
+  | None
+  | All
+  | Digits of int option
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_combine_upright var
+
 val writing_mode : writing_mode -> declaration
 (** [writing_mode mode] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/writing-mode}
      writing-mode} property. *)
+
+val text_combine_upright : text_combine_upright -> declaration
+(** [text_combine_upright value] is the CSS [text-combine-upright] property. *)
 
 val text_decoration_thickness : length -> declaration
 (** [text_decoration_thickness thick] is the
@@ -4944,8 +5192,13 @@ type clip =
 type clip_path =
   | Clip_path_none
   | Clip_path_url of string
-  | Clip_path_inset of length * length option * length option * length option
-      (** inset(top, right?, bottom?, left?) - supports 1-4 values *)
+  | Clip_path_inset of {
+      top : length_percentage;
+      right : length_percentage option;
+      bottom : length_percentage option;
+      left : length_percentage option;
+      rounded : border_radius option;
+    }  (** [inset(<length-percentage>{1,4} [round <border-radius>]?)] *)
   | Clip_path_circle of length  (** Circle with radius *)
   | Clip_path_ellipse of length * length  (** Ellipse with rx, ry *)
   | Clip_path_polygon of (length * length) list
@@ -6228,6 +6481,9 @@ val pp_text_decoration : text_decoration Pp.t
 val pp_text_transform : text_transform Pp.t
 (** [pp_text_transform] is the pretty printer for text-transform values. *)
 
+val pp_text_wrap_mode : text_wrap_mode Pp.t
+(** [pp_text_wrap_mode] is the pretty printer for text-wrap-mode values. *)
+
 val pp_text_wrap_style : text_wrap_style Pp.t
 (** [pp_text_wrap_style] is the pretty printer for text-wrap-style values. *)
 
@@ -6260,6 +6516,9 @@ val pp_scroll_snap_strictness : scroll_snap_strictness Pp.t
 
 val pp_flex_direction : flex_direction Pp.t
 (** [pp_flex_direction] is the pretty printer for flex-direction values. *)
+
+val pp_flex_flow : flex_flow Pp.t
+(** [pp_flex_flow] is the pretty printer for flex-flow values. *)
 
 val pp_flex_factor : flex_factor Pp.t
 (** [pp_flex_factor] is the pretty printer for flex factor values. *)
