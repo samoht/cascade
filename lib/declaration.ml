@@ -898,6 +898,37 @@ let read_animation_range_name t : animation_range_name =
     ]
     t
 
+let animation_range_names =
+  [ "cover"; "contain"; "entry"; "exit"; "entry-crossing"; "exit-crossing" ]
+
+let rec read_animation_range_item t : animation_range_item =
+  let keywords : (string * animation_range_item) list =
+    [
+      ("normal", (Normal : animation_range_item));
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+  in
+  let read_item t =
+    Cursor.ws t;
+    match Cursor.peek_ident t with
+    | Some name when List.mem name animation_range_names ->
+        let name : animation_range_name = read_animation_range_name t in
+        Cursor.ws t;
+        let lp = Values.read_length_percentage t in
+        (Named (name, lp) : animation_range_item)
+    | _ ->
+        let lp = Values.read_length_percentage t in
+        Offset lp
+  in
+  Cursor.enum_or_var "animation-range-item" keywords
+    ~var:(fun t ->
+      (Var (Values.read_var read_animation_range_item t) : animation_range_item))
+    ~default:read_item t
+
 let rec read_animation_range t : animation_range =
   let keywords : (string * animation_range) list =
     [
@@ -909,20 +940,17 @@ let rec read_animation_range t : animation_range =
     ]
   in
   let read_range t =
-    let timeline_names =
-      [ "cover"; "contain"; "entry"; "exit"; "entry-crossing"; "exit-crossing" ]
-    in
     let read_single t =
       Cursor.ws t;
       match Cursor.peek_ident t with
       | Some "normal" ->
           let _ = Cursor.ident t in
           (Normal : animation_range_item)
-      | Some name when List.mem name timeline_names ->
-          let name = read_animation_range_name t in
+      | Some name when List.mem name animation_range_names ->
+          let name : animation_range_name = read_animation_range_name t in
           Cursor.ws t;
           let lp = Values.read_length_percentage t in
-          Named (name, lp)
+          (Named (name, lp) : animation_range_item)
       | _ ->
           let lp = Values.read_length_percentage t in
           Offset lp
@@ -946,7 +974,7 @@ let rec read_animation_range t : animation_range =
 let read_non_negative_length_percentage t =
   Values.read_length_percentage ~allow_negative:false ~with_keywords:false t
 
-let read_non_negative_length_percentage_or_css_wide t =
+let read_nn_lp_or_global t =
   Cursor.enum "non-negative length-percentage"
     [
       ("inherit", (Length Inherit : length_percentage));
@@ -957,7 +985,7 @@ let read_non_negative_length_percentage_or_css_wide t =
     ]
     ~default:read_non_negative_length_percentage t
 
-let read_non_negative_length_or_css_wide t =
+let read_nn_length_or_global t =
   Cursor.enum "non-negative length"
     [
       ("inherit", (Inherit : length));
@@ -1100,6 +1128,7 @@ let read_place_self_value t =
       | Empty -> Empty
       | Empty2 -> Empty2
       | Var_fallback name -> Var_fallback name
+      | Syntax_fallback value -> Syntax_fallback value
       | Fallback value -> Fallback (align_to_justify value)
     in
     {
@@ -1169,16 +1198,16 @@ let read_value (type a) (prop : a property) t : declaration =
   | Font_size -> v Font_size (Properties.read_font_size t)
   | Border_radius -> v Border_radius (read_border_radius t)
   | Border_top_left_radius ->
-      v Border_top_left_radius (read_non_negative_length_or_css_wide t)
+      v Border_top_left_radius (read_nn_length_or_global t)
   | Border_top_right_radius ->
-      v Border_top_right_radius (read_non_negative_length_or_css_wide t)
+      v Border_top_right_radius (read_nn_length_or_global t)
   | Border_bottom_left_radius ->
-      v Border_bottom_left_radius (read_non_negative_length_or_css_wide t)
+      v Border_bottom_left_radius (read_nn_length_or_global t)
   | Border_bottom_right_radius ->
-      v Border_bottom_right_radius (read_non_negative_length_or_css_wide t)
+      v Border_bottom_right_radius (read_nn_length_or_global t)
   | Gap -> v Gap (Properties.read_gap t)
-  | Column_gap -> v Column_gap (read_non_negative_length_or_css_wide t)
-  | Row_gap -> v Row_gap (read_non_negative_length_or_css_wide t)
+  | Column_gap -> v Column_gap (read_nn_length_or_global t)
+  | Row_gap -> v Row_gap (read_nn_length_or_global t)
   (* Display and layout *)
   | Display -> v Display (read_display t)
   | Position -> v Position (read_position t)
@@ -1283,20 +1312,20 @@ let read_value (type a) (prop : a property) t : declaration =
   | Border_bottom_style -> v Border_bottom_style (read_border_style t)
   | Border_left_style -> v Border_left_style (read_border_style t)
   (* Additional margin/padding properties *)
-  | Padding_left -> v Padding_left (read_non_negative_length_or_css_wide t)
-  | Padding_right -> v Padding_right (read_non_negative_length_or_css_wide t)
-  | Padding_top -> v Padding_top (read_non_negative_length_or_css_wide t)
-  | Padding_bottom -> v Padding_bottom (read_non_negative_length_or_css_wide t)
-  | Padding_inline -> v Padding_inline (read_non_negative_length_or_css_wide t)
+  | Padding_left -> v Padding_left (read_nn_length_or_global t)
+  | Padding_right -> v Padding_right (read_nn_length_or_global t)
+  | Padding_top -> v Padding_top (read_nn_length_or_global t)
+  | Padding_bottom -> v Padding_bottom (read_nn_length_or_global t)
+  | Padding_inline -> v Padding_inline (read_nn_length_or_global t)
   | Padding_inline_start ->
-      v Padding_inline_start (read_non_negative_length_or_css_wide t)
+      v Padding_inline_start (read_nn_length_or_global t)
   | Padding_inline_end ->
-      v Padding_inline_end (read_non_negative_length_or_css_wide t)
-  | Padding_block -> v Padding_block (read_non_negative_length_or_css_wide t)
+      v Padding_inline_end (read_nn_length_or_global t)
+  | Padding_block -> v Padding_block (read_nn_length_or_global t)
   | Padding_block_start ->
-      v Padding_block_start (read_non_negative_length_or_css_wide t)
+      v Padding_block_start (read_nn_length_or_global t)
   | Padding_block_end ->
-      v Padding_block_end (read_non_negative_length_or_css_wide t)
+      v Padding_block_end (read_nn_length_or_global t)
   | Margin_left -> v Margin_left (read_length t)
   | Margin_right -> v Margin_right (read_length t)
   | Margin_top -> v Margin_top (read_length t)
@@ -1319,12 +1348,12 @@ let read_value (type a) (prop : a property) t : declaration =
   | Text_decoration_style ->
       v Text_decoration_style (read_text_decoration_style t)
   | Text_underline_offset ->
-      v Text_underline_offset (read_non_negative_length_or_css_wide t)
+      v Text_underline_offset (read_nn_length_or_global t)
   | Text_emphasis -> v Text_emphasis (read_text_emphasis t)
   | Text_emphasis_position ->
       v Text_emphasis_position (read_text_emphasis_position t)
   | Text_orientation -> v Text_orientation (read_text_orientation t)
-  | Letter_spacing -> v Letter_spacing (read_non_negative_length_or_css_wide t)
+  | Letter_spacing -> v Letter_spacing (read_nn_length_or_global t)
   (* List properties *)
   | List_style_type -> v List_style_type (read_list_style_type t)
   | List_style_position -> v List_style_position (read_list_style_position t)
@@ -1373,13 +1402,13 @@ let read_value (type a) (prop : a property) t : declaration =
   | Border_inline_style -> v Border_inline_style (read_border_style t)
   | Border_block_style -> v Border_block_style (read_border_style t)
   | Border_start_start_radius ->
-      v Border_start_start_radius (read_non_negative_length_or_css_wide t)
+      v Border_start_start_radius (read_nn_length_or_global t)
   | Border_start_end_radius ->
-      v Border_start_end_radius (read_non_negative_length_or_css_wide t)
+      v Border_start_end_radius (read_nn_length_or_global t)
   | Border_end_start_radius ->
-      v Border_end_start_radius (read_non_negative_length_or_css_wide t)
+      v Border_end_start_radius (read_nn_length_or_global t)
   | Border_end_end_radius ->
-      v Border_end_end_radius (read_non_negative_length_or_css_wide t)
+      v Border_end_end_radius (read_nn_length_or_global t)
   (* Position properties *)
   | Inset -> v Inset (read_length_box t)
   | Inset_inline -> v Inset_inline (read_inset_axis t)
@@ -1395,7 +1424,7 @@ let read_value (type a) (prop : a property) t : declaration =
   (* Outline properties *)
   | Outline -> v Outline (read_outline t)
   | Outline_style -> v Outline_style (read_outline_style t)
-  | Outline_width -> v Outline_width (read_non_negative_length_or_css_wide t)
+  | Outline_width -> v Outline_width (read_nn_length_or_global t)
   | Outline_offset -> v Outline_offset (read_length_or_css_wide t)
   (* Forced color adjust *)
   | Forced_color_adjust -> v Forced_color_adjust (read_forced_color_adjust t)
@@ -1439,7 +1468,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Font_variant_east_asian ->
       v Font_variant_east_asian (read_font_variant_east_asian t)
   (* Text properties *)
-  | Text_indent -> v Text_indent (read_non_negative_length_or_css_wide t)
+  | Text_indent -> v Text_indent (read_nn_length_or_global t)
   | Text_overflow -> v Text_overflow (read_text_overflow t)
   | Text_wrap -> v Text_wrap (read_text_wrap t)
   | Text_decoration_thickness ->
@@ -1452,7 +1481,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Overflow_wrap -> v Overflow_wrap (read_overflow_wrap t)
   | Line_break -> v Line_break (read_line_break t)
   | Hyphens -> v Hyphens (read_hyphens t)
-  | Word_spacing -> v Word_spacing (read_non_negative_length_or_css_wide t)
+  | Word_spacing -> v Word_spacing (read_nn_length_or_global t)
   (* Container properties *)
   | Container_type -> v Container_type (read_container_type t)
   | Container_name -> v Container_name (read_container_name t)
@@ -1469,7 +1498,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Position_area -> v Position_area (read_position_area t)
   | Shape_outside -> v Shape_outside (read_shape_outside t)
   | Shape_margin ->
-      v Shape_margin (read_non_negative_length_percentage_or_css_wide t)
+      v Shape_margin (read_nn_lp_or_global t)
   | Shape_image_threshold ->
       v Shape_image_threshold (read_shape_image_threshold t)
   | Overflow_clip_margin -> v Overflow_clip_margin (read_overflow_clip_margin t)
@@ -1478,7 +1507,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Scrollbar_color -> v Scrollbar_color (read_scrollbar_color t)
   | Scrollbar_gutter -> v Scrollbar_gutter (read_scrollbar_gutter t)
   | Line_height_step ->
-      v Line_height_step (read_non_negative_length_or_css_wide t)
+      v Line_height_step (read_nn_length_or_global t)
   | Font_palette -> v Font_palette (read_font_palette t)
   | Font_synthesis -> v Font_synthesis (read_font_synthesis t)
   | Text_wrap_mode -> v Text_wrap_mode (read_text_wrap_mode t)
@@ -1487,8 +1516,8 @@ let read_value (type a) (prop : a property) t : declaration =
   | Text_box -> v Text_box (read_text_box t)
   | Animation_timeline -> v Animation_timeline (read_animation_timeline t)
   | Animation_range -> v Animation_range (read_animation_range t)
-  | Animation_range_start -> v Animation_range_start (read_animation_range t)
-  | Animation_range_end -> v Animation_range_end (read_animation_range t)
+  | Animation_range_start -> v Animation_range_start (read_animation_range_item t)
+  | Animation_range_end -> v Animation_range_end (read_animation_range_item t)
   | Scroll_timeline -> v Scroll_timeline (read_timeline_shorthand t)
   | Scroll_timeline_name -> v Scroll_timeline_name (read_timeline_name t)
   | Scroll_timeline_axis -> v Scroll_timeline_axis (read_timeline_axis t)
@@ -1511,7 +1540,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Margin_trim -> v Margin_trim (read_margin_trim t)
   | Offset_path -> v Offset_path (read_offset_path t)
   | Offset_distance ->
-      v Offset_distance (read_non_negative_length_percentage_or_css_wide t)
+      v Offset_distance (read_nn_lp_or_global t)
   | Offset_rotate -> v Offset_rotate (read_offset_rotate t)
   | Font_size_adjust -> v Font_size_adjust (read_font_size_adjust t)
   | Font_variant_emoji -> v Font_variant_emoji (read_font_variant_emoji t)
@@ -1525,7 +1554,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | View_timeline -> v View_timeline (read_timeline_shorthand t)
   | Timeline_scope -> v Timeline_scope (read_timeline_name t)
   (* Transform properties *)
-  | Perspective -> v Perspective (read_non_negative_length_or_css_wide t)
+  | Perspective -> v Perspective (read_nn_length_or_global t)
   | Perspective_origin -> v Perspective_origin (read_perspective_origin t)
   | Transform_style -> v Transform_style (read_transform_style t)
   | Backface_visibility -> v Backface_visibility (read_backface_visibility t)
@@ -1584,7 +1613,7 @@ let read_value (type a) (prop : a property) t : declaration =
             | _ -> length)
           t
       in
-      v Border_spacing lengths
+      v Border_spacing (Lengths lengths)
   | Border_image -> v Border_image (read_border_image t)
   | Border_collapse -> v Border_collapse (read_border_collapse t)
   (* Clip and mask *)
@@ -1612,7 +1641,9 @@ let read_value (type a) (prop : a property) t : declaration =
   | Scroll_margin_right -> v Scroll_margin_right (read_length t)
   | Scroll_margin_bottom -> v Scroll_margin_bottom (read_length t)
   | Scroll_margin_left -> v Scroll_margin_left (read_length t)
-  | Scroll_margin_inline -> v Scroll_margin_inline (read_length t)
+  | Scroll_margin_inline ->
+      v Scroll_margin_inline
+        (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_length t)
   | Scroll_margin_inline_start -> v Scroll_margin_inline_start (read_length t)
   | Scroll_margin_inline_end -> v Scroll_margin_inline_end (read_length t)
   | Scroll_margin_block ->
@@ -1630,10 +1661,14 @@ let read_value (type a) (prop : a property) t : declaration =
   | Scroll_padding_right -> v Scroll_padding_right (read_length t)
   | Scroll_padding_bottom -> v Scroll_padding_bottom (read_length t)
   | Scroll_padding_left -> v Scroll_padding_left (read_length t)
-  | Scroll_padding_inline -> v Scroll_padding_inline (read_length t)
+  | Scroll_padding_inline ->
+      v Scroll_padding_inline
+        (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_length t)
   | Scroll_padding_inline_start -> v Scroll_padding_inline_start (read_length t)
   | Scroll_padding_inline_end -> v Scroll_padding_inline_end (read_length t)
-  | Scroll_padding_block -> v Scroll_padding_block (read_length t)
+  | Scroll_padding_block ->
+      v Scroll_padding_block
+        (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_length t)
   | Scroll_padding_block_start -> v Scroll_padding_block_start (read_length t)
   | Scroll_padding_block_end -> v Scroll_padding_block_end (read_length t)
   | Overscroll_behavior ->
@@ -1660,7 +1695,7 @@ let read_value (type a) (prop : a property) t : declaration =
   (* SVG properties *)
   | Fill -> v Fill (read_svg_paint t)
   | Stroke -> v Stroke (read_svg_paint t)
-  | Stroke_width -> v Stroke_width (read_non_negative_length_or_css_wide t)
+  | Stroke_width -> v Stroke_width (read_nn_length_or_global t)
   (* Direction and writing *)
   | Direction -> v Direction (read_direction t)
   | Unicode_bidi -> v Unicode_bidi (read_unicode_bidi t)

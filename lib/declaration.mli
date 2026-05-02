@@ -461,15 +461,47 @@ val text_underline_offset : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-underline-offset}
      text-underline-offset} property. *)
 
+val text_decoration_skip : text_decoration_skip -> declaration
+(** [text_decoration_skip v] is the CSS [text-decoration-skip] property. *)
+
+val text_decoration_skip_self : text_decoration_skip_self -> declaration
+(** [text_decoration_skip_self v] is the CSS [text-decoration-skip-self]
+    property. *)
+
+val text_decoration_skip_box : text_decoration_skip_box -> declaration
+(** [text_decoration_skip_box v] is the CSS [text-decoration-skip-box] property.
+*)
+
+val text_decoration_skip_inset : text_decoration_skip_inset -> declaration
+(** [text_decoration_skip_inset v] is the CSS [text-decoration-skip-inset]
+    property. *)
+
+val text_decoration_skip_spaces : text_decoration_skip_spaces -> declaration
+(** [text_decoration_skip_spaces v] is the CSS [text-decoration-skip-spaces]
+    property. *)
+
 val text_emphasis : text_emphasis -> declaration
 (** [text_emphasis v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-emphasis}
      text-emphasis} property. *)
 
+val text_emphasis_style : text_emphasis_style -> declaration
+(** [text_emphasis_style v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-emphasis-style}
+     text-emphasis-style} property. *)
+
+val text_emphasis_color : color -> declaration
+(** [text_emphasis_color v] is the
+    {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-emphasis-color}
+     text-emphasis-color} property. *)
+
 val text_emphasis_position : text_emphasis_position -> declaration
 (** [text_emphasis_position v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-emphasis-position}
      text-emphasis-position} property. *)
+
+val text_emphasis_skip : text_emphasis_skip -> declaration
+(** [text_emphasis_skip v] is the CSS [text-emphasis-skip] property. *)
 
 val text_orientation : text_orientation -> declaration
 (** [text_orientation v] is the
@@ -839,7 +871,7 @@ val scroll_margin_left : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-left}
      scroll-margin-left} property. *)
 
-val scroll_margin_inline : length -> declaration
+val scroll_margin_inline : length list -> declaration
 (** [scroll_margin_inline v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-margin-inline}
      scroll-margin-inline} property. *)
@@ -895,7 +927,7 @@ val scroll_padding_left : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-left}
      scroll-padding-left} property. *)
 
-val scroll_padding_inline : length -> declaration
+val scroll_padding_inline : length list -> declaration
 (** [scroll_padding_inline v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-inline}
      scroll-padding-inline} property. *)
@@ -910,7 +942,7 @@ val scroll_padding_inline_end : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-inline-end}
      scroll-padding-inline-end} property. *)
 
-val scroll_padding_block : length -> declaration
+val scroll_padding_block : length list -> declaration
 (** [scroll_padding_block v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-padding-block}
      scroll-padding-block} property. *)
@@ -1230,6 +1262,14 @@ val font_synthesis_style : font_synthesis_style -> declaration
 
 val font_synthesis_weight : font_synthesis_weight -> declaration
 (** [font_synthesis_weight v] is the CSS [font-synthesis-weight] property. *)
+
+val font_synthesis_small_caps : font_synthesis_small_caps -> declaration
+(** [font_synthesis_small_caps v] is the CSS [font-synthesis-small-caps]
+    property. *)
+
+val font_synthesis_position : font_synthesis_position -> declaration
+(** [font_synthesis_position v] is the CSS [font-synthesis-position] property.
+*)
 
 val font_variant_ligatures : font_variant_ligatures -> declaration
 (** [font_variant_ligatures v] is the CSS [font-variant-ligatures] property. *)
