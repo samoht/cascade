@@ -332,7 +332,7 @@ let vars_of_rgb (value : Values.rgb) : any_var list =
   | Var v -> [ V v ]
 
 let vars_of_alpha (value : Values.alpha) : any_var list =
-  match value with Var v -> [ V v ] | _ -> []
+  match value with Var v -> [ V v ] | Calc c -> vars_of_calc c | _ -> []
 
 let vars_of_hue (value : Values.hue) : any_var list =
   match value with
@@ -634,6 +634,7 @@ let vars_of_will_change (value : Properties.will_change) : any_var list =
 let rec vars_of_opacity (value : Properties.opacity) : any_var list =
   match value with
   | Opacity_number _ -> []
+  | Calc calc -> vars_of_calc calc
   | Abs v | Sign v -> vars_of_opacity v
   | Var v -> [ V v ]
   | Inherit | Initial | Unset | Revert | Revert_layer -> []
