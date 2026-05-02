@@ -2378,6 +2378,26 @@ type cursor =
   | Revert_layer
   | Var of cursor var
 
+type interactivity =
+  | Auto
+  | Inert
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of interactivity var
+
+type interest_delay =
+  | Normal
+  | Durations of duration list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of interest_delay var
+
 type user_select =
   | None
   | Auto
@@ -3745,6 +3765,10 @@ type 'a property =
   | Transform : transform list property
   | Translate : translate_value property
   | Cursor : cursor property
+  | Interactivity : interactivity property
+  | Interest_delay : interest_delay property
+  | Interest_delay_start : interest_delay property
+  | Interest_delay_end : interest_delay property
   | Table_layout : table_layout property
   | Border_collapse : border_collapse property
   | Border_spacing : border_spacing property

@@ -1302,6 +1302,12 @@ let read_value (type a) (prop : a property) t : declaration =
   | Z_index -> v Z_index (Properties.read_z_index t)
   | Opacity -> v Opacity (read_opacity t)
   | Cursor -> v Cursor (read_cursor t)
+  | Interactivity -> v Interactivity (read_interactivity t)
+  | Interest_delay -> v Interest_delay (read_interest_delay t)
+  | Interest_delay_start ->
+      v Interest_delay_start (read_interest_delay ~longhand:true t)
+  | Interest_delay_end ->
+      v Interest_delay_end (read_interest_delay ~longhand:true t)
   | Box_sizing -> v Box_sizing (read_box_sizing t)
   | Field_sizing -> v Field_sizing (read_field_sizing t)
   | Caption_side -> v Caption_side (read_caption_side t)
@@ -2204,6 +2210,10 @@ let object_view_box value = v Object_view_box value
 let clip value = v Clip value
 let clear value = v Clear value
 let float value = v Float value
+let interactivity value = v Interactivity value
+let interest_delay value = v Interest_delay value
+let interest_delay_start value = v Interest_delay_start value
+let interest_delay_end value = v Interest_delay_end value
 let touch_action value = v Touch_action value
 let direction value = v Direction value
 let unicode_bidi value = v Unicode_bidi value
@@ -2362,6 +2372,8 @@ let font_kerning value = v Font_kerning value
 let font_language_override value = v Font_language_override value
 let font_synthesis_style value = v Font_synthesis_style value
 let font_synthesis_weight value = v Font_synthesis_weight value
+let font_synthesis_small_caps value = v Font_synthesis_small_caps value
+let font_synthesis_position value = v Font_synthesis_position value
 let font_variant_ligatures value = v Font_variant_ligatures value
 let font_variant_caps value = v Font_variant_caps value
 let font_variant_numeric value = v Font_variant_numeric value

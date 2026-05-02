@@ -1808,6 +1808,44 @@ end
 
 let read_cursor t : cursor = Cursor_prop.read t
 
+let rec read_interactivity t : interactivity =
+  Cursor.enum_or_var "interactivity"
+    [
+      ("auto", (Auto : interactivity));
+      ("inert", Inert);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_interactivity t))
+    t
+
+let read_non_negative_duration t =
+  match Values.read_duration t with
+  | Ms f when f < 0. -> Cursor.err_invalid t "negative duration"
+  | S f when f < 0. -> Cursor.err_invalid t "negative duration"
+  | duration -> duration
+
+let rec read_interest_delay ?(longhand = false) t : interest_delay =
+  Cursor.enum_or_var "interest-delay"
+    [
+      ("normal", (Normal : interest_delay));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var (read_interest_delay ~longhand) t))
+    ~default:(fun t ->
+      let at_most = if longhand then 1 else 2 in
+      Durations
+        (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most
+           read_non_negative_duration t))
+    t
+
 module Shadow = struct
   type component = Inset | Color of color | Length of length
 
@@ -4133,6 +4171,10 @@ let pp_property : type a. a property Pp.t =
   | Transform -> Pp.string ctx "transform"
   | Translate -> Pp.string ctx "translate"
   | Cursor -> Pp.string ctx "cursor"
+  | Interactivity -> Pp.string ctx "interactivity"
+  | Interest_delay -> Pp.string ctx "interest-delay"
+  | Interest_delay_start -> Pp.string ctx "interest-delay-start"
+  | Interest_delay_end -> Pp.string ctx "interest-delay-end"
   | Table_layout -> Pp.string ctx "table-layout"
   | Border_collapse -> Pp.string ctx "border-collapse"
   | Border_spacing -> Pp.string ctx "border-spacing"
@@ -5888,6 +5930,28 @@ let rec pp_cursor : cursor Pp.t =
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
+
+let rec pp_interactivity : interactivity Pp.t =
+ fun ctx -> function
+  | Auto -> Pp.string ctx "auto"
+  | Inert -> Pp.string ctx "inert"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_interactivity ctx v
+
+let rec pp_interest_delay : interest_delay Pp.t =
+ fun ctx -> function
+  | Normal -> Pp.string ctx "normal"
+  | Durations durations -> Pp.list ~sep:Pp.space pp_duration ctx durations
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_interest_delay ctx v
 
 let rec pp_direction : direction Pp.t =
  fun ctx -> function
@@ -12405,6 +12469,10 @@ let read_any_property t =
   | "user-select" -> Prop User_select
   | "pointer-events" -> Prop Pointer_events
   | "cursor" -> Prop Cursor
+  | "interactivity" -> Prop Interactivity
+  | "interest-delay" -> Prop Interest_delay
+  | "interest-delay-start" -> Prop Interest_delay_start
+  | "interest-delay-end" -> Prop Interest_delay_end
   | "appearance" -> Prop Appearance
   | "color-scheme" -> Prop Color_scheme
   | "print-color-adjust" -> Prop Print_color_adjust
@@ -14155,6 +14223,10 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Webkit_appearance -> pp pp_webkit_appearance
   | Letter_spacing -> pp pp_length
   | Cursor -> pp pp_cursor
+  | Interactivity -> pp pp_interactivity
+  | Interest_delay -> pp pp_interest_delay
+  | Interest_delay_start -> pp pp_interest_delay
+  | Interest_delay_end -> pp pp_interest_delay
   | Pointer_events -> pp pp_pointer_events
   | User_select -> pp pp_user_select
   | Webkit_user_select -> pp pp_user_select

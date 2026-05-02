@@ -1205,7 +1205,12 @@ let custom_property_values () =
   (* var() usage in standard properties, with and without fallback *)
   check_declaration ~expected:"color:var(--c,red)" "color: var(--c, red)";
   check_declaration ~expected:"width:var(--w,10px)" "width: var(--w, 10px)";
-  check_declaration ~expected:"margin:var(--m)" "margin: var(--m)"
+  check_declaration ~expected:"margin:var(--m)" "margin: var(--m)";
+  (* CSS Custom Properties: var() fallbacks are parsed as declaration-value
+     token streams. They are not eagerly type-checked against the destination
+     property grammar at parse time. *)
+  check_declaration ~expected:"z-index:var(--spec-value,{color:red;})"
+    "z-index: var(--spec-value, { color: red; })"
 
 let spec_custom_tokens () =
   check_specified_value "custom property token stream specified"
@@ -1313,9 +1318,17 @@ let spec_platform_property_vectors () =
       ("container-name: card", "container-name:card");
       ("container: card / inline-size", "container:card/inline-size");
       ("overscroll-behavior: contain", "overscroll-behavior:contain");
+      ("overscroll-behavior-inline: none", "overscroll-behavior-inline:none");
+      ("overscroll-behavior-block: contain", "overscroll-behavior-block:contain");
       ("scroll-snap-type: x mandatory", "scroll-snap-type:x mandatory");
+      ("scroll-snap-align: none start", "scroll-snap-align:none start");
+      ("scroll-margin-block: 1px 1px", "scroll-margin-block:1px 1px");
+      ("scroll-margin: 1px 2px 3px 4px", "scroll-margin:1px 2px 3px 4px");
       ("scroll-margin-block: 1rem 2rem", "scroll-margin-block:1rem 2rem");
       ("scroll-padding-inline: 10px", "scroll-padding-inline:10px");
+      ("scroll-padding: 1px 2px", "scroll-padding:1px 2px");
+      ("scroll-padding: 1px 2px 3px 4px", "scroll-padding:1px 2px 3px 4px");
+      ("scroll-padding-block: auto 10%", "scroll-padding-block:auto 10%");
       ("margin-trim: block", "margin-trim:block");
       ("field-sizing: content", "field-sizing:content");
       ("color-scheme: light dark", "color-scheme:light dark");
@@ -1512,8 +1525,20 @@ let spec_remaining_prop_vectors () =
       ( "text-decoration: underline wavy red 2px",
         "text-decoration:underline wavy red 2px" );
       ("text-underline-offset: 2px", "text-underline-offset:2px");
+      ( "text-underline-position: under left",
+        "text-underline-position:under left" );
+      ("text-decoration-skip: auto", "text-decoration-skip:auto");
+      ("text-decoration-skip-self: objects", "text-decoration-skip-self:objects");
+      ("text-decoration-skip-box: none", "text-decoration-skip-box:none");
+      ("text-decoration-skip-inset: auto", "text-decoration-skip-inset:auto");
+      ( "text-decoration-skip-spaces: start end",
+        "text-decoration-skip-spaces:start end" );
       ("text-emphasis: filled dot red", "text-emphasis:filled dot red");
+      ("text-emphasis-style: open sesame", "text-emphasis-style:open sesame");
+      ("text-emphasis-color: currentColor", "text-emphasis-color:currentColor");
       ("text-emphasis-position: over right", "text-emphasis-position:over right");
+      ( "text-emphasis-skip: punctuation symbols",
+        "text-emphasis-skip:punctuation symbols" );
       ("text-orientation: mixed", "text-orientation:mixed");
       ("tab-size: 4", "tab-size:4");
       ("line-break: anywhere", "line-break:anywhere");
@@ -1522,15 +1547,28 @@ let spec_remaining_prop_vectors () =
       ("font-optical-sizing: auto", "font-optical-sizing:auto");
       ("font-kerning: normal", "font-kerning:normal");
       ("font-language-override: \"TRK\"", "font-language-override:\"TRK\"");
+      ("font-synthesis-style: oblique-only", "font-synthesis-style:oblique-only");
       ("font-synthesis-style: auto", "font-synthesis-style:auto");
       ("font-synthesis-weight: none", "font-synthesis-weight:none");
+      ("font-synthesis-small-caps: auto", "font-synthesis-small-caps:auto");
+      ("font-synthesis-position: none", "font-synthesis-position:none");
       ( "font-variant-ligatures: common-ligatures",
         "font-variant-ligatures:common-ligatures" );
+      ( "font-variant-ligatures: common-ligatures no-discretionary-ligatures \
+         historical-ligatures contextual",
+        "font-variant-ligatures:common-ligatures no-discretionary-ligatures \
+         historical-ligatures contextual" );
       ("font-variant-caps: small-caps", "font-variant-caps:small-caps");
       ( "font-variant-numeric: tabular-nums slashed-zero",
         "font-variant-numeric:tabular-nums slashed-zero" );
+      ( "font-variant-numeric: oldstyle-nums tabular-nums stacked-fractions \
+         ordinal slashed-zero",
+        "font-variant-numeric:oldstyle-nums tabular-nums stacked-fractions \
+         ordinal slashed-zero" );
       ("font-variant-position: sub", "font-variant-position:sub");
       ("font-variant-east-asian: ruby", "font-variant-east-asian:ruby");
+      ( "font-variant-east-asian: traditional proportional-width ruby",
+        "font-variant-east-asian:traditional proportional-width ruby" );
       ("object-view-box: inset(0 0 10% 0)", "object-view-box:inset(0 0 10% 0)");
       ("image-rendering: pixelated", "image-rendering:pixelated");
       ("image-resolution: from-image 2dppx", "image-resolution:from-image 2dppx");
@@ -1611,16 +1649,33 @@ let spec_remaining_prop_vectors () =
       "border-inline-color: red blue green";
       "border-start-start-radius: 1rem /";
       "text-decoration: underline none";
+      "text-underline-position: auto under";
+      "text-decoration-skip: none auto";
+      "text-decoration-skip-self: auto";
+      "text-decoration-skip-box: all none";
+      "text-decoration-skip-inset: 1px";
+      "text-decoration-skip-spaces: start start";
       "text-emphasis: filled open";
+      "text-emphasis-style: dot circle";
+      "text-emphasis-color: red blue";
       "text-emphasis-position: over under";
+      "text-emphasis-skip: spaces spaces";
       "tab-size: -1";
       "line-break: anywhere strict";
       "font-optical-sizing: auto none";
       "font-kerning: normal none";
       "font-language-override: 1";
       "font-synthesis-style: auto none";
+      "font-synthesis-small-caps: auto none";
+      "font-synthesis-position: normal";
+      "font-variant-ligatures: normal common-ligatures";
+      "font-variant-ligatures: common-ligatures no-common-ligatures";
       "font-variant-caps: small-caps unicase";
+      "font-variant-numeric: normal tabular-nums";
+      "font-variant-numeric: lining-nums oldstyle-nums";
       "font-variant-position: sub super";
+      "font-variant-east-asian: jis78 jis83";
+      "font-variant-east-asian: normal ruby";
       "object-view-box: inset()";
       "image-rendering: pixelated smooth";
       "image-resolution: from-image from-image";
@@ -1749,7 +1804,9 @@ let parse_property_decl property value =
   with Css.Cursor.Parse_error _ | Css.Reader.Parse_error _ -> None
 
 let same_property_reparse (row : property_grammar_row) decl reparsed =
-  Css.Declaration.property_name reparsed = row.property && decl = reparsed
+  Css.Declaration.property_name reparsed = row.property
+  && Css.Declaration.string_of_declaration ~minify:true decl
+     = Css.Declaration.string_of_declaration ~minify:true reparsed
 
 let check_property_positive (row : property_grammar_row) value =
   match parse_property_decl row.property value with
@@ -1783,19 +1840,37 @@ let check_property_css_wide (row : property_grammar_row) keyword =
       Alcotest.failf "%s CSS-wide keyword rejected: %s" row.property keyword
 
 let check_property_var (row : property_grammar_row) =
-  let fallback =
-    match row.positives with value :: _ -> value | [] -> "initial"
+  let token_stream_fallbacks =
+    [
+      "{ color: red; }";
+      "[a, b, c]";
+      "translateX(10px) rotate(45deg)";
+      "1 ! important";
+    ]
   in
-  match
-    parse_property_decl row.property ("var(--spec-value," ^ fallback ^ ")")
-  with
-  | Some (_, _, decl, Some reparsed)
-    when same_property_reparse row decl reparsed ->
-      ()
+  List.iter
+    (fun fallback ->
+      match
+        parse_property_decl row.property ("var(--spec-value," ^ fallback ^ ")")
+      with
+      | Some (_, _, decl, Some reparsed)
+        when same_property_reparse row decl reparsed ->
+          ()
+      | Some (input, serialized, _, _) ->
+          Alcotest.failf "%s var() value did not structurally reparse: %s -> %s"
+            row.property input serialized
+      | None ->
+          Alcotest.failf "%s var() value rejected with fallback: %s"
+            row.property fallback)
+    (row.positives @ token_stream_fallbacks)
+
+let check_property_trailing_token_rejected (row : property_grammar_row) value =
+  match parse_property_decl row.property (value ^ " )") with
+  | None -> ()
   | Some (input, serialized, _, _) ->
-      Alcotest.failf "%s var() value did not structurally reparse: %s -> %s"
+      Alcotest.failf
+        "%s positive vector accepted an extra trailing token: %s -> %s"
         row.property input serialized
-  | None -> Alcotest.failf "%s var() value rejected" row.property
 
 let check_manifest_row_shape (row : property_grammar_row) =
   if row.positives = [] then
@@ -1844,11 +1919,14 @@ let check_manifest_calc_surface (row : property_grammar_row) =
   if List.mem row.property calc_expected_properties then
     let has_calc =
       List.exists
-        (fun value -> String.contains value '(' && String.contains value ')')
+        (fun value ->
+          List.exists
+            (fun prefix -> String.starts_with ~prefix value)
+            [ "calc("; "min("; "max("; "clamp("; "round("; "mod("; "rem(" ]
+          || List.exists
+               (fun needle -> Re.execp Re.(compile (str needle)) value)
+               [ "calc("; "min("; "max("; "clamp("; "round("; "mod("; "rem(" ])
         row.positives
-      || List.exists
-           (fun value -> String.starts_with ~prefix:"calc(" value)
-           row.positives
     in
     if not has_calc then
       Alcotest.failf
@@ -1859,6 +1937,7 @@ let check_property_row (row : property_grammar_row) =
   check_manifest_row_shape row;
   check_manifest_calc_surface row;
   List.iter (check_property_positive row) row.positives;
+  List.iter (check_property_trailing_token_rejected row) row.positives;
   List.iter (check_property_negative row) row.negatives;
   List.iter
     (check_property_css_wide row)
@@ -1875,7 +1954,7 @@ let spec_property_grammar_manifest () =
   if List.length unique_properties <> List.length property_grammar_matrix then
     Alcotest.fail "property grammar manifest has duplicate property rows";
   Alcotest.(check int)
-    "property grammar manifest covers every unique public property name" 347
+    "property grammar manifest covers every tracked spec property name" 431
     (List.length unique_properties);
   List.iter check_property_row property_grammar_matrix
 

@@ -18,12 +18,28 @@ let rows =
       (func "selector" ":has(+ img)");
     row "selector current pseudo" "selector(:popover-open)"
       (func "selector" ":popover-open");
+    row "selector focus-visible" "selector(:focus-visible)"
+      (func "selector" ":focus-visible");
+    row "selector nth child of list" "selector(:nth-child(2n of .item, .card))"
+      (func "selector" ":nth-child(2n of .item, .card)");
     row "font format feature" "font-format(woff2)" (func "font-format" "woff2");
+    row "font format opentype" "font-format(opentype)"
+      (func "font-format" "opentype");
     row "font technology feature" "font-tech(color-COLRv1)"
       (func "font-tech" "color-COLRv1");
+    row "font technology variations" "font-tech(variations)"
+      (func "font-tech" "variations");
+    row "font technology palettes" "font-tech(palettes)"
+      (func "font-tech" "palettes");
     row "at-rule feature" "at-rule(@container)" (func "at-rule" "@container");
+    row "at-rule layer feature" "at-rule(@layer)" (func "at-rule" "@layer");
+    row "at-rule scope feature" "at-rule(@scope)" (func "at-rule" "@scope");
+    row "at-rule property feature" "at-rule(@property)"
+      (func "at-rule" "@property");
     row "named feature function" "named-feature(--compact)"
       (func "named-feature" "--compact");
+    row "named feature ident function" "named-feature(color-gamut)"
+      (func "named-feature" "color-gamut");
     row "unknown general-enclosed function" "unknown-feature(foo bar)"
       (func "unknown-feature" "foo bar");
     row "unknown declaration feature" "(-vendor-flag: enabled)"
@@ -77,8 +93,15 @@ let invalid =
     "not (display: grid) or (gap: 1rem)";
     "selector()";
     "selector(:has(img)";
+    "selector(:has())";
+    "selector(:nth-child(2n of))";
     "font-format()";
+    "font-format(\"woff2\")";
     "font-tech()";
+    "font-tech(\"variations\")";
+    "at-rule(container)";
+    "at-rule()";
+    "named-feature()";
     "not";
     "not ()";
     "(display: grid) and or (gap: 1rem)";

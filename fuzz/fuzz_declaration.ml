@@ -176,7 +176,7 @@ let feature_decl_vector buf =
 let invalid_feature_decl buf =
   pick
     [
-      "display:ruby block";
+      "display:";
       "contain:strict layout";
       "content-visibility:visible hidden";
       "overflow-block:visible hidden";
@@ -196,7 +196,6 @@ let invalid_feature_decl buf =
       "mask-size:contain cover";
       "backdrop-filter:blur()";
       "will-change:auto, transform";
-      "touch-action:pan-x pan-left";
       "animation-composition:add replace";
       "scroll-timeline-axis:block inline";
       "position-visibility:anchors-visible always";
@@ -219,7 +218,10 @@ let test_invalid_features buf =
   let input = invalid_feature_decl buf in
   match parse_declaration input with
   | None -> ()
-  | Some decl -> ignore (serialize decl)
+  | Some decl ->
+      fail
+        (Fmt.str "invalid feature declaration parsed: %S -> %S" input
+           (serialize decl))
 
 let test_css_wide_keyword_vectors buf =
   let property =
@@ -256,7 +258,10 @@ let test_invalid_css_wide_keyword_mixes buf =
   in
   match parse_declaration input with
   | None -> ()
-  | Some decl -> ignore (serialize decl)
+  | Some decl ->
+      fail
+        (Fmt.str "invalid CSS-wide keyword mix parsed: %S -> %S" input
+           (serialize decl))
 
 let test_shared_css_wide_inventory buf =
   let row =

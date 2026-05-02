@@ -1024,6 +1024,18 @@ val pp_cursor : cursor Pp.t
 val read_cursor : Cursor.t -> cursor
 (** [read_cursor t] is the [cursor] parsed from [t]. *)
 
+val pp_interactivity : interactivity Pp.t
+(** [pp_interactivity] is the pretty-printer for [interactivity]. *)
+
+val read_interactivity : Cursor.t -> interactivity
+(** [read_interactivity t] is the [interactivity] parsed from [t]. *)
+
+val pp_interest_delay : interest_delay Pp.t
+(** [pp_interest_delay] is the pretty-printer for [interest_delay]. *)
+
+val read_interest_delay : ?longhand:bool -> Cursor.t -> interest_delay
+(** [read_interest_delay t] is the [interest_delay] parsed from [t]. *)
+
 val pp_user_select : user_select Pp.t
 (** [pp_user_select] is the pretty-printer for [user_select]. *)
 

@@ -566,6 +566,12 @@ let rec vars_of_cursor (value : Properties.cursor) : any_var list =
   | Url (_, _, fallback) -> vars_of_cursor fallback
   | _ -> []
 
+let vars_of_interactivity (value : Properties.interactivity) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_interest_delay (value : Properties.interest_delay) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
 let rec vars_of_grid_template (value : Properties.grid_template) : any_var list
     =
   match value with
@@ -1525,6 +1531,10 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Contain, value -> vars_of_contain value
   (* Cursor *)
   | Cursor, value -> vars_of_cursor value
+  | Interactivity, value -> vars_of_interactivity value
+  | Interest_delay, value -> vars_of_interest_delay value
+  | Interest_delay_start, value -> vars_of_interest_delay value
+  | Interest_delay_end, value -> vars_of_interest_delay value
   (* Grid template *)
   | Grid_auto_columns, value -> vars_of_grid_template value
   | Grid_auto_rows, value -> vars_of_grid_template value

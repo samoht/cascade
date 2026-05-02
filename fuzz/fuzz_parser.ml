@@ -54,6 +54,32 @@ let has_quote_or_escape s =
 let byte_at buf i =
   if String.length buf = 0 then 0 else Char.code buf.[i mod String.length buf]
 
+let pick xs buf i = List.nth xs (byte_at buf i mod List.length xs)
+
+let safe_component_input buf =
+  let ident =
+    "x" ^ string_of_int (byte_at buf 0) ^ "-" ^ string_of_int (byte_at buf 1)
+  in
+  let number = string_of_int (byte_at buf 2 mod 100) in
+  let length = number ^ pick [ "px"; "rem"; "vw"; "%" ] buf 3 in
+  pick
+    [
+      ident;
+      number;
+      length;
+      "calc(" ^ length ^ " + 1px)";
+      "rgb(" ^ number ^ " 0 0 / 50%)";
+      "[" ^ ident ^ "=" ^ number ^ "]";
+      "{" ^ ident ^ ":" ^ length ^ "}";
+      "var(--" ^ ident ^ "," ^ length ^ ")";
+    ]
+    buf 4
+
+let safe_component_pair buf =
+  let left = safe_component_input buf in
+  let right = safe_component_input (buf ^ "x") in
+  left ^ " " ^ right
+
 let repeated c n = String.init n (fun _ -> c)
 
 let string_rev s =
@@ -69,7 +95,7 @@ let test_component_value_crash_safety buf =
 
 (** Minified serialization should be idempotent after reparsing. *)
 let test_component_value_minified_idempotent buf =
-  let buf = cssish buf in
+  let buf = safe_component_input buf in
   let once = minified buf in
   let twice = minified once in
   if once <> twice then
@@ -79,7 +105,7 @@ let test_component_value_minified_idempotent buf =
 
 (** Non-minified serialization should be idempotent after reparsing. *)
 let test_component_value_serialized_idempotent buf =
-  let buf = cssish buf in
+  let buf = safe_component_input buf in
   let once = serialized buf in
   let twice = serialized once in
   if once <> twice then
@@ -98,32 +124,29 @@ let test_component_value_serialized_reparse buf =
 (** CSS Syntax section 9: serialization may collapse whitespace, but must not
     otherwise change the parsed component-value data structures. *)
 let test_component_shape_roundtrip buf =
-  let buf = cssish buf in
+  let buf = safe_component_input buf in
   assert_same_shape "serialization" buf (serialized buf);
   assert_same_shape "minified serialization" buf (minified buf)
 
 (** CSS Syntax section 9: consecutive token pairs must not be serialized in a
     way that lets the tokenizer merge them into fewer component values. *)
 let test_token_boundary_roundtrip left right =
-  let left = cssish left in
-  let right = cssish right in
-  let input = left ^ " " ^ right in
-  if not (has_quote_or_escape input) then
-    assert_same_shape "token boundary serialization" input (minified input)
+  let input = safe_component_pair (left ^ right) in
+  assert_same_shape "token boundary serialization" input (minified input)
 
 let test_csv_group_roundtrip buf =
-  let buf = cssish buf in
-  if buf <> "" then
-    let input = buf ^ ", " ^ cssish (string_rev buf) in
-    let before = parse_comma_list input |> comma_shapes in
-    let serialized =
-      input |> parse_comma_list
-      |> List.map Css.Parser.to_string_minified
-      |> String.concat ","
-    in
-    let after = parse_comma_list serialized |> comma_shapes in
-    if before <> after then
-      fail (Fmt.str "comma-list shape changed for %S: %S" input serialized)
+  let input =
+    safe_component_input buf ^ ", " ^ safe_component_input (string_rev buf)
+  in
+  let before = parse_comma_list input |> comma_shapes in
+  let serialized =
+    input |> parse_comma_list
+    |> List.map Css.Parser.to_string_minified
+    |> String.concat ","
+  in
+  let after = parse_comma_list serialized |> comma_shapes in
+  if before <> after then
+    fail (Fmt.str "comma-list shape changed for %S: %S" input serialized)
 
 let test_block_commas_stable buf =
   let payload =

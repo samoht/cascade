@@ -24,22 +24,52 @@ let inventory_properties =
 
 let check_reader reader printer input =
   let r = Css.Cursor.of_string input in
-  match try Some (reader r) with Css.Cursor.Parse_error _ -> None with
+  match
+    try Some (reader r)
+    with Css.Cursor.Parse_error _ | Css.Reader.Parse_error _ -> None
+  with
   | None -> ()
   | Some value -> (
       let once = Css.Pp.to_string ~minify:true printer value in
       let r2 = Css.Cursor.of_string once in
-      match try Some (reader r2) with Css.Cursor.Parse_error _ -> None with
+      match
+        try Some (reader r2)
+        with Css.Cursor.Parse_error _ | Css.Reader.Parse_error _ -> None
+      with
       | None -> ()
-      | Some reparsed ->
+      | Some reparsed when Css.Cursor.is_done r2 ->
           let twice = Css.Pp.to_string ~minify:true printer reparsed in
-          ignore twice)
+          if once <> twice then
+            fail
+              (Fmt.str "property reader serialization changed: %S -> %S" once
+                 twice)
+      | Some _ ->
+          fail (Fmt.str "serialized property left trailing input: %S" once))
 
-let reject_reader reader _property input =
+let reject_reader reader property input =
   let r = Css.Cursor.of_string input in
-  match try Some (reader r) with Css.Cursor.Parse_error _ -> None with
+  match
+    try Some (reader r)
+    with Css.Cursor.Parse_error _ | Css.Reader.Parse_error _ -> None
+  with
   | None -> ()
+  | Some _ when Css.Cursor.is_done r ->
+      fail (Fmt.str "%s invalid value parsed: %S" property input)
   | Some _ -> ()
+
+let check_reader_crash_safety reader printer input =
+  let r = Css.Cursor.of_string input in
+  match
+    try Some (reader r)
+    with Css.Cursor.Parse_error _ | Css.Reader.Parse_error _ -> None
+  with
+  | None -> ()
+  | Some value ->
+      let once = Css.Pp.to_string ~minify:true printer value in
+      let r2 = Css.Cursor.of_string once in
+      ignore
+        (try Some (reader r2)
+         with Css.Cursor.Parse_error _ | Css.Reader.Parse_error _ -> None)
 
 let generated_property_vector buf =
   pick
@@ -119,6 +149,48 @@ let generated_property_vector buf =
     ]
     buf 0
 
+let generated_property_crash_vector buf =
+  pick
+    [
+      (fun input ->
+        check_reader_crash_safety Css.Properties.read_display
+          Css.Properties.pp_display input);
+      (fun input ->
+        check_reader_crash_safety Css.Properties.read_position
+          Css.Properties.pp_position input);
+      (fun input ->
+        check_reader_crash_safety Css.Properties.read_overflow
+          Css.Properties.pp_overflow input);
+      (fun input ->
+        check_reader_crash_safety Css.Properties.read_border
+          Css.Properties.pp_border input);
+      (fun input ->
+        check_reader_crash_safety Css.Properties.read_font_family
+          Css.Properties.pp_font_family input);
+      (fun input ->
+        check_reader_crash_safety Css.Properties.read_font_weight
+          Css.Properties.pp_font_weight input);
+      (fun input ->
+        check_reader_crash_safety Css.Properties.read_transform
+          Css.Properties.pp_transform input);
+      (fun input ->
+        check_reader_crash_safety Css.Properties.read_transition
+          Css.Properties.pp_transition input);
+      (fun input ->
+        check_reader_crash_safety Css.Properties.read_animation
+          Css.Properties.pp_animation input);
+      (fun input ->
+        check_reader_crash_safety Css.Properties.read_background
+          Css.Properties.pp_background input);
+      (fun input ->
+        check_reader_crash_safety Css.Properties.read_content
+          Css.Properties.pp_content input);
+      (fun input ->
+        check_reader_crash_safety Css.Properties.read_container_shorthand
+          Css.Properties.pp_container_shorthand input);
+    ]
+    buf 0
+
 let valid_value property buf =
   match property with
   | "display" -> pick [ "block"; "inline flex"; "grid"; "contents" ] buf 1
@@ -173,14 +245,14 @@ let invalid_value property buf =
   | _ -> cssish buf
 
 let test_property_reader_crash_safety buf =
-  let _, run = generated_property_vector buf in
+  let run = generated_property_crash_vector buf in
   run (cssish buf)
 
 let test_generated_valid_property_idempotent buf =
   let property, run = generated_property_vector buf in
   run (valid_value property buf)
 
-let test_invalid_property_stable buf =
+let test_invalid_property_rejected buf =
   let property, run = generated_property_vector buf in
   run (invalid_value property buf)
 
@@ -193,7 +265,7 @@ let test_css_wide_keywords_parse buf =
   | "font-family" | "font-feature-settings" -> ()
   | _ -> run keyword
 
-let test_css_wide_mixes_stable buf =
+let test_css_wide_mixes_rejected buf =
   let property, run = generated_property_vector buf in
   let keyword =
     pick [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ] buf 3
@@ -450,7 +522,7 @@ let test_property_grammar_manifest_has_both_kinds _buf =
     property_grammar_vectors
 
 let test_inventory_css_wide_generation buf =
-  if List.length inventory_properties < 346 then
+  if List.length inventory_properties < 431 then
     fail
       (Fmt.str "shared property grammar inventory drifted: only %d rows"
          (List.length inventory_properties));
@@ -461,14 +533,20 @@ let test_inventory_css_wide_generation buf =
   let input = property ^ ":" ^ keyword in
   let c = Css.Cursor.of_string input in
   match Css.Declaration.read_declaration c with
-  | None -> ()
+  | None ->
+      fail
+        (Fmt.str "deterministic manifest CSS-wide declaration rejected: %S"
+           input)
   | Some decl -> (
       let serialized =
         Css.Declaration.string_of_declaration ~minify:true decl
       in
       let c2 = Css.Cursor.of_string serialized in
       match Css.Declaration.read_declaration c2 with
-      | Some reparsed when decl = reparsed -> ()
+      | Some reparsed
+        when Css.Declaration.string_of_declaration ~minify:true reparsed
+             = serialized ->
+          ()
       | _ ->
           fail
             (Fmt.str
@@ -488,7 +566,10 @@ let assert_decl_roundtrip label input =
         Css.Declaration.string_of_declaration ~minify:true decl
       in
       match parse_declaration serialized with
-      | Some reparsed when decl = reparsed -> ()
+      | Some reparsed
+        when Css.Declaration.string_of_declaration ~minify:true reparsed
+             = serialized ->
+          ()
       | _ ->
           fail
             (Fmt.str "%s declaration did not structurally roundtrip: %S -> %S"
@@ -502,8 +583,6 @@ let assert_decl_reject label input =
         (Fmt.str "%s invalid declaration parsed: %S -> %S" label input
            (Css.Declaration.string_of_declaration ~minify:true decl))
 
-let has_literal literal value = Re.execp Re.(compile (str literal)) value
-
 let invalid_property_mutation
     (row : Cascade_spec_inventory.Property_grammar.row) value buf =
   match byte_at buf 4 mod 6 with
@@ -511,12 +590,23 @@ let invalid_property_mutation
   | 1 -> "initial " ^ value
   | 2 -> "inherit " ^ value
   | 3 -> "var()"
-  | 4 -> if has_literal ")" value then value ^ " )" else value ^ " " ^ value
+  | 4 -> value ^ " )"
   | _ -> value ^ " " ^ pick row.negatives buf 6
+
+let var_token_stream_fallback buf =
+  pick
+    [
+      "{ color: red; }";
+      "[a, b, c]";
+      "translateX(10px) rotate(45deg)";
+      "1 ! important";
+      "var(--nested, calc(100% - 1rem))";
+    ]
+    buf 7
 
 let test_inventory_positive_values buf =
   let rows = property_inventory in
-  if List.length rows < 346 then
+  if List.length rows < 431 then
     fail
       (Fmt.str "shared property grammar inventory drifted: %d rows"
          (List.length rows));
@@ -533,7 +623,10 @@ let test_inventory_positive_values buf =
         Css.Declaration.string_of_declaration ~minify:true decl
       in
       match parse_declaration serialized with
-      | Some reparsed when decl = reparsed -> ()
+      | Some reparsed
+        when Css.Declaration.string_of_declaration ~minify:true reparsed
+             = serialized ->
+          ()
       | _ ->
           fail
             (Fmt.str
@@ -543,7 +636,7 @@ let test_inventory_positive_values buf =
 
 let test_inventory_negative_values buf =
   let rows = property_inventory in
-  if List.length rows < 346 then
+  if List.length rows < 431 then
     fail
       (Fmt.str "shared property grammar inventory drifted: %d rows"
          (List.length rows));
@@ -559,12 +652,15 @@ let test_inventory_negative_values buf =
            (Css.Declaration.string_of_declaration ~minify:true decl))
 
 let test_inventory_var_values buf =
-  if List.length property_inventory < 347 then
+  if List.length property_inventory < 431 then
     fail
       (Fmt.str "shared property grammar inventory drifted: %d rows"
          (List.length property_inventory));
   let row = pick property_inventory buf 0 in
-  let fallback = pick row.positives buf 1 in
+  let fallback =
+    if byte_at buf 2 mod 2 = 0 then pick row.positives buf 1
+    else var_token_stream_fallback buf
+  in
   let input = row.property ^ ":var(--spec-value," ^ fallback ^ ")" in
   match parse_declaration input with
   | None ->
@@ -575,7 +671,10 @@ let test_inventory_var_values buf =
         Css.Declaration.string_of_declaration ~minify:true decl
       in
       match parse_declaration serialized with
-      | Some reparsed when decl = reparsed -> ()
+      | Some reparsed
+        when Css.Declaration.string_of_declaration ~minify:true reparsed
+             = serialized ->
+          ()
       | _ ->
           fail
             (Fmt.str
@@ -613,7 +712,11 @@ let test_property_value_branch_depth_positive buf =
          content-box";
         "background-image:image-set(url(a.avif) type(\"image/avif\") \
          1x,url(a.png) type(\"image/png\") 1x)";
+        "background-image:cross-fade(url(a.png) 40%,url(b.png))";
         "border-image:linear-gradient(red,blue) 30 fill/10px/1 stretch";
+        "mask-border:url(mask.svg) 30 fill";
+        "border-block:1px solid red";
+        "border-inline-color:red blue";
         "clip-path:xywh(0 0 100% 100% round 10px)";
         "shape-outside:inset(10px round 2px)";
         "width:clamp(10px,5vw,100px)";
@@ -621,14 +724,89 @@ let test_property_value_branch_depth_positive buf =
         "width:calc-size(auto,size + 1rem)";
         "opacity:sign(var(--delta))";
         "color:rgb(from var(--c) r g b/50%)";
+        "color:color-mix(in lch longer hue,red 30%,blue)";
         "font:italic small-caps 650 condensed 16px/1.5 \"Brand\",serif";
+        "font-synthesis-style:oblique-only";
+        "font-synthesis-small-caps:auto";
+        "font-synthesis-position:none";
+        "font-variant-ligatures:common-ligatures no-discretionary-ligatures \
+         historical-ligatures contextual";
+        "font-variant-numeric:oldstyle-nums tabular-nums stacked-fractions \
+         ordinal slashed-zero";
+        "font-variant-east-asian:traditional proportional-width ruby";
+        "column-rule:thin solid currentColor";
+        "column-span:all";
+        "text-emphasis:filled dot red";
+        "text-emphasis-style:open sesame";
+        "text-emphasis-color:currentColor";
+        "text-emphasis-position:under left";
+        "text-emphasis-skip:punctuation symbols";
+        "text-underline-position:under left";
+        "text-combine-upright:digits 4";
+        "counter-reset:section 2 page -1";
+        "counter-increment:section 2";
+        "glyph-orientation-vertical:90deg";
+        "text-decoration-skip:auto";
+        "text-decoration-skip-self:objects";
+        "text-decoration-skip-box:none";
+        "text-decoration-skip-inset:auto";
+        "text-decoration-skip-spaces:start end";
+        "text-orientation:upright";
+        "line-break:anywhere";
+        "text-box:trim-both cap alphabetic";
+        "text-box-edge:cap alphabetic";
+        "line-fit-edge:ideographic-ink";
+        "inline-sizing:stretch";
+        "initial-letter-align:border-box hanging";
+        "initial-letter-wrap:grid";
+        "dominant-baseline:mathematical";
+        "baseline-source:last";
+        "alignment-baseline:central";
+        "baseline-shift:10%";
+        "ruby-position:alternate over";
+        "ruby-align:space-between";
+        "ruby-merge:merge";
+        "ruby-overhang:none";
+        "caret:red manual block";
+        "caret-animation:manual";
+        "caret-shape:underscore";
+        "interactivity:inert";
+        "interest-delay:200ms 1s";
+        "interest-delay-start:200ms";
+        "interest-delay-end:1s";
+        "nav-up:#next current";
+        "nav-right:#next root";
+        "nav-down:#next \"sidebar\"";
+        "nav-left:#next";
         "grid-template:\"head head\" auto \"nav main\" 1fr/12rem 1fr";
         "animation:fade 1s linear .2s 2 alternate both running";
+        "animation-composition:accumulate,replace";
+        "animation-range-start:entry 10%";
+        "animation-range-end:exit 90%";
         "transition:opacity 1s ease-in .2s allow-discrete";
+        "overscroll-behavior-inline:none";
+        "overscroll-behavior-block:contain";
+        "scroll-snap-align:none start";
         "scroll-timeline:--scroller block";
+        "scroll-timeline-name:--scroller";
+        "scroll-timeline-axis:inline";
         "view-timeline:--reveal inline";
+        "view-timeline-inset:auto 10%";
         "container:card/inline-size";
+        "position-area:top span-left";
         "position-try-fallbacks:--below,flip-block,--above";
+        "position-try-order:most-width";
+        "position-visibility:anchors-visible no-overflow";
+        "overlay:auto";
+        "interpolate-size:allow-keywords";
+        "min-intrinsic-sizing:zero-if-scroll zero-if-extrinsic";
+        "contain-intrinsic-width:auto 300px";
+        "contain-intrinsic-inline-size:100px";
+        "object-view-box:inset(0 0 10% 0)";
+        "image-rendering:pixelated";
+        "image-resolution:from-image 2dppx";
+        "offset-rotate:reverse 45deg";
+        "view-transition-class:card primary";
       ]
       buf 2
   in
@@ -641,7 +819,10 @@ let test_property_value_branch_depth_positive buf =
         Css.Declaration.string_of_declaration ~minify:true decl
       in
       match parse_declaration serialized with
-      | Some reparsed when decl = reparsed -> ()
+      | Some reparsed
+        when Css.Declaration.string_of_declaration ~minify:true reparsed
+             = serialized ->
+          ()
       | _ ->
           fail
             (Fmt.str
@@ -655,7 +836,11 @@ let test_property_value_branch_depth_negative buf =
       [
         "background:red blue";
         "background-image:image-set(url(a.png))";
+        "background-image:cross-fade(url(a.png),)";
         "border-image:linear-gradient(red,blue) fill fill";
+        "mask-border:fill fill";
+        "border-block:solid solid";
+        "border-inline-color:red blue green";
         "clip-path:xywh(0 0)";
         "shape-outside:circle()";
         "width:clamp(10px,20px)";
@@ -663,14 +848,87 @@ let test_property_value_branch_depth_negative buf =
         "width:calc-size()";
         "opacity:sign()";
         "color:rgb(from red r g)";
+        "color:color-mix(in bogus,red,blue)";
         "font:bold serif";
+        "font-synthesis-style:auto none";
+        "font-synthesis-small-caps:auto none";
+        "font-synthesis-position:normal";
+        "font-variant-ligatures:normal common-ligatures";
+        "font-variant-numeric:normal tabular-nums";
+        "font-variant-east-asian:jis78 jis83";
+        "column-rule:solid solid";
+        "column-span:none all";
+        "text-emphasis:filled open";
+        "text-emphasis-style:dot circle";
+        "text-emphasis-color:red blue";
+        "text-emphasis-position:over under";
+        "text-emphasis-skip:spaces spaces";
+        "text-underline-position:auto under";
+        "text-combine-upright:digits 5";
+        "counter-reset:none section";
+        "counter-increment:section 1.5";
+        "glyph-orientation-vertical:45deg";
+        "text-decoration-skip:none auto";
+        "text-decoration-skip-self:auto";
+        "text-decoration-skip-box:all none";
+        "text-decoration-skip-inset:1px";
+        "text-decoration-skip-spaces:start start";
+        "text-orientation:mixed upright";
+        "line-break:anywhere strict";
+        "text-box:cap trim-both";
+        "text-box-edge:cap";
+        "line-fit-edge:leading text";
+        "inline-sizing:normal stretch";
+        "initial-letter-align:alphabetic ideographic";
+        "initial-letter-wrap:none first";
+        "dominant-baseline:alphabetic ideographic";
+        "baseline-source:first last";
+        "alignment-baseline:baseline middle";
+        "baseline-shift:sub super";
+        "ruby-position:over under";
+        "ruby-align:start center";
+        "ruby-merge:merge separate";
+        "ruby-overhang:auto none";
+        "caret:block underscore";
+        "caret-animation:manual auto";
+        "caret-shape:bar block";
+        "interactivity:auto inert";
+        "interest-delay:1s 2s 3s";
+        "interest-delay-start:-1s";
+        "interest-delay-end:auto";
+        "nav-up:current";
+        "nav-right:#next current root";
+        "nav-down:#next \"_self\"";
+        "nav-left:auto #next";
         "grid-template:none/1fr";
         "animation:1s 2s 3s";
+        "animation-composition:add replace";
+        "animation-range-start:entry exit";
+        "animation-range-end:10% 20%";
         "transition:allow-discrete allow-discrete";
+        "overscroll-behavior-inline:contain none";
+        "overscroll-behavior-block:hidden";
+        "scroll-snap-align:start center end";
         "scroll-timeline:block --scroller";
+        "scroll-timeline-name:scroller";
+        "scroll-timeline-axis:block inline";
         "view-timeline:inline --reveal";
+        "view-timeline-inset:auto auto auto";
         "container:card/inline-size/size";
+        "position-area:top bottom";
         "position-try-fallbacks:flip-block --below";
+        "position-try-order:most-width normal";
+        "position-visibility:always anchors-visible";
+        "overlay:auto none";
+        "interpolate-size:numeric-only allow-keywords";
+        "min-intrinsic-sizing:zero-if-scroll zero-if-scroll";
+        "contain-intrinsic-width:auto";
+        "contain-intrinsic-inline-size:1px 2px";
+        "object-view-box:inset()";
+        "image-rendering:pixelated smooth";
+        "image-resolution:from-image from-image";
+        "offset-rotate:reverse reverse";
+        "view-transition-class:none card";
       ]
       buf 3
   in
@@ -689,10 +947,10 @@ let suite =
         test_property_reader_crash_safety;
       test_case "generated valid property idempotent" [ bytes ]
         test_generated_valid_property_idempotent;
-      test_case "generated invalid property rejected or stable" [ bytes ]
-        test_invalid_property_stable;
+      test_case "generated invalid property rejected" [ bytes ]
+        test_invalid_property_rejected;
       test_case "css-wide keywords parse" [ bytes ] test_css_wide_keywords_parse;
-      test_case "css-wide mixes stable" [ bytes ] test_css_wide_mixes_stable;
+      test_case "css-wide mixes rejected" [ bytes ] test_css_wide_mixes_rejected;
       test_case "property grammar manifest valid vectors" [ bytes ]
         test_property_grammar_manifest_valid;
       test_case "property grammar manifest invalid vectors" [ bytes ]
