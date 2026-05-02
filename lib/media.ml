@@ -939,6 +939,145 @@ let parse_query_str s =
            String.sub sc.s sc.pos (String.length sc.s - sc.pos);
          ])
 
+let normalise_preference_value name s =
+  match name with
+  | "prefers-reduced-motion" -> (
+      match s with
+      | "no-preference" -> Some (Prefers_reduced_motion `No_preference)
+      | "reduce" -> Some (Prefers_reduced_motion `Reduce)
+      | _ -> None)
+  | "prefers-contrast" -> (
+      match s with
+      | "more" -> Some (Prefers_contrast `More)
+      | "less" -> Some (Prefers_contrast `Less)
+      | _ -> None)
+  | "prefers-color-scheme" -> (
+      match s with
+      | "dark" -> Some (Prefers_color_scheme `Dark)
+      | "light" -> Some (Prefers_color_scheme `Light)
+      | _ -> None)
+  | "prefers-reduced-transparency" -> (
+      match s with
+      | "no-preference" -> Some (Prefers_reduced_transparency `No_preference)
+      | "reduce" -> Some (Prefers_reduced_transparency `Reduce)
+      | _ -> None)
+  | "prefers-reduced-data" -> (
+      match s with
+      | "no-preference" -> Some (Prefers_reduced_data `No_preference)
+      | "reduce" -> Some (Prefers_reduced_data `Reduce)
+      | _ -> None)
+  | "forced-colors" -> (
+      match s with
+      | "active" -> Some (Forced_colors `Active)
+      | "none" -> Some (Forced_colors `None)
+      | _ -> None)
+  | "inverted-colors" -> (
+      match s with
+      | "inverted" -> Some (Inverted_colors `Inverted)
+      | "none" -> Some (Inverted_colors `None)
+      | _ -> None)
+  | _ -> None
+
+let normalise_capability_value name s =
+  match name with
+  | "pointer" -> (
+      match s with
+      | "none" -> Some (Pointer `None)
+      | "coarse" -> Some (Pointer `Coarse)
+      | "fine" -> Some (Pointer `Fine)
+      | _ -> None)
+  | "any-pointer" -> (
+      match s with
+      | "none" -> Some (Any_pointer `None)
+      | "coarse" -> Some (Any_pointer `Coarse)
+      | "fine" -> Some (Any_pointer `Fine)
+      | _ -> None)
+  | "hover" -> (
+      match s with
+      | "none" -> Some (Hover `None)
+      | "hover" -> Some (Hover `Hover)
+      | _ -> None)
+  | "any-hover" -> (
+      match s with
+      | "none" -> Some (Any_hover `None)
+      | "hover" -> Some (Any_hover `Hover)
+      | _ -> None)
+  | "scripting" -> (
+      match s with
+      | "none" -> Some (Scripting `None)
+      | "initial-only" -> Some (Scripting `Initial_only)
+      | "enabled" -> Some (Scripting `Enabled)
+      | _ -> None)
+  | "nav-controls" -> (
+      match s with
+      | "none" -> Some (Nav_controls `None)
+      | "back-button" -> Some (Nav_controls `Back_button)
+      | _ -> None)
+  | "orientation" -> (
+      match s with
+      | "portrait" -> Some (Orientation `Portrait)
+      | "landscape" -> Some (Orientation `Landscape)
+      | _ -> None)
+  | _ -> None
+
+let normalise_display_value name s =
+  match name with
+  | "color-gamut" -> (
+      match s with
+      | "srgb" -> Some (Color_gamut `Srgb)
+      | "p3" -> Some (Color_gamut `P3)
+      | "rec2020" -> Some (Color_gamut `Rec2020)
+      | _ -> None)
+  | "video-color-gamut" -> (
+      match s with
+      | "srgb" -> Some (Video_color_gamut `Srgb)
+      | "p3" -> Some (Video_color_gamut `P3)
+      | "rec2020" -> Some (Video_color_gamut `Rec2020)
+      | _ -> None)
+  | "dynamic-range" -> (
+      match s with
+      | "standard" -> Some (Dynamic_range `Standard)
+      | "high" -> Some (Dynamic_range `High)
+      | _ -> None)
+  | "video-dynamic-range" -> (
+      match s with
+      | "standard" -> Some (Video_dynamic_range `Standard)
+      | "high" -> Some (Video_dynamic_range `High)
+      | _ -> None)
+  | "scan" -> (
+      match s with
+      | "interlace" -> Some (Scan `Interlace)
+      | "progressive" -> Some (Scan `Progressive)
+      | _ -> None)
+  | "update" -> (
+      match s with
+      | "none" -> Some (Update `None)
+      | "slow" -> Some (Update `Slow)
+      | "fast" -> Some (Update `Fast)
+      | _ -> None)
+  | "overflow-block" -> (
+      match s with
+      | "none" -> Some (Overflow_block `None)
+      | "scroll" -> Some (Overflow_block `Scroll)
+      | "optional-paged" -> Some (Overflow_block `Optional_paged)
+      | "paged" -> Some (Overflow_block `Paged)
+      | _ -> None)
+  | "overflow-inline" -> (
+      match s with
+      | "none" -> Some (Overflow_inline `None)
+      | "scroll" -> Some (Overflow_inline `Scroll)
+      | _ -> None)
+  | _ -> None
+
+let normalise_ident_value name s =
+  let s = String.lowercase_ascii s in
+  match normalise_preference_value name s with
+  | Some _ as v -> v
+  | None -> (
+      match normalise_capability_value name s with
+      | Some _ as v -> v
+      | None -> normalise_display_value name s)
+
 (* Smart constructor: try to recognise a known shorthand, otherwise wrap as
    Custom. *)
 let normalise_value name value =
@@ -947,64 +1086,6 @@ let normalise_value name value =
   | "max-width", Length (Values_intf.Px f) -> Some (Max_width f)
   | "min-width", Length (Values_intf.Rem f) -> Some (Min_width_rem f)
   | "min-width", Length l -> Some (Min_width_length l)
-  | "prefers-reduced-motion", Ident s -> (
-      match String.lowercase_ascii s with
-      | "no-preference" -> Some (Prefers_reduced_motion `No_preference)
-      | "reduce" -> Some (Prefers_reduced_motion `Reduce)
-      | _ -> None)
-  | "prefers-contrast", Ident s -> (
-      match String.lowercase_ascii s with
-      | "more" -> Some (Prefers_contrast `More)
-      | "less" -> Some (Prefers_contrast `Less)
-      | _ -> None)
-  | "prefers-color-scheme", Ident s -> (
-      match String.lowercase_ascii s with
-      | "dark" -> Some (Prefers_color_scheme `Dark)
-      | "light" -> Some (Prefers_color_scheme `Light)
-      | _ -> None)
-  | "forced-colors", Ident s -> (
-      match String.lowercase_ascii s with
-      | "active" -> Some (Forced_colors `Active)
-      | "none" -> Some (Forced_colors `None)
-      | _ -> None)
-  | "inverted-colors", Ident s -> (
-      match String.lowercase_ascii s with
-      | "inverted" -> Some (Inverted_colors `Inverted)
-      | "none" -> Some (Inverted_colors `None)
-      | _ -> None)
-  | "pointer", Ident s -> (
-      match String.lowercase_ascii s with
-      | "none" -> Some (Pointer `None)
-      | "coarse" -> Some (Pointer `Coarse)
-      | "fine" -> Some (Pointer `Fine)
-      | _ -> None)
-  | "any-pointer", Ident s -> (
-      match String.lowercase_ascii s with
-      | "none" -> Some (Any_pointer `None)
-      | "coarse" -> Some (Any_pointer `Coarse)
-      | "fine" -> Some (Any_pointer `Fine)
-      | _ -> None)
-  | "scripting", Ident s -> (
-      match String.lowercase_ascii s with
-      | "none" -> Some (Scripting `None)
-      | "initial-only" -> Some (Scripting `Initial_only)
-      | "enabled" -> Some (Scripting `Enabled)
-      | _ -> None)
-  | "hover", Ident s -> (
-      match String.lowercase_ascii s with
-      | "none" -> Some (Hover `None)
-      | "hover" -> Some (Hover `Hover)
-      | _ -> None)
-  | "any-hover", Ident s -> (
-      match String.lowercase_ascii s with
-      | "none" -> Some (Any_hover `None)
-      | "hover" -> Some (Any_hover `Hover)
-      | _ -> None)
-  | "orientation", Ident s -> (
-      match String.lowercase_ascii s with
-      | "portrait" -> Some (Orientation `Portrait)
-      | "landscape" -> Some (Orientation `Landscape)
-      | _ -> None)
   | "width", Length l -> Some (Width l)
   | "height", Length l -> Some (Height l)
   | "aspect-ratio", Ratio (a, b) -> Some (Aspect_ratio (a, b))
@@ -1012,66 +1093,7 @@ let normalise_value name value =
   | "color", Integer n -> Some (Color n)
   | "color-index", Integer n -> Some (Color_index n)
   | "monochrome", Integer n -> Some (Monochrome n)
-  | "color-gamut", Ident s -> (
-      match String.lowercase_ascii s with
-      | "srgb" -> Some (Color_gamut `Srgb)
-      | "p3" -> Some (Color_gamut `P3)
-      | "rec2020" -> Some (Color_gamut `Rec2020)
-      | _ -> None)
-  | "video-color-gamut", Ident s -> (
-      match String.lowercase_ascii s with
-      | "srgb" -> Some (Video_color_gamut `Srgb)
-      | "p3" -> Some (Video_color_gamut `P3)
-      | "rec2020" -> Some (Video_color_gamut `Rec2020)
-      | _ -> None)
-  | "dynamic-range", Ident s -> (
-      match String.lowercase_ascii s with
-      | "standard" -> Some (Dynamic_range `Standard)
-      | "high" -> Some (Dynamic_range `High)
-      | _ -> None)
-  | "video-dynamic-range", Ident s -> (
-      match String.lowercase_ascii s with
-      | "standard" -> Some (Video_dynamic_range `Standard)
-      | "high" -> Some (Video_dynamic_range `High)
-      | _ -> None)
-  | "scan", Ident s -> (
-      match String.lowercase_ascii s with
-      | "interlace" -> Some (Scan `Interlace)
-      | "progressive" -> Some (Scan `Progressive)
-      | _ -> None)
-  | "update", Ident s -> (
-      match String.lowercase_ascii s with
-      | "none" -> Some (Update `None)
-      | "slow" -> Some (Update `Slow)
-      | "fast" -> Some (Update `Fast)
-      | _ -> None)
-  | "overflow-block", Ident s -> (
-      match String.lowercase_ascii s with
-      | "none" -> Some (Overflow_block `None)
-      | "scroll" -> Some (Overflow_block `Scroll)
-      | "optional-paged" -> Some (Overflow_block `Optional_paged)
-      | "paged" -> Some (Overflow_block `Paged)
-      | _ -> None)
-  | "overflow-inline", Ident s -> (
-      match String.lowercase_ascii s with
-      | "none" -> Some (Overflow_inline `None)
-      | "scroll" -> Some (Overflow_inline `Scroll)
-      | _ -> None)
-  | "prefers-reduced-transparency", Ident s -> (
-      match String.lowercase_ascii s with
-      | "no-preference" -> Some (Prefers_reduced_transparency `No_preference)
-      | "reduce" -> Some (Prefers_reduced_transparency `Reduce)
-      | _ -> None)
-  | "prefers-reduced-data", Ident s -> (
-      match String.lowercase_ascii s with
-      | "no-preference" -> Some (Prefers_reduced_data `No_preference)
-      | "reduce" -> Some (Prefers_reduced_data `Reduce)
-      | _ -> None)
-  | "nav-controls", Ident s -> (
-      match String.lowercase_ascii s with
-      | "none" -> Some (Nav_controls `None)
-      | "back-button" -> Some (Nav_controls `Back_button)
-      | _ -> None)
+  | name, Ident s -> normalise_ident_value name s
   | _ -> None
 
 let rec feature_to_t : feature -> t = function
