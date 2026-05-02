@@ -915,6 +915,10 @@ val pp_gradient_stop : gradient_stop Pp.t
 val read_gradient_stop : Cursor.t -> gradient_stop
 (** [read_gradient_stop t] is the [gradient_stop] parsed from [t]. *)
 
+val read_gradient_stop_list : Cursor.t -> gradient_stop
+(** [read_gradient_stop_list t] parses a comma-separated [gradient_stop] list.
+*)
+
 val pp_background_image : background_image Pp.t
 (** [pp_background_image] is the pretty-printer for [background_image]. *)
 
@@ -1642,3 +1646,7 @@ val pp_any_property : any_property Pp.t
 
 val read_any_property : Cursor.t -> any_property
 (** [read_any_property t] parses any CSS property. *)
+
+val property_value_kind : 'a property -> 'a property_value_kind option
+(** [property_value_kind property] classifies property value shapes that have a
+    shared typed evaluator. *)
