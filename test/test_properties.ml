@@ -2380,7 +2380,7 @@ let spec_property_grammar_edges () =
   check_timing_function "steps(4, jump-none)";
   check_transform "translate(10px, 20%)" ~expected:"translate(10px,20%)";
   check_transform "rotate(1 0 0 45deg)";
-  check_transform "scale(1.2 0.8)";
+  check_transform "scale(1.2 0.8)" ~expected:"scale(1.2 .8)";
   check_transforms "translate(10px,20%) rotate(45deg) scale(1.2)";
   check_container_shorthand "card / inline-size" ~expected:"card/inline-size";
   check_container_shorthand "card / normal" ~expected:"card/normal";

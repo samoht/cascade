@@ -955,7 +955,9 @@ let test_of_string_positive () =
   check_stylesheet ~expected:".btn{color:rgb(50% 100 50%)}"
     ".btn { color: rgb(50%, 100, 50%); }";
 
-  check_stylesheet ~expected:".btn{--:value}" ".btn { --: value; }"
+  (* CSS Values defines <dashed-ident> as two dashes followed by a user-defined
+     identifier; bare [--] is not a custom property name. *)
+  neg_cursor read_stylesheet ".btn { --: value; }"
 
 (* Not a roundtrip test *)
 let test_of_string_negative () =
@@ -2099,7 +2101,7 @@ let custom_property_boundary () =
     "--b: var(--a, red);" "var(--a,red)";
   check_minified_value "nested var fallback minified"
     "--nested: var(--a, var(--b, red));" "var(--a,var(--b,red))";
-  check_declaration ~expected:"--:var(--x)" "--: var(--x);";
+  neg_cursor Css.Declaration.read_declaration "--: var(--x);";
   check_declaration ~expected:"--tokens:{color:red}" "--tokens: { color: red };";
   check_declaration ~expected:"--empty:var(--missing,)"
     "--empty: var(--missing,);";

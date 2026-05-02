@@ -1227,7 +1227,7 @@ let spec_custom_tokens () =
     "--nested-var: var(--a, var(--b, { color: red; }))";
   check_declaration ~expected:"--bad-string:\"unterminated"
     "--bad-string: \"unterminated";
-  check_declaration ~expected:"--:value" "--: value";
+  neg_cursor read_declaration "--: value";
   neg_cursor read_declaration "-x: value";
   neg_cursor read_declaration "--x"
 

@@ -2698,9 +2698,6 @@ let rec read_opacity t : opacity =
       | Some unit -> Cursor.err_invalid t ("opacity unit: " ^ unit)
       | None -> n
     in
-    if value < 0. || value > 1. then
-      Cursor.err_invalid t
-        ("opacity out of [0, 1] range: " ^ string_of_float value);
     Opacity_number value
   in
   Cursor.enum_or_calls "opacity"
