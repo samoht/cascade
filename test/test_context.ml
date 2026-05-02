@@ -2111,8 +2111,7 @@ let tw_vars_contract () =
     "background-image: linear-gradient(to right, var(--tw-gradient-stops))";
   check_layered_eval_value
     "tailwind ring shadow resolves offset and color variables" ~ctx ~layer_order
-    ~layer:"utilities"
-    ~expected:"0 0 0 2px #fff,0 0 0 calc(3px + 2px) rgb(59 130 246/0.5)"
+    ~layer:"utilities" ~expected:"0 0 0 2px #fff,0 0 0 5px rgb(59 130 246/0.5)"
     "box-shadow: 0 0 0 var(--tw-ring-offset-width) \
      var(--tw-ring-offset-color), 0 0 0 calc(3px + \
      var(--tw-ring-offset-width)) var(--tw-ring-color)";

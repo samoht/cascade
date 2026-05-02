@@ -2455,7 +2455,6 @@ let rec read_time_with ?(css_wide = true) t : duration =
     t
 
 and read_time t : duration = read_time_with t
-
 and read_time_in_calc t : duration = read_time_with ~css_wide:false t
 
 let number_binary_functions =
@@ -2572,7 +2571,11 @@ let rec read_length_percentage ?(allow_negative = true) ?(with_keywords = true)
     Calc (read_calc (read_length_percentage ~allow_negative ~with_keywords) t)
   else
     (* Try to read as percentage or length *)
-    let read_pct t : length_percentage = Pct (Cursor.pct t) in
+    let read_pct t : length_percentage =
+      let n = Cursor.pct t in
+      if (not allow_negative) && n < 0.0 then Cursor.err_invalid t "negative";
+      Pct n
+    in
     let read_length_as_lp t : length_percentage =
       Length (read_length ~allow_negative ~with_keywords t)
     in
