@@ -5,6 +5,15 @@
     [initial], [rem]/[em], [currentColor], or viewport units. Construct with
     {!v} (all fields optional) or start from {!empty}. *)
 
+type cascade_rule = {
+  property_name : string;
+  important : bool;
+  layer : string option;
+  source_order : int;
+  declaration : Declaration.declaration;
+}
+(** One observable declaration in the cascade table. *)
+
 type t = {
   custom_properties : Declaration.declaration list;
       (** Custom property declarations, e.g. [--gap: 1rem]. *)
@@ -12,6 +21,11 @@ type t = {
       (** Parent/inherited property declarations. *)
   initial_values : Declaration.declaration list;
       (** Initial property declarations. *)
+  layer_order : string list;  (** Known cascade layer order, low to high. *)
+  layer : string option;  (** Current cascade layer, if evaluation is scoped. *)
+  cascade_rules : cascade_rule list option;
+      (** Optional cascade table for [revert-layer]. [None] means the observable
+          is missing; [Some []] means it is known empty. *)
   base_url : string option;  (** Base URL for URL transforms. *)
   root_font_size : Values.length option;  (** Root font size resolving [rem]. *)
   parent_font_size : Values.length option;
@@ -89,6 +103,9 @@ val v :
   ?custom_properties:Declaration.declaration list ->
   ?inherited_values:Declaration.declaration list ->
   ?initial_values:Declaration.declaration list ->
+  ?layer_order:string list ->
+  ?layer:string ->
+  ?cascade_rules:cascade_rule list ->
   ?base_url:string ->
   ?root_font_size:Values.length ->
   ?parent_font_size:Values.length ->
@@ -224,28 +241,15 @@ val attribute : string -> document -> string option option
 (** [attribute name ctx] looks up an attribute. [None] means absent; [Some None]
     means present without a value. *)
 
-val computed_value :
-  ?layer_order:string list ->
-  ?layer:string ->
-  t ->
-  Declaration.declaration ->
-  (string, string) result
-(** [computed_value ?layer_order ?layer ctx decl] resolves the declaration
-    against [ctx]: applies the CSS-wide keywords ([initial], [inherit],
-    [unset]), expands [var(...)] references, evaluates [currentColor], and
-    converts [rem]/[em]/viewport/container relative lengths into absolute pixels
-    when the relevant base size is supplied. Returns [Error msg] when a
-    referenced source is missing from the context. *)
-
 val eval :
   ?layer_order:string list ->
   ?layer:string ->
   t ->
   Declaration.declaration ->
   Declaration.declaration
-(** [eval ?layer_order ?layer ctx decl] resolves the declaration against [ctx]
-    and returns the simplified declaration AST. Leaves the declaration unchanged
-    when the resolver cannot make progress. *)
+(** [eval ?layer_order ?layer ctx decl] abstract-interprets [decl] against [ctx]
+    using typed AST walkers. It returns a more-defined declaration in the same
+    CSS AST, preserving unresolved subtrees as residual syntax. *)
 
 val matches_selector : document -> Selector.t -> bool
 (** [matches_selector doc sel] tests whether [sel] would match an element
