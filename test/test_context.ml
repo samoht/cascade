@@ -574,9 +574,14 @@ let declaration_source decl =
 
 let declaration_value_source decl =
   let source = declaration_source decl in
-  match String.index_opt source ':' with
-  | None -> source
-  | Some i -> String.sub source (i + 1) (String.length source - i - 1)
+  let value =
+    match String.index_opt source ':' with
+    | None -> source
+    | Some i -> String.sub source (i + 1) (String.length source - i - 1)
+  in
+  match String.index_opt value '!' with
+  | None -> value
+  | Some i -> String.sub value 0 i
 
 let scope_selector_matches (document : Css.Context.document) = function
   | None -> true
@@ -586,7 +591,10 @@ let scope_selector_matches (document : Css.Context.document) = function
 
 let scope_boundary_allows document start boundary =
   scope_selector_matches document start
-  && not (scope_selector_matches document boundary)
+  &&
+  match boundary with
+  | None -> true
+  | Some _ -> not (scope_selector_matches document boundary)
 
 let resolve_stylesheet_property ?(layer_order = []) ~ctx ~document ~query
     ~property stylesheet =
@@ -674,8 +682,9 @@ let resolve_stylesheet_property ?(layer_order = []) ~ctx ~document ~query
       ~current_specificity:None ~scope_hops:None [] stylesheet
   in
   let rec winner candidates =
-    Css.Stylesheet.winning_cascade_candidate ~layer_order candidates
-    |> Option.bind (fun (candidate : Css.Stylesheet.cascade_candidate) ->
+    Option.bind
+      (Css.Stylesheet.winning_cascade_candidate ~layer_order candidates)
+      (fun (candidate : Css.Stylesheet.cascade_candidate) ->
         match candidate.candidate_value with
         | "revert-layer" ->
             let lower =
