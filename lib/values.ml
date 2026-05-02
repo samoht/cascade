@@ -242,6 +242,58 @@ let rec eval_numeric_calc : type a. a calc -> float option = function
           | Div -> None)
       | _ -> None)
 
+(** Map [f] over every [Val] leaf, preserving the calc structure. Useful when
+    the caller wants to simplify a typed calc by applying a per-type rewrite
+    (e.g., [Length.simplify]) at every leaf without re-tokenising. *)
+let rec map_calc : type a b. (a -> b) -> a calc -> b calc =
+ fun f calc ->
+  match calc with
+  | Val v -> Val (f v)
+  | Var v ->
+      (* Fallbacks carry an [a]-typed value too. *)
+      let fallback : b fallback =
+        match v.fallback with
+        | Empty -> Empty
+        | Empty2 -> Empty2
+        | None -> None
+        | Fallback x -> Fallback (f x)
+        | Var_fallback s -> Var_fallback s
+      in
+      let default = Option.map f v.default in
+      Var { name = v.name; fallback; default; layer = v.layer; meta = v.meta }
+  | Num f -> Num f
+  | Sibling_index -> Sibling_index
+  | Sibling_count -> Sibling_count
+  | Nested inner -> Nested (map_calc f inner)
+  | Parens inner -> Parens (map_calc f inner)
+  | Expr (l, op, r) -> Expr (map_calc f l, op, map_calc f r)
+
+(** CSS Values 4 §10.7 structural simplification of a typed calc AST. Folds
+    every [Expr (Num _, op, Num _)] subtree into a single [Num], and [Parens] /
+    [Nested] wrappers around already-leaf values. [Val] / [Var] leaves and
+    expressions whose operands are not both [Num] survive unchanged — type-
+    specific simplification (e.g., adding two [Px] lengths) is the caller's job,
+    see {!Length.eval_calc}. *)
+let rec eval_calc : type a. a calc -> a calc = function
+  | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
+  | Nested inner -> (
+      match eval_calc inner with
+      | (Val _ | Num _ | Var _) as leaf -> leaf
+      | reduced -> Nested reduced)
+  | Parens inner -> (
+      match eval_calc inner with
+      | (Val _ | Num _ | Var _) as leaf -> leaf
+      | reduced -> Parens reduced)
+  | Expr (l, op, r) -> (
+      let l = eval_calc l in
+      let r = eval_calc r in
+      match (l, op, r) with
+      | Num a, Add, Num b -> Num (a +. b)
+      | Num a, Sub, Num b -> Num (a -. b)
+      | Num a, Mul, Num b -> Num (a *. b)
+      | Num a, Div, Num b when b <> 0. -> Num (a /. b)
+      | _ -> Expr (l, op, r))
+
 (* Count the comma-separated argument groups in [s], ignoring commas inside
    nested function calls / brackets. Used by math-function readers to validate
    arity (clamp wants 3, minmax 2, min/max >= 1). *)
