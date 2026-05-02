@@ -6170,6 +6170,10 @@ let rec pp_flex_basis : flex_basis Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Fit_content -> Pp.string ctx "fit-content"
+  | Fit_content_arg length ->
+      Pp.string ctx "fit-content(";
+      pp_length ctx length;
+      Pp.char ctx ')'
   | Max_content -> Pp.string ctx "max-content"
   | Min_content -> Pp.string ctx "min-content"
   | From_font -> Pp.string ctx "from-font"
@@ -7276,38 +7280,73 @@ let rec read_flex_factor t : flex_factor =
     ~calls:[ ("var", fun t -> Var (Values.read_var read_flex_factor t)) ]
     ~default:read_number t
 
+let flex_basis_of_length t (length : length) : flex_basis =
+  match length with
+  | Px n -> Px n
+  | Rem n -> Rem n
+  | Em n -> Em n
+  | Ex n -> Ex n
+  | Pct n -> Pct n
+  | Cm n -> Cm n
+  | Mm n -> Mm n
+  | Q n -> Q n
+  | In n -> In n
+  | Pt n -> Pt n
+  | Pc n -> Pc n
+  | Cap n -> Cap n
+  | Ic n -> Ic n
+  | Rlh n -> Rlh n
+  | Vw n -> Vw n
+  | Vh n -> Vh n
+  | Vmin n -> Vmin n
+  | Vmax n -> Vmax n
+  | Vi n -> Vi n
+  | Vb n -> Vb n
+  | Dvh n -> Dvh n
+  | Dvw n -> Dvw n
+  | Dvmin n -> Dvmin n
+  | Dvmax n -> Dvmax n
+  | Lvh n -> Lvh n
+  | Lvw n -> Lvw n
+  | Lvmin n -> Lvmin n
+  | Lvmax n -> Lvmax n
+  | Svh n -> Svh n
+  | Svw n -> Svw n
+  | Svmin n -> Svmin n
+  | Svmax n -> Svmax n
+  | Ch n -> Ch n
+  | Lh n -> Lh n
+  | Zero -> Zero
+  | Fit_content -> Fit_content
+  | Fit_content_arg arg -> (Fit_content_arg arg : flex_basis)
+  | Max_content -> Max_content
+  | Min_content -> Min_content
+  | Inherit -> Inherit
+  | Initial -> Initial
+  | Unset -> Unset
+  | Revert -> Revert
+  | Revert_layer -> Revert_layer
+  | _ -> Cursor.err_invalid t "unsupported flex-basis value"
+
 let rec read_flex_basis t : flex_basis =
-  (* Read flex-basis: auto | content | inherit | calc(...) | <length> *)
-  if Cursor.looking_at t "calc(" then Calc (read_calc read_flex_basis t)
-  else
-    Cursor.enum "flex-basis"
+  Cursor.enum_or_calls "flex-basis"
+    [
+      ("auto", (Auto : flex_basis));
+      ("content", Content);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:
       [
-        ("auto", (Auto : flex_basis)); ("content", Content); ("inherit", Inherit);
+        ("var", fun t -> Var (read_var read_flex_basis t));
+        ("calc", fun t -> Calc (read_calc read_flex_basis t));
       ]
-      ~default:(fun t ->
-        (* Parse as length and convert to flex_basis - must be non-negative *)
-        match read_length ~allow_negative:false t with
-        | Px n -> (Px n : flex_basis)
-        | Rem n -> Rem n
-        | Em n -> Em n
-        | Ex n -> Ex n
-        | Pct n -> Pct n
-        | Cm n -> Cm n
-        | Mm n -> Mm n
-        | Q n -> Q n
-        | In n -> In n
-        | Pt n -> Pt n
-        | Pc n -> Pc n
-        | Cap n -> Cap n
-        | Ic n -> Ic n
-        | Rlh n -> Rlh n
-        | Vw n -> Vw n
-        | Vh n -> Vh n
-        | Vmin n -> Vmin n
-        | Vmax n -> Vmax n
-        | Zero -> Px 0.0 (* Convert Zero to Px 0 *)
-        | _ -> Cursor.err_invalid t "unsupported flex-basis value")
-      t
+    ~default:(fun t ->
+      read_length ~allow_negative:false t |> flex_basis_of_length t)
+    t
 
 module Flex = struct
   (* Helper functions for flex parsing *)
