@@ -179,6 +179,7 @@ type overflow =
   | Overflow_pair of overflow * overflow
   | Var of overflow var
 
+type border_spacing = Lengths of length list | Var of border_spacing var
 type overflow_clip_box = Content_box | Padding_box | Border_box
 
 type overflow_clip_margin =
@@ -699,6 +700,10 @@ type grid_line =
   | Calc of string
   | Var of grid_line var
 
+type grid_line_pair =
+  | Lines of grid_line * grid_line
+  | Var of grid_line_pair var
+
 type aspect_ratio =
   | Auto
   | Auto_ratio of float * float
@@ -780,6 +785,57 @@ type text_decoration =
   | Revert_layer
   | Var of text_decoration var
 
+type text_decoration_skip =
+  | None
+  | Auto
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_decoration_skip var
+
+type text_decoration_skip_self =
+  | None
+  | Objects
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_decoration_skip_self var
+
+type text_decoration_skip_box =
+  | All
+  | None
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_decoration_skip_box var
+
+type text_decoration_skip_inset =
+  | None
+  | Auto
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_decoration_skip_inset var
+
+type text_decoration_skip_space = All | Start | End
+
+type text_decoration_skip_spaces =
+  | Spaces of text_decoration_skip_space list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_decoration_skip_spaces var
+
 type text_emphasis_fill = Filled | Open
 type text_emphasis_shape = Dot | Circle | Double_circle | Triangle | Sesame
 
@@ -805,6 +861,17 @@ type text_emphasis =
 
 type text_emphasis_line = Over | Under
 type text_emphasis_side = Left | Right
+
+type text_emphasis_skip_keyword = Spaces | Punctuation | Symbols | Narrow
+
+type text_emphasis_skip =
+  | Skip of text_emphasis_skip_keyword list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_emphasis_skip var
 
 type text_emphasis_position =
   | Position of text_emphasis_line * text_emphasis_side
@@ -889,6 +956,7 @@ type font_language_override =
 type font_synthesis_style =
   | Auto
   | None
+  | Oblique_only
   | Inherit
   | Initial
   | Unset
@@ -905,6 +973,26 @@ type font_synthesis_weight =
   | Revert
   | Revert_layer
   | Var of font_synthesis_weight var
+
+type font_synthesis_small_caps =
+  | Auto
+  | None
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_synthesis_small_caps var
+
+type font_synthesis_position =
+  | Auto
+  | None
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of font_synthesis_position var
 
 type font_variant_ligature =
   | Common_ligatures
@@ -2688,6 +2776,12 @@ type animation_range_item =
   | Normal
   | Offset of length_percentage
   | Named of animation_range_name * length_percentage
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of animation_range_item var
 
 type animation_range =
   | Range of animation_range_item * animation_range_item option
@@ -3568,8 +3662,16 @@ type 'a property =
   | Text_decoration_style : text_decoration_style property
   | Text_decoration_color : color property
   | Text_underline_offset : length property
+  | Text_decoration_skip : text_decoration_skip property
+  | Text_decoration_skip_self : text_decoration_skip_self property
+  | Text_decoration_skip_box : text_decoration_skip_box property
+  | Text_decoration_skip_inset : text_decoration_skip_inset property
+  | Text_decoration_skip_spaces : text_decoration_skip_spaces property
   | Text_emphasis : text_emphasis property
+  | Text_emphasis_style : text_emphasis_style property
+  | Text_emphasis_color : color property
   | Text_emphasis_position : text_emphasis_position property
+  | Text_emphasis_skip : text_emphasis_skip property
   | Text_orientation : text_orientation property
   | Text_transform : text_transform property
   | Letter_spacing : length property
@@ -3604,8 +3706,8 @@ type 'a property =
   | Grid_auto_flow : grid_auto_flow property
   | Grid_auto_columns : grid_template property
   | Grid_auto_rows : grid_template property
-  | Grid_column : (grid_line * grid_line) property
-  | Grid_row : (grid_line * grid_line) property
+  | Grid_column : grid_line_pair property
+  | Grid_row : grid_line_pair property
   | Grid_column_start : grid_line property
   | Grid_column_end : grid_line property
   | Grid_row_start : grid_line property
@@ -3645,7 +3747,7 @@ type 'a property =
   | Cursor : cursor property
   | Table_layout : table_layout property
   | Border_collapse : border_collapse property
-  | Border_spacing : length list property
+  | Border_spacing : border_spacing property
   | User_select : user_select property
   | Pointer_events : pointer_events property
   | Overflow : overflow property
@@ -3718,8 +3820,8 @@ type 'a property =
   | Text_combine_upright : text_combine_upright property
   | Animation_timeline : animation_timeline property
   | Animation_range : animation_range property
-  | Animation_range_start : animation_range property
-  | Animation_range_end : animation_range property
+  | Animation_range_start : animation_range_item property
+  | Animation_range_end : animation_range_item property
   | Scroll_timeline : timeline_shorthand property
   | Scroll_timeline_name : timeline_name property
   | Scroll_timeline_axis : timeline_axis property
@@ -3816,6 +3918,8 @@ type 'a property =
   | Font_language_override : font_language_override property
   | Font_synthesis_style : font_synthesis_style property
   | Font_synthesis_weight : font_synthesis_weight property
+  | Font_synthesis_small_caps : font_synthesis_small_caps property
+  | Font_synthesis_position : font_synthesis_position property
   | Font_variant_ligatures : font_variant_ligatures property
   | Font_variant_caps : font_variant_caps property
   | Font_variant_numeric : font_variant_numeric property
@@ -3889,7 +3993,7 @@ type 'a property =
   | Scroll_margin_right : length property
   | Scroll_margin_bottom : length property
   | Scroll_margin_left : length property
-  | Scroll_margin_inline : length property
+  | Scroll_margin_inline : length list property
   | Scroll_margin_inline_start : length property
   | Scroll_margin_inline_end : length property
   | Scroll_margin_block : length list property
@@ -3900,10 +4004,10 @@ type 'a property =
   | Scroll_padding_right : length property
   | Scroll_padding_bottom : length property
   | Scroll_padding_left : length property
-  | Scroll_padding_inline : length property
+  | Scroll_padding_inline : length list property
   | Scroll_padding_inline_start : length property
   | Scroll_padding_inline_end : length property
-  | Scroll_padding_block : length property
+  | Scroll_padding_block : length list property
   | Scroll_padding_block_start : length property
   | Scroll_padding_block_end : length property
   | Overscroll_behavior : overscroll_behavior list property

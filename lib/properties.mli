@@ -248,6 +248,9 @@ val read_order : Cursor.t -> order
 val pp_overflow : overflow Pp.t
 (** [pp_overflow] is the pretty-printer for [overflow]. *)
 
+val pp_border_spacing : border_spacing Pp.t
+(** [pp_border_spacing] is the pretty-printer for [border_spacing]. *)
+
 val read_overflow : Cursor.t -> overflow
 (** [read_overflow t] is the [overflow] parsed from [t]. *)
 
@@ -361,7 +364,10 @@ val pp_grid_line : grid_line Pp.t
 val read_grid_line : Cursor.t -> grid_line
 (** [read_grid_line t] is the [grid_line] parsed from [t]. *)
 
-val read_grid_line_pair : Cursor.t -> grid_line * grid_line
+val pp_grid_line_pair : grid_line_pair Pp.t
+(** [pp_grid_line_pair] is the pretty-printer for [grid_line_pair]. *)
+
+val read_grid_line_pair : Cursor.t -> grid_line_pair
 (** [read_grid_line_pair t] parses a grid column/row shorthand value:
     [<grid-line> [ / <grid-line> ]?]. If no slash is present, the second value
     defaults to [Auto]. *)
@@ -1302,6 +1308,61 @@ val pp_text_emphasis : text_emphasis Pp.t
 val read_text_emphasis : Cursor.t -> text_emphasis
 (** [read_text_emphasis t] is the [text_emphasis] parsed from [t]. *)
 
+val pp_text_emphasis_style : text_emphasis_style Pp.t
+(** [pp_text_emphasis_style] is the pretty-printer for [text_emphasis_style]. *)
+
+val read_text_emphasis_style : Cursor.t -> text_emphasis_style
+(** [read_text_emphasis_style t] is the [text_emphasis_style] parsed from [t].
+*)
+
+val pp_text_decoration_skip : text_decoration_skip Pp.t
+(** [pp_text_decoration_skip] is the pretty-printer for [text_decoration_skip].
+*)
+
+val read_text_decoration_skip : Cursor.t -> text_decoration_skip
+(** [read_text_decoration_skip t] is the [text_decoration_skip] parsed from [t].
+*)
+
+val pp_text_decoration_skip_self : text_decoration_skip_self Pp.t
+(** [pp_text_decoration_skip_self] is the pretty-printer for
+    [text_decoration_skip_self]. *)
+
+val read_text_decoration_skip_self : Cursor.t -> text_decoration_skip_self
+(** [read_text_decoration_skip_self t] is the [text_decoration_skip_self] parsed
+    from [t]. *)
+
+val pp_text_decoration_skip_box : text_decoration_skip_box Pp.t
+(** [pp_text_decoration_skip_box] is the pretty-printer for
+    [text_decoration_skip_box]. *)
+
+val read_text_decoration_skip_box : Cursor.t -> text_decoration_skip_box
+(** [read_text_decoration_skip_box t] is the [text_decoration_skip_box] parsed
+    from [t]. *)
+
+val pp_text_decoration_skip_inset : text_decoration_skip_inset Pp.t
+(** [pp_text_decoration_skip_inset] is the pretty-printer for
+    [text_decoration_skip_inset]. *)
+
+val read_text_decoration_skip_inset : Cursor.t -> text_decoration_skip_inset
+(** [read_text_decoration_skip_inset t] is the [text_decoration_skip_inset]
+    parsed from [t]. *)
+
+val pp_text_decoration_skip_space : text_decoration_skip_space Pp.t
+(** [pp_text_decoration_skip_space] is the pretty-printer for
+    [text_decoration_skip_space]. *)
+
+val read_text_decoration_skip_space : Cursor.t -> text_decoration_skip_space
+(** [read_text_decoration_skip_space t] is the [text_decoration_skip_space]
+    parsed from [t]. *)
+
+val pp_text_decoration_skip_spaces : text_decoration_skip_spaces Pp.t
+(** [pp_text_decoration_skip_spaces] is the pretty-printer for
+    [text_decoration_skip_spaces]. *)
+
+val read_text_decoration_skip_spaces : Cursor.t -> text_decoration_skip_spaces
+(** [read_text_decoration_skip_spaces t] is the [text_decoration_skip_spaces]
+    parsed from [t]. *)
+
 val pp_text_emphasis_position : text_emphasis_position Pp.t
 (** [pp_text_emphasis_position] is the pretty-printer for
     [text_emphasis_position]. *)
@@ -1309,6 +1370,20 @@ val pp_text_emphasis_position : text_emphasis_position Pp.t
 val read_text_emphasis_position : Cursor.t -> text_emphasis_position
 (** [read_text_emphasis_position t] is the [text_emphasis_position] parsed from
     [t]. *)
+
+val pp_text_emphasis_skip_keyword : text_emphasis_skip_keyword Pp.t
+(** [pp_text_emphasis_skip_keyword] is the pretty-printer for
+    [text_emphasis_skip_keyword]. *)
+
+val read_text_emphasis_skip_keyword : Cursor.t -> text_emphasis_skip_keyword
+(** [read_text_emphasis_skip_keyword t] is the [text_emphasis_skip_keyword]
+    parsed from [t]. *)
+
+val pp_text_emphasis_skip : text_emphasis_skip Pp.t
+(** [pp_text_emphasis_skip] is the pretty-printer for [text_emphasis_skip]. *)
+
+val read_text_emphasis_skip : Cursor.t -> text_emphasis_skip
+(** [read_text_emphasis_skip t] is the [text_emphasis_skip] parsed from [t]. *)
 
 val pp_text_orientation : text_orientation Pp.t
 (** [pp_text_orientation] is the pretty-printer for [text_orientation]. *)
@@ -1359,6 +1434,22 @@ val read_font_synthesis_weight : Cursor.t -> font_synthesis_weight
 (** [read_font_synthesis_weight t] is the [font_synthesis_weight] parsed from
     [t]. *)
 
+val pp_font_synthesis_small_caps : font_synthesis_small_caps Pp.t
+(** [pp_font_synthesis_small_caps] is the pretty-printer for
+    [font_synthesis_small_caps]. *)
+
+val read_font_synthesis_small_caps : Cursor.t -> font_synthesis_small_caps
+(** [read_font_synthesis_small_caps t] is the [font_synthesis_small_caps] parsed
+    from [t]. *)
+
+val pp_font_synthesis_position : font_synthesis_position Pp.t
+(** [pp_font_synthesis_position] is the pretty-printer for
+    [font_synthesis_position]. *)
+
+val read_font_synthesis_position : Cursor.t -> font_synthesis_position
+(** [read_font_synthesis_position t] is the [font_synthesis_position] parsed
+    from [t]. *)
+
 val pp_font_variant_ligature : font_variant_ligature Pp.t
 (** [pp_font_variant_ligature] is the pretty-printer for
     [font_variant_ligature]. *)
@@ -1389,14 +1480,13 @@ val read_font_variant_position : Cursor.t -> font_variant_position
 (** [read_font_variant_position t] is the [font_variant_position] parsed from
     [t]. *)
 
-val pp_font_variant_east_asian_feature : font_variant_east_asian_feature Pp.t
-(** [pp_font_variant_east_asian_feature] is the pretty-printer for
+val pp_east_asian_feature : font_variant_east_asian_feature Pp.t
+(** [pp_east_asian_feature] is the pretty-printer for
     [font_variant_east_asian_feature]. *)
 
-val read_font_variant_east_asian_feature :
-  Cursor.t -> font_variant_east_asian_feature
-(** [read_font_variant_east_asian_feature t] is the
-    [font_variant_east_asian_feature] parsed from [t]. *)
+val read_east_asian_feature : Cursor.t -> font_variant_east_asian_feature
+(** [read_east_asian_feature t] is the [font_variant_east_asian_feature] parsed
+    from [t]. *)
 
 val pp_font_variant_east_asian : font_variant_east_asian Pp.t
 (** [pp_font_variant_east_asian] is the pretty-printer for
