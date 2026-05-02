@@ -935,6 +935,7 @@ type alpha =
   | Num of float (* Number value (0-1) *)
   | Pct of float (* Percentage value (0%-100%) *)
   | Var of alpha var
+  | Calc of alpha calc
 
 (** CSS hue values (for HSL/HWB) *)
 type hue =
@@ -1619,6 +1620,7 @@ type z_index =
 
 type opacity =
   | Opacity_number of float
+  | Calc of opacity calc
   | Abs of opacity  (** [abs(<opacity>)] *)
   | Sign of opacity  (** [sign(<opacity>)] *)
   | Inherit
@@ -6150,6 +6152,7 @@ type _ kind =
   | Percentage : percentage kind
   | Length_percentage : length_percentage kind
   | Number_percentage : number_percentage kind
+  | Opacity : opacity kind
   | Value : Component.t list kind
   | Duration : duration kind
   | Aspect_ratio : aspect_ratio kind
@@ -6157,6 +6160,7 @@ type _ kind =
   | Outline_style : outline_style kind
   | Border : border kind
   | Font_weight : font_weight kind
+  | Font_size : font_size kind
   | Line_height : line_height kind
   | Font_family : font_family kind
   | Font_feature_settings : font_feature_settings kind
@@ -6166,6 +6170,8 @@ type _ kind =
   | Blend_mode : blend_mode kind
   | Scroll_snap_strictness : scroll_snap_strictness kind
   | Angle : angle kind
+  | Rotate : rotate_value kind
+  | Scale : scale kind
   | Shadow : shadow kind
   | Box_shadow : shadow kind
   | Content : content kind
@@ -6544,11 +6550,49 @@ module Cursor = Cursor
 module Sort = Sort
 module Error = Error
 module Values = Values
-module Properties = Properties
-module Declaration = Declaration
+
+module Properties : sig
+  include module type of Properties
+
+  val eval_value :
+    ?layer_order:string list ->
+    ?layer:string ->
+    Context.t ->
+    'a property ->
+    'a ->
+    declaration
+  (** [eval_value ctx property value] evaluates [value] in the CSS declaration
+      context of [property], returning the evaluated declaration. *)
+end
+
+module Declaration : sig
+  include module type of Declaration
+
+  val eval :
+    ?layer_order:string list ->
+    ?layer:string ->
+    Context.t ->
+    declaration ->
+    declaration
+  (** [eval ctx decl] rewrites [decl] to a more-defined declaration under [ctx],
+      preserving unresolved subtrees as CSS syntax. *)
+end
+
 module Variables = Variables
 module Optimize = Optimize
-module Stylesheet = Stylesheet
+
+module Stylesheet : sig
+  include module type of Stylesheet
+
+  val eval_rule :
+    ?layer_order:string list -> ?layer:string -> Context.t -> rule -> rule
+  (** [eval_rule ctx rule] evaluates every declaration in [rule] and its nested
+      statements. *)
+
+  val eval : ?layer_order:string list -> ?layer:string -> Context.t -> t -> t
+  (** [eval ctx stylesheet] evaluates every declaration in [stylesheet]. *)
+end
+
 module Media = Media
 
 val media_min_width_length : length -> Media.t
