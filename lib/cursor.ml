@@ -440,9 +440,15 @@ let url t =
         -> (
           if not terminated then err_expected t "terminated url";
           skip t;
-          match string_opt (func_sub fn t) with
-          | Some s -> s
-          | None -> err_expected t "url argument")
+          let inner = func_sub fn t in
+          match string_opt inner with
+          | Some s ->
+              ws inner;
+              if is_done inner then s else err_expected t "url argument"
+          | None ->
+              let components = remaining inner in
+              let raw = Parser.to_string_minified components in
+              if raw = "" then err_expected t "url argument" else raw)
       | _ -> err_expected t "url")
 
 let pct ?(clamp = false) t =
