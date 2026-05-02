@@ -1805,10 +1805,59 @@ let check_manifest_row_shape (row : property_grammar_row) =
   if List.length row.positives < 2 then
     Alcotest.failf "%s needs at least two positive branch vectors" row.property;
   if List.length row.negatives < 2 then
-    Alcotest.failf "%s needs at least two negative branch vectors" row.property
+    Alcotest.failf "%s needs at least two negative branch vectors" row.property;
+  let duplicate_values values =
+    List.length values <> List.length (List.sort_uniq String.compare values)
+  in
+  if duplicate_values row.positives then
+    Alcotest.failf "%s has duplicate positive grammar vectors" row.property;
+  if duplicate_values row.negatives then
+    Alcotest.failf "%s has duplicate negative grammar vectors" row.property;
+  List.iter
+    (fun value ->
+      if String.trim value = "" then
+        Alcotest.failf "%s has an empty grammar vector" row.property)
+    (row.positives @ row.negatives)
+
+let calc_expected_properties =
+  [
+    "width";
+    "height";
+    "margin";
+    "padding";
+    "border-radius";
+    "opacity";
+    "font-size";
+    "line-height";
+    "translate";
+    "rotate";
+    "scale";
+    "transition";
+    "animation";
+    "filter";
+    "background-position";
+    "object-position";
+    "transform-origin";
+  ]
+
+let check_manifest_calc_surface (row : property_grammar_row) =
+  if List.mem row.property calc_expected_properties then
+    let has_calc =
+      List.exists
+        (fun value -> String.contains value '(' && String.contains value ')')
+        row.positives
+      || List.exists
+           (fun value -> String.starts_with ~prefix:"calc(" value)
+           row.positives
+    in
+    if not has_calc then
+      Alcotest.failf
+        "%s should include at least one function/calc-family grammar vector"
+        row.property
 
 let check_property_row (row : property_grammar_row) =
   check_manifest_row_shape row;
+  check_manifest_calc_surface row;
   List.iter (check_property_positive row) row.positives;
   List.iter (check_property_negative row) row.negatives;
   List.iter
