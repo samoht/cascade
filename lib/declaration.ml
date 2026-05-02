@@ -20,14 +20,14 @@ let v ?(important = false) property value =
   Declaration { property; value; important }
 
 (* Smart constructor for custom declarations. CSS Custom Properties Level 1
-   restricts the name to dashed idents: any ident-token whose first two code
-   points are U+002D HYPHEN-MINUS. The body after [--] may be empty, so [--]
-   itself is a valid (if pathological) custom-property name. *)
+   restricts the name to dashed idents: an ident-token whose first two code
+   points are U+002D HYPHEN-MINUS, followed by a name body. *)
 let typed_custom_property ?(important = false) ?layer ?meta name kind value =
-  if not (String.length name >= 2 && String.sub name 0 2 = "--") then
+  if not (String.length name > 2 && String.sub name 0 2 = "--") then
     invalid_arg
       ("Declaration.typed_custom_property: " ^ name
-     ^ " is not a CSS custom property name (must start with --)");
+     ^ " is not a CSS custom property name (must start with -- and include a \
+        name)");
   v ~important (Custom_property name)
     (Custom_value { kind; value; layer; meta })
 
@@ -40,15 +40,16 @@ let rec important = function
 (* Helper for raw custom properties - primarily for internal use *)
 
 let custom_property ?layer name value =
-  (* Validate that this is a proper CSS variable name. Custom-property names
-     are dashed idents starting with [--]; the body after [--] may be empty. *)
-  if not (String.length name >= 2 && String.sub name 0 2 = "--") then
+  (* Validate that this is a proper CSS variable name. Custom-property names are
+     dashed idents starting with [--] and a non-empty name body. *)
+  if not (String.length name > 2 && String.sub name 0 2 = "--") then
     failwith
       (String.concat ""
          [
            "custom_property: ";
            name;
-           " is not a valid CSS variable name (must start with --)";
+           " is not a valid CSS variable name (must start with -- and include \
+            a name)";
          ]);
   (* Parse the value into a CSS Syntax 3 component stream so the declaration
      never carries a raw author string; the printer can then re-serialise with
@@ -1136,18 +1137,23 @@ let read_value (type a) (prop : a property) t : declaration =
   | Border_bottom_color -> v Border_bottom_color (read_color t)
   | Border_left_color -> v Border_left_color (read_color t)
   (* Length/percentage properties *)
-  | Width -> v Width (read_length_percentage t)
-  | Height -> v Height (read_length_percentage t)
-  | Min_width -> v Min_width (read_length_percentage t)
-  | Min_height -> v Min_height (read_length_percentage t)
-  | Max_width -> v Max_width (read_length_percentage t)
-  | Max_height -> v Max_height (read_length_percentage t)
-  | Inline_size -> v Inline_size (read_length_percentage t)
-  | Min_inline_size -> v Min_inline_size (read_length_percentage t)
-  | Max_inline_size -> v Max_inline_size (read_length_percentage t)
-  | Block_size -> v Block_size (read_length_percentage t)
-  | Min_block_size -> v Min_block_size (read_length_percentage t)
-  | Max_block_size -> v Max_block_size (read_length_percentage t)
+  | Width -> v Width (read_length_percentage ~allow_negative:false t)
+  | Height -> v Height (read_length_percentage ~allow_negative:false t)
+  | Min_width -> v Min_width (read_length_percentage ~allow_negative:false t)
+  | Min_height -> v Min_height (read_length_percentage ~allow_negative:false t)
+  | Max_width -> v Max_width (read_length_percentage ~allow_negative:false t)
+  | Max_height -> v Max_height (read_length_percentage ~allow_negative:false t)
+  | Inline_size ->
+      v Inline_size (read_length_percentage ~allow_negative:false t)
+  | Min_inline_size ->
+      v Min_inline_size (read_length_percentage ~allow_negative:false t)
+  | Max_inline_size ->
+      v Max_inline_size (read_length_percentage ~allow_negative:false t)
+  | Block_size -> v Block_size (read_length_percentage ~allow_negative:false t)
+  | Min_block_size ->
+      v Min_block_size (read_length_percentage ~allow_negative:false t)
+  | Max_block_size ->
+      v Max_block_size (read_length_percentage ~allow_negative:false t)
   | Font_size -> v Font_size (Properties.read_font_size t)
   | Border_radius -> v Border_radius (read_border_radius t)
   | Border_top_left_radius ->

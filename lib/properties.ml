@@ -2708,9 +2708,13 @@ let rec read_opacity t : opacity =
     ~calls:
       [
         ("var", read_var);
-        ("calc", (fun t -> Calc (Values.read_calc read_opacity t)));
-        ("abs", (fun t -> Abs (read_opacity t)));
-        ("sign", (fun t -> Sign (read_opacity t)));
+        ("calc", fun t -> Calc (Values.read_calc read_opacity t));
+        ( "abs",
+          fun t -> Cursor.call "abs" t (fun inner -> Abs (read_opacity inner))
+        );
+        ( "sign",
+          fun t -> Cursor.call "sign" t (fun inner -> Sign (read_opacity inner))
+        );
       ]
     ~default:read_number_or_percentage t
 
@@ -3599,22 +3603,22 @@ let rec pp_clip_path : clip_path Pp.t =
       Pp.char ctx ')'
   | Clip_path_inset { top; right; bottom; left; rounded } ->
       Pp.string ctx "inset(";
-      pp_length_percentage ~always:true ctx top;
+      pp_length_percentage ctx top;
       (match right with
       | None -> ()
       | Some r -> (
           Pp.space ctx ();
-          pp_length_percentage ~always:true ctx r;
+          pp_length_percentage ctx r;
           match bottom with
           | None -> ()
           | Some b -> (
               Pp.space ctx ();
-              pp_length_percentage ~always:true ctx b;
+              pp_length_percentage ctx b;
               match left with
               | None -> ()
               | Some l ->
                   Pp.space ctx ();
-                  pp_length_percentage ~always:true ctx l)));
+                  pp_length_percentage ctx l)));
       pp_clip_path_round ctx rounded;
       Pp.char ctx ')'
   | Clip_path_circle radius ->
@@ -4471,7 +4475,6 @@ let pp_mask_layer : mask_layer Pp.t =
   let first = ref true in
   let maybe_space () = if !first then first := false else Pp.space ctx () in
   pp_bg_prop maybe_space pp_background_image ctx layer.image;
-  pp_bg_prop maybe_space pp_background_repeat ctx layer.repeat;
   (match (layer.position, layer.size) with
   | Some position, Some size ->
       maybe_space ();
@@ -4485,6 +4488,7 @@ let pp_mask_layer : mask_layer Pp.t =
       maybe_space ();
       pp_background_size ctx size
   | None, None -> ());
+  pp_bg_prop maybe_space pp_background_repeat ctx layer.repeat;
   pp_bg_prop maybe_space pp_mask_box ctx layer.origin;
   pp_bg_prop maybe_space pp_mask_box ctx layer.clip;
   pp_bg_prop maybe_space pp_mask_mode ctx layer.mode;
@@ -11502,10 +11506,10 @@ module Position_value = struct
     | Unset -> Unset
     | Revert -> Revert
     | Revert_layer -> Revert_layer
-    | Left -> Left_center
-    | Right -> Right_center
-    | Top -> Center_top
-    | Bottom -> Center_bottom
+    | Left -> Left
+    | Right -> Right
+    | Top -> Top
+    | Bottom -> Bottom
 
   (* Read two keyword values *)
   let read_2_value t : position_value =
