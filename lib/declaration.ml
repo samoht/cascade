@@ -20,9 +20,11 @@ let v ?(important = false) property value =
   Declaration { property; value; important }
 
 (* Smart constructor for custom declarations. CSS Custom Properties Level 1
-   restricts the name to dashed idents (start with [--]). *)
+   restricts the name to dashed idents: any ident-token whose first two code
+   points are U+002D HYPHEN-MINUS. The body after [--] may be empty, so [--]
+   itself is a valid (if pathological) custom-property name. *)
 let typed_custom_property ?(important = false) ?layer ?meta name kind value =
-  if not (String.length name > 2 && String.sub name 0 2 = "--") then
+  if not (String.length name >= 2 && String.sub name 0 2 = "--") then
     invalid_arg
       ("Declaration.typed_custom_property: " ^ name
      ^ " is not a CSS custom property name (must start with --)");
@@ -38,9 +40,9 @@ let rec important = function
 (* Helper for raw custom properties - primarily for internal use *)
 
 let custom_property ?layer name value =
-  (* Validate that this is a proper CSS variable name. Custom property names are
-     dashed idents with a body after the leading [--]. *)
-  if not (String.length name > 2 && String.sub name 0 2 = "--") then
+  (* Validate that this is a proper CSS variable name. Custom-property names
+     are dashed idents starting with [--]; the body after [--] may be empty. *)
+  if not (String.length name >= 2 && String.sub name 0 2 = "--") then
     failwith
       (String.concat ""
          [
@@ -1198,7 +1200,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Flex -> v Flex (read_flex t)
   | Flex_grow -> v Flex_grow (Properties.read_flex_factor t)
   | Flex_shrink -> v Flex_shrink (Properties.read_flex_factor t)
-  | Flex_basis -> v Flex_basis (read_length t)
+  | Flex_basis -> v Flex_basis (read_flex_basis t)
   | Align_items -> v Align_items (read_align_items t)
   | Justify_content -> v Justify_content (read_justify_content t)
   (* Transform property *)

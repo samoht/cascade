@@ -182,13 +182,14 @@ let token_kind_to_string : Token.kind -> string = function
   | Token.Function s -> escape_ident s ^ "("
   | Token.At_keyword s -> "@" ^ escape_ident s
   | Token.Hash { value; _ } -> "#" ^ escape_name value
-  | Token.String { value; quote = _; terminated = _ } ->
+  | Token.String { value; quote = _; terminated } ->
       (* Normalize string quoting to double-quote on serialization. The original
          quote is recorded on the token only so quote-sensitive lookups (e.g.
-         @charset) can inspect it. Always emit a closing quote so synthetic
-         block/function closers appended during serialization cannot be consumed
-         into an unterminated string on the next parse. *)
-      escape_string ~quote:'"' ~terminated:true value
+         @charset) can inspect it. CSS Syntax §4.3.5 recovers an unterminated
+         string token but the serializer preserves the [terminated] flag so the
+         original byte sequence round-trips: a string the lexer flagged as
+         unterminated emits without its closing quote. *)
+      escape_string ~quote:'"' ~terminated value
   | Token.Bad_string -> ""
   | Token.Url s ->
       let buf = Buffer.create (String.length s + 5) in

@@ -737,6 +737,7 @@ let kind_equal : type a b.
   | Properties.Rotate, Properties.Rotate -> Some Refl
   | Properties.Scale, Properties.Scale -> Some Refl
   | Properties.Duration, Properties.Duration -> Some Refl
+  | Properties.Animation, Properties.Animation -> Some Refl
   | Properties.Number_percentage, Properties.Number_percentage -> Some Refl
   | Properties.Font_size, Properties.Font_size -> Some Refl
   | Properties.Filter, Properties.Filter -> Some Refl
@@ -831,7 +832,7 @@ let normalize_numeric_value ~to_number ~of_number value =
   match to_number value with Some n -> of_number n | None -> value
 
 module Var_residual = struct
-  type 'a simplifier = visited:string list -> 'a -> 'a
+  type 'a simplifier = authored:bool -> visited:string list -> 'a -> 'a
 
   type 'a ops = {
     as_var : 'a -> 'a Values.var option;
@@ -850,8 +851,11 @@ module Var_residual = struct
         a Values.var =
       {
         var with
-        Values.fallback = map_var_fallback (simplify ~visited:[]) var.fallback;
-        default = Option.map (simplify ~visited:[]) var.default;
+        Values.fallback =
+          map_var_fallback
+            (simplify ~authored:false ~visited:[])
+            var.fallback;
+        default = Option.map (simplify ~authored:false ~visited:[]) var.default;
       }
     and resolve_var ~(simplify : a simplifier) ~visited (var : a Values.var) :
         a option =
@@ -871,11 +875,13 @@ module Var_residual = struct
               value
         in
         match parsed with
-        | Some value -> Some (simplify ~visited:(var.name :: visited) value)
+        | Some value ->
+            Some
+              (simplify ~authored:false ~visited:(var.name :: visited) value)
         | None -> (
             match var.fallback with
             | Values.Fallback fallback when resolve_fallback fallback ->
-                Some (simplify ~visited fallback)
+                Some (simplify ~authored:false ~visited fallback)
             | Values.Fallback _ -> None
             | Values.Empty | Values.Empty2 | Values.None | Values.Var_fallback _
               ->
@@ -887,15 +893,15 @@ module Var_residual = struct
       a =
     with_resolver ?layer_order ?layer cascade ~read_custom:ops.read_custom
     @@ fun ~resolve_var ~simplify_var_record ->
-    let rec simplify ~visited value =
+    let rec simplify ~authored ~visited value =
       match ops.as_var value with
       | Some var -> (
           match resolve_var ~simplify ~visited var with
           | Some value -> value
           | None -> ops.of_var (simplify_var_record ~simplify var))
-      | None -> ops.simplify_leaf simplify ~visited value
+      | None -> ops.simplify_leaf simplify ~authored ~visited value
     in
-    simplify ~visited:[] value
+    simplify ~authored:true ~visited:[] value
 end
 
 module Calc_residual = struct
@@ -919,26 +925,25 @@ module Calc_residual = struct
     simplify_leaf : 'a simplifier -> 'a calc_simplifier -> 'a simplifier;
   }
 
+  let rec contains_var : type a. a Values.calc -> bool = function
+    | Values.Var _ -> true
+    | Values.Nested inner | Values.Parens inner -> contains_var inner
+    | Values.Expr (left, _, right) -> contains_var left || contains_var right
+    | Values.Num _ | Values.Val _ | Values.Sibling_index
+    | Values.Sibling_count ->
+        false
+
   let simplify (type a) ?resolve_fallback ?layer_order ?layer cascade
       (ops : a ops) (value : a) : a =
     Var_residual.with_resolver ?resolve_fallback ?layer_order ?layer cascade
       ~read_custom:ops.read_custom
     @@ fun ~resolve_var ~simplify_var_record ->
-    let rec calc_contains_var (calc : a Values.calc) =
-      match calc with
-      | Values.Var _ -> true
-      | Values.Nested inner | Values.Parens inner -> calc_contains_var inner
-      | Values.Expr (left, _, right) ->
-          calc_contains_var left || calc_contains_var right
-      | Values.Num _ | Values.Val _ | Values.Sibling_index
-      | Values.Sibling_count ->
-          false
-    and calc_of_value ~visited (value : a) : a Values.calc =
+    let rec calc_of_value ~visited (value : a) : a Values.calc =
       match simplify ~authored:false ~visited value |> ops.as_calc with
       | Some inner -> Values.Nested (simplify_calc ~visited inner)
       | None -> Values.Val (simplify ~authored:false ~visited value)
     and walk_calc ~visited (calc : a Values.calc) : a Values.calc =
-      let simplify_resolved = simplify ~authored:false in
+      let simplify_resolved ~authored:_ = simplify ~authored:false in
       match calc with
       | Values.Val value -> calc_of_value ~visited value
       | Values.Var var -> (
@@ -993,9 +998,9 @@ module Calc_residual = struct
     and simplify_calc ?(preserve = false) ~visited (calc : a Values.calc) :
         a Values.calc =
       let calc = walk_calc ~visited calc in
-      if preserve then calc else fold_calc calc
+      if preserve && contains_var calc then calc else fold_calc calc
     and simplify ~authored ~visited (value : a) : a =
-      let simplify_resolved = simplify ~authored:false in
+      let simplify_resolved ~authored:_ = simplify ~authored:false in
       match ops.as_var value with
       | Some var -> (
           match resolve_var ~simplify:simplify_resolved ~visited var with
@@ -1005,7 +1010,7 @@ module Calc_residual = struct
       | None -> (
           match ops.as_calc value with
           | Some calc -> (
-              let preserve = authored && calc_contains_var calc in
+              let preserve = authored && contains_var calc in
               match simplify_calc ~preserve ~visited calc with
               | Values.Val value -> simplify ~authored:false ~visited value
               | Values.Num n -> (
@@ -1212,7 +1217,8 @@ module Length = struct
     in
     eval
 
-  let simplify ?layer_order ?layer cascade ctx value =
+  let simplify ?(preserve_authored_calc = true) ?layer_order ?layer cascade ctx
+      value =
     let simplify_leaf simplify simplify_calc ~visited value =
       match value with
       | Values.Min args -> (
@@ -1264,7 +1270,7 @@ module Length = struct
           Values.Anchor (name, side, Option.map (simplify ~visited) fallback)
       | value -> value
     in
-    let ops =
+    let ops : Values.length Calc_residual.ops =
       let to_number = to_px ctx in
       let of_number px = Values.Px px in
       {
@@ -1285,11 +1291,19 @@ module Length = struct
     let resolve_fallback (value : Values.length) =
       match value with Values.Revert_layer -> false | _ -> true
     in
-    let value =
+    let preserve_authored_calc =
+      preserve_authored_calc
+      &&
+      match (value : Values.length) with
+      | Values.Calc calc -> Calc_residual.contains_var calc
+      | _ -> false
+    in
+    let value : Values.length =
       Calc_residual.simplify ~resolve_fallback ?layer_order ?layer cascade ops
         value
     in
     match value with
+    | Values.Calc _ when preserve_authored_calc -> value
     | Values.Calc calc -> (
         match eval_calc ctx calc with
         | Values.Val value -> normalize_zero value
@@ -2185,7 +2199,8 @@ let simplify_number_percentage ?layer_order ?layer cascade value =
 
 let simplify_rotate_value ?layer_order ?layer cascade value =
   let angle = simplify_angle ?layer_order ?layer cascade in
-  let simplify_leaf _simplify ~visited:_ (value : Properties.rotate_value) =
+  let simplify_leaf _simplify ~authored:_ ~visited:_
+      (value : Properties.rotate_value) =
     match value with
     | Properties.Angle value ->
         (Properties.Angle (angle value) : Properties.rotate_value)
@@ -2212,15 +2227,21 @@ let simplify_rotate_value ?layer_order ?layer cascade value =
   Var_residual.simplify ?layer_order ?layer cascade ops value
 
 let simplify_translate_value ?layer_order ?layer cascade length_ctx value =
-  let length = Length.simplify ?layer_order ?layer cascade length_ctx in
-  let simplify_leaf _simplify ~visited:_ (value : Properties.translate_value) =
+  let length authored =
+    Length.simplify ~preserve_authored_calc:authored ?layer_order ?layer
+      cascade length_ctx
+  in
+  let simplify_leaf _simplify ~authored ~visited:_
+      (value : Properties.translate_value) =
     match value with
     | Properties.X value ->
-        (Properties.X (length value) : Properties.translate_value)
+        (Properties.X (length authored value) : Properties.translate_value)
     | Properties.XY (x, y) ->
-        (Properties.XY (length x, length y) : Properties.translate_value)
+        (Properties.XY (length authored x, length authored y)
+          : Properties.translate_value)
     | Properties.XYZ (x, y, z) ->
-        (Properties.XYZ (length x, length y, length z)
+        (Properties.XYZ
+           (length authored x, length authored y, length authored z)
           : Properties.translate_value)
     | value -> value
   in
@@ -2241,7 +2262,8 @@ let simplify_scale ?layer_order ?layer cascade value =
   let number_percentage =
     simplify_number_percentage ?layer_order ?layer cascade
   in
-  let simplify_leaf _simplify ~visited:_ (value : Properties.scale) =
+  let simplify_leaf _simplify ~authored:_ ~visited:_ (value : Properties.scale)
+      =
     match value with
     | Properties.X value ->
         (Properties.X (number_percentage value) : Properties.scale)
@@ -2271,24 +2293,29 @@ let simplify_scale ?layer_order ?layer cascade value =
   Var_residual.simplify ?layer_order ?layer cascade ops value
 
 let simplify_transform ?layer_order ?layer cascade length_ctx value =
-  let length = Length.simplify ?layer_order ?layer cascade length_ctx in
+  let length authored =
+    Length.simplify ~preserve_authored_calc:authored ?layer_order ?layer
+      cascade length_ctx
+  in
   let angle = simplify_angle ?layer_order ?layer cascade in
   let number_percentage =
     simplify_number_percentage ?layer_order ?layer cascade
   in
-  let simplify_leaf simplify ~visited (value : Properties.transform) =
+  let simplify_leaf simplify ~authored ~visited (value : Properties.transform) =
     match value with
     | Properties.Translate (x, y) ->
-        (Properties.Translate (length x, Option.map length y)
+        (Properties.Translate
+           (length authored x, Option.map (length authored) y)
           : Properties.transform)
     | Properties.Translate_x x ->
-        (Properties.Translate_x (length x) : Properties.transform)
+        (Properties.Translate_x (length authored x) : Properties.transform)
     | Properties.Translate_y y ->
-        (Properties.Translate_y (length y) : Properties.transform)
+        (Properties.Translate_y (length authored y) : Properties.transform)
     | Properties.Translate_z z ->
-        (Properties.Translate_z (length z) : Properties.transform)
+        (Properties.Translate_z (length authored z) : Properties.transform)
     | Properties.Translate_3d (x, y, z) ->
-        (Properties.Translate_3d (length x, length y, length z)
+        (Properties.Translate_3d
+           (length authored x, length authored y, length authored z)
           : Properties.transform)
     | Properties.Rotate value ->
         (Properties.Rotate (angle value) : Properties.transform)
@@ -2325,9 +2352,9 @@ let simplify_transform ?layer_order ?layer cascade length_ctx value =
     | Properties.Skew_y value ->
         (Properties.Skew_y (angle value) : Properties.transform)
     | Properties.Perspective value ->
-        (Properties.Perspective (length value) : Properties.transform)
+        (Properties.Perspective (length authored value) : Properties.transform)
     | Properties.List values ->
-        (Properties.List (List.map (simplify ~visited) values)
+        (Properties.List (List.map (simplify ~authored ~visited) values)
           : Properties.transform)
     | value -> value
   in
@@ -2345,15 +2372,18 @@ let simplify_transform ?layer_order ?layer cascade length_ctx value =
   Var_residual.simplify ?layer_order ?layer cascade ops value
 
 let simplify_filter ?layer_order ?layer cascade length_ctx value =
-  let length = Length.simplify ?layer_order ?layer cascade length_ctx in
+  let length authored =
+    Length.simplify ~preserve_authored_calc:authored ?layer_order ?layer
+      cascade length_ctx
+  in
   let number_percentage =
     simplify_number_percentage ?layer_order ?layer cascade
   in
   let angle = simplify_angle ?layer_order ?layer cascade in
-  let simplify_leaf simplify ~visited (value : Properties.filter) =
+  let simplify_leaf simplify ~authored ~visited (value : Properties.filter) =
     match value with
     | Properties.Blur value ->
-        (Properties.Blur (length value) : Properties.filter)
+        (Properties.Blur (length authored value) : Properties.filter)
     | Properties.Brightness value ->
         (Properties.Brightness (number_percentage value) : Properties.filter)
     | Properties.Contrast value ->
@@ -2371,7 +2401,7 @@ let simplify_filter ?layer_order ?layer cascade length_ctx value =
     | Properties.Sepia value ->
         (Properties.Sepia (number_percentage value) : Properties.filter)
     | Properties.List values ->
-        (Properties.List (List.map (simplify ~visited) values)
+        (Properties.List (List.map (simplify ~authored ~visited) values)
           : Properties.filter)
     | value -> value
   in
@@ -2553,6 +2583,15 @@ let css_wide_of_shadow (value : Properties.shadow) =
   | Properties.Revert_layer -> Some Revert_layer
   | _ -> None
 
+let css_wide_of_border_radius (value : Properties.border_radius) =
+  match value with
+  | Properties.Inherit -> Some Inherit
+  | Properties.Initial -> Some Initial
+  | Properties.Unset -> Some Unset
+  | Properties.Revert -> Some Revert
+  | Properties.Revert_layer -> Some Revert_layer
+  | _ -> None
+
 let css_wide_of_color (value : Values.color) =
   match value with
   | Values.Inherit -> Some Inherit
@@ -2574,6 +2613,27 @@ let css_wide_of_background_image (value : Properties.background_image) =
 let css_wide_of_background_image_list (value : Properties.background_image list)
     =
   match value with [ image ] -> css_wide_of_background_image image | _ -> None
+
+let css_wide_of_animation (value : Properties.animation) =
+  match value with
+  | Properties.Inherit -> Some Inherit
+  | Properties.Initial -> Some Initial
+  | _ -> None
+
+let css_wide_of_animations (value : Properties.animation list) =
+  match value with [ animation ] -> css_wide_of_animation animation | _ -> None
+
+let css_wide_of_transition (value : Properties.transition) =
+  match value with
+  | Properties.Inherit -> Some Inherit
+  | Properties.Initial -> Some Initial
+  | Properties.Unset -> Some Unset
+  | Properties.Revert -> Some Revert
+  | Properties.Revert_layer -> Some Revert_layer
+  | _ -> None
+
+let css_wide_of_transitions (value : Properties.transition list) =
+  match value with [ transition ] -> css_wide_of_transition transition | _ -> None
 
 let rec declaration_with_importance important = function
   | Declaration.Declaration { property; value; important = _ } ->
@@ -2716,7 +2776,7 @@ let simplify_alpha ?layer_order ?layer ctx value =
   Calc_residual.simplify ?layer_order ?layer ctx ops value
 
 let simplify_channel ?layer_order ?layer ctx value =
-  let simplify_leaf _simplify ~visited:_ value = value in
+  let simplify_leaf _simplify ~authored:_ ~visited:_ value = value in
   let ops : Values.channel Var_residual.ops =
     {
       Var_residual.as_var =
@@ -2730,7 +2790,7 @@ let simplify_channel ?layer_order ?layer ctx value =
 
 let simplify_rgb ?layer_order ?layer ctx value =
   let channel = simplify_channel ?layer_order ?layer ctx in
-  let simplify_leaf _simplify ~visited:_ (value : Values.rgb) =
+  let simplify_leaf _simplify ~authored:_ ~visited:_ (value : Values.rgb) =
     match value with
     | Values.Channels { r; g; b } ->
         (Values.Channels { r = channel r; g = channel g; b = channel b }
@@ -2750,7 +2810,7 @@ let simplify_rgb ?layer_order ?layer ctx value =
 
 let simplify_hue ?layer_order ?layer ctx value =
   let angle_value = simplify_angle ?layer_order ?layer ctx in
-  let simplify_leaf _simplify ~visited:_ (value : Values.hue) =
+  let simplify_leaf _simplify ~authored:_ ~visited:_ (value : Values.hue) =
     match value with
     | Values.Angle (value : Values.angle) ->
         (Values.Angle (angle_value value) : Values.hue)
@@ -2774,7 +2834,7 @@ let simplify_color ?(layer_order = []) ?layer ctx (value : Values.color) :
   let alpha_value = simplify_alpha ~layer_order ?layer ctx in
   let rgb = simplify_rgb ~layer_order ?layer ctx in
   let hue = simplify_hue ~layer_order ?layer ctx in
-  let simplify_leaf simplify ~visited (value : Values.color) =
+  let simplify_leaf simplify ~authored ~visited (value : Values.color) =
     match value with
     | Values.Rgb value -> Values.Rgb (rgb value)
     | Values.Rgba { rgb = value; a } ->
@@ -2806,16 +2866,17 @@ let simplify_color ?(layer_order = []) ?layer ctx (value : Values.color) :
         | Some color -> color
         | None -> Values.Current)
     | Values.Contrast_color color ->
-        Values.Contrast_color (simplify ~visited color)
+        Values.Contrast_color (simplify ~authored ~visited color)
     | Values.Light_dark (light, dark) ->
-        Values.Light_dark (simplify ~visited light, simplify ~visited dark)
+        Values.Light_dark
+          (simplify ~authored ~visited light, simplify ~authored ~visited dark)
     | Values.Mix mix ->
         Values.Mix
           {
             mix with
-            color1 = simplify ~visited mix.color1;
+            color1 = simplify ~authored ~visited mix.color1;
             percent1 = Option.map percentage mix.percent1;
-            color2 = simplify ~visited mix.color2;
+            color2 = simplify ~authored ~visited mix.color2;
             percent2 = Option.map percentage mix.percent2;
           }
     | value -> value
@@ -2832,9 +2893,12 @@ let simplify_color ?(layer_order = []) ?layer ctx (value : Values.color) :
   Var_residual.simplify ~layer_order ?layer ctx ops value
 
 let simplify_shadow ?layer_order ?layer cascade length_ctx value =
-  let length = Length.simplify ?layer_order ?layer cascade length_ctx in
+  let length authored =
+    Length.simplify ~preserve_authored_calc:authored ?layer_order ?layer
+      cascade length_ctx
+  in
   let color = simplify_color ?layer_order ?layer cascade in
-  let simplify_leaf simplify ~visited (value : Properties.shadow) =
+  let simplify_leaf simplify ~authored ~visited (value : Properties.shadow) =
     match value with
     | Properties.Shadow
         {
@@ -2852,15 +2916,15 @@ let simplify_shadow ?layer_order ?layer cascade length_ctx value =
              inset;
              inset_var;
              inset_var_no_fallback;
-             h_offset = length h_offset;
-             v_offset = length v_offset;
-             blur = Option.map length blur;
-             spread = Option.map length spread;
+             h_offset = length authored h_offset;
+             v_offset = length authored v_offset;
+             blur = Option.map (length authored) blur;
+             spread = Option.map (length authored) spread;
              color = Option.map color shadow_color;
            }
           : Properties.shadow)
     | Properties.List shadows ->
-        (Properties.List (List.map (simplify ~visited) shadows)
+        (Properties.List (List.map (simplify ~authored ~visited) shadows)
           : Properties.shadow)
     | value -> value
   in
@@ -2875,6 +2939,35 @@ let simplify_shadow ?layer_order ?layer cascade length_ctx value =
         read_custom_value
           (Properties.Shadow : Properties.shadow Properties.kind)
           Properties.read_shadow;
+      simplify_leaf;
+    }
+  in
+  Var_residual.simplify ?layer_order ?layer cascade ops value
+
+let simplify_border_radius ?layer_order ?layer cascade length_ctx value =
+  let length_percentage =
+    simplify_length_percentage ?layer_order ?layer cascade length_ctx
+  in
+  let simplify_leaf _simplify ~authored:_ ~visited:_
+      (value : Properties.border_radius) =
+    match value with
+    | Properties.Radius { horizontal; vertical } ->
+        (Properties.Radius
+           {
+             horizontal = List.map length_percentage horizontal;
+             vertical = Option.map (List.map length_percentage) vertical;
+           }
+          : Properties.border_radius)
+    | value -> value
+  in
+  let ops : Properties.border_radius Var_residual.ops =
+    {
+      Var_residual.as_var =
+        (function
+        | (Properties.Var var : Properties.border_radius) -> Some var
+        | _ -> None);
+      of_var = (fun var -> Properties.Var var);
+      read_custom = read_custom_components Properties.read_border_radius;
       simplify_leaf;
     }
   in
@@ -2910,12 +3003,13 @@ let simplify_background_image ?(layer_order = []) ?layer ctx
     }
   in
   let gradient_stop (value : Properties.gradient_stop) =
-    let simplify_leaf simplify ~visited (value : Properties.gradient_stop) =
+    let simplify_leaf simplify ~authored ~visited
+        (value : Properties.gradient_stop) =
       match value with
       | Properties.Color_percentage (Values.Var var, None, None) -> (
           let stop_var = gradient_stop_of_color_var var in
           let stop =
-            simplify ~visited
+            simplify ~authored ~visited
               (Properties.Var stop_var : Properties.gradient_stop)
           in
           match (stop : Properties.gradient_stop) with
@@ -2940,7 +3034,7 @@ let simplify_background_image ?(layer_order = []) ?layer ctx
       | Properties.Percentage value ->
           (Properties.Percentage (percentage value) : Properties.gradient_stop)
       | Properties.List values ->
-          (Properties.List (List.map (simplify ~visited) values)
+          (Properties.List (List.map (simplify ~authored ~visited) values)
             : Properties.gradient_stop)
       | value -> value
     in
@@ -2974,7 +3068,8 @@ let simplify_background_image ?(layer_order = []) ?layer ctx
       default = Option.map gradient_stop var.default;
     }
   in
-  let simplify_leaf simplify ~visited (value : Properties.background_image) =
+  let simplify_leaf simplify ~authored ~visited
+      (value : Properties.background_image) =
     match value with
     | Properties.Url url ->
         (Properties.Url (resolve_url_leaf ctx url)
@@ -3010,11 +3105,12 @@ let simplify_background_image ?(layer_order = []) ?layer ctx
                {
                  option with
                  Properties.cross_fade_image =
-                   simplify ~visited option.Properties.cross_fade_image;
+                   simplify ~authored ~visited
+                     option.Properties.cross_fade_image;
                })
              options)
     | Properties.List images ->
-        Properties.List (List.map (simplify ~visited) images)
+        Properties.List (List.map (simplify ~authored ~visited) images)
     | value -> value
   in
   let ops : Properties.background_image Var_residual.ops =
@@ -3032,9 +3128,75 @@ let simplify_background_image ?(layer_order = []) ?layer ctx
   in
   Var_residual.simplify ~layer_order ?layer ctx ops value
 
+let simplify_animation_item ?layer_order ?layer ctx duration value =
+  let simplify_leaf _simplify ~authored:_ ~visited:_
+      (value : Properties.animation) =
+    match value with
+    | Properties.Shorthand (shorthand : Properties.animation_shorthand) ->
+        let shorthand : Properties.animation_shorthand =
+          {
+            name = shorthand.name;
+            duration = Option.map duration shorthand.duration;
+            timing_function = shorthand.timing_function;
+            delay = Option.map duration shorthand.delay;
+            iteration_count = shorthand.iteration_count;
+            direction = shorthand.direction;
+            fill_mode = shorthand.fill_mode;
+            play_state = shorthand.play_state;
+          }
+        in
+        (Properties.Shorthand shorthand : Properties.animation)
+    | value -> value
+  in
+  let ops : Properties.animation Var_residual.ops =
+    {
+      Var_residual.as_var =
+        (function
+        | (Properties.Var var : Properties.animation) -> Some var
+        | _ -> None);
+      of_var = (fun var -> Properties.Var var);
+      read_custom =
+        read_custom_value
+          (Properties.Animation : Properties.animation Properties.kind)
+          Properties.read_animation;
+      simplify_leaf;
+    }
+  in
+  Var_residual.simplify ?layer_order ?layer ctx ops value
+
+let simplify_transition_item ?layer_order ?layer ctx duration value =
+  let simplify_leaf _simplify ~authored:_ ~visited:_
+      (value : Properties.transition) =
+    match value with
+    | Properties.Shorthand (shorthand : Properties.transition_shorthand) ->
+        let shorthand : Properties.transition_shorthand =
+          {
+            property = shorthand.property;
+            duration = Option.map duration shorthand.duration;
+            timing_function = shorthand.timing_function;
+            delay = Option.map duration shorthand.delay;
+            behavior = shorthand.behavior;
+          }
+        in
+        (Properties.Shorthand shorthand : Properties.transition)
+    | value -> value
+  in
+  let ops : Properties.transition Var_residual.ops =
+    {
+      Var_residual.as_var =
+        (function
+        | (Properties.Var var : Properties.transition) -> Some var
+        | _ -> None);
+      of_var = (fun var -> Properties.Var var);
+      read_custom = read_custom_components Properties.read_transition;
+      simplify_leaf;
+    }
+  in
+  Var_residual.simplify ?layer_order ?layer ctx ops value
+
 let simplify_var_value ?layer_order ?layer ctx ~as_var ~of_var ~read_custom
     value =
-  let simplify_leaf _simplify ~visited:_ value = value in
+  let simplify_leaf _simplify ~authored:_ ~visited:_ value = value in
   let ops : _ Var_residual.ops =
     { Var_residual.as_var; of_var; read_custom; simplify_leaf }
   in
@@ -3102,9 +3264,18 @@ let rec eval_typed ?layer_order ?layer ctx decl =
   let transforms = List.map transform in
   let filter = simplify_filter ~layer_order ?layer ctx length_ctx in
   let shadow = simplify_shadow ~layer_order ?layer ctx length_ctx in
+  let border_radius =
+    simplify_border_radius ~layer_order ?layer ctx length_ctx
+  in
   let color = simplify_color ~layer_order ?layer ctx in
   let background_image = simplify_background_image ~layer_order ?layer ctx in
   let background_images = List.map background_image in
+  let animation =
+    List.map (simplify_animation_item ~layer_order ?layer ctx duration)
+  in
+  let transition =
+    List.map (simplify_transition_item ~layer_order ?layer ctx duration)
+  in
   let resolve_css_wide property important keyword =
     resolve_css_wide_keyword ~layer_order ctx ~important
       ~property_name:(property_name property) keyword
@@ -3236,6 +3407,20 @@ let rec eval_typed ?layer_order ?layer ctx decl =
                (css_wide_of_transforms value)
                (resolve_css_wide property important))
             ~default:(Declaration.Declaration { property; value; important })
+      | Some Properties.Animation ->
+          let value = animation value in
+          Option.value
+            (Option.bind
+               (css_wide_of_animations value)
+               (resolve_css_wide property important))
+            ~default:(Declaration.Declaration { property; value; important })
+      | Some Properties.Transition ->
+          let value = transition value in
+          Option.value
+            (Option.bind
+               (css_wide_of_transitions value)
+               (resolve_css_wide property important))
+            ~default:(Declaration.Declaration { property; value; important })
       | Some Properties.Filter ->
           let value = filter value in
           Option.value
@@ -3246,6 +3431,13 @@ let rec eval_typed ?layer_order ?layer ctx decl =
           let value = shadow value in
           Option.value
             (Option.bind (css_wide_of_shadow value)
+               (resolve_css_wide property important))
+            ~default:(Declaration.Declaration { property; value; important })
+      | Some Properties.Border_radius ->
+          let value = border_radius value in
+          Option.value
+            (Option.bind
+               (css_wide_of_border_radius value)
                (resolve_css_wide property important))
             ~default:(Declaration.Declaration { property; value; important })
       | Some Properties.Color ->

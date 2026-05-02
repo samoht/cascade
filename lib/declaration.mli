@@ -575,7 +575,7 @@ val flex_shrink : float -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/flex-shrink}
      flex-shrink} property. *)
 
-val flex_basis : length -> declaration
+val flex_basis : flex_basis -> declaration
 (** [flex_basis v] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/flex-basis} flex-basis}
     property. *)
