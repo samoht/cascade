@@ -326,6 +326,48 @@ let read_shape_outside t =
       Cursor.err_invalid t "empty basic shape"
   | _ -> Cursor.err_invalid t ("invalid shape-outside: " ^ raw)
 
+let read_shorthand_line_height r =
+  Cursor.one_of
+    [
+      (fun r -> ignore (read_length r : length));
+      (fun r -> ignore (read_percentage r : percentage));
+      (fun r -> ignore (Cursor.number r : float));
+      (fun r -> ignore (Cursor.enum "font line-height" [ ("normal", ()) ] r));
+    ]
+    r
+
+let read_font_shorthand_body r =
+  let saw_size = ref false in
+  let rec loop () =
+    Cursor.ws r;
+    if Cursor.is_done r then ()
+    else
+      match Cursor.peek_ident r with
+      | Some
+          ( "italic" | "oblique" | "normal" | "small-caps" | "bold" | "bolder"
+          | "lighter" | "condensed" | "expanded" ) ->
+          let _ = Cursor.ident r in
+          loop ()
+      | _ -> (
+          let before = Cursor.save r in
+          match read_font_weight r with
+          | _ -> loop ()
+          | exception Cursor.Parse_error _ ->
+              Cursor.restore r before;
+              let _ = read_font_size r in
+              saw_size := true;
+              (match Cursor.peek_delim r with
+              | Some '/' ->
+                  Cursor.skip r;
+                  read_shorthand_line_height r
+              | _ -> ());
+              ignore (read_font_family r : font_family);
+              Cursor.ws r;
+              Cursor.expect_eof r)
+  in
+  loop ();
+  !saw_size
+
 let rec read_font_shorthand t =
   let raw = Cursor.consume_to_decl_end ~trim:true t in
   let lower = String.lowercase_ascii raw in
@@ -342,49 +384,12 @@ let rec read_font_shorthand t =
     if is_valid_var () then raw
     else
       let r = Cursor.of_string raw in
-      let read_shorthand_line_height r =
-        Cursor.one_of
-          [
-            (fun r -> ignore (read_length r : length));
-            (fun r -> ignore (read_percentage r : percentage));
-            (fun r -> ignore (Cursor.number r : float));
-            (fun r ->
-              ignore (Cursor.enum "font line-height" [ ("normal", ()) ] r));
-          ]
-          r
+      let saw_size =
+        try read_font_shorthand_body r
+        with Cursor.Parse_error _ ->
+          Cursor.err_invalid t "invalid font shorthand"
       in
-      let saw_size = ref false in
-      let rec loop () =
-        Cursor.ws r;
-        if Cursor.is_done r then ()
-        else
-          match Cursor.peek_ident r with
-          | Some
-              ( "italic" | "oblique" | "normal" | "small-caps" | "bold"
-              | "bolder" | "lighter" | "condensed" | "expanded" ) ->
-              let _ = Cursor.ident r in
-              loop ()
-          | _ -> (
-              let before = Cursor.save r in
-              match read_font_weight r with
-              | _ -> loop ()
-              | exception Cursor.Parse_error _ ->
-                  Cursor.restore r before;
-                  let _ = read_font_size r in
-                  saw_size := true;
-                  (match Cursor.peek_delim r with
-                  | Some '/' ->
-                      Cursor.skip r;
-                      read_shorthand_line_height r
-                  | _ -> ());
-                  ignore (read_font_family r : font_family);
-                  Cursor.ws r;
-                  Cursor.expect_eof r)
-      in
-      (try loop ()
-       with Cursor.Parse_error _ ->
-         Cursor.err_invalid t "invalid font shorthand");
-      if not !saw_size then Cursor.err_invalid t "font shorthand missing size";
+      if not saw_size then Cursor.err_invalid t "font shorthand missing size";
       raw
 
 let is_grid_area_ws = function
@@ -1350,8 +1355,11 @@ let read_value (type a) (prop : a property) t : declaration =
   | Text_underline_offset ->
       v Text_underline_offset (read_nn_length_or_global t)
   | Text_emphasis -> v Text_emphasis (read_text_emphasis t)
+  | Text_emphasis_style -> v Text_emphasis_style (read_text_emphasis_style t)
+  | Text_emphasis_color -> v Text_emphasis_color (read_color t)
   | Text_emphasis_position ->
       v Text_emphasis_position (read_text_emphasis_position t)
+  | Text_emphasis_skip -> v Text_emphasis_skip (read_text_emphasis_skip t)
   | Text_orientation -> v Text_orientation (read_text_orientation t)
   | Letter_spacing -> v Letter_spacing (read_nn_length_or_global t)
   (* List properties *)
@@ -1459,6 +1467,10 @@ let read_value (type a) (prop : a property) t : declaration =
   | Font_synthesis_style -> v Font_synthesis_style (read_font_synthesis_style t)
   | Font_synthesis_weight ->
       v Font_synthesis_weight (read_font_synthesis_weight t)
+  | Font_synthesis_small_caps ->
+      v Font_synthesis_small_caps (read_font_synthesis_small_caps t)
+  | Font_synthesis_position ->
+      v Font_synthesis_position (read_font_synthesis_position t)
   | Font_variant_ligatures ->
       v Font_variant_ligatures (read_font_variant_ligatures t)
   | Font_variant_caps -> v Font_variant_caps (read_font_variant_caps t)
@@ -1476,6 +1488,15 @@ let read_value (type a) (prop : a property) t : declaration =
   | Text_size_adjust -> v Text_size_adjust (read_text_size_adjust t)
   | Text_decoration_skip_ink ->
       v Text_decoration_skip_ink (read_text_decoration_skip_ink t)
+  | Text_decoration_skip -> v Text_decoration_skip (read_text_decoration_skip t)
+  | Text_decoration_skip_self ->
+      v Text_decoration_skip_self (read_text_decoration_skip_self t)
+  | Text_decoration_skip_box ->
+      v Text_decoration_skip_box (read_text_decoration_skip_box t)
+  | Text_decoration_skip_inset ->
+      v Text_decoration_skip_inset (read_text_decoration_skip_inset t)
+  | Text_decoration_skip_spaces ->
+      v Text_decoration_skip_spaces (read_text_decoration_skip_spaces t)
   (* Word/text breaking *)
   | Word_break -> v Word_break (read_word_break t)
   | Overflow_wrap -> v Overflow_wrap (read_overflow_wrap t)
@@ -2089,8 +2110,8 @@ let grid_row_start value = v Grid_row_start value
 let grid_row_end value = v Grid_row_end value
 let grid_column_start value = v Grid_column_start value
 let grid_column_end value = v Grid_column_end value
-let grid_row (pair : grid_line * grid_line) = v Grid_row pair
-let grid_column (pair : grid_line * grid_line) = v Grid_column pair
+let grid_row (start, end_) = v Grid_row (Lines (start, end_))
+let grid_column (start, end_) = v Grid_column (Lines (start, end_))
 let grid_area value = v Grid_area value
 let width len = v Width (Length len)
 let height len = v Height (Length len)
@@ -2114,8 +2135,16 @@ let text_align a = v Text_align a
 let text_decoration_style value = v Text_decoration_style value
 let text_decoration_line value = v Text_decoration_line [ value ]
 let text_underline_offset value = v Text_underline_offset value
+let text_decoration_skip value = v Text_decoration_skip value
+let text_decoration_skip_self value = v Text_decoration_skip_self value
+let text_decoration_skip_box value = v Text_decoration_skip_box value
+let text_decoration_skip_inset value = v Text_decoration_skip_inset value
+let text_decoration_skip_spaces value = v Text_decoration_skip_spaces value
 let text_emphasis value = v Text_emphasis value
+let text_emphasis_style value = v Text_emphasis_style value
+let text_emphasis_color value = v Text_emphasis_color value
 let text_emphasis_position value = v Text_emphasis_position value
+let text_emphasis_skip value = v Text_emphasis_skip value
 let text_orientation value = v Text_orientation value
 let text_transform value = v Text_transform value
 let letter_spacing len = v Letter_spacing len
