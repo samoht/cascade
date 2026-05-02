@@ -286,6 +286,11 @@ let rec vars_of_length (value : Values.length) : any_var list =
 let vars_of_length_list (values : Values.length list) : any_var list =
   List.concat_map vars_of_length values
 
+let vars_of_border_spacing (value : Properties.border_spacing) : any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | (Lengths values : Properties.border_spacing) -> vars_of_length_list values
+
 (** Helper for types that share Length/Var/Calc constructors with a wildcard
     fallback (e.g., length_percentage, font_size). The caller decomposes the
     value into one of three cases. *)
@@ -456,10 +461,6 @@ let vars_of_text_emphasis_position (value : Properties.text_emphasis_position) :
     any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
-let vars_of_text_emphasis_skip (value : Properties.text_emphasis_skip) :
-    any_var list =
-  match value with Var v -> [ V v ] | _ -> []
-
 let vars_of_text_orientation (value : Properties.text_orientation) :
     any_var list =
   match value with Var v -> [ V v ] | _ -> []
@@ -581,6 +582,12 @@ let rec vars_of_grid_template (value : Properties.grid_template) : any_var list
 
 let vars_of_grid_line (value : Properties.grid_line) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_grid_line_pair (value : Properties.grid_line_pair) : any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | (Lines (start, end_) : Properties.grid_line_pair) ->
+      vars_of_grid_line start @ vars_of_grid_line end_
 
 let vars_of_list_style_image (value : Properties.list_style_image) :
     any_var list =
@@ -773,8 +780,10 @@ let vars_of_animation_timeline (value : Properties.animation_timeline) =
 
 let vars_of_animation_range_item (value : Properties.animation_range_item) =
   match value with
+  | Var v -> [ V v ]
   | Normal -> []
   | Offset lp | Named (_, lp) -> vars_of_length_percentage lp
+  | Initial | Inherit | Unset | Revert | Revert_layer -> []
 
 let vars_of_animation_range (value : Properties.animation_range) =
   match value with
@@ -799,8 +808,8 @@ let vars_of_image_rendering (value : Properties.image_rendering) =
 let vars_of_image_resolution (value : Properties.image_resolution) =
   match value with Var v -> [ V v ] | _ -> []
 
-let vars_of_intrinsic_size_item
-    (value : Properties.contain_intrinsic_size_item) =
+let vars_of_intrinsic_size_item (value : Properties.contain_intrinsic_size_item)
+    =
   match value with Length len | Auto len -> vars_of_length len
 
 let vars_of_contain_intrinsic_size (value : Properties.contain_intrinsic_size) =
@@ -861,6 +870,25 @@ let vars_of_text_decoration_line (value : Properties.text_decoration_line) =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_text_decoration_style (value : Properties.text_decoration_style) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_text_decoration_skip (value : Properties.text_decoration_skip) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_decoration_skip_self
+    (value : Properties.text_decoration_skip_self) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_decoration_skip_box
+    (value : Properties.text_decoration_skip_box) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_decoration_skip_inset
+    (value : Properties.text_decoration_skip_inset) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_decoration_skip_spaces
+    (value : Properties.text_decoration_skip_spaces) =
   match value with Var v -> [ V v ] | _ -> []
 
 let rec vars_of_text_overflow (value : Properties.text_overflow) =
@@ -1018,8 +1046,7 @@ let vars_of_clear (value : Properties.clear) =
 let vars_of_float_side (value : Properties.float_side) =
   match value with Var v -> [ V v ] | _ -> []
 
-let vars_of_decoration_skip_ink
-    (value : Properties.text_decoration_skip_ink) =
+let vars_of_decoration_skip_ink (value : Properties.text_decoration_skip_ink) =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_forced_color_adjust (value : Properties.forced_color_adjust) =
@@ -1126,6 +1153,14 @@ let vars_of_font_synthesis_style (value : Properties.font_synthesis_style) =
 let vars_of_font_synthesis_weight (value : Properties.font_synthesis_weight) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_synthesis_small_caps
+    (value : Properties.font_synthesis_small_caps) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_font_synthesis_position (value : Properties.font_synthesis_position)
+    =
+  match value with Var v -> [ V v ] | _ -> []
+
 let vars_of_font_variant_ligatures (value : Properties.font_variant_ligatures) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -1135,8 +1170,7 @@ let vars_of_font_variant_caps (value : Properties.font_variant_caps) =
 let vars_of_font_variant_position (value : Properties.font_variant_position) =
   match value with Var v -> [ V v ] | _ -> []
 
-let vars_of_east_asian (value : Properties.font_variant_east_asian)
-    =
+let vars_of_east_asian (value : Properties.font_variant_east_asian) =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_font_size_adjust (value : Properties.font_size_adjust) =
@@ -1227,8 +1261,7 @@ let rec vars_of_webkit_mask_composite (value : Properties.webkit_mask_composite)
 let vars_of_mask_composite (value : Properties.mask_composite) =
   match value with Var v -> [ V v ] | _ -> []
 
-let vars_of_mask_source_type (value : Properties.webkit_mask_source_type)
-    =
+let vars_of_mask_source_type (value : Properties.webkit_mask_source_type) =
   match value with Var v -> [ V v ] | _ -> []
 
 let rec vars_of_mask_mode (value : Properties.mask_mode) =
@@ -1385,7 +1418,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Text_decoration_thickness, value -> vars_of_length value
   | Word_spacing, value -> vars_of_length value
   (* Other length properties *)
-  | Border_spacing, values -> List.concat_map vars_of_length values
+  | Border_spacing, value -> vars_of_border_spacing value
   | Perspective, value -> vars_of_length value
   | Stroke_width, value -> vars_of_length value
   | Scroll_margin, value -> List.concat_map vars_of_length value
@@ -1430,6 +1463,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Font_language_override, value -> vars_of_font_language_override value
   | Font_synthesis_style, value -> vars_of_font_synthesis_style value
   | Font_synthesis_weight, value -> vars_of_font_synthesis_weight value
+  | Font_synthesis_small_caps, value -> vars_of_synthesis_small_caps value
+  | Font_synthesis_position, value -> vars_of_font_synthesis_position value
   | Font_variant_ligatures, value -> vars_of_font_variant_ligatures value
   | Font_variant_caps, value -> vars_of_font_variant_caps value
   | Font_variant_emoji, value -> vars_of_font_variant_emoji value
@@ -1441,7 +1476,6 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Text_decoration, value -> vars_of_text_decoration value
   | Text_emphasis, value -> vars_of_text_emphasis value
   | Text_emphasis_position, value -> vars_of_text_emphasis_position value
-  | Text_emphasis_skip, value -> vars_of_text_emphasis_skip value
   | Text_orientation, value -> vars_of_text_orientation value
   | Webkit_text_decoration, value -> vars_of_text_decoration value
   | Text_transform, value -> vars_of_text_transform value
@@ -1500,6 +1534,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   (* Grid line *)
   | Grid_column_end, value -> vars_of_grid_line value
   | Grid_column_start, value -> vars_of_grid_line value
+  | Grid_column, value -> vars_of_grid_line_pair value
+  | Grid_row, value -> vars_of_grid_line_pair value
   | Grid_row_end, value -> vars_of_grid_line value
   | Grid_row_start, value -> vars_of_grid_line value
   (* List style *)
@@ -1575,8 +1611,8 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Font_synthesis, value -> vars_of_font_synthesis value
   | Animation_timeline, value -> vars_of_animation_timeline value
   | Animation_range, value -> vars_of_animation_range value
-  | Animation_range_start, value -> vars_of_animation_range value
-  | Animation_range_end, value -> vars_of_animation_range value
+  | Animation_range_start, value -> vars_of_animation_range_item value
+  | Animation_range_end, value -> vars_of_animation_range_item value
   | View_transition_name, value -> vars_of_view_transition_name value
   | View_transition_class, value -> vars_of_view_transition_class value
   | Image_orientation, value -> vars_of_image_orientation value
@@ -1655,6 +1691,12 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Text_align, value -> vars_of_text_align value
   | Text_decoration_line, values ->
       List.concat_map vars_of_text_decoration_line values
+  | Text_decoration_skip, value -> vars_of_text_decoration_skip value
+  | Text_decoration_skip_self, value -> vars_of_decoration_skip_self value
+  | Text_decoration_skip_box, value -> vars_of_decoration_skip_box value
+  | Text_decoration_skip_inset, value -> vars_of_decoration_skip_inset value
+  | Text_decoration_skip_spaces, value ->
+      vars_of_decoration_skip_spaces value
   | Text_decoration_skip_ink, value -> vars_of_decoration_skip_ink value
   | Text_decoration_style, value -> vars_of_text_decoration_style value
   | Text_overflow, value -> vars_of_text_overflow value
