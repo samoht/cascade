@@ -15325,3 +15325,432 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Webkit_mask_image -> Some Background_image
   | Mask_image -> Some Background_image
   | _ -> None
+
+(* ===== Readers moved here from Declaration so the API consistency script can
+   surface them in [properties.mli]. ===== *)
+
+let rec read_font_variant_emoji t : font_variant_emoji =
+  Cursor.enum_or_var "font-variant-emoji"
+    [
+      ("normal", (Normal : font_variant_emoji));
+      ("text", Text);
+      ("emoji", Emoji);
+      ("unicode", Unicode);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_font_variant_emoji t))
+    t
+
+let rec read_dominant_baseline t : dominant_baseline =
+  Cursor.enum_or_var "dominant-baseline"
+    [
+      ("auto", (Auto : dominant_baseline));
+      ("alphabetic", Alphabetic);
+      ("ideographic", Ideographic);
+      ("mathematical", Mathematical);
+      ("central", Central);
+      ("middle", Middle);
+      ("text-top", Text_top);
+      ("text-bottom", Text_bottom);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_dominant_baseline t))
+    t
+
+let read_ray_size t : ray_size =
+  Cursor.enum "ray size"
+    [
+      ("closest-side", (Radial Closest_side : ray_size));
+      ("closest-corner", Radial Closest_corner);
+      ("farthest-side", Radial Farthest_side);
+      ("farthest-corner", Radial Farthest_corner);
+      ("sides", Sides);
+    ]
+    t
+
+let read_initial_letter_align_keyword t : initial_letter_align_keyword =
+  Cursor.enum "initial-letter-align"
+    [
+      ("alphabetic", (Alphabetic : initial_letter_align_keyword));
+      ("ideographic", Ideographic);
+      ("hanging", Hanging);
+      ("leading", Leading);
+      ("border-box", Border_box);
+    ]
+    t
+
+let read_font_size_adjust_metric t : font_size_adjust_metric =
+  Cursor.enum "font-size-adjust metric"
+    [
+      ("ex-height", (Ex_height : font_size_adjust_metric));
+      ("cap-height", Cap_height);
+      ("ch-width", Ch_width);
+      ("ic-width", Ic_width);
+      ("ic-height", Ic_height);
+    ]
+    t
+
+let read_animation_range_name t : animation_range_name =
+  Cursor.enum "animation-range name"
+    [
+      ("cover", Cover);
+      ("contain", Contain);
+      ("entry", Entry);
+      ("exit", Exit);
+      ("entry-crossing", Entry_crossing);
+      ("exit-crossing", Exit_crossing);
+    ]
+    t
+
+let read_border_image_repeat_keyword t : border_image_repeat_keyword =
+  Cursor.enum "border-image-repeat"
+    [
+      ("stretch", (Stretch : border_image_repeat_keyword));
+      ("repeat", Repeat);
+      ("round", Round);
+      ("space", Space);
+    ]
+    t
+
+let read_margin_trim_axis t : margin_trim_axis =
+  Cursor.enum "margin-trim axis"
+    [ ("block", (Block : margin_trim_axis)); ("inline", Inline) ]
+    t
+
+let read_margin_trim_edge t : margin_trim_edge =
+  Cursor.enum "margin-trim edge"
+    [
+      ("block-start", (Block_start : margin_trim_edge));
+      ("inline-start", Inline_start);
+      ("block-end", Block_end);
+      ("inline-end", Inline_end);
+    ]
+    t
+
+let rec read_font_size_adjust t : font_size_adjust =
+  let read_metric_value t =
+    let metric = read_font_size_adjust_metric t in
+    Cursor.ws t;
+    match Cursor.peek_ident t with
+    | Some "from-font" ->
+        let _ = Cursor.ident t in
+        Metric_from_font metric
+    | _ -> Metric_number (metric, Cursor.number t)
+  in
+  Cursor.enum_or_var "font-size-adjust"
+    [
+      ("none", (None : font_size_adjust));
+      ("from-font", From_font);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_font_size_adjust t))
+    ~default:(fun t ->
+      match Cursor.peek_ident t with
+      | Some _ -> read_metric_value t
+      | None -> Number (Cursor.number t))
+    t
+
+let rec read_initial_letter t : initial_letter =
+  let read_number t =
+    let size = Cursor.number t in
+    if size < 1. then Cursor.err_invalid t "initial-letter size must be >= 1";
+    Cursor.ws t;
+    if Cursor.is_done t || Cursor.peek_semicolon t then
+      (Size size : initial_letter)
+    else
+      let sink = Cursor.int t in
+      if sink < 1 then Cursor.err_invalid t "initial-letter sink must be >= 1";
+      Cursor.ws t;
+      Cursor.expect_eof t;
+      Size_sink (size, sink)
+  in
+  Cursor.enum_or_calls "initial-letter"
+    [
+      ("normal", (Normal : initial_letter));
+      ("drop", Drop);
+      ("raise", Raise);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:[ ("var", fun t -> Var (Values.read_var read_initial_letter t)) ]
+    ~default:read_number t
+
+let rec read_initial_letter_align t : initial_letter_align =
+  Cursor.enum_or_var "initial-letter-align"
+    [
+      ("inherit", (Inherit : initial_letter_align));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_initial_letter_align t))
+    ~default:(fun t ->
+      let keywords =
+        Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2
+          read_initial_letter_align_keyword t
+      in
+      let duplicate =
+        List.exists
+          (fun keyword ->
+            List.length (List.filter (( = ) keyword) keywords) > 1)
+          keywords
+      in
+      let valid_pair =
+        match keywords with
+        | [ _ ] -> true
+        | [ first; second ] ->
+            (first = Border_box && second <> Border_box)
+            || (first <> Border_box && second = Border_box)
+        | _ -> false
+      in
+      if duplicate || not valid_pair then
+        Cursor.err_invalid t "initial-letter-align"
+      else (Align keywords : initial_letter_align))
+    t
+
+let rec read_initial_letter_wrap t : initial_letter_wrap =
+  Cursor.enum_or_var "initial-letter-wrap"
+    [
+      ("none", (None : initial_letter_wrap));
+      ("first", First);
+      ("all", All);
+      ("grid", Grid);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (Values.read_var read_initial_letter_wrap t))
+    ~default:(fun t ->
+      (Length (Values.read_length_percentage ~with_keywords:false t)
+        : initial_letter_wrap))
+    t
+
+let rec read_margin_trim t : margin_trim =
+  let keywords : (string * margin_trim) list =
+    [
+      ("none", None);
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+  in
+  let read_axis = function
+    | "block" -> (Block : margin_trim_axis)
+    | "inline" -> Inline
+    | s -> Cursor.err_invalid t ("invalid margin-trim axis: " ^ s)
+  in
+  let read_axes t : margin_trim option =
+    let axes = [ "block"; "inline" ] in
+    let rec loop acc =
+      Cursor.ws t;
+      match Cursor.peek_ident t with
+      | Some s when List.mem s axes && not (List.mem (read_axis s) acc) ->
+          let _ = Cursor.ident t in
+          loop (read_axis s :: acc)
+      | Some s when List.mem s axes ->
+          Cursor.err_invalid t
+            (String.concat "" [ "duplicate margin-trim axis: "; s ])
+      | _ -> List.rev acc
+    in
+    match loop [] with
+    | [] -> None
+    | [ Block ] -> Some (Block : margin_trim)
+    | [ Inline ] -> Some (Inline : margin_trim)
+    | axes -> Some (Axes axes : margin_trim)
+  in
+  let read_edges t =
+    let read_edge = function
+      | "block-start" -> (Block_start : margin_trim_edge)
+      | "inline-start" -> Inline_start
+      | "block-end" -> Block_end
+      | "inline-end" -> Inline_end
+      | s -> Cursor.err_invalid t ("invalid margin-trim edge: " ^ s)
+    in
+    let edges = [ "block-start"; "inline-start"; "block-end"; "inline-end" ] in
+    let rec loop acc =
+      Cursor.ws t;
+      match Cursor.peek_ident t with
+      | Some s when List.mem s edges && not (List.mem (read_edge s) acc) ->
+          let _ = Cursor.ident t in
+          loop (read_edge s :: acc)
+      | Some s when List.mem s edges ->
+          Cursor.err_invalid t
+            (String.concat "" [ "duplicate margin-trim edge: "; s ])
+      | _ -> List.rev acc
+    in
+    let chosen = loop [] in
+    if chosen = [] then Cursor.err_expected t "margin-trim value"
+    else (Edges chosen : margin_trim)
+  in
+  (Cursor.enum_or_var "margin-trim" keywords
+     ~var:(fun t -> (Var (Values.read_var read_margin_trim t) : margin_trim))
+     ~default:(fun t ->
+       match read_axes t with Some value -> value | None -> read_edges t)
+     t
+    : margin_trim)
+
+let rec read_offset_path t : offset_path =
+  let read_path t =
+    Cursor.call "path" t @@ fun inner ->
+    Cursor.ws inner;
+    match Cursor.string_opt inner with
+    | Some path when path <> "" ->
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        (Path path : offset_path)
+    | Some _ -> Cursor.err_invalid inner "empty offset path"
+    | None -> Cursor.err_expected inner "path string"
+  in
+  let read_ray t =
+    Cursor.call "ray" t @@ fun inner ->
+    Cursor.ws inner;
+    let angle = Values.read_angle inner in
+    Cursor.ws inner;
+    let size = Cursor.option read_ray_size inner in
+    Cursor.ws inner;
+    let contain =
+      match Cursor.peek_ident inner with
+      | Some "contain" ->
+          let _ = Cursor.ident inner in
+          true
+      | _ -> false
+    in
+    Cursor.ws inner;
+    let position =
+      match Cursor.peek_ident inner with
+      | Some "at" ->
+          let _ = Cursor.ident inner in
+          Cursor.ws inner;
+          Some (read_position_value inner)
+      | _ -> None
+    in
+    Cursor.ws inner;
+    Cursor.expect_eof inner;
+    (Ray { angle; size; contain; position } : offset_path)
+  in
+  let read_url_function t =
+    Cursor.call "url" t @@ fun inner ->
+    Cursor.ws inner;
+    match Cursor.string_opt inner with
+    | Some url when url <> "" ->
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        (Url url : offset_path)
+    | Some _ -> Cursor.err_invalid inner "empty offset path url"
+    | None -> Cursor.err_expected inner "url string"
+  in
+  let read_url_token t =
+    match Cursor.url_opt t with
+    | Some url when url <> "" -> (Url url : offset_path)
+    | Some _ -> Cursor.err_invalid t "empty offset path url"
+    | None -> Cursor.err_expected t "offset-path"
+  in
+  Cursor.enum_or_calls "offset-path"
+    [
+      ("none", (None : offset_path));
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:
+      [
+        ("path", read_path);
+        ("ray", read_ray);
+        ("url", read_url_function);
+        ( "var",
+          fun t -> (Var (Values.read_var read_offset_path t) : offset_path) );
+      ]
+    ~default:read_url_token t
+
+let animation_range_names =
+  [ "cover"; "contain"; "entry"; "exit"; "entry-crossing"; "exit-crossing" ]
+
+let rec read_animation_range_item t : animation_range_item =
+  let keywords : (string * animation_range_item) list =
+    [
+      ("normal", (Normal : animation_range_item));
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+  in
+  let read_item t =
+    Cursor.ws t;
+    match Cursor.peek_ident t with
+    | Some name when List.mem name animation_range_names ->
+        let name : animation_range_name = read_animation_range_name t in
+        Cursor.ws t;
+        let lp = Values.read_length_percentage t in
+        (Named (name, lp) : animation_range_item)
+    | _ ->
+        let lp = Values.read_length_percentage t in
+        Offset lp
+  in
+  Cursor.enum_or_var "animation-range-item" keywords
+    ~var:(fun t ->
+      (Var (Values.read_var read_animation_range_item t)
+        : animation_range_item))
+    ~default:read_item t
+
+let rec read_animation_range t : animation_range =
+  let keywords : (string * animation_range) list =
+    [
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+  in
+  let read_range t =
+    let read_single t =
+      Cursor.ws t;
+      match Cursor.peek_ident t with
+      | Some "normal" ->
+          let _ = Cursor.ident t in
+          (Normal : animation_range_item)
+      | Some name when List.mem name animation_range_names ->
+          let name : animation_range_name = read_animation_range_name t in
+          Cursor.ws t;
+          let lp = Values.read_length_percentage t in
+          (Named (name, lp) : animation_range_item)
+      | _ ->
+          let lp = Values.read_length_percentage t in
+          Offset lp
+    in
+    let first = read_single t in
+    Cursor.ws t;
+    if Cursor.is_done t || Cursor.peek_semicolon t then Range (first, None)
+    else
+      let second = read_single t in
+      Range (first, Some second)
+  in
+  (Cursor.enum_or_var "animation-range" keywords
+     ~var:(fun t ->
+       (Var (Values.read_var read_animation_range t) : animation_range))
+     ~default:read_range t
+    : animation_range)

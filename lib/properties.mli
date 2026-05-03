@@ -99,6 +99,23 @@ val pp_timeline_inset_item : timeline_inset_item Pp.t
 val read_timeline_inset_item : Cursor.t -> timeline_inset_item
 val pp_timeline_shorthand_item : timeline_shorthand_item Pp.t
 val read_timeline_shorthand_item : Cursor.t -> timeline_shorthand_item
+val read_font_variant_emoji : Cursor.t -> font_variant_emoji
+val read_dominant_baseline : Cursor.t -> dominant_baseline
+val read_ray_size : Cursor.t -> ray_size
+val read_initial_letter_align_keyword : Cursor.t -> initial_letter_align_keyword
+val read_font_size_adjust_metric : Cursor.t -> font_size_adjust_metric
+val read_animation_range_name : Cursor.t -> animation_range_name
+val read_border_image_repeat_keyword : Cursor.t -> border_image_repeat_keyword
+val read_margin_trim_axis : Cursor.t -> margin_trim_axis
+val read_margin_trim_edge : Cursor.t -> margin_trim_edge
+val read_font_size_adjust : Cursor.t -> font_size_adjust
+val read_initial_letter : Cursor.t -> initial_letter
+val read_initial_letter_align : Cursor.t -> initial_letter_align
+val read_initial_letter_wrap : Cursor.t -> initial_letter_wrap
+val read_margin_trim : Cursor.t -> margin_trim
+val read_offset_path : Cursor.t -> offset_path
+val read_animation_range_item : Cursor.t -> animation_range_item
+val read_animation_range : Cursor.t -> animation_range
 
 val pp_position_visibility : position_visibility Pp.t
 (** [pp_position_visibility] pretty-prints [position-visibility]. *)
