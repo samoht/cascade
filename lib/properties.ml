@@ -670,11 +670,12 @@ let rec read_font_size t : font_size =
   let read_var t : font_size = Var (read_var read_font_size t) in
   let read_calc t : font_size = Calc (read_calc read_font_size t) in
   let read_length t : font_size =
-    let len = read_length t in
+    let len = read_non_negative_length ~with_keywords:false t in
     Length len
   in
   let read_pct t : font_size =
     let n = Cursor.number t in
+    if n < 0. then Cursor.err_invalid t "negative font-size percentage";
     Cursor.expect '%' t;
     Pct n
   in
@@ -10550,6 +10551,41 @@ let rec read_timeline_inset t : timeline_inset =
       | [ first; second ] -> (Inset (first, Some second) : timeline_inset)
       | _ -> Cursor.err_expected t "timeline-inset")
     t
+
+let read_position_try_fallback t =
+  Cursor.ws t;
+  match Cursor.peek_ident t with
+  | Some (("flip-block" | "flip-inline" | "flip-start") as keyword) -> (
+      let _ = Cursor.ident t in
+      match keyword with
+      | "flip-block" -> (Flip_block : position_try_fallback)
+      | "flip-inline" -> Flip_inline
+      | "flip-start" -> Flip_start
+      | _ -> assert false)
+  | _ -> Name (read_dashed_ident t)
+
+let rec read_position_try_fallbacks t : position_try_fallbacks =
+  let keywords : (string * position_try_fallbacks) list =
+    [
+      ("none", None);
+      ("initial", Initial);
+      ("inherit", Inherit);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+  in
+  (Cursor.enum_or_var "position-try-fallbacks" keywords
+     ~var:(fun t ->
+       (Var (Values.read_var read_position_try_fallbacks t)
+         : position_try_fallbacks))
+     ~default:(fun t ->
+       (Fallbacks
+          (Cursor.list ~sep:Cursor.comma ~at_least:1 read_position_try_fallback
+             t)
+         : position_try_fallbacks))
+     t
+    : position_try_fallbacks)
 
 let rec read_position_try_order t : position_try_order =
   Cursor.enum_or_var "position-try-order"
