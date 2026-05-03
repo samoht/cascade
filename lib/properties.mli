@@ -227,6 +227,24 @@ val pp_visibility : visibility Pp.t
 val read_visibility : Cursor.t -> visibility
 (** [read_visibility t] is the [visibility] parsed from [t]. *)
 
+val pp_baseline_source : baseline_source Pp.t
+(** [pp_baseline_source] is the pretty-printer for [baseline_source]. *)
+
+val read_baseline_source : Cursor.t -> baseline_source
+(** [read_baseline_source t] is the [baseline_source] parsed from [t]. *)
+
+val pp_alignment_baseline : alignment_baseline Pp.t
+(** [pp_alignment_baseline] is the pretty-printer for [alignment_baseline]. *)
+
+val read_alignment_baseline : Cursor.t -> alignment_baseline
+(** [read_alignment_baseline t] is the [alignment_baseline] parsed from [t]. *)
+
+val pp_baseline_shift : baseline_shift Pp.t
+(** [pp_baseline_shift] is the pretty-printer for [baseline_shift]. *)
+
+val read_baseline_shift : Cursor.t -> baseline_shift
+(** [read_baseline_shift t] is the [baseline_shift] parsed from [t]. *)
+
 val pp_z_index : z_index Pp.t
 (** [pp_z_index] is the pretty-printer for [z_index]. *)
 
@@ -463,11 +481,78 @@ val pp_text_box_trim : text_box_trim Pp.t
 val read_text_box_trim : Cursor.t -> text_box_trim
 (** [read_text_box_trim t] is the [text_box_trim] parsed from [t]. *)
 
+val pp_text_underline_position : text_underline_position Pp.t
+(** [pp_text_underline_position] pretty-prints [text_underline_position]. *)
+
+val read_text_underline_position : Cursor.t -> text_underline_position
+(** [read_text_underline_position t] parses [text-underline-position]. *)
+
+val pp_text_box_edge : text_box_edge Pp.t
+(** [pp_text_box_edge] is the pretty-printer for [text_box_edge]. *)
+
+val read_text_box_edge : ?global:bool -> Cursor.t -> text_box_edge
+(** [read_text_box_edge t] parses [text-box-edge]. *)
+
 val pp_text_box : text_box Pp.t
 (** [pp_text_box] is the pretty-printer for [text_box]. *)
 
 val read_text_box : Cursor.t -> text_box
 (** [read_text_box t] parses [text-box]. *)
+
+val pp_inline_sizing : inline_sizing Pp.t
+(** [pp_inline_sizing] is the pretty-printer for [inline_sizing]. *)
+
+val read_inline_sizing : Cursor.t -> inline_sizing
+(** [read_inline_sizing t] parses [inline-sizing]. *)
+
+val pp_line_fit_edge : line_fit_edge Pp.t
+(** [pp_line_fit_edge] is the pretty-printer for [line_fit_edge]. *)
+
+val read_line_fit_edge : Cursor.t -> line_fit_edge
+(** [read_line_fit_edge t] parses [line-fit-edge]. *)
+
+val pp_interpolate_size : interpolate_size Pp.t
+(** [pp_interpolate_size] is the pretty-printer for [interpolate_size]. *)
+
+val read_interpolate_size : Cursor.t -> interpolate_size
+(** [read_interpolate_size t] parses [interpolate-size]. *)
+
+val pp_min_intrinsic_sizing : min_intrinsic_sizing Pp.t
+(** [pp_min_intrinsic_sizing] pretty-prints [min_intrinsic_sizing]. *)
+
+val read_min_intrinsic_sizing : Cursor.t -> min_intrinsic_sizing
+(** [read_min_intrinsic_sizing t] parses [min-intrinsic-sizing]. *)
+
+val pp_ruby_align : ruby_align Pp.t
+(** [pp_ruby_align] is the pretty-printer for [ruby_align]. *)
+
+val read_ruby_align : Cursor.t -> ruby_align
+(** [read_ruby_align t] parses [ruby-align]. *)
+
+val pp_ruby_merge : ruby_merge Pp.t
+(** [pp_ruby_merge] is the pretty-printer for [ruby_merge]. *)
+
+val read_ruby_merge : Cursor.t -> ruby_merge
+(** [read_ruby_merge t] parses [ruby-merge]. *)
+
+val pp_ruby_overhang : ruby_overhang Pp.t
+(** [pp_ruby_overhang] is the pretty-printer for [ruby_overhang]. *)
+
+val read_ruby_overhang : Cursor.t -> ruby_overhang
+(** [read_ruby_overhang t] parses [ruby-overhang]. *)
+
+val pp_ruby_position : ruby_position Pp.t
+(** [pp_ruby_position] is the pretty-printer for [ruby_position]. *)
+
+val read_ruby_position : Cursor.t -> ruby_position
+(** [read_ruby_position t] parses [ruby-position]. *)
+
+val pp_glyph_orientation_vertical : glyph_orientation_vertical Pp.t
+(** [pp_glyph_orientation_vertical] pretty-prints [glyph_orientation_vertical].
+*)
+
+val read_glyph_orientation_vertical : Cursor.t -> glyph_orientation_vertical
+(** [read_glyph_orientation_vertical t] parses [glyph-orientation-vertical]. *)
 
 val pp_text_spacing_trim : text_spacing_trim Pp.t
 (** [pp_text_spacing_trim] is the pretty-printer for [text_spacing_trim]. *)
@@ -1030,11 +1115,41 @@ val pp_interactivity : interactivity Pp.t
 val read_interactivity : Cursor.t -> interactivity
 (** [read_interactivity t] is the [interactivity] parsed from [t]. *)
 
+val pp_caret_animation : caret_animation Pp.t
+(** [pp_caret_animation] is the pretty-printer for [caret_animation]. *)
+
+val read_caret_animation : Cursor.t -> caret_animation
+(** [read_caret_animation t] is the [caret_animation] parsed from [t]. *)
+
+val pp_caret_shape : caret_shape Pp.t
+(** [pp_caret_shape] is the pretty-printer for [caret_shape]. *)
+
+val read_caret_shape : Cursor.t -> caret_shape
+(** [read_caret_shape t] is the [caret_shape] parsed from [t]. *)
+
+val pp_caret : caret Pp.t
+(** [pp_caret] is the pretty-printer for [caret]. *)
+
+val read_caret : Cursor.t -> caret
+(** [read_caret t] is the [caret] parsed from [t]. *)
+
 val pp_interest_delay : interest_delay Pp.t
 (** [pp_interest_delay] is the pretty-printer for [interest_delay]. *)
 
 val read_interest_delay : ?longhand:bool -> Cursor.t -> interest_delay
 (** [read_interest_delay t] is the [interest_delay] parsed from [t]. *)
+
+val pp_nav_scope : nav_scope Pp.t
+(** [pp_nav_scope] is the pretty-printer for [nav_scope]. *)
+
+val read_nav_scope : Cursor.t -> nav_scope
+(** [read_nav_scope t] is the [nav_scope] parsed from [t]. *)
+
+val pp_nav : nav Pp.t
+(** [pp_nav] is the pretty-printer for [nav]. *)
+
+val read_nav : Cursor.t -> nav
+(** [read_nav t] is the [nav] parsed from [t]. *)
 
 val pp_user_select : user_select Pp.t
 (** [pp_user_select] is the pretty-printer for [user_select]. *)
@@ -1492,13 +1607,14 @@ val read_font_variant_position : Cursor.t -> font_variant_position
 (** [read_font_variant_position t] is the [font_variant_position] parsed from
     [t]. *)
 
-val pp_east_asian_feature : font_variant_east_asian_feature Pp.t
-(** [pp_east_asian_feature] is the pretty-printer for
+val pp_font_variant_east_asian_feature : font_variant_east_asian_feature Pp.t
+(** [pp_font_variant_east_asian_feature] is the pretty-printer for
     [font_variant_east_asian_feature]. *)
 
-val read_east_asian_feature : Cursor.t -> font_variant_east_asian_feature
-(** [read_east_asian_feature t] is the [font_variant_east_asian_feature] parsed
-    from [t]. *)
+val read_font_variant_east_asian_feature :
+  Cursor.t -> font_variant_east_asian_feature
+(** [read_font_variant_east_asian_feature t] is the
+    [font_variant_east_asian_feature] parsed from [t]. *)
 
 val pp_font_variant_east_asian : font_variant_east_asian Pp.t
 (** [pp_font_variant_east_asian] is the pretty-printer for
