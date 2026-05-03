@@ -262,66 +262,31 @@ let read_text_decoration_lines t =
    anchor-positioning, view-timeline, font-palette, etc. *)
 let read_dashed_ident t =
   let s = Cursor.ident ~keep_case:true t in
-  if String.length s < 2 || s.[0] <> '-' || s.[1] <> '-' then
+  if String.length s <= 2 || s.[0] <> '-' || s.[1] <> '-' then
     Cursor.err_invalid t ("expected <dashed-ident>, got: " ^ s)
   else s
 
-let read_position_try_fallback t =
-  Cursor.ws t;
-  match Cursor.peek_ident t with
-  | Some (("flip-block" | "flip-inline" | "flip-start") as keyword) -> (
-      let _ = Cursor.ident t in
-      match keyword with
-      | "flip-block" -> (Flip_block : position_try_fallback)
-      | "flip-inline" -> Flip_inline
-      | "flip-start" -> Flip_start
-      | _ -> assert false)
-  | _ -> Name (read_dashed_ident t)
-
-let rec read_position_try_fallbacks t : position_try_fallbacks =
-  let keywords : (string * position_try_fallbacks) list =
-    [
-      ("none", None);
-      ("initial", Initial);
-      ("inherit", Inherit);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-    ]
-  in
-  (Cursor.enum_or_var "position-try-fallbacks" keywords
-     ~var:(fun t ->
-       (Var (Values.read_var read_position_try_fallbacks t)
-         : position_try_fallbacks))
-     ~default:(fun t ->
-       (Fallbacks
-          (Cursor.list ~sep:Cursor.comma ~at_least:1 read_position_try_fallback
-             t)
-         : position_try_fallbacks))
-     t
-    : position_try_fallbacks)
-
 let read_shape_outside t =
   let raw = Cursor.lookahead (Cursor.consume_to_decl_end ~trim:true) t in
-  let accept_raw () =
-    ignore (Cursor.consume_to_decl_end ~trim:true t);
+  let accept_single () =
+    Cursor.skip t;
+    Cursor.expect_eof t;
     raw
   in
   match Cursor.peek t with
   | Some (Component.Preserved { kind = Token.Ident keyword; _ })
     when is_css_wide_keyword keyword ->
-      accept_raw ()
+      accept_single ()
   | Some (Component.Preserved { kind = Token.Ident "none"; _ }) ->
-      Cursor.skip t;
-      raw
+      accept_single ()
   | Some (Component.Func { node = { name = "var"; terminated = true; _ }; _ })
     ->
-      accept_raw ()
+      accept_single ()
   | Some
       (Component.Func
          { node = { name = "circle" | "inset"; arguments; terminated }; _ })
     when terminated && arguments <> [] ->
-      accept_raw ()
+      accept_single ()
   | Some (Component.Func { node = { name = "circle" | "inset"; _ }; _ }) ->
       Cursor.err_invalid t "empty basic shape"
   | _ -> Cursor.err_invalid t ("invalid shape-outside: " ^ raw)
@@ -729,6 +694,90 @@ let rec read_initial_letter t =
     ~calls:[ ("var", fun t -> Var (read_var read_initial_letter t)) ]
     ~default:read_number t
 
+let read_initial_letter_align_keyword t : initial_letter_align_keyword =
+  Cursor.enum "initial-letter-align"
+    [
+      ("alphabetic", (Alphabetic : initial_letter_align_keyword));
+      ("ideographic", Ideographic);
+      ("hanging", Hanging);
+      ("leading", Leading);
+      ("border-box", Border_box);
+    ]
+    t
+
+let rec read_initial_letter_align t : initial_letter_align =
+  Cursor.enum_or_var "initial-letter-align"
+    [
+      ("inherit", (Inherit : initial_letter_align));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (read_var read_initial_letter_align t))
+    ~default:(fun t ->
+      let keywords =
+        Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2
+          read_initial_letter_align_keyword t
+      in
+      let duplicate =
+        List.exists
+          (fun keyword ->
+            List.length (List.filter (( = ) keyword) keywords) > 1)
+          keywords
+      in
+      let valid_pair =
+        match keywords with
+        | [ _ ] -> true
+        | [ first; second ] ->
+            (first = Border_box && second <> Border_box)
+            || (first <> Border_box && second = Border_box)
+        | _ -> false
+      in
+      if duplicate || not valid_pair then
+        Cursor.err_invalid t "initial-letter-align"
+      else (Align keywords : initial_letter_align))
+    t
+
+let rec read_initial_letter_wrap t : initial_letter_wrap =
+  Cursor.enum_or_var "initial-letter-wrap"
+    [
+      ("none", (None : initial_letter_wrap));
+      ("first", First);
+      ("all", All);
+      ("grid", Grid);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (read_var read_initial_letter_wrap t))
+    ~default:(fun t ->
+      (Length (Values.read_length_percentage ~with_keywords:false t)
+        : initial_letter_wrap))
+    t
+
+let rec read_dominant_baseline t : dominant_baseline =
+  Cursor.enum_or_var "dominant-baseline"
+    [
+      ("auto", (Auto : dominant_baseline));
+      ("alphabetic", Alphabetic);
+      ("ideographic", Ideographic);
+      ("mathematical", Mathematical);
+      ("central", Central);
+      ("middle", Middle);
+      ("text-top", Text_top);
+      ("text-bottom", Text_bottom);
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t -> Var (read_var read_dominant_baseline t))
+    t
+
 (* CSS Box Sizing 4: [margin-trim = none | block | inline | [block || inline] |
    [block-start || inline-start || block-end || inline-end]]. The bracketed
    forms are [||] groups: any-order, no-repeats. *)
@@ -1002,6 +1051,34 @@ let read_nn_length_or_global t =
     ~default:(read_non_negative_length ~with_keywords:false)
     t
 
+let read_scroll_margin_length t =
+  Cursor.enum "scroll-margin length"
+    [
+      ("inherit", (Inherit : length));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~default:(fun t ->
+      match read_non_negative_length ~with_keywords:false t with
+      | Pct _ -> Cursor.err_invalid t "scroll-margin percentage"
+      | length -> length)
+    t
+
+let read_scroll_padding_length t =
+  Cursor.enum "scroll-padding length"
+    [
+      ("auto", (Auto : length));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~default:(read_non_negative_length ~with_keywords:false)
+    t
+
 let rec read_length_or_css_wide t =
   Cursor.enum_or_calls "length"
     [
@@ -1012,7 +1089,8 @@ let rec read_length_or_css_wide t =
       ("revert-layer", Revert_layer);
     ]
     ~calls:[ ("var", fun t -> Var (read_var read_length_or_css_wide t)) ]
-    ~default:(read_length ~with_keywords:false) t
+    ~default:(read_length ~with_keywords:false)
+    t
 
 let rec read_text_decoration_thickness t =
   Cursor.enum_or_calls "text-decoration-thickness"
@@ -1217,6 +1295,9 @@ let read_value (type a) (prop : a property) t : declaration =
   | Display -> v Display (read_display t)
   | Position -> v Position (read_position t)
   | Visibility -> v Visibility (read_visibility t)
+  | Baseline_source -> v Baseline_source (read_baseline_source t)
+  | Alignment_baseline -> v Alignment_baseline (read_alignment_baseline t)
+  | Baseline_shift -> v Baseline_shift (read_baseline_shift t)
   | Overflow -> v Overflow (read_overflow t)
   | Overflow_x -> v Overflow_x (read_overflow_single t)
   | Overflow_y -> v Overflow_y (read_overflow_single t)
@@ -1303,11 +1384,18 @@ let read_value (type a) (prop : a property) t : declaration =
   | Opacity -> v Opacity (read_opacity t)
   | Cursor -> v Cursor (read_cursor t)
   | Interactivity -> v Interactivity (read_interactivity t)
+  | Caret_animation -> v Caret_animation (read_caret_animation t)
+  | Caret_shape -> v Caret_shape (read_caret_shape t)
+  | Caret -> v Caret (read_caret t)
   | Interest_delay -> v Interest_delay (read_interest_delay t)
   | Interest_delay_start ->
       v Interest_delay_start (read_interest_delay ~longhand:true t)
   | Interest_delay_end ->
       v Interest_delay_end (read_interest_delay ~longhand:true t)
+  | Nav_up -> v Nav_up (read_nav t)
+  | Nav_right -> v Nav_right (read_nav t)
+  | Nav_down -> v Nav_down (read_nav t)
+  | Nav_left -> v Nav_left (read_nav t)
   | Box_sizing -> v Box_sizing (read_box_sizing t)
   | Field_sizing -> v Field_sizing (read_field_sizing t)
   | Caption_side -> v Caption_side (read_caption_side t)
@@ -1328,15 +1416,11 @@ let read_value (type a) (prop : a property) t : declaration =
   | Padding_top -> v Padding_top (read_nn_length_or_global t)
   | Padding_bottom -> v Padding_bottom (read_nn_length_or_global t)
   | Padding_inline -> v Padding_inline (read_nn_length_or_global t)
-  | Padding_inline_start ->
-      v Padding_inline_start (read_nn_length_or_global t)
-  | Padding_inline_end ->
-      v Padding_inline_end (read_nn_length_or_global t)
+  | Padding_inline_start -> v Padding_inline_start (read_nn_length_or_global t)
+  | Padding_inline_end -> v Padding_inline_end (read_nn_length_or_global t)
   | Padding_block -> v Padding_block (read_nn_length_or_global t)
-  | Padding_block_start ->
-      v Padding_block_start (read_nn_length_or_global t)
-  | Padding_block_end ->
-      v Padding_block_end (read_nn_length_or_global t)
+  | Padding_block_start -> v Padding_block_start (read_nn_length_or_global t)
+  | Padding_block_end -> v Padding_block_end (read_nn_length_or_global t)
   | Margin_left -> v Margin_left (read_length t)
   | Margin_right -> v Margin_right (read_length t)
   | Margin_top -> v Margin_top (read_length t)
@@ -1519,13 +1603,12 @@ let read_value (type a) (prop : a property) t : declaration =
   | Anchor_name -> v Anchor_name (read_anchor_name t)
   | Position_anchor -> v Position_anchor (read_position_anchor t)
   | Position_try_fallbacks ->
-      v Position_try_fallbacks (read_position_try_fallbacks t)
+      v Position_try_fallbacks (Properties.read_position_try_fallbacks t)
   | Position_try_order -> v Position_try_order (read_position_try_order t)
   | Position_visibility -> v Position_visibility (read_position_visibility t)
   | Position_area -> v Position_area (read_position_area t)
   | Shape_outside -> v Shape_outside (read_shape_outside t)
-  | Shape_margin ->
-      v Shape_margin (read_nn_lp_or_global t)
+  | Shape_margin -> v Shape_margin (read_nn_lp_or_global t)
   | Shape_image_threshold ->
       v Shape_image_threshold (read_shape_image_threshold t)
   | Overflow_clip_margin -> v Overflow_clip_margin (read_overflow_clip_margin t)
@@ -1533,17 +1616,30 @@ let read_value (type a) (prop : a property) t : declaration =
   | Scrollbar_width -> v Scrollbar_width (read_scrollbar_width t)
   | Scrollbar_color -> v Scrollbar_color (read_scrollbar_color t)
   | Scrollbar_gutter -> v Scrollbar_gutter (read_scrollbar_gutter t)
-  | Line_height_step ->
-      v Line_height_step (read_nn_length_or_global t)
+  | Line_height_step -> v Line_height_step (read_nn_length_or_global t)
   | Font_palette -> v Font_palette (read_font_palette t)
   | Font_synthesis -> v Font_synthesis (read_font_synthesis t)
   | Text_wrap_mode -> v Text_wrap_mode (read_text_wrap_mode t)
   | Text_wrap_style -> v Text_wrap_style (read_text_wrap_style t)
   | Text_box_trim -> v Text_box_trim (read_text_box_trim t)
+  | Text_underline_position ->
+      v Text_underline_position (read_text_underline_position t)
+  | Text_box_edge -> v Text_box_edge (read_text_box_edge t)
   | Text_box -> v Text_box (read_text_box t)
+  | Inline_sizing -> v Inline_sizing (read_inline_sizing t)
+  | Line_fit_edge -> v Line_fit_edge (read_line_fit_edge t)
+  | Interpolate_size -> v Interpolate_size (read_interpolate_size t)
+  | Min_intrinsic_sizing -> v Min_intrinsic_sizing (read_min_intrinsic_sizing t)
+  | Ruby_align -> v Ruby_align (read_ruby_align t)
+  | Ruby_merge -> v Ruby_merge (read_ruby_merge t)
+  | Ruby_overhang -> v Ruby_overhang (read_ruby_overhang t)
+  | Ruby_position -> v Ruby_position (read_ruby_position t)
+  | Glyph_orientation_vertical ->
+      v Glyph_orientation_vertical (read_glyph_orientation_vertical t)
   | Animation_timeline -> v Animation_timeline (read_animation_timeline t)
   | Animation_range -> v Animation_range (read_animation_range t)
-  | Animation_range_start -> v Animation_range_start (read_animation_range_item t)
+  | Animation_range_start ->
+      v Animation_range_start (read_animation_range_item t)
   | Animation_range_end -> v Animation_range_end (read_animation_range_item t)
   | Scroll_timeline -> v Scroll_timeline (read_timeline_shorthand t)
   | Scroll_timeline_name -> v Scroll_timeline_name (read_timeline_name t)
@@ -1566,8 +1662,7 @@ let read_value (type a) (prop : a property) t : declaration =
       v Contain_intrinsic_inline_size (read_contain_intrinsic_longhand t)
   | Margin_trim -> v Margin_trim (read_margin_trim t)
   | Offset_path -> v Offset_path (read_offset_path t)
-  | Offset_distance ->
-      v Offset_distance (read_nn_lp_or_global t)
+  | Offset_distance -> v Offset_distance (read_nn_lp_or_global t)
   | Offset_rotate -> v Offset_rotate (read_offset_rotate t)
   | Font_size_adjust -> v Font_size_adjust (read_font_size_adjust t)
   | Font_variant_emoji -> v Font_variant_emoji (read_font_variant_emoji t)
@@ -1575,6 +1670,9 @@ let read_value (type a) (prop : a property) t : declaration =
   | Hyphenate_limit_chars ->
       v Hyphenate_limit_chars (read_hyphenate_limit_chars t)
   | Initial_letter -> v Initial_letter (read_initial_letter t)
+  | Initial_letter_align -> v Initial_letter_align (read_initial_letter_align t)
+  | Initial_letter_wrap -> v Initial_letter_wrap (read_initial_letter_wrap t)
+  | Dominant_baseline -> v Dominant_baseline (read_dominant_baseline t)
   | View_timeline_name -> v View_timeline_name (read_timeline_name t)
   | View_timeline_axis -> v View_timeline_axis (read_timeline_axis t)
   | View_timeline_inset -> v View_timeline_inset (read_timeline_inset t)
@@ -1663,41 +1761,61 @@ let read_value (type a) (prop : a property) t : declaration =
   | Scroll_snap_align -> v Scroll_snap_align (read_scroll_snap_align t)
   | Scroll_snap_stop -> v Scroll_snap_stop (read_scroll_snap_stop t)
   | Scroll_behavior -> v Scroll_behavior (read_scroll_behavior t)
-  | Scroll_margin -> v Scroll_margin (Values.read_padding_shorthand t)
-  | Scroll_margin_top -> v Scroll_margin_top (read_length t)
-  | Scroll_margin_right -> v Scroll_margin_right (read_length t)
-  | Scroll_margin_bottom -> v Scroll_margin_bottom (read_length t)
-  | Scroll_margin_left -> v Scroll_margin_left (read_length t)
+  | Scroll_margin ->
+      v Scroll_margin
+        (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:4
+           read_scroll_margin_length t)
+  | Scroll_margin_top -> v Scroll_margin_top (read_scroll_margin_length t)
+  | Scroll_margin_right -> v Scroll_margin_right (read_scroll_margin_length t)
+  | Scroll_margin_bottom -> v Scroll_margin_bottom (read_scroll_margin_length t)
+  | Scroll_margin_left -> v Scroll_margin_left (read_scroll_margin_length t)
   | Scroll_margin_inline ->
       v Scroll_margin_inline
-        (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_length t)
-  | Scroll_margin_inline_start -> v Scroll_margin_inline_start (read_length t)
-  | Scroll_margin_inline_end -> v Scroll_margin_inline_end (read_length t)
+        (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2
+           read_scroll_margin_length t)
+  | Scroll_margin_inline_start ->
+      v Scroll_margin_inline_start (read_scroll_margin_length t)
+  | Scroll_margin_inline_end ->
+      v Scroll_margin_inline_end (read_scroll_margin_length t)
   | Scroll_margin_block ->
       let lengths =
-        Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_length t
+        Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2
+          read_scroll_margin_length t
       in
       (match lengths with
       | [ Zero; Zero ] -> Cursor.err_invalid t "duplicate zero scroll margin"
       | _ -> ());
       v Scroll_margin_block lengths
-  | Scroll_margin_block_start -> v Scroll_margin_block_start (read_length t)
-  | Scroll_margin_block_end -> v Scroll_margin_block_end (read_length t)
-  | Scroll_padding -> v Scroll_padding (Values.read_padding_shorthand t)
-  | Scroll_padding_top -> v Scroll_padding_top (read_length t)
-  | Scroll_padding_right -> v Scroll_padding_right (read_length t)
-  | Scroll_padding_bottom -> v Scroll_padding_bottom (read_length t)
-  | Scroll_padding_left -> v Scroll_padding_left (read_length t)
+  | Scroll_margin_block_start ->
+      v Scroll_margin_block_start (read_scroll_margin_length t)
+  | Scroll_margin_block_end ->
+      v Scroll_margin_block_end (read_scroll_margin_length t)
+  | Scroll_padding ->
+      v Scroll_padding
+        (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:4
+           read_scroll_padding_length t)
+  | Scroll_padding_top -> v Scroll_padding_top (read_scroll_padding_length t)
+  | Scroll_padding_right ->
+      v Scroll_padding_right (read_scroll_padding_length t)
+  | Scroll_padding_bottom ->
+      v Scroll_padding_bottom (read_scroll_padding_length t)
+  | Scroll_padding_left -> v Scroll_padding_left (read_scroll_padding_length t)
   | Scroll_padding_inline ->
       v Scroll_padding_inline
-        (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_length t)
-  | Scroll_padding_inline_start -> v Scroll_padding_inline_start (read_length t)
-  | Scroll_padding_inline_end -> v Scroll_padding_inline_end (read_length t)
+        (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2
+           read_scroll_padding_length t)
+  | Scroll_padding_inline_start ->
+      v Scroll_padding_inline_start (read_scroll_padding_length t)
+  | Scroll_padding_inline_end ->
+      v Scroll_padding_inline_end (read_scroll_padding_length t)
   | Scroll_padding_block ->
       v Scroll_padding_block
-        (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_length t)
-  | Scroll_padding_block_start -> v Scroll_padding_block_start (read_length t)
-  | Scroll_padding_block_end -> v Scroll_padding_block_end (read_length t)
+        (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2
+           read_scroll_padding_length t)
+  | Scroll_padding_block_start ->
+      v Scroll_padding_block_start (read_scroll_padding_length t)
+  | Scroll_padding_block_end ->
+      v Scroll_padding_block_end (read_scroll_padding_length t)
   | Overscroll_behavior ->
       let xs =
         Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2
@@ -1817,6 +1935,11 @@ let split_custom_important value =
 
 let read_custom_property_declaration t : declaration =
   let name = read_property_name t in
+  (try
+     let name_cursor = Cursor.of_string name in
+     ignore (read_dashed_ident name_cursor);
+     Cursor.expect_eof name_cursor
+   with _ -> Cursor.err_invalid t ("expected <dashed-ident>, got: " ^ name));
   Cursor.ws t;
   if not (Cursor.colon t) then Cursor.err_expected t "':'";
   Cursor.ws t;
@@ -2211,9 +2334,16 @@ let clip value = v Clip value
 let clear value = v Clear value
 let float value = v Float value
 let interactivity value = v Interactivity value
+let caret_animation value = v Caret_animation value
+let caret_shape value = v Caret_shape value
+let caret value = v Caret value
 let interest_delay value = v Interest_delay value
 let interest_delay_start value = v Interest_delay_start value
 let interest_delay_end value = v Interest_delay_end value
+let nav_up value = v Nav_up value
+let nav_right value = v Nav_right value
+let nav_down value = v Nav_down value
+let nav_left value = v Nav_left value
 let touch_action value = v Touch_action value
 let direction value = v Direction value
 let unicode_bidi value = v Unicode_bidi value
@@ -2361,6 +2491,17 @@ let webkit_box_orient value = v Webkit_box_orient value
 let text_overflow value = v Text_overflow value
 let text_wrap value = v Text_wrap value
 let text_wrap_mode value = v Text_wrap_mode value
+let text_underline_position value = v Text_underline_position value
+let text_box_edge value = v Text_box_edge value
+let inline_sizing value = v Inline_sizing value
+let line_fit_edge value = v Line_fit_edge value
+let interpolate_size value = v Interpolate_size value
+let min_intrinsic_sizing value = v Min_intrinsic_sizing value
+let ruby_align value = v Ruby_align value
+let ruby_merge value = v Ruby_merge value
+let ruby_overhang value = v Ruby_overhang value
+let ruby_position value = v Ruby_position value
+let glyph_orientation_vertical value = v Glyph_orientation_vertical value
 let word_break value = v Word_break value
 let overflow_wrap value = v Overflow_wrap value
 let line_break value = v Line_break value

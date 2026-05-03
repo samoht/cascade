@@ -47,8 +47,58 @@ val read_timeline_inset : Cursor.t -> timeline_inset
 val pp_position_try_order : position_try_order Pp.t
 (** [pp_position_try_order] pretty-prints [position-try-order]. *)
 
+val pp_position_try_fallback : position_try_fallback Pp.t
+(** [pp_position_try_fallback] pretty-prints a [position-try-fallback] item. *)
+
+val pp_position_try_fallbacks : position_try_fallbacks Pp.t
+(** [pp_position_try_fallbacks] pretty-prints [position-try-fallbacks]. *)
+
+val read_position_try_fallback : Cursor.t -> position_try_fallback
+(** [read_position_try_fallback t] parses a single [position-try-fallback]. *)
+
+val read_position_try_fallbacks : Cursor.t -> position_try_fallbacks
+(** [read_position_try_fallbacks t] parses [position-try-fallbacks]. *)
+
 val read_position_try_order : Cursor.t -> position_try_order
 (** [read_position_try_order t] parses [position-try-order]. *)
+
+val pp_contain_intrinsic_size_item : contain_intrinsic_size_item Pp.t
+val read_contain_intrinsic_size_item : Cursor.t -> contain_intrinsic_size_item
+val pp_counter_item : counter_item Pp.t
+val read_counter_item : Cursor.t -> counter_item
+val pp_font_synthesis_feature : font_synthesis_feature Pp.t
+val read_font_synthesis_feature : Cursor.t -> font_synthesis_feature
+val pp_line_fit_edge_keyword : line_fit_edge_keyword Pp.t
+val read_line_fit_edge_keyword : Cursor.t -> line_fit_edge_keyword
+val pp_mask_layer : mask_layer Pp.t
+val read_mask_layer : Cursor.t -> mask_layer
+val pp_min_intrinsic_sizing_keyword : min_intrinsic_sizing_keyword Pp.t
+val read_min_intrinsic_sizing_keyword : Cursor.t -> min_intrinsic_sizing_keyword
+val pp_offset_rotate_mode : offset_rotate_mode Pp.t
+val read_offset_rotate_mode : Cursor.t -> offset_rotate_mode
+val pp_overflow_clip_box : overflow_clip_box Pp.t
+val read_overflow_clip_box : Cursor.t -> overflow_clip_box
+val pp_position_area_keyword : position_area_keyword Pp.t
+val read_position_area_keyword : Cursor.t -> position_area_keyword
+val pp_ruby_position_keyword : ruby_position_keyword Pp.t
+val read_ruby_position_keyword : Cursor.t -> ruby_position_keyword
+val pp_text_box_edge_keyword : text_box_edge_keyword Pp.t
+val read_text_box_edge_keyword : Cursor.t -> text_box_edge_keyword
+val pp_text_emphasis_fill : text_emphasis_fill Pp.t
+val read_text_emphasis_fill : Cursor.t -> text_emphasis_fill
+val pp_text_emphasis_line : text_emphasis_line Pp.t
+val read_text_emphasis_line : Cursor.t -> text_emphasis_line
+val pp_text_emphasis_shape : text_emphasis_shape Pp.t
+val read_text_emphasis_shape : Cursor.t -> text_emphasis_shape
+val pp_text_emphasis_side : text_emphasis_side Pp.t
+val read_text_emphasis_side : Cursor.t -> text_emphasis_side
+val pp_text_underline_position_keyword : text_underline_position_keyword Pp.t
+val read_text_underline_position_keyword :
+  Cursor.t -> text_underline_position_keyword
+val pp_timeline_inset_item : timeline_inset_item Pp.t
+val read_timeline_inset_item : Cursor.t -> timeline_inset_item
+val pp_timeline_shorthand_item : timeline_shorthand_item Pp.t
+val read_timeline_shorthand_item : Cursor.t -> timeline_shorthand_item
 
 val pp_position_visibility : position_visibility Pp.t
 (** [pp_position_visibility] pretty-prints [position-visibility]. *)
