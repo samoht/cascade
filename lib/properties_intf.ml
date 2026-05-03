@@ -113,6 +113,48 @@ type visibility =
   | Revert_layer
   | Var of visibility var
 
+type baseline_source =
+  | Auto
+  | First
+  | Last
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of baseline_source var
+
+type alignment_baseline =
+  | Baseline
+  | Text_bottom
+  | Middle
+  | Central
+  | Text_top
+  | Ideographic
+  | Alphabetic
+  | Hanging
+  | Mathematical
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of alignment_baseline var
+
+type baseline_shift =
+  | Shift of length_percentage
+  | Sub
+  | Super
+  | Top
+  | Center
+  | Bottom
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of baseline_shift var
+
 type z_index =
   | Auto
   | Index of int
@@ -861,7 +903,6 @@ type text_emphasis =
 
 type text_emphasis_line = Over | Under
 type text_emphasis_side = Left | Right
-
 type text_emphasis_skip_keyword = Spaces | Punctuation | Symbols | Narrow
 
 type text_emphasis_skip =
@@ -874,7 +915,7 @@ type text_emphasis_skip =
   | Var of text_emphasis_skip var
 
 type text_emphasis_position =
-  | Position of text_emphasis_line * text_emphasis_side
+  | Position of text_emphasis_line * text_emphasis_side option
   | Inherit
   | Initial
   | Unset
@@ -882,18 +923,39 @@ type text_emphasis_position =
   | Revert_layer
   | Var of text_emphasis_position var
 
+type text_underline_position_keyword = Under | Left | Right
+
+type text_underline_position =
+  | Auto
+  | From_font
+  | Position of text_underline_position_keyword list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_underline_position var
+
 type text_orientation =
   | Mixed
   | Upright
   | Sideways
-  | Sideways_right
-  | Use_glyph_orientation
   | Inherit
   | Initial
   | Unset
   | Revert
   | Revert_layer
   | Var of text_orientation var
+
+type glyph_orientation_vertical =
+  | Auto
+  | Angle of angle
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of glyph_orientation_vertical var
 
 type text_transform =
   | None
@@ -1129,7 +1191,13 @@ type text_box_edge_keyword =
   | Ideographic_ink
 
 type text_box_edge =
+  | Auto
   | Edge of text_box_edge_keyword * text_box_edge_keyword option
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
   | Var of text_box_edge var
 
 type text_box =
@@ -1140,6 +1208,58 @@ type text_box =
   | Revert
   | Revert_layer
   | Var of text_box var
+
+type inline_sizing =
+  | Normal
+  | Stretch
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of inline_sizing var
+
+type line_fit_edge_keyword =
+  | Leading
+  | Text
+  | Cap
+  | Ex
+  | Alphabetic
+  | Ideographic
+  | Ideographic_ink
+
+type line_fit_edge =
+  | Edge of line_fit_edge_keyword * line_fit_edge_keyword option
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of line_fit_edge var
+
+type interpolate_size =
+  | Numeric_only
+  | Allow_keywords
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of interpolate_size var
+
+type min_intrinsic_sizing_keyword =
+  | Legacy
+  | Zero_if_scroll
+  | Zero_if_extrinsic
+
+type min_intrinsic_sizing =
+  | Sizing of min_intrinsic_sizing_keyword list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of min_intrinsic_sizing var
 
 type text_spacing_trim =
   | Normal
@@ -1177,6 +1297,95 @@ type initial_letter =
   | Revert
   | Revert_layer
   | Var of initial_letter var
+
+type initial_letter_align_keyword =
+  | Alphabetic
+  | Ideographic
+  | Hanging
+  | Leading
+  | Border_box
+
+type initial_letter_align =
+  | Align of initial_letter_align_keyword list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of initial_letter_align var
+
+type initial_letter_wrap =
+  | None
+  | First
+  | All
+  | Grid
+  | Length of length_percentage
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of initial_letter_wrap var
+
+type ruby_merge =
+  | Separate
+  | Merge
+  | Auto
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of ruby_merge var
+
+type ruby_align =
+  | Start
+  | Center
+  | Space_between
+  | Space_around
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of ruby_align var
+
+type ruby_overhang =
+  | Auto
+  | None
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of ruby_overhang var
+
+type ruby_position_keyword = Alternate | Over | Under | Inter_character
+
+type ruby_position =
+  | Position of ruby_position_keyword list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of ruby_position var
+
+type dominant_baseline =
+  | Auto
+  | Alphabetic
+  | Ideographic
+  | Mathematical
+  | Central
+  | Middle
+  | Text_top
+  | Text_bottom
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of dominant_baseline var
 
 type white_space =
   | Normal
@@ -2388,6 +2597,38 @@ type interactivity =
   | Revert_layer
   | Var of interactivity var
 
+type caret_animation =
+  | Auto
+  | Manual
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of caret_animation var
+
+type caret_shape =
+  | Auto
+  | Bar
+  | Block
+  | Underscore
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of caret_shape var
+
+type caret =
+  | Auto
+  | Caret of color option * caret_animation option * caret_shape option
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of caret var
+
 type interest_delay =
   | Normal
   | Durations of duration list
@@ -2397,6 +2638,18 @@ type interest_delay =
   | Revert
   | Revert_layer
   | Var of interest_delay var
+
+type nav_scope = Current | Root | Named of string
+
+type nav =
+  | Auto
+  | Target of string * nav_scope option
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of nav var
 
 type user_select =
   | None
@@ -2657,10 +2910,11 @@ type position_try_order =
   | Revert_layer
   | Var of position_try_order var
 
+type position_visibility_condition = Anchors_visible | No_overflow
+
 type position_visibility =
   | Always
-  | Anchors_visible
-  | No_overflow
+  | Conditions of position_visibility_condition list
   | Initial
   | Inherit
   | Unset
@@ -2697,6 +2951,7 @@ type position_area_keyword =
   | Span_all
 
 type position_area =
+  | None
   | Area of position_area_keyword * position_area_keyword option
   | Initial
   | Inherit
@@ -3176,10 +3431,20 @@ type timeline_name =
   | Revert_layer
   | Var of timeline_name var
 
-type timeline_shorthand = {
+type timeline_shorthand_item = {
   timeline_name : string;
   timeline_axis : timeline_axis;
 }
+
+type timeline_shorthand =
+  | None
+  | Timelines of timeline_shorthand_item list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of timeline_shorthand var
 
 type timeline_inset_item = Auto | Length of length_percentage
 
@@ -3701,6 +3966,9 @@ type 'a property =
   | Display : display property
   | Position : position property
   | Visibility : visibility property
+  | Baseline_source : baseline_source property
+  | Alignment_baseline : alignment_baseline property
+  | Baseline_shift : baseline_shift property
   | Flex_direction : flex_direction property
   | Flex_wrap : flex_wrap property
   | Flex_flow : flex_flow property
@@ -3766,9 +4034,16 @@ type 'a property =
   | Translate : translate_value property
   | Cursor : cursor property
   | Interactivity : interactivity property
+  | Caret_animation : caret_animation property
+  | Caret_shape : caret_shape property
+  | Caret : caret property
   | Interest_delay : interest_delay property
   | Interest_delay_start : interest_delay property
   | Interest_delay_end : interest_delay property
+  | Nav_up : nav property
+  | Nav_right : nav property
+  | Nav_down : nav property
+  | Nav_left : nav property
   | Table_layout : table_layout property
   | Border_collapse : border_collapse property
   | Border_spacing : border_spacing property
@@ -3840,7 +4115,18 @@ type 'a property =
   | Text_wrap_mode : text_wrap_mode property
   | Text_wrap_style : text_wrap_style property
   | Text_box_trim : text_box_trim property
+  | Text_underline_position : text_underline_position property
+  | Text_box_edge : text_box_edge property
   | Text_box : text_box property
+  | Inline_sizing : inline_sizing property
+  | Line_fit_edge : line_fit_edge property
+  | Interpolate_size : interpolate_size property
+  | Min_intrinsic_sizing : min_intrinsic_sizing property
+  | Ruby_align : ruby_align property
+  | Ruby_merge : ruby_merge property
+  | Ruby_overhang : ruby_overhang property
+  | Ruby_position : ruby_position property
+  | Glyph_orientation_vertical : glyph_orientation_vertical property
   | Text_combine_upright : text_combine_upright property
   | Animation_timeline : animation_timeline property
   | Animation_range : animation_range property
@@ -3868,6 +4154,9 @@ type 'a property =
   | Text_spacing_trim : text_spacing_trim property
   | Hyphenate_limit_chars : hyphenate_limit_chars property
   | Initial_letter : initial_letter property
+  | Initial_letter_align : initial_letter_align property
+  | Initial_letter_wrap : initial_letter_wrap property
+  | Dominant_baseline : dominant_baseline property
   | View_timeline_name : timeline_name property
   | View_timeline_axis : timeline_axis property
   | View_timeline_inset : timeline_inset property

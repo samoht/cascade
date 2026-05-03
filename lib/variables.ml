@@ -569,7 +569,23 @@ let rec vars_of_cursor (value : Properties.cursor) : any_var list =
 let vars_of_interactivity (value : Properties.interactivity) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_caret_animation (value : Properties.caret_animation) : any_var list
+    =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_caret_shape (value : Properties.caret_shape) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_caret (value : Properties.caret) : any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | Caret (color, _, _) -> Option.fold ~none:[] ~some:vars_of_color color
+  | _ -> []
+
 let vars_of_interest_delay (value : Properties.interest_delay) : any_var list =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_nav (value : Properties.nav) : any_var list =
   match value with Var v -> [ V v ] | _ -> []
 
 let rec vars_of_grid_template (value : Properties.grid_template) : any_var list
@@ -872,6 +888,18 @@ let vars_of_text_align (value : Properties.text_align) =
 let vars_of_visibility (value : Properties.visibility) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_baseline_source (value : Properties.baseline_source) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_alignment_baseline (value : Properties.alignment_baseline) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_baseline_shift (value : Properties.baseline_shift) =
+  match value with
+  | Var v -> [ V v ]
+  | Shift value -> vars_of_length_percentage value
+  | _ -> []
+
 let vars_of_text_decoration_line (value : Properties.text_decoration_line) =
   match value with Var v -> [ V v ] | _ -> []
 
@@ -881,12 +909,11 @@ let vars_of_text_decoration_style (value : Properties.text_decoration_style) =
 let vars_of_text_decoration_skip (value : Properties.text_decoration_skip) =
   match value with Var v -> [ V v ] | _ -> []
 
-let vars_of_decoration_skip_self
-    (value : Properties.text_decoration_skip_self) =
+let vars_of_decoration_skip_self (value : Properties.text_decoration_skip_self)
+    =
   match value with Var v -> [ V v ] | _ -> []
 
-let vars_of_decoration_skip_box
-    (value : Properties.text_decoration_skip_box) =
+let vars_of_decoration_skip_box (value : Properties.text_decoration_skip_box) =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_decoration_skip_inset
@@ -913,7 +940,18 @@ let vars_of_text_wrap_mode (value : Properties.text_wrap_mode) =
 let vars_of_text_wrap_style (value : Properties.text_wrap_style) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_glyph_orientation_vertical
+    (value : Properties.glyph_orientation_vertical) =
+  match value with
+  | Var v -> [ V v ]
+  | Angle angle -> vars_of_angle angle
+  | _ -> []
+
 let vars_of_text_box_trim (value : Properties.text_box_trim) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_text_underline_position (value : Properties.text_underline_position)
+    =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_text_box_edge (value : Properties.text_box_edge) =
@@ -926,6 +964,30 @@ let vars_of_text_box (value : Properties.text_box) =
       vars_of_text_box_trim trim
       @ Option.value ~default:[] (Option.map vars_of_text_box_edge edge)
   | Initial | Inherit | Unset | Revert | Revert_layer -> []
+
+let vars_of_inline_sizing (value : Properties.inline_sizing) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_line_fit_edge (value : Properties.line_fit_edge) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_interpolate_size (value : Properties.interpolate_size) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_min_intrinsic_sizing (value : Properties.min_intrinsic_sizing) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_ruby_align (value : Properties.ruby_align) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_ruby_merge (value : Properties.ruby_merge) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_ruby_overhang (value : Properties.ruby_overhang) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_ruby_position (value : Properties.ruby_position) =
+  match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_text_spacing_trim (value : Properties.text_spacing_trim) =
   match value with Var v -> [ V v ] | _ -> []
@@ -1159,8 +1221,8 @@ let vars_of_font_synthesis_style (value : Properties.font_synthesis_style) =
 let vars_of_font_synthesis_weight (value : Properties.font_synthesis_weight) =
   match value with Var v -> [ V v ] | _ -> []
 
-let vars_of_synthesis_small_caps
-    (value : Properties.font_synthesis_small_caps) =
+let vars_of_synthesis_small_caps (value : Properties.font_synthesis_small_caps)
+    =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_font_synthesis_position (value : Properties.font_synthesis_position)
@@ -1308,7 +1370,14 @@ let vars_of_timeline_name (value : Properties.timeline_name) =
   match value with Var v -> [ V v ] | _ -> []
 
 let vars_of_timeline_shorthand (value : Properties.timeline_shorthand) =
-  vars_of_timeline_axis value.timeline_axis
+  match value with
+  | Var v -> [ V v ]
+  | Timelines items ->
+      List.concat_map
+        (fun { Properties.timeline_axis; _ } ->
+          vars_of_timeline_axis timeline_axis)
+        items
+  | _ -> []
 
 let vars_of_timeline_inset_item (value : Properties.timeline_inset_item) =
   match value with Auto -> [] | Length lp -> vars_of_length_percentage lp
@@ -1532,9 +1601,16 @@ let vars_of_property : type a. a property -> a -> any_var list =
   (* Cursor *)
   | Cursor, value -> vars_of_cursor value
   | Interactivity, value -> vars_of_interactivity value
+  | Caret_animation, value -> vars_of_caret_animation value
+  | Caret_shape, value -> vars_of_caret_shape value
+  | Caret, value -> vars_of_caret value
   | Interest_delay, value -> vars_of_interest_delay value
   | Interest_delay_start, value -> vars_of_interest_delay value
   | Interest_delay_end, value -> vars_of_interest_delay value
+  | Nav_up, value -> vars_of_nav value
+  | Nav_right, value -> vars_of_nav value
+  | Nav_down, value -> vars_of_nav value
+  | Nav_left, value -> vars_of_nav value
   (* Grid template *)
   | Grid_auto_columns, value -> vars_of_grid_template value
   | Grid_auto_rows, value -> vars_of_grid_template value
@@ -1705,8 +1781,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Text_decoration_skip_self, value -> vars_of_decoration_skip_self value
   | Text_decoration_skip_box, value -> vars_of_decoration_skip_box value
   | Text_decoration_skip_inset, value -> vars_of_decoration_skip_inset value
-  | Text_decoration_skip_spaces, value ->
-      vars_of_decoration_skip_spaces value
+  | Text_decoration_skip_spaces, value -> vars_of_decoration_skip_spaces value
   | Text_decoration_skip_ink, value -> vars_of_decoration_skip_ink value
   | Text_decoration_style, value -> vars_of_text_decoration_style value
   | Text_overflow, value -> vars_of_text_overflow value
@@ -1715,7 +1790,19 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Text_wrap_mode, value -> vars_of_text_wrap_mode value
   | Text_wrap_style, value -> vars_of_text_wrap_style value
   | Text_box_trim, value -> vars_of_text_box_trim value
+  | Text_underline_position, value -> vars_of_text_underline_position value
+  | Text_box_edge, value -> vars_of_text_box_edge value
   | Text_box, value -> vars_of_text_box value
+  | Inline_sizing, value -> vars_of_inline_sizing value
+  | Line_fit_edge, value -> vars_of_line_fit_edge value
+  | Interpolate_size, value -> vars_of_interpolate_size value
+  | Min_intrinsic_sizing, value -> vars_of_min_intrinsic_sizing value
+  | Ruby_align, value -> vars_of_ruby_align value
+  | Ruby_merge, value -> vars_of_ruby_merge value
+  | Ruby_overhang, value -> vars_of_ruby_overhang value
+  | Ruby_position, value -> vars_of_ruby_position value
+  | Glyph_orientation_vertical, value ->
+      vars_of_glyph_orientation_vertical value
   | Text_spacing_trim, value -> vars_of_text_spacing_trim value
   | Hyphenate_limit_chars, value -> vars_of_hyphenate_limit_chars value
   | Initial_letter, value -> vars_of_initial_letter value
@@ -1727,6 +1814,9 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Unicode_bidi, value -> vars_of_unicode_bidi value
   | User_select, value -> vars_of_user_select value
   | Visibility, value -> vars_of_visibility value
+  | Baseline_source, value -> vars_of_baseline_source value
+  | Alignment_baseline, value -> vars_of_alignment_baseline value
+  | Baseline_shift, value -> vars_of_baseline_shift value
   | View_timeline_name, value -> vars_of_timeline_name value
   | View_timeline_axis, value -> vars_of_timeline_axis value
   | View_timeline_inset, value -> vars_of_timeline_inset value
