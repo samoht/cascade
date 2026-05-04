@@ -874,6 +874,57 @@ let _consolidate_media_blocks (stmts : statement list) : statement list =
   in
   filter_with_index 0 [] stmts
 
+(* CSS Cascade 6.4: consecutive named [@layer] blocks with the same name are
+   spec-equivalent to a single block. Merge them when no rule with a conflicting
+   condition appears between. Anonymous layers stay distinct because each
+   [@layer { ... }] without a name creates a new layer. *)
+let merge_consecutive_layers (stmts : statement list) : statement list =
+  let optimize_merged_block block = !statements_ref block in
+  let rec merge result prev = function
+    | [] -> (
+        match prev with
+        | Some (Some name, block) ->
+            result @ [ Layer (Some name, optimize_merged_block block) ]
+        | Some (None, block) -> result @ [ Layer (None, block) ]
+        | None -> result)
+    | Layer (Some name, block) :: rest -> (
+        match prev with
+        | Some (Some prev_name, prev_block) when String.equal prev_name name ->
+            merge result (Some (Some name, prev_block @ block)) rest
+        | Some (Some prev_name, prev_block) ->
+            merge
+              (result
+              @ [ Layer (Some prev_name, optimize_merged_block prev_block) ])
+              (Some (Some name, block))
+              rest
+        | Some (None, prev_block) ->
+            merge
+              (result @ [ Layer (None, prev_block) ])
+              (Some (Some name, block))
+              rest
+        | None -> merge result (Some (Some name, block)) rest)
+    | (Layer (None, _) as anon) :: rest -> (
+        match prev with
+        | Some (Some prev_name, prev_block) ->
+            merge
+              (result
+              @ [ Layer (Some prev_name, optimize_merged_block prev_block) ])
+              None (anon :: rest)
+        | Some (None, prev_block) ->
+            merge (result @ [ Layer (None, prev_block) ]) None (anon :: rest)
+        | None -> merge (result @ [ anon ]) None rest)
+    | stmt :: rest -> (
+        match prev with
+        | Some (Some name, block) ->
+            merge
+              (result @ [ Layer (Some name, optimize_merged_block block); stmt ])
+              None rest
+        | Some (None, block) ->
+            merge (result @ [ Layer (None, block); stmt ]) None rest
+        | None -> merge (result @ [ stmt ]) None rest)
+  in
+  merge [] None stmts
+
 let merge_consecutive_media (stmts : statement list) : statement list =
   let optimize_merged_block block =
     (* When we merge media blocks, the resulting block may have consecutive
@@ -954,9 +1005,18 @@ let merge_layer_declarations (stmts : statement list) : statement list =
   merge [] stmts
 
 (* Main statement processing function with layer optimization *)
+(* CSS Cascade 6.1: a rule with no declarations and no nested rules
+   contributes nothing to the cascade. Drop it under [~optimize:true]
+   (Lightning CSS / cssnano convention). *)
+let drop_empty_rules stmts =
+  List.filter
+    (function Rule { declarations = []; nested = []; _ } -> false | _ -> true)
+    stmts
+
 let rec statements (stmts : statement list) : statement list =
   process_statements [] stmts
-  |> merge_consecutive_media |> merge_layer_declarations
+  |> merge_consecutive_media |> merge_consecutive_layers
+  |> merge_layer_declarations |> drop_empty_rules
 
 and process_statements (acc : statement list) (remaining : statement list) :
     statement list =
