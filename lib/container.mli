@@ -56,9 +56,11 @@ type kind = Min_width | Other  (** Coarse container condition category. *)
 val kind : t -> kind
 (** [kind t] classifies min-width-only conditions for compatibility helpers. *)
 
-val to_string : t -> string
+val to_string : ?minify:bool -> t -> string
 (** [to_string t] converts a container condition to its CSS string
-    representation. *)
+    representation. The default [~minify:true] drops the optional whitespace
+    inside feature queries; pass [~minify:false] for the pretty form (e.g.
+    [(min-width: 24px)]). *)
 
 val pp : t -> string
 (** [pp t] returns a string representation of a container condition. *)
