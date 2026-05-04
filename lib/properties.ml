@@ -7315,6 +7315,10 @@ let rec pp_timing_function : timing_function Pp.t =
   | Ease_in_out -> Pp.string ctx "ease-in-out"
   | Step_start -> Pp.string ctx "step-start"
   | Step_end -> Pp.string ctx "step-end"
+  | Steps (1, Some Jump_start) when Pp.minified ctx ->
+      (* CSS Easing 1 2: [steps(1, jump-start)] is the [step-start] alias. *)
+      Pp.string ctx "step-start"
+  | Steps (1, Some Jump_end) when Pp.minified ctx -> Pp.string ctx "step-end"
   | Steps (n, jump_term_opt) ->
       Pp.string ctx "steps(";
       Pp.int ctx n;
@@ -7325,6 +7329,16 @@ let rec pp_timing_function : timing_function Pp.t =
           pp_steps_direction ctx d
       | None -> ());
       Pp.char ctx ')'
+  | Cubic_bezier (0.25, 0.1, 0.25, 1.0) when Pp.minified ctx ->
+      (* CSS Easing 1 2: the named cubic-bezier aliases canonicalise to the
+         keyword form, which is shorter than the four-argument call. *)
+      Pp.string ctx "ease"
+  | Cubic_bezier (0.42, 0.0, 1.0, 1.0) when Pp.minified ctx ->
+      Pp.string ctx "ease-in"
+  | Cubic_bezier (0.0, 0.0, 0.58, 1.0) when Pp.minified ctx ->
+      Pp.string ctx "ease-out"
+  | Cubic_bezier (0.42, 0.0, 0.58, 1.0) when Pp.minified ctx ->
+      Pp.string ctx "ease-in-out"
   | Cubic_bezier (x1, y1, x2, y2) -> pp_cubic_bezier ctx (x1, y1, x2, y2)
   | Linear_function body ->
       Pp.string ctx "linear(";
@@ -12106,8 +12120,20 @@ let rec read_overlay t : overlay =
     t
 
 let read_transition_shorthand t : transition_shorthand =
-  (* Parse transition shorthand: property duration timing-function delay *)
-  let property = read_transition_property_value t in
+  (* Parse transition shorthand: property duration timing-function delay. CSS
+     Transitions 2 8.1: every component is optional, so when the first token is
+     not an [<ident>] / [var()] (e.g. a [<duration>] like [0.3s]) the property
+     defaults to [all]. *)
+  let starts_with_property t =
+    match Cursor.peek t with
+    | Some (Component.Preserved { kind = Token.Ident _; _ }) -> true
+    | Some (Component.Func { node = { name = "var"; _ }; _ }) -> true
+    | _ -> false
+  in
+  let property =
+    if starts_with_property t then read_transition_property_value t
+    else (All : transition_property_value)
+  in
 
   (* Duration: required for regular properties, optional for 'all', 'none', and
      var() *)
