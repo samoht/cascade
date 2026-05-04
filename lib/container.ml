@@ -72,22 +72,27 @@ let rec scroll_state_query_to_string = function
       ^ ")"
   | Negated q -> "not (" ^ scroll_state_query_to_string q ^ ")"
 
-let rec to_string = function
-  | Min_width_rem rem -> "(min-width:" ^ format_rem rem ^ "rem)"
-  | Min_width_px px -> "(min-width:" ^ Int.to_string px ^ "px)"
-  | Named (name, cond) -> name ^ " " ^ to_string cond
+let rec to_string_with ~minify t =
+  let colon = if minify then ":" else ": " in
+  match t with
+  | Min_width_rem rem -> "(min-width" ^ colon ^ format_rem rem ^ "rem)"
+  | Min_width_px px -> "(min-width" ^ colon ^ Int.to_string px ^ "px)"
+  | Named (name, cond) -> name ^ " " ^ to_string_with ~minify cond
   | Style { query; uppercase } ->
       let head = if uppercase then "STYLE(" else "style(" in
       head ^ style_query_to_string query ^ ")"
   | Scroll_state { query; uppercase } ->
       let head = if uppercase then "SCROLL-STATE(" else "scroll-state(" in
       head ^ scroll_state_query_to_string query ^ ")"
-  | And (a, b) -> "(" ^ to_string a ^ " and " ^ to_string b ^ ")"
-  | Or (a, b) -> "(" ^ to_string a ^ " or " ^ to_string b ^ ")"
-  | Not c -> "(not " ^ to_string c ^ ")"
+  | And (a, b) ->
+      "(" ^ to_string_with ~minify a ^ " and " ^ to_string_with ~minify b ^ ")"
+  | Or (a, b) ->
+      "(" ^ to_string_with ~minify a ^ " or " ^ to_string_with ~minify b ^ ")"
+  | Not c -> "(not " ^ to_string_with ~minify c ^ ")"
   | Feature_query f -> Media.to_string f
 
-let pp = to_string
+let to_string ?(minify = true) t = to_string_with ~minify t
+let pp t = to_string t
 
 let rec compare t1 t2 =
   match (t1, t2) with

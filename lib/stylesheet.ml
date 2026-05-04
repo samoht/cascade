@@ -594,7 +594,7 @@ and pp_statement : statement Pp.t =
           Pp.string ctx n
       | None -> ());
       Pp.string ctx " ";
-      Pp.string ctx (Container.to_string condition);
+      Pp.string ctx (Container.to_string ~minify:ctx.minify condition);
       Pp.sp ctx ();
       Pp.braces pp_block ctx content
   | Supports (condition, content) ->
