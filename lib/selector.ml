@@ -16,16 +16,6 @@ let is_valid_nmstart c =
 
 let is_valid_nmchar c = is_valid_nmstart c || (c >= '0' && c <= '9') || c = '-'
 
-let pp_ns ctx = function
-  | Any -> Pp.string ctx "*|"
-  | None ->
-      (* Explicit "no namespace" prefix [(|)] -- distinct from omitting the
-         prefix entirely, which is encoded by passing [None : ns option]. *)
-      Pp.char ctx '|'
-  | Prefix p ->
-      Pp.string ctx p;
-      Pp.char ctx '|'
-
 let pp_attr_flag ctx = function
   | Some Case_insensitive ->
       Pp.char ctx ' ';
@@ -1574,6 +1564,16 @@ let escape_selector_name name =
     in
     Uutf.String.fold_utf_8 folder () name;
     Buffer.contents buf
+
+let pp_ns ctx = function
+  | Any -> Pp.string ctx "*|"
+  | None ->
+      (* Explicit "no namespace" prefix [(|)] -- distinct from omitting the
+         prefix entirely, which is encoded by passing [None : ns option]. *)
+      Pp.char ctx '|'
+  | Prefix p ->
+      Pp.string ctx (escape_selector_name p);
+      Pp.char ctx '|'
 
 (** Pretty print nth function with optional "of" clause *)
 let rec pp_nth_func ctx name expr of_sel =
