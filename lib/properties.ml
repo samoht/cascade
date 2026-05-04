@@ -8812,30 +8812,50 @@ let rec read_aspect_ratio (t : Cursor.t) : aspect_ratio =
     (Var (read_var read_aspect_ratio t) : aspect_ratio)
   in
   (* CSS Sizing 4 5: an [<aspect-ratio>] component may be a [calc()] that
-     resolves to a constant number. Evaluate at parse time and unwrap to a
-     float; reject calc that does not reduce. *)
-  let rec eval_number_calc : float Values.calc -> float option = function
-    | Num n -> Some n
-    | Val n -> Some n
-    | Nested c | Parens c -> eval_number_calc c
-    | Expr (l, op, r) -> (
-        match (eval_number_calc l, eval_number_calc r) with
-        | Some a, Some b -> (
-            match op with
-            | Add -> Some (a +. b)
-            | Sub -> Some (a -. b)
-            | Mul -> Some (a *. b)
-            | Div when b <> 0. -> Some (a /. b)
-            | Div -> None)
-        | _ -> None)
-    | _ -> None
-  in
+     resolves to a constant number. Evaluate the [calc] body as a number
+     expression at parse time and reject calc that does not reduce. *)
   let read_number_or_calc t =
     if Cursor.looking_at t "calc(" then
-      let cv = read_calc Cursor.number t in
-      match eval_number_calc cv with
-      | Some n -> n
-      | None -> Cursor.err t "calc in aspect-ratio must reduce to a number"
+      Cursor.call "calc" t (fun inner ->
+          let rec read_expr inner =
+            let l = read_term inner in
+            Cursor.ws inner;
+            match Cursor.peek_delim inner with
+            | Some '+' ->
+                Cursor.skip inner;
+                let r = read_expr inner in
+                l +. r
+            | Some '-' ->
+                Cursor.skip inner;
+                let r = read_expr inner in
+                l -. r
+            | _ -> l
+          and read_term inner =
+            let l = read_factor inner in
+            let rec loop l =
+              Cursor.ws inner;
+              match Cursor.peek_delim inner with
+              | Some '*' ->
+                  Cursor.skip inner;
+                  Cursor.ws inner;
+                  let r = read_factor inner in
+                  loop (l *. r)
+              | Some '/' ->
+                  Cursor.skip inner;
+                  Cursor.ws inner;
+                  let r = read_factor inner in
+                  if r = 0. then Cursor.err inner "calc: division by zero"
+                  else loop (l /. r)
+              | _ -> l
+            in
+            loop l
+          and read_factor inner =
+            Cursor.ws inner;
+            match Cursor.peek_block inner with
+            | Some Token.Paren -> Cursor.parens read_expr inner
+            | _ -> Cursor.number inner
+          in
+          read_expr inner)
     else Cursor.number t
   in
   let read_ratio t =
