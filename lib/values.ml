@@ -129,11 +129,27 @@ let pp_var : type a. a Pp.t -> a var Pp.t =
   else
     match v.fallback with
     | None -> (
-        if (not (is_theme_var v)) || in_theme ctx v.name then emit_var_ref ()
+        if
+          (* CSS Custom Properties L1: when the printer is given a theme set and
+             a [theme_defaults] resolver, a [var()] whose name is in the theme
+             set keeps its [var()] reference; one not in the theme set inlines
+             to the resolved value supplied by the caller. With no theme
+             provided ([ctx.theme = None]), [in_theme] returns [true] so the
+             [var()] reference is preserved unchanged. *)
+          in_theme ctx v.name
+        then
+          if is_theme_var v then
+            match v.default with
+            | Some value -> pp_value ctx value
+            | Option.None -> emit_var_ref ()
+          else emit_var_ref ()
         else
-          match v.default with
-          | Some value -> pp_value ctx value
-          | Option.None -> emit_var_ref ())
+          match ctx.theme_defaults v.name with
+          | Some resolved -> Pp.string ctx resolved
+          | Option.None -> (
+              match v.default with
+              | Some value -> pp_value ctx value
+              | Option.None -> emit_var_ref ()))
     | Empty ->
         Pp.string ctx "var(--";
         Pp.string ctx v.name;
@@ -143,12 +159,22 @@ let pp_var : type a. a Pp.t -> a var Pp.t =
         Pp.string ctx "var(--";
         Pp.string ctx v.name;
         Pp.string ctx ",  )"
-    | Fallback value ->
-        Pp.string ctx "var(--";
-        Pp.string ctx v.name;
-        Pp.comma ctx ();
-        pp_value { ctx with in_function = true } value;
-        Pp.char ctx ')'
+    | Fallback value -> (
+        if
+          (* Same theme-driven inlining as the no-fallback path: when the var
+             name is not in the theme set the printer prefers the typed fallback
+             over emitting [var(--name, fallback)]. *)
+          in_theme ctx v.name
+        then (
+          Pp.string ctx "var(--";
+          Pp.string ctx v.name;
+          Pp.comma ctx ();
+          pp_value { ctx with in_function = true } value;
+          Pp.char ctx ')')
+        else
+          match ctx.theme_defaults v.name with
+          | Some resolved -> Pp.string ctx resolved
+          | Option.None -> pp_value ctx value)
     | Syntax_fallback value ->
         Pp.string ctx "var(--";
         Pp.string ctx v.name;
