@@ -1882,16 +1882,11 @@ and read_calc_term : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
             Cursor.skip t;
             Cursor.ws t;
             let right = read_calc_factor read_a t in
-            (* Validate multiplication: can't multiply two raw dimensions (but
-               expressions are OK) *)
-            let is_dimension : type a. a calc -> bool = function
-              | Val _ -> true
-              | _ -> false
-            in
-            (* Allow number × dimension or dimension × number, but not dimension
-               × dimension *)
-            if is_dimension left && is_dimension right then
-              Cursor.err t "invalid calc: cannot multiply two dimensions";
+            (* CSS Values 4 10.7: at parse time we cannot tell whether a [Val *
+               Val] is a unit-bearing dimension product (e.g. [px * px], which
+               is invalid) or a unitless number product (e.g. [2 * 3] in
+               aspect-ratio, which is valid); the typed evaluator catches the
+               former by failing to reduce. *)
             loop (Expr (left, Mul, right)))
     | Some '/' ->
         (* Use atomic to ensure we either parse the full division or nothing *)
