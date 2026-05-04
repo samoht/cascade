@@ -820,10 +820,11 @@ let rec pp_length ?(always = false) : length Pp.t =
         ctx (a, b)
   | Abs (Px x) when Pp.minified ctx -> pp_unit_fn (Float.abs x) "px"
   | Abs v -> Pp.call "abs" (pp_length ~always) ctx v
-  | Sign (Px x) when Pp.minified ctx ->
-      let s = if x > 0. then 1.0 else if x < 0. then -1.0 else 0. in
-      Pp.float ctx s
-  | Sign v -> Pp.call "sign" (pp_length ~always) ctx v
+  | Sign v ->
+      (* CSS Values 4 10.7: [sign(<length>)] returns a [<number>], not a
+         [<length>], so we cannot reduce to a single dimension without breaking
+         the length round-trip. Keep [sign()] verbatim. *)
+      Pp.call "sign" (pp_length ~always) ctx v
   | Calc_size (basis, calc) ->
       Pp.call "calc-size"
         (fun ctx (basis, calc) ->
