@@ -8811,13 +8811,40 @@ let rec read_aspect_ratio (t : Cursor.t) : aspect_ratio =
   let read_var_ar t : aspect_ratio =
     (Var (read_var read_aspect_ratio t) : aspect_ratio)
   in
+  (* CSS Sizing 4 5: an [<aspect-ratio>] component may be a [calc()] that
+     resolves to a constant number. Evaluate at parse time and unwrap to a
+     float; reject calc that does not reduce. *)
+  let rec eval_number_calc : float Values.calc -> float option = function
+    | Num n -> Some n
+    | Val n -> Some n
+    | Nested c | Parens c -> eval_number_calc c
+    | Expr (l, op, r) -> (
+        match (eval_number_calc l, eval_number_calc r) with
+        | Some a, Some b -> (
+            match op with
+            | Add -> Some (a +. b)
+            | Sub -> Some (a -. b)
+            | Mul -> Some (a *. b)
+            | Div when b <> 0. -> Some (a /. b)
+            | Div -> None)
+        | _ -> None)
+    | _ -> None
+  in
+  let read_number_or_calc t =
+    if Cursor.looking_at t "calc(" then
+      let cv = read_calc Cursor.number t in
+      match eval_number_calc cv with
+      | Some n -> n
+      | None -> Cursor.err t "calc in aspect-ratio must reduce to a number"
+    else Cursor.number t
+  in
   let read_ratio t =
-    let w = Cursor.number t in
+    let w = read_number_or_calc t in
     Cursor.ws t;
     if Cursor.peek_delim t = Some '/' then (
       Cursor.expect '/' t;
       Cursor.ws t;
-      let h = Cursor.number t in
+      let h = read_number_or_calc t in
       (w, h))
     else (w, 1.0)
   in
