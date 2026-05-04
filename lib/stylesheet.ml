@@ -327,13 +327,20 @@ let rec pp_rule : rule Pp.t =
           Pp.string ctx (String.make (2 * (ctx.indent - 1)) ' ')));
   Pp.block_close ctx ()
 
+and pp_keyframe_position : Keyframe.position Pp.t =
+ fun ctx pos ->
+  (* CSS Animations 1 7.1: [from] is equivalent to [0%] and [to] to [100%].
+     Under minification, canonicalise to the shorter spelling. *)
+  match (pos, Pp.minified ctx) with
+  | Keyframe.From, true -> Pp.string ctx "0%"
+  | Keyframe.Percent 100., true -> Pp.string ctx "to"
+  | _ -> Pp.string ctx (Keyframe.position_to_string pos)
+
 and pp_keyframe_selector : Keyframe.selector Pp.t =
  fun ctx sel ->
   match sel with
   | Keyframe.Positions positions ->
-      Pp.list ~sep:Pp.comma
-        (fun ctx pos -> Pp.string ctx (Keyframe.position_to_string pos))
-        ctx positions
+      Pp.list ~sep:Pp.comma pp_keyframe_position ctx positions
 
 and pp_keyframe : keyframe Pp.t =
  fun ctx kf ->
