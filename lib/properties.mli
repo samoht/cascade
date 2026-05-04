@@ -63,92 +63,287 @@ val read_position_try_order : Cursor.t -> position_try_order
 (** [read_position_try_order t] parses [position-try-order]. *)
 
 val pp_contain_intrinsic_size_item : contain_intrinsic_size_item Pp.t
+(** [pp_contain_intrinsic_size_item] pretty-prints one
+    [contain-intrinsic-size] item. *)
+
 val read_contain_intrinsic_size_item : Cursor.t -> contain_intrinsic_size_item
+(** [read_contain_intrinsic_size_item t] parses one [contain-intrinsic-size]
+    item. *)
+
 val pp_counter_item : counter_item Pp.t
+(** [pp_counter_item] pretty-prints one [counter-reset]/[counter-increment]
+    item. *)
+
 val read_counter_item : Cursor.t -> counter_item
+(** [read_counter_item t] parses one [counter-reset]/[counter-increment]
+    item. *)
+
 val pp_font_synthesis_feature : font_synthesis_feature Pp.t
+(** [pp_font_synthesis_feature] pretty-prints one [font-synthesis] feature. *)
+
 val read_font_synthesis_feature : Cursor.t -> font_synthesis_feature
+(** [read_font_synthesis_feature t] parses one [font-synthesis] feature. *)
+
 val pp_line_fit_edge_keyword : line_fit_edge_keyword Pp.t
+(** [pp_line_fit_edge_keyword] pretty-prints a [line-fit-edge] keyword. *)
+
 val read_line_fit_edge_keyword : Cursor.t -> line_fit_edge_keyword
+(** [read_line_fit_edge_keyword t] parses a [line-fit-edge] keyword. *)
+
 val pp_mask_layer : mask_layer Pp.t
+(** [pp_mask_layer] pretty-prints one [mask] layer. *)
+
 val read_mask_layer : Cursor.t -> mask_layer
+(** [read_mask_layer t] parses one [mask] layer. *)
+
 val pp_min_intrinsic_sizing_keyword : min_intrinsic_sizing_keyword Pp.t
+(** [pp_min_intrinsic_sizing_keyword] pretty-prints a [min-intrinsic-sizing]
+    keyword. *)
+
 val read_min_intrinsic_sizing_keyword : Cursor.t -> min_intrinsic_sizing_keyword
+(** [read_min_intrinsic_sizing_keyword t] parses a [min-intrinsic-sizing]
+    keyword. *)
+
 val pp_offset_rotate_mode : offset_rotate_mode Pp.t
+(** [pp_offset_rotate_mode] pretty-prints the [offset-rotate] mode prefix. *)
+
 val read_offset_rotate_mode : Cursor.t -> offset_rotate_mode
+(** [read_offset_rotate_mode t] parses the [offset-rotate] mode prefix. *)
+
 val pp_overflow_clip_box : overflow_clip_box Pp.t
+(** [pp_overflow_clip_box] pretty-prints [overflow-clip-box]. *)
+
 val read_overflow_clip_box : Cursor.t -> overflow_clip_box
+(** [read_overflow_clip_box t] parses [overflow-clip-box]. *)
+
 val pp_position_area_keyword : position_area_keyword Pp.t
+(** [pp_position_area_keyword] pretty-prints one [position-area] keyword. *)
+
 val read_position_area_keyword : Cursor.t -> position_area_keyword
+(** [read_position_area_keyword t] parses one [position-area] keyword. *)
+
 val pp_ruby_position_keyword : ruby_position_keyword Pp.t
+(** [pp_ruby_position_keyword] pretty-prints one [ruby-position] keyword. *)
+
 val read_ruby_position_keyword : Cursor.t -> ruby_position_keyword
+(** [read_ruby_position_keyword t] parses one [ruby-position] keyword. *)
+
 val pp_text_box_edge_keyword : text_box_edge_keyword Pp.t
+(** [pp_text_box_edge_keyword] pretty-prints one [text-box-edge] keyword. *)
+
 val read_text_box_edge_keyword : Cursor.t -> text_box_edge_keyword
+(** [read_text_box_edge_keyword t] parses one [text-box-edge] keyword. *)
+
 val pp_text_emphasis_fill : text_emphasis_fill Pp.t
+(** [pp_text_emphasis_fill] pretty-prints the [text-emphasis] fill keyword. *)
+
 val read_text_emphasis_fill : Cursor.t -> text_emphasis_fill
+(** [read_text_emphasis_fill t] parses the [text-emphasis] fill keyword. *)
+
 val pp_text_emphasis_line : text_emphasis_line Pp.t
+(** [pp_text_emphasis_line] pretty-prints a [text-emphasis] line keyword. *)
+
 val read_text_emphasis_line : Cursor.t -> text_emphasis_line
+(** [read_text_emphasis_line t] parses a [text-emphasis] line keyword. *)
+
 val pp_text_emphasis_shape : text_emphasis_shape Pp.t
+(** [pp_text_emphasis_shape] pretty-prints a [text-emphasis] shape keyword. *)
+
 val read_text_emphasis_shape : Cursor.t -> text_emphasis_shape
+(** [read_text_emphasis_shape t] parses a [text-emphasis] shape keyword. *)
+
 val pp_text_emphasis_side : text_emphasis_side Pp.t
+(** [pp_text_emphasis_side] pretty-prints a [text-emphasis] side keyword. *)
+
 val read_text_emphasis_side : Cursor.t -> text_emphasis_side
+(** [read_text_emphasis_side t] parses a [text-emphasis] side keyword. *)
+
 val pp_text_underline_position_keyword : text_underline_position_keyword Pp.t
+(** [pp_text_underline_position_keyword] pretty-prints a
+    [text-underline-position] keyword. *)
+
 val read_text_underline_position_keyword :
   Cursor.t -> text_underline_position_keyword
+(** [read_text_underline_position_keyword t] parses a [text-underline-position]
+    keyword. *)
+
 val pp_timeline_inset_item : timeline_inset_item Pp.t
+(** [pp_timeline_inset_item] pretty-prints one [view-timeline-inset] item. *)
+
 val read_timeline_inset_item : Cursor.t -> timeline_inset_item
+(** [read_timeline_inset_item t] parses one [view-timeline-inset] item. *)
+
 val pp_timeline_shorthand_item : timeline_shorthand_item Pp.t
+(** [pp_timeline_shorthand_item] pretty-prints one [scroll-timeline]/
+    [view-timeline] shorthand item. *)
+
 val read_timeline_shorthand_item : Cursor.t -> timeline_shorthand_item
-val read_font_variant_emoji : Cursor.t -> font_variant_emoji
-val read_dominant_baseline : Cursor.t -> dominant_baseline
-val read_ray_size : Cursor.t -> ray_size
-val read_initial_letter_align_keyword : Cursor.t -> initial_letter_align_keyword
-val read_font_size_adjust_metric : Cursor.t -> font_size_adjust_metric
-val read_animation_range_name : Cursor.t -> animation_range_name
-val read_border_image_repeat_keyword : Cursor.t -> border_image_repeat_keyword
-val read_margin_trim_axis : Cursor.t -> margin_trim_axis
-val read_margin_trim_edge : Cursor.t -> margin_trim_edge
-val read_font_size_adjust : Cursor.t -> font_size_adjust
-val read_initial_letter : Cursor.t -> initial_letter
-val read_initial_letter_align : Cursor.t -> initial_letter_align
-val read_initial_letter_wrap : Cursor.t -> initial_letter_wrap
-val read_margin_trim : Cursor.t -> margin_trim
-val read_offset_path : Cursor.t -> offset_path
-val read_animation_range_item : Cursor.t -> animation_range_item
-val read_animation_range : Cursor.t -> animation_range
+(** [read_timeline_shorthand_item t] parses one [scroll-timeline]/
+    [view-timeline] shorthand item. *)
+
 val pp_font_variant_emoji : font_variant_emoji Pp.t
+(** [pp_font_variant_emoji] pretty-prints [font-variant-emoji]. *)
+
+val read_font_variant_emoji : Cursor.t -> font_variant_emoji
+(** [read_font_variant_emoji t] parses [font-variant-emoji]. *)
+
 val pp_dominant_baseline : dominant_baseline Pp.t
+(** [pp_dominant_baseline] pretty-prints [dominant-baseline]. *)
+
+val read_dominant_baseline : Cursor.t -> dominant_baseline
+(** [read_dominant_baseline t] parses [dominant-baseline]. *)
+
 val pp_ray_size : ray_size Pp.t
+(** [pp_ray_size] pretty-prints the size keyword inside [ray()]. *)
+
+val read_ray_size : Cursor.t -> ray_size
+(** [read_ray_size t] parses the size keyword inside [ray()]. *)
+
 val pp_initial_letter_align_keyword : initial_letter_align_keyword Pp.t
+(** [pp_initial_letter_align_keyword] pretty-prints one
+    [initial-letter-align] keyword. *)
+
+val read_initial_letter_align_keyword : Cursor.t -> initial_letter_align_keyword
+(** [read_initial_letter_align_keyword t] parses one [initial-letter-align]
+    keyword. *)
+
 val pp_font_size_adjust_metric : font_size_adjust_metric Pp.t
+(** [pp_font_size_adjust_metric] pretty-prints the metric keyword of
+    [font-size-adjust]. *)
+
+val read_font_size_adjust_metric : Cursor.t -> font_size_adjust_metric
+(** [read_font_size_adjust_metric t] parses the metric keyword of
+    [font-size-adjust]. *)
+
 val pp_animation_range_name : animation_range_name Pp.t
+(** [pp_animation_range_name] pretty-prints a [<timeline-range-name>]. *)
+
+val read_animation_range_name : Cursor.t -> animation_range_name
+(** [read_animation_range_name t] parses a [<timeline-range-name>]. *)
+
 val pp_border_image_repeat_keyword : border_image_repeat_keyword Pp.t
+(** [pp_border_image_repeat_keyword] pretty-prints one [border-image-repeat]
+    keyword. *)
+
+val read_border_image_repeat_keyword : Cursor.t -> border_image_repeat_keyword
+(** [read_border_image_repeat_keyword t] parses one [border-image-repeat]
+    keyword. *)
+
 val pp_margin_trim_axis : margin_trim_axis Pp.t
+(** [pp_margin_trim_axis] pretty-prints a [margin-trim] axis keyword. *)
+
+val read_margin_trim_axis : Cursor.t -> margin_trim_axis
+(** [read_margin_trim_axis t] parses a [margin-trim] axis keyword. *)
+
 val pp_margin_trim_edge : margin_trim_edge Pp.t
+(** [pp_margin_trim_edge] pretty-prints a [margin-trim] edge keyword. *)
+
+val read_margin_trim_edge : Cursor.t -> margin_trim_edge
+(** [read_margin_trim_edge t] parses a [margin-trim] edge keyword. *)
+
 val pp_font_size_adjust : font_size_adjust Pp.t
+(** [pp_font_size_adjust] pretty-prints [font-size-adjust]. *)
+
+val read_font_size_adjust : Cursor.t -> font_size_adjust
+(** [read_font_size_adjust t] parses [font-size-adjust]. *)
+
+val read_initial_letter : Cursor.t -> initial_letter
+(** [read_initial_letter t] parses [initial-letter]. *)
+
 val pp_initial_letter_align : initial_letter_align Pp.t
+(** [pp_initial_letter_align] pretty-prints [initial-letter-align]. *)
+
+val read_initial_letter_align : Cursor.t -> initial_letter_align
+(** [read_initial_letter_align t] parses [initial-letter-align]. *)
+
 val pp_initial_letter_wrap : initial_letter_wrap Pp.t
+(** [pp_initial_letter_wrap] pretty-prints [initial-letter-wrap]. *)
+
+val read_initial_letter_wrap : Cursor.t -> initial_letter_wrap
+(** [read_initial_letter_wrap t] parses [initial-letter-wrap]. *)
+
 val pp_margin_trim : margin_trim Pp.t
+(** [pp_margin_trim] pretty-prints [margin-trim]. *)
+
+val read_margin_trim : Cursor.t -> margin_trim
+(** [read_margin_trim t] parses [margin-trim]. *)
+
 val pp_offset_path : offset_path Pp.t
+(** [pp_offset_path] pretty-prints [offset-path]. *)
+
+val read_offset_path : Cursor.t -> offset_path
+(** [read_offset_path t] parses [offset-path]. *)
+
 val pp_animation_range_item : animation_range_item Pp.t
-val read_border_image_slice_item : Cursor.t -> border_image_slice_item
-val read_border_image_slice : Cursor.t -> border_image_slice
-val read_border_image_width_item : Cursor.t -> border_image_width_item
-val read_border_image_outset_item : Cursor.t -> border_image_outset_item
-val read_border_image : Cursor.t -> border_image
-val read_grid_template_areas : Cursor.t -> grid_template_areas
-val read_border_spacing : Cursor.t -> border_spacing
-val read_position_visibility_condition : Cursor.t -> position_visibility_condition
-val pp_position_visibility_condition : position_visibility_condition Pp.t
-val read_ray : Cursor.t -> ray
-val pp_ray : ray Pp.t
-val pp_property_value_kind : 'a property_value_kind Pp.t
-val read_property_value_kind : Cursor.t -> 'a property_value_kind
+(** [pp_animation_range_item] pretty-prints one [<single-animation-range>]. *)
+
+val read_animation_range_item : Cursor.t -> animation_range_item
+(** [read_animation_range_item t] parses one [<single-animation-range>]. *)
+
+val read_animation_range : Cursor.t -> animation_range
+(** [read_animation_range t] parses [animation-range]. *)
+
 val pp_border_image_slice_item : border_image_slice_item Pp.t
+(** [pp_border_image_slice_item] pretty-prints one [border-image-slice] item. *)
+
+val read_border_image_slice_item : Cursor.t -> border_image_slice_item
+(** [read_border_image_slice_item t] parses one [border-image-slice] item. *)
+
 val pp_border_image_slice : border_image_slice Pp.t
+(** [pp_border_image_slice] pretty-prints [border-image-slice]. *)
+
+val read_border_image_slice : Cursor.t -> border_image_slice
+(** [read_border_image_slice t] parses [border-image-slice]. *)
+
 val pp_border_image_width_item : border_image_width_item Pp.t
+(** [pp_border_image_width_item] pretty-prints one [border-image-width] item. *)
+
+val read_border_image_width_item : Cursor.t -> border_image_width_item
+(** [read_border_image_width_item t] parses one [border-image-width] item. *)
+
 val pp_border_image_outset_item : border_image_outset_item Pp.t
+(** [pp_border_image_outset_item] pretty-prints one [border-image-outset]
+    item. *)
+
+val read_border_image_outset_item : Cursor.t -> border_image_outset_item
+(** [read_border_image_outset_item t] parses one [border-image-outset] item. *)
+
 val pp_border_image : border_image Pp.t
+(** [pp_border_image] pretty-prints the [border-image] shorthand. *)
+
+val read_border_image : Cursor.t -> border_image
+(** [read_border_image t] parses the [border-image] shorthand. *)
+
+val read_grid_template_areas : Cursor.t -> grid_template_areas
+(** [read_grid_template_areas t] parses [grid-template-areas]. *)
+
+val read_border_spacing : Cursor.t -> border_spacing
+(** [read_border_spacing t] parses [border-spacing]. *)
+
+val pp_position_visibility_condition : position_visibility_condition Pp.t
+(** [pp_position_visibility_condition] pretty-prints one
+    [position-visibility] condition keyword. *)
+
+val read_position_visibility_condition :
+  Cursor.t -> position_visibility_condition
+(** [read_position_visibility_condition t] parses one [position-visibility]
+    condition keyword. *)
+
+val pp_ray : ray Pp.t
+(** [pp_ray] pretty-prints a [ray()] expression. *)
+
+val read_ray : Cursor.t -> ray
+(** [read_ray t] parses a [ray()] expression. *)
+
+val pp_property_value_kind : 'a property_value_kind Pp.t
+(** [pp_property_value_kind] pretty-prints the kind label of a typed
+    property value. *)
+
+val read_property_value_kind : Cursor.t -> 'a property_value_kind
+(** [read_property_value_kind t] always raises. The [property_value_kind]
+    GADT classifies typed values for dispatch and is not addressable as a
+    standalone CSS value; the function exists only so the API surface stays
+    symmetric. *)
 
 val pp_position_visibility : position_visibility Pp.t
 (** [pp_position_visibility] pretty-prints [position-visibility]. *)
