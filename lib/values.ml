@@ -2452,7 +2452,10 @@ let read_oklab t : color =
 
 let read_lab t : color =
   Cursor.ws t;
-  let l = read_percentage_float t in
+  (* CSS Color 4 10: [lab()]'s L axis accepts either [<percentage>] or
+     [<number>]; the [Lab L*] coordinate is the same range either way, so a bare
+     number is folded into the [Pct] storage. *)
+  let l = Cursor.one_of [ read_percentage_float; Cursor.number ] t in
   let a = read_number_or_none t in
   let b = read_number_or_none t in
   let alpha = read_optional_alpha t in
@@ -2462,8 +2465,9 @@ let read_lab t : color =
 
 let read_lch t : color =
   Cursor.ws t;
+  let read_l_axis = Cursor.one_of [ read_percentage_float; Cursor.number ] in
   let l, c, h =
-    Cursor.triple ~sep:Cursor.ws read_percentage_float Cursor.number read_hue t
+    Cursor.triple ~sep:Cursor.ws read_l_axis Cursor.number read_hue t
   in
   let alpha = read_optional_alpha t in
   Cursor.ws t;
