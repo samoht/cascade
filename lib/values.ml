@@ -262,6 +262,10 @@ let pp_calc : type a. a Pp.t -> a calc Pp.t =
 
 (* Small helpers *)
 let pp_unit ?(always = true) ctx f suffix =
+  (* Dropping the unit on a zero ([0px] -> [0]) is a minify-only
+     canonicalization per CSS Values 4 6.5; pretty mode preserves the source
+     spelling. *)
+  let always = always || not (Pp.minified ctx) in
   if f = 0. && not always then Pp.char ctx '0'
   else (
     (* Always drop leading zeros for CSS unit values (e.g., .25rem not 0.25rem)
@@ -432,11 +436,29 @@ let rec normalize_lp_calc_zeros :
   | Expr (l, op, r) ->
       Expr (normalize_lp_calc_zeros l, op, normalize_lp_calc_zeros r)
 
+(* CSS Values 4 6.1: the six non-[px] absolute length units ([in], [pc], [pt],
+   [cm], [mm], [q]) are interconvertible with [px] by a fixed ratio, and [px] is
+   the canonical interchange unit. Under minify, fold a non-[px] absolute length
+   to its [px] equivalent so all six spellings of the same physical length
+   produce identical output. *)
+let absolute_unit_to_px = function
+  | In f -> Some (f *. 96.)
+  | Pc f -> Some (f *. 16.)
+  | Pt f -> Some (f *. 96. /. 72.)
+  | Cm f -> Some (f *. 96. /. 2.54)
+  | Mm f -> Some (f *. 96. /. 25.4)
+  | Q f -> Some (f *. 96. /. 25.4 /. 4.)
+  | _ -> None
+
 let rec pp_length ?(always = false) : length Pp.t =
  fun ctx v ->
   let pp_unit_fn = pp_unit ~always ctx in
   match v with
   | Zero -> Pp.char ctx '0'
+  | (Cm _ | Mm _ | Q _ | In _ | Pt _ | Pc _) as v when Pp.minified ctx -> (
+      match absolute_unit_to_px v with
+      | Some px -> pp_unit_fn px "px"
+      | None -> pp_length ~always ctx v)
   | Px f -> pp_unit_fn f "px"
   | Cm f -> pp_unit_fn f "cm"
   | Mm f -> pp_unit_fn f "mm"
@@ -1080,6 +1102,7 @@ let pp_rgb_args : (channel * channel * channel * alpha) Pp.t =
   pp_opt_alpha ctx alpha
 
 let pp_rgb_func = Pp.call "rgb" pp_rgb_args
+let pp_rgba_func = Pp.call "rgba" pp_rgb_args
 
 let rec pp_rgb : rgb Pp.t =
  fun ctx -> function
@@ -1281,7 +1304,13 @@ and pp_color : color Pp.t =
           match rgb_to_hex_string r g b with
           | Some hex -> pp_color ctx (Hex { hash = true; value = hex })
           | None -> pp_rgb_func ctx (r, g, b, a))
-      | Channels { r; g; b } -> pp_rgb_func ctx (r, g, b, a)
+      | Channels { r; g; b } ->
+          (* CSS Color 4 1.4 makes [rgb()] and [rgba()] spec-equivalent; under
+             minify route through the [rgb()] keyword for the shorter spelling,
+             pretty mode keeps [rgba()] so the source-level keyword survives a
+             round-trip. *)
+          if Pp.minified ctx then pp_rgb_func ctx (r, g, b, a)
+          else pp_rgba_func ctx (r, g, b, a)
       | Var v ->
           (* Output as rgb(var(--color)/alpha) *)
           let rec pp_rgb_var : rgb Pp.t =
