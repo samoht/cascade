@@ -116,6 +116,39 @@ val read_margin_trim : Cursor.t -> margin_trim
 val read_offset_path : Cursor.t -> offset_path
 val read_animation_range_item : Cursor.t -> animation_range_item
 val read_animation_range : Cursor.t -> animation_range
+val pp_font_variant_emoji : font_variant_emoji Pp.t
+val pp_dominant_baseline : dominant_baseline Pp.t
+val pp_ray_size : ray_size Pp.t
+val pp_initial_letter_align_keyword : initial_letter_align_keyword Pp.t
+val pp_font_size_adjust_metric : font_size_adjust_metric Pp.t
+val pp_animation_range_name : animation_range_name Pp.t
+val pp_border_image_repeat_keyword : border_image_repeat_keyword Pp.t
+val pp_margin_trim_axis : margin_trim_axis Pp.t
+val pp_margin_trim_edge : margin_trim_edge Pp.t
+val pp_font_size_adjust : font_size_adjust Pp.t
+val pp_initial_letter_align : initial_letter_align Pp.t
+val pp_initial_letter_wrap : initial_letter_wrap Pp.t
+val pp_margin_trim : margin_trim Pp.t
+val pp_offset_path : offset_path Pp.t
+val pp_animation_range_item : animation_range_item Pp.t
+val read_border_image_slice_item : Cursor.t -> border_image_slice_item
+val read_border_image_slice : Cursor.t -> border_image_slice
+val read_border_image_width_item : Cursor.t -> border_image_width_item
+val read_border_image_outset_item : Cursor.t -> border_image_outset_item
+val read_border_image : Cursor.t -> border_image
+val read_grid_template_areas : Cursor.t -> grid_template_areas
+val read_border_spacing : Cursor.t -> border_spacing
+val read_position_visibility_condition : Cursor.t -> position_visibility_condition
+val pp_position_visibility_condition : position_visibility_condition Pp.t
+val read_ray : Cursor.t -> ray
+val pp_ray : ray Pp.t
+val pp_property_value_kind : 'a property_value_kind Pp.t
+val read_property_value_kind : Cursor.t -> 'a property_value_kind
+val pp_border_image_slice_item : border_image_slice_item Pp.t
+val pp_border_image_slice : border_image_slice Pp.t
+val pp_border_image_width_item : border_image_width_item Pp.t
+val pp_border_image_outset_item : border_image_outset_item Pp.t
+val pp_border_image : border_image Pp.t
 
 val pp_position_visibility : position_visibility Pp.t
 (** [pp_position_visibility] pretty-prints [position-visibility]. *)
