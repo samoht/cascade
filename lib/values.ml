@@ -703,6 +703,30 @@ let color_name_hex : color_name -> string * string = function
          (#rrggbb = 7 chars) is never shorter. Keep name. *)
       ("extended", "")
 
+(* Reverse of [color_name_hex] for the named-color set whose hex form is short
+   enough to be a candidate. The map is keyed on the shortened hex spelling so
+   [shorten_hex "#ff0000"] and [#f00] both resolve to the same name. *)
+let named_for_hex value =
+  match String.lowercase_ascii value with
+  | "f00" -> Some "red"
+  | "00f" -> Some "blue"
+  | "008000" -> Some "green"
+  | "fff" -> Some "white"
+  | "000" -> Some "black"
+  | "ff0" -> Some "yellow"
+  | "0ff" -> Some "cyan"
+  | "f0f" -> Some "magenta"
+  | "808080" -> Some "gray"
+  | "ffa500" -> Some "orange"
+  | "800080" -> Some "purple"
+  | "ffc0cb" -> Some "pink"
+  | "c0c0c0" -> Some "silver"
+  | "800000" -> Some "maroon"
+  | "808000" -> Some "olive"
+  | "000080" -> Some "navy"
+  | "008080" -> Some "teal"
+  | _ -> None
+
 (** Minify a color value by converting named colors to hex when shorter,
     matching Lightning CSS behavior. *)
 let shorten_hex value =
@@ -1035,8 +1059,22 @@ and pp_color' ctx space components alpha =
 and pp_color : color Pp.t =
  fun ctx -> function
   | Hex { hash = _; value } ->
-      Pp.char ctx '#';
-      Pp.string ctx value
+      (* CSS Color 4 12.1: 6-digit and 3-digit hex are spec-equivalent;
+         shortening is part of minification (cssnano / Lightning CSS /
+         clean-css conventions). When a CSS named colour represents the same
+         sRGB value with an equal-or-shorter spelling than the [#hex] form,
+         emit the name. *)
+      if Pp.minified ctx then (
+        let shortened = shorten_hex value in
+        match named_for_hex shortened with
+        | Some name when String.length name <= String.length shortened + 1 ->
+            Pp.string ctx name
+        | _ ->
+            Pp.char ctx '#';
+            Pp.string ctx shortened)
+      else (
+        Pp.char ctx '#';
+        Pp.string ctx value)
   | Rgb rgb -> (
       match rgb with
       | Channels { r; g; b } -> pp_rgb_func ctx (r, g, b, None)
