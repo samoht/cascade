@@ -460,6 +460,18 @@ let declaration_shape decl =
 let raw_descriptor_shape (descriptor : Css.Stylesheet.raw_descriptor) =
   descriptor.descriptor_name
 
+let rec conditional_shape = function
+  | Css.Stylesheet.Media_condition condition ->
+      "media(" ^ Css.Pp.to_string ~minify:true Css.Media.pp condition ^ ")"
+  | Supports_condition_test condition ->
+      "supports("
+      ^ Css.Pp.to_string ~minify:true Css.Supports.pp condition
+      ^ ")"
+  | And (left, right) ->
+      "(" ^ conditional_shape left ^ " and " ^ conditional_shape right ^ ")"
+  | Or (left, right) ->
+      "(" ^ conditional_shape left ^ " or " ^ conditional_shape right ^ ")"
+
 let rec statement_shape stmt =
   let sheet_source stmt =
     Css.Stylesheet.to_string ~minify:true ~newline:false [ stmt ]
@@ -495,6 +507,13 @@ let rec statement_shape stmt =
   | Supports (condition, block) ->
       ("supports:" ^ Css.Pp.to_string ~minify:true Css.Supports.pp condition)
       :: block_lines block
+  | When (condition, block) ->
+      ("when:" ^ conditional_shape condition) :: block_lines block
+  | Else (condition, block) ->
+      ("else:" ^ Option.fold ~none:"" ~some:conditional_shape condition)
+      :: block_lines block
+  | Supports_condition (name, declarations) ->
+      ("supports-condition:" ^ name) :: declaration_lines declarations
   | Starting_style block -> "starting-style" :: block_lines block
   | Origin (origin, block) ->
       ("origin:"
@@ -623,11 +642,30 @@ let resolve_stylesheet_property ?(layer_order = []) ~ctx ~document ~query
   in
   let rec collect_block ~origin ~layer ~current_specificity ~scope_hops acc
       block =
-    List.fold_left
-      (collect_statement ~origin ~layer ~current_specificity ~scope_hops)
-      acc block
-  and collect_statement ~origin ~layer ~current_specificity ~scope_hops acc =
-    function
+    block
+    |> List.fold_left
+         (fun (acc, chain_matched) stmt ->
+           collect_statement ~origin ~layer ~current_specificity ~scope_hops
+             ~chain_matched acc stmt)
+         (acc, None)
+    |> fst
+  and conditional_matches = function
+    | Css.Stylesheet.Media_condition condition ->
+        Css.Context.matches_media query condition
+    | Supports_condition_test condition ->
+        Css.Context.matches_supports query condition
+    | And (left, right) -> conditional_matches left && conditional_matches right
+    | Or (left, right) -> conditional_matches left || conditional_matches right
+  and collect_conditional_block ~origin ~layer ~current_specificity ~scope_hops
+      acc block matched =
+    let acc =
+      if matched then
+        collect_block ~origin ~layer ~current_specificity ~scope_hops acc block
+      else acc
+    in
+    (acc, Some matched)
+  and collect_statement ~origin ~layer ~current_specificity ~scope_hops
+      ~chain_matched acc = function
     | Css.Stylesheet.Rule rule ->
         if Css.Context.matches_selector document rule.selector then
           let specificity = specificity_score rule.selector in
@@ -635,47 +673,71 @@ let resolve_stylesheet_property ?(layer_order = []) ~ctx ~document ~query
             add_declarations ~origin ~layer ~specificity ~scope_hops acc
               rule.declarations
           in
-          collect_block ~origin ~layer ~current_specificity:(Some specificity)
-            ~scope_hops acc rule.nested
-        else acc
+          ( collect_block ~origin ~layer ~current_specificity:(Some specificity)
+              ~scope_hops acc rule.nested,
+            None )
+        else (acc, None)
     | Declarations declarations -> (
         match current_specificity with
-        | None -> acc
+        | None -> (acc, None)
         | Some specificity ->
-            add_declarations ~origin ~layer ~specificity ~scope_hops acc
-              declarations)
+            ( add_declarations ~origin ~layer ~specificity ~scope_hops acc
+                declarations,
+              None ))
     | Layer (name, block) ->
-        collect_block ~origin ~layer:name ~current_specificity ~scope_hops acc
-          block
+        ( collect_block ~origin ~layer:name ~current_specificity ~scope_hops acc
+            block,
+          None )
     | Media (condition, block) ->
-        if Css.Context.matches_media query condition then
-          collect_block ~origin ~layer ~current_specificity ~scope_hops acc
-            block
-        else acc
+        collect_conditional_block ~origin ~layer ~current_specificity
+          ~scope_hops acc block
+          (Css.Context.matches_media query condition)
     | Supports (condition, block) ->
-        if Css.Context.matches_supports query condition then
-          collect_block ~origin ~layer ~current_specificity ~scope_hops acc
-            block
-        else acc
+        collect_conditional_block ~origin ~layer ~current_specificity
+          ~scope_hops acc block
+          (Css.Context.matches_supports query condition)
     | Container (name, condition, block) ->
-        if Css.Context.matches_container query ?name condition then
-          collect_block ~origin ~layer ~current_specificity ~scope_hops acc
-            block
-        else acc
+        collect_conditional_block ~origin ~layer ~current_specificity
+          ~scope_hops acc block
+          (Css.Context.matches_container query ?name condition)
+    | When (condition, block) ->
+        collect_conditional_block ~origin ~layer ~current_specificity
+          ~scope_hops acc block
+          (conditional_matches condition)
+    | Else (condition, block) -> (
+        match chain_matched with
+        | None -> (acc, None)
+        | Some previous_matched ->
+            let condition_matched =
+              match condition with
+              | None -> true
+              | Some condition -> conditional_matches condition
+            in
+            let matched = (not previous_matched) && condition_matched in
+            let acc =
+              if matched then
+                collect_block ~origin ~layer ~current_specificity ~scope_hops
+                  acc block
+              else acc
+            in
+            (acc, Some (previous_matched || matched)))
     | Starting_style block ->
-        collect_block ~origin ~layer ~current_specificity ~scope_hops acc block
+        ( collect_block ~origin ~layer ~current_specificity ~scope_hops acc block,
+          None )
     | Origin (origin, block) ->
-        collect_block ~origin ~layer ~current_specificity ~scope_hops acc block
+        ( collect_block ~origin ~layer ~current_specificity ~scope_hops acc block,
+          None )
     | Scope (start, boundary, block) ->
         if scope_boundary_allows document start boundary then
-          collect_block ~origin ~layer ~current_specificity ~scope_hops:(Some 0)
-            acc block
-        else acc
+          ( collect_block ~origin ~layer ~current_specificity
+              ~scope_hops:(Some 0) acc block,
+            None )
+        else (acc, None)
     | Charset _ | Import _ | Namespace _ | Property _ | Layer_decl _
     | Keyframes _ | Webkit_keyframes _ | Font_face _ | Page _
     | Page_with_margins _ | Font_palette_values _ | View_transition _
-    | Position_try _ ->
-        acc
+    | Position_try _ | Supports_condition _ ->
+        (acc, None)
   in
   let candidates =
     collect_block ~origin:Css.Stylesheet.Author ~layer:None
@@ -2340,6 +2402,23 @@ let cascade_rule_resolver_contract () =
           outline-color: red;
         }
       }
+    |};
+  check_resolved_property
+    "source order breaks ties after equal origin layer specificity and scope"
+    ~layer_order ~ctx:value_ctx ~document:primary ~query
+    ~property:"background-color" ~expected:"background-color: blue"
+    {|
+      .btn { background-color: red; }
+      .btn { background-color: blue; }
+    |};
+  check_resolved_property
+    "normal named layer order follows the declared layer statement" ~layer_order
+    ~ctx:value_ctx ~document:primary ~query ~property:"outline-color"
+    ~expected:"outline-color: blue"
+    {|
+      @layer reset, theme, components, utilities;
+      @layer utilities { .btn { outline-color: blue; } }
+      @layer theme { .btn { outline-color: red; } }
     |}
 
 let suite =

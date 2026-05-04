@@ -99,9 +99,10 @@ let test_stylesheet () =
     "@page :first { margin: 1in }";
   check_stylesheet ~expected:".test{color:red}" ".test { color: red }";
 
-  (* Test invalid stylesheet syntax *)
-  neg_cursor read_stylesheet "@media { }";
-  (* Media without condition *)
+  (* MQ5 §2.1: an empty media query list is valid and evaluates like all. *)
+  check_stylesheet ~expected:"@media{.test{color:red}}"
+    "@media { .test { color: red } }";
+  check_stylesheet ~expected:"@media{}" "@media { }";
   neg_cursor read_stylesheet "@charset 'UTF-8'" (* Wrong charset quotes *)
 
 let of_string css =
@@ -1053,10 +1054,6 @@ let test_of_string_negative () =
   test_invalid_css ".btn { -custom: value; }"
     "invalid custom property (single hyphen)";
 
-  (* Media query and at-rule errors *)
-  test_invalid_css "@media { .btn { color: red; } }"
-    "media query without condition";
-
   (* Specificity and cascade errors *)
   test_invalid_css "btn.#id { color: red; }" "invalid selector combination";
 
@@ -1339,7 +1336,8 @@ let test_invalid_syntax () =
 
 (* Not a roundtrip test *)
 let test_invalid_at_rules () =
-  expect_parse_error "@media { .btn { color: red; } }";
+  check_stylesheet ~expected:"@media{.btn{color:red}}"
+    "@media { .btn { color: red; } }";
   expect_parse_error "@property { syntax: 'color'; inherits: true; }";
   expect_parse_error "@property --var { invalid-descriptor: value; }";
   expect_parse_error "@keyframes { 0% { opacity: 0; } }"
