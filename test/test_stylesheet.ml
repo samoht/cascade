@@ -2544,6 +2544,88 @@ let spec_nesting_selector_edges () =
   neg_cursor read_stylesheet "@scope (.x) to () { .x { color: red } }";
   neg_cursor read_stylesheet "@starting-style;"
 
+(* CSS Nesting Module Level 1, sections 1 and 2: a nested style rule is a
+   qualified rule appearing inside another qualified rule's block. The grammar
+   does not require flattening on serialization, so a parse and print of a
+   nested input must keep the nested shape rather than collapsing it into
+   sibling rules joined by descendant combinators. *)
+let nesting_module_l1_preserves_structure () =
+  let input =
+    ".card { color: red; & .title { color: blue; } &:hover { color: green; } }"
+  in
+  let r = Css.Cursor.of_string input in
+  let sheet = Css.Stylesheet.read r in
+  let printed = String.trim (Css.Stylesheet.to_string ~minify:true sheet) in
+  Alcotest.(check string)
+    "parse + print keeps nested rules nested"
+    ".card{color:red;& .title{color:blue}&:hover{color:green}}" printed;
+  let optimized = Css.Optimize.stylesheet sheet in
+  let opt_printed =
+    String.trim (Css.Stylesheet.to_string ~minify:true optimized)
+  in
+  Alcotest.(check string)
+    "optimize keeps nested rules nested (no flattening)"
+    ".card{color:red;& .title{color:blue}&:hover{color:green}}" opt_printed
+
+(* CSS Cascade Module Level 6, section 2 (Importing Style Sheets): @import
+   identifies an external style sheet by URL. The cascade treats the import as
+   a substitution point but does not fetch or inline the referenced sheet at
+   the syntax layer; the URL string and conditional clauses must survive parse
+   and print without resolution or rewriting. *)
+let c6_2_import_preserved_verbatim () =
+  let url = "https://example.test/path/to/theme.css?v=1" in
+  let input =
+    "@import url(\"" ^ url
+    ^ "\") layer(framework.theme) supports(display:grid) screen and \
+       (min-width:30em);"
+  in
+  let r = Css.Cursor.of_string input in
+  let sheet = Css.Stylesheet.read r in
+  let printed = String.trim (Css.Stylesheet.to_string ~minify:true sheet) in
+  let contains_url s = Astring.String.is_infix ~affix:url s in
+  Alcotest.(check bool)
+    "import URL string survives parse and print verbatim" true
+    (contains_url printed);
+  Alcotest.(check bool)
+    "layer name preserved on import" true
+    (Astring.String.is_infix ~affix:"layer(framework.theme)" printed);
+  Alcotest.(check bool)
+    "supports() condition preserved on import" true
+    (Astring.String.is_infix ~affix:"supports(display:grid)" printed);
+  Alcotest.(check bool)
+    "media query list preserved on import" true
+    (Astring.String.is_infix ~affix:"screen and (min-width:30em)" printed);
+  let optimized = Css.Optimize.stylesheet sheet in
+  let opt_printed =
+    String.trim (Css.Stylesheet.to_string ~minify:true optimized)
+  in
+  Alcotest.(check bool)
+    "optimize does not resolve, inline, or rewrite the import URL" true
+    (contains_url opt_printed);
+  Alcotest.(check int)
+    "no rule statements are synthesized from the import" 0
+    (List.length (Css.Stylesheet.rules optimized))
+
+(* CSS Syntax Level 3, section 4.3.2 (Consume comments): comments are consumed
+   during tokenization and produce no tokens. The /*# sourceMappingURL=... */
+   pragma is a developer-tool convention with no W3C CSS specification: to a
+   conforming CSS parser it is an ordinary comment, so it must not appear in
+   the parsed AST nor in the serialized output, and it must not influence the
+   surrounding rule. *)
+let s3_4_3_2_source_map_pragma_is_a_comment () =
+  let input =
+    "/*# sourceMappingURL=app.css.map */ .a { color: red } /*# \
+     sourceURL=app.css */"
+  in
+  let r = Css.Cursor.of_string input in
+  let sheet = Css.Stylesheet.read r in
+  let printed = String.trim (Css.Stylesheet.to_string ~minify:true sheet) in
+  Alcotest.(check string) "source-map comment is dropped, rule survives intact"
+    ".a{color:red}" printed;
+  Alcotest.(check int)
+    "no extra rules are synthesized from the comment" 1
+    (List.length (Css.Stylesheet.rules sheet))
+
 let additional_tests =
   [
     ("check function", `Quick, test_check);
@@ -2572,6 +2654,15 @@ let additional_tests =
     ( "spec nesting selector and conditional edges",
       `Quick,
       spec_nesting_selector_edges );
+    ( "spec CSS Nesting L1 preserves nested structure",
+      `Quick,
+      nesting_module_l1_preserves_structure );
+    ( "spec cascade 6.2 import preserved verbatim",
+      `Quick,
+      c6_2_import_preserved_verbatim );
+    ( "spec CSS Syntax 4.3.2 source-map pragma is a comment",
+      `Quick,
+      s3_4_3_2_source_map_pragma_is_a_comment );
     (* Negative tests *)
     ("invalid selectors", `Quick, test_invalid_selectors);
     ("invalid properties", `Quick, test_invalid_properties);

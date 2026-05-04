@@ -40,8 +40,21 @@ val apply_property_duplication : t -> t
 (** [apply_property_duplication ss] applies only property duplication for
     browser compatibility without other optimizations. *)
 
-val stylesheet : t -> t
-(** [stylesheet ss] optimizes an entire stylesheet while preserving cascade
-    semantics. When [@supports] blocks are present alongside top-level rules,
-    optimization is limited because the stylesheet structure separates rules
-    from [@supports] blocks, losing their relative ordering. *)
+val stylesheet : ?flatten_nesting:bool -> t -> t
+(** [stylesheet ?flatten_nesting ss] optimizes an entire stylesheet while
+    preserving cascade semantics. When [@supports] blocks are present
+    alongside top-level rules, optimization is limited because the stylesheet
+    structure separates rules from [@supports] blocks, losing their relative
+    ordering.
+
+    When [flatten_nesting] is [true] (default [false]) nested rules are
+    desugared into flat rules: child selectors with [&] have the parent
+    selector substituted in, child selectors without [&] are joined to the
+    parent with the descendant combinator, and at-rules nested inside a rule
+    are emitted at the top level with the parent selector applied to their
+    inner rules. *)
+
+val flatten_nesting : t -> t
+(** [flatten_nesting ss] returns [ss] with every nested rule flattened into
+    a top-level rule. Equivalent to the [~flatten_nesting:true] mode of
+    {!stylesheet} but without the deduplication / merge passes. *)

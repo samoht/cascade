@@ -12,7 +12,7 @@ let read_file path =
   close_in ic;
   content
 
-let process_css input_path output_format optimize =
+let process_css input_path output_format ~optimize ~flatten_nesting =
   try
     (* Read CSS file *)
     let css_content =
@@ -40,7 +40,11 @@ let process_css input_path output_format optimize =
     in
 
     (* Apply optimizations if requested *)
-    let stylesheet = if optimize then Css.optimize stylesheet else stylesheet in
+    let stylesheet =
+      if optimize then Css.optimize ~flatten_nesting stylesheet
+      else if flatten_nesting then Css.flatten_nesting stylesheet
+      else stylesheet
+    in
 
     (* Output CSS *)
     let output =
@@ -81,9 +85,16 @@ let optimize =
   let doc = "Optimize CSS by merging rules and removing duplicates" in
   Arg.(value & flag & info [ "o"; "optimize" ] ~doc)
 
+let flatten_nesting =
+  let doc =
+    "Desugar nested rules into flat top-level rules. Implies (but does not \
+     require) --optimize."
+  in
+  Arg.(value & flag & info [ "flatten-nesting" ] ~doc)
+
 let term =
   Term.(
-    const (fun input minify pretty optimize ->
+    const (fun input minify pretty optimize flatten_nesting ->
         (* Determine output format *)
         let output_format =
           if minify then Minified
@@ -91,8 +102,8 @@ let term =
           else Pretty (* Default to pretty if neither specified *)
         in
 
-        process_css input output_format optimize)
-    $ input_arg $ minify $ pretty $ optimize)
+        process_css input output_format ~optimize ~flatten_nesting)
+    $ input_arg $ minify $ pretty $ optimize $ flatten_nesting)
 
 let info =
   let doc = "Process CSS files - pretty-print, minify, or optimize" in
