@@ -376,6 +376,10 @@ val as_font_face : statement -> Stylesheet.font_face_descriptor list option
 (** [as_font_face stmt] returns [Some descriptors] if the statement is a
     [@font-face] rule, [None] otherwise. *)
 
+val as_import : statement -> Stylesheet.import_rule option
+(** [as_import stmt] returns [Some import_rule] if the statement is an [@import]
+    rule, [None] otherwise. *)
+
 (** {2:at_rules At-Rules}
 
     At-rules are CSS statements that instruct CSS how to behave. They begin with
@@ -1485,13 +1489,13 @@ val padding_inline_end : length -> declaration
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/padding-inline-end}
      padding-inline-end} property. *)
 
-val padding_inline : length -> declaration
-(** [padding_inline len] is the
+val padding_inline : length list -> declaration
+(** [padding_inline lens] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/padding-inline}
      padding-inline} shorthand property. *)
 
-val padding_block : length -> declaration
-(** [padding_block len] is the
+val padding_block : length list -> declaration
+(** [padding_block lens] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/padding-block}
      padding-block} shorthand property. *)
 
@@ -6744,6 +6748,29 @@ val flatten_nesting : t -> t
     in; selectors without [&] are joined to the parent with the descendant
     combinator; at-rules nested inside a rule are emitted at the top level with
     the parent selector applied to their inner rules. *)
+
+(** {2 Closed-world inlining}
+
+    Transforms that assume the caller controls properties the open web cannot
+    guarantee (no runtime variable mutation, full file resolution). *)
+
+val inline_vars : ?keep_vars:string list -> t -> t
+(** [inline_vars ?keep_vars stylesheet] substitutes [var(--name)] references
+    with the value of the corresponding [--name] declaration in [stylesheet] and
+    drops the now-unused custom-property definitions. Names listed in
+    [keep_vars] (with or without the leading [--]) keep their definitions and
+    remain as live [var()] references in the output. The transform assumes no
+    runtime mutation of custom properties. *)
+
+val inline_imports :
+  ?query:Context.query -> ?layer_order:string list -> Context.loader -> t -> t
+(** [inline_imports ?query ?layer_order loader stylesheet] replaces every
+    [@import] rule in [stylesheet] with the body of the imported stylesheet
+    looked up through [loader]. Imports the loader cannot resolve, or that fail
+    their [media]/[supports]/[layer] guard, are left in place. The walk descends
+    into nested at-rules and rule bodies, so imports declared inside them are
+    inlined too; the caller is responsible for preloading [loader.imports] with
+    every transitively-referenced stylesheet body. *)
 
 (** CSS will-change property values for performance optimization hints. *)
 type will_change =

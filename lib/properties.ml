@@ -14919,10 +14919,10 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Padding_right -> pp pp_length
   | Padding_bottom -> pp pp_length
   | Padding_top -> pp pp_length
-  | Padding_inline -> pp pp_length
+  | Padding_inline -> pp (pp_box_shorthand pp_length)
   | Padding_inline_start -> pp pp_length
   | Padding_inline_end -> pp pp_length
-  | Padding_block -> pp pp_length
+  | Padding_block -> pp (pp_box_shorthand pp_length)
   | Padding_block_start -> pp pp_length
   | Padding_block_end -> pp pp_length
   | Margin -> pp (pp_box_shorthand pp_length)
@@ -15427,10 +15427,10 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Padding_right -> Some Length
   | Padding_bottom -> Some Length
   | Padding_top -> Some Length
-  | Padding_inline -> Some Length
+  | Padding_inline -> Some Lengths
   | Padding_inline_start -> Some Length
   | Padding_inline_end -> Some Length
-  | Padding_block -> Some Length
+  | Padding_block -> Some Lengths
   | Padding_block_start -> Some Length
   | Padding_block_end -> Some Length
   | Margin_inline_end -> Some Length

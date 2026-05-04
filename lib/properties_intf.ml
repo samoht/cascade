@@ -3905,10 +3905,10 @@ type 'a property =
   | Padding_right : length property
   | Padding_bottom : length property
   | Padding_top : length property
-  | Padding_inline : length property
+  | Padding_inline : length list property
   | Padding_inline_start : length property
   | Padding_inline_end : length property
-  | Padding_block : length property
+  | Padding_block : length list property
   | Padding_block_start : length property
   | Padding_block_end : length property
   | Margin : length list property

@@ -1605,7 +1605,7 @@ val border_block : border -> declaration
 val column_span : column_span -> declaration
 (** [column_span v] is the CSS [column-span] property. *)
 
-val padding_inline : length -> declaration
+val padding_inline : length list -> declaration
 (** [padding_inline v] is the CSS [padding-inline] property. *)
 
 val padding_inline_start : length -> declaration
@@ -1614,7 +1614,7 @@ val padding_inline_start : length -> declaration
 val padding_inline_end : length -> declaration
 (** [padding_inline_end v] is the CSS [padding-inline-end] property. *)
 
-val padding_block : length -> declaration
+val padding_block : length list -> declaration
 (** [padding_block v] is the CSS [padding-block] property. *)
 
 val padding_block_start : length -> declaration

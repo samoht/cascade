@@ -1462,10 +1462,10 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Padding_right, value -> vars_of_length value
   | Padding_bottom, value -> vars_of_length value
   | Padding_left, value -> vars_of_length value
-  | Padding_inline, value -> vars_of_length value
+  | Padding_inline, values -> vars_of_length_list values
   | Padding_inline_start, value -> vars_of_length value
   | Padding_inline_end, value -> vars_of_length value
-  | Padding_block, value -> vars_of_length value
+  | Padding_block, values -> vars_of_length_list values
   | Padding_block_start, value -> vars_of_length value
   | Padding_block_end, value -> vars_of_length value
   | Margin, values -> vars_of_length_list values

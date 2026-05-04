@@ -837,10 +837,18 @@ let read_value (type a) (prop : a property) t : declaration =
   | Padding_right -> v Padding_right (read_nn_length_or_global t)
   | Padding_top -> v Padding_top (read_nn_length_or_global t)
   | Padding_bottom -> v Padding_bottom (read_nn_length_or_global t)
-  | Padding_inline -> v Padding_inline (read_nn_length_or_global t)
+  | Padding_inline ->
+      v Padding_inline
+        (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2
+           (Values.read_length ~allow_negative:false ~with_keywords:false)
+           t)
   | Padding_inline_start -> v Padding_inline_start (read_nn_length_or_global t)
   | Padding_inline_end -> v Padding_inline_end (read_nn_length_or_global t)
-  | Padding_block -> v Padding_block (read_nn_length_or_global t)
+  | Padding_block ->
+      v Padding_block
+        (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2
+           (Values.read_length ~allow_negative:false ~with_keywords:false)
+           t)
   | Padding_block_start -> v Padding_block_start (read_nn_length_or_global t)
   | Padding_block_end -> v Padding_block_end (read_nn_length_or_global t)
   | Margin_left -> v Margin_left (read_length t)
