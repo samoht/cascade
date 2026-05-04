@@ -811,7 +811,7 @@ let inline_vars ?(keep_vars = []) stylesheet =
   let is_kept decl =
     match Variables.custom_declaration_name decl with
     | None -> false
-    | Some name -> List.mem (String.concat "" [ "--"; name ]) kept
+    | Some name -> List.mem name kept
   in
   let custom_properties =
     collect_custom_property_decls stylesheet
@@ -819,50 +819,59 @@ let inline_vars ?(keep_vars = []) stylesheet =
   in
   let ctx = Context.v ~custom_properties () in
   let evaluated = Stylesheet.eval ctx stylesheet in
-  Printf.eprintf "DEBUG kept = [%s]\n" (String.concat "; " kept);
-  Printf.eprintf "DEBUG custom_properties len = %d\n"
-    (List.length custom_properties);
-  Printf.eprintf "DEBUG evaluated:\n%s\n"
-    (Stylesheet.to_string ~minify:false evaluated);
   let strip decls =
     List.filter
       (fun d ->
         match Variables.custom_declaration_name d with
         | None -> true
-        | Some _ ->
-            let k = is_kept d in
-            Printf.eprintf "DEBUG strip decl name=%s is_kept=%b\n"
-              (Option.value (Variables.custom_declaration_name d) ~default:"?")
-              k;
-            k)
+        | Some _ -> is_kept d)
       decls
   in
-  let stripped = evaluated |> map_decls strip in
-  Printf.eprintf "DEBUG after strip:\n%s\n"
-    (Stylesheet.to_string ~minify:false stripped);
-  let dropped = drop_empty_rules stripped in
-  Printf.eprintf "DEBUG after drop_empty:\n%s\n"
-    (Stylesheet.to_string ~minify:false dropped);
-  dropped
+  evaluated |> map_decls strip |> drop_empty_rules
+
+(* Strip the [url(...)] wrapper or surrounding quotes that the parser keeps in
+   [import_rule.url] (verbatim source form). Falls back to the raw string if
+   nothing recognisable is found. *)
+let decode_import_url s =
+  let trimmed = String.trim s in
+  if trimmed = "" then trimmed
+  else
+    try
+      let r = Cursor.of_string trimmed in
+      let v = Cursor.one_of [ Cursor.url; Cursor.string ] r in
+      v
+    with Cursor.Parse_error _ -> trimmed
 
 let inline_imports ?query ?layer_order loader stylesheet =
   let open Stylesheet in
-  let rec replace_stmts stmts = List.concat_map replace stmts
-  and replace = function
+  (* Track the URLs currently being substituted on the recursion stack so a
+     cyclic [@import url("self")] (or A imports B imports A) terminates with the
+     original [Import] left in place rather than expanding forever. The loader
+     cache that fronts this walk already de-duplicates *file reads*, but the
+     cache returns the same parsed body each time so without a visited-set the
+     substitution itself diverges. *)
+  let rec replace_stmts ~stack stmts = List.concat_map (replace ~stack) stmts
+  and replace ~stack = function
     | Import import_rule -> (
-        match Context.load_import ?query ?layer_order loader import_rule with
-        | Ok loaded -> replace_stmts loaded
-        | Error _ -> [ Import import_rule ])
-    | Layer (n, b) -> [ Layer (n, replace_stmts b) ]
-    | Media (q, b) -> [ Media (q, replace_stmts b) ]
-    | Supports (q, b) -> [ Supports (q, replace_stmts b) ]
-    | Container (n, q, b) -> [ Container (n, q, replace_stmts b) ]
-    | Starting_style b -> [ Starting_style (replace_stmts b) ]
-    | When (c, b) -> [ When (c, replace_stmts b) ]
-    | Else (c, b) -> [ Else (c, replace_stmts b) ]
-    | Origin (o, b) -> [ Origin (o, replace_stmts b) ]
-    | Scope (a, b, body) -> [ Scope (a, b, replace_stmts body) ]
-    | Rule rule -> [ Rule { rule with nested = replace_stmts rule.nested } ]
+        let decoded =
+          { import_rule with url = decode_import_url import_rule.url }
+        in
+        if List.mem decoded.url stack then [ Import import_rule ]
+        else
+          match Context.load_import ?query ?layer_order loader decoded with
+          | Ok loaded -> replace_stmts ~stack:(decoded.url :: stack) loaded
+          | Error _ -> [ Import import_rule ])
+    | Layer (n, b) -> [ Layer (n, replace_stmts ~stack b) ]
+    | Media (q, b) -> [ Media (q, replace_stmts ~stack b) ]
+    | Supports (q, b) -> [ Supports (q, replace_stmts ~stack b) ]
+    | Container (n, q, b) -> [ Container (n, q, replace_stmts ~stack b) ]
+    | Starting_style b -> [ Starting_style (replace_stmts ~stack b) ]
+    | When (c, b) -> [ When (c, replace_stmts ~stack b) ]
+    | Else (c, b) -> [ Else (c, replace_stmts ~stack b) ]
+    | Origin (o, b) -> [ Origin (o, replace_stmts ~stack b) ]
+    | Scope (a, b, body) -> [ Scope (a, b, replace_stmts ~stack body) ]
+    | Rule rule ->
+        [ Rule { rule with nested = replace_stmts ~stack rule.nested } ]
     | other -> [ other ]
   in
-  replace_stmts stylesheet
+  replace_stmts ~stack:[] stylesheet
