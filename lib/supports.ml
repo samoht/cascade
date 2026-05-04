@@ -231,11 +231,11 @@ let closed_block = function
 let rec components_are_closed cvs =
   List.for_all
     (function
-    | Component.Block { node = { value; closed; _ }; _ } ->
-        closed && components_are_closed value
-    | Component.Func { node = { arguments; terminated; _ }; _ } ->
-        terminated && components_are_closed arguments
-    | Component.Preserved _ -> true)
+      | Component.Block { node = { value; closed; _ }; _ } ->
+          closed && components_are_closed value
+      | Component.Func { node = { arguments; terminated; _ }; _ } ->
+          terminated && components_are_closed arguments
+      | Component.Preserved _ -> true)
     cvs
 
 let split_top_level_colon cvs =
@@ -296,15 +296,16 @@ let function_call (fn : Component.func Component.node) =
   let lower_name = String.lowercase_ascii name in
   if
     strip_components args = []
-    &&
-    (lower_name = "selector" || lower_name = "font-format"
-   || lower_name = "font-tech" || lower_name = "at-rule"
-   || lower_name = "named-feature" || lower_name = "env")
+    && (lower_name = "selector" || lower_name = "font-format"
+      || lower_name = "font-tech" || lower_name = "at-rule"
+       || lower_name = "named-feature"
+       || lower_name = "env")
   then failwith ("Empty " ^ name ^ "() in @supports");
   if lower_name = "selector" then validate_selector_components args;
   if lower_name = "font-format" then
     validate_ident_components name args is_font_format;
-  if lower_name = "font-tech" then validate_ident_components name args is_font_tech;
+  if lower_name = "font-tech" then
+    validate_ident_components name args is_font_tech;
   if lower_name = "at-rule" then validate_at_rule_components args;
   if lower_name = "named-feature" || lower_name = "env" then
     validate_single_ident_components name args;
@@ -331,14 +332,16 @@ and parse_chain t op acc =
   match peek_ident t with
   | Some "and" ->
       (match op with
-      | Some `Or -> failwith "Cannot mix and/or without parentheses in @supports"
+      | Some `Or ->
+          failwith "Cannot mix and/or without parentheses in @supports"
       | _ -> ());
       Cursor.skip t;
       let right = parse_in_parens ~allow_unwrapped_decl:false t in
       parse_chain t (Some `And) (And (acc, right))
   | Some "or" ->
       (match op with
-      | Some `And -> failwith "Cannot mix and/or without parentheses in @supports"
+      | Some `And ->
+          failwith "Cannot mix and/or without parentheses in @supports"
       | _ -> ());
       Cursor.skip t;
       let right = parse_in_parens ~allow_unwrapped_decl:false t in
@@ -348,7 +351,8 @@ and parse_chain t op acc =
 and parse_in_parens ~allow_unwrapped_decl t =
   Cursor.ws t;
   match Cursor.peek t with
-  | Some (Component.Block { node = { opening = Token.Paren; value; _ }; _ } as cv)
+  | Some
+      (Component.Block { node = { opening = Token.Paren; value; _ }; _ } as cv)
     ->
       if not (closed_block cv) then
         failwith "Unmatched parenthesis in @supports condition";

@@ -1046,10 +1046,12 @@ let combine_with_parent (parent : Selector.t) (child : Selector.t) : Selector.t
   if contains_nesting child then substitute_nesting ~parent child
   else Selector.Combined (parent, Selector.Descendant, child)
 
-let rec flatten_rule ?(parent : Selector.t option) (rule : rule) : statement list
-    =
+let rec flatten_rule ?(parent : Selector.t option) (rule : rule) :
+    statement list =
   let selector =
-    match parent with None -> rule.selector | Some p -> combine_with_parent p rule.selector
+    match parent with
+    | None -> rule.selector
+    | Some p -> combine_with_parent p rule.selector
   in
   let direct =
     if rule.declarations = [] then []
@@ -1069,8 +1071,8 @@ let rec flatten_rule ?(parent : Selector.t option) (rule : rule) : statement lis
   in
   direct @ nested_flat
 
-and flatten_in_rule_context (parent : Selector.t) :
-    statement -> statement list = function
+and flatten_in_rule_context (parent : Selector.t) : statement -> statement list
+    = function
   | Rule child -> flatten_rule ~parent child
   | Declarations decls ->
       [
@@ -1087,9 +1089,7 @@ and flatten_in_rule_context (parent : Selector.t) :
   | Container (name, cond, block) ->
       [
         Container
-          ( name,
-            cond,
-            List.concat_map (flatten_in_rule_context parent) block );
+          (name, cond, List.concat_map (flatten_in_rule_context parent) block);
       ]
   | Supports (cond, block) ->
       [
@@ -1110,9 +1110,7 @@ and flatten_in_rule_context (parent : Selector.t) :
   | Else (cond, block) ->
       [ Else (cond, List.concat_map (flatten_in_rule_context parent) block) ]
   | Scope (s, e, block) ->
-      [
-        Scope (s, e, List.concat_map (flatten_in_rule_context parent) block);
-      ]
+      [ Scope (s, e, List.concat_map (flatten_in_rule_context parent) block) ]
   | other -> [ other ]
 
 let rec flatten_top_statement : statement -> statement list = function

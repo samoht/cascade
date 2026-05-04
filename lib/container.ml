@@ -50,18 +50,26 @@ let style_query_to_string = function
   | Boolean name -> name
   | Declaration { name; value } -> name ^ ": " ^ components_to_string value
   | Range { lower; lower_op; name; upper_op; upper } ->
-      components_to_string lower ^ " " ^ range_operator_to_string lower_op ^ " "
-      ^ name ^ " " ^ range_operator_to_string upper_op ^ " "
-      ^ components_to_string upper
+      components_to_string lower ^ " "
+      ^ range_operator_to_string lower_op
+      ^ " " ^ name ^ " "
+      ^ range_operator_to_string upper_op
+      ^ " " ^ components_to_string upper
 
 let rec scroll_state_query_to_string = function
   | State { name; value } -> name ^ ": " ^ value
   | Both (a, b) ->
-      "(" ^ scroll_state_query_to_string a ^ ") and ("
-      ^ scroll_state_query_to_string b ^ ")"
+      "("
+      ^ scroll_state_query_to_string a
+      ^ ") and ("
+      ^ scroll_state_query_to_string b
+      ^ ")"
   | Either (a, b) ->
-      "(" ^ scroll_state_query_to_string a ^ ") or ("
-      ^ scroll_state_query_to_string b ^ ")"
+      "("
+      ^ scroll_state_query_to_string a
+      ^ ") or ("
+      ^ scroll_state_query_to_string b
+      ^ ")"
   | Negated q -> "not (" ^ scroll_state_query_to_string q ^ ")"
 
 let rec to_string = function
@@ -204,7 +212,8 @@ let style_body ~uppercase body =
       match (style_strip_ws name_components, style_strip_ws value) with
       | [ name_component ], _ :: _ when not (has_semicolon_component value) -> (
           match ident_component name_component with
-          | Some name -> Style { query = Declaration { name; value }; uppercase }
+          | Some name ->
+              Style { query = Declaration { name; value }; uppercase }
           | None -> failwith "invalid style() container query")
       | _ -> failwith "invalid style() container query")
   | None -> (
@@ -240,9 +249,7 @@ let top_level_word s word =
   let depth = ref 0 in
   let result = ref None in
   let i = ref 0 in
-  let is_boundary i =
-    i < 0 || i >= len || not (is_ident_cont s.[i])
-  in
+  let is_boundary i = i < 0 || i >= len || not (is_ident_cont s.[i]) in
   while !result = None && !i + wlen <= len do
     (match s.[!i] with '(' -> incr depth | ')' -> decr depth | _ -> ());
     if
@@ -290,8 +297,7 @@ let scroll_state_value_allowed name value =
       | _ -> false)
   | "scrollable" -> (
       match value with
-      | "top" | "right" | "bottom" | "left" | "block" | "inline" | "x" | "y"
-        ->
+      | "top" | "right" | "bottom" | "left" | "block" | "inline" | "x" | "y" ->
           true
       | _ -> false)
   | "scrolled" -> (
@@ -318,18 +324,18 @@ let rec scroll_state_query_body body =
         Either (scroll_state_query_body lhs, scroll_state_query_body rhs)
     | None -> (
         match top_level_word body "and" with
-  | Some i ->
-      let lhs = String.sub body 0 i in
-      let rhs = String.sub body (i + 3) (String.length body - i - 3) in
-      Both (scroll_state_query_body lhs, scroll_state_query_body rhs)
-  | None -> (
-      match String.split_on_char ':' body with
-      | [ name; value ] -> (
-          match (String.trim name, String.trim value) with
-          | name, value when scroll_state_value_allowed name value ->
-              State { name; value }
-          | _ -> failwith "invalid scroll-state() container query")
-      | _ -> failwith "invalid scroll-state() container query"))
+        | Some i ->
+            let lhs = String.sub body 0 i in
+            let rhs = String.sub body (i + 3) (String.length body - i - 3) in
+            Both (scroll_state_query_body lhs, scroll_state_query_body rhs)
+        | None -> (
+            match String.split_on_char ':' body with
+            | [ name; value ] -> (
+                match (String.trim name, String.trim value) with
+                | name, value when scroll_state_value_allowed name value ->
+                    State { name; value }
+                | _ -> failwith "invalid scroll-state() container query")
+            | _ -> failwith "invalid scroll-state() container query"))
 
 let scroll_state_body ~uppercase body =
   let body = String.trim body in
@@ -454,33 +460,36 @@ let rec parse_unnamed s =
     failwith "mixed container query operators require grouping"
   else
     match top_level_keyword stripped " or " with
-  | Some i ->
-      let lhs = String.sub stripped 0 i in
-      let rhs = String.sub stripped (i + 4) (String.length stripped - i - 4) in
-      Or (parse_unnamed lhs, parse_unnamed rhs)
-  | None -> (
-      match top_level_keyword stripped " and " with
-      | Some i ->
-          let lhs = String.sub stripped 0 i in
-          let rhs =
-            String.sub stripped (i + 5) (String.length stripped - i - 5)
-          in
-          And (parse_unnamed lhs, parse_unnamed rhs)
-      | None ->
-          if String.length stripped >= 4 && String.sub stripped 0 4 = "not "
-          then
-            (* CSS Containment 3 §4 and Conditional Rules: [not] takes exactly
-               one [<query-in-parens>], so [not not (x)] is a parse error. The
-               inner expression must be wrapped in parens (a feature query, a
-               style()/scroll-state() function, or a parenthesised compound
-               condition). *)
-            let inner =
-              String.trim (String.sub stripped 4 (String.length stripped - 4))
+    | Some i ->
+        let lhs = String.sub stripped 0 i in
+        let rhs =
+          String.sub stripped (i + 4) (String.length stripped - i - 4)
+        in
+        Or (parse_unnamed lhs, parse_unnamed rhs)
+    | None -> (
+        match top_level_keyword stripped " and " with
+        | Some i ->
+            let lhs = String.sub stripped 0 i in
+            let rhs =
+              String.sub stripped (i + 5) (String.length stripped - i - 5)
             in
-            if String.length inner = 0 || inner.[0] <> '(' then
-              failwith "container query: 'not' requires a parenthesised operand"
-            else Not (parse_unnamed inner)
-          else parse_atom s)
+            And (parse_unnamed lhs, parse_unnamed rhs)
+        | None ->
+            if String.length stripped >= 4 && String.sub stripped 0 4 = "not "
+            then
+              (* CSS Containment 3 §4 and Conditional Rules: [not] takes exactly
+                 one [<query-in-parens>], so [not not (x)] is a parse error. The
+                 inner expression must be wrapped in parens (a feature query, a
+                 style()/scroll-state() function, or a parenthesised compound
+                 condition). *)
+              let inner =
+                String.trim (String.sub stripped 4 (String.length stripped - 4))
+              in
+              if String.length inner = 0 || inner.[0] <> '(' then
+                failwith
+                  "container query: 'not' requires a parenthesised operand"
+              else Not (parse_unnamed inner)
+            else parse_atom s)
 
 and parse_atom s =
   match classify_query_surface (String.trim s) with
@@ -503,6 +512,7 @@ let of_string s =
   | None -> parse_unnamed s
 
 let feature name value = Feature_query (Media.feature name value)
+
 let style ?value prop =
   let query =
     match value with
@@ -512,5 +522,6 @@ let style ?value prop =
           { name = prop; value = Cursor.remaining (Cursor.of_string value) }
   in
   Style { query; uppercase = false }
+
 let scroll_state name value =
   Scroll_state { query = State { name; value }; uppercase = false }

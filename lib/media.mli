@@ -95,9 +95,9 @@ val of_string_strict : string -> t
 (** [of_string_strict s] parses [s] as a media query without branch recovery. *)
 
 val of_function_body : string -> t
-(** [of_function_body s] parses the body of a conditional [media(...)]
-    function. Unlike a standalone media query, a single feature appears without
-    its outer parentheses in this grammar. *)
+(** [of_function_body s] parses the body of a conditional [media(...)] function.
+    Unlike a standalone media query, a single feature appears without its outer
+    parentheses in this grammar. *)
 
 val value_of_string : string -> value
 (** [value_of_string s] parses [s] as a media-feature value. *)
