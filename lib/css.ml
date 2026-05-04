@@ -819,15 +819,31 @@ let inline_vars ?(keep_vars = []) stylesheet =
   in
   let ctx = Context.v ~custom_properties () in
   let evaluated = Stylesheet.eval ctx stylesheet in
+  Printf.eprintf "DEBUG kept = [%s]\n" (String.concat "; " kept);
+  Printf.eprintf "DEBUG custom_properties len = %d\n"
+    (List.length custom_properties);
+  Printf.eprintf "DEBUG evaluated:\n%s\n"
+    (Stylesheet.to_string ~minify:false evaluated);
   let strip decls =
     List.filter
       (fun d ->
         match Variables.custom_declaration_name d with
         | None -> true
-        | Some _ -> is_kept d)
+        | Some _ ->
+            let k = is_kept d in
+            Printf.eprintf "DEBUG strip decl name=%s is_kept=%b\n"
+              (Option.value (Variables.custom_declaration_name d) ~default:"?")
+              k;
+            k)
       decls
   in
-  evaluated |> map_decls strip |> drop_empty_rules
+  let stripped = evaluated |> map_decls strip in
+  Printf.eprintf "DEBUG after strip:\n%s\n"
+    (Stylesheet.to_string ~minify:false stripped);
+  let dropped = drop_empty_rules stripped in
+  Printf.eprintf "DEBUG after drop_empty:\n%s\n"
+    (Stylesheet.to_string ~minify:false dropped);
+  dropped
 
 let inline_imports ?query ?layer_order loader stylesheet =
   let open Stylesheet in

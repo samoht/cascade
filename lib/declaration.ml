@@ -823,6 +823,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Caption_side -> v Caption_side (read_caption_side t)
   | User_select -> v User_select (read_user_select t)
   | Webkit_user_select -> v Webkit_user_select (read_user_select t)
+  | Moz_user_select -> v Moz_user_select (read_user_select t)
   | Pointer_events -> v Pointer_events (read_pointer_events t)
   | Resize -> v Resize (read_resize t)
   | Transition -> v Transition (read_transitions t)
