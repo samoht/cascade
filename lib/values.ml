@@ -475,6 +475,16 @@ let rec eval_length_calc : length calc -> length calc =
       let l = eval_length_calc l in
       let r = eval_length_calc r in
       match (l, op, r) with
+      | Num a, Add, Num b -> Num (a +. b)
+      | Num a, Sub, Num b -> Num (a -. b)
+      | Num a, Mul, Num b -> Num (a *. b)
+      | Num a, Div, Num b when b <> 0. -> Num (a /. b)
+      | x, Add, Num 0. -> x
+      | Num 0., Add, x -> x
+      | x, Sub, Num 0. -> x
+      | x, Mul, Num 1. -> x
+      | Num 1., Mul, x -> x
+      | x, Div, Num 1. -> x
       | Val a, op, Val b -> (
           match length_combine op a b with
           | Some v -> Val v
@@ -540,6 +550,16 @@ let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
       let l = eval_lp_calc l in
       let r = eval_lp_calc r in
       match (l, op, r) with
+      | Num a, Add, Num b -> Num (a +. b)
+      | Num a, Sub, Num b -> Num (a -. b)
+      | Num a, Mul, Num b -> Num (a *. b)
+      | Num a, Div, Num b when b <> 0. -> Num (a /. b)
+      | x, Add, Num 0. -> x
+      | Num 0., Add, x -> x
+      | x, Sub, Num 0. -> x
+      | x, Mul, Num 1. -> x
+      | Num 1., Mul, x -> x
+      | x, Div, Num 1. -> x
       | Val a, op, Val b -> (
           match lp_combine op a b with
           | Some v -> Val v
@@ -1726,20 +1746,25 @@ let read_length_keyword t : length =
 let rec read_calc_expr : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
   Cursor.ws t;
-  let left = read_calc_term read_a t in
-  Cursor.ws t;
-  match Cursor.peek_delim t with
-  | Some '+' ->
-      (* Use atomic to ensure we either parse the full addition or nothing *)
-      Cursor.atomic t (fun () ->
-          Cursor.skip t;
-          Expr (left, Add, read_calc_expr read_a t))
-  | Some '-' ->
-      (* Use atomic to ensure we either parse the full subtraction or nothing *)
-      Cursor.atomic t (fun () ->
-          Cursor.skip t;
-          Expr (left, Sub, read_calc_expr read_a t))
-  | _ -> left
+  (* CSS Values 4 10.7: [+] and [-] are left-associative, so [a - b - c] groups
+     as [(a - b) - c]. Loop on subsequent operators rather than recursing on the
+     right, which would group it as [a - (b - c)]. *)
+  let rec loop left =
+    Cursor.ws t;
+    match Cursor.peek_delim t with
+    | Some '+' ->
+        Cursor.atomic t (fun () ->
+            Cursor.skip t;
+            let right = read_calc_term read_a t in
+            loop (Expr (left, Add, right)))
+    | Some '-' ->
+        Cursor.atomic t (fun () ->
+            Cursor.skip t;
+            let right = read_calc_term read_a t in
+            loop (Expr (left, Sub, right)))
+    | _ -> left
+  in
+  loop (read_calc_term read_a t)
 
 and read_calc_term : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
@@ -1822,7 +1847,11 @@ and read_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
       else
         let read_val t = Val (read_a t) in
         let read_num t = (Num (Cursor.number t) : a calc) in
-        Cursor.one_of [ read_calc_zero; read_num; read_val ] t
+        (* CSS Values 4 10.7: a dimension factor like [-1px] or [-5em] should be
+           read as [Val] (full dimension) before falling back to [Num] (a raw
+           number). Otherwise [Cursor.number] consumes the [-1] and leaves [px]
+           hanging in the input. *)
+        Cursor.one_of [ read_calc_zero; read_val; read_num ] t
 
 and read_calc : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
@@ -1842,7 +1871,9 @@ let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
     result
   in
   let read_calc_length t : length =
-    Calc (read_calc (read_length ~allow_negative ~with_keywords) t)
+    (* Same exception as [read_length_percentage]: inside [calc()] the
+       non-negative constraint applies to the resolved value. *)
+    Calc (read_calc (read_length ~with_keywords) t)
   in
   let read_function_length t : length =
     (* [clamp(...)], [min(...)], [max(...)], [minmax(...)] arrive as a single
@@ -2974,7 +3005,11 @@ let rec read_length_percentage ?(allow_negative = true) ?(with_keywords = true)
   if Cursor.looking_at t "var(" then
     Var (read_var (read_length_percentage ~allow_negative ~with_keywords) t)
   else if Cursor.looking_at t "calc(" then
-    Calc (read_calc (read_length_percentage ~allow_negative ~with_keywords) t)
+    (* CSS Values 4 10 (calc): inside [calc()] negative operands are always
+       allowed even when the surrounding property is non-negative; the
+       non-negative constraint applies to the resolved value, not to inner
+       operands. *)
+    Calc (read_calc (read_length_percentage ~with_keywords) t)
   else
     (* Try to read as percentage or length *)
     let read_pct t : length_percentage =
