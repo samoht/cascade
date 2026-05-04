@@ -704,7 +704,7 @@ let property_rule_edges () =
   check_stylesheet
     ~expected:
       "@property \
-       --shadow-color{syntax:\"<color>\";inherits:true;initial-value:transparent}"
+       --shadow-color{syntax:\"<color>\";inherits:true;initial-value:#0000}"
     "@property --shadow-color { syntax: \"<color>\"; inherits: true; \
      initial-value: transparent; }";
   check_stylesheet
@@ -1447,7 +1447,7 @@ let c64_layer_name_syntax () =
     "@layer framework.base, framework.theme;";
   check_stylesheet
     ~expected:
-      "@layer reset.type{strong{font-weight:bold}}@layer \
+      "@layer reset.type{strong{font-weight:700}}@layer \
        reset{[hidden]{display:none}}"
     "@layer reset.type { strong { font-weight: bold } } @layer reset { \
      [hidden] { display: none } }";
@@ -1471,7 +1471,7 @@ let c64_layer_nesting_examples () =
      framework.theme { blockquote { color: rebeccapurple } }";
   check_stylesheet
     ~expected:
-      "@layer reset.type{strong{font-weight:bold}}@layer \
+      "@layer reset.type{strong{font-weight:700}}@layer \
        framework{.title{font-weight:100}@layer \
        theme{h1,h2{color:maroon}}}@layer reset{[hidden]{display:none}}"
     "@layer reset.type { strong { font-weight: bold } } @layer framework { \
@@ -3428,6 +3428,491 @@ let fidelity_font_weight_keyword_preserved () =
   pretty_preserves ".x { font-weight: normal }" [ "normal" ];
   pretty_preserves ".x { font-weight: bold }" [ "bold" ]
 
+(* CSS Selectors Level 4, section 14 (The :nth-child() Pseudo-class): the
+   [<an+b>] microsyntax has multiple spec-equivalent spellings - [2n+1] is the
+   same set as [odd]; [2n+0] equals [2n] (matches even); a constant b like
+   [(0n+5)] equals [(5)]; and [(1)] is equivalent to the [:first-child]
+   pseudo-class. Both Lightning CSS and cssnano canonicalize these to the
+   shortest spelling. *)
+let s4_14_nth_child_canonicalization () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    ":nth-child(2n+1) canonicalizes to :nth-child(odd)"
+    (normalize ".x :nth-child(odd) { color: red }")
+    (normalize ".x :nth-child(2n+1) { color: red }");
+  Alcotest.(check string)
+    ":nth-child(even) canonicalizes to :nth-child(2n)"
+    (normalize ".x :nth-child(2n) { color: red }")
+    (normalize ".x :nth-child(even) { color: red }");
+  Alcotest.(check string)
+    ":nth-child(1) canonicalizes to :first-child"
+    (normalize ".x :first-child { color: red }")
+    (normalize ".x :nth-child(1) { color: red }")
+
+(* CSS Selectors Level 4, section 6.2 (Attribute selectors): the value in
+   [\[attr=value\]] may be an identifier or a string. When the value matches the
+   [<ident-token>] grammar, the quotes are redundant and may be dropped; both
+   single and double quotes are equivalent. Both minifiers strip redundant
+   quotes. *)
+let s4_6_2_attribute_quote_canonicalization () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "[type=\"text\"] drops redundant quotes to [type=text]"
+    (normalize ".x [type=text] { color: red }")
+    (normalize ".x [type=\"text\"] { color: red }");
+  Alcotest.(check string)
+    "[data-x='hello'] drops redundant quotes to [data-x=hello]"
+    (normalize ".x [data-x=hello] { color: red }")
+    (normalize ".x [data-x='hello'] { color: red }")
+
+(* CSS Values and Units Module Level 4, section 8.1 (Numbers): scientific
+   notation [<number>] tokens like [1e3] and [1.5e2] are spec-equivalent to
+   their decimal expansion. Both minifiers expand these to the decimal form when
+   shorter. *)
+let v4_8_1_scientific_notation_expansion () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "1e3px expands to 1000px" ".x{width:1000px}"
+    (normalize ".x { width: 1e3px }");
+  Alcotest.(check string)
+    "1.5e2px expands to 150px" ".x{width:150px}"
+    (normalize ".x { width: 1.5e2px }")
+
+(* CSS Values and Units Module Level 4, section 8.1 (Numbers): negative zero is
+   the same value as zero; [-0px] is the same length as [0]. Both minifiers
+   normalise. *)
+let v4_8_1_negative_zero_canonical () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "-0px canonicalizes to 0" ".x{width:0}"
+    (normalize ".x { width: -0px }");
+  Alcotest.(check string)
+    "-0 canonicalizes to 0" ".x{width:0}"
+    (normalize ".x { width: -0 }")
+
+(* CSS Values and Units Module Level 4, section 7 (URLs): the [<url>] type
+   accepts both quoted strings and unquoted token sequences when the URL does
+   not contain whitespace, parentheses, or non-printable characters. Both
+   minifiers drop the quotes when not needed. *)
+let v4_7_url_quote_canonicalization () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "url('image.png') drops quotes" ".x{background:url(image.png)}"
+    (normalize ".x { background: url('image.png') }");
+  Alcotest.(check string)
+    "url(\"image.png\") drops quotes" ".x{background:url(image.png)}"
+    (normalize ".x { background: url(\"image.png\") }")
+
+(* CSS Values and Units Module Level 4, section 10 (Mathematical Expressions):
+   when all operands of [calc()] are dimensions in the same unit (or numbers),
+   the expression simplifies to a single value. Nested [calc()] collapses to a
+   single [calc()] (and to a bare value when constant). *)
+let v4_10_calc_nested_constant_simplification () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "calc(calc(1px + 2px)) simplifies to 3px" ".x{width:3px}"
+    (normalize ".x { width: calc(calc(1px + 2px)) }");
+  Alcotest.(check string)
+    "calc(1px + 2px) simplifies to 3px" ".x{width:3px}"
+    (normalize ".x { width: calc(1px + 2px) }")
+
+(* CSS Cascading and Inheritance Module Level 6, section 6.1 (Cascade Sorting
+   Order): consecutive rules with the same condition (same [@media], same
+   [@layer]) may be merged into one block, since the cascade evaluates them
+   identically. The merge is spec-allowed when no rule with conflicting
+   conditions appears between them. *)
+let c6_1_consecutive_same_condition_merge () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true ~optimize:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "consecutive @media screen blocks merge into one"
+    (normalize "@media screen { .a { color: red } .b { color: blue } }")
+    (normalize
+       "@media screen { .a { color: red } } @media screen { .b { color: blue } \
+        }");
+  Alcotest.(check string)
+    "consecutive @layer base blocks merge into one"
+    (normalize "@layer base { .a { color: red } .b { color: blue } }")
+    (normalize
+       "@layer base { .a { color: red } } @layer base { .b { color: blue } }")
+
+(* CSS Cascading and Inheritance Module Level 6, section 6.1 (Cascade Sorting
+   Order): the optimizer must preserve source order. When [.a] and [.b]
+   alternate ([.a; .b; .a]), the second [.a] cannot be merged with the first
+   because [.b] is between them and depending on cascade rules might affect the
+   same property at the same specificity. *)
+let c6_1_no_merge_across_intervening_rule_pair () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true ~optimize:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let output =
+    normalize ".a { padding: 10px } .b { color: red } .a { margin: 5px }"
+  in
+  Alcotest.(check bool)
+    "first .a rule preserved with padding" true
+    (Astring.String.is_infix ~affix:"padding:10px" output);
+  Alcotest.(check bool)
+    "second .a rule preserved with margin" true
+    (Astring.String.is_infix ~affix:"margin:5px" output);
+  Alcotest.(check bool)
+    ".b rule remains between the two .a rules" true
+    (let find_pos sub = Astring.String.find_sub ~sub output in
+     match (find_pos "padding:10px", find_pos ".b", find_pos "margin:5px") with
+     | Some p, Some b, Some m -> p < b && b < m
+     | _ -> false)
+
+(* {2 More fidelity tests for the new edges}
+
+   Each canonicalization above is a minify-only optimization; the pretty printer
+   must keep the source spelling. *)
+
+let fidelity_nth_child_form_preserved () =
+  pretty_preserves ".x :nth-child(2n+1) { color: red }" [ "2n+1" ];
+  pretty_preserves ".x :nth-child(even) { color: red }" [ "even" ];
+  pretty_preserves ".x :nth-child(1) { color: red }" [ ":nth-child(1)" ]
+
+let fidelity_attribute_quotes_preserved () =
+  pretty_preserves ".x [type=\"text\"] { color: red }" [ "[type=\"text\"]" ];
+  pretty_preserves ".x [data-x='hello'] { color: red }" [ "[data-x='hello']" ]
+
+let fidelity_scientific_notation_preserved () =
+  pretty_preserves ".x { width: 1e3px }" [ "1e3px" ];
+  pretty_preserves ".x { width: 1.5e2px }" [ "1.5e2px" ]
+
+let fidelity_url_quotes_preserved () =
+  pretty_preserves ".x { background: url('image.png') }" [ "url('image.png')" ];
+  pretty_preserves ".x { background: url(\"image.png\") }"
+    [ "url(\"image.png\")" ]
+
+let fidelity_calc_form_preserved () =
+  pretty_preserves ".x { width: calc(1px + 2px) }" [ "calc(1px + 2px)" ];
+  pretty_preserves ".x { width: calc(calc(1px + 2px)) }"
+    [ "calc(calc(1px + 2px))" ]
+
+(* CSS Cascading and Inheritance Module Level 6, section 6.1 (Cascade Sorting
+   Order): when two declarations of the same property tie on every higher-
+   priority criterion, only the later wins. The earlier declaration is dead and
+   may be removed. Both Lightning CSS and cssnano drop dead duplicates for
+   shorthand properties; for differing-value duplicates of the same longhand the
+   spec leaves the choice to the implementation. *)
+let c6_1_dead_shorthand_removed () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true ~optimize:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "shadowed margin shorthand removed" ".x{margin:5px}"
+    (normalize ".x { margin: 10px; margin: 5px }");
+  Alcotest.(check string)
+    "exact duplicate property collapsed" ".x{color:red}"
+    (normalize ".x { color: red; color: red }")
+
+(* CSS Cascading and Inheritance Module Level 6, section 6.1: an empty
+   declaration block contributes no declared values to the cascade. The rule may
+   be removed entirely as a no-op. Both minifiers drop empty rules. *)
+let c6_1_empty_rule_removed () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true ~optimize:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "empty rule before populated rule is dropped" ".y{color:red}"
+    (normalize ".x { } .y { color: red }");
+  Alcotest.(check string)
+    "empty rule after populated rule is dropped" ".y{color:red}"
+    (normalize ".y { color: red } .x { }")
+
+(* CSS Cascading and Inheritance Module Level 6, section 7 (CSS-Wide Keywords):
+   the keywords [initial], [inherit], [unset], [revert], and [revert-layer] are
+   valid for every property. Implementations must preserve them through
+   serialization since they have observable cascade semantics that no shorter
+   spelling captures. *)
+let c6_7_css_wide_keywords_preserved () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let cases = [ "initial"; "inherit"; "unset"; "revert"; "revert-layer" ] in
+  List.iter
+    (fun kw ->
+      let css = String.concat "" [ ".x { color: "; kw; " }" ] in
+      let expected = String.concat "" [ ".x{color:"; kw; "}" ] in
+      Alcotest.(check string)
+        (String.concat "" [ kw; " preserved through minify" ])
+        expected (normalize css))
+    cases
+
+(* CSS Cascading and Inheritance Module Level 6, section 3.2 (The all
+   Shorthand): the [all] property is a shorthand that sets every CSS-wide
+   keyword for all properties. It only accepts CSS-wide keywords as values and
+   must round-trip through the printer unchanged. *)
+let c6_3_2_all_shorthand_preserved () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "all: unset preserved" ".x{all:unset}"
+    (normalize ".x { all: unset }");
+  Alcotest.(check string)
+    "all: revert preserved" ".x{all:revert}"
+    (normalize ".x { all: revert }");
+  Alcotest.(check string)
+    "all: initial preserved" ".x{all:initial}"
+    (normalize ".x { all: initial }")
+
+(* CSS Cascading and Inheritance Module Level 6, section 6.4 (Cascade Layers):
+   named layers preserve their declared order. Two non-adjacent [@layer base]
+   blocks separated by an [@layer theme] block must NOT merge, because the theme
+   block establishes a layer ordering that affects the cascade. *)
+let c6_4_named_layers_preserve_order () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true ~optimize:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let output =
+    normalize
+      "@layer base { .a { color: red } } @layer theme { .a { color: blue } } \
+       @layer base { .a { padding: 10px } }"
+  in
+  Alcotest.(check bool)
+    "first @layer base block remains separate" true
+    (Astring.String.is_infix ~affix:"color:red" output);
+  Alcotest.(check bool)
+    "@layer theme block remains" true
+    (Astring.String.is_infix ~affix:"color:blue" output);
+  Alcotest.(check bool)
+    "second @layer base block remains separate" true
+    (Astring.String.is_infix ~affix:"padding:10px" output);
+  Alcotest.(check bool)
+    "the @layer theme block is positioned between the two @layer base blocks"
+    true
+    (let find sub = Astring.String.find_sub ~sub output in
+     match (find "color:red", find "color:blue", find "padding:10px") with
+     | Some r, Some t, Some p -> r < t && t < p
+     | _ -> false)
+
+(* CSS Cascade L6 section 2.4 (Conditional @import) and CSS Custom Properties L1
+   section 2 (var()): a [var()] reference with a fallback must be preserved
+   end-to-end. The optimizer cannot resolve [var(--undef, red)] to [red] without
+   a context that says [--undef] is undefined - that's a cascade-time fact, not
+   a syntax-time one. *)
+let css_var_fallback_preserved () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "var() with fallback preserved" ".x{color:var(--undef,red)}"
+    (normalize ".x { color: var(--undef, red) }");
+  Alcotest.(check string)
+    "nested var() preserved" ".x{color:var(--a,var(--b,red))}"
+    (normalize ".x { color: var(--a, var(--b, red)) }")
+
+(* CSS Cascade L6 section 6.4.4 (anonymous @layer): two anonymous layers are
+   distinct - they must NOT merge, because the spec states that each [@layer {
+   ... }] without a name creates a new, independent layer. *)
+let c6_4_4_anonymous_layers_distinct () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true ~optimize:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let output =
+    normalize "@layer { .a { color: red } } @layer { .b { color: blue } }"
+  in
+  let layer_count =
+    let rec count from acc =
+      match Astring.String.find_sub ~start:from ~sub:"@layer" output with
+      | None -> acc
+      | Some i -> count (i + 1) (acc + 1)
+    in
+    count 0 0
+  in
+  Alcotest.(check int)
+    "two anonymous @layer blocks remain as two distinct blocks" 2 layer_count
+
+(* {2 Fidelity tests for dead-code and layer edges} *)
+
+let fidelity_dead_property_preserved () =
+  pretty_preserves ".x { color: red; color: blue }"
+    [ "color: red"; "color: blue" ];
+  pretty_preserves ".x { margin: 10px; margin: 5px }"
+    [ "margin: 10px"; "margin: 5px" ]
+
+let fidelity_empty_rule_preserved () =
+  pretty_preserves ".x { } .y { color: red }" [ ".x"; ".y" ]
+
+let fidelity_css_wide_keywords_preserved () =
+  pretty_preserves ".x { color: revert }" [ "revert" ];
+  pretty_preserves ".x { color: revert-layer }" [ "revert-layer" ];
+  pretty_preserves ".x { color: unset }" [ "unset" ];
+  pretty_preserves ".x { all: initial }" [ "all"; "initial" ]
+
+(* CSS Backgrounds and Borders Module Level 3, section 3.6
+   (background-position): the keyword pairs [top left] / [left top] denote the
+   same position as [0% 0%], and [bottom right] denotes [100% 100%]. Both
+   Lightning CSS and cssnano canonicalize the keyword form to the numeric
+   one. *)
+let bg3_3_6_position_keyword_canonicalization () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "background-position: top left -> 0 0"
+    (normalize ".x { background-position: 0 0 }")
+    (normalize ".x { background-position: top left }");
+  Alcotest.(check string)
+    "background-position: left top -> 0 0"
+    (normalize ".x { background-position: 0 0 }")
+    (normalize ".x { background-position: left top }");
+  Alcotest.(check string)
+    "background-position: bottom right -> 100% 100%"
+    (normalize ".x { background-position: 100% 100% }")
+    (normalize ".x { background-position: bottom right }")
+
+(* CSS Cascade L6 section 6.1: when two rules with different selectors share the
+   same declaration block, they may be grouped into a selector list with one
+   block. The cascade evaluates the grouped form identically because each
+   selector contributes the same declared values at its own specificity. Both
+   minifiers group same-block rules. *)
+let c6_1_selector_grouping () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true ~optimize:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let grouped =
+    normalize ".a { color: red } .b { color: red } .c { color: red }"
+  in
+  Alcotest.(check bool)
+    "consecutive same-block rules group into a selector list" true
+    (Astring.String.is_infix ~affix:".a,.b,.c" grouped
+    || Astring.String.is_infix ~affix:".a, .b, .c" grouped);
+  Alcotest.(check bool)
+    "the grouped block has only one declaration appearance" true
+    (let rec count from acc =
+       match Astring.String.find_sub ~start:from ~sub:"color:red" grouped with
+       | None -> acc
+       | Some i -> count (i + 1) (acc + 1)
+     in
+     count 0 0 = 1)
+
+(* CSS Syntax L3 section 4.3.10 (Identifier escapes): vendor-prefixed properties
+   such as [-webkit-transform] and [-moz-user-select] use the dashed-ident
+   escape hatch and are unknown to the CSS spec. The printer must round-trip
+   them unchanged - both Lightning CSS and cssnano keep vendor prefixes. *)
+let vendor_prefix_preservation () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "-webkit-transform preserved" ".x{-webkit-transform:rotate(45deg)}"
+    (normalize ".x { -webkit-transform: rotate(45deg) }");
+  Alcotest.(check string)
+    "-moz-user-select preserved" ".x{-moz-user-select:none}"
+    (normalize ".x { -moz-user-select: none }")
+
+(* CSS Selectors Level 4, section 4.3 (Negation Pseudo-class): the two forms
+   [:not(A, B)] and [:not(A):not(B)] are spec-distinct - the first is a single
+   negation matching anything that's not A or B, the second chains two
+   negations. Both forms must round-trip preserved through the minifier (both
+   Lightning CSS and cssnano keep them). *)
+let s4_4_3_not_form_preserved () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    ":not(.a, .b) preserved" ".x :not(.a,.b){color:red}"
+    (normalize ".x :not(.a, .b) { color: red }");
+  Alcotest.(check string)
+    ":not(.a):not(.b) preserved" ".x :not(.a):not(.b){color:red}"
+    (normalize ".x :not(.a):not(.b) { color: red }")
+
+(* CSS Backgrounds and Borders Module Level 3 (border shorthand) and Outline
+   Module (outline shorthand): keyword shortcuts like [border: 0], [border:
+   none], [outline: 0], [outline: none] and Text Decoration L3 4.1
+   [text-decoration: none] must round-trip unchanged. Both Lightning CSS and
+   cssnano preserve these forms. *)
+let display3_border_keyword_preservation () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "border: 0 preserved" ".x{border:0}"
+    (normalize ".x { border: 0 }");
+  Alcotest.(check string)
+    "border: none preserved" ".x{border:none}"
+    (normalize ".x { border: none }");
+  Alcotest.(check string)
+    "outline: 0 preserved" ".x{outline:0}"
+    (normalize ".x { outline: 0 }");
+  Alcotest.(check string)
+    "outline: none preserved" ".x{outline:none}"
+    (normalize ".x { outline: none }");
+  Alcotest.(check string)
+    "text-decoration: none preserved" ".x{text-decoration:none}"
+    (normalize ".x { text-decoration: none }")
+
+(* {2 Fidelity tests for the new edges} *)
+
+let fidelity_position_keywords_preserved () =
+  pretty_preserves ".x { background-position: top left }" [ "top left" ];
+  pretty_preserves ".x { background-position: bottom right }" [ "bottom right" ];
+  pretty_preserves ".x { transform-origin: center center }" [ "center center" ]
+
+let fidelity_vendor_prefix_preserved () =
+  pretty_preserves ".x { -webkit-transform: rotate(45deg) }"
+    [ "-webkit-transform" ];
+  pretty_preserves ".x { -moz-user-select: none }" [ "-moz-user-select" ]
+
+let fidelity_not_form_preserved () =
+  pretty_preserves ".x :not(.a, .b) { color: red }" [ ":not(.a, .b)" ];
+  pretty_preserves ".x :not(.a):not(.b) { color: red }" [ ":not(.a):not(.b)" ]
+
 (* CSSOM Level 1, section 6.7 (Serialize a CSS rule): the last declaration in a
    declaration block has no trailing semicolon in the canonical serialized form.
    A stylesheet with declarations ending in a semicolon must serialize to the
@@ -3585,6 +4070,83 @@ let additional_tests =
     ( "fidelity font-weight keyword preserved",
       `Quick,
       fidelity_font_weight_keyword_preserved );
+    ( "spec selectors 4 14 nth-child canonicalization",
+      `Quick,
+      s4_14_nth_child_canonicalization );
+    ( "spec selectors 4 6.2 attribute quote canonicalization",
+      `Quick,
+      s4_6_2_attribute_quote_canonicalization );
+    ( "spec values 4 8.1 scientific notation expansion",
+      `Quick,
+      v4_8_1_scientific_notation_expansion );
+    ( "spec values 4 8.1 negative zero canonical",
+      `Quick,
+      v4_8_1_negative_zero_canonical );
+    ( "spec values 4 7 url quote canonicalization",
+      `Quick,
+      v4_7_url_quote_canonicalization );
+    ( "spec values 4 10 calc nested constant simplification",
+      `Quick,
+      v4_10_calc_nested_constant_simplification );
+    ( "spec cascade 6.1 consecutive same-condition merge",
+      `Quick,
+      c6_1_consecutive_same_condition_merge );
+    ( "spec cascade 6.1 no merge across intervening rule pair",
+      `Quick,
+      c6_1_no_merge_across_intervening_rule_pair );
+    ( "fidelity nth-child form preserved",
+      `Quick,
+      fidelity_nth_child_form_preserved );
+    ( "fidelity attribute quotes preserved",
+      `Quick,
+      fidelity_attribute_quotes_preserved );
+    ( "fidelity scientific notation preserved",
+      `Quick,
+      fidelity_scientific_notation_preserved );
+    ("fidelity url quotes preserved", `Quick, fidelity_url_quotes_preserved);
+    ("fidelity calc form preserved", `Quick, fidelity_calc_form_preserved);
+    ( "spec bg 3 3.6 position keyword canonicalization",
+      `Quick,
+      bg3_3_6_position_keyword_canonicalization );
+    ("spec cascade 6.1 selector grouping", `Quick, c6_1_selector_grouping);
+    ("vendor prefix preservation", `Quick, vendor_prefix_preservation);
+    ( "spec selectors 4 4.3 not form preserved",
+      `Quick,
+      s4_4_3_not_form_preserved );
+    ( "spec display 3 border keyword preservation",
+      `Quick,
+      display3_border_keyword_preservation );
+    ( "fidelity position keywords preserved",
+      `Quick,
+      fidelity_position_keywords_preserved );
+    ( "fidelity vendor prefix preserved",
+      `Quick,
+      fidelity_vendor_prefix_preserved );
+    ("fidelity not form preserved", `Quick, fidelity_not_form_preserved);
+    ( "fidelity dead property preserved",
+      `Quick,
+      fidelity_dead_property_preserved );
+    ("fidelity empty rule preserved", `Quick, fidelity_empty_rule_preserved);
+    ( "fidelity css-wide keywords preserved",
+      `Quick,
+      fidelity_css_wide_keywords_preserved );
+    ("css var fallback preserved", `Quick, css_var_fallback_preserved);
+    ( "spec cascade 6.4.4 anonymous layers distinct",
+      `Quick,
+      c6_4_4_anonymous_layers_distinct );
+    ( "spec cascade 6.3.2 all shorthand preserved",
+      `Quick,
+      c6_3_2_all_shorthand_preserved );
+    ( "spec cascade 6.4 named layers preserve order",
+      `Quick,
+      c6_4_named_layers_preserve_order );
+    ( "spec cascade 6.1 dead shorthand removed",
+      `Quick,
+      c6_1_dead_shorthand_removed );
+    ("spec cascade 6.1 empty rule removed", `Quick, c6_1_empty_rule_removed);
+    ( "spec cascade 6.7 css-wide keywords preserved",
+      `Quick,
+      c6_7_css_wide_keywords_preserved );
     (* Negative tests *)
     ("invalid selectors", `Quick, test_invalid_selectors);
     ("invalid properties", `Quick, test_invalid_properties);

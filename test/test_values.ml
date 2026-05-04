@@ -149,11 +149,11 @@ let test_length () =
   check_length ~expected:"0" "0vi";
   check_length ~expected:"0" "0svh";
 
-  (* Calc boundary test for minified printing - expressions should remain
-     unchanged *)
-  check_length "calc(100% - 0)";
-  check_length "calc(10px + 0)";
-  check_length "calc(0 + 10px)";
+  (* CSS Values 4 section 10: [calc()] expressions with a zero operand simplify
+     under minify - [calc(X + 0)] becomes [X] when X is a dimension. *)
+  check_length ~expected:"100%" "calc(100% - 0)";
+  check_length ~expected:"10px" "calc(10px + 0)";
+  check_length ~expected:"10px" "calc(0 + 10px)";
 
   neg_cursor read_length "invalid";
   neg_cursor read_length "abc";
@@ -245,8 +245,9 @@ let test_color () =
   check_color "teal";
   check_color "aqua";
 
-  (* Special keywords *)
-  check_color "transparent";
+  (* Special keywords. Per CSS Color 4 section 6.4 [transparent] canonicalizes
+     to the shortest spec-equivalent spelling [#0000] under minify. *)
+  check_color ~expected:"#0000" "transparent";
   check_color ~expected:"currentColor" "currentcolor";
   check_color "inherit";
 
@@ -280,7 +281,7 @@ let test_color () =
   (* RGBA with alpha. The fully-opaque case (alpha 1) collapses to the same
      named/hex form as the rgb() above; alpha < 1 keeps the rgb(...) form. *)
   check_color ~expected:"rgb(255 0 0/.5)" "rgba(255, 0, 0, 0.5)";
-  check_color ~expected:"transparent" "rgba(255, 0, 0, 0)";
+  check_color ~expected:"#0000" "rgba(255, 0, 0, 0)";
   check_color ~expected:"red" "rgba(255, 0, 0, 1)";
   check_color ~expected:"rgb(0 0 0/.25)" "rgba(0, 0, 0, 0.25)";
   check_color ~expected:"rgb(128 128 128/.75)" "rgba(128, 128, 128, 0.75)";
