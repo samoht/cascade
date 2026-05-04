@@ -9,16 +9,15 @@ type t =
   | Named of string * t
       (** Named container with condition: [@container name (condition)] *)
   | Style of {
-      name : string;
-      value : string option;
+      query : style_query;
       uppercase : bool;
           (** [true] when the source spelled the function as [STYLE(...)] (case
               preserved for round-trip fidelity); [false] for the canonical
               lowercase spelling. *)
-    }  (** Style query: [style(--flag)] or [style(property: value)]. *)
+    }  (** Style query: [style(--flag)], [style(property: value)], or a
+           custom-property range query. *)
   | Scroll_state of {
-      name : string;
-      value : string;
+      query : scroll_state_query;
       uppercase : bool;
           (** [true] when the source spelled the function as
               [SCROLL-STATE(...)]. *)
@@ -29,6 +28,27 @@ type t =
   | Feature_query of Media.t
       (** Container size/range feature query, e.g. [(inline-size: 640px)] or
           [(inline-size > 30em)]. *)
+
+and style_query =
+  | Boolean of string
+  | Declaration of { name : string; value : Component.t list }
+  | Range of style_range
+
+and style_range = {
+  lower : Component.t list;
+  lower_op : range_operator;
+  name : string;
+  upper_op : range_operator;
+  upper : Component.t list;
+}
+
+and range_operator = Lt | Lte | Gt | Gte
+
+and scroll_state_query =
+  | State of { name : string; value : string }
+  | Both of scroll_state_query * scroll_state_query
+  | Either of scroll_state_query * scroll_state_query
+  | Negated of scroll_state_query
 
 type kind = Min_width | Other  (** Coarse container condition category. *)
 

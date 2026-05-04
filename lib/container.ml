@@ -4,12 +4,33 @@ type t =
   | Min_width_rem of float
   | Min_width_px of int
   | Named of string * t
-  | Style of { name : string; value : string option; uppercase : bool }
-  | Scroll_state of { name : string; value : string; uppercase : bool }
+  | Style of { query : style_query; uppercase : bool }
+  | Scroll_state of { query : scroll_state_query; uppercase : bool }
   | And of t * t
   | Or of t * t
   | Not of t
   | Feature_query of Media.t
+
+and style_query =
+  | Boolean of string
+  | Declaration of { name : string; value : Component.t list }
+  | Range of style_range
+
+and style_range = {
+  lower : Component.t list;
+  lower_op : range_operator;
+  name : string;
+  upper_op : range_operator;
+  upper : Component.t list;
+}
+
+and range_operator = Lt | Lte | Gt | Gte
+
+and scroll_state_query =
+  | State of { name : string; value : string }
+  | Both of scroll_state_query * scroll_state_query
+  | Either of scroll_state_query * scroll_state_query
+  | Negated of scroll_state_query
 
 (* Format float without trailing period (24. -> 24, 24.5 -> 24.5) *)
 let format_rem f =
@@ -17,19 +38,42 @@ let format_rem f =
   if String.ends_with ~suffix:"." s then String.sub s 0 (String.length s - 1)
   else s
 
+let components_to_string cvs = Cursor.components_to_string ~trim:true cvs
+
+let range_operator_to_string = function
+  | Lt -> "<"
+  | Lte -> "<="
+  | Gt -> ">"
+  | Gte -> ">="
+
+let style_query_to_string = function
+  | Boolean name -> name
+  | Declaration { name; value } -> name ^ ": " ^ components_to_string value
+  | Range { lower; lower_op; name; upper_op; upper } ->
+      components_to_string lower ^ " " ^ range_operator_to_string lower_op ^ " "
+      ^ name ^ " " ^ range_operator_to_string upper_op ^ " "
+      ^ components_to_string upper
+
+let rec scroll_state_query_to_string = function
+  | State { name; value } -> name ^ ": " ^ value
+  | Both (a, b) ->
+      "(" ^ scroll_state_query_to_string a ^ ") and ("
+      ^ scroll_state_query_to_string b ^ ")"
+  | Either (a, b) ->
+      "(" ^ scroll_state_query_to_string a ^ ") or ("
+      ^ scroll_state_query_to_string b ^ ")"
+  | Negated q -> "not (" ^ scroll_state_query_to_string q ^ ")"
+
 let rec to_string = function
   | Min_width_rem rem -> "(min-width:" ^ format_rem rem ^ "rem)"
   | Min_width_px px -> "(min-width:" ^ Int.to_string px ^ "px)"
   | Named (name, cond) -> name ^ " " ^ to_string cond
-  | Style { name; value = None; uppercase } ->
+  | Style { query; uppercase } ->
       let head = if uppercase then "STYLE(" else "style(" in
-      head ^ name ^ ")"
-  | Style { name; value = Some value; uppercase } ->
-      let head = if uppercase then "STYLE(" else "style(" in
-      head ^ name ^ ": " ^ value ^ ")"
-  | Scroll_state { name; value; uppercase } ->
+      head ^ style_query_to_string query ^ ")"
+  | Scroll_state { query; uppercase } ->
       let head = if uppercase then "SCROLL-STATE(" else "scroll-state(" in
-      head ^ name ^ ": " ^ value ^ ")"
+      head ^ scroll_state_query_to_string query ^ ")"
   | And (a, b) -> "(" ^ to_string a ^ " and " ^ to_string b ^ ")"
   | Or (a, b) -> "(" ^ to_string a ^ " or " ^ to_string b ^ ")"
   | Not c -> "(not " ^ to_string c ^ ")"
@@ -44,13 +88,9 @@ let rec compare t1 t2 =
   | Named (n1, c1), Named (n2, c2) ->
       let name_cmp = String.compare n1 n2 in
       if name_cmp <> 0 then name_cmp else compare c1 c2
-  | Style { name = n1; value = v1; _ }, Style { name = n2; value = v2; _ } -> (
-      match String.compare n1 n2 with
-      | 0 -> Option.compare String.compare v1 v2
-      | cmp -> cmp)
-  | ( Scroll_state { name = n1; value = v1; _ },
-      Scroll_state { name = n2; value = v2; _ } ) -> (
-      match String.compare n1 n2 with 0 -> String.compare v1 v2 | cmp -> cmp)
+  | Style { query = q1; _ }, Style { query = q2; _ } -> Stdlib.compare q1 q2
+  | Scroll_state { query = q1; _ }, Scroll_state { query = q2; _ } ->
+      Stdlib.compare q1 q2
   | And (a1, b1), And (a2, b2) ->
       let c = compare a1 a2 in
       if c <> 0 then c else compare b1 b2
@@ -97,33 +137,205 @@ let split_named s =
         Some (String.sub s 0 stop, String.sub s i (len - i))
     | _ -> None
 
+let ident_component = function
+  | Component.Preserved { kind = Token.Ident name; _ } -> Some name
+  | _ -> None
+
+let is_custom_property name =
+  String.length name >= 2 && name.[0] = '-' && name.[1] = '-'
+
+let split_declaration_components cvs =
+  let rec loop before = function
+    | [] -> None
+    | Component.Preserved { kind = Token.Colon; _ } :: after ->
+        Some (List.rev before, after)
+    | cv :: rest -> loop (cv :: before) rest
+  in
+  loop [] cvs
+
+let has_semicolon_component =
+  List.exists (function
+    | Component.Preserved { kind = Token.Semicolon; _ } -> true
+    | _ -> false)
+
+let style_strip_ws =
+  List.filter (function
+    | Component.Preserved { kind = Token.Whitespace; _ } -> false
+    | _ -> true)
+
+let take_range_operator = function
+  | Component.Preserved { kind = Token.Delim "<"; _ }
+    :: Component.Preserved { kind = Token.Delim "="; _ }
+    :: rest ->
+      Some (Lte, rest)
+  | Component.Preserved { kind = Token.Delim ">"; _ }
+    :: Component.Preserved { kind = Token.Delim "="; _ }
+    :: rest ->
+      Some (Gte, rest)
+  | Component.Preserved { kind = Token.Delim "<"; _ } :: rest -> Some (Lt, rest)
+  | Component.Preserved { kind = Token.Delim ">"; _ } :: rest -> Some (Gt, rest)
+  | _ -> None
+
+let split_before_range_operator cvs =
+  let rec loop before rest =
+    match take_range_operator rest with
+    | Some (op, after) -> Some (List.rev before, op, after)
+    | None -> (
+        match rest with [] -> None | cv :: rest -> loop (cv :: before) rest)
+  in
+  loop [] cvs
+
+let style_range_query cvs =
+  match split_before_range_operator (style_strip_ws cvs) with
+  | Some (lower, lower_op, prop :: rest) when lower <> [] -> (
+      match (ident_component prop, split_before_range_operator rest) with
+      | Some name, Some ([], upper_op, upper)
+        when is_custom_property name && upper <> [] ->
+          Some (Range { lower; lower_op; name; upper_op; upper })
+      | _ -> None)
+  | _ -> None
+
 let style_body ~uppercase body =
   let body = String.trim body in
   if body = "" then failwith "empty style() container query";
-  if String.contains body ':' then
-    match String.split_on_char ':' body with
-    | [ name; value ] when String.trim name <> "" && String.trim value <> "" ->
-        Style
-          {
-            name = String.trim name;
-            value = Some (String.trim value);
-            uppercase;
-          }
-    | _ -> failwith "invalid style() container query"
-  else if String.length body >= 2 && body.[0] = '-' && body.[1] = '-' then
-    Style { name = body; value = None; uppercase }
-  else failwith "invalid style() container query"
+  let components = Cursor.remaining (Cursor.of_string body) in
+  match split_declaration_components components with
+  | Some (name_components, value) -> (
+      match (style_strip_ws name_components, style_strip_ws value) with
+      | [ name_component ], _ :: _ when not (has_semicolon_component value) -> (
+          match ident_component name_component with
+          | Some name -> Style { query = Declaration { name; value }; uppercase }
+          | None -> failwith "invalid style() container query")
+      | _ -> failwith "invalid style() container query")
+  | None -> (
+      match style_range_query components with
+      | Some query -> Style { query; uppercase }
+      | None -> (
+          match style_strip_ws components with
+          | [ name_component ] -> (
+              match ident_component name_component with
+              | Some name when is_custom_property name ->
+                  Style { query = Boolean name; uppercase }
+              | _ -> failwith "invalid style() container query")
+          | _ -> failwith "invalid style() container query"))
+
+(* Find the position of [keyword] at parenthesis depth 0 inside [s]. The keyword
+   is matched literally (caller passes [" and "], [" or "], etc.). *)
+let top_level_keyword s keyword =
+  let len = String.length s in
+  let klen = String.length keyword in
+  let depth = ref 0 in
+  let result = ref None in
+  let i = ref 0 in
+  while !result = None && !i + klen <= len do
+    (match s.[!i] with '(' -> incr depth | ')' -> decr depth | _ -> ());
+    if !depth = 0 && String.sub s !i klen = keyword then result := Some !i;
+    incr i
+  done;
+  !result
+
+let top_level_word s word =
+  let len = String.length s in
+  let wlen = String.length word in
+  let depth = ref 0 in
+  let result = ref None in
+  let i = ref 0 in
+  let is_boundary i =
+    i < 0 || i >= len || not (is_ident_cont s.[i])
+  in
+  while !result = None && !i + wlen <= len do
+    (match s.[!i] with '(' -> incr depth | ')' -> decr depth | _ -> ());
+    if
+      !depth = 0
+      && String.sub s !i wlen = word
+      && is_boundary (!i - 1)
+      && is_boundary (!i + wlen)
+    then result := Some !i;
+    incr i
+  done;
+  !result
+
+let has_top_level_word s word = Option.is_some (top_level_word s word)
+
+let outer_parens_wrap_all s =
+  let len = String.length s in
+  let rec loop depth i =
+    if i >= len - 1 then true
+    else
+      match s.[i] with
+      | '(' -> loop (depth + 1) (i + 1)
+      | ')' when depth = 0 -> false
+      | ')' -> loop (depth - 1) (i + 1)
+      | _ -> loop depth (i + 1)
+  in
+  len >= 2 && s.[0] = '(' && s.[len - 1] = ')' && loop 0 1
+
+let strip_outer_parens s =
+  let s = String.trim s in
+  if outer_parens_wrap_all s then
+    String.sub s 1 (String.length s - 2) |> String.trim
+  else s
+
+let scroll_state_value_allowed name value =
+  match name with
+  | "stuck" -> (
+      match value with
+      | "top" | "right" | "bottom" | "left" | "block-start" | "block-end"
+      | "inline-start" | "inline-end" | "none" ->
+          true
+      | _ -> false)
+  | "snapped" -> (
+      match value with
+      | "block" | "inline" | "x" | "y" | "both" -> true
+      | _ -> false)
+  | "scrollable" -> (
+      match value with
+      | "top" | "right" | "bottom" | "left" | "block" | "inline" | "x" | "y"
+        ->
+          true
+      | _ -> false)
+  | "scrolled" -> (
+      match value with
+      | "top" | "right" | "bottom" | "left" | "block" | "inline" | "x" | "y"
+      | "block-start" | "block-end" | "inline-start" | "inline-end" ->
+          true
+      | _ -> false)
+  | _ -> false
+
+let rec scroll_state_query_body body =
+  let body = strip_outer_parens body in
+  if String.length body >= 4 && String.sub body 0 4 = "not " then
+    Negated
+      (scroll_state_query_body
+         (String.sub body 4 (String.length body - 4) |> String.trim))
+  else if has_top_level_word body "and" && has_top_level_word body "or" then
+    failwith "mixed scroll-state() operators require grouping"
+  else
+    match top_level_word body "or" with
+    | Some i ->
+        let lhs = String.sub body 0 i in
+        let rhs = String.sub body (i + 2) (String.length body - i - 2) in
+        Either (scroll_state_query_body lhs, scroll_state_query_body rhs)
+    | None -> (
+        match top_level_word body "and" with
+  | Some i ->
+      let lhs = String.sub body 0 i in
+      let rhs = String.sub body (i + 3) (String.length body - i - 3) in
+      Both (scroll_state_query_body lhs, scroll_state_query_body rhs)
+  | None -> (
+      match String.split_on_char ':' body with
+      | [ name; value ] -> (
+          match (String.trim name, String.trim value) with
+          | name, value when scroll_state_value_allowed name value ->
+              State { name; value }
+          | _ -> failwith "invalid scroll-state() container query")
+      | _ -> failwith "invalid scroll-state() container query"))
 
 let scroll_state_body ~uppercase body =
-  match String.split_on_char ':' (String.trim body) with
-  | [ name; value ] -> (
-      match (String.trim name, String.trim value) with
-      | (("stuck", ("top" | "right" | "bottom" | "left")) as pair)
-      | (("snapped", ("block" | "inline" | "both")) as pair) ->
-          let name, value = pair in
-          Scroll_state { name; value; uppercase }
-      | _ -> failwith "invalid scroll-state() container query")
-  | _ -> failwith "invalid scroll-state() container query"
+  let body = String.trim body in
+  if body = "" then failwith "empty scroll-state() container query";
+  try Scroll_state { query = scroll_state_query_body body; uppercase }
+  with Failure msg -> failwith (msg ^ ": " ^ body)
 
 type query_surface =
   | Style_func of { canonical_name : bool; body : string }
@@ -235,44 +447,13 @@ let parse_container_specific raw =
   | Parenthesized_feature -> failwith "unrecognised container feature query"
   | Other_query -> failwith "not a container-specific query"
 
-(* Find the position of [keyword] at parenthesis depth 0 inside [s]. The keyword
-   is matched literally (caller passes [" and "], [" or "], etc.). *)
-let top_level_keyword s keyword =
-  let len = String.length s in
-  let klen = String.length keyword in
-  let depth = ref 0 in
-  let result = ref None in
-  let i = ref 0 in
-  while !result = None && !i + klen <= len do
-    (match s.[!i] with '(' -> incr depth | ')' -> decr depth | _ -> ());
-    if !depth = 0 && String.sub s !i klen = keyword then result := Some !i;
-    incr i
-  done;
-  !result
-
-let outer_parens_wrap_all s =
-  let len = String.length s in
-  let rec loop depth i =
-    if i >= len - 1 then true
-    else
-      match s.[i] with
-      | '(' -> loop (depth + 1) (i + 1)
-      | ')' when depth = 0 -> false
-      | ')' -> loop (depth - 1) (i + 1)
-      | _ -> loop depth (i + 1)
-  in
-  len >= 2 && s.[0] = '(' && s.[len - 1] = ')' && loop 0 1
-
-let strip_outer_parens s =
-  let s = String.trim s in
-  if outer_parens_wrap_all s then
-    String.sub s 1 (String.length s - 2) |> String.trim
-  else s
-
 let rec parse_unnamed s =
   let s = String.trim s in
   let stripped = strip_outer_parens s in
-  match top_level_keyword stripped " or " with
+  if has_top_level_word stripped "and" && has_top_level_word stripped "or" then
+    failwith "mixed container query operators require grouping"
+  else
+    match top_level_keyword stripped " or " with
   | Some i ->
       let lhs = String.sub stripped 0 i in
       let rhs = String.sub stripped (i + 4) (String.length stripped - i - 4) in
@@ -302,15 +483,19 @@ let rec parse_unnamed s =
           else parse_atom s)
 
 and parse_atom s =
-  match Media.of_string s with
-  | Media.Min_width_rem rem -> Min_width_rem rem
-  | Media.Min_width px when Float.is_integer px ->
-      Min_width_px (int_of_float px)
-  | media -> (
-      match single_feature_of_media media with
-      | Some f -> Feature_query f
-      | None -> failwith ("non-leaf media expression in container query: " ^ s))
-  | exception Failure _ -> parse_container_specific s
+  match classify_query_surface (String.trim s) with
+  | Style_func _ | Scroll_state_func _ -> parse_container_specific s
+  | Parenthesized_feature | Other_query -> (
+      match Media.of_string s with
+      | Media.Min_width_rem rem -> Min_width_rem rem
+      | Media.Min_width px when Float.is_integer px ->
+          Min_width_px (int_of_float px)
+      | media -> (
+          match single_feature_of_media media with
+          | Some f -> Feature_query f
+          | None ->
+              failwith ("non-leaf media expression in container query: " ^ s))
+      | exception Failure _ -> parse_container_specific s)
 
 let of_string s =
   match split_named s with
@@ -318,5 +503,14 @@ let of_string s =
   | None -> parse_unnamed s
 
 let feature name value = Feature_query (Media.feature name value)
-let style ?value prop = Style { name = prop; value; uppercase = false }
-let scroll_state name value = Scroll_state { name; value; uppercase = false }
+let style ?value prop =
+  let query =
+    match value with
+    | None -> Boolean prop
+    | Some value ->
+        Declaration
+          { name = prop; value = Cursor.remaining (Cursor.of_string value) }
+  in
+  Style { query; uppercase = false }
+let scroll_state name value =
+  Scroll_state { query = State { name; value }; uppercase = false }
