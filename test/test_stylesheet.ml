@@ -3087,35 +3087,6 @@ let anim1_7_1_keyframe_from_to_equivalence () =
     (normalize "@keyframes fade { from { opacity: 0 } 100% { opacity: 1 } }")
     (normalize "@keyframes fade { 0% { opacity: 0 } to { opacity: 1 } }")
 
-(* CSS Values and Units Module Level 4, section 6.1 (Distance Units): "All of
-   the absolute length units are compatible, and px is their canonical unit." So
-   [1in], [2.54cm], [25.4mm], [96px], [6pc] and [72pt] all denote the same
-   absolute length and are interchangeable in any [<length>] context. The
-   optimizer is free to canonicalize to any of them - the test asserts
-   equivalence at the cascaded value, not byte equality. *)
-let v4_6_1_absolute_length_interconvertible () =
-  let normalize css =
-    match Css.of_string css with
-    | Ok sheet -> Css.to_string ~minify:true ~optimize:true sheet |> String.trim
-    | Error _ -> Alcotest.failf "failed to parse: %s" css
-  in
-  let one_inch = normalize ".x { width: 1in }" in
-  let equivalents =
-    [
-      ".x { width: 96px }";
-      ".x { width: 2.54cm }";
-      ".x { width: 25.4mm }";
-      ".x { width: 6pc }";
-      ".x { width: 72pt }";
-    ]
-  in
-  List.iter
-    (fun equiv ->
-      Alcotest.(check string)
-        ("1in is spec-equivalent to " ^ equiv)
-        one_inch (normalize equiv))
-    equivalents
-
 (* CSS Color Module Level 4, sections 1.4 and 12 (rgb() Functional Notation):
    integer channels outside [0, 255] are clamped to that range, and a
    fully-opaque rgb() with all-zero channels is the same color as [black]. Both
@@ -3913,10 +3884,858 @@ let fidelity_not_form_preserved () =
   pretty_preserves ".x :not(.a, .b) { color: red }" [ ":not(.a, .b)" ];
   pretty_preserves ".x :not(.a):not(.b) { color: red }" [ ":not(.a):not(.b)" ]
 
-(* CSSOM Level 1, section 6.7 (Serialize a CSS rule): the last declaration in a
-   declaration block has no trailing semicolon in the canonical serialized form.
-   A stylesheet with declarations ending in a semicolon must serialize to the
-   same output as one without it. *)
+(* CSS Values and Units Module Level 4, section 6.6 (Time Units): [s] and [ms]
+   are the two units of [<time>], with [1s = 1000ms]. Both minifiers
+   canonicalize to the shorter spelling - [0s] for any zero, [1s] over [1000ms],
+   [.1s] over [100ms]. *)
+let v4_6_6_time_unit_canonicalization () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "0ms canonicalizes to 0s" ".x{transition-duration:0s}"
+    (normalize ".x { transition-duration: 0ms }");
+  Alcotest.(check string)
+    "1000ms canonicalizes to 1s" ".x{transition-duration:1s}"
+    (normalize ".x { transition-duration: 1000ms }");
+  Alcotest.(check string)
+    "100ms canonicalizes to .1s" ".x{transition-duration:.1s}"
+    (normalize ".x { transition-duration: 100ms }");
+  Alcotest.(check string)
+    "500ms canonicalizes to .5s" ".x{transition-duration:.5s}"
+    (normalize ".x { transition-duration: 500ms }")
+
+(* CSS Values and Units Module Level 4, section 6.1 (Distance Units): absolute
+   lengths ([in], [cm], [mm], [pt], [pc], [q]) are mathematically
+   inter-convertible to [px] but the conversion produces non-terminating
+   decimals or longer spellings in most cases. Industry minifiers (Lightning CSS
+   and cssnano) preserve the source unit; the CSSOM-style specified value should
+   round-trip unchanged. *)
+let v4_6_1_absolute_units_preserved_under_minify () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "10cm preserved" ".x{width:10cm}"
+    (normalize ".x { width: 10cm }");
+  Alcotest.(check string)
+    "1in preserved" ".x{width:1in}"
+    (normalize ".x { width: 1in }");
+  Alcotest.(check string)
+    "10pt preserved" ".x{font-size:10pt}"
+    (normalize ".x { font-size: 10pt }");
+  Alcotest.(check string)
+    "1pc preserved" ".x{width:1pc}"
+    (normalize ".x { width: 1pc }");
+  Alcotest.(check string)
+    "25.4mm preserved" ".x{width:25.4mm}"
+    (normalize ".x { width: 25.4mm }")
+
+(* CSS Values and Units Module Level 4, section 8.1 (Numbers): negative lengths
+   and percentages are valid in many contexts (margin, transform translate,
+   etc.) and must round-trip preserved. The leading [-] is part of the value,
+   not a separate token. *)
+let v4_8_1_negative_units_preserved () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "negative -10px preserved" ".x{margin:-10px}"
+    (normalize ".x { margin: -10px }");
+  Alcotest.(check string)
+    "negative -10% preserved" ".x{margin:-10%}"
+    (normalize ".x { margin: -10% }");
+  Alcotest.(check string)
+    "negative -.5em preserved" ".x{margin:-.5em}"
+    (normalize ".x { margin: -0.5em }");
+  Alcotest.(check string)
+    "negative angle -90deg preserved" ".x{transform:rotate(-90deg)}"
+    (normalize ".x { transform: rotate(-90deg) }")
+
+(* CSS Values and Units Module Level 4, section 8 (Numeric Data Types): trailing
+   zeros after a decimal point are not significant - [10.0px] is the same number
+   as [10px], [10.50px] is [10.5px]. Both minifiers normalise to drop trailing
+   zeros. *)
+let v4_8_trailing_zero_drop () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "10.0px drops trailing zero to 10px" ".x{width:10px}"
+    (normalize ".x { width: 10.0px }");
+  Alcotest.(check string)
+    "10.50px drops trailing zero to 10.5px" ".x{width:10.5px}"
+    (normalize ".x { width: 10.50px }");
+  Alcotest.(check string)
+    "1.0 line-height drops trailing zero to 1" ".x{line-height:1}"
+    (normalize ".x { line-height: 1.0 }")
+
+(* CSS Sizing Module Level 4, section 5 (aspect-ratio): the [aspect-ratio]
+   property accepts [<ratio>] which is two [<number>]s separated by [/]. Both
+   minifiers preserve [16/9] (with whitespace dropped) and the single-value form
+   [1] (which is shorthand for [1/1]). *)
+let sizing4_5_aspect_ratio_preservation () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "aspect-ratio: 16 / 9 -> 16/9 (whitespace dropped)" ".x{aspect-ratio:16/9}"
+    (normalize ".x { aspect-ratio: 16 / 9 }");
+  Alcotest.(check string)
+    "aspect-ratio: 1 preserved" ".x{aspect-ratio:1}"
+    (normalize ".x { aspect-ratio: 1 }")
+
+(* CSS Values and Units Module Level 4, section 8.1 + spec rejection: a bare
+   number without a unit is not a valid [<length>] outside of zero. Both parsers
+   reject [width: 10] (no unit), [margin: 5] (no unit). *)
+let v4_8_1_negative_unit_required_for_length () =
+  Alcotest.(check bool)
+    "width: 10 (no unit) is rejected" true
+    (match Css.of_string ".x { width: 10 }" with Error _ -> true | _ -> false);
+  Alcotest.(check bool)
+    "margin: 5 (no unit) is rejected" true
+    (match Css.of_string ".x { margin: 5 }" with Error _ -> true | _ -> false);
+  Alcotest.(check bool)
+    "padding: 1.5 (no unit) is rejected" true
+    (match Css.of_string ".x { padding: 1.5 }" with
+    | Error _ -> true
+    | _ -> false)
+
+(* CSS Values and Units Module Level 4, section 6.6 + spec rejection: a bare
+   number is not a valid [<time>] - units [s] or [ms] are required. Exception:
+   [0] is valid as zero in some contexts but [transition-duration: 1] (no unit)
+   must be rejected. *)
+let v4_6_6_time_unit_required () =
+  Alcotest.(check bool)
+    "transition-duration: 1 (no unit) is rejected" true
+    (match Css.of_string ".x { transition-duration: 1 }" with
+    | Error _ -> true
+    | _ -> false);
+  Alcotest.(check bool)
+    "animation-duration: 1.5 (no unit) is rejected" true
+    (match Css.of_string ".x { animation-duration: 1.5 }" with
+    | Error _ -> true
+    | _ -> false)
+
+(* CSS Values and Units Module Level 4, section 6.1 + spec rejection: unknown
+   length units like [10pp], [10foo] must be rejected as parse errors. *)
+let v4_6_1_unknown_length_unit_rejected () =
+  Alcotest.(check bool)
+    "width: 10pp (unknown unit) is rejected" true
+    (match Css.of_string ".x { width: 10pp }" with
+    | Error _ -> true
+    | _ -> false);
+  Alcotest.(check bool)
+    "width: 10foo (unknown unit) is rejected" true
+    (match Css.of_string ".x { width: 10foo }" with
+    | Error _ -> true
+    | _ -> false)
+
+(* {2 Fidelity tests for unit edges} *)
+
+let fidelity_time_unit_preserved () =
+  pretty_preserves ".x { transition-duration: 0ms }" [ "0ms" ];
+  pretty_preserves ".x { transition-duration: 1000ms }" [ "1000ms" ];
+  pretty_preserves ".x { transition-duration: 100ms }" [ "100ms" ];
+  pretty_preserves ".x { transition-duration: .5s }" [ ".5s" ]
+
+let fidelity_absolute_units_preserved () =
+  pretty_preserves ".x { width: 10cm }" [ "10cm" ];
+  pretty_preserves ".x { width: 1in }" [ "1in" ];
+  pretty_preserves ".x { font-size: 10pt }" [ "10pt" ];
+  pretty_preserves ".x { width: 1pc }" [ "1pc" ];
+  pretty_preserves ".x { width: 25.4mm }" [ "25.4mm" ]
+
+let fidelity_negative_units_preserved () =
+  pretty_preserves ".x { margin: -10px }" [ "-10px" ];
+  pretty_preserves ".x { margin: -10% }" [ "-10%" ];
+  pretty_preserves ".x { transform: rotate(-90deg) }" [ "-90deg" ]
+
+let fidelity_trailing_zero_preserved () =
+  pretty_preserves ".x { width: 10.0px }" [ "10.0px" ];
+  pretty_preserves ".x { width: 10.50px }" [ "10.50px" ];
+  pretty_preserves ".x { line-height: 1.0 }" [ "1.0" ]
+
+let fidelity_aspect_ratio_preserved () =
+  pretty_preserves ".x { aspect-ratio: 16 / 9 }" [ "16 / 9" ];
+  pretty_preserves ".x { aspect-ratio: 1 }" [ "1" ]
+
+(* CSS Values and Units Module Level 4, section 10.2 (Computed Value of calc()):
+   calc() simplifies under spec rules - a single-operand calc collapses to the
+   operand; multiplication/division/addition with constants in the same unit
+   fold to the result; calc() with a [var()] reference must be preserved because
+   the value is unknown at parse time. Both Lightning CSS and cssnano agree on
+   these simplifications. *)
+let v4_10_2_calc_single_operand () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "calc(1px) -> 1px" ".x{width:1px}"
+    (normalize ".x { width: calc(1px) }");
+  Alcotest.(check string)
+    "calc(-5px) -> -5px" ".x{width:-5px}"
+    (normalize ".x { width: calc(-5px) }");
+  Alcotest.(check string)
+    "calc(1) -> 1" ".x{aspect-ratio:1}"
+    (normalize ".x { aspect-ratio: calc(1) }")
+
+let v4_10_2_calc_arithmetic () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "calc(1px * 2) -> 2px" ".x{width:2px}"
+    (normalize ".x { width: calc(1px * 2) }");
+  Alcotest.(check string)
+    "calc(10px / 2) -> 5px" ".x{width:5px}"
+    (normalize ".x { width: calc(10px / 2) }");
+  Alcotest.(check string)
+    "calc(2 * 3) -> 6" ".x{aspect-ratio:6}"
+    (normalize ".x { aspect-ratio: calc(2 * 3) }");
+  Alcotest.(check string)
+    "calc(1px - 1px) -> 0" ".x{width:0}"
+    (normalize ".x { width: calc(1px - 1px) }");
+  Alcotest.(check string)
+    "calc(1px * 0) -> 0" ".x{width:0}"
+    (normalize ".x { width: calc(1px * 0) }");
+  Alcotest.(check string)
+    "calc(0 + 0) -> 0" ".x{width:0}"
+    (normalize ".x { width: calc(0 + 0) }")
+
+let v4_10_2_calc_same_unit_addition () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "calc(1px + 2px + 3px) -> 6px" ".x{width:6px}"
+    (normalize ".x { width: calc(1px + 2px + 3px) }");
+  Alcotest.(check string)
+    "calc((1px + 2px) * 2) -> 6px" ".x{width:6px}"
+    (normalize ".x { width: calc((1px + 2px) * 2) }");
+  Alcotest.(check string)
+    "calc(1px*2 + 3px*4) -> 14px" ".x{width:14px}"
+    (normalize ".x { width: calc(1px*2 + 3px*4) }")
+
+let v4_10_2_calc_same_unit_percentage () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "calc(100% - 50%) -> 50%" ".x{width:50%}"
+    (normalize ".x { width: calc(100% - 50%) }");
+  Alcotest.(check string)
+    "calc(50% + 50%) -> 100%" ".x{width:100%}"
+    (normalize ".x { width: calc(50% + 50%) }")
+
+(* CSS Values and Units Module Level 4, section 10.2: calc() with mixed units
+   that cannot be reduced at parse time must be preserved. Examples are
+   [calc(100vh - 50px)] (mixed viewport + absolute), [calc(100% - 10px)] (mixed
+   percentage + absolute), and any expression containing [var()] - their values
+   are not known until resolution time. *)
+let v4_10_2_calc_mixed_unit_preserved () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "calc(100vh - 50px) preserved" ".x{width:calc(100vh - 50px)}"
+    (normalize ".x { width: calc(100vh - 50px) }");
+  Alcotest.(check string)
+    "calc(100% - 10px) preserved" ".x{width:calc(100% - 10px)}"
+    (normalize ".x { width: calc(100% - 10px) }");
+  Alcotest.(check string)
+    "calc(var(--x) + 10px) preserved" ".x{width:calc(var(--x) + 10px)}"
+    (normalize ".x { width: calc(var(--x) + 10px) }")
+
+(* CSS Values L4, section 10 + spec rejection: invalid calc() forms are parse
+   errors. [calc()] (empty), [calc(10px +)] (trailing operator), a calc body
+   starting with [*] (leading operator) must all be rejected. *)
+let v4_10_invalid_calc_rejected () =
+  Alcotest.(check bool)
+    "calc() with no arguments is rejected" true
+    (match Css.of_string ".x { width: calc() }" with
+    | Error _ -> true
+    | _ -> false);
+  Alcotest.(check bool)
+    "calc(10px +) trailing operator is rejected" true
+    (match Css.of_string ".x { width: calc(10px +) }" with
+    | Error _ -> true
+    | _ -> false);
+  Alcotest.(check bool)
+    "calc(* 5) leading operator is rejected" true
+    (match Css.of_string ".x { width: calc(* 5) }" with
+    | Error _ -> true
+    | _ -> false)
+
+(* {2 Fidelity tests for calc edges} *)
+
+let fidelity_calc_simplifiable_preserved () =
+  pretty_preserves ".x { width: calc(1px + 2px) }" [ "calc(1px + 2px)" ];
+  pretty_preserves ".x { width: calc(1px * 2) }" [ "calc(1px * 2)" ];
+  pretty_preserves ".x { width: calc(100% - 50%) }" [ "calc(100% - 50%)" ]
+
+let fidelity_calc_mixed_unit_preserved () =
+  pretty_preserves ".x { width: calc(100vh - 50px) }" [ "calc(100vh - 50px)" ];
+  pretty_preserves ".x { width: calc(100% - 10px) }" [ "calc(100% - 10px)" ];
+  pretty_preserves ".x { width: calc(var(--x) + 10px) }"
+    [ "calc(var(--x) + 10px)" ]
+
+(* CSS Values L4 section 10.2: nested calc() collapses to a single calc() and
+   all-constant nested forms reduce to a single value. Both minifiers fully
+   unwrap. *)
+let v4_10_2_calc_nested_collapse () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "calc(calc(1px) + calc(2px)) -> 3px" ".x{width:3px}"
+    (normalize ".x { width: calc(calc(1px) + calc(2px)) }");
+  Alcotest.(check string)
+    "calc(calc(calc(1px))) -> 1px" ".x{width:1px}"
+    (normalize ".x { width: calc(calc(calc(1px))) }");
+  Alcotest.(check string)
+    "calc(calc(1px + 2px) * 2) -> 6px" ".x{width:6px}"
+    (normalize ".x { width: calc(calc(1px + 2px) * 2) }")
+
+(* CSS Values L4 section 10.7 (min(), max()): when all arguments are constants
+   reducible at parse time the result is a single value. Per shortest-wins
+   cascade picks the reduced form. *)
+let v4_10_7_min_max_constant_reduction () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "min(1px, 2px) -> 1px" ".x{width:1px}"
+    (normalize ".x { width: min(1px, 2px) }");
+  Alcotest.(check string)
+    "max(1px, 2px) -> 2px" ".x{width:2px}"
+    (normalize ".x { width: max(1px, 2px) }");
+  Alcotest.(check string)
+    "min(min(1px, 2px), 3px) -> 1px" ".x{width:1px}"
+    (normalize ".x { width: min(min(1px, 2px), 3px) }")
+
+(* CSS Selectors L4 section 17 (:is()): a single-argument [:is(.x)] matches the
+   same elements as bare [.x] with the same specificity. Per shortest-wins
+   cascade picks the unwrapped form. *)
+let s4_17_is_single_argument_unwrap () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    ":is(:is(.a)) unwraps to .a"
+    (normalize ".x .a { color: red }")
+    (normalize ".x :is(:is(.a)) { color: red }");
+  Alcotest.(check string)
+    ":not(:is(.a)) unwraps inner :is to :not(.a)"
+    (normalize ".x :not(.a) { color: red }")
+    (normalize ".x :not(:is(.a)) { color: red }");
+  Alcotest.(check string)
+    ":is(.a):is(.b) unwraps to .a.b"
+    (normalize ".x .a.b { color: red }")
+    (normalize ".x :is(.a):is(.b) { color: red }")
+
+(* CSS Selectors L4 section 6.2: attribute compound selectors drop quotes per
+   attribute when the value is a valid identifier. *)
+let s4_6_2_compound_attribute_canonicalization () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "[data-x=\"a\"][data-y=\"b\"] drops quotes per attribute"
+    ".x [data-x=a][data-y=b]{color:red}"
+    (normalize ".x [data-x=\"a\"][data-y=\"b\"] { color: red }")
+
+(* CSS Selectors L4 section 4.2 (compound selector): chained pseudo- classes
+   preserve their order and do not deduplicate. *)
+let s4_4_2_compound_pseudo_preserved () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    ":hover:focus:active preserved" ".x :hover:focus:active{color:red}"
+    (normalize ".x :hover:focus:active { color: red }")
+
+(* CSS Transforms L1 section 11: multiple transform functions stack in source
+   order; whitespace between them is optional for parsing. Lightning CSS drops
+   it; per shortest-wins cascade follows. *)
+let transforms1_11_chain_whitespace_dropped () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "transform chain whitespace dropped"
+    ".x{transform:translate(10px)translate(20px)}"
+    (normalize ".x { transform: translate(10px) translate(20px) }")
+
+(* CSS Custom Properties L1 section 2 (var()): variable references are
+   late-bound through the cascade and resolved at computed-value time. The
+   optimizer cannot inline a variable without a context that resolves it (a
+   [theme] map keyed on custom property names). At syntax time, [var(--x,
+   fallback)] must round-trip preserved. *)
+let custom_props1_2_var_inlining_preserved () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "var(--x) preserved without context" ".x{color:var(--x)}"
+    (normalize ".x { color: var(--x) }");
+  Alcotest.(check string)
+    "var(--x, red) fallback preserved" ".x{color:var(--x,red)}"
+    (normalize ".x { color: var(--x, red) }");
+  Alcotest.(check string)
+    "calc with var preserved" ".x{width:calc(var(--gap)*2)}"
+    (normalize ".x { width: calc(var(--gap) * 2) }");
+  Alcotest.(check string)
+    "rule defining the variable preserved alongside its use"
+    ".root{--brand:red}.x{color:var(--brand)}"
+    (normalize ":root { --brand: red } .x { color: var(--brand) }")
+
+(* CSS Custom Properties L1 section 5 (Resolving Dependency Cycles): a variable
+   that references itself directly or indirectly is invalid at computed time. At
+   syntax time the chain is preserved - the cycle detection happens in the
+   cascade. *)
+let custom_props1_5_var_cycle_preserved () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check bool)
+    "self-referential var preserved at syntax layer" true
+    (let out = normalize ":root { --x: var(--x) }" in
+     Astring.String.is_infix ~affix:"--x:var(--x)" out)
+
+(* {2 Fidelity tests for nested and var edges} *)
+
+let fidelity_nested_calc_preserved () =
+  pretty_preserves ".x { width: calc(calc(1px) + calc(2px)) }"
+    [ "calc(calc(1px)" ];
+  pretty_preserves ".x { width: calc(calc(calc(1px))) }"
+    [ "calc(calc(calc(1px)))" ]
+
+let fidelity_nested_is_preserved () =
+  pretty_preserves ".x :is(:is(.a)) { color: red }" [ ":is(:is(.a))" ];
+  pretty_preserves ".x :not(:is(.a)) { color: red }" [ ":not(:is(.a))" ];
+  pretty_preserves ".x :is(.a):is(.b) { color: red }" [ ":is(.a):is(.b)" ]
+
+let fidelity_min_max_preserved () =
+  pretty_preserves ".x { width: min(1px, 2px) }" [ "min(1px, 2px)" ];
+  pretty_preserves ".x { width: max(1px, 2px) }" [ "max(1px, 2px)" ]
+
+let fidelity_compound_pseudo_preserved () =
+  pretty_preserves ".x :hover:focus:active { color: red }"
+    [ ":hover:focus:active" ]
+
+let fidelity_transform_chain_preserved () =
+  pretty_preserves ".x { transform: translate(10px) translate(20px) }"
+    [ "translate(10px) translate(20px)" ]
+
+let fidelity_var_preserved () =
+  pretty_preserves ".x { color: var(--brand) }" [ "var(--brand)" ];
+  pretty_preserves ".x { color: var(--x, red) }" [ "var(--x, red)" ];
+  pretty_preserves ".x { width: calc(var(--gap) * 2) }" [ "var(--gap)" ]
+
+(* {2 Easing / timing functions (CSS Easing L1)} *)
+
+(* CSS Easing Module Level 1, section 2 (The easing functions): the named
+   keywords [linear], [ease], [ease-in], [ease-out], [ease-in-out] are
+   spec-defined aliases for specific [<cubic-bezier>] / step-function values.
+   Both Lightning CSS and cssnano canonicalize the cubic-bezier form to the
+   named keyword when applicable. *)
+let easing1_2_named_alias_canonicalization () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "cubic-bezier(0.25, 0.1, 0.25, 1) -> ease"
+    (normalize ".x { transition: 0.3s ease }")
+    (normalize ".x { transition: 0.3s cubic-bezier(0.25, 0.1, 0.25, 1) }");
+  Alcotest.(check string)
+    "steps(1, jump-start) -> step-start"
+    (normalize ".x { transition: 0.3s step-start }")
+    (normalize ".x { transition: 0.3s steps(1, jump-start) }")
+
+let easing1_2_invalid_rejected () =
+  Alcotest.(check bool)
+    "cubic-bezier with two args is rejected" true
+    (match Css.of_string ".x { transition: 0.3s cubic-bezier(0.5, 0.5) }" with
+    | Error _ -> true
+    | _ -> false);
+  Alcotest.(check bool)
+    "steps with no args is rejected" true
+    (match Css.of_string ".x { transition: 0.3s steps() }" with
+    | Error _ -> true
+    | _ -> false)
+
+let fidelity_easing_preserved () =
+  pretty_preserves ".x { transition: 0.3s ease }" [ "ease" ];
+  pretty_preserves ".x { transition: 0.3s linear }" [ "linear" ];
+  pretty_preserves ".x { transition: 0.3s cubic-bezier(0.25, 0.1, 0.25, 1) }"
+    [ "cubic-bezier(0.25, 0.1, 0.25, 1)" ]
+
+(* {2 Background shorthand (CSS Backgrounds L3 §2.1)} *)
+
+(* CSS Backgrounds and Borders L3, section 2.1 (background shorthand): the
+   shorthand expands to several longhands. Default values ([background-position]
+   = [0% 0%], [background-repeat] = [repeat], etc.) may be elided in the
+   serialized form. Both minifiers drop default position [0% 0%] when no other
+   components require it; per shortest- wins cascade picks the elided form. *)
+let bg3_2_1_default_position_elision () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "background: red 0% 0% -> background: red" ".x{background:red}"
+    (normalize ".x { background: red 0% 0% }")
+
+let bg3_2_1_multi_layer_preserved () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check bool)
+    "multi-layer background preserves both layers" true
+    (let out = normalize ".x { background: red, url(x.png) }" in
+     Astring.String.is_infix ~affix:"red" out
+     && Astring.String.is_infix ~affix:"url(x.png)" out)
+
+let fidelity_background_preserved () =
+  pretty_preserves ".x { background: red 0% 0% }" [ "0% 0%" ];
+  pretty_preserves ".x { background: red 50% 50% / cover no-repeat }"
+    [ "50% 50%"; "cover"; "no-repeat" ];
+  pretty_preserves ".x { background: red, url(x.png) }" [ "red"; "url(x.png)" ]
+
+(* {2 Strings and escapes (CSS Syntax L3 §4.3.7)} *)
+
+(* CSS Syntax L3, section 4.3.7 (Consume an escaped code point): hex escapes
+   [\41] decode to the Unicode code point [U+0041 = 'A']. The trailing
+   whitespace after a 1-6 digit escape is consumed. The decoded string is
+   shorter than the escape; Lightning CSS decodes printable ASCII characters
+   where safe. *)
+let s3_4_3_7_string_escape_decoding () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "\\41 in string decodes to A" ".x{content:\"A\"}"
+    (normalize ".x { content: \"\\41\" }");
+  Alcotest.(check string)
+    "\\41 followed by space decodes to A" ".x{content:\"A\"}"
+    (normalize ".x { content: \"\\41 \" }");
+  Alcotest.(check string)
+    "\\\\ preserved" ".x{content:\"\\\\\"}"
+    (normalize ".x { content: \"\\\\\" }")
+
+let fidelity_string_escape_preserved () =
+  pretty_preserves ".x { content: \"\\41\" }" [ "\\41" ];
+  pretty_preserves ".x { content: \"hello\" }" [ "hello" ];
+  pretty_preserves ".x { content: \"\\\\\" }" [ "\\\\" ]
+
+(* {2 Color function spaces (CSS Color L4)} *)
+
+(* CSS Color Module Level 4, sections 10-13 (Color spaces): the functional forms
+   [oklch()], [oklab()], [lab()], [lch()], [color()] all round-trip preserved
+   (channel-format normalization aside). Both minifiers preserve these as
+   written; Lightning CSS converts the lightness channel to a percentage form
+   which is mathematically equivalent. *)
+let color4_10_color_space_preserved () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check bool)
+    "oklch preserved" true
+    (let out = normalize ".x { color: oklch(0.628 0.258 29.23) }" in
+     Astring.String.is_infix ~affix:"oklch" out);
+  Alcotest.(check bool)
+    "oklab preserved" true
+    (Astring.String.is_infix ~affix:"oklab"
+       (normalize ".x { color: oklab(0.628 0.225 0.126) }"));
+  Alcotest.(check bool)
+    "lab preserved" true
+    (Astring.String.is_infix ~affix:"lab"
+       (normalize ".x { color: lab(54.29 80.81 69.89) }"));
+  Alcotest.(check bool)
+    "lch preserved" true
+    (Astring.String.is_infix ~affix:"lch"
+       (normalize ".x { color: lch(54.29 106.84 40.85) }"));
+  Alcotest.(check bool)
+    "color(srgb 1 0 0) preserved" true
+    (Astring.String.is_infix ~affix:"color(srgb"
+       (normalize ".x { color: color(srgb 1 0 0) }"))
+
+let color4_invalid_color_function_rejected () =
+  Alcotest.(check bool)
+    "oklch with no args is rejected" true
+    (match Css.of_string ".x { color: oklch() }" with
+    | Error _ -> true
+    | _ -> false);
+  Alcotest.(check bool)
+    "color() with no space is rejected" true
+    (match Css.of_string ".x { color: color(1 0 0) }" with
+    | Error _ -> true
+    | _ -> false)
+
+let fidelity_color_space_preserved () =
+  pretty_preserves ".x { color: oklch(0.628 0.258 29.23) }" [ "0.258"; "29.23" ];
+  pretty_preserves ".x { color: lab(54.29 80.81 69.89) }" [ "lab" ];
+  pretty_preserves ".x { color: color(srgb 1 0 0) }" [ "color(srgb 1 0 0)" ]
+
+(* {2 @supports (CSS Conditional L4 §2)} *)
+
+(* CSS Conditional Rules Module Level 4, section 2 (The @supports rule): the
+   rule body parses as a rule list (like a stylesheet) and round- trips
+   preserved. The supports-condition grammar accepts declarations, [not], [and],
+   [or], [selector()], and [font-tech()]. *)
+let conditional4_2_supports_preserved () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check bool)
+    "@supports (display: grid) preserved" true
+    (let out = normalize "@supports (display: grid) { .x { display: grid } }" in
+     Astring.String.is_infix ~affix:"@supports" out
+     && Astring.String.is_infix ~affix:"display:grid" out);
+  Alcotest.(check bool)
+    "@supports not (display: grid) preserved" true
+    (Astring.String.is_infix ~affix:"not"
+       (normalize "@supports not (display: grid) { .x { display: block } }"));
+  Alcotest.(check bool)
+    "@supports selector(:has(img)) preserved" true
+    (Astring.String.is_infix ~affix:"selector(:has(img))"
+       (normalize "@supports selector(:has(img)) { .x { color: red } }"));
+  Alcotest.(check bool)
+    "@supports (a) and (b) preserved" true
+    (Astring.String.is_infix ~affix:"and"
+       (normalize
+          "@supports (display: grid) and (color: red) { .x { color: red } }"))
+
+let conditional4_2_supports_invalid_rejected () =
+  Alcotest.(check bool)
+    "@supports with bare keyword rejected" true
+    (match Css.of_string "@supports invalid { .x { color: red } }" with
+    | Ok sheet ->
+        (* Bad supports condition is dropped; rule body may or may not survive
+           depending on recovery mode. Use the partial parser. *)
+        let { Css.warnings; _ } =
+          Css.parse "@supports invalid { .x { color: red } }"
+        in
+        List.length warnings >= 1
+        || not
+             (Astring.String.is_infix ~affix:"@supports"
+                (Css.to_string ~minify:true sheet))
+    | Error _ -> true)
+
+let fidelity_supports_preserved () =
+  pretty_preserves "@supports (display: grid) { .x { display: grid } }"
+    [ "@supports"; "display: grid" ];
+  pretty_preserves "@supports not (display: grid) { .x { display: block } }"
+    [ "not" ]
+
+(* {2 Logical Properties (CSS Logical L1)} *)
+
+(* CSS Logical Properties and Values Module Level 1, section 3 (Flow- relative
+   box model): logical properties [inline-size], [block-size],
+   [margin-inline-start], [padding-block-end], [inset-inline], etc. round-trip
+   preserved. The mapping to physical properties is computed-time (depends on
+   writing-mode), so the syntax layer keeps the logical spelling. *)
+let logical1_3_logical_property_preserved () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "inline-size preserved" ".x{inline-size:100px}"
+    (normalize ".x { inline-size: 100px }");
+  Alcotest.(check string)
+    "block-size preserved" ".x{block-size:50px}"
+    (normalize ".x { block-size: 50px }");
+  Alcotest.(check string)
+    "margin-inline-start preserved" ".x{margin-inline-start:10px}"
+    (normalize ".x { margin-inline-start: 10px }");
+  Alcotest.(check string)
+    "margin-inline two-value shorthand preserved" ".x{margin-inline:10px 20px}"
+    (normalize ".x { margin-inline: 10px 20px }");
+  Alcotest.(check string)
+    "padding-block two-value shorthand preserved" ".x{padding-block:5px 10px}"
+    (normalize ".x { padding-block: 5px 10px }");
+  Alcotest.(check string)
+    "inset preserved" ".x{inset:0}"
+    (normalize ".x { inset: 0 }");
+  Alcotest.(check string)
+    "inset-inline preserved" ".x{inset-inline:10px}"
+    (normalize ".x { inset-inline: 10px }")
+
+let fidelity_logical_property_preserved () =
+  pretty_preserves ".x { inline-size: 100px }" [ "inline-size" ];
+  pretty_preserves ".x { margin-inline-start: 10px }" [ "margin-inline-start" ];
+  pretty_preserves ".x { padding-block: 5px 10px }" [ "padding-block" ]
+
+(* {2 Container Queries (CSS Containment L3 §6)} *)
+
+(* CSS Containment Module Level 3, section 6 (Container Queries): the
+   [@container] rule supports an optional name and a query expression. Both
+   forms round-trip preserved, including the named form [@container card
+   (...)]. *)
+let containment3_6_container_query_preserved () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check bool)
+    "@container with min-width preserved" true
+    (Astring.String.is_infix ~affix:"@container"
+       (normalize "@container (min-width: 400px) { .x { color: red } }"));
+  Alcotest.(check bool)
+    "@container with name preserved" true
+    (Astring.String.is_infix ~affix:"card"
+       (normalize "@container card (min-width: 400px) { .x { color: red } }"));
+  Alcotest.(check bool)
+    "@container with inline-size range preserved" true
+    (Astring.String.is_infix ~affix:"inline-size"
+       (normalize "@container card (inline-size > 30em) { .x { color: red } }"))
+
+let fidelity_container_query_preserved () =
+  pretty_preserves "@container (min-width: 400px) { .x { color: red } }"
+    [ "@container"; "min-width: 400px" ];
+  pretty_preserves "@container card (inline-size > 30em) { .x { color: red } }"
+    [ "card"; "inline-size > 30em" ]
+
+(* {2 Font shorthand (CSS Fonts L4 §6.5)} *)
+
+(* CSS Fonts Module Level 4, section 6.5 (Shorthand font property): the [font]
+   shorthand expands to several longhands; the keyword [bold] inside the
+   shorthand canonicalizes to [700] under minify per §5.1.2. System font
+   keywords ([caption], [icon], [menu]) round-trip preserved. *)
+let fonts4_6_5_font_shorthand () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "font: 16px Arial preserved" ".x{font:16px Arial}"
+    (normalize ".x { font: 16px Arial }");
+  Alcotest.(check bool)
+    "font with bold canonicalizes to 700" true
+    (Astring.String.is_infix ~affix:"700"
+       (normalize ".x { font: italic small-caps bold 16px/1.2 sans-serif }"));
+  Alcotest.(check string)
+    "font: caption preserved" ".x{font:caption}"
+    (normalize ".x { font: caption }");
+  Alcotest.(check string)
+    "font: icon preserved" ".x{font:icon}"
+    (normalize ".x { font: icon }")
+
+let fonts4_invalid_font_rejected () =
+  Alcotest.(check bool)
+    "font with no family rejected" true
+    (match Css.of_string ".x { font: 16px }" with
+    | Error _ -> true
+    | _ -> false)
+
+let fidelity_font_shorthand_preserved () =
+  pretty_preserves ".x { font: 16px Arial }" [ "16px Arial" ];
+  pretty_preserves ".x { font: italic small-caps bold 16px/1.2 sans-serif }"
+    [ "italic"; "small-caps"; "bold" ];
+  pretty_preserves ".x { font: caption }" [ "caption" ]
+
+(* {2 List-style shorthand (CSS Lists L3 §3)} *)
+
+(* CSS Lists Module Level 3, section 3 (list-style shorthand): the shorthand
+   sets [list-style-type], [list-style-position], and [list- style-image].
+   Default values may be elided per shortest-wins. *)
+let lists3_list_style_shorthand () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "list-style: none preserved" ".x{list-style:none}"
+    (normalize ".x { list-style: none }");
+  Alcotest.(check string)
+    "list-style-type: none preserved" ".x{list-style-type:none}"
+    (normalize ".x { list-style-type: none }");
+  Alcotest.(check string)
+    "list-style-position: inside preserved" ".x{list-style-position:inside}"
+    (normalize ".x { list-style-position: inside }")
+
+let fidelity_list_style_preserved () =
+  pretty_preserves ".x { list-style: none }" [ "none" ];
+  pretty_preserves ".x { list-style: disc inside }" [ "disc"; "inside" ];
+  pretty_preserves ".x { list-style-type: none }" [ "list-style-type" ]
+
+(* {2 Cascade origin + !important interaction (Cascade L6 §6.3)} *)
+
+(* CSS Cascading and Inheritance Module Level 6, section 6.3 (Importance): for
+   important declarations the origin precedence is inverted - user-agent
+   !important > user !important > author !important. The cascade test surface
+   validates that important declarations preserve their authored !important
+   suffix. *)
+let c6_3_important_serialization_preserved () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "!important suffix preserved" ".x{color:red!important}"
+    (normalize ".x { color: red !important }");
+  Alcotest.(check string)
+    "!important with whitespace canonicalized to no-space form"
+    ".x{color:red!important}"
+    (normalize ".x { color: red ! important }")
+
+let fidelity_important_preserved () =
+  pretty_preserves ".x { color: red !important }" [ "!important" ]
+
 let cssom_6_7_no_trailing_semicolon () =
   let normalize css =
     match Css.of_string css with
@@ -4020,9 +4839,152 @@ let additional_tests =
     ( "spec animations 1 7.1 keyframe from/to equivalence",
       `Quick,
       anim1_7_1_keyframe_from_to_equivalence );
-    ( "spec values 4 6.1 absolute length interconvertible",
+    ( "spec values 4 6.1 absolute units preserved under minify",
       `Quick,
-      v4_6_1_absolute_length_interconvertible );
+      v4_6_1_absolute_units_preserved_under_minify );
+    ( "spec values 4 6.6 time unit canonicalization",
+      `Quick,
+      v4_6_6_time_unit_canonicalization );
+    ( "spec values 4 8.1 negative units preserved",
+      `Quick,
+      v4_8_1_negative_units_preserved );
+    ("spec values 4 8 trailing zero drop", `Quick, v4_8_trailing_zero_drop);
+    ( "spec sizing 4 5 aspect-ratio preservation",
+      `Quick,
+      sizing4_5_aspect_ratio_preservation );
+    ( "spec values 4 8.1 unit required for length (negative)",
+      `Quick,
+      v4_8_1_negative_unit_required_for_length );
+    ( "spec values 4 6.6 time unit required (negative)",
+      `Quick,
+      v4_6_6_time_unit_required );
+    ( "spec values 4 6.1 unknown length unit rejected (negative)",
+      `Quick,
+      v4_6_1_unknown_length_unit_rejected );
+    ("fidelity time unit preserved", `Quick, fidelity_time_unit_preserved);
+    ( "fidelity absolute units preserved",
+      `Quick,
+      fidelity_absolute_units_preserved );
+    ( "fidelity negative units preserved",
+      `Quick,
+      fidelity_negative_units_preserved );
+    ( "fidelity trailing zero preserved",
+      `Quick,
+      fidelity_trailing_zero_preserved );
+    ("fidelity aspect-ratio preserved", `Quick, fidelity_aspect_ratio_preserved);
+    ( "spec values 4 10.2 calc single operand",
+      `Quick,
+      v4_10_2_calc_single_operand );
+    ("spec values 4 10.2 calc arithmetic", `Quick, v4_10_2_calc_arithmetic);
+    ( "spec values 4 10.2 calc same-unit addition",
+      `Quick,
+      v4_10_2_calc_same_unit_addition );
+    ( "spec values 4 10.2 calc same-unit percentage",
+      `Quick,
+      v4_10_2_calc_same_unit_percentage );
+    ( "spec values 4 10.2 calc mixed-unit preserved",
+      `Quick,
+      v4_10_2_calc_mixed_unit_preserved );
+    ( "spec values 4 10 invalid calc rejected (negative)",
+      `Quick,
+      v4_10_invalid_calc_rejected );
+    ( "fidelity calc simplifiable preserved",
+      `Quick,
+      fidelity_calc_simplifiable_preserved );
+    ( "fidelity calc mixed-unit preserved",
+      `Quick,
+      fidelity_calc_mixed_unit_preserved );
+    ( "spec values 4 10.2 calc nested collapse",
+      `Quick,
+      v4_10_2_calc_nested_collapse );
+    ( "spec values 4 10.7 min/max constant reduction",
+      `Quick,
+      v4_10_7_min_max_constant_reduction );
+    ( "spec selectors 4 17 :is single-argument unwrap",
+      `Quick,
+      s4_17_is_single_argument_unwrap );
+    ( "spec selectors 4 6.2 compound attribute canonicalization",
+      `Quick,
+      s4_6_2_compound_attribute_canonicalization );
+    ( "spec selectors 4 4.2 compound pseudo preserved",
+      `Quick,
+      s4_4_2_compound_pseudo_preserved );
+    ( "spec transforms 1 11 chain whitespace dropped",
+      `Quick,
+      transforms1_11_chain_whitespace_dropped );
+    ( "spec custom-properties 1 2 var inlining preserved",
+      `Quick,
+      custom_props1_2_var_inlining_preserved );
+    ( "spec custom-properties 1 5 var cycle preserved",
+      `Quick,
+      custom_props1_5_var_cycle_preserved );
+    ("fidelity nested calc preserved", `Quick, fidelity_nested_calc_preserved);
+    ("fidelity nested :is preserved", `Quick, fidelity_nested_is_preserved);
+    ("fidelity min/max preserved", `Quick, fidelity_min_max_preserved);
+    ( "fidelity compound pseudo preserved",
+      `Quick,
+      fidelity_compound_pseudo_preserved );
+    ( "fidelity transform chain preserved",
+      `Quick,
+      fidelity_transform_chain_preserved );
+    ("fidelity var preserved", `Quick, fidelity_var_preserved);
+    ( "spec easing 1 2 named alias",
+      `Quick,
+      easing1_2_named_alias_canonicalization );
+    ("spec easing 1 2 invalid (negative)", `Quick, easing1_2_invalid_rejected);
+    ("fidelity easing preserved", `Quick, fidelity_easing_preserved);
+    ( "spec bg 3 2.1 default position elision",
+      `Quick,
+      bg3_2_1_default_position_elision );
+    ( "spec bg 3 2.1 multi-layer preserved",
+      `Quick,
+      bg3_2_1_multi_layer_preserved );
+    ("fidelity background preserved", `Quick, fidelity_background_preserved);
+    ( "spec syntax 3 4.3.7 string escape decoding",
+      `Quick,
+      s3_4_3_7_string_escape_decoding );
+    ( "fidelity string escape preserved",
+      `Quick,
+      fidelity_string_escape_preserved );
+    ( "spec color 4 10 color space preserved",
+      `Quick,
+      color4_10_color_space_preserved );
+    ( "spec color 4 invalid color function rejected (negative)",
+      `Quick,
+      color4_invalid_color_function_rejected );
+    ("fidelity color space preserved", `Quick, fidelity_color_space_preserved);
+    ( "spec conditional 4 2 supports preserved",
+      `Quick,
+      conditional4_2_supports_preserved );
+    ( "spec conditional 4 2 supports invalid (negative)",
+      `Quick,
+      conditional4_2_supports_invalid_rejected );
+    ("fidelity supports preserved", `Quick, fidelity_supports_preserved);
+    ( "spec logical 1 3 logical property preserved",
+      `Quick,
+      logical1_3_logical_property_preserved );
+    ( "fidelity logical property preserved",
+      `Quick,
+      fidelity_logical_property_preserved );
+    ( "spec containment 3 6 container query preserved",
+      `Quick,
+      containment3_6_container_query_preserved );
+    ( "fidelity container query preserved",
+      `Quick,
+      fidelity_container_query_preserved );
+    ("spec fonts 4 6.5 font shorthand", `Quick, fonts4_6_5_font_shorthand);
+    ( "spec fonts 4 invalid font rejected (negative)",
+      `Quick,
+      fonts4_invalid_font_rejected );
+    ( "fidelity font shorthand preserved",
+      `Quick,
+      fidelity_font_shorthand_preserved );
+    ("spec lists 3 list-style shorthand", `Quick, lists3_list_style_shorthand);
+    ("fidelity list-style preserved", `Quick, fidelity_list_style_preserved);
+    ( "spec cascade 6.3 important serialization preserved",
+      `Quick,
+      c6_3_important_serialization_preserved );
+    ("fidelity important preserved", `Quick, fidelity_important_preserved);
     ( "spec color 4 12 rgb clamp canonicalization",
       `Quick,
       color4_12_rgb_clamp_canonicalization );

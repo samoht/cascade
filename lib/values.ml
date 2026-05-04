@@ -424,6 +424,71 @@ let rec normalize_length_calc_zeros : length calc -> length calc = function
   | Expr (l, op, r) ->
       Expr (normalize_length_calc_zeros l, op, normalize_length_calc_zeros r)
 
+(* CSS Values 4 10.7: same-unit add/sub of two typed lengths reduces to a single
+   length. Mixed-unit cases stay as a [calc] expression because the resolved
+   value depends on cascade context. *)
+let length_combine op v1 v2 =
+  let combine a b =
+    match op with Add -> a +. b | Sub -> a -. b | Mul | Div -> nan
+  in
+  match (op, v1, v2) with
+  | (Add | Sub), Px a, Px b -> Some (Px (combine a b))
+  | (Add | Sub), Em a, Em b -> Some (Em (combine a b))
+  | (Add | Sub), Rem a, Rem b -> Some (Rem (combine a b))
+  | (Add | Sub), Pct a, Pct b -> Some (Pct (combine a b))
+  | (Add | Sub), Vw a, Vw b -> Some (Vw (combine a b))
+  | (Add | Sub), Vh a, Vh b -> Some (Vh (combine a b))
+  | _ -> None
+
+(* CSS Values 4 10.7: multiplying a typed length by a unitless number scales the
+   length, leaving the unit unchanged. Same goes for division by a non- zero
+   number. *)
+let length_scale op v n =
+  let scale a = match op with Mul -> a *. n | Div -> a /. n | _ -> nan in
+  match (op, v) with
+  | (Mul | Div), Px a -> Some (Px (scale a))
+  | (Mul | Div), Em a -> Some (Em (scale a))
+  | (Mul | Div), Rem a -> Some (Rem (scale a))
+  | (Mul | Div), Pct a -> Some (Pct (scale a))
+  | (Mul | Div), Vw a -> Some (Vw (scale a))
+  | (Mul | Div), Vh a -> Some (Vh (scale a))
+  | (Mul | Div), Cm a -> Some (Cm (scale a))
+  | (Mul | Div), Mm a -> Some (Mm (scale a))
+  | (Mul | Div), In a -> Some (In (scale a))
+  | (Mul | Div), Pt a -> Some (Pt (scale a))
+  | (Mul | Div), Pc a -> Some (Pc (scale a))
+  | _ -> None
+
+let rec eval_length_calc : length calc -> length calc =
+ fun calc ->
+  match calc with
+  | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
+  | Nested inner -> (
+      match eval_length_calc inner with
+      | (Val _ | Num _ | Var _) as leaf -> leaf
+      | reduced -> Nested reduced)
+  | Parens inner -> (
+      match eval_length_calc inner with
+      | (Val _ | Num _ | Var _) as leaf -> leaf
+      | reduced -> Parens reduced)
+  | Expr (l, op, r) -> (
+      let l = eval_length_calc l in
+      let r = eval_length_calc r in
+      match (l, op, r) with
+      | Val a, op, Val b -> (
+          match length_combine op a b with
+          | Some v -> Val v
+          | None -> Expr (l, op, r))
+      | Val a, ((Mul | Div) as op), Num n -> (
+          match length_scale op a n with
+          | Some v -> Val v
+          | None -> Expr (l, op, r))
+      | Num n, Mul, Val a -> (
+          match length_scale Mul a n with
+          | Some v -> Val v
+          | None -> Expr (l, op, r))
+      | _ -> Expr (l, op, r))
+
 let lp_is_zero (v : length_percentage) =
   match v with Length l -> length_is_zero l | Pct f -> f = 0. | _ -> false
 
@@ -436,29 +501,60 @@ let rec normalize_lp_calc_zeros :
   | Expr (l, op, r) ->
       Expr (normalize_lp_calc_zeros l, op, normalize_lp_calc_zeros r)
 
-(* CSS Values 4 6.1: the six non-[px] absolute length units ([in], [pc], [pt],
-   [cm], [mm], [q]) are interconvertible with [px] by a fixed ratio, and [px] is
-   the canonical interchange unit. Under minify, fold a non-[px] absolute length
-   to its [px] equivalent so all six spellings of the same physical length
-   produce identical output. *)
-let absolute_unit_to_px = function
-  | In f -> Some (f *. 96.)
-  | Pc f -> Some (f *. 16.)
-  | Pt f -> Some (f *. 96. /. 72.)
-  | Cm f -> Some (f *. 96. /. 2.54)
-  | Mm f -> Some (f *. 96. /. 25.4)
-  | Q f -> Some (f *. 96. /. 25.4 /. 4.)
+let lp_combine op (v1 : length_percentage) (v2 : length_percentage) :
+    length_percentage option =
+  let combine a b =
+    match op with Add -> a +. b | Sub -> a -. b | Mul | Div -> nan
+  in
+  match (op, v1, v2) with
+  | (Add | Sub), Length a, Length b -> (
+      match length_combine op a b with
+      | Some v -> Some (Length v)
+      | None -> None)
+  | (Add | Sub), Pct a, Pct b -> Some (Pct (combine a b))
   | _ -> None
+
+let lp_scale op (v : length_percentage) n : length_percentage option =
+  let scale a = match op with Mul -> a *. n | Div -> a /. n | _ -> nan in
+  match (op, v) with
+  | (Mul | Div), Length a -> (
+      match length_scale op a n with
+      | Some lv -> Some (Length lv)
+      | None -> None)
+  | (Mul | Div), Pct a -> Some (Pct (scale a))
+  | _ -> None
+
+let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
+ fun calc ->
+  match calc with
+  | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
+  | Nested inner -> (
+      match eval_lp_calc inner with
+      | (Val _ | Num _ | Var _) as leaf -> leaf
+      | reduced -> Nested reduced)
+  | Parens inner -> (
+      match eval_lp_calc inner with
+      | (Val _ | Num _ | Var _) as leaf -> leaf
+      | reduced -> Parens reduced)
+  | Expr (l, op, r) -> (
+      let l = eval_lp_calc l in
+      let r = eval_lp_calc r in
+      match (l, op, r) with
+      | Val a, op, Val b -> (
+          match lp_combine op a b with
+          | Some v -> Val v
+          | None -> Expr (l, op, r))
+      | Val a, ((Mul | Div) as op), Num n -> (
+          match lp_scale op a n with Some v -> Val v | None -> Expr (l, op, r))
+      | Num n, Mul, Val a -> (
+          match lp_scale Mul a n with Some v -> Val v | None -> Expr (l, op, r))
+      | _ -> Expr (l, op, r))
 
 let rec pp_length ?(always = false) : length Pp.t =
  fun ctx v ->
   let pp_unit_fn = pp_unit ~always ctx in
   match v with
   | Zero -> Pp.char ctx '0'
-  | (Cm _ | Mm _ | Q _ | In _ | Pt _ | Pc _) as v when Pp.minified ctx -> (
-      match absolute_unit_to_px v with
-      | Some px -> pp_unit_fn px "px"
-      | None -> pp_length ~always ctx v)
   | Px f -> pp_unit_fn f "px"
   | Cm f -> pp_unit_fn f "cm"
   | Mm f -> pp_unit_fn f "mm"
@@ -593,7 +689,9 @@ let rec pp_length ?(always = false) : length Pp.t =
           Pp.string ctx "3.40282e38px"
       | _ ->
           let cv =
-            if Pp.minified ctx then normalize_length_calc_zeros cv else cv
+            if Pp.minified ctx then
+              cv |> normalize_length_calc_zeros |> eval_length_calc
+            else cv
           in
           pp_calc (pp_length ~always) ctx cv)
 
@@ -1066,7 +1164,10 @@ and pp_length_percentage ?(always = false) : length_percentage Pp.t =
   | Pct f -> Pp.pct ~always ctx f
   | Var v -> pp_var (pp_length_percentage ~always) ctx v
   | Calc c ->
-      let c = if Pp.minified ctx then normalize_lp_calc_zeros c else c in
+      let c =
+        if Pp.minified ctx then c |> normalize_lp_calc_zeros |> eval_lp_calc
+        else c
+      in
       pp_calc (pp_length_percentage ~always) ctx c
 
 and pp_number_percentage ?(always = false) : number_percentage Pp.t =
@@ -1381,7 +1482,14 @@ and pp_color : color Pp.t =
    so a millisecond value collapses to seconds when its second-form digits are
    no longer than the millisecond-form digits. *)
 let pp_duration_unit ?(shorten_ms = true) ctx f suffix =
-  if f = 0. then Pp.string ctx "0"
+  if f = 0. then
+    (* CSS Values 4 6.6: a zero [<time>] still requires the unit (unlike
+       [<length>] where [0] is valid). Pretty mode keeps the source unit; under
+       minify pick [s] as the canonical short spelling. *)
+    if ctx.Pp.minify then Pp.string ctx "0s"
+    else (
+      Pp.string ctx "0";
+      Pp.string ctx suffix)
   else if (not shorten_ms) || (not ctx.Pp.minify) || suffix <> "ms" then
     pp_unit ctx f suffix
   else
@@ -1394,12 +1502,6 @@ let pp_duration_unit ?(shorten_ms = true) ctx f suffix =
     else (
       Pp.string ctx ms_str;
       Pp.string ctx "ms")
-
-let ms_prints_shorter_as_seconds f =
-  let in_seconds = f /. 1000. in
-  let ms_str = Pp.float_to_string ~drop_leading_zero:true f in
-  let s_str = Pp.float_to_string ~drop_leading_zero:true in_seconds in
-  String.length s_str + 1 <= String.length ms_str + 2
 
 let rec pp_duration : duration Pp.t =
  fun ctx -> function
@@ -2704,7 +2806,7 @@ let duration_css_wide =
     ("revert-layer", Revert_layer);
   ]
 
-let read_duration_number ~canonicalize_ms t : duration =
+let read_duration_number ~canonicalize_ms:_ t : duration =
   let n, unit_raw = Cursor.number_with_unit t in
   if n < 0.0 then Cursor.err_invalid t "negative durations are not allowed"
   else
@@ -2712,8 +2814,6 @@ let read_duration_number ~canonicalize_ms t : duration =
     match unit with
     | "" when n = 0.0 -> S 0.0
     | "s" -> S n
-    | "ms" when canonicalize_ms && ms_prints_shorter_as_seconds n ->
-        S (n /. 1000.)
     | "ms" -> Ms n
     | _ -> Cursor.err_invalid t ("duration unit: " ^ unit)
 
@@ -2723,7 +2823,6 @@ let read_time_number t : duration =
   match unit with
   | "" when n = 0.0 -> S 0.0
   | "s" -> S n
-  | "ms" when ms_prints_shorter_as_seconds n -> S (n /. 1000.)
   | "ms" -> Ms n
   | _ -> Cursor.err_invalid t ("time unit: " ^ unit)
 
