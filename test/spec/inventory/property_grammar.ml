@@ -100,7 +100,7 @@ let matrix =
     {
       property = "padding";
       positives = [ "0"; "1px 2px"; "max(1rem, 2vw)" ];
-      negatives = [ "auto"; "1px 2px 3px 4px 5px" ];
+      negatives = [ "auto"; "-1px"; "1px 2px 3px 4px 5px" ];
     };
     {
       property = "border";
@@ -110,7 +110,7 @@ let matrix =
     {
       property = "border-radius";
       positives = [ "10px"; "10px 20px / 30px 40px"; "calc(1rem + 2px)" ];
-      negatives = [ "10px /"; "10px 20px 30px 40px 50px" ];
+      negatives = [ "-1px"; "10px /"; "10px 20px 30px 40px 50px" ];
     };
     {
       property = "background";
@@ -135,7 +135,8 @@ let matrix =
            type(\"image/png\") 1x)";
           "cross-fade(url(a.png) 40%, url(b.png))";
         ];
-      negatives = [ "linear-gradient()"; "image-set()"; "cross-fade(url(a.png), )" ];
+      negatives =
+        [ "linear-gradient()"; "image-set()"; "cross-fade(url(a.png), )" ];
     };
     {
       property = "background-size";
@@ -291,7 +292,7 @@ let matrix =
     {
       property = "gap";
       positives = [ "0"; "1rem"; "1rem 2rem" ];
-      negatives = [ "1rem 2rem 3rem"; "red" ];
+      negatives = [ "-1px"; "1rem 2rem 3rem"; "red" ];
     };
     {
       property = "flex";
@@ -326,7 +327,13 @@ let matrix =
     {
       property = "content";
       positives =
-        [ "normal"; "\"hello\""; "open-quote attr(title) close-quote" ];
+        [
+          "normal";
+          "\"hello\"";
+          "open-quote attr(title) close-quote";
+          "counter(section)";
+          "counters(section, \".\")";
+        ];
       negatives = [ "attr()"; "open-quote close-quote none" ];
     };
   ]
@@ -445,7 +452,7 @@ let matrix =
       [ "auto"; "10%"; "red"; "1px 2px" ]
   @ rows_for [ "scroll-padding" ]
       [ "auto"; "0"; "1px"; "10%"; "1px 2px"; "1px 2px 3px 4px" ]
-      [ "red"; "1px 2px 3px 4px 5px"; "-1px" ]
+      [ "red"; "1px 2px 3px 4px 5px"; "auto auto auto auto auto"; "-1px" ]
   @ rows_for
       [ "scroll-padding-inline"; "scroll-padding-block" ]
       [ "auto"; "0"; "1px"; "10%"; "1px 2px" ]
@@ -608,7 +615,7 @@ let matrix =
       {
         property = "font-size";
         positives = [ "medium"; "larger"; "12px"; "clamp(1rem, 2vw, 2rem)" ];
-        negatives = [ "red"; "12px 14px" ];
+        negatives = [ "red"; "-1px"; "12px 14px" ];
       };
       {
         property = "line-height";
@@ -1153,12 +1160,12 @@ let matrix =
       {
         property = "container-name";
         positives = [ "none"; "card"; "card layout" ];
-        negatives = [ "default"; "card / layout" ];
+        negatives = [ "default"; "none card"; "card / layout" ];
       };
       {
         property = "anchor-name";
         positives = [ "none"; "--anchor"; "--a, --b" ];
-        negatives = [ "anchor"; "--a --b" ];
+        negatives = [ "anchor"; "none --a"; "--a --b" ];
       };
       {
         property = "position-anchor";
@@ -1199,7 +1206,7 @@ let matrix =
       {
         property = "scrollbar-color";
         positives = [ "auto"; "red blue" ];
-        negatives = [ "red"; "red blue green" ];
+        negatives = [ "red"; "auto red"; "red blue green" ];
       };
       {
         property = "scrollbar-gutter";
@@ -1745,7 +1752,7 @@ let matrix =
       {
         property = "color-scheme";
         positives = [ "normal"; "light"; "dark"; "only light" ];
-        negatives = [ "normal light"; "only" ];
+        negatives = [ "normal light"; "light normal"; "only" ];
       };
       {
         property = "print-color-adjust";
