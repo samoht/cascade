@@ -273,15 +273,29 @@ let read_shape_outside t =
     Cursor.expect_eof t;
     raw
   in
+  let accept_var () =
+    let _ : string var =
+      Values.read_var
+        (fun inner -> Cursor.consume_remaining_to_string ~trim:true inner)
+        t
+    in
+    Cursor.expect_eof t;
+    raw
+  in
   match Cursor.peek t with
   | Some (Component.Preserved { kind = Token.Ident keyword; _ })
     when is_css_wide_keyword keyword ->
       accept_single ()
   | Some (Component.Preserved { kind = Token.Ident "none"; _ }) ->
       accept_single ()
+  | Some
+      (Component.Func
+         { node = { name = "var"; terminated = true; arguments = []; _ }; _ })
+    ->
+      Cursor.err_invalid t "empty var()"
   | Some (Component.Func { node = { name = "var"; terminated = true; _ }; _ })
     ->
-      accept_single ()
+      accept_var ()
   | Some
       (Component.Func
          { node = { name = "circle" | "inset"; arguments; terminated }; _ })
@@ -300,6 +314,47 @@ let read_shorthand_line_height r =
       (fun r -> ignore (Cursor.enum "font line-height" [ ("normal", ()) ] r));
     ]
     r
+
+let generic_font_family_keywords =
+  [
+    "sans-serif";
+    "serif";
+    "monospace";
+    "cursive";
+    "fantasy";
+    "system-ui";
+    "ui-sans-serif";
+    "ui-serif";
+    "ui-monospace";
+    "ui-rounded";
+    "emoji";
+    "math";
+    "fangsong";
+  ]
+
+let font_shorthand_starts_long_family_with_generic r =
+  let is_ws = function
+    | Component.Preserved { kind = Token.Whitespace; _ } -> true
+    | _ -> false
+  in
+  let is_comma = function
+    | Component.Preserved { kind = Token.Comma; _ } -> true
+    | _ -> false
+  in
+  let rec drop_while p = function
+    | x :: rest when p x -> drop_while p rest
+    | l -> l
+  in
+  let item =
+    Cursor.remaining r |> drop_while is_ws |> List.to_seq
+    |> Seq.take_while (fun cv -> not (is_comma cv))
+    |> List.of_seq
+    |> List.filter (fun cv -> not (is_ws cv))
+  in
+  match item with
+  | Component.Preserved { kind = Token.Ident first; _ } :: _ :: _ ->
+      List.mem (String.lowercase_ascii first) generic_font_family_keywords
+  | _ -> false
 
 let read_font_shorthand_body r =
   let saw_size = ref false in
@@ -326,6 +381,9 @@ let read_font_shorthand_body r =
                   Cursor.skip r;
                   read_shorthand_line_height r
               | _ -> ());
+              if font_shorthand_starts_long_family_with_generic r then
+                Cursor.err_invalid r
+                  "generic font family must be a standalone family item";
               ignore (read_font_family r : font_family);
               Cursor.ws r;
               Cursor.expect_eof r)
