@@ -273,7 +273,9 @@ let colors () =
   check_declaration ~expected:"color:green" "color: green";
   check_declaration ~expected:"color:black" "color: black";
   check_declaration ~expected:"color:white" "color: white";
-  check_declaration ~expected:"color:transparent" "color: transparent";
+  (* Per CSS Color 4 section 6.4 [transparent] canonicalizes to [#0000] under
+     minify. *)
+  check_declaration ~expected:"color:#0000" "color: transparent";
 
   (* Hex colors. Per CSS Color 4 section 12.1 the printer canonicalizes
      paired-pair hex to its 3-digit shorthand under [~minify:true]. *)
@@ -365,9 +367,11 @@ let position () =
   c ~expected:"position:sticky" "position: sticky"
 
 let font_properties () =
-  (* Font weight *)
-  check_declaration ~expected:"font-weight:normal" "font-weight: normal";
-  check_declaration ~expected:"font-weight:bold" "font-weight: bold";
+  (* Font weight. Per CSS Fonts 4 section 5.1.2 the keywords [normal] and [bold]
+     map to [400] / [700]; the printer canonicalizes to the numeric form under
+     minify. *)
+  check_declaration ~expected:"font-weight:400" "font-weight: normal";
+  check_declaration ~expected:"font-weight:700" "font-weight: bold";
   check_declaration ~expected:"font-weight:lighter" "font-weight: lighter";
   check_declaration ~expected:"font-weight:bolder" "font-weight: bolder";
   check_declaration ~expected:"font-weight:100" "font-weight: 100";

@@ -1585,8 +1585,10 @@ let test_background () =
   neg_cursor read_background "10px 20px 30px 40px 50px"
 
 let test_font_weight () =
-  check_font_weight "normal";
-  check_font_weight "bold";
+  (* CSS Fonts 4 section 5.1.2: [normal] and [bold] canonicalize to the numeric
+     forms [400] and [700] under minify. *)
+  check_font_weight ~expected:"400" "normal";
+  check_font_weight ~expected:"700" "bold";
   check_font_weight "700";
   check_font_weight "1000";
   check_font_weight "lighter";
@@ -2571,10 +2573,10 @@ let test_shadow () =
   check_shadow "red inset 2px 2px 4px 1px" ~expected:"inset 2px 2px 4px 1px red";
   (* Test compact printing - when blur and spread are not provided, should print
      compactly. Per CSS Color 4 section 6.4 the printer canonicalizes fully
-     transparent colors ([#0000], [rgba(0, 0, 0, 0)], etc.) to the [transparent]
-     keyword under [~minify:true]. *)
-  check_shadow "0 0 #0000" ~expected:"0 0 transparent";
-  check_shadow "0 0 rgba(0,0,0,0)" ~expected:"0 0 transparent";
+     transparent colors to the shortest equivalent spelling [#0000] under
+     [~minify:true], matching Lightning CSS. *)
+  check_shadow "0 0 #0000" ~expected:"0 0 #0000";
+  check_shadow "0 0 rgba(0,0,0,0)" ~expected:"0 0 #0000";
   check_shadow "inherit";
   neg_cursor read_shadow "invalid-shadow";
   neg_cursor read_shadow "10px"

@@ -344,7 +344,9 @@ let color_mix () =
 
 (* SS 5.3 - transparent and currentcolor keywords *)
 let color_keywords () =
-  roundtrip ".x { color: transparent }" ".x{color:transparent}";
+  (* Per CSS Color 4 section 6.4 the printer canonicalizes the fully-transparent
+     color to the shortest equivalent spelling [#0000]. *)
+  roundtrip ".x { color: transparent }" ".x{color:#0000}";
   (* currentColor preserves its camelCase form *)
   roundtrip ".x { color: currentColor }" ".x{color:currentColor}"
 
