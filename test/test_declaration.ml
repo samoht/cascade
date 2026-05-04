@@ -1872,9 +1872,8 @@ let check_property_trailing_token_rejected (row : property_grammar_row) value =
         "%s positive vector accepted an extra trailing token: %s -> %s"
         row.property input serialized
 
-let check_manifest_row_shape (row : property_grammar_row) =
-  let trimmed_property = String.trim row.property in
-  if trimmed_property <> row.property then
+let check_property_name (row : property_grammar_row) =
+  if String.trim row.property <> row.property then
     Alcotest.failf "%S has leading or trailing property-name whitespace"
       row.property;
   if row.property = "" then Alcotest.fail "empty property-name row";
@@ -1884,7 +1883,9 @@ let check_manifest_row_shape (row : property_grammar_row) =
       | c ->
           Alcotest.failf "%s contains non-CSS property-name character %C"
             row.property c)
-    row.property;
+    row.property
+
+let check_branch_counts (row : property_grammar_row) =
   if row.positives = [] then
     Alcotest.failf "%s has no positive grammar vectors" row.property;
   if row.negatives = [] then
@@ -1892,32 +1893,47 @@ let check_manifest_row_shape (row : property_grammar_row) =
   if List.length row.positives < 2 then
     Alcotest.failf "%s needs at least two positive branch vectors" row.property;
   if List.length row.negatives < 2 then
-    Alcotest.failf "%s needs at least two negative branch vectors" row.property;
-  let normalize_value = String.trim in
+    Alcotest.failf "%s needs at least two negative branch vectors" row.property
+
+let manifest_normalize_value = String.trim
+
+let check_no_branch_duplicates (row : property_grammar_row) =
   let duplicate_values values =
-    let normalized = List.map normalize_value values in
+    let normalized = List.map manifest_normalize_value values in
     List.length normalized
     <> List.length (List.sort_uniq String.compare normalized)
   in
   if duplicate_values row.positives then
     Alcotest.failf "%s has duplicate positive grammar vectors" row.property;
   if duplicate_values row.negatives then
-    Alcotest.failf "%s has duplicate negative grammar vectors" row.property;
+    Alcotest.failf "%s has duplicate negative grammar vectors" row.property
+
+let check_no_positive_negative_overlap (row : property_grammar_row) =
   let positive_set =
-    List.sort_uniq String.compare (List.map normalize_value row.positives)
+    List.sort_uniq String.compare
+      (List.map manifest_normalize_value row.positives)
   in
   List.iter
     (fun negative ->
-      let normalized = normalize_value negative in
+      let normalized = manifest_normalize_value negative in
       if List.mem normalized positive_set then
         Alcotest.failf "%s grammar vector is both positive and negative: %S"
           row.property normalized)
-    row.negatives;
+    row.negatives
+
+let check_no_empty_branches (row : property_grammar_row) =
   List.iter
     (fun value ->
       if String.trim value = "" then
         Alcotest.failf "%s has an empty grammar vector" row.property)
     (row.positives @ row.negatives)
+
+let check_manifest_row_shape (row : property_grammar_row) =
+  check_property_name row;
+  check_branch_counts row;
+  check_no_branch_duplicates row;
+  check_no_positive_negative_overlap row;
+  check_no_empty_branches row
 
 let calc_expected_properties =
   [
