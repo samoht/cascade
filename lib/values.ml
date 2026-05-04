@@ -703,6 +703,27 @@ let color_name_hex : color_name -> string * string = function
          (#rrggbb = 7 chars) is never shorter. Keep name. *)
       ("extended", "")
 
+(* CSS Color 4 6.4: [transparent] is defined as [rgba(0, 0, 0, 0)]. The
+   4-digit shorthand [#0000] and the 8-digit form [#00000000] are
+   spec-equivalent representations. *)
+let hex_is_fully_transparent value =
+  match String.length value with
+  | 4 -> String.for_all (fun c -> c = '0') value
+  | 8 -> String.for_all (fun c -> c = '0') value
+  | _ -> false
+
+let channel_is_zero (c : channel) =
+  match c with
+  | Int 0 | Num 0.0 | Pct 0.0 -> true
+  | _ -> false
+
+let alpha_is_zero (a : alpha) =
+  match a with Num 0.0 | Pct 0.0 -> true | _ -> false
+
+let rgba_is_transparent r g b a =
+  channel_is_zero r && channel_is_zero g && channel_is_zero b
+  && alpha_is_zero a
+
 (* Reverse of [color_name_hex] for the named-color set whose hex form is short
    enough to be a candidate. The map is keyed on the shortened hex spelling so
    [shorten_hex "#ff0000"] and [#f00] both resolve to the same name. *)
@@ -1063,15 +1084,18 @@ and pp_color : color Pp.t =
          shortening is part of minification (cssnano / Lightning CSS /
          clean-css conventions). When a CSS named colour represents the same
          sRGB value with an equal-or-shorter spelling than the [#hex] form,
-         emit the name. *)
+         emit the name. CSS Color 4 6.4 makes [#0000] / [#00000000]
+         spec-equivalent to the [transparent] keyword. *)
       if Pp.minified ctx then (
-        let shortened = shorten_hex value in
-        match named_for_hex shortened with
-        | Some name when String.length name <= String.length shortened + 1 ->
-            Pp.string ctx name
-        | _ ->
-            Pp.char ctx '#';
-            Pp.string ctx shortened)
+        if hex_is_fully_transparent value then Pp.string ctx "transparent"
+        else
+          let shortened = shorten_hex value in
+          match named_for_hex shortened with
+          | Some name when String.length name <= String.length shortened + 1 ->
+              Pp.string ctx name
+          | _ ->
+              Pp.char ctx '#';
+              Pp.string ctx shortened)
       else (
         Pp.char ctx '#';
         Pp.string ctx value)
@@ -1089,6 +1113,9 @@ and pp_color : color Pp.t =
           pp_rgb_as_color ctx (Var v))
   | Rgba { rgb; a } -> (
       match rgb with
+      | Channels { r; g; b } when Pp.minified ctx && rgba_is_transparent r g b a
+        ->
+          Pp.string ctx "transparent"
       | Channels { r; g; b } -> pp_rgb_func ctx (r, g, b, a)
       | Var v ->
           (* Output as rgb(var(--color)/alpha) *)
