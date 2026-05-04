@@ -531,16 +531,61 @@ let media_queries t =
     (fun (condition, rules) -> (condition, List.map (fun r -> Rule r) rules))
     raw_media
 
-let layers t = Stylesheet.layers t
-
 (* AST Introspection Helpers *)
-let layer_block name sheet =
-  List.find_map
-    (fun s ->
-      match as_layer s with
-      | Some (Some n, inner) when n = name -> Some inner
-      | _ -> None)
-    sheet
+
+(* Per CSS Cascade 6 section 6.4.3, a dotted layer name like [foo.bar] is
+   shorthand for the nested form [@layer foo { @layer bar { ... } }]: both
+   forms declare the layers [foo] and [foo.bar] and place the block contents
+   in [foo.bar]. We walk the @layer tree once, expanding any dotted names into
+   their nested equivalent and prefixing each block with its parent's path,
+   so [foo.bar] is reachable under one canonical name regardless of input
+   shape. *)
+let qualified_layer_blocks sheet =
+  let prefix_with parent name =
+    if parent = "" then name else parent ^ "." ^ name
+  in
+  let rec emit_dotted parent rest inner acc =
+    match rest with
+    | [] -> acc
+    | [ leaf ] ->
+        let qualified = prefix_with parent leaf in
+        walk qualified ((qualified, inner) :: acc) inner
+    | head :: tail ->
+        let qualified = prefix_with parent head in
+        emit_dotted qualified tail inner ((qualified, []) :: acc)
+  and walk parent acc statements =
+    List.fold_left
+      (fun acc s ->
+        match as_layer s with
+        | Some (Some name, inner) ->
+            let segments = String.split_on_char '.' name in
+            emit_dotted parent segments inner acc
+        | _ -> acc)
+      acc statements
+  in
+  List.rev (walk "" [] sheet)
+
+let layer_block name sheet = List.assoc_opt name (qualified_layer_blocks sheet)
+
+let layers t =
+  (* Derive the layer set from the canonical [@layer] block walk plus any
+     explicit [@layer a, b, c;] forward declarations. Going through
+     [qualified_layer_blocks] alone keeps dotted and nested input forms
+     producing the same result. *)
+  let from_blocks = List.map fst (qualified_layer_blocks t) in
+  let from_decls =
+    List.concat_map
+      (fun s -> match s with Stylesheet.Layer_decl names -> names | _ -> [])
+      t
+  in
+  let seen = Hashtbl.create 16 in
+  let dedup name : string option =
+    if Hashtbl.mem seen name then None
+    else (
+      Hashtbl.add seen name ();
+      Some name)
+  in
+  List.filter_map dedup (from_blocks @ from_decls)
 
 let rules_from_statements stmts =
   List.filter_map
