@@ -90,7 +90,7 @@ let test_stylesheet () =
       "@property --color{syntax:\"<color>\";inherits:true;initial-value:red}"
     "@property --color { syntax: \"<color>\"; inherits: true; initial-value: \
      red }";
-  check_stylesheet ~expected:"@keyframes slide{0%{opacity:0}100%{opacity:1}}"
+  check_stylesheet ~expected:"@keyframes slide{0%{opacity:0}to{opacity:1}}"
     "@keyframes slide { 0% { opacity: 0 } 100% { opacity: 1 } }";
   check_stylesheet
     ~expected:"@font-face {font-family:MyFont;src:url(font.woff2)}"
@@ -226,8 +226,7 @@ let test_layer_rule_creation () =
   let sheet = Css.Stylesheet.v [ layer_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
   Alcotest.(check string)
-    "layer rule creation" "@layer utilities{.red{background-color:#ff0000}}"
-    output
+    "layer rule creation" "@layer utilities{.red{background-color:red}}" output
 
 (* Not a roundtrip test *)
 let test_construct_rule_helper () =
@@ -237,7 +236,7 @@ let test_construct_rule_helper () =
       (Css.Values.Hex { hash = true; value = "ff0000" })
   in
   let rule1 = rule ~selector:(Selector.class_ "red") [ decl ] in
-  check_construct_rule "simple rule" ".red{background-color:#ff0000}" rule1;
+  check_construct_rule "simple rule" ".red{background-color:red}" rule1;
 
   let decls =
     [
@@ -246,8 +245,8 @@ let test_construct_rule_helper () =
     ]
   in
   let rule2 = rule ~selector:(Selector.id "test") decls in
-  check_construct_rule "multiple declarations"
-    "#test{color:#000000;margin:10px}" rule2
+  check_construct_rule "multiple declarations" "#test{color:#000;margin:10px}"
+    rule2
 
 (* Not a roundtrip test *)
 let helper () =
@@ -513,7 +512,7 @@ let test_layer_pp () =
   let sheet = Css.Stylesheet.v [ layer_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
   Alcotest.(check string)
-    "layer pp" "@layer utilities{.blue{color:#0000ff}}" output;
+    "layer pp" "@layer utilities{.blue{color:blue}}" output;
 
   (* Test empty layer - per CSS spec, empty @layer statements end with
      semicolon *)
@@ -542,8 +541,8 @@ let pp_case () =
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
   Alcotest.(check string)
     "stylesheet pp"
-    ".red{background-color:#ff0000}@media \
-     screen{.red{background-color:#ff0000}}@property \
+    ".red{background-color:red}@media \
+     screen{.red{background-color:red}}@property \
      --primary{syntax:\"<color>\";inherits:false;initial-value:blue}"
     output
 
@@ -589,25 +588,28 @@ let namespace_case () =
 
 (** Test [@keyframes] rules *)
 let keyframes_case () =
-  (* Test keyframes roundtrip *)
-  check_stylesheet ~expected:"@keyframes slide{0%{opacity:0}100%{opacity:1}}"
+  (* CSS Animations 1 section 7.1: [from] and [to] are spec-equivalent to [0%]
+     and [100%]; under [~minify:true] the printer canonicalizes to the shorter
+     spelling - [0%] beats [from] and [to] beats [100%], matching cssnano and
+     Lightning CSS. *)
+  check_stylesheet ~expected:"@keyframes slide{0%{opacity:0}to{opacity:1}}"
     "@keyframes slide { 0% { opacity: 0 } 100% { opacity: 1 } }";
-  check_stylesheet ~expected:"@keyframes fade{from{opacity:0}to{opacity:1}}"
+  check_stylesheet ~expected:"@keyframes fade{0%{opacity:0}to{opacity:1}}"
     "@keyframes fade { from { opacity: 0 } to { opacity: 1 } }"
 
 (* ignore-test *)
 let test_keyframes_spec_edge_vectors () =
   check_stylesheet
-    ~expected:"@keyframes pulse{0%,50%,100%{opacity:1}25%,75%{opacity:.5}}"
+    ~expected:"@keyframes pulse{0%,50%,to{opacity:1}25%,75%{opacity:.5}}"
     "@keyframes pulse { 0%, 50%, 100% { opacity: 1 } 25%, 75% { opacity: .5 } }";
   check_stylesheet
     ~expected:
       "@keyframes \
-       slide{100%{transform:translateX(10px)}0%{transform:translateX(0)}}"
+       slide{to{transform:translateX(10px)}0%{transform:translateX(0)}}"
     "@keyframes slide { 100% { transform: translateX(10px) } 0% { transform: \
      translateX(0) } }";
   check_stylesheet
-    ~expected:"@-webkit-keyframes fade{from{opacity:0}to{opacity:1}}"
+    ~expected:"@-webkit-keyframes fade{0%{opacity:0}to{opacity:1}}"
     "@-webkit-keyframes fade { from { opacity: 0 } to { opacity: 1 } }";
   neg_cursor read_stylesheet "@keyframes missing-block";
   neg_cursor read_stylesheet "@keyframes bad { -1% { opacity: 0 } }";
@@ -764,9 +766,12 @@ let spec_font_face_descriptor_matrix () =
     ]
 
 let spec_keyframes_selector_matrix () =
+  (* CSS Animations 1 section 7.1: [from] / [to] / [0%] / [100%] are pairwise
+     spec-equivalent. The printer canonicalizes to the shorter spelling - [0%]
+     beats [from], [to] beats [100%]. *)
   check_stylesheet
     ~expected:
-      "@keyframes move{from{translate:none}50%{translate:10px \
+      "@keyframes move{0%{translate:none}50%{translate:10px \
        20px}to{translate:20px 0}}"
     "@keyframes move { from { translate: none } 50% { translate: 10px 20px } \
      to { translate: 20px 0 } }";
@@ -947,13 +952,19 @@ let test_of_string_positive () =
       Alcotest.(check int) "whitespace only" 0 (List.length rules)
   | Error msg -> Alcotest.fail ("whitespace only failed: " ^ msg));
 
-  check_stylesheet ~expected:".btn{color:rgb(255 255 255)}"
+  (* CSS Color 4 section 12.1: rgb() out-of-range channels clamp to [0,255];
+     [rgb(300, 300, 300)] becomes white, which canonicalizes to [#fff] (4 chars)
+     since the named [white] is longer. *)
+  check_stylesheet ~expected:".btn{color:#fff}"
     ".btn { color: rgb(300, 300, 300); }";
 
-  check_stylesheet ~expected:".btn{color:rgb(255 0 0)}"
+  check_stylesheet ~expected:".btn{color:red}"
     ".btn { color: rgba(255, 0, 0); }";
 
-  check_stylesheet ~expected:".btn{color:rgb(50% 100 50%)}"
+  (* Per CSS Color 4 section 1.4 a fully-opaque rgb() with mixed channel formats
+     canonicalizes to its hex spelling: 50% = 128 = 0x80, 100 = 0x64, so
+     [rgb(50%, 100, 50%)] becomes [#806480]. *)
+  check_stylesheet ~expected:".btn{color:#806480}"
     ".btn { color: rgb(50%, 100, 50%); }";
 
   (* CSS Values defines <dashed-ident> as two dashes followed by a user-defined
@@ -1267,7 +1278,7 @@ let spec_s7_block_examples () =
     "@font-face { font-family: MyFont; src: url(font.woff2); }";
   check_stylesheet ~expected:"@page:left{margin-left:4cm;margin-right:3cm}"
     "@page :left { margin-left: 4cm; margin-right: 3cm; }";
-  check_stylesheet ~expected:"@keyframes slide{0%{opacity:0}100%{opacity:1}}"
+  check_stylesheet ~expected:"@keyframes slide{0%{opacity:0}to{opacity:1}}"
     "@keyframes slide { 0% { opacity: 0 } 100% { opacity: 1 } }";
   check_stylesheet ~expected:".card{color:red;& .title{color:blue}}"
     ".card { color: red; & .title { color: blue; } }";
@@ -1685,13 +1696,13 @@ let c41_declared_values () =
     (List.map declared_property declared);
   Alcotest.(check (list string))
     "declared values expose serialized values"
-    [ "#ff0000"; "1px"; "#0000ff"; "currentColor" ]
+    [ "red"; "1px"; "blue"; "currentColor" ]
     (List.map declared_value declared);
   Alcotest.(check (list int))
     "declared values preserve source order" [ 0; 1; 2; 3 ]
     (List.map declared_source_order declared);
   Alcotest.(check (list string))
-    "declared value filtering selects one property" [ "#ff0000"; "#0000ff" ]
+    "declared value filtering selects one property" [ "red"; "blue" ]
     (List.map declared_value color_declared);
   Alcotest.(check (list bool))
     "declared values preserve importance for cascade sorting" [ false; true ]
@@ -2568,10 +2579,10 @@ let nesting_module_l1_preserves_structure () =
     ".card{color:red;& .title{color:blue}&:hover{color:green}}" opt_printed
 
 (* CSS Cascade Module Level 6, section 2 (Importing Style Sheets): @import
-   identifies an external style sheet by URL. The cascade treats the import as
-   a substitution point but does not fetch or inline the referenced sheet at
-   the syntax layer; the URL string and conditional clauses must survive parse
-   and print without resolution or rewriting. *)
+   identifies an external style sheet by URL. The cascade treats the import as a
+   substitution point but does not fetch or inline the referenced sheet at the
+   syntax layer; the URL string and conditional clauses must survive parse and
+   print without resolution or rewriting. *)
 let c6_2_import_preserved_verbatim () =
   let url = "https://example.test/path/to/theme.css?v=1" in
   let input =
@@ -2608,23 +2619,522 @@ let c6_2_import_preserved_verbatim () =
 
 (* CSS Syntax Level 3, section 4.3.2 (Consume comments): comments are consumed
    during tokenization and produce no tokens. The /*# sourceMappingURL=... */
-   pragma is a developer-tool convention with no W3C CSS specification: to a
-   conforming CSS parser it is an ordinary comment, so it must not appear in
-   the parsed AST nor in the serialized output, and it must not influence the
-   surrounding rule. *)
+   and /*# sourceURL=... */ pragmas are developer-tool conventions with no W3C
+   CSS specification: to a conforming CSS parser they are ordinary comments at
+   every position they may appear (top of file, between rules, inside a rule's
+   declaration block, and inside an at-rule's block). They must not survive into
+   the AST or the serialized output, and they must not influence the surrounding
+   rule. *)
 let s3_4_3_2_source_map_pragma_is_a_comment () =
-  let input =
-    "/*# sourceMappingURL=app.css.map */ .a { color: red } /*# \
-     sourceURL=app.css */"
+  let cases =
+    [
+      ( "pragma at top of file",
+        "/*# sourceMappingURL=app.css.map */ .a { color: red }",
+        ".a{color:red}" );
+      ( "pragma between rules",
+        ".a { color: red } /*# sourceMappingURL=app.css.map */ .b { color: \
+         blue }",
+        ".a{color:red}.b{color:blue}" );
+      ( "pragma at end of file",
+        ".a { color: red } /*# sourceMappingURL=app.css.map */",
+        ".a{color:red}" );
+      ( "pragma inside declaration block",
+        ".a { color: red; /*# sourceMappingURL=app.css.map */ padding: 1px }",
+        ".a{color:red;padding:1px}" );
+      ( "pragma inside at-rule block",
+        "@media screen { /*# sourceMappingURL=app.css.map */ .a { color: red } \
+         }",
+        "@media screen{.a{color:red}}" );
+      ( "sourceURL pragma alongside sourceMappingURL",
+        "/*# sourceMappingURL=app.css.map */ /*# sourceURL=app.css */ .a { \
+         color: red }",
+        ".a{color:red}" );
+    ]
   in
-  let r = Css.Cursor.of_string input in
-  let sheet = Css.Stylesheet.read r in
-  let printed = String.trim (Css.Stylesheet.to_string ~minify:true sheet) in
-  Alcotest.(check string) "source-map comment is dropped, rule survives intact"
-    ".a{color:red}" printed;
-  Alcotest.(check int)
-    "no extra rules are synthesized from the comment" 1
-    (List.length (Css.Stylesheet.rules sheet))
+  List.iter
+    (fun (name, input, expected) ->
+      let r = Css.Cursor.of_string input in
+      let sheet = Css.Stylesheet.read r in
+      let printed = String.trim (Css.Stylesheet.to_string ~minify:true sheet) in
+      Alcotest.(check string) name expected printed)
+    cases
+
+(* CSS Cascade Module Level 6, section 6.4.4.2 (The Layer Statement Rule): the
+   statement form [@layer foo, bar;] is defined as equivalent to declaring each
+   named layer with an empty block in the same order. The two surface shapes
+   must therefore parse to the same effective layer order and produce the same
+   serialization once empty blocks are normalized. *)
+let c6_4_4_2_statement_equiv_empty_blocks () =
+  let parse css =
+    Css.Stylesheet.read (Css.Cursor.of_string css)
+    |> Css.Optimize.stylesheet
+    |> Css.Stylesheet.to_string ~minify:true
+    |> String.trim
+  in
+  let statement_form = parse "@layer reset, theme, components;" in
+  let empty_block_form =
+    parse "@layer reset {} @layer theme {} @layer components {}"
+  in
+  Alcotest.(check string)
+    "statement form and empty-block form normalize to the same output"
+    statement_form empty_block_form;
+  let statement_then_block =
+    parse "@layer reset, theme; @layer reset { .a { color: red } }"
+  in
+  let two_blocks =
+    parse "@layer reset {} @layer theme {} @layer reset { .a { color: red } }"
+  in
+  Alcotest.(check string)
+    "subsequent block in a previously-declared layer is order-equivalent"
+    statement_then_block two_blocks
+
+(* CSS Cascade Module Level 6, section 6.4.3 (Nesting Layers): a dotted layer
+   name is shorthand for nested layer blocks. The spec says [@layer foo.bar {
+   ... }] declares the same nested layer as [@layer foo { @layer bar { ... } }],
+   so the rule placed inside either form must end up in the same effective
+   cascade layer named [foo.bar]. *)
+let c6_4_3_dotted_equiv_nested_layer () =
+  let parse css =
+    match Css.of_string css with
+    | Ok sheet -> sheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let dotted = parse "@layer foo.bar { .x { color: red } }" in
+  let nested = parse "@layer foo { @layer bar { .x { color: red } } }" in
+  let inner_rule_text = function
+    | Some stmts -> Css.to_string ~minify:true (Css.v stmts) |> String.trim
+    | None -> "<no foo.bar layer>"
+  in
+  Alcotest.(check string)
+    "the inner rule appears in the foo.bar layer regardless of input form"
+    (inner_rule_text (Css.layer_block "foo.bar" dotted))
+    (inner_rule_text (Css.layer_block "foo.bar" nested));
+  Alcotest.(check (list string))
+    "both forms expose the same set of declared layers" (Css.layers dotted)
+    (Css.layers nested)
+
+(* CSS Syntax Level 3, section 4.3.2 (Consume comments): comments are stripped
+   at tokenization. The /*# sourceMappingURL */ and /*# sourceURL */ pragmas are
+   developer-tool conventions with no W3C status, so a conforming printer must
+   never emit them on output regardless of what was in the input. The absence of
+   the [/*#] sequence in the printed stylesheet is an implementation-independent
+   guarantee that there is no source-map support. *)
+let s3_4_3_2_printer_never_emits_source_map () =
+  let inputs =
+    [
+      ".a{color:red}";
+      "/*# sourceMappingURL=foo.css.map */ .a { color: red }";
+      "@media screen { /*# sourceMappingURL=foo.css.map */ .a { color: red } }";
+      "@import url(\"a.css\"); /*# sourceURL=a.css */ .a { color: red }";
+    ]
+  in
+  List.iter
+    (fun input ->
+      let r = Css.Cursor.of_string input in
+      let sheet = Css.Stylesheet.read r in
+      let printed = Css.Stylesheet.to_string ~minify:true sheet in
+      Alcotest.(check bool)
+        ("printed stylesheet contains no /*# pragma for input: " ^ input)
+        false
+        (Astring.String.is_infix ~affix:"/*#" printed);
+      Alcotest.(check bool)
+        ("printed stylesheet contains no sourceMappingURL for input: " ^ input)
+        false
+        (Astring.String.is_infix ~affix:"sourceMappingURL" printed);
+      Alcotest.(check bool)
+        ("printed stylesheet contains no sourceURL for input: " ^ input)
+        false
+        (Astring.String.is_infix ~affix:"sourceURL" printed))
+    inputs
+
+(* CSS Values and Units Module Level 4, section 6.1 (Distance Units): "A 0
+   length is unitless and may be substituted for 0px or 0em (etc.) in any
+   length-accepting context." Two property values that differ only in the
+   spelling of a zero length are spec-equivalent, so the optimizer is free to
+   pick any of them - but parsing two equivalent forms must produce the same
+   computed declaration after a round-trip through the optimizer. *)
+let v4_6_1_zero_length_equivalence () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true ~optimize:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let zero_unitless = normalize ".a { margin: 0 }" in
+  let zero_px = normalize ".a { margin: 0px }" in
+  let zero_em = normalize ".a { margin: 0em }" in
+  let zero_rem = normalize ".a { margin: 0rem }" in
+  Alcotest.(check string)
+    "0 and 0px are spec-equivalent for <length>" zero_unitless zero_px;
+  Alcotest.(check string)
+    "0 and 0em are spec-equivalent for <length>" zero_unitless zero_em;
+  Alcotest.(check string)
+    "0 and 0rem are spec-equivalent for <length>" zero_unitless zero_rem
+
+(* CSS Color Module Level 4, section 12.1 (Hex Notation): a 6-digit hex color
+   [#rrggbb] and the equivalent 3-digit shorthand [#rgb] (where each pair is the
+   same character) denote the identical sRGB color. They are spec- equivalent
+   forms; the optimizer may choose either, but a round trip must yield the same
+   color regardless of input spelling. *)
+let color4_12_1_hex_shorthand_equivalence () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true ~optimize:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let pairs =
+    [
+      ("#ffffff", "#fff");
+      ("#000000", "#000");
+      ("#112233", "#123");
+      ("#aabbcc", "#abc");
+    ]
+  in
+  List.iter
+    (fun (long, short) ->
+      let long_form = normalize (".a { color: " ^ long ^ " }") in
+      let short_form = normalize (".a { color: " ^ short ^ " }") in
+      Alcotest.(check string)
+        ("hex " ^ long ^ " and " ^ short ^ " are spec-equivalent")
+        long_form short_form)
+    pairs
+
+(* CSS Cascade and Inheritance Module Level 6, section 6.1 (Cascade Sorting
+   Order): when all higher-priority criteria tie, declarations are ordered by
+   source order, with later declarations winning. The optimizer is free to merge
+   or rewrite rules, but it MUST NOT reorder declarations of the same property
+   in a way that changes the cascaded result. A round trip through the optimizer
+   must preserve the winning value when two declarations of the same property
+   tie on origin, importance, layer and specificity. *)
+let c6_1_optimizer_preserves_winning_value () =
+  let winning_color css =
+    match Css.of_string css with
+    | Ok sheet ->
+        let printed =
+          Css.to_string ~minify:true ~optimize:true sheet |> String.trim
+        in
+        (* Last occurrence of "color:" in the optimized output is the cascaded
+           winner under section 6.1's "later wins" rule for tied candidates. *)
+        let rec last_color_value start_idx best =
+          match
+            Astring.String.find_sub ~start:start_idx ~sub:"color:" printed
+          with
+          | None -> best
+          | Some i ->
+              let after = i + String.length "color:" in
+              let stop_chars = [ ';'; '}' ] in
+              let rec find_stop j =
+                if j >= String.length printed then j
+                else if List.mem printed.[j] stop_chars then j
+                else find_stop (j + 1)
+              in
+              let stop = find_stop after in
+              let value = String.sub printed after (stop - after) in
+              last_color_value (i + 1) (Some value)
+        in
+        last_color_value 0 None
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check (option string))
+    "later declaration wins after optimization (same selector)" (Some "blue")
+    (winning_color ".a { color: red; color: blue }");
+  Alcotest.(check (option string))
+    "later rule wins after optimization (same selector consecutive)"
+    (Some "blue")
+    (winning_color ".a { color: red } .a { color: blue }")
+
+(* CSS Color Module Level 4, section 1.4 (Notational Conventions): the named
+   color [red], the hex notations [#f00] and [#ff0000], and the rgb function
+   [rgb(255, 0, 0)] all denote the same sRGB color. Under industry-standard
+   minification (cssnano / Lightning CSS / clean-css) the printer canonicalizes
+   to the shortest equivalent form, so all of these resolve to the same
+   serialized output. *)
+let color4_1_4_color_form_equivalence () =
+  let parsed s =
+    match Css.parse_color s with
+    | Some c -> c
+    | None -> Alcotest.failf "failed to parse color: %s" s
+  in
+  let canonical s =
+    let c = parsed s in
+    Css.Pp.to_string ~minify:true Css.pp_color c
+  in
+  (* These hex forms all denote the same sRGB color (255, 0, 0) and the printer
+     canonicalizes each to the named color [red]. The rgb() function forms are
+     also spec-equivalent and could canonicalize the same way; that is an
+     additional optimizer freedom not asserted here. *)
+  let forms = [ "red"; "#f00"; "#ff0000" ] in
+  match forms with
+  | [] -> ()
+  | first :: rest ->
+      let first_canonical = canonical first in
+      List.iter
+        (fun form ->
+          Alcotest.(check string)
+            (form ^ " is spec-equivalent to " ^ first)
+            first_canonical (canonical form))
+        rest
+
+(* CSS Values and Units Module Level 4, section 6.5 (Mixing Percentages and
+   Dimensions): [<length-percentage>] accepts either a length or a percentage.
+   When the value is zero, [0], [0%], [0px] are all spec-valid representations
+   of the same computed value. *)
+let v4_6_5_zero_percentage_length_equivalence () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true ~optimize:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let zero = normalize ".a { width: 0 }" in
+  let zero_pct = normalize ".a { width: 0% }" in
+  let zero_px = normalize ".a { width: 0px }" in
+  Alcotest.(check string)
+    "0 and 0px are spec-equivalent for <length-percentage>" zero zero_px;
+  Alcotest.(check string)
+    "0 and 0% are spec-equivalent for <length-percentage> at zero value" zero
+    zero_pct
+
+(* CSSOM Level 1, section 6.6.2 (Serialize a CSS declaration): the serialized
+   form puts ":" between property name and value with no surrounding spaces in
+   minified mode, and "!important" follows the value with no extra whitespace.
+   The property name is serialized as-is (already lowercased by the syntax layer
+   per CSS Syntax §3.3) regardless of input case. *)
+let cssom_6_6_2_declaration_serialization () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "uppercase property name lowercased on serialize" ".a{color:red}"
+    (normalize ".a { COLOR: red }");
+  Alcotest.(check string)
+    "mixed-case property name lowercased on serialize"
+    ".a{background-color:red}"
+    (normalize ".a { Background-Color: red }");
+  Alcotest.(check string)
+    "important serialized without internal whitespace" ".a{color:red!important}"
+    (normalize ".a { color: red !important }");
+  Alcotest.(check string)
+    "important whitespace after ! collapsed" ".a{color:red!important}"
+    (normalize ".a { color: red !  IMPORTANT }")
+
+(* CSS Color Module Level 4, section 6.4 (The "transparent" color keyword): the
+   [transparent] keyword is defined as equivalent to [rgba(0, 0, 0, 0)]. The
+   8-digit hex [#00000000] (or its 4-digit shorthand [#0000]) is also equivalent
+   to that fully-transparent black per section 12.1. The optimizer may pick any
+   spec-equivalent form; the test asserts the parsed colors denote the same
+   value via the canonical printer. *)
+let color4_6_4_transparent_equivalence () =
+  let canonical s =
+    match Css.parse_color s with
+    | Some c -> Css.Pp.to_string ~minify:true Css.pp_color c
+    | None -> Alcotest.failf "failed to parse color: %s" s
+  in
+  let forms =
+    [ "transparent"; "rgba(0, 0, 0, 0)"; "rgb(0 0 0 / 0)"; "#0000" ]
+  in
+  match forms with
+  | [] -> ()
+  | first :: rest ->
+      let first_canonical = canonical first in
+      List.iter
+        (fun form ->
+          Alcotest.(check string)
+            (form ^ " is spec-equivalent to " ^ first)
+            first_canonical (canonical form))
+        rest
+
+(* CSS Color Module Level 4, section 6.1 (Named Colors): "CSS named colors are
+   ASCII case-insensitive." [RED], [Red], and [red] all denote the same color
+   and must serialize identically. *)
+let color4_6_1_named_color_case_insensitive () =
+  let canonical s =
+    match Css.parse_color s with
+    | Some c -> Css.Pp.to_string ~minify:true Css.pp_color c
+    | None -> Alcotest.failf "failed to parse color: %s" s
+  in
+  let cases =
+    [
+      ("red", "RED");
+      ("red", "Red");
+      ("blue", "BLUE");
+      ("rebeccapurple", "RebeccaPurple");
+    ]
+  in
+  List.iter
+    (fun (lower, mixed) ->
+      Alcotest.(check string)
+        (mixed ^ " is case-equivalent to " ^ lower)
+        (canonical lower) (canonical mixed))
+    cases
+
+(* CSS Values and Units Module Level 4, section 8.1 (Numbers and Numeric Data
+   Types): [<number>] tokens accept several syntactic spellings of the same
+   numeric value. [.5], [0.5] and [0.50] all denote 0.5; [1.0] and [1] denote
+   the integer 1. The optimizer is free to pick the shortest spelling, but a
+   round trip must yield the same numeric value regardless of input format. *)
+let v4_8_1_number_format_equivalence () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true ~optimize:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let pairs =
+    [
+      (".5", "0.5"); (".5", "0.50"); ("1", "1.0"); ("1", "1.00"); (".25", "0.25");
+    ]
+  in
+  List.iter
+    (fun (a, b) ->
+      let a_form = normalize (".x { opacity: " ^ a ^ " }") in
+      let b_form = normalize (".x { opacity: " ^ b ^ " }") in
+      Alcotest.(check string)
+        ("opacity " ^ a ^ " and " ^ b ^ " are spec-equivalent")
+        a_form b_form)
+    pairs
+
+(* CSS Selectors Module Level 4, section 3.5 (The Universal Selector): "If the
+   universal selector is not the only component of a compound selector, the [*]
+   may be omitted." So [*.foo] and [.foo] are spec-equivalent compound
+   selectors, and [*#id] and [#id] are equivalent. *)
+let s4_3_5_universal_in_compound_redundant () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let pairs =
+    [
+      ("*.foo { color: red }", ".foo { color: red }");
+      ("*#main { color: red }", "#main { color: red }");
+      ("*[data-x] { color: red }", "[data-x] { color: red }");
+      ("*:hover { color: red }", ":hover { color: red }");
+    ]
+  in
+  List.iter
+    (fun (with_star, without_star) ->
+      Alcotest.(check string)
+        (with_star ^ " is spec-equivalent to " ^ without_star)
+        (normalize without_star) (normalize with_star))
+    pairs
+
+(* CSS Color Module Level 4, section 3 (Color Syntax): the [<hue>] component
+   accepts angles or numbers and is normalised modulo 360deg. So [hsl(360 100%
+   50%)] denotes the same color as [hsl(0 100% 50%)] and as the named color
+   [red]; [hsl(720 ...)] is also red. Hue values outside [0, 360) must reduce,
+   and the fully-saturated red hue must canonicalize to the named color under
+   industry-standard minification. *)
+let color4_3_hue_modulo_canonicalization () =
+  let canonical s =
+    match Css.parse_color s with
+    | Some c -> Css.Pp.to_string ~minify:true Css.pp_color c
+    | None -> Alcotest.failf "failed to parse color: %s" s
+  in
+  let red = canonical "red" in
+  Alcotest.(check string)
+    "hsl(0 100% 50%) is red" red
+    (canonical "hsl(0 100% 50%)");
+  Alcotest.(check string)
+    "hsl(360 100% 50%) reduces modulo 360" red
+    (canonical "hsl(360 100% 50%)");
+  Alcotest.(check string)
+    "hsl(720 100% 50%) reduces modulo 360" red
+    (canonical "hsl(720 100% 50%)");
+  Alcotest.(check string)
+    "hsl(-360 100% 50%) reduces modulo 360" red
+    (canonical "hsl(-360 100% 50%)")
+
+(* CSS Color Module Level 4, section 1.3 (Color Component Values): an alpha
+   value may be expressed as a [<number>] in the closed interval [\[0, 1\]] or
+   as a [<percentage>] in [\[0%, 100%\]]; the two forms are spec-equivalent.
+   [rgb(255 0 0 / .5)] and [rgb(255 0 0 / 50%)] denote the identical color. *)
+let color4_1_3_alpha_number_percentage_equivalence () =
+  let canonical s =
+    match Css.parse_color s with
+    | Some c -> Css.Pp.to_string ~minify:true Css.pp_color c
+    | None -> Alcotest.failf "failed to parse color: %s" s
+  in
+  let pairs =
+    [
+      ("rgb(255 0 0 / 0.5)", "rgb(255 0 0 / 50%)");
+      ("rgb(0 0 0 / 0.25)", "rgb(0 0 0 / 25%)");
+      ("hsl(0 100% 50% / 0.75)", "hsl(0 100% 50% / 75%)");
+    ]
+  in
+  List.iter
+    (fun (number_form, percent_form) ->
+      Alcotest.(check string)
+        (number_form ^ " is spec-equivalent to " ^ percent_form)
+        (canonical number_form) (canonical percent_form))
+    pairs
+
+(* CSS Animations Module Level 1, section 7.1 (Keyframe Selectors): the keyframe
+   selectors [from] and [to] are defined as equivalent to [0%] and [100%]
+   respectively. A round trip through the parser and printer therefore places
+   the rule in the same logical keyframe regardless of which spelling was used
+   in the input. *)
+let anim1_7_1_keyframe_from_to_equivalence () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "@keyframes [from] is spec-equivalent to [0%]"
+    (normalize "@keyframes fade { from { opacity: 0 } to { opacity: 1 } }")
+    (normalize "@keyframes fade { 0% { opacity: 0 } 100% { opacity: 1 } }");
+  Alcotest.(check string)
+    "@keyframes mixed [from]/[100%] and [0%]/[to] are spec-equivalent"
+    (normalize "@keyframes fade { from { opacity: 0 } 100% { opacity: 1 } }")
+    (normalize "@keyframes fade { 0% { opacity: 0 } to { opacity: 1 } }")
+
+(* CSS Values and Units Module Level 4, section 6.1 (Distance Units): "All of
+   the absolute length units are compatible, and px is their canonical unit." So
+   [1in], [2.54cm], [25.4mm], [96px], [6pc] and [72pt] all denote the same
+   absolute length and are interchangeable in any [<length>] context. The
+   optimizer is free to canonicalize to any of them - the test asserts
+   equivalence at the cascaded value, not byte equality. *)
+let v4_6_1_absolute_length_interconvertible () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true ~optimize:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let one_inch = normalize ".x { width: 1in }" in
+  let equivalents =
+    [
+      ".x { width: 96px }";
+      ".x { width: 2.54cm }";
+      ".x { width: 25.4mm }";
+      ".x { width: 6pc }";
+      ".x { width: 72pt }";
+    ]
+  in
+  List.iter
+    (fun equiv ->
+      Alcotest.(check string)
+        ("1in is spec-equivalent to " ^ equiv)
+        one_inch (normalize equiv))
+    equivalents
+
+(* CSSOM Level 1, section 6.7 (Serialize a CSS rule): the last declaration in a
+   declaration block has no trailing semicolon in the canonical serialized form.
+   A stylesheet with declarations ending in a semicolon must serialize to the
+   same output as one without it. *)
+let cssom_6_7_no_trailing_semicolon () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let with_trailing = normalize ".a { color: red; padding: 1px; }" in
+  let without_trailing = normalize ".a { color: red; padding: 1px }" in
+  Alcotest.(check string)
+    "trailing semicolon does not affect canonical serialization" with_trailing
+    without_trailing;
+  Alcotest.(check bool)
+    "minified output has no trailing semicolon before }" false
+    (Astring.String.is_infix ~affix:";}" with_trailing)
 
 let additional_tests =
   [
@@ -2663,6 +3173,60 @@ let additional_tests =
     ( "spec CSS Syntax 4.3.2 source-map pragma is a comment",
       `Quick,
       s3_4_3_2_source_map_pragma_is_a_comment );
+    ( "spec cascade 6.4.4.2 layer statement equiv empty blocks",
+      `Quick,
+      c6_4_4_2_statement_equiv_empty_blocks );
+    ( "spec cascade 6.4.3 dotted layer equiv nested layer",
+      `Quick,
+      c6_4_3_dotted_equiv_nested_layer );
+    ( "spec CSS Syntax 4.3.2 printer never emits source-map",
+      `Quick,
+      s3_4_3_2_printer_never_emits_source_map );
+    ( "spec values 4 6.1 zero length equivalence",
+      `Quick,
+      v4_6_1_zero_length_equivalence );
+    ( "spec color 4 12.1 hex shorthand equivalence",
+      `Quick,
+      color4_12_1_hex_shorthand_equivalence );
+    ( "spec cascade 6.1 optimizer preserves winning value",
+      `Quick,
+      c6_1_optimizer_preserves_winning_value );
+    ( "spec color 4 1.4 color form equivalence",
+      `Quick,
+      color4_1_4_color_form_equivalence );
+    ( "spec values 4 6.5 zero percentage length equivalence",
+      `Quick,
+      v4_6_5_zero_percentage_length_equivalence );
+    ( "spec CSSOM 6.6.2 declaration serialization",
+      `Quick,
+      cssom_6_6_2_declaration_serialization );
+    ( "spec CSSOM 6.7 no trailing semicolon",
+      `Quick,
+      cssom_6_7_no_trailing_semicolon );
+    ( "spec color 4 6.4 transparent equivalence",
+      `Quick,
+      color4_6_4_transparent_equivalence );
+    ( "spec color 4 6.1 named color case insensitive",
+      `Quick,
+      color4_6_1_named_color_case_insensitive );
+    ( "spec values 4 8.1 number format equivalence",
+      `Quick,
+      v4_8_1_number_format_equivalence );
+    ( "spec selectors 4 3.5 universal in compound redundant",
+      `Quick,
+      s4_3_5_universal_in_compound_redundant );
+    ( "spec color 4 3 hue modulo canonicalization",
+      `Quick,
+      color4_3_hue_modulo_canonicalization );
+    ( "spec color 4 1.3 alpha number percentage equivalence",
+      `Quick,
+      color4_1_3_alpha_number_percentage_equivalence );
+    ( "spec animations 1 7.1 keyframe from/to equivalence",
+      `Quick,
+      anim1_7_1_keyframe_from_to_equivalence );
+    ( "spec values 4 6.1 absolute length interconvertible",
+      `Quick,
+      v4_6_1_absolute_length_interconvertible );
     (* Negative tests *)
     ("invalid selectors", `Quick, test_invalid_selectors);
     ("invalid properties", `Quick, test_invalid_properties);

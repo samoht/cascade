@@ -53,7 +53,7 @@ let positive =
       "@page chapter:right { size: letter landscape; margin: 1in; @right-top { \
        content: counter(page) } }";
     row "keyframes" "selector-list"
-      "@keyframes fade{from{opacity:0}50%,100%{opacity:1}}"
+      "@keyframes fade{0%{opacity:0}50%,to{opacity:1}}"
       "@keyframes fade { from { opacity: 0 } 50%, 100% { opacity: 1 } }";
     row "font-palette-values" "duplicate-descriptor"
       "@font-palette-values \

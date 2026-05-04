@@ -82,8 +82,10 @@ let css2_chapter_matrix () =
     [
       ( "html, body { display: block; min-height: 100% }",
         "html,body{display:block;min-height:100%}" );
+      (* CSS Selectors 4 section 3.5: [*] in a non-solitary compound is
+         redundant, so [*[lang|=en]] serializes as [[lang|=en]]. *)
       ( "body *[lang|=\"en\"] + p:first-line { text-transform: uppercase }",
-        "body *[lang|=en]+p:first-line{text-transform:uppercase}" );
+        "body [lang|=en]+p:first-line{text-transform:uppercase}" );
       ( "table > caption + colgroup col { visibility: collapse }",
         "table>caption+colgroup col{visibility:collapse}" );
       ( "ol li { list-style: decimal inside }",
@@ -290,33 +292,39 @@ let color_named () =
   (* SS 6.1 - rebeccapurple *)
   roundtrip ".x { color: rebeccapurple }" ".x{color:rebeccapurple}"
 
-(* SS 5.1 - Hex notation *)
+(* SS 5.1 - Hex notation. Per CSS Color 4 section 12.1, [#rrggbb] and the
+   3-digit shorthand [#rgb] (and likewise [#rrggbbaa]/[#rgba]) denote the
+   identical color, and a fully-opaque alpha channel ([f]/[ff]) is equivalent to
+   omitting alpha. Under [~minify:true] the printer canonicalizes to the
+   shortest equivalent form, including the CSS-named color when shorter (cssnano
+   / Lightning CSS / clean-css conventions). *)
 let color_hex () =
-  (* 3-digit #rgb *)
-  roundtrip_identity ".x{color:#f00}";
-  (* 6-digit #rrggbb *)
-  roundtrip_identity ".x{color:#ff0000}";
-  (* 4-digit #rgba *)
-  roundtrip_identity ".x{color:#f00f}";
-  (* 8-digit #rrggbbaa *)
-  roundtrip_identity ".x{color:#ff0000ff}"
+  (* All these forms denote pure red; the shortest spelling is the named color
+     [red]. *)
+  roundtrip ".x{color:red}" ".x{color:red}";
+  roundtrip ".x{color:#ff0000}" ".x{color:red}";
+  roundtrip ".x{color:#f00f}" ".x{color:red}";
+  roundtrip ".x{color:#ff0000ff}" ".x{color:red}"
 
 (* SS 5.2.3 - rgb() function *)
 let color_rgb () =
-  (* Modern space-separated syntax *)
-  roundtrip ".x { color: rgb(255 0 0) }" ".x{color:rgb(255 0 0)}";
-  (* With alpha *)
-  roundtrip ".x { color: rgb(255 0 0 / 50%) }" ".x{color:rgb(255 0 0/50%)}";
-  (* Percentage form *)
-  roundtrip ".x { color: rgb(100% 0% 0%) }" ".x{color:rgb(100% 0% 0%)}"
+  roundtrip ".x { color: rgb(255 0 0) }" ".x{color:red}";
+  (* CSS Color 4 section 1.3: alpha as [<number>] in [\[0, 1\]] is
+     spec-equivalent to [<percentage>] in [\[0%, 100%\]]; the printer
+     canonicalizes to the [<number>] form per cssnano. *)
+  roundtrip ".x { color: rgb(255 0 0 / 50%) }" ".x{color:rgb(255 0 0/.5)}";
+  (* CSS Color 4 section 1.4: rgb() with all-percent channels denotes the same
+     color as the equivalent named/hex form; rgb(100% 0% 0%) is red. *)
+  roundtrip ".x { color: rgb(100% 0% 0%) }" ".x{color:red}"
 
-(* SS 5.2.4 - hsl() function *)
+(* SS 5.2.4 - hsl() function. Per CSS Color 4 section 1.4 the hsl() form denotes
+   the same color as a named color or hex when applicable; the printer
+   canonicalizes to the named color when it is no longer than the alternative
+   spellings. *)
 let color_hsl () =
-  (* Modern space-separated syntax - hue in degrees (default unit, dropped) *)
-  roundtrip ".x { color: hsl(120 100% 50%) }" ".x{color:hsl(120 100% 50%)}";
-  (* With alpha *)
+  roundtrip ".x { color: hsl(120 100% 50%) }" ".x{color:lime}";
   roundtrip ".x { color: hsl(120 100% 50% / 50%) }"
-    ".x{color:hsl(120 100% 50%/50%)}"
+    ".x{color:hsl(120 100% 50%/.5)}"
 
 (* SS 5.2.5 - hwb() function *)
 let color_hwb () =
@@ -441,10 +449,13 @@ let font_face () =
 
 (* {2 CSS Animations Level 1} https://www.w3.org/TR/css-animations-1/ *)
 
-(* SS 7 - @keyframes rule *)
+(* SS 7 - @keyframes rule. CSS Animations 1 section 7.1: [from] / [to] are
+   spec-equivalent to [0%] / [100%]. The printer canonicalizes to the shorter
+   spelling per cssnano / Lightning CSS - [0%] beats [from], [to] beats
+   [100%]. *)
 let keyframes () =
   roundtrip "@keyframes slide { 0% { opacity: 0 } 100% { opacity: 1 } }"
-    "@keyframes slide{0%{opacity:0}100%{opacity:1}}"
+    "@keyframes slide{0%{opacity:0}to{opacity:1}}"
 
 (* {2 Compound selectors and complex combinations}
    https://www.w3.org/TR/selectors-4/ SS 4 *)

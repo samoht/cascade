@@ -38,8 +38,7 @@ let generation () =
   let css = Css.to_string ~minify:true stylesheet in
   Alcotest.(check string)
     "exact css generation"
-    ".btn{color:#ff0000;padding:10px}.card{margin:5px;background-color:#ffffff}\n"
-    css
+    ".btn{color:red;padding:10px}.card{margin:5px;background-color:#fff}\n" css
 
 (* Test optimization flag works *)
 let optimization_flag () =
@@ -56,8 +55,7 @@ let optimization_flag () =
   in
 
   let css_optimized = Css.to_string ~minify:true ~optimize:true stylesheet in
-  Alcotest.(check string)
-    "optimized exact" ".btn{color:#0000ff}\n" css_optimized
+  Alcotest.(check string) "optimized exact" ".btn{color:blue}\n" css_optimized
 
 (* Test layers work end-to-end *)
 let layers_integration () =
@@ -97,7 +95,7 @@ let minify_flag () =
   in
 
   let css_minified = Css.to_string ~minify:true stylesheet in
-  Alcotest.(check string) "minified exact" ".btn{color:#ff0000}\n" css_minified
+  Alcotest.(check string) "minified exact" ".btn{color:red}\n" css_minified
 
 (* Test important declarations *)
 let important_integration () =
@@ -114,7 +112,7 @@ let important_integration () =
 
   let css = Css.to_string ~minify:true stylesheet in
   Alcotest.(check string)
-    "important exact" ".btn{color:#ff0000!important;padding:10px}\n" css
+    "important exact" ".btn{color:red!important;padding:10px}\n" css
 
 (* Test custom properties integration *)
 let custom_properties_integration () =
@@ -293,7 +291,7 @@ let test_map () =
 
   let css = Css.to_string ~minify:true (v mapped) in
   Alcotest.(check string)
-    "map changes all rules" ".foo{color:#0000ff}.bar{color:#0000ff}\n" css
+    "map changes all rules" ".foo{color:blue}.bar{color:blue}\n" css
 
 (* Test Css.map with nested media queries *)
 let test_map_nested () =
@@ -320,7 +318,7 @@ let test_map_nested () =
   let css = Css.to_string ~minify:true (v mapped) in
   Alcotest.(check bool)
     "map descends into media" true
-    (String.contains css '0' && String.contains css 'f')
+    (Astring.String.is_infix ~affix:"color:blue" css)
 
 let test_spec_map_conditional_boundaries () =
   let recolor sel _decls =
@@ -345,10 +343,10 @@ let test_spec_map_conditional_boundaries () =
   let css = Css.to_string ~minify:true (v mapped) in
   Alcotest.(check bool)
     "map descends through supports/container" true
-    (Astring.String.is_infix ~affix:".title{color:#0000ff}" css);
+    (Astring.String.is_infix ~affix:".title{color:blue}" css);
   Alcotest.(check bool)
     "map descends through layer" true
-    (Astring.String.is_infix ~affix:".inside{color:#0000ff}" css);
+    (Astring.String.is_infix ~affix:".inside{color:blue}" css);
   Alcotest.(check bool)
     "map preserves condition boundaries" true
     (Astring.String.is_infix ~affix:"@supports" css
@@ -523,7 +521,7 @@ let public_custom_props_edges () =
       [ custom_property "--outside" "0"; color (hex "#111111") ]
   in
   let theme_rule =
-    rule ~selector:Selector.Root [ custom_property "--brand" "#f00" ]
+    rule ~selector:Selector.Root [ custom_property "--brand" "red" ]
   in
   let nested_theme =
     media
@@ -593,11 +591,10 @@ let public_theme_edges () =
   let empty_theme = Css.Pp.String_set.empty in
   let brand_theme = Css.Pp.String_set.add "brand" empty_theme in
   Alcotest.(check string)
-    "guarded declaration hidden" ".card{background-color:#ffffff}\n"
+    "guarded declaration hidden" ".card{background-color:#fff}\n"
     (to_string ~minify:true ~theme:empty_theme sheet);
   Alcotest.(check string)
-    "guarded declaration shown"
-    ".card{color:#ff0000;background-color:#ffffff}\n"
+    "guarded declaration shown" ".card{color:red;background-color:#fff}\n"
     (to_string ~minify:true ~theme:brand_theme sheet)
 
 let public_parse_edges () =
