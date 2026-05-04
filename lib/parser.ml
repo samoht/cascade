@@ -207,7 +207,7 @@ let token_kind_to_string : Token.kind -> string = function
         s;
       Buffer.add_char buf ')';
       Buffer.contents buf
-  | Token.Bad_url -> ""
+  | Token.Bad_url -> "url(a b)"
   | Token.Delim "\\" -> "\\\n"
   | Token.Delim s -> s
   | Token.Number_tok { repr; _ } -> repr
