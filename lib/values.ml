@@ -724,6 +724,53 @@ let rgba_is_transparent r g b a =
   channel_is_zero r && channel_is_zero g && channel_is_zero b
   && alpha_is_zero a
 
+(* Hue value of an [Hsl] colour as a float in degrees, when the input is a
+   plain numeric hue (number / [deg] angle). Other forms ([rad]/[turn]/
+   [grad]/[var]/[calc]/[none]) return [None] so the printer keeps the
+   authored representation. *)
+let hue_to_deg = function
+  | Unitless f -> Some f
+  | Angle (Deg f) -> Some f
+  | Angle (Turn f) -> Some (f *. 360.)
+  | Angle (Grad f) -> Some (f *. 0.9)
+  | Angle (Rad f) -> Some (f *. 180. /. Float.pi)
+  | _ -> None
+
+let percentage_to_float = function
+  | (Pct f : percentage) -> Some f
+  | (Num f : percentage) -> Some (f *. 100.)
+  | _ -> None
+
+let alpha_is_full = function
+  | (None : alpha) -> true
+  | Num 1.0 -> true
+  | Pct 100.0 -> true
+  | _ -> false
+
+(* CSS Color 4 3: the hue is interpreted modulo 360 degrees. *)
+let normalize_hue f =
+  let m = Float.rem f 360. in
+  if m < 0. then m +. 360. else m
+
+(* Map a fully-saturated, mid-lightness HSL hue onto its CSS named colour.
+   Only the six primary/secondary hues are addressed, since they are the
+   only ones whose name is shorter than the equivalent [#hex] form. *)
+let hsl_named_for_primary ~hue ~saturation ~lightness : string option =
+  if Float.abs (saturation -. 100.) > 0.0001 then None
+  else if Float.abs (lightness -. 50.) > 0.0001 then None
+  else
+    let bucket = Float.round hue in
+    if Float.abs (hue -. bucket) > 0.0001 then None
+    else
+      match Float.to_int bucket with
+      | 0 -> Some "red"
+      | 60 -> Some "yellow"
+      | 120 -> Some "lime"
+      | 180 -> Some "cyan"
+      | 240 -> Some "blue"
+      | 300 -> Some "magenta"
+      | _ -> None
+
 (* Reverse of [color_name_hex] for the named-color set whose hex form is short
    enough to be a candidate. The map is keyed on the shortened hex spelling so
    [shorten_hex "#ff0000"] and [#f00] both resolve to the same name. *)
@@ -1130,6 +1177,17 @@ and pp_color : color Pp.t =
               pp_rgb_var ctx (Var v);
               pp_opt_alpha ctx a)
             ctx (v, a))
+  | Hsl { h; s; l; a } when Pp.minified ctx -> (
+      (* CSS Color 4 3: when the HSL components map exactly to a primary or
+         secondary CSS named colour, emit the name (cssnano / Lightning CSS
+         convention). *)
+      match (hue_to_deg h, percentage_to_float s, percentage_to_float l) with
+      | Some hue, Some saturation, Some lightness when alpha_is_full a -> (
+          let hue = normalize_hue hue in
+          match hsl_named_for_primary ~hue ~saturation ~lightness with
+          | Some name -> Pp.string ctx name
+          | None -> pp_hsl ctx (h, s, l, a))
+      | _ -> pp_hsl ctx (h, s, l, a))
   | Hsl { h; s; l; a } -> pp_hsl ctx (h, s, l, a)
   | Hwb { h; w; b; a } -> pp_hwb ctx (h, w, b, a)
   | Color { space; components; alpha } -> pp_color' ctx space components alpha
