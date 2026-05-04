@@ -384,12 +384,27 @@ let normalize_math_args args =
     args;
   Buffer.contents buf
 
+(* CSS Values 4 6.1: absolute length units are interconvertible. [px] is the
+   canonical unit. Under minify, fold each absolute unit onto [px]. *)
+let absolute_unit_to_px = function
+  | Cm f -> Some (f *. 96. /. 2.54)
+  | Mm f -> Some (f *. 96. /. 25.4)
+  | Q f -> Some (f *. 96. /. 25.4 /. 4.)
+  | In f -> Some (f *. 96.)
+  | Pt f -> Some (f *. 96. /. 72.)
+  | Pc f -> Some (f *. 16.)
+  | _ -> None
+
 let rec pp_length ?(always = false) : length Pp.t =
  fun ctx v ->
   let pp_unit_fn = pp_unit ~always ctx in
   match v with
   | Zero -> Pp.char ctx '0'
   | Px f -> pp_unit_fn f "px"
+  | (Cm _ | Mm _ | Q _ | In _ | Pt _ | Pc _) as v when Pp.minified ctx -> (
+      match absolute_unit_to_px v with
+      | Some px -> pp_unit_fn px "px"
+      | None -> pp_length ~always ctx v)
   | Cm f -> pp_unit_fn f "cm"
   | Mm f -> pp_unit_fn f "mm"
   | Q f -> pp_unit_fn f "q"
@@ -703,9 +718,9 @@ let color_name_hex : color_name -> string * string = function
          (#rrggbb = 7 chars) is never shorter. Keep name. *)
       ("extended", "")
 
-(* CSS Color 4 6.4: [transparent] is defined as [rgba(0, 0, 0, 0)]. The
-   4-digit shorthand [#0000] and the 8-digit form [#00000000] are
-   spec-equivalent representations. *)
+(* CSS Color 4 6.4: [transparent] is defined as [rgba(0, 0, 0, 0)]. The 4-digit
+   shorthand [#0000] and the 8-digit form [#00000000] are spec-equivalent
+   representations. *)
 let hex_is_fully_transparent value =
   match String.length value with
   | 4 -> String.for_all (fun c -> c = '0') value
@@ -716,13 +731,13 @@ let alpha_is_zero (a : alpha) =
   match a with Num 0.0 | Pct 0.0 -> true | _ -> false
 
 (* CSS Color 4 6.4: [transparent] is the canonical name for any fully-
-   transparent colour. Any RGB triple paired with [alpha = 0] paints to the
-   same pixel; the colour stack composites them identically. *)
+   transparent colour. Any RGB triple paired with [alpha = 0] paints to the same
+   pixel; the colour stack composites them identically. *)
 let rgba_is_transparent _r _g _b a = alpha_is_zero a
 
 (* The body of a [Relative_rgb] is stored as a verbatim string of the form
-   ["from <origin> r g b/<alpha>"], because the channels and alpha are part
-   of the [<calc>]-derived expression. To match the typed-color path's alpha
+   ["from <origin> r g b/<alpha>"], because the channels and alpha are part of
+   the [<calc>]-derived expression. To match the typed-color path's alpha
    canonicalisation under [~minify:true], rewrite a trailing ["/<n>%"] alpha
    suffix to its decimal equivalent. *)
 let minify_relative_color_alpha body =
@@ -742,10 +757,10 @@ let minify_relative_color_alpha body =
               ]
         | None -> body)
 
-(* Hue value of an [Hsl] colour as a float in degrees, when the input is a
-   plain numeric hue (number / [deg] angle). Other forms ([rad]/[turn]/
-   [grad]/[var]/[calc]/[none]) return [None] so the printer keeps the
-   authored representation. *)
+(* Hue value of an [Hsl] colour as a float in degrees, when the input is a plain
+   numeric hue (number / [deg] angle). Other forms ([rad]/[turn]/
+   [grad]/[var]/[calc]/[none]) return [None] so the printer keeps the authored
+   representation. *)
 let hue_to_deg = function
   | Unitless f -> Some f
   | Angle (Deg f) -> Some f
@@ -770,9 +785,9 @@ let normalize_hue f =
   let m = Float.rem f 360. in
   if m < 0. then m +. 360. else m
 
-(* Map a fully-saturated, mid-lightness HSL hue onto its CSS named colour.
-   Only the six primary/secondary hues are addressed, since they are the
-   only ones whose name is shorter than the equivalent [#hex] form. *)
+(* Map a fully-saturated, mid-lightness HSL hue onto its CSS named colour. Only
+   the six primary/secondary hues are addressed, since they are the only ones
+   whose name is shorter than the equivalent [#hex] form. *)
 let hsl_named_for_primary ~hue ~saturation ~lightness : string option =
   if Float.abs (saturation -. 100.) > 0.0001 then None
   else if Float.abs (lightness -. 50.) > 0.0001 then None
@@ -790,8 +805,8 @@ let hsl_named_for_primary ~hue ~saturation ~lightness : string option =
       | _ -> None
 
 (* The numeric value of a channel when it is a plain [Int] or integer-valued
-   [Num]/[Pct]. Returns [None] for [Var]/[Calc] inputs which the printer
-   cannot canonicalise. *)
+   [Num]/[Pct]. Returns [None] for [Var]/[Calc] inputs which the printer cannot
+   canonicalise. *)
 let channel_byte_value (c : channel) =
   match c with
   | Int i when i >= 0 && i <= 255 -> Some i
@@ -962,8 +977,8 @@ and pp_alpha : alpha Pp.t =
   | Num f -> Pp.float ctx f
   | Pct f when Pp.minified ctx ->
       (* CSS Color 4 1.3: an alpha [<percentage>] is spec-equivalent to the
-         [<number>] form divided by 100. Under minification, emit the
-         shorter number form so [50%] and [0.5] round-trip identically. *)
+         [<number>] form divided by 100. Under minification, emit the shorter
+         number form so [50%] and [0.5] round-trip identically. *)
       Pp.float ctx (f /. 100.)
   | Pct f ->
       Pp.float ctx f;
@@ -1174,11 +1189,11 @@ and pp_color : color Pp.t =
  fun ctx -> function
   | Hex { hash = _; value } ->
       (* CSS Color 4 12.1: 6-digit and 3-digit hex are spec-equivalent;
-         shortening is part of minification (cssnano / Lightning CSS /
-         clean-css conventions). When a CSS named colour represents the same
-         sRGB value with an equal-or-shorter spelling than the [#hex] form,
-         emit the name. CSS Color 4 6.4 makes [#0000] / [#00000000]
-         spec-equivalent to the [transparent] keyword. *)
+         shortening is part of minification (cssnano / Lightning CSS / clean-css
+         conventions). When a CSS named colour represents the same sRGB value
+         with an equal-or-shorter spelling than the [#hex] form, emit the name.
+         CSS Color 4 6.4 makes [#0000] / [#00000000] spec-equivalent to the
+         [transparent] keyword. *)
       if Pp.minified ctx then (
         if hex_is_fully_transparent value then Pp.string ctx "transparent"
         else
@@ -1195,9 +1210,9 @@ and pp_color : color Pp.t =
   | Rgb rgb -> (
       match rgb with
       | Channels { r; g; b } when Pp.minified ctx -> (
-          (* CSS Color 4 1.4: [rgb(R G B)] (no alpha) is spec-equivalent to
-             the [#hex] / named-colour forms. Re-emit through [pp_color] so
-             the same shortening / named lookup applies. *)
+          (* CSS Color 4 1.4: [rgb(R G B)] (no alpha) is spec-equivalent to the
+             [#hex] / named-colour forms. Re-emit through [pp_color] so the same
+             shortening / named lookup applies. *)
           match rgb_to_hex_string r g b with
           | Some hex -> pp_color ctx (Hex { hash = true; value = hex })
           | None -> pp_rgb_func ctx (r, g, b, None))
@@ -1217,9 +1232,9 @@ and pp_color : color Pp.t =
         ->
           Pp.string ctx "transparent"
       | Channels { r; g; b } when Pp.minified ctx && alpha_is_full a -> (
-          (* Fully-opaque alpha is equivalent to [rgb(R G B)]; route through
-             the [Hex]-based canonicalisation so all RGB-family inputs share
-             one output form. *)
+          (* Fully-opaque alpha is equivalent to [rgb(R G B)]; route through the
+             [Hex]-based canonicalisation so all RGB-family inputs share one
+             output form. *)
           match rgb_to_hex_string r g b with
           | Some hex -> pp_color ctx (Hex { hash = true; value = hex })
           | None -> pp_rgb_func ctx (r, g, b, a))
@@ -2635,9 +2650,7 @@ let read_time_number t : duration =
   | _ -> Cursor.err_invalid t ("time unit: " ^ unit)
 
 let rec read_duration_with ?(css_wide = true) ~canonicalize_ms t : duration =
-  let read_duration_self t =
-    read_duration_with ~css_wide ~canonicalize_ms t
-  in
+  let read_duration_self t = read_duration_with ~css_wide ~canonicalize_ms t in
   Cursor.enum_or_calls
     ~default:(read_duration_number ~canonicalize_ms)
     "duration"
