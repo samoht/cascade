@@ -521,6 +521,80 @@ let test_property_grammar_manifest_has_both_kinds _buf =
         fail (Fmt.str "%s fuzz row has no negative vectors" row.property))
     property_grammar_vectors
 
+let assert_shared_inventory_shape () =
+  let rows = property_inventory in
+  if List.length rows < 431 then
+    fail
+      (Fmt.str "shared property grammar inventory drifted: %d rows"
+         (List.length rows));
+  let names =
+    List.map
+      (fun (row : Cascade_spec_inventory.Property_grammar.row) -> row.property)
+      rows
+  in
+  let unique_names = List.sort_uniq String.compare names in
+  if List.length names <> List.length unique_names then
+    fail "shared property grammar inventory has duplicate property rows";
+  let normalize_value = String.trim in
+  List.iter
+    (fun (row : Cascade_spec_inventory.Property_grammar.row) ->
+      if String.trim row.property <> row.property then
+        fail
+          (Fmt.str "%S has leading or trailing property-name whitespace"
+             row.property);
+      if row.property = "" then fail "shared inventory has empty property row";
+      String.iter
+        (function
+          | 'a' .. 'z' | '0' .. '9' | '-' -> ()
+          | c ->
+              fail
+                (Fmt.str "%s contains non-CSS property-name character %C"
+                   row.property c))
+        row.property;
+      if row.positives = [] then
+        fail (Fmt.str "%s shared row has no positive vectors" row.property);
+      if row.negatives = [] then
+        fail (Fmt.str "%s shared row has no negative vectors" row.property);
+      if List.length row.positives < 2 then
+        fail
+          (Fmt.str "%s shared row needs at least two positive branch vectors"
+             row.property);
+      if List.length row.negatives < 2 then
+        fail
+          (Fmt.str "%s shared row needs at least two negative branch vectors"
+             row.property);
+      let duplicate_values values =
+        let normalized = List.map normalize_value values in
+        List.length normalized
+        <> List.length (List.sort_uniq String.compare normalized)
+      in
+      if duplicate_values row.positives then
+        fail
+          (Fmt.str "%s shared row has duplicate positive vectors" row.property);
+      if duplicate_values row.negatives then
+        fail
+          (Fmt.str "%s shared row has duplicate negative vectors" row.property);
+      let positive_set =
+        List.sort_uniq String.compare (List.map normalize_value row.positives)
+      in
+      List.iter
+        (fun value ->
+          if normalize_value value = "" then
+            fail (Fmt.str "%s shared row has an empty vector" row.property))
+        (row.positives @ row.negatives);
+      List.iter
+        (fun negative ->
+          let normalized = normalize_value negative in
+          if List.mem normalized positive_set then
+            fail
+              (Fmt.str
+                 "%s shared grammar vector is both positive and negative: %S"
+                 row.property normalized))
+        row.negatives)
+    rows
+
+let test_shared_inventory_row_shape _buf = assert_shared_inventory_shape ()
+
 let test_inventory_css_wide_generation buf =
   if List.length inventory_properties < 431 then
     fail
@@ -745,6 +819,7 @@ let test_property_value_branch_depth_positive buf =
         "text-combine-upright:digits 4";
         "counter-reset:section 2 page -1";
         "counter-increment:section 2";
+        "content:open-quote counters(section,\".\") close-quote";
         "glyph-orientation-vertical:90deg";
         "text-decoration-skip:auto";
         "text-decoration-skip-self:objects";
@@ -867,6 +942,7 @@ let test_property_value_branch_depth_negative buf =
         "text-combine-upright:digits 5";
         "counter-reset:none section";
         "counter-increment:section 1.5";
+        "content:counter()";
         "glyph-orientation-vertical:45deg";
         "text-decoration-skip:none auto";
         "text-decoration-skip-self:auto";
@@ -957,6 +1033,8 @@ let suite =
         test_property_grammar_manifest_invalid;
       test_case "property grammar manifest row shape" [ bytes ]
         test_property_grammar_manifest_has_both_kinds;
+      test_case "shared inventory row shape invariants" [ bytes ]
+        test_shared_inventory_row_shape;
       test_case "shared inventory CSS-wide generated vectors" [ bytes ]
         test_inventory_css_wide_generation;
       test_case "shared inventory positive value vectors" [ bytes ]

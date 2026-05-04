@@ -110,7 +110,9 @@ let generated_condition buf =
         Css.Supports.func "font-format" "woff2";
         Css.Supports.func "font-tech" "variations";
         Css.Supports.func "at-rule" "@container";
+        Css.Supports.func "at-rule" "@charset";
         Css.Supports.func "named-feature" "--compact";
+        Css.Supports.func "env" "safe-area-inset-top";
       ]
       buf 1
   in

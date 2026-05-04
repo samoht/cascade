@@ -97,6 +97,38 @@ let test_vars_of_property () =
   let no_vars = vars_of_property Width (Length (Px 100.)) in
   Alcotest.(check int) "no variables in px value" 0 (List.length no_vars)
 
+let spec_vars_of_property_matrix () =
+  let check property_name declaration =
+    let decl = Css.Declaration.of_string declaration in
+    let vars = vars_of_declarations [ decl ] in
+    Alcotest.(check int) property_name 1 (List.length vars)
+  in
+  List.iter
+    (fun (property_name, declaration) -> check property_name declaration)
+    [
+      ("caption-side", "caption-side: var(--spec-caption-side)");
+      ("dominant-baseline", "dominant-baseline: var(--spec-dominant-baseline)");
+      ("field-sizing", "field-sizing: var(--spec-field-sizing)");
+      ( "grid-template-areas",
+        "grid-template-areas: var(--spec-grid-template-areas)" );
+      ("hyphens", "hyphens: var(--spec-hyphens)");
+      ( "initial-letter-align",
+        "initial-letter-align: var(--spec-initial-letter-align)" );
+      ( "initial-letter-wrap",
+        "initial-letter-wrap: var(--spec-initial-letter-wrap)" );
+      ("isolation", "isolation: var(--spec-isolation)");
+      ("mask-type", "mask-type: var(--spec-mask-type)");
+      ("order", "order: var(--spec-order)");
+      ("table-layout", "table-layout: var(--spec-table-layout)");
+      ( "text-emphasis-skip",
+        "text-emphasis-skip: var(--spec-text-emphasis-skip)" );
+      ( "text-emphasis-style",
+        "text-emphasis-style: var(--spec-text-emphasis-style)" );
+      ("-webkit-hyphens", "-webkit-hyphens: var(--spec-webkit-hyphens)");
+      ("-webkit-line-clamp", "-webkit-line-clamp: var(--spec-webkit-line-clamp)");
+      ("z-index", "z-index: var(--spec-z-index)");
+    ]
+
 (* Not a roundtrip test *)
 let test_vars_of_declarations () =
   let custom_color_decl, color_var =
@@ -339,6 +371,7 @@ let tests =
     ("spec property syntax descriptor edges", `Quick, spec_property_syntax_edges);
     ("vars of calc", `Quick, test_vars_of_calc);
     ("vars of property", `Quick, test_vars_of_property);
+    ("spec vars of property matrix", `Quick, spec_vars_of_property_matrix);
     ("vars of declarations", `Quick, test_vars_of_declarations);
     ("any_var_name", `Quick, test_any_var_name);
     ("extract custom declarations", `Quick, test_extract_custom_declarations);

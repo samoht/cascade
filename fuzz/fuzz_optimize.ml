@@ -25,6 +25,7 @@ let rule buf i =
 
 let generated_stylesheet buf =
   [
+    Css.Stylesheet.Charset "UTF-8";
     Css.Stylesheet.Layer_decl [ "reset"; "theme"; "components" ];
     Css.Stylesheet.Import
       {
@@ -51,10 +52,27 @@ let generated_stylesheet buf =
                     [ rule buf 8 ] );
               ] );
         ] );
+    Css.Stylesheet.When
+      ( Css.Stylesheet.And
+          ( Css.Stylesheet.Media_condition
+              (Css.Media.of_string "(width >= 48em)"),
+            Css.Stylesheet.Supports_condition_test
+              (Css.Supports.property "display" "grid") ),
+        [ rule buf 10 ] );
+    Css.Stylesheet.Else
+      ( Some
+          (Css.Stylesheet.Supports_condition_test
+             (Css.Supports.property "display" "flex")),
+        [ rule buf 11 ] );
+    Css.Stylesheet.Supports_condition
+      ("--fuzz-condition", [ declaration buf 12 ]);
     Css.Stylesheet.Layer
       ( Some (pick [ "base"; "theme"; "components" ] buf 12),
         [ rule buf 16; Css.Stylesheet.Layer (None, [ rule buf 20 ]) ] );
     Css.Stylesheet.Scope (Some ".card", Some ".limit", [ rule buf 24 ]);
+    Css.Stylesheet.Starting_style [ rule buf 28 ];
+    Css.Stylesheet.with_origin Css.Stylesheet.Author
+      [ rule buf 32; rule buf 32 ];
     Css.Stylesheet.Page
       (Some ":first", [ Css.Declaration.margin [ Css.Values.Px 10. ] ]);
     Css.Stylesheet.Keyframes
@@ -96,6 +114,9 @@ let rec boundary_shape = function
       ("supports" :: shapes_with_rule_runs block) @ [ "/supports" ]
   | Container (_, _, block) ->
       ("container" :: shapes_with_rule_runs block) @ [ "/container" ]
+  | When (_, block) -> ("when" :: shapes_with_rule_runs block) @ [ "/when" ]
+  | Else (_, block) -> ("else" :: shapes_with_rule_runs block) @ [ "/else" ]
+  | Supports_condition (name, _) -> [ "supports-condition:" ^ name ]
   | Scope (_, _, block) ->
       ("scope" :: shapes_with_rule_runs block) @ [ "/scope" ]
   | Starting_style block ->
@@ -202,8 +223,131 @@ let test_atrule_counts_stable buf =
         (Fmt.str "optimization changed %s count: %d -> %d" label before after)
   in
   same "property" (function Css.Stylesheet.Property _ -> true | _ -> false);
+  same "charset" (function Css.Stylesheet.Charset _ -> true | _ -> false);
+  same "starting-style" (function
+    | Css.Stylesheet.Starting_style _ -> true
+    | _ -> false);
+  same "origin" (function Css.Stylesheet.Origin _ -> true | _ -> false);
   same "page" (function Css.Stylesheet.Page _ -> true | _ -> false);
-  same "keyframes" (function Css.Stylesheet.Keyframes _ -> true | _ -> false)
+  same "keyframes" (function Css.Stylesheet.Keyframes _ -> true | _ -> false);
+  same "when" (function Css.Stylesheet.When _ -> true | _ -> false);
+  same "else" (function Css.Stylesheet.Else _ -> true | _ -> false);
+  same "supports-condition" (function
+    | Css.Stylesheet.Supports_condition _ -> true
+    | _ -> false)
+
+let test_cascade_positive_negative_merge_vectors buf =
+  let media_rule selector color =
+    Css.Stylesheet.Media
+      ( Css.Media.Min_width 48.,
+        [
+          Css.Stylesheet.Rule
+            (Css.Stylesheet.rule
+               ~selector:(Css.Selector.class_ selector)
+               [ Css.Declaration.color (Css.Values.hex color) ]);
+        ] )
+  in
+  let input =
+    pick
+      [
+        [
+          Css.Stylesheet.Rule
+            (Css.Stylesheet.rule
+               ~selector:(Css.Selector.class_ "box")
+               [ Css.Declaration.color (Css.Values.hex "#ff0000") ]);
+          Css.Stylesheet.Rule
+            (Css.Stylesheet.rule
+               ~selector:(Css.Selector.class_ "box")
+               [
+                 Css.Declaration.display Css.Properties.Flex;
+                 Css.Declaration.color (Css.Values.hex "#0000ff");
+               ]);
+        ];
+        [
+          Css.Stylesheet.Rule
+            (Css.Stylesheet.rule
+               ~selector:(Css.Selector.class_ "box")
+               [ Css.Declaration.color (Css.Values.hex "#ff0000") ]);
+          Css.Stylesheet.Layer_decl [ "reset"; "components" ];
+          Css.Stylesheet.Rule
+            (Css.Stylesheet.rule
+               ~selector:(Css.Selector.class_ "box")
+               [ Css.Declaration.display Css.Properties.Flex ]);
+        ];
+        [
+          media_rule "a" "#ff0000";
+          Css.Stylesheet.Layer_decl [ "theme" ];
+          media_rule "b" "#0000ff";
+        ];
+      ]
+      buf 0
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let before = boundary_shapes input in
+  let after = boundary_shapes optimized in
+  if before <> after then
+    fail
+      (Fmt.str "merge vector changed cascade boundary shape: %S -> %S"
+         (String.concat " " before) (String.concat " " after));
+  ignore (minified optimized)
+
+let test_cascade_shorthand_importance_vectors buf =
+  let declarations =
+    pick
+      [
+        [
+          Css.Declaration.important
+            (Css.Declaration.margin_left (Css.Values.Px 1.));
+          Css.Declaration.margin [ Css.Values.Px 2. ];
+        ];
+        [
+          Css.Declaration.margin [ Css.Values.Px 2. ];
+          Css.Declaration.important
+            (Css.Declaration.margin_left (Css.Values.Px 1.));
+        ];
+      ]
+      buf 0
+  in
+  let rule =
+    Css.Stylesheet.rule ~selector:(Css.Selector.class_ "box") declarations
+  in
+  let optimized =
+    Css.Optimize.stylesheet [ Css.Stylesheet.Rule rule ] |> minified
+  in
+  if
+    not
+      (String.contains optimized '!'
+      && Astring.String.is_infix ~affix:"margin:" optimized
+      && Astring.String.is_infix ~affix:"margin-left:" optimized)
+  then
+    fail
+      (Fmt.str
+         "optimization dropped a required mixed-importance shorthand/longhand: \
+          %S"
+         optimized)
+
+let test_positive_layer_statement_vectors buf =
+  let input =
+    [
+      Css.Stylesheet.Layer (Some (pick [ "reset"; "base" ] buf 0), []);
+      Css.Stylesheet.Layer (Some (pick [ "theme"; "components" ] buf 1), []);
+      Css.Stylesheet.Rule
+        (Css.Stylesheet.rule
+           ~selector:(Css.Selector.class_ "card")
+           [ Css.Declaration.display Css.Properties.Flex ]);
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input |> minified in
+  if not (Astring.String.is_prefix ~affix:"@layer " optimized) then
+    fail
+      (Fmt.str "empty named layers did not canonicalize to layer statement: %S"
+         optimized);
+  match parse_stylesheet optimized with
+  | Some _ -> ()
+  | None ->
+      fail
+        (Fmt.str "positive layer statement optimization did not reparse: %S"
+           optimized)
 
 let suite =
   ( "optimize",
@@ -217,4 +361,10 @@ let suite =
         test_optimized_reparse_idempotent;
       test_case "import namespace counts" [ bytes ] test_import_namespace_counts;
       test_case "at-rule counts stable" [ bytes ] test_atrule_counts_stable;
+      test_case "cascade positive negative merge vectors" [ bytes ]
+        test_cascade_positive_negative_merge_vectors;
+      test_case "cascade shorthand importance vectors" [ bytes ]
+        test_cascade_shorthand_importance_vectors;
+      test_case "positive layer statement vectors" [ bytes ]
+        test_positive_layer_statement_vectors;
     ] )

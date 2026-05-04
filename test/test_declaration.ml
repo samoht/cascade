@@ -1873,6 +1873,18 @@ let check_property_trailing_token_rejected (row : property_grammar_row) value =
         row.property input serialized
 
 let check_manifest_row_shape (row : property_grammar_row) =
+  let trimmed_property = String.trim row.property in
+  if trimmed_property <> row.property then
+    Alcotest.failf "%S has leading or trailing property-name whitespace"
+      row.property;
+  if row.property = "" then Alcotest.fail "empty property-name row";
+  String.iter
+    (function
+      | 'a' .. 'z' | '0' .. '9' | '-' -> ()
+      | c ->
+          Alcotest.failf "%s contains non-CSS property-name character %C"
+            row.property c)
+    row.property;
   if row.positives = [] then
     Alcotest.failf "%s has no positive grammar vectors" row.property;
   if row.negatives = [] then
@@ -1881,13 +1893,26 @@ let check_manifest_row_shape (row : property_grammar_row) =
     Alcotest.failf "%s needs at least two positive branch vectors" row.property;
   if List.length row.negatives < 2 then
     Alcotest.failf "%s needs at least two negative branch vectors" row.property;
+  let normalize_value = String.trim in
   let duplicate_values values =
-    List.length values <> List.length (List.sort_uniq String.compare values)
+    let normalized = List.map normalize_value values in
+    List.length normalized
+    <> List.length (List.sort_uniq String.compare normalized)
   in
   if duplicate_values row.positives then
     Alcotest.failf "%s has duplicate positive grammar vectors" row.property;
   if duplicate_values row.negatives then
     Alcotest.failf "%s has duplicate negative grammar vectors" row.property;
+  let positive_set =
+    List.sort_uniq String.compare (List.map normalize_value row.positives)
+  in
+  List.iter
+    (fun negative ->
+      let normalized = normalize_value negative in
+      if List.mem normalized positive_set then
+        Alcotest.failf "%s grammar vector is both positive and negative: %S"
+          row.property normalized)
+    row.negatives;
   List.iter
     (fun value ->
       if String.trim value = "" then

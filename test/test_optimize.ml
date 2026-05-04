@@ -593,6 +593,33 @@ let test_media_merge_in_layers () =
       | _ -> fail "Expected Media inside layer")
   | _ -> fail "Expected Layer statement"
 
+let test_positive_empty_named_layers_to_statement () =
+  (* Positive optimization case: empty named @layer blocks establish order but
+     contain no declarations, so consecutive empty named blocks can be
+     represented by the statement form from CSS Cascade 5. *)
+  let stylesheet =
+    [
+      Css.Stylesheet.Layer (Some "reset", []);
+      Css.Stylesheet.Layer (Some "theme", []);
+      Css.Stylesheet.Layer
+        ( Some "components",
+          [
+            Css.Stylesheet.Rule
+              {
+                selector = Css.Selector.class_ "card";
+                declarations = [ Css.Declaration.display Flex ];
+                nested = [];
+                merge_key = None;
+              };
+          ] );
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet stylesheet in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "empty named layer blocks canonicalize to layer statement"
+    "@layer reset,theme;@layer components{.card{display:flex}}" output
+
 let optimize_tests =
   [
     ("deduplicate declarations", `Quick, test_deduplicate_declarations);
@@ -615,6 +642,9 @@ let optimize_tests =
       `Quick,
       test_multiple_consecutive_media_merge );
     ("media merge in layers", `Quick, test_media_merge_in_layers);
+    ( "positive empty named layers to statement",
+      `Quick,
+      test_positive_empty_named_layers_to_statement );
   ]
 
 (** {1 Selector merging tests (cascade semantics)} *)
@@ -897,6 +927,70 @@ let c61_decl_order_shorthand_boundary () =
     "later longhand stays after shorthand" ".box{margin:2px;margin-left:3px}"
     output
 
+let c61_merge_adjacent_preserves_shorthand_order () =
+  (* CSS Cascade sections 3 and 6.1: merging adjacent equal-selector rules is
+     only semantics-preserving when the declaration sequence stays in source
+     order, because a shorthand in the later rule resets earlier longhands. *)
+  let input =
+    [
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "box";
+          declarations = [ Css.Declaration.margin_left (Px 1.) ];
+          nested = [];
+          merge_key = None;
+        };
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "box";
+          declarations =
+            [
+              Css.Declaration.margin [ Px 2. ];
+              Css.Declaration.margin_left (Px 3.);
+            ];
+          nested = [];
+          merge_key = None;
+        };
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "adjacent same-selector merge keeps shorthand/longhand source order"
+    ".box{margin:2px;margin-left:3px}" output
+
+let c61_positive_adjacent_merge_with_later_dedup () =
+  (* Positive merge case: adjacent same-selector rules in the same cascade slot
+     may merge, and ordinary duplicate declarations inside the merged rule still
+     reduce by source order. *)
+  let input =
+    [
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "box";
+          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
+          nested = [];
+          merge_key = None;
+        };
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "box";
+          declarations =
+            [
+              Css.Declaration.display Flex;
+              Css.Declaration.color (hex_color "0000ff");
+            ];
+          nested = [];
+          merge_key = None;
+        };
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "adjacent same-selector rules merge and dedupe by source order"
+    ".box{display:flex;color:#0000ff}" output
+
 let c61_no_merge_intervening () =
   (* CSS Cascade section 6.1: if rules tie on origin, importance, layer,
      specificity, and scope proximity, the later declaration wins. Merging equal
@@ -1012,6 +1106,64 @@ let c61_no_merge_atrule () =
      (min-width:48px){.m{color:#00ff00}}.a{background-color:#0000ff}"
     output
 
+let c61_no_media_merge_across_layer_statement () =
+  (* CSS Cascade section 6.4.4.2: a layer statement between matching media
+     queries still establishes layer order at that point. Media-query merging
+     must not cross it. *)
+  let media_rule selector color =
+    Css.Stylesheet.Media
+      ( Css.Media.Min_width 48.,
+        [
+          Css.Stylesheet.Rule
+            {
+              selector = Css.Selector.class_ selector;
+              declarations = [ Css.Declaration.color (hex_color color) ];
+              nested = [];
+              merge_key = None;
+            };
+        ] )
+  in
+  let input =
+    [
+      media_rule "a" "ff0000";
+      Css.Stylesheet.Layer_decl [ "theme" ];
+      media_rule "b" "0000ff";
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "matching media queries do not merge across layer statement"
+    "@media (min-width:48px){.a{color:#ff0000}}@layer theme;@media \
+     (min-width:48px){.b{color:#0000ff}}"
+    output
+
+let c61_all_property_reset_boundary () =
+  (* CSS Cascade section 3: the 'all' shorthand resets nearly every property. It
+     is not a duplicate of a later ordinary longhand and must remain in source
+     order. *)
+  let rule : Css.Stylesheet.rule =
+    {
+      selector = Css.Selector.class_ "reset";
+      declarations =
+        [
+          Css.Declaration.color (hex_color "ff0000");
+          Css.Declaration.v Css.Properties.All Css.Properties.Unset;
+          Css.Declaration.display Flex;
+        ];
+      nested = [];
+      merge_key = None;
+    }
+  in
+  let optimized = Css.Optimize.single_rule rule in
+  let output =
+    Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule optimized ]
+    |> String.trim
+  in
+  Alcotest.(check string)
+    "all shorthand reset remains before later longhand"
+    ".reset{all:unset;display:flex}" output
+
 let c61_no_merge_layer () =
   (* CSS Cascade section 6.1: layers are a cascade sorting criterion. Rules in
      different layers must not be merged, even when their selectors match. *)
@@ -1047,6 +1199,35 @@ let c61_no_merge_layer () =
     "same selector is not merged across layer boundary"
     "@layer reset{.btn{display:block}}@layer components{.btn{display:flex}}"
     output
+
+let c64_layer_statement_is_ordering_boundary () =
+  (* CSS Cascade section 6.4.4.2: a statement @layer rule establishes layer
+     order at its source position. Rule merging must not move style rules across
+     that ordering point, even when their selectors match. *)
+  let input =
+    [
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "theme";
+          declarations = [ Css.Declaration.color (hex_color "ff0000") ];
+          nested = [];
+          merge_key = None;
+        };
+      Css.Stylesheet.Layer_decl [ "reset"; "components" ];
+      Css.Stylesheet.Rule
+        {
+          selector = Css.Selector.class_ "theme";
+          declarations = [ Css.Declaration.display Flex ];
+          nested = [];
+          merge_key = None;
+        };
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "same selector is not merged across layer statement boundary"
+    ".theme{color:#ff0000}@layer reset,components;.theme{display:flex}" output
 
 let c61_unlayered_outside_layer () =
   (* CSS Cascade section 6.1: unlayered declarations are in the implicit final
@@ -1311,6 +1492,33 @@ let c61_distinct_scopes_preserved () =
         |> String.trim)
   | _ -> Alcotest.fail "optimizer must preserve distinct scope blocks"
 
+let c61_distinct_scope_limits_preserved () =
+  (* CSS Cascade level 6: the scope limit changes where a scoped rule applies.
+     Equal rules with the same root but different limits must not be merged into
+     one scope block. *)
+  let scoped_rule =
+    Css.Stylesheet.Rule
+      {
+        selector = Css.Selector.class_ "item";
+        declarations = [ Css.Declaration.color (hex_color "ff0000") ];
+        nested = [];
+        merge_key = None;
+      }
+  in
+  let input =
+    [
+      Css.Stylesheet.Scope (Some ".card", Some ".footer", [ scoped_rule ]);
+      Css.Stylesheet.Scope (Some ".card", Some ".aside", [ scoped_rule ]);
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "same scoped rule remains split by distinct scope limits"
+    "@scope(.card) to (.footer){.item{color:#ff0000}}@scope(.card) to \
+     (.aside){.item{color:#ff0000}}"
+    output
+
 let c61_no_merge_supports () =
   (* CSS Cascade section 6.1 order of appearance applies after filtering.
      Conditional groups are not optimizer reordering points for surrounding
@@ -1494,6 +1702,40 @@ let c61_important_blocks_longhand () =
   Alcotest.(check string)
     "important shorthand keeps priority over later normal longhand"
     ".box{margin:2px!important}" output
+
+let c63_mixed_importance_shorthand_longhand_edges () =
+  (* CSS Cascade section 6.3: importance is applied per declaration. A normal
+     shorthand still contributes the longhands not overridden by an important
+     longhand, so neither declaration is dead in either source-order
+     direction. *)
+  let check_rule label expected declarations =
+    let rule : Css.Stylesheet.rule =
+      {
+        selector = Css.Selector.class_ "box";
+        declarations;
+        nested = [];
+        merge_key = None;
+      }
+    in
+    let optimized = Css.Optimize.single_rule rule in
+    let output =
+      Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule optimized ]
+      |> String.trim
+    in
+    Alcotest.(check string) label expected output
+  in
+  check_rule "earlier important longhand survives later normal shorthand"
+    ".box{margin-left:1px!important;margin:2px}"
+    [
+      Css.Declaration.important (Css.Declaration.margin_left (Px 1.));
+      Css.Declaration.margin [ Px 2. ];
+    ];
+  check_rule "later important longhand survives earlier normal shorthand"
+    ".box{margin:2px;margin-left:1px!important}"
+    [
+      Css.Declaration.margin [ Px 2. ];
+      Css.Declaration.important (Css.Declaration.margin_left (Px 1.));
+    ]
 
 let c62_origin_importance_rank () =
   (* CSS Cascade section 6.2 defines origins, and section 6.1 orders them with
@@ -2708,6 +2950,12 @@ let selector_merging_tests =
     ( "spec cascade 6.1 declaration order shorthand boundary",
       `Quick,
       c61_decl_order_shorthand_boundary );
+    ( "spec cascade 6.1 adjacent merge preserves shorthand order",
+      `Quick,
+      c61_merge_adjacent_preserves_shorthand_order );
+    ( "spec cascade 6.1 positive adjacent merge with later dedup",
+      `Quick,
+      c61_positive_adjacent_merge_with_later_dedup );
     ( "spec cascade 6.1 no merge across intervening rule",
       `Quick,
       c61_no_merge_intervening );
@@ -2717,9 +2965,18 @@ let selector_merging_tests =
     ( "spec cascade 6.1 no merge across at-rule boundary",
       `Quick,
       c61_no_merge_atrule );
+    ( "spec cascade 6.1 no media merge across layer statement",
+      `Quick,
+      c61_no_media_merge_across_layer_statement );
+    ( "spec cascade 6.1 all property reset boundary",
+      `Quick,
+      c61_all_property_reset_boundary );
     ( "spec cascade 6.1 no merge across layer boundary",
       `Quick,
       c61_no_merge_layer );
+    ( "spec cascade 6.4 layer statement is ordering boundary",
+      `Quick,
+      c64_layer_statement_is_ordering_boundary );
     ( "spec cascade 6.1 unlayered rule stays outside layer",
       `Quick,
       c61_unlayered_outside_layer );
@@ -2741,6 +2998,9 @@ let selector_merging_tests =
     ( "spec cascade 6.1 distinct scopes preserved",
       `Quick,
       c61_distinct_scopes_preserved );
+    ( "spec cascade 6.1 distinct scope limits preserved",
+      `Quick,
+      c61_distinct_scope_limits_preserved );
     ( "spec cascade 6.1 no merge across supports boundary",
       `Quick,
       c61_no_merge_supports );
@@ -2756,6 +3016,9 @@ let selector_merging_tests =
     ( "spec cascade 6.1 important shorthand blocks normal longhand",
       `Quick,
       c61_important_blocks_longhand );
+    ( "spec cascade 6.3 mixed importance shorthand longhand edges",
+      `Quick,
+      c63_mixed_importance_shorthand_longhand_edges );
     ( "spec cascade 6.2 origin importance precedence rank",
       `Quick,
       c62_origin_importance_rank );
