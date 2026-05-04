@@ -5404,14 +5404,31 @@ let pp_border_image : border_image Pp.t =
     (Pp.list ~sep:Pp.space pp_border_image_repeat_keyword)
     ctx repeat
 
+(* CSS Backgrounds 3 2.1: the [background] shorthand's default position is [0%
+   0%]; when no [<bg-size>] is also set the position is redundant and elided
+   under minify. *)
+let position_is_default_origin (p : position_value) =
+  match p with
+  | XY (Zero, Zero) | XY (Pct 0., Pct 0.) | Single Zero | Left_top | Top_left ->
+      true
+  | _ -> false
+
 let pp_background_shorthand : background_shorthand Pp.t =
  fun ctx bg ->
   let first = ref true in
   let maybe_space () = if !first then first := false else Pp.space ctx () in
 
+  let position : position_value option =
+    if Pp.minified ctx && bg.size = None then
+      match bg.position with
+      | Some pos when position_is_default_origin pos -> None
+      | other -> other
+    else bg.position
+  in
+
   (* Add all properties in order *)
   pp_bg_prop maybe_space pp_background_image ctx bg.image;
-  pp_bg_prop maybe_space pp_position_value ctx bg.position;
+  pp_bg_prop maybe_space pp_position_value ctx position;
   pp_bg_size_with_position maybe_space bg ctx;
   pp_bg_prop maybe_space pp_background_repeat ctx bg.repeat;
   pp_bg_prop maybe_space pp_background_attachment ctx bg.attachment;
