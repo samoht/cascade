@@ -384,27 +384,12 @@ let normalize_math_args args =
     args;
   Buffer.contents buf
 
-(* CSS Values 4 6.1: absolute length units are interconvertible. [px] is the
-   canonical unit. Under minify, fold each absolute unit onto [px]. *)
-let absolute_unit_to_px = function
-  | Cm f -> Some (f *. 96. /. 2.54)
-  | Mm f -> Some (f *. 96. /. 25.4)
-  | Q f -> Some (f *. 96. /. 25.4 /. 4.)
-  | In f -> Some (f *. 96.)
-  | Pt f -> Some (f *. 96. /. 72.)
-  | Pc f -> Some (f *. 16.)
-  | _ -> None
-
 let rec pp_length ?(always = false) : length Pp.t =
  fun ctx v ->
   let pp_unit_fn = pp_unit ~always ctx in
   match v with
   | Zero -> Pp.char ctx '0'
   | Px f -> pp_unit_fn f "px"
-  | (Cm _ | Mm _ | Q _ | In _ | Pt _ | Pc _) as v when Pp.minified ctx -> (
-      match absolute_unit_to_px v with
-      | Some px -> pp_unit_fn px "px"
-      | None -> pp_length ~always ctx v)
   | Cm f -> pp_unit_fn f "cm"
   | Mm f -> pp_unit_fn f "mm"
   | Q f -> pp_unit_fn f "q"
