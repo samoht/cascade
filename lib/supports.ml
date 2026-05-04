@@ -48,6 +48,19 @@ type t =
 
 let component_values s = Cursor.of_string s |> Cursor.remaining
 
+let is_font_format = function
+  | "collection" | "embedded-opentype" | "opentype" | "svg" | "truetype"
+  | "woff" | "woff2" ->
+      true
+  | _ -> false
+
+let is_font_tech = function
+  | "features-opentype" | "features-aat" | "features-graphite" | "color-colrv0"
+  | "color-colrv1" | "color-svg" | "color-sbix" | "color-cbdt" | "variations"
+  | "palettes" | "incremental" ->
+      true
+  | _ -> false
+
 let starts_with ~prefix s =
   let prefix_len = String.length prefix in
   String.length s >= prefix_len && String.sub s 0 prefix_len = prefix
@@ -201,270 +214,185 @@ and pp_or ctx a b =
 
 let pp ctx t = pp_aux ~in_and:false ctx t
 
-(* ===== Scanner ===== *)
+(* ===== Component parser ===== *)
 
-type scanner = { s : string; mutable pos : int; allow_unwrapped_decl : bool }
+let is_ws = function
+  | Component.Preserved { kind = Token.Whitespace; _ } -> true
+  | _ -> false
 
-let peek sc = if sc.pos < String.length sc.s then Some sc.s.[sc.pos] else None
-let advance sc = sc.pos <- sc.pos + 1
-let at_end sc = sc.pos >= String.length sc.s
+let strip_components = List.filter (fun cv -> not (is_ws cv))
 
-let skip_ws sc =
-  while
-    (not (at_end sc))
-    &&
-    let c = sc.s.[sc.pos] in
-    c = ' ' || c = '\t' || c = '\n'
-  do
-    advance sc
-  done
+let closed_block = function
+  | Component.Block { node = { closed; _ }; _ }
+  | Component.Func { node = { terminated = closed; _ }; _ } ->
+      closed
+  | _ -> true
 
-(** Check if scanner is looking at [kw] (case-insensitive) followed by a
-    non-identifier character or end-of-input. *)
-let looking_at sc kw =
-  let kw_len = String.length kw in
-  let s_len = String.length sc.s in
-  if sc.pos + kw_len > s_len then false
-  else
-    let ok = ref true in
-    for k = 0 to kw_len - 1 do
-      if Char.lowercase_ascii sc.s.[sc.pos + k] <> Char.lowercase_ascii kw.[k]
-      then ok := false
-    done;
-    !ok
-    && (sc.pos + kw_len >= s_len
-       ||
-       let c = sc.s.[sc.pos + kw_len] in
-       c = ' ' || c = '(' || c = '\t')
+let rec components_are_closed cvs =
+  List.for_all
+    (function
+    | Component.Block { node = { value; closed; _ }; _ } ->
+        closed && components_are_closed value
+    | Component.Func { node = { arguments; terminated; _ }; _ } ->
+        terminated && components_are_closed arguments
+    | Component.Preserved _ -> true)
+    cvs
 
-(** Read balanced parenthesised content. Assumes '(' already consumed; reads
-    through matching ')'. Returns inner content. *)
-let read_balanced sc =
-  let buf = Buffer.create 32 in
-  let depth = ref 1 in
-  while !depth > 0 do
-    match peek sc with
-    | None -> failwith "Unmatched parenthesis in @supports condition"
-    | Some '(' ->
-        incr depth;
-        Buffer.add_char buf '(';
-        advance sc
-    | Some ')' ->
-        decr depth;
-        if !depth > 0 then Buffer.add_char buf ')';
-        advance sc
-    | Some c ->
-        Buffer.add_char buf c;
-        advance sc
-  done;
-  Buffer.contents buf
+let split_top_level_colon cvs =
+  let rec loop before = function
+    | [] -> None
+    | Component.Preserved { kind = Token.Colon; _ } :: after ->
+        Some (List.rev before, after)
+    | cv :: rest -> loop (cv :: before) rest
+  in
+  loop [] cvs
 
-(** Read an identifier: [-a-zA-Z0-9_]+ *)
-let read_ident sc =
-  let start = sc.pos in
-  while
-    (not (at_end sc))
-    &&
-    let c = sc.s.[sc.pos] in
-    (c >= 'a' && c <= 'z')
-    || (c >= 'A' && c <= 'Z')
-    || (c >= '0' && c <= '9')
-    || c = '-' || c = '_'
-  do
-    advance sc
-  done;
-  if sc.pos = start then "" else String.sub sc.s start (sc.pos - start)
+let contains_top_level_semicolon =
+  List.exists (function
+    | Component.Preserved { kind = Token.Semicolon; _ } -> true
+    | _ -> false)
 
-(** Find the first ':' at parenthesis depth 0 in [s]. Returns [Some pos] if
-    found. This distinguishes property tests [(prop: value)] from grouped
-    conditions containing function calls with colons. *)
-let top_level_colon s =
-  let len = String.length s in
-  let depth = ref 0 in
-  let result = ref None in
-  let i = ref 0 in
-  while !i < len && !result = None do
-    (match s.[!i] with
-    | '(' -> incr depth
-    | ')' -> decr depth
-    | ':' when !depth = 0 -> result := Some !i
-    | _ -> ());
-    incr i
-  done;
-  !result
+let property_ident = function
+  | [ Component.Preserved { kind = Token.Ident name; _ } ] -> Some name
+  | _ -> None
 
-let valid_property_test prop value =
-  prop <> ""
-  && (not (String.contains prop '('))
-  && not (String.contains value ';')
+let declaration_from_components prop value =
+  if contains_top_level_semicolon value then
+    failwith "Invalid declaration in @supports";
+  match property_ident (strip_components prop) with
+  | Some prop ->
+      let value = Cursor.components_to_string ~trim:true value in
+      property prop value
+  | None -> failwith "Invalid declaration in @supports"
 
-(* ===== Recursive descent parser following the CSS spec grammar ===== *)
+let validate_ident_components name args is_valid =
+  match strip_components args with
+  | [ Component.Preserved { kind = Token.Ident ident; _ } ]
+    when is_valid (String.lowercase_ascii ident) ->
+      ()
+  | _ -> failwith ("Invalid " ^ name ^ "() in @supports")
 
-(** Parse <supports-in-parens>:
-    - ( <supports-condition> )
-    - ( <declaration> ) → Property
-    - <function-token> <any> ) → Func / selector
-    - <declaration> with no surrounding parens (browser-compatible relaxation
-      used by [@import supports(prop:value)]) → Property *)
-let rec parse_supports_in_parens sc =
-  skip_ws sc;
-  if at_end sc then failwith "Unexpected end of @supports condition";
-  match peek sc with
-  | Some '(' -> parse_paren_content sc
-  | _ -> (
-      (* If the remaining input has a top-level ':' that isn't part of a
-         pseudo-class function call, treat it as an unwrapped <declaration>. *)
-      let remaining = String.sub sc.s sc.pos (String.length sc.s - sc.pos) in
-      match
-        if sc.allow_unwrapped_decl then top_level_colon remaining else None
-      with
-      | Some colon_pos ->
-          let prop = String.sub remaining 0 colon_pos |> String.trim in
-          let value =
-            String.sub remaining (colon_pos + 1)
-              (String.length remaining - colon_pos - 1)
-            |> String.trim
-          in
-          sc.pos <- String.length sc.s;
-          if valid_property_test prop value then property prop value
-          else failwith "Invalid declaration in @supports"
-      | None -> parse_function sc)
+let validate_single_ident_components name args =
+  match strip_components args with
+  | [ Component.Preserved { kind = Token.Ident _; _ } ] -> ()
+  | _ -> failwith ("Invalid " ^ name ^ "() in @supports")
 
-(** Parse parenthesised content: could be property test or grouped condition. *)
-and parse_paren_content sc =
-  advance sc;
-  (* consume '(' *)
-  let content = read_balanced sc in
-  let trimmed = String.trim content in
-  if String.length trimmed = 0 then failwith "Empty parentheses in @supports";
-  (* Try <supports-condition>: starts with "not" *)
-  if looking_at_sub trimmed "not" then
-    let sub =
-      { s = trimmed; pos = 0; allow_unwrapped_decl = sc.allow_unwrapped_decl }
-    in
-    parse_supports_condition sub
-  else
-    match top_level_colon trimmed with
-    | Some colon_pos ->
-        (* <supports-decl>: property: value *)
-        let prop = String.sub trimmed 0 colon_pos |> String.trim in
-        let value =
-          String.sub trimmed (colon_pos + 1)
-            (String.length trimmed - colon_pos - 1)
-          |> String.trim
-        in
-        if valid_property_test prop value then property prop value
-        else failwith "Invalid declaration in @supports"
-    | None ->
-        (* No colon → grouped <supports-condition> *)
-        let sub =
-          {
-            s = trimmed;
-            pos = 0;
-            allow_unwrapped_decl = sc.allow_unwrapped_decl;
-          }
-        in
-        parse_supports_condition sub
+let validate_at_rule_components args =
+  match strip_components args with
+  | [ Component.Preserved { kind = Token.At_keyword _; _ } ] -> ()
+  | _ -> failwith "Invalid at-rule() in @supports"
 
-(** Parse a bare function: name( args ) → Func *)
-and parse_function sc =
-  let name = read_ident sc in
-  if name = "" then
-    failwith
-      (String.concat ""
-         [
-           "Expected identifier at position ";
-           string_of_int sc.pos;
-           " in @supports";
-         ]);
+let validate_selector_components args =
+  try
+    let cursor = Cursor.of_components args in
+    ignore (Selector.read cursor : Selector.t)
+  with Error.Parse_error _ -> failwith "Invalid selector() in @supports"
+
+let function_call (fn : Component.func Component.node) =
+  let name = fn.node.name in
+  let args = fn.node.arguments in
+  if not (fn.node.terminated && components_are_closed args) then
+    failwith ("Unterminated " ^ name ^ "() in @supports");
   let lower_name = String.lowercase_ascii name in
-  if lower_name = "and" || lower_name = "or" || lower_name = "not" then
-    failwith ("Invalid function name in @supports: " ^ name);
-  skip_ws sc;
-  match peek sc with
-  | Some '(' ->
-      advance sc;
-      let args = String.trim (read_balanced sc) in
-      if
-        args = ""
-        &&
-        let lower = String.lowercase_ascii name in
-        lower = "selector" || lower = "font-format" || lower = "font-tech"
-      then failwith ("Empty " ^ name ^ "() in @supports")
-      else func name args
+  if
+    strip_components args = []
+    &&
+    (lower_name = "selector" || lower_name = "font-format"
+   || lower_name = "font-tech" || lower_name = "at-rule"
+   || lower_name = "named-feature" || lower_name = "env")
+  then failwith ("Empty " ^ name ^ "() in @supports");
+  if lower_name = "selector" then validate_selector_components args;
+  if lower_name = "font-format" then
+    validate_ident_components name args is_font_format;
+  if lower_name = "font-tech" then validate_ident_components name args is_font_tech;
+  if lower_name = "at-rule" then validate_at_rule_components args;
+  if lower_name = "named-feature" || lower_name = "env" then
+    validate_single_ident_components name args;
+  Func (name, args)
+
+let peek_ident t =
+  match Cursor.peek t with
+  | Some (Component.Preserved { kind = Token.Ident name; _ }) ->
+      Some (String.lowercase_ascii name)
+  | _ -> None
+
+let rec parse_condition t =
+  Cursor.ws t;
+  match peek_ident t with
+  | Some "not" ->
+      Cursor.skip t;
+      Not (parse_in_parens ~allow_unwrapped_decl:false t)
   | _ ->
-      failwith
-        (String.concat ""
-           [
-             "Expected '(' after '";
-             name;
-             "' at position ";
-             string_of_int sc.pos;
-             " in @supports";
-           ])
+      let left = parse_in_parens ~allow_unwrapped_decl:false t in
+      parse_chain t None left
 
-(** Parse <supports-condition>:
-    - not <supports-in-parens>
-    - <supports-in-parens> [ and <supports-in-parens> ]*
-    - <supports-in-parens> [ or <supports-in-parens> ]* *)
-and parse_supports_condition sc =
-  skip_ws sc;
-  if looking_at sc "not" then (
-    sc.pos <- sc.pos + 3;
-    Not (parse_supports_in_parens sc))
-  else
-    let left = parse_supports_in_parens sc in
-    chain sc None left
+and parse_chain t op acc =
+  Cursor.ws t;
+  match peek_ident t with
+  | Some "and" ->
+      (match op with
+      | Some `Or -> failwith "Cannot mix and/or without parentheses in @supports"
+      | _ -> ());
+      Cursor.skip t;
+      let right = parse_in_parens ~allow_unwrapped_decl:false t in
+      parse_chain t (Some `And) (And (acc, right))
+  | Some "or" ->
+      (match op with
+      | Some `And -> failwith "Cannot mix and/or without parentheses in @supports"
+      | _ -> ());
+      Cursor.skip t;
+      let right = parse_in_parens ~allow_unwrapped_decl:false t in
+      parse_chain t (Some `Or) (Or (acc, right))
+  | _ -> acc
 
-and chain sc op acc =
-  skip_ws sc;
-  if at_end sc then acc
-  else if looking_at sc "and" then (
-    (match op with
-    | Some `Or -> failwith "Cannot mix and/or without parentheses in @supports"
-    | _ -> ());
-    sc.pos <- sc.pos + 3;
-    let right = parse_supports_in_parens sc in
-    chain sc (Some `And) (And (acc, right)))
-  else if looking_at sc "or" then (
-    (match op with
-    | Some `And -> failwith "Cannot mix and/or without parentheses in @supports"
-    | _ -> ());
-    sc.pos <- sc.pos + 2;
-    let right = parse_supports_in_parens sc in
-    chain sc (Some `Or) (Or (acc, right)))
-  else acc
+and parse_in_parens ~allow_unwrapped_decl t =
+  Cursor.ws t;
+  match Cursor.peek t with
+  | Some (Component.Block { node = { opening = Token.Paren; value; _ }; _ } as cv)
+    ->
+      if not (closed_block cv) then
+        failwith "Unmatched parenthesis in @supports condition";
+      Cursor.skip t;
+      parse_paren_components value
+  | Some (Component.Func fn) ->
+      Cursor.skip t;
+      function_call fn
+  | _ when allow_unwrapped_decl -> parse_unwrapped_declaration t
+  | _ -> failwith "Expected supports feature"
 
-(** Check if a substring starts with keyword [kw] (for sub-parsing). *)
-and looking_at_sub s kw =
-  let kw_len = String.length kw in
-  let s_len = String.length s in
-  if kw_len > s_len then false
-  else
-    let ok = ref true in
-    for k = 0 to kw_len - 1 do
-      if Char.lowercase_ascii s.[k] <> Char.lowercase_ascii kw.[k] then
-        ok := false
-    done;
-    !ok
-    && (kw_len >= s_len
-       ||
-       let c = s.[kw_len] in
-       c = ' ' || c = '(' || c = '\t')
+and parse_paren_components value =
+  if strip_components value = [] then failwith "Empty parentheses in @supports";
+  if not (components_are_closed value) then
+    failwith "Unmatched parenthesis in @supports condition";
+  match split_top_level_colon value with
+  | Some (prop, value) -> declaration_from_components prop value
+  | None ->
+      let inner = Cursor.of_components value in
+      let condition = parse_condition inner in
+      Cursor.ws inner;
+      if not (Cursor.is_done inner) then
+        failwith "trailing content in @supports group";
+      condition
+
+and parse_unwrapped_declaration t =
+  let components = Cursor.remaining t in
+  match split_top_level_colon components with
+  | Some (prop, value) ->
+      let decl = declaration_from_components prop value in
+      ignore (Cursor.consume_remaining_to_string t : string);
+      decl
+  | None -> failwith "Expected supports feature"
 
 let of_string ?(allow_unwrapped_decl = false) s =
-  let sc = { s = String.trim s; pos = 0; allow_unwrapped_decl } in
-  let cond = parse_supports_condition sc in
-  skip_ws sc;
-  if not (at_end sc) then
-    failwith
-      (String.concat ""
-         [
-           "trailing content at position ";
-           string_of_int sc.pos;
-           " in @supports: ";
-           String.sub sc.s sc.pos (String.length sc.s - sc.pos);
-         ]);
+  let cursor, cond =
+    let cursor = Cursor.of_string s in
+    try (cursor, parse_condition cursor)
+    with Failure _ when allow_unwrapped_decl ->
+      let cursor = Cursor.of_string s in
+      (cursor, parse_in_parens ~allow_unwrapped_decl cursor)
+  in
+  Cursor.ws cursor;
+  if not (Cursor.is_done cursor) then failwith "trailing content in @supports";
   cond
 
 (* ===== Comparison ===== *)
