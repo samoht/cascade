@@ -953,8 +953,7 @@ let test_of_string_positive () =
   | Error msg -> Alcotest.fail ("whitespace only failed: " ^ msg));
 
   (* CSS Color 4 section 12.1: rgb() out-of-range channels clamp to [0,255];
-     [rgb(300, 300, 300)] becomes white, which canonicalizes to [#fff] (4 chars)
-     since the named [white] is longer. *)
+     [rgb(300, 300, 300)] becomes white, which canonicalizes to [#fff]. *)
   check_stylesheet ~expected:".btn{color:#fff}"
     ".btn { color: rgb(300, 300, 300); }";
 
@@ -3117,6 +3116,318 @@ let v4_6_1_absolute_length_interconvertible () =
         one_inch (normalize equiv))
     equivalents
 
+(* CSS Color Module Level 4, sections 1.4 and 12 (rgb() Functional Notation):
+   integer channels outside [0, 255] are clamped to that range, and a
+   fully-opaque rgb() with all-zero channels is the same color as [black]. Both
+   Lightning CSS and cssnano canonicalize the clamped result to the shortest
+   equivalent spelling. *)
+let color4_12_rgb_clamp_canonicalization () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "rgb(300, 0, 0) clamps to red and canonicalizes" ".x{color:red}"
+    (normalize ".x { color: rgb(300, 0, 0) }");
+  Alcotest.(check string)
+    "rgb(-10, 0, 0) clamps to black and canonicalizes to #000" ".x{color:#000}"
+    (normalize ".x { color: rgb(-10, 0, 0) }")
+
+(* CSS Color Module Level 4, section 1.3 (Color Component Values): an alpha
+   value of [1] (or [100%]) means fully opaque, which is by definition the same
+   color as the form without an alpha channel. So [rgba(255, 0, 0, 1)] is
+   spec-equivalent to [rgb(255, 0, 0)] and to [red]. Both Lightning CSS and
+   cssnano collapse the redundant alpha. *)
+let color4_1_3_fully_opaque_alpha_collapse () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "rgba(255, 0, 0, 1) collapses to red" ".x{color:red}"
+    (normalize ".x { color: rgba(255, 0, 0, 1) }");
+  Alcotest.(check string)
+    "hsla(0, 100%, 50%, 1) collapses to red" ".x{color:red}"
+    (normalize ".x { color: hsla(0, 100%, 50%, 1) }");
+  Alcotest.(check string)
+    "rgba(0, 0, 0, 100%) collapses to #000" ".x{color:#000}"
+    (normalize ".x { color: rgba(0, 0, 0, 100%) }")
+
+(* CSS Values and Units Module Level 4, section 8.1 (Numbers): [<number>] tokens
+   with trailing zeroes after a decimal point ([1.000], [1.500]) are equivalent
+   to the same value without the trailing zeroes ([1], [1.5]). Both Lightning
+   CSS and cssnano normalise these. *)
+let v4_8_1_number_trailing_zero_canonicalization () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "1.000em loses trailing zeroes" ".x{width:1em}"
+    (normalize ".x { width: 1.000em }");
+  Alcotest.(check string)
+    "1.500em loses trailing zero" ".x{width:1.5em}"
+    (normalize ".x { width: 1.500em }");
+  Alcotest.(check string)
+    "0.500 loses both leading and trailing zero" ".x{opacity:.5}"
+    (normalize ".x { opacity: 0.500 }")
+
+(* CSS Fonts Module Level 4, section 5.1.2 (Common Weight Name Mapping): the
+   keywords [normal] and [bold] for [font-weight] are defined as numeric values
+   [400] and [700] respectively. Both Lightning CSS and cssnano canonicalize to
+   the numeric form. *)
+let fonts4_5_1_2_font_weight_keyword_to_number () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "font-weight: normal canonicalizes to 400"
+    (normalize ".x { font-weight: 400 }")
+    (normalize ".x { font-weight: normal }");
+  Alcotest.(check string)
+    "font-weight: bold canonicalizes to 700"
+    (normalize ".x { font-weight: 700 }")
+    (normalize ".x { font-weight: bold }")
+
+(* CSS Box Model Module Level 4, sections 7.1 (margin) and 8.1 (padding): the
+   margin / padding shorthand expands to four sides and collapses to shorter
+   forms when sides repeat. [1px 1px 1px 1px] equals [1px]; [1px 2px 1px 2px]
+   equals [1px 2px]. Both Lightning CSS and cssnano apply this collapse. *)
+let box4_margin_shorthand_collapse () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "margin: 1px 1px 1px 1px collapses to 1px"
+    (normalize ".x { margin: 1px }")
+    (normalize ".x { margin: 1px 1px 1px 1px }");
+  Alcotest.(check string)
+    "margin: 0 0 0 0 collapses to 0"
+    (normalize ".x { margin: 0 }")
+    (normalize ".x { margin: 0 0 0 0 }");
+  Alcotest.(check string)
+    "padding: 1px 2px 1px 2px collapses to 1px 2px"
+    (normalize ".x { padding: 1px 2px }")
+    (normalize ".x { padding: 1px 2px 1px 2px }")
+
+(* CSS Color Module Level 4, section 6.4 (The transparent keyword): all forms of
+   fully-transparent black ([transparent], [rgba(0, 0, 0, 0)], [#00000000],
+   [#0000]) denote the same color. The spec leaves the canonical serialized form
+   to implementations; the printer canonicalizes to the shortest spec-equivalent
+   spelling, matching Lightning CSS. *)
+let color4_6_4_transparent_canonical_shortest () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let canonical = ".x{color:#0000}" in
+  Alcotest.(check string)
+    "#0000 is the shortest canonical for transparent" canonical
+    (normalize ".x { color: transparent }");
+  Alcotest.(check string)
+    "rgba(0, 0, 0, 0) canonicalizes to #0000" canonical
+    (normalize ".x { color: rgba(0, 0, 0, 0) }");
+  Alcotest.(check string)
+    "#00000000 canonicalizes to #0000" canonical
+    (normalize ".x { color: #00000000 }")
+
+(* CSS Values and Units Module Level 4, section 6.5 (Mixing Percentages and
+   Dimensions): for [<length-percentage>] a zero value can be spelled [0],
+   [0px], [0em], or [0%]; all denote the same computed value when the value is
+   zero. The spec lets implementations canonicalize, and cssnano picks the bare
+   [0] form for length contexts. *)
+let v4_6_5_zero_length_canonical_shortest () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let canonical = ".x{width:0}" in
+  Alcotest.(check string)
+    "0px canonicalizes to 0" canonical
+    (normalize ".x { width: 0px }");
+  Alcotest.(check string)
+    "0em canonicalizes to 0" canonical
+    (normalize ".x { width: 0em }");
+  Alcotest.(check string)
+    "0% canonicalizes to 0 in length context" canonical
+    (normalize ".x { width: 0% }");
+  Alcotest.(check string)
+    "0vh canonicalizes to 0" canonical
+    (normalize ".x { width: 0vh }")
+
+(* CSS Backgrounds and Borders Module Level 3, section 5 (Border Radius):
+   [border-radius] takes one to four [<length-percentage>] values. When all four
+   sides are equal, the shorthand collapses to a single value. The spec does not
+   mandate the collapsed form; the printer takes the freedom and picks the
+   single-value shorthand, matching Lightning CSS. *)
+let bg3_5_border_radius_collapse_shortest () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "border-radius: 0 0 0 0 collapses to 0" ".x{border-radius:0}"
+    (normalize ".x { border-radius: 0 0 0 0 }");
+  Alcotest.(check string)
+    "border-radius: 1px 1px 1px 1px collapses to 1px" ".x{border-radius:1px}"
+    (normalize ".x { border-radius: 1px 1px 1px 1px }")
+
+(* CSS Values and Units Module Level 4, section 10 (Mathematical Expressions):
+   [calc(<dimension> + 0)] simplifies to [<dimension>] because adding zero is
+   the identity in that dimension. The spec permits the implementation to
+   simplify - cssnano takes the freedom; the shortest spec-equivalent form is
+   the bare dimension. *)
+let v4_10_calc_add_zero_simplification () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "calc(1px + 0) simplifies to 1px" ".x{width:1px}"
+    (normalize ".x { width: calc(1px + 0) }");
+  Alcotest.(check string)
+    "calc(0 + 1px) simplifies to 1px" ".x{width:1px}"
+    (normalize ".x { width: calc(0 + 1px) }");
+  Alcotest.(check string)
+    "calc(1px + 0px) simplifies to 1px" ".x{width:1px}"
+    (normalize ".x { width: calc(1px + 0px) }")
+
+(* CSS Backgrounds and Borders Module Level 3, section 3.6
+   (background-position): the two-value form [<x> <y>] collapses to the
+   single-value form when [x = y]. The single-value form is the shortest
+   spec-equivalent spelling that Lightning CSS picks. *)
+let bg3_3_6_background_position_collapse_shortest () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "background-position: 50% 50% collapses to 50%"
+    ".x{background-position:50%}"
+    (normalize ".x { background-position: 50% 50% }");
+  Alcotest.(check string)
+    "background-position: 0 0 collapses to 0" ".x{background-position:0}"
+    (normalize ".x { background-position: 0 0 }")
+
+(* {2 Non-minified fidelity}
+
+   Under the default [~minify:false] mode the printer must be faithful to the
+   input: spec-allowed canonicalizations like hex shortening, named-color
+   conversion, [from]/[to] -> [0%]/[100%] mapping, universal-selector stripping,
+   alpha number/percentage canonicalization, and zero-unit drop are all
+   minify-only optimizations. A pretty-printed stylesheet should preserve the
+   source spelling so the output is suitable for human reading and diffing
+   without losing information. *)
+
+(* Helper: round-trip [css] through parse and pretty-print (default
+   [~minify:false]) and assert the body of each rule appears verbatim. The
+   helper compares fragments rather than full output to be tolerant of the
+   pretty-printer's whitespace formatting. *)
+let pretty_preserves css fragments =
+  match Css.of_string css with
+  | Error _ -> Alcotest.failf "failed to parse: %s" css
+  | Ok sheet ->
+      let printed = Css.to_string sheet in
+      List.iter
+        (fun fragment ->
+          let label =
+            String.concat ""
+              [
+                "non-minified output preserves [";
+                fragment;
+                "] from input [";
+                css;
+                "]";
+              ]
+          in
+          Alcotest.(check bool)
+            label true
+            (Astring.String.is_infix ~affix:fragment printed))
+        fragments
+
+(* CSS Color 4 section 12.1 + cascade convention: [#rrggbb] is canonicalized to
+   [#rgb] only under minify; the pretty printer preserves the source
+   spelling. *)
+let fidelity_hex_form_preserved () =
+  pretty_preserves ".x { color: #ff0000 }" [ "#ff0000" ];
+  pretty_preserves ".x { color: #f00 }" [ "#f00" ];
+  pretty_preserves ".x { color: #FF0000 }" [ "#FF0000" ];
+  pretty_preserves ".x { color: #ABCDEF }" [ "#ABCDEF" ]
+
+(* CSS Color 4 section 1.4 + cascade convention: under non-minified output, the
+   named-color and rgb() forms are preserved as written - no cross-form
+   canonicalization. *)
+let fidelity_color_form_preserved () =
+  pretty_preserves ".x { color: red }" [ "red" ];
+  pretty_preserves ".x { color: rgb(255, 0, 0) }" [ "rgb(255" ];
+  pretty_preserves ".x { color: hsl(0, 100%, 50%) }" [ "hsl(0" ];
+  pretty_preserves ".x { color: transparent }" [ "transparent" ];
+  pretty_preserves ".x { color: rgba(0, 0, 0, 0) }" [ "rgba" ];
+  pretty_preserves ".x { color: #0000 }" [ "#0000" ]
+
+(* CSS Animations 1 section 7.1 + cascade convention: [from] / [to] are
+   canonicalized to [0%] / [100%] only under minify; the pretty printer keeps
+   the source keyword. *)
+let fidelity_keyframe_selector_preserved () =
+  pretty_preserves "@keyframes fade { from { opacity: 0 } to { opacity: 1 } }"
+    [ "from"; "to" ];
+  pretty_preserves "@keyframes fade { 0% { opacity: 0 } 100% { opacity: 1 } }"
+    [ "0%"; "100%" ]
+
+(* CSS Selectors 4 section 3.5 + cascade convention: stripping [*] in a
+   non-solitary compound is a minify-only optimization; the pretty printer keeps
+   the universal selector as written. *)
+let fidelity_universal_in_compound_preserved () =
+  pretty_preserves "*.foo { color: red }" [ "*.foo" ];
+  pretty_preserves "*#main { color: red }" [ "*#main" ];
+  pretty_preserves "*[data-x] { color: red }" [ "*[data-x]" ]
+
+(* CSS Color 4 section 1.3 + cascade convention: canonicalizing alpha between
+   number and percentage forms is a minify-only optimization; the pretty printer
+   keeps the source spelling. *)
+let fidelity_alpha_form_preserved () =
+  pretty_preserves ".x { color: rgba(255, 0, 0, 0.5) }" [ "0.5" ];
+  pretty_preserves ".x { color: rgb(255 0 0 / 50%) }" [ "50%" ];
+  pretty_preserves ".x { color: hsl(180 50% 25% / 30%) }" [ "30%" ]
+
+(* CSS Values 4 section 6.1 + cascade convention: dropping the unit on a zero
+   length is a minify-only optimization; the pretty printer keeps the source
+   spelling. *)
+let fidelity_zero_length_preserved () =
+  pretty_preserves ".x { width: 0px }" [ "0px" ];
+  pretty_preserves ".x { width: 0em }" [ "0em" ];
+  pretty_preserves ".x { width: 0% }" [ "0%" ];
+  pretty_preserves ".x { margin: 0px 0px 0px 0px }" [ "0px 0px 0px 0px" ]
+
+(* CSS Animations 1 section 7.1 + cascade convention: shorthand collapses
+   ([margin: 1px 1px 1px 1px] -> [margin: 1px], [border-radius: 0 0 0 0] -> [0])
+   are minify-only optimizations; the pretty printer keeps the source
+   spelling. *)
+let fidelity_shorthand_form_preserved () =
+  pretty_preserves ".x { margin: 1px 1px 1px 1px }" [ "1px 1px 1px 1px" ];
+  pretty_preserves ".x { padding: 1px 2px 1px 2px }" [ "1px 2px 1px 2px" ];
+  pretty_preserves ".x { border-radius: 0 0 0 0 }" [ "0 0 0 0" ];
+  pretty_preserves ".x { background-position: 50% 50% }" [ "50% 50%" ]
+
+(* CSS Fonts 4 section 5.1.2 + cascade convention: mapping the [normal] / [bold]
+   keywords to the numeric weights [400] / [700] is a minify-only optimization;
+   the pretty printer keeps the keyword. *)
+let fidelity_font_weight_keyword_preserved () =
+  pretty_preserves ".x { font-weight: normal }" [ "normal" ];
+  pretty_preserves ".x { font-weight: bold }" [ "bold" ]
+
 (* CSSOM Level 1, section 6.7 (Serialize a CSS rule): the last declaration in a
    declaration block has no trailing semicolon in the canonical serialized form.
    A stylesheet with declarations ending in a semicolon must serialize to the
@@ -3227,6 +3538,53 @@ let additional_tests =
     ( "spec values 4 6.1 absolute length interconvertible",
       `Quick,
       v4_6_1_absolute_length_interconvertible );
+    ( "spec color 4 12 rgb clamp canonicalization",
+      `Quick,
+      color4_12_rgb_clamp_canonicalization );
+    ( "spec color 4 1.3 fully opaque alpha collapse",
+      `Quick,
+      color4_1_3_fully_opaque_alpha_collapse );
+    ( "spec values 4 8.1 number trailing zero canonicalization",
+      `Quick,
+      v4_8_1_number_trailing_zero_canonicalization );
+    ( "spec fonts 4 5.1.2 font-weight keyword to number",
+      `Quick,
+      fonts4_5_1_2_font_weight_keyword_to_number );
+    ( "spec box 4 margin shorthand collapse",
+      `Quick,
+      box4_margin_shorthand_collapse );
+    ( "spec color 4 6.4 transparent canonical shortest",
+      `Quick,
+      color4_6_4_transparent_canonical_shortest );
+    ( "spec values 4 6.5 zero length canonical shortest",
+      `Quick,
+      v4_6_5_zero_length_canonical_shortest );
+    ( "spec bg 3 5 border-radius collapse shortest",
+      `Quick,
+      bg3_5_border_radius_collapse_shortest );
+    ( "spec values 4 10 calc add zero simplification",
+      `Quick,
+      v4_10_calc_add_zero_simplification );
+    ( "spec bg 3 3.6 background-position collapse shortest",
+      `Quick,
+      bg3_3_6_background_position_collapse_shortest );
+    (* Non-minified fidelity: pretty printer preserves the source spelling. *)
+    ("fidelity hex form preserved", `Quick, fidelity_hex_form_preserved);
+    ("fidelity color form preserved", `Quick, fidelity_color_form_preserved);
+    ( "fidelity keyframe selector preserved",
+      `Quick,
+      fidelity_keyframe_selector_preserved );
+    ( "fidelity universal in compound preserved",
+      `Quick,
+      fidelity_universal_in_compound_preserved );
+    ("fidelity alpha form preserved", `Quick, fidelity_alpha_form_preserved);
+    ("fidelity zero length preserved", `Quick, fidelity_zero_length_preserved);
+    ( "fidelity shorthand form preserved",
+      `Quick,
+      fidelity_shorthand_form_preserved );
+    ( "fidelity font-weight keyword preserved",
+      `Quick,
+      fidelity_font_weight_keyword_preserved );
     (* Negative tests *)
     ("invalid selectors", `Quick, test_invalid_selectors);
     ("invalid properties", `Quick, test_invalid_properties);
