@@ -98,7 +98,7 @@ let positive =
       "@when supports(display: grid) { .card { display: grid } } @else { .card \
        { display: block } }";
     row "else" "conditional-branch"
-      "@when media(width>=60em){.card{display:grid}}@else \
+      "@when media(width >= 60em){.card{display:grid}}@else \
        supports(display:flex){.card{display:flex}}@else{.card{display:block}}"
       "@when media(width >= 60em) { .card { display: grid } } @else \
        supports(display: flex) { .card { display: flex } } @else { .card { \
@@ -117,8 +117,18 @@ let negative =
     invalid "property" "invalid-initial"
       "@property --bad { syntax: \"<length>\"; inherits: false; initial-value: \
        red }";
+    invalid "property" "bad-custom-property-name"
+      "@property accent { syntax: \"<color>\"; inherits: true; initial-value: \
+       red }";
+    invalid "property" "bad-inherits-descriptor"
+      "@property --bad { syntax: \"<color>\"; inherits: maybe; initial-value: \
+       red }";
     invalid "import" "bad-order" "@import url(theme.css) screen layer(theme);";
     invalid "import" "missing-source" "@import layer(theme);";
+    invalid "import" "duplicate-layer"
+      "@import url(theme.css) layer(theme) layer(reset);";
+    invalid "import" "bad-supports-condition"
+      "@import url(theme.css) supports(display grid) screen;";
     invalid "namespace" "missing-url" "@namespace svg;";
     invalid "namespace" "block" "@namespace { url(http://example.test); }";
     invalid "layer" "empty-name-list" "@layer;";
@@ -152,14 +162,25 @@ let negative =
     invalid "supports" "mixed-operator"
       "@supports (display: grid) and (gap: 1rem) or (color: red) { .x { color: \
        red } }";
+    invalid "supports" "bad-font-format-function"
+      "@supports font-format(\"woff2\") { .x { color: red } }";
     invalid "container" "empty-query" "@container () { .x { color: red } }";
     invalid "container" "empty-style-query"
       "@container style() { .x { color: red } }";
+    invalid "container" "bad-scroll-state-query"
+      "@container scroll-state(stuck: diagonal) { .x { color: red } }";
+    invalid "container" "mixed-operator"
+      "@container (width) and (height) or (inline-size) { .x { color: red } }";
     invalid "scope" "empty-root" "@scope () { .x { color: red } }";
     invalid "scope" "empty-limit" "@scope (.x) to () { .x { color: red } }";
     invalid "starting-style" "missing-block" "@starting-style;";
+    invalid "starting-style" "prelude"
+      "@starting-style screen { .x { color: red } }";
     invalid "when" "empty-condition" "@when { .x { color: red } }";
     invalid "when" "missing-block" "@when media(width >= 40em);";
+    invalid "when" "mixed-condition-operators"
+      "@when media(width >= 40em) and supports(display: grid) or media(color) \
+       { .x { color: red } }";
     invalid "else" "standalone" "@else { .x { color: red } }";
     invalid "else" "condition-without-previous"
       "@else supports(display: grid) { .x { color: red } }";

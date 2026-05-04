@@ -36,10 +36,15 @@ let rows =
     row "at-rule scope feature" "at-rule(@scope)" (func "at-rule" "@scope");
     row "at-rule property feature" "at-rule(@property)"
       (func "at-rule" "@property");
+    row "at-rule charset syntax" "at-rule(@charset)" (func "at-rule" "@charset");
     row "named feature function" "named-feature(--compact)"
       (func "named-feature" "--compact");
     row "named feature ident function" "named-feature(color-gamut)"
       (func "named-feature" "color-gamut");
+    row "environment variable function" "env(safe-area-inset-top)"
+      (func "env" "safe-area-inset-top");
+    row "environment variable custom ident" "env(titlebar-area-width)"
+      (func "env" "titlebar-area-width");
     row "unknown general-enclosed function" "unknown-feature(foo bar)"
       (func "unknown-feature" "foo bar");
     row "unknown declaration feature" "(-vendor-flag: enabled)"
@@ -88,6 +93,8 @@ let invalid =
     "(display: grid) and";
     "(display: grid) or";
     "(display: grid) and (gap: 1rem) or selector(:has(img))";
+    "font-format(woff2) and or (display: grid)";
+    "selector(:has(img)) or and (display: grid)";
     "not not (display: grid)";
     "not (display: grid) and (gap: 1rem)";
     "not (display: grid) or (gap: 1rem)";
@@ -97,11 +104,18 @@ let invalid =
     "selector(:nth-child(2n of))";
     "font-format()";
     "font-format(\"woff2\")";
+    "font-format(woff2, opentype)";
     "font-tech()";
     "font-tech(\"variations\")";
+    "font-tech(color-COLRv1 variations)";
     "at-rule(container)";
     "at-rule()";
+    "at-rule(@container @layer)";
     "named-feature()";
+    "named-feature(--compact, --wide)";
+    "env()";
+    "env(\"safe-area-inset-top\")";
+    "env(safe-area-inset-top, fallback)";
     "not";
     "not ()";
     "(display: grid) and or (gap: 1rem)";
