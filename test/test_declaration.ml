@@ -275,28 +275,33 @@ let colors () =
   check_declaration ~expected:"color:white" "color: white";
   check_declaration ~expected:"color:transparent" "color: transparent";
 
-  (* Hex colors *)
-  check_declaration ~expected:"color:#ff0000" "color: #ff0000";
-  check_declaration ~expected:"color:#00ff00" "color: #00ff00";
-  check_declaration ~expected:"color:#0000ff" "color: #0000ff";
+  (* Hex colors. Per CSS Color 4 section 12.1 the printer canonicalizes
+     paired-pair hex to its 3-digit shorthand under [~minify:true]. *)
+  check_declaration ~expected:"color:red" "color: #ff0000";
+  check_declaration ~expected:"color:#0f0" "color: #00ff00";
+  check_declaration ~expected:"color:blue" "color: #0000ff";
   check_declaration ~expected:"color:#fff" "color: #fff";
   check_declaration ~expected:"color:#000" "color: #000";
 
-  (* RGB colors - modern space-separated syntax *)
-  check_declaration ~expected:"color:rgb(255 0 0)" "color: rgb(255, 0, 0)";
-  check_declaration ~expected:"color:rgb(0 255 0)" "color: rgb(0, 255, 0)";
+  (* RGB colors - modern space-separated syntax. Per CSS Color 4 section 1.4 the
+     printer canonicalizes a fully-opaque rgb() to the equivalent named color
+     when shorter. *)
+  check_declaration ~expected:"color:red" "color: rgb(255, 0, 0)";
+  check_declaration ~expected:"color:#0f0" "color: rgb(0, 255, 0)";
   check_declaration ~expected:"color:rgb(255 0 0/.5)"
     "color: rgba(255, 0, 0, 0.5)";
 
-  (* HSL colors - modern space-separated syntax *)
-  check_declaration ~expected:"color:hsl(0 100% 50%)" "color: hsl(0, 100%, 50%)";
+  (* HSL colors - modern space-separated syntax. Per CSS Color 4 section 1.4 the
+     printer canonicalizes a fully-opaque hsl() to the equivalent named color
+     when applicable. *)
+  check_declaration ~expected:"color:red" "color: hsl(0, 100%, 50%)";
   check_declaration ~expected:"color:hsl(120 100% 50%/.5)"
     "color: hsla(120, 100%, 50%, 0.5)";
 
   (* Various color properties *)
   check_declaration ~expected:"background-color:red" "background-color: red";
   check_declaration ~expected:"border-color:blue" "border-color: blue";
-  check_declaration ~expected:"outline-color:#ff0000" "outline-color: #ff0000"
+  check_declaration ~expected:"outline-color:red" "outline-color: #ff0000"
 
 let lengths () =
   (* Pixels *)
@@ -1189,7 +1194,9 @@ let unterminated () =
   check_declaration ~expected:"content:\"abc\"" "content: \"abc";
   check_declaration ~expected:"width:calc(100% - (10px))"
     "width: calc(100% - (10px)";
-  check_declaration ~expected:"color:rgb(0 0 0)" "color: rgb(0, 0, 0";
+  (* Per CSS Color 4 section 1.4 the printer canonicalizes [rgb(0, 0, 0)] to
+     [#000] (4 chars vs 5 for [black]). *)
+  check_declaration ~expected:"color:#000" "color: rgb(0, 0, 0";
   (* A missing semicolon between two declarations in a block remains a parse
      error. *)
   Css_test_helpers.neg_cursor Css.Declaration.read_block
@@ -1446,7 +1453,7 @@ let spec_values_l45_edges () =
       ("color: oklch(60% .2 120)", "color:oklch(60% .2 120)");
       ("color: color(display-p3 1 0 0 / .5)", "color:color(display-p3 1 0 0/.5)");
       ( "color: rgb(from var(--c) r g b / 50%)",
-        "color:rgb(from var(--c) r g b/50%)" );
+        "color:rgb(from var(--c) r g b/.5)" );
       ( "background: conic-gradient(from 45deg, red, blue)",
         "background:conic-gradient(from 45deg,red,blue)" );
       ( "background: cross-fade(url(a.png) 40%, url(b.png))",

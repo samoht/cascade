@@ -463,15 +463,23 @@ let test_spec_color_branch_vectors buf =
         try Some (Css.Values.read_color r2)
         with Css.Cursor.Parse_error _ -> None
       with
-      | Some reparsed when color = reparsed -> ()
-      | Some _ ->
-          fail
-            (Fmt.str "CSS color branch structure changed: %S -> %S" input
-               serialized)
       | None ->
           fail
             (Fmt.str "CSS color branch serialization did not reparse: %S -> %S"
-               input serialized))
+               input serialized)
+      | Some reparsed ->
+          (* After one minification pass the color is in its canonical short
+             form (CSS Color 4 section 12.1 hex shortening, etc.), so further
+             passes must be idempotent at the string level. Direct AST equality
+             with [color] does not hold for shortenable inputs like "#112233" ->
+             "#123". *)
+          let reserialized =
+            Css.Pp.to_string ~minify:true Css.Values.pp_color reparsed
+          in
+          if reserialized <> serialized then
+            fail
+              (Fmt.str "CSS color branch not idempotent: %S -> %S -> %S" input
+                 serialized reserialized))
 
 let test_spec_invalid_color_branch_vectors buf =
   let input =

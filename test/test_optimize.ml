@@ -13,8 +13,7 @@ let to_string pp v = Css.Pp.to_string ~minify:true pp v
 (* Helper to check if a declaration is !important *)
 let is_important = Css.Declaration.is_important
 
-(* Helper to extract color hex value from declaration string like
-   "color:#ff0000" *)
+(* Helper to extract color hex value from declaration string like "color:red" *)
 let color_value_of_decl decl =
   let s = Css.Declaration.string_of_declaration ~minify:true decl in
   (* Extract just the hex value after the colon and before any !important *)
@@ -57,7 +56,7 @@ let test_deduplicate_declarations () =
   check int "single color property remains" 1 (List.length deduped_important);
   let result = List.hd deduped_important in
   check bool "!important wins" true (is_important result);
-  check string "green color wins" "#00ff00" (color_value_of_decl result);
+  check string "green color wins" "#0f0" (color_value_of_decl result);
 
   (* Test case: last !important wins when multiple !important *)
   let decls_multi_important =
@@ -71,7 +70,7 @@ let test_deduplicate_declarations () =
   check int "single color remains" 1 (List.length deduped_multi);
   let result = List.hd deduped_multi in
   check bool "last !important wins" true (is_important result);
-  check string "blue color wins" "#0000ff" (color_value_of_decl result);
+  check string "blue color wins" "blue" (color_value_of_decl result);
 
   (* Test case: normal after !important doesn't override *)
   let decls_normal_after =
@@ -85,7 +84,7 @@ let test_deduplicate_declarations () =
   check int "single color remains" 1 (List.length deduped_normal_after);
   let result = List.hd deduped_normal_after in
   check bool "!important not overridden by normal" true (is_important result);
-  check string "red !important wins" "#ff0000" (color_value_of_decl result);
+  check string "red !important wins" "red" (color_value_of_decl result);
 
   (* Test case: custom properties *)
   let custom_decls =
@@ -451,8 +450,8 @@ let test_nonconsecutive_media_unmerged () =
 
   Alcotest.(check string)
     "non-consecutive media queries preserve source order"
-    "@media (min-width:48px){.a{color:#ff0000}}.a{color:#00ff00}@media \
-     (min-width:48px){.c{color:#0000ff}}"
+    "@media (min-width:48px){.a{color:red}}.a{color:#0f0}@media \
+     (min-width:48px){.c{color:blue}}"
     output
 
 (** Test media queries with different conditions are NOT merged *)
@@ -845,7 +844,7 @@ let c3_shorthand_resets () =
   in
   Alcotest.(check string)
     "background shorthand resets previous background-image"
-    ".hero{background:#008000}" background_output
+    ".hero{background:green}" background_output
 
 let c3_shorthand_order_edges () =
   (* CSS Cascade section 3 plus source order: a later shorthand resets all
@@ -899,7 +898,7 @@ let c3_important_shorthand_expands () =
   in
   Alcotest.(check string)
     "important background shorthand blocks later normal background-image"
-    ".hero{background:#008000!important}" output
+    ".hero{background:green!important}" output
 
 let c61_decl_order_shorthand_boundary () =
   (* CSS Cascade section 6.1: order of appearance is a cascade criterion.
@@ -989,7 +988,7 @@ let c61_positive_adjacent_merge_with_later_dedup () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "adjacent same-selector rules merge and dedupe by source order"
-    ".box{display:flex;color:#0000ff}" output
+    ".box{display:flex;color:blue}" output
 
 let c61_no_merge_intervening () =
   (* CSS Cascade section 6.1: if rules tie on origin, importance, layer,
@@ -1026,7 +1025,7 @@ let c61_no_merge_intervening () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "same selector is not merged across an intervening rule"
-    ".a{color:#ff0000}.b{color:#00ff00}.a{background-color:#0000ff}" output
+    ".a{color:red}.b{color:#0f0}.a{background-color:blue}" output
 
 let c61_no_group_nonadjacent () =
   (* CSS Cascade section 6.1: selector grouping changes where a rule appears in
@@ -1062,7 +1061,7 @@ let c61_no_group_nonadjacent () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "same declarations are not grouped across source-order competitor"
-    ".a{color:#ff0000}.b{color:#0000ff}.c{color:#ff0000}" output
+    ".a{color:red}.b{color:blue}.c{color:red}" output
 
 let c61_no_merge_atrule () =
   (* CSS Cascade section 6.1 defines style sheets and imported/nested sheets in
@@ -1102,8 +1101,8 @@ let c61_no_merge_atrule () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "same selector is not merged across media boundary"
-    ".a{color:#ff0000}@media \
-     (min-width:48px){.m{color:#00ff00}}.a{background-color:#0000ff}"
+    ".a{color:red}@media \
+     (min-width:48px){.m{color:#0f0}}.a{background-color:blue}"
     output
 
 let c61_no_media_merge_across_layer_statement () =
@@ -1134,8 +1133,8 @@ let c61_no_media_merge_across_layer_statement () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "matching media queries do not merge across layer statement"
-    "@media (min-width:48px){.a{color:#ff0000}}@layer theme;@media \
-     (min-width:48px){.b{color:#0000ff}}"
+    "@media (min-width:48px){.a{color:red}}@layer theme;@media \
+     (min-width:48px){.b{color:blue}}"
     output
 
 let c61_all_property_reset_boundary () =
@@ -1227,7 +1226,7 @@ let c64_layer_statement_is_ordering_boundary () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "same selector is not merged across layer statement boundary"
-    ".theme{color:#ff0000}@layer reset,components;.theme{display:flex}" output
+    ".theme{color:red}@layer reset,components;.theme{display:flex}" output
 
 let c61_unlayered_outside_layer () =
   (* CSS Cascade section 6.1: unlayered declarations are in the implicit final
@@ -1303,8 +1302,8 @@ let c61_important_layer_order () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "important declarations keep layer order"
-    "@layer base{.btn{color:#ff0000!important}}@layer \
-     theme{.btn{color:#0000ff!important}}"
+    "@layer base{.btn{color:red!important}}@layer \
+     theme{.btn{color:blue!important}}"
     output
 
 let c61_style_attr_boundary () =
@@ -1335,7 +1334,7 @@ let c61_style_attr_boundary () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "bare declarations remain an optimizer boundary"
-    ".card{color:#ff0000}background-color:#00ff00;.card{display:flex}" output
+    ".card{color:red}background-color:#0f0;.card{display:flex}" output
 
 let c61_adjacent_specificity_grouping () =
   (* CSS Cascade section 6.1 compares specificity per selector. Grouping
@@ -1365,7 +1364,7 @@ let c61_adjacent_specificity_grouping () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "adjacent grouping keeps selector-specific specificity"
-    ".item,.item.active{color:#ff0000}" output
+    ".item,.item.active{color:red}" output
 
 let c61_specificity_blocks_grouping () =
   (* CSS Cascade section 6.1: specificity is evaluated before source order, but
@@ -1403,8 +1402,7 @@ let c61_specificity_blocks_grouping () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "specificity competitor remains between lower-specificity rules"
-    ".item{color:#ff0000}.item.active{color:#0000ff}.active{color:#ff0000}"
-    output
+    ".item{color:red}.item.active{color:blue}.active{color:red}" output
 
 let c61_no_merge_scope () =
   (* CSS Cascade level 6 adds scope proximity to the cascade sorting order.
@@ -1444,7 +1442,7 @@ let c61_no_merge_scope () =
    Css.Stylesheet.Rule after;
   ] ->
       Alcotest.(check string)
-        "rule before scope is unchanged" ".item{color:#ff0000}"
+        "rule before scope is unchanged" ".item{color:red}"
         (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule before ]
         |> String.trim);
       Alcotest.(check string)
@@ -1483,11 +1481,11 @@ let c61_distinct_scopes_preserved () =
    Css.Stylesheet.Scope (Some ".inner", None, [ Css.Stylesheet.Rule inner ]);
   ] ->
       Alcotest.(check string)
-        "outer scoped rule is unchanged" ".item{color:#ff0000}"
+        "outer scoped rule is unchanged" ".item{color:red}"
         (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule outer ]
         |> String.trim);
       Alcotest.(check string)
-        "inner scoped rule is unchanged" ".item{color:#ff0000}"
+        "inner scoped rule is unchanged" ".item{color:red}"
         (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule inner ]
         |> String.trim)
   | _ -> Alcotest.fail "optimizer must preserve distinct scope blocks"
@@ -1515,8 +1513,8 @@ let c61_distinct_scope_limits_preserved () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "same scoped rule remains split by distinct scope limits"
-    "@scope(.card) to (.footer){.item{color:#ff0000}}@scope(.card) to \
-     (.aside){.item{color:#ff0000}}"
+    "@scope(.card) to (.footer){.item{color:red}}@scope(.card) to \
+     (.aside){.item{color:red}}"
     output
 
 let c61_no_merge_supports () =
@@ -1557,8 +1555,8 @@ let c61_no_merge_supports () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "same selector is not merged across supports boundary"
-    ".card{color:#ff0000}@supports \
-     (display:flex){.feature{display:flex}}.card{background-color:#0000ff}"
+    ".card{color:red}@supports \
+     (display:flex){.feature{display:flex}}.card{background-color:blue}"
     output
 
 let c61_no_merge_container () =
@@ -1599,8 +1597,8 @@ let c61_no_merge_container () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "same selector is not merged across container boundary"
-    ".card{color:#ff0000}@container \
-     (min-width:48px){.feature{display:flex}}.card{background-color:#0000ff}"
+    ".card{color:red}@container \
+     (min-width:48px){.feature{display:flex}}.card{background-color:blue}"
     output
 
 let c61_no_merge_starting_style () =
@@ -1639,7 +1637,7 @@ let c61_no_merge_starting_style () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "same selector is not merged across starting-style boundary"
-    ".toast{color:#ff0000}@starting-style{.toast{opacity:0}}.toast{display:flex}"
+    ".toast{color:red}@starting-style{.toast{opacity:0}}.toast{display:flex}"
     output
 
 let c61_import_substitution_point () =
@@ -1675,7 +1673,7 @@ let c61_import_substitution_point () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "same selector is not merged across import substitution point"
-    ".theme{color:#ff0000}@import url(\"base.css\");.theme{display:flex}" output
+    ".theme{color:red}@import url(\"base.css\");.theme{display:flex}" output
 
 let c61_important_blocks_longhand () =
   (* CSS Cascade sections 3 and 6.1: an important shorthand is equivalent to
@@ -1781,11 +1779,11 @@ let c62_no_merge_author_user () =
    Css.Stylesheet.Origin (Author, [ Css.Stylesheet.Rule author_rule ]);
   ] ->
       Alcotest.(check string)
-        "user-origin rule is preserved" ".doc{color:#ff0000}"
+        "user-origin rule is preserved" ".doc{color:red}"
         (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule user_rule ]
         |> String.trim);
       Alcotest.(check string)
-        "author-origin rule is preserved" ".doc{color:#0000ff}"
+        "author-origin rule is preserved" ".doc{color:blue}"
         (Css.Stylesheet.to_string ~minify:true
            [ Css.Stylesheet.Rule author_rule ]
         |> String.trim)
@@ -1867,17 +1865,17 @@ let c62_animation_transition_origins () =
    Css.Stylesheet.Origin (Transition, [ Css.Stylesheet.Rule transition_rule ]);
   ] ->
       Alcotest.(check string)
-        "author-origin rule is preserved" ".animated{color:#ff0000}"
+        "author-origin rule is preserved" ".animated{color:red}"
         (Css.Stylesheet.to_string ~minify:true
            [ Css.Stylesheet.Rule author_rule ]
         |> String.trim);
       Alcotest.(check string)
-        "animation-origin rule is preserved" ".animated{color:#00ff00}"
+        "animation-origin rule is preserved" ".animated{color:#0f0}"
         (Css.Stylesheet.to_string ~minify:true
            [ Css.Stylesheet.Rule animation_rule ]
         |> String.trim);
       Alcotest.(check string)
-        "transition-origin rule is preserved" ".animated{color:#0000ff}"
+        "transition-origin rule is preserved" ".animated{color:blue}"
         (Css.Stylesheet.to_string ~minify:true
            [ Css.Stylesheet.Rule transition_rule ]
         |> String.trim)
@@ -1915,7 +1913,7 @@ let c62_optimize_single_origin () =
   | [ Css.Stylesheet.Origin (Author, [ Css.Stylesheet.Rule author_rule ]) ] ->
       Alcotest.(check string)
         "adjacent author-origin rules merge inside the same origin"
-        ".doc{color:#ff0000;display:flex}"
+        ".doc{color:red;display:flex}"
         (Css.Stylesheet.to_string ~minify:true
            [ Css.Stylesheet.Rule author_rule ]
         |> String.trim)
@@ -1945,13 +1943,12 @@ let c62_no_group_across_origins () =
    Css.Stylesheet.Origin (Author, [ Css.Stylesheet.Rule author_rule ]);
   ] ->
       Alcotest.(check string)
-        "user-origin selector remains local to user origin"
-        ".user{color:#ff0000}"
+        "user-origin selector remains local to user origin" ".user{color:red}"
         (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule user_rule ]
         |> String.trim);
       Alcotest.(check string)
         "author-origin selector remains local to author origin"
-        ".author{color:#ff0000}"
+        ".author{color:red}"
         (Css.Stylesheet.to_string ~minify:true
            [ Css.Stylesheet.Rule author_rule ]
         |> String.trim)
@@ -2010,7 +2007,7 @@ let c62_imports_keep_origin () =
        ] );
   ] ->
       Alcotest.(check string)
-        "rule before import remains before import" ".theme{color:#ff0000}"
+        "rule before import remains before import" ".theme{color:red}"
         (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule before ]
         |> String.trim);
       Alcotest.(check string)
@@ -2044,7 +2041,7 @@ let c62_origin_wrapper_api () =
       | _ -> Alcotest.fail "origin child should be a rule")
   | _ -> Alcotest.fail "Css.with_origin should be visible through Css.as_origin");
   Alcotest.(check string)
-    "origin annotation has no stylesheet syntax" ".reader{color:#00ff00}\n"
+    "origin annotation has no stylesheet syntax" ".reader{color:#0f0}\n"
     (Css.to_string ~minify:true (Css.v [ stmt ]))
 
 let c63_important_beats_normal () =
@@ -2069,7 +2066,7 @@ let c63_important_beats_normal () =
   in
   Alcotest.(check string)
     "important declaration beats later normal declaration"
-    ".alert{color:#ff0000!important}" output
+    ".alert{color:red!important}" output
 
 let c63_later_important_wins () =
   (* CSS Cascade section 6.3 changes the importance weight, but declarations
@@ -2093,7 +2090,7 @@ let c63_later_important_wins () =
   in
   Alcotest.(check string)
     "later important declaration wins within the same origin and importance"
-    ".alert{color:#0000ff!important}" output
+    ".alert{color:blue!important}" output
 
 let c63_importance_inverts_origin () =
   (* CSS Cascade section 6.3 balances author and user styles: normal origin
@@ -2182,8 +2179,8 @@ let c64_statement_layer_order () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "statement layer order remains before later block assignments"
-    "@layer default,theme,components;@layer \
-     theme{.widget{color:#0000ff}}@layer default{.widget{color:#ff0000}}"
+    "@layer default,theme,components;@layer theme{.widget{color:blue}}@layer \
+     default{.widget{color:red}}"
     output
 
 let c64_unlayered_final_layer () =
@@ -2266,8 +2263,8 @@ let c64_important_layers_reverse () =
   Alcotest.(check string)
     "important declarations keep earlier and later layers distinct"
     "@layer defaults,overrides;@layer \
-     defaults{.notice{color:#ff0000!important}}@layer \
-     overrides{.notice{color:#0000ff!important}}"
+     defaults{.notice{color:red!important}}@layer \
+     overrides{.notice{color:blue!important}}"
     output
 
 let c64_anonymous_layers_distinct () =
@@ -2307,7 +2304,7 @@ let c64_anonymous_layers_distinct () =
    Css.Stylesheet.Layer (None, [ Css.Stylesheet.Rule second ]);
   ] ->
       Alcotest.(check string)
-        "first anonymous layer remains distinct" ".private{color:#ff0000}"
+        "first anonymous layer remains distinct" ".private{color:red}"
         (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule first ]
         |> String.trim);
       Alcotest.(check string)
@@ -2407,8 +2404,8 @@ let c64_keyframe_name_layers () =
   Alcotest.(check string)
     "same-name keyframes remain in their declared layers"
     "@layer framework,override;@layer override{@keyframes \
-     slide-left{from{opacity:0}}}@layer framework{@keyframes \
-     slide-left{from{margin-left:0}}}"
+     slide-left{0%{opacity:0}}}@layer framework{@keyframes \
+     slide-left{0%{margin-left:0}}}"
     output
 
 let c64_layer_decls_import_cross () =
@@ -2493,8 +2490,8 @@ let c64_repeated_layer_blocks_ordered () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "repeated named layer blocks remain in source order"
-    "@layer base{.button{color:#ff0000}}@layer \
-     theme{.button{color:#0000ff}}@layer base{.button{display:flex}}"
+    "@layer base{.button{color:red}}@layer theme{.button{color:blue}}@layer \
+     base{.button{display:flex}}"
     output
 
 let c64_child_layer_one_anonymous () =
@@ -2543,8 +2540,7 @@ let c64_child_layer_one_anonymous () =
        ] );
   ] ->
       Alcotest.(check string)
-        "first child foo layer remains in anonymous parent"
-        ".inside{color:#ff0000}"
+        "first child foo layer remains in anonymous parent" ".inside{color:red}"
         (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule first ]
         |> String.trim);
       Alcotest.(check string)
@@ -2593,7 +2589,7 @@ let c64_child_layer_distinct_anonymous () =
        [ Css.Stylesheet.Layer (Some "foo", [ Css.Stylesheet.Rule second ]) ] );
   ] ->
       Alcotest.(check string)
-        "first anonymous parent keeps its foo child" ".inside{color:#ff0000}"
+        "first anonymous parent keeps its foo child" ".inside{color:red}"
         (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule first ]
         |> String.trim);
       Alcotest.(check string)
@@ -2789,11 +2785,11 @@ let c65_presentational_hint_rank () =
    Css.Stylesheet.Origin (Author, [ Css.Stylesheet.Rule author_rule ]);
   ] ->
       Alcotest.(check string)
-        "presentational hint origin stays distinct" ".legacy{color:#ff0000}"
+        "presentational hint origin stays distinct" ".legacy{color:red}"
         (Css.Stylesheet.to_string ~minify:true [ Css.Stylesheet.Rule hint_rule ]
         |> String.trim);
       Alcotest.(check string)
-        "author origin stays distinct" ".legacy{color:#0000ff}"
+        "author origin stays distinct" ".legacy{color:blue}"
         (Css.Stylesheet.to_string ~minify:true
            [ Css.Stylesheet.Rule author_rule ]
         |> String.trim)

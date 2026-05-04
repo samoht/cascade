@@ -167,7 +167,9 @@ let test_length () =
   neg_cursor (read_calc read_length) "calc(10px +)"
 
 let test_color () =
-  (* Hex colors with # *)
+  (* Hex colors with #. Per CSS Color 4 section 12.1 the printer canonicalizes
+     [#rrggbb] to [#rgb] under [~minify:true] when each channel pair matches.
+     Case of the hex digits is preserved. *)
   check_color "#fff";
   check_color "#FFF";
   check_color "#000";
@@ -177,9 +179,9 @@ let test_color () =
   check_color "#123456";
   check_color "#abcdef";
   check_color "#ABCDEF";
-  check_color "#000000";
-  check_color "#ffffff";
-  check_color "#FFFFFF";
+  check_color ~expected:"#000" "#000000";
+  check_color ~expected:"#fff" "#ffffff";
+  check_color ~expected:"#FFF" "#FFFFFF";
   (* Additional named colors *)
   check_color "rebeccapurple";
   check_color "aliceblue";
@@ -192,8 +194,10 @@ let test_color () =
   check_color ~expected:"hsl(180 50% 25%/.5)" "hsl(180 50% 25% / 0.5)";
   check_color "hwb(90 10% 20%)";
   check_color ~expected:"hwb(90 10% 20%/.25)" "hwb(90 10% 20% / 0.25)";
-  (* Alpha in percent preserves the % format *)
-  check_color ~expected:"hsl(180 50% 25%/30%)" "hsl(180deg 50% 25% / 30%)";
+  (* CSS Color 4 section 1.3: alpha [<percentage>] is spec-equivalent to the
+     corresponding [<number>] in [\[0, 1\]]; the printer canonicalizes to the
+     number form per cssnano. *)
+  check_color ~expected:"hsl(180 50% 25%/.3)" "hsl(180deg 50% 25% / 30%)";
   check_color "color(srgb 1 0 0)";
   check_color ~expected:"color(display-p3 .8 .2 .1/.5)"
     "color(display-p3 0.8 0.2 0.1 / 0.5)";
@@ -202,16 +206,19 @@ let test_color () =
   check_color ~expected:"color(xyz .3 .4 .5)" "color(xyz 0.3 0.4 0.5)";
   (* Additional color functions and forms *)
   check_color ~expected:"oklch(50% .2 30)" "oklch(50% 0.2 30)";
-  check_color "rgb(100% 0% 0%)";
+  (* Per CSS Color 4 section 1.4 the printer canonicalizes a percentage rgb()
+     form to the equivalent named/hex spelling. *)
+  check_color ~expected:"red" "rgb(100% 0% 0%)";
   check_color ~expected:"oklab(50% .1 -.05)" "oklab(50% 0.1 -0.05)";
   check_color "lch(50% 40 120)";
-  check_color ~expected:"rgb(255 0 0/50%)" "rgb(255 0 0 / 50%)";
+  check_color ~expected:"rgb(255 0 0/.5)" "rgb(255 0 0 / 50%)";
 
-  (* Mixed channel formats in modern rgb() syntax *)
-  (* Mix percentage and absolute values across channels *)
-  check_color "rgb(50% 128 0)";
-  check_color "rgb(255 0% 0)";
-  check_color "rgb(0 0 50%)";
+  (* Mixed channel formats in modern rgb() syntax. Per CSS Color 4 section 1.4
+     the printer canonicalizes a fully-opaque rgb() to the equivalent named/hex
+     form when shorter, regardless of input channel format. *)
+  check_color ~expected:"olive" "rgb(50% 128 0)";
+  check_color ~expected:"red" "rgb(255 0% 0)";
+  check_color ~expected:"navy" "rgb(0 0 50%)";
   (* Mixed channels with alpha (numeric) *)
   check_color ~expected:"rgb(50% 128 0/.5)" "rgb(50% 128 0 / 0.5)";
 
@@ -259,25 +266,28 @@ let test_color () =
   (* Custom properties inline mode tests with complex color fallbacks *)
   check_color ~expected:"var(--theme-primary,hsl(210 75% 50%))"
     "var(--theme-primary, hsl(210deg 75% 50%))";
-  check_color ~expected:"var(--accent,rgb(255 0 128/80%))"
+  check_color ~expected:"var(--accent,rgb(255 0 128/.8))"
     "var(--accent, rgb(255 0 128 / 80%))";
 
-  (* RGB functions - various formats *)
-  check_color ~expected:"rgb(255 0 0)" "rgb(255, 0, 0)";
-  check_color ~expected:"rgb(0 0 0)" "rgb(0, 0, 0)";
-  check_color ~expected:"rgb(255 255 255)" "rgb(255, 255, 255)";
-  check_color ~expected:"rgb(128 128 128)" "rgb(128, 128, 128)";
+  (* RGB functions - various formats. Per CSS Color 4 section 1.4 the printer
+     canonicalizes a fully-opaque rgb() to the named-or-hex equivalent when
+     shorter. *)
+  check_color ~expected:"red" "rgb(255, 0, 0)";
+  check_color ~expected:"#000" "rgb(0, 0, 0)";
+  check_color ~expected:"#fff" "rgb(255, 255, 255)";
+  check_color ~expected:"gray" "rgb(128, 128, 128)";
 
-  (* RGBA with alpha *)
+  (* RGBA with alpha. The fully-opaque case (alpha 1) collapses to the same
+     named/hex form as the rgb() above; alpha < 1 keeps the rgb(...) form. *)
   check_color ~expected:"rgb(255 0 0/.5)" "rgba(255, 0, 0, 0.5)";
-  check_color ~expected:"rgb(255 0 0/0)" "rgba(255, 0, 0, 0)";
-  check_color ~expected:"rgb(255 0 0/1)" "rgba(255, 0, 0, 1)";
+  check_color ~expected:"transparent" "rgba(255, 0, 0, 0)";
+  check_color ~expected:"red" "rgba(255, 0, 0, 1)";
   check_color ~expected:"rgb(0 0 0/.25)" "rgba(0, 0, 0, 0.25)";
   check_color ~expected:"rgb(128 128 128/.75)" "rgba(128, 128, 128, 0.75)";
   neg_cursor read_color "invalid";
   neg_cursor read_color "abc";
   neg_cursor read_color "#gg";
-  check_color ~expected:"rgb(255 0 0)" "rgb(256, 0, 0)";
+  check_color ~expected:"red" "rgb(256, 0, 0)";
   check_color ~expected:"hsl(1 50% 50%)" "hsl(361, 50%, 50%)";
   neg_cursor read_color "";
   (* Unknown color keyword *)
@@ -621,15 +631,18 @@ let test_color_name () =
   neg_cursor read_color_name ""
 
 let test_alpha () =
+  (* CSS Color 4 section 1.3: alpha as [<percentage>] is spec-equivalent to the
+     corresponding [<number>] in [\[0, 1\]]; the printer canonicalizes to the
+     number form per cssnano. *)
   check_alpha ~expected:".5" "0.5";
-  check_alpha "50%";
+  check_alpha ~expected:".5" "50%";
   check_alpha "1";
   check_alpha "0";
   neg_cursor read_alpha "invalid";
   neg_cursor read_alpha "abc";
   check_alpha ~expected:"1" "1.5";
   check_alpha ~expected:"0" "-0.5";
-  check_alpha ~expected:"100%" "150%";
+  check_alpha ~expected:"1" "150%";
   neg_cursor read_alpha "1px"
 
 let test_hue_interpolation () =
@@ -748,7 +761,7 @@ let spec_values_l45_math_color () =
   check_color ~expected:"color-mix(in srgb longer hue,red,blue)"
     "color-mix(in srgb longer hue, red, blue)";
   check_color ~expected:"hsl(none 50% 50%)" "hsl(none 50% 50%)";
-  check_color ~expected:"rgb(from var(--c) r g b/50%)"
+  check_color ~expected:"rgb(from var(--c) r g b/.5)"
     "rgb(from var(--c) r g b / 50%)";
   check_color ~expected:"color(display-p3 none .5 1)"
     "color(display-p3 none 0.5 1)";

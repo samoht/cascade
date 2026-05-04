@@ -2126,7 +2126,9 @@ let test_gradient_stop () =
   check_gradient_stop "red";
   check_gradient_stop ~expected:"blue50%" "blue 50%";
   check_gradient_stop ~expected:"#ff573325%" "#ff5733 25%";
-  check_gradient_stop ~expected:"rgb(255 0 0)10px" "rgb(255,0,0) 10px";
+  (* Per CSS Color 4 section 1.4 the printer canonicalizes a fully-opaque rgb()
+     to the equivalent named color when shorter. *)
+  check_gradient_stop ~expected:"red10px" "rgb(255,0,0) 10px";
 
   (* Double position stops *)
   check_gradient_stop ~expected:"green20%40%" "green 20% 40%";
@@ -2568,10 +2570,11 @@ let test_shadow () =
   check_shadow "red inset 2px 2px 4px" ~expected:"inset 2px 2px 4px red";
   check_shadow "red inset 2px 2px 4px 1px" ~expected:"inset 2px 2px 4px 1px red";
   (* Test compact printing - when blur and spread are not provided, should print
-     compactly *)
-  check_shadow "0 0 #0000" ~expected:"0 0 #0000";
-  (* Ensure we don't get verbose 4-value format for simple cases *)
-  check_shadow "0 0 rgba(0,0,0,0)" ~expected:"0 0 rgb(0 0 0/0)";
+     compactly. Per CSS Color 4 section 6.4 the printer canonicalizes fully
+     transparent colors ([#0000], [rgba(0, 0, 0, 0)], etc.) to the [transparent]
+     keyword under [~minify:true]. *)
+  check_shadow "0 0 #0000" ~expected:"0 0 transparent";
+  check_shadow "0 0 rgba(0,0,0,0)" ~expected:"0 0 transparent";
   check_shadow "inherit";
   neg_cursor read_shadow "invalid-shadow";
   neg_cursor read_shadow "10px"
