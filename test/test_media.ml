@@ -38,7 +38,8 @@ let test_to_string () =
     (to_string (of_string "(scripting: enabled)"));
   Alcotest.(check string)
     "media queries prefers contrast" "(prefers-contrast: more)"
-    (to_string (of_string "(prefers-contrast: more)"))
+    (to_string (of_string "(prefers-contrast: more)"));
+  Alcotest.(check string) "empty media query list" "" (to_string (List []))
 
 let spec_media_l45_vectors () =
   let check_raw name input =
@@ -70,6 +71,7 @@ let spec_media_structural_vectors () =
   check "reduced motion feature" "(prefers-reduced-motion: reduce)"
     (Prefers_reduced_motion `Reduce);
   check "print media type" "print" Print;
+  check "empty media query list" "" (List []);
   check "negated print media type" "not print" (Negated Print);
   check "negated min-width shorthand" "not all and (min-width: 40px)"
     (Not_min_width 40.);
@@ -95,17 +97,20 @@ let spec_media_structural_vectors () =
          Print;
        ])
 
-let spec_media_negative_vectors () =
-  let expect_error name input =
-    try
-      ignore (of_string input);
-      Alcotest.failf "%s: expected invalid media query" name
-    with Failure _ | Invalid_argument _ -> ()
+let spec_media_error_recovery_vectors () =
+  let check_recovers name input =
+    Alcotest.(check string) name "not all" (to_string (of_string input))
   in
   List.iter
     (fun (row : Cascade_spec_inventory.Query_grammar.invalid_row) ->
-      expect_error row.branch row.input)
-    Cascade_spec_inventory.Query_grammar.media_negative
+      check_recovers row.branch row.input)
+    Cascade_spec_inventory.Query_grammar.media_negative;
+  List.iter
+    (fun (row : Cascade_spec_inventory.Query_grammar.row) ->
+      Alcotest.(check string)
+        row.branch row.expected
+        (to_string (of_string row.input)))
+    Cascade_spec_inventory.Query_grammar.media_recovery
 
 let test_kind () =
   Alcotest.(check bool)
@@ -192,8 +197,8 @@ let suite =
         spec_media_l45_vectors;
       test_case "spec media query structural vectors" `Quick
         spec_media_structural_vectors;
-      test_case "spec media query negative vectors" `Quick
-        spec_media_negative_vectors;
+      test_case "spec media query error recovery vectors" `Quick
+        spec_media_error_recovery_vectors;
       test_case "kind" `Quick test_kind;
       test_case "compare" `Quick test_compare;
       test_case "spec media sorting edges" `Quick test_spec_media_sorting_edges;

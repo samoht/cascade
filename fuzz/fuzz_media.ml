@@ -146,18 +146,22 @@ let test_spec_media_structural_vectors buf =
       (Fmt.str "media vector parsed to wrong AST: %S -> %S" input
          (Css.Media.to_string actual))
 
-let test_spec_media_invalid_vectors buf =
+let test_spec_media_error_recovery_vectors buf =
   let row = pick Cascade_spec_inventory.Query_grammar.media_negative buf 0 in
   let input = row.input in
-  match
-    try Some (Css.Media.of_string input)
-    with Failure _ | Invalid_argument _ -> None
-  with
-  | None -> ()
-  | Some actual ->
-      fail
-        (Fmt.str "invalid media vector parsed: %S -> %S" input
-           (Css.Media.to_string actual))
+  let actual = Css.Media.to_string (Css.Media.of_string input) in
+  if actual <> "not all" then
+    fail
+      (Fmt.str "invalid media vector did not recover to not all: %S -> %S" input
+         actual)
+
+let test_spec_media_list_recovery_vectors buf =
+  let row = pick Cascade_spec_inventory.Query_grammar.media_recovery buf 0 in
+  let actual = Css.Media.to_string (Css.Media.of_string row.input) in
+  if actual <> row.expected then
+    fail
+      (Fmt.str "media list recovery drifted: %S -> %S, expected %S" row.input
+         actual row.expected)
 
 let test_spec_media_feature_family_vectors buf =
   let row = pick Cascade_spec_inventory.Query_grammar.media_positive buf 2 in
@@ -168,7 +172,7 @@ let test_spec_media_feature_family_vectors buf =
     fail
       (Fmt.str "media feature family serialization drifted: %S -> %S" once twice)
 
-let test_spec_media_invalid_feature_family_vectors buf =
+let test_spec_media_feature_family_recovery_vectors buf =
   let valid = pick Cascade_spec_inventory.Query_grammar.media_positive buf 3 in
   let input =
     if byte_at buf 4 mod 2 = 0 then
@@ -176,15 +180,11 @@ let test_spec_media_invalid_feature_family_vectors buf =
     else
       Cascade_spec_inventory.Query_grammar.mutate_invalid valid (byte_at buf 6)
   in
-  match
-    try Some (Css.Media.of_string input)
-    with Failure _ | Invalid_argument _ -> None
-  with
-  | None -> ()
-  | Some actual ->
-      fail
-        (Fmt.str "invalid media feature family vector parsed: %S -> %S" input
-           (Css.Media.to_string actual))
+  let actual = Css.Media.to_string (Css.Media.of_string input) in
+  if actual <> "not all" then
+    fail
+      (Fmt.str "invalid media feature family did not recover: %S -> %S" input
+         actual)
 
 let suite =
   ( "media",
@@ -200,10 +200,12 @@ let suite =
         test_raw_range_serialization_stable;
       test_case "spec media structural vectors" [ bytes ]
         test_spec_media_structural_vectors;
-      test_case "spec media invalid vectors rejected" [ bytes ]
-        test_spec_media_invalid_vectors;
+      test_case "spec media error recovery vectors" [ bytes ]
+        test_spec_media_error_recovery_vectors;
+      test_case "spec media list recovery vectors" [ bytes ]
+        test_spec_media_list_recovery_vectors;
       test_case "spec media feature family vectors" [ bytes ]
         test_spec_media_feature_family_vectors;
-      test_case "spec invalid media feature family vectors rejected" [ bytes ]
-        test_spec_media_invalid_feature_family_vectors;
+      test_case "spec media feature family recovery vectors" [ bytes ]
+        test_spec_media_feature_family_recovery_vectors;
     ] )

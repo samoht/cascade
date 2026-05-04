@@ -7,7 +7,12 @@ val media_positive : row list
 (** [media_positive] contains valid CSS Media Queries branches. *)
 
 val media_negative : invalid_row list
-(** [media_negative] contains invalid CSS Media Queries branches. *)
+(** [media_negative] contains invalid CSS Media Queries branches that recover to
+    [not all] under Media Queries error handling. *)
+
+val media_recovery : row list
+(** [media_recovery] contains invalid-in-part media query lists with their
+    spec-mandated recovered serialization. *)
 
 val container_positive : row list
 (** [container_positive] contains valid CSS Container Queries branches. *)
