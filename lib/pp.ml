@@ -282,7 +282,9 @@ let pct ?(always = false) ctx f =
   (* CSS spec allows "0" without "%" for zero percentage values. This is a
      minification optimization used by cssnano and other tools. Ref:
      https://www.w3.org/TR/css-values-4/#zero-value When always=true, always
-     include % unit (required for [@property] initial-value) *)
+     include % unit (required for [@property] initial-value). Pretty mode
+     preserves the source spelling, so [%] survives even on zero. *)
+  let always = always || not ctx.minify in
   if always || f <> 0. then (
     float ctx f;
     string ctx "%")
