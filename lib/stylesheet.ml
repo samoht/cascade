@@ -467,6 +467,36 @@ and pp_import_url ctx url =
     Pp.string ctx url;
     Pp.char ctx '"')
 
+and strip_outer_parens s =
+  let s = String.trim s in
+  let len = String.length s in
+  if len >= 2 && s.[0] = '(' && s.[len - 1] = ')' then
+    String.sub s 1 (len - 2)
+  else s
+
+and pp_condition_function ctx name rendered =
+  Pp.string ctx name;
+  Pp.char ctx '(';
+  Pp.string ctx (strip_outer_parens rendered);
+  Pp.char ctx ')'
+
+and pp_conditional : conditional Pp.t =
+ fun ctx -> function
+  | Media_condition condition ->
+      pp_condition_function ctx "media"
+        (Pp.to_string ~minify:ctx.Pp.minify Media.pp condition)
+  | Supports_condition_test condition ->
+      pp_condition_function ctx "supports"
+        (Pp.to_string ~minify:ctx.Pp.minify Supports.pp condition)
+  | And (a, b) ->
+      pp_conditional ctx a;
+      Pp.string ctx " and ";
+      pp_conditional ctx b
+  | Or (a, b) ->
+      pp_conditional ctx a;
+      Pp.string ctx " or ";
+      pp_conditional ctx b
+
 and pp_statement : statement Pp.t =
  fun ctx -> function
   | Rule rule -> pp_rule ctx rule
@@ -542,8 +572,12 @@ and pp_statement : statement Pp.t =
         Pp.sp ctx ();
         Pp.braces pp_block ctx content)
   | Media (condition, content) ->
-      Pp.string ctx "@media ";
-      Media.pp ctx condition;
+      Pp.string ctx "@media";
+      (match condition with
+      | Media.List [] -> ()
+      | _ ->
+          Pp.string ctx " ";
+          Media.pp ctx condition);
       Pp.sp ctx ();
       Pp.braces pp_block ctx content
   | Container (name, condition, content) ->
@@ -570,6 +604,36 @@ and pp_statement : statement Pp.t =
   | Starting_style content ->
       Pp.string ctx "@starting-style";
       Pp.braces pp_block ctx content
+  | When (condition, content) ->
+      Pp.string ctx "@when ";
+      pp_conditional ctx condition;
+      Pp.sp ctx ();
+      Pp.braces pp_block ctx content
+  | Else (condition, content) ->
+      Pp.string ctx "@else";
+      (match condition with
+      | None -> ()
+      | Some c ->
+          Pp.string ctx " ";
+          pp_conditional ctx c);
+      Pp.sp ctx ();
+      Pp.braces pp_block ctx content
+  | Supports_condition (name, declarations) ->
+      Pp.string ctx "@supports-condition ";
+      Pp.string ctx name;
+      Pp.sp ctx ();
+      Pp.braces
+        (fun ctx () ->
+          Pp.cut ctx ();
+          Pp.nest 2
+            (Pp.list
+               ~sep:(fun ctx () ->
+                 Pp.semicolon ctx ();
+                 Pp.cut ctx ())
+               Declaration.pp_declaration)
+            ctx declarations;
+          Pp.cut ctx ())
+        ctx ()
   | Origin (_, content) -> pp_block ctx content
   | Scope (start, end_, content) ->
       Pp.string ctx "@scope";
@@ -936,7 +1000,7 @@ let read_import_media (r : Cursor.t) =
   else
     let loc = Cursor.position r in
     let raw = Cursor.consume_to_semicolon ~trim:true r in
-    try Some (Media.of_string raw)
+    try Some (Media.of_string_strict raw)
     with Failure reason ->
       Error.fail_bad_condition loc ~at_rule:"@media" ~reason
 
@@ -1449,6 +1513,59 @@ type property_reader_state = {
   initial_value : string option;
 }
 
+let conditional_args (fn : Component.func Component.node) =
+  if not fn.node.terminated then
+    failwith "unterminated conditional function";
+  Cursor.components_to_string ~trim:true fn.node.arguments
+
+let conditional_atom (fn : Component.func Component.node) =
+  match String.lowercase_ascii fn.Component.node.name with
+  | "media" -> Media_condition (Media.of_function_body (conditional_args fn))
+  | "supports" ->
+      Supports_condition_test
+        (Supports.of_string ~allow_unwrapped_decl:true (conditional_args fn))
+  | name -> failwith ("unknown conditional function: " ^ name)
+
+let parse_conditional_components components =
+  let cursor = Cursor.of_components components in
+  let peek_ident () =
+    match Cursor.peek cursor with
+    | Some (Component.Preserved { kind = Token.Ident name; _ }) ->
+        Some (String.lowercase_ascii name)
+    | _ -> None
+  in
+  let read_atom () =
+    Cursor.ws cursor;
+    match Cursor.peek cursor with
+    | Some (Component.Func fn) ->
+        Cursor.skip cursor;
+        conditional_atom fn
+    | _ -> failwith "expected conditional function"
+  in
+  let rec chain op acc =
+    Cursor.ws cursor;
+    match peek_ident () with
+    | Some "and" ->
+        (match op with
+        | Some `Or -> failwith "mixed @when condition operators"
+        | _ -> ());
+        Cursor.skip cursor;
+        chain (Some `And) (And (acc, read_atom ()))
+    | Some "or" ->
+        (match op with
+        | Some `And -> failwith "mixed @when condition operators"
+        | _ -> ());
+        Cursor.skip cursor;
+        chain (Some `Or) (Or (acc, read_atom ()))
+    | _ -> acc
+  in
+  let condition = chain None (read_atom ()) in
+  Cursor.ws cursor;
+  if not (Cursor.is_done cursor) then failwith "trailing @when condition";
+  condition
+
+let follows_conditional = function When _ | Else _ -> true | _ -> false
+
 let rec read_statement (r : Cursor.t) : statement =
   Cursor.ws r;
   let table : (string * (Cursor.t -> statement)) list =
@@ -1460,6 +1577,9 @@ let rec read_statement (r : Cursor.t) : statement =
       ("media", read_media);
       ("container", read_container);
       ("supports", read_supports);
+      ("when", read_when);
+      ("else", read_else);
+      ("supports-condition", read_supports_condition);
       ("starting-style", read_starting_style);
       ("scope", read_scope);
       ("keyframes", read_keyframes);
@@ -1491,6 +1611,10 @@ and read_block (r : Cursor.t) : block =
     if Cursor.is_done r then List.rev acc
     else
       let stmt = read_statement r in
+      (match stmt with
+      | Else _ when not (List.exists follows_conditional acc) ->
+          Cursor.err_invalid r "@else without preceding @when"
+      | _ -> ());
       read_statements (stmt :: acc)
   in
   read_statements []
@@ -1498,20 +1622,63 @@ and read_block (r : Cursor.t) : block =
 and read_starting_style (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "starting-style" r;
   Cursor.ws r;
-  let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
+  let content = Cursor.braces (fun inner -> read_block inner) r in
   Starting_style content
+
+and read_when (r : Cursor.t) : statement =
+  Cursor.expect_at_keyword "when" r;
+  Cursor.ws r;
+  let prelude = Cursor.drain_until_block r in
+  if List.for_all (fun cv -> Component.to_string cv |> String.trim = "") prelude
+  then Cursor.err_invalid r "@when: missing condition";
+  let condition =
+    try parse_conditional_components prelude
+    with Failure msg -> Cursor.err_invalid r ("@when: " ^ msg)
+  in
+  let content = Cursor.braces (fun inner -> read_block inner) r in
+  When (condition, content)
+
+and read_else (r : Cursor.t) : statement =
+  Cursor.expect_at_keyword "else" r;
+  Cursor.ws r;
+  let prelude = Cursor.drain_until_block r in
+  let condition =
+    match
+      List.filter
+        (function
+          | Component.Preserved { kind = Token.Whitespace; _ } -> false
+          | _ -> true)
+        prelude
+    with
+    | [] -> None
+    | _ -> (
+        try Some (parse_conditional_components prelude)
+        with Failure msg -> Cursor.err_invalid r ("@else: " ^ msg))
+  in
+  let content = Cursor.braces (fun inner -> read_block inner) r in
+  Else (condition, content)
+
+and read_supports_condition (r : Cursor.t) : statement =
+  Cursor.expect_at_keyword "supports-condition" r;
+  Cursor.ws r;
+  let name = Cursor.ident ~keep_case:true r in
+  if not (String.length name >= 2 && String.sub name 0 2 = "--") then
+    Cursor.err_invalid r "@supports-condition: name must start with '--'";
+  Cursor.ws r;
+  let declarations = Cursor.braces Declaration.read_declarations r in
+  Supports_condition (name, declarations)
 
 and read_media (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "media" r;
   Cursor.ws r;
   let condition_str = Cursor.drain_until_block_to_string ~trim:true r in
-  if String.length condition_str = 0 then
-    Cursor.err r "@media rule requires a media query condition";
   let content = Cursor.braces (fun inner -> read_block inner) r in
   let condition =
-    try Media.of_string condition_str
-    with Failure reason ->
-      Cursor.err_invalid r ("invalid @media condition: " ^ reason)
+    if String.length condition_str = 0 then Media.List []
+    else
+      try Media.of_string_strict condition_str
+      with Failure reason ->
+        Cursor.err_invalid r ("invalid @media condition: " ^ reason)
   in
   Media (condition, content)
 
@@ -1706,8 +1873,10 @@ and read_nested_at_rule (r : Cursor.t) (at_rule : string)
       let condition_str = Cursor.drain_until_block_to_string ~trim:true r in
       let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
       let condition =
-        try Media.of_string condition_str
-        with Failure _ -> Media.of_string "not all"
+        if String.length condition_str = 0 then Media.List []
+        else
+          try Media.of_string_strict condition_str
+          with Failure _ -> Media.of_string "not all"
       in
       Media (condition, content)
   | _ -> Cursor.err_invalid r ("Unexpected nested at-rule: " ^ at_rule)
@@ -1905,6 +2074,10 @@ let read_stylesheet (r : Cursor.t) : stylesheet =
         if Cursor.is_done r then List.rev acc
         else
           let stmt = read_statement r in
+          (match stmt with
+          | Else _ when not (List.exists follows_conditional acc) ->
+              Cursor.err_invalid r "@else without preceding @when"
+          | _ -> ());
           validate_prelude stmt;
           read_statements (stmt :: acc)
       in
@@ -2043,6 +2216,8 @@ let rec vars_of_statement (stmt : statement) : Variables.any_var list =
   | Media (_, block)
   | Container (_, _, block)
   | Supports (_, block)
+  | When (_, block)
+  | Else (_, block)
   | Layer (_, block)
   | Starting_style block
   | Origin (_, block)
@@ -2051,7 +2226,8 @@ let rec vars_of_statement (stmt : statement) : Variables.any_var list =
   | Font_face _ -> [] (* Font-face descriptors don't contribute CSS variables *)
   | Page (_, decls) -> Variables.vars_of_declarations decls
   | Page_with_margins (_, _, _) -> []
-  | Position_try (_, decls) -> Variables.vars_of_declarations decls
+  | Position_try (_, decls) | Supports_condition (_, decls) ->
+      Variables.vars_of_declarations decls
   | Font_palette_values _ | View_transition _ | Charset _ | Import _
   | Namespace _ | Property _ | Layer_decl _ | Keyframes _ | Webkit_keyframes _
     ->
