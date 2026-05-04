@@ -100,6 +100,8 @@ module Stylesheet = struct
           List.fold_left (statement layer) acc block
       | Media (_, block)
       | Supports (_, block)
+      | When (_, block)
+      | Else (_, block)
       | Starting_style block
       | Origin (_, block) ->
           List.fold_left (statement layer) acc block
@@ -140,6 +142,18 @@ module Stylesheet = struct
               block )
     | Supports (condition, block) ->
         Supports
+          ( condition,
+            List.map
+              (eval_statement ?ctx_for_layer ~layer_order ?layer ctx)
+              block )
+    | When (condition, block) ->
+        When
+          ( condition,
+            List.map
+              (eval_statement ?ctx_for_layer ~layer_order ?layer ctx)
+              block )
+    | Else (condition, block) ->
+        Else
           ( condition,
             List.map
               (eval_statement ?ctx_for_layer ~layer_order ?layer ctx)
@@ -192,14 +206,17 @@ module Stylesheet = struct
         Position_try
           ( name,
             List.map (Declaration.eval ~layer_order ?layer ctx) declarations )
+    | Supports_condition (name, declarations) ->
+        Supports_condition
+          ( name,
+            List.map (Declaration.eval ~layer_order ?layer ctx) declarations )
     | Page_with_margins (selector, descriptors, margins) ->
         Page_with_margins
           ( selector,
             List.map (eval_descriptor ~layer_order ?layer ctx) descriptors,
             List.map (eval_page_margin_rule ~layer_order ?layer ctx) margins )
     | ( Charset _ | Import _ | Namespace _ | Property _ | Layer_decl _
-      | Font_face _ | Font_palette_values _ | View_transition _ ) as statement
-      ->
+      | Font_face _ | Font_palette_values _ | View_transition _ ) as statement ->
         statement
 
   and eval_rule_with_ctx ?ctx_for_layer ~layer_order ?layer ctx rule =

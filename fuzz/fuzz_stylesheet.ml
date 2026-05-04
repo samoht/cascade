@@ -129,6 +129,19 @@ let generated_condition_stylesheet buf =
                   (Some "card", container, [ rule buf 12 ]);
               ] );
         ] );
+    Css.Stylesheet.When
+      ( Css.Stylesheet.And
+          ( Css.Stylesheet.Media_condition media,
+            Css.Stylesheet.Supports_condition_test
+              (Css.Supports.property "display" "grid") ),
+        [ rule buf 13 ] );
+    Css.Stylesheet.Else
+      ( Some
+          (Css.Stylesheet.Media_condition
+             (Css.Media.of_string "(pointer: fine)")),
+        [ rule buf 14 ] );
+    Css.Stylesheet.Supports_condition
+      ("--generated-condition", [ declaration buf 15 ]);
     Css.Stylesheet.Scope
       ( Some ".card",
         Some ".boundary",
@@ -244,6 +257,11 @@ let rec boundary_shape = function
       ("supports" :: List.concat_map boundary_shape block) @ [ "/supports" ]
   | Container (_, _, block) ->
       ("container" :: List.concat_map boundary_shape block) @ [ "/container" ]
+  | When (_, block) ->
+      ("when" :: List.concat_map boundary_shape block) @ [ "/when" ]
+  | Else (_, block) ->
+      ("else" :: List.concat_map boundary_shape block) @ [ "/else" ]
+  | Supports_condition (name, _) -> [ "supports-condition:" ^ name ]
   | Scope (_, _, block) ->
       ("scope" :: List.concat_map boundary_shape block) @ [ "/scope" ]
   | Starting_style block ->
@@ -280,6 +298,8 @@ let anonymous_layer_count ss =
     | Media (_, block)
     | Supports (_, block)
     | Container (_, _, block)
+    | When (_, block)
+    | Else (_, block)
     | Scope (_, _, block)
     | Starting_style block
     | Origin (_, block) ->
@@ -287,7 +307,7 @@ let anonymous_layer_count ss =
     | Rule _ | Declarations _ | Charset _ | Import _ | Namespace _
     | Layer_decl _ | Keyframes _ | Webkit_keyframes _ | Font_face _ | Page _
     | Page_with_margins _ | Font_palette_values _ | View_transition _
-    | Position_try _ | Property _ ->
+    | Position_try _ | Property _ | Supports_condition _ ->
         0
   and block_count block = List.fold_left (fun n s -> n + statement s) 0 block in
   block_count ss

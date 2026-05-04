@@ -137,6 +137,10 @@ and statement =
       (** [@container name? (...) { ... }] *)
   | Supports of Supports.t * block  (** [@supports (...) { ... }] *)
   | Starting_style of block  (** [@starting-style { ... }] *)
+  | When of conditional * block  (** [@when media(...) { ... }] *)
+  | Else of conditional option * block  (** [@else supports(...)? { ... }] *)
+  | Supports_condition of string * Declaration.declaration list
+      (** [@supports-condition --name { ... }] *)
   | Origin of cascade_origin * block
       (** API-level wrapper recording the cascade origin of a stylesheet block.
           It has no CSS surface syntax, but lets optimizers and tests preserve
@@ -161,6 +165,12 @@ and statement =
 
 and block = statement list
 (** A block contains a list of statements *)
+
+and conditional =
+  | Media_condition of Media.t
+  | Supports_condition_test of Supports.t
+  | And of conditional * conditional
+  | Or of conditional * conditional
 
 and keyframe = {
   keyframe_selector : Keyframe.selector;
