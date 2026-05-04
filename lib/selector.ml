@@ -1801,7 +1801,12 @@ and pp : t Pp.t =
       pp_func ctx ~prefix:"::" "view-transition-old" Pp.string name
   | View_transition_new name ->
       pp_func ctx ~prefix:"::" "view-transition-new" Pp.string name
-  | Compound selectors -> List.iter (pp ctx) selectors
+  | Compound selectors ->
+      let to_print =
+        if Pp.minified ctx then drop_redundant_universal selectors
+        else selectors
+      in
+      List.iter (pp ctx) to_print
   | Combined (left, comb, right) ->
       pp ctx left;
       (match left with
@@ -1813,6 +1818,19 @@ and pp : t Pp.t =
       pp ctx right
   | List selectors -> Pp.list ~sep:Pp.comma pp ctx selectors
   | Nesting -> Pp.char ctx '&'
+
+(* CSS Selectors 4 3.5: when the universal selector [*] is not the only
+   component of a compound, the [*] may be omitted. Namespaced universals
+   ([ns|*], [*|*]) carry namespace information and are preserved. *)
+and drop_redundant_universal = function
+  | [ _ ] as singleton -> singleton
+  | components ->
+      let kept =
+        List.filter
+          (function Universal None -> false | _ -> true)
+          components
+      in
+      if kept = [] then components else kept
 
 let to_string ?minify t = Pp.to_string ?minify pp t
 let to_buffer ?minify buf t = Pp.to_buffer ?minify buf pp t
