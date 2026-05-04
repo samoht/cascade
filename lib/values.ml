@@ -1178,9 +1178,12 @@ and pp_color : color Pp.t =
          conventions). When a CSS named colour represents the same sRGB value
          with an equal-or-shorter spelling than the [#hex] form, emit the name.
          CSS Color 4 6.4 makes [#0000] / [#00000000] spec-equivalent to the
-         [transparent] keyword. *)
+         [transparent] keyword; [#0000] is the shortest of those, so that wins
+         under minify. *)
       if Pp.minified ctx then (
-        if hex_is_fully_transparent value then Pp.string ctx "transparent"
+        if hex_is_fully_transparent value then (
+          Pp.char ctx '#';
+          Pp.string ctx "0000")
         else
           let shortened = shorten_hex value in
           match named_for_hex shortened with
@@ -1215,7 +1218,8 @@ and pp_color : color Pp.t =
       match rgb with
       | Channels { r; g; b } when Pp.minified ctx && rgba_is_transparent r g b a
         ->
-          Pp.string ctx "transparent"
+          Pp.char ctx '#';
+          Pp.string ctx "0000"
       | Channels { r; g; b } when Pp.minified ctx && alpha_is_full a -> (
           (* Fully-opaque alpha is equivalent to [rgb(R G B)]; route through the
              [Hex]-based canonicalisation so all RGB-family inputs share one
@@ -1273,7 +1277,13 @@ and pp_color : color Pp.t =
   | Var v -> pp_var pp_color ctx v
   | Current ->
       Pp.string ctx (if ctx.in_function then "currentcolor" else "currentColor")
-  | Transparent -> Pp.string ctx "transparent"
+  | Transparent ->
+      (* CSS Color 4 6.4: [transparent] is spec-equivalent to [#0000]; under
+         minify pick the shorter hex form (Lightning CSS convention). *)
+      if Pp.minified ctx then (
+        Pp.char ctx '#';
+        Pp.string ctx "0000")
+      else Pp.string ctx "transparent"
   | Auto -> Pp.string ctx "auto"
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
