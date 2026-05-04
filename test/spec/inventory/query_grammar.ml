@@ -6,10 +6,21 @@ let invalid branch input = { branch; input }
 
 let media_positive =
   [
+    row "empty media query list" "" "";
     row "boolean width" "(width)" "(width)";
     row "boolean height" "(height)" "(height)";
     row "boolean color" "(color)" "(color)";
+    row "color depth" "(color: 8)" "(color: 8)";
+    row "color depth range" "(color >= 8)" "(color >= 8)";
+    row "color negative range syntax" "(color < 0)" "(color < 0)";
+    row "boolean color index" "(color-index)" "(color-index)";
+    row "color index range" "(color-index >= 256)" "(color-index >= 256)";
+    row "color index negative range syntax" "(color-index < 0)"
+      "(color-index < 0)";
     row "boolean monochrome" "(monochrome)" "(monochrome)";
+    row "monochrome depth" "(monochrome: 1)" "(monochrome: 1)";
+    row "monochrome range" "(monochrome >= 2)" "(monochrome >= 2)";
+    row "monochrome negative range syntax" "(monochrome < 0)" "(monochrome < 0)";
     row "min-width prefix" "(min-width: 40em)" "(min-width: 40em)";
     row "name-first greater-than" "(width > 40em)" "(width > 40em)";
     row "name-first greater-equal" "(width >= 40em)" "(width >= 40em)";
@@ -35,20 +46,35 @@ let media_positive =
     row "overflow block paged" "(overflow-block: paged)"
       "(overflow-block: paged)";
     row "overflow inline" "(overflow-inline: none)" "(overflow-inline: none)";
+    row "overflow inline scroll" "(overflow-inline: scroll)"
+      "(overflow-inline: scroll)";
     row "color gamut" "(color-gamut: p3)" "(color-gamut: p3)";
     row "color gamut srgb" "(color-gamut: srgb)" "(color-gamut: srgb)";
     row "dynamic range" "(dynamic-range: high)" "(dynamic-range: high)";
     row "video dynamic range" "(video-dynamic-range: standard)"
       "(video-dynamic-range: standard)";
     row "resolution range" "(resolution >= 2dppx)" "(resolution >= 2dppx)";
+    row "resolution infinite" "(resolution: infinite)" "(resolution: infinite)";
     row "scan interlace" "(scan: interlace)" "(scan: interlace)";
     row "grid device" "(grid: 0)" "(grid: 0)";
     row "inverted colors" "(inverted-colors: inverted)"
       "(inverted-colors: inverted)";
     row "display mode standalone" "(display-mode: standalone)"
       "(display-mode: standalone)";
+    row "display mode fullscreen" "(display-mode: fullscreen)"
+      "(display-mode: fullscreen)";
+    row "display mode minimal ui" "(display-mode: minimal-ui)"
+      "(display-mode: minimal-ui)";
+    row "display mode browser" "(display-mode: browser)"
+      "(display-mode: browser)";
+    row "display mode picture in picture" "(display-mode: picture-in-picture)"
+      "(display-mode: picture-in-picture)";
     row "environment blending" "(environment-blending: additive)"
       "(environment-blending: additive)";
+    row "environment blending opaque" "(environment-blending: opaque)"
+      "(environment-blending: opaque)";
+    row "environment blending subtractive" "(environment-blending: subtractive)"
+      "(environment-blending: subtractive)";
     row "video color gamut" "(video-color-gamut: rec2020)"
       "(video-color-gamut: rec2020)";
     row "horizontal viewport segments" "(horizontal-viewport-segments: 2)"
@@ -70,10 +96,10 @@ let media_positive =
       "(prefers-reduced-transparency: no-preference)"
       "(prefers-reduced-transparency: no-preference)";
     row "prefers contrast" "(prefers-contrast: more)" "(prefers-contrast: more)";
+    row "prefers contrast no preference" "(prefers-contrast: no-preference)"
+      "(prefers-contrast: no-preference)";
     row "prefers contrast less" "(prefers-contrast: less)"
       "(prefers-contrast: less)";
-    row "prefers contrast forced" "(prefers-contrast: forced)"
-      "(prefers-contrast: forced)";
     row "prefers contrast custom" "(prefers-contrast: custom)"
       "(prefers-contrast: custom)";
     row "prefers reduced data" "(prefers-reduced-data: reduce)"
@@ -83,11 +109,18 @@ let media_positive =
       "(prefers-reduced-data: no-preference)";
     row "forced colors" "(forced-colors: active)" "(forced-colors: active)";
     row "forced colors none" "(forced-colors: none)" "(forced-colors: none)";
+    row "nav controls" "(nav-controls: back)" "(nav-controls: back)";
+    row "nav controls none" "(nav-controls: none)" "(nav-controls: none)";
+    row "nav controls boolean" "(nav-controls)" "(nav-controls)";
     row "scripting" "(scripting: enabled)" "(scripting: enabled)";
     row "scripting initial only" "(scripting: initial-only)"
       "(scripting: initial-only)";
     row "scripting none" "(scripting: none)" "(scripting: none)";
     row "media type" "print" "print";
+    row "all media type" "all" "all";
+    row "screen media type" "screen" "screen";
+    row "speech media type" "speech" "speech";
+    row "unknown media type syntax" "unknown" "unknown";
     row "not media type" "not print" "not print";
     row "only media type with feature" "only screen and (pointer: fine)"
       "only screen and (pointer: fine)";
@@ -100,7 +133,6 @@ let media_positive =
 
 let media_negative =
   [
-    invalid "empty media query" "";
     invalid "empty media feature" "()";
     invalid "min-width missing value" "(min-width)";
     invalid "missing range value" "(width >=)";
@@ -115,6 +147,9 @@ let media_negative =
     invalid "bad any-pointer keyword" "(any-pointer: hover)";
     invalid "bad update keyword" "(update: instant)";
     invalid "bad overflow-block keyword" "(overflow-block: hidden)";
+    invalid "retired overflow-block optional paged"
+      "(overflow-block: optional-paged)";
+    invalid "bad overflow-inline paged" "(overflow-inline: paged)";
     invalid "bad color-gamut keyword" "(color-gamut: rgb)";
     invalid "bad dynamic-range keyword" "(dynamic-range: ultra)";
     invalid "bad resolution unit" "(resolution >= 2px)";
@@ -128,13 +163,34 @@ let media_negative =
     invalid "bad reduced transparency keyword"
       "(prefers-reduced-transparency: yes)";
     invalid "bad prefers contrast keyword" "(prefers-contrast: high)";
+    invalid "retired prefers contrast forced keyword"
+      "(prefers-contrast: forced)";
     invalid "bad reduced data keyword" "(prefers-reduced-data: yes)";
     invalid "bad forced colors keyword" "(forced-colors: enabled)";
+    invalid "bad nav controls keyword" "(nav-controls: back-button)";
+    invalid "only before feature" "only (color)";
+    invalid "missing query after not" "not";
+    invalid "reserved or as media type" "or and (color)";
+    invalid "bad min prefix on discrete feature" "(min-orientation: portrait)";
+    invalid "bad color feature value" "(color: 20example)";
+    invalid "bad media type condition join" "screen (width)";
     invalid "missing right operand" "(width) and";
     invalid "ungrouped mixed operators" "(width) and (height) or (color)";
-    invalid "missing and after media type" "screen (width)";
     invalid "double not" "not not screen";
     invalid "unclosed media feature" "(width >= 40em";
+  ]
+
+let media_recovery =
+  [
+    row "unknown feature recovers inside list" "(max-weight: 3kg), (color)"
+      "not all, (color)";
+    row "bad bare query recovers inside list" "&test, speech" "not all, speech";
+    row "trailing comma branch recovers" "(example, all,), speech"
+      "not all, speech";
+    row "unknown max-weight recovers to next branch"
+      "screen and (max-weight: 3kg) and (color), (color)" "not all, (color)";
+    row "invalid min-prefix recovers inside list"
+      "(min-orientation: portrait), (width)" "not all, (width)";
   ]
 
 let container_positive =
@@ -160,12 +216,29 @@ let container_positive =
     row "style uppercase function" "STYLE(--theme: dark)" "STYLE(--theme: dark)";
     row "scroll-state stuck" "scroll-state(stuck: top)"
       "scroll-state(stuck: top)";
+    row "scroll-state stuck logical" "scroll-state(stuck: inline-end)"
+      "scroll-state(stuck: inline-end)";
+    row "scroll-state stuck none" "scroll-state(stuck: none)"
+      "scroll-state(stuck: none)";
     row "scroll-state snapped" "scroll-state(snapped: block)"
       "scroll-state(snapped: block)";
+    row "scroll-state snapped both" "scroll-state(snapped: both)"
+      "scroll-state(snapped: both)";
     row "scroll-state scrollable" "scroll-state(scrollable: inline)"
       "scroll-state(scrollable: inline)";
+    row "scroll-state scrollable edge" "scroll-state(scrollable: bottom)"
+      "scroll-state(scrollable: bottom)";
     row "scroll-state scrolled" "scroll-state(scrolled: block-start)"
       "scroll-state(scrolled: block-start)";
+    row "scroll-state scrolled axis" "scroll-state(scrolled: y)"
+      "scroll-state(scrolled: y)";
+    row "scroll-state conjunction"
+      "scroll-state((stuck: top) and (stuck: left))"
+      "scroll-state((stuck: top) and (stuck: left))";
+    row "scroll-state disjunction" "scroll-state((snapped: x) or (snapped: y))"
+      "scroll-state((snapped: x) or (snapped: y))";
+    row "scroll-state negation" "scroll-state(not (stuck: none))"
+      "scroll-state(not (stuck: none))";
     row "named size query" "card (inline-size > 30em)"
       "card (inline-size > 30em)";
     row "named style query" "card style(--variant: featured)"
@@ -185,8 +258,16 @@ let container_negative =
     invalid "unclosed scroll-state query" "scroll-state(stuck: top";
     invalid "missing scroll-state value" "scroll-state(stuck)";
     invalid "bad scroll-state value" "scroll-state(stuck: diagonal)";
+    invalid "bad stuck axis value" "scroll-state(stuck: x)";
+    invalid "bad snapped edge value" "scroll-state(snapped: top)";
     invalid "bad scrollable value" "scroll-state(scrollable: diagonal)";
     invalid "bad scrolled value" "scroll-state(scrolled: diagonal)";
+    invalid "ungrouped mixed query operators" "(width) and (height) or (color)";
+    invalid "style query semicolon" "style(color: red;)";
+    invalid "style query mixed operators" "style(--theme: dark) and or (width)";
+    invalid "scroll-state mixed operators"
+      "scroll-state((stuck: top) and (snapped: x) or (scrollable: y))";
+    invalid "not not query" "not not (width)";
     invalid "missing range value" "(width >)";
     invalid "opposing interval operators" "(30em < inline-size > 60em)";
   ]
