@@ -712,17 +712,35 @@ let hex_is_fully_transparent value =
   | 8 -> String.for_all (fun c -> c = '0') value
   | _ -> false
 
-let channel_is_zero (c : channel) =
-  match c with
-  | Int 0 | Num 0.0 | Pct 0.0 -> true
-  | _ -> false
-
 let alpha_is_zero (a : alpha) =
   match a with Num 0.0 | Pct 0.0 -> true | _ -> false
 
-let rgba_is_transparent r g b a =
-  channel_is_zero r && channel_is_zero g && channel_is_zero b
-  && alpha_is_zero a
+(* CSS Color 4 6.4: [transparent] is the canonical name for any fully-
+   transparent colour. Any RGB triple paired with [alpha = 0] paints to the
+   same pixel; the colour stack composites them identically. *)
+let rgba_is_transparent _r _g _b a = alpha_is_zero a
+
+(* The body of a [Relative_rgb] is stored as a verbatim string of the form
+   ["from <origin> r g b/<alpha>"], because the channels and alpha are part
+   of the [<calc>]-derived expression. To match the typed-color path's alpha
+   canonicalisation under [~minify:true], rewrite a trailing ["/<n>%"] alpha
+   suffix to its decimal equivalent. *)
+let minify_relative_color_alpha body =
+  let len = String.length body in
+  if len = 0 || body.[len - 1] <> '%' then body
+  else
+    match String.rindex_opt body '/' with
+    | None -> body
+    | Some slash -> (
+        let pct = String.sub body (slash + 1) (len - slash - 2) in
+        match Float.of_string_opt pct with
+        | Some f ->
+            String.concat ""
+              [
+                String.sub body 0 (slash + 1);
+                Pp.float_to_string ~drop_leading_zero:true (f /. 100.);
+              ]
+        | None -> body)
 
 (* Hue value of an [Hsl] colour as a float in degrees, when the input is a
    plain numeric hue (number / [deg] angle). Other forms ([rad]/[turn]/
@@ -770,6 +788,33 @@ let hsl_named_for_primary ~hue ~saturation ~lightness : string option =
       | 240 -> Some "blue"
       | 300 -> Some "magenta"
       | _ -> None
+
+(* The numeric value of a channel when it is a plain [Int] or integer-valued
+   [Num]/[Pct]. Returns [None] for [Var]/[Calc] inputs which the printer
+   cannot canonicalise. *)
+let channel_byte_value (c : channel) =
+  match c with
+  | Int i when i >= 0 && i <= 255 -> Some i
+  | Num f when Float.is_integer f && f >= 0. && f <= 255. ->
+      Some (Float.to_int f)
+  | Pct f when f >= 0. && f <= 100. ->
+      Some (Float.to_int (Float.round (f *. 255. /. 100.)))
+  | _ -> None
+
+let byte_to_hex_byte i =
+  let hex_digits = "0123456789abcdef" in
+  let s = Bytes.create 2 in
+  Bytes.set s 0 hex_digits.[(i lsr 4) land 0xF];
+  Bytes.set s 1 hex_digits.[i land 0xF];
+  Bytes.to_string s
+
+(* Convert an [(r, g, b)] triple of integer-valued channels to the [#rrggbb]
+   string used as a key by [named_for_hex] / [shorten_hex]. *)
+let rgb_to_hex_string r g b =
+  match (channel_byte_value r, channel_byte_value g, channel_byte_value b) with
+  | Some r, Some g, Some b ->
+      Some (byte_to_hex_byte r ^ byte_to_hex_byte g ^ byte_to_hex_byte b)
+  | _ -> None
 
 (* Reverse of [color_name_hex] for the named-color set whose hex form is short
    enough to be a candidate. The map is keyed on the shortened hex spelling so
@@ -915,11 +960,12 @@ and pp_alpha : alpha Pp.t =
  fun ctx -> function
   | None -> ()
   | Num f -> Pp.float ctx f
+  | Pct f when Pp.minified ctx ->
+      (* CSS Color 4 1.3: an alpha [<percentage>] is spec-equivalent to the
+         [<number>] form divided by 100. Under minification, emit the
+         shorter number form so [50%] and [0.5] round-trip identically. *)
+      Pp.float ctx (f /. 100.)
   | Pct f ->
-      (* Keep percentage with % sign. CSS spec allows both decimal and
-         percentage for alpha values. Tailwind doesn't optimize alpha
-         percentages to decimals, so we follow the same approach for
-         consistency. *)
       Pp.float ctx f;
       Pp.char ctx '%'
   | Var v -> pp_var pp_alpha ctx v
@@ -1148,6 +1194,13 @@ and pp_color : color Pp.t =
         Pp.string ctx value)
   | Rgb rgb -> (
       match rgb with
+      | Channels { r; g; b } when Pp.minified ctx -> (
+          (* CSS Color 4 1.4: [rgb(R G B)] (no alpha) is spec-equivalent to
+             the [#hex] / named-colour forms. Re-emit through [pp_color] so
+             the same shortening / named lookup applies. *)
+          match rgb_to_hex_string r g b with
+          | Some hex -> pp_color ctx (Hex { hash = true; value = hex })
+          | None -> pp_rgb_func ctx (r, g, b, None))
       | Channels { r; g; b } -> pp_rgb_func ctx (r, g, b, None)
       | Var v ->
           (* Print as a var that expands to a color *)
@@ -1163,6 +1216,13 @@ and pp_color : color Pp.t =
       | Channels { r; g; b } when Pp.minified ctx && rgba_is_transparent r g b a
         ->
           Pp.string ctx "transparent"
+      | Channels { r; g; b } when Pp.minified ctx && alpha_is_full a -> (
+          (* Fully-opaque alpha is equivalent to [rgb(R G B)]; route through
+             the [Hex]-based canonicalisation so all RGB-family inputs share
+             one output form. *)
+          match rgb_to_hex_string r g b with
+          | Some hex -> pp_color ctx (Hex { hash = true; value = hex })
+          | None -> pp_rgb_func ctx (r, g, b, a))
       | Channels { r; g; b } -> pp_rgb_func ctx (r, g, b, a)
       | Var v ->
           (* Output as rgb(var(--color)/alpha) *)
@@ -1192,6 +1252,9 @@ and pp_color : color Pp.t =
   | Hwb { h; w; b; a } -> pp_hwb ctx (h, w, b, a)
   | Color { space; components; alpha } -> pp_color' ctx space components alpha
   | Relative_rgb body ->
+      let body =
+        if Pp.minified ctx then minify_relative_color_alpha body else body
+      in
       Pp.call "rgb" (fun ctx body -> Pp.string ctx body) ctx body
   | Contrast_color color -> Pp.call "contrast-color" pp_color ctx color
   | Light_dark (light, dark) ->
