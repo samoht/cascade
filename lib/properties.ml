@@ -7827,7 +7827,13 @@ let rec pp_line_height : line_height Pp.t =
 let rec pp_font_weight : font_weight Pp.t =
  fun ctx -> function
   | Weight n -> Pp.int ctx n
+  | Normal when Pp.minified ctx ->
+      (* CSS Fonts 4 5.1.2: [normal] is spec-equivalent to [400]. *)
+      Pp.string ctx "400"
   | Normal -> Pp.string ctx "normal"
+  | Bold when Pp.minified ctx ->
+      (* CSS Fonts 4 5.1.2: [bold] is spec-equivalent to [700]. *)
+      Pp.string ctx "700"
   | Bold -> Pp.string ctx "bold"
   | Bolder -> Pp.string ctx "bolder"
   | Lighter -> Pp.string ctx "lighter"
