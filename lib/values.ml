@@ -766,6 +766,18 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Min s -> pp_math_call ctx "min" s
   | Max s -> pp_math_call ctx "max" s
   | Minmax s -> pp_math_call ctx "minmax" s
+  | Round (strategy, Px v, Px step) when Pp.minified ctx && step <> 0. ->
+      (* CSS Values 4 10.7: [round(strategy, value, step)] reduces to a constant
+         when both operands are typed lengths in the same unit and the step is
+         non-zero. Default strategy is [nearest]. *)
+      let r =
+        match strategy with
+        | "up" -> Float.ceil (v /. step) *. step
+        | "down" -> Float.floor (v /. step) *. step
+        | "to-zero" -> Float.trunc (v /. step) *. step
+        | _ -> Float.round (v /. step) *. step
+      in
+      pp_unit_fn r "px"
   | Round (strategy, value, step) ->
       Pp.call "round"
         (fun ctx (strategy, value, step) ->
@@ -775,6 +787,11 @@ let rec pp_length ?(always = false) : length Pp.t =
           Pp.comma ctx ();
           pp_length ~always ctx step)
         ctx (strategy, value, step)
+  | Mod (Px a, Px b) when Pp.minified ctx && b <> 0. ->
+      (* CSS Values 4 10.7: [mod()] returns the remainder using floored division
+         (sign of divisor). *)
+      let q = Float.floor (a /. b) in
+      pp_unit_fn (a -. (q *. b)) "px"
   | Mod (a, b) ->
       Pp.call "mod"
         (fun ctx (a, b) ->
@@ -782,6 +799,10 @@ let rec pp_length ?(always = false) : length Pp.t =
           Pp.comma ctx ();
           pp_length ~always ctx b)
         ctx (a, b)
+  | Rem_fn (Px a, Px b) when Pp.minified ctx && b <> 0. ->
+      (* CSS Values 4 10.7: [rem()] returns the remainder using truncated
+         division (sign of dividend). *)
+      pp_unit_fn (Float.rem a b) "px"
   | Rem_fn (a, b) ->
       Pp.call "rem"
         (fun ctx (a, b) ->
@@ -789,6 +810,7 @@ let rec pp_length ?(always = false) : length Pp.t =
           Pp.comma ctx ();
           pp_length ~always ctx b)
         ctx (a, b)
+  | Hypot (Px a, Px b) when Pp.minified ctx -> pp_unit_fn (Float.hypot a b) "px"
   | Hypot (a, b) ->
       Pp.call "hypot"
         (fun ctx (a, b) ->
@@ -796,7 +818,11 @@ let rec pp_length ?(always = false) : length Pp.t =
           Pp.comma ctx ();
           pp_length ~always ctx b)
         ctx (a, b)
+  | Abs (Px x) when Pp.minified ctx -> pp_unit_fn (Float.abs x) "px"
   | Abs v -> Pp.call "abs" (pp_length ~always) ctx v
+  | Sign (Px x) when Pp.minified ctx ->
+      let s = if x > 0. then 1.0 else if x < 0. then -1.0 else 0. in
+      Pp.float ctx s
   | Sign v -> Pp.call "sign" (pp_length ~always) ctx v
   | Calc_size (basis, calc) ->
       Pp.call "calc-size"
@@ -2060,9 +2086,21 @@ let rec read_length ?(allow_negative = true) ?(with_keywords = true) t : length
               Cursor.expect_eof inner;
               Fit_content_arg arg
           | "round" ->
-              let strategy = Cursor.ident inner in
-              Cursor.ws inner;
-              Cursor.comma inner;
+              (* CSS Values 4 10.7: [round()] takes an optional strategy
+                 ([nearest], [up], [down], [to-zero]); when omitted the default
+                 is [nearest]. *)
+              let snap = Cursor.save inner in
+              let strategy =
+                match Cursor.peek_ident inner with
+                | Some (("nearest" | "up" | "down" | "to-zero") as kw) ->
+                    Cursor.skip inner;
+                    Cursor.ws inner;
+                    Cursor.comma inner;
+                    kw
+                | _ ->
+                    Cursor.restore inner snap;
+                    "nearest"
+              in
               let value = read_length ~allow_negative ~with_keywords inner in
               Cursor.ws inner;
               Cursor.comma inner;

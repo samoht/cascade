@@ -8851,9 +8851,92 @@ let rec read_aspect_ratio (t : Cursor.t) : aspect_ratio =
             loop l
           and read_factor inner =
             Cursor.ws inner;
+            (* CSS Values 4 10.7: math functions over numbers reduce to a
+               constant when their arguments are constants. The aspect-ratio
+               context only sees number-typed [calc], so all math reduces here
+               at parse time. *)
+            let read_call name f arity =
+              Cursor.call name inner (fun args ->
+                  let rec collect acc remaining =
+                    if remaining = 0 then List.rev acc
+                    else
+                      let v = read_expr args in
+                      Cursor.ws args;
+                      if remaining > 1 then Cursor.comma args;
+                      collect (v :: acc) (remaining - 1)
+                  in
+                  let vs = collect [] arity in
+                  Cursor.ws args;
+                  Cursor.expect_eof args;
+                  f vs)
+            in
+            let read_var_args name f =
+              Cursor.call name inner (fun args ->
+                  let first = read_expr args in
+                  let rec rest acc =
+                    Cursor.ws args;
+                    if Cursor.peek_comma args then (
+                      Cursor.comma args;
+                      let v = read_expr args in
+                      rest (v :: acc))
+                    else List.rev acc
+                  in
+                  let vs = first :: rest [] in
+                  Cursor.ws args;
+                  Cursor.expect_eof args;
+                  f vs)
+            in
+            let peek_func_name () =
+              match Cursor.peek inner with
+              | Some (Component.Func { node = { name; _ }; _ }) ->
+                  Some (String.lowercase_ascii name)
+              | _ -> None
+            in
             match Cursor.peek_block inner with
             | Some Token.Paren -> Cursor.parens read_expr inner
-            | _ -> Cursor.number inner
+            | _ -> (
+                match peek_func_name () with
+                | Some "abs" ->
+                    read_call "abs" (fun vs -> Float.abs (List.hd vs)) 1
+                | Some "sign" ->
+                    read_call "sign"
+                      (fun vs ->
+                        let x = List.hd vs in
+                        if x > 0. then 1. else if x < 0. then -1. else 0.)
+                      1
+                | Some "sqrt" ->
+                    read_call "sqrt" (fun vs -> Float.sqrt (List.hd vs)) 1
+                | Some "pow" ->
+                    read_call "pow"
+                      (fun vs ->
+                        match vs with [ a; b ] -> a ** b | _ -> assert false)
+                      2
+                | Some "hypot" ->
+                    read_var_args "hypot" (fun vs ->
+                        Float.sqrt
+                          (List.fold_left (fun a x -> a +. (x *. x)) 0. vs))
+                | Some "mod" ->
+                    read_call "mod"
+                      (fun vs ->
+                        match vs with
+                        | [ a; b ] when b <> 0. ->
+                            a -. (Float.floor (a /. b) *. b)
+                        | _ -> Cursor.err inner "mod: divisor is zero")
+                      2
+                | Some "rem" ->
+                    read_call "rem"
+                      (fun vs ->
+                        match vs with
+                        | [ a; b ] when b <> 0. -> Float.rem a b
+                        | _ -> Cursor.err inner "rem: divisor is zero")
+                      2
+                | Some "min" ->
+                    read_var_args "min" (fun vs ->
+                        List.fold_left Float.min infinity vs)
+                | Some "max" ->
+                    read_var_args "max" (fun vs ->
+                        List.fold_left Float.max neg_infinity vs)
+                | _ -> Cursor.number inner)
           in
           read_expr inner)
     else Cursor.number t
