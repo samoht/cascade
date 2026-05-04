@@ -345,6 +345,97 @@ let top_level_arg_count s =
    minified mode: minified strips space after comma, pretty inserts ", ". Walk
    the raw arg string with a paren-depth counter so commas inside nested calls
    are left untouched. *)
+(* Parse a [<number><unit>] dimension, like "1px" or "-.5em". Returns
+   [Some (value, unit)] for a clean numeric dimension, [None] otherwise. *)
+let parse_simple_dimension s : (float * string) option =
+  let s = String.trim s in
+  let len = String.length s in
+  if len = 0 then Option.None
+  else
+    let i = ref 0 in
+    if !i < len && s.[!i] = '-' then incr i;
+    while !i < len && s.[!i] >= '0' && s.[!i] <= '9' do
+      incr i
+    done;
+    if !i < len && s.[!i] = '.' then (
+      incr i;
+      while !i < len && s.[!i] >= '0' && s.[!i] <= '9' do
+        incr i
+      done);
+    if !i = 0 || (!i = 1 && s.[0] = '-') then Option.None
+    else
+      let num_s = String.sub s 0 !i in
+      let unit_s = String.sub s !i (len - !i) in
+      try Option.Some (float_of_string num_s, unit_s) with _ -> Option.None
+
+(* Split [s] on top-level commas, ignoring commas inside nested parens. *)
+let split_top_level_commas s =
+  let parts = ref [] in
+  let buf = Buffer.create 16 in
+  let depth = ref 0 in
+  String.iter
+    (fun c ->
+      match c with
+      | '(' ->
+          incr depth;
+          Buffer.add_char buf c
+      | ')' ->
+          decr depth;
+          Buffer.add_char buf c
+      | ',' when !depth = 0 ->
+          parts := Buffer.contents buf :: !parts;
+          Buffer.clear buf
+      | _ -> Buffer.add_char buf c)
+    s;
+  parts := Buffer.contents buf :: !parts;
+  List.rev !parts
+
+(* Parse one [min()] / [max()] argument: either a simple dimension or a nested
+   [min()] / [max()] that itself reduces to a constant. *)
+let rec parse_min_max_arg s : (float * string) option =
+  let s = String.trim s in
+  match parse_simple_dimension s with
+  | Option.Some _ as r -> r
+  | Option.None ->
+      let len = String.length s in
+      let try_call name op =
+        let prefix = name ^ "(" in
+        let plen = String.length prefix in
+        if
+          len > plen
+          && String.equal (String.sub s 0 plen) prefix
+          && s.[len - 1] = ')'
+        then
+          let inner = String.sub s plen (len - plen - 1) in
+          try_reduce_min_max op inner
+        else Option.None
+      in
+      let m = try_call "min" `Min in
+      if Option.is_some m then m else try_call "max" `Max
+
+and try_reduce_min_max op args : (float * string) option =
+  let parts = split_top_level_commas args in
+  let parsed = List.map parse_min_max_arg parts in
+  if List.exists Option.is_none parsed then Option.None
+  else
+    match List.filter_map (fun x -> x) parsed with
+    | [] -> Option.None
+    | (_, first_unit) :: _ as pairs
+      when List.for_all (fun (_, u) -> u = first_unit) pairs ->
+        let pick =
+          match op with
+          | `Min ->
+              List.fold_left
+                (fun a (b, _) -> if b < a then b else a)
+                infinity pairs
+          | `Max ->
+              List.fold_left
+                (fun a (b, _) -> if b > a then b else a)
+                neg_infinity pairs
+        in
+        Option.Some (pick, first_unit)
+    | _ -> Option.None
+
 let pp_math_call ctx name args =
   Pp.string ctx name;
   Pp.char ctx '(';
@@ -489,6 +580,7 @@ let rec eval_length_calc : length calc -> length calc =
           match length_combine op a b with
           | Some v -> Val v
           | None -> Expr (l, op, r))
+      | Val _, Div, Num 0. -> Expr (l, op, r)
       | Val a, ((Mul | Div) as op), Num n -> (
           match length_scale op a n with
           | Some v -> Val v
@@ -564,6 +656,7 @@ let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
           match lp_combine op a b with
           | Some v -> Val v
           | None -> Expr (l, op, r))
+      | Val _, Div, Num 0. -> Expr (l, op, r)
       | Val a, ((Mul | Div) as op), Num n -> (
           match lp_scale op a n with Some v -> Val v | None -> Expr (l, op, r))
       | Num n, Mul, Val a -> (
@@ -634,6 +727,16 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Thick -> Pp.string ctx "thick"
   | Stretch -> Pp.string ctx "stretch"
   | Clamp s -> pp_math_call ctx "clamp" s
+  | Min s when Pp.minified ctx -> (
+      (* CSS Values 4 10.7: when every argument is a constant length in the same
+         unit, [min()] / [max()] reduce to a single dimension. *)
+      match try_reduce_min_max `Min s with
+      | Some (v, u) -> pp_unit_fn v u
+      | None -> pp_math_call ctx "min" s)
+  | Max s when Pp.minified ctx -> (
+      match try_reduce_min_max `Max s with
+      | Some (v, u) -> pp_unit_fn v u
+      | None -> pp_math_call ctx "max" s)
   | Min s -> pp_math_call ctx "min" s
   | Max s -> pp_math_call ctx "max" s
   | Minmax s -> pp_math_call ctx "minmax" s
