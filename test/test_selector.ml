@@ -1364,7 +1364,7 @@ let spec_selector_l4_pseudo_matrix () =
       ":not(:where(.muted,[hidden]))";
       ":not(:is(.muted,[hidden]))";
       ":has(>:is(img, picture, video))";
-      ":has(+ :is(summary, .summary))";
+      ":has(+:is(summary, .summary))";
       ":where(:modal,:popover-open)";
       "dialog:modal::backdrop";
       "::part(tab)";
