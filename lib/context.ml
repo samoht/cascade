@@ -1614,12 +1614,20 @@ module Match_container = struct
       (function Container.Feature_query f -> Some f | _ -> None)
       q.container_features
 
-  let style_match q ~prop ~value =
+  let style_value = function
+    | Container.Boolean name -> (name, None)
+    | Declaration { name; value } ->
+        (name, Some (Cursor.components_to_string ~trim:true value))
+    | Range _ -> ("", None)
+
+  let style_match q ~query =
+    let prop, value = style_value query in
     List.exists
       (function
-        | Container.Style { name = p; value = v; _ } when String.equal p prop
+        | Container.Style { query = Range _; _ } -> false
+        | Container.Style { query; _ } when String.equal (fst (style_value query)) prop
           -> (
-            match (value, v) with
+            match (value, snd (style_value query)) with
             | None, _ -> true (* any style(prop) match: present in any form *)
             | Some _, None -> false
             | Some asked, Some actual ->
@@ -1627,13 +1635,27 @@ module Match_container = struct
         | _ -> false)
       q.container_features
 
-  let eval_scroll_state q ~prop ~value =
+  let rec eval_scroll_state_query q = function
+    | Container.State { name = prop; value } ->
+        List.exists
+          (function
+            | Container.Scroll_state
+                { query = State { name = p; value = v }; _ } ->
+                String.equal p prop && String.equal v value
+            | _ -> false)
+          q.container_features
+    | Both (a, b) -> eval_scroll_state_query q a && eval_scroll_state_query q b
+    | Either (a, b) -> eval_scroll_state_query q a || eval_scroll_state_query q b
+    | Negated query -> not (eval_scroll_state_query q query)
+
+  let eval_scroll_state q ~query =
     List.exists
       (function
-        | Container.Scroll_state { name = p; value = v; _ } ->
-            String.equal p prop && String.equal v value
+        | Container.Scroll_state { query = actual; _ } ->
+            Stdlib.compare actual query = 0
         | _ -> false)
       q.container_features
+    || eval_scroll_state_query q query
 
   let rec eval q ?name : Container.t -> bool =
     let media_q = { q with media_features = media_features_of q } in
@@ -1645,9 +1667,8 @@ module Match_container = struct
         | Min_width_px px ->
             Match_media.eval media_q (Min_width (float_of_int px))
         | Named (n, inner) -> eval q ~name:n inner
-        | Style { name; value; _ } -> style_match q ~prop:name ~value
-        | Scroll_state { name; value; _ } ->
-            eval_scroll_state q ~prop:name ~value
+        | Style { query; _ } -> style_match q ~query
+        | Scroll_state { query; _ } -> eval_scroll_state q ~query
         | And (a, b) -> eval q a && eval q b
         | Or (a, b) -> eval q a || eval q b
         | Not c -> not (eval q c)
