@@ -130,6 +130,10 @@ val pp_angle : angle Pp.t
 val pp_duration : duration Pp.t
 (** [pp_duration] pretty-prints {!duration} values. *)
 
+val pp_duration_preserve_ms : duration Pp.t
+(** [pp_duration_preserve_ms] pretty-prints {!duration} values without
+    shortening milliseconds to seconds. *)
+
 val pp_number : number Pp.t
 (** [pp_number] pretty-prints {!number} values. *)
 
@@ -305,6 +309,10 @@ val read_angle : Cursor.t -> angle
 
 val read_duration : Cursor.t -> duration
 (** [read_duration t] parses a CSS duration. *)
+
+val read_duration_preserve_ms : Cursor.t -> duration
+(** [read_duration_preserve_ms t] parses a CSS duration without canonicalizing
+    milliseconds to seconds. *)
 
 val read_time : Cursor.t -> duration
 (** [read_time t] parses a CSS time value (can be negative). *)

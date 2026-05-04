@@ -1134,6 +1134,18 @@ let rec pp_duration : duration Pp.t =
   | Var v -> pp_var pp_duration ctx v
   | Calc c -> pp_calc pp_duration_in_calc ctx c
 
+and pp_duration_preserve_ms : duration Pp.t =
+ fun ctx -> function
+  | Ms f -> pp_duration_unit ~shorten_ms:false ctx f "ms"
+  | S f -> pp_duration_unit ctx f "s"
+  | Inherit -> Pp.string ctx "inherit"
+  | Initial -> Pp.string ctx "initial"
+  | Unset -> Pp.string ctx "unset"
+  | Revert -> Pp.string ctx "revert"
+  | Revert_layer -> Pp.string ctx "revert-layer"
+  | Var v -> pp_var pp_duration_preserve_ms ctx v
+  | Calc c -> pp_calc pp_duration_in_calc ctx c
+
 and pp_duration_in_calc : duration Pp.t =
  fun ctx -> function
   | Ms f -> pp_duration_unit ~shorten_ms:false ctx f "ms"
@@ -2437,19 +2449,25 @@ let read_time_number t : duration =
   | _ -> Cursor.err_invalid t ("time unit: " ^ unit)
 
 let rec read_duration_with ?(css_wide = true) ~canonicalize_ms t : duration =
+  let read_duration_self t =
+    read_duration_with ~css_wide ~canonicalize_ms t
+  in
   Cursor.enum_or_calls
     ~default:(read_duration_number ~canonicalize_ms)
     "duration"
     (if css_wide then duration_css_wide else [])
     ~calls:
       [
-        ("var", fun t -> Var (read_var read_duration t));
+        ("var", fun t -> Var (read_var read_duration_self t));
         ("calc", fun t -> Calc (read_calc read_duration_in_calc t));
       ]
     t
 
 (** Read a duration value *)
 and read_duration t : duration = read_duration_with ~canonicalize_ms:true t
+
+and read_duration_preserve_ms t : duration =
+  read_duration_with ~canonicalize_ms:false t
 
 and read_duration_in_calc t : duration =
   read_duration_with ~css_wide:false ~canonicalize_ms:false t
