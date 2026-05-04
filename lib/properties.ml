@@ -2674,6 +2674,10 @@ let rec pp_position_value : position_value Pp.t =
   | Top_right -> Pp.string ctx "right top"
   | Bottom_left -> Pp.string ctx "left bottom"
   | Bottom_right -> Pp.string ctx "right bottom"
+  | XY (a, b) when Pp.minified ctx && a = b ->
+      (* CSS Backgrounds 3 3.6: when x and y agree the single-value form is
+         spec-equivalent. *)
+      pp_length ctx a
   | XY (a, b) ->
       pp_length ctx a;
       Pp.space ctx ();
@@ -2961,6 +2965,23 @@ let rec pp_border_style : border_style Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_border_style ctx v
 
+(* CSS Box 4 7.1: a 1-to-4 value box shorthand ([margin], [padding],
+   [border-radius] sides, [background-position]) collapses when sides repeat. [a
+   a a a] -> [a]; [a b a b] -> [a b]; [a b c b] -> [a b c]. *)
+let collapse_box_shorthand vs =
+  match vs with
+  | [ a; b; c; d ] when a = b && b = c && c = d -> [ a ]
+  | [ a; b; c; d ] when a = c && b = d -> [ a; b ]
+  | [ a; b; c; d ] when b = d -> [ a; b; c ]
+  | [ a; b; c ] when a = b && b = c -> [ a ]
+  | [ a; b; c ] when a = c -> [ a; b ]
+  | [ a; b ] when a = b -> [ a ]
+  | _ -> vs
+
+let pp_box_shorthand pp ctx vs =
+  let vs = if Pp.minified ctx then collapse_box_shorthand vs else vs in
+  Pp.list ~sep:Pp.space pp ctx vs
+
 let rec pp_border_radius : border_radius Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_border_radius ctx v
@@ -2970,14 +2991,14 @@ let rec pp_border_radius : border_radius Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Radius { horizontal; vertical } -> (
-      Pp.list ~sep:Pp.space (pp_length_percentage ~always:true) ctx horizontal;
+      pp_box_shorthand (pp_length_percentage ~always:true) ctx horizontal;
       match vertical with
       | None -> ()
       | Some vs ->
           Pp.sp ctx ();
           Pp.char ctx '/';
           Pp.sp ctx ();
-          Pp.list ~sep:Pp.space (pp_length_percentage ~always:true) ctx vs)
+          pp_box_shorthand (pp_length_percentage ~always:true) ctx vs)
 
 let rec pp_border_width : border_width Pp.t =
  fun ctx -> function
@@ -5276,7 +5297,7 @@ let rec pp_background_size : background_size Pp.t =
   | Var v -> pp_var pp_background_size ctx v
 
 let pp_background_position : background_position Pp.t =
- fun ctx positions -> Pp.list ~sep:Pp.space pp_position_value ctx positions
+ fun ctx positions -> pp_box_shorthand pp_position_value ctx positions
 
 let pp_bg_prop maybe_space pp_func ctx = function
   | Some value ->
@@ -14721,7 +14742,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Border_right_style -> pp pp_border_style
   | Border_bottom_style -> pp pp_border_style
   | Border_left_style -> pp pp_border_style
-  | Padding -> pp (Pp.list ~sep:Pp.space pp_length)
+  | Padding -> pp (pp_box_shorthand pp_length)
   | Padding_left -> pp pp_length
   | Padding_right -> pp pp_length
   | Padding_bottom -> pp pp_length
@@ -14732,7 +14753,7 @@ let pp_property_value : type a. (a property * a) Pp.t =
   | Padding_block -> pp pp_length
   | Padding_block_start -> pp pp_length
   | Padding_block_end -> pp pp_length
-  | Margin -> pp (Pp.list ~sep:Pp.space pp_length)
+  | Margin -> pp (pp_box_shorthand pp_length)
   | Margin_inline_end -> pp pp_length
   | Margin_inline_start -> pp pp_length
   | Margin_left -> pp pp_length
