@@ -24,6 +24,9 @@ let ignored_types =
     (* Internal type for existential variables *)
     "custom_property";
     (* Existential typed custom property value, parsed through declarations. *)
+    "property_value_kind";
+    (* Phantom GADT used to dispatch typed property values; it has no standalone
+       CSS syntax to parse. *)
     "specificity";
     (* Derived selector metric, not a CSS syntax value. *)
     "cascade_origin";
@@ -279,12 +282,18 @@ let invalid_tests tests valid_types expected_test_name =
   |> List.map (fun (n, _, _) -> n)
   |> List.sort_uniq compare
 
-let missing_tests test_names valid_types expected_test_name =
+let file_has_test_helper test_path name : bool =
+  let rex = Re.Perl.compile_pat ("[\\s]*let[\\s]+" ^ name ^ "\\b") in
+  List.exists (fun l -> Re.execp rex l) (Fs.read_lines test_path)
+
+let missing_tests test_file test_names valid_types expected_test_name =
   List.filter
     (fun t ->
       let expected_name = expected_test_name t in
+      let check_name = if t = "t" then "check" else "check_" ^ t in
       (not (List.mem t ignored_types))
-      && not (List.mem expected_name test_names))
+      && (not (List.mem expected_name test_names))
+      && not (file_has_test_helper test_file check_name))
     valid_types
   |> List.map expected_test_name
   |> List.sort_uniq compare
@@ -339,7 +348,7 @@ let check_module_consistency lib_dir test_dir mod_name =
     let expected_test_name t = if t = "t" then mod_name else t in
     let invalid_tests = invalid_tests tests valid_types expected_test_name in
     let missing_tests =
-      missing_tests test_names valid_types expected_test_name
+      missing_tests test_file test_names valid_types expected_test_name
     in
     let wrong_checks = ref [] in
     let missing_neg = ref [] in
@@ -697,7 +706,7 @@ let () =
       let lines = Fs.read_lines path in
       let property_re =
         Re.Perl.compile_pat
-          "^[\\s]*\\|[\\s]+([A-Za-z_][A-Za-z0-9_]*)[\\s]*:[\\s]*([A-Za-z_][A-Za-z0-9_]*.*?)\\s+property"
+          "^[\\s]*\\|[\\s]+([A-Za-z_][A-Za-z0-9_]*)[\\s]*:[\\s]*([A-Za-z_][A-Za-z0-9_]*.*?)\\s+property\\s*$"
       in
       let var_types = extract_var_types path in
 
