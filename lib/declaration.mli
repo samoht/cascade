@@ -776,6 +776,15 @@ val float : float_side -> declaration
 val interactivity : interactivity -> declaration
 (** [interactivity v] is the CSS [interactivity] property. *)
 
+val caret_animation : caret_animation -> declaration
+(** [caret_animation v] is the CSS [caret-animation] property. *)
+
+val caret_shape : caret_shape -> declaration
+(** [caret_shape v] is the CSS [caret-shape] property. *)
+
+val caret : caret -> declaration
+(** [caret v] is the CSS [caret] property. *)
+
 val interest_delay : interest_delay -> declaration
 (** [interest_delay v] is the CSS [interest-delay] property. *)
 
@@ -784,6 +793,18 @@ val interest_delay_start : interest_delay -> declaration
 
 val interest_delay_end : interest_delay -> declaration
 (** [interest_delay_end v] is the CSS [interest-delay-end] property. *)
+
+val nav_up : nav -> declaration
+(** [nav_up v] is the CSS [nav-up] property. *)
+
+val nav_right : nav -> declaration
+(** [nav_right v] is the CSS [nav-right] property. *)
+
+val nav_down : nav -> declaration
+(** [nav_down v] is the CSS [nav-down] property. *)
+
+val nav_left : nav -> declaration
+(** [nav_left v] is the CSS [nav-left] property. *)
 
 val touch_action : touch_action -> declaration
 (** [touch_action v] is the
@@ -1241,6 +1262,41 @@ val text_wrap : text_wrap -> declaration
 
 val text_wrap_mode : text_wrap_mode -> declaration
 (** [text_wrap_mode v] is the CSS [text-wrap-mode] property. *)
+
+val text_underline_position : text_underline_position -> declaration
+(** [text_underline_position v] is the CSS [text-underline-position] property.
+*)
+
+val text_box_edge : text_box_edge -> declaration
+(** [text_box_edge v] is the CSS [text-box-edge] property. *)
+
+val inline_sizing : inline_sizing -> declaration
+(** [inline_sizing v] is the CSS [inline-sizing] property. *)
+
+val line_fit_edge : line_fit_edge -> declaration
+(** [line_fit_edge v] is the CSS [line-fit-edge] property. *)
+
+val interpolate_size : interpolate_size -> declaration
+(** [interpolate_size v] is the CSS [interpolate-size] property. *)
+
+val min_intrinsic_sizing : min_intrinsic_sizing -> declaration
+(** [min_intrinsic_sizing v] is the CSS [min-intrinsic-sizing] property. *)
+
+val ruby_align : ruby_align -> declaration
+(** [ruby_align v] is the CSS [ruby-align] property. *)
+
+val ruby_merge : ruby_merge -> declaration
+(** [ruby_merge v] is the CSS [ruby-merge] property. *)
+
+val ruby_overhang : ruby_overhang -> declaration
+(** [ruby_overhang v] is the CSS [ruby-overhang] property. *)
+
+val ruby_position : ruby_position -> declaration
+(** [ruby_position v] is the CSS [ruby-position] property. *)
+
+val glyph_orientation_vertical : glyph_orientation_vertical -> declaration
+(** [glyph_orientation_vertical v] is the CSS [glyph-orientation-vertical]
+    property. *)
 
 val word_break : word_break -> declaration
 (** [word_break v] is the CSS [word-break] property. *)
