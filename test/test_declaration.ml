@@ -1194,8 +1194,8 @@ let unterminated () =
   check_declaration ~expected:"content:\"abc\"" "content: \"abc";
   check_declaration ~expected:"width:calc(100% - (10px))"
     "width: calc(100% - (10px)";
-  (* Per CSS Color 4 section 1.4 the printer canonicalizes [rgb(0, 0, 0)] to
-     [#000] (4 chars vs 5 for [black]). *)
+  (* Per CSS Color 4 section 1.4 the printer canonicalizes [rgb(0, 0, 0)] to its
+     shortest spec-equivalent hex spelling. *)
   check_declaration ~expected:"color:#000" "color: rgb(0, 0, 0";
   (* A missing semicolon between two declarations in a block remains a parse
      error. *)
