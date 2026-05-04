@@ -391,10 +391,20 @@ let read_font_shorthand_body r =
   loop ();
   !saw_size
 
+let is_system_font_keyword = function
+  | "caption" | "icon" | "menu" | "message-box" | "small-caption" | "status-bar"
+    ->
+      true
+  | _ -> false
+
 let rec read_font_shorthand t =
   let raw = Cursor.consume_to_decl_end ~trim:true t in
   let lower = String.lowercase_ascii raw in
   if is_css_wide_keyword lower then raw
+    (* CSS Fonts 4 2.4: a [font:] declaration may be a single system font
+       keyword like [caption] / [icon] / [menu]. They are bare idents and skip
+       the regular [font-size]-required shorthand structure. *)
+  else if is_system_font_keyword (String.trim lower) then raw
   else
     let is_valid_var () =
       let r = Cursor.of_string raw in
