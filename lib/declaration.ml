@@ -1351,7 +1351,8 @@ let read_custom_property_declaration t : declaration =
      let name_cursor = Cursor.of_string name in
      ignore (read_dashed_ident name_cursor);
      Cursor.expect_eof name_cursor
-   with _ -> Cursor.err_invalid t ("expected <dashed-ident>, got: " ^ name));
+   with Cursor.Parse_error _ ->
+     Cursor.err_invalid t ("expected <dashed-ident>, got: " ^ name));
   Cursor.ws t;
   if not (Cursor.colon t) then Cursor.err_expected t "':'";
   Cursor.ws t;
