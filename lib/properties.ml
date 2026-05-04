@@ -15754,3 +15754,307 @@ let rec read_animation_range t : animation_range =
        (Var (Values.read_var read_animation_range t) : animation_range))
      ~default:read_range t
     : animation_range)
+
+let is_grid_area_ws = function
+  | ' ' | '\t' | '\n' | '\r' | '\012' -> true
+  | _ -> false
+
+let grid_area_row_cells row =
+  let len = String.length row in
+  let rec skip_ws i =
+    if i < len && is_grid_area_ws row.[i] then skip_ws (i + 1) else i
+  in
+  let rec take_cell start i =
+    if i < len && not (is_grid_area_ws row.[i]) then take_cell start (i + 1)
+    else (String.sub row start (i - start), i)
+  in
+  let rec loop acc i =
+    let start = skip_ws i in
+    if start >= len then List.rev acc
+    else
+      let cell, next = take_cell start start in
+      loop (cell :: acc) next
+  in
+  loop [] 0
+
+let grid_area_null_cell cell =
+  let len = String.length cell in
+  len > 0
+  &&
+  let rec loop i = i = len || (cell.[i] = '.' && loop (i + 1)) in
+  loop 0
+
+let validate_grid_area_width t (expected : int option) cells =
+  match expected with
+  | None -> Some (List.length cells)
+  | Some width when List.length cells = width -> expected
+  | Some _ -> Cursor.err_invalid t "grid-template-areas rows differ in width"
+
+let grid_area_positions rows =
+  rows
+  |> List.mapi (fun row cells ->
+         cells
+         |> List.mapi (fun col cell -> (cell, row, col))
+         |> List.filter (fun (cell, _, _) -> not (grid_area_null_cell cell)))
+  |> List.flatten
+
+let grid_area_names positions =
+  positions
+  |> List.fold_left
+       (fun names (cell, _, _) ->
+         if List.mem cell names then names else cell :: names)
+       []
+
+let validate_grid_area_rectangles t rows =
+  let positions = grid_area_positions rows in
+  let cell_at row col = List.nth (List.nth rows row) col in
+  let validate_name name =
+    let coords =
+      positions
+      |> List.filter_map (fun (cell, row, col) ->
+             if cell = name then Some (row, col) else None)
+    in
+    let rows = List.map fst coords in
+    let cols = List.map snd coords in
+    let min_row = List.fold_left min max_int rows in
+    let max_row = List.fold_left max min_int rows in
+    let min_col = List.fold_left min max_int cols in
+    let max_col = List.fold_left max min_int cols in
+    for row = min_row to max_row do
+      for col = min_col to max_col do
+        if cell_at row col <> name then
+          Cursor.err_invalid t
+            "grid-template-areas named area is not rectangular"
+      done
+    done
+  in
+  List.iter validate_name (grid_area_names positions)
+
+let rec read_border_spacing t : border_spacing =
+  Cursor.enum_or_var "border-spacing" []
+    ~var:(fun t -> Var (Values.read_var read_border_spacing t))
+    ~default:(fun t ->
+      (Lengths
+         (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2
+            (read_length ~allow_negative:false)
+            t)
+        : border_spacing))
+    t
+
+let pp_property_value_kind : type a. a property_value_kind Pp.t =
+ fun ctx -> function
+  | Length -> Pp.string ctx "length"
+  | Lengths -> Pp.string ctx "lengths"
+  | Length_percentage -> Pp.string ctx "length-percentage"
+  | Border_width -> Pp.string ctx "border-width"
+  | Border_widths -> Pp.string ctx "border-widths"
+  | Opacity -> Pp.string ctx "opacity"
+  | Rotate -> Pp.string ctx "rotate"
+  | Duration -> Pp.string ctx "duration"
+  | Number_percentage -> Pp.string ctx "number-percentage"
+  | Font_size -> Pp.string ctx "font-size"
+  | Display -> Pp.string ctx "display"
+  | Position -> Pp.string ctx "position"
+  | Visibility -> Pp.string ctx "visibility"
+  | Clear -> Pp.string ctx "clear"
+  | Float -> Pp.string ctx "float"
+  | Scale -> Pp.string ctx "scale"
+  | Translate -> Pp.string ctx "translate"
+  | Transform -> Pp.string ctx "transform"
+  | Animation -> Pp.string ctx "animation"
+  | Transition -> Pp.string ctx "transition"
+  | Filter -> Pp.string ctx "filter"
+  | Shadow -> Pp.string ctx "shadow"
+  | Border_radius -> Pp.string ctx "border-radius"
+  | Color -> Pp.string ctx "color"
+  | Background_image -> Pp.string ctx "background-image"
+  | Background_images -> Pp.string ctx "background-images"
+
+let read_property_value_kind (type a) (_ : Cursor.t) : a property_value_kind =
+  invalid_arg
+    "Properties.read_property_value_kind: property_value_kind is a phantom \
+     GADT and cannot be parsed standalone"
+
+let read_position_visibility_condition t : position_visibility_condition =
+  Cursor.enum "position-visibility"
+    [
+      ("anchors-visible", Anchors_visible);
+      ("no-overflow", (No_overflow : position_visibility_condition));
+    ]
+    t
+
+let read_ray t : ray =
+  Cursor.call "ray" t @@ fun inner ->
+  Cursor.ws inner;
+  let angle = Values.read_angle inner in
+  Cursor.ws inner;
+  let size = Cursor.option read_ray_size inner in
+  Cursor.ws inner;
+  let contain =
+    match Cursor.peek_ident inner with
+    | Some "contain" ->
+        let _ = Cursor.ident inner in
+        true
+    | _ -> false
+  in
+  Cursor.ws inner;
+  let position =
+    match Cursor.peek_ident inner with
+    | Some "at" ->
+        let _ = Cursor.ident inner in
+        Cursor.ws inner;
+        Some (read_position_value inner)
+    | _ -> None
+  in
+  Cursor.ws inner;
+  Cursor.expect_eof inner;
+  { angle; size; contain; position }
+
+let rec read_grid_template_areas t : grid_template_areas =
+  let read_rows t =
+    let rec read_strings (width : int option) rows rendered =
+      Cursor.ws t;
+      match Cursor.string_opt t with
+      | None ->
+          let rows = List.rev rows in
+          if rows = [] then Cursor.err_expected t "grid-template-areas row";
+          validate_grid_area_rectangles t rows;
+          (Areas (String.concat " " (List.rev rendered))
+            : grid_template_areas)
+      | Some s ->
+          let cells = grid_area_row_cells s in
+          if cells = [] then
+            Cursor.err_invalid t "empty grid-template-areas row";
+          let width = validate_grid_area_width t width cells in
+          read_strings width (cells :: rows) (("\"" ^ s ^ "\"") :: rendered)
+    in
+    read_strings (None : int option) [] []
+  in
+  Cursor.enum_or_var "grid-template-areas"
+    [
+      ("none", (No_areas : grid_template_areas));
+      ("inherit", Inherit);
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~var:(fun t ->
+      (Var (Values.read_var read_grid_template_areas t)
+        : grid_template_areas))
+    ~default:read_rows t
+
+let border_image_at_end t = Cursor.is_done t || Cursor.peek_semicolon t
+
+let read_border_image_slice_item t : border_image_slice_item =
+  match Cursor.percentage_opt t with
+  | Some n when n >= 0. -> Pct n
+  | Some _ -> Cursor.err_invalid t "border-image value cannot be negative"
+  | None -> (
+      match Cursor.number_opt t with
+      | Some n when n >= 0. -> Number n
+      | Some _ -> Cursor.err_invalid t "border-image value cannot be negative"
+      | None -> Cursor.err_expected t "border-image slice")
+
+let read_border_image_slice t : border_image_slice =
+  let rec loop values has_fill =
+    Cursor.ws t;
+    if border_image_at_end t || Cursor.peek_delim t = Some '/' then
+      (values, has_fill)
+    else
+      match Cursor.peek_ident t with
+      | Some "fill" ->
+          if has_fill then
+            Cursor.err_invalid t "duplicate border-image fill keyword";
+          let _ = Cursor.ident t in
+          loop values true
+      | _ -> (
+          match Cursor.option read_border_image_slice_item t with
+          | Some value ->
+              if List.length values >= 4 then
+                Cursor.err_invalid t "too many border-image slice values";
+              loop (value :: values) has_fill
+          | None -> (values, has_fill))
+  in
+  let values, has_fill = loop [] false in
+  match (List.rev values, has_fill) with
+  | [], true -> Cursor.err_invalid t "border-image fill requires slice values"
+  | [], false -> Cursor.err_expected t "border-image slice"
+  | offsets, fill -> { offsets; fill }
+
+let read_border_image_width_item t : border_image_width_item =
+  match Cursor.peek_ident t with
+  | Some "auto" ->
+      ignore (Cursor.ident t : string);
+      Auto
+  | _ -> (
+      match Cursor.percentage_opt t with
+      | Some n when n >= 0. -> Pct n
+      | Some _ -> Cursor.err_invalid t "border-image value cannot be negative"
+      | None -> (
+          match Cursor.number_opt t with
+          | Some n when n >= 0. -> Number n
+          | Some _ ->
+              Cursor.err_invalid t "border-image value cannot be negative"
+          | None ->
+              let len = read_length ~allow_negative:false t in
+              Length len))
+
+let read_border_image_outset_item t : border_image_outset_item =
+  match Cursor.number_opt t with
+  | Some n when n >= 0. -> Number n
+  | Some _ -> Cursor.err_invalid t "border-image value cannot be negative"
+  | None ->
+      let len = read_length ~allow_negative:false t in
+      Length len
+
+let read_border_image_box_values ~what read_item t =
+  let rec loop acc =
+    Cursor.ws t;
+    if border_image_at_end t || Cursor.peek_delim t = Some '/' then List.rev acc
+    else
+      match Cursor.option read_item t with
+      | Some value ->
+          if List.length acc >= 4 then
+            Cursor.err_invalid t ("too many border-image " ^ what ^ " values");
+          loop (value :: acc)
+      | None -> List.rev acc
+  in
+  match loop [] with
+  | [] -> Cursor.err_expected t ("border-image " ^ what)
+  | values -> values
+
+let read_border_image_repeat t =
+  let first = read_border_image_repeat_keyword t in
+  Cursor.ws t;
+  match Cursor.option read_border_image_repeat_keyword t with
+  | None -> [ first ]
+  | Some second -> [ first; second ]
+
+let read_border_image t : border_image =
+  let source = Cursor.option read_background_image t in
+  Cursor.ws t;
+  let slice = Cursor.option read_border_image_slice t in
+  let width, outset =
+    Cursor.ws t;
+    if Cursor.slash_opt t then (
+      let width =
+        Some
+          (read_border_image_box_values ~what:"width"
+             read_border_image_width_item t)
+      in
+      Cursor.ws t;
+      if Cursor.slash_opt t then
+        ( width,
+          Some
+            (read_border_image_box_values ~what:"outset"
+               read_border_image_outset_item t) )
+      else (width, None))
+    else (None, None)
+  in
+  Cursor.ws t;
+  let repeat = Cursor.option read_border_image_repeat t in
+  (match (source, slice) with
+  | None, None -> Cursor.err_expected t "border-image source or slice"
+  | _ -> ());
+  { source; slice; width; outset; repeat }
