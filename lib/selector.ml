@@ -765,9 +765,11 @@ let pp_nth : nth Pp.t =
  fun ctx -> function
   (* Source-shape preserving: the parser keeps [Odd]/[Even] for the keyword
      spellings and [An_plus_b (2, 1)] / [An_plus_b (2, 0)] for the explicit An+B
-     forms, so the printer just emits whichever the author actually wrote.
-     Callers that want one canonical spelling can construct that variant
-     directly. *)
+     forms, so the printer just emits whichever the author actually wrote in
+     pretty mode. Under minify, CSS Selectors 4 14 makes [2n+1]/[odd] and
+     [2n]/[even] spec-equivalent; pick the shorter spelling. *)
+  | An_plus_b (2, 1) when Pp.minified ctx -> Pp.string ctx "odd"
+  | Even when Pp.minified ctx -> Pp.string ctx "2n"
   | Odd -> Pp.string ctx "odd"
   | Even -> Pp.string ctx "even"
   | Index n -> Pp.int ctx n
@@ -1771,6 +1773,17 @@ and pp : t Pp.t =
   | Where selectors -> func ctx "where" sels selectors
   | Not selectors -> func ctx "not" sels selectors
   | Has selectors -> func ctx "has" sels_nested_function_lists selectors
+  | Nth_child (Index 1, None) when Pp.minified ctx ->
+      (* CSS Selectors 4 14: [:nth-child(1)] is spec-equivalent to
+         [:first-child]; the keyword form is shorter. *)
+      Pp.string ctx ":first-child"
+  | Nth_last_child (Index 1, None) when Pp.minified ctx ->
+      (* Likewise [:nth-last-child(1)] is [:last-child]. *)
+      Pp.string ctx ":last-child"
+  | Nth_of_type (Index 1, None) when Pp.minified ctx ->
+      Pp.string ctx ":first-of-type"
+  | Nth_last_of_type (Index 1, None) when Pp.minified ctx ->
+      Pp.string ctx ":last-of-type"
   | Nth_child (expr, of_sel) -> pp_nth_func ctx "nth-child" expr of_sel
   | Nth_last_child (expr, of_sel) ->
       pp_nth_func ctx "nth-last-child" expr of_sel
