@@ -344,8 +344,7 @@ let rec pp ctx = function
   | Scripting `Initial_only -> pp_named_feature ctx "scripting" "initial-only"
   | Scripting `Enabled -> pp_named_feature ctx "scripting" "enabled"
   | Nav_controls `None -> pp_named_feature ctx "nav-controls" "none"
-  | Nav_controls `Back_button ->
-      pp_named_feature ctx "nav-controls" "back-button"
+  | Nav_controls `Back_button -> pp_named_feature ctx "nav-controls" "back"
   | Print -> Pp.string ctx "print"
   | Orientation `Portrait -> pp_named_feature ctx "orientation" "portrait"
   | Orientation `Landscape -> pp_named_feature ctx "orientation" "landscape"
@@ -403,6 +402,12 @@ let to_string t = Pp.to_string pp t
 
 (* A lightweight character scanner sufficient for media-query syntax. *)
 type scanner = { s : string; mutable pos : int }
+
+type recovery_scope = Branch | Query_list
+
+exception Parse_error of recovery_scope * string
+
+let parse_error ?(scope = Branch) reason = raise (Parse_error (scope, reason))
 
 let mk_scanner s = { s = String.trim s; pos = 0 }
 let at_end sc = sc.pos >= String.length sc.s
@@ -666,29 +671,104 @@ let starts_with ~prefix s =
   let len = String.length prefix in
   String.length s >= len && String.sub s 0 len = prefix
 
+let range_feature_name name =
+  match String.lowercase_ascii name with
+  | "width" | "height" | "inline-size" | "block-size" | "aspect-ratio"
+  | "resolution" | "color" | "color-index" | "monochrome"
+  | "horizontal-viewport-segments" | "vertical-viewport-segments" ->
+      true
+  | _ -> false
+
+let prefixed_range_feature_name name =
+  let name = String.lowercase_ascii name in
+  if starts_with ~prefix:"min-" name || starts_with ~prefix:"max-" name then
+    let base = String.sub name 4 (String.length name - 4) in
+    Some base
+  else None
+
 let validate_plain_feature name value =
+  let plain_name =
+    match prefixed_range_feature_name name with
+    | Some base when range_feature_name base -> base
+    | Some _ -> name
+    | None -> name
+  in
+  let valid_numeric_value name value =
+    match (String.lowercase_ascii name, value) with
+    | ("width" | "height" | "inline-size" | "block-size"), Length _ -> true
+    | "aspect-ratio", Ratio _ -> true
+    | "resolution", Resolution_value _ -> true
+    | "resolution", Ident s -> String.lowercase_ascii s = "infinite"
+    | ("color" | "color-index" | "monochrome"), Integer n -> n >= 0
+    | ( "horizontal-viewport-segments" | "vertical-viewport-segments" ),
+      Integer n ->
+        n >= 0
+    | _ -> false
+  in
+  let valid_plain_numeric_value name value =
+    match (String.lowercase_ascii name, value) with
+    | ( "width" | "height" | "min-width" | "max-width" | "inline-size"
+      | "block-size" ),
+      Length _ ->
+        true
+    | "aspect-ratio", Ratio _ -> true
+    | "resolution", Resolution_value _ -> true
+    | "resolution", Ident s -> String.lowercase_ascii s = "infinite"
+    | ("color" | "color-index" | "monochrome"), Integer n -> n >= 0
+    | "grid", Integer (0 | 1) -> true
+    | ( "horizontal-viewport-segments" | "vertical-viewport-segments" ),
+      Integer n ->
+        n >= 0
+    | _ -> false
+  in
   let ident_value =
     match value with Ident s -> Some (String.lowercase_ascii s) | _ -> None
   in
   let one_of values =
     match ident_value with Some s -> List.mem s values | None -> false
   in
-  match String.lowercase_ascii name with
+  match prefixed_range_feature_name name with
+  | Some base when range_feature_name base -> valid_numeric_value base value
+  | Some _ -> false
+  | None -> (
+  match String.lowercase_ascii plain_name with
+  | "width" | "height" | "min-width" | "max-width" | "inline-size"
+  | "block-size" | "aspect-ratio" | "resolution" | "color" | "color-index"
+  | "monochrome" | "grid" | "horizontal-viewport-segments"
+  | "vertical-viewport-segments" ->
+      valid_plain_numeric_value name value
   | "orientation" -> one_of [ "portrait"; "landscape" ]
   | "hover" | "any-hover" -> one_of [ "none"; "hover" ]
   | "pointer" | "any-pointer" -> one_of [ "none"; "coarse"; "fine" ]
   | "update" -> one_of [ "none"; "slow"; "fast" ]
-  | "overflow-block" | "overflow-inline" ->
-      one_of [ "none"; "scroll"; "optional-paged"; "paged" ]
-  | "color-gamut" -> one_of [ "srgb"; "p3"; "rec2020" ]
+  | "overflow-block" -> one_of [ "none"; "scroll"; "paged" ]
+  | "overflow-inline" -> one_of [ "none"; "scroll" ]
+  | "scan" -> one_of [ "interlace"; "progressive" ]
+  | "color-gamut" | "video-color-gamut" -> one_of [ "srgb"; "p3"; "rec2020" ]
   | "dynamic-range" | "video-dynamic-range" -> one_of [ "standard"; "high" ]
+  | "display-mode" ->
+      one_of
+        [
+          "fullscreen";
+          "standalone";
+          "minimal-ui";
+          "browser";
+          "picture-in-picture";
+        ]
+  | "environment-blending" -> one_of [ "opaque"; "additive"; "subtractive" ]
   | "prefers-color-scheme" -> one_of [ "light"; "dark" ]
   | "prefers-reduced-motion" | "prefers-reduced-transparency"
   | "prefers-reduced-data" ->
       one_of [ "no-preference"; "reduce" ]
   | "prefers-contrast" -> one_of [ "no-preference"; "less"; "more"; "custom" ]
   | "forced-colors" -> one_of [ "none"; "active" ]
-  | _ -> true
+  | "inverted-colors" -> one_of [ "none"; "inverted" ]
+  | "nav-controls" -> one_of [ "none"; "back" ]
+  | "scripting" -> one_of [ "none"; "initial-only"; "enabled" ]
+  | _ -> true)
+
+let validate_range_feature name value =
+  range_feature_name name && validate_plain_feature name value
 
 (* Smart constructor for [Plain] features: rejects values that
    {!validate_plain_feature} reports as outside the feature's grammar (e.g.
@@ -719,16 +799,22 @@ let parse_inside_parens content : feature option =
             match read_cmp sc with
             | Some op2 -> (
                 skip_ws sc;
-                match read_value sc with
-                | Some v2 ->
+                  match read_value sc with
+                  | Some v2 ->
                     skip_ws sc;
-                    if at_end sc && interval_ops_compatible op1 op2 then
+                    if
+                      at_end sc && interval_ops_compatible op1 op2
+                      && validate_range_feature name v1
+                      && validate_range_feature name v2
+                    then
                       Some (Interval (v1, op1, name, op2, v2))
                     else None
                 | None -> None)
             | None ->
                 skip_ws sc;
-                if at_end sc then Some (Range_rev (v1, op1, name)) else None)
+                if at_end sc && validate_range_feature name v1 then
+                  Some (Range_rev (v1, op1, name))
+                else None)
       | None ->
           sc.pos <- mark;
           None)
@@ -773,7 +859,9 @@ let parse_feature_in_parens content =
                   match read_cmp sc with
                   | None ->
                       skip_ws sc;
-                      if at_end sc then Some (Range (id, op, v2)) else None
+                      if at_end sc && validate_range_feature id v2 then
+                        Some (Range (id, op, v2))
+                      else None
                   | Some _ -> None)
               | None -> None)
           | None -> None))
@@ -855,89 +943,149 @@ let medium_of_ident s : medium =
   | "print" -> Print
   | other -> Other other
 
-let parse_single_query sc =
-  skip_ws sc;
-  if at_end sc then failwith "empty media query"
-  else
-    let starts_with_paren = peek sc = Some '(' in
-    let starts_with_not =
-      lookahead_ident sc "not"
-      &&
-      let p = sc.pos + 3 in
-      let len = String.length sc.s in
-      let rec next_non_ws i =
-        if i >= len then None
-        else
-          let c = sc.s.[i] in
-          if c = ' ' || c = '\t' then next_non_ws (i + 1) else Some c
-      in
-      next_non_ws p = Some '('
-    in
-    if starts_with_paren || starts_with_not then Cond (parse_condition sc)
-    else
-      let prefix =
-        if lookahead_ident sc "not" then (
-          consume_keyword sc "not";
-          skip_ws sc;
-          Some Not)
-        else if lookahead_ident sc "only" then (
-          consume_keyword sc "only";
-          skip_ws sc;
-          Some Only)
-        else None
-      in
-      let id = read_ident sc in
-      if id = "" then failwith "expected media type or condition"
-      else
-        let type_ = medium_of_ident id in
-        skip_ws sc;
-        if at_end sc || peek sc = Some ',' then
-          Type { prefix; type_; trailing = None }
-        else if lookahead_ident sc "and" then (
-          consume_keyword sc "and";
-          let cond = parse_in_parens sc in
-          let cond = chain sc cond in
-          Type { prefix; type_; trailing = Some cond })
-        else
-          failwith
-            (String.concat ""
-               [
-                 "expected 'and' or end of query after media type, got: ";
-                 String.sub sc.s sc.pos (String.length sc.s - sc.pos);
-               ])
+let is_reserved_media_type_keyword s =
+  match String.lowercase_ascii s with
+  | "and" | "or" -> true
+  | _ -> false
 
-let parse_query_str s =
-  let sc = mk_scanner s in
-  let first = parse_single_query sc in
-  skip_ws sc;
-  if at_end sc then first
-  else if peek sc = Some ',' then (
-    let rec loop acc =
-      match peek sc with
-      | Some ',' ->
-          advance sc;
-          let q = parse_single_query sc in
-          skip_ws sc;
-          loop (q :: acc)
-      | _ -> List.rev acc
+(* [<media-query>] starts as [<media-condition>] (rather than as a media
+   type) when its first non-space token is '(' or "not (". *)
+let starts_with_condition sc =
+  if peek sc = Some '(' then true
+  else if lookahead_ident sc "not" then
+    let p = sc.pos + 3 in
+    let len = String.length sc.s in
+    let rec next_non_ws i =
+      if i >= len then None
+      else
+        let c = sc.s.[i] in
+        if c = ' ' || c = '\t' then next_non_ws (i + 1) else Some c
     in
-    let rest = loop [] in
+    next_non_ws p = Some '('
+  else false
+
+let read_query_prefix sc =
+  if lookahead_ident sc "not" then (
+    consume_keyword sc "not";
     skip_ws sc;
-    if not (at_end sc) then
+    Some Not)
+  else if lookahead_ident sc "only" then (
+    consume_keyword sc "only";
+    skip_ws sc;
+    Some Only)
+  else None
+
+let read_media_type_query sc =
+  let prefix = read_query_prefix sc in
+  (match prefix with
+  | Some _ when lookahead_ident sc "not" || lookahead_ident sc "only" ->
+      parse_error ~scope:Query_list "duplicate media query prefix"
+  | _ -> ());
+  let id = read_ident sc in
+  if id = "" then failwith "expected media type or condition"
+  else if is_reserved_media_type_keyword id then
+    failwith "reserved media condition keyword cannot be a media type"
+  else
+    let type_ = medium_of_ident id in
+    skip_ws sc;
+    if at_end sc || peek sc = Some ',' then
+      Type { prefix; type_; trailing = None }
+    else if lookahead_ident sc "and" then (
+      consume_keyword sc "and";
+      let cond = parse_in_parens sc in
+      let cond = chain sc cond in
+      Type { prefix; type_; trailing = Some cond })
+    else
       failwith
         (String.concat ""
            [
-             "trailing content in media query: ";
+             "expected 'and' or end of query after media type, got: ";
              String.sub sc.s sc.pos (String.length sc.s - sc.pos);
-           ]);
-    List (first :: rest))
+           ])
+
+let parse_single_query sc =
+  skip_ws sc;
+  if at_end sc then failwith "empty media query"
+  else if starts_with_condition sc then Cond (parse_condition sc)
+  else read_media_type_query sc
+
+let not_all_query : query = Type { prefix = Some Not; type_ = All; trailing = None }
+
+let skip_recovery_branch sc =
+  let depth = ref 0 in
+  let continue = ref true in
+  while (not (at_end sc)) && !continue do
+    match peek sc with
+    | Some '(' ->
+        incr depth;
+        advance sc
+    | Some ')' ->
+        if !depth > 0 then decr depth;
+        advance sc
+    | Some ',' when !depth = 0 -> continue := false
+    | Some _ -> advance sc
+    | None -> continue := false
+  done
+
+let parse_query_branch ~recover ~recovered_at_eof sc =
+  let mark = sc.pos in
+  try
+    let query = parse_single_query sc in
+    skip_ws sc;
+    match peek sc with
+    | None | Some ',' -> query
+    | _ -> failwith "trailing content in media query branch"
+  with
+  | Parse_error (scope, reason) ->
+      if not recover then raise (Failure reason);
+      if scope = Query_list then sc.pos <- String.length sc.s
+      else (
+        sc.pos <- mark;
+        skip_recovery_branch sc);
+      skip_ws sc;
+      if at_end sc then recovered_at_eof := true;
+      not_all_query
+  | Failure _ ->
+      if not recover then raise (Failure "invalid media query branch");
+      sc.pos <- mark;
+      skip_recovery_branch sc;
+      skip_ws sc;
+      if at_end sc then recovered_at_eof := true;
+      not_all_query
+
+let trailing_content_failure sc =
+  failwith
+    (String.concat ""
+       [
+         "trailing content in media query: ";
+         String.sub sc.s sc.pos (String.length sc.s - sc.pos);
+       ])
+
+let parse_query_str ?(recover = true) s : query =
+  let sc = mk_scanner s in
+  if at_end sc then (List [] : query)
   else
-    failwith
-      (String.concat ""
-         [
-           "trailing content in media query: ";
-           String.sub sc.s sc.pos (String.length sc.s - sc.pos);
-         ])
+    let recovered_at_eof = ref false in
+    let branch () = parse_query_branch ~recover ~recovered_at_eof sc in
+    let first = branch () in
+    skip_ws sc;
+    if at_end sc then first
+    else if peek sc = Some ',' then (
+      let rec loop acc =
+        match peek sc with
+        | Some ',' ->
+            advance sc;
+            skip_ws sc;
+            let q = branch () in
+            skip_ws sc;
+            loop (q :: acc)
+        | _ -> List.rev acc
+      in
+      let rest = loop [] in
+      skip_ws sc;
+      if not (at_end sc) then trailing_content_failure sc;
+      if !recovered_at_eof then not_all_query else List (first :: rest))
+    else trailing_content_failure sc
 
 let normalise_preference_value name s =
   match name with
@@ -1011,7 +1159,7 @@ let normalise_capability_value name s =
   | "nav-controls" -> (
       match s with
       | "none" -> Some (Nav_controls `None)
-      | "back-button" -> Some (Nav_controls `Back_button)
+      | "back" -> Some (Nav_controls `Back_button)
       | _ -> None)
   | "orientation" -> (
       match s with
@@ -1100,7 +1248,7 @@ let rec feature_to_t : feature -> t = function
   | Plain (name, value) -> (
       match normalise_value name value with
       | Some t -> t
-      | None -> Range (name, Eq, value))
+      | None -> Plain (name, value))
   | Boolean name -> (Boolean name : t)
   | Range (name, op, value) -> Range (name, op, value)
   | Range_rev (value, op, name) -> Range_rev (value, op, name)
@@ -1129,6 +1277,13 @@ let rec collapse_query (q : query) : t =
   | List qs -> List (List.map collapse_query qs)
 
 let of_string s = collapse_query (parse_query_str s)
+let of_string_strict s = collapse_query (parse_query_str ~recover:false s)
+
+let of_function_body s =
+  match parse_feature_in_parens s with
+  | Some feature -> feature_to_t feature
+  | None -> of_string s
+
 let feature name value : t = feature_to_t (plain_feature name value)
 let boolean name : t = feature_to_t (Boolean name : feature)
 
