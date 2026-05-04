@@ -2657,6 +2657,22 @@ let rec pp_position_value : position_value Pp.t =
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
+  (* CSS Backgrounds 3 3.6: each position keyword resolves to a [<percentage>];
+     under minify emit the numeric form so the [box_shorthand] collapse can fold
+     equal axes to a single value. *)
+  | Center when Pp.minified ctx -> Pp.string ctx "50%"
+  | Top when Pp.minified ctx -> Pp.char ctx '0'
+  | Bottom when Pp.minified ctx -> Pp.string ctx "100%"
+  | Left when Pp.minified ctx -> Pp.char ctx '0'
+  | Right when Pp.minified ctx -> Pp.string ctx "100%"
+  | (Left_top | Top_left) when Pp.minified ctx -> Pp.char ctx '0'
+  | (Right_bottom | Bottom_right) when Pp.minified ctx -> Pp.string ctx "100%"
+  | (Left_bottom | Bottom_left) when Pp.minified ctx -> Pp.string ctx "0 100%"
+  | (Right_top | Top_right) when Pp.minified ctx -> Pp.string ctx "100% 0"
+  | Left_center when Pp.minified ctx -> Pp.string ctx "0 50%"
+  | Right_center when Pp.minified ctx -> Pp.string ctx "100% 50%"
+  | Center_top when Pp.minified ctx -> Pp.string ctx "50% 0"
+  | Center_bottom when Pp.minified ctx -> Pp.string ctx "50% 100%"
   | Center -> Pp.string ctx "center"
   | Top -> Pp.string ctx "top"
   | Bottom -> Pp.string ctx "bottom"
@@ -2670,10 +2686,10 @@ let rec pp_position_value : position_value Pp.t =
   | Right_bottom -> Pp.string ctx "right bottom"
   | Center_top -> Pp.string ctx "center top"
   | Center_bottom -> Pp.string ctx "center bottom"
-  | Top_left -> Pp.string ctx "left top"
-  | Top_right -> Pp.string ctx "right top"
-  | Bottom_left -> Pp.string ctx "left bottom"
-  | Bottom_right -> Pp.string ctx "right bottom"
+  | Top_left -> Pp.string ctx "top left"
+  | Top_right -> Pp.string ctx "top right"
+  | Bottom_left -> Pp.string ctx "bottom left"
+  | Bottom_right -> Pp.string ctx "bottom right"
   | XY (a, b) when Pp.minified ctx && a = b ->
       (* CSS Backgrounds 3 3.6: when x and y agree the single-value form is
          spec-equivalent. *)
@@ -12979,15 +12995,26 @@ module Position_value = struct
     | _ -> ());
     Cursor.ws t;
     let second = read_keyword t in
+    (* Preserve the source-level order of the two keywords; the AST has both a
+       [horizontal_then_vertical] and [vertical_then_horizontal] variant per
+       pair, and the printer emits them in their source spelling. *)
     match (first, second) with
-    | Left, Top | Top, Left -> Left_top
-    | Left, Center | Center, Left -> Left_center
-    | Left, Bottom | Bottom, Left -> Left_bottom
-    | Right, Top | Top, Right -> Right_top
-    | Right, Center | Center, Right -> Right_center
-    | Right, Bottom | Bottom, Right -> Right_bottom
-    | Center, Top | Top, Center -> Center_top
-    | Center, Bottom | Bottom, Center -> Center_bottom
+    | Left, Top -> Left_top
+    | Top, Left -> Top_left
+    | Left, Center -> Left_center
+    | Center, Left -> Left_center
+    | Left, Bottom -> Left_bottom
+    | Bottom, Left -> Bottom_left
+    | Right, Top -> Right_top
+    | Top, Right -> Top_right
+    | Right, Center -> Right_center
+    | Center, Right -> Right_center
+    | Right, Bottom -> Right_bottom
+    | Bottom, Right -> Bottom_right
+    | Center, Top -> Center_top
+    | Top, Center -> Center_top
+    | Center, Bottom -> Center_bottom
+    | Bottom, Center -> Center_bottom
     | Center, Center -> Center
     | _ -> Cursor.err_invalid t "invalid position keyword combination"
 
@@ -14155,6 +14182,7 @@ module Transform_origin = struct
     | [ Center; Bottom ] -> Center_bottom
     | [ Bottom; Center ] ->
         Center_bottom (* center can be horizontal, bottom is vertical *)
+    | [ Center; Center ] -> Center
     | _ -> err_invalid_value t "transform-origin" "invalid keyword combination"
 
   let read_keywords t =
