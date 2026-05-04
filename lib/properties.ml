@@ -5062,9 +5062,13 @@ and pp_transforms : transform list Pp.t =
   let rec loop prev = function
     | [] -> ()
     | x :: rest ->
-        (* Only skip space when both prev and current are Var *)
-        if not (is_transform_var prev && is_transform_var x) then
-          Pp.space ctx ();
+        (* CSS Transforms 1: chained transform functions are separated by
+           whitespace in the source. The closing [)] and following [(] serve as
+           token boundaries, so under minify the space is redundant. [Var]
+           adjacencies always need a space because var fallback parsing is
+           whitespace-sensitive. *)
+        if is_transform_var prev && is_transform_var x then Pp.space ctx ()
+        else Pp.sp ctx ();
         pp_transform ctx x;
         loop x rest
   in
