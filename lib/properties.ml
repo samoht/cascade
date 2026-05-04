@@ -2019,7 +2019,7 @@ let rec read_caret t : caret =
     ~default:read_caret_shorthand t
 
 let read_non_negative_duration t =
-  match Values.read_duration t with
+  match Values.read_duration_preserve_ms t with
   | Ms f when f < 0. -> Cursor.err_invalid t "negative duration"
   | S f when f < 0. -> Cursor.err_invalid t "negative duration"
   | duration -> duration
@@ -6477,7 +6477,8 @@ let rec pp_caret : caret Pp.t =
 let rec pp_interest_delay : interest_delay Pp.t =
  fun ctx -> function
   | Normal -> Pp.string ctx "normal"
-  | Durations durations -> Pp.list ~sep:Pp.space pp_duration ctx durations
+  | Durations durations ->
+      Pp.list ~sep:Pp.space pp_duration_preserve_ms ctx durations
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -8938,7 +8939,8 @@ let read_text_box_edge_value t : text_box_edge =
   in
   match keywords with
   | [ Text ] | [ Ideographic_ink ] -> Edge (List.hd keywords, None)
-  | [ ((Cap | Ex) as first); ((Alphabetic | Text) as second) ] ->
+  | [ ((Cap | Ex) as first); ((Alphabetic | Text) as second) ]
+  | [ Text as first; ((Alphabetic | Ideographic) as second) ] ->
       Edge (first, Some second)
   | _ -> Cursor.err_invalid t "text-box-edge"
 
@@ -9023,7 +9025,8 @@ let rec read_line_fit_edge t : line_fit_edge =
       match keywords with
       | [ Leading ] | [ Text ] | [ Ideographic_ink ] ->
           (Edge (List.hd keywords, None) : line_fit_edge)
-      | [ ((Cap | Ex) as first); ((Alphabetic | Text) as second) ] ->
+      | [ ((Cap | Ex) as first); ((Alphabetic | Text) as second) ]
+      | [ Text as first; Alphabetic as second ] ->
           Edge (first, Some second)
       | _ -> Cursor.err_invalid t "line-fit-edge")
     t
@@ -10115,15 +10118,21 @@ let rec read_image_resolution (t : Cursor.t) : image_resolution =
       | Some "from-image" ->
           if List.mem `From_image parts then
             Cursor.err_invalid t "duplicate from-image";
+          if parts <> [] || Option.is_some resolution then
+            Cursor.err_invalid t "from-image must precede image resolution";
           ignore (Cursor.ident t : string);
           loop (`From_image :: parts) resolution
       | Some "snap" ->
           if List.mem `Snap parts then Cursor.err_invalid t "duplicate snap";
+          if (not (List.mem `From_image parts)) && Option.is_none resolution
+          then Cursor.err_invalid t "snap must follow image resolution";
           ignore (Cursor.ident t : string);
           loop (`Snap :: parts) resolution
       | _ -> (
           match (resolution, Cursor.peek t) with
           | None, Some (Component.Preserved { kind = Token.Dimension _; _ }) ->
+              if List.mem `Snap parts then
+                Cursor.err_invalid t "image resolution must precede snap";
               let resolution = Some (read_resolution t) in
               loop parts resolution
           | Some _, Some (Component.Preserved { kind = Token.Dimension _; _ })
@@ -10531,7 +10540,9 @@ let read_timeline_inset_item t : timeline_inset_item =
   Cursor.enum "timeline-inset item"
     [ ("auto", (Auto : timeline_inset_item)) ]
     ~default:(fun t ->
-      (Length (read_length_percentage t) : timeline_inset_item))
+      (Length
+         (read_length_percentage ~allow_negative:false ~with_keywords:false t)
+        : timeline_inset_item))
     t
 
 let rec read_timeline_inset t : timeline_inset =
@@ -15436,6 +15447,11 @@ let read_margin_trim_edge t : margin_trim_edge =
     t
 
 let rec read_font_size_adjust t : font_size_adjust =
+  let read_non_negative_number t =
+    let n = Cursor.number t in
+    if n < 0. then Cursor.err_invalid t "font-size-adjust must be non-negative";
+    n
+  in
   let read_metric_value t =
     let metric = read_font_size_adjust_metric t in
     Cursor.ws t;
@@ -15443,7 +15459,7 @@ let rec read_font_size_adjust t : font_size_adjust =
     | Some "from-font" ->
         let _ = Cursor.ident t in
         Metric_from_font metric
-    | _ -> Metric_number (metric, Cursor.number t)
+    | _ -> Metric_number (metric, read_non_negative_number t)
   in
   Cursor.enum_or_var "font-size-adjust"
     [
@@ -15459,7 +15475,7 @@ let rec read_font_size_adjust t : font_size_adjust =
     ~default:(fun t ->
       match Cursor.peek_ident t with
       | Some _ -> read_metric_value t
-      | None -> Number (Cursor.number t))
+      | None -> Number (read_non_negative_number t))
     t
 
 let rec read_initial_letter t : initial_letter =
