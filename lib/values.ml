@@ -200,9 +200,9 @@ let pp_calc_op : calc_op Pp.t =
       Pp.string ctx "*";
       Pp.space_if_pretty ctx ()
   | Div ->
-      (* CSS Values 4 10.7: keep spaces around [/] even under minify so a
-         non-reducing [calc(1px / 0)] stays unambiguous. *)
-      Pp.string ctx " / "
+      Pp.space_if_pretty ctx ();
+      Pp.string ctx "/";
+      Pp.space_if_pretty ctx ()
 
 let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
  fun pp_value ctx calc ->

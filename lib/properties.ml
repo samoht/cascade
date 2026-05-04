@@ -15328,11 +15328,40 @@ let pp_property_value : type a. (a property * a) Pp.t =
       (* The font shorthand is captured as a raw string by
          [read_font_shorthand]; re-tokenise it through the component parser so
          the minifier can drop optional whitespace (e.g. the space after the
-         comma in ["Brand", serif]). *)
+         comma in ["Brand", serif]). [bold] is the only font-weight keyword that
+         is unambiguous inside the shorthand (no other longhand spells it), so
+         under minify a whole-token [bold] is rewritten to [700] per CSS Fonts 4
+         5.1.2. *)
       let rendered =
         if Pp.minified ctx then
           Parser.to_string_minified (Cursor.remaining (Cursor.of_string value))
         else value
+      in
+      let rendered =
+        if not (Pp.minified ctx) then rendered
+        else
+          let len = String.length rendered in
+          let buf = Buffer.create len in
+          let is_word_char c =
+            (c >= 'a' && c <= 'z')
+            || (c >= 'A' && c <= 'Z')
+            || (c >= '0' && c <= '9')
+            || c = '-' || c = '_'
+          in
+          let i = ref 0 in
+          while !i < len do
+            let start = !i in
+            while !i < len && is_word_char rendered.[!i] do
+              incr i
+            done;
+            let word = String.sub rendered start (!i - start) in
+            if word = "bold" then Buffer.add_string buf "700"
+            else Buffer.add_string buf word;
+            if !i < len then (
+              Buffer.add_char buf rendered.[!i];
+              incr i)
+          done;
+          Buffer.contents buf
       in
       Pp.string ctx rendered
   | Source -> pp pp_font_src
