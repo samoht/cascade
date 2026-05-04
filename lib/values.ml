@@ -174,9 +174,9 @@ let pp_calc_op : calc_op Pp.t =
       Pp.string ctx "*";
       Pp.space_if_pretty ctx ()
   | Div ->
-      Pp.space_if_pretty ctx ();
-      Pp.string ctx "/";
-      Pp.space_if_pretty ctx ()
+      (* CSS Values 4 10.7: keep spaces around [/] even under minify so a
+         non-reducing [calc(1px / 0)] stays unambiguous. *)
+      Pp.string ctx " / "
 
 let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
  fun pp_value ctx calc ->
@@ -1856,15 +1856,19 @@ let rec read_calc_expr : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
     Cursor.ws t;
     match Cursor.peek_delim t with
     | Some '+' ->
-        Cursor.atomic t (fun () ->
-            Cursor.skip t;
-            let right = read_calc_term read_a t in
-            loop (Expr (left, Add, right)))
+        let right =
+          Cursor.atomic t (fun () ->
+              Cursor.skip t;
+              read_calc_term read_a t)
+        in
+        loop (Expr (left, Add, right))
     | Some '-' ->
-        Cursor.atomic t (fun () ->
-            Cursor.skip t;
-            let right = read_calc_term read_a t in
-            loop (Expr (left, Sub, right)))
+        let right =
+          Cursor.atomic t (fun () ->
+              Cursor.skip t;
+              read_calc_term read_a t)
+        in
+        loop (Expr (left, Sub, right))
     | _ -> left
   in
   loop (read_calc_term read_a t)
@@ -1882,14 +1886,14 @@ and read_calc_term : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
             Cursor.skip t;
             Cursor.ws t;
             let right = read_calc_factor read_a t in
-            (* CSS Values 4 10.7: in a typed dimension context, multiplying two
-               [Val] operands is invalid because units do not multiply. Number
-               contexts (e.g. [aspect-ratio: calc(2 * 3)]) bypass this check via
-               a separate parsing entry point. *)
+            (* Validate multiplication: can't multiply two raw dimensions (but
+               expressions are OK) *)
             let is_dimension : type a. a calc -> bool = function
               | Val _ -> true
               | _ -> false
             in
+            (* Allow number × dimension or dimension × number, but not dimension
+               × dimension *)
             if is_dimension left && is_dimension right then
               Cursor.err t "invalid calc: cannot multiply two dimensions";
             loop (Expr (left, Mul, right)))
@@ -1960,7 +1964,14 @@ and read_calc : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
   Cursor.ws t;
   if Cursor.looking_at_func "calc" t then
-    Cursor.call "calc" t (fun inner -> read_calc_expr read_a inner)
+    Cursor.call "calc" t (fun inner ->
+        let result = read_calc_expr read_a inner in
+        (* CSS Values 4 10: a [calc()] body must be a single expression --
+           [calc(1px 2px)] (missing operator) leaves [2px] unconsumed and must
+           be rejected. *)
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        result)
   else if Cursor.looking_at_func "var" t then Var (read_var read_a t)
   else Cursor.err t "calc() or var()"
 
@@ -3125,17 +3136,31 @@ let rec read_length_percentage ?(allow_negative = true) ?(with_keywords = true)
     in
     Cursor.one_of [ read_pct; read_length_as_lp ] t
 
-(** Read number_percentage value *)
+(** Read number_percentage value. Inside a [<number-percentage>] [calc()], a raw
+    number is modelled at the calc level as the [Num x] node rather than
+    [Val (Num x)] (the [Num] sub-variant of [number_percentage] wrapped in
+    [Val]); the dedicated [_dim_only] reader excludes the raw-number alternative
+    so the generic [read_calc_factor] falls through to its own [Num] path. *)
 let rec read_number_percentage t : number_percentage =
   Cursor.ws t;
   if Cursor.looking_at t "var(" then Var (read_var read_number_percentage t)
   else if Cursor.looking_at t "calc(" then
-    Calc (read_calc read_number_percentage t)
+    Calc (read_calc read_number_percentage_dim_only t)
   else
     (* Try to read as percentage or number *)
     Cursor.one_of
       [ (fun t -> Pct (Cursor.pct t)); (fun t -> Num (Cursor.number t)) ]
       t
+
+and read_number_percentage_dim_only t : number_percentage =
+  Cursor.ws t;
+  Cursor.one_of
+    [
+      (fun t -> Pct (Cursor.pct t));
+      (fun t ->
+        (Var (read_var read_number_percentage_dim_only t) : number_percentage));
+    ]
+    t
 
 (** Read color_name value *)
 let read_color_name t : color_name =
