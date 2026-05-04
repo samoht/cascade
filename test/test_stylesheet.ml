@@ -4736,6 +4736,398 @@ let c6_3_important_serialization_preserved () =
 let fidelity_important_preserved () =
   pretty_preserves ".x { color: red !important }" [ "!important" ]
 
+(* {2 Calc simplification edges (CSS Values L4 section 10)} *)
+
+let v4_10_calc_negative_result () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "calc(5px - 10px) -> -5px" ".x{margin:-5px}"
+    (normalize ".x { margin: calc(5px - 10px) }");
+  Alcotest.(check string)
+    "calc(-1px + 2px) -> 1px" ".x{width:1px}"
+    (normalize ".x { width: calc(-1px + 2px) }")
+
+let v4_10_7_operator_precedence () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "calc(1px + 2 * 3px) -> 7px" ".x{width:7px}"
+    (normalize ".x { width: calc(1px + 2 * 3px) }");
+  Alcotest.(check string)
+    "calc((1 + 2) * 3px) -> 9px" ".x{width:9px}"
+    (normalize ".x { width: calc((1 + 2) * 3px) }")
+
+let v4_10_7_identity_operations () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "calc(1 * 5px) -> 5px" ".x{width:5px}"
+    (normalize ".x { width: calc(1 * 5px) }");
+  Alcotest.(check string)
+    "calc(5px * 1) -> 5px" ".x{width:5px}"
+    (normalize ".x { width: calc(5px * 1) }");
+  Alcotest.(check string)
+    "calc(10px / 1) -> 10px" ".x{width:10px}"
+    (normalize ".x { width: calc(10px / 1) }");
+  Alcotest.(check string)
+    "calc(0 * 100%) -> 0" ".x{width:0}"
+    (normalize ".x { width: calc(0 * 100%) }")
+
+let v4_10_7_percentage_arithmetic () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "calc(50% * 2) -> 100%" ".x{width:100%}"
+    (normalize ".x { width: calc(50% * 2) }");
+  Alcotest.(check string)
+    "calc(50% / 2) -> 25%" ".x{width:25%}"
+    (normalize ".x { width: calc(50% / 2) }");
+  Alcotest.(check string)
+    "calc(100% - 10% - 20%) -> 70%" ".x{width:70%}"
+    (normalize ".x { width: calc(100% - 10% - 20%) }");
+  Alcotest.(check string)
+    "calc(100% - (10% + 20%)) -> 70%" ".x{width:70%}"
+    (normalize ".x { width: calc(100% - (10% + 20%)) }")
+
+let v4_10_7_chained_multiplicative () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "calc(1px * 2 * 3) -> 6px" ".x{width:6px}"
+    (normalize ".x { width: calc(1px * 2 * 3) }");
+  Alcotest.(check string)
+    "calc(24px / 2 / 3) -> 4px" ".x{width:4px}"
+    (normalize ".x { width: calc(24px / 2 / 3) }");
+  Alcotest.(check string)
+    "calc(1px*2 - 1px) -> 1px" ".x{width:1px}"
+    (normalize ".x { width: calc(1px*2 - 1px) }")
+
+let v4_10_7_double_negative () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "calc(1px - -2px) -> 3px" ".x{width:3px}"
+    (normalize ".x { width: calc(1px - -2px) }")
+
+let v4_10_7_mixed_relative_units_preserved () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "calc(1px + 2em) preserved" ".x{width:calc(1px + 2em)}"
+    (normalize ".x { width: calc(1px + 2em) }");
+  Alcotest.(check string)
+    "calc(1px + 1ch) preserved" ".x{width:calc(1px + 1ch)}"
+    (normalize ".x { width: calc(1px + 1ch) }");
+  Alcotest.(check string)
+    "calc(1rem + 2px) preserved" ".x{width:calc(1rem + 2px)}"
+    (normalize ".x { width: calc(1rem + 2px) }")
+
+let v4_10_7_math_functions_reduction () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "calc(abs(-5px)) -> 5px" ".x{width:5px}"
+    (normalize ".x { width: calc(abs(-5px)) }");
+  Alcotest.(check string)
+    "calc(min(1px, 2px, 3px)) -> 1px" ".x{width:1px}"
+    (normalize ".x { width: calc(min(1px, 2px, 3px)) }");
+  Alcotest.(check string)
+    "calc(max(1px, 2px, 3px)) -> 3px" ".x{width:3px}"
+    (normalize ".x { width: calc(max(1px, 2px, 3px)) }")
+
+let v4_10_7_numeric_math_reduction () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "calc(sqrt(16)) -> 4" ".x{aspect-ratio:4}"
+    (normalize ".x { aspect-ratio: calc(sqrt(16)) }");
+  Alcotest.(check string)
+    "calc(pow(2, 3)) -> 8" ".x{aspect-ratio:8}"
+    (normalize ".x { aspect-ratio: calc(pow(2, 3)) }");
+  Alcotest.(check string)
+    "calc(hypot(3, 4)) -> 5" ".x{aspect-ratio:5}"
+    (normalize ".x { aspect-ratio: calc(hypot(3, 4)) }");
+  Alcotest.(check string)
+    "calc(sign(5)) -> 1" ".x{aspect-ratio:1}"
+    (normalize ".x { aspect-ratio: calc(sign(5)) }")
+
+let v4_10_7_mod_rem_reduction () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "calc(mod(7, 3)) -> 1" ".x{aspect-ratio:1}"
+    (normalize ".x { aspect-ratio: calc(mod(7, 3)) }");
+  Alcotest.(check string)
+    "calc(rem(7, 3)) -> 1" ".x{aspect-ratio:1}"
+    (normalize ".x { aspect-ratio: calc(rem(7, 3)) }")
+
+let v4_10_7_round_reduction () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "calc(round(5.5px, 1px)) -> 6px" ".x{width:6px}"
+    (normalize ".x { width: calc(round(5.5px, 1px)) }")
+
+let v4_10_7_division_by_zero_preserved () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "calc(1px / 0) preserved" ".x{width:calc(1px / 0)}"
+    (normalize ".x { width: calc(1px / 0) }")
+
+let v4_10_invalid_calc_extra_rejected () =
+  Alcotest.(check bool)
+    "calc(1px ++ 2px) double operator rejected" true
+    (match Css.of_string ".x { width: calc(1px ++ 2px) }" with
+    | Error _ -> true
+    | _ -> false);
+  Alcotest.(check bool)
+    "calc(1px 2px) missing operator rejected" true
+    (match Css.of_string ".x { width: calc(1px 2px) }" with
+    | Error _ -> true
+    | _ -> false);
+  Alcotest.(check bool)
+    "calc(1px + + 2px) two plus rejected" true
+    (match Css.of_string ".x { width: calc(1px + + 2px) }" with
+    | Error _ -> true
+    | _ -> false)
+
+let fidelity_calc_negative_preserved () =
+  pretty_preserves ".x { margin: calc(5px - 10px) }" [ "calc(5px - 10px)" ];
+  pretty_preserves ".x { width: calc(1px - -2px) }" [ "calc(1px - -2px)" ]
+
+let fidelity_calc_precedence_preserved () =
+  pretty_preserves ".x { width: calc(1px + 2 * 3px) }" [ "1px + 2 * 3px" ];
+  pretty_preserves ".x { width: calc((1 + 2) * 3px) }" [ "(1 + 2) * 3px" ]
+
+let fidelity_calc_chained_preserved () =
+  pretty_preserves ".x { width: calc(1px * 2 * 3) }" [ "1px * 2 * 3" ];
+  pretty_preserves ".x { width: calc(100% - 10% - 20%) }" [ "100% - 10% - 20%" ]
+
+let fidelity_calc_mixed_relative_preserved () =
+  pretty_preserves ".x { width: calc(1px + 2em) }" [ "calc(1px + 2em)" ];
+  pretty_preserves ".x { width: calc(1px + 1ch) }" [ "calc(1px + 1ch)" ];
+  pretty_preserves ".x { width: calc(1rem + 2px) }" [ "calc(1rem + 2px)" ]
+
+let fidelity_calc_math_functions_preserved () =
+  pretty_preserves ".x { width: calc(abs(-5px)) }" [ "abs(-5px)" ];
+  pretty_preserves ".x { width: calc(min(1px, 2px, 3px)) }"
+    [ "min(1px, 2px, 3px)" ];
+  pretty_preserves ".x { width: calc(sqrt(16)) }" [ "sqrt(16)" ];
+  pretty_preserves ".x { width: calc(pow(2, 3)) }" [ "pow(2, 3)" ]
+
+(* {2 var() fallback edges (CSS Custom Properties L1)} *)
+
+let custom_props1_2_empty_fallback_preserved () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "var(--x,) (empty fallback) preserved" ".x{color:var(--x,)}"
+    (normalize ".x { color: var(--x,) }");
+  Alcotest.(check bool)
+    "var(--x, ) (whitespace fallback) parses" true
+    (match Css.of_string ".x { color: var(--x, ) }" with
+    | Ok _ -> true
+    | _ -> false);
+  Alcotest.(check string)
+    "var(--x) (no fallback) preserved" ".x{color:var(--x)}"
+    (normalize ".x { color: var(--x) }")
+
+let custom_props1_2_color_in_fallback_canonicalizes () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "var(--x, rgb(255, 0, 0)) -> var(--x, red)" ".x{color:var(--x,red)}"
+    (normalize ".x { color: var(--x, rgb(255, 0, 0)) }");
+  Alcotest.(check string)
+    "var(--x, rgb(0, 0, 0)) -> var(--x, #000)" ".x{color:var(--x,#000)}"
+    (normalize ".x { color: var(--x, rgb(0, 0, 0)) }");
+  Alcotest.(check string)
+    "var(--x, transparent) -> var(--x, #0000)" ".x{color:var(--x,#0000)}"
+    (normalize ".x { color: var(--x, transparent) }")
+
+let custom_props1_2_nested_var_fallback_preserved () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "var(--x, var(--y, red)) preserved" ".x{color:var(--x,var(--y,red))}"
+    (normalize ".x { color: var(--x, var(--y, red)) }");
+  Alcotest.(check string)
+    "three-level var chain preserved" ".x{color:var(--x,var(--y,var(--z)))}"
+    (normalize ".x { color: var(--x, var(--y, var(--z))) }")
+
+let custom_props1_2_calc_in_fallback () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "var(--x, calc(1px + 2px)) reduces inner calc" ".x{width:var(--x,3px)}"
+    (normalize ".x { width: var(--x, calc(1px + 2px)) }")
+
+let custom_props1_2_multi_comma_fallback_preserved () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check bool)
+    "var(--x, red, blue) keeps both fallback tokens" true
+    (let out = normalize ".x { color: var(--x, red, blue) }" in
+     Astring.String.is_infix ~affix:"red" out
+     && Astring.String.is_infix ~affix:"blue" out);
+  Alcotest.(check bool)
+    "font-family fallback list preserved" true
+    (let out =
+       normalize
+         ".x { font-family: var(--font, \"Helvetica Neue\", sans-serif) }"
+     in
+     Astring.String.is_infix ~affix:"Helvetica Neue" out
+     && Astring.String.is_infix ~affix:"sans-serif" out)
+
+let custom_props1_2_var_whitespace_dropped () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "var( --x , red ) drops surrounding whitespace" ".x{color:var(--x,red)}"
+    (normalize ".x { color: var( --x , red ) }")
+
+let custom_props1_2_name_case_sensitive () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "--My-Var preserved with original case" ".x{color:var(--My-Var,red)}"
+    (normalize ".x { color: var(--My-Var, red) }")
+
+let custom_props1_3_custom_property_declaration () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "--x: 10px preserved" ".x{--x:10px}"
+    (normalize ".x { --x: 10px }");
+  Alcotest.(check string)
+    "--x: red blue preserved" ".x{--x:red blue}"
+    (normalize ".x { --x: red blue }");
+  Alcotest.(check bool)
+    "--x: (empty value) parses and serializes" true
+    (let out = normalize ".x { --x: }" in
+     Astring.String.is_infix ~affix:"--x:" out)
+
+let custom_props1_2_invalid_var_rejected () =
+  Alcotest.(check bool)
+    "var() with no arguments is rejected" true
+    (match Css.of_string ".x { color: var() }" with
+    | Error _ -> true
+    | _ -> false);
+  Alcotest.(check bool)
+    "var(red) (non-dashed) is rejected" true
+    (match Css.of_string ".x { color: var(red) }" with
+    | Error _ -> true
+    | _ -> false);
+  Alcotest.(check bool)
+    "var(-x, red) (single-dash prefix) is rejected" true
+    (match Css.of_string ".x { color: var(-x, red) }" with
+    | Error _ -> true
+    | _ -> false)
+
+let custom_props1_2_var_in_shorthand_and_calc () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "var() in shorthand value preserved" ".x{border:var(--border)}"
+    (normalize ".x { border: var(--border) }");
+  Alcotest.(check string)
+    "var() inside calc() preserved" ".x{width:calc(var(--x) + 10px)}"
+    (normalize ".x { width: calc(var(--x) + 10px) }");
+  Alcotest.(check string)
+    "multiple var() in one value preserved"
+    ".x{padding:var(--top) var(--right)}"
+    (normalize ".x { padding: var(--top) var(--right) }")
+
+let fidelity_var_fallback_preserved () =
+  pretty_preserves ".x { color: var(--x,) }" [ "var(--x,)" ];
+  pretty_preserves ".x { color: var(--x, red) }" [ "var(--x, red)" ];
+  pretty_preserves ".x { color: var(--x, var(--y, red)) }"
+    [ "var(--x, var(--y, red))" ]
+
+let fidelity_var_calc_in_fallback_preserved () =
+  pretty_preserves ".x { width: var(--x, calc(1px + 2px)) }"
+    [ "var(--x, calc(1px + 2px))" ]
+
+let fidelity_var_multi_comma_fallback_preserved () =
+  pretty_preserves ".x { color: var(--x, red, blue) }" [ "var(--x, red, blue)" ];
+  pretty_preserves
+    ".x { font-family: var(--font, \"Helvetica Neue\", sans-serif) }"
+    [ "Helvetica Neue"; "sans-serif" ]
+
+let fidelity_var_name_case_preserved () =
+  pretty_preserves ".x { color: var(--My-Var, red) }" [ "--My-Var" ];
+  pretty_preserves ".x { color: var(--snake_case_var) }" [ "--snake_case_var" ]
+
+let fidelity_custom_property_decl_preserved () =
+  pretty_preserves ":root { --brand: red }" [ "--brand" ];
+  pretty_preserves ".x { --x: 10px }" [ "--x" ];
+  pretty_preserves ".x { --x: red blue }" [ "red blue" ]
+
 let cssom_6_7_no_trailing_semicolon () =
   let normalize css =
     match Css.of_string css with
@@ -4985,6 +5377,93 @@ let additional_tests =
       `Quick,
       c6_3_important_serialization_preserved );
     ("fidelity important preserved", `Quick, fidelity_important_preserved);
+    ("spec values 4 10 calc negative result", `Quick, v4_10_calc_negative_result);
+    ( "spec values 4 10.7 operator precedence",
+      `Quick,
+      v4_10_7_operator_precedence );
+    ( "spec values 4 10.7 identity operations",
+      `Quick,
+      v4_10_7_identity_operations );
+    ( "spec values 4 10.7 percentage arithmetic",
+      `Quick,
+      v4_10_7_percentage_arithmetic );
+    ( "spec values 4 10.7 chained multiplicative",
+      `Quick,
+      v4_10_7_chained_multiplicative );
+    ("spec values 4 10.7 double negative", `Quick, v4_10_7_double_negative);
+    ( "spec values 4 10.7 mixed relative units preserved",
+      `Quick,
+      v4_10_7_mixed_relative_units_preserved );
+    ( "spec values 4 10.7 math functions reduction",
+      `Quick,
+      v4_10_7_math_functions_reduction );
+    ( "spec values 4 10.7 numeric math reduction",
+      `Quick,
+      v4_10_7_numeric_math_reduction );
+    ("spec values 4 10.7 mod/rem reduction", `Quick, v4_10_7_mod_rem_reduction);
+    ("spec values 4 10.7 round reduction", `Quick, v4_10_7_round_reduction);
+    ( "spec values 4 10.7 division by zero preserved",
+      `Quick,
+      v4_10_7_division_by_zero_preserved );
+    ( "spec values 4 10 invalid calc extra rejected (negative)",
+      `Quick,
+      v4_10_invalid_calc_extra_rejected );
+    ( "fidelity calc negative preserved",
+      `Quick,
+      fidelity_calc_negative_preserved );
+    ( "fidelity calc precedence preserved",
+      `Quick,
+      fidelity_calc_precedence_preserved );
+    ("fidelity calc chained preserved", `Quick, fidelity_calc_chained_preserved);
+    ( "fidelity calc mixed relative preserved",
+      `Quick,
+      fidelity_calc_mixed_relative_preserved );
+    ( "fidelity calc math functions preserved",
+      `Quick,
+      fidelity_calc_math_functions_preserved );
+    ( "spec custom-properties 1 2 empty fallback preserved",
+      `Quick,
+      custom_props1_2_empty_fallback_preserved );
+    ( "spec custom-properties 1 2 color in fallback canonicalizes",
+      `Quick,
+      custom_props1_2_color_in_fallback_canonicalizes );
+    ( "spec custom-properties 1 2 nested var fallback preserved",
+      `Quick,
+      custom_props1_2_nested_var_fallback_preserved );
+    ( "spec custom-properties 1 2 calc in fallback",
+      `Quick,
+      custom_props1_2_calc_in_fallback );
+    ( "spec custom-properties 1 2 multi-comma fallback preserved",
+      `Quick,
+      custom_props1_2_multi_comma_fallback_preserved );
+    ( "spec custom-properties 1 2 var whitespace dropped",
+      `Quick,
+      custom_props1_2_var_whitespace_dropped );
+    ( "spec custom-properties 1 2 name case sensitive",
+      `Quick,
+      custom_props1_2_name_case_sensitive );
+    ( "spec custom-properties 1 3 custom property declaration",
+      `Quick,
+      custom_props1_3_custom_property_declaration );
+    ( "spec custom-properties 1 2 invalid var rejected (negative)",
+      `Quick,
+      custom_props1_2_invalid_var_rejected );
+    ( "spec custom-properties 1 2 var in shorthand and calc",
+      `Quick,
+      custom_props1_2_var_in_shorthand_and_calc );
+    ("fidelity var fallback preserved", `Quick, fidelity_var_fallback_preserved);
+    ( "fidelity var calc in fallback preserved",
+      `Quick,
+      fidelity_var_calc_in_fallback_preserved );
+    ( "fidelity var multi-comma fallback preserved",
+      `Quick,
+      fidelity_var_multi_comma_fallback_preserved );
+    ( "fidelity var name case preserved",
+      `Quick,
+      fidelity_var_name_case_preserved );
+    ( "fidelity custom property declaration preserved",
+      `Quick,
+      fidelity_custom_property_decl_preserved );
     ( "spec color 4 12 rgb clamp canonicalization",
       `Quick,
       color4_12_rgb_clamp_canonicalization );
