@@ -1399,6 +1399,51 @@ let vars_of_css_wide (value : Properties.css_wide) =
 let vars_of_scroll_behavior (value : Properties.scroll_behavior) =
   match value with Var v -> [ V v ] | _ -> []
 
+let vars_of_caption_side (value : Properties.caption_side) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_dominant_baseline (value : Properties.dominant_baseline) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_field_sizing (value : Properties.field_sizing) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_grid_template_areas (value : Properties.grid_template_areas) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_hyphens (value : Properties.hyphens) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_initial_letter_align (value : Properties.initial_letter_align) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_initial_letter_wrap (value : Properties.initial_letter_wrap) =
+  match value with
+  | Var v -> [ V v ]
+  | Length lp -> vars_of_length_percentage lp
+  | _ -> []
+
+let vars_of_isolation (value : Properties.isolation) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_mask_type (value : Properties.mask_type) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_order (value : Properties.order) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_table_layout (value : Properties.table_layout) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_text_emphasis_skip (value : Properties.text_emphasis_skip) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_webkit_line_clamp (value : Properties.webkit_line_clamp) =
+  match value with Var v -> [ V v ] | _ -> []
+
+let vars_of_z_index (value : Properties.z_index) =
+  match value with Var v -> [ V v ] | _ -> []
+
 (** {1 Advanced variable extraction} *)
 
 (* Extract variables from CSS property values using type-specific extraction
@@ -1551,6 +1596,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Text_decoration, value -> vars_of_text_decoration value
   | Text_emphasis, value -> vars_of_text_emphasis value
   | Text_emphasis_position, value -> vars_of_text_emphasis_position value
+  | Text_emphasis_style, value -> vars_of_text_emphasis_style value
   | Text_orientation, value -> vars_of_text_orientation value
   | Webkit_text_decoration, value -> vars_of_text_decoration value
   | Text_transform, value -> vars_of_text_transform value
@@ -1674,6 +1720,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Break_after, value -> vars_of_break_value value
   | Break_before, value -> vars_of_break_value value
   | Break_inside, value -> vars_of_break_inside_value value
+  | Caption_side, value -> vars_of_caption_side value
   | Clear, value -> vars_of_clear value
   | Clip, value -> vars_of_clip value
   | Clip_path, value -> vars_of_clip_path value
@@ -1727,13 +1774,16 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Float, value -> vars_of_float_side value
   | Font_style, value -> vars_of_font_style value
   | Forced_color_adjust, value -> vars_of_forced_color_adjust value
+  | Field_sizing, value -> vars_of_field_sizing value
   | Grid_auto_flow, value -> vars_of_grid_auto_flow value
+  | Grid_template_areas, value -> vars_of_grid_template_areas value
   | Justify_content, value -> vars_of_justify_content value
   | Justify_items, value -> vars_of_justify_items value
   | Justify_self, value -> vars_of_justify_self value
   | List_style_position, value -> vars_of_list_style_position value
   | Mask_clip, value -> vars_of_mask_box value
   | Mask_composite, value -> vars_of_mask_composite value
+  | Mask_type, value -> vars_of_mask_type value
   | Mask, value -> vars_of_mask value
   | Mask_border, value -> vars_of_border_image value
   | Mask_mode, value -> vars_of_mask_mode value
@@ -1744,6 +1794,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Moz_osx_font_smoothing, value -> vars_of_osx_font_smoothing value
   | Object_fit, value -> vars_of_object_fit value
   | Object_view_box, value -> vars_of_object_view_box value
+  | Order, value -> vars_of_order value
   | Outline, value -> vars_of_outline value
   | Overflow, value -> vars_of_overflow value
   | Overflow_wrap, value -> vars_of_overflow_wrap value
@@ -1774,6 +1825,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Scroll_timeline_axis, value -> vars_of_timeline_axis value
   | Stroke, value -> vars_of_svg_paint value
   | Source, _ -> []
+  | Table_layout, value -> vars_of_table_layout value
   | Text_align, value -> vars_of_text_align value
   | Text_decoration_line, values ->
       List.concat_map vars_of_text_decoration_line values
@@ -1793,6 +1845,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Text_underline_position, value -> vars_of_text_underline_position value
   | Text_box_edge, value -> vars_of_text_box_edge value
   | Text_box, value -> vars_of_text_box value
+  | Text_emphasis_skip, value -> vars_of_text_emphasis_skip value
   | Inline_sizing, value -> vars_of_inline_sizing value
   | Line_fit_edge, value -> vars_of_line_fit_edge value
   | Interpolate_size, value -> vars_of_interpolate_size value
@@ -1806,6 +1859,12 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Text_spacing_trim, value -> vars_of_text_spacing_trim value
   | Hyphenate_limit_chars, value -> vars_of_hyphenate_limit_chars value
   | Initial_letter, value -> vars_of_initial_letter value
+  | Initial_letter_align, value -> vars_of_initial_letter_align value
+  | Initial_letter_wrap, value -> vars_of_initial_letter_wrap value
+  | Dominant_baseline, value -> vars_of_dominant_baseline value
+  | Hyphens, value -> vars_of_hyphens value
+  | Webkit_hyphens, value -> vars_of_hyphens value
+  | Isolation, value -> vars_of_isolation value
   | Touch_action, value -> vars_of_touch_action value
   | Transform_box, value -> vars_of_transform_box value
   | Transform_style, value -> vars_of_transform_style value
@@ -1827,6 +1886,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Webkit_box_decoration_break, value -> vars_of_box_decoration_break value
   | Webkit_box_orient, value -> vars_of_webkit_box_orient value
   | Webkit_font_smoothing, value -> vars_of_webkit_font_smoothing value
+  | Webkit_line_clamp, value -> vars_of_webkit_line_clamp value
   | Webkit_mask_clip, value -> vars_of_mask_box value
   | Webkit_mask_composite, value -> vars_of_webkit_mask_composite value
   | Webkit_mask_origin, value -> vars_of_mask_box value
@@ -1837,6 +1897,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | White_space, value -> vars_of_white_space value
   | Word_break, value -> vars_of_word_break value
   | Writing_mode, value -> vars_of_writing_mode value
+  | Z_index, value -> vars_of_z_index value
   | Text_combine_upright, value -> vars_of_text_combine_upright value
   (* Default case for all other properties *)
   | _ -> []
