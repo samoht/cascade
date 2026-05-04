@@ -71,8 +71,15 @@ let shorthand_longhands = function
       ]
   | _ -> []
 
+let all_resets_property name =
+  not
+    (name = "direction" || name = "unicode-bidi"
+    || (String.length name >= 2 && String.sub name 0 2 = "--"))
+
 let declaration_covers covering covered =
-  covering = covered || List.mem covered (shorthand_longhands covering)
+  covering = covered
+  || (covering = "all" && all_resets_property covered)
+  || List.mem covered (shorthand_longhands covering)
 
 let deduplicate_declarations props =
   let covered_by_important kept prop_name =
