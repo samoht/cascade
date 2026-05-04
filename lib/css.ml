@@ -476,6 +476,7 @@ let as_font_face = function
   | Font_face descriptors -> Some descriptors
   | _ -> None
 
+let as_import = function Import import_rule -> Some import_rule | _ -> None
 let concat = List.concat
 let empty = []
 let v = Stylesheet.v
@@ -711,3 +712,141 @@ let inline_style_of_declarations ?(optimize = false) ?minify ?mode ?newline
 (* Keep Css.optimize alias for convenience *)
 let optimize = Optimize.stylesheet
 let flatten_nesting = Optimize.flatten_nesting
+
+(** {1 Closed-world inlining} *)
+
+let normalise_var_name name =
+  if String.length name >= 2 && String.sub name 0 2 = "--" then name
+  else String.concat "" [ "--"; name ]
+
+let rec map_decls f stmts =
+  let open Stylesheet in
+  List.map
+    (function
+      | Rule rule ->
+          Rule
+            {
+              rule with
+              declarations = f rule.declarations;
+              nested = map_decls f rule.nested;
+            }
+      | Layer (n, b) -> Layer (n, map_decls f b)
+      | Media (q, b) -> Media (q, map_decls f b)
+      | Supports (q, b) -> Supports (q, map_decls f b)
+      | Container (n, q, b) -> Container (n, q, map_decls f b)
+      | Starting_style b -> Starting_style (map_decls f b)
+      | Origin (o, b) -> Origin (o, map_decls f b)
+      | Scope (a, b, body) -> Scope (a, b, map_decls f body)
+      | When (c, b) -> When (c, map_decls f b)
+      | Else (c, b) -> Else (c, map_decls f b)
+      | Declarations decls -> Declarations (f decls)
+      | other -> other)
+    stmts
+
+let rec drop_empty_rules stmts =
+  let open Stylesheet in
+  List.filter_map
+    (function
+      | Rule rule ->
+          let nested = drop_empty_rules rule.nested in
+          if rule.declarations = [] && nested = [] then None
+          else Some (Rule { rule with nested })
+      | Layer (n, b) -> (
+          match drop_empty_rules b with [] -> None | b -> Some (Layer (n, b)))
+      | Media (q, b) -> (
+          match drop_empty_rules b with [] -> None | b -> Some (Media (q, b)))
+      | Supports (q, b) -> (
+          match drop_empty_rules b with
+          | [] -> None
+          | b -> Some (Supports (q, b)))
+      | Container (n, q, b) -> (
+          match drop_empty_rules b with
+          | [] -> None
+          | b -> Some (Container (n, q, b)))
+      | Starting_style b -> (
+          match drop_empty_rules b with
+          | [] -> None
+          | b -> Some (Starting_style b))
+      | Origin (o, b) -> (
+          match drop_empty_rules b with [] -> None | b -> Some (Origin (o, b)))
+      | Scope (a, b, body) -> (
+          match drop_empty_rules body with
+          | [] -> None
+          | body -> Some (Scope (a, b, body)))
+      | Declarations [] -> None
+      | other -> Some other)
+    stmts
+
+(* Collect every custom-property declaration in source order, descending into
+   nested blocks so vars defined inside [@layer]/[@media]/etc. participate. *)
+let collect_custom_property_decls stylesheet =
+  let open Stylesheet in
+  let acc = ref [] in
+  let consider d =
+    if Option.is_some (Variables.custom_declaration_name d) then
+      acc := d :: !acc
+  in
+  let rec walk_stmts stmts = List.iter walk stmts
+  and walk = function
+    | Rule rule ->
+        List.iter consider rule.declarations;
+        walk_stmts rule.nested
+    | Declarations decls -> List.iter consider decls
+    | Layer (_, b)
+    | Media (_, b)
+    | Supports (_, b)
+    | Starting_style b
+    | When (_, b)
+    | Else (_, b) ->
+        walk_stmts b
+    | Container (_, _, b) | Scope (_, _, b) -> walk_stmts b
+    | Origin (_, b) -> walk_stmts b
+    | _ -> ()
+  in
+  walk_stmts stylesheet;
+  List.rev !acc
+
+let inline_vars ?(keep_vars = []) stylesheet =
+  let kept = List.map normalise_var_name keep_vars in
+  let is_kept decl =
+    match Variables.custom_declaration_name decl with
+    | None -> false
+    | Some name -> List.mem (String.concat "" [ "--"; name ]) kept
+  in
+  let custom_properties =
+    collect_custom_property_decls stylesheet
+    |> List.filter (fun d -> not (is_kept d))
+  in
+  let ctx = Context.v ~custom_properties () in
+  let evaluated = Stylesheet.eval ctx stylesheet in
+  let strip decls =
+    List.filter
+      (fun d ->
+        match Variables.custom_declaration_name d with
+        | None -> true
+        | Some _ -> is_kept d)
+      decls
+  in
+  evaluated |> map_decls strip |> drop_empty_rules
+
+let inline_imports ?query ?layer_order loader stylesheet =
+  let open Stylesheet in
+  let rec replace_stmts stmts = List.concat_map replace stmts
+  and replace = function
+    | Import import_rule -> (
+        match Context.load_import ?query ?layer_order loader import_rule with
+        | Ok loaded -> replace_stmts loaded
+        | Error _ -> [ Import import_rule ])
+    | Layer (n, b) -> [ Layer (n, replace_stmts b) ]
+    | Media (q, b) -> [ Media (q, replace_stmts b) ]
+    | Supports (q, b) -> [ Supports (q, replace_stmts b) ]
+    | Container (n, q, b) -> [ Container (n, q, replace_stmts b) ]
+    | Starting_style b -> [ Starting_style (replace_stmts b) ]
+    | When (c, b) -> [ When (c, replace_stmts b) ]
+    | Else (c, b) -> [ Else (c, replace_stmts b) ]
+    | Origin (o, b) -> [ Origin (o, replace_stmts b) ]
+    | Scope (a, b, body) -> [ Scope (a, b, replace_stmts body) ]
+    | Rule rule -> [ Rule { rule with nested = replace_stmts rule.nested } ]
+    | other -> [ other ]
+  in
+  replace_stmts stylesheet
