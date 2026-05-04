@@ -2093,6 +2093,133 @@ type text_box_trim =
   | Revert_layer
   | Var of text_box_trim var
 
+type text_underline_position_keyword = Under | Left | Right
+
+type text_underline_position =
+  | Auto
+  | From_font
+  | Position of text_underline_position_keyword list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_underline_position var
+
+type text_box_edge_keyword =
+  | Text
+  | Cap
+  | Ex
+  | Alphabetic
+  | Ideographic
+  | Ideographic_ink
+
+type text_box_edge =
+  | Auto
+  | Edge of text_box_edge_keyword * text_box_edge_keyword option
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of text_box_edge var
+
+type inline_sizing =
+  | Normal
+  | Stretch
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of inline_sizing var
+
+type line_fit_edge_keyword =
+  | Leading
+  | Text
+  | Cap
+  | Ex
+  | Alphabetic
+  | Ideographic
+  | Ideographic_ink
+
+type line_fit_edge =
+  | Edge of line_fit_edge_keyword * line_fit_edge_keyword option
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of line_fit_edge var
+
+type interpolate_size =
+  | Numeric_only
+  | Allow_keywords
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of interpolate_size var
+
+type min_intrinsic_sizing_keyword =
+  | Legacy
+  | Zero_if_scroll
+  | Zero_if_extrinsic
+
+type min_intrinsic_sizing =
+  | Sizing of min_intrinsic_sizing_keyword list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of min_intrinsic_sizing var
+
+type ruby_merge =
+  | Separate
+  | Merge
+  | Auto
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of ruby_merge var
+
+type ruby_align =
+  | Start
+  | Center
+  | Space_between
+  | Space_around
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of ruby_align var
+
+type ruby_overhang =
+  | Auto
+  | None
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of ruby_overhang var
+
+type ruby_position_keyword = Alternate | Over | Under | Inter_character
+
+type ruby_position =
+  | Position of ruby_position_keyword list
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of ruby_position var
+
 type text_spacing_trim =
   | Normal
   | Space_all
@@ -2137,6 +2264,37 @@ val text_wrap : text_wrap -> declaration
 
 val text_wrap_mode : text_wrap_mode -> declaration
 (** [text_wrap_mode wrap] is the CSS [text-wrap-mode] property. *)
+
+val text_underline_position : text_underline_position -> declaration
+(** [text_underline_position position] is the CSS [text-underline-position]
+    property. *)
+
+val text_box_edge : text_box_edge -> declaration
+(** [text_box_edge edge] is the CSS [text-box-edge] property. *)
+
+val inline_sizing : inline_sizing -> declaration
+(** [inline_sizing sizing] is the CSS [inline-sizing] property. *)
+
+val line_fit_edge : line_fit_edge -> declaration
+(** [line_fit_edge edge] is the CSS [line-fit-edge] property. *)
+
+val interpolate_size : interpolate_size -> declaration
+(** [interpolate_size sizing] is the CSS [interpolate-size] property. *)
+
+val min_intrinsic_sizing : min_intrinsic_sizing -> declaration
+(** [min_intrinsic_sizing sizing] is the CSS [min-intrinsic-sizing] property. *)
+
+val ruby_align : ruby_align -> declaration
+(** [ruby_align align] is the CSS [ruby-align] property. *)
+
+val ruby_merge : ruby_merge -> declaration
+(** [ruby_merge merge] is the CSS [ruby-merge] property. *)
+
+val ruby_overhang : ruby_overhang -> declaration
+(** [ruby_overhang overhang] is the CSS [ruby-overhang] property. *)
+
+val ruby_position : ruby_position -> declaration
+(** [ruby_position position] is the CSS [ruby-position] property. *)
 
 (** CSS backface-visibility values *)
 type backface_visibility =
@@ -3445,7 +3603,7 @@ type text_emphasis_line = Over | Under
 type text_emphasis_side = Left | Right
 
 type text_emphasis_position =
-  | Position of text_emphasis_line * text_emphasis_side
+  | Position of text_emphasis_line * text_emphasis_side option
   | Inherit
   | Initial
   | Unset
@@ -3457,14 +3615,22 @@ type text_orientation =
   | Mixed
   | Upright
   | Sideways
-  | Sideways_right
-  | Use_glyph_orientation
   | Inherit
   | Initial
   | Unset
   | Revert
   | Revert_layer
   | Var of text_orientation var
+
+type glyph_orientation_vertical =
+  | Auto
+  | Angle of angle
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of glyph_orientation_vertical var
 
 type line_break =
   | Auto
@@ -3805,6 +3971,10 @@ val text_orientation : text_orientation -> declaration
 (** [text_orientation orientation] is the
     {{:https://developer.mozilla.org/en-US/docs/Web/CSS/text-orientation}
      text-orientation} property. *)
+
+val glyph_orientation_vertical : glyph_orientation_vertical -> declaration
+(** [glyph_orientation_vertical orientation] is the CSS
+    [glyph-orientation-vertical] property. *)
 
 (** CSS overflow-wrap values *)
 type overflow_wrap =
@@ -5466,6 +5636,47 @@ type interactivity =
 val interactivity : interactivity -> declaration
 (** [interactivity interactivity] is the CSS [interactivity] property. *)
 
+type caret_animation =
+  | Auto
+  | Manual
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of caret_animation var
+
+val caret_animation : caret_animation -> declaration
+(** [caret_animation animation] is the CSS [caret-animation] property. *)
+
+type caret_shape =
+  | Auto
+  | Bar
+  | Block
+  | Underscore
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of caret_shape var
+
+val caret_shape : caret_shape -> declaration
+(** [caret_shape shape] is the CSS [caret-shape] property. *)
+
+type caret =
+  | Auto
+  | Caret of color option * caret_animation option * caret_shape option
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of caret var
+
+val caret : caret -> declaration
+(** [caret caret] is the CSS [caret] property. *)
+
 type interest_delay =
   | Normal
   | Durations of duration list
@@ -5484,6 +5695,30 @@ val interest_delay_start : interest_delay -> declaration
 
 val interest_delay_end : interest_delay -> declaration
 (** [interest_delay_end delay] is the CSS [interest-delay-end] property. *)
+
+type nav_scope = Current | Root | Named of string
+
+type nav =
+  | Auto
+  | Target of string * nav_scope option
+  | Inherit
+  | Initial
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of nav var
+
+val nav_up : nav -> declaration
+(** [nav_up nav] is the CSS [nav-up] property. *)
+
+val nav_right : nav -> declaration
+(** [nav_right nav] is the CSS [nav-right] property. *)
+
+val nav_down : nav -> declaration
+(** [nav_down nav] is the CSS [nav-down] property. *)
+
+val nav_left : nav -> declaration
+(** [nav_left nav] is the CSS [nav-left] property. *)
 
 (** CSS pointer-events values *)
 type pointer_events =
@@ -5951,10 +6186,20 @@ type timeline_axis =
   | Revert_layer
   | Var of timeline_axis var
 
-type timeline_shorthand = {
+type timeline_shorthand_item = {
   timeline_name : string;
   timeline_axis : timeline_axis;
 }
+
+type timeline_shorthand =
+  | None
+  | Timelines of timeline_shorthand_item list
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of timeline_shorthand var
 
 val touch_action : touch_action -> declaration
 (** [touch_action action] is the
