@@ -1800,12 +1800,11 @@ let read_var_body : type a. (Cursor.t -> a) -> Cursor.t -> a var =
  fun read_value t ->
   Cursor.ws t;
   let name = Cursor.ident ~keep_case:true t in
-  (* Strip the leading [--] from the dashed-ident per css-variables-1. *)
-  let var_name =
-    if String.length name >= 2 && name.[0] = '-' && name.[1] = '-' then
-      String.sub name 2 (String.length name - 2)
-    else name
-  in
+  (* CSS Custom Properties 1: a [var()] reference must name a [<dashed-ident>]
+     (a token starting with [--]). Reject non-dashed names. *)
+  if not (String.length name >= 2 && name.[0] = '-' && name.[1] = '-') then
+    Cursor.err_invalid t ("var() name must start with '--': " ^ name);
+  let var_name = String.sub name 2 (String.length name - 2) in
   Cursor.ws t;
   let fallback : _ fallback =
     if not (Cursor.comma_opt t) then None
