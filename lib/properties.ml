@@ -2657,22 +2657,6 @@ let rec pp_position_value : position_value Pp.t =
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
-  (* CSS Backgrounds 3 3.6: each position keyword resolves to a [<percentage>];
-     under minify emit the numeric form so the [box_shorthand] collapse can fold
-     equal axes to a single value. *)
-  | Center when Pp.minified ctx -> Pp.string ctx "50%"
-  | Top when Pp.minified ctx -> Pp.char ctx '0'
-  | Bottom when Pp.minified ctx -> Pp.string ctx "100%"
-  | Left when Pp.minified ctx -> Pp.char ctx '0'
-  | Right when Pp.minified ctx -> Pp.string ctx "100%"
-  | (Left_top | Top_left) when Pp.minified ctx -> Pp.char ctx '0'
-  | (Right_bottom | Bottom_right) when Pp.minified ctx -> Pp.string ctx "100%"
-  | (Left_bottom | Bottom_left) when Pp.minified ctx -> Pp.string ctx "0 100%"
-  | (Right_top | Top_right) when Pp.minified ctx -> Pp.string ctx "100% 0"
-  | Left_center when Pp.minified ctx -> Pp.string ctx "0 50%"
-  | Right_center when Pp.minified ctx -> Pp.string ctx "100% 50%"
-  | Center_top when Pp.minified ctx -> Pp.string ctx "50% 0"
-  | Center_bottom when Pp.minified ctx -> Pp.string ctx "50% 100%"
   | Center -> Pp.string ctx "center"
   | Top -> Pp.string ctx "top"
   | Bottom -> Pp.string ctx "bottom"
