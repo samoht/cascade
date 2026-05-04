@@ -8940,7 +8940,7 @@ let read_text_box_edge_value t : text_box_edge =
   match keywords with
   | [ Text ] | [ Ideographic_ink ] -> Edge (List.hd keywords, None)
   | [ ((Cap | Ex) as first); ((Alphabetic | Text) as second) ]
-  | [ Text as first; ((Alphabetic | Ideographic) as second) ] ->
+  | [ (Text as first); ((Alphabetic | Ideographic) as second) ] ->
       Edge (first, Some second)
   | _ -> Cursor.err_invalid t "text-box-edge"
 
@@ -9026,7 +9026,7 @@ let rec read_line_fit_edge t : line_fit_edge =
       | [ Leading ] | [ Text ] | [ Ideographic_ink ] ->
           (Edge (List.hd keywords, None) : line_fit_edge)
       | [ ((Cap | Ex) as first); ((Alphabetic | Text) as second) ]
-      | [ Text as first; Alphabetic as second ] ->
+      | [ (Text as first); (Alphabetic as second) ] ->
           Edge (first, Some second)
       | _ -> Cursor.err_invalid t "line-fit-edge")
     t
@@ -15728,8 +15728,7 @@ let rec read_animation_range_item t : animation_range_item =
   in
   Cursor.enum_or_var "animation-range-item" keywords
     ~var:(fun t ->
-      (Var (Values.read_var read_animation_range_item t)
-        : animation_range_item))
+      (Var (Values.read_var read_animation_range_item t) : animation_range_item))
     ~default:read_item t
 
 let rec read_animation_range t : animation_range =
@@ -15809,9 +15808,9 @@ let validate_grid_area_width t (expected : int option) cells =
 let grid_area_positions rows =
   rows
   |> List.mapi (fun row cells ->
-         cells
-         |> List.mapi (fun col cell -> (cell, row, col))
-         |> List.filter (fun (cell, _, _) -> not (grid_area_null_cell cell)))
+      cells
+      |> List.mapi (fun col cell -> (cell, row, col))
+      |> List.filter (fun (cell, _, _) -> not (grid_area_null_cell cell)))
   |> List.flatten
 
 let grid_area_names positions =
@@ -15828,7 +15827,7 @@ let validate_grid_area_rectangles t rows =
     let coords =
       positions
       |> List.filter_map (fun (cell, row, col) ->
-             if cell = name then Some (row, col) else None)
+          if cell = name then Some (row, col) else None)
     in
     let rows = List.map fst coords in
     let cols = List.map snd coords in
@@ -15935,8 +15934,7 @@ let rec read_grid_template_areas t : grid_template_areas =
           let rows = List.rev rows in
           if rows = [] then Cursor.err_expected t "grid-template-areas row";
           validate_grid_area_rectangles t rows;
-          (Areas (String.concat " " (List.rev rendered))
-            : grid_template_areas)
+          (Areas (String.concat " " (List.rev rendered)) : grid_template_areas)
       | Some s ->
           let cells = grid_area_row_cells s in
           if cells = [] then
@@ -15956,8 +15954,7 @@ let rec read_grid_template_areas t : grid_template_areas =
       ("revert-layer", Revert_layer);
     ]
     ~var:(fun t ->
-      (Var (Values.read_var read_grid_template_areas t)
-        : grid_template_areas))
+      (Var (Values.read_var read_grid_template_areas t) : grid_template_areas))
     ~default:read_rows t
 
 let border_image_at_end t = Cursor.is_done t || Cursor.peek_semicolon t

@@ -63,8 +63,8 @@ val read_position_try_order : Cursor.t -> position_try_order
 (** [read_position_try_order t] parses [position-try-order]. *)
 
 val pp_contain_intrinsic_size_item : contain_intrinsic_size_item Pp.t
-(** [pp_contain_intrinsic_size_item] pretty-prints one
-    [contain-intrinsic-size] item. *)
+(** [pp_contain_intrinsic_size_item] pretty-prints one [contain-intrinsic-size]
+    item. *)
 
 val read_contain_intrinsic_size_item : Cursor.t -> contain_intrinsic_size_item
 (** [read_contain_intrinsic_size_item t] parses one [contain-intrinsic-size]
@@ -75,8 +75,8 @@ val pp_counter_item : counter_item Pp.t
     item. *)
 
 val read_counter_item : Cursor.t -> counter_item
-(** [read_counter_item t] parses one [counter-reset]/[counter-increment]
-    item. *)
+(** [read_counter_item t] parses one [counter-reset]/[counter-increment] item.
+*)
 
 val pp_font_synthesis_feature : font_synthesis_feature Pp.t
 (** [pp_font_synthesis_feature] pretty-prints one [font-synthesis] feature. *)
@@ -200,8 +200,8 @@ val read_ray_size : Cursor.t -> ray_size
 (** [read_ray_size t] parses the size keyword inside [ray()]. *)
 
 val pp_initial_letter_align_keyword : initial_letter_align_keyword Pp.t
-(** [pp_initial_letter_align_keyword] pretty-prints one
-    [initial-letter-align] keyword. *)
+(** [pp_initial_letter_align_keyword] pretty-prints one [initial-letter-align]
+    keyword. *)
 
 val read_initial_letter_align_keyword : Cursor.t -> initial_letter_align_keyword
 (** [read_initial_letter_align_keyword t] parses one [initial-letter-align]
@@ -302,8 +302,8 @@ val read_border_image_width_item : Cursor.t -> border_image_width_item
 (** [read_border_image_width_item t] parses one [border-image-width] item. *)
 
 val pp_border_image_outset_item : border_image_outset_item Pp.t
-(** [pp_border_image_outset_item] pretty-prints one [border-image-outset]
-    item. *)
+(** [pp_border_image_outset_item] pretty-prints one [border-image-outset] item.
+*)
 
 val read_border_image_outset_item : Cursor.t -> border_image_outset_item
 (** [read_border_image_outset_item t] parses one [border-image-outset] item. *)
@@ -321,8 +321,8 @@ val read_border_spacing : Cursor.t -> border_spacing
 (** [read_border_spacing t] parses [border-spacing]. *)
 
 val pp_position_visibility_condition : position_visibility_condition Pp.t
-(** [pp_position_visibility_condition] pretty-prints one
-    [position-visibility] condition keyword. *)
+(** [pp_position_visibility_condition] pretty-prints one [position-visibility]
+    condition keyword. *)
 
 val read_position_visibility_condition :
   Cursor.t -> position_visibility_condition
@@ -336,14 +336,13 @@ val read_ray : Cursor.t -> ray
 (** [read_ray t] parses a [ray()] expression. *)
 
 val pp_property_value_kind : 'a property_value_kind Pp.t
-(** [pp_property_value_kind] pretty-prints the kind label of a typed
-    property value. *)
+(** [pp_property_value_kind] pretty-prints the kind label of a typed property
+    value. *)
 
 val read_property_value_kind : Cursor.t -> 'a property_value_kind
-(** [read_property_value_kind t] always raises. The [property_value_kind]
-    GADT classifies typed values for dispatch and is not addressable as a
-    standalone CSS value; the function exists only so the API surface stays
-    symmetric. *)
+(** [read_property_value_kind t] always raises. The [property_value_kind] GADT
+    classifies typed values for dispatch and is not addressable as a standalone
+    CSS value; the function exists only so the API surface stays symmetric. *)
 
 val pp_position_visibility : position_visibility Pp.t
 (** [pp_position_visibility] pretty-prints [position-visibility]. *)

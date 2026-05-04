@@ -14,8 +14,9 @@ type t =
           (** [true] when the source spelled the function as [STYLE(...)] (case
               preserved for round-trip fidelity); [false] for the canonical
               lowercase spelling. *)
-    }  (** Style query: [style(--flag)], [style(property: value)], or a
-           custom-property range query. *)
+    }
+      (** Style query: [style(--flag)], [style(property: value)], or a
+          custom-property range query. *)
   | Scroll_state of {
       query : scroll_state_query;
       uppercase : bool;

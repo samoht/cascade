@@ -402,13 +402,11 @@ let to_string t = Pp.to_string pp t
 
 (* A lightweight character scanner sufficient for media-query syntax. *)
 type scanner = { s : string; mutable pos : int }
-
 type recovery_scope = Branch | Query_list
 
 exception Parse_error of recovery_scope * string
 
 let parse_error ?(scope = Branch) reason = raise (Parse_error (scope, reason))
-
 let mk_scanner s = { s = String.trim s; pos = 0 }
 let at_end sc = sc.pos >= String.length sc.s
 let peek sc = if at_end sc then None else Some sc.s.[sc.pos]
@@ -700,24 +698,24 @@ let validate_plain_feature name value =
     | "resolution", Resolution_value _ -> true
     | "resolution", Ident s -> String.lowercase_ascii s = "infinite"
     | ("color" | "color-index" | "monochrome"), Integer n -> n >= 0
-    | ( "horizontal-viewport-segments" | "vertical-viewport-segments" ),
-      Integer n ->
+    | ("horizontal-viewport-segments" | "vertical-viewport-segments"), Integer n
+      ->
         n >= 0
     | _ -> false
   in
   let valid_plain_numeric_value name value =
     match (String.lowercase_ascii name, value) with
-    | ( "width" | "height" | "min-width" | "max-width" | "inline-size"
-      | "block-size" ),
-      Length _ ->
+    | ( ( "width" | "height" | "min-width" | "max-width" | "inline-size"
+        | "block-size" ),
+        Length _ ) ->
         true
     | "aspect-ratio", Ratio _ -> true
     | "resolution", Resolution_value _ -> true
     | "resolution", Ident s -> String.lowercase_ascii s = "infinite"
     | ("color" | "color-index" | "monochrome"), Integer n -> n >= 0
     | "grid", Integer (0 | 1) -> true
-    | ( "horizontal-viewport-segments" | "vertical-viewport-segments" ),
-      Integer n ->
+    | ("horizontal-viewport-segments" | "vertical-viewport-segments"), Integer n
+      ->
         n >= 0
     | _ -> false
   in
@@ -731,41 +729,43 @@ let validate_plain_feature name value =
   | Some base when range_feature_name base -> valid_numeric_value base value
   | Some _ -> false
   | None -> (
-  match String.lowercase_ascii plain_name with
-  | "width" | "height" | "min-width" | "max-width" | "inline-size"
-  | "block-size" | "aspect-ratio" | "resolution" | "color" | "color-index"
-  | "monochrome" | "grid" | "horizontal-viewport-segments"
-  | "vertical-viewport-segments" ->
-      valid_plain_numeric_value name value
-  | "orientation" -> one_of [ "portrait"; "landscape" ]
-  | "hover" | "any-hover" -> one_of [ "none"; "hover" ]
-  | "pointer" | "any-pointer" -> one_of [ "none"; "coarse"; "fine" ]
-  | "update" -> one_of [ "none"; "slow"; "fast" ]
-  | "overflow-block" -> one_of [ "none"; "scroll"; "paged" ]
-  | "overflow-inline" -> one_of [ "none"; "scroll" ]
-  | "scan" -> one_of [ "interlace"; "progressive" ]
-  | "color-gamut" | "video-color-gamut" -> one_of [ "srgb"; "p3"; "rec2020" ]
-  | "dynamic-range" | "video-dynamic-range" -> one_of [ "standard"; "high" ]
-  | "display-mode" ->
-      one_of
-        [
-          "fullscreen";
-          "standalone";
-          "minimal-ui";
-          "browser";
-          "picture-in-picture";
-        ]
-  | "environment-blending" -> one_of [ "opaque"; "additive"; "subtractive" ]
-  | "prefers-color-scheme" -> one_of [ "light"; "dark" ]
-  | "prefers-reduced-motion" | "prefers-reduced-transparency"
-  | "prefers-reduced-data" ->
-      one_of [ "no-preference"; "reduce" ]
-  | "prefers-contrast" -> one_of [ "no-preference"; "less"; "more"; "custom" ]
-  | "forced-colors" -> one_of [ "none"; "active" ]
-  | "inverted-colors" -> one_of [ "none"; "inverted" ]
-  | "nav-controls" -> one_of [ "none"; "back" ]
-  | "scripting" -> one_of [ "none"; "initial-only"; "enabled" ]
-  | _ -> true)
+      match String.lowercase_ascii plain_name with
+      | "width" | "height" | "min-width" | "max-width" | "inline-size"
+      | "block-size" | "aspect-ratio" | "resolution" | "color" | "color-index"
+      | "monochrome" | "grid" | "horizontal-viewport-segments"
+      | "vertical-viewport-segments" ->
+          valid_plain_numeric_value name value
+      | "orientation" -> one_of [ "portrait"; "landscape" ]
+      | "hover" | "any-hover" -> one_of [ "none"; "hover" ]
+      | "pointer" | "any-pointer" -> one_of [ "none"; "coarse"; "fine" ]
+      | "update" -> one_of [ "none"; "slow"; "fast" ]
+      | "overflow-block" -> one_of [ "none"; "scroll"; "paged" ]
+      | "overflow-inline" -> one_of [ "none"; "scroll" ]
+      | "scan" -> one_of [ "interlace"; "progressive" ]
+      | "color-gamut" | "video-color-gamut" ->
+          one_of [ "srgb"; "p3"; "rec2020" ]
+      | "dynamic-range" | "video-dynamic-range" -> one_of [ "standard"; "high" ]
+      | "display-mode" ->
+          one_of
+            [
+              "fullscreen";
+              "standalone";
+              "minimal-ui";
+              "browser";
+              "picture-in-picture";
+            ]
+      | "environment-blending" -> one_of [ "opaque"; "additive"; "subtractive" ]
+      | "prefers-color-scheme" -> one_of [ "light"; "dark" ]
+      | "prefers-reduced-motion" | "prefers-reduced-transparency"
+      | "prefers-reduced-data" ->
+          one_of [ "no-preference"; "reduce" ]
+      | "prefers-contrast" ->
+          one_of [ "no-preference"; "less"; "more"; "custom" ]
+      | "forced-colors" -> one_of [ "none"; "active" ]
+      | "inverted-colors" -> one_of [ "none"; "inverted" ]
+      | "nav-controls" -> one_of [ "none"; "back" ]
+      | "scripting" -> one_of [ "none"; "initial-only"; "enabled" ]
+      | _ -> true)
 
 let validate_range_feature name value =
   range_feature_name name && validate_plain_feature name value
@@ -799,15 +799,15 @@ let parse_inside_parens content : feature option =
             match read_cmp sc with
             | Some op2 -> (
                 skip_ws sc;
-                  match read_value sc with
-                  | Some v2 ->
+                match read_value sc with
+                | Some v2 ->
                     skip_ws sc;
                     if
-                      at_end sc && interval_ops_compatible op1 op2
+                      at_end sc
+                      && interval_ops_compatible op1 op2
                       && validate_range_feature name v1
                       && validate_range_feature name v2
-                    then
-                      Some (Interval (v1, op1, name, op2, v2))
+                    then Some (Interval (v1, op1, name, op2, v2))
                     else None
                 | None -> None)
             | None ->
@@ -944,12 +944,10 @@ let medium_of_ident s : medium =
   | other -> Other other
 
 let is_reserved_media_type_keyword s =
-  match String.lowercase_ascii s with
-  | "and" | "or" -> true
-  | _ -> false
+  match String.lowercase_ascii s with "and" | "or" -> true | _ -> false
 
-(* [<media-query>] starts as [<media-condition>] (rather than as a media
-   type) when its first non-space token is '(' or "not (". *)
+(* [<media-query>] starts as [<media-condition>] (rather than as a media type)
+   when its first non-space token is '(' or "not (". *)
 let starts_with_condition sc =
   if peek sc = Some '(' then true
   else if lookahead_ident sc "not" then
@@ -1009,7 +1007,8 @@ let parse_single_query sc =
   else if starts_with_condition sc then Cond (parse_condition sc)
   else read_media_type_query sc
 
-let not_all_query : query = Type { prefix = Some Not; type_ = All; trailing = None }
+let not_all_query : query =
+  Type { prefix = Some Not; type_ = All; trailing = None }
 
 let skip_recovery_branch sc =
   let depth = ref 0 in

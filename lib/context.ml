@@ -1625,8 +1625,8 @@ module Match_container = struct
     List.exists
       (function
         | Container.Style { query = Range _; _ } -> false
-        | Container.Style { query; _ } when String.equal (fst (style_value query)) prop
-          -> (
+        | Container.Style { query; _ }
+          when String.equal (fst (style_value query)) prop -> (
             match (value, snd (style_value query)) with
             | None, _ -> true (* any style(prop) match: present in any form *)
             | Some _, None -> false
@@ -1645,7 +1645,8 @@ module Match_container = struct
             | _ -> false)
           q.container_features
     | Both (a, b) -> eval_scroll_state_query q a && eval_scroll_state_query q b
-    | Either (a, b) -> eval_scroll_state_query q a || eval_scroll_state_query q b
+    | Either (a, b) ->
+        eval_scroll_state_query q a || eval_scroll_state_query q b
     | Negated query -> not (eval_scroll_state_query q query)
 
   let eval_scroll_state q ~query =

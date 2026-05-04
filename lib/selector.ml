@@ -1826,9 +1826,7 @@ and drop_redundant_universal = function
   | [ _ ] as singleton -> singleton
   | components ->
       let kept =
-        List.filter
-          (function Universal None -> false | _ -> true)
-          components
+        List.filter (function Universal None -> false | _ -> true) components
       in
       if kept = [] then components else kept
 

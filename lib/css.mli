@@ -6730,21 +6730,20 @@ val parse : ?filename:string -> ?meta:Loc.meta_level -> string -> parse_result
 
 val optimize : ?flatten_nesting:bool -> t -> t
 (** [optimize ?flatten_nesting stylesheet] applies CSS optimizations to the
-    stylesheet, including merging consecutive identical selectors and
-    combining rules with identical properties. Preserves CSS cascade
-    semantics.
+    stylesheet, including merging consecutive identical selectors and combining
+    rules with identical properties. Preserves CSS cascade semantics.
 
     When [flatten_nesting] is [true] (default [false]) the optimizer also
-    desugars nested rules into flat top-level rules; see
-    {!Optimize.stylesheet}. *)
+    desugars nested rules into flat top-level rules; see {!Optimize.stylesheet}.
+*)
 
 val flatten_nesting : t -> t
-(** [flatten_nesting stylesheet] returns the stylesheet with every nested
-    rule flattened into a top-level rule (without running the rest of the
-    optimization passes). Child selectors with [&] have the parent
-    substituted in; selectors without [&] are joined to the parent with the
-    descendant combinator; at-rules nested inside a rule are emitted at the
-    top level with the parent selector applied to their inner rules. *)
+(** [flatten_nesting stylesheet] returns the stylesheet with every nested rule
+    flattened into a top-level rule (without running the rest of the
+    optimization passes). Child selectors with [&] have the parent substituted
+    in; selectors without [&] are joined to the parent with the descendant
+    combinator; at-rules nested inside a rule are emitted at the top level with
+    the parent selector applied to their inner rules. *)
 
 (** CSS will-change property values for performance optimization hints. *)
 type will_change =

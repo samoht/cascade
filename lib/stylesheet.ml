@@ -477,8 +477,7 @@ and pp_import_url ctx url =
 and strip_outer_parens s =
   let s = String.trim s in
   let len = String.length s in
-  if len >= 2 && s.[0] = '(' && s.[len - 1] = ')' then
-    String.sub s 1 (len - 2)
+  if len >= 2 && s.[0] = '(' && s.[len - 1] = ')' then String.sub s 1 (len - 2)
   else s
 
 and pp_condition_function ctx name rendered =
@@ -1521,8 +1520,7 @@ type property_reader_state = {
 }
 
 let conditional_args (fn : Component.func Component.node) =
-  if not fn.node.terminated then
-    failwith "unterminated conditional function";
+  if not fn.node.terminated then failwith "unterminated conditional function";
   Cursor.components_to_string ~trim:true fn.node.arguments
 
 let conditional_atom (fn : Component.func Component.node) =

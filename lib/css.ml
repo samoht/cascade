@@ -216,7 +216,8 @@ module Stylesheet = struct
             List.map (eval_descriptor ~layer_order ?layer ctx) descriptors,
             List.map (eval_page_margin_rule ~layer_order ?layer ctx) margins )
     | ( Charset _ | Import _ | Namespace _ | Property _ | Layer_decl _
-      | Font_face _ | Font_palette_values _ | View_transition _ ) as statement ->
+      | Font_face _ | Font_palette_values _ | View_transition _ ) as statement
+      ->
         statement
 
   and eval_rule_with_ctx ?ctx_for_layer ~layer_order ?layer ctx rule =
@@ -534,12 +535,11 @@ let media_queries t =
 (* AST Introspection Helpers *)
 
 (* Per CSS Cascade 6 section 6.4.3, a dotted layer name like [foo.bar] is
-   shorthand for the nested form [@layer foo { @layer bar { ... } }]: both
-   forms declare the layers [foo] and [foo.bar] and place the block contents
-   in [foo.bar]. We walk the @layer tree once, expanding any dotted names into
-   their nested equivalent and prefixing each block with its parent's path,
-   so [foo.bar] is reachable under one canonical name regardless of input
-   shape. *)
+   shorthand for the nested form [@layer foo { @layer bar { ... } }]: both forms
+   declare the layers [foo] and [foo.bar] and place the block contents in
+   [foo.bar]. We walk the @layer tree once, expanding any dotted names into
+   their nested equivalent and prefixing each block with its parent's path, so
+   [foo.bar] is reachable under one canonical name regardless of input shape. *)
 let qualified_layer_blocks sheet =
   let prefix_with parent name =
     if parent = "" then name else parent ^ "." ^ name
