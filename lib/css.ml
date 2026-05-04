@@ -665,3 +665,4 @@ let inline_style_of_declarations ?(optimize = false) ?minify ?mode ?newline
 
 (* Keep Css.optimize alias for convenience *)
 let optimize = Optimize.stylesheet
+let flatten_nesting = Optimize.flatten_nesting

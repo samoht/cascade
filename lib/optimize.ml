@@ -1033,6 +1033,107 @@ let rules (rules : rule list) : rule list = rules_aux rules
 (* Initialize the forward reference for merge_consecutive_media *)
 let () = statements_ref := statements
 
+(** {1 Nesting Flattening} *)
+
+let contains_nesting sel =
+  Selector.any (function Selector.Nesting -> true | _ -> false) sel
+
+let substitute_nesting ~parent sel =
+  Selector.map (function Selector.Nesting -> parent | s -> s) sel
+
+let combine_with_parent (parent : Selector.t) (child : Selector.t) : Selector.t
+    =
+  if contains_nesting child then substitute_nesting ~parent child
+  else Selector.Combined (parent, Selector.Descendant, child)
+
+let rec flatten_rule ?(parent : Selector.t option) (rule : rule) : statement list
+    =
+  let selector =
+    match parent with None -> rule.selector | Some p -> combine_with_parent p rule.selector
+  in
+  let direct =
+    if rule.declarations = [] then []
+    else
+      [
+        Rule
+          {
+            selector;
+            declarations = rule.declarations;
+            nested = [];
+            merge_key = rule.merge_key;
+          };
+      ]
+  in
+  let nested_flat =
+    List.concat_map (flatten_in_rule_context selector) rule.nested
+  in
+  direct @ nested_flat
+
+and flatten_in_rule_context (parent : Selector.t) :
+    statement -> statement list = function
+  | Rule child -> flatten_rule ~parent child
+  | Declarations decls ->
+      [
+        Rule
+          {
+            selector = parent;
+            declarations = decls;
+            nested = [];
+            merge_key = None;
+          };
+      ]
+  | Media (cond, block) ->
+      [ Media (cond, List.concat_map (flatten_in_rule_context parent) block) ]
+  | Container (name, cond, block) ->
+      [
+        Container
+          ( name,
+            cond,
+            List.concat_map (flatten_in_rule_context parent) block );
+      ]
+  | Supports (cond, block) ->
+      [
+        Supports (cond, List.concat_map (flatten_in_rule_context parent) block);
+      ]
+  | Layer (name, block) ->
+      [ Layer (name, List.concat_map (flatten_in_rule_context parent) block) ]
+  | Origin (origin, block) ->
+      [
+        Origin (origin, List.concat_map (flatten_in_rule_context parent) block);
+      ]
+  | Starting_style block ->
+      [
+        Starting_style (List.concat_map (flatten_in_rule_context parent) block);
+      ]
+  | When (cond, block) ->
+      [ When (cond, List.concat_map (flatten_in_rule_context parent) block) ]
+  | Else (cond, block) ->
+      [ Else (cond, List.concat_map (flatten_in_rule_context parent) block) ]
+  | Scope (s, e, block) ->
+      [
+        Scope (s, e, List.concat_map (flatten_in_rule_context parent) block);
+      ]
+  | other -> [ other ]
+
+let rec flatten_top_statement : statement -> statement list = function
+  | Rule rule -> flatten_rule rule
+  | Media (cond, block) -> [ Media (cond, flatten_block block) ]
+  | Container (name, cond, block) ->
+      [ Container (name, cond, flatten_block block) ]
+  | Supports (cond, block) -> [ Supports (cond, flatten_block block) ]
+  | Layer (name, block) -> [ Layer (name, flatten_block block) ]
+  | Origin (origin, block) -> [ Origin (origin, flatten_block block) ]
+  | Starting_style block -> [ Starting_style (flatten_block block) ]
+  | When (cond, block) -> [ When (cond, flatten_block block) ]
+  | Else (cond, block) -> [ Else (cond, flatten_block block) ]
+  | Scope (s, e, block) -> [ Scope (s, e, flatten_block block) ]
+  | other -> [ other ]
+
+and flatten_block (block : statement list) : statement list =
+  List.concat_map flatten_top_statement block
+
+let flatten_nesting (stylesheet : t) : t = flatten_block stylesheet
+
 (** {1 Stylesheet Optimization} *)
 
 let apply_property_duplication (stylesheet : t) : t =
@@ -1061,4 +1162,8 @@ let apply_property_duplication (stylesheet : t) : t =
   in
   apply_to_statements stylesheet
 
-let stylesheet (stylesheet : t) : t = statements stylesheet
+let stylesheet ?(flatten_nesting = false) (stylesheet : t) : t =
+  let stylesheet =
+    if flatten_nesting then flatten_block stylesheet else stylesheet
+  in
+  statements stylesheet
