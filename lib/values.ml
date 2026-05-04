@@ -220,8 +220,45 @@ let pp_calc_contents : type a. a Pp.t -> a calc Pp.t =
   in
   pp_calc_inner ~parent_prec:0 ~right_of_noncommut:false ctx calc
 
+(* CSS Values 4 10.7 structural simplification of a typed calc AST. Folds [Expr
+   (Num _, op, Num _)] subtrees and constant-identity patterns ([x + 0], [0 +
+   x], [x - 0], [x * 1], [1 * x], [x / 1]) into shorter equivalents. The
+   per-type "zero is the identity" cases involving typed [Val] leaves (e.g. [Val
+   Zero] for [length]) are handled by per-type pre-passes that rewrite typed
+   zeros to [Num 0.] before this generic fold. *)
+let rec eval_calc : type a. a calc -> a calc = function
+  | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
+  | Nested inner -> (
+      match eval_calc inner with
+      | (Val _ | Num _ | Var _) as leaf -> leaf
+      | reduced -> Nested reduced)
+  | Parens inner -> (
+      match eval_calc inner with
+      | (Val _ | Num _ | Var _) as leaf -> leaf
+      | reduced -> Parens reduced)
+  | Expr (l, op, r) -> (
+      let l = eval_calc l in
+      let r = eval_calc r in
+      match (l, op, r) with
+      | Num a, Add, Num b -> Num (a +. b)
+      | Num a, Sub, Num b -> Num (a -. b)
+      | Num a, Mul, Num b -> Num (a *. b)
+      | Num a, Div, Num b when b <> 0. -> Num (a /. b)
+      | x, Add, Num 0. -> x
+      | Num 0., Add, x -> x
+      | x, Sub, Num 0. -> x
+      | x, Mul, Num 1. -> x
+      | Num 1., Mul, x -> x
+      | x, Div, Num 1. -> x
+      | _ -> Expr (l, op, r))
+
 let pp_calc : type a. a Pp.t -> a calc Pp.t =
- fun pp_value ctx calc -> Pp.call "calc" (pp_calc_contents pp_value) ctx calc
+ fun pp_value ctx calc ->
+  let calc = if Pp.minified ctx then eval_calc calc else calc in
+  match calc with
+  | Val v when Pp.minified ctx -> pp_value ctx v
+  | Num n when Pp.minified ctx -> Pp.float ctx n
+  | _ -> Pp.call "calc" (pp_calc_contents pp_value) ctx calc
 
 (* Small helpers *)
 let pp_unit ?(always = true) ctx f suffix =
@@ -279,32 +316,6 @@ let rec map_calc : type a b. (a -> b) -> a calc -> b calc =
   | Nested inner -> Nested (map_calc f inner)
   | Parens inner -> Parens (map_calc f inner)
   | Expr (l, op, r) -> Expr (map_calc f l, op, map_calc f r)
-
-(** CSS Values 4 §10.7 structural simplification of a typed calc AST. Folds
-    every [Expr (Num _, op, Num _)] subtree into a single [Num], and [Parens] /
-    [Nested] wrappers around already-leaf values. [Val] / [Var] leaves and
-    expressions whose operands are not both [Num] survive unchanged — type-
-    specific simplification (e.g., adding two [Px] lengths) is the caller's job,
-    see {!Length.eval_calc}. *)
-let rec eval_calc : type a. a calc -> a calc = function
-  | (Num _ | Val _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
-  | Nested inner -> (
-      match eval_calc inner with
-      | (Val _ | Num _ | Var _) as leaf -> leaf
-      | reduced -> Nested reduced)
-  | Parens inner -> (
-      match eval_calc inner with
-      | (Val _ | Num _ | Var _) as leaf -> leaf
-      | reduced -> Parens reduced)
-  | Expr (l, op, r) -> (
-      let l = eval_calc l in
-      let r = eval_calc r in
-      match (l, op, r) with
-      | Num a, Add, Num b -> Num (a +. b)
-      | Num a, Sub, Num b -> Num (a -. b)
-      | Num a, Mul, Num b -> Num (a *. b)
-      | Num a, Div, Num b when b <> 0. -> Num (a /. b)
-      | _ -> Expr (l, op, r))
 
 (* Count the comma-separated argument groups in [s], ignoring commas inside
    nested function calls / brackets. Used by math-function readers to validate
@@ -383,6 +394,43 @@ let normalize_math_args args =
           Buffer.add_char buf c)
     args;
   Buffer.contents buf
+
+(* In a length calc tree, any zero-valued length and the unitless [0] are
+   spec-equivalent additive identities; rewriting typed zeros to [Num 0.] lets
+   the generic [eval_calc] simplifier collapse [calc(1px + 0px)] the same way it
+   collapses [calc(1px + 0)]. *)
+let length_is_zero = function
+  | Zero -> true
+  | Px f | Cm f | Mm f | Q f | In f | Pt f | Pc f -> f = 0.
+  | Em f | Rem f | Ex f | Cap f | Ic f | Rlh f -> f = 0.
+  | Ch f | Lh f -> f = 0.
+  | Pct f -> f = 0.
+  | Vw f | Vh f | Vmin f | Vmax f | Vi f | Vb f -> f = 0.
+  | Dvh f | Dvw f | Dvmin f | Dvmax f -> f = 0.
+  | Lvh f | Lvw f | Lvmin f | Lvmax f -> f = 0.
+  | Svh f | Svw f | Svmin f | Svmax f -> f = 0.
+  | Cqw f | Cqh f | Cqi f | Cqb f | Cqmin f | Cqmax f -> f = 0.
+  | _ -> false
+
+let rec normalize_length_calc_zeros : length calc -> length calc = function
+  | Val v when length_is_zero v -> Num 0.
+  | (Val _ | Num _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
+  | Nested c -> Nested (normalize_length_calc_zeros c)
+  | Parens c -> Parens (normalize_length_calc_zeros c)
+  | Expr (l, op, r) ->
+      Expr (normalize_length_calc_zeros l, op, normalize_length_calc_zeros r)
+
+let lp_is_zero (v : length_percentage) =
+  match v with Length l -> length_is_zero l | Pct f -> f = 0. | _ -> false
+
+let rec normalize_lp_calc_zeros :
+    length_percentage calc -> length_percentage calc = function
+  | Val v when lp_is_zero v -> Num 0.
+  | (Val _ | Num _ | Var _ | Sibling_index | Sibling_count) as leaf -> leaf
+  | Nested c -> Nested (normalize_lp_calc_zeros c)
+  | Parens c -> Parens (normalize_lp_calc_zeros c)
+  | Expr (l, op, r) ->
+      Expr (normalize_lp_calc_zeros l, op, normalize_lp_calc_zeros r)
 
 let rec pp_length ?(always = false) : length Pp.t =
  fun ctx v ->
@@ -521,7 +569,11 @@ let rec pp_length ?(always = false) : length Pp.t =
           Pp.string ctx "3.40282e38px"
       | Expr (Val _, Mul, Num f) when f = infinity ->
           Pp.string ctx "3.40282e38px"
-      | _ -> pp_calc (pp_length ~always) ctx cv)
+      | _ ->
+          let cv =
+            if Pp.minified ctx then normalize_length_calc_zeros cv else cv
+          in
+          pp_calc (pp_length ~always) ctx cv)
 
 let pp_color_name : color_name Pp.t =
  fun ctx -> function
@@ -991,7 +1043,9 @@ and pp_length_percentage ?(always = false) : length_percentage Pp.t =
   | Length l -> pp_length ~always ctx l
   | Pct f -> Pp.pct ~always ctx f
   | Var v -> pp_var (pp_length_percentage ~always) ctx v
-  | Calc c -> pp_calc (pp_length_percentage ~always) ctx c
+  | Calc c ->
+      let c = if Pp.minified ctx then normalize_lp_calc_zeros c else c in
+      pp_calc (pp_length_percentage ~always) ctx c
 
 and pp_number_percentage ?(always = false) : number_percentage Pp.t =
  fun ctx -> function
