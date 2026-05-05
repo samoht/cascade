@@ -6762,6 +6762,12 @@ val inline_vars : ?keep_vars:string list -> t -> t
     remain as live [var()] references in the output. The transform assumes no
     runtime mutation of custom properties. *)
 
+val decode_import_url : string -> string
+(** [decode_import_url s] strips the [url(...)] wrapper and any surrounding
+    quotes from an [@import] URL string as held in
+    {!Stylesheet.import_rule.url}. The parser preserves the verbatim source form
+    there for round-tripping; this helper recovers the bare URL. *)
+
 val inline_imports :
   ?query:Context.query -> ?layer_order:string list -> Context.loader -> t -> t
 (** [inline_imports ?query ?layer_order loader stylesheet] replaces every
