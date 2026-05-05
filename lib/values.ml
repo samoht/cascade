@@ -1071,10 +1071,12 @@ let color_name_hex : color_name -> string * string = function
   | Navy -> ("navy", "000080")
   | Teal -> ("teal", "008080")
   | Aqua -> ("aqua", "0ff")
+  | Rebecca_purple -> ("rebeccapurple", "663399")
   | _ ->
-      (* Extended named colors are always longer than 4 chars, so hex form
-         (#rrggbb = 7 chars) is never shorter. Keep name. *)
-      ("extended", "")
+      (* Other extended named colors aren't tabulated yet; the [Hex] arm of
+         [pp_color] picks up only the colours listed here. Names that fall
+         through emit verbatim. *)
+      ("", "")
 
 (* CSS Color 4 6.4: [transparent] is defined as [rgba(0, 0, 0, 0)]. The 4-digit
    shorthand [#0000] and the 8-digit form [#00000000] are spec-equivalent
@@ -1138,42 +1140,59 @@ let alpha_is_full = function
   | Pct 100.0 -> true
   | _ -> false
 
+(* Byte value [0..255] for an alpha component, when the alpha is a static number
+   or percentage. Returns [None] for symbolic forms ([Var] / [Calc]) that can't
+   fold to a fixed byte. *)
+let alpha_value_byte = function
+  | (None : alpha) -> Some 255
+  | Num f when f >= 0. && f <= 1. ->
+      Some (Float.to_int (Float.round (f *. 255.)))
+  | Pct f when f >= 0. && f <= 100. ->
+      Some (Float.to_int (Float.round (f *. 255. /. 100.)))
+  | _ -> Option.None
+
 (* CSS Color 4 3: the hue is interpreted modulo 360 degrees. *)
 let normalize_hue f =
   let m = Float.rem f 360. in
   if m < 0. then m +. 360. else m
 
+(* CSS Color 4 4.2.4: convert HSL components to sRGB byte triples. [hue] is in
+   degrees [0..360), [saturation] and [lightness] are percentages [0..100].
+   Returns [(r, g, b)] each in [0..255]. *)
+let hsl_to_rgb_bytes ~hue ~saturation ~lightness =
+  let s = saturation /. 100. in
+  let l = lightness /. 100. in
+  let a = s *. Float.min l (1. -. l) in
+  let f n =
+    let k = Float.rem (n +. (hue /. 30.)) 12. in
+    let k = if k < 0. then k +. 12. else k in
+    let t = Float.max (Float.min (Float.min (k -. 3.) (9. -. k)) 1.) (-1.) in
+    l -. (a *. t)
+  in
+  let to_byte v = Float.to_int (Float.round (v *. 255.)) in
+  (to_byte (f 0.), to_byte (f 8.), to_byte (f 4.))
+
+(* CSS Color 4 4.2.5: convert HWB components to sRGB byte triples. [hue] in
+   degrees, [whiteness]/[blackness] as percentages. *)
+let hwb_to_rgb_bytes ~hue ~whiteness ~blackness =
+  let w = whiteness /. 100. in
+  let bl = blackness /. 100. in
+  if w +. bl >= 1. then
+    let g = w /. (w +. bl) in
+    let v = Float.to_int (Float.round (g *. 255.)) in
+    (v, v, v)
+  else
+    let r, g, b = hsl_to_rgb_bytes ~hue ~saturation:100. ~lightness:50. in
+    let scale c =
+      let c = Float.of_int c /. 255. in
+      let v = (c *. (1. -. w -. bl)) +. w in
+      Float.to_int (Float.round (v *. 255.))
+    in
+    (scale r, scale g, scale b)
+
 (* Map a fully-saturated, mid-lightness HSL hue onto its CSS named colour. Only
    the six primary/secondary hues are addressed, since they are the only ones
    whose name is shorter than the equivalent [#hex] form. *)
-(* Reverse of [color_name_hex] for a name supplied as a string (e.g. the result
-   of [hsl_named_for_primary]). Returns the shortened hex form, or [None] when
-   the name has no hex equivalent. *)
-let named_hex_for_string name =
-  match String.lowercase_ascii name with
-  | "red" -> Some "f00"
-  | "blue" -> Some "00f"
-  | "lime" -> Some "0f0"
-  | "yellow" -> Some "ff0"
-  | "cyan" -> Some "0ff"
-  | "magenta" -> Some "f0f"
-  | _ -> None
-
-let hsl_named_for_primary ~hue ~saturation ~lightness : string option =
-  if Float.abs (saturation -. 100.) > 0.0001 then None
-  else if Float.abs (lightness -. 50.) > 0.0001 then None
-  else
-    let bucket = Float.round hue in
-    if Float.abs (hue -. bucket) > 0.0001 then None
-    else
-      match Float.to_int bucket with
-      | 0 -> Some "red"
-      | 60 -> Some "yellow"
-      | 120 -> Some "lime"
-      | 180 -> Some "cyan"
-      | 240 -> Some "blue"
-      | 300 -> Some "magenta"
-      | _ -> None
 
 (* The numeric value of a channel when it is a plain [Int] or integer-valued
    [Num]/[Pct]. Returns [None] for [Var]/[Calc] inputs which the printer cannot
@@ -1617,13 +1636,25 @@ and pp_color : color Pp.t =
           (* Preserve the rgb() form for fully-opaque alpha produced by
              var()-guard patterns. *)
           pp_rgb_func ctx (r, g, b, None)
+      | Channels { r; g; b } when Pp.minified ctx -> (
+          (* CSS Color 4 1.4 makes [rgba()] and [#rrggbbaa] spec-equivalent;
+             when all channels and alpha are byte-valued, route through the
+             8-digit hex form so the [Hex] arm picks the shortest spelling
+             ([rgb(255 0 0/.5)] -> [#ff000080], which beats the [rgb()] form on
+             length). When alpha is symbolic ([Var] / [Calc] / non-byte [Pct])
+             we cannot fold to hex so the [rgb()] form survives. *)
+          let alpha_byte =
+            match alpha_value_byte a with Some _ as b -> b | None -> None
+          in
+          match (rgb_to_hex_string r g b, alpha_byte) with
+          | Some hex, Some ab ->
+              pp_color ctx
+                (Hex { hash = true; value = hex ^ byte_to_hex_byte ab })
+          | _ -> pp_rgb_func ctx (r, g, b, a))
       | Channels { r; g; b } ->
-          (* CSS Color 4 1.4 makes [rgb()] and [rgba()] spec-equivalent; under
-             minify route through the [rgb()] keyword for the shorter spelling,
-             pretty mode keeps [rgba()] so the source-level keyword survives a
-             round-trip. *)
-          if Pp.minified ctx then pp_rgb_func ctx (r, g, b, a)
-          else pp_rgba_func ctx (r, g, b, a)
+          (* Pretty mode keeps the [rgba()] keyword so the source-level form
+             survives a round-trip. *)
+          pp_rgba_func ctx (r, g, b, a)
       | Var v ->
           (* Output as rgb(var(--color)/alpha) *)
           let rec pp_rgb_var : rgb Pp.t =
@@ -1638,22 +1669,43 @@ and pp_color : color Pp.t =
               pp_opt_alpha ctx a)
             ctx (v, a))
   | Hsl { h; s; l; a } when Pp.minified ctx -> (
-      (* CSS Color 4 3: when the HSL components map exactly to a primary or
-         secondary CSS named colour, route through the [Hex] arm so the same
-         shortest-on-tie rule applies (Lightning CSS / clean-css convention).
-         [hsl_named_for_primary] returns the canonical name; we look up its hex
-         form and emit the shortest of the two. *)
+      (* CSS Color 4 4.2.4: an [hsl()] with all-static components converts to
+         sRGB byte channels. Route through the [Hex] arm so the printer picks
+         the shortest spec-equivalent spelling - either [#rrggbb] (or its
+         3-digit shorthand), [#rrggbbaa] (alpha included), or a named colour
+         when one matches. Symbolic components fall through to [pp_hsl]. *)
       match (hue_to_deg h, percentage_to_float s, percentage_to_float l) with
-      | Some hue, Some saturation, Some lightness when alpha_is_full a -> (
+      | Some hue, Some saturation, Some lightness -> (
           let hue = normalize_hue hue in
-          match hsl_named_for_primary ~hue ~saturation ~lightness with
-          | Some name -> (
-              match named_hex_for_string name with
-              | Some hex -> pp_color ctx (Hex { hash = true; value = hex })
-              | None -> Pp.string ctx name)
-          | None -> pp_hsl ctx (h, s, l, a))
+          let r, g, b = hsl_to_rgb_bytes ~hue ~saturation ~lightness in
+          let hex =
+            byte_to_hex_byte r ^ byte_to_hex_byte g ^ byte_to_hex_byte b
+          in
+          match alpha_value_byte a with
+          | Some 255 -> pp_color ctx (Hex { hash = true; value = hex })
+          | Some ab ->
+              pp_color ctx
+                (Hex { hash = true; value = hex ^ byte_to_hex_byte ab })
+          | Option.None -> pp_hsl ctx (h, s, l, a))
       | _ -> pp_hsl ctx (h, s, l, a))
   | Hsl { h; s; l; a } -> pp_hsl ctx (h, s, l, a)
+  | Hwb { h; w; b; a } when Pp.minified ctx -> (
+      (* CSS Color 4 4.2.5: like [hsl()], an [hwb()] with all-static components
+         folds to its sRGB byte channels and routes through [Hex]. *)
+      match (hue_to_deg h, percentage_to_float w, percentage_to_float b) with
+      | Some hue, Some whiteness, Some blackness -> (
+          let hue = normalize_hue hue in
+          let r, g, blue = hwb_to_rgb_bytes ~hue ~whiteness ~blackness in
+          let hex =
+            byte_to_hex_byte r ^ byte_to_hex_byte g ^ byte_to_hex_byte blue
+          in
+          match alpha_value_byte a with
+          | Some 255 -> pp_color ctx (Hex { hash = true; value = hex })
+          | Some ab ->
+              pp_color ctx
+                (Hex { hash = true; value = hex ^ byte_to_hex_byte ab })
+          | Option.None -> pp_hwb ctx (h, w, b, a))
+      | _ -> pp_hwb ctx (h, w, b, a))
   | Hwb { h; w; b; a } -> pp_hwb ctx (h, w, b, a)
   | Color { space; components; alpha } -> pp_color' ctx space components alpha
   | Relative_rgb body ->
