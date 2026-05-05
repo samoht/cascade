@@ -344,12 +344,22 @@ let merge_rules (rules : Stylesheet.rule list) : Stylesheet.rule list =
             (* First rule - just store it *)
             merge_adjacent acc (Some rule) rest
         | Some prev ->
+            let conflicting_property =
+              let prev_props = List.map property_name prev.declarations in
+              List.exists
+                (fun d -> List.mem (property_name d) prev_props)
+                rule.declarations
+            in
             if
               prev.selector = rule.selector
-              && not (contains_vendor_pseudo_element rule.selector)
+              && (not (contains_vendor_pseudo_element rule.selector))
+              && not conflicting_property
             then
-              (* Same selector immediately following and not vendor-specific -
-                 safe to merge *)
+              (* Same selector, no overlapping property names - safe to merge
+                 into a single block. When both rules set the same property
+                 (e.g. [.x\{color:red\}][.x\{color:blue\}]) we keep them
+                 separate so source order remains visible after [@import]
+                 inlining. *)
               let merged : Stylesheet.rule =
                 {
                   selector = prev.selector;
@@ -361,10 +371,7 @@ let merge_rules (rules : Stylesheet.rule list) : Stylesheet.rule list =
                 }
               in
               merge_adjacent acc (Some merged) rest
-            else
-              (* Different selector or vendor-specific - emit previous rule and
-                 continue *)
-              merge_adjacent (prev :: acc) (Some rule) rest)
+            else merge_adjacent (prev :: acc) (Some rule) rest)
   in
   merge_adjacent [] None rules
 
