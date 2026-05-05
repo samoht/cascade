@@ -90,6 +90,6 @@ parse-time literal, not a computed reference.
 --inline-imports from stdin is rejected because relative paths cannot be
 resolved without a base directory.
 
-  $ echo "@import url('x.css');" | cascade --minify --inline-imports - 2>&1 | head -2
+  $ echo "@import url('x.css');" | cascade --minify --inline-imports - 2>&1
   Error: --inline-imports requires a file path (cannot resolve relative URLs from stdin)
   [1]
