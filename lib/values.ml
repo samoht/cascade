@@ -1600,13 +1600,10 @@ and pp_color : color Pp.t =
         ->
           Pp.char ctx '#';
           Pp.string ctx "0000"
-      | Channels { r; g; b } when Pp.minified ctx && alpha_is_full a -> (
-          (* Fully-opaque alpha is equivalent to [rgb(R G B)]; route through the
-             [Hex]-based canonicalisation so all RGB-family inputs share one
-             output form. *)
-          match rgb_to_hex_string r g b with
-          | Some hex -> pp_color ctx (Hex { hash = true; value = hex })
-          | None -> pp_rgb_func ctx (r, g, b, a))
+      | Channels { r; g; b } when Pp.minified ctx && alpha_is_full a ->
+          (* Preserve the rgb() form for fully-opaque alpha produced by
+             var()-guard patterns. *)
+          pp_rgb_func ctx (r, g, b, None)
       | Channels { r; g; b } ->
           (* CSS Color 4 1.4 makes [rgb()] and [rgba()] spec-equivalent; under
              minify route through the [rgb()] keyword for the shorter spelling,
