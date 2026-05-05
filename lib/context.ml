@@ -1797,10 +1797,10 @@ module Match_selector = struct
     | Optional -> List.mem "optional" doc.pseudo_classes
     | Open -> List.mem "open" doc.pseudo_classes
     | Popover_open -> List.mem "popover-open" doc.pseudo_classes
-    | Before -> List.mem "before" doc.pseudo_elements
-    | After -> List.mem "after" doc.pseudo_elements
-    | First_letter -> List.mem "first-letter" doc.pseudo_elements
-    | First_line -> List.mem "first-line" doc.pseudo_elements
+    | Before _ -> List.mem "before" doc.pseudo_elements
+    | After _ -> List.mem "after" doc.pseudo_elements
+    | First_letter _ -> List.mem "first-letter" doc.pseudo_elements
+    | First_line _ -> List.mem "first-line" doc.pseudo_elements
     | Backdrop -> List.mem "backdrop" doc.pseudo_elements
     | Marker -> List.mem "marker" doc.pseudo_elements
     | Placeholder -> List.mem "placeholder" doc.pseudo_elements
@@ -3280,6 +3280,7 @@ let simplify_animation_item ?layer_order ?layer ctx duration value =
             direction = shorthand.direction;
             fill_mode = shorthand.fill_mode;
             play_state = shorthand.play_state;
+            timeline = shorthand.timeline;
           }
         in
         (Properties.Shorthand shorthand : Properties.animation)

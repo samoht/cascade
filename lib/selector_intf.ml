@@ -18,6 +18,12 @@ type ns = Any | None | Prefix of string
 type attr_flag = Case_insensitive | Case_sensitive
 type specificity = { ids : int; classes : int; elements : int }
 
+(** CSS Selectors 4 3.6.1 colon-prefix form for the legacy pseudo-elements
+    [::before], [::after], [::first-letter], [::first-line]. [Single] is the CSS
+    2.1 spelling kept as a backwards-compatibility alias; [Double] is the modern
+    canonical spelling. *)
+type colon_form = Single | Double
+
 type aria_attr = Aria.t
 (** ARIA attribute names for type-safe handling *)
 
@@ -98,11 +104,17 @@ type t =
   | Current
   | Popover_open
   | Open
-  (* Legacy single-colon pseudo-elements for backwards compatibility *)
-  | Before
-  | After
-  | First_letter
-  | First_line
+  (* CSS Selectors 4 3.6.1: [::before] / [::after] / [::first-letter] /
+     [::first-line] are the modern double-colon pseudo-element forms; the CSS
+     2.1 single-colon spelling is preserved as a backwards-compatibility alias.
+     The [colon_form] field records which form the source used so the
+     pretty-printer round-trips the same spelling under non-minified output;
+     minified output always picks the [Single]-colon form since it is one
+     character shorter. *)
+  | Before of colon_form
+  | After of colon_form
+  | First_letter of colon_form
+  | First_line of colon_form
   (* Modern double-colon pseudo-elements *)
   | Backdrop
   | Marker

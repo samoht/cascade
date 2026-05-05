@@ -46,11 +46,15 @@ let attr_value_needs_quoting value =
 (* Helper to pretty-print attribute values with smart quoting. *)
 let pp_attr_value : string Pp.t =
  fun ctx value ->
-  (* Only quote attribute values when necessary per CSS specs. This preserves
-     the original format when possible. *)
+  (* Under minify, drop the surrounding quotes when the value is a CSS ident
+     since the two forms are spec-equivalent and the bare form is shorter. The
+     non-minified path keeps the quotes for source fidelity - the user who wrote
+     [type="text"] expects to read [type="text"] back, even if [type=text] would
+     parse the same way. *)
   if String.contains value '\\' then Pp.string ctx value
-  else if attr_value_needs_quoting value then Pp.quoted_string ctx value
-  else Pp.string ctx value
+  else if Pp.minified ctx && not (attr_value_needs_quoting value) then
+    Pp.string ctx value
+  else Pp.quoted_string ctx value
 
 (* Helper to print a token with pretty spacing when not minifying. *)
 let pp_token : string Pp.t =
@@ -863,13 +867,15 @@ let pseudo_class_base_idents =
     ("active-view-transition", Active_view_transition);
   ]
 
-let pseudo_element_legacy_idents =
+let pseudo_element_legacy_idents form =
   [
-    (* Legacy pseudo-elements *)
-    ("before", Before);
-    ("after", After);
-    ("first-letter", First_letter);
-    ("first-line", First_line);
+    (* Legacy pseudo-elements: parser records [Single] or [Double] colon
+       depending on the entry point so the printer round-trips the source
+       spelling under non-minified output. *)
+    ("before", Before form);
+    ("after", After form);
+    ("first-letter", First_letter form);
+    ("first-line", First_line form);
   ]
 
 let pseudo_element_modern_idents =
@@ -920,8 +926,8 @@ let pseudo_vendor_idents =
   ]
 
 let is_pseudo_element_selector = function
-  | Before | After | First_letter | First_line | Backdrop | Marker | Placeholder
-  | Selection | File_selector_button | Moz_placeholder
+  | Before _ | After _ | First_letter _ | First_line _ | Backdrop | Marker
+  | Placeholder | Selection | File_selector_button | Moz_placeholder
   | Webkit_input_placeholder | Ms_input_placeholder | Webkit_scrollbar
   | Webkit_search_cancel_button | Webkit_search_decoration
   | Webkit_datetime_edit_fields_wrapper | Webkit_date_and_time_value
@@ -1209,7 +1215,8 @@ and read_view_transition_new t =
 and read_pseudo_class t =
   if not (Cursor.colon t) then Cursor.err_expected t "':'";
   let all_idents =
-    pseudo_class_base_idents @ pseudo_element_legacy_idents
+    pseudo_class_base_idents
+    @ pseudo_element_legacy_idents Single
     @ pseudo_element_modern_idents @ pseudo_vendor_idents
   in
   Cursor.enum_or_calls "pseudo-class" all_idents
@@ -1255,7 +1262,7 @@ and read_pseudo_element t =
     ~default:(fun t ->
       Cursor.enum "pseudo-element"
         (pseudo_element_modern_idents @ pseudo_vendor_idents
-       @ pseudo_element_legacy_idents)
+        @ pseudo_element_legacy_idents Double)
         t)
     t
 
@@ -1457,8 +1464,16 @@ let vendor_elem ctx name = Pp.string ctx ("::-" ^ name)
    spelling for the four original pseudo-elements. In minified output we use it
    because it is shorter; otherwise emit the modern double-colon pseudo-element
    syntax. *)
-let legacy_elem ctx name =
-  Pp.string ctx ((if Pp.minified ctx then ":" else "::") ^ name)
+(* Emit a CSS 2.1 / CSS 3 pseudo-element. Under [--minify] the [Single]-colon
+   form always wins (one byte shorter, valid alias per CSS Selectors 4 3.6.1).
+   In non-minified output the printer keeps the source spelling so a [::before]
+   stays [::before] and a [:before] stays [:before]. *)
+let legacy_elem ctx form name =
+  let prefix =
+    if Pp.minified ctx then ":"
+    else match form with Single -> ":" | Double -> "::"
+  in
+  Pp.string ctx (prefix ^ name)
 
 let func ctx name pp_content value =
   pp_func ctx ~prefix:":" name pp_content value
@@ -1724,10 +1739,10 @@ and pp : t Pp.t =
   | Popover_open -> pseudo ctx "popover-open"
   | Open -> pseudo ctx "open"
   (* Legacy pseudo-elements (use single colon in minified mode) *)
-  | Before -> legacy_elem ctx "before"
-  | After -> legacy_elem ctx "after"
-  | First_letter -> legacy_elem ctx "first-letter"
-  | First_line -> legacy_elem ctx "first-line"
+  | Before form -> legacy_elem ctx form "before"
+  | After form -> legacy_elem ctx form "after"
+  | First_letter form -> legacy_elem ctx form "first-letter"
+  | First_line form -> legacy_elem ctx form "first-line"
   (* Modern double-colon pseudo-elements *)
   | Backdrop -> elem ctx "backdrop"
   | Marker -> elem ctx "marker"
@@ -2007,8 +2022,8 @@ let rec specificity = function
       { ids = 0; classes = 1; elements = 0 }
   | Element _ -> { ids = 0; classes = 0; elements = 1 }
   | Universal _ | Nesting -> zero_specificity
-  | Before | After | First_letter | First_line | Backdrop | Marker | Placeholder
-  | Selection | Target_text | Spelling_error | Grammar_error
+  | Before _ | After _ | First_letter _ | First_line _ | Backdrop | Marker
+  | Placeholder | Selection | Target_text | Spelling_error | Grammar_error
   | File_selector_button | Part _ | View_transition_group _
   | View_transition_image_pair _ | View_transition_old _ | View_transition_new _
     ->
