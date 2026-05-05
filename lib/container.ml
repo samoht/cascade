@@ -128,6 +128,31 @@ let is_ident_start c =
 
 let is_ident_cont c = is_ident_start c || (c >= '0' && c <= '9')
 
+let contains_var_function s =
+  let len = String.length s in
+  let rec loop i =
+    i + 4 <= len && (String.sub s i 4 = "var(" || loop (i + 1))
+  in
+  loop 0
+
+let unresolved_media_feature s =
+  let s = String.trim s in
+  let len = String.length s in
+  if len >= 2 && s.[0] = '(' && s.[len - 1] = ')' then
+    let body = String.sub s 1 (len - 2) in
+    match String.index_opt body ':' with
+    | Some colon ->
+        let name = String.sub body 0 colon |> String.trim in
+        let value =
+          String.sub body (colon + 1) (String.length body - colon - 1)
+          |> String.trim
+        in
+        if name <> "" && value <> "" && contains_var_function value then
+          Some (Feature_query (Media.Plain (name, Media.Ident value)))
+        else None
+    | None -> None
+  else None
+
 let first_non_ws s =
   let rec loop i =
     if i >= String.length s then None
@@ -500,6 +525,10 @@ let rec parse_unnamed s =
 
 and parse_atom s =
   match classify_query_surface (String.trim s) with
+  | _ when String.contains s 'v' && contains_var_function s -> (
+      match unresolved_media_feature s with
+      | Some query -> query
+      | None -> parse_container_specific s)
   | Style_func _ | Scroll_state_func _ -> parse_container_specific s
   | Parenthesized_feature | Other_query -> (
       match Media.of_string s with
@@ -509,8 +538,7 @@ and parse_atom s =
       | media -> (
           match single_feature_of_media media with
           | Some f -> Feature_query f
-          | None ->
-              failwith ("non-leaf media expression in container query: " ^ s))
+          | None -> Feature_query media)
       | exception Failure _ -> parse_container_specific s)
 
 let of_string s =

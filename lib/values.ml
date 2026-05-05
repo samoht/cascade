@@ -108,6 +108,28 @@ let pp_syntax_fallback ctx value =
     (if Pp.minified ctx then Parser.to_string_custom_minified value
      else Parser.to_string_custom value)
 
+let first_top_level_comma_segment s =
+  let len = String.length s in
+  let rec loop i depth (quote : char option) =
+    if i >= len then s
+    else
+      match quote with
+      | Some q ->
+          let quote =
+            if s.[i] = q && (i = 0 || s.[i - 1] <> '\\') then Option.None
+            else quote
+          in
+          loop (i + 1) depth quote
+      | Option.None -> (
+          match s.[i] with
+          | '"' | '\'' -> loop (i + 1) depth (Some s.[i])
+          | '(' -> loop (i + 1) (depth + 1) Option.None
+          | ')' when depth > 0 -> loop (i + 1) (depth - 1) Option.None
+          | ',' when depth = 0 -> String.sub s 0 i
+          | _ -> loop (i + 1) depth Option.None)
+  in
+  loop 0 0 Option.None
+
 let pp_var : type a. a Pp.t -> a var Pp.t =
  fun pp_value ctx v ->
   let emit_var_ref () =
@@ -125,7 +147,10 @@ let pp_var : type a. a Pp.t -> a var Pp.t =
             match ctx.theme_defaults fallback_name with
             | Some resolved -> Pp.string ctx resolved
             | Option.None -> emit_var_ref ())
-        | None | Empty | Empty2 | Syntax_fallback _ -> emit_var_ref ())
+        | Syntax_fallback value ->
+            pp_syntax_fallback { ctx with in_function = true } value
+        | Empty | Empty2 -> ()
+        | None -> emit_var_ref ())
   else
     match v.fallback with
     | None -> (
@@ -1643,6 +1668,13 @@ and pp_color : color Pp.t =
       else pp_color ctx (Hex { hash = true; value = hex })
   | Named name -> pp_color_name ctx name
   | System sc -> pp_system_color ctx sc
+  | Var { fallback = Syntax_fallback value; default = Option.None; _ }
+    when ctx.inline ->
+      let rendered =
+        if Pp.minified ctx then Parser.to_string_custom_minified value
+        else Parser.to_string_custom value
+      in
+      Pp.string ctx (first_top_level_comma_segment rendered)
   | Var v -> pp_var pp_color ctx v
   | Current ->
       Pp.string ctx (if ctx.in_function then "currentcolor" else "currentColor")
