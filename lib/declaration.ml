@@ -425,23 +425,7 @@ let rec read_font_shorthand t =
       if not saw_size then Cursor.err_invalid t "font shorthand missing size";
       raw
 
-(* Custom parser for grid-template-columns/rows: handles both single values and
-   lists *)
-let read_grid_template_list t =
-  let first_value = read_grid_template t in
-  Cursor.ws t;
-  (* Try to read more values - if none, it's a single value *)
-  let remaining_values =
-    Cursor.list ~sep:(fun t -> Cursor.ws t) ~at_least:0 read_grid_template t
-  in
-  if remaining_values = [] then
-    (* Single value (e.g., "none", "repeat(3, 1fr)", "1fr") *)
-    first_value
-  else
-    (* Multiple values (e.g., "100px 200px", "1fr 2fr") *)
-    let all_values = first_value :: remaining_values in
-    Tracks all_values
-
+let read_grid_template_list t = read_grid_template t
 let read_opacity = Properties.read_opacity
 
 (* Some properties (shape-margin, scroll-margin, padding, etc.) require a
@@ -708,7 +692,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Border_bottom_color -> v Border_bottom_color (read_color t)
   | Border_left_color -> v Border_left_color (read_color t)
   (* Length/percentage properties *)
-  | Width -> v Width (read_length_percentage ~allow_negative:false t)
+  | Width -> v Width (read_length_percentage t)
   | Height -> v Height (read_length_percentage ~allow_negative:false t)
   | Min_width -> v Min_width (read_length_percentage ~allow_negative:false t)
   | Min_height -> v Min_height (read_length_percentage ~allow_negative:false t)
@@ -1138,10 +1122,11 @@ let read_value (type a) (prop : a property) t : declaration =
   | Object_fit -> v Object_fit (read_object_fit t)
   | Object_view_box -> v Object_view_box (read_object_view_box t)
   (* Transition properties *)
-  | Transition_duration -> v Transition_duration (read_duration t)
+  | Transition_duration ->
+      v Transition_duration (read_duration_list read_duration t)
   | Transition_timing_function ->
-      v Transition_timing_function (read_timing_function t)
-  | Transition_delay -> v Transition_delay (read_time t)
+      v Transition_timing_function (read_timing_function_list t)
+  | Transition_delay -> v Transition_delay (read_duration_list read_time t)
   | Transition_property -> v Transition_property (read_transition_property t)
   | Transition_behavior ->
       v Transition_behavior (Properties.read_transition_behavior t)
@@ -1175,18 +1160,7 @@ let read_value (type a) (prop : a property) t : declaration =
   | Border_bottom -> v Border_bottom (read_border t)
   | Border_left -> v Border_left (read_border t)
   | Border_block -> v Border_block (read_border t)
-  | Border_spacing ->
-      (* border-spacing accepts 1 or 2 length values *)
-      let lengths =
-        Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2
-          (fun t ->
-            let length = read_non_negative_length t in
-            match length with
-            | Auto -> Cursor.err_invalid t "border-spacing does not accept auto"
-            | _ -> length)
-          t
-      in
-      v Border_spacing (Lengths lengths)
+  | Border_spacing -> v Border_spacing (read_border_spacing t)
   | Border_image -> v Border_image (read_border_image t)
   | Border_collapse -> v Border_collapse (read_border_collapse t)
   (* Clip and mask *)
@@ -1296,10 +1270,11 @@ let read_value (type a) (prop : a property) t : declaration =
   | Text_combine_upright -> v Text_combine_upright (read_text_combine_upright t)
   (* Animation properties *)
   | Animation_name -> v Animation_name (read_animation_name t)
-  | Animation_duration -> v Animation_duration (read_duration t)
+  | Animation_duration ->
+      v Animation_duration (read_duration_list read_duration t)
   | Animation_timing_function ->
-      v Animation_timing_function (read_timing_function t)
-  | Animation_delay -> v Animation_delay (read_time t)
+      v Animation_timing_function (read_timing_function_list t)
+  | Animation_delay -> v Animation_delay (read_duration_list read_time t)
   | Animation_iteration_count ->
       v Animation_iteration_count (read_animation_iteration_count t)
   | Animation_direction -> v Animation_direction (read_animation_direction t)

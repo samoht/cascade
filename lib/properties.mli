@@ -409,11 +409,12 @@ val animation_shorthand :
   ?direction:animation_direction ->
   ?fill_mode:animation_fill_mode ->
   ?play_state:animation_play_state ->
+  ?timeline:animation_timeline ->
   unit ->
   animation
 (** [animation_shorthand ?name ?duration ?timing_function ?delay
-     ?iteration_count ?direction ?fill_mode ?play_state ()] is the animation
-    shorthand. *)
+     ?iteration_count ?direction ?fill_mode ?play_state ?timeline ()] is the
+    animation shorthand. *)
 
 val transition_shorthand :
   ?property:transition_property_value ->

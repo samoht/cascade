@@ -286,7 +286,7 @@ let pct ?(always = false) ctx f =
      preserves the source spelling, so [%] survives even on zero. *)
   let always = always || not ctx.minify in
   if always || f <> 0. then (
-    float ctx f;
+    float ctx (round_sig 6 f);
     string ctx "%")
   else char ctx '0'
 

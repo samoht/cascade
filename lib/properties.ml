@@ -2457,6 +2457,50 @@ let read_url_arg t =
   | Some s -> String.trim s
   | None -> Cursor.url t
 
+let is_zero_length : length -> bool = function
+  | Zero
+  | Px 0.
+  | Rem 0.
+  | Em 0.
+  | Ex 0.
+  | Cap 0.
+  | Ic 0.
+  | Ric 0.
+  | Rlh 0.
+  | Cm 0.
+  | Mm 0.
+  | Q 0.
+  | In 0.
+  | Pt 0.
+  | Pc 0.
+  | Pct 0.
+  | Vw 0.
+  | Vh 0.
+  | Vmin 0.
+  | Vmax 0.
+  | Vi 0.
+  | Vb 0.
+  | Dvh 0.
+  | Dvw 0.
+  | Dvmin 0.
+  | Dvmax 0.
+  | Lvh 0.
+  | Lvw 0.
+  | Lvmin 0.
+  | Lvmax 0.
+  | Svh 0.
+  | Svw 0.
+  | Svmin 0.
+  | Svmax 0.
+  | Cqw 0.
+  | Cqh 0.
+  | Cqi 0.
+  | Cqb 0.
+  | Cqmin 0.
+  | Cqmax 0. ->
+      true
+  | _ -> false
+
 let pp_shadow_parts ctx ~inset ~inset_var ~inset_var_no_fallback h v blur spread
     color =
   (* If inset_var is set, output var(--<name>,) or var(--<name>) before shadow
@@ -2484,8 +2528,21 @@ let pp_shadow_parts ctx ~inset ~inset_var ~inset_var_no_fallback h v blur spread
   pp_length ctx h;
   Pp.space ctx ();
   pp_length ctx v;
+  let spread : length option =
+    match spread with
+    | Some spread when Pp.minified ctx && is_zero_length spread ->
+        (None : length option)
+    | Some spread -> Some spread
+    | None -> None
+  in
+  let blur : length option =
+    match (blur, spread) with
+    | Some blur, None when Pp.minified ctx && is_zero_length blur ->
+        (None : length option)
+    | blur, _ -> blur
+  in
   pp_opt_space pp_length ctx blur;
-  pp_opt_space (pp_length ~always:true) ctx spread;
+  pp_opt_space pp_length ctx spread;
   match color with
   | Some c ->
       (* Space before color can be omitted in minified mode when the previous
@@ -2690,6 +2747,12 @@ let rec pp_position_value : position_value Pp.t =
       pp_length_percentage ~always:true ctx offset;
       Pp.space ctx ();
       Pp.string ctx axis
+  | Axis_edge_offset (axis, edge, offset) ->
+      Pp.string ctx axis;
+      Pp.space ctx ();
+      Pp.string ctx edge;
+      Pp.space ctx ();
+      pp_length ctx offset
   | Edge_offset_edge_offset (edge1, offset1, edge2, offset2) ->
       Pp.string ctx edge1;
       Pp.space ctx ();
@@ -3001,15 +3064,284 @@ let rec pp_border_radius : border_radius Pp.t =
           Pp.sp ctx ();
           pp_box_shorthand (pp_length_percentage ~always:true) ctx vs)
 
+let border_width_to_length : border_width -> length option = function
+  | Px n -> Some (Px n)
+  | Cm n -> Some (Cm n)
+  | Mm n -> Some (Mm n)
+  | Q n -> Some (Q n)
+  | In n -> Some (In n)
+  | Pt n -> Some (Pt n)
+  | Pc n -> Some (Pc n)
+  | Rem n -> Some (Rem n)
+  | Em n -> Some (Em n)
+  | Ex n -> Some (Ex n)
+  | Cap n -> Some (Cap n)
+  | Ic n -> Some (Ic n)
+  | Ric n -> Some (Ric n)
+  | Rlh n -> Some (Rlh n)
+  | Ch n -> Some (Ch n)
+  | Lh n -> Some (Lh n)
+  | Vh n -> Some (Vh n)
+  | Vw n -> Some (Vw n)
+  | Vmin n -> Some (Vmin n)
+  | Vmax n -> Some (Vmax n)
+  | Pct n -> Some (Pct n)
+  | Zero -> Some Zero
+  | _ -> None
+
+let border_width_calc_to_length calc =
+  let rec aux : border_width calc -> length calc option = function
+    | Val width ->
+        Option.map (fun length -> Val length) (border_width_to_length width)
+    | Num n -> Some (Num n)
+    | Var _ | Sibling_index | Sibling_count -> None
+    | Nested inner -> Option.map (fun inner -> Nested inner) (aux inner)
+    | Parens inner -> Option.map (fun inner -> Parens inner) (aux inner)
+    | Expr (left, op, right) -> (
+        match (aux left, aux right) with
+        | Some left, Some right -> Some (Expr (left, op, right))
+        | _ -> None)
+  in
+  aux calc
+
+let length_linear_term : length -> (string * float * (float -> length)) option =
+  function
+  | Zero -> Some ("px", 0., fun _ -> Zero)
+  | Px n -> Some ("px", n, fun n -> if n = 0. then Zero else Px n)
+  | Cm n -> Some ("cm", n, fun n -> Cm n)
+  | Mm n -> Some ("mm", n, fun n -> Mm n)
+  | Q n -> Some ("q", n, fun n -> Q n)
+  | In n -> Some ("in", n, fun n -> In n)
+  | Pt n -> Some ("pt", n, fun n -> Pt n)
+  | Pc n -> Some ("pc", n, fun n -> Pc n)
+  | Rem n -> Some ("rem", n, fun n -> Rem n)
+  | Em n -> Some ("em", n, fun n -> Em n)
+  | Ex n -> Some ("ex", n, fun n -> Ex n)
+  | Cap n -> Some ("cap", n, fun n -> Cap n)
+  | Ic n -> Some ("ic", n, fun n -> Ic n)
+  | Ric n -> Some ("ric", n, fun n -> Ric n)
+  | Rlh n -> Some ("rlh", n, fun n -> Rlh n)
+  | Ch n -> Some ("ch", n, fun n -> Ch n)
+  | Lh n -> Some ("lh", n, fun n -> Lh n)
+  | Pct n -> Some ("%", n, fun n -> Pct n)
+  | Vw n -> Some ("vw", n, fun n -> Vw n)
+  | Vh n -> Some ("vh", n, fun n -> Vh n)
+  | Vmin n -> Some ("vmin", n, fun n -> Vmin n)
+  | Vmax n -> Some ("vmax", n, fun n -> Vmax n)
+  | _ -> None
+
+let simplify_border_width_length_calc calc =
+  let scale factor terms =
+    List.map (fun (key, n, make) -> (key, factor *. n, make)) terms
+  in
+  let rec terms = function
+    | Val length ->
+        Option.map (fun term -> [ term ]) (length_linear_term length)
+    | Num 0. -> Some []
+    | Num _ | Var _ | Sibling_index | Sibling_count -> None
+    | Nested inner | Parens inner -> terms inner
+    | Expr (left, Add, right) -> (
+        match (terms left, terms right) with
+        | Some left, Some right -> Some (left @ right)
+        | _ -> None)
+    | Expr (left, Sub, right) -> (
+        match (terms left, terms right) with
+        | Some left, Some right -> Some (left @ scale (-1.) right)
+        | _ -> None)
+    | Expr (left, Mul, Num n) -> Option.map (scale n) (terms left)
+    | Expr (Num n, Mul, right) -> Option.map (scale n) (terms right)
+    | Expr (left, Div, Num n) when n <> 0. ->
+        Option.map (scale (1. /. n)) (terms left)
+    | Expr _ -> None
+  in
+  match terms calc with
+  | None -> calc
+  | Some terms -> (
+      let table = Hashtbl.create 4 in
+      List.iteri
+        (fun pos (key, n, make) ->
+          match Hashtbl.find_opt table key with
+          | None -> Hashtbl.add table key (pos, n, make)
+          | Some (old_pos, old_n, old_make) ->
+              Hashtbl.replace table key (old_pos, old_n +. n, old_make))
+        terms;
+      let terms =
+        Hashtbl.to_seq_values table
+        |> List.of_seq
+        |> List.filter (fun (_, n, _) -> n <> 0.)
+        |> List.sort (fun (a, _, _) (b, _, _) -> compare a b)
+      in
+      match terms with
+      | [] -> Val Zero
+      | [ (_, n, make) ] -> Val (make n)
+      | (_, n, make) :: rest ->
+          List.fold_left
+            (fun acc (_, n, make) ->
+              if n < 0. then Expr (acc, Sub, Val (make (-.n)))
+              else Expr (acc, Add, Val (make n)))
+            (Val (make n))
+            rest)
+
+let simplified_border_width_calc_to_length calc =
+  Option.map simplify_border_width_length_calc
+    (border_width_calc_to_length calc)
+
+let pp_length_calc_op ctx (op : calc_op) =
+  match op with
+  | Add -> Pp.string ctx " + "
+  | Sub -> Pp.string ctx " - "
+  | Mul ->
+      Pp.space_if_pretty ctx ();
+      Pp.string ctx "*";
+      Pp.space_if_pretty ctx ()
+  | Div ->
+      Pp.space_if_pretty ctx ();
+      Pp.string ctx "/";
+      Pp.space_if_pretty ctx ()
+
+let pp_length_calc_contents ctx calc =
+  let precedence (op : calc_op) =
+    match op with Add | Sub -> 1 | Mul | Div -> 2
+  in
+  let rec pp_inner ~parent_prec ~right_of_noncommut ctx = function
+    | Val length -> pp_length ctx length
+    | Num n -> Pp.float ctx n
+    | (Var _ | Sibling_index | Sibling_count) as calc ->
+        pp_calc pp_length ctx calc
+    | Nested inner ->
+        Pp.call "calc"
+          (pp_inner ~parent_prec:0 ~right_of_noncommut:false)
+          ctx inner
+    | Parens inner ->
+        Pp.char ctx '(';
+        pp_inner ~parent_prec:0 ~right_of_noncommut:false ctx inner;
+        Pp.char ctx ')'
+    | Expr (left, op, right) ->
+        let op_prec = precedence op in
+        let needs_parens =
+          op_prec < parent_prec || (right_of_noncommut && op_prec <= parent_prec)
+        in
+        if needs_parens then Pp.char ctx '(';
+        pp_inner ~parent_prec:op_prec ~right_of_noncommut:false ctx left;
+        pp_length_calc_op ctx op;
+        let is_noncommut = match op with Sub | Div -> true | _ -> false in
+        pp_inner ~parent_prec:op_prec ~right_of_noncommut:is_noncommut ctx right;
+        if needs_parens then Pp.char ctx ')'
+  in
+  pp_inner ~parent_prec:0 ~right_of_noncommut:false ctx calc
+
+let border_width_length_measure : length -> [ `Abs | `Unit of string ] * float =
+  function
+  | Px n -> (`Abs, n)
+  | In n -> (`Abs, n *. 96.)
+  | Cm n -> (`Abs, n *. 96. /. 2.54)
+  | Mm n -> (`Abs, n *. 96. /. 25.4)
+  | Q n -> (`Abs, n *. 96. /. 101.6)
+  | Pt n -> (`Abs, n *. 96. /. 72.)
+  | Pc n -> (`Abs, n *. 16.)
+  | Rem n -> (`Unit "rem", n)
+  | Em n -> (`Unit "em", n)
+  | Ex n -> (`Unit "ex", n)
+  | Cap n -> (`Unit "cap", n)
+  | Ic n -> (`Unit "ic", n)
+  | Ric n -> (`Unit "ric", n)
+  | Rlh n -> (`Unit "rlh", n)
+  | Ch n -> (`Unit "ch", n)
+  | Lh n -> (`Unit "lh", n)
+  | Vw n -> (`Unit "vw", n)
+  | Vh n -> (`Unit "vh", n)
+  | Vmin n -> (`Unit "vmin", n)
+  | Vmax n -> (`Unit "vmax", n)
+  | Pct n -> (`Unit "%", n)
+  | Zero -> (`Abs, 0.)
+  | _ -> (`Unit "", nan)
+
+let comparable_border_width_length length :
+    ([ `Abs | `Unit of string ] * float) option =
+  match border_width_length_measure length with
+  | `Unit "", _ -> None
+  | key, n -> Some (key, n)
+
+let reduce_border_width_minmax kind args : length calc list option =
+  let simplified = List.map simplified_border_width_calc_to_length args in
+  if List.exists Option.is_none simplified then None
+  else
+    let vals = List.map Option.get simplified in
+    if List.exists (function Val _ -> false | _ -> true) vals then None
+    else
+      let lengths = List.map (function Val l -> l | _ -> assert false) vals in
+      let groups = Hashtbl.create 4 in
+      List.iteri
+        (fun pos length ->
+          match comparable_border_width_length length with
+          | None -> ()
+          | Some (key, n) -> (
+              match Hashtbl.find_opt groups key with
+              | None -> Hashtbl.add groups key (pos, length, n)
+              | Some (old_pos, old_length, old_n) ->
+                  let better =
+                    match kind with `Min -> n < old_n | `Max -> n > old_n
+                  in
+                  Hashtbl.replace groups key
+                    (if better then (old_pos, length, n)
+                     else (old_pos, old_length, old_n))))
+        lengths;
+      let reduced =
+        Hashtbl.to_seq_values groups
+        |> List.of_seq
+        |> List.sort (fun (a, _, _) (b, _, _) -> compare a b)
+        |> List.map (fun (_, length, _) -> Val length)
+      in
+      match reduced with [] -> None | _ -> Some reduced
+
+let reduce_border_width_clamp lower value upper =
+  match
+    ( simplified_border_width_calc_to_length lower,
+      simplified_border_width_calc_to_length value,
+      simplified_border_width_calc_to_length upper )
+  with
+  | Some (Val lower), Some (Val value), Some (Val upper) -> (
+      match
+        ( comparable_border_width_length lower,
+          comparable_border_width_length value,
+          comparable_border_width_length upper )
+      with
+      | ( Some (lower_key, lower_n),
+          Some (value_key, value_n),
+          Some (upper_key, upper_n) )
+        when lower_key = value_key && value_key = upper_key ->
+          Some
+            (`Length
+               (if value_n < lower_n then lower
+                else if value_n > upper_n then upper
+                else value))
+      | Some _, Some (value_key, value_n), Some (upper_key, upper_n)
+        when value_key = upper_key && value_n <= upper_n ->
+          Some (`Max [ Val lower; Val value ])
+      | _ -> None)
+  | _ -> None
+
 let rec pp_border_width : border_width Pp.t =
  fun ctx -> function
   | Thin -> Pp.string ctx "thin"
   | Medium -> Pp.string ctx "medium"
   | Thick -> Pp.string ctx "thick"
   | Px f -> Pp.unit ctx f "px"
+  | Cm f -> Pp.unit ctx f "cm"
+  | Mm f -> Pp.unit ctx f "mm"
+  | Q f -> Pp.unit ctx f "q"
+  | In f -> Pp.unit ctx f "in"
+  | Pt f -> Pp.unit ctx f "pt"
+  | Pc f -> Pp.unit ctx f "pc"
   | Rem f -> Pp.unit ctx f "rem"
   | Em f -> Pp.unit ctx f "em"
+  | Ex f -> Pp.unit ctx f "ex"
+  | Cap f -> Pp.unit ctx f "cap"
+  | Ic f -> Pp.unit ctx f "ic"
+  | Ric f -> Pp.unit ctx f "ric"
+  | Rlh f -> Pp.unit ctx f "rlh"
   | Ch f -> Pp.unit ctx f "ch"
+  | Lh f -> Pp.unit ctx f "lh"
   | Vh f -> Pp.unit ctx f "vh"
   | Vw f -> Pp.unit ctx f "vw"
   | Vmin f -> Pp.unit ctx f "vmin"
@@ -3021,7 +3353,13 @@ let rec pp_border_width : border_width Pp.t =
   | Min_content -> Pp.string ctx "min-content"
   | Fit_content -> Pp.string ctx "fit-content"
   | From_font -> Pp.string ctx "from-font"
-  | Calc cv -> pp_calc pp_border_width ctx cv
+  | Calc cv -> (
+      match (Pp.minified ctx, border_width_calc_to_length cv) with
+      | true, Some cv -> pp_length ctx (Calc cv)
+      | _ -> pp_calc pp_border_width ctx cv)
+  | Min args -> pp_border_width_minmax "min" `Min ctx args
+  | Max args -> pp_border_width_minmax "max" `Max ctx args
+  | Clamp (lower, value, upper) -> pp_border_width_clamp ctx lower value upper
   | Var v -> pp_var pp_border_width ctx v
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
@@ -3029,10 +3367,52 @@ let rec pp_border_width : border_width Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+and pp_border_width_calc_contents ctx calc =
+  match simplified_border_width_calc_to_length calc with
+  | Some (Val length) -> pp_length ctx length
+  | Some calc -> pp_length_calc_contents ctx calc
+  | None -> pp_calc pp_border_width ctx calc
+
+and pp_border_width_minmax name kind ctx args =
+  match reduce_border_width_minmax kind args with
+  | Some [ Val length ] -> pp_length ctx length
+  | Some args ->
+      Pp.call name (Pp.list ~sep:Pp.comma pp_length_calc_contents) ctx args
+  | None ->
+      Pp.call name
+        (Pp.list ~sep:Pp.comma pp_border_width_calc_contents)
+        ctx args
+
+and pp_border_width_clamp ctx lower value upper =
+  match reduce_border_width_clamp lower value upper with
+  | Some (`Length length) -> pp_length ctx length
+  | Some (`Max args) ->
+      Pp.call "max" (Pp.list ~sep:Pp.comma pp_length_calc_contents) ctx args
+  | None ->
+      Pp.call "clamp"
+        (fun ctx (lower, value, upper) ->
+          pp_border_width_calc_contents ctx lower;
+          Pp.comma ctx ();
+          pp_border_width_calc_contents ctx value;
+          Pp.comma ctx ();
+          pp_border_width_calc_contents ctx upper)
+        ctx (lower, value, upper)
+
 let pp_border_shorthand : border_shorthand Pp.t =
  fun ctx { width; style; color } ->
   let first = ref true in
   let add_space () = if !first then first := false else Pp.space ctx () in
+  let color =
+    match color with
+    | Some Current when Pp.minified ctx -> (None : color option)
+    | color -> color
+  in
+  let style =
+    match (style, width, color) with
+    | Some (None : border_style), None, Some _ when Pp.minified ctx ->
+        (None : border_style option)
+    | style, _, _ -> style
+  in
   Option.iter
     (fun w ->
       add_space ();
@@ -3047,7 +3427,8 @@ let pp_border_shorthand : border_shorthand Pp.t =
     (fun c ->
       add_space ();
       pp_color ctx c)
-    color
+    color;
+  if !first then Pp.string ctx "none"
 
 let rec pp_border : border Pp.t =
  fun ctx -> function
@@ -3339,6 +3720,7 @@ let rec pp_overflow : overflow Pp.t =
 
 let rec pp_border_spacing : border_spacing Pp.t =
  fun ctx -> function
+  | Lengths [ a; b ] when a = b -> pp_length ctx a
   | (Lengths lengths : border_spacing) ->
       Pp.list ~sep:Pp.space pp_length ctx lengths
   | Var v -> pp_var pp_border_spacing ctx v
@@ -5320,8 +5702,48 @@ let rec pp_background_size : background_size Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_background_size ctx v
 
+let pp_background_position_value : position_value Pp.t =
+ fun ctx value ->
+  let pct n = (Pct n : length) in
+  let length_of_lp : length_percentage -> length option = function
+    | Length l -> Some l
+    | Pct n -> Some (pct n)
+    | Var _ | Calc _ -> None
+  in
+  let pp_pair ctx x y =
+    pp_length ctx x;
+    Pp.space ctx ();
+    pp_length ctx y
+  in
+  match value with
+  | Center -> pp_length ctx (pct 50.)
+  | Bottom_left | Left_bottom -> pp_pair ctx (pct 0.) (pct 100.)
+  | Bottom_right | Right_bottom -> pp_pair ctx (pct 100.) (pct 100.)
+  | Left_center -> pp_length ctx (pct 0.)
+  | Right_center -> pp_length ctx (pct 100.)
+  | Center_top -> Pp.string ctx "top"
+  | Center_bottom -> Pp.string ctx "bottom"
+  | Axis_edge_offset ("center", "top", offset) -> pp_pair ctx (pct 50.) offset
+  | Edge_offset_axis ("left", offset, "center") -> (
+      match length_of_lp offset with
+      | Some x -> pp_length ctx x
+      | None ->
+          pp_position_value ctx (Edge_offset_axis ("left", offset, "center")))
+  | Edge_offset_axis ("left", offset, "top") -> (
+      match length_of_lp offset with
+      | Some x -> pp_pair ctx x (pct 0.)
+      | None -> pp_position_value ctx (Edge_offset_axis ("left", offset, "top"))
+      )
+  | Edge_offset_edge_offset ("left", x, "top", y) -> (
+      match (length_of_lp x, length_of_lp y) with
+      | Some x, Some y -> pp_pair ctx x y
+      | _ ->
+          pp_position_value ctx (Edge_offset_edge_offset ("left", x, "top", y)))
+  | value -> pp_position_value ctx value
+
 let pp_background_position : background_position Pp.t =
- fun ctx positions -> pp_box_shorthand pp_position_value ctx positions
+ fun ctx positions ->
+  pp_box_shorthand pp_background_position_value ctx positions
 
 let pp_bg_prop maybe_space pp_func ctx = function
   | Some value ->
@@ -5444,19 +5866,30 @@ let pp_background_shorthand : background_shorthand Pp.t =
       | other -> other
     else bg.position
   in
+  let image : background_image option =
+    match bg.image with
+    | Some (None : background_image) when Pp.minified ctx ->
+        (None : background_image option)
+    | image -> image
+  in
+  let color : color option =
+    match bg.color with
+    | Some Transparent when Pp.minified ctx -> (None : color option)
+    | color -> color
+  in
 
   (* Add all properties in order *)
-  pp_bg_prop maybe_space pp_background_image ctx bg.image;
-  pp_bg_prop maybe_space pp_position_value ctx position;
+  pp_bg_prop maybe_space pp_background_image ctx image;
+  pp_bg_prop maybe_space pp_background_position_value ctx position;
   pp_bg_size_with_position maybe_space bg ctx;
   pp_bg_prop maybe_space pp_background_repeat ctx bg.repeat;
   pp_bg_prop maybe_space pp_background_attachment ctx bg.attachment;
   pp_bg_prop maybe_space pp_background_box ctx bg.origin;
   pp_bg_prop maybe_space pp_background_box ctx bg.clip;
-  pp_bg_prop maybe_space pp_color ctx bg.color;
+  pp_bg_prop maybe_space pp_color ctx color;
 
   (* If nothing was set, output 'none' *)
-  if !first then Pp.string ctx "none"
+  if !first then Pp.string ctx (if Pp.minified ctx then "0 0" else "none")
 
 let rec pp_gap : gap Pp.t =
  fun ctx -> function
@@ -5544,7 +5977,7 @@ let rec pp_background : background Pp.t =
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
-  | None -> Pp.string ctx "none"
+  | None -> Pp.string ctx (if Pp.minified ctx then "0 0" else "none")
   | Var v -> pp_var pp_background ctx v
   | Shorthand s -> pp_background_shorthand ctx s
 
@@ -7210,6 +7643,7 @@ let rec pp_flex_basis : flex_basis Pp.t =
   | Ex f -> Pp.unit ctx f "ex"
   | Cap f -> Pp.unit ctx f "cap"
   | Ic f -> Pp.unit ctx f "ic"
+  | Ric f -> Pp.unit ctx f "ric"
   | Rlh f -> Pp.unit ctx f "rlh"
   | Pct f -> Pp.pct ctx f
   | Vw f -> Pp.unit ctx f "vw"
@@ -7284,7 +7718,22 @@ let rec pp_font_size : font_size Pp.t =
   | Length l -> pp_length ctx l
   | Pct f -> Pp.pct ctx f
   | Var v -> pp_var pp_font_size ctx v
-  | Calc c -> pp_calc pp_font_size ctx c
+  | Calc c -> (
+      let rec to_length_calc : font_size calc -> length calc option = function
+        | Val (Length l) -> Some (Val l)
+        | Val (Pct n) -> Some (Val (Pct n : length))
+        | Num n -> Some (Num n)
+        | Var _ | Sibling_index | Sibling_count | Val _ -> None
+        | Nested inner -> Option.map (fun c -> Nested c) (to_length_calc inner)
+        | Parens inner -> Option.map (fun c -> Parens c) (to_length_calc inner)
+        | Expr (left, op, right) -> (
+            match (to_length_calc left, to_length_calc right) with
+            | Some left, Some right -> Some (Expr (left, op, right))
+            | _ -> None)
+      in
+      match (Pp.minified ctx, to_length_calc c) with
+      | true, Some c -> pp_length ctx (Calc c)
+      | _ -> pp_calc pp_font_size ctx c)
   | Xx_small -> Pp.string ctx "xx-small"
   | X_small -> Pp.string ctx "x-small"
   | Small -> Pp.string ctx "small"
@@ -8056,9 +8505,21 @@ let length_to_border_width t (length : length) : border_width =
   match length with
   | Zero -> Zero
   | Px n -> Px (non_neg n)
+  | Cm n -> Cm (non_neg n)
+  | Mm n -> Mm (non_neg n)
+  | Q n -> Q (non_neg n)
+  | In n -> In (non_neg n)
+  | Pt n -> Pt (non_neg n)
+  | Pc n -> Pc (non_neg n)
   | Rem n -> Rem (non_neg n)
   | Em n -> Em (non_neg n)
+  | Ex n -> Ex (non_neg n)
+  | Cap n -> Cap (non_neg n)
+  | Ic n -> Ic (non_neg n)
+  | Ric n -> Ric (non_neg n)
+  | Rlh n -> Rlh (non_neg n)
   | Ch n -> Ch (non_neg n)
+  | Lh n -> Lh (non_neg n)
   | Vh n -> Vh (non_neg n)
   | Vw n -> Vw (non_neg n)
   | Vmin n -> Vmin (non_neg n)
@@ -8069,6 +8530,25 @@ let length_to_border_width t (length : length) : border_width =
 let rec read_border_width t : border_width =
   let read_var t : border_width = Var (read_var read_border_width t) in
   let read_calc t : border_width = Calc (read_calc read_border_width t) in
+  let read_math_arg t = read_calc_expr read_border_width t in
+  let read_min t : border_width =
+    Min
+      (Cursor.call "min" t
+         (Cursor.list ~sep:Cursor.comma ~at_least:1 read_math_arg))
+  in
+  let read_max t : border_width =
+    Max
+      (Cursor.call "max" t
+         (Cursor.list ~sep:Cursor.comma ~at_least:1 read_math_arg))
+  in
+  let read_clamp t : border_width =
+    match
+      Cursor.call "clamp" t
+        (Cursor.list ~sep:Cursor.comma ~at_least:3 ~at_most:3 read_math_arg)
+    with
+    | [ lower; value; upper ] -> Clamp (lower, value, upper)
+    | _ -> Cursor.err_invalid t "invalid clamp"
+  in
   let read_length_as_border_width t =
     let length = read_length ~with_keywords:false t in
     length_to_border_width t length
@@ -8085,7 +8565,14 @@ let rec read_border_width t : border_width =
       ("revert", Revert);
       ("revert-layer", Revert_layer);
     ]
-    ~calls:[ ("var", read_var); ("calc", read_calc) ]
+    ~calls:
+      [
+        ("var", read_var);
+        ("calc", read_calc);
+        ("min", read_min);
+        ("max", read_max);
+        ("clamp", read_clamp);
+      ]
     ~default:read_length_as_border_width t
 
 module Border = struct
@@ -8105,9 +8592,9 @@ module Border = struct
   let read_component t =
     Cursor.one_of
       [
+        (fun t -> Color (read_color t));
         (fun t -> Width (read_border_width t));
         (fun t -> Style (read_border_style t));
-        (fun t -> Color (read_color t));
       ]
       t
 
@@ -8135,18 +8622,37 @@ let read_border_shorthand t : border_shorthand =
   Border.to_shorthand acc
 
 let rec read_border (t : Cursor.t) : border =
-  Cursor.enum_or_var "border"
-    [
-      ("inherit", (Inherit : border));
-      ("initial", Initial);
-      ("unset", Unset);
-      ("revert", Revert);
-      ("revert-layer", Revert_layer);
-      ("none", None);
-    ]
-    ~var:(fun t -> (Var (Values.read_var read_border t) : border))
-    ~default:(fun t : border -> Shorthand (read_border_shorthand t))
-    t
+  let read_keyword_or_shorthand t =
+    let snap = Cursor.save t in
+    match Cursor.ident_opt t with
+    | Some ident -> (
+        let value =
+          match String.lowercase_ascii ident with
+          | "inherit" -> Some (Inherit : border)
+          | "initial" -> Some Initial
+          | "unset" -> Some Unset
+          | "revert" -> Some Revert
+          | "revert-layer" -> Some Revert_layer
+          | "none" -> Some None
+          | _ -> None
+        in
+        match value with
+        | Some value ->
+            Cursor.ws t;
+            if Cursor.is_done t || Cursor.peek_comma t then value
+            else (
+              Cursor.restore t snap;
+              Shorthand (read_border_shorthand t))
+        | None ->
+            Cursor.restore t snap;
+            Shorthand (read_border_shorthand t))
+    | None ->
+        Cursor.restore t snap;
+        Shorthand (read_border_shorthand t)
+  in
+  if Cursor.looking_at_func "var" t then
+    (Var (Values.read_var read_border t) : border)
+  else read_keyword_or_shorthand t
 
 let rec read_logical_border_color t : logical_border_color =
   let read_colors t =
@@ -8443,6 +8949,7 @@ let flex_basis_of_length t (length : length) : flex_basis =
   | Pc n -> Pc n
   | Cap n -> Cap n
   | Ic n -> Ic n
+  | Ric n -> Ric n
   | Rlh n -> Rlh n
   | Vw n -> Vw n
   | Vh n -> Vh n
@@ -13456,6 +13963,31 @@ module Position_value = struct
     let axis = Cursor.ident t in
     Edge_offset_axis (edge1, offset, axis)
 
+  let read_axis_edge_offset t : position_value =
+    let axis = Cursor.ident t in
+    Cursor.ws t;
+    let edge = Cursor.ident t in
+    Cursor.ws t;
+    let offset = read_length t in
+    match (axis, edge) with
+    | "center", ("top" | "bottom") -> Axis_edge_offset (axis, edge, offset)
+    | _ -> Cursor.err_invalid t "invalid position axis edge offset"
+
+  let read_keyword_length t : position_value =
+    let keyword = Cursor.ident t in
+    Cursor.ws t;
+    let offset = read_length t in
+    match keyword with
+    | "center" -> XY ((Pct 50. : length), offset)
+    | _ -> Cursor.err_invalid t "invalid position keyword length"
+
+  let read_length_keyword t : position_value =
+    let offset = read_length t in
+    Cursor.ws t;
+    match Cursor.ident t with
+    | "center" -> Single offset
+    | _ -> Cursor.err_invalid t "invalid position length keyword"
+
   (* Read 4-value syntax: keyword offset keyword offset *)
   let read_4_value t : position_value =
     let edge1 = Cursor.ident t in
@@ -13473,7 +14005,10 @@ let rec read_position_value t : position_value =
   Cursor.one_of
     [
       Position_value.read_4_value;
+      Position_value.read_axis_edge_offset;
       Position_value.read_3_value;
+      Position_value.read_keyword_length;
+      Position_value.read_length_keyword;
       Position_value.read_xy;
       Position_value.read_2_value;
       Position_value.read_1_value;
@@ -14750,16 +15285,36 @@ let read_background_shorthand t : background_shorthand =
 
 let rec read_background t : background =
   let read_var_call t : background = Var (read_var read_background t) in
+  let read_keyword_or_shorthand t =
+    let snap = Cursor.save t in
+    match Cursor.ident_opt t with
+    | Some ident -> (
+        let value =
+          match String.lowercase_ascii ident with
+          | "inherit" -> Some (Inherit : background)
+          | "initial" -> Some Initial
+          | "unset" -> Some Unset
+          | "none" -> Some None
+          | _ -> None
+        in
+        match value with
+        | Some value ->
+            Cursor.ws t;
+            if Cursor.is_done t || Cursor.peek_comma t then value
+            else (
+              Cursor.restore t snap;
+              Shorthand (read_background_shorthand t))
+        | None ->
+            Cursor.restore t snap;
+            Shorthand (read_background_shorthand t))
+    | None ->
+        Cursor.restore t snap;
+        Shorthand (read_background_shorthand t)
+  in
   Cursor.enum_or_calls "background"
-    [
-      ("inherit", Inherit);
-      ("initial", Initial);
-      ("unset", Unset);
-      ("none", None);
-    ]
+    [ ("inherit", Inherit); ("initial", Initial); ("unset", Unset) ]
     ~calls:[ ("var", read_var_call) ]
-    ~default:(fun t -> (Shorthand (read_background_shorthand t) : background))
-    t
+    ~default:read_keyword_or_shorthand t
 
 let read_backgrounds t : background list =
   Cursor.list ~sep:Cursor.comma ~at_least:1 read_background t
@@ -16436,10 +16991,7 @@ let rec read_border_spacing t : border_spacing =
   Cursor.enum_or_var "border-spacing" []
     ~var:(fun t -> Var (Values.read_var read_border_spacing t))
     ~default:(fun t ->
-      (Lengths
-         (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2
-            (read_length ~allow_negative:false)
-            t)
+      (Lengths (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2 read_length t)
         : border_spacing))
     t
 

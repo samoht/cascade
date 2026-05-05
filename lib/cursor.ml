@@ -758,9 +758,11 @@ let list ?sep ?(at_least = 0) ?at_most item t =
   let rec loop acc n =
     if n >= max then List.rev acc
     else
+      let snap = save t in
       match option item t with
       | None -> List.rev acc
       | Some v -> (
+          if t.cvs == snap then err t "list item consumed no input";
           let acc = v :: acc in
           if n + 1 >= max then List.rev acc
           else

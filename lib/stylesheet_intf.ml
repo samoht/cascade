@@ -94,13 +94,11 @@ type value_processing_stage =
 (** [@namespace] prelude URI form. CSS Namespaces 3 1: [<string>] and
     [url(<string>)] are spec-equivalent; [url_form] further distinguishes
     whether the [url()] body itself quoted its argument so the pretty-printer
-    can round-trip the source spelling. Under [--minify] the printer
-    collapses every form to the bare quoted string (the shortest spelling). *)
+    can round-trip the source spelling. Under [--minify] the printer collapses
+    every form to the bare quoted string (the shortest spelling). *)
 type url_form = Url_bare | Url_quoted of char
 
-type namespace_url =
-  | Url of string * url_form
-  | Quoted of string
+type namespace_url = Url of string * url_form | Quoted of string
 
 type cascade_candidate = {
   candidate_origin : cascade_origin;
