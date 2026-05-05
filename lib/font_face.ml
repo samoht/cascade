@@ -39,33 +39,60 @@ let url_needs_quotes s =
     (fun c -> c = ' ' || c = ')' || c = '"' || c = '\'' || c = '(' || c = '\\')
     s
 
-let format_url s =
-  if url_needs_quotes s then String.concat "" [ "url(\""; s; "\")" ]
-  else String.concat "" [ "url("; s; ")" ]
-
-let format_quoted_url ~quote s =
-  String.concat "" [ "url("; String.make 1 quote; s; String.make 1 quote; ")" ]
-
-let format_src_url base format tech =
-  let with_format =
-    match format with Some f -> base ^ " format(\"" ^ f ^ "\")" | None -> base
-  in
+(* Emit the optional [format(...)] / [tech(...)] modifiers after a [url()] base.
+   Under minify the modifiers run together with the [url()] - CSS Fonts 4 6.3.3
+   doesn't require whitespace between the function calls. *)
+let pp_src_modifiers ctx ~format ~tech =
+  (match format with
+  | Some f ->
+      Pp.sp ctx ();
+      Pp.string ctx "format(\"";
+      Pp.string ctx f;
+      Pp.string ctx "\")"
+  | None -> ());
   match tech with
-  | Some t -> with_format ^ " tech(" ^ t ^ ")"
-  | None -> with_format
+  | Some t ->
+      Pp.sp ctx ();
+      Pp.string ctx "tech(";
+      Pp.string ctx t;
+      Pp.char ctx ')'
+  | None -> ()
+
+(* Emit a [url()] argument: quote when the body contains characters that the
+   bare form can't hold, drop quotes otherwise. CSS Values 4 3.4 makes the two
+   notations equivalent and the bare form is shorter under minify. *)
+let pp_url_arg ctx s =
+  if url_needs_quotes s then (
+    Pp.char ctx '"';
+    Pp.string ctx s;
+    Pp.char ctx '"')
+  else Pp.string ctx s
 
 let rec pp_src ctx entries = Pp.list ~sep:Pp.comma pp_src_entry ctx entries
 
 and pp_src_entry ctx = function
   | Var var -> Values.pp_var pp_src ctx var
-  | entry -> Pp.string ctx (src_entry_to_string entry)
-
-and src_entry_to_string = function
-  | Url { url; format; tech } -> format_src_url (format_url url) format tech
+  | Url { url; format; tech } ->
+      Pp.string ctx "url(";
+      pp_url_arg ctx url;
+      Pp.char ctx ')';
+      pp_src_modifiers ctx ~format ~tech
   | Quoted_url { url; quote; format; tech } ->
-      format_src_url (format_quoted_url ~quote url) format tech
-  | Local name -> "local(\"" ^ name ^ "\")"
-  | Var var -> Pp.to_string ~minify:true (Values.pp_var pp_src) var
+      Pp.string ctx "url(";
+      if Pp.minified ctx && not (url_needs_quotes url) then Pp.string ctx url
+      else (
+        Pp.char ctx quote;
+        Pp.string ctx url;
+        Pp.char ctx quote);
+      Pp.char ctx ')';
+      pp_src_modifiers ctx ~format ~tech
+  | Local name ->
+      Pp.string ctx "local(\"";
+      Pp.string ctx name;
+      Pp.string ctx "\")"
+
+and src_entry_to_string entry =
+  Pp.to_string ~minify:false (fun ctx e -> pp_src_entry ctx e) entry
 
 let src_to_string ?(minify = false) entries =
   Pp.to_string ~minify pp_src entries
