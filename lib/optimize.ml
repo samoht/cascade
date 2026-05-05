@@ -97,6 +97,132 @@ let value_is_vendor_prefixed decl =
   starts_with "-webkit-" || starts_with "-moz-" || starts_with "-ms-"
   || starts_with "-o-"
 
+(* CSS Box 4 7.1: a 1/2/3/4-value box shorthand expands to four explicit sides;
+   recompose by emitting all four and letting the printer's
+   [collapse_box_shorthand] pick the shortest spelling. *)
+let expand_box vs =
+  match vs with
+  | [ a ] -> Some (a, a, a, a)
+  | [ a; b ] -> Some (a, b, a, b)
+  | [ a; b; c ] -> Some (a, b, c, b)
+  | [ a; b; c; d ] -> Some (a, b, c, d)
+  | _ -> None
+
+type sides = Values.length * Values.length * Values.length * Values.length
+
+(* Try to absorb a corner-longhand declaration into a margin 4-tuple. Pattern
+   matching is inlined here so the GADT existential value type ([length]) stays
+   inside the typed branch. Returns the updated tuple, or [None] if [d] is not
+   an absorbable margin longhand at the matching importance. *)
+let absorb_margin_corner ~important ((top, right, bottom, left) : sides) d :
+    sides option =
+  match d with
+  | Declaration { property = Margin_top; value = v; important = i }
+    when i = important ->
+      Some (v, right, bottom, left)
+  | Declaration { property = Margin_right; value = v; important = i }
+    when i = important ->
+      Some (top, v, bottom, left)
+  | Declaration { property = Margin_bottom; value = v; important = i }
+    when i = important ->
+      Some (top, right, v, left)
+  | Declaration { property = Margin_left; value = v; important = i }
+    when i = important ->
+      Some (top, right, bottom, v)
+  | _ -> None
+
+let absorb_padding_corner ~important ((top, right, bottom, left) : sides) d :
+    sides option =
+  match d with
+  | Declaration { property = Padding_top; value = v; important = i }
+    when i = important ->
+      Some (v, right, bottom, left)
+  | Declaration { property = Padding_right; value = v; important = i }
+    when i = important ->
+      Some (top, v, bottom, left)
+  | Declaration { property = Padding_bottom; value = v; important = i }
+    when i = important ->
+      Some (top, right, v, left)
+  | Declaration { property = Padding_left; value = v; important = i }
+    when i = important ->
+      Some (top, right, bottom, v)
+  | _ -> None
+
+let is_margin_shorthand = function
+  | Declaration { property = Margin; _ } -> true
+  | _ -> false
+
+let is_padding_shorthand = function
+  | Declaration { property = Padding; _ } -> true
+  | _ -> false
+
+(* Walk forward through [rest], absorbing every matching corner longhand until
+   we hit another instance of the same shorthand (which would override the
+   merged result anyway). Returns the updated 4-tuple and [rest] with absorbed
+   declarations removed. *)
+let absorb_box_longhands ~absorb ~is_same_shorthand sides rest =
+  let rec loop sides acc = function
+    | [] -> (sides, List.rev acc)
+    | d :: rest when is_same_shorthand d ->
+        (sides, List.rev_append acc (d :: rest))
+    | d :: rest -> (
+        match absorb sides d with
+        | Some sides' -> loop sides' acc rest
+        | None -> loop sides (d :: acc) rest)
+  in
+  loop sides [] rest
+
+(* Fold subsequent margin/padding corner longhands into the preceding box
+   shorthand. Tailwind / Lightning-CSS / cssnano all do this; the dead-code
+   suite asserts it for [margin: 10px; margin-top: 20px] -> [margin: 20px 10px
+   10px]. *)
+let merge_box_shorthand_longhands decls =
+  let rec go acc = function
+    | [] -> List.rev acc
+    | Declaration { property = Margin; value = vs; important } :: rest -> (
+        match expand_box vs with
+        | None ->
+            let d = Declaration { property = Margin; value = vs; important } in
+            go (d :: acc) rest
+        | Some sides ->
+            let (top, right, bottom, left), rest =
+              absorb_box_longhands
+                ~absorb:(absorb_margin_corner ~important)
+                ~is_same_shorthand:is_margin_shorthand sides rest
+            in
+            let merged =
+              Declaration
+                {
+                  property = Margin;
+                  value = [ top; right; bottom; left ];
+                  important;
+                }
+            in
+            go (merged :: acc) rest)
+    | Declaration { property = Padding; value = vs; important } :: rest -> (
+        match expand_box vs with
+        | None ->
+            let d = Declaration { property = Padding; value = vs; important } in
+            go (d :: acc) rest
+        | Some sides ->
+            let (top, right, bottom, left), rest =
+              absorb_box_longhands
+                ~absorb:(absorb_padding_corner ~important)
+                ~is_same_shorthand:is_padding_shorthand sides rest
+            in
+            let merged =
+              Declaration
+                {
+                  property = Padding;
+                  value = [ top; right; bottom; left ];
+                  important;
+                }
+            in
+            go (merged :: acc) rest)
+    | d :: rest -> go (d :: acc) rest
+  in
+  go [] decls
+
 let deduplicate_declarations props =
   let covered_by_important kept prop_name =
     List.exists
@@ -139,7 +265,7 @@ let deduplicate_declarations props =
           kept @ [ decl ])
       [] props
   in
-  duplicate_buggy_properties kept
+  duplicate_buggy_properties (merge_box_shorthand_longhands kept)
 
 (** {1 Rule Optimization} *)
 
