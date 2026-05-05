@@ -798,7 +798,7 @@ let test_property_value_branch_depth_positive buf =
         "width:calc-size(auto,size + 1rem)";
         "opacity:sign(var(--delta))";
         "color:rgb(from var(--c) r g b/50%)";
-        "color:color-mix(in lch longer hue,red 30%,blue)";
+        "color:color-mix(in lch longer hue,red 30%,#00f)";
         "font:italic small-caps 650 condensed 16px/1.5 \"Brand\",serif";
         "font-synthesis-style:oblique-only";
         "font-synthesis-small-caps:auto";

@@ -1126,8 +1126,15 @@ let replace_descriptor desc acc =
        acc
 
 let order_raw_descriptors order descriptors =
+  let find_index pred =
+    let rec loop i = function
+      | [] -> None
+      | x :: xs -> if pred x then Some i else loop (i + 1) xs
+    in
+    loop 0
+  in
   let rank name =
-    match List.find_index (( = ) name) order with
+    match find_index (( = ) name) order with
     | Some i -> i
     | None -> List.length order
   in

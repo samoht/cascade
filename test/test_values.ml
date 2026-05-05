@@ -232,21 +232,21 @@ let test_color () =
   check_color ~expected:"#fff" "white";
   check_color ~expected:"#000" "black";
   check_color ~expected:"#ff0" "yellow";
-  check_color "cyan";
-  check_color "magenta";
+  check_color ~expected:"#0ff" "cyan";
+  check_color ~expected:"#f0f" "magenta";
   check_color "gray";
-  check_color "grey";
+  check_color ~expected:"gray" "grey";
   check_color "orange";
   check_color "purple";
   check_color "pink";
   check_color "silver";
   check_color "maroon";
-  check_color "fuchsia";
+  check_color ~expected:"#f0f" "fuchsia";
   check_color ~expected:"#0f0" "lime";
   check_color "olive";
   check_color "navy";
   check_color "teal";
-  check_color "aqua";
+  check_color ~expected:"#0ff" "aqua";
 
   (* Special keywords. Per CSS Color 4 section 6.4 [transparent] canonicalizes
      to the shortest spec-equivalent spelling [#0000] under minify. *)
@@ -762,9 +762,9 @@ let spec_values_l45_math_color () =
   check_number ~expected:"calc(1 + sibling-index())" "calc(1 + sibling-index())";
   check_number ~expected:"calc(sibling-count() - 1)" "calc(sibling-count() - 1)";
   check_percentage ~expected:"calc(50% + 10%)" "calc(50% + 10%)";
-  check_color ~expected:"color-mix(in oklab,red 40%,blue)"
+  check_color ~expected:"color-mix(in oklab,red 40%,#00f)"
     "color-mix(in oklab, red 40%, blue)";
-  check_color ~expected:"color-mix(in srgb longer hue,red,blue)"
+  check_color ~expected:"color-mix(in srgb longer hue,red,#00f)"
     "color-mix(in srgb longer hue, red, blue)";
   check_color ~expected:"hsl(none 50% 50%)" "hsl(none 50% 50%)";
   check_color ~expected:"rgb(from var(--c) r g b/.5)"
@@ -786,9 +786,9 @@ let spec_color5_function_edges () =
   check_color ~expected:"oklch(50% .1 20/.5)" "oklch(50% 0.1 20 / 0.5)";
   check_color ~expected:"color(srgb 1 0 0/.5)" "color(srgb 1 0 0 / 0.5)";
   check_color ~expected:"color(rec2020 .1 .2 .3)" "color(rec2020 0.1 0.2 0.3)";
-  check_color ~expected:"color-mix(in lch longer hue,red 30%,blue)"
+  check_color ~expected:"color-mix(in lch longer hue,red 30%,#00f)"
     "color-mix(in lch longer hue, red 30%, blue)";
-  check_color ~expected:"color-mix(in hsl shorter hue,red,blue 40%)"
+  check_color ~expected:"color-mix(in hsl shorter hue,red,#00f 40%)"
     "color-mix(in hsl shorter hue, red, blue 40%)";
   neg_cursor read_color "lab(50% 10)";
   neg_cursor read_color "lch(50% 20)";
