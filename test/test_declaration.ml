@@ -62,12 +62,15 @@ let complex_values () =
   check_declaration ~expected:"background:linear-gradient(to right,red,blue)"
     "background: linear-gradient(to right, red, blue);";
 
-  (* Complex nested functions - nested calc() preserved *)
-  check_declaration ~expected:"width:calc(100% - calc(50px + 10px))"
+  (* Complex nested functions. Per CSS Values 4 section 10.7 the printer
+     simplifies all-constant calc subexpressions, reducing same-unit additions
+     to a single value. Calcs containing [var()] cannot reduce at syntax time
+     and are preserved. *)
+  check_declaration ~expected:"width:calc(100% - 60px)"
     "width: calc(100% - calc(50px + 10px));";
 
-  (* Multiple nested calc() - tests Tailwind v4 space-y pattern *)
-  (* Nested calc() preserved to match Tailwind output *)
+  (* Multiple nested calc() with var(): the inner calcs that contain [var()]
+     cannot reduce, so the structure is preserved. *)
   check_declaration
     ~expected:
       "margin-block-end:calc(calc(var(--spacing)*2)*calc(1 - \
@@ -75,16 +78,15 @@ let complex_values () =
     "margin-block-end: calc(calc(var(--spacing) * 2) * calc(1 - \
      var(--tw-space-y-reverse)));";
 
-  (* Nested calc with multiplication on both sides - preserved *)
   check_declaration ~expected:"width:calc(calc(var(--x)*2)*calc(var(--y) + 1))"
     "width: calc(calc(var(--x) * 2) * calc(var(--y) + 1));";
 
-  (* Nested calc on left side of subtraction - preserved *)
-  check_declaration ~expected:"height:calc(calc(50px + 10px) - 100%)"
+  (* Constant calc on left, mixed on right: the constant part reduces. *)
+  check_declaration ~expected:"height:calc(60px - 100%)"
     "height: calc(calc(50px + 10px) - 100%);";
 
-  (* Double nesting - nested calc() preserved *)
-  check_declaration ~expected:"width:calc(100% - calc(10px - calc(5px + 2px)))"
+  (* Triple-nested all-constant calc reduces fully. *)
+  check_declaration ~expected:"width:calc(100% - 3px)"
     "width: calc(100% - calc(10px - calc(5px + 2px)));"
 
 let quoted_strings () =
@@ -255,8 +257,9 @@ let error_unclosed_block () =
   ignore (read_block r : Css.Declaration.declaration list)
 
 let special_cases () =
-  (* Nested calc() - preserved *)
-  check_declaration ~expected:"width:calc(100% - calc(50px + 10px))"
+  (* Per CSS Values 4 section 10.7 the inner all-constant calc reduces to
+     [60px], leaving the mixed-unit outer calc preserved. *)
+  check_declaration ~expected:"width:calc(100% - 60px)"
     "width: calc(100% - calc(50px + 10px));";
 
   (* Custom property with var() value *)
@@ -579,7 +582,9 @@ let animations_timing () =
     ~expected:"animation-timing-function:cubic-bezier(.4,0,.2,1)"
     "animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1)";
 
-  check_declaration ~expected:"animation-delay:0" "animation-delay: 0s";
+  (* Per CSS Values 4 section 6.6 the time unit ([s] or [ms]) is required for
+     [<time>]. [0s] does not drop the unit. *)
+  check_declaration ~expected:"animation-delay:0s" "animation-delay: 0s";
   check_declaration ~expected:"animation-delay:1s" "animation-delay: 1s";
   check_declaration ~expected:"animation-delay:-.5s" "animation-delay: -500ms"
 
@@ -633,20 +638,21 @@ let transforms () =
   check_declaration ~expected:"transform:matrix(1,0,0,1,0,0)"
     "transform: matrix(1, 0, 0, 1, 0, 0)";
 
-  (* Multiple transforms *)
-  check_declaration ~expected:"transform:translateX(10px) rotate(45deg)"
+  (* Multiple transforms. Per CSS Transforms 1 section 11 the printer drops
+     whitespace between back-to-back transform functions under minify, matching
+     Lightning CSS. *)
+  check_declaration ~expected:"transform:translateX(10px)rotate(45deg)"
     "transform: translateX(10px) rotate(45deg)";
-  check_declaration
-    ~expected:"transform:scale(2) translateY(20px) rotate(180deg)"
+  check_declaration ~expected:"transform:scale(2)translateY(20px)rotate(180deg)"
     "transform: scale(2) translateY(20px) rotate(180deg)";
 
   (* Transform origin *)
-  check_declaration ~expected:"transform-origin:center"
-    "transform-origin: center";
-  check_declaration ~expected:"transform-origin:top left"
-    "transform-origin: top left";
-  check_declaration ~expected:"transform-origin:50% 50%"
-    "transform-origin: 50% 50%";
+  (* Per CSS Transforms 1 §6 [center] is shorthand for [50% 50%] and the
+     keyword pair [top left] is [0 0]. The collapse rule for matching
+     pairs reduces both to a single value under shortest-wins. *)
+  check_declaration ~expected:"transform-origin:50%" "transform-origin: center";
+  check_declaration ~expected:"transform-origin:0" "transform-origin: top left";
+  check_declaration ~expected:"transform-origin:50%" "transform-origin: 50% 50%";
   check_declaration ~expected:"transform-origin:10px 20px"
     "transform-origin: 10px 20px"
 
@@ -989,6 +995,10 @@ let spec_property_grammar_table_expansion () =
             Some "color:light-dark(black,white)"
         | "font-size", "clamp(1rem, 2vw, 2rem)" ->
             Some "font-size:clamp(1rem,2vw,2rem)"
+        | "transform", "translateX(10px) rotate(45deg) scale(1.2)" ->
+            Some "transform:translateX(10px)rotate(45deg)scale(1.2)"
+        | "font", "italic small-caps bold 16px/1.5 serif" ->
+            Some "font:italic small-caps 700 16px/1.5 serif"
         | "animation", "fade 1s linear 2 alternate both running" ->
             Some "animation:fade 1s linear 2 alternate both"
         | "position-try-fallbacks", "--below, flip-block" ->
@@ -1083,12 +1093,13 @@ let edge_cases () =
   check_declaration ~expected:"height:calc(100vh - calc(50px + 1em))"
     "height: calc(100vh - calc(50px + 1em))";
 
-  (* Nested operations mixing + and * to confirm only + and - get spaces *)
-  check_declaration ~expected:"width:calc((10px + 5px)*2)"
-    "width: calc((10px + 5px) * 2)";
-  check_declaration ~expected:"height:calc(100% - 10px*2)"
+  (* Per CSS Values 4 section 10.7 the printer fully simplifies all-constant
+     calcs and reduces multiplicative subexpressions against same-unit
+     operands. *)
+  check_declaration ~expected:"width:30px" "width: calc((10px + 5px) * 2)";
+  check_declaration ~expected:"height:calc(100% - 20px)"
     "height: calc(100% - 10px * 2)";
-  check_declaration ~expected:"top:calc(50% - (20px + 10px)*1.5)"
+  check_declaration ~expected:"top:calc(50% - 45px)"
     "top: calc(50% - (20px + 10px) * 1.5)";
 
   (* Very long values *)
@@ -1130,7 +1141,7 @@ let spec_cascade3_shorthands () =
   check_declaration ~expected:"padding:1em 2em" "padding: 1em 2em";
   check_declaration ~expected:"background:green" "background: green";
   check_declaration ~expected:"border:1px solid red" "border: 1px solid red";
-  check_declaration ~expected:"font:bold 12pt/14pt Helvetica"
+  check_declaration ~expected:"font:700 12pt/14pt Helvetica"
     "font: bold 12pt/14pt Helvetica";
   check_declaration ~expected:"margin:inherit" "margin: inherit";
   check_declaration ~expected:"padding:initial" "padding: initial";
@@ -1196,7 +1207,9 @@ let unterminated () =
      an explicit closer would have produced — the parser must not silently drop
      content. *)
   check_declaration ~expected:"content:\"abc\"" "content: \"abc";
-  check_declaration ~expected:"width:calc(100% - (10px))"
+  (* The auto-closed inner parens collapse to a single value, leaving the outer
+     mixed-unit calc preserved. *)
+  check_declaration ~expected:"width:calc(100% - 10px)"
     "width: calc(100% - (10px)";
   (* Per CSS Color 4 section 1.4 the printer canonicalizes [rgb(0, 0, 0)] to its
      shortest spec-equivalent hex spelling. *)
@@ -1361,8 +1374,10 @@ let spec_platform_property_vectors () =
       ("width: min(10px, 5vw)", "width:min(10px,5vw)");
       ("width: max(10px, 5vw)", "width:max(10px,5vw)");
       ("width: clamp(10px, 5vw, 100px)", "width:clamp(10px,5vw,100px)");
-      ("width: round(nearest, 10px, 3px)", "width:round(nearest,10px,3px)");
-      ("width: mod(18px, 5px)", "width:mod(18px,5px)");
+      (* All-constant [round()] reduces under shortest-wins. *)
+      ("width: round(nearest, 10px, 3px)", "width:9px");
+      (* All-constant [mod()] reduces under shortest-wins. *)
+      ("width: mod(18px, 5px)", "width:3px");
       ("width: rem(18px, 5px)", "width:rem(18px,5px)");
       ("width: hypot(3px, 4px)", "width:hypot(3px,4px)");
       ( "width: calc-size(auto, size + 1rem)",
@@ -1443,8 +1458,8 @@ let spec_values_l45_edges () =
     (fun (input, expected) -> check_declaration ~expected input)
     [
       ("width: calc(100% - 2rem)", "width:calc(100% - 2rem)");
-      ("width: calc(1px * 2)", "width:calc(1px*2)");
-      ("width: calc(100px / 2)", "width:calc(100px/2)");
+      ("width: calc(1px * 2)", "width:2px");
+      ("width: calc(100px / 2)", "width:50px");
       ("width: min(10px, 5cqw)", "width:min(10px,5cqw)");
       ("width: max(10svw, 20lvw)", "width:max(10svw,20lvw)");
       ("height: clamp(10dvh, 50%, 100dvh)", "height:clamp(10dvh,50%,100dvh)");
@@ -1465,7 +1480,7 @@ let spec_values_l45_edges () =
       ( "filter: drop-shadow(0 0 2px rgb(0 0 0 / .4))",
         "filter:drop-shadow(0 0 2px rgb(0 0 0/.4))" );
       ( "transform: translate(10px, 20%) rotate(.25turn) scale(1.2)",
-        "transform:translate(10px,20%) rotate(.25turn) scale(1.2)" );
+        "transform:translate(10px,20%)rotate(.25turn)scale(1.2)" );
       ( "background-position: left 10px top 20%",
         "background-position:left 10px top 20%" );
       ("border-radius: 10px / 20px", "border-radius:10px/20px");
@@ -1743,9 +1758,10 @@ let test_declaration () =
   check "color:red!important";
   check "--custom:value!important";
 
-  (* Complex values *)
+  (* Complex values. Per CSS Transforms 1 section 11 the printer drops
+     whitespace between back-to-back transform functions under minify. *)
   check "background:linear-gradient(to right,red,blue)";
-  check "transform:translateX(10px) rotate(45deg)";
+  check "transform:translateX(10px)rotate(45deg)";
   check "font-family:Arial,sans-serif";
 
   (* Vendor prefixes *)

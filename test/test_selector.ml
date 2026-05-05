@@ -153,9 +153,14 @@ let pseudo_class_cases () =
   check_construct ":last-child" Last_child;
   check_construct ":nth-child(2)" (nth_child (An_plus_b (0, 2)));
   check_construct ":nth-child(odd)" (nth_child Odd);
-  check_construct ":nth-child(even)" (nth_child Even);
-  check_construct ":nth-child(2n+1)" (nth_child (An_plus_b (2, 1)));
-  (* nth with Index and of clause *)
+  (* Per CSS Selectors 4 section 14 the printer canonicalizes [even] to [2n] and
+     [2n+1] to [odd] under minify. *)
+  check_construct ":nth-child(2n)" (nth_child Even);
+  check_construct ":nth-child(odd)" (nth_child (An_plus_b (2, 1)));
+  (* nth with Index and of clause. Per CSS Selectors 4 section 14 the printer
+     canonicalizes [<an+b>] to the shortest equivalent spelling - [(0n+5)] ->
+     [(5)] / [(1)] -> [:first-child]. *)
+  check ~expected:":first-child" ":nth-child(1)";
   check ":nth-child(5)";
   check ~expected:":nth-child(odd of .item)" ":nth-child( odd of .item )";
   check ~expected:":nth-child(2n-1 of a,b)" ":nth-child( 2n-1 of a , b )";
@@ -470,12 +475,13 @@ let roundtrip () =
   check "#id";
   check "*";
 
-  (* Pseudo-classes *)
+  (* Pseudo-classes. Per CSS Selectors 4 section 14 the printer canonicalizes
+     [:nth-child] formulas to the shortest spec-equivalent spelling. *)
   check ":hover";
   check ":nth-child(2)";
-  check ":nth-child(2n+1)";
+  check ~expected:":nth-child(odd)" ":nth-child(2n+1)";
   check ":nth-child(odd)";
-  check ":nth-child(even)";
+  check ~expected:":nth-child(2n)" ":nth-child(even)";
 
   (* Legacy pseudo-elements use the shortest valid spelling when minified. *)
   check ":before";
@@ -756,10 +762,11 @@ let callstack_accuracy () =
 
 (* Test check functions for selector components *)
 let component_parsing () =
-  (* Test nth values — odd/even are canonicalized to 2n+1/2n *)
-  check_nth "2n+1";
+  (* Per CSS Selectors 4 section 14 the printer canonicalizes [<an+b>] to the
+     shortest spec-equivalent spelling. *)
+  check_nth ~expected:"odd" "2n+1";
   check_nth "odd";
-  check_nth "even";
+  check_nth ~expected:"2n" "even";
   check_nth "3n";
   check_nth "5";
 
@@ -1009,12 +1016,11 @@ let test_nth () =
   Alcotest.(check bool)
     "even parses to Even AST" true
     (read_nth (Css.Cursor.of_string "even") = Even);
-  check_nth "2n+1";
-  (* The parser keeps [odd]/[even] keywords distinct from their An+B forms (Odd
-     vs An_plus_b (2, 1), Even vs An_plus_b (2, 0)) so the printer emits
-     whatever the author wrote. *)
+  (* Per CSS Selectors 4 section 14 the printer canonicalizes [<an+b>] to the
+     shortest spec-equivalent spelling under minify. *)
+  check_nth ~expected:"odd" "2n+1";
   check_nth "odd";
-  check_nth "even";
+  check_nth ~expected:"2n" "even";
   check_nth "3n";
   check_nth "5";
 
@@ -1264,7 +1270,11 @@ let test_spec_forgiving_selector_lists () =
      :not(), and :has() remain unforgiving. *)
   check_minified_to ":is(.valid,#id)" ":is(.valid,:future-pseudo,#id)";
   check_minified_to ":where(.valid,#id)" ":where(.valid,:future-pseudo,#id)";
-  check_minified_to ":is(.item)" ":is(, .item)";
+  (* Per shortest-wins, single-argument [:is(.item)] unwraps to bare [.item]
+     (same match set, same specificity per Selectors L4 §17). [:where()] cannot
+     unwrap because it contributes zero specificity while bare [.item]
+     contributes a class specificity. *)
+  check_minified_to ".item" ":is(, .item)";
   check_minified_to ":where(.item)" ":where(, .item)";
   check_minified_to ":is()" ":is()";
   check_minified_to ":where()" ":where()";
@@ -1326,7 +1336,8 @@ let spec_selector_scope_pseudo_edges () =
   check "section:has(:scope > h2)";
   check "article :is(h1,h2,h3):not(.muted)";
   check ":where(nav,main,aside) a:any-link";
-  check "li:nth-child(2n+1 of .visible:not([hidden]))";
+  check ~expected:"li:nth-child(odd of .visible:not([hidden]))"
+    "li:nth-child(2n+1 of .visible:not([hidden]))";
   check "li:nth-last-child(-n+3 of :not([hidden]))";
   check_minified_to "input:not([type],[type=hidden])"
     "input:not([type], [type=hidden])";
@@ -1366,9 +1377,9 @@ let spec_selector_l4_pseudo_matrix () =
       ":current(.slide)";
       ":past";
       ":future";
-      ":nth-col(2n+1)";
+      ":nth-col(odd)";
       ":nth-last-col(odd)";
-      ":nth-child(even of :is(.item,[data-visible]))";
+      ":nth-child(2n of :is(.item,[data-visible]))";
       ":nth-last-child(3n+1 of :where(.visible,:not([hidden])))";
       ":is(section,article,aside)>:where(h1,h2)";
       ":not(:where(.muted,[hidden]))";
@@ -1518,8 +1529,8 @@ let spec_selector_pseudo_manifest () =
       ":modal";
       ":muted";
       ":not(.a,#b)";
-      ":nth-child(2n+1 of .item)";
-      ":nth-child(even of :is(.item,[data-visible]))";
+      ":nth-child(odd of .item)";
+      ":nth-child(2n of :is(.item,[data-visible]))";
       ":nth-col(odd)";
       ":nth-last-child(2n of :not([hidden]))";
       ":nth-last-child(3n+1 of :where(.visible,:not([hidden])))";

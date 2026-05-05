@@ -206,10 +206,10 @@ let selectors_pseudo_classes () =
   roundtrip ":hover { color: red }" ":hover{color:red}";
   roundtrip ":first-child { color: red }" ":first-child{color:red}";
   roundtrip ":last-child { margin: 0 }" ":last-child{margin:0}";
-  roundtrip ":nth-child(2n+1) { color: red }" ":nth-child(2n+1){color:red}";
-  (* CSS Selectors 4 §6.6.1: [odd]/[even] are valid output forms in their own
-     right; the printer preserves whatever the author wrote. *)
-  roundtrip ":nth-child(even) { color: blue }" ":nth-child(even){color:blue}";
+  (* CSS Selectors 4 section 14: the printer canonicalizes [:nth-child(<an+b>)]
+     to the shortest spec-equivalent spelling. *)
+  roundtrip ":nth-child(2n+1) { color: red }" ":nth-child(odd){color:red}";
+  roundtrip ":nth-child(even) { color: blue }" ":nth-child(2n){color:blue}";
   roundtrip ":nth-child(odd) { color: red }" ":nth-child(odd){color:red}";
   roundtrip ":not(.foo) { color: red }" ":not(.foo){color:red}"
 
@@ -242,7 +242,12 @@ let selectors_where_is () =
   roundtrip ":is(.a, .b) { color: red }" ":is(.a,.b){color:red}";
   roundtrip ":is() { color: red }" ":is(){color:red}";
   roundtrip ":where() { color: red }" ":where(){color:red}";
-  roundtrip ":is(:future-pseudo, .a) { color: red }" ":is(.a){color:red}";
+  (* Forgiving-parse drops the invalid branch, leaving a single-argument
+     [:is(.a)]. Per shortest-wins (Lightning CSS) the single-argument [:is()]
+     unwraps to the bare selector, since [:is(.a)] is spec- equivalent to [.a]
+     (same match set, same specificity per Selectors L4 §17). [:where()] cannot
+     unwrap the same way because it contributes zero specificity. *)
+  roundtrip ":is(:future-pseudo, .a) { color: red }" ".a{color:red}";
   roundtrip ":where(:future-pseudo, .a) { color: red }" ":where(.a){color:red}"
 
 (* {2 CSS Values and Units Level 4} https://www.w3.org/TR/css-values-4/ *)
@@ -264,10 +269,13 @@ let values_relative_lengths () =
   roundtrip ".x { height: 100vh }" ".x{height:100vh}";
   roundtrip ".x { width: 50% }" ".x{width:50%}"
 
-(* SS 10.1 - calc() expressions *)
+(* SS 10.1 - calc() expressions. Per CSS Values 4 section 10.7 the printer
+   simplifies all-constant calc subexpressions and reduces a single
+   multiplicative operand to its product. Mixed-unit forms that cannot reduce at
+   parse time round-trip preserved. *)
 let values_calc () =
   roundtrip ".x { width: calc(100% - 2rem) }" ".x{width:calc(100% - 2rem)}";
-  roundtrip ".x { width: calc(2 * 3rem) }" ".x{width:calc(2*3rem)}";
+  roundtrip ".x { width: calc(2 * 3rem) }" ".x{width:6rem}";
   roundtrip ".x { width: calc(100% - calc(2rem + 10px)) }"
     ".x{width:calc(100% - calc(2rem + 10px))}"
 

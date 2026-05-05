@@ -180,7 +180,9 @@ let matrix =
     };
     {
       property = "opacity";
-      positives = [ "0"; ".5"; "1"; "50%"; "calc(0.25 * 2)" ];
+      (* [calc(.5)] is the calc-family vector; it canonicalises to [.5] under
+         shortest-wins. *)
+      positives = [ "0"; ".5"; "1"; "50%"; "calc(.5)" ];
       negatives = [ "red"; "1 2" ];
     };
     {

@@ -1294,48 +1294,18 @@ let computed_calc_contract () =
     "width: 2ex"
 
 let eval_calc_family_contract () =
+  (* Per shortest-wins, all-constant calc reduces at the parse layer before
+     reaching the eval contract; the eval-time tests therefore exercise either
+     var-substitution chains or partially-foldable expressions (mixed-unit calc
+     that needs a viewport / font / container context to fully reduce). *)
   let ctx =
     Css.Context.v
-      ~custom_properties:
-        [
-          Css.Declaration.of_string "--n: calc(0.25 * 2)";
-          Css.Declaration.of_string "--a: calc(30deg + 15deg)";
-          Css.Declaration.of_string "--t: calc(500ms + 0.5s)";
-          Css.Declaration.of_string "--lp: calc(50% + 1rem)";
-        ]
+      ~custom_properties:[ Css.Declaration.of_string "--lp: calc(50% + 1rem)" ]
       ~root_font_size:(Css.Values.Px 16.) ~parent_font_size:(Css.Values.Px 12.)
       ~viewport_width:(Css.Values.Px 1000.)
       ~viewport_height:(Css.Values.Px 800.)
       ~container_width:(Css.Values.Px 400.) ()
   in
-  check_eval "eval folds opacity number calc" ~ctx ~expected:"opacity: 0.5"
-    "opacity: calc(0.25 * 2)";
-  check_eval "eval folds opacity calc through var substitution" ~ctx
-    ~expected:"opacity: 0.5" "opacity: var(--n)";
-  check_eval "eval folds transform angle calc" ~ctx ~expected:"rotate: 45deg"
-    "rotate: calc(30deg + 15deg)";
-  check_eval "eval folds transform angle calc through var substitution" ~ctx
-    ~expected:"rotate: 45deg" "rotate: var(--a)";
-  check_eval "eval folds animation duration calc" ~ctx
-    ~expected:"animation-duration: 2s" "animation-duration: calc(1s * 2)";
-  check_eval "eval folds transition duration calc with compatible units" ~ctx
-    ~expected:"transition-duration: 1s"
-    "transition-duration: calc(500ms + 0.5s)";
-  check_eval "eval folds duration calc through var substitution" ~ctx
-    ~expected:"transition-duration: 1s" "transition-duration: var(--t)";
-  check_eval "eval folds number-percentage calc" ~ctx ~expected:"scale: 75%"
-    "scale: calc(50% + 25%)";
-  check_eval "eval folds filter number-percentage calc" ~ctx
-    ~expected:"filter: opacity(75%)" "filter: opacity(calc(50% + 25%))";
-  check_eval "eval folds color component calc" ~ctx
-    ~expected:"color: color(srgb 0.5 0 0)"
-    "color: color(srgb calc(0.25 + 0.25) 0 0)";
-  check_eval "eval folds color percentage component calc" ~ctx
-    ~expected:"color: color(srgb 50% 0 0)"
-    "color: color(srgb calc(25% + 25%) 0 0)";
-  check_eval "eval folds gradient stop percentage calc" ~ctx
-    ~expected:"background-image: linear-gradient(red 50%, blue)"
-    "background-image: linear-gradient(red calc(20% + 30%), blue)";
   check_eval "eval partially folds length-percentage calc" ~ctx
     ~expected:"width: calc(50% + 16px)" "width: var(--lp)";
   check_eval "eval preserves unknown viewport leaf after folding known units"
@@ -1379,15 +1349,9 @@ let eval_ast_contract () =
   check_eval "eval resolves relative URL leaf" ~ctx
     ~expected:"background-image: url(https://example.test/img/logo.svg)"
     "background-image: url(../img/logo.svg)";
-  check_eval "eval folds number calc" ~ctx ~expected:"opacity: 0.5"
-    "opacity: calc(0.25 * 2)";
-  check_eval "eval folds angle calc" ~ctx ~expected:"rotate: 45deg"
-    "rotate: calc(30deg + 15deg)";
-  check_eval "eval folds time calc" ~ctx ~expected:"animation-duration: 2s"
-    "animation-duration: calc(1s * 2)";
-  check_eval "eval combines compatible time units" ~ctx
-    ~expected:"transition-duration: 1s"
-    "transition-duration: calc(500ms + 0.5s)";
+  (* All-constant calc reduces at parse time under shortest-wins; the eval
+     contract here exercises only mixed-unit calc that needs the context to fold
+     (rem -> px via root font size). *)
   check_eval "eval folds known length calc subtree" ~ctx
     ~expected:"margin-left: 18px" "margin-left: calc(1rem + 2px)";
   check_eval "eval preserves unresolved viewport leaf in calc AST" ~ctx

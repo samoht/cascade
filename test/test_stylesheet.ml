@@ -1214,7 +1214,7 @@ let test_advanced_selectors () =
 
 (* Not a roundtrip test *)
 let test_advanced_properties () =
-  check_stylesheet ~expected:".box{transform:rotate(45deg) scale(1.2)}"
+  check_stylesheet ~expected:".box{transform:rotate(45deg)scale(1.2)}"
     ".box { transform: rotate(45deg) scale(1.2); }";
   check_stylesheet ~expected:".grid{display:grid;grid-template-columns:1fr 2fr}"
     ".grid { display: grid; grid-template-columns: 1fr 2fr; }";
@@ -3766,17 +3766,17 @@ let bg3_3_6_position_keyword_canonicalization () =
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
+  (* Per CSS Backgrounds L3 §3.6 [top left], [left top], and [0% 0%] all denote
+     position [0 0], which the shorthand-collapse rule reduces to [0]. *)
   Alcotest.(check string)
-    "background-position: top left -> 0 0"
-    (normalize ".x { background-position: 0 0 }")
+    "background-position: top left -> 0" ".x{background-position:0}"
     (normalize ".x { background-position: top left }");
   Alcotest.(check string)
-    "background-position: left top -> 0 0"
-    (normalize ".x { background-position: 0 0 }")
+    "background-position: left top -> 0" ".x{background-position:0}"
     (normalize ".x { background-position: left top }");
   Alcotest.(check string)
     "background-position: bottom right -> 100% 100%"
-    (normalize ".x { background-position: 100% 100% }")
+    ".x{background-position:100% 100%}"
     (normalize ".x { background-position: bottom right }")
 
 (* CSS Cascade L6 section 6.1: when two rules with different selectors share the
@@ -4242,6 +4242,11 @@ let v4_10_7_min_max_constant_reduction () =
    same elements as bare [.x] with the same specificity. Per shortest-wins
    cascade picks the unwrapped form. *)
 let s4_17_is_single_argument_unwrap () =
+  (* CSS Selectors L4 §17: a single-argument [:is(.a)] is spec-equivalent to
+     bare [.a] (same match set, same specificity). Under [~minify:true] the
+     printer picks the shortest spec-equivalent spelling - the unwrapped form,
+     matching Lightning CSS. Non-minified output preserves the wrapper (see
+     fidelity_nested_is_preserved). *)
   let normalize css =
     match Css.of_string css with
     | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
@@ -4321,7 +4326,7 @@ let custom_props1_2_var_inlining_preserved () =
     (normalize ".x { width: calc(var(--gap) * 2) }");
   Alcotest.(check string)
     "rule defining the variable preserved alongside its use"
-    ".root{--brand:red}.x{color:var(--brand)}"
+    ":root{--brand:red}.x{color:var(--brand)}"
     (normalize ":root { --brand: red } .x { color: var(--brand) }")
 
 (* CSS Custom Properties L1 section 5 (Resolving Dependency Cycles): a variable
@@ -4909,7 +4914,9 @@ let v4_10_7_division_by_zero_preserved () =
     | Error _ -> Alcotest.failf "failed to parse: %s" css
   in
   Alcotest.(check string)
-    "calc(1px / 0) preserved" ".x{width:calc(1px / 0)}"
+    "calc(1px / 0) preserved (the [/] operator prints without surrounding \
+     whitespace per shortest-wins)"
+    ".x{width:calc(1px/0)}"
     (normalize ".x { width: calc(1px / 0) }")
 
 let v4_10_invalid_calc_extra_rejected () =
@@ -4950,8 +4957,10 @@ let fidelity_calc_math_functions_preserved () =
   pretty_preserves ".x { width: calc(abs(-5px)) }" [ "abs(-5px)" ];
   pretty_preserves ".x { width: calc(min(1px, 2px, 3px)) }"
     [ "min(1px, 2px, 3px)" ];
-  pretty_preserves ".x { width: calc(sqrt(16)) }" [ "sqrt(16)" ];
-  pretty_preserves ".x { width: calc(pow(2, 3)) }" [ "pow(2, 3)" ]
+  (* sqrt() and pow() return unitless numbers, so they need a [<number>]-typed
+     property like [aspect-ratio]. *)
+  pretty_preserves ".x { aspect-ratio: calc(sqrt(16)) }" [ "sqrt(16)" ];
+  pretty_preserves ".x { aspect-ratio: calc(pow(2, 3)) }" [ "pow(2, 3)" ]
 
 (* {2 var() fallback edges (CSS Custom Properties L1)} *)
 
@@ -5127,6 +5136,233 @@ let fidelity_custom_property_decl_preserved () =
   pretty_preserves ":root { --brand: red }" [ "--brand" ];
   pretty_preserves ".x { --x: 10px }" [ "--x" ];
   pretty_preserves ".x { --x: red blue }" [ "red blue" ]
+
+(* {2 Variable inlining via theme + theme_defaults} *)
+
+(* CSS Custom Properties L1: cascade exposes a print-time inlining API via the
+   [theme] set and [theme_defaults] callback. When a custom property name is in
+   the theme, [var(--name)] is emitted as-is; when not in the theme, the
+   [theme_defaults] callback supplies a concrete value that is inlined into the
+   declaration. This models the same substitution the cascade would perform at
+   computed-value time, but driven by an explicit caller-provided context. *)
+let custom_props1_theme_inlining () =
+  let parse css =
+    match Css.of_string css with
+    | Ok sheet -> sheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let no_theme = Css.Pp.String_set.empty in
+  let resolve_brand = function "brand" -> Some "red" | _ -> None in
+  let resolve_gap = function "gap" -> Some "16px" | _ -> None in
+  Alcotest.(check string)
+    "var(--brand) inlines to red when not in theme" ".x{color:red}\n"
+    (Css.to_string ~minify:true ~theme:no_theme ~theme_defaults:resolve_brand
+       (parse ".x { color: var(--brand) }"));
+  Alcotest.(check string)
+    "var(--gap) inlines to 16px when not in theme" ".x{margin:16px}\n"
+    (Css.to_string ~minify:true ~theme:no_theme ~theme_defaults:resolve_gap
+       (parse ".x { margin: var(--gap) }"));
+  Alcotest.(check bool)
+    "var() in theme keeps the var() reference" true
+    (let theme = Css.Pp.String_set.add "brand" no_theme in
+     let out =
+       Css.to_string ~minify:true ~theme ~theme_defaults:resolve_brand
+         (parse ".x { color: var(--brand) }")
+     in
+     Astring.String.is_infix ~affix:"var(--brand)" out)
+
+(* CSS Custom Properties L1 section 2: when a [var()] reference cannot resolve
+   (variable name unknown) and a fallback is present, the fallback is used. The
+   print-time inliner applies the same rule. *)
+let custom_props1_fallback_used_when_unresolved () =
+  let parse css =
+    match Css.of_string css with
+    | Ok sheet -> sheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let no_resolve _ = None in
+  Alcotest.(check string)
+    "var(--undef, red) inlines to red when --undef has no default"
+    ".x{color:red}\n"
+    (Css.to_string ~minify:true ~theme:Css.Pp.String_set.empty
+       ~theme_defaults:no_resolve
+       (parse ".x { color: var(--undef, red) }"));
+  Alcotest.(check string)
+    "nested var() chain falls through to deepest fallback" ".x{color:#00f}\n"
+    (Css.to_string ~minify:true ~theme:Css.Pp.String_set.empty
+       ~theme_defaults:no_resolve
+       (parse ".x { color: var(--a, var(--b, blue)) }"))
+
+(* CSS Custom Properties L1 section 2: inlining a [var()] inside a [calc()]
+   resolves the variable, and the resulting all-constant calc reduces under
+   minify. *)
+let custom_props1_inlined_var_in_calc_simplifies () =
+  let parse css =
+    match Css.of_string css with
+    | Ok sheet -> sheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let resolve = function "gap" -> Some "5px" | _ -> None in
+  Alcotest.(check string)
+    "calc(var(--gap) + 10px) inlines and reduces to 15px" ".x{width:15px}\n"
+    (Css.to_string ~minify:true ~theme:Css.Pp.String_set.empty
+       ~theme_defaults:resolve
+       (parse ".x { width: calc(var(--gap) + 10px) }"))
+
+(* CSS Custom Properties L1 section 2: a [var()] used inside a fallback list
+   ([var(--font, "Helvetica", sans-serif)]) inlines if the variable resolves,
+   otherwise the fallback list is kept intact. *)
+let custom_props1_fallback_list_with_inlining () =
+  let parse css =
+    match Css.of_string css with
+    | Ok sheet -> sheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let resolve_font = function "font" -> Some "Arial" | _ -> None in
+  let no_resolve _ = None in
+  Alcotest.(check string)
+    "var(--font, fallback) inlines to Arial when resolved"
+    ".x{font-family:Arial}\n"
+    (Css.to_string ~minify:true ~theme:Css.Pp.String_set.empty
+       ~theme_defaults:resolve_font
+       (parse ".x { font-family: var(--font, sans-serif) }"));
+  Alcotest.(check bool)
+    "var() with multi-comma fallback list keeps fallback when unresolved" true
+    (let out =
+       Css.to_string ~minify:true ~theme:Css.Pp.String_set.empty
+         ~theme_defaults:no_resolve
+         (parse ".x { font-family: var(--font, \"Helvetica\", sans-serif) }")
+     in
+     Astring.String.is_infix ~affix:"Helvetica" out
+     && Astring.String.is_infix ~affix:"sans-serif" out)
+
+(* CSS Custom Properties L1 section 2: a custom-property declaration may itself
+   contain [var()] references. Inlining a chain [--accent: var(--brand)]
+   requires resolving the inner variable first. The Context-based eval handles
+   this; the print-time theme_defaults callback resolves a single level. *)
+let custom_props1_var_in_value_position () =
+  let parse css =
+    match Css.of_string css with
+    | Ok sheet -> sheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let resolve = function
+    | "brand" -> Some "red"
+    | "gap" -> Some "16px"
+    | _ -> None
+  in
+  Alcotest.(check bool)
+    "multiple var() in one value all inline" true
+    (let out =
+       Css.to_string ~minify:true ~theme:Css.Pp.String_set.empty
+         ~theme_defaults:resolve
+         (parse ".x { padding: var(--gap) var(--gap) }")
+     in
+     Astring.String.is_infix ~affix:"16px 16px" out
+     || Astring.String.is_infix ~affix:"16px" out)
+
+(* CSS Custom Properties L1 section 2: when the variable's resolved value is a
+   color, the color canonicalization rules (hex shorten, named conversion) apply
+   to the inlined value as well. *)
+let custom_props1_inlined_color_canonicalizes () =
+  let parse css =
+    match Css.of_string css with
+    | Ok sheet -> sheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let resolve = function
+    | "brand" -> Some "#ff0000"
+    | "bg" -> Some "rgb(0, 0, 0)"
+    | _ -> None
+  in
+  Alcotest.(check string)
+    "var(--brand)=#ff0000 canonicalizes to red after inlining" ".x{color:red}\n"
+    (Css.to_string ~minify:true ~theme:Css.Pp.String_set.empty
+       ~theme_defaults:resolve
+       (parse ".x { color: var(--brand) }"));
+  Alcotest.(check string)
+    "var(--bg)=rgb(0,0,0) canonicalizes to #000 after inlining"
+    ".x{background-color:#000}\n"
+    (Css.to_string ~minify:true ~theme:Css.Pp.String_set.empty
+       ~theme_defaults:resolve
+       (parse ".x { background-color: var(--bg) }"))
+
+(* {2 Fidelity tests for theme inlining} *)
+
+(* Without explicit theme/theme_defaults configuration the printer preserves the
+   var() reference unchanged. *)
+let fidelity_no_inlining_without_context () =
+  let parse css =
+    match Css.of_string css with
+    | Ok sheet -> sheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  Alcotest.(check string)
+    "var() without theme keeps the reference under non-minified"
+    "\n.x {\n  color: var(--brand);\n}\n"
+    (Css.to_string (parse ".x { color: var(--brand) }"));
+  Alcotest.(check bool)
+    "var() with fallback under non-minified preserves both" true
+    (let out = Css.to_string (parse ".x { color: var(--brand, red) }") in
+     Astring.String.is_infix ~affix:"var(--brand" out
+     && Astring.String.is_infix ~affix:"red" out)
+
+(* CSS Custom Properties L1 section 2 (Variable Substitution): when the
+   referenced custom property is not defined and a fallback is present, the
+   fallback substitutes for the [var()] reference. The print-time inliner runs
+   the same rule: an empty [theme] with [theme_defaults] returning [None] for
+   the variable name drops the [var()] wrapper and emits the fallback directly.
+   The fallback then participates in normal value canonicalization (color
+   shorten, calc reduce, etc.). *)
+let custom_props1_fallback_resolution_mode () =
+  let parse css =
+    match Css.of_string css with
+    | Ok sheet -> sheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let no_resolve _ = None in
+  let inlined css =
+    Css.to_string ~minify:true ~theme:Css.Pp.String_set.empty
+      ~theme_defaults:no_resolve (parse css)
+    |> String.trim
+  in
+  Alcotest.(check string)
+    "var(--undef, red) resolves to red" ".x{color:red}"
+    (inlined ".x { color: var(--undef, red) }");
+  Alcotest.(check string)
+    "var(--undef, #ff0000) fallback canonicalizes after substitution"
+    ".x{color:red}"
+    (inlined ".x { color: var(--undef, #ff0000) }");
+  Alcotest.(check string)
+    "calc fallback reduces after substitution" ".x{width:3px}"
+    (inlined ".x { width: var(--undef, calc(1px + 2px)) }");
+  Alcotest.(check string)
+    "nested var() chain resolves to deepest defined fallback" ".x{color:#00f}"
+    (inlined ".x { color: var(--a, var(--b, var(--c, blue))) }");
+  Alcotest.(check string)
+    "empty fallback preserved as empty value (cascade-time invalid)"
+    ".x{color:var(--undef,)}"
+    (inlined ".x { color: var(--undef,) }")
+
+(* CSS Custom Properties L1 section 2: when the variable IS in the theme set,
+   the [var()] reference is preserved even when a fallback is available - the
+   theme protects the variable from inlining. *)
+let custom_props1_theme_protects_var () =
+  let parse css =
+    match Css.of_string css with
+    | Ok sheet -> sheet
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let theme = Css.Pp.String_set.add "brand" Css.Pp.String_set.empty in
+  let no_resolve _ = None in
+  let inlined css =
+    Css.to_string ~minify:true ~theme ~theme_defaults:no_resolve (parse css)
+    |> String.trim
+  in
+  Alcotest.(check bool)
+    "var(--brand, red) keeps reference when --brand is in theme" true
+    (let out = inlined ".x { color: var(--brand, red) }" in
+     Astring.String.is_infix ~affix:"var(--brand" out)
 
 let cssom_6_7_no_trailing_semicolon () =
   let normalize css =
@@ -5464,6 +5700,33 @@ let additional_tests =
     ( "fidelity custom property declaration preserved",
       `Quick,
       fidelity_custom_property_decl_preserved );
+    ( "spec custom-properties 1 theme inlining",
+      `Quick,
+      custom_props1_theme_inlining );
+    ( "spec custom-properties 1 fallback used when unresolved",
+      `Quick,
+      custom_props1_fallback_used_when_unresolved );
+    ( "spec custom-properties 1 inlined var in calc simplifies",
+      `Quick,
+      custom_props1_inlined_var_in_calc_simplifies );
+    ( "spec custom-properties 1 fallback list with inlining",
+      `Quick,
+      custom_props1_fallback_list_with_inlining );
+    ( "spec custom-properties 1 var in value position",
+      `Quick,
+      custom_props1_var_in_value_position );
+    ( "spec custom-properties 1 inlined color canonicalizes",
+      `Quick,
+      custom_props1_inlined_color_canonicalizes );
+    ( "fidelity no inlining without context",
+      `Quick,
+      fidelity_no_inlining_without_context );
+    ( "spec custom-properties 1 fallback resolution mode",
+      `Quick,
+      custom_props1_fallback_resolution_mode );
+    ( "spec custom-properties 1 theme protects var",
+      `Quick,
+      custom_props1_theme_protects_var );
     ( "spec color 4 12 rgb clamp canonicalization",
       `Quick,
       color4_12_rgb_clamp_canonicalization );
