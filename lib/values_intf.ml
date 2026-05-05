@@ -45,6 +45,7 @@ type length =
   | Ex of float
   | Cap of float
   | Ic of float
+  | Ric of float
   | Rlh of float
   | Pct of float
   | Vw of float
@@ -73,6 +74,7 @@ type length =
   | Cqmax of float
   | Ch of float
   | Lh of float
+  | Unknown_dimension of float * string
   | Size
   | Auto
   | None
@@ -293,6 +295,9 @@ type angle =
   | Rad of float
   | Turn of float
   | Grad of float
+  | Round of string * angle * angle
+  | Mod of angle * angle
+  | Rem of angle * angle
   | Calc of angle calc
   | Var of angle var
 
@@ -401,6 +406,10 @@ type color =
 type duration =
   | Ms of float
   | S of float
+  | Durations of duration list
+  | Round of string * duration * duration
+  | Mod of duration * duration
+  | Rem of duration * duration
   | Inherit
   | Initial
   | Unset
@@ -415,6 +424,7 @@ type number =
   | Calc of number calc
   | Round of string * number * number
   | Mod of number * number
+  | Rem of number * number
   | Hypot of number * number
   | Pow of number * number
   | Sqrt of number

@@ -321,7 +321,8 @@ let pp_unit ?(always = true) ctx f suffix =
   else (
     (* Always drop leading zeros for CSS unit values (e.g., .25rem not 0.25rem)
        to match Tailwind's output format *)
-    Pp.string ctx (Pp.float_to_string ~drop_leading_zero:true f);
+    Pp.string ctx
+      (Pp.float_to_string ~drop_leading_zero:true (Pp.round_sig 6 f));
     Pp.string ctx suffix)
 
 (** Try to evaluate a calc expression containing only numbers to a float.
@@ -487,7 +488,62 @@ and try_reduce_min_max op args : (float * string) option =
         Option.Some (pick, first_unit)
     | _ -> Option.None
 
+let format_simple_dimension f unit =
+  Pp.float_to_string ~drop_leading_zero:true (Pp.round_sig 6 f) ^ unit
+
+let try_reduce_min_max_args op args =
+  let parts = split_top_level_commas args in
+  let parsed = List.map parse_simple_dimension parts in
+  if List.exists Option.is_none parsed then Option.None
+  else
+    let groups = Hashtbl.create 4 in
+    List.iteri
+      (fun pos part ->
+        match parse_simple_dimension part with
+        | Option.None -> ()
+        | Option.Some (n, unit) -> (
+            match Hashtbl.find_opt groups unit with
+            | Option.None -> Hashtbl.add groups unit (pos, n)
+            | Option.Some (old_pos, old_n) ->
+                let better =
+                  match op with `Min -> n < old_n | `Max -> n > old_n
+                in
+                Hashtbl.replace groups unit
+                  (if better then (old_pos, n) else (old_pos, old_n))))
+      parts;
+    let reduced =
+      Hashtbl.to_seq groups |> List.of_seq
+      |> List.sort (fun (_, (a, _)) (_, (b, _)) -> compare a b)
+      |> List.map (fun (unit, (_, n)) -> format_simple_dimension n unit)
+    in
+    match reduced with
+    | [] -> Option.None
+    | _ when List.length reduced = List.length parts -> Option.None
+    | _ -> Option.Some (String.concat "," reduced)
+
+let strip_top_level_calc_arg arg =
+  let arg = String.trim arg in
+  let prefix = "calc(" in
+  let plen = String.length prefix in
+  let len = String.length arg in
+  if
+    len > plen
+    && String.equal (String.sub arg 0 plen) prefix
+    && arg.[len - 1] = ')'
+  then String.sub arg plen (len - plen - 1)
+  else arg
+
 let pp_math_call ctx name args =
+  let args =
+    match name with
+    | "min" -> Option.value ~default:args (try_reduce_min_max_args `Min args)
+    | "max" -> Option.value ~default:args (try_reduce_min_max_args `Max args)
+    | "clamp" ->
+        split_top_level_commas args
+        |> List.map strip_top_level_calc_arg
+        |> String.concat ","
+    | _ -> args
+  in
   Pp.string ctx name;
   Pp.char ctx '(';
   let buf = ctx.Pp.buf in
@@ -548,8 +604,9 @@ let normalize_math_args args =
 let length_is_zero = function
   | Zero -> true
   | Px f | Cm f | Mm f | Q f | In f | Pt f | Pc f -> f = 0.
-  | Em f | Rem f | Ex f | Cap f | Ic f | Rlh f -> f = 0.
+  | Em f | Rem f | Ex f | Cap f | Ic f | Ric f | Rlh f -> f = 0.
   | Ch f | Lh f -> f = 0.
+  | Unknown_dimension (f, _) -> f = 0.
   | Pct f -> f = 0.
   | Vw f | Vh f | Vmin f | Vmax f | Vi f | Vb f -> f = 0.
   | Dvh f | Dvw f | Dvmin f | Dvmax f -> f = 0.
@@ -642,6 +699,256 @@ let rec eval_length_calc : length calc -> length calc =
           | None -> Expr (l, op, r))
       | _ -> Expr (l, op, r))
 
+type length_unit =
+  | U_px
+  | U_cm
+  | U_mm
+  | U_q
+  | U_in
+  | U_pt
+  | U_pc
+  | U_rem
+  | U_em
+  | U_ex
+  | U_cap
+  | U_ic
+  | U_ric
+  | U_rlh
+  | U_ch
+  | U_lh
+  | U_pct
+  | U_vw
+  | U_vh
+  | U_vmin
+  | U_vmax
+  | U_vi
+  | U_vb
+  | U_dvh
+  | U_dvw
+  | U_dvmin
+  | U_dvmax
+  | U_lvh
+  | U_lvw
+  | U_lvmin
+  | U_lvmax
+  | U_svh
+  | U_svw
+  | U_svmin
+  | U_svmax
+  | U_cqw
+  | U_cqh
+  | U_cqi
+  | U_cqb
+  | U_cqmin
+  | U_cqmax
+
+let length_unit_is_pct = function U_pct -> true | _ -> false
+
+let length_unit_is_viewport = function
+  | U_vw | U_vh | U_vmin | U_vmax | U_vi | U_vb | U_dvh | U_dvw | U_dvmin
+  | U_dvmax | U_lvh | U_lvw | U_lvmin | U_lvmax | U_svh | U_svw | U_svmin
+  | U_svmax ->
+      true
+  | _ -> false
+
+let length_unit_is_font_relative = function
+  | U_rem | U_em | U_ex | U_cap | U_ic | U_ric | U_rlh | U_ch | U_lh -> true
+  | _ -> false
+
+let length_unit_negative_rank = function
+  | unit when length_unit_is_font_relative unit -> 0
+  | _ -> 1
+
+let length_to_unit = function
+  | Zero -> Some (U_px, 0.)
+  | Px n -> Some (U_px, n)
+  | Cm n -> Some (U_cm, n)
+  | Mm n -> Some (U_mm, n)
+  | Q n -> Some (U_q, n)
+  | In n -> Some (U_in, n)
+  | Pt n -> Some (U_pt, n)
+  | Pc n -> Some (U_pc, n)
+  | Rem n -> Some (U_rem, n)
+  | Em n -> Some (U_em, n)
+  | Ex n -> Some (U_ex, n)
+  | Cap n -> Some (U_cap, n)
+  | Ic n -> Some (U_ic, n)
+  | Ric n -> Some (U_ric, n)
+  | Rlh n -> Some (U_rlh, n)
+  | Ch n -> Some (U_ch, n)
+  | Lh n -> Some (U_lh, n)
+  | Pct n -> Some (U_pct, n)
+  | Vw n -> Some (U_vw, n)
+  | Vh n -> Some (U_vh, n)
+  | Vmin n -> Some (U_vmin, n)
+  | Vmax n -> Some (U_vmax, n)
+  | Vi n -> Some (U_vi, n)
+  | Vb n -> Some (U_vb, n)
+  | Dvh n -> Some (U_dvh, n)
+  | Dvw n -> Some (U_dvw, n)
+  | Dvmin n -> Some (U_dvmin, n)
+  | Dvmax n -> Some (U_dvmax, n)
+  | Lvh n -> Some (U_lvh, n)
+  | Lvw n -> Some (U_lvw, n)
+  | Lvmin n -> Some (U_lvmin, n)
+  | Lvmax n -> Some (U_lvmax, n)
+  | Svh n -> Some (U_svh, n)
+  | Svw n -> Some (U_svw, n)
+  | Svmin n -> Some (U_svmin, n)
+  | Svmax n -> Some (U_svmax, n)
+  | Cqw n -> Some (U_cqw, n)
+  | Cqh n -> Some (U_cqh, n)
+  | Cqi n -> Some (U_cqi, n)
+  | Cqb n -> Some (U_cqb, n)
+  | Cqmin n -> Some (U_cqmin, n)
+  | Cqmax n -> Some (U_cqmax, n)
+  | Unknown_dimension _ -> None
+  | _ -> None
+
+let unit_to_length unit n =
+  match unit with
+  | U_px -> if n = 0. then Zero else Px n
+  | U_cm -> Cm n
+  | U_mm -> Mm n
+  | U_q -> Q n
+  | U_in -> In n
+  | U_pt -> Pt n
+  | U_pc -> Pc n
+  | U_rem -> Rem n
+  | U_em -> Em n
+  | U_ex -> Ex n
+  | U_cap -> Cap n
+  | U_ic -> Ic n
+  | U_ric -> Ric n
+  | U_rlh -> Rlh n
+  | U_ch -> Ch n
+  | U_lh -> Lh n
+  | U_pct -> Pct n
+  | U_vw -> Vw n
+  | U_vh -> Vh n
+  | U_vmin -> Vmin n
+  | U_vmax -> Vmax n
+  | U_vi -> Vi n
+  | U_vb -> Vb n
+  | U_dvh -> Dvh n
+  | U_dvw -> Dvw n
+  | U_dvmin -> Dvmin n
+  | U_dvmax -> Dvmax n
+  | U_lvh -> Lvh n
+  | U_lvw -> Lvw n
+  | U_lvmin -> Lvmin n
+  | U_lvmax -> Lvmax n
+  | U_svh -> Svh n
+  | U_svw -> Svw n
+  | U_svmin -> Svmin n
+  | U_svmax -> Svmax n
+  | U_cqw -> Cqw n
+  | U_cqh -> Cqh n
+  | U_cqi -> Cqi n
+  | U_cqb -> Cqb n
+  | U_cqmin -> Cqmin n
+  | U_cqmax -> Cqmax n
+
+type linear_term = {
+  unit : length_unit;
+  value : float;
+  first_pos : int;
+  count : int;
+}
+
+let ordered_linear_terms terms =
+  let table = Hashtbl.create 8 in
+  List.iteri
+    (fun pos (unit, n) ->
+      match Hashtbl.find_opt table unit with
+      | None ->
+          Hashtbl.add table unit { unit; value = n; first_pos = pos; count = 1 }
+      | Some term ->
+          Hashtbl.replace table unit
+            { term with value = term.value +. n; count = term.count + 1 })
+    terms;
+  let terms =
+    Hashtbl.to_seq_values table
+    |> List.of_seq
+    |> List.filter (fun term -> term.value <> 0.)
+  in
+  let first_pos =
+    List.fold_left (fun acc term -> min acc term.first_pos) max_int terms
+  in
+  let priority term =
+    if term.value > 0. then
+      if length_unit_is_pct term.unit then 0
+      else if term.first_pos = first_pos && term.count = 1 then 1
+      else if term.count = 1 then 3
+      else 4
+    else if length_unit_is_pct term.unit then 6
+    else if length_unit_is_viewport term.unit then 5
+    else 2
+  in
+  List.sort
+    (fun a b ->
+      let c = compare (priority a) (priority b) in
+      if c <> 0 then c
+      else if priority a = 2 then
+        let c =
+          compare
+            (length_unit_negative_rank a.unit)
+            (length_unit_negative_rank b.unit)
+        in
+        if c <> 0 then c else compare a.first_pos b.first_pos
+      else compare a.first_pos b.first_pos)
+    terms
+
+let linear_calc_op first_unit first_value unit n =
+  if
+    n < 0. && first_value > 0. && first_unit = U_px
+    && length_unit_is_font_relative unit
+  then (Add, n)
+  else if n < 0. then (Sub, -.n)
+  else (Add, n)
+
+let linear_length_terms calc =
+  let scale factor terms =
+    List.map (fun (unit, n) -> (unit, factor *. n)) terms
+  in
+  let rec aux = function
+    | Val length -> Option.map (fun term -> [ term ]) (length_to_unit length)
+    | Num 0. -> Some []
+    | Num _ | Var _ | Sibling_index | Sibling_count -> None
+    | Nested inner | Parens inner -> aux inner
+    | Expr (left, Add, right) -> (
+        match (aux left, aux right) with
+        | Some l, Some r -> Some (l @ r)
+        | _ -> None)
+    | Expr (left, Sub, right) -> (
+        match (aux left, aux right) with
+        | Some l, Some r -> Some (l @ scale (-1.) r)
+        | _ -> None)
+    | Expr (left, Mul, Num n) -> Option.map (scale n) (aux left)
+    | Expr (Num n, Mul, right) -> Option.map (scale n) (aux right)
+    | Expr (left, Div, Num n) when n <> 0. ->
+        Option.map (scale (1. /. n)) (aux left)
+    | Expr _ -> None
+  in
+  aux calc
+
+let linear_length_calc calc =
+  match linear_length_terms calc with
+  | None -> calc
+  | Some terms -> (
+      let terms = ordered_linear_terms terms in
+      match terms with
+      | [] -> Val Zero
+      | { unit; value = n; _ } :: rest ->
+          let first_unit = unit in
+          let first_value = n in
+          List.fold_left
+            (fun acc { unit; value = n; _ } ->
+              let op, n = linear_calc_op first_unit first_value unit n in
+              Expr (acc, op, Val (unit_to_length unit n)))
+            (Val (unit_to_length unit n))
+            rest)
+
 let lp_is_zero (v : length_percentage) =
   match v with Length l -> length_is_zero l | Pct f -> f = 0. | _ -> false
 
@@ -714,9 +1021,68 @@ let rec eval_lp_calc : length_percentage calc -> length_percentage calc =
           match lp_scale Mul a n with Some v -> Val v | None -> Expr (l, op, r))
       | _ -> Expr (l, op, r))
 
+let lp_to_unit : length_percentage -> (length_unit * float) option = function
+  | Pct n -> Some (U_pct, n)
+  | Length l -> length_to_unit l
+  | Var _ | Calc _ -> None
+
+let unit_to_lp unit n : length_percentage =
+  match unit with U_pct -> Pct n | unit -> Length (unit_to_length unit n)
+
+let linear_lp_terms calc =
+  let scale factor terms =
+    List.map (fun (unit, n) -> (unit, factor *. n)) terms
+  in
+  let rec aux = function
+    | Val value -> Option.map (fun term -> [ term ]) (lp_to_unit value)
+    | Num 0. -> Some []
+    | Num _ | Var _ | Sibling_index | Sibling_count -> None
+    | Nested inner | Parens inner -> aux inner
+    | Expr (left, Add, right) -> (
+        match (aux left, aux right) with
+        | Some l, Some r -> Some (l @ r)
+        | _ -> None)
+    | Expr (left, Sub, right) -> (
+        match (aux left, aux right) with
+        | Some l, Some r -> Some (l @ scale (-1.) r)
+        | _ -> None)
+    | Expr (left, Mul, Num n) -> Option.map (scale n) (aux left)
+    | Expr (Num n, Mul, right) -> Option.map (scale n) (aux right)
+    | Expr (left, Div, Num n) when n <> 0. ->
+        Option.map (scale (1. /. n)) (aux left)
+    | Expr _ -> None
+  in
+  aux calc
+
+let linear_lp_calc calc =
+  match linear_lp_terms calc with
+  | None -> calc
+  | Some terms -> (
+      let terms = ordered_linear_terms terms in
+      match terms with
+      | [] -> Val (Length Zero)
+      | { unit; value = n; _ } :: rest ->
+          let first_unit = unit in
+          let first_value = n in
+          List.fold_left
+            (fun acc { unit; value = n; _ } ->
+              let op, n = linear_calc_op first_unit first_value unit n in
+              Expr (acc, op, Val (unit_to_lp unit n)))
+            (Val (unit_to_lp unit n))
+            rest)
+
 let rec pp_length ?(always = false) : length Pp.t =
  fun ctx v ->
   let pp_unit_fn = pp_unit ~always ctx in
+  let is_math_length = function
+    | Min _ | Max _ | Clamp _ -> true
+    | _ -> false
+  in
+  let pp_calc_wrapped_length ctx length =
+    Pp.string ctx "calc(";
+    pp_length ~always ctx length;
+    Pp.char ctx ')'
+  in
   match v with
   | Zero -> Pp.char ctx '0'
   | Px f -> pp_unit_fn f "px"
@@ -731,6 +1097,7 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Ex f -> pp_unit_fn f "ex"
   | Cap f -> pp_unit_fn f "cap"
   | Ic f -> pp_unit_fn f "ic"
+  | Ric f -> pp_unit_fn f "ric"
   | Rlh f -> pp_unit_fn f "rlh"
   | Pct f -> pp_unit_fn f "%"
   | Vw f -> pp_unit_fn f "vw"
@@ -759,6 +1126,7 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Cqmax f -> pp_unit_fn f "cqmax"
   | Ch f -> pp_unit_fn f "ch"
   | Lh f -> pp_unit_fn f "lh"
+  | Unknown_dimension (f, unit) -> pp_unit_fn f unit
   | Size -> Pp.string ctx "size"
   | Auto -> Pp.string ctx "auto"
   | None -> Pp.string ctx "none"
@@ -806,8 +1174,9 @@ let rec pp_length ?(always = false) : length Pp.t =
   | Round (strategy, value, step) ->
       Pp.call "round"
         (fun ctx (strategy, value, step) ->
-          Pp.string ctx strategy;
-          Pp.comma ctx ();
+          if strategy <> "nearest" then (
+            Pp.string ctx strategy;
+            Pp.comma ctx ());
           pp_length ~always ctx value;
           Pp.comma ctx ();
           pp_length ~always ctx step)
@@ -888,10 +1257,27 @@ let rec pp_length ?(always = false) : length Pp.t =
           Pp.string ctx "3.40282e38px"
       | Expr (Val _, Mul, Num f) when f = infinity ->
           Pp.string ctx "3.40282e38px"
+      | Expr (Val length, Mul, Num -1.)
+        when Pp.minified ctx && is_math_length length ->
+          Pp.string ctx "calc(-1*";
+          pp_length ~always ctx length;
+          Pp.char ctx ')'
+      | Expr (Num 0.5, Mul, Val length)
+        when Pp.minified ctx && is_math_length length ->
+          Pp.string ctx "calc(";
+          pp_length ~always ctx length;
+          Pp.string ctx "/2)"
+      | Expr (Num 1., Mul, Val length)
+        when Pp.minified ctx && is_math_length length ->
+          pp_calc_wrapped_length ctx length
+      | Expr (Expr (Num 2., Mul, Val length), Div, Num 2.)
+        when Pp.minified ctx && is_math_length length ->
+          pp_calc_wrapped_length ctx length
       | _ ->
           let cv =
             if Pp.minified ctx then
               cv |> normalize_length_calc_zeros |> eval_length_calc
+              |> linear_length_calc |> eval_length_calc
             else cv
           in
           pp_calc (pp_length ~always) ctx cv)
@@ -1063,6 +1449,7 @@ let color_name_hex : color_name -> string * string = function
   | Orange -> ("orange", "ffa500")
   | Purple -> ("purple", "800080")
   | Pink -> ("pink", "ffc0cb")
+  | Light_blue -> ("lightblue", "add8e6")
   | Silver -> ("silver", "c0c0c0")
   | Maroon -> ("maroon", "800000")
   | Fuchsia -> ("fuchsia", "f0f")
@@ -1140,6 +1527,25 @@ let alpha_is_full = function
   | Pct 100.0 -> true
   | _ -> false
 
+let round_to_step strategy value step =
+  if step = 0. then value
+  else
+    let q = value /. step in
+    let q =
+      match strategy with
+      | "up" -> Float.ceil q
+      | "down" -> Float.floor q
+      | "to-zero" -> Float.trunc q
+      | _ -> Float.round q
+    in
+    q *. step
+
+let mod_value a b =
+  if b = 0. then a
+  else
+    let q = Float.floor (a /. b) in
+    a -. (q *. b)
+
 (* Byte value [0..255] for an alpha component, when the alpha is a static number
    or percentage. Returns [None] for symbolic forms ([Var] / [Calc]) that can't
    fold to a fixed byte. *)
@@ -1159,7 +1565,7 @@ let normalize_hue f =
 (* CSS Color 4 4.2.4: convert HSL components to sRGB byte triples. [hue] is in
    degrees [0..360), [saturation] and [lightness] are percentages [0..100].
    Returns [(r, g, b)] each in [0..255]. *)
-let hsl_to_rgb_bytes ~hue ~saturation ~lightness =
+let hsl_to_rgb_float ~hue ~saturation ~lightness =
   let s = saturation /. 100. in
   let l = lightness /. 100. in
   let a = s *. Float.min l (1. -. l) in
@@ -1169,8 +1575,12 @@ let hsl_to_rgb_bytes ~hue ~saturation ~lightness =
     let t = Float.max (Float.min (Float.min (k -. 3.) (9. -. k)) 1.) (-1.) in
     l -. (a *. t)
   in
-  let to_byte v = Float.to_int (Float.round (v *. 255.)) in
-  (to_byte (f 0.), to_byte (f 8.), to_byte (f 4.))
+  (f 0., f 8., f 4.)
+
+let hsl_to_rgb_bytes ~hue ~saturation ~lightness =
+  let r, g, b = hsl_to_rgb_float ~hue ~saturation ~lightness in
+  let to_byte v = Float.to_int (Float.round ((v *. 255.) +. 1e-9)) in
+  (to_byte r, to_byte g, to_byte b)
 
 (* CSS Color 4 4.2.5: convert HWB components to sRGB byte triples. [hue] in
    degrees, [whiteness]/[blackness] as percentages. *)
@@ -1181,10 +1591,11 @@ let hwb_to_rgb_bytes ~hue ~whiteness ~blackness =
     let g = w /. (w +. bl) in
     let v = Float.to_int (Float.round (g *. 255.)) in
     (v, v, v)
+  else if w = 0. && bl = 0. then
+    hsl_to_rgb_bytes ~hue ~saturation:100. ~lightness:50.
   else
-    let r, g, b = hsl_to_rgb_bytes ~hue ~saturation:100. ~lightness:50. in
+    let r, g, b = hsl_to_rgb_float ~hue ~saturation:100. ~lightness:50. in
     let scale c =
-      let c = Float.of_int c /. 255. in
       let v = (c *. (1. -. w -. bl)) +. w in
       Float.to_int (Float.round (v *. 255.))
     in
@@ -1470,6 +1881,36 @@ let rec pp_angle : angle Pp.t =
   | Rad f -> pp_unit ctx f "rad"
   | Turn f -> pp_unit ctx f "turn"
   | Grad f -> pp_unit ctx f "grad"
+  | Round (strategy, Deg value, Deg step) when Pp.minified ctx && step <> 0. ->
+      pp_angle ctx (Deg (round_to_step strategy value step))
+  | Round (strategy, value, step) ->
+      Pp.call "round"
+        (fun ctx (strategy, value, step) ->
+          if strategy <> "nearest" then (
+            Pp.string ctx strategy;
+            Pp.comma ctx ());
+          pp_angle ctx value;
+          Pp.comma ctx ();
+          pp_angle ctx step)
+        ctx (strategy, value, step)
+  | Rem (Deg a, Deg b) when Pp.minified ctx && b <> 0. ->
+      pp_angle ctx (Deg (Float.rem a b))
+  | Rem (a, b) ->
+      Pp.call "rem"
+        (fun ctx (a, b) ->
+          pp_angle ctx a;
+          Pp.comma ctx ();
+          pp_angle ctx b)
+        ctx (a, b)
+  | Mod (Deg a, Deg b) when Pp.minified ctx && b <> 0. ->
+      pp_angle ctx (Deg (mod_value a b))
+  | Mod (a, b) ->
+      Pp.call "mod"
+        (fun ctx (a, b) ->
+          pp_angle ctx a;
+          Pp.comma ctx ();
+          pp_angle ctx b)
+        ctx (a, b)
   | Calc c -> pp_calc pp_angle ctx c
   | Var v -> pp_var pp_angle ctx v
 
@@ -1479,6 +1920,10 @@ let rec pp_hue : hue Pp.t =
   | Angle (Deg f) when ctx.minify ->
       (* During minification, omit 'deg' since it's the default unit *)
       Pp.float ctx f
+  | Angle a when ctx.minify -> (
+      match hue_to_deg (Angle a) with
+      | Some f -> Pp.float ctx (normalize_hue f)
+      | None -> pp_angle ctx a)
   | Angle a -> pp_angle ctx a
   | Var v -> pp_var pp_hue ctx v
   | Hue_none -> Pp.string ctx "none"
@@ -1501,6 +1946,7 @@ and pp_alpha : alpha Pp.t =
 (* Helper to print optional alpha with the correct leading separator *)
 let pp_opt_alpha ctx = function
   | None -> ()
+  | a when Pp.minified ctx && alpha_is_full a -> ()
   | (Num _ | Pct _ | Var _ | Calc _) as a ->
       Pp.op_char ctx '/';
       pp_alpha ctx a
@@ -1520,7 +1966,9 @@ and pp_length_percentage ?(always = false) : length_percentage Pp.t =
   | Var v -> pp_var (pp_length_percentage ~always) ctx v
   | Calc c ->
       let c =
-        if Pp.minified ctx then c |> normalize_lp_calc_zeros |> eval_lp_calc
+        if Pp.minified ctx then
+          c |> normalize_lp_calc_zeros |> eval_lp_calc |> linear_lp_calc
+          |> eval_lp_calc
         else c
       in
       pp_calc (pp_length_percentage ~always) ctx c
@@ -1535,6 +1983,7 @@ and pp_number_percentage ?(always = false) : number_percentage Pp.t =
 and pp_component : component Pp.t =
  fun ctx -> function
   | Num f -> Pp.float ctx f
+  | Pct f when Pp.minified ctx -> Pp.float ctx (f /. 100.)
   | Pct f ->
       Pp.float ctx f;
       Pp.char ctx '%'
@@ -1596,9 +2045,7 @@ let pp_alpha_drop_zero : alpha Pp.t =
  fun ctx -> function
   | None -> ()
   | Num f -> pp_float_drop_zero ctx f
-  | Pct f ->
-      pp_float_drop_zero ctx f;
-      Pp.char ctx '%'
+  | Pct f -> pp_float_drop_zero ctx (f /. 100.)
   | Var v -> pp_var pp_alpha ctx v
   | Calc c -> pp_calc pp_alpha ctx c
 
@@ -1629,6 +2076,7 @@ let pp_oklab_args : (percentage * float option * float option * alpha) Pp.t =
   pp_oklab_ab ctx b;
   match alpha with
   | None -> ()
+  | a when ctx.Pp.minify && alpha_is_full a -> ()
   | a ->
       Pp.op_char ctx '/';
       pp_alpha_drop_zero ctx a
@@ -1649,7 +2097,7 @@ let pp_color_space : color_space Pp.t =
   | Oklab -> Pp.string ctx "oklab"
   | Xyz -> Pp.string ctx "xyz"
   | Xyz_d50 -> Pp.string ctx "xyz-d50"
-  | Xyz_d65 -> Pp.string ctx "xyz-d65"
+  | Xyz_d65 -> Pp.string ctx (if Pp.minified ctx then "xyz" else "xyz-d65")
   | Lch -> Pp.string ctx "lch"
   | Oklch -> Pp.string ctx "oklch"
   | Hsl -> Pp.string ctx "hsl"
@@ -1754,10 +2202,10 @@ and pp_color : color Pp.t =
         ->
           Pp.char ctx '#';
           Pp.string ctx "0000"
-      | Channels { r; g; b } when Pp.minified ctx && alpha_is_full a ->
-          (* Preserve the rgb() form for fully-opaque alpha produced by
-             var()-guard patterns. *)
-          pp_rgb_func ctx (r, g, b, None)
+      | Channels { r; g; b } when Pp.minified ctx && alpha_is_full a -> (
+          match rgb_to_hex_string r g b with
+          | Some hex -> pp_color ctx (Hex { hash = true; value = hex })
+          | None -> pp_rgb_func ctx (r, g, b, None))
       | Channels { r; g; b } when Pp.minified ctx -> (
           (* CSS Color 4 1.4 makes [rgba()] and [#rrggbbaa] spec-equivalent;
              when all channels and alpha are byte-valued, route through the
@@ -1970,6 +2418,45 @@ let rec pp_duration : duration Pp.t =
  fun ctx -> function
   | Ms f -> pp_duration_unit ctx f "ms"
   | S f -> pp_duration_unit ctx f "s"
+  | Durations durations -> Pp.list ~sep:Pp.comma pp_duration ctx durations
+  | Round (strategy, Ms value, Ms step) when Pp.minified ctx && step <> 0. ->
+      pp_duration_unit ~shorten_ms:false ctx
+        (round_to_step strategy value step)
+        "ms"
+  | Round (strategy, S value, S step) when Pp.minified ctx && step <> 0. ->
+      pp_duration ctx (S (round_to_step strategy value step))
+  | Round (strategy, value, step) ->
+      Pp.call "round"
+        (fun ctx (strategy, value, step) ->
+          if strategy <> "nearest" then (
+            Pp.string ctx strategy;
+            Pp.comma ctx ());
+          pp_duration ctx value;
+          Pp.comma ctx ();
+          pp_duration ctx step)
+        ctx (strategy, value, step)
+  | Rem (Ms a, Ms b) when Pp.minified ctx && b <> 0. ->
+      pp_duration ctx (Ms (Float.rem a b))
+  | Rem (S a, S b) when Pp.minified ctx && b <> 0. ->
+      pp_duration ctx (S (Float.rem a b))
+  | Rem (a, b) ->
+      Pp.call "rem"
+        (fun ctx (a, b) ->
+          pp_duration ctx a;
+          Pp.comma ctx ();
+          pp_duration ctx b)
+        ctx (a, b)
+  | Mod (Ms a, Ms b) when Pp.minified ctx && b <> 0. ->
+      pp_duration ctx (Ms (mod_value a b))
+  | Mod (S a, S b) when Pp.minified ctx && b <> 0. ->
+      pp_duration ctx (S (mod_value a b))
+  | Mod (a, b) ->
+      Pp.call "mod"
+        (fun ctx (a, b) ->
+          pp_duration ctx a;
+          Pp.comma ctx ();
+          pp_duration ctx b)
+        ctx (a, b)
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -1982,6 +2469,44 @@ and pp_duration_preserve_ms : duration Pp.t =
  fun ctx -> function
   | Ms f -> pp_duration_unit ~shorten_ms:false ctx f "ms"
   | S f -> pp_duration_unit ctx f "s"
+  | Durations durations ->
+      Pp.list ~sep:Pp.comma pp_duration_preserve_ms ctx durations
+  | Round (strategy, Ms value, Ms step) when Pp.minified ctx && step <> 0. ->
+      pp_duration_preserve_ms ctx (Ms (round_to_step strategy value step))
+  | Round (strategy, S value, S step) when Pp.minified ctx && step <> 0. ->
+      pp_duration_preserve_ms ctx (S (round_to_step strategy value step))
+  | Round (strategy, value, step) ->
+      Pp.call "round"
+        (fun ctx (strategy, value, step) ->
+          if strategy <> "nearest" then (
+            Pp.string ctx strategy;
+            Pp.comma ctx ());
+          pp_duration_preserve_ms ctx value;
+          Pp.comma ctx ();
+          pp_duration_preserve_ms ctx step)
+        ctx (strategy, value, step)
+  | Rem (Ms a, Ms b) when Pp.minified ctx && b <> 0. ->
+      pp_duration_preserve_ms ctx (Ms (Float.rem a b))
+  | Rem (S a, S b) when Pp.minified ctx && b <> 0. ->
+      pp_duration_preserve_ms ctx (S (Float.rem a b))
+  | Rem (a, b) ->
+      Pp.call "rem"
+        (fun ctx (a, b) ->
+          pp_duration_preserve_ms ctx a;
+          Pp.comma ctx ();
+          pp_duration_preserve_ms ctx b)
+        ctx (a, b)
+  | Mod (Ms a, Ms b) when Pp.minified ctx && b <> 0. ->
+      pp_duration_preserve_ms ctx (Ms (mod_value a b))
+  | Mod (S a, S b) when Pp.minified ctx && b <> 0. ->
+      pp_duration_preserve_ms ctx (S (mod_value a b))
+  | Mod (a, b) ->
+      Pp.call "mod"
+        (fun ctx (a, b) ->
+          pp_duration_preserve_ms ctx a;
+          Pp.comma ctx ();
+          pp_duration_preserve_ms ctx b)
+        ctx (a, b)
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -1994,6 +2519,12 @@ and pp_duration_in_calc : duration Pp.t =
  fun ctx -> function
   | Ms f -> pp_duration_unit ~shorten_ms:false ctx f "ms"
   | S f -> pp_duration_unit ctx f "s"
+  | Durations durations ->
+      Pp.list ~sep:Pp.comma pp_duration_in_calc ctx durations
+  | Round (strategy, value, step) ->
+      pp_duration_preserve_ms ctx (Round (strategy, value, step))
+  | Rem (a, b) -> pp_duration_preserve_ms ctx (Rem (a, b))
+  | Mod (a, b) -> pp_duration_preserve_ms ctx (Mod (a, b))
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -2007,17 +2538,31 @@ let rec pp_number : number Pp.t =
   | Num f -> Pp.float ctx f
   | Var v -> pp_var pp_number ctx v
   | Calc c -> pp_calc pp_number ctx c
+  | Round (strategy, Num value, Num step) when Pp.minified ctx && step <> 0. ->
+      pp_number ctx (Num (round_to_step strategy value step))
   | Round (strategy, value, step) ->
       Pp.call "round"
         (fun ctx (strategy, value, step) ->
-          Pp.string ctx strategy;
-          Pp.comma ctx ();
+          if strategy <> "nearest" then (
+            Pp.string ctx strategy;
+            Pp.comma ctx ());
           pp_number ctx value;
           Pp.comma ctx ();
           pp_number ctx step)
         ctx (strategy, value, step)
+  | Mod (Num a, Num b) when Pp.minified ctx && b <> 0. ->
+      pp_number ctx (Num (mod_value a b))
   | Mod (a, b) ->
       Pp.call "mod"
+        (fun ctx (a, b) ->
+          pp_number ctx a;
+          Pp.comma ctx ();
+          pp_number ctx b)
+        ctx (a, b)
+  | Rem (Num a, Num b) when Pp.minified ctx && b <> 0. ->
+      pp_number ctx (Num (Float.rem a b))
+  | Rem (a, b) ->
+      Pp.call "rem"
         (fun ctx (a, b) ->
           pp_number ctx a;
           Pp.comma ctx ();
@@ -2071,7 +2616,7 @@ module Calc = struct
   let float f : length calc = Num f
   let infinity : length calc = Num infinity
   let px n = Val (Px n)
-  let rem f = Val (Rem f)
+  let rem f = Val (Rem f : length)
   let em f = Val (Em f)
   let pct f : length calc = Val (Pct f)
 
@@ -2135,6 +2680,7 @@ let read_length_unit ?(allow_negative = true) t =
   | "ex" -> Ex n
   | "cap" -> Cap n
   | "ic" -> Ic n
+  | "ric" -> Ric n
   | "rlh" -> Rlh n
   | "vh" -> Vh n
   | "vw" -> Vw n
@@ -2163,7 +2709,7 @@ let read_length_unit ?(allow_negative = true) t =
   | "ch" -> Ch n
   | "lh" -> Lh n
   | "%" -> Pct n
-  | _ -> Cursor.err_invalid t ("length unit: " ^ unit)
+  | _ -> Unknown_dimension (n, unit)
 
 let read_length_keyword t : length =
   Cursor.enum "length"
@@ -2242,16 +2788,6 @@ and read_calc_term : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
             Cursor.skip t;
             Cursor.ws t;
             let right = read_calc_factor read_a t in
-            (* Validate division: right operand must be a number (not a
-               dimension) *)
-            let is_not_number : type a. a calc -> bool = function
-              | Val _ -> true (* definitely not a number *)
-              | Num _ -> false (* is a number *)
-              | _ -> false (* expressions could evaluate to numbers *)
-            in
-            if is_not_number right then
-              Cursor.err t
-                "invalid calc: division requires a number on the right";
             loop (Expr (left, Div, right)))
     | _ -> left
   in
@@ -2264,13 +2800,63 @@ and read_calc_parenthesized : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
 
 and read_calc_zero : type a. Cursor.t -> a calc =
  fun t ->
-  (* A zero in calc is a plain Number_tok with value 0 (not a Dimension). *)
+  (* A zero in calc is a plain Number_tok with value 0, not a dimension. *)
   let snap = Cursor.save t in
   match Cursor.number_opt t with
   | Some 0. -> Num 0.
   | _ ->
       Cursor.restore t snap;
       Cursor.err t "expected zero"
+
+and read_calc_numeric_function : type a. Cursor.t -> a calc =
+ fun t ->
+  match Cursor.peek t with
+  | Some (Component.Func { node = { name; _ }; _ }) -> (
+      match String.lowercase_ascii name with
+      | "round" ->
+          Num
+            (Cursor.call "round" t (fun inner ->
+                 let snap = Cursor.save inner in
+                 let strategy =
+                   match Cursor.peek_ident inner with
+                   | Some (("nearest" | "up" | "down" | "to-zero") as kw) ->
+                       Cursor.skip inner;
+                       Cursor.ws inner;
+                       Cursor.comma inner;
+                       kw
+                   | _ ->
+                       Cursor.restore inner snap;
+                       "nearest"
+                 in
+                 let value = Cursor.number inner in
+                 Cursor.ws inner;
+                 Cursor.comma inner;
+                 let step = Cursor.number inner in
+                 Cursor.ws inner;
+                 Cursor.expect_eof inner;
+                 round_to_step strategy value step))
+      | "rem" ->
+          Num
+            (Cursor.call "rem" t (fun inner ->
+                 let a = Cursor.number inner in
+                 Cursor.ws inner;
+                 Cursor.comma inner;
+                 let b = Cursor.number inner in
+                 Cursor.ws inner;
+                 Cursor.expect_eof inner;
+                 Float.rem a b))
+      | "mod" ->
+          Num
+            (Cursor.call "mod" t (fun inner ->
+                 let a = Cursor.number inner in
+                 Cursor.ws inner;
+                 Cursor.comma inner;
+                 let b = Cursor.number inner in
+                 Cursor.ws inner;
+                 Cursor.expect_eof inner;
+                 mod_value a b))
+      | _ -> Cursor.err t "expected numeric calc function")
+  | _ -> Cursor.err t "expected numeric calc function"
 
 and read_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
@@ -2297,7 +2883,9 @@ and read_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
            read as [Val] (full dimension) before falling back to [Num] (a raw
            number). Otherwise [Cursor.number] consumes the [-1] and leaves [px]
            hanging in the input. *)
-        Cursor.one_of [ read_calc_zero; read_val; read_num ] t
+        Cursor.one_of
+          [ read_calc_zero; read_calc_numeric_function; read_val; read_num ]
+          t
 
 and read_calc : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
@@ -2489,7 +3077,15 @@ let read_non_negative_length ?(with_keywords = true) t : length =
 
 (** Read a percentage value as float (number followed by %) Used for color
     components where 0-100% clamping is required *)
-let read_percentage_float t : float = Cursor.pct ~clamp:true t
+let read_percentage_float t : float =
+  if Cursor.looking_at t "none" then (
+    Cursor.expect_string "none" t;
+    0.)
+  else
+    let n, unit = Cursor.number_with_unit t in
+    match unit with
+    | Some "%" | None -> max 0. (min 100. n)
+    | Some unit -> Cursor.err_invalid t ("percentage unit: " ^ unit)
 
 (** Read an alpha value *)
 let rec read_alpha t : alpha =
@@ -2521,6 +3117,9 @@ let rec read_channel t : channel =
   Cursor.ws t;
   (* Check for var() *)
   if Cursor.looking_at t "var(" then Var (read_var read_channel t)
+  else if Cursor.looking_at t "none" then (
+    Cursor.expect_string "none" t;
+    Int 0)
   else
     let n, unit = Cursor.number_with_unit t in
     match unit with
@@ -2681,6 +3280,45 @@ let rec read_angle t : angle =
   (* Check for var() *)
   if Cursor.looking_at t "var(" then Var (read_var read_angle t)
   else if Cursor.looking_at t "calc(" then Calc (read_calc read_angle t)
+  else if Cursor.looking_at_func "round" t then
+    Cursor.call "round" t (fun inner ->
+        let snap = Cursor.save inner in
+        let strategy =
+          match Cursor.peek_ident inner with
+          | Some (("nearest" | "up" | "down" | "to-zero") as kw) ->
+              Cursor.skip inner;
+              Cursor.ws inner;
+              Cursor.comma inner;
+              kw
+          | _ ->
+              Cursor.restore inner snap;
+              "nearest"
+        in
+        let value = read_angle inner in
+        Cursor.ws inner;
+        Cursor.comma inner;
+        let step = read_angle inner in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        (Round (strategy, value, step) : angle))
+  else if Cursor.looking_at_func "rem" t then
+    Cursor.call "rem" t (fun inner ->
+        let a = read_angle inner in
+        Cursor.ws inner;
+        Cursor.comma inner;
+        let b = read_angle inner in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        (Rem (a, b) : angle))
+  else if Cursor.looking_at_func "mod" t then
+    Cursor.call "mod" t (fun inner ->
+        let a = read_angle inner in
+        Cursor.ws inner;
+        Cursor.comma inner;
+        let b = read_angle inner in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        (Mod (a, b) : angle))
   else
     let n, unit_raw = Cursor.number_with_unit t in
     let unit = String.lowercase_ascii (Option.value unit_raw ~default:"") in
@@ -2730,7 +3368,7 @@ let read_separated_values t p1 p2 =
 
 let read_hsl t : color =
   Cursor.ws t;
-  let h = read_hue t in
+  let h = match read_hue t with Hue_none -> Unitless 0. | h -> h in
   Cursor.ws t;
   (* Handle comma or space separator after hue *)
   let comma_separated = Cursor.comma_opt t in
@@ -2756,7 +3394,7 @@ let read_hsl t : color =
 
 let read_hwb t : color =
   Cursor.ws t;
-  let h = read_hue t in
+  let h = match read_hue t with Hue_none -> Unitless 0. | h -> h in
   let w, b =
     read_separated_values t read_percentage_float read_percentage_float
   in
@@ -2783,7 +3421,13 @@ let read_oklch t : color =
           ("oklch() L value must be 0-1 or 0%-100%, got " ^ string_of_float n)
   in
   Cursor.ws t;
-  let c = Cursor.number t in
+  let c =
+    let n, unit = Cursor.number_with_unit t in
+    match unit with
+    | Some "%" -> n *. 0.004
+    | None -> n
+    | Some unit -> Cursor.err_invalid t ("invalid oklch chroma unit: " ^ unit)
+  in
   Cursor.ws t;
   let h = read_hue t in
   let alpha = read_optional_alpha t in
@@ -2791,12 +3435,23 @@ let read_oklch t : color =
   Cursor.expect_eof t;
   Oklch { l = Pct l; c; h; alpha }
 
-let read_number_or_none t : float option =
+let read_number_or_none ?pct_scale t : float option =
   Cursor.ws t;
   if Cursor.looking_at t "none" then (
     Cursor.expect_string "none" t;
     None)
-  else Some (Cursor.number t)
+  else
+    let n, unit = Cursor.number_with_unit t in
+    match unit with
+    | Some "%" ->
+        Some
+          (n
+          *.
+          match pct_scale with
+          | Some scale -> scale
+          | None -> Cursor.err_invalid t "unexpected percentage")
+    | None -> Some n
+    | Some unit -> Cursor.err_invalid t ("invalid unit: " ^ unit)
 
 let read_oklab t : color =
   Cursor.ws t;
@@ -2810,8 +3465,8 @@ let read_oklab t : color =
         Cursor.err_invalid t
           ("oklab() L value must be 0-1 or 0%-100%, got " ^ string_of_float n)
   in
-  let a = read_number_or_none t in
-  let b = read_number_or_none t in
+  let a = read_number_or_none ~pct_scale:0.004 t in
+  let b = read_number_or_none ~pct_scale:0.004 t in
   let alpha = read_optional_alpha t in
   Cursor.ws t;
   Cursor.expect_eof t;
@@ -2823,8 +3478,8 @@ let read_lab t : color =
      [<number>]; the [Lab L*] coordinate is the same range either way, so a bare
      number is folded into the [Pct] storage. *)
   let l = Cursor.one_of [ read_percentage_float; Cursor.number ] t in
-  let a = read_number_or_none t in
-  let b = read_number_or_none t in
+  let a = read_number_or_none ~pct_scale:1.25 t in
+  let b = read_number_or_none ~pct_scale:1.25 t in
   let alpha = read_optional_alpha t in
   Cursor.ws t;
   Cursor.expect_eof t;
@@ -2833,9 +3488,14 @@ let read_lab t : color =
 let read_lch t : color =
   Cursor.ws t;
   let read_l_axis = Cursor.one_of [ read_percentage_float; Cursor.number ] in
-  let l, c, h =
-    Cursor.triple ~sep:Cursor.ws read_l_axis Cursor.number read_hue t
+  let read_c t =
+    let n, unit = Cursor.number_with_unit t in
+    match unit with
+    | Some "%" -> n *. 1.5
+    | None -> n
+    | Some unit -> Cursor.err_invalid t ("invalid lch chroma unit: " ^ unit)
   in
+  let l, c, h = Cursor.triple ~sep:Cursor.ws read_l_axis read_c read_hue t in
   let alpha = read_optional_alpha t in
   Cursor.ws t;
   Cursor.expect_eof t;
@@ -3344,6 +4004,48 @@ let read_time_number t : duration =
 
 let rec read_duration_with ?(css_wide = true) ~canonicalize_ms t : duration =
   let read_duration_self t = read_duration_with ~css_wide ~canonicalize_ms t in
+  let read_round t =
+    Cursor.call "round" t (fun inner ->
+        let snap = Cursor.save inner in
+        let strategy =
+          match Cursor.peek_ident inner with
+          | Some (("nearest" | "up" | "down" | "to-zero") as kw) ->
+              Cursor.skip inner;
+              Cursor.ws inner;
+              Cursor.comma inner;
+              kw
+          | _ ->
+              Cursor.restore inner snap;
+              "nearest"
+        in
+        let value = read_duration_self inner in
+        Cursor.ws inner;
+        Cursor.comma inner;
+        let step = read_duration_self inner in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        (Round (strategy, value, step) : duration))
+  in
+  let read_rem t =
+    Cursor.call "rem" t (fun inner ->
+        let a = read_duration_self inner in
+        Cursor.ws inner;
+        Cursor.comma inner;
+        let b = read_duration_self inner in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        (Rem (a, b) : duration))
+  in
+  let read_mod t =
+    Cursor.call "mod" t (fun inner ->
+        let a = read_duration_self inner in
+        Cursor.ws inner;
+        Cursor.comma inner;
+        let b = read_duration_self inner in
+        Cursor.ws inner;
+        Cursor.expect_eof inner;
+        (Mod (a, b) : duration))
+  in
   Cursor.enum_or_calls
     ~default:(read_duration_number ~canonicalize_ms)
     "duration"
@@ -3352,6 +4054,9 @@ let rec read_duration_with ?(css_wide = true) ~canonicalize_ms t : duration =
       [
         ("var", fun t -> Var (read_var read_duration_self t));
         ("calc", fun t -> Calc (read_calc read_duration_in_calc t));
+        ("round", read_round);
+        ("rem", read_rem);
+        ("mod", read_mod);
       ]
     t
 
@@ -3382,6 +4087,7 @@ and read_time_in_calc t : duration = read_time_with ~css_wide:false t
 let number_binary_functions =
   [
     ("mod", fun a b -> Mod (a, b));
+    ("rem", fun a b -> Rem (a, b));
     ("hypot", fun a b -> Hypot (a, b));
     ("pow", fun a b -> Pow (a, b));
   ]
@@ -3435,9 +4141,18 @@ and read_math_number_function t name =
 
 and read_round_number t =
   Cursor.call "round" t (fun inner ->
-      let strategy = Cursor.ident inner in
-      Cursor.ws inner;
-      Cursor.comma inner;
+      let snap = Cursor.save inner in
+      let strategy =
+        match Cursor.peek_ident inner with
+        | Some (("nearest" | "up" | "down" | "to-zero") as kw) ->
+            Cursor.skip inner;
+            Cursor.ws inner;
+            Cursor.comma inner;
+            kw
+        | _ ->
+            Cursor.restore inner snap;
+            "nearest"
+      in
       let value = read_number inner in
       Cursor.ws inner;
       Cursor.comma inner;

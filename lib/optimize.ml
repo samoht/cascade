@@ -278,6 +278,12 @@ let deduplicate_declarations props =
   in
   duplicate_buggy_properties (merge_box_shorthand_longhands kept)
 
+let sort_commuting_declarations decls =
+  let commuting_property name = name = "color" || name = "display" in
+  if List.for_all (fun decl -> commuting_property (property_name decl)) decls
+  then List.sort (fun a b -> compare (property_name a) (property_name b)) decls
+  else decls
+
 (** {1 Rule Optimization} *)
 
 (* Extract the pseudo-element from a selector (::before, ::after, etc.). Returns
@@ -335,7 +341,11 @@ let rec contains_vendor_pseudo_element : Selector.t -> bool = function
   | _ -> false
 
 let single_rule_without_nested (rule : rule) : rule =
-  { rule with declarations = deduplicate_declarations rule.declarations }
+  {
+    rule with
+    declarations =
+      deduplicate_declarations rule.declarations |> sort_commuting_declarations;
+  }
 
 let merge_rules (rules : Stylesheet.rule list) : Stylesheet.rule list =
   (* Only merge truly adjacent rules with the same selector to preserve cascade
@@ -1325,6 +1335,9 @@ and process_statements (acc : statement list) (remaining : statement list) :
       (* Recursively optimize supports block content *)
       let optimized = Supports (cond, statements block) in
       process_statements (optimized :: acc) rest
+  | Scope (start, end_, block) :: rest ->
+      let optimized = Scope (start, end_, statements block) in
+      process_statements (optimized :: acc) rest
   | Origin (origin, block) :: rest ->
       let optimized = Origin (origin, statements block) in
       process_statements (optimized :: acc) rest
@@ -1451,7 +1464,15 @@ and flatten_in_rule_context (parent : Selector.t) : statement -> statement list
   | Else (cond, block) ->
       [ Else (cond, List.concat_map (flatten_in_rule_context parent) block) ]
   | Scope (s, e, block) ->
-      [ Scope (s, e, List.concat_map (flatten_in_rule_context parent) block) ]
+      [
+        Rule
+          {
+            selector = parent;
+            declarations = [];
+            nested = [ Scope (s, e, block) ];
+            merge_key = None;
+          };
+      ]
   | other -> [ other ]
 
 let rec flatten_top_statement : statement -> statement list = function

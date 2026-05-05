@@ -532,6 +532,7 @@ type flex_basis =
   | Ex of float
   | Cap of float
   | Ic of float
+  | Ric of float
   | Rlh of float
   | Pct of float
   | Vw of float
@@ -574,9 +575,21 @@ type border_width =
   | Medium
   | Thick
   | Px of float
+  | Cm of float
+  | Mm of float
+  | Q of float
+  | In of float
+  | Pt of float
+  | Pc of float
   | Rem of float
   | Em of float
+  | Ex of float
+  | Cap of float
+  | Ic of float
+  | Ric of float
+  | Rlh of float
   | Ch of float
+  | Lh of float
   | Vh of float
   | Vw of float
   | Vmin of float
@@ -589,6 +602,9 @@ type border_width =
   | Fit_content
   | From_font
   | Calc of border_width calc
+  | Min of border_width calc list
+  | Max of border_width calc list
+  | Clamp of border_width calc * border_width calc * border_width calc
   | Inherit
   | Initial
   | Unset
@@ -1924,6 +1940,7 @@ type timing_function =
   | Steps of int * steps_direction option
   | Cubic_bezier of float * float * float * float
   | Linear_function of string
+  | Timing_functions of timing_function list
   | Inherit
   | Initial
   | Unset
@@ -1988,6 +2005,7 @@ type animation_direction =
   | Reverse
   | Alternate
   | Alternate_reverse
+  | Directions of animation_direction list
   | Initial
   | Inherit
   | Unset
@@ -2000,6 +2018,7 @@ type animation_fill_mode =
   | Forwards
   | Backwards
   | Both
+  | Fill_modes of animation_fill_mode list
   | Initial
   | Inherit
   | Unset
@@ -2043,6 +2062,8 @@ type animation_composition =
 type animation_name =
   | None
   | Name of string
+  | Ambiguous of string
+  | Quoted of string
   | Names of animation_name list
   | Initial
   | Inherit
@@ -2060,7 +2081,21 @@ type animation_shorthand = {
   direction : animation_direction option;
   fill_mode : animation_fill_mode option;
   play_state : animation_play_state option;
+  timeline : animation_timeline option;
 }
+
+and animation_timeline =
+  | None
+  | Auto
+  | Name of string
+  | Scroll of string
+  | View of string
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Var of animation_timeline var
 
 type animation =
   | Inherit
@@ -2310,6 +2345,7 @@ type position_value =
   | Revert_layer
   (* 3-value syntax: edge offset axis (e.g., "right 0.5rem center") *)
   | Edge_offset_axis of string * length_percentage * string
+  | Axis_edge_offset of string * string * length
   (* 4-value syntax: edge1 offset1 edge2 offset2 *)
   | Edge_offset_edge_offset of
       string * length_percentage * string * length_percentage
@@ -3027,19 +3063,6 @@ type font_synthesis =
   | Revert
   | Revert_layer
   | Var of font_synthesis var
-
-type animation_timeline =
-  | None
-  | Auto
-  | Name of string
-  | Scroll of string
-  | View of string
-  | Initial
-  | Inherit
-  | Unset
-  | Revert
-  | Revert_layer
-  | Var of animation_timeline var
 
 type animation_range_name =
   | Cover
