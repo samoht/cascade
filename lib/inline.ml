@@ -105,6 +105,17 @@ let local_customs ~kept decls =
       match custom_name d with None -> false | Some n -> not (List.mem n kept))
     decls
 
+let property_initial_custom_decl : type a.
+    kept:string list -> a property_rule -> Declaration.declaration option =
+ fun ~kept rule ->
+  if List.mem rule.name kept then None
+  else
+    Option.map
+      (fun value ->
+        Declaration.custom_property rule.name
+          (Pp.to_string ~minify:true (Variables.pp_value rule.syntax) value))
+      rule.initial_value
+
 (** {1 Pass 1 - collect every rule's scope} *)
 
 let collect_scopes ~kept stylesheet =
@@ -122,6 +133,10 @@ let collect_scopes ~kept stylesheet =
             let eff = effective_selector ~parents rule.selector in
             record at_path eff (local_customs ~kept rule.declarations);
             List.iter (walk_stmt ~parents:(eff :: parents) ~at_path) rule.nested
+        | Property rule -> (
+            match property_initial_custom_decl ~kept rule with
+            | None -> ()
+            | Some decl -> record at_path (Selector.Universal None) [ decl ])
         | Declarations decls ->
             let sel =
               match parents with p :: _ -> p | [] -> Selector.Universal None
@@ -164,22 +179,20 @@ and substitute_stmt ~scopes ~parents ~at_path stmt =
       rebuild (substitute ~scopes ~parents ~at_path:(at_path @ [ node ]) body)
   | None -> (
       let eval_with sel decls =
-        List.map
-          (Context.eval
-             (context_for (visible_customs ~scopes ~at_path ~selector:sel)))
-          decls
+        let visible = visible_customs ~scopes ~at_path ~selector:sel in
+        let ctx = context_for visible in
+        List.map (Context.eval ctx) decls
       in
       (* @page, @keyframes, and @position-try declarations apply to elements
          whose effective selector is universal at this at-path, so use the
          universal selector for visibility. Customs declared on [:root] / [html]
          / [*] cover any element and remain reachable. *)
       let universal_decls decls =
-        List.map
-          (Context.eval
-             (context_for
-                (visible_customs ~scopes ~at_path
-                   ~selector:(Selector.Universal None))))
-          decls
+        let visible =
+          visible_customs ~scopes ~at_path ~selector:(Selector.Universal None)
+        in
+        let ctx = context_for visible in
+        List.map (Context.eval ctx) decls
       in
       let universal_frame =
         Context.eval
@@ -311,6 +324,11 @@ let scan_referenced_names s =
 let collect_scoped_refs stylesheet =
   let consumers = ref [] in
   let customs = ref [] in
+  let refs_of_at_node = function
+    | A_container (_, query) ->
+        scan_referenced_names (Container.to_string query)
+    | _ -> []
+  in
   let refs_of decl =
     scan_referenced_names (Declaration.string_of_value ~minify:true decl)
   in
@@ -323,6 +341,13 @@ let collect_scoped_refs stylesheet =
   let rec walk_stmt ~parents ~at_path stmt =
     match at_wrapper stmt with
     | Some (node, body, _) ->
+        (match refs_of_at_node node with
+        | [] -> ()
+        | refs ->
+            let sel =
+              match parents with p :: _ -> p | [] -> Selector.Universal None
+            in
+            consumers := (at_path, sel, refs) :: !consumers);
         List.iter (walk_stmt ~parents ~at_path:(at_path @ [ node ])) body
     | None -> (
         match stmt with
@@ -410,6 +435,24 @@ let live_customs ~consumers ~customs =
   !live
 
 let strip_dead ~keep ~live_set stmts =
+  let normalize_custom_value decl =
+    match custom_name decl with
+    | None -> decl
+    | Some name -> (
+        let value = Declaration.string_of_value ~minify:true decl in
+        let important = Declaration.is_important decl in
+        try
+          let cursor = Cursor.of_string value in
+          let color = Values.read_color cursor in
+          Cursor.ws cursor;
+          Cursor.expect_eof cursor;
+          let decl =
+            Declaration.custom_property name
+              (Pp.to_string ~minify:true Values.pp_color color)
+          in
+          if important then Declaration.important decl else decl
+        with _ -> decl)
+  in
   let is_live ~at_path ~selector ~name =
     List.mem name keep
     || List.exists
@@ -417,10 +460,13 @@ let strip_dead ~keep ~live_set stmts =
          live_set
   in
   let filter_decls ~at_path ~selector =
-    List.filter (fun d ->
+    List.filter_map (fun d ->
         match custom_name d with
-        | None -> true
-        | Some name -> is_live ~at_path ~selector ~name)
+        | None -> Some d
+        | Some name ->
+            if is_live ~at_path ~selector ~name then
+              Some (normalize_custom_value d)
+            else None)
   in
   let rec map_stmts ~parents ~at_path stmts =
     List.filter_map (map_stmt ~parents ~at_path) stmts
@@ -440,6 +486,15 @@ let strip_dead ~keep ~live_set stmts =
             let decls = filter_decls ~at_path ~selector:eff rule.declarations in
             if decls = [] && nested = [] then None
             else Some (Rule { rule with declarations = decls; nested })
+        | Property rule ->
+            if
+              List.mem rule.name keep
+              || List.exists
+                   (fun (p, s, n) ->
+                     p = at_path && s = Selector.Universal None && n = rule.name)
+                   live_set
+            then Some stmt
+            else None
         | Declarations decls -> (
             let sel =
               match parents with p :: _ -> p | [] -> Selector.Universal None

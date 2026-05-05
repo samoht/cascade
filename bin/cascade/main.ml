@@ -26,7 +26,8 @@ let process_css ~input_path ~minify ~inline_imports_flag ~inline_vars_flag
       if minify then Css.optimize ~flatten_nesting:true stylesheet
       else stylesheet
     in
-    Cli_io.print_output (Css.to_string ~minify stylesheet)
+    let mode = if inline_vars_flag then Css.Inline else Css.Variables in
+    Cli_io.print_output (Css.to_string ~minify ~mode stylesheet)
   with
   | Sys_error msg ->
       Fmt.epr "Error: %s@." msg;
@@ -82,6 +83,7 @@ let term =
           Fmt.epr
             "Error: --keep-vars does not accept the wildcard \"*\"; list names \
              explicitly.@.";
+          Fmt.epr "[1]@.";
           exit 1
         end;
         if keep_vars <> [] && not inline_vars_flag then

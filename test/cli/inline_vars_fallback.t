@@ -10,7 +10,7 @@ as a directly-written value.
   > .c { color: var(--undef, transparent) }
   > EOF
   $ cascade --minify --inline-vars basic.css
-  .a{color:red}.b{color:red}.c{color:#0000}
+  .a,.b{color:red}.c{color:#0000}
 
 Nested var() in fallback chains through to the deepest defined value.
 
