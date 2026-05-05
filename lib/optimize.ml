@@ -1013,10 +1013,18 @@ let drop_empty_rules stmts =
     (function Rule { declarations = []; nested = []; _ } -> false | _ -> true)
     stmts
 
+(* CSS Cascade 6.4: consecutive same-name [@layer] blocks merge only at the
+   level the user wrote them at. Two [@layer foo] siblings inside the same
+   [@layer { ... }] anonymous parent stay distinct because re-ordering them
+   would change the layer-declaration shape - the fuzz boundary invariant
+   catches this. The top-level entry point applies the layer merge once; nested
+   invocations from [process_statements] skip it. *)
 let rec statements (stmts : statement list) : statement list =
   process_statements [] stmts
-  |> merge_consecutive_media |> merge_consecutive_layers
-  |> merge_layer_declarations |> drop_empty_rules
+  |> merge_consecutive_media |> merge_layer_declarations |> drop_empty_rules
+
+and statements_top_level (stmts : statement list) : statement list =
+  statements stmts |> merge_consecutive_layers
 
 and process_statements (acc : statement list) (remaining : statement list) :
     statement list =
@@ -1224,4 +1232,4 @@ let stylesheet ?(flatten_nesting = false) (stylesheet : t) : t =
   let stylesheet =
     if flatten_nesting then flatten_block stylesheet else stylesheet
   in
-  statements stylesheet
+  statements_top_level stylesheet
