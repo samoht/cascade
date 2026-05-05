@@ -161,6 +161,103 @@ let visible_customs ~scopes ~at_path ~selector =
 
 let context_for visible = Context.v ~custom_properties:(List.rev visible) ()
 
+let read_custom_components read = function
+  | Declaration.Declaration
+      {
+        property = Properties.Custom_property _;
+        value = Properties.Custom_value { kind = Properties.Value; value; _ };
+        _;
+      } -> (
+      try
+        let cursor = Cursor.of_components value in
+        let parsed = read cursor in
+        Cursor.ws cursor;
+        Cursor.expect_eof cursor;
+        Some parsed
+      with Cursor.Parse_error _ -> None)
+  | _ -> None
+
+let lookup_visible_custom visible name read =
+  let dashed =
+    if String.length name >= 2 && String.sub name 0 2 = "--" then name
+    else "--" ^ name
+  in
+  List.find_map
+    (function
+      | Declaration.Declaration
+          { property = Properties.Custom_property n; value = _; _ } as decl
+        when n = name || n = dashed ->
+          read_custom_components read decl
+      | _ -> None)
+    visible
+
+let simplify_font_src_descriptor visible entries =
+  let normalize_entry = function
+    | Font_face.Quoted_url { url; format; tech; _ } ->
+        Font_face.Url { url; format; tech }
+    | entry -> entry
+  in
+  let rec simplify ~visited entries =
+    List.concat_map
+      (function
+        | Font_face.Var var when not (List.mem var.Values.name visited) -> (
+            match
+              lookup_visible_custom visible var.Values.name Font_face.read_src
+            with
+            | Some value -> simplify ~visited:(var.Values.name :: visited) value
+            | None -> (
+                match var.Values.fallback with
+                | Values.Fallback value -> simplify ~visited value
+                | _ -> [ Font_face.Var var ]))
+        | entry -> [ normalize_entry entry ])
+      entries
+  in
+  simplify ~visited:[] entries
+
+let simplify_unicode_range_descriptor visible (value : Properties.unicode_range)
+    =
+  let rec simplify ~visited = function
+    | (Properties.Var var : Properties.unicode_range)
+      when not (List.mem var.Values.name visited) -> (
+        match
+          lookup_visible_custom visible var.Values.name
+            Properties.read_unicode_range
+        with
+        | Some value -> simplify ~visited:(var.Values.name :: visited) value
+        | None -> (
+            match var.Values.fallback with
+            | Values.Fallback value -> simplify ~visited value
+            | _ -> (Properties.Var var : Properties.unicode_range)))
+    | value -> value
+  in
+  simplify ~visited:[] value
+
+let simplify_font_face_descriptor visible = function
+  | Src value -> Src (simplify_font_src_descriptor visible value)
+  | Unicode_range value ->
+      Unicode_range (simplify_unicode_range_descriptor visible value)
+  | descriptor -> descriptor
+
+let eval_page_declaration visible ctx decl =
+  let resolve_length_var var =
+    match lookup_visible_custom visible var.Values.name Values.read_length with
+    | Some value -> value
+    | None -> (
+        match var.Values.fallback with
+        | Values.Fallback value -> value
+        | _ -> Values.Var var)
+  in
+  match decl with
+  | Declaration.Declaration
+      {
+        property = Properties.Margin_top as property;
+        value = (Values.Var var : Values.length);
+        important;
+      } ->
+      Declaration.Declaration
+        { property; value = resolve_length_var var; important }
+  | _ -> Context.eval ctx decl
+
 let map_keyframe_decls f frames =
   List.map
     (fun frame ->
@@ -216,12 +313,23 @@ and substitute_stmt ~scopes ~parents ~at_path stmt =
             match parents with p :: _ -> p | [] -> Selector.Universal None
           in
           Declarations (eval_with sel decls)
-      | Page (sel, decls) -> Page (sel, universal_decls decls)
+      | Page (sel, decls) ->
+          let visible =
+            visible_customs ~scopes ~at_path ~selector:(Selector.Universal None)
+          in
+          let ctx = context_for visible in
+          Page (sel, List.map (eval_page_declaration visible ctx) decls)
       | Position_try (n, decls) -> Position_try (n, universal_decls decls)
       | Keyframes (n, frames) ->
           Keyframes (n, map_keyframe_decls universal_frame frames)
       | Webkit_keyframes (n, frames) ->
           Webkit_keyframes (n, map_keyframe_decls universal_frame frames)
+      | Font_face descriptors ->
+          let visible =
+            visible_customs ~scopes ~at_path ~selector:(Selector.Universal None)
+          in
+          Font_face
+            (List.map (simplify_font_face_descriptor visible) descriptors)
       | Page_with_margins (sel, descriptors, margins) ->
           let visible =
             visible_customs ~scopes ~at_path ~selector:(Selector.Universal None)
@@ -245,7 +353,7 @@ and substitute_stmt ~scopes ~parents ~at_path stmt =
             with
             | None -> d
             | Some decl ->
-                let evaluated = Context.eval ctx decl in
+                let evaluated = eval_page_declaration visible ctx decl in
                 {
                   descriptor_name = Declaration.property_name evaluated;
                   descriptor_value =
