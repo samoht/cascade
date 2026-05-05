@@ -746,6 +746,7 @@ let kind_equal : type a b.
   | Properties.Color, Properties.Color -> Some Refl
   | Properties.Gradient_stop, Properties.Gradient_stop -> Some Refl
   | Properties.Background_image, Properties.Background_image -> Some Refl
+  | Properties.Font_src, Properties.Font_src -> Some Refl
   | _ -> None
 
 (* CSS Cascade 5 §6.4 lists inherited properties; the rest default to the
@@ -3069,6 +3070,9 @@ let simplify_gradient_stop ?(layer_order = []) ?layer ctx
           : Properties.gradient_stop)
     | Properties.Length value ->
         (Properties.Length (length value) : Properties.gradient_stop)
+    | Properties.Channel value ->
+        (Properties.Channel (simplify_channel ~layer_order ?layer ctx value)
+          : Properties.gradient_stop)
     | Properties.Percentage value ->
         (Properties.Percentage (percentage value) : Properties.gradient_stop)
     | Properties.List values ->
@@ -3168,6 +3172,96 @@ let simplify_background_image ?(layer_order = []) ?layer ctx
   in
   Var_residual.simplify ~layer_order ?layer ctx ops value
 
+let simplify_background ?(layer_order = []) ?layer ctx
+    (value : Properties.background) : Properties.background =
+  let color = simplify_color ~layer_order ?layer ctx in
+  let image = simplify_background_image ~layer_order ?layer ctx in
+  let simplify_leaf _simplify ~authored:_ ~visited:_
+      (value : Properties.background) =
+    match value with
+    | Properties.Shorthand (shorthand : Properties.background_shorthand) ->
+        let shorthand : Properties.background_shorthand =
+          {
+            color = Option.map color shorthand.color;
+            image = Option.map image shorthand.image;
+            position = shorthand.position;
+            size = shorthand.size;
+            repeat = shorthand.repeat;
+            attachment = shorthand.attachment;
+            clip = shorthand.clip;
+            origin = shorthand.origin;
+          }
+        in
+        (Properties.Shorthand shorthand : Properties.background)
+    | value -> value
+  in
+  let ops : Properties.background Var_residual.ops =
+    {
+      Var_residual.as_var =
+        (function
+        | (Properties.Var var : Properties.background) -> Some var
+        | _ -> None);
+      of_var = (fun var -> Properties.Var var);
+      read_custom = read_custom_components Properties.read_background;
+      simplify_leaf;
+    }
+  in
+  Var_residual.simplify ~layer_order ?layer ctx ops value
+
+let simplify_transition_property_value ?layer_order ?layer ctx value =
+  let simplify_leaf _simplify ~authored:_ ~visited:_ value = value in
+  let ops : Properties.transition_property_value Var_residual.ops =
+    {
+      Var_residual.as_var =
+        (function
+        | (Properties.Var var : Properties.transition_property_value) ->
+            Some var
+        | _ -> None);
+      of_var = (fun var -> Properties.Var var);
+      read_custom =
+        read_custom_components Properties.read_transition_property_value;
+      simplify_leaf;
+    }
+  in
+  Var_residual.simplify ?layer_order ?layer ctx ops value
+
+let simplify_animation_name ?layer_order ?layer ctx value =
+  let simplify_leaf _simplify ~authored:_ ~visited:_ value = value in
+  let ops : Properties.animation_name Var_residual.ops =
+    {
+      Var_residual.as_var =
+        (function
+        | (Properties.Var var : Properties.animation_name) -> Some var
+        | _ -> None);
+      of_var = (fun var -> Properties.Var var);
+      read_custom = read_custom_components Properties.read_animation_name;
+      simplify_leaf;
+    }
+  in
+  Var_residual.simplify ?layer_order ?layer ctx ops value
+
+let simplify_font_src ?layer_order ?layer ctx value =
+  let simplify_leaf simplify ~authored ~visited entries =
+    List.concat_map
+      (function
+        | Font_face.Var var -> (
+            match simplify ~authored ~visited [ Font_face.Var var ] with
+            | [ (Font_face.Var _ as unresolved) ] -> [ unresolved ]
+            | entries -> entries)
+        | entry -> [ entry ])
+      entries
+  in
+  let ops : Font_face.src Var_residual.ops =
+    {
+      Var_residual.as_var =
+        (function [ Font_face.Var var ] -> Some var | _ -> None);
+      of_var = (fun var -> [ Font_face.Var var ]);
+      read_custom = read_custom_value Properties.Font_src Font_face.read_src;
+      simplify_leaf;
+    }
+  in
+  Var_residual.simplify ?layer_order ?layer ctx ops value
+
 let simplify_animation_item ?layer_order ?layer ctx duration value =
   let simplify_leaf _simplify ~authored:_ ~visited:_
       (value : Properties.animation) =
@@ -3175,7 +3269,10 @@ let simplify_animation_item ?layer_order ?layer ctx duration value =
     | Properties.Shorthand (shorthand : Properties.animation_shorthand) ->
         let shorthand : Properties.animation_shorthand =
           {
-            name = shorthand.name;
+            name =
+              Option.map
+                (simplify_animation_name ?layer_order ?layer ctx)
+                shorthand.name;
             duration = Option.map duration shorthand.duration;
             timing_function = shorthand.timing_function;
             delay = Option.map duration shorthand.delay;
@@ -3211,7 +3308,9 @@ let simplify_transition_item ?layer_order ?layer ctx duration value =
     | Properties.Shorthand (shorthand : Properties.transition_shorthand) ->
         let shorthand : Properties.transition_shorthand =
           {
-            property = shorthand.property;
+            property =
+              simplify_transition_property_value ?layer_order ?layer ctx
+                shorthand.property;
             duration = Option.map duration shorthand.duration;
             timing_function = shorthand.timing_function;
             delay = Option.map duration shorthand.delay;
@@ -3335,9 +3434,23 @@ and eval_kind : type a.
         (Length.simplify ~layer_order ?layer ctx length_ctx)
         css_wide_of_length
   | Properties.Lengths ->
-      resolve
-        (List.map (Length.simplify ~layer_order ?layer ctx length_ctx))
-        css_wide_of_length_list
+      let simplify_one = Length.simplify ~layer_order ?layer ctx length_ctx in
+      let simplify_lengths value =
+        match value with
+        | [ (Values.Var var : Values.length) ] -> (
+            match
+              Option.bind
+                (lookup_custom_property ?layer ~layer_order ctx var.Values.name)
+                (read_custom_components Values.read_margin_shorthand)
+            with
+            | Some lengths -> List.map simplify_one lengths
+            | None -> (
+                match var.Values.fallback with
+                | Values.Fallback fallback -> [ simplify_one fallback ]
+                | _ -> [ simplify_one (Values.Var var) ]))
+        | _ -> List.map simplify_one value
+      in
+      resolve simplify_lengths css_wide_of_length_list
   | Properties.Length_percentage ->
       resolve
         (simplify_length_percentage ~layer_order ?layer ctx length_ctx)
@@ -3446,6 +3559,12 @@ and eval_kind_misc : type a.
         css_wide_of_transitions
   | Properties.Color ->
       resolve (simplify_color ~layer_order ?layer ctx) css_wide_of_color
+  | Properties.Animation_name ->
+      resolve (simplify_animation_name ~layer_order ?layer ctx) (fun _ -> None)
+  | Properties.Background ->
+      resolve
+        (List.map (simplify_background ~layer_order ?layer ctx))
+        (fun _ -> None)
   | Properties.Background_image ->
       resolve
         (simplify_background_image ~layer_order ?layer ctx)
@@ -3454,6 +3573,8 @@ and eval_kind_misc : type a.
       resolve
         (List.map (simplify_background_image ~layer_order ?layer ctx))
         css_wide_of_background_images
+  | Properties.Font_src ->
+      resolve (simplify_font_src ~layer_order ?layer ctx) (fun _ -> None)
   | _ ->
       (* unreachable: handled by eval_kind / eval_kind_other *)
       assert false
