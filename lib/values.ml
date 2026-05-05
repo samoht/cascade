@@ -319,10 +319,13 @@ let pp_unit ?(always = true) ctx f suffix =
   let always = always || not (Pp.minified ctx) in
   if f = 0. && not always then Pp.char ctx '0'
   else (
-    (* Always drop leading zeros for CSS unit values (e.g., .25rem not 0.25rem)
-       to match Tailwind's output format *)
+    (* CSS Values 4 6.5: dropping a leading zero ([.25rem] vs [0.25rem]) is a
+       minify-only canonicalisation - the bare-decimal form is one byte
+       shorter. Pretty mode keeps the leading zero so a source [0.1] reads
+       back as [0.1]. *)
+    let drop_leading_zero = Pp.minified ctx in
     Pp.string ctx
-      (Pp.float_to_string ~drop_leading_zero:true (Pp.round_sig 6 f));
+      (Pp.float_to_string ~drop_leading_zero (Pp.round_sig 6 f));
     Pp.string ctx suffix)
 
 (** Try to evaluate a calc expression containing only numbers to a float.
@@ -1955,7 +1958,7 @@ let pp_opt_alpha ctx = function
 let rec pp_percentage ?(always = false) : percentage Pp.t =
  fun ctx -> function
   | Pct f -> Pp.pct ~always ctx f
-  | Num f -> Pp.float_compact ctx f
+  | Num f -> Pp.float ctx f
   | Var v -> pp_var (pp_percentage ~always) ctx v
   | Calc c -> pp_calc (pp_percentage ~always) ctx c
 
@@ -1975,7 +1978,7 @@ and pp_length_percentage ?(always = false) : length_percentage Pp.t =
 
 and pp_number_percentage ?(always = false) : number_percentage Pp.t =
  fun ctx -> function
-  | Num f -> Pp.float_compact ctx f
+  | Num f -> Pp.float ctx f
   | Pct f -> Pp.pct ~always ctx f
   | Var v -> pp_var (pp_number_percentage ~always) ctx v
   | Calc c -> pp_calc (pp_number_percentage ~always) ctx c
@@ -2007,7 +2010,6 @@ let pp_rgb_args : (channel * channel * channel * alpha) Pp.t =
   pp_opt_alpha ctx alpha
 
 let pp_rgb_func = Pp.call "rgb" pp_rgb_args
-let pp_rgba_func = Pp.call "rgba" pp_rgb_args
 
 let rec pp_rgb : rgb Pp.t =
  fun ctx -> function
@@ -2056,7 +2058,7 @@ let pp_oklab_float ~max_decimals ctx f =
   if ctx.Pp.minify then pp_float_drop_zero ctx (Pp.round_sig 6 f)
   else
     Buffer.add_string ctx.Pp.buf
-      (Pp.float_to_string ~drop_leading_zero:true ~max_decimals f)
+      (Pp.float_to_string ~drop_leading_zero:false ~max_decimals f)
 
 let pp_oklab_ab ctx = function
   | Some f -> pp_oklab_float ~max_decimals:3 ctx f
@@ -2222,9 +2224,10 @@ and pp_color : color Pp.t =
                 (Hex { hash = true; value = hex ^ byte_to_hex_byte ab })
           | _ -> pp_rgb_func ctx (r, g, b, a))
       | Channels { r; g; b } ->
-          (* Pretty mode keeps the [rgba()] keyword so the source-level form
-             survives a round-trip. *)
-          pp_rgba_func ctx (r, g, b, a)
+          (* CSS Color 4 1.4 unified [rgba()] under [rgb()] with the [/] alpha
+             separator. Non-minified output emits the modern [rgb()] keyword
+             so a source [rgb(R G B / A)] round-trips unchanged. *)
+          pp_rgb_func ctx (r, g, b, a)
       | Var v ->
           (* Output as rgb(var(--color)/alpha) *)
           let rec pp_rgb_var : rgb Pp.t =

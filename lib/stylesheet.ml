@@ -471,18 +471,23 @@ and pp_import_url ctx url =
     then Some (String.sub url 1 (len - 2))
     else None
   in
-  let unquoted_url_string () =
+  let url_inner_string () =
+    (* Lift the inner string out of [url(...)] - either the quoted form
+       [url("foo")] / [url('foo')] or the bare form [url(foo)]. Returns the
+       unquoted body so the [@import] / [@namespace] minify path can re-emit
+       it as a bare double-quoted string. *)
     if not (starts_with_url ()) then None
     else if len < 5 || url.[len - 1] <> ')' then None
     else
       let inner = String.sub url 4 (len - 5) |> String.trim in
       let inner_len = String.length inner in
-      if
+      if inner_len = 0 then None
+      else if
         inner_len >= 2
         && (inner.[0] = '"' || inner.[0] = '\'')
         && inner.[inner_len - 1] = inner.[0]
       then Some (String.sub inner 1 (inner_len - 2))
-      else None
+      else Some inner
   in
   if Pp.minified ctx then
     (* Canonicalise to the shortest spec-equivalent form: a double-quoted string
@@ -490,7 +495,7 @@ and pp_import_url ctx url =
        characters of overhead that the bare-string form omits per CSS
        Conditional Rules 3, and a single-quoted source string re-emits with
        double quotes. *)
-    match unquoted_url_string () with
+    match url_inner_string () with
     | Some s -> Pp.quoted_string ctx s
     | None -> (
         match unwrap_quoted () with
