@@ -1400,6 +1400,16 @@ let combine_with_parent (parent : Selector.t) (child : Selector.t) : Selector.t
   if contains_nesting child then substitute_nesting ~parent child
   else Selector.Combined (parent, Selector.Descendant, child)
 
+let scope_selector_in_context (parent : Selector.t) s =
+  try
+    let selector = Selector.of_string s in
+    let selector =
+      if contains_nesting selector then substitute_nesting ~parent selector
+      else selector
+    in
+    Selector.to_string ~minify:true selector
+  with _ -> s
+
 let rec flatten_rule ?(parent : Selector.t option) (rule : rule) :
     statement list =
   let selector =
@@ -1465,13 +1475,10 @@ and flatten_in_rule_context (parent : Selector.t) : statement -> statement list
       [ Else (cond, List.concat_map (flatten_in_rule_context parent) block) ]
   | Scope (s, e, block) ->
       [
-        Rule
-          {
-            selector = parent;
-            declarations = [];
-            nested = [ Scope (s, e, block) ];
-            merge_key = None;
-          };
+        Scope
+          ( Option.map (scope_selector_in_context parent) s,
+            Option.map (scope_selector_in_context parent) e,
+            List.concat_map (flatten_in_rule_context parent) block );
       ]
   | other -> [ other ]
 

@@ -9,6 +9,7 @@ type value =
   | Ratio of int * int
   | Resolution_value of float * string
   | Ident of string
+  | Function of string * Component.t list
 
 type feature =
   | Plain of string * value
