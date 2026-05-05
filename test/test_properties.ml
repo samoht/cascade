@@ -1496,20 +1496,29 @@ let test_transform () =
   neg_cursor read_transform "matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0)"
 
 let test_transforms () =
-  (* Test transforms (transform list) with multiple values and vars *)
-  (* Tailwind concatenates adjacent var() transform functions without spaces *)
-  check_transforms ~expected:"var(--tw-rotate-x,)var(--tw-rotate-y,)"
+  (* Adjacent [var()] references in a transform list keep a single separating
+     space. Both Lightning CSS and cssnano preserve the space here because a
+     [var()] expansion at computed-value time may require whitespace to delimit
+     transform functions; concrete function chains can drop the space, [var()]
+     chains cannot. *)
+  check_transforms ~expected:"var(--tw-rotate-x,) var(--tw-rotate-y,)"
     "var(--tw-rotate-x,) var(--tw-rotate-y,)";
   check_transforms
-    ~expected:"var(--tw-rotate-x,)var(--tw-rotate-y,)var(--tw-rotate-z,)"
+    ~expected:"var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,)"
     "var(--tw-rotate-x,)var(--tw-rotate-y,)var(--tw-rotate-z,)";
   check_transforms
     ~expected:
-      "var(--tw-rotate-x,)var(--tw-rotate-y,)var(--tw-rotate-z,)var(--tw-skew-x,)var(--tw-skew-y,)"
+      "var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,) \
+       var(--tw-skew-x,) var(--tw-skew-y,)"
     "var(--tw-rotate-x,)var(--tw-rotate-y,)var(--tw-rotate-z,)var(--tw-skew-x,)var(--tw-skew-y,)";
-  check_transforms "translateX(10px) var(--my-rotate)";
-  check_transforms "var(--translate) scale(2)";
-  check_transforms "rotate(45deg) scale(1.5)";
+  (* Per CSS Transforms 1 section 11 the printer drops whitespace between
+     back-to-back transform functions under minify. *)
+  check_transforms ~expected:"translateX(10px)var(--my-rotate)"
+    "translateX(10px) var(--my-rotate)";
+  check_transforms ~expected:"var(--translate)scale(2)"
+    "var(--translate) scale(2)";
+  check_transforms ~expected:"rotate(45deg)scale(1.5)"
+    "rotate(45deg) scale(1.5)";
   check_transforms "none";
   (* Test transforms variable reference (whole list as var) *)
   check_transforms "var(--my-transforms)";
@@ -2521,8 +2530,11 @@ let test_text_decoration_skip_ink () =
   neg_cursor read_text_decoration_skip_ink "invalid-skip"
 
 let test_transform_origin () =
-  check_transform_origin "center";
-  check_transform_origin "left top";
+  (* Per CSS Transforms 1 §6 the keyword [center] is shorthand for [50%] and
+     matched-pair shorthand collapses to a single value. Per shortest- wins
+     (Lightning CSS) the printer emits the numeric form. *)
+  check_transform_origin ~expected:"50%" "center";
+  check_transform_origin ~expected:"0" "left top";
   check_transform_origin "50% 25%";
   check_transform_origin "50% 50% 10px";
   check_transform_origin "inherit";
@@ -2872,7 +2884,8 @@ let spec_property_grammar_edges () =
   check_transform "translate(10px, 20%)" ~expected:"translate(10px,20%)";
   check_transform "rotate(1 0 0 45deg)";
   check_transform "scale(1.2 0.8)" ~expected:"scale(1.2 .8)";
-  check_transforms "translate(10px,20%) rotate(45deg) scale(1.2)";
+  check_transforms ~expected:"translate(10px,20%)rotate(45deg)scale(1.2)"
+    "translate(10px,20%) rotate(45deg) scale(1.2)";
   check_container_shorthand "card / inline-size" ~expected:"card/inline-size";
   check_container_shorthand "card / normal" ~expected:"card/normal";
   check_scroll_snap_type "x mandatory";

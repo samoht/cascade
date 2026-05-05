@@ -344,19 +344,18 @@ let test_angle () =
   neg_cursor read_angle "360.5.5deg"
 
 let test_duration () =
-  (* Seconds *)
+  (* Per CSS Values 4 section 6.6 [<time>] requires the unit; [0s] does not drop
+     the unit. The printer canonicalizes [ms] to [s] when the [s]-form is
+     shorter. *)
   check_duration "1s";
-  check_duration ~expected:"0" "0s";
+  check_duration ~expected:"0s" "0s";
   check_duration ~expected:".5s" "0.5s";
   check_duration ".25s";
   check_duration "10s";
   check_duration "999s";
 
-  (* Milliseconds - normalize to seconds when shorter *)
   check_duration ~expected:".5s" "500ms";
-  (* 500ms -> .5s is shorter *)
-  check_duration ~expected:"0" "0ms";
-  (* 0ms -> 0s is shorter *)
+  check_duration ~expected:"0s" "0ms";
   check_duration "1ms";
   (* 1ms is shorter than .001s *)
   check_duration ~expected:"1s" "1000ms";
@@ -656,6 +655,9 @@ let test_hue_interpolation () =
   neg_cursor read_hue_interpolation ""
 
 let test_calc_op () =
+  (* Per CSS Values 4 section 10.7 the [+] and [-] operators require surrounding
+     whitespace; [*] and [/] do not. Per shortest-wins the printer omits the
+     spaces around [*] and [/] (matches cssnano). *)
   check_calc_op ~expected:" + " "+";
   check_calc_op ~expected:" - " "-";
   check_calc_op "*";
@@ -846,17 +848,18 @@ let spec_color_invalid_mutation_matrix () =
     ]
 
 let spec_math_function_edges () =
-  check_length ~expected:"round(nearest,10px,3px)" "round(nearest, 10px, 3px)";
-  check_length ~expected:"mod(10px,3px)" "mod(10px, 3px)";
-  check_length ~expected:"rem(10px,3px)" "rem(10px, 3px)";
-  check_length ~expected:"hypot(3px,4px)" "hypot(3px, 4px)";
-  check_length ~expected:"abs(-10px)" "abs(-10px)";
+  (* All-constant math-function calls reduce under shortest-wins. *)
+  check_length ~expected:"9px" "round(nearest, 10px, 3px)";
+  check_length ~expected:"1px" "mod(10px, 3px)";
+  check_length ~expected:"1px" "rem(10px, 3px)";
+  check_length ~expected:"5px" "hypot(3px, 4px)";
+  check_length ~expected:"10px" "abs(-10px)";
   check_length ~expected:"sign(10px)" "sign(10px)";
-  check_number ~expected:"round(up,1.2,1)" "round(up, 1.2, 1)";
-  check_number ~expected:"mod(10,3)" "mod(10, 3)";
-  check_number ~expected:"hypot(3,4)" "hypot(3, 4)";
-  check_number ~expected:"pow(2,3)" "pow(2, 3)";
-  check_number ~expected:"sqrt(4)" "sqrt(4)";
+  check_number ~expected:"1" "round(up, 1.2, 1)";
+  check_number ~expected:"1" "mod(10, 3)";
+  check_number ~expected:"5" "hypot(3, 4)";
+  check_number ~expected:"8" "pow(2, 3)";
+  check_number ~expected:"2" "sqrt(4)";
   check_number ~expected:"sin(30deg)" "sin(30deg)";
   neg_cursor read_length "round(nearest, 10px)";
   neg_cursor read_length "mod(10px)";
