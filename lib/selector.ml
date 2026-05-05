@@ -964,6 +964,20 @@ let rec any p = function
 
 let has_pseudo_element sel = any is_pseudo_element_selector sel
 
+(* CSS Selectors 4 17.1: a forgiving [:is()] / [:where()] with no surviving
+   valid argument matches nothing, and a compound or combined selector that
+   contains such a sub-selector inherits the same behaviour. A selector list
+   matches nothing only when every entry does. Useful for dropping dead rules
+   under [Optimize.stylesheet]. *)
+let rec matches_nothing = function
+  | Is [] | Where [] -> true
+  | Compound xs -> List.exists matches_nothing xs
+  | Combined (a, _, b) -> matches_nothing a || matches_nothing b
+  | Relative (_, b) -> matches_nothing b
+  | List [] -> true
+  | List xs -> List.for_all matches_nothing xs
+  | _ -> false
+
 let is_pe_action = function
   | Hover | Active | Focus | Focus_visible | Focus_within -> true
   | _ -> false
@@ -1835,7 +1849,21 @@ and pp : t Pp.t =
   | Relative (comb, right) ->
       pp_relative_combinator ctx comb;
       pp ctx right
-  | List selectors -> Pp.list ~sep:Pp.comma pp ctx selectors
+  | List selectors ->
+      (* CSS Selectors 4 4.2: duplicate entries in a selector list are
+         redundant; the list matches the same elements with or without them. *)
+      let seen = Hashtbl.create 4 in
+      let dedup =
+        List.filter
+          (fun s ->
+            let key = Pp.to_string ~minify:true pp s in
+            if Hashtbl.mem seen key then false
+            else (
+              Hashtbl.add seen key ();
+              true))
+          selectors
+      in
+      Pp.list ~sep:Pp.comma pp ctx dedup
   | Nesting -> Pp.char ctx '&'
 
 (* CSS Selectors 4 3.5: when the universal selector [*] is not the only

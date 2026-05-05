@@ -81,6 +81,22 @@ let declaration_covers covering covered =
   || (covering = "all" && all_resets_property covered)
   || List.mem covered (shorthand_longhands covering)
 
+(* Detect a value that begins with a CSS vendor-prefix (-webkit-, -moz-, -ms-,
+   -o-). Used to preserve legacy fallback patterns like
+   [display:-webkit-box;display:flex]: the spec value cascades over the prefixed
+   value in modern browsers, but old browsers only understand the prefixed
+   spelling, so dropping the earlier declaration removes a real browser-compat
+   fallback. *)
+let value_is_vendor_prefixed decl =
+  let s = string_of_value ~minify:true decl in
+  let len = String.length s in
+  let starts_with prefix =
+    String.length prefix <= len
+    && String.sub s 0 (String.length prefix) = prefix
+  in
+  starts_with "-webkit-" || starts_with "-moz-" || starts_with "-ms-"
+  || starts_with "-o-"
+
 let deduplicate_declarations props =
   let covered_by_important kept prop_name =
     List.exists
@@ -90,12 +106,24 @@ let deduplicate_declarations props =
         && declaration_covers (property_name decl) prop_name)
       kept
   in
+  let same_value new_decl existing =
+    string_of_value ~minify:true new_decl
+    = string_of_value ~minify:true existing
+  in
+  let legacy_fallback new_decl existing =
+    (* Different-value duplicates are kept when one value is vendor-prefixed:
+       the cascade may pick whichever the browser understands. *)
+    property_name new_decl = property_name existing
+    && (not (same_value new_decl existing))
+    && (value_is_vendor_prefixed existing || value_is_vendor_prefixed new_decl)
+  in
   let covered_by_new new_decl existing =
     let new_prop = property_name new_decl in
     let existing_prop = property_name existing in
     (not (is_intentionally_duplicated existing_prop))
     && declaration_covers new_prop existing_prop
     && (is_important new_decl || not (is_important existing))
+    && not (legacy_fallback new_decl existing)
   in
   let kept =
     List.fold_left
@@ -1070,6 +1098,23 @@ let merge_layer_declarations (stmts : statement list) : statement list =
   in
   merge [] stmts
 
+(* CSS Cascade L6 paragraph 2: [@import] must precede style rules, [@namespace],
+   and any non-conditional content. An [@import] appearing later is invalid and
+   contributes nothing. The recovering parser keeps it in the AST for fidelity;
+   the optimizer drops it so [--minify] output is valid. *)
+let drop_misplaced_imports stmts =
+  let body_seen = ref false in
+  List.filter
+    (fun stmt ->
+      match stmt with
+      | Charset _ | Layer_decl _ -> true
+      | Import _ when !body_seen -> false
+      | Import _ | Namespace _ -> true
+      | _ ->
+          body_seen := true;
+          true)
+    stmts
+
 (* Main statement processing function with layer optimization *)
 (* CSS Cascade 6.1: a rule with no declarations and no nested rules
    contributes nothing to the cascade. Drop it under [~optimize:true]
@@ -1082,6 +1127,7 @@ let drop_empty_rules stmts =
   List.filter
     (function
       | Rule { declarations = []; nested = []; _ } -> false
+      | Rule { selector; _ } when Selector.matches_nothing selector -> false
       | Media (_, []) -> false
       | Supports (_, []) -> false
       | Container (_, _, []) -> false
@@ -1103,7 +1149,7 @@ let rec statements (stmts : statement list) : statement list =
   |> drop_empty_rules
 
 and statements_top_level (stmts : statement list) : statement list =
-  statements stmts |> merge_consecutive_layers
+  drop_misplaced_imports stmts |> statements |> merge_consecutive_layers
 
 and process_statements (acc : statement list) (remaining : statement list) :
     statement list =
