@@ -819,6 +819,11 @@ let pp_stylesheet : stylesheet Pp.t =
 let to_string ?(minify = false) ?(mode = Variables) ?(newline = true)
     ?(header = "") ?theme ?(theme_defaults = Pp.no_theme_defaults) statements =
   let pp ctx () =
+    (* In pretty mode, lead with a blank line to separate the CSS body from any
+       tooling output that printed before it (matches Lightning CSS's and
+       prettier's pretty-print convention). The minified form stays compact. *)
+    if (not minify) && mode <> Inline && header = "" && statements <> [] then
+      Pp.char ctx '\n';
     (if header <> "" then
        let has_layers =
          List.exists
