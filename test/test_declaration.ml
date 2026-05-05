@@ -59,7 +59,7 @@ let complex_values () =
     "margin: 10px 20px 30px 40px;";
 
   (* Gradients *)
-  check_declaration ~expected:"background:linear-gradient(to right,red,blue)"
+  check_declaration ~expected:"background:linear-gradient(to right,red,#00f)"
     "background: linear-gradient(to right, red, blue);";
 
   (* Complex nested functions. Per CSS Values 4 section 10.7 the printer
@@ -266,16 +266,16 @@ let special_cases () =
   check_declaration ~expected:"--x:var(--y,10px)" "--x: var(--y, 10px)";
 
   (* Multiple backgrounds *)
-  check_declaration ~expected:"background:url(x.png),linear-gradient(red,blue)"
+  check_declaration ~expected:"background:url(x.png),linear-gradient(red,#00f)"
     "background: url(x.png), linear-gradient(red, blue);"
 
 let colors () =
   (* Named colors *)
   check_declaration ~expected:"color:red" "color: red";
-  check_declaration ~expected:"color:blue" "color: blue";
+  check_declaration ~expected:"color:#00f" "color: blue";
   check_declaration ~expected:"color:green" "color: green";
-  check_declaration ~expected:"color:black" "color: black";
-  check_declaration ~expected:"color:white" "color: white";
+  check_declaration ~expected:"color:#000" "color: black";
+  check_declaration ~expected:"color:#fff" "color: white";
   (* Per CSS Color 4 section 6.4 [transparent] canonicalizes to [#0000] under
      minify. *)
   check_declaration ~expected:"color:#0000" "color: transparent";
@@ -284,7 +284,7 @@ let colors () =
      paired-pair hex to its 3-digit shorthand under [~minify:true]. *)
   check_declaration ~expected:"color:red" "color: #ff0000";
   check_declaration ~expected:"color:#0f0" "color: #00ff00";
-  check_declaration ~expected:"color:blue" "color: #0000ff";
+  check_declaration ~expected:"color:#00f" "color: #0000ff";
   check_declaration ~expected:"color:#fff" "color: #fff";
   check_declaration ~expected:"color:#000" "color: #000";
 
@@ -305,7 +305,7 @@ let colors () =
 
   (* Various color properties *)
   check_declaration ~expected:"background-color:red" "background-color: red";
-  check_declaration ~expected:"border-color:blue" "border-color: blue";
+  check_declaration ~expected:"border-color:#00f" "border-color: blue";
   check_declaration ~expected:"outline-color:red" "outline-color: #ff0000"
 
 let lengths () =
@@ -532,11 +532,11 @@ let borders () =
   check_declaration ~expected:"border-left-width:4px" "border-left-width: 4px";
 
   check_declaration ~expected:"border-top-color:red" "border-top-color: red";
-  check_declaration ~expected:"border-right-color:blue"
+  check_declaration ~expected:"border-right-color:#00f"
     "border-right-color: blue";
   check_declaration ~expected:"border-bottom-color:green"
     "border-bottom-color: green";
-  check_declaration ~expected:"border-left-color:yellow"
+  check_declaration ~expected:"border-left-color:#ff0"
     "border-left-color: yellow"
 
 let overflow () =
@@ -770,7 +770,7 @@ let list_properties () =
   check_declaration ~expected:"text-shadow:none" "text-shadow: none";
   check_declaration ~expected:"text-shadow:1px 1px 2px black"
     "text-shadow: 1px 1px 2px black";
-  check_declaration ~expected:"text-shadow:0 0 10px blue,0 0 20px red"
+  check_declaration ~expected:"text-shadow:0 0 10px #00f,0 0 20px red"
     "text-shadow: 0 0 10px blue, 0 0 20px red";
 
   (* Background image *)
@@ -778,7 +778,7 @@ let list_properties () =
   check_declaration ~expected:"background-image:url(image.png)"
     "background-image: url(image.png)";
   check_declaration
-    ~expected:"background-image:linear-gradient(to right,red,blue)"
+    ~expected:"background-image:linear-gradient(to right,red,#00f)"
     "background-image: linear-gradient(to right, red, blue)";
   check_declaration ~expected:"background-image:url(a.png),url(b.png)"
     "background-image: url(a.png), url(b.png)";
@@ -843,7 +843,7 @@ let important () =
   check_declaration ~expected:"margin:10px!important"
     "margin: 10px!/**/important";
   (* Multiple spaces should be valid *)
-  check_declaration ~expected:"color:blue!important" "color: blue !   important";
+  check_declaration ~expected:"color:#00f!important" "color: blue !   important";
   (* Invalid/dangling/duplicate !important should be rejected *)
   none_cursor read_declaration "color: red !;";
   none_cursor read_declaration "color: red !notimportant;";
@@ -986,7 +986,7 @@ let spec_property_grammar_table_expansion () =
         | "border-radius", "10px 20px / 30px 40px" ->
             Some "border-radius:10px 20px/30px 40px"
         | "border-image", "linear-gradient(red, blue) 30" ->
-            Some "border-image:linear-gradient(red,blue) 30"
+            Some "border-image:linear-gradient(red,#00f) 30"
         | "background", "url(bg.png) no-repeat center / cover border-box" ->
             Some "background:url(bg.png) center/cover no-repeat border-box"
         | "box-shadow", "0 1px 2px rgb(0 0 0 / .2)" ->
@@ -1393,7 +1393,7 @@ let spec_platform_property_vectors () =
         "background-image:image-set(url(a.avif) type(\"image/avif\") \
          1x,url(a.png) type(\"image/png\") 1x)" );
       ( "border-image: linear-gradient(red, blue) 30 fill / 10px / 1 stretch",
-        "border-image:linear-gradient(red,blue) 30 fill/10px/1 stretch" );
+        "border-image:linear-gradient(red,#00f) 30 fill/10px/1 stretch" );
       ( "font: italic small-caps 650 condensed 16px/1.5 \"Brand\", serif",
         "font:italic small-caps 650 condensed 16px/1.5 \"Brand\",serif" );
       ( "grid-template: \"head head\" auto \"nav main\" 1fr / 12rem 1fr",
@@ -1474,7 +1474,7 @@ let spec_values_l45_edges () =
       ( "color: rgb(from var(--c) r g b / 50%)",
         "color:rgb(from var(--c) r g b/.5)" );
       ( "background: conic-gradient(from 45deg, red, blue)",
-        "background:conic-gradient(from 45deg,red,blue)" );
+        "background:conic-gradient(from 45deg,red,#00f)" );
       ( "background: cross-fade(url(a.png) 40%, url(b.png))",
         "background:cross-fade(url(a.png) 40%,url(b.png))" );
       ( "filter: drop-shadow(0 0 2px rgb(0 0 0 / .4))",
@@ -1760,7 +1760,8 @@ let test_declaration () =
 
   (* Complex values. Per CSS Transforms 1 section 11 the printer drops
      whitespace between back-to-back transform functions under minify. *)
-  check "background:linear-gradient(to right,red,blue)";
+  check_declaration ~expected:"background:linear-gradient(to right,red,#00f)"
+    "background:linear-gradient(to right,red,blue)";
   check "transform:translateX(10px)rotate(45deg)";
   check "font-family:Arial,sans-serif";
 

@@ -70,7 +70,7 @@ preserved.
   > .c { color: var(--foo-bar-baz-qux) }
   > EOF
   $ cascade --minify --inline-vars names.css
-  .a{color:red}.b{color:blue}.c{color:green}
+  .a{color:red}.b{color:#00f}.c{color:green}
 
 A redeclared variable keeps the later definition (cascade rule).
 
@@ -80,4 +80,4 @@ A redeclared variable keeps the later definition (cascade rule).
   > .a { color: var(--brand) }
   > EOF
   $ cascade --minify --inline-vars shadowed.css
-  .a{color:blue}
+  .a{color:#00f}

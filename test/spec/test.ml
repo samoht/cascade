@@ -44,23 +44,23 @@ let recover css expected min_warnings =
 (* {2 CSS 2.x compatibility surface} *)
 
 let css2_selectors_and_at_rules () =
-  roundtrip "body { margin: 0; color: black }" "body{margin:0;color:black}";
+  roundtrip "body { margin: 0; color: black }" "body{margin:0;color:#000}";
   roundtrip "@charset \"UTF-8\";" "@charset \"UTF-8\";";
   roundtrip "@import 'legacy.css';" "@import 'legacy.css';";
   roundtrip "@media print { body { color: black } }"
-    "@media print{body{color:black}}";
+    "@media print{body{color:#000}}";
   roundtrip "@page :left { margin-left: 4cm; margin-right: 3cm }"
     "@page:left{margin-left:4cm;margin-right:3cm}";
   roundtrip "html > body p + p { text-indent: 1em }"
     "html>body p+p{text-indent:1em}";
   roundtrip "a:link { color: blue } a:visited { color: purple }"
-    "a:link{color:blue}a:visited{color:purple}";
+    "a:link{color:#00f}a:visited{color:purple}";
   roundtrip "li:first-child { list-style-type: none }"
     "li:first-child{list-style-type:none}"
 
 let css2_pseudo_elements_aliases () =
   roundtrip "h1:first-letter { color: red }" "h1:first-letter{color:red}";
-  roundtrip "p::first-line { color: blue }" "p:first-line{color:blue}";
+  roundtrip "p::first-line { color: blue }" "p:first-line{color:#00f}";
   roundtrip "q:before { content: open-quote }" "q:before{content:open-quote}";
   roundtrip "q::after { content: close-quote }" "q:after{content:close-quote}";
   roundtrip "div { page-break-before: always }" "div{break-before:page}";
@@ -118,7 +118,7 @@ let syntax_qualified_rules () =
   (* Multiple selectors in selector list *)
   roundtrip "h1, h2, h3 { margin: 0 }" "h1,h2,h3{margin:0}";
   (* Multiple declarations *)
-  roundtrip "p { color: blue; font-size: 16px }" "p{color:blue;font-size:16px}";
+  roundtrip "p { color: blue; font-size: 16px }" "p{color:#00f;font-size:16px}";
   (* Multiple rules in sequence *)
   roundtrip "h1 { color: red } p { margin: 0 }" "h1{color:red}p{margin:0}"
 
@@ -155,9 +155,9 @@ let syntax_escapes () =
 (* SS 5.3.7 / 5.4 - Parse errors recover locally *)
 let syntax_recovery () =
   recover ".a { color: invalid; color: red }" ".a{color:red}" 1;
-  recover ".a,:future-pseudo { color: red } .b { color: blue }" ".b{color:blue}"
+  recover ".a,:future-pseudo { color: red } .b { color: blue }" ".b{color:#00f}"
     1;
-  recover "@unknown { .a { color: red } } .b { color: blue }" ".b{color:blue}" 1;
+  recover "@unknown { .a { color: red } } .b { color: blue }" ".b{color:#00f}" 1;
   recover ".a { color: red" ".a{color:red}" 0
 
 (* {2 CSS Selectors Level 4} https://www.w3.org/TR/selectors-4/ *)
@@ -166,7 +166,7 @@ let syntax_recovery () =
 let selectors_type () =
   roundtrip "h1 { color: red }" "h1{color:red}";
   roundtrip "div { display: block }" "div{display:block}";
-  roundtrip "span { color: blue }" "span{color:blue}";
+  roundtrip "span { color: blue }" "span{color:#00f}";
   roundtrip "article { margin: 0 }" "article{margin:0}"
 
 (* SS 5.1 - Universal selector *)
@@ -176,7 +176,7 @@ let selectors_universal () =
 (* SS 6.1 - Class selectors *)
 let selectors_class () =
   roundtrip ".warning { color: red }" ".warning{color:red}";
-  roundtrip ".info { color: blue }" ".info{color:blue}"
+  roundtrip ".info { color: blue }" ".info{color:#00f}"
 
 (* SS 6.2 - ID selectors *)
 let selectors_id () =
@@ -186,20 +186,20 @@ let selectors_id () =
 (* SS 7 - Attribute selectors *)
 let selectors_attribute () =
   (* [att] - Presence *)
-  roundtrip "[href] { color: blue }" "[href]{color:blue}";
+  roundtrip "[href] { color: blue }" "[href]{color:#00f}";
   (* [att=val] - Exact match: simple ident values are unquoted in output *)
   roundtrip "[type=\"text\"] { border: 1px solid gray }"
     "[type=text]{border:1px solid gray}";
   (* [att~=val] - Whitespace-separated list *)
   roundtrip "[class~=\"warning\"] { color: red }" "[class~=warning]{color:red}";
   (* [att|=val] - Hyphen-separated list *)
-  roundtrip "[lang|=\"en\"] { color: blue }" "[lang|=en]{color:blue}";
+  roundtrip "[lang|=\"en\"] { color: blue }" "[lang|=en]{color:#00f}";
   (* [att^=val] - Prefix *)
   roundtrip "[href^=\"https\"] { color: green }" "[href^=https]{color:green}";
   (* [att$=val] - Suffix: non-ident values keep quotes *)
   roundtrip "[href$=\".pdf\"] { color: red }" "[href$=\".pdf\"]{color:red}";
   (* [att*=val] - Substring *)
-  roundtrip "[title*=\"hello\"] { color: blue }" "[title*=hello]{color:blue}"
+  roundtrip "[title*=\"hello\"] { color: blue }" "[title*=hello]{color:#00f}"
 
 (* SS 8.1 - Pseudo-classes *)
 let selectors_pseudo_classes () =
@@ -209,7 +209,7 @@ let selectors_pseudo_classes () =
   (* CSS Selectors 4 section 14: the printer canonicalizes [:nth-child(<an+b>)]
      to the shortest spec-equivalent spelling. *)
   roundtrip ":nth-child(2n+1) { color: red }" ":nth-child(odd){color:red}";
-  roundtrip ":nth-child(even) { color: blue }" ":nth-child(2n){color:blue}";
+  roundtrip ":nth-child(even) { color: blue }" ":nth-child(2n){color:#00f}";
   roundtrip ":nth-child(odd) { color: red }" ":nth-child(odd){color:red}";
   roundtrip ":not(.foo) { color: red }" ":not(.foo){color:red}"
 
@@ -296,7 +296,7 @@ let values_durations () =
 (* SS 6 - Named colors *)
 let color_named () =
   roundtrip ".x { color: red }" ".x{color:red}";
-  roundtrip ".x { color: blue }" ".x{color:blue}";
+  roundtrip ".x { color: blue }" ".x{color:#00f}";
   (* SS 6.1 - rebeccapurple *)
   roundtrip ".x { color: rebeccapurple }" ".x{color:rebeccapurple}"
 
@@ -326,11 +326,12 @@ let color_rgb () =
   roundtrip ".x { color: rgb(100% 0% 0%) }" ".x{color:red}"
 
 (* SS 5.2.4 - hsl() function. Per CSS Color 4 section 1.4 the hsl() form denotes
-   the same color as a named color or hex when applicable; the printer
-   canonicalizes to the named color when it is no longer than the alternative
-   spellings. *)
+   the same color as a named color or hex when applicable; minified output
+   canonicalizes to the shortest equivalent spelling. Equal-length named/hex
+   ties use the hex spelling, matching the Lightning CSS oracle in
+   test/interop/lightning/traces/minify.pairs. *)
 let color_hsl () =
-  roundtrip ".x { color: hsl(120 100% 50%) }" ".x{color:lime}";
+  roundtrip ".x { color: hsl(120 100% 50%) }" ".x{color:#0f0}";
   roundtrip ".x { color: hsl(120 100% 50% / 50%) }"
     ".x{color:hsl(120 100% 50%/.5)}"
 
@@ -478,7 +479,7 @@ let selectors_compound () =
   (* Element + pseudo-class *)
   roundtrip "a:hover { color: red }" "a:hover{color:red}";
   (* Element + pseudo-element: minified output uses legacy single-colon form. *)
-  roundtrip "p::first-line { color: blue }" "p:first-line{color:blue}";
+  roundtrip "p::first-line { color: blue }" "p:first-line{color:#00f}";
   (* Multiple compound: element + class + pseudo *)
   roundtrip "a.link:hover { color: red }" "a.link:hover{color:red}"
 

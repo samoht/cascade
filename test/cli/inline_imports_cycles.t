@@ -22,7 +22,7 @@ the second visit.
   > .b { color: blue }
   > EOF
   $ cascade --minify --inline-imports a.css 2>&1 | grep -v "warning"
-  .b{color:blue}.a{color:red}
+  .b{color:#00f}.a{color:red}
 
 A three-level cycle (A -> B -> C -> A) is detected and broken.
 
@@ -39,4 +39,4 @@ A three-level cycle (A -> B -> C -> A) is detected and broken.
   > .c { color: green }
   > EOF
   $ cascade --minify --inline-imports cyc-a.css 2>&1 | grep -v "warning"
-  .c{color:green}.b{color:blue}.a{color:red}
+  .c{color:green}.b{color:#00f}.a{color:red}

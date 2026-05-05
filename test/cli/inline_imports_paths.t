@@ -11,7 +11,7 @@ A relative path resolves against the entry file's directory.
   > .e { color: red }
   > EOF
   $ cascade --minify --inline-imports entry.css
-  .inner{color:blue}.e{color:red}
+  .inner{color:#00f}.e{color:red}
 
 A relative path inside an imported file resolves against the importing
 file's directory, not the entry's. A nested @import in [sub/middle.css]
@@ -26,7 +26,7 @@ referencing [inner.css] (sibling) works.
   > .e { color: red }
   > EOF
   $ cascade --minify --inline-imports entry-rel.css
-  .inner{color:blue}.middle{color:green}.e{color:red}
+  .inner{color:#00f}.middle{color:green}.e{color:red}
 
 A multi-directory chain: imports traverse correctly through nested
 directories.
@@ -44,7 +44,7 @@ directories.
   > .e { color: green }
   > EOF
   $ cascade --minify --inline-imports entry-deep.css
-  .leaf{color:red}.middle{color:blue}.e{color:green}
+  .leaf{color:red}.middle{color:#00f}.e{color:green}
 
 A path with parent traversal ([../foo.css]) resolves up the directory
 tree.
@@ -65,7 +65,7 @@ tree.
   > .e { padding: 0 }
   > EOF
   $ cascade --minify --inline-imports entry-traverse.css
-  .parent{color:green}.child{color:blue}.e{padding:0}
+  .parent{color:green}.child{color:#00f}.e{padding:0}
 
 A redundant traversal ([./foo.css]) normalises to the same target as
 [foo.css].
@@ -89,7 +89,7 @@ A URL with a query string is stripped at file lookup time.
   > .e { padding: 0 }
   > EOF
   $ cascade --minify --inline-imports entry-query.css
-  .b{color:blue}.e{padding:0}
+  .b{color:#00f}.e{padding:0}
 
 A URL with a fragment is stripped at file lookup time.
 
@@ -98,7 +98,7 @@ A URL with a fragment is stripped at file lookup time.
   > .e { padding: 0 }
   > EOF
   $ cascade --minify --inline-imports entry-frag.css
-  .b{color:blue}.e{padding:0}
+  .b{color:#00f}.e{padding:0}
 
 A path with internal whitespace requires quoting; the parser only
 accepts the quoted form.

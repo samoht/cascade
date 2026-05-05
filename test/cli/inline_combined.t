@@ -81,4 +81,4 @@ inside the layer scope to layer consumers.
   > .e { color: blue }
   > EOF
   $ cascade --minify --inline-imports --inline-vars app-layer.css
-  @layer theme{.x{color:red}}.e{color:blue}
+  @layer theme{.x{color:red}}.e{color:#00f}

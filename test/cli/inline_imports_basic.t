@@ -41,7 +41,7 @@ A transitive import (A imports B which imports C) is fully resolved.
   > .a { color: red }
   > EOF
   $ cascade --minify --inline-imports a.css
-  .c{color:green}.b{color:blue}.a{color:red}
+  .c{color:green}.b{color:#00f}.a{color:red}
 
 Source order is preserved across imports - rules from an earlier @import
 precede rules from a later @import or the entry's own rules.
@@ -58,7 +58,7 @@ precede rules from a later @import or the entry's own rules.
   > .e { color: green }
   > EOF
   $ cascade --minify --inline-imports order.css
-  .x{color:red}.x{color:blue}.e{color:green}
+  .x{color:red}.x{color:#00f}.e{color:green}
 
 Empty imported file leaves no trace.
 

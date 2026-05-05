@@ -7,7 +7,7 @@ A variable used inside @keyframes resolves the same as in a normal rule.
   > @keyframes pulse { from { color: var(--brand) } to { color: blue } }
   > EOF
   $ cascade --minify --inline-vars keyframes.css
-  @keyframes pulse{0%{color:red}to{color:blue}}
+  @keyframes pulse{0%{color:red}to{color:#00f}}
 
 A variable used in an @font-face descriptor inlines.
 

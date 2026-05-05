@@ -222,13 +222,16 @@ let test_color () =
   (* Mixed channels with alpha (numeric) *)
   check_color ~expected:"rgb(50% 128 0/.5)" "rgb(50% 128 0 / 0.5)";
 
-  (* Named colors - all variants *)
+  (* Named colors - all variants. Under minification, named colors serialize to
+     the shortest spec-equivalent spelling; equal-length named/hex ties use the
+     hex spelling to match the Lightning CSS oracle and keep color
+     canonicalization idempotent. *)
   check_color "red";
-  check_color "blue";
+  check_color ~expected:"#00f" "blue";
   check_color "green";
-  check_color "white";
-  check_color "black";
-  check_color "yellow";
+  check_color ~expected:"#fff" "white";
+  check_color ~expected:"#000" "black";
+  check_color ~expected:"#ff0" "yellow";
   check_color "cyan";
   check_color "magenta";
   check_color "gray";
@@ -239,7 +242,7 @@ let test_color () =
   check_color "silver";
   check_color "maroon";
   check_color "fuchsia";
-  check_color "lime";
+  check_color ~expected:"#0f0" "lime";
   check_color "olive";
   check_color "navy";
   check_color "teal";
