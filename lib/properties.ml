@@ -3236,6 +3236,11 @@ let rec pp_opacity : opacity Pp.t =
   | Revert_layer -> Pp.string ctx "revert-layer"
   | Var v -> pp_var pp_opacity ctx v
 
+(* Inside an [opacity] [calc()], a raw [<number>] / [<percentage>] is modelled
+   at the calc level as the [Num x] node rather than [Val (Opacity_number x)].
+   The [_dim_only] reader excludes the unitless alternative so
+   [read_calc_factor] falls through to its own [Num] path, matching the
+   [<number-percentage>] convention. *)
 let rec read_opacity t : opacity =
   let read_var t : opacity = Var (read_var read_opacity t) in
   let read_number_or_percentage t =
@@ -3259,7 +3264,7 @@ let rec read_opacity t : opacity =
     ~calls:
       [
         ("var", read_var);
-        ("calc", fun t -> Calc (Values.read_calc read_opacity t));
+        ("calc", fun t -> Calc (Values.read_calc read_opacity_dim_only t));
         ( "abs",
           fun t -> Cursor.call "abs" t (fun inner -> Abs (read_opacity inner))
         );
@@ -3268,6 +3273,19 @@ let rec read_opacity t : opacity =
         );
       ]
     ~default:read_number_or_percentage t
+
+and read_opacity_dim_only t : opacity =
+  Cursor.enum_or_calls "opacity"
+    [
+      ("inherit", (Inherit : opacity));
+      ("initial", Initial);
+      ("unset", Unset);
+      ("revert", Revert);
+      ("revert-layer", Revert_layer);
+    ]
+    ~calls:[ ("var", fun t -> Var (read_var read_opacity_dim_only t)) ]
+    ~default:(fun t -> Cursor.err_expected t "opacity (var/calc inside calc)")
+    t
 
 let rec pp_shape_image_threshold : shape_image_threshold Pp.t =
  fun ctx -> function
