@@ -584,12 +584,48 @@ let to_string_custom cvs =
    This minified rendering is only for canonical output: it collapses optional
    whitespace in blocks and function arguments while preserving token
    boundaries. *)
+let url_string_can_unquote s =
+  not
+    (String.exists
+       (fun c ->
+         c = ' ' || c = ')' || c = '"' || c = '\'' || c = '(' || c = '\\')
+       s)
+
+(* If [args] is a single [<string-token>] argument we can fold it into the
+   bare-URL form [url(X)] when X has no special characters - per CSS Values L4
+   §3.4 the two notations are equivalent and the bare form is shorter. *)
+let url_args_as_bare_string args =
+  let stripped =
+    List.filter
+      (function
+        | Component.Preserved { kind = Token.Whitespace; _ } -> false
+        | _ -> true)
+      args
+  in
+  match stripped with
+  | [ Component.Preserved { kind = Token.String { value; _ }; _ } ]
+    when url_string_can_unquote value ->
+      Some value
+  | _ -> None
+
 let rec cv_to_buffer_custom_min buf : Component.t -> unit = function
   | Preserved t -> Buffer.add_string buf (token_kind_to_string t.kind)
   | Block { node = { opening; value; _ }; _ } ->
       Buffer.add_char buf (opening_char opening);
       cvs_to_buffer_min_custom buf value;
       Buffer.add_char buf (closing_char opening)
+  | Func { node = { name; arguments; _ }; _ }
+    when String.lowercase_ascii name = "url" -> (
+      match url_args_as_bare_string arguments with
+      | Some s ->
+          Buffer.add_string buf "url(";
+          Buffer.add_string buf s;
+          Buffer.add_char buf ')'
+      | None ->
+          Buffer.add_string buf (escape_ident name);
+          Buffer.add_char buf '(';
+          cvs_to_buffer_min_custom buf arguments;
+          Buffer.add_char buf ')')
   | Func { node = { name; arguments; _ }; _ } ->
       Buffer.add_string buf (escape_ident name);
       Buffer.add_char buf '(';

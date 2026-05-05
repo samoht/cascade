@@ -1624,11 +1624,14 @@ and read_block (r : Cursor.t) : block =
     if Cursor.is_done r then List.rev acc
     else
       let stmt = read_statement r in
-      (match stmt with
+      match stmt with
+      | Import _ ->
+          (* CSS Cascade L6 §2: @import is only valid at the top of the
+             stylesheet. Drop a misplaced one rather than emitting it. *)
+          read_statements acc
       | Else _ when not (List.exists follows_conditional acc) ->
           Cursor.err_invalid r "@else without preceding @when"
-      | _ -> ());
-      read_statements (stmt :: acc)
+      | _ -> read_statements (stmt :: acc)
   in
   read_statements []
 
