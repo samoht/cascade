@@ -396,7 +396,7 @@ let rec pp ctx = function
       in
       loop qs
 
-let to_string t = Pp.to_string pp t
+let to_string ?(minify = false) t = Pp.to_string ~minify pp t
 
 (* ===== Parser ===== *)
 

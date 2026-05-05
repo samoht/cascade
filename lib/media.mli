@@ -108,8 +108,10 @@ val feature : string -> value -> t
 val boolean : string -> t
 (** [boolean name] is the boolean feature [(name)]. *)
 
-val to_string : t -> string
-(** [to_string t] serialises [t] as CSS source text. *)
+val to_string : ?minify:bool -> t -> string
+(** [to_string ?minify t] serialises [t] as CSS source text. The default
+    [~minify:false] keeps the pretty form ([(min-width: 30em)]); pass
+    [~minify:true] for the compact form ([(min-width:30em)]). *)
 
 val pp : t Pp.t
 (** Pretty-printer for media queries. *)
