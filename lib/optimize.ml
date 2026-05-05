@@ -975,6 +975,72 @@ let merge_consecutive_media (stmts : statement list) : statement list =
   in
   merge [] None stmts
 
+(* CSS Conditional Rules 5: adjacent same-condition [@supports] / [@container]
+   blocks may be merged because the cascade evaluates them identically. Mirror
+   the [@media] approach. *)
+let merge_consecutive_supports (stmts : statement list) : statement list =
+  let optimize_merged_block block = !statements_ref block in
+  let rec merge result prev = function
+    | [] -> (
+        match prev with
+        | Some (cond, block) ->
+            result @ [ Supports (cond, optimize_merged_block block) ]
+        | None -> result)
+    | Supports (cond, block) :: rest -> (
+        match prev with
+        | Some (prev_cond, prev_block) when Supports.equal prev_cond cond ->
+            merge result (Some (cond, prev_block @ block)) rest
+        | Some (prev_cond, prev_block) ->
+            merge
+              (result
+              @ [ Supports (prev_cond, optimize_merged_block prev_block) ])
+              (Some (cond, block))
+              rest
+        | None -> merge result (Some (cond, block)) rest)
+    | stmt :: rest -> (
+        match prev with
+        | Some (cond, block) ->
+            merge
+              (result @ [ Supports (cond, optimize_merged_block block); stmt ])
+              None rest
+        | None -> merge (result @ [ stmt ]) None rest)
+  in
+  merge [] None stmts
+
+let merge_consecutive_containers (stmts : statement list) : statement list =
+  let optimize_merged_block block = !statements_ref block in
+  let rec merge result prev = function
+    | [] -> (
+        match prev with
+        | Some (name, cond, block) ->
+            result @ [ Container (name, cond, optimize_merged_block block) ]
+        | None -> result)
+    | Container (name, cond, block) :: rest -> (
+        match prev with
+        | Some (prev_name, prev_cond, prev_block)
+          when prev_name = name && Container.compare prev_cond cond = 0 ->
+            merge result (Some (name, cond, prev_block @ block)) rest
+        | Some (prev_name, prev_cond, prev_block) ->
+            merge
+              (result
+              @ [
+                  Container
+                    (prev_name, prev_cond, optimize_merged_block prev_block);
+                ])
+              (Some (name, cond, block))
+              rest
+        | None -> merge result (Some (name, cond, block)) rest)
+    | stmt :: rest -> (
+        match prev with
+        | Some (name, cond, block) ->
+            merge
+              (result
+              @ [ Container (name, cond, optimize_merged_block block); stmt ])
+              None rest
+        | None -> merge (result @ [ stmt ]) None rest)
+  in
+  merge [] None stmts
+
 (* Check if a layer block contains only empty rules or no statements *)
 let is_layer_empty (block : statement list) : bool =
   List.for_all
@@ -1007,10 +1073,21 @@ let merge_layer_declarations (stmts : statement list) : statement list =
 (* Main statement processing function with layer optimization *)
 (* CSS Cascade 6.1: a rule with no declarations and no nested rules
    contributes nothing to the cascade. Drop it under [~optimize:true]
-   (Lightning CSS / cssnano convention). *)
+   (Lightning CSS / cssnano convention). [@media] / [@supports] /
+   [@container] / [@scope] / [@starting-style] blocks with an empty body
+   are likewise no-ops and removed. Empty named [@layer] blocks survive
+   as a [Layer_decl] (the layer name still contributes to the layer order
+   per CSS Cascade L6 6.4). *)
 let drop_empty_rules stmts =
   List.filter
-    (function Rule { declarations = []; nested = []; _ } -> false | _ -> true)
+    (function
+      | Rule { declarations = []; nested = []; _ } -> false
+      | Media (_, []) -> false
+      | Supports (_, []) -> false
+      | Container (_, _, []) -> false
+      | Scope (_, _, []) -> false
+      | Starting_style [] -> false
+      | _ -> true)
     stmts
 
 (* CSS Cascade 6.4: consecutive same-name [@layer] blocks merge only at the
@@ -1021,7 +1098,9 @@ let drop_empty_rules stmts =
    invocations from [process_statements] skip it. *)
 let rec statements (stmts : statement list) : statement list =
   process_statements [] stmts
-  |> merge_consecutive_media |> merge_layer_declarations |> drop_empty_rules
+  |> merge_consecutive_media |> merge_consecutive_supports
+  |> merge_consecutive_containers |> merge_layer_declarations
+  |> drop_empty_rules
 
 and statements_top_level (stmts : statement list) : statement list =
   statements stmts |> merge_consecutive_layers

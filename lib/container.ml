@@ -89,7 +89,11 @@ let rec to_string_with ~minify t =
   | Or (a, b) ->
       "(" ^ to_string_with ~minify a ^ " or " ^ to_string_with ~minify b ^ ")"
   | Not c -> "(not " ^ to_string_with ~minify c ^ ")"
-  | Feature_query f -> Media.to_string f
+  | Feature_query f ->
+      (* Inherit the verbatim parse spelling for feature queries (orientation /
+         em-based min-width) the same way [style()]'s [Declaration] body keeps
+         its pretty form. *)
+      Media.to_string f
 
 let to_string ?(minify = true) t = to_string_with ~minify t
 let pp t = to_string t
