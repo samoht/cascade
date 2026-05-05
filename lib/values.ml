@@ -1146,6 +1146,19 @@ let normalize_hue f =
 (* Map a fully-saturated, mid-lightness HSL hue onto its CSS named colour. Only
    the six primary/secondary hues are addressed, since they are the only ones
    whose name is shorter than the equivalent [#hex] form. *)
+(* Reverse of [color_name_hex] for a name supplied as a string (e.g. the result
+   of [hsl_named_for_primary]). Returns the shortened hex form, or [None] when
+   the name has no hex equivalent. *)
+let named_hex_for_string name =
+  match String.lowercase_ascii name with
+  | "red" -> Some "f00"
+  | "blue" -> Some "00f"
+  | "lime" -> Some "0f0"
+  | "yellow" -> Some "ff0"
+  | "cyan" -> Some "0ff"
+  | "magenta" -> Some "f0f"
+  | _ -> None
+
 let hsl_named_for_primary ~hue ~saturation ~lightness : string option =
   if Float.abs (saturation -. 100.) > 0.0001 then None
   else if Float.abs (lightness -. 50.) > 0.0001 then None
@@ -1504,7 +1517,7 @@ let pp_color_space : color_space Pp.t =
 let rec pp_color_in_mix : color Pp.t =
  fun ctx -> function
   | Current -> Pp.string ctx "currentcolor" (* lowercase in color-mix *)
-  | c -> pp_color ctx c
+  | c -> pp_color { ctx with in_function = true } c
 
 and pp_color_mix ctx in_space hue color1 percent1 color2 percent2 =
   Pp.call "color-mix"
@@ -1626,13 +1639,18 @@ and pp_color : color Pp.t =
             ctx (v, a))
   | Hsl { h; s; l; a } when Pp.minified ctx -> (
       (* CSS Color 4 3: when the HSL components map exactly to a primary or
-         secondary CSS named colour, emit the name (cssnano / Lightning CSS
-         convention). *)
+         secondary CSS named colour, route through the [Hex] arm so the same
+         shortest-on-tie rule applies (Lightning CSS / clean-css convention).
+         [hsl_named_for_primary] returns the canonical name; we look up its hex
+         form and emit the shortest of the two. *)
       match (hue_to_deg h, percentage_to_float s, percentage_to_float l) with
       | Some hue, Some saturation, Some lightness when alpha_is_full a -> (
           let hue = normalize_hue hue in
           match hsl_named_for_primary ~hue ~saturation ~lightness with
-          | Some name -> Pp.string ctx name
+          | Some name -> (
+              match named_hex_for_string name with
+              | Some hex -> pp_color ctx (Hex { hash = true; value = hex })
+              | None -> Pp.string ctx name)
           | None -> pp_hsl ctx (h, s, l, a))
       | _ -> pp_hsl ctx (h, s, l, a))
   | Hsl { h; s; l; a } -> pp_hsl ctx (h, s, l, a)
@@ -1655,13 +1673,17 @@ and pp_color : color Pp.t =
   | Oklch { l; c; h; alpha } -> pp_oklch ctx (l, c, h, alpha)
   | Oklab { l; a; b; alpha } -> pp_oklab ctx (l, a, b, alpha)
   | Lch { l; c; h; alpha } -> pp_lch ctx (l, c, h, alpha)
-  | Named name when Pp.minified ctx ->
-      (* Route a directly-spelled named colour through the hex path so the same
-         shortest-wins arbitration applies whether the source was [blue] or
-         [#0000ff]. [color_name_hex] returns the empty string for system colours
-         that have no hex equivalent; in that case keep the name. *)
-      let written, hex = color_name_hex name in
-      if hex = "" then Pp.string ctx written
+  | Named name when Pp.minified ctx && not ctx.in_function ->
+      (* At top-level (not inside [color-mix] / [light-dark] / etc.), route a
+         directly-spelled named colour through the [Hex] arm so the same
+         shortest-on-tie rule applies whether the source was [black] or
+         [#000000]. Inside a color function the source name is a deliberate
+         choice that the printer preserves verbatim ([color-mix(in srgb,red,
+         blue)] keeps the [blue] spelling). [color_name_hex] returns the empty
+         string for extended names whose hex form is never shorter
+         ([rebeccapurple], [dodgerblue], etc.); in that case keep the name. *)
+      let _, hex = color_name_hex name in
+      if hex = "" then pp_color_name ctx name
       else pp_color ctx (Hex { hash = true; value = hex })
   | Named name -> pp_color_name ctx name
   | System sc -> pp_system_color ctx sc
