@@ -30,8 +30,9 @@ type src_entry =
       tech : string option;
     }
   | Local of string
+  | Var of src Values.var
 
-type src = src_entry list
+and src = src_entry list
 (** Font source list. *)
 
 val src_entry_to_string : src_entry -> string
