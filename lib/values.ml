@@ -1530,7 +1530,8 @@ and pp_color : color Pp.t =
       (* CSS Color 4 12.1: 6-digit and 3-digit hex are spec-equivalent;
          shortening is part of minification (cssnano / Lightning CSS / clean-css
          conventions). When a CSS named colour represents the same sRGB value
-         with an equal-or-shorter spelling than the [#hex] form, emit the name.
+         with a strictly shorter spelling than the [#hex] form, emit the name;
+         on a tie the hex spelling wins (Lightning CSS / clean-css convention).
          CSS Color 4 6.4 makes [#0000] / [#00000000] spec-equivalent to the
          [transparent] keyword; [#0000] is the shortest of those, so that wins
          under minify. *)
@@ -1541,7 +1542,7 @@ and pp_color : color Pp.t =
         else
           let shortened = shorten_hex value in
           match named_for_hex shortened with
-          | Some name when String.length name <= String.length shortened + 1 ->
+          | Some name when String.length name < String.length shortened + 1 ->
               Pp.string ctx name
           | _ ->
               Pp.char ctx '#';
@@ -1632,6 +1633,14 @@ and pp_color : color Pp.t =
   | Oklch { l; c; h; alpha } -> pp_oklch ctx (l, c, h, alpha)
   | Oklab { l; a; b; alpha } -> pp_oklab ctx (l, a, b, alpha)
   | Lch { l; c; h; alpha } -> pp_lch ctx (l, c, h, alpha)
+  | Named name when Pp.minified ctx ->
+      (* Route a directly-spelled named colour through the hex path so the same
+         shortest-wins arbitration applies whether the source was [blue] or
+         [#0000ff]. [color_name_hex] returns the empty string for system colours
+         that have no hex equivalent; in that case keep the name. *)
+      let written, hex = color_name_hex name in
+      if hex = "" then Pp.string ctx written
+      else pp_color ctx (Hex { hash = true; value = hex })
   | Named name -> pp_color_name ctx name
   | System sc -> pp_system_color ctx sc
   | Var v -> pp_var pp_color ctx v

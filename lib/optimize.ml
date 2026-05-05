@@ -1210,7 +1210,11 @@ and rules_aux (rules : rule list) : rule list =
   let with_optimized_nested =
     List.map (fun rule -> { rule with nested = statements rule.nested }) rules
   in
-  (* Then apply standard rule optimizations *)
+  (* Apply standard rule optimizations. Adjacent same-selector rules merge:
+     [.x{a}] [.x{b}] -> [.x{a;b}], which is safe because cascade order within
+     the merged block matches the source order of the originals.
+     [combine_identical_rules] then groups same-declaration rules under a
+     selector list ([.a, .b, .c{...}]). *)
   List.map single_rule_without_nested with_optimized_nested
   |> merge_rules |> combine_identical_rules
 

@@ -30,7 +30,7 @@ longhands the earlier one set.
   > .y { background: red; background: blue }
   > EOF
   $ cascade --minify shadow-shorthand.css
-  .x{margin:5px}.y{background:blue}
+  .x{margin:5px}.y{background:#00f}
 
 A shorthand followed by a longhand merges - the shorthand expands to
 its longhands and the later longhand wins for its slot.
@@ -223,7 +223,7 @@ Adjacent same-condition [@media] blocks merge.
   > @media screen { .b { color: blue } }
   > EOF
   $ cascade --minify adj-media.css
-  @media screen{.a{color:red}.b{color:blue}}
+  @media screen{.a{color:red}.b{color:#00f}}
 
 Adjacent same-name [@layer] blocks merge.
 
@@ -232,7 +232,7 @@ Adjacent same-name [@layer] blocks merge.
   > @layer base { .b { color: blue } }
   > EOF
   $ cascade --minify adj-layer.css
-  @layer base{.a{color:red}.b{color:blue}}
+  @layer base{.a{color:red}.b{color:#00f}}
 
 Adjacent same-condition [@supports] blocks merge.
 
@@ -241,7 +241,7 @@ Adjacent same-condition [@supports] blocks merge.
   > @supports (display: grid) { .b { color: blue } }
   > EOF
   $ cascade --minify adj-supports.css
-  @supports (display:grid){.a{color:red}.b{color:blue}}
+  @supports (display:grid){.a{color:red}.b{color:#00f}}
 
 Adjacent same-condition [@container] blocks merge.
 
@@ -250,7 +250,7 @@ Adjacent same-condition [@container] blocks merge.
   > @container (min-width: 30em) { .b { color: blue } }
   > EOF
   $ cascade --minify adj-container.css
-  @container (min-width:30em){.a{color:red}.b{color:blue}}
+  @container (min-width:30em){.a{color:red}.b{color:#00f}}
 
 Non-adjacent same-condition at-rules do NOT merge - an intervening
 rule could affect cascade order.
@@ -261,7 +261,7 @@ rule could affect cascade order.
   > @media screen { .b { color: green } }
   > EOF
   $ cascade --minify non-adj-media.css
-  @media screen{.a{color:red}}.x{color:blue}@media screen{.b{color:green}}
+  @media screen{.a{color:red}}.x{color:#00f}@media screen{.b{color:green}}
 
 A misplaced [@import] (after a rule statement) is invalid per CSS
 Cascade L6 §2 and is dropped during parsing.
@@ -272,7 +272,7 @@ Cascade L6 §2 and is dropped during parsing.
   > .y { color: blue }
   > EOF
   $ cascade --minify misplaced-import.css 2>&1 | grep -v "warning"
-  .x{color:red}.y{color:blue}
+  .x{color:red}.y{color:#00f}
 
 
 # Selector-level dead code
@@ -287,7 +287,7 @@ Selectors L4 §3.5; the [*] is dropped.
   > *[data-x] { padding: 10px }
   > EOF
   $ cascade --minify universal.css
-  .foo{color:red}#main{color:blue}[data-x]{padding:10px}
+  .foo{color:red}#main{color:#00f}[data-x]{padding:10px}
 
 Single-argument [:is()] is spec-equivalent to the bare selector and
 unwraps under shortest-wins.
@@ -343,7 +343,7 @@ Zero-length unit dropped where unambiguous.
   > .c { width: 0vh }
   > EOF
   $ cascade --minify zero-unit.css
-  .a{width:0}.b{width:0}.c{width:0}
+  .a,.b,.c{width:0}
 
 
 # Cascading dead code (multi-pass)

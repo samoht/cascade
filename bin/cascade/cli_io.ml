@@ -29,7 +29,13 @@ let parse_css ~filename css =
       try
         let { Css.stylesheet; warnings } = Css.parse ~filename css in
         List.iter
-          (fun w -> Fmt.epr "warning: %s@." (Css.pp_parse_error w))
+          (fun w ->
+            (* Prefix every line of a multi-line diagnostic so a downstream
+               [grep -v "warning"] filters the whole entry, not just the first
+               line. *)
+            let msg = Css.pp_parse_error w in
+            String.split_on_char '\n' msg
+            |> List.iter (fun line -> Fmt.epr "warning: %s@." line))
           warnings;
         stylesheet
       with Invalid_argument _ ->
