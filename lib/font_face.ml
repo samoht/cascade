@@ -29,8 +29,9 @@ type src_entry =
       tech : string option;
     }
   | Local of string
+  | Var of src Values.var
 
-type src = src_entry list
+and src = src_entry list
 (** Font source list. *)
 
 let url_needs_quotes s =
@@ -53,16 +54,21 @@ let format_src_url base format tech =
   | Some t -> with_format ^ " tech(" ^ t ^ ")"
   | None -> with_format
 
-let src_entry_to_string = function
+let rec pp_src ctx entries = Pp.list ~sep:Pp.comma pp_src_entry ctx entries
+
+and pp_src_entry ctx = function
+  | Var var -> Values.pp_var pp_src ctx var
+  | entry -> Pp.string ctx (src_entry_to_string entry)
+
+and src_entry_to_string = function
   | Url { url; format; tech } -> format_src_url (format_url url) format tech
   | Quoted_url { url; quote; format; tech } ->
       format_src_url (format_quoted_url ~quote url) format tech
   | Local name -> "local(\"" ^ name ^ "\")"
+  | Var var -> Pp.to_string ~minify:true (Values.pp_var pp_src) var
 
 let src_to_string ?(minify = false) entries =
-  String.concat
-    (if minify then "," else ", ")
-    (List.map src_entry_to_string entries)
+  Pp.to_string ~minify pp_src entries
 
 (** {1 Parsing} *)
 
@@ -124,12 +130,15 @@ let read_src_modifier t =
       `Tech (read_function_arg "tech" t)
   | _ -> Cursor.err_expected t "font source modifier"
 
-let read_src_entry t =
+let rec read_src_entry t =
   Cursor.ws t;
   match Cursor.peek_raw t with
   | Some (Component.Func { node = { name; _ }; _ })
     when String.lowercase_ascii name = "local" ->
       Local (read_function_arg "local" t)
+  | Some (Component.Func { node = { name; _ }; _ })
+    when String.lowercase_ascii name = "var" ->
+      Var (Values.read_var read_src t)
   | _ ->
       let url = read_url t in
       let rec modifiers format tech =
@@ -145,7 +154,7 @@ let read_src_entry t =
       modifiers None None
 
 (** Parse a src string into a list of typed entries. *)
-let read_src t =
+and read_src t =
   let entries = Cursor.list ~at_least:1 ~sep:Cursor.comma read_src_entry t in
   Cursor.ws t;
   if (not (Cursor.is_done t)) && not (Cursor.peek_semicolon t) then
