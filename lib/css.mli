@@ -7046,6 +7046,12 @@ val parse_background_image : string -> background_image list option
 (** [parse_background_image s] parses a CSS background-image value, including
     comma-separated multiple images. Returns [None] if parsing fails. *)
 
+val read_animation : Cursor.t -> animation
+(** [read_animation t] parses an animation value. *)
+
+val read_transform_origin : Cursor.t -> transform_origin
+(** [read_transform_origin t] parses a transform-origin value. *)
+
 module Container = Container
 module Supports = Supports
 module Keyframe = Keyframe

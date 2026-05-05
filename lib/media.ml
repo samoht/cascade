@@ -26,6 +26,7 @@ type value =
   | Ratio of int * int
   | Resolution_value of float * string
   | Ident of string
+  | Function of string * Component.t list
 
 type feature =
   | Plain of string * value
@@ -144,6 +145,13 @@ let pp_value : value Pp.t =
       Pp.string ctx (format_float n);
       Pp.string ctx unit
   | Ident s -> Pp.string ctx s
+  | Function (name, args) ->
+      Pp.string ctx name;
+      Pp.char ctx '(';
+      Pp.string ctx
+        (if Pp.minified ctx then Parser.to_string_minified args
+         else Parser.to_string args);
+      Pp.char ctx ')'
 
 (* CSS Media Queries 4 3.4: a [min-X] / [max-X] feature name maps onto the range
    form [X >= V] / [X <= V]. [as_min_max] returns the comparison and stripped
@@ -736,6 +744,7 @@ let validate_plain_feature name value =
   in
   let valid_numeric_value name value =
     match (String.lowercase_ascii name, value) with
+    | _, Function _ -> true
     | ("width" | "height" | "inline-size" | "block-size"), Length _ -> true
     | "aspect-ratio", Ratio _ -> true
     | "resolution", Resolution_value _ -> true
@@ -748,6 +757,7 @@ let validate_plain_feature name value =
   in
   let valid_plain_numeric_value name value =
     match (String.lowercase_ascii name, value) with
+    | _, Function _ -> true
     | ( ( "width" | "height" | "min-width" | "max-width" | "inline-size"
         | "block-size" ),
         Length _ ) ->
@@ -881,18 +891,36 @@ let parse_feature_in_parens content =
           skip_ws sc;
           let value_start = sc.pos in
           let v = read_value sc in
+          let function_value () =
+            let raw_value =
+              String.sub sc.s value_start (String.length sc.s - value_start)
+              |> String.trim
+            in
+            match Cursor.remaining (Cursor.of_string raw_value) with
+            | [
+             Component.Func
+               { node = { name; arguments; terminated = true }; _ };
+            ] ->
+                Some (Function (name, arguments) : value)
+            | _ -> None
+            | exception _ -> None
+          in
           match v with
           | Some value ->
-              let raw_value =
-                String.sub sc.s value_start (sc.pos - value_start)
-                |> String.trim
-              in
-              ignore raw_value;
               skip_ws sc;
               if at_end sc && validate_plain_feature id value then
                 Some (plain_feature id value)
-              else None
-          | None -> None)
+              else
+                Option.bind (function_value ()) (fun value ->
+                    if validate_plain_feature id value then
+                      Some (plain_feature id value)
+                    else None)
+          | None ->
+              let value = function_value () in
+              Option.bind value (fun value ->
+                  if validate_plain_feature id value then
+                    Some (plain_feature id value)
+                  else None))
       | Some _ -> (
           match read_cmp sc with
           | Some op -> (
@@ -1360,7 +1388,7 @@ let value_sort_key = function
   | Ratio (n, d) when d <> 0 -> (0, float_of_int n /. float_of_int d)
   | Ratio _ -> (0, 0.)
   | Resolution_value (f, _) -> (0, f)
-  | Ident _ -> (100, 0.)
+  | Ident _ | Function _ -> (100, 0.)
 
 let rec kind : t -> kind = function
   | Hover _ | Any_hover _ -> Hover
