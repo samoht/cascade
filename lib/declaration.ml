@@ -473,6 +473,31 @@ let read_nn_length_or_global t =
     ~default:(read_non_negative_length ~with_keywords:false)
     t
 
+(* CSS Logical Properties 1 3.5: [padding-block] / [padding-inline] are 2-value
+   shorthands. A bare CSS-wide keyword counts as a single value (not a list
+   element). *)
+let read_padding_logical_shorthand t =
+  let read_global_singleton t =
+    let kw : length =
+      Cursor.enum "padding logical"
+        [
+          ("inherit", (Inherit : length));
+          ("initial", Initial);
+          ("unset", Unset);
+          ("revert", Revert);
+          ("revert-layer", Revert_layer);
+        ]
+        t
+    in
+    [ kw ]
+  in
+  let read_lengths t =
+    Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2
+      (Values.read_length ~allow_negative:false ~with_keywords:false)
+      t
+  in
+  Cursor.one_of [ read_global_singleton; read_lengths ] t
+
 let read_scroll_margin_length t =
   Cursor.enum "scroll-margin length"
     [
@@ -838,18 +863,10 @@ let read_value (type a) (prop : a property) t : declaration =
   | Padding_right -> v Padding_right (read_nn_length_or_global t)
   | Padding_top -> v Padding_top (read_nn_length_or_global t)
   | Padding_bottom -> v Padding_bottom (read_nn_length_or_global t)
-  | Padding_inline ->
-      v Padding_inline
-        (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2
-           (Values.read_length ~allow_negative:false ~with_keywords:false)
-           t)
+  | Padding_inline -> v Padding_inline (read_padding_logical_shorthand t)
   | Padding_inline_start -> v Padding_inline_start (read_nn_length_or_global t)
   | Padding_inline_end -> v Padding_inline_end (read_nn_length_or_global t)
-  | Padding_block ->
-      v Padding_block
-        (Cursor.list ~sep:Cursor.ws ~at_least:1 ~at_most:2
-           (Values.read_length ~allow_negative:false ~with_keywords:false)
-           t)
+  | Padding_block -> v Padding_block (read_padding_logical_shorthand t)
   | Padding_block_start -> v Padding_block_start (read_nn_length_or_global t)
   | Padding_block_end -> v Padding_block_end (read_nn_length_or_global t)
   | Margin_left -> v Margin_left (read_length t)
