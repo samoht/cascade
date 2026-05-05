@@ -73,10 +73,12 @@ let rec scroll_state_query_to_string = function
   | Negated q -> "not (" ^ scroll_state_query_to_string q ^ ")"
 
 let rec to_string_with ~minify t =
-  let colon = if minify then ":" else ": " in
   match t with
-  | Min_width_rem rem -> "(min-width" ^ colon ^ format_rem rem ^ "rem)"
-  | Min_width_px px -> "(min-width" ^ colon ^ Int.to_string px ^ "px)"
+  (* The typed [Min_width_*] shorthand always prints in its compact no-space
+     form: it predates the [?minify] argument and existing direct callers expect
+     that exact spelling. *)
+  | Min_width_rem rem -> "(min-width:" ^ format_rem rem ^ "rem)"
+  | Min_width_px px -> "(min-width:" ^ Int.to_string px ^ "px)"
   | Named (name, cond) -> name ^ " " ^ to_string_with ~minify cond
   | Style { query; uppercase } ->
       let head = if uppercase then "STYLE(" else "style(" in
@@ -89,13 +91,9 @@ let rec to_string_with ~minify t =
   | Or (a, b) ->
       "(" ^ to_string_with ~minify a ^ " or " ^ to_string_with ~minify b ^ ")"
   | Not c -> "(not " ^ to_string_with ~minify c ^ ")"
-  | Feature_query f ->
-      (* Inherit the verbatim parse spelling for feature queries (orientation /
-         em-based min-width) the same way [style()]'s [Declaration] body keeps
-         its pretty form. *)
-      Media.to_string f
+  | Feature_query f -> Media.to_string ~minify f
 
-let to_string ?(minify = true) t = to_string_with ~minify t
+let to_string ?(minify = false) t = to_string_with ~minify t
 let pp t = to_string t
 
 let rec compare t1 t2 =
