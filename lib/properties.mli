@@ -1053,6 +1053,16 @@ val read_steps_direction : Cursor.t -> steps_direction
 val read_timing_function : Cursor.t -> timing_function
 (** [read_timing_function t] is the [timing_function] parsed from [t]. *)
 
+val read_timing_function_list : Cursor.t -> timing_function
+(** [read_timing_function_list t] is a comma-separated list of timing functions;
+    folds to a single value when there is one entry, [Timing_functions]
+    otherwise. *)
+
+val read_duration_list : (Cursor.t -> duration) -> Cursor.t -> duration
+(** [read_duration_list read_one t] is a comma-separated list of durations using
+    [read_one]; folds to a single value when the list has one entry, [Durations]
+    otherwise. *)
+
 val pp_transition_property_value : transition_property_value Pp.t
 (** [pp_transition_property_value] is the pretty-printer for
     [transition_property_value]. *)

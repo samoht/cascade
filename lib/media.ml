@@ -145,8 +145,38 @@ let pp_value : value Pp.t =
       Pp.string ctx unit
   | Ident s -> Pp.string ctx s
 
-let pp_feature : feature Pp.t =
+(* CSS Media Queries 4 3.4: a [min-X] / [max-X] feature name maps onto the range
+   form [X >= V] / [X <= V]. [as_min_max] returns the comparison and stripped
+   name in one place so the typed and string-valued printers below share the
+   same parsing - the only [String.sub] / [String.length] arithmetic in the
+   file. *)
+type min_max_view = Range_view of cmp * string | Plain_view
+
+let as_min_max name =
+  let strip prefix =
+    let plen = String.length prefix in
+    if String.length name > plen && String.sub name 0 plen = prefix then
+      Some (String.sub name plen (String.length name - plen))
+    else None
+  in
+  match strip "min-" with
+  | Some base -> Range_view (Ge, base)
+  | None -> (
+      match strip "max-" with
+      | Some base -> Range_view (Le, base)
+      | None -> Plain_view)
+
+let rec pp_feature : feature Pp.t =
  fun ctx -> function
+  | Plain (name, value) when Pp.minified ctx -> (
+      match as_min_max name with
+      | Range_view (op, base) -> pp_feature ctx (Range (base, op, value))
+      | Plain_view ->
+          Pp.char ctx '(';
+          Pp.string ctx name;
+          Pp.char ctx ':';
+          pp_value ctx value;
+          Pp.char ctx ')')
   | Plain (name, value) ->
       Pp.char ctx '(';
       Pp.string ctx name;
@@ -159,33 +189,33 @@ let pp_feature : feature Pp.t =
       Pp.string ctx name;
       Pp.char ctx ')'
   | Range (name, op, value) ->
-      (* CSS Media Queries 4 §3.2: relational operators need whitespace so the
-         tokenizer doesn't merge them with adjacent idents/numbers. *)
+      (* CSS Media Queries 4 3.2: relational operators are their own tokens, so
+         the surrounding whitespace is optional and minify drops it. *)
       Pp.char ctx '(';
       Pp.string ctx name;
-      Pp.space ctx ();
+      Pp.sp ctx ();
       Pp.string ctx (cmp_to_string op);
-      Pp.space ctx ();
+      Pp.sp ctx ();
       pp_value ctx value;
       Pp.char ctx ')'
   | Range_rev (value, op, name) ->
       Pp.char ctx '(';
       pp_value ctx value;
-      Pp.space ctx ();
+      Pp.sp ctx ();
       Pp.string ctx (cmp_to_string op);
-      Pp.space ctx ();
+      Pp.sp ctx ();
       Pp.string ctx name;
       Pp.char ctx ')'
   | Interval (a, op1, name, op2, b) ->
       Pp.char ctx '(';
       pp_value ctx a;
-      Pp.space ctx ();
+      Pp.sp ctx ();
       Pp.string ctx (cmp_to_string op1);
-      Pp.space ctx ();
+      Pp.sp ctx ();
       Pp.string ctx name;
-      Pp.space ctx ();
+      Pp.sp ctx ();
       Pp.string ctx (cmp_to_string op2);
-      Pp.space ctx ();
+      Pp.sp ctx ();
       pp_value ctx b;
       Pp.char ctx ')'
 
@@ -230,29 +260,42 @@ let rec pp_query : query Pp.t =
       in
       loop qs
 
+(* The named/length feature printers route through [as_min_max] under minify so
+   [(min-width: 768px)] emerges as [(width>=768px)] - same rule the typed
+   [pp_feature] applies above. *)
 let pp_named_feature ctx name value =
-  Pp.char ctx '(';
-  Pp.string ctx name;
-  Pp.char ctx ':';
-  Pp.space_if_pretty ctx ();
-  Pp.string ctx value;
-  Pp.char ctx ')'
-
-let pp_min_width_length ctx l =
-  Pp.char ctx '(';
-  Pp.string ctx "min-width";
-  Pp.char ctx ':';
-  Pp.space_if_pretty ctx ();
-  pp_length ctx l;
-  Pp.char ctx ')'
+  match as_min_max name with
+  | Range_view (op, base) when Pp.minified ctx ->
+      Pp.char ctx '(';
+      Pp.string ctx base;
+      Pp.string ctx (cmp_to_string op);
+      Pp.string ctx value;
+      Pp.char ctx ')'
+  | _ ->
+      Pp.char ctx '(';
+      Pp.string ctx name;
+      Pp.char ctx ':';
+      Pp.space_if_pretty ctx ();
+      Pp.string ctx value;
+      Pp.char ctx ')'
 
 let pp_length_feature ctx name l =
-  Pp.char ctx '(';
-  Pp.string ctx name;
-  Pp.char ctx ':';
-  Pp.space_if_pretty ctx ();
-  pp_length ctx l;
-  Pp.char ctx ')'
+  match as_min_max name with
+  | Range_view (op, base) when Pp.minified ctx ->
+      Pp.char ctx '(';
+      Pp.string ctx base;
+      Pp.string ctx (cmp_to_string op);
+      pp_length ctx l;
+      Pp.char ctx ')'
+  | _ ->
+      Pp.char ctx '(';
+      Pp.string ctx name;
+      Pp.char ctx ':';
+      Pp.space_if_pretty ctx ();
+      pp_length ctx l;
+      Pp.char ctx ')'
+
+let pp_min_width_length ctx l = pp_length_feature ctx "min-width" l
 
 let rec pp ctx = function
   | Width l -> pp_length_feature ctx "width" l
