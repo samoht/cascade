@@ -463,16 +463,44 @@ and pp_page_selector ctx selector =
 
 and pp_import_url ctx url =
   let len = String.length url in
-  if
-    len > 0
-    && (url.[0] = '"'
-       || url.[0] = '\''
-       || (len >= 4 && String.lowercase_ascii (String.sub url 0 4) = "url("))
+  let starts_with_url () =
+    len >= 4 && String.lowercase_ascii (String.sub url 0 4) = "url("
+  in
+  let unwrap_quoted () =
+    if len >= 2 && (url.[0] = '"' || url.[0] = '\'') && url.[len - 1] = url.[0]
+    then Some (String.sub url 1 (len - 2))
+    else None
+  in
+  let unquoted_url_string () =
+    if not (starts_with_url ()) then None
+    else if len < 5 || url.[len - 1] <> ')' then None
+    else
+      let inner = String.sub url 4 (len - 5) |> String.trim in
+      let inner_len = String.length inner in
+      if
+        inner_len >= 2
+        && (inner.[0] = '"' || inner.[0] = '\'')
+        && inner.[inner_len - 1] = inner.[0]
+      then Some (String.sub inner 1 (inner_len - 2))
+      else None
+  in
+  if Pp.minified ctx then
+    (* Canonicalise to the shortest spec-equivalent form: a double-quoted string
+       (CSS Syntax 4.3.5 prefers double quotes). The [url()] wrapping is five
+       characters of overhead that the bare-string form omits per CSS
+       Conditional Rules 3, and a single-quoted source string re-emits with
+       double quotes. *)
+    match unquoted_url_string () with
+    | Some s -> Pp.quoted_string ctx s
+    | None -> (
+        match unwrap_quoted () with
+        | Some s -> Pp.quoted_string ctx s
+        | None ->
+            if len > 0 && starts_with_url () then Pp.string ctx url
+            else Pp.quoted_string ctx url)
+  else if len > 0 && (url.[0] = '"' || url.[0] = '\'' || starts_with_url ())
   then Pp.string ctx url
-  else (
-    Pp.char ctx '"';
-    Pp.string ctx url;
-    Pp.char ctx '"')
+  else Pp.quoted_string ctx url
 
 and strip_outer_parens s =
   let s = String.trim s in
@@ -553,6 +581,7 @@ and pp_statement : statement Pp.t =
           Pp.space ctx ()
       | None -> ());
       (match uri with
+      | Url value when Pp.minified ctx -> Pp.quoted_string ctx value
       | Url value ->
           Pp.string ctx "url(";
           Pp.string ctx value;
@@ -679,7 +708,8 @@ and pp_statement : statement Pp.t =
           Pp.cut ctx ())
         ctx ()
   | Font_face descriptors ->
-      Pp.string ctx "@font-face ";
+      Pp.string ctx "@font-face";
+      Pp.sp ctx ();
       Pp.braces
         (fun ctx () ->
           Pp.cut ctx ();
