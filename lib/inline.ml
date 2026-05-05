@@ -209,6 +209,50 @@ and substitute_stmt ~scopes ~parents ~at_path stmt =
           Keyframes (n, map_keyframe_decls universal_frame frames)
       | Webkit_keyframes (n, frames) ->
           Webkit_keyframes (n, map_keyframe_decls universal_frame frames)
+      | Page_with_margins (sel, descriptors, margins) ->
+          let visible =
+            visible_customs ~scopes ~at_path ~selector:(Selector.Universal None)
+          in
+          let ctx = context_for visible in
+          let eval_descriptor (d : raw_descriptor) : raw_descriptor =
+            (* Round-trip the descriptor through a synthetic typed declaration
+               so [Context.eval] resolves any [var()] in its value. CSS at-rule
+               descriptors aren't true property declarations but their values
+               share the property-value grammar. *)
+            let synthetic_token kind =
+              Component.Preserved (Token.synthetic kind)
+            in
+            let components =
+              synthetic_token (Token.Ident d.descriptor_name)
+              :: synthetic_token Token.Colon
+              :: d.descriptor_value
+            in
+            match
+              Declaration.read_declaration (Cursor.of_components components)
+            with
+            | None -> d
+            | Some decl ->
+                let evaluated = Context.eval ctx decl in
+                {
+                  descriptor_name = Declaration.property_name evaluated;
+                  descriptor_value =
+                    Cursor.remaining
+                      (Cursor.of_string
+                         (Declaration.string_of_value ~minify:true evaluated));
+                }
+          in
+          let new_descriptors = List.map eval_descriptor descriptors in
+          let new_margins =
+            List.map
+              (fun (m : page_margin_rule) ->
+                {
+                  m with
+                  margin_descriptors =
+                    List.map eval_descriptor m.margin_descriptors;
+                })
+              margins
+          in
+          Page_with_margins (sel, new_descriptors, new_margins)
       | other -> other)
 
 (** {1 Pass 3 - dead-code elimination} *)
@@ -259,94 +303,159 @@ let scan_referenced_names s =
   scan 0;
   !acc
 
-(* Walk the stylesheet and return two pieces: - [direct]: var names referenced
-   from any non-custom-property declaration. These are unconditionally live. -
-   [graph]: for each custom-property name, the var names its own value
-   references. Used to extend the live set: a custom that only feeds into other
-   dead customs is itself dead. The live set is the closure of [direct] through
-   [graph]. *)
-let collect_var_refs stylesheet =
-  let direct = ref [] in
-  let graph = ref [] in
+(* Walk the stylesheet to collect, for each declaration, the scope at which it
+   appears and the var names its body references. [consumers] lists non-custom
+   declarations (which determine direct liveness); [customs] lists custom-prop
+   declarations along with the var names their bodies reference (used to
+   propagate liveness through chains like [--quad: calc(var(--double) * 2)]). *)
+let collect_scoped_refs stylesheet =
+  let consumers = ref [] in
+  let customs = ref [] in
   let refs_of decl =
     scan_referenced_names (Declaration.string_of_value ~minify:true decl)
   in
-  let consider_decl decl =
+  let record_decl ~at_path ~selector decl =
+    let refs = refs_of decl in
     match custom_name decl with
-    | Some name -> graph := (name, refs_of decl) :: !graph
-    | None -> direct := refs_of decl @ !direct
+    | Some name -> customs := (at_path, selector, name, refs) :: !customs
+    | None -> consumers := (at_path, selector, refs) :: !consumers
   in
-  let rec walk_stmt stmt =
+  let rec walk_stmt ~parents ~at_path stmt =
     match at_wrapper stmt with
-    | Some (_, body, _) -> List.iter walk_stmt body
+    | Some (node, body, _) ->
+        List.iter (walk_stmt ~parents ~at_path:(at_path @ [ node ])) body
     | None -> (
         match stmt with
         | Rule rule ->
-            List.iter consider_decl rule.declarations;
-            List.iter walk_stmt rule.nested
-        | Declarations decls -> List.iter consider_decl decls
+            let eff = effective_selector ~parents rule.selector in
+            List.iter (record_decl ~at_path ~selector:eff) rule.declarations;
+            List.iter (walk_stmt ~parents:(eff :: parents) ~at_path) rule.nested
+        | Declarations decls ->
+            let sel =
+              match parents with p :: _ -> p | [] -> Selector.Universal None
+            in
+            List.iter (record_decl ~at_path ~selector:sel) decls
         | Page (_, decls) | Position_try (_, decls) ->
-            List.iter consider_decl decls
+            let sel = Selector.Universal None in
+            List.iter (record_decl ~at_path ~selector:sel) decls
         | Keyframes (_, frames) | Webkit_keyframes (_, frames) ->
+            let sel = Selector.Universal None in
             List.iter
-              (fun fr -> List.iter consider_decl fr.keyframe_declarations)
+              (fun fr ->
+                List.iter
+                  (record_decl ~at_path ~selector:sel)
+                  fr.keyframe_declarations)
               frames
         | _ -> ())
   in
-  List.iter walk_stmt stylesheet;
-  (!direct, !graph)
+  List.iter (walk_stmt ~parents:[] ~at_path:[]) stylesheet;
+  (!consumers, !customs)
 
-(* Live set = closure of [direct] through [graph]. A custom is live iff it is
-   referenced from a non-custom consumer or from another live custom. *)
-let live_var_names ~direct ~graph =
-  let live = ref direct in
-  let mem name = List.mem name !live in
-  let add name = if not (mem name) then live := name :: !live in
+(* Closure: a custom-prop declaration is live iff some consumer at a compatible
+   at-rule path (any [@media]/[@layer]/[@supports] chain that contains the
+   custom's chain) references its name, transitively through other live customs.
+   The selector cover that {!substitute} uses is intentionally not applied here:
+   at runtime a consumer that does not statically descend from the custom's
+   selector can still inherit the custom (e.g. [.other] sitting inside a
+   [.theme] element), so we keep the custom-prop declaration in source. The
+   at-rule path is a hard barrier though - a [@media]-wrapped declaration cannot
+   affect anything outside that block. *)
+let live_customs ~consumers ~customs =
+  let path_visible ~scope_path ~consumer_path =
+    at_path_prefix ~outer:scope_path ~inner:consumer_path
+  in
+  let directly_visible (path, _sel) =
+    List.concat_map
+      (fun (cp, _cs, refs) ->
+        if path_visible ~scope_path:path ~consumer_path:cp then refs else [])
+      consumers
+  in
+  let live = ref [] in
+  let is_live (path, sel, name) =
+    List.exists (fun (p, s, n) -> p = path && s = sel && n = name) !live
+  in
+  let mark entry = if not (is_live entry) then live := entry :: !live in
+  (* Seed: every custom whose scope has a path-compatible consumer referencing
+     its name is directly live. *)
+  List.iter
+    (fun (path, sel, name, _) ->
+      if List.mem name (directly_visible (path, sel)) then mark (path, sel, name))
+    customs;
+  (* Propagate: if a live custom [A] references a name [N], any custom [B] named
+     [N] at a path that contains [A]'s path is also live. Iterate to
+     fixpoint. *)
+  let any_at_scope ~path ~sel =
+    List.exists (fun (p, s, _) -> p = path && s = sel) !live
+  in
+  let propagate_from (a_path, a_sel, _, a_refs) =
+    if any_at_scope ~path:a_path ~sel:a_sel then
+      List.iter
+        (fun ref_name ->
+          List.iter
+            (fun (b_path, b_sel, b_name, _) ->
+              if
+                b_name = ref_name
+                && path_visible ~scope_path:b_path ~consumer_path:a_path
+                && not (is_live (b_path, b_sel, b_name))
+              then mark (b_path, b_sel, b_name))
+            customs)
+        a_refs
+  in
   let changed = ref true in
   while !changed do
-    changed := false;
-    List.iter
-      (fun (name, refs) ->
-        if mem name then
-          List.iter
-            (fun r ->
-              if not (mem r) then changed := true;
-              add r)
-            refs)
-      graph
+    let before = List.length !live in
+    List.iter propagate_from customs;
+    changed := List.length !live > before
   done;
   !live
 
-let referenced_names stylesheet =
-  let direct, graph = collect_var_refs stylesheet in
-  live_var_names ~direct ~graph
-
-let strip_dead ~keep ~referenced stmts =
-  let alive name = List.mem name keep || List.mem name referenced in
-  let filter_decls =
-    List.filter (fun d ->
-        match custom_name d with None -> true | Some name -> alive name)
+let strip_dead ~keep ~live_set stmts =
+  let is_live ~at_path ~selector ~name =
+    List.mem name keep
+    || List.exists
+         (fun (p, s, n) -> p = at_path && s = selector && n = name)
+         live_set
   in
-  let rec map_stmts stmts = List.filter_map map_stmt stmts
-  and map_stmt stmt =
+  let filter_decls ~at_path ~selector =
+    List.filter (fun d ->
+        match custom_name d with
+        | None -> true
+        | Some name -> is_live ~at_path ~selector ~name)
+  in
+  let rec map_stmts ~parents ~at_path stmts =
+    List.filter_map (map_stmt ~parents ~at_path) stmts
+  and map_stmt ~parents ~at_path stmt =
     match at_wrapper stmt with
-    | Some (_, body, rebuild) -> (
-        match map_stmts body with [] -> None | b -> Some (rebuild b))
+    | Some (node, body, rebuild) -> (
+        match map_stmts ~parents ~at_path:(at_path @ [ node ]) body with
+        | [] -> None
+        | b -> Some (rebuild b))
     | None -> (
         match stmt with
         | Rule rule ->
-            let nested = map_stmts rule.nested in
-            let decls = filter_decls rule.declarations in
+            let eff = effective_selector ~parents rule.selector in
+            let nested =
+              map_stmts ~parents:(eff :: parents) ~at_path rule.nested
+            in
+            let decls = filter_decls ~at_path ~selector:eff rule.declarations in
             if decls = [] && nested = [] then None
             else Some (Rule { rule with declarations = decls; nested })
         | Declarations decls -> (
-            match filter_decls decls with
+            let sel =
+              match parents with p :: _ -> p | [] -> Selector.Universal None
+            in
+            match filter_decls ~at_path ~selector:sel decls with
             | [] -> None
             | decls -> Some (Declarations decls))
-        | Page (sel, decls) -> Some (Page (sel, filter_decls decls))
+        | Page (sel, decls) ->
+            Some
+              (Page
+                 ( sel,
+                   filter_decls ~at_path ~selector:(Selector.Universal None)
+                     decls ))
         | other -> Some other)
   in
-  map_stmts stmts
+  map_stmts ~parents:[] ~at_path:[] stmts
 
 let normalise_var_name name =
   if String.length name >= 2 && String.sub name 0 2 = "--" then name
@@ -356,8 +465,9 @@ let vars ?(keep_vars = []) stylesheet =
   let keep = List.map normalise_var_name keep_vars in
   let scopes = collect_scopes ~kept:keep stylesheet in
   let substituted = substitute ~scopes ~parents:[] ~at_path:[] stylesheet in
-  let referenced = referenced_names substituted in
-  strip_dead ~keep ~referenced substituted
+  let consumers, customs = collect_scoped_refs substituted in
+  let live_set = live_customs ~consumers ~customs in
+  strip_dead ~keep ~live_set substituted
 
 (** {1 [@import] inlining helpers} *)
 
