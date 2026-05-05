@@ -904,15 +904,19 @@ module Var_residual = struct
       | Some var -> (
           match resolve_var ~simplify ~visited var with
           | Some result when ops.as_var result <> None -> (
-              (* Resolution returned a residual var(): the chain didn't fully
-                 resolve (cycle per CSS Custom Properties L1 §5, or a missing
-                 nested definition without its own fallback). Prefer our own
-                 fallback when we have one. *)
               match var.fallback with
               | Values.Fallback fb -> simplify ~authored:false ~visited fb
+              | Values.Syntax_fallback _ | Values.Var_fallback _ ->
+                  ops.of_var (simplify_var_record ~simplify var)
               | _ -> result)
           | Some result -> result
-          | None -> ops.of_var (simplify_var_record ~simplify var))
+          | None -> (
+              match var.fallback with
+              | Values.Fallback fb -> simplify ~authored:false ~visited fb
+              | Values.Syntax_fallback _ | Values.Var_fallback _ | Values.Empty
+              | Values.Empty2 ->
+                  ops.of_var (simplify_var_record ~simplify var)
+              | Values.None -> ops.of_var (simplify_var_record ~simplify var)))
       | None -> ops.simplify_leaf simplify ~authored ~visited value
     in
     simplify ~authored:true ~visited:[] value
