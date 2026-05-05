@@ -85,7 +85,7 @@ let term =
           exit 1
         end;
         if keep_vars <> [] && not inline_vars_flag then
-          Fmt.epr "warning: --keep-vars has no effect without --inline-vars@.";
+          Fmt.epr "Warning: --keep-vars has no effect without --inline-vars@.";
         process_css ~input_path:input ~minify ~inline_imports_flag
           ~inline_vars_flag ~keep_vars)
     $ input_arg $ minify_arg $ inline_imports_arg $ inline_vars_arg

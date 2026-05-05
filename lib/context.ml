@@ -903,7 +903,15 @@ module Var_residual = struct
       match ops.as_var value with
       | Some var -> (
           match resolve_var ~simplify ~visited var with
-          | Some value -> value
+          | Some result when ops.as_var result <> None -> (
+              (* Resolution returned a residual var(): the chain didn't fully
+                 resolve (cycle per CSS Custom Properties L1 §5, or a missing
+                 nested definition without its own fallback). Prefer our own
+                 fallback when we have one. *)
+              match var.fallback with
+              | Values.Fallback fb -> simplify ~authored:false ~visited fb
+              | _ -> result)
+          | Some result -> result
           | None -> ops.of_var (simplify_var_record ~simplify var))
       | None -> ops.simplify_leaf simplify ~authored ~visited value
     in
