@@ -2307,15 +2307,31 @@ and read_rgb_space_separated t : color =
      [)] to consume — it's the block boundary. *)
   Cursor.ws t;
   if Cursor.looking_at t "var(" then (
+    let snap = Cursor.save t in
     let rgb_var = read_rgb_var t in
     Cursor.ws t;
-    if Cursor.peek_delim t = Some '/' then (
+    if Cursor.is_done t then Rgb (Var rgb_var)
+    else if Cursor.peek_delim t = Some '/' then (
       let alpha = read_optional_alpha t in
       Cursor.ws t;
       match alpha with
       | None -> Cursor.err t "expected alpha value after '/'"
       | _ -> Rgba { rgb = Var rgb_var; a = alpha })
-    else Rgb (Var rgb_var))
+    else (
+      Cursor.restore t snap;
+      let r = read_channel t in
+      Cursor.ws t;
+      let g = read_channel t in
+      Cursor.ws t;
+      let b = read_channel t in
+      let alpha = read_optional_alpha t in
+      Cursor.ws t;
+      if not (Cursor.is_done t) then
+        Cursor.err t "unexpected tokens after rgb()";
+      match alpha with
+      | None -> Rgb (Channels { r; g; b })
+      | Num _ | Pct _ | Var _ | Calc _ ->
+          Rgba { rgb = Channels { r; g; b }; a = alpha }))
   else
     let r = read_channel t in
     Cursor.ws t;

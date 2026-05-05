@@ -2621,6 +2621,7 @@ let rec pp_gradient_stop : gradient_stop Pp.t =
               Pp.space ctx ();
               pp_length ctx len2))
   | Length len -> pp_length ctx len
+  | Channel channel -> pp_channel ctx channel
   | Percentage pct -> pp_percentage ctx pct
   | List stops ->
       (* Pretty-print multiple gradient stops separated by commas *)
@@ -11786,11 +11787,13 @@ let read_font_display t : font_display =
     ]
     t
 
-let read_unicode_range t : unicode_range =
+let rec read_unicode_range t : unicode_range =
   (* The lexer emits a single [Unicode_range] token for [U+...] forms (CSS
      Syntax section 4.3.14); we just translate it to the [unicode_range] ADT. *)
   Cursor.with_context t "unicode-range" @@ fun () ->
   match Cursor.peek t with
+  | Some (Component.Func { node = { name = "var"; _ }; _ }) ->
+      (Var (Values.read_var read_unicode_range t) : unicode_range)
   | Some
       (Component.Preserved
          { kind = Token.Unicode_range { start_value; end_value }; _ }) ->
@@ -12218,7 +12221,7 @@ let read_transition_shorthand t : transition_shorthand =
   { property; duration; timing_function; delay; behavior }
 
 let rec read_transition t : transition =
-  Cursor.enum_or_var "transition"
+  Cursor.enum "transition"
     [
       ("inherit", (Inherit : transition));
       ("initial", Initial);
@@ -12227,8 +12230,16 @@ let rec read_transition t : transition =
       ("revert-layer", Revert_layer);
       ("none", None);
     ]
-    ~var:(fun t -> Var (read_var read_transition t))
-    ~default:(fun t : transition -> Shorthand (read_transition_shorthand t))
+    ~default:(fun t : transition ->
+      if Cursor.looking_at_func "var" t then (
+        let snap = Cursor.save t in
+        let value = (Var (read_var read_transition t) : transition) in
+        Cursor.ws t;
+        if Cursor.is_done t then value
+        else (
+          Cursor.restore t snap;
+          Shorthand (read_transition_shorthand t)))
+      else Shorthand (read_transition_shorthand t))
     t
 
 let read_transitions t : transition list =
@@ -12361,7 +12372,7 @@ let rec read_animation_composition t : animation_composition =
 
 module Animation = struct
   type component =
-    | Name of string option
+    | Name of animation_name option
     | Duration of duration
     | Timing_function of timing_function
     | Iteration_count of animation_iteration_count
@@ -12399,16 +12410,20 @@ module Animation = struct
     let read_direction t = Direction (read_animation_direction t) in
     let read_fill t = Fill_mode (read_animation_fill_mode t) in
     let read_play t = Play_state (read_animation_play_state t) in
+    let read_var_name t =
+      Name (Some (Var (Values.read_var read_animation_name t)))
+    in
     let read_name t =
       let v = Cursor.ident t in
       if List.mem v reserved_keywords then
         (* This identifier is for another property, not animation-name *)
         Cursor.err t
           ("'" ^ v ^ "' is a reserved keyword for animation properties")
-      else Name (Some v)
+      else Name (Some (Name v))
     in
     Cursor.one_of
       [
+        read_var_name;
         read_duration;
         read_timing;
         read_iteration;
@@ -12646,7 +12661,7 @@ let rec pp_animation_shorthand : animation_shorthand Pp.t =
     (space_before pp_animation_play_state)
     ctx
     (Animation.play_state anim);
-  Option.iter (space_before Pp.string ctx) anim.name
+  Option.iter (space_before pp_animation_name ctx) anim.name
 
 and pp_animation : animation Pp.t =
  fun ctx -> function
@@ -12657,11 +12672,18 @@ and pp_animation : animation Pp.t =
   | Shorthand s -> pp_animation_shorthand ctx s
 
 let rec read_animation t : animation =
-  let read_var_call t : animation = Var (read_var read_animation t) in
-  Cursor.enum_or_calls "animation"
+  Cursor.enum "animation"
     [ ("inherit", Inherit); ("initial", Initial); ("none", None) ]
-    ~calls:[ ("var", read_var_call) ]
-    ~default:(fun t -> (Shorthand (read_animation_shorthand t) : animation))
+    ~default:(fun t ->
+      if Cursor.looking_at_func "var" t then (
+        let snap = Cursor.save t in
+        let value = (Var (read_var read_animation t) : animation) in
+        Cursor.ws t;
+        if Cursor.is_done t then value
+        else (
+          Cursor.restore t snap;
+          Shorthand (read_animation_shorthand t)))
+      else Shorthand (read_animation_shorthand t))
     t
 
 let read_animations t : animation list =
@@ -13012,6 +13034,7 @@ module Gradient_stop = struct
 
   let read_pct t : gradient_stop = Percentage (read_percentage t)
   let read_len t : gradient_stop = Length (read_length t)
+  let read_channel t : gradient_stop = Channel (Values.read_channel t)
 end
 
 let rec read_gradient_stop_single t : gradient_stop =
@@ -13031,6 +13054,7 @@ let rec read_gradient_stop_single t : gradient_stop =
       Gradient_stop.read_color_only;
       Gradient_stop.read_pct;
       Gradient_stop.read_len;
+      Gradient_stop.read_channel;
       (* Full gradient_stop variables (e.g., var(--tw-gradient-stops)) - last
          resort *)
       read_var;
@@ -13267,10 +13291,17 @@ let read_conic_gradient_config t : conic_gradient_config =
 let read_linear_gradient_body t =
   Cursor.ws t;
   let direction =
-    match Cursor.option read_gradient_direction t with
-    | Some d ->
-        ignore (Cursor.comma_opt t);
-        d
+    match
+      Cursor.option
+        (fun t ->
+          let direction = read_gradient_direction t in
+          Cursor.ws t;
+          if not (Cursor.comma_opt t) then
+            Cursor.err_expected t "',' after linear-gradient direction";
+          direction)
+        t
+    with
+    | Some d -> d
     | None -> To_bottom
   in
   let stops = read_gradient_stops t in
@@ -13987,7 +14018,7 @@ let animation_shorthand ?name ?duration ?timing_function ?delay ?iteration_count
     ?direction ?fill_mode ?play_state () : animation =
   Shorthand
     {
-      name;
+      name = Option.map (fun name -> (Name name : animation_name)) name;
       duration;
       timing_function;
       delay;
@@ -14842,7 +14873,7 @@ let pp_font_src_modifiers ctx (format : string option) (tech : string option) =
       Pp.string ctx value;
       Pp.char ctx ')'
 
-let pp_font_src_entry ctx : Font_face.src_entry -> unit = function
+let rec pp_font_src_entry ctx : Font_face.src_entry -> unit = function
   | Local name ->
       Pp.string ctx "local(";
       Pp.char ctx '"';
@@ -14855,8 +14886,9 @@ let pp_font_src_entry ctx : Font_face.src_entry -> unit = function
   | Quoted_url { url; quote; format; tech } ->
       pp_quoted_font_url ctx quote url;
       pp_font_src_modifiers ctx format tech
+  | Var var -> pp_var pp_font_src ctx var
 
-let pp_font_src ctx entries =
+and pp_font_src ctx entries =
   let first = ref true in
   List.iter
     (fun entry ->
@@ -15587,6 +15619,7 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Border_radius -> Some Border_radius
   | Offset_distance -> Some Length_percentage
   | Background_color -> Some Color
+  | Animation_name -> Some Animation_name
   | Color -> Some Color
   | Border_color -> Some Color
   | Text_decoration_color -> Some Color
@@ -15600,8 +15633,10 @@ let property_value_kind : type a. a property -> a property_value_kind option =
   | Accent_color -> Some Color
   | Caret_color -> Some Color
   | Background_image -> Some Background_images
+  | Background -> Some Background
   | Webkit_mask_image -> Some Background_image
   | Mask_image -> Some Background_image
+  | Source -> Some Font_src
   | _ -> None
 
 (* ===== Readers moved here from Declaration so the API consistency script can
@@ -16149,8 +16184,11 @@ let pp_property_value_kind : type a. a property_value_kind Pp.t =
   | Shadow -> Pp.string ctx "shadow"
   | Border_radius -> Pp.string ctx "border-radius"
   | Color -> Pp.string ctx "color"
+  | Animation_name -> Pp.string ctx "animation-name"
+  | Background -> Pp.string ctx "background"
   | Background_image -> Pp.string ctx "background-image"
   | Background_images -> Pp.string ctx "background-images"
+  | Font_src -> Pp.string ctx "font-src"
 
 let read_property_value_kind (type a) (_ : Cursor.t) : a property_value_kind =
   invalid_arg

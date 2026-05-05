@@ -2052,7 +2052,7 @@ type animation_name =
   | Var of animation_name var
 
 type animation_shorthand = {
-  name : string option; (* Optional animation name, defaults to None *)
+  name : animation_name option; (* Optional animation name, defaults to None *)
   duration : duration option;
   timing_function : timing_function option;
   delay : duration option;
@@ -2261,6 +2261,8 @@ type gradient_stop =
       * length option
       * length option (* Color with optional length position *)
   | Length of length (* Interpolation hint with length, e.g., "50px" *)
+  | Channel of channel
+      (** Residual numeric channel token from custom-property substitution. *)
   | List of
       gradient_stop list (* Multiple gradient stops - used for var fallbacks *)
   | Percentage of
@@ -4359,5 +4361,8 @@ type _ property_value_kind =
   | Shadow : shadow property_value_kind
   | Border_radius : border_radius property_value_kind
   | Color : color property_value_kind
+  | Animation_name : animation_name property_value_kind
+  | Background : background list property_value_kind
   | Background_image : background_image property_value_kind
   | Background_images : background_image list property_value_kind
+  | Font_src : Font_face.src property_value_kind

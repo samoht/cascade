@@ -2477,6 +2477,8 @@ type gradient_stop =
   | Color_length of color * length option * length option
       (** Color with optional length positions *)
   | Length of length  (** Interpolation hint with length, e.g., "50px" *)
+  | Channel of channel
+      (** Residual numeric channel token from custom-property substitution. *)
   | List of gradient_stop list
       (** Multiple gradient stops - used for var fallbacks *)
   | Percentage of percentage
@@ -5195,7 +5197,7 @@ type animation_name =
   | Var of animation_name var
 
 type animation_shorthand = {
-  name : string option; (* Optional animation name, defaults to None *)
+  name : animation_name option; (* Optional animation name, defaults to None *)
   duration : duration option;
   timing_function : timing_function option;
   delay : duration option;
