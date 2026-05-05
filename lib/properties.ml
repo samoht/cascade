@@ -5557,6 +5557,8 @@ let origin3d (a : length) (b : length) (z : length) : transform_origin =
 let rec pp_animation_direction : animation_direction Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_animation_direction ctx v
+  | Directions directions ->
+      Pp.list ~sep:Pp.comma pp_animation_direction ctx directions
   | Normal -> Pp.string ctx "normal"
   | Reverse -> Pp.string ctx "reverse"
   | Alternate -> Pp.string ctx "alternate"
@@ -5570,6 +5572,7 @@ let rec pp_animation_direction : animation_direction Pp.t =
 let rec pp_animation_fill_mode : animation_fill_mode Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_animation_fill_mode ctx v
+  | Fill_modes modes -> Pp.list ~sep:Pp.comma pp_animation_fill_mode ctx modes
   | None -> Pp.string ctx "none"
   | Forwards -> Pp.string ctx "forwards"
   | Backwards -> Pp.string ctx "backwards"
@@ -5597,6 +5600,8 @@ let rec pp_animation_name : animation_name Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
   | Name name -> Pp.string ctx name
+  | Ambiguous_name name -> Pp.string ctx name
+  | Quoted_name name -> Pp.quoted_string ctx name
   | Names names -> Pp.list ~sep:Pp.comma pp_animation_name ctx names
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
@@ -7377,6 +7382,8 @@ let rec pp_timing_function : timing_function Pp.t =
   | Cubic_bezier (0.42, 0.0, 0.58, 1.0) when Pp.minified ctx ->
       Pp.string ctx "ease-in-out"
   | Cubic_bezier (x1, y1, x2, y2) -> pp_cubic_bezier ctx (x1, y1, x2, y2)
+  | Timing_functions timings ->
+      Pp.list ~sep:Pp.comma pp_timing_function ctx timings
   | Linear_function body ->
       Pp.string ctx "linear(";
       Pp.string ctx body;
@@ -12096,6 +12103,17 @@ end
 
 let read_timing_function t : timing_function = Timing_function.read t
 
+let read_timing_function_list t =
+  match Cursor.list ~sep:Cursor.comma ~at_least:1 read_timing_function t with
+  | [ value ] -> value
+  | values -> Timing_functions values
+
+let read_duration_list (read_one : Cursor.t -> Values.duration) t :
+    Values.duration =
+  match Cursor.list ~sep:Cursor.comma ~at_least:1 read_one t with
+  | [ value ] -> value
+  | values -> Durations values
+
 let rec read_transition_property_value t : transition_property_value =
   let read_var t : transition_property_value =
     Var (read_var read_transition_property_value t)
@@ -12246,12 +12264,18 @@ let read_transitions t : transition list =
   Cursor.list ~at_least:1 ~sep:Cursor.comma read_transition t
 
 let rec read_animation_direction t : animation_direction =
+  let read_one t =
+    Cursor.enum "animation-direction-item"
+      [
+        ("normal", (Normal : animation_direction));
+        ("reverse", Reverse);
+        ("alternate", Alternate);
+        ("alternate-reverse", Alternate_reverse);
+      ]
+      t
+  in
   Cursor.enum_or_var "animation-direction"
     [
-      ("normal", (Normal : animation_direction));
-      ("reverse", Reverse);
-      ("alternate", Alternate);
-      ("alternate-reverse", Alternate_reverse);
       ("initial", Initial);
       ("inherit", Inherit);
       ("unset", Unset);
@@ -12259,15 +12283,25 @@ let rec read_animation_direction t : animation_direction =
       ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (Values.read_var read_animation_direction t))
+    ~default:(fun t ->
+      match Cursor.list ~sep:Cursor.comma ~at_least:1 read_one t with
+      | [ value ] -> value
+      | values -> Directions values)
     t
 
 let rec read_animation_fill_mode t : animation_fill_mode =
+  let read_one t =
+    Cursor.enum "animation-fill-mode-item"
+      [
+        ("none", (None : animation_fill_mode));
+        ("forwards", Forwards);
+        ("backwards", Backwards);
+        ("both", Both);
+      ]
+      t
+  in
   Cursor.enum_or_var "animation-fill-mode"
     [
-      ("none", (None : animation_fill_mode));
-      ("forwards", Forwards);
-      ("backwards", Backwards);
-      ("both", Both);
       ("initial", Initial);
       ("inherit", Inherit);
       ("unset", Unset);
@@ -12275,6 +12309,10 @@ let rec read_animation_fill_mode t : animation_fill_mode =
       ("revert-layer", Revert_layer);
     ]
     ~var:(fun t -> Var (Values.read_var read_animation_fill_mode t))
+    ~default:(fun t ->
+      match Cursor.list ~sep:Cursor.comma ~at_least:1 read_one t with
+      | [ value ] -> value
+      | values -> Fill_modes values)
     t
 
 let rec read_animation_iteration_count t : animation_iteration_count =
@@ -12308,11 +12346,58 @@ let rec read_animation_iteration_count t : animation_iteration_count =
       match counts with [ count ] -> count | counts -> Counts counts)
     t
 
+type animation_reserved_string_name =
+  | None_name
+  | Initial_name
+  | Inherit_name
+  | Unset_name
+  | Revert_name
+  | Revert_layer_name
+  | Default_name
+
+let animation_reserved_string_name = function
+  | "none" -> Some None_name
+  | "initial" -> Some Initial_name
+  | "inherit" -> Some Inherit_name
+  | "unset" -> Some Unset_name
+  | "revert" -> Some Revert_name
+  | "revert-layer" -> Some Revert_layer_name
+  | "default" -> Some Default_name
+  | _ -> None
+
+type animation_shorthand_keyword =
+  | Timing
+  | Iteration
+  | Direction
+  | Fill
+  | Play
+
+let animation_shorthand_keyword = function
+  | "ease" | "linear" | "ease-in" | "ease-out" | "ease-in-out" | "step-start"
+  | "step-end" ->
+      Some Timing
+  | "infinite" -> Some Iteration
+  | "normal" | "reverse" | "alternate" | "alternate-reverse" -> Some Direction
+  | "none" | "forwards" | "backwards" | "both" -> Some Fill
+  | "running" | "paused" -> Some Play
+  | _ -> None
+
+let animation_quoted_or_name s =
+  match animation_reserved_string_name (String.lowercase_ascii s) with
+  | Some _ -> Quoted_name s
+  | None -> (
+      match animation_shorthand_keyword (String.lowercase_ascii s) with
+      | Some _ -> Ambiguous_name s
+      | None -> Name s)
+
 let rec read_animation_name t : animation_name =
   let read_item t =
     Cursor.enum "animation-name-item"
       [ ("none", (None : animation_name)) ]
-      ~default:(fun t -> (Name (Cursor.ident t) : animation_name))
+      ~default:(fun t ->
+        match Cursor.string_opt t with
+        | Some s -> (animation_quoted_or_name s : animation_name)
+        | None -> Name (Cursor.ident t))
       t
   in
   Cursor.enum_or_var "animation-name"
@@ -12380,29 +12465,6 @@ module Animation = struct
     | Fill_mode of animation_fill_mode
     | Play_state of animation_play_state
 
-  (* Check if it's a reserved keyword for other animation properties *)
-  let reserved_keywords =
-    [
-      "ease";
-      "linear";
-      "ease-in";
-      "ease-out";
-      "ease-in-out";
-      "step-start";
-      "step-end";
-      "infinite";
-      "normal";
-      "reverse";
-      "alternate";
-      "alternate-reverse";
-      "none";
-      "forwards";
-      "backwards";
-      "both";
-      "running";
-      "paused";
-    ]
-
   let read_component t =
     let read_duration t = Duration (read_duration t) in
     let read_timing t = Timing_function (read_timing_function t) in
@@ -12413,9 +12475,15 @@ module Animation = struct
     let read_var_name t =
       Name (Some (Var (Values.read_var read_animation_name t)))
     in
+    let read_string_name t =
+      match Cursor.string_opt t with
+      | Some s -> Name (Some (animation_quoted_or_name s))
+      | None -> Cursor.err t "expected animation-name string"
+    in
     let read_name t =
       let v = Cursor.ident t in
-      if List.mem v reserved_keywords then
+      if Option.is_some (animation_shorthand_keyword (String.lowercase_ascii v))
+      then
         (* This identifier is for another property, not animation-name *)
         Cursor.err t
           ("'" ^ v ^ "' is a reserved keyword for animation properties")
@@ -12430,6 +12498,7 @@ module Animation = struct
         read_direction;
         read_fill;
         read_play;
+        read_string_name;
         (* Animation name - parse this LAST since it accepts any non-reserved
            identifier *)
         read_name;
@@ -12512,8 +12581,10 @@ module Animation = struct
   let pp_iter_count = pp_animation_iteration_count
 
   (* Check if a timing function ends with ')' - only cubic-bezier/steps do *)
-  let ends_with_paren = function
+  let rec ends_with_paren = function
     | Cubic_bezier _ | Steps _ | Linear_function _ | Var _ -> true
+    | Timing_functions [] -> false
+    | Timing_functions values -> ends_with_paren (List.hd (List.rev values))
     | Inherit | Initial | Unset | Revert | Revert_layer -> false
     | Linear | Ease | Ease_in | Ease_out | Ease_in_out | Step_start | Step_end
       ->
@@ -12556,6 +12627,7 @@ module Animation = struct
             pp_steps_direction ctx d
         | None -> ());
         Pp.char ctx ')'
+    | Timing_functions values -> Pp.list ~sep:Pp.comma pp_timing ctx values
     | Var v -> pp_var pp_timing ctx v
 
   let is_duration : duration option -> bool = function
@@ -12591,15 +12663,26 @@ module Animation = struct
     || is_fill_mode anim.fill_mode
     || is_play_state anim.play_state
 
-  let duration (anim : animation_shorthand) : duration option =
-    match anim.duration with
-    | Some d when not (is_zero_duration d) -> Some d
+  let ambiguous_name_kind (anim : animation_shorthand) =
+    match anim.name with
+    | Some (Ambiguous_name name) ->
+        animation_shorthand_keyword (String.lowercase_ascii name)
     | _ -> None
 
+  let duration (anim : animation_shorthand) : duration option =
+    match (anim.duration, anim.delay) with
+    | Some d, Some delay when is_zero_duration d && is_duration (Some delay) ->
+        Some d
+    | _ -> (
+        match anim.duration with
+        | Some d when not (is_zero_duration d) -> Some d
+        | _ -> None)
+
   let timing (anim : animation_shorthand) : timing_function option =
-    match anim.timing_function with
-    | Some Ease | None -> None
-    | Some t -> Some t
+    match (anim.timing_function, ambiguous_name_kind anim) with
+    | (Some Ease | None), Some Timing -> Some Ease
+    | Some Ease, _ | None, _ -> None
+    | Some t, _ -> Some t
 
   let delay (anim : animation_shorthand) : duration option =
     match anim.delay with
@@ -12608,18 +12691,28 @@ module Animation = struct
 
   let iteration (anim : animation_shorthand) : animation_iteration_count option
       =
-    match anim.iteration_count with
-    | Some (Num 1.) | None -> None
-    | Some c -> Some c
+    match (anim.iteration_count, ambiguous_name_kind anim) with
+    | (Some (Num 1.) | None), Some Iteration -> Some (Num 1.)
+    | Some (Num 1.), _ | None, _ -> None
+    | Some c, _ -> Some c
 
   let direction (anim : animation_shorthand) : animation_direction option =
-    match anim.direction with Some Normal | None -> None | Some d -> Some d
+    match (anim.direction, ambiguous_name_kind anim) with
+    | (Some Normal | None), Some Direction -> Some Normal
+    | Some Normal, _ | None, _ -> None
+    | Some d, _ -> Some d
 
   let fill_mode (anim : animation_shorthand) : animation_fill_mode option =
-    match anim.fill_mode with Some None | None -> None | Some m -> Some m
+    match (anim.fill_mode, ambiguous_name_kind anim) with
+    | (Some None | None), Some Fill -> Some None
+    | Some None, _ | None, _ -> None
+    | Some m, _ -> Some m
 
   let play_state (anim : animation_shorthand) : animation_play_state option =
-    match anim.play_state with Some Running | None -> None | Some s -> Some s
+    match (anim.play_state, ambiguous_name_kind anim) with
+    | (Some Running | None), Some Play -> Some Running
+    | Some Running, _ | None, _ -> None
+    | Some s, _ -> Some s
 end
 
 let read_animation_shorthand t : animation_shorthand =

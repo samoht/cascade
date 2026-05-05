@@ -390,8 +390,12 @@ let rec vars_of_color (value : Values.color) : any_var list =
       c1_vars @ c2_vars @ p1_vars @ p2_vars
   | _ -> []
 
-let vars_of_duration (value : Values.duration) : any_var list =
-  match value with Var v -> [ V v ] | Calc calc -> vars_of_calc calc | _ -> []
+let rec vars_of_duration (value : Values.duration) : any_var list =
+  match value with
+  | Var v -> [ V v ]
+  | Calc calc -> vars_of_calc calc
+  | Durations values -> List.concat_map vars_of_duration values
+  | _ -> []
 
 let vars_of_border_width (value : Properties.border_width) : any_var list =
   match value with Var v -> [ V v ] | Calc calc -> vars_of_calc calc | _ -> []
@@ -700,11 +704,12 @@ let compare_vars_by_name (V x) (V y) = String.compare x.name y.name
 let any_var_name (V v) = String.concat "" [ "--"; v.name ]
 
 (** Extract variables from timing function *)
-let vars_of_timing_function = function
+let rec vars_of_timing_function = function
   | Ease | Linear | Ease_in | Ease_out | Ease_in_out | Step_start | Step_end
   | Steps _ | Cubic_bezier _ | Linear_function _ | Inherit | Initial | Unset
   | Revert | Revert_layer ->
       []
+  | Timing_functions values -> List.concat_map vars_of_timing_function values
   | Var v -> [ V v ]
 
 let vars_of_display (value : Properties.display) =
@@ -1068,11 +1073,17 @@ let vars_of_transform_box (value : Properties.transform_box) =
 let vars_of_backface_visibility (value : Properties.backface_visibility) =
   match value with Var v -> [ V v ] | _ -> []
 
-let vars_of_animation_direction (value : Properties.animation_direction) =
-  match value with Var v -> [ V v ] | _ -> []
+let rec vars_of_animation_direction (value : Properties.animation_direction) =
+  match value with
+  | Var v -> [ V v ]
+  | Directions values -> List.concat_map vars_of_animation_direction values
+  | _ -> []
 
-let vars_of_animation_fill_mode (value : Properties.animation_fill_mode) =
-  match value with Var v -> [ V v ] | _ -> []
+let rec vars_of_animation_fill_mode (value : Properties.animation_fill_mode) =
+  match value with
+  | Var v -> [ V v ]
+  | Fill_modes values -> List.concat_map vars_of_animation_fill_mode values
+  | _ -> []
 
 let rec vars_of_animation_play_state (value : Properties.animation_play_state) =
   match value with

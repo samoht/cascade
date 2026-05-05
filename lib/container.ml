@@ -46,31 +46,50 @@ let range_operator_to_string = function
   | Gt -> ">"
   | Gte -> ">="
 
-let style_query_to_string = function
+let style_query_to_string ~minify = function
   | Boolean name -> name
-  | Declaration { name; value } -> name ^ ": " ^ components_to_string value
+  | Declaration { name; value } ->
+      let sep = if minify then ":" else ": " in
+      String.concat "" [ name; sep; components_to_string value ]
   | Range { lower; lower_op; name; upper_op; upper } ->
-      components_to_string lower ^ " "
-      ^ range_operator_to_string lower_op
-      ^ " " ^ name ^ " "
-      ^ range_operator_to_string upper_op
-      ^ " " ^ components_to_string upper
+      let sep = if minify then "" else " " in
+      String.concat ""
+        [
+          components_to_string lower;
+          sep;
+          range_operator_to_string lower_op;
+          sep;
+          name;
+          sep;
+          range_operator_to_string upper_op;
+          sep;
+          components_to_string upper;
+        ]
 
-let rec scroll_state_query_to_string = function
-  | State { name; value } -> name ^ ": " ^ value
+let rec scroll_state_query_to_string ~minify = function
+  | State { name; value } ->
+      let sep = if minify then ":" else ": " in
+      String.concat "" [ name; sep; value ]
   | Both (a, b) ->
-      "("
-      ^ scroll_state_query_to_string a
-      ^ ") and ("
-      ^ scroll_state_query_to_string b
-      ^ ")"
+      String.concat ""
+        [
+          "(";
+          scroll_state_query_to_string ~minify a;
+          ") and (";
+          scroll_state_query_to_string ~minify b;
+          ")";
+        ]
   | Either (a, b) ->
-      "("
-      ^ scroll_state_query_to_string a
-      ^ ") or ("
-      ^ scroll_state_query_to_string b
-      ^ ")"
-  | Negated q -> "not (" ^ scroll_state_query_to_string q ^ ")"
+      String.concat ""
+        [
+          "(";
+          scroll_state_query_to_string ~minify a;
+          ") or (";
+          scroll_state_query_to_string ~minify b;
+          ")";
+        ]
+  | Negated q ->
+      String.concat "" [ "not ("; scroll_state_query_to_string ~minify q; ")" ]
 
 let rec to_string_with ~minify t =
   match t with
@@ -82,10 +101,10 @@ let rec to_string_with ~minify t =
   | Named (name, cond) -> name ^ " " ^ to_string_with ~minify cond
   | Style { query; uppercase } ->
       let head = if uppercase then "STYLE(" else "style(" in
-      head ^ style_query_to_string query ^ ")"
+      head ^ style_query_to_string ~minify query ^ ")"
   | Scroll_state { query; uppercase } ->
       let head = if uppercase then "SCROLL-STATE(" else "scroll-state(" in
-      head ^ scroll_state_query_to_string query ^ ")"
+      String.concat "" [ head; scroll_state_query_to_string ~minify query; ")" ]
   | And (a, b) ->
       "(" ^ to_string_with ~minify a ^ " and " ^ to_string_with ~minify b ^ ")"
   | Or (a, b) ->
