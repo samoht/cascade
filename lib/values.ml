@@ -1517,7 +1517,7 @@ let pp_color_space : color_space Pp.t =
 let rec pp_color_in_mix : color Pp.t =
  fun ctx -> function
   | Current -> Pp.string ctx "currentcolor" (* lowercase in color-mix *)
-  | c -> pp_color { ctx with in_function = true } c
+  | c -> pp_color ctx c
 
 and pp_color_mix ctx in_space hue color1 percent1 color2 percent2 =
   Pp.call "color-mix"
@@ -1673,15 +1673,15 @@ and pp_color : color Pp.t =
   | Oklch { l; c; h; alpha } -> pp_oklch ctx (l, c, h, alpha)
   | Oklab { l; a; b; alpha } -> pp_oklab ctx (l, a, b, alpha)
   | Lch { l; c; h; alpha } -> pp_lch ctx (l, c, h, alpha)
-  | Named name when Pp.minified ctx && not ctx.in_function ->
-      (* At top-level (not inside [color-mix] / [light-dark] / etc.), route a
-         directly-spelled named colour through the [Hex] arm so the same
-         shortest-on-tie rule applies whether the source was [black] or
-         [#000000]. Inside a color function the source name is a deliberate
-         choice that the printer preserves verbatim ([color-mix(in srgb,red,
-         blue)] keeps the [blue] spelling). [color_name_hex] returns the empty
-         string for extended names whose hex form is never shorter
-         ([rebeccapurple], [dodgerblue], etc.); in that case keep the name. *)
+  | Named name when Pp.minified ctx ->
+      (* Route a directly-spelled named colour through the [Hex] arm so the
+         shortest-on-tie rule applies uniformly: a static named colour minifies
+         to its shortest spec-equivalent spelling regardless of where it sits
+         (top-level declaration, [color-mix] argument, [light-dark] fork).
+         Unresolved [Var] residuals and other dynamic values stay structural via
+         their own arms. [color_name_hex] returns the empty string for extended
+         names whose hex form is never shorter ([rebeccapurple], [dodgerblue],
+         etc.); in that case keep the source name spelling. *)
       let _, hex = color_name_hex name in
       if hex = "" then pp_color_name ctx name
       else pp_color ctx (Hex { hash = true; value = hex })
