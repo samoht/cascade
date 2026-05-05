@@ -1194,6 +1194,43 @@ let hwb_to_rgb_bytes ~hue ~whiteness ~blackness =
    the six primary/secondary hues are addressed, since they are the only ones
    whose name is shorter than the equivalent [#hex] form. *)
 
+(* Parse a single hex digit. *)
+let hex_digit c =
+  match c with
+  | '0' .. '9' -> Some (Char.code c - Char.code '0')
+  | 'a' .. 'f' -> Some (Char.code c - Char.code 'a' + 10)
+  | 'A' .. 'F' -> Some (Char.code c - Char.code 'A' + 10)
+  | _ -> Option.None
+
+(* Parse a [Hex.value] string ([RGB], [RGBA], [RRGGBB], [RRGGBBAA]) into (r, g,
+   b, a) bytes. Returns [None] for malformed lengths. *)
+let hex_to_rgba_bytes s =
+  let pair a b =
+    Option.bind (hex_digit a) (fun ah ->
+        Option.map (fun bh -> (ah lsl 4) lor bh) (hex_digit b))
+  in
+  let single c = Option.map (fun h -> (h lsl 4) lor h) (hex_digit c) in
+  match String.length s with
+  | 3 -> (
+      match (single s.[0], single s.[1], single s.[2]) with
+      | Some r, Some g, Some b -> Some (r, g, b, 255)
+      | _ -> Option.None)
+  | 4 -> (
+      match (single s.[0], single s.[1], single s.[2], single s.[3]) with
+      | Some r, Some g, Some b, Some a -> Some (r, g, b, a)
+      | _ -> Option.None)
+  | 6 -> (
+      match (pair s.[0] s.[1], pair s.[2] s.[3], pair s.[4] s.[5]) with
+      | Some r, Some g, Some b -> Some (r, g, b, 255)
+      | _ -> Option.None)
+  | 8 -> (
+      match
+        (pair s.[0] s.[1], pair s.[2] s.[3], pair s.[4] s.[5], pair s.[6] s.[7])
+      with
+      | Some r, Some g, Some b, Some a -> Some (r, g, b, a)
+      | _ -> Option.None)
+  | _ -> Option.None
+
 (* The numeric value of a channel when it is a plain [Int] or integer-valued
    [Num]/[Pct]. Returns [None] for [Var]/[Calc] inputs which the printer cannot
    canonicalise. *)
@@ -1221,6 +1258,89 @@ let rgb_to_hex_string r g b =
       Some (byte_to_hex_byte r ^ byte_to_hex_byte g ^ byte_to_hex_byte b)
   | _ -> None
 
+(* Reduce any all-static colour to its sRGB byte channels and alpha. Returns
+   [None] for colours that contain a [Var] / [Calc] / [Current] component or
+   that can't be folded statically (e.g. an unhandled [Color { space; ... }] in
+   a colour space other than sRGB). The caller can then route through the [Hex]
+   arm to pick the shortest spec-equivalent spelling. *)
+let static_color_to_srgb_bytes : color -> (int * int * int * int) option =
+  function
+  | Hex { value; _ } -> hex_to_rgba_bytes value
+  | Rgb (Channels { r; g; b }) -> (
+      match
+        (channel_byte_value r, channel_byte_value g, channel_byte_value b)
+      with
+      | Some r, Some g, Some b -> Some (r, g, b, 255)
+      | _ -> Option.None)
+  | Rgba { rgb = Channels { r; g; b }; a } -> (
+      match
+        ( channel_byte_value r,
+          channel_byte_value g,
+          channel_byte_value b,
+          alpha_value_byte a )
+      with
+      | Some r, Some g, Some b, Some a -> Some (r, g, b, a)
+      | _ -> Option.None)
+  | Hsl { h; s; l; a } -> (
+      match (hue_to_deg h, percentage_to_float s, percentage_to_float l) with
+      | Some hue, Some saturation, Some lightness -> (
+          let hue = normalize_hue hue in
+          let r, g, b = hsl_to_rgb_bytes ~hue ~saturation ~lightness in
+          match alpha_value_byte a with
+          | Some av -> Some (r, g, b, av)
+          | Option.None -> Option.None)
+      | _ -> Option.None)
+  | Hwb { h; w; b; a } -> (
+      match (hue_to_deg h, percentage_to_float w, percentage_to_float b) with
+      | Some hue, Some whiteness, Some blackness -> (
+          let hue = normalize_hue hue in
+          let r, g, blue = hwb_to_rgb_bytes ~hue ~whiteness ~blackness in
+          match alpha_value_byte a with
+          | Some av -> Some (r, g, blue, av)
+          | Option.None -> Option.None)
+      | _ -> Option.None)
+  | Named name ->
+      let _, hex = color_name_hex name in
+      if hex = "" then Option.None else hex_to_rgba_bytes hex
+  | Transparent -> Some (0, 0, 0, 0)
+  | _ -> Option.None
+
+(* CSS Color 5 5: combine two [color-mix] percentages into the final
+   per-component weights and an [alpha] multiplier. [p1] / [p2] are in [0..100];
+   missing values are normalised by the caller. *)
+let mix_weights p1 p2 : (float * float * float) option =
+  let sum = p1 +. p2 in
+  if sum <= 0. then None
+  else
+    let w1 = p1 /. sum in
+    let w2 = p2 /. sum in
+    let alpha_mult = if sum >= 100. then 1. else sum /. 100. in
+    Some (w1, w2, alpha_mult)
+
+(* Linearly interpolate two byte channels to a byte. *)
+let lerp_byte b1 b2 w1 w2 =
+  Float.to_int
+    (Float.round ((Float.of_int b1 *. w1) +. (Float.of_int b2 *. w2)))
+
+(* Mix two static colours in sRGB per CSS Color 5 5; returns [None] if either
+   colour can't be folded statically or the percentages reduce to zero
+   weight. *)
+let mix_srgb_bytes c1 c2 ~p1 ~p2 =
+  match (static_color_to_srgb_bytes c1, static_color_to_srgb_bytes c2) with
+  | Some (r1, g1, b1, a1), Some (r2, g2, b2, a2) -> (
+      match mix_weights p1 p2 with
+      | None -> Option.None
+      | Some (w1, w2, alpha_mult) ->
+          let r = lerp_byte r1 r2 w1 w2 in
+          let g = lerp_byte g1 g2 w1 w2 in
+          let b = lerp_byte b1 b2 w1 w2 in
+          let alpha_pre = lerp_byte a1 a2 w1 w2 in
+          let a =
+            Float.to_int (Float.round (Float.of_int alpha_pre *. alpha_mult))
+          in
+          Some (r, g, b, a))
+  | _ -> Option.None
+
 (* Reverse of [color_name_hex] for the named-color set whose hex form is short
    enough to be a candidate. The map is keyed on the shortened hex spelling so
    [shorten_hex "#ff0000"] and [#f00] both resolve to the same name. *)
@@ -1244,6 +1364,8 @@ let named_for_hex value =
   | "000080" -> Some "navy"
   | "008080" -> Some "teal"
   | _ -> None
+
+let _ = mix_srgb_bytes
 
 (** Minify a color value by converting named colors to hex when shorter,
     matching Lightning CSS behavior. *)
@@ -1762,6 +1884,59 @@ and pp_color : color Pp.t =
   | Unset -> Pp.string ctx "unset"
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
+  | Mix
+      {
+        in_space = Some Srgb;
+        hue = Default;
+        color1;
+        percent1;
+        color2;
+        percent2;
+      }
+    when Pp.minified ctx -> (
+      (* CSS Color 5 5: a [color-mix(in srgb, c1 P1%, c2 P2%)] with all-static
+         components reduces to a concrete sRGB byte triple. Route through the
+         [Hex] arm so the printer picks the shortest spec-equivalent spelling
+         ([color-mix(in srgb,red,blue) -> purple], where the [#800080] hex
+         resolves to the named [purple]). Symbolic percentages or inputs that
+         can't fold fall through to the structural [pp_color_mix] form. *)
+      let p1 =
+        match percent1 with None -> Some 50. | Some p -> percentage_to_float p
+      in
+      let p2 =
+        match (percent1, percent2) with
+        | _, Some p -> percentage_to_float p
+        | Some _, None ->
+            Option.bind (Option.bind percent1 percentage_to_float) (fun p1 ->
+                Some (Float.max 0. (100. -. p1)))
+        | None, None -> Some 50.
+      in
+      match (p1, p2) with
+      | Some p1, Some p2 -> (
+          match mix_srgb_bytes color1 color2 ~p1 ~p2 with
+          | Some (r, g, b, 255) ->
+              pp_color ctx
+                (Hex
+                   {
+                     hash = true;
+                     value =
+                       byte_to_hex_byte r ^ byte_to_hex_byte g
+                       ^ byte_to_hex_byte b;
+                   })
+          | Some (r, g, b, a) ->
+              pp_color ctx
+                (Hex
+                   {
+                     hash = true;
+                     value =
+                       byte_to_hex_byte r ^ byte_to_hex_byte g
+                       ^ byte_to_hex_byte b ^ byte_to_hex_byte a;
+                   })
+          | Option.None ->
+              pp_color_mix ctx (Some Srgb) Default color1 percent1 color2
+                percent2)
+      | _ ->
+          pp_color_mix ctx (Some Srgb) Default color1 percent1 color2 percent2)
   | Mix { in_space; hue; color1; percent1; color2; percent2 } ->
       pp_color_mix ctx in_space hue color1 percent1 color2 percent2
 
