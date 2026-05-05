@@ -55,7 +55,7 @@ let optimization_flag () =
   in
 
   let css_optimized = Css.to_string ~minify:true ~optimize:true stylesheet in
-  Alcotest.(check string) "optimized exact" ".btn{color:blue}\n" css_optimized
+  Alcotest.(check string) "optimized exact" ".btn{color:#00f}\n" css_optimized
 
 (* Test layers work end-to-end *)
 let layers_integration () =
@@ -126,7 +126,7 @@ let custom_properties_integration () =
 
   let css = Css.to_string ~minify:true stylesheet in
   Alcotest.(check string)
-    "custom properties exact" ".btn{--primary-color:blue;color:blue}\n" css
+    "custom properties exact" ".btn{--primary-color:blue;color:#00f}\n" css
 
 (* Regression: a custom property name starting with a digit after the -- is a
    valid dashed-ident per CSS Syntax §4.3.11. Tailwind emits these for
@@ -291,7 +291,7 @@ let test_map () =
 
   let css = Css.to_string ~minify:true (v mapped) in
   Alcotest.(check string)
-    "map changes all rules" ".foo{color:blue}.bar{color:blue}\n" css
+    "map changes all rules" ".foo{color:#00f}.bar{color:#00f}\n" css
 
 (* Test Css.map with nested media queries *)
 let test_map_nested () =
@@ -318,7 +318,7 @@ let test_map_nested () =
   let css = Css.to_string ~minify:true (v mapped) in
   Alcotest.(check bool)
     "map descends into media" true
-    (Astring.String.is_infix ~affix:"color:blue" css)
+    (Astring.String.is_infix ~affix:"color:#00f" css)
 
 let test_spec_map_conditional_boundaries () =
   let recolor sel _decls =
@@ -343,10 +343,10 @@ let test_spec_map_conditional_boundaries () =
   let css = Css.to_string ~minify:true (v mapped) in
   Alcotest.(check bool)
     "map descends through supports/container" true
-    (Astring.String.is_infix ~affix:".title{color:blue}" css);
+    (Astring.String.is_infix ~affix:".title{color:#00f}" css);
   Alcotest.(check bool)
     "map descends through layer" true
-    (Astring.String.is_infix ~affix:".inside{color:blue}" css);
+    (Astring.String.is_infix ~affix:".inside{color:#00f}" css);
   Alcotest.(check bool)
     "map preserves condition boundaries" true
     (Astring.String.is_infix ~affix:"@supports" css

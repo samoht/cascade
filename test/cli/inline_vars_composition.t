@@ -101,4 +101,4 @@ sequence, preserving the list separator.
   > .a { background: linear-gradient(var(--colors)) }
   > EOF
   $ cascade --minify --inline-vars list.css
-  .a{background:linear-gradient(red,blue,green)}
+  .a{background:linear-gradient(red,#00f,green)}

@@ -23,7 +23,7 @@ entry's own rules are preserved.
   > .e { color: green }
   > EOF
   $ cascade --minify --inline-imports entry-broken.css 2>&1 | grep -v "warning"
-  .ok{color:blue}.e{color:green}
+  .ok{color:#00f}.e{color:green}
 
 A non-CSS binary file referenced by @import: parse errors yield warnings
 and no content is inlined.
@@ -74,7 +74,7 @@ statements).
   > }
   > EOF
   $ cascade --minify --inline-imports deep-nested.css 2>&1 | grep -v "warning"
-  @media print{@media (min-width:30em){.x{color:blue}}}
+  @media print{@media (min-width:30em){.x{color:#00f}}}
 
 @import with a [var()]-driven URL is invalid - the URL must be a
 parse-time literal, not a computed reference.

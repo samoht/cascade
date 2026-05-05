@@ -22,7 +22,7 @@ A layered @import wraps the inlined content in @layer.
   > @import url("theme.css") layer(theme);
   > EOF
   $ cascade --minify --inline-imports layered.css
-  @layer theme{.btn{background:blue}}
+  @layer theme{.btn{background:#00f}}
 
 A @supports condition on @import wraps the inlined content in @supports.
 
@@ -81,7 +81,7 @@ dotted-name layer block.
   > .e { padding: 0 }
   > EOF
   $ cascade --minify --inline-imports nested-layer.css
-  @layer base;@layer base.theme{.btn{background:blue}}.e{padding:0}
+  @layer base;@layer base.theme{.btn{background:#00f}}.e{padding:0}
 
 @import url(...) layer() with empty parens wraps in anonymous @layer.
 
@@ -120,4 +120,4 @@ imports wraps the inner condition inside the outer condition.
   > .e { padding: 0 }
   > EOF
   $ cascade --minify --inline-imports entry-deep-cond.css
-  @media screen{@media (min-width:30em){.deep{color:red}}.middle{color:blue}}.e{padding:0}
+  @media screen{@media (min-width:30em){.deep{color:red}}.middle{color:#00f}}.e{padding:0}

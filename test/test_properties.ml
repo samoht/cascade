@@ -1579,7 +1579,7 @@ let test_background_box () =
 let test_background () =
   check_background "red";
   check_background "url(image.png)";
-  check_background ~expected:"linear-gradient(to right,red,blue)"
+  check_background ~expected:"linear-gradient(to right,red,#00f)"
     "linear-gradient(to right, red, blue)";
   check_background ~expected:"url(image.png) center/cover no-repeat fixed red"
     "red url(image.png) center/cover no-repeat fixed";
@@ -1705,7 +1705,7 @@ let test_text_decoration_shorthand () =
   (* Test order independence *)
   check_text_decoration_shorthand ~expected:"underline solid red"
     "red solid underline";
-  check_text_decoration_shorthand ~expected:"underline wavy blue 3px"
+  check_text_decoration_shorthand ~expected:"underline wavy #00f 3px"
     "3px wavy blue underline";
   neg_cursor read_text_decoration_shorthand "invalid-decoration";
   neg_cursor read_text_decoration_shorthand "underline underline";
@@ -1763,7 +1763,7 @@ let test_border_shorthand () =
   check_border_shorthand "1px solid";
   check_border_shorthand "1px solid red";
   check_border_shorthand ~expected:"solid red" "red solid";
-  check_border_shorthand ~expected:"2px dashed blue" "blue 2px dashed";
+  check_border_shorthand ~expected:"2px dashed #00f" "blue 2px dashed";
   neg_cursor read_border_shorthand "1px 2px"
 
 let test_justify_items () =
@@ -2190,7 +2190,7 @@ let test_color_interpolation () =
 let test_background_image () =
   check_background_image "none";
   check_background_image "url(image.jpg)";
-  check_background_image ~expected:"linear-gradient(to right,red,blue)"
+  check_background_image ~expected:"linear-gradient(to right,red,#00f)"
     "linear-gradient(to right, red, blue)";
   neg_cursor read_background_image "invalid-image"
 
@@ -3038,7 +3038,7 @@ let spec_generated_box_layout_edges () =
   check_line_break "anywhere";
   check_line_fit_edge "text alphabetic";
   check_line_fit_edge_keyword "ideographic-ink";
-  check_logical_border_color "red blue";
+  check_logical_border_color ~expected:"red #00f" "red blue";
   check_min_intrinsic_sizing "legacy zero-if-scroll";
   check_min_intrinsic_sizing_keyword "zero-if-extrinsic";
   check_overflow_clip_box "content-box";
@@ -3123,7 +3123,7 @@ let spec_generated_position_interaction_edges () =
   check_ruby_overhang "none";
   check_ruby_position "alternate over";
   check_ruby_position_keyword "inter-character";
-  check_scrollbar_color "red blue";
+  check_scrollbar_color ~expected:"red #00f" "red blue";
   check_scrollbar_gutter "stable both-edges";
   check_scrollbar_width "thin";
   neg_cursor read_anchor_name "none --x";

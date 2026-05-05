@@ -19,7 +19,7 @@ Nested var() in fallback chains through to the deepest defined value.
   > .b { color: var(--undef, var(--also-undef, var(--third, fallback))) }
   > EOF
   $ cascade --minify --inline-vars nested.css
-  .a{color:blue}.b{color:fallback}
+  .a{color:#00f}.b{color:fallback}
 
 A var() with no fallback that cannot resolve preserves the var()
 verbatim - the spec says the declaration is invalid at computed time;

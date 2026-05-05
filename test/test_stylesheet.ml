@@ -59,7 +59,8 @@ let test_rule () =
 let test_stylesheet () =
   (* Test basic stylesheet parsing *)
   check_stylesheet ".btn{color:red}";
-  check_stylesheet "body{margin:0}.btn{color:blue}";
+  check_stylesheet ~expected:"body{margin:0}.btn{color:#00f}"
+    "body{margin:0}.btn{color:blue}";
 
   (* Test stylesheet with at-rules *)
   check_stylesheet "@media screen{.btn{color:green}}";
@@ -76,7 +77,7 @@ let test_stylesheet () =
   check_stylesheet
     ~expected:"@media screen and (max-width:640px){.btn{font-size:.875rem}}"
     "@media screen and (max-width: 640px){.btn{font-size:.875rem}}";
-  check_stylesheet ~expected:"@media screen{.test{color:blue}}"
+  check_stylesheet ~expected:"@media screen{.test{color:#00f}}"
     "@media screen { .test { color: blue } }";
   check_stylesheet ~expected:"@supports (display:grid){.grid{display:grid}}"
     "@supports (display: grid) { .grid { display: grid } }";
@@ -512,7 +513,7 @@ let test_layer_pp () =
   let sheet = Css.Stylesheet.v [ layer_stmt ] in
   let output = Css.Stylesheet.pp ~minify:true ~newline:false sheet in
   Alcotest.(check string)
-    "layer pp" "@layer utilities{.blue{color:blue}}" output;
+    "layer pp" "@layer utilities{.blue{color:#00f}}" output;
 
   (* Test empty layer - per CSS spec, empty @layer statements end with
      semicolon *)
@@ -827,7 +828,7 @@ let sheet_item_case () =
       ("@import 'test.css';", "@import 'test.css';");
       (".class { color: red; }", ".class{color:red}");
       ( "@media print { .class { color: black; } }",
-        "@media print{.class{color:black}}" );
+        "@media print{.class{color:#000}}" );
       ( "@layer base { .btn { padding: 10px; } }",
         "@layer base{.btn{padding:10px}}" );
       ( "@property --var { syntax: \"*\"; inherits: false; }",
@@ -1161,7 +1162,7 @@ let stylesheet_tests =
 let test_check () =
   (* Test basic stylesheet parsing using check function *)
   check ~expected:".test{color:red}" ".test { color: red }";
-  check ~expected:"@media screen{.test{color:blue}}"
+  check ~expected:"@media screen{.test{color:#00f}}"
     "@media screen { .test { color: blue } }"
 
 let test_import_rule () =
@@ -1197,13 +1198,13 @@ let test_config () =
 
 (* Not a roundtrip test *)
 let test_advanced_selectors () =
-  check_stylesheet ~expected:".btn:hover{color:blue}"
+  check_stylesheet ~expected:".btn:hover{color:#00f}"
     ".btn:hover { color: blue; }";
   check_stylesheet ~expected:".btn:before{content:\"icon\"}"
     ".btn::before { content: 'icon'; }";
   (* Attribute values that are valid identifiers get normalized to unquoted
      form *)
-  check_stylesheet ~expected:".btn[data-type=primary]{background:blue}"
+  check_stylesheet ~expected:".btn[data-type=primary]{background:#00f}"
     ".btn[data-type='primary'] { background: blue; }";
   check_stylesheet ~expected:".parent>.child{margin:0}"
     ".parent > .child { margin: 0; }";
@@ -1223,7 +1224,7 @@ let test_advanced_properties () =
   check_stylesheet ~expected:".shadow{box-shadow:0 4px 8px rgb(0 0 0/.2)}"
     ".shadow { box-shadow: 0 4px 8px rgba(0,0,0,0.2); }";
   check_stylesheet
-    ~expected:".gradient{background:linear-gradient(to right,red,blue)}"
+    ~expected:".gradient{background:linear-gradient(to right,red,#00f)}"
     ".gradient { background: linear-gradient(to right, red, blue); }"
 
 (* Not a roundtrip test *)
@@ -1232,7 +1233,7 @@ let test_complex_values () =
     ".calc { width: calc(100% - 20px); }";
   check_stylesheet ~expected:".multi{margin:10px 20px 30px 40px}"
     ".multi { margin: 10px 20px 30px 40px; }";
-  check_stylesheet ~expected:".var{color:var(--primary-color,blue)}"
+  check_stylesheet ~expected:".var{color:var(--primary-color,#00f)}"
     ".var { color: var(--primary-color, blue); }";
   check_stylesheet ~expected:".clamp{font-size:clamp(1rem,2vw,2rem)}"
     ".clamp { font-size: clamp(1rem, 2vw, 2rem); }";
@@ -1270,7 +1271,7 @@ let spec_s7_block_examples () =
      block contents, then validated by the rule grammar that owns the block. *)
   check_stylesheet ~expected:"@media print{body{font-size:10pt}}"
     "@media print { body { font-size: 10pt } }";
-  check_stylesheet ~expected:"p>a{color:blue;text-decoration:underline}"
+  check_stylesheet ~expected:"p>a{color:#00f;text-decoration:underline}"
     "p > a { color: blue; text-decoration: underline; }";
   check_stylesheet
     ~expected:"@font-face {font-family:MyFont;src:url(font.woff2)}"
@@ -1279,7 +1280,7 @@ let spec_s7_block_examples () =
     "@page :left { margin-left: 4cm; margin-right: 3cm; }";
   check_stylesheet ~expected:"@keyframes slide{0%{opacity:0}to{opacity:1}}"
     "@keyframes slide { 0% { opacity: 0 } 100% { opacity: 1 } }";
-  check_stylesheet ~expected:".card{color:red;& .title{color:blue}}"
+  check_stylesheet ~expected:".card{color:red;& .title{color:#00f}}"
     ".card { color: red; & .title { color: blue; } }";
   expect_parse_error "@media print { color: red; body { font-size: 10pt } }";
   expect_parse_error "@keyframes slide { color: red; 50% { opacity: 1 } }";
@@ -1290,7 +1291,7 @@ let spec_s8_rule_shapes () =
   (* CSS Syntax Level 3 sections 8.1 and 8.2: top-level qualified rules are
      style rules, and at-rules are either statement or block rules depending on
      whether they end with a semicolon or a {} block. *)
-  check_stylesheet ~expected:"p>a{color:blue}" "p > a { color: blue }";
+  check_stylesheet ~expected:"p>a{color:#00f}" "p > a { color: blue }";
   check_stylesheet ~expected:"@import \"theme.css\";" "@import \"theme.css\";";
   check_stylesheet ~expected:"@media print{body{font-size:10pt}}"
     "@media print { body { font-size: 10pt } }";
@@ -1372,7 +1373,7 @@ let css_syntax_recovery () =
     1;
   check_recovery "unknown at-rule"
     "@unknown-rule { .bad { color: red } } .ok { color: blue }"
-    ".ok{color:blue}" 1
+    ".ok{color:#00f}" 1
 
 let css_syntax_recovery_structural () =
   let declaration_counts stylesheet =
@@ -2365,8 +2366,7 @@ let test_spec_snapshot_tracking_vectors () =
      } }";
   check_stylesheet
     ~expected:
-      ".card{color:var(--fg);@media \
-       (prefers-color-scheme:dark){&{color:white}}}"
+      ".card{color:var(--fg);@media (prefers-color-scheme:dark){&{color:#fff}}}"
     ".card { color: var(--fg); @media (prefers-color-scheme: dark) { & { \
      color: white } } }";
   neg_cursor read_stylesheet "@layer reset,,base;";
@@ -2471,14 +2471,14 @@ let test_nesting_idempotent input =
 (* ignore-test *)
 let test_nesting_basic () =
   (* Basic nesting with & descendant combinator *)
-  test_nesting_roundtrip ~expected:".parent{color:red;& .child{color:blue}}"
+  test_nesting_roundtrip ~expected:".parent{color:red;& .child{color:#00f}}"
     ".parent { color: red; & .child { color: blue; } }";
   test_nesting_idempotent ".parent { color: red; & .child { color: blue; } }"
 
 (* ignore-test *)
 let test_nesting_ampersand_hover () =
   (* Ampersand with pseudo-class *)
-  test_nesting_roundtrip ~expected:".btn{color:red;&:hover{color:blue}}"
+  test_nesting_roundtrip ~expected:".btn{color:red;&:hover{color:#00f}}"
     ".btn { color: red; &:hover { color: blue; } }";
   test_nesting_idempotent ".btn { color: red; &:hover { color: blue; } }"
 
@@ -2498,7 +2498,7 @@ let test_nesting_multiple () =
 let test_nesting_media () =
   (* Nested @media query inside a rule *)
   test_nesting_roundtrip
-    ~expected:".foo{color:red;@media (min-width:768px){color:blue;}}"
+    ~expected:".foo{color:red;@media (min-width:768px){color:#00f;}}"
     ".foo { color: red; @media (min-width: 768px) { color: blue; } }";
   test_nesting_idempotent
     ".foo { color: red; @media (min-width: 768px) { color: blue; } }"
@@ -2522,9 +2522,9 @@ let test_nesting_with_declarations () =
 (* ignore-test *)
 let test_nesting_check_stylesheet () =
   (* Also test via check_stylesheet for consistency *)
-  check_stylesheet ~expected:".parent{color:red;& .child{color:blue}}"
+  check_stylesheet ~expected:".parent{color:red;& .child{color:#00f}}"
     ".parent { color: red; & .child { color: blue; } }";
-  check_stylesheet ~expected:".btn{color:red;&:hover{color:blue}}"
+  check_stylesheet ~expected:".btn{color:red;&:hover{color:#00f}}"
     ".btn { color: red; &:hover { color: blue; } }";
   check_stylesheet ~expected:".a{& .b{& .c{color:red}}}"
     ".a { & .b { & .c { color: red; } } }"
@@ -2532,7 +2532,7 @@ let test_nesting_check_stylesheet () =
 let spec_nesting_selector_edges () =
   check_stylesheet
     ~expected:
-      ".card{color:red;&:is(:hover,:focus-visible){color:blue}&:has(>img){display:grid}}"
+      ".card{color:red;&:is(:hover,:focus-visible){color:#00f}&:has(>img){display:grid}}"
     ".card { color: red; &:is(:hover, :focus-visible) { color: blue } &:has(> \
      img) { display: grid } }";
   check_stylesheet
@@ -2543,7 +2543,7 @@ let spec_nesting_selector_edges () =
      @container (inline-size > 30em) { & > .media { display: block } } }";
   check_stylesheet
     ~expected:
-      "@scope(.card) to (.boundary){.title{color:red;&:hover{color:blue}}}"
+      "@scope(.card) to (.boundary){.title{color:red;&:hover{color:#00f}}}"
     "@scope (.card) to (.boundary) { .title { color: red; &:hover { color: \
      blue } } }";
   check_stylesheet
@@ -2568,14 +2568,14 @@ let nesting_module_l1_preserves_structure () =
   let printed = String.trim (Css.Stylesheet.to_string ~minify:true sheet) in
   Alcotest.(check string)
     "parse + print keeps nested rules nested"
-    ".card{color:red;& .title{color:blue}&:hover{color:green}}" printed;
+    ".card{color:red;& .title{color:#00f}&:hover{color:green}}" printed;
   let optimized = Css.Optimize.stylesheet sheet in
   let opt_printed =
     String.trim (Css.Stylesheet.to_string ~minify:true optimized)
   in
   Alcotest.(check string)
     "optimize keeps nested rules nested (no flattening)"
-    ".card{color:red;& .title{color:blue}&:hover{color:green}}" opt_printed
+    ".card{color:red;& .title{color:#00f}&:hover{color:green}}" opt_printed
 
 (* CSS Cascade Module Level 6, section 2 (Importing Style Sheets): @import
    identifies an external style sheet by URL. The cascade treats the import as a
@@ -2633,7 +2633,7 @@ let s3_4_3_2_source_map_pragma_is_a_comment () =
       ( "pragma between rules",
         ".a { color: red } /*# sourceMappingURL=app.css.map */ .b { color: \
          blue }",
-        ".a{color:red}.b{color:blue}" );
+        ".a{color:red}.b{color:#00f}" );
       ( "pragma at end of file",
         ".a { color: red } /*# sourceMappingURL=app.css.map */",
         ".a{color:red}" );
@@ -2872,6 +2872,39 @@ let color4_1_4_color_form_equivalence () =
             (form ^ " is spec-equivalent to " ^ first)
             first_canonical (canonical form))
         rest
+
+(* CSS Color Module Level 4 defines named colors and hex colors as alternate
+   notations for the same sRGB colors. For minification, the suite uses a single
+   deterministic shortest-form policy: choose the shortest spelling, and when a
+   named color and a short hex spelling are the same length, choose hex. This
+   matches the pinned Lightning CSS trace for equal-length examples such as
+   [yellow] -> [#ff0] and keeps parse -> minify -> parse -> minify idempotent
+   for [blue] / [#00f] and [lime] / [#0f0]. *)
+let color4_named_hex_minification_tie_policy () =
+  let normalize css =
+    match Css.of_string css with
+    | Ok sheet -> Css.to_string ~minify:true sheet |> String.trim
+    | Error _ -> Alcotest.failf "failed to parse: %s" css
+  in
+  let cases =
+    [
+      ("red is shorter than #f00", ".x{color:red}", ".x { color: red }");
+      ("blue ties #00f, hex wins", ".x{color:#00f}", ".x { color: blue }");
+      ("#0000ff shortens to #00f", ".x{color:#00f}", ".x { color: #0000ff }");
+      ("lime ties #0f0, hex wins", ".x{color:#0f0}", ".x { color: lime }");
+      ( "hsl green canonicalizes through the same tie policy",
+        ".x{color:#0f0}",
+        ".x { color: hsl(120 100% 50%) }" );
+      ("yellow ties #ff0, hex wins", ".x{color:#ff0}", ".x { color: yellow }");
+      ("black uses shorter hex", ".x{color:#000}", ".x { color: black }");
+      ("white uses shorter hex", ".x{color:#fff}", ".x { color: white }");
+      ("gray is shorter than #808080", ".x{color:gray}", ".x { color: gray }");
+    ]
+  in
+  List.iter
+    (fun (name, expected, css) ->
+      Alcotest.(check string) name expected (normalize css))
+    cases
 
 (* CSS Values and Units Module Level 4, section 6.5 (Mixing Percentages and
    Dimensions): [<length-percentage>] accepts either a length or a percentage.
@@ -3685,7 +3718,7 @@ let c6_4_named_layers_preserve_order () =
     (Astring.String.is_infix ~affix:"color:red" output);
   Alcotest.(check bool)
     "@layer theme block remains" true
-    (Astring.String.is_infix ~affix:"color:blue" output);
+    (Astring.String.is_infix ~affix:"color:#00f" output);
   Alcotest.(check bool)
     "second @layer base block remains separate" true
     (Astring.String.is_infix ~affix:"padding:10px" output);
@@ -3693,7 +3726,7 @@ let c6_4_named_layers_preserve_order () =
     "the @layer theme block is positioned between the two @layer base blocks"
     true
     (let find sub = Astring.String.find_sub ~sub output in
-     match (find "color:red", find "color:blue", find "padding:10px") with
+     match (find "color:red", find "color:#00f", find "padding:10px") with
      | Some r, Some t, Some p -> r < t && t < p
      | _ -> false)
 
@@ -5437,6 +5470,9 @@ let additional_tests =
     ( "spec color 4 1.4 color form equivalence",
       `Quick,
       color4_1_4_color_form_equivalence );
+    ( "spec color 4 named/hex minification tie policy",
+      `Quick,
+      color4_named_hex_minification_tie_policy );
     ( "spec values 4 6.5 zero percentage length equivalence",
       `Quick,
       v4_6_5_zero_percentage_length_equivalence );
