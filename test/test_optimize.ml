@@ -450,8 +450,8 @@ let test_nonconsecutive_media_unmerged () =
 
   Alcotest.(check string)
     "non-consecutive media queries preserve source order"
-    "@media (min-width:48px){.a{color:red}}.a{color:#0f0}@media \
-     (min-width:48px){.c{color:#00f}}"
+    "@media (width>=48px){.a{color:red}}.a{color:#0f0}@media \
+     (width>=48px){.c{color:#00f}}"
     output
 
 (** Test media queries with different conditions are NOT merged *)
@@ -619,6 +619,68 @@ let test_positive_empty_named_layers_to_statement () =
     "empty named layer blocks canonicalize to layer statement"
     "@layer reset,theme;@layer components{.card{display:flex}}" output
 
+let test_tailwind_empty_components_utilities_layers_to_statement () =
+  (* Tailwind's layered output commonly leaves empty components/utilities layer
+     markers. CSS Cascade allows a statement form for named empty layers, and
+     the shortest faithful spelling combines adjacent declarations. *)
+  let input =
+    [
+      Css.Stylesheet.Layer (Some "components", []);
+      Css.Stylesheet.Layer (Some "utilities", []);
+    ]
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "empty components/utilities collapse to one layer statement"
+    "@layer components,utilities;" output
+
+let test_tailwind_conditionals_merge_inside_layer () =
+  (* Tailwind emits utility rules inside @layer utilities. Cascade owns the
+     generic CSS optimization: adjacent identical conditions merge inside that
+     layer, but the utility layer remains the boundary. *)
+  let input =
+    Css.Stylesheet.read
+      (Css.Cursor.of_string
+         "@layer utilities{@supports \
+          (display:grid){.grid{display:grid}}@supports \
+          (display:grid){.gap{gap:1rem}}@container (inline-size > \
+          30em){.wide{display:block}}@container (inline-size > \
+          30em){.pad{padding:1rem}}}")
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "adjacent supports/container blocks merge inside utility layer"
+    "@layer utilities{@supports \
+     (display:grid){.grid{display:grid}.gap{gap:1rem}}@container \
+     (inline-size>30em){.wide{display:block}.pad{padding:1rem}}}"
+    output
+
+let test_tailwind_non_adjacent_conditionals_in_layer_stay_split () =
+  (* The optimizer must not collect same-condition blocks across an intervening
+     utility rule: Tailwind's sort order can intentionally interleave base and
+     variant rules to preserve source-order ties. *)
+  let input =
+    Css.Stylesheet.read
+      (Css.Cursor.of_string
+         "@layer utilities{@media \
+          (min-width:48rem){.md\\:flex{display:flex}}.flex{display:flex}@media \
+          (min-width:48rem){.md\\:grid{display:grid}}@supports \
+          (display:grid){.grid{display:grid}}.block{display:block}@supports \
+          (display:grid){.gap{gap:1rem}}}")
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "non-adjacent conditionals remain split inside utility layer"
+    "@layer utilities{@media \
+     (width>=48rem){.md\\:flex{display:flex}}.flex{display:flex}@media \
+     (width>=48rem){.md\\:grid{display:grid}}@supports \
+     (display:grid){.grid{display:grid}}.block{display:block}@supports \
+     (display:grid){.gap{gap:1rem}}}"
+    output
+
 let optimize_tests =
   [
     ("deduplicate declarations", `Quick, test_deduplicate_declarations);
@@ -644,6 +706,15 @@ let optimize_tests =
     ( "positive empty named layers to statement",
       `Quick,
       test_positive_empty_named_layers_to_statement );
+    ( "tailwind empty components/utilities layers to statement",
+      `Quick,
+      test_tailwind_empty_components_utilities_layers_to_statement );
+    ( "tailwind conditionals merge inside layer",
+      `Quick,
+      test_tailwind_conditionals_merge_inside_layer );
+    ( "tailwind non-adjacent conditionals in layer stay split",
+      `Quick,
+      test_tailwind_non_adjacent_conditionals_in_layer_stay_split );
   ]
 
 (** {1 Selector merging tests (cascade semantics)} *)
@@ -1673,7 +1744,96 @@ let c61_import_substitution_point () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "same selector is not merged across import substitution point"
-    ".theme{color:red}@import url(\"base.css\");.theme{display:flex}" output
+    ".theme{color:red}@import \"base.css\";.theme{display:flex}" output
+
+let c61_no_merge_across_name_defining_atrules () =
+  (* CSS-wide name-defining at-rules and descriptor at-rules are stylesheet
+     statements, not rule declarations. Optimizing adjacent rules must preserve
+     their source positions instead of treating them as transparent
+     separators. *)
+  let check_case label css expected =
+    let input = Css.Stylesheet.read (Css.Cursor.of_string css) in
+    let optimized = Css.Optimize.stylesheet input in
+    let output =
+      Css.Stylesheet.to_string ~minify:true optimized |> String.trim
+    in
+    Alcotest.(check string) label expected output
+  in
+  check_case "font-face boundary"
+    ".theme{color:red}@font-face{font-family:Brand;src:url(brand.woff2)}.theme{display:flex}"
+    ".theme{color:red}@font-face{font-family:Brand;src:url(brand.woff2)}.theme{display:flex}";
+  check_case "keyframes boundary"
+    ".theme{color:red}@keyframes \
+     fade{from{opacity:0}to{opacity:1}}.theme{display:flex}"
+    ".theme{color:red}@keyframes \
+     fade{0%{opacity:0}to{opacity:1}}.theme{display:flex}";
+  check_case "property registration boundary"
+    ".theme{color:red}@property \
+     --gap{syntax:\"<length>\";inherits:false;initial-value:1rem}.theme{display:flex}"
+    ".theme{color:red}@property \
+     --gap{syntax:\"<length>\";inherits:false;initial-value:1rem}.theme{display:flex}";
+  check_case "view-transition boundary"
+    ".theme{color:red}@view-transition{navigation:auto}.theme{display:flex}"
+    ".theme{color:red}@view-transition{navigation:auto}.theme{display:flex}"
+
+let c61_no_merge_across_scope_page_nested_boundaries () =
+  (* Scope proximity and page context are cascade-visible boundaries. The same
+     is true when @scope appears as a nested group rule inside a style rule. *)
+  let check_case label css expected =
+    let input = Css.Stylesheet.read (Css.Cursor.of_string css) in
+    let optimized = Css.Optimize.stylesheet input in
+    let output =
+      Css.Stylesheet.to_string ~minify:true optimized |> String.trim
+    in
+    Alcotest.(check string) label expected output
+  in
+  check_case "top-level scope boundary"
+    ".item{color:red}@scope(.card){.item{display:block}}.item{padding:1rem}"
+    ".item{color:red}@scope(.card){.item{display:block}}.item{padding:1rem}";
+  check_case "distinct scope roots stay split"
+    "@scope(.card){.item{color:red}}@scope(.panel){.item{color:red}}"
+    "@scope(.card){.item{color:red}}@scope(.panel){.item{color:red}}";
+  check_case "page boundary"
+    ".doc{color:red}@page:left{margin-left:2cm}.doc{display:block}"
+    ".doc{color:red}@page:left{margin-left:2cm}.doc{display:block}";
+  check_case "nested scope boundary"
+    ".card{& .title{color:red}@scope(&) to (.boundary){& \
+     .title{display:block}}& .title{padding:1rem}}"
+    ".card .title{color:red}@scope(.card) to (.boundary){.card \
+     .title{display:block}}.card .title{padding:1rem}"
+
+let c61_no_group_across_pseudo_competitor () =
+  (* Grouping equal declarations across an overlapping pseudo-class competitor
+     can move source-order ties for elements matching both selectors. *)
+  let input =
+    Css.Stylesheet.read
+      (Css.Cursor.of_string
+         ".btn{color:red}.btn:hover{color:blue}.link{color:red}")
+  in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "equal declarations do not group across pseudo-class competitor"
+    ".btn{color:red}.btn:hover{color:#00f}.link{color:red}" output
+
+let c61_no_merge_conditional_boundaries_cli_shape () =
+  (* Surrounding rules must stay split across supports/container/starting-style
+     boundaries; each condition filters declarations independently. *)
+  let css =
+    ".card{color:red}@supports \
+     (display:grid){.card{display:grid}}.card{padding:1rem}@container \
+     (inline-size > \
+     30em){.card{margin:1rem}}.card{border-color:blue}@starting-style{.card{opacity:0}}.card{background-color:white}"
+  in
+  let input = Css.Stylesheet.read (Css.Cursor.of_string css) in
+  let optimized = Css.Optimize.stylesheet input in
+  let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
+  Alcotest.(check string)
+    "rules do not merge across conditional boundaries"
+    ".card{color:red}@supports \
+     (display:grid){.card{display:grid}}.card{padding:1rem}@container \
+     (inline-size>30em){.card{margin:1rem}}.card{border-color:#00f}@starting-style{.card{opacity:0}}.card{background-color:#fff}"
+    output
 
 let c61_important_blocks_longhand () =
   (* CSS Cascade sections 3 and 6.1: an important shorthand is equivalent to
@@ -2441,7 +2601,7 @@ let c64_layer_decls_import_cross () =
   let output = Css.Stylesheet.to_string ~minify:true optimized |> String.trim in
   Alcotest.(check string)
     "layer declarations remain on their own sides of the import"
-    "@layer default;@import url(\"theme.css\") layer(theme);@layer \
+    "@layer default;@import \"theme.css\" layer(theme);@layer \
      components;@layer default{.audio{display:block}}"
     output
 
@@ -3006,6 +3166,18 @@ let selector_merging_tests =
     ( "spec cascade 6.1 import keeps substitution point",
       `Quick,
       c61_import_substitution_point );
+    ( "spec cascade 6.1 at-rule boundaries are opaque",
+      `Quick,
+      c61_no_merge_across_name_defining_atrules );
+    ( "spec cascade 6.1 scope/page/nested boundaries are opaque",
+      `Quick,
+      c61_no_merge_across_scope_page_nested_boundaries );
+    ( "spec cascade 6.1 no group across pseudo competitor",
+      `Quick,
+      c61_no_group_across_pseudo_competitor );
+    ( "spec cascade 6.1 conditional boundaries are opaque",
+      `Quick,
+      c61_no_merge_conditional_boundaries_cli_shape );
     ( "spec cascade 6.1 important shorthand blocks normal longhand",
       `Quick,
       c61_important_blocks_longhand );

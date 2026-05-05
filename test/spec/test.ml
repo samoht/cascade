@@ -19,6 +19,76 @@ let roundtrip css expected =
 
 let roundtrip_identity css = roundtrip css css
 
+let strip_ascii_ws s =
+  let b = Buffer.create (String.length s) in
+  String.iter
+    (function
+      | ' ' | '\n' | '\r' | '\t' | '\012' -> () | c -> Buffer.add_char b c)
+    s;
+  Buffer.contents b
+
+let contains_substring ~needle haystack =
+  let hay_len = String.length haystack and needle_len = String.length needle in
+  let rec loop i =
+    if needle_len = 0 then true
+    else if i + needle_len > hay_len then false
+    else if String.sub haystack i needle_len = needle then true
+    else loop (i + 1)
+  in
+  loop 0
+
+let preserves_non_minified css fragments =
+  match of_string css with
+  | Ok sheet ->
+      let output = to_string ~minify:false ~newline:false sheet in
+      let compact_output = strip_ascii_ws output in
+      List.iter
+        (fun fragment ->
+          let compact_fragment = strip_ascii_ws fragment in
+          if not (contains_substring ~needle:compact_fragment compact_output)
+          then
+            Alcotest.failf
+              "non-minified output for %S did not preserve %S\noutput: %S" css
+              fragment output)
+        fragments
+  | Error e -> Alcotest.fail (pp_parse_error e)
+
+let rejects_non_minified_fragments css fragments =
+  match of_string css with
+  | Ok sheet ->
+      let output = to_string ~minify:false ~newline:false sheet in
+      let compact_output = strip_ascii_ws output in
+      List.iter
+        (fun fragment ->
+          let compact_fragment = strip_ascii_ws fragment in
+          if contains_substring ~needle:compact_fragment compact_output then
+            Alcotest.failf
+              "non-minified output for %S should not contain minified-only %S\n\
+               output: %S"
+              css fragment output)
+        fragments
+  | Error e -> Alcotest.fail (pp_parse_error e)
+
+let rejects_non_minified_prefixes css prefixes =
+  match of_string css with
+  | Ok sheet ->
+      let output = to_string ~minify:false ~newline:false sheet in
+      let compact_output = strip_ascii_ws output in
+      List.iter
+        (fun prefix ->
+          let compact_prefix = strip_ascii_ws prefix in
+          if
+            String.length compact_output >= String.length compact_prefix
+            && String.sub compact_output 0 (String.length compact_prefix)
+               = compact_prefix
+          then
+            Alcotest.failf
+              "non-minified output for %S should not start with minified-only %S\n\
+               output: %S"
+              css prefix output)
+        prefixes
+  | Error e -> Alcotest.fail (pp_parse_error e)
+
 let parses_valid css =
   match of_string css with
   | Ok _ -> ()
@@ -46,7 +116,7 @@ let recover css expected min_warnings =
 let css2_selectors_and_at_rules () =
   roundtrip "body { margin: 0; color: black }" "body{margin:0;color:#000}";
   roundtrip "@charset \"UTF-8\";" "@charset \"UTF-8\";";
-  roundtrip "@import 'legacy.css';" "@import 'legacy.css';";
+  roundtrip "@import 'legacy.css';" "@import \"legacy.css\";";
   roundtrip "@media print { body { color: black } }"
     "@media print{body{color:#000}}";
   roundtrip "@page :left { margin-left: 4cm; margin-right: 3cm }"
@@ -127,8 +197,9 @@ let syntax_at_rules () =
   (* @media at-rule *)
   roundtrip "@media screen { .btn { color: green } }"
     "@media screen{.btn{color:green}}";
-  (* @import at-rule - trailing semicolon is preserved in output *)
-  roundtrip "@import url(\"reset.css\");" "@import url(\"reset.css\");";
+  (* @import at-rule: import URLs serialize to the shorter string form; trailing
+     semicolon is preserved in output. *)
+  roundtrip "@import url(\"reset.css\");" "@import \"reset.css\";";
   (* @layer block *)
   roundtrip "@layer base { body { margin: 0 } }" "@layer base{body{margin:0}}"
 
@@ -361,10 +432,13 @@ let color_keywords () =
 
 (* SS 7.1 - @media with min-width/max-width *)
 let conditional_media () =
-  parses_valid "@media (min-width: 768px) { .btn { display: block } }";
-  parses_valid "@media (max-width: 640px) { .btn { font-size: 14px } }";
-  parses_valid
+  roundtrip "@media (min-width: 768px) { .btn { display: block } }"
+    "@media (width>=768px){.btn{display:block}}";
+  roundtrip "@media (max-width: 640px) { .btn { font-size: 14px } }"
+    "@media (width<=640px){.btn{font-size:14px}}";
+  roundtrip
     "@media (prefers-color-scheme: dark) { body { background-color: black } }"
+    "@media (prefers-color-scheme:dark){body{background-color:#000}}"
 
 (* SS 8 - @supports with property checks *)
 let conditional_supports () =
@@ -380,9 +454,9 @@ let conditional_supports () =
 let stylesheet_at_rules () =
   roundtrip "@charset \"UTF-8\";" "@charset \"UTF-8\";";
   roundtrip "@namespace url(http://www.w3.org/1999/xhtml);"
-    "@namespace url(http://www.w3.org/1999/xhtml);";
+    "@namespace \"http://www.w3.org/1999/xhtml\";";
   roundtrip "@namespace svg url(http://www.w3.org/2000/svg);"
-    "@namespace svg url(http://www.w3.org/2000/svg);";
+    "@namespace svg \"http://www.w3.org/2000/svg\";";
   roundtrip "@page :left { margin-left: 4cm; margin-right: 3cm }"
     "@page:left{margin-left:4cm;margin-right:3cm}"
 
@@ -411,10 +485,15 @@ let cascade_layers () =
    https://www.w3.org/TR/css-cascade-5/ https://www.w3.org/TR/css-cascade-6/ *)
 
 let cascade_current_at_rules () =
-  parses_valid
-    "@import url(\"theme.css\") layer(theme) supports(display: grid) screen;";
+  roundtrip
+    "@import url(\"theme.css\") layer(theme) supports(display: grid) screen;"
+    "@import \"theme.css\" layer(theme) supports(display:grid) screen;";
   roundtrip "@scope (.card) to (.footer) { .title { color: red } }"
     "@scope(.card) to (.footer){.title{color:red}}";
+  roundtrip "@scope (.card) { .title { color: red } }"
+    "@scope(.card){.title{color:red}}";
+  roundtrip "@scope (:root) to (.stop, .end) { .title { color: blue } }"
+    "@scope(:root) to (.stop,.end){.title{color:#00f}}";
   roundtrip "@starting-style { .dialog { opacity: 0 } }"
     "@starting-style{.dialog{opacity:0}}"
 
@@ -423,10 +502,12 @@ let cascade_current_at_rules () =
    https://www.w3.org/TR/css-contain-3/ *)
 
 let conditional_container () =
-  parses_valid
-    "@container card (inline-size > 30em) { .item { display: grid } }";
-  parses_valid "@container style(--variant: featured) { .card { color: red } }";
-  parses_valid "@container scroll-state(stuck: top) { .card { color: red } }";
+  roundtrip "@container card (inline-size > 30em) { .item { display: grid } }"
+    "@container card (inline-size>30em){.item{display:grid}}";
+  roundtrip "@container style(--variant: featured) { .card { color: red } }"
+    "@container style(--variant:featured){.card{color:red}}";
+  roundtrip "@container scroll-state(stuck: top) { .card { color: red } }"
+    "@container scroll-state(stuck:top){.card{color:red}}";
   rejects_invalid "@container style() { .card { color: red } }";
   rejects_invalid "@container scroll-state() { .card { color: red } }"
 
@@ -435,6 +516,8 @@ let conditional_container () =
 let nesting_rules () =
   roundtrip ".card { color: red; & > img { display: block } }"
     ".card{color:red;&>img{display:block}}";
+  roundtrip ".card { @scope (&) to (.boundary) { & .title { color: blue } } }"
+    ".card{@scope(&) to (.boundary){& .title{color:#00f}}}";
   parses_valid ".card { @media (width >= 40em) { & > img { display: block } } }"
 
 (* {2 CSS Custom Properties for Cascading Variables Level 1}
@@ -451,10 +534,11 @@ let custom_properties () =
 (* SS 4.2 - @font-face rule *)
 let font_face () =
   roundtrip "@font-face { font-family: MyFont; src: url(font.woff2); }"
-    "@font-face {font-family:MyFont;src:url(font.woff2)}";
-  parses_valid
+    "@font-face{font-family:MyFont;src:url(font.woff2)}";
+  roundtrip
     "@font-face { font-family: Brand; src: url(\"brand.woff2\") \
      format(\"woff2\"); font-display: swap; unicode-range: U+0025-00FF; }"
+    "@font-face{font-family:Brand;src:url(brand.woff2)format(\"woff2\");font-display:swap;unicode-range:U+25-FF}"
 
 (* {2 CSS Animations Level 1} https://www.w3.org/TR/css-animations-1/ *)
 
@@ -490,6 +574,318 @@ let property_at_rule () =
     "@property --color { syntax: \"<color>\"; inherits: true; initial-value: \
      red }"
     "@property --color{syntax:\"<color>\";inherits:true;initial-value:red}"
+
+(* Minification-only canonicalizations above must not erase authored syntax
+   forms in non-minified output. Whitespace is formatter-controlled, so these
+   checks compare whitespace-stripped fragments. *)
+let non_minified_preserves_css2_forms () =
+  preserves_non_minified "@page :left { margin-left: 4cm; margin-right: 3cm }"
+    [ "@page :left"; "margin-left: 4cm"; "margin-right: 3cm" ];
+  preserves_non_minified "body *[lang|=\"en\"] + p:first-line { color: red }"
+    [ "*[lang|=\"en\"]"; "p:first-line" ];
+  preserves_non_minified "q:before { content: open-quote }"
+    [ ":before"; "open-quote" ];
+  preserves_non_minified "q::after { content: close-quote }"
+    [ "::after"; "close-quote" ];
+  preserves_non_minified "div { page-break-before: always }"
+    [ "page-break-before: always" ];
+  preserves_non_minified "div { page-break-after: avoid }"
+    [ "page-break-after: avoid" ];
+  preserves_non_minified "div { page-break-inside: avoid }"
+    [ "page-break-inside: avoid" ];
+  preserves_non_minified "ol li { list-style: decimal inside }"
+    [ "ol li"; "list-style: decimal inside" ];
+  preserves_non_minified
+    "table > caption + colgroup col { visibility: collapse }"
+    [ "table > caption + colgroup col"; "visibility: collapse" ]
+
+let non_minified_preserves_syntax_at_rule_forms () =
+  preserves_non_minified "@import 'legacy.css';" [ "@import 'legacy.css'" ];
+  preserves_non_minified "@import \"legacy.css\";" [ "@import \"legacy.css\"" ];
+  preserves_non_minified "@import url(\"reset.css\");"
+    [ "@import url(\"reset.css\")" ];
+  rejects_non_minified_fragments "@import url(\"reset.css\");"
+    [ "@import \"reset.css\"" ];
+  preserves_non_minified "@import url(reset.css);" [ "@import url(reset.css)" ];
+  rejects_non_minified_fragments "@import url(reset.css);"
+    [ "@import \"reset.css\"" ];
+  preserves_non_minified "@namespace \"http://www.w3.org/1999/xhtml\";"
+    [ "@namespace \"http://www.w3.org/1999/xhtml\"" ];
+  preserves_non_minified "@namespace url(http://www.w3.org/1999/xhtml);"
+    [ "@namespace url(http://www.w3.org/1999/xhtml)" ];
+  rejects_non_minified_fragments "@namespace url(http://www.w3.org/1999/xhtml);"
+    [ "@namespace \"http://www.w3.org/1999/xhtml\"" ];
+  preserves_non_minified "@namespace url(\"http://www.w3.org/1999/xhtml\");"
+    [ "@namespace url(\"http://www.w3.org/1999/xhtml\")" ];
+  rejects_non_minified_fragments
+    "@namespace url(\"http://www.w3.org/1999/xhtml\");"
+    [ "@namespace \"http://www.w3.org/1999/xhtml\"" ];
+  preserves_non_minified "@namespace svg \"http://www.w3.org/2000/svg\";"
+    [ "@namespace svg \"http://www.w3.org/2000/svg\"" ];
+  preserves_non_minified "@namespace svg url(http://www.w3.org/2000/svg);"
+    [ "@namespace svg url(http://www.w3.org/2000/svg)" ];
+  rejects_non_minified_fragments
+    "@namespace svg url(http://www.w3.org/2000/svg);"
+    [ "@namespace svg \"http://www.w3.org/2000/svg\"" ];
+  preserves_non_minified "@namespace svg url(\"http://www.w3.org/2000/svg\");"
+    [ "@namespace svg url(\"http://www.w3.org/2000/svg\")" ];
+  rejects_non_minified_fragments
+    "@namespace svg url(\"http://www.w3.org/2000/svg\");"
+    [ "@namespace svg \"http://www.w3.org/2000/svg\"" ];
+  preserves_non_minified "@charset \"UTF-8\";" [ "@charset \"UTF-8\"" ];
+  preserves_non_minified "@media screen { .btn { color: green } }"
+    [ "@media screen"; ".btn"; "color: green" ];
+  preserves_non_minified "@layer base { body { margin: 0 } }"
+    [ "@layer base"; "body"; "margin: 0" ];
+  preserves_non_minified "@layer reset, base, components;"
+    [ "@layer reset, base, components" ]
+
+let non_minified_preserves_selector_forms () =
+  preserves_non_minified ".sm\\:p-4{color:red}" [ ".sm\\:p-4" ];
+  preserves_non_minified ".w-1\\/2{width:50%}" [ ".w-1\\/2" ];
+  preserves_non_minified "html > body p + p { text-indent: 1em }"
+    [ "html > body p + p" ];
+  preserves_non_minified "h1 ~ p { color: red }" [ "h1 ~ p" ];
+  preserves_non_minified "[type=\"text\"] { border: 1px solid gray }"
+    [ "[type=\"text\"]"; "border: 1px solid gray" ];
+  preserves_non_minified "[class~=\"warning\"] { color: red }"
+    [ "[class~=\"warning\"]" ];
+  preserves_non_minified "[lang|=\"en\"] { color: blue }" [ "[lang|=\"en\"]" ];
+  preserves_non_minified "[href^=\"https\"] { color: green }"
+    [ "[href^=\"https\"]" ];
+  preserves_non_minified "[href$=\".pdf\"] { color: red }"
+    [ "[href$=\".pdf\"]" ];
+  preserves_non_minified "[title*=\"hello\"] { color: blue }"
+    [ "[title*=\"hello\"]" ];
+  preserves_non_minified ":nth-child(2n+1) { color: red }"
+    [ ":nth-child(2n+1)" ];
+  preserves_non_minified ":nth-child(even) { color: blue }"
+    [ ":nth-child(even)" ];
+  preserves_non_minified "::before { content: '' }"
+    [ "::before"; "content: ''" ];
+  rejects_non_minified_prefixes "::before { content: '' }" [ ":before" ];
+  preserves_non_minified "::after { content: '' }" [ "::after"; "content: ''" ];
+  rejects_non_minified_prefixes "::after { content: '' }" [ ":after" ];
+  preserves_non_minified "::first-line { color: red }" [ "::first-line" ];
+  rejects_non_minified_prefixes "::first-line { color: red }" [ ":first-line" ];
+  preserves_non_minified "::first-letter { color: red }" [ "::first-letter" ];
+  rejects_non_minified_prefixes "::first-letter { color: red }"
+    [ ":first-letter" ];
+  preserves_non_minified ":where(.a, .b) { color: red }" [ ":where(.a, .b)" ];
+  preserves_non_minified ":is(.a, .b) { color: red }" [ ":is(.a, .b)" ];
+  preserves_non_minified "div#main { display: flex }" [ "div#main" ];
+  preserves_non_minified "a.link:hover { color: red }" [ "a.link:hover" ]
+
+let non_minified_preserves_value_forms () =
+  preserves_non_minified ".x { width: 100px }" [ "width: 100px" ];
+  preserves_non_minified ".x { width: 10cm }" [ "width: 10cm" ];
+  preserves_non_minified ".x { width: 1in }" [ "width: 1in" ];
+  preserves_non_minified ".x { font-size: 1.5rem }" [ "font-size: 1.5rem" ];
+  preserves_non_minified ".x { width: 50vw }" [ "width: 50vw" ];
+  preserves_non_minified ".x { height: 100vh }" [ "height: 100vh" ];
+  preserves_non_minified ".x { width: 50% }" [ "width: 50%" ];
+  preserves_non_minified ".x { width: calc(100% - 2rem) }"
+    [ "calc(100% - 2rem)" ];
+  preserves_non_minified ".x { width: calc(2 * 3rem) }" [ "calc(2 * 3rem)" ];
+  preserves_non_minified ".x { width: calc(100% - calc(2rem + 10px)) }"
+    [ "calc(100% - calc(2rem + 10px))" ];
+  preserves_non_minified ".x { transform: rotate(45deg) }" [ "rotate(45deg)" ];
+  preserves_non_minified ".x { transform: rotate(1rad) }" [ "rotate(1rad)" ];
+  preserves_non_minified ".x { transform: rotate(.5turn) }" [ "rotate(.5turn)" ];
+  preserves_non_minified ".x { transition-duration: 200ms }"
+    [ "transition-duration: 200ms" ];
+  preserves_non_minified ".x { transition-duration: 1500ms }"
+    [ "transition-duration: 1500ms" ];
+  preserves_non_minified ".x { background-image: url(\"hero image.png\") }"
+    [ "url(\"hero image.png\")" ];
+  preserves_non_minified ".x { background-image: url(hero.png) }"
+    [ "url(hero.png)" ];
+  rejects_non_minified_fragments
+    ".x { background-image: url(\"hero image.png\") }" [ "url(hero image.png)" ];
+  rejects_non_minified_fragments ".x { background-image: url(hero.png) }"
+    [ "url(\"hero.png\")" ]
+
+let non_minified_preserves_color_forms () =
+  preserves_non_minified ".x { color: rebeccapurple }" [ "rebeccapurple" ];
+  preserves_non_minified ".x { color: #ff0000 }" [ "#ff0000" ];
+  preserves_non_minified ".x { color: #f00f }" [ "#f00f" ];
+  preserves_non_minified ".x { color: #ff0000ff }" [ "#ff0000ff" ];
+  preserves_non_minified ".x { color: rgb(255 0 0 / 50%) }"
+    [ "rgb(255 0 0 / 50%)" ];
+  preserves_non_minified ".x { color: rgb(100% 0% 0%) }" [ "rgb(100% 0% 0%)" ];
+  preserves_non_minified ".x { color: hsl(120 100% 50% / 50%) }"
+    [ "hsl(120 100% 50% / 50%)" ];
+  preserves_non_minified ".x { color: hwb(90 10% 20%) }" [ "hwb(90 10% 20%)" ];
+  preserves_non_minified ".x { color: hwb(90 10% 20% / 0.25) }"
+    [ "hwb(90 10% 20% / 0.25)" ];
+  preserves_non_minified ".x { color: oklch(50% 0.2 30) }"
+    [ "oklch(50% 0.2 30)" ];
+  preserves_non_minified ".x { color: oklab(50% 0.1 -0.05) }"
+    [ "oklab(50% 0.1 -0.05)" ];
+  preserves_non_minified ".x { color: color-mix(in srgb, red, blue) }"
+    [ "color-mix(in srgb, red, blue)" ];
+  preserves_non_minified ".x { color: transparent }" [ "transparent" ];
+  preserves_non_minified ".x { color: currentColor }" [ "currentColor" ]
+
+let non_minified_preserves_conditional_forms () =
+  preserves_non_minified "@media (min-width: 768px) { .btn { display: block } }"
+    [ "(min-width: 768px)" ];
+  preserves_non_minified
+    "@media (max-width: 640px) { .btn { font-size: 14px } }"
+    [ "(max-width: 640px)" ];
+  preserves_non_minified
+    "@media (prefers-color-scheme: dark) { body { background-color: black } }"
+    [ "(prefers-color-scheme: dark)" ];
+  preserves_non_minified
+    "@container card (inline-size > 30em) { .item { display: grid } }"
+    [ "@container card (inline-size > 30em)" ];
+  preserves_non_minified
+    "@container style(--variant: featured) { .card { color: red } }"
+    [ "style(--variant: featured)" ];
+  preserves_non_minified
+    "@container scroll-state(stuck: top) { .card { color: red } }"
+    [ "scroll-state(stuck: top)" ];
+  preserves_non_minified "@supports (display: grid) { .grid { display: grid } }"
+    [ "@supports (display: grid)" ];
+  preserves_non_minified
+    "@supports at-rule(@container) { .cq { container-type: inline-size } }"
+    [ "@supports at-rule(@container)"; "container-type: inline-size" ]
+
+let non_minified_preserves_cascade_forms () =
+  preserves_non_minified
+    "@import url(\"theme.css\") layer(theme) supports(display: grid) screen;"
+    [ "@import url(\"theme.css\")"; "supports(display: grid)" ];
+  rejects_non_minified_fragments
+    "@import url(\"theme.css\") layer(theme) supports(display: grid) screen;"
+    [ "@import \"theme.css\" layer(theme) supports(display: grid) screen" ];
+  preserves_non_minified
+    "@import url(theme.css) layer(theme) supports(display: grid) screen;"
+    [ "@import url(theme.css)"; "supports(display: grid)" ];
+  rejects_non_minified_fragments
+    "@import url(theme.css) layer(theme) supports(display: grid) screen;"
+    [ "@import \"theme.css\" layer(theme) supports(display: grid) screen" ];
+  preserves_non_minified
+    "@import \"theme.css\" layer(theme) supports(display: grid) screen;"
+    [ "@import \"theme.css\""; "supports(display: grid)" ];
+  preserves_non_minified "@scope (.card) to (.footer) { .title { color: red } }"
+    [ "@scope (.card) to (.footer)" ];
+  preserves_non_minified "@scope (.card) { .title { color: red } }"
+    [ "@scope (.card)" ];
+  preserves_non_minified "@starting-style { .dialog { opacity: 0 } }"
+    [ "@starting-style"; "opacity: 0" ];
+  preserves_non_minified ".x { color: revert-layer }" [ "revert-layer" ]
+
+let non_minified_preserves_nesting_variable_forms () =
+  preserves_non_minified ".card { color: red; & > img { display: block } }"
+    [ "& > img" ];
+  preserves_non_minified
+    ".card { @scope (&) to (.boundary) { & .title { color: blue } } }"
+    [ "@scope (&) to (.boundary)"; "& .title" ];
+  preserves_non_minified
+    ".card { @media (width >= 40em) { & > img { display: block } } }"
+    [ "@media (width >= 40em)"; "& > img" ];
+  preserves_non_minified ":root { --primary-color: blue }"
+    [ "--primary-color: blue" ];
+  preserves_non_minified ".x { color: var(--primary-color) }"
+    [ "var(--primary-color)" ]
+
+let non_minified_preserves_font_animation_property_forms () =
+  preserves_non_minified
+    "@font-face { font-family: Brand; src: url(\"brand.woff2\") \
+     format(\"woff2\"); font-display: swap; unicode-range: U+0025-00FF; }"
+    [
+      "@font-face";
+      "font-family: Brand";
+      "url(\"brand.woff2\")";
+      "format(\"woff2\")";
+      "font-display: swap";
+      "U+0025-00FF";
+    ];
+  rejects_non_minified_fragments
+    "@font-face { font-family: Brand; src: url(\"brand.woff2\") \
+     format(\"woff2\"); font-display: swap; unicode-range: U+0025-00FF; }"
+    [ "url(brand.woff2)" ];
+  preserves_non_minified
+    "@font-face { font-family: Brand; src: url(brand.woff2) format(\"woff2\") }"
+    [ "url(brand.woff2)"; "format(\"woff2\")" ];
+  rejects_non_minified_fragments
+    "@font-face { font-family: Brand; src: url(brand.woff2) format(\"woff2\") }"
+    [ "url(\"brand.woff2\")" ];
+  preserves_non_minified
+    "@keyframes slide { 0% { opacity: 0 } 100% { opacity: 1 } }"
+    [ "@keyframes slide"; "0%"; "100%" ];
+  preserves_non_minified
+    "@property --color { syntax: \"<color>\"; inherits: true; initial-value: \
+     red }"
+    [ "@property --color"; "syntax: \"<color>\""; "inherits: true" ]
+
+let serialization_idempotent ~minify css =
+  match of_string css with
+  | Error e -> Alcotest.fail (pp_parse_error e)
+  | Ok sheet -> (
+      let once = to_string ~minify ~newline:false sheet in
+      match of_string once with
+      | Error e ->
+          Alcotest.failf "serialized CSS did not reparse: %S\n%s" once
+            (pp_parse_error e)
+      | Ok reparsed ->
+          let twice = to_string ~minify ~newline:false reparsed in
+          Alcotest.(check string)
+            (Fmt.str "idempotent minify=%b %s" minify css)
+            once twice)
+
+let serialization_invariants () =
+  List.iter
+    (fun css ->
+      serialization_idempotent ~minify:true css;
+      serialization_idempotent ~minify:false css)
+    [
+      "@charset \"UTF-8\"; @import url(theme.css) layer(theme) \
+       supports(display: grid) screen; @namespace svg \
+       url(http://www.w3.org/2000/svg); svg|circle { fill: red }";
+      "@layer reset, theme; @layer theme { .btn::before { content: \"\"; \
+       color: rgb(255 0 0 / 50%) } }";
+      "@media (min-width: 30em) { @supports (display: grid) { @container card \
+       (inline-size > 40em) { .x { display: grid } } } }";
+      "@scope (.card) to (.footer) { .item { color: var(--brand, color-mix(in \
+       srgb, red, blue)) } }";
+      "@font-face { font-family: Brand; src: url(\"brand.woff2\") \
+       format(\"woff2\"); unicode-range: U+0025-00FF }";
+      "@keyframes fade { from { opacity: 0 } to { opacity: 1 } }";
+      "@property --gap { syntax: \"<length>\"; inherits: false; initial-value: \
+       1rem }";
+    ]
+
+let minified_shortest_spec_edges () =
+  List.iter
+    (fun (input, expected) -> roundtrip input expected)
+    [
+      ("@import url(foo.css);", "@import \"foo.css\";");
+      ("@import url(foo.css) print;", "@import \"foo.css\" print;");
+      ( "@import url(foo.css) layer(theme) supports(display: flex) print;",
+        "@import \"foo.css\" layer(theme) supports(display:flex) print;" );
+      ( "@namespace url(http://www.w3.org/1999/xhtml);",
+        "@namespace \"http://www.w3.org/1999/xhtml\";" );
+      ( "@namespace svg url(http://www.w3.org/2000/svg);",
+        "@namespace svg \"http://www.w3.org/2000/svg\";" );
+      ( "@scope (.card) { .title { color: red } }",
+        "@scope(.card){.title{color:red}}" );
+      ( "@scope (.card) to (.footer, .aside) { .title { color: blue } }",
+        "@scope(.card) to (.footer,.aside){.title{color:#00f}}" );
+      ( ".card { @scope (&) to (.boundary) { & .title { color: blue } } }",
+        ".card{@scope(&) to (.boundary){& .title{color:#00f}}}" );
+      ("::before { content: '' }", ":before{content:\"\"}");
+      ("::after { content: '' }", ":after{content:\"\"}");
+      ("::first-line { color: blue }", ":first-line{color:#00f}");
+      ("::first-letter { color: blue }", ":first-letter{color:#00f}");
+      (".x { color: #ff0000ff }", ".x{color:red}");
+      (".x { color: transparent }", ".x{color:#0000}");
+      (".x { transition-duration: 500ms }", ".x{transition-duration:.5s}");
+      ( "@font-face { font-family: Brand; src: url(\"brand.woff2\") \
+         format(\"woff2\"); unicode-range: U+0025-00FF }",
+        "@font-face{font-family:Brand;src:url(brand.woff2)format(\"woff2\");unicode-range:U+25-FF}"
+      );
+    ]
 
 (* {2 Test suite registration} *)
 
@@ -572,5 +968,27 @@ let () =
           Alcotest.test_case "animations: @keyframes" `Quick keyframes;
           (* CSS Properties and Values API *)
           Alcotest.test_case "properties: @property" `Quick property_at_rule;
+          Alcotest.test_case "fidelity: CSS2 forms" `Quick
+            non_minified_preserves_css2_forms;
+          Alcotest.test_case "fidelity: syntax and at-rule forms" `Quick
+            non_minified_preserves_syntax_at_rule_forms;
+          Alcotest.test_case "fidelity: selector forms" `Quick
+            non_minified_preserves_selector_forms;
+          Alcotest.test_case "fidelity: value forms" `Quick
+            non_minified_preserves_value_forms;
+          Alcotest.test_case "fidelity: color forms" `Quick
+            non_minified_preserves_color_forms;
+          Alcotest.test_case "fidelity: conditional forms" `Quick
+            non_minified_preserves_conditional_forms;
+          Alcotest.test_case "fidelity: cascade forms" `Quick
+            non_minified_preserves_cascade_forms;
+          Alcotest.test_case "fidelity: nesting and variable forms" `Quick
+            non_minified_preserves_nesting_variable_forms;
+          Alcotest.test_case "fidelity: font animation property forms" `Quick
+            non_minified_preserves_font_animation_property_forms;
+          Alcotest.test_case "fidelity: serialization invariants" `Quick
+            serialization_invariants;
+          Alcotest.test_case "minify: shortest spec edges" `Quick
+            minified_shortest_spec_edges;
         ] );
     ]
