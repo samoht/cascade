@@ -76,6 +76,9 @@ let all_resets_property name =
     (name = "direction" || name = "unicode-bidi"
     || (String.length name >= 2 && String.sub name 0 2 = "--"))
 
+let all_preserved_reorder_property name =
+  name = "direction" || name = "unicode-bidi"
+
 let declaration_covers covering covered =
   covering = covered
   || (covering = "all" && all_resets_property covered)
@@ -262,7 +265,15 @@ let deduplicate_declarations props =
           let kept =
             List.filter (fun old -> not (covered_by_new decl old)) kept
           in
-          kept @ [ decl ])
+          if prop_name = "all" then
+            let before, after =
+              List.partition
+                (fun old ->
+                  not (all_preserved_reorder_property (property_name old)))
+                kept
+            in
+            before @ [ decl ] @ after
+          else kept @ [ decl ])
       [] props
   in
   duplicate_buggy_properties (merge_box_shorthand_longhands kept)
@@ -273,10 +284,10 @@ let deduplicate_declarations props =
    None if no pseudo-element is present. Used to prevent combining selectors
    with different pseudo-elements which would change semantics. *)
 let rec extract_pseudo_element : Selector.t -> Selector.t option = function
-  | Before -> Some Before
-  | After -> Some After
-  | First_letter -> Some First_letter
-  | First_line -> Some First_line
+  | Before f -> Some (Before f)
+  | After f -> Some (After f)
+  | First_letter f -> Some (First_letter f)
+  | First_line f -> Some (First_line f)
   | Marker -> Some Marker
   | Placeholder -> Some Placeholder
   | Selection -> Some Selection
@@ -759,8 +770,8 @@ let can_combine_rules (prev : Stylesheet.rule) (rule : Stylesheet.rule) =
       let pe2 = extract_pseudo_element rule.selector in
       let pseudo_tier = function
         | None -> 0
-        | Some Selector.Before | Some After -> 1
-        | Some First_letter | Some First_line -> 2
+        | Some (Selector.Before _) | Some (After _) -> 1
+        | Some (First_letter _) | Some (First_line _) -> 2
         | Some Placeholder | Some Backdrop -> 3
         | Some Details_content -> 4
         | Some Marker -> 5

@@ -5600,8 +5600,8 @@ let rec pp_animation_name : animation_name Pp.t =
  fun ctx -> function
   | None -> Pp.string ctx "none"
   | Name name -> Pp.string ctx name
-  | Ambiguous_name name -> Pp.string ctx name
-  | Quoted_name name -> Pp.quoted_string ctx name
+  | Ambiguous name -> Pp.string ctx name
+  | Quoted name -> Pp.quoted_string ctx name
   | Names names -> Pp.list ~sep:Pp.comma pp_animation_name ctx names
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
@@ -6026,6 +6026,54 @@ let rec pp_font_synthesis : font_synthesis Pp.t =
   | Revert -> Pp.string ctx "revert"
   | Revert_layer -> Pp.string ctx "revert-layer"
 
+let split_ws_words s =
+  s |> String.split_on_char ' '
+  |> List.filter (fun word -> String.length word > 0)
+
+let canonical_scroll_timeline_args args =
+  let words = split_ws_words args in
+  let axes = [ "block"; "inline" ] in
+  let scrollers = [ "nearest"; "root"; "self" ] in
+  if
+    List.for_all
+      (fun word -> List.mem word axes || List.mem word scrollers)
+      words
+    && List.length words <= 2
+  then
+    let axis =
+      Option.value
+        (List.find_opt (fun word -> List.mem word axes) words)
+        ~default:"block"
+    in
+    let scroller =
+      Option.value
+        (List.find_opt (fun word -> List.mem word scrollers) words)
+        ~default:"nearest"
+    in
+    match (scroller, axis) with
+    | "nearest", "block" -> ""
+    | "nearest", axis -> axis
+    | scroller, "block" -> scroller
+    | scroller, axis -> scroller ^ " " ^ axis
+  else args
+
+let canonical_view_timeline_args args =
+  match split_ws_words args with
+  | [] -> ""
+  | words ->
+      let axis, insets =
+        match words with
+        | (("block" | "inline") as axis) :: rest -> (axis, rest)
+        | words -> ("block", words)
+      in
+      let insets =
+        match insets with
+        | [] | [ "auto" ] | [ "auto"; "auto" ] -> []
+        | [ first; second ] when first = second -> [ first ]
+        | insets -> insets
+      in
+      String.concat " " ((if axis = "block" then [] else [ axis ]) @ insets)
+
 let rec pp_animation_timeline : animation_timeline Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_animation_timeline ctx v
@@ -6034,11 +6082,11 @@ let rec pp_animation_timeline : animation_timeline Pp.t =
   | Name name -> Pp.string ctx name
   | Scroll args ->
       Pp.string ctx "scroll(";
-      Pp.string ctx args;
+      Pp.string ctx (canonical_scroll_timeline_args args);
       Pp.char ctx ')'
   | View args ->
       Pp.string ctx "view(";
-      Pp.string ctx args;
+      Pp.string ctx (canonical_view_timeline_args args);
       Pp.char ctx ')'
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
@@ -6055,14 +6103,22 @@ let pp_animation_range_name : animation_range_name Pp.t =
   | Entry_crossing -> Pp.string ctx "entry-crossing"
   | Exit_crossing -> Pp.string ctx "exit-crossing"
 
+let default_animation_range_offset = function
+  | Exit | Exit_crossing -> (Pct 100. : length_percentage)
+  | Cover | Contain | Entry | Entry_crossing -> Pct 0.
+
+let is_default_animation_range_offset name offset =
+  offset = default_animation_range_offset name
+
 let rec pp_animation_range_item : animation_range_item Pp.t =
  fun ctx -> function
   | Normal -> Pp.string ctx "normal"
   | Offset lp -> pp_length_percentage ~always:true ctx lp
   | Named (name, lp) ->
       pp_animation_range_name ctx name;
-      Pp.space ctx ();
-      pp_length_percentage ~always:true ctx lp
+      if not (is_default_animation_range_offset name lp) then (
+        Pp.space ctx ();
+        pp_length_percentage ~always:true ctx lp)
   | Initial -> Pp.string ctx "initial"
   | Inherit -> Pp.string ctx "inherit"
   | Unset -> Pp.string ctx "unset"
@@ -6074,6 +6130,12 @@ let rec pp_animation_range : animation_range Pp.t =
  fun ctx -> function
   | Var v -> pp_var pp_animation_range ctx v
   | Range (first, None) -> pp_animation_range_item ctx first
+  | Range (first, Some Normal) -> pp_animation_range_item ctx first
+  | Range (Named (start_name, start_offset), Some (Named (end_name, end_offset)))
+    when start_name = end_name
+         && start_offset = (Pct 0. : length_percentage)
+         && end_offset = (Pct 100. : length_percentage) ->
+      pp_animation_range_item ctx (Named (start_name, start_offset))
   | Range (first, Some second) ->
       pp_animation_range_item ctx first;
       Pp.space ctx ();
@@ -12347,32 +12409,33 @@ let rec read_animation_iteration_count t : animation_iteration_count =
     t
 
 type animation_reserved_string_name =
-  | None_name
-  | Initial_name
-  | Inherit_name
-  | Unset_name
-  | Revert_name
-  | Revert_layer_name
-  | Default_name
+  | None
+  | Initial
+  | Inherit
+  | Unset
+  | Revert
+  | Revert_layer
+  | Default
 
 let animation_reserved_string_name = function
-  | "none" -> Some None_name
-  | "initial" -> Some Initial_name
-  | "inherit" -> Some Inherit_name
-  | "unset" -> Some Unset_name
-  | "revert" -> Some Revert_name
-  | "revert-layer" -> Some Revert_layer_name
-  | "default" -> Some Default_name
+  | "none" -> Some (None : animation_reserved_string_name)
+  | "initial" -> Some Initial
+  | "inherit" -> Some Inherit
+  | "unset" -> Some Unset
+  | "revert" -> Some Revert
+  | "revert-layer" -> Some Revert_layer
+  | "default" -> Some Default
   | _ -> None
 
-type animation_shorthand_keyword =
+type animation_shorthand_kind =
   | Timing
   | Iteration
   | Direction
   | Fill
   | Play
+  | Timeline
 
-let animation_shorthand_keyword = function
+let animation_shorthand_kind = function
   | "ease" | "linear" | "ease-in" | "ease-out" | "ease-in-out" | "step-start"
   | "step-end" ->
       Some Timing
@@ -12380,14 +12443,15 @@ let animation_shorthand_keyword = function
   | "normal" | "reverse" | "alternate" | "alternate-reverse" -> Some Direction
   | "none" | "forwards" | "backwards" | "both" -> Some Fill
   | "running" | "paused" -> Some Play
+  | "auto" -> Some Timeline
   | _ -> None
 
 let animation_quoted_or_name s =
   match animation_reserved_string_name (String.lowercase_ascii s) with
-  | Some _ -> Quoted_name s
+  | Some _ -> Quoted s
   | None -> (
-      match animation_shorthand_keyword (String.lowercase_ascii s) with
-      | Some _ -> Ambiguous_name s
+      match animation_shorthand_kind (String.lowercase_ascii s) with
+      | Some _ -> Ambiguous s
       | None -> Name s)
 
 let rec read_animation_name t : animation_name =
@@ -12464,14 +12528,87 @@ module Animation = struct
     | Direction of animation_direction
     | Fill_mode of animation_fill_mode
     | Play_state of animation_play_state
+    | Timeline of animation_timeline
+
+  let timing_name : timing_function -> string option = function
+    | Ease -> Some "ease"
+    | Linear -> Some "linear"
+    | Ease_in -> Some "ease-in"
+    | Ease_out -> Some "ease-out"
+    | Ease_in_out -> Some "ease-in-out"
+    | Step_start -> Some "step-start"
+    | Step_end -> Some "step-end"
+    | _ -> None
+
+  let iteration_name : animation_iteration_count -> string option = function
+    | Infinite -> Some "infinite"
+    | _ -> None
+
+  let direction_name : animation_direction -> string option = function
+    | Normal -> Some "normal"
+    | Reverse -> Some "reverse"
+    | Alternate -> Some "alternate"
+    | Alternate_reverse -> Some "alternate-reverse"
+    | _ -> None
+
+  let fill_name : animation_fill_mode -> animation_name option = function
+    | None -> Some (None : animation_name)
+    | Forwards -> Some (Ambiguous "forwards")
+    | Backwards -> Some (Ambiguous "backwards")
+    | Both -> Some (Ambiguous "both")
+    | _ -> None
+
+  let play_name : animation_play_state -> string option = function
+    | Running -> Some "running"
+    | Paused -> Some "paused"
+    | _ -> None
 
   let read_component t =
     let read_duration t = Duration (read_duration t) in
     let read_timing t = Timing_function (read_timing_function t) in
-    let read_iteration t = Iteration_count (read_animation_iteration_count t) in
-    let read_direction t = Direction (read_animation_direction t) in
-    let read_fill t = Fill_mode (read_animation_fill_mode t) in
-    let read_play t = Play_state (read_animation_play_state t) in
+    let read_iteration t =
+      Iteration_count
+        (Cursor.enum "animation-iteration-count-item"
+           [ ("infinite", (Infinite : animation_iteration_count)) ]
+           ~default:(fun t ->
+             let n, unit = Cursor.number_with_unit t in
+             match unit with
+             | Some u ->
+                 Cursor.err_invalid t
+                   ("animation-iteration-count must be unitless, got: " ^ u)
+             | None ->
+                 if n < 0. then
+                   Cursor.err_invalid t
+                     "animation-iteration-count cannot be negative"
+                 else Num n)
+           t)
+    in
+    let read_direction t =
+      match Option.map String.lowercase_ascii (Cursor.ident_opt t) with
+      | Some "normal" -> Direction (Normal : animation_direction)
+      | Some "reverse" -> Direction Reverse
+      | Some "alternate" -> Direction Alternate
+      | Some "alternate-reverse" -> Direction Alternate_reverse
+      | Some s -> Cursor.err t ("unknown animation-direction-item: " ^ s)
+      | None -> Cursor.err_expected t "animation-direction-item"
+    in
+    let read_fill t =
+      match Option.map String.lowercase_ascii (Cursor.ident_opt t) with
+      | Some "none" -> Fill_mode (None : animation_fill_mode)
+      | Some "forwards" -> Fill_mode Forwards
+      | Some "backwards" -> Fill_mode Backwards
+      | Some "both" -> Fill_mode Both
+      | Some s -> Cursor.err t ("unknown animation-fill-mode-item: " ^ s)
+      | None -> Cursor.err_expected t "animation-fill-mode-item"
+    in
+    let read_play t =
+      match Option.map String.lowercase_ascii (Cursor.ident_opt t) with
+      | Some "running" -> Play_state (Running : animation_play_state)
+      | Some "paused" -> Play_state Paused
+      | Some s -> Cursor.err t ("unknown animation-play-state-item: " ^ s)
+      | None -> Cursor.err_expected t "animation-play-state-item"
+    in
+    let read_timeline t = Timeline (read_animation_timeline t) in
     let read_var_name t =
       Name (Some (Var (Values.read_var read_animation_name t)))
     in
@@ -12482,7 +12619,7 @@ module Animation = struct
     in
     let read_name t =
       let v = Cursor.ident t in
-      if Option.is_some (animation_shorthand_keyword (String.lowercase_ascii v))
+      if Option.is_some (animation_shorthand_kind (String.lowercase_ascii v))
       then
         (* This identifier is for another property, not animation-name *)
         Cursor.err t
@@ -12498,6 +12635,7 @@ module Animation = struct
         read_direction;
         read_fill;
         read_play;
+        read_timeline;
         read_string_name;
         (* Animation name - parse this LAST since it accepts any non-reserved
            identifier *)
@@ -12513,7 +12651,16 @@ module Animation = struct
     let direction_seen = ref false in
     let fill_seen = ref false in
     let play_seen = ref false in
-    let apply (acc : animation_shorthand) = function
+    let timeline_seen = ref false in
+    let component_seen = ref false in
+    let set_name (acc : animation_shorthand) (name : animation_name) =
+      if !name_seen then Cursor.err t "duplicate animation-name";
+      name_seen := true;
+      { acc with name = Some name }
+    in
+    let apply (acc : animation_shorthand) component =
+      component_seen := true;
+      match component with
       | Name name ->
           if !name_seen then Cursor.err t "duplicate animation-name";
           name_seen := true;
@@ -12528,26 +12675,48 @@ module Animation = struct
           else { acc with delay = Some d }
       | Timing_function tf ->
           if !timing_seen then
-            Cursor.err t "duplicate animation-timing-function";
-          timing_seen := true;
-          { acc with timing_function = Some tf }
+            match timing_name tf with
+            | Some name -> set_name acc (Ambiguous name)
+            | None -> Cursor.err t "duplicate animation-timing-function"
+          else (
+            timing_seen := true;
+            { acc with timing_function = Some tf })
       | Iteration_count ic ->
           if !iteration_seen then
-            Cursor.err t "duplicate animation-iteration-count";
-          iteration_seen := true;
-          { acc with iteration_count = Some ic }
+            match iteration_name ic with
+            | Some name -> set_name acc (Ambiguous name)
+            | None -> Cursor.err t "duplicate animation-iteration-count"
+          else (
+            iteration_seen := true;
+            { acc with iteration_count = Some ic })
       | Direction dir ->
-          if !direction_seen then Cursor.err t "duplicate animation-direction";
-          direction_seen := true;
-          { acc with direction = Some dir }
+          if !direction_seen then
+            match direction_name dir with
+            | Some name -> set_name acc (Ambiguous name)
+            | None -> Cursor.err t "duplicate animation-direction"
+          else (
+            direction_seen := true;
+            { acc with direction = Some dir })
       | Fill_mode fm ->
-          if !fill_seen then Cursor.err t "duplicate animation-fill-mode";
-          fill_seen := true;
-          { acc with fill_mode = Some fm }
+          if !fill_seen then
+            match fill_name fm with
+            | Some name -> set_name acc name
+            | None -> Cursor.err t "duplicate animation-fill-mode"
+          else (
+            fill_seen := true;
+            { acc with fill_mode = Some fm })
       | Play_state ps ->
-          if !play_seen then Cursor.err t "duplicate animation-play-state";
-          play_seen := true;
-          { acc with play_state = Some ps }
+          if !play_seen then
+            match play_name ps with
+            | Some name -> set_name acc (Ambiguous name)
+            | None -> Cursor.err t "duplicate animation-play-state"
+          else (
+            play_seen := true;
+            { acc with play_state = Some ps })
+      | Timeline tl ->
+          if !timeline_seen then Cursor.err t "duplicate animation-timeline";
+          timeline_seen := true;
+          { acc with timeline = Some tl }
     in
 
     let init =
@@ -12568,75 +12737,54 @@ module Animation = struct
         (* CSS default: none *)
         play_state = Some Running;
         (* CSS default: running *)
+        timeline = Some Auto;
+        (* CSS default: auto *)
       }
     in
 
     let acc, _ = Cursor.fold_many read_component ~init ~f:apply t in
     (* CSS spec: All components are optional *)
-    if acc = init then
+    if not !component_seen then
       Cursor.err t "animation shorthand requires at least one component"
     else acc
 
   let is_zero_duration = function S 0. | Ms 0. -> true | _ -> false
   let pp_iter_count = pp_animation_iteration_count
 
-  (* Check if a timing function ends with ')' - only cubic-bezier/steps do *)
-  let rec ends_with_paren = function
+  (* Check if a timing function prints with a trailing ')'. Some function values
+     canonicalise to keyword aliases in minified output. *)
+  let rec ends_with_paren ctx = function
+    | Cubic_bezier (0.25, 0.1, 0.25, 1.0)
+    | Cubic_bezier (0.42, 0.0, 1.0, 1.0)
+    | Cubic_bezier (0.0, 0.0, 0.58, 1.0)
+    | Cubic_bezier (0.42, 0.0, 0.58, 1.0)
+      when Pp.minified ctx ->
+        false
+    | (Steps (1, Some Jump_start) | Steps (1, Some Jump_end))
+      when Pp.minified ctx ->
+        false
     | Cubic_bezier _ | Steps _ | Linear_function _ | Var _ -> true
     | Timing_functions [] -> false
-    | Timing_functions values -> ends_with_paren (List.hd (List.rev values))
+    | Timing_functions values -> ends_with_paren ctx (List.hd (List.rev values))
     | Inherit | Initial | Unset | Revert | Revert_layer -> false
     | Linear | Ease | Ease_in | Ease_out | Ease_in_out | Step_start | Step_end
       ->
         false
 
-  let rec pp_timing ctx = function
-    | Linear -> Pp.string ctx "linear"
-    | Ease -> Pp.string ctx "ease"
-    | Ease_in -> Pp.string ctx "ease-in"
-    | Ease_out -> Pp.string ctx "ease-out"
-    | Ease_in_out -> Pp.string ctx "ease-in-out"
-    | Step_start -> Pp.string ctx "step-start"
-    | Step_end -> Pp.string ctx "step-end"
-    | Linear_function body ->
-        Pp.string ctx "linear(";
-        Pp.string ctx body;
-        Pp.char ctx ')'
-    | Inherit -> Pp.string ctx "inherit"
-    | Initial -> Pp.string ctx "initial"
-    | Unset -> Pp.string ctx "unset"
-    | Revert -> Pp.string ctx "revert"
-    | Revert_layer -> Pp.string ctx "revert-layer"
-    | Cubic_bezier (x1, y1, x2, y2) ->
-        Pp.string ctx "cubic-bezier(";
-        Pp.float ctx x1;
-        Pp.char ctx ',';
-        Pp.float ctx y1;
-        Pp.char ctx ',';
-        Pp.float ctx x2;
-        Pp.char ctx ',';
-        Pp.float ctx y2;
-        Pp.char ctx ')'
-    | Steps (steps, direction) ->
-        Pp.string ctx "steps(";
-        Pp.int ctx steps;
-        (match direction with
-        | Some d ->
-            Pp.char ctx ',';
-            Pp.space ctx ();
-            pp_steps_direction ctx d
-        | None -> ());
-        Pp.char ctx ')'
-    | Timing_functions values -> Pp.list ~sep:Pp.comma pp_timing ctx values
-    | Var v -> pp_var pp_timing ctx v
+  let pp_timing = pp_timing_function
 
   let is_duration : duration option -> bool = function
     | Some d when not (is_zero_duration d) -> true
     | _ -> false
 
-  let is_timing : timing_function option -> bool = function
+  let is_default_timing ctx = function
+    | Ease -> true
+    | Cubic_bezier (0.25, 0.1, 0.25, 1.0) when Pp.minified ctx -> true
+    | _ -> false
+
+  let is_timing ctx : timing_function option -> bool = function
     | Some Ease | None -> false
-    | Some _ -> true
+    | Some tf -> not (is_default_timing ctx tf)
 
   let is_iteration : animation_iteration_count option -> bool = function
     | Some (Num 1.) | None -> false
@@ -12654,19 +12802,24 @@ module Animation = struct
     | Some Running | None -> false
     | Some _ -> true
 
-  let has_non_defaults (anim : animation_shorthand) =
+  let is_timeline : animation_timeline option -> bool = function
+    | Some Auto | None -> false
+    | Some _ -> true
+
+  let has_non_defaults ctx (anim : animation_shorthand) =
     is_duration anim.duration
-    || is_timing anim.timing_function
+    || is_timing ctx anim.timing_function
     || is_duration anim.delay
     || is_iteration anim.iteration_count
     || is_direction anim.direction
     || is_fill_mode anim.fill_mode
     || is_play_state anim.play_state
+    || is_timeline anim.timeline
 
   let ambiguous_name_kind (anim : animation_shorthand) =
     match anim.name with
-    | Some (Ambiguous_name name) ->
-        animation_shorthand_keyword (String.lowercase_ascii name)
+    | Some (Ambiguous name) ->
+        animation_shorthand_kind (String.lowercase_ascii name)
     | _ -> None
 
   let duration (anim : animation_shorthand) : duration option =
@@ -12678,10 +12831,11 @@ module Animation = struct
         | Some d when not (is_zero_duration d) -> Some d
         | _ -> None)
 
-  let timing (anim : animation_shorthand) : timing_function option =
+  let timing ctx (anim : animation_shorthand) : timing_function option =
     match (anim.timing_function, ambiguous_name_kind anim) with
     | (Some Ease | None), Some Timing -> Some Ease
-    | Some Ease, _ | None, _ -> None
+    | Some tf, _ when is_default_timing ctx tf -> None
+    | None, _ -> None
     | Some t, _ -> Some t
 
   let delay (anim : animation_shorthand) : duration option =
@@ -12713,6 +12867,12 @@ module Animation = struct
     | (Some Running | None), Some Play -> Some Running
     | Some Running, _ | None, _ -> None
     | Some s, _ -> Some s
+
+  let timeline (anim : animation_shorthand) : animation_timeline option =
+    match (anim.timeline, ambiguous_name_kind anim) with
+    | (Some Auto | None), Some Timeline -> Some Auto
+    | Some Auto, _ | None, _ -> None
+    | Some tl, _ -> Some tl
 end
 
 let read_animation_shorthand t : animation_shorthand =
@@ -12733,15 +12893,15 @@ let rec pp_animation_shorthand : animation_shorthand Pp.t =
     prev_ends_with_paren := ends_with_paren;
     pp ctx x
   in
-  let has_any_non_default = Animation.has_non_defaults anim in
+  let has_any_non_default = Animation.has_non_defaults ctx anim in
   (match (anim.name, has_any_non_default) with
   | None, false -> Pp.string ctx "none"
   | None, true -> ()
   | Some _, _ -> ());
   Pp.option (space_before pp_duration) ctx (Animation.duration anim);
-  (match Animation.timing anim with
+  (match Animation.timing ctx anim with
   | Some tf ->
-      let ends = Animation.ends_with_paren tf in
+      let ends = Animation.ends_with_paren ctx tf in
       space_before ~ends_with_paren:ends Animation.pp_timing ctx tf
   | None -> ());
   Pp.option (space_before pp_duration) ctx (Animation.delay anim);
@@ -12754,7 +12914,8 @@ let rec pp_animation_shorthand : animation_shorthand Pp.t =
     (space_before pp_animation_play_state)
     ctx
     (Animation.play_state anim);
-  Option.iter (space_before pp_animation_name ctx) anim.name
+  Option.iter (space_before pp_animation_name ctx) anim.name;
+  Pp.option (space_before pp_animation_timeline) ctx (Animation.timeline anim)
 
 and pp_animation : animation Pp.t =
  fun ctx -> function
@@ -12765,19 +12926,40 @@ and pp_animation : animation Pp.t =
   | Shorthand s -> pp_animation_shorthand ctx s
 
 let rec read_animation t : animation =
-  Cursor.enum "animation"
-    [ ("inherit", Inherit); ("initial", Initial); ("none", None) ]
-    ~default:(fun t ->
-      if Cursor.looking_at_func "var" t then (
-        let snap = Cursor.save t in
-        let value = (Var (read_var read_animation t) : animation) in
-        Cursor.ws t;
-        if Cursor.is_done t then value
-        else (
-          Cursor.restore t snap;
-          Shorthand (read_animation_shorthand t)))
-      else Shorthand (read_animation_shorthand t))
-    t
+  let read_global_or_none t =
+    let snap = Cursor.save t in
+    match Cursor.ident_opt t with
+    | Some ident -> (
+        let value =
+          match String.lowercase_ascii ident with
+          | "inherit" -> Some (Inherit : animation)
+          | "initial" -> Some Initial
+          | "none" -> Some None
+          | _ -> None
+        in
+        match value with
+        | Some value ->
+            Cursor.ws t;
+            if Cursor.is_done t || Cursor.peek_comma t then value
+            else (
+              Cursor.restore t snap;
+              Shorthand (read_animation_shorthand t))
+        | None ->
+            Cursor.restore t snap;
+            Shorthand (read_animation_shorthand t))
+    | None ->
+        Cursor.restore t snap;
+        Shorthand (read_animation_shorthand t)
+  in
+  if Cursor.looking_at_func "var" t then (
+    let snap = Cursor.save t in
+    let value = (Var (read_var read_animation t) : animation) in
+    Cursor.ws t;
+    if Cursor.is_done t || Cursor.peek_comma t then value
+    else (
+      Cursor.restore t snap;
+      Shorthand (read_animation_shorthand t)))
+  else read_global_or_none t
 
 let read_animations t : animation list =
   Cursor.list ~at_least:1 ~sep:Cursor.comma read_animation t
@@ -14108,7 +14290,7 @@ let color_stop c = (Color_percentage (c, None, None) : gradient_stop)
 let color_position c pos = (Color_length (c, Some pos, None) : gradient_stop)
 
 let animation_shorthand ?name ?duration ?timing_function ?delay ?iteration_count
-    ?direction ?fill_mode ?play_state () : animation =
+    ?direction ?fill_mode ?play_state ?timeline () : animation =
   Shorthand
     {
       name = Option.map (fun name -> (Name name : animation_name)) name;
@@ -14119,6 +14301,7 @@ let animation_shorthand ?name ?duration ?timing_function ?delay ?iteration_count
       direction;
       fill_mode;
       play_state;
+      timeline;
     }
 
 let transition_shorthand ?(property = (All : transition_property_value))
@@ -16098,6 +16281,17 @@ let rec read_offset_path t : offset_path =
 let animation_range_names =
   [ "cover"; "contain"; "entry"; "exit"; "entry-crossing"; "exit-crossing" ]
 
+let read_animation_range_offset_opt t name =
+  Cursor.ws t;
+  if Cursor.is_done t || Cursor.peek_semicolon t then
+    default_animation_range_offset name
+  else
+    match Cursor.peek_ident t with
+    | Some "normal" -> default_animation_range_offset name
+    | Some next when List.mem next animation_range_names ->
+        default_animation_range_offset name
+    | _ -> Values.read_length_percentage t
+
 let rec read_animation_range_item t : animation_range_item =
   let keywords : (string * animation_range_item) list =
     [
@@ -16114,8 +16308,7 @@ let rec read_animation_range_item t : animation_range_item =
     match Cursor.peek_ident t with
     | Some name when List.mem name animation_range_names ->
         let name : animation_range_name = read_animation_range_name t in
-        Cursor.ws t;
-        let lp = Values.read_length_percentage t in
+        let lp = read_animation_range_offset_opt t name in
         (Named (name, lp) : animation_range_item)
     | _ ->
         let lp = Values.read_length_percentage t in
@@ -16145,8 +16338,7 @@ let rec read_animation_range t : animation_range =
           (Normal : animation_range_item)
       | Some name when List.mem name animation_range_names ->
           let name : animation_range_name = read_animation_range_name t in
-          Cursor.ws t;
-          let lp = Values.read_length_percentage t in
+          let lp = read_animation_range_offset_opt t name in
           (Named (name, lp) : animation_range_item)
       | _ ->
           let lp = Values.read_length_percentage t in
