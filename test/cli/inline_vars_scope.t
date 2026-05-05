@@ -46,15 +46,15 @@ queries evaluate at layout time, not at the syntax layer).
   :root{--bp:30em}@container (min-width:var(--bp)){.x{color:red}}
 
 A self-referential variable [--x: var(--x)] is invalid at computed
-time per CSS Custom Properties L1 §5; it stays as-written, no infinite
-substitution.
+time per CSS Custom Properties L1 §5; consumers use their fallback, and
+the now-unreferenced custom property is dead-stripped.
 
   $ cat > self-cycle.css <<EOF
   > :root { --x: var(--x) }
   > .a { color: var(--x, red) }
   > EOF
   $ cascade --minify --inline-vars self-cycle.css 2>&1 | grep -v "warning"
-  :root{--x:var(--x)}.a{color:red}
+  .a{color:red}
 
 A two-cycle [--a -> --b -> --a] is detected and both definitions stay
 verbatim with consumers falling back.
@@ -82,10 +82,12 @@ same way.
 
 A var() inside a string token is NOT substituted - per CSS Custom
 Properties L1 §2 substitution does not look inside [<string>] tokens.
+The declaration that only feeds that string is therefore unused and
+dead-stripped.
 
   $ cat > string.css <<EOF
   > :root { --label: "brand" }
   > .a:before { content: "var(--label)" }
   > EOF
   $ cascade --minify --inline-vars string.css
-  :root{--label:"brand"}.a:before{content:"var(--label)"}
+  .a:before{content:"var(--label)"}

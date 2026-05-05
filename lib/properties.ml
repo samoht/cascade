@@ -7449,7 +7449,7 @@ let pp_transition_shorthand : transition_shorthand Pp.t =
       Pp.space ctx ();
       pp_duration ctx d);
   (match timing_function with
-  | None -> ()
+  | None | Some Ease -> ()
   | Some tf ->
       Pp.space ctx ();
       pp_timing_function ctx tf);
@@ -12629,7 +12629,7 @@ let rec pp_animation_shorthand : animation_shorthand Pp.t =
   (match (anim.name, has_any_non_default) with
   | None, false -> Pp.string ctx "none"
   | None, true -> ()
-  | Some name, _ -> space_before Pp.string ctx name);
+  | Some _, _ -> ());
   Pp.option (space_before pp_duration) ctx (Animation.duration anim);
   (match Animation.timing anim with
   | Some tf ->
@@ -12645,7 +12645,8 @@ let rec pp_animation_shorthand : animation_shorthand Pp.t =
   Pp.option
     (space_before pp_animation_play_state)
     ctx
-    (Animation.play_state anim)
+    (Animation.play_state anim);
+  Option.iter (space_before Pp.string ctx) anim.name
 
 and pp_animation : animation Pp.t =
  fun ctx -> function
