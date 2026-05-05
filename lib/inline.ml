@@ -57,15 +57,15 @@ let selector_covers ~ancestor ~consumer =
 (** {1 At-rule path} *)
 
 type at_node =
-  | A_media of Media.t
-  | A_layer of string option
-  | A_supports of Supports.t
-  | A_container of string option * Container.t
-  | A_starting_style
-  | A_when of conditional
-  | A_else of conditional option
-  | A_origin of cascade_origin
-  | A_scope of string option * string option
+  | Media of Media.t
+  | Layer of string option
+  | Supports of Supports.t
+  | Container of string option * Container.t
+  | Starting_style
+  | When of conditional
+  | Else of conditional option
+  | Origin of cascade_origin
+  | Scope of string option * string option
 
 (* Visibility through at-rule wrappers: a custom property defined outside
    (shorter path) is visible to consumers further inside (longer path). *)
@@ -76,17 +76,33 @@ let rec at_path_prefix ~outer ~inner =
   | a :: outer, b :: inner -> a = b && at_path_prefix ~outer ~inner
 
 let at_wrapper : statement -> (at_node * t * (t -> statement)) option = function
-  | Layer (n, b) -> Some (A_layer n, b, fun b -> Layer (n, b))
-  | Media (q, b) -> Some (A_media q, b, fun b -> Media (q, b))
-  | Supports (q, b) -> Some (A_supports q, b, fun b -> Supports (q, b))
-  | Container (n, q, b) ->
-      Some (A_container (n, q), b, fun b -> Container (n, q, b))
-  | Starting_style b -> Some (A_starting_style, b, fun b -> Starting_style b)
-  | When (c, b) -> Some (A_when c, b, fun b -> When (c, b))
-  | Else (c, b) -> Some (A_else c, b, fun b -> Else (c, b))
-  | Origin (o, b) -> Some (A_origin o, b, fun b -> Origin (o, b))
-  | Scope (a, b, body) ->
-      Some (A_scope (a, b), body, fun body -> Scope (a, b, body))
+  | Stylesheet.Layer (n, b) ->
+      Some ((Layer n : at_node), b, fun b -> Stylesheet.Layer (n, b))
+  | Stylesheet.Media (q, b) ->
+      Some ((Media q : at_node), b, fun b -> Stylesheet.Media (q, b))
+  | Stylesheet.Supports (q, b) ->
+      Some ((Supports q : at_node), b, fun b -> Stylesheet.Supports (q, b))
+  | Stylesheet.Container (n, q, b) ->
+      Some
+        ( (Container (n, q) : at_node),
+          b,
+          fun b -> Stylesheet.Container (n, q, b) )
+  | Stylesheet.Starting_style b ->
+      Some
+        ( (Starting_style : at_node),
+          b,
+          fun b -> Stylesheet.Starting_style b )
+  | Stylesheet.When (c, b) ->
+      Some ((When c : at_node), b, fun b -> Stylesheet.When (c, b))
+  | Stylesheet.Else (c, b) ->
+      Some ((Else c : at_node), b, fun b -> Stylesheet.Else (c, b))
+  | Stylesheet.Origin (o, b) ->
+      Some ((Origin o : at_node), b, fun b -> Stylesheet.Origin (o, b))
+  | Stylesheet.Scope (a, b, body) ->
+      Some
+        ( (Scope (a, b) : at_node),
+          body,
+          fun body -> Stylesheet.Scope (a, b, body) )
   | _ -> None
 
 (** {1 Scope record} *)
@@ -165,16 +181,19 @@ let read_custom_components read = function
   | Declaration.Declaration
       {
         property = Properties.Custom_property _;
-        value = Properties.Custom_value { kind = Properties.Value; value; _ };
+        value = Properties.Custom_value { kind; value; _ };
         _;
       } -> (
-      try
-        let cursor = Cursor.of_components value in
-        let parsed = read cursor in
-        Cursor.ws cursor;
-        Cursor.expect_eof cursor;
-        Some parsed
-      with Cursor.Parse_error _ -> None)
+      match kind with
+      | Properties.Value -> (
+          try
+            let cursor = Cursor.of_components value in
+            let parsed = read cursor in
+            Cursor.ws cursor;
+            Cursor.expect_eof cursor;
+            Some parsed
+          with Cursor.Parse_error _ -> None)
+      | _ -> None)
   | _ -> None
 
 let lookup_visible_custom visible name read =
@@ -378,51 +397,143 @@ and substitute_stmt ~scopes ~parents ~at_path stmt =
 
 (** {1 Pass 3 - dead-code elimination} *)
 
-let scan_referenced_names s =
-  let acc = ref [] in
-  let len = String.length s in
-  let in_string = ref None in
-  let rec scan i =
-    if i >= len then ()
-    else
-      match !in_string with
-      | Some q ->
-          if s.[i] = q && (i = 0 || s.[i - 1] <> '\\') then in_string := None;
-          scan (i + 1)
-      | None ->
-          if s.[i] = '"' || s.[i] = '\'' then begin
-            in_string := Some s.[i];
-            scan (i + 1)
-          end
-          else if i + 4 <= len && String.sub s i 4 = "var(" then begin
-            let j = ref (i + 4) in
-            while !j < len && (s.[!j] = ' ' || s.[!j] = '\t') do
-              incr j
-            done;
-            let start = !j in
-            while
-              !j < len
-              &&
-              let c = s.[!j] in
-              c = '-'
-              || (c >= 'a' && c <= 'z')
-              || (c >= 'A' && c <= 'Z')
-              || (c >= '0' && c <= '9')
-              || c = '_'
-            do
-              incr j
-            done;
-            if !j > start then begin
-              let name = String.sub s start (!j - start) in
-              if String.length name >= 2 && String.sub name 0 2 = "--" then
-                acc := name :: !acc
-            end;
-            scan (i + 4)
-          end
-          else scan (i + 1)
+let rec refs_of_components components =
+  let strip_ws =
+    List.filter (function
+      | Component.Preserved { kind = Token.Whitespace; _ } -> false
+      | _ -> true)
   in
-  scan 0;
-  !acc
+  let rec split_fallback acc = function
+    | [] -> []
+    | Component.Preserved { kind = Token.Comma; _ } :: rest -> List.rev_append acc rest
+    | cv :: rest -> split_fallback (cv :: acc) rest
+  in
+  let refs_of_var_args args =
+    match
+      let func : Component.func =
+        { name = "var"; arguments = args; terminated = true }
+      in
+      let cursor =
+        Cursor.of_components [ Component.Func { node = func; loc = Loc.dummy } ]
+      in
+      let var = Values.read_var (fun t -> Cursor.remaining t) cursor in
+      Cursor.ws cursor;
+      Cursor.expect_eof cursor;
+      let fallback_refs =
+        match var.Values.fallback with
+        | Values.Fallback components | Values.Syntax_fallback components ->
+            refs_of_components components
+        | Values.Empty | Values.Empty2 | Values.None | Values.Var_fallback _ ->
+            []
+      in
+      Some (("--" ^ var.Values.name) :: fallback_refs)
+    with
+    | Some refs -> refs
+    | None -> []
+    | exception _ -> (
+    match strip_ws args with
+    | Component.Preserved { kind = Token.Ident name; _ } :: rest
+      when String.length name >= 2 && String.sub name 0 2 = "--" ->
+        name :: refs_of_components (split_fallback [] rest)
+    | Component.Preserved { kind = Token.Delim "--"; _ }
+      :: Component.Preserved { kind = Token.Ident name; _ }
+      :: rest ->
+        ("--" ^ name) :: refs_of_components (split_fallback [] rest)
+    | Component.Preserved { kind = Token.Delim "-"; _ }
+      :: Component.Preserved { kind = Token.Delim "-"; _ }
+      :: Component.Preserved { kind = Token.Ident name; _ }
+      :: rest ->
+        ("--" ^ name) :: refs_of_components (split_fallback [] rest)
+    | rest -> refs_of_components rest)
+  in
+  List.concat_map
+    (function
+      | Component.Func { node = { name; arguments; _ }; _ }
+        when String.lowercase_ascii name = "var" ->
+          refs_of_var_args arguments
+      | Component.Func { node = { arguments; _ }; _ } -> refs_of_components arguments
+      | Component.Block { node = { value; _ }; _ } -> refs_of_components value
+      | Component.Preserved _ -> [])
+    components
+
+let refs_of_component_string value =
+  try refs_of_components (Cursor.remaining (Cursor.of_string value)) with _ -> []
+
+let names_of_vars vars =
+  List.map (fun (Variables.V v) -> "--" ^ v.Values.name) vars
+
+let refs_of_media_value : Media.value -> string list = function
+  | Ident value -> refs_of_component_string value
+  | Function (name, args) ->
+      let func : Component.func = { name; arguments = args; terminated = true } in
+      refs_of_components [ Component.Func { node = func; loc = Loc.dummy } ]
+  | Length _ | Integer _ | Number _ | Ratio _ | Resolution_value _ -> []
+
+let rec refs_of_media : Media.t -> string list = function
+  | Width _ | Height _ | Min_width _ | Max_width _ | Not_min_width _
+  | Min_width_rem _ | Not_min_width_rem _ | Min_width_length _
+  | Not_min_width_length _ | Aspect_ratio _ | Resolution _ | Color _
+  | Color_index _ | Monochrome _ | Color_gamut _ | Video_color_gamut _
+  | Dynamic_range _ | Video_dynamic_range _ | Scan _ | Update _
+  | Overflow_block _ | Overflow_inline _ | Prefers_reduced_motion _
+  | Prefers_reduced_transparency _ | Prefers_reduced_data _ | Prefers_contrast _
+  | Prefers_color_scheme _ | Forced_colors _ | Inverted_colors _ | Pointer _
+  | Any_pointer _ | Hover _ | Any_hover _ | Scripting _ | Nav_controls _
+  | Print | Orientation _ ->
+      []
+  | And (a, b) | Or (a, b) -> refs_of_media a @ refs_of_media b
+  | Negated query -> refs_of_media query
+  | Range (_, _, value) | Range_rev (value, _, _) | Plain (_, value) ->
+      refs_of_media_value value
+  | Interval (lower, _, _, _, upper) ->
+      refs_of_media_value lower @ refs_of_media_value upper
+  | Type_query { trailing; _ } ->
+      Option.fold ~none:[] ~some:refs_of_media trailing
+  | Boolean _ -> []
+  | List queries -> List.concat_map refs_of_media queries
+
+let refs_of_supports_feature : Supports.declaration_feature -> string list =
+  function
+  | Declaration decl -> names_of_vars (Variables.vars_of_declarations [ decl ])
+  | Unparseable { value; _ } -> refs_of_components value
+  | Empty _ | Vendor_flag_enabled -> []
+
+let rec refs_of_supports : Supports.t -> string list = function
+  | Property feature -> refs_of_supports_feature feature
+  | Func (_, args) -> refs_of_components args
+  | Not condition -> refs_of_supports condition
+  | And (a, b) | Or (a, b) -> refs_of_supports a @ refs_of_supports b
+
+let refs_of_style_query : Container.style_query -> string list = function
+  | Boolean _ -> []
+  | Declaration { value; _ } -> refs_of_components value
+  | Range { lower; upper; _ } -> refs_of_components lower @ refs_of_components upper
+
+let rec refs_of_scroll_state : Container.scroll_state_query -> string list =
+  function
+  | State _ -> []
+  | Both (a, b) | Either (a, b) ->
+      refs_of_scroll_state a @ refs_of_scroll_state b
+  | Negated query -> refs_of_scroll_state query
+
+let rec refs_of_container : Container.t -> string list = function
+  | Min_width_rem _ | Min_width_px _ -> []
+  | Named (_, query) | Not query -> refs_of_container query
+  | Style { query; _ } -> refs_of_style_query query
+  | Scroll_state { query; _ } -> refs_of_scroll_state query
+  | And (a, b) | Or (a, b) -> refs_of_container a @ refs_of_container b
+  | Feature_query query -> refs_of_media query
+
+let refs_of_declaration decl =
+  match decl with
+  | Declaration.Declaration
+      {
+        property = Properties.Custom_property _;
+        value = Properties.Custom_value { kind; value; _ };
+        _;
+      } -> (
+      match kind with Properties.Value -> refs_of_components value | _ -> [])
+  | _ -> names_of_vars (Variables.vars_of_declarations [ decl ])
 
 (* Walk the stylesheet to collect, for each declaration, the scope at which it
    appears and the var names its body references. [consumers] lists non-custom
@@ -433,15 +544,13 @@ let collect_scoped_refs stylesheet =
   let consumers = ref [] in
   let customs = ref [] in
   let refs_of_at_node = function
-    | A_container (_, query) ->
-        scan_referenced_names (Container.to_string query)
+    | Media query -> refs_of_media query
+    | Supports query -> refs_of_supports query
+    | Container (_, query) -> refs_of_container query
     | _ -> []
   in
-  let refs_of decl =
-    scan_referenced_names (Declaration.string_of_value ~minify:true decl)
-  in
   let record_decl ~at_path ~selector decl =
-    let refs = refs_of decl in
+    let refs = refs_of_declaration decl in
     match custom_name decl with
     | Some name -> customs := (at_path, selector, name, refs) :: !customs
     | None -> consumers := (at_path, selector, refs) :: !consumers
@@ -651,15 +760,17 @@ let strip_url_suffix url =
 
 let wrap_import_body (ir : import_rule) body =
   let body =
-    match ir.media with None -> body | Some m -> [ Media (m, body) ]
+    match ir.media with None -> body | Some m -> [ Stylesheet.Media (m, body) ]
   in
   let body =
-    match ir.supports with None -> body | Some s -> [ Supports (s, body) ]
+    match ir.supports with
+    | None -> body
+    | Some s -> [ Stylesheet.Supports (s, body) ]
   in
   match ir.layer with
   | None -> body
-  | Some "" -> [ Layer (None, body) ]
-  | Some n -> [ Layer (Some n, body) ]
+  | Some "" -> [ Stylesheet.Layer (None, body) ]
+  | Some n -> [ Stylesheet.Layer (Some n, body) ]
 
 (* Layer/supports/media guard checks. When [layer_order] is empty, every layer
    name is treated as known (the caller hasn't declared an order, so we defer to
