@@ -169,8 +169,24 @@ and substitute_stmt ~scopes ~parents ~at_path stmt =
              (context_for (visible_customs ~scopes ~at_path ~selector:sel)))
           decls
       in
-      let unscoped decls = List.map (Context.eval (context_for [])) decls in
-      let unscoped_frame = Context.eval (context_for []) in
+      (* @page, @keyframes, and @position-try declarations apply to elements
+         whose effective selector is universal at this at-path, so use the
+         universal selector for visibility. Customs declared on [:root] / [html]
+         / [*] cover any element and remain reachable. *)
+      let universal_decls decls =
+        List.map
+          (Context.eval
+             (context_for
+                (visible_customs ~scopes ~at_path
+                   ~selector:(Selector.Universal None))))
+          decls
+      in
+      let universal_frame =
+        Context.eval
+          (context_for
+             (visible_customs ~scopes ~at_path
+                ~selector:(Selector.Universal None)))
+      in
       match stmt with
       | Rule rule ->
           let eff = effective_selector ~parents rule.selector in
@@ -187,12 +203,12 @@ and substitute_stmt ~scopes ~parents ~at_path stmt =
             match parents with p :: _ -> p | [] -> Selector.Universal None
           in
           Declarations (eval_with sel decls)
-      | Page (sel, decls) -> Page (sel, unscoped decls)
-      | Position_try (n, decls) -> Position_try (n, unscoped decls)
+      | Page (sel, decls) -> Page (sel, universal_decls decls)
+      | Position_try (n, decls) -> Position_try (n, universal_decls decls)
       | Keyframes (n, frames) ->
-          Keyframes (n, map_keyframe_decls unscoped_frame frames)
+          Keyframes (n, map_keyframe_decls universal_frame frames)
       | Webkit_keyframes (n, frames) ->
-          Webkit_keyframes (n, map_keyframe_decls unscoped_frame frames)
+          Webkit_keyframes (n, map_keyframe_decls universal_frame frames)
       | other -> other)
 
 (** {1 Pass 3 - dead-code elimination} *)
@@ -243,12 +259,22 @@ let scan_referenced_names s =
   scan 0;
   !acc
 
-let referenced_names stylesheet =
-  let acc = ref [] in
+(* Walk the stylesheet and return two pieces: - [direct]: var names referenced
+   from any non-custom-property declaration. These are unconditionally live. -
+   [graph]: for each custom-property name, the var names its own value
+   references. Used to extend the live set: a custom that only feeds into other
+   dead customs is itself dead. The live set is the closure of [direct] through
+   [graph]. *)
+let collect_var_refs stylesheet =
+  let direct = ref [] in
+  let graph = ref [] in
+  let refs_of decl =
+    scan_referenced_names (Declaration.string_of_value ~minify:true decl)
+  in
   let consider_decl decl =
-    acc :=
-      scan_referenced_names (Declaration.string_of_value ~minify:true decl)
-      @ !acc
+    match custom_name decl with
+    | Some name -> graph := (name, refs_of decl) :: !graph
+    | None -> direct := refs_of decl @ !direct
   in
   let rec walk_stmt stmt =
     match at_wrapper stmt with
@@ -268,7 +294,32 @@ let referenced_names stylesheet =
         | _ -> ())
   in
   List.iter walk_stmt stylesheet;
-  !acc
+  (!direct, !graph)
+
+(* Live set = closure of [direct] through [graph]. A custom is live iff it is
+   referenced from a non-custom consumer or from another live custom. *)
+let live_var_names ~direct ~graph =
+  let live = ref direct in
+  let mem name = List.mem name !live in
+  let add name = if not (mem name) then live := name :: !live in
+  let changed = ref true in
+  while !changed do
+    changed := false;
+    List.iter
+      (fun (name, refs) ->
+        if mem name then
+          List.iter
+            (fun r ->
+              if not (mem r) then changed := true;
+              add r)
+            refs)
+      graph
+  done;
+  !live
+
+let referenced_names stylesheet =
+  let direct, graph = collect_var_refs stylesheet in
+  live_var_names ~direct ~graph
 
 let strip_dead ~keep ~referenced stmts =
   let alive name = List.mem name keep || List.mem name referenced in
