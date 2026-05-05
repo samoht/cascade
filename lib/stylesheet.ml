@@ -968,7 +968,10 @@ let read_import_url ~keep_url_repr (r : Cursor.t) =
   if keep_url_repr then
     let end_pos = Cursor.position r in
     match Cursor.source r with
-    | Some source when end_pos.start_pos <= String.length source ->
+    | Some source
+      when end_pos.start_pos <= String.length source
+           && pos.start_pos <= end_pos.start_pos
+           && pos.start_pos >= 0 ->
         String.sub source pos.start_pos (end_pos.start_pos - pos.start_pos)
         |> String.trim
     | _ -> value
