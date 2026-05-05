@@ -1385,7 +1385,7 @@ let spec_platform_property_vectors () =
       ("opacity: abs(-0.5)", "opacity:abs(-.5)");
       ("opacity: sign(var(--delta))", "opacity:sign(var(--delta))");
       ( "color: color-mix(in oklab, red 40%, blue)",
-        "color:color-mix(in oklab,red 40%,blue)" );
+        "color:color-mix(in oklab,red 40%,#00f)" );
       ( "color: light-dark(CanvasText, white)",
         "color:light-dark(canvastext,white)" );
       ( "background-image: image-set(url(a.avif) type(\"image/avif\") 1x, \

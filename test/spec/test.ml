@@ -298,7 +298,7 @@ let color_named () =
   roundtrip ".x { color: red }" ".x{color:red}";
   roundtrip ".x { color: blue }" ".x{color:#00f}";
   (* SS 6.1 - rebeccapurple *)
-  roundtrip ".x { color: rebeccapurple }" ".x{color:rebeccapurple}"
+  roundtrip ".x { color: rebeccapurple }" ".x{color:#639}"
 
 (* SS 5.1 - Hex notation. Per CSS Color 4 section 12.1, [#rrggbb] and the
    3-digit shorthand [#rgb] (and likewise [#rrggbbaa]/[#rgba]) denote the
@@ -320,7 +320,7 @@ let color_rgb () =
   (* CSS Color 4 section 1.3: alpha as [<number>] in [\[0, 1\]] is
      spec-equivalent to [<percentage>] in [\[0%, 100%\]]; the printer
      canonicalizes to the [<number>] form per cssnano. *)
-  roundtrip ".x { color: rgb(255 0 0 / 50%) }" ".x{color:rgb(255 0 0/.5)}";
+  roundtrip ".x { color: rgb(255 0 0 / 50%) }" ".x{color:#ff000080}";
   (* CSS Color 4 section 1.4: rgb() with all-percent channels denotes the same
      color as the equivalent named/hex form; rgb(100% 0% 0%) is red. *)
   roundtrip ".x { color: rgb(100% 0% 0%) }" ".x{color:red}"
@@ -332,14 +332,13 @@ let color_rgb () =
    test/interop/lightning/traces/minify.pairs. *)
 let color_hsl () =
   roundtrip ".x { color: hsl(120 100% 50%) }" ".x{color:#0f0}";
-  roundtrip ".x { color: hsl(120 100% 50% / 50%) }"
-    ".x{color:hsl(120 100% 50%/.5)}"
+  roundtrip ".x { color: hsl(120 100% 50% / 50%) }" ".x{color:#00ff0080}"
 
-(* SS 5.2.5 - hwb() function *)
+(* SS 5.2.5 - hwb() function. Static HWB colors are equivalent to sRGB colors
+   and minify to the shortest exact hex spelling, matching Lightning CSS. *)
 let color_hwb () =
-  roundtrip ".x { color: hwb(90 10% 20%) }" ".x{color:hwb(90 10% 20%)}";
-  roundtrip ".x { color: hwb(90 10% 20% / 0.25) }"
-    ".x{color:hwb(90 10% 20%/.25)}"
+  roundtrip ".x { color: hwb(90 10% 20%) }" ".x{color:#73cc1a}";
+  roundtrip ".x { color: hwb(90 10% 20% / 0.25) }" ".x{color:#73cc1a40}"
 
 (* SS 5.2.6 - oklch() and oklab() modern color functions *)
 let color_oklch_oklab () =
@@ -348,8 +347,7 @@ let color_oklch_oklab () =
 
 (* SS 5.2.7 - color-mix() function *)
 let color_mix () =
-  roundtrip ".x { color: color-mix(in srgb, red, blue) }"
-    ".x{color:color-mix(in srgb,red,blue)}"
+  roundtrip ".x { color: color-mix(in srgb, red, blue) }" ".x{color:purple}"
 
 (* SS 5.3 - transparent and currentcolor keywords *)
 let color_keywords () =
