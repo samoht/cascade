@@ -1894,6 +1894,7 @@ let vars_of_property : type a. a property -> a -> any_var list =
   | Webkit_mask_source_type, value -> vars_of_mask_source_type value
   | Webkit_text_size_adjust, value -> vars_of_text_size_adjust value
   | Webkit_user_select, value -> vars_of_user_select value
+  | Moz_user_select, value -> vars_of_user_select value
   | White_space, value -> vars_of_white_space value
   | Word_break, value -> vars_of_word_break value
   | Writing_mode, value -> vars_of_writing_mode value
