@@ -223,6 +223,13 @@ val has_pseudo_element : t -> bool
 (** [has_pseudo_element sel] returns [true] if selector contains a
     pseudo-element like ::before, ::after, ::marker, etc. *)
 
+val matches_nothing : t -> bool
+(** [matches_nothing sel] returns [true] when [sel] cannot match any element.
+    The canonical case is an empty forgiving [:is()] or [:where()] (every
+    argument was an invalid pseudo-class), and the predicate propagates through
+    compound, combined, and relative selectors. A selector list matches nothing
+    only when every entry does. *)
+
 val modifier_prefix : t -> string option
 (** [modifier_prefix sel] extracts the modifier prefix from the first class in
     the selector. Returns [Some "before:"] for ".before:absolute",
