@@ -8,7 +8,7 @@ preserved.
   > .a { color: red }
   > EOF
   $ cascade --minify --inline-imports missing.css 2>&1 | grep -v "warning"
-  @import url("does-not-exist.css");.a{color:red}
+  @import "does-not-exist.css";.a{color:red}
 
 An imported file with a parse error: the error is reported via warning
 and the broken rule is dropped; surviving rules pass through and the

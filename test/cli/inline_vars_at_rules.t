@@ -20,7 +20,7 @@ A variable used in an @font-face descriptor inlines.
   > }
   > EOF
   $ cascade --minify --inline-vars font-face.css
-  @font-face {font-family:Brand;src:url(font.woff2);unicode-range:U+25-FF}
+  @font-face{font-family:Brand;src:url(font.woff2);unicode-range:U+25-FF}
 
 A variable used in an @page margin descriptor inlines.
 

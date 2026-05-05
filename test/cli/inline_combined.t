@@ -82,3 +82,15 @@ inside the layer scope to layer consumers.
   > EOF
   $ cascade --minify --inline-imports --inline-vars app-layer.css
   @layer theme{.x{color:red}}.e{color:#00f}
+
+Imported kept variables retain imported runtime dependencies.
+
+  $ cat > tokens-transitive.css <<EOF
+  > :root { --brand: var(--palette-red); --palette-red: red; --gap: 8px }
+  > EOF
+  $ cat > app-transitive.css <<EOF
+  > @import url("tokens-transitive.css");
+  > .btn { color: var(--brand); padding: var(--gap) }
+  > EOF
+  $ cascade --minify --inline-imports --inline-vars --keep-vars=brand app-transitive.css
+  :root{--brand:var(--palette-red);--palette-red:red}.btn{color:var(--brand);padding:8px}

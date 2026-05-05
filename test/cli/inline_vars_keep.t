@@ -26,6 +26,28 @@ Mixed forms with and without [--] accepted.
   $ cascade --minify --inline-vars --keep-vars=--brand,spacing-3 theme.css
   :root{--brand:red;--spacing-3:12px}.btn{color:var(--brand);padding:var(--spacing-3)}
 
+Keeping a variable also keeps the runtime dependencies that its value
+references. Otherwise the kept variable would compute differently after
+dead-stripping.
+
+  $ cat > transitive.css <<EOF
+  > :root { --brand: var(--palette-red); --palette-red: red; --gap: 8px }
+  > .btn { color: var(--brand); padding: var(--gap) }
+  > EOF
+  $ cascade --minify --inline-vars --keep-vars=brand transitive.css
+  :root{--brand:var(--palette-red);--palette-red:red}.btn{color:var(--brand);padding:8px}
+
+Custom property names are case-sensitive. Keeping [--brand] must not
+also keep [--Brand].
+
+  $ cat > case.css <<EOF
+  > :root { --brand: red; --Brand: blue }
+  > .a { color: var(--brand) }
+  > .b { color: var(--Brand) }
+  > EOF
+  $ cascade --minify --inline-vars --keep-vars=brand case.css
+  :root{--brand:red}.a{color:var(--brand)}.b{color:#00f}
+
 Whitespace around list entries is tolerated.
 
   $ cascade --minify --inline-vars --keep-vars=" brand , spacing-3 " theme.css

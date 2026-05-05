@@ -250,7 +250,7 @@ Adjacent same-condition [@container] blocks merge.
   > @container (min-width: 30em) { .b { color: blue } }
   > EOF
   $ cascade --minify adj-container.css
-  @container (min-width:30em){.a{color:red}.b{color:#00f}}
+  @container (width>=30em){.a{color:red}.b{color:#00f}}
 
 Non-adjacent same-condition at-rules do NOT merge - an intervening
 rule could affect cascade order.
@@ -262,6 +262,67 @@ rule could affect cascade order.
   > EOF
   $ cascade --minify non-adj-media.css
   @media screen{.a{color:red}}.x{color:#00f}@media screen{.b{color:green}}
+
+Rules with the same selector do NOT merge across @scope. Scope
+proximity is a cascade criterion, so the scoped block is an observable
+boundary.
+
+  $ cat > scope-boundary.css <<EOF
+  > .item { color: red }
+  > @scope (.card) { .item { display: block } }
+  > .item { padding: 1rem }
+  > EOF
+  $ cascade --minify scope-boundary.css
+  .item{color:red}@scope(.card){.item{display:block}}.item{padding:1rem}
+
+Distinct @scope roots are not mergeable even when their contents are
+identical.
+
+  $ cat > distinct-scopes.css <<EOF
+  > @scope (.card) { .item { color: red } }
+  > @scope (.panel) { .item { color: red } }
+  > EOF
+  $ cascade --minify distinct-scopes.css
+  @scope(.card){.item{color:red}}@scope(.panel){.item{color:red}}
+
+Rules with the same selector do NOT merge across @page. Page-context
+descriptors are stylesheet statements and must keep their source
+position.
+
+  $ cat > page-boundary.css <<EOF
+  > .doc { color: red }
+  > @page :left { margin-left: 2cm }
+  > .doc { display: block }
+  > EOF
+  $ cascade --minify page-boundary.css
+  .doc{color:red}@page:left{margin-left:2cm}.doc{display:block}
+
+Rules with the same selector do NOT merge across conditional at-rules
+that filter when nested declarations apply.
+
+  $ cat > conditional-boundaries.css <<EOF
+  > .card { color: red }
+  > @supports (display: grid) { .card { display: grid } }
+  > .card { padding: 1rem }
+  > @container (inline-size > 30em) { .card { margin: 1rem } }
+  > .card { border-color: blue }
+  > @starting-style { .card { opacity: 0 } }
+  > .card { background-color: white }
+  > EOF
+  $ cascade --minify conditional-boundaries.css
+  .card{color:red}@supports (display:grid){.card{display:grid}}.card{padding:1rem}@container (inline-size>30em){.card{margin:1rem}}.card{border-color:#00f}@starting-style{.card{opacity:0}}.card{background-color:#fff}
+
+Equal declaration blocks are not grouped across an overlapping
+pseudo-class rule. Elements matching the pseudo-class would observe a
+different source-order winner if grouping moved either side.
+
+  $ cat > pseudo-competitor.css <<EOF
+  > .btn { color: red }
+  > .btn:hover { color: blue }
+  > .link { color: red }
+  > EOF
+  $ cascade --minify pseudo-competitor.css
+  .btn{color:red}.btn:hover{color:#00f}.link{color:red}
 
 A misplaced [@import] (after a rule statement) is invalid per CSS
 Cascade L6 §2 and is dropped during parsing.
@@ -387,3 +448,57 @@ might fall back on (legacy syntax pattern).
   > EOF
   $ cascade --minify legacy.css
   .x{display:-webkit-box;display:flex}
+
+Name-defining and descriptor at-rules are not dead just because this
+stylesheet has no visible rule that references them. They affect font
+loading, animation name resolution, custom-property registration, and
+view-transition behavior outside local declaration dead-code analysis.
+
+  $ cat > name-defining.css <<EOF
+  > @font-face { font-family: Brand; src: url("brand.woff2") }
+  > @keyframes fade { from { opacity: 0 } to { opacity: 1 } }
+  > @property --gap { syntax: "<length>"; inherits: false; initial-value: 1rem }
+  > @view-transition { navigation: auto }
+  > .x { color: red }
+  > EOF
+  $ cascade --minify name-defining.css
+  @font-face{font-family:Brand;src:url(brand.woff2)}@keyframes fade{0%{opacity:0}to{opacity:1}}@property --gap{syntax:"<length>";inherits:false;initial-value:1rem}@view-transition{navigation:auto}.x{color:red}
+
+Registered custom properties are not dead even when the only local use
+is a var() reference. Registration changes syntax, inheritance, and the
+initial value at computed-value time.
+
+  $ cat > registered-var.css <<EOF
+  > @property --gap { syntax: "<length>"; inherits: false; initial-value: 1rem }
+  > .x { padding: var(--gap) }
+  > EOF
+  $ cascade --minify registered-var.css
+  @property --gap{syntax:"<length>";inherits:false;initial-value:1rem}.x{padding:var(--gap)}
+
+Rules must not merge across name-defining at-rules. Their source
+position can be observable through animation, property registration,
+font loading, and future stylesheet APIs.
+
+  $ cat > opaque-at-rules.css <<EOF
+  > .theme { color: red }
+  > @font-face { font-family: Brand; src: url(brand.woff2) }
+  > .theme { display: flex }
+  > @keyframes fade { from { opacity: 0 } to { opacity: 1 } }
+  > .theme { padding: 1rem }
+  > @property --gap { syntax: "<length>"; inherits: false; initial-value: 1rem }
+  > .theme { margin: 1rem }
+  > EOF
+  $ cascade --minify opaque-at-rules.css
+  .theme{color:red}@font-face{font-family:Brand;src:url(brand.woff2)}.theme{display:flex}@keyframes fade{0%{opacity:0}to{opacity:1}}.theme{padding:1rem}@property --gap{syntax:"<length>";inherits:false;initial-value:1rem}.theme{margin:1rem}
+
+Nested rules must not merge across a nested @scope boundary either.
+
+  $ cat > nested-scope-boundary.css <<EOF
+  > .card {
+  >   & .title { color: red }
+  >   @scope (&) to (.boundary) { & .title { display: block } }
+  >   & .title { padding: 1rem }
+  > }
+  > EOF
+  $ cascade --minify nested-scope-boundary.css
+  .card .title{color:red}@scope(.card) to (.boundary){.card .title{display:block}}.card .title{padding:1rem}

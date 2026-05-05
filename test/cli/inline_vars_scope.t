@@ -45,6 +45,26 @@ queries evaluate at layout time, not at the syntax layer).
   $ cascade --minify --inline-vars container.css 2>&1 | grep -v "warning"
   :root{--bp:30em}@container (min-width:var(--bp)){.x{color:red}}
 
+A variable used in a @media query value is preserved. Custom property
+substitution only happens in property values, not media query syntax.
+
+  $ cat > media-query-var.css <<EOF
+  > :root { --bp: 30em }
+  > @media (min-width: var(--bp)) { .x { color: red } }
+  > EOF
+  $ cascade --minify --inline-vars media-query-var.css 2>&1 | grep -v "warning"
+  :root{--bp:30em}@media (min-width:var(--bp)){.x{color:red}}
+
+A variable used in an @supports condition is preserved for the same
+reason.
+
+  $ cat > supports-var.css <<EOF
+  > :root { --display: grid }
+  > @supports (display: var(--display)) { .x { color: red } }
+  > EOF
+  $ cascade --minify --inline-vars supports-var.css 2>&1 | grep -v "warning"
+  :root{--display:grid}@supports (display:var(--display)){.x{color:red}}
+
 A self-referential variable [--x: var(--x)] is invalid at computed
 time per CSS Custom Properties L1 §5; consumers use their fallback, and
 the now-unreferenced custom property is dead-stripped.

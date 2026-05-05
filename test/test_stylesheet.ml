@@ -555,9 +555,11 @@ let charset_case () =
 (** Test [@import] rules *)
 let import_case () =
   (* Test various import forms *)
-  check_stylesheet "@import 'styles.css';";
-  check_stylesheet "@import url(utilities.css) layer(utilities);";
-  check_stylesheet "@import 'print.css' print;";
+  check_stylesheet ~expected:"@import \"styles.css\";" "@import 'styles.css';";
+  check_stylesheet ~expected:"@import \"utilities.css\" layer(utilities);"
+    "@import url(utilities.css) layer(utilities);";
+  check_stylesheet ~expected:"@import \"print.css\" print;"
+    "@import 'print.css' print;";
   check_import_rule
     ~expected:"@import \"theme.css\" supports(selector(:has(img))) screen;"
     "@import url(theme.css) supports(selector(:has(img))) screen;";
@@ -578,8 +580,9 @@ let import_case () =
 (** Test [@namespace] rules *)
 let namespace_case () =
   (* Test namespace roundtrips *)
-  check_stylesheet "@namespace url(http://www.w3.org/1999/xhtml);";
-  check_stylesheet ~expected:"@namespace svg url(http://www.w3.org/2000/svg);"
+  check_stylesheet ~expected:"@namespace \"http://www.w3.org/1999/xhtml\";"
+    "@namespace url(http://www.w3.org/1999/xhtml);";
+  check_stylesheet ~expected:"@namespace svg \"http://www.w3.org/2000/svg\";"
     "@namespace svg url(http://www.w3.org/2000/svg);";
   check_stylesheet
     ~expected:"@namespace math \"http://www.w3.org/1998/Math/MathML\";"
@@ -1303,13 +1306,14 @@ let spec_s8_rule_shapes () =
 let spec_namespace_serialization () =
   (* CSS Namespaces: a prefixed namespace rule serializes as [@namespace
      <prefix> <namespace-url>;]. The whitespace between prefix and URL is
-     required syntax, not an implementation formatting choice. *)
-  check_stylesheet ~expected:"@namespace svg url(http://www.w3.org/2000/svg);"
+     required syntax, not an implementation formatting choice. Under minify, URL
+     tokens use the shorter string spelling when possible. *)
+  check_stylesheet ~expected:"@namespace svg \"http://www.w3.org/2000/svg\";"
     "@namespace svg url(http://www.w3.org/2000/svg);";
   check_stylesheet
     ~expected:"@namespace math \"http://www.w3.org/1998/Math/MathML\";"
     "@namespace math \"http://www.w3.org/1998/Math/MathML\";";
-  check_stylesheet ~expected:"@namespace url(http://www.w3.org/1999/xhtml);"
+  check_stylesheet ~expected:"@namespace \"http://www.w3.org/1999/xhtml\";"
     "@namespace url(http://www.w3.org/1999/xhtml);"
 
 (* Not a roundtrip test *)
@@ -1485,13 +1489,13 @@ let c64_layer_statement_edges () =
      names, can appear before imports, and declares names in source order. *)
   check_stylesheet
     ~expected:
-      "@layer default,theme,components;@import url(theme.css) \
+      "@layer default,theme,components;@import \"theme.css\" \
        layer(theme);@layer default{audio[controls]{display:block}}"
     "@layer default, theme, components; @import url(theme.css) layer(theme); \
      @layer default { audio[controls] { display: block } }";
   check_stylesheet
     ~expected:
-      "@layer default;@import url(theme.css) layer(theme);@layer \
+      "@layer default;@import \"theme.css\" layer(theme);@layer \
        components;@layer default{audio[controls]{display:block}}"
     "@layer default; @import url(theme.css) layer(theme); @layer components; \
      @layer default { audio[controls] { display: block } }";
@@ -1581,8 +1585,8 @@ let c64_import_namespace_order () =
      @import rules. *)
   check_stylesheet
     ~expected:
-      "@charset \"UTF-8\";@layer reset,theme;@import url(theme.css) \
-       layer(theme);@namespace url(http://www.w3.org/1999/xhtml);"
+      "@charset \"UTF-8\";@layer reset,theme;@import \"theme.css\" \
+       layer(theme);@namespace \"http://www.w3.org/1999/xhtml\";"
     "@charset \"UTF-8\"; @layer reset, theme; @import url(theme.css) \
      layer(theme); @namespace url(http://www.w3.org/1999/xhtml);";
   neg_cursor read_stylesheet
@@ -2135,6 +2139,10 @@ let spec_current_at_rules () =
      }";
   check_stylesheet ~expected:"@scope(.card) to (.footer){.title{color:red}}"
     "@scope (.card) to (.footer) { .title { color: red } }";
+  check_stylesheet ~expected:"@scope(.card){.title{color:red}}"
+    "@scope (.card) { .title { color: red } }";
+  check_stylesheet ~expected:"@scope(:root) to (.stop,.end){.title{color:#00f}}"
+    "@scope (:root) to (.stop, .end) { .title { color: blue } }";
   check_stylesheet
     ~expected:
       "@font-palette-values \
@@ -2546,6 +2554,14 @@ let spec_nesting_selector_edges () =
       "@scope(.card) to (.boundary){.title{color:red;&:hover{color:#00f}}}"
     "@scope (.card) to (.boundary) { .title { color: red; &:hover { color: \
      blue } } }";
+  check_stylesheet
+    ~expected:".card{@scope(&) to (.boundary){& .title{color:#00f}}}"
+    ".card { @scope (&) to (.boundary) { & .title { color: blue } } }";
+  check_stylesheet
+    ~expected:
+      ".card{color:red;@scope(.feature) to (.boundary){&>.title{display:grid}}}"
+    ".card { color: red; @scope (.feature) to (.boundary) { & > .title { \
+     display: grid } } }";
   check_stylesheet
     ~expected:"@starting-style{.dialog[open]{opacity:0;transform:scale(.95)}}"
     "@starting-style { .dialog[open] { opacity: 0; transform: scale(0.95) } }";

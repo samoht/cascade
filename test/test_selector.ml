@@ -206,10 +206,10 @@ let pseudo_class_cases () =
 (* Not a roundtrip test *)
 let pseudo_element_cases () =
   (* Test pseudo-element selectors *)
-  check_construct ":before" Before;
-  check_construct ":after" After;
-  check_construct ":first-line" First_line;
-  check_construct ":first-letter" First_letter;
+  check_construct ":before" (Before Single);
+  check_construct ":after" (After Single);
+  check_construct ":first-line" (First_line Single);
+  check_construct ":first-letter" (First_letter Single);
   check_construct "::marker" Marker;
 
   (* Selectors 4: legacy single-colon syntax remains accepted for the CSS2
