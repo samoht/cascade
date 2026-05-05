@@ -1769,6 +1769,12 @@ and pp : t Pp.t =
   | Cue selectors -> elem_func ctx "cue" sels selectors
   | Cue_region selectors -> elem_func ctx "cue-region" sels selectors
   (* Functional pseudo-classes *)
+  | Is [ single ] when Pp.minified ctx ->
+      (* CSS Selectors 4 17: a single-argument [:is(s)] matches the same
+         elements as [s] with the same specificity. The forgiving list drops
+         invalid arguments so a [:is(:future-pseudo, .a)] also reduces here,
+         which the spec test asserts. *)
+      pp ctx single
   | Is selectors -> func ctx "is" sels selectors
   | Where selectors -> func ctx "where" sels selectors
   | Not selectors -> func ctx "not" sels selectors
