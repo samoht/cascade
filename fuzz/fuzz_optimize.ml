@@ -35,7 +35,9 @@ let generated_stylesheet buf =
         media = Some (Css.Media.of_string "(width >= 40em)");
       };
     Css.Stylesheet.Namespace
-      (Some "svg", Css.Stylesheet.Url "http://www.w3.org/2000/svg");
+      ( Some "svg",
+        Css.Stylesheet.Url
+          ("http://www.w3.org/2000/svg", Css.Stylesheet.Url_bare) );
     Css.Stylesheet.property ~syntax:Css.Variables.Universal "--fuzz";
     rule buf 0;
     rule buf 0;
@@ -349,6 +351,38 @@ let test_positive_layer_statement_vectors buf =
         (Fmt.str "positive layer statement optimization did not reparse: %S"
            optimized)
 
+let test_name_defining_atrules_preserved buf =
+  let css =
+    pick
+      [
+        "@font-face{font-family:Brand;src:url(brand.woff2)}.x{color:red}";
+        "@keyframes fade{from{opacity:0}to{opacity:1}}.x{color:red}";
+        "@property \
+         --gap{syntax:\"<length>\";inherits:false;initial-value:1rem}.x{padding:var(--gap)}";
+        "@view-transition{navigation:auto}.x{view-transition-name:card}";
+      ]
+      buf 0
+  in
+  match parse_stylesheet css with
+  | None -> fail (Fmt.str "name-defining at-rule vector did not parse: %S" css)
+  | Some ss -> (
+      let optimized = Css.Optimize.stylesheet ss |> minified in
+      let required =
+        pick
+          [ "@font-face"; "@keyframes"; "@property --gap"; "@view-transition" ]
+          buf 0
+      in
+      if not (Astring.String.is_infix ~affix:required optimized) then
+        fail
+          (Fmt.str "optimization dropped name-defining at-rule %S from %S -> %S"
+             required css optimized);
+      match parse_stylesheet optimized with
+      | Some _ -> ()
+      | None ->
+          fail
+            (Fmt.str "optimized name-defining at-rule did not reparse: %S"
+               optimized))
+
 let suite =
   ( "optimize",
     [
@@ -367,4 +401,6 @@ let suite =
         test_cascade_shorthand_importance_vectors;
       test_case "positive layer statement vectors" [ bytes ]
         test_positive_layer_statement_vectors;
+      test_case "name-defining at-rules preserved" [ bytes ]
+        test_name_defining_atrules_preserved;
     ] )

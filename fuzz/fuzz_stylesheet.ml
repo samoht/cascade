@@ -165,6 +165,9 @@ let parse_declaration input =
 let minified_stylesheet ss =
   Css.Stylesheet.to_string ~minify:true ss |> String.trim
 
+let pretty_stylesheet ss =
+  Css.Stylesheet.to_string ~minify:false ss |> String.trim
+
 let recovered_declaration_counts stylesheet =
   Css.rule_statements stylesheet
   |> List.map (fun statement ->
@@ -402,6 +405,21 @@ let test_stylesheet_minified_idempotent buf =
               (Fmt.str "stylesheet minified serialization changed: %S -> %S"
                  once twice))
 
+let test_stylesheet_pretty_idempotent buf =
+  let buf = cssish buf in
+  match parse_stylesheet buf with
+  | None -> ()
+  | Some ss -> (
+      let once = pretty_stylesheet ss in
+      match parse_stylesheet once with
+      | None -> fail (Fmt.str "pretty stylesheet did not reparse: %S" once)
+      | Some reparsed ->
+          let twice = pretty_stylesheet reparsed in
+          if once <> twice then
+            fail
+              (Fmt.str "stylesheet pretty serialization changed: %S -> %S" once
+                 twice))
+
 (** CSS Cascade section 6.4: stylesheets emitted with layer statements, nested
     layer names, imports, anonymous layers, and conditional layer blocks should
     parse back to the same canonical serialization. *)
@@ -430,6 +448,22 @@ let test_generated_condition_stylesheet_roundtrip buf =
           (Fmt.str
              "generated conditional stylesheet serialization changed: %S -> %S"
              once twice)
+
+let test_generated_stylesheets_pretty_roundtrip buf =
+  List.iter
+    (fun ss ->
+      let once = pretty_stylesheet ss in
+      match parse_stylesheet once with
+      | None ->
+          fail (Fmt.str "generated pretty stylesheet did not reparse: %S" once)
+      | Some reparsed ->
+          let twice = pretty_stylesheet reparsed in
+          if once <> twice then
+            fail
+              (Fmt.str
+                 "generated pretty stylesheet serialization changed: %S -> %S"
+                 once twice))
+    [ generated_layer_stylesheet buf; generated_condition_stylesheet buf ]
 
 (** CSS Cascade section 6.4: optimization must preserve cascade boundaries that
     define layer identity, layer order, import placement, and conditional scope.
@@ -682,7 +716,8 @@ let test_namespace_prefix_separator buf =
       match parse_stylesheet output with
       | Some
           [
-            Css.Stylesheet.Namespace (Some output_prefix, Css.Stylesheet.Url u);
+            Css.Stylesheet.Namespace
+              (Some output_prefix, Css.Stylesheet.Url (u, _));
           ]
         when output_prefix = prefix && u = url ->
           ()
@@ -1127,10 +1162,14 @@ let suite =
       test_case "roundtrip" [ bytes ] test_stylesheet_roundtrip;
       test_case "minified serialization idempotent" [ bytes ]
         test_stylesheet_minified_idempotent;
+      test_case "pretty serialization idempotent" [ bytes ]
+        test_stylesheet_pretty_idempotent;
       test_case "generated layer stylesheet roundtrip" [ bytes ]
         test_generated_layer_stylesheet_roundtrip;
       test_case "generated condition stylesheet roundtrip" [ bytes ]
         test_generated_condition_stylesheet_roundtrip;
+      test_case "generated pretty stylesheet roundtrip" [ bytes ]
+        test_generated_stylesheets_pretty_roundtrip;
       test_case "layer boundary shape invariant" [ bytes ]
         test_layer_boundary_shape_invariant;
       test_case "anonymous layer count invariant" [ bytes ]

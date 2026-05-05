@@ -543,7 +543,7 @@ and pp_statement : statement Pp.t =
           Pp.semicolon ctx ();
           Pp.cut ctx ())
         Declaration.pp_declaration ctx decls;
-      if decls <> [] then Pp.semicolon ctx ()
+      if decls <> [] && not ctx.minify then Pp.semicolon ctx ()
   | Charset encoding ->
       Pp.string ctx "@charset \"";
       Pp.string ctx encoding;
@@ -581,10 +581,16 @@ and pp_statement : statement Pp.t =
           Pp.space ctx ()
       | None -> ());
       (match uri with
-      | Url value when Pp.minified ctx -> Pp.quoted_string ctx value
-      | Url value ->
+      | Url (value, _) when Pp.minified ctx -> Pp.quoted_string ctx value
+      | Url (value, Url_bare) ->
           Pp.string ctx "url(";
           Pp.string ctx value;
+          Pp.char ctx ')'
+      | Url (value, Url_quoted q) ->
+          Pp.string ctx "url(";
+          Pp.char ctx q;
+          Pp.string ctx value;
+          Pp.char ctx q;
           Pp.char ctx ')'
       | Quoted value -> Pp.quoted_string ctx value);
       Pp.semicolon ctx ()
@@ -672,17 +678,46 @@ and pp_statement : statement Pp.t =
   | Origin (_, content) -> pp_block ctx content
   | Scope (start, end_, content) ->
       Pp.string ctx "@scope";
+      let replace_all pattern replacement s =
+        let plen = String.length pattern in
+        let slen = String.length s in
+        let buf = Buffer.create slen in
+        let rec loop i =
+          if i >= slen then ()
+          else if i + plen <= slen && String.sub s i plen = pattern then (
+            Buffer.add_string buf replacement;
+            loop (i + plen))
+          else (
+            Buffer.add_char buf s.[i];
+            loop (i + 1))
+        in
+        loop 0;
+        Buffer.contents buf
+      in
+      let compact_scope_combinators s =
+        s |> replace_all " > " ">" |> replace_all " + " "+"
+        |> replace_all " ~ " "~" |> replace_all " || " "||"
+      in
+      let pp_scope_selector ctx s =
+        let s =
+          try Selector.(to_string ~minify:(Pp.minified ctx) (of_string s))
+          with _ -> s
+        in
+        let s = String.trim s in
+        let s = compact_scope_combinators s in
+        Pp.string ctx (String.trim s)
+      in
       (match start with
       | Some s ->
           Pp.space_if_pretty ctx ();
           Pp.string ctx "(";
-          Pp.string ctx s;
+          pp_scope_selector ctx s;
           Pp.string ctx ")"
       | None -> ());
       (match end_ with
       | Some e ->
           Pp.string ctx " to (";
-          Pp.string ctx e;
+          pp_scope_selector ctx e;
           Pp.string ctx ")"
       | None -> ());
       Pp.sp ctx ();
@@ -1080,7 +1115,26 @@ let read_namespace (r : Cursor.t) : statement =
     | Some (Component.Preserved { kind = Token.String { value; _ }; _ }) ->
         Cursor.skip r;
         Quoted value
-    | _ -> Url (Cursor.url r)
+    | _ ->
+        let pos = Cursor.position r in
+        let value = Cursor.url r in
+        let end_pos = Cursor.position r in
+        let form =
+          match Cursor.source r with
+          | Some source
+            when end_pos.start_pos <= String.length source
+                 && pos.start_pos <= end_pos.start_pos
+                 && pos.start_pos >= 0 ->
+              let raw =
+                String.sub source pos.start_pos
+                  (end_pos.start_pos - pos.start_pos)
+              in
+              if String.contains raw '\'' then Url_quoted '\''
+              else if String.contains raw '"' then Url_quoted '"'
+              else Url_bare
+          | _ -> Url_bare
+        in
+        Url (value, form)
   in
   Cursor.ws r;
   if Cursor.peek_semicolon r then Cursor.skip r;
@@ -1616,6 +1670,36 @@ let parse_conditional_components components =
 
 let follows_conditional = function When _ | Else _ -> true | _ -> false
 
+let parse_scope_prelude r prelude_components =
+  let prelude = Cursor.components_to_string ~trim:true prelude_components in
+  let rec split_at_to seen rest =
+    match rest with
+    | [] -> (List.rev seen, [])
+    | Component.Preserved { kind = Token.Ident s; _ } :: tail
+      when String.lowercase_ascii s = "to" ->
+        (List.rev seen, tail)
+    | hd :: tail -> split_at_to (hd :: seen) tail
+  in
+  let strip_parens cvs =
+    match Cursor.components_to_string ~trim:true cvs with
+    | s
+      when String.length s >= 2 && s.[0] = '(' && s.[String.length s - 1] = ')'
+      ->
+        (true, String.sub s 1 (String.length s - 2) |> String.trim)
+    | s -> (false, s)
+  in
+  if prelude = "" then (None, None)
+  else
+    let start_cvs, end_cvs = split_at_to [] prelude_components in
+    let start_parens, start = strip_parens start_cvs in
+    let end_parens, end_ = strip_parens end_cvs in
+    if start_parens && start = "" then
+      Cursor.err_invalid r "@scope start selector cannot be empty";
+    if end_cvs <> [] && end_parens && end_ = "" then
+      Cursor.err_invalid r "@scope end selector cannot be empty";
+    let opt s = if s = "" then None else Some s in
+    (opt start, opt end_)
+
 let rec read_statement (r : Cursor.t) : statement =
   Cursor.ws r;
   let table : (string * (Cursor.t -> statement)) list =
@@ -1751,37 +1835,7 @@ and read_scope (r : Cursor.t) : statement =
   Cursor.expect_at_keyword "scope" r;
   Cursor.ws r;
   let prelude_components = Cursor.drain_until_block r in
-  let prelude = Cursor.components_to_string ~trim:true prelude_components in
-  let scope_start, scope_end =
-    let rec split_at_to seen rest =
-      match rest with
-      | [] -> (List.rev seen, [])
-      | Component.Preserved { kind = Token.Ident s; _ } :: tail
-        when String.lowercase_ascii s = "to" ->
-          (List.rev seen, tail)
-      | hd :: tail -> split_at_to (hd :: seen) tail
-    in
-    let strip_parens cvs =
-      match Cursor.components_to_string ~trim:true cvs with
-      | s
-        when String.length s >= 2
-             && s.[0] = '('
-             && s.[String.length s - 1] = ')' ->
-          (true, String.sub s 1 (String.length s - 2) |> String.trim)
-      | s -> (false, s)
-    in
-    if prelude = "" then (None, None)
-    else
-      let start_cvs, end_cvs = split_at_to [] prelude_components in
-      let start_parens, start = strip_parens start_cvs in
-      let end_parens, end_ = strip_parens end_cvs in
-      if start_parens && start = "" then
-        Cursor.err_invalid r "@scope start selector cannot be empty";
-      if end_cvs <> [] && end_parens && end_ = "" then
-        Cursor.err_invalid r "@scope end selector cannot be empty";
-      let opt s = if s = "" then None else Some s in
-      (opt start, opt end_)
-  in
+  let scope_start, scope_end = parse_scope_prelude r prelude_components in
   let content = Cursor.braces (fun inner -> read_block inner) r in
   Scope (scope_start, scope_end, content)
 
@@ -1932,13 +1986,19 @@ and read_nested_at_rule (r : Cursor.t) (at_rule : string)
           with Failure _ -> Media.of_string "not all"
       in
       Media (condition, content)
+  | "@scope" ->
+      let prelude_components = Cursor.drain_until_block r in
+      let scope_start, scope_end = parse_scope_prelude r prelude_components in
+      let content = Cursor.braces (fun inner -> read_nesting_block inner) r in
+      Scope (scope_start, scope_end, content)
   | _ -> Cursor.err_invalid r ("Unexpected nested at-rule: " ^ at_rule)
 
 and read_nested_at_within_rule (r : Cursor.t) (selector : Selector.t) :
     statement =
   match Cursor.peek r with
   | Some (Component.Preserved { kind = Token.At_keyword name; _ })
-    when name = "supports" || name = "media" || name = "container" ->
+    when name = "supports" || name = "media" || name = "container"
+         || name = "scope" ->
       read_nested_at_rule r ("@" ^ name) selector
   | Some (Component.Preserved { kind = Token.At_keyword "layer"; _ }) -> (
       Cursor.expect_at_keyword "layer" r;
