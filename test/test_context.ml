@@ -2314,7 +2314,7 @@ let cascade_rule_resolver_contract () =
     ~document:
       (Css.Context.document ~scope:".card" ~element:"h2"
          ~classes:[ "title"; "boundary" ] ())
-    ~query ~property:"color" ~expected:"color: blue"
+    ~query ~property:"color" ~expected:"color: #00f"
     {|
       @scope (.card) to (.boundary) { .title { color: green; } }
       .title { color: blue; }
@@ -2339,7 +2339,7 @@ let cascade_rule_resolver_contract () =
   check_resolved_property_from_ast
     "origin and animation/transition ranks are applied" ~layer_order
     ~ctx:value_ctx ~document:primary ~query ~property:"color"
-    ~expected:"color: yellow" origin_sheet;
+    ~expected:"color: #ff0" origin_sheet;
   let revert_origin_sheet =
     [
       Css.Stylesheet.with_origin Css.Stylesheet.User_agent
@@ -2353,7 +2353,7 @@ let cascade_rule_resolver_contract () =
   check_resolved_property_from_ast
     "revert rolls back to the next lower cascade origin" ~layer_order
     ~ctx:value_ctx ~document:primary ~query ~property:"color"
-    ~expected:"color: blue" revert_origin_sheet;
+    ~expected:"color: #00f" revert_origin_sheet;
   check_resolved_property "nested conditional declarations inherit parent rule"
     ~layer_order ~ctx:value_ctx ~document:primary ~query
     ~property:"outline-color" ~expected:"outline-color: oklch(40% 0.10 250)"
@@ -2370,7 +2370,7 @@ let cascade_rule_resolver_contract () =
   check_resolved_property
     "source order breaks ties after equal origin layer specificity and scope"
     ~layer_order ~ctx:value_ctx ~document:primary ~query
-    ~property:"background-color" ~expected:"background-color: blue"
+    ~property:"background-color" ~expected:"background-color: #00f"
     {|
       .btn { background-color: red; }
       .btn { background-color: blue; }
@@ -2378,7 +2378,7 @@ let cascade_rule_resolver_contract () =
   check_resolved_property
     "normal named layer order follows the declared layer statement" ~layer_order
     ~ctx:value_ctx ~document:primary ~query ~property:"outline-color"
-    ~expected:"outline-color: blue"
+    ~expected:"outline-color: #00f"
     {|
       @layer reset, theme, components, utilities;
       @layer utilities { .btn { outline-color: blue; } }
