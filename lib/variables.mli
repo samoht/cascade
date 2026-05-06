@@ -78,7 +78,7 @@ val pp_any_syntax : any_syntax Pp.t
 val read_any_syntax : Cursor.t -> any_syntax
 (** [read_any_syntax t] parses a CSS syntax descriptor. *)
 
-val parse_var_reference : Cursor.t -> string * string option
-(** [parse_var_reference t] parses a CSS var() function and returns the variable
+val read_reference : Cursor.t -> string * string option
+(** [read_reference t] parses a CSS var() function and returns the variable
     name (without -- prefix) and optional fallback string. This is a lower-level
     function that doesn't create a variable handle. *)

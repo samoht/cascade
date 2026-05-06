@@ -870,7 +870,7 @@ let value_has_invalid_block ~is_custom value =
       if is_custom then before_has && after_has else before_has || after_has
 
 (* 5.3.7 Parse a declaration from a buffered component-value list. *)
-let parse_declaration_from_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
+let declaration_from_buffer ~meta lexer ~name ~name_loc ~warnings cvs :
     Component.declaration option =
   let is_custom = String.length name >= 2 && name.[0] = '-' && name.[1] = '-' in
   match drop_leading_ws cvs with
@@ -931,8 +931,8 @@ let consume_list_of_declarations ~meta lexer ~warnings :
     | Token.Ident name -> (
         let body = consume_declaration_body lexer in
         match
-          parse_declaration_from_buffer ~meta lexer ~name ~name_loc:tok.loc
-            ~warnings body
+          declaration_from_buffer ~meta lexer ~name ~name_loc:tok.loc ~warnings
+            body
         with
         | Some d -> loop (`Decl d :: acc)
         | None -> loop acc)
@@ -967,12 +967,12 @@ let with_warnings f =
   let value = f ~warnings in
   { value; warnings = List.rev !warnings }
 
-let parse_stylesheet ?(meta = Loc.default_meta_level) r =
+let stylesheet ?(meta = Loc.default_meta_level) r =
   with_warnings (fun ~warnings ->
       let lexer = Lexer.of_reader r in
       consume_list_of_rules ~meta lexer ~top_level:true ~warnings)
 
-let parse_stylesheet_contents = parse_stylesheet
+let stylesheet_contents = stylesheet
 
 (* CSS Syntax Level 3 section 5.4.5: a block's contents is a mix of declarations
    and nested rules. Consecutive declarations are grouped into a single [`Decls]
@@ -1006,8 +1006,8 @@ let consume_block_contents ~meta lexer ~warnings : block_item list =
         let body = consume_declaration_body lexer in
         let warnings_snapshot = !warnings in
         (match
-           parse_declaration_from_buffer ~meta lexer ~name ~name_loc:tok.loc
-             ~warnings body
+           declaration_from_buffer ~meta lexer ~name ~name_loc:tok.loc ~warnings
+             body
          with
         | Some d ->
             Lexer.commit lexer;
@@ -1037,15 +1037,14 @@ let consume_block_contents ~meta lexer ~warnings : block_item list =
   in
   loop ()
 
-let parse_block_contents ?(meta = Loc.default_meta_level) r :
-    block_item list output =
+let block_contents ?(meta = Loc.default_meta_level) r : block_item list output =
   with_warnings (fun ~warnings ->
       let lexer = Lexer.of_reader r in
       consume_block_contents ~meta lexer ~warnings)
 
 (* CSS Syntax Level 3 section 5.4.6 "Parse a rule": skip surrounding whitespace,
    consume one rule, require EOF, no extra rules or stray tokens afterwards. *)
-let parse_rule ?(meta = Loc.default_meta_level) r =
+let rule ?(meta = Loc.default_meta_level) r =
   with_warnings (fun ~warnings ->
       let lexer = Lexer.of_reader r in
       skip_whitespace_tokens lexer;
@@ -1071,7 +1070,7 @@ let parse_rule ?(meta = Loc.default_meta_level) r =
    whitespace, require an ident, consume exactly one declaration, ignore
    anything after the terminating ';' or EOF. The first non-whitespace token
    must be the declaration name -- a stray ':' or [@x] is a syntax error. *)
-let parse_declaration ?(meta = Loc.default_meta_level) r =
+let declaration ?(meta = Loc.default_meta_level) r =
   with_warnings (fun ~warnings ->
       let lexer = Lexer.of_reader r in
       skip_whitespace_tokens lexer;
@@ -1079,21 +1078,21 @@ let parse_declaration ?(meta = Loc.default_meta_level) r =
       | Token.Ident name ->
           let tok = Lexer.next lexer in
           let body = consume_declaration_body lexer in
-          parse_declaration_from_buffer ~meta lexer ~name ~name_loc:tok.loc
-            ~warnings body
+          declaration_from_buffer ~meta lexer ~name ~name_loc:tok.loc ~warnings
+            body
       | _ -> None)
 
-let parse_list_of_declarations ?(meta = Loc.default_meta_level) r =
+let list_of_declarations ?(meta = Loc.default_meta_level) r =
   with_warnings (fun ~warnings ->
       let lexer = Lexer.of_reader r in
       consume_list_of_declarations ~meta lexer ~warnings)
 
-let parse_list_of_rules ?(meta = Loc.default_meta_level) r =
+let list_of_rules ?(meta = Loc.default_meta_level) r =
   with_warnings (fun ~warnings ->
       let lexer = Lexer.of_reader r in
       consume_list_of_rules ~meta lexer ~top_level:false ~warnings)
 
-let parse_list_of_component_values r =
+let list_of_component_values r =
   with_warnings (fun ~warnings:_ ->
       let p = of_reader r in
       let rec loop acc =
@@ -1103,7 +1102,7 @@ let parse_list_of_component_values r =
       in
       loop [])
 
-let parse_component_value r =
+let component_value r =
   with_warnings (fun ~warnings:_ ->
       let p = of_reader r in
       let rec next_non_ws () =
@@ -1137,8 +1136,8 @@ let split_comma_groups cvs =
   in
   split [] [] cvs
 
-let parse_csv_component_values r =
-  let out = parse_list_of_component_values r in
+let csv_component_values r =
+  let out = list_of_component_values r in
   { out with value = split_comma_groups out.value }
 
 let trim_component_value_whitespace cvs =
@@ -1157,14 +1156,14 @@ let component_values_are_whitespace_only cvs =
     (function Preserved { kind = Token.Whitespace; _ } -> true | _ -> false)
     cvs
 
-let parse_according_to_grammar r grammar =
-  let out = parse_list_of_component_values r in
+let according_to_grammar r grammar =
+  let out = list_of_component_values r in
   let value = trim_component_value_whitespace out.value in
   if grammar value then { out with value = Some value }
   else { out with value = None }
 
-let parse_csv_by_grammar r grammar =
-  let raw = parse_list_of_component_values r in
+let csv_by_grammar r grammar =
+  let raw = list_of_component_values r in
   if component_values_are_whitespace_only raw.value then { raw with value = [] }
   else
     let out = { raw with value = split_comma_groups raw.value } in
@@ -1192,8 +1191,8 @@ let rec arbitrary_value_tokens_ok ~allow_top_level_semicolon_bang ~top_level =
             ~top_level:false value
       | Component.Preserved _ -> true)
 
-let parse_arbitrary_value r ~allow_top_level_semicolon_bang =
-  let out = parse_list_of_component_values r in
+let arbitrary_value r ~allow_top_level_semicolon_bang =
+  let out = list_of_component_values r in
   let value = trim_component_value_whitespace out.value in
   if
     value <> []
@@ -1202,8 +1201,7 @@ let parse_arbitrary_value r ~allow_top_level_semicolon_bang =
   then { out with value = Some value }
   else { out with value = None }
 
-let parse_declaration_value r =
-  parse_arbitrary_value r ~allow_top_level_semicolon_bang:false
+let declaration_value r =
+  arbitrary_value r ~allow_top_level_semicolon_bang:false
 
-let parse_any_value r =
-  parse_arbitrary_value r ~allow_top_level_semicolon_bang:true
+let any_value r = arbitrary_value r ~allow_top_level_semicolon_bang:true

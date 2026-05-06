@@ -243,7 +243,7 @@ val read_stylesheet_from_rules :
 val parse_stylesheet_partial :
   ?meta:Loc.meta_level -> string -> stylesheet * Error.t list
 (** [parse_stylesheet_partial ?meta source] runs section 5.3 recovery via
-    {!Parser.parse_stylesheet} and then typed-validates each recovered rule via
+    {!Parser.stylesheet} and then typed-validates each recovered rule via
     {!read_stylesheet_from_rules}. Warnings from both stages are combined in
     source order. *)
 

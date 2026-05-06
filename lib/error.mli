@@ -51,7 +51,7 @@ val to_string : t -> string
     Two flavours, [Stdlib.failwith]-style:
 
     - Value constructors ([sort_mismatch], [bad_selector], ...) build an {!t}.
-      Use when collecting non-fatal warnings, e.g. {!Parser.parse_stylesheet}.
+      Use when collecting non-fatal warnings, e.g. {!Parser.stylesheet}.
     - Raising constructors ([fail_sort_mismatch], [fail_bad_selector], ...)
       build the same error and immediately raise {!Parse_error}. Use at the
       point of failure inside a decoder. *)

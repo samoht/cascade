@@ -33,7 +33,7 @@ let fallback_value buf =
 
 let parse_var input =
   let r = Css.Cursor.of_string input in
-  try Some (Css.Variables.parse_var_reference r)
+  try Some (Css.Variables.read_reference r)
   with Css.Cursor.Parse_error _ | Css.Reader.Parse_error _ -> None
 
 let test_var_ref_crash_safety buf = ignore (parse_var (cssish buf))
