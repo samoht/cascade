@@ -348,6 +348,27 @@ let parse_background_image s =
     if Cursor.is_done r then Some imgs else None
   with Cursor.Parse_error _ | Invalid_argument _ -> None
 
+let syntax_fallback s = Syntax_fallback (Cursor.remaining (Cursor.of_string s))
+
+let custom_value_ident name =
+  [ Component.Preserved (Token.synthetic (Token.Ident name)) ]
+
+let custom_value_var_empty_fallback name =
+  let loc = Loc.dummy in
+  let ident =
+    Component.Preserved (Token.synthetic (Token.Ident ("--" ^ name)))
+  in
+  let comma = Component.Preserved (Token.synthetic Token.Comma) in
+  [
+    Component.Func
+      {
+        node = { name = "var"; arguments = [ ident; comma ]; terminated = true };
+        loc;
+      };
+  ]
+
+let string_of_custom_value = Parser.to_string_custom
+
 let as_layer = function
   | Layer (name, content) -> Some (name, content)
   | _ -> None
