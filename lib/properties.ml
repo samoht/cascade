@@ -3081,7 +3081,7 @@ and pp_image_set_option ctx
     image_set_mime_type;
   Option.iter
     (fun res ->
-      Pp.space ctx ();
+      if not (Pp.minified ctx) then Pp.space ctx ();
       Pp.string ctx res)
     image_set_resolution
 
@@ -4955,11 +4955,19 @@ let rec pp_grid_line : grid_line Pp.t =
   | Auto -> Pp.string ctx "auto"
   | Num n -> Pp.int ctx n
   | Name s -> Pp.string ctx s
+  | Num_name (n, name) ->
+      Pp.int ctx n;
+      Pp.char ctx ' ';
+      Pp.string ctx name
   | Span n ->
       Pp.string ctx "span";
       Pp.char ctx ' ';
       Pp.int ctx n
   | Span_name name ->
+      Pp.string ctx "span";
+      Pp.char ctx ' ';
+      Pp.string ctx name
+  | Span_num_name (1, name) when Pp.minified ctx ->
       Pp.string ctx "span";
       Pp.char ctx ' ';
       Pp.string ctx name
@@ -9727,6 +9735,13 @@ let rec read_grid_auto_flow t : grid_auto_flow =
 (* CSS Grid template - flattened type with direct constructors *)
 
 let rec read_grid_line t : grid_line =
+  let at_end t =
+    Cursor.is_done t || Cursor.peek_semicolon t
+    ||
+    match Cursor.peek t with
+    | Some (Component.Preserved { kind = Token.Delim "/"; _ }) -> true
+    | _ -> false
+  in
   let read_line_name t =
     let name = Cursor.ident t in
     if name = "span" then Cursor.err_invalid t "duplicate span grid line"
@@ -9736,17 +9751,49 @@ let rec read_grid_line t : grid_line =
     let span_word = Cursor.ident t in
     if span_word = "span" then (
       Cursor.ws t;
-      match Cursor.option Cursor.int t with
-      | Some n -> (
-          Cursor.ws t;
-          match Cursor.option read_line_name t with
-          | Some name -> Span_num_name (n, name)
-          | None -> Span n)
-      | None -> Span_name (read_line_name t))
+      let first_int = Cursor.option Cursor.int t in
+      Cursor.ws t;
+      let first_name =
+        if Option.is_none first_int && not (at_end t) then
+          Cursor.option read_line_name t
+        else Option.None
+      in
+      Cursor.ws t;
+      let second =
+        if at_end t then Option.None
+        else
+          match first_int with
+          | Option.Some _ ->
+              Option.map
+                (fun name -> `Name name)
+                (Cursor.option read_line_name t)
+          | Option.None ->
+              Option.map (fun n -> `Num n) (Cursor.option Cursor.int t)
+      in
+      match (first_int, first_name, second) with
+      | Option.Some n, Option.None, Option.Some (`Name name) ->
+          Span_num_name (n, name)
+      | Option.Some n, Option.None, Option.None -> Span n
+      | Option.None, Option.Some name, Option.Some (`Num n) ->
+          Span_num_name (n, name)
+      | Option.None, Option.Some name, Option.None -> Span_name name
+      | _ -> Cursor.err_invalid t "invalid span grid line")
     else Cursor.err t ("Expected 'span' but got " ^ span_word)
   in
-  let read_number t : grid_line = Num (Cursor.int t) in
-  let read_name t : grid_line = Name (read_line_name t) in
+  let read_number t : grid_line =
+    let n = Cursor.int t in
+    Cursor.ws t;
+    match if at_end t then Option.None else Cursor.option read_line_name t with
+    | Option.Some name -> Num_name (n, name)
+    | Option.None -> Num n
+  in
+  let read_name t : grid_line =
+    let name = read_line_name t in
+    Cursor.ws t;
+    match if at_end t then Option.None else Cursor.option Cursor.int t with
+    | Option.Some n -> Num_name (n, name)
+    | Option.None -> Name name
+  in
   let read_calc_int t : grid_line =
     (* read_calc handles the calc(...) wrapper itself *)
     let expr =
