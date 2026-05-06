@@ -211,8 +211,8 @@ module Stylesheet = struct
             List.map (Declaration.eval ~layer_order ?layer ctx) descriptors,
             List.map (eval_page_margin_rule ~layer_order ?layer ctx) margins )
     | ( Charset _ | Import _ | Namespace _ | Property _ | Layer_decl _
-      | Font_face _ | Font_palette_values _ | View_transition _ ) as statement
-      ->
+      | Font_face _ | Font_palette_values _ | View_transition _
+      | Unknown_at_rule _ ) as statement ->
         statement
 
   and eval_rule_with_ctx ?ctx_for_layer ~layer_order ?layer ctx rule =

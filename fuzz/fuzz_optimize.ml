@@ -136,6 +136,7 @@ let rec boundary_shape = function
   | View_transition _ -> [ "view-transition" ]
   | Position_try _ -> [ "position-try" ]
   | Viewport _ -> [ "viewport" ]
+  | Unknown_at_rule { name; _ } -> [ "unknown-at-rule:" ^ name ]
   | Property _ -> [ "property" ]
 
 (* The optimizer is allowed to merge a contiguous run of [Rule]s into fewer
