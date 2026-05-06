@@ -2357,6 +2357,17 @@ and pp_color : color Pp.t =
           Pp.comma ctx ();
           pp_color ctx dark)
         ctx (light, dark)
+  | Attribute (name, fallback) ->
+      Pp.string ctx "attr(";
+      Pp.string ctx name;
+      Pp.space ctx ();
+      Pp.string ctx "type(<color>)";
+      Option.iter
+        (fun fallback ->
+          Pp.comma ctx ();
+          pp_color ctx fallback)
+        fallback;
+      Pp.char ctx ')'
   | Lab { l; a; b; alpha } -> pp_lab ctx (l, a, b, alpha)
   | Oklch { l; c; h; alpha } -> pp_oklch ctx (l, c, h, alpha)
   | Oklab { l; a; b; alpha } -> pp_oklab ctx (l, a, b, alpha)
@@ -2914,47 +2925,45 @@ and read_calc_numeric_function : type a. Cursor.t -> a calc =
       | "mod" ->
           Num
             (Cursor.call "mod" t (fun inner ->
-                 let a = Cursor.number inner in
+                 let a = read_num_expr inner in
                  Cursor.ws inner;
                  Cursor.comma inner;
-                 let b = Cursor.number inner in
+                 let b = read_num_expr inner in
                  Cursor.ws inner;
                  Cursor.expect_eof inner;
                  mod_value a b))
       (* CSS Values 4 §10.7 numeric math functions. We evaluate them at parse
-         time to a [Num] so the surrounding [calc()] can fold further. The
-         input syntax for trig is [<angle> | <number>]; a bare number is
-         treated as radians per the spec. *)
+         time to a [Num] so the surrounding [calc()] can fold further. *)
       | "sqrt" ->
           Num (Cursor.call "sqrt" t (fun inner ->
-              let v = Cursor.number inner in
+              let v = read_num_expr inner in
               Cursor.ws inner;
               Cursor.expect_eof inner;
               Float.sqrt v))
       | "abs" ->
           Num (Cursor.call "abs" t (fun inner ->
-              let v = Cursor.number inner in
+              let v = read_num_expr inner in
               Cursor.ws inner;
               Cursor.expect_eof inner;
               Float.abs v))
       | "sign" ->
           Num (Cursor.call "sign" t (fun inner ->
-              let v = Cursor.number inner in
+              let v = read_num_expr inner in
               Cursor.ws inner;
               Cursor.expect_eof inner;
               if v > 0. then 1. else if v < 0. then -1. else 0.))
       | "exp" ->
           Num (Cursor.call "exp" t (fun inner ->
-              let v = Cursor.number inner in
+              let v = read_num_expr inner in
               Cursor.ws inner;
               Cursor.expect_eof inner;
               Float.exp v))
       | "log" ->
           Num (Cursor.call "log" t (fun inner ->
-              let v = Cursor.number inner in
+              let v = read_num_expr inner in
               Cursor.ws inner;
               let base =
-                if Cursor.comma_opt inner then Some (Cursor.number inner)
+                if Cursor.comma_opt inner then Some (read_num_expr inner)
                 else None
               in
               Cursor.ws inner;
@@ -2964,23 +2973,23 @@ and read_calc_numeric_function : type a. Cursor.t -> a calc =
               | Some b -> Float.log v /. Float.log b))
       | "pow" ->
           Num (Cursor.call "pow" t (fun inner ->
-              let a = Cursor.number inner in
+              let a = read_num_expr inner in
               Cursor.ws inner;
               Cursor.comma inner;
-              let b = Cursor.number inner in
+              let b = read_num_expr inner in
               Cursor.ws inner;
               Cursor.expect_eof inner;
               Float.pow a b))
       | "hypot" ->
           Num (Cursor.call "hypot" t (fun inner ->
               let nums = Cursor.list ~sep:Cursor.comma ~at_least:1
-                  Cursor.number inner in
+                  read_num_expr inner in
               Cursor.expect_eof inner;
               let sum_sq = List.fold_left (fun acc x -> acc +. (x *. x)) 0. nums in
               Float.sqrt sum_sq))
       | ("sin" | "cos" | "tan") as fn ->
           Num (Cursor.call fn t (fun inner ->
-              let radians = read_angle_or_radians inner in
+              let radians = read_trig_arg inner in
               Cursor.ws inner;
               Cursor.expect_eof inner;
               match fn with
@@ -2990,7 +2999,7 @@ and read_calc_numeric_function : type a. Cursor.t -> a calc =
               | _ -> assert false))
       | ("asin" | "acos" | "atan") as fn ->
           Num (Cursor.call fn t (fun inner ->
-              let v = Cursor.number inner in
+              let v = read_num_expr inner in
               Cursor.ws inner;
               Cursor.expect_eof inner;
               let result_rad =
@@ -3003,30 +3012,63 @@ and read_calc_numeric_function : type a. Cursor.t -> a calc =
               result_rad *. 180. /. Float.pi))
       | "atan2" ->
           Num (Cursor.call "atan2" t (fun inner ->
-              let y = Cursor.number inner in
+              let y = read_num_expr inner in
               Cursor.ws inner;
               Cursor.comma inner;
-              let x = Cursor.number inner in
+              let x = read_num_expr inner in
               Cursor.ws inner;
               Cursor.expect_eof inner;
               Float.atan2 y x *. 180. /. Float.pi))
       | _ -> Cursor.err t "expected numeric calc function")
   | _ -> Cursor.err t "expected numeric calc function"
 
-(* CSS Values 4 §10.7.1: trig functions accept [<angle>] (degrees, radians,
-   turns, gradians) or a bare [<number>] interpreted as radians. *)
-and read_angle_or_radians t =
-  Cursor.ws t;
-  let snap = Cursor.save t in
-  match Cursor.number_with_unit t with
-  | n, Some "deg" -> n *. Float.pi /. 180.
-  | n, Some "rad" -> n
-  | n, Some "turn" -> n *. 2. *. Float.pi
-  | n, Some "grad" -> n *. Float.pi /. 200.
-  | n, None -> n
-  | _, Some _ ->
-      Cursor.restore t snap;
-      Cursor.err_invalid t "expected angle or number"
+(* Read a number-typed calc expression and fold it to a float. Used as the
+   argument reader for [sqrt]/[pow]/[hypot]/etc. so [pow(2, sqrt(100))] and
+   [hypot(3, 4)] evaluate end-to-end at parse time. *)
+and read_num_expr t : float =
+  let no_val t = Cursor.err t "expected number" in
+  let calc = read_calc_expr no_val t in
+  match eval_numeric_calc calc with
+  | Some n -> n
+  | None -> Cursor.err_invalid t "non-numeric calc expression"
+
+(* CSS Values 4 §10.7.1: trig functions accept [<angle> | <number>] - a bare
+   number is treated as radians. We support arithmetic over the input
+   ([sin(pi / 4)], [sin(22deg + 23deg)]) by recognising both shapes at every
+   leaf and folding through a generic float-leaf calc evaluator. *)
+and read_trig_arg t : float =
+  let read_leaf t =
+    let snap = Cursor.save t in
+    match Cursor.number_with_unit t with
+    | n, Some "deg" -> n *. Float.pi /. 180.
+    | n, Some "rad" -> n
+    | n, Some "turn" -> n *. 2. *. Float.pi
+    | n, Some "grad" -> n *. Float.pi /. 200.
+    | n, None -> n
+    | _, Some _ ->
+        Cursor.restore t snap;
+        Cursor.err_invalid t "expected angle or number"
+  in
+  let calc = read_calc_expr read_leaf t in
+  let rec eval : float calc -> float option = function
+    | Num f -> Some f
+    | Val f -> Some f
+    | Sibling_index | Sibling_count | Var _ -> None
+    | Nested inner | Parens inner -> eval inner
+    | Expr (l, op, r) -> (
+        match (eval l, eval r) with
+        | Some lv, Some rv -> (
+            match op with
+            | Add -> Some (lv +. rv)
+            | Sub -> Some (lv -. rv)
+            | Mul -> Some (lv *. rv)
+            | Div when rv <> 0. -> Some (lv /. rv)
+            | Div -> None)
+        | _ -> None)
+  in
+  match eval calc with
+  | Some f -> f
+  | None -> Cursor.err_invalid t "trig argument must be numeric"
 
 and read_calc_factor : type a. (Cursor.t -> a) -> Cursor.t -> a calc =
  fun read_a t ->
@@ -3923,6 +3965,28 @@ and read_light_dark t : color =
   Cursor.expect_eof t;
   Light_dark (light, dark)
 
+and read_color_attr t : color =
+  Cursor.ws t;
+  let name = Cursor.ident t in
+  Cursor.ws t;
+  Cursor.call "type" t (fun inner ->
+      Cursor.ws inner;
+      Cursor.expect '<' inner;
+      Cursor.expect_string "color" inner;
+      Cursor.expect '>' inner;
+      Cursor.ws inner;
+      Cursor.expect_eof inner);
+  Cursor.ws t;
+  let fallback =
+    if Cursor.comma_opt t then (
+      Cursor.ws t;
+      Some (read_color t))
+    else None
+  in
+  Cursor.ws t;
+  Cursor.expect_eof t;
+  Attribute (name, fallback)
+
 and color_parsers =
   [
     ( "rgb",
@@ -3947,6 +4011,7 @@ and color_parsers =
     ("color", read_color_function);
     ("contrast-color", read_contrast_color);
     ("light-dark", read_light_dark);
+    ("attr", read_color_attr);
     ("color-mix", read_color_mix);
   ]
 
