@@ -372,6 +372,7 @@ type color =
   | Relative_rgb of string
   | Contrast_color of color
   | Light_dark of color * color
+  | Attribute of string * color option
   | Lab of {
       l : percentage option;
       a : float option;
