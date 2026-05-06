@@ -6857,6 +6857,12 @@ let rec pp_content : content Pp.t =
   | None -> Pp.string ctx "none"
   | Normal -> Pp.string ctx "normal"
   | String s -> Pp.quoted_string ctx s
+  | Quoted (s, quote) ->
+      if Pp.minified ctx then Pp.quoted_string ctx s
+      else (
+        Pp.char ctx quote;
+        Pp.string ctx s;
+        Pp.char ctx quote)
   | Open_quote -> Pp.string ctx "open-quote"
   | Close_quote -> Pp.string ctx "close-quote"
   | Attr name -> Pp.call "attr" Pp.string ctx name
@@ -10462,7 +10468,11 @@ let rec read_object_fit t : object_fit =
 
 let rec read_content t : content =
   let read_var t : content = Var (read_var read_content t) in
-  let read_string t = String (Cursor.string t) in
+  let read_string t =
+    match Cursor.string_with_quote_opt t with
+    | Some (value, quote) -> Quoted (value, quote)
+    | None -> Cursor.err_expected t "string"
+  in
   let read_attr t =
     Cursor.call "attr" t (fun inner ->
         Cursor.ws inner;
