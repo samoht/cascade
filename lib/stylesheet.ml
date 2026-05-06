@@ -1958,11 +1958,18 @@ let read_viewport = read_viewport_with_prefix Standard "viewport"
 let read_ms_viewport = read_viewport_with_prefix Ms_prefixed "-ms-viewport"
 
 (* CSS Syntax 3 §5.4.2 "consume an at-rule": after the at-keyword has been
-   consumed, walk components until we hit [;] (no block) or [{...}] (block). The
-   raw prelude/block strings are reconstructed from captured components so the
-   at-rule round-trips even when its grammar is unknown. *)
+   consumed, walk components until we hit [;] (no block) or [{...}] (block). Raw
+   prelude/block strings are sliced from the original source so the at-rule
+   round-trips byte-for-byte even when its grammar is unknown. *)
 let read_unknown_at_rule name (r : Cursor.t) : statement =
-  let prelude_buf = Buffer.create 32 in
+  let source = Option.value (Cursor.source r) ~default:"" in
+  let source_len = String.length source in
+  let slice start stop =
+    if start < 0 || stop > source_len || start > stop then ""
+    else String.sub source start (stop - start)
+  in
+  let prelude_start = ref (-1) in
+  let prelude_end = ref (-1) in
   let block = ref Option.None in
   let rec gather () =
     match Cursor.peek r with
@@ -1971,24 +1978,30 @@ let read_unknown_at_rule name (r : Cursor.t) : statement =
         ignore (Cursor.next_raw r)
     | Some (Component.Block { node = { opening = Token.Curly; value; _ }; _ })
       ->
-        let body_buf = Buffer.create 32 in
-        List.iter
-          (fun c -> Buffer.add_string body_buf (Component.to_string c))
-          value;
-        block := Option.Some (Buffer.contents body_buf);
+        let body =
+          match value with
+          | [] -> ""
+          | _ ->
+              let first = Component.source_loc (List.hd value) in
+              let last =
+                Component.source_loc (List.nth value (List.length value - 1))
+              in
+              slice first.Loc.start_pos last.Loc.end_pos
+        in
+        block := Option.Some body;
         ignore (Cursor.next_raw r)
     | Some comp ->
-        Buffer.add_string prelude_buf (Component.to_string comp);
+        let loc = Component.source_loc comp in
+        if !prelude_start < 0 then prelude_start := loc.Loc.start_pos;
+        prelude_end := loc.Loc.end_pos;
         ignore (Cursor.next_raw r);
         gather ()
   in
   gather ();
-  Unknown_at_rule
-    {
-      name;
-      prelude = String.trim (Buffer.contents prelude_buf);
-      block = !block;
-    }
+  let prelude =
+    if !prelude_start < 0 then "" else slice !prelude_start !prelude_end
+  in
+  Unknown_at_rule { name; prelude; block = !block }
 
 type property_reader_state = {
   syntax : Variables.any_syntax option;
