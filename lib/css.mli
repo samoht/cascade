@@ -7120,6 +7120,15 @@ val custom_value_var_empty_fallback : string -> custom_value
 val string_of_custom_value : custom_value -> string
 (** [string_of_custom_value value] serializes a custom-property token stream. *)
 
+val string_of_number_percentage : number_percentage -> string
+(** [string_of_number_percentage value] serializes a number/percentage value
+    for CSS custom-property initial values. *)
+
+val string_of_kind_value : 'a kind -> 'a -> string
+(** [string_of_kind_value kind value] serializes a typed CSS value for a custom
+    property initial value. Values that cannot be represented as a concrete
+    initial value serialize to ["initial"]. *)
+
 module Container = Container
 module Supports = Supports
 module Keyframe = Keyframe

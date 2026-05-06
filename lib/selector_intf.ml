@@ -111,6 +111,10 @@ type t =
   | Current
   | Popover_open
   | Open
+  | Unknown_pseudo_class of string
+      (** Vendor / prerelease pseudo-classes cascade doesn't recognise. *)
+  | Unknown_pseudo_class_call of string * Component.t list
+      (** Functional vendor / prerelease pseudo-classes with opaque arguments. *)
   (* CSS Selectors 4 3.6.1: [::before] / [::after] / [::first-letter] /
      [::first-line] are the modern double-colon pseudo-element forms; the CSS
      2.1 single-colon spelling is preserved as a backwards-compatibility alias.

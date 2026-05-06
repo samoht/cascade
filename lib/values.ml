@@ -8,6 +8,11 @@ let var_ref ?fallback ?default ?layer ?meta name =
   in
   { name; fallback; default; layer; meta }
 
+let syntax_fallback s = Syntax_fallback (Cursor.remaining (Cursor.of_string s))
+
+let string_of_number_percentage (np : number_percentage) =
+  match np with Num f | Pct f -> Pp.string_of_float f | _ -> "initial"
+
 (** Color constructors *)
 let hex s =
   let len = String.length s in
@@ -2122,10 +2127,6 @@ let pp_alpha_drop_zero : alpha Pp.t =
 let string_of_lab_axis ~pct_scale ctx f =
   string_of_scaled_color_axis ~max_decimals:3 ~pct_scale ctx f
 
-let pp_lab_axis ~pct_scale ctx = function
-  | Some f -> Buffer.add_string ctx.Pp.buf (string_of_lab_axis ~pct_scale ctx f)
-  | None -> Pp.string ctx "none"
-
 let pp_lab_like_args ~axis_pct_scale :
     (percentage option * float option * float option * alpha) Pp.t =
  fun ctx (l, a, b, alpha) ->
@@ -2137,9 +2138,20 @@ let pp_lab_like_args ~axis_pct_scale :
   | Some l -> pp_percentage ctx l
   | None -> Pp.string ctx "none");
   space_after_color_percentage ctx l;
-  pp_lab_axis ~pct_scale:axis_pct_scale ctx a;
-  Pp.space ctx ();
-  pp_lab_axis ~pct_scale:axis_pct_scale ctx b;
+  let string_of_axis = function
+    | Some f -> string_of_lab_axis ~pct_scale:axis_pct_scale ctx f
+    | None -> "none"
+  in
+  let a = string_of_axis a in
+  let b = string_of_axis b in
+  Pp.string ctx a;
+  if
+    not
+      (ctx.Pp.minify
+      && String.length b > 0
+      && (b.[0] = '-' || b.[0] = '+'))
+  then Pp.space ctx ();
+  Pp.string ctx b;
   match alpha with
   | None -> ()
   | a when ctx.Pp.minify && alpha_is_full a -> ()

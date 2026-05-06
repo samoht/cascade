@@ -279,8 +279,19 @@ let is_whitespace = function
   | Preserved { kind = Token.Whitespace; _ } -> true
   | _ -> false
 
+let is_signed_number_repr repr =
+  String.length repr > 0 && (repr.[0] = '-' || repr.[0] = '+')
+
+let signed_number_pair prev next =
+  match (prev, next) with
+  | ( Component.Preserved { kind = Token.Number_tok _; _ },
+      Component.Preserved { kind = Token.Number_tok { repr; _ }; _ } ) ->
+      is_signed_number_repr repr
+  | _ -> false
+
 let normal_pair_needs_token_boundary prev next =
   match (prev, next) with
+  | _ when signed_number_pair prev next -> false
   | ( Component.Preserved
         {
           kind =
@@ -291,18 +302,18 @@ let normal_pair_needs_token_boundary prev next =
       ( Component.Preserved
           {
             kind =
-              ( Token.Ident _ | Token.Function _ | Token.Hash _
-              | Token.Number_tok _ | Token.Percentage _ | Token.Dimension _ );
+              ( Token.Ident _ | Token.Function _ | Token.Number_tok _
+              | Token.Percentage _ | Token.Dimension _ );
             _;
           }
       | Component.Func _
       | Component.Block { node = { opening = Token.Paren; _ }; _ } ) ) ->
       true
-  | ( Component.Preserved { kind = Token.Number_tok _ | Token.Percentage _; _ },
+  | ( Component.Preserved { kind = Token.Number_tok _; _ },
       Component.Preserved
         {
           kind =
-            ( Token.Ident _ | Token.Function _ | Token.Hash _
+            ( Token.Ident _ | Token.Function _
             | Token.Number_tok _ | Token.Percentage _ | Token.Dimension _ );
           _;
         } ) ->
@@ -392,6 +403,8 @@ let word_like_end : Component.t -> bool = function
           | Cdc | Bad_string | Bad_url | Eof
           (* These delim characters are self-delimiting at the end, so a
              trailing [<delim>] never merges with what follows. *)
+          | Hash _
+          | Percentage _
           | Delim
               ( "!" | "*" | "/" | ">" | "?" | "|" | "&" | "^" | "$" | "=" | "%"
               | "~" | "(" | ")" | "[" | "]" | "{" | "}" ) );
@@ -449,6 +462,7 @@ and pair_forms_multichar_token prev next =
 
 and pair_needs_token_boundary prev next =
   match (prev, next) with
+  | _ when signed_number_pair prev next -> false
   | _ when pair_forms_multichar_token prev next -> true
   | ( Component.Preserved
         {
@@ -460,18 +474,18 @@ and pair_needs_token_boundary prev next =
       ( Component.Preserved
           {
             kind =
-              ( Token.Ident _ | Token.Function _ | Token.Hash _
-              | Token.Number_tok _ | Token.Percentage _ | Token.Dimension _ );
+              ( Token.Ident _ | Token.Function _ | Token.Number_tok _
+              | Token.Percentage _ | Token.Dimension _ );
             _;
           }
       | Component.Func _
       | Component.Block { node = { opening = Token.Paren; _ }; _ } ) ) ->
       true
-  | ( Component.Preserved { kind = Token.Number_tok _ | Token.Percentage _; _ },
+  | ( Component.Preserved { kind = Token.Number_tok _; _ },
       Component.Preserved
         {
           kind =
-            ( Token.Ident _ | Token.Function _ | Token.Hash _
+            ( Token.Ident _ | Token.Function _
             | Token.Number_tok _ | Token.Percentage _ | Token.Dimension _ );
           _;
         } ) ->
@@ -509,9 +523,10 @@ and cvs_to_buffer_min buf cvs =
     | None -> false
     | Some p ->
         pair_forms_multichar_token p next
-        || word_like_end p
+        || ((not (signed_number_pair p next))
+           && word_like_end p
            && (not (is_backslash_delim p))
-           && word_like_start next
+           && word_like_start next)
   in
   let rec loop prev separated = function
     | [] -> ()
@@ -672,9 +687,10 @@ and cvs_to_buffer_min_custom buf cvs =
         pair_forms_multichar_token p next
         || is_math_delim p || is_math_delim next
         || bang_important_boundary prev next rest
-        || word_like_end p
+        || ((not (signed_number_pair p next))
+           && word_like_end p
            && (not (is_backslash_delim p))
-           && word_like_start next
+           && word_like_start next)
   in
   let rec loop prev separated = function
     | [] -> ()

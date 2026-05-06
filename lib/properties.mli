@@ -13,6 +13,11 @@ val pp_property_value : ('a property * 'a) Pp.t
 val pp_value : ('a kind * 'a) Pp.t
 (** [pp_value] pretty-prints a typed custom property value. *)
 
+val string_of_kind_value : 'a kind -> 'a -> string
+(** [string_of_kind_value kind value] serializes a typed CSS value for a custom
+    property initial value. Values that cannot be represented as a concrete
+    initial value serialize to ["initial"]. *)
+
 val pp_shadow : shadow Pp.t
 (** [pp_shadow] is the pretty-printer for [shadow] values. *)
 

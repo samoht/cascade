@@ -7,6 +7,25 @@ include Variables_intf
 
 (** {1 Custom Property Support} *)
 
+let custom_value_ident name =
+  [ Component.Preserved (Token.synthetic (Token.Ident name)) ]
+
+let custom_value_var_empty_fallback name =
+  let loc = Loc.dummy in
+  let ident =
+    Component.Preserved (Token.synthetic (Token.Ident ("--" ^ name)))
+  in
+  let comma = Component.Preserved (Token.synthetic Token.Comma) in
+  [
+    Component.Func
+      {
+        node = { name = "var"; arguments = [ ident; comma ]; terminated = true };
+        loc;
+      };
+  ]
+
+let string_of_custom_value = Parser.to_string_custom
+
 (** Pretty-print a syntax descriptor to CSS syntax string *)
 let rec pp_syntax_inner : type a. a syntax Pp.t =
  fun ctx syn ->
@@ -29,7 +48,7 @@ let rec pp_syntax_inner : type a. a syntax Pp.t =
   | Universal -> Pp.string ctx "*"
   | Or (syn1, syn2) ->
       pp_syntax_inner ctx syn1;
-      Pp.string ctx " | ";
+      if Pp.minified ctx then Pp.string ctx "|" else Pp.string ctx " | ";
       pp_syntax_inner ctx syn2
   | Plus syn ->
       pp_syntax_inner ctx syn;

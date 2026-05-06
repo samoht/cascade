@@ -1270,6 +1270,20 @@ and read_pseudo_class t =
         ("heading", read_heading);
         ("active-view-transition-type", read_active_view_transition_type);
       ]
+    ~default:(fun t ->
+      let read_unknown_call t =
+        match Cursor.peek t with
+        | Some (Component.Func { node = { name; arguments; _ }; _ }) ->
+            Cursor.skip t;
+            Unknown_pseudo_class_call (name, arguments)
+        | _ -> Cursor.err_expected t "pseudo-class call"
+      in
+      let read_unknown_ident t =
+        match Cursor.ident_opt t with
+        | Some name -> Unknown_pseudo_class name
+        | None -> Cursor.err_expected t "pseudo-class"
+      in
+      Cursor.one_of [ read_unknown_call; read_unknown_ident ] t)
     t
 
 (** Parse pseudo-element (::before, ::after, etc.) *)
@@ -1799,6 +1813,14 @@ and pp : t Pp.t =
   | Current -> pseudo ctx "current"
   | Popover_open -> pseudo ctx "popover-open"
   | Open -> pseudo ctx "open"
+  | Unknown_pseudo_class name -> pseudo ctx name
+  | Unknown_pseudo_class_call (name, args) ->
+      pp_func ctx ~prefix:":" name
+        (fun ctx args ->
+          Pp.string ctx
+            (if Pp.minified ctx then Parser.to_string_minified args
+             else Parser.to_string args))
+        args
   (* Legacy pseudo-elements (use single colon in minified mode) *)
   | Before form -> legacy_elem ctx form "before"
   | After form -> legacy_elem ctx form "after"
@@ -2076,6 +2098,7 @@ let rec specificity = function
   | Picture_in_picture | Left | Right | First | Defined | Playing | Paused
   | Seeking | Buffering | Stalled | Muted | Volume_locked | Future | Past
   | Current | Popover_open | Open | Moz_focusring | Webkit_any | Webkit_autofill
+  | Unknown_pseudo_class _ | Unknown_pseudo_class_call _
   | Moz_placeholder | Webkit_input_placeholder | Ms_input_placeholder
   | Moz_ui_invalid | Moz_ui_valid | Webkit_scrollbar
   | Webkit_search_cancel_button | Webkit_search_decoration

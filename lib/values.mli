@@ -15,6 +15,14 @@ val var_ref :
 (** [var_ref ?fallback ?default ?layer ?meta name] creates a CSS variable
     reference to [--name]. *)
 
+val syntax_fallback : string -> 'a fallback
+(** [syntax_fallback s] parses [s] as a CSS declaration-value fallback for a
+    [var()] reference. *)
+
+val string_of_number_percentage : number_percentage -> string
+(** [string_of_number_percentage value] serializes a number/percentage value
+    for CSS custom-property initial values. *)
+
 (** {1 Constructor Functions} *)
 
 val hex : string -> color
