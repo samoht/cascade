@@ -1970,6 +1970,7 @@ let rec pp_channel : channel Pp.t =
 
 let rec pp_angle : angle Pp.t =
  fun ctx -> function
+  | Deg 0. when Pp.minified ctx -> Pp.char ctx '0'
   | Deg f -> pp_unit ctx f "deg"
   | Rad f -> pp_unit ctx f "rad"
   | Turn f -> pp_unit ctx f "turn"

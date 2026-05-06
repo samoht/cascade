@@ -2663,6 +2663,7 @@ let rec pp_gradient_direction : gradient_direction Pp.t =
   | To_bottom_left -> Pp.string ctx "to bottom left"
   | To_left -> Pp.string ctx "to left"
   | To_top_left -> Pp.string ctx "to top left"
+  | Angle (Deg 0.) when Pp.minified ctx -> Pp.char ctx '0'
   | Angle a -> pp_angle ctx a
   | With_interpolation (dir, interp) ->
       pp_gradient_direction ctx dir;
@@ -2742,13 +2743,16 @@ let rec pp_filter : filter Pp.t =
   | Contrast n -> Pp.call "contrast" (pp_number_percentage ~always:true) ctx n
   | Drop_shadow s -> Pp.call "drop-shadow" pp_shadow ctx s
   | Grayscale n -> Pp.call "grayscale" (pp_number_percentage ~always:true) ctx n
+  | Hue_rotate (Deg 0.) when Pp.minified ctx -> Pp.string ctx "hue-rotate()"
   | Hue_rotate a -> Pp.call "hue-rotate" pp_angle ctx a
   | Invert n -> Pp.call "invert" (pp_number_percentage ~always:true) ctx n
   | Opacity n -> Pp.call "opacity" (pp_number_percentage ~always:true) ctx n
   | Saturate n -> Pp.call "saturate" (pp_number_percentage ~always:true) ctx n
   | Sepia n -> Pp.call "sepia" (pp_number_percentage ~always:true) ctx n
   | Url url -> Pp.url ctx url
-  | List filters -> Pp.list ~sep:Pp.space pp_filter ctx filters
+  | List filters ->
+      let sep = if Pp.minified ctx then Pp.nop else Pp.space in
+      Pp.list ~sep pp_filter ctx filters
   | Inherit -> Pp.string ctx "inherit"
   | Initial -> Pp.string ctx "initial"
   | Unset -> Pp.string ctx "unset"
@@ -14068,7 +14072,9 @@ module Filter = struct
         Grayscale (Values.read_number_percentage t))
 
   let read_hue_rotate t : filter =
-    Cursor.call "hue-rotate" t (fun t -> Hue_rotate (read_angle t))
+    Cursor.call "hue-rotate" t (fun t ->
+        if Cursor.is_done t then Hue_rotate (Deg 0.)
+        else Hue_rotate (read_angle t))
 
   let read_invert t : filter =
     Cursor.call "invert" t (fun t -> Invert (Values.read_number_percentage t))
