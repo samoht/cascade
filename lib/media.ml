@@ -137,6 +137,7 @@ let pp_value : value Pp.t =
   | Length l -> pp_length ctx l
   | Integer i -> Pp.string ctx (Int.to_string i)
   | Number f -> Pp.string ctx (format_float f)
+  | Ratio (n, 1) -> Pp.string ctx (Int.to_string n)
   | Ratio (n, d) ->
       Pp.string ctx (Int.to_string n);
       Pp.char ctx '/';
@@ -322,6 +323,8 @@ let rec pp ctx = function
   | Not_min_width_length l ->
       Pp.string ctx "not all and ";
       pp_min_width_length ctx l
+  | Aspect_ratio (a, 1) ->
+      pp_named_feature ctx "aspect-ratio" (Int.to_string a)
   | Aspect_ratio (a, b) ->
       pp_named_feature ctx "aspect-ratio"
         (Int.to_string a ^ "/" ^ Int.to_string b)
@@ -746,7 +749,7 @@ let validate_plain_feature name value =
     match (String.lowercase_ascii name, value) with
     | _, Function _ -> true
     | ("width" | "height" | "inline-size" | "block-size"), Length _ -> true
-    | "aspect-ratio", Ratio _ -> true
+    | "aspect-ratio", Ratio _ | "aspect-ratio", Integer _ -> true
     | "resolution", Resolution_value _ -> true
     | "resolution", Ident s -> String.lowercase_ascii s = "infinite"
     | ("color" | "color-index" | "monochrome"), Integer n -> n >= 0
@@ -762,7 +765,7 @@ let validate_plain_feature name value =
         | "block-size" ),
         Length _ ) ->
         true
-    | "aspect-ratio", Ratio _ -> true
+    | "aspect-ratio", Ratio _ | "aspect-ratio", Integer _ -> true
     | "resolution", Resolution_value _ -> true
     | "resolution", Ident s -> String.lowercase_ascii s = "infinite"
     | ("color" | "color-index" | "monochrome"), Integer n -> n >= 0
@@ -948,11 +951,9 @@ let rec condition_in_parens sc =
       (* Could be either ( <condition> ) or ( <feature> ). *)
       let inner = mk_scanner trimmed in
       skip_ws inner;
-      if
-        lookahead_ident inner "not"
-        || lookahead_ident inner "and"
-        || lookahead_ident inner "or"
-      then Feature (extract_feature_or_fail trimmed)
+      if lookahead_ident inner "not" then condition_of_string trimmed
+      else if lookahead_ident inner "and" || lookahead_ident inner "or" then
+        Feature (extract_feature_or_fail trimmed)
       else
         let starts_with_paren = peek inner = Some '(' in
         if starts_with_paren then condition_of_string trimmed
@@ -1306,6 +1307,7 @@ let normalise_value name value =
   | "width", Length l -> Some (Width l)
   | "height", Length l -> Some (Height l)
   | "aspect-ratio", Ratio (a, b) -> Some (Aspect_ratio (a, b))
+  | "aspect-ratio", Integer n -> Some (Aspect_ratio (n, 1))
   | "resolution", Resolution_value (n, u) -> Some (Resolution (n, u))
   | "color", Integer n -> Some (Color n)
   | "color-index", Integer n -> Some (Color_index n)
