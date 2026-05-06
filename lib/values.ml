@@ -3772,6 +3772,7 @@ let rec read_angle t : angle =
     | "rad" -> Rad n
     | "turn" -> Turn n
     | "grad" -> Grad n
+    | "" when n = 0. -> Deg 0.
     | "" ->
         Cursor.err_invalid t
           "angle values must have units (deg, rad, turn, or grad)"
