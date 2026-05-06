@@ -3089,7 +3089,7 @@ and pp_image_set_option ctx
     image_set_mime_type;
   Option.iter
     (fun res ->
-      if not (Pp.minified ctx) then Pp.space ctx ();
+      Pp.sp ctx ();
       Pp.string ctx res)
     image_set_resolution
 
@@ -5035,9 +5035,9 @@ let rec pp_grid_line_pair : grid_line_pair Pp.t =
       match end_ with
       | Auto -> ()
       | _ ->
-          if not (Pp.minified ctx) then Pp.space ctx ();
+          Pp.sp ctx ();
           Pp.slash ctx ();
-          if not (Pp.minified ctx) then Pp.space ctx ();
+          Pp.sp ctx ();
           pp_grid_line ctx end_)
   | Var v -> pp_var pp_grid_line_pair ctx v
 
@@ -8433,7 +8433,7 @@ let rec pp_timing_function : timing_function Pp.t =
       (match jump_term_opt with
       | Some d ->
           Pp.char ctx ',';
-          Pp.space ctx ();
+          Pp.sp ctx ();
           pp_steps_direction ctx d
       | None -> ());
       Pp.char ctx ')'
